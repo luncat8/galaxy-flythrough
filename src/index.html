@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Galaxy Fly-Through — Milestone 1</title>
+        <link rel="stylesheet" href="style.css">
+</head>
+<body>
+        <canvas id="canvas" tabindex="0"></canvas>
+        <pre id="overlay"></pre>
+        <pre id="error" style="display:none"></pre>
+        <pre id="help">
+Galaxy Fly-Through — Milestone 1
+  WASD / arrows  translate
+  mouse drag     look
+  E / Q          up / down
+  scroll         adjust speed
+  100k test stars from analytical MW density model
+        </pre>
+
+        <!-- WGSL shaders embedded for file:// compatibility (per AGENTS.md) -->
+        <script type="text/x-wgsl" id="star-distant.wgsl">
+struct CameraUniform {
+        viewProj: mat4x4<f32>,
+        cameraPos: vec4f,
+        cameraRight: vec4f,
+        cameraUp: vec4f,
+        time: f32,
+        starSizePx: f32,
+        padding: vec2f,
+};
+
+struct StarPacked {
+        positionHighX: f32,
+        positionHighY: f32,
+        positionHighZ: f32,
+        packed: u32,
+};
+
+@group(0) @binding(0) var<uniform> camera: CameraUniform;
+@group(0) @binding(1) var<storage, read> stars: array<StarPacked>;
+@group(0) @binding(2) var colorLUT: texture_2d<f32>;
+
+struct VertexOut {
+        @builtin(position) clipPos: vec4f,
+        @location(0) uv: vec2f,
+        @location(1) color: vec3f,
+        @location(2) brightness: f32,
+};
+
+fn decodeAppMag(p: u32) -> f32 {
+        let magByte: u32 = (p >> 8u) & 0xFFu;
+        return f32(magByte) * (20.0 / 255.0);
+}
+
+fn decodeColorIndex(p: u32) -> u32 {
+        return p & 0xFFu;
+}
+
+fn cornerOffset(vid: u32) -> vec2f {
+        switch vid {
+                case 0u: { return vec2f(-1.0, -1.0); }
+                case 1u: { return vec2f( 1.0, -1.0); }
+                case 2u: { return vec2f(-1.0,  1.0); }
+                case 3u: { return vec2f( 1.0,  1.0); }
+                default: { return vec2f(0.0, 0.0); }
+        }
+}
+
+@vertex
+fn vs_main(
+        @builtin(vertex_index) vid: u32,
+        @builtin(instance_index) starIdx: u32,
+) -> VertexOut {
+        let star: StarPacked = stars[starIdx];
+        let starPos: vec3f = vec3f(star.positionHighX, star.positionHighY, star.positionHighZ);
+        let rel: vec3f = starPos - camera.cameraPos.xyz;
+        let clip: vec4f = camera.viewProj * vec4f(rel.x, rel.y, rel.z, 1.0);
+
+        let appMag: f32 = decodeAppMag(star.packed);
+        let brightness: f32 = max(0.0, 1.0 - appMag / 20.0);
+        let sizeFactor: f32 = camera.starSizePx * (0.5 + 1.5 * brightness);
+        let corner: vec2f = cornerOffset(vid) * sizeFactor / 1000.0;
+
+        let finalClip: vec4f = clip + vec4f(corner.x, corner.y, 0.0, 0.0);
+
+        let ci: u32 = decodeColorIndex(star.packed);
+        let color: vec3f = textureLoad(colorLUT, vec2i(i32(ci), 0), 0).rgb;
+
+        var out: VertexOut;
+        out.clipPos = finalClip;
+        out.uv = cornerOffset(vid);
+        out.color = color;
+        out.brightness = brightness;
+        return out;
+}
+
+@fragment
+fn fs_main(in: VertexOut) -> @location(0) vec4f {
+        let r: f32 = length(in.uv);
+        if (r > 1.0) { discard; }
+        let falloff: f32 = pow(1.0 - r * r, 2.0);
+        let alpha: f32 = in.brightness * falloff;
+        return vec4f(in.color * alpha, alpha);
+}
+        </script>
+
+        <!-- Runtime modules. Classic script tags, no modules (per AGENTS.md).
+             Order matters: math before render, render before main. -->
+        <script src="math/hash.js"></script>
+        <script src="math/density.js"></script>
+        <script src="math/sampling.js"></script>
+        <script src="math/star-types.js"></script>
+        <script src="math/nebula.js"></script>
+        <script src="math/split-double.js"></script>
+        <script src="core/device.js"></script>
+        <script src="core/camera.js"></script>
+        <script src="core/input.js"></script>
+        <script src="core/loop.js"></script>
+        <script src="render/star-distant.js"></script>
+        <script src="main.js"></script>
+</body>
+</html>

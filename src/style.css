@@ -1,0 +1,66 @@
+/* src/style.css — minimal styling for the galaxy fly-through page */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	background: #000;
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+	color: #ddd;
+}
+
+#canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+	cursor: grab;
+	outline: none;
+}
+#canvas:active { cursor: grabbing; }
+
+#overlay {
+	position: fixed;
+	top: 12px;
+	left: 12px;
+	font-family: 'Menlo', 'Consolas', monospace;
+	font-size: 12px;
+	line-height: 1.5;
+	color: #6fae6f;
+	background: rgba(0, 0, 0, 0.5);
+	padding: 8px 12px;
+	border-radius: 4px;
+	white-space: pre;
+	pointer-events: none;
+}
+
+#error {
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	font-family: 'Menlo', 'Consolas', monospace;
+	font-size: 14px;
+	color: #ff6b6b;
+	background: rgba(40, 0, 0, 0.85);
+	padding: 16px 24px;
+	border: 1px solid #ff6b6b;
+	border-radius: 4px;
+	max-width: 600px;
+	white-space: pre-wrap;
+}
+
+#help {
+	position: fixed;
+	bottom: 12px;
+	right: 12px;
+	font-family: 'Menlo', 'Consolas', monospace;
+	font-size: 11px;
+	color: #888;
+	background: rgba(0, 0, 0, 0.5);
+	padding: 8px 12px;
+	border-radius: 4px;
+	white-space: pre;
+	pointer-events: none;
+}

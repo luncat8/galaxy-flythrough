@@ -1,0 +1,127 @@
+{
+  "date": "2026-09-19T22:16:46.305Z",
+  "structLayout": {
+    "sizeBytes": 16,
+    "fields": [
+      {
+        "name": "positionHighX",
+        "type": "f32",
+        "bytes": 4
+      },
+      {
+        "name": "positionHighY",
+        "type": "f32",
+        "bytes": 4
+      },
+      {
+        "name": "positionHighZ",
+        "type": "f32",
+        "bytes": 4
+      },
+      {
+        "name": "packed",
+        "type": "u32",
+        "bytes": 4,
+        "bits": [
+          {
+            "name": "colorIndex",
+            "bits": "0-7"
+          },
+          {
+            "name": "appMag",
+            "bits": "8-15",
+            "quantum": 0.0784313725490196
+          },
+          {
+            "name": "flags",
+            "bits": "16-23"
+          },
+          {
+            "name": "subCellJitter",
+            "bits": "24-31"
+          }
+        ]
+      }
+    ]
+  },
+  "roundTrip": {
+    "n": 100000,
+    "positionMaxErrorKpc": 6.754098427300279e-7,
+    "positionMeanErrorKpc": 2.5328117735047347e-7,
+    "magnitudeMaxError": 0.07843077980456759,
+    "magnitudeMeanError": 0.03924402047376167,
+    "magnitudeQuantum": 0.0784313725490196,
+    "colorIndexLost": false,
+    "flagsLost": false,
+    "subCellJitterLost": false
+  },
+  "memoryBudget": [
+    {
+      "starCount": 10000,
+      "packedBytes": 160000,
+      "packedMB": "0.2",
+      "naiveBytes": 320000,
+      "naiveMB": "0.3",
+      "savingsMB": "0.2",
+      "savingsPct": "50",
+      "indirectDrawBytes": 40020,
+      "indirectDrawMB": "0.04",
+      "totalPackedMB": "0.3"
+    },
+    {
+      "starCount": 100000,
+      "packedBytes": 1600000,
+      "packedMB": "1.5",
+      "naiveBytes": 3200000,
+      "naiveMB": "3.1",
+      "savingsMB": "1.5",
+      "savingsPct": "50",
+      "indirectDrawBytes": 400020,
+      "indirectDrawMB": "0.38",
+      "totalPackedMB": "2.0"
+    },
+    {
+      "starCount": 1000000,
+      "packedBytes": 16000000,
+      "packedMB": "15.3",
+      "naiveBytes": 32000000,
+      "naiveMB": "30.5",
+      "savingsMB": "15.3",
+      "savingsPct": "50",
+      "indirectDrawBytes": 4000020,
+      "indirectDrawMB": "3.81",
+      "totalPackedMB": "19.2"
+    },
+    {
+      "starCount": 5000000,
+      "packedBytes": 80000000,
+      "packedMB": "76.3",
+      "naiveBytes": 160000000,
+      "naiveMB": "152.6",
+      "savingsMB": "76.3",
+      "savingsPct": "50",
+      "indirectDrawBytes": 20000020,
+      "indirectDrawMB": "19.07",
+      "totalPackedMB": "95.5"
+    },
+    {
+      "starCount": 20000000,
+      "packedBytes": 320000000,
+      "packedMB": "305.2",
+      "naiveBytes": 640000000,
+      "naiveMB": "610.4",
+      "savingsMB": "305.2",
+      "savingsPct": "50",
+      "indirectDrawBytes": 80000020,
+      "indirectDrawMB": "76.29",
+      "totalPackedMB": "381.6"
+    }
+  ],
+  "feasibility": {
+    "targetMemoryMB": 256,
+    "maxFeasiblePackedStars": 16777216,
+    "maxFeasibleNaiveStars": 8388608,
+    "packingGainFactor": 2
+  },
+  "recommendation": "Packed 16-byte struct supports 16,777,216 stars in 256 MB (vs 8,388,608 naive)"
+}

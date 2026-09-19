@@ -1,0 +1,1545 @@
+{
+  "date": "2026-09-19T22:16:46.781Z",
+  "totalChecks": 384,
+  "passed": 384,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "Coord conv: Sirius distance ≈ 0.00264 kpc (2.64 pc)",
+      "pass": true
+    },
+    {
+      "name": "Coord conv: Sirius galactic latitude near -8°",
+      "pass": true
+    },
+    {
+      "name": "Coord conv: GC direction at 8 kpc: x ≈ +8 kpc",
+      "pass": true
+    },
+    {
+      "name": "Coord conv: GC direction at 8 kpc: y small",
+      "pass": true
+    },
+    {
+      "name": "Mock: generated 1000 stars",
+      "pass": true
+    },
+    {
+      "name": "Mock: star has sourceId",
+      "pass": true
+    },
+    {
+      "name": "Mock: star has x,y,z",
+      "pass": true
+    },
+    {
+      "name": "Mock: star has appMag",
+      "pass": true
+    },
+    {
+      "name": "Mock: star has spectralClass",
+      "pass": true
+    },
+    {
+      "name": "Mock: first 100 are landmarks",
+      "pass": true
+    },
+    {
+      "name": "Mock: stars 100+ are not landmarks",
+      "pass": true
+    },
+    {
+      "name": "Band(0.001, 0.002, 0.003) = near",
+      "pass": true
+    },
+    {
+      "name": "Cell coords are non-negative integers",
+      "pass": true
+    },
+    {
+      "name": "Band(1.0, 0.5, 0.1) = medium",
+      "pass": true
+    },
+    {
+      "name": "Band(5.0, 3.0, 0.5) = far",
+      "pass": true
+    },
+    {
+      "name": "Band(50,50,50) = null (out of bounds)",
+      "pass": true
+    },
+    {
+      "name": "packStar returns 16 bytes",
+      "pass": true
+    },
+    {
+      "name": "Packed x round-trips",
+      "pass": true
+    },
+    {
+      "name": "Packed y round-trips",
+      "pass": true
+    },
+    {
+      "name": "Packed z round-trips",
+      "pass": true
+    },
+    {
+      "name": "Packed colorIndex = 4 (G)",
+      "pass": true
+    },
+    {
+      "name": "Packed appMag byte ≈ 70",
+      "pass": true
+    },
+    {
+      "name": "Packed flags = 1 (landmark)",
+      "pass": true
+    },
+    {
+      "name": "Encode: kept > 0 stars",
+      "pass": true
+    },
+    {
+      "name": "Encode: wrote > 0 tiles",
+      "pass": true
+    },
+    {
+      "name": "Encode: avg stars/tile is reasonable",
+      "pass": true
+    },
+    {
+      "name": "Tile file medium/tile_12_4_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file medium/tile_12_4_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile medium/tile_12_4_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile medium/tile_12_4_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_10_27_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_10_27_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_10_27_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_10_27_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_10_34_0.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_10_34_0.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_10_34_0.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_10_34_0.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_11_35_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_11_35_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_11_35_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_11_35_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_12_12_2.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_12_12_2.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_12_12_2.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_12_12_2.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_12_15_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_12_15_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_12_15_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_12_15_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_12_1_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_12_1_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_12_1_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_12_1_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_13_19_2.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_13_19_2.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_13_19_2.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_13_19_2.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_14_24_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_14_24_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_14_24_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_14_24_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_15_26_7.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_15_26_7.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_15_26_7.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_15_26_7.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_15_9_2.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_15_9_2.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_15_9_2.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_15_9_2.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_17_0_7.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_17_0_7.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_17_0_7.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_17_0_7.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_17_4_6.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_17_4_6.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_17_4_6.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_17_4_6.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_18_12_0.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_18_12_0.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_18_12_0.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_18_12_0.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_18_25_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_18_25_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_18_25_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_18_25_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_19_13_5.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_19_13_5.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_19_13_5.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_19_13_5.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_19_13_6.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_19_13_6.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_19_13_6.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_19_13_6.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_19_15_6.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_19_15_6.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_19_15_6.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_19_15_6.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_20_1_2.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_20_1_2.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_20_1_2.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_20_1_2.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_20_24_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_20_24_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_20_24_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_20_24_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_20_26_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_20_26_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_20_26_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_20_26_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_21_13_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_21_13_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_21_13_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_21_13_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_22_16_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_22_16_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_22_16_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_22_16_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_22_35_2.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_22_35_2.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_22_35_2.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_22_35_2.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_22_4_2.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_22_4_2.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_22_4_2.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_22_4_2.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_24_25_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_24_25_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_24_25_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_24_25_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_24_38_5.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_24_38_5.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_24_38_5.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_24_38_5.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_25_30_7.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_25_30_7.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_25_30_7.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_25_30_7.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_25_32_6.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_25_32_6.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_25_32_6.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_25_32_6.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_27_22_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_27_22_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_27_22_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_27_22_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_28_12_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_28_12_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_28_12_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_28_12_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_28_17_2.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_28_17_2.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_28_17_2.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_28_17_2.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_28_21_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_28_21_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_28_21_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_28_21_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_28_22_1.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_28_22_1.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_28_22_1.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_28_22_1.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_28_22_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_28_22_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_28_22_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_28_22_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_28_24_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_28_24_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_28_24_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_28_24_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_28_26_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_28_26_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_28_26_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_28_26_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_29_13_5.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_29_13_5.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_29_13_5.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_29_13_5.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_29_19_0.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_29_19_0.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_29_19_0.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_29_19_0.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_29_35_0.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_29_35_0.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_29_35_0.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_29_35_0.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_2_22_0.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_2_22_0.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_2_22_0.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_2_22_0.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_30_12_1.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_30_12_1.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_30_12_1.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_30_12_1.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_30_26_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_30_26_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_30_26_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_30_26_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_30_31_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_30_31_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_30_31_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_30_31_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_31_11_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_31_11_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_31_11_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_31_11_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_31_14_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_31_14_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_31_14_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_31_14_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_31_21_5.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_31_21_5.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_31_21_5.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_31_21_5.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_31_24_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_31_24_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_31_24_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_31_24_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_31_25_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_31_25_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_31_25_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_31_25_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_32_15_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_32_15_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_32_15_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_32_15_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_32_16_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_32_16_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_32_16_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_32_16_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_32_16_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_32_16_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_32_16_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_32_16_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_32_19_1.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_32_19_1.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_32_19_1.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_32_19_1.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_32_21_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_32_21_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_32_21_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_32_21_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_32_24_5.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_32_24_5.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_32_24_5.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_32_24_5.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_33_17_2.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_33_17_2.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_33_17_2.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_33_17_2.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_33_17_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_33_17_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_33_17_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_33_17_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_33_19_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_33_19_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_33_19_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_33_19_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_33_28_5.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_33_28_5.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_33_28_5.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_33_28_5.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_33_32_5.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_33_32_5.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_33_32_5.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_33_32_5.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_34_16_5.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_34_16_5.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_34_16_5.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_34_16_5.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_34_20_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_34_20_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_34_20_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_34_20_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_34_21_2.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_34_21_2.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_34_21_2.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_34_21_2.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_34_21_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_34_21_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_34_21_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_34_21_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_35_17_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_35_17_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_35_17_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_35_17_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_35_18_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_35_18_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_35_18_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_35_18_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_35_19_6.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_35_19_6.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_35_19_6.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_35_19_6.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_35_21_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_35_21_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_35_21_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_35_21_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_35_23_2.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_35_23_2.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_35_23_2.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_35_23_2.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_35_26_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_35_26_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_35_26_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_35_26_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_35_28_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_35_28_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_35_28_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_35_28_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_36_17_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_36_17_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_36_17_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_36_17_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_36_19_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_36_19_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_36_19_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_36_19_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_36_21_1.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_36_21_1.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_36_21_1.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_36_21_1.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_36_21_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_36_21_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_36_21_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_36_21_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_36_24_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_36_24_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_36_24_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_36_24_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_37_15_1.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_37_15_1.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_37_15_1.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_37_15_1.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_37_23_2.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_37_23_2.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_37_23_2.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_37_23_2.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_38_16_5.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_38_16_5.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_38_16_5.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_38_16_5.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_39_18_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_39_18_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_39_18_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_39_18_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_39_21_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_39_21_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_39_21_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_39_21_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_4_13_1.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_4_13_1.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_4_13_1.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_4_13_1.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_4_17_4.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_4_17_4.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_4_17_4.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_4_17_4.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_4_8_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_4_8_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_4_8_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_4_8_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_6_22_5.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_6_22_5.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_6_22_5.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_6_22_5.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_7_24_6.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_7_24_6.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_7_24_6.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_7_24_6.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_7_5_0.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_7_5_0.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_7_5_0.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_7_5_0.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_8_19_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_8_19_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_8_19_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_8_19_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_8_23_3.js is valid JS",
+      "pass": true
+    },
+    {
+      "name": "Tile file far/tile_8_23_3.js assigns global",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_8_23_3.js decoded to bytes",
+      "pass": true
+    },
+    {
+      "name": "Tile far/tile_8_23_3.js body size matches star count",
+      "pass": true
+    },
+    {
+      "name": "Total tiles found > 0",
+      "pass": true
+    },
+    {
+      "name": "Total stars in tiles matches kept count",
+      "pass": true
+    }
+  ],
+  "verdict": "PASS — tile encoder ready for real Gaia CSV input"
+}

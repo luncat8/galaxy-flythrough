@@ -1,0 +1,48 @@
+{
+  "date": "2026-09-19T22:16:49.734Z",
+  "seed": 99,
+  "targetN": 1000,
+  "placedN": 1000,
+  "box": {
+    "xMin": -25,
+    "xMax": 5,
+    "yMin": -15,
+    "yMax": 15,
+    "zMin": -5,
+    "zMax": 5
+  },
+  "byType": {
+    "SNR": 835,
+    "dark": 108,
+    "HII": 21,
+    "reflection": 36
+  },
+  "byComponent": {
+    "thick": 533,
+    "thin": 466,
+    "halo": 1
+  },
+  "armDistBuckets": [
+    34,
+    65,
+    66,
+    127,
+    708
+  ],
+  "meanSizeKpc": 0.17199106462120473,
+  "hII": {
+    "total": 21,
+    "inArm": 21,
+    "inArmPct": "100.0",
+    "meanDistToArmKpc": "0.144"
+  },
+  "planetary": {
+    "total": 0,
+    "inBulge": 0,
+    "inBulgePct": "0.0"
+  },
+  "halo": {
+    "totalNebulae": 0,
+    "expected": 0
+  }
+}

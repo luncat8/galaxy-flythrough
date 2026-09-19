@@ -1,0 +1,154 @@
+{
+  "date": "2026-09-19T22:16:46.475Z",
+  "checks": {
+    "pcgConstants": {
+      "wgslConstantsPresent": true,
+      "wgslFunctionsPresent": true,
+      "jsConstantsPresent": true,
+      "jsFunctionsPresent": true,
+      "missingConstants": [],
+      "missingFunctions": [],
+      "pass": true
+    },
+    "densityConstants": {
+      "constants": [
+        {
+          "desc": "GALACTIC_R0",
+          "jsHas": true,
+          "wgslHas": true
+        },
+        {
+          "desc": "THIN_L",
+          "jsHas": true,
+          "wgslHas": true
+        },
+        {
+          "desc": "THIN_H",
+          "jsHas": true,
+          "wgslHas": true
+        },
+        {
+          "desc": "THICK_L",
+          "jsHas": true,
+          "wgslHas": true
+        },
+        {
+          "desc": "THICK_H",
+          "jsHas": true,
+          "wgslHas": true
+        },
+        {
+          "desc": "BULGE_A",
+          "jsHas": true,
+          "wgslHas": true
+        },
+        {
+          "desc": "BULGE_B",
+          "jsHas": true,
+          "wgslHas": true
+        },
+        {
+          "desc": "BULGE_C",
+          "jsHas": true,
+          "wgslHas": true
+        },
+        {
+          "desc": "ARMS_AMP",
+          "jsHas": true,
+          "wgslHas": true
+        },
+        {
+          "desc": "HALO_POWER",
+          "jsHas": true,
+          "wgslHas": true
+        }
+      ],
+      "jsHasAllFunctions": true,
+      "wgslMissingFunctions": [],
+      "pass": true
+    },
+    "massTeffTable": {
+      "wgslMassTableComplete": true,
+      "wgslTeffTableComplete": true,
+      "jsMassTableComplete": true,
+      "jsTeffTableComplete": true,
+      "wgslSpectralThresholdsPresent": true,
+      "jsSpectralThresholdsPresent": true,
+      "entryCount": 18,
+      "pass": true
+    },
+    "starPackedStruct": {
+      "structFound": true,
+      "hasPositionHighX": true,
+      "hasPositionHighY": true,
+      "hasPositionHighZ": true,
+      "hasPacked": true,
+      "expectedSizeBytes": 16,
+      "actualSizeBytes": 16,
+      "pass": true
+    },
+    "wgslSyntax": {
+      "pcg-hash.wgsl": {
+        "lines": 66,
+        "bytes": 1780,
+        "openBraces": 6,
+        "closeBraces": 6,
+        "openParens": 35,
+        "closeParens": 35,
+        "errors": [],
+        "pass": true
+      },
+      "density.wgsl": {
+        "lines": 150,
+        "bytes": 4821,
+        "openBraces": 22,
+        "closeBraces": 22,
+        "openParens": 76,
+        "closeParens": 76,
+        "errors": [],
+        "pass": true
+      },
+      "procedural-gen.wgsl": {
+        "lines": 234,
+        "bytes": 9009,
+        "openBraces": 33,
+        "closeBraces": 33,
+        "openParens": 150,
+        "closeParens": 150,
+        "errors": [],
+        "pass": true
+      },
+      "cull.wgsl": {
+        "lines": 168,
+        "bytes": 6229,
+        "openBraces": 17,
+        "closeBraces": 17,
+        "openParens": 64,
+        "closeParens": 64,
+        "errors": [],
+        "pass": true
+      },
+      "star-distant.wgsl": {
+        "lines": 115,
+        "bytes": 3688,
+        "openBraces": 15,
+        "closeBraces": 15,
+        "openParens": 44,
+        "closeParens": 44,
+        "errors": [],
+        "pass": true
+      }
+    },
+    "starDistantEmbedded": {
+      "scriptBlockPresent": true,
+      "embeddedLength": 2563,
+      "fileLength": 3688,
+      "keyMarkersAllPresentInEmbedded": true,
+      "keyMarkersAllPresentInFile": true,
+      "missingInEmbedded": [],
+      "missingInFile": [],
+      "pass": true
+    }
+  },
+  "verdict": "PASS — WGSL mirrors JS libraries exactly"
+}

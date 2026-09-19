@@ -1,0 +1,48 @@
+{
+  "date": "2026-09-19T22:16:46.141Z",
+  "N": 1000000,
+  "buckets": 256,
+  "pcg": {
+    "chiSquare": {
+      "value": 243.8343680000001,
+      "df": 255,
+      "pass5pct": true,
+      "pass1pct": true
+    },
+    "serialCorrelation": {
+      "value": -0.0038554011745208254,
+      "pass": true
+    },
+    "spectral": {
+      "minCount": 190,
+      "maxCount": 304,
+      "ratio": 1.6,
+      "meanAbsDev": 12.320121765136719,
+      "expected": 244.140625,
+      "passRatio": true,
+      "passDev": true
+    },
+    "period": {
+      "firstRepeatAt": -1,
+      "testedN": 1000000,
+      "pass": true
+    },
+    "recommendation": "PASS — use PCG as default hash"
+  },
+  "wang": {
+    "chiSquare": {
+      "value": 242.22515199999984,
+      "pass5pct": true
+    },
+    "spectral": {
+      "minCount": 195,
+      "maxCount": 303,
+      "ratio": 1.5538461538461539,
+      "meanAbsDev": 12.690315246582031,
+      "expected": 244.140625,
+      "passRatio": true,
+      "passDev": true
+    },
+    "recommendation": "PASS — Wang usable as fallback"
+  }
+}

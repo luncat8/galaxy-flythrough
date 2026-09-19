@@ -1,0 +1,213 @@
+{
+  "date": "2026-09-19T22:16:46.516Z",
+  "totalChecks": 51,
+  "passed": 51,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "hash.pcgHash is function",
+      "pass": true
+    },
+    {
+      "name": "hash.hash01 is function",
+      "pass": true
+    },
+    {
+      "name": "hash.hash3D is function",
+      "pass": true
+    },
+    {
+      "name": "hash.pcgHash(0) returns u32",
+      "pass": true
+    },
+    {
+      "name": "hash.hash01(0) in [0,1)",
+      "pass": true
+    },
+    {
+      "name": "density.rhoTotal is function",
+      "pass": true
+    },
+    {
+      "name": "density.rhoTotal(0,0,0) > 0",
+      "pass": true
+    },
+    {
+      "name": "density.GALACTIC_R0 = 8.178",
+      "pass": true
+    },
+    {
+      "name": "density.sampleComponent is function",
+      "pass": true
+    },
+    {
+      "name": "sampling.sampleStars is function",
+      "pass": true
+    },
+    {
+      "name": "sampling.precomputeRhoMax is function",
+      "pass": true
+    },
+    {
+      "name": "starTypes.deriveStarProps is function",
+      "pass": true
+    },
+    {
+      "name": "deriveStarProps returns object with class",
+      "pass": true
+    },
+    {
+      "name": "deriveStarProps returns color array",
+      "pass": true
+    },
+    {
+      "name": "deriveStarProps returns component",
+      "pass": true
+    },
+    {
+      "name": "nebula.placeNebulae is function",
+      "pass": true
+    },
+    {
+      "name": "nebula.NEBULA_TYPES has 5 entries",
+      "pass": true
+    },
+    {
+      "name": "splitDouble.cameraRelative is function",
+      "pass": true
+    },
+    {
+      "name": "cameraRelative returns array of 3",
+      "pass": true
+    },
+    {
+      "name": "cameraRelative([8,0,0], [1,0,0]) = [7,0,0]",
+      "pass": true
+    },
+    {
+      "name": "camera.createCamera is function",
+      "pass": true
+    },
+    {
+      "name": "camera has step function",
+      "pass": true
+    },
+    {
+      "name": "camera has buildViewProj function",
+      "pass": true
+    },
+    {
+      "name": "camera.viewProj is Float32Array(16)",
+      "pass": true
+    },
+    {
+      "name": "camera.cameraPos is Float32Array(4)",
+      "pass": true
+    },
+    {
+      "name": "camera.forward at yaw=0,pitch=0 is +X",
+      "pass": true
+    },
+    {
+      "name": "camera.right at yaw=0,pitch=0 is -Y",
+      "pass": true
+    },
+    {
+      "name": "camera.up at yaw=0,pitch=0 is +Z",
+      "pass": true
+    },
+    {
+      "name": "camera orthonormal: forward . right = 0",
+      "pass": true
+    },
+    {
+      "name": "camera orthonormal: forward . up = 0",
+      "pass": true
+    },
+    {
+      "name": "camera orthonormal: right . up = 0",
+      "pass": true
+    },
+    {
+      "name": "input.createInput is function",
+      "pass": true
+    },
+    {
+      "name": "loop.createLoop is function",
+      "pass": true
+    },
+    {
+      "name": "loop has start function",
+      "pass": true
+    },
+    {
+      "name": "loop has stop function",
+      "pass": true
+    },
+    {
+      "name": "loop.stats exists",
+      "pass": true
+    },
+    {
+      "name": "starDistant.createStarDistantRenderer is function",
+      "pass": true
+    },
+    {
+      "name": "starDistant.TEST_N = 100000",
+      "pass": true
+    },
+    {
+      "name": "starDistant.SAMPLING_BOX is object",
+      "pass": true
+    },
+    {
+      "name": "starDistant.buildColorLUT is function",
+      "pass": true
+    },
+    {
+      "name": "LUT is 256*4 = 1024 bytes",
+      "pass": true
+    },
+    {
+      "name": "LUT index 0 (O) is bluish",
+      "pass": true
+    },
+    {
+      "name": "LUT index 6 (M) is reddish",
+      "pass": true
+    },
+    {
+      "name": "main.js defines boot function",
+      "pass": true
+    },
+    {
+      "name": "main.js attaches to DOMContentLoaded",
+      "pass": true
+    },
+    {
+      "name": "index.html has canvas element",
+      "pass": true
+    },
+    {
+      "name": "index.html has WGSL script block",
+      "pass": true
+    },
+    {
+      "name": "index.html loads main.js",
+      "pass": true
+    },
+    {
+      "name": "index.html loads all math modules",
+      "pass": true
+    },
+    {
+      "name": "index.html loads all core modules",
+      "pass": true
+    },
+    {
+      "name": "index.html loads star-distant.js",
+      "pass": true
+    }
+  ],
+  "verdict": "PASS — Milestone 1 modules load and export correctly"
+}

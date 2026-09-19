@@ -1,0 +1,86 @@
+{
+  "date": "2026-09-19T22:16:46.430Z",
+  "N": 100000,
+  "tests": {
+    "priorityDistribution": {
+      "histogram": [
+        40,
+        287,
+        673,
+        1251,
+        1603,
+        2134,
+        2568,
+        3121,
+        3611,
+        4139,
+        4613,
+        4920,
+        4947,
+        5037,
+        5014,
+        4944,
+        5021,
+        5107,
+        4975,
+        5051,
+        4950,
+        4615,
+        4270,
+        3945,
+        3279,
+        2915,
+        2392,
+        1776,
+        1306,
+        886,
+        369,
+        139,
+        55,
+        38,
+        8,
+        1
+      ],
+      "maxBucketPct": 0.05107,
+      "meanBucket": 2777.777777777778,
+      "stddev": 1935.0178883914903,
+      "pass": true
+    },
+    "magnitudeBandCompleteness": {
+      "counts": {
+        "0-4": 27252,
+        "4-8": 18126,
+        "8-12": 18379,
+        "12-16": 18169,
+        "16+": 18074
+      },
+      "meanPriorityByBand": {
+        "0-4": 2.346760479186828,
+        "4-8": 1.8944189525820891,
+        "8-12": 1.5281917388131299,
+        "12-16": 1.1664826329089366,
+        "16+": 0.8047524427740971
+      },
+      "completenessRadiusKpc": {
+        "0-4": 5,
+        "4-8": 2,
+        "8-12": 1,
+        "12-16": 0.5,
+        "16+": 0.1
+      }
+    },
+    "hashThinningDeterminism": {
+      "targetP": 0.3,
+      "actualFraction": 0.2976,
+      "keptCount": 29760,
+      "deterministic": true,
+      "pass": true
+    },
+    "screenSpaceThinning": {
+      "cellsTested": 1000,
+      "highPriorityPreserved": 1000,
+      "pass": true
+    }
+  },
+  "verdict": "PASS — filtering pipeline ready for implementation"
+}
