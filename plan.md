@@ -844,3 +844,49 @@ The split between the JS model (testable in Node) and the WGSL mirror (what the 
 - Maxime Heckel — *Real-time dreamy Cloudscapes with Volumetric rendering* — https://blog.maximeheckel.com
 - NVIDIA GPU Gems 3 Ch. 30 — *Real-Time Simulation and Rendering of 3D Fluids* — https://developer.nvidia.com
 - Casey Primozic — *Volumetric Rendering Experiment* — https://cprimozic.net
+
+---
+
+## 18. Upcoming: 0.1.1 — 0.1.5
+
+Detailed breakdown lives in `archive/0.1.1-plan.md` (camera modes spec) and
+`plan-0.1.1-tasks.md` (checklist). This section is the clean summary for forking.
+
+### 0.1.1 — Camera modes (next)
+
+**Goal:** fly / orbit GC / orbit selected object, wheel ×2 speed/distance,
+8 ly/s default, Shift 100×, Ctrl 0.1×, H home.
+
+- Input: add `slow` (Ctrl), `home` (H), `cameraMode` (C). Wheel discrete ×2 per notch.
+- Camera: three modes, orbitTarget Float64Array, orbitDistance, orbitYaw/Pitch,
+  spherical pos = target + dist * (cosYaw*cosPitch, sinYaw*cosPitch, sinPitch),
+  forward = normalize(target-pos). No momentum in orbit. `toggleMode()`, `goHome()`,
+  `setOrbitTarget()`. LY_TO_KPC = 0.000306601, BASE = 8 ly/s = 0.0024528 kpc/s,
+  SPEED_MULT_MIN 0.02, MAX 200, BOOST 100, SLOW 0.1, DIST_MIN 0.0001 kpc, MAX 100 kpc.
+- Main: overlay shows mode, ly/s, orbit target/distance.
+- Tests: extend `camera-test.js` ~20 new checks (mode cycle, sphere, distance clamp,
+  wheel discrete, boost/slow, home, forward→target, no alloc).
+
+### 0.1.2 — Landmarks & constellations
+
+**Goal:** 30-60 named stars with labels, P toggle constellations, click select for orbit.
+
+- Data: `src/data/landmarks.js` (40 stars, RA/Dec→XYZ via tile-encoder conversion),
+  `src/data/constellations.js` (15 constellations, lines as index pairs).
+- Selection: `src/core/selection.js` pick(screenX,Y) → nearest landmark within 20 px.
+- Labels: `src/render/labels.js` 2D canvas overlay at 4 Hz, project via viewProj,
+  draw names + lines.
+- Input: click pick, P toggle.
+- Tests: `landmark-test.js` XYZ conversion, indices, picking projection.
+
+### 0.1.5 — HDR output with range adjustment
+
+**Goal:** HDR tonemapping, range UI.
+
+- Shaders: add `tonemap` module (ACES/Reinhard) to `shaders.js`.
+- Renderer: intermediate `rgba16float` if supported, else `bgra8unorm`, two-pass:
+  stars → float texture → tonemap quad.
+- Input: HDR exposure/white point controls.
+- Tests: `hdr-test.js` curve, no NaN, exposure range.
+
+Order: 0.1.1 → 0.1.2 → 0.1.5. 0.1.1 has no new assets/shaders, so it lands first.
