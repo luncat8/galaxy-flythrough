@@ -1,7 +1,7 @@
 {
-  "date": "2026-09-19T23:59:13.038Z",
-  "totalChecks": 31,
-  "passed": 31,
+  "date": "2026-09-20T05:36:29.118Z",
+  "totalChecks": 104,
+  "passed": 104,
   "failed": 0,
   "checks": [
     {
@@ -104,21 +104,21 @@
       "name": "distance travelled is frame-rate independent (±1%)",
       "pass": true,
       "detail": {
-        "at30": 0.01796268912333817,
-        "at60": 0.017882519881780145,
-        "at144": 0.017834783569799503,
-        "spread": 0.00012790555353866737
+        "at30": 0.004405902758323685,
+        "at60": 0.004386238782618935,
+        "at144": 0.00437452998182728,
+        "spread": 0.0000313727764964045
       }
     },
     {
-      "name": "the camera actually moved",
+      "name": "the camera actually moved (about 2 s at the base speed)",
       "pass": true,
-      "detail": 0.017882519881780145
+      "detail": 0.004386238782618935
     },
     {
       "name": "velocity converges to the requested speed",
       "pass": true,
-      "detail": 0.009998873144194923
+      "detail": 0.0024525316039066456
     },
     {
       "name": "velocity decays when keys are released",
@@ -127,7 +127,7 @@
     {
       "name": "boost multiplies speed by the documented factor",
       "pass": true,
-      "detail": 7.9999998984171095
+      "detail": 99.99999873019743
     },
     {
       "name": "look deltas are consumed by step()",
@@ -150,8 +150,8 @@
       "name": "scroll up speeds up, scroll down slows down",
       "pass": true,
       "detail": {
-        "up": 2.117000016612675,
-        "down": 0.4723665527410147
+        "up": 32,
+        "down": 0.03125
       }
     },
     {
@@ -178,6 +178,771 @@
     },
     {
       "name": "getState honours a provided output object",
+      "pass": true
+    },
+    {
+      "name": "LY_TO_KPC is 1 ly in kpc (0.306601 pc)",
+      "pass": true,
+      "detail": 0.000306601
+    },
+    {
+      "name": "the base speed is 8 ly/s",
+      "pass": true,
+      "detail": 8
+    },
+    {
+      "name": "speed multiplier clamps are powers of two (the x2 grid must return to exactly x1)",
+      "pass": true,
+      "detail": {
+        "min": 0.015625,
+        "max": 256
+      }
+    },
+    {
+      "name": "the documented Shift / Ctrl factors are x100 / x0.1",
+      "pass": true
+    },
+    {
+      "name": "getState reports the default speed as 8 ly/s",
+      "pass": true,
+      "detail": 8
+    },
+    {
+      "name": "one notch down halves the speed multiplier",
+      "pass": true,
+      "detail": 0.5
+    },
+    {
+      "name": "one notch up doubles it, exactly back on the grid",
+      "pass": true,
+      "detail": 2
+    },
+    {
+      "name": "ten 10 px trackpad events make one notch",
+      "pass": true,
+      "detail": 2
+    },
+    {
+      "name": "250 px is two notches with 50 px carried over",
+      "pass": true,
+      "detail": 8
+    },
+    {
+      "name": "the carried 50 px plus 50 px completes the next notch",
+      "pass": true,
+      "detail": 16
+    },
+    {
+      "name": "a reverse scroll below one notch changes nothing yet",
+      "pass": true,
+      "detail": 16
+    },
+    {
+      "name": "the reverse remainder completes into a notch the other way",
+      "pass": true,
+      "detail": 8
+    },
+    {
+      "name": "scrolling far down clamps at SPEED_MULT_MIN",
+      "pass": true,
+      "detail": 0.015625
+    },
+    {
+      "name": "scrolling far up clamps at SPEED_MULT_MAX",
+      "pass": true,
+      "detail": 256
+    },
+    {
+      "name": "coming back from the clamp lands on the grid (x1 after 8 notches from x256)",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "Shift cruises at x100",
+      "pass": true,
+      "detail": {
+        "ratio": 99.99999998652059,
+        "factor": 100,
+        "lyPerSec": 800
+      }
+    },
+    {
+      "name": "Ctrl cruises at x0.1",
+      "pass": true,
+      "detail": {
+        "ratio": 0.09999999998652062,
+        "factor": 0.1,
+        "lyPerSec": 0.8
+      }
+    },
+    {
+      "name": "Shift + Ctrl cruises at x10",
+      "pass": true,
+      "detail": {
+        "ratio": 9.99999999865206,
+        "factor": 10,
+        "lyPerSec": 80
+      }
+    },
+    {
+      "name": "getState exposes the factor and the resulting ly/s",
+      "pass": true,
+      "detail": {
+        "boosted": {
+          "ratio": 99.99999998652059,
+          "factor": 100,
+          "lyPerSec": 800
+        },
+        "slowed": {
+          "ratio": 0.09999999998652062,
+          "factor": 0.1,
+          "lyPerSec": 0.8
+        },
+        "both": {
+          "ratio": 9.99999999865206,
+          "factor": 10,
+          "lyPerSec": 80
+        }
+      }
+    },
+    {
+      "name": "the camera starts in fly mode",
+      "pass": true,
+      "detail": "fly"
+    },
+    {
+      "name": "the orbit centre is the model's galactic centre (8.178, 0, 0)",
+      "pass": true,
+      "detail": [
+        8.178,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "the cameraMode action is consumed by step()",
+      "pass": true
+    },
+    {
+      "name": "C from fly enters orbit-centre",
+      "pass": true,
+      "detail": "orbit centre"
+    },
+    {
+      "name": "orbit-centre targets the galactic centre",
+      "pass": true,
+      "detail": {
+        "target": [
+          8.178,
+          0,
+          0
+        ],
+        "name": "galactic centre"
+      }
+    },
+    {
+      "name": "entering orbit keeps the camera where it was (it turns, it does not move)",
+      "pass": true,
+      "detail": {
+        "before": [
+          0,
+          0,
+          0.005
+        ],
+        "after": [
+          0,
+          0,
+          0.005
+        ]
+      }
+    },
+    {
+      "name": "orbit distance is |Sun - centre|",
+      "pass": true,
+      "detail": 8.178001528490931
+    },
+    {
+      "name": "the camera looks at the target",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "C again enters orbit-object",
+      "pass": true,
+      "detail": "orbit object"
+    },
+    {
+      "name": "the default object target is the Sun",
+      "pass": true,
+      "detail": {
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "name": "Sun"
+      }
+    },
+    {
+      "name": "switching targets keeps the distance; only the pitch clamp moves the camera (< 0.02 rad)",
+      "pass": true,
+      "detail": {
+        "moved": 0.00009999833334166704,
+        "pitch": -1.5507963267948965
+      }
+    },
+    {
+      "name": "orbit distance to the Sun is the 5 pc start height",
+      "pass": true,
+      "detail": 0.005
+    },
+    {
+      "name": "C a third time returns to fly",
+      "pass": true,
+      "detail": "fly"
+    },
+    {
+      "name": "orbit -> fly is continuous: position, yaw and pitch carry over, velocity is zero",
+      "pass": true,
+      "detail": {
+        "fly": {
+          "position": [
+            -0.0000999933334666658,
+            0,
+            0.0049990000333328885
+          ],
+          "velocity": [
+            0,
+            0,
+            0
+          ],
+          "orbitTarget": [
+            0,
+            0,
+            0
+          ],
+          "yaw": 0,
+          "pitch": -1.5507963267948965,
+          "mode": 0,
+          "modeName": "fly",
+          "targetName": "Sun",
+          "orbitDistance": 0.005,
+          "speedMult": 1,
+          "speedFactor": 1,
+          "speedKpcPerSec": 0.002452808,
+          "speedLyPerSec": 8
+        },
+        "orbitObj": {
+          "position": [
+            -0.0000999933334666658,
+            0,
+            0.0049990000333328885
+          ],
+          "velocity": [
+            0,
+            0,
+            0
+          ],
+          "orbitTarget": [
+            0,
+            0,
+            0
+          ],
+          "yaw": 0,
+          "pitch": -1.5507963267948965,
+          "mode": 2,
+          "modeName": "orbit object",
+          "targetName": "Sun",
+          "orbitDistance": 0.005,
+          "speedMult": 1,
+          "speedFactor": 1,
+          "speedKpcPerSec": 0.002452808,
+          "speedLyPerSec": 8
+        }
+      }
+    },
+    {
+      "name": "setMode to the current mode is a no-op",
+      "pass": true
+    },
+    {
+      "name": "look input keeps the camera on the sphere (200 random drags)",
+      "pass": true,
+      "detail": 4.344232104167967e-16
+    },
+    {
+      "name": "look input keeps the target centred",
+      "pass": true,
+      "detail": 4.440892098500626e-16
+    },
+    {
+      "name": "look input actually moves the camera around the target",
+      "pass": true,
+      "detail": 732.833960865517
+    },
+    {
+      "name": "orbit never accumulates velocity",
+      "pass": true,
+      "detail": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "drag right swings the camera left around the target (scene turns with the cursor)",
+      "pass": true,
+      "detail": [
+        0.7789408981871402,
+        3.4833329453097446,
+        0.005
+      ]
+    },
+    {
+      "name": "drag down raises the camera above the target",
+      "pass": true,
+      "detail": [
+        1.4856158185692534,
+        3.1506441536783822,
+        3.487856703625845
+      ]
+    },
+    {
+      "name": "one notch down doubles the orbit distance",
+      "pass": true,
+      "detail": 16.356003056981862
+    },
+    {
+      "name": "two notches up halve it from there",
+      "pass": true,
+      "detail": 4.0890007642454655
+    },
+    {
+      "name": "the camera sits at the new distance, still aimed at the target",
+      "pass": true,
+      "detail": {
+        "distance": 4.0890007642454655,
+        "aim": 0
+      }
+    },
+    {
+      "name": "the speed multiplier is untouched by orbit scrolling",
+      "pass": true
+    },
+    {
+      "name": "orbit distance clamps at ORBIT_DISTANCE_MAX",
+      "pass": true,
+      "detail": 100
+    },
+    {
+      "name": "orbit distance clamps at ORBIT_DISTANCE_MIN",
+      "pass": true,
+      "detail": 0.0001
+    },
+    {
+      "name": "D circles the camera right at ORBIT_TURN_RATE (yaw + rate * t)",
+      "pass": true,
+      "detail": {
+        "dYaw": 1.0000000000000013,
+        "dPitch": 0,
+        "ratio": 1,
+        "state": {
+          "position": [
+            3.759407742610363,
+            -6.881549713758984,
+            0.005
+          ],
+          "velocity": [
+            0,
+            0,
+            0
+          ],
+          "orbitTarget": [
+            8.178,
+            0,
+            0
+          ],
+          "yaw": 1.0000000000000013,
+          "pitch": -0.000611396353263734,
+          "mode": 1,
+          "modeName": "orbit centre",
+          "targetName": "galactic centre",
+          "orbitDistance": 8.178001528490931,
+          "speedMult": 1,
+          "speedFactor": 1,
+          "speedKpcPerSec": 0.002452808,
+          "speedLyPerSec": 8
+        }
+      }
+    },
+    {
+      "name": "A circles left",
+      "pass": true,
+      "detail": {
+        "dYaw": -1.0000000000000013,
+        "dPitch": 0,
+        "ratio": 1,
+        "state": {
+          "position": [
+            3.759407742610363,
+            6.881549713758984,
+            0.005
+          ],
+          "velocity": [
+            0,
+            0,
+            0
+          ],
+          "orbitTarget": [
+            8.178,
+            0,
+            0
+          ],
+          "yaw": -1.0000000000000013,
+          "pitch": -0.000611396353263734,
+          "mode": 1,
+          "modeName": "orbit centre",
+          "targetName": "galactic centre",
+          "orbitDistance": 8.178001528490931,
+          "speedMult": 1,
+          "speedFactor": 1,
+          "speedKpcPerSec": 0.002452808,
+          "speedLyPerSec": 8
+        }
+      }
+    },
+    {
+      "name": "E raises the camera over the target (pitch - rate * t)",
+      "pass": true,
+      "detail": {
+        "dYaw": 0,
+        "dPitch": -0.49999999999999994,
+        "ratio": 1,
+        "state": {
+          "position": [
+            1.0035269365535537,
+            0,
+            3.9251299675146236
+          ],
+          "velocity": [
+            0,
+            0,
+            0
+          ],
+          "orbitTarget": [
+            8.178,
+            0,
+            0
+          ],
+          "yaw": 0,
+          "pitch": -0.5006113963532637,
+          "mode": 1,
+          "modeName": "orbit centre",
+          "targetName": "galactic centre",
+          "orbitDistance": 8.178001528490931,
+          "speedMult": 1,
+          "speedFactor": 1,
+          "speedKpcPerSec": 0.002452808,
+          "speedLyPerSec": 8
+        }
+      }
+    },
+    {
+      "name": "Q dips under it",
+      "pass": true,
+      "detail": {
+        "dYaw": 0,
+        "dPitch": 0.49999999999999994,
+        "ratio": 1,
+        "state": {
+          "position": [
+            0.9987326811675103,
+            0,
+            -3.9163541418957197
+          ],
+          "velocity": [
+            0,
+            0,
+            0
+          ],
+          "orbitTarget": [
+            8.178,
+            0,
+            0
+          ],
+          "yaw": 0,
+          "pitch": 0.4993886036467362,
+          "mode": 1,
+          "modeName": "orbit centre",
+          "targetName": "galactic centre",
+          "orbitDistance": 8.178001528490931,
+          "speedMult": 1,
+          "speedFactor": 1,
+          "speedKpcPerSec": 0.002452808,
+          "speedLyPerSec": 8
+        }
+      }
+    },
+    {
+      "name": "W dollies in: distance halves per second",
+      "pass": true,
+      "detail": 0.5000000000000004
+    },
+    {
+      "name": "S dollies out: distance x4 in two seconds",
+      "pass": true,
+      "detail": 4.000000000000015
+    },
+    {
+      "name": "Shift / Ctrl scale orbit key rates by ORBIT_KEY_BOOST, not x100",
+      "pass": true,
+      "detail": {
+        "boosted": 4.000000000000005,
+        "slowed": 0.25000000000000033
+      }
+    },
+    {
+      "name": "orbit keys are frame-rate independent",
+      "pass": true,
+      "detail": {
+        "at60": {
+          "dYaw": 1.9999999999999978,
+          "dPitch": 0,
+          "ratio": 0.2500000000000005,
+          "state": {
+            "position": [
+              9.02881220732063,
+              -1.8590585891451117,
+              0.0012500000000000024
+            ],
+            "velocity": [
+              0,
+              0,
+              0
+            ],
+            "orbitTarget": [
+              8.178,
+              0,
+              0
+            ],
+            "yaw": 1.9999999999999978,
+            "pitch": -0.000611396353263734,
+            "mode": 1,
+            "modeName": "orbit centre",
+            "targetName": "galactic centre",
+            "orbitDistance": 2.0445003821227368,
+            "speedMult": 1,
+            "speedFactor": 1,
+            "speedKpcPerSec": 0.002452808,
+            "speedLyPerSec": 8
+          }
+        },
+        "at144": {
+          "dYaw": 1.999999999999994,
+          "dPitch": 0,
+          "ratio": 0.25000000000000316,
+          "state": {
+            "position": [
+              9.028812207320634,
+              -1.8590585891451348,
+              0.0012500000000000159
+            ],
+            "velocity": [
+              0,
+              0,
+              0
+            ],
+            "orbitTarget": [
+              8.178,
+              0,
+              0
+            ],
+            "yaw": 1.999999999999994,
+            "pitch": -0.000611396353263734,
+            "mode": 1,
+            "modeName": "orbit centre",
+            "targetName": "galactic centre",
+            "orbitDistance": 2.0445003821227585,
+            "speedMult": 1,
+            "speedFactor": 1,
+            "speedKpcPerSec": 0.002452808,
+            "speedLyPerSec": 8
+          }
+        }
+      }
+    },
+    {
+      "name": "orbit pitch is clamped short of the pole",
+      "pass": true,
+      "detail": -1.5507963267948965
+    },
+    {
+      "name": "entering orbit while moving stops the camera dead (no drift off the sphere)",
+      "pass": true,
+      "detail": {
+        "flying": [
+          0.24525316039066455,
+          0,
+          0
+        ],
+        "drift": 2.220446049250313e-16
+      }
+    },
+    {
+      "name": "setOrbitTarget in fly mode does not move the camera",
+      "pass": true
+    },
+    {
+      "name": "orbit-object circles the set target by name",
+      "pass": true,
+      "detail": {
+        "target": [
+          1,
+          2,
+          3
+        ],
+        "name": "Test star"
+      }
+    },
+    {
+      "name": "distance is the distance from where the camera was",
+      "pass": true,
+      "detail": 3.737649662555334
+    },
+    {
+      "name": "and the camera aims at it",
+      "pass": true
+    },
+    {
+      "name": "re-targeting while in orbit keeps the position and turns towards the new target",
+      "pass": true,
+      "detail": {
+        "moved": 4.0029660424867215e-16
+      }
+    },
+    {
+      "name": "orbit-centre ignores the object target",
+      "pass": true
+    },
+    {
+      "name": "the home action is consumed by step()",
+      "pass": true
+    },
+    {
+      "name": "H in fly teleports to the start position, level, stopped",
+      "pass": true,
+      "detail": {
+        "away": [
+          0.0003723996015761268,
+          -0.0031516685995579092,
+          0.005395966928877093
+        ],
+        "home": [
+          0,
+          0,
+          0.005
+        ]
+      }
+    },
+    {
+      "name": "H keeps the speed multiplier (R is the full reset)",
+      "pass": true,
+      "detail": 8
+    },
+    {
+      "name": "H in orbit switches to orbit-object around the Sun",
+      "pass": true,
+      "detail": {
+        "mode": "orbit object",
+        "name": "Sun"
+      }
+    },
+    {
+      "name": "H in orbit parks at HOME_ORBIT_DISTANCE (10 pc) from the Sun",
+      "pass": true,
+      "detail": 0.01
+    },
+    {
+      "name": "H in orbit keeps the viewing direction (a translation, not a spin)",
+      "pass": true
+    },
+    {
+      "name": "the reset action is consumed in orbit too",
+      "pass": true
+    },
+    {
+      "name": "R from orbit restores fly mode at the start, x1, object target back to the Sun",
+      "pass": true,
+      "detail": {
+        "position": [
+          0,
+          0,
+          0.005
+        ],
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "orbitTarget": [
+          0,
+          0,
+          0
+        ],
+        "yaw": 0,
+        "pitch": 0,
+        "mode": 0,
+        "modeName": "fly",
+        "targetName": "Sun",
+        "orbitDistance": 0.01,
+        "speedMult": 1,
+        "speedFactor": 1,
+        "speedKpcPerSec": 0.002452808,
+        "speedLyPerSec": 8
+      }
+    },
+    {
+      "name": "after R the object target is the Sun again",
+      "pass": true,
+      "detail": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "setState restores position, angles, multiplier and mode",
+      "pass": true,
+      "detail": {
+        "position": [
+          0.9999999999999991,
+          -2.0000000000000004,
+          0.3
+        ],
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "orbitTarget": [
+          8.178,
+          0,
+          0
+        ],
+        "yaw": 0.27173705735189957,
+        "pitch": -0.04023904164760624,
+        "mode": 1,
+        "modeName": "orbit centre",
+        "targetName": "galactic centre",
+        "orbitDistance": 7.457458280138081,
+        "speedMult": 4,
+        "speedFactor": 1,
+        "speedKpcPerSec": 0.009811232,
+        "speedLyPerSec": 32
+      }
+    },
+    {
+      "name": "no buffers or state arrays are reallocated across 600 frames of mode switching",
       "pass": true
     }
   ]

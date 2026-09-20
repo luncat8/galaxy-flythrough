@@ -321,3 +321,24 @@ Work Log:
 Stage Summary:
 - `python3 scripts/run.py all-tests`: 11/11 pass (export-parity, m1-smoke, wgsl-validate, camera, renderer, tile-stream, tile-encoder-smoke, sampling, density-distribution, star-types-evolution, nebula-placement).
 - Known open items: the procedural field is generated synchronously at startup (300k stars ≈ 0.7 s, accepted for now); sub-cell jitter is stored in the record but not decoded on the GPU; no browser exists here, so all GPU-visible behaviour is verified against stubs.
+
+---
+
+Task ID: 11
+Agent: main
+Task: Review the 0.1.1–0.1.5 plans (archive/0.1.1-draft.md, archive/0.1.1-plan.md, plan-0.1.1-tasks.md, plan.md §18), improve them, implement 0.1.1 (camera modes).
+
+Work Log:
+- Reviewed the plans against the code. Seven defects in the 0.1.1 design, fixed in plan.md §18 before coding: (1) a second `orbitYaw/orbitPitch` pair duplicating fly's — replaced by one pair with `position = target − distance · forward`; (2) `round(wheelDelta/100)` per frame drops trackpad input — replaced by a persistent notch accumulator plus `deltaMode` normalisation; (3) speed clamps 0.02/200 are not on the ×2 grid — now 1/64 and 256; (4) Shift ×100 on an orbit angular rate is 16 turns/s — orbit key rates use ×4/×0.25; (5) key codes written `CtrlLeft` — DOM says `ControlLeft`; Ctrl+W caveat documented; (6) `ORBIT_OBJECT` had no target before 0.1.2 and `H` in `ORBIT_GC` left mode and target contradicting — object target defaults to the Sun, `H` in orbit goes to `ORBIT_OBJECT` around the Sun at 10 pc; (7) held `C` would cycle at key-repeat rate — one-shot actions ignore `e.repeat`.
+- 0.1.2 / 0.1.5 notes refined at the plan level: labels every frame not 4 Hz, landmark stars as their own buffer block (Gaia saturates on bright stars), HDR must accumulate linear flux and tone-map once (the current per-star Reinhard sums post-tonemap).
+- src/core/input.js: `keys.slow`, `actions.home/cameraMode`, flat key/press/exposure tables, `preventDefault` on every mapped key, `WHEEL_UNITS_PER_MODE`.
+- src/core/camera.js: modes, orbit snap/place, f64 basis (`forwardExact/rightExact`) with f32 copies for the GPU, ly/s constants, wheel accumulator, `goHome`, `reset`, `setOrbitTarget(x, y, z, name)`, `getState` fields (`mode`, `modeName`, `targetName`, `orbitTarget`, `orbitDistance`, `speedFactor`, `speedLyPerSec`); orbit centre read from `DensityLib.GALACTIC_CENTRE`.
+- src/main.js overlay (`formatSpeed/formatDistance/formatFactor`, camera line per mode); index.html help as a fly/orbit table.
+- experiments/camera-test.js: 31 → 104 checks. First run failed 15: two were my sign expectations (code right), the rest were f32-basis placement errors at 6e-8 kpc — fixed by integrating along the f64 basis.
+- experiments/m1-smoke-test.js: new check evaluating all scripts in one vm global scope in page order (catches duplicate top-level consts across classic scripts; verified by a mutation test).
+- Docs: plan-0.1.1-tasks.md rewritten to the refined design, experiments/README.md rows, five findings entries.
+
+Stage Summary:
+- `python3 scripts/run.py all-tests`: 11/11 (camera 104/104, m1-smoke 38/38).
+- No browser here: WebGPU-visible behaviour is verified against the stub device and the vm page-scope check; the visual verdict (C, wheel, Shift/Ctrl, H) still needs a WebGPU browser on `src/index.html`.
+- Next: 0.1.2 landmarks & constellations per plan.md §18.

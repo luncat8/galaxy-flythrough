@@ -16,9 +16,9 @@ python3 scripts/run.py camera      # one script
 | Script | What it pins down |
 |---|---|
 | `export-parity-test.js` | `module.exports` and `window.X` are one and the same object for every module, with identical keys and values. |
-| `m1-smoke-test.js` | Module wiring: `index.html` loads every source file exactly once in dependency order, no namespace is read before it is defined, the shipped catalog loads, a sample survives packing. |
+| `m1-smoke-test.js` | Module wiring: `index.html` loads every source file exactly once in dependency order, no namespace is read before it is defined, every script evaluates in one shared global scope the way classic `<script>` tags do (a duplicate top-level `const` is a load-time SyntaxError), the shipped catalog loads, a sample survives packing. |
 | `wgsl-validate.js` | The WGSL in `src/render/shaders.js` matches the JS model: same constants, same function names, same structural markers. |
-| `camera-test.js` | Camera model: orthonormal basis, NDC depth range, dt independence, speed/boost, input consumption, zero allocations over 600 frames. |
+| `camera-test.js` | Camera model: orthonormal basis, NDC depth range, dt independence, 8 ly/s base with whole-notch ×2 wheel on a power-of-two grid, Shift ×100 / Ctrl ×0.1, fly → orbit-centre → orbit-object cycle (position kept on entry, on-sphere under drag, key rates, clamps), home and reset, input consumption, zero allocations over 600 frames of mode switching. |
 | `renderer-test.js` | `star-sprites.js` driven by a stub WebGPU device: buffer sizing, one procedural upload, catalog upload only when residency changes, instance counts, uniform packing, exposure clamping. |
 | `tile-stream-test.js` | Encoder → loader → cell manager end to end on the shipped bundle: freshness, manifest, residency/hysteresis, nearest-first budget against a brute force, decode cache, no re-decode on re-upload. |
 | `tile-encoder-smoke-test.js` | The encoder on synthetic data: cuts, band assignment, bundle schema, and a full round trip through the shipping loader. |

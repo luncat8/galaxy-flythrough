@@ -37,7 +37,7 @@ flowchart LR
     end
 
     subgraph Runtime["Runtime (browser, file://)"]
-        CAM["6-DOF Camera<br/>momentum, kpc/s speeds"]
+        CAM["Camera<br/>fly (momentum) / orbit modes"]
         STREAM["Cell Manager<br/>state machine + LRU<br/>(stream/)"]
         TILELD["Tile Loader<br/>dynamic <script> injection<br/>no fetch"]
         PROC["Procedural Gen<br/>PCG hash → star<br/>(WGSL compute)"]
@@ -576,8 +576,8 @@ galaxy-flythrough/
     ├── style.css
     ├── core/
     │   ├── device.js                   # WebGPU device + clamp to adapter limits
-    │   ├── camera.js                   # 6-DOF, momentum, kpc/s speeds
-    │   ├── input.js                    # keyboard/mouse
+    │   ├── camera.js                   # fly (momentum) + orbit modes, ly/s speeds
+    │   ├── input.js                    # keyboard/mouse, wheel normalised to px
     │   └── loop.js                     # frame loop, dt clamp, stats
     ├── math/
     │   ├── hash.js                     # PCG/Wang (mirrors WGSL)
@@ -618,7 +618,7 @@ Milestones 2+ add the remaining render paths (`density-cell.js`, nebula passes),
 4. generate the procedural field on the CPU into the staging buffer (once)
 5. inject data/tiles/catalog.js, build the manifest, attach the catalog
 6. init the camera at Sol (0, 0, 0.005 kpc) and the frame loop:
-     a. update the camera from input
+     a. update the camera from input (fly integration or orbit placement, by mode)
      b. cell manager: recompute residency if the camera moved, re-upload if changed
      c. render pass: one instanced draw over [procedural][resident catalog]
      d. present
@@ -849,44 +849,177 @@ The split between the JS model (testable in Node) and the WGSL mirror (what the 
 
 ## 18. Upcoming: 0.1.1 — 0.1.5
 
-Detailed breakdown lives in `archive/0.1.1-plan.md` (camera modes spec) and
-`plan-0.1.1-tasks.md` (checklist). This section is the clean summary for forking.
+`archive/0.1.1-draft.md` is the original one-line brief and `archive/0.1.1-plan.md`
+the first expansion of it; both are superseded by this section, which is the spec
+a fork should implement from. `plan-0.1.1-tasks.md` is the per-file checklist.
 
-### 0.1.1 — Camera modes (next)
+### 0.1.1 — Camera modes (implemented)
 
-**Goal:** fly / orbit GC / orbit selected object, wheel ×2 speed/distance,
-8 ly/s default, Shift 100×, Ctrl 0.1×, H home.
+**Brief:** fly / orbit the galactic centre / orbit the selected object, wheel ×2 speed
+or distance, 8 ly/s default, Shift ×100, Ctrl ×0.1, `H` home, `C` cycles modes.
 
-- Input: add `slow` (Ctrl), `home` (H), `cameraMode` (C). Wheel discrete ×2 per notch.
-- Camera: three modes, orbitTarget Float64Array, orbitDistance, orbitYaw/Pitch,
-  spherical pos = target + dist * (cosYaw*cosPitch, sinYaw*cosPitch, sinPitch),
-  forward = normalize(target-pos). No momentum in orbit. `toggleMode()`, `goHome()`,
-  `setOrbitTarget()`. LY_TO_KPC = 0.000306601, BASE = 8 ly/s = 0.0024528 kpc/s,
-  SPEED_MULT_MIN 0.02, MAX 200, BOOST 100, SLOW 0.1, DIST_MIN 0.0001 kpc, MAX 100 kpc.
-- Main: overlay shows mode, ly/s, orbit target/distance.
-- Tests: extend `camera-test.js` ~20 new checks (mode cycle, sphere, distance clamp,
-  wheel discrete, boost/slow, home, forward→target, no alloc).
+#### Modes and the one angle pair
 
-### 0.1.2 — Landmarks & constellations
+```
+MODE_FLY = 0 → MODE_ORBIT_GC = 1 → MODE_ORBIT_OBJECT = 2 → MODE_FLY   (KeyC)
+```
 
-**Goal:** 30-60 named stars with labels, P toggle constellations, click select for orbit.
+There is **one** `yaw`/`pitch` pair and it always means "the direction the camera
+looks". Fly mode integrates position with momentum; orbit mode derives it:
 
-- Data: `src/data/landmarks.js` (40 stars, RA/Dec→XYZ via tile-encoder conversion),
-  `src/data/constellations.js` (15 constellations, lines as index pairs).
-- Selection: `src/core/selection.js` pick(screenX,Y) → nearest landmark within 20 px.
-- Labels: `src/render/labels.js` 2D canvas overlay at 4 Hz, project via viewProj,
-  draw names + lines.
-- Input: click pick, P toggle.
-- Tests: `landmark-test.js` XYZ conversion, indices, picking projection.
+```
+forward  = (cos yaw · cos pitch, sin yaw · cos pitch, sin pitch)
+position = target − orbitDistance · forward          (orbit modes, every frame)
+```
 
-### 0.1.5 — HDR output with range adjustment
+Consequences, and why the first plan's separate `orbitYaw/orbitPitch` was dropped:
 
-**Goal:** HDR tonemapping, range UI.
+- Mouse look is the same code in both modes. In orbit it moves the camera on the
+  sphere while the target stays centred, and it lands on the standard "grab the
+  world" convention (drag right → camera swings left, the scene turns with the
+  cursor; drag down → camera rises) without a sign table.
+- Entering orbit snaps the *angles*, not the position: `orbitDistance = |P − T|`,
+  `yaw = atan2(Ty−Py, Tx−Px)`, `pitch = asin((Tz−Pz)/d)`, then `position = T − d·forward`
+  reproduces P exactly. Leaving orbit changes nothing — position, yaw and pitch
+  continue, velocity is already zero. Switching is continuous both ways.
+- No momentum in orbit: `velocity` is zeroed on entry and never integrated, so the
+  camera cannot drift off the sphere.
 
-- Shaders: add `tonemap` module (ACES/Reinhard) to `shaders.js`.
-- Renderer: intermediate `rgba16float` if supported, else `bgra8unorm`, two-pass:
-  stars → float texture → tonemap quad.
-- Input: HDR exposure/white point controls.
-- Tests: `hdr-test.js` curve, no NaN, exposure range.
+Targets. `ORBIT_GC` circles `DensityLib.GALACTIC_CENTRE` (read from the model, not a
+second copy of 8.178). `ORBIT_OBJECT` circles `objectTarget`, a `Float64Array(3)` set by
+`setOrbitTarget(x, y, z, name)` and defaulting to the Sun, so the mode is usable before
+0.1.2 adds selection; a call while `ORBIT_OBJECT` is active re-snaps to the new target
+from the current position (the camera turns, it does not teleport). Distance clamps to
+`[ORBIT_DISTANCE_MIN = 0.0001 kpc, ORBIT_DISTANCE_MAX = 100 kpc]`; pitch keeps the fly clamp.
 
-Order: 0.1.1 → 0.1.2 → 0.1.5. 0.1.1 has no new assets/shaders, so it lands first.
+#### Controls
+
+| Input | Fly | Orbit (both) |
+|---|---|---|
+| drag / pointer lock | look | move on the sphere (target stays centred) |
+| scroll | speed ×2 per notch (up = faster) | distance ×2 per notch (up = closer) |
+| W / S, ↑ / ↓ | forward / back | dolly: ×2^(∓ORBIT_DOLLY_RATE·dt) — halves or doubles per second |
+| A / D, ← / → | strafe | circle left / right at ORBIT_TURN_RATE rad/s (D moves the camera right) |
+| E / Q | up / down | rise over / dip under the target at ORBIT_TURN_RATE |
+| Shift / Ctrl | ×100 / ×0.1 (both held: ×10) | ×4 / ×0.25 on the key rates (`ORBIT_KEY_BOOST`) — ×100 on an angular rate is 16 turns a second |
+| C | next mode | next mode |
+| H | teleport to `START_POSITION`, yaw = pitch = 0, velocity 0; speed multiplier kept | `ORBIT_OBJECT` around the Sun at `HOME_ORBIT_DISTANCE = 0.01 kpc`, viewing direction kept |
+| R | full reset: home + speedMult 1 + object target back to the Sun | same |
+
+Key semantics differ from mouse semantics on purpose: keys *move the camera* (D goes
+right, E goes up, as in fly), the mouse *grabs the world*. Google Earth uses the same
+split.
+
+Ctrl is the brief's choice and carries one trap: **Ctrl+W closes the tab on Windows and
+Linux and no page can prevent it.** Every mapped key calls `preventDefault()` so Ctrl+R
+(reload) and Ctrl+H (history) are safe; for slow flight forward use Ctrl+↑. The help text
+says so.
+
+#### Wheel: whole notches, accumulated
+
+`input.js` normalises `deltaMode` to pixels (`WHEEL_UNITS_PER_MODE = [1, 100/3, 100]`:
+Chrome mice report 100 px per notch, Firefox 3 lines per notch) and the camera keeps a
+persistent accumulator:
+
+```
+wheelAccum += input.wheelDelta;  input.wheelDelta = 0
+notches     = trunc(wheelAccum / WHEEL_NOTCH_PX)        // WHEEL_NOTCH_PX = 100
+wheelAccum -= notches · WHEEL_NOTCH_PX                   // remainder carries over
+fly:   speedMult     = clamp(speedMult · 2^−notches, SPEED_MULT_MIN, SPEED_MULT_MAX)
+orbit: orbitDistance = clamp(orbitDistance · 2^notches,  ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX)
+```
+
+Rounding per frame (`round(wheelDelta/100)`) would make trackpads inert: their 3–10 px
+events round to zero and were then discarded. The clamps are `1/64` and `256` — powers
+of two — because the multiplier walks a ×2 grid and must be able to return to exactly
+×1; clamping at 0.02 would leave it on 0.02·2ⁿ forever.
+
+#### Constants
+
+```
+LY_TO_KPC          = 0.000306601        1 ly = 0.306601 pc
+BASE_SPEED_KPC_S   = 8 · LY_TO_KPC      = 0.00245281 kpc/s
+SPEED_MULT_MIN/MAX = 1/64, 256          0.125 ly/s … 2048 ly/s; ×0.1 … ×100 on top
+BOOST_FACTOR       = 100 (Shift)        SLOW_FACTOR = 0.1 (Ctrl)
+WHEEL_NOTCH_PX     = 100
+ORBIT_DISTANCE_MIN = 0.0001 kpc         ORBIT_DISTANCE_MAX = 100 kpc
+ORBIT_TURN_RATE    = 1.0 rad/s          ORBIT_DOLLY_RATE = 1.0 octave/s
+ORBIT_KEY_BOOST    = 4                  Shift ×4, Ctrl ×0.25 in orbit
+HOME_ORBIT_DISTANCE= 0.01 kpc
+START_POSITION     = (0, 0, 0.005)      SUN_POSITION = (0, 0, 0)
+```
+
+`getState(out)` adds `mode`, `modeName` (from the constant `MODE_NAMES` table, no
+string building), `orbitTarget`, `orbitDistance`, `targetName`, `speedFactor` (the
+Shift/Ctrl product last seen), `speedKpcPerSec` (includes the factor) and `speedLyPerSec`.
+The overlay prints `camera <mode>`, speed in ly/s with the factor, and the orbit target
+and distance when orbiting. Per-frame cost is unchanged: no allocation, the same
+preallocated `viewProj` / `cameraPos` / basis arrays.
+
+#### Input additions
+
+`keys.slow` (`ControlLeft`/`ControlRight` — the DOM codes are `Control*`, not `Ctrl*`),
+`actions.home` (`KeyH`), `actions.cameraMode` (`KeyC`). One-shot actions ignore
+`e.repeat` so a held `C` does not cycle at the key-repeat rate; exposure keys accumulate
+(`+= ±1`) so repeat is one more step and two repeats in one frame are two steps.
+
+#### Tests (`experiments/camera-test.js`)
+
+Units (8 ly/s in kpc), wheel notch ×2 in both directions, accumulation across frames and
+remainder carry, clamps land on powers of two, boost ×100 / slow ×0.1 / both ×10, mode
+cycle and action consumption, orbit entry keeps the position and aims at the target,
+position stays on the sphere under random look input, wheel and W/S change distance,
+A/D and E/Q turn at the documented rate and are dt-independent, distance clamps, the
+default object target is the Sun, `setOrbitTarget` re-snaps, `H` in fly and in orbit,
+`R` restores everything, orbit → fly is continuous with zero velocity, buffers are
+never reallocated across mode switches.
+
+### 0.1.2 — Landmarks & constellations (next)
+
+**Goal:** 30–60 named stars with on-screen labels, `P` toggles constellation lines,
+click selects the orbit target.
+
+- Data: `src/data/landmarks.js` — one API object, entries `{ name, ra, dec, distPc,
+  mag, colorIndex, constellation }` plus galactic XYZ computed once at load through the
+  same RA/Dec → XYZ conversion `tile-encoder.js` validates (Sirius and the galactic
+  centre are its self-tests). `src/data/constellations.js` — ~15 figures as pairs of
+  landmark names, resolved to indices at load.
+- Rendering the stars themselves: Gaia saturates on the brightest stars, so the
+  landmarks are **not** assumed to be in the catalog subset. They are written as a fixed
+  extra block after the procedural block in the star buffer (`FLAG_LANDMARK` is already
+  reserved in `StarRecord`) so they render as sprites regardless of the catalog.
+- Labels and lines: a 2D canvas over the WebGPU canvas. Drawn **every frame**, not at the
+  4 Hz overlay cadence — a label that updates at 4 Hz visibly trails its star while the
+  camera moves. Forty projections and forty `fillText` calls with constant strings
+  allocate nothing. Cull labels behind the camera (`clip.w <= 0`) and skip a line when
+  either end is behind; lines are screen-space segments, adequate at these separations.
+- Selection: `src/core/selection.js` — `pick(screenX, screenY)` projects the landmarks
+  with the camera's `viewProj` and returns the nearest within 20 px; a click without drag
+  (mouse-up within 4 px of mouse-down) picks; the result calls
+  `camera.setOrbitTarget(x, y, z, name)` and, in fly mode, the overlay shows the name.
+- Input: `actions.pick` with the click position, `actions.constellations` (`KeyP`).
+- Tests: `landmark-test.js` — XYZ conversion against known stars, every constellation
+  edge resolves, picking returns the projected-nearest landmark, no entry is duplicated.
+
+### 0.1.5 — HDR output with range adjustment (after)
+
+**Goal:** the frame accumulates linear flux and is tone-mapped once, with an exposure
+range the user controls.
+
+- Why a second pass: today each sprite applies Reinhard in the vertex shader and the
+  additive blend sums the *tone-mapped* values, so dense regions (bulge, arms) clip to
+  white with no highlight structure. Correct order is accumulate linear, tone-map last.
+- Renderer: stars → `rgba16float` intermediate (recreated on resize) → fullscreen
+  tone-map pass into the swapchain. The `tonemap` module lives in `shaders.js` beside
+  the others; `WIRED_SHADERS` grows to two. Fallback when `rgba16float` is not
+  blendable on the adapter: keep the single pass.
+- Range: `magZero` stays the exposure (`[ ]`); add a white point — the flux that maps
+  to 1.0 — on `;` / `'`. Curve: ACES fitted (Narkowicz) or extended Reinhard
+  `x·(1 + x/w²)/(1 + x)`; the test pins monotonicity, `f(0) = 0`, `f(w) = 1`, no NaN
+  over the exposure range.
+- Optional: true HDR presentation where the canvas supports
+  `toneMapping: { mode: 'extended' }`; a flag, not a requirement.
+- Tests: `hdr-test.js` for the curve, plus `renderer-test.js` extended for the two-pass
+  submission against the stub device.
+
+Order: 0.1.1 → 0.1.2 → 0.1.5. 0.1.1 touched no assets or shaders, so it landed first.

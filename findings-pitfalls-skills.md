@@ -300,3 +300,27 @@ Layout (128 bytes):
 - bytes 120-127: pad
 
 In the current shader we compute the corner offset in clip space (simpler) so we don't actually use cameraRight/cameraUp yet — they're reserved for future world-space billboarding (e.g. for Path A bright-star sprites with non-uniform scaling).
+
+## 2026-09-20 — Orbit and fly share one yaw/pitch pair; the orbit position is derived
+
+The first 0.1.1 plan gave orbit mode its own `orbitYaw/orbitPitch` (the direction from target to camera) and converted on every mode switch. Dropping that and keeping a single pair that always means "where the camera looks" removed the conversion, the second set of clamps and a sign table: `position = target − distance · forward`. Entering orbit snaps the *angles* (`yaw = atan2`, `pitch = asin`) so the position is reproduced exactly and the camera only turns; leaving orbit changes nothing. Mouse look is the same code in both modes and comes out as the standard "grab the world" drag (three.js OrbitControls, Google Earth). Keys deliberately keep "move the camera" semantics (D goes right, E goes up), which is the opposite sign from the mouse and is also what Google Earth does.
+
+Sign check for tests: from the Sun looking +X, screen-right is −Y, so "the camera swings left" means position.y > 0. Two tests were first written with the opposite expectation; the code was right.
+
+## 2026-09-20 — Wheel: accumulate to whole notches, never round a frame's delta
+
+`round(wheelDelta / 100)` per frame makes trackpads inert: their 3–10 px events round to zero and were then discarded. Keep a persistent accumulator in the consumer, take `trunc(acc / 100)` notches, leave the remainder. `input.js` folds `deltaMode` lines/pages to pixels first (`[1, 100/3, 100]`; `3 × (100/3)` is exactly 100 in f64) so one mouse notch is 100 in Chrome and Firefox alike.
+
+Corollary: a value that walks a ×2 grid needs power-of-two clamps. Clamped at 0.02 the multiplier sits on 0.02·2ⁿ forever and never reads x1 again; clamped at 1/64 and 256 it does.
+
+## 2026-09-20 — Place the camera along the f64 basis; the f32 basis is for the GPU
+
+`forward/right/up` are Float32Arrays because the renderer reads them. Using them to place an 8 kpc orbit put the camera ~0.5 mpc (100 AU) off the sphere and made "entering orbit keeps the position" fail at 6e-8 kpc. The camera now keeps `forwardExact/rightExact` in f64 for integration and placement and copies them into the f32 outputs. Same lesson as camera-relative rendering: precision lives on the CPU in f64; f32 is an output format.
+
+## 2026-09-20 — Test the page's loading model, not just the modules: one vm context for all scripts
+
+`require()` gives each file its own scope, so it cannot see the one failure classic `<script>` tags add: two files declaring the same top-level `const` throw `SyntaxError: Identifier has already been declared` when the second loads, and a namespace read at load time must find an earlier script's export. `m1-smoke-test.js` now evaluates every script in `index.html` order inside one `vm` context with a fake `window`; a mutation test (appending `const GALACTIC_CENTRE = 1` to `loop.js`) fails it as intended. Practical rule: top-level names in `src/**/*.js` form one namespace — check before adding one (`density.js` owns `GALACTIC_CENTRE`, `shaders.js` owns `DENSITY`, `CULL`, …).
+
+## 2026-09-20 — Keyboard traps: Ctrl as a modifier, key repeat on toggles
+
+The DOM codes are `ControlLeft/ControlRight` (not `CtrlLeft`). With Ctrl as the slow modifier: Ctrl+W closes the tab on Windows/Linux and no page can prevent it (reserved shortcut); Ctrl+R (reload) and Ctrl+H (history) *can* be prevented, so every mapped key calls `preventDefault()`. The arrow keys are the safe way to fly slowly — say so in the help text. One-shot actions (`C`, `H`, `R`) must ignore `e.repeat` or a held key cycles camera modes at ~30 Hz; accumulating actions (`[ ]` exposure) should `+=` so repeat is one more step and two repeats in one frame are two steps.

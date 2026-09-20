@@ -170,7 +170,42 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		&& junk.seed === 42, junk);
 }
 
-// --- 6. Short end-to-end ------------------------------------------------
+// --- 6. The page's real loading model: one shared global scope ----------
+// require() gives every module its own scope, which hides the one failure
+// classic <script> tags add: two files declaring the same top-level const is a
+// SyntaxError when the second one loads, and a namespace read at load time
+// (camera.js reads window.DensityLib for the orbit centre) must find the
+// earlier script's export. Evaluate every script in index.html order inside
+// one vm context with a fake window, exactly as the browser would.
+{
+	const vm = require('vm');
+	const page = {
+		addEventListener() {}, removeEventListener() {},
+		devicePixelRatio: 1, location: { search: '' }, navigator: {},
+		requestAnimationFrame: () => 1, cancelAnimationFrame() {},
+		performance: { now: () => 0 }, console, URLSearchParams,
+		document: { addEventListener() {}, getElementById: () => null },
+	};
+	page.window = page;
+	page.self = page;
+	const context = vm.createContext(page);
+	let failure = null;
+	for (const file of scripts) {
+		try {
+			new vm.Script(fs.readFileSync(path.join(SRC, file), 'utf-8'), { filename: file }).runInContext(context);
+		} catch (err) {
+			failure = `${file}: ${err.constructor.name}: ${err.message}`;
+			break;
+		}
+	}
+	check('every script evaluates in one shared global scope, in page order (no duplicate top-level names)',
+		failure === null, failure);
+	check('camera.js finds the orbit centre through window.DensityLib when loaded as a page script',
+		failure === null && Array.from(page.Camera.GALACTIC_CENTRE_TARGET).join(',') === '8.178,0,0'
+		&& page.Camera.createCamera().getState().modeName === 'fly');
+}
+
+// --- 7. Short end-to-end ------------------------------------------------
 {
 	const sampling = require('../src/math/sampling.js');
 	const starTypes = require('../src/math/star-types.js');

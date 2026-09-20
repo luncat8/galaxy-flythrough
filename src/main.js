@@ -9,6 +9,21 @@
 const OVERLAY_INTERVAL = 0.25;      // s
 const MAX_DPR = 2;                  // retinal 3x costs fill rate for no gain
 
+// Three significant figures, trailing zeros dropped: 8, 0.125, 2050.
+function formatSpeed(lyPerSec) {
+	return `${Number(lyPerSec.toPrecision(3))} ly/s`;
+}
+
+function formatDistance(kpc) {
+	return kpc >= 1 ? `${kpc.toFixed(3)} kpc` : `${(kpc * 1000).toFixed(2)} pc`;
+}
+
+const FACTOR_LABELS = { 100: 'Shift', 0.1: 'Ctrl', 10: 'Shift+Ctrl' };
+function formatFactor(factor) {
+	const label = FACTOR_LABELS[factor];
+	return label ? `   [${label} x${factor}]` : '';
+}
+
 function readParams(search) {
 	const params = new URLSearchParams(search === undefined ? window.location.search : search);
 	const number = (name, fallback) => {
@@ -87,8 +102,16 @@ async function boot() {
 	const statsText = {
 		position: [0, 0, 0],
 		velocity: [0, 0, 0],
+		orbitTarget: [0, 0, 0],
 	};
 	let overlayTimer = OVERLAY_INTERVAL;
+
+	function cameraLine(c) {
+		if (c.mode === window.Camera.MODE_FLY) {
+			return `camera ${c.modeName}   speed ${formatSpeed(c.speedLyPerSec)}  (x${c.speedMult})${formatFactor(c.speedFactor)}`;
+		}
+		return `camera ${c.modeName}   ${c.targetName}   distance ${formatDistance(c.orbitDistance)}`;
+	}
 
 	function updateOverlay(state, cameraState) {
 		const shutter = state.magZero.toFixed(1);
@@ -100,8 +123,7 @@ async function boot() {
 			`   buffer ${(state.bufferBytes / 1048576).toFixed(1)} MB\n` +
 			`exposure magZero ${shutter}   ([ / ] to change)\n` +
 			`pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
-			`speed x${cameraState.speedMult.toFixed(2)}  (${(cameraState.speedKpcPerSec * 1000).toFixed(1)} pc/s)` +
-			(cameraState.speedMult > 1.5 ? '   [Shift boost]' : '');
+			cameraLine(cameraState);
 	}
 
 	const loop = window.Loop.createLoop((dt, time) => {
@@ -125,5 +147,5 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 	window.addEventListener('DOMContentLoaded', boot);
 }
 if (typeof module !== 'undefined') {
-	module.exports = { boot, readParams, OVERLAY_INTERVAL, MAX_DPR };
+	module.exports = { boot, readParams, formatSpeed, formatDistance, formatFactor, OVERLAY_INTERVAL, MAX_DPR };
 }

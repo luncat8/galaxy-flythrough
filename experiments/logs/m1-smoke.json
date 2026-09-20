@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-19T23:59:12.962Z",
+  "date": "2026-09-20T05:36:29.030Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -34,8 +34,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 36,
-  "passed": 36,
+  "totalChecks": 38,
+  "passed": 38,
   "failed": 0,
   "checks": [
     {
@@ -145,14 +145,14 @@
       "name": "Camera loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 12
+        "keys": 27
       }
     },
     {
       "name": "Input loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 1
+        "keys": 2
       }
     },
     {
@@ -274,6 +274,15 @@
         "exposure": null,
         "seed": 42
       }
+    },
+    {
+      "name": "every script evaluates in one shared global scope, in page order (no duplicate top-level names)",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "camera.js finds the orbit centre through window.DensityLib when loaded as a page script",
+      "pass": true
     },
     {
       "name": "the end-to-end sample has the requested stars",

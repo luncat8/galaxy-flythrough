@@ -9,7 +9,7 @@
 //     left button held
 //
 // Consumers take what they own and leave the rest:
-//   * camera  : keys, lookDx/lookDy, wheelDelta, actions.reset
+//   * camera  : keys, lookDx/lookDy, wheelDelta, actions.reset/home/cameraMode
 //   * renderer: actions.exposure
 //
 // No allocations in the hot path: listeners write into the shared state, and
@@ -17,10 +17,15 @@
 
 'use strict';
 
+// Wheel deltas arrive in pixels (Chrome mice: 100 per notch), lines (Firefox:
+// 3 per notch) or pages, indexed by e.deltaMode. All three are folded into
+// pixel units so one notch is 100 for every consumer.
+const WHEEL_UNITS_PER_MODE = [1, 100 / 3, 100];
+
 function createInput(canvas) {
 	const keys = {
 		forward: false, back: false, left: false, right: false,
-		up: false, down: false, boost: false,
+		up: false, down: false, boost: false, slow: false,
 	};
 	const state = {
 		keys,
@@ -29,41 +34,56 @@ function createInput(canvas) {
 		wheelDelta: 0,
 		dragging: false,
 		pointerLocked: false,
-		actions: { reset: 0, exposure: 0 },
+		actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0 },
 	};
 
+	// Held keys: true while down. Ctrl is the brief's slow modifier; Ctrl+W
+	// closes the tab on Windows/Linux and no page can prevent it, so the arrow
+	// keys double as the safe way to fly slowly.
 	const keyMap = {
 		KeyW: 'forward', ArrowUp: 'forward',
 		KeyS: 'back', ArrowDown: 'back',
 		KeyD: 'right', ArrowRight: 'right',
 		KeyA: 'left', ArrowLeft: 'left',
 		KeyE: 'up', KeyQ: 'down',
+		ShiftLeft: 'boost', ShiftRight: 'boost',
+		ControlLeft: 'slow', ControlRight: 'slow',
 	};
+	// One-shot actions fire on the press only: a held C must not cycle camera
+	// modes at the key-repeat rate.
+	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyC: 'cameraMode' };
+	// Exposure accumulates, so key repeat is one more step per repeat.
+	const exposureMap = { BracketLeft: -1, Minus: -1, BracketRight: 1, Equal: 1 };
 
 	// Ignore the first look event after a pointer lock change: browsers report
 	// the cursor jump from wherever it was to the centre.
 	let swallowNextMove = false;
 
 	function onKeyDown(e) {
-		const k = keyMap[e.code];
-		if (k) {
-			keys[k] = true;
+		const held = keyMap[e.code];
+		if (held) {
+			keys[held] = true;
 			e.preventDefault();
 			return;
 		}
-		if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.boost = true;
-		if (e.code === 'KeyR') state.actions.reset = 1;
-		if (e.code === 'BracketLeft' || e.code === 'Minus') state.actions.exposure = -1;
-		if (e.code === 'BracketRight' || e.code === 'Equal') state.actions.exposure = 1;
+		const press = pressMap[e.code];
+		if (press) {
+			if (!e.repeat) state.actions[press] = 1;
+			e.preventDefault();   // Ctrl+R would reload, Ctrl+H would open history
+			return;
+		}
+		const exposure = exposureMap[e.code];
+		if (exposure) {
+			state.actions.exposure += exposure;
+			e.preventDefault();
+		}
 	}
 
 	function onKeyUp(e) {
-		const k = keyMap[e.code];
-		if (k) {
-			keys[k] = false;
-			e.preventDefault();
-		}
-		if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.boost = false;
+		const held = keyMap[e.code];
+		if (!held) return;
+		keys[held] = false;
+		e.preventDefault();
 	}
 
 	function onMouseDown(e) {
@@ -92,7 +112,7 @@ function createInput(canvas) {
 	}
 
 	function onWheel(e) {
-		state.wheelDelta += e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+		state.wheelDelta += e.deltaY * (WHEEL_UNITS_PER_MODE[e.deltaMode] || 1);
 		e.preventDefault();
 	}
 
@@ -146,6 +166,6 @@ function createInput(canvas) {
 	return { state, releaseAll, dispose };
 }
 
-const Input = { createInput };
+const Input = { createInput, WHEEL_UNITS_PER_MODE };
 if (typeof module !== 'undefined') module.exports = Input;
 if (typeof window !== 'undefined') window.Input = Input;
