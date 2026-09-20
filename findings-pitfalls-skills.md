@@ -336,3 +336,19 @@ Labels that trail or sit beside their stars are worse than no labels. The 2D lay
 ## 2026-09-20 — Picking under pointer lock: client coordinates are frozen
 
 Once the pointer is locked, `clientX/offsetX` stay at the lock point, so a "click" there would always pick the same screen corner. When locked, the pick point is the canvas centre — where the camera aims. A pick is a mouse-up within 4 px of mouse-down; anything farther is drag-look. `pick()` returns a landmark index or −1 and never mutates the camera: main.js wires a hit to `camera.setOrbitTarget`, and `R` clears the selection together with the orbit target so the two cannot disagree.
+
+## 2026-09-20 — Two-pass HDR: accumulate linear, tone-map once
+
+The original star sprite shader applied `flux / (1 + flux)` Reinhard per star in the vertex shader, then additive-blended the post-tonemap values into the swapchain. The result was that dense regions (bulge, arms) clipped to white with no highlight structure: each star had already saturated itself to < 1.0, so the sum across N stars could not exceed ~1.0 even though the scene clearly should be brighter there.
+
+The fix is the standard filmic pipeline: (1) drop the per-star tonemap, emit raw linear flux `pow(10, -0.4·(m_app − magZero))`; (2) render sprites additively into an `rgba16float` intermediate (blendable per WebGPU core spec, no feature negotiation); (3) fullscreen-triangle pass samples the HDR texture, applies ACES Narkowicz `x·(2.51x+0.03)/(x·(2.43x+0.59)+0.14)`, writes the LDR pixel to the swapchain with `alpha = 1` and no blend state.
+
+ACES over extended Reinhard: the filmic S-curve compresses dense star clusters gracefully and preserves red-giant hue into the highlights. Reinhard with a finite white point tends to "block up" near the white point — flat pastel whites.
+
+Two exposure knobs: `magZero` ([ / ]) controls the magnitude → flux conversion (input dynamic range), `uExposure` (; / ') is a linear multiplier before ACES (output brightness). ACES has no explicit white point so uExposure is the only output knob. Default 1.0, range 0.125 → 8.0 (6 stops) in half-stop steps.
+
+Star size tightened in the same change: `BASE_SIZE_PX` 2.2 → 1.5, magnitude clamp `clamp(1 − 0.4·Δmag, 0.4, 2.0)`, falloff `(1−r²)²` → `(1−r²)³`. The visible disc shrinks from a soft blob to a small bright core with a faint wing — point sources at HD/4K should look like points, not discs.
+
+The HDR texture is recreated on canvas resize; the bind group is rebuilt then because the texture view changes. The tonemap uniform is uploaded every frame alongside the camera uniform. The renderer-test.js mock GPU was extended to record per-pass draws and the HDR texture so the two-pass submission is checkable from Node.
+
+Tests: `hdr-test.js` for the curve (f(0)=0, f(1)≈0.8, f(16.3)≈1.0, monotonic, bounded, the brightness-gain property: five overlapping stars sum linearly and still roll off below 1.0); `wgsl-validate.js` extended for the new `tonemap` shader part and the two wired shaders; `renderer-test.js` extended for the two-pass submission (star-sprites + tonemap), the HDR texture format and size, the per-pass clear values, the linear exposure uniform and the resize-recreates-texture path.

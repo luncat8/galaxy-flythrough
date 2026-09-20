@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-20T06:56:11.165Z",
+  "date": "2026-09-20T10:44:44.473Z",
   "modules": 19,
   "totalChecks": 98,
   "passed": 98,
@@ -505,7 +505,7 @@
       }
     },
     {
-      "name": "StarRenderer has identical key sets (9 keys)",
+      "name": "StarRenderer has identical key sets (15 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -617,7 +617,8 @@
       "name": "every wired shader resolves in the SHADERS map",
       "pass": true,
       "detail": [
-        "star-sprite"
+        "star-sprite",
+        "tonemap"
       ]
     },
     {
@@ -627,6 +628,7 @@
         "pcg-hash",
         "density",
         "star-sprite",
+        "tonemap",
         "procedural-gen",
         "cull"
       ]

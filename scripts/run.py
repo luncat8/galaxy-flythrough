@@ -41,6 +41,7 @@ EXPERIMENTS = {
     'wgsl-validate':         'experiments/wgsl-validate.js',
     'camera':                'experiments/camera-test.js',
     'renderer':              'experiments/renderer-test.js',
+    'hdr':                   'experiments/hdr-test.js',
     'landmark':              'experiments/landmark-test.js',
     'tile-stream':           'experiments/tile-stream-test.js',
     'tile-encoder-smoke':    'experiments/tile-encoder-smoke-test.js',
@@ -59,8 +60,8 @@ EXPERIMENTS = {
 }
 
 TYPES = {
-    'test':   ['export-parity', 'm1-smoke', 'wgsl-validate', 'camera', 'renderer', 'landmark',
-               'tile-stream', 'tile-encoder-smoke', 'sampling', 'density-distribution',
+    'test':   ['export-parity', 'm1-smoke', 'wgsl-validate', 'camera', 'renderer', 'hdr',
+               'landmark', 'tile-stream', 'tile-encoder-smoke', 'sampling', 'density-distribution',
                'star-types-evolution', 'nebula-placement'],
     'study':  ['hash-quality', 'precision', 'packing', 'filter'],
     'asset':  ['tile-encoder', 'visualize-data'],

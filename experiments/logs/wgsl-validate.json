@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-20T06:56:11.271Z",
+  "date": "2026-09-20T10:44:44.566Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -11,7 +11,11 @@
     },
     {
       "name": "star-sprite",
-      "lines": 125
+      "lines": 132
+    },
+    {
+      "name": "tonemap",
+      "lines": 54
     },
     {
       "name": "procedural-gen",
@@ -23,10 +27,11 @@
     }
   ],
   "wired": [
-    "star-sprite"
+    "star-sprite",
+    "tonemap"
   ],
-  "totalChecks": 93,
-  "passed": 93,
+  "totalChecks": 104,
+  "passed": 104,
   "failed": 0,
   "checks": [
     {
@@ -36,6 +41,7 @@
         "pcg-hash",
         "density",
         "star-sprite",
+        "tonemap",
         "procedural-gen",
         "cull"
       ]
@@ -46,31 +52,36 @@
       "detail": [
         [
           "pcg-hash",
-          1459
+          1676
         ],
         [
           "density",
-          4779
+          5339
         ],
         [
           "star-sprite",
-          4337
+          5339
+        ],
+        [
+          "tonemap",
+          2166
         ],
         [
           "procedural-gen",
-          5996
+          7060
         ],
         [
           "cull",
-          3541
+          3961
         ]
       ]
     },
     {
-      "name": "only the wired shader is compiled into a module",
+      "name": "only the two wired shaders are compiled into modules",
       "pass": true,
       "detail": [
-        "star-sprite"
+        "star-sprite",
+        "tonemap"
       ]
     },
     {
@@ -78,6 +89,7 @@
       "pass": true,
       "detail": [
         "star-sprite",
+        "tonemap",
         "procedural-gen",
         "cull"
       ]
@@ -135,6 +147,24 @@
       "name": "star-sprite: declares its functions",
       "pass": true,
       "detail": 5
+    },
+    {
+      "name": "tonemap: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "tonemap: contains no unresolved markers",
+      "pass": true,
+      "detail": "tonemap"
+    },
+    {
+      "name": "tonemap: declares its functions",
+      "pass": true,
+      "detail": 3
     },
     {
       "name": "procedural-gen: braces and parentheses balance",
@@ -702,6 +732,38 @@
     },
     {
       "name": "the wired shader declares its builtin vertex input",
+      "pass": true
+    },
+    {
+      "name": "the star sprite shader no longer applies per-star Reinhard",
+      "pass": true
+    },
+    {
+      "name": "the star sprite falloff tightens to (1-r²)³",
+      "pass": true
+    },
+    {
+      "name": "the tonemap shader declares a vertex entry point",
+      "pass": true
+    },
+    {
+      "name": "the tonemap shader declares a fragment entry point",
+      "pass": true
+    },
+    {
+      "name": "the tonemap shader declares two bindings (uniform + texture)",
+      "pass": true
+    },
+    {
+      "name": "the tonemap shader defines acesNarkowicz",
+      "pass": true
+    },
+    {
+      "name": "the tonemap shader carries the five ACES constants a-e",
+      "pass": true
+    },
+    {
+      "name": "the tonemap fragment writes alpha = 1 (opaque swapchain)",
       "pass": true
     },
     {

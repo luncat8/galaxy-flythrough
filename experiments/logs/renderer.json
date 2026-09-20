@@ -1,25 +1,28 @@
 {
-  "date": "2026-09-20T06:56:11.494Z",
+  "date": "2026-09-20T10:44:44.785Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 84,
-  "totalChecks": 39,
-  "passed": 39,
+  "prepareMs": 49,
+  "totalChecks": 58,
+  "passed": 58,
   "failed": 0,
   "checks": [
     {
-      "name": "the wired shader source is handed to createShaderModule",
+      "name": "two wired shader sources are handed to createShaderModule",
       "pass": true,
       "detail": {
-        "modules": 1
+        "modules": [
+          "star-sprite",
+          "tonemap"
+        ]
       }
     },
     {
-      "name": "the wired shader declares both entry points",
+      "name": "both wired shaders declare their entry points",
       "pass": true
     },
     {
-      "name": "the pipeline is additive with no depth attachment",
+      "name": "the star-sprite pipeline is additive with no depth attachment",
       "pass": true,
       "detail": {
         "color": {
@@ -35,7 +38,22 @@
       }
     },
     {
-      "name": "the pipeline uses the swap chain format",
+      "name": "the tonemap pipeline has no blend state (overwrite)",
+      "pass": true,
+      "detail": {
+        "format": "bgra8unorm"
+      }
+    },
+    {
+      "name": "the star-sprite pipeline uses triangle-strip, tonemap uses triangle-list",
+      "pass": true,
+      "detail": {
+        "sprite": "triangle-strip",
+        "tonemap": "triangle-list"
+      }
+    },
+    {
+      "name": "the pipelines target the swapchain format",
       "pass": true
     },
     {
@@ -100,7 +118,15 @@
       }
     },
     {
-      "name": "the draw covers exactly the resident stars",
+      "name": "two render passes are submitted per frame",
+      "pass": true,
+      "detail": [
+        "star-sprites",
+        "tonemap"
+      ]
+    },
+    {
+      "name": "the star-sprite pass draws exactly the resident stars",
       "pass": true,
       "detail": {
         "vertices": 4,
@@ -109,12 +135,27 @@
         "firstInstance": 0,
         "pipeline": {
           "label": "star-sprite-pipeline"
-        }
+        },
+        "pass": "star-sprites"
       }
     },
     {
-      "name": "the draw uses four vertices per star (triangle strip quad)",
+      "name": "the star-sprite draw uses four vertices per star (triangle strip quad)",
       "pass": true
+    },
+    {
+      "name": "the tonemap pass draws one fullscreen triangle (3 vertices, 1 instance)",
+      "pass": true,
+      "detail": {
+        "vertices": 3,
+        "instances": 1,
+        "firstVertex": 0,
+        "firstInstance": 0,
+        "pipeline": {
+          "label": "tonemap-pipeline"
+        },
+        "pass": "tonemap"
+      }
     },
     {
       "name": "the resident catalog fits the budget",
@@ -135,6 +176,51 @@
       "detail": {
         "uploaded": 61264,
         "expected": 61264
+      }
+    },
+    {
+      "name": "the HDR intermediate texture was created",
+      "pass": true,
+      "detail": {
+        "label": "hdr-intermediate",
+        "format": "rgba16float",
+        "size": [
+          1920,
+          1080
+        ]
+      }
+    },
+    {
+      "name": "the HDR texture matches the canvas size",
+      "pass": true,
+      "detail": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "name": "the HDR texture is both a render target and a texture binding",
+      "pass": true,
+      "detail": 20
+    },
+    {
+      "name": "the star pass clears the HDR texture to zero (linear black)",
+      "pass": true,
+      "detail": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 0
+      }
+    },
+    {
+      "name": "the tonemap pass clears the swapchain to a dark sky, not black",
+      "pass": true,
+      "detail": {
+        "r": 0.008,
+        "g": 0.01,
+        "b": 0.02,
+        "a": 1
       }
     },
     {
@@ -162,8 +248,8 @@
       "pass": true,
       "detail": {
         "exposure": 17,
-        "base": 2.200000047683716,
-        "max": 32
+        "base": 1.5,
+        "max": 16
       }
     },
     {
@@ -174,6 +260,16 @@
     {
       "name": "uniform is exactly 112 bytes",
       "pass": true
+    },
+    {
+      "name": "tonemap uniform carries the default linear exposure (1.0)",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "tonemap uniform is 16 bytes (vec4 pad)",
+      "pass": true,
+      "detail": 16
     },
     {
       "name": "a parked camera does not re-upload the catalog",
@@ -207,6 +303,28 @@
       "pass": true
     },
     {
+      "name": "; raises the ACES pre-multiplier by one half-stop (×√2)",
+      "pass": true,
+      "detail": 1.4142135381698608
+    },
+    {
+      "name": "the linear exposure action is consumed",
+      "pass": true
+    },
+    {
+      "name": "' lowers the ACES pre-multiplier by one half-stop (×1/√2)",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "linear exposure clamps to the maximum",
+      "pass": true
+    },
+    {
+      "name": "linear exposure clamps to the minimum",
+      "pass": true
+    },
+    {
       "name": "crossing a cell boundary re-uploads the catalog",
       "pass": true,
       "detail": {
@@ -225,7 +343,15 @@
       "detail": 0
     },
     {
-      "name": "the frame is still drawn with the procedural field and the landmarks",
+      "name": "the frame still produces two passes (star + tonemap)",
+      "pass": true,
+      "detail": [
+        "star-sprites",
+        "tonemap"
+      ]
+    },
+    {
+      "name": "the star pass draws the procedural field + landmarks",
       "pass": true,
       "detail": {
         "vertices": 4,
@@ -234,7 +360,8 @@
         "firstInstance": 0,
         "pipeline": {
           "label": "star-sprite-pipeline"
-        }
+        },
+        "pass": "star-sprites"
       }
     },
     {
@@ -249,6 +376,25 @@
         "g": 0.01,
         "b": 0.02,
         "a": 1
+      }
+    },
+    {
+      "name": "a resize creates a new HDR texture",
+      "pass": true,
+      "detail": {
+        "before": 2,
+        "after": 3
+      }
+    },
+    {
+      "name": "the recreated HDR texture matches the new canvas size",
+      "pass": true,
+      "detail": {
+        "label": "hdr-intermediate",
+        "size": [
+          1280,
+          720
+        ]
       }
     },
     {

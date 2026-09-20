@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-20T06:56:11.231Z",
+  "date": "2026-09-20T10:44:51.975Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -224,7 +224,7 @@
       "name": "StarRenderer loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 9
+        "keys": 15
       }
     },
     {

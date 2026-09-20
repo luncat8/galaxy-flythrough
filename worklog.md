@@ -366,3 +366,42 @@ Stage Summary:
 - Docs: plan.md §2/§11/§18 updated, experiments/README.md row, AGENTS.md files list, three findings entries.
 - No browser here: labels/picking are verified against the real projection math and a mock 2D context; the visual verdict (P, click-to-orbit) still needs a WebGPU browser on src/index.html.
 - Next: 0.1.5 HDR output with range adjustment per plan.md §18.
+
+---
+Task ID: hdr-0.1.5
+Agent: main (Z.ai)
+Task: Implement plan.md §0.1.5 — HDR output with range adjustment. Review and improve the plan, implement two-pass HDR pipeline (additive star sprites → rgba16float intermediate → fullscreen ACES tonemap → swapchain). User asks: multiple stars at one pixel must sum their brightness linearly, and stars should be smaller in shape.
+
+Work Log:
+- Read plan.md §0.1.5, src/render/shaders.js, src/render/star-sprites.js, src/core/input.js, src/main.js, AGENTS.md, experiments/renderer-test.js, experiments/wgsl-validate.js.
+- Researched WebGPU HDR: rgba16float is blendable per core spec (no feature flag), ACES Narkowicz fitted curve preferred over extended Reinhard for filmic highlight compression and red-giant hue preservation.
+- Refined plan.md §0.1.5: dropped the "fallback when not blendable" clause (rgba16float is always blendable), picked ACES over Reinhard, picked uExposure linear multiplier over a separate white point, tightened star size, documented the per-star brightness change.
+- Modified src/render/shaders.js:
+  * STAR_SPRITE: removed `flux/(1+flux)` Reinhard from vertex shader; brightness is now raw linear flux. Falloff `(1-r²)²` → `(1-r²)³`. Size clamp `clamp(1-0.35·magDiff, 0.35, 3.0)` → `clamp(1-0.4·magDiff, 0.4, 2.0)`. Floor size 1.5 → 1.0 px so 1-px stars don't fade artificially.
+  * New TONEMAP shader part: fullscreen-triangle vertex, ACES Narkowicz fragment, samples the HDR texture via textureLoad(fragCoord), writes alpha=1 (opaque swapchain).
+  * SHADER_PARTS / SHADERS / WIRED_SHADERS updated to include 'tonemap' (now two wired shaders).
+- Modified src/render/star-sprites.js:
+  * BASE_SIZE_PX 2.2 → 1.5; MAX_SIZE_PX 32 → 16 (matches new clamp ceiling).
+  * New constants: LINEAR_EXPOSURE_{DEFAULT,MIN,MAX,STEP}, HDR_FORMAT='rgba16float', TONEMAP_UNIFORM_FLOATS=4.
+  * New HDR pipeline: tonemap shader module, tonemap uniform buffer (16 bytes), tonemap bind group layout (uniform + texture), tonemap pipeline (triangle-list, no blend, opaque target).
+  * ensureHdrTexture(width, height): creates / recreates the rgba16float HDR texture on canvas resize; the bind group is rebuilt then because the texture view changes.
+  * render(): two passes per frame. Pass 1 — additive sprites into the HDR intermediate (clear to 0,0,0,0). Pass 2 — fullscreen ACES tonemap into the swapchain (clear to the dark-sky colour).
+  * setLinearExposure(value) with half-stop key repeat (`;` darker, `'` brighter). linearExposure state mirrors in state.linearExposure.
+  * dispose() now also destroys the HDR texture and the tonemap uniform buffer.
+  * Renderer state extended with `linearExposure` and `hdrPass` flags; setLinearExposure added to the public API.
+- Modified src/core/input.js: added `actions.linearExposure` accumulator; `;` (Semicolon) = -1 step, `'` (Quote) = +1 step.
+- Modified src/main.js: overlay now shows `ACES gain <value> (; / ')` alongside the magZero line.
+- Modified src/index.html: help text gained `; / '   ACES gain (overall brightness)`.
+- New experiments/hdr-test.js: pulls the ACES constants out of the WGSL source, JS-mirrors the curve, pins f(0)=0, f(1)≈0.8, f(16.3)≈1.0 (implicit white point), monotonic on [0, 100], bounded on the full ±4-stop exposure range, the brightness-gain property (five overlapping stars sum linearly and still roll off below 1.0), and the linear exposure knob's range and default.
+- Extended experiments/wgsl-validate.js: WIRED_SHADERS.length === 2 (star-sprite + tonemap); tonemap entry points, bindings, acesNarkowicz fn, ACES constants a-e, alpha=1 output; star sprite asserts no Reinhard and (1-r²)³ falloff.
+- Extended experiments/renderer-test.js: mock GPU records per-pass draws (gpu.passes), tracks textures, tracks tonemap-uniform writes. New assertions: two pipelines (star-sprite triangle-strip additive + tonemap triangle-list overwrite), two passes per frame, star pass clears HDR to zero, tonemap pass clears swapchain to dark sky, HDR texture is rgba16float and matches canvas size, tonemap uniform carries linear exposure and is 16 bytes, linear exposure key raises/lowers it by half-stop, resize recreates the HDR texture.
+- Updated scripts/run.py: added 'hdr' to EXPERIMENTS and TYPES['test'].
+
+Stage Summary:
+- python3 scripts/run.py all-tests: 13/13 pass (wgsl-validate 104/104, renderer 58/58, hdr 17/17, m1-smoke 44/44, others unchanged).
+- Two shaders wired, two pipelines created, two passes per frame. rgba16float intermediate recreated on resize. ACES Narkowicz curve. Star sprite shader emits linear flux; per-star Reinhard removed. Star shape shrunk: BASE_SIZE_PX 2.2→1.5, falloff exponent 2→3, size clamp tightened.
+- Brightness-gain property verified: five overlapping stars map to a brighter LDR pixel than one, still below 1.0.
+- New user-facing keys: `;` / `'` for ACES gain (0.125 → 8.0, half-stop steps). `[` / `]` unchanged (magZero).
+- Overlay now reads `exposure magZero <v> ([ / ])   ACES gain <v> (; / ')`.
+- No browser here: the two-pass submission, the HDR texture, and the curve are verified against the stub device and the JS mirror of the WGSL. The visual verdict (do overlapping stars actually look brighter?) still needs a WebGPU browser on src/index.html.
+- Next: 0.1.6 (or whatever the plan opens next). Possible follow-ups the user may want: tweak ACES pre-exposure default (1.0 may be slightly dark), swapchain sRGB OETF for truer colors, star size fine-tuning per display DPI.

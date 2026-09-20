@@ -1024,22 +1024,38 @@ lines, click selects the orbit target.
 ### 0.1.5 — HDR output with range adjustment (next)
 
 **Goal:** the frame accumulates linear flux and is tone-mapped once, with an exposure
-range the user controls.
+range the user controls. Multiple stars at the same screen position must sum their
+flux linearly and only roll off at the tone-map stage, so the bulge and arm ridges
+keep their color and brightness gradient instead of clipping to white.
 
-- Why a second pass: today each sprite applies Reinhard in the vertex shader and the
-  additive blend sums the *tone-mapped* values, so dense regions (bulge, arms) clip to
-  white with no highlight structure. Correct order is accumulate linear, tone-map last.
-- Renderer: stars → `rgba16float` intermediate (recreated on resize) → fullscreen
-  tone-map pass into the swapchain. The `tonemap` module lives in `shaders.js` beside
-  the others; `WIRED_SHADERS` grows to two. Fallback when `rgba16float` is not
-  blendable on the adapter: keep the single pass.
-- Range: `magZero` stays the exposure (`[ ]`); add a white point — the flux that maps
-  to 1.0 — on `;` / `'`. Curve: ACES fitted (Narkowicz) or extended Reinhard
-  `x·(1 + x/w²)/(1 + x)`; the test pins monotonicity, `f(0) = 0`, `f(w) = 1`, no NaN
-  over the exposure range.
+- Why a second pass: today each sprite applies Reinhard `flux/(1+flux)` in the vertex
+  shader and the additive blend sums the *tone-mapped* values, so dense regions
+  (bulge, arms) clip to white with no highlight structure. Correct order is
+  accumulate linear, tone-map last. Per-star brightness is now the raw linear flux
+  `pow(10, -0.4·(m_app − magZero))` with no per-star roll-off; the alpha channel
+  carries the same flux for premultiplied additive blend.
+- Renderer: stars → `rgba16float` intermediate (recreated on resize, blendable per
+  WebGPU core spec on every adapter) → fullscreen tone-map pass into the swapchain.
+  The `tonemap` module lives in `shaders.js` beside the others; `WIRED_SHADERS`
+  grows to two. The tone-map pass writes `alpha = 1` (swapchain is opaque) and uses
+  no blend state (overwrite).
+- Curve: ACES fitted (Narkowicz) `x·(2.51x+0.03)/(x·(2.43x+0.59)+0.14)`. Picked over
+  extended Reinhard because the filmic S-curve compresses dense star clusters
+  gracefully and preserves red-giant hue into the highlights. The test pins
+  monotonicity, `f(0)=0`, `f(1)≈0.8`, no NaN over the exposure range.
+- Range: `magZero` stays the input exposure (`[` / `]`); a global linear exposure
+  multiplier `uExposure` on `;` / `'`, default `1.0`, range `0.125 → 8.0` in half-stop
+  steps (×0.707 / ×1.414). ACES has no explicit white point, so `uExposure` is the
+  single output brightness knob.
+- Star size: `BASE_SIZE_PX` drops `2.2 → 1.5`, falloff tightens `(1-r²)² → (1-r²)³`,
+  magnitude clamp `clamp(1 − 0.4·Δmag, 0.4, 2.0)`. The visible disc shrinks from a
+  soft blob to a small bright core with a faint wing, the size point sources should
+  be at HD/4K.
 - Optional: true HDR presentation where the canvas supports
-  `toneMapping: { mode: 'extended' }`; a flag, not a requirement.
-- Tests: `hdr-test.js` for the curve, plus `renderer-test.js` extended for the two-pass
-  submission against the stub device.
+  `toneMapping: { mode: 'extended' }`; a flag, not a requirement. Not wired here —
+  the intermediate HDR texture is enough for the brightness-gain behaviour.
+- Tests: `hdr-test.js` for the curve, plus `renderer-test.js` extended for the
+  two-pass submission against the stub device (two pipelines, two draws, HDR texture
+  sized to the canvas, exposure uniform).
 
 Order: 0.1.1 → 0.1.2 → 0.1.5. 0.1.1 touched no assets or shaders, so it landed first.

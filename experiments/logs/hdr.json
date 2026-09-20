@@ -1,0 +1,112 @@
+{
+  "date": "2026-09-20T10:44:44.827Z",
+  "consts": {
+    "a": 2.51,
+    "b": 0.03,
+    "c": 2.43,
+    "d": 0.59,
+    "e": 0.14
+  },
+  "totalChecks": 17,
+  "passed": 17,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "the tonemap shader part exists and is non-trivial",
+      "pass": true,
+      "detail": 2166
+    },
+    {
+      "name": "the tonemap shader exposes the five ACES constants a-e",
+      "pass": true,
+      "detail": {
+        "a": 2.51,
+        "b": 0.03,
+        "c": 2.43,
+        "d": 0.59,
+        "e": 0.14
+      }
+    },
+    {
+      "name": "f(0) = 0 exactly",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "f(1) ≈ 0.8 (filmic mid-grey)",
+      "pass": true,
+      "detail": 0.8037974683544302
+    },
+    {
+      "name": "f(16.3) ≈ 1.0 (implicit white point)",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "output is bounded to [0, 1] for very large input",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "output stays in [0, 1] for negative input (clamp)",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "the curve is monotonically non-decreasing on [0, 100]",
+      "pass": true
+    },
+    {
+      "name": "no NaN or Infinity across the exposure range (×2^-4 .. ×2^4)",
+      "pass": true
+    },
+    {
+      "name": "five overlapping stars are brighter than one",
+      "pass": true,
+      "detail": {
+        "one": 0.8037974683544302,
+        "five": 0.9852756892230574
+      }
+    },
+    {
+      "name": "five overlapping stars still roll off below 1.0",
+      "pass": true,
+      "detail": 0.9852756892230574
+    },
+    {
+      "name": "the gain is sub-linear (compressive, not multiplicative)",
+      "pass": true,
+      "detail": {
+        "linear": 4.018987341772151,
+        "tonemapped": 0.9852756892230574
+      }
+    },
+    {
+      "name": "default linear exposure is 1.0",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "linear exposure range spans the half-stops 0.125 to 8.0",
+      "pass": true,
+      "detail": {
+        "min": 0.125,
+        "max": 8
+      }
+    },
+    {
+      "name": "linear exposure covers 6 stops (8× min to 8× max)",
+      "pass": true,
+      "detail": 6
+    },
+    {
+      "name": "at default exposure, ACES sees the raw summed flux",
+      "pass": true
+    },
+    {
+      "name": "the HDR intermediate format is rgba16float",
+      "pass": true,
+      "detail": "rgba16float"
+    }
+  ]
+}
