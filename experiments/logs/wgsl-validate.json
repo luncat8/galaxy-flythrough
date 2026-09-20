@@ -1,154 +1,716 @@
 {
-  "date": "2026-09-19T22:16:46.475Z",
-  "checks": {
-    "pcgConstants": {
-      "wgslConstantsPresent": true,
-      "wgslFunctionsPresent": true,
-      "jsConstantsPresent": true,
-      "jsFunctionsPresent": true,
-      "missingConstants": [],
-      "missingFunctions": [],
-      "pass": true
+  "date": "2026-09-19T23:59:13.000Z",
+  "parts": [
+    {
+      "name": "pcg-hash",
+      "lines": 58
     },
-    "densityConstants": {
-      "constants": [
-        {
-          "desc": "GALACTIC_R0",
-          "jsHas": true,
-          "wgslHas": true
-        },
-        {
-          "desc": "THIN_L",
-          "jsHas": true,
-          "wgslHas": true
-        },
-        {
-          "desc": "THIN_H",
-          "jsHas": true,
-          "wgslHas": true
-        },
-        {
-          "desc": "THICK_L",
-          "jsHas": true,
-          "wgslHas": true
-        },
-        {
-          "desc": "THICK_H",
-          "jsHas": true,
-          "wgslHas": true
-        },
-        {
-          "desc": "BULGE_A",
-          "jsHas": true,
-          "wgslHas": true
-        },
-        {
-          "desc": "BULGE_B",
-          "jsHas": true,
-          "wgslHas": true
-        },
-        {
-          "desc": "BULGE_C",
-          "jsHas": true,
-          "wgslHas": true
-        },
-        {
-          "desc": "ARMS_AMP",
-          "jsHas": true,
-          "wgslHas": true
-        },
-        {
-          "desc": "HALO_POWER",
-          "jsHas": true,
-          "wgslHas": true
-        }
-      ],
-      "jsHasAllFunctions": true,
-      "wgslMissingFunctions": [],
-      "pass": true
+    {
+      "name": "density",
+      "lines": 156
     },
-    "massTeffTable": {
-      "wgslMassTableComplete": true,
-      "wgslTeffTableComplete": true,
-      "jsMassTableComplete": true,
-      "jsTeffTableComplete": true,
-      "wgslSpectralThresholdsPresent": true,
-      "jsSpectralThresholdsPresent": true,
-      "entryCount": 18,
-      "pass": true
+    {
+      "name": "star-sprite",
+      "lines": 125
     },
-    "starPackedStruct": {
-      "structFound": true,
-      "hasPositionHighX": true,
-      "hasPositionHighY": true,
-      "hasPositionHighZ": true,
-      "hasPacked": true,
-      "expectedSizeBytes": 16,
-      "actualSizeBytes": 16,
-      "pass": true
+    {
+      "name": "procedural-gen",
+      "lines": 170
     },
-    "wgslSyntax": {
-      "pcg-hash.wgsl": {
-        "lines": 66,
-        "bytes": 1780,
-        "openBraces": 6,
-        "closeBraces": 6,
-        "openParens": 35,
-        "closeParens": 35,
-        "errors": [],
-        "pass": true
-      },
-      "density.wgsl": {
-        "lines": 150,
-        "bytes": 4821,
-        "openBraces": 22,
-        "closeBraces": 22,
-        "openParens": 76,
-        "closeParens": 76,
-        "errors": [],
-        "pass": true
-      },
-      "procedural-gen.wgsl": {
-        "lines": 234,
-        "bytes": 9009,
-        "openBraces": 33,
-        "closeBraces": 33,
-        "openParens": 150,
-        "closeParens": 150,
-        "errors": [],
-        "pass": true
-      },
-      "cull.wgsl": {
-        "lines": 168,
-        "bytes": 6229,
-        "openBraces": 17,
-        "closeBraces": 17,
-        "openParens": 64,
-        "closeParens": 64,
-        "errors": [],
-        "pass": true
-      },
-      "star-distant.wgsl": {
-        "lines": 115,
-        "bytes": 3688,
-        "openBraces": 15,
-        "closeBraces": 15,
-        "openParens": 44,
-        "closeParens": 44,
-        "errors": [],
-        "pass": true
+    {
+      "name": "cull",
+      "lines": 114
+    }
+  ],
+  "wired": [
+    "star-sprite"
+  ],
+  "totalChecks": 93,
+  "passed": 93,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "every expected shader part is present",
+      "pass": true,
+      "detail": [
+        "pcg-hash",
+        "density",
+        "star-sprite",
+        "procedural-gen",
+        "cull"
+      ]
+    },
+    {
+      "name": "every shader part is a non-empty LF-only string",
+      "pass": true,
+      "detail": [
+        [
+          "pcg-hash",
+          1459
+        ],
+        [
+          "density",
+          4779
+        ],
+        [
+          "star-sprite",
+          4337
+        ],
+        [
+          "procedural-gen",
+          5996
+        ],
+        [
+          "cull",
+          3541
+        ]
+      ]
+    },
+    {
+      "name": "only the wired shader is compiled into a module",
+      "pass": true,
+      "detail": [
+        "star-sprite"
+      ]
+    },
+    {
+      "name": "every wired shader exists in the module map",
+      "pass": true,
+      "detail": [
+        "star-sprite",
+        "procedural-gen",
+        "cull"
+      ]
+    },
+    {
+      "name": "pcg-hash: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
       }
     },
-    "starDistantEmbedded": {
-      "scriptBlockPresent": true,
-      "embeddedLength": 2563,
-      "fileLength": 3688,
-      "keyMarkersAllPresentInEmbedded": true,
-      "keyMarkersAllPresentInFile": true,
-      "missingInEmbedded": [],
-      "missingInFile": [],
+    {
+      "name": "pcg-hash: contains no unresolved markers",
+      "pass": true,
+      "detail": "pcg-hash"
+    },
+    {
+      "name": "pcg-hash: declares its functions",
+      "pass": true,
+      "detail": 7
+    },
+    {
+      "name": "density: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "density: contains no unresolved markers",
+      "pass": true,
+      "detail": "density"
+    },
+    {
+      "name": "density: declares its functions",
+      "pass": true,
+      "detail": 11
+    },
+    {
+      "name": "star-sprite: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "star-sprite: contains no unresolved markers",
+      "pass": true,
+      "detail": "star-sprite"
+    },
+    {
+      "name": "star-sprite: declares its functions",
+      "pass": true,
+      "detail": 5
+    },
+    {
+      "name": "procedural-gen: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "procedural-gen: contains no unresolved markers",
+      "pass": true,
+      "detail": "procedural-gen"
+    },
+    {
+      "name": "procedural-gen: declares its functions",
+      "pass": true,
+      "detail": 9
+    },
+    {
+      "name": "cull: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "cull: contains no unresolved markers",
+      "pass": true,
+      "detail": "cull"
+    },
+    {
+      "name": "cull: declares its functions",
+      "pass": true,
+      "detail": 6
+    },
+    {
+      "name": "density.wgsl GALACTIC_R0 matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 8.178,
+        "js": 8.178
+      }
+    },
+    {
+      "name": "density.wgsl GALACTIC_CENTRE_X matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 8.178,
+        "js": 8.178
+      }
+    },
+    {
+      "name": "density.wgsl GALACTIC_CENTRE_Y matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 0,
+        "js": 0
+      }
+    },
+    {
+      "name": "density.wgsl THIN_L matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 2.6,
+        "js": 2.6
+      }
+    },
+    {
+      "name": "density.wgsl THIN_H matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 0.3,
+        "js": 0.3
+      }
+    },
+    {
+      "name": "density.wgsl THIN_AMP matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 1,
+        "js": 1
+      }
+    },
+    {
+      "name": "density.wgsl THICK_L matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 3.5,
+        "js": 3.5
+      }
+    },
+    {
+      "name": "density.wgsl THICK_H matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 0.9,
+        "js": 0.9
+      }
+    },
+    {
+      "name": "density.wgsl THICK_AMP matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 0.12,
+        "js": 0.12
+      }
+    },
+    {
+      "name": "density.wgsl BULGE_A matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 1.5,
+        "js": 1.5
+      }
+    },
+    {
+      "name": "density.wgsl BULGE_B matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 0.5,
+        "js": 0.5
+      }
+    },
+    {
+      "name": "density.wgsl BULGE_C matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 0.4,
+        "js": 0.4
+      }
+    },
+    {
+      "name": "density.wgsl BULGE_R0 matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 1,
+        "js": 1
+      }
+    },
+    {
+      "name": "density.wgsl BULGE_AMP matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 12,
+        "js": 12
+      }
+    },
+    {
+      "name": "density.wgsl BULGE_TILT_DEG matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 27,
+        "js": 27
+      }
+    },
+    {
+      "name": "density.wgsl HALO_A_H matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 1,
+        "js": 1
+      }
+    },
+    {
+      "name": "density.wgsl HALO_POWER matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 3.5,
+        "js": 3.5
+      }
+    },
+    {
+      "name": "density.wgsl HALO_AMP matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 0.0008,
+        "js": 0.0008
+      }
+    },
+    {
+      "name": "density.wgsl HALO_RMAX matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 100,
+        "js": 100
+      }
+    },
+    {
+      "name": "density.wgsl ARMS_M matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 2,
+        "js": 2
+      }
+    },
+    {
+      "name": "density.wgsl ARMS_AMP matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 0.2,
+        "js": 0.2
+      }
+    },
+    {
+      "name": "density.wgsl ARMS_PITCH_DEG matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 12,
+        "js": 12
+      }
+    },
+    {
+      "name": "density.wgsl ARMS_RS matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 3,
+        "js": 3
+      }
+    },
+    {
+      "name": "density.wgsl ARMS_PHASE0 matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 0,
+        "js": 0
+      }
+    },
+    {
+      "name": "density.wgsl DISC_RADIUS matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 25,
+        "js": 25
+      }
+    },
+    {
+      "name": "density.wgsl DISC_HEIGHT matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 3,
+        "js": 3
+      }
+    },
+    {
+      "name": "density.wgsl BULGE_RADIUS matches the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": 6,
+        "js": 6
+      }
+    },
+    {
+      "name": "density.wgsl component indices match the JS model",
+      "pass": true,
+      "detail": {
+        "thin": 0,
+        "thick": 1,
+        "bulge": 2,
+        "halo": 3
+      }
+    },
+    {
+      "name": "star-sprite.wgsl absolute magnitude range matches StarPacked",
+      "pass": true,
+      "detail": {
+        "wgsl": [
+          -12,
+          30
+        ],
+        "js": [
+          -12,
+          30
+        ]
+      }
+    },
+    {
+      "name": "star-sprite.wgsl visibility mask matches the record flag",
+      "pass": true,
+      "detail": {
+        "wgsl": 65536,
+        "js": 65536
+      }
+    },
+    {
+      "name": "procedural-gen.wgsl magnitude range matches StarPacked",
+      "pass": true,
+      "detail": {
+        "wgsl": [
+          -12,
+          30
+        ]
+      }
+    },
+    {
+      "name": "procedural-gen.wgsl visibility flag matches StarPacked",
+      "pass": true,
+      "detail": {
+        "wgsl": 1,
+        "js": 1
+      }
+    },
+    {
+      "name": "cull.wgsl landmark mask matches the record flag",
+      "pass": true,
+      "detail": {
+        "wgsl": [
+          131072,
+          65536
+        ]
+      }
+    },
+    {
+      "name": "cull.wgsl draws four vertices per sprite",
+      "pass": true,
+      "detail": 4
+    },
+    {
+      "name": "pcg-hash.wgsl mirrors pcgHash",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "pcg-hash.wgsl mirrors hash4",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "pcg-hash.wgsl mirrors hash01",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "pcg-hash.wgsl mirrors hash01At",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "pcg-hash.wgsl mirrors hash2D",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "pcg-hash.wgsl mirrors hash3D",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "pcg-hash.wgsl mirrors wangHash",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "density.wgsl mirrors bulgeEllipsoidRadius",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "density.wgsl mirrors rhoThin",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "density.wgsl mirrors rhoThick",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "density.wgsl mirrors rhoBulge",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "density.wgsl mirrors rhoHalo",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "density.wgsl mirrors armFactor",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "density.wgsl mirrors distanceToNearestArm",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "density.wgsl mirrors rhoTotal",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "density.wgsl mirrors rhoDecomposed",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "procedural-gen.wgsl mirrors luminosityFromMass",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "procedural-gen.wgsl mirrors teffFromMass",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "procedural-gen.wgsl mirrors msLifetimeGyr",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "procedural-gen.wgsl mirrors sampleMassIMF",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "procedural-gen.wgsl mirrors sampleLocalAge",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "procedural-gen.wgsl mirrors classifyByTempAndState",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "procedural-gen.wgsl still contains Salpeter slope 2.35",
+      "pass": true,
+      "detail": "Salpeter slope 2.35"
+    },
+    {
+      "name": "procedural-gen.wgsl still contains mass floor 0.08",
+      "pass": true,
+      "detail": "mass floor 0.08"
+    },
+    {
+      "name": "procedural-gen.wgsl still contains mass ceiling 100",
+      "pass": true,
+      "detail": "mass ceiling 100"
+    },
+    {
+      "name": "procedural-gen.wgsl still contains lifetime coefficient 10",
+      "pass": true,
+      "detail": "lifetime coefficient 10"
+    },
+    {
+      "name": "procedural-gen.wgsl still contains O threshold 30000 K",
+      "pass": true,
+      "detail": "O threshold 30000 K"
+    },
+    {
+      "name": "procedural-gen.wgsl still contains B threshold 10000 K",
+      "pass": true,
+      "detail": "B threshold 10000 K"
+    },
+    {
+      "name": "procedural-gen.wgsl still contains A threshold 7500 K",
+      "pass": true,
+      "detail": "A threshold 7500 K"
+    },
+    {
+      "name": "procedural-gen.wgsl still contains F threshold 6000 K",
+      "pass": true,
+      "detail": "F threshold 6000 K"
+    },
+    {
+      "name": "procedural-gen.wgsl still contains G threshold 5200 K",
+      "pass": true,
+      "detail": "G threshold 5200 K"
+    },
+    {
+      "name": "procedural-gen.wgsl still contains K threshold 3700 K",
+      "pass": true,
+      "detail": "K threshold 3700 K"
+    },
+    {
+      "name": "procedural-gen.wgsl carries the same mass-Teff breakpoints",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "the wired shader declares a vertex entry point",
+      "pass": true
+    },
+    {
+      "name": "the wired shader declares a fragment entry point",
+      "pass": true
+    },
+    {
+      "name": "the wired shader declares its bindings",
+      "pass": true
+    },
+    {
+      "name": "the wired shader declares the camera uniform struct",
+      "pass": true
+    },
+    {
+      "name": "the wired shader declares its builtin vertex input",
+      "pass": true
+    },
+    {
+      "name": "the procedural generator is a compute shader",
+      "pass": true
+    },
+    {
+      "name": "the cull shader writes indirect draw arguments",
       "pass": true
     }
-  },
-  "verdict": "PASS — WGSL mirrors JS libraries exactly"
+  ]
 }

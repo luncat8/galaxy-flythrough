@@ -1,0 +1,175 @@
+{
+  "date": "2026-09-19T23:59:15.675Z",
+  "seed": 42,
+  "sampleSize": 400000,
+  "sampleMs": 785,
+  "totalChecks": 19,
+  "passed": 19,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "component shares match the analytic component masses",
+      "pass": true,
+      "detail": {
+        "thin": {
+          "sampled": 0.626305,
+          "model": 0.6260565738733753,
+          "relative": 0.00039681098640603855
+        },
+        "thick": {
+          "sampled": 0.1958225,
+          "model": 0.19581314923205245,
+          "relative": 0.00004775352413374771
+        },
+        "bulge": {
+          "sampled": 0.17768,
+          "model": 0.17790783061580046,
+          "relative": 0.001280610386916923
+        },
+        "halo": {
+          "sampled": 0.0001925,
+          "model": 0.0002224462787717113,
+          "relative": 0.13462252071406472
+        }
+      }
+    },
+    {
+      "name": "galactocentric R distribution matches the model (TV < 6%)",
+      "pass": true,
+      "detail": 0.035763644984729615
+    },
+    {
+      "name": "vertical |z| distribution matches the model (TV < 6%)",
+      "pass": true,
+      "detail": 0.0032220153560321443
+    },
+    {
+      "name": "azimuthal distribution matches the model (TV < 6%)",
+      "pass": true,
+      "detail": 0.003775271991819604
+    },
+    {
+      "name": "distance-to-arm distribution matches the model (TV < 5%)",
+      "pass": true,
+      "detail": 0.027703616117181508
+    },
+    {
+      "name": "arm ridge is denser than the zone 2 kpc away",
+      "pass": true,
+      "detail": {
+        "ridge": 0.520958892462201,
+        "far": 0.24392439694106702
+      }
+    },
+    {
+      "name": "population mix inside a 4-8 kpc annulus matches the model (worst 4%)",
+      "pass": true,
+      "detail": {
+        "worst": 0.006891958754899261,
+        "thin": {
+          "sampled": 0.79473,
+          "model": 0.79543
+        },
+        "thick": {
+          "sampled": 0.18356,
+          "model": 0.18274
+        },
+        "bulge": {
+          "sampled": 0.02168,
+          "model": 0.02183
+        },
+        "stars": 104497
+      }
+    },
+    {
+      "name": "same seed produces an identical sample",
+      "pass": true
+    },
+    {
+      "name": "a different seed changes the sample",
+      "pass": true,
+      "detail": 1000
+    },
+    {
+      "name": "no NaN or infinite positions",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "disc stars stay inside the disc truncation",
+      "pass": true,
+      "detail": 53.02729415893555
+    },
+    {
+      "name": "bulge and halo stars respect their truncations",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "no NaN magnitudes or masses",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "M dwarfs dominate the population (IMF)",
+      "pass": true,
+      "detail": {
+        "M": 349226,
+        "K": 35270,
+        "RG": 9415,
+        "F": 1847,
+        "WD": 770,
+        "G": 3282,
+        "B": 90,
+        "A": 96,
+        "O": 4
+      }
+    },
+    {
+      "name": "O and B stars are rare but present",
+      "pass": true,
+      "detail": {
+        "M": 349226,
+        "K": 35270,
+        "RG": 9415,
+        "F": 1847,
+        "WD": 770,
+        "G": 3282,
+        "B": 90,
+        "A": 96,
+        "O": 4
+      }
+    },
+    {
+      "name": "O/B stars are concentrated in the arms (>70% within 500 pc)",
+      "pass": true,
+      "detail": {
+        "O": 1,
+        "B": 1
+      }
+    },
+    {
+      "name": "mean ages order halo > bulge > thick > thin",
+      "pass": true,
+      "detail": {
+        "thin": 5.352501635206734,
+        "thick": 8.37078892072174,
+        "bulge": 10.070548197735159,
+        "halo": 11.865934810594476
+      }
+    },
+    {
+      "name": "red giants and white dwarfs exist",
+      "pass": true,
+      "detail": {
+        "RG": 9415,
+        "WD": 770
+      }
+    },
+    {
+      "name": "hash01At channels are decorrelated",
+      "pass": true,
+      "detail": 0
+    }
+  ]
+}

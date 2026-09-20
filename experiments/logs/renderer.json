@@ -1,0 +1,244 @@
+{
+  "date": "2026-09-19T23:59:13.178Z",
+  "proceduralStars": 20000,
+  "catalogStars": 3829,
+  "prepareMs": 79,
+  "totalChecks": 35,
+  "passed": 35,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "the wired shader source is handed to createShaderModule",
+      "pass": true,
+      "detail": {
+        "modules": 1
+      }
+    },
+    {
+      "name": "the wired shader declares both entry points",
+      "pass": true
+    },
+    {
+      "name": "the pipeline is additive with no depth attachment",
+      "pass": true,
+      "detail": {
+        "color": {
+          "srcFactor": "one",
+          "dstFactor": "one",
+          "operation": "add"
+        },
+        "alpha": {
+          "srcFactor": "one",
+          "dstFactor": "one",
+          "operation": "add"
+        }
+      }
+    },
+    {
+      "name": "the pipeline uses the swap chain format",
+      "pass": true
+    },
+    {
+      "name": "the storage buffer holds procedural + catalog capacity",
+      "pass": true,
+      "detail": {
+        "size": 381264,
+        "expected": 381264
+      }
+    },
+    {
+      "name": "the procedural field was uploaded once, at offset 0",
+      "pass": true,
+      "detail": {
+        "writes": 1
+      }
+    },
+    {
+      "name": "every procedural record is visible and finite",
+      "pass": true,
+      "detail": 20000
+    },
+    {
+      "name": "the procedural field covers the galaxy, not just the solar neighbourhood",
+      "pass": true,
+      "detail": {
+        "minRadius": 0.186,
+        "maxRadius": 46.319
+      }
+    },
+    {
+      "name": "the procedural field uses several spectral classes",
+      "pass": true,
+      "detail": 8
+    },
+    {
+      "name": "the first frame streams the catalog once",
+      "pass": true,
+      "detail": {
+        "writes": 1,
+        "offset": 320000
+      }
+    },
+    {
+      "name": "the draw covers exactly the resident stars",
+      "pass": true,
+      "detail": {
+        "vertices": 4,
+        "instances": 23829,
+        "firstVertex": 0,
+        "firstInstance": 0,
+        "pipeline": {
+          "label": "star-sprite-pipeline"
+        }
+      }
+    },
+    {
+      "name": "the draw uses four vertices per star (triangle strip quad)",
+      "pass": true
+    },
+    {
+      "name": "the resident catalog fits the budget",
+      "pass": true,
+      "detail": 3829
+    },
+    {
+      "name": "all cells of this small catalog are resident",
+      "pass": true,
+      "detail": {
+        "resident": 2045,
+        "total": 2045
+      }
+    },
+    {
+      "name": "staged catalog bytes equal an independent decode of the same cells",
+      "pass": true,
+      "detail": {
+        "uploaded": 61264,
+        "expected": 61264
+      }
+    },
+    {
+      "name": "uniform[0..16] is the camera viewProj",
+      "pass": true
+    },
+    {
+      "name": "uniform carries the camera position",
+      "pass": true
+    },
+    {
+      "name": "uniform carries the viewport and its reciprocal",
+      "pass": true,
+      "detail": {
+        "viewport": [
+          1920,
+          1080,
+          0.0010416667209938169,
+          0.0018518518190830946
+        ]
+      }
+    },
+    {
+      "name": "uniform carries the exposure and sprite sizes",
+      "pass": true,
+      "detail": {
+        "exposure": 17,
+        "base": 2.200000047683716,
+        "max": 32
+      }
+    },
+    {
+      "name": "uniform carries the frame time",
+      "pass": true,
+      "detail": 0.01666666753590107
+    },
+    {
+      "name": "uniform is exactly 112 bytes",
+      "pass": true
+    },
+    {
+      "name": "a parked camera does not re-upload the catalog",
+      "pass": true,
+      "detail": {
+        "before": 2,
+        "after": 2
+      }
+    },
+    {
+      "name": "a second frame still updates the uniform",
+      "pass": true,
+      "detail": 0.03333333507180214
+    },
+    {
+      "name": "exposure key raises magZero by one step",
+      "pass": true,
+      "detail": 17.75
+    },
+    {
+      "name": "the exposure action is consumed",
+      "pass": true
+    },
+    {
+      "name": "exposure clamps to the maximum",
+      "pass": true,
+      "detail": 40
+    },
+    {
+      "name": "exposure clamps to the minimum",
+      "pass": true
+    },
+    {
+      "name": "crossing a cell boundary re-uploads the catalog",
+      "pass": true,
+      "detail": {
+        "before": 2,
+        "after": 3
+      }
+    },
+    {
+      "name": "the drawn instance count follows the new residency",
+      "pass": true,
+      "detail": 21355
+    },
+    {
+      "name": "a camera outside the catalog volume drops every catalog star",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "the frame is still drawn with the procedural field only",
+      "pass": true,
+      "detail": {
+        "vertices": 4,
+        "instances": 20000,
+        "firstVertex": 0,
+        "firstInstance": 0,
+        "pipeline": {
+          "label": "star-sprite-pipeline"
+        }
+      }
+    },
+    {
+      "name": "the render pass still clears and stores the frame",
+      "pass": true
+    },
+    {
+      "name": "the clear colour is a dark sky, not black",
+      "pass": true,
+      "detail": {
+        "r": 0.008,
+        "g": 0.01,
+        "b": 0.02,
+        "a": 1
+      }
+    },
+    {
+      "name": "dispose destroys the star buffer",
+      "pass": true
+    },
+    {
+      "name": "no WGSL compilation errors were reported",
+      "pass": true,
+      "detail": null
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "date": "2026-09-19T23:58:22.265Z",
+  "source": "gaia-subset.csv",
+  "config": {
+    "gLimit": 12,
+    "quality": 5,
+    "decimationRadiusKpc": 0.1,
+    "bands": {
+      "near": {
+        "cellSize": 0.025,
+        "radius": 0.25,
+        "streamRadiusKpc": 0.5
+      },
+      "medium": {
+        "cellSize": 0.1,
+        "radius": 2,
+        "streamRadiusKpc": 2.5
+      },
+      "far": {
+        "cellSize": 0.5,
+        "radius": 10,
+        "streamRadiusKpc": 12
+      }
+    }
+  },
+  "summary": {
+    "input": 5000,
+    "kept": 3829,
+    "droppedMagnitude": 0,
+    "droppedQuality": 0,
+    "droppedDecimation": 1171,
+    "droppedOutOfBounds": 0,
+    "cellCount": 2045
+  },
+  "perBand": {
+    "medium": 1151,
+    "near": 2678
+  },
+  "bundleBytes": 168605,
+  "roundTripOk": true
+}

@@ -1,64 +1,129 @@
 // src/main.js
-// Boot: WebGPU device → camera → input → renderer → loop.
+// Boot: WebGPU device → camera → input → renderer (catalog + procedural) → loop.
+//
+// Overlay text is rebuilt at 4 Hz, not every frame: the frame loop stays free
+// of string building and DOM writes.
 
 'use strict';
+
+const OVERLAY_INTERVAL = 0.25;      // s
+const MAX_DPR = 2;                  // retinal 3x costs fill rate for no gain
+
+function readParams(search) {
+	const params = new URLSearchParams(search === undefined ? window.location.search : search);
+	const number = (name, fallback) => {
+		const value = params.get(name);
+		// An absent or empty parameter means "use the default"; `0` is a
+		// deliberate value (e.g. catalog=0 renders procedurally only).
+		if (value === null || value.trim() === '') return fallback;
+		const parsed = Number(value);
+		return Number.isFinite(parsed) ? parsed : fallback;
+	};
+	return {
+		stars: number('stars', window.StarRenderer.PROCEDURAL_STARS_DEFAULT),
+		catalogStars: number('catalog', window.StarRenderer.CATALOG_BUDGET_DEFAULT),
+		exposure: params.has('exposure') ? number('exposure', window.StarRenderer.EXPOSURE_DEFAULT) : null,
+		seed: number('seed', 42),
+	};
+}
 
 async function boot() {
 	const canvas = document.getElementById('canvas');
 	const overlay = document.getElementById('overlay');
 	const errorBox = document.getElementById('error');
+	const params = readParams();
 
-	// Resize canvas to display
+	function showError(message) {
+		errorBox.textContent = message;
+		errorBox.style.display = 'block';
+	}
+
 	function resizeCanvas() {
-		const dpr = window.devicePixelRatio || 1;
-		const w = canvas.clientWidth * dpr;
-		const h = canvas.clientHeight * dpr;
-		if (canvas.width !== w || canvas.height !== h) {
-			canvas.width = w;
-			canvas.height = h;
+		const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+		const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
+		const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
+		if (canvas.width !== width || canvas.height !== height) {
+			canvas.width = width;
+			canvas.height = height;
 		}
 	}
 	resizeCanvas();
 	window.addEventListener('resize', resizeCanvas);
 
-	// --- Init WebGPU ---
 	let device, context, format;
 	try {
 		({ device, context, format } = await window.Device.initDevice(canvas));
 	} catch (err) {
-		errorBox.textContent = 'WebGPU init failed: ' + err.message;
-		errorBox.style.display = 'block';
+		showError('WebGPU init failed: ' + err.message);
 		return;
 	}
+	window.Device.onLost = (info) => showError(`GPU device lost (${info.reason}): ${info.message}`);
 
-	// --- Camera + input ---
 	const camera = window.Camera.createCamera();
 	const input = window.Input.createInput(canvas);
 
-	// --- Renderer ---
-	const renderer = window.StarDistantRenderer.createStarDistantRenderer(device, context, format);
-	renderer.generateStars();
+	const renderer = window.StarRenderer.createStarRenderer(device, context, format, {
+		proceduralStars: params.stars,
+		catalogBudgetStars: params.catalogStars,
+		seed: params.seed,
+	});
 
-	// --- Frame loop ---
+	// Catalog is optional: without it the procedural field still renders.
+	let manifest = null;
+	try {
+		manifest = await window.TileLoader.loadCatalog('data/tiles/catalog.js');
+	} catch (err) {
+		console.warn('Catalog tiles unavailable, running procedural-only:', err.message);
+	}
+
+	try {
+		renderer.prepare(manifest);
+	} catch (err) {
+		showError('Renderer setup failed: ' + err.message);
+		return;
+	}
+	if (params.exposure !== null) renderer.setExposure(params.exposure);
+
+	const statsText = {
+		position: [0, 0, 0],
+		velocity: [0, 0, 0],
+	};
+	let overlayTimer = OVERLAY_INTERVAL;
+
+	function updateOverlay(state, cameraState) {
+		const shutter = state.magZero.toFixed(1);
+		overlay.textContent =
+			`FPS ${loop.stats.fps.toFixed(0)}   frame ${loop.stats.avgFrameMs.toFixed(2)}ms (max ${loop.stats.maxFrameMs.toFixed(1)}ms)\n` +
+			`stars drawn ${state.drawn.toLocaleString()}  =  procedural ${state.proceduralStars.toLocaleString()}` +
+			` + catalog ${state.catalogResidentStars.toLocaleString()}/${state.catalogTotalStars.toLocaleString()}\n` +
+			`cells ${state.cellsResident}/${state.catalogCells}   decoded ${(state.decodedBytes / 1024).toFixed(0)} KB` +
+			`   buffer ${(state.bufferBytes / 1048576).toFixed(1)} MB\n` +
+			`exposure magZero ${shutter}   ([ / ] to change)\n` +
+			`pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
+			`speed x${cameraState.speedMult.toFixed(2)}  (${(cameraState.speedKpcPerSec * 1000).toFixed(1)} pc/s)` +
+			(cameraState.speedMult > 1.5 ? '   [Shift boost]' : '');
+	}
+
 	const loop = window.Loop.createLoop((dt, time) => {
 		camera.step(dt, input.state);
 		resizeCanvas();
-		renderer.render(camera, canvas.width, canvas.height, time);
+		renderer.render(camera, canvas.width, canvas.height, time, input.state);
 
-		// Update overlay
-		const s = loop.stats;
-		overlay.textContent =
-			`FPS: ${s.fps.toFixed(1)}\n` +
-			`frame: ${s.frameMs.toFixed(2)}ms (avg ${s.avgFrameMs.toFixed(2)} / max ${s.maxFrameMs.toFixed(2)})\n` +
-			`stars: ${window.StarDistantRenderer.TEST_N.toLocaleString()}\n` +
-			`pos: (${camera.getState().position[0].toFixed(3)}, ${camera.getState().position[1].toFixed(3)}, ${camera.getState().position[2].toFixed(3)}) kpc\n` +
-			`speed: x${camera.getState().speedMult.toFixed(2)} (${(0.010 * camera.getState().speedMult).toFixed(4)} kpc/s)`;
+		overlayTimer += dt;
+		if (overlayTimer < OVERLAY_INTERVAL) return;
+		overlayTimer = 0;
+		updateOverlay(renderer.state, camera.getState(statsText));
 	});
 
 	loop.start();
-	console.log('Galaxy fly-through started. WASD to move, mouse drag to look, scroll to adjust speed.');
+	console.log(`Galaxy fly-through ready: ${renderer.state.proceduralStars.toLocaleString()} procedural stars, ` +
+		`${renderer.state.catalogTotalStars.toLocaleString()} catalog stars in ${renderer.state.catalogCells} cells.`);
 }
 
-if (typeof window !== 'undefined') {
+// Node has no document, so requiring this file for its helpers must not boot.
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 	window.addEventListener('DOMContentLoaded', boot);
+}
+if (typeof module !== 'undefined') {
+	module.exports = { boot, readParams, OVERLAY_INTERVAL, MAX_DPR };
 }

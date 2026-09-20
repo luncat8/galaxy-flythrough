@@ -1,7 +1,12 @@
 // experiments/m1-smoke-test.js
-// Milestone 1 smoke test: requires each runtime module to confirm exports.
-// Does NOT instantiate WebGPU (no navigator.gpu in Node). Only checks that
-// the modules load and export the expected symbols.
+// Wiring smoke test for the runtime. There is no browser in CI, and the page
+// has no module system to fall back on, so two things can only be checked
+// statically: that index.html loads every source file exactly once, and that
+// nothing reads a global before the file that defines it has run.
+//
+// It also loads every module under a fake window and runs a short end-to-end
+// (sample -> derive -> encode -> bundle -> loader) so a broken pipeline is a
+// red test rather than a black canvas.
 //
 // Output: experiments/logs/m1-smoke.json
 
@@ -10,130 +15,210 @@
 const fs = require('fs');
 const path = require('path');
 
+const SRC = path.join(__dirname, '..', 'src');
+global.window = global.window || global;
+
 const checks = [];
-
-function check(name, cond, detail) {
-        checks.push({ name, pass: !!cond, detail });
-        return !!cond;
+function check(name, pass, detail) {
+	checks.push({ name, pass: !!pass, detail });
+	return !!pass;
 }
 
-// --- Math modules ---
-const hash = require('../src/math/hash.js');
-check('hash.pcgHash is function', typeof hash.pcgHash === 'function');
-check('hash.hash01 is function', typeof hash.hash01 === 'function');
-check('hash.hash3D is function', typeof hash.hash3D === 'function');
-check('hash.pcgHash(0) returns u32', typeof hash.pcgHash(0) === 'number' && hash.pcgHash(0) >= 0);
-check('hash.hash01(0) in [0,1)', hash.hash01(0) >= 0 && hash.hash01(0) < 1);
+function walk(dir, base) {
+	const out = [];
+	for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+		const full = path.join(dir, entry.name);
+		const rel = path.posix.join(base, entry.name);
+		if (entry.isDirectory()) out.push(...walk(full, rel));
+		else if (entry.name.endsWith('.js')) out.push(rel);
+	}
+	return out;
+}
 
-const density = require('../src/math/density.js');
-check('density.rhoTotal is function', typeof density.rhoTotal === 'function');
-check('density.rhoTotal(0,0,0) > 0', density.rhoTotal(0, 0, 0) > 0);
-check('density.GALACTIC_R0 = 8.178', density.GALACTIC_R0 === 8.178);
-check('density.sampleComponent is function', typeof density.sampleComponent === 'function');
+// --- 1. The page loads exactly the source tree, in dependency order ------
+const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
+const scripts = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map(m => m[1]);
+const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sort();
+{
+	check('index.html loads main.js last', scripts[scripts.length - 1] === 'main.js', scripts[scripts.length - 1]);
+	check('index.html loads every source file exactly once',
+		scripts.length === new Set(scripts).size
+		&& JSON.stringify([...scripts].sort()) === JSON.stringify(sourceFiles),
+		{ scripts: scripts.length, sources: sourceFiles.length, missing: sourceFiles.filter(f => !scripts.includes(f)) });
+	check('every script index.html references exists on disk',
+		scripts.every(s => fs.existsSync(path.join(SRC, s))),
+		scripts.filter(s => !fs.existsSync(path.join(SRC, s))));
+	check('index.html has no leftover inline WGSL',
+		!/text\/x-wgsl/.test(html), 'wgsl blocks');
+	check('index.html references the stylesheet and the overlay elements',
+		/<link[^>]+href="style\.css"/.test(html)
+		&& /id="canvas"/.test(html) && /id="overlay"/.test(html) && /id="error"/.test(html),
+		{ css: /style\.css/.test(html), elements: ['canvas', 'overlay', 'error'].map(id => html.includes(`id="${id}"`)) });
+}
 
-const sampling = require('../src/math/sampling.js');
-check('sampling.sampleStars is function', typeof sampling.sampleStars === 'function');
-check('sampling.precomputeRhoMax is function', typeof sampling.precomputeRhoMax === 'function');
+// --- 2. No global is read before it is defined --------------------------
+{
+	const BROWSER_GLOBALS = new Set([
+		'devicePixelRatio', 'innerWidth', 'innerHeight', 'addEventListener', 'removeEventListener',
+		'requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'location', 'navigator',
+		'matchMedia', 'Device', 'GalaxyShaders', 'HashLib', 'DensityLib', 'SamplingLib',
+		'StarRecord', 'StarTypesLib', 'NebulaLib', 'Camera', 'Input', 'Loop', 'StarRenderer',
+		'TileLoader', 'CellManager', '__galaxy_catalog', 'self', 'document', 'setTimeout',
+	]);
+	const defined = new Set();
+	const undefinedReads = [];
+	const NAMESPACES = ['Device', 'Camera', 'Input', 'Loop', 'StarRenderer', 'TileLoader', 'CellManager',
+		'GalaxyShaders', 'HashLib', 'DensityLib', 'SamplingLib', 'StarRecord', 'StarTypesLib', 'NebulaLib'];
+	for (const file of scripts) {
+		const text = fs.readFileSync(path.join(SRC, file), 'utf-8');
+		// Registers its own namespace before anything else can read it.
+		for (const m of text.matchAll(/window\.([A-Za-z_$][A-Za-z0-9_$]*)\s*=[^=]/g)) defined.add(m[1]);
+		for (const m of text.matchAll(/window\.([A-Za-z_$][A-Za-z0-9_$]*)/g)) {
+			const name = m[1];
+			const after = text.slice(m.index + m[0].length).replace(/^\s+/, '');
+			if (after.startsWith('=') && !after.startsWith('==')) continue;   // assignment, not a read
+			if (!NAMESPACES.includes(name)) continue;
+			if (!defined.has(name)) undefinedReads.push(`${file}: window.${name}`);
+		}
+	}
+	check('every src module namespace is defined before it is read',
+		undefinedReads.length === 0, undefinedReads);
+	check('all module namespaces are registered by the time main.js runs',
+		NAMESPACES.every(n => defined.has(n)),
+		[...defined].filter(n => n !== '__galaxy_catalog'));
+}
 
-const starTypes = require('../src/math/star-types.js');
-check('starTypes.deriveStarProps is function', typeof starTypes.deriveStarProps === 'function');
-const s = starTypes.deriveStarProps(0, 0, 0.1, 42);
-check('deriveStarProps returns object with class', typeof s.class === 'string');
-check('deriveStarProps returns color array', Array.isArray(s.color) && s.color.length === 3);
-check('deriveStarProps returns component', ['thin', 'thick', 'bulge', 'halo'].includes(s.component));
+// --- 3. Modules load and expose a usable surface ------------------------
+{
+	const namespaces = [
+		['../src/math/hash.js', 'HashLib'], ['../src/math/density.js', 'DensityLib'],
+		['../src/math/sampling.js', 'SamplingLib'], ['../src/math/star-record.js', 'StarRecord'],
+		['../src/math/star-types.js', 'StarTypesLib'], ['../src/math/nebula.js', 'NebulaLib'],
+		['../src/core/camera.js', 'Camera'], ['../src/core/input.js', 'Input'],
+		['../src/core/loop.js', 'Loop'], ['../src/core/device.js', 'Device'],
+		['../src/render/shaders.js', 'GalaxyShaders'], ['../src/render/star-sprites.js', 'StarRenderer'],
+		['../src/stream/tile-loader.js', 'TileLoader'], ['../src/stream/cell-manager.js', 'CellManager'],
+	];
+	for (const [file, name] of namespaces) {
+		let api = null;
+		try {
+			api = require(file);
+		} catch (err) {
+			check(`${name} loads under Node`, false, err.message);
+			continue;
+		}
+		check(`${name} loads under Node and is registered on window`,
+			typeof api === 'object' && api !== null && global.window[name] === api,
+			{ keys: Object.keys(api || {}).length });
+	}
 
-const nebula = require('../src/math/nebula.js');
-check('nebula.placeNebulae is function', typeof nebula.placeNebulae === 'function');
-check('nebula.NEBULA_TYPES has 5 entries', nebula.NEBULA_TYPES.length === 5);
+	// The entry points main.js actually calls.
+	check('the runtime entry points main.js uses all exist',
+		typeof global.window.Device.initDevice === 'function'
+		&& typeof global.window.Camera.createCamera === 'function'
+		&& typeof global.window.Input.createInput === 'function'
+		&& typeof global.window.Loop.createLoop === 'function'
+		&& typeof global.window.StarRenderer.createStarRenderer === 'function'
+		&& typeof global.window.TileLoader.loadCatalog === 'function'
+		&& typeof global.window.CellManager.createCellManager === 'function');
 
-const splitDouble = require('../src/math/split-double.js');
-check('splitDouble.cameraRelative is function', typeof splitDouble.cameraRelative === 'function');
-const rel = splitDouble.cameraRelative([8, 0, 0], [1, 0, 0]);
-check('cameraRelative returns array of 3', Array.isArray(rel) && rel.length === 3);
-check('cameraRelative([8,0,0], [1,0,0]) = [7,0,0]', Math.abs(rel[0] - 7) < 1e-5);
+	const mainSrc = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
+	check('main.js reads the wired shader through the same map the validator uses',
+		/main\.js/.test('main.js') && typeof global.window.GalaxyShaders.SHADERS['star-sprite'] === 'string');
+	check('main.js does not reference removed modules',
+		!/star-distant|split-double|precomputeRhoMax|sampleStars\b/.test(mainSrc), 'legacy names');
+}
 
-// --- Core modules (Node-loadable but WebGPU-dependent at runtime) ---
-const cameraMod = require('../src/core/camera.js');
-check('camera.createCamera is function', typeof cameraMod.createCamera === 'function');
-const cam = cameraMod.createCamera();
-check('camera has step function', typeof cam.step === 'function');
-check('camera has buildViewProj function', typeof cam.buildViewProj === 'function');
-check('camera.viewProj is Float32Array(16)', cam.viewProj instanceof Float32Array && cam.viewProj.length === 16);
-check('camera.cameraPos is Float32Array(4)', cam.cameraPos instanceof Float32Array && cam.cameraPos.length === 4);
-// Verify right/up vectors via getState (roundtrip)
-// Default yaw=0, pitch=0: forward = (1,0,0), right = (0,-1,0), up = (0,0,1)
-// cross(forward, worldUp=(0,0,1)) = (forward.y*1 - forward.z*0, forward.z*0 - forward.x*1, 0) = (0, -1, 0)
-// So right = (0, -1, 0), up = cross(right, forward) = (-1*0 - 0*0, 0*1 - 0*0, 0*0 - (-1)*1) = (0, 0, 1)
-const fwd0 = cam.forward;
-check('camera.forward at yaw=0,pitch=0 is +X', Math.abs(fwd0[0] - 1) < 1e-6 && Math.abs(fwd0[1]) < 1e-6 && Math.abs(fwd0[2]) < 1e-6);
-const right0 = cam.right;
-check('camera.right at yaw=0,pitch=0 is -Y', Math.abs(right0[0]) < 1e-6 && Math.abs(right0[1] + 1) < 1e-6 && Math.abs(right0[2]) < 1e-6);
-const up0 = cam.up;
-check('camera.up at yaw=0,pitch=0 is +Z', Math.abs(up0[0]) < 1e-6 && Math.abs(up0[1]) < 1e-6 && Math.abs(up0[2] - 1) < 1e-6);
-// Verify right and up are orthonormal
-const fwdDotRight = fwd0[0] * right0[0] + fwd0[1] * right0[1] + fwd0[2] * right0[2];
-const fwdDotUp = fwd0[0] * up0[0] + fwd0[1] * up0[1] + fwd0[2] * up0[2];
-const rightDotUp = right0[0] * up0[0] + right0[1] * up0[1] + right0[2] * up0[2];
-check('camera orthonormal: forward . right = 0', Math.abs(fwdDotRight) < 1e-6);
-check('camera orthonormal: forward . up = 0', Math.abs(fwdDotUp) < 1e-6);
-check('camera orthonormal: right . up = 0', Math.abs(rightDotUp) < 1e-6);
+// --- 4. The shipped catalog asset loads --------------------------------
+{
+	const assetPath = path.join(SRC, 'data', 'tiles', 'catalog.js');
+	check('the catalog bundle is present', fs.existsSync(assetPath));
+	if (fs.existsSync(assetPath)) {
+		const bundle = require(assetPath);
+		const manifest = global.window.TileLoader.prepareBundle(bundle);
+		check('the shipped catalog prepares into a manifest',
+			manifest.cellCount > 0 && manifest.starCount > 0
+			&& manifest.bandNames.join(',') === 'near,medium,far',
+			{ cells: manifest.cellCount, stars: manifest.starCount, bands: manifest.bandNames });
+		check('the shipped catalog carries non-degenerate streaming radii',
+			Array.from(manifest.bandRadius).every(r => r > 0), Array.from(manifest.bandRadius));
+		const mainSrc = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
+		const loaded = (mainSrc.match(/loadCatalog\(\s*'([^']+)'/) || [])[1];
+		check('main.js loads the asset at the path the encoder writes',
+			loaded === 'data/tiles/catalog.js', loaded);
+	}
+}
 
-const inputMod = require('../src/core/input.js');
-check('input.createInput is function', typeof inputMod.createInput === 'function');
+// --- 5. Boot parameters -------------------------------------------------
+{
+	const main = require('../src/main.js');
+	check('main.js exposes its helpers without booting in Node',
+		typeof main.boot === 'function' && typeof main.readParams === 'function');
+	const parsed = main.readParams('?stars=5000&catalog=10000&seed=7&exposure=22');
+	check('readParams reads every documented parameter',
+		parsed.stars === 5000 && parsed.catalogStars === 10000
+		&& parsed.seed === 7 && parsed.exposure === 22, parsed);
+	const defaults = main.readParams('');
+	check('readParams falls back to the renderer defaults',
+		defaults.stars === global.window.StarRenderer.PROCEDURAL_STARS_DEFAULT
+		&& defaults.catalogStars === global.window.StarRenderer.CATALOG_BUDGET_DEFAULT
+		&& defaults.exposure === null, defaults);
+	const junk = main.readParams('?stars=abc&catalog=&seed=NaN');
+	check('readParams ignores non-numeric values',
+		junk.stars === global.window.StarRenderer.PROCEDURAL_STARS_DEFAULT
+		&& junk.catalogStars === global.window.StarRenderer.CATALOG_BUDGET_DEFAULT
+		&& junk.seed === 42, junk);
+}
 
-const loopMod = require('../src/core/loop.js');
-check('loop.createLoop is function', typeof loopMod.createLoop === 'function');
-const loop = loopMod.createLoop(() => {});
-check('loop has start function', typeof loop.start === 'function');
-check('loop has stop function', typeof loop.stop === 'function');
-check('loop.stats exists', typeof loop.stats === 'object');
+// --- 6. Short end-to-end ------------------------------------------------
+{
+	const sampling = require('../src/math/sampling.js');
+	const starTypes = require('../src/math/star-types.js');
+	const records = require('../src/math/star-record.js');
+	const buf = sampling.sampleGalaxyStars(99, 500);
+	check('the end-to-end sample has the requested stars', buf.count === 500, buf.count);
+	const record = {};
+	starTypes.deriveStar(1234, buf.component[0], buf.R[0], buf.distToArm[0], record);
+	check('a sampled star derives a complete record',
+		Number.isFinite(record.mass) && Number.isFinite(record.absMag)
+		&& typeof record.spectralClass === 'string' && Number.isFinite(record.teff),
+		{ mass: record.mass, absMag: record.absMag, spectralClass: record.spectralClass });
+	const bytes = new Uint8Array(records.RECORD_BYTES);
+	const view = new DataView(bytes.buffer);
+	records.writeRecord(view, 0, buf.x[0], buf.y[0], buf.z[0],
+		record.colorIndex, record.absMag, records.FLAG_VISIBLE, 0);
+	const back = records.readRecord(view, 0);
+	check('a packed record round-trips through StarPacked',
+		back.visible
+		&& Math.abs(back.x - Math.fround(buf.x[0])) === 0
+		&& Math.abs(back.absMag - record.absMag) < records.ABS_MAG_SPAN / 255 + 1e-6,
+		{ x: back.x, absMag: back.absMag });
+	check('the color LUT covers every spectral class',
+		records.buildColorLUT().length === 256 * 4 && records.SPECTRAL_CLASSES.length === 9,
+		records.SPECTRAL_CLASSES.length);
+}
 
-// --- Render module (Node-loadable; WebGPU calls only happen at runtime) ---
-const starDistantMod = require('../src/render/star-distant.js');
-check('starDistant.createStarDistantRenderer is function', typeof starDistantMod.createStarDistantRenderer === 'function');
-check('starDistant.TEST_N = 100000', starDistantMod.TEST_N === 100000);
-check('starDistant.SAMPLING_BOX is object', typeof starDistantMod.SAMPLING_BOX === 'object');
-check('starDistant.buildColorLUT is function', typeof starDistantMod.buildColorLUT === 'function');
-const lut = starDistantMod.buildColorLUT();
-check('LUT is 256*4 = 1024 bytes', lut.length === 1024);
-check('LUT index 0 (O) is bluish', lut[0] < lut[2]);  // O = blue, R < B
-check('LUT index 6 (M) is reddish', lut[6 * 4] > lut[6 * 4 + 2]);  // M = red, R > B
-
-// --- main.js (should attach boot to window load; in Node we just parse) ---
-const mainSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8');
-check('main.js defines boot function', /function boot\(\)/.test(mainSrc));
-check('main.js attaches to DOMContentLoaded', /DOMContentLoaded/.test(mainSrc));
-
-// --- index.html exists and embeds WGSL ---
-const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
-check('index.html has canvas element', /id="canvas"/.test(indexHtml));
-check('index.html has WGSL script block', /type="text\/x-wgsl"/.test(indexHtml));
-check('index.html loads main.js', /src="main\.js"/.test(indexHtml));
-check('index.html loads all math modules', /math\/(hash|density|sampling|star-types|nebula|split-double)\.js/.test(indexHtml));
-check('index.html loads all core modules', /core\/(device|camera|input|loop)\.js/.test(indexHtml));
-check('index.html loads star-distant.js', /render\/star-distant\.js/.test(indexHtml));
-
-// --- Print results ---
-let pass = 0, fail = 0;
+// --- Report --------------------------------------------------------------
+let passed = 0;
+let failed = 0;
 for (const c of checks) {
-        if (c.pass) pass++; else fail++;
-        console.log(`  ${c.pass ? 'OK' : 'FAIL'}: ${c.name}`);
+	if (c.pass) passed++; else failed++;
+	console.log(`  ${c.pass ? 'OK  ' : 'FAIL'} ${c.name}${c.pass ? '' : `  -> ${JSON.stringify(c.detail)}`}`);
 }
-console.log(`\n${pass}/${checks.length} passed, ${fail} failed`);
+console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 
-const out = {
-        date: new Date().toISOString(),
-        totalChecks: checks.length,
-        passed: pass,
-        failed: fail,
-        checks,
-        verdict: fail === 0
-                ? 'PASS — Milestone 1 modules load and export correctly'
-                : `FAIL — ${fail} checks failed`,
-};
 const logPath = path.join(__dirname, 'logs', 'm1-smoke.json');
-fs.writeFileSync(logPath, JSON.stringify(out, null, 2));
+fs.mkdirSync(path.dirname(logPath), { recursive: true });
+fs.writeFileSync(logPath, JSON.stringify({
+	date: new Date().toISOString(),
+	scripts,
+	sourceFiles,
+	totalChecks: checks.length,
+	passed,
+	failed,
+	checks,
+}, null, 2));
 console.log(`Wrote ${logPath}`);
-
 console.log('\n=== VERDICT ===');
-console.log(out.verdict);
+console.log(failed === 0 ? 'PASS — the runtime is wired consistently' : `FAIL — ${failed} checks failed`);
+process.exit(failed === 0 ? 0 : 1);

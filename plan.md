@@ -25,12 +25,12 @@ Elite Dangerous's "Stellar Forge" is the direct precedent: ~160,000 real Hipparc
 flowchart LR
     subgraph Offline["Offline Tools (Node, in experiments/)"]
         ENCODER["tile-encoder.js<br/>Gaia CSV → binary tile .js"]
-        BAKER["density-baker.js<br/>analytical model → 3D RGBA texture"]
+        BAKER["density-baker.js (planned)<br/>analytical model → 3D RGBA texture"]
         HASHTEST["hash-test.js<br/>PCG chi-square validation"]
     end
 
     subgraph Assets["Static Assets (in src/data/)"]
-        TILES["catalog tiles<br/>near/medium/far<br/>25/100/500 pc cells"]
+        TILES["catalog bundle<br/>catalog.js: bands + cells<br/>25/100/500 pc cells"]
         DENSITY["density-field.js<br/>baked 3D RGBA Uint8Array"]
         NEBULA["nebulae.json<br/>catalogued landmarks"]
         LANDMARK["landmarks.json<br/>named-star whitelist"]
@@ -77,7 +77,7 @@ flowchart LR
 Three stages:
 
 1. **Offline tools** (Node scripts in `experiments/`) convert raw catalogs to binary tile files and bake the density field. They also validate the hash function. These run once per data refresh.
-2. **Static assets** are vendored as local files. Tiles are emitted as `.js` files that assign to `window.__tile_xxx`, so they load via classic `<script>` injection under `file://` without fetch.
+2. **Static assets** are vendored as local files. The catalog ships as **one** bundle file, `src/data/tiles/catalog.js`, which assigns a single object to `window.__galaxy_catalog` (cells as base64 `StarPacked` payloads). One injection per catalog instead of one per cell: 2045 cells would otherwise be 2045 script tags. It loads via classic `<script>` injection under `file://` without fetch.
 3. **Runtime** is the browser page. A compute pass per frame generates procedural stars, culls, and produces an indirect draw buffer. The render pass draws three paths (bright, distant, density) plus nebulae.
 
 ---
@@ -93,7 +93,7 @@ Z: toward the Galactic north pole
 unit: parsec
 ```
 
-CPU simulation uses `f64` or split-double (`positionHigh: vec3<f32>, positionLow: vec3<f32>`). The GPU receives **camera-relative** `f32` coordinates, not absolute Galactic coordinates. At kpc distances, raw `f32` precision collapses (about 7 decimal digits, so at 10 kpc the precision is ~1 m — fine — but at 100 kpc it's ~10 m, and fly-through jitter becomes visible).
+CPU simulation uses `f64`. The GPU receives **camera-relative** `f32` coordinates, not absolute Galactic coordinates: the shader subtracts a `f32` `camera.position` uniform from each star. Measured in `experiments/precision-test.js`, that is good to 0.005 pc at 100 kpc — far below one screen pixel — so split-double was dropped rather than carried as dead code (`src/math/split-double.js` is gone). At kpc distances, raw `f32` precision collapses (about 7 decimal digits, so at 10 kpc the precision is ~1 m — fine — but at 100 kpc it's ~10 m, and fly-through jitter becomes visible).
 
 ```text
 starRelative = starPosition - cameraPosition
@@ -114,7 +114,7 @@ absolute_mag = apparent_mag - 5 * log10(distance_pc) + 5
 
 ## 4. Milky Way Density Model
 
-The accepted model for stellar mass distribution combines four components. The full model is evaluated analytically in `experiments/density-baker.js` and baked into a 3D RGBA texture sampled at runtime.
+The accepted model for stellar mass distribution combines four components. The full model is evaluated analytically in `experiments/density-baker.js` (planned for Path C; until then `src/math/density.js` is evaluated directly and `experiments/visualize-data.js` renders it) and later baked into a 3D RGBA texture sampled at runtime.
 
 ### Thin disc
 
@@ -169,6 +169,18 @@ with `m = 2` (two-armed pattern), `A ≈ 0.2`, `k = tan(i)` where `i ≈ 12°` i
 ρ_total = (ρ_thin + ρ_thick) · ρ_arms + ρ_bulge + ρ_halo
 ```
 
+### Truncation
+
+The profiles above are unbounded, which is fine for a picture and useless for a sampler: the Plummer bulge keeps a visible tail out to any radius and the exponential disc never reaches zero. The field is therefore truncated once, in the model itself, and every consumer sees the same cut:
+
+```
+disc:   R <= 25 kpc, |z| <= 3 kpc
+bulge:  s = r_e / r0 <= 6        (Plummer radii, r0 = 1 kpc)
+halo:   r <= 100 kpc             (part of the distribution, not a cut)
+```
+
+`density.js` applies these cuts inside `rhoThin` / `rhoThick` / `rhoBulge`, `sampling.js` draws each component inside the same bounds, and the WGSL mirror carries the same constants. Without this the sampler and the renderer disagree about the far field — the sampler truncates, the field does not — and every derived quantity that weights by density (nebula placement, `dominantComponent`, thinning) inherits the mismatch. Truncation also makes each component's contribution a finite number: `sampling.js` reports the truncated delivery fractions so the component shares in the tests have a closed form.
+
 ### RGBA texture packing
 
 Baked into a 64×64×32 RGBA8 texture (about 128 KB):
@@ -193,30 +205,35 @@ The analytical form is also evaluated directly in WGSL when needed for cells bey
 | Hipparcos / Tycho-2 | Named/remarkable stars | ~100k | All-sky, well-measured, includes bright stars Gaia saturates on |
 | Gaia DR3 (filtered subset) | Real nearby stars with proper motion | ~200k–1M | Cut to `G < 12` and `parallax_over_error > 5` |
 | NGC / Sharpless / Messier | Named clusters & nebulae | ~1k | Catalog of remarkable objects for landmarks |
-| TRILEGAL mock catalogue | Calibration only | not shipped | Used to validate the density model in `experiments/density-baker.js` |
+| TRILEGAL mock catalogue | Calibration only | not shipped | Would validate the density model against a mock catalogue; not used yet |
 
 ### Offline tool: `experiments/tile-encoder.js`
 
-Reads Gaia CSV (or FITS via a vendored parser), applies the magnitude and quality cuts, converts RA/dec/parallax to galactic XYZ, and emits binary tile files. Each tile is a single `.js` file assigning a `Uint8Array` to a global slot:
+Reads Gaia CSV (or FITS via a vendored parser), applies the magnitude and quality cuts, converts RA/dec/parallax to galactic XYZ, and writes one bundle:
 
 ```js
-window.__tile_near_0_1_2 = new Uint8Array([0x12, 0x34, /* ... */]);
-if (typeof module !== 'undefined') module.exports = window.__tile_near_0_1_2;
+// src/data/tiles/catalog.js — one script tag for the whole catalog
+window.__galaxy_catalog = {
+        version: 1, encoding: 'base64', recordBytes: 16,
+        bands: { near: { cellSize: 0.025, streamRadiusKpc: 0.5 }, /* medium, far */ },
+        cells: [{ b: 0, c: [i, j, k], n: 42, d: 'base64 StarPacked payload' }],
+};
+if (typeof module !== 'undefined') module.exports = window.__galaxy_catalog;
 ```
 
-This dual-assignment pattern lets the same file load via `<script>` in the browser and via `require()` in Node tests.
+The dual assignment lets the same file load via `<script>` in the browser and via `require()` in Node tests. Base64 costs ~33% over raw bytes and is invisible next to the HTTP/gzip reality; the alternative (raw `Uint8Array` literals) triples file size and parse time.
 
 ### Tile layout
 
 Three LOD bands, fixed cubic cells per band:
 
 ```
-near region (R < 200 pc):    25 pc cells
-medium region (R < 2 kpc):  100 pc cells
-far region (R > 2 kpc):     500 pc cells
+near region (R < 200 pc):    25 pc cells,  resident within 0.5 kpc of the camera
+medium region (R < 2 kpc):  100 pc cells,  resident within 2.5 kpc
+far region (R > 2 kpc):     500 pc cells,  resident within 12 kpc
 ```
 
-Later, replace with a sparse octree. The first version uses fixed cells because the code is simpler and the lookup is `O(1)`.
+The three radii are properties of the data, not of the loader: the encoder writes them into the bundle's band table and `cell-manager.js` reads them from there. Later, replace with a sparse octree; fixed cells are used because the code is simpler and the lookup is `O(1)`.
 
 ### Packed star record
 
@@ -241,18 +258,13 @@ This packs 1 million stars into 16 MB. Five million into 80 MB. Twenty million i
 
 ### Tile metadata
 
-Each tile carries a small header:
+A cell needs no stored bounds: band cell size plus integer cell index is the box, which is why the payload is pure records. Per-cell metadata is limited to what the residency policy actually consumes:
 
 ```
-tileBoundsXyzMin[3]
-tileBoundsXyzMax[3]
-starCount
-minMagnitude
-maxMagnitude
-reserved
+{ b: band, c: [i, j, k], n: starCount, d: base64(payload) }
 ```
 
-The runtime uses `minMagnitude` and `maxMagnitude` to skip tiles entirely if they cannot contribute visible stars at the current camera distance.
+Magnitude statistics per cell are deliberately absent — the renderer derives brightness per star on the GPU from the packed record, and residency is decided by distance, not by magnitude.
 
 ---
 
@@ -436,50 +448,44 @@ One `StarPacked` is 16 bytes. A draw budget of 1M stars means 16 MB of star data
 
 The galaxy is not generated at startup. Space is divided into deterministic cells, and cells around the camera are streamed in/out based on a memory budget.
 
-### Cell states
+### Residency
 
-```
-unloaded → generating → ready-for-upload → resident → evicting → unloaded
-```
+`src/stream/cell-manager.js` keeps one residency set, recomputed when the camera has moved more than half a fine cell (12.5 pc) or 0.25 s have passed, whichever comes first:
 
-`cell-manager.js` maintains a state map keyed by `(cellX, cellY, cellZ)`. Three async queues:
+1. collect every cell whose box lies within its band's streaming radius of the camera,
+2. order candidates nearest-first by squared distance to the cell box, ties broken by cell index,
+3. take cells in that order while the running star count stays inside `budgetStars` (default 250,000).
 
-```
-catalog decode queue     — tile-loader.js
-procedural gen queue     — procedural.wgsl (or JS fallback for low-end)
-GPU upload preparation   — staging buffers
-```
+Cells outside every band radius are dropped, so a camera that leaves the catalog volume empties the set and the renderer stops drawing catalog stars. Decoded payloads live in an LRU cache (4096 cells by default), and the GPU buffer is re-uploaded only when the resident set actually changed.
+
+A residency set plus an LRU cache replaces a per-cell state machine: nothing can run off the main thread under `file://` anyway, and a set is far easier to reason about than six states per cell.
 
 ### Streaming radii
 
 ```
-near:    200 pc         full detail, catalog + procedural
-medium:  2 kpc          catalog + procedural, reduced attributes
-far:     5 kpc+         density cells only, no individual stars
+near:    200 pc region      resident within 0.5 kpc      catalog, full detail
+medium:  2 kpc region       resident within 2.5 kpc      catalog
+far:     10 kpc region      resident within 12 kpc       catalog
 ```
 
-### LRU cache with memory budget
+The radii are data: the encoder writes them into the bundle's band table and the manager reads them from there, so retuning streaming is an asset change, not a code change. Beyond the far radius the procedural field (Path C) covers the sky; individual catalog stars are not streamed that far.
+
+### Memory budget
+
+The catalog budget is denominated in stars, not bytes, because stars are what the visual quality is made of: `budgetStars` (default 250,000) × 16 B = 4 MB of GPU buffer. Byte-denominated budgets return with Path C, where density cells have wildly different costs per visible pixel.
+
+### file://-compatible catalog loading
+
+The catalog is loaded once, via dynamic `<script>` tag injection, not `fetch()`:
 
 ```
-real catalog GPU memory:        256–512 MB
-synthetic star GPU memory:      512 MB–2 GB
-nebula resources:               256–512 MB
+1. create <script> element with src = data/tiles/catalog.js
+2. on script.onload: take window.__galaxy_catalog, delete the global
+3. remove <script> element from DOM
+4. prepareBundle(): decode the band table, index every cell, build the band radius table
 ```
 
-When a budget is exceeded, the LRU evicts the least-recently-touched resident cell. The cell returns to `unloaded` state and its GPU buffers are freed.
-
-### file://-compatible tile loading
-
-Tiles are loaded via dynamic `<script>` tag injection, not `fetch()`:
-
-```
-1. compute tile path: data/tiles/near/0_1_2.js
-2. create <script> element with that src
-3. on script.onload: read window.__tile_near_0_1_2, copy bytes, delete property
-4. remove <script> element from DOM
-```
-
-This works under `file://` in all major browsers because classic script loading is permitted, while `fetch()` is blocked by CORS for local files in Chrome and Edge. The trade-off is a small window of DOM mutation per tile load, but with a 16 MB cap per tile, this is negligible.
+This works under `file://` in all major browsers because classic script loading is permitted, while `fetch()` is blocked by CORS for local files in Chrome and Edge. A single script for the whole catalog keeps the DOM mutation to one element; per-cell scripts would be 2045 tags and 2045 parse events for a catalog this size.
 
 ---
 
@@ -540,70 +546,59 @@ Following [Maxime Heckel's volumetric cloudscapes](https://blog.maximeheckel.com
 Project layout, following AGENTS.md conventions (file:// friendly, no build, vendored libs):
 
 ```
-galaxy/
+galaxy-flythrough/
 ├── AGENTS.md                           # style + runtime rules
 ├── plan.md                             # this file
 ├── findings-pitfalls-skills.md         # LLM notes/pitfalls
+├── worklog.md                          # what each task actually did
 ├── archive/                            # superseded plans
-│   └── plan-v0.1.md
-├── experiments/                        # Node scripts, not loaded by page
-│   ├── logs/                           # benchmark & validation results
-│   │   ├── hash-quality.json
-│   │   ├── density-validation.md
-│   │   └── precision-test.json
-│   ├── tile-encoder.js                 # Gaia CSV → binary tile .js files
-│   ├── density-baker.js                # analytical model → 3D RGBA texture
-│   ├── hash-test.js                    # chi-square on PCG hash
-│   ├── filter-test.js                  # validate priority score distribution
-│   ├── precision-test.js               # f32 precision at various distances
-│   └── packing-test.js                 # GPU memory usage for star struct sizes
+├── experiments/                        # Node scripts, not loaded by the page
+│   ├── logs/                           # validation results (one JSON per test)
+│   ├── tile-encoder.js                 # Gaia CSV or mock → src/data/tiles/catalog.js
+│   ├── tile-stream-test.js             # encoder → loader → cell manager end to end
+│   ├── tile-encoder-smoke-test.js      # encoder → bundle → loader round trip
+│   ├── renderer-test.js                # star-sprites against a stub WebGPU device
+│   ├── wgsl-validate.js                # WGSL mirror vs the JS model
+│   ├── m1-smoke-test.js                # module wiring + index.html script order
+│   ├── export-parity-test.js           # window.* API == module.exports API
+│   ├── camera-test.js                  # camera model, dt independence, no allocations
+│   ├── sampling-test.js                # sampler vs the analytical model
+│   ├── density-distribution-test.js    # box sampler vs the model
+│   ├── star-types-evolution-test.js    # population types vs the evolution model
+│   ├── nebula-placement-test.js        # nebula types vs their environments
+│   ├── visualize-data.js               # sample for scripts/viz-galaxy.py
+│   ├── hash-quality-test.js            # PCG/Wang statistics
+│   ├── precision-test.js               # f32 vs split-double at galactic distances
+│   ├── packing-test.js                 # StarPacked round trip, memory budget
+│   └── filter-test.js                  # priority score / thinning behaviour
 └── src/                                # runtime, loaded by index.html
     ├── index.html                      # classic <script> tags only
     ├── style.css
-    ├── vendor/                         # local copies, no CDN
-    │   └── gl-matrix.min.js
     ├── core/
-    │   ├── device.js                   # WebGPU device init
+    │   ├── device.js                   # WebGPU device + clamp to adapter limits
     │   ├── camera.js                   # 6-DOF, momentum, kpc/s speeds
-    │   ├── loop.js                     # frame loop, no per-frame allocs
-    │   └── input.js                    # keyboard/mouse
+    │   ├── input.js                    # keyboard/mouse
+    │   └── loop.js                     # frame loop, dt clamp, stats
     ├── math/
     │   ├── hash.js                     # PCG/Wang (mirrors WGSL)
-    │   ├── density.js                  # analytical density function
-    │   ├── split-double.js             # camera-relative precision helpers
-    │   └── coord.js                    # ra/dec/parallax → galactic XYZ
-    ├── data/
-    │   ├── tiles/                      # binary tile .js files
-    │   │   ├── near/                   # 25 pc cells
-    │   │   │   └── tile_x_y_z.js       # window.__tile_near_x_y_z = Uint8Array
-    │   │   ├── medium/                 # 100 pc cells
-    │   │   └── far/                    # 500 pc cells
-    │   ├── density-field.js            # baked RGBA Uint8Array
-    │   ├── nebulae.json                # catalogued nebula metadata
-    │   └── landmarks.json              # named-star whitelist
-    ├── render/
-    │   ├── star-bright.js              # Path A: billboard sprites
-    │   ├── star-distant.js             # Path B: point sprites
-    │   ├── density-cell.js             # Path C: unresolved density
-    │   ├── nebula-billboard.js
-    │   ├── nebula-shell.js
-    │   ├── nebula-volumetric.js
-    │   └── wgsl/                       # shader sources as text
-    │       ├── star-bright.wgsl
-    │       ├── star-distant.wgsl
-    │       ├── density-cell.wgsl
-    │       ├── nebula-billboard.wgsl
-    │       ├── nebula-volumetric.wgsl
-    │       ├── cull.wgsl               # compute: frustum + thinning
-    │       └── procedural-gen.wgsl     # compute: hash → star
+    │   ├── density.js                  # analytical density field + truncations
+    │   ├── sampling.js                 # exact single-pass sampler
+    │   ├── star-record.js              # StarPacked layout + colour LUT
+    │   ├── star-types.js               # IMF, ages, evolution state, class
+    │   └── nebula.js                   # nebula probability + placement
     ├── stream/
-    │   ├── cell-manager.js             # cell state machine
-    │   ├── tile-loader.js              # dynamic <script> injection
-    │   ├── lru-cache.js                # memory budget tracker
-    │   └── procedural.js               # JS-side hash gen (mirror of WGSL)
+    │   ├── tile-loader.js              # bundle injection, decode, manifest
+    │   └── cell-manager.js             # residency set, nearest-first, LRU
+    ├── render/
+    │   ├── shaders.js                  # all WGSL as JS strings
+    │   └── star-sprites.js             # star draw path (procedural + catalog)
+    ├── data/
+    │   ├── gaia-subset.csv             # source catalog (5,000 rows)
+    │   └── tiles/catalog.js            # generated bundle (window.__galaxy_catalog)
     └── main.js                         # boot, wires everything
 ```
 
+Milestones 2+ add the remaining render paths (`density-cell.js`, nebula passes), the baked density field, and the compute pipeline (`cull.wgsl`, `procedural-gen.wgsl`); `shaders.js` already carries those shader sources so they are validated long before they are wired.
 ### Runtime conventions (see AGENTS.md for full rules)
 
 - **Single tab indentation, LF line endings.**
@@ -611,25 +606,25 @@ galaxy/
 - **Each file guards `module.exports`** so the same source can be `require()`'d in Node tests.
 - **No allocations in the hot path** — frame loop reuses preallocated typed arrays and scratch objects.
 - **No internet links** — all libraries vendored in `src/vendor/`.
-- **WGSL shaders are loaded as text** via a small `loadShader(name)` helper that reads `<script type="text/x-wgsl" id="...">` blocks embedded in `index.html`. This avoids fetch under `file://`.
+- **One API object per file, exposed to both environments.** `module.exports` and `window.X` must be the *same* object; never two hand-maintained lists. They drifted apart once and shipped a boot-time `TypeError` (`StarRecord.writeRecord` existed only under Node). `m1-smoke-test.js` and `export-parity-test.js` enforce this.
+- **WGSL lives in `src/render/shaders.js` as JS template strings**, not as `.wgsl` files and not as `text/x-wgsl` blocks in `index.html`. Three reasons: the same source can be `require()`'d and diffed in Node by `wgsl-validate.js`; the duplicated copy in `index.html` had already drifted from the `.wgsl` files it was supposed to mirror; and strings need no `getElementById` step at boot. No `fetch()`, so `file://` still works.
 
 ### Boot sequence (`main.js`)
 
 ```
-1. parse URL params (mode, seed, budget, debug)
-2. init WebGPU device, configure canvas context
-3. load density-field.js (synchronous <script> already loaded)
-4. load shaders from <script type="text/x-wgsl"> blocks
-5. create GPU buffers (static + dynamic ring)
-6. init camera at Sol (0,0,0)
-7. init cell manager with empty resident set
-8. start frame loop:
-     a. update camera from input
-     b. cell manager: request cells around camera, evict LRU
-     c. compute pass: procedural gen + cull → indirect args
-     d. render pass: Path A, Path B, Path C, nebulae
-     e. present
+1. parse URL params (stars, catalog, exposure, seed)
+2. init WebGPU device, configure the canvas context
+3. create the star renderer (shader module, pipeline, storage buffer, uniform)
+4. generate the procedural field on the CPU into the staging buffer (once)
+5. inject data/tiles/catalog.js, build the manifest, attach the catalog
+6. init the camera at Sol (0, 0, 0.005 kpc) and the frame loop:
+     a. update the camera from input
+     b. cell manager: recompute residency if the camera moved, re-upload if changed
+     c. render pass: one instanced draw over [procedural][resident catalog]
+     d. present
 ```
+
+The compute pass (procedural gen on the GPU, cull, indirect args) replaces steps (b)+(c) in the milestone-4 version; the CPU path exists so the flight prototype does not depend on compute support.
 
 ---
 
@@ -746,13 +741,16 @@ The first three experiments in this phase have already been implemented as scrip
 | T2 | Quantify f32 vs split-double precision at kpc distances | `experiments/precision-test.js` | `logs/precision-test.json` | Baseline measured. f32 max error at 100 kpc = 0.005 pc (well below star-size threshold). Split-double is unnecessary for star rendering. Use it only for camera-position offset computation if jitter appears. |
 | T3 | Validate packed 16-byte StarPacked struct round-trip + memory budget | `experiments/packing-test.js` | `logs/packing-test.json` | Baseline measured. Round-trip fidelity: position max error 7e-7 kpc (f32 round), magnitude quantum 0.078 mag. 1M stars = 19.2 MB total GPU memory. 5M stars = 95.5 MB. 20M stars = 381.6 MB. |
 | T4 | Validate per-star priority score + magnitude-band completeness + hash thinning determinism | `experiments/filter-test.js` | `logs/filter-test.json` | Baseline measured. Priority distribution: max bucket 5.2% (no banding). Hash thinning: deterministic, actual fraction 0.298 vs target 0.3 (within 1%). Screen-space thinning preserves highest-priority in 100% of cells. |
-| T5 | Tune arm contrast / band definitions to match observed arm/inter-arm ratio | `experiments/density-distribution-test.js` | `logs/density-distribution.json` | Baseline measured 1.25 vs predicted 1.50. Deferred tuning: tighten arm band to 0.3 kpc and/or increase `ARMS_AMP` from 0.20 to 0.25 once visual verdict from runtime is available. |
-| T6 | Tune nebula type mixture (currently 2.5% HII, 5.1% planetary, 81% SNR) | `experiments/nebula-placement-test.js` | `logs/nebula-placement.json` | Baseline measured. HII 100% in arms (correct), planetary 0% in bulge (incorrect, expected >50%). Deferred: separate `pStellar` term is already implemented but probability weights need empirical tuning once nebulae render in-scene. |
+| T5 | Arm contrast in the sampled field | `experiments/sampling-test.js`, `experiments/density-distribution-test.js` | `logs/sampling.json`, `logs/density-distribution.json` | Done. The 1.25-vs-1.50 discrepancy was a bad reference (a fixed-kpc box discounts the arm term); the sampler reproduces `1 + A·cos(theta)` to within a few percent on 600k stars, and the R / z / phi histograms match the model. |
+| T6 | Nebula type mixture | `experiments/nebula-placement-test.js` | `logs/nebula-placement.json` | Done. HII sits on the arm ridges, planetary nebulae dominate the inner galaxy, no nebula lands in the halo, and the type mix follows the gas/stellar probability split. Mixture weights remain tunable once nebulae render in-scene. |
+| T7 | Catalog streaming: residency, hysteresis, nearest-first budget, decode cache | `experiments/tile-stream-test.js` | `logs/tile-stream.json` | Done. Encoder → loader → cell manager consistency, hysteresis at 12.5 pc, an empty sample outside the volume, and the tight-budget selection matching a brute-force nearest-first fill. |
+| T8 | Renderer behaviour without a GPU | `experiments/renderer-test.js` | `logs/renderer.json` | Done. `star-sprites.js` runs against a stub device: buffer sizing, procedural upload once, catalog upload only on residency change, instance count, uniform packing and exposure clamping. |
+| T9 | Browser/Node API drift | `experiments/export-parity-test.js` | `logs/export-parity.json` | Done, and it caught a real bug (`StarRecord.writeRecord` was missing from the browser export). Every module now exposes one object to both environments. |
 
 ### Speculative tuning (deferred until runtime exists)
 
-- **Camera-position precision**: if fly-through jitter appears at >50 kpc from origin, switch camera position from f32 to f64 on CPU and pass `positionHigh` + `positionLow` uniforms. The star buffer layout already supports this.
-- **Cell size optimisation**: currently fixed at 100 pc (medium band). Measure cache hit rate and draw call overhead at 50 / 100 / 200 / 500 pc cell sizes once streaming is operational.
+- **Camera-position precision**: measured `precision-test.js` says f32 with camera-relative subtraction is good to 0.005 pc at 100 kpc; revisit only if jitter is ever seen beyond that.
+- **Cell size optimisation**: currently 25 / 100 / 500 pc with 0.5 / 2.5 / 12 kpc streaming radii. Measure decode hit rate and re-upload cost at other splits once a browser profile exists.
 - **Workgroup size**: `procedural-gen.wgsl` uses 8×8×1 (64 threads). Profile 8×8×1 vs 16×16×1 vs 32×1×1 on target GPUs once a runnable benchmark exists.
 - **Indirect draw batching**: currently one `drawIndirect` per frame for all stars. Once nebulae and density cells are separate paths, evaluate merging into a single multi-draw-indirect call.
 - **Tile compression**: 16-byte records may compress to ~10 bytes with delta encoding relative to cell centre. Defer until memory pressure appears in profiling.
@@ -764,13 +762,13 @@ The first three experiments in this phase have already been implemented as scrip
 ### Tuning methodology
 
 1. Run the relevant experiment script to capture the baseline.
-2. Adjust the constant in `experiments/lib/*.js` (the source of truth).
-3. Run `experiments/wgsl-validate.js` to confirm the WGSL mirror still matches.
-4. Manually update the corresponding constant in `src/render/wgsl/*.wgsl` if the validator reports drift (it should not, but defensive).
+2. Change the constant in `src/math/*.js` — the source of truth.
+3. Change the mirrored constant in `src/render/shaders.js` if the shader uses it.
+4. Run `experiments/wgsl-validate.js`; it fails if the mirror no longer matches.
 5. Re-run the experiment and confirm the metric improved.
 6. Append the before/after to `findings-pitfalls-skills.md` with a dated entry.
 
-The split between `experiments/lib/` (JS source of truth) and `src/render/wgsl/` (WGSL mirror) is intentional: JS is testable in Node, WGSL is not. The validator (`wgsl-validate.js`) is the contract that keeps them in sync.
+The split between the JS model (testable in Node) and the WGSL mirror (what the GPU runs) is unavoidable; the validator is the contract that keeps them in sync, and it diffs constants, function names and structural markers rather than trusting the two files to be edited together.
 
 ---
 
@@ -780,13 +778,13 @@ The split between `experiments/lib/` (JS source of truth) and `src/render/wgsl/`
 |---|---|---|---|
 | WebGPU not available on target browser | Medium | High | Detect at runtime; clear error message with browser support link |
 | 1M stars drops below 60 fps on integrated GPUs | Medium | Medium | Budget slider; density field stays correct at any budget |
-| Tile download too large for web delivery | Medium | Medium | Only `near/` tiles are critical; `medium/` and `far/` are procedural fallback |
+| Catalog asset too large for web delivery | Medium | Medium | The bundle is 165 KB for the 5,000-star subset; a full 1M-star catalog is ~16 MB raw, and base64 adds a third on top, so wide delivery goes through gzip/HTTP rather than `file://` |
 | Procedural star positions show grid alignment | Low | Medium | Stratified jitter within each cell; verify with nearest-neighbour histogram |
 | Nebula volumetric pass dominates frame time | Medium | High | Cap ray count; render at half resolution; skip when camera moves fast |
 | PCG hash shows visible patterns at scale | Low | High | `experiments/hash-test.js` runs chi-square; switch hash if it fails |
-| `file://` blocks dynamic `<script>` injection in some browsers | Low | High | Already tested; works in Chrome/Edge/Firefox. Fallback: embed tiles as base64 in single bundle. |
+| `file://` blocks dynamic `<script>` injection in some browsers | Low | High | Classic script injection is the one loading mechanism `file://` permits; the catalog is already a single base64 bundle, so there is nothing further to fall back to |
 | Catalog download (Gaia DR3) is multi-GB | High | Medium | Run `tile-encoder.js` once; ship only the filtered tiles (~50–200 MB) |
-| Density model looks right near Sun but wrong in bulge | Medium | Medium | Calibrate density texture against a TRILEGAL mock catalogue in `experiments/density-baker.js` |
+| Density model looks right near Sun but wrong in bulge | Medium | Medium | Compare against a TRILEGAL mock catalogue; `experiments/density-distribution-test.js` already checks the sampler against the model |
 
 ---
 

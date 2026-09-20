@@ -4,6 +4,58 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-09-19 — Two hand-maintained export lists always drift: expose one API object
+
+Every module had two export literals, one for Node (`module.exports = { ... }`) and one for the page (`window.X = { ... }`). They drifted, and the drift was invisible from Node: the renderer called `StarRecord.writeRecord`, which existed only in the Node export, so the browser would have thrown on the first frame (`prepare()` writes procedural records at boot). Node tests were green the whole time.
+
+The rule is now: build one object, hand the *same object* to both environments.
+
+```js
+const StarRecord = { RECORD_BYTES, writeRecord, readRecord, /* ... */ };
+if (typeof module !== 'undefined') module.exports = StarRecord;
+if (typeof window !== 'undefined') window.StarRecord = StarRecord;
+```
+
+`experiments/export-parity-test.js` walks every module, loads it with a fake `window`, and asserts the two surfaces are the same object with the same keys and values. This generalises: any duplicated list that a machine could have derived is a bug waiting for a release.
+
+## 2026-09-19 — A truncation applied by the sampler is part of the model, not a sampler detail
+
+The Plummer bulge has a heavy tail: with `r0 = 1 kpc`, `s = r_e / r0` up to 6 still carries ~4% of the analytic mass. The sampler cut at `s = 6`, but `density.js` did not, so at 12 kpc above the plane the untruncated bulge tail (~7e-9) outweighed the halo (1.9e-7 vs ...) in `dominantComponent`, and nebula placement treated the halo as bulge-dominated.
+
+Rule: decide *one* truncation per component, put it inside the density functions, mirror it in WGSL, and let the sampler draw inside those bounds. Any derived quantity that weights by density — dominant component, nebula probability, thinning, the exposure histogram — then agrees with the stars that are actually placed. `sampling.js` reports the fractions the truncation removes so the expected component shares have a closed form.
+
+## 2026-09-19 — Keep the shaders where Node can read them: JS strings, not .wgsl files or text/x-wgsl blocks
+
+WGSL cannot be compiled here, so the only defence against the mirror drifting is a test that diffs it against the JS model. That test can only run if the shader text is reachable from Node. Two earlier arrangements failed: `.wgsl` files plus a copy inlined in `index.html` (two copies, both hand-maintained, and they had already diverged — the validator could only marker-check one of them), and `document.getElementById(...).textContent` at boot (unreachable from Node, and one more thing to get wrong in the page).
+
+Now `src/render/shaders.js` holds the shader parts as template strings, concatenated into complete modules, and `wgsl-validate.js` compares constants, function names and structural markers against `src/math/*.js`. Wired and unwired shaders are both validated; only `WIRED_SHADERS` is compiled by the renderer.
+
+## 2026-09-19 — One bundle file beats one file per cell, even with base64
+
+The first catalog layout was one `.js` file per cell (2045 cells for a 3,829-star subset): 1170 files, 4.7 MB on disk, 44 bytes of file for every 16-byte star, and one `<script>` tag per cell at load time. The user's verdict — "multiple small tiles js is not good" — was right for reasons that also show up in the numbers: filesystem overhead, 2045 parse events, and a directory tree that grows with the catalog.
+
+One bundle (`window.__galaxy_catalog`) with base64 payloads is 164.6 KB for the same catalog, 44 bytes per star *including* base64 and JSON, and exactly one script injection. Base64 costs 33% over raw bytes and buys a file that is still plain JS, still `file://`-loadable, and still `require()`-able in Node tests. The band table travels *in* the asset (cell size + streaming radius per band), so retuning streaming is an encoder run, not a code edit.
+
+## 2026-09-19 — Test WebGPU modules against a stub device
+
+There is no browser here, and `star-sprites.js` is mostly GPU bookkeeping — which is exactly the part that breaks. `experiments/renderer-test.js` builds a fake `GPUDevice` that records everything (`createBuffer`, `createPipeline`, `queue.writeBuffer`, `beginRenderPass`, `draw`) and returns plausible objects. With it the tests can assert real invariants: the storage buffer is sized `(procedural + catalogCapacity) x 16`, the procedural field is uploaded once at offset 0, the catalog is uploaded only when the resident set changes, `draw(4, instances)` matches the residency, and the 28-float uniform carries the camera's view-projection.
+
+Two traps: uniforms are `Float32Array`, so compare against `Math.fround(value)` (a literal `2.2` never equals the stored value); and the mock must rethrow nothing — a stub that silently swallows a bad argument hides the bug it was written to catch.
+
+## 2026-09-19 — WebGPU clip space is z in [0, 1]; an OpenGL projection clips half the scene
+
+The projection matrix had the OpenGL depth convention: `(near+far)/(near-far)` and `2*near*far/(near-far)`, which maps the near plane to z = -1. WebGPU wants `far/(near-far)` and `near*far/(near-far)`, mapping near to z = 0. The symptom is subtle — everything still renders, but anything closer than the effective zero crossing (a few parsecs, given `near = 0.001 kpc`, `far = 2000 kpc`) gets clipped, and depth precision near the camera is wrong. `camera-test.js` now asserts the depth range and the near/far endpoints.
+
+## 2026-09-19 — Nearest-first residency needs an exact order, not a distance bucket
+
+The first cell-manager sorted candidates by counting them into 64 squared-distance shells. The shells span the whole candidate range, so near the Sun the first shell covered everything within ~1.5 kpc and the "nearest" cells were really "whichever cells came first in the bundle". A tight-budget test against a brute-force fill caught it: 192 stars in 48 cells versus 198 stars in 71 cells.
+
+Fix: sort in place by `(distanceSq, cellIndex)` with `Float64` distances — exact, no allocation per comparison, and cheap at the cadence a rebuild actually runs (a few times per second). Keep the ordered fill, not the bucket: the budget is star-denominated, so the very first cell that does not fit is exactly where the selection should stop.
+
+## 2026-09-19 — Decode base64 into the destination buffer
+
+Per-cell base64 decode used to allocate a `Uint8Array` per cell, only for the caller to copy it into the staging buffer. `decodeBase64Into(str, out, byteOffset)` walks the characters with `atob` (or `Buffer.from(str, 'base64')` in Node) and writes straight into the destination; `decodeBase64` remains as a thin wrapper with exact padding from the `=` count. The streaming test monkey-patches `decodeCell` to count calls, proving that a re-upload of an unchanged residency set does not decode anything at all.
+
 ## 2026-09-19 — file:// fetch is blocked; use dynamic `<script>` injection for binary data
 
 Chrome and Edge block `fetch()` of local files under `file://` (CORS policy). Firefox allows it only with `security.fileuri.strict_origin_policy=false`. The portable workaround is to emit binary assets as `.js` files that assign a `Uint8Array` to a global slot:

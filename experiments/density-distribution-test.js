@@ -1,7 +1,9 @@
 // experiments/density-distribution-test.js
-// Validates that rejection sampling from rhoTotal reproduces the analytical
-// distribution: exponential thin disc (R), sech^2 (z), concentrated bulge,
-// power-law halo, and spiral arm overdensity.
+// Validates the box-restricted sampler (sampling.sampleStarsInBox) — the API
+// the model experiments and the nebula placer use to draw stars in a region.
+//
+// The reference is the analytical model integrated over the same box on a grid,
+// so this checks the sampler against the model, not against itself.
 //
 // Output: experiments/logs/density-distribution.json
 
@@ -13,119 +15,154 @@ const density = require('../src/math/density.js');
 const sampling = require('../src/math/sampling.js');
 
 const SEED = 42;
-const N_STARS = 100000;
-const BOX = { xMin: -25, xMax: 5, yMin: -15, yMax: 15, zMin: -5, zMax: 5 };
+const N_STARS = 120000;
+const BOX = { xMin: -20, xMax: 20, yMin: -20, yMax: 20, zMin: -3, zMax: 3 };
 
-console.log('Precomputing rhoMax on 80^3 grid...');
+const checks = [];
+function check(name, pass, detail) {
+	checks.push({ name, pass: !!pass, detail });
+	return !!pass;
+}
+
+console.log(`Sampling ${N_STARS.toLocaleString()} stars in the box...`);
 const t0 = Date.now();
-const rhoMax = sampling.precomputeRhoMax(BOX, 80);
-console.log(`  rhoMax = ${rhoMax.toFixed(4)}  (took ${Date.now() - t0}ms)`);
+const buf = sampling.sampleStarsInBox(SEED, N_STARS, BOX);
+const sampleMs = Date.now() - t0;
+console.log(`  got ${buf.count.toLocaleString()} in ${sampleMs} ms `);
+check('the box sampler fills the requested count', buf.count === N_STARS, buf.count);
 
-console.log(`Sampling ${N_STARS} stars...`);
-const t1 = Date.now();
-const stars = sampling.sampleStars(SEED, N_STARS, BOX, rhoMax);
-const accepted = stars.filter(s => s.accepted).length;
-console.log(`  accepted ${accepted}/${N_STARS}  (took ${Date.now() - t1}ms)`);
-
-// Build histograms
-function histogram(values, min, max, bins) {
-        const counts = new Array(bins).fill(0);
-        const width = (max - min) / bins;
-        for (const v of values) {
-                if (v < min || v > max) continue;
-                const b = Math.min(bins - 1, Math.floor((v - min) / width));
-                counts[b]++;
-        }
-        return counts.map((c, i) => ({
-                lo: min + i * width,
-                hi: min + (i + 1) * width,
-                count: c,
-        }));
+// --- Reference integral over the box ------------------------------------
+console.log('Integrating the model over the box...');
+const NB_R = 24;          // galactocentric R bins (0..22 kpc)
+const NB_Z = 20;          // z bins over [-3, 3]
+const R_MAX = 22;
+const ref = { total: 0, R: new Float64Array(NB_R), z: new Float64Array(NB_Z), component: [0, 0, 0, 0] };
+{
+	const nR = 180;
+	const nPhi = 96;
+	const nZ = 60;
+	const dR = R_MAX / nR;
+	const dPhi = (2 * Math.PI) / nPhi;
+	const dZ = (BOX.zMax - BOX.zMin) / nZ;
+	const dRB = R_MAX / NB_R;
+	const dZB = (BOX.zMax - BOX.zMin) / NB_Z;
+	for (let i = 0; i < nR; i++) {
+		const R = (i + 0.5) * dR;
+		for (let j = 0; j < nPhi; j++) {
+			const phi = (j + 0.5) * dPhi - Math.PI;
+			const x = density.GALACTIC_CENTRE.x + R * Math.cos(phi);
+			const y = density.GALACTIC_CENTRE.y + R * Math.sin(phi);
+			if (x < BOX.xMin || x > BOX.xMax || y < BOX.yMin || y > BOX.yMax) continue;
+			for (let k = 0; k < nZ; k++) {
+				const z = BOX.zMin + (k + 0.5) * dZ;
+				const d = density.rhoDecomposed(x, y, z);
+				const cell = R * dR * dPhi * dZ;
+				const mass = (d.thin + d.thick + d.bulge + d.halo) * cell;
+				if (mass === 0) continue;
+				ref.total += mass;
+				ref.component[0] += d.thin * cell;
+				ref.component[1] += d.thick * cell;
+				ref.component[2] += d.bulge * cell;
+				ref.component[3] += d.halo * cell;
+				ref.R[Math.min(NB_R - 1, Math.floor(R / dRB))] += mass;
+				ref.z[Math.min(NB_Z - 1, Math.floor((z - BOX.zMin) / dZB))] += mass;
+			}
+		}
+	}
 }
 
-const Rs = stars.map(s => {
-        const dx = s.x - density.GALACTIC_CENTRE.x;
-        const dy = s.y - density.GALACTIC_CENTRE.y;
-        return Math.sqrt(dx * dx + dy * dy);
-});
-const phis = stars.map(s => {
-        const dx = s.x - density.GALACTIC_CENTRE.x;
-        const dy = s.y - density.GALACTIC_CENTRE.y;
-        return Math.atan2(dy, dx);
-});
-const zs = stars.map(s => s.z);
-const distToArms = stars.map(s => density.rhoDecomposed(s.x, s.y, s.z).distToArm);
+// --- Compare histograms --------------------------------------------------
+if (ref.total === 0) {
+	check('the box contains model mass at all', false);
+} else {
+	const dRB = R_MAX / NB_R;
+	const dZB = (BOX.zMax - BOX.zMin) / NB_Z;
+	const histR = new Float64Array(NB_R);
+	const histZ = new Float64Array(NB_Z);
+	const componentCounts = [0, 0, 0, 0];
+	for (let i = 0; i < buf.count; i++) {
+		const dx = buf.x[i] - density.GALACTIC_CENTRE.x;
+		const dy = buf.y[i] - density.GALACTIC_CENTRE.y;
+		const R = Math.sqrt(dx * dx + dy * dy);
+		if (R < R_MAX) histR[Math.min(NB_R - 1, Math.floor(R / dRB))]++;
+		histZ[Math.min(NB_Z - 1, Math.floor((buf.z[i] - BOX.zMin) / dZB))]++;
+		componentCounts[buf.component[i]]++;
+	}
+	function totalVariation(obs, exp) {
+		let sum = 0;
+		for (let i = 0; i < obs.length; i++) sum += Math.abs(obs[i] / buf.count - exp[i] / ref.total);
+		return sum / 2;
+	}
+	const tvR = totalVariation(histR, ref.R);
+	const tvZ = totalVariation(histZ, ref.z);
+	check('galactocentric R distribution matches the model (TV < 8%)', tvR < 0.08, +tvR.toFixed(4));
+	check('z distribution matches the model (TV < 8%)', tvZ < 0.08, +tvZ.toFixed(4));
 
-const R_hist = histogram(Rs, 0, 25, 25);
-const z_hist = histogram(zs, -3, 3, 24);
-const arm_hist = histogram(distToArms, 0, 4, 20);
+	const refTotalComponents = ref.component[0] + ref.component[1] + ref.component[2] + ref.component[3];
+	const shares = {};
+	let worstShare = 0;
+	for (let c = 0; c < 4; c++) {
+		const name = density.COMPONENT_NAMES[c];
+		const observed = componentCounts[c] / buf.count;
+		const expected = ref.component[c] / refTotalComponents;
+		shares[name] = { observed: +observed.toFixed(5), expected: +expected.toFixed(5) };
+		if (expected > 0.02) worstShare = Math.max(worstShare, Math.abs(observed - expected) / expected);
+	}
+	check('component mix matches the model within 8%', worstShare < 0.08, { worst: +worstShare.toFixed(4), ...shares });
 
-// Component breakdown
-const byComponent = { thin: 0, thick: 0, bulge: 0, halo: 0 };
-for (const s of stars) byComponent[s.component]++;
-
-// Arm overdensity test: density (per kpc^2) inside arm band vs inter-arm band.
-// Predicted ratio from arm modulation = (1+A)/(1-A) = 1.20/0.80 = 1.50.
-const inArm = distToArms.filter(d => d < 0.5).length;
-const outArm = distToArms.filter(d => d >= 1.0 && d < 2.5).length;
-// Normalise by band width (0.5 kpc vs 1.5 kpc) so we compare density, not count.
-const armDensity = inArm / 0.5;
-const interArmDensity = outArm / 1.5;
-const armRatio = armDensity / Math.max(1, interArmDensity);
-const expectedRatio = (1 + density.ARMS.amp) / (1 - density.ARMS.amp);
-
-// Spiral arm phase test: check if azimuthal distribution shows m=2 modulation.
-const phiBands = new Array(36).fill(0);
-for (const phi of phis) {
-        const a = (phi + Math.PI) / (2 * Math.PI); // [0, 1)
-        const b = Math.min(35, Math.floor(a * 36));
-        phiBands[b]++;
+	// The box sampler must not be a solar-neighbourhood blob: with the galactic
+	// centre inside the box, a real chunk of the sample has to be bulge stars.
+	check('the box sample includes the bulge population', shares.bulge.observed > 0.05, shares.bulge);
 }
-// Fourier m=2 amplitude
-let sum2cos = 0, sum2sin = 0;
-for (let i = 0; i < 36; i++) {
-        const phi = (i + 0.5) / 36 * 2 * Math.PI;
-        sum2cos += phiBands[i] * Math.cos(2 * phi);
-        sum2sin += phiBands[i] * Math.sin(2 * phi);
-}
-const m2amp = Math.sqrt(sum2cos * sum2cos + sum2sin * sum2sin) / 36;
 
-const out = {
-        date: new Date().toISOString(),
-        seed: SEED,
-        N: N_STARS,
-        box: BOX,
-        rhoMax,
-        acceptedCount: accepted,
-        byComponent,
-        armOverdensity: {
-                starsInArm: inArm,
-                starsInterArm: outArm,
-                densityInArmPerKpc: armDensity.toFixed(1),
-                densityInterArmPerKpc: interArmDensity.toFixed(1),
-                ratioInOverInter: armRatio,
-                expectedRatio: expectedRatio,
-        },
-        fourierM2Amplitude: m2amp,
-        histograms: {
-                R_kpc: R_hist,
-                z_kpc: z_hist,
-                distToArm_kpc: arm_hist,
-        },
-};
+// --- Determinism and bounds ---------------------------------------------
+{
+	const again = sampling.sampleStarsInBox(SEED, 5000, BOX);
+	const other = sampling.sampleStarsInBox(SEED + 1, 5000, BOX);
+	let identical = true;
+	let differing = 0;
+	for (let i = 0; i < again.count; i++) {
+		if (again.x[i] !== other.x[i]) differing++;
+	}
+	const first = sampling.sampleStarsInBox(SEED, 5000, BOX);
+	for (let i = 0; i < again.count; i++) {
+		if (again.x[i] !== first.x[i] || again.y[i] !== first.y[i]) identical = false;
+	}
+	check('the box sampler is deterministic in (seed, count, box)', identical);
+	check('a different seed produces a different box sample', differing > 4900, differing);
+
+	let outside = 0;
+	for (let i = 0; i < buf.count; i++) {
+		if (buf.x[i] < BOX.xMin || buf.x[i] > BOX.xMax) outside++;
+		else if (buf.y[i] < BOX.yMin || buf.y[i] > BOX.yMax) outside++;
+		else if (buf.z[i] < BOX.zMin || buf.z[i] > BOX.zMax) outside++;
+	}
+	check('every star lies inside the requested box', outside === 0, outside);
+}
+
+// --- Report --------------------------------------------------------------
+let passed = 0;
+let failed = 0;
+for (const c of checks) {
+	if (c.pass) passed++; else failed++;
+	console.log(`  ${c.pass ? 'OK  ' : 'FAIL'} ${c.name}${c.pass ? '' : `  -> ${JSON.stringify(c.detail)}`}`);
+}
+console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 
 const logPath = path.join(__dirname, 'logs', 'density-distribution.json');
 fs.mkdirSync(path.dirname(logPath), { recursive: true });
-fs.writeFileSync(logPath, JSON.stringify(out, null, 2));
+fs.writeFileSync(logPath, JSON.stringify({
+	date: new Date().toISOString(),
+	seed: SEED,
+	sampleSize: buf.count,
+	box: BOX,
+	sampleMs,
+	totalChecks: checks.length,
+	passed,
+	failed,
+	checks,
+}, null, 2));
 console.log(`Wrote ${logPath}`);
-
-// Print verdict
 console.log('\n=== VERDICT ===');
-console.log('Component shares (sampled by relative density contribution):');
-console.log(`  thin:  ${(byComponent.thin / N_STARS * 100).toFixed(1)}%`);
-console.log(`  thick: ${(byComponent.thick / N_STARS * 100).toFixed(1)}%`);
-console.log(`  bulge: ${(byComponent.bulge / N_STARS * 100).toFixed(1)}% (low — box is huge, bulge only matters near centre)`);
-console.log(`  halo:  ${(byComponent.halo / N_STARS * 100).toFixed(1)}%`);
-console.log(`Arm/inter-arm density ratio: ${armRatio.toFixed(2)} (predicted ${(1 + density.ARMS.amp) / (1 - density.ARMS.amp)})`);
-console.log(`Fourier m=2 amplitude: ${m2amp.toFixed(2)} (expected > 0 for arm modulation)`);
-console.log('Note: thin < thick because box covers R up to 22 kpc, where thick disc dominates.');
+console.log(failed === 0 ? 'PASS — box sampling follows the analytical density model' : `FAIL — ${failed} checks failed`);
+process.exit(failed === 0 ? 0 : 1);

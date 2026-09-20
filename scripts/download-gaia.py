@@ -42,7 +42,7 @@ DEFAULT_MAX_STARS = 50000
 DEFAULT_MAG_LIMIT = 12.0    # completeness cut (Gaia DR3 is essentially complete to G=12)
 DEFAULT_MIN_PARALLAX = 0.5  # mas — filters out very distant/inaccurate stars
 
-TAP_URL = 'https://gea.esac.esa.int/gaia-server/tap/sync'
+TAP_URL = 'https://gea.esac.esa.int/tap-server/tap/sync'
 
 # --- ADQL query ---
 # Gaia DR3 columns we need for the tile encoder:
@@ -79,6 +79,7 @@ def download(max_stars: int, mag_limit: float, min_parallax: float) -> str:
         'query': adql,
         'format': 'csv',
         'maxrec': str(max_stars),
+        'lang': 'ADQL',
     }).encode('utf-8')
 
     req = urllib.request.Request(

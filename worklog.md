@@ -249,3 +249,75 @@ Stage Summary:
   * 32-byte header: boundsMinXYZ + boundsMaxXYZ + starCount + reserved
   * N × 16-byte StarPacked records
   * Emitted as JS file assigning to window.__tile_<band>_<x>_<y>_<z> (file:// compatible)
+
+---
+
+Task ID: 7
+Agent: main
+Task: Fix the camera/fly-through ("camera / fly seems wrong implemented") and make it verifiable without a browser.
+
+Work Log:
+- Read the existing camera.js: 6-DOF with momentum, but `buildViewProj` allocated two JS arrays per frame, the projection matrix used the OpenGL depth convention (near plane → z = -1, the half of the WebGPU range below zero is clipped away), and the right/up basis was recomputed from a world-up cross product on every frame.
+- Rewrote src/core/camera.js: preallocated Float64->Float32 scratch, exponential velocity damping with a time constant (dt-correct instead of a per-frame factor), speed multiplier 0.05–60x over a 0.010 kpc/s base, pointer-lock-ready input handling, WebGPU z ∈ [0,1] projection, orthonormal basis carried between frames.
+- Wrote experiments/camera-test.js (31 checks): basis orthonormality and handedness, NDC depth range, FOV/aspect, screen-space sign checks, behind-camera rejection, dt independence (≤1% over 60 vs 144 Hz), speed/boost clamps, input consumption, yaw/pitch response, reset on its own tick, and a zero-allocation check over 600 frames (compares a sampled heap delta and the identity of the returned state object).
+- First run: 28/31. Diagnosed the three failures to a double translation in `buildViewProj`: the view matrix subtracted cameraPos *and* the shader subtracted it again. Removed the translation column; view = rotation only, the shader does the camera-relative subtraction.
+- Second run: 31/31. Log: experiments/logs/camera.json.
+
+Stage Summary:
+- Camera model is now documented by the test rather than by comments; the test is the spec.
+- Two real bugs fixed: per-frame allocation in the render path, and an OpenGL-style projection in a WebGPU pipeline (stars closer than ~2 near-planes were silently clipped).
+- No browser is available in this environment, so the camera is verified in Node only; the visual verdict still needs a GPU.
+
+---
+
+Task ID: 8
+Agent: main
+Task: Replace the rejection sampler with an exact single-pass sampler and validate it against the density model.
+
+Work Log:
+- The old sampler precomputed a rhoMax grid (80^3 = 512k evaluations) and rejected draws, which (a) required the grid in every experiment, (b) never terminated for components that the grid over/under-estimated, and (c) could not hit the component shares exactly.
+- Rewrote src/math/sampling.js as a closed-form sampler: component from the truncated delivery mass, disc radius by 32-step bisection of the exponential-disc inverse CDF, sech^2 / Laplace vertical profiles by inverse CDF, bulge from a Plummer mass inversion, halo from an r^-1.5 inversion, spiral arm phase by bisection of F = (t + A·sin t)/2π with the arm replica chosen uniformly (channel u4). Positions are written into caller-provided SoA buffers; nothing allocates.
+- Wrote experiments/sampling-test.js (19 checks) against an independent reference: R, |z| and φ total-variation histograms, arm-phase distribution vs 1 + A·cos(theta), inter-arm vs in-arm contrast, component shares vs the truncated model, local density ratios in three volumes, determinism, bounds, IMF and star-type placement on top of the sampler.
+- Fixed two real defects found by the test: the arm phase covered only one of the m = 2 replicas (half the disc was empty, azimuthal TV 0.38), and a reference integral that ignored the truncation made a correct sampler look wrong.
+- Final: 19/19, log experiments/logs/sampling.json. 300k stars in 449 ms.
+
+Stage Summary:
+- `precomputeRhoMax`, `sampleStars` and `acceptanceProbability` are gone; callers use `sampleGalaxyStars(seed, count, out)` / `sampleStarsInBox(seed, count, box, out)`.
+- Every model experiment that used the old API was rewritten (density-distribution, star-types-evolution, nebula-placement, visualize-data).
+
+---
+
+Task ID: 9
+Agent: main
+Task: Replace the one-.js-per-cell tile layout with a single catalog bundle plus a streaming cell manager ("multiple small tiles js is not good").
+
+Work Log:
+- Measured the old layout: 1170 files (648 near + 522 medium), 4.7 MB on disk for 2,502 stars — 44 bytes of file for 16 bytes of star, one `<script>` tag per cell if loaded per band.
+- New asset: one bundle, src/data/tiles/catalog.js, assigning `window.__galaxy_catalog` with a band table (cell size + streaming radius) and cells as base64 StarPacked payloads. 164.6 KB for the 3,829-star, 2,045-cell subset; 44 bytes per star including base64 and JSON overhead.
+- experiments/tile-encoder.js rewritten: RA/dec/parallax → galactic XYZ with self-tests (Sirius, galactic centre), G < 12 and parallax SNR > 5 cuts, stochastic decimation inside 100 pc, band lattice, bundle writer, `--mock`, and a loader round-trip check at the end of main().
+- New src/stream/tile-loader.js: script injection, `prepareBundle` (band table → manifest with per-band radius Float32Array), `decodeCell(manifest, i, out)` decoding base64 straight into the caller's view, no per-cell temporaries.
+- New src/stream/cell-manager.js: residency set recomputed when the camera moves 12.5 pc or every 0.25 s; candidates are cells whose box is within their band's streaming radius; nearest-first by squared distance to the box, ties by index; star budget (default 250k) filled in that order; decoded payloads in an LRU cache (4096 cells); `update()` reports whether the set changed so the renderer only re-uploads on change.
+- New experiments/tile-stream-test.js (26 checks): freshness against a fresh encode, band table (radii now come from the data, not from a fallback), lattice, payload decode, residency/hysteresis/emptying, sweep of 200 camera positions, tight budget against a brute-force nearest-first fill, LRU limit, and a monkey-patched decoder proving `writeInto` does not re-decode.
+- Two bugs found by the test: the halo jump did not report an empty set (stale stars would keep drawing), and the 64-shell counting sort ordered the inner neighbourhood by shell, not by distance (192 stars vs the brute force's 198/71). Ordering is now exact.
+
+Stage Summary:
+- Deleted: src/data/tiles/near/, src/data/tiles/medium/, src/render/wgsl/, src/render/star-distant.js, src/math/split-double.js.
+- `python3 scripts/run.py tile-encoder` regenerates the bundle; `tile-stream` proves the bundle on disk matches a fresh encode.
+- Startup cost of streaming: one 165 KB script, 2,045 cells decoded lazily around the camera.
+
+---
+
+Task ID: 10
+Agent: main
+Task: Architecture review — bugs and improvements across the runtime, then bring the docs and the test sweep back in line.
+
+Work Log:
+- Found and fixed a model inconsistency: the sampler truncated the bulge at 6 Plummer radii while `density.js` did not, so around z = 12 kpc the untruncated bulge tail outweighed the halo in `dominantComponent` and in nebula placement. Truncation is now part of the field (JS + WGSL mirror) with a documented rationale.
+- Found and fixed a whole class of bug: every module kept two hand-written export lists (Node and `window`), and they had drifted — the renderer called `StarRecord.writeRecord`, which existed only in the Node export, so `prepare()` would have thrown on the first frame in the browser. All 14 modules now expose one object to both environments; `export-parity-test.js` enforces it.
+- New tests: renderer-test.js (star-sprites against a stub WebGPU device: buffer sizing, upload-once, upload-on-change, instance counts, uniform packing, exposure), m1-smoke-test.js (index.html script order and completeness, namespaces defined before use, shipped asset loads), wgsl-validate.js rewritten against shaders.js (constants, function names, markers).
+- Fixed the early-return-with-empty-residency path in the renderer (an empty frame now still clears and presents), the device-limit clamp, and the exposure step consumption.
+- Docs: AGENTS.md rules updated (one API object, WGSL in shaders.js, bundle loading, truncation, draw-empty), plan.md updated (bundle pipeline, streaming design, file tree, truncation section, tuning table), experiments/README.md rewritten, scripts/run.py split into tests/studies/assets with an 11-test `all-tests` sweep, viz-galaxy.py made repo-relative.
+
+Stage Summary:
+- `python3 scripts/run.py all-tests`: 11/11 pass (export-parity, m1-smoke, wgsl-validate, camera, renderer, tile-stream, tile-encoder-smoke, sampling, density-distribution, star-types-evolution, nebula-placement).
+- Known open items: the procedural field is generated synchronously at startup (300k stars ≈ 0.7 s, accepted for now); sub-cell jitter is stored in the record but not decoded on the GPU; no browser exists here, so all GPU-visible behaviour is verified against stubs.

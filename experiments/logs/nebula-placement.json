@@ -1,48 +1,150 @@
 {
-  "date": "2026-09-19T22:16:49.734Z",
+  "date": "2026-09-19T23:59:18.120Z",
   "seed": 99,
-  "targetN": 1000,
-  "placedN": 1000,
+  "targetN": 1200,
+  "placedN": 1200,
+  "placeMs": 574,
   "box": {
-    "xMin": -25,
-    "xMax": 5,
-    "yMin": -15,
-    "yMax": 15,
-    "zMin": -5,
-    "zMax": 5
+    "xMin": -20,
+    "xMax": 20,
+    "yMin": -20,
+    "yMax": 20,
+    "zMin": -2,
+    "zMax": 2
   },
   "byType": {
-    "SNR": 835,
-    "dark": 108,
-    "HII": 21,
-    "reflection": 36
+    "SNR": 285,
+    "planetary": 781,
+    "dark": 53,
+    "reflection": 35,
+    "HII": 46
   },
   "byComponent": {
-    "thick": 533,
-    "thin": 466,
-    "halo": 1
+    "thin": 614,
+    "thick": 161,
+    "bulge": 425
   },
   "armDistBuckets": [
-    34,
-    65,
-    66,
-    127,
-    708
+    171,
+    254,
+    231,
+    194,
+    350
   ],
-  "meanSizeKpc": 0.17199106462120473,
-  "hII": {
-    "total": 21,
-    "inArm": 21,
-    "inArmPct": "100.0",
-    "meanDistToArmKpc": "0.144"
-  },
-  "planetary": {
-    "total": 0,
-    "inBulge": 0,
-    "inBulgePct": "0.0"
-  },
-  "halo": {
-    "totalNebulae": 0,
-    "expected": 0
-  }
+  "meanSizeKpc": 0.1707327611538342,
+  "totalChecks": 20,
+  "passed": 20,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "the placer reaches the requested count",
+      "pass": true,
+      "detail": 1200
+    },
+    {
+      "name": "all five nebula types are present",
+      "pass": true,
+      "detail": {
+        "SNR": 285,
+        "planetary": 781,
+        "dark": 53,
+        "reflection": 35,
+        "HII": 46
+      }
+    },
+    {
+      "name": "HII regions are present but not dominant",
+      "pass": true,
+      "detail": 0.03833333333333333
+    },
+    {
+      "name": "planetary nebulae are present",
+      "pass": true,
+      "detail": 781
+    },
+    {
+      "name": "HII regions sit on the arm ridges (mean distance-to-arm < 0.35 kpc)",
+      "pass": true,
+      "detail": 0.153
+    },
+    {
+      "name": "reflection nebulae sit near the arms too (mean < 0.9 kpc)",
+      "pass": true,
+      "detail": 0.548
+    },
+    {
+      "name": "HII regions are closer to the arms than dark clouds",
+      "pass": true,
+      "detail": {
+        "hII": 0.153,
+        "dark": 1.145
+      }
+    },
+    {
+      "name": "planetary nebulae favour the inner galaxy (R < 3 kpc more often than the sample average)",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "almost no nebula sits in the halo or above |z| = 1 kpc",
+      "pass": true,
+      "detail": {
+        "haloish": 41,
+        "fraction": 0.0342
+      }
+    },
+    {
+      "name": "every nebula lies inside the requested box",
+      "pass": true
+    },
+    {
+      "name": "sizes stay inside 20-320 pc",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "opacities stay inside 0.4-0.9",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "every nebula carries its type colour",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "the summary reports the documented size range",
+      "pass": true,
+      "detail": 0.1707327611538342
+    },
+    {
+      "name": "placement is deterministic in the seed",
+      "pass": true
+    },
+    {
+      "name": "a different seed moves the nebulae",
+      "pass": true,
+      "detail": 50
+    },
+    {
+      "name": "the galactic centre is not a nebula nursery",
+      "pass": true,
+      "detail": 0.02
+    },
+    {
+      "name": "the halo is strongly suppressed",
+      "pass": true,
+      "detail": 0.0015
+    },
+    {
+      "name": "an arm mid-disc position has a real probability",
+      "pass": true,
+      "detail": 0.048758665952147374
+    },
+    {
+      "name": "the centre prefers a stellar (planetary) type",
+      "pass": true,
+      "detail": "planetary"
+    }
+  ]
 }

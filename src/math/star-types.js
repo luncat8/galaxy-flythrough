@@ -1,270 +1,247 @@
-// experiments/lib/star-types.js
-// Stellar type assignment based on local population and stellar evolution.
+// src/math/star-types.js
+// Stellar populations: mass, age, evolution state, colour — a pure function of
+// (seed, density component, position in the disc). Mirrored in WGSL by
+// src/render/shaders.js (procedural-gen) and validated by
+// experiments/wgsl-validate.js.
 //
-// For each star position, the local component (thin/thick/bulge/halo) and
-// distance to nearest spiral arm determine:
-//   - local age distribution (young near arms, old in bulge/halo)
-//   - metallicity (solar in disc, super-solar in bulge, low in halo)
-//   - IMF sample (Salpeter)
-//   - evolved state (main sequence / giant / white dwarf) from age vs MS lifetime
+// Physics that drives the placement of star types:
+//   - IMF (Salpeter) decides the mass, hence the main-sequence lifetime.
+//   - Age comes from the local population: thin disc is mixed, arms are young,
+//     thick disc / bulge / halo are old.
+//   - A star older than its MS lifetime is a red giant (low mass) or has
+//     already shed its envelope into a white dwarf (high mass).
+//   - O/B stars therefore only exist near spiral arms, red giants and
+//     planetary nebulae concentrate in the bulge, and the halo is old and
+//     metal-poor.
 //
-// This implements the "star types evolution position" requirement: O/B stars
-// are found only in/near spiral arms, red giants concentrate in bulge, etc.
+// deriveStar mutates a caller-provided record: the renderer derives millions
+// of stars and must not allocate per star.
 
 'use strict';
 
-const density = require('./density.js');
-const hash = require('./hash.js');
+(function () {
+	const density = (typeof module !== 'undefined' && module.exports)
+		? require('./density.js')
+		: window.DensityLib;
+	const hash = (typeof module !== 'undefined' && module.exports)
+		? require('./hash.js')
+		: window.HashLib;
+	const records = (typeof module !== 'undefined' && module.exports)
+		? require('./star-record.js')
+		: window.StarRecord;
 
-// Spectral classification by temperature (approximate).
-// Returns one of: O, B, A, F, G, K, M, WD (white dwarf), RG (red giant).
-function classifyByTempAndState(Teff, evolvedState) {
-        if (evolvedState === 'wd') return 'WD';
-        if (evolvedState === 'giant') return 'RG';
-        if (Teff >= 30000) return 'O';
-        if (Teff >= 10000) return 'B';
-        if (Teff >= 7500)  return 'A';
-        if (Teff >= 6000)  return 'F';
-        if (Teff >= 5200)  return 'G';
-        if (Teff >= 3700)  return 'K';
-        return 'M';
-}
+	// Spectral class from temperature and evolution state.
+	function classifyByTempAndState(Teff, evolvedState) {
+		if (evolvedState === 'wd') return 'WD';
+		if (evolvedState === 'giant') return 'RG';
+		if (Teff >= 30000) return 'O';
+		if (Teff >= 10000) return 'B';
+		if (Teff >= 7500) return 'A';
+		if (Teff >= 6000) return 'F';
+		if (Teff >= 5200) return 'G';
+		if (Teff >= 3700) return 'K';
+		return 'M';
+	}
 
-// Rough colour (sRGB 0-1) by spectral class — used for visualisation.
-function classColor(cls) {
-        switch (cls) {
-                case 'O': return [0.60, 0.70, 1.00];
-                case 'B': return [0.75, 0.82, 1.00];
-                case 'A': return [0.95, 0.95, 1.00];
-                case 'F': return [1.00, 1.00, 0.92];
-                case 'G': return [1.00, 0.95, 0.75];
-                case 'K': return [1.00, 0.78, 0.50];
-                case 'M': return [1.00, 0.55, 0.40];
-                case 'RG': return [1.00, 0.40, 0.30];
-                case 'WD': return [0.85, 0.85, 1.00];
-                default:  return [1.0, 1.0, 1.0];
-        }
-}
+	// Rough sRGB colour by spectral class — visualisation only, the renderer
+	// uses the LUT index.
+	function classColor(cls) {
+		switch (cls) {
+			case 'O': return [0.60, 0.70, 1.00];
+			case 'B': return [0.75, 0.82, 1.00];
+			case 'A': return [0.95, 0.95, 1.00];
+			case 'F': return [1.00, 1.00, 0.92];
+			case 'G': return [1.00, 0.95, 0.75];
+			case 'K': return [1.00, 0.78, 0.50];
+			case 'M': return [1.00, 0.55, 0.40];
+			case 'RG': return [1.00, 0.40, 0.30];
+			case 'WD': return [0.85, 0.85, 1.00];
+			default: return [1.0, 1.0, 1.0];
+		}
+	}
 
-// Mass-luminosity relation (rough): L/Lsun = (M/Msun)^alpha
-function luminosityFromMass(m) {
-        if (m < 0.7) return m ** 2.3;
-        if (m < 2.0) return m ** 4.0;
-        if (m < 20)  return m ** 3.5;
-        return m ** 2.8; // very massive: radiation pressure flattens
-}
+	// L/Lsun = (M/Msun)^alpha, piecewise (radiation pressure flattens the top).
+	function luminosityFromMass(m) {
+		if (m < 0.7) return m ** 2.3;
+		if (m < 2.0) return m ** 4.0;
+		if (m < 20) return m ** 3.5;
+		return m ** 2.8;
+	}
 
-// Mass-Teff table (empirical, main sequence). [M_sun, Teff_K].
-// Interpolated in log-log space.
-const MASS_TEFF_TABLE = [
-        [0.08,  2400],
-        [0.10,  2800],
-        [0.15,  3200],
-        [0.20,  3400],
-        [0.30,  3600],
-        [0.45,  3800],
-        [0.70,  4500],
-        [0.85,  5000],
-        [1.00,  5800],
-        [1.50,  6800],
-        [2.00,  9000],
-        [3.00,  12000],
-        [5.00,  16000],
-        [9.00,  22000],
-        [16.0,  30000],
-        [30.0,  38000],
-        [60.0,  45000],
-        [100,   50000],
-];
+	// Empirical main-sequence mass-Teff relation, [M_sun, Teff_K], interpolated
+	// in log-log. A pure L/R formula misclassifies M dwarfs as K stars.
+	const MASS_TEFF_TABLE = [
+		[0.08, 2400], [0.10, 2800], [0.15, 3200], [0.20, 3400], [0.30, 3600],
+		[0.45, 3800], [0.70, 4500], [0.85, 5000], [1.00, 5800], [1.50, 6800],
+		[2.00, 9000], [3.00, 12000], [5.00, 16000], [9.00, 22000],
+		[16.0, 30000], [30.0, 38000], [60.0, 45000], [100, 50000],
+	];
 
-// Mass-temperature relation via log-log interpolation of empirical table.
-function teffFromMass(m) {
-        if (m <= MASS_TEFF_TABLE[0][0]) return MASS_TEFF_TABLE[0][1];
-        const last = MASS_TEFF_TABLE[MASS_TEFF_TABLE.length - 1];
-        if (m >= last[0]) return last[1];
-        for (let i = 0; i < MASS_TEFF_TABLE.length - 1; i++) {
-                const lo = MASS_TEFF_TABLE[i];
-                const hi = MASS_TEFF_TABLE[i + 1];
-                if (m >= lo[0] && m <= hi[0]) {
-                        const t = (Math.log10(m) - Math.log10(lo[0])) / (Math.log10(hi[0]) - Math.log10(lo[0]));
-                        return Math.pow(10, (1 - t) * Math.log10(lo[1]) + t * Math.log10(hi[1]));
-                }
-        }
-        return 5772;
-}
+	function teffFromMass(m) {
+		const first = MASS_TEFF_TABLE[0];
+		if (m <= first[0]) return first[1];
+		const last = MASS_TEFF_TABLE[MASS_TEFF_TABLE.length - 1];
+		if (m >= last[0]) return last[1];
+		for (let i = 0; i < MASS_TEFF_TABLE.length - 1; i++) {
+			const lo = MASS_TEFF_TABLE[i];
+			const hi = MASS_TEFF_TABLE[i + 1];
+			if (m < lo[0] || m > hi[0]) continue;
+			const t = (Math.log10(m) - Math.log10(lo[0])) / (Math.log10(hi[0]) - Math.log10(lo[0]));
+			return Math.pow(10, (1 - t) * Math.log10(lo[1]) + t * Math.log10(hi[1]));
+		}
+		return 5772;
+	}
 
-// Main-sequence lifetime (Gyr). Rough: t_ms = 10 * (M/Msun)^-2.5 * L_factor
-function msLifetimeGyr(m) {
-        // t_ms ~ M / L (in solar units, times 10 Gyr)
-        const L = luminosityFromMass(m);
-        return Math.min(15.0, Math.max(0.003, 10.0 * m / L));
-}
+	// Main-sequence lifetime in Gyr: t ~ 10 * M / L.
+	function msLifetimeGyr(m) {
+		return Math.min(15.0, Math.max(0.003, 10.0 * m / luminosityFromMass(m)));
+	}
 
-// Salpeter IMF sample: dN/dM = M^-2.35, M in [0.08, 100].
-// Inverse CDF sampling: M = M_min * u^(-1/1.35)
-function sampleMassIMF(u) {
-        const M_min = 0.08;
-        const M_max = 100.0;
-        const alpha = 2.35;
-        const xMin = Math.pow(M_min, 1 - alpha);
-        const xMax = Math.pow(M_max, 1 - alpha);
-        const x = xMin + (xMax - xMin) * u;
-        return Math.pow(x, 1 / (1 - alpha));
-}
+	// Salpeter IMF sample, dN/dM ~ M^-2.35 on [0.08, 100].
+	function sampleMassIMF(u) {
+		const alpha = 2.35;
+		const xMin = Math.pow(0.08, 1 - alpha);
+		const xMax = Math.pow(100.0, 1 - alpha);
+		return Math.pow(xMin + (xMax - xMin) * u, 1 / (1 - alpha));
+	}
 
-// Local age distribution (Gyr) by component + arm proximity.
-// Returns sampled age. Arms: very young. Bulge/halo: old. Disc: mixed.
-function sampleLocalAge(component, distToArm, R, u1, u2) {
-        if (component === 'bulge') {
-                // Old population: log-normal, mean ~10 Gyr, sigma ~0.3 dex
-                // Box-Muller
-                const z = Math.sqrt(-2 * Math.log(u1 + 1e-12)) * Math.cos(2 * Math.PI * u2);
-                return Math.min(13.5, Math.exp(Math.log(10) + 0.3 * z));
-        }
-        if (component === 'halo') {
-                const z = Math.sqrt(-2 * Math.log(u1 + 1e-12)) * Math.cos(2 * Math.PI * u2);
-                return Math.min(13.5, Math.exp(Math.log(12) + 0.25 * z));
-        }
-        if (component === 'thick') {
-                const z = Math.sqrt(-2 * Math.log(u1 + 1e-12)) * Math.cos(2 * Math.PI * u2);
-                return Math.min(13.5, Math.exp(Math.log(8) + 0.4 * z));
-        }
-        // thin disc: depends on arm proximity
-        if (distToArm < 0.5 && R > 3.0 && R < 12.0) {
-                // Young population in arm: power-law, t < 0.1 Gyr typically
-                return Math.pow(u1, 3.0) * 0.3; // skewed young
-        }
-        // Disc average: log-normal mean 5 Gyr
-        const z = Math.sqrt(-2 * Math.log(u1 + 1e-12)) * Math.cos(2 * Math.PI * u2);
-        return Math.min(13.5, Math.exp(Math.log(5) + 0.5 * z));
-}
+	// Age in Gyr for a population. u1, u2 are independent uniforms.
+	function sampleLocalAge(componentIndex, distToArm, R, u1, u2) {
+		const logNormal = (mean, sigma) => Math.min(13.5, Math.exp(Math.log(mean) + sigma * gaussian(u1, u2)));
+		switch (componentIndex) {
+			case density.COMPONENT_BULGE: return logNormal(10, 0.3);
+			case density.COMPONENT_HALO: return logNormal(12, 0.25);
+			case density.COMPONENT_THICK: return logNormal(8, 0.4);
+			default:
+				// Thin disc: young in the arms, mixed elsewhere.
+				if (distToArm < 0.5 && R > 3.0 && R < 12.0) return Math.pow(u1, 3.0) * 0.3;
+				return logNormal(5, 0.5);
+		}
+	}
 
-// Metallicity by component.
-function metallicityFor(component) {
-        switch (component) {
-                case 'thin':  return 0.020;   // solar
-                case 'thick': return 0.008;
-                case 'bulge': return 0.035;   // super-solar
-                case 'halo':  return 0.001;
-                default:      return 0.020;
-        }
-}
+	// Box-Muller, clamped away from the log singularity.
+	function gaussian(u1, u2) {
+		return Math.sqrt(-2 * Math.log(Math.max(1e-12, u1))) * Math.cos(2 * Math.PI * u2);
+	}
 
-// Derive stellar properties from position + hash seed.
-// Returns { mass, age, Teff, luminosity, class, color, evolvedState,
-//           component, R, phi, z, distToArm, metallicity, absMag, appMag }.
-function deriveStarProps(x, y, z, seed) {
-        const d = density.rhoDecomposed(x, y, z);
-        const uComp = hash.hash01(seed * 31 + 7);
-        const component = density.sampleComponent(d, uComp);
+	function metallicityFor(componentIndex) {
+		switch (componentIndex) {
+			case density.COMPONENT_THIN: return 0.020;   // solar
+			case density.COMPONENT_THICK: return 0.008;
+			case density.COMPONENT_BULGE: return 0.035;  // super-solar
+			default: return 0.001;                       // halo
+		}
+	}
 
-        // Sample mass from IMF
-        const uMass = hash.hash01(seed * 31 + 1);
-        const mass = sampleMassIMF(uMass);
+	// Absolute V magnitude from luminosity: M_V = M_V,sun - 2.5 log10(L).
+	function absoluteMagnitude(lum) {
+		return 4.83 - 2.5 * Math.log10(Math.max(1e-6, lum));
+	}
 
-        // Sample age
-        const uAge1 = hash.hash01(seed * 31 + 2);
-        const uAge2 = hash.hash01(seed * 31 + 3);
-        const age = sampleLocalAge(component, d.distToArm, d.R, uAge1, uAge2);
+	// Core derivation. `out` is mutated in place and returned.
+	function deriveStar(seed, componentIndex, R, distToArm, out) {
+		const uMass = hash.hash01(seed * 31 + 1);
+		const uAge1 = hash.hash01(seed * 31 + 2);
+		const uAge2 = hash.hash01(seed * 31 + 3);
+		const uEvolve = hash.hash01(seed * 31 + 4);
+		const uEvolve2 = hash.hash01(seed * 31 + 5);
 
-        // MS lifetime
-        const tMS = msLifetimeGyr(mass);
+		const mass = sampleMassIMF(uMass);
+		const age = sampleLocalAge(componentIndex, distToArm, R, uAge1, uAge2);
+		const tMS = msLifetimeGyr(mass);
 
-        let evolvedState = 'ms';
-        let Teff, lum;
-        if (age > tMS * 1.1 && mass < 8.0) {
-                // Red giant branch / AGB
-                evolvedState = 'giant';
-                Teff = 3000 + 1000 * hash.hash01(seed * 31 + 4); // 3000-4000 K
-                lum = 100 + 10000 * hash.hash01(seed * 31 + 5);
-        } else if (age > tMS * 1.1 && mass >= 8.0) {
-                // Massive star already went SN — skip and emit a young replacement
-                // (in practice the procedural generator should not place O/B in old regions)
-                // For experiment, emit a white dwarf remnant.
-                evolvedState = 'wd';
-                Teff = 8000 + 30000 * hash.hash01(seed * 31 + 4); // hot cooling WD
-                lum = 0.001 + 0.1 * hash.hash01(seed * 31 + 5);
-        } else {
-                Teff = teffFromMass(mass);
-                lum = luminosityFromMass(mass);
-        }
+		let state = 'ms';
+		let teff;
+		let lum;
+		if (age > tMS * 1.1 && mass >= 8.0) {
+			// Massive star past its (short) MS lifetime: remnant.
+			state = 'wd';
+			teff = 8000 + 30000 * uEvolve;
+			lum = 0.001 + 0.1 * uEvolve2;
+		} else if (age > tMS * 1.1) {
+			// Low/intermediate mass: red giant.
+			state = 'giant';
+			teff = 3000 + 1000 * uEvolve;
+			lum = 100 + 10000 * uEvolve2;
+		} else {
+			teff = teffFromMass(mass);
+			lum = luminosityFromMass(mass);
+		}
 
-        const cls = classifyByTempAndState(Teff, evolvedState);
-        const color = classColor(cls);
-        const metallicity = metallicityFor(component);
+		const spectralClass = classifyByTempAndState(teff, state);
+		out.mass = mass;
+		out.age = age;
+		out.teff = teff;
+		out.luminosity = lum;
+		out.state = state;
+		out.spectralClass = spectralClass;
+		out.colorIndex = records.spectralClassIndex(spectralClass);
+		out.absMag = absoluteMagnitude(lum);
+		out.metallicity = metallicityFor(componentIndex);
+		out.component = componentIndex;
+		out.R = R;
+		out.distToArm = distToArm;
+		return out;
+	}
 
-        // Absolute V magnitude from luminosity: M_V = M_Vsun - 2.5*log10(L)
-        const absMag = 4.83 - 2.5 * Math.log10(Math.max(1e-6, lum));
+	// Convenience wrapper for the model experiments: takes a position, works
+	// out the local population, and returns a full record (allocates one
+	// object — never call this from the render loop).
+	function deriveStarProps(x, y, z, seed) {
+		const d = density.rhoDecomposed(x, y, z);
+		const componentIndex = density.sampleComponentIndex(d, hash.hash01(seed * 31 + 7));
+		const out = deriveStar(seed, componentIndex, d.R, d.distToArm, {
+			x, y, z, phi: d.phi, zp: d.zp, componentName: density.COMPONENT_NAMES[componentIndex],
+		});
+		out.color = classColor(out.spectralClass);
+		out.distPc = Math.sqrt(x * x + y * y + z * z) * 1000;
+		out.appMag = out.absMag + 5 * Math.log10(Math.max(1, out.distPc)) - 5;
+		return out;
+	}
 
-        // Apparent magnitude from distance to Sun (in kpc → parsecs)
-        const distPc = Math.sqrt(x * x + y * y + z * z) * 1000;
-        const appMag = absMag + 5 * Math.log10(Math.max(1, distPc)) - 5;
+	function summariseByComponent(stars) {
+		const byClass = {};
+		const byComponent = {};
+		for (const s of stars) {
+			byClass[s.spectralClass] = (byClass[s.spectralClass] || 0) + 1;
+			const name = density.COMPONENT_NAMES[s.component];
+			byComponent[name] = (byComponent[name] || 0) + 1;
+		}
+		return { byClass, byComponent, total: stars.length };
+	}
 
-        return {
-                x, y, z,
-                mass, age, Teff, luminosity: lum,
-                class: cls,
-                color,
-                evolvedState,
-                component,
-                R: d.R, phi: d.phi, zp: d.zp,
-                distToArm: d.distToArm,
-                metallicity,
-                absMag, appMag,
-        };
-}
+	// Mean distance-to-arm and the fraction within 0.5 kpc, per spectral class.
+	function classVsArmDistance(stars) {
+		const buckets = {};
+		for (const cls of records.SPECTRAL_CLASSES) buckets[cls] = [];
+		for (const s of stars) {
+			if (buckets[s.spectralClass]) buckets[s.spectralClass].push(s.distToArm);
+		}
+		const out = {};
+		for (const cls of Object.keys(buckets)) {
+			const arr = buckets[cls];
+			if (arr.length === 0) {
+				out[cls] = { n: 0, mean: 0, fracLT05: 0 };
+				continue;
+			}
+			let sum = 0;
+			let close = 0;
+			for (const v of arr) {
+				sum += v;
+				if (v < 0.5) close++;
+			}
+			out[cls] = { n: arr.length, mean: sum / arr.length, fracLT05: close / arr.length };
+		}
+		return out;
+	}
 
-// Summary statistics over a sample of derived stars.
-function summariseByComponent(stars) {
-        const byClass = {};
-        const byComponent = {};
-        for (const s of stars) {
-                if (!byClass[s.class]) byClass[s.class] = 0;
-                byClass[s.class]++;
-                if (!byComponent[s.component]) byComponent[s.component] = 0;
-                byComponent[s.component]++;
-        }
-        return { byClass, byComponent, total: stars.length };
-}
-
-// Histogram of distance-to-arm for each spectral class.
-// Validates that O/B are near arms, K/M distributed.
-function classVsArmDistance(stars) {
-        const buckets = { O: [], B: [], A: [], F: [], G: [], K: [], M: [], RG: [], WD: [] };
-        for (const s of stars) {
-                if (buckets[s.class]) buckets[s.class].push(s.distToArm);
-        }
-        const out = {};
-        for (const k of Object.keys(buckets)) {
-                const arr = buckets[k];
-                if (arr.length === 0) { out[k] = { n: 0, mean: 0, fracLT05: 0 }; continue; }
-                const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
-                const lt = arr.filter(v => v < 0.5).length;
-                out[k] = { n: arr.length, mean, fracLT05: lt / arr.length };
-        }
-        return out;
-}
-
-if (typeof module !== 'undefined') {
-        module.exports = {
-                classifyByTempAndState,
-                classColor,
-                luminosityFromMass,
-                teffFromMass,
-                msLifetimeGyr,
-                sampleMassIMF,
-                sampleLocalAge,
-                metallicityFor,
-                deriveStarProps,
-                summariseByComponent,
-                classVsArmDistance,
-        };
-}
-if (typeof window !== 'undefined') {
-        window.StarTypesLib = {
-                classifyByTempAndState, classColor,
-                luminosityFromMass, teffFromMass, msLifetimeGyr,
-                sampleMassIMF, sampleLocalAge, metallicityFor,
-                deriveStarProps, summariseByComponent, classVsArmDistance,
-        };
-}
+	const StarTypesLib = {
+		MASS_TEFF_TABLE,
+		classifyByTempAndState, classColor, luminosityFromMass, teffFromMass,
+		msLifetimeGyr, sampleMassIMF, sampleLocalAge, metallicityFor,
+		absoluteMagnitude, deriveStar, deriveStarProps,
+		summariseByComponent, classVsArmDistance,
+	};
+	if (typeof module !== 'undefined') module.exports = StarTypesLib;
+	if (typeof window !== 'undefined') window.StarTypesLib = StarTypesLib;
+})();

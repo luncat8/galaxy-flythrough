@@ -32,25 +32,43 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# Pass/fail tests. `all-tests` runs everything in TYPES['test'] in this order:
+# engineering checks first (cheap, catch wiring mistakes), then model tests.
 EXPERIMENTS = {
+    'export-parity':         'experiments/export-parity-test.js',
+    'm1-smoke':              'experiments/m1-smoke-test.js',
+    'wgsl-validate':         'experiments/wgsl-validate.js',
+    'camera':                'experiments/camera-test.js',
+    'renderer':              'experiments/renderer-test.js',
+    'tile-stream':           'experiments/tile-stream-test.js',
+    'tile-encoder-smoke':    'experiments/tile-encoder-smoke-test.js',
+    'sampling':              'experiments/sampling-test.js',
+    'density-distribution':  'experiments/density-distribution-test.js',
+    'star-types-evolution':  'experiments/star-types-evolution-test.js',
+    'nebula-placement':      'experiments/nebula-placement-test.js',
+    # Studies: they print a recommendation rather than pass/fail.
     'hash-quality':          'experiments/hash-quality-test.js',
     'precision':             'experiments/precision-test.js',
     'packing':               'experiments/packing-test.js',
     'filter':                'experiments/filter-test.js',
-    'wgsl-validate':         'experiments/wgsl-validate.js',
-    'm1-smoke':              'experiments/m1-smoke-test.js',
-    'density-distribution':  'experiments/density-distribution-test.js',
-    'star-types-evolution':  'experiments/star-types-evolution-test.js',
-    'nebula-placement':      'experiments/nebula-placement-test.js',
-    'tile-encoder-smoke':    'experiments/tile-encoder-smoke-test.js',
+    # Asset generation / visualisation.
+    'tile-encoder':          'experiments/tile-encoder.js',
     'visualize-data':        'experiments/visualize-data.js',
+}
+
+TYPES = {
+    'test':   ['export-parity', 'm1-smoke', 'wgsl-validate', 'camera', 'renderer', 'tile-stream',
+               'tile-encoder-smoke', 'sampling', 'density-distribution', 'star-types-evolution',
+               'nebula-placement'],
+    'study':  ['hash-quality', 'precision', 'packing', 'filter'],
+    'asset':  ['tile-encoder', 'visualize-data'],
 }
 
 # Compound commands (Python script or shell sequence)
 COMPOUND = {
     'encode-mock-tiles': {
-        'desc': 'Generate mock stars and encode them to tile files',
-        'cmd':  ['node', 'experiments/tile-encoder.js', '--mock', '--output', 'src/data/tiles/'],
+        'desc': 'Generate mock stars and encode them into src/data/tiles/catalog.js',
+        'cmd':  ['node', 'experiments/tile-encoder.js', '--mock', '--output', 'src/data/tiles/catalog.js'],
     },
     'all-tests': {
         'desc': 'Run all validation + model tests in sequence',
@@ -75,16 +93,16 @@ def run(name: str) -> int:
     if name == 'list':
         print('Available commands:')
         print()
-        print('Validation tests:')
-        for k in ['hash-quality', 'precision', 'packing', 'filter', 'wgsl-validate', 'm1-smoke', 'tile-encoder-smoke']:
+        print('Tests (pass/fail, run by all-tests):')
+        for k in TYPES['test']:
             print(f'  {k}')
         print()
-        print('Model tests:')
-        for k in ['density-distribution', 'star-types-evolution', 'nebula-placement']:
+        print('Studies (print a recommendation):')
+        for k in TYPES['study']:
             print(f'  {k}')
         print()
-        print('Asset generation:')
-        for k in ['visualize-data', 'encode-mock-tiles', 'viz-png']:
+        print('Assets and other:')
+        for k in TYPES['asset'] + ['encode-mock-tiles', 'viz-png']:
             print(f'  {k}')
         print()
         print('Other:')
@@ -93,12 +111,10 @@ def run(name: str) -> int:
         return 0
 
     if name == 'all-tests':
-        print('Running all validation + model tests...')
+        print('Running all tests...')
         print()
         rc = 0
-        for k in ['hash-quality', 'precision', 'packing', 'filter', 'wgsl-validate',
-                  'm1-smoke', 'tile-encoder-smoke',
-                  'density-distribution', 'star-types-evolution', 'nebula-placement']:
+        for k in TYPES['test']:
             print(f'=== {k} ===')
             rc2 = run(k)
             if rc2 != 0:

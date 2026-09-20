@@ -1,146 +1,251 @@
 {
-  "date": "2026-09-19T22:16:49.338Z",
+  "date": "2026-09-19T23:59:17.433Z",
   "seed": 7,
-  "N": 50000,
-  "box": {
-    "xMin": -25,
-    "xMax": 5,
-    "yMin": -15,
-    "yMax": 15,
-    "zMin": -5,
-    "zMax": 5
-  },
+  "sampleSize": 200000,
+  "sampleMs": 385,
+  "deriveMs": 383,
   "byClass": {
-    "M": 43588,
-    "K": 4461,
-    "RG": 1277,
-    "G": 381,
-    "F": 192,
-    "WD": 92,
-    "A": 4,
-    "B": 5
+    "M": 174519,
+    "K": 17671,
+    "RG": 4745,
+    "G": 1659,
+    "F": 927,
+    "WD": 382,
+    "B": 44,
+    "A": 51,
+    "O": 2
   },
-  "byComponentClass": {
-    "thick": {
-      "M": 31667,
-      "K": 3246,
-      "RG": 1005,
-      "G": 253,
-      "F": 87,
-      "WD": 63
-    },
-    "thin": {
-      "K": 1198,
-      "M": 11717,
-      "RG": 265,
-      "F": 105,
-      "G": 128,
-      "WD": 29,
-      "A": 4,
-      "B": 5
-    },
-    "halo": {
-      "M": 178,
-      "RG": 7,
-      "K": 14
-    },
-    "bulge": {
-      "K": 3,
-      "M": 26
-    }
+  "byComponent": {
+    "bulge": 35687,
+    "thin": 125145,
+    "thick": 39132,
+    "halo": 36
   },
-  "armDistanceByClass": {
+  "classVsArmDistance": {
     "O": {
-      "n": 0,
-      "mean": 0,
-      "fracLT05": 0
+      "n": 2,
+      "mean": 0.21159857511520386,
+      "fracLT05": 1
     },
     "B": {
-      "n": 5,
-      "mean": 0.1714768211732447,
+      "n": 44,
+      "mean": 0.24258513864002784,
       "fracLT05": 1
     },
     "A": {
-      "n": 4,
-      "mean": 1.882294029410876,
-      "fracLT05": 0.75
+      "n": 51,
+      "mean": 1.5105693674014022,
+      "fracLT05": 0.8235294117647058
     },
     "F": {
-      "n": 192,
-      "mean": 6.517350704201228,
-      "fracLT05": 0.07291666666666667
+      "n": 927,
+      "mean": 6.601574263128175,
+      "fracLT05": 0.15426105717367852
     },
     "G": {
-      "n": 381,
-      "mean": 7.332315692041385,
-      "fracLT05": 0.031496062992125984
+      "n": 1659,
+      "mean": 8.312125859128377,
+      "fracLT05": 0.12839059674502712
     },
     "K": {
-      "n": 4461,
-      "mean": 7.705050306856927,
-      "fracLT05": 0.0475229769110065
+      "n": 17671,
+      "mean": 8.709758994038703,
+      "fracLT05": 0.1398336257144474
     },
     "M": {
-      "n": 43588,
-      "mean": 7.744507642085193,
-      "fracLT05": 0.046067725061943655
-    },
-    "RG": {
-      "n": 1277,
-      "mean": 8.192135395293807,
-      "fracLT05": 0.030540328895849646
+      "n": 174519,
+      "mean": 8.875218822326032,
+      "fracLT05": 0.13631180559136827
     },
     "WD": {
-      "n": 92,
-      "mean": 7.863599644266402,
-      "fracLT05": 0.021739130434782608
+      "n": 382,
+      "mean": 9.328124891816643,
+      "fracLT05": 0.1256544502617801
+    },
+    "RG": {
+      "n": 4745,
+      "mean": 9.200152922673539,
+      "fracLT05": 0.11738672286617492
     }
   },
-  "meanAgeGyrByComponent": {
-    "thick": 8.387366802708717,
-    "thin": 5.27359492152135,
-    "halo": 11.431754936128337,
-    "bulge": 9.992467539532512
-  },
-  "meanMetallicityByComponent": {
-    "thick": 0.008000000000001332,
-    "thin": 0.020000000000003366,
-    "halo": 0.0010000000000000007,
-    "bulge": 0.03500000000000002
-  },
-  "obStars": {
-    "total": 5,
-    "inArm": 5,
-    "inArmPct": "100.0",
-    "inDiscPct": "0.0"
-  },
-  "redGiantsByComponent": {
-    "thick": {
-      "M": 31667,
-      "K": 3246,
-      "RG": 1005,
-      "G": 253,
-      "F": 87,
-      "WD": 63
+  "totalChecks": 27,
+  "passed": 27,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "deriveStar fills every record without allocating",
+      "pass": true,
+      "detail": {
+        "class": "M",
+        "feed": 200000
+      }
     },
-    "thin": {
-      "K": 1198,
-      "M": 11717,
-      "RG": 265,
-      "F": 105,
-      "G": 128,
-      "WD": 29,
-      "A": 4,
-      "B": 5
+    {
+      "name": "every star carries a spectral class",
+      "pass": true,
+      "detail": {
+        "M": 174519,
+        "K": 17671,
+        "RG": 4745,
+        "G": 1659,
+        "F": 927,
+        "WD": 382,
+        "B": 44,
+        "A": 51,
+        "O": 2
+      }
     },
-    "halo": {
-      "M": 178,
-      "RG": 7,
-      "K": 14
+    {
+      "name": "M dwarfs dominate the census",
+      "pass": true,
+      "detail": 0.872595
     },
-    "bulge": {
-      "K": 3,
-      "M": 26
+    {
+      "name": "hot stars are rare (O+B below 3% of the census)",
+      "pass": true,
+      "detail": 0.00023
+    },
+    {
+      "name": "giants and white dwarfs are both present",
+      "pass": true,
+      "detail": {
+        "RG": 4745,
+        "WD": 382
+      }
+    },
+    {
+      "name": "the census spans at least seven spectral classes",
+      "pass": true,
+      "detail": [
+        "M",
+        "K",
+        "RG",
+        "G",
+        "F",
+        "WD",
+        "B",
+        "A",
+        "O"
+      ]
+    },
+    {
+      "name": "O stars, when present, are a handful",
+      "pass": true,
+      "detail": 2
+    },
+    {
+      "name": "O/B stars are within 0.5 kpc of an arm far more often than M dwarfs",
+      "pass": true,
+      "detail": {
+        "obClose": 1,
+        "mDwarfs": 0.1363
+      }
+    },
+    {
+      "name": "O/B stars have the smallest mean arm distance of all classes",
+      "pass": true,
+      "detail": {
+        "O": 0.212,
+        "M": 8.875
+      }
+    },
+    {
+      "name": "hot stars exist at all in the sample",
+      "pass": true,
+      "detail": 46
+    },
+    {
+      "name": "the thin disc is the youngest population",
+      "pass": true,
+      "detail": {
+        "thin": 5.36,
+        "thick": 8.36,
+        "bulge": 10.09
+      }
+    },
+    {
+      "name": "the halo is old (> 8 Gyr on average)",
+      "pass": true,
+      "detail": 11.71
+    },
+    {
+      "name": "the bulge is the most metal rich population",
+      "pass": true,
+      "detail": {
+        "bulge": 0.035,
+        "thin": 0.02,
+        "thick": 0.008,
+        "halo": 0.001
+      }
+    },
+    {
+      "name": "the halo is the most metal poor population",
+      "pass": true,
+      "detail": {
+        "bulge": 0.035,
+        "thin": 0.02,
+        "thick": 0.008,
+        "halo": 0.001
+      }
+    },
+    {
+      "name": "giants are older on average than the main sequence",
+      "pass": true
+    },
+    {
+      "name": "masses stay inside the IMF support",
+      "pass": true,
+      "detail": {
+        "min": 0.08000032265937723,
+        "max": 99.50547687761603
+      }
+    },
+    {
+      "name": "the mass function follows Salpeter (slope ≈ -1.35)",
+      "pass": true,
+      "detail": -1.347
+    },
+    {
+      "name": "mass increases with temperature",
+      "pass": true
+    },
+    {
+      "name": "the Sun is a G star",
+      "pass": true
+    },
+    {
+      "name": "a 30 solar mass star is an O star",
+      "pass": true
+    },
+    {
+      "name": "evolved states win over temperature",
+      "pass": true
+    },
+    {
+      "name": "main-sequence lifetime falls with mass",
+      "pass": true
+    },
+    {
+      "name": "a solar-mass star is roughly solar (M_V ≈ 4.8)",
+      "pass": true,
+      "detail": 4.83
+    },
+    {
+      "name": "an O star is far brighter than the Sun",
+      "pass": true,
+      "detail": -5.509848783037638
+    },
+    {
+      "name": "the same seed derives the same star",
+      "pass": true
+    },
+    {
+      "name": "a different seed derives a different star",
+      "pass": true
+    },
+    {
+      "name": "stars in an arm are younger than the same population off-arm",
+      "pass": true
     }
-  }
+  ]
 }

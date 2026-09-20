@@ -1,0 +1,184 @@
+{
+  "date": "2026-09-19T23:59:13.038Z",
+  "totalChecks": 31,
+  "passed": 31,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "camera starts at the Sun (0, 0, 5 pc)",
+      "pass": true,
+      "detail": [
+        0,
+        0,
+        0.004999999888241291,
+        0
+      ]
+    },
+    {
+      "name": "camera looks toward the galactic centre (+X) by default",
+      "pass": true,
+      "detail": [
+        1,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "camera right at yaw 0 is -Y (screen right in a right-handed frame)",
+      "pass": true,
+      "detail": [
+        0,
+        -1,
+        0
+      ]
+    },
+    {
+      "name": "camera up at yaw 0 is +Z (north galactic pole)",
+      "pass": true,
+      "detail": [
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "basis stays orthonormal over 200 random orientations (norms)",
+      "pass": true,
+      "detail": 4.0631539910407355e-8
+    },
+    {
+      "name": "basis stays orthonormal over 200 random orientations (dots)",
+      "pass": true,
+      "detail": 6.244622596796034e-8
+    },
+    {
+      "name": "near plane maps to NDC z = 0",
+      "pass": true,
+      "detail": -5.366746326854188e-8
+    },
+    {
+      "name": "far plane maps to NDC z = 1",
+      "pass": true,
+      "detail": 0.9999999576277041
+    },
+    {
+      "name": "mid distance stays inside [0, 1]",
+      "pass": true,
+      "detail": 0.9999803576196428
+    },
+    {
+      "name": "near plane has positive w",
+      "pass": true,
+      "detail": 0.0002
+    },
+    {
+      "name": "vertical FOV maps the top of the frame to NDC y = 1",
+      "pass": true,
+      "detail": 0.9999999820517684
+    },
+    {
+      "name": "aspect ratio maps the right edge of the frame to NDC x = 1",
+      "pass": true,
+      "detail": 0.9999999896990477
+    },
+    {
+      "name": "a star to the right projects to positive NDC x",
+      "pass": true,
+      "detail": 0.024356964230537417
+    },
+    {
+      "name": "a star above projects to positive NDC y",
+      "pass": true,
+      "detail": 0.04330126941204071
+    },
+    {
+      "name": "a star behind the camera has negative w (clipped)",
+      "pass": true,
+      "detail": -5
+    },
+    {
+      "name": "viewProj is a reused Float32Array",
+      "pass": true
+    },
+    {
+      "name": "distance travelled is frame-rate independent (±1%)",
+      "pass": true,
+      "detail": {
+        "at30": 0.01796268912333817,
+        "at60": 0.017882519881780145,
+        "at144": 0.017834783569799503,
+        "spread": 0.00012790555353866737
+      }
+    },
+    {
+      "name": "the camera actually moved",
+      "pass": true,
+      "detail": 0.017882519881780145
+    },
+    {
+      "name": "velocity converges to the requested speed",
+      "pass": true,
+      "detail": 0.009998873144194923
+    },
+    {
+      "name": "velocity decays when keys are released",
+      "pass": true
+    },
+    {
+      "name": "boost multiplies speed by the documented factor",
+      "pass": true,
+      "detail": 7.9999998984171095
+    },
+    {
+      "name": "look deltas are consumed by step()",
+      "pass": true
+    },
+    {
+      "name": "wheel delta is consumed by step()",
+      "pass": true
+    },
+    {
+      "name": "look input changes yaw by sensitivity * pixels",
+      "pass": true,
+      "detail": -0.22
+    },
+    {
+      "name": "reset action is consumed by step()",
+      "pass": true
+    },
+    {
+      "name": "scroll up speeds up, scroll down slows down",
+      "pass": true,
+      "detail": {
+        "up": 2.117000016612675,
+        "down": 0.4723665527410147
+      }
+    },
+    {
+      "name": "pitch is clamped below 90 degrees",
+      "pass": true,
+      "detail": 1.5507963267948965
+    },
+    {
+      "name": "reset returns the camera to the start position",
+      "pass": true,
+      "detail": [
+        0,
+        0,
+        0.005
+      ]
+    },
+    {
+      "name": "reset clears velocity and speed multiplier",
+      "pass": true
+    },
+    {
+      "name": "no buffers are reallocated across 600 frames",
+      "pass": true
+    },
+    {
+      "name": "getState honours a provided output object",
+      "pass": true
+    }
+  ]
+}

@@ -1,383 +1,79 @@
 {
-  "date": "2026-09-19T22:16:48.619Z",
+  "date": "2026-09-19T23:59:16.373Z",
   "seed": 42,
-  "N": 100000,
+  "sampleSize": 120000,
   "box": {
-    "xMin": -25,
-    "xMax": 5,
-    "yMin": -15,
-    "yMax": 15,
-    "zMin": -5,
-    "zMax": 5
+    "xMin": -20,
+    "xMax": 20,
+    "yMin": -20,
+    "yMax": 20,
+    "zMin": -3,
+    "zMax": 3
   },
-  "rhoMax": 0.4321668784183452,
-  "acceptedCount": 22285,
-  "byComponent": {
-    "thin": 26446,
-    "thick": 73141,
-    "bulge": 71,
-    "halo": 342
-  },
-  "armOverdensity": {
-    "starsInArm": 4836,
-    "starsInterArm": 13244,
-    "densityInArmPerKpc": "9672.0",
-    "densityInterArmPerKpc": "8829.3",
-    "ratioInOverInter": 1.0954394442766535,
-    "expectedRatio": 1.4999999999999998
-  },
-  "fourierM2Amplitude": 1443.545811240301,
-  "histograms": {
-    "R_kpc": [
-      {
-        "lo": 0,
-        "hi": 1,
-        "count": 0
-      },
-      {
-        "lo": 1,
-        "hi": 2,
-        "count": 0
-      },
-      {
-        "lo": 2,
-        "hi": 3,
-        "count": 0
-      },
-      {
-        "lo": 3,
-        "hi": 4,
-        "count": 1946
-      },
-      {
-        "lo": 4,
-        "hi": 5,
-        "count": 3763
-      },
-      {
-        "lo": 5,
-        "hi": 6,
-        "count": 4069
-      },
-      {
-        "lo": 6,
-        "hi": 7,
-        "count": 4066
-      },
-      {
-        "lo": 7,
-        "hi": 8,
-        "count": 3900
-      },
-      {
-        "lo": 8,
-        "hi": 9,
-        "count": 3790
-      },
-      {
-        "lo": 9,
-        "hi": 10,
-        "count": 3576
-      },
-      {
-        "lo": 10,
-        "hi": 11,
-        "count": 3663
-      },
-      {
-        "lo": 11,
-        "hi": 12,
-        "count": 3670
-      },
-      {
-        "lo": 12,
-        "hi": 13,
-        "count": 3636
-      },
-      {
-        "lo": 13,
-        "hi": 14,
-        "count": 3638
-      },
-      {
-        "lo": 14,
-        "hi": 15,
-        "count": 3823
-      },
-      {
-        "lo": 15,
-        "hi": 16,
-        "count": 3859
-      },
-      {
-        "lo": 16,
-        "hi": 17,
-        "count": 3431
-      },
-      {
-        "lo": 17,
-        "hi": 18,
-        "count": 3188
-      },
-      {
-        "lo": 18,
-        "hi": 19,
-        "count": 3145
-      },
-      {
-        "lo": 19,
-        "hi": 20,
-        "count": 2965
-      },
-      {
-        "lo": 20,
-        "hi": 21,
-        "count": 2961
-      },
-      {
-        "lo": 21,
-        "hi": 22,
-        "count": 2884
-      },
-      {
-        "lo": 22,
-        "hi": 23,
-        "count": 2844
-      },
-      {
-        "lo": 23,
-        "hi": 24,
-        "count": 2927
-      },
-      {
-        "lo": 24,
-        "hi": 25,
-        "count": 2756
+  "sampleMs": 254,
+  "totalChecks": 8,
+  "passed": 8,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "the box sampler fills the requested count",
+      "pass": true,
+      "detail": 120000
+    },
+    {
+      "name": "galactocentric R distribution matches the model (TV < 8%)",
+      "pass": true,
+      "detail": 0.0332
+    },
+    {
+      "name": "z distribution matches the model (TV < 8%)",
+      "pass": true,
+      "detail": 0.0041
+    },
+    {
+      "name": "component mix matches the model within 8%",
+      "pass": true,
+      "detail": {
+        "worst": 0.0096,
+        "thin": {
+          "observed": 0.62795,
+          "expected": 0.62763
+        },
+        "thick": {
+          "observed": 0.19268,
+          "expected": 0.1912
+        },
+        "bulge": {
+          "observed": 0.17925,
+          "expected": 0.18098
+        },
+        "halo": {
+          "observed": 0.00012,
+          "expected": 0.00019
+        }
       }
-    ],
-    "z_kpc": [
-      {
-        "lo": -3,
-        "hi": -2.75,
-        "count": 2008
-      },
-      {
-        "lo": -2.75,
-        "hi": -2.5,
-        "count": 1974
-      },
-      {
-        "lo": -2.5,
-        "hi": -2.25,
-        "count": 2044
-      },
-      {
-        "lo": -2.25,
-        "hi": -2,
-        "count": 1994
-      },
-      {
-        "lo": -2,
-        "hi": -1.75,
-        "count": 2080
-      },
-      {
-        "lo": -1.75,
-        "hi": -1.5,
-        "count": 2104
-      },
-      {
-        "lo": -1.5,
-        "hi": -1.25,
-        "count": 2213
-      },
-      {
-        "lo": -1.25,
-        "hi": -1,
-        "count": 2443
-      },
-      {
-        "lo": -1,
-        "hi": -0.75,
-        "count": 2952
-      },
-      {
-        "lo": -0.75,
-        "hi": -0.5,
-        "count": 3655
-      },
-      {
-        "lo": -0.5,
-        "hi": -0.25,
-        "count": 4862
-      },
-      {
-        "lo": -0.25,
-        "hi": 0,
-        "count": 5752
-      },
-      {
-        "lo": 0,
-        "hi": 0.25,
-        "count": 5918
-      },
-      {
-        "lo": 0.25,
-        "hi": 0.5,
-        "count": 4756
-      },
-      {
-        "lo": 0.5,
-        "hi": 0.75,
-        "count": 3752
-      },
-      {
-        "lo": 0.75,
-        "hi": 1,
-        "count": 2939
-      },
-      {
-        "lo": 1,
-        "hi": 1.25,
-        "count": 2569
-      },
-      {
-        "lo": 1.25,
-        "hi": 1.5,
-        "count": 2246
-      },
-      {
-        "lo": 1.5,
-        "hi": 1.75,
-        "count": 2185
-      },
-      {
-        "lo": 1.75,
-        "hi": 2,
-        "count": 1994
-      },
-      {
-        "lo": 2,
-        "hi": 2.25,
-        "count": 2073
-      },
-      {
-        "lo": 2.25,
-        "hi": 2.5,
-        "count": 1962
-      },
-      {
-        "lo": 2.5,
-        "hi": 2.75,
-        "count": 1980
-      },
-      {
-        "lo": 2.75,
-        "hi": 3,
-        "count": 1997
+    },
+    {
+      "name": "the box sample includes the bulge population",
+      "pass": true,
+      "detail": {
+        "observed": 0.17925,
+        "expected": 0.18098
       }
-    ],
-    "distToArm_kpc": [
-      {
-        "lo": 0,
-        "hi": 0.2,
-        "count": 1903
-      },
-      {
-        "lo": 0.2,
-        "hi": 0.4,
-        "count": 1941
-      },
-      {
-        "lo": 0.4,
-        "hi": 0.6000000000000001,
-        "count": 1919
-      },
-      {
-        "lo": 0.6000000000000001,
-        "hi": 0.8,
-        "count": 1907
-      },
-      {
-        "lo": 0.8,
-        "hi": 1,
-        "count": 1869
-      },
-      {
-        "lo": 1,
-        "hi": 1.2000000000000002,
-        "count": 1843
-      },
-      {
-        "lo": 1.2000000000000002,
-        "hi": 1.4000000000000001,
-        "count": 1852
-      },
-      {
-        "lo": 1.4000000000000001,
-        "hi": 1.6,
-        "count": 1768
-      },
-      {
-        "lo": 1.6,
-        "hi": 1.8,
-        "count": 1718
-      },
-      {
-        "lo": 1.8,
-        "hi": 2,
-        "count": 1758
-      },
-      {
-        "lo": 2,
-        "hi": 2.2,
-        "count": 1773
-      },
-      {
-        "lo": 2.2,
-        "hi": 2.4000000000000004,
-        "count": 1679
-      },
-      {
-        "lo": 2.4000000000000004,
-        "hi": 2.6,
-        "count": 1702
-      },
-      {
-        "lo": 2.6,
-        "hi": 2.8000000000000003,
-        "count": 1596
-      },
-      {
-        "lo": 2.8000000000000003,
-        "hi": 3,
-        "count": 1525
-      },
-      {
-        "lo": 3,
-        "hi": 3.2,
-        "count": 1560
-      },
-      {
-        "lo": 3.2,
-        "hi": 3.4000000000000004,
-        "count": 1561
-      },
-      {
-        "lo": 3.4000000000000004,
-        "hi": 3.6,
-        "count": 1511
-      },
-      {
-        "lo": 3.6,
-        "hi": 3.8000000000000003,
-        "count": 1478
-      },
-      {
-        "lo": 3.8000000000000003,
-        "hi": 4,
-        "count": 1527
-      }
-    ]
-  }
+    },
+    {
+      "name": "the box sampler is deterministic in (seed, count, box)",
+      "pass": true
+    },
+    {
+      "name": "a different seed produces a different box sample",
+      "pass": true,
+      "detail": 5000
+    },
+    {
+      "name": "every star lies inside the requested box",
+      "pass": true,
+      "detail": 0
+    }
+  ]
 }

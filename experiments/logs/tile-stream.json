@@ -1,0 +1,286 @@
+{
+  "date": "2026-09-19T23:59:13.570Z",
+  "bundle": {
+    "path": "src/data/tiles/catalog.js",
+    "bytes": 168605,
+    "cells": 2045,
+    "stars": 3829,
+    "bands": [
+      "near",
+      "medium",
+      "far"
+    ]
+  },
+  "passing": 29,
+  "totalChecks": 29,
+  "passed": 29,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "committed bundle has the same cell count as a fresh encode",
+      "pass": true,
+      "detail": {
+        "committed": 2045,
+        "fresh": 2045
+      }
+    },
+    {
+      "name": "committed bundle has the same star count as a fresh encode",
+      "pass": true,
+      "detail": {
+        "committed": 3829,
+        "fresh": 3829
+      }
+    },
+    {
+      "name": "committed bundle is byte-identical to a fresh encode (no stale asset)",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "committed bundle carries the same band table as a fresh encode",
+      "pass": true,
+      "detail": {
+        "committed": {
+          "near": {
+            "cellSize": 0.025,
+            "streamRadiusKpc": 0.5
+          },
+          "medium": {
+            "cellSize": 0.1,
+            "streamRadiusKpc": 2.5
+          },
+          "far": {
+            "cellSize": 0.5,
+            "streamRadiusKpc": 12
+          }
+        },
+        "fresh": {
+          "near": {
+            "cellSize": 0.025,
+            "streamRadiusKpc": 0.5
+          },
+          "medium": {
+            "cellSize": 0.1,
+            "streamRadiusKpc": 2.5
+          },
+          "far": {
+            "cellSize": 0.5,
+            "streamRadiusKpc": 12
+          }
+        }
+      }
+    },
+    {
+      "name": "every band declares a positive streaming radius",
+      "pass": true,
+      "detail": {
+        "near": {
+          "cellSize": 0.025,
+          "streamRadiusKpc": 0.5
+        },
+        "medium": {
+          "cellSize": 0.1,
+          "streamRadiusKpc": 2.5
+        },
+        "far": {
+          "cellSize": 0.5,
+          "streamRadiusKpc": 12
+        }
+      }
+    },
+    {
+      "name": "the manifest band radii mirror the bundle band table",
+      "pass": true,
+      "detail": {
+        "names": [
+          "near",
+          "medium",
+          "far"
+        ],
+        "radii": [
+          0.5,
+          2.5,
+          12
+        ]
+      }
+    },
+    {
+      "name": "manifest reports the three bands with streaming radii",
+      "pass": true,
+      "detail": {
+        "bands": [
+          "near",
+          "medium",
+          "far"
+        ],
+        "radii": [
+          0.5,
+          2.5,
+          12
+        ]
+      }
+    },
+    {
+      "name": "cells are sorted into their bands and sit on the cell lattice",
+      "pass": true
+    },
+    {
+      "name": "every payload decodes to exactly its star count",
+      "pass": true
+    },
+    {
+      "name": "first update reports a changed (empty) residency",
+      "pass": true,
+      "detail": {
+        "starCount": 3829,
+        "changed": true
+      }
+    },
+    {
+      "name": "resident star count is inside the budget",
+      "pass": true,
+      "detail": 3829
+    },
+    {
+      "name": "all populated cells near the Sun are resident",
+      "pass": true,
+      "detail": {
+        "cellsTotal": 2045,
+        "cellsResident": 2045,
+        "starsResident": 3829,
+        "cellsDecoded": 0,
+        "decodedBytes": 0,
+        "starsTotal": 3829,
+        "version": 1
+      }
+    },
+    {
+      "name": "writeInto writes exactly the resident stars",
+      "pass": true,
+      "detail": {
+        "written": 61264,
+        "expected": 61264
+      }
+    },
+    {
+      "name": "writeInto is repeatable (cache hit, no re-decode)",
+      "pass": true,
+      "detail": {
+        "decodeCalls": 2045
+      }
+    },
+    {
+      "name": "staged records decode to finite positions inside the streamed volume",
+      "pass": true,
+      "detail": "positions"
+    },
+    {
+      "name": "parked camera does not rebuild the residency set",
+      "pass": true,
+      "detail": {
+        "before": 1,
+        "after": 1
+      }
+    },
+    {
+      "name": "parked camera reports changed=false",
+      "pass": true
+    },
+    {
+      "name": "movement under half the finest cell does not rebuild",
+      "pass": true,
+      "detail": {
+        "before": 1,
+        "after": 1
+      }
+    },
+    {
+      "name": "movement past half the finest cell rebuilds",
+      "pass": true,
+      "detail": {
+        "starCount": 3829,
+        "changed": true
+      }
+    },
+    {
+      "name": "a jump into the halo empties the residency set and reports the change",
+      "pass": true,
+      "detail": {
+        "starCount": 0,
+        "changed": true
+      }
+    },
+    {
+      "name": "the empty set is reported as unchanged on the next update",
+      "pass": true,
+      "detail": {
+        "starCount": 0,
+        "changed": false
+      }
+    },
+    {
+      "name": "writeInto with nothing resident writes nothing",
+      "pass": true
+    },
+    {
+      "name": "returning to a cached region re-uses decoded cells",
+      "pass": true,
+      "detail": {
+        "before": 2045,
+        "after": 2045
+      }
+    },
+    {
+      "name": "resident set is restored after returning",
+      "pass": true,
+      "detail": {
+        "cellsTotal": 2045,
+        "cellsResident": 2045,
+        "starsResident": 3829,
+        "cellsDecoded": 2045,
+        "decodedBytes": 61264,
+        "starsTotal": 3829,
+        "version": 4
+      }
+    },
+    {
+      "name": "a tight budget is respected",
+      "pass": true,
+      "detail": 198
+    },
+    {
+      "name": "a tight budget still fills from the closest cells",
+      "pass": true,
+      "detail": {
+        "cellsTotal": 2045,
+        "cellsResident": 71,
+        "starsResident": 198,
+        "cellsDecoded": 0,
+        "decodedBytes": 0,
+        "starsTotal": 3829,
+        "version": 1
+      }
+    },
+    {
+      "name": "tight budget picks exactly the nearest cells brute force picks",
+      "pass": true,
+      "detail": {
+        "resident": 198,
+        "cells": 71,
+        "expected": 198,
+        "expectedCells": 71
+      }
+    },
+    {
+      "name": "decode cache stays within its limit",
+      "pass": true,
+      "detail": 8
+    },
+    {
+      "name": "decode cache keeps bytes proportional to the cells held",
+      "pass": true,
+      "detail": 128
+    }
+  ]
+}

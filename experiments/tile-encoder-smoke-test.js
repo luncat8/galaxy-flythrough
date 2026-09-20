@@ -1,8 +1,12 @@
 // experiments/tile-encoder-smoke-test.js
-// Validates the tile encoder end-to-end without real Gaia data.
-// Generates mock stars from the analytical density model, runs them through
-// the encoder, reads back the generated tile files, and verifies the binary
-// format decodes correctly.
+// End-to-end smoke test of the tile encoder on synthetic data: sample a small
+// galaxy, encode it, write the bundle to a temp file, read it back through the
+// shipping loader, and decode every cell. No Gaia file needed.
+//
+// The point is the path that real data takes: encode -> bundle -> base64 ->
+// script file -> loader -> StarPacked records. Anything that only breaks on
+// real input (unit slips, band assignment, truncation of magnitudes) shows up
+// here as a decode mismatch rather than as a blank sky in the browser.
 //
 // Output: experiments/logs/tile-encoder-smoke.json
 
@@ -11,174 +15,186 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+
+// The bundle file assigns to window and to module.exports; give it a window.
+global.window = global.window || global;
+
 const encoder = require('./tile-encoder.js');
-const hash = require('../src/math/hash.js');
+const records = require('../src/math/star-record.js');
+const loader = require('../src/stream/tile-loader.js');
 
 const checks = [];
-function check(name, cond, detail) {
-        checks.push({ name, pass: !!cond, detail });
-        return !!cond;
+function check(name, pass, detail) {
+	checks.push({ name, pass: !!pass, detail });
+	return !!pass;
 }
 
-// --- Test 1: Coordinate conversion ---
-function testCoordinateConversion() {
-        const cc = encoder.testCoordinateConversion();
-        for (const c of cc) {
-                check(`Coord conv: ${c.name}`, c.pass);
-        }
+const MOCK_STARS = 4000;
+const MOCK_SEED = 20240919;
+
+// --- 1. Coordinate conversion -------------------------------------------
+{
+	console.log('Coordinate conversion...');
+	const results = encoder.testCoordinateConversion();
+	for (const r of results) {
+		check(`coord: ${r.name}`, r.pass, r.detail);
+	}
 }
 
-// --- Test 2: Mock star generation ---
-function testMockGeneration() {
-        const stars = encoder.generateMockStars(1000);
-        check('Mock: generated 1000 stars', stars.length === 1000);
-        check('Mock: star has sourceId', typeof stars[0].sourceId === 'number');
-        check('Mock: star has x,y,z', typeof stars[0].x === 'number' && typeof stars[0].y === 'number' && typeof stars[0].z === 'number');
-        check('Mock: star has appMag', typeof stars[0].appMag === 'number');
-        check('Mock: star has spectralClass', typeof stars[0].spectralClass === 'string');
-        check('Mock: first 100 are landmarks', stars.slice(0, 100).every(s => s.isLandmark));
-        check('Mock: stars 100+ are not landmarks', stars.slice(100).every(s => !s.isLandmark));
+// --- 2. Mock generation --------------------------------------------------
+{
+	console.log(`Generating ${MOCK_STARS} mock stars...`);
+	const t0 = Date.now();
+	const mock = encoder.generateMockStars(MOCK_STARS, MOCK_SEED);
+	const genMs = Date.now() - t0;
+	check('mock generation returns the requested star count', mock.stars.length === MOCK_STARS, mock.stars.length);
+	const first = mock.stars[0];
+	check('mock stars carry the fields the encoder reads',
+		typeof first.sourceId === 'number' && typeof first.x === 'number'
+		&& typeof first.appMag === 'number' && typeof first.spectralClass === 'string'
+		&& typeof first.parallaxOverError === 'number');
+	let badPos = 0;
+	let badMag = 0;
+	for (const s of mock.stars) {
+		if (!Number.isFinite(s.x) || !Number.isFinite(s.y) || !Number.isFinite(s.z)) badPos++;
+		if (!(s.appMag >= -10 && s.appMag < 60)) badMag++;
+	}
+	check('mock positions are finite', badPos === 0, badPos);
+	check('mock apparent magnitudes are physical', badMag === 0, badMag);
+	check('mock generation is deterministic',
+		encoder.generateMockStars(50, MOCK_SEED).stars[0].x === encoder.generateMockStars(50, MOCK_SEED).stars[0].x);
+	console.log(`  ${genMs} ms`);
 }
 
-// --- Test 3: Band/cell classification ---
-function testBandAndCell() {
-        const near = encoder.bandAndCell(0.001, 0.002, 0.003);
-        check('Band(0.001, 0.002, 0.003) = near', near && near.band === 'near');
-        check('Cell coords are non-negative integers', near && near.cx >= 0 && near.cy >= 0 && near.cz >= 0);
-        const med = encoder.bandAndCell(1.0, 0.5, 0.1);
-        check('Band(1.0, 0.5, 0.1) = medium', med && med.band === 'medium');
-        const far = encoder.bandAndCell(5.0, 3.0, 0.5);
-        check('Band(5.0, 3.0, 0.5) = far', far && far.band === 'far');
-        const oob = encoder.bandAndCell(50.0, 50.0, 50.0);
-        check('Band(50,50,50) = null (out of bounds)', oob === null);
+// --- 3. Encoding ---------------------------------------------------------
+const mock = encoder.generateMockStars(MOCK_STARS, MOCK_SEED);
+const encodeStart = Date.now();
+const { tiles, summary } = encoder.encodeTiles(mock.stars, encoder.CONFIG);
+const encodeMs = Date.now() - encodeStart;
+console.log(`Encoded ${summary.kept}/${summary.input} stars into ${summary.cellCount} cells in ${encodeMs} ms`);
+// A whole-galaxy model sample is dominated by faint M dwarfs beyond a few
+// hundred parsecs, so the G limit is expected to reject most of it. What must
+// hold exactly is the cut itself, and that what survives skews near/bright.
+const overLimit = mock.stars.filter(s => s.appMag > encoder.CONFIG.gLimit).length;
+check('the magnitude cut removes exactly the stars fainter than the limit',
+	overLimit === summary.droppedMagnitude, { overLimit, droppedMagnitude: summary.droppedMagnitude });
+check('the encoder keeps a usable sample', summary.kept > 20, summary.kept);
+const maxBandRadius = Math.max(...Object.values(encoder.CONFIG.bands).map(b => b.radius));
+let outsideBand = 0;
+for (const tile of tiles.values()) {
+	for (const star of tile.stars) {
+		if (Math.sqrt(star.x * star.x + star.y * star.y + star.z * star.z) > maxBandRadius) outsideBand++;
+	}
 }
+check('every encoded star lies inside the outermost band', outsideBand === 0, { outsideBand, maxBandRadius });
+check('every dropped star is accounted for',
+	summary.kept + summary.droppedMagnitude + summary.droppedQuality
+		+ summary.droppedDecimation + summary.droppedOutOfBounds === summary.input, summary);
+check('the encoder produces cells', summary.cellCount > 0, summary.cellCount);
 
-// --- Test 4: 16-byte packing round-trip ---
-function testPackingRoundTrip() {
-        const star = {
-                x: 8.178, y: -1.234, z: 0.050,
-                appMag: 5.5,
-                spectralClass: 'G',
-                sourceId: 12345,
-                isLandmark: true,
-        };
-        const bytes = encoder.packStar(star);
-        check('packStar returns 16 bytes', bytes.length === 16);
-        // Decode
-        const view = new DataView(bytes.buffer);
-        const x = view.getFloat32(0, true);
-        const y = view.getFloat32(4, true);
-        const z = view.getFloat32(8, true);
-        const packed = view.getUint32(12, true);
-        const colorIndex = packed & 0xFF;
-        const magByte = (packed >> 8) & 0xFF;
-        const flags = (packed >> 16) & 0xFF;
-        const subCellJitter = (packed >> 24) & 0xFF;
-        check('Packed x round-trips', Math.abs(x - 8.178) < 1e-4);
-        check('Packed y round-trips', Math.abs(y + 1.234) < 1e-4);
-        check('Packed z round-trips', Math.abs(z - 0.050) < 1e-5);
-        check('Packed colorIndex = 4 (G)', colorIndex === 4);
-        check('Packed appMag byte ≈ 70', Math.abs(magByte - Math.floor(5.5 / 20 * 255)) < 1);
-        check('Packed flags = 1 (landmark)', flags === 1);
+let totalInTiles = 0;
+let badBand = 0;
+for (const tile of tiles.values()) {
+	totalInTiles += tile.stars.length;
+	if (!Object.hasOwn(encoder.CONFIG.bands, tile.band)) badBand++;
 }
+check('cell payloads hold exactly the kept stars', totalInTiles === summary.kept, { totalInTiles, kept: summary.kept });
+check('every cell belongs to a configured band', badBand === 0, badBand);
 
-// --- Test 5: Full encode-decode pipeline ---
-function testEndToEnd() {
-        // Use a temp dir
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'galaxy-tiles-'));
-        try {
-                const stars = encoder.generateMockStars(5000);
-                const summary = encoder.encodeTiles(stars, tmpDir);
-                check('Encode: kept > 0 stars', summary.kept > 0);
-                check('Encode: wrote > 0 tiles', summary.tileCount > 0);
-                check('Encode: avg stars/tile is reasonable', summary.avgStarsPerTile > 0 && summary.avgStarsPerTile < 5000);
-
-                // Verify tile files exist with correct structure
-                const bands = ['near', 'medium', 'far'];
-                let totalTilesFound = 0;
-                let totalStarsInTiles = 0;
-                for (const band of bands) {
-                        const bandDir = path.join(tmpDir, band);
-                        if (!fs.existsSync(bandDir)) continue;
-                        const files = fs.readdirSync(bandDir).filter(f => f.endsWith('.js'));
-                        for (const f of files) {
-                                totalTilesFound++;
-                                const content = fs.readFileSync(path.join(bandDir, f), 'utf8');
-                                check(`Tile file ${band}/${f} is valid JS`, /^\/\/ Auto-generated/.test(content));
-                                check(`Tile file ${band}/${f} assigns global`, content.includes('window') || content.includes('global'));
-                                // Extract the global name from the assignment pattern: g['__tile_band_x_y_z']
-                                const nameMatch = content.match(/g\['__tile_(\w+)'\]/);
-                                if (!nameMatch) {
-                                        check(`Tile ${band}/${f} has global name`, false);
-                                        continue;
-                                }
-                                const globalName = '__tile_' + nameMatch[1];
-                                // Eval the tile file in a sandbox that exposes `globalThis`
-                                // The IIFE assigns the bytes to globalThis[globalName], so we
-                                // read them from there.
-                                const sandbox = { Uint8Array, module: { exports: null } };
-                                const fn = new Function('window', 'globalThis', 'global', 'module', 'Uint8Array',
-                                        content + `\nreturn globalThis['${globalName}'];`);
-                                const bytes = fn(sandbox, sandbox, sandbox, sandbox.module, Uint8Array);
-                                if (bytes && bytes.length) {
-                                        check(`Tile ${band}/${f} decoded to bytes`, bytes.length > 32);
-                                        // Read header
-                                        const hview = new DataView(bytes.buffer, bytes.byteOffset, 32);
-                                        const starCount = hview.getUint32(24, true);
-                                        const expectedBodyBytes = starCount * 16;
-                                        const actualBodyBytes = bytes.length - 32;
-                                        check(`Tile ${band}/${f} body size matches star count`, expectedBodyBytes === actualBodyBytes);
-                                        totalStarsInTiles += starCount;
-                                }
-                        }
-                }
-                check('Total tiles found > 0', totalTilesFound > 0);
-                check('Total stars in tiles matches kept count', Math.abs(totalStarsInTiles - summary.kept) < 1);
-        } finally {
-                // Clean up temp dir
-                fs.rmSync(tmpDir, { recursive: true, force: true });
-        }
+// --- 4. Bundle -----------------------------------------------------------
+const bundle = encoder.buildBundle(tiles, { source: 'mock' });
+check('the bundle records its schema version', bundle.version === 1, bundle.version);
+check('the bundle record size matches StarPacked', bundle.recordBytes === records.RECORD_BYTES, bundle.recordBytes);
+check('the bundle counts match the tiles', bundle.starCount === summary.kept && bundle.cellCount === summary.cellCount,
+	{ stars: bundle.starCount, cells: bundle.cellCount });
+check('every band carries its cell size and streaming radius',
+	Object.keys(bundle.bands).length === 3
+	&& Object.values(bundle.bands).every(b => b.cellSize > 0 && b.streamRadiusKpc > b.cellSize),
+	bundle.bands);
+check('cells are stored in a deterministic order',
+	encoder.buildBundle(tiles, { source: 'mock' }).cells.every((c, i) => c.d === bundle.cells[i].d));
+let badPayload = 0;
+for (const cell of bundle.cells) {
+	const bytes = Buffer.from(cell.d, 'base64');
+	if (bytes.length !== cell.n * records.RECORD_BYTES) badPayload++;
 }
+check('every base64 payload decodes to n records', badPayload === 0, badPayload);
 
-// --- Run all tests ---
-console.log('=== tile-encoder smoke test ===\n');
+const tmpPath = path.join(os.tmpdir(), `galaxy-bundle-smoke-${process.pid}.js`);
+const tmpBytes = encoder.writeBundle(bundle, tmpPath);
+check('the written bundle is a plausible size',
+	tmpBytes > summary.kept * records.RECORD_BYTES && tmpBytes < summary.kept * 100, tmpBytes);
 
-console.log('--- Test 1: Coordinate conversion ---');
-testCoordinateConversion();
+// --- 5. Loader round-trip ------------------------------------------------
+const loaded = require(tmpPath);
+check('the bundle file hands back the same object', loaded.cellCount === bundle.cellCount);
+const manifest = loader.prepareBundle(loaded);
+check('the loader reads the band table from the manifest',
+	manifest.bandNames.join(',') === Object.keys(bundle.bands).join(',')
+	&& manifest.bandRadius.every((r, i) => r === bundle.bands[manifest.bandNames[i]].streamRadiusKpc),
+	{ bands: manifest.bandNames, radii: Array.from(manifest.bandRadius) });
 
-console.log('\n--- Test 2: Mock star generation ---');
-testMockGeneration();
+const scratch = new Uint8Array(4096 * records.RECORD_BYTES);
+const mismatchCount = { positions: 0, outsideCell: 0, magnitude: 0, classIndex: 0, invisible: 0 };
+let decodedStars = 0;
+let decodedCells = 0;
+for (let i = 0; i < manifest.cellCount; i++) {
+	const n = manifest.starCountOf ? manifest.starCountOf(i) : bundle.cells[i].n;
+	const bytes = loader.decodeCell(manifest, i, scratch);
+	decodedCells++;
+	const view = new DataView(scratch.buffer, 0, bytes);
+	const cell = bundle.cells[i];
+	const size = bundle.bands[manifest.bandNames[manifest.bandOf[i]]].cellSize;
+	for (let k = 0; k < n; k++) {
+		const rec = records.readRecord(view, k * records.RECORD_BYTES);
+		decodedStars++;
+		if (!rec.visible) mismatchCount.invisible++;
+		if (!(rec.x >= cell.c[0] * size - 1e-6 && rec.x <= (cell.c[0] + 1) * size + 1e-6
+			&& rec.y >= cell.c[1] * size - 1e-6 && rec.y <= (cell.c[1] + 1) * size + 1e-6
+			&& rec.z >= cell.c[2] * size - 1e-6 && rec.z <= (cell.c[2] + 1) * size + 1e-6)) {
+			mismatchCount.outsideCell++;
+		}
+		if (rec.absMag < records.ABS_MAG_MIN - 1e-3 || rec.absMag > records.ABS_MAG_MAX + 1e-3) mismatchCount.magnitude++;
+	}
+}
+check('every star in the bundle decodes', decodedStars === bundle.starCount, { decodedStars, expected: bundle.starCount });
+check('every cell decodes', decodedCells === manifest.cellCount, decodedCells);
+check('decoded positions lie inside their own cell', mismatchCount.outsideCell === 0, mismatchCount);
+check('decoded magnitudes stay inside the packed range', mismatchCount.magnitude === 0, mismatchCount);
+check('decoded records are all visible', mismatchCount.invisible === 0, mismatchCount);
 
-console.log('\n--- Test 3: Band/cell classification ---');
-testBandAndCell();
+// Re-encoding the same tiles must produce the same bytes: the asset is
+// reproducible, which is what lets the freshness check trust it.
+const again = encoder.buildBundle(tiles, { source: 'mock' });
+check('encoding is reproducible byte for byte',
+	again.cells.every((c, i) => c.d === bundle.cells[i].d && c.n === bundle.cells[i].n));
 
-console.log('\n--- Test 4: 16-byte packing round-trip ---');
-testPackingRoundTrip();
+fs.unlinkSync(tmpPath);
 
-console.log('\n--- Test 5: End-to-end encode/decode ---');
-testEndToEnd();
-
-// --- Print summary ---
-let pass = 0, fail = 0;
+// --- Report --------------------------------------------------------------
+let passed = 0;
+let failed = 0;
 for (const c of checks) {
-        if (c.pass) pass++; else fail++;
-        console.log(`  ${c.pass ? 'OK' : 'FAIL'}: ${c.name}`);
+	if (c.pass) passed++; else failed++;
+	console.log(`  ${c.pass ? 'OK  ' : 'FAIL'} ${c.name}${c.pass ? '' : `  -> ${JSON.stringify(c.detail)}`}`);
 }
-console.log(`\n${pass}/${checks.length} passed, ${fail} failed`);
+console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 
-const out = {
-        date: new Date().toISOString(),
-        totalChecks: checks.length,
-        passed: pass,
-        failed: fail,
-        checks,
-        verdict: fail === 0
-                ? 'PASS — tile encoder ready for real Gaia CSV input'
-                : `FAIL — ${fail} checks failed`,
-};
 const logPath = path.join(__dirname, 'logs', 'tile-encoder-smoke.json');
-fs.writeFileSync(logPath, JSON.stringify(out, null, 2));
-console.log(`\nWrote ${logPath}`);
-
+fs.mkdirSync(path.dirname(logPath), { recursive: true });
+fs.writeFileSync(logPath, JSON.stringify({
+	date: new Date().toISOString(),
+	mockStars: MOCK_STARS,
+	seed: MOCK_SEED,
+	summary,
+	bundleBytes: tmpBytes,
+	encodeMs,
+	totalChecks: checks.length,
+	passed,
+	failed,
+	checks,
+}, null, 2));
+console.log(`Wrote ${logPath}`);
 console.log('\n=== VERDICT ===');
-console.log(out.verdict);
+console.log(failed === 0 ? 'PASS — encoder, bundle and loader agree' : `FAIL — ${failed} checks failed`);
+process.exit(failed === 0 ? 0 : 1);

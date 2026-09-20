@@ -1,21 +1,14 @@
 // experiments/wgsl-validate.js
-// Validates that WGSL shaders mirror the JS libraries exactly.
-// For each WGSL file, extract constants and function signatures, then
-// cross-check against the corresponding JS module in src/math/.
+// The renderer's WGSL mirrors the JavaScript model: the density field, the
+// stellar population recipe and the packed star record all exist twice, once
+// in src/math/*.js (authoritative, tested) and once in src/render/shaders.js
+// (what the GPU executes). Nothing in the build can compile WGSL, so this test
+// is the only thing standing between the two copies and silent drift.
 //
-// Source of truth: src/math/*.js (browser+node compatible)
-// Mirror:          src/render/wgsl/*.wgsl
-// This script enforces the contract between them.
-//
-// Checks:
-//   1. PCG hash: constants 0x7feb352d, 0x846ca68b match between JS and WGSL
-//   2. Density model: constants GALACTIC_R0, THIN_L, etc. match
-//   3. Mass-Teff table: 18 entries match between JS (star-types.js) and
-//      WGSL (procedural-gen.wgsl MASS_TEFF_MASS / MASS_TEFF_TEFF)
-//   4. Spectral class thresholds: 30000, 10000, 7500, 6000, 5200, 3700
-//   5. StarPacked struct: 16 bytes (3 f32 + 1 u32) matches packing-test.js
-//   6. Workgroup sizes and bindings are valid
-//   7. star-distant.wgsl: embedded in index.html (file:// compatible)
+// It checks three levels:
+//   1. structural — the shader sources are plausible and complete
+//   2. numeric    — every mirrored constant equals its JS source of truth
+//   3. symbolic   — every mirrored function still exists in the JS model
 //
 // Output: experiments/logs/wgsl-validate.json
 
@@ -24,311 +17,209 @@
 const fs = require('fs');
 const path = require('path');
 
-// --- WGSL files to validate ---
-const WGSL_DIR = path.join(__dirname, '..', 'src', 'render', 'wgsl');
-const MATH_DIR = path.join(__dirname, '..', 'src', 'math');
-const SRC_DIR = path.join(__dirname, '..', 'src');
-const FILES = ['pcg-hash.wgsl', 'density.wgsl', 'procedural-gen.wgsl', 'cull.wgsl', 'star-distant.wgsl'];
+const shaders = require('../src/render/shaders.js');
+const density = require('../src/math/density.js');
+const records = require('../src/math/star-record.js');
 
-function readShader(name) {
-        const p = path.join(WGSL_DIR, name);
-        if (!fs.existsSync(p)) return null;
-        return fs.readFileSync(p, 'utf8');
+const checks = [];
+function check(name, pass, detail) {
+	checks.push({ name, pass: !!pass, detail });
+	return !!pass;
 }
 
-function readMath(name) {
-        const p = path.join(MATH_DIR, name);
-        if (!fs.existsSync(p)) return null;
-        return fs.readFileSync(p, 'utf8');
+function readSource(relPath) {
+	return fs.readFileSync(path.join(__dirname, '..', relPath), 'utf-8');
 }
 
-// --- Test 1: PCG hash constants match JS ---
-function validatePcgConstants() {
-        const wgsl = readShader('pcg-hash.wgsl');
-        if (!wgsl) return { pass: false, error: 'pcg-hash.wgsl not found' };
-        // Check PCG constants present
-        const constants = ['0x7feb352d', '0x846ca68b', '0x9e3779b9', '0x85ebca77', '0xc2b2ae3d'];
-        const missing = constants.filter(c => !wgsl.toLowerCase().includes(c.toLowerCase()));
-        // Check function names
-        const fns = ['pcgHash', 'hash4', 'hash01', 'hash2D', 'hash3D', 'wangHash'];
-        const missingFns = fns.filter(f => !wgsl.includes(`fn ${f}(`));
-        // Check JS hash.js
-        const js = readMath('hash.js');
-        const jsHasConstants = constants.every(c => js.toLowerCase().includes(c.toLowerCase()));
-        const jsHasFns = fns.every(f => js.includes(`function ${f}(`));
-        return {
-                wgslConstantsPresent: missing.length === 0,
-                wgslFunctionsPresent: missingFns.length === 0,
-                jsConstantsPresent: jsHasConstants,
-                jsFunctionsPresent: jsHasFns,
-                missingConstants: missing,
-                missingFunctions: missingFns,
-                pass: missing.length === 0 && missingFns.length === 0 && jsHasConstants && jsHasFns,
-        };
+// --- 1. Structure --------------------------------------------------------
+{
+	const names = Object.keys(shaders.SHADER_PARTS);
+	check('every expected shader part is present',
+		['pcg-hash', 'density', 'star-sprite', 'procedural-gen', 'cull'].every(n => names.includes(n)),
+		names);
+	check('every shader part is a non-empty LF-only string',
+		names.every(n => typeof shaders.SHADER_PARTS[n] === 'string'
+			&& shaders.SHADER_PARTS[n].length > 100
+			&& !shaders.SHADER_PARTS[n].includes('\r')),
+		names.map(n => [n, shaders.SHADER_PARTS[n].length]));
+	check('only the wired shader is compiled into a module',
+		shaders.WIRED_SHADERS.length === 1 && shaders.WIRED_SHADERS[0] === 'star-sprite',
+		shaders.WIRED_SHADERS);
+	check('every wired shader exists in the module map',
+		shaders.WIRED_SHADERS.every(n => typeof shaders.SHADERS[n] === 'string' && shaders.SHADERS[n].length > 0),
+		Object.keys(shaders.SHADERS));
+
+	for (const name of names) {
+		const src = shaders.SHADER_PARTS[name];
+		let braces = 0;
+		let parens = 0;
+		for (const ch of src) {
+			if (ch === '{') braces++;
+			else if (ch === '}') braces--;
+			else if (ch === '(') parens++;
+			else if (ch === ')') parens--;
+		}
+		check(`${name}: braces and parentheses balance`, braces === 0 && parens === 0, { braces, parens });
+		check(`${name}: contains no unresolved markers`,
+			!src.includes('undefined') && !src.includes('TODO') && !src.includes('/*'), name);
+		const fnCount = (src.match(/^fn\s/gm) || []).length;
+		check(`${name}: declares its functions`, fnCount > 0, fnCount);
+	}
 }
 
-// --- Test 2: Density model constants match JS ---
-function validateDensityConstants() {
-        const wgsl = readShader('density.wgsl');
-        if (!wgsl) return { pass: false, error: 'density.wgsl not found' };
-        const js = readMath('density.js');
-
-        const expectedConsts = [
-                { js: '8.178', wgsl: '8.178', desc: 'GALACTIC_R0' },
-                { js: '2.6',   wgsl: '2.6',   desc: 'THIN_L' },
-                { js: '0.300', wgsl: '0.300', desc: 'THIN_H' },
-                { js: '3.5',   wgsl: '3.5',   desc: 'THICK_L' },
-                { js: '0.900', wgsl: '0.900', desc: 'THICK_H' },
-                { js: '1.5',   wgsl: '1.5',   desc: 'BULGE_A' },
-                { js: '0.5',   wgsl: '0.5',   desc: 'BULGE_B' },
-                { js: '0.4',   wgsl: '0.4',   desc: 'BULGE_C' },
-                { js: '0.20',  wgsl: '0.20',  desc: 'ARMS_AMP' },
-                { js: '3.5',   wgsl: '3.5',   desc: 'HALO_POWER' },
-        ];
-
-        const results = expectedConsts.map(c => ({
-                desc: c.desc,
-                jsHas: js.includes(c.js),
-                wgslHas: wgsl.includes(c.wgsl),
-        }));
-        const allMatch = results.every(r => r.jsHas && r.wgslHas);
-
-        // Check key functions exist in WGSL
-        const fns = ['toGalactocentric', 'rhoThin', 'rhoThick', 'rhoBulge', 'rhoHalo',
-                'armFactor', 'distanceToNearestArm', 'rhoTotal', 'rhoDecomposed', 'sampleComponent'];
-        const missingFns = fns.filter(f => !wgsl.includes(`fn ${f}(`));
-
-        return {
-                constants: results,
-                jsHasAllFunctions: fns.every(f => js.includes(`function ${f}(`)),
-                wgslMissingFunctions: missingFns,
-                pass: allMatch && missingFns.length === 0,
-        };
+// Grab `const NAME: type = VALUE;` from a shader part.
+function wgslConsts(part) {
+	const out = {};
+	const re = /^const\s+([A-Za-z_0-9]+)\s*:\s*([a-z0-9]+)\s*=\s*([^;]+);/gm;
+	let m;
+	while ((m = re.exec(shaders.SHADER_PARTS[part])) !== null) {
+		let value = m[3].trim();
+		if (value.startsWith('0x')) value = parseInt(value.replace(/u$/, ''), 16);
+		else value = parseFloat(value.replace(/u$/, ''));
+		out[m[1]] = value;
+	}
+	return out;
 }
 
-// --- Test 3: Mass-Teff table parity ---
-function validateMassTeffTable() {
-        const wgsl = readShader('procedural-gen.wgsl');
-        if (!wgsl) return { pass: false, error: 'procedural-gen.wgsl not found' };
-        const js = readMath('star-types.js');
-
-        // Mass values from JS table
-        const expectedMass = [0.08, 0.10, 0.15, 0.20, 0.30, 0.45, 0.70, 0.85, 1.00,
-                1.50, 2.00, 3.00, 5.00, 9.00, 16.0, 30.0, 60.0, 100];
-        const expectedTeff = [2400, 2800, 3200, 3400, 3600, 3800, 4500, 5000, 5800,
-                6800, 9000, 12000, 16000, 22000, 30000, 38000, 45000, 50000];
-
-        const wgslMassPresent = expectedMass.every(m => wgsl.includes(`${m}`));
-        const wgslTeffPresent = expectedTeff.every(t => wgsl.includes(`${t}`));
-        const jsMassPresent = expectedMass.every(m => js.includes(`${m}`));
-        const jsTeffPresent = expectedTeff.every(t => js.includes(`${t}`));
-
-        // Spectral thresholds
-        const thresholds = [30000, 10000, 7500, 6000, 5200, 3700];
-        const wgslThresholdsPresent = thresholds.every(t => wgsl.includes(`${t}.0`));
-        const jsThresholdsPresent = thresholds.every(t => js.includes(`${t}`));
-
-        return {
-                wgslMassTableComplete: wgslMassPresent,
-                wgslTeffTableComplete: wgslTeffPresent,
-                jsMassTableComplete: jsMassPresent,
-                jsTeffTableComplete: jsTeffPresent,
-                wgslSpectralThresholdsPresent: wgslThresholdsPresent,
-                jsSpectralThresholdsPresent: jsThresholdsPresent,
-                entryCount: expectedMass.length,
-                pass: wgslMassPresent && wgslTeffPresent && jsMassPresent && jsTeffPresent
-                        && wgslThresholdsPresent && jsThresholdsPresent,
-        };
+// --- 2. Numeric parity ---------------------------------------------------
+{
+	const c = wgslConsts('density');
+	const D = density;
+	const mirror = [
+		['GALACTIC_R0', D.GALACTIC_R0], ['GALACTIC_CENTRE_X', D.GALACTIC_CENTRE.x], ['GALACTIC_CENTRE_Y', D.GALACTIC_CENTRE.y],
+		['THIN_L', D.THIN.L], ['THIN_H', D.THIN.H], ['THIN_AMP', D.THIN.amp],
+		['THICK_L', D.THICK.L], ['THICK_H', D.THICK.H], ['THICK_AMP', D.THICK.amp],
+		['BULGE_A', D.BULGE.a], ['BULGE_B', D.BULGE.b], ['BULGE_C', D.BULGE.c],
+		['BULGE_R0', D.BULGE.r0], ['BULGE_AMP', D.BULGE.amp], ['BULGE_TILT_DEG', D.BULGE.tiltDeg],
+		['HALO_A_H', D.HALO.a_h], ['HALO_POWER', D.HALO.power], ['HALO_AMP', D.HALO.amp], ['HALO_RMAX', D.HALO.rMax],
+		['ARMS_M', D.ARMS.m], ['ARMS_AMP', D.ARMS.amp], ['ARMS_PITCH_DEG', D.ARMS.pitchDeg],
+		['ARMS_RS', D.ARMS.Rs], ['ARMS_PHASE0', D.ARMS.phase0],
+		['DISC_RADIUS', D.TRUNCATION.discRadius], ['DISC_HEIGHT', D.TRUNCATION.discHeight],
+		['BULGE_RADIUS', D.TRUNCATION.bulgeRadius],
+	];
+	for (const [name, value] of mirror) {
+		check(`density.wgsl ${name} matches the JS model`, c[name] === value, { wgsl: c[name], js: value });
+	}
+	check('density.wgsl component indices match the JS model',
+		c.COMPONENT_THIN === D.COMPONENT_THIN && c.COMPONENT_THICK === D.COMPONENT_THICK
+		&& c.COMPONENT_BULGE === D.COMPONENT_BULGE && c.COMPONENT_HALO === D.COMPONENT_HALO,
+		{ thin: c.COMPONENT_THIN, thick: c.COMPONENT_THICK, bulge: c.COMPONENT_BULGE, halo: c.COMPONENT_HALO });
 }
 
-// --- Test 4: StarPacked struct layout matches packing-test.js ---
-function validateStarPackedStruct() {
-        const wgsl = readShader('procedural-gen.wgsl');
-        if (!wgsl) return { pass: false, error: 'procedural-gen.wgsl not found' };
+{
+	const sprite = wgslConsts('star-sprite');
+	check('star-sprite.wgsl absolute magnitude range matches StarPacked',
+		sprite.ABS_MAG_MIN === records.ABS_MAG_MIN && sprite.ABS_MAG_SPAN === records.ABS_MAG_SPAN,
+		{ wgsl: [sprite.ABS_MAG_MIN, sprite.ABS_MAG_SPAN], js: [records.ABS_MAG_MIN, records.ABS_MAG_SPAN] });
+	check('star-sprite.wgsl visibility mask matches the record flag',
+		sprite.MASK_VISIBLE === (records.FLAG_VISIBLE << 16),
+		{ wgsl: sprite.MASK_VISIBLE, js: records.FLAG_VISIBLE << 16 });
 
-        // Check struct definition exists with the right fields
-        const structMatch = wgsl.match(/struct\s+StarPacked\s*\{[^}]+\}/);
-        if (!structMatch) {
-                return { pass: false, error: 'StarPacked struct not found' };
-        }
-        const structDef = structMatch[0];
-        const hasPositionHighX = structDef.includes('positionHighX: f32');
-        const hasPositionHighY = structDef.includes('positionHighY: f32');
-        const hasPositionHighZ = structDef.includes('positionHighZ: f32');
-        const hasPacked = structDef.includes('packed: u32');
+	const gen = wgslConsts('procedural-gen');
+	check('procedural-gen.wgsl magnitude range matches StarPacked',
+		gen.ABS_MAG_MIN === records.ABS_MAG_MIN && gen.ABS_MAG_SPAN === records.ABS_MAG_SPAN,
+		{ wgsl: [gen.ABS_MAG_MIN, gen.ABS_MAG_SPAN] });
+	check('procedural-gen.wgsl visibility flag matches StarPacked',
+		gen.FLAG_VISIBLE === records.FLAG_VISIBLE, { wgsl: gen.FLAG_VISIBLE, js: records.FLAG_VISIBLE });
 
-        // Should be 16 bytes total (3 × 4 + 4)
-        const expectedSize = 16;
-        const actualSize = 3 * 4 + 4;
-
-        return {
-                structFound: true,
-                hasPositionHighX,
-                hasPositionHighY,
-                hasPositionHighZ,
-                hasPacked,
-                expectedSizeBytes: expectedSize,
-                actualSizeBytes: actualSize,
-                pass: hasPositionHighX && hasPositionHighY && hasPositionHighZ && hasPacked
-                        && actualSize === expectedSize,
-        };
+	const cull = wgslConsts('cull');
+	check('cull.wgsl landmark mask matches the record flag',
+		cull.MASK_LANDMARK === (records.FLAG_LANDMARK << 16) && cull.MASK_VISIBLE === (records.FLAG_VISIBLE << 16),
+		{ wgsl: [cull.MASK_LANDMARK, cull.MASK_VISIBLE] });
+	check('cull.wgsl draws four vertices per sprite', cull.VERTICES_PER_SPRITE === 4, cull.VERTICES_PER_SPRITE);
 }
 
-// --- Test 5: WGSL syntax sanity ---
-function validateWgslSyntax() {
-        const results = {};
-        for (const file of FILES) {
-                const wgsl = readShader(file);
-                if (!wgsl) {
-                        results[file] = { pass: false, error: 'file not found' };
-                        continue;
-                }
-                const errors = [];
-                // Strip // line comments before counting — they contain parens that aren't code.
-                const stripped = wgsl.replace(/\/\/.*$/gm, '');
-                // Check for balanced braces
-                const openBraces = (stripped.match(/{/g) || []).length;
-                const closeBraces = (stripped.match(/}/g) || []).length;
-                if (openBraces !== closeBraces) {
-                        errors.push(`unbalanced braces: ${openBraces} open vs ${closeBraces} close`);
-                }
-                // Check for balanced parens
-                const openParens = (stripped.match(/\(/g) || []).length;
-                const closeParens = (stripped.match(/\)/g) || []).length;
-                if (openParens !== closeParens) {
-                        errors.push(`unbalanced parens: ${openParens} open vs ${closeParens} close`);
-                }
-                // Check for entry points where expected
-                const hasEntryPoint = wgsl.includes('@compute') || wgsl.includes('@vertex') || wgsl.includes('@fragment');
-                if (file === 'procedural-gen.wgsl' || file === 'cull.wgsl') {
-                        if (!wgsl.includes('@compute')) errors.push('missing @compute entry point');
-                }
-                if (file === 'star-distant.wgsl') {
-                        if (!wgsl.includes('@vertex')) errors.push('missing @vertex entry point');
-                        if (!wgsl.includes('@fragment')) errors.push('missing @fragment entry point');
-                }
-                // Check for @workgroup_size where compute is present
-                if (wgsl.includes('@compute') && !wgsl.includes('@workgroup_size')) {
-                        errors.push('missing @workgroup_size');
-                }
-                results[file] = {
-                        lines: wgsl.split('\n').length,
-                        bytes: wgsl.length,
-                        openBraces, closeBraces, openParens, closeParens,
-                        errors,
-                        pass: errors.length === 0,
-                };
-        }
-        return results;
+// --- 3. Symbolic parity --------------------------------------------------
+{
+	const starTypesSrc = readSource('src/math/star-types.js');
+	const hashSrc = readSource('src/math/hash.js');
+	const densitySrc = readSource('src/math/density.js');
+
+	const mirrors = [
+		['pcg-hash', hashSrc, ['pcgHash', 'hash4', 'hash01', 'hash01At', 'hash2D', 'hash3D', 'wangHash']],
+		['density', densitySrc, ['bulgeEllipsoidRadius', 'rhoThin', 'rhoThick', 'rhoBulge', 'rhoHalo',
+			'armFactor', 'distanceToNearestArm', 'rhoTotal', 'rhoDecomposed']],
+		['procedural-gen', starTypesSrc, ['luminosityFromMass', 'teffFromMass', 'msLifetimeGyr',
+			'sampleMassIMF', 'sampleLocalAge', 'classifyByTempAndState']],
+	];
+	for (const [part, jsSource, fns] of mirrors) {
+		const wgslSrc = shaders.SHADER_PARTS[part];
+		for (const fn of fns) {
+			const inWgsl = new RegExp(`^fn\\s+${fn}\\b`, 'm').test(wgslSrc);
+			const inJs = new RegExp(`function\\s+${fn}\\b`).test(jsSource);
+			check(`${part}.wgsl mirrors ${fn}`, inWgsl && inJs, { wgsl: inWgsl, js: inJs });
+		}
+	}
+
+	// Numbers that pin the stellar model down. Keep them in one list so a
+	// change to the recipe has to be made in both places deliberately.
+	const gen = shaders.SHADER_PARTS['procedural-gen'];
+	const numbers = [
+		['Salpeter slope 2.35', /2\.35/],
+		['mass floor 0.08', /0\.08/],
+		['mass ceiling 100', /100\.0/],
+		['lifetime coefficient 10', /10\.0/],
+		['O threshold 30000 K', /30000\.0/],
+		['B threshold 10000 K', /10000\.0/],
+		['A threshold 7500 K', /7500\.0/],
+		['F threshold 6000 K', /6000\.0/],
+		['G threshold 5200 K', /5200\.0/],
+		['K threshold 3700 K', /3700\.0/],
+	];
+	for (const [label, re] of numbers) {
+		check(`procedural-gen.wgsl still contains ${label}`, re.test(gen), label);
+	}
+
+	// The mass-Teff table is data; the WGSL carries the same breakpoints.
+	const table = require('../src/math/star-types.js').MASS_TEFF_TABLE;
+	const missing = table.filter(([m]) => {
+		const text = m >= 1 ? m.toFixed(1).replace(/\.0$/, '.0') : m.toFixed(2);
+		return !gen.includes(text);
+	});
+	check('procedural-gen.wgsl carries the same mass-Teff breakpoints',
+		missing.length === 0, missing.map(([m]) => m));
 }
 
-// --- Test 6: star-distant.wgsl is embedded in index.html ---
-// Per AGENTS.md: WGSL must be embedded as <script type="text/x-wgsl"> blocks
-// for file:// compatibility. We don't require byte-for-byte equality (the
-// embedded version may strip comment headers and have different indentation)
-// but we do require that the key structs and entry points are present.
-function validateStarDistantEmbedded() {
-        const indexHtml = fs.readFileSync(path.join(SRC_DIR, 'index.html'), 'utf8');
-        const shaderName = 'star-distant.wgsl';
-        const hasScriptBlock = indexHtml.includes(`id="${shaderName}"`)
-                && indexHtml.includes(`type="text/x-wgsl"`);
-        const wgslFile = readShader(shaderName);
-        const matchResult = indexHtml.match(new RegExp(`<script type="text/x-wgsl" id="${shaderName}">([\\s\\S]*?)<\\/script>`));
-        const embedded = matchResult ? matchResult[1] : '';
-        // Key markers that must be present in both file and embedded
-        const markers = [
-                'struct CameraUniform',
-                'struct StarPacked',
-                'struct VertexOut',
-                'cameraRight: vec4f',  // added in v2 for billboarding
-                'cameraUp: vec4f',     // added in v2 for billboarding
-                'fn vs_main',
-                'fn fs_main',
-                'fn cornerOffset',    // added in v2 — billboard corner lookup
-                'fn decodeAppMag',
-                'fn decodeColorIndex',
-                '@builtin(instance_index)',  // added in v2 — instanced rendering
-                '@vertex',
-                '@fragment',
-                // triangle-strip topology is set in JS pipeline config, not in WGSL.
-                // We don't check it here. Instead, check that the shader uses 4-vertex
-                // corner offsets (sign of instanced billboard pattern).
-                'cornerOffset(vid)',  // called twice in vs_main
-        ];
-        const missingInEmbedded = markers.filter(m => !embedded.includes(m));
-        const missingInFile = wgslFile ? markers.filter(m => !wgslFile.includes(m)) : ['(file not found)'];
-        return {
-                scriptBlockPresent: hasScriptBlock,
-                embeddedLength: embedded.length,
-                fileLength: wgslFile ? wgslFile.length : 0,
-                keyMarkersAllPresentInEmbedded: missingInEmbedded.length === 0,
-                keyMarkersAllPresentInFile: missingInFile.length === 0,
-                missingInEmbedded,
-                missingInFile,
-                pass: hasScriptBlock && missingInEmbedded.length === 0 && missingInFile.length === 0,
-        };
+// --- 4. Entry points -----------------------------------------------------
+{
+	const sprite = shaders.SHADERS['star-sprite'];
+	check('the wired shader declares a vertex entry point', /@vertex\s*\nfn\s+vs_main/.test(sprite));
+	check('the wired shader declares a fragment entry point',
+		/@fragment\s*\nfn\s+fs_main/.test(sprite) || /@fragment\s+fn\s+fs_main/.test(sprite));
+	check('the wired shader declares its bindings',
+		/@group\(0\)\s*@binding\(0\)/.test(sprite) && /@group\(0\)\s*@binding\(1\)/.test(sprite)
+		&& /@group\(0\)\s*@binding\(2\)/.test(sprite));
+	check('the wired shader declares the camera uniform struct', /struct\s+CameraUniform/.test(sprite));
+	check('the wired shader declares its builtin vertex input',
+		/@builtin\(vertex_index\)/.test(sprite));
+	const gen = shaders.SHADERS['procedural-gen'];
+	check('the procedural generator is a compute shader', /@compute/.test(gen) && /@workgroup_size/.test(gen));
+	const cull = shaders.SHADERS['cull'];
+	check('the cull shader writes indirect draw arguments',
+		/indirectArgs\[1\]\s*=/.test(cull) && /var<storage,\s*read_write>\s+indirectArgs/.test(cull));
 }
 
-// --- Run all checks ---
-console.log('=== WGSL Validation ===\n');
-
-const checks = {
-        pcgConstants: validatePcgConstants(),
-        densityConstants: validateDensityConstants(),
-        massTeffTable: validateMassTeffTable(),
-        starPackedStruct: validateStarPackedStruct(),
-        wgslSyntax: validateWgslSyntax(),
-        starDistantEmbedded: validateStarDistantEmbedded(),
-};
-
-console.log('--- PCG hash constants ---');
-console.log(`  pass: ${checks.pcgConstants.pass}`);
-if (!checks.pcgConstants.pass) {
-        console.log(`  missing constants: ${checks.pcgConstants.missingConstants?.join(', ')}`);
-        console.log(`  missing functions: ${checks.pcgConstants.missingFunctions?.join(', ')}`);
+// --- Report --------------------------------------------------------------
+let passed = 0;
+let failed = 0;
+for (const c of checks) {
+	if (c.pass) passed++; else failed++;
+	console.log(`  ${c.pass ? 'OK  ' : 'FAIL'} ${c.name}${c.pass ? '' : `  -> ${JSON.stringify(c.detail)}`}`);
 }
-
-console.log('\n--- Density model constants ---');
-console.log(`  pass: ${checks.densityConstants.pass}`);
-if (checks.densityConstants.constants) {
-        for (const c of checks.densityConstants.constants) {
-                const status = c.jsHas && c.wgslHas ? 'OK' : 'MISMATCH';
-                console.log(`  ${c.desc}: JS=${c.jsHas}, WGSL=${c.wgslHas} [${status}]`);
-        }
-}
-
-console.log('\n--- Mass-Teff table parity ---');
-console.log(`  pass: ${checks.massTeffTable.pass}`);
-console.log(`  entry count: ${checks.massTeffTable.entryCount}`);
-console.log(`  WGSL mass table complete: ${checks.massTeffTable.wgslMassTableComplete}`);
-console.log(`  WGSL Teff table complete: ${checks.massTeffTable.wgslTeffTableComplete}`);
-console.log(`  WGSL spectral thresholds present: ${checks.massTeffTable.wgslSpectralThresholdsPresent}`);
-
-console.log('\n--- StarPacked struct ---');
-console.log(`  pass: ${checks.starPackedStruct.pass}`);
-console.log(`  size: ${checks.starPackedStruct.actualSizeBytes} bytes (expected 16)`);
-
-console.log('\n--- WGSL syntax sanity ---');
-for (const [file, r] of Object.entries(checks.wgslSyntax)) {
-        console.log(`  ${file}: ${r.pass ? 'OK' : 'FAIL'} (${r.lines} lines, ${r.bytes} bytes)`);
-        if (r.errors && r.errors.length > 0) {
-                for (const e of r.errors) console.log(`    - ${e}`);
-        }
-}
-
-const allPass = Object.values(checks).every(c => c.pass === true
-        || (typeof c === 'object' && Object.values(c).every(v => v.pass === true)));
-const out = {
-        date: new Date().toISOString(),
-        checks,
-        verdict: allPass
-                ? 'PASS — WGSL mirrors JS libraries exactly'
-                : 'FAIL — investigate mismatches',
-};
+console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 
 const logPath = path.join(__dirname, 'logs', 'wgsl-validate.json');
-fs.writeFileSync(logPath, JSON.stringify(out, null, 2));
-console.log(`\nWrote ${logPath}`);
-
+fs.mkdirSync(path.dirname(logPath), { recursive: true });
+fs.writeFileSync(logPath, JSON.stringify({
+	date: new Date().toISOString(),
+	parts: Object.keys(shaders.SHADER_PARTS).map(n => ({ name: n, lines: shaders.SHADER_PARTS[n].split('\n').length })),
+	wired: shaders.WIRED_SHADERS,
+	totalChecks: checks.length,
+	passed,
+	failed,
+	checks,
+}, null, 2));
+console.log(`Wrote ${logPath}`);
 console.log('\n=== VERDICT ===');
-console.log(out.verdict);
+console.log(failed === 0 ? 'PASS — WGSL mirrors the JS model' : `FAIL — ${failed} checks failed`);
+process.exit(failed === 0 ? 0 : 1);

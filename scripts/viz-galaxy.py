@@ -17,7 +17,11 @@ import sys
 # Font registration: per system rules, register Noto Sans SC and DejaVu Sans
 # so any CJK characters fall back properly. (English-only labels here, but
 # consistent with project conventions.)
-import matplotlib
+try:
+        import matplotlib
+except ImportError:
+        print('matplotlib is required for this script (pip install matplotlib numpy)', file=sys.stderr)
+        sys.exit(1)
 matplotlib.use('Agg')
 import matplotlib.font_manager as fm
 for path in [
@@ -32,13 +36,17 @@ import numpy as np
 plt.rcParams['font.sans-serif'] = ['Noto Sans SC', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 
-INPUT = '/home/z/my-project/experiments/logs/galaxy-sample.json'
-OUTPUT = '/home/z/my-project/download/galaxy-viz.png'
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+INPUT = os.environ.get('GALAXY_SAMPLE', os.path.join(ROOT, 'experiments', 'logs', 'galaxy-sample.json'))
+# Written next to the checkout, not inside it: the PNG is a build artefact.
+OUTPUT = os.environ.get('GALAXY_VIZ_OUT', os.path.join(os.path.dirname(ROOT), 'galaxy-viz.png'))
 
 def main():
         with open(INPUT) as f:
                 data = json.load(f)
 
+        GC_X = data['galaxy']['centre']['x']
+        GC_Y = data['galaxy']['centre']['y']
         stars = data['stars']
         nebulae = data['nebulae']
         grid = np.array(data['densityGrid']).reshape(data['densityGridMeta']['N'], data['densityGridMeta']['N'])
@@ -102,8 +110,8 @@ def main():
                 ax.add_patch(circle)
 
         # Mark galactic centre and Sun
-        ax.plot(+8.178, 0, 'x', color='red', markersize=14, markeredgewidth=3)
-        ax.text(+8.178, 0.6, 'GC', color='red', fontsize=11, ha='center', weight='bold')
+        ax.plot(GC_X, GC_Y, 'x', color='red', markersize=14, markeredgewidth=3)
+        ax.text(GC_X, GC_Y + 0.6, 'GC', color='red', fontsize=11, ha='center', weight='bold')
         ax.plot(0, 0, '+', color='yellow', markersize=12, markeredgewidth=2)
         ax.text(0, 0.6, 'Sun', color='yellow', fontsize=10, ha='center', weight='bold')
 

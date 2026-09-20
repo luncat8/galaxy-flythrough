@@ -1,0 +1,4 @@
+# Generated inputs to scripts/viz-galaxy.py, not results: ~5 MB of JSON that is
+# reproduced by `python3 scripts/run.py visualize-data`.
+experiments/logs/galaxy-sample.json
+galaxy-viz.png

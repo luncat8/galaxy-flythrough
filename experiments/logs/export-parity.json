@@ -1,0 +1,479 @@
+{
+  "date": "2026-09-19T23:59:12.907Z",
+  "modules": 14,
+  "totalChecks": 73,
+  "passed": 73,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "HashLib loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "HashLib registers exactly one window namespace (HashLib)",
+      "pass": true,
+      "detail": [
+        "HashLib"
+      ]
+    },
+    {
+      "name": "HashLib exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "HashLib has identical key sets (7 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "HashLib binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "DensityLib loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "DensityLib registers exactly one window namespace (DensityLib)",
+      "pass": true,
+      "detail": [
+        "DensityLib"
+      ]
+    },
+    {
+      "name": "DensityLib exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "DensityLib has identical key sets (27 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "DensityLib binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "SamplingLib loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "SamplingLib registers exactly one window namespace (SamplingLib)",
+      "pass": true,
+      "detail": [
+        "SamplingLib"
+      ]
+    },
+    {
+      "name": "SamplingLib exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "SamplingLib has identical key sets (6 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "SamplingLib binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "StarRecord loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "StarRecord registers exactly one window namespace (StarRecord)",
+      "pass": true,
+      "detail": [
+        "StarRecord"
+      ]
+    },
+    {
+      "name": "StarRecord exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "StarRecord has identical key sets (17 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "StarRecord binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "StarTypesLib loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "StarTypesLib registers exactly one window namespace (StarTypesLib)",
+      "pass": true,
+      "detail": [
+        "StarTypesLib"
+      ]
+    },
+    {
+      "name": "StarTypesLib exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "StarTypesLib has identical key sets (14 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "StarTypesLib binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "NebulaLib loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "NebulaLib registers exactly one window namespace (NebulaLib)",
+      "pass": true,
+      "detail": [
+        "NebulaLib"
+      ]
+    },
+    {
+      "name": "NebulaLib exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "NebulaLib has identical key sets (5 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "NebulaLib binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "Camera loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "Camera registers exactly one window namespace (Camera)",
+      "pass": true,
+      "detail": [
+        "Camera"
+      ]
+    },
+    {
+      "name": "Camera exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "Camera has identical key sets (12 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "Camera binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "Input loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "Input registers exactly one window namespace (Input)",
+      "pass": true,
+      "detail": [
+        "Input"
+      ]
+    },
+    {
+      "name": "Input exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "Input has identical key sets (1 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "Input binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "Loop loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "Loop registers exactly one window namespace (Loop)",
+      "pass": true,
+      "detail": [
+        "Loop"
+      ]
+    },
+    {
+      "name": "Loop exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "Loop has identical key sets (3 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "Loop binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "Device loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "Device registers exactly one window namespace (Device)",
+      "pass": true,
+      "detail": [
+        "Device"
+      ]
+    },
+    {
+      "name": "Device exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "Device has identical key sets (4 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "Device binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "GalaxyShaders loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "GalaxyShaders registers exactly one window namespace (GalaxyShaders)",
+      "pass": true,
+      "detail": [
+        "GalaxyShaders"
+      ]
+    },
+    {
+      "name": "GalaxyShaders exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "GalaxyShaders has identical key sets (3 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "GalaxyShaders binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "StarRenderer loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "StarRenderer registers exactly one window namespace (StarRenderer)",
+      "pass": true,
+      "detail": [
+        "StarRenderer"
+      ]
+    },
+    {
+      "name": "StarRenderer exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "StarRenderer has identical key sets (9 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "StarRenderer binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "TileLoader loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "TileLoader registers exactly one window namespace (TileLoader)",
+      "pass": true,
+      "detail": [
+        "TileLoader"
+      ]
+    },
+    {
+      "name": "TileLoader exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "TileLoader has identical key sets (8 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "TileLoader binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "CellManager loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "CellManager registers exactly one window namespace (CellManager)",
+      "pass": true,
+      "detail": [
+        "CellManager"
+      ]
+    },
+    {
+      "name": "CellManager exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "CellManager has identical key sets (2 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "CellManager binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "every wired shader resolves in the SHADERS map",
+      "pass": true,
+      "detail": [
+        "star-sprite"
+      ]
+    },
+    {
+      "name": "every SHADER_PART is a non-empty string",
+      "pass": true,
+      "detail": [
+        "pcg-hash",
+        "density",
+        "star-sprite",
+        "procedural-gen",
+        "cull"
+      ]
+    },
+    {
+      "name": "the renderer and the shader map agree on the wired module",
+      "pass": true
+    }
+  ]
+}
