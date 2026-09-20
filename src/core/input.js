@@ -9,8 +9,9 @@
 //     left button held
 //
 // Consumers take what they own and leave the rest:
-//   * camera  : keys, lookDx/lookDy, wheelDelta, actions.reset/home/cameraMode
-//   * renderer: actions.exposure
+//   * camera   : keys, lookDx/lookDy, wheelDelta, actions.reset/home/cameraMode
+//   * renderer : actions.exposure
+//   * selection: actions.pick + pickX/pickY, actions.constellations
 //
 // No allocations in the hot path: listeners write into the shared state, and
 // deltas are zeroed by whoever consumed them.
@@ -21,6 +22,7 @@
 // 3 per notch) or pages, indexed by e.deltaMode. All three are folded into
 // pixel units so one notch is 100 for every consumer.
 const WHEEL_UNITS_PER_MODE = [1, 100 / 3, 100];
+const CLICK_MAX_PX = 4;   // mouse-up within this of mouse-down is a pick, not a drag
 
 function createInput(canvas) {
 	const keys = {
@@ -34,7 +36,9 @@ function createInput(canvas) {
 		wheelDelta: 0,
 		dragging: false,
 		pointerLocked: false,
-		actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0 },
+		pickX: 0,
+		pickY: 0,
+		actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0, constellations: 0, pick: 0 },
 	};
 
 	// Held keys: true while down. Ctrl is the brief's slow modifier; Ctrl+W
@@ -51,13 +55,15 @@ function createInput(canvas) {
 	};
 	// One-shot actions fire on the press only: a held C must not cycle camera
 	// modes at the key-repeat rate.
-	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyC: 'cameraMode' };
+	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyC: 'cameraMode', KeyP: 'constellations' };
 	// Exposure accumulates, so key repeat is one more step per repeat.
 	const exposureMap = { BracketLeft: -1, Minus: -1, BracketRight: 1, Equal: 1 };
 
 	// Ignore the first look event after a pointer lock change: browsers report
 	// the cursor jump from wherever it was to the centre.
 	let swallowNextMove = false;
+	let downX = 0;
+	let downY = 0;
 
 	function onKeyDown(e) {
 		const held = keyMap[e.code];
@@ -89,6 +95,8 @@ function createInput(canvas) {
 	function onMouseDown(e) {
 		if (e.button !== 0) return;
 		state.dragging = true;
+		downX = e.offsetX;
+		downY = e.offsetY;
 		if (!state.pointerLocked && canvas.requestPointerLock) {
 			const request = canvas.requestPointerLock();
 			// Chrome returns a promise that rejects when the user agent denies
@@ -98,7 +106,22 @@ function createInput(canvas) {
 	}
 
 	function onMouseUp(e) {
-		if (e.button === 0) state.dragging = false;
+		if (e.button !== 0) return;
+		state.dragging = false;
+		const dx = e.offsetX - downX;
+		const dy = e.offsetY - downY;
+		if (dx * dx + dy * dy > CLICK_MAX_PX * CLICK_MAX_PX) return;   // a drag, not a click
+		// A click without drag picks a landmark. Under pointer lock the client
+		// coordinates are frozen at the lock point, so pick from the canvas
+		// centre — where the camera is aiming.
+		state.actions.pick = 1;
+		if (state.pointerLocked) {
+			state.pickX = canvas.clientWidth * 0.5;
+			state.pickY = canvas.clientHeight * 0.5;
+		} else {
+			state.pickX = e.offsetX;
+			state.pickY = e.offsetY;
+		}
 	}
 
 	function onMouseMove(e) {

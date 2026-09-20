@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-19T23:59:16.373Z",
+  "date": "2026-09-20T06:56:14.771Z",
   "seed": 42,
   "sampleSize": 120000,
   "box": {
@@ -10,7 +10,7 @@
     "zMin": -3,
     "zMax": 3
   },
-  "sampleMs": 254,
+  "sampleMs": 251,
   "totalChecks": 8,
   "passed": 8,
   "failed": 0,

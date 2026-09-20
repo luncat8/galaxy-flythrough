@@ -1,10 +1,10 @@
 {
-  "date": "2026-09-19T23:59:13.178Z",
+  "date": "2026-09-20T06:56:11.494Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 79,
-  "totalChecks": 35,
-  "passed": 35,
+  "prepareMs": 84,
+  "totalChecks": 39,
+  "passed": 39,
   "failed": 0,
   "checks": [
     {
@@ -39,19 +39,39 @@
       "pass": true
     },
     {
-      "name": "the storage buffer holds procedural + catalog capacity",
+      "name": "the storage buffer holds procedural + landmarks + catalog capacity",
       "pass": true,
       "detail": {
-        "size": 381264,
-        "expected": 381264
+        "size": 382208,
+        "expected": 382208
       }
     },
     {
-      "name": "the procedural field was uploaded once, at offset 0",
+      "name": "the fixed blocks (procedural + landmarks) were uploaded once, at offset 0",
       "pass": true,
       "detail": {
         "writes": 1
       }
+    },
+    {
+      "name": "the renderer reports the landmark block from the data module",
+      "pass": true,
+      "detail": {
+        "landmarkStars": 59,
+        "table": 59
+      }
+    },
+    {
+      "name": "every landmark record sits at its baked position right after the procedural block",
+      "pass": true
+    },
+    {
+      "name": "every landmark record is flagged FLAG_VISIBLE | FLAG_LANDMARK",
+      "pass": true
+    },
+    {
+      "name": "every landmark record carries the table colour and absolute magnitude",
+      "pass": true
     },
     {
       "name": "every procedural record is visible and finite",
@@ -76,7 +96,7 @@
       "pass": true,
       "detail": {
         "writes": 1,
-        "offset": 320000
+        "offset": 320944
       }
     },
     {
@@ -84,7 +104,7 @@
       "pass": true,
       "detail": {
         "vertices": 4,
-        "instances": 23829,
+        "instances": 23888,
         "firstVertex": 0,
         "firstInstance": 0,
         "pipeline": {
@@ -197,7 +217,7 @@
     {
       "name": "the drawn instance count follows the new residency",
       "pass": true,
-      "detail": 21355
+      "detail": 21414
     },
     {
       "name": "a camera outside the catalog volume drops every catalog star",
@@ -205,11 +225,11 @@
       "detail": 0
     },
     {
-      "name": "the frame is still drawn with the procedural field only",
+      "name": "the frame is still drawn with the procedural field and the landmarks",
       "pass": true,
       "detail": {
         "vertices": 4,
-        "instances": 20000,
+        "instances": 20059,
         "firstVertex": 0,
         "firstInstance": 0,
         "pipeline": {

@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-19T23:59:12.907Z",
-  "modules": 14,
-  "totalChecks": 73,
-  "passed": 73,
+  "date": "2026-09-20T06:56:11.165Z",
+  "modules": 19,
+  "totalChecks": 98,
+  "passed": 98,
   "failed": 0,
   "checks": [
     {
@@ -198,6 +198,38 @@
       "detail": []
     },
     {
+      "name": "Coords loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "Coords registers exactly one window namespace (Coords)",
+      "pass": true,
+      "detail": [
+        "Coords"
+      ]
+    },
+    {
+      "name": "Coords exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "Coords has identical key sets (6 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "Coords binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
       "name": "Camera loads under Node",
       "pass": true,
       "detail": null
@@ -217,7 +249,7 @@
       }
     },
     {
-      "name": "Camera has identical key sets (12 keys)",
+      "name": "Camera has identical key sets (27 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -249,7 +281,7 @@
       }
     },
     {
-      "name": "Input has identical key sets (1 keys)",
+      "name": "Input has identical key sets (2 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -258,6 +290,38 @@
     },
     {
       "name": "Input binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "Selection loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "Selection registers exactly one window namespace (Selection)",
+      "pass": true,
+      "detail": [
+        "Selection"
+      ]
+    },
+    {
+      "name": "Selection exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "Selection has identical key sets (2 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "Selection binds every key to the same value",
       "pass": true,
       "detail": []
     },
@@ -326,6 +390,70 @@
       "detail": []
     },
     {
+      "name": "Landmarks loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "Landmarks registers exactly one window namespace (Landmarks)",
+      "pass": true,
+      "detail": [
+        "Landmarks"
+      ]
+    },
+    {
+      "name": "Landmarks exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "Landmarks has identical key sets (4 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "Landmarks binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "Constellations loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "Constellations registers exactly one window namespace (Constellations)",
+      "pass": true,
+      "detail": [
+        "Constellations"
+      ]
+    },
+    {
+      "name": "Constellations exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "Constellations has identical key sets (3 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "Constellations binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
       "name": "GalaxyShaders loads under Node",
       "pass": true,
       "detail": null
@@ -386,6 +514,38 @@
     },
     {
       "name": "StarRenderer binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "LabelLayer loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "LabelLayer registers exactly one window namespace (LabelLayer)",
+      "pass": true,
+      "detail": [
+        "LabelLayer"
+      ]
+    },
+    {
+      "name": "LabelLayer exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "LabelLayer has identical key sets (8 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "LabelLayer binds every key to the same value",
       "pass": true,
       "detail": []
     },

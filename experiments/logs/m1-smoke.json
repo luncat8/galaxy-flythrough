@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-20T05:36:29.030Z",
+  "date": "2026-09-20T06:56:11.231Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -7,14 +7,19 @@
     "math/star-record.js",
     "math/star-types.js",
     "math/nebula.js",
+    "math/coords.js",
     "core/device.js",
     "core/camera.js",
     "core/input.js",
+    "core/selection.js",
     "core/loop.js",
+    "data/landmarks.js",
+    "data/constellations.js",
     "render/shaders.js",
     "stream/tile-loader.js",
     "stream/cell-manager.js",
     "render/star-sprites.js",
+    "render/label-layer.js",
     "main.js"
   ],
   "sourceFiles": [
@@ -22,20 +27,25 @@
     "core/device.js",
     "core/input.js",
     "core/loop.js",
+    "core/selection.js",
+    "data/constellations.js",
+    "data/landmarks.js",
     "main.js",
+    "math/coords.js",
     "math/density.js",
     "math/hash.js",
     "math/nebula.js",
     "math/sampling.js",
     "math/star-record.js",
     "math/star-types.js",
+    "render/label-layer.js",
     "render/shaders.js",
     "render/star-sprites.js",
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 38,
-  "passed": 38,
+  "totalChecks": 44,
+  "passed": 44,
   "failed": 0,
   "checks": [
     {
@@ -47,8 +57,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 15,
-        "sources": 15,
+        "scripts": 20,
+        "sources": 20,
         "missing": []
       }
     },
@@ -70,6 +80,7 @@
         "elements": [
           true,
           true,
+          true,
           true
         ]
       }
@@ -89,14 +100,19 @@
         "StarRecord",
         "StarTypesLib",
         "NebulaLib",
+        "Coords",
         "Device",
         "Camera",
         "Input",
+        "Selection",
         "Loop",
+        "Landmarks",
+        "Constellations",
         "GalaxyShaders",
         "TileLoader",
         "CellManager",
-        "StarRenderer"
+        "StarRenderer",
+        "LabelLayer"
       ]
     },
     {
@@ -142,6 +158,13 @@
       }
     },
     {
+      "name": "Coords loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 6
+      }
+    },
+    {
       "name": "Camera loads under Node and is registered on window",
       "pass": true,
       "detail": {
@@ -150,6 +173,13 @@
     },
     {
       "name": "Input loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 2
+      }
+    },
+    {
+      "name": "Selection loads under Node and is registered on window",
       "pass": true,
       "detail": {
         "keys": 2
@@ -170,6 +200,20 @@
       }
     },
     {
+      "name": "Landmarks loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 4
+      }
+    },
+    {
+      "name": "Constellations loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 3
+      }
+    },
+    {
       "name": "GalaxyShaders loads under Node and is registered on window",
       "pass": true,
       "detail": {
@@ -181,6 +225,13 @@
       "pass": true,
       "detail": {
         "keys": 9
+      }
+    },
+    {
+      "name": "LabelLayer loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 8
       }
     },
     {
@@ -283,6 +334,14 @@
     {
       "name": "camera.js finds the orbit centre through window.DensityLib when loaded as a page script",
       "pass": true
+    },
+    {
+      "name": "the page scope bakes the landmark table and resolves every constellation edge",
+      "pass": true,
+      "detail": {
+        "landmarks": 59,
+        "figures": 15
+      }
     },
     {
       "name": "the end-to-end sample has the requested stars",

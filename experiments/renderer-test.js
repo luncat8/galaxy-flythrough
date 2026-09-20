@@ -26,7 +26,9 @@ require('../src/math/hash.js');
 require('../src/math/density.js');
 require('../src/math/sampling.js');
 require('../src/math/star-record.js');
+require('../src/math/coords.js');
 require('../src/math/star-types.js');
+require('../src/data/landmarks.js');
 require('../src/render/shaders.js');
 require('../src/stream/tile-loader.js');
 require('../src/stream/cell-manager.js');
@@ -156,14 +158,36 @@ console.log(`Prepared in ${prepareMs} ms: ${prepareState.proceduralStars} proced
 const catalogs = gpu.buffers.filter(b => b.label === 'star-storage');
 {
 	const buffer = catalogs[0];
-	const expectedRecords = prepareState.proceduralStars + Math.min(manifest.starCount, CATALOG_BUDGET);
-	check('the storage buffer holds procedural + catalog capacity',
+	const expectedRecords = prepareState.proceduralStars + prepareState.landmarkStars + Math.min(manifest.starCount, CATALOG_BUDGET);
+	check('the storage buffer holds procedural + landmarks + catalog capacity',
 		buffer.size === Math.max(16, expectedRecords * records.RECORD_BYTES),
 		{ size: buffer.size, expected: expectedRecords * records.RECORD_BYTES });
-	check('the procedural field was uploaded once, at offset 0',
+	check('the fixed blocks (procedural + landmarks) were uploaded once, at offset 0',
 		gpu.bufferWrites.length === 1 && gpu.bufferWrites[0].offset === 0
-		&& gpu.bufferWrites[0].bytes.length === prepareState.proceduralStars * records.RECORD_BYTES,
+		&& gpu.bufferWrites[0].bytes.length === (prepareState.proceduralStars + prepareState.landmarkStars) * records.RECORD_BYTES,
 		{ writes: gpu.bufferWrites.length });
+}
+
+// --- The landmark block is the named-star table --------------------------
+{
+	const L = require('../src/data/landmarks.js');
+	check('the renderer reports the landmark block from the data module',
+		prepareState.landmarkStars === L.count && L.count >= 30 && L.count <= 60,
+		{ landmarkStars: prepareState.landmarkStars, table: L.count });
+	const bytes = gpu.bufferWrites[0].bytes;
+	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+	let positionOk = true, flagsOk = true, colorOk = true, magOk = true;
+	for (let i = 0; i < L.count; i++) {
+		const rec = records.readRecord(view, (prepareState.proceduralStars + i) * records.RECORD_BYTES);
+		const e = L.ENTRIES[i];
+		if (rec.x !== Math.fround(e.x) || rec.y !== Math.fround(e.y) || rec.z !== Math.fround(e.z)) positionOk = false;
+		if (!rec.visible || (rec.flags & records.FLAG_LANDMARK) === 0) flagsOk = false;
+		if (rec.colorIndex !== e.colorIndex) colorOk = false;
+		if (Math.abs(rec.absMag - e.absMag) > records.ABS_MAG_SPAN / 255 + 1e-6) magOk = false;
+	}
+	check('every landmark record sits at its baked position right after the procedural block', positionOk);
+	check('every landmark record is flagged FLAG_VISIBLE | FLAG_LANDMARK', flagsOk);
+	check('every landmark record carries the table colour and absolute magnitude', colorOk && magOk);
 }
 
 // --- The procedural records are real stars ------------------------------
@@ -197,11 +221,11 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 {
 	const catalogWrites = gpu.bufferWrites.filter(w => w.offset > 0);
 	check('the first frame streams the catalog once',
-		catalogWrites.length === 1 && catalogWrites[0].offset === prepareState.proceduralStars * records.RECORD_BYTES,
+		catalogWrites.length === 1 && catalogWrites[0].offset === (prepareState.proceduralStars + prepareState.landmarkStars) * records.RECORD_BYTES,
 		{ writes: catalogWrites.length, offset: catalogWrites[0] && catalogWrites[0].offset });
 	check('the draw covers exactly the resident stars',
 		gpu.draws.length === 1 && gpu.draws[0].instances === renderer.state.drawn
-		&& renderer.state.drawn === prepareState.proceduralStars + renderer.state.catalogResidentStars,
+		&& renderer.state.drawn === prepareState.proceduralStars + renderer.state.landmarkStars + renderer.state.catalogResidentStars,
 		gpu.draws[0]);
 	check('the draw uses four vertices per star (triangle strip quad)',
 		gpu.draws[0].vertices === 4 && gpu.draws[0].firstVertex === 0 && gpu.draws[0].firstInstance === 0);
@@ -280,7 +304,7 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 		gpu.bufferWrites.length > writesBefore, { before: writesBefore, after: gpu.bufferWrites.length });
 	check('the drawn instance count follows the new residency',
 		gpu.draws[gpu.draws.length - 1].instances === renderer.state.drawn
-		&& renderer.state.drawn === renderer.state.proceduralStars + renderer.state.catalogResidentStars,
+		&& renderer.state.drawn === renderer.state.proceduralStars + renderer.state.landmarkStars + renderer.state.catalogResidentStars,
 		renderer.state.drawn);
 }
 
@@ -294,9 +318,9 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 	renderer.render(camera, WIDTH, HEIGHT, 5 / 60, far);
 	check('a camera outside the catalog volume drops every catalog star',
 		renderer.state.catalogResidentStars === 0, renderer.state.catalogResidentStars);
-	check('the frame is still drawn with the procedural field only',
+	check('the frame is still drawn with the procedural field and the landmarks',
 		gpu.draws.length === drawsBefore + 1
-		&& gpu.draws[gpu.draws.length - 1].instances === renderer.state.proceduralStars,
+		&& gpu.draws[gpu.draws.length - 1].instances === renderer.state.proceduralStars + renderer.state.landmarkStars,
 		gpu.draws[gpu.draws.length - 1]);
 	check('the render pass still clears and stores the frame',
 		gpu.lastPass.colorAttachments[0].loadOp === 'clear'

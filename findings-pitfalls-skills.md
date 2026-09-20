@@ -324,3 +324,15 @@ Corollary: a value that walks a ×2 grid needs power-of-two clamps. Clamped at 0
 ## 2026-09-20 — Keyboard traps: Ctrl as a modifier, key repeat on toggles
 
 The DOM codes are `ControlLeft/ControlRight` (not `CtrlLeft`). With Ctrl as the slow modifier: Ctrl+W closes the tab on Windows/Linux and no page can prevent it (reserved shortcut); Ctrl+R (reload) and Ctrl+H (history) *can* be prevented, so every mapped key calls `preventDefault()`. The arrow keys are the safe way to fly slowly — say so in the help text. One-shot actions (`C`, `H`, `R`) must ignore `e.repeat` or a held key cycles camera modes at ~30 Hz; accumulating actions (`[ ]` exposure) should `+=` so repeat is one more step and two repeats in one frame are two steps.
+
+## 2026-09-20 — Named stars are a third, fixed block in the star buffer
+
+Gaia saturates on exactly the stars worth labelling, so the catalog subset cannot be assumed to contain them. Landmarks live in their own block between the procedural field and the catalog region — `[procedural][landmarks][catalog]` — uploaded once with `FLAG_VISIBLE | FLAG_LANDMARK`, which keeps the drawn instance range contiguous (`draw(4, procedural + landmarks + resident)`) and keeps them drawable with zero catalog resident. Positions/magnitudes are baked at load in `data/landmarks.js` through `src/math/coords.js`, the same RA/Dec/parallax → XYZ conversion the tile encoder now uses (it moved there from the encoder so the two datasets share one frame; the Sirius/galactic-centre self-tests stayed with the encoder).
+
+## 2026-09-20 — The label canvas must project exactly like the vertex shader
+
+Labels that trail or sit beside their stars are worse than no labels. The 2D layer therefore uses the same math as the sprite shader: `rel = world − cameraPos`, `clip = viewProj · rel`, cull on `clip.w <= 0`, and NDC → pixels with the y flip (`screenY = height · (0.5 − ndcY/2)`; clip +y is up, screen y grows down). It redraws every frame (the overlay's 4 Hz cadence visibly lags), draws in CSS pixels under a `setTransform(dpr, …)` so labels and click picking (CSS pixels) agree with the device-pixel GPU canvas, and preallocates the screen/visibility arrays — ~60 `fillText` calls with constant strings allocate nothing.
+
+## 2026-09-20 — Picking under pointer lock: client coordinates are frozen
+
+Once the pointer is locked, `clientX/offsetX` stay at the lock point, so a "click" there would always pick the same screen corner. When locked, the pick point is the canvas centre — where the camera aims. A pick is a mouse-up within 4 px of mouse-down; anything farther is drag-look. `pick()` returns a landmark index or −1 and never mutates the camera: main.js wires a hit to `camera.setOrbitTarget`, and `R` clears the selection together with the orbit target so the two cannot disagree.

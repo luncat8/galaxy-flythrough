@@ -52,8 +52,8 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		!/text\/x-wgsl/.test(html), 'wgsl blocks');
 	check('index.html references the stylesheet and the overlay elements',
 		/<link[^>]+href="style\.css"/.test(html)
-		&& /id="canvas"/.test(html) && /id="overlay"/.test(html) && /id="error"/.test(html),
-		{ css: /style\.css/.test(html), elements: ['canvas', 'overlay', 'error'].map(id => html.includes(`id="${id}"`)) });
+		&& /id="canvas"/.test(html) && /id="labels"/.test(html) && /id="overlay"/.test(html) && /id="error"/.test(html),
+		{ css: /style\.css/.test(html), elements: ['canvas', 'labels', 'overlay', 'error'].map(id => html.includes(`id="${id}"`)) });
 }
 
 // --- 2. No global is read before it is defined --------------------------
@@ -62,13 +62,15 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		'devicePixelRatio', 'innerWidth', 'innerHeight', 'addEventListener', 'removeEventListener',
 		'requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'location', 'navigator',
 		'matchMedia', 'Device', 'GalaxyShaders', 'HashLib', 'DensityLib', 'SamplingLib',
-		'StarRecord', 'StarTypesLib', 'NebulaLib', 'Camera', 'Input', 'Loop', 'StarRenderer',
+		'StarRecord', 'StarTypesLib', 'NebulaLib', 'Coords', 'Camera', 'Input', 'Loop', 'Selection',
+		'Landmarks', 'Constellations', 'StarRenderer', 'LabelLayer',
 		'TileLoader', 'CellManager', '__galaxy_catalog', 'self', 'document', 'setTimeout',
 	]);
 	const defined = new Set();
 	const undefinedReads = [];
-	const NAMESPACES = ['Device', 'Camera', 'Input', 'Loop', 'StarRenderer', 'TileLoader', 'CellManager',
-		'GalaxyShaders', 'HashLib', 'DensityLib', 'SamplingLib', 'StarRecord', 'StarTypesLib', 'NebulaLib'];
+	const NAMESPACES = ['Device', 'Camera', 'Input', 'Loop', 'Selection', 'StarRenderer', 'LabelLayer',
+		'TileLoader', 'CellManager', 'GalaxyShaders', 'HashLib', 'DensityLib', 'SamplingLib',
+		'StarRecord', 'StarTypesLib', 'NebulaLib', 'Coords', 'Landmarks', 'Constellations'];
 	for (const file of scripts) {
 		const text = fs.readFileSync(path.join(SRC, file), 'utf-8');
 		// Registers its own namespace before anything else can read it.
@@ -94,9 +96,13 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		['../src/math/hash.js', 'HashLib'], ['../src/math/density.js', 'DensityLib'],
 		['../src/math/sampling.js', 'SamplingLib'], ['../src/math/star-record.js', 'StarRecord'],
 		['../src/math/star-types.js', 'StarTypesLib'], ['../src/math/nebula.js', 'NebulaLib'],
+		['../src/math/coords.js', 'Coords'],
 		['../src/core/camera.js', 'Camera'], ['../src/core/input.js', 'Input'],
-		['../src/core/loop.js', 'Loop'], ['../src/core/device.js', 'Device'],
+		['../src/core/selection.js', 'Selection'], ['../src/core/loop.js', 'Loop'],
+		['../src/core/device.js', 'Device'],
+		['../src/data/landmarks.js', 'Landmarks'], ['../src/data/constellations.js', 'Constellations'],
 		['../src/render/shaders.js', 'GalaxyShaders'], ['../src/render/star-sprites.js', 'StarRenderer'],
+		['../src/render/label-layer.js', 'LabelLayer'],
 		['../src/stream/tile-loader.js', 'TileLoader'], ['../src/stream/cell-manager.js', 'CellManager'],
 	];
 	for (const [file, name] of namespaces) {
@@ -203,6 +209,11 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 	check('camera.js finds the orbit centre through window.DensityLib when loaded as a page script',
 		failure === null && Array.from(page.Camera.GALACTIC_CENTRE_TARGET).join(',') === '8.178,0,0'
 		&& page.Camera.createCamera().getState().modeName === 'fly');
+	check('the page scope bakes the landmark table and resolves every constellation edge',
+		failure === null && page.Landmarks && page.Constellations
+		&& page.Landmarks.count >= 30 && page.Landmarks.count <= 60
+		&& page.Constellations.count === 15 && page.Constellations.edgeCount >= 25,
+		failure || { landmarks: page.Landmarks && page.Landmarks.count, figures: page.Constellations && page.Constellations.count });
 }
 
 // --- 7. Short end-to-end ------------------------------------------------

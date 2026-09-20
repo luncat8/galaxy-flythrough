@@ -1,13 +1,19 @@
 // src/main.js
-// Boot: WebGPU device → camera → input → renderer (catalog + procedural) → loop.
+// Boot: WebGPU device → camera → input → renderer (catalog + procedural) →
+// label layer + selection → loop.
 //
 // Overlay text is rebuilt at 4 Hz, not every frame: the frame loop stays free
-// of string building and DOM writes.
+// of string building and DOM writes. The label layer is the exception — it
+// redraws every frame so labels track their stars while the camera moves.
 
 'use strict';
 
 const OVERLAY_INTERVAL = 0.25;      // s
 const MAX_DPR = 2;                  // retinal 3x costs fill rate for no gain
+
+function currentDpr() {
+	return Math.min((typeof window !== 'undefined' && window.devicePixelRatio) || 1, MAX_DPR);
+}
 
 // Three significant figures, trailing zeros dropped: 8, 0.125, 2050.
 function formatSpeed(lyPerSec) {
@@ -54,7 +60,7 @@ async function boot() {
 	}
 
 	function resizeCanvas() {
-		const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+		const dpr = currentDpr();
 		const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
 		const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
 		if (canvas.width !== width || canvas.height !== height) {
@@ -76,6 +82,12 @@ async function boot() {
 
 	const camera = window.Camera.createCamera();
 	const input = window.Input.createInput(canvas);
+
+	const landmarks = window.Landmarks;
+	const labels = window.LabelLayer.createLabelLayer(
+		document.getElementById('labels'), landmarks, window.Constellations);
+	const selection = window.Selection.createSelection(camera, landmarks);
+	let selected = -1;
 
 	const renderer = window.StarRenderer.createStarRenderer(device, context, format, {
 		proceduralStars: params.stars,
@@ -113,23 +125,56 @@ async function boot() {
 		return `camera ${c.modeName}   ${c.targetName}   distance ${formatDistance(c.orbitDistance)}`;
 	}
 
+	function selectedLine(cameraState) {
+		if (selected < 0 || cameraState.mode !== window.Camera.MODE_FLY) return '';
+		return `\nselected ${landmarks.ENTRIES[selected].name}   (C C orbits it)`;
+	}
+
 	function updateOverlay(state, cameraState) {
 		const shutter = state.magZero.toFixed(1);
 		overlay.textContent =
 			`FPS ${loop.stats.fps.toFixed(0)}   frame ${loop.stats.avgFrameMs.toFixed(2)}ms (max ${loop.stats.maxFrameMs.toFixed(1)}ms)\n` +
 			`stars drawn ${state.drawn.toLocaleString()}  =  procedural ${state.proceduralStars.toLocaleString()}` +
+			` + landmarks ${state.landmarkStars.toLocaleString()}` +
 			` + catalog ${state.catalogResidentStars.toLocaleString()}/${state.catalogTotalStars.toLocaleString()}\n` +
 			`cells ${state.cellsResident}/${state.catalogCells}   decoded ${(state.decodedBytes / 1024).toFixed(0)} KB` +
 			`   buffer ${(state.bufferBytes / 1048576).toFixed(1)} MB\n` +
-			`exposure magZero ${shutter}   ([ / ] to change)\n` +
+			`exposure magZero ${shutter}   ([ / ] to change)   constellations ${labels.constellationsVisible() ? 'on' : 'off'}   (P)\n` +
 			`pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
-			cameraLine(cameraState);
+			cameraLine(cameraState) +
+			selectedLine(cameraState);
 	}
 
 	const loop = window.Loop.createLoop((dt, time) => {
+		const actions = input.state.actions;
+		const resetting = actions.reset;
 		camera.step(dt, input.state);
+		// R puts the orbit target back on the Sun, so a stale selection would
+		// contradict it the next time the user cycles into orbit-object mode.
+		if (resetting) {
+			selected = -1;
+			labels.setSelected(-1);
+		}
+
+		if (actions.pick) {
+			actions.pick = 0;
+			const hit = selection.pick(input.state.pickX, input.state.pickY, canvas.clientWidth, canvas.clientHeight);
+			if (hit >= 0) {
+				selected = hit;
+				const entry = landmarks.ENTRIES[hit];
+				camera.setOrbitTarget(entry.x, entry.y, entry.z, entry.name);
+				labels.setSelected(hit);
+			}
+		}
+		if (actions.constellations) {
+			actions.constellations = 0;
+			labels.toggleConstellations();
+		}
+
 		resizeCanvas();
 		renderer.render(camera, canvas.width, canvas.height, time, input.state);
+		labels.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
+		labels.draw(camera, canvas.clientWidth, canvas.clientHeight);
 
 		overlayTimer += dt;
 		if (overlayTimer < OVERLAY_INTERVAL) return;
@@ -139,6 +184,7 @@ async function boot() {
 
 	loop.start();
 	console.log(`Galaxy fly-through ready: ${renderer.state.proceduralStars.toLocaleString()} procedural stars, ` +
+		`${renderer.state.landmarkStars} landmarks, ` +
 		`${renderer.state.catalogTotalStars.toLocaleString()} catalog stars in ${renderer.state.catalogCells} cells.`);
 }
 

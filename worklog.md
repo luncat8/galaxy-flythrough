@@ -342,3 +342,27 @@ Stage Summary:
 - `python3 scripts/run.py all-tests`: 11/11 (camera 104/104, m1-smoke 38/38).
 - No browser here: WebGPU-visible behaviour is verified against the stub device and the vm page-scope check; the visual verdict (C, wheel, Shift/Ctrl, H) still needs a WebGPU browser on `src/index.html`.
 - Next: 0.1.2 landmarks & constellations per plan.md §18.
+
+---
+Task ID: 12
+Agent: main
+Task: Implement 0.1.2 landmarks & constellations per plan.md §18: named stars with labels, P toggles constellation lines, click selects the orbit target.
+
+Work Log:
+- Plan first: rewrote plan.md §18's 0.1.2 section to the implemented design (marked implemented, 0.1.5 now "next"), added the new files to the §11 tree, fixed the §2 diagram node (landmarks.js, not landmarks.json).
+- New src/math/coords.js: the RA/Dec/parallax → galactic XYZ conversion moved out of tile-encoder.js so the runtime landmarks and the catalog share one frame; plus absoluteMagnitude and projectToScreen (the shader's camera-relative projection with the clip.w <= 0 behind-test and the screen-y flip). tile-encoder.js now requires it and keeps the Sirius/galactic-centre self-tests; re-encoding produced a byte-identical bundle apart from the date stamp (discarded).
+- New src/data/landmarks.js: 59 named stars (J2000 ra/dec, distPc, V mag, spectral class, IAU constellation), positions + absolute magnitudes baked once at load; Float64Array position table and a name index for the hot path.
+- New src/data/constellations.js: 15 figures (Orion, Ursa Major, Cassiopeia, Cygnus, Scorpius, Crux, Gemini, Leo, Taurus, Aquila, the Pegasus square, Andromeda, Canis Major, Centaurus, Bootes), 41 edges as landmark-name pairs resolved to Int16Array indices at load; an unknown name throws at load.
+- src/render/star-sprites.js: buffer is now [procedural][landmarks][catalog]; landmarks are written once with FLAG_VISIBLE | FLAG_LANDMARK and uploaded together with the procedural block; instance count includes the fixed landmark block; state.landmarkStars for the overlay.
+- New src/render/label-layer.js: 2D canvas over the WebGPU canvas, redrawn every frame in CSS pixels under a dpr transform; labels with dark halos, constellation lines (on by default, skipped when either end is behind the camera), selection ring; all arrays preallocated.
+- New src/core/selection.js: pick(x, y, w, h) projects the landmarks with the camera viewProj and returns the nearest within 20 px or −1; never mutates the camera.
+- src/core/input.js: actions.constellations (KeyP, one-shot), actions.pick + pickX/pickY — a click is a mouse-up within 4 px of mouse-down; under pointer lock the pick point is the canvas centre because client coordinates freeze.
+- src/main.js: wires labels + selection, consumes pick/constellation actions, clears the selection on R, overlay shows "selected <name> (C C orbits it)" in fly mode plus the constellation toggle state and the landmark count in the drawn-stars line. index.html: labels canvas, 5 new script tags, help rows for click and P; style.css: #labels fixed overlay with pointer-events none.
+- Tests: new experiments/landmark-test.js (43 checks: conversion self-tests, projection, table integrity — count 30–60, no duplicates, baked xyz/absMag recompute, constellation edges all resolve, picking on real data (aim at Sirius/Betelgeuse) and a synthetic two-star scene (nearest wins, 20 px radius, behind-camera culling), label layer against a mock 2D context). renderer-test.js extended for the three-block buffer (sizing, landmark records flagged and at baked positions, offsets, instance counts). m1-smoke/export-parity extended with the five new modules. run.py: landmark in the 12-test sweep.
+- The vm page-scope check caught a real bug on first run: selection.js and label-layer.js both declared a top-level coordsDep — a redeclaration SyntaxError when classic scripts share one global scope. Renamed per module; also renamed landmarks.js' generic top-level count/positions/indexOf.
+
+Stage Summary:
+- python3 scripts/run.py all-tests: 12/12 pass (555 checks; landmark 43/43, renderer 39/39, m1-smoke 44/44, export-parity 98/98).
+- Docs: plan.md §2/§11/§18 updated, experiments/README.md row, AGENTS.md files list, three findings entries.
+- No browser here: labels/picking are verified against the real projection math and a mock 2D context; the visual verdict (P, click-to-orbit) still needs a WebGPU browser on src/index.html.
+- Next: 0.1.5 HDR output with range adjustment per plan.md §18.

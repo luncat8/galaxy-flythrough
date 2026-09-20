@@ -1,0 +1,233 @@
+{
+  "date": "2026-09-20T06:56:11.534Z",
+  "landmarks": 59,
+  "constellations": 15,
+  "edges": 41,
+  "totalChecks": 43,
+  "passed": 43,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "Sirius parallax 379.21 mas → 2.637 pc",
+      "pass": true,
+      "detail": 0.002637061258933045
+    },
+    {
+      "name": "Sirius sits ~9 deg below the galactic plane",
+      "pass": true,
+      "detail": -8.890282773265643
+    },
+    {
+      "name": "the galactic centre direction lands at +X ≈ 8.2 kpc",
+      "pass": true,
+      "detail": {
+        "x": 8.19672131146398,
+        "y": -0.0000036827793075602726
+      }
+    },
+    {
+      "name": "absolute magnitude: 10 pc is the reference distance",
+      "pass": true,
+      "detail": [
+        1,
+        -4
+      ]
+    },
+    {
+      "name": "a point straight ahead projects to the screen centre",
+      "pass": true,
+      "detail": [
+        400,
+        300
+      ]
+    },
+    {
+      "name": "a point above the view axis lands in the upper half of the screen",
+      "pass": true,
+      "detail": 196.0769500732422
+    },
+    {
+      "name": "a point behind the camera is rejected (clip.w <= 0)",
+      "pass": true
+    },
+    {
+      "name": "the table holds 30–60 named stars",
+      "pass": true,
+      "detail": 59
+    },
+    {
+      "name": "no landmark name is duplicated",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "no two landmarks share the same sky position",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "every entry has valid ra/dec/distPc/mag/colorIndex/constellation",
+      "pass": true
+    },
+    {
+      "name": "every baked |xyz| equals distPc",
+      "pass": true
+    },
+    {
+      "name": "every baked absMag is m − 5·log10(d_pc) + 5",
+      "pass": true
+    },
+    {
+      "name": "every baked xyz recomputes from ra/dec/distPc through coords.js",
+      "pass": true
+    },
+    {
+      "name": "Sirius is a landmark with its catalog coordinates and class",
+      "pass": true,
+      "detail": {
+        "distPc": 2.64,
+        "mag": -1.46,
+        "constellation": "CMa"
+      }
+    },
+    {
+      "name": "the brightest landmark is Sirius",
+      "pass": true,
+      "detail": "Sirius"
+    },
+    {
+      "name": "no landmark sits at the Sun (the camera starts there)",
+      "pass": true
+    },
+    {
+      "name": "indexOf resolves every entry and rejects unknown names",
+      "pass": true
+    },
+    {
+      "name": "the figures are ~15 named shapes with unique names",
+      "pass": true,
+      "detail": 15
+    },
+    {
+      "name": "every edge endpoint resolves to a landmark index",
+      "pass": true
+    },
+    {
+      "name": "no edge connects a star to itself",
+      "pass": true
+    },
+    {
+      "name": "every figure has at least one edge",
+      "pass": true
+    },
+    {
+      "name": "the edge count is sane (≥ 25 segments for 15 figures)",
+      "pass": true,
+      "detail": 41
+    },
+    {
+      "name": "Orion and Ursa Major are among the figures",
+      "pass": true,
+      "detail": "Orion,Ursa Major,Cassiopeia,Cygnus,Scorpius,Crux,Gemini,Leo,Taurus,Aquila,Pegasus,Andromeda,Canis Major,Centaurus,Bootes"
+    },
+    {
+      "name": "Orion carries the full hourglass (≥ 6 edges)",
+      "pass": true,
+      "detail": 8
+    },
+    {
+      "name": "the pick radius is the documented 20 px",
+      "pass": true
+    },
+    {
+      "name": "picking the screen centre while aimed at Sirius selects Sirius",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "picking the screen centre while aimed at Betelgeuse selects Betelgeuse",
+      "pass": true,
+      "detail": 9
+    },
+    {
+      "name": "the pick at the exact centre is the centred star",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "a pick 5 px off-centre takes the nearer of two close stars",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "a pick beyond 20 px of every star selects nothing",
+      "pass": true
+    },
+    {
+      "name": "stars behind the camera are never picked",
+      "pass": true
+    },
+    {
+      "name": "a degenerate viewport picks nothing",
+      "pass": true
+    },
+    {
+      "name": "resize sizes the backing store by the device pixel ratio and scales the context",
+      "pass": true,
+      "detail": {
+        "width": 1600,
+        "height": 1200
+      }
+    },
+    {
+      "name": "one draw clears the canvas exactly once",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "the aimed-at star gets a label (fillText with its constant name)",
+      "pass": true,
+      "detail": 28
+    },
+    {
+      "name": "every label gets a dark halo stroke for readability",
+      "pass": true,
+      "detail": {
+        "stroke": 28,
+        "fill": 28
+      }
+    },
+    {
+      "name": "constellation lines are on by default and drawn as segments",
+      "pass": true,
+      "detail": {
+        "moveTo": 19,
+        "lineTo": 19
+      }
+    },
+    {
+      "name": "P toggles the lines off (no segments drawn)",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "labels still draw with the lines off",
+      "pass": true
+    },
+    {
+      "name": "labels behind the camera are culled (Sirius is gone when facing away)",
+      "pass": true,
+      "detail": 31
+    },
+    {
+      "name": "the selected star gets a ring when visible",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "the selection ring is culled with its star",
+      "pass": true,
+      "detail": 0
+    }
+  ]
+}

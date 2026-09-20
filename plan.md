@@ -33,7 +33,7 @@ flowchart LR
         TILES["catalog bundle<br/>catalog.js: bands + cells<br/>25/100/500 pc cells"]
         DENSITY["density-field.js<br/>baked 3D RGBA Uint8Array"]
         NEBULA["nebulae.json<br/>catalogued landmarks"]
-        LANDMARK["landmarks.json<br/>named-star whitelist"]
+        LANDMARK["landmarks.js + constellations.js<br/>named stars + figures"]
     end
 
     subgraph Runtime["Runtime (browser, file://)"]
@@ -570,7 +570,8 @@ galaxy-flythrough/
 │   ├── hash-quality-test.js            # PCG/Wang statistics
 │   ├── precision-test.js               # f32 vs split-double at galactic distances
 │   ├── packing-test.js                 # StarPacked round trip, memory budget
-│   └── filter-test.js                  # priority score / thinning behaviour
+│   ├── filter-test.js                  # priority score / thinning behaviour
+│   └── landmark-test.js                # landmark data, constellations, picking
 └── src/                                # runtime, loaded by index.html
     ├── index.html                      # classic <script> tags only
     ├── style.css
@@ -578,24 +579,29 @@ galaxy-flythrough/
     │   ├── device.js                   # WebGPU device + clamp to adapter limits
     │   ├── camera.js                   # fly (momentum) + orbit modes, ly/s speeds
     │   ├── input.js                    # keyboard/mouse, wheel normalised to px
+    │   ├── selection.js                # click picking against the landmarks
     │   └── loop.js                     # frame loop, dt clamp, stats
     ├── math/
-    │   ├── hash.js                     # PCG/Wang (mirrors WGSL)
-    │   ├── density.js                  # analytical density field + truncations
-    │   ├── sampling.js                 # exact single-pass sampler
-    │   ├── star-record.js              # StarPacked layout + colour LUT
-    │   ├── star-types.js               # IMF, ages, evolution state, class
-    │   └── nebula.js                   # nebula probability + placement
+    │   ├── hash.js                   # PCG/Wang (mirrors WGSL)
+    │   ├── density.js                # analytical density field + truncations
+    │   ├── sampling.js               # exact single-pass sampler
+    │   ├── star-record.js            # StarPacked layout + colour LUT
+    │   ├── star-types.js             # IMF, ages, evolution state, class
+    │   ├── nebula.js                 # nebula probability + placement
+    │   └── coords.js                 # RA/Dec/parallax → galactic XYZ, world → screen
     ├── stream/
-    │   ├── tile-loader.js              # bundle injection, decode, manifest
-    │   └── cell-manager.js             # residency set, nearest-first, LRU
+    │   ├── tile-loader.js            # bundle injection, decode, manifest
+    │   └── cell-manager.js           # residency set, nearest-first, LRU
     ├── render/
-    │   ├── shaders.js                  # all WGSL as JS strings
-    │   └── star-sprites.js             # star draw path (procedural + catalog)
+    │   ├── shaders.js                # all WGSL as JS strings
+    │   ├── star-sprites.js           # star draw path (procedural + landmarks + catalog)
+    │   └── label-layer.js            # 2D overlay canvas: labels + constellation lines
     ├── data/
-    │   ├── gaia-subset.csv             # source catalog (5,000 rows)
-    │   └── tiles/catalog.js            # generated bundle (window.__galaxy_catalog)
-    └── main.js                         # boot, wires everything
+    │   ├── gaia-subset.csv           # source catalog (5,000 rows)
+    │   ├── landmarks.js              # named stars, galactic XYZ baked at load
+    │   ├── constellations.js         # figures as pairs of landmark names
+    │   └── tiles/catalog.js          # generated bundle (window.__galaxy_catalog)
+    └── main.js                       # boot, wires everything
 ```
 
 Milestones 2+ add the remaining render paths (`density-cell.js`, nebula passes), the baked density field, and the compute pipeline (`cull.wgsl`, `procedural-gen.wgsl`); `shaders.js` already carries those shader sources so they are validated long before they are wired.
@@ -974,34 +980,48 @@ default object target is the Sun, `setOrbitTarget` re-snaps, `H` in fly and in o
 `R` restores everything, orbit → fly is continuous with zero velocity, buffers are
 never reallocated across mode switches.
 
-### 0.1.2 — Landmarks & constellations (next)
+### 0.1.2 — Landmarks & constellations (implemented)
 
-**Goal:** 30–60 named stars with on-screen labels, `P` toggles constellation lines,
-click selects the orbit target.
+**Goal:** 30–60 named stars with on-screen labels, `P` toggles constellation
+lines, click selects the orbit target.
 
-- Data: `src/data/landmarks.js` — one API object, entries `{ name, ra, dec, distPc,
-  mag, colorIndex, constellation }` plus galactic XYZ computed once at load through the
-  same RA/Dec → XYZ conversion `tile-encoder.js` validates (Sirius and the galactic
-  centre are its self-tests). `src/data/constellations.js` — ~15 figures as pairs of
-  landmark names, resolved to indices at load.
+- Data: `src/data/landmarks.js` — one API object, entries `{ name, ra, dec,
+  distPc, mag, colorIndex, constellation }` plus galactic XYZ and the absolute
+  magnitude (`M = m − 5·log10(d_pc) + 5`) computed once at load through the
+  RA/Dec/parallax → XYZ conversion in `src/math/coords.js`. That conversion
+  moved there from the encoder so both datasets share one frame; Sirius and the
+  galactic centre remain its self-tests in `tile-encoder.js`.
+  `src/data/constellations.js` — 15 figures as pairs of landmark names,
+  resolved to landmark indices at load; an unknown name throws at load.
 - Rendering the stars themselves: Gaia saturates on the brightest stars, so the
-  landmarks are **not** assumed to be in the catalog subset. They are written as a fixed
-  extra block after the procedural block in the star buffer (`FLAG_LANDMARK` is already
-  reserved in `StarRecord`) so they render as sprites regardless of the catalog.
-- Labels and lines: a 2D canvas over the WebGPU canvas. Drawn **every frame**, not at the
-  4 Hz overlay cadence — a label that updates at 4 Hz visibly trails its star while the
-  camera moves. Forty projections and forty `fillText` calls with constant strings
-  allocate nothing. Cull labels behind the camera (`clip.w <= 0`) and skip a line when
-  either end is behind; lines are screen-space segments, adequate at these separations.
-- Selection: `src/core/selection.js` — `pick(screenX, screenY)` projects the landmarks
-  with the camera's `viewProj` and returns the nearest within 20 px; a click without drag
-  (mouse-up within 4 px of mouse-down) picks; the result calls
-  `camera.setOrbitTarget(x, y, z, name)` and, in fly mode, the overlay shows the name.
-- Input: `actions.pick` with the click position, `actions.constellations` (`KeyP`).
-- Tests: `landmark-test.js` — XYZ conversion against known stars, every constellation
-  edge resolves, picking returns the projected-nearest landmark, no entry is duplicated.
+  landmarks are **not** assumed to be in the catalog subset. They are written
+  as a fixed extra block between the procedural block and the catalog region —
+  `[procedural][landmarks][catalog]` — with `FLAG_VISIBLE | FLAG_LANDMARK`
+  (already reserved in `StarRecord`), so the drawn instance range stays
+  contiguous and they render as sprites regardless of the catalog.
+- Labels and lines: a 2D canvas over the WebGPU canvas (`#labels`, pointer
+  events pass through), drawn in CSS pixels under a devicePixelRatio transform.
+  Drawn **every frame**, not at the 4 Hz overlay cadence — a label that updates
+  at 4 Hz visibly trails its star while the camera moves. ~60 projections and
+  ~60 `fillText` calls with constant strings allocate nothing. Cull labels
+  behind the camera (`clip.w <= 0`) and skip a line when either end is behind;
+  lines are screen-space segments, adequate at these separations. Lines default
+  to on; `P` toggles.
+- Selection: `src/core/selection.js` — `pick(screenX, screenY)` projects the
+  landmarks with the camera's `viewProj` and returns the nearest within
+  `PICK_RADIUS_PX = 20`; a click without drag (mouse-up within 4 px of
+  mouse-down) picks. Under pointer lock the client coordinates are frozen, so
+  the pick point is the canvas centre — where the camera aims. The result calls
+  `camera.setOrbitTarget(x, y, z, name)` and, in fly mode, the overlay shows
+  the name. `R` clears the selection along with the orbit target.
+- Input: `actions.pick` with the click position (`pickX` / `pickY`, canvas
+  relative), `actions.constellations` (`KeyP`, one-shot).
+- Tests: `landmark-test.js` — XYZ conversion against known stars, every
+  constellation edge resolves, picking returns the projected-nearest landmark
+  (real data + synthetic scene), no entry is duplicated, and the label layer
+  draws labels, culls behind the camera and honours the line toggle.
 
-### 0.1.5 — HDR output with range adjustment (after)
+### 0.1.5 — HDR output with range adjustment (next)
 
 **Goal:** the frame accumulates linear flux and is tone-mapped once, with an exposure
 range the user controls.

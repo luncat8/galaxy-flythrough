@@ -1,0 +1,45 @@
+// src/core/selection.js
+// Click picking: projects the landmarks with the camera's viewProj and
+// returns the nearest one within PICK_RADIUS_PX of the pointer. The caller
+// feeds the hit to camera.setOrbitTarget — selection never mutates the
+// camera itself, so a miss is a pure no-op.
+
+'use strict';
+
+const PICK_RADIUS_PX = 20;
+
+const selectionCoords = (typeof module !== 'undefined' && module.exports)
+	? require('../math/coords.js')
+	: window.Coords;
+
+function createSelection(camera, landmarks) {
+	const scratch = new Float32Array(3);
+
+	function pick(x, y, width, height) {
+		if (!landmarks || landmarks.count === 0 || !(width > 0) || !(height > 0)) return -1;
+		const viewProj = camera.buildViewProj(width / height);
+		const pos = landmarks.positions;
+		const cam = camera.cameraPos;
+		let best = -1;
+		let bestD2 = PICK_RADIUS_PX * PICK_RADIUS_PX;
+		for (let i = 0; i < landmarks.count; i++) {
+			if (!selectionCoords.projectToScreen(viewProj,
+				pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2],
+				cam[0], cam[1], cam[2], width, height, scratch)) continue;
+			const dx = scratch[0] - x;
+			const dy = scratch[1] - y;
+			const d2 = dx * dx + dy * dy;
+			if (d2 <= bestD2) {
+				bestD2 = d2;
+				best = i;
+			}
+		}
+		return best;
+	}
+
+	return { pick };
+}
+
+const Selection = { createSelection, PICK_RADIUS_PX };
+if (typeof module !== 'undefined') module.exports = Selection;
+if (typeof window !== 'undefined') window.Selection = Selection;

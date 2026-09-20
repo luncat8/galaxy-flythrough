@@ -45,6 +45,10 @@ const hash = require('../src/math/hash.js');
 const sampling = require('../src/math/sampling.js');
 const starTypes = require('../src/math/star-types.js');
 const records = require('../src/math/star-record.js');
+// The conversion lives in src/math/coords.js so the runtime landmarks
+// (src/data/landmarks.js) and this encoder share one frame. The self-test
+// below still validates it here, where it first mattered.
+const coords = require('../src/math/coords.js');
 
 const CONFIG = {
 	gLimit: 12.0,               // G < 12: the magnitude where Gaia is complete
@@ -63,29 +67,8 @@ const CONFIG = {
 };
 
 // --- Coordinate conversion: RA/Dec/parallax → Sun-centred galactic XYZ (kpc) ---
-function raDecParallaxToGalactic(raDeg, decDeg, parallaxMas) {
-	const ra = raDeg * Math.PI / 180;
-	const dec = decDeg * Math.PI / 180;
-	const aP = 192.85948 * Math.PI / 180;   // galactic pole RA
-	const dP = 27.12825 * Math.PI / 180;    // galactic pole Dec
-	const l0 = 122.93192 * Math.PI / 180;   // l = 0 offset
-	const sinB = Math.sin(dec) * Math.sin(dP) + Math.cos(dec) * Math.cos(dP) * Math.cos(ra - aP);
-	const b = Math.asin(Math.max(-1, Math.min(1, sinB)));
-	const cosL = (Math.sin(dec) - Math.sin(b) * Math.sin(dP)) / (Math.cos(b) * Math.cos(dP));
-	const sinL = Math.cos(dec) * Math.sin(ra - aP) / Math.cos(b);
-	let l = Math.atan2(sinL, cosL) - l0;
-	while (l < 0) l += 2 * Math.PI;
-	while (l >= 2 * Math.PI) l -= 2 * Math.PI;
-	const distKpc = parallaxMas > 0 ? 1.0 / parallaxMas : 0;   // 1/parallax[mas] = kpc
-	return {
-		x: distKpc * Math.cos(b) * Math.cos(l),
-		y: distKpc * Math.cos(b) * Math.sin(l),
-		z: distKpc * Math.sin(b),
-		l: l * 180 / Math.PI,
-		b: b * 180 / Math.PI,
-		distKpc,
-	};
-}
+// Implemented in src/math/coords.js (shared with the runtime landmarks).
+const raDecParallaxToGalactic = coords.raDecParallaxToGalactic;
 
 function testCoordinateConversion() {
 	const checks = [];
@@ -113,9 +96,9 @@ function shouldKeep(star, config) {
 }
 
 // Absolute magnitude from the observed G magnitude and the parallax distance.
+// coords.absoluteMagnitude takes pc; the encoder measures distances in kpc.
 function absoluteMagnitude(appMag, distKpc) {
-	const distPc = distKpc * 1000;
-	return appMag - 5 * Math.log10(Math.max(1, distPc)) + 5;
+	return coords.absoluteMagnitude(appMag, distKpc * 1000);
 }
 
 function bandAndCell(x, y, z, config) {
@@ -281,15 +264,15 @@ function parseGaiaCsv(filepath) {
 		const appMag = parseFloat(row['phot_g_mean_mag']);
 		if ([sourceId, ra, dec, parallax, parallaxError, appMag].some(v => !Number.isFinite(v))) { skipped++; continue; }
 		if (parallax <= 0) { skipped++; continue; }
-		const coords = raDecParallaxToGalactic(ra, dec, parallax);
+		const g = raDecParallaxToGalactic(ra, dec, parallax);
 		stars.push({
 			sourceId,
-			x: coords.x,
-			y: coords.y,
-			z: coords.z,
-			distKpc: coords.distKpc,
+			x: g.x,
+			y: g.y,
+			z: g.z,
+			distKpc: g.distKpc,
 			appMag,
-			absMag: absoluteMagnitude(appMag, coords.distKpc),
+			absMag: absoluteMagnitude(appMag, g.distKpc),
 			spectralClass: bpRpToSpectralClass(row['bp_rp']),
 			parallaxOverError: parallaxError > 0 ? parallax / parallaxError : 0,
 			flags: 0,

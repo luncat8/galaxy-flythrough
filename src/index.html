@@ -8,16 +8,19 @@
 </head>
 <body>
 	<canvas id="canvas" tabindex="0"></canvas>
+	<canvas id="labels"></canvas>
 	<pre id="overlay"></pre>
 	<pre id="error" style="display:none"></pre>
 	<pre id="help">
                      fly                     orbit
 mouse drag / click   look (pointer lock)     circle the target
+click (no drag)      select the star as orbit target (C C orbits it)
 WASD / arrows        forward / strafe        W/S closer / farther, A/D circle
 E / Q                up / down               over / under
 scroll               speed x2 per notch      distance x2 per notch
 Shift / Ctrl         speed x100 / x0.1       rates x4 / x0.25
 C                    camera: fly -> orbit galactic centre -> orbit object
+P                    constellation lines on / off
 H                    home: the Sun (fly: teleport, orbit: circle it from 10 pc)
 R                    reset everything
 [ / ]                exposure (how faint a star still shows)
@@ -32,10 +35,16 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
 	<script src="math/star-record.js"></script>
 	<script src="math/star-types.js"></script>
 	<script src="math/nebula.js"></script>
+	<script src="math/coords.js"></script>
 	<script src="core/device.js"></script>
 	<script src="core/camera.js"></script>
 	<script src="core/input.js"></script>
+	<script src="core/selection.js"></script>
 	<script src="core/loop.js"></script>
+	<!-- Data after math (landmarks bake their positions through coords.js at
+	     load), before the renderer that writes them into the star buffer. -->
+	<script src="data/landmarks.js"></script>
+	<script src="data/constellations.js"></script>
 	<!-- Order is the dependency order: a file may only read a namespace that an
 	     earlier file registered. The tile stream feeds the renderer, so it loads
 	     before it. -->
@@ -43,6 +52,7 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
 	<script src="stream/tile-loader.js"></script>
 	<script src="stream/cell-manager.js"></script>
 	<script src="render/star-sprites.js"></script>
+	<script src="render/label-layer.js"></script>
 	<script src="main.js"></script>
 </body>
 </html>

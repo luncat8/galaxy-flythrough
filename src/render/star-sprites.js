@@ -4,13 +4,17 @@
 //
 // Buffer layout (one storage buffer, one draw call):
 //
-//   [0 .. proceduralCount)                   procedural field, written once
-//   [proceduralCount .. + residentCatalog)   resident catalog cells, rewritten
-//                                            when the camera crosses a cell
+//   [0 .. proceduralCount)                          procedural field, once
+//   [proceduralCount .. + landmarkCount)            named landmarks, once
+//   [proceduralCount + landmarkCount .. + resident) resident catalog cells,
+//                                                   rewritten when the camera
+//                                                   crosses a cell
 //
-// The procedural block sits first so the drawn instance range is always
-// contiguous: `draw(4, proceduralCount + residentCatalog)`. No hidden slots, no
-// per-cell GPU allocation, no compaction pass.
+// Landmarks sit in their own fixed block because Gaia saturates on the
+// brightest stars — the catalog subset cannot be assumed to contain them
+// (see data/landmarks.js). The three blocks keep the drawn instance range
+// contiguous: `draw(4, proceduralCount + landmarkCount + residentCatalog)`.
+// No hidden slots, no per-cell GPU allocation, no compaction pass.
 //
 // Frame cost: one 112-byte uniform write, one catalog buffer write (only when
 // the resident set changed), one render pass with no depth attachment — the
@@ -50,6 +54,11 @@ const EMPTY_MANIFEST = {
 function createStarRenderer(device, context, format, options) {
 	const opts = options || {};
 	const records = window.StarRecord;
+	const landmarks = window.Landmarks;
+	if (!landmarks || !landmarks.count) {
+		throw new Error('Landmarks data missing: index.html must load data/landmarks.js before render/star-sprites.js');
+	}
+	const landmarkCount = landmarks.count;
 	const seed = opts.seed === undefined ? 42 : opts.seed;
 	const proceduralTarget = Math.max(0, opts.proceduralStars === undefined ? PROCEDURAL_STARS_DEFAULT : opts.proceduralStars);
 	const catalogBudget = Math.max(0, opts.catalogBudgetStars === undefined ? CATALOG_BUDGET_DEFAULT : opts.catalogBudgetStars);
@@ -122,7 +131,8 @@ function createStarRenderer(device, context, format, options) {
 	// --- Storage ----------------------------------------------------------
 	let starBuffer = null;
 	let bindGroup = null;
-	let staging = null;            // ArrayBuffer: [procedural][catalog]
+	let staging = null;            // ArrayBuffer: [procedural][landmarks][catalog]
+	let landmarkByteOffset = 0;
 	let catalogByteOffset = 0;
 	let catalogCapacity = 0;
 	let proceduralCount = 0;
@@ -137,6 +147,7 @@ function createStarRenderer(device, context, format, options) {
 	// Everything the overlay and the tests read, mutated in place.
 	const state = {
 		proceduralStars: 0,
+		landmarkStars: 0,
 		catalogResidentStars: 0,
 		catalogTotalStars: 0,
 		catalogCells: 0,
@@ -169,12 +180,13 @@ function createStarRenderer(device, context, format, options) {
 		if (starBuffer) starBuffer.destroy();
 		proceduralCount = procedural;
 		catalogCapacity = catalog;
-		const totalBytes = (proceduralCount + catalogCapacity) * records.RECORD_BYTES;
+		const totalBytes = (proceduralCount + landmarkCount + catalogCapacity) * records.RECORD_BYTES;
 		if (totalBytes > maxStorageBytes) {
 			throw new Error(`Star buffer of ${(totalBytes / 1048576).toFixed(1)} MB exceeds the device limit of ${(maxStorageBytes / 1048576).toFixed(1)} MB`);
 		}
 		staging = new ArrayBuffer(Math.max(records.RECORD_BYTES, totalBytes));
-		catalogByteOffset = proceduralCount * records.RECORD_BYTES;
+		landmarkByteOffset = proceduralCount * records.RECORD_BYTES;
+		catalogByteOffset = (proceduralCount + landmarkCount) * records.RECORD_BYTES;
 		starBuffer = device.createBuffer({
 			label: 'star-storage',
 			size: Math.max(16, totalBytes),
@@ -208,9 +220,25 @@ function createStarRenderer(device, context, format, options) {
 				records.FLAG_VISIBLE, Math.imul(i, 2654435761) & 0xFF,
 			);
 		}
-		device.queue.writeBuffer(starBuffer, 0, staging, 0, proceduralCount * records.RECORD_BYTES);
 		state.proceduralStars = proceduralCount;
 		return proceduralCount;
+	}
+
+	// The named stars, flagged so later cull passes never thin them away.
+	// Positions are the load-time bake in data/landmarks.js.
+	function writeLandmarks() {
+		const view = new DataView(staging, landmarkByteOffset, landmarkCount * records.RECORD_BYTES);
+		for (let i = 0; i < landmarkCount; i++) {
+			const e = landmarks.ENTRIES[i];
+			records.writeRecord(
+				view, i * records.RECORD_BYTES,
+				e.x, e.y, e.z,
+				e.colorIndex, e.absMag,
+				records.FLAG_VISIBLE | records.FLAG_LANDMARK, 0,
+			);
+		}
+		state.landmarkStars = landmarkCount;
+		return landmarkCount;
 	}
 
 	function attachCatalog(manifest) {
@@ -226,17 +254,22 @@ function createStarRenderer(device, context, format, options) {
 		return capacity;
 	}
 
-	// One-shot setup: allocate, generate, upload, expose.
+	// One-shot setup: allocate, generate, upload, expose. Procedural field and
+	// landmarks are both fixed for the life of the renderer, so they share one
+	// upload.
 	function prepare(manifest) {
 		const catalog = manifest ? attachCatalog(manifest) : 0;
 		let procedural = proceduralTarget;
 		const maxRecords = Math.floor(maxStorageBytes / records.RECORD_BYTES);
-		if (procedural + catalog > maxRecords) {
-			procedural = Math.max(0, maxRecords - catalog);
+		if (procedural + landmarkCount + catalog > maxRecords) {
+			procedural = Math.max(0, maxRecords - landmarkCount - catalog);
 			state.clampedProcedural = true;
 		}
 		allocate(procedural, catalog);
 		generateProcedural();
+		writeLandmarks();
+		const fixedBytes = (proceduralCount + landmarkCount) * records.RECORD_BYTES;
+		if (fixedBytes > 0) device.queue.writeBuffer(starBuffer, 0, staging, 0, fixedBytes);
 		return state;
 	}
 
@@ -289,7 +322,7 @@ function createStarRenderer(device, context, format, options) {
 
 		// The pass runs even when nothing is drawn: an empty frame still has to
 		// clear the canvas, and draw(.., 0) is free.
-		const instances = state.proceduralStars + catalogResident;
+		const instances = state.proceduralStars + landmarkCount + catalogResident;
 		state.drawn = instances;
 
 		const encoder = device.createCommandEncoder({ label: 'star-frame' });

@@ -11,6 +11,7 @@ Usage:
     python3 scripts/run.py filter
     python3 scripts/run.py wgsl-validate
     python3 scripts/run.py m1-smoke
+    python3 scripts/run.py landmark
     python3 scripts/run.py density-distribution
     python3 scripts/run.py star-types-evolution
     python3 scripts/run.py nebula-placement
@@ -40,6 +41,7 @@ EXPERIMENTS = {
     'wgsl-validate':         'experiments/wgsl-validate.js',
     'camera':                'experiments/camera-test.js',
     'renderer':              'experiments/renderer-test.js',
+    'landmark':              'experiments/landmark-test.js',
     'tile-stream':           'experiments/tile-stream-test.js',
     'tile-encoder-smoke':    'experiments/tile-encoder-smoke-test.js',
     'sampling':              'experiments/sampling-test.js',
@@ -57,9 +59,9 @@ EXPERIMENTS = {
 }
 
 TYPES = {
-    'test':   ['export-parity', 'm1-smoke', 'wgsl-validate', 'camera', 'renderer', 'tile-stream',
-               'tile-encoder-smoke', 'sampling', 'density-distribution', 'star-types-evolution',
-               'nebula-placement'],
+    'test':   ['export-parity', 'm1-smoke', 'wgsl-validate', 'camera', 'renderer', 'landmark',
+               'tile-stream', 'tile-encoder-smoke', 'sampling', 'density-distribution',
+               'star-types-evolution', 'nebula-placement'],
     'study':  ['hash-quality', 'precision', 'packing', 'filter'],
     'asset':  ['tile-encoder', 'visualize-data'],
 }

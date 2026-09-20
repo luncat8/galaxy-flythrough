@@ -55,6 +55,7 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 - `src/` — runtime source. Loaded by `index.html` via classic `<script>` tags. No modules.
 - `src/vendor/` — vendored libraries. Local copies only. No CDN URLs anywhere in runtime code.
 - `src/data/tiles/catalog.js` — the catalog bundle emitted by `experiments/tile-encoder.js`: band table (cell size + streaming radius) and base64 `StarPacked` payloads, assigned to `window.__galaxy_catalog`.
+- `src/data/landmarks.js` + `src/data/constellations.js` — the named stars (positions/magnitudes baked at load through `src/math/coords.js`) and the constellation figures as landmark-name edges; drawn as a fixed block of the star buffer plus a 2D label overlay.
 - `src/stream/` — catalog streaming: `tile-loader.js` (bundle injection, manifest, per-cell decode) and `cell-manager.js` (residency set, nearest-first budget, decoded-payload LRU).
 - `src/render/shaders.js` — all WGSL, as JS strings; `WIRED_SHADERS` lists what the renderer actually compiles.
 
