@@ -371,6 +371,127 @@ fn fs_main(in: VertexOut) -> @location(0) vec4f {
 }
 `;
 
+// HDR direct variant of the star sprite: same vertex shader, same fragment
+// shape, but reads an extra linearExposure uniform in the fragment stage and
+// multiplies the output by it. Used when the swapchain itself is rgba16float
+// with toneMapping:'extended' — there is no tonemap pass, so the user's
+// `;` / `'` exposure knob has to live in the sprite shader. The output is
+// not clamped to 1.0; the HDR canvas + display handle the rest.
+const STAR_SPRITE_HDR = `
+struct CameraUniform {
+        viewProj: mat4x4<f32>,
+        cameraPos: vec4f,
+        viewport: vec4f,
+        params: vec4f,
+};
+
+struct StarPacked {
+        x: f32,
+        y: f32,
+        z: f32,
+        packed: u32,
+};
+
+struct ExposureUniform {
+        exposure: vec4f,   // x = linear exposure multiplier
+};
+
+@group(0) @binding(0) var<uniform> camera: CameraUniform;
+@group(0) @binding(1) var<storage, read> stars: array<StarPacked>;
+@group(0) @binding(2) var colorLUT: texture_2d<f32>;
+@group(0) @binding(3) var<uniform> exposure: ExposureUniform;
+
+struct VertexOut {
+        @builtin(position) clipPos: vec4f,
+        @location(0) uv: vec2f,
+        @location(1) color: vec3f,
+        @location(2) brightness: f32,
+};
+
+const ABS_MAG_MIN: f32 = -12.0;
+const ABS_MAG_SPAN: f32 = 30.0;
+const MASK_VISIBLE: u32 = 0x00010000u;
+const LOG2_OVER_LOG10: f32 = 3.321928095;
+const MAG_TO_FLUX: f32 = 1.328771238;
+
+fn decodeAbsMag(packed: u32) -> f32 {
+        return ABS_MAG_MIN + f32((packed >> 8u) & 0xFFu) * (ABS_MAG_SPAN / 255.0);
+}
+
+fn cornerOffset(vid: u32) -> vec2f {
+        switch vid {
+                case 0u: { return vec2f(-1.0, -1.0); }
+                case 1u: { return vec2f( 1.0, -1.0); }
+                case 2u: { return vec2f(-1.0,  1.0); }
+                case 3u: { return vec2f( 1.0,  1.0); }
+                default: { return vec2f(1.0, 1.0); }
+        }
+}
+
+fn hidden(vid: u32) -> VertexOut {
+        var out: VertexOut;
+        out.clipPos = vec4f(0.0, 0.0, -1.0, 1.0);
+        out.uv = vec2f(1.0, 1.0);
+        out.color = vec3f(0.0, 0.0, 0.0);
+        out.brightness = 0.0;
+        return out;
+}
+
+@vertex
+fn vs_main(
+        @builtin(vertex_index) vid: u32,
+        @builtin(instance_index) starIdx: u32,
+) -> VertexOut {
+        let star: StarPacked = stars[starIdx];
+        if ((star.packed & MASK_VISIBLE) == 0u) {
+                return hidden(vid);
+        }
+
+        let rel: vec3f = vec3f(star.x, star.y, star.z) - camera.cameraPos.xyz;
+        let clip: vec4f = camera.viewProj * vec4f(rel.x, rel.y, rel.z, 1.0);
+        if (clip.w <= 0.0) {
+                return hidden(vid);
+        }
+
+        let distPc: f32 = max(length(rel) * 1000.0, 0.1);
+        let appMag: f32 = decodeAbsMag(star.packed) + 5.0 * log2(distPc) / LOG2_OVER_LOG10 - 5.0;
+        let magDiff: f32 = appMag - camera.params.x;
+        let flux: f32 = exp2(-MAG_TO_FLUX * magDiff);
+
+        let sizePx: f32 = camera.params.y * clamp(1.0 - 0.4 * magDiff, 0.4, 2.0);
+        let quadPx: f32 = clamp(sizePx, 1.0, camera.params.z);
+        let fade: f32 = min(sizePx / 1.0, 1.0);
+
+        let corner: vec2f = cornerOffset(vid);
+        let offset: vec2f = corner * (quadPx * 0.5) * camera.viewport.zw;
+        let onePxAlpha: f32 = select(1.0, fade, sizePx < 1.0);
+
+        let colorIndex: u32 = star.packed & 0xFFu;
+        let color: vec3f = textureLoad(colorLUT, vec2i(i32(colorIndex), 0), 0).rgb;
+
+        var out: VertexOut;
+        out.clipPos = vec4f(clip.xy + offset * clip.w, clip.zw);
+        out.uv = corner;
+        out.color = color;
+        out.brightness = flux * onePxAlpha;
+        return out;
+}
+
+@fragment
+fn fs_main(in: VertexOut) -> @location(0) vec4f {
+        // Same falloff and additive math as the SDR variant, but the output
+        // is multiplied by linearExposure so the user's ; / ' keys still
+        // control overall brightness on the HDR direct path. Values >1.0
+        // pass through to the rgba16float swapchain unchanged.
+        let r2: f32 = dot(in.uv, in.uv);
+        if (r2 > 1.0) { discard; }
+        let s: f32 = 1.0 - r2;
+        let falloff: f32 = s * s * s;
+        let intensity: f32 = in.brightness * falloff * exposure.exposure.x;
+        return vec4f(in.color * intensity, intensity);
+}
+`;
+
 const TONEMAP = `
 // Fullscreen-triangle tone-map pass. Reads the rgba16float HDR intermediate
 // (additive linear flux summed across all stars), applies the ACES Narkowicz
@@ -718,6 +839,7 @@ const SHADER_PARTS = {
         'pcg-hash': PCG_HASH,
         'density': DENSITY,
         'star-sprite': STAR_SPRITE,
+        'star-sprite-hdr': STAR_SPRITE_HDR,
         'tonemap': TONEMAP,
         'procedural-gen': PROCEDURAL_GEN,
         'cull': CULL,
@@ -727,16 +849,20 @@ const SHADER_PARTS = {
 // parts are concatenated here rather than fake-included in the source.
 const SHADERS = {
         'star-sprite': STAR_SPRITE,
+        'star-sprite-hdr': STAR_SPRITE_HDR,
         'tonemap': TONEMAP,
         'procedural-gen': PCG_HASH + DENSITY + PROCEDURAL_GEN,
         'cull': PCG_HASH + CULL,
 };
 
-// Non-wired shaders are still checked for parity with the JS model; wiring them
-// is Milestone 3 (plan.md §14). `star-sprite` and `tonemap` are the two
-// pipelines the renderer compiles each frame: additive sprites into the HDR
-// intermediate, then the fullscreen ACES pass into the swapchain.
-const WIRED_SHADERS = ['star-sprite', 'tonemap'];
+// Wired shaders: the renderer picks two of these per frame.
+//   SDR path (HDR canvas unsupported): star-sprite + tonemap
+//   HDR path (rgba16float + extended canvas): star-sprite-hdr only
+// The renderer always compiles all three so the user can resize the canvas
+// to a different display without re-booting. star-sprite-hdr shares the
+// additive blend state with star-sprite; it just multiplies the fragment
+// output by linearExposure and writes straight to the swapchain.
+const WIRED_SHADERS = ['star-sprite', 'star-sprite-hdr', 'tonemap'];
 
 const GalaxyShaders = { SHADERS, SHADER_PARTS, WIRED_SHADERS };
 if (typeof module !== 'undefined') module.exports = GalaxyShaders;

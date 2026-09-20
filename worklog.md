@@ -405,3 +405,38 @@ Stage Summary:
 - Overlay now reads `exposure magZero <v> ([ / ])   ACES gain <v> (; / ')`.
 - No browser here: the two-pass submission, the HDR texture, and the curve are verified against the stub device and the JS mirror of the WGSL. The visual verdict (do overlapping stars actually look brighter?) still needs a WebGPU browser on src/index.html.
 - Next: 0.1.6 (or whatever the plan opens next). Possible follow-ups the user may want: tweak ACES pre-exposure default (1.0 may be slightly dark), swapchain sRGB OETF for truer colors, star size fine-tuning per display DPI.
+
+---
+Task ID: hdr-0.1.5-true-hdr
+Agent: main (Z.ai)
+Task: User pointed out the previous HDR implementation does not produce true HDR — it tonemaps back to SDR. The reference example uses rgba16float swapchain + toneMapping:{mode:'extended'} so values >1.0 reach the HDR-capable monitor. Implement true HDR display output.
+
+Work Log:
+- Diagnosed: device.js was configuring the canvas with the SDR preferred format (bgra8unorm), and star-sprites.js rendered sprites into an rgba16float intermediate then tonemapped down. The result is LDR even on an HDR-capable display.
+- Read src/core/device.js, src/render/star-sprites.js, src/render/shaders.js, src/main.js, experiments/renderer-test.js, experiments/wgsl-validate.js.
+- Modified src/core/device.js:
+  * New HDR_FORMAT='rgba16float' constant exported on Device.
+  * tryConfigureHdr(): tries context.configure({format:'rgba16float', usage:RENDER_ATTACHMENT, colorSpace:'srgb', toneMapping:{mode:'extended'}, alphaMode:'opaque'}). Returns true on success; the synchronous throw covers every non-supporting browser.
+  * initDevice(): tries HDR first; on failure, falls back to getPreferredCanvasFormat() with alphaMode:'premultiplied'. Returns {device, context, format, adapter, limits, hdr}.
+- Modified src/render/shaders.js:
+  * New STAR_SPRITE_HDR shader variant: same vertex shader and falloff as STAR_SPRITE, but adds an ExposureUniform at binding 3 (fragment stage) and multiplies the fragment output intensity by exposure.exposure.x. No clamp — values >1.0 pass through to the swapchain.
+  * SHADER_PARTS adds 'star-sprite-hdr'; SHADERS adds 'star-sprite-hdr'; WIRED_SHADERS grows to ['star-sprite', 'star-sprite-hdr', 'tonemap'].
+- Modified src/render/star-sprites.js:
+  * opts.hdr flag at construction; state.hdrDirect mirrors it (state.hdrPass renamed to state.hdrDirect).
+  * Renamed module-level HDR_FORMAT to HDR_DIRECT_FORMAT to avoid clashing with the device.js export of the same name (caught by m1-smoke which loads both files in one vm context).
+  * New hdrDirectModule, hdrDirectBindGroupLayout (with binding 3 uniform), hdrDirectPipeline. Same additive blend as the SDR variant, format matches the swapchain (rgba16float on HDR, bgra8unorm on SDR — the renderer doesn't care which).
+  * allocate() now also creates hdrDirectBindGroup, binding (uniformBuffer, starBuffer, lutTexture, tonemapUniformBuffer). The tonemap uniform buffer (linearExposure) is shared between paths.
+  * render(): if hdrDirect, one pass per frame — sprites write directly to context.getCurrentTexture(). No intermediate, no tonemap pass. Returns early.
+  * Non-HDR path unchanged: two passes per frame (sprites → rgba16float intermediate, ACES → swapchain).
+- Modified src/main.js: passes the `hdr` flag from initDevice into the renderer; overlay shows `output HDR direct` or `output SDR + ACES` so the user can verify which path is active.
+- Extended experiments/wgsl-validate.js: WIRED_SHADERS.length === 3; new assertions for star-sprite-hdr (vertex+fragment entry points, four bindings including exposure uniform at binding 3, intensity multiplied by exposure.exposure.x, same (1-r²)³ falloff).
+- Extended experiments/renderer-test.js: three shader modules created (star-sprite, star-sprite-hdr, tonemap); three pipelines (star-sprite-pipeline, star-sprite-hdr-pipeline, tonemap-pipeline). New "HDR direct path" section: instantiates a second renderer with hdr:true and checks (a) state.hdrDirect === true, (b) one pass per frame labelled 'star-sprites-hdr', (c) no 'tonemap' pass, (d) no 'hdr-intermediate' texture, (e) the single draw covers the procedural + landmark stars, (f) `;` raises linearExposure by one half-stop on the HDR direct path too.
+- Updated plan.md §0.1.5: dual-path design documented, "Optional" clause becomes mandatory when the canvas accepts the HDR configuration.
+
+Stage Summary:
+- python3 scripts/run.py all-tests: 13/13 pass (wgsl-validate 112/112, renderer 66/66, hdr 17/17, m1-smoke 44/44, others unchanged). Total checks: ~575.
+- True HDR output now lands when the canvas accepts rgba16float + toneMapping:'extended' (Chrome 129+ on an HDR-capable display). Sprites write linear flux × uExposure straight to the swapchain; values >1.0 reach the monitor.
+- SDR fallback unchanged: where the canvas rejects the HDR configuration, the existing two-pass path (sprites → rgba16float intermediate → ACES → swapchain) keeps the image correct.
+- The `;` / `'` keys work on both paths: on SDR they multiply before ACES; on HDR direct they multiply the fragment output before the swapchain receives it. Default 1.0, range 0.125 → 8.0.
+- Overlay reports the active path so the user can verify: `output HDR direct` vs `output SDR + ACES`.
+- Still no browser here: the dual-path selection is verified by stubbing a second renderer instance with hdr:true and checking it produces exactly one pass per frame and no intermediate texture. The visual verdict (does the HDR display actually show brighter highlights?) still needs a WebGPU browser on an HDR-capable display, with the chrome://flags/#enable-hdr-canvas or equivalent enabled.

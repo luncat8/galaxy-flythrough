@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-20T10:44:44.473Z",
+  "date": "2026-09-20T10:57:41.402Z",
   "modules": 19,
   "totalChecks": 98,
   "passed": 98,
@@ -377,7 +377,7 @@
       }
     },
     {
-      "name": "Device has identical key sets (4 keys)",
+      "name": "Device has identical key sets (5 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -618,6 +618,7 @@
       "pass": true,
       "detail": [
         "star-sprite",
+        "star-sprite-hdr",
         "tonemap"
       ]
     },
@@ -628,6 +629,7 @@
         "pcg-hash",
         "density",
         "star-sprite",
+        "star-sprite-hdr",
         "tonemap",
         "procedural-gen",
         "cull"

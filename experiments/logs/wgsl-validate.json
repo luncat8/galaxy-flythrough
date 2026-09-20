@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-20T10:44:44.566Z",
+  "date": "2026-09-20T10:57:41.491Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -12,6 +12,10 @@
     {
       "name": "star-sprite",
       "lines": 132
+    },
+    {
+      "name": "star-sprite-hdr",
+      "lines": 114
     },
     {
       "name": "tonemap",
@@ -28,10 +32,11 @@
   ],
   "wired": [
     "star-sprite",
+    "star-sprite-hdr",
     "tonemap"
   ],
-  "totalChecks": 104,
-  "passed": 104,
+  "totalChecks": 112,
+  "passed": 112,
   "failed": 0,
   "checks": [
     {
@@ -41,6 +46,7 @@
         "pcg-hash",
         "density",
         "star-sprite",
+        "star-sprite-hdr",
         "tonemap",
         "procedural-gen",
         "cull"
@@ -63,6 +69,10 @@
           5339
         ],
         [
+          "star-sprite-hdr",
+          3741
+        ],
+        [
           "tonemap",
           2166
         ],
@@ -77,10 +87,11 @@
       ]
     },
     {
-      "name": "only the two wired shaders are compiled into modules",
+      "name": "three wired shaders are exposed (star-sprite, star-sprite-hdr, tonemap)",
       "pass": true,
       "detail": [
         "star-sprite",
+        "star-sprite-hdr",
         "tonemap"
       ]
     },
@@ -89,6 +100,7 @@
       "pass": true,
       "detail": [
         "star-sprite",
+        "star-sprite-hdr",
         "tonemap",
         "procedural-gen",
         "cull"
@@ -145,6 +157,24 @@
     },
     {
       "name": "star-sprite: declares its functions",
+      "pass": true,
+      "detail": 5
+    },
+    {
+      "name": "star-sprite-hdr: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "star-sprite-hdr: contains no unresolved markers",
+      "pass": true,
+      "detail": "star-sprite-hdr"
+    },
+    {
+      "name": "star-sprite-hdr: declares its functions",
       "pass": true,
       "detail": 5
     },
@@ -764,6 +794,26 @@
     },
     {
       "name": "the tonemap fragment writes alpha = 1 (opaque swapchain)",
+      "pass": true
+    },
+    {
+      "name": "the star-sprite-hdr shader declares a vertex entry point",
+      "pass": true
+    },
+    {
+      "name": "the star-sprite-hdr shader declares a fragment entry point",
+      "pass": true
+    },
+    {
+      "name": "the star-sprite-hdr shader declares four bindings (camera + stars + lut + exposure)",
+      "pass": true
+    },
+    {
+      "name": "the star-sprite-hdr fragment multiplies intensity by exposure.exposure.x",
+      "pass": true
+    },
+    {
+      "name": "the star-sprite-hdr shader applies the same (1-r²)³ falloff as the SDR variant",
       "pass": true
     },
     {

@@ -41,7 +41,7 @@ const LINEAR_EXPOSURE_MIN = 0.125;
 const LINEAR_EXPOSURE_MAX = 8.0;
 const LINEAR_EXPOSURE_STEP = 1.0;      // each keypress is ±1 half-stop (×√2 or ×1/√2)
 const MAX_FRAME_DT = 0.1;
-const HDR_FORMAT = 'rgba16float';      // blendable per WebGPU core spec on every adapter
+const HDR_DIRECT_FORMAT = 'rgba16float';   // matches the canvas format on the HDR direct path
 
 // A cell manager must exist before a catalog is attached; this keeps the
 // renderer constructible in "procedural only" runs and in Node tests.
@@ -71,6 +71,12 @@ function createStarRenderer(device, context, format, options) {
         const seed = opts.seed === undefined ? 42 : opts.seed;
         const proceduralTarget = Math.max(0, opts.proceduralStars === undefined ? PROCEDURAL_STARS_DEFAULT : opts.proceduralStars);
         const catalogBudget = Math.max(0, opts.catalogBudgetStars === undefined ? CATALOG_BUDGET_DEFAULT : opts.catalogBudgetStars);
+
+        // HDR direct path: when the canvas is configured as rgba16float +
+        // toneMapping:'extended', sprites write linear flux (multiplied by
+        // linearExposure) straight to the swapchain. No intermediate texture,
+        // no tonemap pass — the display handles the highlight rolloff.
+        const hdrDirect = !!opts.hdr;
 
         const maxStorageBytes = Math.min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize);
 
@@ -137,6 +143,51 @@ function createStarRenderer(device, context, format, options) {
                 primitive: { topology: 'triangle-strip' },
         });
 
+        // --- HDR direct pipeline ----------------------------------------------
+        // When the canvas itself is rgba16float + toneMapping:'extended',
+        // sprites write linear flux * linearExposure directly to the swapchain.
+        // No intermediate texture, no tonemap pass — the display does the
+        // highlight rolloff. This is the path that actually exercises HDR
+        // output on HDR-capable hardware (Chrome 129+).
+        const hdrDirectModule = device.createShaderModule({
+                label: 'star-sprite-hdr',
+                code: window.GalaxyShaders.SHADERS['star-sprite-hdr'],
+        });
+        hdrDirectModule.getCompilationInfo().then((info) => {
+                for (const message of info.messages) {
+                        if (message.type !== 'error') continue;
+                        console.error('WGSL error in star-sprite-hdr:', `${message.lineNum}:${message.linePos} ${message.message}`);
+                }
+        }).catch(() => {});
+        const hdrDirectBindGroupLayout = device.createBindGroupLayout({
+                label: 'star-sprite-hdr-layout',
+                entries: [
+                        { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+                        { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+                        { binding: 2, visibility: GPUShaderStage.VERTEX, texture: { sampleType: 'float' } },
+                        { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                ],
+        });
+        const hdrDirectPipeline = device.createRenderPipeline({
+                label: 'star-sprite-hdr-pipeline',
+                layout: device.createPipelineLayout({ bindGroupLayouts: [hdrDirectBindGroupLayout] }),
+                vertex: { module: hdrDirectModule, entryPoint: 'vs_main' },
+                fragment: {
+                        module: hdrDirectModule,
+                        entryPoint: 'fs_main',
+                        targets: [{
+                                format,
+                                // Same premultiplied additive blend as the SDR variant.
+                                blend: {
+                                        color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+                                        alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+                                },
+                        }],
+                },
+                primitive: { topology: 'triangle-strip' },
+        });
+        let hdrDirectBindGroup = null;
+
         // --- HDR pipeline -----------------------------------------------------
         // The star-sprite pass renders into an rgba16float intermediate; the
         // tonemap pass samples it, applies ACES, and writes the swapchain.
@@ -194,7 +245,7 @@ function createStarRenderer(device, context, format, options) {
                 hdrTexture = device.createTexture({
                         label: 'hdr-intermediate',
                         size: [width, height],
-                        format: HDR_FORMAT,
+                        format: HDR_DIRECT_FORMAT,
                         usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
                 });
                 hdrView = hdrTexture.createView();
@@ -238,7 +289,7 @@ function createStarRenderer(device, context, format, options) {
                 drawn: 0,
                 magZero: EXPOSURE_DEFAULT,
                 linearExposure: LINEAR_EXPOSURE_DEFAULT,
-                hdrPass: true,
+                hdrDirect,
                 bufferBytes: 0,
                 clampedProcedural: false,
                 clampedCatalog: false,
@@ -289,6 +340,19 @@ function createStarRenderer(device, context, format, options) {
                                 { binding: 0, resource: { buffer: uniformBuffer } },
                                 { binding: 1, resource: { buffer: starBuffer } },
                                 { binding: 2, resource: lutTexture.createView() },
+                        ],
+                });
+                // The HDR direct bind group adds the linearExposure uniform at
+                // binding 3. Created lazily: the tonemapUniformBuffer exists
+                // before this is called (renderer init order).
+                hdrDirectBindGroup = device.createBindGroup({
+                        label: 'star-sprite-hdr-bind-group',
+                        layout: hdrDirectBindGroupLayout,
+                        entries: [
+                                { binding: 0, resource: { buffer: uniformBuffer } },
+                                { binding: 1, resource: { buffer: starBuffer } },
+                                { binding: 2, resource: lutTexture.createView() },
+                                { binding: 3, resource: { buffer: tonemapUniformBuffer } },
                         ],
                 });
                 state.bufferBytes = totalBytes;
@@ -422,14 +486,37 @@ function createStarRenderer(device, context, format, options) {
                 tonemapUniform[0] = linearExposure;
                 device.queue.writeBuffer(tonemapUniformBuffer, 0, tonemapUniformData);
 
-                ensureHdrTexture(width, height);
-
                 // The pass runs even when nothing is drawn: an empty frame still
                 // has to clear the canvas, and draw(.., 0) is free.
                 const instances = state.proceduralStars + landmarkCount + catalogResident;
                 state.drawn = instances;
 
                 const encoder = device.createCommandEncoder({ label: 'star-frame' });
+
+                if (hdrDirect) {
+                        // HDR direct path: sprites write linear flux * linearExposure
+                        // straight to the rgba16float swapchain. No intermediate,
+                        // no tonemap — the display does the rolloff via
+                        // toneMapping:'extended'.
+                        const pass = encoder.beginRenderPass({
+                                label: 'star-sprites-hdr',
+                                colorAttachments: [{
+                                        view: context.getCurrentTexture().createView(),
+                                        clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+                                        loadOp: 'clear',
+                                        storeOp: 'store',
+                                }],
+                        });
+                        pass.setPipeline(hdrDirectPipeline);
+                        pass.setBindGroup(0, hdrDirectBindGroup);
+                        pass.draw(4, instances, 0, 0);
+                        pass.end();
+                        device.queue.submit([encoder.finish()]);
+                        return;
+                }
+
+                ensureHdrTexture(width, height);
+
                 // Pass 1: additive sprites into the rgba16float HDR intermediate.
                 // Linear flux sums without per-star saturation; ACES rolls off
                 // the sum once in pass 2.
@@ -489,7 +576,7 @@ const StarRenderer = {
         PROCEDURAL_STARS_DEFAULT, CATALOG_BUDGET_DEFAULT,
         BASE_SIZE_PX, MAX_SIZE_PX, EXPOSURE_DEFAULT, EXPOSURE_STEP,
         LINEAR_EXPOSURE_DEFAULT, LINEAR_EXPOSURE_MIN, LINEAR_EXPOSURE_MAX,
-        LINEAR_EXPOSURE_STEP, HDR_FORMAT,
+        LINEAR_EXPOSURE_STEP, HDR_DIRECT_FORMAT,
 };
 if (typeof module !== 'undefined') module.exports = StarRenderer;
 if (typeof window !== 'undefined') window.StarRenderer = StarRenderer;

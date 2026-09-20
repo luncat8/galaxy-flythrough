@@ -1,28 +1,54 @@
 {
-  "date": "2026-09-20T10:44:44.785Z",
+  "date": "2026-09-20T10:57:41.649Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 49,
-  "totalChecks": 58,
-  "passed": 58,
+  "prepareMs": 56,
+  "totalChecks": 66,
+  "passed": 66,
   "failed": 0,
   "checks": [
     {
-      "name": "two wired shader sources are handed to createShaderModule",
+      "name": "three wired shader sources are handed to createShaderModule",
       "pass": true,
       "detail": {
         "modules": [
           "star-sprite",
+          "star-sprite-hdr",
           "tonemap"
         ]
       }
     },
     {
-      "name": "both wired shaders declare their entry points",
+      "name": "all wired shaders declare their entry points",
       "pass": true
     },
     {
+      "name": "three pipelines are created (sprite + sprite-hdr + tonemap)",
+      "pass": true,
+      "detail": [
+        "star-sprite-pipeline",
+        "star-sprite-hdr-pipeline",
+        "tonemap-pipeline"
+      ]
+    },
+    {
       "name": "the star-sprite pipeline is additive with no depth attachment",
+      "pass": true,
+      "detail": {
+        "color": {
+          "srcFactor": "one",
+          "dstFactor": "one",
+          "operation": "add"
+        },
+        "alpha": {
+          "srcFactor": "one",
+          "dstFactor": "one",
+          "operation": "add"
+        }
+      }
+    },
+    {
+      "name": "the star-sprite-hdr pipeline is additive with the same blend as the SDR variant",
       "pass": true,
       "detail": {
         "color": {
@@ -396,6 +422,51 @@
           720
         ]
       }
+    },
+    {
+      "name": "hdrDirect flag is reflected in renderer state",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "name": "the HDR direct path produces exactly one render pass per frame",
+      "pass": true,
+      "detail": [
+        "star-sprites-hdr"
+      ]
+    },
+    {
+      "name": "the HDR direct path does not create a tonemap pass",
+      "pass": true,
+      "detail": [
+        "star-sprites-hdr"
+      ]
+    },
+    {
+      "name": "the HDR direct path does not create an rgba16float intermediate texture",
+      "pass": true,
+      "detail": [
+        "star-color-lut"
+      ]
+    },
+    {
+      "name": "the HDR direct draw covers the procedural + landmark stars",
+      "pass": true,
+      "detail": {
+        "vertices": 4,
+        "instances": 2059,
+        "firstVertex": 0,
+        "firstInstance": 0,
+        "pipeline": {
+          "label": "star-sprite-hdr-pipeline"
+        },
+        "pass": "star-sprites-hdr"
+      }
+    },
+    {
+      "name": "; raises linearExposure by one half-stop on the HDR direct path",
+      "pass": true,
+      "detail": 1.4142135381698608
     },
     {
       "name": "dispose destroys the star buffer",

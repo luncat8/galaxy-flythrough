@@ -1034,11 +1034,23 @@ keep their color and brightness gradient instead of clipping to white.
   accumulate linear, tone-map last. Per-star brightness is now the raw linear flux
   `pow(10, -0.4·(m_app − magZero))` with no per-star roll-off; the alpha channel
   carries the same flux for premultiplied additive blend.
-- Renderer: stars → `rgba16float` intermediate (recreated on resize, blendable per
-  WebGPU core spec on every adapter) → fullscreen tone-map pass into the swapchain.
-  The `tonemap` module lives in `shaders.js` beside the others; `WIRED_SHADERS`
-  grows to two. The tone-map pass writes `alpha = 1` (swapchain is opaque) and uses
-  no blend state (overwrite).
+- Renderer: two paths, picked once at boot by the device layer.
+  - SDR path (no HDR canvas): stars → `rgba16float` intermediate (recreated on
+    resize, blendable per WebGPU core spec on every adapter) → fullscreen
+    tone-map pass into the swapchain. `WIRED_SHADERS` carries three shaders:
+    `star-sprite`, `star-sprite-hdr`, `tonemap`. The SDR path compiles all
+    three (the HDR-direct pipeline is created but not used) and runs two
+    passes per frame.
+  - HDR direct path (canvas is `rgba16float` + `toneMapping:{mode:'extended'}`):
+    sprites write linear flux × `uExposure` straight to the swapchain. No
+    intermediate texture, no tonemap pass — the HDR-capable display does the
+    highlight rolloff itself. One pass per frame. `;` / `'` still adjusts
+    `uExposure`, now multiplied in the sprite fragment shader (binding 3).
+  - `device.js` tries `rgba16float` + `toneMapping:'extended'` + `colorSpace:
+    'srgb'` + `alphaMode:'opaque'`; if `configure()` throws (non-HDR display,
+    older browser), it falls back to the SDR preferred format with
+    `alphaMode:'premultiplied'`. The returned `hdr` flag tells the renderer
+    which path to take.
 - Curve: ACES fitted (Narkowicz) `x·(2.51x+0.03)/(x·(2.43x+0.59)+0.14)`. Picked over
   extended Reinhard because the filmic S-curve compresses dense star clusters
   gracefully and preserves red-giant hue into the highlights. The test pins
@@ -1052,8 +1064,8 @@ keep their color and brightness gradient instead of clipping to white.
   soft blob to a small bright core with a faint wing, the size point sources should
   be at HD/4K.
 - Optional: true HDR presentation where the canvas supports
-  `toneMapping: { mode: 'extended' }`; a flag, not a requirement. Not wired here —
-  the intermediate HDR texture is enough for the brightness-gain behaviour.
+  `toneMapping: { mode: 'extended' }`; the HDR direct path makes this mandatory
+  when the canvas accepts the configuration, not a flag.
 - Tests: `hdr-test.js` for the curve, plus `renderer-test.js` extended for the
   two-pass submission against the stub device (two pipelines, two draws, HDR texture
   sized to the canvas, exposure uniform).

@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-20T10:44:51.975Z",
+  "date": "2026-09-20T10:57:41.456Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -196,7 +196,7 @@
       "name": "Device loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 4
+        "keys": 5
       }
     },
     {

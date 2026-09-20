@@ -71,9 +71,9 @@ async function boot() {
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        let device, context, format;
+        let device, context, format, hdr;
         try {
-                ({ device, context, format } = await window.Device.initDevice(canvas));
+                ({ device, context, format, hdr } = await window.Device.initDevice(canvas));
         } catch (err) {
                 showError('WebGPU init failed: ' + err.message);
                 return;
@@ -93,6 +93,7 @@ async function boot() {
                 proceduralStars: params.stars,
                 catalogBudgetStars: params.catalogStars,
                 seed: params.seed,
+                hdr,
         });
 
         // Catalog is optional: without it the procedural field still renders.
@@ -133,8 +134,9 @@ async function boot() {
         function updateOverlay(state, cameraState) {
                 const shutter = state.magZero.toFixed(1);
                 const linExp = state.linearExposure.toFixed(3);
+                const mode = state.hdrDirect ? 'HDR direct' : 'SDR + ACES';
                 overlay.textContent =
-                        `FPS ${loop.stats.fps.toFixed(0)}   frame ${loop.stats.avgFrameMs.toFixed(2)}ms (max ${loop.stats.maxFrameMs.toFixed(1)}ms)\n` +
+                        `FPS ${loop.stats.fps.toFixed(0)}   frame ${loop.stats.avgFrameMs.toFixed(2)}ms (max ${loop.stats.maxFrameMs.toFixed(1)}ms)   output ${mode}\n` +
                         `stars drawn ${state.drawn.toLocaleString()}  =  procedural ${state.proceduralStars.toLocaleString()}` +
                         ` + landmarks ${state.landmarkStars.toLocaleString()}` +
                         ` + catalog ${state.catalogResidentStars.toLocaleString()}/${state.catalogTotalStars.toLocaleString()}\n` +

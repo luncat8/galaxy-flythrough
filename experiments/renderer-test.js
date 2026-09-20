@@ -152,23 +152,29 @@ console.log(`Prepared in ${prepareMs} ms: ${prepareState.proceduralStars} proced
 
 // --- Shader + pipeline wiring -------------------------------------------
 {
-        check('two wired shader sources are handed to createShaderModule',
-                gpu.shaderModules.length === 2
+        check('three wired shader sources are handed to createShaderModule',
+                gpu.shaderModules.length === 3
                 && gpu.shaderModules[0].code === window.GalaxyShaders.SHADERS['star-sprite']
-                && gpu.shaderModules[1].code === window.GalaxyShaders.SHADERS['tonemap'],
+                && gpu.shaderModules[1].code === window.GalaxyShaders.SHADERS['star-sprite-hdr']
+                && gpu.shaderModules[2].code === window.GalaxyShaders.SHADERS['tonemap'],
                 { modules: gpu.shaderModules.map(s => s.label) });
-        check('both wired shaders declare their entry points',
-                /@vertex\s+fn\s+vs_main/.test(gpu.shaderModules[0].code)
-                && /@fragment\s+fn\s+fs_main/.test(gpu.shaderModules[0].code)
-                && /@vertex\s+fn\s+vs_main/.test(gpu.shaderModules[1].code)
-                && /@fragment\s+fn\s+fs_main/.test(gpu.shaderModules[1].code));
+        check('all wired shaders declare their entry points',
+                gpu.shaderModules.every(s => /@vertex\s+fn\s+vs_main/.test(s.code) && /@fragment\s+fn\s+fs_main/.test(s.code)));
         const spritePipeline = gpu.pipelines.find(p => p.label === 'star-sprite-pipeline');
+        const hdrPipeline = gpu.pipelines.find(p => p.label === 'star-sprite-hdr-pipeline');
         const tonemapPipeline = gpu.pipelines.find(p => p.label === 'tonemap-pipeline');
+        check('three pipelines are created (sprite + sprite-hdr + tonemap)',
+                !!spritePipeline && !!hdrPipeline && !!tonemapPipeline,
+                gpu.pipelines.map(p => p.label));
         check('the star-sprite pipeline is additive with no depth attachment',
                 spritePipeline.fragment.targets[0].blend.color.srcFactor === 'one'
                 && spritePipeline.fragment.targets[0].blend.color.dstFactor === 'one'
                 && spritePipeline.depthStencil === undefined,
                 spritePipeline.fragment.targets[0].blend);
+        check('the star-sprite-hdr pipeline is additive with the same blend as the SDR variant',
+                hdrPipeline.fragment.targets[0].blend.color.srcFactor === 'one'
+                && hdrPipeline.fragment.targets[0].blend.color.dstFactor === 'one',
+                hdrPipeline.fragment.targets[0].blend);
         check('the tonemap pipeline has no blend state (overwrite)',
                 tonemapPipeline.fragment.targets[0].blend === undefined
                 && tonemapPipeline.fragment.targets[0].format === 'bgra8unorm',
@@ -449,9 +455,61 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 { label: newHdr.label, size: newHdr.size });
 }
 
+// --- HDR direct path (canvas is rgba16float + extended) -----------------
+// A second renderer instance with `hdr:true` exercises the path where the
+// swapchain itself is HDR: sprites write linear flux * linearExposure straight
+// to the canvas, no intermediate texture, no tonemap pass.
+{
+        const hdrGpu = createMockGpu();
+        // Make the swapchain look like an HDR surface by tagging the texture
+        // view with a different label so the test can identify it.
+        const hdrRenderer = rendererModule.createStarRenderer(hdrGpu.device, hdrGpu.context, hdrGpu.format, {
+                proceduralStars: 2000,
+                catalogBudgetStars: 0,
+                seed: 7,
+                hdr: true,
+        });
+        hdrRenderer.prepare(null);
+        check('hdrDirect flag is reflected in renderer state',
+                hdrRenderer.state.hdrDirect === true, hdrRenderer.state.hdrDirect);
+
+        const hdrInput = { keys: {}, actions: { reset: 0, exposure: 0, linearExposure: 0 }, lookDx: 0, lookDy: 0, wheelDelta: 0 };
+        const passesBefore = hdrGpu.passes.length;
+        hdrRenderer.render(camera, WIDTH, HEIGHT, 7 / 60, hdrInput);
+
+        // HDR path produces exactly ONE pass per frame (sprites direct to
+        // swapchain). No 'tonemap' pass and no 'hdr-intermediate' texture.
+        const newPasses = hdrGpu.passes.slice(passesBefore);
+        check('the HDR direct path produces exactly one render pass per frame',
+                newPasses.length === 1 && newPasses[0].label === 'star-sprites-hdr',
+                newPasses.map(p => p.label));
+        check('the HDR direct path does not create a tonemap pass',
+                !newPasses.some(p => p.label === 'tonemap'),
+                newPasses.map(p => p.label));
+        check('the HDR direct path does not create an rgba16float intermediate texture',
+                !hdrGpu.textures.some(t => t.label === 'hdr-intermediate'),
+                hdrGpu.textures.map(t => t.label));
+
+        // The single draw still draws the resident stars as 4-vertex quads.
+        const hdrDraw = newPasses[0].draws[0];
+        check('the HDR direct draw covers the procedural + landmark stars',
+                hdrDraw.vertices === 4
+                && hdrDraw.instances === hdrRenderer.state.proceduralStars + hdrRenderer.state.landmarkStars,
+                hdrDraw);
+
+        // The `;` / `'` exposure knob still works on the HDR path: it
+        // multiplies fragment output via the bound uniform, no ACES step.
+        hdrInput.actions.linearExposure = 1;
+        hdrRenderer.render(camera, WIDTH, HEIGHT, 7.1 / 60, hdrInput);
+        const tmu = readUniform(hdrGpu.tonemapUniformWrites[hdrGpu.tonemapUniformWrites.length - 1]);
+        check('; raises linearExposure by one half-stop on the HDR direct path',
+                Math.abs(tmu[0] - rendererModule.LINEAR_EXPOSURE_DEFAULT * Math.SQRT2) < 1e-5, tmu[0]);
+
+        hdrRenderer.dispose();
+}
+
 // --- Teardown -----------------------------------------------------------
 {
-        const hdrBeforeDispose = gpu.textures.find(t => t.label === 'hdr-intermediate');
         renderer.dispose();
         check('dispose destroys the star buffer', catalogs[0].destroyed === true);
         check('no WGSL compilation errors were reported', renderer.shaderError() === null, renderer.shaderError());

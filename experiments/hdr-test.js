@@ -124,7 +124,7 @@ function aces(x) {
 // --- HDR format ---------------------------------------------------------
 {
         check('the HDR intermediate format is rgba16float',
-                renderer.HDR_FORMAT === 'rgba16float', renderer.HDR_FORMAT);
+                renderer.HDR_DIRECT_FORMAT === 'rgba16float', renderer.HDR_DIRECT_FORMAT);
 }
 
 // --- Report -------------------------------------------------------------

@@ -35,17 +35,18 @@ function readSource(relPath) {
 {
         const names = Object.keys(shaders.SHADER_PARTS);
         check('every expected shader part is present',
-                ['pcg-hash', 'density', 'star-sprite', 'tonemap', 'procedural-gen', 'cull'].every(n => names.includes(n)),
+                ['pcg-hash', 'density', 'star-sprite', 'star-sprite-hdr', 'tonemap', 'procedural-gen', 'cull'].every(n => names.includes(n)),
                 names);
         check('every shader part is a non-empty LF-only string',
                 names.every(n => typeof shaders.SHADER_PARTS[n] === 'string'
                         && shaders.SHADER_PARTS[n].length > 100
                         && !shaders.SHADER_PARTS[n].includes('\r')),
                 names.map(n => [n, shaders.SHADER_PARTS[n].length]));
-        check('only the two wired shaders are compiled into modules',
-                shaders.WIRED_SHADERS.length === 2
+        check('three wired shaders are exposed (star-sprite, star-sprite-hdr, tonemap)',
+                shaders.WIRED_SHADERS.length === 3
                 && shaders.WIRED_SHADERS[0] === 'star-sprite'
-                && shaders.WIRED_SHADERS[1] === 'tonemap',
+                && shaders.WIRED_SHADERS[1] === 'star-sprite-hdr'
+                && shaders.WIRED_SHADERS[2] === 'tonemap',
                 shaders.WIRED_SHADERS);
         check('every wired shader exists in the module map',
                 shaders.WIRED_SHADERS.every(n => typeof shaders.SHADERS[n] === 'string' && shaders.SHADERS[n].length > 0),
@@ -216,6 +217,20 @@ function wgslConsts(part) {
                 && /const\s+e:\s*f32\s*=\s*0\.14/.test(tonemap));
         check('the tonemap fragment writes alpha = 1 (opaque swapchain)',
                 /return\s+vec4f\(ldr,\s*1\.0\)/.test(tonemap));
+
+        const spriteHdr = shaders.SHADERS['star-sprite-hdr'];
+        check('the star-sprite-hdr shader declares a vertex entry point', /@vertex\s*\nfn\s+vs_main/.test(spriteHdr));
+        check('the star-sprite-hdr shader declares a fragment entry point',
+                /@fragment\s*\nfn\s+fs_main/.test(spriteHdr) || /@fragment\s+fn\s+fs_main/.test(spriteHdr));
+        check('the star-sprite-hdr shader declares four bindings (camera + stars + lut + exposure)',
+                /@group\(0\)\s*@binding\(0\)\s*var<uniform>\s+camera/.test(spriteHdr)
+                && /@group\(0\)\s*@binding\(1\)\s*var<storage,\s*read>\s+stars/.test(spriteHdr)
+                && /@group\(0\)\s*@binding\(2\)\s*var\s+colorLUT/.test(spriteHdr)
+                && /@group\(0\)\s*@binding\(3\)\s*var<uniform>\s+exposure/.test(spriteHdr));
+        check('the star-sprite-hdr fragment multiplies intensity by exposure.exposure.x',
+                /in\.brightness\s*\*\s*falloff\s*\*\s*exposure\.exposure\.x/.test(spriteHdr));
+        check('the star-sprite-hdr shader applies the same (1-r²)³ falloff as the SDR variant',
+                /let\s+s:\s*f32\s*=\s*1\.0\s*-\s*r2/.test(spriteHdr) && /s\s*\*\s*s\s*\*\s*s/.test(spriteHdr));
 
         const gen = shaders.SHADERS['procedural-gen'];
         check('the procedural generator is a compute shader', /@compute/.test(gen) && /@workgroup_size/.test(gen));
