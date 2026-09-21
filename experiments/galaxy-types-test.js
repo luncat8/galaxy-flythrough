@@ -290,9 +290,13 @@ function relNear(a, b, tol) {
 		sersic.length + bar.length === TABLE.length && MW.spheroid.profileId === density.PROFILE_PLUMMER
 		&& models.Sc.spheroid.profileId === density.PROFILE_SERSIC,
 		{ sersic: sersic.map((m) => m.type), bar: bar.map((m) => m.type), preset: MW.spheroid.profile });
-	check('the Sersic index follows the authored E shape or stage anchor',
+	// One index field for two profiles: a Sérsic index for the unbarred types, the
+	// boxiness for a bar, and an authored `n` (the E stages) wins over both.
+	check('the spheroid index follows the authored value or the profile\'s anchor',
 		TABLE.every((m) => m.spheroid.n === (galaxy.TYPE_SPECS[m.type].n
-			?? galaxy.interpAnchors(galaxy.ANCHORS.SERSIC_N, m.T))),
+			?? (m.spheroid.profileId === density.PROFILE_BAR
+				? galaxy.interpAnchors(galaxy.ANCHORS.BAR_BOXINESS, m.T)
+				: galaxy.interpAnchors(galaxy.ANCHORS.SERSIC_N, m.T)))),
 		TABLE.map((m) => [m.type, m.spheroid.n]));
 	// s is measured in the body's own tilted frame, so a probe at radius s has to
 	// undo that rotation: x = s*a*r0*cos(t), y = s*a*r0*sin(t) off the centre.
@@ -331,11 +335,11 @@ function relNear(a, b, tol) {
 
 // --- 6. One uniform, packed from the model ------------------------------
 {
-	// 12 flat vec4 groups plus the trailing clump array (12 vec4s).
+	// 13 flat vec4 groups plus the trailing clump array (12 vec4s).
 	check('the layout, the packer and the struct agree on the size',
 		galaxy.DENSITY_PARAMS_LAYOUT.length * 4 + galaxy.DENSITY_PARAMS_CLUMP_FLOATS === galaxy.DENSITY_PARAMS_FLOATS
 		&& galaxy.DENSITY_PARAMS_BYTES === galaxy.DENSITY_PARAMS_FLOATS * 4
-		&& galaxy.DENSITY_PARAMS_FLOATS === 12 * 4 + 12 * 4,
+		&& galaxy.DENSITY_PARAMS_FLOATS === 13 * 4 + 12 * 4,
 		{ floats: galaxy.DENSITY_PARAMS_FLOATS, bytes: galaxy.DENSITY_PARAMS_BYTES,
 			groups: galaxy.DENSITY_PARAMS_LAYOUT.length, clumps: galaxy.DENSITY_PARAMS_CLUMPS });
 	const buffer = new Float32Array(galaxy.DENSITY_PARAMS_FLOATS);
@@ -378,50 +382,128 @@ function relNear(a, b, tol) {
 
 // --- 6b. The shape machinery: bar, coupling, clumps, gradient ------------
 {
-	// The bar mass integral has a closed form: a superellipsoid level set at
-	// radius s is the unit level set scaled by s, so M = 6*V(1)*amp with
-	// V(1) = 8*a*b*c*r0^3 * Gamma(1+1/n)^3 / Gamma(1+3/n). The n = 2 limit of
-	// that is exactly 8*pi*a*b*c — checked with an independent Gamma below.
-	function testLogGamma(x) {
-		const C = [0.99999999999980993, 676.5203681218851, -1259.1392167224028,
-			771.32342877765313, -176.61502916214059, 12.507343278686905,
-			-0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
-		if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - testLogGamma(1 - x);
-		const z = x - 1;
-		let a = C[0];
-		const t = z + 7.5;
-		for (let i = 1; i < 9; i++) a += C[i] / (z + i);
-		return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(a);
-	}
+	// The bar is a boxy/peanut body (uniform inside a boxy cross-section, flat
+	// along the major axis out to `plateau`, exponential past it), so its mass
+	// integral is a quadrature over that body rather than a closed form. Two
+	// independent checks: the ellipsoid limit is exact, and a midpoint sum of the
+	// *field function itself* has to reproduce the delivered component mass.
 	// SBb is the authored preset (a Plummer bulge), so the table carries four
 	// barred types: SB0, SBa, SBc, SBd.
 	const bar = TABLE.filter((m) => m.spheroid.profileId === density.PROFILE_BAR);
 	check('every barred table type carries the bar profile', bar.length === 4,
 		bar.map((m) => m.type));
+	// The bar frame: the level radius s the field truncates in, from a world point.
+	function barLevel(model, x, y, z) {
+		const sp = model.spheroid;
+		const t = sp.tiltDeg * Math.PI / 180;
+		const ct = Math.cos(t);
+		const st = Math.sin(t);
+		const dx = x - model.centre.x;
+		const dy = y - model.centre.y;
+		const dz = z - model.centre.z;
+		const xi = (dx * ct + dy * st) / (sp.a * sp.r0);
+		const eta = (-dx * st + dy * ct) / (sp.b * sp.r0);
+		const stretch = 1 + model.bar.peanut * xi * xi;
+		const n = sp.n;
+		const ax = Math.abs(xi);
+		const ay = Math.abs(eta);
+		const az = Math.abs(dz / (sp.c * sp.r0) / stretch);
+		return { s: Math.pow(Math.pow(ax, n) + Math.pow(ay, n) + Math.pow(az, n), 1 / n), xi };
+	}
 	for (const model of bar) {
 		const sp = model.spheroid;
 		const axes = sp.a * sp.b * sp.c * sp.r0 ** 3;
-		const expected = 48 * axes * Math.exp(3 * testLogGamma(1 + 1 / sp.n) - testLogGamma(1 + 3 / sp.n));
-		check(`${model.type}: the bar mass integral is the closed superellipsoid form`,
-			relNear(density.massIntegrals(model).bulge, expected, 1e-12),
-			{ integral: density.massIntegrals(model).bulge, expected });
-		// The n = 2 limit of the same formula must be 8*pi*a*b*c*r0^3: a bar
-		// that reads as an ellipsoid integrates like the exp(-s) ellipsoid.
-		const ell = galaxy.createGalaxy({ type: model.type, overrides: { spheroid: { n: 2 } } });
-		check(`${model.type}: the n=2 bar limit is 8*pi*a*b*c*r0^3`,
-			relNear(density.massIntegrals(ell).bulge, 8 * Math.PI * axes, 1e-9),
+		// n = 2 with no peanut and no cap is exactly the ellipsoid: the L^2 disk
+		// area is pi and the longitudinal weight integrates to 2/3 per side.
+		const ell = galaxy.createGalaxy({ type: model.type, overrides: {
+			spheroid: { n: 2 }, bar: { peanut: 0, plateau: 1, endCap: 1 },
+		} });
+		check(`${model.type}: the n=2 bar with no peanut is exactly the ellipsoid volume`,
+			relNear(density.massIntegrals(ell).bulge, 4 / 3 * Math.PI * axes, 1e-9),
 			density.massIntegrals(ell).bulge);
-	}
-	// The bar CDF is exact for every n (self-similar level sets): 1-(1+s+s^2/2)e^-s.
-	for (const model of bar) {
-		const sMax = model.truncation.spheroidRadius;
-		let worst = 0;
-		for (const target of [0.05, 0.25, 0.5, 0.9, 0.99]) {
-			const s = density.barRadiusForFraction(model, target);
-			worst = Math.max(worst, Math.abs(density.barMassFraction(model, s) / density.barMassFraction(model, sMax) - target));
+		// Midpoint sum of rhoSpheroid over the bar's bounding box, divided by amp:
+		// the field's own integral, with no use of the closed bookkeeping.
+		const span = 1.05 * Math.max(sp.a, sp.b) * sp.r0;
+		const height = 1.05 * sp.c * sp.r0 * (1 + model.bar.peanut);
+		const steps = 64;
+		const d = 2 * span / steps;
+		const dz = 2 * height / steps;
+		let sum = 0;
+		for (let i = 0; i < steps; i++) {
+			const x = model.centre.x - span + (i + 0.5) * d;
+			for (let j = 0; j < steps; j++) {
+				const y = model.centre.y - span + (j + 0.5) * d;
+				for (let k = 0; k < steps; k++) {
+					sum += density.rhoSpheroid(model, x, y, model.centre.z - height + (k + 0.5) * dz);
+				}
+			}
 		}
-		check(`${model.type}: the bar inverse CDF round-trips the enclosed-mass fraction`, worst < 2e-3,
-			{ worstError: +worst.toExponential(2) });
+		const grid = sum * d * d * dz / sp.amp;
+		check(`${model.type}: the bar mass integral is the field's own integral`,
+			relNear(grid, density.massIntegrals(model).bulge, 5e-3),
+			{ grid: +grid.toFixed(4), integral: +density.massIntegrals(model).bulge.toFixed(4) });
+	}
+	// The bar is a bounded body: a truncation shorter than its tip crops the mass,
+	// the sampler follows it, and no star is ever drawn outside the body.
+	for (const model of bar) {
+		const cut = galaxy.createGalaxy({ type: model.type, overrides: { truncation: { spheroidRadius: 0.5 } } });
+		const full = density.massIntegrals(model).bulge;
+		const delivered = density.truncationFractions(cut).bulge;
+		check(`${model.type}: a truncation shorter than the bar crops the delivered mass`,
+			relNear(density.massIntegrals(cut).bulge, full, 1e-12) && delivered > 0.05 && delivered < 0.35,
+			{ delivered: +delivered.toFixed(4), untruncated: +full.toFixed(4) });
+		const buf = sampling.createBuffers(6000);
+		sampling.sampleGalaxyStars(cut, 5, 6000, buf);
+		let outside = 0;
+		for (let i = 0; i < buf.count; i++) {
+			if (buf.component[i] !== density.COMPONENT_BULGE) continue;
+			const level = barLevel(cut, buf.x[i], buf.y[i], buf.z[i]);
+			if (level.s > 0.5 + 1e-6 || Math.abs(level.xi) > 0.5 + 1e-6) outside++;
+		}
+		check(`${model.type}: no bar star is drawn past the cropped tip`, outside === 0, outside);
+		const whole = sampling.createBuffers(6000);
+		sampling.sampleGalaxyStars(model, 5, 6000, whole);
+		let strayed = 0;
+		for (let i = 0; i < whole.count; i++) {
+			if (whole.component[i] !== density.COMPONENT_BULGE) continue;
+			if (barLevel(model, whole.x[i], whole.y[i], whole.z[i]).s > 1 + 1e-6) strayed++;
+		}
+		check(`${model.type}: every sampled bar star lies inside the body the field draws`,
+			strayed === 0, strayed);
+	}
+
+	// The lane widths are fractions of the pattern's ridge spacing, so the
+	// spacing the field actually has must be the λ those widths are written in:
+	// 2*pi*R*sin(pitch)/m = 2*pi*R/hypot(m, K). Measured here by scanning a ray
+	// at fixed azimuth and reading the geometric ratio of consecutive crest
+	// radii, which is e^(2*pi/K) for a log spiral — a different geometry from the
+	// winding check above, and no arctangent of a chord. K comes out to within
+	// 0.03 % of m/tan(pitch), and the λ it implies to within 0.03 % of the
+	// formula armRidgeWidth uses.
+	for (const type of ['Sa', 'Sb', 'Sc', 'Sd', 'MW']) {
+		const m = type === 'MW' ? MW : galaxy.createGalaxy({ type, overrides: { arms: { flocculence: 0 } } });
+		const phi = 0.3;
+		const step = 0.002;
+		const crests = [];
+		let prev = -1;
+		let prevPrev = -1;
+		for (let R = m.arms.minRadius * 1.2; R < 20; R += step) {
+			const v = density.armFactor(m, R, phi);
+			if (prev > v && prev > prevPrev) crests.push(R - step);
+			prevPrev = prev;
+			prev = v;
+		}
+		const R1 = crests[crests.length - 2];
+		const R2 = crests[crests.length - 1];
+		const K = 2 * Math.PI / Math.log(R2 / R1);
+		const pitch = Math.atan(m.arms.m / K) * 180 / Math.PI;
+		const Rmid = Math.sqrt(R1 * R2);
+		const lambdaPattern = 2 * Math.PI * Rmid / Math.hypot(m.arms.m, K);
+		const lambdaWidth = 2 * Math.PI * Rmid * Math.sin(m.arms.pitchDeg * Math.PI / 180) / m.arms.m;
+		check(`${type}: the crest spacing is the pattern's own, e^(2*pi/K)`,
+			Math.abs(pitch - m.arms.pitchDeg) < 0.05 && Math.abs(lambdaPattern - lambdaWidth) < 0.005 * lambdaWidth,
+			{ pitchFromSpacing: +pitch.toFixed(3), anchor: m.arms.pitchDeg,
+				lambdaSpacing: +lambdaPattern.toFixed(4), lambdaWidth: +lambdaWidth.toFixed(4) });
 	}
 
 	// Bar-end arm coupling: for table barred types the arm inner edge IS the
@@ -448,6 +530,40 @@ function relNear(a, b, tol) {
 	check('the authored preset keeps its own arm inner edge and phase',
 		near(MW.arms.minRadius, 0.5, 1e-12) && near(MW.arms.phase0, 0, 1e-12),
 		{ minRadius: MW.arms.minRadius, phase0: MW.arms.phase0 });
+
+	// The pitch angle is the angle the arms actually wind at. This measures the
+	// field itself — no formula from the library is re-used — by finding the arm
+	// crest with a scan at two nearby radii and reading the angle between the
+	// crest line and the circumferential direction. A pitch of 12 deg means the
+	// ridge has moved 1/tan(12) = 4.7 rad in azimuth after one e-fold in radius,
+	// which is the difference between a spiral and a fan of straight spokes. The
+	// geometric mean is the radius a log spiral's chord is measured at (a plain
+	// R biases the angle up by ~3 %); the estimator is exact to 0.002 deg on a
+	// true log spiral.
+	for (const type of ['Sa', 'Sb', 'Sc', 'Sd', 'SBa', 'SBb', 'SBc', 'SBd']) {
+		const model = galaxy.createGalaxy({ type, overrides: { arms: { flocculence: 0 } } });
+		const crestPhiAt = (r) => {
+			let bestPhi = 0;
+			let best = -1;
+			const steps = 2160 * model.arms.m;
+			for (let i = 0; i < steps; i++) {
+				const phi = 2 * Math.PI * i / steps;
+				const v = density.armFactor(model, r, phi);
+				if (v > best) { best = v; bestPhi = phi; }
+			}
+			return bestPhi;
+		};
+		const R = 6;
+		const R2 = R * 1.05;
+		const p1 = crestPhiAt(R);
+		let dphi = crestPhiAt(R2) - p1;
+		while (dphi > Math.PI / model.arms.m) dphi -= 2 * Math.PI / model.arms.m;
+		while (dphi < -Math.PI / model.arms.m) dphi += 2 * Math.PI / model.arms.m;
+		const pitch = Math.atan2(R2 - R, Math.sqrt(R * R2) * Math.abs(dphi)) * 180 / Math.PI;
+		check(`${type}: the arm crest winds at the model's pitch angle`,
+			Math.abs(pitch - model.arms.pitchDeg) < 0.15,
+			{ pitch: +pitch.toFixed(3), anchor: model.arms.pitchDeg });
+	}
 
 	// Irregular clumps: 12 PCG-hashed hotspots on Irr only, stable per
 	// (type, seed), inside the disc, and live in the field.
@@ -476,15 +592,15 @@ function relNear(a, b, tol) {
 		(at.thin + at.thick) / (base.thin + base.thick));
 	// And the two-stage sampler moves a visible share of stars into clumps.
 	const irrSample = sampling.sampleGalaxyStars(irr, 42, 40000);
-	let near = 0;
+	let clumpHits = 0;
 	for (let i = 0; i < irrSample.count; i++) {
 		for (const c of irr.clumps) {
 			const dx = irrSample.x[i] - c.x, dy = irrSample.y[i] - c.y, dz = irrSample.z[i] - c.z;
-			if (dx * dx + dy * dy + dz * dz < 4 * c.r * c.r) { near++; break; }
+			if (dx * dx + dy * dy + dz * dz < 4 * c.r * c.r) { clumpHits++; break; }
 		}
 	}
 	check('the sampler assigns stars to the clumps the field carries',
-		near / irrSample.count > 0.015, +(near / irrSample.count).toFixed(4));
+		clumpHits / irrSample.count > 0.015, +(clumpHits / irrSample.count).toFixed(4));
 
 	// Radial metallicity: one dial (gradientSteep), flat in E, steep in Sc.
 	check('gradientSteep is monotone up the sequence and per-type',
@@ -572,12 +688,10 @@ function relNear(a, b, tol) {
 		return nebula.nebulaProbabilityAt(model, model.centre.x + R * Math.cos(phi),
 			model.centre.y + R * Math.sin(phi), z).p;
 	};
-	const k = Math.tan(MW.arms.pitchDeg * Math.PI / 180);
-	const ridgePhi = (k * Math.log(6 / MW.arms.Rs)) / MW.arms.m * 180 / Math.PI;
+	const ridgePhi = density.armRidgeAzimuth(MW, 6) * 180 / Math.PI;
 	const GAS_TYPES = ['HII', 'reflection', 'dark'];
 	for (const model of ALL) {
-		const phi = (Math.tan(model.arms.pitchDeg * Math.PI / 180) * Math.log(6 / model.arms.Rs)
-			- model.arms.phase0) / model.arms.m * 180 / Math.PI;
+		const phi = density.armRidgeAzimuth(model, 6) * 180 / Math.PI;
 		const onRidge = at(model, 6, phi, 0.02);
 		const offRidge = at(model, 6, phi + 180 / model.arms.m, 0.02);
 		const placed = nebula.placeNebulae(model, 5, 400, {

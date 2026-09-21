@@ -112,8 +112,9 @@ function insideDisc(model, R, z) {
 // ---- components -----------------------------------------------------------
 
 // Flared scale height H(R) = H(1 + flare*R/L), and the soft-core radial
-// factor R/sqrt(R^2 + c^2) (1 without a core). Both are defined once so the
-// field, the mass integrals and the sampler inverter read the same profile.
+// factor R/sqrt(R^2 + c^2) (1 without a core). These helpers are shared by
+// the field's mass integrals and sampling's radial CDF, so a flare or core
+// cannot silently change the distribution in only one consumer.
 function discHeightAt(group, R) {
 	return group.H * (1 + (group.flare || 0) * (R / group.L));
 }
@@ -121,23 +122,55 @@ function discHeightAt(group, R) {
 function discRadialFactor(group, R) {
 	const c = group.coreRadius || 0;
 	if (c === 0) return Math.exp(-R / group.L);
-	return Math.exp(-R / group.L) * (R / Math.sqrt(R * R + c * c));
+	return Math.exp(-R / group.L) * R / Math.sqrt(R * R + c * c);
 }
 
 // The vertical mass of one profile column at radius R: the z-integral of the
-// profile, truncated or not. sech^2 integrates to 4H (full) / 2H*tanh (cut);
-// exp(-|z|/H) to 2H (full) / 2H*(1 - exp(-Z/H)) (cut).
-function discVerticalMass(group, R, zMax) {
+// profile, truncated or not. `kind` is 'sech2' for the thin disc and 'laplace'
+// for the thick disc. A non-finite height means the full vertical integral.
+function discVerticalMass(group, R, zMax, kind) {
 	const H = discHeightAt(group, R);
-	if (group.vertical === 'laplace') {
-		return zMax > 0 ? 2 * H * (1 - Math.exp(-zMax / H)) : 2 * H;
+	if (kind === 'laplace') {
+		return zMax === Infinity ? 2 * H : 2 * H * (1 - Math.exp(-zMax / H));
 	}
-	return zMax > 0 ? 2 * H * Math.tanh(zMax / (2 * H)) : 4 * H;
+	return zMax === Infinity ? 4 * H : 4 * H * Math.tanh(zMax / (2 * H));
 }
 
-// Radial mass per unit radius of a disc at R: 2*pi*R * radial * vertical.
-function discRadialMass(model, group, R, zMax) {
-	return 2 * Math.PI * R * discRadialFactor(group, R) * discVerticalMass(group, R, zMax);
+// Amp-free radial marginal of a disc. The radial CDF must include the
+// vertical integral because flaring makes that factor depend on R.
+function discRadialWeight(group, R, zMax, kind) {
+	if (!(R >= 0)) return 0;
+	return R * discRadialFactor(group, R) * discVerticalMass(group, R, zMax, kind);
+}
+
+// Fixed Simpson quadrature is setup-time work only. It is used for a core or a
+// finite truncation, where the closed exponential integral is no longer exact.
+function integrateDiscRadial(group, radius, zMax, kind) {
+	if (!(radius > 0)) return 0;
+	const flare = group.flare || 0;
+	const core = group.coreRadius || 0;
+	const full = radius === Infinity;
+	if (!core && full) {
+		const vertical = kind === 'laplace' ? 2 : 4;
+		return 2 * Math.PI * vertical * group.H * group.L * group.L * (1 + 2 * flare);
+	}
+	if (!core && !flare) {
+		const vertical = kind === 'laplace' ? 2 : 4;
+		const radial = 1 - (1 + radius / group.L) * Math.exp(-radius / group.L);
+		const height = zMax === Infinity ? 1 : (kind === 'laplace'
+			? 1 - Math.exp(-zMax / group.H)
+			: Math.tanh(zMax / (2 * group.H)));
+		return 2 * Math.PI * vertical * group.H * group.L * group.L * radial * height;
+	}
+	const upper = full ? Math.max(32 * group.L, 8 * core) : radius;
+	const steps = 1024;
+	const h = upper / steps;
+	let sum = discRadialWeight(group, 0, zMax, kind) + discRadialWeight(group, upper, zMax, kind);
+	for (let i = 1; i < steps; i++) {
+		const weight = discRadialWeight(group, i * h, zMax, kind);
+		sum += (i & 1) === 0 ? 2 * weight : 4 * weight;
+	}
+	return 2 * Math.PI * h * sum / 3;
 }
 
 // Thin disc: exponential in R (soft core optional), sech^2 in z, flaring.
@@ -168,6 +201,95 @@ function rhoThick(model, R, z) {
 	return p.amp * radial * Math.exp(-Math.abs(z) / H);
 }
 
+// ---- the bar (boxy/peanut inner part + exponential end caps) --------------
+//
+// The bar is the one spheroid profile with a boundary of its own, so it is
+// written in its own frame, in units of the r0-scaled axes:
+//
+//   xi = x_b / (a*r0),  eta = y_b / (b*r0),  zeta = z_b / (c*r0)
+//   P(xi) = 1 + peanut*xi^2                    (the peanut: thicker toward the ends)
+//   tau(xi)^n = tip^n - |xi|^n                 (the boxy cross-section, tapering to
+//                                               a point at the bar's end)
+//
+// The body is the boxy superellipsoid of exponent n (the boxiness) whose vertical
+// half-extent is P(xi)*tau(xi), and it is *uniform* inside the cross-section — that
+// is what "boxy volume" means, and it is what makes the sampler a uniform draw plus
+// one inverse CDF. Along the major axis the density is flat out to `plateau` and
+// exponential beyond; that pair of terms is the plan's "boxy/peanut inner part and
+// exponential end caps". The level radius
+//   s = (|xi|^n + |eta|^n + (|zeta|/P)^n)^(1/n)
+// is the same s the other profiles are truncated in, so `truncation.spheroidRadius`
+// crops a bar exactly like it crops a Sérsic tail.
+//
+// A model that has no bar carries BAR_NONE, which degenerates to a plain boxy
+// ellipsoid; it is never read, because this profile is only reached when
+// profileId is PROFILE_BAR.
+
+const BAR_NONE = { peanut: 0, endCap: 1, plateau: 1 };
+// Fixed Simpson quadrature, the same 1024-bin contract the disc radial integral
+// uses: the field's mass and the sampler's CDF agree by construction.
+const BAR_RADIAL_STEPS = 1024;
+
+// Area of the unit L^n disk in 2D: 4*Gamma(1+1/n)^2 / Gamma(1+2/n).
+function lnDiskArea(n) {
+	return 4 * Math.exp(2 * logGamma(1 + 1 / n) - logGamma(1 + 2 / n));
+}
+
+// Where the bar's body ends: |xi| = 1, or the model's truncation if that is nearer.
+// This is the radius the sampler draws inside and the field cuts at; the body
+// itself (what `massIntegrals` measures) always runs to 1.
+function barTipRadius(model) {
+	return Math.min(1, model.truncation.spheroidRadius);
+}
+
+function barVerticalStretch(model, xi) {
+	const peanut = model.bar.peanut;
+	return 1 + peanut * xi * xi;
+}
+
+function barLongitudinalProfile(model, xi) {
+	const x = Math.abs(xi);
+	const bar = model.bar;
+	if (x <= bar.plateau) return 1;
+	return Math.exp(-(x - bar.plateau) / bar.endCap);
+}
+
+// Cross-section radius at xi for a body cut at `tip`: zero past either end, which
+// is what makes the field vanish there. `tip` is 1 for the body itself and
+// barTipRadius() for the volume the model actually samples.
+function barCrossSectionRadius(model, xi, tip) {
+	const n = model.spheroid.n;
+	const remainder = Math.pow(tip, n) - Math.pow(Math.abs(xi), n);
+	return remainder > 0 ? Math.pow(remainder, 1 / n) : 0;
+}
+
+// Single-sided marginal along the major axis: longitudinal profile times the
+// cross-section area, P(xi)*tau(xi)^2. One function carries the bar's mass
+// integral, its truncation fraction and the sampler's CDF, so the three cannot
+// drift apart.
+function barLongitudinalWeight(model, xi, tip) {
+	const tau = barCrossSectionRadius(model, xi, tip);
+	if (tau <= 0) return 0;
+	return barLongitudinalProfile(model, xi) * barVerticalStretch(model, xi) * tau * tau;
+}
+
+function barLongitudinalIntegral(model, tip) {
+	if (!(tip > 0)) return 0;
+	const h = tip / BAR_RADIAL_STEPS;
+	let sum = barLongitudinalWeight(model, 0, tip) + barLongitudinalWeight(model, tip, tip);
+	for (let i = 1; i < BAR_RADIAL_STEPS; i++) {
+		const weight = barLongitudinalWeight(model, i * h, tip);
+		sum += (i & 1) === 0 ? 2 * weight : 4 * weight;
+	}
+	return h * sum / 3;
+}
+
+// Fraction of the bar's whole body (|xi| <= 1) that survives a cut at `tip`.
+function barEnclosedMassFraction(model, tip) {
+	const total = barLongitudinalIntegral(model, 1);
+	return total > 0 ? barLongitudinalIntegral(model, tip) / total : 1;
+}
+
 // The spheroid: Plummer (what a spiral's bulge is), Sérsic (E/S0 body) or
 // Bar (boxy/peanut bulge). Truncated at `truncation.spheroidRadius` in units of s.
 function rhoSpheroid(model, x, y, z) {
@@ -179,15 +301,15 @@ function rhoSpheroid(model, x, y, z) {
 		const t = sp.tiltDeg * Math.PI / 180;
 		const ct = Math.cos(t);
 		const st = Math.sin(t);
-		const xrot = dx * ct + dy * st;
-		const yrot = -dx * st + dy * ct;
-		const n = sp.n || 2.5;
-		const ax = Math.abs(xrot / sp.a);
-		const ay = Math.abs(yrot / sp.b);
-		const az = Math.abs(dz / sp.c);
-		const s = Math.pow(Math.pow(ax, n) + Math.pow(ay, n) + Math.pow(az, n), 1 / n) / sp.r0;
-		if (s > model.truncation.spheroidRadius) return 0;
-		return sp.amp * Math.exp(-s);
+		const xi = (dx * ct + dy * st) / (sp.a * sp.r0);
+		const eta = (-dx * st + dy * ct) / (sp.b * sp.r0);
+		const az = Math.abs(dz / (sp.c * sp.r0) / barVerticalStretch(model, xi));
+		const n = sp.n;
+		const ax = Math.abs(xi);
+		const ay = Math.abs(eta);
+		const s = Math.pow(Math.pow(ax, n) + Math.pow(ay, n) + Math.pow(az, n), 1 / n);
+		if (s > barTipRadius(model)) return 0;
+		return sp.amp * barLongitudinalProfile(model, xi);
 	}
 	const s = spheroidEllipsoidRadius(model, x - model.centre.x, y - model.centre.y, z - model.centre.z);
 	if (s > model.truncation.spheroidRadius) return 0;
@@ -318,12 +440,34 @@ function irregularFieldFactor(model, x, y, z) {
 	return irregularFactor(model, x, y, z) * clumpFactor(model, x, y, z);
 }
 
+// Radial wavenumber of the arm pattern: the ridges solve
+//   m*phi - K*ln(R/Rs) + phase0 = 2*pi*n,    K = m / tan(pitch)
+// so that a ridge's tangent really does make `pitchDeg` with the
+// circumferential direction, which is what a logarithmic spiral is
+// (phi = ln(R/Rs)/tan(pitch)). The natural-looking shortcut K = tan(pitch)
+// makes the ridges radial spokes instead: the phase then varies with phi but
+// barely with R, so the "arms" fan out of the centre without winding, and the
+// pitch angle is not the angle of anything. The perpendicular spacing of the
+// ridges is 2*pi*R/hypot(m, K) = 2*pi*R*sin(pitch)/m, the lambda that
+// armRidgeWidth is written in.
+function armWavenumber(model) {
+	const a = model.arms;
+	return a.m / Math.tan(a.pitchDeg * Math.PI / 180);
+}
+
+// True when the model carries an arm pattern at all. An unarmed disc (S0, E)
+// and a degenerate pitch (0 deg) both read as smooth.
+function armsArmed(model) {
+	const a = model.arms;
+	return a.amp > 0 && a.m > 0 && a.pitchDeg > 0;
+}
+
 // Spiral arm modulation of the disc: factor in [1-A, 1+A]. `amp` 0 or `m` 0 is
 // a smooth disc, which is how S0 and the E types read.
 function armFactor(model, R, phi) {
 	const a = model.arms;
-	if (a.amp === 0 || a.m === 0 || R < a.minRadius) return 1.0;
-	const k = Math.tan(a.pitchDeg * Math.PI / 180);
+	if (!armsArmed(model) || R < a.minRadius) return 1.0;
+	const k = armWavenumber(model);
 	const arg = a.m * phi - k * Math.log(R / a.Rs) + a.phase0;
 	const grandDesign = Math.cos(arg);
 	if (a.flocculence > 0) {
@@ -336,23 +480,49 @@ function armFactor(model, R, phi) {
 	return 1.0 + a.amp * grandDesign;
 }
 
-// Distance to the nearest arm ridge line (kpc). Used for young-star and nebula
-// placement. With no arm pattern there is no ridge: the answer is "nowhere",
-// which is what keeps young stars and gas nebulae off a smooth disc.
+// Cross-arm width of the young ridge (kpc): the lane the newborn O/B stars and
+// the HII regions trace, narrower than the arm's own density enhancement. The
+// ridge lines of the arm pattern are
+//   lambda(R) = 2*pi*R*sin(pitch) / m = 2*pi*R / hypot(m, K)
+// apart perpendicular to themselves, and the newborn lane is a fixed fraction of that spacing, sharpened by
+// the arm contrast: a stronger arm (large `amp`) compresses its gas harder. The
+// same pattern the field draws therefore sets its own ridge scale. The Milky
+// Way's numbers land on ~0.3 kpc in the inner disc, the scale the young branch
+// was originally tuned to.
+const ARM_RIDGE_FRAC = 0.12;
+
+function armRidgeWidth(model, R) {
+	const a = model.arms;
+	const pitch = a.pitchDeg * Math.PI / 180;
+	const lambda = 2 * Math.PI * R * Math.sin(pitch) / Math.max(1, a.m);
+	return ARM_RIDGE_FRAC * lambda / (1 + a.amp);
+}
+
+// Distance to the nearest arm ridge line (kpc), the quantity the
+// young-population gate and the nebula lane are written in. Used for
+// young-star and nebula placement. It is the perpendicular distance, not the
+// arc between azimuths: the ridge condition `m*phi - K*ln(R/Rs) + phase0 =
+// 2*pi*n` has gradient magnitude sqrt(m^2 + K^2)/R in the disc plane, so the
+// wrapped phase residual converts to a distance by one division. With no arm
+// pattern there is no ridge: the answer is "nowhere", which is what keeps
+// young stars and gas nebulae off a smooth disc.
 function distanceToNearestArm(model, R, phi) {
 	const a = model.arms;
-	if (a.amp === 0 || a.m === 0 || R < a.minRadius) return 99;
-	const k = Math.tan(a.pitchDeg * Math.PI / 180);
-	let best = 99;
-	for (let n = 0; n < a.m; n++) {
-		const phiArm = (k * Math.log(R / a.Rs) - a.phase0 + 2 * Math.PI * n) / a.m;
-		let dphi = phi - phiArm;
-		while (dphi > Math.PI) dphi -= 2 * Math.PI;
-		while (dphi < -Math.PI) dphi += 2 * Math.PI;
-		const dArc = R * Math.abs(dphi);
-		if (dArc < best) best = dArc;
-	}
-	return best;
+	if (!armsArmed(model) || R < a.minRadius) return 99;
+	const k = armWavenumber(model);
+	const residual = a.m * phi - k * Math.log(R / a.Rs) + a.phase0;
+	let d = residual - 2 * Math.PI * Math.floor(residual / (2 * Math.PI));
+	if (d > Math.PI) d -= 2 * Math.PI;
+	return R * Math.abs(d) / Math.hypot(a.m, k);
+}
+
+// Azimuth of an arm ridge at radius R: the zero set of distanceToNearestArm,
+// in the same convention armFactor is written in. Callers that need a point on
+// the crest — tests, the visualizer, 0.3.2's object placement — read it here
+// instead of re-deriving the logarithm.
+function armRidgeAzimuth(model, R) {
+	const a = model.arms;
+	return (armWavenumber(model) * Math.log(R / a.Rs) - a.phase0) / a.m;
 }
 
 // ---- integrals -------------------------------------------------------------
@@ -376,45 +546,26 @@ function haloRadialMass(model, radius) {
 	return 1 / 3 + (q === 0 ? Math.log(x) : Math.expm1(q * Math.log(x)) / q);
 }
 
-function barMassFraction(model, s) {
-	return 1 - (1 + s + 0.5 * s * s) * Math.exp(-s);
-}
-
-function barRadiusForFraction(model, u) {
-	const sMax = model.truncation.spheroidRadius;
-	const total = barMassFraction(model, sMax);
-	let lo = 0;
-	let hi = sMax;
-	for (let i = 0; i < 32; i++) {
-		const mid = 0.5 * (lo + hi);
-		if (barMassFraction(model, mid) < u * total) lo = mid; else hi = mid;
-	}
-	return 0.5 * (lo + hi);
-}
-
 function massIntegrals(model) {
-	const discIntegral = (p, vertical) => 2 * Math.PI * p.L * p.L * vertical;
 	const sp = model.spheroid;
 	const axes = sp.a * sp.b * sp.c * sp.r0 * sp.r0 * sp.r0;
 	const ah = model.halo.a_h;
 	const bn = sersicBn(sp.n);
 	let bulgeIntegral;
 	if (sp.profileId === PROFILE_BAR) {
-		// A superellipsoid level set at radius s is the unit level set scaled by
-		// s (for any exponent n), so dV = 3*V(1)*s^2 ds with
-		// V(1) = 8*a*b*c*r0^3 * Gamma(1+1/n)^3 / Gamma(1+3/n) — the ellipsoid
-		// limit of that is exactly 4*pi/3, which is why the n=2 bar integrates
-		// to 8*pi*a*b*c*r0^3 like a spherical exp(-s).
-		const n = sp.n || 2.5;
-		bulgeIntegral = 48 * axes * Math.exp(3 * logGamma(1 + 1 / n) - logGamma(1 + 3 / n));
+		// The bar's body is the unit boxy superellipsoid, so its mass is the L^n
+		// disk area, times the axes and the longitudinal marginal integrated over
+		// the half-body (the sign of xi is symmetric). The end caps and the peanut
+		// both live inside that one-dimensional integral.
+		bulgeIntegral = 2 * axes * lnDiskArea(sp.n) * barLongitudinalIntegral(model, 1);
 	} else if (sp.profileId === PROFILE_SERSIC) {
 		bulgeIntegral = 4 * Math.PI * axes * Math.exp(bn) * sp.n * Math.pow(bn, -3 * sp.n) * Math.exp(logGamma(3 * sp.n));
 	} else {
 		bulgeIntegral = axes * (4 / 3) * Math.PI;
 	}
 	return {
-		thin: discIntegral(model.thin, 4 * model.thin.H),
-		thick: discIntegral(model.thick, 2 * model.thick.H),
+		thin: integrateDiscRadial(model.thin, Infinity, Infinity, 'sech2'),
+		thick: integrateDiscRadial(model.thick, Infinity, Infinity, 'laplace'),
 		bulge: bulgeIntegral,
 		halo: 4 * Math.PI * ah * ah * ah * haloRadialMass(model, model.halo.rMax),
 	};
@@ -436,12 +587,13 @@ function componentMasses(model) {
 // volume the sampler draws from.
 function truncationFractions(model) {
 	const t = model.truncation;
-	const discRadial = (L) => 1 - (1 + t.discRadius / L) * Math.exp(-t.discRadius / L);
 	const sp = model.spheroid;
 	const sMax = t.spheroidRadius;
 	let bulge;
 	if (sp.profileId === PROFILE_BAR) {
-		bulge = barMassFraction(model, sMax);
+		// A bar is bounded, so the only mass the cut can remove is the part of its
+		// body past |xi| = spheroidRadius (a truncation override shorter than the bar).
+		bulge = barEnclosedMassFraction(model, barTipRadius(model));
 	} else if (sp.profileId === PROFILE_SERSIC) {
 		const bn = sersicBn(sp.n);
 		const a = 3 * sp.n;
@@ -449,9 +601,13 @@ function truncationFractions(model) {
 	} else {
 		bulge = Math.pow(sMax, 3) / Math.pow(1 + sMax * sMax, 1.5);
 	}
+	const thinTotal = integrateDiscRadial(model.thin, Infinity, Infinity, 'sech2');
+	const thickTotal = integrateDiscRadial(model.thick, Infinity, Infinity, 'laplace');
+	const thinDelivered = integrateDiscRadial(model.thin, t.discRadius, t.discHeight, 'sech2');
+	const thickDelivered = integrateDiscRadial(model.thick, t.discRadius, t.discHeight, 'laplace');
 	return {
-		thin: model.thin.amp > 0 ? discRadial(model.thin.L) * Math.tanh(t.discHeight / (2 * model.thin.H)) : 0,
-		thick: model.thick.amp > 0 ? discRadial(model.thick.L) * (1 - Math.exp(-t.discHeight / model.thick.H)) : 0,
+		thin: model.thin.amp > 0 ? thinDelivered / thinTotal : 0,
+		thick: model.thick.amp > 0 ? thickDelivered / thickTotal : 0,
 		bulge: model.spheroid.amp > 0 ? bulge : 0,
 		halo: model.halo.amp > 0 ? 1 : 0,   // rMax is part of the distribution, not a truncation of it
 	};
@@ -541,12 +697,15 @@ const DensityLib = {
 	PROFILES, PROFILE_PLUMMER, PROFILE_SERSIC, PROFILE_BAR,
 	sersicBn, logGamma, lowerGamma,
 	componentMasses, massIntegrals, truncationFractions, haloRadialMass,
+	discRadialWeight,
 	toGalactocentric, spheroidEllipsoidRadius, insideDisc,
 	rhoThin, rhoThick, rhoSpheroid, rhoHalo,
-	armFactor, distanceToNearestArm,
+	armFactor, armRidgeWidth, distanceToNearestArm, armRidgeAzimuth, armWavenumber, armsArmed,
 	hash2DNoise, fbm2D, hash3DNoise, fbm3D, noiseSeed,
 	clumpFactor, irregularFactor, irregularFieldFactor,
-	sersicMassFraction, sersicRadiusForFraction, barMassFraction, barRadiusForFraction,
+	sersicMassFraction, sersicRadiusForFraction,
+	barTipRadius, barVerticalStretch, barLongitudinalProfile, barCrossSectionRadius,
+	barLongitudinalWeight, barLongitudinalIntegral, barEnclosedMassFraction, lnDiskArea, BAR_NONE,
 	rhoTotal, rhoDecomposed, dominantComponent, sampleComponentIndex,
 };
 if (typeof module !== 'undefined') module.exports = DensityLib;

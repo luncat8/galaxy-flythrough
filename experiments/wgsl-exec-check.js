@@ -265,7 +265,25 @@ async function main() {
 	// Execute the real density functions, not just their struct declarations.
 	const galaxy = require('../src/math/galaxy.js');
 	const density = require('../src/math/density.js');
-	const densityCode = shaders.SHADER_PARTS.density + `
+	// sampleLocalAge lives in the procedural module because it is only used by
+	// star generation. Extract the shipping function instead of maintaining a
+	// second WGSL copy in this experiment, then probe it beside the density part.
+	function extractFunction(source, name) {
+		const start = source.indexOf(`fn ${name}`);
+		if (start < 0) throw new Error(`missing WGSL function ${name}`);
+		const open = source.indexOf('{', start);
+		let depth = 0;
+		for (let i = open; i < source.length; i++) {
+			if (source[i] === '{') depth++;
+			if (source[i] === '}') {
+				depth--;
+				if (depth === 0) return source.slice(start, i + 1);
+			}
+		}
+		throw new Error(`unterminated WGSL function ${name}`);
+	}
+	const ageFunction = extractFunction(shaders.SHADER_PARTS['procedural-gen'], 'sampleLocalAge');
+	const densityCode = shaders.SHADER_PARTS.density + '\n' + ageFunction + `
 @group(0) @binding(0) var<uniform> model: DensityParams;
 @fragment fn densityProbe(@location(0) p: vec3f) -> @location(0) vec4f {
 	return rhoDecomposed(model, p.x, p.y, p.z);
@@ -308,6 +326,25 @@ async function main() {
 			offsets.push([model.clumps[0].x, model.clumps[0].y, model.clumps[0].z]);
 			offsets.push([model.clumps[1].x, model.clumps[1].y, model.clumps[1].z]);
 		}
+		if (model.spheroid.profileId === density.PROFILE_BAR) {
+			// Points in the bar's own frame: inside the end cap, inside a lobe's
+			// vertical reach, off-axis in the cross-section, and just past the tip.
+			// The generic offsets only ever probe the bar's centre, where the peanut
+			// and the cap are both inert.
+			const sp = model.spheroid;
+			const tilt = sp.tiltDeg * Math.PI / 180;
+			const ct = Math.cos(tilt);
+			const st = Math.sin(tilt);
+			const A = sp.a * sp.r0;
+			const B = sp.b * sp.r0;
+			const C = sp.c * sp.r0;
+			const tip = density.barTipRadius(model);
+			const reach = density.barCrossSectionRadius(model, 0.6, tip) * density.barVerticalStretch(model, 0.6);
+			offsets.push([0.75 * A * ct, 0.75 * A * st, 0]);
+			offsets.push([0.7 * A * ct - 0.5 * B * st, 0.7 * A * st + 0.5 * B * ct, 0]);
+			offsets.push([0.6 * A * ct, 0.6 * A * st, 0.9 * C * reach]);
+			offsets.push([1.02 * A * ct, 1.02 * A * st, 0]);
+		}
 		let worst = 0;
 		let worstCase = null;
 		for (const offset of offsets) {
@@ -324,7 +361,7 @@ async function main() {
 		check(`${name}: executed density WGSL matches JS components`, worst < 0.002, { worst, worstCase });
 		let armError = 0;
 		for (const r of [model.arms.minRadius / 2, 4, 10]) {
-			const ridge = (Math.tan(model.arms.pitchDeg * Math.PI / 180) * Math.log(r / model.arms.Rs) - model.arms.phase0) / model.arms.m;
+			const ridge = density.armRidgeAzimuth(model, r);
 			const p = [r, ridge].map(Math.fround);
 			const actual = runStage(densityCode, 'armProbe', 'debugFragment', { 0: p }, densityBinds);
 			armError = Math.max(armError, Math.abs(actual[0] - density.armFactor(model, ...p)),
@@ -339,6 +376,11 @@ async function main() {
 		const starTypes = require('../src/math/star-types.js');
 		const probes = [
 			[density.COMPONENT_THIN, 0.1, 8, 0.3, 0.3],   // young arm branch
+			// Two probes inside the branch's own width, one on each side of the
+			// Milky Way's old fixed 0.3 kpc cut: the outer one is young only
+			// because sigma scales with the pattern, the inner one is not.
+			[density.COMPONENT_THIN, 0.45, 8, 0.45, 0.45],
+			[density.COMPONENT_THIN, 0.35, 4, 0.4, 0.4],
 			[density.COMPONENT_THIN, 0.3, 5, 0.5, 0.6],   // mid-ridge
 			[density.COMPONENT_THIN, 1.2, 8, 0.2, 0.1],   // off-ridge (gate fails)
 			[density.COMPONENT_THIN, 0.1, 20, 0.4, 0.2],  // R past youngOuterR

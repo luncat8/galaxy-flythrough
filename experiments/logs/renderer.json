@@ -1,19 +1,20 @@
 {
-  "date": "2026-09-21T18:19:59.802Z",
+  "date": "2026-09-21T22:10:41.293Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 84,
-  "totalChecks": 77,
-  "passed": 77,
+  "prepareMs": 97,
+  "totalChecks": 92,
+  "passed": 92,
   "failed": 0,
   "checks": [
     {
-      "name": "two shader modules are created (star-sprite + tonemap)",
+      "name": "three shader modules are created (star-sprite + tonemap + nebula-billboard)",
       "pass": true,
       "detail": {
         "modules": [
           "star-sprite",
-          "tonemap"
+          "tonemap",
+          "nebula-billboard"
         ]
       }
     },
@@ -22,11 +23,12 @@
       "pass": true
     },
     {
-      "name": "two pipelines are created (star-sprite + tonemap) — no hdr-direct bypass",
+      "name": "three pipelines are created (star-sprite + tonemap + nebula-billboard) — no hdr-direct bypass",
       "pass": true,
       "detail": [
         "star-sprite-pipeline",
-        "tonemap-pipeline"
+        "tonemap-pipeline",
+        "nebula-billboard-pipeline"
       ]
     },
     {
@@ -61,7 +63,23 @@
       }
     },
     {
-      "name": "both pipelines target the swapchain format",
+      "name": "the nebula pipeline is additive triangle-strip like the sprites",
+      "pass": true,
+      "detail": {
+        "color": {
+          "srcFactor": "one",
+          "dstFactor": "one",
+          "operation": "add"
+        },
+        "alpha": {
+          "srcFactor": "one",
+          "dstFactor": "one",
+          "operation": "add"
+        }
+      }
+    },
+    {
+      "name": "both star and tonemap pipelines target the swapchain format",
       "pass": true
     },
     {
@@ -72,15 +90,15 @@
       ]
     },
     {
-      "name": "the storage buffer holds procedural + landmarks + local gap-fill + catalog capacity",
+      "name": "the storage buffer holds procedural + landmarks + objects + local gap-fill + catalog capacity",
       "pass": true,
       "detail": {
-        "size": 702208,
-        "expected": 702208
+        "size": 734208,
+        "expected": 734208
       }
     },
     {
-      "name": "the fixed blocks (procedural + landmarks) were uploaded once, at offset 0",
+      "name": "the fixed blocks (procedural + landmarks + objects) were uploaded once, at offset 0",
       "pass": true,
       "detail": {
         "writes": 1
@@ -107,6 +125,30 @@
       "pass": true
     },
     {
+      "name": "the renderer reports the placed objects and their apportioned members",
+      "pass": true,
+      "detail": {
+        "objects": 40,
+        "members": 2000
+      }
+    },
+    {
+      "name": "every objects-block record is visible and finite",
+      "pass": true,
+      "detail": {
+        "visible": 2000,
+        "finite": 2000
+      }
+    },
+    {
+      "name": "every objects-block record carries a valid colour and magnitude",
+      "pass": true,
+      "detail": {
+        "classOk": 2000,
+        "magOk": 2000
+      }
+    },
+    {
       "name": "every procedural record is visible and finite",
       "pass": true,
       "detail": 20000
@@ -115,7 +157,7 @@
       "name": "the procedural field covers the galaxy, not just the solar neighbourhood",
       "pass": true,
       "detail": {
-        "minRadius": 0.19,
+        "minRadius": 0.206,
         "maxRadius": 41.374
       }
     },
@@ -129,24 +171,25 @@
       "pass": true,
       "detail": {
         "writes": 1,
-        "offset": 320944,
-        "localOffset": 320944
+        "offset": 352944,
+        "localOffset": 352944
       }
     },
     {
-      "name": "two render passes are submitted per frame",
+      "name": "three render passes are submitted per frame (stars, nebulae, tonemap)",
       "pass": true,
       "detail": [
         "star-sprites",
+        "nebula-billboards",
         "tonemap"
       ]
     },
     {
-      "name": "the star-sprite pass draws exactly the resident stars (global + landmarks + local + catalog)",
+      "name": "the star-sprite pass draws exactly the resident stars (global + landmarks + objects + local + catalog)",
       "pass": true,
       "detail": {
         "vertices": 4,
-        "instances": 23649,
+        "instances": 25659,
         "firstVertex": 0,
         "firstInstance": 0,
         "pipeline": {
@@ -157,6 +200,24 @@
     },
     {
       "name": "the star-sprite draw uses four vertices per star (triangle strip quad)",
+      "pass": true
+    },
+    {
+      "name": "the nebula pass draws four vertices per billboard over the packed gas objects",
+      "pass": true,
+      "detail": {
+        "vertices": 4,
+        "instances": 34,
+        "firstVertex": 0,
+        "firstInstance": 0,
+        "pipeline": {
+          "label": "nebula-billboard-pipeline"
+        },
+        "pass": "nebula-billboards"
+      }
+    },
+    {
+      "name": "the nebula pass loads the HDR intermediate (does not clear the stars)",
       "pass": true
     },
     {
@@ -176,7 +237,7 @@
     {
       "name": "the resident catalog fits the budget",
       "pass": true,
-      "detail": 1078
+      "detail": 1076
     },
     {
       "name": "all cells of this small catalog are resident",
@@ -190,9 +251,59 @@
       "name": "density parity thinned the catalog (fewer visible stars than raw)",
       "pass": true,
       "detail": {
-        "thinned": 1078,
+        "thinned": 1076,
         "raw": 3829
       }
+    },
+    {
+      "name": "the nebula storage was uploaded on prepare",
+      "pass": true,
+      "detail": {
+        "writes": 1,
+        "bytes": 1088,
+        "count": 34
+      }
+    },
+    {
+      "name": "packed billboards are exactly the gas objects (HII, planetary, SNR)",
+      "pass": true,
+      "detail": {
+        "packed": 34,
+        "gas": 34,
+        "byType": {
+          "planetary": 25,
+          "HII": 6,
+          "globular": 3,
+          "SNR": 3,
+          "open": 3
+        }
+      }
+    },
+    {
+      "name": "each billboard carries the object size, NEBULA_COLORS tint and type opacity",
+      "pass": true,
+      "detail": {
+        "sizeOk": true,
+        "colorOk": true,
+        "opacityOk": true
+      }
+    },
+    {
+      "name": "a 100 pc HII at 1 kpc is above the 4 px floor at 1080p",
+      "pass": true
+    },
+    {
+      "name": "a 2 pc planetary at 1 kpc is culled below the 4 px floor",
+      "pass": true,
+      "detail": 3.741229744348775
+    },
+    {
+      "name": "anything past 5 kpc is culled even when it would be large on screen",
+      "pass": true
+    },
+    {
+      "name": "open and globular clusters have no gas billboard",
+      "pass": true
     },
     {
       "name": "the HDR intermediate texture was created",
@@ -314,8 +425,8 @@
       "name": "a parked camera does not re-upload the catalog",
       "pass": true,
       "detail": {
-        "before": 2,
-        "after": 2
+        "before": 3,
+        "after": 3
       }
     },
     {
@@ -334,7 +445,7 @@
       }
     },
     {
-      "name": "a generated type runs Game mode: no named stars, no streamed catalog",
+      "name": "a generated type runs Game mode: no named stars, no streamed catalog, but objects",
       "pass": true,
       "detail": {
         "landmarks": 0,
@@ -343,11 +454,11 @@
       }
     },
     {
-      "name": "the generated galaxy fills the frame with the global field alone",
+      "name": "the generated galaxy fills the frame with the global field + objects",
       "pass": true,
       "detail": {
-        "drawn": 20000,
-        "instances": 20000,
+        "drawn": 22000,
+        "instances": 22000,
         "procedural": 20000
       }
     },
@@ -378,16 +489,33 @@
       "pass": true,
       "detail": {
         "resident": 2045,
-        "stars": 1078
+        "stars": 1076
       }
     },
     {
-      "name": "both modes submit the same two passes, so the switch costs no pipeline",
+      "name": "both modes submit the same three passes, so the switch costs no pipeline",
       "pass": true,
       "detail": [
         "star-sprites",
+        "nebula-billboards",
         "tonemap"
       ]
+    },
+    {
+      "name": "omitted object options default to 400 objects / 20000 members",
+      "pass": true,
+      "detail": {
+        "objects": 400,
+        "members": 20000
+      }
+    },
+    {
+      "name": "the default objects block sizes the buffer",
+      "pass": true,
+      "detail": {
+        "size": 642544,
+        "expected": 642544
+      }
     },
     {
       "name": "exposure key raises magZero by one step",
@@ -433,14 +561,14 @@
       "name": "crossing a cell boundary re-uploads the dynamic region",
       "pass": true,
       "detail": {
-        "before": 5,
-        "after": 6
+        "before": 8,
+        "after": 9
       }
     },
     {
-      "name": "the drawn instance count follows the new residency (global + landmarks + local + catalog)",
+      "name": "the drawn instance count follows the new residency (global + landmarks + objects + local + catalog)",
       "pass": true,
-      "detail": 23800
+      "detail": 25787
     },
     {
       "name": "a camera outside the catalog volume drops every catalog star",
@@ -448,19 +576,20 @@
       "detail": 0
     },
     {
-      "name": "the frame still produces two passes (star + tonemap)",
+      "name": "the frame still produces three passes (star + nebulae + tonemap)",
       "pass": true,
       "detail": [
         "star-sprites",
+        "nebula-billboards",
         "tonemap"
       ]
     },
     {
-      "name": "the star pass draws the procedural field + landmarks (no local/catalog when outside volume)",
+      "name": "the star pass draws the procedural field + landmarks + objects (no local/catalog when outside volume)",
       "pass": true,
       "detail": {
         "vertices": 4,
-        "instances": 20059,
+        "instances": 22059,
         "firstVertex": 0,
         "firstInstance": 0,
         "pipeline": {
@@ -508,10 +637,11 @@
       "detail": true
     },
     {
-      "name": "the HDR path runs two passes (star-sprites + tonemap), same as SDR",
+      "name": "the HDR path runs three passes (star-sprites + nebulae + tonemap), same as SDR",
       "pass": true,
       "detail": [
         "star-sprites",
+        "nebula-billboards",
         "tonemap"
       ]
     },

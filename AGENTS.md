@@ -8,10 +8,10 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 - Avoid deep nesting of braces `{ }` and long if-else chains. Flatten with early returns, helper functions, or flat data tables.
 - Avoid duplication of code. Extract shared helpers; if two functions are 80% identical, factor the 80% out.
 - Avoid allocations in the hot path (per-frame loop, sim, render).
-	- No new `{}`, `[]`, object literals, closures, or string concat inside the frame loop.
-	- Reuse preallocated buffers / typed arrays / scratch objects.
-	- Allocate once at setup, mutate in place per frame.
-	- These are not strict rules — use best judgement. A 1-byte allocation in a 60 Hz loop is fine; a 4 KB closure capture is not.
+- No new `{}`, `[]`, object literals, closures, or string concat inside the frame loop.
+- Reuse preallocated buffers / typed arrays / scratch objects.
+- Allocate once at setup, mutate in place per frame.
+- These are not strict rules — use best judgement. A 1-byte allocation in a 60 Hz loop is fine; a 4 KB closure capture is not.
 - `plan*.md` is NOT the implementation log. If you need to revise the plan, edit it in place and keep it as a clean artifact. Someone forking the repo should be able to reimplement from the plan alone, without referring to chat history or implementation notes.
 - Only essential, concise comments in code — explain *why* and the decision, not *what*. Prefer descriptive naming over comments.
 - No legacy support, no old versions, no outdated browsers, no leftovers, no over-protecting from unreal edge cases. Clean architecture only.

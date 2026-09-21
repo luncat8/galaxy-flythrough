@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T18:21:23.363Z",
+  "date": "2026-09-21T22:10:40.535Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -8,6 +8,7 @@
     "math/star-record.js",
     "math/star-types.js",
     "math/nebula.js",
+    "math/objects.js",
     "math/coords.js",
     "core/device.js",
     "core/camera.js",
@@ -37,6 +38,7 @@
     "math/galaxy.js",
     "math/hash.js",
     "math/nebula.js",
+    "math/objects.js",
     "math/sampling.js",
     "math/star-record.js",
     "math/star-types.js",
@@ -46,8 +48,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 47,
-  "passed": 47,
+  "totalChecks": 48,
+  "passed": 48,
   "failed": 0,
   "checks": [
     {
@@ -59,8 +61,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 21,
-        "sources": 21,
+        "scripts": 22,
+        "sources": 22,
         "missing": []
       }
     },
@@ -107,6 +109,7 @@
         "StarRecord",
         "StarTypesLib",
         "NebulaLib",
+        "ObjectsLib",
         "Coords",
         "Device",
         "Camera",
@@ -133,7 +136,7 @@
       "name": "DensityLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 41
+        "keys": 53
       }
     },
     {
@@ -147,7 +150,7 @@
       "name": "SamplingLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 6
+        "keys": 8
       }
     },
     {
@@ -161,14 +164,21 @@
       "name": "StarTypesLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 14
+        "keys": 16
       }
     },
     {
       "name": "NebulaLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 6
+        "keys": 8
+      }
+    },
+    {
+      "name": "ObjectsLib loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 47
       }
     },
     {
@@ -403,7 +413,7 @@
       "name": "a packed record round-trips through StarPacked",
       "pass": true,
       "detail": {
-        "x": 4.647851943969727,
+        "x": 3.0869743824005127,
         "absMag": 10.117647058823529
       }
     },

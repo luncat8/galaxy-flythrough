@@ -1,17 +1,17 @@
 {
-  "date": "2026-09-21T18:20:00.406Z",
+  "date": "2026-09-21T20:38:21.463Z",
   "mockStars": 4000,
   "seed": 20240919,
   "summary": {
     "input": 4000,
     "kept": 53,
-    "droppedMagnitude": 3924,
+    "droppedMagnitude": 3931,
     "droppedQuality": 0,
     "droppedDecimation": 0,
-    "droppedOutOfBounds": 23,
-    "cellCount": 51
+    "droppedOutOfBounds": 16,
+    "cellCount": 53
   },
-  "bundleBytes": 3963,
+  "bundleBytes": 4043,
   "encodeMs": 1,
   "totalChecks": 31,
   "passed": 31,
@@ -60,8 +60,8 @@
       "name": "the magnitude cut removes exactly the stars fainter than the limit",
       "pass": true,
       "detail": {
-        "overLimit": 3924,
-        "droppedMagnitude": 3924
+        "overLimit": 3931,
+        "droppedMagnitude": 3931
       }
     },
     {
@@ -83,17 +83,17 @@
       "detail": {
         "input": 4000,
         "kept": 53,
-        "droppedMagnitude": 3924,
+        "droppedMagnitude": 3931,
         "droppedQuality": 0,
         "droppedDecimation": 0,
-        "droppedOutOfBounds": 23,
-        "cellCount": 51
+        "droppedOutOfBounds": 16,
+        "cellCount": 53
       }
     },
     {
       "name": "the encoder produces cells",
       "pass": true,
-      "detail": 51
+      "detail": 53
     },
     {
       "name": "cell payloads hold exactly the kept stars",
@@ -123,7 +123,7 @@
       "pass": true,
       "detail": {
         "stars": 53,
-        "cells": 51
+        "cells": 53
       }
     },
     {
@@ -156,7 +156,7 @@
     {
       "name": "the written bundle is a plausible size",
       "pass": true,
-      "detail": 3963
+      "detail": 4043
     },
     {
       "name": "the bundle file hands back the same object",
@@ -189,7 +189,7 @@
     {
       "name": "every cell decodes",
       "pass": true,
-      "detail": 51
+      "detail": 53
     },
     {
       "name": "decoded positions lie inside their own cell",

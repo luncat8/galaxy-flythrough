@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-21T18:19:59.135Z",
-  "modules": 20,
-  "totalChecks": 103,
-  "passed": 103,
+  "date": "2026-09-21T22:10:40.440Z",
+  "modules": 21,
+  "totalChecks": 108,
+  "passed": 108,
   "failed": 0,
   "checks": [
     {
@@ -57,7 +57,7 @@
       }
     },
     {
-      "name": "DensityLib has identical key sets (41 keys)",
+      "name": "DensityLib has identical key sets (53 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -121,7 +121,7 @@
       }
     },
     {
-      "name": "SamplingLib has identical key sets (6 keys)",
+      "name": "SamplingLib has identical key sets (8 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -185,7 +185,7 @@
       }
     },
     {
-      "name": "StarTypesLib has identical key sets (14 keys)",
+      "name": "StarTypesLib has identical key sets (16 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -217,7 +217,7 @@
       }
     },
     {
-      "name": "NebulaLib has identical key sets (6 keys)",
+      "name": "NebulaLib has identical key sets (8 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -226,6 +226,38 @@
     },
     {
       "name": "NebulaLib binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "ObjectsLib loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "ObjectsLib registers exactly one window namespace (ObjectsLib)",
+      "pass": true,
+      "detail": [
+        "ObjectsLib"
+      ]
+    },
+    {
+      "name": "ObjectsLib exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "ObjectsLib has identical key sets (47 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "ObjectsLib binds every key to the same value",
       "pass": true,
       "detail": []
     },
@@ -651,6 +683,7 @@
       "detail": [
         "star-sprite",
         "star-sprite-hdr",
+        "nebula-billboard",
         "tonemap"
       ]
     },
@@ -662,6 +695,7 @@
         "density",
         "star-sprite",
         "star-sprite-hdr",
+        "nebula-billboard",
         "tonemap",
         "procedural-gen",
         "cull"

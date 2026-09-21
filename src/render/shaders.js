@@ -15,6 +15,7 @@
 //                  DensityParams uniform packed from the GalaxyModel, so the
 //                  struct layout (not the values) is what the validator diffs
 //   star-sprite    WIRED — Path B point sprites (the fly-through render path)
+//   nebula-billboard WIRED — 0.3.2b gas quads after the sprites, before tonemap
 //   procedural-gen compute path, Milestone 3 (not yet wired into the frame)
 //   cull           compute path, Milestone 3 (frustum cull + thinning + indirect draw)
 //
@@ -103,6 +104,9 @@ struct DensityParams {
         discCore: vec4f,        // thin.coreRadius, thick.coreRadius, -, -
         spheroid: vec4f,        // a, b, c, r0
         spheroidShape: vec4f,   // amp, n, tiltDeg, profileId
+        // Only the bar profile reads this one: the peanut's vertical stretch,
+        // the exponential end-cap scale and the plateau it starts from.
+        barShape: vec4f,        // peanut, endCap, plateau, -
         halo: vec4f,            // a_h, rMax, power, amp
         arms: vec4f,            // m, amp, pitchDeg, Rs
         // w: low 16 bits of the model seed (the noise hash reads exactly
@@ -175,20 +179,25 @@ fn rhoThick(params: DensityParams, R: f32, z: f32) -> f32 {
 fn rhoSpheroid(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
         let dx: f32 = x - params.centre.x;
         let dy: f32 = y - params.centre.y;
+        // The bar (boxy/peanut inner part + exponential end caps): a boxy
+        // superellipsoid cross-section whose vertical half-extent grows with |xi|
+        // (the peanut) and tapers to a point at the bar's end, uniform inside.
         if (params.spheroidShape.w >= PROFILE_BAR) {
                 let t: f32 = radians(params.spheroidShape.z);
                 let ct: f32 = cos(t);
                 let st: f32 = sin(t);
-                let xrot: f32 = dx * ct + dy * st;
-                let yrot: f32 = -dx * st + dy * ct;
-                let axes: vec3f = params.spheroid.xyz;
+                let axes: vec3f = params.spheroid.xyz * params.spheroid.w;
+                let xi: f32 = (dx * ct + dy * st) / axes.x;
+                let eta: f32 = (-dx * st + dy * ct) / axes.y;
+                let peanut: f32 = 1.0 + params.barShape.x * xi * xi;
                 let n: f32 = params.spheroidShape.y;
-                let ax: f32 = abs(xrot / axes.x);
-                let ay: f32 = abs(yrot / axes.y);
-                let az: f32 = abs((z - params.centre.z) / axes.z);
-                let s: f32 = pow(pow(ax, n) + pow(ay, n) + pow(az, n), 1.0 / n) / params.spheroid.w;
-                if (s > params.truncation.z) { return 0.0; }
-                return params.spheroidShape.x * exp(-s);
+                let ax: f32 = abs(xi);
+                let ay: f32 = abs(eta);
+                let az: f32 = abs((z - params.centre.z) / axes.z / peanut);
+                let s: f32 = pow(pow(ax, n) + pow(ay, n) + pow(az, n), 1.0 / n);
+                if (s > min(1.0, params.truncation.z)) { return 0.0; }
+                let cap: f32 = exp(-(ax - params.barShape.z) / params.barShape.y);
+                return params.spheroidShape.x * select(cap, 1.0, ax <= params.barShape.z);
         }
         let s: f32 = spheroidEllipsoidRadius(params, dx, dy, z - params.centre.z);
         if (s > params.truncation.z) { return 0.0; }
@@ -242,12 +251,25 @@ fn fbm2D(u: f32, v: f32, seed: u32) -> f32 {
         return (n1 + 0.5 * n2 + 0.25 * n3) / 1.75;
 }
 
+// Radial wavenumber of the arm pattern, K = m/tan(pitch): the ridges solve
+// m*phi - K*ln(R/Rs) + phase0 = 2*pi*n, so a ridge's tangent really does make
+// pitchDeg with the circumferential direction. K = tan(pitch) would make the
+// ridges radial spokes instead. Mirrors density.armWavenumber.
+fn armWavenumber(params: DensityParams) -> f32 {
+        return params.arms.x / tan(radians(params.arms.z));
+}
+
+// True when the model carries an arm pattern at all. Mirrors density.armsArmed.
+fn armsArmed(params: DensityParams) -> bool {
+        return params.arms.y > 0.0 && params.arms.x > 0.0 && params.arms.z > 0.0;
+}
+
 // amp 0 or m 0 is a smooth disc, which is how S0 and the E types read.
 fn armFactor(params: DensityParams, R: f32, phi: f32) -> f32 {
         let amp: f32 = params.arms.y;
         let m: f32 = params.arms.x;
-        if (amp == 0.0 || m == 0.0 || R < params.armShape.y) { return 1.0; }
-        let k: f32 = tan(radians(params.arms.z));
+        if (!armsArmed(params) || R < params.armShape.y) { return 1.0; }
+        let k: f32 = armWavenumber(params);
         let arg: f32 = m * phi - k * log(R / params.arms.w) + params.armShape.x;
         let grandDesign: f32 = cos(arg);
         let flocculence: f32 = params.armShape.z;
@@ -328,22 +350,20 @@ fn irregularFieldFactor(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
         return irregularFactor(params, x, y, z) * clumpFactor(params, x, y, z);
 }
 
-// With no pattern there is no ridge, so the distance is "nowhere" — which is
-// what keeps young stars and gas nebulae off a smooth disc.
+// Perpendicular distance to the nearest arm ridge line, for the young-star gate
+// and the nebula lane. The ridge condition's gradient magnitude is
+// sqrt(m^2 + K^2)/R in the disc plane, so the wrapped phase residual converts to
+// a distance by one division. With no pattern there is no ridge, so the distance
+// is "nowhere" — which is what keeps young stars and gas nebulae off a smooth
+// disc. Mirrors density.distanceToNearestArm.
 fn distanceToNearestArm(params: DensityParams, R: f32, phi: f32) -> f32 {
-        let amp: f32 = params.arms.y;
-        let m: u32 = u32(params.arms.x);
-        if (amp == 0.0 || m == 0u || R < params.armShape.y) { return 99.0; }
-        let k: f32 = tan(radians(params.arms.z));
-        var best: f32 = 99.0;
-        for (var n: u32 = 0u; n < m; n = n + 1u) {
-                let phiArm: f32 = (k * log(R / params.arms.w) - params.armShape.x + 6.283185307 * f32(n)) / f32(m);
-                var dphi: f32 = phi - phiArm;
-                dphi = dphi - 6.283185307 * round(dphi / 6.283185307);
-                let dArc: f32 = R * abs(dphi);
-                if (dArc < best) { best = dArc; }
-        }
-        return best;
+        let m: f32 = params.arms.x;
+        if (!armsArmed(params) || R < params.armShape.y) { return 99.0; }
+        let k: f32 = armWavenumber(params);
+        let residual: f32 = m * phi - k * log(R / params.arms.w) + params.armShape.x;
+        var d: f32 = residual - 6.283185307 * floor(residual / 6.283185307);
+        if (d > 3.1415926535) { d = d - 6.283185307; }
+        return R * abs(d) / sqrt(m * m + k * k);
 }
 
 fn rhoTotal(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
@@ -873,9 +893,13 @@ fn sampleLocalAge(params: DensityParams, component: u32, distToArm: f32, R: f32,
         if (component == COMPONENT_HALO) { return min(13.5, exp(log(12.0) + 0.25 * z)); }
         if (component == COMPONENT_THICK) { return min(13.5, exp(log(8.0) + 0.4 * z)); }
         if (params.populations.z < 0.5) { return min(13.5, exp(log(9.0) + 0.4 * z)); }
-        // Gaussian ridge gate, not a hard cut — mirrors star-types exactly:
-        // young stars fade off the ridge over the 0.3 kpc arm width.
-        let pArm: f32 = exp(-0.5 * distToArm * distToArm / (0.3 * 0.3));
+        // Gaussian ridge gate, not a hard cut — mirrors star-types exactly: the
+        // newborn lane is a half-normal whose sigma is the pattern's own ridge
+        // width, 0.12 * (2*pi*R*sin(pitch)/m) / (1 + amp), so every type's O/B
+        // stars hug their own arms instead of an MW-tuned distance.
+        let ridgeLambda: f32 = 6.283185307 * R * sin(radians(params.arms.z)) / max(1.0, params.arms.x);
+        let armWidth: f32 = 0.12 * ridgeLambda / (1.0 + params.arms.y);
+        let pArm: f32 = exp(-0.5 * distToArm * distToArm / (armWidth * armWidth));
         if (u2 < pArm && R > params.arms.w && R < params.populations.y) { return pow(u1, 3.0) * 0.3; }
         return min(13.5, exp(log(5.0) + 0.5 * z));
 }
@@ -953,10 +977,11 @@ fn main(@global_invocation_id gid: vec3u) {
                 if (component == COMPONENT_THIN && state == 0u) {
                         // Radial metallicity gradient: +1 colour step reached
                         // at R = 2*L/steep, clamped at M — mirrors
-                        // star-types.deriveStar.
-                        let steep: f32 = params.populations.w;
+                        // star-types.deriveStar. DensityParams, not GenParams:
+                        // the latter has no populations/thin groups.
+                        let steep: f32 = densityParams.populations.w;
                         if (steep > 0.0) {
-                                let shift: u32 = u32(min(1.0, R * steep / (2.0 * params.thin.x)));
+                                let shift: u32 = u32(min(1.0, floor(R * steep / (2.0 * densityParams.thin.x))));
                                 cls = min(6u, cls + shift);
                         }
                 } else if (component == COMPONENT_BULGE && state == 2u && hash01(slotSeed * 31u + 4u) < 0.2) {
@@ -1091,6 +1116,112 @@ fn finalizeArgs() {
 }
 `;
 
+const NEBULA_BILLBOARD = `
+// Additive nebula billboards (0.3.2b). Camera-facing quads, size from the
+// object's shell radius, colour from nebula.NEBULA_COLORS. Soft radial
+// falloff, no image assets. GPU-culled below BILLBOARD_MIN_PX and beyond
+// BILLBOARD_MAX_DIST kpc. Constants are mirrored from src/math/objects.js
+// and Camera.FOV_Y.
+
+struct CameraUniform {
+        viewProj: mat4x4<f32>,
+        cameraPos: vec4f,
+        viewport: vec4f,
+        params: vec4f,
+};
+
+struct NebulaPacked {
+        x: f32,
+        y: f32,
+        z: f32,
+        size: f32,
+        r: f32,
+        g: f32,
+        b: f32,
+        opacity: f32,
+};
+
+@group(0) @binding(0) var<uniform> camera: CameraUniform;
+@group(0) @binding(1) var<storage, read> nebulae: array<NebulaPacked>;
+
+struct VertexOut {
+        @builtin(position) clipPos: vec4f,
+        @location(0) uv: vec2f,
+        @location(1) color: vec3f,
+        @location(2) brightness: f32,
+};
+
+const FOV_Y: f32 = 1.047197551;
+const BILLBOARD_MIN_PX: f32 = 4.0;
+const BILLBOARD_MAX_DIST: f32 = 5.0;
+
+fn cornerOffset(vid: u32) -> vec2f {
+        switch vid {
+                case 0u: { return vec2f(-1.0, -1.0); }
+                case 1u: { return vec2f( 1.0, -1.0); }
+                case 2u: { return vec2f(-1.0,  1.0); }
+                case 3u: { return vec2f( 1.0,  1.0); }
+                default: { return vec2f(1.0, 1.0); }
+        }
+}
+
+fn hidden(vid: u32) -> VertexOut {
+        var out: VertexOut;
+        out.clipPos = vec4f(0.0, 0.0, -1.0, 1.0);
+        out.uv = vec2f(1.0, 1.0);
+        out.color = vec3f(0.0, 0.0, 0.0);
+        out.brightness = 0.0;
+        return out;
+}
+
+@vertex
+fn vs_main(
+        @builtin(vertex_index) vid: u32,
+        @builtin(instance_index) idx: u32,
+) -> VertexOut {
+        let neb: NebulaPacked = nebulae[idx];
+        if (neb.size <= 0.0 || neb.opacity <= 0.0) {
+                return hidden(vid);
+        }
+
+        let rel: vec3f = vec3f(neb.x, neb.y, neb.z) - camera.cameraPos.xyz;
+        let dist: f32 = length(rel);
+        if (dist > BILLBOARD_MAX_DIST) {
+                return hidden(vid);
+        }
+
+        let clip: vec4f = camera.viewProj * vec4f(rel.x, rel.y, rel.z, 1.0);
+        if (clip.w <= 0.0) {
+                return hidden(vid);
+        }
+
+        let sizePx: f32 = neb.size / max(dist, 1.0e-6) * camera.viewport.y / tan(FOV_Y * 0.5);
+        if (sizePx < BILLBOARD_MIN_PX) {
+                return hidden(vid);
+        }
+
+        let corner: vec2f = cornerOffset(vid);
+        let offset: vec2f = corner * (sizePx * 0.5) * camera.viewport.zw;
+
+        var out: VertexOut;
+        out.clipPos = vec4f(clip.xy + offset * clip.w, clip.zw);
+        out.uv = corner;
+        out.color = vec3f(neb.r, neb.g, neb.b);
+        out.brightness = neb.opacity;
+        return out;
+}
+
+@fragment
+fn fs_main(in: VertexOut) -> @location(0) vec4f {
+        let r2: f32 = dot(in.uv, in.uv);
+        if (r2 > 1.0) { discard; }
+        let s: f32 = 1.0 - r2;
+        let falloff: f32 = s * s;
+        let intensity: f32 = in.brightness * falloff;
+        return vec4f(in.color * intensity, intensity);
+}
+`;
+
 // Mirror parts, kept separate so the validator can diff each one against its
 // JS counterpart in src/math/.
 const SHADER_PARTS = {
@@ -1098,6 +1229,7 @@ const SHADER_PARTS = {
         'density': DENSITY,
         'star-sprite': STAR_SPRITE,
         'star-sprite-hdr': STAR_SPRITE_HDR,
+        'nebula-billboard': NEBULA_BILLBOARD,
         'tonemap': TONEMAP,
         'procedural-gen': PROCEDURAL_GEN,
         'cull': CULL,
@@ -1108,19 +1240,15 @@ const SHADER_PARTS = {
 const SHADERS = {
         'star-sprite': STAR_SPRITE,
         'star-sprite-hdr': STAR_SPRITE_HDR,
+        'nebula-billboard': NEBULA_BILLBOARD,
         'tonemap': TONEMAP,
         'procedural-gen': PCG_HASH + DENSITY + PROCEDURAL_GEN,
         'cull': PCG_HASH + CULL,
 };
 
-// Wired shaders: the renderer picks two of these per frame.
-//   SDR path (HDR canvas unsupported): star-sprite + tonemap
-//   HDR path (rgba16float + extended canvas): star-sprite-hdr only
-// The renderer always compiles all three so the user can resize the canvas
-// to a different display without re-booting. star-sprite-hdr shares the
-// additive blend state with star-sprite; it just multiplies the fragment
-// output by linearExposure and writes straight to the swapchain.
-const WIRED_SHADERS = ['star-sprite', 'star-sprite-hdr', 'tonemap'];
+// Wired shaders: the renderer compiles star-sprite + nebula-billboard + tonemap
+// every frame. star-sprite-hdr is kept as a reference module and is not bound.
+const WIRED_SHADERS = ['star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap'];
 
 const GalaxyShaders = { SHADERS, SHADER_PARTS, WIRED_SHADERS };
 if (typeof module !== 'undefined') module.exports = GalaxyShaders;

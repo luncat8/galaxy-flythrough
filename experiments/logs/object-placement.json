@@ -1,0 +1,365 @@
+{
+  "date": "2026-09-21T22:11:07.326Z",
+  "seed": 99,
+  "targetN": 1200,
+  "placedN": 1200,
+  "placeMs": 216,
+  "box": {
+    "xMin": -20,
+    "xMax": 20,
+    "yMin": -20,
+    "yMax": 20,
+    "zMin": -2,
+    "zMax": 2
+  },
+  "byType": {
+    "planetary": 551,
+    "open": 152,
+    "HII": 120,
+    "SNR": 184,
+    "globular": 193
+  },
+  "byComponent": {
+    "bulge": 360,
+    "thin": 676,
+    "thick": 164
+  },
+  "totalMembers": 251231,
+  "meanRichness": 209.35916666666665,
+  "totalChecks": 50,
+  "passed": 50,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "five object types, in the documented order",
+      "pass": true,
+      "detail": [
+        "HII",
+        "open",
+        "globular",
+        "planetary",
+        "SNR"
+      ]
+    },
+    {
+      "name": "the member budget is 20000 StarPacked records (320 KB)",
+      "pass": true,
+      "detail": 20000
+    },
+    {
+      "name": "the renderer places 400 whole-galaxy objects",
+      "pass": true,
+      "detail": 400
+    },
+    {
+      "name": "the placer reaches the requested count",
+      "pass": true,
+      "detail": 1200
+    },
+    {
+      "name": "all five object types are present",
+      "pass": true,
+      "detail": {
+        "planetary": 551,
+        "open": 152,
+        "HII": 120,
+        "SNR": 184,
+        "globular": 193
+      }
+    },
+    {
+      "name": "HII regions are present but not dominant",
+      "pass": true,
+      "detail": 0.1
+    },
+    {
+      "name": "HII regions sit on the arm ridges (mean distance-to-arm < 0.35 kpc)",
+      "pass": true,
+      "detail": 0.275
+    },
+    {
+      "name": "HII regions hug the arms tighter than the disc-wide open clusters",
+      "pass": true,
+      "detail": {
+        "hII": 0.275,
+        "open": 0.766
+      }
+    },
+    {
+      "name": "open clusters stay in the thin disc (mean |zp| < 0.3 kpc)",
+      "pass": true,
+      "detail": 0.132
+    },
+    {
+      "name": "globulars concentrate centrally (mean R < 3 kpc, bulge-dominated majority)",
+      "pass": true,
+      "detail": {
+        "meanR": 1.88,
+        "bulgeFrac": 0.81
+      }
+    },
+    {
+      "name": "planetaries favour the inner galaxy (R < 3 kpc for over 40%)",
+      "pass": true,
+      "detail": 0.67
+    },
+    {
+      "name": "SNR trace the thin disc and the arms (thin majority, mean arm distance < 5 kpc)",
+      "pass": true,
+      "detail": {
+        "thinFrac": 0.68,
+        "meanArm": 2.56
+      }
+    },
+    {
+      "name": "almost no object leaks into the halo or above |z| = 1 kpc",
+      "pass": true,
+      "detail": {
+        "haloish": 39,
+        "fraction": 0.0325
+      }
+    },
+    {
+      "name": "every object lies inside the requested box",
+      "pass": true
+    },
+    {
+      "name": "richness, size and age stay inside the documented ranges",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "every planetary is one central star with the 2 pc shell size",
+      "pass": true,
+      "detail": 551
+    },
+    {
+      "name": "SNR carry no members and a 20-120 pc shell size",
+      "pass": true,
+      "detail": 184
+    },
+    {
+      "name": "open members follow the truncated Plummer enclosed-mass curve (within 0.02)",
+      "pass": true,
+      "detail": 0.0025
+    },
+    {
+      "name": "no open member leaves the tidal radius",
+      "pass": true,
+      "detail": 0.01965
+    },
+    {
+      "name": "globular members follow the King W0~6 curve (within 0.02)",
+      "pass": true,
+      "detail": 0.0053
+    },
+    {
+      "name": "no globular member leaves the tidal radius (12 r_c)",
+      "pass": true,
+      "detail": 11.707
+    },
+    {
+      "name": "half the globular members sit inside 4.5 core radii (concentrated)",
+      "pass": true,
+      "detail": 3.406
+    },
+    {
+      "name": "no association member leaves the 2.5 R_e sphere",
+      "pass": true,
+      "detail": 2.5
+    },
+    {
+      "name": "at least 99% of association members sit where the noise is above 0",
+      "pass": true,
+      "detail": 0.997
+    },
+    {
+      "name": "the fractal draw is deterministic in (object, member)",
+      "pass": true
+    },
+    {
+      "name": "the planetary central star sits exactly on the object centre",
+      "pass": true
+    },
+    {
+      "name": "equal richness splits the budget evenly ([10,10,10] cap 20 -> [6,7,7])",
+      "pass": true,
+      "detail": [
+        6,
+        7,
+        7
+      ]
+    },
+    {
+      "name": "skewed richness keeps its contrast with an exact total ([100,10,10] cap 60)",
+      "pass": true,
+      "detail": [
+        49,
+        5,
+        6
+      ]
+    },
+    {
+      "name": "when everything fits, quotas are the richnesses",
+      "pass": true,
+      "detail": [
+        5,
+        0,
+        3
+      ]
+    },
+    {
+      "name": "when even one member each does not fit, the first objects win in order",
+      "pass": true,
+      "detail": [
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "name": "the placed field apportions to exactly the 20k budget, every object kept",
+      "pass": true,
+      "detail": {
+        "sum": 20000,
+        "minNonzero": 1
+      }
+    },
+    {
+      "name": "placement is deterministic in the seed",
+      "pass": true
+    },
+    {
+      "name": "a different seed moves the objects",
+      "pass": true,
+      "detail": 50
+    },
+    {
+      "name": "members are byte-identical for the same seed",
+      "pass": true,
+      "detail": {
+        "written": 20000,
+        "sameBytes": 320000
+      }
+    },
+    {
+      "name": "a different seed moves essentially every member",
+      "pass": true,
+      "detail": {
+        "diffRecords": 18721,
+        "written": 20000
+      }
+    },
+    {
+      "name": "a quenched elliptical has zero HII regions and zero open clusters",
+      "pass": true,
+      "detail": {
+        "globular": 349,
+        "planetary": 51
+      }
+    },
+    {
+      "name": "a gas-rich Sc is HII regions and open clusters in the majority",
+      "pass": true,
+      "detail": {
+        "youngFrac": 0.53,
+        "HII": 83,
+        "planetary": 106,
+        "SNR": 67,
+        "open": 129,
+        "globular": 15
+      }
+    },
+    {
+      "name": "400 whole-galaxy objects fill the 20k budget for every one of the 19 types",
+      "pass": true,
+      "detail": {
+        "types": 19,
+        "failedType": null,
+        "minMembers": 40285,
+        "minType": "Sd"
+      }
+    },
+    {
+      "name": "an empty model yields no objects",
+      "pass": true
+    },
+    {
+      "name": "association members include O/B stars (over 0.3% of the HII census)",
+      "pass": true,
+      "detail": {
+        "ob": 93,
+        "written": 12862,
+        "frac": 0.0072
+      }
+    },
+    {
+      "name": "globular members have no O/B/A/F stars",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "globular members show the old mix (RG+WD over 1%)",
+      "pass": true,
+      "detail": {
+        "old": 456,
+        "written": 13331,
+        "frac": 0.0342
+      }
+    },
+    {
+      "name": "open clusters span young and old (O/B/A/F and WD/RG both present)",
+      "pass": true,
+      "detail": {
+        "openYoung": 27,
+        "openOld": 6
+      }
+    },
+    {
+      "name": "the planetary central star is a hot luminous O star",
+      "pass": true,
+      "detail": {
+        "class": "O",
+        "teff": 74586,
+        "absMag": -2.39
+      }
+    },
+    {
+      "name": "the age override with the sampled age reproduces deriveStar exactly",
+      "pass": true
+    },
+    {
+      "name": "writeObjectBillboards packs one record per gas object and skips clusters",
+      "pass": true,
+      "detail": {
+        "written": 855,
+        "gas": 855,
+        "total": 1200
+      }
+    },
+    {
+      "name": "billboard tints are NEBULA_COLORS for the object type",
+      "pass": true,
+      "detail": {
+        "tintOk": 855,
+        "written": 855
+      }
+    },
+    {
+      "name": "a quenched E4 still billboards planetaries and SNR, never HII",
+      "pass": true,
+      "detail": {
+        "globular": 349,
+        "planetary": 51
+      }
+    },
+    {
+      "name": "the 4 px / 5 kpc cull: nearby HII drawn, distant smear dropped, tiny planetary dropped",
+      "pass": true
+    },
+    {
+      "name": "the billboard record is 32 bytes (8 f32)",
+      "pass": true
+    }
+  ]
+}

@@ -25,6 +25,8 @@ const shaders = require('../src/render/shaders.js');
 const density = require('../src/math/density.js');
 const galaxy = require('../src/math/galaxy.js');
 const records = require('../src/math/star-record.js');
+const objects = require('../src/math/objects.js');
+const camera = require('../src/core/camera.js');
 
 const checks = [];
 function check(name, pass, detail) {
@@ -40,18 +42,19 @@ function readSource(relPath) {
 {
         const names = Object.keys(shaders.SHADER_PARTS);
         check('every expected shader part is present',
-                ['pcg-hash', 'density', 'star-sprite', 'star-sprite-hdr', 'tonemap', 'procedural-gen', 'cull'].every(n => names.includes(n)),
+                ['pcg-hash', 'density', 'star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'procedural-gen', 'cull'].every(n => names.includes(n)),
                 names);
         check('every shader part is a non-empty LF-only string',
                 names.every(n => typeof shaders.SHADER_PARTS[n] === 'string'
                         && shaders.SHADER_PARTS[n].length > 100
                         && !shaders.SHADER_PARTS[n].includes('\r')),
                 names.map(n => [n, shaders.SHADER_PARTS[n].length]));
-        check('three wired shaders are exposed (star-sprite, star-sprite-hdr, tonemap)',
-                shaders.WIRED_SHADERS.length === 3
+        check('four wired shaders are exposed (star-sprite, star-sprite-hdr, nebula-billboard, tonemap)',
+                shaders.WIRED_SHADERS.length === 4
                 && shaders.WIRED_SHADERS[0] === 'star-sprite'
                 && shaders.WIRED_SHADERS[1] === 'star-sprite-hdr'
-                && shaders.WIRED_SHADERS[2] === 'tonemap',
+                && shaders.WIRED_SHADERS[2] === 'nebula-billboard'
+                && shaders.WIRED_SHADERS[3] === 'tonemap',
                 shaders.WIRED_SHADERS);
         check('every wired shader exists in the module map',
                 shaders.WIRED_SHADERS.every(n => typeof shaders.SHADERS[n] === 'string' && shaders.SHADERS[n].length > 0),
@@ -158,7 +161,7 @@ function wgslConsts(part) {
                 { thin: c.COMPONENT_THIN, thick: c.COMPONENT_THICK, bulge: c.COMPONENT_BULGE, halo: c.COMPONENT_HALO,
                         plummer: c.PROFILE_PLUMMER, sersic: c.PROFILE_SERSIC });
 
-        // The packer must produce the layout it claims: 40 f32, one group per
+        // The packer must produce the layout it claims: one f32 group per
 	// vec4, and the preset's numbers survive the f32 round trip intact.
         const packed = galaxy.packDensityParams(galaxy.MILKY_WAY, new Float32Array(galaxy.DENSITY_PARAMS_FLOATS));
         check('packDensityParams fills the struct without leaving holes',
@@ -191,6 +194,14 @@ function wgslConsts(part) {
                 cull.MASK_LANDMARK === (records.FLAG_LANDMARK << 16) && cull.MASK_VISIBLE === (records.FLAG_VISIBLE << 16),
                 { wgsl: [cull.MASK_LANDMARK, cull.MASK_VISIBLE] });
         check('cull.wgsl draws four vertices per sprite', cull.VERTICES_PER_SPRITE === 4, cull.VERTICES_PER_SPRITE);
+
+        const neb = wgslConsts('nebula-billboard');
+        check('nebula-billboard.wgsl size floor matches objects.BILLBOARD_MIN_PX',
+                neb.BILLBOARD_MIN_PX === objects.BILLBOARD_MIN_PX, { wgsl: neb.BILLBOARD_MIN_PX, js: objects.BILLBOARD_MIN_PX });
+        check('nebula-billboard.wgsl distance cull matches objects.BILLBOARD_MAX_DIST_KPC',
+                neb.BILLBOARD_MAX_DIST === objects.BILLBOARD_MAX_DIST_KPC, { wgsl: neb.BILLBOARD_MAX_DIST, js: objects.BILLBOARD_MAX_DIST_KPC });
+        check('nebula-billboard.wgsl FOV_Y matches Camera.FOV_Y',
+                Math.abs(neb.FOV_Y - camera.FOV_Y) < 1e-6, { wgsl: neb.FOV_Y, js: camera.FOV_Y });
 }
 
 // --- 3. Symbolic parity --------------------------------------------------
@@ -305,6 +316,19 @@ function wgslConsts(part) {
                 /in\.brightness\s*\*\s*falloff\s*\*\s*exposure\.params\.x/.test(spriteHdr));
         check('the star-sprite-hdr shader applies the same (1-r²)³ falloff as the SDR variant',
                 /let\s+s:\s*f32\s*=\s*1\.0\s*-\s*r2/.test(spriteHdr) && /s\s*\*\s*s\s*\*\s*s/.test(spriteHdr));
+
+        const nebula = shaders.SHADERS['nebula-billboard'];
+        check('the nebula-billboard shader declares a vertex entry point', /@vertex\s*\nfn\s+vs_main/.test(nebula));
+        check('the nebula-billboard shader declares a fragment entry point',
+                /@fragment\s*\nfn\s+fs_main/.test(nebula) || /@fragment\s+fn\s+fs_main/.test(nebula));
+        check('the nebula-billboard shader binds camera + packed nebulae',
+                /@group\(0\)\s*@binding\(0\)\s*var<uniform>\s+camera/.test(nebula)
+                && /@group\(0\)\s*@binding\(1\)\s*var<storage,\s*read>\s+nebulae/.test(nebula));
+        check('the nebula-billboard shader culls by screen size and distance',
+                /sizePx\s*<\s*BILLBOARD_MIN_PX/.test(nebula) && /dist\s*>\s*BILLBOARD_MAX_DIST/.test(nebula));
+        check('the nebula-billboard fragment uses a soft (1-r²)² falloff and no texture',
+                /let\s+s:\s*f32\s*=\s*1\.0\s*-\s*r2/.test(nebula) && /s\s*\*\s*s/.test(nebula)
+                && !/texture/.test(nebula));
 
         const gen = shaders.SHADERS['procedural-gen'];
         check('the procedural generator is a compute shader', /@compute/.test(gen) && /@workgroup_size/.test(gen));

@@ -88,29 +88,61 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 
 // --- The shape machinery: bar, flaring, cores, clumps, flocculence -------
 {
-	// Bar: the sampled superellipsoid radius matches the field's shell mass
-	// dM/ds = 3*V(1)*s^2*e^-s*amp, where the total integral is the closed
-	// form 6*V(1)*amp. (The angular map of the sampler is the same
-	// uniform-direction scheme the plummer/sersic samplers use; the s
-	// marginal is exact.)
-	const bar = isolated('spheroid', { spheroid: { profile: 'bar', n: 2.5, r0: 2.3, tiltDeg: 0 } });
+	// Bar: uniform in the boxy/peanut cross-section, |xi| from the longitudinal
+	// profile (plateau plus exponential end cap). The tilt is 0, so the bar frame
+	// is the world frame and the axes are readable positions.
+	const bar = isolated('spheroid', {
+		spheroid: { profile: 'bar', n: 4, r0: 2.3, tiltDeg: 0 },
+		bar: { peanut: 0.4, endCap: 0.2, plateau: 0.5 },
+	});
 	const barBuf = sampling.sampleGalaxyStars(bar, 71, N);
-	const M = density.massIntegrals(bar).bulge;   // = 6*V(1)*amp
-	const weight = (s) => 0.5 * M * s * s * Math.exp(-s);
-	histogram('bar superellipsoid radius', barBuf,
-		(i) => {
-			const n = bar.spheroid.n;
-			const x = barBuf.x[i], y = barBuf.y[i], z = barBuf.z[i];
-			const ax = Math.abs(x / bar.spheroid.a);
-			const ay = Math.abs(y / bar.spheroid.b);
-			const az = Math.abs(z / bar.spheroid.c);
-			return Math.pow(Math.pow(ax, n) + Math.pow(ay, n) + Math.pow(az, n), 1 / n) / bar.spheroid.r0;
-		},
-		bar.truncation.spheroidRadius, weight);
-	check('the bar field falls off as exp(-s) from its centre',
-		near(density.rhoSpheroid(bar, bar.spheroid.a * 2, 0, 0),
-			density.rhoSpheroid(bar, 0, 0, 0) * Math.exp(-2 / bar.spheroid.r0), 1e-9),
-		{ centre: density.rhoSpheroid(bar, 0, 0, 0) });
+	const A = bar.spheroid.a * bar.spheroid.r0;
+	const B = bar.spheroid.b * bar.spheroid.r0;
+	const C = bar.spheroid.c * bar.spheroid.r0;
+	const nBar = bar.spheroid.n;
+	const tip = density.barTipRadius(bar);
+	const stretch = (xi) => density.barVerticalStretch(bar, xi);
+	const halfHeight = (xi) => density.barCrossSectionRadius(bar, xi, tip) * stretch(xi);
+	histogram('bar major-axis marginal', barBuf, (i) => Math.abs(barBuf.x[i]) / A, tip,
+		(xi) => density.barLongitudinalWeight(bar, xi, tip));
+	// The vertical marginal: at each xi the slice of the boxy cross-section, so
+	// the unconditional one weighs each slice by the bar's own xi marginal — which
+	// is what makes this a test of the peanut rather than of a plain tube.
+	const zetaSlice = (xi, zeta) => {
+		const tau = density.barCrossSectionRadius(bar, xi, tip);
+		const inner = Math.pow(tau, nBar) - Math.pow(Math.abs(zeta) / stretch(xi), nBar);
+		return inner > 0 ? Math.pow(inner, 1 / nBar) : 0;
+	};
+	let zReach = 0;
+	for (let i = 0; i <= 512; i++) zReach = Math.max(zReach, halfHeight(i * tip / 512));
+	const zetaMarginal = (zeta) => {
+		const steps = 512;
+		const h = tip / steps;
+		let sum = 0;
+		for (let i = 0; i <= steps; i++) {
+			const xi = i * h;
+			const weight = density.barLongitudinalWeight(bar, xi, tip) * zetaSlice(xi, zeta);
+			sum += (i === 0 || i === steps ? 1 : (i & 1 ? 4 : 2)) * weight;
+		}
+		return sum * h / 3;
+	};
+	histogram('bar vertical marginal', barBuf, (i) => Math.abs(barBuf.z[i]) / C, zReach, zetaMarginal);
+	// The peanut is in the field, not only in the model: the same |z| that is
+	// outside the bar at its centre is inside its lobes, and the end cap is the
+	// authored exponential past the plateau.
+	const lobe = 0.6 * A;
+	check('the bar is a peanut: the lobes reach further in z than the centre',
+		density.rhoSpheroid(bar, 0, 0, 1.05 * C) === 0 && density.rhoSpheroid(bar, lobe, 0, 1.05 * C) > 0,
+		{ centre: density.rhoSpheroid(bar, 0, 0, 1.05 * C), lobe: density.rhoSpheroid(bar, lobe, 0, 1.05 * C) });
+	check('the bar end cap is exponential past the plateau', (() => {
+		const plateau = density.barLongitudinalProfile(bar, 0.4);
+		const capped = density.barLongitudinalProfile(bar, 0.75);
+		return near(plateau, 1, 1e-12) && near(capped, Math.exp(-0.25 / bar.bar.endCap), 1e-12);
+	})(), { endCap: bar.bar.endCap });
+	check('the bar body ends at its tip: the field is solid inside and zero outside',
+		density.rhoSpheroid(bar, 0.999 * A, 0, 0) > 0 && density.rhoSpheroid(bar, 1.001 * A, 0, 0) === 0
+		&& density.rhoSpheroid(bar, 0, 1.001 * B, 0) === 0 && density.rhoSpheroid(bar, 0, 0, 1.001 * C) === 0,
+		{ tip: density.rhoSpheroid(bar, 0.999 * A, 0, 0) });
 
 	// Flaring: each disc reads H(R) = H(1 + flare*R/L) — thin and thick
 	// separately — and the sampled (R, z) cloud matches a joint quadrature.
@@ -134,12 +166,13 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 		// Joint (R, z) histogram vs the field quadrature: catches a sampler
 		// that draws z from the flat H while the field flares.
 		const nR = 12, nZ = 8;
-		const dR = 12 / nR, dZ = 1.6 / nZ;
+		const zSupport = model.truncation.discHeight;
+		const dR = 12 / nR, dZ = zSupport / nZ;
 		const obs = new Float64Array(nR * nZ);
 		for (let i = 0; i < buf.count; i++) {
 			const x = buf.x[i], y = buf.y[i], z = buf.z[i];
 			const R = Math.sqrt(x * x + y * y);
-			if (R >= 12 || Math.abs(z) >= 0.8) continue;
+			if (R >= 12 || Math.abs(z) >= zSupport) continue;
 			obs[Math.min(nZ - 1, Math.floor(Math.abs(z) / dZ)) * nR + Math.min(nR - 1, Math.floor(R / dR))]++;
 		}
 		const ref = new Float64Array(nR * nZ);
@@ -150,10 +183,10 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 			const radial = model.thin.amp * Math.exp(-R / model.thin.L) * R * (12 / steps);
 			const rb = Math.min(nR - 1, Math.floor(R / dR));
 			for (let j = 0; j < 40; j++) {
-				const z = (j + 0.5) * 1.6 / 40;
+				const z = (j + 0.5) * zSupport / 40;
 				const Hr = model.thin.H * (1 + 0.3 * R / model.thin.L);
 				const e = Math.exp(-z / Hr);
-				const w = 4 * e / ((1 + e) * (1 + e)) * radial * (1.6 / 40);
+				const w = 4 * e / ((1 + e) * (1 + e)) * radial * (zSupport / 40);
 				const k = Math.min(nZ - 1, Math.floor(z / dZ));
 				ref[k * nR + rb] += w;
 				refTotal += w;
@@ -166,8 +199,7 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 	}
 
 	// Disc core: the field is the soft R/sqrt(R^2+c^2) core; the sampler
-	// inverts the exponential over [coreRadius, rMax] (the plan's documented
-	// approximation — no stars inside the core, the outer profile intact).
+	// inverts that same marginal instead of introducing a hard hole.
 	{
 		const model = isolated('thin', { thin: { coreRadius: 0.8 }, truncation: { discRadius: 12, discHeight: 0.5 } });
 		const L = model.thin.L;
@@ -198,7 +230,7 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 		}
 		for (let i = 0; i < nR; i++) tv += Math.abs(hist[i] / buf.count - ref[i] / refTotal);
 		tv /= 2;
-		check('no cored-disc star falls inside the core cutoff', insideCore === 0, insideCore);
+		check('the soft cored disc retains finite central mass', insideCore > 0 && insideCore < N / 4, insideCore);
 		check('the cored disc R profile matches the field (TV < 5%)', tv < 0.05, +tv.toFixed(4));
 	}
 
@@ -208,7 +240,7 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 	for (const type of ['SBa', 'SBc', 'SBd']) {
 		const model = galaxy.createGalaxy({ type });
 		const a = model.arms;
-		const ridge = (Math.tan(a.pitchDeg * Math.PI / 180) * Math.log(a.minRadius / a.Rs) - a.phase0) / a.m;
+		const ridge = density.armRidgeAzimuth(model, a.minRadius);
 		check(`${type}: the ridge passes through the bar end`,
 			near(a.minRadius, model.spheroid.a, 1e-12)
 			&& near(density.distanceToNearestArm(model, a.minRadius, ridge), 0, 1e-9),
@@ -217,7 +249,7 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 	{
 		const pure = galaxy.createGalaxy({ type: 'SBa', overrides: { arms: { flocculence: 0 } } });
 		const a = pure.arms;
-		const ridge = (Math.tan(a.pitchDeg * Math.PI / 180) * Math.log(a.minRadius / a.Rs) - a.phase0) / a.m;
+		const ridge = density.armRidgeAzimuth(pure, a.minRadius);
 		check('a grand-design bar: the ridge is the exact arm-field maximum at the bar end',
 			near(density.armFactor(pure, a.minRadius, ridge), 1 + a.amp, 1e-12),
 			density.armFactor(pure, a.minRadius, ridge));
@@ -283,7 +315,7 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 		home.home.orbitName === 'custom' && home.home.orbitTarget[2] === 4);
 	const quenched = galaxy.createGalaxy({ type: 'Sc', overrides: { populations: { gasFraction: 0.01 } } });
 	check('gasFraction alone recomputes the shared gas gate', !quenched.populations.gasRich);
-	const phi = Math.tan(quenched.arms.pitchDeg * Math.PI / 180) * Math.log(6 / quenched.arms.Rs) / quenched.arms.m;
+	const phi = density.armRidgeAzimuth(quenched, 6);
 	check('quenched spiral cannot classify a nebula as gas-origin even on its ridge',
 		!['HII', 'reflection', 'dark'].includes(nebula.nebulaProbabilityAt(quenched, 6 * Math.cos(phi), 6 * Math.sin(phi), 0).type));
 }
@@ -292,9 +324,9 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 	const model = isolated('thin', { arms: { amp: 0.7, m: 2, minRadius: 2, phase0: 1.4 } });
 	check('arm field and ridge are disabled inside the model minimum radius',
 		density.armFactor(model, 1, 0.3) === 1 && density.distanceToNearestArm(model, 1, 0.3) === 99);
-	const k = Math.tan(model.arms.pitchDeg * Math.PI / 180);
+	const k = density.armWavenumber(model);
 	for (const r of [2, 4, 10]) {
-		const ridge = (k * Math.log(r / model.arms.Rs) - model.arms.phase0) / model.arms.m;
+		const ridge = density.armRidgeAzimuth(model, r);
 		check(`phase-shifted ridge at R=${r} is the field maximum`,
 			near(density.distanceToNearestArm(model, r, ridge), 0)
 			&& near(density.armFactor(model, r, ridge), 1 + model.arms.amp));

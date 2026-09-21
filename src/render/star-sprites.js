@@ -14,21 +14,22 @@
 //
 //   [0 .. globalProcedural)                 global procedural field, generated once
 //   [globalProcedural .. +landmarkCount)    named landmarks, written once
-//   [+landmarkCount .. +localCapacity)      local procedural gap-fill, rewritten
+//   [+landmarkCount .. +objectCapacity)     composite-object members, written once
+//   [+objectCapacity .. +localCapacity)      local procedural gap-fill, rewritten
 //                                           per cell-manager rebuild
 //   [+localBase .. +localBase+catalogCap)   thinned catalog cells, rewritten per
 //                                           rebuild
 //
 // Landmarks sit in their own fixed block because Gaia saturates on the
 // brightest stars — the catalog subset cannot be assumed to contain them
-// (see data/landmarks.js). The four blocks keep the drawn instance range
-// contiguous: `draw(4, global + landmarks + local + thinnedCatalog)`.
+// (see data/landmarks.js). The five blocks keep the drawn instance range
+// contiguous: `draw(4, global + landmarks + objects + local + thinnedCatalog)`.
 // No hidden slots, no per-cell GPU allocation, no compaction pass.
 //
 // Frame cost: one 112-byte uniform write, one catalog buffer write (only when
-// the resident set changed), one render pass with no depth attachment — the
-// sprites are additive, so there is nothing to depth-test against, and writing
-// depth for them would only cost bandwidth.
+// the resident set changed), two additive passes into the HDR intermediate
+// (stars, then nebula billboards) and one tonemap pass. No depth attachment —
+// the sprites are additive, so there is nothing to depth-test against.
 
 'use strict';
 
@@ -125,6 +126,13 @@ function createStarRenderer(device, context, format, options) {
                 state.galaxyLabel = window.GalaxyLib.galaxyLabel(nextModel);
         }
         const localProceduralBudget = Math.max(0, opts.localProceduralStars === undefined ? LOCAL_PROCEDURAL_DEFAULT : opts.localProceduralStars);
+        // Composite objects (0.3.2a): clusters and associations, written once per
+        // regenerate like the global field. The members block is fixed capacity;
+        // unwritten slots are zero records, which the shader culls.
+        const objectsLib = window.ObjectsLib;
+        const objectCapacity = Math.max(0, opts.objectMembers === undefined ? objectsLib.OBJECT_MEMBERS_DEFAULT : opts.objectMembers);
+        const objectCount = Math.max(0, opts.objectCount === undefined ? objectsLib.OBJECT_COUNT_DEFAULT : opts.objectCount);
+        const billboardBytes = objectsLib.BILLBOARD_RECORD_BYTES;
 
         // Output mode: SDR (bgra8unorm / rgba8unorm) clamps tonemap to [0,1];
         // HDR (rgba16float + toneMapping:'extended') allows >1 so highlights
@@ -257,6 +265,47 @@ function createStarRenderer(device, context, format, options) {
                 primitive: { topology: 'triangle-list' },
         });
 
+        // --- Nebula billboard pipeline (0.3.2b) ------------------------------
+        // Additive, after the sprites, into the same rgba16float intermediate.
+        // Shares the camera uniform; its own storage holds one NebulaPacked
+        // per gas object. Screen-size and distance cull live in the vertex
+        // shader so the CPU does not compact per frame.
+        const nebulaModule = device.createShaderModule({
+                label: 'nebula-billboard',
+                code: window.GalaxyShaders.SHADERS['nebula-billboard'],
+        });
+        nebulaModule.getCompilationInfo().then((info) => {
+                for (const message of info.messages) {
+                        if (message.type !== 'error') continue;
+                        console.error('WGSL error in nebula-billboard:', `${message.lineNum}:${message.linePos} ${message.message}`);
+                }
+        }).catch(() => {});
+
+        const nebulaBindGroupLayout = device.createBindGroupLayout({
+                label: 'nebula-billboard-layout',
+                entries: [
+                        { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+                        { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+                ],
+        });
+        const nebulaPipeline = device.createRenderPipeline({
+                label: 'nebula-billboard-pipeline',
+                layout: device.createPipelineLayout({ bindGroupLayouts: [nebulaBindGroupLayout] }),
+                vertex: { module: nebulaModule, entryPoint: 'vs_main' },
+                fragment: {
+                        module: nebulaModule,
+                        entryPoint: 'fs_main',
+                        targets: [{
+                                format,
+                                blend: {
+                                        color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+                                        alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+                                },
+                        }],
+                },
+                primitive: { topology: 'triangle-strip' },
+        });
+
         let hdrTexture = null;
         let hdrView = null;
         let hdrWidth = 0;
@@ -288,13 +337,18 @@ function createStarRenderer(device, context, format, options) {
         // --- Storage ----------------------------------------------------------
         let starBuffer = null;
         let bindGroup = null;
-        let staging = null;            // ArrayBuffer: [procedural][landmarks][catalog]
+        let staging = null;            // ArrayBuffer: [procedural][landmarks][objects][local][catalog]
         let landmarkByteOffset = 0;
+        let objectByteOffset = 0;
         let catalogByteOffset = 0;
         let catalogCapacity = 0;
         let proceduralCount = 0;
         let catalogResident = 0;
         let lastTime = 0;
+        let nebulaBuffer = null;
+        let nebulaBindGroup = null;
+        let nebulaStaging = null;
+        let nebulaCount = 0;
         // The manager always exists; with no catalog it just reports zero stars.
         let manager = window.CellManager.createCellManager(EMPTY_MANIFEST, {
                 budgetStars: catalogBudget,
@@ -306,6 +360,9 @@ function createStarRenderer(device, context, format, options) {
         const state = {
                 proceduralStars: 0,
                 landmarkStars: 0,
+                objectStars: 0,
+                objectCount: 0,
+                nebulaBillboards: 0,
                 localProceduralStars: 0,
                 catalogResidentStars: 0,
                 catalogThinnedStars: 0,
@@ -376,15 +433,16 @@ function createStarRenderer(device, context, format, options) {
                 proceduralCount = procedural;
                 catalogCapacity = catalog;
                 localProceduralCapacity = localProceduralBudget;
-                const totalRecords = proceduralCount + landmarkCount + localProceduralCapacity + catalogCapacity;
+                const totalRecords = proceduralCount + landmarkCount + objectCapacity + localProceduralCapacity + catalogCapacity;
                 const totalBytes = totalRecords * records.RECORD_BYTES;
                 if (totalBytes > maxStorageBytes) {
                         throw new Error(`Star buffer of ${(totalBytes / 1048576).toFixed(1)} MB exceeds the device limit of ${(maxStorageBytes / 1048576).toFixed(1)} MB`);
                 }
                 staging = new ArrayBuffer(Math.max(records.RECORD_BYTES, totalBytes));
                 landmarkByteOffset = proceduralCount * records.RECORD_BYTES;
-                localProceduralByteOffset = (proceduralCount + landmarkCount) * records.RECORD_BYTES;
-                catalogByteOffset = (proceduralCount + landmarkCount + localProceduralCapacity) * records.RECORD_BYTES;
+                objectByteOffset = (proceduralCount + landmarkCount) * records.RECORD_BYTES;
+                localProceduralByteOffset = (proceduralCount + landmarkCount + objectCapacity) * records.RECORD_BYTES;
+                catalogByteOffset = (proceduralCount + landmarkCount + objectCapacity + localProceduralCapacity) * records.RECORD_BYTES;
                 starBuffer = device.createBuffer({
                         label: 'star-storage',
                         size: Math.max(16, totalBytes),
@@ -399,7 +457,23 @@ function createStarRenderer(device, context, format, options) {
                                 { binding: 2, resource: lutTexture.createView() },
                         ],
                 });
-                state.bufferBytes = totalBytes;
+                if (nebulaBuffer) nebulaBuffer.destroy();
+                const nebulaBytes = Math.max(16, objectCount * billboardBytes);
+                nebulaStaging = new ArrayBuffer(nebulaBytes);
+                nebulaBuffer = device.createBuffer({
+                        label: 'nebula-storage',
+                        size: nebulaBytes,
+                        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                });
+                nebulaBindGroup = device.createBindGroup({
+                        label: 'nebula-billboard-bind-group',
+                        layout: nebulaBindGroupLayout,
+                        entries: [
+                                { binding: 0, resource: { buffer: uniformBuffer } },
+                                { binding: 1, resource: { buffer: nebulaBuffer } },
+                        ],
+                });
+                state.bufferBytes = totalBytes + nebulaBytes;
         }
 
         function generateProcedural() {
@@ -439,6 +513,33 @@ function createStarRenderer(device, context, format, options) {
                 return landmarkCount;
         }
 
+        // Composite-object members: placed whole-galaxy, apportioned into the
+        // fixed block. The placement seed is domain-separated from the field
+        // seed so the objects do not sit on field stars.
+        function generateObjects() {
+                if (objectCapacity === 0) {
+                        state.objectStars = 0;
+                        state.objectCount = 0;
+                        state.nebulaBillboards = 0;
+                        nebulaCount = 0;
+                        return 0;
+                }
+                const placed = objectsLib.placeObjects(model, (seed | 0) ^ 0x0B5E55, objectCount, null);
+                const view = new DataView(staging, objectByteOffset, objectCapacity * records.RECORD_BYTES);
+                const written = objectsLib.writeObjectMembers(model, placed, view, 0, objectCapacity).written;
+                state.objectStars = written;
+                state.objectCount = placed.length;
+                if (nebulaStaging) {
+                        new Uint8Array(nebulaStaging).fill(0);
+                        nebulaCount = objectsLib.writeObjectBillboards(
+                                placed, new DataView(nebulaStaging), 0, objectCount);
+                } else {
+                        nebulaCount = 0;
+                }
+                state.nebulaBillboards = nebulaCount;
+                return written;
+        }
+
         // Target total stars (procedural + catalog) for density parity
         // normalization. Passed down to the cell manager so expected per-cell
         // counts match what the global procedural field delivers.
@@ -459,9 +560,9 @@ function createStarRenderer(device, context, format, options) {
                 return capacity;
         }
 
-        // One-shot setup: allocate, generate, upload, expose. Procedural field and
-        // landmarks are both fixed for the life of the renderer, so they share one
-        // upload. Local procedural gap-fill + catalog are uploaded per-rebuild.
+        // One-shot setup: allocate, generate, upload, expose. Procedural field,
+        // landmarks and object members are all fixed until the next regenerate,
+        // so they share one upload. Local gap-fill + catalog upload per rebuild.
         function prepare(manifest) {
                 // Keep the last manifest that had content: a Game-mode rebuild passes none, and
                 // coming back to the preset has to find the catalog still there.
@@ -494,8 +595,12 @@ function createStarRenderer(device, context, format, options) {
                 allocate(procedural, catalog);
                 generateProcedural();
                 writeLandmarks();
-                const fixedBytes = (proceduralCount + landmarkCount) * records.RECORD_BYTES;
+                generateObjects();
+                const fixedBytes = (proceduralCount + landmarkCount + objectCapacity) * records.RECORD_BYTES;
                 if (fixedBytes > 0) device.queue.writeBuffer(starBuffer, 0, staging, 0, fixedBytes);
+                if (nebulaCount > 0) {
+                        device.queue.writeBuffer(nebulaBuffer, 0, nebulaStaging, 0, nebulaCount * billboardBytes);
+                }
                 return state;
         }
 
@@ -661,7 +766,7 @@ function createStarRenderer(device, context, format, options) {
                 tonemapUniform[3] = outputMode;
                 device.queue.writeBuffer(tonemapUniformBuffer, 0, tonemapUniformData);
 
-                const instances = state.proceduralStars + landmarkCount + localProceduralCount + catalogResident;
+                const instances = state.proceduralStars + landmarkCount + objectCapacity + localProceduralCount + catalogResident;
                 state.drawn = instances;
 
                 const encoder = device.createCommandEncoder({ label: 'star-frame' });
@@ -685,7 +790,23 @@ function createStarRenderer(device, context, format, options) {
                 starPass.draw(4, instances, 0, 0);
                 starPass.end();
 
-                // Pass 2: fullscreen tone-map into the swapchain. No blend,
+                // Pass 2: additive nebula billboards on top of the stars.
+                // loadOp 'load' keeps the linear star flux; GPU culls by size
+                // and distance so the instance count is the packed gas count.
+                const nebulaPass = encoder.beginRenderPass({
+                        label: 'nebula-billboards',
+                        colorAttachments: [{
+                                view: hdrView,
+                                loadOp: 'load',
+                                storeOp: 'store',
+                        }],
+                });
+                nebulaPass.setPipeline(nebulaPipeline);
+                nebulaPass.setBindGroup(0, nebulaBindGroup);
+                nebulaPass.draw(4, nebulaCount, 0, 0);
+                nebulaPass.end();
+
+                // Pass 3: fullscreen tone-map into the swapchain. No blend,
                 // alpha = 1.0. On SDR output is clamped [0,1] and the canvas
                 // encodes sRGB; on HDR values can exceed 1.0 for the
                 // extended-tone-mapping swapchain.
@@ -710,6 +831,7 @@ function createStarRenderer(device, context, format, options) {
 
         function dispose() {
                 if (starBuffer) starBuffer.destroy();
+                if (nebulaBuffer) nebulaBuffer.destroy();
                 if (hdrTexture) hdrTexture.destroy();
                 uniformBuffer.destroy();
                 tonemapUniformBuffer.destroy();

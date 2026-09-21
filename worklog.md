@@ -6,11 +6,12 @@ Implementation history is grouped by release series. Append entries to the match
 | Version | Log | Coverage |
 |---|---|---|
 | 0.1.x | [0.1.x worklog](archive/0.1.x-worklog.md) | Initial planning, experiments, runtime, streaming, cameras, landmarks and HDR |
-| 0.3.x | [0.3.x worklog](archive/0.3.x-worklog.md) | 0.3/0.4 planning, GalaxyModel, galaxy types and distributions |
+| 0.3.x | [0.3.x worklog](archive/0.3.x-worklog.md) | 0.3/0.4 planning, GalaxyModel, galaxy types and distributions, composite objects |
 
 No separate 0.2 implementation entry exists in the original log. The combined
 0.3/0.4 planning entry lives in 0.3.x; add a 0.4.x log when its implementation starts.
 Historical entries are preserved verbatim; plans remain separate clean artifacts.
 
-Next step suggestion: finish 0.3.1a shape machinery (bar profiles and arm coupling,
-flocculent arms, irregulars), then 0.3.1b population gradients and disc structure.
+Next step suggestion: 0.3.2 is in (objects + nebula billboards). Next is 0.3.3 —
+galaxy age: delayed-exponential SFH, gas depletion, the age slider with
+property-only regenerate, and exposure renormalisation.

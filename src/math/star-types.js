@@ -104,10 +104,10 @@
 	}
 
 	// Age in Gyr for a population. u1, u2 are independent uniforms. The radius
-	// window for the arm-young branch is the model's: the ridge only means
-	// something between the arm reference radius and youngOuterR, and the
-	// distance-to-arm cut is a physical scale (a few hundred pc), not a length
-	// that scales with the galaxy.
+	// window for the arm-young branch is the model's, and so is the ridge scale
+	// (density.armRidgeWidth): the branch is a half-normal on distToArm whose
+	// sigma is the arm pattern's own newborn lane, so a type's O/B stars hug its
+	// ridge rather than a distance tuned for the Milky Way.
 	function sampleLocalAge(model, componentIndex, distToArm, R, u1, u2) {
 		const logNormal = (mean, sigma) => Math.min(13.5, Math.exp(Math.log(mean) + sigma * gaussian(u1, u2)));
 		switch (componentIndex) {
@@ -116,7 +116,7 @@
 			case density.COMPONENT_THICK: return logNormal(8, 0.4);
 			default:
 				if (!model.populations.gasRich) return logNormal(9, 0.4);
-				const armWidth = 0.3;
+				const armWidth = density.armRidgeWidth(model, R);
 				const pArm = Math.exp(-0.5 * (distToArm * distToArm) / (armWidth * armWidth));
 				if (u2 < pArm && R > model.arms.Rs && R < model.populations.youngOuterR) return Math.pow(u1, 3.0) * 0.3;
 				return logNormal(5, 0.5);
@@ -142,16 +142,14 @@
 		return 4.83 - 2.5 * Math.log10(Math.max(1e-6, lum));
 	}
 
-	// Core derivation. `out` is mutated in place and returned.
-	function deriveStar(model, seed, componentIndex, R, distToArm, out) {
-		const uMass = hash.hash01(seed * 31 + 1);
-		const uAge1 = hash.hash01(seed * 31 + 2);
-		const uAge2 = hash.hash01(seed * 31 + 3);
+	// Core evolution: mass + age → state, Teff, luminosity, class, colour. Shared
+	// by deriveStar (age from the local population) and deriveStarWithAge (age
+	// from the composite object the star belongs to) — the IMF and the age draw
+	// differ, the physics from there on does not.
+	function evolveStar(model, seed, mass, age, componentIndex, R, distToArm, out) {
 		const uEvolve = hash.hash01(seed * 31 + 4);
 		const uEvolve2 = hash.hash01(seed * 31 + 5);
 
-		const mass = sampleMassIMF(uMass);
-		const age = sampleLocalAge(model, componentIndex, distToArm, R, uAge1, uAge2);
 		const tMS = msLifetimeGyr(mass);
 
 		let state = 'ms';
@@ -208,6 +206,46 @@
 		return out;
 	}
 
+	// Core derivation. `out` is mutated in place and returned.
+	function deriveStar(model, seed, componentIndex, R, distToArm, out) {
+		const mass = sampleMassIMF(hash.hash01(seed * 31 + 1));
+		const age = sampleLocalAge(model, componentIndex, distToArm, R,
+			hash.hash01(seed * 31 + 2), hash.hash01(seed * 31 + 3));
+		return evolveStar(model, seed, mass, age, componentIndex, R, distToArm, out);
+	}
+
+	// Same pipeline with the age imposed from outside: member stars of a
+	// composite object are coeval at the object's age, not drawn from the local
+	// population prior. Mass (channel 1) and evolution rolls (4, 5) keep their
+	// field-star channels; the age channels (2, 3) are simply not drawn.
+	function deriveStarWithAge(model, seed, componentIndex, R, distToArm, ageGyr, out) {
+		const mass = sampleMassIMF(hash.hash01(seed * 31 + 1));
+		return evolveStar(model, seed, mass, ageGyr, componentIndex, R, distToArm, out);
+	}
+
+	// The central star of a planetary nebula: a post-AGB remnant, hot and
+	// luminous, on its way to the white-dwarf cooling track. Classified O (the
+	// LUT's hottest slot) with state 'ms', so every consumer that switches on
+	// the three known states keeps working; component/R/arm are the host's, for
+	// the record only.
+	function derivePlanetaryCentral(seed, componentIndex, R, distToArm, out) {
+		const teff = 30000 + 70000 * hash.hash01(seed * 31 + 1);
+		const lum = Math.pow(10, 2 + 2 * hash.hash01(seed * 31 + 2));
+		out.mass = 0.6;
+		out.age = 10;
+		out.teff = teff;
+		out.luminosity = lum;
+		out.state = 'ms';
+		out.spectralClass = 'O';
+		out.colorIndex = records.spectralClassIndex('O');
+		out.absMag = absoluteMagnitude(lum);
+		out.metallicity = 0.020;
+		out.component = componentIndex;
+		out.R = R;
+		out.distToArm = distToArm;
+		return out;
+	}
+
 	// Convenience wrapper for the model experiments: takes a position, works
 	// out the local population, and returns a full record (allocates one
 	// object — never call this from the render loop).
@@ -235,26 +273,32 @@
 	}
 
 	// Mean distance-to-arm and the fraction within 0.5 kpc, per spectral class.
-	function classVsArmDistance(stars) {
-		const buckets = {};
-		for (const cls of records.SPECTRAL_CLASSES) buckets[cls] = [];
-		for (const s of stars) {
-			if (buckets[s.spectralClass]) buckets[s.spectralClass].push(s.distToArm);
-		}
+	// Arm-distance statistics per spectral class, in units of the model's own
+	// young ridge (density.armRidgeWidth at each star's radius), never against a
+	// fixed distance: a fixed cut is most of the lane in the inner disc and a
+	// sliver of it at the rim, so it stops measuring arm hugging at all (see the
+	// star-types-evolution test for the numbers). Restricted to the star-forming
+	// annulus — the region nebula.js calls the spiral region — because inside
+	// `arms.Rs` the lane is a fraction of the bulge and outside `youngOuterR`
+	// the pattern does not form stars. `stars` records must carry `R` and
+	// `distToArm`; `meanZ` is the mean ridge-relative distance, which is 0.8 for
+	// a population born in the lane and ~2.5 for one that ignores it.
+	function classVsArmDistance(stars, model) {
 		const out = {};
-		for (const cls of Object.keys(buckets)) {
-			const arr = buckets[cls];
-			if (arr.length === 0) {
-				out[cls] = { n: 0, mean: 0, fracLT05: 0 };
-				continue;
-			}
-			let sum = 0;
-			let close = 0;
-			for (const v of arr) {
-				sum += v;
-				if (v < 0.5) close++;
-			}
-			out[cls] = { n: arr.length, mean: sum / arr.length, fracLT05: close / arr.length };
+		for (const cls of records.SPECTRAL_CLASSES) out[cls] = { n: 0, sum: 0, sumZ: 0, inLane: 0 };
+		for (const s of stars) {
+			const bucket = out[s.spectralClass];
+			if (!bucket || !(s.R > model.arms.Rs && s.R < model.populations.youngOuterR)) continue;
+			const sigma = density.armRidgeWidth(model, s.R);
+			bucket.n++;
+			bucket.sum += s.distToArm;
+			bucket.sumZ += s.distToArm / sigma;
+			if (s.distToArm < sigma) bucket.inLane++;
+		}
+		for (const cls of Object.keys(out)) {
+			const b = out[cls];
+			const n = Math.max(1, b.n);
+			out[cls] = { n: b.n, mean: b.sum / n, meanZ: b.sumZ / n, fracInLane: b.inLane / n };
 		}
 		return out;
 	}
@@ -263,7 +307,7 @@
 		MASS_TEFF_TABLE,
 		classifyByTempAndState, classColor, luminosityFromMass, teffFromMass,
 		msLifetimeGyr, sampleMassIMF, sampleLocalAge, metallicityFor,
-		absoluteMagnitude, deriveStar, deriveStarProps,
+		absoluteMagnitude, deriveStar, deriveStarWithAge, derivePlanetaryCentral, deriveStarProps,
 		summariseByComponent, classVsArmDistance,
 	};
 	if (typeof module !== 'undefined') module.exports = StarTypesLib;

@@ -38,6 +38,15 @@
 	// down; below `populations.gasRich` it is off entirely.
 	const GAS_NORMAL = 0.15;
 
+	// How far a cloud can sit from the arm ridge and still be read as arm gas:
+	// a multiple of the model's young-ridge width (density.armRidgeWidth), which
+	// is the same lane the O/B stars are born in. The numbers are the Milky
+	// Way's own tuned distances, ~0.8 and ~1.5 kpc at the radius they were
+	// measured at (R = 5 kpc, sigma = 0.33), so a type with a wider or tighter
+	// pattern scales with it instead of inheriting them.
+	const NEBULA_ARM_REACH = 2.4;
+	const NEBULA_DARK_REACH = 4.6;
+
 	const NEBULA_COLORS = {
 		HII: [1.00, 0.30, 0.45],        // H-alpha pink
 		reflection: [0.50, 0.65, 1.00], // scattered blue
@@ -52,7 +61,9 @@
 		const dom = density.dominantComponent(model, x, y, z);
 		const youngH = model.thin.H * model.populations.youngScaleHeight;
 		const inDisc = Math.exp(-Math.abs(z - model.centre.z) / youngH);
-		const armBoost = dec.distToArm < 0.8 ? Math.exp(-dec.distToArm * dec.distToArm / 0.20) : 0.0;
+		const ridge = density.armRidgeWidth(model, dec.R);
+		const armBoost = dec.distToArm < NEBULA_ARM_REACH * ridge
+			? Math.exp(-0.5 * dec.distToArm * dec.distToArm / (ridge * ridge)) : 0.0;
 		const gasBulgeSuppress = dec.bulge > 0.1 ? 0.1 : 1.0;
 		const gasHaloSuppress = dec.halo > 0.0005 ? 0.01 : 1.0;
 		const gasWeight = model.populations.gasRich ? model.populations.gasFraction / GAS_NORMAL : 0.0;
@@ -62,10 +73,10 @@
 
 		const inSpiralRegion = model.populations.gasRich && dec.R > model.arms.Rs && dec.R < model.populations.youngOuterR && dom !== 'bulge';
 		let type;
-		if (inSpiralRegion && dec.distToArm < 0.3) type = 'HII';
-		else if (inSpiralRegion && dec.distToArm < 0.8) type = 'reflection';
+		if (inSpiralRegion && dec.distToArm < ridge) type = 'HII';
+		else if (inSpiralRegion && dec.distToArm < NEBULA_ARM_REACH * ridge) type = 'reflection';
 		else if (dom === 'bulge' || (dec.R < 3 && dec.zp < 1.0)) type = 'planetary';
-		else if (model.populations.gasRich && dec.distToArm < 1.5 && dec.R > 3 && dom !== 'halo') type = 'dark';
+		else if (model.populations.gasRich && dec.distToArm < NEBULA_DARK_REACH * ridge && dec.R > 3 && dom !== 'halo') type = 'dark';
 		else type = 'SNR';
 
 		return { p, type, dec, dom };
@@ -138,7 +149,7 @@
 		};
 	}
 
-	const NebulaLib = { NEBULA_TYPES, NEBULA_COLORS, GAS_NORMAL, nebulaProbabilityAt, placeNebulae, summariseNebulae };
+	const NebulaLib = { NEBULA_TYPES, NEBULA_COLORS, GAS_NORMAL, NEBULA_ARM_REACH, NEBULA_DARK_REACH, nebulaProbabilityAt, placeNebulae, summariseNebulae };
 	if (typeof module !== 'undefined') module.exports = NebulaLib;
 	if (typeof window !== 'undefined') window.NebulaLib = NebulaLib;
 })();

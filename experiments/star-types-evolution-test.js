@@ -56,7 +56,7 @@ check('deriveStar fills every record without allocating', shared.spectralClass !
 
 const summary = starTypes.summariseByComponent(stars);
 const classes = summary.byClass;
-const armStats = starTypes.classVsArmDistance(stars);
+const armStats = starTypes.classVsArmDistance(stars, model);
 
 // --- Type mix ------------------------------------------------------------
 {
@@ -77,15 +77,73 @@ const armStats = starTypes.classVsArmDistance(stars);
 
 // --- O/B stars hug the arms ---------------------------------------------
 {
+	// The comparison is made in the model's own lane (density.armRidgeWidth, see
+	// classVsArmDistance), not against a fixed distance: on this sample a 0.5 kpc
+	// cut reads O/B 0.78 against M dwarfs 0.49 — a factor 1.6 — because half a
+	// kpc is most of the lane at R = 3 and a fifth of it at R = 8. Against their
+	// own lane the same stars read 0.70 against 0.23, and being in the lane at
+	// all is what makes an O star an O star. Field classes are compared by M and
+	// B: O is a three-star sample at this size, so its own statistics are noise.
 	const ob = armStats.O.n + armStats.B.n;
-	const mDwarfs = armStats.M;
-	const obClose = (armStats.O.fracLT05 * armStats.O.n + armStats.B.fracLT05 * armStats.B.n) / Math.max(1, ob);
-	check('O/B stars are within 0.5 kpc of an arm far more often than M dwarfs',
-		obClose > mDwarfs.fracLT05 * 2, { obClose: +obClose.toFixed(4), mDwarfs: +mDwarfs.fracLT05.toFixed(4) });
-	check('O/B stars have the smallest mean arm distance of all classes',
-		armStats.O.mean <= Math.min(...Object.values(armStats).filter(s => s.n > 0).map(s => s.mean)) + 1e-9,
-		{ O: +armStats.O.mean.toFixed(3), M: +armStats.M.mean.toFixed(3) });
+	const obInLane = (armStats.O.fracInLane * armStats.O.n + armStats.B.fracInLane * armStats.B.n) / Math.max(1, ob);
+	check('O/B stars sit inside the arm lane far more often than M dwarfs',
+		ob > 100 && obInLane > 2.5 * armStats.M.fracInLane,
+		{ obInLane: +obInLane.toFixed(4), M: +armStats.M.fracInLane.toFixed(4), n: ob });
+	check('O/B stars are born in the lane: mean ridge distance under 1 sigma',
+		armStats.B.meanZ < 1 && armStats.M.meanZ > 2 * armStats.B.meanZ,
+		{ B: +armStats.B.meanZ.toFixed(3), M: +armStats.M.meanZ.toFixed(3) });
+	// What makes the lane a lane: it is 2*sigma wide out of a ridge spacing
+	// lambda, so a population that ignores the arms lands inside it by area —
+	// 2*sigma/lambda = 2*0.12/(1+amp) = 0.2 for the preset, a little higher in
+	// practice because the disc's own azimuthal modulation already leans on the
+	// arms. A population born in it lands there ~0.68 of the time (the half-normal
+	// inside one sigma), which is the gap the two checks above measure.
+	check('M dwarfs meet the lane at the area rate, O/B at the born rate',
+		armStats.M.fracInLane > 0.15 && armStats.M.fracInLane < 0.35
+		&& obInLane > 0.6 && obInLane < 0.8,
+		{ M: +armStats.M.fracInLane.toFixed(4), obInLane: +obInLane.toFixed(4), areaRate: 0.24 / (1 + model.arms.amp) });
 	check('hot stars exist at all in the sample', ob > 5, ob);
+}
+
+// --- The young ridge is a half-normal in the model's own arm width --------
+{
+	// The arm-young branch is the gate exp(-z^2/2) with z = distToArm /
+	// density.armRidgeWidth(model, R), so whatever the type, the young
+	// population's z is a half-normal: median 0.6745, 68% inside 1 sigma, 95%
+	// inside 2. The width is the pattern's own (pitch, arm number, contrast), so
+	// a star's chance of being born young follows the model rather than a
+	// distance tuned for the Milky Way.
+	const ridge = (type) => {
+		const m = galaxy.createGalaxy({ type });
+		const buf2 = sampling.sampleGalaxyStars(m, 4242, 200000);
+		const shared2 = {};
+		const z = [];
+		for (let i = 0; i < buf2.count; i++) {
+			if (buf2.component[i] !== density.COMPONENT_THIN) continue;
+			const R = buf2.R[i];
+			if (R < m.arms.Rs || R > m.populations.youngOuterR) continue;
+			const s = starTypes.deriveStar(m, 4242 * 31 + i + 1, buf2.component[i], R, buf2.distToArm[i], shared2);
+			if (s.age < 0.3) z.push(buf2.distToArm[i] / density.armRidgeWidth(m, R));
+		}
+		z.sort((a, b) => a - b);
+		const cdf = (t) => z.filter((v) => v < t).length / Math.max(1, z.length);
+		return { n: z.length, median: z[z.length >> 1], p1: cdf(1), p2: cdf(2) };
+	};
+	for (const type of ['Sa', 'Sc']) {
+		const st = ridge(type);
+		check(`${type}: the arm-young population is a half-normal in the model's ridge width`,
+			st.n > 400 && Math.abs(st.median - 0.6745) < 0.05
+			&& Math.abs(st.p1 - 0.6827) < 0.02 && Math.abs(st.p2 - 0.9545) < 0.02,
+			{ n: st.n, median: +st.median.toFixed(3), p1: +st.p1.toFixed(4), p2: +st.p2.toFixed(4) });
+	}
+	const sa = galaxy.createGalaxy({ type: 'Sa' });
+	const sd = galaxy.createGalaxy({ type: 'Sd' });
+	check('the ridge width is the pattern\'s, not a constant (Sa is tighter than Sd at one radius)',
+		density.armRidgeWidth(sa, 8) < 0.8 * density.armRidgeWidth(sd, 8),
+		{ Sa: +density.armRidgeWidth(sa, 8).toFixed(3), Sd: +density.armRidgeWidth(sd, 8).toFixed(3) });
+	check('the ridge widens outward, in proportion to the radius',
+		Math.abs(density.armRidgeWidth(sa, 8) - 2 * density.armRidgeWidth(sa, 4)) < 1e-12,
+		{ at4: +density.armRidgeWidth(sa, 4).toFixed(4), at8: +density.armRidgeWidth(sa, 8).toFixed(4) });
 }
 
 // --- Age and metallicity by component -----------------------------------
@@ -140,11 +198,23 @@ const armStats = starTypes.classVsArmDistance(stars);
 		return sum / count;
 	};
 	const L = sc.thin.L;
-	// Sc is steepest (reaches the full +1 step at R = 2L): by 2.5L most
-	// sub-M main-sequence stars have shifted, so the mean rises by ~0.8.
-	const inner = msMean(sc, L * 0.5, 4000);
-	const outer = msMean(sc, L * 2.5, 4000);
-	check('Sc: the thin-disc mean colour index rises from 0.5L to 2.5L',
+	// IMF is ~87% M, so an all-MS mean barely moves. Restrict to stars that
+	// still have a step left (colourIndex < M) at the inner radius; those
+	// pick up +1 by R = 2L when steep = 1.
+	const msMeanSubM = (m, R, n) => {
+		let sum = 0;
+		let count = 0;
+		for (let i = 1; i <= n; i++) {
+			const s = starTypes.deriveStar(m, i * 7919 + 1, density.COMPONENT_THIN, R, 2.0, {});
+			if (s.state !== 'ms' || s.colorIndex >= 6) continue;
+			sum += s.colorIndex;
+			count++;
+		}
+		return count ? sum / count : 0;
+	};
+	const inner = msMeanSubM(sc, L * 0.5, 8000);
+	const outer = msMean(sc, L * 2.5, 8000);
+	check('Sc: sub-M thin-disc stars redden by ~1 step from 0.5L to 2.5L',
 		outer - inner > 0.5, { inner: +inner.toFixed(3), outer: +outer.toFixed(3) });
 	const eInner = msMean(e4, L * 0.5, 4000);
 	const eOuter = msMean(e4, L * 2.5, 4000);
