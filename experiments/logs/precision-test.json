@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-19T23:58:07.907Z",
+  "date": "2026-09-21T06:49:10.850Z",
   "nSamplesPerDistance": 1000,
   "f32AcceptableThresholdPc": 0.5,
   "results": [
@@ -7,157 +7,157 @@
       "distanceKpc": 0.001,
       "nSamples": 1000,
       "f32": {
-        "maxErrorPc": 6.509187720077358e-8,
-        "meanErrorPc": 1.8003602221560756e-8
+        "maxErrorPc": 7.260746517911976e-8,
+        "meanErrorPc": 1.7626743034095376e-8
       },
       "splitDouble": {
         "maxErrorPc": 1.734723475976807e-15,
-        "meanErrorPc": 3.6017196169968457e-16
+        "meanErrorPc": 3.6065985267730305e-16
       },
-      "improvementFactor": 65.09187720077358
+      "improvementFactor": 72.60746517911976
     },
     {
       "distanceKpc": 0.01,
       "nSamples": 1000,
       "f32": {
-        "maxErrorPc": 5.001654646008546e-7,
-        "meanErrorPc": 1.7336272836038225e-7
+        "maxErrorPc": 4.904136385180946e-7,
+        "meanErrorPc": 1.808981077155991e-7
       },
       "splitDouble": {
-        "maxErrorPc": 1.5612511283791264e-14,
-        "meanErrorPc": 3.571795637036246e-15
+        "maxErrorPc": 1.3877787807814457e-14,
+        "meanErrorPc": 3.703634621210483e-15
       },
-      "improvementFactor": 500.16546460085465
+      "improvementFactor": 490.4136385180946
     },
     {
       "distanceKpc": 0.1,
       "nSamples": 1000,
       "f32": {
-        "maxErrorPc": 0.000004967773387098973,
-        "meanErrorPc": 0.0000015996777818355623
+        "maxErrorPc": 0.000004493512187342397,
+        "meanErrorPc": 0.0000016894689882362979
       },
       "splitDouble": {
-        "maxErrorPc": 1.6653345369377348e-13,
-        "meanErrorPc": 3.382016888764383e-14
+        "maxErrorPc": 1.249000902703301e-13,
+        "meanErrorPc": 3.4361402612148595e-14
       },
-      "improvementFactor": 4967.773387098972
+      "improvementFactor": 4493.512187342397
     },
     {
       "distanceKpc": 0.5,
       "nSamples": 1000,
       "f32": {
-        "maxErrorPc": 0.000021149508144802098,
-        "meanErrorPc": 0.000007002772197617357
+        "maxErrorPc": 0.000019777016024846716,
+        "meanErrorPc": 0.0000067525943462931615
       },
       "splitDouble": {
-        "maxErrorPc": 5.551115123125783e-13,
-        "meanErrorPc": 1.4371837053772651e-13
+        "maxErrorPc": 7.771561172376096e-13,
+        "meanErrorPc": 1.468825061579082e-13
       },
-      "improvementFactor": 21149.508144802097
+      "improvementFactor": 19777.01602484672
     },
     {
       "distanceKpc": 1,
       "nSamples": 1000,
       "f32": {
-        "maxErrorPc": 0.00004196947056556155,
-        "meanErrorPc": 0.000013677745332119073
+        "maxErrorPc": 0.00004114003893107565,
+        "meanErrorPc": 0.00001378174294031087
       },
       "splitDouble": {
         "maxErrorPc": 1.1102230246251565e-12,
-        "meanErrorPc": 2.9687363678476686e-13
+        "meanErrorPc": 2.8477220581635265e-13
       },
-      "improvementFactor": 41969.470565561554
+      "improvementFactor": 41140.03893107565
     },
     {
       "distanceKpc": 2,
       "nSamples": 1000,
       "f32": {
-        "maxErrorPc": 0.00008023011544011638,
-        "meanErrorPc": 0.000027601784547082175
+        "maxErrorPc": 0.00007655254163907443,
+        "meanErrorPc": 0.000027080560913939067
       },
       "splitDouble": {
-        "maxErrorPc": 2.220446049250313e-12,
-        "meanErrorPc": 5.788702850395566e-13
+        "maxErrorPc": 2.4424906541753444e-12,
+        "meanErrorPc": 5.961897642237091e-13
       },
-      "improvementFactor": 80230.11544011638
+      "improvementFactor": 76552.54163907444
     },
     {
       "distanceKpc": 5,
       "nSamples": 1000,
       "f32": {
-        "maxErrorPc": 0.0002536655845375435,
-        "meanErrorPc": 0.00008469483737005845
+        "maxErrorPc": 0.0002616864556159726,
+        "meanErrorPc": 0.00008525238230738807
       },
       "splitDouble": {
-        "maxErrorPc": 7.993605777301127e-12,
-        "meanErrorPc": 1.8838264281839656e-12
+        "maxErrorPc": 7.105427357601002e-12,
+        "meanErrorPc": 1.837641150359559e-12
       },
-      "improvementFactor": 253665.5845375435
+      "improvementFactor": 261686.4556159726
     },
     {
       "distanceKpc": 8.178,
       "nSamples": 1000,
       "f32": {
-        "maxErrorPc": 0.0004670893307689994,
-        "meanErrorPc": 0.0001185293348822114
+        "maxErrorPc": 0.0004711010266333915,
+        "meanErrorPc": 0.00012231577376020653
       },
       "splitDouble": {
-        "maxErrorPc": 1.4210854715202004e-11,
-        "meanErrorPc": 2.5277557824665564e-12
+        "maxErrorPc": 1.5987211554602254e-11,
+        "meanErrorPc": 2.5135449277513544e-12
       },
-      "improvementFactor": 467089.3307689994
+      "improvementFactor": 471101.0266333915
     },
     {
       "distanceKpc": 12,
       "nSamples": 1000,
       "f32": {
-        "maxErrorPc": 0.0005803246843072429,
-        "meanErrorPc": 0.00019797518509889755
+        "maxErrorPc": 0.0005108078440230202,
+        "meanErrorPc": 0.0002095392763248327
       },
       "splitDouble": {
-        "maxErrorPc": 1.5987211554602254e-11,
-        "meanErrorPc": 4.2525982735242e-12
+        "maxErrorPc": 1.7763568394002505e-11,
+        "meanErrorPc": 4.300559908188006e-12
       },
-      "improvementFactor": 580324.684307243
+      "improvementFactor": 510807.8440230202
     },
     {
       "distanceKpc": 20,
       "nSamples": 1000,
       "f32": {
-        "maxErrorPc": 0.0009900165487408685,
-        "meanErrorPc": 0.000344079069268588
+        "maxErrorPc": 0.0010088668247476562,
+        "meanErrorPc": 0.00034199126163514393
       },
       "splitDouble": {
         "maxErrorPc": 3.197442310920451e-11,
-        "meanErrorPc": 6.973976951485383e-12
+        "meanErrorPc": 7.393197165583842e-12
       },
-      "improvementFactor": 990016.5487408686
+      "improvementFactor": 1008866.8247476562
     },
     {
       "distanceKpc": 50,
       "nSamples": 1000,
       "f32": {
-        "maxErrorPc": 0.0024234415292312406,
-        "meanErrorPc": 0.0008462661515196146
+        "maxErrorPc": 0.0025354564030521942,
+        "meanErrorPc": 0.0008325249303666737
       },
       "splitDouble": {
         "maxErrorPc": 7.815970093361102e-11,
-        "meanErrorPc": 1.673328142715036e-11
+        "meanErrorPc": 1.674749228186556e-11
       },
-      "improvementFactor": 2423441.5292312405
+      "improvementFactor": 2535456.403052194
     },
     {
       "distanceKpc": 100,
       "nSamples": 1000,
       "f32": {
-        "maxErrorPc": 0.004831696003293473,
-        "meanErrorPc": 0.001656940011926622
+        "maxErrorPc": 0.005116846438113498,
+        "meanErrorPc": 0.0016808239281544957
       },
       "splitDouble": {
-        "maxErrorPc": 1.2789769243681803e-10,
-        "meanErrorPc": 3.33528760165791e-11
+        "maxErrorPc": 1.4210854715202004e-10,
+        "meanErrorPc": 3.483080490696011e-11
       },
-      "improvementFactor": 4831696.003293473
+      "improvementFactor": 5116846.4381134985
     }
   ],
   "recommendation": {

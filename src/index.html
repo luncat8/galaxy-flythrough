@@ -11,6 +11,36 @@
         <canvas id="labels"></canvas>
         <pre id="overlay"></pre>
         <pre id="error" style="display:none"></pre>
+        <div id="menu" style="display:none">
+                <div class="menu-header">
+                        <span>Display</span>
+                        <button id="menu-close" title="Close (Tab)">×</button>
+                </div>
+                <div class="menu-row">
+                        <label for="slider-exposure">Exposure <span class="kbd">[ ]</span></label>
+                        <input type="range" id="slider-exposure" min="0" max="22" step="0.25" value="12">
+                        <span id="val-exposure" class="menu-val">17.0</span>
+                </div>
+                <div class="menu-row">
+                        <label for="slider-brightness">Brightness <span class="kbd">; '</span></label>
+                        <input type="range" id="slider-brightness" min="0.125" max="8" step="0.05" value="1">
+                        <span id="val-brightness" class="menu-val">1.00×</span>
+                </div>
+                <div class="menu-row">
+                        <label for="slider-white">White point</label>
+                        <input type="range" id="slider-white" min="1" max="16" step="0.25" value="4">
+                        <span id="val-white" class="menu-val">4.0</span>
+                </div>
+                <div class="menu-row">
+                        <label for="slider-saturation">Saturation</label>
+                        <input type="range" id="slider-saturation" min="0.5" max="3" step="0.05" value="1.4">
+                        <span id="val-saturation" class="menu-val">1.6×</span>
+                </div>
+                <div class="menu-row menu-actions">
+                        <button id="menu-defaults">Defaults</button>
+                </div>
+                <div class="menu-hint">Tab toggles this panel · drag sliders live</div>
+        </div>
         <pre id="help">
                      fly                     orbit
 mouse drag / click   look (pointer lock)     circle the target
@@ -23,8 +53,9 @@ C                    camera: fly -> orbit galactic centre -> orbit object
 P                    constellation lines on / off
 H                    home: the Sun (fly: teleport, orbit: circle it from 10 pc)
 R                    reset everything
+Tab                  settings menu (exposure / brightness / white / saturation)
 [ / ]                exposure (how faint a star still shows)
-; / '                ACES gain (overall brightness)
+; / '                brightness (overall gain)
 Ctrl+W closes the tab: fly slowly with Ctrl + arrows
   </pre>
 

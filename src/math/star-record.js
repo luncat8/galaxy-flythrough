@@ -34,16 +34,23 @@ const FLAG_VARIABLE = 4;
 // LUT order. Index == position in this list; the colour LUT texture is built
 // from the same list so encoder and shader can never disagree.
 const SPECTRAL_CLASSES = ['O', 'B', 'A', 'F', 'G', 'K', 'M', 'WD', 'RG'];
+// Blackbody-based sRGB colours, authoritatively tuned against Mitchell
+// Charity's star-colour table and Stellarium's B-V palette. Channel values
+// are sRGB bytes (uploaded via rgba8unorm-srgb so the GPU linearises them
+// correctly before additive blending). M-type red is intentionally de-
+// saturated — the IMF produces ~87% M dwarfs, and a neon-red palette makes
+// the entire field read as red; the softer chromaticity preserves type
+// distinction without overwhelming everything.
 const CLASS_COLORS = [
-	[153, 179, 255], // O  blue
-	[192, 204, 255], // B  blue-white
-	[242, 242, 255], // A  white
-	[255, 250, 235], // F  yellow-white
-	[255, 242, 192], // G  yellow
-	[255, 199, 128], // K  orange
-	[255, 140, 102], // M  red
-	[217, 217, 255], // WD pale blue
-	[255, 100, 77],  // RG deep red
+	[155, 176, 255], // O  (30000 K+) blue
+	[170, 191, 255], // B  (10–30 kK) blue-white
+	[213, 224, 255], // A  (7.5–10 kK) white
+	[249, 245, 255], // F  (6–7.5 kK) yellow-white
+	[255, 238, 221], // G  (5.2–6 kK) yellow (Sun = ~G2, 5800 K)
+	[255, 207, 160], // K  (3.7–5.2 kK) pale orange
+	[255, 190, 150], // M  (<3.7 kK) pale orange-red, deliberately not crimson
+	[200, 210, 255], // WD (hot but faint) pale blue-white
+	[255, 140, 100], // RG  deep red-orange (these are rare enough to be vivid)
 ];
 const DEFAULT_CLASS_INDEX = SPECTRAL_CLASSES.indexOf('G');
 

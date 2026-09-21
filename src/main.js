@@ -89,9 +89,15 @@ async function boot() {
         const selection = window.Selection.createSelection(camera, landmarks);
         let selected = -1;
 
+        // Target star count for density parity (procedural + catalog visual
+        // budget). Passed to the cell manager so expected per-cell counts
+        // match what the procedural field delivers galaxy-wide.
+        const targetStars = params.stars + params.catalogStars;
+
         const renderer = window.StarRenderer.createStarRenderer(device, context, format, {
                 proceduralStars: params.stars,
                 catalogBudgetStars: params.catalogStars,
+                targetStars,
                 seed: params.seed,
                 hdr,
         });
@@ -111,6 +117,72 @@ async function boot() {
                 return;
         }
         if (params.exposure !== null) renderer.setExposure(params.exposure);
+
+        // --- Settings menu (Tab to toggle) -----------------------------------
+        const menu = document.getElementById('menu');
+        const menuClose = document.getElementById('menu-close');
+        const sliderExp = document.getElementById('slider-exposure');
+        const sliderBright = document.getElementById('slider-brightness');
+        const sliderWhite = document.getElementById('slider-white');
+        const sliderSat = document.getElementById('slider-saturation');
+        const valExp = document.getElementById('val-exposure');
+        const valBright = document.getElementById('val-brightness');
+        const valWhite = document.getElementById('val-white');
+        const valSat = document.getElementById('val-saturation');
+        const btnDefaults = document.getElementById('menu-defaults');
+
+        // Brightness slider is linear in multiplier (0.125 – 8.0), not stops,
+        // so dragging it feels proportional — stops-based sliders jump at the
+        // low end because small absolute changes multiply into big perceptual
+        // differences.
+        function syncSlidersFromRenderer() {
+                sliderExp.value = renderer.state.magZero;
+                valExp.textContent = renderer.state.magZero.toFixed(1);
+                sliderBright.value = renderer.state.linearExposure;
+                valBright.textContent = renderer.state.linearExposure.toFixed(2) + '×';
+                sliderWhite.value = renderer.state.whitePoint;
+                valWhite.textContent = renderer.state.whitePoint.toFixed(1);
+                sliderSat.value = renderer.state.saturation;
+                valSat.textContent = renderer.state.saturation.toFixed(1) + '×';
+        }
+        syncSlidersFromRenderer();
+
+        function toggleMenu() {
+                const visible = menu.style.display !== 'none';
+                menu.style.display = visible ? 'none' : 'block';
+        }
+        menuClose.addEventListener('click', toggleMenu);
+
+        sliderExp.addEventListener('input', () => {
+                renderer.setExposure(Number(sliderExp.value));
+                valExp.textContent = renderer.state.magZero.toFixed(1);
+        });
+        sliderBright.addEventListener('input', () => {
+                renderer.setLinearExposure(Number(sliderBright.value));
+                valBright.textContent = renderer.state.linearExposure.toFixed(2) + '×';
+        });
+        sliderWhite.addEventListener('input', () => {
+                renderer.setWhitePoint(Number(sliderWhite.value));
+                valWhite.textContent = renderer.state.whitePoint.toFixed(1);
+        });
+        sliderSat.addEventListener('input', () => {
+                renderer.setSaturation(Number(sliderSat.value));
+                valSat.textContent = renderer.state.saturation.toFixed(1) + '×';
+        });
+        btnDefaults.addEventListener('click', () => {
+                renderer.setExposure(window.StarRenderer.EXPOSURE_DEFAULT);
+                renderer.setLinearExposure(window.StarRenderer.LINEAR_EXPOSURE_DEFAULT);
+                renderer.setWhitePoint(window.StarRenderer.WHITE_POINT_DEFAULT);
+                renderer.setSaturation(window.StarRenderer.SATURATION_DEFAULT);
+                syncSlidersFromRenderer();
+        });
+
+        // Pressing Tab while the menu is open should still toggle it (we
+        // intercept preventDefault in input.js so focus never moves).
+        function handleMenuAction() {
+                toggleMenu();
+                syncSlidersFromRenderer();
+        }
 
         const statsText = {
                 position: [0, 0, 0],
@@ -133,16 +205,20 @@ async function boot() {
 
         function updateOverlay(state, cameraState) {
                 const shutter = state.magZero.toFixed(1);
-                const linExp = state.linearExposure.toFixed(3);
-                const mode = state.hdrDirect ? 'HDR direct' : 'SDR + ACES';
+                const linExp = state.linearExposure.toFixed(2);
+                const wp = state.whitePoint.toFixed(1);
+                const sat = state.saturation.toFixed(1);
+                const mode = state.hdrOutput ? 'HDR + filmic tonemap' : 'SDR + filmic tonemap';
+                const catKept = state.catalogThinnedStars || state.catalogResidentStars;
                 overlay.textContent =
                         `FPS ${loop.stats.fps.toFixed(0)}   frame ${loop.stats.avgFrameMs.toFixed(2)}ms (max ${loop.stats.maxFrameMs.toFixed(1)}ms)   output ${mode}\n` +
-                        `stars drawn ${state.drawn.toLocaleString()}  =  procedural ${state.proceduralStars.toLocaleString()}` +
+                        `stars drawn ${state.drawn.toLocaleString()}  =  global ${state.proceduralStars.toLocaleString()}` +
                         ` + landmarks ${state.landmarkStars.toLocaleString()}` +
-                        ` + catalog ${state.catalogResidentStars.toLocaleString()}/${state.catalogTotalStars.toLocaleString()}\n` +
+                        ` + local ${state.localProceduralStars.toLocaleString()}` +
+                        ` + catalog ${catKept.toLocaleString()}/${state.catalogTotalStars.toLocaleString()}\n` +
                         `cells ${state.cellsResident}/${state.catalogCells}   decoded ${(state.decodedBytes / 1024).toFixed(0)} KB` +
                         `   buffer ${(state.bufferBytes / 1048576).toFixed(1)} MB\n` +
-                        `exposure magZero ${shutter} ([ / ])   ACES gain ${linExp} (; / ')   constellations ${labels.constellationsVisible() ? 'on' : 'off'}   (P)\n` +
+                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   Tab menu\n` +
                         `pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
                         cameraLine(cameraState) +
                         selectedLine(cameraState);
@@ -173,6 +249,10 @@ async function boot() {
                         actions.constellations = 0;
                         labels.toggleConstellations();
                 }
+                if (actions.menu) {
+                        actions.menu = 0;
+                        handleMenuAction();
+                }
 
                 resizeCanvas();
                 renderer.render(camera, canvas.width, canvas.height, time, input.state);
@@ -180,9 +260,13 @@ async function boot() {
                 labels.draw(camera, canvas.clientWidth, canvas.clientHeight);
 
                 overlayTimer += dt;
-                if (overlayTimer < OVERLAY_INTERVAL) return;
-                overlayTimer = 0;
-                updateOverlay(renderer.state, camera.getState(statsText));
+                if (overlayTimer >= OVERLAY_INTERVAL) {
+                        overlayTimer = 0;
+                        updateOverlay(renderer.state, camera.getState(statsText));
+                        // Keep slider readouts in sync with keyboard shortcuts
+                        // while the menu is open.
+                        if (menu.style.display !== 'none') syncSlidersFromRenderer();
+                }
         });
 
         loop.start();

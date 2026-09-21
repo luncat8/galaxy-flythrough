@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-20T10:57:41.491Z",
+  "date": "2026-09-21T06:49:15.020Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -11,7 +11,7 @@
     },
     {
       "name": "star-sprite",
-      "lines": 132
+      "lines": 135
     },
     {
       "name": "star-sprite-hdr",
@@ -19,7 +19,7 @@
     },
     {
       "name": "tonemap",
-      "lines": 54
+      "lines": 130
     },
     {
       "name": "procedural-gen",
@@ -35,8 +35,8 @@
     "star-sprite-hdr",
     "tonemap"
   ],
-  "totalChecks": 112,
-  "passed": 112,
+  "totalChecks": 117,
+  "passed": 117,
   "failed": 0,
   "checks": [
     {
@@ -66,15 +66,15 @@
         ],
         [
           "star-sprite",
-          5339
+          5545
         ],
         [
           "star-sprite-hdr",
-          3741
+          3754
         ],
         [
           "tonemap",
-          2166
+          5707
         ],
         [
           "procedural-gen",
@@ -785,15 +785,35 @@
       "pass": true
     },
     {
-      "name": "the tonemap shader defines acesNarkowicz",
+      "name": "the tonemap defines hableFilmic (luminance-only filmic curve)",
       "pass": true
     },
     {
-      "name": "the tonemap shader carries the five ACES constants a-e",
+      "name": "the tonemap uses Hable/Unreal shoulder constants A,B,C,D,E",
       "pass": true
     },
     {
-      "name": "the tonemap fragment writes alpha = 1 (opaque swapchain)",
+      "name": "the tonemap fragment writes alpha = 1 (opaque swapchain), linear RGB",
+      "pass": true
+    },
+    {
+      "name": "the tonemap applies the filmic curve to luminance only (hue-preserving)",
+      "pass": true
+    },
+    {
+      "name": "the tonemap divides luminance by white point (wp) before the curve",
+      "pass": true
+    },
+    {
+      "name": "the tonemap has a user-controlled saturation parameter (u.params.z)",
+      "pass": true
+    },
+    {
+      "name": "the tonemap selects SDR clamp vs HDR headroom via u.params.w",
+      "pass": true
+    },
+    {
+      "name": "the tonemap does NOT apply manual sRGB gamma (canvas colorSpace srgb encodes it)",
       "pass": true
     },
     {
@@ -809,7 +829,7 @@
       "pass": true
     },
     {
-      "name": "the star-sprite-hdr fragment multiplies intensity by exposure.exposure.x",
+      "name": "the star-sprite-hdr fragment multiplies intensity by exposure.params.x",
       "pass": true
     },
     {

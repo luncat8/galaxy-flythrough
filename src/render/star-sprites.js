@@ -1,19 +1,21 @@
 // src/render/star-sprites.js
 // Path B: additive point sprites for every star the frame needs — the streamed
-// catalog cells plus the procedural field behind them.
+// catalog cells (thinned for density parity) plus a local procedural gap-fill
+// plus the global galaxy-wide procedural field.
 //
 // Buffer layout (one storage buffer, one draw call):
 //
-//   [0 .. proceduralCount)                          procedural field, once
-//   [proceduralCount .. + landmarkCount)            named landmarks, once
-//   [proceduralCount + landmarkCount .. + resident) resident catalog cells,
-//                                                   rewritten when the camera
-//                                                   crosses a cell
+//   [0 .. globalProcedural)                 global procedural field, generated once
+//   [globalProcedural .. +landmarkCount)    named landmarks, written once
+//   [+landmarkCount .. +localCapacity)      local procedural gap-fill, rewritten
+//                                           per cell-manager rebuild
+//   [+localBase .. +localBase+catalogCap)   thinned catalog cells, rewritten per
+//                                           rebuild
 //
 // Landmarks sit in their own fixed block because Gaia saturates on the
 // brightest stars — the catalog subset cannot be assumed to contain them
-// (see data/landmarks.js). The three blocks keep the drawn instance range
-// contiguous: `draw(4, proceduralCount + landmarkCount + residentCatalog)`.
+// (see data/landmarks.js). The four blocks keep the drawn instance range
+// contiguous: `draw(4, global + landmarks + local + thinnedCatalog)`.
 // No hidden slots, no per-cell GPU allocation, no compaction pass.
 //
 // Frame cost: one 112-byte uniform write, one catalog buffer write (only when
@@ -24,24 +26,47 @@
 'use strict';
 
 const UNIFORM_FLOATS = 28;              // 112 bytes, see star-sprite WGSL
-const TONEMAP_UNIFORM_FLOATS = 4;       // 16 bytes, see tonemap WGSL (exposure + pad)
+// Tonemap uniform: x=exposure, y=whitePoint, z=saturation, w=outputMode (0=SDR, 1=HDR).
+const TONEMAP_UNIFORM_FLOATS = 4;
 const PROCEDURAL_STARS_DEFAULT = 300000;
 const CATALOG_BUDGET_DEFAULT = 250000;
-const BASE_SIZE_PX = 1.5;               // tighter than 2.2 — point sources at HD/4K
-const MAX_SIZE_PX = 16.0;              // matches the new (0.4, 2.0) size clamp
+const LOCAL_PROCEDURAL_DEFAULT = 20000; // gap-fill for density parity near the camera
+const BASE_SIZE_PX = 1.3;               // point sources
+const MAX_SIZE_PX = 14.0;
+const MIN_SIZE_PX = 0.8;                // never render a star smaller than this (prevents blink/pop)
+const MIN_ALPHA = 0.25;                 // faintest stars still render as a dim pixel, not zero
 const EXPOSURE_MIN = 0.0;
 const EXPOSURE_MAX = 40.0;
-const EXPOSURE_DEFAULT = 17.0;
+// Default mag-lim lowered from 17 to 12: at mag=17 the IMF floods the field
+// with 87% faint M-dwarfs (red), washing O/B stars out of the visual mix.
+// 12 gives a better default sky — bright blue/white/yellow stars are clearly
+// visible, M-dwarfs are still there but not dominating. Users can push [ to
+// go deeper.
+const EXPOSURE_DEFAULT = 12.0;
 const EXPOSURE_STEP = 0.75;
-// ACES output brightness: linear multiplier on the HDR buffer before the curve.
-// ; halves a stop (x0.707), ' doubles a stop (x1.414). Default 1.0 = the curve
-// sees the same value the sprites wrote.
+// Brightness = linear pre-multiplier before the filmic curve. ; / ' in
+// half-stop steps, slider is linear 0.125× → 8×.
 const LINEAR_EXPOSURE_DEFAULT = 1.0;
 const LINEAR_EXPOSURE_MIN = 0.125;
 const LINEAR_EXPOSURE_MAX = 8.0;
-const LINEAR_EXPOSURE_STEP = 1.0;      // each keypress is ±1 half-stop (×√2 or ×1/√2)
+const LINEAR_EXPOSURE_STEP = 1.0;      // ±1 half-stop per keypress
+// White point (scene luminance → display white). 1.0 = hard clip, 16 = lots
+// of headroom, colours stay saturated in clusters. Default 4.0 is an
+// aggressive but natural filmic default that shows the slider's effect
+// without clipping everything to white.
+const WHITE_POINT_DEFAULT = 4.0;
+const WHITE_POINT_MIN = 1.0;
+const WHITE_POINT_MAX = 16.0;
+// Saturation. The palette is authored with relatively muted colours
+// (blackbody chromaticities) so 1.0 looks natural; push to 2.0 for
+// Stellarium-like vivid blue/yellow/red, 3.0 maximum.
+const SATURATION_DEFAULT = 1.4;
+const SATURATION_MIN = 0.5;
+const SATURATION_MAX = 3.0;
 const MAX_FRAME_DT = 0.1;
-const HDR_DIRECT_FORMAT = 'rgba16float';   // matches the canvas format on the HDR direct path
+// HDR intermediate format — always used; on HDR displays the tonemap outputs
+// to an rgba16float swapchain too (same format).
+const HDR_INTERMEDIATE_FORMAT = 'rgba16float';
 
 // A cell manager must exist before a catalog is attached; this keeps the
 // renderer constructible in "procedural only" runs and in Node tests.
@@ -71,12 +96,16 @@ function createStarRenderer(device, context, format, options) {
         const seed = opts.seed === undefined ? 42 : opts.seed;
         const proceduralTarget = Math.max(0, opts.proceduralStars === undefined ? PROCEDURAL_STARS_DEFAULT : opts.proceduralStars);
         const catalogBudget = Math.max(0, opts.catalogBudgetStars === undefined ? CATALOG_BUDGET_DEFAULT : opts.catalogBudgetStars);
+        const localProceduralBudget = Math.max(0, opts.localProceduralStars === undefined ? LOCAL_PROCEDURAL_DEFAULT : opts.localProceduralStars);
 
-        // HDR direct path: when the canvas is configured as rgba16float +
-        // toneMapping:'extended', sprites write linear flux (multiplied by
-        // linearExposure) straight to the swapchain. No intermediate texture,
-        // no tonemap pass — the display handles the highlight rolloff.
-        const hdrDirect = !!opts.hdr;
+        // Output mode: SDR (bgra8unorm / rgba8unorm) clamps tonemap to [0,1];
+        // HDR (rgba16float + toneMapping:'extended') allows >1 so highlights
+        // reach the monitor's nit headroom. Both paths use the same additive
+        // rgba16float intermediate + tonemap pass — there is no "direct"
+        // sprite-to-swapchain path anymore, because skipping tonemap broke
+        // the white-point / saturation controls entirely on HDR displays.
+        const hdrOutput = opts.hdr === true;
+        const outputMode = hdrOutput ? 1.0 : 0.0;
 
         const maxStorageBytes = Math.min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize);
 
@@ -105,7 +134,14 @@ function createStarRenderer(device, context, format, options) {
         const lutTexture = device.createTexture({
                 label: 'star-color-lut',
                 size: [256, 1],
-                format: 'rgba8unorm',
+                // rgba8unorm-srgb: CLASS_COLORS are authored as sRGB bytes
+                // (the palette came from an sRGB reference); with the -srgb
+                // suffix the sampler linearises them on the way in so the
+                // additive sum in the HDR intermediate happens in linear
+                // light. Without this, M-type reds come out pink/salmon and
+                // blue stars look washed out because green/blue channels are
+                // read at gamma-compressed brightness.
+                format: 'rgba8unorm-srgb',
                 usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
         });
         device.queue.writeTexture(
@@ -143,57 +179,14 @@ function createStarRenderer(device, context, format, options) {
                 primitive: { topology: 'triangle-strip' },
         });
 
-        // --- HDR direct pipeline ----------------------------------------------
-        // When the canvas itself is rgba16float + toneMapping:'extended',
-        // sprites write linear flux * linearExposure directly to the swapchain.
-        // No intermediate texture, no tonemap pass — the display does the
-        // highlight rolloff. This is the path that actually exercises HDR
-        // output on HDR-capable hardware (Chrome 129+).
-        const hdrDirectModule = device.createShaderModule({
-                label: 'star-sprite-hdr',
-                code: window.GalaxyShaders.SHADERS['star-sprite-hdr'],
-        });
-        hdrDirectModule.getCompilationInfo().then((info) => {
-                for (const message of info.messages) {
-                        if (message.type !== 'error') continue;
-                        console.error('WGSL error in star-sprite-hdr:', `${message.lineNum}:${message.linePos} ${message.message}`);
-                }
-        }).catch(() => {});
-        const hdrDirectBindGroupLayout = device.createBindGroupLayout({
-                label: 'star-sprite-hdr-layout',
-                entries: [
-                        { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
-                        { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
-                        { binding: 2, visibility: GPUShaderStage.VERTEX, texture: { sampleType: 'float' } },
-                        { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-                ],
-        });
-        const hdrDirectPipeline = device.createRenderPipeline({
-                label: 'star-sprite-hdr-pipeline',
-                layout: device.createPipelineLayout({ bindGroupLayouts: [hdrDirectBindGroupLayout] }),
-                vertex: { module: hdrDirectModule, entryPoint: 'vs_main' },
-                fragment: {
-                        module: hdrDirectModule,
-                        entryPoint: 'fs_main',
-                        targets: [{
-                                format,
-                                // Same premultiplied additive blend as the SDR variant.
-                                blend: {
-                                        color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
-                                        alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
-                                },
-                        }],
-                },
-                primitive: { topology: 'triangle-strip' },
-        });
-        let hdrDirectBindGroup = null;
-
-        // --- HDR pipeline -----------------------------------------------------
-        // The star-sprite pass renders into an rgba16float intermediate; the
-        // tonemap pass samples it, applies ACES, and writes the swapchain.
-        // rgba16float is blendable per the WebGPU core spec, so no feature
-        // negotiation is needed and the additive blend state stays (one, one).
-        // The HDR texture is recreated on canvas resize.
+        // --- Tonemap pipeline ------------------------------------------------
+        // The tonemap ALWAYS runs. It reads the rgba16float additive
+        // intermediate, applies a Hable/Unreal filmic curve (luminance-only
+        // so hue is preserved), a saturation boost, and a filmic highlight
+        // desaturation that makes the brightest stars fade to white softly,
+        // then writes the swapchain. params.w selects SDR (clamp to [0,1])
+        // or HDR (allow values up to 8.0 for the extended-tone-mapping
+        // canvas).
         const tonemapModule = device.createShaderModule({
                 label: 'tonemap',
                 code: window.GalaxyShaders.SHADERS['tonemap'],
@@ -213,6 +206,9 @@ function createStarRenderer(device, context, format, options) {
         const tonemapUniformData = new ArrayBuffer(TONEMAP_UNIFORM_FLOATS * 4);
         const tonemapUniform = new Float32Array(tonemapUniformData);
         tonemapUniform[0] = LINEAR_EXPOSURE_DEFAULT;
+        tonemapUniform[1] = WHITE_POINT_DEFAULT;
+        tonemapUniform[2] = SATURATION_DEFAULT;
+        tonemapUniform[3] = outputMode;
 
         const tonemapBindGroupLayout = device.createBindGroupLayout({
                 label: 'tonemap-layout',
@@ -245,7 +241,7 @@ function createStarRenderer(device, context, format, options) {
                 hdrTexture = device.createTexture({
                         label: 'hdr-intermediate',
                         size: [width, height],
-                        format: HDR_DIRECT_FORMAT,
+                        format: HDR_INTERMEDIATE_FORMAT,
                         usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
                 });
                 hdrView = hdrTexture.createView();
@@ -281,7 +277,9 @@ function createStarRenderer(device, context, format, options) {
         const state = {
                 proceduralStars: 0,
                 landmarkStars: 0,
+                localProceduralStars: 0,
                 catalogResidentStars: 0,
+                catalogThinnedStars: 0,
                 catalogTotalStars: 0,
                 catalogCells: 0,
                 cellsResident: 0,
@@ -289,7 +287,9 @@ function createStarRenderer(device, context, format, options) {
                 drawn: 0,
                 magZero: EXPOSURE_DEFAULT,
                 linearExposure: LINEAR_EXPOSURE_DEFAULT,
-                hdrDirect,
+                whitePoint: WHITE_POINT_DEFAULT,
+                saturation: SATURATION_DEFAULT,
+                hdrOutput,
                 bufferBytes: 0,
                 clampedProcedural: false,
                 clampedCatalog: false,
@@ -298,11 +298,14 @@ function createStarRenderer(device, context, format, options) {
         // --- Exposure ---------------------------------------------------------
         // magZero is the apparent magnitude that maps to flux 1.0 in the vertex
         // shader (input dynamic range). linearExposure is the ACES pre-multiplier
-        // (output brightness). Two knobs: [ / ] shifts magZero to widen the
-        // visible magnitude range, ; / ' shifts linearExposure to brighten or
-        // dim the tonemapped result without re-rendering the sprites.
+        // (output brightness). whitePoint is the scene luminance that maps to
+        // display white — higher = more highlight headroom, less clipping.
+        // Three knobs: [ / ] shifts magZero, ; / ' shifts linearExposure, the
+        // settings menu slider shifts all three.
         let magZero = opts.magZero === undefined ? EXPOSURE_DEFAULT : opts.magZero;
         let linearExposure = opts.linearExposure === undefined ? LINEAR_EXPOSURE_DEFAULT : opts.linearExposure;
+        let whitePoint = opts.whitePoint === undefined ? WHITE_POINT_DEFAULT : opts.whitePoint;
+        let saturation = opts.saturation === undefined ? SATURATION_DEFAULT : opts.saturation;
 
         function setExposure(value) {
                 magZero = Math.max(EXPOSURE_MIN, Math.min(EXPOSURE_MAX, value));
@@ -316,18 +319,38 @@ function createStarRenderer(device, context, format, options) {
                 return linearExposure;
         }
 
+        function setWhitePoint(value) {
+                whitePoint = Math.max(WHITE_POINT_MIN, Math.min(WHITE_POINT_MAX, value));
+                state.whitePoint = whitePoint;
+                return whitePoint;
+        }
+
+        function setSaturation(value) {
+                saturation = Math.max(SATURATION_MIN, Math.min(SATURATION_MAX, value));
+                state.saturation = saturation;
+                return saturation;
+        }
+
+        // Local procedural gap-fill count (set each rebuild, capped at budget).
+        let localProceduralCount = 0;
+        let localProceduralCapacity = localProceduralBudget;
+        let localProceduralByteOffset = 0;
+
         // --- Build ------------------------------------------------------------
         function allocate(procedural, catalog) {
                 if (starBuffer) starBuffer.destroy();
                 proceduralCount = procedural;
                 catalogCapacity = catalog;
-                const totalBytes = (proceduralCount + landmarkCount + catalogCapacity) * records.RECORD_BYTES;
+                localProceduralCapacity = localProceduralBudget;
+                const totalRecords = proceduralCount + landmarkCount + localProceduralCapacity + catalogCapacity;
+                const totalBytes = totalRecords * records.RECORD_BYTES;
                 if (totalBytes > maxStorageBytes) {
                         throw new Error(`Star buffer of ${(totalBytes / 1048576).toFixed(1)} MB exceeds the device limit of ${(maxStorageBytes / 1048576).toFixed(1)} MB`);
                 }
                 staging = new ArrayBuffer(Math.max(records.RECORD_BYTES, totalBytes));
                 landmarkByteOffset = proceduralCount * records.RECORD_BYTES;
-                catalogByteOffset = (proceduralCount + landmarkCount) * records.RECORD_BYTES;
+                localProceduralByteOffset = (proceduralCount + landmarkCount) * records.RECORD_BYTES;
+                catalogByteOffset = (proceduralCount + landmarkCount + localProceduralCapacity) * records.RECORD_BYTES;
                 starBuffer = device.createBuffer({
                         label: 'star-storage',
                         size: Math.max(16, totalBytes),
@@ -340,19 +363,6 @@ function createStarRenderer(device, context, format, options) {
                                 { binding: 0, resource: { buffer: uniformBuffer } },
                                 { binding: 1, resource: { buffer: starBuffer } },
                                 { binding: 2, resource: lutTexture.createView() },
-                        ],
-                });
-                // The HDR direct bind group adds the linearExposure uniform at
-                // binding 3. Created lazily: the tonemapUniformBuffer exists
-                // before this is called (renderer init order).
-                hdrDirectBindGroup = device.createBindGroup({
-                        label: 'star-sprite-hdr-bind-group',
-                        layout: hdrDirectBindGroupLayout,
-                        entries: [
-                                { binding: 0, resource: { buffer: uniformBuffer } },
-                                { binding: 1, resource: { buffer: starBuffer } },
-                                { binding: 2, resource: lutTexture.createView() },
-                                { binding: 3, resource: { buffer: tonemapUniformBuffer } },
                         ],
                 });
                 state.bufferBytes = totalBytes;
@@ -395,6 +405,11 @@ function createStarRenderer(device, context, format, options) {
                 return landmarkCount;
         }
 
+        // Target total stars (procedural + catalog) for density parity
+        // normalization. Passed down to the cell manager so expected per-cell
+        // counts match what the global procedural field delivers.
+        const targetStars = opts.targetStars || (proceduralTarget + catalogBudget);
+
         function attachCatalog(manifest) {
                 state.catalogTotalStars = manifest.starCount;
                 state.catalogCells = manifest.cellCount;
@@ -403,6 +418,7 @@ function createStarRenderer(device, context, format, options) {
                 catalogCapacity = capacity;
                 manager = window.CellManager.createCellManager(manifest, {
                         budgetStars: catalogBudget,
+                        targetStars,
                         bandRadius: opts.bandRadius,
                 });
                 return capacity;
@@ -410,13 +426,14 @@ function createStarRenderer(device, context, format, options) {
 
         // One-shot setup: allocate, generate, upload, expose. Procedural field and
         // landmarks are both fixed for the life of the renderer, so they share one
-        // upload.
+        // upload. Local procedural gap-fill + catalog are uploaded per-rebuild.
         function prepare(manifest) {
                 const catalog = manifest ? attachCatalog(manifest) : 0;
                 let procedural = proceduralTarget;
                 const maxRecords = Math.floor(maxStorageBytes / records.RECORD_BYTES);
-                if (procedural + landmarkCount + catalog > maxRecords) {
-                        procedural = Math.max(0, maxRecords - landmarkCount - catalog);
+                const fixedOverhead = landmarkCount + localProceduralBudget;
+                if (procedural + fixedOverhead + catalog > maxRecords) {
+                        procedural = Math.max(0, maxRecords - fixedOverhead - catalog);
                         state.clampedProcedural = true;
                 }
                 allocate(procedural, catalog);
@@ -427,19 +444,103 @@ function createStarRenderer(device, context, format, options) {
                 return state;
         }
 
-        // Rewrite the catalog region of the staging buffer and upload it. Only
-        // called when the resident set changed (a cell boundary crossing).
-        function uploadCatalog() {
-                const bytes = manager.writeInto(new Uint8Array(staging, catalogByteOffset), 0);
-                catalogResident = bytes / records.RECORD_BYTES;
-                if (catalogResident > 0) {
-                        device.queue.writeBuffer(starBuffer, catalogByteOffset, staging, catalogByteOffset, bytes);
+        // --- Local procedural gap-fill ----------------------------------------
+        // Generate N stable stars inside a cell AABB, used to bring each
+        // streaming cell up to its expected density when the catalog is too
+        // sparse. Keyed on (localSeed, cellId, slot) so the same camera position
+        // always produces the same stars (no popping).
+        const localSeed = (seed | 0) ^ 0x10ca1cab;
+        const localHash = window.HashLib;
+        const localStarTypes = window.StarTypesLib;
+        const localDerived = {};
+
+        function writeLocalProceduralStars(cellList, view, byteOffset) {
+                let slot = 0;
+                const bytesPerRecord = records.RECORD_BYTES;
+                for (const cell of cellList) {
+                        const n = cell.fillNeeded;
+                        if (n <= 0) continue;
+                        const ox = cell.x0, oy = cell.y0, oz = cell.z0;
+                        const cs = cell.size;
+                        for (let i = 0; i < n; i++) {
+                                const slotSeed = Math.imul(localSeed, 0x9e3779b1)
+                                        ^ Math.imul(cell.id, 0x85ebca6b)
+                                        ^ Math.imul(i + 1, 0xc2b2ae3d);
+                                const u0 = localHash.hash01At(slotSeed, 0);
+                                const u1 = localHash.hash01At(slotSeed, 1);
+                                const u2 = localHash.hash01At(slotSeed, 2);
+                                // Position: uniform jitter inside the cell AABB.
+                                const sx = ox + u0 * cs;
+                                const sy = oy + u1 * cs;
+                                const sz = oz + u2 * cs;
+                                // Derive component / colour / magnitude from the
+                                // density at the star's position — same pipeline
+                                // the global field uses.
+                                const decomposed = window.DensityLib.rhoDecomposed(sx, sy, sz);
+                                const component = window.DensityLib.sampleComponentIndex(decomposed, localHash.hash01At(slotSeed, 3));
+                                const R = decomposed.R;
+                                const distToArm = decomposed.distToArm;
+                                const deriveSeed = Math.imul(slotSeed, 31) + 5;
+                                localStarTypes.deriveStar(deriveSeed, component, R, distToArm, localDerived);
+                                const jitter = localHash.pcgHash(slotSeed ^ 0xFACE) & 0xFF;
+                                records.writeRecord(
+                                        view, byteOffset + slot * bytesPerRecord,
+                                        sx, sy, sz,
+                                        localDerived.colorIndex, localDerived.absMag,
+                                        records.FLAG_VISIBLE, jitter,
+                                );
+                                slot++;
+                        }
                 }
+                return slot;
+        }
+
+        // --- Catalog + local-procedural upload on rebuild ---------------------
+        // Ask the cell manager for the current resident cells, thin the catalog
+        // bytes to match expected density per cell, then fill in any per-cell
+        // gap with local procedural stars, then upload both regions.
+        function uploadDynamic() {
+                const info = manager.getResidentInfo
+                        ? manager.getResidentInfo()
+                        : { cells: [], totalCatalogBytes: 0, totalVisibleCatalog: 0 };
+
+                // 1) Zero the dynamic region in the staging buffer so slots we
+                // no longer use don't carry old star data (no FLAG_VISIBLE set
+                // means the shader skips them via the MASK_VISIBLE guard, but we
+                // zero them anyway for cleanliness / debug).
+                const dynamicCapacity = (localProceduralCapacity + catalogCapacity) * records.RECORD_BYTES;
+                const dynRegion = new Uint8Array(staging, localProceduralByteOffset, dynamicCapacity);
+                dynRegion.fill(0);
+
+                // 2) Write local procedural gap-fill (after landmarks).
+                const localView = new DataView(staging, localProceduralByteOffset, localProceduralCapacity * records.RECORD_BYTES);
+                const localCount = writeLocalProceduralStars(info.cells, localView, 0);
+                localProceduralCount = Math.min(localCount, localProceduralCapacity);
+
+                // 3) Write catalog (decoded + thinned by cell manager; writeInto
+                // returns the number of thinned, visible bytes).
+                const catBytes = new Uint8Array(staging, catalogByteOffset, catalogCapacity * records.RECORD_BYTES);
+                const catalogBytes = manager.writeInto(catBytes, 0);
+                catalogResident = catalogBytes / records.RECORD_BYTES;
+
+                // 4) Upload the dynamic range (local + catalog) in one write.
+                const dynamicBytes = (localProceduralCount * records.RECORD_BYTES) + catalogBytes;
+                if (dynamicBytes > 0) {
+                        device.queue.writeBuffer(starBuffer, localProceduralByteOffset,
+                                staging, localProceduralByteOffset, dynamicBytes);
+                }
+
+                // 4) If the local region is smaller than its capacity, zero out
+                // the remaining slots by marking FLAG_VISIBLE off so they don't
+                // draw. We only need to clear if we shrank; first frame writes
+                // zeros from the fresh ArrayBuffer.
                 const stats = manager.stats();
                 state.cellsResident = stats.cellsResident;
                 state.decodedBytes = stats.decodedBytes;
                 state.catalogResidentStars = catalogResident;
-                return catalogResident;
+                state.catalogThinnedStars = stats.visibleStars || catalogResident;
+                state.localProceduralStars = localProceduralCount;
+                return { localCount, catalogResident };
         }
 
         // --- Frame ------------------------------------------------------------
@@ -462,10 +563,14 @@ function createStarRenderer(device, context, format, options) {
                         }
                 }
 
+                let dynamicChanged = false;
                 if (state.catalogTotalStars > 0) {
                         const update = manager.update(camera.cameraPos[0], camera.cameraPos[1], camera.cameraPos[2], dt);
-                        if (update.changed) uploadCatalog();
+                        dynamicChanged = update.changed;
                 }
+                // uploadDynamic writes both local gap-fill and thinned catalog.
+                // With no catalog it is a no-op (no cells, nothing to fill).
+                if (dynamicChanged) uploadDynamic();
 
                 const viewProj = camera.buildViewProj(width / height);
                 uniform.set(viewProj, 0);
@@ -484,42 +589,21 @@ function createStarRenderer(device, context, format, options) {
                 device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
                 tonemapUniform[0] = linearExposure;
+                tonemapUniform[1] = whitePoint;
+                tonemapUniform[2] = saturation;
+                tonemapUniform[3] = outputMode;
                 device.queue.writeBuffer(tonemapUniformBuffer, 0, tonemapUniformData);
 
-                // The pass runs even when nothing is drawn: an empty frame still
-                // has to clear the canvas, and draw(.., 0) is free.
-                const instances = state.proceduralStars + landmarkCount + catalogResident;
+                const instances = state.proceduralStars + landmarkCount + localProceduralCount + catalogResident;
                 state.drawn = instances;
 
                 const encoder = device.createCommandEncoder({ label: 'star-frame' });
 
-                if (hdrDirect) {
-                        // HDR direct path: sprites write linear flux * linearExposure
-                        // straight to the rgba16float swapchain. No intermediate,
-                        // no tonemap — the display does the rolloff via
-                        // toneMapping:'extended'.
-                        const pass = encoder.beginRenderPass({
-                                label: 'star-sprites-hdr',
-                                colorAttachments: [{
-                                        view: context.getCurrentTexture().createView(),
-                                        clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
-                                        loadOp: 'clear',
-                                        storeOp: 'store',
-                                }],
-                        });
-                        pass.setPipeline(hdrDirectPipeline);
-                        pass.setBindGroup(0, hdrDirectBindGroup);
-                        pass.draw(4, instances, 0, 0);
-                        pass.end();
-                        device.queue.submit([encoder.finish()]);
-                        return;
-                }
-
                 ensureHdrTexture(width, height);
 
                 // Pass 1: additive sprites into the rgba16float HDR intermediate.
-                // Linear flux sums without per-star saturation; ACES rolls off
-                // the sum once in pass 2.
+                // Linear flux sums in linear light — no per-star clamping, no
+                // per-star Reinhard. The filmic curve rolls off the sum in pass 2.
                 const starPass = encoder.beginRenderPass({
                         label: 'star-sprites',
                         colorAttachments: [{
@@ -533,13 +617,19 @@ function createStarRenderer(device, context, format, options) {
                 starPass.setBindGroup(0, bindGroup);
                 starPass.draw(4, instances, 0, 0);
                 starPass.end();
-                // Pass 2: fullscreen ACES tone-map into the swapchain. No blend,
-                // alpha = 1.0 (swapchain is opaque).
+
+                // Pass 2: fullscreen tone-map into the swapchain. No blend,
+                // alpha = 1.0. On SDR output is clamped [0,1] and the canvas
+                // encodes sRGB; on HDR values can exceed 1.0 for the
+                // extended-tone-mapping swapchain.
+                const bg = hdrOutput
+                        ? { r: 0.0001, g: 0.0002, b: 0.0005, a: 1.0 }
+                        : { r: 0.008, g: 0.010, b: 0.020, a: 1.0 };
                 const tonemapPass = encoder.beginRenderPass({
                         label: 'tonemap',
                         colorAttachments: [{
                                 view: context.getCurrentTexture().createView(),
-                                clearValue: { r: 0.008, g: 0.010, b: 0.020, a: 1.0 },
+                                clearValue: bg,
                                 loadOp: 'clear',
                                 storeOp: 'store',
                         }],
@@ -564,6 +654,8 @@ function createStarRenderer(device, context, format, options) {
                 render,
                 setExposure,
                 setLinearExposure,
+                setWhitePoint,
+                setSaturation,
                 dispose,
                 state,
                 stats: () => state,
@@ -573,10 +665,13 @@ function createStarRenderer(device, context, format, options) {
 
 const StarRenderer = {
         createStarRenderer, EMPTY_MANIFEST, UNIFORM_FLOATS, TONEMAP_UNIFORM_FLOATS,
-        PROCEDURAL_STARS_DEFAULT, CATALOG_BUDGET_DEFAULT,
-        BASE_SIZE_PX, MAX_SIZE_PX, EXPOSURE_DEFAULT, EXPOSURE_STEP,
+        PROCEDURAL_STARS_DEFAULT, CATALOG_BUDGET_DEFAULT, LOCAL_PROCEDURAL_DEFAULT,
+        BASE_SIZE_PX, MAX_SIZE_PX, MIN_SIZE_PX, MIN_ALPHA, EXPOSURE_DEFAULT, EXPOSURE_STEP,
         LINEAR_EXPOSURE_DEFAULT, LINEAR_EXPOSURE_MIN, LINEAR_EXPOSURE_MAX,
-        LINEAR_EXPOSURE_STEP, HDR_DIRECT_FORMAT,
+        LINEAR_EXPOSURE_STEP,
+        WHITE_POINT_DEFAULT, WHITE_POINT_MIN, WHITE_POINT_MAX,
+        SATURATION_DEFAULT, SATURATION_MIN, SATURATION_MAX,
+        HDR_INTERMEDIATE_FORMAT,
 };
 if (typeof module !== 'undefined') module.exports = StarRenderer;
 if (typeof window !== 'undefined') window.StarRenderer = StarRenderer;

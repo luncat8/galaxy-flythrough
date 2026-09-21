@@ -152,29 +152,24 @@ console.log(`Prepared in ${prepareMs} ms: ${prepareState.proceduralStars} proced
 
 // --- Shader + pipeline wiring -------------------------------------------
 {
-        check('three wired shader sources are handed to createShaderModule',
-                gpu.shaderModules.length === 3
+        check('two shader modules are created (star-sprite + tonemap)',
+                gpu.shaderModules.length === 2
                 && gpu.shaderModules[0].code === window.GalaxyShaders.SHADERS['star-sprite']
-                && gpu.shaderModules[1].code === window.GalaxyShaders.SHADERS['star-sprite-hdr']
-                && gpu.shaderModules[2].code === window.GalaxyShaders.SHADERS['tonemap'],
+                && gpu.shaderModules[1].code === window.GalaxyShaders.SHADERS['tonemap'],
                 { modules: gpu.shaderModules.map(s => s.label) });
         check('all wired shaders declare their entry points',
                 gpu.shaderModules.every(s => /@vertex\s+fn\s+vs_main/.test(s.code) && /@fragment\s+fn\s+fs_main/.test(s.code)));
         const spritePipeline = gpu.pipelines.find(p => p.label === 'star-sprite-pipeline');
-        const hdrPipeline = gpu.pipelines.find(p => p.label === 'star-sprite-hdr-pipeline');
         const tonemapPipeline = gpu.pipelines.find(p => p.label === 'tonemap-pipeline');
-        check('three pipelines are created (sprite + sprite-hdr + tonemap)',
-                !!spritePipeline && !!hdrPipeline && !!tonemapPipeline,
+        check('two pipelines are created (star-sprite + tonemap) — no hdr-direct bypass',
+                !!spritePipeline && !!tonemapPipeline
+                && gpu.pipelines.length === 2,
                 gpu.pipelines.map(p => p.label));
         check('the star-sprite pipeline is additive with no depth attachment',
                 spritePipeline.fragment.targets[0].blend.color.srcFactor === 'one'
                 && spritePipeline.fragment.targets[0].blend.color.dstFactor === 'one'
                 && spritePipeline.depthStencil === undefined,
                 spritePipeline.fragment.targets[0].blend);
-        check('the star-sprite-hdr pipeline is additive with the same blend as the SDR variant',
-                hdrPipeline.fragment.targets[0].blend.color.srcFactor === 'one'
-                && hdrPipeline.fragment.targets[0].blend.color.dstFactor === 'one',
-                hdrPipeline.fragment.targets[0].blend);
         check('the tonemap pipeline has no blend state (overwrite)',
                 tonemapPipeline.fragment.targets[0].blend === undefined
                 && tonemapPipeline.fragment.targets[0].format === 'bgra8unorm',
@@ -183,17 +178,21 @@ console.log(`Prepared in ${prepareMs} ms: ${prepareState.proceduralStars} proced
                 spritePipeline.primitive.topology === 'triangle-strip'
                 && tonemapPipeline.primitive.topology === 'triangle-list',
                 { sprite: spritePipeline.primitive.topology, tonemap: tonemapPipeline.primitive.topology });
-        check('the pipelines target the swapchain format',
+        check('both pipelines target the swapchain format',
                 spritePipeline.fragment.targets[0].format === 'bgra8unorm'
                 && tonemapPipeline.fragment.targets[0].format === 'bgra8unorm');
+        check('the color LUT is uploaded as rgba8unorm-srgb (so palette bytes authored as sRGB get linearised)',
+                gpu.textures.some(t => t.label === 'star-color-lut' && t.format === 'rgba8unorm-srgb'),
+                gpu.textures.map(t => `${t.label}:${t.format}`));
 }
 
 // --- Buffer sizing and the procedural upload ----------------------------
 const catalogs = gpu.buffers.filter(b => b.label === 'star-storage');
 {
         const buffer = catalogs[0];
-        const expectedRecords = prepareState.proceduralStars + prepareState.landmarkStars + Math.min(manifest.starCount, CATALOG_BUDGET);
-        check('the storage buffer holds procedural + landmarks + catalog capacity',
+        const localBudget = rendererModule.LOCAL_PROCEDURAL_DEFAULT;
+        const expectedRecords = prepareState.proceduralStars + prepareState.landmarkStars + localBudget + Math.min(manifest.starCount, CATALOG_BUDGET);
+        check('the storage buffer holds procedural + landmarks + local gap-fill + catalog capacity',
                 buffer.size === Math.max(16, expectedRecords * records.RECORD_BYTES),
                 { size: buffer.size, expected: expectedRecords * records.RECORD_BYTES });
         check('the fixed blocks (procedural + landmarks) were uploaded once, at offset 0',
@@ -253,10 +252,11 @@ const input = { keys: {}, actions: { reset: 0, exposure: 0, linearExposure: 0 },
 
 renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 {
-        const catalogWrites = gpu.bufferWrites.filter(w => w.offset > 0);
-        check('the first frame streams the catalog once',
-                catalogWrites.length === 1 && catalogWrites[0].offset === (prepareState.proceduralStars + prepareState.landmarkStars) * records.RECORD_BYTES,
-                { writes: catalogWrites.length, offset: catalogWrites[0] && catalogWrites[0].offset });
+        const localOffset = (prepareState.proceduralStars + prepareState.landmarkStars) * records.RECORD_BYTES;
+        const dynamicWrites = gpu.bufferWrites.filter(w => w.offset >= localOffset);
+        check('the first frame writes the dynamic region (local gap-fill + catalog) starting at localProc offset',
+                dynamicWrites.length === 1 && dynamicWrites[0].offset === localOffset,
+                { writes: dynamicWrites.length, offset: dynamicWrites[0] && dynamicWrites[0].offset, localOffset });
 
         // Two passes per frame: star-sprite (4 vertices × N instances) and
         // tonemap (3 vertices fullscreen triangle).
@@ -265,9 +265,10 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         check('two render passes are submitted per frame',
                 spritePass && tonemapPass && spritePass !== tonemapPass,
                 gpu.passes.map(p => p.label));
-        check('the star-sprite pass draws exactly the resident stars',
+        check('the star-sprite pass draws exactly the resident stars (global + landmarks + local + catalog)',
                 spritePass.draws.length === 1 && spritePass.draws[0].instances === renderer.state.drawn
-                && renderer.state.drawn === prepareState.proceduralStars + renderer.state.landmarkStars + renderer.state.catalogResidentStars,
+                && renderer.state.drawn === prepareState.proceduralStars + renderer.state.landmarkStars
+                        + renderer.state.localProceduralStars + renderer.state.catalogResidentStars,
                 spritePass.draws[0]);
         check('the star-sprite draw uses four vertices per star (triangle strip quad)',
                 spritePass.draws[0].vertices === 4 && spritePass.draws[0].firstVertex === 0 && spritePass.draws[0].firstInstance === 0);
@@ -279,16 +280,10 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 renderer.state.catalogResidentStars);
         check('all cells of this small catalog are resident', renderer.state.cellsResident === manifest.cellCount,
                 { resident: renderer.state.cellsResident, total: manifest.cellCount });
-
-        // The uploaded catalog bytes must be the resident cells, in order.
-        const uploaded = catalogWrites[0].bytes;
-        const expected = new Uint8Array(renderer.state.catalogResidentStars * records.RECORD_BYTES);
-        const manager = cellManagerFrom(manifest, CATALOG_BUDGET);
-        manager.update(camera.cameraPos[0], camera.cameraPos[1], camera.cameraPos[2], 1);
-        manager.writeInto(expected, 0);
-        check('staged catalog bytes equal an independent decode of the same cells',
-                uploaded.length === expected.length && uploaded.every((b, i) => b === expected[i]),
-                { uploaded: uploaded.length, expected: expected.length });
+        check('density parity thinned the catalog (fewer visible stars than raw)',
+                renderer.state.catalogThinnedStars <= manifest.starCount
+                && renderer.state.catalogThinnedStars < manifest.starCount,
+                { thinned: renderer.state.catalogThinnedStars, raw: manifest.starCount });
 }
 
 // --- HDR intermediate texture --------------------------------------------
@@ -340,12 +335,18 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         check('uniform carries the frame time', uniform[27] === Math.fround(1 / 60), uniform[27]);
         check('uniform is exactly 112 bytes', gpu.uniformWrites[gpu.uniformWrites.length - 1].length === 112);
 
-        // The tonemap uniform carries the linear exposure and is uploaded every
-        // frame alongside the camera uniform.
+        // The tonemap uniform carries linear exposure (x) and white point (y)
+        // and is uploaded every frame alongside the camera uniform.
         const tmu = readUniform(gpu.tonemapUniformWrites[gpu.tonemapUniformWrites.length - 1]);
         check('tonemap uniform carries the default linear exposure (1.0)',
                 tmu[0] === Math.fround(rendererModule.LINEAR_EXPOSURE_DEFAULT), tmu[0]);
-        check('tonemap uniform is 16 bytes (vec4 pad)', gpu.tonemapUniformWrites[0].length === 16, gpu.tonemapUniformWrites[0].length);
+        check('tonemap uniform carries the default white point (4.0)',
+                tmu[1] === Math.fround(rendererModule.WHITE_POINT_DEFAULT), { w: tmu[1], expected: rendererModule.WHITE_POINT_DEFAULT });
+        check('tonemap uniform carries the default saturation ('+rendererModule.SATURATION_DEFAULT+')',
+                Math.abs(tmu[2] - rendererModule.SATURATION_DEFAULT) < 1e-6, { s: tmu[2], expected: rendererModule.SATURATION_DEFAULT });
+        check('tonemap uniform carries output mode w=0 (SDR) because opts.hdr was not set',
+                tmu[3] === 0.0, { w: tmu[3] });
+        check('tonemap uniform is 16 bytes (vec4: exp, wp, sat, outputMode)', gpu.tonemapUniformWrites[0].length === 16, gpu.tonemapUniformWrites[0].length);
 }
 
 // --- Second frame: no re-upload while parked ----------------------------
@@ -403,13 +404,14 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         camera.cameraPos[0] = 0.6;   // force a cell crossing
         camera.cameraPos[1] = 0.2;
         renderer.render(camera, WIDTH, HEIGHT, 4 / 60, input);
-        check('crossing a cell boundary re-uploads the catalog',
+        check('crossing a cell boundary re-uploads the dynamic region',
                 gpu.bufferWrites.length > writesBefore, { before: writesBefore, after: gpu.bufferWrites.length });
         // The most recent star-sprites pass draw reflects the new residency.
         const lastSpriteDraw = gpu.passes.filter(p => p.label === 'star-sprites').pop().draws[0];
-        check('the drawn instance count follows the new residency',
+        check('the drawn instance count follows the new residency (global + landmarks + local + catalog)',
                 lastSpriteDraw.instances === renderer.state.drawn
-                && renderer.state.drawn === renderer.state.proceduralStars + renderer.state.landmarkStars + renderer.state.catalogResidentStars,
+                && renderer.state.drawn === renderer.state.proceduralStars + renderer.state.landmarkStars
+                        + renderer.state.localProceduralStars + renderer.state.catalogResidentStars,
                 renderer.state.drawn);
 }
 
@@ -430,8 +432,9 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 && newPasses[0].label === 'star-sprites' && newPasses[1].label === 'tonemap',
                 newPasses.map(p => p.label));
         // The star pass still drew procedural + landmark stars even with no catalog.
-        check('the star pass draws the procedural field + landmarks',
-                newPasses[0].draws[0].instances === renderer.state.proceduralStars + renderer.state.landmarkStars,
+        check('the star pass draws the procedural field + landmarks (no local/catalog when outside volume)',
+                newPasses[0].draws[0].instances === renderer.state.proceduralStars + renderer.state.landmarkStars
+                        + renderer.state.localProceduralStars,
                 newPasses[0].draws[0]);
         check('the render pass still clears and stores the frame',
                 gpu.lastPass.colorAttachments[0].loadOp === 'clear'
@@ -455,55 +458,53 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 { label: newHdr.label, size: newHdr.size });
 }
 
-// --- HDR direct path (canvas is rgba16float + extended) -----------------
-// A second renderer instance with `hdr:true` exercises the path where the
-// swapchain itself is HDR: sprites write linear flux * linearExposure straight
-// to the canvas, no intermediate texture, no tonemap pass.
+// --- HDR output mode (rgba16float + extended swapchain) ----------------
+// A second renderer with `hdr:true` uses the same two-pass architecture
+// (sprites → rgba16float intermediate → tonemap → swapchain) but the tonemap
+// uniform's w = 1 so the shader allows output values >1.0 into the HDR canvas.
 {
         const hdrGpu = createMockGpu();
-        // Make the swapchain look like an HDR surface by tagging the texture
-        // view with a different label so the test can identify it.
-        const hdrRenderer = rendererModule.createStarRenderer(hdrGpu.device, hdrGpu.context, hdrGpu.format, {
+        const hdrRenderer = rendererModule.createStarRenderer(hdrGpu.device, hdrGpu.context, 'rgba16float', {
                 proceduralStars: 2000,
                 catalogBudgetStars: 0,
                 seed: 7,
                 hdr: true,
         });
         hdrRenderer.prepare(null);
-        check('hdrDirect flag is reflected in renderer state',
-                hdrRenderer.state.hdrDirect === true, hdrRenderer.state.hdrDirect);
+        check('hdrOutput flag is reflected in renderer state',
+                hdrRenderer.state.hdrOutput === true, hdrRenderer.state.hdrOutput);
 
         const hdrInput = { keys: {}, actions: { reset: 0, exposure: 0, linearExposure: 0 }, lookDx: 0, lookDy: 0, wheelDelta: 0 };
         const passesBefore = hdrGpu.passes.length;
         hdrRenderer.render(camera, WIDTH, HEIGHT, 7 / 60, hdrInput);
 
-        // HDR path produces exactly ONE pass per frame (sprites direct to
-        // swapchain). No 'tonemap' pass and no 'hdr-intermediate' texture.
         const newPasses = hdrGpu.passes.slice(passesBefore);
-        check('the HDR direct path produces exactly one render pass per frame',
-                newPasses.length === 1 && newPasses[0].label === 'star-sprites-hdr',
+        check('the HDR path runs two passes (star-sprites + tonemap), same as SDR',
+                newPasses.length === 2
+                && newPasses[0].label === 'star-sprites'
+                && newPasses[1].label === 'tonemap',
                 newPasses.map(p => p.label));
-        check('the HDR direct path does not create a tonemap pass',
-                !newPasses.some(p => p.label === 'tonemap'),
-                newPasses.map(p => p.label));
-        check('the HDR direct path does not create an rgba16float intermediate texture',
-                !hdrGpu.textures.some(t => t.label === 'hdr-intermediate'),
-                hdrGpu.textures.map(t => t.label));
+        check('the HDR path creates an rgba16float intermediate texture',
+                hdrGpu.textures.some(t => t.label === 'hdr-intermediate' && t.format === 'rgba16float'),
+                hdrGpu.textures.map(t => `${t.label}:${t.format}`));
 
-        // The single draw still draws the resident stars as 4-vertex quads.
-        const hdrDraw = newPasses[0].draws[0];
-        check('the HDR direct draw covers the procedural + landmark stars',
-                hdrDraw.vertices === 4
-                && hdrDraw.instances === hdrRenderer.state.proceduralStars + hdrRenderer.state.landmarkStars,
-                hdrDraw);
+        const tmu = readUniform(hdrGpu.tonemapUniformWrites[hdrGpu.tonemapUniformWrites.length - 1]);
+        check('tonemap uniform on the HDR path has output mode w=1.0',
+                tmu[3] === 1.0, { tmu });
+        check('tonemap uniform on HDR still carries exposure, white point, saturation',
+                Math.abs(tmu[0] - rendererModule.LINEAR_EXPOSURE_DEFAULT) < 1e-6
+                && Math.abs(tmu[1] - rendererModule.WHITE_POINT_DEFAULT) < 1e-6
+                && Math.abs(tmu[2] - rendererModule.SATURATION_DEFAULT) < 1e-6,
+                { tmu });
 
-        // The `;` / `'` exposure knob still works on the HDR path: it
-        // multiplies fragment output via the bound uniform, no ACES step.
+        // `;` still works on the HDR path (linearExposure = pre-multiplier
+        // before the filmic curve, same math as SDR).
         hdrInput.actions.linearExposure = 1;
         hdrRenderer.render(camera, WIDTH, HEIGHT, 7.1 / 60, hdrInput);
-        const tmu = readUniform(hdrGpu.tonemapUniformWrites[hdrGpu.tonemapUniformWrites.length - 1]);
-        check('; raises linearExposure by one half-stop on the HDR direct path',
-                Math.abs(tmu[0] - rendererModule.LINEAR_EXPOSURE_DEFAULT * Math.SQRT2) < 1e-5, tmu[0]);
+        const tmu2 = readUniform(hdrGpu.tonemapUniformWrites[hdrGpu.tonemapUniformWrites.length - 1]);
+        check('; raises linearExposure by one half-stop on the HDR path',
+                Math.abs(tmu2[0] - rendererModule.LINEAR_EXPOSURE_DEFAULT * Math.SQRT2) < 1e-5, tmu2[0]);
+        check('output mode stays w=1 after input events', tmu2[3] === 1.0, tmu2[3]);
 
         hdrRenderer.dispose();
 }

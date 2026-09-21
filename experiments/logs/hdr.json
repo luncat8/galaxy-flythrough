@@ -1,59 +1,56 @@
 {
-  "date": "2026-09-20T10:57:41.696Z",
+  "date": "2026-09-21T06:49:09.882Z",
   "consts": {
-    "a": 2.51,
-    "b": 0.03,
-    "c": 2.43,
-    "d": 0.59,
-    "e": 0.14
+    "A": 0.15,
+    "B": 0.5,
+    "C": 0.1,
+    "D": 0.2,
+    "E": 0.02,
+    "F": 0.3
   },
-  "totalChecks": 17,
-  "passed": 17,
+  "totalChecks": 16,
+  "passed": 16,
   "failed": 0,
   "checks": [
     {
       "name": "the tonemap shader part exists and is non-trivial",
       "pass": true,
-      "detail": 2166
+      "detail": 5707
     },
     {
-      "name": "the tonemap shader exposes the five ACES constants a-e",
+      "name": "the tonemap shader exposes the six Hable/Unreal constants A–F",
       "pass": true,
       "detail": {
-        "a": 2.51,
-        "b": 0.03,
-        "c": 2.43,
-        "d": 0.59,
-        "e": 0.14
+        "A": 0.15,
+        "B": 0.5,
+        "C": 0.1,
+        "D": 0.2,
+        "E": 0.02,
+        "F": 0.3
       }
     },
     {
-      "name": "f(0) = 0 exactly",
+      "name": "f(0) ≈ 0 (toe at zero)",
       "pass": true,
       "detail": 0
     },
     {
-      "name": "f(1) ≈ 0.8 (filmic mid-grey)",
-      "pass": true,
-      "detail": 0.8037974683544302
-    },
-    {
-      "name": "f(16.3) ≈ 1.0 (implicit white point)",
+      "name": "f(1) = 1 (white point maps to display white)",
       "pass": true,
       "detail": 1
     },
     {
-      "name": "output is bounded to [0, 1] for very large input",
+      "name": "f(1000) is finite and ≤ HDR ceiling (8.0)",
       "pass": true,
-      "detail": 1
+      "detail": 4.21623497705766
     },
     {
-      "name": "output stays in [0, 1] for negative input (clamp)",
+      "name": "output is non-negative for negative input (clamped at 0)",
       "pass": true,
-      "detail": 1
+      "detail": 0
     },
     {
-      "name": "the curve is monotonically non-decreasing on [0, 100]",
+      "name": "the curve is monotonically non-decreasing on [0, 200]",
       "pass": true
     },
     {
@@ -64,21 +61,21 @@
       "name": "five overlapping stars are brighter than one",
       "pass": true,
       "detail": {
-        "one": 0.8037974683544302,
-        "five": 0.9852756892230574
+        "one": 0.24388618302999224,
+        "five": 1
       }
     },
     {
-      "name": "five overlapping stars still roll off below 1.0",
+      "name": "five stars at the white-point map to ~1.0 (SDR white)",
       "pass": true,
-      "detail": 0.9852756892230574
+      "detail": 1
     },
     {
       "name": "the gain is sub-linear (compressive, not multiplicative)",
       "pass": true,
       "detail": {
-        "linear": 4.018987341772151,
-        "tonemapped": 0.9852756892230574
+        "linear": 1.2194309151499612,
+        "tonemapped": 1
       }
     },
     {
@@ -87,7 +84,7 @@
       "detail": 1
     },
     {
-      "name": "linear exposure range spans the half-stops 0.125 to 8.0",
+      "name": "linear exposure range spans 0.125 to 8.0",
       "pass": true,
       "detail": {
         "min": 0.125,
@@ -100,7 +97,7 @@
       "detail": 6
     },
     {
-      "name": "at default exposure, ACES sees the raw summed flux",
+      "name": "at default exposure, the curve sees the raw summed flux",
       "pass": true
     },
     {

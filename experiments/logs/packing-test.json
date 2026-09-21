@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-19T23:58:08.025Z",
+  "date": "2026-09-21T06:49:10.801Z",
   "structLayout": {
     "sizeBytes": 16,
     "fields": [
@@ -46,10 +46,10 @@
   },
   "roundTrip": {
     "n": 100000,
-    "positionMaxErrorKpc": 6.758936591819783e-7,
-    "positionMeanErrorKpc": 2.5334487362936397e-7,
-    "magnitudeMaxError": 0.07843085167676378,
-    "magnitudeMeanError": 0.03914162178518837,
+    "positionMaxErrorKpc": 6.745645705089359e-7,
+    "positionMeanErrorKpc": 2.532986689277067e-7,
+    "magnitudeMaxError": 0.07842671080025809,
+    "magnitudeMeanError": 0.0391571605032008,
     "magnitudeQuantum": 0.0784313725490196,
     "colorIndexLost": false,
     "flagsLost": false,

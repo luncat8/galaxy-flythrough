@@ -38,7 +38,7 @@ function createInput(canvas) {
                 pointerLocked: false,
                 pickX: 0,
                 pickY: 0,
-                actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0 },
+                actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0 },
         };
 
         // Held keys: true while down. Ctrl is the brief's slow modifier; Ctrl+W
@@ -54,8 +54,9 @@ function createInput(canvas) {
                 ControlLeft: 'slow', ControlRight: 'slow',
         };
         // One-shot actions fire on the press only: a held C must not cycle camera
-        // modes at the key-repeat rate.
-        const pressMap = { KeyR: 'reset', KeyH: 'home', KeyC: 'cameraMode', KeyP: 'constellations' };
+        // modes at the key-repeat rate. Tab toggles the settings menu and must
+        // not cycle browser focus, hence preventDefault.
+        const pressMap = { KeyR: 'reset', KeyH: 'home', KeyC: 'cameraMode', KeyP: 'constellations', Tab: 'menu' };
         // Exposure accumulates, so key repeat is one more step per repeat.
         const exposureMap = { BracketLeft: -1, Minus: -1, BracketRight: 1, Equal: 1 };
         // Linear exposure (ACES pre-multiplier) in half-stop steps. ; darker, ' brighter.
@@ -77,7 +78,7 @@ function createInput(canvas) {
                 const press = pressMap[e.code];
                 if (press) {
                         if (!e.repeat) state.actions[press] = 1;
-                        e.preventDefault();   // Ctrl+R would reload, Ctrl+H would open history
+                        e.preventDefault();   // Ctrl+R would reload, Tab would move focus, etc.
                         return;
                 }
                 const exposure = exposureMap[e.code];

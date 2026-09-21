@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-20T10:57:41.456Z",
+  "date": "2026-09-21T06:49:09.990Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -224,7 +224,7 @@
       "name": "StarRenderer loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 15
+        "keys": 24
       }
     },
     {
@@ -245,7 +245,7 @@
       "name": "CellManager loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 2
+        "keys": 3
       }
     },
     {

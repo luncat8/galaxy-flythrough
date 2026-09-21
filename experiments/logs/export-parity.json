@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-20T10:57:41.402Z",
+  "date": "2026-09-21T06:49:09.280Z",
   "modules": 19,
   "totalChecks": 98,
   "passed": 98,
@@ -505,7 +505,7 @@
       }
     },
     {
-      "name": "StarRenderer has identical key sets (15 keys)",
+      "name": "StarRenderer has identical key sets (24 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -601,7 +601,7 @@
       }
     },
     {
-      "name": "CellManager has identical key sets (2 keys)",
+      "name": "CellManager has identical key sets (3 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],

@@ -197,7 +197,7 @@ function wgslConsts(part) {
                 /@builtin\(vertex_index\)/.test(sprite));
         check('the star sprite shader no longer applies per-star Reinhard',
                 !/flux\s*\/\s*\(1\.0\s*\+\s*flux\)/.test(sprite));
-        check('the star sprite falloff tightens to (1-r²)³',
+        check('the star sprite falloff tightens to (1-r\u00b2)\u00b3',
                 /let\s+s:\s*f32\s*=\s*1\.0\s*-\s*r2/.test(sprite) && /s\s*\*\s*s\s*\*\s*s/.test(sprite));
 
         const tonemap = shaders.SHADERS['tonemap'];
@@ -208,15 +208,27 @@ function wgslConsts(part) {
                 /@group\(0\)\s*@binding\(0\)\s*var<uniform>/.test(tonemap)
                 && /@group\(0\)\s*@binding\(1\)\s*var\s+hdrTexture:\s*texture_2d<f32>/.test(tonemap)
                 && !/@group\(0\)\s*@binding\(2\)/.test(tonemap));
-        check('the tonemap shader defines acesNarkowicz', /fn\s+acesNarkowicz/.test(tonemap));
-        check('the tonemap shader carries the five ACES constants a-e',
-                /const\s+a:\s*f32\s*=\s*2\.51/.test(tonemap)
-                && /const\s+b:\s*f32\s*=\s*0\.03/.test(tonemap)
-                && /const\s*c:\s*f32\s*=\s*2\.43/.test(tonemap)
-                && /const\s+d:\s*f32\s*=\s*0\.59/.test(tonemap)
-                && /const\s+e:\s*f32\s*=\s*0\.14/.test(tonemap));
-        check('the tonemap fragment writes alpha = 1 (opaque swapchain)',
-                /return\s+vec4f\(ldr,\s*1\.0\)/.test(tonemap));
+        check('the tonemap defines hableFilmic (luminance-only filmic curve)',
+                /fn\s+hableFilmic/.test(tonemap));
+        check('the tonemap uses Hable/Unreal shoulder constants A,B,C,D,E',
+                /A:\s*f32\s*=\s*0\.15/.test(tonemap)
+                && /B:\s*f32\s*=\s*0\.50/.test(tonemap)
+                && /C:\s*f32\s*=\s*0\.10/.test(tonemap)
+                && /D:\s*f32\s*=\s*0\.20/.test(tonemap)
+                && /E:\s*f32\s*=\s*0\.02/.test(tonemap));
+        check('the tonemap fragment writes alpha = 1 (opaque swapchain), linear RGB',
+                /return\s+vec4f\(mapped,\s*1\.0\)/.test(tonemap));
+        check('the tonemap applies the filmic curve to luminance only (hue-preserving)',
+                /hableFilmic/.test(tonemap) && /LUMA_R/.test(tonemap));
+        check('the tonemap divides luminance by white point (wp) before the curve',
+                /yNorm:\s*f32\s*=\s*lumaIn\s*\/\s*wp/.test(tonemap));
+        check('the tonemap has a user-controlled saturation parameter (u.params.z)',
+                /u\.params\.z/.test(tonemap) && /mix\(vec3f\(mappedLuma\),\s*mapped,\s*sat\)/.test(tonemap));
+        check('the tonemap selects SDR clamp vs HDR headroom via u.params.w',
+                /u\.params\.w\s*<\s*0\.5/.test(tonemap) && /vec3f\(0\.0\),\s*vec3f\(8\.0\)/.test(tonemap));
+        check('the tonemap does NOT apply manual sRGB gamma (canvas colorSpace srgb encodes it)',
+                !/1\.055\s*\*\s*pow\(mapped/.test(tonemap));
+
 
         const spriteHdr = shaders.SHADERS['star-sprite-hdr'];
         check('the star-sprite-hdr shader declares a vertex entry point', /@vertex\s*\nfn\s+vs_main/.test(spriteHdr));
@@ -227,8 +239,8 @@ function wgslConsts(part) {
                 && /@group\(0\)\s*@binding\(1\)\s*var<storage,\s*read>\s+stars/.test(spriteHdr)
                 && /@group\(0\)\s*@binding\(2\)\s*var\s+colorLUT/.test(spriteHdr)
                 && /@group\(0\)\s*@binding\(3\)\s*var<uniform>\s+exposure/.test(spriteHdr));
-        check('the star-sprite-hdr fragment multiplies intensity by exposure.exposure.x',
-                /in\.brightness\s*\*\s*falloff\s*\*\s*exposure\.exposure\.x/.test(spriteHdr));
+        check('the star-sprite-hdr fragment multiplies intensity by exposure.params.x',
+                /in\.brightness\s*\*\s*falloff\s*\*\s*exposure\.params\.x/.test(spriteHdr));
         check('the star-sprite-hdr shader applies the same (1-r²)³ falloff as the SDR variant',
                 /let\s+s:\s*f32\s*=\s*1\.0\s*-\s*r2/.test(spriteHdr) && /s\s*\*\s*s\s*\*\s*s/.test(spriteHdr));
 

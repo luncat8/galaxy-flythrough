@@ -43,21 +43,14 @@
 		return 'M';
 	}
 
-	// Rough sRGB colour by spectral class — visualisation only, the renderer
-	// uses the LUT index.
+	// Rough linear-light colour by spectral class — visualisation only, the
+	// renderer uses the LUT (star-record.js CLASS_COLORS) which is the
+	// authoritative palette. Values here are approximations of the LUT
+	// linearised from sRGB bytes.
 	function classColor(cls) {
-		switch (cls) {
-			case 'O': return [0.60, 0.70, 1.00];
-			case 'B': return [0.75, 0.82, 1.00];
-			case 'A': return [0.95, 0.95, 1.00];
-			case 'F': return [1.00, 1.00, 0.92];
-			case 'G': return [1.00, 0.95, 0.75];
-			case 'K': return [1.00, 0.78, 0.50];
-			case 'M': return [1.00, 0.55, 0.40];
-			case 'RG': return [1.00, 0.40, 0.30];
-			case 'WD': return [0.85, 0.85, 1.00];
-			default: return [1.0, 1.0, 1.0];
-		}
+		function lin(v) { v /= 255; return v <= 0.04045 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); }
+		const lut = records.CLASS_COLORS[records.spectralClassIndex(cls)];
+		return [lin(lut[0]), lin(lut[1]), lin(lut[2])];
 	}
 
 	// L/Lsun = (M/Msun)^alpha, piecewise (radiation pressure flattens the top).

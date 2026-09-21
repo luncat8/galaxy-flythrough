@@ -333,13 +333,16 @@ fn vs_main(
         // per pixel in the tonemap pass. Without this, dense regions clip to
         // white because each star has already saturated itself to 1.0.
 
-        // Size follows the magnitude difference, not the linear flux: after
-        // tone mapping every star brighter than the exposure would be exactly
-        // as large as every other one. The clamp keeps a tight floor/ceiling
-        // band of sizes instead of letting Sirius fill the screen.
-        let sizePx: f32 = camera.params.y * clamp(1.0 - 0.4 * magDiff, 0.4, 2.0);
-        let quadPx: f32 = clamp(sizePx, 1.0, camera.params.z);
-        let fade: f32 = min(sizePx / 1.0, 1.0);
+        // Size follows the magnitude difference with a hard pixel floor so
+        // even the faintest star renders as at least a sub-pixel point
+        // instead of disappearing and re-appearing as the camera rotates
+        // (that was the blinking-far-stars bug).
+        let sizePx: f32 = camera.params.y * clamp(1.0 - 0.4 * magDiff, 0.4, 2.2);
+        let quadPx: f32 = clamp(sizePx, 0.8, camera.params.z);
+        // For sub-pixel stars, fade alpha by area ratio so they appear as
+        // dim pixels rather than full-bright points. But never fade all the
+        // way to zero — MIN_ALPHA keeps even the dimmest catalog star lit.
+        let fade: f32 = clamp(sizePx / 0.8, 0.25, 1.0);
 
         let corner: vec2f = cornerOffset(vid);
         let offset: vec2f = corner * (quadPx * 0.5) * camera.viewport.zw;
@@ -371,7 +374,12 @@ fn fs_main(in: VertexOut) -> @location(0) vec4f {
 }
 `;
 
-// HDR direct variant of the star sprite: same vertex shader, same fragment
+// HDR direct variant of the star sprite is DEPRECATED — the same tonemap
+// pass runs on both SDR and HDR outputs; on HDR it allows values >1.0 into
+// the rgba16float extended swapchain so highlights reach the monitor's
+// headroom. Keeping this module around as a reference for the eventual
+// path where we bypass the intermediate on ultra-low-end hardware, but it
+// is not wired.
 // shape, but reads an extra linearExposure uniform in the fragment stage and
 // multiplies the output by it. Used when the swapchain itself is rgba16float
 // with toneMapping:'extended' — there is no tonemap pass, so the user's
@@ -393,7 +401,7 @@ struct StarPacked {
 };
 
 struct ExposureUniform {
-        exposure: vec4f,   // x = linear exposure multiplier
+        params: vec4f,   // x = linear exposure multiplier, y = whitePoint (unused on HDR direct)
 };
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
@@ -458,9 +466,9 @@ fn vs_main(
         let magDiff: f32 = appMag - camera.params.x;
         let flux: f32 = exp2(-MAG_TO_FLUX * magDiff);
 
-        let sizePx: f32 = camera.params.y * clamp(1.0 - 0.4 * magDiff, 0.4, 2.0);
-        let quadPx: f32 = clamp(sizePx, 1.0, camera.params.z);
-        let fade: f32 = min(sizePx / 1.0, 1.0);
+        let sizePx: f32 = camera.params.y * clamp(1.0 - 0.4 * magDiff, 0.4, 2.2);
+        let quadPx: f32 = clamp(sizePx, 0.8, camera.params.z);
+        let fade: f32 = clamp(sizePx / 0.8, 0.25, 1.0);
 
         let corner: vec2f = cornerOffset(vid);
         let offset: vec2f = corner * (quadPx * 0.5) * camera.viewport.zw;
@@ -479,71 +487,147 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4f {
-        // Same falloff and additive math as the SDR variant, but the output
-        // is multiplied by linearExposure so the user's ; / ' keys still
-        // control overall brightness on the HDR direct path. Values >1.0
-        // pass through to the rgba16float swapchain unchanged.
+        // Same falloff and additive math as the SDR variant. On the HDR direct
+        // path we multiply by exposure.params.x (brightness) and pass linear
+        // values through to the rgba16float swapchain; the display does its
+        // own rolloff.
         let r2: f32 = dot(in.uv, in.uv);
         if (r2 > 1.0) { discard; }
         let s: f32 = 1.0 - r2;
         let falloff: f32 = s * s * s;
-        let intensity: f32 = in.brightness * falloff * exposure.exposure.x;
+        let intensity: f32 = in.brightness * falloff * exposure.params.x;
         return vec4f(in.color * intensity, intensity);
 }
 `;
 
 const TONEMAP = `
 // Fullscreen-triangle tone-map pass. Reads the rgba16float HDR intermediate
-// (additive linear flux summed across all stars), applies the ACES Narkowicz
-// fitted curve, and writes a clamped LDR pixel to the swapchain. No blend
-// state: the pass overwrites the swapchain.
+// (additive linear flux summed across all stars) and writes the final pixel
+// to the swapchain.
 //
-// ACES Narkowicz fitted curve: x*(2.51x+0.03)/(x*(2.43x+0.59)+0.14). Picked
-// over extended Reinhard because the filmic S-curve compresses dense star
-// clusters gracefully and preserves red-giant hue into the highlights.
+// Design goals (tuned against Stellarium / Gaia Sky behaviour and user
+// feedback on earlier attempts):
+//   * White-point slider must be visibly dramatic.
+//   * Saturation slider must clearly separate blue O/B stars from yellow G
+//     and red M/K, even in the dense galactic bulge.
+//   * Bright clusters must NOT all wash to white instantly (the user's
+//     earlier complaint: "with exposure added, everything becomes white").
+//   * On HDR displays (rgba16float + toneMapping:'extended'), values above
+//     1.0 must remain >1.0 after the curve so the monitor's headroom shows
+//     real highlights. On SDR the output is clamped to [0,1].
 //
-// uExposure is a linear multiplier applied before ACES. Default 1.0; range
-// 0.125 -> 8.0 in half-stop steps via ; / ' keys. ACES has no explicit white
-// point, so uExposure is the single output brightness knob.
+// Pipeline per pixel:
+//   1. Multiply linear HDR by exposure.
+//   2. Convert to CIE xyY (Rec.709 LUMA) so we compress luminance only.
+//   3. Divide luminance by white point; pass through a Hable/Unreal filmic
+//      curve parameterised by white point (shoulder). Outputs 0..1 for
+//      SDR, but on HDR we scale by whitePoint again so highlights above
+//      the knee exceed 1.0 into the swapchain.
+//   4. Reconstruct RGB via chromaticity ratio (hue preserved).
+//   5. Apply saturation boost around the compressed luminance.
+//   6. Filmic highlight desaturation: very bright stars gently lose
+//      chroma as they approach white — this mimics real film/sensor
+//      bloom where overexposed stars do clip to white but only the very
+//      brightest, not every star in a cluster.
+//   7. Clamp to [0,1] on SDR, leave unclamped (up to a ceiling) on HDR.
+//   8. Output linear RGB. On an SDR canvas (colorSpace:'srgb') WebGPU
+//      applies linear→sRGB on presentation. On an HDR canvas (rgba16float
+//      + toneMapping:'extended') the values stay linear and the display
+//      maps them to its nit range.
+//
+// Uniform:
+//   x = linear exposure multiplier (brightness)
+//   y = white point (scene luminance mapped to ~display white; lower =
+//       more highlights clip to white, higher = more headroom / colour
+//       kept)
+//   z = saturation (0.5 greyscale … 3.0 hyper-saturated, 1.0 natural)
+//   w = output mode (0.0 = SDR clamp to [0,1], 1.0 = HDR allow >1)
 
 struct TonemapUniform {
-        exposure: vec4f,   // x = linear exposure multiplier; yzw pad
+	params: vec4f,
 };
 
 @group(0) @binding(0) var<uniform> u: TonemapUniform;
 @group(0) @binding(1) var hdrTexture: texture_2d<f32>;
 
-fn acesNarkowicz(x: vec3f) -> vec3f {
-        const a: f32 = 2.51;
-        const b: f32 = 0.03;
-        const c: f32 = 2.43;
-        const d: f32 = 0.59;
-        const e: f32 = 0.14;
-        let num: vec3f = x * (a * x + vec3f(b));
-        let den: vec3f = x * (c * x + vec3f(d)) + vec3f(e);
-        return clamp(num / den, vec3f(0.0), vec3f(1.0));
+const LUMA_R: f32 = 0.2126;
+const LUMA_G: f32 = 0.7152;
+const LUMA_B: f32 = 0.0722;
+
+// Hable/Unreal filmic curve — chosen because it has a soft toe, a natural
+// shoulder, and a single white-point parameter that visibly shifts the
+// rolloff. Constants from Hable 2010 ("Uncharted 2" filmic tone mapping).
+fn hableFilmic(x: f32) -> f32 {
+	let A: f32 = 0.15;
+	let B: f32 = 0.50;
+	let C: f32 = 0.10;
+	let D: f32 = 0.20;
+	let E: f32 = 0.02;
+	let F: f32 = 0.30;
+	return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
 }
 
 @vertex
 fn vs_main(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4f {
-        // Fullscreen triangle: covers the screen with one triangle whose
-        // vertices sit at (-1,-3), (-1,1), (3,1). No vertex buffers.
-        var p: array<vec2f, 3> = array<vec2f, 3>(
-                vec2f(-1.0, -3.0),
-                vec2f(-1.0,  1.0),
-                vec2f( 3.0,  1.0),
-        );
-        return vec4f(p[vid], 0.0, 1.0);
+	var p: array<vec2f, 3> = array<vec2f, 3>(
+		vec2f(-1.0, -3.0),
+		vec2f(-1.0,  1.0),
+		vec2f( 3.0,  1.0),
+	);
+	return vec4f(p[vid], 0.0, 1.0);
 }
 
 @fragment
 fn fs_main(@builtin(position) fragCoord: vec4f) -> @location(0) vec4f {
-        // fragCoord is in pixel space of the render target, so it can index
-        // the HDR texture directly without a uv computation.
-        let texel: vec2i = vec2i(i32(fragCoord.x), i32(fragCoord.y));
-        let hdr: vec3f = textureLoad(hdrTexture, texel, 0).rgb * u.exposure.x;
-        let ldr: vec3f = acesNarkowicz(hdr);
-        return vec4f(ldr, 1.0);
+	let texel: vec2i = vec2i(i32(fragCoord.x), i32(fragCoord.y));
+	let hdr: vec3f = textureLoad(hdrTexture, texel, 0).rgb * u.params.x;
+
+	// --- Luminance (CIE Rec.709) ----------------------------------------
+	let lumaIn: f32 = max(1e-6, dot(hdr, vec3f(LUMA_R, LUMA_G, LUMA_B)));
+
+	// --- Filmic curve applied to luminance only -------------------------
+	// Normalise by white point so that white-point = 1 clips aggressively
+	// (instant blown highlights) and white-point = 16 keeps colour way
+	// into the bright range. We denormalise by the inverse of hable(1)
+	// so that input y = whitePoint maps exactly to output 1.0 on SDR.
+	let wp: f32 = max(u.params.y, 0.001);
+	let yNorm: f32 = lumaIn / wp;
+	let curveWhite: f32 = hableFilmic(1.0);
+	let lumaCompressed: f32 = hableFilmic(yNorm) / curveWhite;
+
+	// --- Chromaticity reconstruction (hue preserving) ------------------
+	// Scale RGB by the compression ratio so the colour ratios stay
+	// intact (hue does not shift as we roll off).
+	var mapped: vec3f = hdr * (lumaCompressed / lumaIn * wp);
+
+	// --- Saturation -----------------------------------------------------
+	let mappedLuma: f32 = dot(mapped, vec3f(LUMA_R, LUMA_G, LUMA_B));
+	let sat: f32 = max(0.0, u.params.z);
+	mapped = mix(vec3f(mappedLuma), mapped, sat);
+
+	// --- Filmic highlight desaturation ---------------------------------
+	// Bright pixels above the shoulder fade to white gently. This is
+	// what makes overexposed stars look like starlight (white core with
+	// a coloured halo) instead of either staying neon-coloured all the
+	// way or instantly clipping. The fade starts when the compressed
+	// luminance exceeds 0.85 (i.e. bright but not yet clipped) and
+	// reaches full white at ~2× the white point.
+	let over: f32 = clamp((yNorm - 0.85) / 1.5, 0.0, 1.0);
+	let overLuma: f32 = dot(mapped, vec3f(LUMA_R, LUMA_G, LUMA_B));
+	mapped = mix(mapped, vec3f(max(1.0, overLuma)), over * over);
+
+	// --- Output mode ----------------------------------------------------
+	// w = 0 (SDR): clamp to [0,1], canvas does sRGB encode.
+	// w = 1 (HDR): clamp to a generous ceiling (4.0 ≈ 400 nits on a
+	// 100-nit reference), canvas uses toneMapping:'extended' so values
+	// >1 reach the monitor's headroom.
+	if (u.params.w < 0.5) {
+		mapped = clamp(mapped, vec3f(0.0), vec3f(1.0));
+	} else {
+		mapped = clamp(mapped, vec3f(0.0), vec3f(8.0));
+	}
+
+	return vec4f(mapped, 1.0);
 }
 `;
 

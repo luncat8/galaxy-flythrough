@@ -1,19 +1,18 @@
 {
-  "date": "2026-09-20T10:57:41.649Z",
+  "date": "2026-09-21T06:49:11.023Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 56,
-  "totalChecks": 66,
-  "passed": 66,
+  "prepareMs": 82,
+  "totalChecks": 70,
+  "passed": 70,
   "failed": 0,
   "checks": [
     {
-      "name": "three wired shader sources are handed to createShaderModule",
+      "name": "two shader modules are created (star-sprite + tonemap)",
       "pass": true,
       "detail": {
         "modules": [
           "star-sprite",
-          "star-sprite-hdr",
           "tonemap"
         ]
       }
@@ -23,32 +22,15 @@
       "pass": true
     },
     {
-      "name": "three pipelines are created (sprite + sprite-hdr + tonemap)",
+      "name": "two pipelines are created (star-sprite + tonemap) — no hdr-direct bypass",
       "pass": true,
       "detail": [
         "star-sprite-pipeline",
-        "star-sprite-hdr-pipeline",
         "tonemap-pipeline"
       ]
     },
     {
       "name": "the star-sprite pipeline is additive with no depth attachment",
-      "pass": true,
-      "detail": {
-        "color": {
-          "srcFactor": "one",
-          "dstFactor": "one",
-          "operation": "add"
-        },
-        "alpha": {
-          "srcFactor": "one",
-          "dstFactor": "one",
-          "operation": "add"
-        }
-      }
-    },
-    {
-      "name": "the star-sprite-hdr pipeline is additive with the same blend as the SDR variant",
       "pass": true,
       "detail": {
         "color": {
@@ -79,15 +61,22 @@
       }
     },
     {
-      "name": "the pipelines target the swapchain format",
+      "name": "both pipelines target the swapchain format",
       "pass": true
     },
     {
-      "name": "the storage buffer holds procedural + landmarks + catalog capacity",
+      "name": "the color LUT is uploaded as rgba8unorm-srgb (so palette bytes authored as sRGB get linearised)",
+      "pass": true,
+      "detail": [
+        "star-color-lut:rgba8unorm-srgb"
+      ]
+    },
+    {
+      "name": "the storage buffer holds procedural + landmarks + local gap-fill + catalog capacity",
       "pass": true,
       "detail": {
-        "size": 382208,
-        "expected": 382208
+        "size": 702208,
+        "expected": 702208
       }
     },
     {
@@ -136,11 +125,12 @@
       "detail": 8
     },
     {
-      "name": "the first frame streams the catalog once",
+      "name": "the first frame writes the dynamic region (local gap-fill + catalog) starting at localProc offset",
       "pass": true,
       "detail": {
         "writes": 1,
-        "offset": 320944
+        "offset": 320944,
+        "localOffset": 320944
       }
     },
     {
@@ -152,11 +142,11 @@
       ]
     },
     {
-      "name": "the star-sprite pass draws exactly the resident stars",
+      "name": "the star-sprite pass draws exactly the resident stars (global + landmarks + local + catalog)",
       "pass": true,
       "detail": {
         "vertices": 4,
-        "instances": 23888,
+        "instances": 23649,
         "firstVertex": 0,
         "firstInstance": 0,
         "pipeline": {
@@ -186,7 +176,7 @@
     {
       "name": "the resident catalog fits the budget",
       "pass": true,
-      "detail": 3829
+      "detail": 1078
     },
     {
       "name": "all cells of this small catalog are resident",
@@ -197,11 +187,11 @@
       }
     },
     {
-      "name": "staged catalog bytes equal an independent decode of the same cells",
+      "name": "density parity thinned the catalog (fewer visible stars than raw)",
       "pass": true,
       "detail": {
-        "uploaded": 61264,
-        "expected": 61264
+        "thinned": 1078,
+        "raw": 3829
       }
     },
     {
@@ -273,9 +263,9 @@
       "name": "uniform carries the exposure and sprite sizes",
       "pass": true,
       "detail": {
-        "exposure": 17,
-        "base": 1.5,
-        "max": 16
+        "exposure": 12,
+        "base": 1.2999999523162842,
+        "max": 14
       }
     },
     {
@@ -293,7 +283,30 @@
       "detail": 1
     },
     {
-      "name": "tonemap uniform is 16 bytes (vec4 pad)",
+      "name": "tonemap uniform carries the default white point (4.0)",
+      "pass": true,
+      "detail": {
+        "w": 4,
+        "expected": 4
+      }
+    },
+    {
+      "name": "tonemap uniform carries the default saturation (1.4)",
+      "pass": true,
+      "detail": {
+        "s": 1.399999976158142,
+        "expected": 1.4
+      }
+    },
+    {
+      "name": "tonemap uniform carries output mode w=0 (SDR) because opts.hdr was not set",
+      "pass": true,
+      "detail": {
+        "w": 0
+      }
+    },
+    {
+      "name": "tonemap uniform is 16 bytes (vec4: exp, wp, sat, outputMode)",
       "pass": true,
       "detail": 16
     },
@@ -313,7 +326,7 @@
     {
       "name": "exposure key raises magZero by one step",
       "pass": true,
-      "detail": 17.75
+      "detail": 12.75
     },
     {
       "name": "the exposure action is consumed",
@@ -351,7 +364,7 @@
       "pass": true
     },
     {
-      "name": "crossing a cell boundary re-uploads the catalog",
+      "name": "crossing a cell boundary re-uploads the dynamic region",
       "pass": true,
       "detail": {
         "before": 2,
@@ -359,9 +372,9 @@
       }
     },
     {
-      "name": "the drawn instance count follows the new residency",
+      "name": "the drawn instance count follows the new residency (global + landmarks + local + catalog)",
       "pass": true,
-      "detail": 21414
+      "detail": 23800
     },
     {
       "name": "a camera outside the catalog volume drops every catalog star",
@@ -377,7 +390,7 @@
       ]
     },
     {
-      "name": "the star pass draws the procedural field + landmarks",
+      "name": "the star pass draws the procedural field + landmarks (no local/catalog when outside volume)",
       "pass": true,
       "detail": {
         "vertices": 4,
@@ -424,49 +437,59 @@
       }
     },
     {
-      "name": "hdrDirect flag is reflected in renderer state",
+      "name": "hdrOutput flag is reflected in renderer state",
       "pass": true,
       "detail": true
     },
     {
-      "name": "the HDR direct path produces exactly one render pass per frame",
+      "name": "the HDR path runs two passes (star-sprites + tonemap), same as SDR",
       "pass": true,
       "detail": [
-        "star-sprites-hdr"
+        "star-sprites",
+        "tonemap"
       ]
     },
     {
-      "name": "the HDR direct path does not create a tonemap pass",
+      "name": "the HDR path creates an rgba16float intermediate texture",
       "pass": true,
       "detail": [
-        "star-sprites-hdr"
+        "star-color-lut:rgba8unorm-srgb",
+        "hdr-intermediate:rgba16float"
       ]
     },
     {
-      "name": "the HDR direct path does not create an rgba16float intermediate texture",
-      "pass": true,
-      "detail": [
-        "star-color-lut"
-      ]
-    },
-    {
-      "name": "the HDR direct draw covers the procedural + landmark stars",
+      "name": "tonemap uniform on the HDR path has output mode w=1.0",
       "pass": true,
       "detail": {
-        "vertices": 4,
-        "instances": 2059,
-        "firstVertex": 0,
-        "firstInstance": 0,
-        "pipeline": {
-          "label": "star-sprite-hdr-pipeline"
-        },
-        "pass": "star-sprites-hdr"
+        "tmu": {
+          "0": 1,
+          "1": 4,
+          "2": 1.399999976158142,
+          "3": 1
+        }
       }
     },
     {
-      "name": "; raises linearExposure by one half-stop on the HDR direct path",
+      "name": "tonemap uniform on HDR still carries exposure, white point, saturation",
+      "pass": true,
+      "detail": {
+        "tmu": {
+          "0": 1,
+          "1": 4,
+          "2": 1.399999976158142,
+          "3": 1
+        }
+      }
+    },
+    {
+      "name": "; raises linearExposure by one half-stop on the HDR path",
       "pass": true,
       "detail": 1.4142135381698608
+    },
+    {
+      "name": "output mode stays w=1 after input events",
+      "pass": true,
+      "detail": 1
     },
     {
       "name": "dispose destroys the star buffer",

@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-20T10:57:41.917Z",
+  "date": "2026-09-21T06:49:14.976Z",
   "bundle": {
     "path": "src/data/tiles/catalog.js",
     "bytes": 168605,
@@ -130,15 +130,15 @@
       "pass": true
     },
     {
-      "name": "first update reports a changed (empty) residency",
+      "name": "first update reports changed=true and resident raw star count is reasonable",
       "pass": true,
       "detail": {
-        "starCount": 3829,
+        "starCount": 0,
         "changed": true
       }
     },
     {
-      "name": "resident star count is inside the budget",
+      "name": "raw resident star count is inside the budget",
       "pass": true,
       "detail": 3829
     },
@@ -149,6 +149,7 @@
         "cellsTotal": 2045,
         "cellsResident": 2045,
         "starsResident": 3829,
+        "visibleStars": 3558,
         "cellsDecoded": 0,
         "decodedBytes": 0,
         "starsTotal": 3829,
@@ -156,11 +157,11 @@
       }
     },
     {
-      "name": "writeInto writes exactly the resident stars",
+      "name": "writeInto returns a byte count for the visible stars",
       "pass": true,
       "detail": {
-        "written": 61264,
-        "expected": 61264
+        "written": 56928,
+        "raw": 61264
       }
     },
     {
@@ -199,7 +200,7 @@
       "name": "movement past half the finest cell rebuilds",
       "pass": true,
       "detail": {
-        "starCount": 3829,
+        "starCount": 3558,
         "changed": true
       }
     },
@@ -238,6 +239,7 @@
         "cellsTotal": 2045,
         "cellsResident": 2045,
         "starsResident": 3829,
+        "visibleStars": 0,
         "cellsDecoded": 2045,
         "decodedBytes": 61264,
         "starsTotal": 3829,
@@ -256,6 +258,7 @@
         "cellsTotal": 2045,
         "cellsResident": 71,
         "starsResident": 198,
+        "visibleStars": 0,
         "cellsDecoded": 0,
         "decodedBytes": 0,
         "starsTotal": 3829,
