@@ -111,7 +111,36 @@ function insideDisc(model, R, z) {
 
 // ---- components -----------------------------------------------------------
 
-// Thin disc: exponential in R, sech^2 in z.
+// Flared scale height H(R) = H(1 + flare*R/L), and the soft-core radial
+// factor R/sqrt(R^2 + c^2) (1 without a core). Both are defined once so the
+// field, the mass integrals and the sampler inverter read the same profile.
+function discHeightAt(group, R) {
+	return group.H * (1 + (group.flare || 0) * (R / group.L));
+}
+
+function discRadialFactor(group, R) {
+	const c = group.coreRadius || 0;
+	if (c === 0) return Math.exp(-R / group.L);
+	return Math.exp(-R / group.L) * (R / Math.sqrt(R * R + c * c));
+}
+
+// The vertical mass of one profile column at radius R: the z-integral of the
+// profile, truncated or not. sech^2 integrates to 4H (full) / 2H*tanh (cut);
+// exp(-|z|/H) to 2H (full) / 2H*(1 - exp(-Z/H)) (cut).
+function discVerticalMass(group, R, zMax) {
+	const H = discHeightAt(group, R);
+	if (group.vertical === 'laplace') {
+		return zMax > 0 ? 2 * H * (1 - Math.exp(-zMax / H)) : 2 * H;
+	}
+	return zMax > 0 ? 2 * H * Math.tanh(zMax / (2 * H)) : 4 * H;
+}
+
+// Radial mass per unit radius of a disc at R: 2*pi*R * radial * vertical.
+function discRadialMass(model, group, R, zMax) {
+	return 2 * Math.PI * R * discRadialFactor(group, R) * discVerticalMass(group, R, zMax);
+}
+
+// Thin disc: exponential in R (soft core optional), sech^2 in z, flaring.
 function rhoThin(model, R, z) {
 	if (!insideDisc(model, R, z)) return 0;
 	const p = model.thin;
@@ -180,6 +209,13 @@ function rhoHalo(model, x, y, z) {
 	return h.amp * Math.pow(r / h.a_h, -h.power);
 }
 
+// The noise hash reads only the low 16 bits of its seed (s8 and the h2 term),
+// so the model seed is reduced to 16 bits once, in the packer; the octave
+// offsets (+1/+2) wrap identically in u32 WGSL and non-negative 16-bit JS.
+function noiseSeed(model) {
+	return (model.seed >>> 0) & 0xffff;
+}
+
 // Hash noise for 2D log-spiral FBM noise in flocculent arms.
 function hash2DNoise(u, v, seed) {
 	const iu = Math.floor(u) | 0;
@@ -212,19 +248,74 @@ function fbm2D(u, v, seed) {
 	return (n1 + 0.5 * n2 + 0.25 * n3) / 1.75;
 }
 
-// Clump factor for irregular galaxies (Irr).
+// 3D value noise and its FBM — the irregular-galaxy field has no spiral
+// symmetry, so its texture is a position-based field, not (ln R, phi).
+function hash3DNoise(u, v, w, seed) {
+	const iu = Math.floor(u) | 0;
+	const iv = Math.floor(v) | 0;
+	const iw = Math.floor(w) | 0;
+	const fu = u - iu;
+	const fv = v - iv;
+	const fw = w - iw;
+	const su = fu * fu * (3 - 2 * fu);
+	const sv = fv * fv * (3 - 2 * fv);
+	const sw = fw * fw * (3 - 2 * fw);
+	const h = (x, y, z) => {
+		const x8 = (x & 0xff) >>> 0;
+		const y8 = (y & 0xff) >>> 0;
+		const z8 = (z & 0xff) >>> 0;
+		const s8 = (seed & 0xff) >>> 0;
+		const h1 = (x8 * 1597 + y8 * 2869 + z8 * 3671 + s8 * 5761) & 0xffff;
+		const h2 = (((h1 & 0xff) * 2869 + ((h1 >> 8) & 0xff) * 1597 + ((seed >> 8) & 0xffff))) & 0xffff;
+		return (h2 / 65535.0) * 2.0 - 1.0;
+	};
+	const x00 = h(iu, iv, iw) + su * (h(iu + 1, iv, iw) - h(iu, iv, iw));
+	const x10 = h(iu, iv + 1, iw) + su * (h(iu + 1, iv + 1, iw) - h(iu, iv + 1, iw));
+	const x01 = h(iu, iv, iw + 1) + su * (h(iu + 1, iv, iw + 1) - h(iu, iv, iw + 1));
+	const x11 = h(iu, iv + 1, iw + 1) + su * (h(iu + 1, iv + 1, iw + 1) - h(iu, iv + 1, iw + 1));
+	return (x00 + sv * (x10 - x00)) + sw * ((x01 + sv * (x11 - x01)) - (x00 + sv * (x10 - x00)));
+}
+
+function fbm3D(u, v, w, seed) {
+	const n1 = hash3DNoise(u, v, w, seed);
+	const n2 = hash3DNoise(u * 2, v * 2, w * 2, seed + 1);
+	const n3 = hash3DNoise(u * 4, v * 4, w * 4, seed + 2);
+	return (n1 + 0.5 * n2 + 0.25 * n3) / 1.75;
+}
+
+// Clump factor for irregular galaxies (Irr): hotspots are gaussian boosts of
+// the base field. Positions are galactocentric offsets, so a centre override
+// moves them with the model.
 function clumpFactor(model, x, y, z) {
 	if (!model.clumps || model.clumps.length === 0) return 1.0;
+	const c = model.centre;
 	let sum = 1.0;
 	for (let i = 0; i < model.clumps.length; i++) {
-		const c = model.clumps[i];
-		const dx = x - c.x;
-		const dy = y - c.y;
-		const dz = z - c.z;
-		const d2 = dx * dx + dy * dy + dz * dz;
-		sum += c.boost * Math.exp(-d2 / (2 * c.r * c.r));
+		const cl = model.clumps[i];
+		const dx = x - c.x - cl.x;
+		const dy = y - c.y - cl.y;
+		const dz = z - c.z - cl.z;
+		sum += cl.boost * Math.exp(-(dx * dx + dy * dy + dz * dz) / (2 * cl.r * cl.r));
 	}
 	return sum;
+}
+
+// Smooth texture of an irregular: exp(k * FBM) over the base field, in
+// disc-normalised coordinates so the feature size scales with the galaxy.
+// Active only where clumps exist (the Irr condition); every other model
+// passes through as 1.0.
+function irregularFactor(model, x, y, z) {
+	if (!model.clumps || model.clumps.length === 0 || !model.clumpFbm) return 1.0;
+	const c = model.centre;
+	const u = (x - c.x) / model.thin.L * 0.5;
+	const v = (y - c.y) / model.thin.L * 0.5;
+	const w = (z - c.z) / model.thin.H * 0.5;
+	return Math.exp(model.clumpFbm * fbm3D(u, v, w, noiseSeed(model) + 101));
+}
+
+// The full irregular-galaxy multiplier: smooth FBM texture times hotspots.
+function irregularFieldFactor(model, x, y, z) {
+	return irregularFactor(model, x, y, z) * clumpFactor(model, x, y, z);
 }
 
 // Spiral arm modulation of the disc: factor in [1-A, 1+A]. `amp` 0 or `m` 0 is
@@ -238,7 +329,7 @@ function armFactor(model, R, phi) {
 	if (a.flocculence > 0) {
 		const u = 2.0 * Math.log(R / a.Rs);
 		const v = arg / Math.PI;
-		const fbm = fbm2D(u, v, model.seed || 42);
+		const fbm = fbm2D(u, v, noiseSeed(model));
 		const combined = (1.0 - a.flocculence) * grandDesign + a.flocculence * fbm;
 		return 1.0 + a.amp * combined;
 	}
@@ -273,6 +364,7 @@ function distanceToNearestArm(model, R, phi) {
 //   thick:   2*pi*L^2 * 2H
 //   spheroid: plummer a*b*c*(4/3)*pi*r0^3
 //             sersic  4*pi*a*b*c*r0^3 * e^b_n * n * b_n^-3n * Gamma(3n)
+//             bar     48*a*b*c*r0^3 * Gamma(1+1/n)^3 / Gamma(1+3/n)
 //   halo:    4*pi*a_h^3 * haloRadialMass(rMax)   (core + power law)
 //
 // Halo integral in units of 4*pi*a_h^3, including the flat core.
@@ -308,7 +400,13 @@ function massIntegrals(model) {
 	const bn = sersicBn(sp.n);
 	let bulgeIntegral;
 	if (sp.profileId === PROFILE_BAR) {
-		bulgeIntegral = 8 * Math.PI * axes * 0.88;
+		// A superellipsoid level set at radius s is the unit level set scaled by
+		// s (for any exponent n), so dV = 3*V(1)*s^2 ds with
+		// V(1) = 8*a*b*c*r0^3 * Gamma(1+1/n)^3 / Gamma(1+3/n) — the ellipsoid
+		// limit of that is exactly 4*pi/3, which is why the n=2 bar integrates
+		// to 8*pi*a*b*c*r0^3 like a spherical exp(-s).
+		const n = sp.n || 2.5;
+		bulgeIntegral = 48 * axes * Math.exp(3 * logGamma(1 + 1 / n) - logGamma(1 + 3 / n));
 	} else if (sp.profileId === PROFILE_SERSIC) {
 		bulgeIntegral = 4 * Math.PI * axes * Math.exp(bn) * sp.n * Math.pow(bn, -3 * sp.n) * Math.exp(logGamma(3 * sp.n));
 	} else {
@@ -392,14 +490,15 @@ function rhoTotal(model, x, y, z) {
 	const arm = armFactor(model, gc.R, gc.phi);
 	const disc = (rhoThin(model, gc.R, gc.zp) + rhoThick(model, gc.R, gc.zp)) * arm;
 	const base = disc + rhoSpheroid(model, x, y, z) + rhoHalo(model, x, y, z);
-	return base * clumpFactor(model, x, y, z);
+	return base * irregularFieldFactor(model, x, y, z);
 }
 
 // Per-component densities plus the derived galactocentric quantities.
+// includeClumps toggles the irregular multiplier (FBM texture + hotspots).
 function rhoDecomposed(model, x, y, z, includeClumps = true) {
 	const gc = toGalactocentric(model, x, y, z);
 	const arm = armFactor(model, gc.R, gc.phi);
-	const cf = includeClumps ? clumpFactor(model, x, y, z) : 1.0;
+	const cf = includeClumps ? irregularFieldFactor(model, x, y, z) : 1.0;
 	return {
 		thin: rhoThin(model, gc.R, gc.zp) * arm * cf,
 		thick: rhoThick(model, gc.R, gc.zp) * arm * cf,
@@ -445,6 +544,8 @@ const DensityLib = {
 	toGalactocentric, spheroidEllipsoidRadius, insideDisc,
 	rhoThin, rhoThick, rhoSpheroid, rhoHalo,
 	armFactor, distanceToNearestArm,
+	hash2DNoise, fbm2D, hash3DNoise, fbm3D, noiseSeed,
+	clumpFactor, irregularFactor, irregularFieldFactor,
 	sersicMassFraction, sersicRadiusForFraction, barMassFraction, barRadiusForFraction,
 	rhoTotal, rhoDecomposed, dominantComponent, sampleComponentIndex,
 };

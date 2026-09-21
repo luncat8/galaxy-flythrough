@@ -331,11 +331,13 @@ function relNear(a, b, tol) {
 
 // --- 6. One uniform, packed from the model ------------------------------
 {
+	// 12 flat vec4 groups plus the trailing clump array (12 vec4s).
 	check('the layout, the packer and the struct agree on the size',
-		galaxy.DENSITY_PARAMS_LAYOUT.length * 4 === galaxy.DENSITY_PARAMS_FLOATS
+		galaxy.DENSITY_PARAMS_LAYOUT.length * 4 + galaxy.DENSITY_PARAMS_CLUMP_FLOATS === galaxy.DENSITY_PARAMS_FLOATS
 		&& galaxy.DENSITY_PARAMS_BYTES === galaxy.DENSITY_PARAMS_FLOATS * 4
-		&& galaxy.DENSITY_PARAMS_FLOATS === 40,
-		{ floats: galaxy.DENSITY_PARAMS_FLOATS, bytes: galaxy.DENSITY_PARAMS_BYTES });
+		&& galaxy.DENSITY_PARAMS_FLOATS === 12 * 4 + 12 * 4,
+		{ floats: galaxy.DENSITY_PARAMS_FLOATS, bytes: galaxy.DENSITY_PARAMS_BYTES,
+			groups: galaxy.DENSITY_PARAMS_LAYOUT.length, clumps: galaxy.DENSITY_PARAMS_CLUMPS });
 	const buffer = new Float32Array(galaxy.DENSITY_PARAMS_FLOATS);
 	const returned = galaxy.packDensityParams(MW, buffer);
 	check('packDensityParams writes into the caller and returns it, never a new array',
@@ -372,6 +374,159 @@ function relNear(a, b, tol) {
 		check(`${model.type}: padding slots are zero, never stale memory`,
 			pads.length > 0 && pads.every((i) => buffer[i] === 0), pads.length);
 	}
+}
+
+// --- 6b. The shape machinery: bar, coupling, clumps, gradient ------------
+{
+	// The bar mass integral has a closed form: a superellipsoid level set at
+	// radius s is the unit level set scaled by s, so M = 6*V(1)*amp with
+	// V(1) = 8*a*b*c*r0^3 * Gamma(1+1/n)^3 / Gamma(1+3/n). The n = 2 limit of
+	// that is exactly 8*pi*a*b*c — checked with an independent Gamma below.
+	function testLogGamma(x) {
+		const C = [0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+			771.32342877765313, -176.61502916214059, 12.507343278686905,
+			-0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+		if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - testLogGamma(1 - x);
+		const z = x - 1;
+		let a = C[0];
+		const t = z + 7.5;
+		for (let i = 1; i < 9; i++) a += C[i] / (z + i);
+		return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(a);
+	}
+	// SBb is the authored preset (a Plummer bulge), so the table carries four
+	// barred types: SB0, SBa, SBc, SBd.
+	const bar = TABLE.filter((m) => m.spheroid.profileId === density.PROFILE_BAR);
+	check('every barred table type carries the bar profile', bar.length === 4,
+		bar.map((m) => m.type));
+	for (const model of bar) {
+		const sp = model.spheroid;
+		const axes = sp.a * sp.b * sp.c * sp.r0 ** 3;
+		const expected = 48 * axes * Math.exp(3 * testLogGamma(1 + 1 / sp.n) - testLogGamma(1 + 3 / sp.n));
+		check(`${model.type}: the bar mass integral is the closed superellipsoid form`,
+			relNear(density.massIntegrals(model).bulge, expected, 1e-12),
+			{ integral: density.massIntegrals(model).bulge, expected });
+		// The n = 2 limit of the same formula must be 8*pi*a*b*c*r0^3: a bar
+		// that reads as an ellipsoid integrates like the exp(-s) ellipsoid.
+		const ell = galaxy.createGalaxy({ type: model.type, overrides: { spheroid: { n: 2 } } });
+		check(`${model.type}: the n=2 bar limit is 8*pi*a*b*c*r0^3`,
+			relNear(density.massIntegrals(ell).bulge, 8 * Math.PI * axes, 1e-9),
+			density.massIntegrals(ell).bulge);
+	}
+	// The bar CDF is exact for every n (self-similar level sets): 1-(1+s+s^2/2)e^-s.
+	for (const model of bar) {
+		const sMax = model.truncation.spheroidRadius;
+		let worst = 0;
+		for (const target of [0.05, 0.25, 0.5, 0.9, 0.99]) {
+			const s = density.barRadiusForFraction(model, target);
+			worst = Math.max(worst, Math.abs(density.barMassFraction(model, s) / density.barMassFraction(model, sMax) - target));
+		}
+		check(`${model.type}: the bar inverse CDF round-trips the enclosed-mass fraction`, worst < 2e-3,
+			{ worstError: +worst.toExponential(2) });
+	}
+
+	// Bar-end arm coupling: for table barred types the arm inner edge IS the
+	// bar's semimajor axis, and phase0 is solved so the nearest ridge passes
+	// through that point at the bar's tilt.
+	for (const model of bar) {
+		if (model.arms.amp === 0) {
+			check(`${model.type}: a barred lenticular keeps the bar and drops the arms`,
+				model.arms.amp === 0 && model.arms.m === 2 && near(model.arms.minRadius, model.spheroid.a, 1e-12),
+				{ minRadius: model.arms.minRadius, a: model.spheroid.a });
+			continue;
+		}
+		const tiltRad = model.spheroid.tiltDeg * Math.PI / 180;
+		check(`${model.type}: the arms start where the bar ends (minRadius = a)`,
+			near(model.arms.minRadius, model.spheroid.a, 1e-12),
+			{ minRadius: model.arms.minRadius, a: model.spheroid.a });
+		check(`${model.type}: the ridge passes through the bar end at the bar tilt`,
+			near(density.distanceToNearestArm(model, model.arms.minRadius, tiltRad), 0, 1e-9),
+			density.distanceToNearestArm(model, model.arms.minRadius, tiltRad));
+		check(`${model.type}: the ridge has wound off the bar end further out`,
+			density.distanceToNearestArm(model, model.arms.minRadius * 2, tiltRad) > 0.1,
+			density.distanceToNearestArm(model, model.arms.minRadius * 2, tiltRad));
+	}
+	check('the authored preset keeps its own arm inner edge and phase',
+		near(MW.arms.minRadius, 0.5, 1e-12) && near(MW.arms.phase0, 0, 1e-12),
+		{ minRadius: MW.arms.minRadius, phase0: MW.arms.phase0 });
+
+	// Irregular clumps: 12 PCG-hashed hotspots on Irr only, stable per
+	// (type, seed), inside the disc, and live in the field.
+	const irr = models.Irr;
+	check('Irr carries exactly CLUMP_COUNT hotspots', irr.clumps.length === galaxy.CLUMP_COUNT, irr.clumps.length);
+	check('Irr clumps sit inside the disc with the authored width and boost',
+		irr.clumps.every((c) => Math.abs(c.x) <= 1e-12 + galaxy.CLUMP_SPAN_R * irr.truncation.discRadius
+			&& Math.abs(c.y) <= 1e-12 + galaxy.CLUMP_SPAN_R * irr.truncation.discRadius
+			&& Math.abs(c.z) <= 1e-12 + galaxy.CLUMP_Z_RATIO * irr.truncation.discHeight
+			&& near(c.r, galaxy.CLUMP_R_OVER_K * irr.scaleKpc, 1e-12) && near(c.boost, galaxy.CLUMP_BOOST, 1e-12)),
+		irr.clumps[0]);
+	check('every regular type has no clumps and no FBM texture',
+		TABLE.filter((m) => m.type !== 'Irr').every((m) => m.clumps.length === 0 && m.clumpFbm === 0),
+		null);
+	const irrAgain = galaxy.createGalaxy({ type: 'Irr', seed: 42 });
+	const irrSeed7 = galaxy.createGalaxy({ type: 'Irr', seed: 7 });
+	check('Irr clumps are a pure function of (type, seed)',
+		JSON.stringify(irr.clumps) === JSON.stringify(irrAgain.clumps)
+		&& JSON.stringify(irr.clumps) !== JSON.stringify(irrSeed7.clumps),
+		null);
+	const c0 = irr.clumps[0];
+	const at = density.rhoDecomposed(irr, c0.x, c0.y, c0.z, true);
+	const base = density.rhoDecomposed(irr, c0.x, c0.y, c0.z, false);
+	check('the field shows the hotspot boost at a clump centre',
+		(at.thin + at.thick) / (base.thin + base.thick) > 2.5,
+		(at.thin + at.thick) / (base.thin + base.thick));
+	// And the two-stage sampler moves a visible share of stars into clumps.
+	const irrSample = sampling.sampleGalaxyStars(irr, 42, 40000);
+	let near = 0;
+	for (let i = 0; i < irrSample.count; i++) {
+		for (const c of irr.clumps) {
+			const dx = irrSample.x[i] - c.x, dy = irrSample.y[i] - c.y, dz = irrSample.z[i] - c.z;
+			if (dx * dx + dy * dy + dz * dz < 4 * c.r * c.r) { near++; break; }
+		}
+	}
+	check('the sampler assigns stars to the clumps the field carries',
+		near / irrSample.count > 0.015, +(near / irrSample.count).toFixed(4));
+
+	// Radial metallicity: one dial (gradientSteep), flat in E, steep in Sc.
+	check('gradientSteep is monotone up the sequence and per-type',
+		relNear(models.E4.populations.gradientSteep, 0, 1e-12)
+		&& relNear(models.S0.populations.gradientSteep, 0.25, 1e-9)
+		&& relNear(models.Sa.populations.gradientSteep, 0.5, 1e-9)
+		&& models.Sa.populations.gradientSteep < models.Sb.populations.gradientSteep
+		&& models.Sb.populations.gradientSteep <= models.Sc.populations.gradientSteep
+		&& relNear(models.Sc.populations.gradientSteep, 1.0, 1e-9)
+		&& near(MW.populations.gradientSteep, 0.75, 1e-12),
+		{ S0: models.S0.populations.gradientSteep, Sb: models.Sb.populations.gradientSteep, Sc: models.Sc.populations.gradientSteep });
+	// The +1 step is reached at R = 2*L/steep. Find a seed whose star is a K
+	// dwarf in the thin disc (so the shift has a step left to climb) and
+	// verify the shift at the authored radius.
+	let seed = 1;
+	while (seed < 1000) {
+		const probe = starTypes.deriveStar(models.Sc, seed, density.COMPONENT_THIN, 0.5, 2.0, {});
+		if (probe.state === 'ms' && probe.spectralClass === 'K') break;
+		seed++;
+	}
+	if (seed < 1000) {
+		const inner = starTypes.deriveStar(models.Sc, seed, density.COMPONENT_THIN, 0.5, 2.0, {});
+		const outer = starTypes.deriveStar(models.Sc, seed, density.COMPONENT_THIN, models.Sc.thin.L * 2 + 0.1, 2.0, {});
+		check('the Sc thin disc gains one colour step by R = 2L, clamped at M',
+			inner.colorIndex === 5 && outer.colorIndex === 6,
+			{ inner: inner.colorIndex, outer: outer.colorIndex });
+	}
+	let flat = true;
+	for (let i = 1; i <= 2000; i++) {
+		const a = starTypes.deriveStar(models.E4, i, density.COMPONENT_THIN, 1, 2.0, {});
+		const b = starTypes.deriveStar(models.E4, i, density.COMPONENT_THIN, 10, 2.0, {});
+		if (a.colorIndex !== b.colorIndex) { flat = false; break; }
+	}
+	check('the E thin disc stays flat (no gradient, no shift)', flat, null);
+	// WDs (7) and giants (8) keep their evolutionary colour; the gradient may
+	// only move main-sequence stars, and only toward M.
+	let neverWD = true;
+	for (let i = 1; i <= 2000; i++) {
+		const o = starTypes.deriveStar(models.Sc, i, density.COMPONENT_THIN, 30, 2.0, {});
+		if (o.state === 'ms' && o.colorIndex > 6) { neverWD = false; break; }
+	}
+	check('the thin-disc gradient never promotes an MS star past M', neverWD, null);
 }
 
 // --- 7. Gas decides the stellar population ------------------------------

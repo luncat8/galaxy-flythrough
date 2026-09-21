@@ -19,6 +19,7 @@ const sampling = require('../src/math/sampling.js');
 const starTypes = require('../src/math/star-types.js');
 
 const galaxy = require('../src/math/galaxy.js');
+const records = require('../src/math/star-record.js');
 const model = galaxy.MILKY_WAY;
 
 const SEED = 7;
@@ -120,6 +121,48 @@ const armStats = starTypes.classVsArmDistance(stars);
 			}
 			return giantN > 0 && msN > 0 && giantAge / giantN > msAge / msN;
 		})());
+}
+
+// --- Radial metallicity gradient ----------------------------------------
+{
+	const sc = galaxy.createGalaxy({ type: 'Sc', seed: 7 });
+	const e4 = galaxy.createGalaxy({ type: 'E4', seed: 7 });
+	// Mean colour index of main-sequence thin-disc stars at a fixed radius.
+	const msMean = (m, R, n) => {
+		let sum = 0;
+		let count = 0;
+		for (let i = 1; i <= n; i++) {
+			const s = starTypes.deriveStar(m, i * 7919 + 1, density.COMPONENT_THIN, R, 2.0, {});
+			if (s.state !== 'ms') continue;
+			sum += s.colorIndex;
+			count++;
+		}
+		return sum / count;
+	};
+	const L = sc.thin.L;
+	// Sc is steepest (reaches the full +1 step at R = 2L): by 2.5L most
+	// sub-M main-sequence stars have shifted, so the mean rises by ~0.8.
+	const inner = msMean(sc, L * 0.5, 4000);
+	const outer = msMean(sc, L * 2.5, 4000);
+	check('Sc: the thin-disc mean colour index rises from 0.5L to 2.5L',
+		outer - inner > 0.5, { inner: +inner.toFixed(3), outer: +outer.toFixed(3) });
+	const eInner = msMean(e4, L * 0.5, 4000);
+	const eOuter = msMean(e4, L * 2.5, 4000);
+	check('E4: the gradient is flat (no shift at any radius)',
+		Math.abs(eInner - eOuter) < 1e-12, { inner: eInner, outer: eOuter });
+	// Metal-poor spheroid giants: exactly 20% (the uEvolve roll) land one LUT
+	// step redder than RG, in the dedicated RGe slot.
+	let giants = 0;
+	let rgReddened = 0;
+	for (let i = 1; i <= 20000; i++) {
+		const s = starTypes.deriveStar(model, i * 7919 + 1, density.COMPONENT_BULGE, 1.0, 5.0, {});
+		if (s.state !== 'giant') continue;
+		giants++;
+		if (s.colorIndex === records.SPECTRAL_CLASSES.length - 1) rgReddened++;
+	}
+	check('20% of spheroid giants shift one LUT step redder (the RGe slot)',
+		giants > 100 && Math.abs(rgReddened / giants - 0.2) < 0.03,
+		{ giants, share: +(rgReddened / giants).toFixed(3) });
 }
 
 // --- IMF ----------------------------------------------------------------

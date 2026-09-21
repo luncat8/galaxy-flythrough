@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T17:39:46.655Z",
+  "date": "2026-09-21T18:21:23.407Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -7,7 +7,7 @@
     },
     {
       "name": "density",
-      "lines": 228
+      "lines": 305
     },
     {
       "name": "star-sprite",
@@ -23,7 +23,7 @@
     },
     {
       "name": "procedural-gen",
-      "lines": 176
+      "lines": 193
     },
     {
       "name": "cull",
@@ -35,8 +35,8 @@
     "star-sprite-hdr",
     "tonemap"
   ],
-  "totalChecks": 109,
-  "passed": 109,
+  "totalChecks": 113,
+  "passed": 113,
   "failed": 0,
   "checks": [
     {
@@ -62,7 +62,7 @@
         ],
         [
           "density",
-          9952
+          14013
         ],
         [
           "star-sprite",
@@ -78,7 +78,7 @@
         ],
         [
           "procedural-gen",
-          7640
+          8712
         ],
         [
           "cull",
@@ -140,7 +140,7 @@
     {
       "name": "density: declares its functions",
       "pass": true,
-      "detail": 15
+      "detail": 21
     },
     {
       "name": "star-sprite: braces and parentheses balance",
@@ -235,7 +235,7 @@
     {
       "name": "density.wgsl declares a DensityParams struct",
       "pass": true,
-      "detail": 582
+      "detail": 989
     },
     {
       "name": "DensityParams has one vec4 per layout group, in the same order",
@@ -245,34 +245,49 @@
           "centre",
           "thin",
           "thick",
+          "discCore",
           "spheroid",
           "spheroidShape",
           "halo",
           "arms",
           "armShape",
           "populations",
-          "truncation"
+          "truncation",
+          "clumpMeta",
+          "clumps"
         ],
         "js": [
           "centre",
           "thin",
           "thick",
+          "discCore",
           "spheroid",
           "spheroidShape",
           "halo",
           "arms",
           "armShape",
           "populations",
-          "truncation"
+          "truncation",
+          "clumpMeta",
+          "clumps"
         ]
+      }
+    },
+    {
+      "name": "the clump array carries one vec4 per CLUMP_COUNT",
+      "pass": true,
+      "detail": {
+        "name": "clumps",
+        "floats": 48,
+        "len": 12
       }
     },
     {
       "name": "the struct is exactly as large as the packer writes",
       "pass": true,
       "detail": {
-        "floats": 40,
-        "bytes": 160
+        "floats": 96,
+        "bytes": 384
       }
     },
     {
@@ -294,6 +309,11 @@
       "name": "DensityParams.thick is read by a mirrored formula",
       "pass": true,
       "detail": "thick"
+    },
+    {
+      "name": "DensityParams.discCore is read by a mirrored formula",
+      "pass": true,
+      "detail": "discCore"
     },
     {
       "name": "DensityParams.spheroid is read by a mirrored formula",
@@ -329,6 +349,16 @@
       "name": "DensityParams.truncation is read by a mirrored formula",
       "pass": true,
       "detail": "truncation"
+    },
+    {
+      "name": "DensityParams.clumpMeta is read by a mirrored formula",
+      "pass": true,
+      "detail": "clumpMeta"
+    },
+    {
+      "name": "DensityParams.clumps is read by a mirrored formula",
+      "pass": true,
+      "detail": "clumps"
     },
     {
       "name": "density.wgsl hard-codes no galaxy numbers",

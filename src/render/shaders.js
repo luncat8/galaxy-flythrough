@@ -98,15 +98,21 @@ const DENSITY = `
 
 struct DensityParams {
         centre: vec4f,          // xyz galactocentric origin
-        thin: vec4f,            // L, H, amp
-        thick: vec4f,           // L, H, amp
+        thin: vec4f,            // L, H, amp, flare
+        thick: vec4f,           // L, H, amp, flare
+        discCore: vec4f,        // thin.coreRadius, thick.coreRadius, -, -
         spheroid: vec4f,        // a, b, c, r0
         spheroidShape: vec4f,   // amp, n, tiltDeg, profileId
         halo: vec4f,            // a_h, rMax, power, amp
         arms: vec4f,            // m, amp, pitchDeg, Rs
-        armShape: vec4f,        // phase0, minRadius, flocculence
-        populations: vec4f,     // gasFraction, youngOuterR, gasRich
-        truncation: vec4f,      // discRadius, discHeight, spheroidRadius
+        // w: low 16 bits of the model seed (the noise hash reads exactly
+        // those, and 16 bits round-trip an f32 exactly).
+        armShape: vec4f,        // phase0, minRadius, flocculence, noiseSeed
+        populations: vec4f,     // gasFraction, youngOuterR, gasRich, gradientSteep
+        truncation: vec4f,      // discRadius, discHeight, spheroidRadius, -
+        clumpMeta: vec4f,       // clump count, boost, kfbm, -
+        // Irregular hotspots: galactocentric (x, y, z, r).
+        clumps: array<vec4f, 12>,
 };
 
 // Profile selector, matching density.PROFILE_* and the packed spheroidShape.w.
@@ -140,12 +146,14 @@ fn insideDisc(params: DensityParams, R: f32, z: f32) -> bool {
         return R <= params.truncation.x && abs(z) <= params.truncation.y;
 }
 
+// Flare and core each come from the group they belong to: thin reads
+// thin.w (flare) and discCore.x, thick reads thick.w and discCore.y.
 fn rhoThin(params: DensityParams, R: f32, z: f32) -> f32 {
         if (!insideDisc(params, R, z)) { return 0.0; }
         let H: f32 = params.thin.y * (1.0 + params.thin.w * R / params.thin.x);
         var radial: f32 = exp(-R / params.thin.x);
-        if (params.thick.w > 0.0) {
-                radial = radial * (R / sqrt(R * R + params.thick.w * params.thick.w));
+        if (params.discCore.x > 0.0) {
+                radial = radial * (R / sqrt(R * R + params.discCore.x * params.discCore.x));
         }
         let e: f32 = exp(-abs(z) / H);
         return params.thin.z * radial * 4.0 * e / ((1.0 + e) * (1.0 + e));
@@ -153,10 +161,10 @@ fn rhoThin(params: DensityParams, R: f32, z: f32) -> f32 {
 
 fn rhoThick(params: DensityParams, R: f32, z: f32) -> f32 {
         if (!insideDisc(params, R, z)) { return 0.0; }
-        let H: f32 = params.thick.y * (1.0 + params.thin.w * R / params.thick.x);
+        let H: f32 = params.thick.y * (1.0 + params.thick.w * R / params.thick.x);
         var radial: f32 = exp(-R / params.thick.x);
-        if (params.thick.w > 0.0) {
-                radial = radial * (R / sqrt(R * R + params.thick.w * params.thick.w));
+        if (params.discCore.y > 0.0) {
+                radial = radial * (R / sqrt(R * R + params.discCore.y * params.discCore.y));
         }
         return params.thick.z * radial * exp(-abs(z) / H);
 }
@@ -246,11 +254,78 @@ fn armFactor(params: DensityParams, R: f32, phi: f32) -> f32 {
         if (flocculence > 0.0) {
                 let u: f32 = 2.0 * log(R / params.arms.w);
                 let v: f32 = arg / 3.1415926535;
-                let fbm: f32 = fbm2D(u, v, 42u);
+                let fbm: f32 = fbm2D(u, v, u32(params.armShape.w));
                 let combined: f32 = (1.0 - flocculence) * grandDesign + flocculence * fbm;
                 return 1.0 + amp * combined;
         }
         return 1.0 + amp * grandDesign;
+}
+
+// 3D value noise and its FBM — the irregular field has no spiral symmetry, so
+// its texture is position-based, not (ln R, phi). Mirrors density.hash3DNoise.
+fn noise3DCorner(x: i32, y: i32, z: i32, seed: u32) -> f32 {
+        let x8: u32 = u32(x) & 0xffu;
+        let y8: u32 = u32(y) & 0xffu;
+        let z8: u32 = u32(z) & 0xffu;
+        let s8: u32 = seed & 0xffu;
+        let h1: u32 = (x8 * 1597u + y8 * 2869u + z8 * 3671u + s8 * 5761u) & 0xffffu;
+        let h2: u32 = ((h1 & 0xffu) * 2869u + ((h1 >> 8u) & 0xffu) * 1597u + ((seed >> 8u) & 0xffffu)) & 0xffffu;
+        return (f32(h2) / 65535.0) * 2.0 - 1.0;
+}
+
+fn hash3DNoise(u: f32, v: f32, w: f32, seed: u32) -> f32 {
+        let iu: i32 = i32(floor(u));
+        let iv: i32 = i32(floor(v));
+        let iw: i32 = i32(floor(w));
+        let fu: f32 = u - f32(iu);
+        let fv: f32 = v - f32(iv);
+        let fw: f32 = w - f32(iw);
+        let su: f32 = fu * fu * (3.0 - 2.0 * fu);
+        let sv: f32 = fv * fv * (3.0 - 2.0 * fv);
+        let sw: f32 = fw * fw * (3.0 - 2.0 * fw);
+        let x00: f32 = mix(noise3DCorner(iu, iv, iw, seed), noise3DCorner(iu + 1, iv, iw, seed), su);
+        let x10: f32 = mix(noise3DCorner(iu, iv + 1, iw, seed), noise3DCorner(iu + 1, iv + 1, iw, seed), su);
+        let x01: f32 = mix(noise3DCorner(iu, iv, iw + 1, seed), noise3DCorner(iu + 1, iv, iw + 1, seed), su);
+        let x11: f32 = mix(noise3DCorner(iu, iv + 1, iw + 1, seed), noise3DCorner(iu + 1, iv + 1, iw + 1, seed), su);
+        return mix(mix(x00, x10, sv), mix(x01, x11, sv), sw);
+}
+
+fn fbm3D(u: f32, v: f32, w: f32, seed: u32) -> f32 {
+        let n1: f32 = hash3DNoise(u, v, w, seed);
+        let n2: f32 = hash3DNoise(u * 2.0, v * 2.0, w * 2.0, seed + 1u);
+        let n3: f32 = hash3DNoise(u * 4.0, v * 4.0, w * 4.0, seed + 2u);
+        return (n1 + 0.5 * n2 + 0.25 * n3) / 1.75;
+}
+
+// Irregular hotspots: gaussian boosts of the base field at galactocentric
+// offsets. Mirrors density.clumpFactor.
+fn clumpFactor(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
+        let count: u32 = u32(params.clumpMeta.x);
+        if (count == 0u) { return 1.0; }
+        let boost: f32 = params.clumpMeta.y;
+        var sum: f32 = 1.0;
+        for (var i: u32 = 0u; i < count; i = i + 1u) {
+                let c: vec4f = params.clumps[i];
+                let dx: f32 = x - params.centre.x - c.x;
+                let dy: f32 = y - params.centre.y - c.y;
+                let dz: f32 = z - params.centre.z - c.z;
+                sum += boost * exp(-(dx * dx + dy * dy + dz * dz) / (2.0 * c.w * c.w));
+        }
+        return sum;
+}
+
+// Smooth irregular texture: exp(k * FBM) in disc-normalised coordinates.
+// Mirrors density.irregularFactor.
+fn irregularFactor(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
+        if (u32(params.clumpMeta.x) == 0u || params.clumpMeta.z == 0.0) { return 1.0; }
+        let u: f32 = (x - params.centre.x) / params.thin.x * 0.5;
+        let v: f32 = (y - params.centre.y) / params.thin.x * 0.5;
+        let w: f32 = (z - params.centre.z) / params.thin.y * 0.5;
+        return exp(params.clumpMeta.z * fbm3D(u, v, w, u32(params.armShape.w) + 101u));
+}
+
+fn irregularFieldFactor(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
+        return irregularFactor(params, x, y, z) * clumpFactor(params, x, y, z);
 }
 
 // With no pattern there is no ridge, so the distance is "nowhere" — which is
@@ -277,8 +352,9 @@ fn rhoTotal(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
         let R: f32 = sqrt(dx * dx + dy * dy);
         let phi: f32 = atan2(dy, dx);
         let arm: f32 = armFactor(params, R, phi);
-        return (rhoThin(params, R, z - params.centre.z) + rhoThick(params, R, z - params.centre.z)) * arm
+        let base: f32 = (rhoThin(params, R, z - params.centre.z) + rhoThick(params, R, z - params.centre.z)) * arm
                 + rhoSpheroid(params, x, y, z) + rhoHalo(params, x, y, z);
+        return base * irregularFieldFactor(params, x, y, z);
 }
 
 // Component shares at a point as vec4(thin, thick, bulge, halo).
@@ -288,11 +364,12 @@ fn rhoDecomposed(params: DensityParams, x: f32, y: f32, z: f32) -> vec4f {
         let R: f32 = sqrt(dx * dx + dy * dy);
         let phi: f32 = atan2(dy, dx);
         let arm: f32 = armFactor(params, R, phi);
+        let cf: f32 = irregularFieldFactor(params, x, y, z);
         return vec4f(
-                rhoThin(params, R, z - params.centre.z) * arm,
-                rhoThick(params, R, z - params.centre.z) * arm,
-                rhoSpheroid(params, x, y, z),
-                rhoHalo(params, x, y, z),
+                rhoThin(params, R, z - params.centre.z) * arm * cf,
+                rhoThick(params, R, z - params.centre.z) * arm * cf,
+                rhoSpheroid(params, x, y, z) * cf,
+                rhoHalo(params, x, y, z) * cf,
         );
 }
 
@@ -796,7 +873,10 @@ fn sampleLocalAge(params: DensityParams, component: u32, distToArm: f32, R: f32,
         if (component == COMPONENT_HALO) { return min(13.5, exp(log(12.0) + 0.25 * z)); }
         if (component == COMPONENT_THICK) { return min(13.5, exp(log(8.0) + 0.4 * z)); }
         if (params.populations.z < 0.5) { return min(13.5, exp(log(9.0) + 0.4 * z)); }
-        if (distToArm < 0.5 && R > params.arms.w && R < params.populations.y) { return pow(u1, 3.0) * 0.3; }
+        // Gaussian ridge gate, not a hard cut — mirrors star-types exactly:
+        // young stars fade off the ridge over the 0.3 kpc arm width.
+        let pArm: f32 = exp(-0.5 * distToArm * distToArm / (0.3 * 0.3));
+        if (u2 < pArm && R > params.arms.w && R < params.populations.y) { return pow(u1, 3.0) * 0.3; }
         return min(13.5, exp(log(5.0) + 0.5 * z));
 }
 
@@ -869,7 +949,21 @@ fn main(@global_invocation_id gid: vec3u) {
                         }
                 }
 
-                let cls: u32 = classifyByTempAndState(teff, state);
+                var cls: u32 = classifyByTempAndState(teff, state);
+                if (component == COMPONENT_THIN && state == 0u) {
+                        // Radial metallicity gradient: +1 colour step reached
+                        // at R = 2*L/steep, clamped at M — mirrors
+                        // star-types.deriveStar.
+                        let steep: f32 = params.populations.w;
+                        if (steep > 0.0) {
+                                let shift: u32 = u32(min(1.0, R * steep / (2.0 * params.thin.x)));
+                                cls = min(6u, cls + shift);
+                        }
+                } else if (component == COMPONENT_BULGE && state == 2u && hash01(slotSeed * 31u + 4u) < 0.2) {
+                        // 20% of metal-poor spheroid giants land in the
+                        // dedicated RGe slot (the last LUT entry).
+                        cls = 9u;
+                }
                 let absMag: f32 = 4.83 - 2.5 * log2(max(1e-6, lum)) / LOG2_OVER_LOG10;
                 let jitterByte: u32 = pcgHash(slotSeed + 0xFACEu) & 0xFFu;
                 starBuffer[idx] = packRecord(pos.x, pos.y, pos.z, cls, absMag, jitterByte);

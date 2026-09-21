@@ -7,10 +7,16 @@
 // any star count and no star can silently fall through to the origin. Each
 // component is inverted from its own truncated profile:
 //
-//   thin disc:  R ~ R*exp(-R/L),  phi ~ arm profile,  z ~ sech^2(z/2H)
-//   thick disc: R ~ R*exp(-R/L),  phi ~ arm profile,  z ~ exp(-|z|/H)
+//   thin disc:  R ~ R*exp(-R/L) (cored: from coreRadius), phi ~ arm profile,
+//               z ~ sech^2(z/2H(R)) with H(R) = H(1 + flare*R/L) drawn per R
+//   thick disc: R ~ R*exp(-R/L) (cored: from coreRadius), phi ~ arm profile,
+//               z ~ exp(-|z|/H(R))
 //   spheroid:   plummer radius or sersic radius, uniform direction, axis scaling
 //   halo:       r ~ r^-1.5 on [a_h, rMax] (i.e. rho ~ r^-3.5), uniform direction
+//
+// Irregulars are two-stage: after the base draw, CLUMP_SHARE of the disc stars
+// is re-drawn inside a hash-picked clump gaussian (sigma = clump.r), matching
+// the field's hotspot boost.
 //
 // The spiral arms enter as an azimuthal density profile. For a fixed R the
 // model's disc density is proportional to 1 + A*cos(m*phi - k*ln(R/Rs) +
@@ -42,18 +48,29 @@
 		: window.HashLib;
 
 	const TAU = Math.PI * 2;
+	// Fraction of disc stars the Irr sampler assigns directly to a clump
+	// gaussian (the plan's two-stage clump sampling). The base draw keeps the
+	// rest; together they approximate the field's 1 + boost hotspots. Tuned
+	// so the assigned mass equals the field's measured clump excess mass
+	// (2.3% of the Irr box mass, boost x3, r 0.24 kpc, 12 hotspots).
+	const CLUMP_SHARE = 0.024;
+
 	// Inverse CDF of p(R) ~ R*exp(-R/L), truncated to [0, rMax]:
 	//   F(R) = 1 - (1 + R/L) * exp(-R/L)
 	// No closed form, so invert with bisection — 32 deterministic steps put the
-	// result well below f32 resolution.
-	function sampleDiscRadius(u, L, rMax, out) {
-		const target = u * (1 - (1 + rMax / L) * Math.exp(-rMax / L));
-		let lo = 0;
+	// result well below f32 resolution. A cored disc (coreRadius > 0) inverts
+	// the same exponential over [coreRadius, rMax]: the plan's documented
+	// approximation to the soft R/sqrt(R^2 + c^2) core, which shares the same
+	// slope and outer profile.
+	function sampleDiscRadius(u, L, rMax, coreRadius, out) {
+		const f = (R) => 1 - (1 + R / L) * Math.exp(-R / L);
+		const lo0 = coreRadius > 0 ? coreRadius : 0;
+		const target = f(lo0) + u * (f(rMax) - f(lo0));
+		let lo = lo0;
 		let hi = rMax;
 		for (let i = 0; i < 32; i++) {
 			const mid = 0.5 * (lo + hi);
-			const cdf = 1 - (1 + mid / L) * Math.exp(-mid / L);
-			if (cdf < target) lo = mid; else hi = mid;
+			if (f(mid) < target) lo = mid; else hi = mid;
 		}
 		out[0] = 0.5 * (lo + hi);
 	}
@@ -94,6 +111,19 @@
 		out[0] = sinTheta * Math.cos(phi);
 		out[1] = sinTheta * Math.sin(phi);
 		out[2] = cosTheta;
+	}
+
+	// One standard normal from two uniforms (Box-Muller, the cos branch).
+	// The clump gaussian has sigma = clump.r, matching the field's
+	// exp(-d^2 / (2 r^2)).
+	function sampleGaussian(u1, u2) {
+		return Math.sqrt(-2 * Math.log(Math.max(1e-12, u1))) * Math.cos(TAU * u2);
+	}
+
+	// Flared scale height at radius R: H(R) = H * (1 + flare * R / L).
+	// `flare` 0 is the flat disc (the common case).
+	function discHeightAt(group, R) {
+		return group.H * (1 + (group.flare || 0) * (R / group.L));
 	}
 
 	// Plummer spheroid radius: M(<s) ~ s^3 (1 + s^2)^(-3/2) = u, truncated at
@@ -185,6 +215,7 @@
 		const gcY = model.centre.y;
 		const gcZ = model.centre.z;
 		const haloMass = density.haloRadialMass(model, model.halo.rMax);
+		const clumps = model.clumps || [];
 
 		for (let i = 0; i < count; i++) {
 			const starSeed = Math.imul(i + 1, 0x9e3779b1) ^ Math.imul(seed | 0, 0x85ebca6b);
@@ -198,15 +229,17 @@
 			let z = 0;
 			let component = density.COMPONENT_THIN;
 
-			if (u0 < wThin) {
-				component = density.COMPONENT_THIN;
-				sampleDiscRadius(u1, model.thin.L, t.discRadius, scratch);
-				z = sampleSech2Z(u2, model.thin.H, t.discHeight);
-			} else if (u0 < wThick) {
-				component = density.COMPONENT_THICK;
-				sampleDiscRadius(u1, model.thick.L, t.discRadius, scratch);
-				z = sampleLaplaceZ(u2, model.thick.H, t.discHeight);
-			} else if (u0 < wBulge) {
+		if (u0 < wThin) {
+			component = density.COMPONENT_THIN;
+			sampleDiscRadius(u1, model.thin.L, t.discRadius, model.thin.coreRadius || 0, scratch);
+			// The z CDF is exact per radius: a flared disc draws |z| from the
+			// sech^2 at H(R), which is how the field reads.
+			z = sampleSech2Z(u2, discHeightAt(model.thin, scratch[0]), t.discHeight);
+		} else if (u0 < wThick) {
+			component = density.COMPONENT_THICK;
+			sampleDiscRadius(u1, model.thick.L, t.discRadius, model.thick.coreRadius || 0, scratch);
+			z = sampleLaplaceZ(u2, discHeightAt(model.thick, scratch[0]), t.discHeight);
+		} else if (u0 < wBulge) {
 				component = density.COMPONENT_BULGE;
 				const sp = model.spheroid;
 				const s = model.spheroid.r0 * sampleSpheroidRadius(model, u1);
@@ -256,22 +289,33 @@
 			// ridge. The profile has m identical ridges, so one of the m
 			// replicas is picked uniformly — without this the disc would only
 			// populate half the azimuths (m = 2) and the sky would have a seam.
-			const R = scratch[0];
-			let phi = TAU * u3;
-			if (armArmed && R >= model.arms.minRadius) {
-				const theta = sampleArmPhase(u3, A);
-				const replica = Math.min(armM - 1, Math.floor(u4 * armM));
-				phi = (theta + armK * Math.log(R / armRs) - armPhase0) / armM + TAU * replica / armM;
-			}
-			x = gcX + R * Math.cos(phi);
-			y = gcY + R * Math.sin(phi);
-			buf.x[i] = x;
-			buf.y[i] = y;
-			buf.z[i] = gcZ + z;
-			buf.component[i] = component;
-			buf.R[i] = R;
-			buf.distToArm[i] = density.distanceToNearestArm(model, R, Math.atan2(Math.sin(phi), Math.cos(phi)));
+		const R = scratch[0];
+		let phi = TAU * u3;
+		if (armArmed && R >= model.arms.minRadius) {
+			const theta = sampleArmPhase(u3, A);
+			const replica = Math.min(armM - 1, Math.floor(u4 * armM));
+			phi = (theta + armK * Math.log(R / armRs) - armPhase0) / armM + TAU * replica / armM;
 		}
+		x = gcX + R * Math.cos(phi);
+		y = gcY + R * Math.sin(phi);
+		let zWorld = gcZ + z;
+		// Two-stage clump assignment (Irr): a fixed share of the disc stars is
+		// drawn inside the gaussian of a hash-picked clump, giving the sample
+		// the hotspot concentration the field carries. Positions are
+		// galactocentric offsets, so a centre override moves them too.
+		if (clumps.length > 0 && hash.hash01At(starSeed, 5) < CLUMP_SHARE) {
+			const c = clumps[Math.min(clumps.length - 1, Math.floor(hash.hash01At(starSeed, 6) * clumps.length))];
+			x = gcX + c.x + c.r * sampleGaussian(hash.hash01At(starSeed, 7), hash.hash01At(starSeed, 8));
+			y = gcY + c.y + c.r * sampleGaussian(hash.hash01At(starSeed, 9), hash.hash01At(starSeed, 10));
+			zWorld = gcZ + c.z + c.r * sampleGaussian(hash.hash01At(starSeed, 11), hash.hash01At(starSeed, 12));
+		}
+		buf.x[i] = x;
+		buf.y[i] = y;
+		buf.z[i] = zWorld;
+		buf.component[i] = component;
+		buf.R[i] = Math.sqrt((x - gcX) * (x - gcX) + (y - gcY) * (y - gcY));
+		buf.distToArm[i] = density.distanceToNearestArm(model, buf.R[i], Math.atan2(y - gcY, x - gcX));
+	}
 
 		return buf;
 	}
@@ -326,6 +370,7 @@
 		componentShares,
 		createBuffers,
 		deliveredMasses,
+		CLUMP_SHARE,
 	};
 	if (typeof module !== 'undefined') module.exports = api;
 	if (typeof window !== 'undefined') window.SamplingLib = api;

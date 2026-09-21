@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-21T17:39:47.160Z",
+  "date": "2026-09-21T18:19:59.802Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 86,
+  "prepareMs": 84,
   "totalChecks": 77,
   "passed": 77,
   "failed": 0,
@@ -122,7 +122,7 @@
     {
       "name": "the procedural field uses several spectral classes",
       "pass": true,
-      "detail": 8
+      "detail": 9
     },
     {
       "name": "the first frame writes the dynamic region (local gap-fill + catalog) starting at localProc offset",

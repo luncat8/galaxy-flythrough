@@ -174,12 +174,24 @@
 
 		const spectralClass = classifyByTempAndState(teff, state);
 		let colorIndex = records.spectralClassIndex(spectralClass);
-		if (componentIndex === density.COMPONENT_THIN) {
+		if (componentIndex === density.COMPONENT_THIN && state === 'ms') {
+			// Radial metallicity, as a colour step only (no physics): main-
+			// sequence thin-disc stars redden toward the rim, reaching the
+			// full +1 step at R = 2*L/steep — flat in the E/S0 range, steep in
+			// the late types (populations.gradientSteep). Clamped at M: a
+			// metal-poor star reddens within the main-sequence classes and
+			// never becomes a WD or a giant by colour alone.
 			const L = (model.thin && model.thin.L) ? model.thin.L : 2.6;
-			const shift = Math.min(1, Math.floor(0.5 * (R / (2 * L))));
-			colorIndex = Math.min(records.SPECTRAL_CLASSES.length - 1, colorIndex + shift);
+			const steep = (model.populations && model.populations.gradientSteep) || 0;
+			const shift = steep > 0 ? Math.min(1, Math.floor(R * steep / (2 * L))) : 0;
+			if (shift > 0) {
+				colorIndex = Math.min(records.SPECTRAL_CLASSES.indexOf('M'), colorIndex + shift);
+			}
 		} else if (componentIndex === density.COMPONENT_BULGE && state === 'giant' && uEvolve < 0.2) {
-			colorIndex = Math.min(records.SPECTRAL_CLASSES.length - 1, colorIndex + 1);
+			// Metal-poor spheroid giants: 20% land one LUT step redder than RG,
+			// in the dedicated RGe slot (RG is the reddest class, so the shift
+			// needs its own entry).
+			colorIndex = records.SPECTRAL_CLASSES.length - 1;
 		}
 		out.mass = mass;
 		out.age = age;

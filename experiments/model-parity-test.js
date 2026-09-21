@@ -86,6 +86,178 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 		density.rhoHalo(model, rMax + 0.001, 0, 0) === 0);
 }
 
+// --- The shape machinery: bar, flaring, cores, clumps, flocculence -------
+{
+	// Bar: the sampled superellipsoid radius matches the field's shell mass
+	// dM/ds = 3*V(1)*s^2*e^-s*amp, where the total integral is the closed
+	// form 6*V(1)*amp. (The angular map of the sampler is the same
+	// uniform-direction scheme the plummer/sersic samplers use; the s
+	// marginal is exact.)
+	const bar = isolated('spheroid', { spheroid: { profile: 'bar', n: 2.5, r0: 2.3, tiltDeg: 0 } });
+	const barBuf = sampling.sampleGalaxyStars(bar, 71, N);
+	const M = density.massIntegrals(bar).bulge;   // = 6*V(1)*amp
+	const weight = (s) => 0.5 * M * s * s * Math.exp(-s);
+	histogram('bar superellipsoid radius', barBuf,
+		(i) => {
+			const n = bar.spheroid.n;
+			const x = barBuf.x[i], y = barBuf.y[i], z = barBuf.z[i];
+			const ax = Math.abs(x / bar.spheroid.a);
+			const ay = Math.abs(y / bar.spheroid.b);
+			const az = Math.abs(z / bar.spheroid.c);
+			return Math.pow(Math.pow(ax, n) + Math.pow(ay, n) + Math.pow(az, n), 1 / n) / bar.spheroid.r0;
+		},
+		bar.truncation.spheroidRadius, weight);
+	check('the bar field falls off as exp(-s) from its centre',
+		near(density.rhoSpheroid(bar, bar.spheroid.a * 2, 0, 0),
+			density.rhoSpheroid(bar, 0, 0, 0) * Math.exp(-2 / bar.spheroid.r0), 1e-9),
+		{ centre: density.rhoSpheroid(bar, 0, 0, 0) });
+
+	// Flaring: each disc reads H(R) = H(1 + flare*R/L) — thin and thick
+	// separately — and the sampled (R, z) cloud matches a joint quadrature.
+	for (const group of ['thin', 'thick']) {
+		const model = isolated(group, { [group]: { flare: 0.3 }, truncation: { discRadius: 12, discHeight: 0.8 } });
+		const L = model[group].L;
+		const H = model[group].H;
+		for (const [R, z] of [[2, 0.3], [5, 0.5], [8, 0.2], [0.5, 0.1]]) {
+			const Hr = H * (1 + 0.3 * R / L);
+			const e = Math.exp(-Math.abs(z) / Hr);
+			const vertical = group === 'thin' ? 4 * e / ((1 + e) * (1 + e)) : e;
+			const expected = model[group].amp * Math.exp(-R / L) * vertical;
+			const actual = group === 'thin' ? density.rhoThin(model, R, z) : density.rhoThick(model, R, z);
+			check(`flared ${group} disc reads H(R) at R=${R}, z=${z}`, near(actual, expected, 1e-12),
+				{ actual, expected });
+		}
+	}
+	{
+		const model = isolated('thin', { thin: { flare: 0.3 }, truncation: { discRadius: 12, discHeight: 0.8 } });
+		const buf = sampling.sampleGalaxyStars(model, 71, N);
+		// Joint (R, z) histogram vs the field quadrature: catches a sampler
+		// that draws z from the flat H while the field flares.
+		const nR = 12, nZ = 8;
+		const dR = 12 / nR, dZ = 1.6 / nZ;
+		const obs = new Float64Array(nR * nZ);
+		for (let i = 0; i < buf.count; i++) {
+			const x = buf.x[i], y = buf.y[i], z = buf.z[i];
+			const R = Math.sqrt(x * x + y * y);
+			if (R >= 12 || Math.abs(z) >= 0.8) continue;
+			obs[Math.min(nZ - 1, Math.floor(Math.abs(z) / dZ)) * nR + Math.min(nR - 1, Math.floor(R / dR))]++;
+		}
+		const ref = new Float64Array(nR * nZ);
+		let refTotal = 0;
+		const steps = 160;
+		for (let i = 0; i < steps; i++) {
+			const R = (i + 0.5) * 12 / steps;
+			const radial = model.thin.amp * Math.exp(-R / model.thin.L) * R * (12 / steps);
+			const rb = Math.min(nR - 1, Math.floor(R / dR));
+			for (let j = 0; j < 40; j++) {
+				const z = (j + 0.5) * 1.6 / 40;
+				const Hr = model.thin.H * (1 + 0.3 * R / model.thin.L);
+				const e = Math.exp(-z / Hr);
+				const w = 4 * e / ((1 + e) * (1 + e)) * radial * (1.6 / 40);
+				const k = Math.min(nZ - 1, Math.floor(z / dZ));
+				ref[k * nR + rb] += w;
+				refTotal += w;
+			}
+		}
+		let tv = 0;
+		for (let k = 0; k < obs.length; k++) tv += Math.abs(obs[k] / buf.count - ref[k] / refTotal);
+		tv /= 2;
+		check('the flared disc sample matches the joint (R, z) field (TV < 5%)', tv < 0.05, +tv.toFixed(4));
+	}
+
+	// Disc core: the field is the soft R/sqrt(R^2+c^2) core; the sampler
+	// inverts the exponential over [coreRadius, rMax] (the plan's documented
+	// approximation — no stars inside the core, the outer profile intact).
+	{
+		const model = isolated('thin', { thin: { coreRadius: 0.8 }, truncation: { discRadius: 12, discHeight: 0.5 } });
+		const L = model.thin.L;
+		for (const R of [0.1, 0.4, 0.8, 2, 5]) {
+			const expected = model.thin.amp * Math.exp(-R / L) * (R / Math.sqrt(R * R + 0.64));
+			check(`cored disc reads the soft core at R=${R}`, near(density.rhoThin(model, R, 0), expected, 1e-12),
+				{ R, expected });
+		}
+		const buf = sampling.sampleGalaxyStars(model, 71, N);
+		let insideCore = 0;
+		let tv = 0;
+		const nR = 24, dR = 12 / nR;
+		const hist = new Float64Array(nR);
+		for (let i = 0; i < buf.count; i++) {
+			const x = buf.x[i], y = buf.y[i];
+			const R = Math.sqrt(x * x + y * y);
+			if (R < 0.8 - 1e-9) insideCore++;
+			if (R < 12) hist[Math.min(nR - 1, Math.floor(R / dR))]++;
+		}
+		const ref = new Float64Array(nR);
+		let refTotal = 0;
+		const steps = 240;
+		for (let i = 0; i < steps; i++) {
+			const R = (i + 0.5) * 12 / steps;
+			const w = model.thin.amp * Math.exp(-R / L) * (R / Math.sqrt(R * R + 0.64)) * R * (12 / steps);
+			ref[Math.min(nR - 1, Math.floor(R / dR))] += w;
+			refTotal += w;
+		}
+		for (let i = 0; i < nR; i++) tv += Math.abs(hist[i] / buf.count - ref[i] / refTotal);
+		tv /= 2;
+		check('no cored-disc star falls inside the core cutoff', insideCore === 0, insideCore);
+		check('the cored disc R profile matches the field (TV < 5%)', tv < 0.05, +tv.toFixed(4));
+	}
+
+	// Bar-end arm coupling at the field: the ridge passes through the bar's
+	// semimajor axis at the bar's tilt. Flocculent bars carry a noise term,
+	// so the exact maximum is checked on a pure grand-design barred model.
+	for (const type of ['SBa', 'SBc', 'SBd']) {
+		const model = galaxy.createGalaxy({ type });
+		const a = model.arms;
+		const ridge = (Math.tan(a.pitchDeg * Math.PI / 180) * Math.log(a.minRadius / a.Rs) - a.phase0) / a.m;
+		check(`${type}: the ridge passes through the bar end`,
+			near(a.minRadius, model.spheroid.a, 1e-12)
+			&& near(density.distanceToNearestArm(model, a.minRadius, ridge), 0, 1e-9),
+			{ minRadius: a.minRadius, a: model.spheroid.a });
+	}
+	{
+		const pure = galaxy.createGalaxy({ type: 'SBa', overrides: { arms: { flocculence: 0 } } });
+		const a = pure.arms;
+		const ridge = (Math.tan(a.pitchDeg * Math.PI / 180) * Math.log(a.minRadius / a.Rs) - a.phase0) / a.m;
+		check('a grand-design bar: the ridge is the exact arm-field maximum at the bar end',
+			near(density.armFactor(pure, a.minRadius, ridge), 1 + a.amp, 1e-12),
+			density.armFactor(pure, a.minRadius, ridge));
+	}
+
+	// Flocculence is seeded: Sc (flocculence 0.5) reads differently under two
+	// seeds, while the noise itself is a pure function of (coords, seed).
+	{
+		const sc42 = galaxy.createGalaxy({ type: 'Sc', seed: 42 });
+		const sc7 = galaxy.createGalaxy({ type: 'Sc', seed: 7 });
+		let differs = 0;
+		for (const [R, phi] of [[4, 0.3], [6, 1.1], [9, 2.2], [12, 0.7]]) {
+			if (density.armFactor(sc42, R, phi) !== density.armFactor(sc7, R, phi)) differs++;
+		}
+		check('flocculent arm fields diverge with the seed', differs >= 3, differs);
+		check('the flocculence noise is a pure function of (coords, seed)',
+			density.fbm2D(1.3, 0.7, 42) === density.fbm2D(1.3, 0.7, 42)
+			&& density.fbm2D(1.3, 0.7, 42) !== density.fbm2D(1.3, 0.7, 7),
+			density.fbm2D(1.3, 0.7, 42));
+	}
+
+	// Irregular field: the hotspot boost and the seeded FBM texture.
+	{
+		const irr = galaxy.createGalaxy({ type: 'Irr', seed: 42 });
+		const irr7 = galaxy.createGalaxy({ type: 'Irr', seed: 7 });
+		const c = irr.clumps[0];
+		const full = density.rhoDecomposed(irr, c.x, c.y, c.z, true);
+		const basef = density.rhoDecomposed(irr, c.x, c.y, c.z, false);
+		const ratio = (full.thin + full.thick) / (basef.thin + basef.thick);
+		check('the hotspot boost at a clump centre is 1+boost within the FBM band',
+			ratio > 2.5 && ratio < 6.5, +ratio.toFixed(3));
+		const p = [2.2, -1.1, 0.3];
+		check('the FBM texture is seeded (two Irr seeds read differently)',
+			density.irregularFactor(irr, p[0], p[1], p[2]) !== density.irregularFactor(irr7, p[0], p[1], p[2]),
+			{ s42: density.irregularFactor(irr, p[0], p[1], p[2]), s7: density.irregularFactor(irr7, p[0], p[1], p[2]) });
+		check('a regular type has no irregular texture',
+			density.irregularFactor(galaxy.createGalaxy({ type: 'Sc' }), 2, 1, 0.3) === 1);
+	}
+}
+
 {
 	const base = galaxy.createGalaxy({ type: 'Sc' });
 	const moved = galaxy.createGalaxy({ type: 'Sc', overrides: { centre: { x: 3, y: -2, z: 4 } } });

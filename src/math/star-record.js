@@ -33,7 +33,10 @@ const FLAG_VARIABLE = 4;
 
 // LUT order. Index == position in this list; the colour LUT texture is built
 // from the same list so encoder and shader can never disagree.
-const SPECTRAL_CLASSES = ['O', 'B', 'A', 'F', 'G', 'K', 'M', 'WD', 'RG'];
+// 'RGe' is not a classification result — it is the dedicated LUT slot the
+// metal-poor spheroid-giant shift lands on: RG is already the reddest class,
+// so "one step redder" needs its own entry rather than an out-of-range index.
+const SPECTRAL_CLASSES = ['O', 'B', 'A', 'F', 'G', 'K', 'M', 'WD', 'RG', 'RGe'];
 // Blackbody-based sRGB colours, authoritatively tuned against Mitchell
 // Charity's star-colour table and Stellarium's B-V palette. Channel values
 // are sRGB bytes (uploaded via rgba8unorm-srgb so the GPU linearises them
@@ -51,6 +54,7 @@ const CLASS_COLORS = [
 	[255, 190, 150], // M  (<3.7 kK) pale orange-red, deliberately not crimson
 	[200, 210, 255], // WD (hot but faint) pale blue-white
 	[255, 140, 100], // RG  deep red-orange (these are rare enough to be vivid)
+	[255, 106, 76],  // RGe metal-poor spheroid giants: one LUT step redder than RG
 ];
 const DEFAULT_CLASS_INDEX = SPECTRAL_CLASSES.indexOf('G');
 

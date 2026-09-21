@@ -1,51 +1,173 @@
 {
-  "date": "2026-09-21T17:40:01.408Z",
+  "date": "2026-09-21T18:27:33.182Z",
   "seed": 42,
-  "sampleSize": 120000,
-  "box": {
-    "xMin": -20,
-    "xMax": 20,
-    "yMin": -20,
-    "yMax": 20,
-    "zMin": -3,
-    "zMax": 3
-  },
-  "sampleMs": 273,
-  "totalChecks": 8,
-  "passed": 8,
-  "failed": 0,
+  "suite": [
+    "E4",
+    "S0",
+    "SBb",
+    "Sc",
+    "Irr"
+  ],
+  "totalSampleMs": 1376,
+  "totalChecks": 43,
+  "passed": 41,
+  "failed": 2,
   "checks": [
     {
-      "name": "the box sampler fills the requested count",
+      "name": "E4 (table): the box sampler fills the requested count",
+      "pass": true,
+      "detail": 60000
+    },
+    {
+      "name": "E4 (table): the box contains model mass",
+      "pass": true,
+      "detail": 12.848430292302492
+    },
+    {
+      "name": "E4 (table): galactocentric R matches the field (TV < 8%)",
+      "pass": true,
+      "detail": 0.0144
+    },
+    {
+      "name": "E4 (table): z matches the field (TV < 8%)",
+      "pass": true,
+      "detail": 0.0048
+    },
+    {
+      "name": "E4 (table): component shares match the analytic masses (within 2%)",
+      "pass": true,
+      "detail": {
+        "worst": 0,
+        "thin": {
+          "observed": 0,
+          "expected": 0
+        },
+        "thick": {
+          "observed": 0,
+          "expected": 0
+        },
+        "bulge": {
+          "observed": 1,
+          "expected": 1
+        },
+        "halo": {
+          "observed": 0,
+          "expected": 0
+        }
+      }
+    },
+    {
+      "name": "E4: the whole sample is spheroid (no disc, no halo)",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "E4 (table): deterministic in (seed, count, box)",
+      "pass": true
+    },
+    {
+      "name": "E4 (table): a different seed changes the sample",
+      "pass": true,
+      "detail": 5000
+    },
+    {
+      "name": "E4 (table): every star lies inside the requested box",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "S0 (table): the box sampler fills the requested count",
+      "pass": true,
+      "detail": 60000
+    },
+    {
+      "name": "S0 (table): the box contains model mass",
+      "pass": true,
+      "detail": 45.58369830787116
+    },
+    {
+      "name": "S0 (table): galactocentric R matches the field (TV < 8%)",
+      "pass": true,
+      "detail": 0.0122
+    },
+    {
+      "name": "S0 (table): z matches the field (TV < 8%)",
+      "pass": true,
+      "detail": 0.0074
+    },
+    {
+      "name": "S0 (table): component shares match the analytic masses (within 2%)",
+      "pass": true,
+      "detail": {
+        "worst": 0.0037,
+        "thin": {
+          "observed": 0.37817,
+          "expected": 0.37715
+        },
+        "thick": {
+          "observed": 0.14588,
+          "expected": 0.14534
+        },
+        "bulge": {
+          "observed": 0.47573,
+          "expected": 0.47729
+        },
+        "halo": {
+          "observed": 0.00022,
+          "expected": 0.00022
+        }
+      }
+    },
+    {
+      "name": "S0 (table): deterministic in (seed, count, box)",
+      "pass": true
+    },
+    {
+      "name": "S0 (table): a different seed changes the sample",
+      "pass": true,
+      "detail": 5000
+    },
+    {
+      "name": "S0 (table): every star lies inside the requested box",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "SBb (table): the box sampler fills the requested count",
       "pass": true,
       "detail": 120000
     },
     {
-      "name": "galactocentric R distribution matches the model (TV < 8%)",
+      "name": "SBb (table): the box contains model mass",
       "pass": true,
-      "detail": 0.0331
+      "detail": 80.19037978315401
     },
     {
-      "name": "z distribution matches the model (TV < 8%)",
+      "name": "SBb (table): galactocentric R matches the field (TV < 8%)",
+      "pass": true,
+      "detail": 0.0377
+    },
+    {
+      "name": "SBb (table): z matches the field (TV < 8%)",
       "pass": true,
       "detail": 0.0041
     },
     {
-      "name": "component mix matches the model within 8%",
+      "name": "SBb (table): component shares match the analytic masses (within 2%)",
       "pass": true,
       "detail": {
-        "worst": 0.0111,
+        "worst": 0.0104,
         "thin": {
           "observed": 0.62748,
-          "expected": 0.62763
+          "expected": 0.62734
         },
         "thick": {
           "observed": 0.19332,
-          "expected": 0.1912
+          "expected": 0.19155
         },
         "bulge": {
           "observed": 0.17904,
-          "expected": 0.18098
+          "expected": 0.18092
         },
         "halo": {
           "observed": 0.00016,
@@ -54,24 +176,140 @@
       }
     },
     {
-      "name": "the box sample includes the bulge population",
+      "name": "SBb preset: the box sample includes the bulge population",
       "pass": true,
-      "detail": {
-        "observed": 0.17904,
-        "expected": 0.18098
-      }
+      "detail": 0.17904166666666665
     },
     {
-      "name": "the box sampler is deterministic in (seed, count, box)",
+      "name": "SBb (table): deterministic in (seed, count, box)",
       "pass": true
     },
     {
-      "name": "a different seed produces a different box sample",
+      "name": "SBb (table): a different seed changes the sample",
       "pass": true,
       "detail": 5000
     },
     {
-      "name": "every star lies inside the requested box",
+      "name": "SBb (table): every star lies inside the requested box",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "Sc (table): the box sampler fills the requested count",
+      "pass": true,
+      "detail": 60000
+    },
+    {
+      "name": "Sc (table): the box contains model mass",
+      "pass": true,
+      "detail": 126.64906528664683
+    },
+    {
+      "name": "Sc (table): galactocentric R matches the field (TV < 8%)",
+      "pass": true,
+      "detail": 0.0546
+    },
+    {
+      "name": "Sc (table): z matches the field (TV < 8%)",
+      "pass": true,
+      "detail": 0.008
+    },
+    {
+      "name": "Sc (table): component shares match the analytic masses (within 2%)",
+      "pass": false,
+      "detail": {
+        "worst": 0.2474,
+        "thin": {
+          "observed": 0.77233,
+          "expected": 0.78459
+        },
+        "thick": {
+          "observed": 0.17433,
+          "expected": 0.17262
+        },
+        "bulge": {
+          "observed": 0.05285,
+          "expected": 0.04237
+        },
+        "halo": {
+          "observed": 0.00048,
+          "expected": 0.00043
+        }
+      }
+    },
+    {
+      "name": "Sc (table): deterministic in (seed, count, box)",
+      "pass": true
+    },
+    {
+      "name": "Sc (table): a different seed changes the sample",
+      "pass": true,
+      "detail": 5000
+    },
+    {
+      "name": "Sc (table): every star lies inside the requested box",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "Irr (table): the box sampler fills the requested count",
+      "pass": true,
+      "detail": 60000
+    },
+    {
+      "name": "Irr (table): the box contains model mass",
+      "pass": true,
+      "detail": 14.6227782677294
+    },
+    {
+      "name": "Irr (table): galactocentric R matches the field (TV < 8%)",
+      "pass": false,
+      "detail": 0.0843
+    },
+    {
+      "name": "Irr (table): z matches the field (TV < 8%)",
+      "pass": true,
+      "detail": 0.0198
+    },
+    {
+      "name": "Irr (table): component shares match the analytic masses (within 2%)",
+      "pass": true,
+      "detail": {
+        "worst": 0.0172,
+        "thin": {
+          "observed": 0.61097,
+          "expected": 0.62167
+        },
+        "thick": {
+          "observed": 0.36702,
+          "expected": 0.36373
+        },
+        "bulge": {
+          "observed": 0.0219,
+          "expected": 0.01451
+        },
+        "halo": {
+          "observed": 0.00012,
+          "expected": 0.00009
+        }
+      }
+    },
+    {
+      "name": "Irr: the sample shows the clump concentration the field carries",
+      "pass": true,
+      "detail": 0.0406
+    },
+    {
+      "name": "Irr (table): deterministic in (seed, count, box)",
+      "pass": true
+    },
+    {
+      "name": "Irr (table): a different seed changes the sample",
+      "pass": true,
+      "detail": 5000
+    },
+    {
+      "name": "Irr (table): every star lies inside the requested box",
       "pass": true,
       "detail": 0
     }

@@ -273,6 +273,10 @@ async function main() {
 @fragment fn armProbe(@location(0) p: vec2f) -> @location(0) vec4f {
 	return vec4f(armFactor(model, p.x, p.y), distanceToNearestArm(model, p.x, p.y), 0.0, 0.0);
 }
+@fragment fn ageProbe(@location(0) p: vec4f, @location(1) q: vec4f) -> @location(0) vec4f {
+	// sampleLocalAge(model, component, distToArm, R, u1, u2)
+	return vec4f(sampleLocalAge(model, u32(p.x), p.y, p.z, p.w, q.x), 0.0, 0.0, 0.0);
+}
 `;
 	const modelBuffer = new Float32Array(galaxy.DENSITY_PARAMS_FLOATS);
 	const densityBinds = { 0: { 0: { uniform: modelBuffer.buffer } } };
@@ -281,15 +285,36 @@ async function main() {
 		centre: { x: 3, y: -2, z: 4 }, spheroid: { r0: 2.3, tiltDeg: 31 },
 		halo: { power: 3, rMax: 8 }, arms: { minRadius: 2, phase0: 1.4 },
 	} }));
+	// The shape machinery, executed for real: flocculence under a non-default
+	// seed (the uniform's noiseSeed slot), a flared and cored disc, and an
+	// override with per-group flare/core values that differ — the old
+	// cross-wired layout passed that one only because table types happened to
+	// carry identical values.
+	models.push(galaxy.createGalaxy({ type: 'Sc', seed: 7 }));
+	models.push(galaxy.createGalaxy({ type: 'Sd', seed: 11 }));
+	models.push(galaxy.createGalaxy({ type: 'Sb', overrides: {
+		thin: { flare: 0.3, coreRadius: 0.8 }, thick: { flare: 0.1 },
+	} }));
 	for (const model of models) {
 		galaxy.packDensityParams(model, modelBuffer);
-		const name = model.centre.z === 4 ? 'shifted/scaled/phase-shifted Sc' : model.type;
+		const n = galaxy.GALAXY_TYPES.length;
+		const name = model.centre.z === 4 ? 'shifted/scaled/phase-shifted Sc'
+			: (model === models[n + 1] ? 'flocculent Sc, seed 7'
+			: (model === models[n + 2] ? 'flared/cored Sd'
+			: (model === models[n + 3] ? 'asymmetric flare/core Sb' : model.type)));
+		const offsets = [[0, 0, 0], [0.005, 0, 0], [4.1, 1.3, 0.2], [-8, 0.4, -0.3], [model.halo.rMax + 1, 0, 0]];
+		if (model.clumps && model.clumps.length > 0) {
+			// A clump centre: the hotspot boost and the FBM texture live there.
+			offsets.push([model.clumps[0].x, model.clumps[0].y, model.clumps[0].z]);
+			offsets.push([model.clumps[1].x, model.clumps[1].y, model.clumps[1].z]);
+		}
 		let worst = 0;
 		let worstCase = null;
-		for (const offset of [[0, 0, 0], [0.005, 0, 0], [4.1, 1.3, 0.2], [-8, 0.4, -0.3], [model.halo.rMax + 1, 0, 0]]) {
+		for (const offset of offsets) {
 			const p = [offset[0] + model.centre.x, offset[1] + model.centre.y, offset[2] + model.centre.z].map(Math.fround);
 			const actual = runStage(densityCode, 'densityProbe', 'debugFragment', { 0: p }, densityBinds);
-			const expected = density.rhoDecomposed(model, p[0], p[1], p[2], false);
+			// includeClumps true: the shader always evaluates the full field.
+			const expected = density.rhoDecomposed(model, p[0], p[1], p[2], true);
 			for (let c = 0; c < 4; c++) {
 				const value = expected[density.COMPONENT_NAMES[c]];
 				const error = Math.abs(actual[c] - value) / Math.max(1e-5, value);
@@ -306,6 +331,32 @@ async function main() {
 				Math.abs(actual[1] - density.distanceToNearestArm(model, ...p)));
 		}
 		check(`${name}: executed WGSL arm threshold and phase match JS`, armError < 2e-4, { armError });
+	}
+
+	// sampleLocalAge parity: the thin-disc branch is a Gaussian ridge gate on
+	// (distToArm, R, u1, u2), quenched models fall through to the old field.
+	{
+		const starTypes = require('../src/math/star-types.js');
+		const probes = [
+			[density.COMPONENT_THIN, 0.1, 8, 0.3, 0.3],   // young arm branch
+			[density.COMPONENT_THIN, 0.3, 5, 0.5, 0.6],   // mid-ridge
+			[density.COMPONENT_THIN, 1.2, 8, 0.2, 0.1],   // off-ridge (gate fails)
+			[density.COMPONENT_THIN, 0.1, 20, 0.4, 0.2],  // R past youngOuterR
+			[density.COMPONENT_THICK, 0.1, 8, 0.7, 0.5],
+			[density.COMPONENT_BULGE, 0.1, 1, 0.5, 0.5],
+			[density.COMPONENT_HALO, 99, 30, 0.9, 0.1],
+		];
+		for (const model of [models[galaxy.GALAXY_TYPES.indexOf('Sc')], models[galaxy.GALAXY_TYPES.indexOf('E4')]]) {
+			galaxy.packDensityParams(model, modelBuffer);
+			let worst = 0;
+			for (const [component, dArm, R, u1, u2] of probes) {
+				const actual = runStage(densityCode, 'ageProbe', 'debugFragment',
+					{ 0: [component, dArm, R, u1].map(Math.fround), 1: [u2, 0, 0, 0].map(Math.fround) }, densityBinds);
+				const expected = starTypes.sampleLocalAge(model, component, dArm, R, u1, u2);
+				worst = Math.max(worst, Math.abs(actual[0] - expected) / Math.max(1e-3, expected));
+			}
+			check(`${model.type}: executed sampleLocalAge WGSL matches JS`, worst < 2e-3, { worst });
+		}
 	}
 
 	report('the shipping WGSL preserves radiance and matches the parameterised density model');

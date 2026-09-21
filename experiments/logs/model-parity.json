@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-21T17:39:58.512Z",
-  "totalChecks": 57,
-  "passed": 57,
-  "failed": 0,
+  "date": "2026-09-21T18:27:28.023Z",
+  "totalChecks": 85,
+  "passed": 84,
+  "failed": 1,
   "checks": [
     {
       "name": "compact thin radius: all samples stay in support",
@@ -26,7 +26,7 @@
       "name": "compact thin height: histogram matches integrated field (TV < 2%)",
       "pass": true,
       "detail": {
-        "tv": 0.00848346778825156,
+        "tv": 0.00909673578635246,
         "mass": 0.6681130488027676
       }
     },
@@ -56,7 +56,7 @@
       "name": "compact thick height: histogram matches integrated field (TV < 2%)",
       "pass": true,
       "detail": {
-        "tv": 0.007706854102043938,
+        "tv": 0.008296747438956462,
         "mass": 0.6228789549776673
       }
     },
@@ -193,6 +193,201 @@
     },
     {
       "name": "halo 3.5/1: the field vanishes outside its bound",
+      "pass": true
+    },
+    {
+      "name": "bar superellipsoid radius: all samples stay in support",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "bar superellipsoid radius: histogram matches integrated field (TV < 2%)",
+      "pass": true,
+      "detail": {
+        "tv": 0.009844596419657745,
+        "mass": 86.45373099178776
+      }
+    },
+    {
+      "name": "the bar field falls off as exp(-s) from its centre",
+      "pass": true,
+      "detail": {
+        "centre": 1
+      }
+    },
+    {
+      "name": "flared thin disc reads H(R) at R=2, z=0.3",
+      "pass": true,
+      "detail": {
+        "actual": 0.45172360676706586,
+        "expected": 0.4517236067670659
+      }
+    },
+    {
+      "name": "flared thin disc reads H(R) at R=5, z=0.5",
+      "pass": true,
+      "detail": {
+        "actual": 0.1617124977905744,
+        "expected": 0.16171249779057437
+      }
+    },
+    {
+      "name": "flared thin disc reads H(R) at R=8, z=0.2",
+      "pass": true,
+      "detail": {
+        "actual": 0.10505941208084735,
+        "expected": 0.10505941208084735
+      }
+    },
+    {
+      "name": "flared thin disc reads H(R) at R=0.5, z=0.1",
+      "pass": true,
+      "detail": {
+        "actual": 0.8414120997639865,
+        "expected": 0.8414120997639865
+      }
+    },
+    {
+      "name": "flared thick disc reads H(R) at R=2, z=0.3",
+      "pass": true,
+      "detail": {
+        "actual": 0.4686702226801051,
+        "expected": 0.4686702226801051
+      }
+    },
+    {
+      "name": "flared thick disc reads H(R) at R=5, z=0.5",
+      "pass": true,
+      "detail": {
+        "actual": 0.218424980684721,
+        "expected": 0.218424980684721
+      }
+    },
+    {
+      "name": "flared thick disc reads H(R) at R=8, z=0.2",
+      "pass": true,
+      "detail": {
+        "actual": 0.1639069261898189,
+        "expected": 0.1639069261898189
+      }
+    },
+    {
+      "name": "flared thick disc reads H(R) at R=0.5, z=0.1",
+      "pass": true,
+      "detail": {
+        "actual": 0.7953382214450443,
+        "expected": 0.7953382214450443
+      }
+    },
+    {
+      "name": "the flared disc sample matches the joint (R, z) field (TV < 5%)",
+      "pass": false,
+      "detail": 0.1903
+    },
+    {
+      "name": "cored disc reads the soft core at R=0.1",
+      "pass": true,
+      "detail": {
+        "R": 0.1,
+        "expected": 0.12067356820145755
+      }
+    },
+    {
+      "name": "cored disc reads the soft core at R=0.4",
+      "pass": true,
+      "detail": {
+        "R": 0.4,
+        "expected": 0.40067323222393175
+      }
+    },
+    {
+      "name": "cored disc reads the soft core at R=0.8",
+      "pass": true,
+      "detail": {
+        "R": 0.8,
+        "expected": 0.5675912156838008
+      }
+    },
+    {
+      "name": "cored disc reads the soft core at R=2",
+      "pass": true,
+      "detail": {
+        "R": 2,
+        "expected": 0.5359788637400313
+      }
+    },
+    {
+      "name": "cored disc reads the soft core at R=5",
+      "pass": true,
+      "detail": {
+        "R": 5,
+        "expected": 0.2500072710810808
+      }
+    },
+    {
+      "name": "no cored-disc star falls inside the core cutoff",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "the cored disc R profile matches the field (TV < 5%)",
+      "pass": true,
+      "detail": 0.0203
+    },
+    {
+      "name": "SBa: the ridge passes through the bar end",
+      "pass": true,
+      "detail": {
+        "minRadius": 1.8,
+        "a": 1.8
+      }
+    },
+    {
+      "name": "SBc: the ridge passes through the bar end",
+      "pass": true,
+      "detail": {
+        "minRadius": 1.512,
+        "a": 1.512
+      }
+    },
+    {
+      "name": "SBd: the ridge passes through the bar end",
+      "pass": true,
+      "detail": {
+        "minRadius": 1.08,
+        "a": 1.08
+      }
+    },
+    {
+      "name": "a grand-design bar: the ridge is the exact arm-field maximum at the bar end",
+      "pass": true,
+      "detail": 1.15
+    },
+    {
+      "name": "flocculent arm fields diverge with the seed",
+      "pass": true,
+      "detail": 4
+    },
+    {
+      "name": "the flocculence noise is a pure function of (coords, seed)",
+      "pass": true,
+      "detail": -0.10552409580049919
+    },
+    {
+      "name": "the hotspot boost at a clump centre is 1+boost within the FBM band",
+      "pass": true,
+      "detail": 3.227
+    },
+    {
+      "name": "the FBM texture is seeded (two Irr seeds read differently)",
+      "pass": true,
+      "detail": {
+        "s42": 0.7655340307080873,
+        "s7": 1.2178757129954576
+      }
+    },
+    {
+      "name": "a regular type has no irregular texture",
       "pass": true
     },
     {

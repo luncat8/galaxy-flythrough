@@ -260,8 +260,11 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		&& Math.abs(back.x - Math.fround(buf.x[0])) === 0
 		&& Math.abs(back.absMag - record.absMag) < records.ABS_MAG_SPAN / 255 + 1e-6,
 		{ x: back.x, absMag: back.absMag });
+	// Ten entries: nine classes plus the dedicated RGe slot the metal-poor
+	// spheroid-giant shift lands on (star-types cannot classify an RGe, only
+	// shift into it).
 	check('the color LUT covers every spectral class',
-		records.buildColorLUT().length === 256 * 4 && records.SPECTRAL_CLASSES.length === 9,
+		records.buildColorLUT().length === 256 * 4 && records.SPECTRAL_CLASSES.length === 10,
 		records.SPECTRAL_CLASSES.length);
 }
 

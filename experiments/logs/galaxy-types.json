@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T17:39:57.925Z",
+  "date": "2026-09-21T18:21:23.288Z",
   "types": [
     "E0",
     "E1",
@@ -593,9 +593,9 @@
       ]
     }
   ],
-  "totalChecks": 425,
-  "passed": 425,
-  "failed": 0,
+  "totalChecks": 458,
+  "passed": 456,
+  "failed": 2,
   "checks": [
     {
       "name": "E0: every documented spec field is authored",
@@ -1160,7 +1160,8 @@
         "youngScaleHeight": 0.5,
         "youngOuterR": 12,
         "spheroidOld": true,
-        "gasRich": false
+        "gasRich": false,
+        "gradientSteep": 0.25
       }
     },
     {
@@ -2291,7 +2292,7 @@
         "amps": {
           "thin": 0.262090047033834,
           "thick": 0.04133256568970822,
-          "bulge": 3.1402014603072805,
+          "bulge": 2.282360493590178,
           "halo": 0.00048
         },
         "delivered": {
@@ -2324,7 +2325,7 @@
         "amps": {
           "thin": 0.6290161128812015,
           "thick": 0.0900131430575868,
-          "bulge": 1.48374518999519,
+          "bulge": 1.0784153332213589,
           "halo": 0.00064
         },
         "delivered": {
@@ -2357,7 +2358,7 @@
         "amps": {
           "thin": 0.9629357056190428,
           "thick": 0.08858412922877562,
-          "bulge": 0.7748462361818713,
+          "bulge": 0.5631735608120808,
           "halo": 0.0010400000000000001
         },
         "delivered": {
@@ -2390,7 +2391,7 @@
         "amps": {
           "thin": 1.0781284403910305,
           "thick": 0.07001022237812304,
-          "bulge": 0.8014055810159204,
+          "bulge": 0.5824774176349932,
           "halo": 0.00112
         },
         "delivered": {
@@ -3458,8 +3459,10 @@
       "name": "the layout, the packer and the struct agree on the size",
       "pass": true,
       "detail": {
-        "floats": 40,
-        "bytes": 160
+        "floats": 96,
+        "bytes": 384,
+        "groups": 12,
+        "clumps": 12
       }
     },
     {
@@ -3470,7 +3473,7 @@
       "name": "repacking a different model overwrites every slot",
       "pass": true,
       "detail": {
-        "changed": 26
+        "changed": 27
       }
     },
     {
@@ -3492,97 +3495,315 @@
     {
       "name": "SBb: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "E0: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "E1: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "E2: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "E3: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "E4: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "E5: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "E6: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "E7: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "S0: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "Sa: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "Sb: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "Sc: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "Sd: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "SB0: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "SBa: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "SBc: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "SBd: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "Irr: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 4
+      "detail": 5
+    },
+    {
+      "name": "every barred table type carries the bar profile",
+      "pass": false,
+      "detail": [
+        "SB0",
+        "SBa",
+        "SBc",
+        "SBd"
+      ]
+    },
+    {
+      "name": "SB0: the bar mass integral is the closed superellipsoid form",
+      "pass": true,
+      "detail": {
+        "integral": 10.869746358206072,
+        "expected": 10.869746358206072
+      }
+    },
+    {
+      "name": "SB0: the n=2 bar limit is 8*pi*a*b*c*r0^3",
+      "pass": true,
+      "detail": 8.97766649431047
+    },
+    {
+      "name": "SBa: the bar mass integral is the closed superellipsoid form",
+      "pass": true,
+      "detail": {
+        "integral": 18.403803357809227,
+        "expected": 18.403803357809227
+      }
+    },
+    {
+      "name": "SBa: the n=2 bar limit is 8*pi*a*b*c*r0^3",
+      "pass": true,
+      "detail": 15.200281895128837
+    },
+    {
+      "name": "SBc: the bar mass integral is the closed superellipsoid form",
+      "pass": true,
+      "detail": {
+        "integral": 9.54450688221359,
+        "expected": 9.54450688221359
+      }
+    },
+    {
+      "name": "SBc: the n=2 bar limit is 8*pi*a*b*c*r0^3",
+      "pass": true,
+      "detail": 7.883109395324137
+    },
+    {
+      "name": "SBd: the bar mass integral is the closed superellipsoid form",
+      "pass": true,
+      "detail": {
+        "integral": 3.9752215252867926,
+        "expected": 3.9752215252867926
+      }
+    },
+    {
+      "name": "SBd: the n=2 bar limit is 8*pi*a*b*c*r0^3",
+      "pass": true,
+      "detail": 3.283260889347829
+    },
+    {
+      "name": "SB0: the bar inverse CDF round-trips the enclosed-mass fraction",
+      "pass": true,
+      "detail": {
+        "worstError": 2.44e-10
+      }
+    },
+    {
+      "name": "SBa: the bar inverse CDF round-trips the enclosed-mass fraction",
+      "pass": true,
+      "detail": {
+        "worstError": 1.8e-10
+      }
+    },
+    {
+      "name": "SBc: the bar inverse CDF round-trips the enclosed-mass fraction",
+      "pass": true,
+      "detail": {
+        "worstError": 1.8e-10
+      }
+    },
+    {
+      "name": "SBd: the bar inverse CDF round-trips the enclosed-mass fraction",
+      "pass": true,
+      "detail": {
+        "worstError": 1.8e-10
+      }
+    },
+    {
+      "name": "SB0: a barred lenticular keeps the bar and drops the arms",
+      "pass": true,
+      "detail": {
+        "minRadius": 1.62,
+        "a": 1.62
+      }
+    },
+    {
+      "name": "SBa: the arms start where the bar ends (minRadius = a)",
+      "pass": true,
+      "detail": {
+        "minRadius": 1.8,
+        "a": 1.8
+      }
+    },
+    {
+      "name": "SBa: the ridge passes through the bar end at the bar tilt",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "SBa: the ridge has wound off the bar end further out",
+      "pass": true,
+      "detail": 0.15319398997105074
+    },
+    {
+      "name": "SBc: the arms start where the bar ends (minRadius = a)",
+      "pass": true,
+      "detail": {
+        "minRadius": 1.512,
+        "a": 1.512
+      }
+    },
+    {
+      "name": "SBc: the ridge passes through the bar end at the bar tilt",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "SBc: the ridge has wound off the bar end further out",
+      "pass": true,
+      "detail": 0.18721405308508263
+    },
+    {
+      "name": "SBd: the arms start where the bar ends (minRadius = a)",
+      "pass": true,
+      "detail": {
+        "minRadius": 1.08,
+        "a": 1.08
+      }
+    },
+    {
+      "name": "SBd: the ridge passes through the bar end at the bar tilt",
+      "pass": true,
+      "detail": 5.995204332975846e-17
+    },
+    {
+      "name": "SBd: the ridge has wound off the bar end further out",
+      "pass": true,
+      "detail": 0.15122680522735374
+    },
+    {
+      "name": "the authored preset keeps its own arm inner edge and phase",
+      "pass": true,
+      "detail": {
+        "minRadius": 0.5,
+        "phase0": 0
+      }
+    },
+    {
+      "name": "Irr carries exactly CLUMP_COUNT hotspots",
+      "pass": true,
+      "detail": 12
+    },
+    {
+      "name": "Irr clumps sit inside the disc with the authored width and boost",
+      "pass": true,
+      "detail": {
+        "x": 2.4610780494287607,
+        "y": -1.166409371048212,
+        "z": -0.28227538704872135,
+        "r": 0.24,
+        "boost": 3
+      }
+    },
+    {
+      "name": "every regular type has no clumps and no FBM texture",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "Irr clumps are a pure function of (type, seed)",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "the field shows the hotspot boost at a clump centre",
+      "pass": true,
+      "detail": 3.226665248453123
+    },
+    {
+      "name": "gradientSteep is monotone up the sequence and per-type",
+      "pass": true,
+      "detail": {
+        "S0": 0.25,
+        "Sb": 0.75,
+        "Sc": 1
+      }
+    },
+    {
+      "name": "the Sc thin disc gains one colour step by R = 2L, clamped at M",
+      "pass": true,
+      "detail": {
+        "inner": 5,
+        "outer": 6
+      }
+    },
+    {
+      "name": "the E thin disc stays flat (no gradient, no shift)",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "the thin-disc gradient never promotes a star past M",
+      "pass": false,
+      "detail": null
     },
     {
       "name": "SBb: an arm inside the star-forming annulus is young",
@@ -3764,7 +3985,8 @@
         "youngScaleHeight": 0.6,
         "youngOuterR": 16.799999999999997,
         "spheroidOld": true,
-        "gasRich": false
+        "gasRich": false,
+        "gradientSteep": 1
       }
     },
     {

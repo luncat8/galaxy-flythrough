@@ -99,16 +99,34 @@ function wgslConsts(part) {
         const densitySrc = shaders.SHADER_PARTS.density;
         const struct = /struct\s+DensityParams\s*\{([\s\S]*?)\n\}/.exec(densitySrc);
         check('density.wgsl declares a DensityParams struct', !!struct, struct ? struct[1].length : null);
-        const groups = struct
-	        ? [...struct[1].matchAll(/^\s*([A-Za-z_0-9]+)\s*:\s*vec4(?:<f32>|f)?,\s*(?:\/\/[^\n]*)?$/gm)].map(m => m[1])
-                : [];
-        const layout = galaxy.DENSITY_PARAMS_LAYOUT.map(g => g.name);
+        // Members are vec4s (one per layout group) plus the trailing clump
+        // array. Comment lines are skipped, trailing comments allowed.
+        const members = [];
+        if (struct) {
+                for (const raw of struct[1].split('\n')) {
+                        const line = raw.trim();
+                        if (!line || line.startsWith('//')) continue;
+                        let m = /^([A-Za-z_0-9]+)\s*:\s*vec4f,/.exec(line);
+                        if (m) { members.push({ name: m[1], floats: 4 }); continue; }
+                        m = /^([A-Za-z_0-9]+)\s*:\s*array<vec4f,\s*(\d+)>,/.exec(line);
+                        if (m) {
+                                members.push({ name: m[1], floats: 4 * parseInt(m[2], 10), len: parseInt(m[2], 10) });
+                        }
+                }
+        }
+        const groups = members.map(m => m.name);
+        const layout = [...galaxy.DENSITY_PARAMS_LAYOUT.map(g => g.name), 'clumps'];
         check('DensityParams has one vec4 per layout group, in the same order',
                 groups.length === layout.length && groups.every((n, i) => n === layout[i]),
                 { wgsl: groups, js: layout });
+        const clumpsMember = members.find(m => m.name === 'clumps');
+        check('the clump array carries one vec4 per CLUMP_COUNT',
+                !!clumpsMember && clumpsMember.len === galaxy.DENSITY_PARAMS_CLUMPS
+                && clumpsMember.floats === galaxy.DENSITY_PARAMS_CLUMP_FLOATS,
+                clumpsMember);
         check('the struct is exactly as large as the packer writes',
-                galaxy.DENSITY_PARAMS_FLOATS === groups.length * 4
-                && galaxy.DENSITY_PARAMS_BYTES === groups.length * 16,
+                galaxy.DENSITY_PARAMS_FLOATS === members.reduce((a, m) => a + m.floats, 0)
+                && galaxy.DENSITY_PARAMS_BYTES === galaxy.DENSITY_PARAMS_FLOATS * 4,
                 { floats: galaxy.DENSITY_PARAMS_FLOATS, bytes: galaxy.DENSITY_PARAMS_BYTES });
         check('the generated field binds the struct at group 0 binding 5',
                 /@group\(0\)\s*@binding\(5\)\s*var<uniform>\s+densityParams:\s*DensityParams;/.test(shaders.SHADER_PARTS['procedural-gen']),

@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T17:39:46.609Z",
+  "date": "2026-09-21T18:21:23.363Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -133,21 +133,21 @@
       "name": "DensityLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 33
+        "keys": 41
       }
     },
     {
       "name": "GalaxyLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 22
+        "keys": 30
       }
     },
     {
       "name": "SamplingLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 5
+        "keys": 6
       }
     },
     {
@@ -410,7 +410,7 @@
     {
       "name": "the color LUT covers every spectral class",
       "pass": true,
-      "detail": 9
+      "detail": 10
     }
   ]
 }

@@ -29,6 +29,9 @@
 	const density = (typeof module !== 'undefined' && module.exports)
 		? require('./density.js')
 		: window.DensityLib;
+	const hash = (typeof module !== 'undefined' && module.exports)
+		? require('./hash.js')
+		: window.HashLib;
 
 	const DEFAULT_SEED = 42;
 	const MILKY_WAY_TYPE = 'SBb';
@@ -60,9 +63,14 @@
 		// Cold gas fraction — gates the young population and the gas nebulae.
 		GAS_FRACTION: [[-5, 0.00], [-1, 0.00], [0, 0.02], [1, 0.08], [3, 0.15],
 			[5, 0.30], [6, 0.45], [9, 0.50]],
-		// Disc thickness: early types are puffier.
-		H_OVER_L: [[0, 0.15], [1, 0.12], [3, 0.09], [5, 0.07], [6, 0.06], [9, 0.10]],
-	};
+	// Disc thickness: early types are puffier.
+	H_OVER_L: [[0, 0.15], [1, 0.12], [3, 0.09], [5, 0.07], [6, 0.06], [9, 0.10]],
+	// Radial metallicity gradient, as a colour step: the thin disc reaches its
+	// full +1 colourIndex shift at R = 2*L/steep. Flat in the E/S0 range (no
+	// disc anyway), steep in the late types — the plan's "flat in E, steep in
+	// Sc" on one dial.
+	GRADIENT_STEEP: [[-1, 0.00], [0, 0.25], [1, 0.50], [3, 0.75], [5, 1.00], [6, 1.00]],
+};
 
 	// The Milky Way preset: verbatim the constants density.js used to export.
 	// `n` is unused by a plummer profile; it is present because the packed uniform
@@ -76,7 +84,8 @@
 		halo: { a_h: 1.0, rMax: 100.0, power: 3.5, amp: 0.0008 },
 		arms: { m: 2, amp: 0.20, pitchDeg: 12, Rs: 3.0, phase0: 0, minRadius: 0.5, flocculence: 0 },
 		truncation: { discRadius: 25.0, discHeight: 3.0, spheroidRadius: 6.0 },
-		populations: { gasFraction: 0.15, youngScaleHeight: 0.5, youngOuterR: 12.0, spheroidOld: true, gasRich: true },
+		populations: { gasFraction: 0.15, youngScaleHeight: 0.5, youngOuterR: 12.0, spheroidOld: true, gasRich: true,
+			gradientSteep: 0.75 },
 		home: {
 			position: [0, 0, 0.005], yaw: 0, pitch: 0,
 			// H in orbit mode circles the Sun from 10 pc — a Milky Way start,
@@ -182,6 +191,17 @@
 	// cannot disagree about which side of it a type falls on.
 	const GAS_RICH_MIN = 0.05;
 
+	// Irregular structure (Irr): gaussian hotspots over a smooth FBM texture.
+	// The hotspots double as the sampler's target: a fixed share of the stars
+	// is assigned directly to a clump Gaussian, which is what makes the sampled
+	// stars show the clumps the field has (the plan's two-stage sampler).
+	const CLUMP_COUNT = 12;         // also the size of the uniform's clump array
+	const CLUMP_BOOST = 3.0;        // gaussian peak density boost
+	const CLUMP_KFBM = 0.7;         // exp(k * FBM) smooth-texture amplitude
+	const CLUMP_SPAN_R = 0.3;       // clumps sit within +-0.3 * discRadius
+	const CLUMP_Z_RATIO = 0.4;      // ... and +-0.4 * discHeight
+	const CLUMP_R_OVER_K = 0.3;     // clump width ~0.3 kpc at scaleKpc 1
+
 	const GALAXY_TYPES = Object.keys(TYPE_SPECS);
 	// What the G key walks through, in the order the plan lists them.
 	const GALAXY_TYPE_CYCLE = ['E4', 'S0', 'SBb', 'Sc', 'Irr'];
@@ -271,8 +291,13 @@
 		const pitchDeg = interpAnchors(ANCHORS.PITCH_DEG, T);
 		const pitchRad = pitchDeg * Math.PI / 180;
 		const barTiltRad = tiltDeg * Math.PI / 180;
-		const minRadius = ARM_MIN_RADIUS_KPC * k;
 		const Rs = ARM_RS_KPC * k;
+		// Arms start where the bar ends: for barred types the inner edge is the
+		// bar's semimajor axis (s = 1, where the bar's exp(-s) has fallen to 1/e),
+		// and phase0 is solved so the nearest ridge passes through that point at
+		// the bar's tilt. Without that coupling the log-spiral wind-up puts the
+		// ridge off the bar end by ~m*27 deg at any inner edge inside the bar.
+		const minRadius = spec.barred ? spec.axes[0] * k : ARM_MIN_RADIUS_KPC * k;
 		const phase0 = spec.barred && pitchDeg > 0 ? Math.tan(pitchRad) * Math.log(minRadius / Rs) - m * barTiltRad : 0;
 		return {
 			scaleKpc: k,
@@ -302,6 +327,7 @@
 				youngOuterR: YOUNG_OUTER_R_KPC * k,
 				spheroidOld: true,
 				gasRich: interpAnchors(ANCHORS.GAS_FRACTION, T) >= GAS_RICH_MIN,
+				gradientSteep: interpAnchors(ANCHORS.GRADIENT_STEEP, T),
 			},
 		};
 	}
@@ -364,18 +390,23 @@
 		model.spheroid.profileId = model.spheroid.profile === 'bar'
 			? density.PROFILE_BAR
 			: (model.spheroid.profile === 'sersic' ? density.PROFILE_SERSIC : density.PROFILE_PLUMMER);
-		if (spec.T >= 9 || type === 'Irr') {
-			model.clumps = [];
-			for (let i = 0; i < 12; i++) {
-				const hx = ((seed * 10007 + i * 1009) % 1000) / 1000 - 0.5;
-				const hy = ((seed * 10009 + i * 1013) % 1000) / 1000 - 0.5;
-				const hz = ((seed * 10037 + i * 1019) % 1000) / 1000 - 0.5;
+		// Irregular hotspots: PCG-hashed from (seed, index) per the stable-hash
+		// rule, stored as galactocentric offsets so a centre override moves them
+		// with the model.
+		model.clumps = [];
+		model.clumpFbm = 0;
+		if (type === 'Irr') {
+			model.clumpFbm = CLUMP_KFBM;
+			const spanR = CLUMP_SPAN_R * structure.truncation.discRadius;
+			const spanZ = CLUMP_Z_RATIO * structure.truncation.discHeight;
+			for (let i = 0; i < CLUMP_COUNT; i++) {
+				const s = hash.hash4(seed, i, 0x1f, 0);
 				model.clumps.push({
-					x: hx * structure.truncation.discRadius * 0.6,
-					y: hy * structure.truncation.discRadius * 0.6,
-					z: hz * structure.truncation.discHeight * 0.5,
-					r: 0.3 * structure.scaleKpc,
-					boost: 2.0,
+					x: (hash.hash01At(s, 1) - 0.5) * 2 * spanR,
+					y: (hash.hash01At(s, 2) - 0.5) * 2 * spanR,
+					z: (hash.hash01At(s, 3) - 0.5) * 2 * spanZ,
+					r: CLUMP_R_OVER_K * structure.scaleKpc,
+					boost: CLUMP_BOOST,
 				});
 			}
 		}
@@ -453,32 +484,71 @@
 	const DENSITY_PARAMS_LAYOUT = [
 		{ name: 'centre', source: 'centre', fields: ['x', 'y', 'z', 'unused'] },
 		{ name: 'thin', source: 'thin', fields: ['L', 'H', 'amp', 'flare'] },
-		{ name: 'thick', source: 'thick', fields: ['L', 'H', 'amp', 'coreRadius'] },
+		{ name: 'thick', source: 'thick', fields: ['L', 'H', 'amp', 'flare'] },
+		// One vec4 each for both discs' core radii; the old layout packed one
+		// group's core into the other group's slot, which any per-group
+		// override exposed as a JS/WGSL divergence.
+		{ name: 'discCore', fields: ['thinCore', 'thickCore', 'unused', 'unused'] },
 		{ name: 'spheroid', source: 'spheroid', fields: ['a', 'b', 'c', 'r0'] },
 		{ name: 'spheroidShape', source: 'spheroid', fields: ['amp', 'n', 'tiltDeg', 'profileId'] },
 		{ name: 'halo', source: 'halo', fields: ['a_h', 'rMax', 'power', 'amp'] },
 		{ name: 'arms', source: 'arms', fields: ['m', 'amp', 'pitchDeg', 'Rs'] },
-		{ name: 'armShape', source: 'arms', fields: ['phase0', 'minRadius', 'flocculence', 'unused'] },
+		// w carries the low 16 bits of the model seed: the value noise reads
+		// exactly those bits, and 16 bits round-trip an f32 exactly.
+		{ name: 'armShape', fields: ['phase0', 'minRadius', 'flocculence', 'noiseSeed'] },
 		// Only the fields the mirrored *formulas* read. youngScaleHeight and
-		// spheroidOld are consumed on the CPU (nebula placement, 0.3.1
-		// gradients), so they stay out of the uniform rather than riding along
-		// to the GPU unused.
-		{ name: 'populations', source: 'populations', fields: ['gasFraction', 'youngOuterR', 'gasRich', 'unused'] },
+		// spheroidOld are consumed on the CPU (nebula placement), so they stay
+		// out of the uniform rather than riding along to the GPU unused.
+		{ name: 'populations', source: 'populations', fields: ['gasFraction', 'youngOuterR', 'gasRich', 'gradientSteep'] },
 		{ name: 'truncation', source: 'truncation', fields: ['discRadius', 'discHeight', 'spheroidRadius', 'unused'] },
+		{ name: 'clumpMeta', fields: ['count', 'boost', 'kfbm', 'unused'] },
 	];
-	const DENSITY_PARAMS_FLOATS = DENSITY_PARAMS_LAYOUT.length * 4;
+	// After the flat vec4 groups: CLUMP_COUNT vec4s of clump (x, y, z, r),
+	// galactocentric offsets. The WGSL struct declares the same array.
+	const DENSITY_PARAMS_CLUMPS = CLUMP_COUNT;
+	const DENSITY_PARAMS_CLUMP_FLOATS = DENSITY_PARAMS_CLUMPS * 4;
+	const DENSITY_PARAMS_FLOATS = DENSITY_PARAMS_LAYOUT.length * 4 + DENSITY_PARAMS_CLUMP_FLOATS;
 	const DENSITY_PARAMS_BYTES = DENSITY_PARAMS_FLOATS * 4;
 
 	// Writes the model into `out` (a Float32Array of DENSITY_PARAMS_FLOATS) in
 	// place: called at build and on regenerate, never per frame.
 	function packDensityParams(model, out) {
 		let i = 0;
+		const clumps = model.clumps || [];
 		for (const group of DENSITY_PARAMS_LAYOUT) {
+			if (group.name === 'discCore') {
+				out[i++] = model.thin.coreRadius || 0;
+				out[i++] = model.thick.coreRadius || 0;
+				out[i++] = 0;
+				out[i++] = 0;
+				continue;
+			}
+			if (group.name === 'armShape') {
+				out[i++] = model.arms.phase0;
+				out[i++] = model.arms.minRadius;
+				out[i++] = model.arms.flocculence;
+				out[i++] = (model.seed >>> 0) & 0xffff;
+				continue;
+			}
+			if (group.name === 'clumpMeta') {
+				out[i++] = clumps.length;
+				out[i++] = clumps.length ? clumps[0].boost : 0;
+				out[i++] = model.clumpFbm || 0;
+				out[i++] = 0;
+				continue;
+			}
 			const src = model[group.source];
 			for (const field of group.fields) {
 				const value = field === 'unused' ? undefined : src[field];
 				out[i++] = typeof value === 'boolean' ? (value ? 1 : 0) : (value === undefined ? 0 : value);
 			}
+		}
+		for (let c = 0; c < DENSITY_PARAMS_CLUMPS; c++) {
+			const cl = clumps[c];
+			out[i++] = cl ? cl.x : 0;
+			out[i++] = cl ? cl.y : 0;
+			out[i++] = cl ? cl.z : 0;
+			out[i++] = cl ? cl.r : 0;
 		}
 		return out;
 	}
@@ -496,8 +566,10 @@
 		DEFAULT_SEED, MILKY_WAY_TYPE, MILKY_WAY,
 		ANCHORS, TYPE_SPECS, GALAXY_TYPES, GALAXY_TYPE_CYCLE,
 		DISC_L_KPC, THICK_L_RATIO, THICK_H_RATIO, HALO_AMP_UNIT, YOUNG_OUTER_R_KPC, GAS_RICH_MIN,
+		CLUMP_COUNT, CLUMP_BOOST, CLUMP_KFBM, CLUMP_SPAN_R, CLUMP_Z_RATIO, CLUMP_R_OVER_K,
 		interpAnchors, createGalaxy, cycleGalaxyType, galaxyLabel, homeFor,
-		DENSITY_PARAMS_LAYOUT, DENSITY_PARAMS_FLOATS, DENSITY_PARAMS_BYTES,
+		DENSITY_PARAMS_LAYOUT, DENSITY_PARAMS_CLUMPS, DENSITY_PARAMS_CLUMP_FLOATS,
+		DENSITY_PARAMS_FLOATS, DENSITY_PARAMS_BYTES,
 		packDensityParams,
 	};
 	if (typeof module !== 'undefined') module.exports = GalaxyLib;
