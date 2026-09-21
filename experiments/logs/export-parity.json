@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T21:03:44.810Z",
+  "date": "2026-09-21T22:10:40.440Z",
   "modules": 21,
   "totalChecks": 108,
   "passed": 108,
@@ -249,7 +249,7 @@
       }
     },
     {
-      "name": "ObjectsLib has identical key sets (37 keys)",
+      "name": "ObjectsLib has identical key sets (47 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -683,6 +683,7 @@
       "detail": [
         "star-sprite",
         "star-sprite-hdr",
+        "nebula-billboard",
         "tonemap"
       ]
     },
@@ -694,6 +695,7 @@
         "density",
         "star-sprite",
         "star-sprite-hdr",
+        "nebula-billboard",
         "tonemap",
         "procedural-gen",
         "cull"

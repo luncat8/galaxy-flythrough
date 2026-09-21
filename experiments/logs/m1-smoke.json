@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T21:03:44.922Z",
+  "date": "2026-09-21T22:10:40.535Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -178,7 +178,7 @@
       "name": "ObjectsLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 37
+        "keys": 47
       }
     },
     {

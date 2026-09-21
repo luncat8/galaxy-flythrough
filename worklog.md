@@ -12,7 +12,6 @@ No separate 0.2 implementation entry exists in the original log. The combined
 0.3/0.4 planning entry lives in 0.3.x; add a 0.4.x log when its implementation starts.
 Historical entries are preserved verbatim; plans remain separate clean artifacts.
 
-Next step suggestion: 0.3.2a's composite objects are in — `placeObjects`, the
-Plummer/King/fractal member profiles, age-overridden derivation and the objects block
-in the star buffer; next is 0.3.2b's nebula billboard pass on the shell sizes the
-objects already carry.
+Next step suggestion: 0.3.2 is in (objects + nebula billboards). Next is 0.3.3 —
+galaxy age: delayed-exponential SFH, gas depletion, the age slider with
+property-only regenerate, and exposure renormalisation.

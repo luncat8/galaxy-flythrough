@@ -1,19 +1,20 @@
 {
-  "date": "2026-09-21T21:03:45.607Z",
+  "date": "2026-09-21T22:10:41.293Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 96,
-  "totalChecks": 82,
-  "passed": 82,
+  "prepareMs": 97,
+  "totalChecks": 92,
+  "passed": 92,
   "failed": 0,
   "checks": [
     {
-      "name": "two shader modules are created (star-sprite + tonemap)",
+      "name": "three shader modules are created (star-sprite + tonemap + nebula-billboard)",
       "pass": true,
       "detail": {
         "modules": [
           "star-sprite",
-          "tonemap"
+          "tonemap",
+          "nebula-billboard"
         ]
       }
     },
@@ -22,11 +23,12 @@
       "pass": true
     },
     {
-      "name": "two pipelines are created (star-sprite + tonemap) — no hdr-direct bypass",
+      "name": "three pipelines are created (star-sprite + tonemap + nebula-billboard) — no hdr-direct bypass",
       "pass": true,
       "detail": [
         "star-sprite-pipeline",
-        "tonemap-pipeline"
+        "tonemap-pipeline",
+        "nebula-billboard-pipeline"
       ]
     },
     {
@@ -61,7 +63,23 @@
       }
     },
     {
-      "name": "both pipelines target the swapchain format",
+      "name": "the nebula pipeline is additive triangle-strip like the sprites",
+      "pass": true,
+      "detail": {
+        "color": {
+          "srcFactor": "one",
+          "dstFactor": "one",
+          "operation": "add"
+        },
+        "alpha": {
+          "srcFactor": "one",
+          "dstFactor": "one",
+          "operation": "add"
+        }
+      }
+    },
+    {
+      "name": "both star and tonemap pipelines target the swapchain format",
       "pass": true
     },
     {
@@ -158,10 +176,11 @@
       }
     },
     {
-      "name": "two render passes are submitted per frame",
+      "name": "three render passes are submitted per frame (stars, nebulae, tonemap)",
       "pass": true,
       "detail": [
         "star-sprites",
+        "nebula-billboards",
         "tonemap"
       ]
     },
@@ -181,6 +200,24 @@
     },
     {
       "name": "the star-sprite draw uses four vertices per star (triangle strip quad)",
+      "pass": true
+    },
+    {
+      "name": "the nebula pass draws four vertices per billboard over the packed gas objects",
+      "pass": true,
+      "detail": {
+        "vertices": 4,
+        "instances": 34,
+        "firstVertex": 0,
+        "firstInstance": 0,
+        "pipeline": {
+          "label": "nebula-billboard-pipeline"
+        },
+        "pass": "nebula-billboards"
+      }
+    },
+    {
+      "name": "the nebula pass loads the HDR intermediate (does not clear the stars)",
       "pass": true
     },
     {
@@ -217,6 +254,56 @@
         "thinned": 1076,
         "raw": 3829
       }
+    },
+    {
+      "name": "the nebula storage was uploaded on prepare",
+      "pass": true,
+      "detail": {
+        "writes": 1,
+        "bytes": 1088,
+        "count": 34
+      }
+    },
+    {
+      "name": "packed billboards are exactly the gas objects (HII, planetary, SNR)",
+      "pass": true,
+      "detail": {
+        "packed": 34,
+        "gas": 34,
+        "byType": {
+          "planetary": 25,
+          "HII": 6,
+          "globular": 3,
+          "SNR": 3,
+          "open": 3
+        }
+      }
+    },
+    {
+      "name": "each billboard carries the object size, NEBULA_COLORS tint and type opacity",
+      "pass": true,
+      "detail": {
+        "sizeOk": true,
+        "colorOk": true,
+        "opacityOk": true
+      }
+    },
+    {
+      "name": "a 100 pc HII at 1 kpc is above the 4 px floor at 1080p",
+      "pass": true
+    },
+    {
+      "name": "a 2 pc planetary at 1 kpc is culled below the 4 px floor",
+      "pass": true,
+      "detail": 3.741229744348775
+    },
+    {
+      "name": "anything past 5 kpc is culled even when it would be large on screen",
+      "pass": true
+    },
+    {
+      "name": "open and globular clusters have no gas billboard",
+      "pass": true
     },
     {
       "name": "the HDR intermediate texture was created",
@@ -338,8 +425,8 @@
       "name": "a parked camera does not re-upload the catalog",
       "pass": true,
       "detail": {
-        "before": 2,
-        "after": 2
+        "before": 3,
+        "after": 3
       }
     },
     {
@@ -406,10 +493,11 @@
       }
     },
     {
-      "name": "both modes submit the same two passes, so the switch costs no pipeline",
+      "name": "both modes submit the same three passes, so the switch costs no pipeline",
       "pass": true,
       "detail": [
         "star-sprites",
+        "nebula-billboards",
         "tonemap"
       ]
     },
@@ -473,8 +561,8 @@
       "name": "crossing a cell boundary re-uploads the dynamic region",
       "pass": true,
       "detail": {
-        "before": 5,
-        "after": 6
+        "before": 8,
+        "after": 9
       }
     },
     {
@@ -488,10 +576,11 @@
       "detail": 0
     },
     {
-      "name": "the frame still produces two passes (star + tonemap)",
+      "name": "the frame still produces three passes (star + nebulae + tonemap)",
       "pass": true,
       "detail": [
         "star-sprites",
+        "nebula-billboards",
         "tonemap"
       ]
     },
@@ -548,10 +637,11 @@
       "detail": true
     },
     {
-      "name": "the HDR path runs two passes (star-sprites + tonemap), same as SDR",
+      "name": "the HDR path runs three passes (star-sprites + nebulae + tonemap), same as SDR",
       "pass": true,
       "detail": [
         "star-sprites",
+        "nebula-billboards",
         "tonemap"
       ]
     },

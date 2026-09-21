@@ -38,6 +38,8 @@ const rendererModule = require('../src/render/star-sprites.js');
 const records = require('../src/math/star-record.js');
 const loader = require('../src/stream/tile-loader.js');
 const objectsLib = require('../src/math/objects.js');
+const nebulaLib = require('../src/math/nebula.js');
+const Camera = require('../src/core/camera.js');
 
 const checks = [];
 function check(name, pass, detail) {
@@ -160,18 +162,20 @@ console.log(`Prepared in ${prepareMs} ms: ${prepareState.proceduralStars} proced
 
 // --- Shader + pipeline wiring -------------------------------------------
 {
-        check('two shader modules are created (star-sprite + tonemap)',
-                gpu.shaderModules.length === 2
+        check('three shader modules are created (star-sprite + tonemap + nebula-billboard)',
+                gpu.shaderModules.length === 3
                 && gpu.shaderModules[0].code === window.GalaxyShaders.SHADERS['star-sprite']
-                && gpu.shaderModules[1].code === window.GalaxyShaders.SHADERS['tonemap'],
+                && gpu.shaderModules[1].code === window.GalaxyShaders.SHADERS['tonemap']
+                && gpu.shaderModules[2].code === window.GalaxyShaders.SHADERS['nebula-billboard'],
                 { modules: gpu.shaderModules.map(s => s.label) });
         check('all wired shaders declare their entry points',
                 gpu.shaderModules.every(s => /@vertex\s+fn\s+vs_main/.test(s.code) && /@fragment\s+fn\s+fs_main/.test(s.code)));
         const spritePipeline = gpu.pipelines.find(p => p.label === 'star-sprite-pipeline');
         const tonemapPipeline = gpu.pipelines.find(p => p.label === 'tonemap-pipeline');
-        check('two pipelines are created (star-sprite + tonemap) — no hdr-direct bypass',
-                !!spritePipeline && !!tonemapPipeline
-                && gpu.pipelines.length === 2,
+        const nebulaPipeline = gpu.pipelines.find(p => p.label === 'nebula-billboard-pipeline');
+        check('three pipelines are created (star-sprite + tonemap + nebula-billboard) — no hdr-direct bypass',
+                !!spritePipeline && !!tonemapPipeline && !!nebulaPipeline
+                && gpu.pipelines.length === 3,
                 gpu.pipelines.map(p => p.label));
         check('the star-sprite pipeline is additive with no depth attachment',
                 spritePipeline.fragment.targets[0].blend.color.srcFactor === 'one'
@@ -186,7 +190,13 @@ console.log(`Prepared in ${prepareMs} ms: ${prepareState.proceduralStars} proced
                 spritePipeline.primitive.topology === 'triangle-strip'
                 && tonemapPipeline.primitive.topology === 'triangle-list',
                 { sprite: spritePipeline.primitive.topology, tonemap: tonemapPipeline.primitive.topology });
-        check('both pipelines target the swapchain format',
+        check('the nebula pipeline is additive triangle-strip like the sprites',
+                nebulaPipeline.primitive.topology === 'triangle-strip'
+                && nebulaPipeline.fragment.targets[0].blend.color.srcFactor === 'one'
+                && nebulaPipeline.fragment.targets[0].blend.color.dstFactor === 'one'
+                && nebulaPipeline.depthStencil === undefined,
+                nebulaPipeline.fragment.targets[0].blend);
+        check('both star and tonemap pipelines target the swapchain format',
                 spritePipeline.fragment.targets[0].format === 'bgra8unorm'
                 && tonemapPipeline.fragment.targets[0].format === 'bgra8unorm');
         check('the color LUT is uploaded as rgba8unorm-srgb (so palette bytes authored as sRGB get linearised)',
@@ -203,10 +213,11 @@ const catalogs = gpu.buffers.filter(b => b.label === 'star-storage');
         check('the storage buffer holds procedural + landmarks + objects + local gap-fill + catalog capacity',
                 buffer.size === Math.max(16, expectedRecords * records.RECORD_BYTES),
                 { size: buffer.size, expected: expectedRecords * records.RECORD_BYTES });
+        const starWrites = gpu.bufferWrites.filter(w => w.buffer.label === 'star-storage');
         check('the fixed blocks (procedural + landmarks + objects) were uploaded once, at offset 0',
-                gpu.bufferWrites.length === 1 && gpu.bufferWrites[0].offset === 0
-                && gpu.bufferWrites[0].bytes.length === (prepareState.proceduralStars + prepareState.landmarkStars + OBJECT_MEMBERS) * records.RECORD_BYTES,
-                { writes: gpu.bufferWrites.length });
+                starWrites.length === 1 && starWrites[0].offset === 0
+                && starWrites[0].bytes.length === (prepareState.proceduralStars + prepareState.landmarkStars + OBJECT_MEMBERS) * records.RECORD_BYTES,
+                { writes: starWrites.length });
 }
 
 // --- The landmark block is the named-star table --------------------------
@@ -215,7 +226,7 @@ const catalogs = gpu.buffers.filter(b => b.label === 'star-storage');
         check('the renderer reports the landmark block from the data module',
                 prepareState.landmarkStars === L.count && L.count >= 30 && L.count <= 60,
                 { landmarkStars: prepareState.landmarkStars, table: L.count });
-        const bytes = gpu.bufferWrites[0].bytes;
+        const bytes = gpu.bufferWrites.filter(w => w.buffer.label === 'star-storage')[0].bytes;
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         let positionOk = true, flagsOk = true, colorOk = true, magOk = true;
         for (let i = 0; i < L.count; i++) {
@@ -233,7 +244,7 @@ const catalogs = gpu.buffers.filter(b => b.label === 'star-storage');
 
 // --- The objects block holds apportioned cluster members -----------------
 {
-        const bytes = gpu.bufferWrites[0].bytes;
+        const bytes = gpu.bufferWrites.filter(w => w.buffer.label === 'star-storage')[0].bytes;
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         const base = prepareState.proceduralStars + prepareState.landmarkStars;
         check('the renderer reports the placed objects and their apportioned members',
@@ -258,7 +269,7 @@ const catalogs = gpu.buffers.filter(b => b.label === 'star-storage');
 
 // --- The procedural records are real stars ------------------------------
 {
-        const bytes = gpu.bufferWrites[0].bytes;
+        const bytes = gpu.bufferWrites.filter(w => w.buffer.label === 'star-storage')[0].bytes;
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         let visible = 0;
         let maxRadius = 0;
@@ -286,17 +297,17 @@ const input = { keys: {}, actions: { reset: 0, exposure: 0, linearExposure: 0 },
 renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 {
         const localOffset = (prepareState.proceduralStars + prepareState.landmarkStars + OBJECT_MEMBERS) * records.RECORD_BYTES;
-        const dynamicWrites = gpu.bufferWrites.filter(w => w.offset >= localOffset);
+        const dynamicWrites = gpu.bufferWrites.filter(w => w.buffer.label === 'star-storage' && w.offset >= localOffset);
         check('the first frame writes the dynamic region (local gap-fill + catalog) starting at localProc offset',
                 dynamicWrites.length === 1 && dynamicWrites[0].offset === localOffset,
                 { writes: dynamicWrites.length, offset: dynamicWrites[0] && dynamicWrites[0].offset, localOffset });
 
-        // Two passes per frame: star-sprite (4 vertices × N instances) and
-        // tonemap (3 vertices fullscreen triangle).
+        // Three passes per frame: star-sprite, nebula billboards, tonemap.
         const spritePass = gpu.passes.find(p => p.label === 'star-sprites');
+        const nebulaPass = gpu.passes.find(p => p.label === 'nebula-billboards');
         const tonemapPass = gpu.passes.find(p => p.label === 'tonemap');
-        check('two render passes are submitted per frame',
-                spritePass && tonemapPass && spritePass !== tonemapPass,
+        check('three render passes are submitted per frame (stars, nebulae, tonemap)',
+                spritePass && nebulaPass && tonemapPass && spritePass !== nebulaPass && nebulaPass !== tonemapPass,
                 gpu.passes.map(p => p.label));
         check('the star-sprite pass draws exactly the resident stars (global + landmarks + objects + local + catalog)',
                 spritePass.draws.length === 1 && spritePass.draws[0].instances === renderer.state.drawn
@@ -305,6 +316,14 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 spritePass.draws[0]);
         check('the star-sprite draw uses four vertices per star (triangle strip quad)',
                 spritePass.draws[0].vertices === 4 && spritePass.draws[0].firstVertex === 0 && spritePass.draws[0].firstInstance === 0);
+        check('the nebula pass draws four vertices per billboard over the packed gas objects',
+                nebulaPass.draws.length === 1 && nebulaPass.draws[0].vertices === 4
+                && nebulaPass.draws[0].instances === renderer.state.nebulaBillboards
+                && renderer.state.nebulaBillboards > 0 && renderer.state.nebulaBillboards <= OBJECT_COUNT,
+                nebulaPass.draws[0]);
+        check('the nebula pass loads the HDR intermediate (does not clear the stars)',
+                nebulaPass.desc.colorAttachments[0].loadOp === 'load'
+                && nebulaPass.desc.colorAttachments[0].storeOp === 'store');
         check('the tonemap pass draws one fullscreen triangle (3 vertices, 1 instance)',
                 tonemapPass.draws.length === 1 && tonemapPass.draws[0].vertices === 3
                 && tonemapPass.draws[0].instances === 1,
@@ -317,6 +336,54 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 renderer.state.catalogThinnedStars <= manifest.starCount
                 && renderer.state.catalogThinnedStars < manifest.starCount,
                 { thinned: renderer.state.catalogThinnedStars, raw: manifest.starCount });
+}
+
+// --- Nebula billboard packing and size/distance cull (0.3.2b) ------------
+{
+        const nebulaWrites = gpu.bufferWrites.filter(w => w.buffer.label === 'nebula-storage');
+        check('the nebula storage was uploaded on prepare',
+                nebulaWrites.length >= 1 && nebulaWrites[0].offset === 0
+                && nebulaWrites[0].bytes.length === renderer.state.nebulaBillboards * objectsLib.BILLBOARD_RECORD_BYTES,
+                { writes: nebulaWrites.length, bytes: nebulaWrites[0] && nebulaWrites[0].bytes.length,
+                        count: renderer.state.nebulaBillboards });
+        const placed = objectsLib.placeObjects(model, 7 ^ 0x0B5E55, OBJECT_COUNT, null);
+        const gas = placed.filter(o => objectsLib.objectHasGas(o.type));
+        check('packed billboards are exactly the gas objects (HII, planetary, SNR)',
+                renderer.state.nebulaBillboards === gas.length
+                && gas.every(o => o.type === 'HII' || o.type === 'planetary' || o.type === 'SNR'),
+                { packed: renderer.state.nebulaBillboards, gas: gas.length,
+                        byType: objectsLib.summariseObjects(placed).byType });
+        const bytes = nebulaWrites[0].bytes;
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        let colorOk = true, sizeOk = true, opacityOk = true;
+        for (let i = 0; i < gas.length; i++) {
+                const o = i * objectsLib.BILLBOARD_RECORD_BYTES;
+                const size = view.getFloat32(o + 12, true);
+                const r = view.getFloat32(o + 16, true);
+                const g = view.getFloat32(o + 20, true);
+                const b = view.getFloat32(o + 24, true);
+                const opacity = view.getFloat32(o + 28, true);
+                const want = nebulaLib.NEBULA_COLORS[gas[i].type];
+                if (size !== Math.fround(gas[i].size)) sizeOk = false;
+                if (r !== Math.fround(want[0]) || g !== Math.fround(want[1]) || b !== Math.fround(want[2])) colorOk = false;
+                if (opacity !== Math.fround(objectsLib.BILLBOARD_OPACITY[gas[i].type])) opacityOk = false;
+        }
+        check('each billboard carries the object size, NEBULA_COLORS tint and type opacity',
+                sizeOk && colorOk && opacityOk, { sizeOk, colorOk, opacityOk });
+        const fov = Camera.FOV_Y;
+        check('a 100 pc HII at 1 kpc is above the 4 px floor at 1080p',
+                objectsLib.billboardVisible(0.1, 1.0, HEIGHT, fov) === true
+                && objectsLib.billboardScreenPx(0.1, 1.0, HEIGHT, fov) > objectsLib.BILLBOARD_MIN_PX);
+        check('a 2 pc planetary at 1 kpc is culled below the 4 px floor',
+                objectsLib.billboardVisible(0.002, 1.0, HEIGHT, fov) === false
+                && objectsLib.billboardScreenPx(0.002, 1.0, HEIGHT, fov) < objectsLib.BILLBOARD_MIN_PX,
+                objectsLib.billboardScreenPx(0.002, 1.0, HEIGHT, fov));
+        check('anything past 5 kpc is culled even when it would be large on screen',
+                objectsLib.billboardVisible(0.15, 5.1, HEIGHT, fov) === false
+                && objectsLib.billboardVisible(0.15, 4.9, HEIGHT, fov) === true);
+        check('open and globular clusters have no gas billboard',
+                objectsLib.objectHasGas('open') === false && objectsLib.objectHasGas('globular') === false
+                && objectsLib.objectHasGas('HII') && objectsLib.objectHasGas('planetary') && objectsLib.objectHasGas('SNR'));
 }
 
 
@@ -400,7 +467,7 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 // `state` rather than implied by a hard-coded 60 landmarks.
 {
         const firstFixedBytes = () => {
-                const write = gpu.bufferWrites.filter(w => w.offset === 0).pop();
+                const write = gpu.bufferWrites.filter(w => w.buffer.label === 'star-storage' && w.offset === 0).pop();
                 if (!write) return null;
                 return new DataView(write.bytes.buffer, write.bytes.byteOffset, write.bytes.byteLength);
         };
@@ -420,7 +487,7 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 && game.objectCount === OBJECT_COUNT && game.objectStars === OBJECT_MEMBERS,
                 { landmarks: game.landmarkStars, catalog: game.catalogTotalStars, cells: game.catalogCells });
         renderer.render(camera, WIDTH, HEIGHT, 3 / 60, input);
-        const gamePass = gpu.passes[gpu.passes.length - 2];
+        const gamePass = gpu.passes.filter(p => p.label === 'star-sprites').pop();
         check('the generated galaxy fills the frame with the global field + objects',
                 game.proceduralStars === PROCEDURAL && game.drawn === game.proceduralStars + OBJECT_MEMBERS
                 && gamePass.label === 'star-sprites' && gamePass.draws[0].instances === game.proceduralStars + OBJECT_MEMBERS,
@@ -441,9 +508,10 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         check('the re-attached catalog streams back in on the next frame',
                 back.cellsResident === manifest.cellCount && back.catalogResidentStars > 0,
                 { resident: back.cellsResident, stars: back.catalogResidentStars });
-        const passes = gpu.passes.slice(-2);
-        check('both modes submit the same two passes, so the switch costs no pipeline',
-                passes.length === 2 && passes[0].label === 'star-sprites' && passes[1].label === 'tonemap',
+        const passes = gpu.passes.slice(-3);
+        check('both modes submit the same three passes, so the switch costs no pipeline',
+                passes.length === 3 && passes[0].label === 'star-sprites'
+                && passes[1].label === 'nebula-billboards' && passes[2].label === 'tonemap',
                 passes.map(pass => pass.label));
 }
 
@@ -537,11 +605,13 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         renderer.render(camera, WIDTH, HEIGHT, 5 / 60, far);
         check('a camera outside the catalog volume drops every catalog star',
                 renderer.state.catalogResidentStars === 0, renderer.state.catalogResidentStars);
-        // Two more passes were appended (star-sprites + tonemap) for this frame.
+        // Three more passes were appended (star-sprites + nebulae + tonemap).
         const newPasses = gpu.passes.slice(passesBefore);
-        check('the frame still produces two passes (star + tonemap)',
-                newPasses.length === 2
-                && newPasses[0].label === 'star-sprites' && newPasses[1].label === 'tonemap',
+        check('the frame still produces three passes (star + nebulae + tonemap)',
+                newPasses.length === 3
+                && newPasses[0].label === 'star-sprites'
+                && newPasses[1].label === 'nebula-billboards'
+                && newPasses[2].label === 'tonemap',
                 newPasses.map(p => p.label));
         // The star pass still drew procedural + landmark stars even with no catalog.
         check('the star pass draws the procedural field + landmarks + objects (no local/catalog when outside volume)',
@@ -571,8 +641,8 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 }
 
 // --- HDR output mode (rgba16float + extended swapchain) ----------------
-// A second renderer with `hdr:true` uses the same two-pass architecture
-// (sprites → rgba16float intermediate → tonemap → swapchain) but the tonemap
+// A second renderer with `hdr:true` uses the same three-pass architecture
+// (sprites → nebulae → rgba16float intermediate → tonemap → swapchain) but the tonemap
 // uniform's w = 1 so the shader allows output values >1.0 into the HDR canvas.
 {
         const hdrGpu = createMockGpu();
@@ -591,10 +661,11 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         hdrRenderer.render(camera, WIDTH, HEIGHT, 7 / 60, hdrInput);
 
         const newPasses = hdrGpu.passes.slice(passesBefore);
-        check('the HDR path runs two passes (star-sprites + tonemap), same as SDR',
-                newPasses.length === 2
+        check('the HDR path runs three passes (star-sprites + nebulae + tonemap), same as SDR',
+                newPasses.length === 3
                 && newPasses[0].label === 'star-sprites'
-                && newPasses[1].label === 'tonemap',
+                && newPasses[1].label === 'nebula-billboards'
+                && newPasses[2].label === 'tonemap',
                 newPasses.map(p => p.label));
         check('the HDR path creates an rgba16float intermediate texture',
                 hdrGpu.textures.some(t => t.label === 'hdr-intermediate' && t.format === 'rgba16float'),

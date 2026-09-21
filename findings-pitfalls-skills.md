@@ -3,6 +3,13 @@
 Append-only notes for LLM agents working on this project. Each entry: date, one-line summary heading, then the detail. Newest at top.
 
 ---
+## 2026-09-21 — `shaders.js` inventory splice must cut at the first `// Mirror parts`
+
+`SHADER_PARTS` / `SHADERS` / `WIRED_SHADERS` live at the *end* of `src/render/shaders.js`. A mid-file search-replace that only updates those names can leave the original export intact and append a second copy after leftover WGSL. The file then `require()`s the first export (missing `NEBULA_BILLBOARD`) while a grep of the source still finds the new names. Cut from the first `// Mirror parts` comment through EOF and rewrite a single ending; then `node -e "console.log(Object.keys(require('./src/render/shaders.js').SHADER_PARTS))"` before trusting tests.
+
+The mock GPU does not execute WGSL, so a vertex-shader size cull cannot change `draw()` instance counts. Pin the floor in JS (`billboardVisible` / `billboardScreenPx`) and the WGSL constants in `wgsl-validate.js`; the renderer-test only sees the packed gas count.
+
+---
 ## 2026-09-21 — `k = tan(pitch)` turns spiral arms into a fan of radial spokes
 
 The arm modulation was implemented exactly as `plan.md` wrote it: `1 + A*cos(m*phi +

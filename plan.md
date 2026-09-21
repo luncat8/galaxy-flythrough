@@ -1112,9 +1112,8 @@ sense as this document, kept beside it rather than folded in:
   0.3.0 the `GalaxyModel` type
   framework, 0.3.1 the full Hubble zoo with improved star distributions, 0.3.2
   nebula-like objects with proper internal star distributions, 0.3.3 galaxy age.
-  *(0.3.0 and 0.3.1 implemented; 0.3.2a composite objects (placement, member profiles,
-  the objects block in the star buffer) implemented; 0.3.2b billboards and 0.3.3 age
-  remain)*
+  *(0.3.0 and 0.3.1 implemented; 0.3.2 implemented (composite objects plus the nebula
+  billboard pass); 0.3.3 galaxy age remains)*
 - `0.4.0-plan-star-move.md` — star movement: predefined orbits without gravity, orbit
   distributions per galaxy type, the moving-star budget on a typical RTX 3050, the
   one-shader architecture decision, and the star time slider (camera-coupled /

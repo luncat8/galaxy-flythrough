@@ -15,6 +15,7 @@
 //                  DensityParams uniform packed from the GalaxyModel, so the
 //                  struct layout (not the values) is what the validator diffs
 //   star-sprite    WIRED — Path B point sprites (the fly-through render path)
+//   nebula-billboard WIRED — 0.3.2b gas quads after the sprites, before tonemap
 //   procedural-gen compute path, Milestone 3 (not yet wired into the frame)
 //   cull           compute path, Milestone 3 (frustum cull + thinning + indirect draw)
 //
@@ -1115,6 +1116,112 @@ fn finalizeArgs() {
 }
 `;
 
+const NEBULA_BILLBOARD = `
+// Additive nebula billboards (0.3.2b). Camera-facing quads, size from the
+// object's shell radius, colour from nebula.NEBULA_COLORS. Soft radial
+// falloff, no image assets. GPU-culled below BILLBOARD_MIN_PX and beyond
+// BILLBOARD_MAX_DIST kpc. Constants are mirrored from src/math/objects.js
+// and Camera.FOV_Y.
+
+struct CameraUniform {
+        viewProj: mat4x4<f32>,
+        cameraPos: vec4f,
+        viewport: vec4f,
+        params: vec4f,
+};
+
+struct NebulaPacked {
+        x: f32,
+        y: f32,
+        z: f32,
+        size: f32,
+        r: f32,
+        g: f32,
+        b: f32,
+        opacity: f32,
+};
+
+@group(0) @binding(0) var<uniform> camera: CameraUniform;
+@group(0) @binding(1) var<storage, read> nebulae: array<NebulaPacked>;
+
+struct VertexOut {
+        @builtin(position) clipPos: vec4f,
+        @location(0) uv: vec2f,
+        @location(1) color: vec3f,
+        @location(2) brightness: f32,
+};
+
+const FOV_Y: f32 = 1.047197551;
+const BILLBOARD_MIN_PX: f32 = 4.0;
+const BILLBOARD_MAX_DIST: f32 = 5.0;
+
+fn cornerOffset(vid: u32) -> vec2f {
+        switch vid {
+                case 0u: { return vec2f(-1.0, -1.0); }
+                case 1u: { return vec2f( 1.0, -1.0); }
+                case 2u: { return vec2f(-1.0,  1.0); }
+                case 3u: { return vec2f( 1.0,  1.0); }
+                default: { return vec2f(1.0, 1.0); }
+        }
+}
+
+fn hidden(vid: u32) -> VertexOut {
+        var out: VertexOut;
+        out.clipPos = vec4f(0.0, 0.0, -1.0, 1.0);
+        out.uv = vec2f(1.0, 1.0);
+        out.color = vec3f(0.0, 0.0, 0.0);
+        out.brightness = 0.0;
+        return out;
+}
+
+@vertex
+fn vs_main(
+        @builtin(vertex_index) vid: u32,
+        @builtin(instance_index) idx: u32,
+) -> VertexOut {
+        let neb: NebulaPacked = nebulae[idx];
+        if (neb.size <= 0.0 || neb.opacity <= 0.0) {
+                return hidden(vid);
+        }
+
+        let rel: vec3f = vec3f(neb.x, neb.y, neb.z) - camera.cameraPos.xyz;
+        let dist: f32 = length(rel);
+        if (dist > BILLBOARD_MAX_DIST) {
+                return hidden(vid);
+        }
+
+        let clip: vec4f = camera.viewProj * vec4f(rel.x, rel.y, rel.z, 1.0);
+        if (clip.w <= 0.0) {
+                return hidden(vid);
+        }
+
+        let sizePx: f32 = neb.size / max(dist, 1.0e-6) * camera.viewport.y / tan(FOV_Y * 0.5);
+        if (sizePx < BILLBOARD_MIN_PX) {
+                return hidden(vid);
+        }
+
+        let corner: vec2f = cornerOffset(vid);
+        let offset: vec2f = corner * (sizePx * 0.5) * camera.viewport.zw;
+
+        var out: VertexOut;
+        out.clipPos = vec4f(clip.xy + offset * clip.w, clip.zw);
+        out.uv = corner;
+        out.color = vec3f(neb.r, neb.g, neb.b);
+        out.brightness = neb.opacity;
+        return out;
+}
+
+@fragment
+fn fs_main(in: VertexOut) -> @location(0) vec4f {
+        let r2: f32 = dot(in.uv, in.uv);
+        if (r2 > 1.0) { discard; }
+        let s: f32 = 1.0 - r2;
+        let falloff: f32 = s * s;
+        let intensity: f32 = in.brightness * falloff;
+        return vec4f(in.color * intensity, intensity);
+}
+`;
+
 // Mirror parts, kept separate so the validator can diff each one against its
 // JS counterpart in src/math/.
 const SHADER_PARTS = {
@@ -1122,6 +1229,7 @@ const SHADER_PARTS = {
         'density': DENSITY,
         'star-sprite': STAR_SPRITE,
         'star-sprite-hdr': STAR_SPRITE_HDR,
+        'nebula-billboard': NEBULA_BILLBOARD,
         'tonemap': TONEMAP,
         'procedural-gen': PROCEDURAL_GEN,
         'cull': CULL,
@@ -1132,19 +1240,15 @@ const SHADER_PARTS = {
 const SHADERS = {
         'star-sprite': STAR_SPRITE,
         'star-sprite-hdr': STAR_SPRITE_HDR,
+        'nebula-billboard': NEBULA_BILLBOARD,
         'tonemap': TONEMAP,
         'procedural-gen': PCG_HASH + DENSITY + PROCEDURAL_GEN,
         'cull': PCG_HASH + CULL,
 };
 
-// Wired shaders: the renderer picks two of these per frame.
-//   SDR path (HDR canvas unsupported): star-sprite + tonemap
-//   HDR path (rgba16float + extended canvas): star-sprite-hdr only
-// The renderer always compiles all three so the user can resize the canvas
-// to a different display without re-booting. star-sprite-hdr shares the
-// additive blend state with star-sprite; it just multiplies the fragment
-// output by linearExposure and writes straight to the swapchain.
-const WIRED_SHADERS = ['star-sprite', 'star-sprite-hdr', 'tonemap'];
+// Wired shaders: the renderer compiles star-sprite + nebula-billboard + tonemap
+// every frame. star-sprite-hdr is kept as a reference module and is not bound.
+const WIRED_SHADERS = ['star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap'];
 
 const GalaxyShaders = { SHADERS, SHADER_PARTS, WIRED_SHADERS };
 if (typeof module !== 'undefined') module.exports = GalaxyShaders;

@@ -1,9 +1,9 @@
 {
-  "date": "2026-09-21T21:03:38.236Z",
+  "date": "2026-09-21T22:11:07.326Z",
   "seed": 99,
   "targetN": 1200,
   "placedN": 1200,
-  "placeMs": 223,
+  "placeMs": 216,
   "box": {
     "xMin": -20,
     "xMax": 20,
@@ -26,8 +26,8 @@
   },
   "totalMembers": 251231,
   "meanRichness": 209.35916666666665,
-  "totalChecks": 45,
-  "passed": 45,
+  "totalChecks": 50,
+  "passed": 50,
   "failed": 0,
   "checks": [
     {
@@ -326,6 +326,39 @@
     },
     {
       "name": "the age override with the sampled age reproduces deriveStar exactly",
+      "pass": true
+    },
+    {
+      "name": "writeObjectBillboards packs one record per gas object and skips clusters",
+      "pass": true,
+      "detail": {
+        "written": 855,
+        "gas": 855,
+        "total": 1200
+      }
+    },
+    {
+      "name": "billboard tints are NEBULA_COLORS for the object type",
+      "pass": true,
+      "detail": {
+        "tintOk": 855,
+        "written": 855
+      }
+    },
+    {
+      "name": "a quenched E4 still billboards planetaries and SNR, never HII",
+      "pass": true,
+      "detail": {
+        "globular": 349,
+        "planetary": 51
+      }
+    },
+    {
+      "name": "the 4 px / 5 kpc cull: nearby HII drawn, distant smear dropped, tiny planetary dropped",
+      "pass": true
+    },
+    {
+      "name": "the billboard record is 32 bytes (8 f32)",
       "pass": true
     }
   ]

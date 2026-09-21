@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T20:38:20.400Z",
+  "date": "2026-09-21T22:10:40.586Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -18,6 +18,10 @@
       "lines": 114
     },
     {
+      "name": "nebula-billboard",
+      "lines": 105
+    },
+    {
       "name": "tonemap",
       "lines": 130
     },
@@ -33,10 +37,11 @@
   "wired": [
     "star-sprite",
     "star-sprite-hdr",
+    "nebula-billboard",
     "tonemap"
   ],
-  "totalChecks": 114,
-  "passed": 114,
+  "totalChecks": 125,
+  "passed": 125,
   "failed": 0,
   "checks": [
     {
@@ -47,6 +52,7 @@
         "density",
         "star-sprite",
         "star-sprite-hdr",
+        "nebula-billboard",
         "tonemap",
         "procedural-gen",
         "cull"
@@ -73,6 +79,10 @@
           3754
         ],
         [
+          "nebula-billboard",
+          3071
+        ],
+        [
           "tonemap",
           5707
         ],
@@ -87,11 +97,12 @@
       ]
     },
     {
-      "name": "three wired shaders are exposed (star-sprite, star-sprite-hdr, tonemap)",
+      "name": "four wired shaders are exposed (star-sprite, star-sprite-hdr, nebula-billboard, tonemap)",
       "pass": true,
       "detail": [
         "star-sprite",
         "star-sprite-hdr",
+        "nebula-billboard",
         "tonemap"
       ]
     },
@@ -101,6 +112,7 @@
       "detail": [
         "star-sprite",
         "star-sprite-hdr",
+        "nebula-billboard",
         "tonemap",
         "procedural-gen",
         "cull"
@@ -177,6 +189,24 @@
       "name": "star-sprite-hdr: declares its functions",
       "pass": true,
       "detail": 5
+    },
+    {
+      "name": "nebula-billboard: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "nebula-billboard: contains no unresolved markers",
+      "pass": true,
+      "detail": "nebula-billboard"
+    },
+    {
+      "name": "nebula-billboard: declares its functions",
+      "pass": true,
+      "detail": 4
     },
     {
       "name": "tonemap: braces and parentheses balance",
@@ -455,6 +485,30 @@
       "name": "cull.wgsl draws four vertices per sprite",
       "pass": true,
       "detail": 4
+    },
+    {
+      "name": "nebula-billboard.wgsl size floor matches objects.BILLBOARD_MIN_PX",
+      "pass": true,
+      "detail": {
+        "wgsl": 4,
+        "js": 4
+      }
+    },
+    {
+      "name": "nebula-billboard.wgsl distance cull matches objects.BILLBOARD_MAX_DIST_KPC",
+      "pass": true,
+      "detail": {
+        "wgsl": 5,
+        "js": 5
+      }
+    },
+    {
+      "name": "nebula-billboard.wgsl FOV_Y matches Camera.FOV_Y",
+      "pass": true,
+      "detail": {
+        "wgsl": 1.047197551,
+        "js": 1.0471975511965976
+      }
     },
     {
       "name": "pcg-hash.wgsl mirrors pcgHash",
@@ -793,6 +847,26 @@
     },
     {
       "name": "the star-sprite-hdr shader applies the same (1-r²)³ falloff as the SDR variant",
+      "pass": true
+    },
+    {
+      "name": "the nebula-billboard shader declares a vertex entry point",
+      "pass": true
+    },
+    {
+      "name": "the nebula-billboard shader declares a fragment entry point",
+      "pass": true
+    },
+    {
+      "name": "the nebula-billboard shader binds camera + packed nebulae",
+      "pass": true
+    },
+    {
+      "name": "the nebula-billboard shader culls by screen size and distance",
+      "pass": true
+    },
+    {
+      "name": "the nebula-billboard fragment uses a soft (1-r²)² falloff and no texture",
       "pass": true
     },
     {

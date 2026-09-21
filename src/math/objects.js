@@ -2,8 +2,7 @@
 // Composite objects: an HII region *is* its OB association, a reflection nebula
 // sits on its B stars, a globular cluster is a stellar system that happens to
 // be spectacular. 0.3.2a places the objects and generates their member stars;
-// 0.3.2b adds the gas billboards (the sizes below already carry what that pass
-// will need).
+// 0.3.2b draws the gas as camera-facing billboards from the shell sizes below.
 //
 // Placement generalises nebula.js: candidates come from the field sampler and
 // each is accepted with p = min(1, pHII + pOpen + pGlobular + pPlanetary + pSNR),
@@ -82,10 +81,18 @@
 	const GLOB_AGE_MIN = 10.0;
 	const GLOB_AGE_MAX = 13.0;
 	const PLANETARY_AGE = 10.0;
-	// Shell sizes for the 0.3.2b billboard pass, carried from day one.
+	// Shell sizes for the billboard pass.
 	const PLANETARY_SIZE = 0.002;
 	const SNR_SIZE_MIN = 0.020;
 	const SNR_SIZE_MAX = 0.120;
+	// Gas types get a billboard; open/globular clusters are stars only.
+	const GAS_TYPES = { HII: true, planetary: true, SNR: true };
+	const BILLBOARD_RECORD_FLOATS = 8;
+	const BILLBOARD_RECORD_BYTES = BILLBOARD_RECORD_FLOATS * 4;
+	const BILLBOARD_MIN_PX = 4;
+	const BILLBOARD_MAX_DIST_KPC = 5;
+	// Peak additive alpha at the disc centre, before the (1-r²)² falloff.
+	const BILLBOARD_OPACITY = { HII: 0.45, planetary: 0.55, SNR: 0.35 };
 	// Fractal OB candidates: uniform in the 2.5·R_e sphere, kept where the
 	// object-local 3-octave noise is above 0, with this many deterministic
 	// retries before the last candidate is kept as fallback.
@@ -384,6 +391,47 @@
 		return { written: slot, objects: objects.length };
 	}
 
+	function objectHasGas(type) {
+		return GAS_TYPES[type] === true;
+	}
+
+	// Screen diameter in pixels of a sphere of radius `size` at distance
+	// `dist` (kpc) under a vertical FOV. The billboard shader uses the same
+	// formula — height / tan(fovY/2), not width — because FOV_Y is vertical.
+	function billboardScreenPx(size, dist, heightPx, fovY) {
+		if (!(dist > 0) || !(size > 0)) return 0;
+		return size / dist * heightPx / Math.tan(fovY * 0.5);
+	}
+
+	function billboardVisible(size, dist, heightPx, fovY) {
+		if (!(dist > 0) || dist > BILLBOARD_MAX_DIST_KPC) return false;
+		return billboardScreenPx(size, dist, heightPx, fovY) >= BILLBOARD_MIN_PX;
+	}
+
+	// Pack one billboard per gas object into `view` at `byteOffset`. Returns
+	// the written count; the caller draws that many instances. Layout is
+	// 8 f32: xyz, size, rgb, opacity — the nebula-billboard shader's
+	// NebulaPacked.
+	function writeObjectBillboards(objects, view, byteOffset, max) {
+		let slot = 0;
+		for (let j = 0; j < objects.length && slot < max; j++) {
+			const obj = objects[j];
+			if (!objectHasGas(obj.type)) continue;
+			const color = nebula.NEBULA_COLORS[obj.type];
+			const o = byteOffset + slot * BILLBOARD_RECORD_BYTES;
+			view.setFloat32(o + 0, obj.x, true);
+			view.setFloat32(o + 4, obj.y, true);
+			view.setFloat32(o + 8, obj.z, true);
+			view.setFloat32(o + 12, obj.size, true);
+			view.setFloat32(o + 16, color[0], true);
+			view.setFloat32(o + 20, color[1], true);
+			view.setFloat32(o + 24, color[2], true);
+			view.setFloat32(o + 28, BILLBOARD_OPACITY[obj.type], true);
+			slot++;
+		}
+		return slot;
+	}
+
 	function summariseObjects(objects) {
 		const byType = {};
 		const byComponent = {};
@@ -409,8 +457,11 @@
 		GLOB_AGE_MIN, GLOB_AGE_MAX, PLANETARY_AGE,
 		PLANETARY_SIZE, SNR_SIZE_MIN, SNR_SIZE_MAX,
 		FRACTAL_RADIUS, FRACTAL_RETRIES,
+		GAS_TYPES, BILLBOARD_RECORD_FLOATS, BILLBOARD_RECORD_BYTES,
+		BILLBOARD_MIN_PX, BILLBOARD_MAX_DIST_KPC, BILLBOARD_OPACITY,
 		objectContext, objectProbabilitiesAt, placeObjects,
 		plummerRadius, kingRadius, sampleMemberOffset, objectQuotas, writeObjectMembers,
+		objectHasGas, billboardScreenPx, billboardVisible, writeObjectBillboards,
 		summariseObjects,
 	};
 	if (typeof module !== 'undefined') module.exports = ObjectsLib;

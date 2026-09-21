@@ -387,6 +387,42 @@ const counts = summary.byType;
 		keys.every(k => same[k] === ref[k]));
 }
 
+// --- Billboards (0.3.2b) -------------------------------------------------
+{
+	const Camera = require('../src/core/camera.js');
+	const nebula = require('../src/math/nebula.js');
+	const gas = placed.filter(o => objects.objectHasGas(o.type));
+	const buf = new ArrayBuffer(gas.length * objects.BILLBOARD_RECORD_BYTES);
+	const written = objects.writeObjectBillboards(placed, new DataView(buf), 0, placed.length);
+	check('writeObjectBillboards packs one record per gas object and skips clusters',
+		written === gas.length && written < placed.length, { written, gas: gas.length, total: placed.length });
+	const view = new DataView(buf);
+	let tintOk = 0;
+	for (let i = 0; i < written; i++) {
+		const want = nebula.NEBULA_COLORS[gas[i].type];
+		const r = view.getFloat32(i * 32 + 16, true);
+		const g = view.getFloat32(i * 32 + 20, true);
+		const b = view.getFloat32(i * 32 + 24, true);
+		if (r === Math.fround(want[0]) && g === Math.fround(want[1]) && b === Math.fround(want[2])) tintOk++;
+	}
+	check('billboard tints are NEBULA_COLORS for the object type', tintOk === written, { tintOk, written });
+
+	const e4 = galaxy.createGalaxy({ type: 'E4' });
+	const e4Objects = objects.placeObjects(e4, SEED, 400, null);
+	const e4Gas = e4Objects.filter(o => objects.objectHasGas(o.type));
+	check('a quenched E4 still billboards planetaries and SNR, never HII',
+		e4Gas.length > 0 && e4Gas.every(o => o.type === 'planetary' || o.type === 'SNR'),
+		objects.summariseObjects(e4Objects).byType);
+
+	const fov = Camera.FOV_Y;
+	check('the 4 px / 5 kpc cull: nearby HII drawn, distant smear dropped, tiny planetary dropped',
+		objects.billboardVisible(0.1, 1, 1080, fov)
+		&& !objects.billboardVisible(0.1, 5.1, 1080, fov)
+		&& !objects.billboardVisible(0.002, 1, 1080, fov));
+	check('the billboard record is 32 bytes (8 f32)',
+		objects.BILLBOARD_RECORD_BYTES === 32 && objects.BILLBOARD_RECORD_FLOATS === 8);
+}
+
 // --- Report --------------------------------------------------------------
 console.log(`\nBy type: ${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')}`);
 console.log(`Members placed: ${summary.totalMembers} (richness sum, apportioned to ${objects.OBJECT_MEMBERS_DEFAULT})`);

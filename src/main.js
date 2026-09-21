@@ -270,6 +270,7 @@ async function boot() {
                         `stars drawn ${state.drawn.toLocaleString()}  =  global ${state.proceduralStars.toLocaleString()}` +
                         ` + landmarks ${state.landmarkStars.toLocaleString()}` +
                         ` + objects ${state.objectStars.toLocaleString()}` +
+                        ` + nebulae ${state.nebulaBillboards.toLocaleString()}` +
                         ` + local ${state.localProceduralStars.toLocaleString()}` +
                         ` + catalog ${catKept.toLocaleString()}/${state.catalogTotalStars.toLocaleString()}\n` +
                         `cells ${state.cellsResident}/${state.catalogCells}   decoded ${(state.decodedBytes / 1024).toFixed(0)} KB` +
