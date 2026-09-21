@@ -16,6 +16,7 @@ Usage:
     python3 scripts/run.py star-types-evolution
     python3 scripts/run.py nebula-placement
     python3 scripts/run.py tile-encoder-smoke
+    python3 scripts/run.py wgsl-exec
     python3 scripts/run.py visualize-data
     python3 scripts/run.py encode-mock-tiles
     python3 scripts/run.py all-tests
@@ -54,6 +55,9 @@ EXPERIMENTS = {
     'precision':             'experiments/precision-test.js',
     'packing':               'experiments/packing-test.js',
     'filter':                'experiments/filter-test.js',
+    # Needs one dev-only dependency: `npm install wgsl_reflect` at the repo
+    # root. Executes the shipping WGSL on the CPU; not part of all-tests.
+    'wgsl-exec':             'experiments/wgsl-exec-check.js',
     # Asset generation / visualisation.
     'tile-encoder':          'experiments/tile-encoder.js',
     'visualize-data':        'experiments/visualize-data.js',
@@ -64,6 +68,7 @@ TYPES = {
                'landmark', 'tile-stream', 'tile-encoder-smoke', 'sampling', 'density-distribution',
                'star-types-evolution', 'nebula-placement'],
     'study':  ['hash-quality', 'precision', 'packing', 'filter'],
+    'sim':    ['wgsl-exec'],
     'asset':  ['tile-encoder', 'visualize-data'],
 }
 
@@ -102,6 +107,10 @@ def run(name: str) -> int:
         print()
         print('Studies (print a recommendation):')
         for k in TYPES['study']:
+            print(f'  {k}')
+        print()
+        print('Shader simulation (needs `npm install wgsl_reflect`):')
+        for k in TYPES['sim']:
             print(f'  {k}')
         print()
         print('Assets and other:')

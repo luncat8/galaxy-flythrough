@@ -20,6 +20,7 @@ python3 scripts/run.py camera      # one script
 | `wgsl-validate.js` | The WGSL in `src/render/shaders.js` matches the JS model: same constants, same function names, same structural markers. |
 | `camera-test.js` | Camera model: orthonormal basis, NDC depth range, dt independence, 8 ly/s base with whole-notch ×2 wheel on a power-of-two grid, Shift ×100 / Ctrl ×0.1, fly → orbit-centre → orbit-object cycle (position kept on entry, on-sphere under drag, key rates, clamps), home and reset, input consumption, zero allocations over 600 frames of mode switching. |
 | `renderer-test.js` | `star-sprites.js` driven by a stub WebGPU device: buffer sizing for `[procedural][landmarks][catalog]`, one upload of the fixed blocks with the landmark records flagged and at their baked positions, catalog upload only when residency changes, instance counts, uniform packing, exposure clamping. |
+| `hdr-test.js` | The Hable/Unreal filmic tone curve the renderer ships: fixed points, monotonicity, no NaN across the exposure range, the brightness-gain property (N overlapping stars sum linearly and roll off once), the linear exposure knob's range. Curve constants are pulled out of the WGSL; the arithmetic mirror lives in `tonemap-mirror.js`. |
 | `landmark-test.js` | 0.1.2 landmarks & constellations: the shared RA/Dec → XYZ conversion and screen projection, the landmark table (count, uniqueness, baked positions/magnitudes), every constellation edge resolving, click picking (nearest within 20 px, real data + synthetic scene, behind-camera culling), and the label layer's draw/cull/toggle behaviour against a mock 2D context. |
 | `tile-stream-test.js` | Encoder → loader → cell manager end to end on the shipped bundle: freshness, manifest, residency/hysteresis, nearest-first budget against a brute force, decode cache, no re-decode on re-upload. |
 | `tile-encoder-smoke-test.js` | The encoder on synthetic data: cuts, band assignment, bundle schema, and a full round trip through the shipping loader. |
@@ -35,6 +36,15 @@ python3 scripts/run.py camera      # one script
 - `packing-test.js` — `StarPacked` round-trip fidelity and the GPU memory budget per star count.
 - `filter-test.js` — priority score distribution, magnitude-band completeness, hash-thinning determinism.
 
+## Shader simulation (needs `npm install wgsl_reflect` at the repo root)
+
+- `wgsl-exec-check.js` — executes the shipping WGSL on the CPU (the `wgsl_reflect`
+  interpreter) and checks what it computes: the sprite emits the flux the magnitude
+  formula predicts (byte quantisation and sub-pixel fade included), behind-camera
+  stars contribute nothing, and N stars piled on one pixel run through the real
+  tonemap `fs_main` and match the JS pixel model in `tonemap-mirror.js`. Not part of
+  `all-tests` only because of the dev-only dependency.
+
 ## Assets
 
 - `tile-encoder.js` — reads the Gaia CSV (or `--mock` synthetic stars), applies the magnitude/quality cuts, converts to galactic XYZ, and writes `src/data/tiles/catalog.js` (one bundle, `window.__galaxy_catalog`). Ends with a loader round-trip check.
@@ -46,5 +56,6 @@ python3 scripts/run.py camera      # one script
   `=== VERDICT ===` line. Exit code 0 = pass.
 - Logs stay in the repo: they are the trail of what was measured.
 - No browser exists in this environment, so anything that talks to WebGPU is
-  tested against a stub device (see `renderer-test.js`) or validated statically
-  (`m1-smoke-test.js`, `wgsl-validate.js`).
+  tested against a stub device (see `renderer-test.js`), validated statically
+  (`m1-smoke-test.js`, `wgsl-validate.js`), or — for actual shader behaviour —
+  interpreted on the CPU (`wgsl-exec-check.js`).

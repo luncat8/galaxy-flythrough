@@ -352,3 +352,50 @@ Star size tightened in the same change: `BASE_SIZE_PX` 2.2 → 1.5, magnitude cl
 The HDR texture is recreated on canvas resize; the bind group is rebuilt then because the texture view changes. The tonemap uniform is uploaded every frame alongside the camera uniform. The renderer-test.js mock GPU was extended to record per-pass draws and the HDR texture so the two-pass submission is checkable from Node.
 
 Tests: `hdr-test.js` for the curve (f(0)=0, f(1)≈0.8, f(16.3)≈1.0, monotonic, bounded, the brightness-gain property: five overlapping stars sum linearly and still roll off below 1.0); `wgsl-validate.js` extended for the new `tonemap` shader part and the two wired shaders; `renderer-test.js` extended for the two-pass submission (star-sprites + tonemap), the HDR texture format and size, the per-pass clear values, the linear exposure uniform and the resize-recreates-texture path.
+
+### wgsl_reflect can execute the shipping WGSL in Node (2026-09-21)
+
+There is no browser in the sandbox, and `wgsl-validate.js` only reads shader text — the
+one claim the HDR frame rests on (a sprite emits linear flux; N overlapping sprites
+tonemap brighter than one) was unverifiable. `npm install wgsl_reflect` brings
+`WgslReflect` (parse) and `WgslDebug` (interpret `vs_main`/`fs_main` with real
+bindings). `experiments/wgsl-exec-check.js` runs the actual `src/render/shaders.js`
+strings: `debugVertex({vertex_index, instance_index}, binds)` returns the `VertexOut`
+fields by name (`brightness`, `color`), `debugFragment` takes inter-stage inputs by
+location index (`{0: uv, 1: color, 2: brightness}`) plus `@builtin(position)` as
+`{position: [x, y, z, w]}`, and bindings are `{0: {0: {uniform: ArrayBuffer}, 1: <buffer>,
+2: {texture: Uint8Array, descriptor: {size, format}}}}`. Texture formats the
+interpreter understands include `rgba8unorm` and `rgba32float` (float bytes as
+`Uint8Array` views over the float buffer). Dev-only dependency, so it is not in
+`all-tests` — run `python3 scripts/run.py wgsl-exec`. The JS model of the tonemap pass
+is shared with `hdr-test.js` through `experiments/tonemap-mirror.js`, which pulls the
+Hable constants out of the WGSL text instead of retyping them.
+
+### A tone curve's white point decides whether stars have edges (2026-09-21)
+
+Moving the display curve after the flux sum is not enough — the white point has to sit
+above the flux of the brightest thing in the frame or the "flat-white blob" failure just
+moves downstream. A sprite is white wherever `flux · falloff ≳ w`, so with the `(1−r²)³`
+falloff the flat-white disc radius is `r = sqrt(1 − (w/flux)^(1/3))` and it reaches 0
+only when `w` exceeds the star's peak flux. Measured on the default scene (magZero 12):
+the brightest landmark (Sirius, absMag 1.4 at 2.6 pc) carries flux ≈ 2.4e5, so at
+w = 4 it is flat white to r = 0.99 of its sprite and even w = 16 (the slider max) leaves
+r ≈ 0.98. That is fine for the shipped look (a white core with a coloured halo is the
+0.2 design goal) but it means the white slider cannot un-blow a first-magnitude star —
+only `magZero` can. If a future feature needs per-star gradients on bright stars, the
+white range must extend past the field's peak flux (one deleted branch measured the same
+effect for extended Reinhard with w up to 8192 — same law, different curve). Ship such
+defaults as measured constants and pin the disc-gradient property in `hdr-test.js`.
+
+### Deleted branches review: what was worth keeping (2026-09-21)
+
+`arena-01a0bdf8-hdr-direct`, `arena/01a0bdcb-galaxy-flythrough` and `hdr-cam` were
+reviewed against main and deleted from origin (wrong-HDR lineage: extended Reinhard /
+HDR-direct-no-tonemap variants, all superseded by main's accumulate-linear +
+Hable-then-saturate tonemap pass). Picked: `experiments/wgsl-exec-check.js` (rewritten
+against the current shaders), `experiments/tonemap-mirror.js` (factored from both
+tests), and the white-point measurement methodology above. Rejected: the Reinhard curve
+itself, the no-tonemap HDR-direct path (skipping the pass breaks the white/saturation
+knobs on HDR displays — main's comment already records this), `src/render/labels.js`
+(main's `label-layer.js` supersedes it), and their white-point default of 1024 (measured
+for their flux scale at magZero 17 — not transferable).

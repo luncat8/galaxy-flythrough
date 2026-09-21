@@ -1071,3 +1071,23 @@ keep their color and brightness gradient instead of clipping to white.
   sized to the canvas, exposure uniform).
 
 Order: 0.1.1 → 0.1.2 → 0.1.5. 0.1.1 touched no assets or shaders, so it landed first.
+
+---
+
+## 19. Later release plans (0.2 and up)
+
+Versioned releases after 0.1.x get their own plan files — clean artifacts in the same
+sense as this document, kept beside it rather than folded in:
+
+- `0.2-plan.md` — HDR controls (exposure / brightness / white point menu) and local
+  star density parity near the camera. *(shipped)*
+- `0.3.0-plan.md` — galaxy types and populations: 0.3.0 the `GalaxyModel` type
+  framework, 0.3.1 the full Hubble zoo with improved star distributions, 0.3.2
+  nebula-like objects with proper internal star distributions, 0.3.3 galaxy age.
+- `0.4.0-plan.md` — star movement: predefined orbits without gravity, orbit
+  distributions per galaxy type, the moving-star budget on a typical RTX 3050, the
+  one-shader architecture decision, and the star time slider (camera-coupled /
+  frozen / 0.5–99 Myr/s).
+
+Implement from those files plus this one; the per-release plans reference their own
+tests and extend the file layout of §11 as needed.

@@ -2,3 +2,7 @@
 # reproduced by `python3 scripts/run.py visualize-data`.
 experiments/logs/galaxy-sample.json
 galaxy-viz.png
+
+# Dev-only dependency of experiments/wgsl-exec-check.js (CPU WGSL interpreter).
+# Never loaded by the page — the runtime stays dependency-free and file://-safe.
+node_modules/

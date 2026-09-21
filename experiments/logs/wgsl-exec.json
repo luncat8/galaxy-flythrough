@@ -1,0 +1,317 @@
+{
+  "date": "2026-09-21T14:26:46.841Z",
+  "interpreter": "wgsl_reflect",
+  "totalChecks": 23,
+  "passed": 23,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "star-sprite: the shipped source parses as WGSL",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "star-sprite-hdr: the shipped source parses as WGSL",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "tonemap: the shipped source parses as WGSL",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "procedural-gen: the shipped source parses as WGSL",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "cull: the shipped source parses as WGSL",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "the vertex stage reports the flux the magnitude formula predicts",
+      "pass": true,
+      "detail": {
+        "wgsl": 7.423144817352295,
+        "model": 7.423149980177933,
+        "absMag": 4.8235294117647065
+      }
+    },
+    {
+      "name": "that flux is far above 1.0 — the sprite is not pre-clipped to the display range",
+      "pass": true,
+      "detail": 7.423144817352295
+    },
+    {
+      "name": "the fragment emits the full linear radiance at the disc centre",
+      "pass": true,
+      "detail": {
+        "wgsl": 7.423144817352295,
+        "expected": 7.423144817352295
+      }
+    },
+    {
+      "name": "and tints it with the spectral colour from the LUT",
+      "pass": true,
+      "detail": {
+        "shader": [
+          1,
+          0.9333333373069763,
+          0.8666666746139526
+        ],
+        "lut": [
+          1,
+          0.9333333333333333,
+          0.8666666666666667
+        ]
+      }
+    },
+    {
+      "name": "and writes the same flux to alpha — premultiplied additive, summed in all four channels",
+      "pass": true,
+      "detail": 7.423144817352295
+    },
+    {
+      "name": "a star behind the camera contributes zero radiance",
+      "pass": true,
+      "detail": {
+        "clipPos": [
+          0,
+          0,
+          -1,
+          1
+        ],
+        "uv": [
+          1,
+          1
+        ],
+        "color": [
+          0,
+          0,
+          0
+        ],
+        "brightness": 0
+      }
+    },
+    {
+      "name": "the faint star matches the same formula, including the sub-pixel fade",
+      "pass": true,
+      "detail": {
+        "wgsl": 0.0016250000335276127,
+        "model": 0.0016249999999999995,
+        "unfaded": 0.002499999999999999
+      }
+    },
+    {
+      "name": "the fade really is active for it (under 1 px), or the check above is vacuous",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "the tonemap pass matches the JS pixel model for every pile-up",
+      "pass": true,
+      "detail": [
+        {
+          "stars": 1,
+          "accumulated": 0.002,
+          "display": 0.00205
+        },
+        {
+          "stars": 2,
+          "accumulated": 0.003,
+          "display": 0.00409
+        },
+        {
+          "stars": 4,
+          "accumulated": 0.007,
+          "display": 0.00818
+        },
+        {
+          "stars": 8,
+          "accumulated": 0.013,
+          "display": 0.01637
+        },
+        {
+          "stars": 32,
+          "accumulated": 0.052,
+          "display": 0.06549
+        },
+        {
+          "stars": 256,
+          "accumulated": 0.416,
+          "display": 0.51813
+        },
+        {
+          "stars": 1024,
+          "accumulated": 1.664,
+          "display": 1.92163
+        },
+        {
+          "stars": 8192,
+          "accumulated": 13.312,
+          "display": 8
+        }
+      ]
+    },
+    {
+      "name": "stacking stars on one pixel brightens it, right up to the ceiling",
+      "pass": true,
+      "detail": [
+        {
+          "stars": 1,
+          "accumulated": 0.002,
+          "display": 0.00205
+        },
+        {
+          "stars": 2,
+          "accumulated": 0.003,
+          "display": 0.00409
+        },
+        {
+          "stars": 4,
+          "accumulated": 0.007,
+          "display": 0.00818
+        },
+        {
+          "stars": 8,
+          "accumulated": 0.013,
+          "display": 0.01637
+        },
+        {
+          "stars": 32,
+          "accumulated": 0.052,
+          "display": 0.06549
+        },
+        {
+          "stars": 256,
+          "accumulated": 0.416,
+          "display": 0.51813
+        },
+        {
+          "stars": 1024,
+          "accumulated": 1.664,
+          "display": 1.92163
+        },
+        {
+          "stars": 8192,
+          "accumulated": 13.312,
+          "display": 8
+        }
+      ]
+    },
+    {
+      "name": "and never exceeds the HDR ceiling of 8",
+      "pass": true,
+      "detail": [
+        {
+          "stars": 1,
+          "accumulated": 0.002,
+          "display": 0.00205
+        },
+        {
+          "stars": 2,
+          "accumulated": 0.003,
+          "display": 0.00409
+        },
+        {
+          "stars": 4,
+          "accumulated": 0.007,
+          "display": 0.00818
+        },
+        {
+          "stars": 8,
+          "accumulated": 0.013,
+          "display": 0.01637
+        },
+        {
+          "stars": 32,
+          "accumulated": 0.052,
+          "display": 0.06549
+        },
+        {
+          "stars": 256,
+          "accumulated": 0.416,
+          "display": 0.51813
+        },
+        {
+          "stars": 1024,
+          "accumulated": 1.664,
+          "display": 1.92163
+        },
+        {
+          "stars": 8192,
+          "accumulated": 13.312,
+          "display": 8
+        }
+      ]
+    },
+    {
+      "name": "the pile-up actually spans the display range instead of pinning at the ceiling",
+      "pass": true,
+      "detail": {
+        "first": 0.00205,
+        "last": 8
+      }
+    },
+    {
+      "name": "the old per-sprite curve could not tell 617 faint stars from 4936",
+      "pass": true,
+      "detail": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "the linear frame separates them",
+      "pass": true,
+      "detail": [
+        1.2076,
+        2.2657,
+        6.4899
+      ]
+    },
+    {
+      "name": "saturation 0 collapses to grey",
+      "pass": true,
+      "detail": [
+        0.07704466581344604,
+        0.07704466581344604,
+        0.07704466581344604,
+        1
+      ]
+    },
+    {
+      "name": "the SDR path clamps an over-flowed accumulation at 1, not at NaN",
+      "pass": true,
+      "detail": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "the HDR path clamps at 8 so the extended swapchain gets a finite value",
+      "pass": true,
+      "detail": [
+        8,
+        8,
+        8,
+        1
+      ]
+    },
+    {
+      "name": "an empty frame is black, not NaN",
+      "pass": true,
+      "detail": [
+        0,
+        0,
+        0,
+        1
+      ]
+    }
+  ]
+}

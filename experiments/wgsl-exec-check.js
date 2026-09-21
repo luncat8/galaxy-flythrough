@@ -1,0 +1,271 @@
+// experiments/wgsl-exec-check.js
+// Runs the shipping WGSL on the CPU and checks what it actually computes.
+//
+// Nothing else in this repo can execute a shader: no browser here, and
+// wgsl-validate.js only reads the text. That leaves the one claim the HDR
+// frame is built on unverified — that a sprite emits linear radiance and that
+// the tonemap pass turns N overlapping sprites into a brighter pixel than one.
+// This script closes that gap by interpreting src/render/shaders.js directly.
+//
+// Needs one dev-only dependency, which is why it is not part of `all-tests`:
+//
+//	npm install wgsl_reflect        # at the repo root
+//	python3 scripts/run.py wgsl-exec
+//
+// Output: experiments/logs/wgsl-exec.json
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+
+globalThis.window = globalThis;
+require('../src/math/star-record.js');
+require('../src/render/shaders.js');
+
+const records = require('../src/math/star-record.js');
+const shaders = require('../src/render/shaders.js');
+const mirrorLib = require('./tonemap-mirror.js');
+
+const checks = [];
+function check(name, pass, detail) {
+	checks.push({ name, pass: !!pass, detail });
+	return !!pass;
+}
+
+function report(verdict) {
+	let passed = 0;
+	let failed = 0;
+	for (const c of checks) {
+		if (c.pass) passed++; else failed++;
+		console.log(`  ${c.pass ? 'OK  ' : 'FAIL'} ${c.name}${c.pass ? '' : `  -> ${JSON.stringify(c.detail)}`}`);
+	}
+	console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
+	const logPath = path.join(__dirname, 'logs', 'wgsl-exec.json');
+	fs.mkdirSync(path.dirname(logPath), { recursive: true });
+	fs.writeFileSync(logPath, JSON.stringify({
+		date: new Date().toISOString(),
+		interpreter: 'wgsl_reflect',
+		totalChecks: checks.length,
+		passed,
+		failed,
+		checks,
+	}, null, 2));
+	console.log(`Wrote ${logPath}`);
+	console.log('\n=== VERDICT ===');
+	console.log(failed === 0 ? `PASS — ${verdict}` : `FAIL — ${failed} checks failed`);
+	process.exit(failed === 0 ? 0 : 1);
+}
+
+async function main() {
+	let lib = null;
+	try {
+		lib = await import('wgsl_reflect/wgsl_reflect.module.js');
+	} catch (err) {
+		console.error('wgsl_reflect is not installed. Run `npm install wgsl_reflect` at the repo root.');
+		console.error(`(import failed with: ${err.message})`);
+		process.exit(2);
+	}
+	const { WgslReflect, WgslDebug } = lib;
+
+	// --- 1. Every shipped module parses ----------------------------------
+	for (const [name, code] of Object.entries(shaders.SHADERS)) {
+		let error = null;
+		try {
+			new WgslReflect(code);
+		} catch (err) {
+			error = err.message;
+		}
+		check(`${name}: the shipped source parses as WGSL`, error === null, error);
+	}
+
+	// --- Fixtures --------------------------------------------------------
+	// Three stars, one camera at the origin. The bright G dwarf 100 pc away is
+	// ~2 magnitudes brighter than the reference exposure and shows the flux
+	// formula; the faint M dwarf 200 pc away is sub-pixel and shows the fade.
+	// Slot 1 is the bright star behind the camera. Absolute magnitudes go
+	// through the packed byte the shader reads, so expectations decode the
+	// same way.
+	const MAG_ZERO = 12.0;
+	const BASE_SIZE_PX = 1.3;
+	const MAX_SIZE_PX = 14.0;
+	const STARS = [
+		{ z: -0.1, absMag: 4.83, colorIndex: 4 },    // G dwarf, 100 pc
+		{ z: 0.1, absMag: 4.83, colorIndex: 4 },     // same star, behind the camera
+		{ z: -0.2, absMag: 12.0, colorIndex: 6 },    // M dwarf, 200 pc, sub-pixel
+	];
+	const starBytes = new ArrayBuffer(STARS.length * records.RECORD_BYTES);
+	const starF = new Float32Array(starBytes);
+	const starU = new Uint32Array(starBytes);
+	STARS.forEach((star, i) => {
+		starF[i * 4] = 0;
+		starF[i * 4 + 1] = 0;
+		starF[i * 4 + 2] = star.z;
+		starU[i * 4 + 3] = (records.FLAG_VISIBLE << 16) | (records.encodeAbsMag(star.absMag) << 8) | star.colorIndex;
+	});
+	const brightMag = records.decodeAbsMag(starU[3] >>> 8);
+	const faintMag = records.decodeAbsMag(starU[11] >>> 8);
+	const fluxAt = (absMag, distKpc) => Math.pow(2, -0.4 * Math.log2(10)
+		* ((absMag + 5 * Math.log10(distKpc * 1000) - 5) - MAG_ZERO));
+	// A sprite under 1 px fades by area ratio instead of shrinking further, so
+	// what it deposits is the flux times that fade — the model carries it too.
+	const fadeAt = (magDiff) => {
+		const sizePx = BASE_SIZE_PX * Math.min(2.2, Math.max(0.4, 1 - 0.4 * magDiff));
+		return sizePx < 1 ? Math.min(Math.max(sizePx / 0.8, 0.25), 1) : 1;
+	};
+	const emitted = (absMag, distKpc) => {
+		const magDiff = (absMag + 5 * Math.log10(distKpc * 1000) - 5) - MAG_ZERO;
+		return fluxAt(absMag, distKpc) * fadeAt(magDiff);
+	};
+
+	// x' = x, y' = y, w' = -z: a star on -Z projects to the viewport centre.
+	const viewProj = new Float32Array(16);
+	viewProj[0] = 1; viewProj[5] = 1; viewProj[11] = -1; viewProj[14] = 1;
+	const cameraBytes = new ArrayBuffer(28 * 4);
+	const cam = new Float32Array(cameraBytes);
+	cam.set(viewProj, 0);
+	cam[20] = 1920; cam[21] = 1080; cam[22] = 2 / 1920; cam[23] = 2 / 1080;
+	cam[24] = MAG_ZERO; cam[25] = BASE_SIZE_PX; cam[26] = MAX_SIZE_PX; cam[27] = 0;
+
+	// The real LUT the renderer uploads. WgslDebug's textureLoad returns the
+	// stored texel as bytes/255 (the GPU's -srgb format linearises on sample,
+	// which an interpreter has no display to do); the check is self-consistent.
+	const lut = records.buildColorLUT();
+	const lutRgb = [lut[4 * 4] / 255, lut[4 * 4 + 1] / 255, lut[4 * 4 + 2] / 255];
+
+	const spriteBinds = {
+		0: {
+			0: { uniform: cameraBytes },
+			1: starBytes,
+			2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
+		},
+	};
+
+	const spriteCode = shaders.SHADERS['star-sprite'];
+
+	function runStage(code, entry, stage, inputs, binds) {
+		const dbg = new WgslDebug(code);
+		if (!dbg[stage](entry, inputs, binds)) throw new Error(`${stage} setup failed for ${entry}`);
+		let steps = 0;
+		while (dbg.stepNext() && steps < 1e6) steps++;
+		return dbg.getReturnValue ? dbg.getReturnValue() : dbg._returnValue;
+	}
+
+	// --- 2. The sprite emits linear radiance ------------------------------
+	const vertex = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 0 }, spriteBinds);
+	const expectedFlux = emitted(brightMag, 0.1);
+	check('the vertex stage reports the flux the magnitude formula predicts',
+		Math.abs(vertex.brightness - expectedFlux) / expectedFlux < 1e-5,
+		{ wgsl: vertex.brightness, model: expectedFlux, absMag: brightMag });
+	check('that flux is far above 1.0 — the sprite is not pre-clipped to the display range',
+		vertex.brightness > 4, vertex.brightness);
+
+	const fragment = runStage(spriteCode, 'fs_main', 'debugFragment',
+		{ 0: [0, 0], 1: vertex.color, 2: vertex.brightness }, spriteBinds);
+	const centre = vertex.brightness;   // falloff is 1 at the disc centre
+	check('the fragment emits the full linear radiance at the disc centre',
+		Math.abs(fragment[0] - centre * lutRgb[0]) / (centre * lutRgb[0]) < 1e-4,
+		{ wgsl: fragment[0], expected: centre * lutRgb[0] });
+	check('and tints it with the spectral colour from the LUT',
+		Math.abs(vertex.color[0] - lutRgb[0]) < 1e-3 && Math.abs(vertex.color[2] - lutRgb[2]) < 1e-3,
+		{ shader: vertex.color, lut: lutRgb });
+	check('and writes the same flux to alpha — premultiplied additive, summed in all four channels',
+		Math.abs(fragment[3] - centre) / centre < 1e-4, fragment[3]);
+
+	const behind = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 1 }, spriteBinds);
+	check('a star behind the camera contributes zero radiance', behind.brightness === 0, behind);
+
+	// --- 3. N stars on one pixel are brighter than one --------------------
+	const faint = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 2 }, spriteBinds);
+	check('the faint star matches the same formula, including the sub-pixel fade',
+		Math.abs(faint.brightness - emitted(faintMag, 0.2)) / emitted(faintMag, 0.2) < 1e-5,
+		{ wgsl: faint.brightness, model: emitted(faintMag, 0.2), unfaded: fluxAt(faintMag, 0.2) });
+	check('the fade really is active for it (under 1 px), or the check above is vacuous',
+		fadeAt(faintMag + 5 * Math.log10(200) - 5 - MAG_ZERO) < 1, null);
+	const one = faint.brightness;   // disc centre, falloff 1
+
+	const W = 16;
+	const H = 16;
+	const radianceBytes = new Uint8Array(W * H * 16);
+	const radiance = new Float32Array(radianceBytes.buffer);
+	const toneBytes = new ArrayBuffer(4 * 4);
+	const toneUniform = new Float32Array(toneBytes);
+	const compositeBinds = {
+		0: {
+			0: { uniform: toneBytes },
+			1: { texture: radianceBytes, descriptor: { size: [W, H], format: 'rgba32float' } },
+		},
+	};
+	const compositeCode = shaders.SHADERS['tonemap'];
+	const mirror = mirrorLib.loadTonemap(shaders);
+
+	function composite(px, py, rgb, params) {
+		const i = (py * W + px) * 4;
+		radiance[i] = rgb[0]; radiance[i + 1] = rgb[1]; radiance[i + 2] = rgb[2]; radiance[i + 3] = 0;
+		toneUniform[0] = params.exposure;
+		toneUniform[1] = params.whitePoint;
+		toneUniform[2] = params.saturation;
+		toneUniform[3] = params.outputMode;
+		const out = runStage(compositeCode, 'fs_main', 'debugFragment',
+			{ position: [px + 0.5, py + 0.5, 0, 1] }, compositeBinds);
+		radiance[i] = 0; radiance[i + 1] = 0; radiance[i + 2] = 0;
+		return out;
+	}
+
+	const DEF = { exposure: 1.0, whitePoint: 4.0, saturation: 1.0, outputMode: 1.0 };
+	const gain = [];
+	let gains = true;
+	let bounded = true;
+	let matchesModel = true;
+	for (const n of [1, 2, 4, 8, 32, 256, 1024, 8192]) {
+		const out = composite(8, 8, [one * n, one * n, one * n], DEF);
+		const model = mirrorLib.tonemapPixel(mirror, one * n, one * n, one * n, DEF);
+		if (Math.abs(out[0] - model[0]) > 1e-4) matchesModel = false;
+		if (out[0] > 8.0 + 1e-5) bounded = false;
+		gain.push({ stars: n, accumulated: +(one * n).toFixed(3), display: +out[0].toFixed(5) });
+		if (n > 1 && out[0] <= gain[gain.length - 2].display + 1e-9 && out[0] < 7.999) gains = false;
+	}
+	check('the tonemap pass matches the JS pixel model for every pile-up', matchesModel, gain);
+	check('stacking stars on one pixel brightens it, right up to the ceiling', gains, gain);
+	check('and never exceeds the HDR ceiling of 8', bounded, gain);
+	check('the pile-up actually spans the display range instead of pinning at the ceiling',
+		gain[gain.length - 1].display > 2 * gain[0].display,
+		{ first: gain[0].display, last: gain[gain.length - 1].display });
+	console.log('    pile-up:', gain.map(g => `${g.stars}*=${g.display}`).join('  '));
+
+	// The bug this replaced: a display curve applied per sprite, then summed.
+	// Each sprite arrived already flattened, so once the pile-up clips under
+	// the old model, every larger pile-up reads the same white.
+	const perSprite = one / (1 + one);
+	const clipAt = Math.ceil(1 / perSprite);   // first n where the old model clips
+	const counts = [clipAt, clipAt * 2, clipAt * 8];
+	const oldSum = counts.map(n => Math.min(perSprite * n, 1.0));
+	check(`the old per-sprite curve could not tell ${counts[0]} faint stars from ${counts[2]}`,
+		oldSum[0] === oldSum[1] && oldSum[1] === oldSum[2], oldSum);
+	const nowSum = counts.map(n => composite(8, 8, [one * n, one * n, one * n], DEF)[0]);
+	check('the linear frame separates them',
+		nowSum[0] < nowSum[1] && nowSum[1] < nowSum[2], nowSum.map(v => +v.toFixed(4)));
+
+	// --- 4. The user knobs land where the model says -----------------------
+	const grey = composite(8, 8, [one * 64, one * 32, one * 16], { ...DEF, saturation: 0.0 });
+	check('saturation 0 collapses to grey',
+		Math.abs(grey[0] - grey[1]) < 1e-5 && Math.abs(grey[1] - grey[2]) < 1e-5, grey);
+	const sdr = composite(8, 8, [1e5, 1e5, 1e5], { ...DEF, outputMode: 0.0 });
+	check('the SDR path clamps an over-flowed accumulation at 1, not at NaN',
+		Number.isFinite(sdr[0]) && Math.abs(sdr[0] - 1.0) < 1e-6, sdr);
+	const hdrMax = composite(8, 8, [1e5, 1e5, 1e5], DEF);
+	check('the HDR path clamps at 8 so the extended swapchain gets a finite value',
+		Number.isFinite(hdrMax[0]) && Math.abs(hdrMax[0] - 8.0) < 1e-6, hdrMax);
+	const empty = composite(4, 4, [0, 0, 0], DEF);
+	check('an empty frame is black, not NaN', empty.every(v => Number.isFinite(v)) && empty[0] < 1e-3, empty);
+
+	report('the shipping WGSL accumulates linear radiance and tone maps it once');
+}
+
+main().catch((err) => {
+	console.error(err);
+	process.exit(1);
+});

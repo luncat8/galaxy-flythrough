@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "wgsl_reflect": "^1.6.0"
+  }
+}

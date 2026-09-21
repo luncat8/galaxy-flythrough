@@ -28,33 +28,24 @@ function check(name, pass, detail) {
 
 // --- Pull the curve constants out of the WGSL ----------------------------
 const TONEMAP = shaders.SHADER_PARTS['tonemap'];
-
-// Match Hable constants A,B,C,D,E,F (the old ACES a-e regex no longer applies).
-const CONST_RE = /(?:const|let)\s+([A-F]):\s*f32\s*=\s*([0-9.]+);/g;
-const consts = {};
-let m;
-while ((m = CONST_RE.exec(TONEMAP)) !== null) {
-	consts[m[1]] = parseFloat(m[2]);
-}
+const mirrorLib = require('./tonemap-mirror.js');
 
 check('the tonemap shader part exists and is non-trivial',
 	typeof TONEMAP === 'string' && TONEMAP.length > 200, TONEMAP.length);
-check('the tonemap shader exposes the six Hable/Unreal constants A–F',
-	['A','B','C','D','E','F'].every(k => typeof consts[k] === 'number'), consts);
 
-// JS mirror of the WGSL hableFilmic. Keeps the test pinned to the exact
-// arithmetic the GPU runs; if the WGSL drifts, this test fails until the JS
-// mirror is updated too.
-function hableRaw(x) {
-	const { A, B, C, D, E, F } = consts;
-	return (x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F) - E / F;
+// The JS mirror lives in tonemap-mirror.js (shared with wgsl-exec-check.js).
+// Constants are read out of the WGSL text, so the two sources cannot drift.
+let mirror = null;
+let loadError = null;
+try {
+	mirror = mirrorLib.loadTonemap(shaders);
+} catch (err) {
+	loadError = err.message;
 }
-// Normalised so that input = 1 maps to output = 1 (that's what dividing by
-// hable(1) in the WGSL does after scaling by white point).
-const curveWhite = hableRaw(1);
-function hable(x) {
-	return Math.max(0, Math.min(8, hableRaw(x) / curveWhite));
-}
+check('the tonemap shader exposes the six Hable/Unreal constants A–F',
+	mirror !== null, loadError);
+const consts = mirror ? mirror.consts : {};
+const hable = mirror ? mirror.hable : function () { return NaN; };
 
 // --- Fixed points and bounds --------------------------------------------
 {
