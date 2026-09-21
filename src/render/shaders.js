@@ -953,10 +953,11 @@ fn main(@global_invocation_id gid: vec3u) {
                 if (component == COMPONENT_THIN && state == 0u) {
                         // Radial metallicity gradient: +1 colour step reached
                         // at R = 2*L/steep, clamped at M — mirrors
-                        // star-types.deriveStar.
-                        let steep: f32 = params.populations.w;
+                        // star-types.deriveStar. DensityParams, not GenParams:
+                        // the latter has no populations/thin groups.
+                        let steep: f32 = densityParams.populations.w;
                         if (steep > 0.0) {
-                                let shift: u32 = u32(min(1.0, R * steep / (2.0 * params.thin.x)));
+                                let shift: u32 = u32(min(1.0, floor(R * steep / (2.0 * densityParams.thin.x))));
                                 cls = min(6u, cls + shift);
                         }
                 } else if (component == COMPONENT_BULGE && state == 2u && hash01(slotSeed * 31u + 4u) < 0.2) {

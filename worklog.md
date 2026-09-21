@@ -12,5 +12,5 @@ No separate 0.2 implementation entry exists in the original log. The combined
 0.3/0.4 planning entry lives in 0.3.x; add a 0.4.x log when its implementation starts.
 Historical entries are preserved verbatim; plans remain separate clean artifacts.
 
-Next step suggestion: finish 0.3.1a shape machinery (bar profiles and arm coupling,
-flocculent arms, irregulars), then 0.3.1b population gradients and disc structure.
+Next step suggestion: per-type density-distribution parity for {E4, S0, SBb, Sc, Irr},
+then 0.3.2 objects. Metallicity gradient (0.3.1b colour modifier) is in.

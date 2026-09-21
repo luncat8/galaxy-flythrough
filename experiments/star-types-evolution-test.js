@@ -140,11 +140,23 @@ const armStats = starTypes.classVsArmDistance(stars);
 		return sum / count;
 	};
 	const L = sc.thin.L;
-	// Sc is steepest (reaches the full +1 step at R = 2L): by 2.5L most
-	// sub-M main-sequence stars have shifted, so the mean rises by ~0.8.
-	const inner = msMean(sc, L * 0.5, 4000);
-	const outer = msMean(sc, L * 2.5, 4000);
-	check('Sc: the thin-disc mean colour index rises from 0.5L to 2.5L',
+	// IMF is ~87% M, so an all-MS mean barely moves. Restrict to stars that
+	// still have a step left (colourIndex < M) at the inner radius; those
+	// pick up +1 by R = 2L when steep = 1.
+	const msMeanSubM = (m, R, n) => {
+		let sum = 0;
+		let count = 0;
+		for (let i = 1; i <= n; i++) {
+			const s = starTypes.deriveStar(m, i * 7919 + 1, density.COMPONENT_THIN, R, 2.0, {});
+			if (s.state !== 'ms' || s.colorIndex >= 6) continue;
+			sum += s.colorIndex;
+			count++;
+		}
+		return count ? sum / count : 0;
+	};
+	const inner = msMeanSubM(sc, L * 0.5, 8000);
+	const outer = msMean(sc, L * 2.5, 8000);
+	check('Sc: sub-M thin-disc stars redden by ~1 step from 0.5L to 2.5L',
 		outer - inner > 0.5, { inner: +inner.toFixed(3), outer: +outer.toFixed(3) });
 	const eInner = msMean(e4, L * 0.5, 4000);
 	const eOuter = msMean(e4, L * 2.5, 4000);

@@ -476,15 +476,15 @@ function relNear(a, b, tol) {
 		(at.thin + at.thick) / (base.thin + base.thick));
 	// And the two-stage sampler moves a visible share of stars into clumps.
 	const irrSample = sampling.sampleGalaxyStars(irr, 42, 40000);
-	let near = 0;
+	let clumpHits = 0;
 	for (let i = 0; i < irrSample.count; i++) {
 		for (const c of irr.clumps) {
 			const dx = irrSample.x[i] - c.x, dy = irrSample.y[i] - c.y, dz = irrSample.z[i] - c.z;
-			if (dx * dx + dy * dy + dz * dz < 4 * c.r * c.r) { near++; break; }
+			if (dx * dx + dy * dy + dz * dz < 4 * c.r * c.r) { clumpHits++; break; }
 		}
 	}
 	check('the sampler assigns stars to the clumps the field carries',
-		near / irrSample.count > 0.015, +(near / irrSample.count).toFixed(4));
+		clumpHits / irrSample.count > 0.015, +(clumpHits / irrSample.count).toFixed(4));
 
 	// Radial metallicity: one dial (gradientSteep), flat in E, steep in Sc.
 	check('gradientSteep is monotone up the sequence and per-type',

@@ -3,6 +3,16 @@
 Append-only notes for LLM agents working on this project. Each entry: date, one-line summary heading, then the detail. Newest at top.
 
 ---
+## 2026-09-21 — Colour-index steps cannot walk off the classification LUT
+
+Radial metallicity is a *colour* modifier, not a new class. `colorIndex + 1` on an M
+star lands on WD (index 7) if the LUT is only the nine spectral classes. Clamp the
+thin-disc shift at M. For "one step redder than RG", RG is already last: add a
+dedicated `RGe` slot that `classifyByTempAndState` never returns. In WGSL, the
+procedural generator's uniform is `densityParams`, not the cell `params` GenParams —
+copying `params.populations` from the JS names compiles on neither side.
+
+---
 ## 2026-09-21 — Parameterising a hard-coded model without moving one shipped number
 
 ### Freeze the old numbers as a preset, derive the rest, and let provenance decide the mode
