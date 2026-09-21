@@ -49,7 +49,14 @@ const ORBIT_TURN_RATE = 1.0;          // rad/s for A/D/E/Q in orbit
 const ORBIT_DOLLY_RATE = 1.0;         // octaves/s for W/S in orbit: distance halves or doubles per second
 const ORBIT_KEY_BOOST = 4.0;          // Shift x4, Ctrl x1/4 on orbit key rates; x100 would be 16 turns a second
 const HOME_ORBIT_DISTANCE = 0.01;     // kpc, H in orbit: the Sun from 10 pc
-const START_POSITION = [0, 0, 0.005]; // 5 pc above the Sun, so the start is not inside its sprite
+// The default frame is the Milky Way preset's: the Sun-centred origin, the view
+// from 5 pc above it, the galactic centre as the orbit centre. setFrame() swaps
+// all of it when the user changes galaxy type, so nothing here is a second copy
+// of a model constant.
+const DEFAULT_FRAME = (typeof module !== 'undefined' && module.exports)
+	? require('../math/galaxy.js').MILKY_WAY
+	: window.GalaxyLib.MILKY_WAY;
+const START_POSITION = DEFAULT_FRAME.home.position;
 const SUN_POSITION = [0, 0, 0];
 
 const MODE_FLY = 0;
@@ -59,14 +66,10 @@ const MODE_NAMES = ['fly', 'orbit centre', 'orbit object'];
 const MODE_COUNT = 3;
 
 // The orbit centre is the model's, not a second copy of 8.178.
-const GALACTIC_CENTRE_TARGET = (function () {
-	const density = (typeof module !== 'undefined' && module.exports)
-		? require('../math/density.js')
-		: window.DensityLib;
-	return Float64Array.of(density.GALACTIC_CENTRE.x, density.GALACTIC_CENTRE.y, density.GALACTIC_CENTRE.z);
-})();
+const GALACTIC_CENTRE_TARGET = Float64Array.of(
+	DEFAULT_FRAME.centre.x, DEFAULT_FRAME.centre.y, DEFAULT_FRAME.centre.z);
 const GALACTIC_CENTRE_NAME = 'galactic centre';
-const SUN_NAME = 'Sun';
+const SUN_NAME = DEFAULT_FRAME.home.orbitName;
 
 function clamp(value, lo, hi) {
 	return value < lo ? lo : (value > hi ? hi : value);
@@ -89,6 +92,15 @@ function createCamera() {
 	const objectTarget = new Float64Array([SUN_POSITION[0], SUN_POSITION[1], SUN_POSITION[2]]);
 	let objectTargetName = SUN_NAME;
 	let orbitDistance = HOME_ORBIT_DISTANCE;
+	// The galaxy's frame: what C orbits and what H returns to. Mutated in place by
+	// setFrame() so a type change rehomes the camera instead of rebuilding it.
+	const orbitCentre = new Float64Array(GALACTIC_CENTRE_TARGET);
+	const homePosition = new Float64Array(DEFAULT_FRAME.home.position);
+	const homeOrbitTarget = new Float64Array(DEFAULT_FRAME.home.orbitTarget);
+	let homeYaw = DEFAULT_FRAME.home.yaw;
+	let homePitch = DEFAULT_FRAME.home.pitch;
+	let homeOrbitDistance = DEFAULT_FRAME.home.orbitDistance;
+	let homeOrbitName = DEFAULT_FRAME.home.orbitName;
 
 	// Outputs, allocated once. forward/right/up are the f32 copies the renderer
 	// and the tests read; the camera itself moves along the f64 basis so an
@@ -148,7 +160,7 @@ function createCamera() {
 
 	// --- Orbit ------------------------------------------------------------
 	function orbitTarget() {
-		return mode === MODE_ORBIT_GC ? GALACTIC_CENTRE_TARGET : objectTarget;
+		return mode === MODE_ORBIT_GC ? orbitCentre : objectTarget;
 	}
 
 	function placeOnOrbit() {
@@ -203,22 +215,48 @@ function createCamera() {
 		if (mode === MODE_ORBIT_OBJECT) snapToOrbit();
 	}
 
-	// --- Home / reset -----------------------------------------------------
-	// Fly: teleport to the start. Orbit: circle the Sun from 10 pc, keeping the
-	// viewing direction so the jump is a translation, not a spin.
+	// --- Frame / home / reset -------------------------------------------------
+	// Install a galaxy's frame. A type change rehomes the camera rather than
+	// re-driving it: the mode and velocity stay, the positions they were measured
+	// against do not exist in the new model.
+	function setFrame(model) {
+		const centre = model.centre;
+		orbitCentre[0] = centre.x;
+		orbitCentre[1] = centre.y;
+		orbitCentre[2] = centre.z;
+		const home = model.home;
+		homePosition[0] = home.position[0];
+		homePosition[1] = home.position[1];
+		homePosition[2] = home.position[2];
+		homeYaw = home.yaw;
+		homePitch = home.pitch;
+		homeOrbitTarget[0] = home.orbitTarget[0];
+		homeOrbitTarget[1] = home.orbitTarget[1];
+		homeOrbitTarget[2] = home.orbitTarget[2];
+		homeOrbitDistance = clamp(home.orbitDistance, ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX);
+		homeOrbitName = home.orbitName;
+		// Orbit-the-centre keeps looking at the centre from wherever the camera
+		// already stands; every other mode moves to the home view, because the old
+		// position can be inside the new model's spheroid.
+		if (mode !== MODE_ORBIT_GC) goHome();
+	}
+
+	// Fly: teleport to the model's home view. Orbit: circle the model's home
+	// target — the Sun for the Milky Way preset, the centre for any other type —
+	// keeping the viewing direction so the jump is a translation, not a spin.
 	function goHome() {
 		if (mode === MODE_FLY) {
-			setPosition(START_POSITION);
+			setPosition(homePosition);
 			stopVelocity();
-			yaw = 0;
-			pitch = 0;
+			yaw = homeYaw;
+			pitch = homePitch;
 			updateBasis();
 			updateCameraPos();
 			return;
 		}
 		mode = MODE_ORBIT_OBJECT;
-		assignObjectTarget(SUN_POSITION[0], SUN_POSITION[1], SUN_POSITION[2], SUN_NAME);
-		orbitDistance = HOME_ORBIT_DISTANCE;
+		assignObjectTarget(homeOrbitTarget[0], homeOrbitTarget[1], homeOrbitTarget[2], homeOrbitName);
+		orbitDistance = homeOrbitDistance;
 		placeOnOrbit();
 	}
 
@@ -226,8 +264,8 @@ function createCamera() {
 		mode = MODE_FLY;
 		speedMult = 1.0;
 		wheelAccum = 0;
-		orbitDistance = HOME_ORBIT_DISTANCE;
-		assignObjectTarget(SUN_POSITION[0], SUN_POSITION[1], SUN_POSITION[2], SUN_NAME);
+		orbitDistance = homeOrbitDistance;
+		assignObjectTarget(homeOrbitTarget[0], homeOrbitTarget[1], homeOrbitTarget[2], homeOrbitName);
 		goHome();
 	}
 
@@ -408,6 +446,7 @@ function createCamera() {
 		step,
 		reset,
 		goHome,
+		setFrame,
 		setMode,
 		toggleMode,
 		setOrbitTarget,

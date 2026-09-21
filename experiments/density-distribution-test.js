@@ -14,6 +14,9 @@ const path = require('path');
 const density = require('../src/math/density.js');
 const sampling = require('../src/math/sampling.js');
 
+const galaxy = require('../src/math/galaxy.js');
+const model = galaxy.MILKY_WAY;
+
 const SEED = 42;
 const N_STARS = 120000;
 const BOX = { xMin: -20, xMax: 20, yMin: -20, yMax: 20, zMin: -3, zMax: 3 };
@@ -26,7 +29,7 @@ function check(name, pass, detail) {
 
 console.log(`Sampling ${N_STARS.toLocaleString()} stars in the box...`);
 const t0 = Date.now();
-const buf = sampling.sampleStarsInBox(SEED, N_STARS, BOX);
+const buf = sampling.sampleStarsInBox(model, SEED, N_STARS, BOX);
 const sampleMs = Date.now() - t0;
 console.log(`  got ${buf.count.toLocaleString()} in ${sampleMs} ms `);
 check('the box sampler fills the requested count', buf.count === N_STARS, buf.count);
@@ -50,12 +53,12 @@ const ref = { total: 0, R: new Float64Array(NB_R), z: new Float64Array(NB_Z), co
 		const R = (i + 0.5) * dR;
 		for (let j = 0; j < nPhi; j++) {
 			const phi = (j + 0.5) * dPhi - Math.PI;
-			const x = density.GALACTIC_CENTRE.x + R * Math.cos(phi);
-			const y = density.GALACTIC_CENTRE.y + R * Math.sin(phi);
+			const x = model.centre.x + R * Math.cos(phi);
+			const y = model.centre.y + R * Math.sin(phi);
 			if (x < BOX.xMin || x > BOX.xMax || y < BOX.yMin || y > BOX.yMax) continue;
 			for (let k = 0; k < nZ; k++) {
 				const z = BOX.zMin + (k + 0.5) * dZ;
-				const d = density.rhoDecomposed(x, y, z);
+				const d = density.rhoDecomposed(model, x, y, z);
 				const cell = R * dR * dPhi * dZ;
 				const mass = (d.thin + d.thick + d.bulge + d.halo) * cell;
 				if (mass === 0) continue;
@@ -81,8 +84,8 @@ if (ref.total === 0) {
 	const histZ = new Float64Array(NB_Z);
 	const componentCounts = [0, 0, 0, 0];
 	for (let i = 0; i < buf.count; i++) {
-		const dx = buf.x[i] - density.GALACTIC_CENTRE.x;
-		const dy = buf.y[i] - density.GALACTIC_CENTRE.y;
+		const dx = buf.x[i] - model.centre.x;
+		const dy = buf.y[i] - model.centre.y;
 		const R = Math.sqrt(dx * dx + dy * dy);
 		if (R < R_MAX) histR[Math.min(NB_R - 1, Math.floor(R / dRB))]++;
 		histZ[Math.min(NB_Z - 1, Math.floor((buf.z[i] - BOX.zMin) / dZB))]++;
@@ -117,14 +120,14 @@ if (ref.total === 0) {
 
 // --- Determinism and bounds ---------------------------------------------
 {
-	const again = sampling.sampleStarsInBox(SEED, 5000, BOX);
-	const other = sampling.sampleStarsInBox(SEED + 1, 5000, BOX);
+	const again = sampling.sampleStarsInBox(model, SEED, 5000, BOX);
+	const other = sampling.sampleStarsInBox(model, SEED + 1, 5000, BOX);
 	let identical = true;
 	let differing = 0;
 	for (let i = 0; i < again.count; i++) {
 		if (again.x[i] !== other.x[i]) differing++;
 	}
-	const first = sampling.sampleStarsInBox(SEED, 5000, BOX);
+	const first = sampling.sampleStarsInBox(model, SEED, 5000, BOX);
 	for (let i = 0; i < again.count; i++) {
 		if (again.x[i] !== first.x[i] || again.y[i] !== first.y[i]) identical = false;
 	}

@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-21T14:28:46.498Z",
+  "date": "2026-09-21T16:07:20.244Z",
   "seed": 42,
   "sampleSize": 400000,
-  "sampleMs": 783,
+  "sampleMs": 784,
   "totalChecks": 19,
   "passed": 19,
   "failed": 0,
@@ -12,73 +12,73 @@
       "pass": true,
       "detail": {
         "thin": {
-          "sampled": 0.626305,
-          "model": 0.6260565738733753,
-          "relative": 0.00039681098640603855
+          "sampled": 0.6262725,
+          "model": 0.6260307853143772,
+          "relative": 0.00038610670799752627
         },
         "thick": {
-          "sampled": 0.1958225,
-          "model": 0.19581314923205245,
-          "relative": 0.00004775352413374771
+          "sampled": 0.195825,
+          "model": 0.19580508328535956,
+          "relative": 0.00010171704588186272
         },
         "bulge": {
-          "sampled": 0.17768,
-          "model": 0.17790783061580046,
-          "relative": 0.001280610386916923
+          "sampled": 0.1776675,
+          "model": 0.177900502226039,
+          "relative": 0.0013097333797458996
         },
         "halo": {
-          "sampled": 0.0001925,
-          "model": 0.0002224462787717113,
-          "relative": 0.13462252071406472
+          "sampled": 0.000235,
+          "model": 0.00026362917422410566,
+          "relative": 0.10859638091408125
         }
       }
     },
     {
       "name": "galactocentric R distribution matches the model (TV < 6%)",
       "pass": true,
-      "detail": 0.035763644984729615
+      "detail": 0.035773644984729625
     },
     {
       "name": "vertical |z| distribution matches the model (TV < 6%)",
       "pass": true,
-      "detail": 0.0032220153560321443
+      "detail": 0.0032270153560321397
     },
     {
       "name": "azimuthal distribution matches the model (TV < 6%)",
       "pass": true,
-      "detail": 0.003775271991819604
+      "detail": 0.0037702719918196043
     },
     {
       "name": "distance-to-arm distribution matches the model (TV < 5%)",
       "pass": true,
-      "detail": 0.027703616117181508
+      "detail": 0.027709736308153814
     },
     {
       "name": "arm ridge is denser than the zone 2 kpc away",
       "pass": true,
       "detail": {
-        "ridge": 0.520958892462201,
-        "far": 0.24392439694106702
+        "ridge": 0.521051104820398,
+        "far": 0.24392073701373398
       }
     },
     {
       "name": "population mix inside a 4-8 kpc annulus matches the model (worst 4%)",
       "pass": true,
       "detail": {
-        "worst": 0.006891958754899261,
+        "worst": 0.0068444379857856555,
         "thin": {
           "sampled": 0.79473,
           "model": 0.79543
         },
         "thick": {
-          "sampled": 0.18356,
+          "sampled": 0.18355,
           "model": 0.18274
         },
         "bulge": {
           "sampled": 0.02168,
           "model": 0.02183
         },
-        "stars": 104497
+        "stars": 104492
       }
     },
     {
@@ -152,10 +152,10 @@
       "name": "mean ages order halo > bulge > thick > thin",
       "pass": true,
       "detail": {
-        "thin": 5.352501635206734,
-        "thick": 8.37078892072174,
-        "bulge": 10.070548197735159,
-        "halo": 11.865934810594476
+        "thin": 5.352492906063859,
+        "thick": 8.370947544492722,
+        "bulge": 10.070639543556918,
+        "halo": 11.616467664749647
       }
     },
     {

@@ -48,9 +48,9 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 
 - `AGENTS.md` — this file. Project rules.
 - `plan.md` — the development plan. Clean artifact, no implementation log. §19 points at the per-release plans below.
-- `0.2-plan.md` — the 0.2 plan (HDR menu controls + local star density parity).
-- `0.3.0-plan.md` — the 0.3.x plan: galaxy types (0.3.0), full type zoo + star distributions (0.3.1), nebula-like objects with proper star distributions (0.3.2), galaxy age (0.3.3).
-- `0.4.0-plan.md` — the 0.4 plan: star movement on predefined orbits, star time slider, per-type orbit distributions, RTX 3050 budget.
+- `0.2-plan-HDR-saturation.md` — the 0.2 plan (HDR menu controls + local star density parity).
+- `0.3.0-plan-galaxy-types-star-distribution.md` — the 0.3.x plan: galaxy types (0.3.0), full type zoo + star distributions (0.3.1), nebula-like objects with proper star distributions (0.3.2), galaxy age (0.3.3).
+- `0.4.0-plan-star-move.md` — the 0.4 plan: star movement on predefined orbits, star time slider, per-type orbit distributions, RTX 3050 budget.
 - `findings-pitfalls-skills.md` — notes and pitfalls for LLM agents. Write here when you find a good way to do something, a non-obvious gotcha, or a useful technique. Append-only.
 - `archive/` — superseded plans. When `plan.md` is rewritten substantially, the old version moves here.
 - `experiments/` — Node measurement and validation scripts. Not loaded by the page. Run these manually to validate assumptions (hash quality, density model, precision, memory budget). `experiments/tonemap-mirror.js` is a shared model helper (not a test).

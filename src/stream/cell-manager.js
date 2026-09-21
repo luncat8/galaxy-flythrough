@@ -67,19 +67,24 @@ function hash01(cellId, slot) {
 const CM_FLAG_VISIBLE = 1;
 const CM_FLAG_LANDMARK = 2;
 
-function evalRho(cx, cy, cz) {
-	if (typeof window !== 'undefined' && window.DensityLib) {
-		return window.DensityLib.rhoTotal(cx, cy, cz);
-	}
-	try {
-		return require('../math/density.js').rhoTotal(cx, cy, cz);
-	} catch (_) {
-		return 1.0;
-	}
+const cellDensity = (typeof module !== 'undefined' && module.exports)
+	? require('../math/density.js')
+	: window.DensityLib;
+const cellGalaxy = (typeof module !== 'undefined' && module.exports)
+	? require('../math/galaxy.js')
+	: window.GalaxyLib;
+
+// Expected-star weights come from the same density field the procedural stars
+// are sampled from, so the thinned catalog and the gap-fill agree with the sky.
+// The model is the caller's, defaulting to the Milky Way preset because the
+// catalog *is* a Milky Way asset (see the 0.3.0 mode rule).
+function evalRho(model, cx, cy, cz) {
+	return cellDensity.rhoTotal(model, cx, cy, cz);
 }
 
 function createCellManager(manifest, options) {
 	const opts = options || {};
+	const model = opts.model || cellGalaxy.MILKY_WAY;
 	const budgetStars = opts.budgetStars || 250000;
 	// Allow callers to override the visual budget (tests pin it).
 	const visualBudget = opts.visualBudget || VISUAL_STREAM_BUDGET;
@@ -219,7 +224,7 @@ function createCellManager(manifest, options) {
 			const cx = manifest.origin[base] + size * 0.5;
 			const cy = manifest.origin[base + 1] + size * 0.5;
 			const cz = manifest.origin[base + 2] + size * 0.5;
-			const rho = evalRho(cx, cy, cz);
+			const rho = evalRho(model, cx, cy, cz);
 			const vol = size * size * size;
 			rhos[i] = rho;
 			vols[i] = vol;

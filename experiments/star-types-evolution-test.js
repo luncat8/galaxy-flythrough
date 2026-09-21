@@ -18,6 +18,9 @@ const density = require('../src/math/density.js');
 const sampling = require('../src/math/sampling.js');
 const starTypes = require('../src/math/star-types.js');
 
+const galaxy = require('../src/math/galaxy.js');
+const model = galaxy.MILKY_WAY;
+
 const SEED = 7;
 const N_STARS = 200000;
 
@@ -29,13 +32,13 @@ function check(name, pass, detail) {
 
 console.log(`Sampling ${N_STARS.toLocaleString()} stars and deriving types...`);
 const t0 = Date.now();
-const buf = sampling.sampleGalaxyStars(SEED, N_STARS);
+const buf = sampling.sampleGalaxyStars(model, SEED, N_STARS);
 const sampleMs = Date.now() - t0;
 
 const stars = [];
 const shared = {};
 for (let i = 0; i < buf.count; i++) {
-	const star = starTypes.deriveStar(
+	const star = starTypes.deriveStar(model, 
 		SEED * 31 + i + 1, buf.component[i], buf.R[i], buf.distToArm[i], shared);
 	star.x = buf.x[i];
 	star.y = buf.y[i];
@@ -168,15 +171,15 @@ const armStats = starTypes.classVsArmDistance(stars);
 
 // --- Determinism ---------------------------------------------------------
 {
-	const a = starTypes.deriveStar(4242, density.COMPONENT_THIN, 8, 0.1, {});
-	const b = starTypes.deriveStar(4242, density.COMPONENT_THIN, 8, 0.1, {});
-	const c = starTypes.deriveStar(4243, density.COMPONENT_THIN, 8, 0.1, {});
+	const a = starTypes.deriveStar(model, 4242, density.COMPONENT_THIN, 8, 0.1, {});
+	const b = starTypes.deriveStar(model, 4242, density.COMPONENT_THIN, 8, 0.1, {});
+	const c = starTypes.deriveStar(model, 4243, density.COMPONENT_THIN, 8, 0.1, {});
 	check('the same seed derives the same star',
 		a.mass === b.mass && a.age === b.age && a.spectralClass === b.spectralClass);
 	check('a different seed derives a different star', a.mass !== c.mass && a.age !== c.age);
 	check('stars in an arm are younger than the same population off-arm',
-		starTypes.sampleLocalAge(density.COMPONENT_THIN, 0.1, 8, 0.5, 0.5)
-			< starTypes.sampleLocalAge(density.COMPONENT_THIN, 4.0, 8, 0.5, 0.5));
+		starTypes.sampleLocalAge(model, density.COMPONENT_THIN, 0.1, 8, 0.5, 0.5)
+			< starTypes.sampleLocalAge(model, density.COMPONENT_THIN, 4.0, 8, 0.5, 0.5));
 }
 
 // --- Report --------------------------------------------------------------

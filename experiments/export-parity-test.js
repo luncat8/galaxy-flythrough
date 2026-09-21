@@ -22,6 +22,7 @@ global.self = global.window;
 const MODULES = [
 	{ file: '../src/math/hash.js', global: 'HashLib' },
 	{ file: '../src/math/density.js', global: 'DensityLib' },
+	{ file: '../src/math/galaxy.js', global: 'GalaxyLib' },
 	{ file: '../src/math/sampling.js', global: 'SamplingLib' },
 	{ file: '../src/math/star-record.js', global: 'StarRecord' },
 	{ file: '../src/math/star-types.js', global: 'StarTypesLib' },

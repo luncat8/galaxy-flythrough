@@ -40,11 +40,19 @@ function readParams(search) {
                 const parsed = Number(value);
                 return Number.isFinite(parsed) ? parsed : fallback;
         };
+        const text = (name, fallback) => {
+                const value = params.get(name);
+                if (value === null || value.trim() === '') return fallback;
+                return value.trim();
+        };
         return {
                 stars: number('stars', window.StarRenderer.PROCEDURAL_STARS_DEFAULT),
                 catalogStars: number('catalog', window.StarRenderer.CATALOG_BUDGET_DEFAULT),
                 exposure: params.has('exposure') ? number('exposure', window.StarRenderer.EXPOSURE_DEFAULT) : null,
-                seed: number('seed', 42),
+                seed: number('seed', window.GalaxyLib.DEFAULT_SEED),
+                // null is the table's default type; unknown names are resolved (and reported)
+                // by createGalaxy, which is where the type list lives.
+                type: text('type', null),
         };
 }
 
@@ -53,6 +61,11 @@ async function boot() {
         const overlay = document.getElementById('overlay');
         const errorBox = document.getElementById('error');
         const params = readParams();
+        const galaxy = window.GalaxyLib;
+        // One descriptor for the whole galaxy: the density field, the star buffer, the
+        // camera frame and the overlay's label all read this object, so switching
+        // galaxies builds a new one and hands it round instead of poking four modules.
+        let model = galaxy.createGalaxy({ type: params.type, seed: params.seed });
 
         function showError(message) {
                 errorBox.textContent = message;
@@ -81,24 +94,23 @@ async function boot() {
         window.Device.onLost = (info) => showError(`GPU device lost (${info.reason}): ${info.message}`);
 
         const camera = window.Camera.createCamera();
+        camera.setFrame(model);   // the Milky Way preset's Sun view, or the type's own home
         const input = window.Input.createInput(canvas);
 
         const landmarks = window.Landmarks;
         const labels = window.LabelLayer.createLabelLayer(
                 document.getElementById('labels'), landmarks, window.Constellations);
+
         const selection = window.Selection.createSelection(camera, landmarks);
         let selected = -1;
 
-        // Target star count for density parity (procedural + catalog visual
-        // budget). Passed to the cell manager so expected per-cell counts
-        // match what the procedural field delivers galaxy-wide.
-        const targetStars = params.stars + params.catalogStars;
-
+        // The renderer works out its own parity target (the global field plus whatever
+        // catalog budget the model allows), because how much catalog a galaxy has is the
+        // model's answer, not the URL's.
         const renderer = window.StarRenderer.createStarRenderer(device, context, format, {
                 proceduralStars: params.stars,
                 catalogBudgetStars: params.catalogStars,
-                targetStars,
-                seed: params.seed,
+                model,
                 hdr,
         });
 
@@ -177,6 +189,48 @@ async function boot() {
                 syncSlidersFromRenderer();
         });
 
+        const galaxyType = document.getElementById('galaxy-type');
+        const galaxySeed = document.getElementById('galaxy-seed');
+        const galaxyLabelVal = document.getElementById('val-galaxy');
+        const btnGalaxyApply = document.getElementById('galaxy-apply');
+        // The option list is the type table itself: adding a row to galaxy.js puts the
+        // type in the menu without touching this file.
+        for (const type of galaxy.GALAXY_TYPE_CYCLE) {
+                const option = document.createElement('option');
+                option.value = type;
+                option.textContent = type;
+                galaxyType.appendChild(option);
+        }
+
+        function syncGalaxyControls() {
+                galaxyType.value = model.type;
+                galaxySeed.value = model.seed;
+                galaxyLabelVal.textContent = `${model.type} #${model.seed} ${model.milkyWay ? '(catalog)' : '(procedural)'}`;
+        }
+
+        // Rebuilding the field is the expensive path (        0.7 s at 300k stars) and it is
+        // deliberately synchronous: the density model is the source of truth, so there
+        // is no half-swapped state worth animating around.
+        function regenerateGalaxy(type, seed) {
+                model = galaxy.createGalaxy({ type, seed });
+                renderer.regenerate(model);
+                camera.setFrame(model);
+                labels.setEnabled(model.milkyWay);
+                if (selected >= 0) {
+                        selected = -1;
+                        labels.setSelected(-1);
+                }
+                syncGalaxyControls();
+                updateOverlay(renderer.state, camera.getState(statsText));
+        }
+
+        galaxyType.addEventListener('change', () => regenerateGalaxy(galaxyType.value, model.seed));
+        btnGalaxyApply.addEventListener('click', () => {
+                regenerateGalaxy(galaxyType.value, Math.floor(Number(galaxySeed.value) || 0));
+        });
+        syncGalaxyControls();
+        if (!model.milkyWay) labels.setEnabled(false);
+
         // Pressing Tab while the menu is open should still toggle it (we
         // intercept preventDefault in input.js so focus never moves).
         function handleMenuAction() {
@@ -212,6 +266,7 @@ async function boot() {
                 const catKept = state.catalogThinnedStars || state.catalogResidentStars;
                 overlay.textContent =
                         `FPS ${loop.stats.fps.toFixed(0)}   frame ${loop.stats.avgFrameMs.toFixed(2)}ms (max ${loop.stats.maxFrameMs.toFixed(1)}ms)   output ${mode}\n` +
+                        `galaxy ${state.galaxyLabel}   ${state.mode} mode\n` +
                         `stars drawn ${state.drawn.toLocaleString()}  =  global ${state.proceduralStars.toLocaleString()}` +
                         ` + landmarks ${state.landmarkStars.toLocaleString()}` +
                         ` + local ${state.localProceduralStars.toLocaleString()}` +
@@ -235,9 +290,17 @@ async function boot() {
                         labels.setSelected(-1);
                 }
 
+                if (actions.galaxyCycle) {
+                        actions.galaxyCycle = 0;
+                        regenerateGalaxy(galaxy.cycleGalaxyType(model.type), model.seed);
+                }
                 if (actions.pick) {
                         actions.pick = 0;
-                        const hit = selection.pick(input.state.pickX, input.state.pickY, canvas.clientWidth, canvas.clientHeight);
+                        // Named stars only exist for the Milky Way preset, so a procedural-only
+                        // galaxy has nothing to pick and nothing to orbit.
+                        const hit = model.milkyWay
+                        ? selection.pick(input.state.pickX, input.state.pickY, canvas.clientWidth, canvas.clientHeight)
+                        : -1;
                         if (hit >= 0) {
                                 selected = hit;
                                 const entry = landmarks.ENTRIES[hit];

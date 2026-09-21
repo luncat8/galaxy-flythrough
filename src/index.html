@@ -36,10 +36,23 @@
                         <input type="range" id="slider-saturation" min="0.5" max="3" step="0.05" value="1.4">
                         <span id="val-saturation" class="menu-val">1.6×</span>
                 </div>
+                <div class="menu-header menu-header-galaxy">
+                        <span>Galaxy</span>
+                </div>
+                <div class="menu-row">
+                        <label for="galaxy-type">Type <span class="kbd">G</span></label>
+                        <select id="galaxy-type"></select>
+                        <span id="val-galaxy" class="menu-val">SBb #42</span>
+                </div>
+                <div class="menu-row">
+                        <label for="galaxy-seed">Seed</label>
+                        <input type="number" id="galaxy-seed" step="1" min="0" value="42">
+                        <button id="galaxy-apply">Apply</button>
+                </div>
                 <div class="menu-row menu-actions">
                         <button id="menu-defaults">Defaults</button>
                 </div>
-                <div class="menu-hint">Tab toggles this panel · drag sliders live</div>
+                <div class="menu-hint">Tab toggles this panel · drag sliders live · G cycles galaxy type</div>
         </div>
         <pre id="help">
                      fly                     orbit
@@ -51,7 +64,8 @@ scroll               speed x2 per notch      distance x2 per notch
 Shift / Ctrl         speed x100 / x0.1       rates x4 / x0.25
 C                    camera: fly -> orbit galactic centre -> orbit object
 P                    constellation lines on / off
-H                    home: the Sun (fly: teleport, orbit: circle it from 10 pc)
+H                    home: the Sun, or a generated galaxy's centre
+G                    new galaxy: cycle type (rebuilds the field, about a second)
 R                    reset everything
 Tab                  settings menu (exposure / brightness / white / saturation)
 [ / ]                exposure (how faint a star still shows)
@@ -63,6 +77,9 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
              Order matters: math before render, render before stream, main last. -->
         <script src="math/hash.js"></script>
         <script src="math/density.js"></script>
+        <!-- The galaxy table: every constant the field reads is a field of the
+             model this file builds, so it loads directly after the field. -->
+        <script src="math/galaxy.js"></script>
         <script src="math/sampling.js"></script>
         <script src="math/star-record.js"></script>
         <script src="math/star-types.js"></script>

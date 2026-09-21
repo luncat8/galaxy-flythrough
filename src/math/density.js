@@ -1,92 +1,89 @@
 // src/math/density.js
-// Analytical Milky Way density model — thin/thick disc, bulge, halo, spiral
-// arms. Source of truth for the shape of the galaxy; mirrored in WGSL by
-// src/render/shaders.js (density) and validated by experiments/wgsl-validate.js.
+// The analytical galaxy density field: thin/thick disc, spheroid, halo and the
+// spiral-arm modulation — evaluated for a GalaxyModel (src/math/galaxy.js),
+// never for one hard-coded galaxy. Source of truth for the shape of the galaxy;
+// mirrored in WGSL by src/render/shaders.js (density) and validated by
+// experiments/wgsl-validate.js (struct + formula contract) and
+// experiments/wgsl-exec-check.js (numeric parity through the real WGSL).
 //
-// Units: kpc. Coordinates: Sun at origin, X toward galactic centre (l=0),
-// Y toward l=90, Z toward the north galactic pole.
+// Units: kpc. Coordinates: the model's world frame. `model.centre` is the
+// galactocentric origin, so every function here subtracts it rather than
+// assuming the Sun sits at the origin. The Milky Way preset is the Sun-centred
+// frame (centre at +X); every other type puts the centre at (0, 0, 0).
 //
-// Amplitudes are normalised so the thin disc is 1.0. The bulge amplitude is
-// chosen so the bulge holds ~20% of the disc's integrated mass, matching the
-// Milky Way's bulge/disc stellar mass ratio (~1:5). See
-// experiments/sampling-test.js for the measured component shares.
+// Amplitudes are density ratios against the Milky Way's thin-disc peak, which is
+// the unit the whole model is normalised to. That keeps every absolute threshold
+// in the pipeline (nebula suppression, the compute path's expected counts) on
+// the same scale for every type; the type's mass level comes from
+// `populations`/`massTotal` in the descriptor, not from a rescaled unit.
+//
+// The component names stay 'thin', 'thick', 'bulge', 'halo' for all types: index
+// 2 is the *spheroid* slot, called `bulge` because that is what it holds in a
+// spiral. Renaming it would churn the record format, the tests and the WGSL for
+// no behavioural gain.
 
 'use strict';
 
-const GALACTIC_R0 = 8.178;              // Sun–centre distance, kpc (GRAVITY 2019)
-const GALACTIC_CENTRE = { x: 8.178, y: 0, z: 0 };
+const COMPONENT_NAMES = ['thin', 'thick', 'bulge', 'halo'];
+const COMPONENT_THIN = 0;
+const COMPONENT_THICK = 1;
+const COMPONENT_BULGE = 2;
+const COMPONENT_HALO = 3;
 
-const THIN = {
-	L: 2.6,      // radial scale length, kpc
-	H: 0.300,    // vertical scale height, kpc (sech^2 profile)
-	amp: 1.0,
-};
-const THICK = {
-	L: 3.5,
-	H: 0.900,
-	amp: 0.12,   // A_thick / A_thin
-};
+// Spheroid profile selector. `profile` is the authored string, `profileId` the
+// value the hot path and the packed uniform compare against.
+const PROFILE_PLUMMER = 0;
+const PROFILE_SERSIC = 1;
+const PROFILES = ['plummer', 'sersic'];
 
-// Triaxial Plummer-like bulge, major axis 27 deg from the Sun–centre line.
-const BULGE = {
-	a: 1.5, b: 0.5, c: 0.4,   // semi-axes, kpc
-	r0: 1.0,                  // Plummer scale radius, kpc
-	amp: 12.0,                // central density / thin-disc peak
-	tiltDeg: 27,
-};
+// Arm modulation only exists outside this radius; inside it the disc is smooth
+// (a log spiral has no well-defined ridge at R = 0).
+const ARM_MIN_RADIUS = 0.5;
 
-const HALO = {
-	a_h: 1.0,     // core radius, kpc
-	rMax: 100.0,  // truncation, kpc
-	power: 3.5,
-	amp: 0.0008,  // A_halo / A_thin
-};
-
-const ARMS = {
-	m: 2,
-	amp: 0.20,
-	pitchDeg: 12,
-	Rs: 3.0,      // reference radius, kpc
-	phase0: 0,
-};
-
-// Truncations of the field. These are part of the model, not just a sampling
-// convenience: the sampler draws each component inside these bounds, so the
-// density functions apply the same cut and every derived quantity
-// (dominantComponent, nebula placement, the WGSL mirror) agrees with the stars
-// that are actually placed. The bulge needs it most — its Plummer tail
-// (re^-5 with c = 0.4 kpc) would otherwise outweigh the halo ~12 kpc above the
-// plane, a region where no bulge star is ever sampled.
-const TRUNCATION = {
-	discRadius: 25.0,   // kpc, max galactocentric R
-	discHeight: 3.0,    // kpc, max |z|
-	bulgeRadius: 6.0,   // in units of the Plummer radius
-};
-
-// Integrated (untruncated) mass of each component, in the same normalisation
-// as the densities. Used as the sampling weights so a star is "from the
-// population that contributed it". Spiral arms average to 1.0 over phi and so
-// do not change these integrals.
-//
-// Integrals of the untruncated profiles; truncationFractions() in sampling.js
-// converts them to the mass each component actually delivers.
-//
-//   thin:  2*pi*L^2 * 4H                     (sech^2 integrates to 4H)
-//   thick: 2*pi*L^2 * 2H
-//   bulge: a*b*c * (4/3)*pi*r0^3             (Plummer profile)
-//   halo:  8*pi*a_h^3 * (1 - sqrt(a_h/rMax))
-function componentMasses() {
-	const thin = 2 * Math.PI * THIN.L * THIN.L * 4 * THIN.H * THIN.amp;
-	const thick = 2 * Math.PI * THICK.L * THICK.L * 2 * THICK.H * THICK.amp;
-	const bulge = BULGE.a * BULGE.b * BULGE.c * (4 / 3) * Math.PI * BULGE.r0 ** 3 * BULGE.amp;
-	const halo = 8 * Math.PI * HALO.a_h ** 3 * (1 - Math.sqrt(HALO.a_h / HALO.rMax)) * HALO.amp;
-	return { thin, thick, bulge, halo, total: thin + thick + bulge + halo };
+// Sérsic b_n, the standard approximation (Ciotti & Bertin 1999), accurate to
+// ~0.1% for n >= 0.36 — every n in the type table is >= 1.
+function sersicBn(n) {
+	return 2 * n - 1 / 3;
 }
 
-// Convert Sun-centred (x, y, z) to galactocentric (R, phi, z).
-function toGalactocentric(x, y, z) {
-	const dx = x - GALACTIC_CENTRE.x;
-	const dy = y - GALACTIC_CENTRE.y;
+// ln Γ(x), Lanczos g=7. Used once per model build, never per star.
+function logGamma(x) {
+	const C = [
+		0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+		771.32342877765313, -176.61502916214059, 12.507343278686905,
+		-0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
+	];
+	if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - logGamma(1 - x);
+	const z = x - 1;
+	let a = C[0];
+	const t = z + 7.5;
+	for (let i = 1; i < 9; i++) a += C[i] / (z + i);
+	return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(a);
+}
+
+// Lower incomplete gamma γ(a, x), series form. The sersic mass integral needs
+// it at a = 3n (12 for n = 4) with x below a + 1 at the truncation, where the
+// series converges in a few dozen terms.
+function lowerGamma(a, x) {
+	if (!(x > 0)) return 0;
+	let term = 1 / a;
+	let sum = term;
+	for (let k = 1; k < 200; k++) {
+		term *= x / (a + k);
+		const next = sum + term;
+		if (next === sum) break;
+		sum = next;
+	}
+	return Math.exp(a * Math.log(x) - x) * sum;
+}
+
+// ---- geometry -------------------------------------------------------------
+
+// World → galactocentric cylindrical.
+function toGalactocentric(model, x, y, z) {
+	const c = model.centre;
+	const dx = x - c.x;
+	const dy = y - c.y;
 	return {
 		R: Math.sqrt(dx * dx + dy * dy),
 		phi: Math.atan2(dy, dx),
@@ -94,69 +91,90 @@ function toGalactocentric(x, y, z) {
 	};
 }
 
-// Plummer-like ellipsoidal radius of the bulge at Sun-centred (dx, dy, dz).
-function bulgeEllipsoidRadius(dx, dy, dz) {
-	const t = BULGE.tiltDeg * Math.PI / 180;
+// Spheroid radius in units of the semiaxes, then of `r0` — the `s` every
+// spheroid profile is written in. Triaxial, rotated by tiltDeg in the plane.
+function spheroidEllipsoidRadius(model, dx, dy, dz) {
+	const sp = model.spheroid;
+	const t = sp.tiltDeg * Math.PI / 180;
 	const ct = Math.cos(t);
 	const st = Math.sin(t);
 	const xrot = dx * ct + dy * st;
 	const yrot = -dx * st + dy * ct;
-	const r2 = (xrot * xrot) / (BULGE.a * BULGE.a)
-		+ (yrot * yrot) / (BULGE.b * BULGE.b)
-		+ (dz * dz) / (BULGE.c * BULGE.c);
-	return Math.sqrt(r2);
+	const r2 = (xrot * xrot) / (sp.a * sp.a)
+		+ (yrot * yrot) / (sp.b * sp.b)
+		+ (dz * dz) / (sp.c * sp.c);
+	return Math.sqrt(r2) / sp.r0;
 }
+
+// Disc truncation. Arms and both discs share it, as in the model.
+function insideDisc(model, R, z) {
+	const t = model.truncation;
+	return R <= t.discRadius && z <= t.discHeight && z >= -t.discHeight;
+}
+
+// ---- components -----------------------------------------------------------
 
 // Thin disc: exponential in R, sech^2 in z. The R < 0.01 branch keeps the
 // vertical profile intact instead of returning the midplane peak everywhere.
-function insideDisc(R, z) {
-	return R <= TRUNCATION.discRadius && z <= TRUNCATION.discHeight && z >= -TRUNCATION.discHeight;
-}
-
-function rhoThin(R, z) {
-	if (!insideDisc(R, z)) return 0;
-	const radial = R < 0.01 ? 1 : Math.exp(-R / THIN.L);
-	const cosh = Math.cosh(z / (2 * THIN.H));
-	return THIN.amp * radial / (cosh * cosh);
+function rhoThin(model, R, z) {
+	if (!insideDisc(model, R, z)) return 0;
+	const p = model.thin;
+	const radial = R < 0.01 ? 1 : Math.exp(-R / p.L);
+	const cosh = Math.cosh(z / (2 * p.H));
+	return p.amp * radial / (cosh * cosh);
 }
 
 // Thick disc: exponential in R and |z|.
-function rhoThick(R, z) {
-	if (!insideDisc(R, z)) return 0;
-	const radial = R < 0.01 ? 1 : Math.exp(-R / THICK.L);
-	return THICK.amp * radial * Math.exp(-Math.abs(z) / THICK.H);
+function rhoThick(model, R, z) {
+	if (!insideDisc(model, R, z)) return 0;
+	const p = model.thick;
+	const radial = R < 0.01 ? 1 : Math.exp(-R / p.L);
+	return p.amp * radial * Math.exp(-Math.abs(z) / p.H);
 }
 
-function rhoBulge(x, y, z) {
-	const s = bulgeEllipsoidRadius(x - GALACTIC_CENTRE.x, y - GALACTIC_CENTRE.y, z) / BULGE.r0;
-	if (s > TRUNCATION.bulgeRadius) return 0;
-	return BULGE.amp * Math.pow(1 + s * s, -2.5);
+// The spheroid: Plummer (what a spiral's bulge is) or Sérsic (what an E/S0 body
+// is). Both are truncated at `truncation.spheroidRadius` in units of s, and the
+// truncation lives here — in the field — because the sampler draws inside it.
+function rhoSpheroid(model, x, y, z) {
+	const sp = model.spheroid;
+	const s = spheroidEllipsoidRadius(model, x - model.centre.x, y - model.centre.y, z);
+	if (s > model.truncation.spheroidRadius) return 0;
+	if (sp.profileId === PROFILE_SERSIC) {
+		return sp.amp * Math.exp(-sersicBn(sp.n) * (Math.pow(s, 1 / sp.n) - 1));
+	}
+	return sp.amp * Math.pow(1 + s * s, -2.5);
 }
 
-function rhoHalo(x, y, z) {
-	const dx = x - GALACTIC_CENTRE.x;
-	const dy = y - GALACTIC_CENTRE.y;
+// Power-law halo with a flat core inside a_h.
+function rhoHalo(model, x, y, z) {
+	const h = model.halo;
+	const dx = x - model.centre.x;
+	const dy = y - model.centre.y;
 	const r = Math.sqrt(dx * dx + dy * dy + z * z);
-	if (r < HALO.a_h) return HALO.amp;
-	return HALO.amp * Math.pow(r / HALO.a_h, -HALO.power);
+	if (r < h.a_h) return h.amp;
+	return h.amp * Math.pow(r / h.a_h, -h.power);
 }
 
-// Spiral arm modulation of the disc: factor in [1-A, 1+A].
-function armFactor(R, phi) {
-	if (R < 0.5) return 1.0;
-	const k = Math.tan(ARMS.pitchDeg * Math.PI / 180);
-	const arg = ARMS.m * phi - k * Math.log(R / ARMS.Rs) + ARMS.phase0;
-	return 1.0 + ARMS.amp * Math.cos(arg);
+// Spiral arm modulation of the disc: factor in [1-A, 1+A]. `amp` 0 or `m` 0 is
+// a smooth disc, which is how S0 and the E types read.
+function armFactor(model, R, phi) {
+	const a = model.arms;
+	if (a.amp === 0 || a.m === 0 || R < ARM_MIN_RADIUS) return 1.0;
+	const k = Math.tan(a.pitchDeg * Math.PI / 180);
+	const arg = a.m * phi - k * Math.log(R / a.Rs) + a.phase0;
+	return 1.0 + a.amp * Math.cos(arg);
 }
 
-// Distance to the nearest arm ridge line (kpc). Used for young-star and
-// nebula placement.
-function distanceToNearestArm(R, phi) {
-	if (R < 0.5) return 99;
-	const k = Math.tan(ARMS.pitchDeg * Math.PI / 180);
+// Distance to the nearest arm ridge line (kpc). Used for young-star and nebula
+// placement. With no arm pattern there is no ridge: the answer is "nowhere",
+// which is what keeps young stars and gas nebulae off a smooth disc.
+function distanceToNearestArm(model, R, phi) {
+	const a = model.arms;
+	if (a.amp === 0 || a.m === 0 || R < ARM_MIN_RADIUS) return 99;
+	const k = Math.tan(a.pitchDeg * Math.PI / 180);
 	let best = 99;
-	for (let n = 0; n < ARMS.m; n++) {
-		const phiArm = (k * Math.log(R / ARMS.Rs) + 2 * Math.PI * n) / ARMS.m;
+	for (let n = 0; n < a.m; n++) {
+		const phiArm = (k * Math.log(R / a.Rs) + 2 * Math.PI * n) / a.m;
 		let dphi = phi - phiArm;
 		while (dphi > Math.PI) dphi -= 2 * Math.PI;
 		while (dphi < -Math.PI) dphi += 2 * Math.PI;
@@ -166,34 +184,127 @@ function distanceToNearestArm(R, phi) {
 	return best;
 }
 
-// Combined stellar density at Sun-centred (x, y, z).
-function rhoTotal(x, y, z) {
-	const gc = toGalactocentric(x, y, z);
-	const arm = armFactor(gc.R, gc.phi);
-	const disc = (rhoThin(gc.R, gc.zp) + rhoThick(gc.R, gc.zp)) * arm;
-	return disc + rhoBulge(x, y, z) + rhoHalo(x, y, z);
+// ---- integrals -------------------------------------------------------------
+
+// Amp-free mass integral of each component, in the same normalisation as the
+// densities. The spiral arms average to 1.0 over phi and so do not enter.
+//
+//   thin:    2*pi*L^2 * 4H                (sech^2 integrates to 4H)
+//   thick:   2*pi*L^2 * 2H
+//   spheroid: plummer a*b*c*(4/3)*pi*r0^3
+//             sersic  4*pi*a*b*c*r0^3 * e^b_n * n * b_n^-3n * Gamma(3n)
+//   halo:    4*pi*a_h^3 * (1/3 + 2*(1 - sqrt(a_h/rMax)))   (core + power law)
+//
+// The halo's flat core is (4/3)*pi*a_h^3; the model used to quote only the
+// power-law tail, which under-weighted halo stars by ~18% against the field the
+// sampler draws.
+function massIntegrals(model) {
+	const discIntegral = (p, vertical) => 2 * Math.PI * p.L * p.L * vertical;
+	const sp = model.spheroid;
+	const axes = sp.a * sp.b * sp.c * sp.r0 * sp.r0 * sp.r0;
+	const ah = model.halo.a_h;
+	const rMax = model.halo.rMax;
+	const bn = sersicBn(sp.n);
+	return {
+		thin: discIntegral(model.thin, 4 * model.thin.H),
+		thick: discIntegral(model.thick, 2 * model.thick.H),
+		bulge: sp.profileId === PROFILE_SERSIC
+			? 4 * Math.PI * axes * Math.exp(bn) * sp.n * Math.pow(bn, -3 * sp.n) * Math.exp(logGamma(3 * sp.n))
+			: axes * (4 / 3) * Math.PI,
+		halo: 4 * Math.PI * ah * ah * ah * (1 / 3 + 2 * (1 - Math.sqrt(ah / rMax))),
+	};
+}
+
+// Integrated (untruncated) mass of each component. These are the weights the
+// sampler draws populations with, so a star is "from the population that
+// contributed it".
+function componentMasses(model) {
+	const i = massIntegrals(model);
+	const thin = i.thin * model.thin.amp;
+	const thick = i.thick * model.thick.amp;
+	const bulge = i.bulge * model.spheroid.amp;
+	const halo = i.halo * model.halo.amp;
+	return { thin, thick, bulge, halo, total: thin + thick + bulge + halo };
+}
+
+// Fraction of each component's untruncated mass that lies inside the truncated
+// volume the sampler draws from.
+function truncationFractions(model) {
+	const t = model.truncation;
+	const discRadial = (L) => 1 - (1 + t.discRadius / L) * Math.exp(-t.discRadius / L);
+	const sp = model.spheroid;
+	const sMax = t.spheroidRadius;
+	let bulge;
+	if (sp.profileId === PROFILE_SERSIC) {
+		const bn = sersicBn(sp.n);
+		const a = 3 * sp.n;
+		bulge = lowerGamma(a, bn * Math.pow(sMax, 1 / sp.n)) / Math.exp(logGamma(a));
+	} else {
+		bulge = Math.pow(sMax, 3) / Math.pow(1 + sMax * sMax, 1.5);
+	}
+	return {
+		thin: model.thin.amp > 0 ? discRadial(model.thin.L) * Math.tanh(t.discHeight / (2 * model.thin.H)) : 0,
+		thick: model.thick.amp > 0 ? discRadial(model.thick.L) * (1 - Math.exp(-t.discHeight / model.thick.H)) : 0,
+		bulge: model.spheroid.amp > 0 ? bulge : 0,
+		halo: model.halo.amp > 0 ? 1 : 0,   // rMax is part of the distribution, not a truncation of it
+	};
+}
+
+// ---- spheroid sampling helpers --------------------------------------------
+// The sersic enclosed mass is M(<s) ∝ γ(3n, b_n·s^(1/n)); the sampler inverts
+// it by bisection against these two functions, so the stars and the field agree
+// exactly rather than to within a rejection sampler's acceptance bias.
+
+function sersicMassFraction(model, s) {
+	const sp = model.spheroid;
+	const bn = sersicBn(sp.n);
+	return lowerGamma(3 * sp.n, bn * Math.pow(s, 1 / sp.n));
+}
+
+// Radius (in units of s) enclosing mass fraction u of the truncated body.
+// 32 deterministic bisection steps, the same contract sampleDiscRadius uses.
+function sersicRadiusForFraction(model, u) {
+	const sMax = model.truncation.spheroidRadius;
+	const total = sersicMassFraction(model, sMax);
+	let lo = 0;
+	let hi = sMax;
+	for (let i = 0; i < 32; i++) {
+		const mid = 0.5 * (lo + hi);
+		if (sersicMassFraction(model, mid) < u * total) lo = mid; else hi = mid;
+	}
+	return 0.5 * (lo + hi);
+}
+
+// ---- combined --------------------------------------------------------------
+
+// Combined stellar density at world (x, y, z).
+function rhoTotal(model, x, y, z) {
+	const gc = toGalactocentric(model, x, y, z);
+	const arm = armFactor(model, gc.R, gc.phi);
+	const disc = (rhoThin(model, gc.R, gc.zp) + rhoThick(model, gc.R, gc.zp)) * arm;
+	return disc + rhoSpheroid(model, x, y, z) + rhoHalo(model, x, y, z);
 }
 
 // Per-component densities plus the derived galactocentric quantities.
-function rhoDecomposed(x, y, z) {
-	const gc = toGalactocentric(x, y, z);
-	const arm = armFactor(gc.R, gc.phi);
+function rhoDecomposed(model, x, y, z) {
+	const gc = toGalactocentric(model, x, y, z);
+	const arm = armFactor(model, gc.R, gc.phi);
 	return {
-		thin: rhoThin(gc.R, gc.zp) * arm,
-		thick: rhoThick(gc.R, gc.zp) * arm,
-		bulge: rhoBulge(x, y, z),
-		halo: rhoHalo(x, y, z),
+		thin: rhoThin(model, gc.R, gc.zp) * arm,
+		thick: rhoThick(model, gc.R, gc.zp) * arm,
+		bulge: rhoSpheroid(model, x, y, z),
+		halo: rhoHalo(model, x, y, z),
 		arm,
 		R: gc.R,
 		phi: gc.phi,
 		zp: gc.zp,
-		distToArm: distanceToNearestArm(gc.R, gc.phi),
+		distToArm: distanceToNearestArm(model, gc.R, gc.phi),
 	};
 }
 
 // Label of the strongest component at a position: 'thin' | 'thick' | 'bulge' | 'halo'.
-function dominantComponent(x, y, z) {
-	const d = rhoDecomposed(x, y, z);
+function dominantComponent(model, x, y, z) {
+	const d = rhoDecomposed(model, x, y, z);
 	let best = 'thin';
 	let bestVal = d.thin;
 	if (d.thick > bestVal) { best = 'thick'; bestVal = d.thick; }
@@ -203,32 +314,27 @@ function dominantComponent(x, y, z) {
 }
 
 // Sample which population contributed a star, weighting by the relative
-// density of each component at that point. Returns the canonical index used
-// by sampling and star-types: 0 thin, 1 thick, 2 bulge, 3 halo.
+// density of each component at that point. Returns the canonical index used by
+// sampling and star-types: 0 thin, 1 thick, 2 spheroid, 3 halo.
 function sampleComponentIndex(decomposed, u) {
 	const total = decomposed.thin + decomposed.thick + decomposed.bulge + decomposed.halo;
-	if (total < 1e-12) return 0;
+	if (total < 1e-12) return COMPONENT_THIN;
 	let r = u * total;
-	if ((r -= decomposed.thin) < 0) return 0;
-	if ((r -= decomposed.thick) < 0) return 1;
-	if ((r -= decomposed.bulge) < 0) return 2;
-	return 3;
+	if ((r -= decomposed.thin) < 0) return COMPONENT_THIN;
+	if ((r -= decomposed.thick) < 0) return COMPONENT_THICK;
+	if ((r -= decomposed.bulge) < 0) return COMPONENT_BULGE;
+	return COMPONENT_HALO;
 }
 
-const COMPONENT_NAMES = ['thin', 'thick', 'bulge', 'halo'];
-const COMPONENT_THIN = 0;
-const COMPONENT_THICK = 1;
-const COMPONENT_BULGE = 2;
-const COMPONENT_HALO = 3;
-
 const DensityLib = {
-	GALACTIC_R0, GALACTIC_CENTRE,
-	THIN, THICK, BULGE, HALO, ARMS, TRUNCATION,
 	COMPONENT_NAMES, COMPONENT_THIN, COMPONENT_THICK, COMPONENT_BULGE, COMPONENT_HALO,
-	componentMasses,
-	toGalactocentric, bulgeEllipsoidRadius, insideDisc,
-	rhoThin, rhoThick, rhoBulge, rhoHalo,
+	PROFILES, PROFILE_PLUMMER, PROFILE_SERSIC, ARM_MIN_RADIUS,
+	sersicBn, logGamma, lowerGamma,
+	componentMasses, massIntegrals, truncationFractions,
+	toGalactocentric, spheroidEllipsoidRadius, insideDisc,
+	rhoThin, rhoThick, rhoSpheroid, rhoHalo,
 	armFactor, distanceToNearestArm,
+	sersicMassFraction, sersicRadiusForFraction,
 	rhoTotal, rhoDecomposed, dominantComponent, sampleComponentIndex,
 };
 if (typeof module !== 'undefined') module.exports = DensityLib;

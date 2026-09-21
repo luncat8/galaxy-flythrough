@@ -233,6 +233,23 @@ function createMockLayer() {
 	check('one draw clears the canvas exactly once', mock.calls.clearRect === 1, mock.calls.clearRect);
 	check('the aimed-at star gets a label (fillText with its constant name)',
 		mock.calls.fillTexts.includes('Sirius'), mock.calls.fillTexts.length);
+
+	// A generated galaxy has no named stars, and the layer is a fixed table: so
+	// "nothing to say about this model" is a flag on the layer, not a second one.
+	mock.reset();
+	layer.setEnabled(false);
+	layer.draw(cam, W, H);
+	check('disabling erases what was drawn and stops drawing over it',
+		mock.calls.clearRect === 1 && mock.calls.fillTexts.length === 0, mock.calls.clearRect);
+	mock.reset();
+	layer.setEnabled(false);
+	layer.draw(cam, W, H);
+	check('a repeat disable clears nothing (no flicker on a frame where nothing changed)',
+		mock.calls.clearRect === 0, mock.calls.clearRect);
+	layer.setEnabled(true);
+	layer.draw(cam, W, H);
+	check('re-enabling brings the labels back for the Milky Way preset',
+		mock.calls.fillTexts.includes('Sirius'), mock.calls.fillTexts.length);
 	check('every label gets a dark halo stroke for readability',
 		mock.calls.strokeTexts === mock.calls.fillTexts.length,
 		{ stroke: mock.calls.strokeTexts, fill: mock.calls.fillTexts.length });

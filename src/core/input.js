@@ -23,6 +23,7 @@
 // pixel units so one notch is 100 for every consumer.
 const WHEEL_UNITS_PER_MODE = [1, 100 / 3, 100];
 const CLICK_MAX_PX = 4;   // mouse-up within this of mouse-down is a pick, not a drag
+const FORM_TAG = /^(INPUT|SELECT|TEXTAREA)$/;
 
 function createInput(canvas) {
         const keys = {
@@ -38,7 +39,7 @@ function createInput(canvas) {
                 pointerLocked: false,
                 pickX: 0,
                 pickY: 0,
-                actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0 },
+                actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, galaxyCycle: 0 },
         };
 
         // Held keys: true while down. Ctrl is the brief's slow modifier; Ctrl+W
@@ -56,7 +57,9 @@ function createInput(canvas) {
         // One-shot actions fire on the press only: a held C must not cycle camera
         // modes at the key-repeat rate. Tab toggles the settings menu and must
         // not cycle browser focus, hence preventDefault.
-        const pressMap = { KeyR: 'reset', KeyH: 'home', KeyC: 'cameraMode', KeyP: 'constellations', Tab: 'menu' };
+        // G regenerates the galaxy, so it is a one-shot like the other toggles:
+        // key repeat would otherwise rebuild a 300k-star field at 30 Hz.
+        const pressMap = { KeyR: 'reset', KeyH: 'home', KeyC: 'cameraMode', KeyP: 'constellations', KeyG: 'galaxyCycle', Tab: 'menu' };
         // Exposure accumulates, so key repeat is one more step per repeat.
         const exposureMap = { BracketLeft: -1, Minus: -1, BracketRight: 1, Equal: 1 };
         // Linear exposure (ACES pre-multiplier) in half-stop steps. ; darker, ' brighter.
@@ -68,7 +71,18 @@ function createInput(canvas) {
         let downX = 0;
         let downY = 0;
 
+        // The settings menu holds form fields, and they must own their keys:
+        // a number input has to accept its digits, and a focused slider has to
+        // move with the arrows instead of flying the camera. Tab is the one key
+        // that still belongs to the menu, because it is how the menu closes.
+        function editingField(e) {
+                const target = e.target;
+                if (!target || !target.tagName) return false;
+                return FORM_TAG.test(target.tagName) && e.code !== 'Tab';
+        }
+
         function onKeyDown(e) {
+                if (editingField(e)) return;
                 const held = keyMap[e.code];
                 if (held) {
                         keys[held] = true;
@@ -95,6 +109,7 @@ function createInput(canvas) {
         }
 
         function onKeyUp(e) {
+                if (editingField(e)) return;
                 const held = keyMap[e.code];
                 if (!held) return;
                 keys[held] = false;
@@ -198,6 +213,6 @@ function createInput(canvas) {
         return { state, releaseAll, dispose };
 }
 
-const Input = { createInput, WHEEL_UNITS_PER_MODE };
+const Input = { createInput, WHEEL_UNITS_PER_MODE, FORM_TAG };
 if (typeof module !== 'undefined') module.exports = Input;
 if (typeof window !== 'undefined') window.Input = Input;

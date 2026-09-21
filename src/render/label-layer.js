@@ -40,6 +40,9 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	const scratch = new Float32Array(3);
 	let selected = -1;
 	let showLines = true;
+	// Off for galaxies that have no named stars: the layer is a fixed table of
+	// entries, so "nothing to say about this model" is a flag, not a second layer.
+	let enabled = true;
 
 	function resize(widthCss, heightCss, dpr) {
 		const w = Math.max(1, Math.round(widthCss * dpr));
@@ -109,7 +112,16 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		ctx.stroke();
 	}
 
+	function setEnabled(next) {
+		if (next === enabled) return;
+		enabled = next;
+		// The canvas keeps its last frame, so switching off has to erase it or the
+		// previous galaxy's labels stay frozen on screen.
+		if (!enabled) ctx.clearRect(0, 0, canvas.width, canvas.height);
+	}
+
 	function draw(camera, width, height) {
+		if (!enabled) return;
 		ctx.clearRect(0, 0, width, height);
 		if (!(width > 0) || !(height > 0)) return;
 		projectAll(camera, width, height);
@@ -131,7 +143,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		return showLines;
 	}
 
-	return { resize, draw, setSelected, toggleConstellations, constellationsVisible };
+	return { resize, draw, setSelected, toggleConstellations, constellationsVisible, setEnabled };
 }
 
 const LabelLayer = {

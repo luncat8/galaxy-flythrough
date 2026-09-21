@@ -1,10 +1,10 @@
 {
-  "date": "2026-09-21T14:28:43.910Z",
+  "date": "2026-09-21T16:07:15.511Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 95,
-  "totalChecks": 70,
-  "passed": 70,
+  "prepareMs": 82,
+  "totalChecks": 77,
+  "passed": 77,
   "failed": 0,
   "checks": [
     {
@@ -324,6 +324,72 @@
       "detail": 0.03333333507180214
     },
     {
+      "name": "the Milky Way preset boots in hybrid mode with landmarks and the catalog",
+      "pass": true,
+      "detail": {
+        "mode": "hybrid",
+        "type": "SBb",
+        "landmarks": 59,
+        "catalog": 3829
+      }
+    },
+    {
+      "name": "a generated type runs Game mode: no named stars, no streamed catalog",
+      "pass": true,
+      "detail": {
+        "landmarks": 0,
+        "catalog": 0,
+        "cells": 0
+      }
+    },
+    {
+      "name": "the generated galaxy fills the frame with the global field alone",
+      "pass": true,
+      "detail": {
+        "drawn": 20000,
+        "instances": 20000,
+        "procedural": 20000
+      }
+    },
+    {
+      "name": "regenerating rewrote the fixed block from the new model",
+      "pass": true,
+      "detail": {
+        "boot": [
+          8.159640312194824,
+          0.31986889243125916
+        ],
+        "game": [
+          0.7466135621070862,
+          0.5124878287315369
+        ]
+      }
+    },
+    {
+      "name": "coming back to the preset re-attaches the catalog it was handed at boot",
+      "pass": true,
+      "detail": {
+        "catalog": 3829,
+        "landmarks": 59
+      }
+    },
+    {
+      "name": "the re-attached catalog streams back in on the next frame",
+      "pass": true,
+      "detail": {
+        "resident": 2045,
+        "stars": 1078
+      }
+    },
+    {
+      "name": "both modes submit the same two passes, so the switch costs no pipeline",
+      "pass": true,
+      "detail": [
+        "star-sprites",
+        "tonemap"
+      ]
+    },
+    {
       "name": "exposure key raises magZero by one step",
       "pass": true,
       "detail": 12.75
@@ -367,8 +433,8 @@
       "name": "crossing a cell boundary re-uploads the dynamic region",
       "pass": true,
       "detail": {
-        "before": 2,
-        "after": 3
+        "before": 5,
+        "after": 6
       }
     },
     {

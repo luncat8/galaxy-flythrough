@@ -7,7 +7,11 @@
 //
 // It checks three levels:
 //   1. structural — the shader sources are plausible and complete
-//   2. numeric    — every mirrored constant equals its JS source of truth
+//   2. layout     — the DensityParams uniform and the CPU packer describe one
+//                  struct, group for group and field for field (the field's
+//                  numbers are a model, not a list of shader constants, so there
+//                  is nothing numeric left to diff here; the arithmetic itself is
+//                  executed by wgsl-exec-check.js)
 //   3. symbolic   — every mirrored function still exists in the JS model
 //
 // Output: experiments/logs/wgsl-validate.json
@@ -19,6 +23,7 @@ const path = require('path');
 
 const shaders = require('../src/render/shaders.js');
 const density = require('../src/math/density.js');
+const galaxy = require('../src/math/galaxy.js');
 const records = require('../src/math/star-record.js');
 
 const checks = [];
@@ -84,29 +89,67 @@ function wgslConsts(part) {
         return out;
 }
 
-// --- 2. Numeric parity ---------------------------------------------------
+// --- 2. The density uniform's layout -------------------------------------
+// The density field is parameterised by a GalaxyModel, so the GPU copy is a
+// struct the CPU packs at build time. Drift now means a disagreement about the
+// *shape*: a group the packer writes that the shader names differently, or a
+// field that moved between groups. That is what this pins, for every model type
+// at once — the values are the model's business (see galaxy-types-test.js).
 {
-        const c = wgslConsts('density');
-        const D = density;
-        const mirror = [
-                ['GALACTIC_R0', D.GALACTIC_R0], ['GALACTIC_CENTRE_X', D.GALACTIC_CENTRE.x], ['GALACTIC_CENTRE_Y', D.GALACTIC_CENTRE.y],
-                ['THIN_L', D.THIN.L], ['THIN_H', D.THIN.H], ['THIN_AMP', D.THIN.amp],
-                ['THICK_L', D.THICK.L], ['THICK_H', D.THICK.H], ['THICK_AMP', D.THICK.amp],
-                ['BULGE_A', D.BULGE.a], ['BULGE_B', D.BULGE.b], ['BULGE_C', D.BULGE.c],
-                ['BULGE_R0', D.BULGE.r0], ['BULGE_AMP', D.BULGE.amp], ['BULGE_TILT_DEG', D.BULGE.tiltDeg],
-                ['HALO_A_H', D.HALO.a_h], ['HALO_POWER', D.HALO.power], ['HALO_AMP', D.HALO.amp], ['HALO_RMAX', D.HALO.rMax],
-                ['ARMS_M', D.ARMS.m], ['ARMS_AMP', D.ARMS.amp], ['ARMS_PITCH_DEG', D.ARMS.pitchDeg],
-                ['ARMS_RS', D.ARMS.Rs], ['ARMS_PHASE0', D.ARMS.phase0],
-                ['DISC_RADIUS', D.TRUNCATION.discRadius], ['DISC_HEIGHT', D.TRUNCATION.discHeight],
-                ['BULGE_RADIUS', D.TRUNCATION.bulgeRadius],
-        ];
-        for (const [name, value] of mirror) {
-                check(`density.wgsl ${name} matches the JS model`, c[name] === value, { wgsl: c[name], js: value });
+        const densitySrc = shaders.SHADER_PARTS.density;
+        const struct = /struct\s+DensityParams\s*\{([\s\S]*?)\n\}/.exec(densitySrc);
+        check('density.wgsl declares a DensityParams struct', !!struct, struct ? struct[1].length : null);
+        const groups = struct
+	        ? [...struct[1].matchAll(/^\s*([A-Za-z_0-9]+)\s*:\s*vec4(?:<f32>|f)?,\s*(?:\/\/[^\n]*)?$/gm)].map(m => m[1])
+                : [];
+        const layout = galaxy.DENSITY_PARAMS_LAYOUT.map(g => g.name);
+        check('DensityParams has one vec4 per layout group, in the same order',
+                groups.length === layout.length && groups.every((n, i) => n === layout[i]),
+                { wgsl: groups, js: layout });
+        check('the struct is exactly as large as the packer writes',
+                galaxy.DENSITY_PARAMS_FLOATS === groups.length * 4
+                && galaxy.DENSITY_PARAMS_BYTES === groups.length * 16,
+                { floats: galaxy.DENSITY_PARAMS_FLOATS, bytes: galaxy.DENSITY_PARAMS_BYTES });
+        check('the generated field binds the struct at group 0 binding 5',
+                /@group\(0\)\s*@binding\(5\)\s*var<uniform>\s+densityParams:\s*DensityParams;/.test(shaders.SHADER_PARTS['procedural-gen']),
+                'binding 5');
+
+        // A group nobody reads is a packing bug waiting to be missed: either the
+        // formula dropped it or the layout gained it by accident.
+        for (const name of layout) {
+		const shaderSrc = densitySrc + shaders.SHADER_PARTS['procedural-gen'];
+		// Either name the parameter has in the two parts is a read; a group nobody
+		// mentions is a slot the packer fills for nothing.
+		const read = new RegExp(`\\b(params|densityParams)\\.${name}\\b`).test(shaderSrc);
+                check(`DensityParams.${name} is read by a mirrored formula`, read, name);
         }
+
+        // Only indices and the profile selector may be compiled in: every galaxy
+        // number has to arrive through the struct, or a second type silently
+        // keeps the Milky Way's shape.
+        const stray = [...densitySrc.matchAll(/^const\s+([A-Za-z_0-9]+)\s*:/gm)].map(m => m[1])
+                .filter(n => !['COMPONENT_THIN', 'COMPONENT_THICK', 'COMPONENT_BULGE', 'COMPONENT_HALO',
+                        'PROFILE_PLUMMER', 'PROFILE_SERSIC', 'ARM_MIN_RADIUS'].includes(n));
+        check('density.wgsl hard-codes no galaxy numbers', stray.length === 0, stray);
+
+        const c = wgslConsts('density');
         check('density.wgsl component indices match the JS model',
-                c.COMPONENT_THIN === D.COMPONENT_THIN && c.COMPONENT_THICK === D.COMPONENT_THICK
-                && c.COMPONENT_BULGE === D.COMPONENT_BULGE && c.COMPONENT_HALO === D.COMPONENT_HALO,
-                { thin: c.COMPONENT_THIN, thick: c.COMPONENT_THICK, bulge: c.COMPONENT_BULGE, halo: c.COMPONENT_HALO });
+                c.COMPONENT_THIN === density.COMPONENT_THIN && c.COMPONENT_THICK === density.COMPONENT_THICK
+                && c.COMPONENT_BULGE === density.COMPONENT_BULGE && c.COMPONENT_HALO === density.COMPONENT_HALO
+                && c.PROFILE_PLUMMER === density.PROFILE_PLUMMER && c.PROFILE_SERSIC === density.PROFILE_SERSIC,
+                { thin: c.COMPONENT_THIN, thick: c.COMPONENT_THICK, bulge: c.COMPONENT_BULGE, halo: c.COMPONENT_HALO,
+                        plummer: c.PROFILE_PLUMMER, sersic: c.PROFILE_SERSIC });
+
+        // The packer must produce the layout it claims: 40 f32, one group per
+	// vec4, and the preset's numbers survive the f32 round trip intact.
+        const packed = galaxy.packDensityParams(galaxy.MILKY_WAY, new Float32Array(galaxy.DENSITY_PARAMS_FLOATS));
+        check('packDensityParams fills the struct without leaving holes',
+                packed.length === galaxy.DENSITY_PARAMS_FLOATS
+		&& packed.every(Number.isFinite) && packed[3] === 0 && packed[0] === Math.fround(galaxy.MILKY_WAY.centre.x),
+                { first: packed[0], pad: packed[3] });
+        check('the packed centre is the model centre, not a copied constant',
+		packed[0] === Math.fround(galaxy.MILKY_WAY.centre.x) && packed[1] === Math.fround(galaxy.MILKY_WAY.centre.y)
+		&& packed[2] === Math.fround(galaxy.MILKY_WAY.centre.z), [packed[0], packed[1], packed[2]]);
 }
 
 {
@@ -140,8 +183,9 @@ function wgslConsts(part) {
 
         const mirrors = [
                 ['pcg-hash', hashSrc, ['pcgHash', 'hash4', 'hash01', 'hash01At', 'hash2D', 'hash3D', 'wangHash']],
-                ['density', densitySrc, ['bulgeEllipsoidRadius', 'rhoThin', 'rhoThick', 'rhoBulge', 'rhoHalo',
-                        'armFactor', 'distanceToNearestArm', 'rhoTotal', 'rhoDecomposed']],
+                ['density', densitySrc, ['spheroidEllipsoidRadius', 'rhoThin', 'rhoThick', 'rhoSpheroid',
+                        'rhoHalo', 'armFactor', 'distanceToNearestArm', 'rhoTotal', 'rhoDecomposed',
+                        'insideDisc', 'sersicBn']],
                 ['procedural-gen', starTypesSrc, ['luminosityFromMass', 'teffFromMass', 'msLifetimeGyr',
                         'sampleMassIMF', 'sampleLocalAge', 'classifyByTempAndState']],
         ];

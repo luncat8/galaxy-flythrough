@@ -140,10 +140,13 @@ const camera = require('../src/core/camera.js').createCamera();
 const PROCEDURAL = 20000;      // small so the test stays fast
 const CATALOG_BUDGET = 250000;
 const START = Date.now();
+const galaxy = require('../src/math/galaxy.js');
+const model = galaxy.createGalaxy({ seed: 7 });
+
 const renderer = rendererModule.createStarRenderer(gpu.device, gpu.context, gpu.format, {
         proceduralStars: PROCEDURAL,
         catalogBudgetStars: CATALOG_BUDGET,
-        seed: 7,
+        model,
 });
 const prepareState = renderer.prepare(manifest);
 const prepareMs = Date.now() - START;
@@ -286,6 +289,7 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 { thinned: renderer.state.catalogThinnedStars, raw: manifest.starCount });
 }
 
+
 // --- HDR intermediate texture --------------------------------------------
 {
         const hdr = gpu.textures.find(t => t.label === 'hdr-intermediate');
@@ -358,6 +362,60 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         const uniform = readUniform(gpu.uniformWrites[gpu.uniformWrites.length - 1]);
         check('a second frame still updates the uniform', uniform[27] === Math.fround(2 / 60), uniform[27]);
 }
+
+// --- Galaxy types: one pipeline, two modes ------------------------------
+// The renderer is galaxy-agnostic: the model decides what is generated, and the
+// catalog subset and the named stars belong to the Milky Way preset. Both modes
+// run the same draw path, so everything a frame needs has to be visible in
+// `state` rather than implied by a hard-coded 60 landmarks.
+{
+        const firstFixedBytes = () => {
+                const write = gpu.bufferWrites.filter(w => w.offset === 0).pop();
+                if (!write) return null;
+                return new DataView(write.bytes.buffer, write.bytes.byteOffset, write.bytes.byteLength);
+        };
+        const boot = renderer.state;
+        const bootView = firstFixedBytes();
+        check('the Milky Way preset boots in hybrid mode with landmarks and the catalog',
+                boot.mode === 'hybrid' && boot.galaxyType === 'SBb' && boot.galaxySeed === 7
+                && boot.galaxyLabel === 'galaxy SBb #7'
+                && boot.landmarkStars === window.Landmarks.count && boot.catalogTotalStars === manifest.starCount,
+                { mode: boot.mode, type: boot.galaxyType, landmarks: boot.landmarkStars, catalog: boot.catalogTotalStars });
+
+        const game = renderer.regenerate(galaxy.createGalaxy({ type: 'E4', seed: 11 }));
+        check('a generated type runs Game mode: no named stars, no streamed catalog',
+                game.mode === 'game' && game.galaxyType === 'E4' && game.galaxySeed === 11
+                && game.landmarkStars === 0 && game.catalogTotalStars === 0
+                && game.catalogCells === 0 && game.localProceduralStars === 0,
+                { landmarks: game.landmarkStars, catalog: game.catalogTotalStars, cells: game.catalogCells });
+        renderer.render(camera, WIDTH, HEIGHT, 3 / 60, input);
+        const gamePass = gpu.passes[gpu.passes.length - 2];
+        check('the generated galaxy fills the frame with the global field alone',
+                game.proceduralStars === PROCEDURAL && game.drawn === game.proceduralStars
+                && gamePass.label === 'star-sprites' && gamePass.draws[0].instances === game.proceduralStars,
+                { drawn: game.drawn, instances: gamePass.draws[0] && gamePass.draws[0].instances, procedural: game.proceduralStars });
+        const gameView = firstFixedBytes();
+        check('regenerating rewrote the fixed block from the new model',
+                !!gameView && !!bootView && (gameView.getFloat32(0, true) !== bootView.getFloat32(0, true)
+                        || gameView.getFloat32(8, true) !== bootView.getFloat32(8, true)),
+                { boot: bootView && [bootView.getFloat32(0, true), bootView.getFloat32(8, true)],
+                        game: gameView && [gameView.getFloat32(0, true), gameView.getFloat32(8, true)] });
+
+        const back = renderer.regenerate(model);
+        check('coming back to the preset re-attaches the catalog it was handed at boot',
+                back.mode === 'hybrid' && back.catalogTotalStars === manifest.starCount
+                && back.landmarkStars === window.Landmarks.count,
+                { catalog: back.catalogTotalStars, landmarks: back.landmarkStars });
+        renderer.render(camera, WIDTH, HEIGHT, 4 / 60, input);
+        check('the re-attached catalog streams back in on the next frame',
+                back.cellsResident === manifest.cellCount && back.catalogResidentStars > 0,
+                { resident: back.cellsResident, stars: back.catalogResidentStars });
+        const passes = gpu.passes.slice(-2);
+        check('both modes submit the same two passes, so the switch costs no pipeline',
+                passes.length === 2 && passes[0].label === 'star-sprites' && passes[1].label === 'tonemap',
+                passes.map(pass => pass.label));
+}
+
 
 // --- Exposure -----------------------------------------------------------
 {
@@ -467,7 +525,7 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         const hdrRenderer = rendererModule.createStarRenderer(hdrGpu.device, hdrGpu.context, 'rgba16float', {
                 proceduralStars: 2000,
                 catalogBudgetStars: 0,
-                seed: 7,
+                model,
                 hdr: true,
         });
         hdrRenderer.prepare(null);
@@ -508,6 +566,7 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 
         hdrRenderer.dispose();
 }
+
 
 // --- Teardown -----------------------------------------------------------
 {

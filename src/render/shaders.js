@@ -11,7 +11,9 @@
 //
 // Shader inventory:
 //   pcg-hash       mirrors src/math/hash.js
-//   density        mirrors src/math/density.js
+//   density        mirrors src/math/density.js; the field's numbers arrive as a
+//                  DensityParams uniform packed from the GalaxyModel, so the
+//                  struct layout (not the values) is what the validator diffs
 //   star-sprite    WIRED — Path B point sprites (the fly-through render path)
 //   procedural-gen compute path, Milestone 3 (not yet wired into the frame)
 //   cull           compute path, Milestone 3 (frustum cull + thinning + indirect draw)
@@ -82,114 +84,119 @@ fn wangHash(input: u32) -> u32 {
 `;
 
 const DENSITY = `
-// Analytical Milky Way density model — mirrors src/math/density.js.
-// Units: kpc. Sun at origin, X toward galactic centre (l=0), Y toward l=90,
-// Z toward the north galactic pole.
+// Analytical galaxy density field — mirrors src/math/density.js.
 //
-// Only the pieces the compute path needs are mirrored; the sampler in
-// src/math/sampling.js has no WGSL counterpart (the GPU never samples
-// positions, it evaluates density per cell).
+// The numbers are not in this text: they live in a DensityParams uniform packed
+// from the GalaxyModel by src/math/galaxy.js (packDensityParams). That is the
+// price of a parameterised model, and it is paid in one place — the struct's
+// field list and order are pinned against the packer's layout by
+// experiments/wgsl-validate.js, and the formulas are checked numerically by
+// experiments/wgsl-exec-check.js against the JS model. What must never happen
+// is a second copy of a constant in here.
+//
+// Units: kpc, model world frame; params.centre is the galactocentric origin.
 
-const GALACTIC_R0: f32 = 8.178;
-const GALACTIC_CENTRE_X: f32 = 8.178;
-const GALACTIC_CENTRE_Y: f32 = 0.0;
+struct DensityParams {
+        centre: vec4f,          // xyz galactocentric origin
+        thin: vec4f,            // L, H, amp
+        thick: vec4f,           // L, H, amp
+        spheroid: vec4f,        // a, b, c, r0
+        spheroidShape: vec4f,   // amp, n, tiltDeg, profileId
+        halo: vec4f,            // a_h, rMax, power, amp
+        arms: vec4f,            // m, amp, pitchDeg, Rs
+        armShape: vec4f,        // phase0, minRadius, flocculence
+        populations: vec4f,     // gasFraction, youngOuterR, gasRich
+        truncation: vec4f,      // discRadius, discHeight, spheroidRadius
+};
 
-const THIN_L: f32 = 2.6;
-const THIN_H: f32 = 0.300;
-const THIN_AMP: f32 = 1.0;
-
-const THICK_L: f32 = 3.5;
-const THICK_H: f32 = 0.900;
-const THICK_AMP: f32 = 0.12;
-
-const BULGE_A: f32 = 1.5;
-const BULGE_B: f32 = 0.5;
-const BULGE_C: f32 = 0.4;
-const BULGE_R0: f32 = 1.0;
-const BULGE_AMP: f32 = 12.0;
-const BULGE_TILT_DEG: f32 = 27.0;
-
-const HALO_A_H: f32 = 1.0;
-const HALO_POWER: f32 = 3.5;
-const HALO_AMP: f32 = 0.0008;
-const HALO_RMAX: f32 = 100.0;
-
-const ARMS_M: u32 = 2u;
-const ARMS_AMP: f32 = 0.20;
-const ARMS_PITCH_DEG: f32 = 12.0;
-const ARMS_RS: f32 = 3.0;
-const ARMS_PHASE0: f32 = 0.0;
-
-const ARM_MIN_RADIUS: f32 = 0.5;
-
-// Field truncations. These must match density.js TRUNCATION: the sampler draws
-// each component inside these bounds, so the shader has to see the same field.
-const DISC_RADIUS: f32 = 25.0;
-const DISC_HEIGHT: f32 = 3.0;
-const BULGE_RADIUS: f32 = 6.0;
+// Profile selector, matching density.PROFILE_* and the packed spheroidShape.w.
+const PROFILE_PLUMMER: f32 = 0.0;
+const PROFILE_SERSIC: f32 = 1.0;
 
 const COMPONENT_THIN: u32 = 0u;
 const COMPONENT_THICK: u32 = 1u;
 const COMPONENT_BULGE: u32 = 2u;
 const COMPONENT_HALO: u32 = 3u;
 
-fn bulgeEllipsoidRadius(dx: f32, dy: f32, dz: f32) -> f32 {
-        let t: f32 = radians(BULGE_TILT_DEG);
+fn sersicBn(n: f32) -> f32 {
+        return 2.0 * n - 1.0 / 3.0;
+}
+
+fn spheroidEllipsoidRadius(params: DensityParams, dx: f32, dy: f32, dz: f32) -> f32 {
+        let t: f32 = radians(params.spheroidShape.z);
         let ct: f32 = cos(t);
         let st: f32 = sin(t);
         let xrot: f32 = dx * ct + dy * st;
         let yrot: f32 = -dx * st + dy * ct;
-        let r2: f32 = (xrot * xrot) / (BULGE_A * BULGE_A)
-                + (yrot * yrot) / (BULGE_B * BULGE_B)
-                + (dz * dz) / (BULGE_C * BULGE_C);
-        return sqrt(r2);
+        let axes: vec3f = params.spheroid.xyz;
+        let r2: f32 = (xrot * xrot) / (axes.x * axes.x)
+                + (yrot * yrot) / (axes.y * axes.y)
+                + (dz * dz) / (axes.z * axes.z);
+        return sqrt(r2) / params.spheroid.w;
 }
 
-fn insideDisc(R: f32, z: f32) -> bool {
-        return R <= DISC_RADIUS && abs(z) <= DISC_HEIGHT;
+fn insideDisc(params: DensityParams, R: f32, z: f32) -> bool {
+        return R <= params.truncation.x && abs(z) <= params.truncation.y;
 }
 
-fn rhoThin(R: f32, z: f32) -> f32 {
-        if (!insideDisc(R, z)) { return 0.0; }
-        let radial: f32 = select(exp(-R / THIN_L), 1.0, R < 0.01);
-        let coshArg: f32 = z / (2.0 * THIN_H);
+fn rhoThin(params: DensityParams, R: f32, z: f32) -> f32 {
+        if (!insideDisc(params, R, z)) { return 0.0; }
+        let radial: f32 = select(exp(-R / params.thin.x), 1.0, R < 0.01);
+        let coshArg: f32 = z / (2.0 * params.thin.y);
         let c: f32 = cosh(coshArg);
-        return THIN_AMP * radial / (c * c);
+        return params.thin.z * radial / (c * c);
 }
 
-fn rhoThick(R: f32, z: f32) -> f32 {
-        if (!insideDisc(R, z)) { return 0.0; }
-        let radial: f32 = select(exp(-R / THICK_L), 1.0, R < 0.01);
-        return THICK_AMP * radial * exp(-abs(z) / THICK_H);
+fn rhoThick(params: DensityParams, R: f32, z: f32) -> f32 {
+        if (!insideDisc(params, R, z)) { return 0.0; }
+        let radial: f32 = select(exp(-R / params.thick.x), 1.0, R < 0.01);
+        return params.thick.z * radial * exp(-abs(z) / params.thick.y);
 }
 
-fn rhoBulge(x: f32, y: f32, z: f32) -> f32 {
-        let s: f32 = bulgeEllipsoidRadius(x - GALACTIC_CENTRE_X, y - GALACTIC_CENTRE_Y, z) / BULGE_R0;
-        if (s > BULGE_RADIUS) { return 0.0; }
-        return BULGE_AMP * pow(1.0 + s * s, -2.5);
+// Both spheroid profiles are truncated at params.truncation.z, in units of s —
+// the same cut the sampler draws inside, because the truncation is part of the
+// model and not of the sampling.
+fn rhoSpheroid(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
+        let dx: f32 = x - params.centre.x;
+        let dy: f32 = y - params.centre.y;
+        let s: f32 = spheroidEllipsoidRadius(params, dx, dy, z);
+        if (s > params.truncation.z) { return 0.0; }
+        if (params.spheroidShape.w >= PROFILE_SERSIC) {
+                let n: f32 = params.spheroidShape.y;
+                return params.spheroidShape.x * exp(-sersicBn(n) * (pow(s, 1.0 / n) - 1.0));
+        }
+        return params.spheroidShape.x * pow(1.0 + s * s, -2.5);
 }
 
-fn rhoHalo(x: f32, y: f32, z: f32) -> f32 {
-        let dx: f32 = x - GALACTIC_CENTRE_X;
-        let dy: f32 = y - GALACTIC_CENTRE_Y;
+fn rhoHalo(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
+        let dx: f32 = x - params.centre.x;
+        let dy: f32 = y - params.centre.y;
         let r: f32 = sqrt(dx * dx + dy * dy + z * z);
-        if (r < HALO_A_H) { return HALO_AMP; }
-        return HALO_AMP * pow(r / HALO_A_H, -HALO_POWER);
+        let a: f32 = params.halo.x;
+        if (r < a) { return params.halo.w; }
+        return params.halo.w * pow(r / a, -params.halo.z);
 }
 
-fn armFactor(R: f32, phi: f32) -> f32 {
-        if (R < ARM_MIN_RADIUS) { return 1.0; }
-        let k: f32 = tan(radians(ARMS_PITCH_DEG));
-        let arg: f32 = f32(ARMS_M) * phi - k * log(R / ARMS_RS) + ARMS_PHASE0;
-        return 1.0 + ARMS_AMP * cos(arg);
+// amp 0 or m 0 is a smooth disc, which is how S0 and the E types read.
+fn armFactor(params: DensityParams, R: f32, phi: f32) -> f32 {
+        let amp: f32 = params.arms.y;
+        let m: f32 = params.arms.x;
+        if (amp == 0.0 || m == 0.0 || R < params.armShape.y) { return 1.0; }
+        let k: f32 = tan(radians(params.arms.z));
+        let arg: f32 = m * phi - k * log(R / params.arms.w) + params.armShape.x;
+        return 1.0 + amp * cos(arg);
 }
 
-fn distanceToNearestArm(R: f32, phi: f32) -> f32 {
-        if (R < ARM_MIN_RADIUS) { return 99.0; }
-        let k: f32 = tan(radians(ARMS_PITCH_DEG));
+// With no pattern there is no ridge, so the distance is "nowhere" — which is
+// what keeps young stars and gas nebulae off a smooth disc.
+fn distanceToNearestArm(params: DensityParams, R: f32, phi: f32) -> f32 {
+        let amp: f32 = params.arms.y;
+        let m: u32 = u32(params.arms.x);
+        if (amp == 0.0 || m == 0u || R < params.armShape.y) { return 99.0; }
+        let k: f32 = tan(radians(params.arms.z));
         var best: f32 = 99.0;
-        for (var n: u32 = 0u; n < ARMS_M; n = n + 1u) {
-                let phiArm: f32 = (k * log(R / ARMS_RS) + 6.283185307 * f32(n)) / f32(ARMS_M);
+        for (var n: u32 = 0u; n < m; n = n + 1u) {
+                let phiArm: f32 = (k * log(R / params.arms.w) + 6.283185307 * f32(n)) / f32(m);
                 var dphi: f32 = phi - phiArm;
                 dphi = dphi - 6.283185307 * round(dphi / 6.283185307);
                 let dArc: f32 = R * abs(dphi);
@@ -198,33 +205,34 @@ fn distanceToNearestArm(R: f32, phi: f32) -> f32 {
         return best;
 }
 
-fn rhoTotal(x: f32, y: f32, z: f32) -> f32 {
-        let dx: f32 = x - GALACTIC_CENTRE_X;
-        let dy: f32 = y - GALACTIC_CENTRE_Y;
+fn rhoTotal(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
+        let dx: f32 = x - params.centre.x;
+        let dy: f32 = y - params.centre.y;
         let R: f32 = sqrt(dx * dx + dy * dy);
         let phi: f32 = atan2(dy, dx);
-        let arm: f32 = armFactor(R, phi);
-        return (rhoThin(R, z) + rhoThick(R, z)) * arm + rhoBulge(x, y, z) + rhoHalo(x, y, z);
+        let arm: f32 = armFactor(params, R, phi);
+        return (rhoThin(params, R, z) + rhoThick(params, R, z)) * arm
+                + rhoSpheroid(params, x, y, z) + rhoHalo(params, x, y, z);
 }
 
-// Component shares at a point as vec4(thin, thick, bulge, halo), pre-arm-modulation.
-fn rhoDecomposed(x: f32, y: f32, z: f32) -> vec4f {
-        let dx: f32 = x - GALACTIC_CENTRE_X;
-        let dy: f32 = y - GALACTIC_CENTRE_Y;
+// Component shares at a point as vec4(thin, thick, bulge, halo).
+fn rhoDecomposed(params: DensityParams, x: f32, y: f32, z: f32) -> vec4f {
+        let dx: f32 = x - params.centre.x;
+        let dy: f32 = y - params.centre.y;
         let R: f32 = sqrt(dx * dx + dy * dy);
         let phi: f32 = atan2(dy, dx);
-        let arm: f32 = armFactor(R, phi);
+        let arm: f32 = armFactor(params, R, phi);
         return vec4f(
-                rhoThin(R, z) * arm,
-                rhoThick(R, z) * arm,
-                rhoBulge(x, y, z),
-                rhoHalo(x, y, z),
+                rhoThin(params, R, z) * arm,
+                rhoThick(params, R, z) * arm,
+                rhoSpheroid(params, x, y, z),
+                rhoHalo(params, x, y, z),
         );
 }
 
 // Mirrors density.sampleComponentIndex().
-fn sampleComponent(x: f32, y: f32, z: f32, u: f32) -> u32 {
-        let d: vec4f = rhoDecomposed(x, y, z);
+fn sampleComponent(params: DensityParams, x: f32, y: f32, z: f32, u: f32) -> u32 {
+        let d: vec4f = rhoDecomposed(params, x, y, z);
         let total: f32 = d.x + d.y + d.z + d.w;
         if (total < 1e-12) { return COMPONENT_THIN; }
         var r: f32 = u * total;
@@ -664,6 +672,9 @@ struct CellOrigin {
 @group(0) @binding(2) var<storage, read_write> starBuffer: array<StarPacked>;
 @group(0) @binding(3) var<storage, read_write> starCount: atomic<u32>;
 @group(0) @binding(4) var<uniform> budget: vec4u;   // x maxStars
+// The density field's numbers, packed from the GalaxyModel by
+// galaxy.packDensityParams — one upload per galaxy, never per frame.
+@group(0) @binding(5) var<uniform> densityParams: DensityParams;
 
 const FLAG_VISIBLE: u32 = 1u;
 const ABS_MAG_MIN: f32 = -12.0;
@@ -710,13 +721,16 @@ fn sampleMassIMF(u: f32) -> f32 {
         return pow(xMin + (xMax - xMin) * u, 1.0 / (1.0 - alpha));
 }
 
-// Mirrors star-types.sampleLocalAge / classifyByTempAndState.
-fn sampleLocalAge(component: u32, distToArm: f32, R: f32, u1: f32, u2: f32) -> f32 {
+// Mirrors star-types.sampleLocalAge / classifyByTempAndState. A gas-poor disc
+// forms nothing young, which is the whole of what a quenched type's population
+// means here; the star-forming annulus is the model's, not a hard-coded 3..12.
+fn sampleLocalAge(params: DensityParams, component: u32, distToArm: f32, R: f32, u1: f32, u2: f32) -> f32 {
         let z: f32 = sqrt(-2.0 * log(max(1e-12, u1))) * cos(6.283185307 * u2);
         if (component == COMPONENT_BULGE) { return min(13.5, exp(log(10.0) + 0.3 * z)); }
         if (component == COMPONENT_HALO) { return min(13.5, exp(log(12.0) + 0.25 * z)); }
         if (component == COMPONENT_THICK) { return min(13.5, exp(log(8.0) + 0.4 * z)); }
-        if (distToArm < 0.5 && R > 3.0 && R < 12.0) { return pow(u1, 3.0) * 0.3; }
+        if (params.populations.z < 0.5) { return min(13.5, exp(log(9.0) + 0.4 * z)); }
+        if (distToArm < 0.5 && R > params.arms.w && R < params.populations.y) { return pow(u1, 3.0) * 0.3; }
         return min(13.5, exp(log(5.0) + 0.5 * z));
 }
 
@@ -749,7 +763,7 @@ fn main(@global_invocation_id gid: vec3u) {
         let origin: vec3f = vec3f(cellId) * params.cellSize;
         let centre: vec3f = origin + vec3f(params.cellSize * 0.5);
 
-        let lambda: f32 = rhoTotal(centre.x, centre.y, centre.z)
+        let lambda: f32 = rhoTotal(densityParams, centre.x, centre.y, centre.z)
                 * params.cellSize * params.cellSize * params.cellSize * params.scale;
         let cellSeed: u32 = hash4(params.seed, u32(cellId.x), u32(cellId.y), u32(cellId.z));
         let whole: u32 = u32(floor(lambda));
@@ -765,14 +779,14 @@ fn main(@global_invocation_id gid: vec3u) {
                 let jitter: vec3f = hash3D(slotSeed + 1u);
                 let pos: vec3f = origin + jitter * params.cellSize;
 
-                let component: u32 = sampleComponent(pos.x, pos.y, pos.z, hash01(slotSeed + 7u));
-                let dx: f32 = pos.x - GALACTIC_CENTRE_X;
-                let dy: f32 = pos.y - GALACTIC_CENTRE_Y;
+                let component: u32 = sampleComponent(densityParams, pos.x, pos.y, pos.z, hash01(slotSeed + 7u));
+                let dx: f32 = pos.x - densityParams.centre.x;
+                let dy: f32 = pos.y - densityParams.centre.y;
                 let R: f32 = sqrt(dx * dx + dy * dy);
-                let distToArm: f32 = distanceToNearestArm(R, atan2(dy, dx));
+                let distToArm: f32 = distanceToNearestArm(densityParams, R, atan2(dy, dx));
 
                 let mass: f32 = sampleMassIMF(hash01(slotSeed * 31u + 1u));
-                let age: f32 = sampleLocalAge(component, distToArm, R, hash01(slotSeed * 31u + 2u), hash01(slotSeed * 31u + 3u));
+                let age: f32 = sampleLocalAge(densityParams, component, distToArm, R, hash01(slotSeed * 31u + 2u), hash01(slotSeed * 31u + 3u));
 
                 var state: u32 = 0u;
                 var teff: f32 = teffFromMass(mass);

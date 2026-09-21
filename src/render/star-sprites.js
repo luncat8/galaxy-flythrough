@@ -3,6 +3,13 @@
 // catalog cells (thinned for density parity) plus a local procedural gap-fill
 // plus the global galaxy-wide procedural field.
 //
+// The renderer is galaxy-agnostic: it draws whatever the GalaxyModel it was
+// given produced, and `regenerate(model)` rebuilds the field for another one.
+// Only the Milky Way preset has a catalog and named landmarks, so a non-preset
+// model runs the same pipeline with those two blocks empty (Game mode) — the
+// buffer layout and the draw call do not change, which is the point of keeping
+// one pipeline for both modes.
+//
 // Buffer layout (one storage buffer, one draw call):
 //
 //   [0 .. globalProcedural)                 global procedural field, generated once
@@ -92,10 +99,31 @@ function createStarRenderer(device, context, format, options) {
         if (!landmarks || !landmarks.count) {
                 throw new Error('Landmarks data missing: index.html must load data/landmarks.js before render/star-sprites.js');
         }
-        const landmarkCount = landmarks.count;
-        const seed = opts.seed === undefined ? 42 : opts.seed;
+        // One model for the whole renderer: the seed that hashes the field and
+        // the frame the field describes are the same object, so they cannot
+        // disagree. `regenerate` swaps it; `seed` follows.
+        let model = opts.model || window.GalaxyLib.MILKY_WAY;
+        let seed = model.seed | 0;
+        const landmarkTable = landmarks.count;
+        let lastManifest = null;
         const proceduralTarget = Math.max(0, opts.proceduralStars === undefined ? PROCEDURAL_STARS_DEFAULT : opts.proceduralStars);
-        const catalogBudget = Math.max(0, opts.catalogBudgetStars === undefined ? CATALOG_BUDGET_DEFAULT : opts.catalogBudgetStars);
+        const catalogBudgetRequested = Math.max(0, opts.catalogBudgetStars === undefined ? CATALOG_BUDGET_DEFAULT : opts.catalogBudgetStars);
+        // Landmarks and the Gaia subset are Milky Way data: for any other type
+        // both blocks are empty, which is what "Game mode" means here — the same
+        // pipeline with two blocks switched off, not a second renderer.
+        let landmarkCount = 0;
+        let catalogBudget = 0;
+
+        function configureMode(nextModel) {
+                model = nextModel;
+                seed = nextModel.seed | 0;
+                landmarkCount = nextModel.milkyWay ? landmarkTable : 0;
+                catalogBudget = nextModel.milkyWay ? catalogBudgetRequested : 0;
+                state.mode = nextModel.milkyWay ? 'hybrid' : 'game';
+                state.galaxyType = nextModel.type;
+                state.galaxySeed = nextModel.seed;
+                state.galaxyLabel = window.GalaxyLib.galaxyLabel(nextModel);
+        }
         const localProceduralBudget = Math.max(0, opts.localProceduralStars === undefined ? LOCAL_PROCEDURAL_DEFAULT : opts.localProceduralStars);
 
         // Output mode: SDR (bgra8unorm / rgba8unorm) clamps tonemap to [0,1];
@@ -271,6 +299,7 @@ function createStarRenderer(device, context, format, options) {
         let manager = window.CellManager.createCellManager(EMPTY_MANIFEST, {
                 budgetStars: catalogBudget,
                 bandRadius: opts.bandRadius,
+                model,
         });
 
         // Everything the overlay and the tests read, mutated in place.
@@ -293,7 +322,12 @@ function createStarRenderer(device, context, format, options) {
                 bufferBytes: 0,
                 clampedProcedural: false,
                 clampedCatalog: false,
+                mode: 'hybrid',
+                galaxyType: model.type,
+                galaxySeed: model.seed,
+                galaxyLabel: '',
         };
+        configureMode(model);
 
         // --- Exposure ---------------------------------------------------------
         // magZero is the apparent magnitude that maps to flux 1.0 in the vertex
@@ -372,11 +406,11 @@ function createStarRenderer(device, context, format, options) {
                 if (proceduralCount === 0) return 0;
                 const sampling = window.SamplingLib;
                 const starTypes = window.StarTypesLib;
-                const stars = sampling.sampleGalaxyStars(seed, proceduralCount);
+                const stars = sampling.sampleGalaxyStars(model, seed, proceduralCount);
                 const view = new DataView(staging, 0, proceduralCount * records.RECORD_BYTES);
                 const derived = {};
                 for (let i = 0; i < proceduralCount; i++) {
-                        starTypes.deriveStar(seed * 31 + i + 1, stars.component[i], stars.R[i], stars.distToArm[i], derived);
+                        starTypes.deriveStar(model, seed * 31 + i + 1, stars.component[i], stars.R[i], stars.distToArm[i], derived);
                         records.writeRecord(
                                 view, i * records.RECORD_BYTES,
                                 stars.x[i], stars.y[i], stars.z[i],
@@ -418,6 +452,7 @@ function createStarRenderer(device, context, format, options) {
                 catalogCapacity = capacity;
                 manager = window.CellManager.createCellManager(manifest, {
                         budgetStars: catalogBudget,
+                        model,
                         targetStars,
                         bandRadius: opts.bandRadius,
                 });
@@ -428,7 +463,27 @@ function createStarRenderer(device, context, format, options) {
         // landmarks are both fixed for the life of the renderer, so they share one
         // upload. Local procedural gap-fill + catalog are uploaded per-rebuild.
         function prepare(manifest) {
-                const catalog = manifest ? attachCatalog(manifest) : 0;
+                // Keep the last manifest that had content: a Game-mode rebuild passes none, and
+                // coming back to the preset has to find the catalog still there.
+                if (manifest) lastManifest = manifest;
+                // Both clamp flags describe *this* buffer, so a regenerate that needs less room
+                // must not keep reporting the old overflow.
+                state.clampedProcedural = false;
+                const catalog = manifest && model.milkyWay ? attachCatalog(manifest) : 0;
+                if (!catalog) {
+                        // Replace the manager rather than keep the old one: a stale
+                        // resident set would upload the previous galaxy's stars.
+                        manager = window.CellManager.createCellManager(EMPTY_MANIFEST, {
+                                budgetStars: 0,
+                                bandRadius: opts.bandRadius,
+                                model,
+                        });
+                        state.catalogTotalStars = 0;
+                        state.catalogCells = 0;
+                        state.catalogResidentStars = 0;
+                        state.catalogThinnedStars = 0;
+                        state.clampedCatalog = false;
+                }
                 let procedural = proceduralTarget;
                 const maxRecords = Math.floor(maxStorageBytes / records.RECORD_BYTES);
                 const fixedOverhead = landmarkCount + localProceduralBudget;
@@ -444,17 +499,29 @@ function createStarRenderer(device, context, format, options) {
                 return state;
         }
 
+        // Rebuild the whole field for another galaxy. Deliberate and synchronous
+        // (the same cost as the startup build), so it re-allocates rather than
+        // growing a second path that patches buffers in place.
+        function regenerate(nextModel) {
+                configureMode(nextModel);
+                prepare(nextModel.milkyWay ? lastManifest : null);
+                uploadDynamic();
+                return state;
+        }
+
         // --- Local procedural gap-fill ----------------------------------------
         // Generate N stable stars inside a cell AABB, used to bring each
         // streaming cell up to its expected density when the catalog is too
         // sparse. Keyed on (localSeed, cellId, slot) so the same camera position
         // always produces the same stars (no popping).
-        const localSeed = (seed | 0) ^ 0x10ca1cab;
         const localHash = window.HashLib;
         const localStarTypes = window.StarTypesLib;
         const localDerived = {};
 
         function writeLocalProceduralStars(cellList, view, byteOffset) {
+                // Derived per rebuild, not captured at construction: regenerate
+                // swaps the seed, and a const here would freeze the old one.
+                const localSeed = (seed | 0) ^ 0x10ca1cab;
                 let slot = 0;
                 const bytesPerRecord = records.RECORD_BYTES;
                 for (const cell of cellList) {
@@ -476,12 +543,12 @@ function createStarRenderer(device, context, format, options) {
                                 // Derive component / colour / magnitude from the
                                 // density at the star's position — same pipeline
                                 // the global field uses.
-                                const decomposed = window.DensityLib.rhoDecomposed(sx, sy, sz);
+                                const decomposed = window.DensityLib.rhoDecomposed(model, sx, sy, sz);
                                 const component = window.DensityLib.sampleComponentIndex(decomposed, localHash.hash01At(slotSeed, 3));
                                 const R = decomposed.R;
                                 const distToArm = decomposed.distToArm;
                                 const deriveSeed = Math.imul(slotSeed, 31) + 5;
-                                localStarTypes.deriveStar(deriveSeed, component, R, distToArm, localDerived);
+                                localStarTypes.deriveStar(model, deriveSeed, component, R, distToArm, localDerived);
                                 const jitter = localHash.pcgHash(slotSeed ^ 0xFACE) & 0xFF;
                                 records.writeRecord(
                                         view, byteOffset + slot * bytesPerRecord,
@@ -651,6 +718,7 @@ function createStarRenderer(device, context, format, options) {
 
         return {
                 prepare,
+                regenerate,
                 render,
                 setExposure,
                 setLinearExposure,

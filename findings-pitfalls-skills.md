@@ -3,6 +3,90 @@
 Append-only notes for LLM agents working on this project. Each entry: date, one-line summary heading, then the detail. Newest at top.
 
 ---
+## 2026-09-21 — Parameterising a hard-coded model without moving one shipped number
+
+### Freeze the old numbers as a preset, derive the rest, and let provenance decide the mode
+
+`density.js` used to hard-code the Milky Way. The refactor that keeps the suite green is to
+carry those constants into `src/math/galaxy.js` verbatim as `MILKY_WAY_STRUCTURE` (with the
+`bulge` group renamed `spheroid` and `TRUNCATION.bulgeRadius` renamed
+`truncation.spheroidRadius`), have the type→anchor table build every *other* galaxy, and let
+`createGalaxy` decide `milkyWay` from **how** the model was built — `type === 'SBb'` with no
+structural override — rather than from the type string alone. That single boolean then owns
+the mode rule (catalog budget, landmark block, label layer, Sun orbit home), so no consumer
+has to know what a "Milky Way" is. It also means an override like `{ thin: { L: 4 } }`
+correctly stops the galaxy from claiming the real catalogue.
+
+One trap: the preset's authored B/T is 0.182 where the anchor curve interpolates 0.15 at
+T = 3. Resolving the curve "for consistency" would have re-tuned the shipped bulge. Preset
+wins, curve is for the other types, and the divergence is documented in both places.
+
+### Truncation belongs in the mass, not in a rejection loop
+
+Sampling a truncated component by rejection hides a lie: the star counts no longer match the
+density field. The fix is arithmetic, `density.truncationFractions()` (how much of each
+component the box keeps, Sérsic branch via the enclosed-mass integral
+`γ(3n, b_n·sMax^{1/n})/Γ(3n)`) multiplied by `density.componentMasses()` into
+`sampling.deliveredMasses()`, which is what the sampler weights itself with and what
+`galaxy-types-test.js` re-derives to 1e-12. Running the numbers also exposed a real bug:
+`componentMasses` gave the halo 0.018096 where numeric integration says 0.021447 — the flat
+core term was missing — and the halo's sampled share moved 0.00022 → 0.000265. Any closed
+form in this repo is worth one numeric-integration check per release; that check is now in
+`density-distribution-test.js`'s methodology family.
+
+### A WGSL mirror that can no longer hard-code numbers needs the layout as data
+
+`SHADER_PARTS['density']` used to be diffable against `density.js` because both held the same
+literals. With parameters, `src/math/galaxy.js` owns one list — `DENSITY_PARAMS_LAYOUT` of
+`{name, source, fields}` (ten `vec4f` groups, 40 f32, 160 B, `@group(0) @binding(5)`) — that
+`packDensityParams(model, out)` walks, `wgsl-validate.js` diffs against the struct text, and
+the compute pass binds. Division of labour that keeps this honest: the validator can pin
+group names, order, size, the binding slot and "every group is read by a formula", and cannot
+pin arithmetic — `wgsl-exec-check.js` executes and the model tests own the numbers. Two regex
+gotchas cost an hour: WGSL writes `vec4f`, not `vec4<f32>`, so the optional group must be
+`(?:<f32>|f)?`, and struct fields are camelCase (`spheroidShape`), so `[a-z_0-9]+` matches
+nothing and the check passes vacuously. A parity test that greps must assert it found
+*something*; assert the count of parsed fields equals the layout's before comparing them.
+
+### Multi-site text patches: assert first, edit bottom-up, and match the file's indentation
+
+Six files needed the same insertion pattern (`require('../src/math/galaxy.js')` after the last
+require, a `const model = …` line, replaced call signatures). What failed and what did not:
+
+- The repo mixes indentation: `src/**` except `shaders.js`/`star-sprites.js` is one tab,
+  those two are 4 spaces, `main.js`'s block bodies are 8-space continuation, `index.html` is
+  spaces. A patch written from what another file looks like silently misses. `sed -n 'a,bp'`
+  (or `cat -A` for tabs) the target block *before* writing the pattern.
+- Write the script as: every `assert old in s` first, then every write. A patch that fails on
+  edit 4 of 7 after writing 1–3 leaves the file half-migrated, and the rerun then fails on
+  edit 1 for the wrong reason.
+- When editing a markdown plan by line ranges, splice strictly bottom-up — a splice at line
+  98 shifts the range you computed for line 65, and the insert lands inside the block you
+  just rewrote. `git checkout -- file` and redo in one descending pass.
+
+### A stateful renderer mock has order dependencies that look like product bugs
+
+`renderer-test.js` grew a mode-rule section and it broke on three things that were all the
+test's fault, not the code's: `state.drawn` is written inside `render()`, so asserting it
+right after `regenerate()` reads the previous frame; an earlier section parks the camera
+outside the catalog volume, so any residency check must come before that; and the fixed
+block's frame time and the "no re-upload while parked" check both count renders, so a new
+section that calls `render()` has to sit after them with its own monotonic timestamps (3/60,
+4/60). Two more from `landmark-test.js` and `cell-manager.js`: a mock that counts `clearRect`
+needs a `reset()` before a "does nothing" check, because the previous section already left a
+count of 1; and `cell-manager.update()` early-returns unless the camera moved or 0.25 s
+passed — except a fresh manager starts at `sinceUpdate = Infinity`, so its first update always
+rebuilds. `state.clampedProcedural` also had to reset in `prepare()` rather than survive a
+regeneration, which the mode test caught.
+
+### A menu with real form fields needs a key guard; a deliberate rebuild stays synchronous
+
+Adding `<select>`/`<input>` for galaxy type and seed to a page whose keys are global makes
+digits and `g` flight controls while typing. `input.js` now ignores every key except `Tab`
+while an `INPUT`/`SELECT`/`TEXTAREA` has focus. And regeneration measured 0.8 s at 300k (0.6 s
+of sampling, 0.2 s of deriving records), which is a deliberate-action cost, not a frame cost:
+synchronous, so there is no half-swapped renderer state to hide behind a progress bar.
+
 
 ## 2026-09-19 — Two hand-maintained export lists always drift: expose one API object
 

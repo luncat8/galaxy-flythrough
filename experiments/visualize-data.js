@@ -15,23 +15,26 @@ const starTypes = require('../src/math/star-types.js');
 const nebula = require('../src/math/nebula.js');
 const records = require('../src/math/star-record.js');
 
+const galaxy = require('../src/math/galaxy.js');
+const model = galaxy.MILKY_WAY;
+
 const SEED = 2024;
 const N_STARS = 30000;
 const N_NEBULAE = 200;
 
 // A box centred on the galactic centre, inside the disc truncation.
-const GC = density.GALACTIC_CENTRE;
+const GC = model.centre;
 const BOX = { xMin: GC.x - 22, xMax: GC.x + 22, yMin: -22, yMax: 22, zMin: -3, zMax: 3 };
 
 console.log(`Sampling ${N_STARS.toLocaleString()} stars...`);
-const positions = sampling.sampleStarsInBox(SEED, N_STARS, BOX);
+const positions = sampling.sampleStarsInBox(model, SEED, N_STARS, BOX);
 console.log(`  got ${positions.count.toLocaleString()} stars`);
 
 const lut = records.buildColorLUT();
 const scratch = {};
 const stars = new Array(positions.count);
 for (let i = 0; i < positions.count; i++) {
-	const s = starTypes.deriveStar(
+	const s = starTypes.deriveStar(model, 
 		SEED * 31 + i + 1, positions.component[i], positions.R[i], positions.distToArm[i], scratch);
 	const ci = s.colorIndex * 4;
 	stars[i] = {
@@ -48,7 +51,7 @@ for (let i = 0; i < positions.count; i++) {
 }
 
 console.log(`Placing ${N_NEBULAE} nebulae...`);
-const nebulae = nebula.placeNebulae(SEED + 1, N_NEBULAE, BOX);
+const nebulae = nebula.placeNebulae(model, SEED + 1, N_NEBULAE, BOX);
 const slimNebulae = nebulae.map(n => ({
 	x: +n.x.toFixed(4), y: +n.y.toFixed(4), z: +n.z.toFixed(4),
 	type: n.type,
@@ -68,7 +71,7 @@ for (let i = 0; i < GRID_N; i++) {
 	const x = BOX.xMin + (i + 0.5) * dx;
 	for (let j = 0; j < GRID_N; j++) {
 		const y = BOX.yMin + (j + 0.5) * dy;
-		densityGrid[i * GRID_N + j] = +density.rhoTotal(x, y, 0).toFixed(5);
+		densityGrid[i * GRID_N + j] = +density.rhoTotal(model, x, y, 0).toFixed(5);
 	}
 }
 
@@ -76,8 +79,8 @@ const out = {
 	date: new Date().toISOString(),
 	galaxy: {
 		R0_kpc: density.GALACTIC_R0,
-		centre: density.GALACTIC_CENTRE,
-		arms: density.ARMS,
+		centre: model.centre,
+		arms: model.arms,
 	},
 	box: BOX,
 	stars,

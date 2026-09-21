@@ -26,9 +26,12 @@ const sampling = require('../src/math/sampling.js');
 const starTypes = require('../src/math/star-types.js');
 const hash = require('../src/math/hash.js');
 
+const galaxy = require('../src/math/galaxy.js');
+const model = galaxy.MILKY_WAY;
+
 const SEED = 42;
 const N = 400000;
-const T = density.TRUNCATION;
+const T = model.truncation;
 const ARM_PLOT_MAX = 2.4;        // kpc, plotted range of distToArm
 const ARM_BIN = 0.1;             // kpc per distToArm bin
 
@@ -68,11 +71,11 @@ function modelHistogram(bins) {
 			const phi = (j + 0.5) * dPhi - Math.PI;
 			for (let k = 0; k < nZ; k++) {
 				const z = (k + 0.5) * dZ - Z_MAX;
-				const x = density.GALACTIC_CENTRE.x + R * Math.cos(phi);
-				const y = density.GALACTIC_CENTRE.y + R * Math.sin(phi);
-				const d = density.rhoDecomposed(x, y, z);
-				const re = density.bulgeEllipsoidRadius(x - density.GALACTIC_CENTRE.x, y - density.GALACTIC_CENTRE.y, z);
-				const bulge = re <= T.bulgeRadius * density.BULGE.r0 ? d.bulge : 0;
+				const x = model.centre.x + R * Math.cos(phi);
+				const y = model.centre.y + R * Math.sin(phi);
+				const d = density.rhoDecomposed(model, x, y, z);
+				const re = density.spheroidEllipsoidRadius(model, x - model.centre.x, y - model.centre.y, z);
+				const bulge = re <= T.spheroidRadius * model.spheroid.r0 ? d.bulge : 0;
 				const rho = d.thin + d.thick + bulge + d.halo;
 				const mass = rho * cellArea;
 				if (mass === 0) continue;
@@ -96,7 +99,7 @@ function modelHistogram(bins) {
 // --- Sample --------------------------------------------------------------
 console.log(`Sampling ${N.toLocaleString()} stars (seed ${SEED})...`);
 let t0 = Date.now();
-const stars = sampling.sampleGalaxyStars(SEED, N);
+const stars = sampling.sampleGalaxyStars(model, SEED, N);
 const sampleMs = Date.now() - t0;
 console.log(`  ${sampleMs} ms`);
 
@@ -113,7 +116,7 @@ console.log(`  ${Date.now() - t0} ms, ${ref.total.toFixed(1)} model mass units`)
 	// component delivers inside the sampled volume (componentMasses() minus the
 	// tails past |z| = discHeight / s = bulgeRadius), not the untruncated
 	// integral.
-	const masses = sampling.deliveredMasses();
+	const masses = sampling.deliveredMasses(model, );
 	const expected = {
 		thin: masses.thin / masses.total,
 		thick: masses.thick / masses.total,
@@ -142,8 +145,8 @@ console.log(`  ${Date.now() - t0} ms, ${ref.total.toFixed(1)} model mass units`)
 	const histZ = new Float64Array(bins.z);
 	const histPhi = new Float64Array(bins.phi);
 	for (let i = 0; i < stars.count; i++) {
-		const x = stars.x[i] - density.GALACTIC_CENTRE.x;
-		const y = stars.y[i] - density.GALACTIC_CENTRE.y;
+		const x = stars.x[i] - model.centre.x;
+		const y = stars.y[i] - model.centre.y;
 		const R = Math.sqrt(x * x + y * y);
 		const phi = Math.atan2(y, x);
 		const z = stars.z[i];
@@ -218,23 +221,23 @@ console.log(`  ${Date.now() - t0} ms, ${ref.total.toFixed(1)} model mass units`)
 		const cell = R * dR * dPhi * dZ;
 		for (let j = 0; j < nPhi; j++) {
 			const phi = (j + 0.5) * dPhi - Math.PI;
-			const x = density.GALACTIC_CENTRE.x + R * Math.cos(phi);
-			const y = density.GALACTIC_CENTRE.y + R * Math.sin(phi);
+			const x = model.centre.x + R * Math.cos(phi);
+			const y = model.centre.y + R * Math.sin(phi);
 			for (let k = 0; k < nZ; k++) {
 				const z = (k + 0.5) * dZ - Z_MAX;
-				const d = density.rhoDecomposed(x, y, z);
-				const re = density.bulgeEllipsoidRadius(x - density.GALACTIC_CENTRE.x, y - density.GALACTIC_CENTRE.y, z);
+				const d = density.rhoDecomposed(model, x, y, z);
+				const re = density.spheroidEllipsoidRadius(model, x - model.centre.x, y - model.centre.y, z);
 				modelMasses[0] += d.thin * cell;
 				modelMasses[1] += d.thick * cell;
-				modelMasses[2] += (re <= T.bulgeRadius * density.BULGE.r0 ? d.bulge : 0) * cell;
+				modelMasses[2] += (re <= T.spheroidRadius * model.spheroid.r0 ? d.bulge : 0) * cell;
 				modelMasses[3] += d.halo * cell;
 			}
 		}
 	}
 	let sampled = 0;
 	for (let i = 0; i < stars.count; i++) {
-		const dx = stars.x[i] - density.GALACTIC_CENTRE.x;
-		const dy = stars.y[i] - density.GALACTIC_CENTRE.y;
+		const dx = stars.x[i] - model.centre.x;
+		const dy = stars.y[i] - model.centre.y;
 		const R = Math.sqrt(dx * dx + dy * dy);
 		if (R < R_LO || R > R_HI || Math.abs(stars.z[i]) > Z_MAX) continue;
 		counts[stars.component[i]]++;
@@ -254,14 +257,14 @@ console.log(`  ${Date.now() - t0} ms, ${ref.total.toFixed(1)} model mass units`)
 
 // --- 4. Determinism ------------------------------------------------------
 {
-	const again = sampling.sampleGalaxyStars(SEED, 1000);
-	const different = sampling.sampleGalaxyStars(SEED + 1, 1000);
+	const again = sampling.sampleGalaxyStars(model, SEED, 1000);
+	const different = sampling.sampleGalaxyStars(model, SEED + 1, 1000);
 	let identical = true;
 	let identicalCount = 0;
 	for (let i = 0; i < 1000; i++) {
 		if (again.x[i] !== different.x[i]) identicalCount++;
 	}
-	const first = sampling.sampleGalaxyStars(SEED, 1000);
+	const first = sampling.sampleGalaxyStars(model, SEED, 1000);
 	for (let i = 0; i < 1000; i++) {
 		if (again.x[i] !== first.x[i] || again.y[i] !== first.y[i] || again.z[i] !== first.z[i]) identical = false;
 	}
@@ -282,20 +285,20 @@ console.log(`  ${Date.now() - t0} ms, ${ref.total.toFixed(1)} model mass units`)
 		maxAbsZ = Math.max(maxAbsZ, Math.abs(z));
 		const component = stars.component[i];
 		if (component === density.COMPONENT_BULGE) {
-			const dx = x - density.GALACTIC_CENTRE.x;
-			const dy = y - density.GALACTIC_CENTRE.y;
-			const re = density.bulgeEllipsoidRadius(dx, dy, z);
-			if (re / density.BULGE.r0 > T.bulgeRadius + 1e-3) outsideHalo++;
+			const dx = x - model.centre.x;
+			const dy = y - model.centre.y;
+			const re = density.spheroidEllipsoidRadius(model, dx, dy, z);
+			if (re / model.spheroid.r0 > T.spheroidRadius + 1e-3) outsideHalo++;
 		}
 		if (component === density.COMPONENT_HALO) {
-			const dx = x - density.GALACTIC_CENTRE.x;
-			const dy = y - density.GALACTIC_CENTRE.y;
+			const dx = x - model.centre.x;
+			const dy = y - model.centre.y;
 			const r = Math.sqrt(dx * dx + dy * dy + z * z);
-			if (r > density.HALO.rMax + 1e-3) outsideHalo++;
+			if (r > model.halo.rMax + 1e-3) outsideHalo++;
 		}
 	}
 	check('no NaN or infinite positions', bad === 0, bad);
-	check('disc stars stay inside the disc truncation', maxAbsZ <= Math.max(T.discHeight, density.HALO.rMax) + 1e-3, maxAbsZ);
+	check('disc stars stay inside the disc truncation', maxAbsZ <= Math.max(T.discHeight, model.halo.rMax) + 1e-3, maxAbsZ);
 	check('bulge and halo stars respect their truncations', outsideHalo === 0, outsideHalo);
 }
 
@@ -308,7 +311,7 @@ console.log(`  ${Date.now() - t0} ms, ${ref.total.toFixed(1)} model mass units`)
 	let nanMag = 0;
 	const sumAge = {};
 	for (let i = 0; i < stars.count; i++) {
-		starTypes.deriveStar(SEED * 31 + i + 1, stars.component[i], stars.R[i], stars.distToArm[i], derived);
+		starTypes.deriveStar(model, SEED * 31 + i + 1, stars.component[i], stars.R[i], stars.distToArm[i], derived);
 		const cls = derived.spectralClass;
 		counts[cls] = (counts[cls] || 0) + 1;
 		if (!Number.isFinite(derived.absMag) || !Number.isFinite(derived.mass)) nanMag++;

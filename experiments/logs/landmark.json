@@ -1,10 +1,10 @@
 {
-  "date": "2026-09-21T14:28:43.989Z",
+  "date": "2026-09-21T16:07:15.595Z",
   "landmarks": 59,
   "constellations": 15,
   "edges": 41,
-  "totalChecks": 43,
-  "passed": 43,
+  "totalChecks": 46,
+  "passed": 46,
   "failed": 0,
   "checks": [
     {
@@ -186,6 +186,21 @@
     },
     {
       "name": "the aimed-at star gets a label (fillText with its constant name)",
+      "pass": true,
+      "detail": 28
+    },
+    {
+      "name": "disabling erases what was drawn and stops drawing over it",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "a repeat disable clears nothing (no flicker on a frame where nothing changed)",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "re-enabling brings the labels back for the Milky Way preset",
       "pass": true,
       "detail": 28
     },

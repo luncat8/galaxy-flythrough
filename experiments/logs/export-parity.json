@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-21T14:28:43.552Z",
-  "modules": 19,
-  "totalChecks": 98,
-  "passed": 98,
+  "date": "2026-09-21T16:07:14.842Z",
+  "modules": 20,
+  "totalChecks": 103,
+  "passed": 103,
   "failed": 0,
   "checks": [
     {
@@ -57,7 +57,7 @@
       }
     },
     {
-      "name": "DensityLib has identical key sets (27 keys)",
+      "name": "DensityLib has identical key sets (30 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -66,6 +66,38 @@
     },
     {
       "name": "DensityLib binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "GalaxyLib loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "GalaxyLib registers exactly one window namespace (GalaxyLib)",
+      "pass": true,
+      "detail": [
+        "GalaxyLib"
+      ]
+    },
+    {
+      "name": "GalaxyLib exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "GalaxyLib has identical key sets (22 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "GalaxyLib binds every key to the same value",
       "pass": true,
       "detail": []
     },
@@ -89,7 +121,7 @@
       }
     },
     {
-      "name": "SamplingLib has identical key sets (6 keys)",
+      "name": "SamplingLib has identical key sets (5 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -185,7 +217,7 @@
       }
     },
     {
-      "name": "NebulaLib has identical key sets (5 keys)",
+      "name": "NebulaLib has identical key sets (6 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -281,7 +313,7 @@
       }
     },
     {
-      "name": "Input has identical key sets (2 keys)",
+      "name": "Input has identical key sets (3 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],

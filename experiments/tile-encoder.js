@@ -50,6 +50,9 @@ const records = require('../src/math/star-record.js');
 // below still validates it here, where it first mattered.
 const coords = require('../src/math/coords.js');
 
+const galaxy = require('../src/math/galaxy.js');
+const model = galaxy.MILKY_WAY;
+
 const CONFIG = {
 	gLimit: 12.0,               // G < 12: the magnitude where Gaia is complete
 	quality: 5.0,               // parallax_over_error > 5
@@ -283,11 +286,11 @@ function parseGaiaCsv(filepath) {
 
 // Synthetic catalog from the analytical model, for stress-testing the loader.
 function generateMockStars(count, seed) {
-	const positions = sampling.sampleGalaxyStars(seed, count);
+	const positions = sampling.sampleGalaxyStars(model, seed, count);
 	const stars = new Array(count);
 	const derived = {};
 	for (let i = 0; i < count; i++) {
-		starTypes.deriveStar(seed * 31 + i + 1, positions.component[i], positions.R[i], positions.distToArm[i], derived);
+		starTypes.deriveStar(model, seed * 31 + i + 1, positions.component[i], positions.R[i], positions.distToArm[i], derived);
 		const distKpc = Math.sqrt(
 			positions.x[i] * positions.x[i] + positions.y[i] * positions.y[i] + positions.z[i] * positions.z[i],
 		);

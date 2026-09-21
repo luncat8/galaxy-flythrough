@@ -1,5 +1,6 @@
 // src/math/nebula.js
-// Nebula placement from the local young-star and dust environment.
+// Nebula placement from the local young-star and dust environment, for a given
+// GalaxyModel.
 //
 // Nebulae concentrate in spiral arms (molecular clouds form there, OB stars
 // ionise them), in the thin-disc midplane, and — for the stellar-driven types —
@@ -7,6 +8,12 @@
 //
 //   pGas     HII / reflection / dark: needs cold gas  -> arms, low |z|, no bulge
 //   pStellar planetary / SNR:         needs old stars -> bulge and thick disc
+//
+// `populations.gasRich` switches the gas layer off entirely and `gasFraction`
+// scales it, so an S0 keeps its planetary nebulae and loses its HII regions
+// while a Sc gets more of both gas and arm contrast. The vertical scale comes
+// from the model too (thin.H × youngScaleHeight), which is what keeps the layer
+// on the same population the sampler placed.
 //
 // A nebula is not stored: it is a deterministic function of (seed, position,
 // type roll), so the same galaxy is regenerated everywhere.
@@ -26,6 +33,11 @@
 
 	const NEBULA_TYPES = ['HII', 'reflection', 'planetary', 'dark', 'SNR'];
 
+	// The gas fraction at which the loose-nebula layer has its tuned strength —
+	// the Milky Way's own. A gas-richer type scales the layer up, a poorer one
+	// down; below `populations.gasRich` it is off entirely.
+	const GAS_NORMAL = 0.15;
+
 	const NEBULA_COLORS = {
 		HII: [1.00, 0.30, 0.45],        // H-alpha pink
 		reflection: [0.50, 0.65, 1.00], // scattered blue
@@ -35,18 +47,20 @@
 	};
 
 	// Probability and most likely type at a position.
-	function nebulaProbabilityAt(x, y, z) {
-		const dec = density.rhoDecomposed(x, y, z);
-		const dom = density.dominantComponent(x, y, z);
-		const inDisc = Math.exp(-Math.abs(z) / 0.150);
+	function nebulaProbabilityAt(model, x, y, z) {
+		const dec = density.rhoDecomposed(model, x, y, z);
+		const dom = density.dominantComponent(model, x, y, z);
+		const youngH = model.thin.H * model.populations.youngScaleHeight;
+		const inDisc = Math.exp(-Math.abs(z) / youngH);
 		const armBoost = dec.distToArm < 0.8 ? Math.exp(-dec.distToArm * dec.distToArm / 0.20) : 0.0;
 		const gasBulgeSuppress = dec.bulge > 0.1 ? 0.1 : 1.0;
 		const gasHaloSuppress = dec.halo > 0.0005 ? 0.01 : 1.0;
-		const pGas = Math.min(1.0, 0.05 * inDisc * armBoost * gasBulgeSuppress * gasHaloSuppress);
+		const gasWeight = model.populations.gasRich ? model.populations.gasFraction / GAS_NORMAL : 0.0;
+		const pGas = Math.min(1.0, 0.05 * gasWeight * inDisc * armBoost * gasBulgeSuppress * gasHaloSuppress);
 		const pStellar = 0.005 * (dec.bulge > 0.05 ? 4.0 : 1.0) * (dom === 'halo' ? 0.3 : 1.0);
 		const p = Math.min(1.0, pGas + pStellar);
 
-		const inSpiralRegion = dec.R > 3 && dec.R < 12 && dom !== 'bulge';
+		const inSpiralRegion = dec.R > model.arms.Rs && dec.R < model.populations.youngOuterR && dom !== 'bulge';
 		let type;
 		if (inSpiralRegion && dec.distToArm < 0.3) type = 'HII';
 		else if (inSpiralRegion && dec.distToArm < 0.8) type = 'reflection';
@@ -60,21 +74,21 @@
 	// Place up to N nebulae inside `box`. Candidate positions come from the
 	// analytic sampler (so they follow the stellar density), then each
 	// candidate is accepted with the nebula probability above.
-	function placeNebulae(seed, N, box) {
+	function placeNebulae(model, seed, N, box) {
 		const out = [];
 		const batch = sampling.createBuffers(4096);
 		let batchSeed = seed;
 		let attempts = 0;
 		const maxAttempts = N * 4096;
 		while (out.length < N && attempts < maxAttempts) {
-			sampling.sampleStarsInBox(batchSeed, 4096, box, batch);
+			sampling.sampleStarsInBox(model, batchSeed, 4096, box, batch);
 			batchSeed = (Math.imul(batchSeed, 0x9e3779b1) + 0x2545f491) | 0;
 			for (let i = 0; i < batch.count && out.length < N; i++) {
 				attempts++;
 				const x = batch.x[i];
 				const y = batch.y[i];
 				const z = batch.z[i];
-				const info = nebulaProbabilityAt(x, y, z);
+				const info = nebulaProbabilityAt(model, x, y, z);
 				const roll = hash.hash01At(seed + batchSeed + i, 0);
 				if (roll >= info.p) continue;
 				const sizeRoll = hash.hash01At(seed + batchSeed + i, 1);
@@ -124,7 +138,7 @@
 		};
 	}
 
-	const NebulaLib = { NEBULA_TYPES, NEBULA_COLORS, nebulaProbabilityAt, placeNebulae, summariseNebulae };
+	const NebulaLib = { NEBULA_TYPES, NEBULA_COLORS, GAS_NORMAL, nebulaProbabilityAt, placeNebulae, summariseNebulae };
 	if (typeof module !== 'undefined') module.exports = NebulaLib;
 	if (typeof window !== 'undefined') window.NebulaLib = NebulaLib;
 })();

@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T14:28:43.655Z",
+  "date": "2026-09-21T16:07:14.989Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -7,7 +7,7 @@
     },
     {
       "name": "density",
-      "lines": 156
+      "lines": 162
     },
     {
       "name": "star-sprite",
@@ -23,7 +23,7 @@
     },
     {
       "name": "procedural-gen",
-      "lines": 170
+      "lines": 176
     },
     {
       "name": "cull",
@@ -35,8 +35,8 @@
     "star-sprite-hdr",
     "tonemap"
   ],
-  "totalChecks": 117,
-  "passed": 117,
+  "totalChecks": 109,
+  "passed": 109,
   "failed": 0,
   "checks": [
     {
@@ -62,7 +62,7 @@
         ],
         [
           "density",
-          5339
+          6853
         ],
         [
           "star-sprite",
@@ -78,7 +78,7 @@
         ],
         [
           "procedural-gen",
-          7060
+          7640
         ],
         [
           "cull",
@@ -140,7 +140,7 @@
     {
       "name": "density: declares its functions",
       "pass": true,
-      "detail": 11
+      "detail": 12
     },
     {
       "name": "star-sprite: braces and parentheses balance",
@@ -233,220 +233,107 @@
       "detail": 6
     },
     {
-      "name": "density.wgsl GALACTIC_R0 matches the JS model",
+      "name": "density.wgsl declares a DensityParams struct",
+      "pass": true,
+      "detail": 582
+    },
+    {
+      "name": "DensityParams has one vec4 per layout group, in the same order",
       "pass": true,
       "detail": {
-        "wgsl": 8.178,
-        "js": 8.178
+        "wgsl": [
+          "centre",
+          "thin",
+          "thick",
+          "spheroid",
+          "spheroidShape",
+          "halo",
+          "arms",
+          "armShape",
+          "populations",
+          "truncation"
+        ],
+        "js": [
+          "centre",
+          "thin",
+          "thick",
+          "spheroid",
+          "spheroidShape",
+          "halo",
+          "arms",
+          "armShape",
+          "populations",
+          "truncation"
+        ]
       }
     },
     {
-      "name": "density.wgsl GALACTIC_CENTRE_X matches the JS model",
+      "name": "the struct is exactly as large as the packer writes",
       "pass": true,
       "detail": {
-        "wgsl": 8.178,
-        "js": 8.178
+        "floats": 40,
+        "bytes": 160
       }
     },
     {
-      "name": "density.wgsl GALACTIC_CENTRE_Y matches the JS model",
+      "name": "the generated field binds the struct at group 0 binding 5",
       "pass": true,
-      "detail": {
-        "wgsl": 0,
-        "js": 0
-      }
+      "detail": "binding 5"
     },
     {
-      "name": "density.wgsl THIN_L matches the JS model",
+      "name": "DensityParams.centre is read by a mirrored formula",
       "pass": true,
-      "detail": {
-        "wgsl": 2.6,
-        "js": 2.6
-      }
+      "detail": "centre"
     },
     {
-      "name": "density.wgsl THIN_H matches the JS model",
+      "name": "DensityParams.thin is read by a mirrored formula",
       "pass": true,
-      "detail": {
-        "wgsl": 0.3,
-        "js": 0.3
-      }
+      "detail": "thin"
     },
     {
-      "name": "density.wgsl THIN_AMP matches the JS model",
+      "name": "DensityParams.thick is read by a mirrored formula",
       "pass": true,
-      "detail": {
-        "wgsl": 1,
-        "js": 1
-      }
+      "detail": "thick"
     },
     {
-      "name": "density.wgsl THICK_L matches the JS model",
+      "name": "DensityParams.spheroid is read by a mirrored formula",
       "pass": true,
-      "detail": {
-        "wgsl": 3.5,
-        "js": 3.5
-      }
+      "detail": "spheroid"
     },
     {
-      "name": "density.wgsl THICK_H matches the JS model",
+      "name": "DensityParams.spheroidShape is read by a mirrored formula",
       "pass": true,
-      "detail": {
-        "wgsl": 0.9,
-        "js": 0.9
-      }
+      "detail": "spheroidShape"
     },
     {
-      "name": "density.wgsl THICK_AMP matches the JS model",
+      "name": "DensityParams.halo is read by a mirrored formula",
       "pass": true,
-      "detail": {
-        "wgsl": 0.12,
-        "js": 0.12
-      }
+      "detail": "halo"
     },
     {
-      "name": "density.wgsl BULGE_A matches the JS model",
+      "name": "DensityParams.arms is read by a mirrored formula",
       "pass": true,
-      "detail": {
-        "wgsl": 1.5,
-        "js": 1.5
-      }
+      "detail": "arms"
     },
     {
-      "name": "density.wgsl BULGE_B matches the JS model",
+      "name": "DensityParams.armShape is read by a mirrored formula",
       "pass": true,
-      "detail": {
-        "wgsl": 0.5,
-        "js": 0.5
-      }
+      "detail": "armShape"
     },
     {
-      "name": "density.wgsl BULGE_C matches the JS model",
+      "name": "DensityParams.populations is read by a mirrored formula",
       "pass": true,
-      "detail": {
-        "wgsl": 0.4,
-        "js": 0.4
-      }
+      "detail": "populations"
     },
     {
-      "name": "density.wgsl BULGE_R0 matches the JS model",
+      "name": "DensityParams.truncation is read by a mirrored formula",
       "pass": true,
-      "detail": {
-        "wgsl": 1,
-        "js": 1
-      }
+      "detail": "truncation"
     },
     {
-      "name": "density.wgsl BULGE_AMP matches the JS model",
+      "name": "density.wgsl hard-codes no galaxy numbers",
       "pass": true,
-      "detail": {
-        "wgsl": 12,
-        "js": 12
-      }
-    },
-    {
-      "name": "density.wgsl BULGE_TILT_DEG matches the JS model",
-      "pass": true,
-      "detail": {
-        "wgsl": 27,
-        "js": 27
-      }
-    },
-    {
-      "name": "density.wgsl HALO_A_H matches the JS model",
-      "pass": true,
-      "detail": {
-        "wgsl": 1,
-        "js": 1
-      }
-    },
-    {
-      "name": "density.wgsl HALO_POWER matches the JS model",
-      "pass": true,
-      "detail": {
-        "wgsl": 3.5,
-        "js": 3.5
-      }
-    },
-    {
-      "name": "density.wgsl HALO_AMP matches the JS model",
-      "pass": true,
-      "detail": {
-        "wgsl": 0.0008,
-        "js": 0.0008
-      }
-    },
-    {
-      "name": "density.wgsl HALO_RMAX matches the JS model",
-      "pass": true,
-      "detail": {
-        "wgsl": 100,
-        "js": 100
-      }
-    },
-    {
-      "name": "density.wgsl ARMS_M matches the JS model",
-      "pass": true,
-      "detail": {
-        "wgsl": 2,
-        "js": 2
-      }
-    },
-    {
-      "name": "density.wgsl ARMS_AMP matches the JS model",
-      "pass": true,
-      "detail": {
-        "wgsl": 0.2,
-        "js": 0.2
-      }
-    },
-    {
-      "name": "density.wgsl ARMS_PITCH_DEG matches the JS model",
-      "pass": true,
-      "detail": {
-        "wgsl": 12,
-        "js": 12
-      }
-    },
-    {
-      "name": "density.wgsl ARMS_RS matches the JS model",
-      "pass": true,
-      "detail": {
-        "wgsl": 3,
-        "js": 3
-      }
-    },
-    {
-      "name": "density.wgsl ARMS_PHASE0 matches the JS model",
-      "pass": true,
-      "detail": {
-        "wgsl": 0,
-        "js": 0
-      }
-    },
-    {
-      "name": "density.wgsl DISC_RADIUS matches the JS model",
-      "pass": true,
-      "detail": {
-        "wgsl": 25,
-        "js": 25
-      }
-    },
-    {
-      "name": "density.wgsl DISC_HEIGHT matches the JS model",
-      "pass": true,
-      "detail": {
-        "wgsl": 3,
-        "js": 3
-      }
-    },
-    {
-      "name": "density.wgsl BULGE_RADIUS matches the JS model",
-      "pass": true,
-      "detail": {
-        "wgsl": 6,
-        "js": 6
-      }
+      "detail": []
     },
     {
       "name": "density.wgsl component indices match the JS model",
@@ -455,8 +342,27 @@
         "thin": 0,
         "thick": 1,
         "bulge": 2,
-        "halo": 3
+        "halo": 3,
+        "plummer": 0,
+        "sersic": 1
       }
+    },
+    {
+      "name": "packDensityParams fills the struct without leaving holes",
+      "pass": true,
+      "detail": {
+        "first": 8.178000450134277,
+        "pad": 0
+      }
+    },
+    {
+      "name": "the packed centre is the model centre, not a copied constant",
+      "pass": true,
+      "detail": [
+        8.178000450134277,
+        0,
+        0
+      ]
     },
     {
       "name": "star-sprite.wgsl absolute magnitude range matches StarPacked",
@@ -570,7 +476,7 @@
       }
     },
     {
-      "name": "density.wgsl mirrors bulgeEllipsoidRadius",
+      "name": "density.wgsl mirrors spheroidEllipsoidRadius",
       "pass": true,
       "detail": {
         "wgsl": true,
@@ -594,7 +500,7 @@
       }
     },
     {
-      "name": "density.wgsl mirrors rhoBulge",
+      "name": "density.wgsl mirrors rhoSpheroid",
       "pass": true,
       "detail": {
         "wgsl": true,
@@ -635,6 +541,22 @@
     },
     {
       "name": "density.wgsl mirrors rhoDecomposed",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "density.wgsl mirrors insideDisc",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "density.wgsl mirrors sersicBn",
       "pass": true,
       "detail": {
         "wgsl": true,

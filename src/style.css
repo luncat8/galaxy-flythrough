@@ -149,6 +149,39 @@ html, body {
 	min-width: 38px;
 }
 
+/* Galaxy controls: the select and the number field take the row's wide column and
+   the button the narrow one, so they line up with the sliders above them. */
+.menu-row select,
+.menu-row input[type=number] {
+	grid-column: 1;
+	background: #0e1b0e;
+	border: 1px solid #2f5f2f;
+	color: #cdeccd;
+	font-family: inherit;
+	font-size: 11px;
+	padding: 3px 6px;
+	border-radius: 3px;
+}
+.menu-row select { cursor: pointer; }
+.menu-row select option { background: #0e1b0e; }
+.menu-row input[type=number] { width: 76px; }
+.menu-row button {
+	grid-column: 2;
+	background: #1a331a;
+	border: 1px solid #2f5f2f;
+	color: #cdeccd;
+	font-family: inherit;
+	font-size: 11px;
+	padding: 3px 8px;
+	border-radius: 3px;
+	cursor: pointer;
+}
+.menu-row button:hover { background: #244824; }
+.menu-header-galaxy {
+	margin-top: 10px;
+	border-top: 1px solid #1f3f1f;
+}
+
 .menu-actions {
 	margin-top: 8px;
 	padding-top: 8px;

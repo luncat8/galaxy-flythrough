@@ -15,6 +15,9 @@ const path = require('path');
 const density = require('../src/math/density.js');
 const nebula = require('../src/math/nebula.js');
 
+const galaxy = require('../src/math/galaxy.js');
+const model = galaxy.MILKY_WAY;
+
 const SEED = 99;
 const N_NEBULAE = 1200;
 const BOX = { xMin: -20, xMax: 20, yMin: -20, yMax: 20, zMin: -2, zMax: 2 };
@@ -27,7 +30,7 @@ function check(name, pass, detail) {
 
 console.log(`Placing ${N_NEBULAE} nebulae in the box...`);
 const t0 = Date.now();
-const nebulae = nebula.placeNebulae(SEED, N_NEBULAE, BOX);
+const nebulae = nebula.placeNebulae(model, SEED, N_NEBULAE, BOX);
 const placeMs = Date.now() - t0;
 console.log(`  placed ${nebulae.length} in ${placeMs} ms`);
 check('the placer reaches the requested count', nebulae.length === N_NEBULAE, nebulae.length);
@@ -92,8 +95,8 @@ const counts = summary.byType;
 
 // --- Determinism ---------------------------------------------------------
 {
-	const again = nebula.placeNebulae(SEED, 50, BOX);
-	const other = nebula.placeNebulae(SEED + 1, 50, BOX);
+	const again = nebula.placeNebulae(model, SEED, 50, BOX);
+	const other = nebula.placeNebulae(model, SEED + 1, 50, BOX);
 	let identical = true;
 	let differing = 0;
 	for (let i = 0; i < again.length; i++) {
@@ -109,13 +112,13 @@ const counts = summary.byType;
 	// Gas-dominated types must be suppressed in the bulge and the halo, and
 	// must peak on the arm ridge. The ridge point is derived from the arm model
 	// (m * phi - k * ln(R / Rs) = 0) so this probes the real crest.
-	const GC = density.GALACTIC_CENTRE;
+	const GC = model.centre;
 	const armR = 5.0;
-	const k = Math.tan(density.ARMS.pitchDeg * Math.PI / 180);
-	const armPhi = k * Math.log(armR / density.ARMS.Rs) / density.ARMS.m;
-	const centre = nebula.nebulaProbabilityAt(GC.x, GC.y, 0);
-	const arm = nebula.nebulaProbabilityAt(GC.x + armR * Math.cos(armPhi), GC.y + armR * Math.sin(armPhi), 0.02);
-	const halo = nebula.nebulaProbabilityAt(0, 0, 12);
+	const k = Math.tan(model.arms.pitchDeg * Math.PI / 180);
+	const armPhi = k * Math.log(armR / model.arms.Rs) / model.arms.m;
+	const centre = nebula.nebulaProbabilityAt(model, GC.x, GC.y, 0);
+	const arm = nebula.nebulaProbabilityAt(model, GC.x + armR * Math.cos(armPhi), GC.y + armR * Math.sin(armPhi), 0.02);
+	const halo = nebula.nebulaProbabilityAt(model, 0, 0, 12);
 	check('the galactic centre is not a nebula nursery', centre.p < arm.p && centre.p < 0.03, centre.p);
 	check('the halo is strongly suppressed', halo.p < 0.002, halo.p);
 	check('an arm mid-disc position has a real probability', arm.p > 0.01, arm.p);

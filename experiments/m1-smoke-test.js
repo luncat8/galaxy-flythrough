@@ -61,7 +61,7 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 	const BROWSER_GLOBALS = new Set([
 		'devicePixelRatio', 'innerWidth', 'innerHeight', 'addEventListener', 'removeEventListener',
 		'requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'location', 'navigator',
-		'matchMedia', 'Device', 'GalaxyShaders', 'HashLib', 'DensityLib', 'SamplingLib',
+		'matchMedia', 'Device', 'GalaxyShaders', 'HashLib', 'DensityLib', 'GalaxyLib', 'SamplingLib',
 		'StarRecord', 'StarTypesLib', 'NebulaLib', 'Coords', 'Camera', 'Input', 'Loop', 'Selection',
 		'Landmarks', 'Constellations', 'StarRenderer', 'LabelLayer',
 		'TileLoader', 'CellManager', '__galaxy_catalog', 'self', 'document', 'setTimeout',
@@ -69,7 +69,7 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 	const defined = new Set();
 	const undefinedReads = [];
 	const NAMESPACES = ['Device', 'Camera', 'Input', 'Loop', 'Selection', 'StarRenderer', 'LabelLayer',
-		'TileLoader', 'CellManager', 'GalaxyShaders', 'HashLib', 'DensityLib', 'SamplingLib',
+		'TileLoader', 'CellManager', 'GalaxyShaders', 'HashLib', 'DensityLib', 'GalaxyLib', 'SamplingLib',
 		'StarRecord', 'StarTypesLib', 'NebulaLib', 'Coords', 'Landmarks', 'Constellations'];
 	for (const file of scripts) {
 		const text = fs.readFileSync(path.join(SRC, file), 'utf-8');
@@ -94,6 +94,7 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 {
 	const namespaces = [
 		['../src/math/hash.js', 'HashLib'], ['../src/math/density.js', 'DensityLib'],
+		['../src/math/galaxy.js', 'GalaxyLib'],
 		['../src/math/sampling.js', 'SamplingLib'], ['../src/math/star-record.js', 'StarRecord'],
 		['../src/math/star-types.js', 'StarTypesLib'], ['../src/math/nebula.js', 'NebulaLib'],
 		['../src/math/coords.js', 'Coords'],
@@ -126,7 +127,14 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		&& typeof global.window.Loop.createLoop === 'function'
 		&& typeof global.window.StarRenderer.createStarRenderer === 'function'
 		&& typeof global.window.TileLoader.loadCatalog === 'function'
-		&& typeof global.window.CellManager.createCellManager === 'function');
+		&& typeof global.window.CellManager.createCellManager === 'function'
+		&& typeof global.window.GalaxyLib.createGalaxy === 'function'
+		&& typeof global.window.GalaxyLib.packDensityParams === 'function'
+		&& typeof global.window.Camera.createCamera().setFrame === 'function'
+		// The two calls a galaxy change makes on the draw side: rebuild the field,
+		// and silence the label layer for a model that has no named stars.
+		&& typeof global.window.LabelLayer.createLabelLayer({ getContext: () => null },
+			global.window.Landmarks, global.window.Constellations).setEnabled === 'function');
 
 	const mainSrc = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
 	check('main.js reads the wired shader through the same map the validator uses',
@@ -206,9 +214,14 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 	}
 	check('every script evaluates in one shared global scope, in page order (no duplicate top-level names)',
 		failure === null, failure);
-	check('camera.js finds the orbit centre through window.DensityLib when loaded as a page script',
+	check('camera.js finds the orbit centre through window.GalaxyLib when loaded as a page script',
 		failure === null && Array.from(page.Camera.GALACTIC_CENTRE_TARGET).join(',') === '8.178,0,0'
 		&& page.Camera.createCamera().getState().modeName === 'fly');
+	check('the page scope builds a model per type, so ?type=Sc boots',
+		failure === null && page.GalaxyLib && page.GalaxyLib.GALAXY_TYPES.length === 4
+		&& page.GalaxyLib.createGalaxy({ type: 'Sc' }).arms.pitchDeg === 15
+		&& page.GalaxyLib.createGalaxy({ type: 'E4' }).thin.amp === 0,
+		failure || (page.GalaxyLib && page.GalaxyLib.GALAXY_TYPES));
 	check('the page scope bakes the landmark table and resolves every constellation edge',
 		failure === null && page.Landmarks && page.Constellations
 		&& page.Landmarks.count >= 30 && page.Landmarks.count <= 60
@@ -221,10 +234,12 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 	const sampling = require('../src/math/sampling.js');
 	const starTypes = require('../src/math/star-types.js');
 	const records = require('../src/math/star-record.js');
-	const buf = sampling.sampleGalaxyStars(99, 500);
+	const galaxy = require('../src/math/galaxy.js');
+	const model = galaxy.MILKY_WAY;
+	const buf = sampling.sampleGalaxyStars(model, 99, 500);
 	check('the end-to-end sample has the requested stars', buf.count === 500, buf.count);
 	const record = {};
-	starTypes.deriveStar(1234, buf.component[0], buf.R[0], buf.distToArm[0], record);
+	starTypes.deriveStar(model, 1234, buf.component[0], buf.R[0], buf.distToArm[0], record);
 	check('a sampled star derives a complete record',
 		Number.isFinite(record.mass) && Number.isFinite(record.absMag)
 		&& typeof record.spectralClass === 'string' && Number.isFinite(record.teff),

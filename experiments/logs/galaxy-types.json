@@ -1,0 +1,1354 @@
+{
+  "date": "2026-09-21T16:07:17.990Z",
+  "types": [
+    "E4",
+    "S0",
+    "SBb",
+    "Sc"
+  ],
+  "perType": [
+    {
+      "type": "SBb",
+      "T": 3,
+      "scaleKpc": 1,
+      "pitchDeg": 12,
+      "gasFraction": 0.15,
+      "gasRich": true,
+      "fromPreset": true,
+      "totalMass": 81.3514,
+      "delivered": {
+        "thin": 50.92849,
+        "thick": 15.92902,
+        "bulge": 14.47246,
+        "halo": 0.02145,
+        "total": 81.35141
+      },
+      "truncationFractions": {
+        "thin": 0.9992,
+        "thick": 0.95812,
+        "bulge": 0.95973,
+        "halo": 1
+      },
+      "home": [
+        0,
+        0,
+        0.005,
+        0,
+        0
+      ]
+    },
+    {
+      "type": "E4",
+      "T": -2,
+      "scaleKpc": 1.5,
+      "pitchDeg": 0,
+      "gasFraction": 0,
+      "gasRich": false,
+      "fromPreset": false,
+      "totalMass": 13.1479,
+      "delivered": {
+        "thin": 0,
+        "thick": 0,
+        "bulge": 13.14787,
+        "halo": 0,
+        "total": 13.14787
+      },
+      "truncationFractions": {
+        "thin": 0,
+        "thick": 0,
+        "bulge": 0.63596,
+        "halo": 0
+      },
+      "home": [
+        0,
+        -6,
+        1.8,
+        1.5708,
+        -0.2915
+      ]
+    },
+    {
+      "type": "S0",
+      "T": 0,
+      "scaleKpc": 1,
+      "pitchDeg": 0,
+      "gasFraction": 0.02,
+      "gasRich": false,
+      "fromPreset": false,
+      "totalMass": 45.9265,
+      "delivered": {
+        "thin": 17.33795,
+        "thick": 6.82542,
+        "bulge": 21.75024,
+        "halo": 0.01287,
+        "total": 45.92649
+      },
+      "truncationFractions": {
+        "thin": 0.99838,
+        "thick": 0.91707,
+        "bulge": 0.87672,
+        "halo": 1
+      },
+      "home": [
+        0,
+        -9.1,
+        1.3,
+        1.5708,
+        -0.1419
+      ]
+    },
+    {
+      "type": "Sc",
+      "T": 5,
+      "scaleKpc": 1.4,
+      "pitchDeg": 15,
+      "gasFraction": 0.3,
+      "gasRich": true,
+      "fromPreset": false,
+      "totalMass": 107.2933,
+      "delivered": {
+        "thin": 81.6454,
+        "thick": 20.21103,
+        "bulge": 5.36033,
+        "halo": 0.0765,
+        "total": 107.29326
+      },
+      "truncationFractions": {
+        "thin": 0.99929,
+        "thick": 0.98948,
+        "bulge": 0.99723,
+        "halo": 1
+      },
+      "home": [
+        0,
+        -12.74,
+        1.82,
+        1.5708,
+        -0.1419
+      ]
+    }
+  ],
+  "totalChecks": 145,
+  "passed": 145,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "E4: every documented spec field is authored",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "S0: every documented spec field is authored",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "SBb: every documented spec field is authored",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "Sc: every documented spec field is authored",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "the cycle walks every type once and returns to the start",
+      "pass": true,
+      "detail": {
+        "cycle": [
+          "E4",
+          "S0",
+          "SBb",
+          "Sc"
+        ],
+        "endedAt": "E4"
+      }
+    },
+    {
+      "name": "an unknown type is an error, not a silent fallback",
+      "pass": true
+    },
+    {
+      "name": "the default model is the Milky Way preset",
+      "pass": true
+    },
+    {
+      "name": "the label names the type and the seed, for the overlay",
+      "pass": true,
+      "detail": "galaxy Sc #42"
+    },
+    {
+      "name": "the Milky Way preset keeps centre.x",
+      "pass": true,
+      "detail": {
+        "preset": 8.178,
+        "expected": 8.178
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps thin.L",
+      "pass": true,
+      "detail": {
+        "preset": 2.6,
+        "expected": 2.6
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps thin.H",
+      "pass": true,
+      "detail": {
+        "preset": 0.3,
+        "expected": 0.3
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps thin.amp",
+      "pass": true,
+      "detail": {
+        "preset": 1,
+        "expected": 1
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps thick.L",
+      "pass": true,
+      "detail": {
+        "preset": 3.5,
+        "expected": 3.5
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps thick.H",
+      "pass": true,
+      "detail": {
+        "preset": 0.9,
+        "expected": 0.9
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps thick.amp",
+      "pass": true,
+      "detail": {
+        "preset": 0.12,
+        "expected": 0.12
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps spheroid.a",
+      "pass": true,
+      "detail": {
+        "preset": 1.5,
+        "expected": 1.5
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps spheroid.b",
+      "pass": true,
+      "detail": {
+        "preset": 0.5,
+        "expected": 0.5
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps spheroid.c",
+      "pass": true,
+      "detail": {
+        "preset": 0.4,
+        "expected": 0.4
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps spheroid.r0",
+      "pass": true,
+      "detail": {
+        "preset": 1,
+        "expected": 1
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps spheroid.amp",
+      "pass": true,
+      "detail": {
+        "preset": 12,
+        "expected": 12
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps spheroid.tiltDeg",
+      "pass": true,
+      "detail": {
+        "preset": 27,
+        "expected": 27
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps spheroid.profile",
+      "pass": true,
+      "detail": {
+        "preset": "plummer",
+        "expected": "plummer"
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps spheroid.profileId",
+      "pass": true,
+      "detail": {
+        "preset": 0,
+        "expected": 0
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps halo.a_h",
+      "pass": true,
+      "detail": {
+        "preset": 1,
+        "expected": 1
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps halo.rMax",
+      "pass": true,
+      "detail": {
+        "preset": 100,
+        "expected": 100
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps halo.power",
+      "pass": true,
+      "detail": {
+        "preset": 3.5,
+        "expected": 3.5
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps halo.amp",
+      "pass": true,
+      "detail": {
+        "preset": 0.0008,
+        "expected": 0.0008
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps arms.m",
+      "pass": true,
+      "detail": {
+        "preset": 2,
+        "expected": 2
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps arms.amp",
+      "pass": true,
+      "detail": {
+        "preset": 0.2,
+        "expected": 0.2
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps arms.pitchDeg",
+      "pass": true,
+      "detail": {
+        "preset": 12,
+        "expected": 12
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps arms.Rs",
+      "pass": true,
+      "detail": {
+        "preset": 3,
+        "expected": 3
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps arms.phase0",
+      "pass": true,
+      "detail": {
+        "preset": 0,
+        "expected": 0
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps arms.minRadius",
+      "pass": true,
+      "detail": {
+        "preset": 0.5,
+        "expected": 0.5
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps truncation.discRadius",
+      "pass": true,
+      "detail": {
+        "preset": 25,
+        "expected": 25
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps truncation.discHeight",
+      "pass": true,
+      "detail": {
+        "preset": 3,
+        "expected": 3
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps truncation.spheroidRadius",
+      "pass": true,
+      "detail": {
+        "preset": 6,
+        "expected": 6
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps populations.gasFraction",
+      "pass": true,
+      "detail": {
+        "preset": 0.15,
+        "expected": 0.15
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps populations.youngScaleHeight",
+      "pass": true,
+      "detail": {
+        "preset": 0.5,
+        "expected": 0.5
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps populations.youngOuterR",
+      "pass": true,
+      "detail": {
+        "preset": 12,
+        "expected": 12
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps populations.gasRich",
+      "pass": true,
+      "detail": {
+        "preset": true,
+        "expected": true
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps home.position",
+      "pass": true,
+      "detail": {
+        "preset": "0,0,0.005",
+        "expected": "0,0,0.005"
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps home.orbitTarget",
+      "pass": true,
+      "detail": {
+        "preset": "0,0,0",
+        "expected": "0,0,0"
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps home.orbitDistance",
+      "pass": true,
+      "detail": {
+        "preset": 0.01,
+        "expected": 0.01
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps home.orbitName",
+      "pass": true,
+      "detail": {
+        "preset": "Sun",
+        "expected": "Sun"
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps seed",
+      "pass": true,
+      "detail": {
+        "preset": 42,
+        "expected": 42
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps scaleKpc",
+      "pass": true,
+      "detail": {
+        "preset": 1,
+        "expected": 1
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps T",
+      "pass": true,
+      "detail": {
+        "preset": 3,
+        "expected": 3
+      }
+    },
+    {
+      "name": "the preset is bulgier than the anchor curve, and is left that way",
+      "pass": true,
+      "detail": {
+        "bulgeShare": 0.1824,
+        "anchorBT": 0.15
+      }
+    },
+    {
+      "name": "the preset is not re-solved: its disc amplitude is the authored 1.0",
+      "pass": true,
+      "detail": 50.9691992118408
+    },
+    {
+      "name": "the four types are in sequence order with no duplicates",
+      "pass": true,
+      "detail": [
+        -2,
+        0,
+        3,
+        5
+      ]
+    },
+    {
+      "name": "B/T falls and pitch, gas and Sersic index rise along the sequence",
+      "pass": true,
+      "detail": {
+        "early": {
+          "T": -2,
+          "bT": 1,
+          "pitch": 0,
+          "gas": 0,
+          "n": 4
+        },
+        "late": {
+          "T": 6,
+          "bT": 0.02,
+          "pitch": 22,
+          "gas": 0.45,
+          "n": 1
+        }
+      }
+    },
+    {
+      "name": "the curves clamp outside their anchors instead of extrapolating",
+      "pass": true,
+      "detail": {
+        "belowE": 1,
+        "aboveSc": 22
+      }
+    },
+    {
+      "name": "the early end of the table is a pure bulge with no arm contrast",
+      "pass": true
+    },
+    {
+      "name": "S0 sits on the quenched side of the star-forming threshold",
+      "pass": true,
+      "detail": {
+        "gasFraction": 0.02,
+        "youngScaleHeight": 0.5,
+        "youngOuterR": 12,
+        "spheroidOld": true,
+        "gasRich": false
+      }
+    },
+    {
+      "name": "the Sb and Sc rows are star-forming",
+      "pass": true,
+      "detail": {
+        "SBb": 0.15,
+        "Sc": 0.3
+      }
+    },
+    {
+      "name": "SBb: the halo amplitude is the preset's ratio times the mass",
+      "pass": true,
+      "detail": {
+        "amp": 0.0008,
+        "halo": true,
+        "massTotal": 1
+      }
+    },
+    {
+      "name": "E4: the components add up to the authored mass",
+      "pass": true,
+      "detail": {
+        "components": 20.6739,
+        "authored": 20.6739
+      }
+    },
+    {
+      "name": "E4: the spheroid mass matches the B/T anchor",
+      "pass": true,
+      "detail": {
+        "solved": 1,
+        "bT": 1
+      }
+    },
+    {
+      "name": "E4: the thick disc takes its share of the disc, not of the halo",
+      "pass": true,
+      "detail": {
+        "share": null,
+        "authored": 0
+      }
+    },
+    {
+      "name": "E4: the halo amplitude is the preset's ratio times the mass",
+      "pass": true,
+      "detail": {
+        "amp": 0,
+        "halo": false,
+        "massTotal": 0.25
+      }
+    },
+    {
+      "name": "S0: the components add up to the authored mass",
+      "pass": true,
+      "detail": {
+        "components": 49.6174,
+        "authored": 49.6174
+      }
+    },
+    {
+      "name": "S0: the spheroid mass matches the B/T anchor",
+      "pass": true,
+      "detail": {
+        "solved": 0.5,
+        "bT": 0.5
+      }
+    },
+    {
+      "name": "S0: the thick disc takes its share of the disc, not of the halo",
+      "pass": true,
+      "detail": {
+        "share": 0.3,
+        "authored": 0.3
+      }
+    },
+    {
+      "name": "S0: the halo amplitude is the preset's ratio times the mass",
+      "pass": true,
+      "detail": {
+        "amp": 0.00048,
+        "halo": true,
+        "massTotal": 0.6
+      }
+    },
+    {
+      "name": "Sc: the components add up to the authored mass",
+      "pass": true,
+      "detail": {
+        "components": 107.5043,
+        "authored": 107.5043
+      }
+    },
+    {
+      "name": "Sc: the spheroid mass matches the B/T anchor",
+      "pass": true,
+      "detail": {
+        "solved": 0.05,
+        "bT": 0.05
+      }
+    },
+    {
+      "name": "Sc: the thick disc takes its share of the disc, not of the halo",
+      "pass": true,
+      "detail": {
+        "share": 0.2,
+        "authored": 0.2
+      }
+    },
+    {
+      "name": "Sc: the halo amplitude is the preset's ratio times the mass",
+      "pass": true,
+      "detail": {
+        "amp": 0.0010400000000000001,
+        "halo": true,
+        "massTotal": 1.3
+      }
+    },
+    {
+      "name": "an E4 has no disc and no halo: its field is the spheroid alone",
+      "pass": true,
+      "detail": {
+        "thin": 0,
+        "arms": 0,
+        "gas": 0
+      }
+    },
+    {
+      "name": "a bulge-only type reads as a smooth sphere everywhere",
+      "pass": true,
+      "detail": {
+        "armFactorE4": 1,
+        "dist": 99
+      }
+    },
+    {
+      "name": "lengths scale with scaleKpc and the disc truncation follows",
+      "pass": true,
+      "detail": {
+        "L": 3.6399999999999997,
+        "discRadius": 35
+      }
+    },
+    {
+      "name": "the spheroid cut is in units of s, so scaleKpc does not move it",
+      "pass": true,
+      "detail": {
+        "Sc": 6,
+        "E4": 8
+      }
+    },
+    {
+      "name": "SBb: delivered mass is the model mass times what the box keeps",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "SBb: every truncation fraction is a fraction",
+      "pass": true,
+      "detail": {
+        "thin": 0.9992012783320011,
+        "thick": 0.9581187850147849,
+        "bulge": 0.9597346285934372,
+        "halo": 1
+      }
+    },
+    {
+      "name": "SBb: a component with no amplitude delivers nothing",
+      "pass": true,
+      "detail": {
+        "amps": {
+          "thin": 1,
+          "thick": 0.12,
+          "bulge": 12,
+          "halo": 0.0008
+        },
+        "delivered": {
+          "thin": 50.92849,
+          "thick": 15.92902,
+          "bulge": 14.47246,
+          "halo": 0.02145
+        }
+      }
+    },
+    {
+      "name": "E4: delivered mass is the model mass times what the box keeps",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "E4: every truncation fraction is a fraction",
+      "pass": true,
+      "detail": {
+        "thin": 0,
+        "thick": 0,
+        "bulge": 0.6359647296520806,
+        "halo": 0
+      }
+    },
+    {
+      "name": "E4: a component with no amplitude delivers nothing",
+      "pass": true,
+      "detail": {
+        "amps": {
+          "thin": 0,
+          "thick": 0,
+          "bulge": 0.1926147653582489,
+          "halo": 0
+        },
+        "delivered": {
+          "thin": 0,
+          "thick": 0,
+          "bulge": 13.14787,
+          "halo": 0
+        }
+      }
+    },
+    {
+      "name": "S0: delivered mass is the model mass times what the box keeps",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "S0: every truncation fraction is a fraction",
+      "pass": true,
+      "detail": {
+        "thin": 0.9983804241097937,
+        "thick": 0.9170747229224394,
+        "bulge": 0.8767191352030697,
+        "halo": 1
+      }
+    },
+    {
+      "name": "S0: a component with no amplitude delivers nothing",
+      "pass": true,
+      "detail": {
+        "amps": {
+          "thin": 0.262090047033834,
+          "thick": 0.04133256568970822,
+          "bulge": 1.45750877384201,
+          "halo": 0.00048
+        },
+        "delivered": {
+          "thin": 17.33795,
+          "thick": 6.82542,
+          "bulge": 21.75024,
+          "halo": 0.01287
+        }
+      }
+    },
+    {
+      "name": "Sc: delivered mass is the model mass times what the box keeps",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "Sc: every truncation fraction is a fraction",
+      "pass": true,
+      "detail": {
+        "thin": 0.9992918711042633,
+        "thick": 0.9894849023125957,
+        "bulge": 0.9972306042844884,
+        "halo": 1
+      }
+    },
+    {
+      "name": "Sc: a component with no amplitude delivers nothing",
+      "pass": true,
+      "detail": {
+        "amps": {
+          "thin": 0.9629357056190428,
+          "thick": 0.08858412922877562,
+          "bulge": 0.7512610231550354,
+          "halo": 0.0010400000000000001
+        },
+        "delivered": {
+          "thin": 81.6454,
+          "thick": 20.21103,
+          "bulge": 5.36033,
+          "halo": 0.0765
+        }
+      }
+    },
+    {
+      "name": "SBb: the sampled mix follows the delivered masses",
+      "pass": true,
+      "detail": {
+        "worst": 0.0041,
+        "sampled": {
+          "thin": 0.6301,
+          "thick": 0.19555,
+          "bulge": 0.174,
+          "halo": 0.00035
+        },
+        "model": {
+          "thin": 0.6260307853143772,
+          "thick": 0.19580508328535956,
+          "bulge": 0.177900502226039,
+          "halo": 0.00026362917422410566
+        }
+      }
+    },
+    {
+      "name": "SBb: no sampled star sits outside its component's truncation",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "E4: the sampled mix follows the delivered masses",
+      "pass": true,
+      "detail": {
+        "worst": 0,
+        "sampled": {
+          "thin": 0,
+          "thick": 0,
+          "bulge": 1,
+          "halo": 0
+        },
+        "model": {
+          "thin": 0,
+          "thick": 0,
+          "bulge": 1,
+          "halo": 0
+        }
+      }
+    },
+    {
+      "name": "E4: no sampled star sits outside its component's truncation",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "S0: the sampled mix follows the delivered masses",
+      "pass": true,
+      "detail": {
+        "worst": 0.0028,
+        "sampled": {
+          "thin": 0.38035,
+          "thick": 0.14795,
+          "bulge": 0.47135,
+          "halo": 0.00035
+        },
+        "model": {
+          "thin": 0.37751527592073475,
+          "thick": 0.1486162883849872,
+          "bulge": 0.4735882495840182,
+          "halo": 0.00028018611026007383
+        }
+      }
+    },
+    {
+      "name": "S0: no sampled star sits outside its component's truncation",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "Sc: the sampled mix follows the delivered masses",
+      "pass": true,
+      "detail": {
+        "worst": 0.0041,
+        "sampled": {
+          "thin": 0.7651,
+          "thick": 0.18555,
+          "bulge": 0.0486,
+          "halo": 0.00075
+        },
+        "model": {
+          "thin": 0.7609554836165797,
+          "thick": 0.18837188216555206,
+          "bulge": 0.04995959472478582,
+          "halo": 0.0007130394930822336
+        }
+      }
+    },
+    {
+      "name": "Sc: no sampled star sits outside its component's truncation",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "an E4 puts every star in its one component, because it has nothing else",
+      "pass": true,
+      "detail": {
+        "thin": 1,
+        "thick": 0,
+        "bulge": 0,
+        "halo": 0
+      }
+    },
+    {
+      "name": "the table types are Sersic while the preset stayed Plummer",
+      "pass": true,
+      "detail": {
+        "sersic": [
+          "E4",
+          "S0",
+          "Sc"
+        ],
+        "preset": "plummer"
+      }
+    },
+    {
+      "name": "the Sersic index follows the anchor curve per type",
+      "pass": true,
+      "detail": [
+        [
+          "E4",
+          4
+        ],
+        [
+          "S0",
+          2.5
+        ],
+        [
+          "Sc",
+          1
+        ]
+      ]
+    },
+    {
+      "name": "E4: b_n is the standard approximation 2n - 1/3",
+      "pass": true,
+      "detail": {
+        "n": 4,
+        "bn": 7.6667
+      }
+    },
+    {
+      "name": "E4: the inverse CDF round-trips the enclosed-mass fraction",
+      "pass": true,
+      "detail": {
+        "worstError": 1.29e-10
+      }
+    },
+    {
+      "name": "E4: the radius found is inside the cut",
+      "pass": true,
+      "detail": {
+        "sMax": 8,
+        "enclosed": 25385676.9206
+      }
+    },
+    {
+      "name": "E4: the spheroid falls with radius and dies just past the cut",
+      "pass": true,
+      "detail": {
+        "atCut": 0,
+        "centre": 411.4155
+      }
+    },
+    {
+      "name": "S0: b_n is the standard approximation 2n - 1/3",
+      "pass": true,
+      "detail": {
+        "n": 2.5,
+        "bn": 4.6667
+      }
+    },
+    {
+      "name": "S0: the inverse CDF round-trips the enclosed-mass fraction",
+      "pass": true,
+      "detail": {
+        "worstError": 1.31e-10
+      }
+    },
+    {
+      "name": "S0: the radius found is inside the cut",
+      "pass": true,
+      "detail": {
+        "sMax": 8,
+        "enclosed": 1640.5645
+      }
+    },
+    {
+      "name": "S0: the spheroid falls with radius and dies just past the cut",
+      "pass": true,
+      "detail": {
+        "atCut": 0,
+        "centre": 154.9954
+      }
+    },
+    {
+      "name": "Sc: b_n is the standard approximation 2n - 1/3",
+      "pass": true,
+      "detail": {
+        "n": 1,
+        "bn": 1.6667
+      }
+    },
+    {
+      "name": "Sc: the inverse CDF round-trips the enclosed-mass fraction",
+      "pass": true,
+      "detail": {
+        "worstError": 1.96e-10
+      }
+    },
+    {
+      "name": "Sc: the radius found is inside the cut",
+      "pass": true,
+      "detail": {
+        "sMax": 6,
+        "enclosed": 1.9945
+      }
+    },
+    {
+      "name": "Sc: the spheroid falls with radius and dies just past the cut",
+      "pass": true,
+      "detail": {
+        "atCut": 0,
+        "centre": 3.9775
+      }
+    },
+    {
+      "name": "a Sersic spheroid is centrally steeper than the Plummer bulge it replaces",
+      "pass": true,
+      "detail": {
+        "E4": 9111.2,
+        "MW": 55.9
+      }
+    },
+    {
+      "name": "a Plummer bulge delivers almost all of its mass inside the cut",
+      "pass": true,
+      "detail": 0.9597
+    },
+    {
+      "name": "the layout, the packer and the struct agree on the size",
+      "pass": true,
+      "detail": {
+        "floats": 40,
+        "bytes": 160
+      }
+    },
+    {
+      "name": "packDensityParams writes into the caller and returns it, never a new array",
+      "pass": true
+    },
+    {
+      "name": "repacking a different model overwrites every slot",
+      "pass": true,
+      "detail": {
+        "changed": 26
+      }
+    },
+    {
+      "name": "the struct carries the spheroid amplitude, index and profile selector",
+      "pass": true,
+      "detail": {
+        "e4n": 4,
+        "preset": 0
+      }
+    },
+    {
+      "name": "the boolean population flag arrives as 1.0 or 0.0",
+      "pass": true,
+      "detail": {
+        "SBb": 1,
+        "S0": 0
+      }
+    },
+    {
+      "name": "SBb: padding slots are zero, never stale memory",
+      "pass": true,
+      "detail": 6
+    },
+    {
+      "name": "E4: padding slots are zero, never stale memory",
+      "pass": true,
+      "detail": 6
+    },
+    {
+      "name": "S0: padding slots are zero, never stale memory",
+      "pass": true,
+      "detail": 6
+    },
+    {
+      "name": "Sc: padding slots are zero, never stale memory",
+      "pass": true,
+      "detail": 6
+    },
+    {
+      "name": "SBb: an arm inside the star-forming annulus is young",
+      "pass": true,
+      "detail": {
+        "onArm": 0.0375,
+        "offArm": 2.7752279866537304
+      }
+    },
+    {
+      "name": "E4: a quenched thin disc has nothing young, on an arm or off",
+      "pass": true,
+      "detail": {
+        "onArm": 5.619600457068332,
+        "offArm": 5.619600457068332
+      }
+    },
+    {
+      "name": "S0: a quenched thin disc has nothing young, on an arm or off",
+      "pass": true,
+      "detail": {
+        "onArm": 5.619600457068332,
+        "offArm": 5.619600457068332
+      }
+    },
+    {
+      "name": "Sc: an arm inside the star-forming annulus is young",
+      "pass": true,
+      "detail": {
+        "onArm": 0.0375,
+        "offArm": 2.7752279866537304
+      }
+    },
+    {
+      "name": "arm youth stops at the model outer radius, not at a hard-coded 12",
+      "pass": true,
+      "detail": {
+        "ScOuter": 16.8
+      }
+    },
+    {
+      "name": "inside the co-radius the annulus has not started yet",
+      "pass": true,
+      "detail": 3
+    },
+    {
+      "name": "the spheroid and the halo stay old in every type",
+      "pass": true
+    },
+    {
+      "name": "a young thick disc is older than a young thin one",
+      "pass": true
+    },
+    {
+      "name": "an override can quench a type, and the population follows the model",
+      "pass": true,
+      "detail": {
+        "gasFraction": 0.01,
+        "youngScaleHeight": 0.6,
+        "youngOuterR": 16.799999999999997,
+        "spheroidOld": true,
+        "gasRich": false
+      }
+    },
+    {
+      "name": "SBb: the arm ridge is favoured, and gas nebulae are placed on it",
+      "pass": true,
+      "detail": {
+        "onRidge": 0.048758665952147374,
+        "offRidge": 0.005,
+        "gasSeen": [
+          "HII",
+          "reflection",
+          "dark"
+        ]
+      }
+    },
+    {
+      "name": "E4: a quenched disc shows no arm response and hosts no gas nebula",
+      "pass": true,
+      "detail": {
+        "onRidge": 0.005,
+        "offRidge": 0.005,
+        "gasSeen": []
+      }
+    },
+    {
+      "name": "S0: a quenched disc shows no arm response and hosts no gas nebula",
+      "pass": true,
+      "detail": {
+        "onRidge": 0.005,
+        "offRidge": 0.005,
+        "gasSeen": []
+      }
+    },
+    {
+      "name": "Sc: the arm ridge is favoured, and gas nebulae are placed on it",
+      "pass": true,
+      "detail": {
+        "onRidge": 0.06905239408231251,
+        "offRidge": 0.005,
+        "gasSeen": [
+          "HII",
+          "reflection",
+          "dark"
+        ]
+      }
+    },
+    {
+      "name": "a thinner gas reservoir thins the nebulae, without changing the type",
+      "pass": true,
+      "detail": {
+        "thin": 0.06,
+        "rich": 0.3
+      }
+    },
+    {
+      "name": "SBb: the preset keeps its authored level view over the Sun",
+      "pass": true,
+      "detail": {
+        "yaw": 0,
+        "pitch": 0
+      }
+    },
+    {
+      "name": "SBb: the home view frames the body it was derived from",
+      "pass": true,
+      "detail": {
+        "distance": 8.178,
+        "span": 9
+      }
+    },
+    {
+      "name": "E4: the home view looks at the model centre",
+      "pass": true,
+      "detail": {
+        "yaw": 1.5708,
+        "pitch": -0.2915
+      }
+    },
+    {
+      "name": "E4: the home view frames the body it was derived from",
+      "pass": true,
+      "detail": {
+        "distance": 6.264,
+        "span": 12
+      }
+    },
+    {
+      "name": "S0: the home view looks at the model centre",
+      "pass": true,
+      "detail": {
+        "yaw": 1.5708,
+        "pitch": -0.1419
+      }
+    },
+    {
+      "name": "S0: the home view frames the body it was derived from",
+      "pass": true,
+      "detail": {
+        "distance": 9.192,
+        "span": 7.2
+      }
+    },
+    {
+      "name": "Sc: the home view looks at the model centre",
+      "pass": true,
+      "detail": {
+        "yaw": 1.5708,
+        "pitch": -0.1419
+      }
+    },
+    {
+      "name": "Sc: the home view frames the body it was derived from",
+      "pass": true,
+      "detail": {
+        "distance": 12.869,
+        "span": 5.04
+      }
+    },
+    {
+      "name": "only the Milky Way preset orbits the Sun",
+      "pass": true,
+      "detail": {
+        "E4": "galaxy centre",
+        "E4distance": 6.264
+      }
+    },
+    {
+      "name": "a structural override drops the model out of catalog mode",
+      "pass": true
+    },
+    {
+      "name": "an override lands verbatim, on the group it names and no further",
+      "pass": true,
+      "detail": {
+        "base": {
+          "L": 2.6,
+          "H": 0.23399999999999999,
+          "amp": 1.333123104317335
+        },
+        "tweaked": {
+          "L": 2.6,
+          "H": 0.5,
+          "amp": 1.333123104317335
+        }
+      }
+    },
+    {
+      "name": "a profile override re-syncs the numeric selector the hot path reads",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "an override outside the allowed list is refused",
+      "pass": true
+    }
+  ]
+}

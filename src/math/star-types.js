@@ -1,6 +1,6 @@
 // src/math/star-types.js
 // Stellar populations: mass, age, evolution state, colour — a pure function of
-// (seed, density component, position in the disc). Mirrored in WGSL by
+// (model, seed, density component, position in the disc). Mirrored in WGSL by
 // src/render/shaders.js (procedural-gen) and validated by
 // experiments/wgsl-validate.js.
 //
@@ -13,6 +13,11 @@
 //   - O/B stars therefore only exist near spiral arms, red giants and
 //     planetary nebulae concentrate in the bulge, and the halo is old and
 //     metal-poor.
+//
+// The galaxy's own gas budget is what makes a type young or old: no gas means
+// no star formation, so the arm-young branch and the quiescent-disc prior both
+// read `model.populations.gasFraction`. An E4 therefore has no O/B stars twice
+// over — nothing is born young there, and anything that was would have died.
 //
 // deriveStar mutates a caller-provided record: the renderer derives millions
 // of stars and must not allocate per star.
@@ -98,16 +103,20 @@
 		return Math.pow(xMin + (xMax - xMin) * u, 1 / (1 - alpha));
 	}
 
-	// Age in Gyr for a population. u1, u2 are independent uniforms.
-	function sampleLocalAge(componentIndex, distToArm, R, u1, u2) {
+	// Age in Gyr for a population. u1, u2 are independent uniforms. The radius
+	// window for the arm-young branch is the model's: the ridge only means
+	// something between the arm reference radius and youngOuterR, and the
+	// distance-to-arm cut is a physical scale (a few hundred pc), not a length
+	// that scales with the galaxy.
+	function sampleLocalAge(model, componentIndex, distToArm, R, u1, u2) {
 		const logNormal = (mean, sigma) => Math.min(13.5, Math.exp(Math.log(mean) + sigma * gaussian(u1, u2)));
 		switch (componentIndex) {
 			case density.COMPONENT_BULGE: return logNormal(10, 0.3);
 			case density.COMPONENT_HALO: return logNormal(12, 0.25);
 			case density.COMPONENT_THICK: return logNormal(8, 0.4);
 			default:
-				// Thin disc: young in the arms, mixed elsewhere.
-				if (distToArm < 0.5 && R > 3.0 && R < 12.0) return Math.pow(u1, 3.0) * 0.3;
+				if (!model.populations.gasRich) return logNormal(9, 0.4);
+				if (distToArm < 0.5 && R > model.arms.Rs && R < model.populations.youngOuterR) return Math.pow(u1, 3.0) * 0.3;
 				return logNormal(5, 0.5);
 		}
 	}
@@ -132,7 +141,7 @@
 	}
 
 	// Core derivation. `out` is mutated in place and returned.
-	function deriveStar(seed, componentIndex, R, distToArm, out) {
+	function deriveStar(model, seed, componentIndex, R, distToArm, out) {
 		const uMass = hash.hash01(seed * 31 + 1);
 		const uAge1 = hash.hash01(seed * 31 + 2);
 		const uAge2 = hash.hash01(seed * 31 + 3);
@@ -140,7 +149,7 @@
 		const uEvolve2 = hash.hash01(seed * 31 + 5);
 
 		const mass = sampleMassIMF(uMass);
-		const age = sampleLocalAge(componentIndex, distToArm, R, uAge1, uAge2);
+		const age = sampleLocalAge(model, componentIndex, distToArm, R, uAge1, uAge2);
 		const tMS = msLifetimeGyr(mass);
 
 		let state = 'ms';
@@ -180,10 +189,10 @@
 	// Convenience wrapper for the model experiments: takes a position, works
 	// out the local population, and returns a full record (allocates one
 	// object — never call this from the render loop).
-	function deriveStarProps(x, y, z, seed) {
-		const d = density.rhoDecomposed(x, y, z);
+	function deriveStarProps(model, x, y, z, seed) {
+		const d = density.rhoDecomposed(model, x, y, z);
 		const componentIndex = density.sampleComponentIndex(d, hash.hash01(seed * 31 + 7));
-		const out = deriveStar(seed, componentIndex, d.R, d.distToArm, {
+		const out = deriveStar(model, seed, componentIndex, d.R, d.distToArm, {
 			x, y, z, phi: d.phi, zp: d.zp, componentName: density.COMPONENT_NAMES[componentIndex],
 		});
 		out.color = classColor(out.spectralClass);

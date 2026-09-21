@@ -1,9 +1,9 @@
 {
-  "date": "2026-09-21T14:28:49.118Z",
+  "date": "2026-09-21T16:07:23.119Z",
   "seed": 99,
   "targetN": 1200,
   "placedN": 1200,
-  "placeMs": 586,
+  "placeMs": 712,
   "box": {
     "xMin": -20,
     "xMax": 20,
@@ -13,25 +13,25 @@
     "zMax": 2
   },
   "byType": {
-    "SNR": 285,
-    "planetary": 781,
-    "dark": 53,
+    "SNR": 294,
+    "planetary": 777,
+    "dark": 52,
     "reflection": 35,
-    "HII": 46
+    "HII": 42
   },
   "byComponent": {
-    "thin": 614,
-    "thick": 161,
-    "bulge": 425
+    "thin": 619,
+    "thick": 166,
+    "bulge": 415
   },
   "armDistBuckets": [
-    171,
-    254,
-    231,
-    194,
-    350
+    167,
+    253,
+    230,
+    199,
+    351
   ],
-  "meanSizeKpc": 0.1707327611538342,
+  "meanSizeKpc": 0.17083840644534146,
   "totalChecks": 20,
   "passed": 20,
   "failed": 0,
@@ -45,39 +45,39 @@
       "name": "all five nebula types are present",
       "pass": true,
       "detail": {
-        "SNR": 285,
-        "planetary": 781,
-        "dark": 53,
+        "SNR": 294,
+        "planetary": 777,
+        "dark": 52,
         "reflection": 35,
-        "HII": 46
+        "HII": 42
       }
     },
     {
       "name": "HII regions are present but not dominant",
       "pass": true,
-      "detail": 0.03833333333333333
+      "detail": 0.035
     },
     {
       "name": "planetary nebulae are present",
       "pass": true,
-      "detail": 781
+      "detail": 777
     },
     {
       "name": "HII regions sit on the arm ridges (mean distance-to-arm < 0.35 kpc)",
       "pass": true,
-      "detail": 0.153
+      "detail": 0.156
     },
     {
       "name": "reflection nebulae sit near the arms too (mean < 0.9 kpc)",
       "pass": true,
-      "detail": 0.548
+      "detail": 0.544
     },
     {
       "name": "HII regions are closer to the arms than dark clouds",
       "pass": true,
       "detail": {
-        "hII": 0.153,
-        "dark": 1.145
+        "hII": 0.156,
+        "dark": 1.148
       }
     },
     {
@@ -89,8 +89,8 @@
       "name": "almost no nebula sits in the halo or above |z| = 1 kpc",
       "pass": true,
       "detail": {
-        "haloish": 41,
-        "fraction": 0.0342
+        "haloish": 42,
+        "fraction": 0.035
       }
     },
     {
@@ -115,7 +115,7 @@
     {
       "name": "the summary reports the documented size range",
       "pass": true,
-      "detail": 0.1707327611538342
+      "detail": 0.17083840644534146
     },
     {
       "name": "placement is deterministic in the seed",
