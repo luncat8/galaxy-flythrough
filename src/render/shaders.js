@@ -141,15 +141,14 @@ fn insideDisc(params: DensityParams, R: f32, z: f32) -> bool {
 
 fn rhoThin(params: DensityParams, R: f32, z: f32) -> f32 {
         if (!insideDisc(params, R, z)) { return 0.0; }
-        let radial: f32 = select(exp(-R / params.thin.x), 1.0, R < 0.01);
-        let coshArg: f32 = z / (2.0 * params.thin.y);
-        let c: f32 = cosh(coshArg);
-        return params.thin.z * radial / (c * c);
+        let radial: f32 = exp(-R / params.thin.x);
+	let e: f32 = exp(-abs(z) / params.thin.y);
+	return params.thin.z * radial * 4.0 * e / ((1.0 + e) * (1.0 + e));
 }
 
 fn rhoThick(params: DensityParams, R: f32, z: f32) -> f32 {
         if (!insideDisc(params, R, z)) { return 0.0; }
-        let radial: f32 = select(exp(-R / params.thick.x), 1.0, R < 0.01);
+        let radial: f32 = exp(-R / params.thick.x);
         return params.thick.z * radial * exp(-abs(z) / params.thick.y);
 }
 
@@ -159,7 +158,7 @@ fn rhoThick(params: DensityParams, R: f32, z: f32) -> f32 {
 fn rhoSpheroid(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
         let dx: f32 = x - params.centre.x;
         let dy: f32 = y - params.centre.y;
-        let s: f32 = spheroidEllipsoidRadius(params, dx, dy, z);
+        let s: f32 = spheroidEllipsoidRadius(params, dx, dy, z - params.centre.z);
         if (s > params.truncation.z) { return 0.0; }
         if (params.spheroidShape.w >= PROFILE_SERSIC) {
                 let n: f32 = params.spheroidShape.y;
@@ -171,7 +170,9 @@ fn rhoSpheroid(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
 fn rhoHalo(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
         let dx: f32 = x - params.centre.x;
         let dy: f32 = y - params.centre.y;
-        let r: f32 = sqrt(dx * dx + dy * dy + z * z);
+	let dz: f32 = z - params.centre.z;
+	let r: f32 = sqrt(dx * dx + dy * dy + dz * dz);
+	if (r > params.halo.y) { return 0.0; }
         let a: f32 = params.halo.x;
         if (r < a) { return params.halo.w; }
         return params.halo.w * pow(r / a, -params.halo.z);
@@ -196,7 +197,7 @@ fn distanceToNearestArm(params: DensityParams, R: f32, phi: f32) -> f32 {
         let k: f32 = tan(radians(params.arms.z));
         var best: f32 = 99.0;
         for (var n: u32 = 0u; n < m; n = n + 1u) {
-                let phiArm: f32 = (k * log(R / params.arms.w) + 6.283185307 * f32(n)) / f32(m);
+                let phiArm: f32 = (k * log(R / params.arms.w) - params.armShape.x + 6.283185307 * f32(n)) / f32(m);
                 var dphi: f32 = phi - phiArm;
                 dphi = dphi - 6.283185307 * round(dphi / 6.283185307);
                 let dArc: f32 = R * abs(dphi);
@@ -211,7 +212,7 @@ fn rhoTotal(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
         let R: f32 = sqrt(dx * dx + dy * dy);
         let phi: f32 = atan2(dy, dx);
         let arm: f32 = armFactor(params, R, phi);
-        return (rhoThin(params, R, z) + rhoThick(params, R, z)) * arm
+        return (rhoThin(params, R, z - params.centre.z) + rhoThick(params, R, z - params.centre.z)) * arm
                 + rhoSpheroid(params, x, y, z) + rhoHalo(params, x, y, z);
 }
 
@@ -223,8 +224,8 @@ fn rhoDecomposed(params: DensityParams, x: f32, y: f32, z: f32) -> vec4f {
         let phi: f32 = atan2(dy, dx);
         let arm: f32 = armFactor(params, R, phi);
         return vec4f(
-                rhoThin(params, R, z) * arm,
-                rhoThick(params, R, z) * arm,
+                rhoThin(params, R, z - params.centre.z) * arm,
+                rhoThick(params, R, z - params.centre.z) * arm,
                 rhoSpheroid(params, x, y, z),
                 rhoHalo(params, x, y, z),
         );

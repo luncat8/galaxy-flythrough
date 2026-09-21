@@ -47,12 +47,13 @@
 	// No closed form, so invert with bisection — 32 deterministic steps put the
 	// result well below f32 resolution.
 	function sampleDiscRadius(u, L, rMax, out) {
+		const target = u * (1 - (1 + rMax / L) * Math.exp(-rMax / L));
 		let lo = 0;
 		let hi = rMax;
 		for (let i = 0; i < 32; i++) {
 			const mid = 0.5 * (lo + hi);
 			const cdf = 1 - (1 + mid / L) * Math.exp(-mid / L);
-			if (cdf < u) lo = mid; else hi = mid;
+			if (cdf < target) lo = mid; else hi = mid;
 		}
 		out[0] = 0.5 * (lo + hi);
 	}
@@ -110,6 +111,15 @@
 		const sMax = model.truncation.spheroidRadius;
 		if (model.spheroid.profileId === density.PROFILE_SERSIC) return density.sersicRadiusForFraction(model, u);
 		return samplePlummerRadius(u, sMax);
+	}
+
+	function sampleHaloRadius(model, u, mass) {
+		const h = model.halo;
+		const target = u * mass;
+		if (target <= 1 / 3) return h.a_h * Math.cbrt(3 * target);
+		const q = 3 - h.power;
+		const tail = target - 1 / 3;
+		return h.a_h * Math.exp(q === 0 ? tail : Math.log1p(q * tail) / q);
 	}
 
 	// Mass each population contributes inside the sampled volume, in
@@ -172,6 +182,8 @@
 		const st = Math.sin(tilt);
 		const gcX = model.centre.x;
 		const gcY = model.centre.y;
+		const gcZ = model.centre.z;
+		const haloMass = density.haloRadialMass(model, model.halo.rMax);
 
 		for (let i = 0; i < count; i++) {
 			const starSeed = Math.imul(i + 1, 0x9e3779b1) ^ Math.imul(seed | 0, 0x85ebca6b);
@@ -196,14 +208,14 @@
 			} else if (u0 < wBulge) {
 				component = density.COMPONENT_BULGE;
 				const sp = model.spheroid;
-				const s = sampleSpheroidRadius(model, u1);
+				const s = model.spheroid.r0 * sampleSpheroidRadius(model, u1);
 				sampleDirection(u2, u3, scratch);
 				const ex = sp.a * s * scratch[0];
 				const ey = sp.b * s * scratch[1];
 				const ez = sp.c * s * scratch[2];
 				x = gcX + ex * ct - ey * st;
 				y = gcY + ex * st + ey * ct;
-				z = ez;
+				z = gcZ + ez;
 				buf.x[i] = x;
 				buf.y[i] = y;
 				buf.z[i] = z;
@@ -213,15 +225,11 @@
 				continue;
 			} else {
 				component = density.COMPONENT_HALO;
-				const h = model.halo;
-				const a = h.a_h;
-				const invSqrtA = 1 / Math.sqrt(a);
-				const invSqrtMax = 1 / Math.sqrt(h.rMax);
-				const r = 1 / Math.pow(invSqrtA - u1 * (invSqrtA - invSqrtMax), 2);
+				const r = sampleHaloRadius(model, u1, haloMass);
 				sampleDirection(u2, u3, scratch);
 				x = gcX + r * scratch[0];
 				y = gcY + r * scratch[1];
-				z = r * scratch[2];
+				z = gcZ + r * scratch[2];
 				buf.x[i] = x;
 				buf.y[i] = y;
 				buf.z[i] = z;
@@ -240,7 +248,7 @@
 			// populate half the azimuths (m = 2) and the sky would have a seam.
 			const R = scratch[0];
 			let phi = TAU * u3;
-			if (armArmed && R > model.arms.minRadius) {
+			if (armArmed && R >= model.arms.minRadius) {
 				const theta = sampleArmPhase(u3, A);
 				const replica = Math.min(armM - 1, Math.floor(u4 * armM));
 				phi = (theta + armK * Math.log(R / armRs) - armPhase0) / armM + TAU * replica / armM;
@@ -249,7 +257,7 @@
 			y = gcY + R * Math.sin(phi);
 			buf.x[i] = x;
 			buf.y[i] = y;
-			buf.z[i] = z;
+			buf.z[i] = gcZ + z;
 			buf.component[i] = component;
 			buf.R[i] = R;
 			buf.distToArm[i] = density.distanceToNearestArm(model, R, Math.atan2(Math.sin(phi), Math.cos(phi)));
@@ -272,7 +280,7 @@
 		for (let attempt = 0; attempt < maxAttempts && n < count; attempt++) {
 			sampleGalaxyStars(model, batchSeed, batchSize, batch);
 			batchSeed = (Math.imul(batchSeed, 0x9e3779b1) + 0x2545f491) | 0;
-			for (let i = 0; i < batchSize && n < count; i++) {
+			for (let i = 0; i < batch.count && n < count; i++) {
 				const x = batch.x[i];
 				const y = batch.y[i];
 				const z = batch.z[i];

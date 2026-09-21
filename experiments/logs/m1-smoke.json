@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T16:07:14.941Z",
+  "date": "2026-09-21T16:56:09.533Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -46,8 +46,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 46,
-  "passed": 46,
+  "totalChecks": 47,
+  "passed": 47,
   "failed": 0,
   "checks": [
     {
@@ -86,6 +86,10 @@
           true
         ]
       }
+    },
+    {
+      "name": "the menu iterates the full type table, not the G-key shortlist",
+      "pass": true
     },
     {
       "name": "every src module namespace is defined before it is read",
@@ -352,10 +356,24 @@
       "name": "the page scope builds a model per type, so ?type=Sc boots",
       "pass": true,
       "detail": [
+        "E0",
+        "E1",
+        "E2",
+        "E3",
         "E4",
+        "E5",
+        "E6",
+        "E7",
         "S0",
+        "Sa",
+        "Sb",
+        "Sc",
+        "Sd",
+        "SB0",
+        "SBa",
         "SBb",
-        "Sc"
+        "SBc",
+        "SBd"
       ]
     },
     {
@@ -384,7 +402,7 @@
       "name": "a packed record round-trips through StarPacked",
       "pass": true,
       "detail": {
-        "x": 4.644365310668945,
+        "x": 4.647851943969727,
         "absMag": 10.117647058823529
       }
     },

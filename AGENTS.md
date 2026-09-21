@@ -52,7 +52,8 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 - `0.3.0-plan-galaxy-types-star-distribution.md` — the 0.3.x plan: galaxy types (0.3.0), full type zoo + star distributions (0.3.1), nebula-like objects with proper star distributions (0.3.2), galaxy age (0.3.3).
 - `0.4.0-plan-star-move.md` — the 0.4 plan: star movement on predefined orbits, star time slider, per-type orbit distributions, RTX 3050 budget.
 - `findings-pitfalls-skills.md` — notes and pitfalls for LLM agents. Write here when you find a good way to do something, a non-obvious gotcha, or a useful technique. Append-only.
-- `archive/` — superseded plans. When `plan.md` is rewritten substantially, the old version moves here.
+- `worklog.md` — index of versioned implementation logs.
+- `archive/` — versioned worklogs (`0.3.x-worklog.md`, etc.) and superseded plans. When `plan.md` is rewritten substantially, the old version moves here.
 - `experiments/` — Node measurement and validation scripts. Not loaded by the page. Run these manually to validate assumptions (hash quality, density model, precision, memory budget). `experiments/tonemap-mirror.js` is a shared model helper (not a test).
 - `experiments/logs/` — keep useful results. Delete logs that turned out to be dead ends. The point is to leave a trail of *what was measured and what was learned*, not a full audit.
 - `package.json` — dev-only dependencies for experiments (`wgsl_reflect`, the CPU WGSL interpreter behind `wgsl-exec`). The page never touches it; the runtime stays dependency-free.
@@ -64,6 +65,8 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 - `src/render/shaders.js` — all WGSL, as JS strings; `WIRED_SHADERS` lists what the renderer actually compiles.
 
 ## Workflow
+
+- **Worklog**: record each development step and its validation in `archive/<major>.<minor>.x-worklog.md`, link new series from `worklog.md`, and end every entry with a next step suggestion.
 
 - **Plan changes**: edit `plan.md` directly. If the change is substantial, copy the previous version to `archive/plan-vN.md` first.
 - **Discoveries**: append to `findings-pitfalls-skills.md` with a date and a one-line summary heading.

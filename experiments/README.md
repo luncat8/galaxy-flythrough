@@ -24,6 +24,8 @@ python3 scripts/run.py camera      # one script
 | `landmark-test.js` | 0.1.2 landmarks & constellations: the shared RA/Dec → XYZ conversion and screen projection, the landmark table (count, uniqueness, baked positions/magnitudes), every constellation edge resolving, click picking (nearest within 20 px, real data + synthetic scene, behind-camera culling), and the label layer's draw/cull/toggle behaviour against a mock 2D context. |
 | `tile-stream-test.js` | Encoder → loader → cell manager end to end on the shipped bundle: freshness, manifest, residency/hysteresis, nearest-first budget against a brute force, decode cache, no re-decode on re-upload. |
 | `tile-encoder-smoke-test.js` | The encoder on synthetic data: cuts, band assignment, bundle schema, and a full round trip through the shipping loader. |
+| `galaxy-types-test.js` | All 18 regular types: table completeness, E flattening, preset invariants, masses, truncation, populations, homes and mode rules. |
+| `model-parity-test.js` | Independent field quadrature vs compact disc / scaled spheroid / cored halo samples; translated centres, arm phases, overrides, empty-model bounds and determinism. |
 | `sampling-test.js` | The sampler against the analytical model: component mix, R/|z|/φ histograms, arm phase, local density ratios, determinism. |
 | `density-distribution-test.js` | The box sampler against the model on a grid: radial and vertical distributions, component mix, bounds. |
 | `star-types-evolution-test.js` | Stellar populations: O/B near arms, old giants, metallicity by component, Salpeter slope, mass → Teff → class chain. |
@@ -43,7 +45,9 @@ python3 scripts/run.py camera      # one script
   formula predicts (byte quantisation and sub-pixel fade included), behind-camera
   stars contribute nothing, and N stars piled on one pixel run through the real
   tonemap `fs_main` and match the JS pixel model in `tonemap-mirror.js`. Not part of
-  `all-tests` only because of the dev-only dependency.
+  `all-tests` only because of the dev-only dependency. Also executes the actual density
+  and arm WGSL for every regular type plus a translated/overridden model; checks
+  JS parity beyond the uniform-layout contract.
 
 ## Assets
 

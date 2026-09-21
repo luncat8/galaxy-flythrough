@@ -1,14 +1,14 @@
 {
-  "date": "2026-09-21T16:07:16.095Z",
+  "date": "2026-09-21T16:56:10.969Z",
   "mockStars": 4000,
   "seed": 20240919,
   "summary": {
     "input": 4000,
     "kept": 53,
-    "droppedMagnitude": 3925,
+    "droppedMagnitude": 3924,
     "droppedQuality": 0,
     "droppedDecimation": 0,
-    "droppedOutOfBounds": 22,
+    "droppedOutOfBounds": 23,
     "cellCount": 51
   },
   "bundleBytes": 3963,
@@ -60,8 +60,8 @@
       "name": "the magnitude cut removes exactly the stars fainter than the limit",
       "pass": true,
       "detail": {
-        "overLimit": 3925,
-        "droppedMagnitude": 3925
+        "overLimit": 3924,
+        "droppedMagnitude": 3924
       }
     },
     {
@@ -83,10 +83,10 @@
       "detail": {
         "input": 4000,
         "kept": 53,
-        "droppedMagnitude": 3925,
+        "droppedMagnitude": 3924,
         "droppedQuality": 0,
         "droppedDecimation": 0,
-        "droppedOutOfBounds": 22,
+        "droppedOutOfBounds": 23,
         "cellCount": 51
       }
     },

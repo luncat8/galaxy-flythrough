@@ -34,8 +34,8 @@ const TYPES = galaxy.GALAXY_TYPES;
 const models = {};
 for (const type of TYPES) models[type] = galaxy.createGalaxy({ type, seed: 42 });
 const MW = galaxy.MILKY_WAY;
-// The three types that come from the table rather than the authored preset.
-const TABLE = ['E4', 'S0', 'Sc'].map((type) => models[type]);
+// Every regular table type, not just the original three representatives.
+const TABLE = TYPES.filter((type) => type !== galaxy.MILKY_WAY_TYPE).map((type) => models[type]);
 const ALL = [MW].concat(TABLE);
 
 const checks = [];
@@ -65,8 +65,8 @@ function relNear(a, b, tol) {
 		walked = galaxy.cycleGalaxyType(walked);
 		if (galaxy.GALAXY_TYPE_CYCLE.indexOf(walked) < 0) roundTrip = false;
 	}
-	check('the cycle walks every type once and returns to the start',
-		galaxy.GALAXY_TYPE_CYCLE.length === TYPES.length && roundTrip && walked === galaxy.GALAXY_TYPE_CYCLE[0],
+	check('the shortcut cycle walks the shortlist and returns to the start',
+		galaxy.GALAXY_TYPE_CYCLE.every((type) => TYPES.includes(type)) && roundTrip && walked === galaxy.GALAXY_TYPE_CYCLE[0],
 		{ cycle: galaxy.GALAXY_TYPE_CYCLE, endedAt: walked });
 	check('an unknown type is an error, not a silent fallback', (() => {
 		try {
@@ -123,6 +123,27 @@ function relNear(a, b, tol) {
 		MW.thin.amp === 1.0 && density.componentMasses(MW).thin > 0, density.componentMasses(MW).thin);
 }
 
+// The menu contains all regular types, while G remains a short tour.
+{
+	const expected = ['E0', 'E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7',
+		'S0', 'Sa', 'Sb', 'Sc', 'Sd', 'SB0', 'SBa', 'SBb', 'SBc', 'SBd'];
+	check('the regular type menu is complete and has no duplicates',
+		JSON.stringify(TYPES) === JSON.stringify(expected), TYPES);
+	check('every table-only type rejoins the shortcut tour at E4',
+		TYPES.filter((type) => !galaxy.GALAXY_TYPE_CYCLE.includes(type))
+			.every((type) => galaxy.cycleGalaxyType(type) === 'E4'));
+	for (let e = 0; e <= 7; e++) {
+		const m = models['E' + e];
+		check(`${m.type}: ordered axes, flattening and pure old spheroid`,
+			near(m.spheroid.b / m.spheroid.a, 1 - 0.1 * e, 1e-12)
+			&& m.spheroid.a >= m.spheroid.b && m.spheroid.b >= m.spheroid.c
+			&& m.spheroid.c > 0 && m.spheroid.n >= 2 && m.spheroid.n <= 4
+			&& m.thin.amp === 0 && m.thick.amp === 0 && !m.populations.gasRich);
+	}
+	check('only the authored SBb preset enables the real catalog',
+		ALL.filter((m) => m.milkyWay).length === 1);
+}
+
 // --- 2. The anchor curves -------------------------------------------------
 {
 	const at = (T) => ({
@@ -132,8 +153,8 @@ function relNear(a, b, tol) {
 		gas: galaxy.interpAnchors(galaxy.ANCHORS.GAS_FRACTION, T),
 		n: galaxy.interpAnchors(galaxy.ANCHORS.SERSIC_N, T),
 	});
-	const order = TYPES.map((t) => galaxy.TYPE_SPECS[t].T);
-	check('the four types are in sequence order with no duplicates',
+	const order = ['S0', 'Sa', 'Sb', 'Sc', 'Sd'].map((t) => galaxy.TYPE_SPECS[t].T);
+	check('the unbarred stages are in sequence order',
 		order.every((t, i) => i === 0 || t > order[i - 1]), order);
 	const early = at(-2);
 	const late = at(6);
@@ -257,8 +278,9 @@ function relNear(a, b, tol) {
 		sersic.length === TABLE.length && MW.spheroid.profileId === density.PROFILE_PLUMMER
 		&& models.Sc.spheroid.profileId === density.PROFILE_SERSIC,
 		{ sersic: sersic.map((m) => m.type), preset: MW.spheroid.profile });
-	check('the Sersic index follows the anchor curve per type',
-		TABLE.every((m) => m.spheroid.n === galaxy.interpAnchors(galaxy.ANCHORS.SERSIC_N, m.T)),
+	check('the Sersic index follows the authored E shape or stage anchor',
+		TABLE.every((m) => m.spheroid.n === (galaxy.TYPE_SPECS[m.type].n
+			?? galaxy.interpAnchors(galaxy.ANCHORS.SERSIC_N, m.T))),
 		TABLE.map((m) => [m.type, m.spheroid.n]));
 	// s is measured in the body's own tilted frame, so a probe at radius s has to
 	// undo that rotation: x = s*a*r0*cos(t), y = s*a*r0*sin(t) off the centre.
@@ -387,16 +409,18 @@ function relNear(a, b, tol) {
 	const ridgePhi = (k * Math.log(6 / MW.arms.Rs)) / MW.arms.m * 180 / Math.PI;
 	const GAS_TYPES = ['HII', 'reflection', 'dark'];
 	for (const model of ALL) {
-		const onRidge = at(model, 6, ridgePhi, 0.02);
-		const offRidge = at(model, 6, ridgePhi + 90, 0.02);
+		const phi = (Math.tan(model.arms.pitchDeg * Math.PI / 180) * Math.log(6 / model.arms.Rs)
+			- model.arms.phase0) / model.arms.m * 180 / Math.PI;
+		const onRidge = at(model, 6, phi, 0.02);
+		const offRidge = at(model, 6, phi + 180 / model.arms.m, 0.02);
 		const placed = nebula.placeNebulae(model, 5, 400, {
 			xMin: -20, xMax: 20, yMin: -20, yMax: 20, zMin: -1.5, zMax: 1.5,
 		});
 		const types = new Set(placed.map((n) => n.type));
 		const gasSeen = GAS_TYPES.filter((t) => types.has(t));
 		if (!model.populations.gasRich) {
-			check(`${model.type}: a quenched disc shows no arm response and hosts no gas nebula`,
-				near(onRidge, offRidge, 1e-12) && gasSeen.length === 0, { onRidge, offRidge, gasSeen });
+			check(`${model.type}: a quenched type has no arms and hosts no gas nebula`,
+				model.arms.amp === 0 && gasSeen.length === 0, { onRidge, offRidge, gasSeen });
 			continue;
 		}
 		check(`${model.type}: the arm ridge is favoured, and gas nebulae are placed on it`,

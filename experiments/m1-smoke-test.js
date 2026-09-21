@@ -56,6 +56,12 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		{ css: /style\.css/.test(html), elements: ['canvas', 'labels', 'overlay', 'error'].map(id => html.includes(`id="${id}"`)) });
 }
 
+{
+	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
+	check('the menu iterates the full type table, not the G-key shortlist',
+		/for \(const type of galaxy\.GALAXY_TYPES\)/.test(main));
+}
+
 // --- 2. No global is read before it is defined --------------------------
 {
 	const BROWSER_GLOBALS = new Set([
@@ -218,7 +224,7 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		failure === null && Array.from(page.Camera.GALACTIC_CENTRE_TARGET).join(',') === '8.178,0,0'
 		&& page.Camera.createCamera().getState().modeName === 'fly');
 	check('the page scope builds a model per type, so ?type=Sc boots',
-		failure === null && page.GalaxyLib && page.GalaxyLib.GALAXY_TYPES.length === 4
+		failure === null && page.GalaxyLib && page.GalaxyLib.GALAXY_TYPES.length === 18
 		&& page.GalaxyLib.createGalaxy({ type: 'Sc' }).arms.pitchDeg === 15
 		&& page.GalaxyLib.createGalaxy({ type: 'E4' }).thin.amp === 0,
 		failure || (page.GalaxyLib && page.GalaxyLib.GALAXY_TYPES));

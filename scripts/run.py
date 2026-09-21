@@ -15,6 +15,7 @@ Usage:
     python3 scripts/run.py density-distribution
     python3 scripts/run.py star-types-evolution
     python3 scripts/run.py galaxy-types
+    python3 scripts/run.py model-parity
     python3 scripts/run.py nebula-placement
     python3 scripts/run.py tile-encoder-smoke
     python3 scripts/run.py wgsl-exec
@@ -48,6 +49,7 @@ EXPERIMENTS = {
     'tile-stream':           'experiments/tile-stream-test.js',
     'tile-encoder-smoke':    'experiments/tile-encoder-smoke-test.js',
     'galaxy-types':          'experiments/galaxy-types-test.js',
+    'model-parity':          'experiments/model-parity-test.js',
     'sampling':              'experiments/sampling-test.js',
     'density-distribution':  'experiments/density-distribution-test.js',
     'star-types-evolution':  'experiments/star-types-evolution-test.js',
@@ -67,7 +69,7 @@ EXPERIMENTS = {
 
 TYPES = {
     'test':   ['export-parity', 'm1-smoke', 'wgsl-validate', 'camera', 'renderer', 'hdr',
-               'landmark', 'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'sampling',
+               'landmark', 'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'model-parity', 'sampling',
                'density-distribution',
                'star-types-evolution', 'nebula-placement'],
     'study':  ['hash-quality', 'precision', 'packing', 'filter'],

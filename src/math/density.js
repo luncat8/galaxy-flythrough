@@ -36,10 +36,6 @@ const PROFILE_PLUMMER = 0;
 const PROFILE_SERSIC = 1;
 const PROFILES = ['plummer', 'sersic'];
 
-// Arm modulation only exists outside this radius; inside it the disc is smooth
-// (a log spiral has no well-defined ridge at R = 0).
-const ARM_MIN_RADIUS = 0.5;
-
 // Sérsic b_n, the standard approximation (Ciotti & Bertin 1999), accurate to
 // ~0.1% for n >= 0.36 — every n in the type table is >= 1.
 function sersicBn(n) {
@@ -87,7 +83,7 @@ function toGalactocentric(model, x, y, z) {
 	return {
 		R: Math.sqrt(dx * dx + dy * dy),
 		phi: Math.atan2(dy, dx),
-		zp: z,
+		zp: z - c.z,
 	};
 }
 
@@ -114,21 +110,21 @@ function insideDisc(model, R, z) {
 
 // ---- components -----------------------------------------------------------
 
-// Thin disc: exponential in R, sech^2 in z. The R < 0.01 branch keeps the
-// vertical profile intact instead of returning the midplane peak everywhere.
+// Thin disc: exponential in R, sech^2 in z.
 function rhoThin(model, R, z) {
 	if (!insideDisc(model, R, z)) return 0;
 	const p = model.thin;
-	const radial = R < 0.01 ? 1 : Math.exp(-R / p.L);
-	const cosh = Math.cosh(z / (2 * p.H));
-	return p.amp * radial / (cosh * cosh);
+	const radial = Math.exp(-R / p.L);
+	// sech² via a decaying exponential avoids cosh overflow for thin discs.
+	const e = Math.exp(-Math.abs(z) / p.H);
+	return p.amp * radial * 4 * e / ((1 + e) * (1 + e));
 }
 
 // Thick disc: exponential in R and |z|.
 function rhoThick(model, R, z) {
 	if (!insideDisc(model, R, z)) return 0;
 	const p = model.thick;
-	const radial = R < 0.01 ? 1 : Math.exp(-R / p.L);
+	const radial = Math.exp(-R / p.L);
 	return p.amp * radial * Math.exp(-Math.abs(z) / p.H);
 }
 
@@ -137,7 +133,7 @@ function rhoThick(model, R, z) {
 // truncation lives here — in the field — because the sampler draws inside it.
 function rhoSpheroid(model, x, y, z) {
 	const sp = model.spheroid;
-	const s = spheroidEllipsoidRadius(model, x - model.centre.x, y - model.centre.y, z);
+	const s = spheroidEllipsoidRadius(model, x - model.centre.x, y - model.centre.y, z - model.centre.z);
 	if (s > model.truncation.spheroidRadius) return 0;
 	if (sp.profileId === PROFILE_SERSIC) {
 		return sp.amp * Math.exp(-sersicBn(sp.n) * (Math.pow(s, 1 / sp.n) - 1));
@@ -150,7 +146,9 @@ function rhoHalo(model, x, y, z) {
 	const h = model.halo;
 	const dx = x - model.centre.x;
 	const dy = y - model.centre.y;
-	const r = Math.sqrt(dx * dx + dy * dy + z * z);
+	const dz = z - model.centre.z;
+	const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
+	if (r > h.rMax) return 0;
 	if (r < h.a_h) return h.amp;
 	return h.amp * Math.pow(r / h.a_h, -h.power);
 }
@@ -159,7 +157,7 @@ function rhoHalo(model, x, y, z) {
 // a smooth disc, which is how S0 and the E types read.
 function armFactor(model, R, phi) {
 	const a = model.arms;
-	if (a.amp === 0 || a.m === 0 || R < ARM_MIN_RADIUS) return 1.0;
+	if (a.amp === 0 || a.m === 0 || R < a.minRadius) return 1.0;
 	const k = Math.tan(a.pitchDeg * Math.PI / 180);
 	const arg = a.m * phi - k * Math.log(R / a.Rs) + a.phase0;
 	return 1.0 + a.amp * Math.cos(arg);
@@ -170,11 +168,11 @@ function armFactor(model, R, phi) {
 // which is what keeps young stars and gas nebulae off a smooth disc.
 function distanceToNearestArm(model, R, phi) {
 	const a = model.arms;
-	if (a.amp === 0 || a.m === 0 || R < ARM_MIN_RADIUS) return 99;
+	if (a.amp === 0 || a.m === 0 || R < a.minRadius) return 99;
 	const k = Math.tan(a.pitchDeg * Math.PI / 180);
 	let best = 99;
 	for (let n = 0; n < a.m; n++) {
-		const phiArm = (k * Math.log(R / a.Rs) + 2 * Math.PI * n) / a.m;
+		const phiArm = (k * Math.log(R / a.Rs) - a.phase0 + 2 * Math.PI * n) / a.m;
 		let dphi = phi - phiArm;
 		while (dphi > Math.PI) dphi -= 2 * Math.PI;
 		while (dphi < -Math.PI) dphi += 2 * Math.PI;
@@ -193,17 +191,22 @@ function distanceToNearestArm(model, R, phi) {
 //   thick:   2*pi*L^2 * 2H
 //   spheroid: plummer a*b*c*(4/3)*pi*r0^3
 //             sersic  4*pi*a*b*c*r0^3 * e^b_n * n * b_n^-3n * Gamma(3n)
-//   halo:    4*pi*a_h^3 * (1/3 + 2*(1 - sqrt(a_h/rMax)))   (core + power law)
+//   halo:    4*pi*a_h^3 * haloRadialMass(rMax)   (core + power law)
 //
-// The halo's flat core is (4/3)*pi*a_h^3; the model used to quote only the
-// power-law tail, which under-weighted halo stars by ~18% against the field the
-// sampler draws.
+// Halo integral in units of 4*pi*a_h^3, including the flat core.
+function haloRadialMass(model, radius) {
+	const h = model.halo;
+	const x = Math.min(radius, h.rMax) / h.a_h;
+	if (x <= 1) return x * x * x / 3;
+	const q = 3 - h.power;
+	return 1 / 3 + (q === 0 ? Math.log(x) : Math.expm1(q * Math.log(x)) / q);
+}
+
 function massIntegrals(model) {
 	const discIntegral = (p, vertical) => 2 * Math.PI * p.L * p.L * vertical;
 	const sp = model.spheroid;
 	const axes = sp.a * sp.b * sp.c * sp.r0 * sp.r0 * sp.r0;
 	const ah = model.halo.a_h;
-	const rMax = model.halo.rMax;
 	const bn = sersicBn(sp.n);
 	return {
 		thin: discIntegral(model.thin, 4 * model.thin.H),
@@ -211,7 +214,7 @@ function massIntegrals(model) {
 		bulge: sp.profileId === PROFILE_SERSIC
 			? 4 * Math.PI * axes * Math.exp(bn) * sp.n * Math.pow(bn, -3 * sp.n) * Math.exp(logGamma(3 * sp.n))
 			: axes * (4 / 3) * Math.PI,
-		halo: 4 * Math.PI * ah * ah * ah * (1 / 3 + 2 * (1 - Math.sqrt(ah / rMax))),
+		halo: 4 * Math.PI * ah * ah * ah * haloRadialMass(model, model.halo.rMax),
 	};
 }
 
@@ -328,9 +331,9 @@ function sampleComponentIndex(decomposed, u) {
 
 const DensityLib = {
 	COMPONENT_NAMES, COMPONENT_THIN, COMPONENT_THICK, COMPONENT_BULGE, COMPONENT_HALO,
-	PROFILES, PROFILE_PLUMMER, PROFILE_SERSIC, ARM_MIN_RADIUS,
+	PROFILES, PROFILE_PLUMMER, PROFILE_SERSIC,
 	sersicBn, logGamma, lowerGamma,
-	componentMasses, massIntegrals, truncationFractions,
+	componentMasses, massIntegrals, truncationFractions, haloRadialMass,
 	toGalactocentric, spheroidEllipsoidRadius, insideDisc,
 	rhoThin, rhoThick, rhoSpheroid, rhoHalo,
 	armFactor, distanceToNearestArm,

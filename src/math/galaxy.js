@@ -38,8 +38,8 @@
 	// Flat anchor tables: each structural parameter is a monotone function of the
 	// de Vaucouleurs stage T (-5 … 10), interpolated between these points. No
 	// if-else chains (AGENTS.md). Trends from Roberts & Haynes 1994 (B/T, gas) and
-	// Kennicutt 1981 (pitch); stage indices from the de Vaucouleurs atlas, where
-	// E0–E7 span T = -5…-1 (E4 → -2), S0 → 0, Sb → 3, Sc → 5, Sd → 6, Irr → 9-10.
+	// Kennicutt 1981 (pitch). E flattening uses a model interpolation coordinate
+	// on the pure-spheroid anchors, separate from the spiral stage sequence.
 	const ANCHORS = {
 		// Spheroid-to-total stellar mass ratio. 1.0 along the whole E sequence:
 		// an elliptical has no disc, so what varies from E0 to E7 is flattening
@@ -90,7 +90,7 @@
 	// need. `axes` are kpc at scaleKpc 1.0; the E flattening follows the Hubble law
 	// b/a = 1 - 0.1·E (E4 → 0.6) with a slightly boxier pole. Speeds are kpc/Myr
 	// (1 kpc/Myr = 978 km/s), so sigmaThin 0.031 is the thin disc's ~30 km/s.
-	const TYPE_SPECS = {
+	const BASE_SPECS = {
 		E4: {
 			T: -2, barred: false, profile: 'sersic', scaleKpc: 1.5, massTotal: 0.25,
 			axes: [1.00, 0.60, 0.51], discRadius: 25.0, discHeight: 3.0, spheroidRadius: 8.0,
@@ -106,7 +106,7 @@
 				sigmaThick: 0.051, sigmaSpheroid: 0.100, spinLambda: 0.0 },
 		},
 		SBb: {
-			T: 3, barred: true, preset: true, scaleKpc: 1.0, massTotal: 1.00,
+			T: 3, barred: true, preset: true, profile: 'plummer', scaleKpc: 1.0, massTotal: 1.00,
 			axes: [1.50, 0.50, 0.40], discRadius: 25.0, discHeight: 3.0, spheroidRadius: 6.0,
 			halo: true, thickShare: 0.246, youngScaleHeight: 0.5,
 			dynamics: { vFlat: 0.225, rCore: 0.5, omegaPattern: 0.041, sigmaThin: 0.031,
@@ -120,6 +120,40 @@
 				sigmaThick: 0.051, sigmaSpheroid: 0.100, spinLambda: 0.0 },
 		},
 	};
+
+	function buildTypeSpecs() {
+		const specs = {};
+		for (let e = 0; e <= 7; e++) {
+			specs['E' + e] = Object.assign({}, BASE_SPECS.E4, {
+				T: e <= 4 ? -5 + 3 * e / 4 : -2 + (e - 4) / 3,
+				n: e <= 4 ? 4 : 4 - 2 * (e - 4) / 3,
+				axes: [1, 1 - 0.1 * e, Math.min(1 - 0.1 * e, 1 - 0.1225 * e)],
+			});
+		}
+		specs.S0 = BASE_SPECS.S0;
+		// stage, size, mass, spheroid axes, thick-disc share
+		const spirals = [
+			['Sa', 1, 1.0, 0.80, [1.00, 0.80, 0.60], 0.28],
+			['Sb', 3, 1.0, 1.00, [0.85, 0.68, 0.50], 0.246],
+			['Sc', 5, 1.4, 1.30, [0.60, 0.42, 0.36], 0.20],
+			['Sd', 6, 1.5, 1.40, [0.40, 0.32, 0.24], 0.15],
+		];
+		for (const [type, T, scaleKpc, massTotal, axes, thickShare] of spirals) {
+			specs[type] = Object.assign({}, BASE_SPECS.Sc, { T, scaleKpc, massTotal, axes, thickShare });
+		}
+		for (const type of ['S0', 'Sa', 'Sb', 'Sc', 'Sd']) {
+			const base = specs[type];
+			const barredType = 'SB' + type.slice(1);
+			// Triaxial proxies until the boxy/peanut profile lands in 0.3.1a.
+			specs[barredType] = Object.assign({}, base, {
+				barred: true,
+				axes: [base.axes[0] * 1.8, base.axes[1] * 0.7, base.axes[2]],
+			});
+		}
+		specs.SBb = BASE_SPECS.SBb;
+		return specs;
+	}
+	const TYPE_SPECS = buildTypeSpecs();
 
 	// Shared shape constants: one place for what the table path and the preset
 	// both mean by "a disc" and "a halo". The ratios are the preset's own numbers,
@@ -232,7 +266,7 @@
 				profile: spec.profile,
 				profileId: spec.profile === 'sersic' ? density.PROFILE_SERSIC : density.PROFILE_PLUMMER,
 				a: spec.axes[0] * k, b: spec.axes[1] * k, c: spec.axes[2] * k,
-				r0: 1.0, n: interpAnchors(ANCHORS.SERSIC_N, T), amp: 0, tiltDeg: 0,
+				r0: 1.0, n: spec.n === undefined ? interpAnchors(ANCHORS.SERSIC_N, T) : spec.n, amp: 0, tiltDeg: 0,
 			},
 			halo: { a_h: HALO_A_H_KPC * k, rMax: HALO_RMAX_KPC * k, power: HALO_POWER, amp: 0 },
 			arms: {
@@ -329,7 +363,7 @@
 	function createGalaxy(options) {
 		const opts = options || {};
 		const type = opts.type === undefined ? MILKY_WAY_TYPE : opts.type;
-		const spec = TYPE_SPECS[type];
+		const spec = Object.hasOwn(TYPE_SPECS, type) ? TYPE_SPECS[type] : null;
 		if (!spec) throw new Error('unknown galaxy type: ' + type);
 		const seed = opts.seed === undefined ? DEFAULT_SEED : opts.seed | 0;
 		const overrides = opts.overrides;
@@ -345,6 +379,9 @@
 		if (overrides) {
 			applyOverrides(model, overrides);
 			model.milkyWay = false;
+			model.R0 = Math.hypot(model.centre.x, model.centre.y, model.centre.z);
+			model.populations.gasRich = model.populations.gasFraction >= GAS_RICH_MIN;
+			model.home = Object.assign(homeFor(model), overrides.home);
 		}
 		return model;
 	}

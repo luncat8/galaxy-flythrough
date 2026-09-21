@@ -51,7 +51,7 @@
 		const dec = density.rhoDecomposed(model, x, y, z);
 		const dom = density.dominantComponent(model, x, y, z);
 		const youngH = model.thin.H * model.populations.youngScaleHeight;
-		const inDisc = Math.exp(-Math.abs(z) / youngH);
+		const inDisc = Math.exp(-Math.abs(z - model.centre.z) / youngH);
 		const armBoost = dec.distToArm < 0.8 ? Math.exp(-dec.distToArm * dec.distToArm / 0.20) : 0.0;
 		const gasBulgeSuppress = dec.bulge > 0.1 ? 0.1 : 1.0;
 		const gasHaloSuppress = dec.halo > 0.0005 ? 0.01 : 1.0;
@@ -60,12 +60,12 @@
 		const pStellar = 0.005 * (dec.bulge > 0.05 ? 4.0 : 1.0) * (dom === 'halo' ? 0.3 : 1.0);
 		const p = Math.min(1.0, pGas + pStellar);
 
-		const inSpiralRegion = dec.R > model.arms.Rs && dec.R < model.populations.youngOuterR && dom !== 'bulge';
+		const inSpiralRegion = model.populations.gasRich && dec.R > model.arms.Rs && dec.R < model.populations.youngOuterR && dom !== 'bulge';
 		let type;
 		if (inSpiralRegion && dec.distToArm < 0.3) type = 'HII';
 		else if (inSpiralRegion && dec.distToArm < 0.8) type = 'reflection';
 		else if (dom === 'bulge' || (dec.R < 3 && dec.zp < 1.0)) type = 'planetary';
-		else if (dec.distToArm < 1.5 && dec.R > 3 && dom !== 'halo') type = 'dark';
+		else if (model.populations.gasRich && dec.distToArm < 1.5 && dec.R > 3 && dom !== 'halo') type = 'dark';
 		else type = 'SNR';
 
 		return { p, type, dec, dom };

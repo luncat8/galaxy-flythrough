@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T16:07:21.028Z",
+  "date": "2026-09-21T16:56:24.921Z",
   "seed": 42,
   "sampleSize": 120000,
   "box": {
@@ -10,7 +10,7 @@
     "zMin": -3,
     "zMax": 3
   },
-  "sampleMs": 266,
+  "sampleMs": 262,
   "totalChecks": 8,
   "passed": 8,
   "failed": 0,
@@ -23,7 +23,7 @@
     {
       "name": "galactocentric R distribution matches the model (TV < 8%)",
       "pass": true,
-      "detail": 0.0333
+      "detail": 0.0331
     },
     {
       "name": "z distribution matches the model (TV < 8%)",
@@ -34,21 +34,21 @@
       "name": "component mix matches the model within 8%",
       "pass": true,
       "detail": {
-        "worst": 0.0098,
+        "worst": 0.0111,
         "thin": {
-          "observed": 0.62797,
+          "observed": 0.62748,
           "expected": 0.62763
         },
         "thick": {
-          "observed": 0.19269,
+          "observed": 0.19332,
           "expected": 0.1912
         },
         "bulge": {
-          "observed": 0.1792,
+          "observed": 0.17904,
           "expected": 0.18098
         },
         "halo": {
-          "observed": 0.00014,
+          "observed": 0.00016,
           "expected": 0.00019
         }
       }
@@ -57,7 +57,7 @@
       "name": "the box sample includes the bulge population",
       "pass": true,
       "detail": {
-        "observed": 0.1792,
+        "observed": 0.17904,
         "expected": 0.18098
       }
     },

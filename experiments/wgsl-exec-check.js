@@ -262,7 +262,53 @@ async function main() {
 	const empty = composite(4, 4, [0, 0, 0], DEF);
 	check('an empty frame is black, not NaN', empty.every(v => Number.isFinite(v)) && empty[0] < 1e-3, empty);
 
-	report('the shipping WGSL accumulates linear radiance and tone maps it once');
+	// Execute the real density functions, not just their struct declarations.
+	const galaxy = require('../src/math/galaxy.js');
+	const density = require('../src/math/density.js');
+	const densityCode = shaders.SHADER_PARTS.density + `
+@group(0) @binding(0) var<uniform> model: DensityParams;
+@fragment fn densityProbe(@location(0) p: vec3f) -> @location(0) vec4f {
+	return rhoDecomposed(model, p.x, p.y, p.z);
+}
+@fragment fn armProbe(@location(0) p: vec2f) -> @location(0) vec4f {
+	return vec4f(armFactor(model, p.x, p.y), distanceToNearestArm(model, p.x, p.y), 0.0, 0.0);
+}
+`;
+	const modelBuffer = new Float32Array(galaxy.DENSITY_PARAMS_FLOATS);
+	const densityBinds = { 0: { 0: { uniform: modelBuffer.buffer } } };
+	const models = galaxy.GALAXY_TYPES.map((type) => galaxy.createGalaxy({ type }));
+	models.push(galaxy.createGalaxy({ type: 'Sc', overrides: {
+		centre: { x: 3, y: -2, z: 4 }, spheroid: { r0: 2.3, tiltDeg: 31 },
+		halo: { power: 3, rMax: 8 }, arms: { minRadius: 2, phase0: 1.4 },
+	} }));
+	for (const model of models) {
+		galaxy.packDensityParams(model, modelBuffer);
+		const name = model.centre.z === 4 ? 'shifted/scaled/phase-shifted Sc' : model.type;
+		let worst = 0;
+		let worstCase = null;
+		for (const offset of [[0, 0, 0], [0.005, 0, 0], [4.1, 1.3, 0.2], [-8, 0.4, -0.3], [model.halo.rMax + 1, 0, 0]]) {
+			const p = [offset[0] + model.centre.x, offset[1] + model.centre.y, offset[2] + model.centre.z].map(Math.fround);
+			const actual = runStage(densityCode, 'densityProbe', 'debugFragment', { 0: p }, densityBinds);
+			const expected = density.rhoDecomposed(model, ...p);
+			for (let c = 0; c < 4; c++) {
+				const value = expected[density.COMPONENT_NAMES[c]];
+				const error = Math.abs(actual[c] - value) / Math.max(1e-5, value);
+				if (error > worst) { worst = error; worstCase = { p, component: c, actual: actual[c], expected: value }; }
+			}
+		}
+		check(`${name}: executed density WGSL matches JS components`, worst < 0.002, { worst, worstCase });
+		let armError = 0;
+		for (const r of [model.arms.minRadius / 2, 4, 10]) {
+			const ridge = (Math.tan(model.arms.pitchDeg * Math.PI / 180) * Math.log(r / model.arms.Rs) - model.arms.phase0) / model.arms.m;
+			const p = [r, ridge].map(Math.fround);
+			const actual = runStage(densityCode, 'armProbe', 'debugFragment', { 0: p }, densityBinds);
+			armError = Math.max(armError, Math.abs(actual[0] - density.armFactor(model, ...p)),
+				Math.abs(actual[1] - density.distanceToNearestArm(model, ...p)));
+		}
+		check(`${name}: executed WGSL arm threshold and phase match JS`, armError < 2e-4, { armError });
+	}
+
+	report('the shipping WGSL preserves radiance and matches the parameterised density model');
 }
 
 main().catch((err) => {

@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-21T16:07:45.491Z",
+  "date": "2026-09-21T16:56:27.629Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 23,
-  "passed": 23,
+  "totalChecks": 61,
+  "passed": 61,
   "failed": 0,
   "checks": [
     {
@@ -312,6 +312,462 @@
         0,
         1
       ]
+    },
+    {
+      "name": "E0: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 3.883126350437109e-7,
+        "worstCase": {
+          "p": [
+            -8,
+            0.4000000059604645,
+            -0.30000001192092896
+          ],
+          "component": 2,
+          "actual": 0.0010905651142820716,
+          "expected": 0.0010905646908020228
+        }
+      }
+    },
+    {
+      "name": "E0: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 0
+      }
+    },
+    {
+      "name": "E1: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 2.1965627866843589e-7,
+        "worstCase": {
+          "p": [
+            0.004999999888241291,
+            0,
+            0
+          ],
+          "component": 2,
+          "actual": 25.262386322021484,
+          "expected": 25.262391871064473
+        }
+      }
+    },
+    {
+      "name": "E1: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 0
+      }
+    },
+    {
+      "name": "E2: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 2.2620500034353267e-7,
+        "worstCase": {
+          "p": [
+            0.004999999888241291,
+            0,
+            0
+          ],
+          "component": 2,
+          "actual": 33.03140640258789,
+          "expected": 33.03141387445888
+        }
+      }
+    },
+    {
+      "name": "E2: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 0
+      }
+    },
+    {
+      "name": "E3: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 4.653478772989804e-7,
+        "worstCase": {
+          "p": [
+            -8,
+            0.4000000059604645,
+            -0.30000001192092896
+          ],
+          "component": 2,
+          "actual": 0.0024464125744998455,
+          "expected": 0.0024464114360674767
+        }
+      }
+    },
+    {
+      "name": "E3: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 0
+      }
+    },
+    {
+      "name": "E4: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 3.8939816281179694e-7,
+        "worstCase": {
+          "p": [
+            4.099999904632568,
+            1.2999999523162842,
+            0.20000000298023224
+          ],
+          "component": 2,
+          "actual": 0.015678752213716507,
+          "expected": 0.01567875831899619
+        }
+      }
+    },
+    {
+      "name": "E4: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 0
+      }
+    },
+    {
+      "name": "E5: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 3.6312345085995005e-7,
+        "worstCase": {
+          "p": [
+            0,
+            0,
+            0
+          ],
+          "component": 2,
+          "actual": 215.96261596679688,
+          "expected": 215.96269438791572
+        }
+      }
+    },
+    {
+      "name": "E5: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 0
+      }
+    },
+    {
+      "name": "E6: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 4.611375111062885e-7,
+        "worstCase": {
+          "p": [
+            4.099999904632568,
+            1.2999999523162842,
+            0.20000000298023224
+          ],
+          "component": 2,
+          "actual": 0.044002119451761246,
+          "expected": 0.044002099160742755
+        }
+      }
+    },
+    {
+      "name": "E6: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 0
+      }
+    },
+    {
+      "name": "E7: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 2.1455669952316582e-7,
+        "worstCase": {
+          "p": [
+            4.099999904632568,
+            1.2999999523162842,
+            0.20000000298023224
+          ],
+          "component": 2,
+          "actual": 0.0697733610868454,
+          "expected": 0.06977334611650654
+        }
+      }
+    },
+    {
+      "name": "E7: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 0
+      }
+    },
+    {
+      "name": "S0: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 1.6375529391581084e-7,
+        "worstCase": {
+          "p": [
+            0.004999999888241291,
+            0,
+            0
+          ],
+          "component": 2,
+          "actual": 86.37883758544922,
+          "expected": 86.37885173044347
+        }
+      }
+    },
+    {
+      "name": "S0: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 0
+      }
+    },
+    {
+      "name": "Sa: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 1.8253969208090185e-7,
+        "worstCase": {
+          "p": [
+            0,
+            0,
+            0
+          ],
+          "component": 2,
+          "actual": 49.26353073120117,
+          "expected": 49.263539723752544
+        }
+      }
+    },
+    {
+      "name": "Sa: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 3.59267599003843e-8
+      }
+    },
+    {
+      "name": "Sb: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 1.9329597695327314e-7,
+        "worstCase": {
+          "p": [
+            4.099999904632568,
+            1.2999999523162842,
+            0.20000000298023224
+          ],
+          "component": 2,
+          "actual": 0.008058191277086735,
+          "expected": 0.008058192834702991
+        }
+      }
+    },
+    {
+      "name": "Sb: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 4.811012907501855e-8
+      }
+    },
+    {
+      "name": "Sc: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 1.9161986819279316e-7,
+        "worstCase": {
+          "p": [
+            4.099999904632568,
+            1.2999999523162842,
+            0.20000000298023224
+          ],
+          "component": 3,
+          "actual": 0.000020383999071782455,
+          "expected": 0.00002038400297776242
+        }
+      }
+    },
+    {
+      "name": "Sc: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 1.1729553564543416e-7
+      }
+    },
+    {
+      "name": "Sd: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 3.393751100968649e-7,
+        "worstCase": {
+          "p": [
+            -8,
+            0.4000000059604645,
+            -0.30000001192092896
+          ],
+          "component": 0,
+          "actual": 0.11963889002799988,
+          "expected": 0.11963884942555218
+        }
+      }
+    },
+    {
+      "name": "Sd: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 1.1565921775869015e-7
+      }
+    },
+    {
+      "name": "SB0: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 3.639074017439058e-7,
+        "worstCase": {
+          "p": [
+            4.099999904632568,
+            1.2999999523162842,
+            0.20000000298023224
+          ],
+          "component": 2,
+          "actual": 0.03933083638548851,
+          "expected": 0.03933082207271124
+        }
+      }
+    },
+    {
+      "name": "SB0: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 0
+      }
+    },
+    {
+      "name": "SBa: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 2.5168805460956396e-7,
+        "worstCase": {
+          "p": [
+            -8,
+            0.4000000059604645,
+            -0.30000001192092896
+          ],
+          "component": 2,
+          "actual": 0.011247835122048855,
+          "expected": 0.011247837952995308
+        }
+      }
+    },
+    {
+      "name": "SBa: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 3.59267599003843e-8
+      }
+    },
+    {
+      "name": "SBb: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 5.900485182665847e-7,
+        "worstCase": {
+          "p": [
+            12.277999877929688,
+            1.2999999523162842,
+            0.20000000298023224
+          ],
+          "component": 2,
+          "actual": 0.02839643508195877,
+          "expected": 0.028396418326694213
+        }
+      }
+    },
+    {
+      "name": "SBb: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 7.047573830076814e-8
+      }
+    },
+    {
+      "name": "SBc: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 5.356472067805625e-7,
+        "worstCase": {
+          "p": [
+            4.099999904632568,
+            1.2999999523162842,
+            0.20000000298023224
+          ],
+          "component": 2,
+          "actual": 0.0029681320302188396,
+          "expected": 0.00296813044034806
+        }
+      }
+    },
+    {
+      "name": "SBc: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 1.1729553564543416e-7
+      }
+    },
+    {
+      "name": "SBd: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 3.393751100968649e-7,
+        "worstCase": {
+          "p": [
+            -8,
+            0.4000000059604645,
+            -0.30000001192092896
+          ],
+          "component": 0,
+          "actual": 0.11963889002799988,
+          "expected": 0.11963884942555218
+        }
+      }
+    },
+    {
+      "name": "SBd: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 1.1565921775869015e-7
+      }
+    },
+    {
+      "name": "shifted/scaled/phase-shifted Sc: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 4.698022591910664e-7,
+        "worstCase": {
+          "p": [
+            -5,
+            -1.600000023841858,
+            3.700000047683716
+          ],
+          "component": 2,
+          "actual": 0.0013886981178075075,
+          "expected": 0.001388697465394301
+        }
+      }
+    },
+    {
+      "name": "shifted/scaled/phase-shifted Sc: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 1.719331260696677e-7
+      }
     }
   ]
 }

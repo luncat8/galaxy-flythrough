@@ -483,3 +483,25 @@ itself, the no-tonemap HDR-direct path (skipping the pass breaks the white/satur
 knobs on HDR displays — main's comment already records this), `src/render/labels.js`
 (main's `label-layer.js` supersedes it), and their white-point default of 1024 (measured
 for their flux scale at magZero 17 — not transferable).
+
+## 2026-09-21 — Test parameterised samplers away from the preset
+
+The 0.3.0 suite passed while compact discs piled stars against their cut, spheroids
+ignored non-unit r0, halo draws omitted the flat core and hard-coded power 3.5,
+and centre.z / arm phase overrides disagreed between consumers. Global mixtures
+hide low-weight component defects. Isolate each component and integrate its actual
+field independently: the new `model-parity-test.js` fails 37/57 checks on the prior
+code and passes 57/57 after the corrections. For a truncated CDF, invert
+`u * F(cut)`; never clamp an untruncated inverse to the cut. Derive gas gates and
+camera homes again after structural overrides.
+
+## 2026-09-21 — WGSL interpreter scalar cosh is not GPU cosh
+
+`wgsl_reflect` 1.6.0's scalar `Cosh` path calls `Math.cos`; its vector path calls
+`Math.cosh`. Executing the density shader exposed 34–129% thin-disc errors that
+were interpreter errors, not GPU evidence. The shipping JS and WGSL now evaluate
+sech² with `e = exp(-abs(z)/H); 4e/(1+e)²`: algebraically identical, stable for thin
+discs, and independent of that interpreter defect. No dependency source is patched.
+The shader suite now executes density components and arm distances across all
+regular types plus translated/overridden parameters, rather than only parsing the
+density source. CPU interpretation still does not replace real WebGPU validation.

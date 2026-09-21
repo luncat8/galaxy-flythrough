@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T16:07:15.511Z",
+  "date": "2026-09-21T16:56:10.128Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
   "prepareMs": 82,
@@ -115,8 +115,8 @@
       "name": "the procedural field covers the galaxy, not just the solar neighbourhood",
       "pass": true,
       "detail": {
-        "minRadius": 0.186,
-        "maxRadius": 46.319
+        "minRadius": 0.19,
+        "maxRadius": 41.374
       }
     },
     {

@@ -1,0 +1,296 @@
+{
+  "date": "2026-09-21T16:56:21.772Z",
+  "totalChecks": 57,
+  "passed": 57,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "compact thin radius: all samples stay in support",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "compact thin radius: histogram matches integrated field (TV < 2%)",
+      "pass": true,
+      "detail": {
+        "tv": 0.007198888960760586,
+        "mass": 3.6424444362240176
+      }
+    },
+    {
+      "name": "compact thin height: all samples stay in support",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "compact thin height: histogram matches integrated field (TV < 2%)",
+      "pass": true,
+      "detail": {
+        "tv": 0.00848346778825156,
+        "mass": 0.6681130488027676
+      }
+    },
+    {
+      "name": "thin: central profile is exponential, not an unmodelled plateau",
+      "pass": true
+    },
+    {
+      "name": "compact thick radius: all samples stay in support",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "compact thick radius: histogram matches integrated field (TV < 2%)",
+      "pass": true,
+      "detail": {
+        "tv": 0.00778554865501473,
+        "mass": 3.8488455064423097
+      }
+    },
+    {
+      "name": "compact thick height: all samples stay in support",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "compact thick height: histogram matches integrated field (TV < 2%)",
+      "pass": true,
+      "detail": {
+        "tv": 0.007706854102043938,
+        "mass": 0.6228789549776673
+      }
+    },
+    {
+      "name": "thick: central profile is exponential, not an unmodelled plateau",
+      "pass": true
+    },
+    {
+      "name": "plummer non-unit r0: all samples stay in support",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "plummer non-unit r0: histogram matches integrated field (TV < 2%)",
+      "pass": true,
+      "detail": {
+        "tv": 0.005117092949541467,
+        "mass": 0.31991154291061896
+      }
+    },
+    {
+      "name": "sersic non-unit r0: all samples stay in support",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "sersic non-unit r0: histogram matches integrated field (TV < 2%)",
+      "pass": true,
+      "detail": {
+        "tv": 0.006628650183901281,
+        "mass": 3.412279080356412
+      }
+    },
+    {
+      "name": "halo power 2.5, radius 6: all samples stay in support",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "halo power 2.5, radius 6: histogram matches integrated field (TV < 2%)",
+      "pass": true,
+      "detail": {
+        "tv": 0.007210126393053276,
+        "mass": 180.69787026365552
+      }
+    },
+    {
+      "name": "halo 2.5/6: mass integral includes exactly the core and tail",
+      "pass": true
+    },
+    {
+      "name": "halo 2.5/6: the field vanishes outside its bound",
+      "pass": true
+    },
+    {
+      "name": "halo power 3, radius 6: all samples stay in support",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "halo power 3, radius 6: histogram matches integrated field (TV < 2%)",
+      "pass": true,
+      "detail": {
+        "tv": 0.007657639686283784,
+        "mass": 143.95487570961194
+      }
+    },
+    {
+      "name": "halo 3/6: mass integral includes exactly the core and tail",
+      "pass": true
+    },
+    {
+      "name": "halo 3/6: the field vanishes outside its bound",
+      "pass": true
+    },
+    {
+      "name": "halo power 3.5, radius 6: all samples stay in support",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "halo power 3.5, radius 6: histogram matches integrated field (TV < 2%)",
+      "pass": true,
+      "detail": {
+        "tv": 0.007083056439392802,
+        "mass": 118.48909286655727
+      }
+    },
+    {
+      "name": "halo 3.5/6: mass integral includes exactly the core and tail",
+      "pass": true
+    },
+    {
+      "name": "halo 3.5/6: the field vanishes outside its bound",
+      "pass": true
+    },
+    {
+      "name": "halo power 4, radius 6: all samples stay in support",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "halo power 4, radius 6: histogram matches integrated field (TV < 2%)",
+      "pass": true,
+      "detail": {
+        "tv": 0.007662048181203423,
+        "mass": 100.53096570565154
+      }
+    },
+    {
+      "name": "halo 4/6: mass integral includes exactly the core and tail",
+      "pass": true
+    },
+    {
+      "name": "halo 4/6: the field vanishes outside its bound",
+      "pass": true
+    },
+    {
+      "name": "halo power 3.5, radius 1: all samples stay in support",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "halo power 3.5, radius 1: histogram matches integrated field (TV < 2%)",
+      "pass": true,
+      "detail": {
+        "tv": 0.005601562794676379,
+        "mass": 4.188790189181928
+      }
+    },
+    {
+      "name": "halo 3.5/1: mass integral includes exactly the core and tail",
+      "pass": true
+    },
+    {
+      "name": "halo 3.5/1: the field vanishes outside its bound",
+      "pass": true
+    },
+    {
+      "name": "moving the centre translates every sampled component",
+      "pass": true,
+      "detail": 0.0000019073486328125
+    },
+    {
+      "name": "translated field at 0,0,0 is identical",
+      "pass": true
+    },
+    {
+      "name": "translated nebula probability at 0,0,0 is identical",
+      "pass": true
+    },
+    {
+      "name": "translated field at 4,1,0.1 is identical",
+      "pass": true
+    },
+    {
+      "name": "translated nebula probability at 4,1,0.1 is identical",
+      "pass": true
+    },
+    {
+      "name": "translated field at -1,2,3 is identical",
+      "pass": true
+    },
+    {
+      "name": "translated nebula probability at -1,2,3 is identical",
+      "pass": true
+    },
+    {
+      "name": "translated field at 80,0,0 is identical",
+      "pass": true
+    },
+    {
+      "name": "translated nebula probability at 80,0,0 is identical",
+      "pass": true
+    },
+    {
+      "name": "centre override rebuilds radius and orbit home",
+      "pass": true
+    },
+    {
+      "name": "explicit home fields win without staling unspecified home fields",
+      "pass": true
+    },
+    {
+      "name": "gasFraction alone recomputes the shared gas gate",
+      "pass": true
+    },
+    {
+      "name": "quenched spiral cannot classify a nebula as gas-origin even on its ridge",
+      "pass": true
+    },
+    {
+      "name": "arm field and ridge are disabled inside the model minimum radius",
+      "pass": true
+    },
+    {
+      "name": "phase-shifted ridge at R=2 is the field maximum",
+      "pass": true
+    },
+    {
+      "name": "phase-shifted ridge at R=4 is the field maximum",
+      "pass": true
+    },
+    {
+      "name": "phase-shifted ridge at R=10 is the field maximum",
+      "pass": true
+    },
+    {
+      "name": "sampled arm phase matches the field Fourier moment",
+      "pass": true,
+      "detail": {
+        "cosine": 0.35115844312234185,
+        "sine": -0.003928732218814179
+      }
+    },
+    {
+      "name": "samples are stable when the requested count changes",
+      "pass": true
+    },
+    {
+      "name": "an empty model cannot emit stale stars in a box",
+      "pass": true
+    },
+    {
+      "name": "unsupported type Irr is rejected explicitly",
+      "pass": true
+    },
+    {
+      "name": "unsupported type constructor is rejected explicitly",
+      "pass": true
+    },
+    {
+      "name": "unsupported type __proto__ is rejected explicitly",
+      "pass": true
+    }
+  ]
+}

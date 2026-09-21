@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T16:07:14.989Z",
+  "date": "2026-09-21T16:56:09.590Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -7,7 +7,7 @@
     },
     {
       "name": "density",
-      "lines": 162
+      "lines": 163
     },
     {
       "name": "star-sprite",
@@ -62,7 +62,7 @@
         ],
         [
           "density",
-          6853
+          6961
         ],
         [
           "star-sprite",

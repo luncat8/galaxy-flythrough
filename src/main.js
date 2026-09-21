@@ -195,7 +195,7 @@ async function boot() {
         const btnGalaxyApply = document.getElementById('galaxy-apply');
         // The option list is the type table itself: adding a row to galaxy.js puts the
         // type in the menu without touching this file.
-        for (const type of galaxy.GALAXY_TYPE_CYCLE) {
+        for (const type of galaxy.GALAXY_TYPES) {
                 const option = document.createElement('option');
                 option.value = type;
                 option.textContent = type;
