@@ -12,6 +12,7 @@ No separate 0.2 implementation entry exists in the original log. The combined
 0.3/0.4 planning entry lives in 0.3.x; add a 0.4.x log when its implementation starts.
 Historical entries are preserved verbatim; plans remain separate clean artifacts.
 
-Next step suggestion: replace the interim bar with the planned boxy/peanut + end-cap profile
-(and its sampler/WGSL parity), then finish arm-ridge population distribution before 0.3.2
-objects. Metallicity gradient and per-type density parity are in.
+Next step suggestion: 0.3.1's shape and population work is in — the boxy/peanut bar, the
+arm-ridge young population and the gas lane that shares it, and the arm geometry itself
+(`K = m/tan(pitch)`, perpendicular ridge distances) that the visualizer exposed and this
+pass fixed; start 0.3.2's composite objects on the lane those widths now describe.

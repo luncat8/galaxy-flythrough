@@ -104,10 +104,10 @@
 	}
 
 	// Age in Gyr for a population. u1, u2 are independent uniforms. The radius
-	// window for the arm-young branch is the model's: the ridge only means
-	// something between the arm reference radius and youngOuterR, and the
-	// distance-to-arm cut is a physical scale (a few hundred pc), not a length
-	// that scales with the galaxy.
+	// window for the arm-young branch is the model's, and so is the ridge scale
+	// (density.armRidgeWidth): the branch is a half-normal on distToArm whose
+	// sigma is the arm pattern's own newborn lane, so a type's O/B stars hug its
+	// ridge rather than a distance tuned for the Milky Way.
 	function sampleLocalAge(model, componentIndex, distToArm, R, u1, u2) {
 		const logNormal = (mean, sigma) => Math.min(13.5, Math.exp(Math.log(mean) + sigma * gaussian(u1, u2)));
 		switch (componentIndex) {
@@ -116,7 +116,7 @@
 			case density.COMPONENT_THICK: return logNormal(8, 0.4);
 			default:
 				if (!model.populations.gasRich) return logNormal(9, 0.4);
-				const armWidth = 0.3;
+				const armWidth = density.armRidgeWidth(model, R);
 				const pArm = Math.exp(-0.5 * (distToArm * distToArm) / (armWidth * armWidth));
 				if (u2 < pArm && R > model.arms.Rs && R < model.populations.youngOuterR) return Math.pow(u1, 3.0) * 0.3;
 				return logNormal(5, 0.5);
@@ -235,26 +235,32 @@
 	}
 
 	// Mean distance-to-arm and the fraction within 0.5 kpc, per spectral class.
-	function classVsArmDistance(stars) {
-		const buckets = {};
-		for (const cls of records.SPECTRAL_CLASSES) buckets[cls] = [];
-		for (const s of stars) {
-			if (buckets[s.spectralClass]) buckets[s.spectralClass].push(s.distToArm);
-		}
+	// Arm-distance statistics per spectral class, in units of the model's own
+	// young ridge (density.armRidgeWidth at each star's radius), never against a
+	// fixed distance: a fixed cut is most of the lane in the inner disc and a
+	// sliver of it at the rim, so it stops measuring arm hugging at all (see the
+	// star-types-evolution test for the numbers). Restricted to the star-forming
+	// annulus — the region nebula.js calls the spiral region — because inside
+	// `arms.Rs` the lane is a fraction of the bulge and outside `youngOuterR`
+	// the pattern does not form stars. `stars` records must carry `R` and
+	// `distToArm`; `meanZ` is the mean ridge-relative distance, which is 0.8 for
+	// a population born in the lane and ~2.5 for one that ignores it.
+	function classVsArmDistance(stars, model) {
 		const out = {};
-		for (const cls of Object.keys(buckets)) {
-			const arr = buckets[cls];
-			if (arr.length === 0) {
-				out[cls] = { n: 0, mean: 0, fracLT05: 0 };
-				continue;
-			}
-			let sum = 0;
-			let close = 0;
-			for (const v of arr) {
-				sum += v;
-				if (v < 0.5) close++;
-			}
-			out[cls] = { n: arr.length, mean: sum / arr.length, fracLT05: close / arr.length };
+		for (const cls of records.SPECTRAL_CLASSES) out[cls] = { n: 0, sum: 0, sumZ: 0, inLane: 0 };
+		for (const s of stars) {
+			const bucket = out[s.spectralClass];
+			if (!bucket || !(s.R > model.arms.Rs && s.R < model.populations.youngOuterR)) continue;
+			const sigma = density.armRidgeWidth(model, s.R);
+			bucket.n++;
+			bucket.sum += s.distToArm;
+			bucket.sumZ += s.distToArm / sigma;
+			if (s.distToArm < sigma) bucket.inLane++;
+		}
+		for (const cls of Object.keys(out)) {
+			const b = out[cls];
+			const n = Math.max(1, b.n);
+			out[cls] = { n: b.n, mean: b.sum / n, meanZ: b.sumZ / n, fracInLane: b.inLane / n };
 		}
 		return out;
 	}

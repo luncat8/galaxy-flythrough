@@ -12,6 +12,8 @@
 //   thick disc: R from the field's radial marginal (core + flare included),
 //               phi ~ arm profile, z ~ exp(-|z|/H(R))
 //   spheroid:   plummer radius or sersic radius, uniform direction, axis scaling
+//   bar (SB*):  |xi| from the longitudinal CDF (plateau + exponential end caps),
+//               then uniform in the boxy/peanut cross-section at that xi
 //   halo:       r ~ r^-1.5 on [a_h, rMax] (i.e. rho ~ r^-3.5), uniform direction
 //
 // Irregulars are two-stage: after the base draw, CLUMP_SHARE of the disc stars
@@ -19,9 +21,10 @@
 // the field's hotspot boost.
 //
 // The spiral arms enter as an azimuthal density profile. For a fixed R the
-// model's disc density is proportional to 1 + A*cos(m*phi - k*ln(R/Rs) +
-// phase0), so drawing theta from p(theta) ~ 1 + A*cos(theta) by inverse CDF and
-// setting phi = (theta + k*ln(R/Rs) - phase0)/m + n*2*pi/m gives exactly that
+// model's disc density is proportional to 1 + A*cos(m*phi - K*ln(R/Rs) +
+// phase0) with K the wavenumber density.armWavenumber carries, so drawing
+// theta from p(theta) ~ 1 + A*cos(theta) by inverse CDF and setting
+// phi = (theta + K*ln(R/Rs) - phase0)/m + n*2*pi/m gives exactly that
 // distribution —
 // the arm rejection sampler it replaces also worked, but it had to compensate
 // a 17% loss of disc draws by inflating the other components' weights. A model
@@ -79,18 +82,75 @@
 		return { radii, cdf, total };
 	}
 
-	function sampleDiscRadius(u, sampler, out) {
-		const target = u * sampler.total;
+	// Invert a monotone (grid, cdf) table by bisection plus linear interpolation.
+	// Every 1-D draw in this file goes through here.
+	function sampleTable(u, grid, cdf, total) {
+		const target = u * total;
 		let lo = 0;
-		let hi = RADIAL_CDF_STEPS;
+		let hi = grid.length - 1;
 		while (lo + 1 < hi) {
 			const mid = (lo + hi) >> 1;
-			if (sampler.cdf[mid] < target) lo = mid; else hi = mid;
+			if (cdf[mid] < target) lo = mid; else hi = mid;
 		}
-		const left = sampler.cdf[lo];
-		const span = sampler.cdf[lo + 1] - left;
+		const left = cdf[lo];
+		const span = cdf[lo + 1] - left;
 		const t = span > 0 ? (target - left) / span : 0;
-		out[0] = sampler.radii[lo] + t * (sampler.radii[lo + 1] - sampler.radii[lo]);
+		return grid[lo] + t * (grid[lo + 1] - grid[lo]);
+	}
+
+	function sampleDiscRadius(u, sampler, out) {
+		out[0] = sampleTable(u, sampler.radii, sampler.cdf, sampler.total);
+	}
+
+	// ---- the bar ------------------------------------------------------------
+	//
+	// The bar's field is uniform inside a boxy cross-section, so the sampler is a
+	// uniform draw in that cross-section plus one inverse CDF along the major axis
+	// (the plan's "exponential cap rejection replaced by an inverse-CDF"). Both
+	// tables are built from the weight the field integrates, so the stars and the
+	// field cannot drift apart; the transverse one is scale-free and depends on
+	// the boxiness alone.
+	function buildBarSampler(model) {
+		const n = model.spheroid.n;
+		const tip = density.barTipRadius(model);
+		const xi = new Float64Array(RADIAL_CDF_STEPS + 1);
+		const cdf = new Float64Array(RADIAL_CDF_STEPS + 1);
+		const h = tip / RADIAL_CDF_STEPS;
+		for (let i = 0; i <= RADIAL_CDF_STEPS; i++) xi[i] = i * h;
+		let total = 0;
+		for (let i = 0; i < RADIAL_CDF_STEPS; i++) {
+			total += (h / 6) * (density.barLongitudinalWeight(model, xi[i], tip)
+				+ 4 * density.barLongitudinalWeight(model, 0.5 * (xi[i] + xi[i + 1]), tip)
+				+ density.barLongitudinalWeight(model, xi[i + 1], tip));
+			cdf[i + 1] = total;
+		}
+		// Uniform in the unit L^n disk: the slice marginal p(y) ~ (1-|y|^n)^(1/n),
+		// then a uniform z inside the slice at that y.
+		const slice = (y) => Math.pow(Math.max(0, 1 - Math.pow(Math.abs(y), n)), 1 / n);
+		const ty = new Float64Array(RADIAL_CDF_STEPS + 1);
+		const tyCdf = new Float64Array(RADIAL_CDF_STEPS + 1);
+		const th = 2 / RADIAL_CDF_STEPS;
+		for (let i = 0; i <= RADIAL_CDF_STEPS; i++) ty[i] = -1 + i * th;
+		let yTotal = 0;
+		for (let i = 0; i < RADIAL_CDF_STEPS; i++) {
+			yTotal += (th / 6) * (slice(ty[i]) + 4 * slice(0.5 * (ty[i] + ty[i + 1])) + slice(ty[i + 1]));
+			tyCdf[i + 1] = yTotal;
+		}
+		return { xi, cdf, total, ty, tyCdf, yTotal, n, tip };
+	}
+
+	// Bar-frame offsets (unrotated, centre-relative): the caller applies the tilt.
+	function sampleBarPoint(model, sampler, u1, u2, u3, u4, out) {
+		const sign = u2 < 0.5 ? -1 : 1;
+		const xi = sign * sampleTable(u1, sampler.xi, sampler.cdf, sampler.total);
+		const tau = density.barCrossSectionRadius(model, xi, sampler.tip);
+		const stretch = density.barVerticalStretch(model, xi);
+		const eta = sampleTable(u3, sampler.ty, sampler.tyCdf, sampler.yTotal);
+		const zeta = (2 * u4 - 1) * Math.pow(Math.max(0, 1 - Math.pow(Math.abs(eta), sampler.n)), 1 / sampler.n);
+		const sp = model.spheroid;
+		out[0] = sp.a * sp.r0 * xi;
+		out[1] = sp.b * sp.r0 * tau * eta;
+		out[2] = sp.c * sp.r0 * tau * stretch * zeta;
 	}
 
 	// z ~ sech^2(z / 2H) truncated to |z| <= zMax. The untruncated CDF is
@@ -152,12 +212,12 @@
 		return Math.sqrt(v / Math.max(1e-12, 1 - v));
 	}
 
-	// Spheroid radius in units of s, for any profile. The sersic and bar branches
-	// invert density.sersicMassFraction/barMassFraction, so the stars and the field agree by
-	// construction rather than by a measured acceptance rate.
+	// Spheroid radius in units of s, for the profiles that are a radius plus a
+	// direction. The sersic branch inverts density.sersicMassFraction, so the
+	// stars and the field agree by construction rather than by a measured
+	// acceptance rate; the bar has its own sampler (sampleBarPoint).
 	function sampleSpheroidRadius(model, u) {
 		const sMax = model.truncation.spheroidRadius;
-		if (model.spheroid.profileId === density.PROFILE_BAR) return density.barRadiusForFraction(model, u);
 		if (model.spheroid.profileId === density.PROFILE_SERSIC) return density.sersicRadiusForFraction(model, u);
 		return samplePlummerRadius(u, sMax);
 	}
@@ -222,8 +282,8 @@
 		const t = model.truncation;
 		const A = model.arms.amp;
 		const armM = model.arms.m;
-		const armArmed = A > 0 && armM > 0;
-		const armK = Math.tan(model.arms.pitchDeg * Math.PI / 180);
+		const armArmed = density.armsArmed(model);
+		const armK = density.armWavenumber(model);
 		const armRs = model.arms.Rs;
 		const armPhase0 = model.arms.phase0;
 		const tilt = model.spheroid.tiltDeg * Math.PI / 180;
@@ -236,6 +296,7 @@
 		const clumps = model.clumps || [];
 		const thinRadial = buildDiscRadialSampler(model.thin, 'sech2', t.discRadius, t.discHeight);
 		const thickRadial = buildDiscRadialSampler(model.thick, 'laplace', t.discRadius, t.discHeight);
+		const barSampler = model.spheroid.profileId === density.PROFILE_BAR ? buildBarSampler(model) : null;
 
 		for (let i = 0; i < count; i++) {
 			const starSeed = Math.imul(i + 1, 0x9e3779b1) ^ Math.imul(seed | 0, 0x85ebca6b);
@@ -262,23 +323,18 @@
 		} else if (u0 < wBulge) {
 				component = density.COMPONENT_BULGE;
 				const sp = model.spheroid;
-				const s = model.spheroid.r0 * sampleSpheroidRadius(model, u1);
-				sampleDirection(u2, u3, scratch);
-				if (sp.profileId === density.PROFILE_BAR) {
-					const bn = sp.n || 2.5;
-					const norm = Math.pow(Math.pow(Math.abs(scratch[0]), bn) + Math.pow(Math.abs(scratch[1]), bn) + Math.pow(Math.abs(scratch[2]), bn), 1 / bn);
-					if (norm > 1e-6) {
-						scratch[0] /= norm;
-						scratch[1] /= norm;
-						scratch[2] /= norm;
-					}
+				if (barSampler) {
+					sampleBarPoint(model, barSampler, u1, u2, u3, u4, scratch);
+				} else {
+					const s = sp.r0 * sampleSpheroidRadius(model, u1);
+					sampleDirection(u2, u3, scratch);
+					scratch[0] *= sp.a * s;
+					scratch[1] *= sp.b * s;
+					scratch[2] *= sp.c * s;
 				}
-				const ex = sp.a * s * scratch[0];
-				const ey = sp.b * s * scratch[1];
-				const ez = sp.c * s * scratch[2];
-				x = gcX + ex * ct - ey * st;
-				y = gcY + ex * st + ey * ct;
-				z = gcZ + ez;
+				x = gcX + scratch[0] * ct - scratch[1] * st;
+				y = gcY + scratch[0] * st + scratch[1] * ct;
+				z = gcZ + scratch[2];
 				buf.x[i] = x;
 				buf.y[i] = y;
 				buf.z[i] = z;
@@ -304,7 +360,7 @@
 
 			// Discs: R and z are drawn above; phi follows the arm profile.
 			//
-			// theta = m*phi - k*ln(R/Rs) + phase0 is drawn from 1 + A*cos(theta),
+			// theta = m*phi - K*ln(R/Rs) + phase0 is drawn from 1 + A*cos(theta),
 			// which fixes phi to one 2*pi/m wide window containing a single arm
 			// ridge. The profile has m identical ridges, so one of the m
 			// replicas is picked uniformly — without this the disc would only

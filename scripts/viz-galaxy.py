@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
 """scripts/viz-galaxy.py
 Reads experiments/logs/galaxy-sample.json (produced by experiments/visualize-data.js)
-and renders a top-down view of the galaxy:
+and renders three views of the galaxy:
   - density field as background (log-scaled grayscale)
   - stars coloured by spectral class
   - nebulae as coloured circles
   - galactic centre and Sun marked
+
+The middle panel is the same field's arm modulation, rho divided by its own
+azimuthal mean at that radius. The arms are a 15-25% modulation of a disc that
+falls off by a factor of thousands, so on the raw density they are invisible;
+divided out, they are the whole picture, and the pitch angle is readable by eye.
+
+The right-hand panel is the model edge-on (the x-z slice through its centre,
+zoomed to the inner 16 x 4.4 kpc), which is the view a boxy/peanut bar shows its
+shape in.
 
 Output: /home/z/my-project/download/galaxy-viz.png
 """
@@ -47,6 +56,8 @@ def main():
 
         GC_X = data['galaxy']['centre']['x']
         GC_Y = data['galaxy']['centre']['y']
+        model_type = data['galaxy'].get('type', 'SBb')
+        is_preset = data['galaxy'].get('preset', False)
         stars = data['stars']
         nebulae = data['nebulae']
         grid = np.array(data['densityGrid']).reshape(data['densityGridMeta']['N'], data['densityGridMeta']['N'])
@@ -56,7 +67,8 @@ def main():
         # Build extent for imshow.
         extent = [gm['xMin'], gm['xMax'], gm['yMin'], gm['yMax']]
 
-        fig, ax = plt.subplots(figsize=(14, 11), constrained_layout=True)
+        fig, (ax, ax_mod, ax_edge) = plt.subplots(1, 3, figsize=(24, 8.5), constrained_layout=True,
+                gridspec_kw={'width_ratios': [1.55, 1.0, 1.0]})
 
         # Background: density of total star density, midplane.
         # Use sqrt scaling to bring out arm modulation (±20%) against bulge dominance.
@@ -71,17 +83,21 @@ def main():
                 alpha=0.9,
         )
 
-        # Overlay spiral arm curves as guide lines
-        # Arm equation: m*phi = k*ln(R/Rs) + 2*pi*n
-        k = np.tan(np.deg2rad(data['galaxy']['arms']['pitchDeg']))
-        m = data['galaxy']['arms']['m']
-        Rs = data['galaxy']['arms']['Rs']
+        # Overlay spiral arm curves as guide lines. The field's ridges solve
+        # m*phi - K*ln(R/Rs) + phase0 = 2*pi*n with K = m/tan(pitch) (the
+        # wavenumber a log spiral of that pitch has, density.armWavenumber), the
+        # same convention the model and the shader use.
+        arms = data['galaxy']['arms']
+        m = arms['m']
+        Rs = arms['Rs']
+        phase0 = arms.get('phase0', 0.0)
+        pitch = np.deg2rad(arms['pitchDeg'])
+        k = m / np.tan(pitch) if pitch > 0 else 0.0
         for n in range(m):
-                R_range = np.linspace(0.5, 22, 500)
-                phi_arm = (k * np.log(R_range / Rs) + 2 * np.pi * n) / m
-                # Convert to Sun-centred coordinates: GC at (+8.178, 0)
-                x_arm = +8.178 + R_range * np.cos(phi_arm)
-                y_arm = R_range * np.sin(phi_arm)
+                R_range = np.linspace(arms.get('minRadius', 0.5), 22, 2000)
+                phi_arm = (k * np.log(R_range / Rs) - phase0 + 2 * np.pi * n) / m
+                x_arm = GC_X + R_range * np.cos(phi_arm)
+                y_arm = GC_Y + R_range * np.sin(phi_arm)
                 ax.plot(x_arm, y_arm, '-', color='cyan', alpha=0.3, linewidth=1.0)
 
         # Stars: colour by class. Apply size by absMag (brighter = larger).
@@ -112,8 +128,9 @@ def main():
         # Mark galactic centre and Sun
         ax.plot(GC_X, GC_Y, 'x', color='red', markersize=14, markeredgewidth=3)
         ax.text(GC_X, GC_Y + 0.6, 'GC', color='red', fontsize=11, ha='center', weight='bold')
-        ax.plot(0, 0, '+', color='yellow', markersize=12, markeredgewidth=2)
-        ax.text(0, 0.6, 'Sun', color='yellow', fontsize=10, ha='center', weight='bold')
+        if is_preset:
+                ax.plot(0, 0, '+', color='yellow', markersize=12, markeredgewidth=2)
+                ax.text(0, 0.6, 'Sun', color='yellow', fontsize=10, ha='center', weight='bold')
 
         # Legend for spectral classes
         legend_handles = []
@@ -144,17 +161,90 @@ def main():
         ax.legend(legend_handles, legend_labels, loc='upper left', fontsize=9,
                 framealpha=0.85, ncol=2)
 
-        ax.set_xlabel('X (kpc, Sun-centred)')
+        ax.set_xlabel('X (kpc)')
         ax.set_ylabel('Y (kpc)')
-        ax.set_title('Galaxy Fly-Through — top-down view (z=0 plane)\n'
+        frame = 'Sun-centred' if is_preset else 'galactocentric'
+        ax.set_title(f'{model_type} — top-down view (z=0 plane), {frame}\n'
                 'Density (sqrt-scaled, inferno) + stars (colored by class) + nebulae (circles)\n'
                 'Cyan curves = spiral arm centres')
         ax.set_xlim(extent[0], extent[1])
         ax.set_ylim(extent[2], extent[3])
 
-        # Colorbar for density
-        cbar = fig.colorbar(im, ax=ax, shrink=0.7, pad=0.02)
-        cbar.set_label('sqrt(star density)')
+        # Middle: the same field divided by its own azimuthal mean at each radius
+        # — the arm modulation. A disc falls off by orders of magnitude outward
+        # and the arms are a 15-25% ripple on top of it, so they are invisible on
+        # the raw map and unmissable here; the winding is readable by eye.
+        gx = np.linspace(extent[0], extent[1], gm['N'])
+        gy = np.linspace(extent[2], extent[3], gm['N'])
+        GX, GY = np.meshgrid(gx - GC_X, gy - GC_Y, indexing='ij')
+        GR = np.hypot(GX, GY)
+        rbin = np.clip((GR / (0.5 * max(extent[1] - extent[0], 1e-9)) * 120).astype(int), 0, 119)
+        sums = np.bincount(rbin.ravel(), weights=grid.ravel(), minlength=120)
+        counts = np.bincount(rbin.ravel(), minlength=120)
+        mean_r = np.where(counts > 0, sums / np.maximum(counts, 1), 0.0)
+        mod = np.where(mean_r[rbin] > 0, grid / np.maximum(mean_r[rbin], 1e-12) - 1.0, 0.0)
+        # Outside the arm-bearing annulus the azimuthal mean is meaningless (the
+        # halo and the truncation edge), so show only where the modulation is
+        # actually defined: inside the disc's arm region.
+        half_span = max(extent[1] - extent[0], extent[3] - extent[2]) * 0.5
+        mod = np.where(GR < 0.85 * half_span, mod, np.nan)
+        im_mod = ax_mod.imshow(
+                mod.T,
+                origin='lower',
+                extent=extent,
+                cmap='RdBu_r',
+                aspect='equal',
+                vmin=-0.3, vmax=0.3,
+        )
+        for n in range(m):
+                R_range = np.linspace(arms.get('minRadius', 0.5), 22, 2000)
+                phi_arm = (k * np.log(R_range / Rs) - phase0 + 2 * np.pi * n) / m
+                ax_mod.plot(GC_X + R_range * np.cos(phi_arm), GC_Y + R_range * np.sin(phi_arm),
+                        '-', color='black', alpha=0.35, linewidth=0.8)
+        ax_mod.plot(GC_X, GC_Y, 'x', color='black', markersize=10, markeredgewidth=2)
+        ax_mod.set_xlim(extent[0], extent[1])
+        ax_mod.set_ylim(extent[2], extent[3])
+        ax_mod.set_xlabel('X (kpc)')
+        ax_mod.set_ylabel('Y (kpc)')
+        ax_mod.set_title('Arm modulation (rho / azimuthal mean - 1)\n'
+                f'amp = {arms["amp"]:.2f}, m = {m}, pitch = {arms["pitchDeg"]:.0f} deg\n'
+                'Black curves = the ridge lines the field is written in terms of')
+        cbar_mod = fig.colorbar(im_mod, ax=ax_mod, shrink=0.7, pad=0.02)
+        cbar_mod.set_label('modulation')
+
+        # Right: the same model edge-on — the x-z slice through its centre, which
+        # is where a bar shows its boxy/peanut vertical structure.
+        gridxz = data['densityGridXZ']
+        gxz = data['densityGridXZMeta']
+        extent_xz = [gxz['xMin'], gxz['xMax'], gxz['zMin'], gxz['zMax']]
+        xz = np.array(gridxz).reshape(gxz['N'], gxz['NZ'])
+        im_xz = ax_edge.imshow(
+                np.sqrt(np.maximum(xz, 0)).T,
+                origin='lower',
+                extent=extent_xz,
+                cmap='inferno',
+                aspect='auto',
+                vmin=0, vmax=0.8,
+                alpha=0.9,
+        )
+        ax_edge.scatter(star_x, np.array([s['z'] for s in stars]),
+                c=star_col, s=star_size * 0.4, alpha=0.55, edgecolors='none')
+        ax_edge.plot(GC_X, 0, 'x', color='red', markersize=10, markeredgewidth=2)
+        spheroid = data['galaxy'].get('spheroid')
+        if data['galaxy'].get('barred') and spheroid:
+                theta = np.deg2rad(spheroid['tiltDeg'])
+                half = spheroid['a'] * spheroid['r0'] * np.cos(theta)
+                ax_edge.plot([GC_X - half, GC_X + half], [0, 0], '--', color='cyan',
+                        alpha=0.5, linewidth=1.0)
+        ax_edge.set_xlabel('X (kpc, along the bar)')
+        ax_edge.set_ylabel('Z (kpc)')
+        ax_edge.set_title('Edge-on slice (y = centre), inner kpc\n'
+                'Cyan dashed = the bar spheroid\'s projected major axis\n'
+                'A boxy/peanut bar is thicker at its ends than at its middle')
+        ax_edge.set_xlim(gxz['xMin'], gxz['xMax'])
+        ax_edge.set_ylim(gxz['zMin'], gxz['zMax'])
+        cbar_xz = fig.colorbar(im_xz, ax=ax_edge, shrink=0.7, pad=0.02)
+        cbar_xz.set_label('sqrt(star density)')
 
         os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
         fig.savefig(OUTPUT, dpi=140)

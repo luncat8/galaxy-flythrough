@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-21T18:19:59.802Z",
+  "date": "2026-09-21T20:38:20.882Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 84,
+  "prepareMs": 80,
   "totalChecks": 77,
   "passed": 77,
   "failed": 0,
@@ -115,7 +115,7 @@
       "name": "the procedural field covers the galaxy, not just the solar neighbourhood",
       "pass": true,
       "detail": {
-        "minRadius": 0.19,
+        "minRadius": 0.206,
         "maxRadius": 41.374
       }
     },
@@ -146,7 +146,7 @@
       "pass": true,
       "detail": {
         "vertices": 4,
-        "instances": 23649,
+        "instances": 23659,
         "firstVertex": 0,
         "firstInstance": 0,
         "pipeline": {
@@ -176,7 +176,7 @@
     {
       "name": "the resident catalog fits the budget",
       "pass": true,
-      "detail": 1078
+      "detail": 1076
     },
     {
       "name": "all cells of this small catalog are resident",
@@ -190,7 +190,7 @@
       "name": "density parity thinned the catalog (fewer visible stars than raw)",
       "pass": true,
       "detail": {
-        "thinned": 1078,
+        "thinned": 1076,
         "raw": 3829
       }
     },
@@ -378,7 +378,7 @@
       "pass": true,
       "detail": {
         "resident": 2045,
-        "stars": 1078
+        "stars": 1076
       }
     },
     {
@@ -440,7 +440,7 @@
     {
       "name": "the drawn instance count follows the new residency (global + landmarks + local + catalog)",
       "pass": true,
-      "detail": 23800
+      "detail": 23787
     },
     {
       "name": "a camera outside the catalog volume drops every catalog star",

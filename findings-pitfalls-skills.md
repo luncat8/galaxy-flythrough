@@ -3,6 +3,100 @@
 Append-only notes for LLM agents working on this project. Each entry: date, one-line summary heading, then the detail. Newest at top.
 
 ---
+## 2026-09-21 — `k = tan(pitch)` turns spiral arms into a fan of radial spokes
+
+The arm modulation was implemented exactly as `plan.md` wrote it: `1 + A*cos(m*phi +
+k*ln(R/Rs) + phase0)` with `k = tan(i)`. But the phase that winds at pitch `i` is
+`m*phi - K*ln(R/Rs)` with `K = m/tan(i)` — a log spiral is `phi = ln(R/Rs)/tan(i)`, so
+multiplying the phase by `m` puts `m/tan(i)` in front of the logarithm. With `K = tan(i)`
+the pattern moves 0.2 rad over a whole e-fold in radius instead of 5 rad: the "arms" are
+near-radial spokes, `pitchDeg` is not an angle the field has, and the field still *looks*
+busy enough near the centre that nobody notices. A design doc is not a test — this survived
+0.3.0 and 0.3.1 because every check round-tripped the same wrong formula. What caught it
+was drawing the field: dividing the density grid by its own azimuthal mean per radius
+(`scripts/viz-galaxy.py`, middle panel) turns a 15-25% ripple on an orders-of-magnitude
+falloff into the whole picture, and the difference between 7 deg of winding and a pinwheel
+is unmistakable at a glance. Two independent measurements now pin it — crest azimuth at two
+neighbouring radii (winding) and consecutive crest radii along a ray (`e^(2*pi/K)`) — and
+both recover the anchor pitch to 0.05 deg.
+
+The same 1/sin(i) confusion hid in the young-ridge widths. `armRidgeWidth` was written as a
+fraction of the *perpendicular* spacing `2*pi*R*sin(i)/m`, while the `distToArm` its gate
+read was the *azimuthal arc* `R*dphi`, i.e. `1/sin(i)` = 4.8x larger for the preset: a lane
+documented as "~0.3 kpc" was sampled up to 1.4 kpc wide, and the nebula reaches documented
+as the 0.8 / 1.5 kpc they were tuned at were really 3.8 / 7.2 kpc. Every width must name the
+distance it is a width *of*, and the code should compute that distance rather than an
+adjacent one. `distanceToNearestArm` now returns the perpendicular distance — one division
+by `hypot(m, K)` after wrapping the phase residual, no loop over the m branches, and the
+same expression in WGSL — so the gate's z, the ridge fraction and the nebula reach all mean
+what they say. Side effect worth knowing: the fix widened the sampled lane by 1/sin(i), so
+the young fraction of the thin disc went from 2.3 % to 18 % (MW preset) with the O/B census
+unchanged at 0.1 % — the gate now admits the documented 0.3 kpc lane instead of a 0.06 kpc
+one, and the half-normal shape of the young branch is unchanged.
+
+---
+
+## 2026-09-21 — Validate a distance-to-ridge gate per star, never against one width
+
+A gate `exp(-z^2/2)` with `z = distToArm / sigma(R)` looks like a half-normal, but a
+*sample* of it is a mixture: sigma varies across the sampled annulus and the mixture has
+far heavier tails than any of its members. Measuring Sa-Sd with one global sigma gave
+median z 0.62-0.63 and P(z<2) = 0.89 against the ideal 0.674/0.955, which reads exactly
+like a code bug and is not one. Computing z per star with that star's own sigma turns the
+same sample into 0.664-0.673 / 0.952-0.957. Per-star z is also what makes the test strong:
+a width hard-coded for the Milky Way misses by a factor `0.3 / sigma(R)`, which is
+unmissable, while a histogram in kpc can hide it.
+
+Two traps met while measuring it. `density.distanceToNearestArm` returned the *azimuthal
+arc* `R*delta_phi` to the ridge line, not the perpendicular distance, so a width quoted as
+a fraction of the perpendicular spiral wavelength `2*pi*R*sin(i)/m` was a fraction `1/sin(i)`
+of the wavelength the gate actually sampled across — always say which distance a width
+belongs to. (Superseded the same day: the function returns the perpendicular distance now,
+and the wavenumber bug that made the two differ by more than a constant is the entry above.)
+And do not sort a distance array and a radius array independently before
+pairing them: `dists.sort()` with `rs[i]` silently paired each distance with another star's
+radius and produced a convincing 4 % tail that the fixed code does not have.
+
+---
+
+## 2026-09-21 — The p-generalised-normal direction is *not* uniform on the Lp ball
+
+"Draw z ~ N(0, I₂), normalise by the Lp norm, scale by sqrt(U)" is a popular recipe for a
+uniform Lp disk, and it is wrong for every p except 2. Normalising by the *L2* norm is the
+classic uniform-disk trick; the Lp version normalises the direction by a different measure
+and the resulting point density is not flat (it over-concentrates near the axes as p grows).
+Measured against a rejection reference in 12x12 bins, N = 2e5, reduced chi-square: 4.88
+(p = 1.5), 1.007 (p = 2, the only one that passes), 2.68 (2.5), 4.81 (3), 9.91 (4), 17.71
+(6). Run the prototype before trusting a one-line sampling trick: the Lp "spherical
+symmetry" of the p-generalised normal is about its level sets, not about the measure the
+ball inherits. The bar sampler instead marginalises the cross-section area analytically
+(`4*Gamma(1+1/n)^2/Gamma(1+2/n)` per unit radius squared) and inverts a 1-D CDF along the
+major axis, then places the cross-section point by slice marginal + inverse CDF.
+
+---
+## 2026-09-21 — A bounded profile has no tail, but it still has a truncation
+
+When a sampler inverts a profile that ends on its own (the boxy bar ends at |xi| = 1), the
+model's truncation cut still has to mean something: "delivered / untruncated" is only
+consistent if the mass integral measures the *whole* body and the truncation fraction
+measures the crop, rather than the integral shrinking to the cut and the fraction sitting at
+1. The cropped mass is also not the same integral over a shorter interval: cutting a boxy
+superellipsoid at level R changes the cross-section at *every* xi
+(`tau_R(xi)^n = R^n - |xi|^n`), so the field's marginal, the mass integral and the sampler's
+CDF all take the cut as a parameter. One weight function, three consumers: if the truncation
+is expressed anywhere else, a `spheroidRadius` override silently breaks only one of them.
+
+---
+## 2026-09-21 — Work in the repo directory when the sandbox is repo-scoped
+
+Not every Arena checkout keeps the whole workspace: in this one, files written under
+`/home/user/...` outside the repository were gone by the next bash call, while files inside
+the repository persisted (the repo is the overlay that travels between calls). Scratch
+scripts and measurement harnesses therefore go in the repo root and are deleted before the
+commit, not in `/tmp` or a sibling directory — where a heredoc + `node` can look like it
+succeeded while the next call finds nothing.
+
+---
 ## 2026-09-21 — Colour-index steps cannot walk off the classification LUT
 
 Radial metallicity is a *colour* modifier, not a new class. `colorIndex + 1` on an M

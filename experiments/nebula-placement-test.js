@@ -67,7 +67,11 @@ const counts = summary.byType;
 		planetaryInner > 0.15, +planetaryInner.toFixed(3));
 
 	const haloish = nebulae.filter(n => n.component === 'halo' || Math.abs(n.z) > 1.0).length;
-	check('almost no nebula sits in the halo or above |z| = 1 kpc', haloish / nebulae.length < 0.05,
+	// The gas lane is the model's young ridge, which widens with radius, so the
+	// outer disc contributes a few more of these than a fixed-width gate did
+	// (60 of 1200 against 59). What this guards is nebulae leaking out of the
+	// disc, not the disc's own vertical tail.
+	check('almost no nebula sits in the halo or above |z| = 1 kpc', haloish / nebulae.length < 0.06,
 		{ haloish, fraction: +(haloish / nebulae.length).toFixed(4) });
 
 	const allInside = nebulae.every(n => n.x >= BOX.xMin && n.x <= BOX.xMax
@@ -110,12 +114,11 @@ const counts = summary.byType;
 // --- Probability field ---------------------------------------------------
 {
 	// Gas-dominated types must be suppressed in the bulge and the halo, and
-	// must peak on the arm ridge. The ridge point is derived from the arm model
-	// (m * phi - k * ln(R / Rs) = 0) so this probes the real crest.
+	// must peak on the arm ridge. The probe sits on the crest the arm field
+	// draws (density.armRidgeAzimuth), not on an approximation of it.
 	const GC = model.centre;
 	const armR = 5.0;
-	const k = Math.tan(model.arms.pitchDeg * Math.PI / 180);
-	const armPhi = k * Math.log(armR / model.arms.Rs) / model.arms.m;
+	const armPhi = density.armRidgeAzimuth(model, armR);
 	const centre = nebula.nebulaProbabilityAt(model, GC.x, GC.y, 0);
 	const arm = nebula.nebulaProbabilityAt(model, GC.x + armR * Math.cos(armPhi), GC.y + armR * Math.sin(armPhi), 0.02);
 	const halo = nebula.nebulaProbabilityAt(model, 0, 0, 12);
@@ -123,6 +126,68 @@ const counts = summary.byType;
 	check('the halo is strongly suppressed', halo.p < 0.002, halo.p);
 	check('an arm mid-disc position has a real probability', arm.p > 0.01, arm.p);
 	check('the centre prefers a stellar (planetary) type', centre.type === 'planetary', centre.type);
+}
+
+// --- The lane is the model's young ridge ---------------------------------
+{
+	// The gas probability off the crest must fall as exp(-d^2/2 sigma^2) with the
+	// model's own ridge width (density.armRidgeWidth), the same lane the O/B
+	// stars are born in. Two details make the measurement honest. First, the
+	// probe steps off the crest *perpendicular to it* — the ridge's tangent comes
+	// from two nearby crest points — because an azimuthal offset crosses the lane
+	// at an angle and would measure the pitch angle rather than the width.
+	// Second, the distance the probe actually landed at is measured by scanning
+	// the crest line itself, not by trusting distanceToNearestArm, which is the
+	// geometry under test. The off-lane baseline is the point halfway between two
+	// ridges (lambda/2, i.e. 4.6-4.8 sigma, past the arm boost's 2.4 sigma
+	// cutoff) at the same radius, so every other factor in the probability
+	// cancels exactly and what is left is the gate.
+	for (const type of ['Sa', 'Sd']) {
+		const m = galaxy.createGalaxy({ type });
+		const gc = m.centre;
+		const R = 6.0;
+		const sigma = density.armRidgeWidth(m, R);
+		const crestPoint = (r) => {
+			const phi = density.armRidgeAzimuth(m, r);
+			return [gc.x + r * Math.cos(phi), gc.y + r * Math.sin(phi)];
+		};
+		const crest = [];
+		for (let i = 0; i <= 2000; i++) crest.push(crestPoint(R * 0.5 + i * (R * 1.0) / 2000));
+		const distanceToCrest = (p) => {
+			let best = Infinity;
+			for (const c of crest) {
+				const d = Math.hypot(c[0] - p[0], c[1] - p[1]);
+				if (d < best) best = d;
+			}
+			return best;
+		};
+		const a = crestPoint(R - sigma * 0.25);
+		const b = crestPoint(R + sigma * 0.25);
+		const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+		const nx = (a[1] - b[1]) / len;
+		const ny = (b[0] - a[0]) / len;
+		const mid = [0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1])];
+		const stepOff = (s) => [mid[0] + s * nx, mid[1] + s * ny];
+		const phiFar = density.armRidgeAzimuth(m, R) + Math.PI / m.arms.m;
+		const far = [gc.x + R * Math.cos(phiFar), gc.y + R * Math.sin(phiFar)];
+		const at = (p) => nebula.nebulaProbabilityAt(m, p[0], p[1], 0.02).p;
+		const baseline = at(far);
+		const pOn = stepOff(0);
+		const pOff = stepOff(sigma);
+		const on = at(pOn) - baseline;
+		const off = at(pOff) - baseline;
+		const dOn = distanceToCrest(pOn);
+		const dOff = distanceToCrest(pOff);
+		const rOn = Math.hypot(pOn[0] - gc.x, pOn[1] - gc.y);
+		const rOff = Math.hypot(pOff[0] - gc.x, pOff[1] - gc.y);
+		const zOn = dOn / density.armRidgeWidth(m, rOn);
+		const zOff = dOff / density.armRidgeWidth(m, rOff);
+		const expected = Math.exp(-0.5 * (zOff * zOff - zOn * zOn));
+		check(`${type}: nebula gas falls as exp(-d^2/2 sigma^2) with the model's own ridge width`,
+			Math.abs(off / on - expected) < 0.03 && dOff > 0.9 * sigma,
+			{ sigma: +sigma.toFixed(3), measured: +(off / on).toFixed(4), expected: +expected.toFixed(4),
+				dOn: +dOn.toFixed(4), dOff: +dOff.toFixed(4), baseline: +baseline.toFixed(5) });
+	}
 }
 
 // --- Report --------------------------------------------------------------

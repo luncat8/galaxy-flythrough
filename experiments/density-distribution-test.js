@@ -37,6 +37,10 @@ const SUITE = [
 	{ type: 'E4', nStars: 60000, box: { xMin: -9, xMax: 9, yMin: -9, yMax: 9, zMin: -8, zMax: 8 }, rMax: 9 },
 	{ type: 'S0', nStars: 60000, box: { xMin: -16, xMax: 16, yMin: -16, yMax: 16, zMin: -4, zMax: 4 }, rMax: 16 },
 	{ type: 'SBb', nStars: 120000, box: { xMin: -20, xMax: 20, yMin: -20, yMax: 20, zMin: -3, zMax: 3 }, rMax: 22 },
+	// A table bar: the boxy/peanut profile and its own sampler (the SBb above is
+	// the preset, whose bulge is the authored Plummer ellipsoid). The box is tight
+	// so the sharp-edged bar is resolved by the field grid.
+	{ type: 'SBa', nStars: 60000, box: { xMin: -8, xMax: 8, yMin: -8, yMax: 8, zMin: -2.5, zMax: 2.5 }, rMax: 8 },
 	{ type: 'Sc', nStars: 60000, box: { xMin: -16, xMax: 16, yMin: -16, yMax: 16, zMin: -4, zMax: 4 }, rMax: 16 },
 	{ type: 'Irr', nStars: 60000, box: { xMin: -9, xMax: 9, yMin: -9, yMax: 9, zMin: -4, zMax: 4 }, rMax: 9 },
 ];

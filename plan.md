@@ -143,6 +143,11 @@ r_e = √(x² / a² + y² / b² + z² / c²)
 
 with `a = 1.5 kpc, b = 0.5 kpc, c = 0.4 kpc`, oriented 25° from the Sun–centre line ([Portail 2016](https://academic.oup.com)).
 
+That is the Milky Way preset's authored bulge. The table's barred types (`SB*`) use the
+boxy/peanut bar profile instead — a boxy, peanut-stretched volume with a flat inner part
+and exponential end caps, sampled by inverse CDF along the bar's major axis — specified in
+`0.3.0-plan-galaxy-types-star-distribution.md` §0.3.1.
+
 ### Stellar halo
 
 Power law:
@@ -158,10 +163,30 @@ with `a_h = 1 kpc` and `A_halo / A_thin ≈ 0.001` — low density but extends t
 A multiplicative perturbation on the disc components, *not* added as new density:
 
 ```
-ρ_arms(R, φ) = 1 + A · cos(m · φ + k · ln(R / R_s) + φ₀)
+ρ_arms(R, φ) = 1 + A · cos(m · φ − K · ln(R / R_s) + φ₀)      K = m / tan(i)
 ```
 
-with `m = 2` (two-armed pattern), `A ≈ 0.2`, `k = tan(i)` where `i ≈ 12°` is the pitch angle, `R_s = 3 kpc` reference radius ([Khrapov 2021](https://www.mdpi.com)). Used as a probability multiplier on the disc density, not as a separate component. This keeps the model stable and controllable.
+with `m = 2` (two-armed pattern), `A ≈ 0.2`, `i ≈ 12°` the pitch angle, `R_s = 3 kpc`
+reference radius ([Khrapov 2021](https://www.mdpi.com)). Used as a probability multiplier
+on the disc density, not as a separate component. This keeps the model stable and
+controllable. The wavenumber is `m / tan(i)`, not `tan(i)`: a log spiral of pitch `i` is
+`φ = ln(R/R_s)/tan(i)`, so multiplying the phase by `m` puts `m/tan(i)` in front of the
+logarithm. `K = tan(i)` (what the 0.1-era note wrote) moves a ridge by 0.2 rad over a whole
+e-fold in radius instead of 5 rad — the arms come out as a fan of near-radial spokes and
+`i` stops being an angle the field has. `density.armWavenumber(model)` is the one place
+`K` is computed; `sampling.js`, the WGSL mirror and every test read it.
+
+The ridge lines are then spaced `λ(R) = 2π·R·sin(i)/m = 2π·R / √(m² + K²)` apart
+*perpendicular to themselves*, and the distances everything else is written in —
+`density.distanceToNearestArm` — are perpendicular distances to the nearest ridge.
+
+The *young* population does not fill that broad enhancement: O/B stars are born in the
+compressed lane on the ridge, which is narrower. Its cross-arm width is the pattern's own —
+`λ(R)` times a fixed ridge fraction, narrowed by the arm contrast A — and it is the same
+width the loose nebulae admit gas on, so stars and clouds trace one lane. Everything that
+reads a distance to the ridge (`star-types.js`'s arm-young branch, `nebula.js`) reads this
+one function, `density.armRidgeWidth(model, R)`; the numbers and the tests that pin them
+live in `0.3.0-plan-galaxy-types-star-distribution.md` §0.3.1.
 
 ### Combined
 
@@ -1085,9 +1110,9 @@ sense as this document, kept beside it rather than folded in:
   0.3.0 the `GalaxyModel` type
   framework, 0.3.1 the full Hubble zoo with improved star distributions, 0.3.2
   nebula-like objects with proper internal star distributions, 0.3.3 galaxy age.
-  *(0.3.0 implemented; 0.3.1 regular-type table, flocculent/irregular fields, metallicity
-  colour gradient and sampler/model parity are implemented; the full boxy/peanut bar and
-  remaining population-distribution polish remain)*
+  *(0.3.0 implemented; 0.3.1's regular-type table, flocculent/irregular fields, metallicity
+  colour gradient, sampler/model parity and the boxy/peanut bar profile are implemented;
+  the arm-ridge young-population distribution and the remaining polish remain)*
 - `0.4.0-plan-star-move.md` — star movement: predefined orbits without gravity, orbit
   distributions per galaxy type, the moving-star budget on a typical RTX 3050, the
   one-shader architecture decision, and the star time slider (camera-coupled /

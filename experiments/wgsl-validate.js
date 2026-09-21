@@ -158,7 +158,7 @@ function wgslConsts(part) {
                 { thin: c.COMPONENT_THIN, thick: c.COMPONENT_THICK, bulge: c.COMPONENT_BULGE, halo: c.COMPONENT_HALO,
                         plummer: c.PROFILE_PLUMMER, sersic: c.PROFILE_SERSIC });
 
-        // The packer must produce the layout it claims: 40 f32, one group per
+        // The packer must produce the layout it claims: one f32 group per
 	// vec4, and the preset's numbers survive the f32 round trip intact.
         const packed = galaxy.packDensityParams(galaxy.MILKY_WAY, new Float32Array(galaxy.DENSITY_PARAMS_FLOATS));
         check('packDensityParams fills the struct without leaving holes',

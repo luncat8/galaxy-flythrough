@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T18:21:23.363Z",
+  "date": "2026-09-21T20:38:20.341Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -133,7 +133,7 @@
       "name": "DensityLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 41
+        "keys": 53
       }
     },
     {
@@ -403,7 +403,7 @@
       "name": "a packed record round-trips through StarPacked",
       "pass": true,
       "detail": {
-        "x": 4.647851943969727,
+        "x": 3.0869743824005127,
         "absMag": 10.117647058823529
       }
     },

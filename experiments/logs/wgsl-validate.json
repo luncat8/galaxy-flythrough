@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T18:21:23.407Z",
+  "date": "2026-09-21T20:38:20.400Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -7,7 +7,7 @@
     },
     {
       "name": "density",
-      "lines": 305
+      "lines": 324
     },
     {
       "name": "star-sprite",
@@ -23,7 +23,7 @@
     },
     {
       "name": "procedural-gen",
-      "lines": 193
+      "lines": 198
     },
     {
       "name": "cull",
@@ -35,8 +35,8 @@
     "star-sprite-hdr",
     "tonemap"
   ],
-  "totalChecks": 113,
-  "passed": 113,
+  "totalChecks": 114,
+  "passed": 114,
   "failed": 0,
   "checks": [
     {
@@ -62,7 +62,7 @@
         ],
         [
           "density",
-          14013
+          15352
         ],
         [
           "star-sprite",
@@ -78,7 +78,7 @@
         ],
         [
           "procedural-gen",
-          8712
+          9182
         ],
         [
           "cull",
@@ -140,7 +140,7 @@
     {
       "name": "density: declares its functions",
       "pass": true,
-      "detail": 21
+      "detail": 23
     },
     {
       "name": "star-sprite: braces and parentheses balance",
@@ -235,7 +235,7 @@
     {
       "name": "density.wgsl declares a DensityParams struct",
       "pass": true,
-      "detail": 989
+      "detail": 1203
     },
     {
       "name": "DensityParams has one vec4 per layout group, in the same order",
@@ -248,6 +248,7 @@
           "discCore",
           "spheroid",
           "spheroidShape",
+          "barShape",
           "halo",
           "arms",
           "armShape",
@@ -263,6 +264,7 @@
           "discCore",
           "spheroid",
           "spheroidShape",
+          "barShape",
           "halo",
           "arms",
           "armShape",
@@ -286,8 +288,8 @@
       "name": "the struct is exactly as large as the packer writes",
       "pass": true,
       "detail": {
-        "floats": 96,
-        "bytes": 384
+        "floats": 100,
+        "bytes": 400
       }
     },
     {
@@ -324,6 +326,11 @@
       "name": "DensityParams.spheroidShape is read by a mirrored formula",
       "pass": true,
       "detail": "spheroidShape"
+    },
+    {
+      "name": "DensityParams.barShape is read by a mirrored formula",
+      "pass": true,
+      "detail": "barShape"
     },
     {
       "name": "DensityParams.halo is read by a mirrored formula",

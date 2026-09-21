@@ -16,7 +16,10 @@ const nebula = require('../src/math/nebula.js');
 const records = require('../src/math/star-record.js');
 
 const galaxy = require('../src/math/galaxy.js');
-const model = galaxy.MILKY_WAY;
+// The card can be drawn for any type: `node experiments/visualize-data.js SBa`.
+// With no argument it is the Milky Way preset, the renderer's default galaxy.
+const type = process.argv[2];
+const model = type ? galaxy.createGalaxy({ type }) : galaxy.MILKY_WAY;
 
 const SEED = 2024;
 const N_STARS = 30000;
@@ -24,7 +27,7 @@ const N_NEBULAE = 200;
 
 // A box centred on the galactic centre, inside the disc truncation.
 const GC = model.centre;
-const BOX = { xMin: GC.x - 22, xMax: GC.x + 22, yMin: -22, yMax: 22, zMin: -3, zMax: 3 };
+const BOX = { xMin: GC.x - 22, xMax: GC.x + 22, yMin: GC.y - 22, yMax: GC.y + 22, zMin: -3, zMax: 3 };
 
 console.log(`Sampling ${N_STARS.toLocaleString()} stars...`);
 const positions = sampling.sampleStarsInBox(model, SEED, N_STARS, BOX);
@@ -75,18 +78,49 @@ for (let i = 0; i < GRID_N; i++) {
 	}
 }
 
+// Edge-on slice through the model's own plane (y = centre), for the bar's
+// peanut: the spheroid slot holds a bar's axes and its tilt for a barred type.
+// The window is a dedicated close-up rather than the star box — a peanut lives
+// in the inner few kpc and is only a few hundred pc thick, so the full 44 kpc
+// box would spend 90% of its pixels on empty halo and miss the shape entirely.
+const XZ_HALF_X = 8.0;
+const XZ_HALF_Z = 2.2;
+const GRID_NXZ = 400;
+const GRID_NZ = 220;
+const xzDx = (2 * XZ_HALF_X) / GRID_NXZ;
+const xzDz = (2 * XZ_HALF_Z) / GRID_NZ;
+const densityGridXZ = new Array(GRID_NXZ * GRID_NZ);
+for (let i = 0; i < GRID_NXZ; i++) {
+	const x = GC.x - XZ_HALF_X + (i + 0.5) * xzDx;
+	for (let k = 0; k < GRID_NZ; k++) {
+		const z = GC.z - XZ_HALF_Z + (k + 0.5) * xzDz;
+		densityGridXZ[i * GRID_NZ + k] = +density.rhoTotal(model, x, GC.y, z).toFixed(5);
+	}
+}
+
 const out = {
 	date: new Date().toISOString(),
 	galaxy: {
 		R0_kpc: density.GALACTIC_R0,
+		type: model.type,
+		preset: model === galaxy.MILKY_WAY,
+		barred: model.barred,
 		centre: model.centre,
 		arms: model.arms,
+		spheroid: { profile: model.spheroid.profile, a: model.spheroid.a, b: model.spheroid.b, c: model.spheroid.c, r0: model.spheroid.r0, n: model.spheroid.n, tiltDeg: model.spheroid.tiltDeg },
+		bar: model.bar,
 	},
 	box: BOX,
 	stars,
 	nebulae: slimNebulae,
 	densityGrid,
 	densityGridMeta: { N: GRID_N, xMin: BOX.xMin, xMax: BOX.xMax, yMin: BOX.yMin, yMax: BOX.yMax },
+	densityGridXZ,
+	densityGridXZMeta: {
+		N: GRID_NXZ, NZ: GRID_NZ,
+		xMin: GC.x - XZ_HALF_X, xMax: GC.x + XZ_HALF_X,
+		zMin: GC.z - XZ_HALF_Z, zMax: GC.z + XZ_HALF_Z,
+	},
 	nebulaSummary: nebula.summariseNebulae(nebulae),
 };
 

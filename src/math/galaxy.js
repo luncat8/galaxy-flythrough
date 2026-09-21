@@ -65,12 +65,21 @@
 			[5, 0.30], [6, 0.45], [9, 0.50]],
 	// Disc thickness: early types are puffier.
 	H_OVER_L: [[0, 0.15], [1, 0.12], [3, 0.09], [5, 0.07], [6, 0.06], [9, 0.10]],
-	// Radial metallicity gradient, as a colour step: the thin disc reaches its
-	// full +1 colourIndex shift at R = 2*L/steep. Flat in the E/S0 range (no
-	// disc anyway), steep in the late types — the plan's "flat in E, steep in
-	// Sc" on one dial.
-	GRADIENT_STEEP: [[-1, 0.00], [0, 0.25], [1, 0.50], [3, 0.75], [5, 1.00], [6, 1.00]],
-};
+		// Radial metallicity gradient, as a colour step: the thin disc reaches its
+		// full +1 colourIndex shift at R = 2*L/steep. Flat in the E/S0 range (no
+		// disc anyway), steep in the late types — the plan's "flat in E, steep in
+		// Sc" on one dial.
+		GRADIENT_STEEP: [[-1, 0.00], [0, 0.25], [1, 0.50], [3, 0.75], [5, 1.00], [6, 1.00]],
+		// The bar profile (SB*). `n` is the boxiness of the cross-section, the
+		// other three are the shape of the longitudinal profile: flat out to
+		// BAR_PLATEAU, exponential past it with the BAR_END_CAP scale, over a
+		// vertical stretch that grows with |xi| (the peanut). Early bars are the
+		// boxiest and the most peanut-shaped; late bars are nearer elliptical.
+		BAR_BOXINESS: [[-1, 4.00], [1, 4.00], [3, 3.50], [5, 3.00], [6, 2.50], [9, 2.50]],
+		BAR_PEANUT: [[-1, 0.55], [1, 0.55], [3, 0.45], [5, 0.30], [6, 0.22], [9, 0.22]],
+		BAR_PLATEAU: [[-1, 0.50], [1, 0.50], [3, 0.55], [5, 0.60], [6, 0.65], [9, 0.65]],
+		BAR_END_CAP: [[-1, 0.16], [1, 0.16], [3, 0.18], [5, 0.22], [6, 0.26], [9, 0.26]],
+	};
 
 	// The Milky Way preset: verbatim the constants density.js used to export.
 	// `n` is unused by a plummer profile; it is present because the packed uniform
@@ -156,7 +165,10 @@
 			specs[barredType] = Object.assign({}, base, {
 				barred: true,
 				profile: 'bar',
-				n: 2.5,
+				// The bar's semimajor axis is the disc's spheroid scaled up (the bar
+				// is what a barred galaxy's spheroid *is*), its width narrower, its
+				// thickness the stage's own. Boxiness, peanut and the end-cap profile
+				// come from the bar anchors at this stage.
 				axes: [base.axes[0] * 1.8, base.axes[1] * 0.7, base.axes[2]],
 			});
 		}
@@ -276,6 +288,14 @@
 		};
 	}
 
+	// The spheroid's shape index: a bar's boxiness or a Sérsic profile's index.
+	// Authored `n` wins, the stage anchors fill the rest.
+	function spheroidIndex(spec, T) {
+		if (spec.n !== undefined) return spec.n;
+		if (spec.profile === 'bar') return interpAnchors(ANCHORS.BAR_BOXINESS, T);
+		return interpAnchors(ANCHORS.SERSIC_N, T);
+	}
+
 	// A model whose amps are still zero: the mass integrals depend on the shapes
 	// only, so they can be measured before the amplitudes are solved.
 	function tableGeometry(spec) {
@@ -286,6 +306,7 @@
 		const profileId = spec.profile === 'bar'
 			? density.PROFILE_BAR
 			: (spec.profile === 'sersic' ? density.PROFILE_SERSIC : density.PROFILE_PLUMMER);
+		const r0 = spec.r0 === undefined ? 1.0 : spec.r0;
 		const tiltDeg = spec.barred ? 27 : 0;
 		const m = Math.round(interpAnchors(ANCHORS.ARM_M, T));
 		const pitchDeg = interpAnchors(ANCHORS.PITCH_DEG, T);
@@ -293,12 +314,19 @@
 		const barTiltRad = tiltDeg * Math.PI / 180;
 		const Rs = ARM_RS_KPC * k;
 		// Arms start where the bar ends: for barred types the inner edge is the
-		// bar's semimajor axis (s = 1, where the bar's exp(-s) has fallen to 1/e),
-		// and phase0 is solved so the nearest ridge passes through that point at
-		// the bar's tilt. Without that coupling the log-spiral wind-up puts the
-		// ridge off the bar end by ~m*27 deg at any inner edge inside the bar.
-		const minRadius = spec.barred ? spec.axes[0] * k : ARM_MIN_RADIUS_KPC * k;
-		const phase0 = spec.barred && pitchDeg > 0 ? Math.tan(pitchRad) * Math.log(minRadius / Rs) - m * barTiltRad : 0;
+		// bar's own end (its r0-scaled semimajor axis, where the boxy body tapers
+		// to a point), and phase0 is solved so a ridge passes through that point
+		// at the bar's tilt. The wind-up is strong — the ridge turns by
+		// K = m/tan(pitch) over every e-fold in R, ~9 rad here — so without the
+		// coupling the ridge leaves the bar end immediately and the bar reads as
+		// a hub the arms merely pass. Solved in the same convention the field
+		// uses (density.armWavenumber) and wrapped into one turn: phase0 is only
+		// ever read modulo 2*pi, and a small number keeps the WGSL mirror's f32
+		// residual precise.
+		const minRadius = spec.barred ? spec.axes[0] * k * r0 : ARM_MIN_RADIUS_KPC * k;
+		const barCoupled = spec.barred && pitchDeg > 0 && m > 0;
+		const barPhase = (m / Math.tan(pitchRad)) * Math.log(minRadius / Rs) - m * barTiltRad;
+		const phase0 = barCoupled ? barPhase - 2 * Math.PI * Math.floor(barPhase / (2 * Math.PI)) : 0;
 		return {
 			scaleKpc: k,
 			centre: { x: 0, y: 0, z: 0 },
@@ -308,8 +336,13 @@
 				profile: spec.profile,
 				profileId,
 				a: spec.axes[0] * k, b: spec.axes[1] * k, c: spec.axes[2] * k,
-				r0: 1.0, n: spec.n === undefined ? interpAnchors(ANCHORS.SERSIC_N, T) : spec.n, amp: 0, tiltDeg,
+				r0, n: spheroidIndex(spec, T), amp: 0, tiltDeg,
 			},
+			bar: spec.profile === 'bar' ? {
+				peanut: interpAnchors(ANCHORS.BAR_PEANUT, T),
+				endCap: interpAnchors(ANCHORS.BAR_END_CAP, T),
+				plateau: interpAnchors(ANCHORS.BAR_PLATEAU, T),
+			} : Object.assign({}, density.BAR_NONE),
 			halo: { a_h: HALO_A_H_KPC * k, rMax: HALO_RMAX_KPC * k, power: HALO_POWER, amp: 0 },
 			arms: {
 				m,
@@ -363,6 +396,9 @@
 			thin: structure.thin,
 			thick: structure.thick,
 			spheroid: structure.spheroid,
+			// Only a bar profile reads this group; every other model carries the
+			// shape that degenerates to a plain boxy ellipsoid (density.BAR_NONE).
+			bar: cloneGroup(structure.bar || density.BAR_NONE),
 			halo: structure.halo,
 			arms: structure.arms,
 			truncation: structure.truncation,
@@ -450,7 +486,7 @@
 		return model;
 	}
 
-	const OVERRIDABLE = ['scaleKpc', 'centre', 'thin', 'thick', 'spheroid', 'halo',
+	const OVERRIDABLE = ['scaleKpc', 'centre', 'thin', 'thick', 'spheroid', 'bar', 'halo',
 		'arms', 'truncation', 'populations', 'dynamics', 'home'];
 
 	function applyOverrides(model, overrides) {
@@ -490,7 +526,10 @@
 		// override exposed as a JS/WGSL divergence.
 		{ name: 'discCore', fields: ['thinCore', 'thickCore', 'unused', 'unused'] },
 		{ name: 'spheroid', source: 'spheroid', fields: ['a', 'b', 'c', 'r0'] },
+		// A bar's axes, boxiness and tilt are the spheroid group's (one fact, one
+		// slot); this group carries what only the bar profile has.
 		{ name: 'spheroidShape', source: 'spheroid', fields: ['amp', 'n', 'tiltDeg', 'profileId'] },
+		{ name: 'barShape', source: 'bar', fields: ['peanut', 'endCap', 'plateau', 'unused'] },
 		{ name: 'halo', source: 'halo', fields: ['a_h', 'rMax', 'power', 'amp'] },
 		{ name: 'arms', source: 'arms', fields: ['m', 'amp', 'pitchDeg', 'Rs'] },
 		// w carries the low 16 bits of the model seed: the value noise reads
