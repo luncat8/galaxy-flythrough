@@ -116,7 +116,9 @@
 			case density.COMPONENT_THICK: return logNormal(8, 0.4);
 			default:
 				if (!model.populations.gasRich) return logNormal(9, 0.4);
-				if (distToArm < 0.5 && R > model.arms.Rs && R < model.populations.youngOuterR) return Math.pow(u1, 3.0) * 0.3;
+				const armWidth = 0.3;
+				const pArm = Math.exp(-0.5 * (distToArm * distToArm) / (armWidth * armWidth));
+				if (u2 < pArm && R > model.arms.Rs && R < model.populations.youngOuterR) return Math.pow(u1, 3.0) * 0.3;
 				return logNormal(5, 0.5);
 		}
 	}
@@ -171,13 +173,21 @@
 		}
 
 		const spectralClass = classifyByTempAndState(teff, state);
+		let colorIndex = records.spectralClassIndex(spectralClass);
+		if (componentIndex === density.COMPONENT_THIN) {
+			const L = (model.thin && model.thin.L) ? model.thin.L : 2.6;
+			const shift = Math.min(1, Math.floor(0.5 * (R / (2 * L))));
+			colorIndex = Math.min(records.SPECTRAL_CLASSES.length - 1, colorIndex + shift);
+		} else if (componentIndex === density.COMPONENT_BULGE && state === 'giant' && uEvolve < 0.2) {
+			colorIndex = Math.min(records.SPECTRAL_CLASSES.length - 1, colorIndex + 1);
+		}
 		out.mass = mass;
 		out.age = age;
 		out.teff = teff;
 		out.luminosity = lum;
 		out.state = state;
 		out.spectralClass = spectralClass;
-		out.colorIndex = records.spectralClassIndex(spectralClass);
+		out.colorIndex = colorIndex;
 		out.absMag = absoluteMagnitude(lum);
 		out.metallicity = metallicityFor(componentIndex);
 		out.component = componentIndex;

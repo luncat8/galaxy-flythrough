@@ -104,11 +104,12 @@
 		return Math.sqrt(v / Math.max(1e-12, 1 - v));
 	}
 
-	// Spheroid radius in units of s, for either profile. The sersic branch
-	// inverts density.sersicMassFraction, so the stars and the field agree by
+	// Spheroid radius in units of s, for any profile. The sersic and bar branches
+	// invert density.sersicMassFraction/barMassFraction, so the stars and the field agree by
 	// construction rather than by a measured acceptance rate.
 	function sampleSpheroidRadius(model, u) {
 		const sMax = model.truncation.spheroidRadius;
+		if (model.spheroid.profileId === density.PROFILE_BAR) return density.barRadiusForFraction(model, u);
 		if (model.spheroid.profileId === density.PROFILE_SERSIC) return density.sersicRadiusForFraction(model, u);
 		return samplePlummerRadius(u, sMax);
 	}
@@ -210,6 +211,15 @@
 				const sp = model.spheroid;
 				const s = model.spheroid.r0 * sampleSpheroidRadius(model, u1);
 				sampleDirection(u2, u3, scratch);
+				if (sp.profileId === density.PROFILE_BAR) {
+					const bn = sp.n || 2.5;
+					const norm = Math.pow(Math.pow(Math.abs(scratch[0]), bn) + Math.pow(Math.abs(scratch[1]), bn) + Math.pow(Math.abs(scratch[2]), bn), 1 / bn);
+					if (norm > 1e-6) {
+						scratch[0] /= norm;
+						scratch[1] /= norm;
+						scratch[2] /= norm;
+					}
+				}
 				const ex = sp.a * s * scratch[0];
 				const ey = sp.b * s * scratch[1];
 				const ez = sp.c * s * scratch[2];

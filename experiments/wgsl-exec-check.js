@@ -289,7 +289,7 @@ async function main() {
 		for (const offset of [[0, 0, 0], [0.005, 0, 0], [4.1, 1.3, 0.2], [-8, 0.4, -0.3], [model.halo.rMax + 1, 0, 0]]) {
 			const p = [offset[0] + model.centre.x, offset[1] + model.centre.y, offset[2] + model.centre.z].map(Math.fround);
 			const actual = runStage(densityCode, 'densityProbe', 'debugFragment', { 0: p }, densityBinds);
-			const expected = density.rhoDecomposed(model, ...p);
+			const expected = density.rhoDecomposed(model, p[0], p[1], p[2], false);
 			for (let c = 0; c < 4; c++) {
 				const value = expected[density.COMPONENT_NAMES[c]];
 				const error = Math.abs(actual[c] - value) / Math.max(1e-5, value);

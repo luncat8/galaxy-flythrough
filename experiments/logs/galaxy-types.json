@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T16:56:21.217Z",
+  "date": "2026-09-21T17:39:57.925Z",
   "types": [
     "E0",
     "E1",
@@ -18,7 +18,8 @@
     "SBa",
     "SBb",
     "SBc",
-    "SBd"
+    "SBd",
+    "Irr"
   ],
   "perType": [
     {
@@ -449,18 +450,18 @@
       "gasFraction": 0.02,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 45.9265,
+      "totalMass": 48.6437,
       "delivered": {
         "thin": 17.33795,
         "thick": 6.82542,
-        "bulge": 21.75024,
+        "bulge": 24.46746,
         "halo": 0.01287,
-        "total": 45.92649
+        "total": 48.6437
       },
       "truncationFractions": {
         "thin": 0.99838,
         "thick": 0.91707,
-        "bulge": 0.87672,
+        "bulge": 0.98625,
         "halo": 1
       },
       "home": [
@@ -479,18 +480,18 @@
       "gasFraction": 0.08,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 62.3222,
+      "totalMass": 64.3098,
       "delivered": {
         "thin": 33.31481,
         "thick": 12.3608,
-        "bulge": 16.62939,
+        "bulge": 18.61705,
         "halo": 0.01716,
-        "total": 62.32216
+        "total": 64.30983
       },
       "truncationFractions": {
         "thin": 0.99916,
         "thick": 0.95327,
-        "bulge": 0.83788,
+        "bulge": 0.93803,
         "halo": 1
       },
       "home": [
@@ -509,18 +510,18 @@
       "gasFraction": 0.3,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 107.2933,
+      "totalMass": 106.9751,
       "delivered": {
         "thin": 81.6454,
         "thick": 20.21103,
-        "bulge": 5.36033,
+        "bulge": 5.04212,
         "halo": 0.0765,
-        "total": 107.29326
+        "total": 106.97505
       },
       "truncationFractions": {
         "thin": 0.99929,
         "thick": 0.98948,
-        "bulge": 0.99723,
+        "bulge": 0.93803,
         "halo": 1
       },
       "home": [
@@ -539,18 +540,18 @@
       "gasFraction": 0.45,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 115.6632,
+      "totalMass": 115.5261,
       "delivered": {
         "thin": 96.37133,
         "thick": 16.88148,
-        "bulge": 2.30906,
+        "bulge": 2.17199,
         "halo": 0.10134,
-        "total": 115.6632
+        "total": 115.52613
       },
       "truncationFractions": {
         "thin": 0.99929,
         "thick": 0.99193,
-        "bulge": 0.99723,
+        "bulge": 0.93803,
         "halo": 1
       },
       "home": [
@@ -560,10 +561,40 @@
         1.5708,
         -0.1419
       ]
+    },
+    {
+      "type": "Irr",
+      "T": 10,
+      "scaleKpc": 0.8,
+      "pitchDeg": 22,
+      "gasFraction": 0.5,
+      "gasRich": true,
+      "fromPreset": false,
+      "totalMass": 11.8689,
+      "delivered": {
+        "thin": 7.1396,
+        "thick": 4.48216,
+        "bulge": 0.24546,
+        "halo": 0.00165,
+        "total": 11.86887
+      },
+      "truncationFractions": {
+        "thin": 0.97886,
+        "thick": 0.92178,
+        "bulge": 0.98941,
+        "halo": 1
+      },
+      "home": [
+        0,
+        -7.28,
+        1.04,
+        1.5708,
+        -0.1419
+      ]
     }
   ],
-  "totalChecks": 422,
-  "passed": 422,
+  "totalChecks": 425,
+  "passed": 425,
   "failed": 0,
   "checks": [
     {
@@ -657,6 +688,11 @@
       "detail": []
     },
     {
+      "name": "Irr: every documented spec field is authored",
+      "pass": true,
+      "detail": []
+    },
+    {
       "name": "the shortcut cycle walks the shortlist and returns to the start",
       "pass": true,
       "detail": {
@@ -664,7 +700,8 @@
           "E4",
           "S0",
           "SBb",
-          "Sc"
+          "Sc",
+          "Irr"
         ],
         "endedAt": "E4"
       }
@@ -1028,7 +1065,8 @@
         "SBa",
         "SBb",
         "SBc",
-        "SBd"
+        "SBd",
+        "Irr"
       ]
     },
     {
@@ -1704,6 +1742,39 @@
       }
     },
     {
+      "name": "Irr: the components add up to the authored mass",
+      "pass": true,
+      "detail": {
+        "components": 12.4043,
+        "authored": 12.4043
+      }
+    },
+    {
+      "name": "Irr: the spheroid mass matches the B/T anchor",
+      "pass": true,
+      "detail": {
+        "solved": 0.02,
+        "bT": 0.02
+      }
+    },
+    {
+      "name": "Irr: the thick disc takes its share of the disc, not of the halo",
+      "pass": true,
+      "detail": {
+        "share": 0.4,
+        "authored": 0.4
+      }
+    },
+    {
+      "name": "Irr: the halo amplitude is the preset's ratio times the mass",
+      "pass": true,
+      "detail": {
+        "amp": 0.00012,
+        "halo": true,
+        "massTotal": 0.15
+      }
+    },
+    {
       "name": "an E4 has no disc and no halo: its field is the spheroid alone",
       "pass": true,
       "detail": {
@@ -2209,7 +2280,7 @@
       "detail": {
         "thin": 0.9983804241097937,
         "thick": 0.9170747229224394,
-        "bulge": 0.8767191352030697,
+        "bulge": 0.986246032255997,
         "halo": 1
       }
     },
@@ -2220,13 +2291,13 @@
         "amps": {
           "thin": 0.262090047033834,
           "thick": 0.04133256568970822,
-          "bulge": 1.1567529951127065,
+          "bulge": 3.1402014603072805,
           "halo": 0.00048
         },
         "delivered": {
           "thin": 17.33795,
           "thick": 6.82542,
-          "bulge": 21.75024,
+          "bulge": 24.46746,
           "halo": 0.01287
         }
       }
@@ -2242,7 +2313,7 @@
       "detail": {
         "thin": 0.9991587236543911,
         "thick": 0.9532749075053679,
-        "bulge": 0.8378814202350143,
+        "bulge": 0.938031195583341,
         "halo": 1
       }
     },
@@ -2253,13 +2324,13 @@
         "amps": {
           "thin": 0.6290161128812015,
           "thick": 0.0900131430575868,
-          "bulge": 0.6061704028936821,
+          "bulge": 1.48374518999519,
           "halo": 0.00064
         },
         "delivered": {
           "thin": 33.31481,
           "thick": 12.3608,
-          "bulge": 16.62939,
+          "bulge": 18.61705,
           "halo": 0.01716
         }
       }
@@ -2275,7 +2346,7 @@
       "detail": {
         "thin": 0.9992918711042633,
         "thick": 0.9894849023125957,
-        "bulge": 0.9972306042844884,
+        "bulge": 0.938031195583341,
         "halo": 1
       }
     },
@@ -2286,13 +2357,13 @@
         "amps": {
           "thin": 0.9629357056190428,
           "thick": 0.08858412922877562,
-          "bulge": 0.5962389072659011,
+          "bulge": 0.7748462361818713,
           "halo": 0.0010400000000000001
         },
         "delivered": {
           "thin": 81.6454,
           "thick": 20.21103,
-          "bulge": 5.36033,
+          "bulge": 5.04212,
           "halo": 0.0765
         }
       }
@@ -2308,7 +2379,7 @@
       "detail": {
         "thin": 0.999292000896837,
         "thick": 0.9919337341351827,
-        "bulge": 0.9972306042844884,
+        "bulge": 0.938031195583341,
         "halo": 1
       }
     },
@@ -2319,14 +2390,47 @@
         "amps": {
           "thin": 1.0781284403910305,
           "thick": 0.07001022237812304,
-          "bulge": 0.6166761424257229,
+          "bulge": 0.8014055810159204,
           "halo": 0.00112
         },
         "delivered": {
           "thin": 96.37133,
           "thick": 16.88148,
-          "bulge": 2.30906,
+          "bulge": 2.17199,
           "halo": 0.10134
+        }
+      }
+    },
+    {
+      "name": "Irr: delivered mass is the model mass times what the box keeps",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "Irr: every truncation fraction is a fraction",
+      "pass": true,
+      "detail": {
+        "thin": 0.9788649826406034,
+        "thick": 0.921781296512334,
+        "bulge": 0.9894103891777389,
+        "halo": 1
+      }
+    },
+    {
+      "name": "Irr: a component with no amplitude delivers nothing",
+      "pass": true,
+      "detail": {
+        "amps": {
+          "thin": 0.3224936125611629,
+          "thick": 0.07911311401545713,
+          "bulge": 0.1873153782618133,
+          "halo": 0.00012
+        },
+        "delivered": {
+          "thin": 7.1396,
+          "thick": 4.48216,
+          "bulge": 0.24546,
+          "halo": 0.00165
         }
       }
     },
@@ -2670,18 +2774,18 @@
       "name": "SB0: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0028,
+        "worst": 0.0029,
         "sampled": {
-          "thin": 0.38035,
-          "thick": 0.14795,
-          "bulge": 0.47135,
+          "thin": 0.35935,
+          "thick": 0.1395,
+          "bulge": 0.5008,
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.37751527592073475,
-          "thick": 0.1486162883849872,
-          "bulge": 0.4735882495840182,
-          "halo": 0.00028018611026007383
+          "thin": 0.3564274246665803,
+          "thick": 0.1403146423767203,
+          "bulge": 0.5029933979297029,
+          "halo": 0.000264535026996664
         }
       }
     },
@@ -2694,18 +2798,18 @@
       "name": "SBa: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0045,
+        "worst": 0.0048,
         "sampled": {
-          "thin": 0.53725,
-          "thick": 0.2001,
-          "bulge": 0.2623,
+          "thin": 0.5188,
+          "thick": 0.1962,
+          "bulge": 0.28465,
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.5345581030799633,
-          "thick": 0.19833717770319984,
-          "bulge": 0.26682941930661747,
-          "halo": 0.000275299910219404
+          "thin": 0.5180361568973638,
+          "thick": 0.19220703739265113,
+          "bulge": 0.2894900146789212,
+          "halo": 0.0002667910310638689
         }
       }
     },
@@ -2718,18 +2822,18 @@
       "name": "SBc: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0041,
+        "worst": 0.0038,
         "sampled": {
-          "thin": 0.7651,
-          "thick": 0.18555,
-          "bulge": 0.0486,
+          "thin": 0.76705,
+          "thick": 0.1862,
+          "bulge": 0.046,
           "halo": 0.00075
         },
         "model": {
-          "thin": 0.7609554836165797,
-          "thick": 0.18837188216555206,
-          "bulge": 0.04995959472478582,
-          "halo": 0.0007130394930822336
+          "thin": 0.7632190324547646,
+          "thick": 0.18893221580425065,
+          "bulge": 0.04713359123064075,
+          "halo": 0.000715160510343947
         }
       }
     },
@@ -2744,21 +2848,45 @@
       "detail": {
         "worst": 0.003,
         "sampled": {
-          "thin": 0.8362,
-          "thick": 0.14325,
-          "bulge": 0.01975,
+          "thin": 0.8372,
+          "thick": 0.14335,
+          "bulge": 0.01865,
           "halo": 0.0008
         },
         "model": {
-          "thin": 0.833206454094216,
-          "thick": 0.14595373322667665,
-          "bulge": 0.01996368951340963,
-          "halo": 0.0008761231656976726
+          "thin": 0.834195075932217,
+          "thick": 0.1461269112515187,
+          "bulge": 0.018800850106897537,
+          "halo": 0.0008771627093667491
         }
       }
     },
     {
       "name": "SBd: no sampled star sits outside its component's truncation",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "Irr: the sampled mix follows the delivered masses",
+      "pass": true,
+      "detail": {
+        "worst": 0.0035,
+        "sampled": {
+          "thin": 0.60505,
+          "thick": 0.3744,
+          "bulge": 0.0204,
+          "halo": 0.00015
+        },
+        "model": {
+          "thin": 0.6015399652566903,
+          "thick": 0.37764029354521667,
+          "bulge": 0.02068096643253993,
+          "halo": 0.00013877476555312524
+        }
+      }
+    },
+    {
+      "name": "Irr: no sampled star sits outside its component's truncation",
       "pass": true,
       "detail": 0
     },
@@ -2773,7 +2901,7 @@
       }
     },
     {
-      "name": "the table types are Sersic while the preset stayed Plummer",
+      "name": "the unbarred table types are Sersic while barred are Bar and preset stayed Plummer",
       "pass": true,
       "detail": {
         "sersic": [
@@ -2790,6 +2918,9 @@
           "Sb",
           "Sc",
           "Sd",
+          "Irr"
+        ],
+        "bar": [
           "SB0",
           "SBa",
           "SBc",
@@ -2860,14 +2991,18 @@
         ],
         [
           "SBa",
-          2.25
+          2.5
         ],
         [
           "SBc",
-          1
+          2.5
         ],
         [
           "SBd",
+          2.5
+        ],
+        [
+          "Irr",
           1
         ]
       ]
@@ -3276,69 +3411,7 @@
       }
     },
     {
-      "name": "SB0: b_n is the standard approximation 2n - 1/3",
-      "pass": true,
-      "detail": {
-        "n": 2.5,
-        "bn": 4.6667
-      }
-    },
-    {
-      "name": "SB0: the inverse CDF round-trips the enclosed-mass fraction",
-      "pass": true,
-      "detail": {
-        "worstError": 1.31e-10
-      }
-    },
-    {
-      "name": "SB0: the radius found is inside the cut",
-      "pass": true,
-      "detail": {
-        "sMax": 8,
-        "enclosed": 1640.5645
-      }
-    },
-    {
-      "name": "SB0: the spheroid falls with radius and dies just past the cut",
-      "pass": true,
-      "detail": {
-        "atCut": 0,
-        "centre": 123.0122
-      }
-    },
-    {
-      "name": "SBa: b_n is the standard approximation 2n - 1/3",
-      "pass": true,
-      "detail": {
-        "n": 2.25,
-        "bn": 4.1667
-      }
-    },
-    {
-      "name": "SBa: the inverse CDF round-trips the enclosed-mass fraction",
-      "pass": true,
-      "detail": {
-        "worstError": 1.19e-10
-      }
-    },
-    {
-      "name": "SBa: the radius found is inside the cut",
-      "pass": true,
-      "detail": {
-        "sMax": 6,
-        "enclosed": 379.5693
-      }
-    },
-    {
-      "name": "SBa: the spheroid falls with radius and dies just past the cut",
-      "pass": true,
-      "detail": {
-        "atCut": 0,
-        "centre": 39.098
-      }
-    },
-    {
-      "name": "SBc: b_n is the standard approximation 2n - 1/3",
+      "name": "Irr: b_n is the standard approximation 2n - 1/3",
       "pass": true,
       "detail": {
         "n": 1,
@@ -3346,57 +3419,26 @@
       }
     },
     {
-      "name": "SBc: the inverse CDF round-trips the enclosed-mass fraction",
+      "name": "Irr: the inverse CDF round-trips the enclosed-mass fraction",
       "pass": true,
       "detail": {
-        "worstError": 1.96e-10
+        "worstError": 2.36e-10
       }
     },
     {
-      "name": "SBc: the radius found is inside the cut",
+      "name": "Irr: the radius found is inside the cut",
       "pass": true,
       "detail": {
-        "sMax": 6,
-        "enclosed": 1.9945
+        "sMax": 5,
+        "enclosed": 1.9788
       }
     },
     {
-      "name": "SBc: the spheroid falls with radius and dies just past the cut",
+      "name": "Irr: the spheroid falls with radius and dies just past the cut",
       "pass": true,
       "detail": {
         "atCut": 0,
-        "centre": 3.1568
-      }
-    },
-    {
-      "name": "SBd: b_n is the standard approximation 2n - 1/3",
-      "pass": true,
-      "detail": {
-        "n": 1,
-        "bn": 1.6667
-      }
-    },
-    {
-      "name": "SBd: the inverse CDF round-trips the enclosed-mass fraction",
-      "pass": true,
-      "detail": {
-        "worstError": 1.96e-10
-      }
-    },
-    {
-      "name": "SBd: the radius found is inside the cut",
-      "pass": true,
-      "detail": {
-        "sMax": 6,
-        "enclosed": 1.9945
-      }
-    },
-    {
-      "name": "SBd: the spheroid falls with radius and dies just past the cut",
-      "pass": true,
-      "detail": {
-        "atCut": 0,
-        "centre": 3.265
+        "centre": 0.9917
       }
     },
     {
@@ -3450,92 +3492,97 @@
     {
       "name": "SBb: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "E0: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "E1: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "E2: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "E3: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "E4: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "E5: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "E6: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "E7: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "S0: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "Sa: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "Sb: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "Sc: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "Sd: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "SB0: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "SBa: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "SBc: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
     },
     {
       "name": "SBd: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 4
+    },
+    {
+      "name": "Irr: padding slots are zero, never stale memory",
+      "pass": true,
+      "detail": 4
     },
     {
       "name": "SBb: an arm inside the star-forming annulus is young",
@@ -3675,6 +3722,14 @@
     },
     {
       "name": "SBd: an arm inside the star-forming annulus is young",
+      "pass": true,
+      "detail": {
+        "onArm": 0.0375,
+        "offArm": 2.7752279866537304
+      }
+    },
+    {
+      "name": "Irr: an arm inside the star-forming annulus is young",
       "pass": true,
       "detail": {
         "onArm": 0.0375,
@@ -3898,6 +3953,19 @@
       "pass": true,
       "detail": {
         "onRidge": 0.13508461868252206,
+        "offRidge": 0.005,
+        "gasSeen": [
+          "HII",
+          "reflection",
+          "dark"
+        ]
+      }
+    },
+    {
+      "name": "Irr: the arm ridge is favoured, and gas nebulae are placed on it",
+      "pass": true,
+      "detail": {
+        "onRidge": 0.1527916485823028,
         "offRidge": 0.005,
         "gasSeen": [
           "HII",
@@ -4203,6 +4271,22 @@
       }
     },
     {
+      "name": "Irr: the home view looks at the model centre",
+      "pass": true,
+      "detail": {
+        "yaw": 1.5708,
+        "pitch": -0.1419
+      }
+    },
+    {
+      "name": "Irr: the home view frames the body it was derived from",
+      "pass": true,
+      "detail": {
+        "distance": 7.354,
+        "span": 2
+      }
+    },
+    {
       "name": "only the Milky Way preset orbits the Sun",
       "pass": true,
       "detail": {
@@ -4221,12 +4305,16 @@
         "base": {
           "L": 2.6,
           "H": 0.23399999999999999,
-          "amp": 1.333123104317335
+          "amp": 1.333123104317335,
+          "flare": 0,
+          "coreRadius": 0
         },
         "tweaked": {
           "L": 2.6,
           "H": 0.5,
-          "amp": 1.333123104317335
+          "amp": 1.333123104317335,
+          "flare": 0,
+          "coreRadius": 0
         }
       }
     },

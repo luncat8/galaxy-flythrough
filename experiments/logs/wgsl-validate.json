@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T16:56:09.590Z",
+  "date": "2026-09-21T17:39:46.655Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -7,7 +7,7 @@
     },
     {
       "name": "density",
-      "lines": 163
+      "lines": 228
     },
     {
       "name": "star-sprite",
@@ -62,7 +62,7 @@
         ],
         [
           "density",
-          6961
+          9952
         ],
         [
           "star-sprite",
@@ -140,7 +140,7 @@
     {
       "name": "density: declares its functions",
       "pass": true,
-      "detail": 12
+      "detail": 15
     },
     {
       "name": "star-sprite: braces and parentheses balance",

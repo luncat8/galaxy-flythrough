@@ -131,26 +131,34 @@
 			});
 		}
 		specs.S0 = BASE_SPECS.S0;
-		// stage, size, mass, spheroid axes, thick-disc share
+		// stage, size, mass, spheroid axes, thick-disc share, flocculence, flare, coreRadius
 		const spirals = [
-			['Sa', 1, 1.0, 0.80, [1.00, 0.80, 0.60], 0.28],
-			['Sb', 3, 1.0, 1.00, [0.85, 0.68, 0.50], 0.246],
-			['Sc', 5, 1.4, 1.30, [0.60, 0.42, 0.36], 0.20],
-			['Sd', 6, 1.5, 1.40, [0.40, 0.32, 0.24], 0.15],
+			['Sa', 1, 1.0, 0.80, [1.00, 0.80, 0.60], 0.28, 0.10, 0.00, 0.0],
+			['Sb', 3, 1.0, 1.00, [0.85, 0.68, 0.50], 0.246, 0.10, 0.05, 0.0],
+			['Sc', 5, 1.4, 1.30, [0.60, 0.42, 0.36], 0.20, 0.50, 0.15, 0.0],
+			['Sd', 6, 1.5, 1.40, [0.40, 0.32, 0.24], 0.15, 0.70, 0.20, 0.5],
 		];
-		for (const [type, T, scaleKpc, massTotal, axes, thickShare] of spirals) {
-			specs[type] = Object.assign({}, BASE_SPECS.Sc, { T, scaleKpc, massTotal, axes, thickShare });
+		for (const [type, T, scaleKpc, massTotal, axes, thickShare, flocculence, flare, coreRadius] of spirals) {
+			specs[type] = Object.assign({}, BASE_SPECS.Sc, { T, scaleKpc, massTotal, axes, thickShare, flocculence, flare, coreRadius });
 		}
 		for (const type of ['S0', 'Sa', 'Sb', 'Sc', 'Sd']) {
 			const base = specs[type];
 			const barredType = 'SB' + type.slice(1);
-			// Triaxial proxies until the boxy/peanut profile lands in 0.3.1a.
 			specs[barredType] = Object.assign({}, base, {
 				barred: true,
+				profile: 'bar',
+				n: 2.5,
 				axes: [base.axes[0] * 1.8, base.axes[1] * 0.7, base.axes[2]],
 			});
 		}
 		specs.SBb = BASE_SPECS.SBb;
+		specs.Irr = {
+			T: 10, barred: false, profile: 'sersic', scaleKpc: 0.8, massTotal: 0.15,
+			axes: [0.50, 0.45, 0.40], discRadius: 15.0, discHeight: 4.0, spheroidRadius: 5.0,
+			halo: true, thickShare: 0.40, youngScaleHeight: 0.8, flocculence: 0, flare: 0.2, coreRadius: 0.6,
+			dynamics: { vFlat: 0.050, rCore: 0.2, omegaPattern: 0.000, sigmaThin: 0.040,
+				sigmaThick: 0.060, sigmaSpheroid: 0.080, spinLambda: 0.30 },
+		};
 		return specs;
 	}
 	const TYPE_SPECS = buildTypeSpecs();
@@ -176,7 +184,7 @@
 
 	const GALAXY_TYPES = Object.keys(TYPE_SPECS);
 	// What the G key walks through, in the order the plan lists them.
-	const GALAXY_TYPE_CYCLE = ['E4', 'S0', 'SBb', 'Sc'];
+	const GALAXY_TYPE_CYCLE = ['E4', 'S0', 'SBb', 'Sc', 'Irr'];
 
 	// Mass of the preset's components, the unit `massTotal` multiplies. Taken from
 	// the preset itself so the normalisation cannot drift away from it.
@@ -255,28 +263,37 @@
 		const T = spec.T;
 		const thinL = DISC_L_KPC * k;
 		const thinH = thinL * interpAnchors(ANCHORS.H_OVER_L, T);
+		const profileId = spec.profile === 'bar'
+			? density.PROFILE_BAR
+			: (spec.profile === 'sersic' ? density.PROFILE_SERSIC : density.PROFILE_PLUMMER);
+		const tiltDeg = spec.barred ? 27 : 0;
+		const m = Math.round(interpAnchors(ANCHORS.ARM_M, T));
+		const pitchDeg = interpAnchors(ANCHORS.PITCH_DEG, T);
+		const pitchRad = pitchDeg * Math.PI / 180;
+		const barTiltRad = tiltDeg * Math.PI / 180;
+		const minRadius = ARM_MIN_RADIUS_KPC * k;
+		const Rs = ARM_RS_KPC * k;
+		const phase0 = spec.barred && pitchDeg > 0 ? Math.tan(pitchRad) * Math.log(minRadius / Rs) - m * barTiltRad : 0;
 		return {
 			scaleKpc: k,
-			// Every non-preset type is galactocentric: the model centre is the
-			// origin, so no sun frame exists for it.
 			centre: { x: 0, y: 0, z: 0 },
-			thin: { L: thinL, H: thinH, amp: 0 },
-			thick: { L: thinL * THICK_L_RATIO, H: thinH * THICK_H_RATIO, amp: 0 },
+			thin: { L: thinL, H: thinH, amp: 0, flare: spec.flare || 0, coreRadius: (spec.coreRadius || 0) * k },
+			thick: { L: thinL * THICK_L_RATIO, H: thinH * THICK_H_RATIO, amp: 0, flare: spec.flare || 0, coreRadius: (spec.coreRadius || 0) * k },
 			spheroid: {
 				profile: spec.profile,
-				profileId: spec.profile === 'sersic' ? density.PROFILE_SERSIC : density.PROFILE_PLUMMER,
+				profileId,
 				a: spec.axes[0] * k, b: spec.axes[1] * k, c: spec.axes[2] * k,
-				r0: 1.0, n: spec.n === undefined ? interpAnchors(ANCHORS.SERSIC_N, T) : spec.n, amp: 0, tiltDeg: 0,
+				r0: 1.0, n: spec.n === undefined ? interpAnchors(ANCHORS.SERSIC_N, T) : spec.n, amp: 0, tiltDeg,
 			},
 			halo: { a_h: HALO_A_H_KPC * k, rMax: HALO_RMAX_KPC * k, power: HALO_POWER, amp: 0 },
 			arms: {
-				m: Math.round(interpAnchors(ANCHORS.ARM_M, T)),
+				m,
 				amp: interpAnchors(ANCHORS.ARM_AMP, T),
-				pitchDeg: interpAnchors(ANCHORS.PITCH_DEG, T),
-				Rs: ARM_RS_KPC * k,
-				phase0: 0,
-				minRadius: ARM_MIN_RADIUS_KPC * k,
-				flocculence: 0,
+				pitchDeg,
+				Rs,
+				phase0,
+				minRadius,
+				flocculence: spec.flocculence || 0,
 			},
 			truncation: { discRadius: spec.discRadius * k, discHeight: spec.discHeight * k, spheroidRadius: spec.spheroidRadius },
 			populations: {
@@ -344,8 +361,24 @@
 		// The profile is authored as a string and compared as a number, on the CPU
 		// and in the packed uniform. Deriving the selector here means the preset and
 		// the table path cannot disagree about which profile a model has.
-		model.spheroid.profileId = model.spheroid.profile === 'sersic'
-			? density.PROFILE_SERSIC : density.PROFILE_PLUMMER;
+		model.spheroid.profileId = model.spheroid.profile === 'bar'
+			? density.PROFILE_BAR
+			: (model.spheroid.profile === 'sersic' ? density.PROFILE_SERSIC : density.PROFILE_PLUMMER);
+		if (spec.T >= 9 || type === 'Irr') {
+			model.clumps = [];
+			for (let i = 0; i < 12; i++) {
+				const hx = ((seed * 10007 + i * 1009) % 1000) / 1000 - 0.5;
+				const hy = ((seed * 10009 + i * 1013) % 1000) / 1000 - 0.5;
+				const hz = ((seed * 10037 + i * 1019) % 1000) / 1000 - 0.5;
+				model.clumps.push({
+					x: hx * structure.truncation.discRadius * 0.6,
+					y: hy * structure.truncation.discRadius * 0.6,
+					z: hz * structure.truncation.discHeight * 0.5,
+					r: 0.3 * structure.scaleKpc,
+					boost: 2.0,
+				});
+			}
+		}
 		// homeFor reads the assembled model (which components exist), so it runs
 		// after the literal rather than inside it.
 		if (!model.home) model.home = homeFor(model);
@@ -362,7 +395,7 @@
 	// yields a model that is *not* the preset, which drops it out of Hybrid mode.
 	function createGalaxy(options) {
 		const opts = options || {};
-		const type = opts.type === undefined ? MILKY_WAY_TYPE : opts.type;
+		const type = opts.type == null ? MILKY_WAY_TYPE : opts.type;
 		const spec = Object.hasOwn(TYPE_SPECS, type) ? TYPE_SPECS[type] : null;
 		if (!spec) throw new Error('unknown galaxy type: ' + type);
 		const seed = opts.seed === undefined ? DEFAULT_SEED : opts.seed | 0;
@@ -399,8 +432,9 @@
 			// An authored profile string and the numeric selector the hot path
 			// compares must not disagree.
 			if (group === 'spheroid' && value.profile !== undefined) {
-				target.profileId = value.profile === 'sersic'
-					? density.PROFILE_SERSIC : density.PROFILE_PLUMMER;
+				target.profileId = value.profile === 'bar'
+					? density.PROFILE_BAR
+					: (value.profile === 'sersic' ? density.PROFILE_SERSIC : density.PROFILE_PLUMMER);
 			}
 		}
 	}
@@ -418,8 +452,8 @@
 	// flat array of vec4s.
 	const DENSITY_PARAMS_LAYOUT = [
 		{ name: 'centre', source: 'centre', fields: ['x', 'y', 'z', 'unused'] },
-		{ name: 'thin', source: 'thin', fields: ['L', 'H', 'amp', 'unused'] },
-		{ name: 'thick', source: 'thick', fields: ['L', 'H', 'amp', 'unused'] },
+		{ name: 'thin', source: 'thin', fields: ['L', 'H', 'amp', 'flare'] },
+		{ name: 'thick', source: 'thick', fields: ['L', 'H', 'amp', 'coreRadius'] },
 		{ name: 'spheroid', source: 'spheroid', fields: ['a', 'b', 'c', 'r0'] },
 		{ name: 'spheroidShape', source: 'spheroid', fields: ['amp', 'n', 'tiltDeg', 'profileId'] },
 		{ name: 'halo', source: 'halo', fields: ['a_h', 'rMax', 'power', 'amp'] },

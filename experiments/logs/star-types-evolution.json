@@ -1,19 +1,19 @@
 {
-  "date": "2026-09-21T16:56:26.101Z",
+  "date": "2026-09-21T17:40:02.590Z",
   "seed": 7,
   "sampleSize": 200000,
-  "sampleMs": 389,
-  "deriveMs": 413,
+  "sampleMs": 414,
+  "deriveMs": 411,
   "byClass": {
     "M": 174519,
     "K": 17671,
-    "RG": 4745,
+    "RG": 4784,
     "G": 1659,
-    "F": 927,
-    "WD": 382,
-    "B": 44,
-    "A": 51,
-    "O": 2
+    "F": 908,
+    "WD": 383,
+    "B": 33,
+    "A": 42,
+    "O": 1
   },
   "byComponent": {
     "bulge": 35687,
@@ -23,24 +23,24 @@
   },
   "classVsArmDistance": {
     "O": {
-      "n": 2,
-      "mean": 0.2114785835146904,
+      "n": 1,
+      "mean": 0.12961234152317047,
       "fracLT05": 1
     },
     "B": {
-      "n": 44,
-      "mean": 0.24237671718848022,
-      "fracLT05": 1
+      "n": 33,
+      "mean": 0.20725101396215684,
+      "fracLT05": 0.9090909090909091
     },
     "A": {
-      "n": 51,
-      "mean": 1.5082298690686002,
-      "fracLT05": 0.8235294117647058
+      "n": 42,
+      "mean": 1.7652295470830897,
+      "fracLT05": 0.7142857142857143
     },
     "F": {
-      "n": 927,
-      "mean": 6.580504991325339,
-      "fracLT05": 0.15426105717367852
+      "n": 908,
+      "mean": 6.711357509489868,
+      "fracLT05": 0.1354625550660793
     },
     "G": {
       "n": 1659,
@@ -58,14 +58,14 @@
       "fracLT05": 0.1364264062938706
     },
     "WD": {
-      "n": 382,
-      "mean": 9.310201738907404,
-      "fracLT05": 0.1256544502617801
+      "n": 383,
+      "mean": 9.28665903156171,
+      "fracLT05": 0.1279373368146214
     },
     "RG": {
-      "n": 4745,
-      "mean": 9.180182846248625,
-      "fracLT05": 0.11759747102212856
+      "n": 4784,
+      "mean": 9.108024349546836,
+      "fracLT05": 0.1262541806020067
     }
   },
   "totalChecks": 27,
@@ -86,13 +86,13 @@
       "detail": {
         "M": 174519,
         "K": 17671,
-        "RG": 4745,
+        "RG": 4784,
         "G": 1659,
-        "F": 927,
-        "WD": 382,
-        "B": 44,
-        "A": 51,
-        "O": 2
+        "F": 908,
+        "WD": 383,
+        "B": 33,
+        "A": 42,
+        "O": 1
       }
     },
     {
@@ -103,14 +103,14 @@
     {
       "name": "hot stars are rare (O+B below 3% of the census)",
       "pass": true,
-      "detail": 0.00023
+      "detail": 0.00017
     },
     {
       "name": "giants and white dwarfs are both present",
       "pass": true,
       "detail": {
-        "RG": 4745,
-        "WD": 382
+        "RG": 4784,
+        "WD": 383
       }
     },
     {
@@ -131,13 +131,13 @@
     {
       "name": "O stars, when present, are a handful",
       "pass": true,
-      "detail": 2
+      "detail": 1
     },
     {
       "name": "O/B stars are within 0.5 kpc of an arm far more often than M dwarfs",
       "pass": true,
       "detail": {
-        "obClose": 1,
+        "obClose": 0.9118,
         "mDwarfs": 0.1364
       }
     },
@@ -145,20 +145,20 @@
       "name": "O/B stars have the smallest mean arm distance of all classes",
       "pass": true,
       "detail": {
-        "O": 0.211,
+        "O": 0.13,
         "M": 8.86
       }
     },
     {
       "name": "hot stars exist at all in the sample",
       "pass": true,
-      "detail": 46
+      "detail": 34
     },
     {
       "name": "the thin disc is the youngest population",
       "pass": true,
       "detail": {
-        "thin": 5.36,
+        "thin": 5.41,
         "thick": 8.36,
         "bulge": 10.09
       }

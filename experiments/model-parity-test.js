@@ -16,7 +16,7 @@ const N = 40000;
 const near = (a, b, tol = 1e-6) => Math.abs(a - b) <= tol;
 
 function isolated(component, overrides) {
-	const groups = { thin: { amp: 0 }, thick: { amp: 0 }, spheroid: { amp: 0 }, halo: { amp: 0 }, arms: { amp: 0 } };
+	const groups = { thin: { amp: 0 }, thick: { amp: 0 }, spheroid: { amp: 0 }, halo: { amp: 0 }, arms: { amp: 0, flocculence: 0 } };
 	groups[component].amp = 1;
 	for (const [group, values] of Object.entries(overrides || {})) {
 		groups[group] = Object.assign(groups[group] || {}, values);
@@ -147,7 +147,7 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 	const empty = isolated('thin', { thin: { amp: 0 } });
 	check('an empty model cannot emit stale stars in a box',
 		sampling.sampleStarsInBox(empty, 42, 5, { xMin: -1, xMax: 1, yMin: -1, yMax: 1, zMin: -1, zMax: 1 }).count === 0);
-	for (const type of ['Irr', 'constructor', '__proto__']) {
+	for (const type of ['E17', 'constructor', '__proto__']) {
 		let rejected = false;
 		try { galaxy.createGalaxy({ type }); } catch (err) { rejected = /unknown galaxy type/.test(err.message); }
 		check(`unsupported type ${type} is rejected explicitly`, rejected);

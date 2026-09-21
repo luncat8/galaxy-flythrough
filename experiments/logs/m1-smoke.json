@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T16:56:09.533Z",
+  "date": "2026-09-21T17:39:46.609Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -133,7 +133,7 @@
       "name": "DensityLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 30
+        "keys": 33
       }
     },
     {
@@ -373,7 +373,8 @@
         "SBa",
         "SBb",
         "SBc",
-        "SBd"
+        "SBd",
+        "Irr"
       ]
     },
     {

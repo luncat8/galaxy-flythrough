@@ -34,7 +34,8 @@ const COMPONENT_HALO = 3;
 // value the hot path and the packed uniform compare against.
 const PROFILE_PLUMMER = 0;
 const PROFILE_SERSIC = 1;
-const PROFILES = ['plummer', 'sersic'];
+const PROFILE_BAR = 2;
+const PROFILES = ['plummer', 'sersic', 'bar'];
 
 // Sérsic b_n, the standard approximation (Ciotti & Bertin 1999), accurate to
 // ~0.1% for n >= 0.36 — every n in the type table is >= 1.
@@ -114,9 +115,14 @@ function insideDisc(model, R, z) {
 function rhoThin(model, R, z) {
 	if (!insideDisc(model, R, z)) return 0;
 	const p = model.thin;
-	const radial = Math.exp(-R / p.L);
+	const flare = p.flare || 0;
+	const H = p.H * (1 + flare * R / p.L);
+	let radial = Math.exp(-R / p.L);
+	if (p.coreRadius) {
+		radial *= R / Math.sqrt(R * R + p.coreRadius * p.coreRadius);
+	}
 	// sech² via a decaying exponential avoids cosh overflow for thin discs.
-	const e = Math.exp(-Math.abs(z) / p.H);
+	const e = Math.exp(-Math.abs(z) / H);
 	return p.amp * radial * 4 * e / ((1 + e) * (1 + e));
 }
 
@@ -124,15 +130,36 @@ function rhoThin(model, R, z) {
 function rhoThick(model, R, z) {
 	if (!insideDisc(model, R, z)) return 0;
 	const p = model.thick;
-	const radial = Math.exp(-R / p.L);
-	return p.amp * radial * Math.exp(-Math.abs(z) / p.H);
+	const flare = p.flare || 0;
+	const H = p.H * (1 + flare * R / p.L);
+	let radial = Math.exp(-R / p.L);
+	if (p.coreRadius) {
+		radial *= R / Math.sqrt(R * R + p.coreRadius * p.coreRadius);
+	}
+	return p.amp * radial * Math.exp(-Math.abs(z) / H);
 }
 
-// The spheroid: Plummer (what a spiral's bulge is) or Sérsic (what an E/S0 body
-// is). Both are truncated at `truncation.spheroidRadius` in units of s, and the
-// truncation lives here — in the field — because the sampler draws inside it.
+// The spheroid: Plummer (what a spiral's bulge is), Sérsic (E/S0 body) or
+// Bar (boxy/peanut bulge). Truncated at `truncation.spheroidRadius` in units of s.
 function rhoSpheroid(model, x, y, z) {
 	const sp = model.spheroid;
+	if (sp.profileId === PROFILE_BAR) {
+		const dx = x - model.centre.x;
+		const dy = y - model.centre.y;
+		const dz = z - model.centre.z;
+		const t = sp.tiltDeg * Math.PI / 180;
+		const ct = Math.cos(t);
+		const st = Math.sin(t);
+		const xrot = dx * ct + dy * st;
+		const yrot = -dx * st + dy * ct;
+		const n = sp.n || 2.5;
+		const ax = Math.abs(xrot / sp.a);
+		const ay = Math.abs(yrot / sp.b);
+		const az = Math.abs(dz / sp.c);
+		const s = Math.pow(Math.pow(ax, n) + Math.pow(ay, n) + Math.pow(az, n), 1 / n) / sp.r0;
+		if (s > model.truncation.spheroidRadius) return 0;
+		return sp.amp * Math.exp(-s);
+	}
 	const s = spheroidEllipsoidRadius(model, x - model.centre.x, y - model.centre.y, z - model.centre.z);
 	if (s > model.truncation.spheroidRadius) return 0;
 	if (sp.profileId === PROFILE_SERSIC) {
@@ -153,6 +180,53 @@ function rhoHalo(model, x, y, z) {
 	return h.amp * Math.pow(r / h.a_h, -h.power);
 }
 
+// Hash noise for 2D log-spiral FBM noise in flocculent arms.
+function hash2DNoise(u, v, seed) {
+	const iu = Math.floor(u) | 0;
+	const iv = Math.floor(v) | 0;
+	const fu = u - iu;
+	const fv = v - iv;
+	const su = fu * fu * (3 - 2 * fu);
+	const sv = fv * fv * (3 - 2 * fv);
+	const h = (x, y) => {
+		const x8 = (x & 0xff) >>> 0;
+		const y8 = (y & 0xff) >>> 0;
+		const s8 = (seed & 0xff) >>> 0;
+		const h1 = (x8 * 1597 + y8 * 2869 + s8 * 3671) & 0xffff;
+		const h2 = (((h1 & 0xff) * 2869 + ((h1 >> 8) & 0xff) * 1597 + ((seed >> 8) & 0xffff))) & 0xffff;
+		return (h2 / 65535.0) * 2.0 - 1.0;
+	};
+	const n00 = h(iu, iv);
+	const n10 = h(iu + 1, iv);
+	const n01 = h(iu, iv + 1);
+	const n11 = h(iu + 1, iv + 1);
+	const nx0 = n00 + su * (n10 - n00);
+	const nx1 = n01 + su * (n11 - n01);
+	return nx0 + sv * (nx1 - nx0);
+}
+
+function fbm2D(u, v, seed) {
+	const n1 = hash2DNoise(u, v, seed);
+	const n2 = hash2DNoise(u * 2, v * 2, seed + 1);
+	const n3 = hash2DNoise(u * 4, v * 4, seed + 2);
+	return (n1 + 0.5 * n2 + 0.25 * n3) / 1.75;
+}
+
+// Clump factor for irregular galaxies (Irr).
+function clumpFactor(model, x, y, z) {
+	if (!model.clumps || model.clumps.length === 0) return 1.0;
+	let sum = 1.0;
+	for (let i = 0; i < model.clumps.length; i++) {
+		const c = model.clumps[i];
+		const dx = x - c.x;
+		const dy = y - c.y;
+		const dz = z - c.z;
+		const d2 = dx * dx + dy * dy + dz * dz;
+		sum += c.boost * Math.exp(-d2 / (2 * c.r * c.r));
+	}
+	return sum;
+}
+
 // Spiral arm modulation of the disc: factor in [1-A, 1+A]. `amp` 0 or `m` 0 is
 // a smooth disc, which is how S0 and the E types read.
 function armFactor(model, R, phi) {
@@ -160,7 +234,15 @@ function armFactor(model, R, phi) {
 	if (a.amp === 0 || a.m === 0 || R < a.minRadius) return 1.0;
 	const k = Math.tan(a.pitchDeg * Math.PI / 180);
 	const arg = a.m * phi - k * Math.log(R / a.Rs) + a.phase0;
-	return 1.0 + a.amp * Math.cos(arg);
+	const grandDesign = Math.cos(arg);
+	if (a.flocculence > 0) {
+		const u = 2.0 * Math.log(R / a.Rs);
+		const v = arg / Math.PI;
+		const fbm = fbm2D(u, v, model.seed || 42);
+		const combined = (1.0 - a.flocculence) * grandDesign + a.flocculence * fbm;
+		return 1.0 + a.amp * combined;
+	}
+	return 1.0 + a.amp * grandDesign;
 }
 
 // Distance to the nearest arm ridge line (kpc). Used for young-star and nebula
@@ -202,18 +284,40 @@ function haloRadialMass(model, radius) {
 	return 1 / 3 + (q === 0 ? Math.log(x) : Math.expm1(q * Math.log(x)) / q);
 }
 
+function barMassFraction(model, s) {
+	return 1 - (1 + s + 0.5 * s * s) * Math.exp(-s);
+}
+
+function barRadiusForFraction(model, u) {
+	const sMax = model.truncation.spheroidRadius;
+	const total = barMassFraction(model, sMax);
+	let lo = 0;
+	let hi = sMax;
+	for (let i = 0; i < 32; i++) {
+		const mid = 0.5 * (lo + hi);
+		if (barMassFraction(model, mid) < u * total) lo = mid; else hi = mid;
+	}
+	return 0.5 * (lo + hi);
+}
+
 function massIntegrals(model) {
 	const discIntegral = (p, vertical) => 2 * Math.PI * p.L * p.L * vertical;
 	const sp = model.spheroid;
 	const axes = sp.a * sp.b * sp.c * sp.r0 * sp.r0 * sp.r0;
 	const ah = model.halo.a_h;
 	const bn = sersicBn(sp.n);
+	let bulgeIntegral;
+	if (sp.profileId === PROFILE_BAR) {
+		bulgeIntegral = 8 * Math.PI * axes * 0.88;
+	} else if (sp.profileId === PROFILE_SERSIC) {
+		bulgeIntegral = 4 * Math.PI * axes * Math.exp(bn) * sp.n * Math.pow(bn, -3 * sp.n) * Math.exp(logGamma(3 * sp.n));
+	} else {
+		bulgeIntegral = axes * (4 / 3) * Math.PI;
+	}
 	return {
 		thin: discIntegral(model.thin, 4 * model.thin.H),
 		thick: discIntegral(model.thick, 2 * model.thick.H),
-		bulge: sp.profileId === PROFILE_SERSIC
-			? 4 * Math.PI * axes * Math.exp(bn) * sp.n * Math.pow(bn, -3 * sp.n) * Math.exp(logGamma(3 * sp.n))
-			: axes * (4 / 3) * Math.PI,
+		bulge: bulgeIntegral,
 		halo: 4 * Math.PI * ah * ah * ah * haloRadialMass(model, model.halo.rMax),
 	};
 }
@@ -238,7 +342,9 @@ function truncationFractions(model) {
 	const sp = model.spheroid;
 	const sMax = t.spheroidRadius;
 	let bulge;
-	if (sp.profileId === PROFILE_SERSIC) {
+	if (sp.profileId === PROFILE_BAR) {
+		bulge = barMassFraction(model, sMax);
+	} else if (sp.profileId === PROFILE_SERSIC) {
 		const bn = sersicBn(sp.n);
 		const a = 3 * sp.n;
 		bulge = lowerGamma(a, bn * Math.pow(sMax, 1 / sp.n)) / Math.exp(logGamma(a));
@@ -285,18 +391,20 @@ function rhoTotal(model, x, y, z) {
 	const gc = toGalactocentric(model, x, y, z);
 	const arm = armFactor(model, gc.R, gc.phi);
 	const disc = (rhoThin(model, gc.R, gc.zp) + rhoThick(model, gc.R, gc.zp)) * arm;
-	return disc + rhoSpheroid(model, x, y, z) + rhoHalo(model, x, y, z);
+	const base = disc + rhoSpheroid(model, x, y, z) + rhoHalo(model, x, y, z);
+	return base * clumpFactor(model, x, y, z);
 }
 
 // Per-component densities plus the derived galactocentric quantities.
-function rhoDecomposed(model, x, y, z) {
+function rhoDecomposed(model, x, y, z, includeClumps = true) {
 	const gc = toGalactocentric(model, x, y, z);
 	const arm = armFactor(model, gc.R, gc.phi);
+	const cf = includeClumps ? clumpFactor(model, x, y, z) : 1.0;
 	return {
-		thin: rhoThin(model, gc.R, gc.zp) * arm,
-		thick: rhoThick(model, gc.R, gc.zp) * arm,
-		bulge: rhoSpheroid(model, x, y, z),
-		halo: rhoHalo(model, x, y, z),
+		thin: rhoThin(model, gc.R, gc.zp) * arm * cf,
+		thick: rhoThick(model, gc.R, gc.zp) * arm * cf,
+		bulge: rhoSpheroid(model, x, y, z) * cf,
+		halo: rhoHalo(model, x, y, z) * cf,
 		arm,
 		R: gc.R,
 		phi: gc.phi,
@@ -331,13 +439,13 @@ function sampleComponentIndex(decomposed, u) {
 
 const DensityLib = {
 	COMPONENT_NAMES, COMPONENT_THIN, COMPONENT_THICK, COMPONENT_BULGE, COMPONENT_HALO,
-	PROFILES, PROFILE_PLUMMER, PROFILE_SERSIC,
+	PROFILES, PROFILE_PLUMMER, PROFILE_SERSIC, PROFILE_BAR,
 	sersicBn, logGamma, lowerGamma,
 	componentMasses, massIntegrals, truncationFractions, haloRadialMass,
 	toGalactocentric, spheroidEllipsoidRadius, insideDisc,
 	rhoThin, rhoThick, rhoSpheroid, rhoHalo,
 	armFactor, distanceToNearestArm,
-	sersicMassFraction, sersicRadiusForFraction,
+	sersicMassFraction, sersicRadiusForFraction, barMassFraction, barRadiusForFraction,
 	rhoTotal, rhoDecomposed, dominantComponent, sampleComponentIndex,
 };
 if (typeof module !== 'undefined') module.exports = DensityLib;

@@ -112,6 +112,7 @@ struct DensityParams {
 // Profile selector, matching density.PROFILE_* and the packed spheroidShape.w.
 const PROFILE_PLUMMER: f32 = 0.0;
 const PROFILE_SERSIC: f32 = 1.0;
+const PROFILE_BAR: f32 = 2.0;
 
 const COMPONENT_THIN: u32 = 0u;
 const COMPONENT_THICK: u32 = 1u;
@@ -141,15 +142,23 @@ fn insideDisc(params: DensityParams, R: f32, z: f32) -> bool {
 
 fn rhoThin(params: DensityParams, R: f32, z: f32) -> f32 {
         if (!insideDisc(params, R, z)) { return 0.0; }
-        let radial: f32 = exp(-R / params.thin.x);
-	let e: f32 = exp(-abs(z) / params.thin.y);
-	return params.thin.z * radial * 4.0 * e / ((1.0 + e) * (1.0 + e));
+        let H: f32 = params.thin.y * (1.0 + params.thin.w * R / params.thin.x);
+        var radial: f32 = exp(-R / params.thin.x);
+        if (params.thick.w > 0.0) {
+                radial = radial * (R / sqrt(R * R + params.thick.w * params.thick.w));
+        }
+        let e: f32 = exp(-abs(z) / H);
+        return params.thin.z * radial * 4.0 * e / ((1.0 + e) * (1.0 + e));
 }
 
 fn rhoThick(params: DensityParams, R: f32, z: f32) -> f32 {
         if (!insideDisc(params, R, z)) { return 0.0; }
-        let radial: f32 = exp(-R / params.thick.x);
-        return params.thick.z * radial * exp(-abs(z) / params.thick.y);
+        let H: f32 = params.thick.y * (1.0 + params.thin.w * R / params.thick.x);
+        var radial: f32 = exp(-R / params.thick.x);
+        if (params.thick.w > 0.0) {
+                radial = radial * (R / sqrt(R * R + params.thick.w * params.thick.w));
+        }
+        return params.thick.z * radial * exp(-abs(z) / H);
 }
 
 // Both spheroid profiles are truncated at params.truncation.z, in units of s —
@@ -158,6 +167,21 @@ fn rhoThick(params: DensityParams, R: f32, z: f32) -> f32 {
 fn rhoSpheroid(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
         let dx: f32 = x - params.centre.x;
         let dy: f32 = y - params.centre.y;
+        if (params.spheroidShape.w >= PROFILE_BAR) {
+                let t: f32 = radians(params.spheroidShape.z);
+                let ct: f32 = cos(t);
+                let st: f32 = sin(t);
+                let xrot: f32 = dx * ct + dy * st;
+                let yrot: f32 = -dx * st + dy * ct;
+                let axes: vec3f = params.spheroid.xyz;
+                let n: f32 = params.spheroidShape.y;
+                let ax: f32 = abs(xrot / axes.x);
+                let ay: f32 = abs(yrot / axes.y);
+                let az: f32 = abs((z - params.centre.z) / axes.z);
+                let s: f32 = pow(pow(ax, n) + pow(ay, n) + pow(az, n), 1.0 / n) / params.spheroid.w;
+                if (s > params.truncation.z) { return 0.0; }
+                return params.spheroidShape.x * exp(-s);
+        }
         let s: f32 = spheroidEllipsoidRadius(params, dx, dy, z - params.centre.z);
         if (s > params.truncation.z) { return 0.0; }
         if (params.spheroidShape.w >= PROFILE_SERSIC) {
@@ -178,6 +202,38 @@ fn rhoHalo(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
         return params.halo.w * pow(r / a, -params.halo.z);
 }
 
+fn noise2DCorner(x: i32, y: i32, seed: u32) -> f32 {
+        let x8: u32 = u32(x) & 0xffu;
+        let y8: u32 = u32(y) & 0xffu;
+        let s8: u32 = seed & 0xffu;
+        let h1: u32 = (x8 * 1597u + y8 * 2869u + s8 * 3671u) & 0xffffu;
+        let h2: u32 = ((h1 & 0xffu) * 2869u + ((h1 >> 8u) & 0xffu) * 1597u + ((seed >> 8u) & 0xffffu)) & 0xffffu;
+        return (f32(h2) / 65535.0) * 2.0 - 1.0;
+}
+
+fn hash2DNoise(u: f32, v: f32, seed: u32) -> f32 {
+        let iu: i32 = i32(floor(u));
+        let iv: i32 = i32(floor(v));
+        let fu: f32 = u - f32(iu);
+        let fv: f32 = v - f32(iv);
+        let su: f32 = fu * fu * (3.0 - 2.0 * fu);
+        let sv: f32 = fv * fv * (3.0 - 2.0 * fv);
+        let n00: f32 = noise2DCorner(iu, iv, seed);
+        let n10: f32 = noise2DCorner(iu + 1, iv, seed);
+        let n01: f32 = noise2DCorner(iu, iv + 1, seed);
+        let n11: f32 = noise2DCorner(iu + 1, iv + 1, seed);
+        let nx0: f32 = mix(n00, n10, su);
+        let nx1: f32 = mix(n01, n11, su);
+        return mix(nx0, nx1, sv);
+}
+
+fn fbm2D(u: f32, v: f32, seed: u32) -> f32 {
+        let n1: f32 = hash2DNoise(u, v, seed);
+        let n2: f32 = hash2DNoise(u * 2.0, v * 2.0, seed + 1u);
+        let n3: f32 = hash2DNoise(u * 4.0, v * 4.0, seed + 2u);
+        return (n1 + 0.5 * n2 + 0.25 * n3) / 1.75;
+}
+
 // amp 0 or m 0 is a smooth disc, which is how S0 and the E types read.
 fn armFactor(params: DensityParams, R: f32, phi: f32) -> f32 {
         let amp: f32 = params.arms.y;
@@ -185,7 +241,16 @@ fn armFactor(params: DensityParams, R: f32, phi: f32) -> f32 {
         if (amp == 0.0 || m == 0.0 || R < params.armShape.y) { return 1.0; }
         let k: f32 = tan(radians(params.arms.z));
         let arg: f32 = m * phi - k * log(R / params.arms.w) + params.armShape.x;
-        return 1.0 + amp * cos(arg);
+        let grandDesign: f32 = cos(arg);
+        let flocculence: f32 = params.armShape.z;
+        if (flocculence > 0.0) {
+                let u: f32 = 2.0 * log(R / params.arms.w);
+                let v: f32 = arg / 3.1415926535;
+                let fbm: f32 = fbm2D(u, v, 42u);
+                let combined: f32 = (1.0 - flocculence) * grandDesign + flocculence * fbm;
+                return 1.0 + amp * combined;
+        }
+        return 1.0 + amp * grandDesign;
 }
 
 // With no pattern there is no ridge, so the distance is "nowhere" — which is

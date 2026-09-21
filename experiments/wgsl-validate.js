@@ -129,7 +129,7 @@ function wgslConsts(part) {
         // keeps the Milky Way's shape.
         const stray = [...densitySrc.matchAll(/^const\s+([A-Za-z_0-9]+)\s*:/gm)].map(m => m[1])
                 .filter(n => !['COMPONENT_THIN', 'COMPONENT_THICK', 'COMPONENT_BULGE', 'COMPONENT_HALO',
-                        'PROFILE_PLUMMER', 'PROFILE_SERSIC', 'ARM_MIN_RADIUS'].includes(n));
+                        'PROFILE_PLUMMER', 'PROFILE_SERSIC', 'PROFILE_BAR', 'ARM_MIN_RADIUS'].includes(n));
         check('density.wgsl hard-codes no galaxy numbers', stray.length === 0, stray);
 
         const c = wgslConsts('density');

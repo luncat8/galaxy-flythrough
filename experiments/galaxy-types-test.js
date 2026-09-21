@@ -77,7 +77,8 @@ function relNear(a, b, tol) {
 		}
 	})());
 	check('the default model is the Milky Way preset',
-		galaxy.createGalaxy({}).type === galaxy.MILKY_WAY_TYPE && galaxy.createGalaxy({}).milkyWay === true);
+		galaxy.createGalaxy({}).type === galaxy.MILKY_WAY_TYPE && galaxy.createGalaxy({}).milkyWay === true
+		&& galaxy.createGalaxy({ type: null }).type === galaxy.MILKY_WAY_TYPE && galaxy.createGalaxy({ type: null }).milkyWay === true);
 	check('the label names the type and the seed, for the overlay',
 		galaxy.galaxyLabel(models.Sc) === 'galaxy Sc #42', galaxy.galaxyLabel(models.Sc));
 }
@@ -126,7 +127,7 @@ function relNear(a, b, tol) {
 // The menu contains all regular types, while G remains a short tour.
 {
 	const expected = ['E0', 'E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7',
-		'S0', 'Sa', 'Sb', 'Sc', 'Sd', 'SB0', 'SBa', 'SBb', 'SBc', 'SBd'];
+		'S0', 'Sa', 'Sb', 'Sc', 'Sd', 'SB0', 'SBa', 'SBb', 'SBc', 'SBd', 'Irr'];
 	check('the regular type menu is complete and has no duplicates',
 		JSON.stringify(TYPES) === JSON.stringify(expected), TYPES);
 	check('every table-only type rejoins the shortcut tour at E4',
@@ -255,7 +256,17 @@ function relNear(a, b, tol) {
 			if (buf.component[i] === density.COMPONENT_THIN || buf.component[i] === density.COMPONENT_THICK) {
 				if (!density.insideDisc(model, buf.R[i], buf.z[i])) outside++;
 			} else if (buf.component[i] === density.COMPONENT_BULGE) {
-				const s = density.spheroidEllipsoidRadius(model, dx, dy, buf.z[i]);
+				let s;
+				if (model.spheroid.profileId === density.PROFILE_BAR) {
+					const t = model.spheroid.tiltDeg * Math.PI / 180;
+					const ct = Math.cos(t), st = Math.sin(t);
+					const xrot = dx * ct + dy * st, yrot = -dx * st + dy * ct;
+					const n = model.spheroid.n || 2.5;
+					const ax = Math.abs(xrot / model.spheroid.a), ay = Math.abs(yrot / model.spheroid.b), az = Math.abs(buf.z[i] / model.spheroid.c);
+					s = Math.pow(Math.pow(ax, n) + Math.pow(ay, n) + Math.pow(az, n), 1 / n) / model.spheroid.r0;
+				} else {
+					s = density.spheroidEllipsoidRadius(model, dx, dy, buf.z[i]);
+				}
 				if (s > model.truncation.spheroidRadius + 1e-3) outside++;
 			}
 		}
@@ -274,10 +285,11 @@ function relNear(a, b, tol) {
 // --- 5. The Sersic path --------------------------------------------------
 {
 	const sersic = ALL.filter((m) => m.spheroid.profileId === density.PROFILE_SERSIC);
-	check('the table types are Sersic while the preset stayed Plummer',
-		sersic.length === TABLE.length && MW.spheroid.profileId === density.PROFILE_PLUMMER
+	const bar = ALL.filter((m) => m.spheroid.profileId === density.PROFILE_BAR);
+	check('the unbarred table types are Sersic while barred are Bar and preset stayed Plummer',
+		sersic.length + bar.length === TABLE.length && MW.spheroid.profileId === density.PROFILE_PLUMMER
 		&& models.Sc.spheroid.profileId === density.PROFILE_SERSIC,
-		{ sersic: sersic.map((m) => m.type), preset: MW.spheroid.profile });
+		{ sersic: sersic.map((m) => m.type), bar: bar.map((m) => m.type), preset: MW.spheroid.profile });
 	check('the Sersic index follows the authored E shape or stage anchor',
 		TABLE.every((m) => m.spheroid.n === (galaxy.TYPE_SPECS[m.type].n
 			?? galaxy.interpAnchors(galaxy.ANCHORS.SERSIC_N, m.T))),

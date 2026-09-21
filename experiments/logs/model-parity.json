@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T16:56:21.772Z",
+  "date": "2026-09-21T17:39:58.512Z",
   "totalChecks": 57,
   "passed": 57,
   "failed": 0,
@@ -281,7 +281,7 @@
       "pass": true
     },
     {
-      "name": "unsupported type Irr is rejected explicitly",
+      "name": "unsupported type E17 is rejected explicitly",
       "pass": true
     },
     {

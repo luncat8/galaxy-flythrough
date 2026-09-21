@@ -224,7 +224,7 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		failure === null && Array.from(page.Camera.GALACTIC_CENTRE_TARGET).join(',') === '8.178,0,0'
 		&& page.Camera.createCamera().getState().modeName === 'fly');
 	check('the page scope builds a model per type, so ?type=Sc boots',
-		failure === null && page.GalaxyLib && page.GalaxyLib.GALAXY_TYPES.length === 18
+		failure === null && page.GalaxyLib && page.GalaxyLib.GALAXY_TYPES.length === 19
 		&& page.GalaxyLib.createGalaxy({ type: 'Sc' }).arms.pitchDeg === 15
 		&& page.GalaxyLib.createGalaxy({ type: 'E4' }).thin.amp === 0,
 		failure || (page.GalaxyLib && page.GalaxyLib.GALAXY_TYPES));
