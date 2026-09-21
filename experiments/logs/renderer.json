@@ -1,10 +1,10 @@
 {
-  "date": "2026-09-21T20:38:20.882Z",
+  "date": "2026-09-21T21:03:45.607Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 80,
-  "totalChecks": 77,
-  "passed": 77,
+  "prepareMs": 96,
+  "totalChecks": 82,
+  "passed": 82,
   "failed": 0,
   "checks": [
     {
@@ -72,15 +72,15 @@
       ]
     },
     {
-      "name": "the storage buffer holds procedural + landmarks + local gap-fill + catalog capacity",
+      "name": "the storage buffer holds procedural + landmarks + objects + local gap-fill + catalog capacity",
       "pass": true,
       "detail": {
-        "size": 702208,
-        "expected": 702208
+        "size": 734208,
+        "expected": 734208
       }
     },
     {
-      "name": "the fixed blocks (procedural + landmarks) were uploaded once, at offset 0",
+      "name": "the fixed blocks (procedural + landmarks + objects) were uploaded once, at offset 0",
       "pass": true,
       "detail": {
         "writes": 1
@@ -107,6 +107,30 @@
       "pass": true
     },
     {
+      "name": "the renderer reports the placed objects and their apportioned members",
+      "pass": true,
+      "detail": {
+        "objects": 40,
+        "members": 2000
+      }
+    },
+    {
+      "name": "every objects-block record is visible and finite",
+      "pass": true,
+      "detail": {
+        "visible": 2000,
+        "finite": 2000
+      }
+    },
+    {
+      "name": "every objects-block record carries a valid colour and magnitude",
+      "pass": true,
+      "detail": {
+        "classOk": 2000,
+        "magOk": 2000
+      }
+    },
+    {
       "name": "every procedural record is visible and finite",
       "pass": true,
       "detail": 20000
@@ -129,8 +153,8 @@
       "pass": true,
       "detail": {
         "writes": 1,
-        "offset": 320944,
-        "localOffset": 320944
+        "offset": 352944,
+        "localOffset": 352944
       }
     },
     {
@@ -142,11 +166,11 @@
       ]
     },
     {
-      "name": "the star-sprite pass draws exactly the resident stars (global + landmarks + local + catalog)",
+      "name": "the star-sprite pass draws exactly the resident stars (global + landmarks + objects + local + catalog)",
       "pass": true,
       "detail": {
         "vertices": 4,
-        "instances": 23659,
+        "instances": 25659,
         "firstVertex": 0,
         "firstInstance": 0,
         "pipeline": {
@@ -334,7 +358,7 @@
       }
     },
     {
-      "name": "a generated type runs Game mode: no named stars, no streamed catalog",
+      "name": "a generated type runs Game mode: no named stars, no streamed catalog, but objects",
       "pass": true,
       "detail": {
         "landmarks": 0,
@@ -343,11 +367,11 @@
       }
     },
     {
-      "name": "the generated galaxy fills the frame with the global field alone",
+      "name": "the generated galaxy fills the frame with the global field + objects",
       "pass": true,
       "detail": {
-        "drawn": 20000,
-        "instances": 20000,
+        "drawn": 22000,
+        "instances": 22000,
         "procedural": 20000
       }
     },
@@ -388,6 +412,22 @@
         "star-sprites",
         "tonemap"
       ]
+    },
+    {
+      "name": "omitted object options default to 400 objects / 20000 members",
+      "pass": true,
+      "detail": {
+        "objects": 400,
+        "members": 20000
+      }
+    },
+    {
+      "name": "the default objects block sizes the buffer",
+      "pass": true,
+      "detail": {
+        "size": 642544,
+        "expected": 642544
+      }
     },
     {
       "name": "exposure key raises magZero by one step",
@@ -438,9 +478,9 @@
       }
     },
     {
-      "name": "the drawn instance count follows the new residency (global + landmarks + local + catalog)",
+      "name": "the drawn instance count follows the new residency (global + landmarks + objects + local + catalog)",
       "pass": true,
-      "detail": 23787
+      "detail": 25787
     },
     {
       "name": "a camera outside the catalog volume drops every catalog star",
@@ -456,11 +496,11 @@
       ]
     },
     {
-      "name": "the star pass draws the procedural field + landmarks (no local/catalog when outside volume)",
+      "name": "the star pass draws the procedural field + landmarks + objects (no local/catalog when outside volume)",
       "pass": true,
       "detail": {
         "vertices": 4,
-        "instances": 20059,
+        "instances": 22059,
         "firstVertex": 0,
         "firstInstance": 0,
         "pipeline": {

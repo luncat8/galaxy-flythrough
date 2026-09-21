@@ -14,15 +14,16 @@
 //
 //   [0 .. globalProcedural)                 global procedural field, generated once
 //   [globalProcedural .. +landmarkCount)    named landmarks, written once
-//   [+landmarkCount .. +localCapacity)      local procedural gap-fill, rewritten
+//   [+landmarkCount .. +objectCapacity)     composite-object members, written once
+//   [+objectCapacity .. +localCapacity)      local procedural gap-fill, rewritten
 //                                           per cell-manager rebuild
 //   [+localBase .. +localBase+catalogCap)   thinned catalog cells, rewritten per
 //                                           rebuild
 //
 // Landmarks sit in their own fixed block because Gaia saturates on the
 // brightest stars — the catalog subset cannot be assumed to contain them
-// (see data/landmarks.js). The four blocks keep the drawn instance range
-// contiguous: `draw(4, global + landmarks + local + thinnedCatalog)`.
+// (see data/landmarks.js). The five blocks keep the drawn instance range
+// contiguous: `draw(4, global + landmarks + objects + local + thinnedCatalog)`.
 // No hidden slots, no per-cell GPU allocation, no compaction pass.
 //
 // Frame cost: one 112-byte uniform write, one catalog buffer write (only when
@@ -125,6 +126,12 @@ function createStarRenderer(device, context, format, options) {
                 state.galaxyLabel = window.GalaxyLib.galaxyLabel(nextModel);
         }
         const localProceduralBudget = Math.max(0, opts.localProceduralStars === undefined ? LOCAL_PROCEDURAL_DEFAULT : opts.localProceduralStars);
+        // Composite objects (0.3.2a): clusters and associations, written once per
+        // regenerate like the global field. The members block is fixed capacity;
+        // unwritten slots are zero records, which the shader culls.
+        const objectsLib = window.ObjectsLib;
+        const objectCapacity = Math.max(0, opts.objectMembers === undefined ? objectsLib.OBJECT_MEMBERS_DEFAULT : opts.objectMembers);
+        const objectCount = Math.max(0, opts.objectCount === undefined ? objectsLib.OBJECT_COUNT_DEFAULT : opts.objectCount);
 
         // Output mode: SDR (bgra8unorm / rgba8unorm) clamps tonemap to [0,1];
         // HDR (rgba16float + toneMapping:'extended') allows >1 so highlights
@@ -288,8 +295,9 @@ function createStarRenderer(device, context, format, options) {
         // --- Storage ----------------------------------------------------------
         let starBuffer = null;
         let bindGroup = null;
-        let staging = null;            // ArrayBuffer: [procedural][landmarks][catalog]
+        let staging = null;            // ArrayBuffer: [procedural][landmarks][objects][local][catalog]
         let landmarkByteOffset = 0;
+        let objectByteOffset = 0;
         let catalogByteOffset = 0;
         let catalogCapacity = 0;
         let proceduralCount = 0;
@@ -306,6 +314,8 @@ function createStarRenderer(device, context, format, options) {
         const state = {
                 proceduralStars: 0,
                 landmarkStars: 0,
+                objectStars: 0,
+                objectCount: 0,
                 localProceduralStars: 0,
                 catalogResidentStars: 0,
                 catalogThinnedStars: 0,
@@ -376,15 +386,16 @@ function createStarRenderer(device, context, format, options) {
                 proceduralCount = procedural;
                 catalogCapacity = catalog;
                 localProceduralCapacity = localProceduralBudget;
-                const totalRecords = proceduralCount + landmarkCount + localProceduralCapacity + catalogCapacity;
+                const totalRecords = proceduralCount + landmarkCount + objectCapacity + localProceduralCapacity + catalogCapacity;
                 const totalBytes = totalRecords * records.RECORD_BYTES;
                 if (totalBytes > maxStorageBytes) {
                         throw new Error(`Star buffer of ${(totalBytes / 1048576).toFixed(1)} MB exceeds the device limit of ${(maxStorageBytes / 1048576).toFixed(1)} MB`);
                 }
                 staging = new ArrayBuffer(Math.max(records.RECORD_BYTES, totalBytes));
                 landmarkByteOffset = proceduralCount * records.RECORD_BYTES;
-                localProceduralByteOffset = (proceduralCount + landmarkCount) * records.RECORD_BYTES;
-                catalogByteOffset = (proceduralCount + landmarkCount + localProceduralCapacity) * records.RECORD_BYTES;
+                objectByteOffset = (proceduralCount + landmarkCount) * records.RECORD_BYTES;
+                localProceduralByteOffset = (proceduralCount + landmarkCount + objectCapacity) * records.RECORD_BYTES;
+                catalogByteOffset = (proceduralCount + landmarkCount + objectCapacity + localProceduralCapacity) * records.RECORD_BYTES;
                 starBuffer = device.createBuffer({
                         label: 'star-storage',
                         size: Math.max(16, totalBytes),
@@ -439,6 +450,19 @@ function createStarRenderer(device, context, format, options) {
                 return landmarkCount;
         }
 
+        // Composite-object members: placed whole-galaxy, apportioned into the
+        // fixed block. The placement seed is domain-separated from the field
+        // seed so the objects do not sit on field stars.
+        function generateObjects() {
+                if (objectCapacity === 0) { state.objectStars = 0; state.objectCount = 0; return 0; }
+                const placed = objectsLib.placeObjects(model, (seed | 0) ^ 0x0B5E55, objectCount, null);
+                const view = new DataView(staging, objectByteOffset, objectCapacity * records.RECORD_BYTES);
+                const written = objectsLib.writeObjectMembers(model, placed, view, 0, objectCapacity).written;
+                state.objectStars = written;
+                state.objectCount = placed.length;
+                return written;
+        }
+
         // Target total stars (procedural + catalog) for density parity
         // normalization. Passed down to the cell manager so expected per-cell
         // counts match what the global procedural field delivers.
@@ -459,9 +483,9 @@ function createStarRenderer(device, context, format, options) {
                 return capacity;
         }
 
-        // One-shot setup: allocate, generate, upload, expose. Procedural field and
-        // landmarks are both fixed for the life of the renderer, so they share one
-        // upload. Local procedural gap-fill + catalog are uploaded per-rebuild.
+        // One-shot setup: allocate, generate, upload, expose. Procedural field,
+        // landmarks and object members are all fixed until the next regenerate,
+        // so they share one upload. Local gap-fill + catalog upload per rebuild.
         function prepare(manifest) {
                 // Keep the last manifest that had content: a Game-mode rebuild passes none, and
                 // coming back to the preset has to find the catalog still there.
@@ -494,7 +518,8 @@ function createStarRenderer(device, context, format, options) {
                 allocate(procedural, catalog);
                 generateProcedural();
                 writeLandmarks();
-                const fixedBytes = (proceduralCount + landmarkCount) * records.RECORD_BYTES;
+                generateObjects();
+                const fixedBytes = (proceduralCount + landmarkCount + objectCapacity) * records.RECORD_BYTES;
                 if (fixedBytes > 0) device.queue.writeBuffer(starBuffer, 0, staging, 0, fixedBytes);
                 return state;
         }
@@ -661,7 +686,7 @@ function createStarRenderer(device, context, format, options) {
                 tonemapUniform[3] = outputMode;
                 device.queue.writeBuffer(tonemapUniformBuffer, 0, tonemapUniformData);
 
-                const instances = state.proceduralStars + landmarkCount + localProceduralCount + catalogResident;
+                const instances = state.proceduralStars + landmarkCount + objectCapacity + localProceduralCount + catalogResident;
                 state.drawn = instances;
 
                 const encoder = device.createCommandEncoder({ label: 'star-frame' });

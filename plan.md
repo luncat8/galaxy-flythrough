@@ -609,17 +609,19 @@ galaxy-flythrough/
     ├── math/
     │   ├── hash.js                   # PCG/Wang (mirrors WGSL)
     │   ├── density.js                # analytical density field + truncations
+    │   ├── galaxy.js                 # GalaxyModel descriptor + type table
     │   ├── sampling.js               # exact single-pass sampler
     │   ├── star-record.js            # StarPacked layout + colour LUT
     │   ├── star-types.js             # IMF, ages, evolution state, class
     │   ├── nebula.js                 # nebula probability + placement
+    │   ├── objects.js                # composite objects + member profiles
     │   └── coords.js                 # RA/Dec/parallax → galactic XYZ, world → screen
     ├── stream/
     │   ├── tile-loader.js            # bundle injection, decode, manifest
     │   └── cell-manager.js           # residency set, nearest-first, LRU
     ├── render/
     │   ├── shaders.js                # all WGSL as JS strings
-    │   ├── star-sprites.js           # star draw path (procedural + landmarks + catalog)
+    │   ├── star-sprites.js           # star draw path (global + landmarks + objects + local + catalog)
     │   └── label-layer.js            # 2D overlay canvas: labels + constellation lines
     ├── data/
     │   ├── gaia-subset.csv           # source catalog (5,000 rows)
@@ -1110,9 +1112,9 @@ sense as this document, kept beside it rather than folded in:
   0.3.0 the `GalaxyModel` type
   framework, 0.3.1 the full Hubble zoo with improved star distributions, 0.3.2
   nebula-like objects with proper internal star distributions, 0.3.3 galaxy age.
-  *(0.3.0 implemented; 0.3.1's regular-type table, flocculent/irregular fields, metallicity
-  colour gradient, sampler/model parity and the boxy/peanut bar profile are implemented;
-  the arm-ridge young-population distribution and the remaining polish remain)*
+  *(0.3.0 and 0.3.1 implemented; 0.3.2a composite objects (placement, member profiles,
+  the objects block in the star buffer) implemented; 0.3.2b billboards and 0.3.3 age
+  remain)*
 - `0.4.0-plan-star-move.md` — star movement: predefined orbits without gravity, orbit
   distributions per galaxy type, the moving-star budget on a typical RTX 3050, the
   one-shader architecture decision, and the star time slider (camera-coupled /

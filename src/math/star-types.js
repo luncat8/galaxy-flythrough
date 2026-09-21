@@ -142,16 +142,14 @@
 		return 4.83 - 2.5 * Math.log10(Math.max(1e-6, lum));
 	}
 
-	// Core derivation. `out` is mutated in place and returned.
-	function deriveStar(model, seed, componentIndex, R, distToArm, out) {
-		const uMass = hash.hash01(seed * 31 + 1);
-		const uAge1 = hash.hash01(seed * 31 + 2);
-		const uAge2 = hash.hash01(seed * 31 + 3);
+	// Core evolution: mass + age → state, Teff, luminosity, class, colour. Shared
+	// by deriveStar (age from the local population) and deriveStarWithAge (age
+	// from the composite object the star belongs to) — the IMF and the age draw
+	// differ, the physics from there on does not.
+	function evolveStar(model, seed, mass, age, componentIndex, R, distToArm, out) {
 		const uEvolve = hash.hash01(seed * 31 + 4);
 		const uEvolve2 = hash.hash01(seed * 31 + 5);
 
-		const mass = sampleMassIMF(uMass);
-		const age = sampleLocalAge(model, componentIndex, distToArm, R, uAge1, uAge2);
 		const tMS = msLifetimeGyr(mass);
 
 		let state = 'ms';
@@ -202,6 +200,46 @@
 		out.colorIndex = colorIndex;
 		out.absMag = absoluteMagnitude(lum);
 		out.metallicity = metallicityFor(componentIndex);
+		out.component = componentIndex;
+		out.R = R;
+		out.distToArm = distToArm;
+		return out;
+	}
+
+	// Core derivation. `out` is mutated in place and returned.
+	function deriveStar(model, seed, componentIndex, R, distToArm, out) {
+		const mass = sampleMassIMF(hash.hash01(seed * 31 + 1));
+		const age = sampleLocalAge(model, componentIndex, distToArm, R,
+			hash.hash01(seed * 31 + 2), hash.hash01(seed * 31 + 3));
+		return evolveStar(model, seed, mass, age, componentIndex, R, distToArm, out);
+	}
+
+	// Same pipeline with the age imposed from outside: member stars of a
+	// composite object are coeval at the object's age, not drawn from the local
+	// population prior. Mass (channel 1) and evolution rolls (4, 5) keep their
+	// field-star channels; the age channels (2, 3) are simply not drawn.
+	function deriveStarWithAge(model, seed, componentIndex, R, distToArm, ageGyr, out) {
+		const mass = sampleMassIMF(hash.hash01(seed * 31 + 1));
+		return evolveStar(model, seed, mass, ageGyr, componentIndex, R, distToArm, out);
+	}
+
+	// The central star of a planetary nebula: a post-AGB remnant, hot and
+	// luminous, on its way to the white-dwarf cooling track. Classified O (the
+	// LUT's hottest slot) with state 'ms', so every consumer that switches on
+	// the three known states keeps working; component/R/arm are the host's, for
+	// the record only.
+	function derivePlanetaryCentral(seed, componentIndex, R, distToArm, out) {
+		const teff = 30000 + 70000 * hash.hash01(seed * 31 + 1);
+		const lum = Math.pow(10, 2 + 2 * hash.hash01(seed * 31 + 2));
+		out.mass = 0.6;
+		out.age = 10;
+		out.teff = teff;
+		out.luminosity = lum;
+		out.state = 'ms';
+		out.spectralClass = 'O';
+		out.colorIndex = records.spectralClassIndex('O');
+		out.absMag = absoluteMagnitude(lum);
+		out.metallicity = 0.020;
 		out.component = componentIndex;
 		out.R = R;
 		out.distToArm = distToArm;
@@ -269,7 +307,7 @@
 		MASS_TEFF_TABLE,
 		classifyByTempAndState, classColor, luminosityFromMass, teffFromMass,
 		msLifetimeGyr, sampleMassIMF, sampleLocalAge, metallicityFor,
-		absoluteMagnitude, deriveStar, deriveStarProps,
+		absoluteMagnitude, deriveStar, deriveStarWithAge, derivePlanetaryCentral, deriveStarProps,
 		summariseByComponent, classVsArmDistance,
 	};
 	if (typeof module !== 'undefined') module.exports = StarTypesLib;

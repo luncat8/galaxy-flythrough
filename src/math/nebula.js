@@ -149,7 +149,7 @@
 		};
 	}
 
-	const NebulaLib = { NEBULA_TYPES, NEBULA_COLORS, GAS_NORMAL, nebulaProbabilityAt, placeNebulae, summariseNebulae };
+	const NebulaLib = { NEBULA_TYPES, NEBULA_COLORS, GAS_NORMAL, NEBULA_ARM_REACH, NEBULA_DARK_REACH, nebulaProbabilityAt, placeNebulae, summariseNebulae };
 	if (typeof module !== 'undefined') module.exports = NebulaLib;
 	if (typeof window !== 'undefined') window.NebulaLib = NebulaLib;
 })();

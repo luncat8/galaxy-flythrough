@@ -446,6 +446,11 @@
 		componentShares,
 		createBuffers,
 		deliveredMasses,
+		// The 1-D table inverter every radial draw goes through, and the sphere
+		// direction draw: shared with the composite-object member samplers in
+		// objects.js so the profile inverters are written once.
+		sampleTable,
+		sampleDirection,
 		CLUMP_SHARE,
 	};
 	if (typeof module !== 'undefined') module.exports = api;

@@ -609,3 +609,29 @@ discs, and independent of that interpreter defect. No dependency source is patch
 The shader suite now executes density components and arm distances across all
 regular types plus translated/overridden parameters, rather than only parsing the
 density source. CPU interpretation still does not replace real WebGPU validation.
+
+## 2026-09-21 — Parallel same-file edits race: last write wins
+
+`edit_file` calls to the same file issued in one parallel block read the same
+original and overwrite each other — exactly one lands, the rest report success
+and vanish. Five plan edits landed one, three smoke-test edits landed one, and
+a rate-constant change silently lost to an apportionment edit in the same file
+(the mixes then measured identical, which is how the loss surfaced). Same-file
+edits go sequentially, one per turn; different files in one block are safe. An
+atomic multi-edit script (python with per-edit occurrence asserts) is the
+alternative when several same-file edits must land together. Verify with
+`git diff --stat` before measuring anything the edits were supposed to change.
+
+## 2026-09-21 — Fixed GPU blocks want apportioned quotas, not fill-in-order
+
+A 2000-star globular next to a 200-star association fills a fixed member block
+10:1 under fill-in-order, so the Milky Way's 20k object slots would have been
+95% globular stars. Richness is a weight: cumulative (Bresenham-style) rounding
+apportions the budget over it in one pass with O(1) state, an exact total, and
+every non-empty object keeping at least one member — contrast preserved, no
+phantoms, deterministic in the seed. The same shape fits any fixed block fed by
+uneven sources (gap-fill per cell, LOD buckets). Companion rule for clustered
+profiles: a noise-threshold draw with bounded deterministic retries plus a
+last-candidate fallback keeps the count exact without breaking the
+`(seed, j, i)` stability contract — retries are a fixed hash sequence, so
+member *i* stays a pure function.
