@@ -265,7 +265,25 @@ async function main() {
 	// Execute the real density functions, not just their struct declarations.
 	const galaxy = require('../src/math/galaxy.js');
 	const density = require('../src/math/density.js');
-	const densityCode = shaders.SHADER_PARTS.density + `
+	// sampleLocalAge lives in the procedural module because it is only used by
+	// star generation. Extract the shipping function instead of maintaining a
+	// second WGSL copy in this experiment, then probe it beside the density part.
+	function extractFunction(source, name) {
+		const start = source.indexOf(`fn ${name}`);
+		if (start < 0) throw new Error(`missing WGSL function ${name}`);
+		const open = source.indexOf('{', start);
+		let depth = 0;
+		for (let i = open; i < source.length; i++) {
+			if (source[i] === '{') depth++;
+			if (source[i] === '}') {
+				depth--;
+				if (depth === 0) return source.slice(start, i + 1);
+			}
+		}
+		throw new Error(`unterminated WGSL function ${name}`);
+	}
+	const ageFunction = extractFunction(shaders.SHADER_PARTS['procedural-gen'], 'sampleLocalAge');
+	const densityCode = shaders.SHADER_PARTS.density + '\n' + ageFunction + `
 @group(0) @binding(0) var<uniform> model: DensityParams;
 @fragment fn densityProbe(@location(0) p: vec3f) -> @location(0) vec4f {
 	return rhoDecomposed(model, p.x, p.y, p.z);

@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-21T18:27:28.023Z",
+  "date": "2026-09-21T19:30:11.591Z",
   "totalChecks": 85,
-  "passed": 84,
-  "failed": 1,
+  "passed": 85,
+  "failed": 0,
   "checks": [
     {
       "name": "compact thin radius: all samples stay in support",
@@ -13,7 +13,7 @@
       "name": "compact thin radius: histogram matches integrated field (TV < 2%)",
       "pass": true,
       "detail": {
-        "tv": 0.007198888960760586,
+        "tv": 0.007509107939948011,
         "mass": 3.6424444362240176
       }
     },
@@ -43,7 +43,7 @@
       "name": "compact thick radius: histogram matches integrated field (TV < 2%)",
       "pass": true,
       "detail": {
-        "tv": 0.00778554865501473,
+        "tv": 0.008027159033804201,
         "mass": 3.8488455064423097
       }
     },
@@ -56,7 +56,7 @@
       "name": "compact thick height: histogram matches integrated field (TV < 2%)",
       "pass": true,
       "detail": {
-        "tv": 0.008296747438956462,
+        "tv": 0.008321747438956466,
         "mass": 0.6228789549776673
       }
     },
@@ -281,8 +281,8 @@
     },
     {
       "name": "the flared disc sample matches the joint (R, z) field (TV < 5%)",
-      "pass": false,
-      "detail": 0.1903
+      "pass": true,
+      "detail": 0.0227
     },
     {
       "name": "cored disc reads the soft core at R=0.1",
@@ -325,14 +325,14 @@
       }
     },
     {
-      "name": "no cored-disc star falls inside the core cutoff",
+      "name": "the soft cored disc retains finite central mass",
       "pass": true,
-      "detail": 0
+      "detail": 496
     },
     {
       "name": "the cored disc R profile matches the field (TV < 5%)",
       "pass": true,
-      "detail": 0.0203
+      "detail": 0.0168
     },
     {
       "name": "SBa: the ridge passes through the bar end",
@@ -463,8 +463,8 @@
       "name": "sampled arm phase matches the field Fourier moment",
       "pass": true,
       "detail": {
-        "cosine": 0.35115844312234185,
-        "sine": -0.003928732218814179
+        "cosine": 0.3509281877840255,
+        "sine": -0.003758172752040096
       }
     },
     {

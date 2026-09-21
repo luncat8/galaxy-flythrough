@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-21T18:20:13.470Z",
+  "date": "2026-09-21T19:30:13.105Z",
   "seed": 42,
   "sampleSize": 400000,
-  "sampleMs": 811,
+  "sampleMs": 364,
   "totalChecks": 19,
   "passed": 19,
   "failed": 0,
@@ -18,25 +18,25 @@
         },
         "thick": {
           "sampled": 0.195825,
-          "model": 0.19580508328535956,
-          "relative": 0.00010171704588186272
+          "model": 0.1958050832853596,
+          "relative": 0.00010171704588172096
         },
         "bulge": {
           "sampled": 0.1776675,
-          "model": 0.177900502226039,
-          "relative": 0.0013097333797458996
+          "model": 0.17790050222603904,
+          "relative": 0.0013097333797460553
         },
         "halo": {
           "sampled": 0.000235,
-          "model": 0.00026362917422410566,
-          "relative": 0.10859638091408125
+          "model": 0.0002636291742241057,
+          "relative": 0.10859638091408143
         }
       }
     },
     {
       "name": "galactocentric R distribution matches the model (TV < 6%)",
       "pass": true,
-      "detail": 0.034803411056769575
+      "detail": 0.03479841105676956
     },
     {
       "name": "vertical |z| distribution matches the model (TV < 6%)",
@@ -46,19 +46,19 @@
     {
       "name": "azimuthal distribution matches the model (TV < 6%)",
       "pass": true,
-      "detail": 0.0037804059762114282
+      "detail": 0.0037779059762114257
     },
     {
       "name": "distance-to-arm distribution matches the model (TV < 5%)",
       "pass": true,
-      "detail": 0.027746932871673895
+      "detail": 0.027724912883708173
     },
     {
       "name": "arm ridge is denser than the zone 2 kpc away",
       "pass": true,
       "detail": {
-        "ridge": 0.5206917912237231,
-        "far": 0.24468467748381426
+        "ridge": 0.5206444361183964,
+        "far": 0.24468589983764205
       }
     },
     {
@@ -152,7 +152,7 @@
       "name": "mean ages order halo > bulge > thick > thin",
       "pass": true,
       "detail": {
-        "thin": 5.41224214848723,
+        "thin": 5.412267842497213,
         "thick": 8.370947544492722,
         "bulge": 10.070639543556918,
         "halo": 11.616467664749647

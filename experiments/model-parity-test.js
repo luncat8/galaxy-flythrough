@@ -134,12 +134,13 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 		// Joint (R, z) histogram vs the field quadrature: catches a sampler
 		// that draws z from the flat H while the field flares.
 		const nR = 12, nZ = 8;
-		const dR = 12 / nR, dZ = 1.6 / nZ;
+		const zSupport = model.truncation.discHeight;
+		const dR = 12 / nR, dZ = zSupport / nZ;
 		const obs = new Float64Array(nR * nZ);
 		for (let i = 0; i < buf.count; i++) {
 			const x = buf.x[i], y = buf.y[i], z = buf.z[i];
 			const R = Math.sqrt(x * x + y * y);
-			if (R >= 12 || Math.abs(z) >= 0.8) continue;
+			if (R >= 12 || Math.abs(z) >= zSupport) continue;
 			obs[Math.min(nZ - 1, Math.floor(Math.abs(z) / dZ)) * nR + Math.min(nR - 1, Math.floor(R / dR))]++;
 		}
 		const ref = new Float64Array(nR * nZ);
@@ -150,10 +151,10 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 			const radial = model.thin.amp * Math.exp(-R / model.thin.L) * R * (12 / steps);
 			const rb = Math.min(nR - 1, Math.floor(R / dR));
 			for (let j = 0; j < 40; j++) {
-				const z = (j + 0.5) * 1.6 / 40;
+				const z = (j + 0.5) * zSupport / 40;
 				const Hr = model.thin.H * (1 + 0.3 * R / model.thin.L);
 				const e = Math.exp(-z / Hr);
-				const w = 4 * e / ((1 + e) * (1 + e)) * radial * (1.6 / 40);
+				const w = 4 * e / ((1 + e) * (1 + e)) * radial * (zSupport / 40);
 				const k = Math.min(nZ - 1, Math.floor(z / dZ));
 				ref[k * nR + rb] += w;
 				refTotal += w;
@@ -166,8 +167,7 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 	}
 
 	// Disc core: the field is the soft R/sqrt(R^2+c^2) core; the sampler
-	// inverts the exponential over [coreRadius, rMax] (the plan's documented
-	// approximation — no stars inside the core, the outer profile intact).
+	// inverts that same marginal instead of introducing a hard hole.
 	{
 		const model = isolated('thin', { thin: { coreRadius: 0.8 }, truncation: { discRadius: 12, discHeight: 0.5 } });
 		const L = model.thin.L;
@@ -198,7 +198,7 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 		}
 		for (let i = 0; i < nR; i++) tv += Math.abs(hist[i] / buf.count - ref[i] / refTotal);
 		tv /= 2;
-		check('no cored-disc star falls inside the core cutoff', insideCore === 0, insideCore);
+		check('the soft cored disc retains finite central mass', insideCore > 0 && insideCore < N / 4, insideCore);
 		check('the cored disc R profile matches the field (TV < 5%)', tv < 0.05, +tv.toFixed(4));
 	}
 

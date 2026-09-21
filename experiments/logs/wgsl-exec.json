@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-21T17:59:52.384Z",
+  "date": "2026-09-21T19:29:44.004Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 63,
-  "passed": 63,
+  "totalChecks": 71,
+  "passed": 71,
   "failed": 0,
   "checks": [
     {
@@ -605,7 +605,7 @@
       "name": "Sd: executed density WGSL matches JS components",
       "pass": true,
       "detail": {
-        "worst": 1.1960292846369574e-7,
+        "worst": 1.0918988884650309e-7,
         "worstCase": {
           "p": [
             -8,
@@ -613,8 +613,8 @@
             -0.30000001192092896
           ],
           "component": 0,
-          "actual": 0.1140485405921936,
-          "expected": 0.1140485269516558
+          "actual": 0.0832715556025505,
+          "expected": 0.0832715465101396
         }
       }
     },
@@ -653,7 +653,7 @@
       "name": "SBa: executed density WGSL matches JS components",
       "pass": true,
       "detail": {
-        "worst": 2.1602676958011155e-7,
+        "worst": 2.3777303649249007e-7,
         "worstCase": {
           "p": [
             4.099999904632568,
@@ -661,8 +661,8 @@
             0.20000000298023224
           ],
           "component": 0,
-          "actual": 0.12042666226625443,
-          "expected": 0.12042668828164287
+          "actual": 0.12149393558502197,
+          "expected": 0.12149396447301082
         }
       }
     },
@@ -670,7 +670,7 @@
       "name": "SBa: executed WGSL arm threshold and phase match JS",
       "pass": true,
       "detail": {
-        "armError": 1.7439328647839147e-7
+        "armError": 1.9630636449718963e-7
       }
     },
     {
@@ -701,16 +701,16 @@
       "name": "SBc: executed density WGSL matches JS components",
       "pass": true,
       "detail": {
-        "worst": 2.309400572121539e-7,
+        "worst": 1.9161986819279316e-7,
         "worstCase": {
           "p": [
             4.099999904632568,
             1.2999999523162842,
             0.20000000298023224
           ],
-          "component": 0,
-          "actual": 0.273079514503479,
-          "expected": 0.27307957756849227
+          "component": 3,
+          "actual": 0.000020383999071782455,
+          "expected": 0.00002038400297776242
         }
       }
     },
@@ -718,23 +718,23 @@
       "name": "SBc: executed WGSL arm threshold and phase match JS",
       "pass": true,
       "detail": {
-        "armError": 5.539313396862866e-7
+        "armError": 6.934573315575676e-8
       }
     },
     {
       "name": "SBd: executed density WGSL matches JS components",
       "pass": true,
       "detail": {
-        "worst": 1.1776683785256639e-7,
+        "worst": 1.2573516984970572e-7,
         "worstCase": {
           "p": [
-            0.004999999888241291,
-            0,
-            0
+            4.099999904632568,
+            1.2999999523162842,
+            0.20000000298023224
           ],
-          "component": 0,
-          "actual": 0.007178155239671469,
-          "expected": 0.007178154394322924
+          "component": 2,
+          "actual": 0.008337044157087803,
+          "expected": 0.008337045205347598
         }
       }
     },
@@ -742,14 +742,14 @@
       "name": "SBd: executed WGSL arm threshold and phase match JS",
       "pass": true,
       "detail": {
-        "armError": 2.098605011990884e-7
+        "armError": 1.0482364531938515e-7
       }
     },
     {
       "name": "Irr: executed density WGSL matches JS components",
       "pass": true,
       "detail": {
-        "worst": 2.621206163856909e-7,
+        "worst": 2.854245933538673e-7,
         "worstCase": {
           "p": [
             4.099999904632568,
@@ -757,8 +757,8 @@
             0.20000000298023224
           ],
           "component": 0,
-          "actual": 0.0421135276556015,
-          "expected": 0.04211353869442822
+          "actual": 0.02681630291044712,
+          "expected": 0.02681631056448166
         }
       }
     },
@@ -791,6 +791,92 @@
       "pass": true,
       "detail": {
         "armError": 1.719331260696677e-7
+      }
+    },
+    {
+      "name": "flocculent Sc, seed 7: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 2.1944184597108675e-7,
+        "worstCase": {
+          "p": [
+            4.099999904632568,
+            1.2999999523162842,
+            0.20000000298023224
+          ],
+          "component": 0,
+          "actual": 0.22249554097652435,
+          "expected": 0.2224955898013673
+        }
+      }
+    },
+    {
+      "name": "flocculent Sc, seed 7: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 1.1729553564543416e-7
+      }
+    },
+    {
+      "name": "flared/cored Sd: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 1.3203861406764938e-7,
+        "worstCase": {
+          "p": [
+            -8,
+            0.4000000059604645,
+            -0.30000001192092896
+          ],
+          "component": 1,
+          "actual": 0.008013532496988773,
+          "expected": 0.008013533555084638
+        }
+      }
+    },
+    {
+      "name": "flared/cored Sd: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 1.1565921775869015e-7
+      }
+    },
+    {
+      "name": "asymmetric flare/core Sb: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 2.683815790192572e-7,
+        "worstCase": {
+          "p": [
+            -8,
+            0.4000000059604645,
+            -0.30000001192092896
+          ],
+          "component": 0,
+          "actual": 0.05882108956575394,
+          "expected": 0.05882110535225507
+        }
+      }
+    },
+    {
+      "name": "asymmetric flare/core Sb: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 5.680550141384799e-8
+      }
+    },
+    {
+      "name": "Sc: executed sampleLocalAge WGSL matches JS",
+      "pass": true,
+      "detail": {
+        "worst": 1.4091715427432003e-7
+      }
+    },
+    {
+      "name": "E4: executed sampleLocalAge WGSL matches JS",
+      "pass": true,
+      "detail": {
+        "worst": 1.7342616213003783e-7
       }
     }
   ]

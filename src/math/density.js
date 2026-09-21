@@ -112,8 +112,9 @@ function insideDisc(model, R, z) {
 // ---- components -----------------------------------------------------------
 
 // Flared scale height H(R) = H(1 + flare*R/L), and the soft-core radial
-// factor R/sqrt(R^2 + c^2) (1 without a core). Both are defined once so the
-// field, the mass integrals and the sampler inverter read the same profile.
+// factor R/sqrt(R^2 + c^2) (1 without a core). These helpers are shared by
+// the field's mass integrals and sampling's radial CDF, so a flare or core
+// cannot silently change the distribution in only one consumer.
 function discHeightAt(group, R) {
 	return group.H * (1 + (group.flare || 0) * (R / group.L));
 }
@@ -121,23 +122,55 @@ function discHeightAt(group, R) {
 function discRadialFactor(group, R) {
 	const c = group.coreRadius || 0;
 	if (c === 0) return Math.exp(-R / group.L);
-	return Math.exp(-R / group.L) * (R / Math.sqrt(R * R + c * c));
+	return Math.exp(-R / group.L) * R / Math.sqrt(R * R + c * c);
 }
 
 // The vertical mass of one profile column at radius R: the z-integral of the
-// profile, truncated or not. sech^2 integrates to 4H (full) / 2H*tanh (cut);
-// exp(-|z|/H) to 2H (full) / 2H*(1 - exp(-Z/H)) (cut).
-function discVerticalMass(group, R, zMax) {
+// profile, truncated or not. `kind` is 'sech2' for the thin disc and 'laplace'
+// for the thick disc. A non-finite height means the full vertical integral.
+function discVerticalMass(group, R, zMax, kind) {
 	const H = discHeightAt(group, R);
-	if (group.vertical === 'laplace') {
-		return zMax > 0 ? 2 * H * (1 - Math.exp(-zMax / H)) : 2 * H;
+	if (kind === 'laplace') {
+		return zMax === Infinity ? 2 * H : 2 * H * (1 - Math.exp(-zMax / H));
 	}
-	return zMax > 0 ? 2 * H * Math.tanh(zMax / (2 * H)) : 4 * H;
+	return zMax === Infinity ? 4 * H : 4 * H * Math.tanh(zMax / (2 * H));
 }
 
-// Radial mass per unit radius of a disc at R: 2*pi*R * radial * vertical.
-function discRadialMass(model, group, R, zMax) {
-	return 2 * Math.PI * R * discRadialFactor(group, R) * discVerticalMass(group, R, zMax);
+// Amp-free radial marginal of a disc. The radial CDF must include the
+// vertical integral because flaring makes that factor depend on R.
+function discRadialWeight(group, R, zMax, kind) {
+	if (!(R >= 0)) return 0;
+	return R * discRadialFactor(group, R) * discVerticalMass(group, R, zMax, kind);
+}
+
+// Fixed Simpson quadrature is setup-time work only. It is used for a core or a
+// finite truncation, where the closed exponential integral is no longer exact.
+function integrateDiscRadial(group, radius, zMax, kind) {
+	if (!(radius > 0)) return 0;
+	const flare = group.flare || 0;
+	const core = group.coreRadius || 0;
+	const full = radius === Infinity;
+	if (!core && full) {
+		const vertical = kind === 'laplace' ? 2 : 4;
+		return 2 * Math.PI * vertical * group.H * group.L * group.L * (1 + 2 * flare);
+	}
+	if (!core && !flare) {
+		const vertical = kind === 'laplace' ? 2 : 4;
+		const radial = 1 - (1 + radius / group.L) * Math.exp(-radius / group.L);
+		const height = zMax === Infinity ? 1 : (kind === 'laplace'
+			? 1 - Math.exp(-zMax / group.H)
+			: Math.tanh(zMax / (2 * group.H)));
+		return 2 * Math.PI * vertical * group.H * group.L * group.L * radial * height;
+	}
+	const upper = full ? Math.max(32 * group.L, 8 * core) : radius;
+	const steps = 1024;
+	const h = upper / steps;
+	let sum = discRadialWeight(group, 0, zMax, kind) + discRadialWeight(group, upper, zMax, kind);
+	for (let i = 1; i < steps; i++) {
+		const weight = discRadialWeight(group, i * h, zMax, kind);
+		sum += (i & 1) === 0 ? 2 * weight : 4 * weight;
+	}
+	return 2 * Math.PI * h * sum / 3;
 }
 
 // Thin disc: exponential in R (soft core optional), sech^2 in z, flaring.
@@ -393,7 +426,6 @@ function barRadiusForFraction(model, u) {
 }
 
 function massIntegrals(model) {
-	const discIntegral = (p, vertical) => 2 * Math.PI * p.L * p.L * vertical;
 	const sp = model.spheroid;
 	const axes = sp.a * sp.b * sp.c * sp.r0 * sp.r0 * sp.r0;
 	const ah = model.halo.a_h;
@@ -413,8 +445,8 @@ function massIntegrals(model) {
 		bulgeIntegral = axes * (4 / 3) * Math.PI;
 	}
 	return {
-		thin: discIntegral(model.thin, 4 * model.thin.H),
-		thick: discIntegral(model.thick, 2 * model.thick.H),
+		thin: integrateDiscRadial(model.thin, Infinity, Infinity, 'sech2'),
+		thick: integrateDiscRadial(model.thick, Infinity, Infinity, 'laplace'),
 		bulge: bulgeIntegral,
 		halo: 4 * Math.PI * ah * ah * ah * haloRadialMass(model, model.halo.rMax),
 	};
@@ -436,7 +468,6 @@ function componentMasses(model) {
 // volume the sampler draws from.
 function truncationFractions(model) {
 	const t = model.truncation;
-	const discRadial = (L) => 1 - (1 + t.discRadius / L) * Math.exp(-t.discRadius / L);
 	const sp = model.spheroid;
 	const sMax = t.spheroidRadius;
 	let bulge;
@@ -449,9 +480,13 @@ function truncationFractions(model) {
 	} else {
 		bulge = Math.pow(sMax, 3) / Math.pow(1 + sMax * sMax, 1.5);
 	}
+	const thinTotal = integrateDiscRadial(model.thin, Infinity, Infinity, 'sech2');
+	const thickTotal = integrateDiscRadial(model.thick, Infinity, Infinity, 'laplace');
+	const thinDelivered = integrateDiscRadial(model.thin, t.discRadius, t.discHeight, 'sech2');
+	const thickDelivered = integrateDiscRadial(model.thick, t.discRadius, t.discHeight, 'laplace');
 	return {
-		thin: model.thin.amp > 0 ? discRadial(model.thin.L) * Math.tanh(t.discHeight / (2 * model.thin.H)) : 0,
-		thick: model.thick.amp > 0 ? discRadial(model.thick.L) * (1 - Math.exp(-t.discHeight / model.thick.H)) : 0,
+		thin: model.thin.amp > 0 ? thinDelivered / thinTotal : 0,
+		thick: model.thick.amp > 0 ? thickDelivered / thickTotal : 0,
 		bulge: model.spheroid.amp > 0 ? bulge : 0,
 		halo: model.halo.amp > 0 ? 1 : 0,   // rMax is part of the distribution, not a truncation of it
 	};
@@ -541,6 +576,7 @@ const DensityLib = {
 	PROFILES, PROFILE_PLUMMER, PROFILE_SERSIC, PROFILE_BAR,
 	sersicBn, logGamma, lowerGamma,
 	componentMasses, massIntegrals, truncationFractions, haloRadialMass,
+	discRadialWeight,
 	toGalactocentric, spheroidEllipsoidRadius, insideDisc,
 	rhoThin, rhoThick, rhoSpheroid, rhoHalo,
 	armFactor, distanceToNearestArm,

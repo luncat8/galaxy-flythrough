@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T18:21:23.288Z",
+  "date": "2026-09-21T19:30:10.991Z",
   "types": [
     "E0",
     "E1",
@@ -360,17 +360,17 @@
       "gasFraction": 0.15,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 80.8796,
+      "totalMass": 80.7118,
       "delivered": {
-        "thin": 52.9618,
-        "thick": 16.94105,
+        "thin": 52.94598,
+        "thick": 16.78914,
         "bulge": 10.95525,
         "halo": 0.02145,
-        "total": 80.87955
+        "total": 80.71182
       },
       "truncationFractions": {
-        "thin": 0.99929,
-        "thick": 0.97972,
+        "thin": 0.99899,
+        "thick": 0.97094,
         "bulge": 0.88318,
         "halo": 1
       },
@@ -390,17 +390,17 @@
       "gasFraction": 0.3,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 107.2933,
+      "totalMass": 106.8672,
       "delivered": {
-        "thin": 81.6454,
-        "thick": 20.21103,
+        "thin": 81.58383,
+        "thick": 19.84655,
         "bulge": 5.36033,
         "halo": 0.0765,
-        "total": 107.29326
+        "total": 106.86721
       },
       "truncationFractions": {
-        "thin": 0.99929,
-        "thick": 0.98948,
+        "thin": 0.99854,
+        "thick": 0.97164,
         "bulge": 0.99723,
         "halo": 1
       },
@@ -420,17 +420,17 @@
       "gasFraction": 0.45,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 115.6632,
+      "totalMass": 115.2588,
       "delivered": {
-        "thin": 96.37133,
-        "thick": 16.88148,
+        "thin": 96.27912,
+        "thick": 16.56924,
         "bulge": 2.30906,
         "halo": 0.10134,
-        "total": 115.6632
+        "total": 115.25876
       },
       "truncationFractions": {
-        "thin": 0.99929,
-        "thick": 0.99193,
+        "thin": 0.99834,
+        "thick": 0.97359,
         "bulge": 0.99723,
         "halo": 1
       },
@@ -510,17 +510,17 @@
       "gasFraction": 0.3,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 106.9751,
+      "totalMass": 106.549,
       "delivered": {
-        "thin": 81.6454,
-        "thick": 20.21103,
+        "thin": 81.58383,
+        "thick": 19.84655,
         "bulge": 5.04212,
         "halo": 0.0765,
-        "total": 106.97505
+        "total": 106.549
       },
       "truncationFractions": {
-        "thin": 0.99929,
-        "thick": 0.98948,
+        "thin": 0.99854,
+        "thick": 0.97164,
         "bulge": 0.93803,
         "halo": 1
       },
@@ -540,17 +540,17 @@
       "gasFraction": 0.45,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 115.5261,
+      "totalMass": 115.1217,
       "delivered": {
-        "thin": 96.37133,
-        "thick": 16.88148,
+        "thin": 96.27912,
+        "thick": 16.56924,
         "bulge": 2.17199,
         "halo": 0.10134,
-        "total": 115.52613
+        "total": 115.12169
       },
       "truncationFractions": {
-        "thin": 0.99929,
-        "thick": 0.99193,
+        "thin": 0.99834,
+        "thick": 0.97359,
         "bulge": 0.93803,
         "halo": 1
       },
@@ -570,17 +570,17 @@
       "gasFraction": 0.5,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 11.8689,
+      "totalMass": 11.4809,
       "delivered": {
-        "thin": 7.1396,
-        "thick": 4.48216,
+        "thin": 7.02286,
+        "thick": 4.21088,
         "bulge": 0.24546,
         "halo": 0.00165,
-        "total": 11.86887
+        "total": 11.48085
       },
       "truncationFractions": {
-        "thin": 0.97886,
-        "thick": 0.92178,
+        "thin": 0.96286,
+        "thick": 0.86599,
         "bulge": 0.98941,
         "halo": 1
       },
@@ -593,9 +593,9 @@
       ]
     }
   ],
-  "totalChecks": 458,
-  "passed": 456,
-  "failed": 2,
+  "totalChecks": 459,
+  "passed": 459,
+  "failed": 0,
   "checks": [
     {
       "name": "E0: every documented spec field is authored",
@@ -1817,8 +1817,8 @@
       "name": "SBb: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.9992012783320011,
-        "thick": 0.9581187850147849,
+        "thin": 0.999201278332001,
+        "thick": 0.958118785014785,
         "bulge": 0.9597346285934372,
         "halo": 1
       }
@@ -2114,7 +2114,7 @@
       "name": "S0: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.9983804241097937,
+        "thin": 0.9983804241097936,
         "thick": 0.9170747229224394,
         "bulge": 0.8767191352030697,
         "halo": 1
@@ -2147,7 +2147,7 @@
       "name": "Sa: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.9991587236543911,
+        "thin": 0.999158723654391,
         "thick": 0.9532749075053679,
         "bulge": 0.8378814202350143,
         "halo": 1
@@ -2158,7 +2158,7 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 0.6290161128812015,
+          "thin": 0.6290161128812014,
           "thick": 0.0900131430575868,
           "bulge": 0.7637747076460393,
           "halo": 0.00064
@@ -2180,8 +2180,8 @@
       "name": "Sb: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.9992866041949178,
-        "thick": 0.9797245051039678,
+        "thin": 0.9989880899672517,
+        "thick": 0.9709394062772767,
         "bulge": 0.8831791017976398,
         "halo": 1
       }
@@ -2191,14 +2191,14 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 1.333123104317335,
-          "thick": 0.16004887936514794,
+          "thin": 1.211930094833941,
+          "thick": 0.14549898124104355,
           "bulge": 0.8840364859274428,
           "halo": 0.0008
         },
         "delivered": {
-          "thin": 52.9618,
-          "thick": 16.94105,
+          "thin": 52.94598,
+          "thick": 16.78914,
           "bulge": 10.95525,
           "halo": 0.02145
         }
@@ -2213,8 +2213,8 @@
       "name": "Sc: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.9992918711042633,
-        "thick": 0.9894849023125957,
+        "thin": 0.9985383181804411,
+        "thick": 0.971640655717495,
         "bulge": 0.9972306042844884,
         "halo": 1
       }
@@ -2224,14 +2224,14 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 0.9629357056190428,
-          "thick": 0.08858412922877562,
+          "thin": 0.7407197735531099,
+          "thick": 0.06814163786828893,
           "bulge": 0.7512610231550354,
           "halo": 0.0010400000000000001
         },
         "delivered": {
-          "thin": 81.6454,
-          "thick": 20.21103,
+          "thin": 81.58383,
+          "thick": 19.84655,
           "bulge": 5.36033,
           "halo": 0.0765
         }
@@ -2246,8 +2246,8 @@
       "name": "Sd: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.999292000896837,
-        "thick": 0.9919337341351827,
+        "thin": 0.9983358899693558,
+        "thick": 0.973587103864569,
         "bulge": 0.9972306042844884,
         "halo": 1
       }
@@ -2257,14 +2257,14 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 1.0781284403910305,
-          "thick": 0.07001022237812304,
+          "thin": 0.7871861651135736,
+          "thick": 0.050709222645748994,
           "bulge": 0.7770119394564107,
           "halo": 0.00112
         },
         "delivered": {
-          "thin": 96.37133,
-          "thick": 16.88148,
+          "thin": 96.27912,
+          "thick": 16.56924,
           "bulge": 2.30906,
           "halo": 0.10134
         }
@@ -2279,7 +2279,7 @@
       "name": "SB0: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.9983804241097937,
+        "thin": 0.9983804241097936,
         "thick": 0.9170747229224394,
         "bulge": 0.986246032255997,
         "halo": 1
@@ -2312,7 +2312,7 @@
       "name": "SBa: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.9991587236543911,
+        "thin": 0.999158723654391,
         "thick": 0.9532749075053679,
         "bulge": 0.938031195583341,
         "halo": 1
@@ -2323,7 +2323,7 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 0.6290161128812015,
+          "thin": 0.6290161128812014,
           "thick": 0.0900131430575868,
           "bulge": 1.0784153332213589,
           "halo": 0.00064
@@ -2345,8 +2345,8 @@
       "name": "SBc: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.9992918711042633,
-        "thick": 0.9894849023125957,
+        "thin": 0.9985383181804411,
+        "thick": 0.971640655717495,
         "bulge": 0.938031195583341,
         "halo": 1
       }
@@ -2356,14 +2356,14 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 0.9629357056190428,
-          "thick": 0.08858412922877562,
+          "thin": 0.7407197735531099,
+          "thick": 0.06814163786828893,
           "bulge": 0.5631735608120808,
           "halo": 0.0010400000000000001
         },
         "delivered": {
-          "thin": 81.6454,
-          "thick": 20.21103,
+          "thin": 81.58383,
+          "thick": 19.84655,
           "bulge": 5.04212,
           "halo": 0.0765
         }
@@ -2378,8 +2378,8 @@
       "name": "SBd: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.999292000896837,
-        "thick": 0.9919337341351827,
+        "thin": 0.9983358899693558,
+        "thick": 0.973587103864569,
         "bulge": 0.938031195583341,
         "halo": 1
       }
@@ -2389,14 +2389,14 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 1.0781284403910305,
-          "thick": 0.07001022237812304,
+          "thin": 0.7871861651135736,
+          "thick": 0.050709222645748994,
           "bulge": 0.5824774176349932,
           "halo": 0.00112
         },
         "delivered": {
-          "thin": 96.37133,
-          "thick": 16.88148,
+          "thin": 96.27912,
+          "thick": 16.56924,
           "bulge": 2.17199,
           "halo": 0.10134
         }
@@ -2411,8 +2411,8 @@
       "name": "Irr: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.9788649826406034,
-        "thick": 0.921781296512334,
+        "thin": 0.9628599431907224,
+        "thick": 0.8659908960042497,
         "bulge": 0.9894103891777389,
         "halo": 1
       }
@@ -2422,14 +2422,14 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 0.3224936125611629,
-          "thick": 0.07911311401545713,
+          "thin": 0.23708794466055463,
+          "thick": 0.05756156701466521,
           "bulge": 0.1873153782618133,
           "halo": 0.00012
         },
         "delivered": {
-          "thin": 7.1396,
-          "thick": 4.48216,
+          "thin": 7.02286,
+          "thick": 4.21088,
           "bulge": 0.24546,
           "halo": 0.00165
         }
@@ -2448,9 +2448,9 @@
         },
         "model": {
           "thin": 0.6260307853143772,
-          "thick": 0.19580508328535956,
-          "bulge": 0.177900502226039,
-          "halo": 0.00026362917422410566
+          "thick": 0.1958050832853596,
+          "bulge": 0.17790050222603904,
+          "halo": 0.0002636291742241057
         }
       }
     },
@@ -2663,7 +2663,7 @@
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.37751527592073475,
+          "thin": 0.37751527592073464,
           "thick": 0.1486162883849872,
           "bulge": 0.4735882495840182,
           "halo": 0.00028018611026007383
@@ -2688,9 +2688,9 @@
         },
         "model": {
           "thin": 0.5345581030799633,
-          "thick": 0.19833717770319984,
-          "bulge": 0.26682941930661747,
-          "halo": 0.000275299910219404
+          "thick": 0.1983371777031999,
+          "bulge": 0.2668294193066175,
+          "halo": 0.00027529991021940403
         }
       }
     },
@@ -2703,18 +2703,18 @@
       "name": "Sb: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0037,
+        "worst": 0.0033,
         "sampled": {
-          "thin": 0.6585,
-          "thick": 0.2069,
-          "bulge": 0.13425,
+          "thin": 0.65925,
+          "thick": 0.2056,
+          "bulge": 0.1348,
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.6548231007401554,
-          "thick": 0.2094602697523223,
-          "bulge": 0.13545146229186186,
-          "halo": 0.00026516721566044563
+          "thin": 0.6559878908631341,
+          "thick": 0.2080134422775355,
+          "bulge": 0.13573294859064444,
+          "halo": 0.0002657182686858748
         }
       }
     },
@@ -2727,18 +2727,18 @@
       "name": "Sc: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0041,
+        "worst": 0.0038,
         "sampled": {
-          "thin": 0.7651,
-          "thick": 0.18555,
-          "bulge": 0.0486,
+          "thin": 0.7672,
+          "thick": 0.1833,
+          "bulge": 0.04875,
           "halo": 0.00075
         },
         "model": {
-          "thin": 0.7609554836165797,
-          "thick": 0.18837188216555206,
-          "bulge": 0.04995959472478582,
-          "halo": 0.0007130394930822336
+          "thin": 0.7634130952213014,
+          "thick": 0.18571225232893546,
+          "bulge": 0.05015877025904158,
+          "halo": 0.000715882190721445
         }
       }
     },
@@ -2751,18 +2751,18 @@
       "name": "Sd: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.003,
+        "worst": 0.0026,
         "sampled": {
-          "thin": 0.8362,
-          "thick": 0.14325,
-          "bulge": 0.01975,
+          "thin": 0.8379,
+          "thick": 0.1415,
+          "bulge": 0.0198,
           "halo": 0.0008
         },
         "model": {
-          "thin": 0.833206454094216,
-          "thick": 0.14595373322667665,
-          "bulge": 0.01996368951340963,
-          "halo": 0.0008761231656976726
+          "thin": 0.835330181461919,
+          "thick": 0.14375687881816382,
+          "bulge": 0.02003374223222449,
+          "halo": 0.0008791974876927415
         }
       }
     },
@@ -2783,7 +2783,7 @@
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.3564274246665803,
+          "thin": 0.3564274246665802,
           "thick": 0.1403146423767203,
           "bulge": 0.5029933979297029,
           "halo": 0.000264535026996664
@@ -2808,9 +2808,9 @@
         },
         "model": {
           "thin": 0.5180361568973638,
-          "thick": 0.19220703739265113,
-          "bulge": 0.2894900146789212,
-          "halo": 0.0002667910310638689
+          "thick": 0.19220703739265116,
+          "bulge": 0.28949001467892127,
+          "halo": 0.000266791031063869
         }
       }
     },
@@ -2823,18 +2823,18 @@
       "name": "SBc: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0038,
+        "worst": 0.0041,
         "sampled": {
-          "thin": 0.76705,
-          "thick": 0.1862,
-          "bulge": 0.046,
+          "thin": 0.7698,
+          "thick": 0.1833,
+          "bulge": 0.04615,
           "halo": 0.00075
         },
         "model": {
-          "thin": 0.7632190324547646,
-          "thick": 0.18893221580425065,
-          "bulge": 0.04713359123064075,
-          "halo": 0.000715160510343947
+          "thin": 0.7656930348514146,
+          "thick": 0.18626688353258228,
+          "bulge": 0.04732206143709752,
+          "halo": 0.0007180201789054766
         }
       }
     },
@@ -2847,18 +2847,18 @@
       "name": "SBd: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.003,
+        "worst": 0.0028,
         "sampled": {
-          "thin": 0.8372,
-          "thick": 0.14335,
+          "thin": 0.8391,
+          "thick": 0.14145,
           "bulge": 0.01865,
           "halo": 0.0008
         },
         "model": {
-          "thin": 0.834195075932217,
-          "thick": 0.1461269112515187,
-          "bulge": 0.018800850106897537,
-          "halo": 0.0008771627093667491
+          "thin": 0.836324805223418,
+          "thick": 0.14392804946508245,
+          "bulge": 0.018866900967447878,
+          "halo": 0.0008802443440517194
         }
       }
     },
@@ -2871,18 +2871,18 @@
       "name": "Irr: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0035,
+        "worst": 0.0031,
         "sampled": {
-          "thin": 0.60505,
-          "thick": 0.3744,
-          "bulge": 0.0204,
+          "thin": 0.6148,
+          "thick": 0.36385,
+          "bulge": 0.0212,
           "halo": 0.00015
         },
         "model": {
-          "thin": 0.6015399652566903,
-          "thick": 0.37764029354521667,
-          "bulge": 0.02068096643253993,
-          "halo": 0.00013877476555312524
+          "thin": 0.6117022227203631,
+          "thick": 0.3667743923974277,
+          "bulge": 0.021379919953297796,
+          "halo": 0.0001434649289114046
         }
       }
     },
@@ -3589,7 +3589,7 @@
     },
     {
       "name": "every barred table type carries the bar profile",
-      "pass": false,
+      "pass": true,
       "detail": [
         "SB0",
         "SBa",
@@ -3779,6 +3779,11 @@
       "detail": 3.226665248453123
     },
     {
+      "name": "the sampler assigns stars to the clumps the field carries",
+      "pass": true,
+      "detail": 0.0348
+    },
+    {
       "name": "gradientSteep is monotone up the sequence and per-type",
       "pass": true,
       "detail": {
@@ -3801,8 +3806,8 @@
       "detail": null
     },
     {
-      "name": "the thin-disc gradient never promotes a star past M",
-      "pass": false,
+      "name": "the thin-disc gradient never promotes an MS star past M",
+      "pass": true,
       "detail": null
     },
     {
@@ -4527,14 +4532,14 @@
         "base": {
           "L": 2.6,
           "H": 0.23399999999999999,
-          "amp": 1.333123104317335,
+          "amp": 1.3331231043173353,
           "flare": 0,
           "coreRadius": 0
         },
         "tweaked": {
           "L": 2.6,
           "H": 0.5,
-          "amp": 1.333123104317335,
+          "amp": 1.3331231043173353,
           "flare": 0,
           "coreRadius": 0
         }

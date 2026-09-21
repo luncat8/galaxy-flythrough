@@ -7,10 +7,10 @@
 // any star count and no star can silently fall through to the origin. Each
 // component is inverted from its own truncated profile:
 //
-//   thin disc:  R ~ R*exp(-R/L) (cored: from coreRadius), phi ~ arm profile,
-//               z ~ sech^2(z/2H(R)) with H(R) = H(1 + flare*R/L) drawn per R
-//   thick disc: R ~ R*exp(-R/L) (cored: from coreRadius), phi ~ arm profile,
-//               z ~ exp(-|z|/H(R))
+//   thin disc:  R from the field's radial marginal (core + flare included),
+//               phi ~ arm profile, z ~ sech^2(z/2H(R))
+//   thick disc: R from the field's radial marginal (core + flare included),
+//               phi ~ arm profile, z ~ exp(-|z|/H(R))
 //   spheroid:   plummer radius or sersic radius, uniform direction, axis scaling
 //   halo:       r ~ r^-1.5 on [a_h, rMax] (i.e. rho ~ r^-3.5), uniform direction
 //
@@ -55,24 +55,42 @@
 	// (2.3% of the Irr box mass, boost x3, r 0.24 kpc, 12 hotspots).
 	const CLUMP_SHARE = 0.024;
 
-	// Inverse CDF of p(R) ~ R*exp(-R/L), truncated to [0, rMax]:
-	//   F(R) = 1 - (1 + R/L) * exp(-R/L)
-	// No closed form, so invert with bisection — 32 deterministic steps put the
-	// result well below f32 resolution. A cored disc (coreRadius > 0) inverts
-	// the same exponential over [coreRadius, rMax]: the plan's documented
-	// approximation to the soft R/sqrt(R^2 + c^2) core, which shares the same
-	// slope and outer profile.
-	function sampleDiscRadius(u, L, rMax, coreRadius, out) {
-		const f = (R) => 1 - (1 + R / L) * Math.exp(-R / L);
-		const lo0 = coreRadius > 0 ? coreRadius : 0;
-		const target = f(lo0) + u * (f(rMax) - f(lo0));
-		let lo = lo0;
-		let hi = rMax;
-		for (let i = 0; i < 32; i++) {
-			const mid = 0.5 * (lo + hi);
-			if (f(mid) < target) lo = mid; else hi = mid;
+	// The radial marginal includes the exact vertical truncation at every R,
+	// which matters once a type flares. A fixed Simpson table keeps the draw
+	// rejection-free while using the same soft core and H(R) as density.js.
+	const RADIAL_CDF_STEPS = 1024;
+	function buildDiscRadialSampler(group, kind, rMax, zMax) {
+		const radii = new Float64Array(RADIAL_CDF_STEPS + 1);
+		const cdf = new Float64Array(RADIAL_CDF_STEPS + 1);
+		const h = rMax / RADIAL_CDF_STEPS;
+		for (let i = 0; i <= RADIAL_CDF_STEPS; i++) radii[i] = i * h;
+		let total = 0;
+		for (let i = 0; i < RADIAL_CDF_STEPS; i++) {
+			const a = radii[i];
+			const b = radii[i + 1];
+			const mid = 0.5 * (a + b);
+			const area = (h / 6) * (
+				density.discRadialWeight(group, a, zMax, kind)
+				+ 4 * density.discRadialWeight(group, mid, zMax, kind)
+				+ density.discRadialWeight(group, b, zMax, kind));
+			total += area;
+			cdf[i + 1] = total;
 		}
-		out[0] = 0.5 * (lo + hi);
+		return { radii, cdf, total };
+	}
+
+	function sampleDiscRadius(u, sampler, out) {
+		const target = u * sampler.total;
+		let lo = 0;
+		let hi = RADIAL_CDF_STEPS;
+		while (lo + 1 < hi) {
+			const mid = (lo + hi) >> 1;
+			if (sampler.cdf[mid] < target) lo = mid; else hi = mid;
+		}
+		const left = sampler.cdf[lo];
+		const span = sampler.cdf[lo + 1] - left;
+		const t = span > 0 ? (target - left) / span : 0;
+		out[0] = sampler.radii[lo] + t * (sampler.radii[lo + 1] - sampler.radii[lo]);
 	}
 
 	// z ~ sech^2(z / 2H) truncated to |z| <= zMax. The untruncated CDF is
@@ -216,6 +234,8 @@
 		const gcZ = model.centre.z;
 		const haloMass = density.haloRadialMass(model, model.halo.rMax);
 		const clumps = model.clumps || [];
+		const thinRadial = buildDiscRadialSampler(model.thin, 'sech2', t.discRadius, t.discHeight);
+		const thickRadial = buildDiscRadialSampler(model.thick, 'laplace', t.discRadius, t.discHeight);
 
 		for (let i = 0; i < count; i++) {
 			const starSeed = Math.imul(i + 1, 0x9e3779b1) ^ Math.imul(seed | 0, 0x85ebca6b);
@@ -231,13 +251,13 @@
 
 		if (u0 < wThin) {
 			component = density.COMPONENT_THIN;
-			sampleDiscRadius(u1, model.thin.L, t.discRadius, model.thin.coreRadius || 0, scratch);
+			sampleDiscRadius(u1, thinRadial, scratch);
 			// The z CDF is exact per radius: a flared disc draws |z| from the
 			// sech^2 at H(R), which is how the field reads.
 			z = sampleSech2Z(u2, discHeightAt(model.thin, scratch[0]), t.discHeight);
 		} else if (u0 < wThick) {
 			component = density.COMPONENT_THICK;
-			sampleDiscRadius(u1, model.thick.L, t.discRadius, model.thick.coreRadius || 0, scratch);
+			sampleDiscRadius(u1, thickRadial, scratch);
 			z = sampleLaplaceZ(u2, discHeightAt(model.thick, scratch[0]), t.discHeight);
 		} else if (u0 < wBulge) {
 				component = density.COMPONENT_BULGE;
