@@ -8,7 +8,8 @@
 // implementation failed several of them (per-frame damping, OpenGL-style
 // projection, per-frame matrix allocations), and the first orbit plan would
 // have failed others (trackpad wheel rounding to zero, a speed grid that could
-// not return to x1).
+// not return to x1). The current orientation model is quaternion-based, so the
+// tests also cover pole-crossing and a non-degenerate right/up basis there.
 //
 // Output: experiments/logs/camera.json
 
@@ -58,18 +59,26 @@ function distanceTo(state, target) {
 	return Math.hypot(state.position[0] - target[0], state.position[1] - target[1], state.position[2] - target[2]);
 }
 
-// 1 - cos(angle between the view direction and the direction to the target),
-// from the f64 state (camera.forward is the f32 copy for the GPU and floors
-// this metric at ~1e-7 on its own).
+// 1 - cos(angle between the view direction and the direction to the target).
+// Quaternion orientation means yaw/pitch are diagnostics only; the public basis
+// vectors are the source of truth.
 function aimError(camera, target) {
 	const s = camera.getState();
-	const fx = Math.cos(s.yaw) * Math.cos(s.pitch);
-	const fy = Math.sin(s.yaw) * Math.cos(s.pitch);
-	const fz = Math.sin(s.pitch);
+	const fx = camera.forward[0];
+	const fy = camera.forward[1];
+	const fz = camera.forward[2];
 	const dx = target[0] - s.position[0];
 	const dy = target[1] - s.position[1];
 	const dz = target[2] - s.position[2];
 	return 1 - (fx * dx + fy * dy + fz * dz) / Math.hypot(dx, dy, dz);
+}
+
+function quatDot(a, b) {
+	return Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]);
+}
+
+function angleError(a, b) {
+	return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 }
 
 // Transform a world point into clip space with the camera's current matrices.
@@ -182,6 +191,34 @@ function project(camera, x, y, z, aspect) {
 	check('viewProj is a reused Float32Array', camera.viewProj === m && camera.viewProj instanceof Float32Array && camera.viewProj.length === 16);
 }
 
+// --- Projection at the old pitch pole ------------------------------------
+{
+	const camera = cameraModule.createCamera();
+	const input = freshInput();
+	input.lookDy = -0.5 * Math.PI / cameraModule.LOOK_SENSITIVITY;
+	camera.step(DT, input);
+	const aspect = 1;
+	const depth = 2;
+	const ahead = project(camera,
+		camera.cameraPos[0] + camera.forward[0] * depth,
+		camera.cameraPos[1] + camera.forward[1] * depth,
+		camera.cameraPos[2] + camera.forward[2] * depth,
+		aspect);
+	const toRight = project(camera,
+		camera.cameraPos[0] + camera.forward[0] * depth + camera.right[0] * 0.05,
+		camera.cameraPos[1] + camera.forward[1] * depth + camera.right[1] * 0.05,
+		camera.cameraPos[2] + camera.forward[2] * depth + camera.right[2] * 0.05,
+		aspect);
+	const toUp = project(camera,
+		camera.cameraPos[0] + camera.forward[0] * depth + camera.up[0] * 0.05,
+		camera.cameraPos[1] + camera.forward[1] * depth + camera.up[1] * 0.05,
+		camera.cameraPos[2] + camera.forward[2] * depth + camera.up[2] * 0.05,
+		aspect);
+	check('looking straight up projects the forward point at screen centre', Math.abs(ahead.x) < 1e-6 && Math.abs(ahead.y) < 1e-6, ahead);
+	check('looking straight up keeps the quaternion right axis on screen +X', toRight.x > 0, toRight);
+	check('looking straight up keeps the quaternion up axis on screen +Y', toUp.y > 0, toUp);
+}
+
 // --- Frame-rate independence --------------------------------------------
 {
 	function travel(dt) {
@@ -256,16 +293,16 @@ function project(camera, x, y, z, aspect) {
 		scrolledUp.getState().speedMult > 1 && scrolledDown.getState().speedMult < 1,
 		{ up: scrolledUp.getState().speedMult, down: scrolledDown.getState().speedMult });
 
-	// Pitch must be clamped short of the pole (the basis would degenerate).
-	const pitchy = cameraModule.createCamera();
+	// Quaternion look is deliberately not pitch-clamped: a half-loop points back
+	// along -X and leaves the camera upside down with a still-valid basis.
+	const looper = cameraModule.createCamera();
 	const i3 = freshInput();
-	for (let i = 0; i < 200; i++) {
-		i3.lookDy = -500;
-		pitchy.step(1 / 60, i3);
-	}
-	check('pitch is clamped below 90 degrees',
-		Math.abs(pitchy.getState().pitch) <= cameraModule.PITCH_LIMIT + 1e-9,
-		pitchy.getState().pitch);
+	i3.lookDy = -Math.PI / cameraModule.LOOK_SENSITIVITY;
+	looper.step(1 / 60, i3);
+	check('look can loop past the old pitch pole without a clamp',
+		looper.forward[0] < -0.999999 && looper.up[2] < -0.999999,
+		{ forward: Array.from(looper.forward), up: Array.from(looper.up), pitch: looper.getState().pitch });
+	check('PITCH_LIMIT is an unlimited compatibility export', cameraModule.PITCH_LIMIT === Infinity, cameraModule.PITCH_LIMIT);
 }
 
 // --- Reset ---------------------------------------------------------------
@@ -309,8 +346,8 @@ function project(camera, x, y, z, aspect) {
 	}
 	check('no buffers are reallocated across 600 frames', stable);
 	check('getState honours a provided output object', (() => {
-		const out = { position: [0, 0, 0], velocity: [0, 0, 0] };
-		return camera.getState(out) === out && out.position === out.position;
+		const out = { position: [0, 0, 0], velocity: [0, 0, 0], orbitTarget: [0, 0, 0], orientation: [0, 0, 0, 1] };
+		return camera.getState(out) === out && out.position === out.position && out.orientation.length === 4;
 	})());
 }
 
@@ -410,18 +447,18 @@ function project(camera, x, y, z, aspect) {
 	check('the default object target is the Sun',
 		orbitObj.orbitTarget[0] === 0 && orbitObj.orbitTarget[1] === 0 && orbitObj.orbitTarget[2] === 0 && orbitObj.targetName === 'Sun',
 		{ target: orbitObj.orbitTarget, name: orbitObj.targetName });
-	// The start is straight above the Sun, so aiming at it hits the pitch
-	// clamp: the camera keeps its distance and slides by at most 0.02 rad.
-	check('switching targets keeps the distance; only the pitch clamp moves the camera (< 0.02 rad)',
-		distanceTo(orbitObj, before.position) < 0.005 * 0.02 && Math.abs(orbitObj.pitch) === cameraModule.PITCH_LIMIT,
-		{ moved: distanceTo(orbitObj, before.position), pitch: orbitObj.pitch });
+	// The start is straight above the Sun; quaternion aim reaches that vertical
+	// direction exactly instead of sliding sideways to avoid a pitch pole.
+	check('switching to the Sun target keeps the exact position and aims straight down',
+		distanceTo(orbitObj, before.position) < 1e-12 && camera.forward[2] < -0.999999,
+		{ moved: distanceTo(orbitObj, before.position), forward: Array.from(camera.forward), pitch: orbitObj.pitch });
 	check('orbit distance to the Sun is the 5 pc start height', Math.abs(orbitObj.orbitDistance - 0.005) < 1e-12, orbitObj.orbitDistance);
 
 	pressAction(camera, 'cameraMode');
 	const fly = camera.getState();
 	check('C a third time returns to fly', fly.mode === cameraModule.MODE_FLY, fly.modeName);
-	check('orbit -> fly is continuous: position, yaw and pitch carry over, velocity is zero',
-		distanceTo(fly, orbitObj.position) < 1e-12 && fly.yaw === orbitObj.yaw && fly.pitch === orbitObj.pitch
+	check('orbit -> fly is continuous: position and quaternion carry over, velocity is zero',
+		distanceTo(fly, orbitObj.position) < 1e-12 && quatDot(fly.orientation, orbitObj.orientation) > 1 - 1e-12
 		&& fly.velocity[0] === 0 && fly.velocity[1] === 0 && fly.velocity[2] === 0,
 		{ fly, orbitObj });
 
@@ -456,7 +493,7 @@ function project(camera, x, y, z, aspect) {
 		last = s.position.slice();
 	}
 	check('look input keeps the camera on the sphere (200 random drags)', worstRadius < 1e-9, worstRadius);
-	check('look input keeps the target centred', worstAim < 1e-9, worstAim);
+	check('look input keeps the target centred', worstAim < 1e-6, worstAim);
 	check('look input actually moves the camera around the target', moved > radius, moved);
 	check('orbit never accumulates velocity',
 		camera.getState().velocity.every(v => v === 0), camera.getState().velocity);
@@ -506,9 +543,9 @@ function project(camera, x, y, z, aspect) {
 	const turnRate = cameraModule.ORBIT_TURN_RATE;
 	// Keys move the camera: D goes to the camera's right (-Y from the Sun side).
 	const d = orbitKeys({ right: true }, 1, DT);
-	check('D circles the camera right at ORBIT_TURN_RATE (yaw + rate * t)', Math.abs(d.dYaw - turnRate) < 1e-9 && d.state.position[1] < 0, d);
+	check('D circles the camera right at ORBIT_TURN_RATE (yaw + rate * t)', angleError(d.dYaw, turnRate) < 1e-6 && d.state.position[1] < 0, d);
 	const a = orbitKeys({ left: true }, 1, DT);
-	check('A circles left', Math.abs(a.dYaw + turnRate) < 1e-9 && a.state.position[1] > 0, a);
+	check('A circles left', angleError(a.dYaw, -turnRate) < 1e-6 && a.state.position[1] > 0, a);
 	const e = orbitKeys({ up: true }, 0.5, DT);
 	check('E raises the camera over the target (pitch - rate * t)', Math.abs(e.dPitch + turnRate * 0.5) < 1e-9 && e.state.position[2] > 0, e);
 	const q = orbitKeys({ down: true }, 0.5, DT);
@@ -520,8 +557,8 @@ function project(camera, x, y, z, aspect) {
 	const boosted = orbitKeys({ right: true, boost: true }, 1, DT);
 	const slowed = orbitKeys({ right: true, slow: true }, 1, DT);
 	check('Shift / Ctrl scale orbit key rates by ORBIT_KEY_BOOST, not x100',
-		Math.abs(boosted.dYaw - turnRate * cameraModule.ORBIT_KEY_BOOST) < 1e-9
-		&& Math.abs(slowed.dYaw - turnRate / cameraModule.ORBIT_KEY_BOOST) < 1e-9,
+		angleError(boosted.dYaw, turnRate * cameraModule.ORBIT_KEY_BOOST) < 1e-6
+		&& angleError(slowed.dYaw, turnRate / cameraModule.ORBIT_KEY_BOOST) < 1e-6,
 		{ boosted: boosted.dYaw, slowed: slowed.dYaw });
 
 	const at60 = orbitKeys({ right: true, forward: true }, 2, 1 / 60);
@@ -529,9 +566,12 @@ function project(camera, x, y, z, aspect) {
 	check('orbit keys are frame-rate independent',
 		Math.abs(at60.dYaw - at144.dYaw) < 1e-9 && Math.abs(at60.ratio - at144.ratio) < 1e-9, { at60, at144 });
 
-	const pitchy = orbitKeys({ up: true }, 5, DT);
-	check('orbit pitch is clamped short of the pole', Math.abs(pitchy.state.pitch) <= cameraModule.PITCH_LIMIT + 1e-12
-		&& Math.abs(distanceTo(pitchy.state, gc) - pitchy.state.orbitDistance) < 1e-9, pitchy.state.pitch);
+	const pitchy = orbitKeys({ up: true }, Math.PI, DT);
+	check('orbit keys can loop over the target without a pitch clamp',
+		cameraModule.PITCH_LIMIT === Infinity
+		&& Math.abs(distanceTo(pitchy.state, gc) - pitchy.state.orbitDistance) < 1e-9
+		&& pitchy.state.position[0] > gc[0],
+		{ position: pitchy.state.position, pitch: pitchy.state.pitch });
 }
 
 // --- 0.1.1: momentum does not cross the mode boundary ----------------------
@@ -570,7 +610,7 @@ function project(camera, x, y, z, aspect) {
 	camera.setOrbitTarget(-2, 0.5, 0, 'Other star');
 	const s2 = camera.getState();
 	check('re-targeting while in orbit keeps the position and turns towards the new target',
-		distanceTo(s2, s1.position) < 1e-9 && aimError(camera, [-2, 0.5, 0]) < 1e-9 && s2.targetName === 'Other star',
+		distanceTo(s2, s1.position) < 1e-9 && aimError(camera, [-2, 0.5, 0]) < 1e-6 && s2.targetName === 'Other star',
 		{ moved: distanceTo(s2, s1.position) });
 
 	// The centre mode ignores the object target.
@@ -615,7 +655,7 @@ function project(camera, x, y, z, aspect) {
 		&& Math.abs(distanceTo(orbitHome, cameraModule.SUN_POSITION) - cameraModule.HOME_ORBIT_DISTANCE) < 1e-12,
 		orbitHome.orbitDistance);
 	check('H in orbit keeps the viewing direction (a translation, not a spin)',
-		orbitHome.yaw === beforeHome.yaw && orbitHome.pitch === beforeHome.pitch && aimError(orbiter, cameraModule.SUN_POSITION) < 1e-9);
+		quatDot(orbitHome.orientation, beforeHome.orientation) > 1 - 1e-12 && aimError(orbiter, cameraModule.SUN_POSITION) < 1e-6);
 
 	orbiter.setOrbitTarget(4, 4, 4, 'Somewhere');
 	scroll(orbiter, -2 * NOTCH);
@@ -635,14 +675,14 @@ function project(camera, x, y, z, aspect) {
 	const camera = cameraModule.createCamera();
 	camera.setState({ position: [1, -2, 0.3], velocity: [0, 0, 0], yaw: 0.4, pitch: -0.2, speedMult: 4, mode: cameraModule.MODE_ORBIT_GC });
 	const s = camera.getState();
-	check('setState restores position, angles, multiplier and mode',
+	check('setState restores position, orientation input, multiplier and mode',
 		s.mode === cameraModule.MODE_ORBIT_GC && s.speedMult === 4
-		&& distanceTo(s, [1, -2, 0.3]) < 1e-9 && aimError(camera, cameraModule.GALACTIC_CENTRE_TARGET) < 1e-9, s);
+		&& distanceTo(s, [1, -2, 0.3]) < 1e-9 && aimError(camera, cameraModule.GALACTIC_CENTRE_TARGET) < 1e-6, s);
 
 	const c = cameraModule.createCamera();
 	const input = freshInput();
 	const out = c.getState();
-	const refs = [c.viewProj, c.cameraPos, c.forward, c.right, c.up, out.position, out.velocity, out.orbitTarget];
+	const refs = [c.viewProj, c.cameraPos, c.forward, c.right, c.up, out.position, out.velocity, out.orbitTarget, out.orientation];
 	let stable = true;
 	for (let i = 0; i < 600; i++) {
 		input.keys.forward = (i % 2) === 0;
@@ -656,7 +696,7 @@ function project(camera, x, y, z, aspect) {
 		const state = c.getState(out);
 		stable = stable && state === out
 			&& c.viewProj === refs[0] && c.cameraPos === refs[1] && c.forward === refs[2] && c.right === refs[3] && c.up === refs[4]
-			&& out.position === refs[5] && out.velocity === refs[6] && out.orbitTarget === refs[7]
+			&& out.position === refs[5] && out.velocity === refs[6] && out.orbitTarget === refs[7] && out.orientation === refs[8]
 			&& typeof out.modeName === 'string' && typeof out.targetName === 'string';
 	}
 	check('no buffers or state arrays are reallocated across 600 frames of mode switching', stable);

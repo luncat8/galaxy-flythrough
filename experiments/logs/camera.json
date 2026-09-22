@@ -1,7 +1,7 @@
 {
-  "date": "2026-09-21T18:19:59.308Z",
-  "totalChecks": 104,
-  "passed": 104,
+  "date": "2026-09-22T00:49:24.638Z",
+  "totalChecks": 108,
+  "passed": 108,
   "failed": 0,
   "checks": [
     {
@@ -44,12 +44,12 @@
     {
       "name": "basis stays orthonormal over 200 random orientations (norms)",
       "pass": true,
-      "detail": 4.0631539910407355e-8
+      "detail": 3.627499933767098e-8
     },
     {
       "name": "basis stays orthonormal over 200 random orientations (dots)",
       "pass": true,
-      "detail": 6.244622596796034e-8
+      "detail": 5.7114661888846285e-8
     },
     {
       "name": "near plane maps to NDC z = 0",
@@ -99,6 +99,36 @@
     {
       "name": "viewProj is a reused Float32Array",
       "pass": true
+    },
+    {
+      "name": "looking straight up projects the forward point at screen centre",
+      "pass": true,
+      "detail": {
+        "x": 0,
+        "y": 0,
+        "z": 0.9999003575867391,
+        "w": 2
+      }
+    },
+    {
+      "name": "looking straight up keeps the quaternion right axis on screen +X",
+      "pass": true,
+      "detail": {
+        "x": 0.04330126941204071,
+        "y": 0,
+        "z": 0.9999003575867391,
+        "w": 2
+      }
+    },
+    {
+      "name": "looking straight up keeps the quaternion up axis on screen +Y",
+      "pass": true,
+      "detail": {
+        "x": 0,
+        "y": 0.04330126941204071,
+        "z": 0.9999003575867391,
+        "w": 2
+      }
     },
     {
       "name": "distance travelled is frame-rate independent (±1%)",
@@ -155,9 +185,26 @@
       }
     },
     {
-      "name": "pitch is clamped below 90 degrees",
+      "name": "look can loop past the old pitch pole without a clamp",
       "pass": true,
-      "detail": 1.5507963267948965
+      "detail": {
+        "forward": [
+          -1,
+          0,
+          1.2246468525851679e-16
+        ],
+        "up": [
+          -1.2246468525851679e-16,
+          0,
+          -1
+        ],
+        "pitch": 1.2246467991473532e-16
+      }
+    },
+    {
+      "name": "PITCH_LIMIT is an unlimited compatibility export",
+      "pass": true,
+      "detail": null
     },
     {
       "name": "reset returns the camera to the start position",
@@ -364,7 +411,7 @@
     {
       "name": "the camera looks at the target",
       "pass": true,
-      "detail": 0
+      "detail": -8.08881894798219e-9
     },
     {
       "name": "C again enters orbit-object",
@@ -384,11 +431,16 @@
       }
     },
     {
-      "name": "switching targets keeps the distance; only the pitch clamp moves the camera (< 0.02 rad)",
+      "name": "switching to the Sun target keeps the exact position and aims straight down",
       "pass": true,
       "detail": {
-        "moved": 0.00009999833334166704,
-        "pitch": -1.5507963267948965
+        "moved": 1.4088688899021424e-18,
+        "forward": [
+          -2.220446049250313e-16,
+          0,
+          -1
+        ],
+        "pitch": -1.5707963267948966
       }
     },
     {
@@ -402,14 +454,14 @@
       "detail": "fly"
     },
     {
-      "name": "orbit -> fly is continuous: position, yaw and pitch carry over, velocity is zero",
+      "name": "orbit -> fly is continuous: position and quaternion carry over, velocity is zero",
       "pass": true,
       "detail": {
         "fly": {
           "position": [
-            -0.0000999933334666658,
+            1.1102230246251566e-18,
             0,
-            0.0049990000333328885
+            0.005000000000000001
           ],
           "velocity": [
             0,
@@ -421,8 +473,14 @@
             0,
             0
           ],
-          "yaw": 0,
-          "pitch": -1.5507963267948965,
+          "orientation": [
+            0,
+            0.7071067811865476,
+            0,
+            0.7071067811865476
+          ],
+          "yaw": 3.141592653589793,
+          "pitch": -1.5707963267948966,
           "mode": 0,
           "modeName": "fly",
           "targetName": "Sun",
@@ -434,9 +492,9 @@
         },
         "orbitObj": {
           "position": [
-            -0.0000999933334666658,
+            1.1102230246251566e-18,
             0,
-            0.0049990000333328885
+            0.005000000000000001
           ],
           "velocity": [
             0,
@@ -448,8 +506,14 @@
             0,
             0
           ],
-          "yaw": 0,
-          "pitch": -1.5507963267948965,
+          "orientation": [
+            0,
+            0.7071067811865476,
+            0,
+            0.7071067811865476
+          ],
+          "yaw": 3.141592653589793,
+          "pitch": -1.5707963267948966,
           "mode": 2,
           "modeName": "orbit object",
           "targetName": "Sun",
@@ -468,17 +532,17 @@
     {
       "name": "look input keeps the camera on the sphere (200 random drags)",
       "pass": true,
-      "detail": 4.344232104167967e-16
+      "detail": 8.688464208335934e-16
     },
     {
       "name": "look input keeps the target centred",
       "pass": true,
-      "detail": 4.440892098500626e-16
+      "detail": 3.407607951366742e-8
     },
     {
       "name": "look input actually moves the camera around the target",
       "pass": true,
-      "detail": 732.833960865517
+      "detail": 736.5944851574202
     },
     {
       "name": "orbit never accumulates velocity",
@@ -494,17 +558,17 @@
       "pass": true,
       "detail": [
         0.7789408981871402,
-        3.4833329453097446,
-        0.005
+        3.483333596354355,
+        0.0045237583160998174
       ]
     },
     {
       "name": "drag down raises the camera above the target",
       "pass": true,
       "detail": [
-        1.4856158185692534,
-        3.1506441536783822,
-        3.487856703625845
+        1.4858186686973358,
+        3.151551864851578,
+        3.487425823170241
       ]
     },
     {
@@ -522,7 +586,7 @@
       "pass": true,
       "detail": {
         "distance": 4.0890007642454655,
-        "aim": 0
+        "aim": -8.08881894798219e-9
       }
     },
     {
@@ -543,14 +607,14 @@
       "name": "D circles the camera right at ORBIT_TURN_RATE (yaw + rate * t)",
       "pass": true,
       "detail": {
-        "dYaw": 1.0000000000000013,
-        "dPitch": 0,
+        "dYaw": 1.0000000849750976,
+        "dPitch": 0.00028105750836841115,
         "ratio": 1,
         "state": {
           "position": [
-            3.759407742610363,
-            -6.881549713758984,
-            0.005
+            3.7594077426103585,
+            -6.88155099993975,
+            0.0027015115293406986
           ],
           "velocity": [
             0,
@@ -562,8 +626,14 @@
             0,
             0
           ],
-          "yaw": 1.0000000000000013,
-          "pitch": -0.000611396353263734,
+          "orientation": [
+            0.0001465595106993577,
+            0.00026827538483535895,
+            0.47942551620271556,
+            0.8775825208847243
+          ],
+          "yaw": 1.0000000849750976,
+          "pitch": -0.0003303388448953228,
           "mode": 1,
           "modeName": "orbit centre",
           "targetName": "galactic centre",
@@ -579,14 +649,14 @@
       "name": "A circles left",
       "pass": true,
       "detail": {
-        "dYaw": -1.0000000000000013,
-        "dPitch": 0,
+        "dYaw": -1.0000000849750976,
+        "dPitch": 0.00028105750836841115,
         "ratio": 1,
         "state": {
           "position": [
-            3.759407742610363,
-            6.881549713758984,
-            0.005
+            3.7594077426103585,
+            6.88155099993975,
+            0.0027015115293406986
           ],
           "velocity": [
             0,
@@ -598,8 +668,14 @@
             0,
             0
           ],
-          "yaw": -1.0000000000000013,
-          "pitch": -0.000611396353263734,
+          "orientation": [
+            -0.0001465595106993577,
+            0.00026827538483535895,
+            -0.47942551620271556,
+            0.8775825208847243
+          ],
+          "yaw": -1.0000000849750976,
+          "pitch": -0.0003303388448953228,
           "mode": 1,
           "modeName": "orbit centre",
           "targetName": "galactic centre",
@@ -616,13 +692,13 @@
       "pass": true,
       "detail": {
         "dYaw": 0,
-        "dPitch": -0.49999999999999994,
+        "dPitch": -0.5000000000000003,
         "ratio": 1,
         "state": {
           "position": [
-            1.0035269365535537,
+            1.0035269365535546,
             0,
-            3.9251299675146236
+            3.9251299675146263
           ],
           "velocity": [
             0,
@@ -634,8 +710,14 @@
             0,
             0
           ],
+          "orientation": [
+            0,
+            0.24770014245042263,
+            0,
+            0.9688367454994885
+          ],
           "yaw": 0,
-          "pitch": -0.5006113963532637,
+          "pitch": -0.500611396353264,
           "mode": 1,
           "modeName": "orbit centre",
           "targetName": "galactic centre",
@@ -652,13 +734,13 @@
       "pass": true,
       "detail": {
         "dYaw": 0,
-        "dPitch": 0.49999999999999994,
+        "dPitch": 0.5000000000000002,
         "ratio": 1,
         "state": {
           "position": [
-            0.9987326811675103,
+            0.9987326811675121,
             0,
-            -3.9163541418957197
+            -3.916354141895722
           ],
           "velocity": [
             0,
@@ -670,8 +752,14 @@
             0,
             0
           ],
+          "orientation": [
+            0,
+            -0.2471077529383834,
+            0,
+            0.9689880073756036
+          ],
           "yaw": 0,
-          "pitch": 0.4993886036467362,
+          "pitch": 0.4993886036467365,
           "mode": 1,
           "modeName": "orbit centre",
           "targetName": "galactic centre",
@@ -697,8 +785,8 @@
       "name": "Shift / Ctrl scale orbit key rates by ORBIT_KEY_BOOST, not x100",
       "pass": true,
       "detail": {
-        "boosted": 4.000000000000005,
-        "slowed": 0.25000000000000033
+        "boosted": -2.2831852147226934,
+        "slowed": 0.2500000448029824
       }
     },
     {
@@ -706,14 +794,14 @@
       "pass": true,
       "detail": {
         "at60": {
-          "dYaw": 1.9999999999999978,
-          "dPitch": 0,
+          "dYaw": 1.999999929275765,
+          "dPitch": 0.0008658269984447254,
           "ratio": 0.2500000000000005,
           "state": {
             "position": [
-              9.02881220732063,
-              -1.8590585891451117,
-              0.0012500000000000024
+              9.028812207320634,
+              -1.8590589366083288,
+              -0.0005201835456839287
             ],
             "velocity": [
               0,
@@ -725,8 +813,14 @@
               0,
               0
             ],
-            "yaw": 1.9999999999999978,
-            "pitch": -0.000611396353263734,
+            "orientation": [
+              0.00025723614173788357,
+              0.0001651694271613319,
+              0.8414709454895862,
+              0.5403022806221436
+            ],
+            "yaw": 1.999999929275765,
+            "pitch": 0.0002544306451809915,
             "mode": 1,
             "modeName": "orbit centre",
             "targetName": "galactic centre",
@@ -738,14 +832,14 @@
           }
         },
         "at144": {
-          "dYaw": 1.999999999999994,
-          "dPitch": 0,
+          "dYaw": 1.9999999292757669,
+          "dPitch": 0.000865826998444726,
           "ratio": 0.25000000000000316,
           "state": {
             "position": [
-              9.028812207320634,
-              -1.8590585891451348,
-              0.0012500000000000159
+              9.028812207320646,
+              -1.8590589366083479,
+              -0.0005201835456839352
             ],
             "velocity": [
               0,
@@ -757,8 +851,14 @@
               0,
               0
             ],
-            "yaw": 1.999999999999994,
-            "pitch": -0.000611396353263734,
+            "orientation": [
+              0.00025723614173788357,
+              0.0001651694271613319,
+              0.8414709454895868,
+              0.540302280622143
+            ],
+            "yaw": 1.9999999292757669,
+            "pitch": 0.000254430645180992,
             "mode": 1,
             "modeName": "orbit centre",
             "targetName": "galactic centre",
@@ -772,9 +872,16 @@
       }
     },
     {
-      "name": "orbit pitch is clamped short of the pole",
+      "name": "orbit keys can loop over the target without a pitch clamp",
       "pass": true,
-      "detail": -1.5507963267948965
+      "detail": {
+        "position": [
+          16.355762360976016,
+          0,
+          0.06254412365727537
+        ],
+        "pitch": -0.007647923903195549
+      }
     },
     {
       "name": "entering orbit while moving stops the camera dead (no drift off the sphere)",
@@ -785,7 +892,7 @@
           0,
           0
         ],
-        "drift": 2.220446049250313e-16
+        "drift": 2.220513810852149e-16
       }
     },
     {
@@ -817,7 +924,7 @@
       "name": "re-targeting while in orbit keeps the position and turns towards the new target",
       "pass": true,
       "detail": {
-        "moved": 4.0029660424867215e-16
+        "moved": 1.1692965966868032e-15
       }
     },
     {
@@ -833,7 +940,7 @@
       "pass": true,
       "detail": {
         "away": [
-          0.0003723996015761268,
+          0.00037239960157612635,
           -0.0031516685995579092,
           0.005395966928877093
         ],
@@ -889,6 +996,12 @@
           0,
           0
         ],
+        "orientation": [
+          0,
+          0,
+          0,
+          1
+        ],
         "yaw": 0,
         "pitch": 0,
         "mode": 0,
@@ -911,13 +1024,13 @@
       ]
     },
     {
-      "name": "setState restores position, angles, multiplier and mode",
+      "name": "setState restores position, orientation input, multiplier and mode",
       "pass": true,
       "detail": {
         "position": [
           0.9999999999999991,
-          -2.0000000000000004,
-          0.3
+          -1.9999999999999984,
+          0.29999999999999943
         ],
         "velocity": [
           0,
@@ -929,8 +1042,14 @@
           0,
           0
         ],
-        "yaw": 0.27173705735189957,
-        "pitch": -0.04023904164760624,
+        "orientation": [
+          -0.010372118274079191,
+          0.01888671011371016,
+          0.13557331520561094,
+          0.9905329815547533
+        ],
+        "yaw": 0.27173705735189935,
+        "pitch": -0.040239041647606166,
         "mode": 1,
         "modeName": "orbit centre",
         "targetName": "galactic centre",

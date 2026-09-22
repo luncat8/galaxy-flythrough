@@ -736,3 +736,7 @@ profiles: a noise-threshold draw with bounded deterministic retries plus a
 last-candidate fallback keeps the count exact without breaking the
 `(seed, j, i)` stability contract — retries are a fixed hash sequence, so
 member *i* stays a pure function.
+
+## 2026-09-22 — Quaternion camera pole fix: don't rebuild right/up from world-up
+
+When removing a pitch clamp, changing only the orientation integrator is not enough. Any projection code that recomputes `right = normalize(forward × worldUp)` reintroduces the same pole singularity and discards the camera's upside-down/roll state. Keep `forward/right/up` as one quaternion-derived basis and build the view matrix from those axes directly.

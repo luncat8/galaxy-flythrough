@@ -4,8 +4,13 @@
 //
 // Design notes (the parts that were wrong before, and why they are like this):
 //
-//   * One yaw/pitch pair for both modes, always meaning "where the camera
-//     looks". Orbit derives the position from it: position = target - distance
+//   * Orientation is a unit quaternion, not yaw/pitch integration. Mouse and
+//     orbit-key turns rotate around the camera's current screen axes, so the
+//     camera can look straight up, straight down, loop over the poles, and keep
+//     a valid right/up basis. `yaw` and `pitch` in getState() are diagnostics
+//     derived from the forward vector for overlays/tests; they do not drive the
+//     camera and therefore do not clamp it.
+//   * Orbit derives the position from orientation: position = target - distance
 //     * forward. Mouse look is therefore the same code in both modes, switching
 //     modes is continuous, and orbit drag lands on the usual "grab the world"
 //     feel (drag right, the camera swings left) with no sign table.
@@ -33,7 +38,9 @@
 const FOV_Y = Math.PI / 3;            // 60 deg vertical
 const NEAR_KPC = 0.0002;              // 0.2 pc
 const FAR_KPC = 500.0;                // halo is truncated at 100 kpc
-const PITCH_LIMIT = Math.PI / 2 - 0.02;
+// Backward-compatible export for older experiments. Orientation is quaternion
+// driven now, so pitch is intentionally unlimited.
+const PITCH_LIMIT = Infinity;
 const LY_TO_KPC = 0.000306601;        // 1 ly = 0.306601 pc
 const BASE_SPEED_KPC_S = 8 * LY_TO_KPC;   // 8 ly/s at speedMult = 1
 const SPEED_MULT_MIN = 1 / 64;        // powers of two: see the x2 grid note above
@@ -49,6 +56,7 @@ const ORBIT_TURN_RATE = 1.0;          // rad/s for A/D/E/Q in orbit
 const ORBIT_DOLLY_RATE = 1.0;         // octaves/s for W/S in orbit: distance halves or doubles per second
 const ORBIT_KEY_BOOST = 4.0;          // Shift x4, Ctrl x1/4 on orbit key rates; x100 would be 16 turns a second
 const HOME_ORBIT_DISTANCE = 0.01;     // kpc, H in orbit: the Sun from 10 pc
+const QUAT_EPS = 1e-12;
 // The default frame is the Milky Way preset's: the Sun-centred origin, the view
 // from 5 pc above it, the galactic centre as the orbit centre. setFrame() swaps
 // all of it when the user changes galaxy type, so nothing here is a second copy
@@ -82,8 +90,11 @@ function keyFactor(keys, boost, slow) {
 function createCamera() {
 	const position = new Float64Array([START_POSITION[0], START_POSITION[1], START_POSITION[2]]);
 	const velocity = new Float64Array(3);
-	let yaw = 0;                    // around +Z, 0 looks at the galactic centre
-	let pitch = 0;                  // around the camera right axis
+	// Unit quaternion mapping local camera axes (+X forward, -Y right, +Z up)
+	// into the galaxy frame. Identity looks at the galactic centre from the Sun.
+	const orientation = new Float64Array([0, 0, 0, 1]);
+	let yaw = 0;                    // diagnostic heading from forward, not control state
+	let pitch = 0;                  // diagnostic elevation from forward, not control state
 	let speedMult = 1.0;
 	let speedFactor = 1.0;          // Shift/Ctrl product last seen in fly mode
 	let wheelAccum = 0;             // px not yet worth a whole notch
@@ -112,6 +123,7 @@ function createCamera() {
 	const up = new Float32Array(3);
 	const forwardExact = new Float64Array(3);
 	const rightExact = new Float64Array(3);
+	const upExact = new Float64Array(3);
 
 	// Scratch matrices (column-major, matching WGSL mat4x4<f32>).
 	const view = new Float32Array(16);
@@ -123,26 +135,148 @@ function createCamera() {
 		cameraPos[2] = position[2];
 	}
 
+	function normalizeOrientation() {
+		const x = orientation[0], y = orientation[1], z = orientation[2], w = orientation[3];
+		const len = Math.sqrt(x * x + y * y + z * z + w * w);
+		if (len > QUAT_EPS) {
+			const inv = 1 / len;
+			orientation[0] = x * inv;
+			orientation[1] = y * inv;
+			orientation[2] = z * inv;
+			orientation[3] = w * inv;
+			return;
+		}
+		orientation[0] = 0;
+		orientation[1] = 0;
+		orientation[2] = 0;
+		orientation[3] = 1;
+	}
+
+	function updateAnglesFromBasis() {
+		yaw = Math.atan2(forwardExact[1], forwardExact[0]);
+		pitch = Math.asin(clamp(forwardExact[2], -1, 1));
+	}
+
 	function updateBasis() {
-		const cy = Math.cos(yaw);
-		const sy = Math.sin(yaw);
-		const cp = Math.cos(pitch);
-		const sp = Math.sin(pitch);
-		forwardExact[0] = cy * cp;
-		forwardExact[1] = sy * cp;
-		forwardExact[2] = sp;
-		// right = normalize(forward x worldUp) with worldUp = +Z; this is the
-		// screen-right axis in a right-handed system looking down +forward.
-		rightExact[0] = sy;
-		rightExact[1] = -cy;
-		rightExact[2] = 0;
+		normalizeOrientation();
+		const x = orientation[0], y = orientation[1], z = orientation[2], w = orientation[3];
+		const xx = x * x, yy = y * y, zz = z * z;
+		const xy = x * y, xz = x * z, yz = y * z;
+		const wx = w * x, wy = w * y, wz = w * z;
+
+		// Rotation matrix columns are the images of local +X, +Y, +Z. The camera's
+		// local right axis is -Y, so right is the negated second column.
+		forwardExact[0] = 1 - 2 * (yy + zz);
+		forwardExact[1] = 2 * (xy + wz);
+		forwardExact[2] = 2 * (xz - wy);
+		rightExact[0] = -2 * (xy - wz);
+		rightExact[1] = -(1 - 2 * (xx + zz));
+		rightExact[2] = -2 * (yz + wx);
+		upExact[0] = 2 * (xz + wy);
+		upExact[1] = 2 * (yz - wx);
+		upExact[2] = 1 - 2 * (xx + yy);
+
 		forward.set(forwardExact);
 		right.set(rightExact);
-		// up = right x forward (stays continuous through the pitch clamp).
-		up[0] = -cy * sp;
-		up[1] = -sy * sp;
-		up[2] = cp;
+		up.set(upExact);
+		updateAnglesFromBasis();
 	}
+
+	function setOrientationFromBasis(fx, fy, fz, rx, ry, rz, ux, uy, uz) {
+		// Standard local +Y maps to -right.
+		const m00 = fx, m01 = -rx, m02 = ux;
+		const m10 = fy, m11 = -ry, m12 = uy;
+		const m20 = fz, m21 = -rz, m22 = uz;
+		const trace = m00 + m11 + m22;
+		let s;
+		if (trace > 0) {
+			s = Math.sqrt(trace + 1) * 2;
+			orientation[3] = 0.25 * s;
+			orientation[0] = (m21 - m12) / s;
+			orientation[1] = (m02 - m20) / s;
+			orientation[2] = (m10 - m01) / s;
+		} else if (m00 > m11 && m00 > m22) {
+			s = Math.sqrt(1 + m00 - m11 - m22) * 2;
+			orientation[3] = (m21 - m12) / s;
+			orientation[0] = 0.25 * s;
+			orientation[1] = (m01 + m10) / s;
+			orientation[2] = (m02 + m20) / s;
+		} else if (m11 > m22) {
+			s = Math.sqrt(1 + m11 - m00 - m22) * 2;
+			orientation[3] = (m02 - m20) / s;
+			orientation[0] = (m01 + m10) / s;
+			orientation[1] = 0.25 * s;
+			orientation[2] = (m12 + m21) / s;
+		} else {
+			s = Math.sqrt(1 + m22 - m00 - m11) * 2;
+			orientation[3] = (m10 - m01) / s;
+			orientation[0] = (m02 + m20) / s;
+			orientation[1] = (m12 + m21) / s;
+			orientation[2] = 0.25 * s;
+		}
+		updateBasis();
+	}
+
+	function setOrientationFromYawPitch(nextYaw, nextPitch) {
+		const cy = Math.cos(nextYaw);
+		const sy = Math.sin(nextYaw);
+		const cp = Math.cos(nextPitch);
+		const sp = Math.sin(nextPitch);
+		setOrientationFromBasis(
+			cy * cp, sy * cp, sp,
+			sy, -cy, 0,
+			-cy * sp, -sy * sp, cp);
+	}
+
+	function rotateOrientation(ax, ay, az, angle) {
+		if (angle === 0) return;
+		const axisLen = Math.sqrt(ax * ax + ay * ay + az * az);
+		if (axisLen <= QUAT_EPS) return;
+		const half = angle * 0.5;
+		const s = Math.sin(half) / axisLen;
+		const qx = ax * s;
+		const qy = ay * s;
+		const qz = az * s;
+		const qw = Math.cos(half);
+		const x = orientation[0], y = orientation[1], z = orientation[2], w = orientation[3];
+		orientation[0] = qw * x + qx * w + qy * z - qz * y;
+		orientation[1] = qw * y - qx * z + qy * w + qz * x;
+		orientation[2] = qw * z + qx * y - qy * x + qz * w;
+		orientation[3] = qw * w - qx * x - qy * y - qz * z;
+	}
+
+	function applyLook(dx, dy) {
+		if (dx !== 0) {
+			rotateOrientation(upExact[0], upExact[1], upExact[2], -dx * LOOK_SENSITIVITY);
+			updateBasis();
+		}
+		if (dy !== 0) {
+			rotateOrientation(rightExact[0], rightExact[1], rightExact[2], -dy * LOOK_SENSITIVITY);
+			updateBasis();
+		}
+	}
+
+	function aimForwardAt(dx, dy, dz) {
+		const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+		if (len <= QUAT_EPS) return;
+		const tx = dx / len;
+		const ty = dy / len;
+		const tz = dz / len;
+		let dot = forwardExact[0] * tx + forwardExact[1] * ty + forwardExact[2] * tz;
+		dot = clamp(dot, -1, 1);
+		if (dot > 1 - 1e-12) return;
+		if (dot < -1 + 1e-12) {
+			rotateOrientation(upExact[0], upExact[1], upExact[2], Math.PI);
+			updateBasis();
+			return;
+		}
+		const ax = forwardExact[1] * tz - forwardExact[2] * ty;
+		const ay = forwardExact[2] * tx - forwardExact[0] * tz;
+		const az = forwardExact[0] * ty - forwardExact[1] * tx;
+		rotateOrientation(ax, ay, az, Math.atan2(Math.sqrt(ax * ax + ay * ay + az * az), dot));
+		updateBasis();
+	}
+
 	updateBasis();
 	updateCameraPos();
 
@@ -171,9 +305,9 @@ function createCamera() {
 		updateCameraPos();
 	}
 
-	// Aim at the target from where the camera is. With the angles set this
+	// Aim at the target from where the camera is. With the orientation set this
 	// way, target - distance * forward is the current position: entering orbit
-	// turns the camera, it does not move it (unless a clamp intervenes).
+	// turns the camera, it does not move it (unless a distance clamp intervenes).
 	function snapToOrbit() {
 		const t = orbitTarget();
 		const dx = t[0] - position[0];
@@ -181,19 +315,15 @@ function createCamera() {
 		const dz = t[2] - position[2];
 		const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
 		orbitDistance = clamp(d, ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX);
-		if (d > 0) {
-			yaw = Math.atan2(dy, dx);
-			pitch = clamp(Math.asin(clamp(dz / d, -1, 1)), -PITCH_LIMIT, PITCH_LIMIT);
-		}
+		if (d > 0) aimForwardAt(dx, dy, dz);
 		stopVelocity();
-		updateBasis();
 		placeOnOrbit();
 	}
 
 	function setMode(next) {
 		if (next === mode) return;
 		mode = next;
-		if (mode === MODE_FLY) return;   // position, yaw and pitch continue; velocity is already zero
+		if (mode === MODE_FLY) return;   // position and orientation continue; velocity is already zero
 		snapToOrbit();
 	}
 
@@ -248,9 +378,7 @@ function createCamera() {
 		if (mode === MODE_FLY) {
 			setPosition(homePosition);
 			stopVelocity();
-			yaw = homeYaw;
-			pitch = homePitch;
-			updateBasis();
+			setOrientationFromYawPitch(homeYaw, homePitch);
 			updateCameraPos();
 			return;
 		}
@@ -286,10 +414,10 @@ function createCamera() {
 		let vx = 0, vy = 0, vz = 0;
 		if (keys.forward) { vx += forwardExact[0]; vy += forwardExact[1]; vz += forwardExact[2]; }
 		if (keys.back) { vx -= forwardExact[0]; vy -= forwardExact[1]; vz -= forwardExact[2]; }
-		if (keys.right) { vx += rightExact[0]; vy += rightExact[1]; }
-		if (keys.left) { vx -= rightExact[0]; vy -= rightExact[1]; }
-		if (keys.up) vz += 1;
-		if (keys.down) vz -= 1;
+		if (keys.right) { vx += rightExact[0]; vy += rightExact[1]; vz += rightExact[2]; }
+		if (keys.left) { vx -= rightExact[0]; vy -= rightExact[1]; vz -= rightExact[2]; }
+		if (keys.up) { vx += upExact[0]; vy += upExact[1]; vz += upExact[2]; }
+		if (keys.down) { vx -= upExact[0]; vy -= upExact[1]; vz -= upExact[2]; }
 
 		const len = Math.sqrt(vx * vx + vy * vy + vz * vz);
 		if (len > 1e-6) {
@@ -321,15 +449,19 @@ function createCamera() {
 		const factor = keyFactor(keys, ORBIT_KEY_BOOST, 1 / ORBIT_KEY_BOOST);
 		const turn = ORBIT_TURN_RATE * factor * dt;
 		let octaves = notches;
-		if (keys.right) yaw += turn;
-		if (keys.left) yaw -= turn;
-		if (keys.up) pitch -= turn;
-		if (keys.down) pitch += turn;
+		const yawStep = (keys.right ? turn : 0) - (keys.left ? turn : 0);
+		if (yawStep !== 0) {
+			rotateOrientation(upExact[0], upExact[1], upExact[2], yawStep);
+			updateBasis();
+		}
+		const pitchStep = (keys.down ? turn : 0) - (keys.up ? turn : 0);
+		if (pitchStep !== 0) {
+			rotateOrientation(rightExact[0], rightExact[1], rightExact[2], pitchStep);
+			updateBasis();
+		}
 		if (keys.forward) octaves -= ORBIT_DOLLY_RATE * factor * dt;
 		if (keys.back) octaves += ORBIT_DOLLY_RATE * factor * dt;
-		pitch = clamp(pitch, -PITCH_LIMIT, PITCH_LIMIT);
 		if (octaves !== 0) orbitDistance = clamp(orbitDistance * Math.pow(2, octaves), ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX);
-		updateBasis();
 		placeOnOrbit();
 	}
 
@@ -343,12 +475,9 @@ function createCamera() {
 		if (actions.reset) { actions.reset = 0; reset(); }
 
 		if (input.lookDx !== 0 || input.lookDy !== 0) {
-			yaw -= input.lookDx * LOOK_SENSITIVITY;
-			pitch -= input.lookDy * LOOK_SENSITIVITY;
-			pitch = clamp(pitch, -PITCH_LIMIT, PITCH_LIMIT);
+			applyLook(input.lookDx, input.lookDy);
 			input.lookDx = 0;
 			input.lookDy = 0;
-			updateBasis();
 		}
 
 		const notches = takeWheelNotches(input);
@@ -366,19 +495,9 @@ function createCamera() {
 	// and shift the entire sky by |cameraPosition| (invisible at the start
 	// position, catastrophic 8 kpc away at the galactic centre).
 	function buildViewProj(aspect) {
+		const sx = right[0], sy = right[1], sz = right[2];
+		const ux = up[0], uy = up[1], uz = up[2];
 		const fx = forward[0], fy = forward[1], fz = forward[2];
-
-		// right axis s = normalize(forward x worldUp)
-		let sx = fy;
-		let sy = -fx;
-		let sz = 0;
-		const slen = Math.sqrt(sx * sx + sy * sy);
-		if (slen > 1e-8) { sx /= slen; sy /= slen; }
-		else { sx = 1; sy = 0; sz = 0; }
-		// camera up u = s x forward
-		const ux = sy * fz - sz * fy;
-		const uy = sz * fx - sx * fz;
-		const uz = sx * fy - sy * fx;
 
 		view[0] = sx; view[4] = sy; view[8] = sz;
 		view[1] = ux; view[5] = uy; view[9] = uz;
@@ -411,10 +530,12 @@ function createCamera() {
 		const p = s.position || (s.position = [0, 0, 0]);
 		const v = s.velocity || (s.velocity = [0, 0, 0]);
 		const t = s.orbitTarget || (s.orbitTarget = [0, 0, 0]);
+		const q = s.orientation || (s.orientation = [0, 0, 0, 1]);
 		const target = orbitTarget();
 		p[0] = position[0]; p[1] = position[1]; p[2] = position[2];
 		v[0] = velocity[0]; v[1] = velocity[1]; v[2] = velocity[2];
 		t[0] = target[0]; t[1] = target[1]; t[2] = target[2];
+		q[0] = orientation[0]; q[1] = orientation[1]; q[2] = orientation[2]; q[3] = orientation[3];
 		s.yaw = yaw;
 		s.pitch = pitch;
 		s.mode = mode;
@@ -433,11 +554,19 @@ function createCamera() {
 		velocity[0] = state.velocity ? state.velocity[0] : 0;
 		velocity[1] = state.velocity ? state.velocity[1] : 0;
 		velocity[2] = state.velocity ? state.velocity[2] : 0;
-		yaw = state.yaw || 0;
-		pitch = state.pitch || 0;
 		speedMult = state.speedMult || 1;
 		mode = MODE_FLY;
-		updateBasis();
+		if (state.orientation) {
+			orientation[0] = state.orientation[0];
+			orientation[1] = state.orientation[1];
+			orientation[2] = state.orientation[2];
+			orientation[3] = state.orientation[3];
+			updateBasis();
+		} else {
+			setOrientationFromYawPitch(
+				Number.isFinite(state.yaw) ? state.yaw : 0,
+				Number.isFinite(state.pitch) ? state.pitch : 0);
+		}
 		updateCameraPos();
 		if (state.mode) setMode(state.mode);
 	}

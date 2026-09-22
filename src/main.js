@@ -297,6 +297,7 @@ async function boot() {
                 position: [0, 0, 0],
                 velocity: [0, 0, 0],
                 orbitTarget: [0, 0, 0],
+                orientation: [0, 0, 0, 1],
         };
         let overlayTimer = OVERLAY_INTERVAL;
 

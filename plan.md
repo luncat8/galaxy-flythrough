@@ -891,17 +891,24 @@ a fork should implement from. `plan-0.1.1-tasks.md` is the per-file checklist.
 **Brief:** fly / orbit the galactic centre / orbit the selected object, wheel ×2 speed
 or distance, 8 ly/s default, Shift ×100, Ctrl ×0.1, `H` home, `C` cycles modes.
 
-#### Modes and the one angle pair
+#### Modes and quaternion orientation
 
 ```
 MODE_FLY = 0 → MODE_ORBIT_GC = 1 → MODE_ORBIT_OBJECT = 2 → MODE_FLY   (KeyC)
 ```
 
-There is **one** `yaw`/`pitch` pair and it always means "the direction the camera
-looks". Fly mode integrates position with momentum; orbit mode derives it:
+The camera orientation is a **unit quaternion**. Local axes are `+X` forward, `−Y`
+screen-right and `+Z` screen-up at the default Sun view; the quaternion rotates those
+axes into the galaxy frame and produces the `forward` / `right` / `up` basis. There is no
+pitch clamp and no pole singularity: mouse look can go straight up/down and continue
+through a full loop. `getState().yaw` and `.pitch` are derived diagnostics for tests and
+future save files, not integration state.
+
+Fly mode integrates position with momentum. Orbit mode derives position from the same
+quaternion basis:
 
 ```
-forward  = (cos yaw · cos pitch, sin yaw · cos pitch, sin pitch)
+forward  = quat · localForward
 position = target − orbitDistance · forward          (orbit modes, every frame)
 ```
 
@@ -911,10 +918,15 @@ Consequences, and why the first plan's separate `orbitYaw/orbitPitch` was droppe
   sphere while the target stays centred, and it lands on the standard "grab the
   world" convention (drag right → camera swings left, the scene turns with the
   cursor; drag down → camera rises) without a sign table.
-- Entering orbit snaps the *angles*, not the position: `orbitDistance = |P − T|`,
-  `yaw = atan2(Ty−Py, Tx−Px)`, `pitch = asin((Tz−Pz)/d)`, then `position = T − d·forward`
-  reproduces P exactly. Leaving orbit changes nothing — position, yaw and pitch
-  continue, velocity is already zero. Switching is continuous both ways.
+- Entering orbit snaps the *orientation*, not the position: `orbitDistance = |P − T|`,
+  the quaternion is minimally rotated so `forward = normalize(T − P)`, then
+  `position = T − d·forward` reproduces P exactly. Looking from directly above the Sun
+  to the Sun is therefore exact instead of sliding sideways to avoid a pitch pole.
+  Leaving orbit changes nothing — position and quaternion continue, velocity is already
+  zero. Switching is continuous both ways.
+- The view matrix uses the quaternion `right` and `up` axes directly. It does not rebuild
+  them from `forward × worldUp`, because that would reintroduce the old pole singularity
+  and discard the camera roll/upside-down state after a loop.
 - No momentum in orbit: `velocity` is zeroed on entry and never integrated, so the
   camera cannot drift off the sphere.
 
@@ -923,7 +935,8 @@ second copy of 8.178). `ORBIT_OBJECT` circles `objectTarget`, a `Float64Array(3)
 `setOrbitTarget(x, y, z, name)` and defaulting to the Sun, so the mode is usable before
 0.1.2 adds selection; a call while `ORBIT_OBJECT` is active re-snaps to the new target
 from the current position (the camera turns, it does not teleport). Distance clamps to
-`[ORBIT_DISTANCE_MIN = 0.0001 kpc, ORBIT_DISTANCE_MAX = 100 kpc]`; pitch keeps the fly clamp.
+`[ORBIT_DISTANCE_MIN = 0.0001 kpc, ORBIT_DISTANCE_MAX = 100 kpc]`; orientation is
+unlimited (`PITCH_LIMIT` remains exported as `Infinity` only for compatibility).
 
 #### Controls
 
@@ -933,10 +946,10 @@ from the current position (the camera turns, it does not teleport). Distance cla
 | scroll | speed ×2 per notch (up = faster) | distance ×2 per notch (up = closer) |
 | W / S, ↑ / ↓ | forward / back | dolly: ×2^(∓ORBIT_DOLLY_RATE·dt) — halves or doubles per second |
 | A / D, ← / → | strafe | circle left / right at ORBIT_TURN_RATE rad/s (D moves the camera right) |
-| E / Q | up / down | rise over / dip under the target at ORBIT_TURN_RATE |
+| E / Q | camera-local up / down | rise over / dip under the target at ORBIT_TURN_RATE |
 | Shift / Ctrl | ×100 / ×0.1 (both held: ×10) | ×4 / ×0.25 on the key rates (`ORBIT_KEY_BOOST`) — ×100 on an angular rate is 16 turns a second |
 | C | next mode | next mode |
-| H | teleport to `START_POSITION`, yaw = pitch = 0, velocity 0; speed multiplier kept | `ORBIT_OBJECT` around the Sun at `HOME_ORBIT_DISTANCE = 0.01 kpc`, viewing direction kept |
+| H | teleport to `START_POSITION`, home orientation, velocity 0; speed multiplier kept | `ORBIT_OBJECT` around the Sun at `HOME_ORBIT_DISTANCE = 0.01 kpc`, viewing direction kept |
 | R | full reset: home + speedMult 1 + object target back to the Sun | same |
 
 Key semantics differ from mouse semantics on purpose: keys *move the camera* (D goes
@@ -979,15 +992,17 @@ ORBIT_DISTANCE_MIN = 0.0001 kpc         ORBIT_DISTANCE_MAX = 100 kpc
 ORBIT_TURN_RATE    = 1.0 rad/s          ORBIT_DOLLY_RATE = 1.0 octave/s
 ORBIT_KEY_BOOST    = 4                  Shift ×4, Ctrl ×0.25 in orbit
 HOME_ORBIT_DISTANCE= 0.01 kpc
+PITCH_LIMIT        = Infinity           compatibility export; orientation itself is unlimited
 START_POSITION     = (0, 0, 0.005)      SUN_POSITION = (0, 0, 0)
 ```
 
 `getState(out)` adds `mode`, `modeName` (from the constant `MODE_NAMES` table, no
-string building), `orbitTarget`, `orbitDistance`, `targetName`, `speedFactor` (the
-Shift/Ctrl product last seen), `speedKpcPerSec` (includes the factor) and `speedLyPerSec`.
-The overlay prints `camera <mode>`, speed in ly/s with the factor, and the orbit target
-and distance when orbiting. Per-frame cost is unchanged: no allocation, the same
-preallocated `viewProj` / `cameraPos` / basis arrays.
+string building), `orbitTarget`, `orientation` (`[x, y, z, w]` quaternion), diagnostic
+`yaw`/`pitch`, `orbitDistance`, `targetName`, `speedFactor` (the Shift/Ctrl product last
+seen), `speedKpcPerSec` (includes the factor) and `speedLyPerSec`. The overlay prints
+`camera <mode>`, speed in ly/s with the factor, and the orbit target and distance when
+orbiting. Per-frame cost is unchanged: no allocation, the same preallocated `viewProj` /
+`cameraPos` / basis arrays.
 
 #### Input additions
 
@@ -1001,11 +1016,12 @@ preallocated `viewProj` / `cameraPos` / basis arrays.
 Units (8 ly/s in kpc), wheel notch ×2 in both directions, accumulation across frames and
 remainder carry, clamps land on powers of two, boost ×100 / slow ×0.1 / both ×10, mode
 cycle and action consumption, orbit entry keeps the position and aims at the target,
-position stays on the sphere under random look input, wheel and W/S change distance,
-A/D and E/Q turn at the documented rate and are dt-independent, distance clamps, the
-default object target is the Sun, `setOrbitTarget` re-snaps, `H` in fly and in orbit,
-`R` restores everything, orbit → fly is continuous with zero velocity, buffers are
-never reallocated across mode switches.
+position stays on the sphere under random look input, the camera can look straight up
+and loop past the old pitch pole, the projection keeps quaternion right/up at the pole,
+wheel and W/S change distance, A/D and E/Q turn at the documented rate and are
+dt-independent, distance clamps, the default object target is the Sun, `setOrbitTarget`
+re-snaps, `H` in fly and in orbit, `R` restores everything, orbit → fly is continuous
+with zero velocity, buffers are never reallocated across mode switches.
 
 ### 0.1.2 — Landmarks & constellations (implemented)
 
