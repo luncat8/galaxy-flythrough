@@ -452,12 +452,21 @@ fn sinTau(arg: f32) -> f32 {
         return sin(TAU * fract(arg * INV_TAU));
 }
 
-fn pressureClock(r: f32) -> f32 {
+fn pressureClock(dynA: vec4f, r: f32) -> f32 {
+        // Plan §1.1 ω̄: mean disc frequency for disc-type galaxies, the
+        // Keplerian spheroid clock only when there is no disc curve (E).
+        if (dynA.x > 0.0) { return dynA.x / max(r, dynA.y); }
         return PRESSURE_CLOCK_1KPC / max(pow(max(r, 0.1), 1.5), 0.01);
 }
 
 fn orbitOmega(family: u32, r: f32, dynA: vec4f, dynB: vec4f) -> f32 {
-        if (family == FAMILY_PATTERN || family == FAMILY_BAR) { return dynA.z; }
+        if (family == FAMILY_BAR) { return dynA.z; }
+        if (family == FAMILY_PATTERN) {
+                // No pattern (S0/E/Irr): orbit like the disc neighbours instead
+                // of freezing. galaxy.js guarantees omegaPattern > 0 for bars.
+                if (dynA.z > 0.0) { return dynA.z; }
+                return select(0.0, dynA.x / max(r, dynA.y), dynA.x > 0.0);
+        }
         if (family == FAMILY_DISC) {
                 let circ: f32 = dynA.x / max(r, dynA.y);
                 if (dynA.z > 0.0 && dynA.x > 0.0) {
@@ -466,7 +475,7 @@ fn orbitOmega(family: u32, r: f32, dynA: vec4f, dynB: vec4f) -> f32 {
                 }
                 return circ;
         }
-        return dynA.w * pressureClock(r);
+        return dynA.w * pressureClock(dynA, r);
 }
 
 fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, dynB: vec4f) -> vec3f {
@@ -493,7 +502,7 @@ fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, d
                 wrx = wr * q.x / r; wry = wr * q.y / r;
         } else if (family == FAMILY_PRESSURE) {
                 let a: f32 = rank * dynB.y;
-                let mean: f32 = pressureClock(r);
+                let mean: f32 = pressureClock(dynA, r);
                 let wr: f32 = a * (sinTau(phase + mean * time) - sinPh);
                 wz = a * (sinTau(phase + HALF_PI + mean * time) - sinPhV);
                 wrx = wr * q.x / r; wry = wr * q.y / r;

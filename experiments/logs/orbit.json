@@ -1,7 +1,7 @@
 {
-  "date": "2026-09-22T02:06:41.109Z",
-  "totalChecks": 28,
-  "passed": 28,
+  "date": "2026-09-22T02:30:08.091Z",
+  "totalChecks": 52,
+  "passed": 52,
   "failed": 0,
   "checks": [
     {
@@ -82,6 +82,176 @@
       }
     },
     {
+      "name": "E0: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "E1: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "E2: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "E3: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "E4: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "E5: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "E6: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "E7: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "S0: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "Sa: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "Sb: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "Sc: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "Sd: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "SB0: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "SBa: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "SBb: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "SBc: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "SBd: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "Irr: every family the model uses has ω > 0",
+      "pass": true,
+      "detail": {
+        "frozen": []
+      }
+    },
+    {
+      "name": "S0 spheroid/halo turns: pressure bulk = λ·Ω_disc(r) (plan §1.1, not 0)",
+      "pass": true,
+      "detail": {
+        "wSph": 0.023000000000000003,
+        "lambda": 0.15
+      }
+    },
+    {
+      "name": "S0 bright A star (pattern, no pattern to follow) orbits with the disc, not frozen",
+      "pass": true,
+      "detail": {
+        "pattern": 0.07666666666666667
+      }
+    },
+    {
+      "name": "SB0 carries a pattern speed (barred types never inherit ω_p = 0)",
+      "pass": true,
+      "detail": {
+        "omegaPattern": 0.031
+      }
+    },
+    {
+      "name": "SB0 bar is rigid at ω_p and the inner disc joins its group (R_CR = vFlat/ω_p)",
+      "pass": true,
+      "detail": {
+        "bar": 0.031,
+        "rCr": 7.419354838709678
+      }
+    },
+    {
+      "name": "SB0 spheroid pressure spin also lives (λ·Ω_disc)",
+      "pass": true,
+      "detail": {
+        "w": 0.023000000000000003
+      }
+    },
+    {
       "name": "a disc star returns to its start after one period (229 Myr, < 0.1 kpc)",
       "pass": true,
       "detail": {
@@ -143,7 +313,7 @@
           0.22499999403953552,
           0.5,
           0.04100000113248825,
-          0
+          0.15000000596046448
         ]
       }
     },

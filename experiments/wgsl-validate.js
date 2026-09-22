@@ -389,6 +389,14 @@ function wgslConsts(part) {
         check('orbit.wgsl hard-codes no per-galaxy rotation numbers',
                 !/\b0\.225\b|\b0\.041\b|\b0\.031\b|\b0\.23\b/.test(orbitWgsl),
                 orbitWgsl.match(/\b0\.225\b|\b0\.041\b|\b0\.031\b|\b0\.23\b/g));
+        check('orbit pressure clock is hybrid (disc frequency, Keplerian for E) on both sides',
+                /function pressureClock\(dyn, r\)/.test(orbitSrc)
+                && /if \(dyn\.vFlat > 0\) return dyn\.vFlat/.test(orbitSrc)
+                && /fn pressureClock\(dynA: vec4f, r: f32\)/.test(orbitWgsl)
+                && /if \(dynA\.x > 0\.0\)/.test(orbitWgsl));
+        check('pattern family falls back to the disc curve when omegaPattern = 0 (both sides)',
+                /family === FAMILY_PATTERN[\s\S]{0,800}dyn\.vFlat > 0 \? dyn\.vFlat/.test(orbitSrc)
+                && /family == FAMILY_PATTERN[\s\S]{0,800}select\(0\.0/.test(orbitWgsl));
         check('both sides reduce the FULL sin argument (wobble continuity across bulk wraps)',
                 orbitSrc.includes('function sinTau') && orbitWgsl.includes('fn sinTau')
                 && !/sin\(phase \+ theta/.test(orbitWgsl));

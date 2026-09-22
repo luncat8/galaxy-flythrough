@@ -74,25 +74,39 @@ function fillDynamics(dyn, model) {
 	// the spheroid's own semimajor axis ("visual dynamical friction"); E-type
 	// spheroids (no disc, vFlat 0) use the raw virial value.
 	const axis = (sph.a || 1) * (sph.r0 || 1);
-	const virial = 2 * sigmaSph / PRESSURE_CLOCK_1KPC;
 	dyn.vFlat = d.vFlat || 0;
 	dyn.rCore = d.rCore > 0 ? d.rCore : DEFAULT_R_CORE;
 	dyn.omegaPattern = d.omegaPattern || 0;
 	dyn.spinLambda = d.spinLambda == null ? DEFAULT_SPIN : d.spinLambda;
 	dyn.sigmaThin = d.sigmaThin || 0;
+	// Virial scale evaluated on the same clock the law boils at (r = 1 kpc).
+	const virial = 2 * sigmaSph / pressureClock(dyn, 1);
 	dyn.pressureAmpScale = dyn.vFlat > 0 ? Math.min(virial, 0.3 * axis) : virial;
 	dyn.discHeight = trunc.discHeight > 0 ? trunc.discHeight : 1e3;
 	dyn.patternLock = d.patternLock ? 1 : 0;
 	return dyn;
 }
 
-function pressureClock(r) {
+// Plan §1.1: ω̄, the spheroid's spin/boil clock — the *mean disc frequency*
+// Ω(r) for disc-type galaxies (their spheroids are rotation-coupled), the
+// Keplerian 0.05·r^−1.5 clock when the type has no disc curve (E). A single
+// pressureClock for bulk spin, boil frequency and the amplitude scale.
+function pressureClock(dyn, r) {
+	if (dyn.vFlat > 0) return dyn.vFlat / Math.max(r, dyn.rCore);
 	return PRESSURE_CLOCK_1KPC / Math.max(Math.pow(Math.max(r, 0.1), 1.5), 0.01);
 }
 
 // Bulk angular rate for one family at galactocentric radius r.
 function omegaFrom(dyn, family, r) {
-	if (family === FAMILY_PATTERN || family === FAMILY_BAR) return dyn.omegaPattern;
+	if (family === FAMILY_BAR) return dyn.omegaPattern;
+	if (family === FAMILY_PATTERN) {
+		// A bar always carries omegaPattern > 0 (galaxy.js guarantees it per
+		// type). A pattern with no pattern — S0/E/Irr — is not a frozen star:
+		// it orbits like its disc neighbours (the Keplerian clock if there is
+		// no disc at all).
+		if (dyn.omegaPattern > 0) return dyn.omegaPattern;
+		return dyn.vFlat > 0 ? dyn.vFlat / Math.max(r, dyn.rCore) : 0;
+	}
 	if (family === FAMILY_DISC) {
 		const circ = dyn.vFlat / Math.max(r, dyn.rCore);
 		if (dyn.omegaPattern > 0 && dyn.vFlat > 0) {
@@ -103,7 +117,7 @@ function omegaFrom(dyn, family, r) {
 		}
 		return circ;
 	}
-	return dyn.spinLambda * pressureClock(r);
+	return dyn.spinLambda * pressureClock(dyn, r);
 }
 
 function omegaFor(family, x, y, model) {
@@ -148,7 +162,7 @@ function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
 		wrx = wr * qx / r; wry = wr * qy / r;
 	} else if (family === FAMILY_PRESSURE) {
 		const a = rank * dyn.pressureAmpScale;
-		const mean = pressureClock(r);
+		const mean = pressureClock(dyn, r);
 		const wr = a * (sinTau(ph + mean * time) - sinPh);
 		wz = a * (sinTau(ph + HALF_PI + mean * time) - sinPhV);
 		wrx = wr * qx / r; wry = wr * qy / r;

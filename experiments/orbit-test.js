@@ -144,6 +144,52 @@ function dist3(a, b) {
 		spread < 0.0175, { spreadRad: spread, ang });
 }
 
+// --- 4b. The S0/SB0 regression: nothing that should move is frozen -------
+// Reported: "half the stars almost don't move", worst on SB0 and S0. Two
+// data/law defects caused it — a barred type inheriting omegaPattern = 0
+// (rigid bar at ω = 0 while the disc turns) and disc-type spheroids with
+// spinLambda = 0 (pressure family at ω = 0). Sweep every type: any family
+// that the model puts stars in must have ω > 0.
+{
+	for (const type of galaxy.GALAXY_TYPES) {
+		const m = type === 'SBb' ? galaxy.MILKY_WAY : galaxy.createGalaxy({ type, seed: 11 });
+		const d = orbit.fillDynamics({}, m);
+		const moving = [];
+		if (m.barred) moving.push(['bar', d.omegaPattern > 0]);
+		if (d.vFlat > 0) {
+			moving.push(['disc', orbit.omegaFor(orbit.FAMILY_DISC, 3, 0, m) > 0]);
+			moving.push(['pattern', orbit.omegaFor(orbit.FAMILY_PATTERN, 3, 0, m) > 0]);
+		}
+		moving.push(['pressure', orbit.omegaFor(orbit.FAMILY_PRESSURE, 1.5, 0, m) > 0]);
+		const frozen = moving.filter(([, ok]) => !ok).map(([f]) => f);
+		check(`${type}: every family the model uses has ω > 0`, frozen.length === 0, { frozen });
+	}
+
+	const s0m = galaxy.createGalaxy({ type: 'S0', seed: 11 });
+	const s0 = orbit.fillDynamics({}, s0m);
+	const wSph = orbit.omegaFor(orbit.FAMILY_PRESSURE, 1.5, 0, s0m);
+	check('S0 spheroid/halo turns: pressure bulk = λ·Ω_disc(r) (plan §1.1, not 0)',
+		Math.abs(wSph - s0.spinLambda * (s0.vFlat / Math.max(1.5, s0.rCore))) < 1e-12
+		&& wSph > 0, { wSph, lambda: s0.spinLambda });
+	check('S0 bright A star (pattern, no pattern to follow) orbits with the disc, not frozen',
+		orbit.omegaFor(orbit.FAMILY_PATTERN, 3, 0, s0m)
+			=== orbit.omegaFor(orbit.FAMILY_DISC, 3, 0, s0m),
+		{ pattern: orbit.omegaFor(orbit.FAMILY_PATTERN, 3, 0, s0m) });
+
+	const sb0m = galaxy.createGalaxy({ type: 'SB0', seed: 11 });
+	const sb0 = orbit.fillDynamics({}, sb0m);
+	check('SB0 carries a pattern speed (barred types never inherit ω_p = 0)',
+		sb0.omegaPattern === 0.031, { omegaPattern: sb0.omegaPattern });
+	check('SB0 bar is rigid at ω_p and the inner disc joins its group (R_CR = vFlat/ω_p)',
+		orbit.omegaFor(orbit.FAMILY_BAR, 1.5, 0, sb0m) === sb0.omegaPattern
+		&& orbit.omegaFor(orbit.FAMILY_DISC, 2, 0, sb0m) === sb0.omegaPattern
+		&& Math.abs(sb0.vFlat / sb0.omegaPattern - 7.42) < 0.01,
+		{ bar: orbit.omegaFor(orbit.FAMILY_BAR, 1.5, 0, sb0m), rCr: sb0.vFlat / sb0.omegaPattern });
+	check('SB0 spheroid pressure spin also lives (λ·Ω_disc)',
+		orbit.omegaFor(orbit.FAMILY_PRESSURE, 1.5, 0, sb0m) > 0,
+		{ w: orbit.omegaFor(orbit.FAMILY_PRESSURE, 1.5, 0, sb0m) });
+}
+
 // --- 5. Sun round-trip and pattern-vs-disc shear -------------------------
 {
 	const sx = MW.centre.x + 8.178, sy = 0;
@@ -266,10 +312,17 @@ function orbitPositionF32(px, py, pz, packed, cx, time, dynA, dynB) {
 	const qx = fr(fr(px) - fr(cx)); const qy = fr(fr(py) - fr(0)); const qz = fr(fr(pz) - fr(0));
 	let rx = fr(qx * qx); let ry = fr(qy * qy);
 	const r = fr(Math.max(fr(Math.sqrt(fr(rx + ry))), fr(0.001)));
-	// omega
+	// omega — mirrors orbitOmega exactly, including the pattern-without-a-
+	// pattern fallback and the hybrid pressure clock (disc curve / Keplerian).
+	const pressureClockF = () => (dynA[0] > 0
+		? fr(dynA[0] / fr(Math.max(r, dynA[1])))
+		: fr(fr(0.05) / fr(Math.max(fr(Math.pow(fr(Math.max(r, 0.1)), 1.5)), fr(0.01)))));
 	let omega;
-	if (family === 0 || family === 2) omega = dynA[2];
-	else if (family === 1) {
+	if (family === 2) omega = dynA[2];
+	else if (family === 0) {
+		if (dynA[2] > 0) omega = dynA[2];
+		else omega = dynA[0] > 0 ? fr(dynA[0] / fr(Math.max(r, dynA[1]))) : 0;
+	} else if (family === 1) {
 		const circ = fr(dynA[0] / fr(Math.max(r, dynA[1])));
 		if (dynA[2] > 0 && dynA[0] > 0) {
 			if (dynB[3] > 0.5) omega = dynA[2];
@@ -277,7 +330,7 @@ function orbitPositionF32(px, py, pz, packed, cx, time, dynA, dynB) {
 			else omega = circ;
 		} else omega = circ;
 	} else {
-		omega = fr(dynA[3] * fr(fr(0.05) / fr(Math.max(fr(Math.pow(fr(Math.max(r, 0.1)), 1.5)), fr(0.01)))));
+		omega = fr(dynA[3] * pressureClockF());
 	}
 	const theta = fr(fr(6.28318530718) * fractf(fr(fr(omega) * fr(time) * fr(0.159154943092))));
 	const rank = fr(fr(amp + 0.5) * fr(0.0625));
@@ -294,7 +347,7 @@ function orbitPositionF32(px, py, pz, packed, cx, time, dynA, dynB) {
 		wrx = fr(wr * qx / r); wry = fr(wr * qy / r);
 	} else if (family === 3) {
 		const a = fr(rank * dynB[1]);
-		const mean = fr(fr(0.05) / fr(Math.max(fr(Math.pow(fr(Math.max(r, 0.1)), 1.5)), fr(0.01))));
+		const mean = pressureClockF();
 		const wr = fr(a * fr(sinTauF(fr(phase + mean * time)) - sinPh));
 		wz = fr(a * fr(sinTauF(fr(phase + fr(1.57079632679) + mean * time)) - sinPhV));
 		wrx = fr(wr * qx / r); wry = fr(wr * qy / r);

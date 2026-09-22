@@ -118,6 +118,11 @@
 	// need. `axes` are kpc at scaleKpc 1.0; the E flattening follows the Hubble law
 	// b/a = 1 - 0.1·E (E4 → 0.6) with a slightly boxier pole. Speeds are kpc/Myr
 	// (1 kpc/Myr = 978 km/s), so sigmaThin 0.031 is the thin disc's ~30 km/s.
+	// spinLambda is the pressure family's net spin λ (plan 0.4 §1.1: λ ∈ 0.05–0.3
+	// of the mean disc frequency — a stored 0 froze every disc galaxy's spheroid
+	// and halo into a static shell). BAR_OMEGA_PATTERN: pattern speed given to a
+	// barred type whose base has none, so the bar family never gets ω = 0.
+	const BAR_OMEGA_PATTERN = 0.031;
 	const BASE_SPECS = {
 		E4: {
 			T: -2, barred: false, profile: 'sersic', scaleKpc: 1.5, massTotal: 0.25,
@@ -131,21 +136,21 @@
 			axes: [0.90, 0.63, 0.50], discRadius: 25.0, discHeight: 3.0, spheroidRadius: 8.0,
 			halo: true, thickShare: 0.30, youngScaleHeight: 0.5,
 			dynamics: { vFlat: 0.230, rCore: 1.0, omegaPattern: 0.000, sigmaThin: 0.031,
-				sigmaThick: 0.051, sigmaSpheroid: 0.100, spinLambda: 0.0 },
+				sigmaThick: 0.051, sigmaSpheroid: 0.100, spinLambda: 0.15 },
 		},
 		SBb: {
 			T: 3, barred: true, preset: true, profile: 'plummer', scaleKpc: 1.0, massTotal: 1.00,
 			axes: [1.50, 0.50, 0.40], discRadius: 25.0, discHeight: 3.0, spheroidRadius: 6.0,
 			halo: true, thickShare: 0.246, youngScaleHeight: 0.5,
 			dynamics: { vFlat: 0.225, rCore: 0.5, omegaPattern: 0.041, sigmaThin: 0.031,
-				sigmaThick: 0.051, sigmaSpheroid: 0.150, spinLambda: 0.0 },
+				sigmaThick: 0.051, sigmaSpheroid: 0.150, spinLambda: 0.15 },
 		},
 		Sc: {
 			T: 5, barred: false, profile: 'sersic', scaleKpc: 1.4, massTotal: 1.30,
 			axes: [0.60, 0.42, 0.36], discRadius: 25.0, discHeight: 3.0, spheroidRadius: 6.0,
 			halo: true, thickShare: 0.20, youngScaleHeight: 0.6,
 			dynamics: { vFlat: 0.200, rCore: 0.5, omegaPattern: 0.025, sigmaThin: 0.031,
-				sigmaThick: 0.051, sigmaSpheroid: 0.100, spinLambda: 0.0 },
+				sigmaThick: 0.051, sigmaSpheroid: 0.100, spinLambda: 0.15 },
 		},
 	};
 
@@ -180,6 +185,13 @@
 				// thickness the stage's own. Boxiness, peanut and the end-cap profile
 				// come from the bar anchors at this stage.
 				axes: [base.axes[0] * 1.8, base.axes[1] * 0.7, base.axes[2]],
+				// A bar is a pattern: every barred type needs omegaPattern > 0 or
+				// the bar family freezes while the disc turns (the S0 base carries
+				// none). Own dynamics copy — base.dynamics is shared. 0.031 rad/Myr
+				// = 30 km/s/kpc, the floor of plan §3's 30–45 bar range.
+				dynamics: Object.assign({}, base.dynamics, {
+					omegaPattern: base.dynamics.omegaPattern || BAR_OMEGA_PATTERN,
+				}),
 			});
 		}
 		specs.SBb = BASE_SPECS.SBb;

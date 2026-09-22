@@ -779,3 +779,22 @@ R_CR = vFlat/Ω_p) replaces one division with a constant — zero extra ALU, no
 per-star state, no CPU pass. Make the lock continuous by construction (Ω(R)
 crosses Ω_p exactly at R_CR) so the seam cannot show as a shear ring, and guard
 Ω_p = 0 so pattern-less types never freeze.
+
+## Derived objects inherit the *values* they logically negate (0.4.2)
+
+`SB0 = Object.assign({}, S0, { barred: true })` kept S0's `omegaPattern: 0` —
+so the rigid **bar** family ran at ω = 0 while the disc turned: the exact
+"group moves but stars freeze" symptom, invisible in any type-count test.
+When a derivation changes what a field *means* (unbarred 0 → pattern speed),
+override it explicitly in the branch, and add a **per-family ω > 0 sweep over
+every type** (orbit-test §4b) so frozen populations can't hide in data.
+
+## λ·ω̄ = 0 is a silent half-galaxy freeze (0.4.2)
+
+`spinLambda: 0.0` is legal input with a valid output (bulk spin = 0) — the
+spheroid still "boils" at sub-pixel amplitude, so the population reads as
+frozen, not as broken. Data ranges from the plan (λ ∈ 0.05–0.3) belong in
+the model table; test "every family the model uses has ω > 0", not "no throw".
+Also: when re-deriving a clock shape, re-read the plan's family table first —
+0.4.1's always-Keplerian ω̄ contradicted §1.1's "mean disc frequency" and had
+to be reverted to the hybrid one release later.
