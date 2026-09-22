@@ -419,7 +419,29 @@ fn sampleComponent(params: DensityParams, x: f32, y: f32, z: f32, u: f32) -> u32
 }
 `;
 
-const STAR_SPRITE = `
+const ORBIT = `
+// 0.4 closed-form orbit; the CPU and shader use the same family constants.
+fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32) -> vec3f {
+        let flags: u32 = (packed >> 16u) & 0xFFu;
+        let family: u32 = (flags >> 3u) & 3u;
+        let phase: f32 = f32((packed >> 24u) & 15u) * 0.3926990817;
+        let amp: f32 = f32((packed >> 28u) & 15u);
+        let q: vec3f = p - centre;
+        let r: f32 = max(length(q.xy), 0.001);
+        var omega: f32 = 0.0;
+        if (family == 0u || family == 2u) { omega = 0.041; }
+        else if (family == 1u) { omega = 0.225 / max(r, 0.5); }
+        else { omega = 0.005 / max(pow(r, 1.5), 0.1); }
+        let theta: f32 = 6.2831853 * fract(omega * time * 0.15915494);
+        let wobble: f32 = select(0.0, (amp / 15.0) * 0.008, family == 1u);
+        let w0: f32 = sin(phase);
+        let w: f32 = wobble * (sin(phase + theta * 1.41421356) - w0);
+        let c: f32 = cos(theta); let sn: f32 = sin(theta);
+        return centre + vec3f(c * (q.x + w) - sn * q.y, sn * (q.x + w) + c * q.y, q.z + wobble * (sin(phase + theta) - w0));
+}
+`;
+
+const STAR_SPRITE = `${ORBIT}
 // Path B: additive point sprites, 4 vertices per star (triangle strip).
 // WebGPU has no gl_PointSize, so each star is an instanced quad whose corner
 // comes from vertex_index.
@@ -499,7 +521,8 @@ fn vs_main(
                 return hidden(vid);
         }
 
-        let rel: vec3f = vec3f(star.x, star.y, star.z) - camera.cameraPos.xyz;
+        let moved: vec3f = orbitPosition(vec3f(star.x, star.y, star.z), star.packed, vec3f(camera.cameraPos.w, 0.0, 0.0), camera.params.w);
+        let rel: vec3f = moved - camera.cameraPos.xyz;
         let clip: vec4f = camera.viewProj * vec4f(rel.x, rel.y, rel.z, 1.0);
         if (clip.w <= 0.0) {
                 return hidden(vid);   // behind the camera

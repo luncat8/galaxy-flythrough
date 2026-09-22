@@ -11,9 +11,15 @@ const PICK_RADIUS_PX = 20;
 const selectionCoords = (typeof module !== 'undefined' && module.exports)
 	? require('../math/coords.js')
 	: window.Coords;
+const selectionOrbit = (typeof module !== 'undefined' && module.exports)
+	? { orbitPosition: () => {}, familyForStar: () => 1 }
+	: window.OrbitLib;
 
 function createSelection(camera, landmarks) {
 	const scratch = new Float32Array(3);
+	const orbitScratch = new Float64Array(3);
+	let orbitModel = null, orbitTime = 0;
+	function setOrbitState(model, time) { orbitModel = model; orbitTime = time || 0; }
 
 	function pick(x, y, width, height) {
 		if (!landmarks || landmarks.count === 0 || !(width > 0) || !(height > 0)) return -1;
@@ -23,8 +29,13 @@ function createSelection(camera, landmarks) {
 		let best = -1;
 		let bestD2 = PICK_RADIUS_PX * PICK_RADIUS_PX;
 		for (let i = 0; i < landmarks.count; i++) {
-			if (!selectionCoords.projectToScreen(viewProj,
-				pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2],
+			let px = pos[i * 3], py = pos[i * 3 + 1], pz = pos[i * 3 + 2];
+			if (orbitModel) {
+				selectionOrbit.orbitPosition(orbitScratch, px, py, pz,
+					selectionOrbit.familyForStar(0, landmarks.ENTRIES[i].colorIndex <= 2 ? 'B' : 'G', false), 0, 0, orbitTime, orbitModel);
+				px = orbitScratch[0]; py = orbitScratch[1]; pz = orbitScratch[2];
+			}
+			if (!selectionCoords.projectToScreen(viewProj, px, py, pz,
 				cam[0], cam[1], cam[2], width, height, scratch)) continue;
 			const dx = scratch[0] - x;
 			const dy = scratch[1] - y;
@@ -37,7 +48,7 @@ function createSelection(camera, landmarks) {
 		return best;
 	}
 
-	return { pick };
+	return { pick, setOrbitState };
 }
 
 const Selection = { createSelection, PICK_RADIUS_PX };

@@ -76,6 +76,12 @@ async function boot() {
         // camera frame and the overlay's label all read this object, so switching
         // galaxies builds a new one and hands it round instead of poking four modules.
         let model = galaxy.createGalaxy({ type: params.type, seed: params.seed, age: params.age });
+        // 0.4 global stellar clock. It is f64 on the CPU and exported as one
+        // f32 uniform only after the documented epoch wrap.
+        let starTimeMyr = 0;
+        let starTimeRate = 0;
+        let lastNonZeroTimeRate = 1;
+        const STAR_TIME_WRAP = 0x800000;
 
         function showError(message) {
                 errorBox.textContent = message;
@@ -147,10 +153,12 @@ async function boot() {
         const sliderBright = document.getElementById('slider-brightness');
         const sliderWhite = document.getElementById('slider-white');
         const sliderSat = document.getElementById('slider-saturation');
+        const sliderStarTime = document.getElementById('slider-star-time');
         const valExp = document.getElementById('val-exposure');
         const valBright = document.getElementById('val-brightness');
         const valWhite = document.getElementById('val-white');
         const valSat = document.getElementById('val-saturation');
+        const valStarTime = document.getElementById('val-star-time');
         const btnDefaults = document.getElementById('menu-defaults');
 
         // Brightness slider is linear in multiplier (0.125 – 8.0), not stops,
@@ -191,6 +199,16 @@ async function boot() {
                 renderer.setSaturation(Number(sliderSat.value));
                 valSat.textContent = renderer.state.saturation.toFixed(1) + '×';
         });
+        function syncStarTime() {
+                sliderStarTime.value = starTimeRate;
+                valStarTime.textContent = window.OrbitLib.formatTimeRate(starTimeRate, 0);
+        }
+        sliderStarTime.addEventListener('input', () => {
+                starTimeRate = Number(sliderStarTime.value);
+                if (starTimeRate > 0) lastNonZeroTimeRate = starTimeRate;
+                syncStarTime();
+        });
+        syncStarTime();
         btnDefaults.addEventListener('click', () => {
                 renderer.setExposure(window.StarRenderer.EXPOSURE_DEFAULT);
                 renderer.setLinearExposure(window.StarRenderer.LINEAR_EXPOSURE_DEFAULT);
@@ -331,7 +349,7 @@ async function boot() {
                         ` + catalog ${catKept.toLocaleString()}/${state.catalogTotalStars.toLocaleString()}\n` +
                         `cells ${state.cellsResident}/${state.catalogCells}   decoded ${(state.decodedBytes / 1024).toFixed(0)} KB` +
                         `   buffer ${(state.bufferBytes / 1048576).toFixed(1)} MB\n` +
-                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   Tab menu\n` +
+                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)   Tab menu\n` +
                         `pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
                         cameraLine(cameraState) +
                         selectedLine(cameraState);
@@ -341,6 +359,18 @@ async function boot() {
                 const actions = input.state.actions;
                 const resetting = actions.reset;
                 camera.step(dt, input.state);
+                if (actions.freezeTime) {
+                        actions.freezeTime = 0;
+                        if (starTimeRate === 0) starTimeRate = lastNonZeroTimeRate;
+                        else { lastNonZeroTimeRate = starTimeRate; starTimeRate = 0; }
+                        syncStarTime();
+                }
+                const cameraStateForTime = camera.getState(statsText);
+                const effectiveTimeRate = starTimeRate < 0
+                        ? (-starTimeRate) * window.OrbitLib.FLIGHT_TIME_GAIN * cameraStateForTime.speedLyPerSec
+                        : starTimeRate;
+                starTimeMyr += effectiveTimeRate * dt;
+                if (starTimeMyr >= STAR_TIME_WRAP || starTimeMyr < 0) starTimeMyr = ((starTimeMyr % STAR_TIME_WRAP) + STAR_TIME_WRAP) % STAR_TIME_WRAP;
                 // R puts the orbit target back on the Sun, so a stale selection would
                 // contradict it the next time the user cycles into orbit-object mode.
                 if (resetting) {
@@ -361,6 +391,8 @@ async function boot() {
                         pendingAge = null;
                         regenerateAge(age);
                 }
+                labels.setOrbitState(model, starTimeMyr);
+                selection.setOrbitState(model, starTimeMyr);
                 if (actions.pick) {
                         actions.pick = 0;
                         // Named stars only exist for the Milky Way preset, so a procedural-only
@@ -385,7 +417,7 @@ async function boot() {
                 }
 
                 resizeCanvas();
-                renderer.render(camera, canvas.width, canvas.height, time, input.state);
+                renderer.render(camera, canvas.width, canvas.height, starTimeMyr, input.state);
                 labels.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
                 labels.draw(camera, canvas.clientWidth, canvas.clientHeight);
 

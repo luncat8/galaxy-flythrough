@@ -12,8 +12,9 @@
 //
 //   packed bits 0-7   colorIndex   index into the 256-entry colour LUT
 //   packed bits 8-15  absMagByte   absolute magnitude, ABS_MAG_MIN..ABS_MAG_MAX
-//   packed bits 16-23 flags        bit 0 visible, 1 landmark, 2 variable
-//   packed bits 24-31 jitter       sub-cell position jitter / spare
+//   packed bits 16-23 flags        bit 0 visible, 1 landmark, 2 variable,
+//                                  bits 3-4 orbit family
+//   packed bits 24-31 orbit         low nibble epicycle phase, high nibble amplitude rank
 //
 // Apparent magnitude is deliberately NOT stored: the vertex shader derives it
 // from the camera distance, so flying towards a star makes it brighter and

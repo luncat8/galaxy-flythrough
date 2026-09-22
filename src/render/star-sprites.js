@@ -104,6 +104,9 @@ const EMPTY_MANIFEST = {
 function createStarRenderer(device, context, format, options) {
         const opts = options || {};
         const records = window.StarRecord;
+        // Renderer unit tests construct the GPU harness without loading every page
+        // script; preserve the old static record path in that environment.
+        const orbit = window.OrbitLib || { flagsWithFamily: (flags) => flags, familyForStar: () => 1 };
         const landmarks = window.Landmarks;
         if (!landmarks || !landmarks.count) {
                 throw new Error('Landmarks data missing: index.html must load data/landmarks.js before render/star-sprites.js');
@@ -547,7 +550,7 @@ function createStarRenderer(device, context, format, options) {
                                 view, i * records.RECORD_BYTES,
                                 fieldStars.x[i], fieldStars.y[i], fieldStars.z[i],
                                 derived.colorIndex, derived.absMag + magOffset,
-                                records.FLAG_VISIBLE, Math.imul(i, 2654435761) & 0xFF,
+                                orbit.flagsWithFamily(records.FLAG_VISIBLE, orbit.familyForStar(fieldStars.component[i], derived.spectralClass, model.barred)), Math.imul(i, 2654435761) & 0xFF,
                         );
                 }
                 state.proceduralStars = proceduralCount;
@@ -758,7 +761,7 @@ function createStarRenderer(device, context, format, options) {
                                         // gap-fill star that ignored it would be a
                                         // different colour of the same sky.
                                         localDerived.colorIndex, localDerived.absMag + magOffset,
-                                        records.FLAG_VISIBLE, jitter,
+                                        orbit.flagsWithFamily(records.FLAG_VISIBLE, orbit.familyForStar(component, localDerived.spectralClass, model.barred)), jitter,
                                 );
                                 slot++;
                         }
@@ -848,7 +851,7 @@ function createStarRenderer(device, context, format, options) {
                 uniform[16] = camera.cameraPos[0];
                 uniform[17] = camera.cameraPos[1];
                 uniform[18] = camera.cameraPos[2];
-                uniform[19] = 0;
+                uniform[19] = model.centre ? model.centre.x : 0;
                 uniform[20] = width;
                 uniform[21] = height;
                 uniform[22] = 2 / width;

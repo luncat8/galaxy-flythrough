@@ -43,6 +43,10 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	// Off for galaxies that have no named stars: the layer is a fixed table of
 	// entries, so "nothing to say about this model" is a flag, not a second layer.
 	let enabled = true;
+	let orbitModel = null;
+	let orbitTime = 0;
+	const orbitScratch = new Float64Array(3);
+	function setOrbitState(model, time) { orbitModel = model; orbitTime = time || 0; }
 
 	function resize(widthCss, heightCss, dpr) {
 		const w = Math.max(1, Math.round(widthCss * dpr));
@@ -60,9 +64,15 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		const viewProj = camera.buildViewProj(width / height);
 		const pos = landmarks.positions;
 		const cam = camera.cameraPos;
+		const orbit = (typeof window !== 'undefined' ? window.OrbitLib : null);
 		for (let i = 0; i < count; i++) {
-			const visible = labelCoords.projectToScreen(viewProj,
-				pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2],
+			let px = pos[i * 3], py = pos[i * 3 + 1], pz = pos[i * 3 + 2];
+			if (orbit && orbitModel) {
+				orbit.orbitPosition(orbitScratch, px, py, pz,
+					orbit.familyForStar(0, landmarks.ENTRIES[i].colorIndex <= 2 ? 'B' : 'G', false), 0, 0, orbitTime, orbitModel);
+				px = orbitScratch[0]; py = orbitScratch[1]; pz = orbitScratch[2];
+			}
+			const visible = labelCoords.projectToScreen(viewProj, px, py, pz,
 				cam[0], cam[1], cam[2], width, height, scratch);
 			front[i] = visible ? 1 : 0;
 			if (visible) {
@@ -143,7 +153,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		return showLines;
 	}
 
-	return { resize, draw, setSelected, toggleConstellations, constellationsVisible, setEnabled };
+	return { resize, draw, setSelected, setOrbitState, toggleConstellations, constellationsVisible, setEnabled };
 }
 
 const LabelLayer = {

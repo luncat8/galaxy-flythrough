@@ -40,6 +40,11 @@
                         <span>Galaxy</span>
                 </div>
                 <div class="menu-row">
+                        <label for="slider-star-time">Star time <span class="kbd">T</span></label>
+                        <input type="range" id="slider-star-time" min="-1" max="99" step="0.5" value="0">
+                        <span id="val-star-time" class="menu-val">frozen</span>
+                </div>
+                <div class="menu-row">
                         <label for="galaxy-type">Type <span class="kbd">G</span></label>
                         <select id="galaxy-type"></select>
                         <span id="val-galaxy" class="menu-val">SBb #42</span>
@@ -90,6 +95,7 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
         <script src="math/sampling.js"></script>
         <script src="math/star-record.js"></script>
         <script src="math/star-types.js"></script>
+        <script src="math/orbit.js"></script>
         <script src="math/nebula.js"></script>
         <script src="math/objects.js"></script>
         <script src="math/coords.js"></script>
