@@ -121,7 +121,10 @@ async function main() {
 	// x' = x, y' = y, w' = -z: a star on -Z projects to the viewport centre.
 	const viewProj = new Float32Array(16);
 	viewProj[0] = 1; viewProj[5] = 1; viewProj[11] = -1; viewProj[14] = 1;
-	const cameraBytes = new ArrayBuffer(28 * 4);
+	// 144 bytes: camera block (16+4+4+4) + orbit dynamics dynA/dynB (4+4).
+	// The dyn slots stay zero for the radiance fixtures: family bits in the
+	// fixture records are 0 (pattern), omega = dynA.z = 0, T = 0 — frozen.
+	const cameraBytes = new ArrayBuffer(36 * 4);
 	const cam = new Float32Array(cameraBytes);
 	cam.set(viewProj, 0);
 	cam[20] = 1920; cam[21] = 1080; cam[22] = 2 / 1920; cam[23] = 2 / 1080;
@@ -176,6 +179,65 @@ async function main() {
 	const behind = runStage(spriteCode, 'vs_main', 'debugVertex',
 		{ vertex_index: 3, instance_index: 1 }, spriteBinds);
 	check('a star behind the camera contributes zero radiance', behind.brightness === 0, behind);
+
+	// --- 2b. The orbit law runs on the shipping WGSL ----------------------
+	// Plan §8: a solar-circle fixture through vs_main. The Sun sits at the
+	// world origin, the model centre at x = 8.178 (R = 8.178 kpc, outside
+	// R_CR = 5.49 — a differential disc orbit), Milky Way dynamics in
+	// dynA/dynB, identity viewProj and the camera 5 kpc up +Y, so clip.xy is
+	// (moved.x, moved.y − 5) plus the same sub-pixel corner offset in both
+	// runs. Half a period later the star must be at x ≈ 8.178 + 8.178.
+	const orbitCamBytes = new ArrayBuffer(36 * 4);
+	const ocam = new Float32Array(orbitCamBytes);
+	ocam[0] = 1; ocam[5] = 1; ocam[10] = 1; ocam[15] = 1;   // identity viewProj
+	ocam[17] = 5;                                           // camera y
+	ocam[19] = 8.178;                                       // model centre x
+	ocam[20] = 1920; ocam[21] = 1080; ocam[22] = 2 / 1920; ocam[23] = 2 / 1080;
+	ocam[24] = MAG_ZERO; ocam[25] = BASE_SIZE_PX; ocam[26] = MAX_SIZE_PX;
+	ocam[28] = 0.225; ocam[29] = 0.5; ocam[30] = 0.041; ocam[31] = 0;      // dynA
+	ocam[32] = 0.031; ocam[33] = 0.45; ocam[34] = 3; ocam[35] = 0;         // dynB
+
+	const sunBytes = new ArrayBuffer(records.RECORD_BYTES);
+	const sunF = new Float32Array(sunBytes);
+	const sunU = new Uint32Array(sunBytes);
+	sunF[0] = 0; sunF[1] = 0; sunF[2] = 0;
+	// family disc = 1 lands in flags bits 3-4 → packed word bits 19-20.
+	sunU[3] = (records.FLAG_VISIBLE | (1 << 3)) << 16
+		| (records.encodeAbsMag(4.83) << 8) | 4;
+	const sunBinds = {
+		0: {
+			0: { uniform: orbitCamBytes },
+			1: sunBytes,
+			2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
+		},
+	};
+	const sunOmega = 0.225 / 8.178;
+	const tHalf = Math.PI / sunOmega;
+
+	ocam[27] = 0;
+	const sunAt0 = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 0 }, sunBinds);
+	// The quad's own corner offset: vertex 3 → corner (+1, +1) at the 0.8 px
+	// floor, in clip units with w' = 1.
+	const offX = (0.8 * 0.5) * (2 / 1920);
+	const offY = (0.8 * 0.5) * (2 / 1080);
+	check('on-WGSL: at T = 0 the solar-circle star is exactly at the origin (identity rule)',
+		Math.abs(sunAt0.clipPos[0] - offX) < 1e-4 && Math.abs(sunAt0.clipPos[1] - (-5 + offY)) < 1e-4,
+		{ clip: Array.from(sunAt0.clipPos), off: [offX, offY] });
+
+	ocam[27] = tHalf;
+	const sunAtHalf = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 0 }, sunBinds);
+	const expectedX = 8.178 + 8.178;
+	check(`on-WGSL: after half a period (${tHalf.toFixed(1)} Myr) the star sits at x ≈ 16.356`,
+		Math.abs(sunAtHalf.clipPos[0] - expectedX) < 0.3
+		&& Math.abs(sunAtHalf.clipPos[1] + 5) < 0.3,
+		{ clip: Array.from(sunAtHalf.clipPos), expected: [expectedX, -5] });
+	// A frozen or wrongly-locked law would keep it near x = 0 — the check
+	// above is only meaningful if that alternative is visibly far away.
+	check('the half-period position discriminates a frozen orbit (far from T = 0)',
+		Math.abs(sunAtHalf.clipPos[0] - sunAt0.clipPos[0]) > 10,
+		{ dx: sunAtHalf.clipPos[0] - sunAt0.clipPos[0] });
 
 	// --- 3. N stars on one pixel are brighter than one --------------------
 	const faint = runStage(spriteCode, 'vs_main', 'debugVertex',

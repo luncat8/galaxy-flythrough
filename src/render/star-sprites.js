@@ -26,14 +26,14 @@
 // contiguous: `draw(4, global + landmarks + objects + local + thinnedCatalog)`.
 // No hidden slots, no per-cell GPU allocation, no compaction pass.
 //
-// Frame cost: one 112-byte uniform write, one catalog buffer write (only when
+// Frame cost: one 144-byte uniform write, one catalog buffer write (only when
 // the resident set changed), two additive passes into the HDR intermediate
 // (stars, then nebula billboards) and one tonemap pass. No depth attachment —
 // the sprites are additive, so there is nothing to depth-test against.
 
 'use strict';
 
-const UNIFORM_FLOATS = 28;              // 112 bytes, see star-sprite WGSL
+const UNIFORM_FLOATS = 36;              // 144 bytes, see star-sprite WGSL (16+4+4+4 camera, +8 orbit dynamics)
 // Tonemap uniform: x=exposure, y=whitePoint, z=saturation, w=outputMode (0=SDR, 1=HDR).
 const TONEMAP_UNIFORM_FLOATS = 4;
 const PROCEDURAL_STARS_DEFAULT = 300000;
@@ -106,7 +106,12 @@ function createStarRenderer(device, context, format, options) {
         const records = window.StarRecord;
         // Renderer unit tests construct the GPU harness without loading every page
         // script; preserve the old static record path in that environment.
-        const orbit = window.OrbitLib || { flagsWithFamily: (flags) => flags, familyForStar: () => 1 };
+        const orbit = window.OrbitLib || {
+                flagsWithFamily: (flags) => flags,
+                familyForStar: () => 1,
+                familyFromColorIndex: () => 1,
+                packOrbitDynamics: () => {},
+        };
         const landmarks = window.Landmarks;
         if (!landmarks || !landmarks.count) {
                 throw new Error('Landmarks data missing: index.html must load data/landmarks.js before render/star-sprites.js');
@@ -558,7 +563,10 @@ function createStarRenderer(device, context, format, options) {
         }
 
         // The named stars, flagged so later cull passes never thin them away.
-        // Positions are the load-time bake in data/landmarks.js.
+        // Positions are the load-time bake in data/landmarks.js. The orbit
+        // family follows the colour index (O/B/A pattern, else disc) — the
+        // exact rule label-layer.js and selection.js use, so labels and picks
+        // ride the same orbit the GPU draws.
         function writeLandmarks() {
                 const view = new DataView(staging, landmarkByteOffset, landmarkCount * records.RECORD_BYTES);
                 for (let i = 0; i < landmarkCount; i++) {
@@ -567,7 +575,10 @@ function createStarRenderer(device, context, format, options) {
                                 view, i * records.RECORD_BYTES,
                                 e.x, e.y, e.z,
                                 e.colorIndex, e.absMag,
-                                records.FLAG_VISIBLE | records.FLAG_LANDMARK, 0,
+                                orbit.flagsWithFamily(
+                                        records.FLAG_VISIBLE | records.FLAG_LANDMARK,
+                                        orbit.familyFromColorIndex(e.colorIndex)),
+                                0,
                         );
                 }
                 state.landmarkStars = landmarkCount;
@@ -860,6 +871,10 @@ function createStarRenderer(device, context, format, options) {
                 uniform[25] = BASE_SIZE_PX;
                 uniform[26] = MAX_SIZE_PX;
                 uniform[27] = time;
+                // Orbit dynamics (vec4 A + vec4 B): re-packed every frame so a
+                // regenerate can never leave the shader on the old galaxy's
+                // rotation numbers — eight floats, no allocation.
+                if (orbit.packOrbitDynamics) orbit.packOrbitDynamics(model, uniform, 28);
                 device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
                 tonemapUniform[0] = linearExposure;

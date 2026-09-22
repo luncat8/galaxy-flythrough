@@ -12,7 +12,7 @@ const selectionCoords = (typeof module !== 'undefined' && module.exports)
 	? require('../math/coords.js')
 	: window.Coords;
 const selectionOrbit = (typeof module !== 'undefined' && module.exports)
-	? { orbitPosition: () => {}, familyForStar: () => 1 }
+	? { orbitPosition: () => {}, familyFromColorIndex: () => 1 }
 	: window.OrbitLib;
 
 function createSelection(camera, landmarks) {
@@ -32,7 +32,7 @@ function createSelection(camera, landmarks) {
 			let px = pos[i * 3], py = pos[i * 3 + 1], pz = pos[i * 3 + 2];
 			if (orbitModel) {
 				selectionOrbit.orbitPosition(orbitScratch, px, py, pz,
-					selectionOrbit.familyForStar(0, landmarks.ENTRIES[i].colorIndex <= 2 ? 'B' : 'G', false), 0, 0, orbitTime, orbitModel);
+					selectionOrbit.familyFromColorIndex(landmarks.ENTRIES[i].colorIndex), 0, 0, orbitTime, orbitModel);
 				px = orbitScratch[0]; py = orbitScratch[1]; pz = orbitScratch[2];
 			}
 			if (!selectionCoords.projectToScreen(viewProj, px, py, pz,

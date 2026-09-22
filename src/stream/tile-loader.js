@@ -29,6 +29,12 @@ const BUNDLE_VERSION = 1;
 // Residency radii for bundles written before the bands carried their own.
 const DEFAULT_BAND_RADIUS = [0.5, 2.5, 12.0];
 
+// Orbit-family facts for the decode-time stamp below; the same module owns
+// the record layout bits (page load order: math/orbit.js precedes this file).
+const orbitRecord = (typeof module !== 'undefined' && module.exports)
+	? require('../math/orbit.js')
+	: window.OrbitLib;
+
 // Decode base64 into `out` at `byteOffset`, returning the bytes written.
 // Decoding straight into the destination keeps the per-cell path free of
 // throwaway buffers (a cell is up to a few KB and cells are decoded while the
@@ -140,12 +146,24 @@ function prepareBundle(bundle) {
 // Decode one cell into `out` (a Uint8Array of at least cellStarCount*16 bytes),
 // returning the byte length written. Throws on a truncated payload so a broken
 // asset fails loudly instead of rendering garbage.
+//
+// The bundle predates 0.4 orbit families, so the decode stamps them on: a
+// real-catalog record only carries a colour index, and plan §1.2 maps O/B/A
+// to the pattern family and everything else to the disc — the same rule
+// landmarks and labels use. Idempotent: an already-tagged payload decodes to
+// itself. The flags byte of the packed word sits at record offset 14.
 function decodeCell(manifest, cellIndex, out) {
 	const stars = manifest.firstStar[cellIndex + 1] - manifest.firstStar[cellIndex];
 	const expected = stars * 16;
 	const written = decodeBase64Into(manifest.payloads[cellIndex], out, 0);
 	if (written !== expected) {
 		throw new Error(`Cell ${cellIndex} decoded to ${written} bytes, expected ${expected}`);
+	}
+	for (let i = 0; i < stars; i++) {
+		const flagsAt = i * 16 + 14;
+		const family = orbitRecord.familyFromColorIndex(out[i * 16]);
+		out[flagsAt] = (out[flagsAt] & ~orbitRecord.FAMILY_MASK)
+			| ((family & 3) << orbitRecord.FAMILY_SHIFT);
 	}
 	return expected;
 }

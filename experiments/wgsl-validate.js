@@ -27,6 +27,7 @@ const galaxy = require('../src/math/galaxy.js');
 const records = require('../src/math/star-record.js');
 const objects = require('../src/math/objects.js');
 const camera = require('../src/core/camera.js');
+const orbit = require('../src/math/orbit.js');
 
 const checks = [];
 function check(name, pass, detail) {
@@ -42,7 +43,7 @@ function readSource(relPath) {
 {
         const names = Object.keys(shaders.SHADER_PARTS);
         check('every expected shader part is present',
-                ['pcg-hash', 'density', 'star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'procedural-gen', 'cull'].every(n => names.includes(n)),
+                ['pcg-hash', 'density', 'orbit', 'star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'procedural-gen', 'cull'].every(n => names.includes(n)),
                 names);
         check('every shader part is a non-empty LF-only string',
                 names.every(n => typeof shaders.SHADER_PARTS[n] === 'string'
@@ -228,6 +229,9 @@ function wgslConsts(part) {
                 ['density', densitySrc, ['spheroidEllipsoidRadius', 'rhoThin', 'rhoThick', 'rhoSpheroid',
                         'rhoHalo', 'armFactor', 'distanceToNearestArm', 'rhoTotal', 'rhoDecomposed',
                         'insideDisc', 'sersicBn']],
+                // 0.4 the orbit law: the same function names on both sides;
+                // omegaFrom (JS) ↔ orbitOmega (WGSL) is checked by name below.
+                ['orbit', readSource('src/math/orbit.js'), ['orbitPosition', 'sinTau', 'pressureClock']],
                 ['procedural-gen', starTypesSrc, ['luminosityFromMass', 'teffFromMass', 'msLifetimeGyr',
                         'sampleMassIMF', 'sampleLocalAge', 'classifyByTempAndState',
                         // 0.3.3: the star-formation history the ages are drawn
@@ -354,6 +358,62 @@ function wgslConsts(part) {
         const cull = shaders.SHADERS['cull'];
         check('the cull shader writes indirect draw arguments',
                 /indirectArgs\[1\]\s*=/.test(cull) && /var<storage,\s*read_write>\s+indirectArgs/.test(cull));
+}
+
+// --- 5. The orbit mirror (0.4) -------------------------------------------
+// The star-time law runs on both sides every frame: labels, picking and the
+// CPU nebula path evaluate src/math/orbit.js while the GPU evaluates
+// SHADER_PARTS['orbit']. These checks pin the contract the numeric replay in
+// orbit-test.js then measures: shared constants, the dynA/dynB layout the
+// packer fills, and zero per-galaxy numbers baked into the WGSL.
+{
+        const orbitSrc = readSource('src/math/orbit.js');
+        const orbitWgsl = shaders.SHADER_PARTS['orbit'];
+        const c = wgslConsts('orbit');
+
+        check('orbit.wgsl family constants match orbit.js (record bits 3-4)',
+                c.FAMILY_PATTERN === orbit.FAMILY_PATTERN && c.FAMILY_DISC === orbit.FAMILY_DISC
+                && c.FAMILY_BAR === orbit.FAMILY_BAR && c.FAMILY_PRESSURE === orbit.FAMILY_PRESSURE
+                && c.FAMILY_PATTERN === 0 && c.FAMILY_DISC === 1 && c.FAMILY_BAR === 2 && c.FAMILY_PRESSURE === 3,
+                { wgsl: [c.FAMILY_PATTERN, c.FAMILY_DISC, c.FAMILY_BAR, c.FAMILY_PRESSURE] });
+        check('orbit.wgsl shared law constants match orbit.js (clock, wobble ratio, TAU)',
+                c.PRESSURE_CLOCK_1KPC === orbit.PRESSURE_CLOCK_1KPC
+                && c.VERTICAL_WOBBLE_RATIO === orbit.VERTICAL_WOBBLE_RATIO
+                && Math.abs(c.TAU - Math.PI * 2) < 1e-6,
+                { clock: c.PRESSURE_CLOCK_1KPC, ratio: c.VERTICAL_WOBBLE_RATIO, tau: c.TAU });
+        check('orbit.js and orbit.wgsl both define the omega law (omegaFrom ↔ orbitOmega)',
+                /function\s+omegaFrom\b/.test(orbitSrc) && /^fn\s+orbitOmega\b/m.test(orbitWgsl));
+        check('the disc group-zone lock is present on both sides (corotation rule)',
+                /vFlat \/ orbit\.omegaPattern|dyn\.vFlat \/ dyn\.omegaPattern/.test(orbitSrc)
+                && /dynA\.x \/ dynA\.z/.test(orbitWgsl));
+        check('orbit.wgsl hard-codes no per-galaxy rotation numbers',
+                !/\b0\.225\b|\b0\.041\b|\b0\.031\b|\b0\.23\b/.test(orbitWgsl),
+                orbitWgsl.match(/\b0\.225\b|\b0\.041\b|\b0\.031\b|\b0\.23\b/g));
+        check('both sides reduce the FULL sin argument (wobble continuity across bulk wraps)',
+                orbitSrc.includes('function sinTau') && orbitWgsl.includes('fn sinTau')
+                && !/sin\(phase \+ theta/.test(orbitWgsl));
+
+        // CameraUniform: one struct, six vec4-scale groups, same order in the
+        // star and nebula shaders (they share the one uniform buffer).
+        const fields = (src) => {
+                const m = /struct\s+CameraUniform\s*\{([\s\S]*?)\n\}/.exec(src);
+                if (!m) return null;
+                return [...m[1].matchAll(/^\s*([A-Za-z_0-9]+):\s*(?:vec4f|mat4x4)/gm)].map(x => x[1]);
+        };
+        const expected = ['viewProj', 'cameraPos', 'viewport', 'params', 'dynA', 'dynB'];
+        const spriteFields = fields(shaders.SHADERS['star-sprite']);
+        const nebulaFields = fields(shaders.SHADERS['nebula-billboard']);
+        check('CameraUniform carries dynA/dynB after the camera block, star and nebula alike',
+                JSON.stringify(spriteFields) === JSON.stringify(expected)
+                && JSON.stringify(nebulaFields) === JSON.stringify(expected),
+                { star: spriteFields, nebula: nebulaFields });
+        check('the star vertex shader feeds camera.dynA/dynB into orbitPosition',
+                /orbitPosition\([^;]*camera\.dynA,\s*camera\.dynB\)/s.test(shaders.SHADERS['star-sprite']));
+        check('the packer fills exactly the two vec4s the struct declares (8 floats at offset 28)',
+                /packOrbitDynamics\(model,\s*uniform,\s*28\)/.test(readSource('src/render/star-sprites.js'))
+                && /UNIFORM_FLOATS = 36/.test(readSource('src/render/star-sprites.js')));
+        check('the nebula billboards rigidly follow the pattern speed (plan §7.4)',
+                /camera\.dynA\.z \* camera\.params\.w/.test(shaders.SHADERS['nebula-billboard']));
 }
 
 // --- Report --------------------------------------------------------------

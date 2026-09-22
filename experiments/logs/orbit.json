@@ -1,0 +1,219 @@
+{
+  "date": "2026-09-22T02:06:41.109Z",
+  "totalChecks": 28,
+  "passed": 28,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "T = 0 is the identity for every family (|Δ| < 1e-9 kpc)",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "solar circle R = 8.2 kpc turns in 229 ± 2 Myr",
+      "pass": true,
+      "detail": {
+        "omega": 0.02751283932501834,
+        "period": 228.37284196495406
+      }
+    },
+    {
+      "name": "bar/pattern period 154 ± 1 Myr (omegaPattern = 0.041)",
+      "pass": true,
+      "detail": {
+        "omega": 0.041,
+        "period": 153.24842212633138
+      }
+    },
+    {
+      "name": "disc inside corotation (R_CR = 5.49 kpc) locks to the pattern speed",
+      "pass": true,
+      "detail": {
+        "wIn": 0.041
+      }
+    },
+    {
+      "name": "the group-zone lock is continuous at R_CR (|Δω| < 1e-6)",
+      "pass": true,
+      "detail": {
+        "wBelow": 0.041,
+        "wAbove": 0.04099999252889026
+      }
+    },
+    {
+      "name": "outside R_CR the disc keeps differential rotation (ω = vFlat/R)",
+      "pass": true,
+      "detail": {
+        "wOut": 0.01875
+      }
+    },
+    {
+      "name": "S0 (omegaPattern = 0) never locks: inner disc keeps turning",
+      "pass": true,
+      "detail": {
+        "omega": 0.23
+      }
+    },
+    {
+      "name": "E4 pressure support boils and spins even with no disc curve",
+      "pass": true,
+      "detail": {
+        "omega": 0.0075,
+        "spin": 0.15
+      }
+    },
+    {
+      "name": "patternLock pins even the outer disc to the pattern speed",
+      "pass": true,
+      "detail": {
+        "wFar": 0.041
+      }
+    },
+    {
+      "name": "bar, embedded disc and young stars sweep the same angle in 100 Myr (< 1° apart)",
+      "pass": true,
+      "detail": {
+        "spreadRad": 4.440892098500626e-16,
+        "ang": {
+          "bar": -2.183185307179586,
+          "disc-in-bar": -2.1831853071795857,
+          "young": -2.1831853071795857
+        }
+      }
+    },
+    {
+      "name": "a disc star returns to its start after one period (229 Myr, < 0.1 kpc)",
+      "pass": true,
+      "detail": {
+        "dist": 0.04418394046874531,
+        "tPeriod": 456.7456839299081
+      }
+    },
+    {
+      "name": "pattern and disc shear apart outside R_CR (plan §3.3 survives)",
+      "pass": true,
+      "detail": {
+        "d": 2.9668146928204147
+      }
+    },
+    {
+      "name": "familyForStar: O/B/A → pattern",
+      "pass": true
+    },
+    {
+      "name": "familyForStar: components drive disc/bar/pressure",
+      "pass": true
+    },
+    {
+      "name": "familyFromColorIndex: O/B/A (0..2) ride the pattern, the rest the disc",
+      "pass": true
+    },
+    {
+      "name": "family/phase/amplitude round-trip through the 16-byte record",
+      "pass": true,
+      "detail": {
+        "family": 2,
+        "phase": 5,
+        "amplitude": 11
+      }
+    },
+    {
+      "name": "family numbering: StarRecord flags bits 3-4, values 0..3",
+      "pass": true
+    },
+    {
+      "name": "disc wobble phase stays continuous across a bulk-angle wrap (< 1 pc jump)",
+      "pass": true,
+      "detail": {
+        "dist": 0.00019666852188040266
+      }
+    },
+    {
+      "name": "bulk angle returns after one pattern period (xy close to start)",
+      "pass": true,
+      "detail": {
+        "bulkBack": 0.184185377901178
+      }
+    },
+    {
+      "name": "packOrbitDynamics fills dynA = (vFlat, rCore, omegaPattern, spinLambda)",
+      "pass": true,
+      "detail": {
+        "dynA": [
+          0.22499999403953552,
+          0.5,
+          0.04100000113248825,
+          0
+        ]
+      }
+    },
+    {
+      "name": "packOrbitDynamics fills dynB = (sigmaThin, pressureAmpScale, discHeight, patternLock)",
+      "pass": true,
+      "detail": {
+        "dynB": [
+          0.03099999949336052,
+          0.44999998807907104,
+          3,
+          0
+        ]
+      }
+    },
+    {
+      "name": "packing never touches the star-time slot or the camera block",
+      "pass": true,
+      "detail": {
+        "time": 12.5,
+        "u16": 0
+      }
+    },
+    {
+      "name": "pressure amplitude cap: MW bulge ≤ 0.3 × spheroid semimajor axis",
+      "pass": true,
+      "detail": {
+        "scale": 0.44999999999999996,
+        "axis": 1.5
+      }
+    },
+    {
+      "name": "E-type spheroid uses the uncapped virial amplitude (plan §1.4)",
+      "pass": true,
+      "detail": {
+        "scale": 10,
+        "vFlat": 0
+      }
+    },
+    {
+      "name": "f64 CPU law vs f32 WGSL replay agree within 0.05 kpc up to T = 10 000 Myr",
+      "pass": true,
+      "detail": {
+        "worst": 0.00018657052216731058,
+        "worstCase": {
+          "fam": 1,
+          "t": 10000,
+          "d": 0.00018657052216731058
+        }
+      }
+    },
+    {
+      "name": "slider −1 at 8 ly/s follows at 1.0 Myr/s (FLIGHT_TIME_GAIN = 0.125)",
+      "pass": true,
+      "detail": {
+        "rate": 1
+      }
+    },
+    {
+      "name": "slider 0 is frozen, positive values pass through",
+      "pass": true
+    },
+    {
+      "name": "formatTimeRate labels follow / frozen / explicit",
+      "pass": true,
+      "detail": [
+        "follow ×1.0",
+        "frozen",
+        "+8.3 Myr/s"
+      ]
+    }
+  ]
+}

@@ -37,6 +37,9 @@
 	const records = (typeof module !== 'undefined' && module.exports)
 		? require('./star-record.js')
 		: window.StarRecord;
+	const orbit = (typeof module !== 'undefined' && module.exports)
+		? require('./orbit.js')
+		: window.OrbitLib;
 
 	const TAU = Math.PI * 2;
 	const OBJECT_TYPES = ['HII', 'open', 'globular', 'planetary', 'SNR'];
@@ -403,9 +406,16 @@
 				const distToArm = density.distanceToNearestArm(model, R, Math.atan2(dy, dx));
 				if (obj.type === 'planetary') starTypes.derivePlanetaryCentral(memberSeed, component, R, distToArm, memberDerived);
 				else starTypes.deriveStarWithAge(model, memberSeed, component, R, distToArm, obj.ageGyr, memberDerived);
+				// Orbit family: members of young objects (age < 100 Myr,
+				// plan §1.2) ride the pattern with the arms they formed in;
+				// old members (globulars) follow their component's law.
+				const family = obj.ageGyr < 0.1
+					? orbit.FAMILY_PATTERN
+					: orbit.familyForStar(component, memberDerived.spectralClass, model.barred);
 				records.writeRecord(view, byteOffset + slot * records.RECORD_BYTES, x, y, z,
 					memberDerived.colorIndex, memberDerived.absMag + offset,
-					records.FLAG_VISIBLE, hash.pcgHash(memberSeed ^ 0xFACE) & 0xFF);
+					orbit.flagsWithFamily(records.FLAG_VISIBLE, family),
+					hash.pcgHash(memberSeed ^ 0xFACE) & 0xFF);
 				slot++;
 			}
 		}

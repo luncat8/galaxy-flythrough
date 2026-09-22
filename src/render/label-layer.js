@@ -69,7 +69,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 			let px = pos[i * 3], py = pos[i * 3 + 1], pz = pos[i * 3 + 2];
 			if (orbit && orbitModel) {
 				orbit.orbitPosition(orbitScratch, px, py, pz,
-					orbit.familyForStar(0, landmarks.ENTRIES[i].colorIndex <= 2 ? 'B' : 'G', false), 0, 0, orbitTime, orbitModel);
+					orbit.familyFromColorIndex(landmarks.ENTRIES[i].colorIndex), 0, 0, orbitTime, orbitModel);
 				px = orbitScratch[0]; py = orbitScratch[1]; pz = orbitScratch[2];
 			}
 			const visible = labelCoords.projectToScreen(viewProj, px, py, pz,

@@ -740,3 +740,42 @@ member *i* stays a pure function.
 ## 2026-09-22 — Quaternion camera pole fix: don't rebuild right/up from world-up
 
 When removing a pitch clamp, changing only the orientation integrator is not enough. Any projection code that recomputes `right = normalize(forward × worldUp)` reintroduces the same pole singularity and discards the camera's upside-down/roll state. Keep `forward/right/up` as one quaternion-derived basis and build the view matrix from those axes directly.
+
+## 2026-09-22 — Shader constants are a parity bug waiting for the second galaxy
+
+Hard-coding today's model's numbers in WGSL (0.041 pattern speed, 0.225 flat
+velocity…) passes every test while only one galaxy type exists, then silently
+draws every other type with the first type's rotation while the CPU mirror reads
+the real `dynamics`. Parameterise on the first commit: pack the per-model scalars
+into spare uniform vec4s and apply all defaults CPU-side once (`fillDynamics`),
+so the shader reads plain numbers and "no galaxy constants in WGSL" becomes a
+checkable rule. 8 floats = 32 bytes/frame; the wrong-universe bug costs far more.
+
+## 2026-09-22 — Reduce the FULL sin argument, not the bulk angle
+
+Reducing `ωT mod 2π` once and reusing the reduced value for every `sin` looks
+like the precision fix, but epicycle arguments (`ψ + κT`, `ψ + ω̄T`) are not
+integer multiples of the bulk period — feeding them the wrapped θ snaps every
+wobble phase once per revolution (a visible tick at high time rates). Reduce
+each transcendental's own argument (`sinTau(arg)` on both CPU and GPU). Probe
+continuity with ±ε evaluations across one bulk wrap in the orbit test.
+
+## 2026-09-22 — Default family bits mean "pattern", which is never neutral
+
+Flags nibbles that default to 0 silently tagged every landmark and catalog star
+as the pattern family while the CPU label path computed a family from the star's
+class — labels then drifted off their own stars as soon as time ran. When a
+decoded field has a default, either stamp it at every write/decode boundary
+(tile-loader stamps the pre-0.4 bundle on decode) or make the default match what
+the CPU assumes. One shared helper (`familyFromColorIndex`) used by writer,
+labels and picking beats two call sites with the same hand-rolled ternary.
+
+## 2026-09-22 — Group kinematics are free: rigid patterns cost one select
+
+"The structure should move as a group, not as individual orbits" is not a
+performance question when orbits are closed-form: every star already evaluates
+the same per-vertex law, and a shared ω (corotation lock inside
+R_CR = vFlat/Ω_p) replaces one division with a constant — zero extra ALU, no
+per-star state, no CPU pass. Make the lock continuous by construction (Ω(R)
+crosses Ω_p exactly at R_CR) so the seam cannot show as a shear ring, and guard
+Ω_p = 0 so pattern-less types never freeze.

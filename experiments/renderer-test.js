@@ -433,8 +433,20 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 && uniform[25] === Math.fround(rendererModule.BASE_SIZE_PX)
                 && uniform[26] === Math.fround(rendererModule.MAX_SIZE_PX),
                 { exposure: uniform[24], base: uniform[25], max: uniform[26] });
-        check('uniform carries the frame time', uniform[27] === Math.fround(1 / 60), uniform[27]);
-        check('uniform is exactly 112 bytes', gpu.uniformWrites[gpu.uniformWrites.length - 1].length === 112);
+        check('uniform carries the star time in params.w', uniform[27] === Math.fround(1 / 60), uniform[27]);
+        check('uniform is exactly 144 bytes (camera block + orbit dynamics)', gpu.uniformWrites[gpu.uniformWrites.length - 1].length === 144);
+        // Orbit dynamics ride in dynA/dynB — the per-model numbers the shader
+        // must never hard-code (packed by orbit.packOrbitDynamics).
+        const fr = Math.fround;
+        const dynA = [uniform[28], uniform[29], uniform[30], uniform[31]];
+        const dynB = [uniform[32], uniform[33], uniform[34], uniform[35]];
+        const expectA = [model.dynamics.vFlat, model.dynamics.rCore, model.dynamics.omegaPattern, model.dynamics.spinLambda].map(fr);
+        check('uniform dynA = (vFlat, rCore, omegaPattern, spinLambda) of the live model',
+                dynA.every((v, i) => v === expectA[i]), { dynA, expectA });
+        check('uniform dynB = (sigmaThin, pressureAmpScale, discHeight, patternLock)',
+                dynB[0] === fr(model.dynamics.sigmaThin)
+                && dynB[1] > 0 && dynB[2] === fr(model.truncation.discHeight) && dynB[3] === 0,
+                { dynB });
 
         // The tonemap uniform carries linear exposure (x) and white point (y)
         // and is uploaded every frame alongside the camera uniform.

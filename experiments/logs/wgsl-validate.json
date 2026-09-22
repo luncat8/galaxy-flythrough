@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-22T00:09:33.756Z",
+  "date": "2026-09-22T02:06:08.257Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -10,8 +10,12 @@
       "lines": 334
     },
     {
+      "name": "orbit",
+      "lines": 84
+    },
+    {
       "name": "star-sprite",
-      "lines": 135
+      "lines": 224
     },
     {
       "name": "star-sprite-hdr",
@@ -19,7 +23,7 @@
     },
     {
       "name": "nebula-billboard",
-      "lines": 105
+      "lines": 118
     },
     {
       "name": "tonemap",
@@ -40,8 +44,8 @@
     "nebula-billboard",
     "tonemap"
   ],
-  "totalChecks": 133,
-  "passed": 133,
+  "totalChecks": 149,
+  "passed": 149,
   "failed": 0,
   "checks": [
     {
@@ -50,6 +54,7 @@
       "detail": [
         "pcg-hash",
         "density",
+        "orbit",
         "star-sprite",
         "star-sprite-hdr",
         "nebula-billboard",
@@ -71,8 +76,12 @@
           16084
         ],
         [
+          "orbit",
+          3910
+        ],
+        [
           "star-sprite",
-          5545
+          9969
         ],
         [
           "star-sprite-hdr",
@@ -80,7 +89,7 @@
         ],
         [
           "nebula-billboard",
-          3071
+          3915
         ],
         [
           "tonemap",
@@ -155,6 +164,24 @@
       "detail": 23
     },
     {
+      "name": "orbit: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "orbit: contains no unresolved markers",
+      "pass": true,
+      "detail": "orbit"
+    },
+    {
+      "name": "orbit: declares its functions",
+      "pass": true,
+      "detail": 4
+    },
+    {
       "name": "star-sprite: braces and parentheses balance",
       "pass": true,
       "detail": {
@@ -170,7 +197,7 @@
     {
       "name": "star-sprite: declares its functions",
       "pass": true,
-      "detail": 5
+      "detail": 9
     },
     {
       "name": "star-sprite-hdr: braces and parentheses balance",
@@ -692,6 +719,30 @@
       }
     },
     {
+      "name": "orbit.wgsl mirrors orbitPosition",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "orbit.wgsl mirrors sinTau",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "orbit.wgsl mirrors pressureClock",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
       "name": "procedural-gen.wgsl mirrors luminosityFromMass",
       "pass": true,
       "detail": {
@@ -936,6 +987,78 @@
     },
     {
       "name": "the cull shader writes indirect draw arguments",
+      "pass": true
+    },
+    {
+      "name": "orbit.wgsl family constants match orbit.js (record bits 3-4)",
+      "pass": true,
+      "detail": {
+        "wgsl": [
+          0,
+          1,
+          2,
+          3
+        ]
+      }
+    },
+    {
+      "name": "orbit.wgsl shared law constants match orbit.js (clock, wobble ratio, TAU)",
+      "pass": true,
+      "detail": {
+        "clock": 0.05,
+        "ratio": 0.2,
+        "tau": 6.28318530718
+      }
+    },
+    {
+      "name": "orbit.js and orbit.wgsl both define the omega law (omegaFrom ↔ orbitOmega)",
+      "pass": true
+    },
+    {
+      "name": "the disc group-zone lock is present on both sides (corotation rule)",
+      "pass": true
+    },
+    {
+      "name": "orbit.wgsl hard-codes no per-galaxy rotation numbers",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "both sides reduce the FULL sin argument (wobble continuity across bulk wraps)",
+      "pass": true
+    },
+    {
+      "name": "CameraUniform carries dynA/dynB after the camera block, star and nebula alike",
+      "pass": true,
+      "detail": {
+        "star": [
+          "viewProj",
+          "cameraPos",
+          "viewport",
+          "params",
+          "dynA",
+          "dynB"
+        ],
+        "nebula": [
+          "viewProj",
+          "cameraPos",
+          "viewport",
+          "params",
+          "dynA",
+          "dynB"
+        ]
+      }
+    },
+    {
+      "name": "the star vertex shader feeds camera.dynA/dynB into orbitPosition",
+      "pass": true
+    },
+    {
+      "name": "the packer fills exactly the two vec4s the struct declares (8 floats at offset 28)",
+      "pass": true
+    },
+    {
+      "name": "the nebula billboards rigidly follow the pattern speed (plan §7.4)",
       "pass": true
     }
   ]

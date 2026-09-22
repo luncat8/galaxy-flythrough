@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-22T00:09:33.628Z",
-  "modules": 21,
-  "totalChecks": 108,
-  "passed": 108,
+  "date": "2026-09-22T02:06:08.076Z",
+  "modules": 22,
+  "totalChecks": 113,
+  "passed": 113,
   "failed": 0,
   "checks": [
     {
@@ -194,6 +194,38 @@
     },
     {
       "name": "StarTypesLib binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "OrbitLib loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "OrbitLib registers exactly one window namespace (OrbitLib)",
+      "pass": true,
+      "detail": [
+        "OrbitLib"
+      ]
+    },
+    {
+      "name": "OrbitLib exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "OrbitLib has identical key sets (26 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "OrbitLib binds every key to the same value",
       "pass": true,
       "detail": []
     },
@@ -693,6 +725,7 @@
       "detail": [
         "pcg-hash",
         "density",
+        "orbit",
         "star-sprite",
         "star-sprite-hdr",
         "nebula-billboard",

@@ -1,10 +1,10 @@
 {
-  "date": "2026-09-22T00:09:34.774Z",
+  "date": "2026-09-22T02:06:09.486Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 121,
-  "totalChecks": 99,
-  "passed": 99,
+  "prepareMs": 137,
+  "totalChecks": 101,
+  "passed": 101,
   "failed": 0,
   "checks": [
     {
@@ -380,13 +380,43 @@
       }
     },
     {
-      "name": "uniform carries the frame time",
+      "name": "uniform carries the star time in params.w",
       "pass": true,
       "detail": 0.01666666753590107
     },
     {
-      "name": "uniform is exactly 112 bytes",
+      "name": "uniform is exactly 144 bytes (camera block + orbit dynamics)",
       "pass": true
+    },
+    {
+      "name": "uniform dynA = (vFlat, rCore, omegaPattern, spinLambda) of the live model",
+      "pass": true,
+      "detail": {
+        "dynA": [
+          0.22499999403953552,
+          0.5,
+          0.04100000113248825,
+          0
+        ],
+        "expectA": [
+          0.22499999403953552,
+          0.5,
+          0.04100000113248825,
+          0
+        ]
+      }
+    },
+    {
+      "name": "uniform dynB = (sigmaThin, pressureAmpScale, discHeight, patternLock)",
+      "pass": true,
+      "detail": {
+        "dynB": [
+          0.03099999949336052,
+          0.44999998807907104,
+          3,
+          0
+        ]
+      }
     },
     {
       "name": "tonemap uniform carries the default linear exposure (1.0)",

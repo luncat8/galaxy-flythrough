@@ -26,6 +26,7 @@ const MODULES = [
 	{ file: '../src/math/sampling.js', global: 'SamplingLib' },
 	{ file: '../src/math/star-record.js', global: 'StarRecord' },
 	{ file: '../src/math/star-types.js', global: 'StarTypesLib' },
+	{ file: '../src/math/orbit.js', global: 'OrbitLib' },
 	{ file: '../src/math/nebula.js', global: 'NebulaLib' },
 	{ file: '../src/math/objects.js', global: 'ObjectsLib' },
 	{ file: '../src/math/coords.js', global: 'Coords' },

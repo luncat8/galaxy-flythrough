@@ -420,24 +420,87 @@ fn sampleComponent(params: DensityParams, x: f32, y: f32, z: f32, u: f32) -> u32
 `;
 
 const ORBIT = `
-// 0.4 closed-form orbit; the CPU and shader use the same family constants.
-fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32) -> vec3f {
+// 0.4 closed-form orbit — mirrors src/math/orbit.js (symbolically by
+// experiments/wgsl-validate.js, numerically by the f32 replay in
+// experiments/orbit-test.js). No galaxy numbers live here: every per-model
+// value arrives through camera.dynA / camera.dynB, packed by
+// orbit.packOrbitDynamics — dynA = (vFlat, rCore, omegaPattern, spinLambda),
+// dynB = (sigmaThin, pressureAmpScale, discHeight, patternLock).
+//
+// Group kinematics (plan §1.1): pattern and bar are rigid; the disc joins
+// them inside the corotation radius R_CR = vFlat/omegaPattern, so the bar,
+// the arms and the inner disc turn as one group and only the outer disc
+// shears. Omega(R) equals omegaPattern at R_CR, so the lock is continuous.
+
+const TAU: f32 = 6.28318530718;
+const INV_TAU: f32 = 0.159154943092;
+const HALF_PI: f32 = 1.57079632679;
+const SQRT2: f32 = 1.41421356237;
+// Orbit shares StarRecord's family numbering: bits 3-4 of the flags byte.
+const FAMILY_PATTERN: u32 = 0u;
+const FAMILY_DISC: u32 = 1u;
+const FAMILY_BAR: u32 = 2u;
+const FAMILY_PRESSURE: u32 = 3u;
+// Plan §1.1 spheroid clock; also the 1 kpc anchor of the pressure amplitude.
+const PRESSURE_CLOCK_1KPC: f32 = 0.05;
+const VERTICAL_WOBBLE_RATIO: f32 = 0.2;
+
+// Reduce the full argument before sin: WGSL sin of a large argument is
+// implementation-defined, and reducing here (not just the bulk theta) keeps
+// epicycle phases continuous when the bulk angle wraps.
+fn sinTau(arg: f32) -> f32 {
+        return sin(TAU * fract(arg * INV_TAU));
+}
+
+fn pressureClock(r: f32) -> f32 {
+        return PRESSURE_CLOCK_1KPC / max(pow(max(r, 0.1), 1.5), 0.01);
+}
+
+fn orbitOmega(family: u32, r: f32, dynA: vec4f, dynB: vec4f) -> f32 {
+        if (family == FAMILY_PATTERN || family == FAMILY_BAR) { return dynA.z; }
+        if (family == FAMILY_DISC) {
+                let circ: f32 = dynA.x / max(r, dynA.y);
+                if (dynA.z > 0.0 && dynA.x > 0.0) {
+                        if (dynB.w > 0.5) { return dynA.z; }
+                        if (r < dynA.x / dynA.z) { return dynA.z; }
+                }
+                return circ;
+        }
+        return dynA.w * pressureClock(r);
+}
+
+fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, dynB: vec4f) -> vec3f {
         let flags: u32 = (packed >> 16u) & 0xFFu;
         let family: u32 = (flags >> 3u) & 3u;
-        let phase: f32 = f32((packed >> 24u) & 15u) * 0.3926990817;
+        let phase: f32 = f32((packed >> 24u) & 15u) * 0.392699081699;
         let amp: f32 = f32((packed >> 28u) & 15u);
         let q: vec3f = p - centre;
         let r: f32 = max(length(q.xy), 0.001);
-        var omega: f32 = 0.0;
-        if (family == 0u || family == 2u) { omega = 0.041; }
-        else if (family == 1u) { omega = 0.225 / max(r, 0.5); }
-        else { omega = 0.005 / max(pow(r, 1.5), 0.1); }
-        let theta: f32 = 6.2831853 * fract(omega * time * 0.15915494);
-        let wobble: f32 = select(0.0, (amp / 15.0) * 0.008, family == 1u);
-        let w0: f32 = sin(phase);
-        let w: f32 = wobble * (sin(phase + theta * 1.41421356) - w0);
+        let omega: f32 = orbitOmega(family, r, dynA, dynB);
+        let theta: f32 = TAU * fract(omega * time * INV_TAU);
+        let rank: f32 = (amp + 0.5) * 0.0625;
+        let sinPh: f32 = sinTau(phase);
+        let sinPhV: f32 = sinTau(phase + HALF_PI);
+        var wrx: f32 = 0.0;
+        var wry: f32 = 0.0;
+        var wz: f32 = 0.0;
+        if (family == FAMILY_DISC) {
+                let kappa: f32 = SQRT2 * (dynA.x / max(r, dynA.y));
+                let ah: f32 = rank * 2.0 * dynB.x / max(kappa, 1e-6);
+                let av: f32 = min(VERTICAL_WOBBLE_RATIO * ah, max(dynB.z - abs(q.z), 0.0));
+                let wr: f32 = ah * (sinTau(phase + kappa * time) - sinPh);
+                wz = av * (sinTau(phase + HALF_PI + kappa * time) - sinPhV);
+                wrx = wr * q.x / r; wry = wr * q.y / r;
+        } else if (family == FAMILY_PRESSURE) {
+                let a: f32 = rank * dynB.y;
+                let mean: f32 = pressureClock(r);
+                let wr: f32 = a * (sinTau(phase + mean * time) - sinPh);
+                wz = a * (sinTau(phase + HALF_PI + mean * time) - sinPhV);
+                wrx = wr * q.x / r; wry = wr * q.y / r;
+        }
         let c: f32 = cos(theta); let sn: f32 = sin(theta);
-        return centre + vec3f(c * (q.x + w) - sn * q.y, sn * (q.x + w) + c * q.y, q.z + wobble * (sin(phase + theta) - w0));
+        let bx: f32 = q.x + wrx; let by: f32 = q.y + wry;
+        return centre + vec3f(c * bx - sn * by, sn * bx + c * by, q.z + wz);
 }
 `;
 
@@ -458,9 +521,13 @@ const STAR_SPRITE = `${ORBIT}
 
 struct CameraUniform {
         viewProj: mat4x4<f32>,
-        cameraPos: vec4f,   // xyz absolute kpc
+        cameraPos: vec4f,   // xyz absolute kpc, w = model centre x (y = z = 0 by construction)
         viewport: vec4f,    // xy pixels, zw = 2/width, 2/height
-        params: vec4f,      // x magZero, y baseSizePx, z maxSizePx, w time
+        params: vec4f,      // x magZero, y baseSizePx, z maxSizePx, w star time Myr
+        // Orbit dynamics packed by orbit.packOrbitDynamics — the shader must
+        // hard-code no galaxy numbers (checked by wgsl-validate).
+        dynA: vec4f,        // vFlat, rCore, omegaPattern, spinLambda
+        dynB: vec4f,        // sigmaThin, pressureAmpScale, discHeight, patternLock
 };
 
 struct StarPacked {
@@ -521,7 +588,8 @@ fn vs_main(
                 return hidden(vid);
         }
 
-        let moved: vec3f = orbitPosition(vec3f(star.x, star.y, star.z), star.packed, vec3f(camera.cameraPos.w, 0.0, 0.0), camera.params.w);
+        let moved: vec3f = orbitPosition(vec3f(star.x, star.y, star.z), star.packed,
+                vec3f(camera.cameraPos.w, 0.0, 0.0), camera.params.w, camera.dynA, camera.dynB);
         let rel: vec3f = moved - camera.cameraPos.xyz;
         let clip: vec4f = camera.viewProj * vec4f(rel.x, rel.y, rel.z, 1.0);
         if (clip.w <= 0.0) {
@@ -1208,12 +1276,18 @@ const NEBULA_BILLBOARD = `
 // falloff, no image assets. GPU-culled below BILLBOARD_MIN_PX and beyond
 // BILLBOARD_MAX_DIST kpc. Constants are mirrored from src/math/objects.js
 // and Camera.FOV_Y.
+//
+// 0.4: gas is the pattern family (plan §1.1/§7.4) — young objects sit in the
+// arms and bar, so billboards rigidly follow the pattern speed omegaPattern
+// about the model centre, same closed form as the stars' bulk rotation.
 
 struct CameraUniform {
         viewProj: mat4x4<f32>,
-        cameraPos: vec4f,
+        cameraPos: vec4f,   // w = model centre x (y = z = 0 by construction)
         viewport: vec4f,
-        params: vec4f,
+        params: vec4f,      // w = star time Myr
+        dynA: vec4f,        // orbit dynamics: nebulae read z = omegaPattern
+        dynB: vec4f,
 };
 
 struct NebulaPacked {
@@ -1270,7 +1344,14 @@ fn vs_main(
                 return hidden(vid);
         }
 
-        let rel: vec3f = vec3f(neb.x, neb.y, neb.z) - camera.cameraPos.xyz;
+        // Pattern-family bulk rotation about the model centre (T = 0 is the
+        // identity: theta = fract(0) = 0). No wobble: gas is rigid with the
+        // arms and bar.
+        let theta: f32 = 6.28318530718 * fract(camera.dynA.z * camera.params.w * 0.159154943092);
+        let qx: f32 = neb.x - camera.cameraPos.w;
+        let cth: f32 = cos(theta); let sth: f32 = sin(theta);
+        let rel: vec3f = vec3f(cth * qx - sth * neb.y + camera.cameraPos.w,
+                sth * qx + cth * neb.y, neb.z);
         let dist: f32 = length(rel);
         if (dist > BILLBOARD_MAX_DIST) {
                 return hidden(vid);
@@ -1313,6 +1394,7 @@ fn fs_main(in: VertexOut) -> @location(0) vec4f {
 const SHADER_PARTS = {
         'pcg-hash': PCG_HASH,
         'density': DENSITY,
+        'orbit': ORBIT,
         'star-sprite': STAR_SPRITE,
         'star-sprite-hdr': STAR_SPRITE_HDR,
         'nebula-billboard': NEBULA_BILLBOARD,

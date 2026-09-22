@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-22T00:10:05.458Z",
+  "date": "2026-09-22T02:06:44.415Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 80,
-  "passed": 80,
+  "totalChecks": 83,
+  "passed": 83,
   "failed": 0,
   "checks": [
     {
@@ -98,6 +98,45 @@
           0
         ],
         "brightness": 0
+      }
+    },
+    {
+      "name": "on-WGSL: at T = 0 the solar-circle star is exactly at the origin (identity rule)",
+      "pass": true,
+      "detail": {
+        "clip": [
+          0.000416666705859825,
+          -4.9992594718933105,
+          0,
+          1
+        ],
+        "off": [
+          0.0004166666666666667,
+          0.0007407407407407408
+        ]
+      }
+    },
+    {
+      "name": "on-WGSL: after half a period (114.2 Myr) the star sits at x ≈ 16.356",
+      "pass": true,
+      "detail": {
+        "clip": [
+          16.30841827392578,
+          -4.999260902404785,
+          -0.012610802426934242,
+          1
+        ],
+        "expected": [
+          16.356,
+          -5
+        ]
+      }
+    },
+    {
+      "name": "the half-period position discriminates a frozen orbit (far from T = 0)",
+      "pass": true,
+      "detail": {
+        "dx": 16.30800160721992
       }
     },
     {
