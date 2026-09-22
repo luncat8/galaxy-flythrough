@@ -376,16 +376,29 @@ function wgslConsts(part) {
                 && c.FAMILY_BAR === orbit.FAMILY_BAR && c.FAMILY_PRESSURE === orbit.FAMILY_PRESSURE
                 && c.FAMILY_PATTERN === 0 && c.FAMILY_DISC === 1 && c.FAMILY_BAR === 2 && c.FAMILY_PRESSURE === 3,
                 { wgsl: [c.FAMILY_PATTERN, c.FAMILY_DISC, c.FAMILY_BAR, c.FAMILY_PRESSURE] });
-        check('orbit.wgsl shared law constants match orbit.js (clock, wobble ratio, TAU)',
+        check('orbit.wgsl shared law constants match orbit.js (clock, wobble ratios, TAU)',
                 c.PRESSURE_CLOCK_1KPC === orbit.PRESSURE_CLOCK_1KPC
                 && c.VERTICAL_WOBBLE_RATIO === orbit.VERTICAL_WOBBLE_RATIO
+                && c.BAR_LOOP_FRACTION === orbit.BAR_LOOP_FRACTION
                 && Math.abs(c.TAU - Math.PI * 2) < 1e-6,
-                { clock: c.PRESSURE_CLOCK_1KPC, ratio: c.VERTICAL_WOBBLE_RATIO, tau: c.TAU });
+                { clock: c.PRESSURE_CLOCK_1KPC, ratio: c.VERTICAL_WOBBLE_RATIO, barLoop: c.BAR_LOOP_FRACTION, tau: c.TAU });
         check('orbit.js and orbit.wgsl both define the omega law (omegaFrom ↔ orbitOmega)',
                 /function\s+omegaFrom\b/.test(orbitSrc) && /^fn\s+orbitOmega\b/m.test(orbitWgsl));
-        check('the disc group-zone lock is present on both sides (corotation rule)',
-                /vFlat \/ orbit\.omegaPattern|dyn\.vFlat \/ dyn\.omegaPattern/.test(orbitSrc)
-                && /dynA\.x \/ dynA\.z/.test(orbitWgsl));
+        // 0.4.3: the corotation lock is gone (it made the whole inner galaxy one
+        // rigid body — the reported bug). The disc is differential on both sides,
+        // and the bar's streaming rate Omega(r) - omegaPattern carries the
+        // radius dependence instead.
+        check('the disc has NO corotation lock on either side (differential belt, 0.4.3)',
+                !/r < dyn\.vFlat \/ dyn\.omegaPattern/.test(orbitSrc)
+                && !/dynA\.x \/ dynA\.z/.test(orbitWgsl)
+                && /FAMILY_DISC[\s\S]{0,400}dyn\.patternLock/.test(orbitSrc)
+                && /FAMILY_DISC[\s\S]{0,400}dynB\.w > 0\.5/.test(orbitWgsl));
+        check('the bar streams through the pattern on both sides (omegaStream \u2194 orbitOmega/omegaStream)',
+                /function omegaStream\(dyn, r\)/.test(orbitSrc)
+                && /fn omegaStream\(dynA: vec4f, r: f32\)/.test(orbitWgsl)
+                && /BAR_LOOP_FRACTION/.test(orbitSrc) && /BAR_LOOP_FRACTION/.test(orbitWgsl)
+                && /sinTau\(ph \+ stream \* time\)/.test(orbitSrc)
+                && /sinTau\(phase \+ stream \* time\)/.test(orbitWgsl));
         check('orbit.wgsl hard-codes no per-galaxy rotation numbers',
                 !/\b0\.225\b|\b0\.041\b|\b0\.031\b|\b0\.23\b/.test(orbitWgsl),
                 orbitWgsl.match(/\b0\.225\b|\b0\.041\b|\b0\.031\b|\b0\.23\b/g));

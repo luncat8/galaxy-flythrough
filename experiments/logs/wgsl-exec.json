@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-22T02:30:11.376Z",
+  "date": "2026-09-22T03:36:22.828Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 83,
-  "passed": 83,
+  "totalChecks": 86,
+  "passed": 86,
   "failed": 0,
   "checks": [
     {
@@ -137,6 +137,40 @@
       "pass": true,
       "detail": {
         "dx": 16.30800160721992
+      }
+    },
+    {
+      "name": "on-WGSL: the bar loop starts exactly on the seat at T = 0 (identity rule)",
+      "pass": true,
+      "detail": {
+        "clip": [
+          9.178417205810547,
+          -4.799259662628174,
+          0,
+          1
+        ]
+      }
+    },
+    {
+      "name": "on-WGSL: the bar branch matches the CPU law at T = 40 Myr (displacement < 2 pc)",
+      "pass": true,
+      "detail": {
+        "gpu": [
+          -1.2821860313415527,
+          0.8332698345184326
+        ],
+        "cpu": [
+          -1.2821866080217852,
+          0.8332695860263257
+        ]
+      }
+    },
+    {
+      "name": "on-WGSL: the bar star is measurably OFF its rigid seat (it streams, it is not glued)",
+      "pass": true,
+      "detail": {
+        "offSeat": 0.05191284034136843,
+        "cpuOffSeat": 0.051304926699353076
       }
     },
     {

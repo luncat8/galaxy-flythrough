@@ -115,41 +115,40 @@
 
 	// What T cannot express: absolute size and mass, the spheroid's axis ratios,
 	// whether the model has a halo at all, and the numbers 0.4's orbit families
-	// need. `axes` are kpc at scaleKpc 1.0; the E flattening follows the Hubble law
+	// need — minus omegaPattern/loopRatio, which are derived. `axes` are kpc at scaleKpc 1.0; the E flattening follows the Hubble law
 	// b/a = 1 - 0.1·E (E4 → 0.6) with a slightly boxier pole. Speeds are kpc/Myr
 	// (1 kpc/Myr = 978 km/s), so sigmaThin 0.031 is the thin disc's ~30 km/s.
 	// spinLambda is the pressure family's net spin λ (plan 0.4 §1.1: λ ∈ 0.05–0.3
 	// of the mean disc frequency — a stored 0 froze every disc galaxy's spheroid
-	// and halo into a static shell). BAR_OMEGA_PATTERN: pattern speed given to a
-	// barred type whose base has none, so the bar family never gets ω = 0.
-	const BAR_OMEGA_PATTERN = 0.031;
+	// and halo into a static shell). The pattern speed is not a table field: it
+	// is derived from the curve and the pattern population (patternSpeed below).
 	const BASE_SPECS = {
 		E4: {
 			T: -2, barred: false, profile: 'sersic', scaleKpc: 1.5, massTotal: 0.25,
 			axes: [1.00, 0.60, 0.51], discRadius: 25.0, discHeight: 3.0, spheroidRadius: 8.0,
 			halo: false, thickShare: 0.0, youngScaleHeight: 0.25,
-			dynamics: { vFlat: 0.000, rCore: 0.0, omegaPattern: 0.000, sigmaThin: 0.000,
+			dynamics: { vFlat: 0.000, rCore: 0.0, sigmaThin: 0.000,
 				sigmaThick: 0.000, sigmaSpheroid: 0.250, spinLambda: 0.15 },
 		},
 		S0: {
 			T: 0, barred: false, profile: 'sersic', scaleKpc: 1.0, massTotal: 0.60,
 			axes: [0.90, 0.63, 0.50], discRadius: 25.0, discHeight: 3.0, spheroidRadius: 8.0,
 			halo: true, thickShare: 0.30, youngScaleHeight: 0.5,
-			dynamics: { vFlat: 0.230, rCore: 1.0, omegaPattern: 0.000, sigmaThin: 0.031,
+			dynamics: { vFlat: 0.230, rCore: 1.0, sigmaThin: 0.031,
 				sigmaThick: 0.051, sigmaSpheroid: 0.100, spinLambda: 0.15 },
 		},
 		SBb: {
 			T: 3, barred: true, preset: true, profile: 'plummer', scaleKpc: 1.0, massTotal: 1.00,
 			axes: [1.50, 0.50, 0.40], discRadius: 25.0, discHeight: 3.0, spheroidRadius: 6.0,
 			halo: true, thickShare: 0.246, youngScaleHeight: 0.5,
-			dynamics: { vFlat: 0.225, rCore: 0.5, omegaPattern: 0.041, sigmaThin: 0.031,
+			dynamics: { vFlat: 0.225, rCore: 0.5, sigmaThin: 0.031,
 				sigmaThick: 0.051, sigmaSpheroid: 0.150, spinLambda: 0.15 },
 		},
 		Sc: {
 			T: 5, barred: false, profile: 'sersic', scaleKpc: 1.4, massTotal: 1.30,
 			axes: [0.60, 0.42, 0.36], discRadius: 25.0, discHeight: 3.0, spheroidRadius: 6.0,
 			halo: true, thickShare: 0.20, youngScaleHeight: 0.6,
-			dynamics: { vFlat: 0.200, rCore: 0.5, omegaPattern: 0.025, sigmaThin: 0.031,
+			dynamics: { vFlat: 0.200, rCore: 0.5, sigmaThin: 0.031,
 				sigmaThick: 0.051, sigmaSpheroid: 0.100, spinLambda: 0.15 },
 		},
 	};
@@ -185,13 +184,6 @@
 				// thickness the stage's own. Boxiness, peanut and the end-cap profile
 				// come from the bar anchors at this stage.
 				axes: [base.axes[0] * 1.8, base.axes[1] * 0.7, base.axes[2]],
-				// A bar is a pattern: every barred type needs omegaPattern > 0 or
-				// the bar family freezes while the disc turns (the S0 base carries
-				// none). Own dynamics copy — base.dynamics is shared. 0.031 rad/Myr
-				// = 30 km/s/kpc, the floor of plan §3's 30–45 bar range.
-				dynamics: Object.assign({}, base.dynamics, {
-					omegaPattern: base.dynamics.omegaPattern || BAR_OMEGA_PATTERN,
-				}),
 			});
 		}
 		specs.SBb = BASE_SPECS.SBb;
@@ -199,7 +191,7 @@
 			T: 10, barred: false, profile: 'sersic', scaleKpc: 0.8, massTotal: 0.15,
 			axes: [0.50, 0.45, 0.40], discRadius: 15.0, discHeight: 4.0, spheroidRadius: 5.0,
 			halo: true, thickShare: 0.40, youngScaleHeight: 0.8, flocculence: 0, flare: 0.2, coreRadius: 0.6,
-			dynamics: { vFlat: 0.050, rCore: 0.2, omegaPattern: 0.000, sigmaThin: 0.040,
+			dynamics: { vFlat: 0.050, rCore: 0.2, sigmaThin: 0.040,
 				sigmaThick: 0.060, sigmaSpheroid: 0.080, spinLambda: 0.30 },
 		};
 		return specs;
@@ -506,6 +498,83 @@
 		return model;
 	}
 
+	// ---- 0.4 orbit data: derived, never authored ----------------------------
+	//
+	// A bar or a spiral is a *pattern*: its shape turns rigidly at one speed
+	// while the stars that make it orbit at their own. That one speed is a group
+	// speed — the mean orbit precession rate Omega - kappa/2 of the population
+	// carrying the pattern, the "apsides precess together" condition of the
+	// kinematic density wave (plan §1.1). With kappa = sqrt(2)*Omega, the same
+	// flat-curve relation the orbit law uses, that is (1 - 1/sqrt2) * Omega.
+	//
+	// So the pattern speed is an average of the population's own precession rate,
+	// read where the pattern is set:
+	//
+	//   bar   at the bar's end. A bar is a body whose ends define it: the apsidal
+	//         rate there is where the mode's shape, its corotation and its length
+	//         are decided (the fast-bar condition of the density-wave picture).
+	//         A mass-weighted average over the whole body would instead be
+	//         dominated by the inner kiloparsecs, where Omega is largest, and
+	//         lands 2-3x above every measured bar.
+	//   arms  averaged over the thin disc's own radial mass profile, because a
+	//         spiral is a disc-wide wave rather than a body. A galaxy with no arms
+	//         keeps 0: its young stars ride the disc instead of a pattern that is
+	//         not there.
+	//
+	// Both land in the observed bands from the model's own curve: barred types
+	// 36-54 km/s/kpc (corotation 3.4 bar lengths out, by construction), the Milky
+	// Way's bulge 43 km/s/kpc, spirals 5-22. No constant anywhere.
+	const PRECESSION_FACTOR = 1 - 1 / Math.SQRT2;
+	const OMEGA_MEAN_STEPS = 1024;
+
+	function omegaAt(dynamics, R) {
+		return dynamics.vFlat / Math.max(R, dynamics.rCore);
+	}
+
+	// Mass-weighted mean of Omega under a radial mass profile (mass per unit
+	// radius), sampled on fixed Simpson bins so the CPU and any re-solve agree.
+	function meanOmega(dynamics, weight, rMax) {
+		const h = rMax / OMEGA_MEAN_STEPS;
+		let num = 0;
+		let den = 0;
+		for (let i = 0; i <= OMEGA_MEAN_STEPS; i++) {
+			const R = i * h;
+			const bin = (i === 0 || i === OMEGA_MEAN_STEPS) ? 1 : ((i & 1) ? 4 : 2);
+			const w = weight(R) * bin;
+			num += w * omegaAt(dynamics, R);
+			den += w;
+		}
+		return den > 0 ? num / den : 0;
+	}
+
+	function patternSpeed(spec, structure) {
+		const dynamics = spec.dynamics;
+		if (!(dynamics.vFlat > 0)) return 0;
+		const sp = structure.spheroid;
+		if (spec.barred) {
+			// The bar's body ends at |xi| = barTipRadius (density.js); a bulge that
+			// is not a bar profile — the Milky Way preset — ends at its own a.
+			const extent = sp.profile === 'bar' ? density.barTipRadius(structure) : 1;
+			return PRECESSION_FACTOR * omegaAt(dynamics, sp.a * sp.r0 * extent);
+		}
+		if (!(structure.arms.amp > 0)) return 0;
+		const weight = (R) => density.discRadialWeight(structure.thin, R, structure.truncation.discHeight, 'sech2');
+		return PRECESSION_FACTOR * meanOmega(dynamics, weight, structure.truncation.discRadius);
+	}
+
+	// The bar family's loop axis ratio (plan §1.1a): the spheroid's own b/a. A
+	// bar's orbits are as elongated as the bar itself — that is what holds the
+	// shape while the stars stream through it. Not barred, or too near circular
+	// to carry one, keeps 1: circular loops, which degenerate the loop map to a
+	// plain rotation at the star's own rate.
+	const MIN_LOOP_RATIO = 0.2;
+
+	function loopRatio(spec, structure) {
+		if (!spec.barred) return 1;
+		const ratio = structure.spheroid.b / structure.spheroid.a;
+		return Math.min(1, Math.max(MIN_LOOP_RATIO, ratio));
+	}
+
 	function assemble(type, spec, seed, structure) {
 		const model = {
 			seed,
@@ -527,17 +596,18 @@
 			arms: structure.arms,
 			truncation: structure.truncation,
 			populations: structure.populations,
-			// Reserved for 0.4 (star movement); defined from day one so the
-			// descriptor never has to grow to accommodate it.
+			// 0.4 star movement. omegaPattern and loopRatio are *derived* from
+			// the model's own geometry and rotation curve (see patternSpeed /
+			// loopRatio below) — no type carries a hand-authored pattern speed.
 			dynamics: {
 				vFlat: spec.dynamics.vFlat,
 				rCore: spec.dynamics.rCore,
-				omegaPattern: spec.dynamics.omegaPattern,
+				omegaPattern: patternSpeed(spec, structure),
 				sigmaThin: spec.dynamics.sigmaThin,
 				sigmaThick: spec.dynamics.sigmaThick,
 				sigmaSpheroid: spec.dynamics.sigmaSpheroid,
 				spinLambda: spec.dynamics.spinLambda,
-				patternLock: false,
+				loopRatio: loopRatio(spec, structure),
 			},
 			// Distance from the world origin to the centre: the Sun–centre radius,
 			// and 0 for every galactocentric type.

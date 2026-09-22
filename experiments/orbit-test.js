@@ -1,14 +1,18 @@
 // experiments/orbit-test.js
 // The 0.4 orbit law, on the numbers of plan §1.1/§1.4 of
-// 0.4.0-plan-star-move.md plus the 0.4.1 group-kinematics amendment:
+// 0.4.0-plan-star-move.md plus the 0.4.3 group-kinematics rewrite:
 //
 //   * T = 0 is the identity for every family
-//   * reference periods (solar circle, bar/pattern, group zone, halo clock)
-//   * the corotation GROUP ZONE: the bar, the arms and the disc inside
-//     R_CR = vFlat/omegaPattern share one angular speed; the lock is
-//     continuous at R_CR and never engages without a pattern
-//   * patternLock extends the lock to all radii; omegaPattern = 0 never
-//     freezes a disc (S0/E guard)
+//   * reference periods (solar circle, bar/pattern, halo clock)
+//   * the pattern is ONE group: bar and young stars sweep the same angle at the
+//     group speed galaxy.js derives from the model's own population
+//   * the disc is differential: no corotation lock (the rigid "belt" of
+//     0.4.1/0.4.2 is the reported bug) and the bar's stars stream on x1 loops
+//     at Omega(r) - omegaPattern — a radius function, not a per-star rate
+//   * the derived pattern speed lands in the observed band for every barred
+//     type and corotation always falls beyond the bar's own end
+//   * patternLock still forces the rigid cosmetic variant; omegaPattern = 0
+//     never freezes a disc (S0/E guard)
 //   * family bit round-trips, family tables, colour-index rule
 //   * wobble phases stay continuous when the bulk angle wraps
 //   * the uniform packer emits exactly what camera.dynA/dynB carry
@@ -60,7 +64,7 @@ function dist3(a, b) {
 	check('T = 0 is the identity for every family (|Δ| < 1e-9 kpc)', worst < EPS, worst);
 }
 
-// --- 2. Reference periods (plan §1.1) ------------------------------------
+// --- 2. Reference periods and the derived group speed (plan §1.1) --------
 {
 	// omegaFor takes galactocentric coordinates (the law's q frame).
 	const sunR = Math.hypot(MW.centre.x, MW.centre.y);
@@ -69,23 +73,39 @@ function dist3(a, b) {
 	check('solar circle R = 8.2 kpc turns in 229 ± 2 Myr',
 		Math.abs(tSun - 229) < 2, { omega: wSun, period: tSun });
 
+	// The pattern speed is derived, never authored: the apsidal precession rate
+	// (Omega - kappa/2 = (1 - 1/sqrt2)*Omega, plan §1.1) at the radius that sets
+	// the pattern — the bar's own end for a barred model.
+	const dyn = orbit.fillDynamics({}, MW);
+	const extent = MW.spheroid.a * MW.spheroid.r0; // the MW preset's bulge
+	const expected = (1 - 1 / Math.SQRT2) * dyn.vFlat / Math.max(extent, dyn.rCore);
+	check('the Milky Way pattern speed is the group precession rate at the bulge radius',
+		Math.abs(dyn.omegaPattern - expected) < 1e-12, { omegaPattern: dyn.omegaPattern, expected });
+
 	const wBar = orbit.omegaFor(orbit.FAMILY_BAR, 1, 0, MW);
-	const tBar = orbit.TAU / wBar;
-	check('bar/pattern period 154 ± 1 Myr (omegaPattern = 0.041)',
-		Math.abs(tBar - 154) < 1, { omega: wBar, period: tBar });
+	check('bar/pattern period 143 ± 1 Myr (derived ω_p = 0.0439 rad/Myr = 43 km/s/kpc)',
+		Math.abs(orbit.TAU / wBar - 143) < 1, { omega: wBar, period: orbit.TAU / wBar });
 
-	// Group zone: a disc star inside corotation rides the pattern exactly.
+	// Streaming rate: the bar's x1 loop frequency. It is a function of radius
+	// alone, zero exactly at corotation, and it reverses beyond it.
 	const rCr = MW.dynamics.vFlat / MW.dynamics.omegaPattern;
-	const wIn = orbit.omegaFor(orbit.FAMILY_DISC, rCr - 0.5, 0, MW);
-	check(`disc inside corotation (R_CR = ${rCr.toFixed(2)} kpc) locks to the pattern speed`,
-		wIn === MW.dynamics.omegaPattern, { wIn });
+	check(`the streaming rate is zero at corotation (R_CR = ${rCr.toFixed(2)} kpc)`,
+		Math.abs(orbit.omegaStream(dyn, rCr)) < 1e-9
+		&& orbit.omegaStream(dyn, rCr * 0.5) > 0
+		&& orbit.omegaStream(dyn, rCr * 2) < 0,
+		{ at: orbit.omegaStream(dyn, rCr), in: orbit.omegaStream(dyn, rCr * 0.5), out: orbit.omegaStream(dyn, rCr * 2) });
+	check('the streaming rate falls with radius inside corotation (inner stars lap the bar fastest)',
+		orbit.omegaStream(dyn, 1) > orbit.omegaStream(dyn, 3) && orbit.omegaStream(dyn, 3) > orbit.omegaStream(dyn, 5),
+		{ r1: orbit.omegaStream(dyn, 1), r3: orbit.omegaStream(dyn, 3), r5: orbit.omegaStream(dyn, 5) });
 
-	// Continuity at R_CR: Omega(R) crosses omegaPattern there, so the two
-	// branches agree and the seam cannot show as a shear ring.
-	const wBelow = orbit.omegaFor(orbit.FAMILY_DISC, rCr - 1e-6, 0, MW);
-	const wAbove = orbit.omegaFor(orbit.FAMILY_DISC, rCr + 1e-6, 0, MW);
-	check('the group-zone lock is continuous at R_CR (|Δω| < 1e-6)',
-		Math.abs(wBelow - wAbove) < 1e-6, { wBelow, wAbove });
+	// Differential disc: the local group rate everywhere, no lock, and the
+	// seam-free property the 0.4.1 lock was built for is now automatic (there
+	// is only one branch).
+	const wIn = orbit.omegaFor(orbit.FAMILY_DISC, rCr - 0.5, 0, MW);
+	check('the belt/disc is differential (no corotation lock): ω = vFlat/max(r, rCore)',
+		wIn === dyn.vFlat / Math.max(rCr - 0.5, dyn.rCore)
+		&& orbit.omegaFor(orbit.FAMILY_DISC, 2, 0, MW) > orbit.omegaFor(orbit.FAMILY_DISC, 6, 0, MW),
+		{ wIn, w2: orbit.omegaFor(orbit.FAMILY_DISC, 2, 0, MW), w6: orbit.omegaFor(orbit.FAMILY_DISC, 6, 0, MW) });
 
 	const wOut = orbit.omegaFor(orbit.FAMILY_DISC, 12, 0, MW);
 	check('outside R_CR the disc keeps differential rotation (ω = vFlat/R)',
@@ -113,35 +133,62 @@ function dist3(a, b) {
 		wFar === MW.dynamics.omegaPattern, { wFar });
 }
 
-// --- 4. Group coherence: the bar never lags its neighbours ---------------
-// The reported bug: the bar read slower than stars near it. Inside R_CR a
-// bar star, an embedded disc star and a young pattern star must cover the
-// same angle over the same time — one group, one speed.
+// --- 4. Group kinematics: one pattern, differential disc, streaming bar ---
+// The reported bug was the opposite of 0.4.1's: the bar, the arms and the whole
+// inner disc turned as ONE rigid body. Now the pattern is one group (bar seats
+// and young stars sweep the same angle), the disc is differential, and the
+// bar's own stars stream through the pattern at a radius-dependent rate.
 {
 	const t = 100; // Myr
-	const probes = [
-		['bar', 9.5, 0.5, orbit.FAMILY_BAR],
-		['disc-in-bar', 9.2, -0.8, orbit.FAMILY_DISC],
-		['young', 9.0, 1.2, orbit.FAMILY_PATTERN],
-	];
-	const sweep = (x, y, fam, time) => {
-		orbit.orbitPosition(out, x, y, 0.05, fam, 4, 8, time, MW);
+	const sweep = (x, y, fam, time, ph, amp) => {
+		orbit.orbitPosition(out, x, y, 0.05, fam, ph, amp, time, MW);
 		const a1 = Math.atan2(out[1] - MW.centre.y, out[0] - MW.centre.x);
-		orbit.orbitPosition(out, x, y, 0.05, fam, 4, 8, 0, MW);
+		orbit.orbitPosition(out, x, y, 0.05, fam, ph, amp, 0, MW);
 		const a0 = Math.atan2(out[1] - MW.centre.y, out[0] - MW.centre.x);
 		let d = a1 - a0;
 		d = d - orbit.TAU * Math.round(d / orbit.TAU);
 		return d;
 	};
-	let ref = null, spread = 0;
-	const ang = {};
-	for (const [label, x, y, fam] of probes) {
-		ang[label] = sweep(x, y, fam, t);
-		if (ref === null) ref = ang[label];
-		else spread = Math.max(spread, Math.abs(ang[label] - ref));
+	// A bar star and a young pattern star share the pattern's angle (its seat
+	// is on the pattern); the small loop only perturbs it.
+	const aBar = sweep(MW.centre.x + 1.5, 0.5, orbit.FAMILY_BAR, t, 4, 8);
+	const aYoung = sweep(MW.centre.x + 1.5, 0.5, orbit.FAMILY_PATTERN, t, 4, 8);
+	check('the pattern is one group: bar seat and young stars sweep the same angle (< 0.1°)',
+		Math.abs(aBar - aYoung) < 0.002, { bar: aBar, young: aYoung });
+
+	// The embedded disc star does NOT: it runs at its own local rate and
+	// overtakes the pattern inside corotation. That is the density wave.
+	const aDisc = sweep(MW.centre.x + 1.5, 0.5, orbit.FAMILY_DISC, t, 4, 8);
+	check('the embedded disc star overtakes the pattern inside corotation (differential belt)',
+		aDisc > aYoung + 0.05, { disc: aDisc, young: aYoung });
+
+	// The bar's stars are not glued to the pattern: their loop phase advances
+	// at the streaming rate, so the same star sits somewhere else than a
+	// rotation of its T = 0 position after a while.
+	const px = MW.centre.x + 1.5, py = 0.5;
+	orbit.orbitPosition(out, px, py, 0.05, orbit.FAMILY_BAR, 4, 15, 40, MW);
+	const looped = dist3(out, [px, py, 0.05]);
+	const theta = MW.dynamics.omegaPattern * 40;
+	const seatX = MW.centre.x + Math.cos(theta) * (px - MW.centre.x) - Math.sin(theta) * py;
+	const seatY = Math.sin(theta) * (px - MW.centre.x) + Math.cos(theta) * py;
+	check('a bar star is off its rigid seat after 40 Myr (it streams, it is not glued)',
+		dist3(out, [seatX, seatY, 0.05]) > 1e-3,
+		{ offSeat: dist3(out, [seatX, seatY, 0.05]), loop: looped });
+
+	// ...but never far: the loop is bounded by the amplitude scale, so the
+	// bar's outline cannot be torn. Sweep a long session and bound it.
+	const dyn = orbit.fillDynamics({}, MW);
+	let maxOff = 0;
+	for (let tt = 0; tt <= 2000; tt += 7) {
+		orbit.orbitPosition(out, px, py, 0.05, orbit.FAMILY_BAR, 4, 15, tt, MW);
+		const th = MW.dynamics.omegaPattern * tt;
+		const sx = Math.cos(th) * (px - MW.centre.x) - Math.sin(th) * py;
+		const sy = Math.sin(th) * (px - MW.centre.x) + Math.cos(th) * py;
+		maxOff = Math.max(maxOff, Math.hypot(out[0] - MW.centre.x - sx, out[1] - sy));
 	}
-	check('bar, embedded disc and young stars sweep the same angle in 100 Myr (< 1° apart)',
-		spread < 0.0175, { spreadRad: spread, ang });
+	const bound = orbit.BAR_LOOP_FRACTION * dyn.pressureAmpScale * 2 + 1e-6;
+	check('the bar loop stays bounded (never leaves the bar: ≤ 2 × the amplitude)',
+		maxOff <= bound, { maxOff, bound });
 }
 
 // --- 4b. The S0/SB0 regression: nothing that should move is frozen -------
@@ -178,13 +225,44 @@ function dist3(a, b) {
 
 	const sb0m = galaxy.createGalaxy({ type: 'SB0', seed: 11 });
 	const sb0 = orbit.fillDynamics({}, sb0m);
-	check('SB0 carries a pattern speed (barred types never inherit ω_p = 0)',
-		sb0.omegaPattern === 0.031, { omegaPattern: sb0.omegaPattern });
-	check('SB0 bar is rigid at ω_p and the inner disc joins its group (R_CR = vFlat/ω_p)',
-		orbit.omegaFor(orbit.FAMILY_BAR, 1.5, 0, sb0m) === sb0.omegaPattern
-		&& orbit.omegaFor(orbit.FAMILY_DISC, 2, 0, sb0m) === sb0.omegaPattern
-		&& Math.abs(sb0.vFlat / sb0.omegaPattern - 7.42) < 0.01,
-		{ bar: orbit.omegaFor(orbit.FAMILY_BAR, 1.5, 0, sb0m), rCr: sb0.vFlat / sb0.omegaPattern });
+	// Derived, not authored: the apsidal rate at the bar's own end (a = 1.62 kpc),
+	// which is 40.7 km/s/kpc — inside the observed bar band (33-45).
+	const barEnd = sb0m.spheroid.a * sb0m.spheroid.r0;
+	const sb0Expected = (1 - 1 / Math.SQRT2) * sb0.vFlat / Math.max(barEnd, sb0.rCore);
+	check('SB0 pattern speed is derived from the bar end (40.7 km/s/kpc, observed band 33-45)',
+		sb0.omegaPattern > 0 && Math.abs(sb0.omegaPattern - sb0Expected) < 1e-12
+		&& Math.abs(sb0.omegaPattern * 978 - 40.7) < 0.2,
+		{ omegaPattern: sb0.omegaPattern, kmPerSecPerKpc: sb0.omegaPattern * 978 });
+	check('SB0 corotation falls beyond the bar end (the bar never overflows its own corotation)',
+		sb0.vFlat / sb0.omegaPattern > barEnd * 1.5,
+		{ rCr: sb0.vFlat / sb0.omegaPattern, barEnd });
+	check('SB0 bar stars are NOT rigid: the loop rate varies across the bar (1.7× end to end)',
+		orbit.omegaStream(sb0, 0.4) > orbit.omegaStream(sb0, 1.6)
+		&& Math.abs(orbit.omegaFor(orbit.FAMILY_BAR, 3.2, 0, sb0m) - sb0.omegaPattern) < 1e-12
+		&& orbit.omegaStream(sb0, 0.4) / orbit.omegaStream(sb0, 1.6) > 1.5,
+		{ inner: orbit.omegaStream(sb0, 0.4), outer: orbit.omegaStream(sb0, 1.6) });
+	check('SB0 belt/disc no longer co-rotates with the bar (the rigid group zone is gone)',
+		orbit.omegaFor(orbit.FAMILY_DISC, 2, 0, sb0m) > sb0.omegaPattern * 1.5
+		&& orbit.omegaFor(orbit.FAMILY_DISC, 1, 0, sb0m) === sb0.vFlat / Math.max(1, sb0.rCore)
+		&& orbit.omegaFor(orbit.FAMILY_DISC, 1, 0, sb0m) !== sb0.omegaPattern,
+		{ disc2: orbit.omegaFor(orbit.FAMILY_DISC, 2, 0, sb0m), omegaPattern: sb0.omegaPattern });
+	// Every barred type: the derived pattern speed lands in the observed band
+	// (33-55 km/s/kpc) and corotation falls beyond the bar's own end. This is
+	// the structural gate on a derivation with no constant in it.
+	{
+		const bad = [];
+		for (const type of ['SB0', 'SBa', 'SBb', 'SBc', 'SBd']) {
+			const m = galaxy.createGalaxy({ type, seed: 21 });
+			const dd = orbit.fillDynamics({}, m);
+			const km = dd.omegaPattern * 978;
+			const end = m.spheroid.profile === 'bar' ? m.spheroid.a * m.spheroid.r0 : m.spheroid.a * m.spheroid.r0;
+			const beyond = dd.omegaPattern > 0 && dd.vFlat / dd.omegaPattern > end;
+			if (!(km > 30 && km < 56 && beyond)) bad.push({ type, km, rCr: dd.vFlat / dd.omegaPattern, end });
+		}
+		check('every barred type: derived ω_p in the observed 33-55 km/s/kpc band, corotation past the bar end',
+			bad.length === 0, { bad });
+	}
+
 	check('SB0 spheroid pressure spin also lives (λ·Ω_disc)',
 		orbit.omegaFor(orbit.FAMILY_PRESSURE, 1.5, 0, sb0m) > 0,
 		{ w: orbit.omegaFor(orbit.FAMILY_PRESSURE, 1.5, 0, sb0m) });
@@ -250,10 +328,13 @@ function dist3(a, b) {
 // A bug the first shader shipped: reducing only the bulk theta and reusing it
 // for the epicycle argument snapped every wobble phase once per revolution.
 {
-	const tWrap = orbit.TAU / MW.dynamics.omegaPattern; // one pattern period
+	// One period of the PROBE STAR's own bulk rate (the disc has no lock now:
+	// the wrap has to be its own, not the pattern's).
+	const probeX = 2, probeY = 1.5;
+	const tWrap = orbit.TAU / orbit.omegaFor(orbit.FAMILY_DISC, Math.hypot(probeX, probeY), 0, MW);
 	const eps = 1e-3;
 	const probe = (t) => {
-		orbit.orbitPosition(out, MW.centre.x + 2, 1.5, 0.2, orbit.FAMILY_DISC, 9, 12, t, MW);
+		orbit.orbitPosition(out, MW.centre.x + probeX, probeY, 0.2, orbit.FAMILY_DISC, 9, 12, t, MW);
 		return [out[0], out[1], out[2]];
 	};
 	const a = probe(tWrap - eps), b = probe(tWrap + eps);
@@ -317,18 +398,16 @@ function orbitPositionF32(px, py, pz, packed, cx, time, dynA, dynB) {
 	const pressureClockF = () => (dynA[0] > 0
 		? fr(dynA[0] / fr(Math.max(r, dynA[1])))
 		: fr(fr(0.05) / fr(Math.max(fr(Math.pow(fr(Math.max(r, 0.1)), 1.5)), fr(0.01)))));
+	const circF = () => (dynA[0] > 0 ? fr(dynA[0] / fr(Math.max(r, dynA[1]))) : 0);
 	let omega;
 	if (family === 2) omega = dynA[2];
 	else if (family === 0) {
 		if (dynA[2] > 0) omega = dynA[2];
-		else omega = dynA[0] > 0 ? fr(dynA[0] / fr(Math.max(r, dynA[1]))) : 0;
+		else omega = circF();
 	} else if (family === 1) {
-		const circ = fr(dynA[0] / fr(Math.max(r, dynA[1])));
-		if (dynA[2] > 0 && dynA[0] > 0) {
-			if (dynB[3] > 0.5) omega = dynA[2];
-			else if (r < fr(dynA[0] / dynA[2])) omega = dynA[2];
-			else omega = circ;
-		} else omega = circ;
+		// Differential at the local group rate; patternLock is the rigid variant.
+		if (dynB[3] > 0.5 && dynA[2] > 0) omega = dynA[2];
+		else omega = circF();
 	} else {
 		omega = fr(dynA[3] * pressureClockF());
 	}
@@ -338,7 +417,13 @@ function orbitPositionF32(px, py, pz, packed, cx, time, dynA, dynB) {
 	const sinPh = sinTauF(phase);
 	const sinPhV = sinTauF(fr(phase + fr(1.57079632679)));
 	let wrx = 0, wry = 0, wz = 0;
-	if (family === 1) {
+	if (family === 2) {
+		// The bar's x1 loop: circulate at the rate the star laps the pattern.
+		const stream = fr(circF() - dynA[2]);
+		const ah = fr(fr(rank * fr(0.15)) * dynB[1]);
+		const wr = fr(ah * fr(sinTauF(fr(phase + stream * time)) - sinPh));
+		wrx = fr(wr * qx / r); wry = fr(wr * qy / r);
+	} else if (family === 1) {
 		const kappa = fr(fr(1.41421356237) * fr(dynA[0] / fr(Math.max(r, dynA[1]))));
 		const ah = fr(fr(fr(rank * 2) * dynB[0]) / fr(Math.max(kappa, fr(1e-6))));
 		const av = fr(Math.min(fr(fr(0.2) * ah), fr(Math.max(fr(dynB[2] - fr(Math.abs(qz))), 0))));
@@ -377,6 +462,8 @@ function f32i(n) { return Math.fround(n); }
 		[MW.centre.x + 8.178, 0, 0.01, orbit.FAMILY_DISC, 3, 9, 10000],
 		[MW.centre.x + 1.5, 0.5, 0.2, orbit.FAMILY_DISC, 11, 4, 3000],
 		[MW.centre.x + 1.5, 0.5, 0.2, orbit.FAMILY_BAR, 0, 0, 3000],
+		[MW.centre.x + 1.1, -0.4, 0.1, orbit.FAMILY_BAR, 13, 15, 250],
+		[MW.centre.x + 1.1, -0.4, 0.1, orbit.FAMILY_BAR, 13, 15, 5000],
 		[MW.centre.x + 2.0, -1.0, 0.5, orbit.FAMILY_PRESSURE, 7, 14, 2000],
 	];
 	let worst = 0, worstCase = null;

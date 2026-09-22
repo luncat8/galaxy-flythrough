@@ -427,10 +427,11 @@ const ORBIT = `
 // orbit.packOrbitDynamics — dynA = (vFlat, rCore, omegaPattern, spinLambda),
 // dynB = (sigmaThin, pressureAmpScale, discHeight, patternLock).
 //
-// Group kinematics (plan §1.1): pattern and bar are rigid; the disc joins
-// them inside the corotation radius R_CR = vFlat/omegaPattern, so the bar,
-// the arms and the inner disc turn as one group and only the outer disc
-// shears. Omega(R) equals omegaPattern at R_CR, so the lock is continuous.
+// Group kinematics (plan §1.1, 0.4.3): the pattern (the bar's and the arms'
+// seats) rides the group speed galaxy.js derives from the model's own
+// population; the disc rotates differentially at its local group rate Omega(r)
+// with no corotation lock; and the bar's stars circulate about their seats on
+// x1 loops at Omega(r) - omegaPattern, the rate at which they lap the pattern.
 
 const TAU: f32 = 6.28318530718;
 const INV_TAU: f32 = 0.159154943092;
@@ -444,6 +445,8 @@ const FAMILY_PRESSURE: u32 = 3u;
 // Plan §1.1 spheroid clock; also the 1 kpc anchor of the pressure amplitude.
 const PRESSURE_CLOCK_1KPC: f32 = 0.05;
 const VERTICAL_WOBBLE_RATIO: f32 = 0.2;
+// The bar's x1 loop as a fraction of the spheroid amplitude scale (dynB.y).
+const BAR_LOOP_FRACTION: f32 = 0.15;
 
 // Reduce the full argument before sin: WGSL sin of a large argument is
 // implementation-defined, and reducing here (not just the bulk theta) keeps
@@ -463,19 +466,21 @@ fn orbitOmega(family: u32, r: f32, dynA: vec4f, dynB: vec4f) -> f32 {
         if (family == FAMILY_BAR) { return dynA.z; }
         if (family == FAMILY_PATTERN) {
                 // No pattern (S0/E/Irr): orbit like the disc neighbours instead
-                // of freezing. galaxy.js guarantees omegaPattern > 0 for bars.
+                // of freezing. galaxy.js derives omegaPattern per model.
                 if (dynA.z > 0.0) { return dynA.z; }
                 return select(0.0, dynA.x / max(r, dynA.y), dynA.x > 0.0);
         }
         if (family == FAMILY_DISC) {
-                let circ: f32 = dynA.x / max(r, dynA.y);
-                if (dynA.z > 0.0 && dynA.x > 0.0) {
-                        if (dynB.w > 0.5) { return dynA.z; }
-                        if (r < dynA.x / dynA.z) { return dynA.z; }
-                }
-                return circ;
+                // The local group rate. patternLock is the cosmetic rigid variant.
+                if (dynB.w > 0.5 && dynA.z > 0.0) { return dynA.z; }
+                return select(0.0, dynA.x / max(r, dynA.y), dynA.x > 0.0);
         }
         return dynA.w * pressureClock(dynA, r);
+}
+
+// How fast a star laps the pattern at radius r (the bar loop's frequency).
+fn omegaStream(dynA: vec4f, r: f32) -> f32 {
+        return select(0.0, dynA.x / max(r, dynA.y), dynA.x > 0.0) - dynA.z;
 }
 
 fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, dynB: vec4f) -> vec3f {
@@ -493,7 +498,12 @@ fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, d
         var wrx: f32 = 0.0;
         var wry: f32 = 0.0;
         var wz: f32 = 0.0;
-        if (family == FAMILY_DISC) {
+        if (family == FAMILY_BAR) {
+                let stream: f32 = omegaStream(dynA, r);
+                let ah: f32 = rank * BAR_LOOP_FRACTION * dynB.y;
+                let wr: f32 = ah * (sinTau(phase + stream * time) - sinPh);
+                wrx = wr * q.x / r; wry = wr * q.y / r;
+        } else if (family == FAMILY_DISC) {
                 let kappa: f32 = SQRT2 * (dynA.x / max(r, dynA.y));
                 let ah: f32 = rank * 2.0 * dynB.x / max(kappa, 1e-6);
                 let av: f32 = min(VERTICAL_WOBBLE_RATIO * ah, max(dynB.z - abs(q.z), 0.0));

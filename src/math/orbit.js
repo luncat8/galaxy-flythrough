@@ -7,13 +7,29 @@
 // WGSL arithmetic). Per-model numbers never live in either law: they arrive
 // through fillDynamics/packOrbitDynamics (CPU) and camera.dynA/dynB (GPU).
 //
-// Group kinematics (0.4.1, the visual fix for "the bar is slower than the
-// stars near it"): the bar, the arms and the whole disc inside the corotation
-// radius R_CR = vFlat/omegaPattern rotate at the pattern speed as ONE rigid
-// group. Omega(R) crosses omegaPattern exactly at R_CR, so the lock is
-// continuous there; outside it the disc keeps its differential rotation.
-// Cost is one select — group speed is not a slower path, it is the same
-// closed form with a shared omega.
+// Group kinematics (0.4.3, "bar and belt should not correspond to static speed
+// but some group speed of stars — bar rotates as a rigid shape is impossible").
+// A bar is a *pattern*, and a pattern is a group speed: the mean precession
+// rate of the population that carries it, derived per model in galaxy.js. The
+// pattern rotates rigidly because that is what a density wave is, but no star
+// is glued to it:
+//
+//   bar       the star's seat rides the pattern, and the star itself circulates
+//             around that seat on an x1 loop (the wing of the bar) at the rate
+//             it laps the pattern, Omega(r) - omegaPattern. That rate is a
+//             function of radius, not of the star: zero at corotation (trapped
+//             stars), largest at the centre (where the star overtakes the bar
+//             fastest) and reversed outside it. Amplitudes stay small, so the
+//             loop reads as the bar's own internal stream and never tears its
+//             shape.
+//   disc      differential rotation at the local group rate Omega(r) — the mean
+//             orbital rate of the stars at that radius. No corotation lock: the
+//             lock made the whole inner galaxy one rigid body (the reported
+//             bug). patternLock (§3.3) still forces the rigid variant.
+//   pattern   the young stars ride the pattern at that same group speed.
+//
+// Cost: one extra sin pair for the bar's stars — the same shape as the disc's
+// existing epicycle, and one select less than the lock it replaces.
 'use strict';
 
 const FAMILY_PATTERN = 0, FAMILY_DISC = 1, FAMILY_BAR = 2, FAMILY_PRESSURE = 3;
@@ -35,6 +51,14 @@ const DEFAULT_SPIN = 0.1;
 // Vertical wobble is ~1/5 of the horizontal at the Sun (plan §1.4 defaults:
 // thin disc 0.6 / 0.12 kpc).
 const VERTICAL_WOBBLE_RATIO = 0.2;
+// The bar's x1 loop, as a fraction of the spheroid's own amplitude scale
+// (pressureAmpScale, which is already capped at 0.3 of the bar's semimajor
+// axis in fillDynamics). The loop is the bar's internal stream and has to stay
+// small against the bar's own width: 0.15 of that cap is 4.5% of the bar's
+// semimajor axis — the 90% outline of the bar stars drifts 0.2-0.5% over 400 Myr,
+// about half the blur 0.25 costs, and the bar's flat cross-section still reads
+// streaming at any slider rate.
+const BAR_LOOP_FRACTION = 0.15;
 
 function familyFromFlags(flags) { return (flags & FAMILY_MASK) >>> FAMILY_SHIFT; }
 function flagsWithFamily(flags, family) { return (flags & ~FAMILY_MASK) | ((family & 3) << FAMILY_SHIFT); }
@@ -100,24 +124,30 @@ function pressureClock(dyn, r) {
 function omegaFrom(dyn, family, r) {
 	if (family === FAMILY_BAR) return dyn.omegaPattern;
 	if (family === FAMILY_PATTERN) {
-		// A bar always carries omegaPattern > 0 (galaxy.js guarantees it per
-		// type). A pattern with no pattern — S0/E/Irr — is not a frozen star:
-		// it orbits like its disc neighbours (the Keplerian clock if there is
-		// no disc at all).
+		// A barred or armed model always carries omegaPattern > 0 (galaxy.js
+		// derives it per model). A pattern with no pattern — S0/E/Irr — is not a
+		// frozen star: it orbits like its disc neighbours (the Keplerian clock if
+		// there is no disc at all).
 		if (dyn.omegaPattern > 0) return dyn.omegaPattern;
 		return dyn.vFlat > 0 ? dyn.vFlat / Math.max(r, dyn.rCore) : 0;
 	}
 	if (family === FAMILY_DISC) {
-		const circ = dyn.vFlat / Math.max(r, dyn.rCore);
-		if (dyn.omegaPattern > 0 && dyn.vFlat > 0) {
-			// Group zone: everything inside corotation co-rotates with the bar
-			// and arms. patternLock (plan §3.3) extends the lock to all radii.
-			if (dyn.patternLock) return dyn.omegaPattern;
-			if (r < dyn.vFlat / dyn.omegaPattern) return dyn.omegaPattern;
-		}
-		return circ;
+		// The local group rate: the stars at this radius, at their own mean
+		// orbital speed. patternLock (plan §3.3) is the cosmetic rigid variant.
+		if (dyn.patternLock && dyn.omegaPattern > 0) return dyn.omegaPattern;
+		return dyn.vFlat > 0 ? dyn.vFlat / Math.max(r, dyn.rCore) : 0;
 	}
 	return dyn.spinLambda * pressureClock(dyn, r);
+}
+
+// How fast a star laps the pattern at radius r: the pattern-frame streaming
+// rate. Zero at corotation (the star and the wave travel together — the
+// trapped orbit), positive inside it (the star overtakes the bar from behind),
+// negative outside it (the bar leaves the star behind). This is the bar's x1
+// loop frequency, and it is a function of radius, not of the individual star.
+function omegaStream(dyn, r) {
+	const circ = dyn.vFlat > 0 ? dyn.vFlat / Math.max(r, dyn.rCore) : 0;
+	return circ - dyn.omegaPattern;
 }
 
 function omegaFor(family, x, y, model) {
@@ -153,7 +183,16 @@ function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
 	const sinPh = sinTau(ph);
 	const sinPhV = sinTau(ph + HALF_PI);
 	let wrx = 0, wry = 0, wz = 0;
-	if (family === FAMILY_DISC) {
+	if (family === FAMILY_BAR) {
+		// x1 loop: the star's circulation about its seat in the pattern frame,
+		// at the rate it laps the pattern. Planar (no vertical term): the bar's
+		// stars are the thin end of the spheroid and the loop is what the bar's
+		// own flat cross-section can absorb.
+		const stream = omegaStream(dyn, r);
+		const ah = rank * BAR_LOOP_FRACTION * dyn.pressureAmpScale;
+		const wr = ah * (sinTau(ph + stream * time) - sinPh);
+		wrx = wr * qx / r; wry = wr * qy / r;
+	} else if (family === FAMILY_DISC) {
 		const kappa = SQRT2 * (dyn.vFlat / Math.max(r, dyn.rCore));
 		const ah = rank * 2 * dyn.sigmaThin / Math.max(kappa, 1e-6);
 		const av = Math.min(VERTICAL_WOBBLE_RATIO * ah, Math.max(dyn.discHeight - Math.abs(qz), 0));
@@ -201,10 +240,10 @@ function formatTimeRate(value, speed) { return value < 0 ? `follow ×${(-value).
 const OrbitAPI = {
 	FAMILY_PATTERN, FAMILY_DISC, FAMILY_BAR, FAMILY_PRESSURE, FAMILY_NAMES,
 	FAMILY_SHIFT, FAMILY_MASK, FLIGHT_TIME_GAIN, TAU, PRESSURE_CLOCK_1KPC,
-	VERTICAL_WOBBLE_RATIO,
+	VERTICAL_WOBBLE_RATIO, BAR_LOOP_FRACTION,
 	familyFromFlags, flagsWithFamily, encodeJitter, readOrbit,
 	familyFromColorIndex, familyForStar,
-	fillDynamics, pressureClock, omegaFor, omegaFrom, orbitPosition,
+	fillDynamics, pressureClock, omegaFor, omegaFrom, omegaStream, orbitPosition,
 	packOrbitDynamics, sinTau, sliderValueToRate, formatTimeRate,
 };
 if (typeof module !== 'undefined') module.exports = OrbitAPI;

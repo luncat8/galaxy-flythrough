@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-22T02:30:08.152Z",
+  "date": "2026-09-22T03:36:19.890Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -11,11 +11,11 @@
     },
     {
       "name": "orbit",
-      "lines": 93
+      "lines": 103
     },
     {
       "name": "star-sprite",
-      "lines": 233
+      "lines": 243
     },
     {
       "name": "star-sprite-hdr",
@@ -44,8 +44,8 @@
     "nebula-billboard",
     "tonemap"
   ],
-  "totalChecks": 151,
-  "passed": 151,
+  "totalChecks": 152,
+  "passed": 152,
   "failed": 0,
   "checks": [
     {
@@ -77,11 +77,11 @@
         ],
         [
           "orbit",
-          4455
+          5089
         ],
         [
           "star-sprite",
-          10514
+          11148
         ],
         [
           "star-sprite-hdr",
@@ -179,7 +179,7 @@
     {
       "name": "orbit: declares its functions",
       "pass": true,
-      "detail": 4
+      "detail": 5
     },
     {
       "name": "star-sprite: braces and parentheses balance",
@@ -197,7 +197,7 @@
     {
       "name": "star-sprite: declares its functions",
       "pass": true,
-      "detail": 9
+      "detail": 10
     },
     {
       "name": "star-sprite-hdr: braces and parentheses balance",
@@ -1002,11 +1002,12 @@
       }
     },
     {
-      "name": "orbit.wgsl shared law constants match orbit.js (clock, wobble ratio, TAU)",
+      "name": "orbit.wgsl shared law constants match orbit.js (clock, wobble ratios, TAU)",
       "pass": true,
       "detail": {
         "clock": 0.05,
         "ratio": 0.2,
+        "barLoop": 0.15,
         "tau": 6.28318530718
       }
     },
@@ -1015,7 +1016,11 @@
       "pass": true
     },
     {
-      "name": "the disc group-zone lock is present on both sides (corotation rule)",
+      "name": "the disc has NO corotation lock on either side (differential belt, 0.4.3)",
+      "pass": true
+    },
+    {
+      "name": "the bar streams through the pattern on both sides (omegaStream ↔ orbitOmega/omegaStream)",
       "pass": true
     },
     {

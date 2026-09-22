@@ -25,6 +25,7 @@ require('../src/render/shaders.js');
 
 const records = require('../src/math/star-record.js');
 const shaders = require('../src/render/shaders.js');
+const orbit = require('../src/math/orbit.js');
 const mirrorLib = require('./tonemap-mirror.js');
 
 const checks = [];
@@ -238,6 +239,74 @@ async function main() {
 	check('the half-period position discriminates a frozen orbit (far from T = 0)',
 		Math.abs(sunAtHalf.clipPos[0] - sunAt0.clipPos[0]) > 10,
 		{ dx: sunAtHalf.clipPos[0] - sunAt0.clipPos[0] });
+
+	// --- 2c. The bar's x1 loop runs on the shipping WGSL -------------------
+	// The 0.4.3 fix: the bar's stars are not glued to the pattern. Same uniform
+	// as 2b, but the record is a bar star (family 2) 1.02 kpc out, with the top
+	// amplitude rank, so the vertex must apply orbitPosition's bar branch — the
+	// seat riding the pattern plus a loop circulating at Omega(r) - omegaPattern.
+	// The displacement between two times is compared (the sub-pixel corner
+	// offset cancels out), and the star is also checked to be measurably off its
+	// rigid seat: a glued law fails both.
+	const barBytes = new ArrayBuffer(records.RECORD_BYTES);
+	const barF = new Float32Array(barBytes);
+	const barU = new Uint32Array(barBytes);
+	barF[0] = 8.178 + 1.0; barF[1] = 0.2; barF[2] = 0.0;
+	// jitter byte 240 → phase nibble 0, amplitude nibble 15 (rank 0.969).
+	barU[3] = ((records.FLAG_VISIBLE | (2 << 3)) << 16) | (records.encodeAbsMag(4.83) << 8) | 4 | (240 << 24);
+	const barBinds = {
+		0: {
+			0: { uniform: orbitCamBytes },
+			1: barBytes,
+			2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
+		},
+	};
+	// The same numbers the uniform carries, as a model the CPU law can read.
+	// fillDynamics derives pressureAmpScale = min(2*sigmaSpheroid/Omega(1 kpc),
+	// 0.3 * spheroid axis) = min(0.45, 0.45) = 0.45, matching dynB.y above.
+	const fixtureModel = {
+		centre: { x: 8.178, y: 0, z: 0 },
+		dynamics: { vFlat: 0.225, rCore: 0.5, omegaPattern: 0.041, spinLambda: 0,
+			sigmaThin: 0.031, sigmaSpheroid: 0.45 * 0.225 / 2 },
+		spheroid: { a: 1.5, b: 1.5, c: 1.5, r0: 1 },
+		truncation: { discHeight: 3 },
+	};
+	const barPos = (t) => {
+		const o = new Float64Array(3);
+		orbit.orbitPosition(o, barF[0], barF[1], barF[2], orbit.FAMILY_BAR, 0, 15, t, fixtureModel);
+		return o;
+	};
+	const gpuAt = (t) => {
+		ocam[27] = t;
+		return runStage(spriteCode, 'vs_main', 'debugVertex',
+			{ vertex_index: 3, instance_index: 0 }, barBinds);
+	};
+	// T = 0 is the identity for the bar family too: the loop starts on the seat.
+	const barAt0 = gpuAt(0);
+	check('on-WGSL: the bar loop starts exactly on the seat at T = 0 (identity rule)',
+		Math.abs(barAt0.clipPos[0] - (barF[0] + offX)) < 2e-3
+		&& Math.abs(barAt0.clipPos[1] - (barF[1] - 5 + offY)) < 2e-3,
+		{ clip: Array.from(barAt0.clipPos) });
+
+	const barT = 40;
+	const barAtT = gpuAt(barT);
+	const cpu0 = barPos(0), cpuT = barPos(barT);
+	check('on-WGSL: the bar branch matches the CPU law at T = 40 Myr (displacement < 2 pc)',
+		Math.abs((barAtT.clipPos[0] - barAt0.clipPos[0]) - (cpuT[0] - cpu0[0])) < 2e-3
+		&& Math.abs((barAtT.clipPos[1] - barAt0.clipPos[1]) - (cpuT[1] - cpu0[1])) < 2e-3,
+		{
+			gpu: [barAtT.clipPos[0] - barAt0.clipPos[0], barAtT.clipPos[1] - barAt0.clipPos[1]],
+			cpu: [cpuT[0] - cpu0[0], cpuT[1] - cpu0[1]],
+		});
+	// The rigid seat: where a glued law (the 0.4.2 bug) would still be at T.
+	const theta = 0.041 * barT;
+	const qx = barF[0] - 8.178, qy = barF[1];
+	const seatX = 8.178 + Math.cos(theta) * qx - Math.sin(theta) * qy;
+	const seatY = Math.sin(theta) * qx + Math.cos(theta) * qy;
+	const offSeat = Math.hypot(barAtT.clipPos[0] - seatX, barAtT.clipPos[1] - (seatY - 5));
+	check('on-WGSL: the bar star is measurably OFF its rigid seat (it streams, it is not glued)',
+		offSeat > 0.03,
+		{ offSeat, cpuOffSeat: Math.hypot(cpuT[0] - seatX, cpuT[1] - seatY) });
 
 	// --- 3. N stars on one pixel are brighter than one --------------------
 	const faint = runStage(spriteCode, 'vs_main', 'debugVertex',

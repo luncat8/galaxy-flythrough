@@ -770,15 +770,28 @@ decoded field has a default, either stamp it at every write/decode boundary
 the CPU assumes. One shared helper (`familyFromColorIndex`) used by writer,
 labels and picking beats two call sites with the same hand-rolled ternary.
 
-## 2026-09-22 — Group kinematics are free: rigid patterns cost one select
+## 2026-09-22 — Group kinematics are free — but a group speed is not a rigid body (0.4.3)
 
 "The structure should move as a group, not as individual orbits" is not a
-performance question when orbits are closed-form: every star already evaluates
-the same per-vertex law, and a shared ω (corotation lock inside
-R_CR = vFlat/Ω_p) replaces one division with a constant — zero extra ALU, no
-per-star state, no CPU pass. Make the lock continuous by construction (Ω(R)
-crosses Ω_p exactly at R_CR) so the seam cannot show as a shear ring, and guard
-Ω_p = 0 so pattern-less types never freeze.
+performance question when orbits are closed-form: a shared ω replaces one
+division with a constant, zero extra ALU, no per-star state, no CPU pass. The
+0.4.1 answer (corotation lock: the disc shares the bar's Ω inside R_CR) was
+still wrong in the way users see it: a *pattern* is rigid, the stars are not.
+The reading that fixes it costs one sin pair: give each bar star a seat that
+rides the pattern and let the star circulate about that seat at the rate it laps
+the pattern, Ω(r) − Ω_p. Radius enters through a rate (not through
+per-star parameters), so the group stays one group and the numbers on screen
+vary the way a density wave does: fastest near the centre, zero at corotation,
+reversed outside. Rule of thumb for the next structure question — ask which
+entity is rigid (the pattern) and which is a group (the stars), and put the
+radius dependence in the second one.
+
+"Rigid" also survives as a *measurement* trap: a bar built from uniform-rank
+closed loops drifts its own barycentre by 0.04·A (65 pc on SB0) because the loop
+phase is the star's azimuth, so the loop population spreads. Anchoring the seat
+(fixed phase offset per seat, not per orbit) holds the centroid inside 1.5% of the
+bar radius — check the centroid, not just the extreme stars, when validating a
+loop-based shape.
 
 ## Derived objects inherit the *values* they logically negate (0.4.2)
 
