@@ -55,6 +55,7 @@ EXPERIMENTS = {
     'star-types-evolution':  'experiments/star-types-evolution-test.js',
     'nebula-placement':      'experiments/nebula-placement-test.js',
     'object-placement':      'experiments/object-placement-test.js',
+    'galaxy-age':            'experiments/galaxy-age-test.js',
     # Studies: they print a recommendation rather than pass/fail.
     'hash-quality':          'experiments/hash-quality-test.js',
     'precision':             'experiments/precision-test.js',
@@ -72,7 +73,7 @@ TYPES = {
     'test':   ['export-parity', 'm1-smoke', 'wgsl-validate', 'camera', 'renderer', 'hdr',
                'landmark', 'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'model-parity', 'sampling',
                'density-distribution',
-               'star-types-evolution', 'nebula-placement', 'object-placement'],
+               'star-types-evolution', 'nebula-placement', 'object-placement', 'galaxy-age'],
     'study':  ['hash-quality', 'precision', 'packing', 'filter'],
     'sim':    ['wgsl-exec'],
     'asset':  ['tile-encoder', 'visualize-data'],

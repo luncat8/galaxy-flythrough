@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T22:10:40.535Z",
+  "date": "2026-09-22T00:09:33.708Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -143,7 +143,7 @@
       "name": "GalaxyLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 30
+        "keys": 50
       }
     },
     {
@@ -164,14 +164,14 @@
       "name": "StarTypesLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 16
+        "keys": 23
       }
     },
     {
       "name": "NebulaLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 8
+        "keys": 7
       }
     },
     {
@@ -328,7 +328,8 @@
         "catalogStars": 10000,
         "exposure": 22,
         "seed": 7,
-        "type": null
+        "type": null,
+        "age": 13.5
       }
     },
     {
@@ -339,7 +340,8 @@
         "catalogStars": 250000,
         "exposure": null,
         "seed": 42,
-        "type": null
+        "type": null,
+        "age": 13.5
       }
     },
     {
@@ -350,7 +352,8 @@
         "catalogStars": 250000,
         "exposure": null,
         "seed": 42,
-        "type": null
+        "type": null,
+        "age": 13.5
       }
     },
     {

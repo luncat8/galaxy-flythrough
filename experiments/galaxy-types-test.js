@@ -335,11 +335,13 @@ function relNear(a, b, tol) {
 
 // --- 6. One uniform, packed from the model ------------------------------
 {
-	// 13 flat vec4 groups plus the trailing clump array (12 vec4s).
+	// 16 flat vec4 groups plus the trailing clump array (12 vec4s). The three
+	// past `populations` are 0.3.3's: the clock and the two halves of the
+	// per-component formation window.
 	check('the layout, the packer and the struct agree on the size',
 		galaxy.DENSITY_PARAMS_LAYOUT.length * 4 + galaxy.DENSITY_PARAMS_CLUMP_FLOATS === galaxy.DENSITY_PARAMS_FLOATS
 		&& galaxy.DENSITY_PARAMS_BYTES === galaxy.DENSITY_PARAMS_FLOATS * 4
-		&& galaxy.DENSITY_PARAMS_FLOATS === 13 * 4 + 12 * 4,
+		&& galaxy.DENSITY_PARAMS_FLOATS === 16 * 4 + 12 * 4,
 		{ floats: galaxy.DENSITY_PARAMS_FLOATS, bytes: galaxy.DENSITY_PARAMS_BYTES,
 			groups: galaxy.DENSITY_PARAMS_LAYOUT.length, clumps: galaxy.DENSITY_PARAMS_CLUMPS });
 	const buffer = new Float32Array(galaxy.DENSITY_PARAMS_FLOATS);
@@ -367,6 +369,55 @@ function relNear(a, b, tol) {
 	check('the boolean population flag arrives as 1.0 or 0.0',
 		slot(MW, 'populations', 'gasRich') === 1 && slot(models.S0, 'populations', 'gasRich') === 0,
 		{ SBb: slot(MW, 'populations', 'gasRich'), S0: slot(models.S0, 'populations', 'gasRich') });
+	// 0.3.3's three groups: the clock the population formulas read, and the two
+	// halves of the per-component formation window. The windows arrive as CDF
+	// fractions of the model's own truncated SFH — the numbers the shader mixes —
+	// not as the window fractions the descriptor authors.
+	check('the clock group carries the age, the timescale and the span star formation covers',
+		slot(MW, 'clock', 'age') === Math.fround(galaxy.AGE_REF)
+		&& slot(MW, 'clock', 'tauSfh') === Math.fround(MW.populations.tauSfh)
+		&& slot(MW, 'clock', 'sfhSpan') === Math.fround(MW.populations.sfhSpan)
+		&& slot(models.E4, 'clock', 'sfhSpan') === Math.fround(models.E4.populations.quenchTime),
+		{ preset: [slot(MW, 'clock', 'age'), slot(MW, 'clock', 'tauSfh'), slot(MW, 'clock', 'sfhSpan')],
+			E4Span: slot(models.E4, 'clock', 'sfhSpan'), E4Quench: models.E4.populations.quenchTime });
+	check('the formation windows arrive as CDF intervals, one pair per component',
+		['thinLo', 'thickLo', 'bulgeLo', 'haloLo']
+			.every((f, c) => slot(MW, 'formLo', f) === Math.fround(MW.populations.formQ[c * 2]))
+		&& ['thinHi', 'thickHi', 'bulgeHi', 'haloHi']
+			.every((f, c) => slot(MW, 'formHi', f) === Math.fround(MW.populations.formQ[c * 2 + 1]))
+		&& slot(MW, 'formLo', 'haloLo') === 0 && slot(MW, 'formHi', 'thinHi') === 1,
+		MW.populations.formQ.map((v) => +v.toFixed(5)));
+	for (const model of ALL) {
+		// q is [thinLo, thinHi, thickLo, thickHi, bulgeLo, bulgeHi, haloLo, haloHi],
+		// indexed like density.COMPONENT_*.
+		const q = model.populations.formQ;
+		check(`${model.type}: the formation windows are nested in assembly order`,
+			q.length === 8 && q.every((v) => v >= 0 && v <= 1)
+			&& [0, 1, 2, 3].every((c) => q[c * 2] <= q[c * 2 + 1])
+			&& q[7] <= q[5] && q[5] <= q[3] && q[3] <= q[1],
+			q.map((v) => +v.toFixed(4)));
+	}
+	// The renderer's property-only regenerate trusts this verdict with 300k
+	// stars, so it has to say "the field moves" exactly when the field moves: an
+	// age step or a gas override keeps the positions, anything structural does
+	// not. Note the pairs are built from one base each — the preset and a
+	// table-built SBb are *not* the same geometry, which is the point of the
+	// preset existing.
+	const overrideOf = (overrides) => galaxy.createGalaxy({ type: 'Sc', seed: 42, overrides });
+	const geometryPairs = [
+		['the preset at another age', MW, galaxy.modelAtAge(MW, 2), true],
+		['a table type at another age', models.Sc, galaxy.modelAtAge(models.Sc, 0.5), true],
+		['a gas override', models.Sc, overrideOf({ populations: { gasFraction: 0.4 } }), true],
+		['an age override', models.Sc, overrideOf({ populations: { age: 3 } }), true],
+		['a disc-thickness override', models.Sc, overrideOf({ thin: { H: 0.4 } }), false],
+		['an arm-contrast override', models.Sc, overrideOf({ arms: { amp: 0.4 } }), false],
+		['another seed', MW, galaxy.createGalaxy({ type: 'SBb', seed: 43 }), false],
+		['another type', models.Sc, models.Sd, false],
+	];
+	const wrongGeometry = geometryPairs.filter((pair) => galaxy.sameGeometry(pair[1], pair[2]) !== pair[3]);
+	check('sameGeometry holds across an age change and breaks on anything that moves stars',
+		wrongGeometry.length === 0,
+		wrongGeometry.map((pair) => ({ pair: pair[0], expected: pair[3] })));
 	for (const model of ALL) {
 		galaxy.packDensityParams(model, buffer);
 		const pads = [];
@@ -672,10 +723,13 @@ function relNear(a, b, tol) {
 			&& ageAt(m, density.COMPONENT_HALO, 0, 0) > 5));
 	check('a young thick disc is older than a young thin one',
 		ageAt(MW, density.COMPONENT_THICK, 0.1, 6) > ageAt(MW, density.COMPONENT_THIN, 0.1, 6));
-	// The gate reads the model, so an override moves it without changing the type.
-	const quenched = galaxy.createGalaxy({ type: 'Sc', overrides: { populations: { gasFraction: 0.01, gasRich: false } } });
+	// The gate reads the model, so an override moves it without changing the
+	// type. `gasRich` is not overridden: it is solved from the gas left at the
+	// model's age, so an authored flag would be a second copy of one fact.
+	const quenched = galaxy.createGalaxy({ type: 'Sc', overrides: { populations: { gasFraction: 0.01 } } });
 	check('an override can quench a type, and the population follows the model',
-		ageAt(quenched, density.COMPONENT_THIN, 0.1, 6) > 1 && quenched.type === 'Sc', quenched.populations);
+		ageAt(quenched, density.COMPONENT_THIN, 0.1, 6) > 1 && quenched.type === 'Sc'
+		&& quenched.populations.gasRich === false, quenched.populations);
 }
 
 // --- 8. Nebulae need gas ------------------------------------------------

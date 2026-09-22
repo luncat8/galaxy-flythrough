@@ -25,6 +25,9 @@
 	const sampling = (typeof module !== 'undefined' && module.exports)
 		? require('./sampling.js')
 		: window.SamplingLib;
+	const galaxy = (typeof module !== 'undefined' && module.exports)
+		? require('./galaxy.js')
+		: window.GalaxyLib;
 	const nebula = (typeof module !== 'undefined' && module.exports)
 		? require('./nebula.js')
 		: window.NebulaLib;
@@ -124,7 +127,12 @@
 			? Math.exp(-0.5 * dec.distToArm * dec.distToArm / (ridge * ridge)) : 0.0;
 		const gasBulgeSuppress = dec.bulge > 0.1 ? 0.1 : 1.0;
 		const gasHaloSuppress = dec.halo > 0.0005 ? 0.01 : 1.0;
-		const gasWeight = model.populations.gasRich ? model.populations.gasFraction / nebula.GAS_NORMAL : 0.0;
+		// The gas left at the model's age (see galaxy.solvePopulationClock),
+		// against the fraction the rates were tuned at. Same lane, same vertical
+		// scale and same suppressions as the nebula layer, so the young stars, the
+		// gas clouds and the composite objects trace one thing — and one that
+		// fades as a galaxy burns its reservoir.
+		const gasWeight = model.populations.gasRich ? model.populations.gasNow / galaxy.GAS_NORMAL : 0.0;
 		const pHII = Math.min(1.0, RATE_HII * gasWeight * inDisc * armBoost * gasBulgeSuppress * gasHaloSuppress);
 		const pOpen = Math.min(1.0, RATE_OPEN * gasWeight * inDisc * gasBulgeSuppress * gasHaloSuppress);
 		const globBias = dom === 'bulge' ? 3 : dom === 'halo' ? 1 : 0.15;
@@ -195,6 +203,13 @@
 					size = SNR_SIZE_MIN + rSize * (SNR_SIZE_MAX - SNR_SIZE_MIN);
 					ageGyr = 0.01;
 				}
+				// No object is older than its galaxy: the ranges above are the
+				// observed present-day ones (a 10–13 Gyr globular, a 10 Gyr
+				// planetary nebula), and a 1 Gyr galaxy has had no time to make
+				// them. Clamping keeps the members' ages — which deriveStarWithAge
+				// imposes on the whole object — inside the model's clock.
+				const galaxyAge = model.populations.age;
+				if (ageGyr > galaxyAge) ageGyr = galaxyAge;
 				out.push({
 					type, x, y, z, size, richness, ageGyr,
 					R: probs.dec.R, phi: probs.dec.phi, zp: probs.dec.zp,
@@ -351,13 +366,19 @@
 	// Derive the apportioned members of `objects` into StarPacked records at
 	// `view` / `byteOffset`. Returns the written count; the caller zeroes
 	// nothing — unwritten capacity stays all-zero (invisible).
-	function writeObjectMembers(model, objects, view, byteOffset, maxMembers) {
+	//
+	// `magOffset` is the renderer's exposure renormalisation, in magnitudes, added
+	// to absMag before packing: object members are procedural stars, so they
+	// follow the field they sit in. It defaults to 0, which keeps every other
+	// caller — and every test that pins a member's magnitude — on the unoffset sky.
+	function writeObjectMembers(model, objects, view, byteOffset, maxMembers, magOffset) {
 		if (quotaScratch.length < objects.length) {
 			let n = Math.max(16, quotaScratch.length);
 			while (n < objects.length) n *= 2;
 			quotaScratch = new Uint16Array(n);
 		}
 		objectQuotas(objects, maxMembers, quotaScratch);
+		const offset = magOffset || 0;
 		const gcX = model.centre.x;
 		const gcY = model.centre.y;
 		let slot = 0;
@@ -376,14 +397,14 @@
 				const x = obj.x + memberOffset[0];
 				const y = obj.y + memberOffset[1];
 				const z = obj.z + memberOffset[2];
-			const dx = x - gcX;
-			const dy = y - gcY;
+				const dx = x - gcX;
+				const dy = y - gcY;
 				const R = Math.sqrt(dx * dx + dy * dy);
 				const distToArm = density.distanceToNearestArm(model, R, Math.atan2(dy, dx));
 				if (obj.type === 'planetary') starTypes.derivePlanetaryCentral(memberSeed, component, R, distToArm, memberDerived);
 				else starTypes.deriveStarWithAge(model, memberSeed, component, R, distToArm, obj.ageGyr, memberDerived);
 				records.writeRecord(view, byteOffset + slot * records.RECORD_BYTES, x, y, z,
-					memberDerived.colorIndex, memberDerived.absMag,
+					memberDerived.colorIndex, memberDerived.absMag + offset,
 					records.FLAG_VISIBLE, hash.pcgHash(memberSeed ^ 0xFACE) & 0xFF);
 				slot++;
 			}

@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T20:38:31.037Z",
+  "date": "2026-09-22T00:09:44.595Z",
   "types": [
     "E0",
     "E1",
@@ -593,8 +593,8 @@
       ]
     }
   ],
-  "totalChecks": 480,
-  "passed": 480,
+  "totalChecks": 502,
+  "passed": 502,
   "failed": 0,
   "checks": [
     {
@@ -1160,8 +1160,23 @@
         "youngScaleHeight": 0.5,
         "youngOuterR": 12,
         "spheroidOld": true,
-        "gasRich": false,
-        "gradientSteep": 0.25
+        "gradientSteep": 0.25,
+        "tauSfh": 1,
+        "age": 13.5,
+        "quenchTime": 1.5,
+        "sfhSpan": 1.5,
+        "formQ": [
+          0.1243337851349907,
+          1,
+          0.02303575809133208,
+          0.5767972695102791,
+          0,
+          0.3328164838185071,
+          0,
+          0.1243337851349907
+        ],
+        "gasNow": 0.02,
+        "gasRich": false
       }
     },
     {
@@ -3459,9 +3474,9 @@
       "name": "the layout, the packer and the struct agree on the size",
       "pass": true,
       "detail": {
-        "floats": 100,
-        "bytes": 400,
-        "groups": 13,
+        "floats": 112,
+        "bytes": 448,
+        "groups": 16,
         "clumps": 12
       }
     },
@@ -3473,7 +3488,7 @@
       "name": "repacking a different model overwrites every slot",
       "pass": true,
       "detail": {
-        "changed": 27
+        "changed": 34
       }
     },
     {
@@ -3493,99 +3508,397 @@
       }
     },
     {
+      "name": "the clock group carries the age, the timescale and the span star formation covers",
+      "pass": true,
+      "detail": {
+        "preset": [
+          13.5,
+          5,
+          13.5
+        ],
+        "E4Span": 0.6000000238418579,
+        "E4Quench": 0.6000000000000001
+      }
+    },
+    {
+      "name": "the formation windows arrive as CDF intervals, one pair per component",
+      "pass": true,
+      "detail": [
+        0.19587,
+        1,
+        0.0406,
+        0.69694,
+        0,
+        0.45623,
+        0,
+        0.19587
+      ]
+    },
+    {
+      "name": "SBb: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.1959,
+        1,
+        0.0406,
+        0.6969,
+        0,
+        0.4562,
+        0,
+        0.1959
+      ]
+    },
+    {
+      "name": "E0: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.1243,
+        1,
+        0.023,
+        0.5768,
+        0,
+        0.3328,
+        0,
+        0.1243
+      ]
+    },
+    {
+      "name": "E1: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.1243,
+        1,
+        0.023,
+        0.5768,
+        0,
+        0.3328,
+        0,
+        0.1243
+      ]
+    },
+    {
+      "name": "E2: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.1243,
+        1,
+        0.023,
+        0.5768,
+        0,
+        0.3328,
+        0,
+        0.1243
+      ]
+    },
+    {
+      "name": "E3: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.1243,
+        1,
+        0.023,
+        0.5768,
+        0,
+        0.3328,
+        0,
+        0.1243
+      ]
+    },
+    {
+      "name": "E4: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.1243,
+        1,
+        0.023,
+        0.5768,
+        0,
+        0.3328,
+        0,
+        0.1243
+      ]
+    },
+    {
+      "name": "E5: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.1243,
+        1,
+        0.023,
+        0.5768,
+        0,
+        0.3328,
+        0,
+        0.1243
+      ]
+    },
+    {
+      "name": "E6: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.1243,
+        1,
+        0.023,
+        0.5768,
+        0,
+        0.3328,
+        0,
+        0.1243
+      ]
+    },
+    {
+      "name": "E7: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.1243,
+        1,
+        0.023,
+        0.5768,
+        0,
+        0.3328,
+        0,
+        0.1243
+      ]
+    },
+    {
+      "name": "S0: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.1243,
+        1,
+        0.023,
+        0.5768,
+        0,
+        0.3328,
+        0,
+        0.1243
+      ]
+    },
+    {
+      "name": "Sa: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.3303,
+        1,
+        0.0803,
+        0.8407,
+        0,
+        0.6398,
+        0,
+        0.3303
+      ]
+    },
+    {
+      "name": "Sb: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.1959,
+        1,
+        0.0406,
+        0.6969,
+        0,
+        0.4562,
+        0,
+        0.1959
+      ]
+    },
+    {
+      "name": "Sc: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.1343,
+        1,
+        0.0253,
+        0.5962,
+        0,
+        0.3514,
+        0,
+        0.1343
+      ]
+    },
+    {
+      "name": "Sd: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.106,
+        1,
+        0.0189,
+        0.5377,
+        0,
+        0.297,
+        0,
+        0.106
+      ]
+    },
+    {
+      "name": "SB0: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.1243,
+        1,
+        0.023,
+        0.5768,
+        0,
+        0.3328,
+        0,
+        0.1243
+      ]
+    },
+    {
+      "name": "SBa: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.3303,
+        1,
+        0.0803,
+        0.8407,
+        0,
+        0.6398,
+        0,
+        0.3303
+      ]
+    },
+    {
+      "name": "SBc: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.1343,
+        1,
+        0.0253,
+        0.5962,
+        0,
+        0.3514,
+        0,
+        0.1343
+      ]
+    },
+    {
+      "name": "SBd: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.106,
+        1,
+        0.0189,
+        0.5377,
+        0,
+        0.297,
+        0,
+        0.106
+      ]
+    },
+    {
+      "name": "Irr: the formation windows are nested in assembly order",
+      "pass": true,
+      "detail": [
+        0.0959,
+        1,
+        0.0168,
+        0.5142,
+        0,
+        0.2765,
+        0,
+        0.0959
+      ]
+    },
+    {
+      "name": "sameGeometry holds across an age change and breaks on anything that moves stars",
+      "pass": true,
+      "detail": []
+    },
+    {
       "name": "SBb: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "E0: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "E1: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "E2: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "E3: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "E4: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "E5: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "E6: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "E7: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "S0: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "Sa: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "Sb: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "Sc: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "Sd: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "SB0: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "SBa: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "SBc: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "SBd: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "Irr: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 7
     },
     {
       "name": "every barred table type carries the bar profile",
@@ -3973,79 +4286,79 @@
       "pass": true,
       "detail": {
         "onArm": 0.0375,
-        "offArm": 2.7752279866537304
+        "offArm": 5.893902766608864
       }
     },
     {
       "name": "E0: a quenched thin disc has nothing young, on an arm or off",
       "pass": true,
       "detail": {
-        "onArm": 5.619600457068332,
-        "offArm": 5.619600457068332
+        "onArm": 13.11703823438159,
+        "offArm": 13.11703823438159
       }
     },
     {
       "name": "E1: a quenched thin disc has nothing young, on an arm or off",
       "pass": true,
       "detail": {
-        "onArm": 5.619600457068332,
-        "offArm": 5.619600457068332
+        "onArm": 13.11703823438159,
+        "offArm": 13.11703823438159
       }
     },
     {
       "name": "E2: a quenched thin disc has nothing young, on an arm or off",
       "pass": true,
       "detail": {
-        "onArm": 5.619600457068332,
-        "offArm": 5.619600457068332
+        "onArm": 13.11703823438159,
+        "offArm": 13.11703823438159
       }
     },
     {
       "name": "E3: a quenched thin disc has nothing young, on an arm or off",
       "pass": true,
       "detail": {
-        "onArm": 5.619600457068332,
-        "offArm": 5.619600457068332
+        "onArm": 13.11703823438159,
+        "offArm": 13.11703823438159
       }
     },
     {
       "name": "E4: a quenched thin disc has nothing young, on an arm or off",
       "pass": true,
       "detail": {
-        "onArm": 5.619600457068332,
-        "offArm": 5.619600457068332
+        "onArm": 13.11703823438159,
+        "offArm": 13.11703823438159
       }
     },
     {
       "name": "E5: a quenched thin disc has nothing young, on an arm or off",
       "pass": true,
       "detail": {
-        "onArm": 5.619600457068332,
-        "offArm": 5.619600457068332
+        "onArm": 13.11703823438159,
+        "offArm": 13.11703823438159
       }
     },
     {
       "name": "E6: a quenched thin disc has nothing young, on an arm or off",
       "pass": true,
       "detail": {
-        "onArm": 5.619600457068332,
-        "offArm": 5.619600457068332
+        "onArm": 13.11703823438159,
+        "offArm": 13.11703823438159
       }
     },
     {
       "name": "E7: a quenched thin disc has nothing young, on an arm or off",
       "pass": true,
       "detail": {
-        "onArm": 5.619600457068332,
-        "offArm": 5.619600457068332
+        "onArm": 13.11703823438159,
+        "offArm": 13.11703823438159
       }
     },
     {
       "name": "S0: a quenched thin disc has nothing young, on an arm or off",
       "pass": true,
       "detail": {
-        "onArm": 5.619600457068332,
-        "offArm": 5.619600457068332
+        "onArm": 12.542595585953976,
+        "offArm": 12.542595585953976
       }
     },
     {
@@ -4053,7 +4366,7 @@
       "pass": true,
       "detail": {
         "onArm": 0.0375,
-        "offArm": 2.7752279866537304
+        "offArm": 7.151709133930321
       }
     },
     {
@@ -4061,7 +4374,7 @@
       "pass": true,
       "detail": {
         "onArm": 0.0375,
-        "offArm": 2.7752279866537304
+        "offArm": 5.893902766608864
       }
     },
     {
@@ -4069,7 +4382,7 @@
       "pass": true,
       "detail": {
         "onArm": 0.0375,
-        "offArm": 2.7752279866537304
+        "offArm": 5.044264791852438
       }
     },
     {
@@ -4077,15 +4390,15 @@
       "pass": true,
       "detail": {
         "onArm": 0.0375,
-        "offArm": 2.7752279866537304
+        "offArm": 4.563427756791334
       }
     },
     {
       "name": "SB0: a quenched thin disc has nothing young, on an arm or off",
       "pass": true,
       "detail": {
-        "onArm": 5.619600457068332,
-        "offArm": 5.619600457068332
+        "onArm": 12.542595585953976,
+        "offArm": 12.542595585953976
       }
     },
     {
@@ -4093,7 +4406,7 @@
       "pass": true,
       "detail": {
         "onArm": 0.0375,
-        "offArm": 2.7752279866537304
+        "offArm": 7.151709133930321
       }
     },
     {
@@ -4101,7 +4414,7 @@
       "pass": true,
       "detail": {
         "onArm": 0.0375,
-        "offArm": 2.7752279866537304
+        "offArm": 5.044264791852438
       }
     },
     {
@@ -4109,7 +4422,7 @@
       "pass": true,
       "detail": {
         "onArm": 0.0375,
-        "offArm": 2.7752279866537304
+        "offArm": 4.563427756791334
       }
     },
     {
@@ -4117,7 +4430,7 @@
       "pass": true,
       "detail": {
         "onArm": 0.0375,
-        "offArm": 2.7752279866537304
+        "offArm": 4.374336471058749
       }
     },
     {
@@ -4148,8 +4461,23 @@
         "youngScaleHeight": 0.6,
         "youngOuterR": 16.799999999999997,
         "spheroidOld": true,
-        "gasRich": false,
-        "gradientSteep": 1
+        "gradientSteep": 1,
+        "tauSfh": 8,
+        "age": 13.5,
+        "quenchTime": 0,
+        "sfhSpan": 13.5,
+        "formQ": [
+          0.134254613573434,
+          1,
+          0.02532189949666402,
+          0.596239183036805,
+          0,
+          0.3513584193684098,
+          0,
+          0.134254613573434
+        ],
+        "gasNow": 0.01,
+        "gasRich": false
       }
     },
     {

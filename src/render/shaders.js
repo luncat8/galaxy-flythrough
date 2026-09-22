@@ -113,6 +113,16 @@ struct DensityParams {
         // those, and 16 bits round-trip an f32 exactly).
         armShape: vec4f,        // phase0, minRadius, flocculence, noiseSeed
         populations: vec4f,     // gasFraction, youngOuterR, gasRich, gradientSteep
+        // The galaxy's clock: age in Gyr, the SFH timescale (clamped positive on
+        // the CPU) and the span star formation actually covers,
+        // min(age, quenchTime). Solved by galaxy.solvePopulationClock, read here
+        // by the population mirrors. The gas left at that age is a CPU-only
+        // number, like youngScaleHeight, so it does not ride along.
+        clock: vec4f,           // age, tauSfh, sfhSpan, -
+        // Component formation windows as CDF intervals of the truncated SFH,
+        // indexed like COMPONENT_*: a draw is one mix and one inverse.
+        formLo: vec4f,          // thin, thick, bulge, halo — window start
+        formHi: vec4f,          // thin, thick, bulge, halo — window end
         truncation: vec4f,      // discRadius, discHeight, spheroidRadius, -
         clumpMeta: vec4f,       // clump count, boost, kfbm, -
         // Irregular hotspots: galactocentric (x, y, z, r).
@@ -884,24 +894,77 @@ fn sampleMassIMF(u: f32) -> f32 {
         return pow(xMin + (xMax - xMin) * u, 1.0 / (1.0 - alpha));
 }
 
+// Mirrors galaxy.sfhCumulative: the delayed exponential SFR ∝ t·exp(−t/τ)
+// integrated and normalised, in x = t/τ. One distribution for the ages, the
+// formation windows and the gas the SFH has not yet consumed.
+fn sfhCumulative(x: f32) -> f32 {
+        return 1.0 - exp(-x) * (1.0 + x);
+}
+
+// Bisection steps for the inverse. F has no elementary inverse (it is a Lambert
+// W), and a per-model table cannot ride in a uniform, so the shader solves it
+// where the CPU keeps a table instead: 14 halvings put t_f inside
+// span/2^14 ≈ 1e-3 Gyr of the exact root, and a generated cell does this once
+// per star. wgsl-exec-check holds the two sides to 0.05 Gyr, which is far
+// coarser than anything downstream reads — evolution states flip on
+// main-sequence lifetimes.
+const SFH_BISECT_STEPS: u32 = 14u;
+
+// Mirrors star-types.sfhFormationTime: the formation time t_f at which the
+// model's truncated SFH has produced a fraction q of its stars. τ arrives
+// clamped positive by galaxy.solvePopulationClock, so the division is safe.
+fn sfhFormationTime(params: DensityParams, q: f32) -> f32 {
+        let tau: f32 = params.clock.y;
+        let span: f32 = params.clock.z;
+        if (span <= 0.0) { return 0.0; }
+        let xEnd: f32 = span / tau;
+        let target: f32 = clamp(q, 0.0, 1.0) * sfhCumulative(xEnd);
+        var lo: f32 = 0.0;
+        var hi: f32 = xEnd;
+        for (var s: u32 = 0u; s < SFH_BISECT_STEPS; s = s + 1u) {
+                let mid: f32 = 0.5 * (lo + hi);
+                if (sfhCumulative(mid) < target) { lo = mid; } else { hi = mid; }
+        }
+        return 0.5 * (lo + hi) * tau;
+}
+
+// Mirrors star-types.sampleFormationTime: a component's slice of the galaxy's
+// SFH. The window is the CDF interval the CPU solved from
+// galaxy.FORMATION_WINDOW, indexed like COMPONENT_*, so the shape inside the
+// window is still the galaxy's own burst — a component that forms over the first
+// quarter of a burst is front-loaded like the burst, not uniform in time.
+fn sampleFormationTime(params: DensityParams, component: u32, u: f32) -> f32 {
+        var lo: f32 = params.formLo.x;
+        var hi: f32 = params.formHi.x;
+        if (component == COMPONENT_THICK) { lo = params.formLo.y; hi = params.formHi.y; }
+        else if (component == COMPONENT_BULGE) { lo = params.formLo.z; hi = params.formHi.z; }
+        else if (component == COMPONENT_HALO) { lo = params.formLo.w; hi = params.formHi.w; }
+        return sfhFormationTime(params, lo + (hi - lo) * u);
+}
+
+// The arm branch's oldest newborn, mirroring star-types.YOUNG_ARM_MAX_GYR.
+const YOUNG_ARM_MAX_GYR: f32 = 0.3;
+
 // Mirrors star-types.sampleLocalAge / classifyByTempAndState. A gas-poor disc
 // forms nothing young, which is the whole of what a quenched type's population
 // means here; the star-forming annulus is the model's, not a hard-coded 3..12.
+// Off the arms a star is (age − t_f), which is what makes the assembly order
+// (halo first, thin disc still forming) survive at any age and keeps every star
+// younger than its galaxy.
 fn sampleLocalAge(params: DensityParams, component: u32, distToArm: f32, R: f32, u1: f32, u2: f32) -> f32 {
-        let z: f32 = sqrt(-2.0 * log(max(1e-12, u1))) * cos(6.283185307 * u2);
-        if (component == COMPONENT_BULGE) { return min(13.5, exp(log(10.0) + 0.3 * z)); }
-        if (component == COMPONENT_HALO) { return min(13.5, exp(log(12.0) + 0.25 * z)); }
-        if (component == COMPONENT_THICK) { return min(13.5, exp(log(8.0) + 0.4 * z)); }
-        if (params.populations.z < 0.5) { return min(13.5, exp(log(9.0) + 0.4 * z)); }
-        // Gaussian ridge gate, not a hard cut — mirrors star-types exactly: the
-        // newborn lane is a half-normal whose sigma is the pattern's own ridge
-        // width, 0.12 * (2*pi*R*sin(pitch)/m) / (1 + amp), so every type's O/B
-        // stars hug their own arms instead of an MW-tuned distance.
-        let ridgeLambda: f32 = 6.283185307 * R * sin(radians(params.arms.z)) / max(1.0, params.arms.x);
-        let armWidth: f32 = 0.12 * ridgeLambda / (1.0 + params.arms.y);
-        let pArm: f32 = exp(-0.5 * distToArm * distToArm / (armWidth * armWidth));
-        if (u2 < pArm && R > params.arms.w && R < params.populations.y) { return pow(u1, 3.0) * 0.3; }
-        return min(13.5, exp(log(5.0) + 0.5 * z));
+        if (component == COMPONENT_THIN && params.populations.z >= 0.5) {
+                // Gaussian ridge gate, not a hard cut — mirrors star-types exactly: the
+                // newborn lane is a half-normal whose sigma is the pattern's own ridge
+                // width, 0.12 * (2*pi*R*sin(pitch)/m) / (1 + amp), so every type's O/B
+                // stars hug their own arms instead of an MW-tuned distance.
+                let ridgeLambda: f32 = 6.283185307 * R * sin(radians(params.arms.z)) / max(1.0, params.arms.x);
+                let armWidth: f32 = 0.12 * ridgeLambda / (1.0 + params.arms.y);
+                let pArm: f32 = exp(-0.5 * distToArm * distToArm / (armWidth * armWidth));
+                if (u2 < pArm && R > params.arms.w && R < params.populations.y) {
+                        return min(params.clock.x, pow(u1, 3.0) * YOUNG_ARM_MAX_GYR);
+                }
+        }
+        return params.clock.x - sampleFormationTime(params, component, u1);
 }
 
 fn classifyByTempAndState(teff: f32, state: u32) -> u32 {

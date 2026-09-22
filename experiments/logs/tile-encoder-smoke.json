@@ -1,18 +1,18 @@
 {
-  "date": "2026-09-21T20:38:21.463Z",
+  "date": "2026-09-22T00:09:35.290Z",
   "mockStars": 4000,
   "seed": 20240919,
   "summary": {
     "input": 4000,
-    "kept": 53,
+    "kept": 56,
     "droppedMagnitude": 3931,
     "droppedQuality": 0,
     "droppedDecimation": 0,
-    "droppedOutOfBounds": 16,
-    "cellCount": 53
+    "droppedOutOfBounds": 13,
+    "cellCount": 56
   },
-  "bundleBytes": 4043,
-  "encodeMs": 1,
+  "bundleBytes": 4233,
+  "encodeMs": 0,
   "totalChecks": 31,
   "passed": 31,
   "failed": 0,
@@ -67,7 +67,7 @@
     {
       "name": "the encoder keeps a usable sample",
       "pass": true,
-      "detail": 53
+      "detail": 56
     },
     {
       "name": "every encoded star lies inside the outermost band",
@@ -82,25 +82,25 @@
       "pass": true,
       "detail": {
         "input": 4000,
-        "kept": 53,
+        "kept": 56,
         "droppedMagnitude": 3931,
         "droppedQuality": 0,
         "droppedDecimation": 0,
-        "droppedOutOfBounds": 16,
-        "cellCount": 53
+        "droppedOutOfBounds": 13,
+        "cellCount": 56
       }
     },
     {
       "name": "the encoder produces cells",
       "pass": true,
-      "detail": 53
+      "detail": 56
     },
     {
       "name": "cell payloads hold exactly the kept stars",
       "pass": true,
       "detail": {
-        "totalInTiles": 53,
-        "kept": 53
+        "totalInTiles": 56,
+        "kept": 56
       }
     },
     {
@@ -122,8 +122,8 @@
       "name": "the bundle counts match the tiles",
       "pass": true,
       "detail": {
-        "stars": 53,
-        "cells": 53
+        "stars": 56,
+        "cells": 56
       }
     },
     {
@@ -156,7 +156,7 @@
     {
       "name": "the written bundle is a plausible size",
       "pass": true,
-      "detail": 4043
+      "detail": 4233
     },
     {
       "name": "the bundle file hands back the same object",
@@ -182,14 +182,14 @@
       "name": "every star in the bundle decodes",
       "pass": true,
       "detail": {
-        "decodedStars": 53,
-        "expected": 53
+        "decodedStars": 56,
+        "expected": 56
       }
     },
     {
       "name": "every cell decodes",
       "pass": true,
-      "detail": 53
+      "detail": 56
     },
     {
       "name": "decoded positions lie inside their own cell",

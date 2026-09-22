@@ -31,6 +31,7 @@ python3 scripts/run.py camera      # one script
 | `star-types-evolution-test.js` | Stellar populations: O/B near arms, old giants, metallicity by component, Salpeter slope, mass → Teff → class chain. |
 | `nebula-placement-test.js` | Nebula types in the right environments: HII on arm ridges, planetary in the old inner population, none in the halo, sizes/opacities in range. |
 | `object-placement-test.js` | Composite objects: per-type environments, Plummer/King/fractal member profiles, budget apportionment, seed stability, gas-gated shares, full budget fill for all 19 types, 32-byte billboard packing and the 4 px / 5 kpc cull. |
+| `galaxy-age-test.js` | Galaxy age (0.3.3): the truncated delayed-exponential SFH per type (KS against the analytic CDF, mean, span and quenching), per-component formation windows and the assembly order at any age, the population's O/B, giant, remnant and colour trends, the mass-conserving gas law, object mixes and age clamps, and the exposure renormalisation offset. |
 
 ## Studies (print a recommendation, no pass/fail)
 

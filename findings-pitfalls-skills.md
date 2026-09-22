@@ -3,6 +3,100 @@
 Append-only notes for LLM agents working on this project. Each entry: date, one-line summary heading, then the detail. Newest at top.
 
 ---
+
+## 2026-09-21 — WGSL comments live inside a JS template literal; a backtick ends the string
+
+Every shader in `src/render/shaders.js` is a JS template literal, so WGSL comments are
+still JS string content. Writing `` `q` `` in a comment terminates the literal: the
+rest of the shader becomes JS, and the failure surfaces as a SyntaxError at
+`require()` time in whatever test loads the file first — not as a shader compile
+error, which sends the hunt into the wrong file. The repo's own WGSL comments avoid
+backticks for exactly this reason; prose in a shader comment gets single quotes or
+parentheses. `wgsl-validate.js` does not catch it (it reads the file as text), and
+neither does any linter here, so the cheapest guard is habit plus `node -e
+"require('./src/render/shaders.js')"`.
+
+---
+## 2026-09-21 — `gasRich` does not mean the arm branch can fire
+
+An E4 at 0.5 Gyr is gas-rich (0.196 of its reservoir still cold, above
+`GAS_RICH_MIN`) and has no spiral pattern at all: `distanceToNearestArm` returns 99
+where there is no ridge, the ridge gate's `pArm` is 0, and every star — including the
+0.55% of O/B that make it read blue — comes from the field SFH branch. So "gas-rich
+type has young arm stars" is two conditions, gas *and* arms, and any check phrased as
+one of them is vacuous for half the type table. The same trap is in the mirror: the
+WGSL gate reads `populations.z` (gasRich) and then `distToArm`, and a probe suite that
+asserts "the arm branch ran" must ask `gasRich && arms.amp > 0`, not `gasRich`. It is
+also the honest reading of "a blue elliptical": a starburst spheroid is young because
+it is forming, not because it grew arms.
+
+---
+## 2026-09-21 — One CDF, two inverses: table where the cost is amortised, bisection where it is free
+
+The truncated delayed exponential's inverse has no closed form (it is a Lambert W), so
+the CPU and the GPU have to solve it differently or one of them pays for the other's
+convenience. Measured on the same machine: a 1025-entry inverse table costs 3.8 ms to
+build and answers a draw with two array reads — 2.8 ms per 300k stars, rms 6.3e-4 Gyr
+against a 60-step reference solve — while 14-step bisection on the analytic CDF costs
+91 ms per 300k stars, half of the derive pass, on the age slider's hot path. In a
+compute shader the trade inverts: a per-model table cannot ride in a uniform, the work
+is one cell at a time, and 14 `exp` calls are free against the cell's other cost. So
+`star-types.js` tables (keyed on `(tauSfh, sfhSpan)`, rebuilt only when the clock
+moves) and `procedural-gen.wgsl` bisects, and the parity test holds the two to the
+*table's* accuracy (0.05 Gyr absolute) on that branch while keeping its 2e-3 relative
+check for the branch that is closed-form. The rule that kept them honest: the table is
+built *from* the same `sfhCumulative` the shader bisects, so there is no second
+distribution to drift, and the tolerance is documented at both ends.
+
+---
+## 2026-09-21 — Replacing a prior: calibrate against the numbers it reproduced, not against intuition
+
+0.3.3 replaced the per-component age lognormals (halo 12 Gyr, bulge 10, thick 8, thin
+5 — the Milky Way's ages at one epoch) with formation windows on the galaxy's clock,
+because a 1 Gyr galaxy cannot honour a 12 Gyr halo prior. The windows could just as
+easily have been guesses that looked right in a histogram; what kept them honest is
+that the old priors had *measurements attached*: mean component ages and, through
+them, the field's mean luminosity, which is what the exposure defaults were tuned on.
+Fitting the four window pairs to reproduce those means at the reference epoch
+(4.62/8.33/9.89/11.32 against 4.58/8.36/10.10/~12 Gyr, mean luminosity to 0.7%) is
+what makes "the default sky does not move" a property instead of a hope — and it also
+exposes which old numbers were never measurements: the halo "prior" is 34 stars in a
+120k sample, so its mean is noise and the test that pins the windows gives it a
+1 Gyr tolerance and says so. When a model change replaces a prior, list what the old
+prior reproduced and re-measure exactly those things.
+
+---
+## 2026-09-21 — A more physical model that moves 99% of the light is not a small change
+
+The obvious 0.3.3 improvement was the intermediate-mass white-dwarf channel: a giant
+phase lasting ~10% of the main-sequence life and then a WD, so remnants accumulate
+with age and the WD census becomes the age tracer the draft wanted. Measuring first
+showed why it is 0.5 material: today every dead low-mass star is a giant *forever*,
+and those giants carry 99% of the field's flux (110 of 111 L☉ per star), so giving
+them a death moves the whole exposure model — the mean luminosity falls an order of
+magnitude and every tuned default is wrong until someone with a browser re-tunes it.
+The honest 0.3.3 statement is the one the model actually makes: remnants above 8 M☉
+rise and saturate below 1 Gyr, and the monotone age tracer is the giant fraction
+(0.09 → 1.75%, a factor 19). The test pins the saturating behaviour, the plan's
+out-of-scope list says why, and neither pretends. "More physical" is a direction, not
+a size; measure the flux it moves before promising it.
+
+---
+## 2026-09-21 — Decide "did the field move?" from what the sampler reads
+
+The age slider rebuilds star properties but not positions, so `regenerate` wanted a
+cheap verdict on whether re-sampling would change anything. The first version of that
+verdict was `type === type && seed === seed`, which an override defeats silently:
+`{ thin: { H: 0.4 } }` is the same type and seed and moves every star. The shipped one
+packs the uniform's geometry groups — exactly the numbers `sampleGalaxyStars` reads
+(masses, truncation, arms, centre, clumps, and the seed's low 16 bits in `armShape.w`)
+— into two scratch buffers and compares, through the same `packGroup` the uniform
+uses, so the test is the sampler's own input list rather than a proxy for it. The
+subtle trap that survived review: the uniform carries only the seed's low 16 bits
+while the field hashes all 32, so two seeds can pack identical geometry and still
+derive different stars — the seed is compared whole, beside the packed key, with a
+comment saying why. When caching anything keyed on "same inputs", enumerate the inputs
+the consumer reads; a name-level comparison is a guess about that list.
 ## 2026-09-21 — `shaders.js` inventory splice must cut at the first `// Mirror parts`
 
 `SHADER_PARTS` / `SHADERS` / `WIRED_SHADERS` live at the *end* of `src/render/shaders.js`. A mid-file search-replace that only updates those names can leave the original export intact and append a second copy after leftover WGSL. The file then `require()`s the first export (missing `NEBULA_BILLBOARD`) while a grep of the source still finds the new names. Cut from the first `// Mirror parts` comment through EOF and rewrite a single ending; then `node -e "console.log(Object.keys(require('./src/render/shaders.js').SHADER_PARTS))"` before trusting tests.

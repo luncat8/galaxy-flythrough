@@ -6,18 +6,21 @@
 //
 // Physics that drives the placement of star types:
 //   - IMF (Salpeter) decides the mass, hence the main-sequence lifetime.
-//   - Age comes from the local population: thin disc is mixed, arms are young,
-//     thick disc / bulge / halo are old.
+//   - Age comes from the galaxy's own star-formation history: a star formed at
+//     `t_f` inside its component's formation window and is `age − t_f` old now.
+//     The thin disc is still forming, the halo formed first, and the arms carry
+//     the newborns.
 //   - A star older than its MS lifetime is a red giant (low mass) or has
 //     already shed its envelope into a white dwarf (high mass).
-//   - O/B stars therefore only exist near spiral arms, red giants and
-//     planetary nebulae concentrate in the bulge, and the halo is old and
-//     metal-poor.
+//   - O/B stars therefore only exist near spiral arms of a galaxy young enough
+//     to still be forming them, red giants and planetary nebulae concentrate in
+//     the bulge, and the halo is old and metal-poor.
 //
 // The galaxy's own gas budget is what makes a type young or old: no gas means
-// no star formation, so the arm-young branch and the quiescent-disc prior both
-// read `model.populations.gasFraction`. An E4 therefore has no O/B stars twice
-// over — nothing is born young there, and anything that was would have died.
+// no star formation, so the arm-young branch reads `model.populations.gasRich`,
+// which the clock solves from the gas left at the model's age. An E4 therefore
+// has no O/B stars twice over — nothing is born young there, and anything that
+// was would have died.
 //
 // deriveStar mutates a caller-provided record: the renderer derives millions
 // of stars and must not allocate per star.
@@ -28,6 +31,9 @@
 	const density = (typeof module !== 'undefined' && module.exports)
 		? require('./density.js')
 		: window.DensityLib;
+	const galaxy = (typeof module !== 'undefined' && module.exports)
+		? require('./galaxy.js')
+		: window.GalaxyLib;
 	const hash = (typeof module !== 'undefined' && module.exports)
 		? require('./hash.js')
 		: window.HashLib;
@@ -103,29 +109,130 @@
 		return Math.pow(xMin + (xMax - xMin) * u, 1 / (1 - alpha));
 	}
 
-	// Age in Gyr for a population. u1, u2 are independent uniforms. The radius
-	// window for the arm-young branch is the model's, and so is the ridge scale
-	// (density.armRidgeWidth): the branch is a half-normal on distToArm whose
-	// sigma is the arm pattern's own newborn lane, so a type's O/B stars hug its
-	// ridge rather than a distance tuned for the Milky Way.
-	function sampleLocalAge(model, componentIndex, distToArm, R, u1, u2) {
-		const logNormal = (mean, sigma) => Math.min(13.5, Math.exp(Math.log(mean) + sigma * gaussian(u1, u2)));
-		switch (componentIndex) {
-			case density.COMPONENT_BULGE: return logNormal(10, 0.3);
-			case density.COMPONENT_HALO: return logNormal(12, 0.25);
-			case density.COMPONENT_THICK: return logNormal(8, 0.4);
-			default:
-				if (!model.populations.gasRich) return logNormal(9, 0.4);
-				const armWidth = density.armRidgeWidth(model, R);
-				const pArm = Math.exp(-0.5 * (distToArm * distToArm) / (armWidth * armWidth));
-				if (u2 < pArm && R > model.arms.Rs && R < model.populations.youngOuterR) return Math.pow(u1, 3.0) * 0.3;
-				return logNormal(5, 0.5);
+	// ---- the galaxy's clock --------------------------------------------------
+	//
+	// A star's age is `age − t_f`, where t_f is when it formed inside the
+	// galaxy's star-formation history: the delayed exponential SFR ∝ t·exp(−t/τ)
+	// truncated at the model's span (galaxy.sfhSpanAt), sampled inside the
+	// component's formation window (galaxy.FORMATION_WINDOW, solved into
+	// `populations.formQ` as a CDF interval). One distribution F for the ages,
+	// the windows and the gas; this file only ever inverts it.
+	//
+	// F⁻¹ has no closed form (it is a Lambert W), so the CPU keeps a table and
+	// the WGSL mirror bisects F. Measured on 300k stars: a 1025-entry table built
+	// in 3.8 ms answers a draw with two array reads (2.8 ms total, rms 6.3e-4 Gyr
+	// against a 60-step reference solve), where the same draws by 14-step
+	// bisection cost 91 ms — half the derive pass, on the age slider's hot path.
+	// wgsl-exec-check therefore compares the two sides on an absolute 0.05 Gyr
+	// floor for this branch, and keeps its 2e-3 relative check for the arm one.
+
+	const YOUNG_ARM_MAX_GYR = 0.3;   // the arm branch's oldest newborn
+	const SFH_TABLE_STEPS = 1024;    // entries − 1; t_f is linear between them
+	const SFH_SOLVE_STEPS = 40;      // bisection steps per table entry, at build
+
+	// One table, keyed on the two numbers that shape it. A regenerate that only
+	// moves the age rebuilds it (the span moved); a regenerate that moves neither
+	// reuses it.
+	let sfhTableTau = -1;
+	let sfhTableSpan = -1;
+	const sfhTable = new Float64Array(SFH_TABLE_STEPS + 1);
+
+	// Bisection on the analytic CDF, used only to build the table.
+	function solveSfhCumulative(target, tauSfh, xEnd) {
+		let lo = 0;
+		let hi = xEnd;
+		for (let s = 0; s < SFH_SOLVE_STEPS; s++) {
+			const mid = 0.5 * (lo + hi);
+			if (galaxy.sfhCumulative(mid) < target) lo = mid; else hi = mid;
 		}
+		return 0.5 * (lo + hi) * tauSfh;
 	}
 
-	// Box-Muller, clamped away from the log singularity.
-	function gaussian(u1, u2) {
-		return Math.sqrt(-2 * Math.log(Math.max(1e-12, u1))) * Math.cos(2 * Math.PI * u2);
+	function ensureSfhTable(tauSfh, sfhSpan) {
+		if (tauSfh === sfhTableTau && sfhSpan === sfhTableSpan) return;
+		const xEnd = sfhSpan / tauSfh;
+		const norm = galaxy.sfhCumulative(xEnd);
+		for (let i = 0; i <= SFH_TABLE_STEPS; i++) {
+			sfhTable[i] = solveSfhCumulative(i / SFH_TABLE_STEPS * norm, tauSfh, xEnd);
+		}
+		sfhTableTau = tauSfh;
+		sfhTableSpan = sfhSpan;
+	}
+
+	// Formation time for a fraction `q` of the model's truncated SFH: the
+	// inverse CDF, by table.
+	function sfhFormationTime(model, q) {
+		const p = model.populations;
+		const span = p.sfhSpan;
+		if (!(span > 0)) return 0;
+		ensureSfhTable(p.tauSfh, span);
+		const u = q <= 0 ? 0 : (q >= 1 ? 1 : q);
+		const pos = u * SFH_TABLE_STEPS;
+		const i = pos < SFH_TABLE_STEPS ? pos | 0 : SFH_TABLE_STEPS - 1;
+		return sfhTable[i] + (sfhTable[i + 1] - sfhTable[i]) * (pos - i);
+	}
+
+	// Formation time of a star in `component`: its window's slice of the
+	// galaxy's SFH. The window is a CDF interval, so the draw inside it is one
+	// mix and one lookup, and its *shape* is still the galaxy's own SFH — a
+	// component that forms over the first quarter of a burst is front-loaded
+	// like the burst, not uniform in time.
+	function sampleFormationTime(model, componentIndex, u) {
+		const formQ = model.populations.formQ;
+		const i = componentIndex * 2;
+		return sfhFormationTime(model, formQ[i] + (formQ[i + 1] - formQ[i]) * u);
+	}
+
+	// Age in Gyr for a population. u1, u2 are independent uniforms.
+	//
+	// The arm branch is the O/B source and keeps the shape 0.3.1 built: a
+	// half-normal gate on distToArm in units of the model's own ridge width
+	// (density.armRidgeWidth), `u1³·0.3 Gyr` young inside the star-forming
+	// annulus, gas-rich models only. Its ceiling is clamped to the galaxy's age,
+	// so a 0.2 Gyr galaxy contains no 0.3 Gyr stars. No gas factor rides on the
+	// gate: with the reference-epoch gas law every reachable age has at least the
+	// observed gas, so a continuous boost could only re-tune one type.
+	//
+	// Everything else is `age − t_f` from the component's formation window, which
+	// is what makes the assembly order (halo first, thin disc still forming)
+	// survive at any age — a 1 Gyr galaxy has a 1 Gyr halo, and a 13.5 Gyr
+	// irregular has a middle-aged disc.
+	function sampleLocalAge(model, componentIndex, distToArm, R, u1, u2) {
+		const p = model.populations;
+		if (componentIndex === density.COMPONENT_THIN && p.gasRich) {
+			const armWidth = density.armRidgeWidth(model, R);
+			const pArm = Math.exp(-0.5 * (distToArm * distToArm) / (armWidth * armWidth));
+			if (u2 < pArm && R > model.arms.Rs && R < p.youngOuterR) {
+				return Math.min(p.age, Math.pow(u1, 3.0) * YOUNG_ARM_MAX_GYR);
+			}
+		}
+		return p.age - sampleFormationTime(model, componentIndex, u1);
+	}
+
+	// The seed a field star at index `i` is derived with — the renderer's
+	// convention, named so the exposure calibration derives exactly the stars the
+	// field will hold instead of a lookalike sample.
+	function fieldStarSeed(seed, i) {
+		return seed * 31 + i + 1;
+	}
+
+	// Mean luminosity (L☉) of the first `count` sampled positions, derived the
+	// way the renderer derives them. The exposure renormalisation needs "how
+	// bright is this field" as one number — at the model's age, and at the
+	// reference epoch over the *same* positions — so it is a function of
+	// (model, field) rather than a second sampler with its own drift. One scratch
+	// record, no per-star allocation.
+	const calibrationRecord = {};
+	function meanFieldLuminosity(model, stars, count) {
+		const n = Math.min(count, stars.count);
+		if (!(n > 0)) return 0;
+		let sum = 0;
+		for (let i = 0; i < n; i++) {
+			deriveStar(model, fieldStarSeed(model.seed, i), stars.component[i], stars.R[i],
+				stars.distToArm[i], calibrationRecord);
+			sum += calibrationRecord.luminosity;
+		}
+		return sum / n;
 	}
 
 	function metallicityFor(componentIndex) {
@@ -304,9 +411,10 @@
 	}
 
 	const StarTypesLib = {
-		MASS_TEFF_TABLE,
+		MASS_TEFF_TABLE, YOUNG_ARM_MAX_GYR, SFH_TABLE_STEPS, SFH_SOLVE_STEPS,
 		classifyByTempAndState, classColor, luminosityFromMass, teffFromMass,
 		msLifetimeGyr, sampleMassIMF, sampleLocalAge, metallicityFor,
+		sfhFormationTime, sampleFormationTime, fieldStarSeed, meanFieldLuminosity,
 		absoluteMagnitude, deriveStar, deriveStarWithAge, derivePlanetaryCentral, deriveStarProps,
 		summariseByComponent, classVsArmDistance,
 	};

@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T22:10:40.440Z",
+  "date": "2026-09-22T00:09:33.628Z",
   "modules": 21,
   "totalChecks": 108,
   "passed": 108,
@@ -89,7 +89,7 @@
       }
     },
     {
-      "name": "GalaxyLib has identical key sets (30 keys)",
+      "name": "GalaxyLib has identical key sets (50 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -185,7 +185,7 @@
       }
     },
     {
-      "name": "StarTypesLib has identical key sets (16 keys)",
+      "name": "StarTypesLib has identical key sets (23 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -217,7 +217,7 @@
       }
     },
     {
-      "name": "NebulaLib has identical key sets (8 keys)",
+      "name": "NebulaLib has identical key sets (7 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],

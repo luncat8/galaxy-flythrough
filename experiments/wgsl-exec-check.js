@@ -268,6 +268,9 @@ async function main() {
 	// sampleLocalAge lives in the procedural module because it is only used by
 	// star generation. Extract the shipping function instead of maintaining a
 	// second WGSL copy in this experiment, then probe it beside the density part.
+	// Since 0.3.3 the age is a chain — sampleLocalAge → the component's formation
+	// window → the truncated SFH's inverse → its CDF — so the whole chain comes
+	// along, with the two consts it reads.
 	function extractFunction(source, name) {
 		const start = source.indexOf(`fn ${name}`);
 		if (start < 0) throw new Error(`missing WGSL function ${name}`);
@@ -282,7 +285,17 @@ async function main() {
 		}
 		throw new Error(`unterminated WGSL function ${name}`);
 	}
-	const ageFunction = extractFunction(shaders.SHADER_PARTS['procedural-gen'], 'sampleLocalAge');
+	function extractConst(source, name) {
+		const found = new RegExp(`^const\\s+${name}\\s*:[^;]+;`, 'm').exec(source);
+		if (!found) throw new Error(`missing WGSL const ${name}`);
+		return found[0];
+	}
+	const genSource = shaders.SHADER_PARTS['procedural-gen'];
+	// Consts first, then the chain in the order the shader declares it.
+	const ageFunction = ['SFH_BISECT_STEPS', 'YOUNG_ARM_MAX_GYR']
+		.map((name) => extractConst(genSource, name)).join('\n')
+		+ '\n' + ['sfhCumulative', 'sfhFormationTime', 'sampleFormationTime', 'sampleLocalAge']
+			.map((name) => extractFunction(genSource, name)).join('\n');
 	const densityCode = shaders.SHADER_PARTS.density + '\n' + ageFunction + `
 @group(0) @binding(0) var<uniform> model: DensityParams;
 @fragment fn densityProbe(@location(0) p: vec3f) -> @location(0) vec4f {
@@ -370,8 +383,13 @@ async function main() {
 		check(`${name}: executed WGSL arm threshold and phase match JS`, armError < 2e-4, { armError });
 	}
 
-	// sampleLocalAge parity: the thin-disc branch is a Gaussian ridge gate on
-	// (distToArm, R, u1, u2), quenched models fall through to the old field.
+	// sampleLocalAge parity: the thin-disc arm branch is a Gaussian ridge gate on
+	// (distToArm, R, u1, u2) and closed-form, so it has to agree to f32 rounding;
+	// everything else is `age − t_f`, where the CPU answers from a 1025-entry
+	// inverse table and the shader bisects the same CDF in 14 f32 steps. Those two
+	// inverses agree to the table's own interpolation error, so the SFH branch is
+	// held to an absolute 0.05 Gyr — a floor far below anything downstream reads,
+	// since evolution states flip on main-sequence lifetimes.
 	{
 		const starTypes = require('../src/math/star-types.js');
 		const probes = [
@@ -388,16 +406,78 @@ async function main() {
 			[density.COMPONENT_BULGE, 0.1, 1, 0.5, 0.5],
 			[density.COMPONENT_HALO, 99, 30, 0.9, 0.1],
 		];
-		for (const model of [models[galaxy.GALAXY_TYPES.indexOf('Sc')], models[galaxy.GALAXY_TYPES.indexOf('E4')]]) {
+		// The clock is part of what the shader reads, so the probes cover more than
+		// the reference epoch: a 1 Gyr Sc truncates a wide SFH early, and an E4 at
+		// 0.5 Gyr is mid-burst with its span cut by quenching (τ = 0.4, span = 0.5)
+		// — the two shapes the bisection has to get right that a 13.5 Gyr galaxy
+		// never asks about.
+		const sc = models[galaxy.GALAXY_TYPES.indexOf('Sc')];
+		const e4 = models[galaxy.GALAXY_TYPES.indexOf('E4')];
+		for (const model of [sc, e4, galaxy.modelAtAge(sc, 1), galaxy.modelAtAge(e4, 0.5)]) {
 			galaxy.packDensityParams(model, modelBuffer);
-			let worst = 0;
+			const label = `${model.type} at ${model.populations.age} Gyr`;
+			let worstArm = 0;
+			let worstSfh = 0;
+			let armProbes = 0;
+			let sfhProbes = 0;
 			for (const [component, dArm, R, u1, u2] of probes) {
 				const actual = runStage(densityCode, 'ageProbe', 'debugFragment',
 					{ 0: [component, dArm, R, u1].map(Math.fround), 1: [u2, 0, 0, 0].map(Math.fround) }, densityBinds);
 				const expected = starTypes.sampleLocalAge(model, component, dArm, R, u1, u2);
-				worst = Math.max(worst, Math.abs(actual[0] - expected) / Math.max(1e-3, expected));
+				// Which branch JS took decides the tolerance, and it is read off the
+				// branch's own closed form rather than guessed from the probe list.
+				const armAge = Math.min(model.populations.age,
+					Math.pow(u1, 3.0) * starTypes.YOUNG_ARM_MAX_GYR);
+				if (component === density.COMPONENT_THIN && expected === armAge) {
+					armProbes++;
+					worstArm = Math.max(worstArm, Math.abs(actual[0] - expected) / Math.max(1e-3, expected));
+				} else {
+					sfhProbes++;
+					worstSfh = Math.max(worstSfh, Math.abs(actual[0] - expected));
+				}
 			}
-			check(`${model.type}: executed sampleLocalAge WGSL matches JS`, worst < 2e-3, { worst });
+			// A model that can reach the arm branch has to have taken it at least
+			// once, or the check below would be passing on nothing. Reaching it
+			// needs gas *and* a pattern: an E4 mid-burst is gas-rich (0.196 of its
+			// reservoir is still cold) but has no arms at all, so its O/B stars come
+			// from the field branch — distToArm is 99 where there is no ridge, and
+			// the gate never opens.
+			const armReachable = model.populations.gasRich && model.arms.amp > 0;
+			check(`${label}: executed sampleLocalAge WGSL matches JS on the arm branch`,
+				worstArm < 2e-3 && (armProbes > 0) === armReachable,
+				{ worstArm: +worstArm.toFixed(6), armProbes, armReachable });
+			check(`${label}: executed sampleLocalAge WGSL matches JS on the SFH branch`,
+				worstSfh < 0.05 && sfhProbes > 0, { worstSfhGyr: +worstSfh.toFixed(5), sfhProbes });
+		}
+		// The chain underneath, probed on its own: the same q has to invert to the
+		// same formation time on both sides, at both ends of the span where the
+		// bisection has least room.
+		{
+			galaxy.packDensityParams(sc, modelBuffer);
+			const sfhCode = shaders.SHADER_PARTS.density + '\n' + ageFunction + `
+@group(0) @binding(0) var<uniform> model: DensityParams;
+@fragment fn sfhProbe(@location(0) p: vec4f) -> @location(0) vec4f {
+	return vec4f(sfhCumulative(p.x), sampleFormationTime(model, u32(p.y), p.z), 0.0, 0.0);
+}
+`;
+			let worstF = 0;
+			let worstT = 0;
+			for (const x of [0, 0.05, 0.5, 1, 2.7, 10]) {
+				const actual = runStage(sfhCode, 'sfhProbe', 'debugFragment',
+					{ 0: [x, 0, 0, 0].map(Math.fround) }, densityBinds);
+				worstF = Math.max(worstF, Math.abs(actual[0] - galaxy.sfhCumulative(x)));
+			}
+			for (const component of [0, 1, 2, 3]) {
+				for (const u of [0, 0.25, 0.5, 0.75, 1]) {
+					const actual = runStage(sfhCode, 'sfhProbe', 'debugFragment',
+						{ 0: [0, component, u, 0].map(Math.fround) }, densityBinds);
+					worstT = Math.max(worstT,
+						Math.abs(actual[1] - starTypes.sampleFormationTime(sc, component, u)));
+				}
+			}
+			check('executed sfhCumulative WGSL matches galaxy.js', worstF < 1e-6, { worst: +worstF.toExponential(2) });
+			check('executed sampleFormationTime WGSL matches the CPU inverse table',
+				worstT < 0.05, { worstGyr: +worstT.toFixed(5) });
 		}
 	}
 

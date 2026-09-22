@@ -60,9 +60,17 @@
 		// Arm number: grand design in early types, more arms as the pattern
 		// breaks into flocculent segments.
 		ARM_M: [[0, 2.00], [3, 2.00], [4, 2.00], [5, 3.00], [6, 4.00], [9, 4.00]],
-		// Cold gas fraction — gates the young population and the gas nebulae.
+		// Cold gas fraction at the reference epoch (AGE_REF) — gates the young
+		// population and the gas nebulae. Observed present-day sequence
+		// (Roberts & Haynes 1994); what the model's own age leaves of it is
+		// `gasNow`, derived by solvePopulationClock.
 		GAS_FRACTION: [[-5, 0.00], [-1, 0.00], [0, 0.02], [1, 0.08], [3, 0.15],
 			[5, 0.30], [6, 0.45], [9, 0.50]],
+		// Star-formation timescale of the delayed exponential SFR ∝ t·exp(−t/τ):
+		// a monolithic burst for the E sequence, near-constant for the
+		// irregulars. E7 (T = −1) and Irr (T = 10) clamp at the table's ends.
+		TAU_SFH: [[-5, 0.40], [-1, 0.40], [0, 1.00], [1, 3.00], [3, 5.00],
+			[5, 8.00], [6, 12.00], [9, 15.00]],
 	// Disc thickness: early types are puffier.
 	H_OVER_L: [[0, 0.15], [1, 0.12], [3, 0.09], [5, 0.07], [6, 0.06], [9, 0.10]],
 		// Radial metallicity gradient, as a colour step: the thin disc reaches its
@@ -93,8 +101,10 @@
 		halo: { a_h: 1.0, rMax: 100.0, power: 3.5, amp: 0.0008 },
 		arms: { m: 2, amp: 0.20, pitchDeg: 12, Rs: 3.0, phase0: 0, minRadius: 0.5, flocculence: 0 },
 		truncation: { discRadius: 25.0, discHeight: 3.0, spheroidRadius: 6.0 },
-		populations: { gasFraction: 0.15, youngScaleHeight: 0.5, youngOuterR: 12.0, spheroidOld: true, gasRich: true,
-			gradientSteep: 0.75 },
+		// tauSfh is the Sb stage value (ANCHORS.TAU_SFH at T = 3): the preset
+		// authors its own numbers rather than reading the table it cross-checks.
+		populations: { gasFraction: 0.15, youngScaleHeight: 0.5, youngOuterR: 12.0, spheroidOld: true,
+			gradientSteep: 0.75, tauSfh: 5.0 },
 		home: {
 			position: [0, 0, 0.005], yaw: 0, pitch: 0,
 			// H in orbit mode circles the Sun from 10 pc — a Milky Way start,
@@ -202,6 +212,47 @@
 	// the model (as `populations.gasRich`) so star-types and the nebula layer
 	// cannot disagree about which side of it a type falls on.
 	const GAS_RICH_MIN = 0.05;
+	// The gas fraction the nebula and object layers are tuned at — the Milky
+	// Way's own, at the reference epoch. Both scale their rates by
+	// `gasNow / GAS_NORMAL`, so one number sets the strength of the whole gas
+	// layer for every type and every age.
+	const GAS_NORMAL = 0.15;
+
+	// ---- the galaxy's clock --------------------------------------------------
+	//
+	// AGE_REF is the epoch the type table describes: every anchor above is an
+	// observed present-day value, so a model built at AGE_REF is the galaxy
+	// 0.3.0–0.3.2 pinned. It is also the slider's ceiling (nothing here can be
+	// older than the universe) and the default age.
+	const AGE_REF = 13.5;
+	const AGE_MIN = 0.2;
+	const AGE_MAX = AGE_REF;
+	const AGE_DEFAULT = AGE_REF;
+	// Quenching: the stages with T ≤ 0 (the E sequence and S0) stop forming
+	// stars at 1.5·τ, so their SFH is a burst and everything after it is dead.
+	// `quenchTime` 0 means never.
+	const QUENCH_STAGE_MAX = 0;
+	const QUENCH_TAU_MULT = 1.5;
+	// The clock divides by τ in three places, so an override that zeroes it would
+	// poison the whole population. Clamped once, at solve time, which is also the
+	// value the uniform carries: no second clamp is needed on the GPU. τ → 0 is
+	// the physical limit anyway — an instantaneous burst, every star the same age
+	// as the galaxy.
+	const TAU_SFH_MIN = 1e-3;
+	// When each component forms, as a fraction of the galaxy's own star-forming
+	// span [0, sfhSpan]: the halo in the first quarter, the thin disc from a
+	// quarter of the way in until now. Two numbers per component, indexed by
+	// density.COMPONENT_*, replacing the per-component age lognormals — a window
+	// scales with the galaxy's clock, a 12 Gyr halo prior does not. Calibrated
+	// on the preset: at AGE_REF these reproduce the mean component ages of the
+	// priors they replace (4.62 / 8.32 / 9.91 / 11.40 Gyr against 4.58 / 8.36 /
+	// 10.10 / 11.99) and the field's mean luminosity to 0.7%.
+	const FORMATION_WINDOW = [
+		0.25, 1.00,   // thin disc: still forming
+		0.10, 0.65,   // thick disc
+		0.00, 0.45,   // spheroid
+		0.00, 0.25,   // halo: first light
+	];
 
 	// Irregular structure (Irr): gaussian hotspots over a smooth FBM texture.
 	// The hotspots double as the sampler's target: a fixed share of the stars
@@ -359,8 +410,8 @@
 				youngScaleHeight: spec.youngScaleHeight,
 				youngOuterR: YOUNG_OUTER_R_KPC * k,
 				spheroidOld: true,
-				gasRich: interpAnchors(ANCHORS.GAS_FRACTION, T) >= GAS_RICH_MIN,
 				gradientSteep: interpAnchors(ANCHORS.GRADIENT_STEEP, T),
+				tauSfh: interpAnchors(ANCHORS.TAU_SFH, T),
 			},
 		};
 	}
@@ -380,6 +431,67 @@
 		structure.thick.amp = integrals.thick > 0 ? disc * spec.thickShare / integrals.thick : 0;
 		structure.spheroid.amp = integrals.bulge > 0 ? total * bT / integrals.bulge : 0;
 		structure.halo.amp = spec.halo && integrals.halo > 0 ? HALO_AMP_UNIT * spec.massTotal : 0;
+	}
+
+	// ---- the star-formation history -----------------------------------------
+	//
+	// One distribution for the whole release: the delayed exponential
+	// SFR ∝ t·exp(−t/τ) in formation time t (Gyr since the galaxy's first
+	// light), truncated at the model's own span. Its cumulative in x = t/τ is
+	// F(x) = 1 − e^−x(1 + x), and everything age-related reads F: the component
+	// formation windows, the gas the SFH has not yet consumed, and the shader's
+	// inverse. star-types.js builds its sampling table from this same function,
+	// so the CPU and the GPU cannot disagree about the shape.
+
+	function sfhCumulative(x) {
+		return 1 - Math.exp(-x) * (1 + x);
+	}
+
+	// The window star formation actually happens in: the galaxy's age, cut short
+	// by quenching. `quenchTime` 0 means the type never quenches.
+	function sfhSpanAt(age, quenchTime) {
+		return quenchTime > 0 ? Math.min(age, quenchTime) : age;
+	}
+
+	// Fraction of the galaxy's stars already formed at `age`, normalised so the
+	// reference epoch reads 1. A quenched type saturates at its quenching time,
+	// which is what keeps a dead S0 from re-inventing gas it already burned.
+	function sfhProgress(tauSfh, quenchTime, age) {
+		const done = sfhCumulative(sfhSpanAt(age, quenchTime) / tauSfh);
+		const total = sfhCumulative(sfhSpanAt(AGE_REF, quenchTime) / tauSfh);
+		return total > 0 ? done / total : 1;
+	}
+
+	// Cold gas left at `age`: what the SFH has not turned into stars yet, from a
+	// reservoir that started at 1. Mass-conserving, so it is bounded by
+	// construction (`gasFraction ≤ gasNow ≤ 1`), lands exactly on the anchor
+	// table's observed value at AGE_REF, and stays flat past quenching.
+	function gasFractionAt(tauSfh, quenchTime, gasFraction, age) {
+		return gasFraction + (1 - gasFraction) * (1 - sfhProgress(tauSfh, quenchTime, age));
+	}
+
+	// Every age-derived population fact, solved in one place at build and again
+	// after an override, so no consumer can hold a stale half of the clock.
+	function solvePopulationClock(model) {
+		const p = model.populations;
+		p.age = Math.min(AGE_MAX, Math.max(AGE_MIN, p.age === undefined ? AGE_DEFAULT : p.age));
+		p.tauSfh = p.tauSfh > TAU_SFH_MIN ? p.tauSfh : TAU_SFH_MIN;
+		p.quenchTime = model.T <= QUENCH_STAGE_MAX ? QUENCH_TAU_MULT * p.tauSfh : 0;
+		p.sfhSpan = sfhSpanAt(p.age, p.quenchTime);
+		const xEnd = p.sfhSpan / p.tauSfh;
+		const norm = sfhCumulative(xEnd);
+		const formQ = [];
+		for (let c = 0; c < FORMATION_WINDOW.length; c += 2) {
+			// The window is a fraction of the span, stored as the CDF interval it
+			// covers: a draw is then one mix and one table lookup, and the shape
+			// inside the window is still the galaxy's own SFH.
+			formQ.push(norm > 0 ? sfhCumulative(FORMATION_WINDOW[c] * xEnd) / norm : 0);
+			formQ.push(norm > 0 ? sfhCumulative(FORMATION_WINDOW[c + 1] * xEnd) / norm : 1);
+		}
+		p.formQ = formQ;
+		p.gasNow = gasFractionAt(p.tauSfh, p.quenchTime, p.gasFraction, p.age);
+		p.gasRich = p.gasNow >= GAS_RICH_MIN;
+		return model;
 	}
 
 	function assemble(type, spec, seed, structure) {
@@ -452,14 +564,17 @@
 		return model;
 	}
 
-	function createMilkyWay() {
-		return assemble(MILKY_WAY_TYPE, TYPE_SPECS[MILKY_WAY_TYPE], DEFAULT_SEED,
+	function createMilkyWay(age) {
+		const model = assemble(MILKY_WAY_TYPE, TYPE_SPECS[MILKY_WAY_TYPE], DEFAULT_SEED,
 			cloneStructure(MILKY_WAY_STRUCTURE));
+		model.populations.age = age === undefined ? AGE_DEFAULT : age;
+		return solvePopulationClock(model);
 	}
 
-	// (type, seed, overrides) → model. Overrides are per-group and shallow, e.g.
-	// { thin: { H: 0.5 } }. Passing a structural override on the Milky Way type
-	// yields a model that is *not* the preset, which drops it out of Hybrid mode.
+	// (type, seed, age, overrides) → model. Overrides are per-group and shallow,
+	// e.g. { thin: { H: 0.5 } }. Passing a structural override on the Milky Way
+	// type yields a model that is *not* the preset, which drops it out of Hybrid
+	// mode.
 	function createGalaxy(options) {
 		const opts = options || {};
 		const type = opts.type == null ? MILKY_WAY_TYPE : opts.type;
@@ -467,23 +582,36 @@
 		if (!spec) throw new Error('unknown galaxy type: ' + type);
 		const seed = opts.seed === undefined ? DEFAULT_SEED : opts.seed | 0;
 		const overrides = opts.overrides;
+		const age = opts.age === undefined ? AGE_DEFAULT : opts.age;
 
 		if (spec.preset && !overrides) {
-			const preset = createMilkyWay();
+			const preset = createMilkyWay(age);
 			preset.seed = seed;
 			return preset;
 		}
 		const structure = tableGeometry(spec);
 		solveAmps(structure, spec);
 		const model = assemble(type, spec, seed, structure);
+		model.populations.age = age;
 		if (overrides) {
 			applyOverrides(model, overrides);
 			model.milkyWay = false;
 			model.R0 = Math.hypot(model.centre.x, model.centre.y, model.centre.z);
-			model.populations.gasRich = model.populations.gasFraction >= GAS_RICH_MIN;
 			model.home = Object.assign(homeFor(model), overrides.home);
 		}
-		return model;
+		// Last, so an override of `populations` (gasFraction, tauSfh, age) is
+		// what the clock is solved from rather than something it has to guess.
+		return solvePopulationClock(model);
+	}
+
+	// The same galaxy frozen at another epoch: geometry shared (read-only), the
+	// clock re-solved. The renderer's exposure reference and the age tests both
+	// need "this model, at that age" without paying for a second build.
+	function modelAtAge(model, age) {
+		const copy = Object.assign({}, model);
+		copy.populations = cloneGroup(model.populations);
+		copy.populations.age = age;
+		return solvePopulationClock(copy);
 	}
 
 	const OVERRIDABLE = ['scaleKpc', 'centre', 'thin', 'thick', 'spheroid', 'bar', 'halo',
@@ -539,9 +667,27 @@
 		// spheroidOld are consumed on the CPU (nebula placement), so they stay
 		// out of the uniform rather than riding along to the GPU unused.
 		{ name: 'populations', source: 'populations', fields: ['gasFraction', 'youngOuterR', 'gasRich', 'gradientSteep'] },
+		// The galaxy's clock: what the mirrored population formulas read of the
+		// age. `gasNow` — the gas actually left at `age`, which `gasFraction`
+		// above is the observed anchor of — stays off the uniform by the same rule
+		// as youngScaleHeight: only the CPU's gas layer reads it.
+		{ name: 'clock', source: 'populations', fields: ['age', 'tauSfh', 'sfhSpan', 'unused'] },
+		// The component formation windows, as CDF intervals of the truncated SFH:
+		// one pair per component, indexed like density.COMPONENT_*. A draw is a
+		// mix and one inverse lookup, so both halves ride in the uniform.
+		{ name: 'formLo', fields: ['thinLo', 'thickLo', 'bulgeLo', 'haloLo'] },
+		{ name: 'formHi', fields: ['thinHi', 'thickHi', 'bulgeHi', 'haloHi'] },
 		{ name: 'truncation', source: 'truncation', fields: ['discRadius', 'discHeight', 'spheroidRadius', 'unused'] },
 		{ name: 'clumpMeta', fields: ['count', 'boost', 'kfbm', 'unused'] },
 	];
+	// The groups that decide *where* the stars are: everything except the
+	// population and clock groups, which only decide what a star is. The renderer
+	// re-samples positions only when this part of the model changes, so an age
+	// step keeps the sampled field and rewrites the records.
+	const GEOMETRY_GROUPS = DENSITY_PARAMS_LAYOUT.filter(function (group) {
+		return group.name !== 'populations' && group.name !== 'clock'
+			&& group.name !== 'formLo' && group.name !== 'formHi';
+	});
 	// After the flat vec4 groups: CLUMP_COUNT vec4s of clump (x, y, z, r),
 	// galactocentric offsets. The WGSL struct declares the same array.
 	const DENSITY_PARAMS_CLUMPS = CLUMP_COUNT;
@@ -549,39 +695,53 @@
 	const DENSITY_PARAMS_FLOATS = DENSITY_PARAMS_LAYOUT.length * 4 + DENSITY_PARAMS_CLUMP_FLOATS;
 	const DENSITY_PARAMS_BYTES = DENSITY_PARAMS_FLOATS * 4;
 
+	// One layout group into `out` at `i`; returns the next index. Groups whose
+	// numbers are not one model group read verbatim (`discCore`, `armShape`,
+	// `clumpMeta`, the formation windows) are packed here rather than in the
+	// fields list, so the fields list stays readable.
+	function packGroup(model, group, out, i) {
+		const clumps = model.clumps || [];
+		if (group.name === 'discCore') {
+			out[i++] = model.thin.coreRadius || 0;
+			out[i++] = model.thick.coreRadius || 0;
+			out[i++] = 0;
+			out[i++] = 0;
+			return i;
+		}
+		if (group.name === 'armShape') {
+			out[i++] = model.arms.phase0;
+			out[i++] = model.arms.minRadius;
+			out[i++] = model.arms.flocculence;
+			out[i++] = (model.seed >>> 0) & 0xffff;
+			return i;
+		}
+		if (group.name === 'clumpMeta') {
+			out[i++] = clumps.length;
+			out[i++] = clumps.length ? clumps[0].boost : 0;
+			out[i++] = model.clumpFbm || 0;
+			out[i++] = 0;
+			return i;
+		}
+		if (group.name === 'formLo' || group.name === 'formHi') {
+			const formQ = model.populations.formQ;
+			const off = group.name === 'formLo' ? 0 : 1;
+			for (let c = 0; c < FORMATION_WINDOW.length / 2; c++) out[i++] = formQ[c * 2 + off];
+			return i;
+		}
+		const src = model[group.source];
+		for (const field of group.fields) {
+			const value = field === 'unused' ? undefined : src[field];
+			out[i++] = typeof value === 'boolean' ? (value ? 1 : 0) : (value === undefined ? 0 : value);
+		}
+		return i;
+	}
+
 	// Writes the model into `out` (a Float32Array of DENSITY_PARAMS_FLOATS) in
 	// place: called at build and on regenerate, never per frame.
 	function packDensityParams(model, out) {
 		let i = 0;
+		for (const group of DENSITY_PARAMS_LAYOUT) i = packGroup(model, group, out, i);
 		const clumps = model.clumps || [];
-		for (const group of DENSITY_PARAMS_LAYOUT) {
-			if (group.name === 'discCore') {
-				out[i++] = model.thin.coreRadius || 0;
-				out[i++] = model.thick.coreRadius || 0;
-				out[i++] = 0;
-				out[i++] = 0;
-				continue;
-			}
-			if (group.name === 'armShape') {
-				out[i++] = model.arms.phase0;
-				out[i++] = model.arms.minRadius;
-				out[i++] = model.arms.flocculence;
-				out[i++] = (model.seed >>> 0) & 0xffff;
-				continue;
-			}
-			if (group.name === 'clumpMeta') {
-				out[i++] = clumps.length;
-				out[i++] = clumps.length ? clumps[0].boost : 0;
-				out[i++] = model.clumpFbm || 0;
-				out[i++] = 0;
-				continue;
-			}
-			const src = model[group.source];
-			for (const field of group.fields) {
-				const value = field === 'unused' ? undefined : src[field];
-				out[i++] = typeof value === 'boolean' ? (value ? 1 : 0) : (value === undefined ? 0 : value);
-			}
-		}
 		for (let c = 0; c < DENSITY_PARAMS_CLUMPS; c++) {
 			const cl = clumps[c];
 			out[i++] = cl ? cl.x : 0;
@@ -590,6 +750,36 @@
 			out[i++] = cl ? cl.r : 0;
 		}
 		return out;
+	}
+
+	// The geometry groups (plus the clumps, which are positions) packed for
+	// comparison. Same numbers the GPU receives, so `sameGeometry` answers "would
+	// re-sampling put the stars somewhere else" instead of guessing from the type.
+	const GEOMETRY_KEY_FLOATS = GEOMETRY_GROUPS.length * 4 + DENSITY_PARAMS_CLUMP_FLOATS;
+	const geometryKeyA = new Float32Array(GEOMETRY_KEY_FLOATS);
+	const geometryKeyB = new Float32Array(GEOMETRY_KEY_FLOATS);
+
+	function packGeometryKey(model, out) {
+		let i = 0;
+		for (const group of GEOMETRY_GROUPS) i = packGroup(model, group, out, i);
+		const clumps = model.clumps || [];
+		for (let c = 0; c < DENSITY_PARAMS_CLUMPS; c++) {
+			const cl = clumps[c];
+			out[i++] = cl ? cl.x : 0;
+			out[i++] = cl ? cl.y : 0;
+			out[i++] = cl ? cl.z : 0;
+			out[i++] = cl ? cl.r : 0;
+		}
+		return out;
+	}
+
+	function sameGeometry(a, b) {
+		packGeometryKey(a, geometryKeyA);
+		packGeometryKey(b, geometryKeyB);
+		for (let i = 0; i < GEOMETRY_KEY_FLOATS; i++) {
+			if (geometryKeyA[i] !== geometryKeyB[i]) return false;
+		}
+		return true;
 	}
 
 	function galaxyLabel(model) {
@@ -605,11 +795,15 @@
 		DEFAULT_SEED, MILKY_WAY_TYPE, MILKY_WAY,
 		ANCHORS, TYPE_SPECS, GALAXY_TYPES, GALAXY_TYPE_CYCLE,
 		DISC_L_KPC, THICK_L_RATIO, THICK_H_RATIO, HALO_AMP_UNIT, YOUNG_OUTER_R_KPC, GAS_RICH_MIN,
+		GAS_NORMAL, AGE_REF, AGE_MIN, AGE_MAX, AGE_DEFAULT, FORMATION_WINDOW,
+		QUENCH_STAGE_MAX, QUENCH_TAU_MULT, TAU_SFH_MIN,
 		CLUMP_COUNT, CLUMP_BOOST, CLUMP_KFBM, CLUMP_SPAN_R, CLUMP_Z_RATIO, CLUMP_R_OVER_K,
-		interpAnchors, createGalaxy, cycleGalaxyType, galaxyLabel, homeFor,
-		DENSITY_PARAMS_LAYOUT, DENSITY_PARAMS_CLUMPS, DENSITY_PARAMS_CLUMP_FLOATS,
+		interpAnchors, createGalaxy, createMilkyWay, modelAtAge, cycleGalaxyType, galaxyLabel, homeFor,
+		sfhCumulative, sfhSpanAt, sfhProgress, gasFractionAt, solvePopulationClock,
+		DENSITY_PARAMS_LAYOUT, GEOMETRY_GROUPS, GEOMETRY_KEY_FLOATS,
+		DENSITY_PARAMS_CLUMPS, DENSITY_PARAMS_CLUMP_FLOATS,
 		DENSITY_PARAMS_FLOATS, DENSITY_PARAMS_BYTES,
-		packDensityParams,
+		packDensityParams, packGeometryKey, sameGeometry,
 	};
 	if (typeof module !== 'undefined') module.exports = GalaxyLib;
 	if (typeof window !== 'undefined') window.GalaxyLib = GalaxyLib;

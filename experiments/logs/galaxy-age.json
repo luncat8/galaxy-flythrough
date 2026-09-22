@@ -1,0 +1,1739 @@
+{
+  "date": "2026-09-22T00:09:58.645Z",
+  "types": [
+    "E0",
+    "E1",
+    "E2",
+    "E3",
+    "E4",
+    "E5",
+    "E6",
+    "E7",
+    "S0",
+    "Sa",
+    "Sb",
+    "Sc",
+    "Sd",
+    "SB0",
+    "SBa",
+    "SBb",
+    "SBc",
+    "SBd",
+    "Irr"
+  ],
+  "sfh": {
+    "E0": {
+      "1": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0065,
+        "mean": 0.3444,
+        "analyticMean": 0.3458
+      },
+      "5": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0042,
+        "mean": 0.3465,
+        "analyticMean": 0.3458
+      },
+      "13.5": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0066,
+        "mean": 0.3458,
+        "analyticMean": 0.3458
+      }
+    },
+    "E1": {
+      "1": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.004,
+        "mean": 0.3459,
+        "analyticMean": 0.3458
+      },
+      "5": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0049,
+        "mean": 0.3452,
+        "analyticMean": 0.3458
+      },
+      "13.5": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0076,
+        "mean": 0.3479,
+        "analyticMean": 0.3458
+      }
+    },
+    "E2": {
+      "1": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0038,
+        "mean": 0.3464,
+        "analyticMean": 0.3458
+      },
+      "5": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0069,
+        "mean": 0.3449,
+        "analyticMean": 0.3458
+      },
+      "13.5": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0034,
+        "mean": 0.3458,
+        "analyticMean": 0.3458
+      }
+    },
+    "E3": {
+      "1": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0069,
+        "mean": 0.3469,
+        "analyticMean": 0.3458
+      },
+      "5": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0032,
+        "mean": 0.3454,
+        "analyticMean": 0.3458
+      },
+      "13.5": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0065,
+        "mean": 0.3449,
+        "analyticMean": 0.3458
+      }
+    },
+    "E4": {
+      "1": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0109,
+        "mean": 0.3443,
+        "analyticMean": 0.3458
+      },
+      "5": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0063,
+        "mean": 0.3446,
+        "analyticMean": 0.3458
+      },
+      "13.5": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0042,
+        "mean": 0.3463,
+        "analyticMean": 0.3458
+      }
+    },
+    "E5": {
+      "1": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0088,
+        "mean": 0.3448,
+        "analyticMean": 0.3458
+      },
+      "5": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0071,
+        "mean": 0.3459,
+        "analyticMean": 0.3458
+      },
+      "13.5": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0047,
+        "mean": 0.3452,
+        "analyticMean": 0.3458
+      }
+    },
+    "E6": {
+      "1": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0035,
+        "mean": 0.3456,
+        "analyticMean": 0.3458
+      },
+      "5": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.006,
+        "mean": 0.3448,
+        "analyticMean": 0.3458
+      },
+      "13.5": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0037,
+        "mean": 0.3456,
+        "analyticMean": 0.3458
+      }
+    },
+    "E7": {
+      "1": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0053,
+        "mean": 0.3466,
+        "analyticMean": 0.3458
+      },
+      "5": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0051,
+        "mean": 0.3452,
+        "analyticMean": 0.3458
+      },
+      "13.5": {
+        "tau": 0.4,
+        "span": 0.6,
+        "quenchTime": 0.6,
+        "ks": 0.0109,
+        "mean": 0.348,
+        "analyticMean": 0.3458
+      }
+    },
+    "S0": {
+      "1": {
+        "tau": 1,
+        "span": 1,
+        "quenchTime": 1.5,
+        "ks": 0.0075,
+        "mean": 0.6083,
+        "analyticMean": 0.6078
+      },
+      "5": {
+        "tau": 1,
+        "span": 1.5,
+        "quenchTime": 1.5,
+        "ks": 0.0058,
+        "mean": 0.8654,
+        "analyticMean": 0.8646
+      },
+      "13.5": {
+        "tau": 1,
+        "span": 1.5,
+        "quenchTime": 1.5,
+        "ks": 0.005,
+        "mean": 0.8646,
+        "analyticMean": 0.8646
+      }
+    },
+    "Sa": {
+      "1": {
+        "tau": 3,
+        "span": 1,
+        "quenchTime": 0,
+        "ks": 0.005,
+        "mean": 0.6494,
+        "analyticMean": 0.6477
+      },
+      "5": {
+        "tau": 3,
+        "span": 5,
+        "quenchTime": 0,
+        "ks": 0.0063,
+        "mean": 2.8366,
+        "analyticMean": 2.8288
+      },
+      "13.5": {
+        "tau": 3,
+        "span": 13.5,
+        "quenchTime": 0,
+        "ks": 0.0046,
+        "mean": 5.2928,
+        "analyticMean": 5.2812
+      }
+    },
+    "Sb": {
+      "1": {
+        "tau": 5,
+        "span": 1,
+        "quenchTime": 0,
+        "ks": 0.005,
+        "mean": 0.6547,
+        "analyticMean": 0.6554
+      },
+      "5": {
+        "tau": 5,
+        "span": 5,
+        "quenchTime": 0,
+        "ks": 0.0046,
+        "mean": 3.041,
+        "analyticMean": 3.0389
+      },
+      "13.5": {
+        "tau": 5,
+        "span": 13.5,
+        "quenchTime": 0,
+        "ks": 0.0065,
+        "mean": 6.7222,
+        "analyticMean": 6.7396
+      }
+    },
+    "Sc": {
+      "1": {
+        "tau": 8,
+        "span": 1,
+        "quenchTime": 0,
+        "ks": 0.0061,
+        "mean": 0.6578,
+        "analyticMean": 0.6597
+      },
+      "5": {
+        "tau": 8,
+        "span": 5,
+        "quenchTime": 0,
+        "ks": 0.0054,
+        "mean": 3.148,
+        "analyticMean": 3.1529
+      },
+      "13.5": {
+        "tau": 8,
+        "span": 13.5,
+        "quenchTime": 0,
+        "ks": 0.007,
+        "mean": 7.6385,
+        "analyticMean": 7.6198
+      }
+    },
+    "Sd": {
+      "1": {
+        "tau": 12,
+        "span": 1,
+        "quenchTime": 0,
+        "ks": 0.0102,
+        "mean": 0.6586,
+        "analyticMean": 0.662
+      },
+      "5": {
+        "tau": 12,
+        "span": 5,
+        "quenchTime": 0,
+        "ks": 0.0039,
+        "mean": 3.2163,
+        "analyticMean": 3.2145
+      },
+      "13.5": {
+        "tau": 12,
+        "span": 13.5,
+        "quenchTime": 0,
+        "ks": 0.0071,
+        "mean": 8.1325,
+        "analyticMean": 8.1005
+      }
+    },
+    "SB0": {
+      "1": {
+        "tau": 1,
+        "span": 1,
+        "quenchTime": 1.5,
+        "ks": 0.0075,
+        "mean": 0.6067,
+        "analyticMean": 0.6078
+      },
+      "5": {
+        "tau": 1,
+        "span": 1.5,
+        "quenchTime": 1.5,
+        "ks": 0.0045,
+        "mean": 0.8656,
+        "analyticMean": 0.8646
+      },
+      "13.5": {
+        "tau": 1,
+        "span": 1.5,
+        "quenchTime": 1.5,
+        "ks": 0.0081,
+        "mean": 0.86,
+        "analyticMean": 0.8646
+      }
+    },
+    "SBa": {
+      "1": {
+        "tau": 3,
+        "span": 1,
+        "quenchTime": 0,
+        "ks": 0.0076,
+        "mean": 0.645,
+        "analyticMean": 0.6477
+      },
+      "5": {
+        "tau": 3,
+        "span": 5,
+        "quenchTime": 0,
+        "ks": 0.0057,
+        "mean": 2.8219,
+        "analyticMean": 2.8288
+      },
+      "13.5": {
+        "tau": 3,
+        "span": 13.5,
+        "quenchTime": 0,
+        "ks": 0.0077,
+        "mean": 5.3221,
+        "analyticMean": 5.2812
+      }
+    },
+    "SBb": {
+      "1": {
+        "tau": 5,
+        "span": 1,
+        "quenchTime": 0,
+        "ks": 0.0091,
+        "mean": 0.653,
+        "analyticMean": 0.6554
+      },
+      "5": {
+        "tau": 5,
+        "span": 5,
+        "quenchTime": 0,
+        "ks": 0.0042,
+        "mean": 3.0382,
+        "analyticMean": 3.0389
+      },
+      "13.5": {
+        "tau": 5,
+        "span": 13.5,
+        "quenchTime": 0,
+        "ks": 0.0063,
+        "mean": 6.7232,
+        "analyticMean": 6.7396
+      }
+    },
+    "SBc": {
+      "1": {
+        "tau": 8,
+        "span": 1,
+        "quenchTime": 0,
+        "ks": 0.0041,
+        "mean": 0.6609,
+        "analyticMean": 0.6597
+      },
+      "5": {
+        "tau": 8,
+        "span": 5,
+        "quenchTime": 0,
+        "ks": 0.0066,
+        "mean": 3.139,
+        "analyticMean": 3.1529
+      },
+      "13.5": {
+        "tau": 8,
+        "span": 13.5,
+        "quenchTime": 0,
+        "ks": 0.0043,
+        "mean": 7.6106,
+        "analyticMean": 7.6198
+      }
+    },
+    "SBd": {
+      "1": {
+        "tau": 12,
+        "span": 1,
+        "quenchTime": 0,
+        "ks": 0.0049,
+        "mean": 0.6638,
+        "analyticMean": 0.662
+      },
+      "5": {
+        "tau": 12,
+        "span": 5,
+        "quenchTime": 0,
+        "ks": 0.0044,
+        "mean": 3.2156,
+        "analyticMean": 3.2145
+      },
+      "13.5": {
+        "tau": 12,
+        "span": 13.5,
+        "quenchTime": 0,
+        "ks": 0.0054,
+        "mean": 8.0918,
+        "analyticMean": 8.1005
+      }
+    },
+    "Irr": {
+      "1": {
+        "tau": 15,
+        "span": 1,
+        "quenchTime": 0,
+        "ks": 0.0035,
+        "mean": 0.6623,
+        "analyticMean": 0.6629
+      },
+      "5": {
+        "tau": 15,
+        "span": 5,
+        "quenchTime": 0,
+        "ks": 0.0047,
+        "mean": 3.2347,
+        "analyticMean": 3.2387
+      },
+      "13.5": {
+        "tau": 15,
+        "span": 13.5,
+        "quenchTime": 0,
+        "ks": 0.0046,
+        "mean": 8.3002,
+        "analyticMean": 8.2882
+      }
+    }
+  },
+  "windows": {
+    "fieldMeanAgeGyr": {
+      "1": [
+        0.308,
+        0.561,
+        0.702,
+        0.828
+      ],
+      "5": [
+        1.714,
+        2.89,
+        3.558,
+        4.164
+      ],
+      "13.5": [
+        5.642,
+        8.334,
+        9.887,
+        11.322
+      ]
+    },
+    "meanStarAgeGyr": {
+      "1": [
+        0.266,
+        0.561,
+        0.702,
+        0.828
+      ],
+      "5": [
+        1.414,
+        2.89,
+        3.558,
+        4.164
+      ],
+      "13.5": [
+        4.625,
+        8.334,
+        9.887,
+        11.322
+      ]
+    },
+    "componentCounts": [
+      {
+        "component": "thin",
+        "stars": 75120
+      },
+      {
+        "component": "thick",
+        "stars": 23543
+      },
+      {
+        "component": "bulge",
+        "stars": 21303
+      },
+      {
+        "component": "halo",
+        "stars": 34
+      }
+    ],
+    "formQ": [
+      {
+        "type": "E0",
+        "span": 0.6,
+        "formQ": [
+          0.12433,
+          1,
+          0.02304,
+          0.5768,
+          0,
+          0.33282,
+          0,
+          0.12433
+        ]
+      },
+      {
+        "type": "E1",
+        "span": 0.6,
+        "formQ": [
+          0.12433,
+          1,
+          0.02304,
+          0.5768,
+          0,
+          0.33282,
+          0,
+          0.12433
+        ]
+      },
+      {
+        "type": "E2",
+        "span": 0.6,
+        "formQ": [
+          0.12433,
+          1,
+          0.02304,
+          0.5768,
+          0,
+          0.33282,
+          0,
+          0.12433
+        ]
+      },
+      {
+        "type": "E3",
+        "span": 0.6,
+        "formQ": [
+          0.12433,
+          1,
+          0.02304,
+          0.5768,
+          0,
+          0.33282,
+          0,
+          0.12433
+        ]
+      },
+      {
+        "type": "E4",
+        "span": 0.6,
+        "formQ": [
+          0.12433,
+          1,
+          0.02304,
+          0.5768,
+          0,
+          0.33282,
+          0,
+          0.12433
+        ]
+      },
+      {
+        "type": "E5",
+        "span": 0.6,
+        "formQ": [
+          0.12433,
+          1,
+          0.02304,
+          0.5768,
+          0,
+          0.33282,
+          0,
+          0.12433
+        ]
+      },
+      {
+        "type": "E6",
+        "span": 0.6,
+        "formQ": [
+          0.12433,
+          1,
+          0.02304,
+          0.5768,
+          0,
+          0.33282,
+          0,
+          0.12433
+        ]
+      },
+      {
+        "type": "E7",
+        "span": 0.6,
+        "formQ": [
+          0.12433,
+          1,
+          0.02304,
+          0.5768,
+          0,
+          0.33282,
+          0,
+          0.12433
+        ]
+      },
+      {
+        "type": "S0",
+        "span": 1.5,
+        "formQ": [
+          0.12433,
+          1,
+          0.02304,
+          0.5768,
+          0,
+          0.33282,
+          0,
+          0.12433
+        ]
+      },
+      {
+        "type": "Sa",
+        "span": 13.5,
+        "formQ": [
+          0.33029,
+          1,
+          0.08035,
+          0.84073,
+          0,
+          0.63981,
+          0,
+          0.33029
+        ]
+      },
+      {
+        "type": "Sb",
+        "span": 13.5,
+        "formQ": [
+          0.19587,
+          1,
+          0.0406,
+          0.69694,
+          0,
+          0.45623,
+          0,
+          0.19587
+        ]
+      },
+      {
+        "type": "Sc",
+        "span": 13.5,
+        "formQ": [
+          0.13425,
+          1,
+          0.02532,
+          0.59624,
+          0,
+          0.35136,
+          0,
+          0.13425
+        ]
+      },
+      {
+        "type": "Sd",
+        "span": 13.5,
+        "formQ": [
+          0.10597,
+          1,
+          0.01894,
+          0.53767,
+          0,
+          0.29701,
+          0,
+          0.10597
+        ]
+      },
+      {
+        "type": "SB0",
+        "span": 1.5,
+        "formQ": [
+          0.12433,
+          1,
+          0.02304,
+          0.5768,
+          0,
+          0.33282,
+          0,
+          0.12433
+        ]
+      },
+      {
+        "type": "SBa",
+        "span": 13.5,
+        "formQ": [
+          0.33029,
+          1,
+          0.08035,
+          0.84073,
+          0,
+          0.63981,
+          0,
+          0.33029
+        ]
+      },
+      {
+        "type": "SBb",
+        "span": 13.5,
+        "formQ": [
+          0.19587,
+          1,
+          0.0406,
+          0.69694,
+          0,
+          0.45623,
+          0,
+          0.19587
+        ]
+      },
+      {
+        "type": "SBc",
+        "span": 13.5,
+        "formQ": [
+          0.13425,
+          1,
+          0.02532,
+          0.59624,
+          0,
+          0.35136,
+          0,
+          0.13425
+        ]
+      },
+      {
+        "type": "SBd",
+        "span": 13.5,
+        "formQ": [
+          0.10597,
+          1,
+          0.01894,
+          0.53767,
+          0,
+          0.29701,
+          0,
+          0.10597
+        ]
+      },
+      {
+        "type": "Irr",
+        "span": 13.5,
+        "formQ": [
+          0.09589,
+          1,
+          0.01677,
+          0.51419,
+          0,
+          0.27645,
+          0,
+          0.09589
+        ]
+      }
+    ]
+  },
+  "population": {
+    "thinDisc": {
+      "1": {
+        "n": 75120,
+        "obPct": 0.67,
+        "giantPct": 0.214,
+        "wdPct": 0.168,
+        "youngPct": 61.23,
+        "meanColour": 5.8328,
+        "meanLuminosity": 12.63
+      },
+      "2": {
+        "n": 75120,
+        "obPct": 0.491,
+        "giantPct": 0.393,
+        "wdPct": 0.17,
+        "youngPct": 40.29,
+        "meanColour": 5.8451,
+        "meanLuminosity": 21.14
+      },
+      "8": {
+        "n": 75120,
+        "obPct": 0.208,
+        "giantPct": 1.207,
+        "wdPct": 0.176,
+        "youngPct": 22.06,
+        "meanColour": 5.8929,
+        "meanLuminosity": 61.77
+      },
+      "0.5": {
+        "n": 75120,
+        "obPct": 0.784,
+        "giantPct": 0.108,
+        "wdPct": 0.16,
+        "youngPct": 90.92,
+        "meanColour": 5.8251,
+        "meanLuminosity": 7.76
+      },
+      "13.5": {
+        "n": 75120,
+        "obPct": 0.169,
+        "giantPct": 1.731,
+        "wdPct": 0.176,
+        "youngPct": 19.68,
+        "meanColour": 5.9192,
+        "meanLuminosity": 89.35
+      }
+    },
+    "E4": {
+      "at13_5": {
+        "n": 40000,
+        "obPct": 0,
+        "giantPct": 3.39,
+        "youngest": 13.23,
+        "oldest": 13.5
+      },
+      "at0_5": {
+        "n": 40000,
+        "obPct": 0.545,
+        "giantPct": 0.292,
+        "youngest": 0.275,
+        "oldest": 0.5
+      }
+    },
+    "exposure": {
+      "E4@0.5": {
+        "meanL": 17.387,
+        "referenceL": 173.596,
+        "magOffset": -2.4983
+      },
+      "E4@2": {
+        "meanL": 62.329,
+        "referenceL": 173.596,
+        "magOffset": -1.1121
+      },
+      "E4@8": {
+        "meanL": 138.46,
+        "referenceL": 173.596,
+        "magOffset": -0.2455
+      },
+      "E4@13.5": {
+        "meanL": 173.596,
+        "referenceL": 173.596,
+        "magOffset": 0
+      },
+      "Sa@0.5": {
+        "meanL": 12.451,
+        "referenceL": 120.965,
+        "magOffset": -2.4686
+      },
+      "Sa@2": {
+        "meanL": 28.259,
+        "referenceL": 120.965,
+        "magOffset": -1.5788
+      },
+      "Sa@8": {
+        "meanL": 83.382,
+        "referenceL": 120.965,
+        "magOffset": -0.404
+      },
+      "Sa@13.5": {
+        "meanL": 120.965,
+        "referenceL": 120.965,
+        "magOffset": 0
+      },
+      "SBb@0.5": {
+        "meanL": 11.179,
+        "referenceL": 105.879,
+        "magOffset": -2.441
+      },
+      "SBb@2": {
+        "meanL": 26.617,
+        "referenceL": 105.879,
+        "magOffset": -1.4991
+      },
+      "SBb@8": {
+        "meanL": 73.829,
+        "referenceL": 105.879,
+        "magOffset": -0.3915
+      },
+      "SBb@13.5": {
+        "meanL": 105.879,
+        "referenceL": 105.879,
+        "magOffset": 0
+      },
+      "Sc@0.5": {
+        "meanL": 13.071,
+        "referenceL": 92.186,
+        "magOffset": -2.1209
+      },
+      "Sc@2": {
+        "meanL": 23.488,
+        "referenceL": 92.186,
+        "magOffset": -1.4845
+      },
+      "Sc@8": {
+        "meanL": 65.615,
+        "referenceL": 92.186,
+        "magOffset": -0.3692
+      },
+      "Sc@13.5": {
+        "meanL": 92.186,
+        "referenceL": 92.186,
+        "magOffset": 0
+      },
+      "Irr@0.5": {
+        "meanL": 10.534,
+        "referenceL": 94.807,
+        "magOffset": -2.3856
+      },
+      "Irr@2": {
+        "meanL": 23.546,
+        "referenceL": 94.807,
+        "magOffset": -1.5123
+      },
+      "Irr@8": {
+        "meanL": 72.194,
+        "referenceL": 94.807,
+        "magOffset": -0.2958
+      },
+      "Irr@13.5": {
+        "meanL": 94.807,
+        "referenceL": 94.807,
+        "magOffset": 0
+      }
+    }
+  },
+  "gas": {
+    "E0": {
+      "gasFraction": 0,
+      "tau": 0.4,
+      "quenchTime": 0.6000000000000001,
+      "gasNow": [
+        0.1963,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "E1": {
+      "gasFraction": 0,
+      "tau": 0.4,
+      "quenchTime": 0.6000000000000001,
+      "gasNow": [
+        0.1963,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "E2": {
+      "gasFraction": 0,
+      "tau": 0.4,
+      "quenchTime": 0.6000000000000001,
+      "gasNow": [
+        0.1963,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "E3": {
+      "gasFraction": 0,
+      "tau": 0.4,
+      "quenchTime": 0.6000000000000001,
+      "gasNow": [
+        0.1963,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "E4": {
+      "gasFraction": 0,
+      "tau": 0.4,
+      "quenchTime": 0.6000000000000001,
+      "gasNow": [
+        0.1963,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "E5": {
+      "gasFraction": 0,
+      "tau": 0.4,
+      "quenchTime": 0.6000000000000001,
+      "gasNow": [
+        0.1963,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "E6": {
+      "gasFraction": 0,
+      "tau": 0.4,
+      "quenchTime": 0.6000000000000001,
+      "gasNow": [
+        0.1963,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "E7": {
+      "gasFraction": 0,
+      "tau": 0.4,
+      "quenchTime": 0.6000000000000001,
+      "gasNow": [
+        0.1963,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "S0": {
+      "gasFraction": 0.02,
+      "tau": 1,
+      "quenchTime": 1.5,
+      "gasNow": [
+        0.8001,
+        0.4144,
+        0.02,
+        0.02,
+        0.02,
+        0.02
+      ]
+    },
+    "Sa": {
+      "gasFraction": 0.08,
+      "tau": 3,
+      "quenchTime": 0,
+      "gasNow": [
+        0.9878,
+        0.9563,
+        0.8586,
+        0.5137,
+        0.2698,
+        0.08
+      ]
+    },
+    "Sb": {
+      "gasFraction": 0.15,
+      "tau": 5,
+      "quenchTime": 0,
+      "gasNow": [
+        0.9947,
+        0.9802,
+        0.9304,
+        0.7011,
+        0.4625,
+        0.15
+      ]
+    },
+    "Sc": {
+      "gasFraction": 0.3,
+      "tau": 8,
+      "quenchTime": 0,
+      "gasNow": [
+        0.9974,
+        0.99,
+        0.9631,
+        0.8188,
+        0.6322,
+        0.3
+      ]
+    },
+    "Sd": {
+      "gasFraction": 0.45,
+      "tau": 12,
+      "quenchTime": 0,
+      "gasNow": [
+        0.9985,
+        0.9942,
+        0.9779,
+        0.8828,
+        0.7441,
+        0.45
+      ]
+    },
+    "SB0": {
+      "gasFraction": 0.02,
+      "tau": 1,
+      "quenchTime": 1.5,
+      "gasNow": [
+        0.8001,
+        0.4144,
+        0.02,
+        0.02,
+        0.02,
+        0.02
+      ]
+    },
+    "SBa": {
+      "gasFraction": 0.08,
+      "tau": 3,
+      "quenchTime": 0,
+      "gasNow": [
+        0.9878,
+        0.9563,
+        0.8586,
+        0.5137,
+        0.2698,
+        0.08
+      ]
+    },
+    "SBb": {
+      "gasFraction": 0.15,
+      "tau": 5,
+      "quenchTime": 0,
+      "gasNow": [
+        0.9947,
+        0.9802,
+        0.9304,
+        0.7011,
+        0.4625,
+        0.15
+      ]
+    },
+    "SBc": {
+      "gasFraction": 0.3,
+      "tau": 8,
+      "quenchTime": 0,
+      "gasNow": [
+        0.9974,
+        0.99,
+        0.9631,
+        0.8188,
+        0.6322,
+        0.3
+      ]
+    },
+    "SBd": {
+      "gasFraction": 0.45,
+      "tau": 12,
+      "quenchTime": 0,
+      "gasNow": [
+        0.9985,
+        0.9942,
+        0.9779,
+        0.8828,
+        0.7441,
+        0.45
+      ]
+    },
+    "Irr": {
+      "gasFraction": 0.5,
+      "tau": 15,
+      "quenchTime": 0,
+      "gasNow": [
+        0.9988,
+        0.9953,
+        0.9821,
+        0.9019,
+        0.7792,
+        0.5
+      ]
+    }
+  },
+  "objects": {
+    "SBb": {
+      "2": {
+        "placed": 400,
+        "byType": {
+          "globular": 37,
+          "open": 152,
+          "planetary": 73,
+          "HII": 105,
+          "SNR": 33
+        }
+      },
+      "8": {
+        "placed": 400,
+        "byType": {
+          "planetary": 105,
+          "open": 118,
+          "SNR": 49,
+          "HII": 75,
+          "globular": 53
+        }
+      },
+      "0.5": {
+        "placed": 400,
+        "byType": {
+          "open": 151,
+          "planetary": 73,
+          "HII": 107,
+          "SNR": 33,
+          "globular": 36
+        }
+      },
+      "13.5": {
+        "placed": 400,
+        "byType": {
+          "globular": 80,
+          "planetary": 172,
+          "SNR": 68,
+          "open": 39,
+          "HII": 41
+        }
+      }
+    },
+    "Sc": {
+      "2": {
+        "placed": 400,
+        "byType": {
+          "planetary": 58,
+          "open": 167,
+          "HII": 132,
+          "SNR": 34,
+          "globular": 9
+        }
+      },
+      "8": {
+        "placed": 400,
+        "byType": {
+          "planetary": 85,
+          "open": 143,
+          "SNR": 45,
+          "HII": 118,
+          "globular": 9
+        }
+      },
+      "0.5": {
+        "placed": 400,
+        "byType": {
+          "globular": 11,
+          "HII": 135,
+          "open": 167,
+          "planetary": 56,
+          "SNR": 31
+        }
+      },
+      "13.5": {
+        "placed": 400,
+        "byType": {
+          "open": 114,
+          "planetary": 110,
+          "SNR": 66,
+          "HII": 88,
+          "globular": 22
+        }
+      }
+    },
+    "E4": {
+      "2": {
+        "placed": 400,
+        "byType": {
+          "globular": 349,
+          "planetary": 51
+        }
+      },
+      "8": {
+        "placed": 400,
+        "byType": {
+          "globular": 349,
+          "planetary": 51
+        }
+      },
+      "0.5": {
+        "placed": 400,
+        "byType": {
+          "globular": 345,
+          "planetary": 50,
+          "open": 5
+        }
+      },
+      "13.5": {
+        "placed": 400,
+        "byType": {
+          "globular": 349,
+          "planetary": 51
+        }
+      }
+    }
+  },
+  "ageRange": [
+    0.2,
+    13.5
+  ],
+  "ageRef": 13.5,
+  "formationWindow": [
+    0.25,
+    1,
+    0.1,
+    0.65,
+    0,
+    0.45,
+    0,
+    0.25
+  ],
+  "tauSfh": [
+    0.4,
+    0.4,
+    0.4,
+    0.4,
+    0.4,
+    0.4,
+    0.4,
+    0.4,
+    1,
+    3,
+    5,
+    8,
+    12,
+    1,
+    3,
+    5,
+    8,
+    12,
+    15
+  ],
+  "totalChecks": 37,
+  "passed": 37,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "every type at every age draws t_f from the truncated delayed exponential",
+      "pass": true,
+      "detail": {
+        "worstKs": 0.0109,
+        "draws": 20000,
+        "floor": 0.007
+      }
+    },
+    {
+      "name": "the drawn mean formation time is the analytic truncated mean",
+      "pass": true,
+      "detail": {
+        "worstRelative": 0.0077
+      }
+    },
+    {
+      "name": "no star forms before the galaxy or after its span",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "a quenched type never forms a star past 1.5τ",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "an E4 at 5 Gyr is a finished burst, an Irr at 5 Gyr is still forming",
+      "pass": true,
+      "detail": {
+        "E4Span": 0.6000000000000001,
+        "E4Mean": 0.348,
+        "IrrMean": 3.257
+      }
+    },
+    {
+      "name": "the age is clamped to the model range, not to the slider",
+      "pass": true,
+      "detail": {
+        "max": 13.5,
+        "min": 0.2,
+        "preset": 13.5
+      }
+    },
+    {
+      "name": "every component forms inside its own window, and no star is older than its galaxy",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "the assembly order survives: halo oldest, thin disc youngest",
+      "pass": true,
+      "detail": [
+        4.625,
+        8.334,
+        9.887,
+        11.322
+      ]
+    },
+    {
+      "name": "at 1 Gyr even the halo is young, and the order still holds",
+      "pass": true,
+      "detail": [
+        0.266,
+        0.561,
+        0.702,
+        0.828
+      ]
+    },
+    {
+      "name": "at the reference age the windows reproduce the priors they replaced",
+      "pass": true,
+      "detail": {
+        "now": [
+          4.625,
+          8.334,
+          9.887,
+          11.322
+        ],
+        "priors": [
+          4.58,
+          8.36,
+          10.1,
+          12
+        ],
+        "tolerances": [
+          0.25,
+          0.25,
+          0.4,
+          1
+        ]
+      }
+    },
+    {
+      "name": "the thin disc loses its O/B stars as the galaxy ages",
+      "pass": true,
+      "detail": {
+        "at1Gyr": 0.67,
+        "at13_5": 0.169
+      }
+    },
+    {
+      "name": "the giant fraction rises monotonically, and by more than 5× over the range",
+      "pass": true,
+      "detail": {
+        "young": 0.108,
+        "old": 1.731
+      }
+    },
+    {
+      "name": "the mean colour index reddens with age",
+      "pass": true,
+      "detail": {
+        "young": 5.8251,
+        "old": 5.9192
+      }
+    },
+    {
+      "name": "the remnant fraction is non-decreasing and saturates below 1 Gyr",
+      "pass": true,
+      "detail": {
+        "at0_5": 0.16,
+        "at1": 0.168,
+        "at13_5": 0.176
+      }
+    },
+    {
+      "name": "the field dims as the giants thin out, by the 11× the exposure offset absorbs",
+      "pass": true,
+      "detail": {
+        "young": 7.76,
+        "old": 89.35
+      }
+    },
+    {
+      "name": "an E4 at 13.5 Gyr is dead: no O/B, every star as old as the burst",
+      "pass": true,
+      "detail": {
+        "n": 40000,
+        "obPct": 0,
+        "giantPct": 3.39,
+        "youngest": 13.23,
+        "oldest": 13.5
+      }
+    },
+    {
+      "name": "the same E4 at 0.5 Gyr is mid-burst and blue",
+      "pass": true,
+      "detail": {
+        "n": 40000,
+        "obPct": 0.545,
+        "giantPct": 0.292,
+        "youngest": 0.275,
+        "oldest": 0.5
+      }
+    },
+    {
+      "name": "the gas law lands exactly on the observed anchor at the reference epoch",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "gas left is bounded: never above 1, never below the anchor",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "gas falls monotonically with age in every type",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "a quenched type stops consuming gas at its quenching time",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "gasRich is solved from the gas left, not from the anchor",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "an S0 at 0.5 Gyr is star-forming and gas-rich; at 13.5 Gyr it is a quenched residual",
+      "pass": true,
+      "detail": {
+        "young": 0.8,
+        "old": 0.02
+      }
+    },
+    {
+      "name": "an E4 mid-burst has burned only part of its reservoir",
+      "pass": true,
+      "detail": 0.1963
+    },
+    {
+      "name": "a late type keeps most of its gas at every age the model allows",
+      "pass": true,
+      "detail": [
+        0.9988,
+        0.9953,
+        0.9821,
+        0.9019,
+        0.7792,
+        0.5
+      ]
+    },
+    {
+      "name": "SBb: the gas-driven object counts fall as the gas is used up",
+      "pass": true,
+      "detail": {
+        "at0_5": {
+          "open": 151,
+          "planetary": 73,
+          "HII": 107,
+          "SNR": 33,
+          "globular": 36
+        },
+        "at13_5": {
+          "globular": 80,
+          "planetary": 172,
+          "SNR": 68,
+          "open": 39,
+          "HII": 41
+        }
+      }
+    },
+    {
+      "name": "SBb: no object is older than its galaxy",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "SBb: globular clusters need time, so they accumulate with age",
+      "pass": true,
+      "detail": {
+        "at0_5": 36,
+        "at13_5": 80
+      }
+    },
+    {
+      "name": "Sc: the gas-driven object counts fall as the gas is used up",
+      "pass": true,
+      "detail": {
+        "at0_5": {
+          "globular": 11,
+          "HII": 135,
+          "open": 167,
+          "planetary": 56,
+          "SNR": 31
+        },
+        "at13_5": {
+          "open": 114,
+          "planetary": 110,
+          "SNR": 66,
+          "HII": 88,
+          "globular": 22
+        }
+      }
+    },
+    {
+      "name": "Sc: no object is older than its galaxy",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "Sc: globular clusters need time, so they accumulate with age",
+      "pass": true,
+      "detail": {
+        "at0_5": 11,
+        "at13_5": 22
+      }
+    },
+    {
+      "name": "E4: the gas-driven object counts fall as the gas is used up",
+      "pass": true,
+      "detail": {
+        "at0_5": {
+          "globular": 345,
+          "planetary": 50,
+          "open": 5
+        },
+        "at13_5": {
+          "globular": 349,
+          "planetary": 51
+        }
+      }
+    },
+    {
+      "name": "E4: no object is older than its galaxy",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "a 1 Gyr galaxy has no 10 Gyr globular in it",
+      "pass": true,
+      "detail": {
+        "oldestObjectGyr": 1,
+        "globulars": 37
+      }
+    },
+    {
+      "name": "the renormalised field brightness matches the reference at every age",
+      "pass": true,
+      "detail": {
+        "worstRelative": 2.22e-16
+      }
+    },
+    {
+      "name": "the offset is exactly 0 at the reference age and negative before it",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "the preset at the default age needs no offset at all",
+      "pass": true,
+      "detail": 105.8794
+    }
+  ]
+}

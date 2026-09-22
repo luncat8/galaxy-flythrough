@@ -15,6 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const density = require('../src/math/density.js');
+const hash = require('../src/math/hash.js');
 const sampling = require('../src/math/sampling.js');
 const starTypes = require('../src/math/star-types.js');
 
@@ -26,6 +27,8 @@ const SEED = 7;
 const N_STARS = 200000;
 
 const checks = [];
+// Filled by the age-census section: the same sample re-derived at three epochs.
+let ageCensus = null;
 function check(name, pass, detail) {
 	checks.push({ name, pass: !!pass, detail });
 	return !!pass;
@@ -113,6 +116,14 @@ const armStats = starTypes.classVsArmDistance(stars, model);
 	// inside 2. The width is the pattern's own (pitch, arm number, contrast), so
 	// a star's chance of being born young follows the model rather than a
 	// distance tuned for the Milky Way.
+	//
+	// "Young" is no longer "born in an arm": since 0.3.3 the field keeps forming
+	// stars throughout the galaxy's life, so an age cut would mix in field stars
+	// that never went near a ridge and flatten the half-normal. The branch is
+	// identified exactly instead, by recomputing what it returns —
+	// min(age, u1^3 * YOUNG_ARM_MAX_GYR) from the star's own hash channel — and
+	// comparing bit-for-bit. What the check then measures is the gate's shape:
+	// that the stars it accepted are distributed in z as exp(-z^2/2) says.
 	const ridge = (type) => {
 		const m = galaxy.createGalaxy({ type });
 		const buf2 = sampling.sampleGalaxyStars(m, 4242, 200000);
@@ -122,8 +133,11 @@ const armStats = starTypes.classVsArmDistance(stars, model);
 			if (buf2.component[i] !== density.COMPONENT_THIN) continue;
 			const R = buf2.R[i];
 			if (R < m.arms.Rs || R > m.populations.youngOuterR) continue;
-			const s = starTypes.deriveStar(m, 4242 * 31 + i + 1, buf2.component[i], R, buf2.distToArm[i], shared2);
-			if (s.age < 0.3) z.push(buf2.distToArm[i] / density.armRidgeWidth(m, R));
+			const deriveSeed = 4242 * 31 + i + 1;
+			const s = starTypes.deriveStar(m, deriveSeed, buf2.component[i], R, buf2.distToArm[i], shared2);
+			const armAge = Math.min(m.populations.age,
+				Math.pow(hash.hash01(deriveSeed * 31 + 2), 3.0) * starTypes.YOUNG_ARM_MAX_GYR);
+			if (s.age === armAge) z.push(buf2.distToArm[i] / density.armRidgeWidth(m, R));
 		}
 		z.sort((a, b) => a - b);
 		const cdf = (t) => z.filter((v) => v < t).length / Math.max(1, z.length);
@@ -179,6 +193,84 @@ const armStats = starTypes.classVsArmDistance(stars, model);
 			}
 			return giantN > 0 && msN > 0 && giantAge / giantN > msAge / msN;
 		})());
+}
+
+// --- The same census across the galaxy's clock --------------------------
+{
+	// Everything above is one epoch: the default age. 0.3.3 made the age a
+	// generation parameter, so the class mix has to move with it *per component*
+	// — the windows in galaxy.js decide when each component formed, and this is
+	// where that meets the IMF and the lifetimes. Positions are age-independent,
+	// so one sample serves every age (the renderer's property-only regenerate
+	// makes the same claim).
+	const AGES = [1, 5, galaxy.AGE_REF];
+	const pos = sampling.sampleGalaxyStars(model, SEED, 60000);
+	const shared3 = {};
+	const census = {};
+	for (const age of AGES) {
+		const m = galaxy.modelAtAge(model, age);
+		const per = {};
+		for (const name of density.COMPONENT_NAMES) per[name] = { n: 0, ob: 0, giant: 0, wd: 0, ageSum: 0, oldest: 0 };
+		for (let i = 0; i < pos.count; i++) {
+			const c = pos.component[i];
+			const s = starTypes.deriveStar(m, starTypes.fieldStarSeed(SEED, i), c, pos.R[i], pos.distToArm[i], shared3);
+			const b = per[density.COMPONENT_NAMES[c]];
+			b.n++;
+			b.ageSum += s.age;
+			if (s.age > b.oldest) b.oldest = s.age;
+			if (s.spectralClass === 'O' || s.spectralClass === 'B') b.ob++;
+			if (s.state === 'giant') b.giant++;
+			if (s.state === 'wd') b.wd++;
+		}
+		census[age] = {};
+		for (const name of Object.keys(per)) {
+			const b = per[name];
+			census[age][name] = {
+				n: b.n, meanAge: b.n ? +(b.ageSum / b.n).toFixed(3) : null, oldest: +b.oldest.toFixed(3),
+				obPct: b.n ? +(100 * b.ob / b.n).toFixed(3) : null,
+				giantPct: b.n ? +(100 * b.giant / b.n).toFixed(3) : null,
+				wdPct: b.n ? +(100 * b.wd / b.n).toFixed(3) : null,
+			};
+		}
+	}
+	ageCensus = census;
+
+	check('no star in any component is older than the galaxy it is in',
+		AGES.every((age) => density.COMPONENT_NAMES
+			.every((name) => census[age][name].oldest <= age + 1e-9)),
+		AGES.map((age) => ({ age, oldest: Math.max(...density.COMPONENT_NAMES.map((n) => census[age][n].oldest)) })));
+	check('the assembly order holds at every age, not just at the reference one',
+		AGES.every((age) => census[age].halo.meanAge > census[age].bulge.meanAge
+			&& census[age].bulge.meanAge > census[age].thick.meanAge
+			&& census[age].thick.meanAge > census[age].thin.meanAge),
+		AGES.map((age) => census[age].halo.meanAge));
+	check('giants are a rising share of every component big enough to measure',
+		density.COMPONENT_NAMES.filter((name) => census[galaxy.AGE_REF][name].n >= 500)
+			.every((name) => census[1][name].giantPct < census[5][name].giantPct
+				&& census[5][name].giantPct < census[galaxy.AGE_REF][name].giantPct),
+		{ thin: census[galaxy.AGE_REF].thin.giantPct, haloStars: census[galaxy.AGE_REF].halo.n });
+	// A hot star needs a main-sequence star above ~3 M☉ (Teff 12000 K, tMS
+	// 0.64 Gyr), so an age under ~0.7 Gyr. At the reference epoch only the thin
+	// disc is still forming, so that is where every hot star is. A younger galaxy
+	// has hot stars in whichever component was forming then: the spheroid's
+	// window closes at 0.45 of the span, so a 1 Gyr bulge still holds a few 3 M☉
+	// stragglers and a 5 Gyr one holds none.
+	check('the disc that is still forming holds the largest hot-star share at every age',
+		AGES.every((age) => census[age].thin.obPct > census[age].thick.obPct
+			&& census[age].thin.obPct > census[age].bulge.obPct
+			&& census[age].thin.obPct > 0),
+		AGES.map((age) => ({ age, thin: census[age].thin.obPct, bulge: census[age].bulge.obPct })));
+	check('at the reference age no hot star exists outside the thin disc',
+		census[galaxy.AGE_REF].thick.obPct === 0 && census[galaxy.AGE_REF].bulge.obPct === 0
+		&& census[galaxy.AGE_REF].halo.obPct === 0,
+		census[galaxy.AGE_REF]);
+	check('the spheroid stops making hot stars once its formation window has closed',
+		census[1].bulge.obPct > 0 && census[5].bulge.obPct === 0,
+		{ at1Gyr: census[1].bulge.obPct, at5Gyr: census[5].bulge.obPct });
+	check('a young galaxy is a blue galaxy: the disc is hotter at 1 Gyr than at 13.5',
+		census[1].thin.obPct > 2 * census[galaxy.AGE_REF].thin.obPct
+		&& census[1].thin.giantPct < census[galaxy.AGE_REF].thin.giantPct,
+		{ obAt1: census[1].thin.obPct, obAt13_5: census[galaxy.AGE_REF].thin.obPct });
 }
 
 // --- Radial metallicity gradient ----------------------------------------
@@ -317,6 +409,7 @@ fs.writeFileSync(logPath, JSON.stringify({
 	byClass: classes,
 	byComponent: summary.byComponent,
 	classVsArmDistance: armStats,
+	ageCensus,
 	totalChecks: checks.length,
 	passed,
 	failed,

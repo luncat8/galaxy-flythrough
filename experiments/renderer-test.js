@@ -516,6 +516,76 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 }
 
 
+// --- Galaxy age: the property-only regenerate -----------------------------
+// 0.3.3 made the age a generation parameter, and the age slider regenerates
+// live. Positions are age-independent, so a regenerate that only moves the
+// population keeps the sampled field and rewrites the records: the same stars,
+// at another epoch. What must still change is the sky, and what must not change
+// is anything the viewer is looking at — the landmarks, the catalog, the buffer.
+{
+        const fixedWrites = () => gpu.bufferWrites.filter(w => w.buffer.label === 'star-storage' && w.offset === 0);
+        const asView = (write) => new DataView(write.bytes.buffer, write.bytes.byteOffset, write.bytes.byteLength);
+        const meanMag = (view, n) => {
+                let sum = 0;
+                for (let i = 0; i < n; i++) sum += records.readRecord(view, i * records.RECORD_BYTES).absMag;
+                return sum / n;
+        };
+        const landmarkByte = PROCEDURAL * records.RECORD_BYTES;
+        const refView = asView(fixedWrites().pop());
+        const refSamples = renderer.state.fieldSamples;
+        const refMean = meanMag(refView, 2000);
+        const writesBefore = fixedWrites().length;
+        check('the preset boots at the reference age, needing no exposure offset',
+                renderer.state.galaxyAge === galaxy.AGE_REF && renderer.state.magOffset === 0
+                && refSamples > 0,
+                { age: renderer.state.galaxyAge, offset: renderer.state.magOffset, fieldSamples: refSamples });
+
+        const aged = renderer.regenerate(galaxy.modelAtAge(model, 0.5));
+        const agedView = asView(fixedWrites().pop());
+        check('an age-only regenerate rewrites the fixed block without re-drawing the field',
+                fixedWrites().length === writesBefore + 1 && aged.fieldSamples === refSamples
+                && aged.proceduralStars === PROCEDURAL && aged.galaxyAge === 0.5,
+                { newWrites: fixedWrites().length - writesBefore, fieldSamples: aged.fieldSamples, age: aged.galaxyAge });
+        let samePosition = true;
+        let movedStar = 0;
+        for (let i = 0; i < 500; i++) {
+                const a = records.readRecord(refView, i * records.RECORD_BYTES);
+                const b = records.readRecord(agedView, i * records.RECORD_BYTES);
+                if (a.x !== b.x || a.y !== b.y || a.z !== b.z) { samePosition = false; break; }
+                if (a.packed !== b.packed) movedStar++;
+        }
+        check('the same stars stay where they were and change what they are',
+                samePosition && movedStar > 400, { samePosition, movedStar });
+        let landmarkKept = true;
+        for (let i = 0; i < window.Landmarks.count; i++) {
+                const a = records.readRecord(refView, landmarkByte + i * records.RECORD_BYTES);
+                const b = records.readRecord(agedView, landmarkByte + i * records.RECORD_BYTES);
+                if (a.packed !== b.packed || a.x !== b.x) { landmarkKept = false; break; }
+        }
+        check('the named stars keep their real magnitudes: they are data, not a what-if',
+                landmarkKept && aged.landmarkStars === window.Landmarks.count
+                && aged.catalogTotalStars === manifest.starCount && aged.bufferBytes === renderer.state.bufferBytes,
+                { landmarks: aged.landmarkStars, catalog: aged.catalogTotalStars });
+        check('a young galaxy is a dimmer one, so the offset brightens it back',
+                aged.magOffset < -1 && meanMag(agedView, 2000) < refMean - 0.5,
+                { offset: +aged.magOffset.toFixed(3), meanMagYoung: +meanMag(agedView, 2000).toFixed(3), meanMagRef: +refMean.toFixed(3) });
+
+        // The complementary direction: a new type is a new galaxy, so the field
+        // is drawn again — the reuse is a property of the geometry, not a shortcut
+        // taken whenever the model object changes.
+        const other = renderer.regenerate(galaxy.createGalaxy({ type: 'Sc', seed: 7, age: 0.5 }));
+        check('another type re-draws the field even at the same age',
+                other.fieldSamples === refSamples + 1 && other.galaxyType === 'Sc' && other.galaxyAge === 0.5,
+                { fieldSamples: other.fieldSamples, type: other.galaxyType });
+        renderer.regenerate(model);
+        renderer.render(camera, WIDTH, HEIGHT, 5 / 60, input);
+        check('coming back to the preset at the reference age lands on the boot sky',
+                renderer.state.magOffset === 0 && renderer.state.mode === 'hybrid'
+                && renderer.state.fieldSamples === refSamples + 2,
+                { offset: renderer.state.magOffset, fieldSamples: renderer.state.fieldSamples });
+}
+
+
 // --- Object-block defaults ------------------------------------------------
 // Omitted object options fall back to the ObjectsLib budgets: 400 whole-galaxy
 // objects apportioned to exactly 20000 members.

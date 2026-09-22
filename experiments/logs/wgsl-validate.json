@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-21T22:10:40.586Z",
+  "date": "2026-09-22T00:09:33.756Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -7,7 +7,7 @@
     },
     {
       "name": "density",
-      "lines": 324
+      "lines": 334
     },
     {
       "name": "star-sprite",
@@ -27,7 +27,7 @@
     },
     {
       "name": "procedural-gen",
-      "lines": 198
+      "lines": 251
     },
     {
       "name": "cull",
@@ -40,8 +40,8 @@
     "nebula-billboard",
     "tonemap"
   ],
-  "totalChecks": 125,
-  "passed": 125,
+  "totalChecks": 133,
+  "passed": 133,
   "failed": 0,
   "checks": [
     {
@@ -68,7 +68,7 @@
         ],
         [
           "density",
-          15352
+          16084
         ],
         [
           "star-sprite",
@@ -88,7 +88,7 @@
         ],
         [
           "procedural-gen",
-          9182
+          11790
         ],
         [
           "cull",
@@ -242,7 +242,7 @@
     {
       "name": "procedural-gen: declares its functions",
       "pass": true,
-      "detail": 9
+      "detail": 12
     },
     {
       "name": "cull: braces and parentheses balance",
@@ -265,7 +265,7 @@
     {
       "name": "density.wgsl declares a DensityParams struct",
       "pass": true,
-      "detail": 1203
+      "detail": 1935
     },
     {
       "name": "DensityParams has one vec4 per layout group, in the same order",
@@ -283,6 +283,9 @@
           "arms",
           "armShape",
           "populations",
+          "clock",
+          "formLo",
+          "formHi",
           "truncation",
           "clumpMeta",
           "clumps"
@@ -299,6 +302,9 @@
           "arms",
           "armShape",
           "populations",
+          "clock",
+          "formLo",
+          "formHi",
           "truncation",
           "clumpMeta",
           "clumps"
@@ -318,8 +324,8 @@
       "name": "the struct is exactly as large as the packer writes",
       "pass": true,
       "detail": {
-        "floats": 100,
-        "bytes": 400
+        "floats": 112,
+        "bytes": 448
       }
     },
     {
@@ -381,6 +387,21 @@
       "name": "DensityParams.populations is read by a mirrored formula",
       "pass": true,
       "detail": "populations"
+    },
+    {
+      "name": "DensityParams.clock is read by a mirrored formula",
+      "pass": true,
+      "detail": "clock"
+    },
+    {
+      "name": "DensityParams.formLo is read by a mirrored formula",
+      "pass": true,
+      "detail": "formLo"
+    },
+    {
+      "name": "DensityParams.formHi is read by a mirrored formula",
+      "pass": true,
+      "detail": "formHi"
     },
     {
       "name": "DensityParams.truncation is read by a mirrored formula",
@@ -469,6 +490,22 @@
       "detail": {
         "wgsl": 1,
         "js": 1
+      }
+    },
+    {
+      "name": "procedural-gen.wgsl arm-youth ceiling matches star-types.YOUNG_ARM_MAX_GYR",
+      "pass": true,
+      "detail": {
+        "wgsl": 0.3,
+        "js": 0.3
+      }
+    },
+    {
+      "name": "procedural-gen.wgsl bisects the SFH inverse, and says how far",
+      "pass": true,
+      "detail": {
+        "steps": 14,
+        "jsTableSteps": 1024
       }
     },
     {
@@ -696,6 +733,30 @@
     },
     {
       "name": "procedural-gen.wgsl mirrors classifyByTempAndState",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "procedural-gen.wgsl mirrors sfhFormationTime",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "procedural-gen.wgsl mirrors sampleFormationTime",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "procedural-gen.wgsl mirrors sfhCumulative",
       "pass": true,
       "detail": {
         "wgsl": true,

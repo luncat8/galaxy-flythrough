@@ -1,10 +1,10 @@
 {
-  "date": "2026-09-21T22:10:41.293Z",
+  "date": "2026-09-22T00:09:34.774Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 97,
-  "totalChecks": 92,
-  "passed": 92,
+  "prepareMs": 121,
+  "totalChecks": 99,
+  "passed": 99,
   "failed": 0,
   "checks": [
     {
@@ -502,6 +502,65 @@
       ]
     },
     {
+      "name": "the preset boots at the reference age, needing no exposure offset",
+      "pass": true,
+      "detail": {
+        "age": 13.5,
+        "offset": 0,
+        "fieldSamples": 3
+      }
+    },
+    {
+      "name": "an age-only regenerate rewrites the fixed block without re-drawing the field",
+      "pass": true,
+      "detail": {
+        "newWrites": 1,
+        "fieldSamples": 3,
+        "age": 0.5
+      }
+    },
+    {
+      "name": "the same stars stay where they were and change what they are",
+      "pass": true,
+      "detail": {
+        "samePosition": true,
+        "movedStar": 500
+      }
+    },
+    {
+      "name": "the named stars keep their real magnitudes: they are data, not a what-if",
+      "pass": true,
+      "detail": {
+        "landmarks": 59,
+        "catalog": 3829
+      }
+    },
+    {
+      "name": "a young galaxy is a dimmer one, so the offset brightens it back",
+      "pass": true,
+      "detail": {
+        "offset": -2.309,
+        "meanMagYoung": 6.963,
+        "meanMagRef": 9.133
+      }
+    },
+    {
+      "name": "another type re-draws the field even at the same age",
+      "pass": true,
+      "detail": {
+        "fieldSamples": 4,
+        "type": "Sc"
+      }
+    },
+    {
+      "name": "coming back to the preset at the reference age lands on the boot sky",
+      "pass": true,
+      "detail": {
+        "offset": 0,
+        "fieldSamples": 5
+      }
+    },
+    {
       "name": "omitted object options default to 400 objects / 20000 members",
       "pass": true,
       "detail": {
@@ -561,8 +620,8 @@
       "name": "crossing a cell boundary re-uploads the dynamic region",
       "pass": true,
       "detail": {
-        "before": 8,
-        "after": 9
+        "before": 16,
+        "after": 17
       }
     },
     {

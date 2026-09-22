@@ -9,11 +9,12 @@
 //   pGas     HII / reflection / dark: needs cold gas  -> arms, low |z|, no bulge
 //   pStellar planetary / SNR:         needs old stars -> bulge and thick disc
 //
-// `populations.gasRich` switches the gas layer off entirely and `gasFraction`
-// scales it, so an S0 keeps its planetary nebulae and loses its HII regions
-// while a Sc gets more of both gas and arm contrast. The vertical scale comes
-// from the model too (thin.H × youngScaleHeight), which is what keeps the layer
-// on the same population the sampler placed.
+// `populations.gasRich` switches the gas layer off entirely and `gasNow` — the
+// gas the galaxy's own star formation has left at its age — scales it, so an S0
+// keeps its planetary nebulae and loses its HII regions while a Sc gets more of
+// both gas and arm contrast. The vertical scale comes from the model too
+// (thin.H × youngScaleHeight), which is what keeps the layer on the same
+// population the sampler placed.
 //
 // A nebula is not stored: it is a deterministic function of (seed, position,
 // type roll), so the same galaxy is regenerated everywhere.
@@ -24,6 +25,9 @@
 	const density = (typeof module !== 'undefined' && module.exports)
 		? require('./density.js')
 		: window.DensityLib;
+	const galaxy = (typeof module !== 'undefined' && module.exports)
+		? require('./galaxy.js')
+		: window.GalaxyLib;
 	const hash = (typeof module !== 'undefined' && module.exports)
 		? require('./hash.js')
 		: window.HashLib;
@@ -32,11 +36,6 @@
 		: window.SamplingLib;
 
 	const NEBULA_TYPES = ['HII', 'reflection', 'planetary', 'dark', 'SNR'];
-
-	// The gas fraction at which the loose-nebula layer has its tuned strength —
-	// the Milky Way's own. A gas-richer type scales the layer up, a poorer one
-	// down; below `populations.gasRich` it is off entirely.
-	const GAS_NORMAL = 0.15;
 
 	// How far a cloud can sit from the arm ridge and still be read as arm gas:
 	// a multiple of the model's young-ridge width (density.armRidgeWidth), which
@@ -66,7 +65,11 @@
 			? Math.exp(-0.5 * dec.distToArm * dec.distToArm / (ridge * ridge)) : 0.0;
 		const gasBulgeSuppress = dec.bulge > 0.1 ? 0.1 : 1.0;
 		const gasHaloSuppress = dec.halo > 0.0005 ? 0.01 : 1.0;
-		const gasWeight = model.populations.gasRich ? model.populations.gasFraction / GAS_NORMAL : 0.0;
+		// The gas left at this galaxy's age, against the fraction the layer was
+		// tuned at (galaxy.GAS_NORMAL — the Milky Way's own, at the reference
+		// epoch). A gas-richer type scales the layer up, a poorer one down, an old
+		// one down with time; below `populations.gasRich` it is off entirely.
+		const gasWeight = model.populations.gasRich ? model.populations.gasNow / galaxy.GAS_NORMAL : 0.0;
 		const pGas = Math.min(1.0, 0.05 * gasWeight * inDisc * armBoost * gasBulgeSuppress * gasHaloSuppress);
 		const pStellar = 0.005 * (dec.bulge > 0.05 ? 4.0 : 1.0) * (dom === 'halo' ? 0.3 : 1.0);
 		const p = Math.min(1.0, pGas + pStellar);
@@ -149,7 +152,7 @@
 		};
 	}
 
-	const NebulaLib = { NEBULA_TYPES, NEBULA_COLORS, GAS_NORMAL, NEBULA_ARM_REACH, NEBULA_DARK_REACH, nebulaProbabilityAt, placeNebulae, summariseNebulae };
+	const NebulaLib = { NEBULA_TYPES, NEBULA_COLORS, NEBULA_ARM_REACH, NEBULA_DARK_REACH, nebulaProbabilityAt, placeNebulae, summariseNebulae };
 	if (typeof module !== 'undefined') module.exports = NebulaLib;
 	if (typeof window !== 'undefined') window.NebulaLib = NebulaLib;
 })();

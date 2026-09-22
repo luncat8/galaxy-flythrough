@@ -188,6 +188,18 @@ function wgslConsts(part) {
                 { wgsl: [gen.ABS_MAG_MIN, gen.ABS_MAG_SPAN] });
         check('procedural-gen.wgsl visibility flag matches StarPacked',
                 gen.FLAG_VISIBLE === records.FLAG_VISIBLE, { wgsl: gen.FLAG_VISIBLE, js: records.FLAG_VISIBLE });
+        // The arm branch's oldest newborn: the one population number the WGSL
+        // carries as a const rather than through the uniform, because it is a
+        // property of the stellar model (like the mass-Teff breakpoints) and not
+        // of a galaxy.
+        const starTypes = require('../src/math/star-types.js');
+        check('procedural-gen.wgsl arm-youth ceiling matches star-types.YOUNG_ARM_MAX_GYR',
+                gen.YOUNG_ARM_MAX_GYR === starTypes.YOUNG_ARM_MAX_GYR,
+                { wgsl: gen.YOUNG_ARM_MAX_GYR, js: starTypes.YOUNG_ARM_MAX_GYR });
+        check('procedural-gen.wgsl bisects the SFH inverse, and says how far',
+                Number.isInteger(gen.SFH_BISECT_STEPS) && gen.SFH_BISECT_STEPS >= 10
+                && gen.SFH_BISECT_STEPS <= 24,
+                { steps: gen.SFH_BISECT_STEPS, jsTableSteps: starTypes.SFH_TABLE_STEPS });
 
         const cull = wgslConsts('cull');
         check('cull.wgsl landmark mask matches the record flag',
@@ -207,6 +219,7 @@ function wgslConsts(part) {
 // --- 3. Symbolic parity --------------------------------------------------
 {
         const starTypesSrc = readSource('src/math/star-types.js');
+        const galaxySrc = readSource('src/math/galaxy.js');
         const hashSrc = readSource('src/math/hash.js');
         const densitySrc = readSource('src/math/density.js');
 
@@ -216,7 +229,13 @@ function wgslConsts(part) {
                         'rhoHalo', 'armFactor', 'distanceToNearestArm', 'rhoTotal', 'rhoDecomposed',
                         'insideDisc', 'sersicBn']],
                 ['procedural-gen', starTypesSrc, ['luminosityFromMass', 'teffFromMass', 'msLifetimeGyr',
-                        'sampleMassIMF', 'sampleLocalAge', 'classifyByTempAndState']],
+                        'sampleMassIMF', 'sampleLocalAge', 'classifyByTempAndState',
+                        // 0.3.3: the star-formation history the ages are drawn
+                        // from. The CPU keeps an inverse table where the shader
+                        // bisects, so the *shape* function is the mirrored one and
+                        // wgsl-exec-check holds the two inverses to 0.05 Gyr.
+                        'sfhFormationTime', 'sampleFormationTime']],
+                ['procedural-gen', galaxySrc, ['sfhCumulative']],
         ];
         for (const [part, jsSource, fns] of mirrors) {
                 const wgslSrc = shaders.SHADER_PARTS[part];

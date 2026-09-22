@@ -1,18 +1,18 @@
 {
-  "date": "2026-09-21T20:38:43.512Z",
+  "date": "2026-09-22T00:09:56.036Z",
   "seed": 7,
   "sampleSize": 200000,
-  "sampleMs": 222,
-  "deriveMs": 415,
+  "sampleMs": 228,
+  "deriveMs": 369,
   "byClass": {
     "M": 174519,
     "K": 17671,
-    "RG": 4392,
-    "G": 1673,
-    "F": 1033,
-    "B": 198,
+    "RG": 4277,
+    "G": 1764,
+    "B": 234,
     "WD": 367,
-    "A": 144,
+    "F": 945,
+    "A": 220,
     "O": 3
   },
   "byComponent": {
@@ -29,28 +29,28 @@
       "fracInLane": 0.6666666666666666
     },
     "B": {
-      "n": 198,
-      "mean": 0.3076541876576775,
-      "meanZ": 0.7824667348735771,
-      "fracInLane": 0.696969696969697
+      "n": 218,
+      "mean": 0.3751298381670361,
+      "meanZ": 0.989584821897366,
+      "fracInLane": 0.6376146788990825
     },
     "A": {
-      "n": 143,
-      "mean": 0.37132672732645056,
-      "meanZ": 0.8619155860692996,
-      "fracInLane": 0.6993006993006993
+      "n": 181,
+      "mean": 0.4757115248694742,
+      "meanZ": 1.2463217988513378,
+      "fracInLane": 0.5580110497237569
     },
     "F": {
-      "n": 704,
-      "mean": 0.7964378688617134,
-      "meanZ": 2.0225381045794824,
-      "fracInLane": 0.3210227272727273
+      "n": 664,
+      "mean": 0.7862484858803754,
+      "meanZ": 1.9964214481499178,
+      "fracInLane": 0.34036144578313254
     },
     "G": {
-      "n": 910,
-      "mean": 0.9340618171881383,
-      "meanZ": 2.2981007695726827,
-      "fracInLane": 0.24395604395604395
+      "n": 953,
+      "mean": 0.9319619689241065,
+      "meanZ": 2.3165455560178767,
+      "fracInLane": 0.23924449108079748
     },
     "K": {
       "n": 9427,
@@ -71,10 +71,10 @@
       "fracInLane": 0.1956521739130435
     },
     "RG": {
-      "n": 2001,
-      "mean": 1.0455406029374272,
-      "meanZ": 2.6080869323164744,
-      "fracInLane": 0.13043478260869565
+      "n": 1940,
+      "mean": 1.0508864274384098,
+      "meanZ": 2.5966481064901723,
+      "fracInLane": 0.13041237113402063
     },
     "RGe": {
       "n": 0,
@@ -83,8 +83,112 @@
       "fracInLane": 0
     }
   },
-  "totalChecks": 35,
-  "passed": 35,
+  "ageCensus": {
+    "1": {
+      "thin": {
+        "n": 37425,
+        "meanAge": 0.266,
+        "oldest": 0.75,
+        "obPct": 0.681,
+        "giantPct": 0.211,
+        "wdPct": 0.139
+      },
+      "thick": {
+        "n": 11939,
+        "meanAge": 0.561,
+        "oldest": 0.9,
+        "obPct": 0.369,
+        "giantPct": 0.452,
+        "wdPct": 0.168
+      },
+      "bulge": {
+        "n": 10620,
+        "meanAge": 0.704,
+        "oldest": 1,
+        "obPct": 0.358,
+        "giantPct": 0.414,
+        "wdPct": 0.188
+      },
+      "halo": {
+        "n": 16,
+        "meanAge": 0.852,
+        "oldest": 0.988,
+        "obPct": 0,
+        "giantPct": 0,
+        "wdPct": 0
+      }
+    },
+    "5": {
+      "thin": {
+        "n": 37425,
+        "meanAge": 1.414,
+        "oldest": 3.75,
+        "obPct": 0.267,
+        "giantPct": 0.887,
+        "wdPct": 0.158
+      },
+      "thick": {
+        "n": 11939,
+        "meanAge": 2.89,
+        "oldest": 4.499,
+        "obPct": 0,
+        "giantPct": 1.6,
+        "wdPct": 0.168
+      },
+      "bulge": {
+        "n": 10620,
+        "meanAge": 3.567,
+        "oldest": 4.999,
+        "obPct": 0,
+        "giantPct": 1.667,
+        "wdPct": 0.188
+      },
+      "halo": {
+        "n": 16,
+        "meanAge": 4.273,
+        "oldest": 4.93,
+        "obPct": 0,
+        "giantPct": 0,
+        "wdPct": 0
+      }
+    },
+    "13.5": {
+      "thin": {
+        "n": 37425,
+        "meanAge": 4.618,
+        "oldest": 10.125,
+        "obPct": 0.179,
+        "giantPct": 1.769,
+        "wdPct": 0.16
+      },
+      "thick": {
+        "n": 11939,
+        "meanAge": 8.316,
+        "oldest": 12.149,
+        "obPct": 0,
+        "giantPct": 2.672,
+        "wdPct": 0.168
+      },
+      "bulge": {
+        "n": 10620,
+        "meanAge": 9.914,
+        "oldest": 13.498,
+        "obPct": 0,
+        "giantPct": 2.928,
+        "wdPct": 0.188
+      },
+      "halo": {
+        "n": 16,
+        "meanAge": 11.618,
+        "oldest": 13.29,
+        "obPct": 0,
+        "giantPct": 0,
+        "wdPct": 0
+      }
+    }
+  },
+  "totalChecks": 42,
+  "passed": 42,
   "failed": 0,
   "checks": [
     {
@@ -101,12 +205,12 @@
       "detail": {
         "M": 174519,
         "K": 17671,
-        "RG": 4392,
-        "G": 1673,
-        "F": 1033,
-        "B": 198,
+        "RG": 4277,
+        "G": 1764,
+        "B": 234,
         "WD": 367,
-        "A": 144,
+        "F": 945,
+        "A": 220,
         "O": 3
       }
     },
@@ -118,13 +222,13 @@
     {
       "name": "hot stars are rare (O+B below 3% of the census)",
       "pass": true,
-      "detail": 0.001005
+      "detail": 0.001185
     },
     {
       "name": "giants and white dwarfs are both present",
       "pass": true,
       "detail": {
-        "RG": 4392,
+        "RG": 4277,
         "WD": 367
       }
     },
@@ -136,9 +240,9 @@
         "K",
         "RG",
         "G",
-        "F",
         "B",
         "WD",
+        "F",
         "A",
         "O"
       ]
@@ -152,16 +256,16 @@
       "name": "O/B stars sit inside the arm lane far more often than M dwarfs",
       "pass": true,
       "detail": {
-        "obInLane": 0.6965,
+        "obInLane": 0.638,
         "M": 0.2357,
-        "n": 201
+        "n": 221
       }
     },
     {
       "name": "O/B stars are born in the lane: mean ridge distance under 1 sigma",
       "pass": true,
       "detail": {
-        "B": 0.782,
+        "B": 0.99,
         "M": 2.304
       }
     },
@@ -170,14 +274,14 @@
       "pass": true,
       "detail": {
         "M": 0.2357,
-        "obInLane": 0.6965,
+        "obInLane": 0.638,
         "areaRate": 0.2
       }
     },
     {
       "name": "hot stars exist at all in the sample",
       "pass": true,
-      "detail": 201
+      "detail": 221
     },
     {
       "name": "Sa: the arm-young population is a half-normal in the model's ridge width",
@@ -219,15 +323,15 @@
       "name": "the thin disc is the youngest population",
       "pass": true,
       "detail": {
-        "thin": 4.59,
-        "thick": 8.36,
-        "bulge": 10.09
+        "thin": 4.63,
+        "thick": 8.34,
+        "bulge": 9.91
       }
     },
     {
       "name": "the halo is old (> 8 Gyr on average)",
       "pass": true,
-      "detail": 11.84
+      "detail": 11.37
     },
     {
       "name": "the bulge is the most metal rich population",
@@ -254,27 +358,137 @@
       "pass": true
     },
     {
+      "name": "no star in any component is older than the galaxy it is in",
+      "pass": true,
+      "detail": [
+        {
+          "age": 1,
+          "oldest": 1
+        },
+        {
+          "age": 5,
+          "oldest": 4.999
+        },
+        {
+          "age": 13.5,
+          "oldest": 13.498
+        }
+      ]
+    },
+    {
+      "name": "the assembly order holds at every age, not just at the reference one",
+      "pass": true,
+      "detail": [
+        0.852,
+        4.273,
+        11.618
+      ]
+    },
+    {
+      "name": "giants are a rising share of every component big enough to measure",
+      "pass": true,
+      "detail": {
+        "thin": 1.769,
+        "haloStars": 16
+      }
+    },
+    {
+      "name": "the disc that is still forming holds the largest hot-star share at every age",
+      "pass": true,
+      "detail": [
+        {
+          "age": 1,
+          "thin": 0.681,
+          "bulge": 0.358
+        },
+        {
+          "age": 5,
+          "thin": 0.267,
+          "bulge": 0
+        },
+        {
+          "age": 13.5,
+          "thin": 0.179,
+          "bulge": 0
+        }
+      ]
+    },
+    {
+      "name": "at the reference age no hot star exists outside the thin disc",
+      "pass": true,
+      "detail": {
+        "thin": {
+          "n": 37425,
+          "meanAge": 4.618,
+          "oldest": 10.125,
+          "obPct": 0.179,
+          "giantPct": 1.769,
+          "wdPct": 0.16
+        },
+        "thick": {
+          "n": 11939,
+          "meanAge": 8.316,
+          "oldest": 12.149,
+          "obPct": 0,
+          "giantPct": 2.672,
+          "wdPct": 0.168
+        },
+        "bulge": {
+          "n": 10620,
+          "meanAge": 9.914,
+          "oldest": 13.498,
+          "obPct": 0,
+          "giantPct": 2.928,
+          "wdPct": 0.188
+        },
+        "halo": {
+          "n": 16,
+          "meanAge": 11.618,
+          "oldest": 13.29,
+          "obPct": 0,
+          "giantPct": 0,
+          "wdPct": 0
+        }
+      }
+    },
+    {
+      "name": "the spheroid stops making hot stars once its formation window has closed",
+      "pass": true,
+      "detail": {
+        "at1Gyr": 0.358,
+        "at5Gyr": 0
+      }
+    },
+    {
+      "name": "a young galaxy is a blue galaxy: the disc is hotter at 1 Gyr than at 13.5",
+      "pass": true,
+      "detail": {
+        "obAt1": 0.681,
+        "obAt13_5": 0.179
+      }
+    },
+    {
       "name": "Sc: sub-M thin-disc stars redden by ~1 step from 0.5L to 2.5L",
       "pass": true,
       "detail": {
-        "inner": 4.75,
-        "outer": 5.973
+        "inner": 4.681,
+        "outer": 5.965
       }
     },
     {
       "name": "E4: the gradient is flat (no shift at any radius)",
       "pass": true,
       "detail": {
-        "inner": 5.888688016528926,
-        "outer": 5.888688016528926
+        "inner": 5.904761904761905,
+        "outer": 5.904761904761905
       }
     },
     {
       "name": "20% of spheroid giants shift one LUT step redder (the RGe slot)",
       "pass": true,
       "detail": {
-        "giants": 650,
-        "share": 0.203
+        "giants": 656,
+        "share": 0.201
       }
     },
     {

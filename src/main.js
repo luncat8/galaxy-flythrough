@@ -10,6 +10,12 @@
 
 const OVERLAY_INTERVAL = 0.25;      // s
 const MAX_DPR = 2;                  // retinal 3x costs fill rate for no gain
+// Age slider: the step the model is worth reading at (0.1 Gyr is far finer than
+// any population change here) and the shortest gap between two field rebuilds.
+// A rebuild is ~0.27 s at 300k stars, so this keeps a drag interactive instead
+// of queueing one rebuild per pixel.
+const AGE_STEP = 0.1;               // Gyr
+const AGE_REGEN_INTERVAL = 0.35;    // s, in loop time
 
 function currentDpr() {
         return Math.min((typeof window !== 'undefined' && window.devicePixelRatio) || 1, MAX_DPR);
@@ -53,6 +59,10 @@ function readParams(search) {
                 // null is the table's default type; unknown names are resolved (and reported)
                 // by createGalaxy, which is where the type list lives.
                 type: text('type', null),
+                // The cosmic epoch the galaxy is frozen at. createGalaxy clamps it
+                // to the model's own range, so ?age=99 is the oldest galaxy there
+                // is rather than an error.
+                age: number('age', window.GalaxyLib.AGE_DEFAULT),
         };
 }
 
@@ -65,7 +75,7 @@ async function boot() {
         // One descriptor for the whole galaxy: the density field, the star buffer, the
         // camera frame and the overlay's label all read this object, so switching
         // galaxies builds a new one and hands it round instead of poking four modules.
-        let model = galaxy.createGalaxy({ type: params.type, seed: params.seed });
+        let model = galaxy.createGalaxy({ type: params.type, seed: params.seed, age: params.age });
 
         function showError(message) {
                 errorBox.textContent = message;
@@ -191,6 +201,8 @@ async function boot() {
 
         const galaxyType = document.getElementById('galaxy-type');
         const galaxySeed = document.getElementById('galaxy-seed');
+        const galaxyAge = document.getElementById('galaxy-age');
+        const galaxyAgeVal = document.getElementById('val-galaxy-age');
         const galaxyLabelVal = document.getElementById('val-galaxy');
         const btnGalaxyApply = document.getElementById('galaxy-apply');
         // The option list is the type table itself: adding a row to galaxy.js puts the
@@ -201,18 +213,37 @@ async function boot() {
                 option.textContent = type;
                 galaxyType.appendChild(option);
         }
+        // The slider's range is the model's, not a copy of it typed in twice.
+        galaxyAge.min = galaxy.AGE_MIN;
+        galaxyAge.max = galaxy.AGE_MAX;
+        galaxyAge.step = AGE_STEP;
+
+        function formatAge(age) {
+                return age.toFixed(1) + ' Gyr';
+        }
 
         function syncGalaxyControls() {
                 galaxyType.value = model.type;
                 galaxySeed.value = model.seed;
+                galaxyAge.value = model.populations.age;
+                galaxyAgeVal.textContent = formatAge(model.populations.age);
                 galaxyLabelVal.textContent = `${model.type} #${model.seed} ${model.milkyWay ? '(catalog)' : '(procedural)'}`;
         }
 
-        // Rebuilding the field is the expensive path (        0.7 s at 300k stars) and it is
+        // The throttled age drag: a value waiting to be rebuilt, and the loop time
+        // the last rebuild happened at. Declared before the rebuilds that clear and
+        // read them.
+        let pendingAge = null;
+        let lastAgeRegen = -Infinity;
+
+        // Rebuilding the field is the expensive path (~0.6 s at 300k stars) and it is
         // deliberately synchronous: the density model is the source of truth, so there
-        // is no half-swapped state worth animating around.
-        function regenerateGalaxy(type, seed) {
-                model = galaxy.createGalaxy({ type, seed });
+        // is no half-swapped state worth animating around. Another type or seed is
+        // another galaxy, so the camera goes home, the labels follow the model and a
+        // stale selection is dropped.
+        function regenerateGalaxy(type, seed, age) {
+                pendingAge = null;
+                model = galaxy.createGalaxy({ type, seed, age });
                 renderer.regenerate(model);
                 camera.setFrame(model);
                 labels.setEnabled(model.milkyWay);
@@ -224,9 +255,33 @@ async function boot() {
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
 
-        galaxyType.addEventListener('change', () => regenerateGalaxy(galaxyType.value, model.seed));
+        // The same galaxy at another epoch. The renderer keeps the sampled positions
+        // and rewrites the records (~0.27 s), so nothing the viewer is looking at
+        // moves: no camera reset, no dropped selection, no label rebuild. Moving the
+        // age is asking a what-if about this galaxy, not travelling to another one.
+        function regenerateAge(age) {
+                model = galaxy.createGalaxy({ type: model.type, seed: model.seed, age });
+                renderer.regenerate(model);
+                syncGalaxyControls();
+                updateOverlay(renderer.state, camera.getState(statsText));
+        }
+
+        // Live, but throttled. A drag fires an `input` per pixel and the rebuild is
+        // a third of a second, so the readout follows the drag while the field
+        // follows at most every AGE_REGEN_INTERVAL. The pending value is applied
+        // from the frame loop rather than from a timer: the loop is what draws, so
+        // the last position of the drag always lands, and there is no queue of
+        // intermediate rebuilds to work through.
+        galaxyAge.addEventListener('input', () => {
+                pendingAge = Number(galaxyAge.value);
+                galaxyAgeVal.textContent = formatAge(pendingAge);
+        });
+
+        galaxyType.addEventListener('change', () => {
+                regenerateGalaxy(galaxyType.value, model.seed, model.populations.age);
+        });
         btnGalaxyApply.addEventListener('click', () => {
-                regenerateGalaxy(galaxyType.value, Math.floor(Number(galaxySeed.value) || 0));
+                regenerateGalaxy(galaxyType.value, Math.floor(Number(galaxySeed.value) || 0), model.populations.age);
         });
         syncGalaxyControls();
         if (!model.milkyWay) labels.setEnabled(false);
@@ -266,7 +321,7 @@ async function boot() {
                 const catKept = state.catalogThinnedStars || state.catalogResidentStars;
                 overlay.textContent =
                         `FPS ${loop.stats.fps.toFixed(0)}   frame ${loop.stats.avgFrameMs.toFixed(2)}ms (max ${loop.stats.maxFrameMs.toFixed(1)}ms)   output ${mode}\n` +
-                        `galaxy ${state.galaxyLabel}   ${state.mode} mode\n` +
+                        `galaxy ${state.galaxyLabel}   age ${state.galaxyAge.toFixed(1)} Gyr   ${state.mode} mode\n` +
                         `stars drawn ${state.drawn.toLocaleString()}  =  global ${state.proceduralStars.toLocaleString()}` +
                         ` + landmarks ${state.landmarkStars.toLocaleString()}` +
                         ` + objects ${state.objectStars.toLocaleString()}` +
@@ -294,7 +349,16 @@ async function boot() {
 
                 if (actions.galaxyCycle) {
                         actions.galaxyCycle = 0;
-                        regenerateGalaxy(galaxy.cycleGalaxyType(model.type), model.seed);
+                        regenerateGalaxy(galaxy.cycleGalaxyType(model.type), model.seed, model.populations.age);
+                }
+                // The age slider's trailing edge: applied here, in loop time, so a
+                // drag rebuilds at most every AGE_REGEN_INTERVAL and the value the
+                // user let go of is the one that lands.
+                if (pendingAge !== null && time - lastAgeRegen >= AGE_REGEN_INTERVAL) {
+                        lastAgeRegen = time;
+                        const age = pendingAge;
+                        pendingAge = null;
+                        regenerateAge(age);
                 }
                 if (actions.pick) {
                         actions.pick = 0;
@@ -345,5 +409,6 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
         window.addEventListener('DOMContentLoaded', boot);
 }
 if (typeof module !== 'undefined') {
-        module.exports = { boot, readParams, formatSpeed, formatDistance, formatFactor, OVERLAY_INTERVAL, MAX_DPR };
+        module.exports = { boot, readParams, formatSpeed, formatDistance, formatFactor, OVERLAY_INTERVAL, MAX_DPR,
+                AGE_STEP, AGE_REGEN_INTERVAL };
 }

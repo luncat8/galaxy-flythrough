@@ -57,6 +57,14 @@ def main():
         GC_X = data['galaxy']['centre']['x']
         GC_Y = data['galaxy']['centre']['y']
         model_type = data['galaxy'].get('type', 'SBb')
+        # 0.3.3: the epoch the card was drawn at, and the gas the star-formation
+        # history has left there. A sample written before the age parameter has
+        # neither, so the label falls back to the type alone.
+        age = data['galaxy'].get('age')
+        gas_now = data['galaxy'].get('gasNow')
+        model_label = model_type if age is None else f'{model_type} @ {age:g} Gyr'
+        if gas_now is not None:
+                model_label += f', gas {gas_now:.2f}'
         is_preset = data['galaxy'].get('preset', False)
         stars = data['stars']
         nebulae = data['nebulae']
@@ -164,7 +172,7 @@ def main():
         ax.set_xlabel('X (kpc)')
         ax.set_ylabel('Y (kpc)')
         frame = 'Sun-centred' if is_preset else 'galactocentric'
-        ax.set_title(f'{model_type} — top-down view (z=0 plane), {frame}\n'
+        ax.set_title(f'{model_label} — top-down view (z=0 plane), {frame}\n'
                 'Density (sqrt-scaled, inferno) + stars (colored by class) + nebulae (circles)\n'
                 'Cyan curves = spiral arm centres')
         ax.set_xlim(extent[0], extent[1])

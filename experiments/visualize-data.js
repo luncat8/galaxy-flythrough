@@ -16,10 +16,18 @@ const nebula = require('../src/math/nebula.js');
 const records = require('../src/math/star-record.js');
 
 const galaxy = require('../src/math/galaxy.js');
-// The card can be drawn for any type: `node experiments/visualize-data.js SBa`.
-// With no argument it is the Milky Way preset, the renderer's default galaxy.
+// The card can be drawn for any type at any age:
+// `node experiments/visualize-data.js SBa 2` is an SBa 2 Gyr into its life.
+// With no argument it is the Milky Way preset at the reference epoch, the
+// renderer's default galaxy.
 const type = process.argv[2];
-const model = type ? galaxy.createGalaxy({ type }) : galaxy.MILKY_WAY;
+const ageArg = process.argv[3];
+const model = type
+	? galaxy.createGalaxy({ type, age: ageArg === undefined ? undefined : Number(ageArg) })
+	: (ageArg === undefined ? galaxy.MILKY_WAY : galaxy.modelAtAge(galaxy.MILKY_WAY, Number(ageArg)));
+console.log(`Model ${model.type} at ${model.populations.age} Gyr `
+	+ `(gas left ${model.populations.gasNow.toFixed(3)}, `
+	+ `${model.populations.gasRich ? 'star-forming' : 'quenched'})`);
 
 const SEED = 2024;
 const N_STARS = 30000;
@@ -37,8 +45,8 @@ const lut = records.buildColorLUT();
 const scratch = {};
 const stars = new Array(positions.count);
 for (let i = 0; i < positions.count; i++) {
-	const s = starTypes.deriveStar(model, 
-		SEED * 31 + i + 1, positions.component[i], positions.R[i], positions.distToArm[i], scratch);
+	const s = starTypes.deriveStar(model,
+		starTypes.fieldStarSeed(SEED, i), positions.component[i], positions.R[i], positions.distToArm[i], scratch);
 	const ci = s.colorIndex * 4;
 	stars[i] = {
 		x: +positions.x[i].toFixed(4), y: +positions.y[i].toFixed(4), z: +positions.z[i].toFixed(4),
@@ -105,6 +113,17 @@ const out = {
 		type: model.type,
 		preset: model === galaxy.MILKY_WAY,
 		barred: model.barred,
+		// The clock the population was drawn at: the age, the SFH timescale and
+		// quenching time behind it, the span star formation actually covers, and
+		// the gas the SFH has left. The card's title reads these.
+		age: model.populations.age,
+		ageRef: galaxy.AGE_REF,
+		tauSfh: model.populations.tauSfh,
+		quenchTime: model.populations.quenchTime,
+		sfhSpan: model.populations.sfhSpan,
+		gasFraction: model.populations.gasFraction,
+		gasNow: model.populations.gasNow,
+		gasRich: model.populations.gasRich,
 		centre: model.centre,
 		arms: model.arms,
 		spheroid: { profile: model.spheroid.profile, a: model.spheroid.a, b: model.spheroid.b, c: model.spheroid.c, r0: model.spheroid.r0, n: model.spheroid.n, tiltDeg: model.spheroid.tiltDeg },

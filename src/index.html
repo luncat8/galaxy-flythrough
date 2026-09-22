@@ -49,6 +49,13 @@
                         <input type="number" id="galaxy-seed" step="1" min="0" value="42">
                         <button id="galaxy-apply">Apply</button>
                 </div>
+                <!-- The epoch the galaxy is frozen at, not a time-lapse: dragging
+                     it regenerates the population (throttled, positions kept). -->
+                <div class="menu-row">
+                        <label for="galaxy-age">Age</label>
+                        <input type="range" id="galaxy-age" min="0.2" max="13.5" step="0.1" value="13.5">
+                        <span id="val-galaxy-age" class="menu-val">13.5 Gyr</span>
+                </div>
                 <div class="menu-row menu-actions">
                         <button id="menu-defaults">Defaults</button>
                 </div>

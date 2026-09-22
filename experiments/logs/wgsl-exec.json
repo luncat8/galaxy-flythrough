@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-21T20:37:42.301Z",
+  "date": "2026-09-22T00:10:05.458Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 71,
-  "passed": 71,
+  "totalChecks": 80,
+  "passed": 80,
   "failed": 0,
   "checks": [
     {
@@ -12,6 +12,11 @@
     },
     {
       "name": "star-sprite-hdr: the shipped source parses as WGSL",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "nebula-billboard: the shipped source parses as WGSL",
       "pass": true,
       "detail": null
     },
@@ -866,17 +871,85 @@
       }
     },
     {
-      "name": "Sc: executed sampleLocalAge WGSL matches JS",
+      "name": "Sc at 13.5 Gyr: executed sampleLocalAge WGSL matches JS on the arm branch",
       "pass": true,
       "detail": {
-        "worst": 1.9135425431292373e-7
+        "worstArm": 0,
+        "armProbes": 2,
+        "armReachable": true
       }
     },
     {
-      "name": "E4: executed sampleLocalAge WGSL matches JS",
+      "name": "Sc at 13.5 Gyr: executed sampleLocalAge WGSL matches JS on the SFH branch",
       "pass": true,
       "detail": {
-        "worst": 1.7342616213003783e-7
+        "worstSfhGyr": 0.00032,
+        "sfhProbes": 7
+      }
+    },
+    {
+      "name": "E4 at 13.5 Gyr: executed sampleLocalAge WGSL matches JS on the arm branch",
+      "pass": true,
+      "detail": {
+        "worstArm": 0,
+        "armProbes": 0,
+        "armReachable": false
+      }
+    },
+    {
+      "name": "E4 at 13.5 Gyr: executed sampleLocalAge WGSL matches JS on the SFH branch",
+      "pass": true,
+      "detail": {
+        "worstSfhGyr": 0.00002,
+        "sfhProbes": 9
+      }
+    },
+    {
+      "name": "Sc at 1 Gyr: executed sampleLocalAge WGSL matches JS on the arm branch",
+      "pass": true,
+      "detail": {
+        "worstArm": 0,
+        "armProbes": 2,
+        "armReachable": true
+      }
+    },
+    {
+      "name": "Sc at 1 Gyr: executed sampleLocalAge WGSL matches JS on the SFH branch",
+      "pass": true,
+      "detail": {
+        "worstSfhGyr": 0.00002,
+        "sfhProbes": 7
+      }
+    },
+    {
+      "name": "E4 at 0.5 Gyr: executed sampleLocalAge WGSL matches JS on the arm branch",
+      "pass": true,
+      "detail": {
+        "worstArm": 0,
+        "armProbes": 0,
+        "armReachable": false
+      }
+    },
+    {
+      "name": "E4 at 0.5 Gyr: executed sampleLocalAge WGSL matches JS on the SFH branch",
+      "pass": true,
+      "detail": {
+        "worstSfhGyr": 0.00001,
+        "sfhProbes": 9
+      }
+    },
+    {
+      "name": "executed sfhCumulative WGSL matches galaxy.js",
+      "pass": true,
+      "detail": {
+        "worst": 3.55e-8
+      }
+    },
+    {
+      "name": "executed sampleFormationTime WGSL matches the CPU inverse table",
+      "pass": true,
+      "detail": {
+        "worstGyr": 0.00041
       }
     }
   ]

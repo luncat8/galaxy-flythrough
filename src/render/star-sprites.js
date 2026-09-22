@@ -71,6 +71,14 @@ const WHITE_POINT_MAX = 16.0;
 const SATURATION_DEFAULT = 1.4;
 const SATURATION_MIN = 0.5;
 const SATURATION_MAX = 3.0;
+// Exposure renormalisation (0.3.3): the galaxy's age changes the population mix
+// and with it the field's mean brightness (11× between 0.5 and 13.5 Gyr), so the
+// renderer measures that mix over the first CALIBRATION_STARS sampled positions
+// and folds the difference against the same field at galaxy.AGE_REF into the
+// packed magnitudes. The sliders then keep meaning what the user set them to, at
+// every age. 16k stars is enough to pin a mean dominated by rare giants to well
+// under the 0.118 mag the record quantises to, and costs ~10 ms per calibration.
+const CALIBRATION_STARS = 16384;
 const MAX_FRAME_DT = 0.1;
 // HDR intermediate format — always used; on HDR displays the tonemap outputs
 // to an rgba16float swapchain too (same format).
@@ -349,6 +357,15 @@ function createStarRenderer(device, context, format, options) {
         let nebulaBindGroup = null;
         let nebulaStaging = null;
         let nebulaCount = 0;
+        // The sampled field, kept between regenerates: an age change re-rolls
+        // what the stars are, not where they are, so the positions survive it and
+        // only the records are rewritten (see regenerate).
+        let fieldStars = null;
+        // Mean luminosity (L☉) of the first CALIBRATION_STARS sampled stars at
+        // galaxy.AGE_REF — the denominator of the exposure offset. A property of
+        // the geometry, so it is recomputed with the field and not with the age.
+        let referenceLuminosity = 0;
+        let magOffset = 0;
         // The manager always exists; with no catalog it just reports zero stars.
         let manager = window.CellManager.createCellManager(EMPTY_MANIFEST, {
                 budgetStars: catalogBudget,
@@ -383,6 +400,14 @@ function createStarRenderer(device, context, format, options) {
                 galaxyType: model.type,
                 galaxySeed: model.seed,
                 galaxyLabel: '',
+                // 0.3.3: the epoch the field was generated at, the magnitude
+                // offset that keeps the exposure defaults meaningful there, and
+                // how many times the positions have been drawn — which is what
+                // makes the property-only regenerate observable instead of
+                // implied.
+                galaxyAge: model.populations.age,
+                magOffset: 0,
+                fieldSamples: 0,
         };
         configureMode(model);
 
@@ -476,19 +501,52 @@ function createStarRenderer(device, context, format, options) {
                 state.bufferBytes = totalBytes + nebulaBytes;
         }
 
-        function generateProcedural() {
-                if (proceduralCount === 0) return 0;
+        // Draw the field's positions and the exposure reference that goes with
+        // them. Both are properties of the geometry: the same model at another
+        // age lands on the same stars, which is why the age slider can skip this.
+        function sampleField() {
+                if (proceduralCount === 0) {
+                        fieldStars = null;
+                        referenceLuminosity = 0;
+                        return;
+                }
                 const sampling = window.SamplingLib;
                 const starTypes = window.StarTypesLib;
-                const stars = sampling.sampleGalaxyStars(model, seed, proceduralCount);
+                const galaxyLib = window.GalaxyLib;
+                fieldStars = sampling.sampleGalaxyStars(model, seed, proceduralCount, fieldStars);
+                state.fieldSamples++;
+                referenceLuminosity = starTypes.meanFieldLuminosity(
+                        galaxyLib.modelAtAge(model, galaxyLib.AGE_REF), fieldStars, CALIBRATION_STARS);
+        }
+
+        // The offset, in magnitudes, between this field and the same field at the
+        // reference epoch: 2.5·log10(mean L now / mean L at AGE_REF). Negative for
+        // a young galaxy (fewer giants, so a dimmer field that the offset
+        // brightens back), exactly 0 at the reference age.
+        function calibrateExposure() {
+                const starTypes = window.StarTypesLib;
+                const now = fieldStars
+                        ? starTypes.meanFieldLuminosity(model, fieldStars, CALIBRATION_STARS)
+                        : 0;
+                magOffset = (now > 0 && referenceLuminosity > 0)
+                        ? 2.5 * Math.log10(now / referenceLuminosity)
+                        : 0;
+                state.magOffset = magOffset;
+                state.galaxyAge = model.populations.age;
+        }
+
+        function writeProceduralRecords() {
+                if (proceduralCount === 0) return 0;
+                const starTypes = window.StarTypesLib;
                 const view = new DataView(staging, 0, proceduralCount * records.RECORD_BYTES);
                 const derived = {};
                 for (let i = 0; i < proceduralCount; i++) {
-                        starTypes.deriveStar(model, seed * 31 + i + 1, stars.component[i], stars.R[i], stars.distToArm[i], derived);
+                        starTypes.deriveStar(model, starTypes.fieldStarSeed(seed, i),
+                                fieldStars.component[i], fieldStars.R[i], fieldStars.distToArm[i], derived);
                         records.writeRecord(
                                 view, i * records.RECORD_BYTES,
-                                stars.x[i], stars.y[i], stars.z[i],
-                                derived.colorIndex, derived.absMag,
+                                fieldStars.x[i], fieldStars.y[i], fieldStars.z[i],
+                                derived.colorIndex, derived.absMag + magOffset,
                                 records.FLAG_VISIBLE, Math.imul(i, 2654435761) & 0xFF,
                         );
                 }
@@ -526,7 +584,9 @@ function createStarRenderer(device, context, format, options) {
                 }
                 const placed = objectsLib.placeObjects(model, (seed | 0) ^ 0x0B5E55, objectCount, null);
                 const view = new DataView(staging, objectByteOffset, objectCapacity * records.RECORD_BYTES);
-                const written = objectsLib.writeObjectMembers(model, placed, view, 0, objectCapacity).written;
+                // Members are procedural stars, so they carry the same exposure
+                // offset as the field they sit in.
+                const written = objectsLib.writeObjectMembers(model, placed, view, 0, objectCapacity, magOffset).written;
                 state.objectStars = written;
                 state.objectCount = placed.length;
                 if (nebulaStaging) {
@@ -593,22 +653,57 @@ function createStarRenderer(device, context, format, options) {
                         state.clampedProcedural = true;
                 }
                 allocate(procedural, catalog);
-                generateProcedural();
+                sampleField();
                 writeLandmarks();
+                rebuildPopulation();
+                return state;
+        }
+
+        // The population half of the fixed block: calibrate the exposure offset,
+        // re-derive the procedural records, re-place the composite objects (their
+        // rates and ages read the gas and the clock at this age) and upload.
+        // `prepare` reaches it after a full sample; an age-only regenerate reaches
+        // it with the positions it already has.
+        function rebuildPopulation() {
+                calibrateExposure();
+                writeProceduralRecords();
                 generateObjects();
+                uploadFixed();
+        }
+
+        function uploadFixed() {
                 const fixedBytes = (proceduralCount + landmarkCount + objectCapacity) * records.RECORD_BYTES;
                 if (fixedBytes > 0) device.queue.writeBuffer(starBuffer, 0, staging, 0, fixedBytes);
                 if (nebulaCount > 0) {
                         device.queue.writeBuffer(nebulaBuffer, 0, nebulaStaging, 0, nebulaCount * billboardBytes);
                 }
-                return state;
         }
 
-        // Rebuild the whole field for another galaxy. Deliberate and synchronous
-        // (the same cost as the startup build), so it re-allocates rather than
-        // growing a second path that patches buffers in place.
+        // Rebuild the field for another galaxy. Deliberate and synchronous (the
+        // same cost as the startup build), so it re-allocates rather than growing
+        // a second path that patches buffers in place — with one exception. A
+        // model that differs only in its population (the age slider) lands on the
+        // same stars: positions are age-independent in 0.3, so re-sampling them
+        // would cost 0.32 s at 300k to produce the bytes already in staging and
+        // move nothing. That path keeps the field and rewrites the records
+        // (~0.27 s, measured), and it is decided by the packed geometry rather
+        // than by the type name, so an override cannot sneak past it.
         function regenerate(nextModel) {
+                const previous = model;
+                // The seed is compared whole: the uniform carries only its low 16
+                // bits (the noise hash reads exactly those), while the field
+                // hashes all 32. `milkyWay` decides the fixed block's layout, so
+                // flipping it has to take the allocating path.
+                const populationOnly = fieldStars !== null && proceduralCount > 0
+                        && previous.milkyWay === nextModel.milkyWay
+                        && (previous.seed | 0) === (nextModel.seed | 0)
+                        && window.GalaxyLib.sameGeometry(previous, nextModel);
                 configureMode(nextModel);
+                if (populationOnly) {
+                        rebuildPopulation();
+                        uploadDynamic();
+                        return state;
+                }
                 prepare(nextModel.milkyWay ? lastManifest : null);
                 uploadDynamic();
                 return state;
@@ -658,7 +753,11 @@ function createStarRenderer(device, context, format, options) {
                                 records.writeRecord(
                                         view, byteOffset + slot * bytesPerRecord,
                                         sx, sy, sz,
-                                        localDerived.colorIndex, localDerived.absMag,
+                                        // Same procedural population as the global
+                                        // field, so the same exposure offset — a
+                                        // gap-fill star that ignored it would be a
+                                        // different colour of the same sky.
+                                        localDerived.colorIndex, localDerived.absMag + magOffset,
                                         records.FLAG_VISIBLE, jitter,
                                 );
                                 slot++;
