@@ -599,7 +599,7 @@ struct SimpleUniform {
         stepB: vec4f,   // vFlat, rCore, omegaP, spinLambda
         stepC: vec4f,   // eccMax, m, invTanPitch, armOffset
         stepD: vec4f,   // inv2sig2, Rs, minRadius, centreX
-        stepE: vec4f,   // damping, centreY, centreZ, 0
+        stepE: vec4f,   // damping, centreY, barTilt, verticalScale
 };
 
 struct StepStar {
@@ -616,10 +616,17 @@ struct StepStar {
 const SIMPLE_R_MIN: f32 = 0.001;
 const SIMPLE_MASK_VISIBLE: u32 = 0x00010000u;
 
-fn simpleOmega(th: f32, r0: f32, eccU: f32, peri: f32, family: u32) -> f32 {
+fn simpleOmega(th: f32, r0: f32, eccU: f32, peri: f32, family: u32, z: f32) -> f32 {
+        let h: f32 = max(simple.stepE.w, 1e-3);
+        let vertical: f32 = max(0.0, cos(min(abs(z) / h, 1.0) * HALF_PI));
         if (family == FAMILY_BAR) {
-                if (simple.stepB.z > 0.0) { return simple.stepB.z; }
-                return simple.stepB.x / max(r0, simple.stepB.y);
+                let circ: f32 = simple.stepB.x / max(r0, simple.stepB.y);
+                let rel: f32 = circ - simple.stepB.z;
+                var d: f32 = th - simple.stepE.z;
+                d = d - TAU * round(d / TAU);
+                let axis: f32 = cos(d * 2.0);
+                let capture: f32 = exp(-((1.0 - axis) * (1.0 - axis)) * 3.0) * vertical;
+                return simple.stepB.z + rel * (0.38 + 0.62 * (1.0 - capture));
         }
         if (family == FAMILY_PRESSURE) {
                 return simple.stepB.w * pressureClock(vec4f(simple.stepB.x, simple.stepB.y, 0.0, 0.0), r0);
@@ -631,7 +638,8 @@ fn simpleOmega(th: f32, r0: f32, eccU: f32, peri: f32, family: u32) -> f32 {
         let base: f32 = log(rho / simple.stepD.y) * simple.stepC.z + simple.stepA.w;
         var delta: f32 = (th - base) - simple.stepC.w * floor((th - base) / simple.stepC.w);
         if (delta > simple.stepC.w * 0.5) { delta = delta - simple.stepC.w; }
-        let damp: f32 = exp(-delta * delta * simple.stepD.x);
+        // Keep the canonical simple.stepE.x * damp form; damp includes the 3-D cosine.
+        let damp: f32 = vertical * exp(-delta * delta * simple.stepD.x);
         return circ * (1.0 - simple.stepE.x * damp);
 }
 
@@ -651,7 +659,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
         let nSub: u32 = u32(simple.stepA.y);
         let h: f32 = simple.stepA.x;
         for (var s: u32 = 0u; s < nSub; s = s + 1u) {
-                th = th + simpleOmega(th, r0, eccU, peri, family) * h;
+                th = th + simpleOmega(th, r0, eccU, peri, family, star.z) * h;
         }
         stepTheta[idx] = TAU * fract(th * INV_TAU);
 }

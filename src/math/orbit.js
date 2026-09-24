@@ -406,10 +406,24 @@ function simpleEccMax(model) {
 // One Euler right-hand side. P is simpleDerived(model): vFlat, rCore, omegaP,
 // spinLambda double as the pressureClock dyn. theta/rho are current, r0 is
 // birth; the minRadius skip reads birth so a star never flickers across it.
-function simpleOmega(theta, r0, eccU, peri, family, P, patternPhase) {
+function simpleOmega(theta, r0, eccU, peri, family, P, patternPhase, z = 0) {
+	// A disk is not infinitely thin: the arm/bar field is the in-plane
+	// component of a 3-D restoring field.  Its strength follows the cosine
+	// law of the distance from the mid-plane, rather than treating a star at
+	// the edge of the thick disk like one in the plane.
+	const h = Math.max(P.verticalScale || 1, 1e-3);
+	const vertical = Math.max(0, Math.cos(Math.min(Math.abs(z) / h, 1) * HALF_PI));
 	if (family === FAMILY_BAR) {
-		if (P.omegaP > 0) return P.omegaP;
-		return P.vFlat / Math.max(r0, P.rCore);
+		const circ = P.vFlat > 0 ? P.vFlat / Math.max(r0, P.rCore) : 0;
+		const rel = circ - P.omegaP;
+		// Two-ended bar field. Stars on the major axis are captured by the
+		// rotating bar, while stars in its wings stream through it. This small
+		// differential term is what prevents a rigid, glued-on bar.
+		let d = theta - (P.barTilt || 0);
+		d -= TAU * Math.round(d / TAU);
+		const axis = Math.cos(d * 2);
+		const capture = Math.exp(-((1 - axis) * (1 - axis)) * 3.0) * vertical;
+		return P.omegaP + rel * (0.38 + 0.62 * (1 - capture));
 	}
 	if (family === FAMILY_PRESSURE) return P.spinLambda * pressureClock(P, r0);
 	const rr = r0 < SIMPLE_R_MIN ? SIMPLE_R_MIN : r0;
@@ -420,7 +434,9 @@ function simpleOmega(theta, r0, eccU, peri, family, P, patternPhase) {
 	let delta = (theta - base) % P.armOffset;
 	if (delta < 0) delta += P.armOffset;
 	if (delta > P.armOffset * 0.5) delta -= P.armOffset;
-	return circ * (1 - P.damping * Math.exp(-delta * delta * P.inv2sig2));
+	// The planar limit remains the familiar P.damping * Math.exp lane.
+	const damp = vertical * Math.exp(-delta * delta * P.inv2sig2);
+	return circ * (1 - P.damping * damp);
 }
 
 function simpleEccOf(jitter) { return (((jitter >>> 4) & 15) + 0.5) / 16; }
@@ -431,7 +447,7 @@ function simplePeriOf(jitter) { return ((jitter & 15) / 16) * TAU; }
 const simpleScratch = {
 	vFlat: 0, rCore: DEFAULT_R_CORE, omegaP: 0, spinLambda: DEFAULT_SPIN,
 	m: 0, invTanPitch: 0, armOffset: TAU, inv2sig2: 0, Rs: 1, minRadius: 0,
-	eccMax: 0, damping: 0, armed: false,
+	eccMax: 0, damping: 0, armed: false, barTilt: 0, verticalScale: 1,
 };
 function simpleDerived(model, out) {
 	const P = out || simpleScratch;
@@ -440,6 +456,8 @@ function simpleDerived(model, out) {
 	P.rCore = dyn.rCore;
 	P.omegaP = dyn.omegaPattern;
 	P.spinLambda = dyn.spinLambda;
+	P.barTilt = model && model.spheroid ? (model.spheroid.tiltDeg || 0) * Math.PI / 180 : 0;
+	P.verticalScale = model && model.truncation ? (model.truncation.discHeight || 1) : 1;
 	P.armed = simpleArmed(model);
 	if (P.armed) {
 		const arms = model.arms;
@@ -505,7 +523,7 @@ function simpleStepTheta(theta, r0, eccU, peri, family, P, patternPhase, dtStar)
 	if (!(dtStar > 0)) return theta;
 	const sub = simpleSubsteps(dtStar, simpleOmegaMax(P), simpleStepScratch);
 	let th = theta;
-	for (let s = 0; s < sub.n; s++) th += simpleOmega(th, r0, eccU, peri, family, P, patternPhase) * sub.h;
+	for (let s = 0; s < sub.n; s++) th += simpleOmega(th, r0, eccU, peri, family, P, patternPhase, 0) * sub.h;
 	return wrapAngle(th);
 }
 
@@ -531,6 +549,7 @@ function simplePositionFromTheta(out, theta, x, y, z, jitter, family, eccMax, mo
 // bound test.
 let simpleLMTheta = null;
 let simpleLMR0 = null;
+let simpleLMZ = null;
 let simpleLMFam = null;
 let simpleLMCount = 0;
 let simpleLMModel = null;
@@ -539,6 +558,7 @@ function simpleLandmarksInit(positions, colorIndices, count, model) {
 	if (!simpleLMTheta || simpleLMTheta.length < count) {
 		simpleLMTheta = new Float64Array(count);
 		simpleLMR0 = new Float64Array(count);
+		simpleLMZ = new Float64Array(count);
 		simpleLMFam = new Uint8Array(count);
 	}
 	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
@@ -546,6 +566,7 @@ function simpleLandmarksInit(positions, colorIndices, count, model) {
 		const qx = positions[i * 3] - c.x, qy = positions[i * 3 + 1] - c.y;
 		simpleLMTheta[i] = Math.atan2(qy, qx);
 		simpleLMR0[i] = Math.hypot(qx, qy);
+		simpleLMZ[i] = positions[i * 3 + 2] - c.z;
 		simpleLMFam[i] = familyFromColorIndex(colorIndices[i]);
 	}
 	simpleLMCount = count;
@@ -563,7 +584,7 @@ function simpleLandmarksStep(dtStar, starTimeMyr) {
 	for (let i = 0; i < simpleLMCount; i++) {
 		let th = simpleLMTheta[i];
 		const r0 = simpleLMR0[i], fam = simpleLMFam[i];
-		for (let s = 0; s < sub.n; s++) th += simpleOmega(th, r0, eccU, peri, fam, P, patternPhase) * sub.h;
+		for (let s = 0; s < sub.n; s++) th += simpleOmega(th, r0, eccU, peri, fam, P, patternPhase, simpleLMZ[i]) * sub.h;
 		simpleLMTheta[i] = wrapAngle(th);
 	}
 	return simpleLMCount;
@@ -587,7 +608,9 @@ function simpleLandmarkPosition(out, i, z) {
 //   stepB = (vFlat, rCore, omegaP, spinLambda)
 //   stepC = (eccMax, m, invTanPitch, armOffset)
 //   stepD = (inv2sig2, Rs, minRadius, centreX)
-//   stepE = (damping, centreY, centreZ, 0)
+//   stepE = (damping, centreY, barTilt, verticalScale)
+// The last lane is deliberately geometry, not a constant: it makes the same
+// friction field work for every galaxy type and for stars above the plane.
 // Unarmed packs m = 0, the same skip contract as the wave pair.
 function packSimpleParams(model, out, offset, dtStar, count, starTimeMyr) {
 	const P = simpleDerived(model, simpleScratch);
@@ -611,8 +634,8 @@ function packSimpleParams(model, out, offset, dtStar, count, starTimeMyr) {
 	out[offset + 15] = c.x;
 	out[offset + 16] = P.damping;
 	out[offset + 17] = c.y;
-	out[offset + 18] = c.z;
-	out[offset + 19] = 0;
+	out[offset + 18] = P.barTilt;
+	out[offset + 19] = P.verticalScale;
 	return out;
 }
 
