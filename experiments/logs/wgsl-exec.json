@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-22T03:36:22.828Z",
+  "date": "2026-09-24T13:02:47.894Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 86,
-  "passed": 86,
+  "totalChecks": 88,
+  "passed": 88,
   "failed": 0,
   "checks": [
     {
@@ -171,6 +171,34 @@
       "detail": {
         "offSeat": 0.05191284034136843,
         "cpuOffSeat": 0.051304926699353076
+      }
+    },
+    {
+      "name": "on-WGSL: capture matches the CPU law at T = 200 Myr (< 20 pc)",
+      "pass": true,
+      "detail": {
+        "gpu": [
+          5.54058656056722,
+          1.5152278204317446
+        ],
+        "cpu": [
+          5.5405847083304645,
+          1.5152262489883257
+        ]
+      }
+    },
+    {
+      "name": "on-WGSL: that position is the capture, not the 0.4.3 shear",
+      "pass": true,
+      "detail": {
+        "gpu": [
+          5.54058656056722,
+          1.5152278204317446
+        ],
+        "shear": [
+          5.865352620316133,
+          1.97573583851609
+        ]
       }
     },
     {

@@ -1133,7 +1133,8 @@ sense as this document, kept beside it rather than folded in:
 - `0.4.0-plan-star-move.md` — star movement: predefined orbits without gravity, orbit
   distributions per galaxy type, the moving-star budget on a typical RTX 3050, the
   one-shader architecture decision, and the star time slider (camera-coupled /
-  frozen / 0.5–99 Myr/s).
+  frozen / 0.5–99 Myr/s). Wave damping, the optional pattern-frame capture on the
+  disc family, is `damping-plan.md`.
 
 Implement from those files plus this one; the per-release plans reference their own
 tests and extend the file layout of §11 as needed.

@@ -434,7 +434,7 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 && uniform[26] === Math.fround(rendererModule.MAX_SIZE_PX),
                 { exposure: uniform[24], base: uniform[25], max: uniform[26] });
         check('uniform carries the star time in params.w', uniform[27] === Math.fround(1 / 60), uniform[27]);
-        check('uniform is exactly 144 bytes (camera block + orbit dynamics)', gpu.uniformWrites[gpu.uniformWrites.length - 1].length === 144);
+        check('uniform is exactly 176 bytes (camera block + orbit dynamics + wave)', gpu.uniformWrites[gpu.uniformWrites.length - 1].length === 176);
         // Orbit dynamics ride in dynA/dynB — the per-model numbers the shader
         // must never hard-code (packed by orbit.packOrbitDynamics).
         const fr = Math.fround;
@@ -447,6 +447,15 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 dynB[0] === fr(model.dynamics.sigmaThin)
                 && dynB[1] > 0 && dynB[2] === fr(model.truncation.discHeight) && dynB[3] === 0,
                 { dynB });
+        // Wave pair is packed even when the slider is at the module default (0):
+        // the shader reads m/K from it, and a later setWaveDamping must not
+        // require a layout change. The test harness never calls setWaveDamping.
+        const waveA = [uniform[36], uniform[37], uniform[38], uniform[39]];
+        const waveB = [uniform[40], uniform[41], uniform[42], uniform[43]];
+        check('uniform waveA/waveB pack the live arm geometry with damping at the module default 0',
+                waveA[0] === 0 && waveA[1] === fr(model.arms.m) && waveA[3] === fr(model.arms.phase0)
+                && waveB[0] === fr(model.arms.Rs) && waveB[2] === fr(model.arms.amp) && waveB[3] === 0,
+                { waveA, waveB, arms: model.arms });
 
         // The tonemap uniform carries linear exposure (x) and white point (y)
         // and is uploaded every frame alongside the camera uniform.

@@ -28,6 +28,7 @@ const path = require('path');
 
 const orbit = require('../src/math/orbit.js');
 const galaxy = require('../src/math/galaxy.js');
+const density = require('../src/math/density.js');
 const records = require('../src/math/star-record.js');
 
 const checks = [];
@@ -352,7 +353,7 @@ function dist3(a, b) {
 
 // --- 8. Uniform packer ↔ shader layout -----------------------------------
 {
-	const u = new Float32Array(36);
+	const u = new Float32Array(44);
 	u[27] = 12.5; // star time slot must be left alone
 	orbit.packOrbitDynamics(MW, u, 28);
 	const d = orbit.fillDynamics({}, MW);
@@ -367,6 +368,14 @@ function dist3(a, b) {
 		{ dynB: Array.from(u.slice(32, 36)) });
 	check('packing never touches the star-time slot or the camera block',
 		u[27] === 12.5 && u[16] === 0, { time: u[27], u16: u[16] });
+	const pitch = MW.arms.pitchDeg * Math.PI / 180;
+	check('packOrbitDynamics fills waveA/waveB = arm geometry, damping at module default 0',
+		u[36] === 0 && u[37] === fr(MW.arms.m)
+		&& u[38] === fr(MW.arms.m / Math.tan(pitch))
+		&& u[39] === fr(MW.arms.phase0)
+		&& u[40] === fr(MW.arms.Rs) && u[41] === fr(MW.arms.minRadius)
+		&& u[42] === fr(MW.arms.amp) && u[43] === 0,
+		{ wave: Array.from(u.slice(36, 44)) });
 
 	check('pressure amplitude cap: MW bulge ≤ 0.3 × spheroid semimajor axis',
 		d.pressureAmpScale <= 0.3 * MW.spheroid.a * MW.spheroid.r0 + 1e-12
@@ -384,7 +393,7 @@ function dist3(a, b) {
 // Mirrors SHADER_PARTS['orbit'] operation-for-operation with Math.fround, the
 // same technique plan §5 prescribes. Sessions up to 10 000 Myr must agree to
 // well under a pixel at any radius the camera flies.
-function orbitPositionF32(px, py, pz, packed, cx, time, dynA, dynB) {
+function orbitPositionF32(px, py, pz, packed, cx, time, dynA, dynB, waveA, waveB) {
 	const fr = Math.fround;
 	const flags = fr((packed >>> 16) & 0xff);
 	const family = fr((flags >>> 3) & 3);
@@ -411,7 +420,42 @@ function orbitPositionF32(px, py, pz, packed, cx, time, dynA, dynB) {
 	} else {
 		omega = fr(dynA[3] * pressureClockF());
 	}
-	const theta = fr(fr(6.28318530718) * fractf(fr(fr(omega) * fr(time) * fr(0.159154943092))));
+	let theta = fr(fr(6.28318530718) * fractf(fr(fr(omega) * fr(time) * fr(0.159154943092))));
+	// Optional wave pair: mirrors the shader's disc capture. Absent or zero
+	// damping leaves the 0.4.3 theta, which is what the cases above measure.
+	if (waveA && family === 1 && waveA[0] > 0 && waveA[1] >= 1 && waveB[2] > 0 && waveB[0] > 0 && r >= waveB[1] && !(dynB[3] > 0.5)) {
+		const PI = fr(3.14159265359);
+		const TAU = fr(6.28318530718);
+		const INV = fr(0.159154943092);
+		const theta0 = fr(Math.atan2(qy, qx));
+		const thetaArm = fr(fr(fr(waveA[2] * fr(Math.log(fr(r / waveB[0])))) - waveA[3]) / waveA[1]);
+		const alpha = waveA[0];
+		const m = waveA[1];
+		const omegaP = dynA[2];
+		const t = fr(time);
+		if (!(t === 0 || alpha <= 0 || m < 1)) {
+			const omegaRel = fr(omega - omegaP);
+			if (omegaRel !== 0) {
+				const strength = fr(Math.min(alpha, fr(1)));
+				let chi0 = fr(fr(m * fr(theta0 - thetaArm)));
+				chi0 = fr(chi0 - fr(TAU * Math.floor(fr(fr(chi0 + PI) * INV))));
+				const lim = fr(PI - fr(1e-5));
+				if (chi0 > lim) chi0 = lim;
+				else if (chi0 < -lim) chi0 = -lim;
+				const u0 = fr(Math.tan(fr(chi0 * fr(0.5))));
+				const beta = fr(fr(fr(strength * m) * omegaRel) * fr(0.5));
+				const denom = fr(fr(1) - fr(fr(u0 * beta) * t));
+				let chi;
+				if (Math.abs(denom) <= fr(1e-6)) chi = omegaRel > 0 ? PI : fr(-PI);
+				else {
+					chi = fr(fr(2) * fr(Math.atan(fr(u0 / denom))));
+					if (denom < 0) chi = fr(chi + (omegaRel > 0 ? TAU : fr(-TAU)));
+				}
+				const advance = fr(fr(chi - chi0) / m);
+				theta = fr(TAU * fractf(fr(fr(advance + fr(omegaP * t)) * INV)));
+			}
+		}
+	}
 	const rank = fr(fr(amp + 0.5) * fr(0.0625));
 	const sinTauF = (arg) => fr(Math.sin(fr(fr(6.28318530718) * fractf(fr(fr(arg) * fr(0.159154943092))))));
 	const sinPh = sinTauF(phase);
@@ -494,6 +538,145 @@ function f32i(n) { return Math.fround(n); }
 		&& orbit.formatTimeRate(0, 0) === 'frozen'
 		&& orbit.formatTimeRate(8.25, 0) === '+8.3 Myr/s',
 		[orbit.formatTimeRate(-1, 0), orbit.formatTimeRate(0, 0), orbit.formatTimeRate(8.25, 0)]);
+}
+
+// --- 11. Wave damping: pattern-frame capture, not the inertial port ------
+// The linked-repo form omega *= (1 - s*D) anti-jams outside corotation.
+// Capture (dχ/dt = α m (Ω-Ω_p) sin²(χ/2)) drifts a gap star onto the crest
+// on both sides, leaves T = 0 and the other families alone, and is a no-op
+// on an unarmed disc.
+function patternDelta(x, y, model, time) {
+	const c = model.centre || { x: 0, y: 0, z: 0 };
+	const qx = x - c.x, qy = y - c.y;
+	const R = Math.hypot(qx, qy);
+	const phi = Math.atan2(qy, qx);
+	const arm = density.armRidgeAzimuth(model, R) + model.dynamics.omegaPattern * time;
+	let chi = model.arms.m * (phi - arm);
+	chi -= orbit.TAU * Math.floor((chi + Math.PI) / orbit.TAU);
+	return Math.abs(chi) / model.arms.m;
+}
+{
+	const sb = galaxy.createGalaxy({ type: 'Sb', seed: 3 });
+	const saved = orbit.getWaveDamping();
+	orbit.setWaveDamping(0);
+
+	function at(family, x, y, t, damp) {
+		orbit.setWaveDamping(damp);
+		orbit.orbitPosition(out, x, y, 0, family, 0, 0, t, sb);
+		return [out[0], out[1], out[2]];
+	}
+
+	// Sb corotation is ~10 kpc. The side that falls onto the *nearest* crest is
+	// the one the wave is sweeping: ahead of the crest outside CR (pattern
+	// overtakes the star), behind it inside CR (star overtakes the pattern).
+	// The opposite side takes the long way to the next crest.
+	const Rout = 14, Rin = 3, off = 0.35;
+	const armOut = density.armRidgeAzimuth(sb, Rout);
+	const ox = Rout * Math.cos(armOut + off), oy = Rout * Math.sin(armOut + off);
+	const armIn = density.armRidgeAzimuth(sb, Rin);
+	const ix = Rin * Math.cos(armIn - off), iy = Rin * Math.sin(armIn - off);
+	const gx = ox, gy = oy;
+	const cx = Rout * Math.cos(armOut), cy = Rout * Math.sin(armOut);
+
+	const id = at(orbit.FAMILY_DISC, gx, gy, 0, 1);
+	check('wave damping keeps T = 0 the identity (offset star, α = 1)',
+		dist3(id, [gx, gy, 0]) < EPS, dist3(id, [gx, gy, 0]));
+
+	const sheer = at(orbit.FAMILY_DISC, ox, oy, 320, 0);
+	const held = at(orbit.FAMILY_DISC, ox, oy, 320, 1);
+	const d0 = patternDelta(ox, oy, sb, 0);
+	const dHeld = patternDelta(held[0], held[1], sb, 320);
+	const dSheer = patternDelta(sheer[0], sheer[1], sb, 320);
+	check('outside corotation, capture pulls the star the wave is sweeping onto the crest',
+		dHeld < d0 * 0.7 && dHeld < dSheer,
+		{ d0, dHeld, dSheer, R: Rout });
+
+	const sheerIn = at(orbit.FAMILY_DISC, ix, iy, 320, 0);
+	const heldIn = at(orbit.FAMILY_DISC, ix, iy, 320, 1);
+	const dIn0 = patternDelta(ix, iy, sb, 0);
+	const dIn = patternDelta(heldIn[0], heldIn[1], sb, 320);
+	check('inside corotation, capture pulls the star the wave is sweeping onto the crest',
+		dIn < dIn0 * 0.5 && dIn < patternDelta(sheerIn[0], sheerIn[1], sb, 320),
+		{ dIn0, dIn, sheer: patternDelta(sheerIn[0], sheerIn[1], sb, 320) });
+
+	function meanDelta(R, t, damp) {
+		orbit.setWaveDamping(damp);
+		let sum = 0;
+		const n = 36;
+		for (let i = 0; i < n; i++) {
+			const th = (i + 0.5) / n * orbit.TAU;
+			orbit.orbitPosition(out, R * Math.cos(th), R * Math.sin(th), 0, orbit.FAMILY_DISC, 0, 0, t, sb);
+			sum += patternDelta(out[0], out[1], sb, t);
+		}
+		return sum / n;
+	}
+	const uniform = Math.PI / (2 * sb.arms.m);
+	check('a whole ring tightens on both sides of corotation at the UI default (α = 0.6)',
+		meanDelta(Rin, 400, 0.6) < 0.5 * uniform && meanDelta(Rout, 400, 0.6) < 0.85 * uniform
+		&& Math.abs(meanDelta(Rin, 400, 0) - uniform) < 0.02,
+		{ inner: meanDelta(Rin, 400, 0.6), outer: meanDelta(Rout, 400, 0.6), uniform });
+
+	const crestHeld = at(orbit.FAMILY_DISC, cx, cy, 400, 1);
+	check('a star born on the crest stays on it under full capture',
+		patternDelta(crestHeld[0], crestHeld[1], sb, 400) < 0.05,
+		patternDelta(crestHeld[0], crestHeld[1], sb, 400));
+
+	const pat0 = at(orbit.FAMILY_PATTERN, gx, gy, 400, 0);
+	const pat1 = at(orbit.FAMILY_PATTERN, gx, gy, 400, 1);
+	check('pattern family ignores wave damping (already on the wave)',
+		dist3(pat0, pat1) < EPS, dist3(pat0, pat1));
+	const bar0 = at(orbit.FAMILY_BAR, 1.2, 0.3, 300, 0);
+	const bar1 = at(orbit.FAMILY_BAR, 1.2, 0.3, 300, 1);
+	check('bar family ignores wave damping (the x1 loop is not a spiral)',
+		dist3(bar0, bar1) < EPS, dist3(bar0, bar1));
+
+	orbit.setWaveDamping(1);
+	orbit.orbitPosition(out, S0.centre.x + 6, 1, 0, orbit.FAMILY_DISC, 3, 4, 500, S0);
+	const offPos = [out[0], out[1], out[2]];
+	orbit.setWaveDamping(0);
+	orbit.orbitPosition(out, S0.centre.x + 6, 1, 0, orbit.FAMILY_DISC, 3, 4, 500, S0);
+	check('an unarmed disc (S0, amp 0) ignores wave damping',
+		dist3(offPos, [out[0], out[1], out[2]]) < EPS, dist3(offPos, [out[0], out[1], out[2]]));
+
+	orbit.setWaveDamping(0);
+	orbit.orbitPosition(out, gx, gy, 0.1, orbit.FAMILY_DISC, 5, 9, 250, sb);
+	const plain = [out[0], out[1], out[2]];
+	orbit.setWaveDamping(1);
+	orbit.setWaveDamping(0);
+	orbit.orbitPosition(out, gx, gy, 0.1, orbit.FAMILY_DISC, 5, 9, 250, sb);
+	check('damping 0 after a non-zero setting is bit-identical to never having set it',
+		out[0] === plain[0] && out[1] === plain[1] && out[2] === plain[2],
+		{ now: [out[0], out[1], out[2]], plain });
+
+	check('setWaveDamping clamps to [0, 1] and the UI default is the measured 0.6',
+		orbit.setWaveDamping(2) === 1 && orbit.setWaveDamping(-1) === 0
+		&& orbit.WAVE_DAMPING_UI_DEFAULT === 0.6 && orbit.WAVE_DAMPING_MAX === 1);
+
+	// f32 replay of the shader arithmetic, damping on. The 0.4.3 replay above
+	// leaves the wave pair unset; this is the half that pins the capture.
+	orbit.setWaveDamping(0.6);
+	const packedDyn = new Float32Array(16);
+	orbit.packOrbitDynamics(sb, packedDyn, 0);
+	const waveA = packedDyn.slice(8, 12);
+	const waveB = packedDyn.slice(12, 16);
+	const dynA = packedDyn.slice(0, 4);
+	const dynB = packedDyn.slice(4, 8);
+	let waveWorst = 0;
+	const waveCases = [
+		[ox, oy, 0], [ox, oy, 80], [ox, oy, 400], [ox, oy, 2000],
+		[ix, iy, 120], [cx, cy, 600], [14, -2, 1000],
+	];
+	for (const [x, y, t] of waveCases) {
+		orbit.orbitPosition(out, x, y, 0, orbit.FAMILY_DISC, 4, 6, t, sb);
+		const packed = records.packPacked(4, 3,
+			orbit.flagsWithFamily(records.FLAG_VISIBLE, orbit.FAMILY_DISC), orbit.encodeJitter(4, 6));
+		const gpu = orbitPositionF32(x, y, 0, packed, 0, t, dynA, dynB, waveA, waveB);
+		waveWorst = Math.max(waveWorst, dist3(out, gpu));
+	}
+	check('f64 capture vs f32 shader replay agree within 0.05 kpc',
+		waveWorst < 0.05, { waveWorst });
+
+	orbit.setWaveDamping(saved);
 }
 
 // --- Report --------------------------------------------------------------

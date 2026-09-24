@@ -26,14 +26,14 @@
 // contiguous: `draw(4, global + landmarks + objects + local + thinnedCatalog)`.
 // No hidden slots, no per-cell GPU allocation, no compaction pass.
 //
-// Frame cost: one 144-byte uniform write, one catalog buffer write (only when
+// Frame cost: one 176-byte uniform write, one catalog buffer write (only when
 // the resident set changed), two additive passes into the HDR intermediate
 // (stars, then nebula billboards) and one tonemap pass. No depth attachment —
 // the sprites are additive, so there is nothing to depth-test against.
 
 'use strict';
 
-const UNIFORM_FLOATS = 36;              // 144 bytes, see star-sprite WGSL (16+4+4+4 camera, +8 orbit dynamics)
+const UNIFORM_FLOATS = 44;              // 176 bytes: camera block 28 + orbit dynA/dynB/waveA/waveB 16
 // Tonemap uniform: x=exposure, y=whitePoint, z=saturation, w=outputMode (0=SDR, 1=HDR).
 const TONEMAP_UNIFORM_FLOATS = 4;
 const PROCEDURAL_STARS_DEFAULT = 300000;

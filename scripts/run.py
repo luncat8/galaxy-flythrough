@@ -76,7 +76,7 @@ TYPES = {
                'density-distribution',
                'star-types-evolution', 'nebula-placement', 'object-placement', 'galaxy-age',
                'orbit'],
-    'study':  ['hash-quality', 'precision', 'packing', 'filter'],
+    'study':  ['damping-formula', 'hash-quality', 'precision', 'packing', 'filter'],
     'sim':    ['wgsl-exec'],
     'asset':  ['tile-encoder', 'visualize-data'],
 }

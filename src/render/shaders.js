@@ -425,7 +425,8 @@ const ORBIT = `
 // experiments/orbit-test.js). No galaxy numbers live here: every per-model
 // value arrives through camera.dynA / camera.dynB, packed by
 // orbit.packOrbitDynamics — dynA = (vFlat, rCore, omegaPattern, spinLambda),
-// dynB = (sigmaThin, pressureAmpScale, discHeight, patternLock).
+// dynB = (sigmaThin, pressureAmpScale, discHeight, patternLock),
+// waveA = (damping, m, K, phase0), waveB = (Rs, minRadius, amp, 0).
 //
 // Group kinematics (plan §1.1, 0.4.3): the pattern (the bar's and the arms'
 // seats) rides the group speed galaxy.js derives from the model's own
@@ -435,6 +436,7 @@ const ORBIT = `
 
 const TAU: f32 = 6.28318530718;
 const INV_TAU: f32 = 0.159154943092;
+const PI: f32 = 3.14159265359;
 const HALF_PI: f32 = 1.57079632679;
 const SQRT2: f32 = 1.41421356237;
 // Orbit shares StarRecord's family numbering: bits 3-4 of the flags byte.
@@ -483,7 +485,42 @@ fn omegaStream(dynA: vec4f, r: f32) -> f32 {
         return select(0.0, dynA.x / max(r, dynA.y), dynA.x > 0.0) - dynA.z;
 }
 
-fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, dynB: vec4f) -> vec3f {
+// Pattern-frame capture. Mirrors orbit.dampedDiscTheta. χ is m times the
+// azimuth from one crest (every crest folds to 0). Crest speed is zero on
+// both sides of corotation — the inertial omega*(1-s*D) form anti-jams
+// outside it, and this disc is mostly outside it. Returns the wrapped
+// inertial rotation of the birth vector.
+fn dampedDiscTheta(theta0: f32, thetaArm: f32, omega: f32, omegaP: f32, time: f32, alpha: f32, m: f32) -> f32 {
+        if (time == 0.0 || alpha <= 0.0 || m < 1.0) {
+                return TAU * fract(omega * time * INV_TAU);
+        }
+        let omegaRel: f32 = omega - omegaP;
+        if (omegaRel == 0.0) {
+                return TAU * fract(omega * time * INV_TAU);
+        }
+        let strength: f32 = min(alpha, 1.0);
+        var chi0: f32 = m * (theta0 - thetaArm);
+        chi0 = chi0 - TAU * floor((chi0 + PI) * INV_TAU);
+        let lim: f32 = PI - 1e-5;
+        if (chi0 > lim) { chi0 = lim; }
+        else if (chi0 < -lim) { chi0 = -lim; }
+        let u0: f32 = tan(chi0 * 0.5);
+        let beta: f32 = strength * m * omegaRel * 0.5;
+        let denom: f32 = 1.0 - u0 * beta * time;
+        var chi: f32;
+        if (abs(denom) <= 1e-6) {
+                chi = select(-PI, PI, omegaRel > 0.0);
+        } else {
+                chi = 2.0 * atan(u0 / denom);
+                if (denom < 0.0) {
+                        chi = chi + select(-TAU, TAU, omegaRel > 0.0);
+                }
+        }
+        let advance: f32 = (chi - chi0) / m;
+        return TAU * fract((advance + omegaP * time) * INV_TAU);
+}
+
+fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, dynB: vec4f, waveA: vec4f, waveB: vec4f) -> vec3f {
         let flags: u32 = (packed >> 16u) & 0xFFu;
         let family: u32 = (flags >> 3u) & 3u;
         let phase: f32 = f32((packed >> 24u) & 15u) * 0.392699081699;
@@ -491,7 +528,14 @@ fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, d
         let q: vec3f = p - centre;
         let r: f32 = max(length(q.xy), 0.001);
         let omega: f32 = orbitOmega(family, r, dynA, dynB);
-        let theta: f32 = TAU * fract(omega * time * INV_TAU);
+        // waveA = (damping, m, K, phase0), waveB = (Rs, minRadius, amp, 0).
+        // Disc only, and not the cosmetic patternLock (dynB.w). Unarmed packs m = 0.
+        var theta: f32 = TAU * fract(omega * time * INV_TAU);
+        if (family == FAMILY_DISC && waveA.x > 0.0 && waveA.y >= 1.0 && waveB.z > 0.0 && waveB.x > 0.0 && r >= waveB.y && !(dynB.w > 0.5)) {
+                let theta0: f32 = atan2(q.y, q.x);
+                let thetaArm: f32 = (waveA.z * log(r / waveB.x) - waveA.w) / waveA.y;
+                theta = dampedDiscTheta(theta0, thetaArm, omega, dynA.z, time, waveA.x, waveA.y);
+        }
         let rank: f32 = (amp + 0.5) * 0.0625;
         let sinPh: f32 = sinTau(phase);
         let sinPhV: f32 = sinTau(phase + HALF_PI);
@@ -547,6 +591,10 @@ struct CameraUniform {
         // hard-code no galaxy numbers (checked by wgsl-validate).
         dynA: vec4f,        // vFlat, rCore, omegaPattern, spinLambda
         dynB: vec4f,        // sigmaThin, pressureAmpScale, discHeight, patternLock
+        // Wave damping packed by orbit.packOrbitDynamics. Nebulae share this
+        // struct and do not read the pair — gas stays on the pattern.
+        waveA: vec4f,       // damping, m, K, phase0
+        waveB: vec4f,       // Rs, minRadius, amp, 0
 };
 
 struct StarPacked {
@@ -608,7 +656,7 @@ fn vs_main(
         }
 
         let moved: vec3f = orbitPosition(vec3f(star.x, star.y, star.z), star.packed,
-                vec3f(camera.cameraPos.w, 0.0, 0.0), camera.params.w, camera.dynA, camera.dynB);
+                vec3f(camera.cameraPos.w, 0.0, 0.0), camera.params.w, camera.dynA, camera.dynB, camera.waveA, camera.waveB);
         let rel: vec3f = moved - camera.cameraPos.xyz;
         let clip: vec4f = camera.viewProj * vec4f(rel.x, rel.y, rel.z, 1.0);
         if (clip.w <= 0.0) {
@@ -1307,6 +1355,8 @@ struct CameraUniform {
         params: vec4f,      // w = star time Myr
         dynA: vec4f,        // orbit dynamics: nebulae read z = omegaPattern
         dynB: vec4f,
+        waveA: vec4f,       // shared layout with the star shader; nebulae ignore it
+        waveB: vec4f,
 };
 
 struct NebulaPacked {

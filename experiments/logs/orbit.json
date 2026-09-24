@@ -1,7 +1,7 @@
 {
-  "date": "2026-09-22T03:36:17.356Z",
-  "totalChecks": 60,
-  "passed": 60,
+  "date": "2026-09-24T13:00:33.949Z",
+  "totalChecks": 72,
+  "passed": 72,
   "failed": 0,
   "checks": [
     {
@@ -402,6 +402,22 @@
       }
     },
     {
+      "name": "packOrbitDynamics fills waveA/waveB = arm geometry, damping at module default 0",
+      "pass": true,
+      "detail": {
+        "wave": [
+          0,
+          2,
+          9.409259796142578,
+          0,
+          3,
+          0.5,
+          0.20000000298023224,
+          0
+        ]
+      }
+    },
+    {
       "name": "pressure amplitude cap: MW bulge ≤ 0.3 × spheroid semimajor axis",
       "pass": true,
       "detail": {
@@ -448,6 +464,86 @@
         "frozen",
         "+8.3 Myr/s"
       ]
+    },
+    {
+      "name": "wave damping keeps T = 0 the identity (offset star, α = 1)",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "outside corotation, capture pulls the star the wave is sweeping onto the crest",
+      "pass": true,
+      "detail": {
+        "d0": 0.34999999999999964,
+        "dHeld": 0.21345101725181514,
+        "dSheer": 1.3795380285937107,
+        "R": 14
+      }
+    },
+    {
+      "name": "inside corotation, capture pulls the star the wave is sweeping onto the crest",
+      "pass": true,
+      "detail": {
+        "dIn0": 0.35,
+        "dIn": 0.019249111873258506,
+        "sheer": 0.9816392075243634
+      }
+    },
+    {
+      "name": "a whole ring tightens on both sides of corotation at the UI default (α = 0.6)",
+      "pass": true,
+      "detail": {
+        "inner": 0.16231599638131636,
+        "outer": 0.5886289252581136,
+        "uniform": 0.7853981633974483
+      }
+    },
+    {
+      "name": "a star born on the crest stays on it under full capture",
+      "pass": true,
+      "detail": 0.03772436539587787
+    },
+    {
+      "name": "pattern family ignores wave damping (already on the wave)",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "bar family ignores wave damping (the x1 loop is not a spiral)",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "an unarmed disc (S0, amp 0) ignores wave damping",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "damping 0 after a non-zero setting is bit-identical to never having set it",
+      "pass": true,
+      "detail": {
+        "now": [
+          13.476717703662066,
+          1.2346144051647636,
+          0.5107588905858855
+        ],
+        "plain": [
+          13.476717703662066,
+          1.2346144051647636,
+          0.5107588905858855
+        ]
+      }
+    },
+    {
+      "name": "setWaveDamping clamps to [0, 1] and the UI default is the measured 0.6",
+      "pass": true
+    },
+    {
+      "name": "f64 capture vs f32 shader replay agree within 0.05 kpc",
+      "pass": true,
+      "detail": {
+        "waveWorst": 0.000016797266032120102
+      }
     }
   ]
 }

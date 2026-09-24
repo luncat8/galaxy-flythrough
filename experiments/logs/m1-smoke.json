@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-22T03:35:46.375Z",
+  "date": "2026-09-24T13:00:04.022Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -174,7 +174,7 @@
       "name": "OrbitLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 28
+        "keys": 33
       }
     },
     {

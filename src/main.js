@@ -81,6 +81,9 @@ async function boot() {
         let starTimeMyr = 0;
         let starTimeRate = 0;
         let lastNonZeroTimeRate = 1;
+        // View control, not a model field. 0.6 is the measured hold (Sun ring
+        // cosine 0.10 → ~0.6 in 300 Myr). 0 is the 0.4.3 shear.
+        let waveDamping = window.OrbitLib.setWaveDamping(window.OrbitLib.WAVE_DAMPING_UI_DEFAULT);
         const STAR_TIME_WRAP = 0x800000;
 
         function showError(message) {
@@ -154,11 +157,13 @@ async function boot() {
         const sliderWhite = document.getElementById('slider-white');
         const sliderSat = document.getElementById('slider-saturation');
         const sliderStarTime = document.getElementById('slider-star-time');
+        const sliderWave = document.getElementById('slider-wave');
         const valExp = document.getElementById('val-exposure');
         const valBright = document.getElementById('val-brightness');
         const valWhite = document.getElementById('val-white');
         const valSat = document.getElementById('val-saturation');
         const valStarTime = document.getElementById('val-star-time');
+        const valWave = document.getElementById('val-wave');
         const btnDefaults = document.getElementById('menu-defaults');
 
         // Brightness slider is linear in multiplier (0.125 – 8.0), not stops,
@@ -209,12 +214,24 @@ async function boot() {
                 syncStarTime();
         });
         syncStarTime();
+        function formatWave(value) { return value === 0 ? 'off' : value.toFixed(2); }
+        function syncWave() {
+                sliderWave.value = waveDamping;
+                valWave.textContent = formatWave(waveDamping);
+        }
+        sliderWave.addEventListener('input', () => {
+                waveDamping = window.OrbitLib.setWaveDamping(Number(sliderWave.value));
+                syncWave();
+        });
+        syncWave();
         btnDefaults.addEventListener('click', () => {
                 renderer.setExposure(window.StarRenderer.EXPOSURE_DEFAULT);
                 renderer.setLinearExposure(window.StarRenderer.LINEAR_EXPOSURE_DEFAULT);
                 renderer.setWhitePoint(window.StarRenderer.WHITE_POINT_DEFAULT);
                 renderer.setSaturation(window.StarRenderer.SATURATION_DEFAULT);
+                waveDamping = window.OrbitLib.setWaveDamping(window.OrbitLib.WAVE_DAMPING_UI_DEFAULT);
                 syncSlidersFromRenderer();
+                syncWave();
         });
 
         const galaxyType = document.getElementById('galaxy-type');
@@ -349,7 +366,7 @@ async function boot() {
                         ` + catalog ${catKept.toLocaleString()}/${state.catalogTotalStars.toLocaleString()}\n` +
                         `cells ${state.cellsResident}/${state.catalogCells}   decoded ${(state.decodedBytes / 1024).toFixed(0)} KB` +
                         `   buffer ${(state.bufferBytes / 1048576).toFixed(1)} MB\n` +
-                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)   Tab menu\n` +
+                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   Tab menu\n` +
                         `pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
                         cameraLine(cameraState) +
                         selectedLine(cameraState);

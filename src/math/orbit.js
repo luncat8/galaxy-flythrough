@@ -30,7 +30,23 @@
 //
 // Cost: one extra sin pair for the bar's stars — the same shape as the disc's
 // existing epicycle, and one select less than the lock it replaces.
+//
+// Wave damping (optional, slider). A density wave is a slow lane that rotates
+// with the pattern: stars linger on the crest and the arm is the traffic jam,
+// not a paint job. The linked-repo form (inertial rate times 1 - s*D) only jams inside
+// corotation — outside it the pattern already overtakes the star, and slowing
+// the inertial rate makes the pattern sweep the star *faster*, which empties
+// the outer arms. This disc is mostly outside corotation, so the law is the
+// pattern-frame capture instead: dχ/dt = α·m·(Ω−Ω_p)·sin²(χ/2), χ the arm
+// phase. Crest speed is zero on both sides of corotation, so a gap star drifts
+// onto the nearest crest and stays. α = 0 is the 0.4.3 shear, bit for bit.
+// Closed form, T = 0 identity, disc family only. Pattern stars already ride
+// the crest; the bar's x1 loop is not a spiral.
 'use strict';
+
+const density = (typeof module !== 'undefined' && module.exports)
+	? require('./density.js')
+	: window.DensityLib;
 
 const FAMILY_PATTERN = 0, FAMILY_DISC = 1, FAMILY_BAR = 2, FAMILY_PRESSURE = 3;
 const FAMILY_NAMES = ['pattern', 'disc', 'bar', 'pressure'];
@@ -59,6 +75,14 @@ const VERTICAL_WOBBLE_RATIO = 0.2;
 // about half the blur 0.25 costs, and the bar's flat cross-section still reads
 // streaming at any slider rate.
 const BAR_LOOP_FRACTION = 0.15;
+// Wave-damping slider. The module default is 0 so a caller that never touches
+// the slider (tests, a headless pack) stays on the 0.4.3 shear. The page sets
+// WAVE_DAMPING_UI_DEFAULT at boot — measured so an arm-weighted ring at the
+// Sun climbs from cosine 0.10 to ~0.6 in ~300 Myr, inside a few minutes at
+// 1 Myr/s, without the s→1 glue of a full capture. Cap is 1: the capture ODE
+// is nonsingular there (crest speed is exactly zero).
+const WAVE_DAMPING_MAX = 1;
+const WAVE_DAMPING_UI_DEFAULT = 0.6;
 
 function familyFromFlags(flags) { return (flags & FAMILY_MASK) >>> FAMILY_SHIFT; }
 function flagsWithFamily(flags, family) { return (flags & ~FAMILY_MASK) | ((family & 3) << FAMILY_SHIFT); }
@@ -150,6 +174,59 @@ function omegaStream(dyn, r) {
 	return circ - dyn.omegaPattern;
 }
 
+// Slider state. One number, read by the orbit law and the uniform packer.
+// Not on the model: it is a view control, like exposure, and a regenerate
+// must not snap it back.
+let waveDamping = 0;
+function setWaveDamping(value) {
+	const v = Number(value);
+	waveDamping = v > WAVE_DAMPING_MAX ? WAVE_DAMPING_MAX : (v > 0 ? v : 0);
+	return waveDamping;
+}
+function getWaveDamping() { return waveDamping; }
+
+// χ wrapped to (-π, π]. Same floor form on both sides of the mirror.
+function reduceAngle(x) {
+	return x - TAU * Math.floor((x + Math.PI) * INV_TAU);
+}
+
+// Pattern-frame capture. χ is m times the azimuth from one crest; every crest
+// folds to 0, so an m-arm pattern is one well. Returns the inertial rotation
+// of the birth vector (unreduced — orbitPosition wraps it). α = 0 and a star
+// already on the pattern (ω = Ω_p) both fall through to the plain rate.
+function dampedDiscTheta(theta0, thetaArm, omega, omegaP, time, alpha, m) {
+	if (time === 0 || !(alpha > 0) || !(m >= 1)) return omega * time;
+	const strength = alpha > WAVE_DAMPING_MAX ? WAVE_DAMPING_MAX : alpha;
+	const omegaRel = omega - omegaP;
+	if (omegaRel === 0) return omega * time;
+	let chi0 = reduceAngle(m * (theta0 - thetaArm));
+	// tan(χ/2) diverges at the interarm boundary. Clamp one ulp inside; that
+	// point is the unstable fixed point and a star there is one either way.
+	const lim = Math.PI - 1e-5;
+	if (chi0 > lim) chi0 = lim;
+	else if (chi0 < -lim) chi0 = -lim;
+	const u0 = Math.tan(chi0 * 0.5);
+	const beta = strength * m * omegaRel * 0.5;
+	const denom = 1 - u0 * beta * time;
+	let chi;
+	if (!(Math.abs(denom) > 1e-6)) chi = omegaRel > 0 ? Math.PI : -Math.PI;
+	else {
+		chi = 2 * Math.atan(u0 / denom);
+		// atan flips when the star passes the interarm. Unwrap so χ keeps
+		// moving toward the next crest instead of teleporting by one arm.
+		if (denom < 0) chi += omegaRel > 0 ? TAU : -TAU;
+	}
+	return (chi - chi0) / m + omegaP * time;
+}
+
+function discWaveTheta(qx, qy, r, omega, omegaP, time, model) {
+	if (!(waveDamping > 0) || time === 0) return omega * time;
+	const arms = model && model.arms;
+	if (!arms || !(arms.amp > 0) || !(arms.m >= 1) || !(arms.pitchDeg > 0) || !(arms.Rs > 0)) return omega * time;
+	if (r < arms.minRadius) return omega * time;
+	return dampedDiscTheta(Math.atan2(qy, qx), density.armRidgeAzimuth(model, r), omega, omegaP, time, waveDamping, arms.m);
+}
+
 function omegaFor(family, x, y, model) {
 	const dyn = fillDynamics(orbitScratch, model);
 	return omegaFrom(dyn, family, Math.max(Math.hypot(x, y), 0.001));
@@ -176,8 +253,12 @@ function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
 	const qx = x - c.x, qy = y - c.y, qz = z - c.z;
 	const r = Math.max(Math.hypot(qx, qy), 0.001);
 	const omega = omegaFrom(dyn, family, r);
-	const u = omega * time * INV_TAU;
-	const theta = TAU * (u - Math.floor(u));
+	// patternLock is the cosmetic rigid disc. It already has no shear to damp,
+	// and applying capture on top of it would fight the flag.
+	let theta = omega * time;
+	if (family === FAMILY_DISC && !dyn.patternLock) theta = discWaveTheta(qx, qy, r, omega, dyn.omegaPattern, time, model);
+	const u = theta * INV_TAU;
+	theta = TAU * (u - Math.floor(u));
 	const ph = ((phase & 15) / 16) * TAU;
 	const rank = ((amplitude & 15) + 0.5) / 16;
 	const sinPh = sinTau(ph);
@@ -214,10 +295,15 @@ function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
 	return out;
 }
 
-// The two vec4s the star and nebula shaders read as camera.dynA / camera.dynB.
+// The four vec4s the star shader reads as camera.dynA / dynB / waveA / waveB.
+// Nebulae share the buffer and ignore the wave pair (gas stays on the pattern).
 // Layout contract shared with SHADER_PARTS['orbit'] and CameraUniform:
-//   dynA = (vFlat, rCore, omegaPattern, spinLambda)
-//   dynB = (sigmaThin, pressureAmpScale, discHeight, patternLock)
+//   dynA  = (vFlat, rCore, omegaPattern, spinLambda)
+//   dynB  = (sigmaThin, pressureAmpScale, discHeight, patternLock)
+//   waveA = (damping, m, K, phase0)     K = m / tan(pitch), 0 when unarmed
+//   waveB = (Rs, minRadius, amp, 0)
+// Unarmed (amp 0, pitch 0, m < 1) packs m = 0 so the shader takes the same
+// skip the CPU does, without a hard-coded galaxy.
 function packOrbitDynamics(model, out, offset) {
 	const dyn = fillDynamics(orbitScratch, model);
 	out[offset] = dyn.vFlat;
@@ -228,6 +314,16 @@ function packOrbitDynamics(model, out, offset) {
 	out[offset + 5] = dyn.pressureAmpScale;
 	out[offset + 6] = dyn.discHeight;
 	out[offset + 7] = dyn.patternLock;
+	const arms = (model && model.arms) || {};
+	const armed = arms.amp > 0 && arms.m >= 1 && arms.pitchDeg > 0 && arms.Rs > 0;
+	out[offset + 8] = waveDamping;
+	out[offset + 9] = armed ? arms.m : 0;
+	out[offset + 10] = armed ? arms.m / Math.tan(arms.pitchDeg * Math.PI / 180) : 0;
+	out[offset + 11] = armed ? arms.phase0 : 0;
+	out[offset + 12] = armed ? arms.Rs : 1;
+	out[offset + 13] = armed ? arms.minRadius : 0;
+	out[offset + 14] = armed ? arms.amp : 0;
+	out[offset + 15] = 0;
 	return out;
 }
 
@@ -241,9 +337,11 @@ const OrbitAPI = {
 	FAMILY_PATTERN, FAMILY_DISC, FAMILY_BAR, FAMILY_PRESSURE, FAMILY_NAMES,
 	FAMILY_SHIFT, FAMILY_MASK, FLIGHT_TIME_GAIN, TAU, PRESSURE_CLOCK_1KPC,
 	VERTICAL_WOBBLE_RATIO, BAR_LOOP_FRACTION,
+	WAVE_DAMPING_MAX, WAVE_DAMPING_UI_DEFAULT,
 	familyFromFlags, flagsWithFamily, encodeJitter, readOrbit,
 	familyFromColorIndex, familyForStar,
-	fillDynamics, pressureClock, omegaFor, omegaFrom, omegaStream, orbitPosition,
+	fillDynamics, pressureClock, omegaFor, omegaFrom, omegaStream,
+	setWaveDamping, getWaveDamping, dampedDiscTheta, orbitPosition,
 	packOrbitDynamics, sinTau, sliderValueToRate, formatTimeRate,
 };
 if (typeof module !== 'undefined') module.exports = OrbitAPI;

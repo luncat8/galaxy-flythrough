@@ -811,3 +811,38 @@ the model table; test "every family the model uses has ω > 0", not "no throw".
 Also: when re-deriving a clock shape, re-read the plan's family table first —
 0.4.1's always-Keplerian ω̄ contradicted §1.1's "mean disc frequency" and had
 to be reverted to the hybrid one release later.
+
+## 2026-09-24 — A traffic jam has a sign, and it flips at corotation
+
+Slowing a star's inertial rate near an arm (`ω · (1 − s·D)`) only jams inside
+corotation, where the star is overtaking the pattern. Outside, the pattern is
+already overtaking the star, and slowing the star makes the sweep *faster* —
+the outer arms empty. This disc is mostly outside corotation (Sb seed 3,
+R_CR ≈ 10.2 kpc), so that form, and the linked demo that uses it, do not port.
+The form that jams on both sides is a pattern-frame capture whose crest speed
+is zero either way: `dχ/dt = α·m·(Ω−Ω_p)·sin²(χ/2)`. A cosine phase-pull is
+the other failure: its radial derivative has the wrong sign relative to the
+arm pitch, so the slider shears the arms apart instead of holding them.
+α = 0 must short-circuit before the closed form; folding zero into the `atan`
+freezes χ, which is not the shear.
+
+## 2026-09-24 — "Closer to the crest" is not true of an arbitrary offset
+
+A star on the far side of a crest takes the long way to the next one, so its
+distance to the nearest crest can grow while the ring tightens. The monotonic
+probe is the side the wave is sweeping: positive azimuth offset outside
+corotation, negative inside. The population probe is the mean |χ| of a uniform
+ring, which the undamped law holds at `π/(2m)` forever. One star against one
+sheared star at one time is neither.
+
+## 2026-09-24 — A shared uniform is one size, in every fixture
+
+`CameraUniform` is one buffer uploaded for stars and for nebula billboards.
+Growing it (dynA/dynB, then waveA/waveB) means both struct declarations, the
+packer, `UNIFORM_FLOATS`, and every test fixture that builds the buffer —
+including the second camera in `wgsl-exec-check.js`, which is not the one the
+first comment describes. A short buffer dies inside the interpreter as
+`Invalid typed array length` on the first vec4 past the end, not as a failed
+check. WGSL lives in a JS template literal: a backtick in a comment ends the
+string, and a validator regex that bans a rejected formula will also match
+that formula written in a JS comment.

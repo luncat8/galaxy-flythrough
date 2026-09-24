@@ -421,18 +421,23 @@ function wgslConsts(part) {
                 if (!m) return null;
                 return [...m[1].matchAll(/^\s*([A-Za-z_0-9]+):\s*(?:vec4f|mat4x4)/gm)].map(x => x[1]);
         };
-        const expected = ['viewProj', 'cameraPos', 'viewport', 'params', 'dynA', 'dynB'];
+        const expected = ['viewProj', 'cameraPos', 'viewport', 'params', 'dynA', 'dynB', 'waveA', 'waveB'];
         const spriteFields = fields(shaders.SHADERS['star-sprite']);
         const nebulaFields = fields(shaders.SHADERS['nebula-billboard']);
         check('CameraUniform carries dynA/dynB after the camera block, star and nebula alike',
                 JSON.stringify(spriteFields) === JSON.stringify(expected)
                 && JSON.stringify(nebulaFields) === JSON.stringify(expected),
                 { star: spriteFields, nebula: nebulaFields });
-        check('the star vertex shader feeds camera.dynA/dynB into orbitPosition',
-                /orbitPosition\([^;]*camera\.dynA,\s*camera\.dynB\)/s.test(shaders.SHADERS['star-sprite']));
-        check('the packer fills exactly the two vec4s the struct declares (8 floats at offset 28)',
+        check('the star vertex shader feeds camera.dynA/dynB/waveA/waveB into orbitPosition',
+                /orbitPosition\([^;]*camera\.dynA,\s*camera\.dynB,\s*camera\.waveA,\s*camera\.waveB\)/s.test(shaders.SHADERS['star-sprite']));
+        check('the packer fills the four vec4s the struct declares (16 floats at offset 28)',
                 /packOrbitDynamics\(model,\s*uniform,\s*28\)/.test(readSource('src/render/star-sprites.js'))
-                && /UNIFORM_FLOATS = 36/.test(readSource('src/render/star-sprites.js')));
+                && /UNIFORM_FLOATS = 44/.test(readSource('src/render/star-sprites.js')));
+        check('both sides implement pattern-frame capture, not the inertial omega*(1-s*D) port',
+                /function dampedDiscTheta\(/.test(orbitSrc)
+                && /fn dampedDiscTheta\(/.test(orbitWgsl)
+                && !/omega \*= \(1 -/.test(orbitSrc)
+                && !/omega \* \(1\.0 -/.test(orbitWgsl));
         check('the nebula billboards rigidly follow the pattern speed (plan §7.4)',
                 /camera\.dynA\.z \* camera\.params\.w/.test(shaders.SHADERS['nebula-billboard']));
 }

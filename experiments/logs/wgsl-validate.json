@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-22T03:36:19.890Z",
+  "date": "2026-09-24T13:00:04.076Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -11,11 +11,11 @@
     },
     {
       "name": "orbit",
-      "lines": 103
+      "lines": 147
     },
     {
       "name": "star-sprite",
-      "lines": 243
+      "lines": 291
     },
     {
       "name": "star-sprite-hdr",
@@ -23,7 +23,7 @@
     },
     {
       "name": "nebula-billboard",
-      "lines": 118
+      "lines": 120
     },
     {
       "name": "tonemap",
@@ -44,8 +44,8 @@
     "nebula-billboard",
     "tonemap"
   ],
-  "totalChecks": 152,
-  "passed": 152,
+  "totalChecks": 153,
+  "passed": 153,
   "failed": 0,
   "checks": [
     {
@@ -77,11 +77,11 @@
         ],
         [
           "orbit",
-          5089
+          7318
         ],
         [
           "star-sprite",
-          11148
+          13660
         ],
         [
           "star-sprite-hdr",
@@ -89,7 +89,7 @@
         ],
         [
           "nebula-billboard",
-          3915
+          4022
         ],
         [
           "tonemap",
@@ -179,7 +179,7 @@
     {
       "name": "orbit: declares its functions",
       "pass": true,
-      "detail": 5
+      "detail": 6
     },
     {
       "name": "star-sprite: braces and parentheses balance",
@@ -197,7 +197,7 @@
     {
       "name": "star-sprite: declares its functions",
       "pass": true,
-      "detail": 10
+      "detail": 11
     },
     {
       "name": "star-sprite-hdr: braces and parentheses balance",
@@ -1050,7 +1050,9 @@
           "viewport",
           "params",
           "dynA",
-          "dynB"
+          "dynB",
+          "waveA",
+          "waveB"
         ],
         "nebula": [
           "viewProj",
@@ -1058,16 +1060,22 @@
           "viewport",
           "params",
           "dynA",
-          "dynB"
+          "dynB",
+          "waveA",
+          "waveB"
         ]
       }
     },
     {
-      "name": "the star vertex shader feeds camera.dynA/dynB into orbitPosition",
+      "name": "the star vertex shader feeds camera.dynA/dynB/waveA/waveB into orbitPosition",
       "pass": true
     },
     {
-      "name": "the packer fills exactly the two vec4s the struct declares (8 floats at offset 28)",
+      "name": "the packer fills the four vec4s the struct declares (16 floats at offset 28)",
+      "pass": true
+    },
+    {
+      "name": "both sides implement pattern-frame capture, not the inertial omega*(1-s*D) port",
       "pass": true
     },
     {

@@ -45,6 +45,11 @@
                         <span id="val-star-time" class="menu-val">frozen</span>
                 </div>
                 <div class="menu-row">
+                        <label for="slider-wave" title="Disc stars drift onto the spiral and stay. 0 is pure shear.">Wave damping</label>
+                        <input type="range" id="slider-wave" min="0" max="1" step="0.05" value="0.6">
+                        <span id="val-wave" class="menu-val">0.60</span>
+                </div>
+                <div class="menu-row">
                         <label for="galaxy-type">Type <span class="kbd">G</span></label>
                         <select id="galaxy-type"></select>
                         <span id="val-galaxy" class="menu-val">SBb #42</span>
@@ -79,7 +84,7 @@ P                    constellation lines on / off
 H                    home: the Sun, or a generated galaxy's centre
 G                    new galaxy: cycle type (rebuilds the field, about a second)
 R                    reset everything
-Tab                  settings menu (exposure / brightness / white / saturation)
+Tab                  settings menu (exposure / brightness / white / saturation / wave)
 [ / ]                exposure (how faint a star still shows)
 ; / '                brightness (overall gain)
 Ctrl+W closes the tab: fly slowly with Ctrl + arrows

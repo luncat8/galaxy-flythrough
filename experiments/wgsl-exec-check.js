@@ -122,10 +122,10 @@ async function main() {
 	// x' = x, y' = y, w' = -z: a star on -Z projects to the viewport centre.
 	const viewProj = new Float32Array(16);
 	viewProj[0] = 1; viewProj[5] = 1; viewProj[11] = -1; viewProj[14] = 1;
-	// 144 bytes: camera block (16+4+4+4) + orbit dynamics dynA/dynB (4+4).
-	// The dyn slots stay zero for the radiance fixtures: family bits in the
-	// fixture records are 0 (pattern), omega = dynA.z = 0, T = 0 — frozen.
-	const cameraBytes = new ArrayBuffer(36 * 4);
+	// 176 bytes: camera block (16+4+4+4) + orbit dynA/dynB/waveA/waveB (16).
+	// The dyn and wave slots stay zero for the radiance fixtures: family bits
+	// in the fixture records are 0 (pattern), omega = dynA.z = 0, T = 0 — frozen.
+	const cameraBytes = new ArrayBuffer(44 * 4);
 	const cam = new Float32Array(cameraBytes);
 	cam.set(viewProj, 0);
 	cam[20] = 1920; cam[21] = 1080; cam[22] = 2 / 1920; cam[23] = 2 / 1080;
@@ -188,7 +188,9 @@ async function main() {
 	// dynA/dynB, identity viewProj and the camera 5 kpc up +Y, so clip.xy is
 	// (moved.x, moved.y − 5) plus the same sub-pixel corner offset in both
 	// runs. Half a period later the star must be at x ≈ 8.178 + 8.178.
-	const orbitCamBytes = new ArrayBuffer(36 * 4);
+	// 176 bytes, matching CameraUniform. waveA/waveB stay 0, so this fixture
+	// measures the undamped 0.4.3 law (damping 0 is the shear, bit for bit).
+	const orbitCamBytes = new ArrayBuffer(44 * 4);
 	const ocam = new Float32Array(orbitCamBytes);
 	ocam[0] = 1; ocam[5] = 1; ocam[10] = 1; ocam[15] = 1;   // identity viewProj
 	ocam[17] = 5;                                           // camera y
@@ -307,6 +309,55 @@ async function main() {
 	check('on-WGSL: the bar star is measurably OFF its rigid seat (it streams, it is not glued)',
 		offSeat > 0.03,
 		{ offSeat, cpuOffSeat: Math.hypot(cpuT[0] - seatX, cpuT[1] - seatY) });
+
+	// --- 2d. Pattern-frame capture runs on the shipping WGSL ---------------
+	// The f32 replay in orbit-test is a hand copy. This runs the shader. Same
+	// camera as 2b; the wave pair is the page default on a two-arm spiral.
+	// A skip (damping left at 0) lands on the shear, which this time separates
+	// from the capture by well more than the tolerance.
+	const savedWave = ocam.slice(36, 44);
+	const captureModel = {
+		centre: fixtureModel.centre,
+		dynamics: fixtureModel.dynamics,
+		spheroid: fixtureModel.spheroid,
+		truncation: fixtureModel.truncation,
+		arms: { amp: 0.5, m: 2, pitchDeg: 12, Rs: 2.5, phase0: 0, minRadius: 1 },
+	};
+	const capBytes = new ArrayBuffer(records.RECORD_BYTES);
+	const capF = new Float32Array(capBytes);
+	const capU = new Uint32Array(capBytes);
+	capF[0] = 8.178 + 3; capF[1] = 0.4; capF[2] = 0;
+	capU[3] = ((records.FLAG_VISIBLE | (1 << 3)) << 16) | (records.encodeAbsMag(4.83) << 8) | 4;
+	const capBinds = {
+		0: {
+			0: { uniform: orbitCamBytes },
+			1: capBytes,
+			2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
+		},
+	};
+	const capT = 200;
+	orbit.setWaveDamping(0);
+	const shearPos = new Float64Array(3);
+	orbit.orbitPosition(shearPos, capF[0], capF[1], capF[2], orbit.FAMILY_DISC, 0, 0, capT, captureModel);
+	orbit.setWaveDamping(0.6);
+	const capPacked = new Float32Array(16);
+	orbit.packOrbitDynamics(captureModel, capPacked, 0);
+	ocam.set(capPacked.subarray(8, 16), 36);
+	ocam[27] = capT;
+	const capGpu = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 0 }, capBinds);
+	const capCpu = new Float64Array(3);
+	orbit.orbitPosition(capCpu, capF[0], capF[1], capF[2], orbit.FAMILY_DISC, 0, 0, capT, captureModel);
+	const gpuX = capGpu.clipPos[0] - offX;
+	const gpuY = capGpu.clipPos[1] + 5 - offY;
+	check('on-WGSL: capture matches the CPU law at T = 200 Myr (< 20 pc)',
+		Math.hypot(gpuX - capCpu[0], gpuY - capCpu[1]) < 0.02,
+		{ gpu: [gpuX, gpuY], cpu: [capCpu[0], capCpu[1]] });
+	check('on-WGSL: that position is the capture, not the 0.4.3 shear',
+		Math.hypot(gpuX - shearPos[0], gpuY - shearPos[1]) > 0.05,
+		{ gpu: [gpuX, gpuY], shear: [shearPos[0], shearPos[1]] });
+	orbit.setWaveDamping(0);
+	ocam.set(savedWave, 36);
 
 	// --- 3. N stars on one pixel are brighter than one --------------------
 	const faint = runStage(spriteCode, 'vs_main', 'debugVertex',
