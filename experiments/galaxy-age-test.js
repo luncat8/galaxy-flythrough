@@ -13,7 +13,8 @@
 //      age, and at the reference age the windows reproduce the mean component
 //      ages of the lognormal priors they replaced
 //   3. the population: O/B falls with age, giants and the mean colour rise,
-//      remnants rise and saturate
+//      remnants accumulate (the intermediate-mass channel: a giant branch,
+//      then a cooling white dwarf)
 //   4. the gas law: mass-conserving, exact at the reference epoch, bounded,
 //      flat after quenching — and `gasRich` follows the gas left, not the
 //      present-day anchor
@@ -270,18 +271,23 @@ const log = { date: new Date().toISOString(), types: TYPES, sfh: {}, windows: {}
 		census[0.5].meanColour < census[2].meanColour && census[2].meanColour < census[8].meanColour
 		&& census[8].meanColour <= census[13.5].meanColour,
 		{ young: census[0.5].meanColour, old: census[13.5].meanColour });
-	// Honest about what this model does: a remnant is only made above 8 M☉, whose
-	// main-sequence life is at most 0.24 Gyr, so the white-dwarf fraction rises
-	// and then saturates — it does not accumulate across the galaxy's life. The
-	// intermediate-mass channel that would make it accumulate is 0.5 material
-	// (see the plan's out-of-scope list); what must not happen is a *fall*.
-	check('the remnant fraction is non-decreasing and saturates below 1 Gyr',
-		census[0.5].wdPct <= census[1].wdPct && census[1].wdPct <= census[2].wdPct
-		&& census[2].wdPct <= census[13.5].wdPct
-		&& Math.abs(census[13.5].wdPct - census[1].wdPct) < 0.1,
+	// The intermediate-mass channel (0.4.5): below 8 M☉ a star is a giant for
+	// a slice of its main-sequence life and a cooling white dwarf after, so
+	// the remnant fraction accumulates across the galaxy's life instead of
+	// saturating below 1 Gyr — 0.25% at 0.5 Gyr, 1.77% at 13.5.
+	check('the remnant fraction rises with age and accumulates past 1 Gyr',
+		census[0.5].wdPct <= census[1].wdPct && census[1].wdPct < census[2].wdPct
+		&& census[2].wdPct < census[8].wdPct && census[8].wdPct < census[13.5].wdPct
+		&& census[13.5].wdPct > 1,
 		{ at0_5: census[0.5].wdPct, at1: census[1].wdPct, at13_5: census[13.5].wdPct });
-	check('the field dims as the giants thin out, by the 11× the exposure offset absorbs',
-		census[13.5].meanLuminosity > 8 * census[0.5].meanLuminosity
+	// The old star-forming field is the brighter one: it keeps forming O/B
+	// stars at a similar rate (the delayed exponential is flat between 0.5
+	// and 13.5 Gyr) and adds the turnoff giants on top, 2.42× in the mean.
+	// Before the giant branch became temporary this ratio was 11×, driven by
+	// a 3% permanent-giant tail; the exposure offset absorbs either number.
+	check('the field brightens as turnoff giants join the still-forming OB tail (~2.4×)',
+		census[13.5].meanLuminosity > 2 * census[0.5].meanLuminosity
+		&& census[13.5].meanLuminosity < 3 * census[0.5].meanLuminosity
 		&& census[0.5].meanLuminosity < census[2].meanLuminosity
 		&& census[2].meanLuminosity < census[13.5].meanLuminosity,
 		{ young: census[0.5].meanLuminosity, old: census[13.5].meanLuminosity });
@@ -415,30 +421,55 @@ const log = { date: new Date().toISOString(), types: TYPES, sfh: {}, windows: {}
 	const CALIBRATION_STARS = 16384;
 	const positions = sampling.sampleGalaxyStars(MW, 42, STAR_DRAWS);
 	let worst = 0;
-	let signBreak = null;
+	let refBreak = null;
+	const offsets = {};
 	log.population.exposure = {};
 	for (const type of ['E4', 'Sa', 'SBb', 'Sc', 'Irr']) {
 		const base = galaxy.createGalaxy({ type, seed: 42 });
 		const field = sampling.sampleGalaxyStars(base, 42, STAR_DRAWS);
 		const ref = starTypes.meanFieldLuminosity(galaxy.modelAtAge(base, galaxy.AGE_REF), field, CALIBRATION_STARS);
+		offsets[type] = {};
 		for (const age of [0.5, 2, 8, galaxy.AGE_REF]) {
 			const model = galaxy.modelAtAge(base, age);
 			const now = starTypes.meanFieldLuminosity(model, field, CALIBRATION_STARS);
 			// The renderer's arithmetic, in full: an offset in magnitudes, added to
 			// absMag before packing. A dimmer field gets a negative offset, which
-			// brightens it back.
+			// brightens it back; a brighter young field gets a positive one.
 			const offset = (now > 0 && ref > 0) ? 2.5 * Math.log10(now / ref) : 0;
 			const renormalised = now * Math.pow(10, -offset / 2.5);
 			worst = Math.max(worst, Math.abs(renormalised / ref - 1));
-			if (age === galaxy.AGE_REF && offset !== 0) signBreak = { type, offset };
-			if (age < galaxy.AGE_REF && offset > 0) signBreak = signBreak || { type, age, offset };
+			if (age === galaxy.AGE_REF && offset !== 0) refBreak = { type, offset };
+			offsets[type][age] = offset;
 			log.population.exposure[`${type}@${age}`] = { meanL: +now.toFixed(3), referenceL: +ref.toFixed(3), magOffset: +offset.toFixed(4) };
 		}
 	}
 	check('the renormalised field brightness matches the reference at every age',
 		worst < 0.01, { worstRelative: +worst.toExponential(2) });
-	check('the offset is exactly 0 at the reference age and negative before it',
-		signBreak === null, signBreak);
+	check('the offset is exactly 0 at the reference age, every type',
+		refBreak === null, refBreak);
+	// A quenched E4 peaks after its burst: dimmer than the reference before
+	// its giants arrive (nothing older than 0.5 Gyr has left the main
+	// sequence), brighter at the 2 Gyr giant bump, then fading toward the
+	// old red reference. Star-forming types never bump — their giants keep
+	// arriving, so the young field stays the dimmer one at every age.
+	check('a quenched E4 is dimmer pre-bump, brighter at the bump, fading after',
+		offsets.E4[0.5] < -1 && offsets.E4[2] > 0.3
+		&& offsets.E4[8] > 0 && offsets.E4[8] < offsets.E4[2],
+		{ at0_5: +offsets.E4[0.5].toFixed(3), at2: +offsets.E4[2].toFixed(3), at8: +offsets.E4[8].toFixed(3) });
+	// Sa is the transition type: bulge-heavy and early-fading, its bright end
+	// peaks late — still climbing at 8 Gyr (+0.06 mag over the reference),
+	// dimmer before that. The later types never overshoot at all.
+	check('Sa peaks late: dimmer young, within 0.15 mag of the reference at 8 Gyr',
+		offsets.Sa[0.5] < offsets.Sa[2] && offsets.Sa[2] < 0 && Math.abs(offsets.Sa[8]) < 0.15,
+		{ at0_5: +offsets.Sa[0.5].toFixed(3), at2: +offsets.Sa[2].toFixed(3), at8: +offsets.Sa[8].toFixed(3) });
+	let sfBreak = null;
+	for (const type of ['SBb', 'Sc', 'Irr']) {
+		for (const age of [0.5, 2, 8]) {
+			if (offsets[type][age] > 0) sfBreak = sfBreak || { type, age, offset: offsets[type][age] };
+		}
+	}
+	check('later star-forming types are dimmer young at every age (giants still arriving)',
+		sfBreak === null, sfBreak);
 	// The offset is a property of the population, so a preset at the reference
 	// epoch keeps the sky 0.3.2 tuned: same positions, same exposure defaults.
 	check('the preset at the default age needs no offset at all',

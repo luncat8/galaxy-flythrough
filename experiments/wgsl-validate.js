@@ -43,19 +43,20 @@ function readSource(relPath) {
 {
         const names = Object.keys(shaders.SHADER_PARTS);
         check('every expected shader part is present',
-                ['pcg-hash', 'density', 'orbit', 'star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'procedural-gen', 'cull'].every(n => names.includes(n)),
+                ['pcg-hash', 'density', 'orbit', 'simple-step', 'star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'procedural-gen', 'cull'].every(n => names.includes(n)),
                 names);
         check('every shader part is a non-empty LF-only string',
                 names.every(n => typeof shaders.SHADER_PARTS[n] === 'string'
                         && shaders.SHADER_PARTS[n].length > 100
                         && !shaders.SHADER_PARTS[n].includes('\r')),
                 names.map(n => [n, shaders.SHADER_PARTS[n].length]));
-        check('four wired shaders are exposed (star-sprite, star-sprite-hdr, nebula-billboard, tonemap)',
-                shaders.WIRED_SHADERS.length === 4
+        check('five wired shaders are exposed (star-sprite, star-sprite-hdr, nebula-billboard, tonemap, simple-step)',
+                shaders.WIRED_SHADERS.length === 5
                 && shaders.WIRED_SHADERS[0] === 'star-sprite'
                 && shaders.WIRED_SHADERS[1] === 'star-sprite-hdr'
                 && shaders.WIRED_SHADERS[2] === 'nebula-billboard'
-                && shaders.WIRED_SHADERS[3] === 'tonemap',
+                && shaders.WIRED_SHADERS[3] === 'tonemap'
+                && shaders.WIRED_SHADERS[4] === 'simple-step',
                 shaders.WIRED_SHADERS);
         check('every wired shader exists in the module map',
                 shaders.WIRED_SHADERS.every(n => typeof shaders.SHADERS[n] === 'string' && shaders.SHADERS[n].length > 0),
@@ -77,6 +78,23 @@ function readSource(relPath) {
                 const fnCount = (src.match(/^fn\s/gm) || []).length;
                 check(`${name}: declares its functions`, fnCount > 0, fnCount);
         }
+}
+
+// Grab one function's source out of a JS file, braces matched. Lets a check
+// scope itself to the function it is about (the inertial-form ban must see
+// the classic law but not the simple engine, which implements the form).
+function extractFunction(src, name) {
+        const start = src.indexOf(`function ${name}(`);
+        if (start < 0) return '';
+        let depth = 0;
+        for (let i = src.indexOf('{', start); i < src.length; i++) {
+                if (src[i] === '{') depth++;
+                else if (src[i] === '}') {
+                        depth--;
+                        if (depth === 0) return src.slice(start, i + 1);
+                }
+        }
+        return '';
 }
 
 // Grab `const NAME: type = VALUE;` from a shader part.
@@ -197,6 +215,14 @@ function wgslConsts(part) {
         check('procedural-gen.wgsl arm-youth ceiling matches star-types.YOUNG_ARM_MAX_GYR',
                 gen.YOUNG_ARM_MAX_GYR === starTypes.YOUNG_ARM_MAX_GYR,
                 { wgsl: gen.YOUNG_ARM_MAX_GYR, js: starTypes.YOUNG_ARM_MAX_GYR });
+        // 0.4.5: the temporary giant branch. Like the youth ceiling, its
+        // numbers are stellar-model properties, not galaxy properties, so
+        // they ride as consts — but they still have to match the JS side.
+        check('procedural-gen.wgsl giant-branch and cooling constants match star-types.js',
+                gen.TGIANT_FRAC === starTypes.TGIANT_FRAC && gen.TGIANT_MIN === starTypes.TGIANT_MIN
+                && gen.TGIANT_MAX === starTypes.TGIANT_MAX && gen.WD_COOL_TAU === starTypes.WD_COOL_TAU
+                && gen.WD_TEFF_FLOOR === starTypes.WD_TEFF_FLOOR && gen.WD_LUM_FLOOR === starTypes.WD_LUM_FLOOR,
+                { frac: gen.TGIANT_FRAC, tau: gen.WD_COOL_TAU, floor: gen.WD_TEFF_FLOOR });
         check('procedural-gen.wgsl bisects the SFH inverse, and says how far',
                 Number.isInteger(gen.SFH_BISECT_STEPS) && gen.SFH_BISECT_STEPS >= 10
                 && gen.SFH_BISECT_STEPS <= 24,
@@ -232,7 +258,11 @@ function wgslConsts(part) {
                 // 0.4 the orbit law: the same function names on both sides;
                 // omegaFrom (JS) ↔ orbitOmega (WGSL) is checked by name below.
                 ['orbit', readSource('src/math/orbit.js'), ['orbitPosition', 'sinTau', 'pressureClock']],
-                ['procedural-gen', starTypesSrc, ['luminosityFromMass', 'teffFromMass', 'msLifetimeGyr',
+                // 0.4.5 the simple engine: same name both sides (the vertex
+                // reconstruction differs — simplePositionFromTheta ↔
+                // simplePosition — and is checked in §5 instead).
+                ['simple-step', readSource('src/math/orbit.js'), ['simpleOmega']],
+                ['procedural-gen', starTypesSrc, ['luminosityFromMass', 'teffFromMass', 'msLifetimeGyr', 'giantLifetimeGyr',
                         'sampleMassIMF', 'sampleLocalAge', 'classifyByTempAndState',
                         // 0.3.3: the star-formation history the ages are drawn
                         // from. The CPU keeps an inverse table where the shader
@@ -321,7 +351,14 @@ function wgslConsts(part) {
         check('the tonemap has a user-controlled saturation parameter (u.params.z)',
                 /u\.params\.z/.test(tonemap) && /mix\(vec3f\(mappedLuma\),\s*mapped,\s*sat\)/.test(tonemap));
         check('the tonemap selects SDR clamp vs HDR headroom via u.params.w',
-                /u\.params\.w\s*<\s*0\.5/.test(tonemap) && /vec3f\(0\.0\),\s*vec3f\(8\.0\)/.test(tonemap));
+                /u\.params\.w\s*<\s*0\.5/.test(tonemap) && /vec3f\(max\(1\.0,\s*u\.params2\.x\)\)/.test(tonemap));
+        check('the tonemap carries a second vec4 (headroom + highlight desat)',
+                /params2:\s*vec4f,/.test(tonemap)
+                && /over\s*\*\s*over\s*\*\s*clamp\(u\.params2\.y,\s*0\.0,\s*1\.0\)/.test(tonemap));
+        check('the renderer writes all eight tonemap floats every frame',
+                /tonemapUniform\[4\] = headroom/.test(readSource('src/render/star-sprites.js'))
+                && /tonemapUniform\[5\] = highlightDesat/.test(readSource('src/render/star-sprites.js'))
+                && /TONEMAP_UNIFORM_FLOATS = 8/.test(readSource('src/render/star-sprites.js')));
         check('the tonemap does NOT apply manual sRGB gamma (canvas colorSpace srgb encodes it)',
                 !/1\.055\s*\*\s*pow\(mapped/.test(tonemap));
 
@@ -352,6 +389,31 @@ function wgslConsts(part) {
         check('the nebula-billboard fragment uses a soft (1-r²)² falloff and no texture',
                 /let\s+s:\s*f32\s*=\s*1\.0\s*-\s*r2/.test(nebula) && /s\s*\*\s*s/.test(nebula)
                 && !/texture/.test(nebula));
+
+        // 0.4.5: the simple engine's vertex lane — binding 3 carries the
+        // integrated azimuths, and the engine id branches uniform control
+        // flow between the closed form and the reconstruction.
+        check('the star sprite binds the simple-engine azimuths at binding 3',
+                /@group\(0\)\s*@binding\(3\)\s*var<storage,\s*read>\s+theta/.test(sprite));
+        check('the star vertex branches on the engine lane (uniform control flow)',
+                /camera\.engine\.x\s*>\s*0\.5/.test(sprite)
+                && /simplePosition\([^;]*theta\[starIdx\]/s.test(sprite)
+                && /orbitPosition\([^;]*camera\.params\.w/s.test(sprite));
+
+        // 0.4.5: the simple-step compute module — concatenated after the
+        // orbit part for the family constants and the pressure clock.
+        const step = shaders.SHADERS['simple-step'];
+        check('simple-step is a 64-wide compute module over the orbit part',
+                /@compute/.test(step) && /@workgroup_size\(64\)/.test(step)
+                && /^fn\s+simpleOmega\b/m.test(step) && /^fn\s+pressureClock\b/m.test(step)
+                && /fn\s+main\(@builtin\(global_invocation_id\)/.test(step));
+        check('simple-step binds uniform + stars + read-write thetas',
+                /@binding\(0\)\s*var<uniform>\s+simple:\s*SimpleUniform/.test(step)
+                && /@binding\(1\)\s*var<storage,\s*read>\s+stepStars/.test(step)
+                && /@binding\(2\)\s*var<storage,\s*read_write>\s+stepTheta/.test(step));
+        check('simple-step carries the same guards as the CPU (invisible, unarmed, minRadius)',
+                /SIMPLE_MASK_VISIBLE/.test(step) && /stepC\.y < 1\.0/.test(step)
+                && /r0 < simple\.stepD\.z/.test(step) && /max\(r0,\s*SIMPLE_R_MIN\)/.test(step));
 
         const gen = shaders.SHADERS['procedural-gen'];
         check('the procedural generator is a compute shader', /@compute/.test(gen) && /@workgroup_size/.test(gen));
@@ -421,7 +483,9 @@ function wgslConsts(part) {
                 if (!m) return null;
                 return [...m[1].matchAll(/^\s*([A-Za-z_0-9]+):\s*(?:vec4f|mat4x4)/gm)].map(x => x[1]);
         };
-        const expected = ['viewProj', 'cameraPos', 'viewport', 'params', 'dynA', 'dynB', 'waveA', 'waveB'];
+        // 0.4.5: the engine lane rides last (id, eccMax, 0, 0); nebulae pad
+        // it and ignore it, like the wave pair.
+        const expected = ['viewProj', 'cameraPos', 'viewport', 'params', 'dynA', 'dynB', 'waveA', 'waveB', 'engine'];
         const spriteFields = fields(shaders.SHADERS['star-sprite']);
         const nebulaFields = fields(shaders.SHADERS['nebula-billboard']);
         check('CameraUniform carries dynA/dynB after the camera block, star and nebula alike',
@@ -430,14 +494,41 @@ function wgslConsts(part) {
                 { star: spriteFields, nebula: nebulaFields });
         check('the star vertex shader feeds camera.dynA/dynB/waveA/waveB into orbitPosition',
                 /orbitPosition\([^;]*camera\.dynA,\s*camera\.dynB,\s*camera\.waveA,\s*camera\.waveB\)/s.test(shaders.SHADERS['star-sprite']));
-        check('the packer fills the four vec4s the struct declares (16 floats at offset 28)',
+        check('the packer fills the orbit vec4s and the engine lane (16 at 28, 4 at 44)',
                 /packOrbitDynamics\(model,\s*uniform,\s*28\)/.test(readSource('src/render/star-sprites.js'))
-                && /UNIFORM_FLOATS = 44/.test(readSource('src/render/star-sprites.js')));
-        check('both sides implement pattern-frame capture, not the inertial omega*(1-s*D) port',
+                && /packEngineVec\(model,\s*uniform,\s*44\)/.test(readSource('src/render/star-sprites.js'))
+                && /UNIFORM_FLOATS = 48/.test(readSource('src/render/star-sprites.js')));
+        // 0.4.5: the inertial form now EXISTS — as the simple engine. The ban
+        // scopes to the classic law (which keeps pattern-frame capture) while
+        // the simple pair must carry the slowdown on both sides.
+        const classicJs = extractFunction(orbitSrc, 'dampedDiscTheta') + extractFunction(orbitSrc, 'orbitPosition');
+        check('the classic law keeps pattern-frame capture (no inertial port in dampedDiscTheta/orbitPosition)',
                 /function dampedDiscTheta\(/.test(orbitSrc)
                 && /fn dampedDiscTheta\(/.test(orbitWgsl)
-                && !/omega \*= \(1 -/.test(orbitSrc)
+                && !/omega \*= \(1 -/.test(classicJs)
                 && !/omega \* \(1\.0 -/.test(orbitWgsl));
+        const simpleJs = extractFunction(orbitSrc, 'simpleOmega');
+        const simpleWgsl = shaders.SHADER_PARTS['simple-step'];
+        check('the simple pair implements the friction-field slowdown on both sides',
+                /function simpleOmega\(/.test(orbitSrc) && /^fn simpleOmega\(/m.test(simpleWgsl)
+                && /P\.damping \* Math\.exp/.test(simpleJs)
+                && /simple\.stepE\.x \* damp/.test(simpleWgsl)
+                && /\(1\.0 - simple\.stepE\.x \* damp\)/.test(simpleWgsl));
+        check('both sides reconstruct from the integrated azimuth (simplePositionFromTheta ↔ simplePosition)',
+                /function simplePositionFromTheta\(/.test(orbitSrc)
+                && /^fn simplePosition\(/m.test(orbitWgsl)
+                && /simplePositionFromTheta/.test(readSource('src/math/orbit.js')));
+        check('the engine ids are 0/1 on the JS side and the branch reads them on the GPU side',
+                /ENGINE_CLASSIC = 0/.test(orbitSrc) && /ENGINE_SIMPLE = 1/.test(orbitSrc)
+                && /camera\.engine\.x > 0\.5/.test(shaders.SHADERS['star-sprite']));
+        check('the step uniform is five vec4s (20 floats) packed per frame under simple',
+                /stepA: vec4f/.test(simpleWgsl) && /stepE: vec4f/.test(simpleWgsl)
+                && /SIMPLE_UNIFORM_FLOATS = 20/.test(orbitSrc)
+                && /packSimpleParams\(model, simpleUniform, 0, dtStar, totalRecordCount, time\)/
+                        .test(readSource('src/render/star-sprites.js')));
+        check('simple-step hard-codes no per-galaxy rotation numbers',
+                !/\b0\.225\b|\b0\.041\b|\b0\.031\b|\b0\.23\b/.test(simpleWgsl),
+                simpleWgsl.match(/\b0\.225\b|\b0\.041\b|\b0\.031\b|\b0\.23\b/g));
         check('the nebula billboards rigidly follow the pattern speed (plan §7.4)',
                 /camera\.dynA\.z \* camera\.params\.w/.test(shaders.SHADERS['nebula-billboard']));
 }

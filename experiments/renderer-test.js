@@ -56,9 +56,12 @@ function createMockGpu() {
                 pipelines: [],
                 uniformWrites: [],
                 tonemapUniformWrites: [],
+                simpleUniformWrites: [],
+                thetaWrites: [],
                 bufferWrites: [],
                 draws: [],
                 passes: [],
+                computePasses: [],
                 passedUniformData: null,
         };
 
@@ -85,6 +88,7 @@ function createMockGpu() {
                 createBindGroupLayout(desc) { return { desc }; },
                 createPipelineLayout(desc) { return { desc }; },
                 createRenderPipeline(desc) { gpu.pipelines.push(desc); return { label: desc.label }; },
+                createComputePipeline(desc) { gpu.pipelines.push(desc); return { label: desc.label }; },
                 createBindGroup(desc) { return { desc }; },
                 createCommandEncoder(desc) {
                         return {
@@ -107,6 +111,20 @@ function createMockGpu() {
                                         gpu.passes.push(passObj);
                                         return passObj;
                                 },
+                                beginComputePass(passDesc) {
+                                        const passObj = {
+                                                label: passDesc && passDesc.label,
+                                                dispatches: [],
+                                                setPipeline(p) { this.pipeline = p; },
+                                                setBindGroup() {},
+                                                dispatchWorkgroups(x, y, z) {
+                                                        this.dispatches.push([x, y || 1, z || 1]);
+                                                },
+                                                end() {},
+                                        };
+                                        gpu.computePasses.push(passObj);
+                                        return passObj;
+                                },
                                 finish() { return { label: 'command-buffer' }; },
                         };
                 },
@@ -117,6 +135,8 @@ function createMockGpu() {
                                 const copy = new Uint8Array(data, dataOffset || 0, length).slice();
                                 if (buffer.label === 'star-camera-uniform') gpu.uniformWrites.push(copy);
                                 else if (buffer.label === 'tonemap-uniform') gpu.tonemapUniformWrites.push(copy);
+                                else if (buffer.label === 'simple-step-uniform') gpu.simpleUniformWrites.push(copy);
+                                else if (buffer.label === 'simple-theta') gpu.thetaWrites.push({ buffer, offset, bytes: copy });
                                 else gpu.bufferWrites.push({ buffer, offset, bytes: copy });
                         },
                         submit() {},
@@ -162,21 +182,29 @@ console.log(`Prepared in ${prepareMs} ms: ${prepareState.proceduralStars} proced
 
 // --- Shader + pipeline wiring -------------------------------------------
 {
-        check('three shader modules are created (star-sprite + tonemap + nebula-billboard)',
-                gpu.shaderModules.length === 3
+        check('four shader modules are created (star-sprite + tonemap + nebula-billboard + simple-step)',
+                gpu.shaderModules.length === 4
                 && gpu.shaderModules[0].code === window.GalaxyShaders.SHADERS['star-sprite']
                 && gpu.shaderModules[1].code === window.GalaxyShaders.SHADERS['tonemap']
-                && gpu.shaderModules[2].code === window.GalaxyShaders.SHADERS['nebula-billboard'],
+                && gpu.shaderModules[2].code === window.GalaxyShaders.SHADERS['nebula-billboard']
+                && gpu.shaderModules[3].code === window.GalaxyShaders.SHADERS['simple-step'],
                 { modules: gpu.shaderModules.map(s => s.label) });
         check('all wired shaders declare their entry points',
-                gpu.shaderModules.every(s => /@vertex\s+fn\s+vs_main/.test(s.code) && /@fragment\s+fn\s+fs_main/.test(s.code)));
+                gpu.shaderModules.filter(s => s.label !== 'simple-step')
+                        .every(s => /@vertex\s+fn\s+vs_main/.test(s.code) && /@fragment\s+fn\s+fs_main/.test(s.code))
+                && /@compute/.test(gpu.shaderModules[3].code)
+                && /fn\s+main\(@builtin\(global_invocation_id\)/.test(gpu.shaderModules[3].code));
         const spritePipeline = gpu.pipelines.find(p => p.label === 'star-sprite-pipeline');
         const tonemapPipeline = gpu.pipelines.find(p => p.label === 'tonemap-pipeline');
         const nebulaPipeline = gpu.pipelines.find(p => p.label === 'nebula-billboard-pipeline');
-        check('three pipelines are created (star-sprite + tonemap + nebula-billboard) — no hdr-direct bypass',
-                !!spritePipeline && !!tonemapPipeline && !!nebulaPipeline
-                && gpu.pipelines.length === 3,
+        const stepPipeline = gpu.pipelines.find(p => p.label === 'simple-step-pipeline');
+        check('four pipelines are created (star-sprite + tonemap + nebula-billboard + simple-step) — no hdr-direct bypass',
+                !!spritePipeline && !!tonemapPipeline && !!nebulaPipeline && !!stepPipeline
+                && gpu.pipelines.length === 4,
                 gpu.pipelines.map(p => p.label));
+        check('the simple-step pipeline is a compute pipeline with a main entry',
+                !!stepPipeline && !!stepPipeline.compute && stepPipeline.compute.entryPoint === 'main',
+                stepPipeline && stepPipeline.compute);
         check('the star-sprite pipeline is additive with no depth attachment',
                 spritePipeline.fragment.targets[0].blend.color.srcFactor === 'one'
                 && spritePipeline.fragment.targets[0].blend.color.dstFactor === 'one'
@@ -434,7 +462,7 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 && uniform[26] === Math.fround(rendererModule.MAX_SIZE_PX),
                 { exposure: uniform[24], base: uniform[25], max: uniform[26] });
         check('uniform carries the star time in params.w', uniform[27] === Math.fround(1 / 60), uniform[27]);
-        check('uniform is exactly 176 bytes (camera block + orbit dynamics + wave)', gpu.uniformWrites[gpu.uniformWrites.length - 1].length === 176);
+        check('uniform is exactly 192 bytes (camera block + orbit dynamics + wave + engine)', gpu.uniformWrites[gpu.uniformWrites.length - 1].length === 192);
         // Orbit dynamics ride in dynA/dynB — the per-model numbers the shader
         // must never hard-code (packed by orbit.packOrbitDynamics).
         const fr = Math.fround;
@@ -456,6 +484,13 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 waveA[0] === 0 && waveA[1] === fr(model.arms.m) && waveA[3] === fr(model.arms.phase0)
                 && waveB[0] === fr(model.arms.Rs) && waveB[2] === fr(model.arms.amp) && waveB[3] === 0,
                 { waveA, waveB, arms: model.arms });
+        // The engine lane rides at offset 44: (id, eccMax, 0, 0). Classic is
+        // the default, so the id is 0 on every frame so far.
+        const engine = [uniform[44], uniform[45], uniform[46], uniform[47]];
+        check('uniform engine lane carries (0, eccMax, 0, 0) under the default classic engine',
+                engine[0] === 0 && engine[1] === fr(window.OrbitLib.simpleEccMax(model))
+                && engine[2] === 0 && engine[3] === 0,
+                { engine });
 
         // The tonemap uniform carries linear exposure (x) and white point (y)
         // and is uploaded every frame alongside the camera uniform.
@@ -468,7 +503,12 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 Math.abs(tmu[2] - rendererModule.SATURATION_DEFAULT) < 1e-6, { s: tmu[2], expected: rendererModule.SATURATION_DEFAULT });
         check('tonemap uniform carries output mode w=0 (SDR) because opts.hdr was not set',
                 tmu[3] === 0.0, { w: tmu[3] });
-        check('tonemap uniform is 16 bytes (vec4: exp, wp, sat, outputMode)', gpu.tonemapUniformWrites[0].length === 16, gpu.tonemapUniformWrites[0].length);
+        check('tonemap uniform is 32 bytes (params + headroom/desat vec4)', gpu.tonemapUniformWrites[0].length === 32, gpu.tonemapUniformWrites[0].length);
+        check('tonemap uniform carries the default headroom (8.0, today\'s ceiling)',
+                tmu[4] === Math.fround(rendererModule.HEADROOM_DEFAULT), tmu[4]);
+        check('tonemap uniform carries the default highlight desat (1.0, today\'s film look)',
+                tmu[5] === Math.fround(rendererModule.HIGHLIGHT_DESAT_DEFAULT), tmu[5]);
+        check('tonemap uniform pads floats 6-7 with zero', tmu[6] === 0 && tmu[7] === 0);
 }
 
 // --- Second frame: no re-upload while parked ----------------------------
@@ -587,8 +627,12 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 landmarkKept && aged.landmarkStars === window.Landmarks.count
                 && aged.catalogTotalStars === manifest.starCount && aged.bufferBytes === renderer.state.bufferBytes,
                 { landmarks: aged.landmarkStars, catalog: aged.catalogTotalStars });
+        // -0.84 mag here (was past -1): the young Milky Way is still the
+        // dimmer field — its turnoff giants have not arrived yet — but the
+        // gap shrank with the permanent-giant tail, from 11× to ~2.2× in
+        // luminosity. The offset brightens it back either way.
         check('a young galaxy is a dimmer one, so the offset brightens it back',
-                aged.magOffset < -1 && meanMag(agedView, 2000) < refMean - 0.5,
+                aged.magOffset < -0.5 && meanMag(agedView, 2000) < refMean - 0.5,
                 { offset: +aged.magOffset.toFixed(3), meanMagYoung: +meanMag(agedView, 2000).toFixed(3), meanMagRef: +refMean.toFixed(3) });
 
         // The complementary direction: a new type is a new galaxy, so the field
@@ -793,6 +837,92 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 
 function cellManagerFrom(m, budget) {
         return require('../src/stream/cell-manager.js').createCellManager(m, { budgetStars: budget });
+}
+
+// --- Engine select + simple-step dispatch (0.4.5) ----------------------------
+// A fresh small renderer, so the epoch starts exactly where the checks say.
+// The classic engine dispatches no compute; the simple engine seeds one
+// azimuth per slot, packs the step uniform and dispatches ceil(slots/64)
+// workgroups — and frozen time dispatches nothing under either engine.
+{
+        const engGpu = createMockGpu();
+        const engModel = galaxy.createGalaxy({ seed: 7 });
+        const engRenderer = rendererModule.createStarRenderer(engGpu.device, engGpu.context, engGpu.format, {
+                proceduralStars: 1000,
+                catalogBudgetStars: 0,
+                localProceduralStars: 500,
+                objectMembers: 100,
+                objectCount: 5,
+                model: engModel,
+        });
+        engRenderer.prepare(null);
+        const thetaBuf = engGpu.buffers.find(b => b.label === 'simple-theta');
+        const starBuf = engGpu.buffers.find(b => b.label === 'star-storage');
+        const nebBuf = engGpu.buffers.find(b => b.label === 'nebula-storage');
+        const totalSlots = thetaBuf.size / 4;
+        check('the classic engine is the default and allocates one theta f32 per slot',
+                engRenderer.state.engine === 'classic' && totalSlots === starBuf.size / 16,
+                { engine: engRenderer.state.engine, slots: totalSlots });
+        check('state.bufferBytes counts the star, nebula and theta buffers',
+                engRenderer.state.bufferBytes === starBuf.size + nebBuf.size + thetaBuf.size,
+                { bufferBytes: engRenderer.state.bufferBytes });
+        const fixedSlots = 1000 + window.Landmarks.count + 100;
+        const fixedTheta = engGpu.thetaWrites.find(w => w.offset === 0);
+        const firstTheta = fixedTheta && new Float32Array(
+                fixedTheta.bytes.buffer, fixedTheta.bytes.byteOffset, fixedTheta.bytes.byteLength / 4)[0];
+        check('prepare seeds the fixed-block azimuths from the birth positions',
+                !!fixedTheta && fixedTheta.bytes.byteLength === fixedSlots * 4
+                && Number.isFinite(firstTheta) && Math.abs(firstTheta) <= Math.PI + 1e-6,
+                { bytes: fixedTheta && fixedTheta.bytes.byteLength, firstTheta });
+
+        engRenderer.render(camera, 320, 200, 10, input, 1);
+        const classicUniform = readUniform(engGpu.uniformWrites[engGpu.uniformWrites.length - 1]);
+        check('classic frames carry engine id 0 and dispatch no compute',
+                classicUniform[44] === 0 && engGpu.computePasses.length === 0
+                && engGpu.simpleUniformWrites.length === 0);
+
+        check('setEngine(simple) switches the state and re-seeds the epoch',
+                engRenderer.setEngine('simple') === 'simple'
+                && engGpu.thetaWrites[engGpu.thetaWrites.length - 1].bytes.byteLength === totalSlots * 4,
+                { engine: engRenderer.state.engine });
+        engRenderer.render(camera, 320, 200, 11, input, 1);
+        const simpleUniform = readUniform(engGpu.uniformWrites[engGpu.uniformWrites.length - 1]);
+        const stepUniform = readUniform(engGpu.simpleUniformWrites[engGpu.simpleUniformWrites.length - 1]);
+        const stepPass = engGpu.computePasses[engGpu.computePasses.length - 1];
+        check('simple frames carry engine id 1 with the model eccMax beside it',
+                simpleUniform[44] === 1
+                && simpleUniform[45] === Math.fround(window.OrbitLib.simpleEccMax(engModel)),
+                { id: simpleUniform[44], ecc: simpleUniform[45] });
+        check('a simple frame packs the step uniform (nSub > 0, count = slots)',
+                stepUniform.length === 20 && stepUniform[1] >= 1 && stepUniform[2] === totalSlots
+                && stepUniform[0] > 0,
+                { h: stepUniform[0], nSub: stepUniform[1], count: stepUniform[2] });
+        check('a simple frame dispatches ceil(slots/64) workgroups before the sprites',
+                engGpu.computePasses.length === 1 && stepPass.label === 'simple-step'
+                && stepPass.dispatches.length === 1
+                && stepPass.dispatches[0][0] === Math.ceil(totalSlots / 64),
+                { dispatches: stepPass.dispatches, slots: totalSlots });
+
+        const passesBefore = engGpu.computePasses.length;
+        engRenderer.render(camera, 320, 200, 12, input, 0);
+        check('frozen time dispatches nothing under the simple engine',
+                engGpu.computePasses.length === passesBefore);
+        check('leaving the engine stops the dispatch again',
+                engRenderer.setEngine('classic') === 'classic'
+                && (engRenderer.render(camera, 320, 200, 13, input, 1), engGpu.computePasses.length === passesBefore));
+
+        // Headroom / highlight desat ride the tonemap uniform's second vec4.
+        engRenderer.setHeadroom(4);
+        engRenderer.setHighlightDesat(0);
+        engRenderer.render(camera, 320, 200, 14, input, 0);
+        const tmu = readUniform(engGpu.tonemapUniformWrites[engGpu.tonemapUniformWrites.length - 1]);
+        check('headroom and highlight desat reach the tonemap uniform',
+                tmu[4] === 4 && tmu[5] === 0
+                && engRenderer.state.headroom === 4 && engRenderer.state.highlightDesat === 0,
+                { headroom: tmu[4], desat: tmu[5] });
+        check('headroom clamps to [1, 8] and desat to [0, 1]',
+                engRenderer.setHeadroom(99) === 8 && engRenderer.setHeadroom(-99) === 1
+                && engRenderer.setHighlightDesat(99) === 1 && engRenderer.setHighlightDesat(-99) === 0);
 }
 
 // --- Report -------------------------------------------------------------

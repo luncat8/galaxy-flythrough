@@ -1,16 +1,16 @@
 {
-  "date": "2026-09-22T03:36:10.450Z",
+  "date": "2026-09-24T18:55:41.600Z",
   "seed": 7,
   "sampleSize": 200000,
-  "sampleMs": 222,
-  "deriveMs": 383,
+  "sampleMs": 233,
+  "deriveMs": 409,
   "byClass": {
     "M": 174519,
     "K": 17671,
-    "RG": 4277,
+    "WD": 4408,
     "G": 1764,
+    "RG": 236,
     "B": 234,
-    "WD": 367,
     "F": 945,
     "A": 220,
     "O": 3
@@ -65,16 +65,16 @@
       "fracInLane": 0.23565933179103674
     },
     "WD": {
-      "n": 184,
-      "mean": 0.9214888617839871,
-      "meanZ": 2.365006119454072,
-      "fracInLane": 0.1956521739130435
+      "n": 2017,
+      "mean": 1.0376288912585547,
+      "meanZ": 2.5729067734442244,
+      "fracInLane": 0.13584531482399603
     },
     "RG": {
-      "n": 1940,
-      "mean": 1.0508864274384098,
-      "meanZ": 2.5966481064901723,
-      "fracInLane": 0.13041237113402063
+      "n": 107,
+      "mean": 1.0782817395351758,
+      "meanZ": 2.645845705920391,
+      "fracInLane": 0.14018691588785046
     },
     "RGe": {
       "n": 0,
@@ -90,24 +90,24 @@
         "meanAge": 0.266,
         "oldest": 0.75,
         "obPct": 0.681,
-        "giantPct": 0.211,
-        "wdPct": 0.139
+        "giantPct": 0.035,
+        "wdPct": 0.315
       },
       "thick": {
         "n": 11939,
         "meanAge": 0.561,
         "oldest": 0.9,
         "obPct": 0.369,
-        "giantPct": 0.452,
-        "wdPct": 0.168
+        "giantPct": 0.025,
+        "wdPct": 0.595
       },
       "bulge": {
         "n": 10620,
         "meanAge": 0.704,
         "oldest": 1,
         "obPct": 0.358,
-        "giantPct": 0.414,
-        "wdPct": 0.188
+        "giantPct": 0.028,
+        "wdPct": 0.574
       },
       "halo": {
         "n": 16,
@@ -124,24 +124,24 @@
         "meanAge": 1.414,
         "oldest": 3.75,
         "obPct": 0.267,
-        "giantPct": 0.887,
-        "wdPct": 0.158
+        "giantPct": 0.069,
+        "wdPct": 0.975
       },
       "thick": {
         "n": 11939,
         "meanAge": 2.89,
         "oldest": 4.499,
         "obPct": 0,
-        "giantPct": 1.6,
-        "wdPct": 0.168
+        "giantPct": 0.075,
+        "wdPct": 1.692
       },
       "bulge": {
         "n": 10620,
         "meanAge": 3.567,
         "oldest": 4.999,
         "obPct": 0,
-        "giantPct": 1.667,
-        "wdPct": 0.188
+        "giantPct": 0.047,
+        "wdPct": 1.808
       },
       "halo": {
         "n": 16,
@@ -158,24 +158,24 @@
         "meanAge": 4.618,
         "oldest": 10.125,
         "obPct": 0.179,
-        "giantPct": 1.769,
-        "wdPct": 0.16
+        "giantPct": 0.131,
+        "wdPct": 1.798
       },
       "thick": {
         "n": 11939,
         "meanAge": 8.316,
         "oldest": 12.149,
         "obPct": 0,
-        "giantPct": 2.672,
-        "wdPct": 0.168
+        "giantPct": 0.117,
+        "wdPct": 2.722
       },
       "bulge": {
         "n": 10620,
         "meanAge": 9.914,
         "oldest": 13.498,
         "obPct": 0,
-        "giantPct": 2.928,
-        "wdPct": 0.188
+        "giantPct": 0.151,
+        "wdPct": 2.966
       },
       "halo": {
         "n": 16,
@@ -187,8 +187,8 @@
       }
     }
   },
-  "totalChecks": 42,
-  "passed": 42,
+  "totalChecks": 50,
+  "passed": 50,
   "failed": 0,
   "checks": [
     {
@@ -205,10 +205,10 @@
       "detail": {
         "M": 174519,
         "K": 17671,
-        "RG": 4277,
+        "WD": 4408,
         "G": 1764,
+        "RG": 236,
         "B": 234,
-        "WD": 367,
         "F": 945,
         "A": 220,
         "O": 3
@@ -228,8 +228,8 @@
       "name": "giants and white dwarfs are both present",
       "pass": true,
       "detail": {
-        "RG": 4277,
-        "WD": 367
+        "RG": 236,
+        "WD": 4408
       }
     },
     {
@@ -238,10 +238,10 @@
       "detail": [
         "M",
         "K",
-        "RG",
-        "G",
-        "B",
         "WD",
+        "G",
+        "RG",
+        "B",
         "F",
         "A",
         "O"
@@ -388,7 +388,7 @@
       "name": "giants are a rising share of every component big enough to measure",
       "pass": true,
       "detail": {
-        "thin": 1.769,
+        "thin": 0.131,
         "haloStars": 16
       }
     },
@@ -422,24 +422,24 @@
           "meanAge": 4.618,
           "oldest": 10.125,
           "obPct": 0.179,
-          "giantPct": 1.769,
-          "wdPct": 0.16
+          "giantPct": 0.131,
+          "wdPct": 1.798
         },
         "thick": {
           "n": 11939,
           "meanAge": 8.316,
           "oldest": 12.149,
           "obPct": 0,
-          "giantPct": 2.672,
-          "wdPct": 0.168
+          "giantPct": 0.117,
+          "wdPct": 2.722
         },
         "bulge": {
           "n": 10620,
           "meanAge": 9.914,
           "oldest": 13.498,
           "obPct": 0,
-          "giantPct": 2.928,
-          "wdPct": 0.188
+          "giantPct": 0.151,
+          "wdPct": 2.966
         },
         "halo": {
           "n": 16,
@@ -487,8 +487,8 @@
       "name": "20% of spheroid giants shift one LUT step redder (the RGe slot)",
       "pass": true,
       "detail": {
-        "giants": 656,
-        "share": 0.201
+        "giants": 300,
+        "share": 0.21
       }
     },
     {
@@ -545,6 +545,69 @@
     {
       "name": "stars in an arm are younger than the same population off-arm",
       "pass": true
+    },
+    {
+      "name": "the giant branch lasts 15% of the main-sequence life, capped at 1 Gyr",
+      "pass": true,
+      "detail": {
+        "at1": 1,
+        "at5": 0.0268,
+        "at100": 0.002
+      }
+    },
+    {
+      "name": "the branch shortens with mass (red supergiants included, briefly)",
+      "pass": true
+    },
+    {
+      "name": "the mirror constants are exported for the WGSL diff",
+      "pass": true
+    },
+    {
+      "name": "quenched types are dead: no O/B/A/F at the default age",
+      "pass": true,
+      "detail": {
+        "obPct": 0,
+        "afPct": 0,
+        "giantPct": 0.10166666666666667,
+        "wdPct": 3.4916666666666667,
+        "giantMedian": 0.9493839527189205,
+        "giantMax": 0.9626557184583935,
+        "wdMeanLum": 0.020050151524362445,
+        "wdMeanTeff": 11173.976375484897
+      }
+    },
+    {
+      "name": "quenched giants are a ~0.1% turnoff shell under 1.1 M☉",
+      "pass": true,
+      "detail": {
+        "E4": 0.10166666666666667,
+        "S0median": 0.965
+      }
+    },
+    {
+      "name": "quenched remnants accumulate past 2.5% (they used to saturate at 0.2%)",
+      "pass": true,
+      "detail": {
+        "E4": 3.49,
+        "S0": 3.42
+      }
+    },
+    {
+      "name": "star-forming types keep O/B stars and the supergiant top of the branch",
+      "pass": true,
+      "detail": {
+        "SBb": 0.123,
+        "ScMax": 5.44
+      }
+    },
+    {
+      "name": "star-forming remnants are fewer and hotter than quenched ones",
+      "pass": true,
+      "detail": {
+        "E4teff": 11174,
+        "SBbTeff": 14605
+      }
     }
   ]
 }

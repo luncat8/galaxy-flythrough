@@ -101,6 +101,24 @@
 		return Math.min(15.0, Math.max(0.003, 10.0 * m / luminosityFromMass(m)));
 	}
 
+	// 0.4.5: the giant branch lasts a slice of the main-sequence life — 15%,
+	// clamped to 2 Myr .. 1 Gyr. Massive stars flash through it in Myr (red
+	// supergiants included, briefly, at the top); a solar mass lingers ~1 Gyr
+	// at the cap. Past tMS*1.1 + tGiant the star is a cooling white dwarf, so
+	// giants concentrate at the turnoff instead of accumulating forever and
+	// the old field stops outshining the young one. Mirrored in WGSL as
+	// giantLifetimeGyr (+ the TGIANT_*/WD_* constants below, same names).
+	const TGIANT_FRAC = 0.15;
+	const TGIANT_MIN = 0.002;
+	const TGIANT_MAX = 1.0;
+	const WD_COOL_TAU = 8.0;
+	const WD_TEFF_FLOOR = 4000;
+	const WD_LUM_FLOOR = 0.0005;
+	function giantLifetimeGyr(m) {
+		const t = TGIANT_FRAC * msLifetimeGyr(m);
+		return t < TGIANT_MIN ? TGIANT_MIN : (t > TGIANT_MAX ? TGIANT_MAX : t);
+	}
+
 	// Salpeter IMF sample, dN/dM ~ M^-2.35 on [0.08, 100].
 	function sampleMassIMF(u) {
 		const alpha = 2.35;
@@ -258,20 +276,31 @@
 		const uEvolve2 = hash.hash01(seed * 31 + 5);
 
 		const tMS = msLifetimeGyr(mass);
+		const tDeath = tMS * 1.1 + giantLifetimeGyr(mass);
 
 		let state = 'ms';
 		let teff;
 		let lum;
-		if (age > tMS * 1.1 && mass >= 8.0) {
-			// Massive star past its (short) MS lifetime: remnant.
+		if (age > tDeath) {
+			// Past the giant branch: a cooling white dwarf, fading toward
+			// the floor on an 8 Gyr e-folding. A young remnant reads like
+			// the old massive-channel remnant; a 13 Gyr one is faint and red.
+			const cool = Math.exp(-(age - tDeath) / WD_COOL_TAU);
 			state = 'wd';
-			teff = 8000 + 30000 * uEvolve;
-			lum = 0.001 + 0.1 * uEvolve2;
+			teff = WD_TEFF_FLOOR + (8000 + 30000 * uEvolve - WD_TEFF_FLOOR) * cool;
+			lum = WD_LUM_FLOOR + (0.001 + 0.1 * uEvolve2) * cool;
 		} else if (age > tMS * 1.1) {
-			// Low/intermediate mass: red giant.
-			state = 'giant';
-			teff = 3000 + 1000 * uEvolve;
-			lum = 100 + 10000 * uEvolve2;
+			if (mass >= 8.0) {
+				// Massive star past its (short) MS lifetime: remnant.
+				state = 'wd';
+				teff = 8000 + 30000 * uEvolve;
+				lum = 0.001 + 0.1 * uEvolve2;
+			} else {
+				// Low/intermediate mass: red giant (red supergiant at the top).
+				state = 'giant';
+				teff = 3000 + 1000 * uEvolve;
+				lum = 100 + 10000 * uEvolve2;
+			}
 		} else {
 			teff = teffFromMass(mass);
 			lum = luminosityFromMass(mass);
@@ -413,7 +442,8 @@
 	const StarTypesLib = {
 		MASS_TEFF_TABLE, YOUNG_ARM_MAX_GYR, SFH_TABLE_STEPS, SFH_SOLVE_STEPS,
 		classifyByTempAndState, classColor, luminosityFromMass, teffFromMass,
-		msLifetimeGyr, sampleMassIMF, sampleLocalAge, metallicityFor,
+		msLifetimeGyr, giantLifetimeGyr, sampleMassIMF, sampleLocalAge, metallicityFor,
+		TGIANT_FRAC, TGIANT_MIN, TGIANT_MAX, WD_COOL_TAU, WD_TEFF_FLOOR, WD_LUM_FLOOR,
 		sfhFormationTime, sampleFormationTime, fieldStarSeed, meanFieldLuminosity,
 		absoluteMagnitude, deriveStar, deriveStarWithAge, derivePlanetaryCentral, deriveStarProps,
 		summariseByComponent, classVsArmDistance,

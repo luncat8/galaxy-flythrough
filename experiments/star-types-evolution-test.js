@@ -313,10 +313,12 @@ const armStats = starTypes.classVsArmDistance(stars, model);
 	check('E4: the gradient is flat (no shift at any radius)',
 		Math.abs(eInner - eOuter) < 1e-12, { inner: eInner, outer: eOuter });
 	// Metal-poor spheroid giants: exactly 20% (the uEvolve roll) land one LUT
-	// step redder than RG, in the dedicated RGe slot.
+	// step redder than RG, in the dedicated RGe slot. 200k draws, because
+	// bulge giants are a ~0.15% turnoff shell now, not a 3% tail — 300 of
+	// them pin the share to 0.21 ± sampling noise.
 	let giants = 0;
 	let rgReddened = 0;
-	for (let i = 1; i <= 20000; i++) {
+	for (let i = 1; i <= 200000; i++) {
 		const s = starTypes.deriveStar(model, i * 7919 + 1, density.COMPONENT_BULGE, 1.0, 5.0, {});
 		if (s.state !== 'giant') continue;
 		giants++;
@@ -385,6 +387,73 @@ const armStats = starTypes.classVsArmDistance(stars, model);
 	check('stars in an arm are younger than the same population off-arm',
 		starTypes.sampleLocalAge(model, density.COMPONENT_THIN, 0.1, 8, 0.5, 0.5)
 			< starTypes.sampleLocalAge(model, density.COMPONENT_THIN, 4.0, 8, 0.5, 0.5));
+}
+
+// --- The giant branch is temporary (0.4.5) --------------------------------
+// Below 8 M☉ a star is a giant for a slice of its main-sequence life, then a
+// cooling white dwarf. The branch lifetime is 15% of tMS, clamped to 2 Myr ..
+// 1 Gyr: a solar mass lingers at the cap, a 5 M☉ star flashes through in
+// 27 Myr, and a 100 M☉ star pins the floor.
+{
+	check('the giant branch lasts 15% of the main-sequence life, capped at 1 Gyr',
+		starTypes.giantLifetimeGyr(1) === 1
+		&& Math.abs(starTypes.giantLifetimeGyr(5) - 0.15 * starTypes.msLifetimeGyr(5)) < 1e-12
+		&& starTypes.giantLifetimeGyr(100) === 0.002,
+		{ at1: starTypes.giantLifetimeGyr(1), at5: +starTypes.giantLifetimeGyr(5).toFixed(4), at100: starTypes.giantLifetimeGyr(100) });
+	check('the branch shortens with mass (red supergiants included, briefly)',
+		starTypes.giantLifetimeGyr(8) < starTypes.giantLifetimeGyr(2)
+		&& starTypes.giantLifetimeGyr(2) < starTypes.giantLifetimeGyr(1));
+	check('the mirror constants are exported for the WGSL diff',
+		starTypes.TGIANT_FRAC === 0.15 && starTypes.TGIANT_MIN === 0.002 && starTypes.TGIANT_MAX === 1
+		&& starTypes.WD_COOL_TAU === 8 && starTypes.WD_TEFF_FLOOR === 4000 && starTypes.WD_LUM_FLOOR === 0.0005);
+}
+
+// --- The census per galaxy type (0.4.5) -----------------------------------
+// Quenched types are dead at the default age: no O/B/A/F, giants a ~0.1%
+// turnoff shell under 1.1 M☉, remnants accumulated to ~3.5%. Star-forming
+// types keep O/B and the supergiant top of the branch, with fewer, hotter
+// remnants. One draw serves every type's census (positions are the model's).
+{
+	const CENSUS_N = 60000;
+	const census = {};
+	for (const type of galaxy.GALAXY_TYPES) {
+		const m = galaxy.createGalaxy({ type, seed: 42 });
+		const pos = sampling.sampleGalaxyStars(m, 42, CENSUS_N);
+		const s = { n: 0, ob: 0, af: 0, giant: 0, wd: 0, wdLum: 0, wdTeff: 0, gMax: 0, gMasses: [] };
+		const shared = {};
+		for (let i = 0; i < pos.count; i++) {
+			starTypes.deriveStar(m, starTypes.fieldStarSeed(42, i), pos.component[i], pos.R[i], pos.distToArm[i], shared);
+			s.n++;
+			if (shared.spectralClass === 'O' || shared.spectralClass === 'B') s.ob++;
+			if (shared.spectralClass === 'A' || shared.spectralClass === 'F') s.af++;
+			if (shared.state === 'giant') { s.giant++; s.gMasses.push(shared.mass); if (shared.mass > s.gMax) s.gMax = shared.mass; }
+			if (shared.state === 'wd') { s.wd++; s.wdLum += shared.luminosity; s.wdTeff += shared.teff; }
+		}
+		s.gMasses.sort((a, b) => a - b);
+		census[type] = {
+			obPct: 100 * s.ob / s.n, afPct: 100 * s.af / s.n,
+			giantPct: 100 * s.giant / s.n, wdPct: 100 * s.wd / s.n,
+			giantMedian: s.gMasses.length ? s.gMasses[Math.floor(s.gMasses.length / 2)] : null,
+			giantMax: s.gMax, wdMeanLum: s.wd ? s.wdLum / s.wd : null, wdMeanTeff: s.wd ? s.wdTeff / s.wd : null,
+		};
+	}
+	const quenched = ['E4', 'S0'];
+	const forming = ['Sa', 'Sb', 'SBb', 'Sc', 'Sd', 'SBd', 'Irr'];
+	check('quenched types are dead: no O/B/A/F at the default age',
+		quenched.every((t) => census[t].obPct === 0 && census[t].afPct === 0), census.E4);
+	check('quenched giants are a ~0.1% turnoff shell under 1.1 M☉',
+		quenched.every((t) => census[t].giantPct > 0.05 && census[t].giantPct < 0.25
+			&& census[t].giantMedian > 0.85 && census[t].giantMax < 1.1),
+		{ E4: census.E4.giantPct, S0median: +census.S0.giantMedian.toFixed(3) });
+	check('quenched remnants accumulate past 2.5% (they used to saturate at 0.2%)',
+		quenched.every((t) => census[t].wdPct > 2.5), { E4: +census.E4.wdPct.toFixed(2), S0: +census.S0.wdPct.toFixed(2) });
+	check('star-forming types keep O/B stars and the supergiant top of the branch',
+		forming.every((t) => census[t].obPct > 0.05 && census[t].giantMax > 3),
+		{ SBb: +census.SBb.obPct.toFixed(3), ScMax: +census.Sc.giantMax.toFixed(2) });
+	check('star-forming remnants are fewer and hotter than quenched ones',
+		forming.every((t) => census[t].wdPct > 1 && census[t].wdPct < 3 && census[t].wdMeanTeff > 13000)
+		&& census.E4.wdMeanTeff < 13000 && census.E4.wdMeanLum < census.SBb.wdMeanLum,
+		{ E4teff: Math.round(census.E4.wdMeanTeff), SBbTeff: Math.round(census.SBb.wdMeanTeff) });
 }
 
 // --- Report --------------------------------------------------------------

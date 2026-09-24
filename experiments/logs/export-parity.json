@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-24T13:00:03.910Z",
+  "date": "2026-09-24T18:55:13.106Z",
   "modules": 22,
   "totalChecks": 113,
   "passed": 113,
@@ -185,7 +185,7 @@
       }
     },
     {
-      "name": "StarTypesLib has identical key sets (23 keys)",
+      "name": "StarTypesLib has identical key sets (30 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -217,7 +217,7 @@
       }
     },
     {
-      "name": "OrbitLib has identical key sets (33 keys)",
+      "name": "OrbitLib has identical key sets (64 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -601,7 +601,7 @@
       }
     },
     {
-      "name": "StarRenderer has identical key sets (24 keys)",
+      "name": "StarRenderer has identical key sets (30 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -716,7 +716,8 @@
         "star-sprite",
         "star-sprite-hdr",
         "nebula-billboard",
-        "tonemap"
+        "tonemap",
+        "simple-step"
       ]
     },
     {
@@ -726,6 +727,7 @@
         "pcg-hash",
         "density",
         "orbit",
+        "simple-step",
         "star-sprite",
         "star-sprite-hdr",
         "nebula-billboard",

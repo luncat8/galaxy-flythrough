@@ -46,8 +46,10 @@ function luma(r, g, b) {
 
 // Full fs_main mirror: exposure → luminance compression → chromaticity
 // reconstruction → saturation → highlight desaturation → output clamp.
-// params = { exposure, whitePoint, saturation, outputMode } matching the
-// TonemapUniform vec4f packing in star-sprites.js.
+// params = { exposure, whitePoint, saturation, outputMode, headroom,
+// highlightDesat } matching the two-vec4f TonemapUniform packing in
+// star-sprites.js. headroom/highlightDesat default to today's pixels
+// (8.0 / 1.0) when a caller does not pass them.
 function tonemapPixel(mirror, r, g, b, params) {
 	const hdr = [r * params.exposure, g * params.exposure, b * params.exposure];
 	const lumaIn = Math.max(1e-6, luma(hdr[0], hdr[1], hdr[2]));
@@ -62,8 +64,9 @@ function tonemapPixel(mirror, r, g, b, params) {
 	const over = Math.min(1, Math.max(0, (yNorm - 0.85) / 1.5));
 	const overLuma = luma(mapped[0], mapped[1], mapped[2]);
 	const peakWhite = Math.max(1.0, overLuma);
-	for (let i = 0; i < 3; i++) mapped[i] = mapped[i] + (peakWhite - mapped[i]) * over * over;
-	const ceiling = params.outputMode < 0.5 ? 1.0 : 8.0;
+	const desat = Math.min(1, Math.max(0, params.highlightDesat === undefined ? 1 : params.highlightDesat));
+	for (let i = 0; i < 3; i++) mapped[i] = mapped[i] + (peakWhite - mapped[i]) * over * over * desat;
+	const ceiling = params.outputMode < 0.5 ? 1.0 : Math.max(1, params.headroom === undefined ? 8 : params.headroom);
 	for (let i = 0; i < 3; i++) mapped[i] = Math.min(ceiling, Math.max(0, mapped[i]));
 	return mapped;
 }

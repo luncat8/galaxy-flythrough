@@ -12,7 +12,7 @@ const selectionCoords = (typeof module !== 'undefined' && module.exports)
 	? require('../math/coords.js')
 	: window.Coords;
 const selectionOrbit = (typeof module !== 'undefined' && module.exports)
-	? { orbitPosition: () => {}, familyFromColorIndex: () => 1 }
+	? { orbitPosition: () => {}, familyFromColorIndex: () => 1, getEngine: () => 0 }
 	: window.OrbitLib;
 
 function createSelection(camera, landmarks) {
@@ -31,8 +31,15 @@ function createSelection(camera, landmarks) {
 		for (let i = 0; i < landmarks.count; i++) {
 			let px = pos[i * 3], py = pos[i * 3 + 1], pz = pos[i * 3 + 2];
 			if (orbitModel) {
-				selectionOrbit.orbitPosition(orbitScratch, px, py, pz,
-					selectionOrbit.familyFromColorIndex(landmarks.ENTRIES[i].colorIndex), 0, 0, orbitTime, orbitModel);
+				// 0.4.5: picks ride the simple-engine CPU mirror under that
+				// engine, so the click target is what the GPU draws.
+				if (selectionOrbit.getEngine() === selectionOrbit.ENGINE_SIMPLE
+					&& selectionOrbit.simpleLandmarksReady && selectionOrbit.simpleLandmarksReady()) {
+					selectionOrbit.simpleLandmarkPosition(orbitScratch, i, pz);
+				} else {
+					selectionOrbit.orbitPosition(orbitScratch, px, py, pz,
+						selectionOrbit.familyFromColorIndex(landmarks.ENTRIES[i].colorIndex), 0, 0, orbitTime, orbitModel);
+				}
 				px = orbitScratch[0]; py = orbitScratch[1]; pz = orbitScratch[2];
 			}
 			if (!selectionCoords.projectToScreen(viewProj, px, py, pz,

@@ -1,18 +1,18 @@
 {
-  "date": "2026-09-22T03:35:48.090Z",
-  "mockStars": 4000,
+  "date": "2026-09-24T18:55:15.140Z",
+  "mockStars": 32000,
   "seed": 20240919,
   "summary": {
-    "input": 4000,
-    "kept": 56,
-    "droppedMagnitude": 3931,
+    "input": 32000,
+    "kept": 30,
+    "droppedMagnitude": 31964,
     "droppedQuality": 0,
     "droppedDecimation": 0,
-    "droppedOutOfBounds": 13,
-    "cellCount": 56
+    "droppedOutOfBounds": 6,
+    "cellCount": 30
   },
-  "bundleBytes": 4233,
-  "encodeMs": 1,
+  "bundleBytes": 2598,
+  "encodeMs": 3,
   "totalChecks": 31,
   "passed": 31,
   "failed": 0,
@@ -36,7 +36,7 @@
     {
       "name": "mock generation returns the requested star count",
       "pass": true,
-      "detail": 4000
+      "detail": 32000
     },
     {
       "name": "mock stars carry the fields the encoder reads",
@@ -60,14 +60,14 @@
       "name": "the magnitude cut removes exactly the stars fainter than the limit",
       "pass": true,
       "detail": {
-        "overLimit": 3931,
-        "droppedMagnitude": 3931
+        "overLimit": 31964,
+        "droppedMagnitude": 31964
       }
     },
     {
       "name": "the encoder keeps a usable sample",
       "pass": true,
-      "detail": 56
+      "detail": 30
     },
     {
       "name": "every encoded star lies inside the outermost band",
@@ -81,26 +81,26 @@
       "name": "every dropped star is accounted for",
       "pass": true,
       "detail": {
-        "input": 4000,
-        "kept": 56,
-        "droppedMagnitude": 3931,
+        "input": 32000,
+        "kept": 30,
+        "droppedMagnitude": 31964,
         "droppedQuality": 0,
         "droppedDecimation": 0,
-        "droppedOutOfBounds": 13,
-        "cellCount": 56
+        "droppedOutOfBounds": 6,
+        "cellCount": 30
       }
     },
     {
       "name": "the encoder produces cells",
       "pass": true,
-      "detail": 56
+      "detail": 30
     },
     {
       "name": "cell payloads hold exactly the kept stars",
       "pass": true,
       "detail": {
-        "totalInTiles": 56,
-        "kept": 56
+        "totalInTiles": 30,
+        "kept": 30
       }
     },
     {
@@ -122,8 +122,8 @@
       "name": "the bundle counts match the tiles",
       "pass": true,
       "detail": {
-        "stars": 56,
-        "cells": 56
+        "stars": 30,
+        "cells": 30
       }
     },
     {
@@ -156,7 +156,7 @@
     {
       "name": "the written bundle is a plausible size",
       "pass": true,
-      "detail": 4233
+      "detail": 2598
     },
     {
       "name": "the bundle file hands back the same object",
@@ -182,14 +182,14 @@
       "name": "every star in the bundle decodes",
       "pass": true,
       "detail": {
-        "decodedStars": 56,
-        "expected": 56
+        "decodedStars": 30,
+        "expected": 30
       }
     },
     {
       "name": "every cell decodes",
       "pass": true,
-      "detail": 56
+      "detail": 30
     },
     {
       "name": "decoded positions lie inside their own cell",

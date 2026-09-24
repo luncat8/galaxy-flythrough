@@ -565,6 +565,96 @@ fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, d
         let bx: f32 = q.x + wrx; let by: f32 = q.y + wry;
         return centre + vec3f(c * bx - sn * by, sn * bx + c * by, q.z + wz);
 }
+
+// 0.4.5 simple engine: reconstruct from the integrated azimuth. Mirrors
+// orbit.simplePositionFromTheta. Family-agnostic except for the eccentric
+// rho, which only disc/pattern carry; the birth height is kept exactly.
+fn simplePosition(p: vec3f, packed: u32, theta: f32, centre: vec3f, eccMax: f32) -> vec3f {
+        let flags: u32 = (packed >> 16u) & 0xFFu;
+        let family: u32 = (flags >> 3u) & 3u;
+        let q: vec3f = p - centre;
+        let r0: f32 = length(q.xy);
+        var rho: f32 = r0;
+        if ((family == FAMILY_DISC || family == FAMILY_PATTERN) && eccMax > 0.0 && r0 > 0.0) {
+                let eccU: f32 = (f32((packed >> 28u) & 15u) + 0.5) * 0.0625;
+                let peri: f32 = f32((packed >> 24u) & 15u) * 0.392699081699;
+                rho = r0 * (1.0 + eccMax * eccU * cos(theta - peri));
+        }
+        return centre + vec3f(rho * cos(theta), rho * sin(theta), q.z);
+}
+`;
+
+const SIMPLE_STEP = `
+// 0.4.5 simple-engine integrator: the friction-field port of orbit.js
+// (simpleOmega). One Euler chain per star per frame over the frame's substeps,
+// D recomputed every substep — that feedback is the jam. Concatenated after
+// the orbit part for the family constants and the pressure clock.
+//
+// Guards, mirroring the CPU: invisible slots and the centre early-out (no
+// log(0)), unarmed packs m = 0 and skips D, the minRadius skip reads the
+// birth radius. theta is wrapped every frame so f32 never holds a large angle.
+
+struct SimpleUniform {
+        stepA: vec4f,   // h, nSub, count, patternPhase
+        stepB: vec4f,   // vFlat, rCore, omegaP, spinLambda
+        stepC: vec4f,   // eccMax, m, invTanPitch, armOffset
+        stepD: vec4f,   // inv2sig2, Rs, minRadius, centreX
+        stepE: vec4f,   // damping, centreY, centreZ, 0
+};
+
+struct StepStar {
+        x: f32,
+        y: f32,
+        z: f32,
+        packed: u32,
+};
+
+@group(0) @binding(0) var<uniform> simple: SimpleUniform;
+@group(0) @binding(1) var<storage, read> stepStars: array<StepStar>;
+@group(0) @binding(2) var<storage, read_write> stepTheta: array<f32>;
+
+const SIMPLE_R_MIN: f32 = 0.001;
+const SIMPLE_MASK_VISIBLE: u32 = 0x00010000u;
+
+fn simpleOmega(th: f32, r0: f32, eccU: f32, peri: f32, family: u32) -> f32 {
+        if (family == FAMILY_BAR) {
+                if (simple.stepB.z > 0.0) { return simple.stepB.z; }
+                return simple.stepB.x / max(r0, simple.stepB.y);
+        }
+        if (family == FAMILY_PRESSURE) {
+                return simple.stepB.w * pressureClock(vec4f(simple.stepB.x, simple.stepB.y, 0.0, 0.0), r0);
+        }
+        let rr: f32 = max(r0, SIMPLE_R_MIN);
+        let rho: f32 = rr * (1.0 + simple.stepC.x * eccU * cos(th - peri));
+        let circ: f32 = simple.stepB.x / max(rho, simple.stepB.y);
+        if (simple.stepC.y < 1.0 || r0 < simple.stepD.z) { return circ; }
+        let base: f32 = log(rho / simple.stepD.y) * simple.stepC.z + simple.stepA.w;
+        var delta: f32 = (th - base) - simple.stepC.w * floor((th - base) / simple.stepC.w);
+        if (delta > simple.stepC.w * 0.5) { delta = delta - simple.stepC.w; }
+        let damp: f32 = exp(-delta * delta * simple.stepD.x);
+        return circ * (1.0 - simple.stepE.x * damp);
+}
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3u) {
+        let idx: u32 = gid.x;
+        if (idx >= u32(simple.stepA.z)) { return; }
+        let star: StepStar = stepStars[idx];
+        if ((star.packed & SIMPLE_MASK_VISIBLE) == 0u) { return; }
+        let qx: f32 = star.x - simple.stepD.w;
+        let qy: f32 = star.y - simple.stepE.y;
+        let r0: f32 = length(vec2f(qx, qy));
+        let family: u32 = (star.packed >> 19u) & 3u;
+        let eccU: f32 = (f32((star.packed >> 28u) & 15u) + 0.5) * 0.0625;
+        let peri: f32 = f32((star.packed >> 24u) & 15u) * 0.392699081699;
+        var th: f32 = stepTheta[idx];
+        let nSub: u32 = u32(simple.stepA.y);
+        let h: f32 = simple.stepA.x;
+        for (var s: u32 = 0u; s < nSub; s = s + 1u) {
+                th = th + simpleOmega(th, r0, eccU, peri, family) * h;
+        }
+        stepTheta[idx] = TAU * fract(th * INV_TAU);
+}
 `;
 
 const STAR_SPRITE = `${ORBIT}
@@ -595,6 +685,9 @@ struct CameraUniform {
         // struct and do not read the pair — gas stays on the pattern.
         waveA: vec4f,       // damping, m, K, phase0
         waveB: vec4f,       // Rs, minRadius, amp, 0
+        // Engine select packed by orbit.packEngineVec: (id, eccMax, 0, 0).
+        // Nebulae share this struct and ignore the lane.
+        engine: vec4f,
 };
 
 struct StarPacked {
@@ -607,6 +700,7 @@ struct StarPacked {
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
 @group(0) @binding(1) var<storage, read> stars: array<StarPacked>;
 @group(0) @binding(2) var colorLUT: texture_2d<f32>;
+@group(0) @binding(3) var<storage, read> theta: array<f32>;   // simple-engine azimuths
 
 struct VertexOut {
         @builtin(position) clipPos: vec4f,
@@ -655,8 +749,16 @@ fn vs_main(
                 return hidden(vid);
         }
 
-        let moved: vec3f = orbitPosition(vec3f(star.x, star.y, star.z), star.packed,
-                vec3f(camera.cameraPos.w, 0.0, 0.0), camera.params.w, camera.dynA, camera.dynB, camera.waveA, camera.waveB);
+        // 0.4.5 engine branch: uniform control flow, no divergence. The simple
+        // lane reconstructs from the compute-integrated azimuth in binding 3.
+        var moved: vec3f;
+        if (camera.engine.x > 0.5) {
+                moved = simplePosition(vec3f(star.x, star.y, star.z), star.packed,
+                        theta[starIdx], vec3f(camera.cameraPos.w, 0.0, 0.0), camera.engine.y);
+        } else {
+                moved = orbitPosition(vec3f(star.x, star.y, star.z), star.packed,
+                        vec3f(camera.cameraPos.w, 0.0, 0.0), camera.params.w, camera.dynA, camera.dynB, camera.waveA, camera.waveB);
+        }
         let rel: vec3f = moved - camera.cameraPos.xyz;
         let clip: vec4f = camera.viewProj * vec4f(rel.x, rel.y, rel.z, 1.0);
         if (clip.w <= 0.0) {
@@ -881,9 +983,16 @@ const TONEMAP = `
 //       kept)
 //   z = saturation (0.5 greyscale … 3.0 hyper-saturated, 1.0 natural)
 //   w = output mode (0.0 = SDR clamp to [0,1], 1.0 = HDR allow >1)
+// 0.4.5 second vec4:
+//   x = headroom (HDR ceiling, 1..8; matches the display-nits mapping of
+//       the demo present pass — 4 ≈ 400 nits on a 100-nit reference)
+//   y = highlight desaturation (0 = keep pure hues to any peak, 1 =
+//       today's film fade to white)
+//   z, w = 0
 
 struct TonemapUniform {
 	params: vec4f,
+	params2: vec4f,
 };
 
 @group(0) @binding(0) var<uniform> u: TonemapUniform;
@@ -953,17 +1062,17 @@ fn fs_main(@builtin(position) fragCoord: vec4f) -> @location(0) vec4f {
 	// reaches full white at ~2× the white point.
 	let over: f32 = clamp((yNorm - 0.85) / 1.5, 0.0, 1.0);
 	let overLuma: f32 = dot(mapped, vec3f(LUMA_R, LUMA_G, LUMA_B));
-	mapped = mix(mapped, vec3f(max(1.0, overLuma)), over * over);
+	mapped = mix(mapped, vec3f(max(1.0, overLuma)), over * over * clamp(u.params2.y, 0.0, 1.0));
 
 	// --- Output mode ----------------------------------------------------
 	// w = 0 (SDR): clamp to [0,1], canvas does sRGB encode.
-	// w = 1 (HDR): clamp to a generous ceiling (4.0 ≈ 400 nits on a
-	// 100-nit reference), canvas uses toneMapping:'extended' so values
-	// >1 reach the monitor's headroom.
+	// w = 1 (HDR): clamp to the headroom knob (default 8.0, today's
+	// ceiling; 4.0 ≈ 400 nits on a 100-nit reference), canvas uses
+	// toneMapping:'extended' so values >1 reach the monitor's headroom.
 	if (u.params.w < 0.5) {
 		mapped = clamp(mapped, vec3f(0.0), vec3f(1.0));
 	} else {
-		mapped = clamp(mapped, vec3f(0.0), vec3f(8.0));
+		mapped = clamp(mapped, vec3f(0.0), vec3f(max(1.0, u.params2.x)));
 	}
 
 	return vec4f(mapped, 1.0);
@@ -1043,6 +1152,20 @@ fn teffFromMass(m: f32) -> f32 {
 
 fn msLifetimeGyr(m: f32) -> f32 {
         return min(15.0, max(0.003, 10.0 * m / luminosityFromMass(m)));
+}
+
+// 0.4.5: the giant branch lasts a slice of the main-sequence life, then the
+// star is a cooling remnant. Mirrors star-types.giantLifetimeGyr exactly —
+// the deadline all evolution states downstream hang off.
+const TGIANT_FRAC: f32 = 0.15;
+const TGIANT_MIN: f32 = 0.002;
+const TGIANT_MAX: f32 = 1.0;
+const WD_COOL_TAU: f32 = 8.0;
+const WD_TEFF_FLOOR: f32 = 4000.0;
+const WD_LUM_FLOOR: f32 = 0.0005;
+
+fn giantLifetimeGyr(m: f32) -> f32 {
+        return clamp(TGIANT_FRAC * msLifetimeGyr(m), TGIANT_MIN, TGIANT_MAX);
 }
 
 fn sampleMassIMF(u: f32) -> f32 {
@@ -1179,10 +1302,21 @@ fn main(@global_invocation_id gid: vec3u) {
                 let mass: f32 = sampleMassIMF(hash01(slotSeed * 31u + 1u));
                 let age: f32 = sampleLocalAge(densityParams, component, distToArm, R, hash01(slotSeed * 31u + 2u), hash01(slotSeed * 31u + 3u));
 
+                // 0.4.5: below 8 Msun the giant branch is temporary — past
+                // tMS*1.1 + tGiant the star is a cooling white dwarf, as in
+                // star-types.evolveStar. Giants concentrate at the turnoff
+                // instead of accumulating forever.
                 var state: u32 = 0u;
                 var teff: f32 = teffFromMass(mass);
                 var lum: f32 = luminosityFromMass(mass);
-                if (age > msLifetimeGyr(mass) * 1.1) {
+                let tMS: f32 = msLifetimeGyr(mass);
+                let tDeath: f32 = tMS * 1.1 + giantLifetimeGyr(mass);
+                if (age > tDeath) {
+                        state = 1u;
+                        let cool: f32 = exp(-(age - tDeath) / WD_COOL_TAU);
+                        teff = WD_TEFF_FLOOR + (8000.0 + 30000.0 * hash01(slotSeed * 31u + 4u) - WD_TEFF_FLOOR) * cool;
+                        lum = WD_LUM_FLOOR + (0.001 + 0.1 * hash01(slotSeed * 31u + 5u)) * cool;
+                } else if (age > tMS * 1.1) {
                         if (mass >= 8.0) {
                                 state = 1u;
                                 teff = 8000.0 + 30000.0 * hash01(slotSeed * 31u + 4u);
@@ -1357,6 +1491,7 @@ struct CameraUniform {
         dynB: vec4f,
         waveA: vec4f,       // shared layout with the star shader; nebulae ignore it
         waveB: vec4f,
+        engine: vec4f,      // engine select lane; nebulae ignore it (gas rides the pattern)
 };
 
 struct NebulaPacked {
@@ -1464,6 +1599,7 @@ const SHADER_PARTS = {
         'pcg-hash': PCG_HASH,
         'density': DENSITY,
         'orbit': ORBIT,
+        'simple-step': SIMPLE_STEP,
         'star-sprite': STAR_SPRITE,
         'star-sprite-hdr': STAR_SPRITE_HDR,
         'nebula-billboard': NEBULA_BILLBOARD,
@@ -1481,11 +1617,13 @@ const SHADERS = {
         'tonemap': TONEMAP,
         'procedural-gen': PCG_HASH + DENSITY + PROCEDURAL_GEN,
         'cull': PCG_HASH + CULL,
+        'simple-step': ORBIT + SIMPLE_STEP,
 };
 
 // Wired shaders: the renderer compiles star-sprite + nebula-billboard + tonemap
-// every frame. star-sprite-hdr is kept as a reference module and is not bound.
-const WIRED_SHADERS = ['star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap'];
+// every frame, plus simple-step when the simple engine is selected.
+// star-sprite-hdr is kept as a reference module and is not bound.
+const WIRED_SHADERS = ['star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'simple-step'];
 
 const GalaxyShaders = { SHADERS, SHADER_PARTS, WIRED_SHADERS };
 if (typeof module !== 'undefined') module.exports = GalaxyShaders;

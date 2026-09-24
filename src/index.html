@@ -36,6 +36,16 @@
                         <input type="range" id="slider-saturation" min="0.5" max="3" step="0.05" value="1.4">
                         <span id="val-saturation" class="menu-val">1.6×</span>
                 </div>
+                <div class="menu-row">
+                        <label for="slider-headroom" title="HDR output ceiling. 8 is today's ceiling; 4 ≈ 400 nits on a 100-nit reference. SDR output is unaffected.">Headroom</label>
+                        <input type="range" id="slider-headroom" min="1" max="8" step="0.5" value="8">
+                        <span id="val-headroom" class="menu-val">8.0</span>
+                </div>
+                <div class="menu-row">
+                        <label for="slider-highlight" title="Filmic fade of bright cores to white. 0 keeps pure hues to any peak.">Highlight desat</label>
+                        <input type="range" id="slider-highlight" min="0" max="1" step="0.05" value="1">
+                        <span id="val-highlight" class="menu-val">1.00</span>
+                </div>
                 <div class="menu-header menu-header-galaxy">
                         <span>Galaxy</span>
                 </div>
@@ -48,6 +58,14 @@
                         <label for="slider-wave" title="Disc stars drift onto the spiral and stay. 0 is pure shear.">Wave damping</label>
                         <input type="range" id="slider-wave" min="0" max="1" step="0.05" value="0.6">
                         <span id="val-wave" class="menu-val">0.60</span>
+                </div>
+                <div class="menu-row">
+                        <label for="engine" title="Star-motion math. Classic is the exact closed form; simple is the integrated friction field (resets its epoch on switch).">Engine</label>
+                        <select id="engine">
+                                <option value="classic" selected>classic</option>
+                                <option value="simple">simple</option>
+                        </select>
+                        <span id="val-engine" class="menu-val">closed form</span>
                 </div>
                 <div class="menu-row">
                         <label for="galaxy-type">Type <span class="kbd">G</span></label>

@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-24T13:00:04.022Z",
+  "date": "2026-09-24T18:55:13.195Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -167,14 +167,14 @@
       "name": "StarTypesLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 23
+        "keys": 30
       }
     },
     {
       "name": "OrbitLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 33
+        "keys": 64
       }
     },
     {
@@ -258,7 +258,7 @@
       "name": "StarRenderer loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 24
+        "keys": 30
       }
     },
     {
@@ -339,7 +339,8 @@
         "exposure": 22,
         "seed": 7,
         "type": null,
-        "age": 13.5
+        "age": 13.5,
+        "engine": "classic"
       }
     },
     {
@@ -351,7 +352,8 @@
         "exposure": null,
         "seed": 42,
         "type": null,
-        "age": 13.5
+        "age": 13.5,
+        "engine": "classic"
       }
     },
     {
@@ -363,7 +365,8 @@
         "exposure": null,
         "seed": 42,
         "type": null,
-        "age": 13.5
+        "age": 13.5,
+        "engine": "classic"
       }
     },
     {

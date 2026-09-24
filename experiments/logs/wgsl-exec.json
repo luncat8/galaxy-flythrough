@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-24T13:02:47.894Z",
+  "date": "2026-09-24T18:54:29.530Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 88,
-  "passed": 88,
+  "totalChecks": 102,
+  "passed": 102,
   "failed": 0,
   "checks": [
     {
@@ -32,6 +32,11 @@
     },
     {
       "name": "cull: the shipped source parses as WGSL",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "simple-step: the shipped source parses as WGSL",
       "pass": true,
       "detail": null
     },
@@ -198,6 +203,77 @@
         "shear": [
           5.865352620316133,
           1.97573583851609
+        ]
+      }
+    },
+    {
+      "name": "on-WGSL: engine 1 rebuilds the quarter-turn position from the azimuth (< 2 pc)",
+      "pass": true,
+      "detail": {
+        "gpu": [
+          8.17800053914388,
+          8.178000475918806
+        ],
+        "cpu": [
+          8.178,
+          8.178000900268554
+        ]
+      }
+    },
+    {
+      "name": "on-WGSL: the eccentric rho shapes the rebuilt radius at theta = 0",
+      "pass": true,
+      "detail": {
+        "gpu": [
+          16.40711316426595,
+          -2.1263405128768738e-7
+        ],
+        "cpu": [
+          16.407113405895235,
+          0
+        ]
+      }
+    },
+    {
+      "name": "on-WGSL: that radius is eccentric, not the birth circle (off by 51 pc)",
+      "pass": true,
+      "detail": {
+        "x": 16.40711316426595,
+        "circular": 16.356
+      }
+    },
+    {
+      "name": "on-WGSL: all 64 simple-step invocations run to completion",
+      "pass": true
+    },
+    {
+      "name": "on-WGSL: the kernel matches the CPU law on every live slot (< 1e-4 rad)",
+      "pass": true,
+      "detail": {
+        "worstRad": 5.291714391120195e-7,
+        "slot": 8,
+        "nan": -1
+      }
+    },
+    {
+      "name": "on-WGSL: the centre steps without a NaN (the minRadius skip holds)",
+      "pass": true,
+      "detail": {
+        "in": -0.5515926480293274,
+        "out": 5.799092769622803
+      }
+    },
+    {
+      "name": "on-WGSL: invisible slots and slots past count keep their input azimuth",
+      "pass": true,
+      "detail": {
+        "invisible": [
+          1.6684073209762573,
+          1.6684073209762573
+        ],
+        "guard": [
+          7.769999980926514,
+          7.769999980926514
         ]
       }
     },
@@ -416,6 +492,51 @@
         0,
         0,
         0,
+        1
+      ]
+    },
+    {
+      "name": "on-WGSL: the knob pixels match the JS mirror (< 2e-3)",
+      "pass": true,
+      "detail": {
+        "worst": 4.457677424962725e-7,
+        "kase": {
+          "rgb": [
+            3,
+            1,
+            0.5
+          ],
+          "out": [
+            2,
+            1.1753461360931396,
+            0.5876730680465698,
+            1
+          ],
+          "model": [
+            2,
+            1.1753456903253972,
+            0.5876728451626987
+          ]
+        }
+      }
+    },
+    {
+      "name": "on-WGSL: desat 0 keeps (0, 0, 200) pure blue to the peak",
+      "pass": true,
+      "detail": [
+        0,
+        0,
+        8,
+        1
+      ]
+    },
+    {
+      "name": "on-WGSL: headroom 4 ceilings the same pile-up at exactly 4",
+      "pass": true,
+      "detail": [
+        4,
+        4,
+        4,
         1
       ]
     },
@@ -1051,6 +1172,83 @@
       "pass": true,
       "detail": {
         "worstGyr": 0.00041
+      }
+    },
+    {
+      "name": "the seed scan covers ms/giant/wd/massive at both epochs",
+      "pass": true,
+      "detail": [
+        {
+          "age": 11.35,
+          "ms": 3,
+          "giant": 3,
+          "wd": 3,
+          "massive": 3
+        },
+        {
+          "age": 0.5,
+          "ms": 3,
+          "giant": 3,
+          "wd": 3,
+          "massive": 3
+        }
+      ]
+    },
+    {
+      "name": "executed evolution WGSL picks the same state as deriveStarWithAge",
+      "pass": true,
+      "detail": {
+        "age": 0.5,
+        "key": "giant",
+        "seed": 18501,
+        "actual": [
+          9386.9609375,
+          3267.7890625,
+          2,
+          -5.101313591003418
+        ],
+        "probe": {
+          "mass": 3.4996611958384825,
+          "uA": 0.2677890688646585,
+          "uB": 0.9286960852332413,
+          "age": 0.5,
+          "lum": 9386.960852332413,
+          "teff": 3267.7890688646585,
+          "state": "giant",
+          "absMag": -5.101312516686727,
+          "seed": 18501
+        }
+      }
+    },
+    {
+      "name": "executed evolution WGSL matches lum/teff (< 1e-3) and absMag (< 0.01)",
+      "pass": true,
+      "detail": {
+        "worstLum": 2.14e-7,
+        "worstTeff": 4.62e-7,
+        "worstMag": 0.00000107,
+        "kase": {
+          "age": 0.5,
+          "key": "giant",
+          "seed": 18501,
+          "actual": [
+            9386.9609375,
+            3267.7890625,
+            2,
+            -5.101313591003418
+          ],
+          "probe": {
+            "mass": 3.4996611958384825,
+            "uA": 0.2677890688646585,
+            "uB": 0.9286960852332413,
+            "age": 0.5,
+            "lum": 9386.960852332413,
+            "teff": 3267.7890688646585,
+            "state": "giant",
+            "absMag": -5.101312516686727,
+            "seed": 18501
+          }
+        }
       }
     }
   ]

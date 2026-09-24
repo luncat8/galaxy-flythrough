@@ -26,6 +26,7 @@ require('../src/render/shaders.js');
 const records = require('../src/math/star-record.js');
 const shaders = require('../src/render/shaders.js');
 const orbit = require('../src/math/orbit.js');
+const galaxy = require('../src/math/galaxy.js');
 const mirrorLib = require('./tonemap-mirror.js');
 
 const checks = [];
@@ -122,14 +123,19 @@ async function main() {
 	// x' = x, y' = y, w' = -z: a star on -Z projects to the viewport centre.
 	const viewProj = new Float32Array(16);
 	viewProj[0] = 1; viewProj[5] = 1; viewProj[11] = -1; viewProj[14] = 1;
-	// 176 bytes: camera block (16+4+4+4) + orbit dynA/dynB/waveA/waveB (16).
-	// The dyn and wave slots stay zero for the radiance fixtures: family bits
-	// in the fixture records are 0 (pattern), omega = dynA.z = 0, T = 0 — frozen.
-	const cameraBytes = new ArrayBuffer(44 * 4);
+	// 192 bytes: camera block (16+4+4+4) + orbit dynA/dynB/waveA/waveB (16)
+	// + engine lane (id, eccMax, 0, 0). The dyn, wave and engine slots stay
+	// zero for the radiance fixtures: family bits in the fixture records are
+	// 0 (pattern), omega = dynA.z = 0, T = 0 — frozen under the classic engine.
+	const cameraBytes = new ArrayBuffer(48 * 4);
 	const cam = new Float32Array(cameraBytes);
 	cam.set(viewProj, 0);
 	cam[20] = 1920; cam[21] = 1080; cam[22] = 2 / 1920; cam[23] = 2 / 1080;
 	cam[24] = MAG_ZERO; cam[25] = BASE_SIZE_PX; cam[26] = MAX_SIZE_PX; cam[27] = 0;
+	// The simple-engine azimuth array the renderer always binds (binding 3).
+	// Classic fixtures never read it — engine id 0 — but the simple fixtures
+	// below step and reconstruct through it.
+	const thetaBytes = new ArrayBuffer(64 * 4);
 
 	// The real LUT the renderer uploads. WgslDebug's textureLoad returns the
 	// stored texel as bytes/255 (the GPU's -srgb format linearises on sample,
@@ -142,6 +148,7 @@ async function main() {
 			0: { uniform: cameraBytes },
 			1: starBytes,
 			2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
+			3: thetaBytes,
 		},
 	};
 
@@ -188,9 +195,11 @@ async function main() {
 	// dynA/dynB, identity viewProj and the camera 5 kpc up +Y, so clip.xy is
 	// (moved.x, moved.y − 5) plus the same sub-pixel corner offset in both
 	// runs. Half a period later the star must be at x ≈ 8.178 + 8.178.
-	// 176 bytes, matching CameraUniform. waveA/waveB stay 0, so this fixture
+	// 192 bytes, matching CameraUniform. waveA/waveB stay 0, so this fixture
 	// measures the undamped 0.4.3 law (damping 0 is the shear, bit for bit).
-	const orbitCamBytes = new ArrayBuffer(44 * 4);
+	// The engine lane stays 0 here — the simple reconstruction gets its own
+	// fixture in 2e below.
+	const orbitCamBytes = new ArrayBuffer(48 * 4);
 	const ocam = new Float32Array(orbitCamBytes);
 	ocam[0] = 1; ocam[5] = 1; ocam[10] = 1; ocam[15] = 1;   // identity viewProj
 	ocam[17] = 5;                                           // camera y
@@ -212,6 +221,7 @@ async function main() {
 			0: { uniform: orbitCamBytes },
 			1: sunBytes,
 			2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
+			3: thetaBytes,
 		},
 	};
 	const sunOmega = 0.225 / 8.178;
@@ -261,6 +271,7 @@ async function main() {
 			0: { uniform: orbitCamBytes },
 			1: barBytes,
 			2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
+			3: thetaBytes,
 		},
 	};
 	// The same numbers the uniform carries, as a model the CPU law can read.
@@ -333,6 +344,7 @@ async function main() {
 			0: { uniform: orbitCamBytes },
 			1: capBytes,
 			2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
+			3: thetaBytes,
 		},
 	};
 	const capT = 200;
@@ -359,6 +371,134 @@ async function main() {
 	orbit.setWaveDamping(0);
 	ocam.set(savedWave, 36);
 
+	// --- 2e. The simple-engine reconstruction runs on the shipping WGSL ----
+	// Engine id 1 in the uniform lane: the vertex ignores the orbit law and
+	// rebuilds the position from the integrated azimuth, birth radius and the
+	// eccentric rho. Same camera as 2b (identity, 5 kpc up, centre x = 8.178);
+	// the star is born at (16.356, 0, 0), family disc, jitter 0x00
+	// (eccU = 0.03125, peri = 0), eccMax = 0.2 in the engine lane.
+	const simBytes = new ArrayBuffer(records.RECORD_BYTES);
+	const simF = new Float32Array(simBytes);
+	const simU = new Uint32Array(simBytes);
+	simF[0] = 8.178 + 8.178; simF[1] = 0; simF[2] = 0;
+	simU[3] = ((records.FLAG_VISIBLE | (1 << 3)) << 16) | (records.encodeAbsMag(4.83) << 8) | 4;
+	const simThetaBytes = new ArrayBuffer(4);
+	const simTheta = new Float32Array(simThetaBytes);
+	const simBinds = {
+		0: {
+			0: { uniform: orbitCamBytes },
+			1: simBytes,
+			2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
+			3: simThetaBytes,
+		},
+	};
+	const simModel = { centre: { x: 8.178, y: 0, z: 0 } };
+	const simCpu = new Float64Array(3);
+	ocam[44] = 1; ocam[45] = 0.2;
+	simTheta[0] = Math.PI / 2;
+	const simQuarter = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 0 }, simBinds);
+	orbit.simplePositionFromTheta(simCpu, Math.PI / 2, simF[0], simF[1], simF[2], 0,
+		orbit.FAMILY_DISC, 0.2, simModel);
+	check('on-WGSL: engine 1 rebuilds the quarter-turn position from the azimuth (< 2 pc)',
+		Math.abs((simQuarter.clipPos[0] - offX) - simCpu[0]) < 2e-3
+		&& Math.abs((simQuarter.clipPos[1] + 5 - offY) - simCpu[1]) < 2e-3,
+		{ gpu: [simQuarter.clipPos[0] - offX, simQuarter.clipPos[1] + 5 - offY],
+			cpu: [simCpu[0], simCpu[1]] });
+	simTheta[0] = 0;
+	const simZero = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 0 }, simBinds);
+	orbit.simplePositionFromTheta(simCpu, 0, simF[0], simF[1], simF[2], 0,
+		orbit.FAMILY_DISC, 0.2, simModel);
+	check('on-WGSL: the eccentric rho shapes the rebuilt radius at theta = 0',
+		Math.abs((simZero.clipPos[0] - offX) - simCpu[0]) < 2e-3
+		&& Math.abs((simZero.clipPos[1] + 5 - offY) - simCpu[1]) < 2e-3,
+		{ gpu: [simZero.clipPos[0] - offX, simZero.clipPos[1] + 5 - offY],
+			cpu: [simCpu[0], simCpu[1]] });
+	// With eccMax read as 0 the radius would be exactly the birth 8.178 —
+	// the rebuilt x would sit at 16.356, 51 pc inside the eccentric answer.
+	check('on-WGSL: that radius is eccentric, not the birth circle (off by 51 pc)',
+		Math.abs((simZero.clipPos[0] - offX) - 16.356) > 0.01,
+		{ x: simZero.clipPos[0] - offX, circular: 16.356 });
+	ocam[44] = 0; ocam[45] = 0;
+
+	// --- 2f. The simple-step kernel runs on the shipping WGSL --------------
+	// The real compute entry, one workgroup of 64, driven invocation by
+	// invocation through debugWorkgroup: WgslDebug runs exactly the invocation
+	// whose global id matches, and the shared buffers persist across the
+	// re-armed sessions, so all 64 slots land in one theta array. (The fast
+	// path, WgslExec.dispatchWorkgroups, mis-executes this kernel — omega
+	// comes out exactly 4×, n = 1 included — so the suite does not use it.
+	// Probably a library bug in the exec path's struct/uniform reads; the
+	// debug path agrees with the CPU law to f32 rounding, below.)
+	// Fixture: an SBb at T = 0 stepped 1 Myr, all four families, jitter ranks
+	// 0x00/0xff/0xa5/0x5a, the centre (R = 0, no log(0)), one invisible slot,
+	// and count = 60 so slots 60–63 prove the guard.
+	{
+		const stepModel = galaxy.createGalaxy({ type: 'SBb' });
+		const stepC = stepModel.centre;
+		const STEP_COUNT = 60;
+		const STEP_SLOTS = 64;
+		const stepUniformBytes = new ArrayBuffer(orbit.SIMPLE_UNIFORM_FLOATS * 4);
+		orbit.packSimpleParams(stepModel, new Float32Array(stepUniformBytes), 0, 1, STEP_COUNT, 0);
+		const stepStarBytes = new ArrayBuffer(STEP_SLOTS * records.RECORD_BYTES);
+		const stepF = new Float32Array(stepStarBytes);
+		const stepU = new Uint32Array(stepStarBytes);
+		const stepFams = [orbit.FAMILY_DISC, orbit.FAMILY_PATTERN, orbit.FAMILY_BAR, orbit.FAMILY_PRESSURE];
+		const stepJit = [0x00, 0xff, 0xa5, 0x5a];
+		for (let i = 0; i < STEP_SLOTS; i++) {
+			const R = i === 7 ? 0 : (i % 15) * 0.8 + 0.2;
+			const a = i * 0.7;
+			stepF[i * 4] = stepC.x + R * Math.cos(a);
+			stepF[i * 4 + 1] = stepC.y + R * Math.sin(a);
+			stepF[i * 4 + 2] = (i % 5) * 0.1;
+			const vis = i === 13 ? 0 : records.FLAG_VISIBLE;
+			stepU[i * 4 + 3] = ((vis | (stepFams[i % 4] << 3)) << 16)
+				| (records.encodeAbsMag(4.83) << 8) | 4 | (stepJit[i % 4] << 24);
+		}
+		const stepThetaBytes = new ArrayBuffer(STEP_SLOTS * 4);
+		const stepTheta = new Float32Array(stepThetaBytes);
+		for (let i = 0; i < STEP_SLOTS; i++) stepTheta[i] = (i * 0.37) % (Math.PI * 2) - Math.PI;
+		for (let i = STEP_COUNT; i < STEP_SLOTS; i++) stepTheta[i] = 7.77;
+		const stepIn = Float32Array.from(stepTheta);
+		const stepBinds = { 0: { 0: { uniform: stepUniformBytes }, 1: stepStarBytes, 2: stepThetaBytes } };
+		const stepDbg = new WgslDebug(shaders.SHADERS['simple-step']);
+		let stepOk = true;
+		for (let i = 0; i < STEP_SLOTS; i++) {
+			if (!stepDbg.debugWorkgroup('main', [i, 0, 0], 1, stepBinds)) { stepOk = false; break; }
+			let n = 0;
+			while (stepDbg.stepNext() && n < 50000) n++;
+			if (n >= 50000) { stepOk = false; break; }
+		}
+		check('on-WGSL: all 64 simple-step invocations run to completion', stepOk);
+		const stepP = orbit.simpleDerived(stepModel);
+		const stepPhase = orbit.simplePatternPhase(stepModel, 0);
+		const TAU = Math.PI * 2;
+		let stepWorst = 0;
+		let stepWorstI = -1;
+		let stepNaN = -1;
+		for (let i = 0; i < STEP_COUNT; i++) {
+			const packed = stepU[i * 4 + 3];
+			if ((packed & 0x10000) === 0) continue;
+			const r0 = Math.hypot(stepF[i * 4] - stepC.x, stepF[i * 4 + 1] - stepC.y);
+			const cpu = orbit.simpleStepTheta(stepIn[i], r0,
+				orbit.simpleEccOf(packed >>> 24), orbit.simplePeriOf(packed >>> 24),
+				(packed >>> 19) & 3, stepP, stepPhase, 1);
+			if (!Number.isFinite(stepTheta[i])) { stepNaN = i; break; }
+			let d = Math.abs(stepTheta[i] - cpu) % TAU;
+			if (d > Math.PI) d = TAU - d;
+			if (d > stepWorst) { stepWorst = d; stepWorstI = i; }
+		}
+		check('on-WGSL: the kernel matches the CPU law on every live slot (< 1e-4 rad)',
+			stepNaN < 0 && stepWorst < 1e-4, { worstRad: stepWorst, slot: stepWorstI, nan: stepNaN });
+		check('on-WGSL: the centre steps without a NaN (the minRadius skip holds)',
+			Number.isFinite(stepTheta[7]), { in: stepIn[7], out: stepTheta[7] });
+		check('on-WGSL: invisible slots and slots past count keep their input azimuth',
+			stepTheta[13] === stepIn[13]
+			&& stepTheta[60] === stepIn[60] && stepTheta[63] === stepIn[63],
+			{ invisible: [stepIn[13], stepTheta[13]], guard: [stepIn[60], stepTheta[60]] });
+	}
+
 	// --- 3. N stars on one pixel are brighter than one --------------------
 	const faint = runStage(spriteCode, 'vs_main', 'debugVertex',
 		{ vertex_index: 3, instance_index: 2 }, spriteBinds);
@@ -373,7 +513,7 @@ async function main() {
 	const H = 16;
 	const radianceBytes = new Uint8Array(W * H * 16);
 	const radiance = new Float32Array(radianceBytes.buffer);
-	const toneBytes = new ArrayBuffer(4 * 4);
+	const toneBytes = new ArrayBuffer(8 * 4);
 	const toneUniform = new Float32Array(toneBytes);
 	const compositeBinds = {
 		0: {
@@ -391,13 +531,15 @@ async function main() {
 		toneUniform[1] = params.whitePoint;
 		toneUniform[2] = params.saturation;
 		toneUniform[3] = params.outputMode;
+		toneUniform[4] = params.headroom === undefined ? 8 : params.headroom;
+		toneUniform[5] = params.highlightDesat === undefined ? 1 : params.highlightDesat;
 		const out = runStage(compositeCode, 'fs_main', 'debugFragment',
 			{ position: [px + 0.5, py + 0.5, 0, 1] }, compositeBinds);
 		radiance[i] = 0; radiance[i + 1] = 0; radiance[i + 2] = 0;
 		return out;
 	}
 
-	const DEF = { exposure: 1.0, whitePoint: 4.0, saturation: 1.0, outputMode: 1.0 };
+	const DEF = { exposure: 1.0, whitePoint: 4.0, saturation: 1.0, outputMode: 1.0, headroom: 8.0, highlightDesat: 1.0 };
 	const gain = [];
 	let gains = true;
 	let bounded = true;
@@ -444,8 +586,40 @@ async function main() {
 	const empty = composite(4, 4, [0, 0, 0], DEF);
 	check('an empty frame is black, not NaN', empty.every(v => Number.isFinite(v)) && empty[0] < 1e-3, empty);
 
+	// --- 4b. Headroom + highlight desat run on the shipping WGSL -----------
+	// The same pixels hdr-test pins in the mirror, executed for real: pure
+	// blue at desat 0 must survive to the peak untouched, the film default
+	// must fade it to white, and the headroom knob must ceiling the output.
+	{
+		const knobCases = [
+			{ rgb: [0, 0, 200], params: { ...DEF, highlightDesat: 0 } },
+			{ rgb: [0, 0, 200], params: { ...DEF, highlightDesat: 0.5 } },
+			{ rgb: [0, 0, 200], params: { ...DEF, highlightDesat: 1 } },
+			{ rgb: [100, 100, 100], params: { ...DEF, headroom: 4 } },
+			{ rgb: [100, 100, 100], params: { ...DEF, headroom: 1 } },
+			{ rgb: [3, 1, 0.5], params: { ...DEF, headroom: 2, highlightDesat: 0.25 } },
+		];
+		let knobWorst = 0;
+		let knobWorstCase = null;
+		for (const kase of knobCases) {
+			const out = composite(9, 9, kase.rgb, kase.params);
+			const model = mirrorLib.tonemapPixel(mirror, ...kase.rgb, kase.params);
+			for (let c = 0; c < 3; c++) {
+				const err = Math.abs(out[c] - model[c]);
+				if (err > knobWorst) { knobWorst = err; knobWorstCase = { rgb: kase.rgb, out, model }; }
+			}
+		}
+		check('on-WGSL: the knob pixels match the JS mirror (< 2e-3)',
+			knobWorst < 2e-3, { worst: knobWorst, kase: knobWorstCase });
+		const pure = composite(9, 9, [0, 0, 200], { ...DEF, highlightDesat: 0 });
+		check('on-WGSL: desat 0 keeps (0, 0, 200) pure blue to the peak',
+			pure[0] < 1e-6 && pure[1] < 1e-6 && Math.abs(pure[2] - 8) < 1e-6, pure);
+		const capped = composite(9, 9, [100, 100, 100], { ...DEF, headroom: 4 });
+		check('on-WGSL: headroom 4 ceilings the same pile-up at exactly 4',
+			capped[0] === 4 && capped[1] === 4 && capped[2] === 4, capped);
+	}
+
 	// Execute the real density functions, not just their struct declarations.
-	const galaxy = require('../src/math/galaxy.js');
 	const density = require('../src/math/density.js');
 	// sampleLocalAge lives in the procedural module because it is only used by
 	// star generation. Extract the shipping function instead of maintaining a
@@ -657,10 +831,120 @@ async function main() {
 						Math.abs(actual[1] - starTypes.sampleFormationTime(sc, component, u)));
 				}
 			}
-			check('executed sfhCumulative WGSL matches galaxy.js', worstF < 1e-6, { worst: +worstF.toExponential(2) });
-			check('executed sampleFormationTime WGSL matches the CPU inverse table',
-				worstT < 0.05, { worstGyr: +worstT.toFixed(5) });
+		check('executed sfhCumulative WGSL matches galaxy.js', worstF < 1e-6, { worst: +worstF.toExponential(2) });
+		check('executed sampleFormationTime WGSL matches the CPU inverse table',
+			worstT < 0.05, { worstGyr: +worstT.toFixed(5) });
 		}
+	}
+
+	// --- 6. The evolution branch runs on the shipping WGSL ------------------
+	// The branch itself is inline in the procedural-gen compute entry, so it
+	// cannot run verbatim — but every number it touches comes from the four
+	// extracted primitives and their constants, which do run here, inside a
+	// probe that repeats the branch line for line with the two hash rolls as
+	// inputs. The JS side is the real deriveStarWithAge (the private evolveStar
+	// behind it), fed seeds whose mass and rolls are read off the same hash
+	// channels the field stars use — no replication on either side except the
+	// probe's branch body. Seeds stay clear of the state boundaries (2%) and
+	// of the 8 Msun remnant divide, so an f32/f64 flip cannot fake a failure.
+	{
+		const starTypes = require('../src/math/star-types.js');
+		const hash = require('../src/math/hash.js');
+		const evoConsts = ['LOG2_OVER_LOG10', 'MASS_TEFF_MASS', 'MASS_TEFF_TEFF',
+			'TGIANT_FRAC', 'TGIANT_MIN', 'TGIANT_MAX',
+			'WD_COOL_TAU', 'WD_TEFF_FLOOR', 'WD_LUM_FLOOR']
+			.map((name) => extractConst(genSource, name)).join('\n');
+		const evoFns = ['luminosityFromMass', 'teffFromMass', 'msLifetimeGyr', 'giantLifetimeGyr']
+			.map((name) => extractFunction(genSource, name)).join('\n');
+		const evoCode = evoConsts + '\n' + evoFns + `
+@fragment fn evoProbe(@location(0) p: vec4f) -> @location(0) vec4f {
+	let mass: f32 = p.x;
+	let age: f32 = p.w;
+	var state: u32 = 0u;
+	var teff: f32 = teffFromMass(mass);
+	var lum: f32 = luminosityFromMass(mass);
+	let tMS: f32 = msLifetimeGyr(mass);
+	let tDeath: f32 = tMS * 1.1 + giantLifetimeGyr(mass);
+	if (age > tDeath) {
+		state = 1u;
+		let cool: f32 = exp(-(age - tDeath) / WD_COOL_TAU);
+		teff = WD_TEFF_FLOOR + (8000.0 + 30000.0 * p.y - WD_TEFF_FLOOR) * cool;
+		lum = WD_LUM_FLOOR + (0.001 + 0.1 * p.z) * cool;
+	} else if (age > tMS * 1.1) {
+		if (mass >= 8.0) {
+			state = 1u;
+			teff = 8000.0 + 30000.0 * p.y;
+			lum = 0.001 + 0.1 * p.z;
+		} else {
+			state = 2u;
+			teff = 3000.0 + 1000.0 * p.y;
+			lum = 100.0 + 10000.0 * p.z;
+		}
+	}
+	let absMag: f32 = 4.83 - 2.5 * log2(max(1e-6, lum)) / LOG2_OVER_LOG10;
+	return vec4f(lum, teff, f32(state), absMag);
+}
+`;
+		const evoModel = galaxy.createGalaxy({ type: 'SBb' });
+		const evoOut = {};
+		const stateId = { ms: 0, wd: 1, giant: 2 };
+		const evoProbes = [];
+		for (const age of [11.35, 0.5]) {
+			const buckets = { ms: [], giant: [], wd: [], massive: [] };
+			for (let seed = 1; seed < 30000
+				&& buckets.ms.length + buckets.giant.length + buckets.wd.length + buckets.massive.length < 12; seed++) {
+				const mass = starTypes.sampleMassIMF(hash.hash01(seed * 31 + 1));
+				if (Math.abs(mass - 8) < 0.05) continue;
+				const tMS = starTypes.msLifetimeGyr(mass);
+				const tDeath = tMS * 1.1 + starTypes.giantLifetimeGyr(mass);
+				if (Math.abs(age - tDeath) / tDeath < 0.02) continue;
+				if (Math.abs(age - tMS * 1.1) / (tMS * 1.1) < 0.02) continue;
+				starTypes.deriveStarWithAge(evoModel, seed, density.COMPONENT_THIN, 8, 99, age, evoOut);
+				const key = mass >= 8 ? 'massive' : evoOut.state;
+				if (buckets[key].length < 3) {
+					buckets[key].push({
+						mass, uA: hash.hash01(seed * 31 + 4), uB: hash.hash01(seed * 31 + 5),
+						age, lum: evoOut.luminosity, teff: evoOut.teff,
+						state: evoOut.state, absMag: evoOut.absMag, seed,
+					});
+				}
+			}
+			evoProbes.push({ age, buckets });
+		}
+		let evoCovered = true;
+		let evoWorstLum = 0;
+		let evoWorstTeff = 0;
+		let evoWorstMag = 0;
+		let evoWorst = null;
+		let evoStates = true;
+		for (const { age, buckets } of evoProbes) {
+			for (const key of ['ms', 'giant', 'wd', 'massive']) {
+				if (buckets[key].length === 0) { evoCovered = false; continue; }
+				for (const probe of buckets[key]) {
+					const actual = runStage(evoCode, 'evoProbe', 'debugFragment',
+						{ 0: [probe.mass, probe.uA, probe.uB, probe.age].map(Math.fround) }, {});
+					if (actual[2] !== stateId[probe.state]) { evoStates = false; continue; }
+					const dLum = Math.abs(actual[0] - probe.lum) / probe.lum;
+					const dTeff = Math.abs(actual[1] - probe.teff) / probe.teff;
+					const dMag = Math.abs(actual[3] - probe.absMag);
+					if (dLum > evoWorstLum || dTeff > evoWorstTeff || dMag > evoWorstMag) {
+						evoWorstLum = Math.max(evoWorstLum, dLum);
+						evoWorstTeff = Math.max(evoWorstTeff, dTeff);
+						evoWorstMag = Math.max(evoWorstMag, dMag);
+						evoWorst = { age, key, seed: probe.seed, actual, probe };
+					}
+				}
+			}
+		}
+		check('the seed scan covers ms/giant/wd/massive at both epochs', evoCovered,
+			evoProbes.map(({ age, buckets }) => ({ age,
+				ms: buckets.ms.length, giant: buckets.giant.length,
+				wd: buckets.wd.length, massive: buckets.massive.length })));
+		check('executed evolution WGSL picks the same state as deriveStarWithAge', evoStates, evoWorst);
+		check('executed evolution WGSL matches lum/teff (< 1e-3) and absMag (< 0.01)',
+			evoWorstLum < 1e-3 && evoWorstTeff < 1e-3 && evoWorstMag < 0.01,
+			{ worstLum: +evoWorstLum.toExponential(2), worstTeff: +evoWorstTeff.toExponential(2),
+				worstMag: +evoWorstMag.toExponential(2), kase: evoWorst });
 	}
 
 	report('the shipping WGSL preserves radiance and matches the parameterised density model');

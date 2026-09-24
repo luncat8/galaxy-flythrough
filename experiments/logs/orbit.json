@@ -1,7 +1,7 @@
 {
-  "date": "2026-09-24T13:00:33.949Z",
-  "totalChecks": 72,
-  "passed": 72,
+  "date": "2026-09-24T18:55:48.756Z",
+  "totalChecks": 94,
+  "passed": 94,
   "failed": 0,
   "checks": [
     {
@@ -543,6 +543,158 @@
       "pass": true,
       "detail": {
         "waveWorst": 0.000016797266032120102
+      }
+    },
+    {
+      "name": "the classic engine is the default and unknown names fall back to it",
+      "pass": true,
+      "detail": {
+        "engine": 0,
+        "name": "classic"
+      }
+    },
+    {
+      "name": "the engine switch round-trips by name and by id",
+      "pass": true
+    },
+    {
+      "name": "an armed SBb derives the demo-anchored lane (σ ≈ 0.20, ecc ≈ 0.21)",
+      "pass": true,
+      "detail": {
+        "sigma": 0.2008,
+        "ecc": 0.2067,
+        "omegaP": 0.0439
+      }
+    },
+    {
+      "name": "an unarmed E4 packs no lane, no eccentricity, pure slow rotation",
+      "pass": true,
+      "detail": {
+        "armed": false,
+        "ecc": 0,
+        "omax": 0.0212
+      }
+    },
+    {
+      "name": "a hot Irr clamps the eccentricity at 0.6 (dispersion-dominated)",
+      "pass": true,
+      "detail": {
+        "ecc": 0.6,
+        "m": 4
+      }
+    },
+    {
+      "name": "the lane never bridges half the interarm (σ caps at armOffset/4)",
+      "pass": true,
+      "detail": {
+        "sigma": 0.39269908169872414
+      }
+    },
+    {
+      "name": "at the demo geometry the lane is exactly the demo 0.25 rad",
+      "pass": true,
+      "detail": {
+        "sigma": 0.25
+      }
+    },
+    {
+      "name": "inside corotation the star overtakes the pattern between arms and sticks on them",
+      "pass": true,
+      "detail": {
+        "off": 0.1125,
+        "on": 0,
+        "omegaP": 0.0439
+      }
+    },
+    {
+      "name": "outside corotation the pattern overtakes the star, which still freezes on-arm",
+      "pass": true,
+      "detail": {
+        "off": 0.0225,
+        "on": 0
+      }
+    },
+    {
+      "name": "the bar family rides the pattern speed at any damping, any theta",
+      "pass": true
+    },
+    {
+      "name": "pressure spins at λ·clock with no damping and no eccentricity",
+      "pass": true
+    },
+    {
+      "name": "without a flat curve the disc rate is exactly zero (unarmed E4)",
+      "pass": true
+    },
+    {
+      "name": "a star at the centre rides vFlat/rCore, finite, never log(0)",
+      "pass": true
+    },
+    {
+      "name": "frozen time steps nothing; 1 Myr at MW rates takes 3 substeps; spikes cap at 8",
+      "pass": true,
+      "detail": {
+        "subMW": {
+          "n": 3,
+          "h": 0.3333333333333333
+        },
+        "subSpike": {
+          "n": 8,
+          "h": 125
+        }
+      }
+    },
+    {
+      "name": "the pattern phase is wrap(Ωp·T) per frame, zero without a pattern",
+      "pass": true
+    },
+    {
+      "name": "the wave slider is live in the simple derived numbers too",
+      "pass": true
+    },
+    {
+      "name": "the step uniform packs h/nSub/count/phase, curve, lane and centre",
+      "pass": true,
+      "detail": {
+        "h": 0.3333333432674408,
+        "nSub": 3,
+        "count": 1000,
+        "phase": 4.3934,
+        "damping": 0.6000000238418579
+      }
+    },
+    {
+      "name": "unarmed packs m = 0 with the rate floor intact",
+      "pass": true
+    },
+    {
+      "name": "the engine lane carries (id, eccMax, 0, 0)",
+      "pass": true
+    },
+    {
+      "name": "the reconstruction keeps the birth height and rotates the birth radius",
+      "pass": true,
+      "detail": {
+        "pos": [
+          8.178,
+          8.178,
+          0.1
+        ],
+        "thSun": 0
+      }
+    },
+    {
+      "name": "the landmark mirror agrees with the reference step bit-for-bit",
+      "pass": true,
+      "detail": {
+        "mirrorWorst": 0
+      }
+    },
+    {
+      "name": "f64 reference vs f32 step replay drift < 1e-4 rad over 1000 Myr",
+      "pass": true,
+      "detail": {
+        "drift": 0.00000421
       }
     }
   ]

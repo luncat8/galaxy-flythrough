@@ -679,6 +679,197 @@ function patternDelta(x, y, model, time) {
 	orbit.setWaveDamping(saved);
 }
 
+// --- 12. The simple (friction-field) engine (0.4.5) --------------------------
+// The linked-demo port behind the engine switch: integrated azimuths, slowed
+// inside the arm Gaussian. Stateful where the classic law is closed-form, so
+// the pins here are epoch behaviour — the jam signature, the per-type table,
+// the substep cap, the landmark mirror — plus the f32 replay bound.
+function simpleOmegaF32(th, r0, eccU, peri, family, S) {
+	// Mirrors SHADER_PARTS['simple-step'] operation-for-operation: S is the
+	// packed 20-float uniform, exactly what the GPU reads.
+	const fr = Math.fround;
+	const vFlat = S[4], rCore = S[5], omegaP = S[6], spin = S[7];
+	const eccMax = S[8], m = S[9], invTan = S[10], armOff = S[11];
+	const inv2sig2 = S[12], Rs = S[13], minR = S[14];
+	const damp = S[16], pp = S[3];
+	if (family === 2) {
+		if (omegaP > 0) return omegaP;
+		return fr(vFlat / Math.max(r0, rCore));
+	}
+	if (family === 3) {
+		const clk = vFlat > 0 ? fr(vFlat / Math.max(r0, rCore))
+			: fr(0.05 / Math.max(Math.pow(Math.max(r0, 0.1), 1.5), 0.01));
+		return fr(spin * clk);
+	}
+	const rr = Math.max(r0, 0.001);
+	const rho = fr(rr * fr(1 + fr(fr(eccMax * eccU) * Math.cos(th - peri))));
+	const circ = fr(vFlat / Math.max(rho, rCore));
+	if (m < 1 || r0 < minR) return circ;
+	const base = Math.log(rho / Rs) * invTan + pp;
+	let delta = (th - base) - armOff * Math.floor((th - base) / armOff);
+	if (delta > armOff * 0.5) delta -= armOff;
+	return fr(circ * fr(1 - damp * Math.exp(-delta * delta * inv2sig2)));
+}
+function simpleStepF32(th, r0, eccU, peri, family, S) {
+	const fr = Math.fround;
+	let t = fr(th);
+	const nSub = S[1] | 0, h = S[0];
+	for (let s = 0; s < nSub; s++) t = fr(t + fr(simpleOmegaF32(t, r0, eccU, peri, family, S) * h));
+	return fr(6.28318530718 * fractf(fr(t * 0.159154943092)));
+}
+{
+	const sb = galaxy.createGalaxy({ type: 'SBb', seed: 3 });
+	const e4 = galaxy.createGalaxy({ type: 'E4', seed: 1 });
+	const irr = galaxy.createGalaxy({ type: 'Irr', seed: 5 });
+	const savedEngine = orbit.getEngine();
+	const savedDamp = orbit.getWaveDamping();
+
+	check('the classic engine is the default and unknown names fall back to it',
+		savedEngine === orbit.ENGINE_CLASSIC && orbit.engineName() === 'classic'
+		&& orbit.ENGINE_SIMPLE === 1,
+		{ engine: savedEngine, name: orbit.engineName() });
+	check('the engine switch round-trips by name and by id',
+		orbit.setEngine('simple') === 1 && orbit.engineName() === 'simple'
+		&& orbit.setEngine('bogus') === 0 && orbit.setEngine(1) === 1 && orbit.setEngine(0) === 0);
+
+	// Per-type derivation table (plan §10.1): the demo's hand-tuned constants
+	// become the model's own curve, group speed, arms and dispersion.
+	const P = orbit.simpleDerived(sb, {});
+	check('an armed SBb derives the demo-anchored lane (σ ≈ 0.20, ecc ≈ 0.21)',
+		P.armed && P.m === 2 && Math.abs(Math.sqrt(1 / (2 * P.inv2sig2)) - 0.201) < 0.005
+		&& Math.abs(P.eccMax - 0.207) < 0.005 && Math.abs(P.omegaP - 0.0439) < 0.002,
+		{ sigma: +Math.sqrt(1 / (2 * P.inv2sig2)).toFixed(4), ecc: +P.eccMax.toFixed(4), omegaP: +P.omegaP.toFixed(4) });
+	const Pe = orbit.simpleDerived(e4, {});
+	check('an unarmed E4 packs no lane, no eccentricity, pure slow rotation',
+		!Pe.armed && Pe.m === 0 && Pe.eccMax === 0 && Pe.omegaP === 0
+		&& Math.abs(orbit.simpleOmegaMax(Pe) - 0.021) < 0.005,
+		{ armed: Pe.armed, ecc: Pe.eccMax, omax: +orbit.simpleOmegaMax(Pe).toFixed(4) });
+	const Pi = orbit.simpleDerived(irr, {});
+	check('a hot Irr clamps the eccentricity at 0.6 (dispersion-dominated)',
+		Pi.armed && Pi.m === 4 && Pi.eccMax === 0.6, { ecc: Pi.eccMax, m: Pi.m });
+	const wide = galaxy.createGalaxy({ type: 'Sc', seed: 5, overrides: { arms: { m: 4, pitchDeg: 60, Rs: 3, minRadius: 0.5, amp: 0.3, phase0: 0 } } });
+	check('the lane never bridges half the interarm (σ caps at armOffset/4)',
+		Math.abs(orbit.simpleSigma(wide) - Math.PI / 8) < 1e-12, { sigma: orbit.simpleSigma(wide) });
+	const demo = galaxy.createGalaxy({ type: 'Sc', seed: 5, overrides: { arms: { m: 2, pitchDeg: 15, Rs: 3, minRadius: 0.5, amp: 0.3, phase0: 0 } } });
+	check('at the demo geometry the lane is exactly the demo 0.25 rad',
+		orbit.simpleSigma(demo) === 0.25, { sigma: orbit.simpleSigma(demo) });
+
+	// The honest inertial signature: the slowdown is the same Gaussian on
+	// both sides of corotation — what flips is the pattern-frame drift. At
+	// full damping the arm itself freezes anywhere.
+	orbit.setWaveDamping(1);
+	const Ps = orbit.simpleDerived(MW, {});
+	const armIn = density.armRidgeAzimuth(MW, 2), armOut = density.armRidgeAzimuth(MW, 10);
+	const onIn = orbit.simpleOmega(armIn, 2, 0, 0, orbit.FAMILY_DISC, Ps, 0);
+	const offIn = orbit.simpleOmega(armIn + Math.PI / 2, 2, 0, 0, orbit.FAMILY_DISC, Ps, 0);
+	const onOut = orbit.simpleOmega(armOut, 10, 0, 0, orbit.FAMILY_DISC, Ps, 0);
+	const offOut = orbit.simpleOmega(armOut + Math.PI / 2, 10, 0, 0, orbit.FAMILY_DISC, Ps, 0);
+	check('inside corotation the star overtakes the pattern between arms and sticks on them',
+		offIn - Ps.omegaP > 0 && onIn === 0, { off: +offIn.toFixed(4), on: onIn, omegaP: +Ps.omegaP.toFixed(4) });
+	check('outside corotation the pattern overtakes the star, which still freezes on-arm',
+		offOut - Ps.omegaP < 0 && onOut === 0, { off: +offOut.toFixed(5), on: onOut });
+
+	// Families: the bar rides its rigid seat, pressure spins slow and
+	// undamped, a flat-less disc is frozen, the centre cannot NaN.
+	check('the bar family rides the pattern speed at any damping, any theta',
+		orbit.simpleOmega(0.3, 2, 0.9, 1.2, orbit.FAMILY_BAR, Ps, 0.5) === Ps.omegaP
+		&& orbit.simpleOmega(2.9, 0.4, 0.1, 0, orbit.FAMILY_BAR, Ps, 0) === Ps.omegaP);
+	check('pressure spins at λ·clock with no damping and no eccentricity',
+		Math.abs(orbit.simpleOmega(1, 5, 0.99, 0, orbit.FAMILY_PRESSURE, Ps, 0)
+			- 0.15 * orbit.pressureClock(Ps, 5)) < 1e-12);
+	check('without a flat curve the disc rate is exactly zero (unarmed E4)',
+		orbit.simpleOmega(1, 5, 0.5, 0, orbit.FAMILY_DISC, Pe, 0) === 0);
+	check('a star at the centre rides vFlat/rCore, finite, never log(0)',
+		Number.isFinite(orbit.simpleStepTheta(0.5, 0, 0.5, 0, orbit.FAMILY_DISC, Ps, 0, 1))
+		&& Math.abs(orbit.simpleOmega(0.5, 0, 0.5, 0, orbit.FAMILY_DISC, Ps, 0) - 0.45) < 1e-12);
+
+	// The stepper: frozen time dispatches nothing, the substep cap absorbs
+	// tab-switch spikes, the pattern phase is derived from T per frame.
+	const sub0 = orbit.simpleSubsteps(0, 0.45, {});
+	const subMW = orbit.simpleSubsteps(1, orbit.simpleOmegaMax(Ps), {});
+	const subSpike = orbit.simpleSubsteps(1000, 0.45, {});
+	check('frozen time steps nothing; 1 Myr at MW rates takes 3 substeps; spikes cap at 8',
+		sub0.n === 0 && sub0.h === 0 && subMW.n === 3 && Math.abs(subMW.h - 1 / 3) < 1e-12
+		&& subSpike.n === 8 && subSpike.h === 125,
+		{ subMW, subSpike });
+	check('the pattern phase is wrap(Ωp·T) per frame, zero without a pattern',
+		Math.abs(orbit.simplePatternPhase(MW, 100) - 4.3934) < 0.001
+		&& orbit.simplePatternPhase(e4, 100) === 0 && orbit.simplePatternPhase(MW, -5) === 0);
+	orbit.setWaveDamping(0.33);
+	check('the wave slider is live in the simple derived numbers too',
+		orbit.simpleDerived(sb, {}).damping === 0.33);
+
+	// The compute uniform: 20 floats, substeps and pattern phase packed with
+	// the curve, the lane and the centre — unarmed packs m = 0.
+	const S = new Float32Array(orbit.SIMPLE_UNIFORM_FLOATS);
+	orbit.setWaveDamping(0.6);
+	const Psb = orbit.simpleDerived(sb, {});
+	orbit.packSimpleParams(sb, S, 0, 1, 1000, 100);
+	check('the step uniform packs h/nSub/count/phase, curve, lane and centre',
+		S.length === 20 && S[1] === 3 && S[0] === Math.fround(1 / 3) && S[2] === 1000
+		&& S[3] === Math.fround(orbit.simplePatternPhase(sb, 100))
+		&& S[4] === Math.fround(Psb.vFlat) && S[9] === 2 && S[15] === Math.fround(sb.centre.x)
+		&& S[16] === Math.fround(0.6),
+		{ h: S[0], nSub: S[1], count: S[2], phase: +S[3].toFixed(4), damping: S[16] });
+	const Se = new Float32Array(orbit.SIMPLE_UNIFORM_FLOATS);
+	orbit.packSimpleParams(e4, Se, 0, 1, 10, 0);
+	check('unarmed packs m = 0 with the rate floor intact', Se[9] === 0 && Se[1] === 1 && Se[0] === 1);
+	const E = new Float32Array(4);
+	orbit.setEngine('simple');
+	orbit.packEngineVec(sb, E, 0);
+	check('the engine lane carries (id, eccMax, 0, 0)',
+		E[0] === 1 && E[1] === Math.fround(Psb.eccMax) && E[2] === 0 && E[3] === 0);
+	orbit.setEngine(savedEngine);
+
+	// Vertex mirror: integrated theta + birth record = position, birth height
+	// kept. A solar-ring star stepped a quarter turn lands on the +Y axis.
+	orbit.simpleLandmarksInit(new Float64Array([MW.centre.x + 8.178, 0, 0.1]), new Uint8Array([5]), 1, MW);
+	const thSun = Math.atan2(0 - 0, MW.centre.x + 8.178 - MW.centre.x);
+	orbit.simplePositionFromTheta(out, Math.PI / 2, MW.centre.x + 8.178, 0, 0.1, 0, orbit.FAMILY_DISC, Ps.eccMax, MW);
+	check('the reconstruction keeps the birth height and rotates the birth radius',
+		dist3(out, [MW.centre.x, 8.178, 0.1]) < 1e-9, { pos: [out[0], out[1], out[2]], thSun });
+
+	// The CPU landmark mirror steps the same Euler the GPU dispatches, so it
+	// must agree with the reference step bit-for-bit — labels and picks ride it.
+	const lmPos = new Float64Array([MW.centre.x + 8.178, 0, 0.1, MW.centre.x + 2, 1, -0.2, MW.centre.x - 3, 2, 0.5]);
+	const lmCol = new Uint8Array([5, 1, 3]);
+	orbit.simpleLandmarksInit(lmPos, lmCol, 3, MW);
+	orbit.simpleLandmarksStep(50, 200);
+	const Pd = orbit.simpleDerived(MW, {});
+	const ppd = orbit.simplePatternPhase(MW, 200);
+	let mirrorWorst = 0;
+	for (let i = 0; i < 3; i++) {
+		const bx = lmPos[i * 3], by = lmPos[i * 3 + 1], bz = lmPos[i * 3 + 2];
+		const r0 = Math.hypot(bx - MW.centre.x, by - 0);
+		const fam = orbit.familyFromColorIndex(lmCol[i]);
+		const th = orbit.simpleStepTheta(Math.atan2(by - 0, bx - MW.centre.x), r0,
+			orbit.simpleEccOf(0), orbit.simplePeriOf(0), fam, Pd, ppd, 50);
+		const ref = new Float64Array(3);
+		orbit.simplePositionFromTheta(ref, th, bx, by, bz, 0, fam, orbit.simpleEccMax(MW), MW);
+		const got = new Float64Array(3);
+		orbit.simpleLandmarkPosition(got, i, bz);
+		mirrorWorst = Math.max(mirrorWorst, dist3(ref, got));
+	}
+	check('the landmark mirror agrees with the reference step bit-for-bit',
+		mirrorWorst === 0, { mirrorWorst });
+
+	// f32 replay: 1000 epochs of 1 Myr, on the packed uniform the GPU reads.
+	// Euler in f32 against Euler in f64 — the drift must stay far subpixel.
+	const Sr = new Float32Array(orbit.SIMPLE_UNIFORM_FLOATS);
+	orbit.packSimpleParams(MW, Sr, 0, 1, 1000, 0);
+	const Pr = orbit.simpleDerived(MW, {});
+	let th64 = 1.0, th32 = Math.fround(1.0);
+	for (let k = 0; k < 1000; k++) {
+		th64 = orbit.simpleStepTheta(th64, 8.178, 0.5, 0, orbit.FAMILY_DISC, Pr, 0, 1);
+		th32 = simpleStepF32(th32, 8.178, 0.5, 0, orbit.FAMILY_DISC, Sr);
+	}
+	const drift = Math.abs(th64 - th32);
+	check('f64 reference vs f32 step replay drift < 1e-4 rad over 1000 Myr',
+		drift < 1e-4, { drift: +drift.toExponential(2) });
+
+	orbit.setWaveDamping(savedDamp);
+}
+
 // --- Report --------------------------------------------------------------
 {
 	let passed = 0, failed = 0;

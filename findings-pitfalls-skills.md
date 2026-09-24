@@ -846,3 +846,35 @@ first comment describes. A short buffer dies inside the interpreter as
 check. WGSL lives in a JS template literal: a backtick in a comment ends the
 string, and a validator regex that bans a rejected formula will also match
 that formula written in a JS comment.
+
+## 2026-09-24 — wgsl_reflect runs one compute invocation per debug session
+
+`WgslDebug.debugWorkgroup(entry, dispatchId, ...)` executes exactly the
+invocation whose global id equals `dispatchId` — a 64-wide dispatch needs 64
+re-armed sessions, not one. The fast path, `WgslExec.dispatchWorkgroups`, runs
+them all at once but mis-executes struct-heavy kernels: on `simple-step` the
+stepped omega came out exactly 4× (n = 1 included), while the debug path
+agrees with the CPU law to 5e-7 rad. Root cause unknown, presumably a library
+bug in the exec path's uniform/struct reads — the suite drives the debug path
+until that changes. Cheap anyway: one `WgslDebug` reused across re-armed
+sessions (no module-scope `var`s in the kernel, so re-running the prologue is
+safe) steps all 64 invocations in ~46 ms, and storage writes persist across
+the sessions because every session wraps the same ArrayBuffers.
+
+## 2026-09-24 — Compare f32-packed values against Math.fround, not literals
+
+A check that packs 1/3 into a float and compares against the JS literal with a
+1e-9 tolerance fails: f32(1/3) differs from the f64 literal by ~1e-8. The fix
+is exact `=== Math.fround(...)` comparison, not a looser epsilon — the epsilon
+hides real drift, the fround pins the packing. Same family: the tonemap
+`fs_main` returns `vec4(rgb, 1.0)`, so an exact RGB pin must read channels
+0–2, not `.every(v => v === 4)`.
+
+## 2026-09-24 — Re-seed the epoch only when positions regenerate
+
+The simple engine's azimuth mirror (GPU buffer plus CPU landmark thetas) is
+positional state. An age-only regenerate keeps the sampled field and rewrites
+properties, so its thetas survive — re-seeding there diverges labels and picks
+from the sprites and snaps the visible epoch. Re-seed on galaxy change,
+engine switch and R reset only. The test-side shape of this rule: `renderer`
+pins the theta re-seed on `setEngine`, not on `regenerate`.

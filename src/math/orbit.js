@@ -333,16 +333,319 @@ function sliderValueToRate(value, speedLyPerSec) {
 }
 function formatTimeRate(value, speed) { return value < 0 ? `follow ×${(-value).toFixed(1)}` : value === 0 ? 'frozen' : `+${value.toFixed(1)} Myr/s`; }
 
+// ---- 0.4.5 simple (friction-field) engine ----------------------------------
+//
+// A port of the linked galaxy-star-movement-demo slow field
+// (simple/simple-friction-field-webGPU.html), selected from the menu as the
+// `simple` engine. Where the classic law above is an exact closed form with
+// singular branches, this one is a dissipative integration: one azimuth per
+// star, stepped on a GPU compute pass, slowed inside the arm Gaussian. The
+// slowdown can never reverse or diverge, which is the stability the option
+// exists for; the price is state (entering `simple` re-seeds from the birth
+// field) and the inertial form's honest physics — it jams inside corotation
+// and streams outside it (archive/damping-plan-report.md).
+//
+// The demo's structure is kept verbatim (eccentric rho from the current theta,
+// Gaussian D on the log-spiral phase, pattern phase accumulated separately);
+// its hand-tuned constants are derived per galaxy type instead. Deliberately
+// not ported: the pink arm tint (real spectral types must not be tinted by
+// position) and the z(theta) redistribution (birth heights are kept, so the
+// motion preserves the density field by construction).
+
+const ENGINE_CLASSIC = 0, ENGINE_SIMPLE = 1;
+const ENGINE_NAMES = ['classic', 'simple'];
+let engine = ENGINE_CLASSIC;
+function setEngine(id) {
+	engine = (id === ENGINE_SIMPLE || id === 'simple') ? ENGINE_SIMPLE : ENGINE_CLASSIC;
+	return engine;
+}
+function getEngine() { return engine; }
+function engineName() { return ENGINE_NAMES[engine]; }
+
+// Demo anchors: sigma 0.25 rad at m = 2 / pitch 15 deg, eccMax 0.2. The sigma
+// scales with the pattern's own arm spacing (narrower spacing, narrower lane)
+// and never bridges half the interarm; the eccentricity follows the thin-disc
+// dispersion the same 2sigma/kappa ratio the epicycle law uses, times ECC_K.
+const SIMPLE_SIGMA_BASE = 0.25;
+const SIMPLE_SIGMA_PITCH_REF = 15 * Math.PI / 180;
+const SIMPLE_SIGMA_MIN = 0.03;
+const SIMPLE_ECC_K = 0.75;
+const SIMPLE_ECC_MAX = 0.6;
+// Euler substeps: at most 0.15 rad per substep, at most 8 substeps a frame. A
+// tab-switch spike at max rate degrades one frame instead of exploding.
+const SIMPLE_SUBSTEP_DTHETA = 0.15;
+const SIMPLE_SUBSTEP_MAX = 8;
+// Rate floor: a star at the centre rides the pattern instead of taking log(0).
+const SIMPLE_R_MIN = 0.001;
+const SIMPLE_UNIFORM_FLOATS = 20;
+
+function simpleArmed(model) {
+	const arms = model && model.arms;
+	return !!(arms && arms.amp > 0 && arms.m >= 1 && arms.pitchDeg > 0 && arms.Rs > 0);
+}
+
+function simpleSigma(model) {
+	const arms = model.arms;
+	if (!(arms.m >= 1) || !(arms.pitchDeg > 0)) return 0;
+	const armOffset = TAU / arms.m;
+	let sigma = SIMPLE_SIGMA_BASE * (armOffset / Math.PI)
+		* (Math.sin(arms.pitchDeg * Math.PI / 180) / Math.sin(SIMPLE_SIGMA_PITCH_REF));
+	const cap = armOffset / 4;
+	if (sigma > cap) sigma = cap;
+	if (sigma < SIMPLE_SIGMA_MIN) sigma = SIMPLE_SIGMA_MIN;
+	return sigma;
+}
+
+function simpleEccMax(model) {
+	const d = (model && model.dynamics) || {};
+	if (!(d.vFlat > 0)) return 0;
+	const e = SIMPLE_ECC_K * 2 * (d.sigmaThin || 0) / d.vFlat;
+	return e > SIMPLE_ECC_MAX ? SIMPLE_ECC_MAX : (e > 0 ? e : 0);
+}
+
+// One Euler right-hand side. P is simpleDerived(model): vFlat, rCore, omegaP,
+// spinLambda double as the pressureClock dyn. theta/rho are current, r0 is
+// birth; the minRadius skip reads birth so a star never flickers across it.
+function simpleOmega(theta, r0, eccU, peri, family, P, patternPhase) {
+	if (family === FAMILY_BAR) {
+		if (P.omegaP > 0) return P.omegaP;
+		return P.vFlat / Math.max(r0, P.rCore);
+	}
+	if (family === FAMILY_PRESSURE) return P.spinLambda * pressureClock(P, r0);
+	const rr = r0 < SIMPLE_R_MIN ? SIMPLE_R_MIN : r0;
+	const rho = rr * (1 + P.eccMax * eccU * Math.cos(theta - peri));
+	const circ = P.vFlat / Math.max(rho, P.rCore);
+	if (!P.armed || r0 < P.minRadius) return circ;
+	const base = Math.log(rho / P.Rs) * P.invTanPitch + patternPhase;
+	let delta = (theta - base) % P.armOffset;
+	if (delta < 0) delta += P.armOffset;
+	if (delta > P.armOffset * 0.5) delta -= P.armOffset;
+	return circ * (1 - P.damping * Math.exp(-delta * delta * P.inv2sig2));
+}
+
+function simpleEccOf(jitter) { return (((jitter >>> 4) & 15) + 0.5) / 16; }
+function simplePeriOf(jitter) { return ((jitter & 15) / 16) * TAU; }
+
+// Per-model simple numbers, defaults applied, no allocation. damping is the
+// shared wave slider, read live so the compute uniform never goes stale.
+const simpleScratch = {
+	vFlat: 0, rCore: DEFAULT_R_CORE, omegaP: 0, spinLambda: DEFAULT_SPIN,
+	m: 0, invTanPitch: 0, armOffset: TAU, inv2sig2: 0, Rs: 1, minRadius: 0,
+	eccMax: 0, damping: 0, armed: false,
+};
+function simpleDerived(model, out) {
+	const P = out || simpleScratch;
+	const dyn = fillDynamics(orbitScratch, model);
+	P.vFlat = dyn.vFlat;
+	P.rCore = dyn.rCore;
+	P.omegaP = dyn.omegaPattern;
+	P.spinLambda = dyn.spinLambda;
+	P.armed = simpleArmed(model);
+	if (P.armed) {
+		const arms = model.arms;
+		P.m = arms.m;
+		P.invTanPitch = 1 / Math.tan(arms.pitchDeg * Math.PI / 180);
+		P.armOffset = TAU / arms.m;
+		const sig = simpleSigma(model);
+		P.inv2sig2 = 1 / (2 * sig * sig);
+		P.Rs = arms.Rs;
+		P.minRadius = arms.minRadius;
+	} else {
+		P.m = 0;
+		P.invTanPitch = 0;
+		P.armOffset = TAU;
+		P.inv2sig2 = 0;
+		P.Rs = 1;
+		P.minRadius = 0;
+	}
+	P.eccMax = simpleEccMax(model);
+	P.damping = waveDamping;
+	return P;
+}
+
+// Representative max rate over the families, for the substep count. Inner E
+// stars can exceed it; the step is still bounded, just coarser there.
+function simpleOmegaMax(P) {
+	const disc = P.vFlat > 0 ? P.vFlat / Math.max(P.rCore, 1e-3) : 0;
+	const press = P.spinLambda * pressureClock(P, Math.max(P.rCore, 0.1));
+	let m = disc > press ? disc : press;
+	if (P.omegaP > m) m = P.omegaP;
+	return m > 1e-6 ? m : 1e-6;
+}
+
+const simpleStepScratch = { n: 1, h: 0 };
+function simpleSubsteps(dtStar, omegaMax, out) {
+	const sub = out || simpleStepScratch;
+	if (!(dtStar > 0) || !(omegaMax > 0)) { sub.n = 0; sub.h = 0; return sub; }
+	let n = Math.ceil(omegaMax * dtStar / SIMPLE_SUBSTEP_DTHETA);
+	if (n < 1) n = 1;
+	else if (n > SIMPLE_SUBSTEP_MAX) n = SIMPLE_SUBSTEP_MAX;
+	sub.n = n;
+	sub.h = dtStar / n;
+	return sub;
+}
+
+function wrapAngle(x) {
+	const u = x * INV_TAU;
+	return TAU * (u - Math.floor(u));
+}
+
+// The pattern phase is derived per frame from the f64 star time, never a
+// second accumulator, so it cannot diverge from T across engine switches and
+// nebulae need no engine branch (their theta is the same product in f32).
+function simplePatternPhase(model, starTimeMyr) {
+	const w = (model && model.dynamics && model.dynamics.omegaPattern) || 0;
+	if (!(w > 0) || !(starTimeMyr > 0)) return 0;
+	return wrapAngle(w * starTimeMyr);
+}
+
+// CPU reference step: one star, substepped Euler, pattern held per frame like
+// the GPU dispatch. Landmarks and tests step through here.
+function simpleStepTheta(theta, r0, eccU, peri, family, P, patternPhase, dtStar) {
+	if (!(dtStar > 0)) return theta;
+	const sub = simpleSubsteps(dtStar, simpleOmegaMax(P), simpleStepScratch);
+	let th = theta;
+	for (let s = 0; s < sub.n; s++) th += simpleOmega(th, r0, eccU, peri, family, P, patternPhase) * sub.h;
+	return wrapAngle(th);
+}
+
+// Vertex mirror: birth record + integrated theta = position. Family-agnostic
+// except for the eccentric rho, which only disc/pattern carry.
+function simplePositionFromTheta(out, theta, x, y, z, jitter, family, eccMax, model) {
+	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
+	const r0 = Math.hypot(x - c.x, y - c.y);
+	let rho = r0;
+	if ((family === FAMILY_DISC || family === FAMILY_PATTERN) && eccMax > 0 && r0 > 0) {
+		rho = r0 * (1 + eccMax * simpleEccOf(jitter) * Math.cos(theta - simplePeriOf(jitter)));
+	}
+	out[0] = c.x + rho * Math.cos(theta);
+	out[1] = c.y + rho * Math.sin(theta);
+	out[2] = z;
+	return out;
+}
+
+// Landmark mirror: one theta per named star on the CPU, stepped per frame
+// beside the GPU buffer (no readback, per the indirect-draw rule). Init from
+// the birth positions on boot, regenerate and engine switch; step alongside
+// the frame's dtStar. f64 like the classic mirror, with the same f64-vs-f32
+// bound test.
+let simpleLMTheta = null;
+let simpleLMR0 = null;
+let simpleLMFam = null;
+let simpleLMCount = 0;
+let simpleLMModel = null;
+let simpleLMEcc = 0;
+function simpleLandmarksInit(positions, colorIndices, count, model) {
+	if (!simpleLMTheta || simpleLMTheta.length < count) {
+		simpleLMTheta = new Float64Array(count);
+		simpleLMR0 = new Float64Array(count);
+		simpleLMFam = new Uint8Array(count);
+	}
+	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
+	for (let i = 0; i < count; i++) {
+		const qx = positions[i * 3] - c.x, qy = positions[i * 3 + 1] - c.y;
+		simpleLMTheta[i] = Math.atan2(qy, qx);
+		simpleLMR0[i] = Math.hypot(qx, qy);
+		simpleLMFam[i] = familyFromColorIndex(colorIndices[i]);
+	}
+	simpleLMCount = count;
+	simpleLMModel = model || null;
+	simpleLMEcc = simpleEccMax(model);
+	return count;
+}
+function simpleLandmarksReady() { return simpleLMModel !== null && simpleLMCount > 0; }
+function simpleLandmarksStep(dtStar, starTimeMyr) {
+	if (!simpleLandmarksReady() || !(dtStar > 0)) return 0;
+	const P = simpleDerived(simpleLMModel, simpleScratch);
+	const patternPhase = simplePatternPhase(simpleLMModel, starTimeMyr);
+	const sub = simpleSubsteps(dtStar, simpleOmegaMax(P), simpleStepScratch);
+	const eccU = simpleEccOf(0), peri = simplePeriOf(0);
+	for (let i = 0; i < simpleLMCount; i++) {
+		let th = simpleLMTheta[i];
+		const r0 = simpleLMR0[i], fam = simpleLMFam[i];
+		for (let s = 0; s < sub.n; s++) th += simpleOmega(th, r0, eccU, peri, fam, P, patternPhase) * sub.h;
+		simpleLMTheta[i] = wrapAngle(th);
+	}
+	return simpleLMCount;
+}
+function simpleLandmarkPosition(out, i, z) {
+	const c = simpleLMModel.centre;
+	const th = simpleLMTheta[i];
+	const fam = simpleLMFam[i];
+	let rho = simpleLMR0[i];
+	if ((fam === FAMILY_DISC || fam === FAMILY_PATTERN) && simpleLMEcc > 0 && rho > 0) {
+		rho = rho * (1 + simpleLMEcc * simpleEccOf(0) * Math.cos(th - simplePeriOf(0)));
+	}
+	out[0] = c.x + rho * Math.cos(th);
+	out[1] = c.y + rho * Math.sin(th);
+	out[2] = z;
+	return out;
+}
+
+// Compute uniform, 20 floats, packed per frame while the simple engine runs:
+//   stepA = (h, nSub, count, patternPhase)
+//   stepB = (vFlat, rCore, omegaP, spinLambda)
+//   stepC = (eccMax, m, invTanPitch, armOffset)
+//   stepD = (inv2sig2, Rs, minRadius, centreX)
+//   stepE = (damping, centreY, centreZ, 0)
+// Unarmed packs m = 0, the same skip contract as the wave pair.
+function packSimpleParams(model, out, offset, dtStar, count, starTimeMyr) {
+	const P = simpleDerived(model, simpleScratch);
+	const sub = simpleSubsteps(dtStar, simpleOmegaMax(P), simpleStepScratch);
+	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
+	out[offset] = sub.h;
+	out[offset + 1] = sub.n;
+	out[offset + 2] = count;
+	out[offset + 3] = simplePatternPhase(model, starTimeMyr);
+	out[offset + 4] = P.vFlat;
+	out[offset + 5] = P.rCore;
+	out[offset + 6] = P.omegaP;
+	out[offset + 7] = P.spinLambda;
+	out[offset + 8] = P.eccMax;
+	out[offset + 9] = P.m;
+	out[offset + 10] = P.invTanPitch;
+	out[offset + 11] = P.armOffset;
+	out[offset + 12] = P.inv2sig2;
+	out[offset + 13] = P.Rs;
+	out[offset + 14] = P.minRadius;
+	out[offset + 15] = c.x;
+	out[offset + 16] = P.damping;
+	out[offset + 17] = c.y;
+	out[offset + 18] = c.z;
+	out[offset + 19] = 0;
+	return out;
+}
+
+// CameraUniform engine vec4 at offset 44: (id, eccMax, 0, 0). The vertex
+// branch reads the id; the reconstruction reads eccMax. Damping and the
+// pattern phase live in the compute uniform — the vertex never needs them.
+function packEngineVec(model, out, offset) {
+	out[offset] = engine;
+	out[offset + 1] = simpleEccMax(model);
+	out[offset + 2] = 0;
+	out[offset + 3] = 0;
+	return out;
+}
+
 const OrbitAPI = {
 	FAMILY_PATTERN, FAMILY_DISC, FAMILY_BAR, FAMILY_PRESSURE, FAMILY_NAMES,
 	FAMILY_SHIFT, FAMILY_MASK, FLIGHT_TIME_GAIN, TAU, PRESSURE_CLOCK_1KPC,
 	VERTICAL_WOBBLE_RATIO, BAR_LOOP_FRACTION,
 	WAVE_DAMPING_MAX, WAVE_DAMPING_UI_DEFAULT,
+	ENGINE_CLASSIC, ENGINE_SIMPLE, ENGINE_NAMES,
+	SIMPLE_SIGMA_BASE, SIMPLE_ECC_MAX, SIMPLE_SUBSTEP_DTHETA, SIMPLE_SUBSTEP_MAX,
+	SIMPLE_R_MIN, SIMPLE_UNIFORM_FLOATS,
 	familyFromFlags, flagsWithFamily, encodeJitter, readOrbit,
 	familyFromColorIndex, familyForStar,
 	fillDynamics, pressureClock, omegaFor, omegaFrom, omegaStream,
 	setWaveDamping, getWaveDamping, dampedDiscTheta, orbitPosition,
 	packOrbitDynamics, sinTau, sliderValueToRate, formatTimeRate,
+	setEngine, getEngine, engineName,
+	simpleArmed, simpleSigma, simpleEccMax, simpleOmega, simpleEccOf, simplePeriOf,
+	simpleDerived, simpleOmegaMax, simpleSubsteps, wrapAngle, simplePatternPhase,
+	simpleStepTheta, simplePositionFromTheta,
+	simpleLandmarksInit, simpleLandmarksReady, simpleLandmarksStep, simpleLandmarkPosition,
+	packSimpleParams, packEngineVec,
 };
 if (typeof module !== 'undefined') module.exports = OrbitAPI;
 if (typeof window !== 'undefined') window.OrbitLib = OrbitAPI;

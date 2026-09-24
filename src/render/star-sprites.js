@@ -26,16 +26,18 @@
 // contiguous: `draw(4, global + landmarks + objects + local + thinnedCatalog)`.
 // No hidden slots, no per-cell GPU allocation, no compaction pass.
 //
-// Frame cost: one 176-byte uniform write, one catalog buffer write (only when
-// the resident set changed), two additive passes into the HDR intermediate
+// Frame cost: one 192-byte uniform write, one catalog buffer write (only when
+// the resident set changed), an optional compute pass that steps the simple
+// engine's azimuths (0.4.5), two additive passes into the HDR intermediate
 // (stars, then nebula billboards) and one tonemap pass. No depth attachment —
 // the sprites are additive, so there is nothing to depth-test against.
 
 'use strict';
 
-const UNIFORM_FLOATS = 44;              // 176 bytes: camera block 28 + orbit dynA/dynB/waveA/waveB 16
-// Tonemap uniform: x=exposure, y=whitePoint, z=saturation, w=outputMode (0=SDR, 1=HDR).
-const TONEMAP_UNIFORM_FLOATS = 4;
+const UNIFORM_FLOATS = 48;              // 192 bytes: camera block 28 + orbit dynA/dynB/waveA/waveB 16 + engine 4
+// Tonemap uniform: x=exposure, y=whitePoint, z=saturation, w=outputMode (0=SDR, 1=HDR),
+// then headroom, highlightDesat, 0, 0.
+const TONEMAP_UNIFORM_FLOATS = 8;
 const PROCEDURAL_STARS_DEFAULT = 300000;
 const CATALOG_BUDGET_DEFAULT = 250000;
 const LOCAL_PROCEDURAL_DEFAULT = 20000; // gap-fill for density parity near the camera
@@ -71,6 +73,18 @@ const WHITE_POINT_MAX = 16.0;
 const SATURATION_DEFAULT = 1.4;
 const SATURATION_MIN = 0.5;
 const SATURATION_MAX = 3.0;
+// Headroom (0.4.5): the HDR output ceiling, 1..8. Default 8.0 is today's
+// ceiling — no pixel changes until the user drags it. 4.0 ≈ 400 nits on a
+// 100-nit reference, matching the demo present pass this knob is compared
+// against. SDR output is untouched (the [0,1] clamp stands).
+const HEADROOM_DEFAULT = 8.0;
+const HEADROOM_MIN = 1.0;
+const HEADROOM_MAX = 8.0;
+// Highlight desaturation (0.4.5): the filmic fade of bright cores to white.
+// Default 1.0 is today's look; 0.0 keeps pure hues to any peak.
+const HIGHLIGHT_DESAT_DEFAULT = 1.0;
+const HIGHLIGHT_DESAT_MIN = 0.0;
+const HIGHLIGHT_DESAT_MAX = 1.0;
 // Exposure renormalisation (0.3.3): the galaxy's age changes the population mix
 // and with it the field's mean brightness (11× between 0.5 and 13.5 Gyr), so the
 // renderer measures that mix over the first CALIBRATION_STARS sampled positions
@@ -111,7 +125,14 @@ function createStarRenderer(device, context, format, options) {
                 familyForStar: () => 1,
                 familyFromColorIndex: () => 1,
                 packOrbitDynamics: () => {},
+                packEngineVec: () => {},
+                packSimpleParams: () => {},
+                setEngine: () => 0,
+                getEngine: () => 0,
+                SIMPLE_UNIFORM_FLOATS: 20,
         };
+        const SIMPLE_UNIFORM_FLOATS = orbit.SIMPLE_UNIFORM_FLOATS || 20;
+        const SIMPLE_WORKGROUP = 64;
         const landmarks = window.Landmarks;
         if (!landmarks || !landmarks.count) {
                 throw new Error('Landmarks data missing: index.html must load data/landmarks.js before render/star-sprites.js');
@@ -209,6 +230,9 @@ function createStarRenderer(device, context, format, options) {
                         { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
                         { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
                         { binding: 2, visibility: GPUShaderStage.VERTEX, texture: { sampleType: 'float' } },
+                        // 0.4.5: the simple engine's per-slot azimuths, read by
+                        // the vertex branch. Classic mode binds it and ignores it.
+                        { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
                 ],
         });
         const pipeline = device.createRenderPipeline({
@@ -261,6 +285,8 @@ function createStarRenderer(device, context, format, options) {
         tonemapUniform[1] = WHITE_POINT_DEFAULT;
         tonemapUniform[2] = SATURATION_DEFAULT;
         tonemapUniform[3] = outputMode;
+        tonemapUniform[4] = HEADROOM_DEFAULT;
+        tonemapUniform[5] = HIGHLIGHT_DESAT_DEFAULT;
 
         const tonemapBindGroupLayout = device.createBindGroupLayout({
                 label: 'tonemap-layout',
@@ -322,6 +348,47 @@ function createStarRenderer(device, context, format, options) {
                 primitive: { topology: 'triangle-strip' },
         });
 
+        // --- Simple-engine integrator (0.4.5) ------------------------------------
+        // The compute pass that steps the friction-field azimuths while the
+        // simple engine is selected. Uniform + pipeline are created once; the
+        // bind group is recreated in allocate() because it binds the star and
+        // theta buffers. The vertex shader reads theta through binding 3, so
+        // the CPU never reads the azimuths back (per the indirect-draw rule —
+        // labels step their own CPU mirror instead).
+        const simpleModule = device.createShaderModule({
+                label: 'simple-step',
+                code: window.GalaxyShaders.SHADERS['simple-step'],
+        });
+        simpleModule.getCompilationInfo().then((info) => {
+                for (const message of info.messages) {
+                        if (message.type !== 'error') continue;
+                        console.error('WGSL error in simple-step:', `${message.lineNum}:${message.linePos} ${message.message}`);
+                }
+        }).catch(() => {});
+
+        const simpleUniformBuffer = device.createBuffer({
+                label: 'simple-step-uniform',
+                size: SIMPLE_UNIFORM_FLOATS * 4,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        const simpleUniformData = new ArrayBuffer(SIMPLE_UNIFORM_FLOATS * 4);
+        const simpleUniform = new Float32Array(simpleUniformData);
+
+        const simpleBindGroupLayout = device.createBindGroupLayout({
+                label: 'simple-step-layout',
+                entries: [
+                        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+                        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+                        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+                ],
+        });
+        const simplePipeline = device.createComputePipeline({
+                label: 'simple-step-pipeline',
+                layout: device.createPipelineLayout({ bindGroupLayouts: [simpleBindGroupLayout] }),
+                compute: { module: simpleModule, entryPoint: 'main' },
+        });
+        let simpleBindGroup = null;
+
         let hdrTexture = null;
         let hdrView = null;
         let hdrWidth = 0;
@@ -361,6 +428,14 @@ function createStarRenderer(device, context, format, options) {
         let proceduralCount = 0;
         let catalogResident = 0;
         let lastTime = 0;
+        let lastStarTime = 0;
+        // Simple-engine azimuths (0.4.5): one f32 per record slot, seeded from
+        // the birth azimuths in staging. thetaStaging mirrors the record
+        // layout slot-for-slot (index = byteOffset / RECORD_BYTES).
+        let thetaBuffer = null;
+        let thetaData = null;
+        let thetaStaging = null;
+        let totalRecordCount = 0;
         let nebulaBuffer = null;
         let nebulaBindGroup = null;
         let nebulaStaging = null;
@@ -400,6 +475,9 @@ function createStarRenderer(device, context, format, options) {
                 linearExposure: LINEAR_EXPOSURE_DEFAULT,
                 whitePoint: WHITE_POINT_DEFAULT,
                 saturation: SATURATION_DEFAULT,
+                headroom: HEADROOM_DEFAULT,
+                highlightDesat: HIGHLIGHT_DESAT_DEFAULT,
+                engine: 'classic',
                 hdrOutput,
                 bufferBytes: 0,
                 clampedProcedural: false,
@@ -430,6 +508,8 @@ function createStarRenderer(device, context, format, options) {
         let linearExposure = opts.linearExposure === undefined ? LINEAR_EXPOSURE_DEFAULT : opts.linearExposure;
         let whitePoint = opts.whitePoint === undefined ? WHITE_POINT_DEFAULT : opts.whitePoint;
         let saturation = opts.saturation === undefined ? SATURATION_DEFAULT : opts.saturation;
+        let headroom = opts.headroom === undefined ? HEADROOM_DEFAULT : opts.headroom;
+        let highlightDesat = opts.highlightDesat === undefined ? HIGHLIGHT_DESAT_DEFAULT : opts.highlightDesat;
 
         function setExposure(value) {
                 magZero = Math.max(EXPOSURE_MIN, Math.min(EXPOSURE_MAX, value));
@@ -453,6 +533,36 @@ function createStarRenderer(device, context, format, options) {
                 saturation = Math.max(SATURATION_MIN, Math.min(SATURATION_MAX, value));
                 state.saturation = saturation;
                 return saturation;
+        }
+
+        function setHeadroom(value) {
+                headroom = Math.max(HEADROOM_MIN, Math.min(HEADROOM_MAX, value));
+                state.headroom = headroom;
+                return headroom;
+        }
+
+        function setHighlightDesat(value) {
+                highlightDesat = Math.max(HIGHLIGHT_DESAT_MIN, Math.min(HIGHLIGHT_DESAT_MAX, value));
+                state.highlightDesat = highlightDesat;
+                return highlightDesat;
+        }
+
+        // Engine select (0.4.5): classic (closed form, default) or simple
+        // (friction field, integrated). Entering either engine re-seeds the
+        // simple state from the birth field — a fresh integration epoch, so
+        // the switch itself can never strand stars mid-orbit.
+        function setEngine(id) {
+                const next = orbit.setEngine ? orbit.setEngine(id) : 0;
+                state.engine = next === 1 ? 'simple' : 'classic';
+                seedThetaAll();
+                return state.engine;
+        }
+
+        // R (reset everything) re-seeds the simple state alongside the time
+        // accumulators in main.js, so the epoch restarts from the birth field.
+        function resetSimpleState() {
+                seedThetaAll();
+                return state.engine;
         }
 
         // Local procedural gap-fill count (set each rebuild, capped at budget).
@@ -481,6 +591,16 @@ function createStarRenderer(device, context, format, options) {
                         size: Math.max(16, totalBytes),
                         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
                 });
+                if (thetaBuffer) thetaBuffer.destroy();
+                totalRecordCount = totalRecords;
+                const thetaBytes = Math.max(16, totalRecords * 4);
+                thetaData = new ArrayBuffer(thetaBytes);
+                thetaStaging = new Float32Array(thetaData);
+                thetaBuffer = device.createBuffer({
+                        label: 'simple-theta',
+                        size: thetaBytes,
+                        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                });
                 bindGroup = device.createBindGroup({
                         label: 'star-sprite-bind-group',
                         layout: bindGroupLayout,
@@ -488,6 +608,16 @@ function createStarRenderer(device, context, format, options) {
                                 { binding: 0, resource: { buffer: uniformBuffer } },
                                 { binding: 1, resource: { buffer: starBuffer } },
                                 { binding: 2, resource: lutTexture.createView() },
+                                { binding: 3, resource: { buffer: thetaBuffer } },
+                        ],
+                });
+                simpleBindGroup = device.createBindGroup({
+                        label: 'simple-step-bind-group',
+                        layout: simpleBindGroupLayout,
+                        entries: [
+                                { binding: 0, resource: { buffer: simpleUniformBuffer } },
+                                { binding: 1, resource: { buffer: starBuffer } },
+                                { binding: 2, resource: { buffer: thetaBuffer } },
                         ],
                 });
                 if (nebulaBuffer) nebulaBuffer.destroy();
@@ -506,7 +636,37 @@ function createStarRenderer(device, context, format, options) {
                                 { binding: 1, resource: { buffer: nebulaBuffer } },
                         ],
                 });
-                state.bufferBytes = totalBytes + nebulaBytes;
+                state.bufferBytes = totalBytes + nebulaBytes + thetaBytes;
+        }
+
+        // Seed the simple-engine azimuths from the birth positions in staging.
+        // Zero (invisible) records get atan2 of the negated centre — harmless,
+        // because the compute pass and the vertex shader both skip invisible
+        // slots before reading theta.
+        function seedThetaRange(recordStart, recordCount) {
+                if (!thetaStaging || recordCount <= 0) return 0;
+                const view = new DataView(staging);
+                const cx = model.centre ? model.centre.x : 0;
+                const cy = model.centre ? model.centre.y : 0;
+                for (let i = 0; i < recordCount; i++) {
+                        const off = (recordStart + i) * records.RECORD_BYTES;
+                        const x = view.getFloat32(off, true);
+                        const y = view.getFloat32(off + 4, true);
+                        thetaStaging[recordStart + i] = Math.atan2(y - cy, x - cx);
+                }
+                return recordCount;
+        }
+
+        function uploadThetaRange(recordStart, recordCount) {
+                if (recordCount <= 0) return;
+                device.queue.writeBuffer(thetaBuffer, recordStart * 4, thetaData, recordStart * 4, recordCount * 4);
+        }
+
+        function seedThetaAll() {
+                if (!thetaStaging || totalRecordCount <= 0) return 0;
+                const n = seedThetaRange(0, totalRecordCount);
+                uploadThetaRange(0, totalRecordCount);
+                return n;
         }
 
         // Draw the field's positions and the exposure reference that goes with
@@ -670,6 +830,13 @@ function createStarRenderer(device, context, format, options) {
                 sampleField();
                 writeLandmarks();
                 rebuildPopulation();
+                // Fresh positions mean a fresh simple epoch for the fixed
+                // block; uploadDynamic seeds the streaming range below it.
+                // (An age-only regenerate skips prepare, so its integrated
+                // thetas survive — positions don't move under an age change.)
+                const fixedRecords = proceduralCount + landmarkCount + objectCapacity;
+                seedThetaRange(0, fixedRecords);
+                uploadThetaRange(0, fixedRecords);
                 return state;
         }
 
@@ -815,6 +982,14 @@ function createStarRenderer(device, context, format, options) {
                                 staging, localProceduralByteOffset, dynamicBytes);
                 }
 
+                // 5) Streaming slots are not stable star identities, so their
+                // simple-engine azimuths re-seed from the new birth positions
+                // on every rebuild — those stars snap phase when cells change
+                // (documented in the plan; the fixed block never does).
+                const dynamicStart = localProceduralByteOffset / records.RECORD_BYTES;
+                seedThetaRange(dynamicStart, localProceduralCapacity + catalogCapacity);
+                uploadThetaRange(dynamicStart, localProceduralCapacity + catalogCapacity);
+
                 // 4) If the local region is smaller than its capacity, zero out
                 // the remaining slots by marking FLAG_VISIBLE off so they don't
                 // draw. We only need to clear if we shrank; first frame writes
@@ -829,10 +1004,15 @@ function createStarRenderer(device, context, format, options) {
         }
 
         // --- Frame ------------------------------------------------------------
-        function render(camera, width, height, time, input) {
+        // dtStarArg is the frame's star-time step in Myr (main.js passes it;
+        // without it the renderer diffs the star clock itself). Under the
+        // simple engine it drives the compute dispatch; classic ignores it.
+        function render(camera, width, height, time, input, dtStarArg) {
                 if (!starBuffer || width === 0 || height === 0) return;
                 const dt = Math.min(MAX_FRAME_DT, Math.max(0, time - lastTime));
                 lastTime = time;
+                const dtStar = dtStarArg === undefined ? Math.max(0, time - lastStarTime) : Math.max(0, dtStarArg);
+                lastStarTime = time;
 
                 if (input && input.actions) {
                         if (input.actions.exposure) {
@@ -873,15 +1053,28 @@ function createStarRenderer(device, context, format, options) {
                 uniform[27] = time;
                 // Orbit dynamics (vec4 A + vec4 B): re-packed every frame so a
                 // regenerate can never leave the shader on the old galaxy's
-                // rotation numbers — eight floats, no allocation.
+                // rotation numbers — eight floats, no allocation. The engine
+                // lane rides at offset 44 for the vertex branch.
                 if (orbit.packOrbitDynamics) orbit.packOrbitDynamics(model, uniform, 28);
+                if (orbit.packEngineVec) orbit.packEngineVec(model, uniform, 44);
                 device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
                 tonemapUniform[0] = linearExposure;
                 tonemapUniform[1] = whitePoint;
                 tonemapUniform[2] = saturation;
                 tonemapUniform[3] = outputMode;
+                tonemapUniform[4] = headroom;
+                tonemapUniform[5] = highlightDesat;
                 device.queue.writeBuffer(tonemapUniformBuffer, 0, tonemapUniformData);
+
+                // Simple engine: pack the step uniform and count the substeps
+                // first — nSub = 0 (frozen time) skips the dispatch entirely.
+                let simpleSteps = 0;
+                if (orbit.packSimpleParams && (orbit.getEngine ? orbit.getEngine() === 1 : false)) {
+                        orbit.packSimpleParams(model, simpleUniform, 0, dtStar, totalRecordCount, time);
+                        simpleSteps = simpleUniform[1] | 0;
+                        if (simpleSteps > 0) device.queue.writeBuffer(simpleUniformBuffer, 0, simpleUniformData);
+                }
 
                 const instances = state.proceduralStars + landmarkCount + objectCapacity + localProceduralCount + catalogResident;
                 state.drawn = instances;
@@ -889,6 +1082,17 @@ function createStarRenderer(device, context, format, options) {
                 const encoder = device.createCommandEncoder({ label: 'star-frame' });
 
                 ensureHdrTexture(width, height);
+
+                // Pass 0 (simple engine only): step the friction-field
+                // azimuths for the frame's dtStar, before the sprite pass
+                // reconstructs positions from them.
+                if (simpleSteps > 0) {
+                        const stepPass = encoder.beginComputePass({ label: 'simple-step' });
+                        stepPass.setPipeline(simplePipeline);
+                        stepPass.setBindGroup(0, simpleBindGroup);
+                        stepPass.dispatchWorkgroups(Math.ceil(totalRecordCount / SIMPLE_WORKGROUP));
+                        stepPass.end();
+                }
 
                 // Pass 1: additive sprites into the rgba16float HDR intermediate.
                 // Linear flux sums in linear light — no per-star clamping, no
@@ -949,9 +1153,11 @@ function createStarRenderer(device, context, format, options) {
         function dispose() {
                 if (starBuffer) starBuffer.destroy();
                 if (nebulaBuffer) nebulaBuffer.destroy();
+                if (thetaBuffer) thetaBuffer.destroy();
                 if (hdrTexture) hdrTexture.destroy();
                 uniformBuffer.destroy();
                 tonemapUniformBuffer.destroy();
+                simpleUniformBuffer.destroy();
                 lutTexture.destroy();
         }
 
@@ -963,6 +1169,10 @@ function createStarRenderer(device, context, format, options) {
                 setLinearExposure,
                 setWhitePoint,
                 setSaturation,
+                setHeadroom,
+                setHighlightDesat,
+                setEngine,
+                resetSimpleState,
                 dispose,
                 state,
                 stats: () => state,
@@ -978,6 +1188,8 @@ const StarRenderer = {
         LINEAR_EXPOSURE_STEP,
         WHITE_POINT_DEFAULT, WHITE_POINT_MIN, WHITE_POINT_MAX,
         SATURATION_DEFAULT, SATURATION_MIN, SATURATION_MAX,
+        HEADROOM_DEFAULT, HEADROOM_MIN, HEADROOM_MAX,
+        HIGHLIGHT_DESAT_DEFAULT, HIGHLIGHT_DESAT_MIN, HIGHLIGHT_DESAT_MAX,
         HDR_INTERMEDIATE_FORMAT,
 };
 if (typeof module !== 'undefined') module.exports = StarRenderer;

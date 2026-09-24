@@ -68,8 +68,15 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		for (let i = 0; i < count; i++) {
 			let px = pos[i * 3], py = pos[i * 3 + 1], pz = pos[i * 3 + 2];
 			if (orbit && orbitModel) {
-				orbit.orbitPosition(orbitScratch, px, py, pz,
-					orbit.familyFromColorIndex(landmarks.ENTRIES[i].colorIndex), 0, 0, orbitTime, orbitModel);
+				// 0.4.5: under the simple engine the labels ride the CPU
+				// landmark mirror (stepped per frame in main.js), not the
+				// closed form — the same orbit the GPU draws, either way.
+				if (orbit.getEngine() === orbit.ENGINE_SIMPLE && orbit.simpleLandmarksReady()) {
+					orbit.simpleLandmarkPosition(orbitScratch, i, pz);
+				} else {
+					orbit.orbitPosition(orbitScratch, px, py, pz,
+						orbit.familyFromColorIndex(landmarks.ENTRIES[i].colorIndex), 0, 0, orbitTime, orbitModel);
+				}
 				px = orbitScratch[0]; py = orbitScratch[1]; pz = orbitScratch[2];
 			}
 			const visible = labelCoords.projectToScreen(viewProj, px, py, pz,

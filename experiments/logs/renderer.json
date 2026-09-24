@@ -1,20 +1,21 @@
 {
-  "date": "2026-09-24T13:00:05.153Z",
+  "date": "2026-09-24T18:55:14.383Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 126,
-  "totalChecks": 102,
-  "passed": 102,
+  "prepareMs": 139,
+  "totalChecks": 119,
+  "passed": 119,
   "failed": 0,
   "checks": [
     {
-      "name": "three shader modules are created (star-sprite + tonemap + nebula-billboard)",
+      "name": "four shader modules are created (star-sprite + tonemap + nebula-billboard + simple-step)",
       "pass": true,
       "detail": {
         "modules": [
           "star-sprite",
           "tonemap",
-          "nebula-billboard"
+          "nebula-billboard",
+          "simple-step"
         ]
       }
     },
@@ -23,13 +24,24 @@
       "pass": true
     },
     {
-      "name": "three pipelines are created (star-sprite + tonemap + nebula-billboard) — no hdr-direct bypass",
+      "name": "four pipelines are created (star-sprite + tonemap + nebula-billboard + simple-step) — no hdr-direct bypass",
       "pass": true,
       "detail": [
         "star-sprite-pipeline",
         "tonemap-pipeline",
-        "nebula-billboard-pipeline"
+        "nebula-billboard-pipeline",
+        "simple-step-pipeline"
       ]
+    },
+    {
+      "name": "the simple-step pipeline is a compute pipeline with a main entry",
+      "pass": true,
+      "detail": {
+        "module": {
+          "label": "simple-step"
+        },
+        "entryPoint": "main"
+      }
     },
     {
       "name": "the star-sprite pipeline is additive with no depth attachment",
@@ -385,7 +397,7 @@
       "detail": 0.01666666753590107
     },
     {
-      "name": "uniform is exactly 176 bytes (camera block + orbit dynamics + wave)",
+      "name": "uniform is exactly 192 bytes (camera block + orbit dynamics + wave + engine)",
       "pass": true
     },
     {
@@ -446,6 +458,18 @@
       }
     },
     {
+      "name": "uniform engine lane carries (0, eccMax, 0, 0) under the default classic engine",
+      "pass": true,
+      "detail": {
+        "engine": [
+          0,
+          0.20666666328907013,
+          0,
+          0
+        ]
+      }
+    },
+    {
       "name": "tonemap uniform carries the default linear exposure (1.0)",
       "pass": true,
       "detail": 1
@@ -474,9 +498,23 @@
       }
     },
     {
-      "name": "tonemap uniform is 16 bytes (vec4: exp, wp, sat, outputMode)",
+      "name": "tonemap uniform is 32 bytes (params + headroom/desat vec4)",
       "pass": true,
-      "detail": 16
+      "detail": 32
+    },
+    {
+      "name": "tonemap uniform carries the default headroom (8.0, today's ceiling)",
+      "pass": true,
+      "detail": 8
+    },
+    {
+      "name": "tonemap uniform carries the default highlight desat (1.0, today's film look)",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "tonemap uniform pads floats 6-7 with zero",
+      "pass": true
     },
     {
       "name": "a parked camera does not re-upload the catalog",
@@ -596,9 +634,9 @@
       "name": "a young galaxy is a dimmer one, so the offset brightens it back",
       "pass": true,
       "detail": {
-        "offset": -2.309,
-        "meanMagYoung": 6.963,
-        "meanMagRef": 9.133
+        "offset": -0.837,
+        "meanMagYoung": 8.467,
+        "meanMagRef": 9.448
       }
     },
     {
@@ -777,7 +815,11 @@
           "0": 1,
           "1": 4,
           "2": 1.399999976158142,
-          "3": 1
+          "3": 1,
+          "4": 8,
+          "5": 1,
+          "6": 0,
+          "7": 0
         }
       }
     },
@@ -789,7 +831,11 @@
           "0": 1,
           "1": 4,
           "2": 1.399999976158142,
-          "3": 1
+          "3": 1,
+          "4": 8,
+          "5": 1,
+          "6": 0,
+          "7": 0
         }
       }
     },
@@ -811,6 +857,91 @@
       "name": "no WGSL compilation errors were reported",
       "pass": true,
       "detail": null
+    },
+    {
+      "name": "the classic engine is the default and allocates one theta f32 per slot",
+      "pass": true,
+      "detail": {
+        "engine": "classic",
+        "slots": 1659
+      }
+    },
+    {
+      "name": "state.bufferBytes counts the star, nebula and theta buffers",
+      "pass": true,
+      "detail": {
+        "bufferBytes": 33340
+      }
+    },
+    {
+      "name": "prepare seeds the fixed-block azimuths from the birth positions",
+      "pass": true,
+      "detail": {
+        "bytes": 4636,
+        "firstTheta": 1.604601263999939
+      }
+    },
+    {
+      "name": "classic frames carry engine id 0 and dispatch no compute",
+      "pass": true
+    },
+    {
+      "name": "setEngine(simple) switches the state and re-seeds the epoch",
+      "pass": true,
+      "detail": {
+        "engine": "simple"
+      }
+    },
+    {
+      "name": "simple frames carry engine id 1 with the model eccMax beside it",
+      "pass": true,
+      "detail": {
+        "id": 1,
+        "ecc": 0.20666666328907013
+      }
+    },
+    {
+      "name": "a simple frame packs the step uniform (nSub > 0, count = slots)",
+      "pass": true,
+      "detail": {
+        "h": 0.3333333432674408,
+        "nSub": 3,
+        "count": 1659
+      }
+    },
+    {
+      "name": "a simple frame dispatches ceil(slots/64) workgroups before the sprites",
+      "pass": true,
+      "detail": {
+        "dispatches": [
+          [
+            26,
+            1,
+            1
+          ]
+        ],
+        "slots": 1659
+      }
+    },
+    {
+      "name": "frozen time dispatches nothing under the simple engine",
+      "pass": true
+    },
+    {
+      "name": "leaving the engine stops the dispatch again",
+      "pass": true
+    },
+    {
+      "name": "headroom and highlight desat reach the tonemap uniform",
+      "pass": true,
+      "detail": {
+        "headroom": 4,
+        "desat": 0
+      }
+    },
+    {
+      "name": "headroom clamps to [1, 8] and desat to [0, 1]",
+      "pass": true
     }
   ]
 }

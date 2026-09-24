@@ -63,6 +63,10 @@ function readParams(search) {
                 // to the model's own range, so ?age=99 is the oldest galaxy there
                 // is rather than an error.
                 age: number('age', window.GalaxyLib.AGE_DEFAULT),
+                // The star-motion math: classic (closed form, default) or
+                // simple (integrated friction field). Anything else falls back
+                // to classic in orbit.setEngine.
+                engine: text('engine', 'classic'),
         };
 }
 
@@ -149,6 +153,23 @@ async function boot() {
         }
         if (params.exposure !== null) renderer.setExposure(params.exposure);
 
+        // 0.4.5 simple engine: the CPU landmark mirror's birth table, static
+        // for the session (named stars are Milky Way data). Re-initialised
+        // from these positions on regenerate, engine switch and R.
+        const landmarkPos = new Float32Array(landmarks.count * 3);
+        const landmarkColors = new Uint8Array(landmarks.count);
+        for (let i = 0; i < landmarks.count; i++) {
+                landmarkPos[i * 3] = landmarks.ENTRIES[i].x;
+                landmarkPos[i * 3 + 1] = landmarks.ENTRIES[i].y;
+                landmarkPos[i * 3 + 2] = landmarks.ENTRIES[i].z;
+                landmarkColors[i] = landmarks.ENTRIES[i].colorIndex;
+        }
+        function initSimpleLandmarks() {
+                window.OrbitLib.simpleLandmarksInit(landmarkPos, landmarkColors, landmarks.count, model);
+        }
+        renderer.setEngine(params.engine);
+        initSimpleLandmarks();
+
         // --- Settings menu (Tab to toggle) -----------------------------------
         const menu = document.getElementById('menu');
         const menuClose = document.getElementById('menu-close');
@@ -156,14 +177,20 @@ async function boot() {
         const sliderBright = document.getElementById('slider-brightness');
         const sliderWhite = document.getElementById('slider-white');
         const sliderSat = document.getElementById('slider-saturation');
+        const sliderHeadroom = document.getElementById('slider-headroom');
+        const sliderHighlight = document.getElementById('slider-highlight');
         const sliderStarTime = document.getElementById('slider-star-time');
         const sliderWave = document.getElementById('slider-wave');
+        const engineSelect = document.getElementById('engine');
         const valExp = document.getElementById('val-exposure');
         const valBright = document.getElementById('val-brightness');
         const valWhite = document.getElementById('val-white');
         const valSat = document.getElementById('val-saturation');
+        const valHeadroom = document.getElementById('val-headroom');
+        const valHighlight = document.getElementById('val-highlight');
         const valStarTime = document.getElementById('val-star-time');
         const valWave = document.getElementById('val-wave');
+        const valEngine = document.getElementById('val-engine');
         const btnDefaults = document.getElementById('menu-defaults');
 
         // Brightness slider is linear in multiplier (0.125 – 8.0), not stops,
@@ -179,6 +206,10 @@ async function boot() {
                 valWhite.textContent = renderer.state.whitePoint.toFixed(1);
                 sliderSat.value = renderer.state.saturation;
                 valSat.textContent = renderer.state.saturation.toFixed(1) + '×';
+                sliderHeadroom.value = renderer.state.headroom;
+                valHeadroom.textContent = renderer.state.headroom.toFixed(1);
+                sliderHighlight.value = renderer.state.highlightDesat;
+                valHighlight.textContent = renderer.state.highlightDesat.toFixed(2);
         }
         syncSlidersFromRenderer();
 
@@ -204,6 +235,14 @@ async function boot() {
                 renderer.setSaturation(Number(sliderSat.value));
                 valSat.textContent = renderer.state.saturation.toFixed(1) + '×';
         });
+        sliderHeadroom.addEventListener('input', () => {
+                renderer.setHeadroom(Number(sliderHeadroom.value));
+                valHeadroom.textContent = renderer.state.headroom.toFixed(1);
+        });
+        sliderHighlight.addEventListener('input', () => {
+                renderer.setHighlightDesat(Number(sliderHighlight.value));
+                valHighlight.textContent = renderer.state.highlightDesat.toFixed(2);
+        });
         function syncStarTime() {
                 sliderStarTime.value = starTimeRate;
                 valStarTime.textContent = window.OrbitLib.formatTimeRate(starTimeRate, 0);
@@ -224,11 +263,24 @@ async function boot() {
                 syncWave();
         });
         syncWave();
+        function syncEngine() {
+                engineSelect.value = renderer.state.engine;
+                valEngine.textContent = renderer.state.engine === 'simple' ? 'friction field' : 'closed form';
+        }
+        engineSelect.addEventListener('change', () => {
+                renderer.setEngine(engineSelect.value);
+                initSimpleLandmarks();
+                syncEngine();
+                updateOverlay(renderer.state, camera.getState(statsText));
+        });
+        syncEngine();
         btnDefaults.addEventListener('click', () => {
                 renderer.setExposure(window.StarRenderer.EXPOSURE_DEFAULT);
                 renderer.setLinearExposure(window.StarRenderer.LINEAR_EXPOSURE_DEFAULT);
                 renderer.setWhitePoint(window.StarRenderer.WHITE_POINT_DEFAULT);
                 renderer.setSaturation(window.StarRenderer.SATURATION_DEFAULT);
+                renderer.setHeadroom(window.StarRenderer.HEADROOM_DEFAULT);
+                renderer.setHighlightDesat(window.StarRenderer.HIGHLIGHT_DESAT_DEFAULT);
                 waveDamping = window.OrbitLib.setWaveDamping(window.OrbitLib.WAVE_DAMPING_UI_DEFAULT);
                 syncSlidersFromRenderer();
                 syncWave();
@@ -280,6 +332,9 @@ async function boot() {
                 pendingAge = null;
                 model = galaxy.createGalaxy({ type, seed, age });
                 renderer.regenerate(model);
+                // Another centre means another birth field: the simple-engine
+                // CPU mirror re-seeds with the GPU thetas (which prepare did).
+                initSimpleLandmarks();
                 camera.setFrame(model);
                 labels.setEnabled(model.milkyWay);
                 if (selected >= 0) {
@@ -297,6 +352,9 @@ async function boot() {
         function regenerateAge(age) {
                 model = galaxy.createGalaxy({ type: model.type, seed: model.seed, age });
                 renderer.regenerate(model);
+                // No mirror re-seed here: positions don't move under an age
+                // change, so both the GPU thetas and this CPU mirror stay
+                // valid — re-seeding either side would snap the epoch.
                 syncGalaxyControls();
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
@@ -366,7 +424,7 @@ async function boot() {
                         ` + catalog ${catKept.toLocaleString()}/${state.catalogTotalStars.toLocaleString()}\n` +
                         `cells ${state.cellsResident}/${state.catalogCells}   decoded ${(state.decodedBytes / 1024).toFixed(0)} KB` +
                         `   buffer ${(state.bufferBytes / 1048576).toFixed(1)} MB\n` +
-                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   Tab menu\n` +
+                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   engine ${state.engine}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   Tab menu\n` +
                         `pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
                         cameraLine(cameraState) +
                         selectedLine(cameraState);
@@ -386,13 +444,23 @@ async function boot() {
                 const effectiveTimeRate = starTimeRate < 0
                         ? (-starTimeRate) * window.OrbitLib.FLIGHT_TIME_GAIN * cameraStateForTime.speedLyPerSec
                         : starTimeRate;
-                starTimeMyr += effectiveTimeRate * dt;
+                const dtStar = effectiveTimeRate * dt;
+                starTimeMyr += dtStar;
                 if (starTimeMyr >= STAR_TIME_WRAP || starTimeMyr < 0) starTimeMyr = ((starTimeMyr % STAR_TIME_WRAP) + STAR_TIME_WRAP) % STAR_TIME_WRAP;
+                // The simple engine's CPU mirror steps beside the GPU buffer —
+                // same dtStar the renderer dispatches, so labels and picks ride
+                // what the sprites draw. Classic ignores both.
+                if (renderer.state.engine === 'simple' && dtStar > 0) {
+                        window.OrbitLib.simpleLandmarksStep(dtStar, starTimeMyr);
+                }
                 // R puts the orbit target back on the Sun, so a stale selection would
                 // contradict it the next time the user cycles into orbit-object mode.
+                // It also restarts the simple epoch on both sides of the mirror.
                 if (resetting) {
                         selected = -1;
                         labels.setSelected(-1);
+                        renderer.resetSimpleState();
+                        initSimpleLandmarks();
                 }
 
                 if (actions.galaxyCycle) {
@@ -434,7 +502,7 @@ async function boot() {
                 }
 
                 resizeCanvas();
-                renderer.render(camera, canvas.width, canvas.height, starTimeMyr, input.state);
+                renderer.render(camera, canvas.width, canvas.height, starTimeMyr, input.state, dtStar);
                 labels.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
                 labels.draw(camera, canvas.clientWidth, canvas.clientHeight);
 

@@ -118,6 +118,38 @@ const hable = mirror ? mirror.hable : function () { return NaN; };
 		renderer.HDR_INTERMEDIATE_FORMAT === 'rgba16float', renderer.HDR_INTERMEDIATE_FORMAT);
 }
 
+// --- Headroom + highlight desaturation (the 0.4.5 knobs) ------------------
+// The demo present pass this engine is compared against keeps pure hues to
+// any peak under a headroom ceiling; the film look fades bright cores to
+// white. Both are one tonemapPixel each — (0, 0, 200) is past the fade
+// threshold at the default white point, so the two knobs read exactly.
+{
+	const P = (o) => Object.assign({ exposure: 1, whitePoint: 4, saturation: 1, outputMode: 1 }, o);
+	const px = (r, g, b, o) => mirrorLib.tonemapPixel(mirror, r, g, b, P(o));
+	const pure = px(0, 0, 200, { highlightDesat: 0 });
+	const film = px(0, 0, 200, { highlightDesat: 1 });
+	check('desat 0 keeps pure hues to any peak (0, 0, 200) → (0, 0, 8)',
+		pure[0] === 0 && pure[1] === 0 && pure[2] === 8, pure);
+	check('desat 1 fades the same pixel to white (today\'s film look)',
+		film[0] === 8 && film[1] === 8 && film[2] === 8, film);
+	const half = px(0, 0, 200, { highlightDesat: 0.5 });
+	check('desat 0.5 lands halfway between pure and film',
+		half[0] > 0 && half[0] < 8 && half[2] === 8, half);
+	const h4 = px(100, 100, 100, { headroom: 4 });
+	const h8 = px(100, 100, 100, { headroom: 8 });
+	check('the headroom knob ceilings HDR output (4 → 4, 8 → 8)',
+		h4.every((v) => v === 4) && h8.every((v) => v === 8), { h4, h8 });
+	const sdr = px(0, 0, 200, { outputMode: 0, headroom: 4, highlightDesat: 0 });
+	check('SDR output is untouched by the headroom knob ([0,0,200] → [0,0,1])',
+		sdr[0] === 0 && sdr[1] === 0 && sdr[2] === 1, sdr);
+	check('omitting both knobs reproduces the default pixels exactly',
+		JSON.stringify(px(3, 1, 0.5, {})) === JSON.stringify(px(3, 1, 0.5, { headroom: 8, highlightDesat: 1 })));
+	check('the renderer defaults are today\'s ceiling and today\'s film look',
+		renderer.HEADROOM_DEFAULT === 8 && renderer.HIGHLIGHT_DESAT_DEFAULT === 1
+		&& renderer.HEADROOM_MIN === 1 && renderer.HEADROOM_MAX === 8
+		&& renderer.HIGHLIGHT_DESAT_MIN === 0 && renderer.HIGHLIGHT_DESAT_MAX === 1);
+}
+
 // --- Report -------------------------------------------------------------
 let passed = 0;
 let failed = 0;

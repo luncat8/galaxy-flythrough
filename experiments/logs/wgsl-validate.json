@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-24T13:00:04.076Z",
+  "date": "2026-09-24T18:55:13.257Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -11,11 +11,15 @@
     },
     {
       "name": "orbit",
-      "lines": 147
+      "lines": 164
+    },
+    {
+      "name": "simple-step",
+      "lines": 72
     },
     {
       "name": "star-sprite",
-      "lines": 291
+      "lines": 320
     },
     {
       "name": "star-sprite-hdr",
@@ -23,15 +27,15 @@
     },
     {
       "name": "nebula-billboard",
-      "lines": 120
+      "lines": 121
     },
     {
       "name": "tonemap",
-      "lines": 130
+      "lines": 137
     },
     {
       "name": "procedural-gen",
-      "lines": 251
+      "lines": 276
     },
     {
       "name": "cull",
@@ -42,10 +46,11 @@
     "star-sprite",
     "star-sprite-hdr",
     "nebula-billboard",
-    "tonemap"
+    "tonemap",
+    "simple-step"
   ],
-  "totalChecks": 153,
-  "passed": 153,
+  "totalChecks": 171,
+  "passed": 171,
   "failed": 0,
   "checks": [
     {
@@ -55,6 +60,7 @@
         "pcg-hash",
         "density",
         "orbit",
+        "simple-step",
         "star-sprite",
         "star-sprite-hdr",
         "nebula-billboard",
@@ -77,11 +83,15 @@
         ],
         [
           "orbit",
-          7318
+          8229
+        ],
+        [
+          "simple-step",
+          3195
         ],
         [
           "star-sprite",
-          13660
+          15248
         ],
         [
           "star-sprite-hdr",
@@ -89,15 +99,15 @@
         ],
         [
           "nebula-billboard",
-          4022
+          4115
         ],
         [
           "tonemap",
-          5707
+          6088
         ],
         [
           "procedural-gen",
-          11790
+          13069
         ],
         [
           "cull",
@@ -106,13 +116,14 @@
       ]
     },
     {
-      "name": "four wired shaders are exposed (star-sprite, star-sprite-hdr, nebula-billboard, tonemap)",
+      "name": "five wired shaders are exposed (star-sprite, star-sprite-hdr, nebula-billboard, tonemap, simple-step)",
       "pass": true,
       "detail": [
         "star-sprite",
         "star-sprite-hdr",
         "nebula-billboard",
-        "tonemap"
+        "tonemap",
+        "simple-step"
       ]
     },
     {
@@ -124,7 +135,8 @@
         "nebula-billboard",
         "tonemap",
         "procedural-gen",
-        "cull"
+        "cull",
+        "simple-step"
       ]
     },
     {
@@ -179,7 +191,25 @@
     {
       "name": "orbit: declares its functions",
       "pass": true,
-      "detail": 6
+      "detail": 7
+    },
+    {
+      "name": "simple-step: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "simple-step: contains no unresolved markers",
+      "pass": true,
+      "detail": "simple-step"
+    },
+    {
+      "name": "simple-step: declares its functions",
+      "pass": true,
+      "detail": 2
     },
     {
       "name": "star-sprite: braces and parentheses balance",
@@ -197,7 +227,7 @@
     {
       "name": "star-sprite: declares its functions",
       "pass": true,
-      "detail": 11
+      "detail": 12
     },
     {
       "name": "star-sprite-hdr: braces and parentheses balance",
@@ -269,7 +299,7 @@
     {
       "name": "procedural-gen: declares its functions",
       "pass": true,
-      "detail": 12
+      "detail": 13
     },
     {
       "name": "cull: braces and parentheses balance",
@@ -528,6 +558,15 @@
       }
     },
     {
+      "name": "procedural-gen.wgsl giant-branch and cooling constants match star-types.js",
+      "pass": true,
+      "detail": {
+        "frac": 0.15,
+        "tau": 8,
+        "floor": 4000
+      }
+    },
+    {
       "name": "procedural-gen.wgsl bisects the SFH inverse, and says how far",
       "pass": true,
       "detail": {
@@ -743,6 +782,14 @@
       }
     },
     {
+      "name": "simple-step.wgsl mirrors simpleOmega",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
       "name": "procedural-gen.wgsl mirrors luminosityFromMass",
       "pass": true,
       "detail": {
@@ -760,6 +807,14 @@
     },
     {
       "name": "procedural-gen.wgsl mirrors msLifetimeGyr",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "procedural-gen.wgsl mirrors giantLifetimeGyr",
       "pass": true,
       "detail": {
         "wgsl": true,
@@ -938,6 +993,14 @@
       "pass": true
     },
     {
+      "name": "the tonemap carries a second vec4 (headroom + highlight desat)",
+      "pass": true
+    },
+    {
+      "name": "the renderer writes all eight tonemap floats every frame",
+      "pass": true
+    },
+    {
       "name": "the tonemap does NOT apply manual sRGB gamma (canvas colorSpace srgb encodes it)",
       "pass": true
     },
@@ -979,6 +1042,26 @@
     },
     {
       "name": "the nebula-billboard fragment uses a soft (1-r²)² falloff and no texture",
+      "pass": true
+    },
+    {
+      "name": "the star sprite binds the simple-engine azimuths at binding 3",
+      "pass": true
+    },
+    {
+      "name": "the star vertex branches on the engine lane (uniform control flow)",
+      "pass": true
+    },
+    {
+      "name": "simple-step is a 64-wide compute module over the orbit part",
+      "pass": true
+    },
+    {
+      "name": "simple-step binds uniform + stars + read-write thetas",
+      "pass": true
+    },
+    {
+      "name": "simple-step carries the same guards as the CPU (invisible, unarmed, minRadius)",
       "pass": true
     },
     {
@@ -1052,7 +1135,8 @@
           "dynA",
           "dynB",
           "waveA",
-          "waveB"
+          "waveB",
+          "engine"
         ],
         "nebula": [
           "viewProj",
@@ -1062,7 +1146,8 @@
           "dynA",
           "dynB",
           "waveA",
-          "waveB"
+          "waveB",
+          "engine"
         ]
       }
     },
@@ -1071,12 +1156,33 @@
       "pass": true
     },
     {
-      "name": "the packer fills the four vec4s the struct declares (16 floats at offset 28)",
+      "name": "the packer fills the orbit vec4s and the engine lane (16 at 28, 4 at 44)",
       "pass": true
     },
     {
-      "name": "both sides implement pattern-frame capture, not the inertial omega*(1-s*D) port",
+      "name": "the classic law keeps pattern-frame capture (no inertial port in dampedDiscTheta/orbitPosition)",
       "pass": true
+    },
+    {
+      "name": "the simple pair implements the friction-field slowdown on both sides",
+      "pass": true
+    },
+    {
+      "name": "both sides reconstruct from the integrated azimuth (simplePositionFromTheta ↔ simplePosition)",
+      "pass": true
+    },
+    {
+      "name": "the engine ids are 0/1 on the JS side and the branch reads them on the GPU side",
+      "pass": true
+    },
+    {
+      "name": "the step uniform is five vec4s (20 floats) packed per frame under simple",
+      "pass": true
+    },
+    {
+      "name": "simple-step hard-codes no per-galaxy rotation numbers",
+      "pass": true,
+      "detail": null
     },
     {
       "name": "the nebula billboards rigidly follow the pattern speed (plan §7.4)",

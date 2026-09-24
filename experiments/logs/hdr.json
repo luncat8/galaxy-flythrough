@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-22T03:35:47.589Z",
+  "date": "2026-09-24T18:55:14.444Z",
   "consts": {
     "LUMA_R": 0.2126,
     "LUMA_G": 0.7152,
@@ -11,14 +11,14 @@
     "E": 0.02,
     "F": 0.3
   },
-  "totalChecks": 16,
-  "passed": 16,
+  "totalChecks": 23,
+  "passed": 23,
   "failed": 0,
   "checks": [
     {
       "name": "the tonemap shader part exists and is non-trivial",
       "pass": true,
-      "detail": 5707
+      "detail": 6088
     },
     {
       "name": "the tonemap shader exposes the six Hable/Unreal constants A–F",
@@ -100,6 +100,66 @@
       "name": "the HDR intermediate format is rgba16float",
       "pass": true,
       "detail": "rgba16float"
+    },
+    {
+      "name": "desat 0 keeps pure hues to any peak (0, 0, 200) → (0, 0, 8)",
+      "pass": true,
+      "detail": [
+        0,
+        0,
+        8
+      ]
+    },
+    {
+      "name": "desat 1 fades the same pixel to white (today's film look)",
+      "pass": true,
+      "detail": [
+        8,
+        8,
+        8
+      ]
+    },
+    {
+      "name": "desat 0.5 lands halfway between pure and film",
+      "pass": true,
+      "detail": [
+        4.472008065668546,
+        4.472008065668546,
+        8
+      ]
+    },
+    {
+      "name": "the headroom knob ceilings HDR output (4 → 4, 8 → 8)",
+      "pass": true,
+      "detail": {
+        "h4": [
+          4,
+          4,
+          4
+        ],
+        "h8": [
+          8,
+          8,
+          8
+        ]
+      }
+    },
+    {
+      "name": "SDR output is untouched by the headroom knob ([0,0,200] → [0,0,1])",
+      "pass": true,
+      "detail": [
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "omitting both knobs reproduces the default pixels exactly",
+      "pass": true
+    },
+    {
+      "name": "the renderer defaults are today's ceiling and today's film look",
+      "pass": true
     }
   ]
 }

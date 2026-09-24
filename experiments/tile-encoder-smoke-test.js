@@ -29,7 +29,11 @@ function check(name, pass, detail) {
 	return !!pass;
 }
 
-const MOCK_STARS = 4000;
+// 32k, not 4k: since the giant branch became temporary (0.4.5), the mock
+// Milky Way's bright end is the turnoff shell plus O/B stars, not a 3%
+// permanent-giant tail — a 4k draw keeps ~6 stars past G < 12, too thin to
+// exercise cells and bands. 32k keeps 30 at the fixed seed, in ~0.1 s.
+const MOCK_STARS = 32000;
 const MOCK_SEED = 20240919;
 
 // --- 1. Coordinate conversion -------------------------------------------
