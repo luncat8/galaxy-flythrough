@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-24T18:55:48.756Z",
+  "date": "2026-09-24T19:54:16.085Z",
   "totalChecks": 94,
   "passed": 94,
   "failed": 0,
@@ -615,8 +615,14 @@
       }
     },
     {
-      "name": "the bar family rides the pattern speed at any damping, any theta",
-      "pass": true
+      "name": "the bar field captures on its major axis, streams in the wings and releases with height",
+      "pass": true,
+      "detail": {
+        "onAxis": 0.06999,
+        "wing": 0.1125,
+        "high": 0.1125,
+        "circ": 0.1125
+      }
     },
     {
       "name": "pressure spins at λ·clock with no damping and no eccentricity",

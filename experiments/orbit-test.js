@@ -769,11 +769,28 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 	check('outside corotation the pattern overtakes the star, which still freezes on-arm',
 		offOut - Ps.omegaP < 0 && onOut === 0, { off: +offOut.toFixed(5), on: onOut });
 
-	// Families: the bar rides its rigid seat, pressure spins slow and
+	// Families: the bar is a two-ended capture lane, pressure spins slow and
 	// undamped, a flat-less disc is frozen, the centre cannot NaN.
-	check('the bar family rides the pattern speed at any damping, any theta',
-		orbit.simpleOmega(0.3, 2, 0.9, 1.2, orbit.FAMILY_BAR, Ps, 0.5) === Ps.omegaP
-		&& orbit.simpleOmega(2.9, 0.4, 0.1, 0, orbit.FAMILY_BAR, Ps, 0) === Ps.omegaP);
+	//
+	// The bar's field is the arm jam folded onto the bar's own axis: a star on
+	// the major axis is slowed toward the pattern (captured, the lane that holds
+	// the bar's shape), a star in the wings streams at the full group rate
+	// Omega(r), and the 3-D cosine releases both above the disc's height. A
+	// rigid omega_p everywhere was the 0.4.5 form — it glued the wings to the
+	// pattern, which is the "solid body" look the field exists to avoid. The
+	// classic engine's seat + x1 loop is the closed-form equivalent (and stays
+	// rigid there, where T is a parameter rather than an integration).
+	const barAxis = orbit.simpleDerived(MW, {}).barTilt;
+	const barCirc = Ps.vFlat / 2;
+	const onAxisBar = orbit.simpleOmega(barAxis, 2, 0, 0, orbit.FAMILY_BAR, Ps, 0, 0);
+	const wingBar = orbit.simpleOmega(barAxis + Math.PI / 2, 2, 0, 0, orbit.FAMILY_BAR, Ps, 0, 0);
+	const highBar = orbit.simpleOmega(barAxis, 2, 0, 0, orbit.FAMILY_BAR, Ps, 0, Ps.verticalScale);
+	check('the bar field captures on its major axis, streams in the wings and releases with height',
+		onAxisBar > Ps.omegaP && onAxisBar < wingBar
+		&& Math.abs(wingBar - barCirc) < 1e-5      // exp(-12) lane floor, not exactly 0
+		&& Math.abs(highBar - barCirc) < 1e-9
+		&& orbit.simpleOmega(0.3, 2, 0.9, 1.2, orbit.FAMILY_BAR, Ps, 0.5, 0) !== Ps.omegaP,
+		{ onAxis: +onAxisBar.toFixed(5), wing: +wingBar.toFixed(5), high: +highBar.toFixed(5), circ: +barCirc.toFixed(5) });
 	check('pressure spins at λ·clock with no damping and no eccentricity',
 		Math.abs(orbit.simpleOmega(1, 5, 0.99, 0, orbit.FAMILY_PRESSURE, Ps, 0)
 			- 0.15 * orbit.pressureClock(Ps, 5)) < 1e-12);
@@ -842,8 +859,11 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 		const bx = lmPos[i * 3], by = lmPos[i * 3 + 1], bz = lmPos[i * 3 + 2];
 		const r0 = Math.hypot(bx - MW.centre.x, by - 0);
 		const fam = orbit.familyFromColorIndex(lmCol[i]);
+		// The reference step carries the same height the mirror does: the 3-D
+		// cosine in simpleOmega reads z, and a reference that dropped it would
+		// disagree by the whole vertical factor (0.12 kpc on this fixture).
 		const th = orbit.simpleStepTheta(Math.atan2(by - 0, bx - MW.centre.x), r0,
-			orbit.simpleEccOf(0), orbit.simplePeriOf(0), fam, Pd, ppd, 50);
+			orbit.simpleEccOf(0), orbit.simplePeriOf(0), fam, Pd, ppd, 50, bz);
 		const ref = new Float64Array(3);
 		orbit.simplePositionFromTheta(ref, th, bx, by, bz, 0, fam, orbit.simpleEccMax(MW), MW);
 		const got = new Float64Array(3);

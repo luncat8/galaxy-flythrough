@@ -34,6 +34,8 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 
 ## Concepts
 
+- **Workflow.** galaxy type -> galaxy features (arms, bar, core,...) -> density field -> stars distributions -> orbits and mechanics to keep distribution and density stable in time. Density is visible shape of galaxy and in this project is more important then star types distribution (young, old, big, N-generation, etc).
+
 - **Camera-relative coordinates.** Galactic XYZ at kpc distances loses precision in `f32`. The shader subtracts a `f32` `camera.position` uniform from every star; measured error is 0.005 pc at 100 kpc (`precision-test.js`), so split-double is not used. The CPU keeps positions in `f64`.
 - **The model is truncated, and the truncation lives in the model.** `density.js` applies the same disc/bulge cuts that the sampler draws inside (`TRUNCATION`); the WGSL mirror carries the same constants. A profile that is truncated in the sampler but not in the field makes every density-weighted decision (nebula placement, dominant component, thinning) disagree with the stars on screen.
 - **Draw the frame even when nothing is resident.** An empty residency set still clears and presents; early-returning with a stale framebuffer shows a galaxy that the camera has already left.
@@ -42,7 +44,7 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 - **Three render paths.** Path A: bright/nearby billboard sprites. Path B: distant point sprites. Path C: unresolved density cells (additive screen-space quads). One frame may use all three.
 - **Indirect draw, no readback.** Compute shader produces visible-star indices and `drawIndirect` args in storage buffers. CPU never reads the visible-star list per frame.
 - **Stable hash, no PRNG state.** Every procedural star is `(seed, cellId, slot)` hashed to its properties. PCG hash is the default. The galaxy is fully reproducible across runs and machines.
-- **Plan first, implement second.** If a design decision is not in `plan.md`, add it there before coding. Do not leave architectural choices implicit in code.
+- **Plan first, implement second.** If a design decision is not in `plan.md`, add it there before coding. Do not leave architectural choices implicit in code. Feel free in improve plans or suggest any global changes if found something better.
 
 ## Files
 

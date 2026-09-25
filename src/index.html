@@ -60,6 +60,11 @@
                         <span id="val-wave" class="menu-val">0.60</span>
                 </div>
                 <div class="menu-row">
+                        <label for="slider-pattern" title="Multiplier of the derived pattern speed (the friction field's rotation). 0 freezes the arms and the bar, 1 is the model's own group speed, 3 triples it. Changes preserve the current phase; a model with no pattern is unaffected.">Pattern speed</label>
+                        <input type="range" id="slider-pattern" min="0" max="3" step="0.05" value="1">
+                        <span id="val-pattern" class="menu-val">×1.00</span>
+                </div>
+                <div class="menu-row">
                         <label for="engine" title="Star-motion math. Classic is the exact closed form; simple is the integrated friction field (resets its epoch on switch).">Engine</label>
                         <select id="engine">
                                 <option value="classic" selected>classic</option>
@@ -102,7 +107,7 @@ P                    constellation lines on / off
 H                    home: the Sun, or a generated galaxy's centre
 G                    new galaxy: cycle type (rebuilds the field, about a second)
 R                    reset everything
-Tab                  settings menu (exposure / brightness / white / saturation / wave)
+Tab                  settings menu (exposure / brightness / white / saturation / wave / pattern)
 [ / ]                exposure (how faint a star still shows)
 ; / '                brightness (overall gain)
 Ctrl+W closes the tab: fly slowly with Ctrl + arrows

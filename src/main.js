@@ -67,6 +67,10 @@ function readParams(search) {
                 // simple (integrated friction field). Anything else falls back
                 // to classic in orbit.setEngine.
                 engine: text('engine', 'classic'),
+                // Multiplier of the model's derived pattern speed: the friction
+                // field's rotation rate (0 frozen … 3, 1 = the derived group
+                // speed). Clamped by orbit.setPatternScale.
+                pattern: number('pattern', window.OrbitLib.PATTERN_SCALE_UI_DEFAULT),
         };
 }
 
@@ -88,6 +92,9 @@ async function boot() {
         // View control, not a model field. 0.6 is the measured hold (Sun ring
         // cosine 0.10 → ~0.6 in 300 Myr). 0 is the 0.4.3 shear.
         let waveDamping = window.OrbitLib.setWaveDamping(window.OrbitLib.WAVE_DAMPING_UI_DEFAULT);
+        // View control, not a model field: the derived Omega_p of whatever
+        // model is loaded, times this. 1 is the model's own group speed.
+        let patternScale = window.OrbitLib.setPatternScale(params.pattern, starTimeMyr, model);
         const STAR_TIME_WRAP = 0x800000;
 
         function showError(message) {
@@ -181,6 +188,7 @@ async function boot() {
         const sliderHighlight = document.getElementById('slider-highlight');
         const sliderStarTime = document.getElementById('slider-star-time');
         const sliderWave = document.getElementById('slider-wave');
+        const sliderPattern = document.getElementById('slider-pattern');
         const engineSelect = document.getElementById('engine');
         const valExp = document.getElementById('val-exposure');
         const valBright = document.getElementById('val-brightness');
@@ -190,6 +198,7 @@ async function boot() {
         const valHighlight = document.getElementById('val-highlight');
         const valStarTime = document.getElementById('val-star-time');
         const valWave = document.getElementById('val-wave');
+        const valPattern = document.getElementById('val-pattern');
         const valEngine = document.getElementById('val-engine');
         const btnDefaults = document.getElementById('menu-defaults');
 
@@ -263,6 +272,23 @@ async function boot() {
                 syncWave();
         });
         syncWave();
+        // The readout is the effective rate, not the multiplier: the multiplier
+        // means nothing until it is the model's own Omega_p — and for a model
+        // with no pattern (S0/E/Irr) it stays 0.000 at every setting, which is
+        // the honest answer to "what does this slider do here".
+        function formatPattern() {
+                const rate = window.OrbitLib.effectivePatternSpeed(model);
+                return `${rate.toFixed(3)} ×${patternScale.toFixed(2)}`;
+        }
+        function syncPattern() {
+                sliderPattern.value = patternScale;
+                valPattern.textContent = formatPattern();
+        }
+        sliderPattern.addEventListener('input', () => {
+                patternScale = window.OrbitLib.setPatternScale(Number(sliderPattern.value), starTimeMyr, model);
+                syncPattern();
+        });
+        syncPattern();
         function syncEngine() {
                 engineSelect.value = renderer.state.engine;
                 valEngine.textContent = renderer.state.engine === 'simple' ? 'friction field' : 'closed form';
@@ -282,8 +308,10 @@ async function boot() {
                 renderer.setHeadroom(window.StarRenderer.HEADROOM_DEFAULT);
                 renderer.setHighlightDesat(window.StarRenderer.HIGHLIGHT_DESAT_DEFAULT);
                 waveDamping = window.OrbitLib.setWaveDamping(window.OrbitLib.WAVE_DAMPING_UI_DEFAULT);
+                patternScale = window.OrbitLib.setPatternScale(window.OrbitLib.PATTERN_SCALE_UI_DEFAULT, starTimeMyr, model);
                 syncSlidersFromRenderer();
                 syncWave();
+                syncPattern();
         });
 
         const galaxyType = document.getElementById('galaxy-type');
@@ -315,6 +343,9 @@ async function boot() {
                 galaxyAge.value = model.populations.age;
                 galaxyAgeVal.textContent = formatAge(model.populations.age);
                 galaxyLabelVal.textContent = `${model.type} #${model.seed} ${model.milkyWay ? '(catalog)' : '(procedural)'}`;
+                // Another model is another derived Omega_p, so the pattern-speed
+                // readout is re-derived with the rest of the galaxy controls.
+                syncPattern();
         }
 
         // The throttled age drag: a value waiting to be rebuilt, and the loop time
@@ -331,6 +362,7 @@ async function boot() {
         function regenerateGalaxy(type, seed, age) {
                 pendingAge = null;
                 model = galaxy.createGalaxy({ type, seed, age });
+                if (window.OrbitLib.resetPatternPhaseOffset) window.OrbitLib.resetPatternPhaseOffset();
                 renderer.regenerate(model);
                 // Another centre means another birth field: the simple-engine
                 // CPU mirror re-seeds with the GPU thetas (which prepare did).
@@ -384,6 +416,7 @@ async function boot() {
         function handleMenuAction() {
                 toggleMenu();
                 syncSlidersFromRenderer();
+                syncPattern();
         }
 
         const statsText = {
@@ -424,7 +457,7 @@ async function boot() {
                         ` + catalog ${catKept.toLocaleString()}/${state.catalogTotalStars.toLocaleString()}\n` +
                         `cells ${state.cellsResident}/${state.catalogCells}   decoded ${(state.decodedBytes / 1024).toFixed(0)} KB` +
                         `   buffer ${(state.bufferBytes / 1048576).toFixed(1)} MB\n` +
-                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   engine ${state.engine}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   Tab menu\n` +
+                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   engine ${state.engine}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   pattern ${window.OrbitLib.effectivePatternSpeed(model).toFixed(3)} rad/Myr (x${patternScale.toFixed(2)})   Tab menu\n` +
                         `pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
                         cameraLine(cameraState) +
                         selectedLine(cameraState);

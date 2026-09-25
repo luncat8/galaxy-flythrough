@@ -426,7 +426,7 @@ const ORBIT = `
 // value arrives through camera.dynA / camera.dynB, packed by
 // orbit.packOrbitDynamics — dynA = (vFlat, rCore, omegaPattern, spinLambda),
 // dynB = (sigmaThin, pressureAmpScale, discHeight, patternLock),
-// waveA = (damping, m, K, phase0), waveB = (Rs, minRadius, amp, 0).
+// waveA = (damping, m, K, phase0), waveB = (Rs, minRadius, amp, patternPhaseOffset).
 //
 // Group kinematics (plan §1.1, 0.4.3): the pattern (the bar's and the arms'
 // seats) rides the group speed galaxy.js derives from the model's own
@@ -520,50 +520,80 @@ fn dampedDiscTheta(theta0: f32, thetaArm: f32, omega: f32, omegaP: f32, time: f3
         return TAU * fract((advance + omegaP * time) * INV_TAU);
 }
 
+const ORBIT_INCLINATION_DISC: f32 = 0.045;
+const ORBIT_INCLINATION_BAR: f32 = 0.12;
+const ORBIT_INCLINATION_PRESSURE: f32 = 0.30;
+
+fn orbitInclination(family: u32, phase: u32, amplitude: u32) -> f32 {
+        let rank: f32 = (f32(amplitude) + 0.5) * 0.0625;
+        let direction: f32 = sin(f32(phase) * 0.392699081699);
+        var maximum: f32 = ORBIT_INCLINATION_DISC;
+        if (family == FAMILY_BAR) { maximum = ORBIT_INCLINATION_BAR; }
+        else if (family == FAMILY_PRESSURE) { maximum = ORBIT_INCLINATION_PRESSURE; }
+        return maximum * rank * direction;
+}
+
 fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, dynB: vec4f, waveA: vec4f, waveB: vec4f) -> vec3f {
         let flags: u32 = (packed >> 16u) & 0xFFu;
         let family: u32 = (flags >> 3u) & 3u;
-        let phase: f32 = f32((packed >> 24u) & 15u) * 0.392699081699;
-        let amp: f32 = f32((packed >> 28u) & 15u);
+        let phaseBits: u32 = (packed >> 24u) & 15u;
+        let phase: f32 = f32(phaseBits) * 0.392699081699;
+        let ampBits: u32 = (packed >> 28u) & 15u;
         let q: vec3f = p - centre;
         let r: f32 = max(length(q.xy), 0.001);
         let omega: f32 = orbitOmega(family, r, dynA, dynB);
-        // waveA = (damping, m, K, phase0), waveB = (Rs, minRadius, amp, 0).
-        // Disc only, and not the cosmetic patternLock (dynB.w). Unarmed packs m = 0.
-        var theta: f32 = TAU * fract(omega * time * INV_TAU);
+        // waveA = (damping, m, K, phase0), waveB = (Rs, minRadius, amp, patternPhaseOffset).
+        // The offset is the phase origin for a live pattern-rate change.
+        var theta: f32 = omega * time;
+        if (family == FAMILY_PATTERN || family == FAMILY_BAR) {
+                theta = theta + waveB.w;
+        }
         if (family == FAMILY_DISC && waveA.x > 0.0 && waveA.y >= 1.0 && waveB.z > 0.0 && waveB.x > 0.0 && r >= waveB.y && !(dynB.w > 0.5)) {
                 let theta0: f32 = atan2(q.y, q.x);
-                let thetaArm: f32 = (waveA.z * log(r / waveB.x) - waveA.w) / waveA.y;
+                let thetaArm: f32 = (waveA.z * log(r / waveB.x) - waveA.w) / waveA.y + waveB.w;
                 theta = dampedDiscTheta(theta0, thetaArm, omega, dynA.z, time, waveA.x, waveA.y);
         }
-        let rank: f32 = (amp + 0.5) * 0.0625;
+        theta = TAU * fract(theta * INV_TAU);
+        let rank: f32 = (f32(ampBits) + 0.5) * 0.0625;
         let sinPh: f32 = sinTau(phase);
         let sinPhV: f32 = sinTau(phase + HALF_PI);
-        var wrx: f32 = 0.0;
-        var wry: f32 = 0.0;
+        var wr: f32 = 0.0;
         var wz: f32 = 0.0;
         if (family == FAMILY_BAR) {
                 let stream: f32 = omegaStream(dynA, r);
                 let ah: f32 = rank * BAR_LOOP_FRACTION * dynB.y;
-                let wr: f32 = ah * (sinTau(phase + stream * time) - sinPh);
-                wrx = wr * q.x / r; wry = wr * q.y / r;
+                wr = ah * (sinTau(phase + stream * time) - sinPh);
         } else if (family == FAMILY_DISC) {
                 let kappa: f32 = SQRT2 * (dynA.x / max(r, dynA.y));
                 let ah: f32 = rank * 2.0 * dynB.x / max(kappa, 1e-6);
                 let av: f32 = min(VERTICAL_WOBBLE_RATIO * ah, max(dynB.z - abs(q.z), 0.0));
-                let wr: f32 = ah * (sinTau(phase + kappa * time) - sinPh);
+                wr = ah * (sinTau(phase + kappa * time) - sinPh);
                 wz = av * (sinTau(phase + HALF_PI + kappa * time) - sinPhV);
-                wrx = wr * q.x / r; wry = wr * q.y / r;
         } else if (family == FAMILY_PRESSURE) {
                 let a: f32 = rank * dynB.y;
                 let mean: f32 = pressureClock(dynA, r);
-                let wr: f32 = a * (sinTau(phase + mean * time) - sinPh);
+                wr = a * (sinTau(phase + mean * time) - sinPh);
                 wz = a * (sinTau(phase + HALF_PI + mean * time) - sinPhV);
-                wrx = wr * q.x / r; wry = wr * q.y / r;
         }
-        let c: f32 = cos(theta); let sn: f32 = sin(theta);
-        let bx: f32 = q.x + wrx; let by: f32 = q.y + wry;
-        return centre + vec3f(c * bx - sn * by, sn * bx + c * by, q.z + wz);
+
+        // Each star has a deterministic orbital plane through the galaxy's
+        // centre point. This avoids making all 3-D stars rotate around one
+        // infinite galaxy-axis line.
+        let radius: f32 = length(q);
+        var e0: vec3f = vec3f(1.0, 0.0, 0.0);
+        if (radius > 1e-9) { e0 = q / radius; }
+        let xy: f32 = length(q.xy);
+        var az: vec3f = vec3f(0.0, 1.0, 0.0);
+        if (xy > 1e-9) { az = vec3f(-q.y / xy, q.x / xy, 0.0); }
+        let eZ: vec3f = cross(e0, az);
+        let inc: f32 = orbitInclination(family, phaseBits, ampBits);
+        let ci: f32 = cos(inc); let si: f32 = sin(inc);
+        let e1: vec3f = az * ci + eZ * si;
+        let normal: vec3f = cross(e0, e1);
+        let radial: vec3f = e0 * cos(theta) + e1 * sin(theta);
+        let orbitRadius: f32 = select(0.0, radius + wr, radius > 1e-9);
+        let normalWobble: f32 = select(0.0, wz, radius > 1e-9);
+        return centre + orbitRadius * radial + normalWobble * normal;
 }
 
 // 0.4.5 simple engine: reconstruct from the integrated azimuth. Mirrors
@@ -572,15 +602,28 @@ fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, d
 fn simplePosition(p: vec3f, packed: u32, theta: f32, centre: vec3f, eccMax: f32) -> vec3f {
         let flags: u32 = (packed >> 16u) & 0xFFu;
         let family: u32 = (flags >> 3u) & 3u;
+        let phaseBits: u32 = (packed >> 24u) & 15u;
+        let ampBits: u32 = (packed >> 28u) & 15u;
         let q: vec3f = p - centre;
-        let r0: f32 = length(q.xy);
-        var rho: f32 = r0;
-        if ((family == FAMILY_DISC || family == FAMILY_PATTERN) && eccMax > 0.0 && r0 > 0.0) {
-                let eccU: f32 = (f32((packed >> 28u) & 15u) + 0.5) * 0.0625;
-                let peri: f32 = f32((packed >> 24u) & 15u) * 0.392699081699;
-                rho = r0 * (1.0 + eccMax * eccU * cos(theta - peri));
+        let radius: f32 = length(q);
+        var e0: vec3f = vec3f(1.0, 0.0, 0.0);
+        if (radius > 1e-9) { e0 = q / radius; }
+        let xy: f32 = length(q.xy);
+        var az: vec3f = vec3f(0.0, 1.0, 0.0);
+        if (xy > 1e-9) { az = vec3f(-q.y / xy, q.x / xy, 0.0); }
+        let eZ: vec3f = cross(e0, az);
+        let inc: f32 = orbitInclination(family, phaseBits, ampBits);
+        let e1: vec3f = az * cos(inc) + eZ * sin(inc);
+        let theta0: f32 = atan2(q.y, q.x);
+        let delta: f32 = theta - theta0;
+        var rho: f32 = radius;
+        if ((family == FAMILY_DISC || family == FAMILY_PATTERN) && eccMax > 0.0 && radius > 0.0) {
+                let eccU: f32 = (f32(ampBits) + 0.5) * 0.0625;
+                let peri: f32 = f32(phaseBits) * 0.392699081699;
+                rho = radius * (1.0 + eccMax * eccU * cos(theta - peri));
         }
-        return centre + vec3f(rho * cos(theta), rho * sin(theta), q.z);
+        let radial: vec3f = e0 * cos(delta) + e1 * sin(delta);
+        return centre + rho * radial;
 }
 `;
 
@@ -692,7 +735,7 @@ struct CameraUniform {
         // Wave damping packed by orbit.packOrbitDynamics. Nebulae share this
         // struct and do not read the pair — gas stays on the pattern.
         waveA: vec4f,       // damping, m, K, phase0
-        waveB: vec4f,       // Rs, minRadius, amp, 0
+        waveB: vec4f,       // Rs, minRadius, amp, patternPhaseOffset
         // Engine select packed by orbit.packEngineVec: (id, eccMax, 0, 0).
         // Nebulae share this struct and ignore the lane.
         engine: vec4f,
@@ -1559,7 +1602,7 @@ fn vs_main(
         // Pattern-family bulk rotation about the model centre (T = 0 is the
         // identity: theta = fract(0) = 0). No wobble: gas is rigid with the
         // arms and bar.
-        let theta: f32 = 6.28318530718 * fract(camera.dynA.z * camera.params.w * 0.159154943092);
+        let theta: f32 = 6.28318530718 * fract((camera.dynA.z * camera.params.w + camera.waveB.w) * 0.159154943092);
         let qx: f32 = neb.x - camera.cameraPos.w;
         let cth: f32 = cos(theta); let sth: f32 = sin(theta);
         let rel: vec3f = vec3f(cth * qx - sth * neb.y + camera.cameraPos.w,

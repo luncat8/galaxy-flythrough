@@ -42,6 +42,14 @@
 // onto the nearest crest and stays. α = 0 is the 0.4.3 shear, bit for bit.
 // Closed form, T = 0 identity, disc family only. Pattern stars already ride
 // the crest; the bar's x1 loop is not a spiral.
+//
+// Pattern speed (optional, slider — the linked demo's "Pattern Speed" control).
+// Ω_p is derived per model (galaxy.js patternSpeed), so the control is a
+// multiplier of it: 1 is the model's own group speed, 0 freezes the field and
+// the bar while the disc streams through, 3 triples the sweep. It multiplies
+// `dynamics.omegaPattern` once, in fillDynamics, so the classic law, the simple
+// integrator, the bar's streaming rate, the capture and the nebula billboards
+// cannot disagree about how fast the pattern turns.
 'use strict';
 
 const density = (typeof module !== 'undefined' && module.exports)
@@ -83,6 +91,22 @@ const BAR_LOOP_FRACTION = 0.15;
 // is nonsingular there (crest speed is exactly zero).
 const WAVE_DAMPING_MAX = 1;
 const WAVE_DAMPING_UI_DEFAULT = 0.6;
+// Pattern-speed multiplier (the linked demo's "Pattern Speed" slider, our
+// per-model equivalent). omegaPattern is *derived* per model (galaxy.js
+// patternSpeed), so the honest control is a multiplier of that derived group
+// speed, not a raw rad/Myr the user would have to re-range for every type:
+//   0   frozen pattern — the field and the bar stand still, the disc streams
+//       through them (the demo's Ω_p = 0 end)
+//   1   the model's own derived group speed (the default)
+//   3   three times as fast: corotation moves inward, the bar's stars fall
+//       behind it (stream = Ω − Ω_p goes negative), the capture lane sweeps
+// A model with no pattern (S0/E/Irr: omegaPattern 0) is unaffected at any
+// setting — there is no field to rotate. Like wave damping, this is a view
+// control: it is applied on the CPU in fillDynamics, so every consumer (both
+// engines' laws, the uniform packers, the nebula billboards) sees one value,
+// and a regenerate must not snap it back.
+const PATTERN_SCALE_MAX = 3;
+const PATTERN_SCALE_UI_DEFAULT = 1;
 
 function familyFromFlags(flags) { return (flags & FAMILY_MASK) >>> FAMILY_SHIFT; }
 function flagsWithFamily(flags, family) { return (flags & ~FAMILY_MASK) | ((family & 3) << FAMILY_SHIFT); }
@@ -124,7 +148,7 @@ function fillDynamics(dyn, model) {
 	const axis = (sph.a || 1) * (sph.r0 || 1);
 	dyn.vFlat = d.vFlat || 0;
 	dyn.rCore = d.rCore > 0 ? d.rCore : DEFAULT_R_CORE;
-	dyn.omegaPattern = d.omegaPattern || 0;
+	dyn.omegaPattern = (d.omegaPattern || 0) * patternScale;
 	dyn.spinLambda = d.spinLambda == null ? DEFAULT_SPIN : d.spinLambda;
 	dyn.sigmaThin = d.sigmaThin || 0;
 	// Virial scale evaluated on the same clock the law boils at (r = 1 kpc).
@@ -185,6 +209,37 @@ function setWaveDamping(value) {
 }
 function getWaveDamping() { return waveDamping; }
 
+// Pattern-speed multiplier. Same shape as the damping control: one number, no
+// model field, read every time dynamics are filled.
+let patternScale = PATTERN_SCALE_UI_DEFAULT;
+// The slider changes the angular rate, not the epoch.  This offset is the
+// phase origin that makes an in-flight rate change continuous: when Ω changes
+// at time T, the new law uses Ωnew*T + offsetNew = Ωold*T + offsetOld.
+// It is deliberately global view state, just like patternScale and
+// waveDamping, rather than a field/model property.
+let patternPhaseOffset = 0;
+function setPatternScale(value, time, model) {
+	const v = Number(value);
+	// NaN and negatives are the frozen end, not an error: the slider's floor is 0.
+	const next = v > 0 ? (v > PATTERN_SCALE_MAX ? PATTERN_SCALE_MAX : v) : 0;
+	const t = Number(time);
+	if (model && Number.isFinite(t) && t !== 0 && next !== patternScale) {
+		const baseOmega = model.dynamics && Number(model.dynamics.omegaPattern)
+			? Number(model.dynamics.omegaPattern) : 0;
+		patternPhaseOffset = wrapAngle(patternPhaseOffset + baseOmega * (patternScale - next) * t);
+	}
+	patternScale = next;
+	return patternScale;
+}
+function getPatternScale() { return patternScale; }
+function getPatternPhaseOffset() { return patternPhaseOffset; }
+function resetPatternPhaseOffset() { patternPhaseOffset = 0; return patternPhaseOffset; }
+// What the multiplier means on this model: the derived group speed times the
+// multiplier, rad/Myr. 0 for a model with no pattern, at any setting.
+function effectivePatternSpeed(model) {
+	return fillDynamics(orbitScratch, model).omegaPattern;
+}
+
 // χ wrapped to (-π, π]. Same floor form on both sides of the mirror.
 function reduceAngle(x) {
 	return x - TAU * Math.floor((x + Math.PI) * INV_TAU);
@@ -224,7 +279,7 @@ function discWaveTheta(qx, qy, r, omega, omegaP, time, model) {
 	const arms = model && model.arms;
 	if (!arms || !(arms.amp > 0) || !(arms.m >= 1) || !(arms.pitchDeg > 0) || !(arms.Rs > 0)) return omega * time;
 	if (r < arms.minRadius) return omega * time;
-	return dampedDiscTheta(Math.atan2(qy, qx), density.armRidgeAzimuth(model, r), omega, omegaP, time, waveDamping, arms.m);
+	return dampedDiscTheta(Math.atan2(qy, qx), density.armRidgeAzimuth(model, r) + patternPhaseOffset, omega, omegaP, time, waveDamping, arms.m);
 }
 
 function omegaFor(family, x, y, model) {
@@ -240,13 +295,30 @@ function sinTau(arg) {
 	return Math.sin(TAU * (x - Math.floor(x)));
 }
 
+// Small, deterministic orbital inclinations.  The inclination is derived from
+// the record's existing jitter byte, so no buffer expansion or per-star random
+// state is needed.  Thin-disc stars stay close to the plane; bar/pressure stars
+// get a wider spread.  The important distinction is that each plane is anchored
+// at the common centre point, not that every star shares the z axis.
+const ORBIT_INCLINATION_DISC = 0.045;
+const ORBIT_INCLINATION_BAR = 0.12;
+const ORBIT_INCLINATION_PRESSURE = 0.30;
+function orbitInclination(family, phase, amplitude) {
+	const rank = ((amplitude & 15) + 0.5) / 16;
+	const direction = Math.sin(((phase & 15) / 16) * TAU);
+	const max = family === FAMILY_BAR ? ORBIT_INCLINATION_BAR
+		: family === FAMILY_PRESSURE ? ORBIT_INCLINATION_PRESSURE : ORBIT_INCLINATION_DISC;
+	return max * rank * direction;
+}
+
 // Shared scratch: fill-then-read inside one call, single-threaded, no
 // per-frame allocation (AGENTS hot-path rule).
 const orbitScratch = { vFlat: 0, rCore: 0, omegaPattern: 0, spinLambda: 0, sigmaThin: 0, pressureAmpScale: 0, discHeight: 0, patternLock: 0 };
 
-// p(T): centre + Rot_z(theta(T)) · (q + w(T) − w(0)),  q = p0 − centre.
-// At T = 0 both theta and every (sinTau(arg) − sinTau(arg0)) term are exactly
-// zero, so the transform is the identity (within one add's rounding).
+// p(T): a per-star orbital-plane rotation of q = p0 − centre plus bounded
+// radial/normal wobble. At T = 0 both theta and every (sinTau(arg) −
+// sinTau(arg0)) term are exactly zero, so the transform is the identity
+// (within one add's rounding). Every plane still passes through `centre`.
 function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
 	const dyn = fillDynamics(orbitScratch, model);
 	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
@@ -256,6 +328,13 @@ function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
 	// patternLock is the cosmetic rigid disc. It already has no shear to damp,
 	// and applying capture on top of it would fight the flag.
 	let theta = omega * time;
+	// Pattern/bar geometry is a stateful-looking view of an absolute clock.  The
+	// phase origin keeps it continuous when the Pattern Speed slider changes;
+	// without it Ωnew*T would teleport every pattern star at the instant of the
+	// input event.
+	if (family === FAMILY_PATTERN || family === FAMILY_BAR) {
+		theta += patternPhaseOffset;
+	}
 	if (family === FAMILY_DISC && !dyn.patternLock) theta = discWaveTheta(qx, qy, r, omega, dyn.omegaPattern, time, model);
 	const u = theta * INV_TAU;
 	theta = TAU * (u - Math.floor(u));
@@ -263,7 +342,7 @@ function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
 	const rank = ((amplitude & 15) + 0.5) / 16;
 	const sinPh = sinTau(ph);
 	const sinPhV = sinTau(ph + HALF_PI);
-	let wrx = 0, wry = 0, wz = 0;
+	let wr = 0, wz = 0;
 	if (family === FAMILY_BAR) {
 		// x1 loop: the star's circulation about its seat in the pattern frame,
 		// at the rate it laps the pattern. Planar (no vertical term): the bar's
@@ -271,27 +350,56 @@ function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
 		// own flat cross-section can absorb.
 		const stream = omegaStream(dyn, r);
 		const ah = rank * BAR_LOOP_FRACTION * dyn.pressureAmpScale;
-		const wr = ah * (sinTau(ph + stream * time) - sinPh);
-		wrx = wr * qx / r; wry = wr * qy / r;
+		wr = ah * (sinTau(ph + stream * time) - sinPh);
 	} else if (family === FAMILY_DISC) {
 		const kappa = SQRT2 * (dyn.vFlat / Math.max(r, dyn.rCore));
 		const ah = rank * 2 * dyn.sigmaThin / Math.max(kappa, 1e-6);
 		const av = Math.min(VERTICAL_WOBBLE_RATIO * ah, Math.max(dyn.discHeight - Math.abs(qz), 0));
-		const wr = ah * (sinTau(ph + kappa * time) - sinPh);
+		wr = ah * (sinTau(ph + kappa * time) - sinPh);
 		wz = av * (sinTau(ph + HALF_PI + kappa * time) - sinPhV);
-		wrx = wr * qx / r; wry = wr * qy / r;
 	} else if (family === FAMILY_PRESSURE) {
 		const a = rank * dyn.pressureAmpScale;
 		const mean = pressureClock(dyn, r);
-		const wr = a * (sinTau(ph + mean * time) - sinPh);
+		wr = a * (sinTau(ph + mean * time) - sinPh);
 		wz = a * (sinTau(ph + HALF_PI + mean * time) - sinPhV);
-		wrx = wr * qx / r; wry = wr * qy / r;
 	}
+	// Every star gets its own orbital plane through the galaxy's centre.  The
+	// old Rot_z transform made every 3-D star sweep around one infinite line
+	// (the galaxy axis), which is visibly wrong for halo, bar and thick-disc
+	// stars.  e0/e1 are a per-star plane basis: e0 is the birth radius and e1
+	// is a deterministic, slightly inclined tangent.  The circle therefore
+	// always has the same centre point `c`, while no single axis owns all stars.
+	const radius = Math.hypot(qx, qy, qz);
+	const invRadius = radius > 1e-9 ? 1 / radius : 0;
+	const e0x = radius > 1e-9 ? qx * invRadius : 1;
+	const e0y = radius > 1e-9 ? qy * invRadius : 0;
+	const e0z = radius > 1e-9 ? qz * invRadius : 0;
+	const xy = Math.hypot(qx, qy);
+	let azx, azy;
+	if (xy > 1e-9) { azx = -qy / xy; azy = qx / xy; }
+	else { azx = 0; azy = 1; }
+	const ezx = -e0z * azy;
+	const ezy = e0z * azx;
+	const ezz = e0x * azy - e0y * azx;
+	const inc = orbitInclination(family, phase, amplitude);
+	const ci = Math.cos(inc), si = Math.sin(inc);
+	const e1x = azx * ci + ezx * si;
+	const e1y = azy * ci + ezy * si;
+	const e1z = ezz * si;
+	const nx = e0y * e1z - e0z * e1y;
+	const ny = e0z * e1x - e0x * e1z;
+	const nz = e0x * e1y - e0y * e1x;
 	const ct = Math.cos(theta), st = Math.sin(theta);
-	const bx = qx + wrx, by = qy + wry;
-	out[0] = c.x + ct * bx - st * by;
-	out[1] = c.y + st * bx + ct * by;
-	out[2] = c.z + qz + wz;
+	const rx = e0x * ct + e1x * st;
+	const ry = e0y * ct + e1y * st;
+	const rz = e0z * ct + e1z * st;
+	// There is no meaningful radial direction at the exact centre; keep a
+	// central star at the centre instead of applying a basis-dependent wobble.
+	const orbitRadius = radius > 1e-9 ? radius + wr : 0;
+	const normalWobble = radius > 1e-9 ? wz : 0;
+	out[0] = c.x + orbitRadius * rx + normalWobble * nx;
+	out[1] = c.y + orbitRadius * ry + normalWobble * ny;
+	out[2] = c.z + orbitRadius * rz + normalWobble * nz;
 	return out;
 }
 
@@ -301,7 +409,7 @@ function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
 //   dynA  = (vFlat, rCore, omegaPattern, spinLambda)
 //   dynB  = (sigmaThin, pressureAmpScale, discHeight, patternLock)
 //   waveA = (damping, m, K, phase0)     K = m / tan(pitch), 0 when unarmed
-//   waveB = (Rs, minRadius, amp, 0)
+//   waveB = (Rs, minRadius, amp, patternPhaseOffset)
 // Unarmed (amp 0, pitch 0, m < 1) packs m = 0 so the shader takes the same
 // skip the CPU does, without a hard-coded galaxy.
 function packOrbitDynamics(model, out, offset) {
@@ -323,7 +431,7 @@ function packOrbitDynamics(model, out, offset) {
 	out[offset + 12] = armed ? arms.Rs : 1;
 	out[offset + 13] = armed ? arms.minRadius : 0;
 	out[offset + 14] = armed ? arms.amp : 0;
-	out[offset + 15] = 0;
+	out[offset + 15] = patternPhaseOffset;
 	return out;
 }
 
@@ -511,34 +619,68 @@ function wrapAngle(x) {
 // The pattern phase is derived per frame from the f64 star time, never a
 // second accumulator, so it cannot diverge from T across engine switches and
 // nebulae need no engine branch (their theta is the same product in f32).
+// It is the crest's inertial azimuth offset: the classic capture measures the
+// star against density.armRidgeAzimuth, whose ridge sits at
+// (K·ln(R/Rs) − phase0)/m, so the simple lane's base K·ln(ρ/Rs) + Φp must carry
+// Φp = Ω_p·T − phase0/m or the friction field would sit off the arms it is
+// supposed to be the jam of (phase0 is 0 for the Milky Way preset and nonzero
+// for every type whose arms are solved to leave the bar's end).
 function simplePatternPhase(model, starTimeMyr) {
-	const w = (model && model.dynamics && model.dynamics.omegaPattern) || 0;
-	if (!(w > 0) || !(starTimeMyr > 0)) return 0;
-	return wrapAngle(w * starTimeMyr);
+	const dyn = fillDynamics(orbitScratch, model);
+	const w = dyn.omegaPattern > 0 ? dyn.omegaPattern : 0;
+	const arms = (model && model.arms) || {};
+	const m = arms.m >= 1 ? arms.m : 1;
+	const phase0 = arms.m >= 1 ? (arms.phase0 || 0) : 0;
+	const elapsed = w > 0 && Number.isFinite(starTimeMyr) ? w * starTimeMyr : 0;
+	return wrapAngle(elapsed + patternPhaseOffset - phase0 / m);
 }
 
 // CPU reference step: one star, substepped Euler, pattern held per frame like
-// the GPU dispatch. Landmarks and tests step through here.
-function simpleStepTheta(theta, r0, eccU, peri, family, P, patternPhase, dtStar) {
+// the GPU dispatch. Landmarks and tests step through here, so it takes the same
+// (theta, r0, z) triple the compute kernel reads from its record — z included,
+// or the reference would silently run the planar limit while the GPU runs the
+// 3-D field (that 0.12 kpc disagreement is what the landmark check caught).
+function simpleStepTheta(theta, r0, eccU, peri, family, P, patternPhase, dtStar, z = 0) {
 	if (!(dtStar > 0)) return theta;
 	const sub = simpleSubsteps(dtStar, simpleOmegaMax(P), simpleStepScratch);
 	let th = theta;
-	for (let s = 0; s < sub.n; s++) th += simpleOmega(th, r0, eccU, peri, family, P, patternPhase, 0) * sub.h;
+	for (let s = 0; s < sub.n; s++) th += simpleOmega(th, r0, eccU, peri, family, P, patternPhase, z) * sub.h;
 	return wrapAngle(th);
 }
 
 // Vertex mirror: birth record + integrated theta = position. Family-agnostic
-// except for the eccentric rho, which only disc/pattern carry.
+// except for the eccentric rho, which only disc/pattern carry. The orbit plane
+// is 3-D, so even the birth height participates in the centre-point orbit.
 function simplePositionFromTheta(out, theta, x, y, z, jitter, family, eccMax, model) {
 	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
-	const r0 = Math.hypot(x - c.x, y - c.y);
-	let rho = r0;
-	if ((family === FAMILY_DISC || family === FAMILY_PATTERN) && eccMax > 0 && r0 > 0) {
-		rho = r0 * (1 + eccMax * simpleEccOf(jitter) * Math.cos(theta - simplePeriOf(jitter)));
+	const qx = x - c.x, qy = y - c.y, qz = z - c.z;
+	const radius = Math.hypot(qx, qy, qz);
+	const invRadius = radius > 1e-9 ? 1 / radius : 0;
+	const e0x = radius > 1e-9 ? qx * invRadius : 1;
+	const e0y = radius > 1e-9 ? qy * invRadius : 0;
+	const e0z = radius > 1e-9 ? qz * invRadius : 0;
+	const xy = Math.hypot(qx, qy);
+	let azx, azy;
+	if (xy > 1e-9) { azx = -qy / xy; azy = qx / xy; }
+	else { azx = 0; azy = 1; }
+	const ezx = -e0z * azy;
+	const ezy = e0z * azx;
+	const ezz = e0x * azy - e0y * azx;
+	const inc = orbitInclination(family, jitter & 15, jitter >>> 4);
+	const ci = Math.cos(inc), si = Math.sin(inc);
+	const e1x = azx * ci + ezx * si;
+	const e1y = azy * ci + ezy * si;
+	const e1z = ezz * si;
+	const theta0 = Math.atan2(qy, qx);
+	const delta = theta - theta0;
+	let rho = radius;
+	if ((family === FAMILY_DISC || family === FAMILY_PATTERN) && eccMax > 0 && radius > 0) {
+		rho = radius * (1 + eccMax * simpleEccOf(jitter) * Math.cos(theta - simplePeriOf(jitter)));
 	}
-	out[0] = c.x + rho * Math.cos(theta);
-	out[1] = c.y + rho * Math.sin(theta);
-	out[2] = z;
+	const ct = Math.cos(delta), st = Math.sin(delta);
+	out[0] = c.x + rho * (e0x * ct + e1x * st);
+	out[1] = c.y + rho * (e0y * ct + e1y * st);
+	out[2] = c.z + rho * (e0z * ct + e1z * st);
 	return out;
 }
 
@@ -550,6 +692,7 @@ function simplePositionFromTheta(out, theta, x, y, z, jitter, family, eccMax, mo
 let simpleLMTheta = null;
 let simpleLMR0 = null;
 let simpleLMZ = null;
+let simpleLandmarkQX = null, simpleLandmarkQY = null, simpleLandmarkQZ = null;
 let simpleLMFam = null;
 let simpleLMCount = 0;
 let simpleLMModel = null;
@@ -559,6 +702,9 @@ function simpleLandmarksInit(positions, colorIndices, count, model) {
 		simpleLMTheta = new Float64Array(count);
 		simpleLMR0 = new Float64Array(count);
 		simpleLMZ = new Float64Array(count);
+		simpleLandmarkQX = new Float64Array(count);
+		simpleLandmarkQY = new Float64Array(count);
+		simpleLandmarkQZ = new Float64Array(count);
 		simpleLMFam = new Uint8Array(count);
 	}
 	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
@@ -567,6 +713,9 @@ function simpleLandmarksInit(positions, colorIndices, count, model) {
 		simpleLMTheta[i] = Math.atan2(qy, qx);
 		simpleLMR0[i] = Math.hypot(qx, qy);
 		simpleLMZ[i] = positions[i * 3 + 2] - c.z;
+		simpleLandmarkQX[i] = qx;
+		simpleLandmarkQY[i] = qy;
+		simpleLandmarkQZ[i] = positions[i * 3 + 2] - c.z;
 		simpleLMFam[i] = familyFromColorIndex(colorIndices[i]);
 	}
 	simpleLMCount = count;
@@ -593,13 +742,34 @@ function simpleLandmarkPosition(out, i, z) {
 	const c = simpleLMModel.centre;
 	const th = simpleLMTheta[i];
 	const fam = simpleLMFam[i];
-	let rho = simpleLMR0[i];
+	const qx = simpleLandmarkQX[i], qy = simpleLandmarkQY[i], qz = simpleLandmarkQZ[i];
+	const radius = Math.hypot(qx, qy, qz);
+	const invRadius = radius > 1e-9 ? 1 / radius : 0;
+	const e0x = radius > 1e-9 ? qx * invRadius : 1;
+	const e0y = radius > 1e-9 ? qy * invRadius : 0;
+	const e0z = radius > 1e-9 ? qz * invRadius : 0;
+	const xy = Math.hypot(qx, qy);
+	let azx, azy;
+	if (xy > 1e-9) { azx = -qy / xy; azy = qx / xy; }
+	else { azx = 0; azy = 1; }
+	const ezx = -e0z * azy;
+	const ezy = e0z * azx;
+	const ezz = e0x * azy - e0y * azx;
+	const inc = orbitInclination(fam, 0, 0);
+	const ci = Math.cos(inc), si = Math.sin(inc);
+	const e1x = azx * ci + ezx * si;
+	const e1y = azy * ci + ezy * si;
+	const e1z = ezz * si;
+	const theta0 = Math.atan2(qy, qx);
+	const delta = th - theta0;
+	let rho = radius;
 	if ((fam === FAMILY_DISC || fam === FAMILY_PATTERN) && simpleLMEcc > 0 && rho > 0) {
-		rho = rho * (1 + simpleLMEcc * simpleEccOf(0) * Math.cos(th - simplePeriOf(0)));
+		rho *= 1 + simpleLMEcc * simpleEccOf(0) * Math.cos(th - simplePeriOf(0));
 	}
-	out[0] = c.x + rho * Math.cos(th);
-	out[1] = c.y + rho * Math.sin(th);
-	out[2] = z;
+	const ct = Math.cos(delta), st = Math.sin(delta);
+	out[0] = c.x + rho * (e0x * ct + e1x * st);
+	out[1] = c.y + rho * (e0y * ct + e1y * st);
+	out[2] = c.z + rho * (e0z * ct + e1z * st);
 	return out;
 }
 
@@ -655,13 +825,16 @@ const OrbitAPI = {
 	FAMILY_SHIFT, FAMILY_MASK, FLIGHT_TIME_GAIN, TAU, PRESSURE_CLOCK_1KPC,
 	VERTICAL_WOBBLE_RATIO, BAR_LOOP_FRACTION,
 	WAVE_DAMPING_MAX, WAVE_DAMPING_UI_DEFAULT,
+	PATTERN_SCALE_MAX, PATTERN_SCALE_UI_DEFAULT,
+	ORBIT_INCLINATION_DISC, ORBIT_INCLINATION_BAR, ORBIT_INCLINATION_PRESSURE, orbitInclination,
 	ENGINE_CLASSIC, ENGINE_SIMPLE, ENGINE_NAMES,
 	SIMPLE_SIGMA_BASE, SIMPLE_ECC_MAX, SIMPLE_SUBSTEP_DTHETA, SIMPLE_SUBSTEP_MAX,
 	SIMPLE_R_MIN, SIMPLE_UNIFORM_FLOATS,
 	familyFromFlags, flagsWithFamily, encodeJitter, readOrbit,
 	familyFromColorIndex, familyForStar,
 	fillDynamics, pressureClock, omegaFor, omegaFrom, omegaStream,
-	setWaveDamping, getWaveDamping, dampedDiscTheta, orbitPosition,
+	setWaveDamping, getWaveDamping, setPatternScale, getPatternScale, getPatternPhaseOffset, resetPatternPhaseOffset, effectivePatternSpeed,
+	dampedDiscTheta, orbitPosition,
 	packOrbitDynamics, sinTau, sliderValueToRate, formatTimeRate,
 	setEngine, getEngine, engineName,
 	simpleArmed, simpleSigma, simpleEccMax, simpleOmega, simpleEccOf, simplePeriOf,

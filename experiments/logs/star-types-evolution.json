@@ -1,9 +1,9 @@
 {
-  "date": "2026-09-24T18:55:41.600Z",
+  "date": "2026-09-24T19:54:08.978Z",
   "seed": 7,
   "sampleSize": 200000,
-  "sampleMs": 233,
-  "deriveMs": 409,
+  "sampleMs": 223,
+  "deriveMs": 488,
   "byClass": {
     "M": 174519,
     "K": 17671,

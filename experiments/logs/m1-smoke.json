@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-24T18:55:13.195Z",
+  "date": "2026-09-24T19:53:37.751Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -174,7 +174,7 @@
       "name": "OrbitLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 64
+        "keys": 69
       }
     },
     {
@@ -340,7 +340,8 @@
         "seed": 7,
         "type": null,
         "age": 13.5,
-        "engine": "classic"
+        "engine": "classic",
+        "pattern": 1
       }
     },
     {
@@ -353,7 +354,8 @@
         "seed": 42,
         "type": null,
         "age": 13.5,
-        "engine": "classic"
+        "engine": "classic",
+        "pattern": 1
       }
     },
     {
@@ -366,7 +368,8 @@
         "seed": 42,
         "type": null,
         "age": 13.5,
-        "engine": "classic"
+        "engine": "classic",
+        "pattern": 1
       }
     },
     {
