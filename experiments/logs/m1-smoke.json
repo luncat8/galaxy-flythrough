@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-26T09:42:05.518Z",
+  "date": "2026-09-26T11:35:05.615Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -50,8 +50,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 49,
-  "passed": 49,
+  "totalChecks": 54,
+  "passed": 54,
   "failed": 0,
   "checks": [
     {
@@ -93,6 +93,26 @@
     },
     {
       "name": "the menu iterates the full type table, not the G-key shortlist",
+      "pass": true
+    },
+    {
+      "name": "startup exposure is 22 and the slider agrees",
+      "pass": true
+    },
+    {
+      "name": "startup stellar rate is 5 Myr/s and freeze resumes that rate",
+      "pass": true
+    },
+    {
+      "name": "the page starts in galaxy-centre orbit with unlocked input",
+      "pass": true
+    },
+    {
+      "name": "input policy follows camera mode after stepping",
+      "pass": true
+    },
+    {
+      "name": "opening the menu releases pointer lock",
       "pass": true
     },
     {
@@ -174,7 +194,7 @@
       "name": "OrbitLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 81
+        "keys": 86
       }
     },
     {

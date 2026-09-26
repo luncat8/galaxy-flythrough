@@ -87,8 +87,8 @@ async function boot() {
         // 0.4 global stellar clock. It is f64 on the CPU and exported as one
         // f32 uniform only after the documented epoch wrap.
         let starTimeMyr = 0;
-        let starTimeRate = 0;
-        let lastNonZeroTimeRate = 1;
+	let starTimeRate = 5;
+	let lastNonZeroTimeRate = starTimeRate;
         // View control, not a model field. 0.6 is the measured hold (Sun ring
         // cosine 0.10 → ~0.6 in 300 Myr). 0 is the 0.4.3 shear.
         let waveDamping = window.OrbitLib.setWaveDamping(window.OrbitLib.WAVE_DAMPING_UI_DEFAULT);
@@ -125,7 +125,9 @@ async function boot() {
 
         const camera = window.Camera.createCamera();
         camera.setFrame(model);   // the Milky Way preset's Sun view, or the type's own home
+	camera.setMode(window.Camera.MODE_ORBIT_GC);
         const input = window.Input.createInput(canvas);
+	input.setFlyMode(false);
 
         const landmarks = window.Landmarks;
         const labels = window.LabelLayer.createLabelLayer(
@@ -229,6 +231,9 @@ async function boot() {
         function toggleMenu() {
                 const visible = menu.style.display !== 'none';
                 menu.style.display = visible ? 'none' : 'block';
+		input.releaseAll();
+		if (!visible && document.pointerLockElement === canvas) document.exitPointerLock();
+		if (visible) canvas.focus({ preventScroll: true });
         }
         menuClose.addEventListener('click', toggleMenu);
 
@@ -468,7 +473,7 @@ async function boot() {
 
         function selectedLine(cameraState) {
                 if (selected < 0 || cameraState.mode !== window.Camera.MODE_FLY) return '';
-                return `\nselected ${landmarks.ENTRIES[selected].name}   (C C orbits it)`;
+                return `\nselected ${landmarks.ENTRIES[selected].name}   (C cycles to orbit object)`;
         }
 
         function updateOverlay(state, cameraState) {
@@ -506,6 +511,7 @@ async function boot() {
                         syncStarTime();
                 }
                 const cameraStateForTime = camera.getState(statsText);
+		input.setFlyMode(cameraStateForTime.mode === window.Camera.MODE_FLY);
                 const effectiveTimeRate = starTimeRate < 0
                         ? (-starTimeRate) * window.OrbitLib.FLIGHT_TIME_GAIN * cameraStateForTime.speedLyPerSec
                         : starTimeRate;

@@ -650,7 +650,7 @@ Milestones 2+ add the remaining render paths (`density-cell.js`, nebula passes),
 3. create the star renderer (shader module, pipeline, storage buffer, uniform)
 4. generate the procedural field on the CPU into the staging buffer (once)
 5. inject data/tiles/catalog.js, build the manifest, attach the catalog
-6. init the camera at Sol (0, 0, 0.005 kpc) and the frame loop:
+6. init the camera at the model home, orbiting the galaxy centre, and the frame loop:
      a. update the camera from input (fly integration or orbit placement, by mode)
      b. cell manager: recompute residency if the camera moved, re-upload if changed
      c. render pass: one instanced draw over [procedural][resident catalog]
@@ -942,7 +942,7 @@ unlimited (`PITCH_LIMIT` remains exported as `Infinity` only for compatibility).
 
 | Input | Fly | Orbit (both) |
 |---|---|---|
-| drag / pointer lock | look | move on the sphere (target stays centred) |
+| mouse | pointer-lock look (drag fallback) | canvas press-and-drag on the sphere; cursor visible |
 | scroll | speed ×2 per notch (up = faster) | distance ×2 per notch (up = closer) |
 | W / S, ↑ / ↓ | forward / back | dolly: ×2^(∓ORBIT_DOLLY_RATE·dt) — halves or doubles per second |
 | A / D, ← / → | strafe | circle left / right at ORBIT_TURN_RATE rad/s (D moves the camera right) |
@@ -1003,6 +1003,27 @@ seen), `speedKpcPerSec` (includes the factor) and `speedLyPerSec`. The overlay p
 `camera <mode>`, speed in ly/s with the factor, and the orbit target and distance when
 orbiting. Per-frame cost is unchanged: no allocation, the same preallocated `viewProj` /
 `cameraPos` / basis arrays.
+
+#### Startup and pointer interaction
+
+The page starts with exposure 22, star-time rate 5 Myr/s, and galaxy-centre
+orbit mode (from the model home position). Explicit URL exposure overrides still
+apply. The camera library's fly/reset semantics are unchanged. The settings menu
+is open at boot (`#menu` has no inline `display:none`, so it renders in the
+default block state the toggle writes back); Tab closes it.
+
+Fly mode requests pointer lock on canvas press, with drag-look as a fallback.
+Escape releases the cursor; opening the menu with Tab also releases pointer lock.
+Both orbit modes keep the cursor visible; mouse rotation requires a primary-button
+drag begun on the canvas (keyboard orbit controls are unchanged). Switching out of fly releases pointer lock; switching
+back requires a fresh canvas press to lock again. The page synchronizes input
+policy from the camera mode after each camera step (including C, H and R).
+
+Menu/form controls own their keyboard and mouse events (except Tab to toggle the
+menu). Wheel events affect the camera only over the canvas. A selection requires
+a canvas press and release without a drag; menu releases and releases outside
+the canvas cannot select stars. Blur, focus entering UI, and fly/orbit transitions
+clear pending look/drag/held-key state.
 
 #### Input additions
 

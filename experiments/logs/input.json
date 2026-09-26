@@ -1,0 +1,69 @@
+{
+  "checks": [
+    {
+      "name": "orbit hover does not look or request pointer lock",
+      "pass": true
+    },
+    {
+      "name": "orbit canvas drag looks without locking, and returning to origin is not a pick",
+      "pass": true
+    },
+    {
+      "name": "canvas click picks in canvas-local CSS coordinates",
+      "pass": true
+    },
+    {
+      "name": "menu clicks, slider drags and scrolling never look, zoom or pick",
+      "pass": true
+    },
+    {
+      "name": "a menu press followed by canvas release cannot select",
+      "pass": true
+    },
+    {
+      "name": "dragging over the menu and releasing there cannot look or pick",
+      "pass": true
+    },
+    {
+      "name": "wheel zoom is canvas-only and normalizes line units",
+      "pass": true
+    },
+    {
+      "name": "menu controls own keyboard input except Tab",
+      "pass": true
+    },
+    {
+      "name": "UI focus cancels held keys and drag; keyup in a field never leaves a stuck key",
+      "pass": true
+    },
+    {
+      "name": "fly mode locks on press and keeps free-look after release",
+      "pass": true
+    },
+    {
+      "name": "Escape/native unlock clears look and drag state",
+      "pass": true
+    },
+    {
+      "name": "fly-to-orbit releases lock and cancels pending input",
+      "pass": true
+    },
+    {
+      "name": "late pointer-lock success is rejected in orbit mode",
+      "pass": true
+    },
+    {
+      "name": "fly still supports drag-look without pointer lock",
+      "pass": true
+    },
+    {
+      "name": "both orbit camera modes accept canvas drags without locking",
+      "pass": true
+    },
+    {
+      "name": "dispose removes all installed event listeners",
+      "pass": true
+    }
+  ],
+  "failed": 0
+}

@@ -47,12 +47,8 @@ const MIN_SIZE_PX = 0.8;                // never render a star smaller than this
 const MIN_ALPHA = 0.25;                 // faintest stars still render as a dim pixel, not zero
 const EXPOSURE_MIN = 0.0;
 const EXPOSURE_MAX = 40.0;
-// Default mag-lim lowered from 17 to 12: at mag=17 the IMF floods the field
-// with 87% faint M-dwarfs (red), washing O/B stars out of the visual mix.
-// 12 gives a better default sky — bright blue/white/yellow stars are clearly
-// visible, M-dwarfs are still there but not dominating. Users can push [ to
-// go deeper.
-const EXPOSURE_DEFAULT = 12.0;
+// Deeper startup exposure for the galaxy-centre orbit view.
+const EXPOSURE_DEFAULT = 22.0;
 const EXPOSURE_STEP = 0.75;
 // Brightness = linear pre-multiplier before the filmic curve. ; / ' in
 // half-stop steps, slider is linear 0.125× → 8×.
