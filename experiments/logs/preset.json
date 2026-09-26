@@ -13,6 +13,22 @@
       "pass": true
     },
     {
+      "name": "serialize drops the fields of a pass that is not selected",
+      "pass": true
+    },
+    {
+      "name": "parse drops the fields of a pass the preset itself turns off",
+      "pass": true
+    },
+    {
+      "name": "activeFields is the shared answer the menu and the format both use",
+      "pass": true
+    },
+    {
+      "name": "the prompt of a classic-only system never mentions the apocenter knobs",
+      "pass": true
+    },
+    {
       "name": "partial presets survive: absent keys are absent, junk is dropped",
       "pass": true
     },
@@ -50,6 +66,14 @@
     },
     {
       "name": "index.html loads presets.js before main.js and has the preset section",
+      "pass": true
+    },
+    {
+      "name": "every engine-owned field has its menu row tagged with the same pass",
+      "pass": true
+    },
+    {
+      "name": "main.js hides the rows of the passes that are not selected",
       "pass": true
     },
     {

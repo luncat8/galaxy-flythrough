@@ -40,7 +40,7 @@ const SETTINGS = {
 check('serialize covers every field, in FIELDS order', () => {
 	const query = Presets.serialize(SETTINGS);
 	const keys = [...new URLSearchParams(query).keys()];
-	assert.deepEqual(keys, Presets.FIELDS.map((f) => f.key));
+	assert.deepEqual(keys, Presets.FIELDS.map((f) => f.key));   // SETTINGS runs apocenter
 });
 
 check('serialize → parse is the identity on the full settings object', () => {
@@ -50,12 +50,51 @@ check('serialize → parse is the identity on the full settings object', () => {
 
 check('serialize → parse is the identity on a non-default system', () => {
 	const other = Object.assign({}, SETTINGS, {
-		type: 'Irr', seed: 7, age: 2.25, engine: ['simple'],
+		type: 'Irr', seed: 7, age: 2.25, engine: ['simple', 'apocenter'],
 		time: -1, wave: 0, pattern: 2.5, apoShare: 1, apoForce: 0,
 		exposure: 18.5, brightness: 0.125, white: 16, sat: 0.5, headroom: 1, highlight: 0,
 		stars: 50000, catalog: 0,
 	});
 	assert.deepEqual(Presets.parse(Presets.serialize(other)), other);
+});
+
+// --- disabled passes are not part of the preset -----------------------------
+// A knob of a movement pass that is not selected describes nothing that runs:
+// the copied line must not carry it, a pasted line must not apply it, and the
+// menu hides the same rows (checked against index.html/main.js below).
+
+check('serialize drops the fields of a pass that is not selected', () => {
+	const off = Object.assign({}, SETTINGS, { engine: ['classic'] });
+	const keys = [...new URLSearchParams(Presets.serialize(off)).keys()];
+	assert.ok(!keys.includes('apoShare') && !keys.includes('apoForce'), keys.join(','));
+	assert.deepEqual(keys, Presets.FIELDS.filter((f) => !f.engine).map((f) => f.key));
+	// …and carries them again as soon as the pass is back on.
+	const on = Object.assign({}, SETTINGS, { engine: ['classic', 'apocenter'] });
+	assert.ok(Presets.serialize(on).includes('apoShare=0.35'));
+});
+
+check('parse drops the fields of a pass the preset itself turns off', () => {
+	assert.deepEqual(Presets.parse('engine=classic&apoShare=1&apoForce=0.5&sat=2'),
+		{ engine: ['classic'], sat: 2 });
+	assert.deepEqual(Presets.parse('engine=simple+apocenter&apoShare=1'),
+		{ engine: ['simple', 'apocenter'], apoShare: 1 });
+	// A preset that names no engine cannot prune: it keeps what it carries.
+	assert.deepEqual(Presets.parse('apoShare=1'), { apoShare: 1 });
+});
+
+check('activeFields is the shared answer the menu and the format both use', () => {
+	const keys = (engine) => Presets.activeFields({ engine }).map((f) => f.key);
+	assert.ok(!keys(['classic']).includes('apoForce'));
+	assert.ok(keys(['classic', 'apocenter']).includes('apoForce'));
+	assert.deepEqual(keys(undefined), Presets.FIELDS.map((f) => f.key));
+	assert.deepEqual(Presets.engineListOf({ engine: 'apocenter+classic' }), ['classic', 'apocenter']);
+	assert.equal(Presets.engineListOf({}), null);
+});
+
+check('the prompt of a classic-only system never mentions the apocenter knobs', () => {
+	const prompt = Presets.buildLlmPrompt(Object.assign({}, SETTINGS, { engine: ['classic'] }));
+	assert.ok(!/apocenter stars|apocenter force/.test(prompt), 'apocenter knobs leaked');
+	assert.ok(prompt.includes('stability engine: classic'));
 });
 
 check('partial presets survive: absent keys are absent, junk is dropped', () => {
@@ -116,7 +155,11 @@ check('the default system round-trips and the model it names exists', () => {
 		catalog: StarRenderer.CATALOG_BUDGET_DEFAULT,
 	}, Presets.menuDefaults());
 	const query = Presets.serialize(system);
-	assert.deepEqual(Presets.parse(query), system);
+	// Classic-only out of the box, so the apocenter knobs are not in the line.
+	const carried = Object.assign({}, system);
+	delete carried.apoShare;
+	delete carried.apoForce;
+	assert.deepEqual(Presets.parse(query), carried);
 	assert.ok(GalaxyLib.GALAXY_TYPES.includes(system.type), system.type);
 });
 
@@ -162,6 +205,29 @@ check('index.html loads presets.js before main.js and has the preset section', (
 		'preset-apply', 'preset-save', 'preset-load', 'preset-prompt']) {
 		assert.equal(html.split(`id="${id}"`).length, 2, id);
 	}
+});
+
+check('every engine-owned field has its menu row tagged with the same pass', () => {
+	const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
+	const tagged = [...html.matchAll(/data-engine="([a-z]+)"/g)].map((m) => m[1]);
+	assert.ok(tagged.length >= 2, 'no data-engine rows');
+	for (const name of tagged) assert.ok(Presets.ENGINE_ORDER.includes(name), name);
+	for (const field of Presets.FIELDS.filter((f) => f.engine)) {
+		assert.ok(tagged.includes(field.engine), field.key);
+		// The row is the slider's own row, so the control id has to sit in it.
+		const id = 'slider-' + field.key.replace('apoShare', 'apocenter-share').replace('apoForce', 'apocenter-force');
+		const row = html.slice(0, html.indexOf(`id="${id}"`)).lastIndexOf('<div class="menu-row"');
+		const tag = html.slice(0, html.indexOf(`id="${id}"`)).lastIndexOf('data-engine=');
+		assert.ok(tag > row, id);
+	}
+});
+
+check('main.js hides the rows of the passes that are not selected', () => {
+	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
+	assert.ok(main.includes('[data-engine]'), 'row lookup');
+	assert.ok(/row\.dataset\.engine/.test(main), 'row toggle');
+	const sync = main.slice(main.indexOf('function syncEngine()'), main.indexOf('function changeEngines()'));
+	assert.ok(sync.includes('row.style.display'), 'toggled from syncEngine');
 });
 
 check('main.js wires collect, apply, clipboard, file and prompt through Presets', () => {

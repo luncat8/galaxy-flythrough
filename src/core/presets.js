@@ -18,6 +18,12 @@ const PROJECT_URL = 'https://github.com/luncat8/galaxy-flythrough';
 // then movement (how it moves), then look (how it is drawn). Boot-only counts
 // ride at the end: a pasted preset cannot rebuild the star buffers, so the
 // menu hint says they apply on the next boot.
+//
+// `engine` on a field names the movement pass that reads it: such a field is
+// part of the preset only while that pass is selected. Copying a system whose
+// apocenter pass is off must not carry the apocenter knobs — they describe a
+// pass that is not running, and pasting them back would reconfigure a hidden
+// control. The menu hides the same rows, so the text line is what is on screen.
 const FIELDS = [
 	{ key: 'type', label: 'galaxy type' },
 	{ key: 'seed', label: 'seed' },
@@ -26,8 +32,8 @@ const FIELDS = [
 	{ key: 'time', label: 'star time', unit: ' Myr/s' },
 	{ key: 'wave', label: 'wave damping' },
 	{ key: 'pattern', label: 'pattern speed', prefix: 'x' },
-	{ key: 'apoShare', label: 'apocenter stars' },
-	{ key: 'apoForce', label: 'apocenter force' },
+	{ key: 'apoShare', label: 'apocenter stars', engine: 'apocenter' },
+	{ key: 'apoForce', label: 'apocenter force', engine: 'apocenter' },
 	{ key: 'exposure', label: 'exposure' },
 	{ key: 'brightness', label: 'brightness', suffix: 'x' },
 	{ key: 'white', label: 'white point' },
@@ -78,6 +84,29 @@ function parseEngineList(text) {
 	return ENGINE_ORDER.filter((name) => wanted.includes(name));
 }
 
+// The engine selection a settings object carries, or null when it carries
+// none: a partial preset that never mentions the engine cannot be pruned
+// against one, so it keeps whatever it has.
+function engineListOf(settings) {
+	const value = settings ? settings.engine : undefined;
+	if (value === undefined || value === null || value === '') return null;
+	const list = Array.isArray(value) ? value : parseEngineList(value);
+	return ENGINE_ORDER.filter((name) => list.includes(name));
+}
+
+// Is this field part of the preset under that engine selection? Only the
+// engine-owned fields can answer no.
+function fieldActive(field, engines) {
+	return !field.engine || !engines || engines.includes(field.engine);
+}
+
+// The FIELDS subset a selection actually uses — the menu reads it to decide
+// which rows to show, serialize/parse/describe to decide what to carry.
+function activeFields(settings) {
+	const engines = engineListOf(settings);
+	return FIELDS.filter((field) => fieldActive(field, engines));
+}
+
 function serializeEngine(value) {
 	const list = Array.isArray(value) ? value : parseEngineList(value);
 	const names = ENGINE_ORDER.filter((name) => list.includes(name));
@@ -97,7 +126,7 @@ function formatValue(value) {
 function serialize(settings) {
 	const s = settings || {};
 	const pairs = [];
-	for (const field of FIELDS) {
+	for (const field of activeFields(s)) {
 		const value = s[field.key];
 		if (value === undefined || value === null || value === '') continue;
 		pairs.push(field.key + '=' + encodeURIComponent(formatValue(value)));
@@ -109,14 +138,15 @@ function serialize(settings) {
 // finite numbers are ignored, so a hand-edited preset cannot NaN the page.
 function parse(query) {
 	const params = new URLSearchParams(String(query || ''));
+	const selected = engineListOf({ engine: params.get('engine') });
 	const out = {};
 	for (const field of FIELDS) {
+		if (!fieldActive(field, selected && selected.length ? selected : null)) continue;
 		if (!params.has(field.key)) continue;
 		const raw = params.get(field.key).trim();
 		if (raw === '') continue;
 		if (field.key === 'engine') {
-			const engines = parseEngineList(raw);
-			if (engines.length) out.engine = engines;
+			if (selected && selected.length) out.engine = selected;
 			continue;
 		}
 		if (field.key === 'type') {
@@ -143,7 +173,7 @@ function describeValue(field, value) {
 function describe(settings) {
 	const s = settings || {};
 	const byKey = {};
-	for (const field of FIELDS) {
+	for (const field of activeFields(s)) {
 		const value = s[field.key];
 		if (value === undefined || value === null || value === '') continue;
 		byKey[field.key] = describeValue(field, value);
@@ -196,7 +226,8 @@ function buildLlmPrompt(settings) {
 
 const Presets = {
 	FIELDS, PROJECT_URL, ENGINE_ORDER, ENGINE_DESCRIPTIONS, TIME_DEFAULT,
-	menuDefaults, parseEngineList, serializeEngine, serialize, parse, describe, buildLlmPrompt,
+	menuDefaults, parseEngineList, serializeEngine, engineListOf, fieldActive, activeFields,
+	serialize, parse, describe, buildLlmPrompt,
 };
 if (typeof module !== 'undefined') module.exports = Presets;
 if (typeof window !== 'undefined') window.Presets = Presets;

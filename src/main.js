@@ -329,12 +329,18 @@ async function boot() {
                 if (engineApocenter.checked) selected.push('apocenter');
                 return selected.length ? selected : ['classic'];
         }
+        // Rows a movement pass owns (data-engine in index.html). They are shown
+        // only while that pass is selected, and Presets drops the same fields
+        // from the copied line — a knob of a pass that is not running is not
+        // part of the settings.
+        const engineRows = Array.from(document.querySelectorAll('#menu [data-engine]'));
         function syncEngine() {
                 const active = renderer.state.engine;
                 engineClassic.checked = active === 'classic' || active.includes('classic');
                 engineSimple.checked = active.includes('simple');
                 engineApocenter.checked = active.includes('apocenter');
                 valEngine.textContent = active === 'classic' ? 'closed form' : active.trim();
+                for (const row of engineRows) row.style.display = active.includes(row.dataset.engine) ? '' : 'none';
         }
         function changeEngines() {
                 const selected = selectedEngines();
