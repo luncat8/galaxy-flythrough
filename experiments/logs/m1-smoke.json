@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-26T13:49:29.834Z",
+  "date": "2026-09-26T14:36:59.580Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -162,7 +162,7 @@
       "name": "DensityLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 61
+        "keys": 73
       }
     },
     {
@@ -253,7 +253,7 @@
       "name": "Presets loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 12
+        "keys": 15
       }
     },
     {

@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-26T13:47:30.020Z",
+  "date": "2026-09-26T14:38:32.562Z",
   "interpreter": "wgsl_reflect",
   "totalChecks": 104,
   "passed": 100,
@@ -762,16 +762,16 @@
       "name": "S0: executed density WGSL matches JS components",
       "pass": true,
       "detail": {
-        "worst": 1.7213729346214933e-7,
+        "worst": 1.8182521896094212e-7,
         "worstCase": {
           "p": [
-            0,
-            0,
-            0
+            -8,
+            0.4000000059604645,
+            -0.30000001192092896
           ],
           "component": 2,
-          "actual": 154.9950408935547,
-          "expected": 154.99506757398612
+          "actual": 0.0021105611231178045,
+          "expected": 0.002110560739364636
         }
       }
     },
@@ -786,16 +786,16 @@
       "name": "Sa: executed density WGSL matches JS components",
       "pass": true,
       "detail": {
-        "worst": 1.686569293616287e-7,
+        "worst": 5.492429668088814e-7,
         "worstCase": {
           "p": [
-            0.004999999888241291,
-            0,
-            0
+            -8,
+            0.4000000059604645,
+            -0.30000001192092896
           ],
           "component": 2,
-          "actual": 33.172340393066406,
-          "expected": 33.17234598781242
+          "actual": 0.0013329880312085152,
+          "expected": 0.0013329872990746163
         }
       }
     },

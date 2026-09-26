@@ -157,15 +157,24 @@ fn spheroidEllipsoidRadius(params: DensityParams, dx: f32, dy: f32, dz: f32) -> 
         return sqrt(r2) / params.spheroid.w;
 }
 
-fn insideDisc(params: DensityParams, R: f32, z: f32) -> bool {
-        return R <= params.truncation.x && abs(z) <= params.truncation.y;
+// Mirror of density.js's truncation rule (0.4.8 M3.1): the radial cut is the
+// authored one, the vertical cut is the authored slab or the height where this
+// component's own profile has fallen to TRUNCATION_FLOOR of its midplane
+// value, whichever is farther out — so the cut never sits mid-profile and it
+// follows H(R) where the disc flares. Mirrors density.VERTICAL_CUT_SECH2 /
+// VERTICAL_CUT_LAPLACE: ln(4/1e-3) and ln(1/1e-3).
+const VERTICAL_CUT_SECH2: f32 = 8.294049640102028;
+const VERTICAL_CUT_LAPLACE: f32 = 6.907755278982137;
+
+fn insideDisc(params: DensityParams, R: f32, z: f32, cutHeights: f32, H: f32) -> bool {
+        return R <= params.truncation.x && abs(z) <= max(params.truncation.y, cutHeights * H);
 }
 
 // Flare and core each come from the group they belong to: thin reads
 // thin.w (flare) and discCore.x, thick reads thick.w and discCore.y.
 fn rhoThin(params: DensityParams, R: f32, z: f32) -> f32 {
-        if (!insideDisc(params, R, z)) { return 0.0; }
         let H: f32 = params.thin.y * (1.0 + params.thin.w * R / params.thin.x);
+        if (!insideDisc(params, R, z, VERTICAL_CUT_SECH2, H)) { return 0.0; }
         var radial: f32 = exp(-R / params.thin.x);
         if (params.discCore.x > 0.0) {
                 radial = radial * (R / sqrt(R * R + params.discCore.x * params.discCore.x));
@@ -175,8 +184,8 @@ fn rhoThin(params: DensityParams, R: f32, z: f32) -> f32 {
 }
 
 fn rhoThick(params: DensityParams, R: f32, z: f32) -> f32 {
-        if (!insideDisc(params, R, z)) { return 0.0; }
         let H: f32 = params.thick.y * (1.0 + params.thick.w * R / params.thick.x);
+        if (!insideDisc(params, R, z, VERTICAL_CUT_LAPLACE, H)) { return 0.0; }
         var radial: f32 = exp(-R / params.thick.x);
         if (params.discCore.y > 0.0) {
                 radial = radial * (R / sqrt(R * R + params.discCore.y * params.discCore.y));

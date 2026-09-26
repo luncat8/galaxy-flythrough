@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-26T13:49:29.904Z",
+  "date": "2026-09-26T14:36:59.709Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -7,7 +7,7 @@
     },
     {
       "name": "density",
-      "lines": 367
+      "lines": 376
     },
     {
       "name": "orbit",
@@ -49,8 +49,8 @@
     "tonemap",
     "simple-step"
   ],
-  "totalChecks": 180,
-  "passed": 180,
+  "totalChecks": 181,
+  "passed": 181,
   "failed": 0,
   "checks": [
     {
@@ -79,7 +79,7 @@
         ],
         [
           "density",
-          17747
+          18384
         ],
         [
           "orbit",
@@ -521,6 +521,14 @@
       "detail": {
         "barSliceFalloff": 1.5,
         "armInnerFade": 0.5
+      }
+    },
+    {
+      "name": "density.wgsl vertical-cut heights match the JS model",
+      "pass": true,
+      "detail": {
+        "sech2": 8.294049640102028,
+        "laplace": 6.907755278982137
       }
     },
     {

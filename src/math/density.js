@@ -103,10 +103,66 @@ function spheroidEllipsoidRadius(model, dx, dy, dz) {
 	return Math.sqrt(r2) / sp.r0;
 }
 
-// Disc truncation. Arms and both discs share it, as in the model.
-function insideDisc(model, R, z) {
-	const t = model.truncation;
-	return R <= t.discRadius && z <= t.discHeight && z >= -t.discHeight;
+// ---- where a profile may be cut (0.4.8 M3.1) ------------------------------
+//
+// A truncation is a discontinuity: the field drops to zero across it. That is
+// harmless where the profile is already dark and a visible surface where it is
+// not — the authored |z| = discHeight slab cut the thick disc at 4.2e-2 of its
+// own column (experiments/truncation-edge.js), a plane of missing stars.
+//
+// The rule: a cut may not sit above TRUNCATION_FLOOR of the profile's own
+// reference level, and is pushed outward — never inward — until it does. The
+// authored numbers stay the *minimum* extent, so nothing the model already
+// delivers is lost; only tails that were being chopped mid-profile are added.
+// Softening the edge instead was measured and rejected: subtracting the
+// boundary value ("pedestal") removes 12% of the thick disc and 17% of an
+// n = 4 Sérsic — it deforms the profile rather than ending it — and a
+// multiplicative taper makes the vertical draw depend on zCut/H(R), which no
+// closed-form inverse CDF covers. Moving the cut keeps every draw exact.
+const TRUNCATION_FLOOR = 1e-3;
+// |z|/H at which each vertical profile reaches the floor of its midplane
+// value: sech²(z/2H) → 4·e^(−z/H), exp(−|z|/H) → e^(−z/H).
+const VERTICAL_CUT_SECH2 = Math.log(4 / TRUNCATION_FLOOR);
+const VERTICAL_CUT_LAPLACE = Math.log(1 / TRUNCATION_FLOOR);
+
+function verticalCutHeights(kind) {
+	return kind === 'laplace' ? VERTICAL_CUT_LAPLACE : VERTICAL_CUT_SECH2;
+}
+
+// s at which a spheroid profile reaches the floor of its s = 1 value — the
+// body's own reference radius (the Sérsic effective radius, the Plummer core).
+// galaxy.js pushes the authored spheroidRadius out to this, so the field, the
+// sampler and the packed WGSL constant all read one number.
+function spheroidFloorRadius(profileId, n) {
+	if (profileId === PROFILE_SERSIC) return Math.pow(1 + Math.log(1 / TRUNCATION_FLOOR) / sersicBn(n), n);
+	if (profileId === PROFILE_PLUMMER) return Math.sqrt(Math.pow(Math.pow(2, 2.5) / TRUNCATION_FLOOR, 0.4) - 1);
+	return 1;   // the bar is bounded by its own tip
+}
+
+// The disc's radial cut, shared by both discs and the arms. Unlike the
+// vertical one this stays exactly as authored: a disc's outer edge is an
+// observed feature (real discs break at a few scale lengths), not an artifact
+// of the model's box. The one cut above the floor is Irr's, at 1e-2 of its
+// inner disc — its authored break, and the clump field breaks it up further.
+function discRadialCut(model) {
+	return model.truncation.discRadius;
+}
+
+function insideDiscRadius(model, R) {
+	return R <= model.truncation.discRadius;
+}
+
+// The vertical cut of one disc component at radius R: the authored slab, or
+// the floor height of this profile if the profile is still bright there. It
+// follows H(R), so a flared disc's truncation surface flares with it.
+function discVerticalCut(model, group, R, kind) {
+	return Math.max(model.truncation.discHeight, verticalCutHeights(kind) * discHeightAt(group, R));
+}
+
+function insideDisc(model, R, z, group, kind) {
+	const g = group || model.thin;
+	if (!insideDiscRadius(model, R)) return false;
+	return Math.abs(z) <= discVerticalCut(model, g, R, kind || 'sech2');
 }
 
 // ---- components -----------------------------------------------------------
@@ -126,14 +182,16 @@ function discRadialFactor(group, R) {
 }
 
 // The vertical mass of one profile column at radius R: the z-integral of the
-// profile, truncated or not. `kind` is 'sech2' for the thin disc and 'laplace'
-// for the thick disc. A non-finite height means the full vertical integral.
-function discVerticalMass(group, R, zMax, kind) {
+// profile up to the cut. `kind` is 'sech2' for the thin disc and 'laplace' for
+// the thick disc. `zFloor` is the authored slab (the minimum extent); the cut
+// is discVerticalCut's, so this integral and the field stop at the same place.
+// A non-finite zFloor means the full vertical integral.
+function discVerticalMass(group, R, zFloor, kind) {
 	const H = discHeightAt(group, R);
-	if (kind === 'laplace') {
-		return zMax === Infinity ? 2 * H : 2 * H * (1 - Math.exp(-zMax / H));
-	}
-	return zMax === Infinity ? 4 * H : 4 * H * Math.tanh(zMax / (2 * H));
+	if (zFloor === Infinity) return kind === 'laplace' ? 2 * H : 4 * H;
+	const zMax = Math.max(zFloor, verticalCutHeights(kind) * H);
+	if (kind === 'laplace') return 2 * H * (1 - Math.exp(-zMax / H));
+	return 4 * H * Math.tanh(zMax / (2 * H));
 }
 
 // Amp-free radial marginal of a disc. The radial CDF must include the
@@ -155,11 +213,11 @@ function integrateDiscRadial(group, radius, zMax, kind) {
 		return 2 * Math.PI * vertical * group.H * group.L * group.L * (1 + 2 * flare);
 	}
 	if (!core && !flare) {
+		// No flare: the cut is the same multiple of H at every radius, so the
+		// vertical factor stays a constant and the closed form survives.
 		const vertical = kind === 'laplace' ? 2 : 4;
 		const radial = 1 - (1 + radius / group.L) * Math.exp(-radius / group.L);
-		const height = zMax === Infinity ? 1 : (kind === 'laplace'
-			? 1 - Math.exp(-zMax / group.H)
-			: Math.tanh(zMax / (2 * group.H)));
+		const height = discVerticalMass(group, 0, zMax, kind) / discVerticalMass(group, 0, Infinity, kind);
 		return 2 * Math.PI * vertical * group.H * group.L * group.L * radial * height;
 	}
 	const upper = full ? Math.max(32 * group.L, 8 * core) : radius;
@@ -175,10 +233,11 @@ function integrateDiscRadial(group, radius, zMax, kind) {
 
 // Thin disc: exponential in R (soft core optional), sech^2 in z, flaring.
 function rhoThin(model, R, z) {
-	if (!insideDisc(model, R, z)) return 0;
 	const p = model.thin;
+	if (!insideDiscRadius(model, R)) return 0;
 	const flare = p.flare || 0;
 	const H = p.H * (1 + flare * R / p.L);
+	if (Math.abs(z) > Math.max(model.truncation.discHeight, VERTICAL_CUT_SECH2 * H)) return 0;
 	let radial = Math.exp(-R / p.L);
 	if (p.coreRadius) {
 		radial *= R / Math.sqrt(R * R + p.coreRadius * p.coreRadius);
@@ -190,10 +249,11 @@ function rhoThin(model, R, z) {
 
 // Thick disc: exponential in R and |z|.
 function rhoThick(model, R, z) {
-	if (!insideDisc(model, R, z)) return 0;
 	const p = model.thick;
+	if (!insideDiscRadius(model, R)) return 0;
 	const flare = p.flare || 0;
 	const H = p.H * (1 + flare * R / p.L);
+	if (Math.abs(z) > Math.max(model.truncation.discHeight, VERTICAL_CUT_LAPLACE * H)) return 0;
 	let radial = Math.exp(-R / p.L);
 	if (p.coreRadius) {
 		radial *= R / Math.sqrt(R * R + p.coreRadius * p.coreRadius);
@@ -797,8 +857,10 @@ const DensityLib = {
 	PROFILES, PROFILE_PLUMMER, PROFILE_SERSIC, PROFILE_BAR,
 	sersicBn, logGamma, lowerGamma,
 	componentMasses, massIntegrals, truncationFractions, haloRadialMass,
-	discRadialWeight,
-	toGalactocentric, spheroidEllipsoidRadius, insideDisc,
+	discRadialWeight, discHeightAt, discRadialFactor, integrateDiscRadial,
+	toGalactocentric, spheroidEllipsoidRadius, insideDisc, insideDiscRadius,
+	TRUNCATION_FLOOR, VERTICAL_CUT_SECH2, VERTICAL_CUT_LAPLACE,
+	verticalCutHeights, discVerticalCut, discRadialCut, spheroidFloorRadius, discVerticalMass,
 	rhoThin, rhoThick, rhoSpheroid, rhoHalo,
 	armFactor, armInnerFade, armRidgeWidth, distanceToNearestArm, armRidgeAzimuth, armWavenumber, armsArmed,
 	ARM_INNER_FADE,

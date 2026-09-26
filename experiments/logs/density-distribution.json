@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-26T13:49:58.421Z",
+  "date": "2026-09-26T14:37:51.303Z",
   "seed": 42,
   "suite": [
     "E4",
@@ -9,7 +9,7 @@
     "Sc",
     "Irr"
   ],
-  "totalSampleMs": 1327,
+  "totalSampleMs": 1481,
   "totalChecks": 51,
   "passed": 51,
   "failed": 0,
@@ -22,17 +22,17 @@
     {
       "name": "E4 (table): the box contains model mass",
       "pass": true,
-      "detail": 12.848404192410538
+      "detail": 14.408535843846856
     },
     {
       "name": "E4 (table): galactocentric R matches the field (TV < 8%)",
       "pass": true,
-      "detail": 0.0144
+      "detail": 0.0134
     },
     {
       "name": "E4 (table): z matches the field (TV < 8%)",
       "pass": true,
-      "detail": 0.0048
+      "detail": 0.0483
     },
     {
       "name": "E4 (table): component shares match the analytic masses (within 2%)",
@@ -84,38 +84,38 @@
     {
       "name": "S0 (table): the box contains model mass",
       "pass": true,
-      "detail": 45.58360573058608
+      "detail": 46.82725314558366
     },
     {
       "name": "S0 (table): galactocentric R matches the field (TV < 8%)",
       "pass": true,
-      "detail": 0.0121
+      "detail": 0.0112
     },
     {
       "name": "S0 (table): z matches the field (TV < 8%)",
       "pass": true,
-      "detail": 0.0074
+      "detail": 0.0528
     },
     {
       "name": "S0 (table): component shares match the analytic masses (within 2%)",
       "pass": true,
       "detail": {
-        "worst": 0.0037,
+        "worst": 0.0068,
         "thin": {
-          "observed": 0.37817,
-          "expected": 0.37715
+          "observed": 0.3681,
+          "expected": 0.36721
         },
         "thick": {
-          "observed": 0.14588,
-          "expected": 0.14534
+          "observed": 0.14863,
+          "expected": 0.14763
         },
         "bulge": {
-          "observed": 0.47573,
-          "expected": 0.47729
+          "observed": 0.48305,
+          "expected": 0.48496
         },
         "halo": {
           "observed": 0.00022,
-          "expected": 0.00022
+          "expected": 0.00021
         }
       }
     },
@@ -141,34 +141,34 @@
     {
       "name": "SBb (table): the box contains model mass",
       "pass": true,
-      "detail": 81.0515148613462
+      "detail": 80.87159613971599
     },
     {
       "name": "SBb (table): galactocentric R matches the field (TV < 8%)",
       "pass": true,
-      "detail": 0.0358
+      "detail": 0.0199
     },
     {
       "name": "SBb (table): z matches the field (TV < 8%)",
       "pass": true,
-      "detail": 0.0037
+      "detail": 0.044
     },
     {
       "name": "SBb (table): component shares match the analytic masses (within 2%)",
       "pass": true,
       "detail": {
-        "worst": 0.0194,
+        "worst": 0.0112,
         "thin": {
-          "observed": 0.62282,
-          "expected": 0.62117
+          "observed": 0.62295,
+          "expected": 0.62247
         },
         "thick": {
-          "observed": 0.19188,
-          "expected": 0.18983
+          "observed": 0.19193,
+          "expected": 0.19028
         },
         "bulge": {
-          "observed": 0.18515,
-          "expected": 0.18881
+          "observed": 0.18497,
+          "expected": 0.18706
         },
         "halo": {
           "observed": 0.00015,
@@ -179,7 +179,7 @@
     {
       "name": "SBb preset: the box sample includes the bulge population",
       "pass": true,
-      "detail": 0.18515
+      "detail": 0.18496666666666667
     },
     {
       "name": "SBb (table): deterministic in (seed, count, box)",
@@ -203,34 +203,34 @@
     {
       "name": "SBa (table): the box contains model mass",
       "pass": true,
-      "detail": 57.001336583851874
+      "detail": 56.998628381449535
     },
     {
       "name": "SBa (table): galactocentric R matches the field (TV < 8%)",
       "pass": true,
-      "detail": 0.0097
+      "detail": 0.0112
     },
     {
       "name": "SBa (table): z matches the field (TV < 8%)",
       "pass": true,
-      "detail": 0.0036
+      "detail": 0.0557
     },
     {
       "name": "SBa (table): component shares match the analytic masses (within 2%)",
       "pass": true,
       "detail": {
-        "worst": 0.0043,
+        "worst": 0.0076,
         "thin": {
-          "observed": 0.50023,
-          "expected": 0.4989
+          "observed": 0.501,
+          "expected": 0.49897
         },
         "thick": {
-          "observed": 0.15192,
-          "expected": 0.15257
+          "observed": 0.15147,
+          "expected": 0.15263
         },
         "bulge": {
-          "observed": 0.34768,
-          "expected": 0.34832
+          "observed": 0.34737,
+          "expected": 0.34821
         },
         "halo": {
           "observed": 0.00017,
@@ -260,34 +260,34 @@
     {
       "name": "Sc (table): the box contains model mass",
       "pass": true,
-      "detail": 97.99595203220935
+      "detail": 98.00406608146808
     },
     {
       "name": "Sc (table): galactocentric R matches the field (TV < 8%)",
       "pass": true,
-      "detail": 0.0137
+      "detail": 0.0135
     },
     {
       "name": "Sc (table): z matches the field (TV < 8%)",
       "pass": true,
-      "detail": 0.0052
+      "detail": 0.052
     },
     {
       "name": "Sc (table): component shares match the analytic masses (within 2%)",
       "pass": true,
       "detail": {
-        "worst": 0.0083,
+        "worst": 0.0075,
         "thin": {
           "observed": 0.77585,
-          "expected": 0.77455
+          "expected": 0.77452
         },
         "thick": {
           "observed": 0.16937,
-          "expected": 0.17014
+          "expected": 0.17022
         },
         "bulge": {
           "observed": 0.0543,
-          "expected": 0.05475
+          "expected": 0.05471
         },
         "halo": {
           "observed": 0.00048,
@@ -317,34 +317,34 @@
     {
       "name": "Irr (table): the box contains model mass",
       "pass": true,
-      "detail": 10.88431199555071
+      "detail": 10.943348976334029
     },
     {
       "name": "Irr (table): galactocentric R matches the field (TV < 8%)",
       "pass": true,
-      "detail": 0.0296
+      "detail": 0.0268
     },
     {
       "name": "Irr (table): z matches the field (TV < 8%)",
       "pass": true,
-      "detail": 0.0187
+      "detail": 0.0559
     },
     {
       "name": "Irr (table): component shares match the analytic masses (within 2%)",
       "pass": true,
       "detail": {
-        "worst": 0.0066,
+        "worst": 0.0082,
         "thin": {
-          "observed": 0.61947,
-          "expected": 0.62042
+          "observed": 0.6168,
+          "expected": 0.61709
         },
         "thick": {
-          "observed": 0.35758,
-          "expected": 0.35997
+          "observed": 0.36043,
+          "expected": 0.3634
         },
         "bulge": {
-          "observed": 0.02283,
-          "expected": 0.01949
+          "observed": 0.02265,
+          "expected": 0.01939
         },
         "halo": {
           "observed": 0.00012,

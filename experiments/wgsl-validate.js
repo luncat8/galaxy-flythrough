@@ -189,7 +189,8 @@ function wgslConsts(part) {
         const stray = [...densitySrc.matchAll(/^const\s+([A-Za-z_0-9]+)\s*:/gm)].map(m => m[1])
                 .filter(n => !['COMPONENT_THIN', 'COMPONENT_THICK', 'COMPONENT_BULGE', 'COMPONENT_HALO',
                         'PROFILE_PLUMMER', 'PROFILE_SERSIC', 'PROFILE_BAR', 'ARM_MIN_RADIUS',
-                        'BAR_SLICE_FALLOFF', 'ARM_INNER_FADE'].includes(n));
+                        'BAR_SLICE_FALLOFF', 'ARM_INNER_FADE',
+                        'VERTICAL_CUT_SECH2', 'VERTICAL_CUT_LAPLACE'].includes(n));
         check('density.wgsl hard-codes no galaxy numbers', stray.length === 0, stray);
         // Profile constants are not galaxy numbers — they are properties of the
         // shape family, identical for every type — so they ride as consts. They
@@ -201,6 +202,14 @@ function wgslConsts(part) {
                 && shapeConsts.ARM_INNER_FADE === density.ARM_INNER_FADE
                 && shapeConsts.PROFILE_BAR === density.PROFILE_BAR,
                 { barSliceFalloff: shapeConsts.BAR_SLICE_FALLOFF, armInnerFade: shapeConsts.ARM_INNER_FADE });
+
+        // The 0.4.8 M3.1 truncation rule: the vertical cut is a multiple of the
+        // component's own scale height, so the multiple is a shape constant and
+        // both mirrors have to read the same one (f32 rounding aside).
+        check('density.wgsl vertical-cut heights match the JS model',
+                Math.abs(shapeConsts.VERTICAL_CUT_SECH2 - density.VERTICAL_CUT_SECH2) < 1e-6
+                && Math.abs(shapeConsts.VERTICAL_CUT_LAPLACE - density.VERTICAL_CUT_LAPLACE) < 1e-6,
+                { sech2: shapeConsts.VERTICAL_CUT_SECH2, laplace: shapeConsts.VERTICAL_CUT_LAPLACE });
 
         const c = wgslConsts('density');
         check('density.wgsl component indices match the JS model',

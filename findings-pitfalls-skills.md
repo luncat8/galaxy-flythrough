@@ -971,3 +971,41 @@ checks on the same suite pass, and `all-tests` is unaffected (wgsl-exec is
 TYPES['sim'], not test). Until reconciled: treat those four as a known harness
 failure, not a shader regression — the same vertex path is pinned f64-side by
 orbit-test's mirror checks.
+
+## 2026-09-26 — Measure a truncation against what shares the view, and only ever move it outward
+
+A hard cut in a density field is visible when the density it removes is a noticeable
+fraction of *what the eye has to compare it with in the same view* — not of the model's
+global peak. For a disc column that reference is the column's own midplane (the cut at
+R = 20 is judged against the light at R = 20, not against the bulge), for a spheroid it is
+the `s = 1` level. Judged against the global peak every cut in this model looked fine;
+judged against the local reference the thick disc's slab was cutting at 4% and the Sérsic
+n = 4 bulge at 0.5%. `experiments/truncation-edge.js` is the reusable version.
+
+Two further rules that fell out of fixing it:
+
+- The search for "where is the profile faint enough" must run on the **untruncated analytic
+  profile**. The first version of the study searched outward on `density.rhoTotal`, which is
+  0 past the existing cut, and therefore reported every cut as already sufficient.
+- A derived cut must be `max(authored, rule)`, never a replacement. Applied as a replacement
+  the same rule *shrinks* the halo (100 kpc → 7.2·a_h) and Sc's spheroid (6 → 5.14), and it
+  overrode a test's compact disc (`discRadius = 1.2`, `L = 3.6`) by 20×. The distinction that
+  held up: authored *size* is intent (a disc break is an observed feature — keep it), an
+  authored *slab height* was an artifact of the box (a disc has no vertical edge — derive it).
+
+## 2026-09-26 — When a test fails after a model change, check the test's own resolution first
+
+Two of the four suites that broke under the M3.1 truncation change were the tests being
+wrong, and both said so only when their own sampling was raised:
+
+- `density-distribution`'s SBb mass shares were failing at 1.9%. The reference is a box
+  integral over a 40 kpc cube; a 2.3 kpc bar of steep profile inside it is badly resolved at
+  240×96×60 cells. At 480×192×90 the reference moved 0.18881 → 0.18706 against the sampler's
+  0.18497 and the check passed — the *reference* was off, not the sampler.
+- `object-placement`'s HII arm-ridge mean jumped 0.250 → 0.374. At the suite's 1200 objects
+  only ~100 are HII regions; at 12000 the true means are 0.294 → 0.308. The change reshuffles
+  the whole random stream, so a small-N statistic moves far more than the effect being tested.
+
+The cheap diagnostic in both cases: re-run the same statistic at 10× the sample (and, for a
+reference integral, at 2× the grid) before touching the limit. If the number moves toward the
+observation, the check was under-resolved; if it does not, the model changed.

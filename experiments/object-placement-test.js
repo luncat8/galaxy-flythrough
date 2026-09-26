@@ -23,7 +23,10 @@ const starTypes = require('../src/math/star-types.js');
 const model = galaxy.MILKY_WAY;
 
 const SEED = 99;
-const N_OBJECTS = 1200;
+// 1200 objects left only ~100 HII regions, and the arm-hugging means below
+// then swung +-0.1 kpc between realisations (0.4.8 M3.1 changed one and the
+// check tripped on noise, not on physics). 6000 puts ~600 in each mean.
+const N_OBJECTS = 6000;
 const BOX = { xMin: -20, xMax: 20, yMin: -20, yMax: 20, zMin: -2, zMax: 2 };
 
 const checks = [];

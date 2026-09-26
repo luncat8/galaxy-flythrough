@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-26T13:49:42.128Z",
+  "date": "2026-09-26T14:37:13.798Z",
   "types": [
     "E0",
     "E1",
@@ -30,17 +30,17 @@
       "gasFraction": 0.15,
       "gasRich": true,
       "fromPreset": true,
-      "totalMass": 81.9584,
+      "totalMass": 82.5312,
       "delivered": {
         "thin": 50.92849,
-        "thick": 15.92902,
+        "thick": 16.50178,
         "bulge": 15.07948,
         "halo": 0.02145,
-        "total": 81.95843
+        "total": 82.53119
       },
       "truncationFractions": {
         "thin": 0.9992,
-        "thick": 0.95812,
+        "thick": 0.99257,
         "bulge": 1,
         "halo": 1
       },
@@ -60,18 +60,18 @@
       "gasFraction": 0,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 13.1478,
+      "totalMass": 16.2377,
       "delivered": {
         "thin": 0,
         "thick": 0,
-        "bulge": 13.14784,
+        "bulge": 16.23767,
         "halo": 0,
-        "total": 13.14784
+        "total": 16.23767
       },
       "truncationFractions": {
         "thin": 0,
         "thick": 0,
-        "bulge": 0.63596,
+        "bulge": 0.78542,
         "halo": 0
       },
       "home": [
@@ -90,18 +90,18 @@
       "gasFraction": 0,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 13.1478,
+      "totalMass": 16.2377,
       "delivered": {
         "thin": 0,
         "thick": 0,
-        "bulge": 13.14784,
+        "bulge": 16.23767,
         "halo": 0,
-        "total": 13.14784
+        "total": 16.23767
       },
       "truncationFractions": {
         "thin": 0,
         "thick": 0,
-        "bulge": 0.63596,
+        "bulge": 0.78542,
         "halo": 0
       },
       "home": [
@@ -120,18 +120,18 @@
       "gasFraction": 0,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 13.1478,
+      "totalMass": 16.2377,
       "delivered": {
         "thin": 0,
         "thick": 0,
-        "bulge": 13.14784,
+        "bulge": 16.23767,
         "halo": 0,
-        "total": 13.14784
+        "total": 16.23767
       },
       "truncationFractions": {
         "thin": 0,
         "thick": 0,
-        "bulge": 0.63596,
+        "bulge": 0.78542,
         "halo": 0
       },
       "home": [
@@ -150,18 +150,18 @@
       "gasFraction": 0,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 13.1478,
+      "totalMass": 16.2377,
       "delivered": {
         "thin": 0,
         "thick": 0,
-        "bulge": 13.14784,
+        "bulge": 16.23767,
         "halo": 0,
-        "total": 13.14784
+        "total": 16.23767
       },
       "truncationFractions": {
         "thin": 0,
         "thick": 0,
-        "bulge": 0.63596,
+        "bulge": 0.78542,
         "halo": 0
       },
       "home": [
@@ -180,18 +180,18 @@
       "gasFraction": 0,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 13.1478,
+      "totalMass": 16.2377,
       "delivered": {
         "thin": 0,
         "thick": 0,
-        "bulge": 13.14784,
+        "bulge": 16.23767,
         "halo": 0,
-        "total": 13.14784
+        "total": 16.23767
       },
       "truncationFractions": {
         "thin": 0,
         "thick": 0,
-        "bulge": 0.63596,
+        "bulge": 0.78542,
         "halo": 0
       },
       "home": [
@@ -210,18 +210,18 @@
       "gasFraction": 0,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 15.3273,
+      "totalMass": 17.563,
       "delivered": {
         "thin": 0,
         "thick": 0,
-        "bulge": 15.32727,
+        "bulge": 17.56304,
         "halo": 0,
-        "total": 15.32727
+        "total": 17.56304
       },
       "truncationFractions": {
         "thin": 0,
         "thick": 0,
-        "bulge": 0.74138,
+        "bulge": 0.84953,
         "halo": 0
       },
       "home": [
@@ -240,18 +240,18 @@
       "gasFraction": 0,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 17.5846,
+      "totalMass": 18.7385,
       "delivered": {
         "thin": 0,
         "thick": 0,
-        "bulge": 17.58461,
+        "bulge": 18.73853,
         "halo": 0,
-        "total": 17.58461
+        "total": 18.73853
       },
       "truncationFractions": {
         "thin": 0,
         "thick": 0,
-        "bulge": 0.85057,
+        "bulge": 0.90639,
         "halo": 0
       },
       "home": [
@@ -270,18 +270,18 @@
       "gasFraction": 0,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 19.5514,
+      "totalMass": 19.6765,
       "delivered": {
         "thin": 0,
         "thick": 0,
-        "bulge": 19.55144,
+        "bulge": 19.67649,
         "halo": 0,
-        "total": 19.55144
+        "total": 19.67649
       },
       "truncationFractions": {
         "thin": 0,
         "thick": 0,
-        "bulge": 0.94571,
+        "bulge": 0.95176,
         "halo": 0
       },
       "home": [
@@ -300,18 +300,18 @@
       "gasFraction": 0.02,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 45.9264,
+      "totalMass": 47.5436,
       "delivered": {
-        "thin": 17.33791,
-        "thick": 6.82541,
-        "bulge": 21.7502,
+        "thin": 17.34507,
+        "thick": 7.38732,
+        "bulge": 22.79838,
         "halo": 0.01287,
-        "total": 45.92639
+        "total": 47.54364
       },
       "truncationFractions": {
-        "thin": 0.99838,
-        "thick": 0.91707,
-        "bulge": 0.87672,
+        "thin": 0.99879,
+        "thick": 0.99257,
+        "bulge": 0.91897,
         "halo": 1
       },
       "home": [
@@ -330,18 +330,18 @@
       "gasFraction": 0.08,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 62.322,
+      "totalMass": 64.7859,
       "delivered": {
         "thin": 33.31475,
-        "thick": 12.36078,
-        "bulge": 16.62935,
+        "thick": 12.87036,
+        "bulge": 18.58362,
         "halo": 0.01716,
-        "total": 62.32203
+        "total": 64.78588
       },
       "truncationFractions": {
         "thin": 0.99916,
-        "thick": 0.95327,
-        "bulge": 0.83788,
+        "thick": 0.99257,
+        "bulge": 0.93635,
         "halo": 1
       },
       "home": [
@@ -360,18 +360,18 @@
       "gasFraction": 0.15,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 80.7117,
+      "totalMass": 81.9048,
       "delivered": {
         "thin": 52.94587,
-        "thick": 16.78911,
-        "bulge": 10.95523,
+        "thick": 17.13156,
+        "bulge": 11.80589,
         "halo": 0.02145,
-        "total": 80.71166
+        "total": 81.90477
       },
       "truncationFractions": {
         "thin": 0.99899,
-        "thick": 0.97094,
-        "bulge": 0.88318,
+        "thick": 0.99074,
+        "bulge": 0.95176,
         "halo": 1
       },
       "home": [
@@ -390,17 +390,17 @@
       "gasFraction": 0.3,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 106.867,
+      "totalMass": 107.2002,
       "delivered": {
-        "thin": 81.58366,
-        "thick": 19.84651,
+        "thin": 81.58423,
+        "thick": 20.17919,
         "bulge": 5.36032,
         "halo": 0.0765,
-        "total": 106.86699
+        "total": 107.20024
       },
       "truncationFractions": {
-        "thin": 0.99854,
-        "thick": 0.97164,
+        "thin": 0.99855,
+        "thick": 0.98793,
         "bulge": 0.99723,
         "halo": 1
       },
@@ -420,17 +420,17 @@
       "gasFraction": 0.45,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 115.2585,
+      "totalMass": 115.4818,
       "delivered": {
-        "thin": 96.27893,
-        "thick": 16.56921,
+        "thin": 96.27981,
+        "thick": 16.79156,
         "bulge": 2.30906,
         "halo": 0.10134,
-        "total": 115.25853
+        "total": 115.48177
       },
       "truncationFractions": {
-        "thin": 0.99834,
-        "thick": 0.97359,
+        "thin": 0.99835,
+        "thick": 0.98665,
         "bulge": 0.99723,
         "halo": 1
       },
@@ -450,17 +450,17 @@
       "gasFraction": 0.02,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 48.9848,
+      "totalMass": 49.5539,
       "delivered": {
-        "thin": 17.33791,
-        "thick": 6.82541,
+        "thin": 17.34507,
+        "thick": 7.38732,
         "bulge": 24.80863,
         "halo": 0.01287,
-        "total": 48.98482
+        "total": 49.55389
       },
       "truncationFractions": {
-        "thin": 0.99838,
-        "thick": 0.91707,
+        "thin": 0.99879,
+        "thick": 0.99257,
         "bulge": 1,
         "halo": 1
       },
@@ -480,17 +480,17 @@
       "gasFraction": 0.08,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 65.5396,
+      "totalMass": 66.0492,
       "delivered": {
         "thin": 33.31475,
-        "thick": 12.36078,
+        "thick": 12.87036,
         "bulge": 19.8469,
         "halo": 0.01716,
-        "total": 65.53958
+        "total": 66.04916
       },
       "truncationFractions": {
         "thin": 0.99916,
-        "thick": 0.95327,
+        "thick": 0.99257,
         "bulge": 1,
         "halo": 1
       },
@@ -510,17 +510,17 @@
       "gasFraction": 0.3,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 106.8819,
+      "totalMass": 107.2151,
       "delivered": {
-        "thin": 81.58366,
-        "thick": 19.84651,
+        "thin": 81.58423,
+        "thick": 20.17919,
         "bulge": 5.3752,
         "halo": 0.0765,
-        "total": 106.88188
+        "total": 107.21512
       },
       "truncationFractions": {
-        "thin": 0.99854,
-        "thick": 0.97164,
+        "thin": 0.99855,
+        "thick": 0.98793,
         "bulge": 1,
         "halo": 1
       },
@@ -540,17 +540,17 @@
       "gasFraction": 0.45,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 115.2649,
+      "totalMass": 115.4882,
       "delivered": {
-        "thin": 96.27893,
-        "thick": 16.56921,
+        "thin": 96.27981,
+        "thick": 16.79156,
         "bulge": 2.31547,
         "halo": 0.10134,
-        "total": 115.26494
+        "total": 115.48818
       },
       "truncationFractions": {
-        "thin": 0.99834,
-        "thick": 0.97359,
+        "thin": 0.99835,
+        "thick": 0.98665,
         "bulge": 1,
         "halo": 1
       },
@@ -570,18 +570,18 @@
       "gasFraction": 0.5,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 11.4808,
+      "totalMass": 11.59,
       "delivered": {
-        "thin": 7.02285,
-        "thick": 4.21087,
-        "bulge": 0.24546,
+        "thin": 7.02305,
+        "thick": 4.31942,
+        "bulge": 0.24592,
         "halo": 0.00165,
-        "total": 11.48083
+        "total": 11.59004
       },
       "truncationFractions": {
-        "thin": 0.96286,
-        "thick": 0.86599,
-        "bulge": 0.98941,
+        "thin": 0.96289,
+        "thick": 0.88831,
+        "bulge": 0.99125,
         "halo": 1
       },
       "home": [
@@ -593,8 +593,8 @@
       ]
     }
   ],
-  "totalChecks": 512,
-  "passed": 512,
+  "totalChecks": 513,
+  "passed": 513,
   "failed": 0,
   "checks": [
     {
@@ -1864,7 +1864,15 @@
       "pass": true,
       "detail": {
         "Sc": 6,
-        "E4": 8
+        "E4": 13.059875280261984
+      }
+    },
+    {
+      "name": "a cut never sits where the profile is still above the truncation floor",
+      "pass": true,
+      "detail": {
+        "E4": 13.06,
+        "floorE4": 13.06
       }
     },
     {
@@ -1877,7 +1885,7 @@
       "pass": true,
       "detail": {
         "thin": 0.999201278332001,
-        "thick": 0.958118785014785,
+        "thick": 0.9925695870757972,
         "bulge": 1,
         "halo": 1
       }
@@ -1894,7 +1902,7 @@
         },
         "delivered": {
           "thin": 50.92849,
-          "thick": 15.92902,
+          "thick": 16.50178,
           "bulge": 15.07948,
           "halo": 0.02145
         }
@@ -1911,7 +1919,7 @@
       "detail": {
         "thin": 0,
         "thick": 0,
-        "bulge": 0.6359647296520806,
+        "bulge": 0.7854206002242456,
         "halo": 0
       }
     },
@@ -1928,7 +1936,7 @@
         "delivered": {
           "thin": 0,
           "thick": 0,
-          "bulge": 13.14784,
+          "bulge": 16.23767,
           "halo": 0
         }
       }
@@ -1944,7 +1952,7 @@
       "detail": {
         "thin": 0,
         "thick": 0,
-        "bulge": 0.6359647296520806,
+        "bulge": 0.7854206002242456,
         "halo": 0
       }
     },
@@ -1961,7 +1969,7 @@
         "delivered": {
           "thin": 0,
           "thick": 0,
-          "bulge": 13.14784,
+          "bulge": 16.23767,
           "halo": 0
         }
       }
@@ -1977,7 +1985,7 @@
       "detail": {
         "thin": 0,
         "thick": 0,
-        "bulge": 0.6359647296520806,
+        "bulge": 0.7854206002242456,
         "halo": 0
       }
     },
@@ -1994,7 +2002,7 @@
         "delivered": {
           "thin": 0,
           "thick": 0,
-          "bulge": 13.14784,
+          "bulge": 16.23767,
           "halo": 0
         }
       }
@@ -2010,7 +2018,7 @@
       "detail": {
         "thin": 0,
         "thick": 0,
-        "bulge": 0.6359647296520806,
+        "bulge": 0.7854206002242456,
         "halo": 0
       }
     },
@@ -2027,7 +2035,7 @@
         "delivered": {
           "thin": 0,
           "thick": 0,
-          "bulge": 13.14784,
+          "bulge": 16.23767,
           "halo": 0
         }
       }
@@ -2043,7 +2051,7 @@
       "detail": {
         "thin": 0,
         "thick": 0,
-        "bulge": 0.6359647296520806,
+        "bulge": 0.7854206002242456,
         "halo": 0
       }
     },
@@ -2060,7 +2068,7 @@
         "delivered": {
           "thin": 0,
           "thick": 0,
-          "bulge": 13.14784,
+          "bulge": 16.23767,
           "halo": 0
         }
       }
@@ -2076,7 +2084,7 @@
       "detail": {
         "thin": 0,
         "thick": 0,
-        "bulge": 0.741384125046566,
+        "bulge": 0.8495289608600721,
         "halo": 0
       }
     },
@@ -2093,7 +2101,7 @@
         "delivered": {
           "thin": 0,
           "thick": 0,
-          "bulge": 15.32727,
+          "bulge": 17.56304,
           "halo": 0
         }
       }
@@ -2109,7 +2117,7 @@
       "detail": {
         "thin": 0,
         "thick": 0,
-        "bulge": 0.8505721566644271,
+        "bulge": 0.9063879004482313,
         "halo": 0
       }
     },
@@ -2126,7 +2134,7 @@
         "delivered": {
           "thin": 0,
           "thick": 0,
-          "bulge": 17.58461,
+          "bulge": 18.73853,
           "halo": 0
         }
       }
@@ -2142,7 +2150,7 @@
       "detail": {
         "thin": 0,
         "thick": 0,
-        "bulge": 0.9457083274345054,
+        "bulge": 0.9517571109736847,
         "halo": 0
       }
     },
@@ -2159,7 +2167,7 @@
         "delivered": {
           "thin": 0,
           "thick": 0,
-          "bulge": 19.55144,
+          "bulge": 19.67649,
           "halo": 0
         }
       }
@@ -2173,9 +2181,9 @@
       "name": "S0: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.9983804241097936,
-        "thick": 0.9170747229224394,
-        "bulge": 0.8767191352030697,
+        "thin": 0.9987924886623003,
+        "thick": 0.9925741906495206,
+        "bulge": 0.9189696371444425,
         "halo": 1
       }
     },
@@ -2190,9 +2198,9 @@
           "halo": 0.00048
         },
         "delivered": {
-          "thin": 17.33791,
-          "thick": 6.82541,
-          "bulge": 21.7502,
+          "thin": 17.34507,
+          "thick": 7.38732,
+          "bulge": 22.79838,
           "halo": 0.01287
         }
       }
@@ -2207,8 +2215,8 @@
       "pass": true,
       "detail": {
         "thin": 0.999158723654391,
-        "thick": 0.9532749075053679,
-        "bulge": 0.8378814202350143,
+        "thick": 0.9925741906495206,
+        "bulge": 0.9363486697519434,
         "halo": 1
       }
     },
@@ -2224,8 +2232,8 @@
         },
         "delivered": {
           "thin": 33.31475,
-          "thick": 12.36078,
-          "bulge": 16.62935,
+          "thick": 12.87036,
+          "bulge": 18.58362,
           "halo": 0.01716
         }
       }
@@ -2240,8 +2248,8 @@
       "pass": true,
       "detail": {
         "thin": 0.9989880899672517,
-        "thick": 0.9709394062772767,
-        "bulge": 0.8831791017976398,
+        "thick": 0.9907438665083574,
+        "bulge": 0.9517571109736847,
         "halo": 1
       }
     },
@@ -2257,8 +2265,8 @@
         },
         "delivered": {
           "thin": 52.94587,
-          "thick": 16.78911,
-          "bulge": 10.95523,
+          "thick": 17.13156,
+          "bulge": 11.80589,
           "halo": 0.02145
         }
       }
@@ -2272,8 +2280,8 @@
       "name": "Sc: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.9985383181804411,
-        "thick": 0.971640655717495,
+        "thin": 0.998545213064548,
+        "thick": 0.9879279832749965,
         "bulge": 0.9972306042844884,
         "halo": 1
       }
@@ -2289,8 +2297,8 @@
           "halo": 0.0010400000000000001
         },
         "delivered": {
-          "thin": 81.58366,
-          "thick": 19.84651,
+          "thin": 81.58423,
+          "thick": 20.17919,
           "bulge": 5.36032,
           "halo": 0.0765
         }
@@ -2305,8 +2313,8 @@
       "name": "Sd: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.9983358899693558,
-        "thick": 0.973587103864569,
+        "thin": 0.9983450960549004,
+        "thick": 0.9866525569616023,
         "bulge": 0.9972306042844884,
         "halo": 1
       }
@@ -2322,8 +2330,8 @@
           "halo": 0.00112
         },
         "delivered": {
-          "thin": 96.27893,
-          "thick": 16.56921,
+          "thin": 96.27981,
+          "thick": 16.79156,
           "bulge": 2.30906,
           "halo": 0.10134
         }
@@ -2338,8 +2346,8 @@
       "name": "SB0: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.9983804241097936,
-        "thick": 0.9170747229224394,
+        "thin": 0.9987924886623003,
+        "thick": 0.9925741906495206,
         "bulge": 1,
         "halo": 1
       }
@@ -2355,8 +2363,8 @@
           "halo": 0.00048
         },
         "delivered": {
-          "thin": 17.33791,
-          "thick": 6.82541,
+          "thin": 17.34507,
+          "thick": 7.38732,
           "bulge": 24.80863,
           "halo": 0.01287
         }
@@ -2372,7 +2380,7 @@
       "pass": true,
       "detail": {
         "thin": 0.999158723654391,
-        "thick": 0.9532749075053679,
+        "thick": 0.9925741906495206,
         "bulge": 1,
         "halo": 1
       }
@@ -2389,7 +2397,7 @@
         },
         "delivered": {
           "thin": 33.31475,
-          "thick": 12.36078,
+          "thick": 12.87036,
           "bulge": 19.8469,
           "halo": 0.01716
         }
@@ -2404,8 +2412,8 @@
       "name": "SBc: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.9985383181804411,
-        "thick": 0.971640655717495,
+        "thin": 0.998545213064548,
+        "thick": 0.9879279832749965,
         "bulge": 1,
         "halo": 1
       }
@@ -2421,8 +2429,8 @@
           "halo": 0.0010400000000000001
         },
         "delivered": {
-          "thin": 81.58366,
-          "thick": 19.84651,
+          "thin": 81.58423,
+          "thick": 20.17919,
           "bulge": 5.3752,
           "halo": 0.0765
         }
@@ -2437,8 +2445,8 @@
       "name": "SBd: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.9983358899693558,
-        "thick": 0.973587103864569,
+        "thin": 0.9983450960549004,
+        "thick": 0.9866525569616023,
         "bulge": 1,
         "halo": 1
       }
@@ -2454,8 +2462,8 @@
           "halo": 0.00112
         },
         "delivered": {
-          "thin": 96.27893,
-          "thick": 16.56921,
+          "thin": 96.27981,
+          "thick": 16.79156,
           "bulge": 2.31547,
           "halo": 0.10134
         }
@@ -2470,9 +2478,9 @@
       "name": "Irr: every truncation fraction is a fraction",
       "pass": true,
       "detail": {
-        "thin": 0.9628599431907224,
-        "thick": 0.8659908960042497,
-        "bulge": 0.9894103891777389,
+        "thin": 0.9628883732079428,
+        "thick": 0.8883142987142436,
+        "bulge": 0.9912484909113103,
         "halo": 1
       }
     },
@@ -2487,9 +2495,9 @@
           "halo": 0.00012
         },
         "delivered": {
-          "thin": 7.02285,
-          "thick": 4.21087,
-          "bulge": 0.24546,
+          "thin": 7.02305,
+          "thick": 4.31942,
+          "bulge": 0.24592,
           "halo": 0.00165
         }
       }
@@ -2498,18 +2506,18 @@
       "name": "SBb: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0045,
+        "worst": 0.0034,
         "sampled": {
-          "thin": 0.62585,
-          "thick": 0.19355,
-          "bulge": 0.18025,
+          "thin": 0.6199,
+          "thick": 0.20045,
+          "bulge": 0.1793,
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.6213941312311437,
-          "thick": 0.19435486636275726,
-          "bulge": 0.18398932578327615,
-          "halo": 0.00026167662282280073
+          "thin": 0.6170817405659208,
+          "thick": 0.199945933898101,
+          "bulge": 0.18271246491328938,
+          "halo": 0.00025986062268882395
         }
       }
     },
@@ -2714,18 +2722,18 @@
       "name": "S0: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0028,
+        "worst": 0.0032,
         "sampled": {
-          "thin": 0.38035,
-          "thick": 0.14795,
-          "bulge": 0.47135,
+          "thin": 0.36805,
+          "thick": 0.1538,
+          "bulge": 0.4778,
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.3775152757058672,
-          "thick": 0.14861628830040036,
-          "bulge": 0.4735882493144696,
-          "halo": 0.00028018667926288024
+          "thin": 0.36482422822970023,
+          "thick": 0.15537981420062438,
+          "bulge": 0.4795253017210406,
+          "halo": 0.00027065584863474165
         }
       }
     },
@@ -2738,18 +2746,18 @@
       "name": "Sa: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0045,
+        "worst": 0.0047,
         "sampled": {
-          "thin": 0.53725,
-          "thick": 0.2001,
-          "bulge": 0.2623,
+          "thin": 0.51515,
+          "thick": 0.2024,
+          "bulge": 0.2821,
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.5345581027810189,
-          "thick": 0.19833717759228245,
-          "bulge": 0.26682941915739666,
-          "halo": 0.0002753004693020331
+          "thin": 0.5142285058068908,
+          "thick": 0.1986598834564016,
+          "bulge": 0.28684678012570275,
+          "halo": 0.00026483061100490544
         }
       }
     },
@@ -2762,18 +2770,18 @@
       "name": "Sb: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0033,
+        "worst": 0.0037,
         "sampled": {
-          "thin": 0.65925,
-          "thick": 0.2056,
-          "bulge": 0.1348,
+          "thin": 0.65015,
+          "thick": 0.20605,
+          "bulge": 0.14345,
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.6559878905090497,
-          "thick": 0.2080134421652555,
-          "bulge": 0.1357329485173795,
-          "halo": 0.00026571880831515387
+          "thin": 0.6464320551297569,
+          "thick": 0.20916437975002963,
+          "bulge": 0.1441417170619931,
+          "halo": 0.00026184805822025334
         }
       }
     },
@@ -2786,18 +2794,18 @@
       "name": "Sc: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0038,
+        "worst": 0.0042,
         "sampled": {
-          "thin": 0.7672,
-          "thick": 0.1833,
-          "bulge": 0.04875,
+          "thin": 0.7652,
+          "thick": 0.1854,
+          "bulge": 0.04865,
           "halo": 0.00075
         },
         "model": {
-          "thin": 0.7634130941111285,
-          "thick": 0.1857122520588684,
-          "bulge": 0.05015877018609954,
-          "halo": 0.0007158836439035787
+          "thin": 0.7610451895664259,
+          "thick": 0.18823830645635842,
+          "bulge": 0.05000284574192669,
+          "halo": 0.0007136582352890146
         }
       }
     },
@@ -2810,18 +2818,18 @@
       "name": "Sd: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0026,
+        "worst": 0.0031,
         "sampled": {
-          "thin": 0.8379,
-          "thick": 0.1415,
+          "thin": 0.8368,
+          "thick": 0.1426,
           "bulge": 0.0198,
           "halo": 0.0008
         },
         "model": {
-          "thin": 0.8353301799700381,
-          "thick": 0.1437568785614173,
-          "bulge": 0.020033742196444687,
-          "halo": 0.0008791992720998558
+          "thin": 0.833723038440626,
+          "thick": 0.14540444822003668,
+          "bulge": 0.019995013702930737,
+          "halo": 0.0008774996364065787
         }
       }
     },
@@ -2836,16 +2844,16 @@
       "detail": {
         "worst": 0.0031,
         "sampled": {
-          "thin": 0.357,
-          "thick": 0.13825,
-          "bulge": 0.5044,
+          "thin": 0.35315,
+          "thick": 0.1478,
+          "bulge": 0.4987,
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.3539446324164147,
-          "thick": 0.13933724253998342,
-          "bulge": 0.5064554321737194,
-          "halo": 0.00026269286988254916
+          "thin": 0.35002440675496205,
+          "thick": 0.14907652255218878,
+          "bulge": 0.5006393945378065,
+          "halo": 0.00025967615504277465
         }
       }
     },
@@ -2858,18 +2866,18 @@
       "name": "SBa: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.004,
+        "worst": 0.0045,
         "sampled": {
-          "thin": 0.5094,
-          "thick": 0.1914,
-          "bulge": 0.29885,
+          "thin": 0.5056,
+          "thick": 0.1981,
+          "bulge": 0.29595,
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.5083149031584037,
-          "thick": 0.18860015907724823,
-          "bulge": 0.30282315269240795,
-          "halo": 0.0002617850719401629
+          "thin": 0.5043931728790287,
+          "thick": 0.19486023782972034,
+          "bulge": 0.30048682393275417,
+          "halo": 0.0002597653584969075
         }
       }
     },
@@ -2882,18 +2890,18 @@
       "name": "SBc: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0038,
+        "worst": 0.0042,
         "sampled": {
-          "thin": 0.7671,
-          "thick": 0.1831,
-          "bulge": 0.04905,
+          "thin": 0.7651,
+          "thick": 0.1854,
+          "bulge": 0.04875,
           "halo": 0.00075
         },
         "model": {
-          "thin": 0.7633067691062586,
-          "thick": 0.18568638682776764,
-          "bulge": 0.05029106012737049,
-          "halo": 0.0007157839386031178
+          "thin": 0.7609395238063195,
+          "thick": 0.1882121708943635,
+          "bulge": 0.050134746150443416,
+          "halo": 0.0007135591488734879
         }
       }
     },
@@ -2906,18 +2914,18 @@
       "name": "SBd: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0026,
+        "worst": 0.0031,
         "sampled": {
-          "thin": 0.8379,
-          "thick": 0.14145,
+          "thin": 0.83675,
+          "thick": 0.1426,
           "bulge": 0.01985,
           "halo": 0.0008
         },
         "model": {
-          "thin": 0.8352837085964396,
-          "thick": 0.14374888102969732,
-          "bulge": 0.02008826001367698,
-          "halo": 0.0008791503601859552
+          "thin": 0.8336767461350028,
+          "thick": 0.1453963746670153,
+          "bulge": 0.02004942828456783,
+          "halo": 0.0008774509134140741
         }
       }
     },
@@ -2930,18 +2938,18 @@
       "name": "Irr: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0031,
+        "worst": 0.0035,
         "sampled": {
-          "thin": 0.6148,
-          "thick": 0.36385,
-          "bulge": 0.0212,
+          "thin": 0.60945,
+          "thick": 0.3694,
+          "bulge": 0.021,
           "halo": 0.00015
         },
         "model": {
-          "thin": 0.6117022225420944,
-          "thick": 0.36677439229053843,
-          "bulge": 0.021379919947067033,
-          "halo": 0.0001434652203002642
+          "thin": 0.6059561599978013,
+          "thick": 0.3726839207932275,
+          "bulge": 0.021217805834193956,
+          "halo": 0.0001421133747772695
         }
       }
     },
@@ -3079,15 +3087,15 @@
       "name": "E0: the inverse CDF round-trips the enclosed-mass fraction",
       "pass": true,
       "detail": {
-        "worstError": 1.29e-10
+        "worstError": 1.82e-10
       }
     },
     {
       "name": "E0: the radius found is inside the cut",
       "pass": true,
       "detail": {
-        "sMax": 8,
-        "enclosed": 25385676.9206
+        "sMax": 13.059875280261984,
+        "enclosed": 31351477.015
       }
     },
     {
@@ -3110,15 +3118,15 @@
       "name": "E1: the inverse CDF round-trips the enclosed-mass fraction",
       "pass": true,
       "detail": {
-        "worstError": 1.29e-10
+        "worstError": 1.82e-10
       }
     },
     {
       "name": "E1: the radius found is inside the cut",
       "pass": true,
       "detail": {
-        "sMax": 8,
-        "enclosed": 25385676.9206
+        "sMax": 13.059875280261984,
+        "enclosed": 31351477.015
       }
     },
     {
@@ -3141,15 +3149,15 @@
       "name": "E2: the inverse CDF round-trips the enclosed-mass fraction",
       "pass": true,
       "detail": {
-        "worstError": 1.29e-10
+        "worstError": 1.82e-10
       }
     },
     {
       "name": "E2: the radius found is inside the cut",
       "pass": true,
       "detail": {
-        "sMax": 8,
-        "enclosed": 25385676.9206
+        "sMax": 13.059875280261984,
+        "enclosed": 31351477.015
       }
     },
     {
@@ -3172,15 +3180,15 @@
       "name": "E3: the inverse CDF round-trips the enclosed-mass fraction",
       "pass": true,
       "detail": {
-        "worstError": 1.29e-10
+        "worstError": 1.82e-10
       }
     },
     {
       "name": "E3: the radius found is inside the cut",
       "pass": true,
       "detail": {
-        "sMax": 8,
-        "enclosed": 25385676.9206
+        "sMax": 13.059875280261984,
+        "enclosed": 31351477.015
       }
     },
     {
@@ -3203,15 +3211,15 @@
       "name": "E4: the inverse CDF round-trips the enclosed-mass fraction",
       "pass": true,
       "detail": {
-        "worstError": 1.29e-10
+        "worstError": 1.82e-10
       }
     },
     {
       "name": "E4: the radius found is inside the cut",
       "pass": true,
       "detail": {
-        "sMax": 8,
-        "enclosed": 25385676.9206
+        "sMax": 13.059875280261984,
+        "enclosed": 31351477.015
       }
     },
     {
@@ -3234,15 +3242,15 @@
       "name": "E5: the inverse CDF round-trips the enclosed-mass fraction",
       "pass": true,
       "detail": {
-        "worstError": 1.36e-10
+        "worstError": 6.44e-11
       }
     },
     {
       "name": "E5: the radius found is inside the cut",
       "pass": true,
       "detail": {
-        "sMax": 8,
-        "enclosed": 269033.4713
+        "sMax": 11.68524490876441,
+        "enclosed": 308277.0693
       }
     },
     {
@@ -3265,15 +3273,15 @@
       "name": "E6: the inverse CDF round-trips the enclosed-mass fraction",
       "pass": true,
       "detail": {
-        "worstError": 1.49e-10
+        "worstError": 1.81e-10
       }
     },
     {
       "name": "E6: the radius found is inside the cut",
       "pass": true,
       "detail": {
-        "sMax": 8,
-        "enclosed": 4286.8837
+        "sMax": 10.114856450293477,
+        "enclosed": 4568.195
       }
     },
     {
@@ -3296,15 +3304,15 @@
       "name": "E7: the inverse CDF round-trips the enclosed-mass fraction",
       "pass": true,
       "detail": {
-        "worstError": 1.68e-10
+        "worstError": 2.51e-10
       }
     },
     {
       "name": "E7: the radius found is inside the cut",
       "pass": true,
       "detail": {
-        "sMax": 8,
-        "enclosed": 113.485
+        "sMax": 8.317071036046043,
+        "enclosed": 114.2109
       }
     },
     {
@@ -3327,15 +3335,15 @@
       "name": "S0: the inverse CDF round-trips the enclosed-mass fraction",
       "pass": true,
       "detail": {
-        "worstError": 1.31e-10
+        "worstError": 2.24e-10
       }
     },
     {
       "name": "S0: the radius found is inside the cut",
       "pass": true,
       "detail": {
-        "sMax": 8,
-        "enclosed": 1640.5645
+        "sMax": 9.687937400634219,
+        "enclosed": 1719.6259
       }
     },
     {
@@ -3358,15 +3366,15 @@
       "name": "Sa: the inverse CDF round-trips the enclosed-mass fraction",
       "pass": true,
       "detail": {
-        "worstError": 1.19e-10
+        "worstError": 1.18e-10
       }
     },
     {
       "name": "Sa: the radius found is inside the cut",
       "pass": true,
       "detail": {
-        "sMax": 6,
-        "enclosed": 379.5693
+        "sMax": 9.01981631711873,
+        "enclosed": 424.176
       }
     },
     {
@@ -3389,15 +3397,15 @@
       "name": "Sb: the inverse CDF round-trips the enclosed-mass fraction",
       "pass": true,
       "detail": {
-        "worstError": 8.23e-11
+        "worstError": 2.51e-10
       }
     },
     {
       "name": "Sb: the radius found is inside the cut",
       "pass": true,
       "detail": {
-        "sMax": 6,
-        "enclosed": 105.9815
+        "sMax": 8.317071036046043,
+        "enclosed": 114.2109
       }
     },
     {
@@ -3482,15 +3490,15 @@
       "name": "Irr: the inverse CDF round-trips the enclosed-mass fraction",
       "pass": true,
       "detail": {
-        "worstError": 2.36e-10
+        "worstError": 2.46e-10
       }
     },
     {
       "name": "Irr: the radius found is inside the cut",
       "pass": true,
       "detail": {
-        "sMax": 5,
-        "enclosed": 1.9788
+        "sMax": 5.144653167389282,
+        "enclosed": 1.9825
       }
     },
     {
@@ -4328,7 +4336,7 @@
     {
       "name": "the sampler assigns stars to the clumps the field carries",
       "pass": true,
-      "detail": 0.0365
+      "detail": 0.0362
     },
     {
       "name": "gradientSteep is monotone up the sequence and per-type",
@@ -4784,7 +4792,7 @@
       "pass": true,
       "detail": {
         "distance": 8.178,
-        "span": 13.8
+        "span": 2.6
       }
     },
     {
@@ -4800,7 +4808,7 @@
       "pass": true,
       "detail": {
         "distance": 6.264,
-        "span": 12
+        "span": 1.5
       }
     },
     {
@@ -4816,7 +4824,7 @@
       "pass": true,
       "detail": {
         "distance": 6.264,
-        "span": 12
+        "span": 1.5
       }
     },
     {
@@ -4832,7 +4840,7 @@
       "pass": true,
       "detail": {
         "distance": 6.264,
-        "span": 12
+        "span": 1.5
       }
     },
     {
@@ -4848,7 +4856,7 @@
       "pass": true,
       "detail": {
         "distance": 6.264,
-        "span": 12
+        "span": 1.5
       }
     },
     {
@@ -4864,7 +4872,7 @@
       "pass": true,
       "detail": {
         "distance": 6.264,
-        "span": 12
+        "span": 1.5
       }
     },
     {
@@ -4880,7 +4888,7 @@
       "pass": true,
       "detail": {
         "distance": 6.264,
-        "span": 12
+        "span": 1.5
       }
     },
     {
@@ -4896,7 +4904,7 @@
       "pass": true,
       "detail": {
         "distance": 6.264,
-        "span": 12
+        "span": 1.5
       }
     },
     {
@@ -4912,7 +4920,7 @@
       "pass": true,
       "detail": {
         "distance": 6.264,
-        "span": 12
+        "span": 1.5
       }
     },
     {
@@ -4928,7 +4936,7 @@
       "pass": true,
       "detail": {
         "distance": 9.192,
-        "span": 7.2
+        "span": 2.6
       }
     },
     {
@@ -4944,7 +4952,7 @@
       "pass": true,
       "detail": {
         "distance": 9.192,
-        "span": 6
+        "span": 2.6
       }
     },
     {
@@ -4960,7 +4968,7 @@
       "pass": true,
       "detail": {
         "distance": 9.192,
-        "span": 5.1
+        "span": 2.6
       }
     },
     {
@@ -4976,7 +4984,7 @@
       "pass": true,
       "detail": {
         "distance": 12.869,
-        "span": 5.04
+        "span": 3.64
       }
     },
     {
@@ -4992,7 +5000,7 @@
       "pass": true,
       "detail": {
         "distance": 13.789,
-        "span": 3.6
+        "span": 3.9
       }
     },
     {
@@ -5008,7 +5016,7 @@
       "pass": true,
       "detail": {
         "distance": 9.192,
-        "span": 12.96
+        "span": 2.6
       }
     },
     {
@@ -5024,7 +5032,7 @@
       "pass": true,
       "detail": {
         "distance": 9.192,
-        "span": 10.8
+        "span": 2.6
       }
     },
     {
@@ -5040,7 +5048,7 @@
       "pass": true,
       "detail": {
         "distance": 12.869,
-        "span": 9.072
+        "span": 3.64
       }
     },
     {
@@ -5056,7 +5064,7 @@
       "pass": true,
       "detail": {
         "distance": 13.789,
-        "span": 6.48
+        "span": 3.9
       }
     },
     {
@@ -5072,7 +5080,7 @@
       "pass": true,
       "detail": {
         "distance": 7.354,
-        "span": 2
+        "span": 2.08
       }
     },
     {

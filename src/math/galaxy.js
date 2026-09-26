@@ -648,6 +648,15 @@
 		model.spheroid.profileId = model.spheroid.profile === 'bar'
 			? density.PROFILE_BAR
 			: (model.spheroid.profile === 'sersic' ? density.PROFILE_SERSIC : density.PROFILE_PLUMMER);
+		// 0.4.8 M3.1: a cut may not sit where the profile is still bright. The
+		// authored radius is the body's minimum extent; the field's floor
+		// radius (density.spheroidFloorRadius) pushes it out where the profile
+		// would otherwise be chopped mid-light — an n = 4 Sérsic at s = 8 was
+		// still at 5.4e-3 of its effective-radius density, a visible sphere of
+		// missing stars. Derived here so the field, the sampler and the packed
+		// WGSL constant all read the one number.
+		model.truncation.spheroidRadius = Math.max(model.truncation.spheroidRadius,
+			density.spheroidFloorRadius(model.spheroid.profileId, model.spheroid.n));
 		// Irregular hotspots: PCG-hashed from (seed, index) per the stable-hash
 		// rule, stored as galactocentric offsets so a centre override moves them
 		// with the model.

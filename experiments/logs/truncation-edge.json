@@ -1,0 +1,1091 @@
+{
+  "target": 0.001,
+  "summary": [
+    "cut                      worst type   ofColumn   would need",
+    "disc vertical cut        S0           5.33e-4    |z| = 7.35 kpc",
+    "disc radial cut          Irr          1.03e-2    R = 12 kpc",
+    "spheroid cut             E0           1.00e-3    s = 13.11 (mass 0.78542 → 0.78645)",
+    "halo rMax                SB0          2.29e-10   r = 100 kpc"
+  ],
+  "report": {
+    "SBb": {
+      "truncation": {
+        "discRadius": 25,
+        "discHeight": 3,
+        "spheroidRadius": 6
+      },
+      "vertical": {
+        "rows": [
+          {
+            "R": 0.5,
+            "ofColumn": 0.000003958380085217715,
+            "contrastLocal": 0.9874673000708443,
+            "inside": 0.0001053
+          },
+          {
+            "R": 2,
+            "ofColumn": 0.0001275727836577021,
+            "contrastLocal": 0.9858427212736974,
+            "inside": 0.00007938
+          },
+          {
+            "R": 4,
+            "ofColumn": 0.00015126906086918677,
+            "contrastLocal": 0.9843659239840324,
+            "inside": 0.00004658
+          },
+          {
+            "R": 8,
+            "ofColumn": 0.0002093143443063438,
+            "contrastLocal": 0.9837519670514218,
+            "inside": 0.00001487
+          },
+          {
+            "R": 12,
+            "ofColumn": 0.0002822223642250027,
+            "contrastLocal": 0.9742687045752403,
+            "inside": 0.000003426
+          },
+          {
+            "R": 16,
+            "ofColumn": 0.00036868472133552184,
+            "contrastLocal": 0.9747683631014586,
+            "inside": 0.000001513
+          },
+          {
+            "R": 20,
+            "ofColumn": 0.00046448557121601535,
+            "contrastLocal": 0.9462806563913253,
+            "inside": 3.542e-7
+          }
+        ],
+        "worst": {
+          "R": 20,
+          "ofColumn": 0.00046448557121601535,
+          "contrastLocal": 0.9462806563913253,
+          "inside": 3.542e-7
+        },
+        "mid": 0.0008521,
+        "zForTarget": 5.55,
+        "massInside": {
+          "thin": 0.9992,
+          "thick": 0.99257
+        },
+        "massInsideAtTarget": {
+          "thin": 0.99929,
+          "thick": 0.99257
+        }
+      },
+      "radial": {
+        "cut": 25,
+        "ofColumn": 0.000227,
+        "contrastLocal": 1
+      },
+      "spheroid": null,
+      "halo": {
+        "ofColumn": 1.04e-10,
+        "rMax": 100
+      }
+    },
+    "E0": {
+      "truncation": {
+        "discRadius": 37.5,
+        "discHeight": 4.5,
+        "spheroidRadius": 13.059875280261984
+      },
+      "vertical": null,
+      "radial": null,
+      "spheroid": {
+        "profile": "sersic n=4",
+        "sMax": 13.059875280261984,
+        "ofColumn": 0.001,
+        "contrastLocal": 1,
+        "massInside": 0.78542,
+        "sForTarget": 13.11,
+        "kpcNow": 19.59,
+        "kpcAtTarget": 19.66,
+        "massInsideAtTarget": 0.78645
+      },
+      "halo": null
+    },
+    "E1": {
+      "truncation": {
+        "discRadius": 37.5,
+        "discHeight": 4.5,
+        "spheroidRadius": 13.059875280261984
+      },
+      "vertical": null,
+      "radial": null,
+      "spheroid": {
+        "profile": "sersic n=4",
+        "sMax": 13.059875280261984,
+        "ofColumn": 0.001,
+        "contrastLocal": 1,
+        "massInside": 0.78542,
+        "sForTarget": 13.11,
+        "kpcNow": 19.59,
+        "kpcAtTarget": 19.66,
+        "massInsideAtTarget": 0.78645
+      },
+      "halo": null
+    },
+    "E2": {
+      "truncation": {
+        "discRadius": 37.5,
+        "discHeight": 4.5,
+        "spheroidRadius": 13.059875280261984
+      },
+      "vertical": null,
+      "radial": null,
+      "spheroid": {
+        "profile": "sersic n=4",
+        "sMax": 13.059875280261984,
+        "ofColumn": 0.001,
+        "contrastLocal": 1,
+        "massInside": 0.78542,
+        "sForTarget": 13.11,
+        "kpcNow": 19.59,
+        "kpcAtTarget": 19.66,
+        "massInsideAtTarget": 0.78645
+      },
+      "halo": null
+    },
+    "E3": {
+      "truncation": {
+        "discRadius": 37.5,
+        "discHeight": 4.5,
+        "spheroidRadius": 13.059875280261984
+      },
+      "vertical": null,
+      "radial": null,
+      "spheroid": {
+        "profile": "sersic n=4",
+        "sMax": 13.059875280261984,
+        "ofColumn": 0.001,
+        "contrastLocal": 1,
+        "massInside": 0.78542,
+        "sForTarget": 13.11,
+        "kpcNow": 19.59,
+        "kpcAtTarget": 19.66,
+        "massInsideAtTarget": 0.78645
+      },
+      "halo": null
+    },
+    "E4": {
+      "truncation": {
+        "discRadius": 37.5,
+        "discHeight": 4.5,
+        "spheroidRadius": 13.059875280261984
+      },
+      "vertical": null,
+      "radial": null,
+      "spheroid": {
+        "profile": "sersic n=4",
+        "sMax": 13.059875280261984,
+        "ofColumn": 0.001,
+        "contrastLocal": 1,
+        "massInside": 0.78542,
+        "sForTarget": 13.11,
+        "kpcNow": 19.59,
+        "kpcAtTarget": 19.66,
+        "massInsideAtTarget": 0.78645
+      },
+      "halo": null
+    },
+    "E5": {
+      "truncation": {
+        "discRadius": 37.5,
+        "discHeight": 4.5,
+        "spheroidRadius": 11.68524490876441
+      },
+      "vertical": null,
+      "radial": null,
+      "spheroid": {
+        "profile": "sersic n=3.3333333333333335",
+        "sMax": 11.68524490876441,
+        "ofColumn": 0.001,
+        "contrastLocal": 1,
+        "massInside": 0.84953,
+        "sForTarget": 11.69,
+        "kpcNow": 17.53,
+        "kpcAtTarget": 17.53,
+        "massInsideAtTarget": 0.84953
+      },
+      "halo": null
+    },
+    "E6": {
+      "truncation": {
+        "discRadius": 37.5,
+        "discHeight": 4.5,
+        "spheroidRadius": 10.114856450293477
+      },
+      "vertical": null,
+      "radial": null,
+      "spheroid": {
+        "profile": "sersic n=2.666666666666667",
+        "sMax": 10.114856450293477,
+        "ofColumn": 0.001,
+        "contrastLocal": 1,
+        "massInside": 0.90647,
+        "sForTarget": 10.16,
+        "kpcNow": 15.17,
+        "kpcAtTarget": 15.25,
+        "massInsideAtTarget": 0.90746
+      },
+      "halo": null
+    },
+    "E7": {
+      "truncation": {
+        "discRadius": 37.5,
+        "discHeight": 4.5,
+        "spheroidRadius": 8.317071036046043
+      },
+      "vertical": null,
+      "radial": null,
+      "spheroid": {
+        "profile": "sersic n=2",
+        "sMax": 8.317071036046043,
+        "ofColumn": 0.001,
+        "contrastLocal": 1,
+        "massInside": 42282576706414130000,
+        "sForTarget": 8.37,
+        "kpcNow": 12.48,
+        "kpcAtTarget": 12.55,
+        "massInsideAtTarget": 42321955997807575000
+      },
+      "halo": null
+    },
+    "S0": {
+      "truncation": {
+        "discRadius": 25,
+        "discHeight": 3,
+        "spheroidRadius": 9.687937400634219
+      },
+      "vertical": {
+        "rows": [
+          {
+            "R": 0.5,
+            "ofColumn": 0.000008681106578392073,
+            "contrastLocal": 0.9912111621475729,
+            "inside": 0.00003615
+          },
+          {
+            "R": 2,
+            "ofColumn": 0.00005885480873755565,
+            "contrastLocal": 0.9878012903264838,
+            "inside": 0.00002363
+          },
+          {
+            "R": 4,
+            "ofColumn": 0.00012947029776273143,
+            "contrastLocal": 0.9837305059960492,
+            "inside": 0.0000134
+          },
+          {
+            "R": 8,
+            "ofColumn": 0.00022787739095958093,
+            "contrastLocal": 0.9774870507586998,
+            "inside": 0.000004299
+          },
+          {
+            "R": 12,
+            "ofColumn": 0.00034059457311403735,
+            "contrastLocal": 0.9698413834410338,
+            "inside": 0.000001382
+          },
+          {
+            "R": 16,
+            "ofColumn": 0.00043408748002556546,
+            "contrastLocal": 0.9559625201601536,
+            "inside": 4.47e-7
+          },
+          {
+            "R": 20,
+            "ofColumn": 0.0005325093446162221,
+            "contrastLocal": 0.9297394343168062,
+            "inside": 1.465e-7
+          }
+        ],
+        "worst": {
+          "R": 20,
+          "ofColumn": 0.0005325093446162221,
+          "contrastLocal": 0.9297394343168062,
+          "inside": 1.465e-7
+        },
+        "mid": 0.0002558,
+        "zForTarget": 7.35,
+        "massInside": {
+          "thin": 0.99879,
+          "thick": 0.99257
+        },
+        "massInsideAtTarget": {
+          "thin": 0.99929,
+          "thick": 0.99257
+        }
+      },
+      "radial": {
+        "cut": 25,
+        "ofColumn": 0.0000567,
+        "contrastLocal": 1
+      },
+      "spheroid": {
+        "profile": "sersic n=2.5",
+        "sMax": 9.687937400634219,
+        "ofColumn": 0.00087,
+        "contrastLocal": 0.104,
+        "massInside": 0.97944,
+        "sForTarget": 9.74,
+        "kpcNow": 8.72,
+        "kpcAtTarget": 8.76,
+        "massInsideAtTarget": 0.98048
+      },
+      "halo": {
+        "ofColumn": 3.42e-11,
+        "rMax": 100
+      }
+    },
+    "Sa": {
+      "truncation": {
+        "discRadius": 25,
+        "discHeight": 3,
+        "spheroidRadius": 9.01981631711873
+      },
+      "vertical": {
+        "rows": [
+          {
+            "R": 0.5,
+            "ofColumn": 0.0000250748500704176,
+            "contrastLocal": 0.9872842482619983,
+            "inside": 0.00007247
+          },
+          {
+            "R": 2,
+            "ofColumn": 0.0001029099340675146,
+            "contrastLocal": 0.9862600191783465,
+            "inside": 0.00005776
+          },
+          {
+            "R": 4,
+            "ofColumn": 0.00015457454428413004,
+            "contrastLocal": 0.9819654927261824,
+            "inside": 0.00002928
+          },
+          {
+            "R": 8,
+            "ofColumn": 0.00023042821719247798,
+            "contrastLocal": 0.9773964444396134,
+            "inside": 0.000008112
+          },
+          {
+            "R": 12,
+            "ofColumn": 0.00031912458521559934,
+            "contrastLocal": 0.9740919312411153,
+            "inside": 0.000002642
+          },
+          {
+            "R": 16,
+            "ofColumn": 0.0004103943109912613,
+            "contrastLocal": 0.9666692125469853,
+            "inside": 8.994e-7
+          },
+          {
+            "R": 20,
+            "ofColumn": 0.000508277663349399,
+            "contrastLocal": 0.95633403656252,
+            "inside": 3.443e-7
+          }
+        ],
+        "worst": {
+          "R": 20,
+          "ofColumn": 0.000508277663349399,
+          "contrastLocal": 0.95633403656252,
+          "inside": 3.443e-7
+        },
+        "mid": 0.0005837,
+        "zForTarget": 5.85,
+        "massInside": {
+          "thin": 0.99916,
+          "thick": 0.99257
+        },
+        "massInsideAtTarget": {
+          "thin": 0.99929,
+          "thick": 0.99257
+        }
+      },
+      "radial": {
+        "cut": 25,
+        "ofColumn": 0.000106,
+        "contrastLocal": 1
+      },
+      "spheroid": {
+        "profile": "sersic n=2.25",
+        "sMax": 9.01981631711873,
+        "ofColumn": 0.000588,
+        "contrastLocal": 0.026,
+        "massInside": 402.51672,
+        "sForTarget": 9.07,
+        "kpcNow": 9.02,
+        "kpcAtTarget": 9.07,
+        "massInsideAtTarget": 402.91936
+      },
+      "halo": {
+        "ofColumn": 4.93e-11,
+        "rMax": 100
+      }
+    },
+    "Sb": {
+      "truncation": {
+        "discRadius": 25,
+        "discHeight": 3,
+        "spheroidRadius": 8.317071036046043
+      },
+      "vertical": {
+        "rows": [
+          {
+            "R": 0.5,
+            "ofColumn": 0.00003967355916422801,
+            "contrastLocal": 0.9766597395526363,
+            "inside": 0.0001307
+          },
+          {
+            "R": 2,
+            "ofColumn": 0.00010646587583807399,
+            "contrastLocal": 0.9730102933573032,
+            "inside": 0.00008239
+          },
+          {
+            "R": 4,
+            "ofColumn": 0.00014438899548705654,
+            "contrastLocal": 0.9710929361252526,
+            "inside": 0.00003948
+          },
+          {
+            "R": 8,
+            "ofColumn": 0.00020934784146461413,
+            "contrastLocal": 0.9813737212785766,
+            "inside": 0.00001536
+          },
+          {
+            "R": 12,
+            "ofColumn": 0.0002822372432483301,
+            "contrastLocal": 0.9761414914958539,
+            "inside": 0.000003932
+          },
+          {
+            "R": 16,
+            "ofColumn": 0.0003686716882337622,
+            "contrastLocal": 0.9785981014658041,
+            "inside": 0.000001818
+          },
+          {
+            "R": 20,
+            "ofColumn": 0.00046444080131061535,
+            "contrastLocal": 0.9551969499413028,
+            "inside": 4.243e-7
+          }
+        ],
+        "worst": {
+          "R": 20,
+          "ofColumn": 0.00046444080131061535,
+          "contrastLocal": 0.9551969499413028,
+          "inside": 4.243e-7
+        },
+        "mid": 0.001033,
+        "zForTarget": 5.55,
+        "massInside": {
+          "thin": 0.99899,
+          "thick": 0.99074
+        },
+        "massInsideAtTarget": {
+          "thin": 0.99901,
+          "thick": 0.99102
+        }
+      },
+      "radial": {
+        "cut": 25,
+        "ofColumn": 0.000199,
+        "contrastLocal": 1
+      },
+      "spheroid": {
+        "profile": "sersic n=2",
+        "sMax": 8.317071036046043,
+        "ofColumn": 0.000479,
+        "contrastLocal": 0.011,
+        "massInside": 42282576706414130000,
+        "sForTarget": 8.37,
+        "kpcNow": 7.07,
+        "kpcAtTarget": 7.11,
+        "massInsideAtTarget": 42321955997807575000
+      },
+      "halo": {
+        "ofColumn": 4.58e-11,
+        "rMax": 100
+      }
+    },
+    "Sc": {
+      "truncation": {
+        "discRadius": 35,
+        "discHeight": 4.199999999999999,
+        "spheroidRadius": 6
+      },
+      "vertical": {
+        "rows": [
+          {
+            "R": 0.5,
+            "ofColumn": 0.000028374627588592575,
+            "contrastLocal": 0.8695657775912509,
+            "inside": 0.00007147
+          },
+          {
+            "R": 2,
+            "ofColumn": 0.00008209728395390199,
+            "contrastLocal": 0.8683104709901736,
+            "inside": 0.00004991
+          },
+          {
+            "R": 4,
+            "ofColumn": 0.00010823526889122662,
+            "contrastLocal": 0.9051974085406786,
+            "inside": 0.00003643
+          },
+          {
+            "R": 8,
+            "ofColumn": 0.00013930225728496943,
+            "contrastLocal": 0.9363169443301685,
+            "inside": 0.00001484
+          },
+          {
+            "R": 12,
+            "ofColumn": 0.00017673762139344045,
+            "contrastLocal": 0.9492086591518857,
+            "inside": 0.000006467
+          },
+          {
+            "R": 16,
+            "ofColumn": 0.00022164023245639086,
+            "contrastLocal": 0.9419925464330888,
+            "inside": 0.000002432
+          },
+          {
+            "R": 20,
+            "ofColumn": 0.0002741522411570684,
+            "contrastLocal": 0.9435720624731346,
+            "inside": 0.00000125
+          }
+        ],
+        "worst": {
+          "R": 20,
+          "ofColumn": 0.0002741522411570684,
+          "contrastLocal": 0.9435720624731346,
+          "inside": 0.00000125
+        },
+        "mid": 0.004194,
+        "zForTarget": 6.95,
+        "massInside": {
+          "thin": 0.99855,
+          "thick": 0.98793
+        },
+        "massInsideAtTarget": {
+          "thin": 0.99858,
+          "thick": 0.98822
+        }
+      },
+      "radial": {
+        "cut": 35,
+        "ofColumn": 0.000184,
+        "contrastLocal": 1
+      },
+      "spheroid": {
+        "profile": "sersic n=1",
+        "sMax": 6,
+        "ofColumn": 0.000124,
+        "contrastLocal": 0.001,
+        "massInside": null,
+        "sForTarget": 6,
+        "kpcNow": 5.04,
+        "kpcAtTarget": 5.04,
+        "massInsideAtTarget": null
+      },
+      "halo": {
+        "ofColumn": 1.21e-10,
+        "rMax": 140
+      }
+    },
+    "Sd": {
+      "truncation": {
+        "discRadius": 37.5,
+        "discHeight": 4.5,
+        "spheroidRadius": 6
+      },
+      "vertical": {
+        "rows": [
+          {
+            "R": 0.5,
+            "ofColumn": 0.000017504396539544338,
+            "contrastLocal": 0.5957178836877528,
+            "inside": 0.00004193
+          },
+          {
+            "R": 2,
+            "ofColumn": 0.0000661581166679467,
+            "contrastLocal": 0.7407190162287445,
+            "inside": 0.00004326
+          },
+          {
+            "R": 4,
+            "ofColumn": 0.00007735576151686062,
+            "contrastLocal": 0.8199306666880427,
+            "inside": 0.00003022
+          },
+          {
+            "R": 8,
+            "ofColumn": 0.00009840381651083105,
+            "contrastLocal": 0.8955370953356881,
+            "inside": 0.00001308
+          },
+          {
+            "R": 12,
+            "ofColumn": 0.00012439725295224178,
+            "contrastLocal": 0.9084095270655914,
+            "inside": 0.000005015
+          },
+          {
+            "R": 16,
+            "ofColumn": 0.00015606793090168554,
+            "contrastLocal": 0.926078366834252,
+            "inside": 0.000002631
+          },
+          {
+            "R": 20,
+            "ofColumn": 0.00019401331194191318,
+            "contrastLocal": 0.9139444624978136,
+            "inside": 0.000001121
+          }
+        ],
+        "worst": {
+          "R": 20,
+          "ofColumn": 0.00019401331194191318,
+          "contrastLocal": 0.9139444624978136,
+          "inside": 0.000001121
+        },
+        "mid": 0.005785,
+        "zForTarget": 6.55,
+        "massInside": {
+          "thin": 0.99835,
+          "thick": 0.98665
+        },
+        "massInsideAtTarget": {
+          "thin": 0.99838,
+          "thick": 0.98688
+        }
+      },
+      "radial": {
+        "cut": 37.5,
+        "ofColumn": 0.000191,
+        "contrastLocal": 1
+      },
+      "spheroid": {
+        "profile": "sersic n=1",
+        "sMax": 6,
+        "ofColumn": 0.000154,
+        "contrastLocal": 0.001,
+        "massInside": null,
+        "sForTarget": 6,
+        "kpcNow": 3.6,
+        "kpcAtTarget": 3.6,
+        "massInsideAtTarget": null
+      },
+      "halo": {
+        "ofColumn": 1.86e-10,
+        "rMax": 150
+      }
+    },
+    "SB0": {
+      "truncation": {
+        "discRadius": 25,
+        "discHeight": 3,
+        "spheroidRadius": 8
+      },
+      "vertical": {
+        "rows": [
+          {
+            "R": 0.5,
+            "ofColumn": 0.0000014692427591614862,
+            "contrastLocal": 0.9912111621475729,
+            "inside": 0.00003615
+          },
+          {
+            "R": 2,
+            "ofColumn": 0.00016115642041953033,
+            "contrastLocal": 0.9878012903264838,
+            "inside": 0.00002363
+          },
+          {
+            "R": 4,
+            "ofColumn": 0.00018975095256669827,
+            "contrastLocal": 0.9837305059960492,
+            "inside": 0.0000134
+          },
+          {
+            "R": 8,
+            "ofColumn": 0.0002580523607265623,
+            "contrastLocal": 0.9774870507586998,
+            "inside": 0.000004299
+          },
+          {
+            "R": 12,
+            "ofColumn": 0.00034059457311403735,
+            "contrastLocal": 0.9698413834410338,
+            "inside": 0.000001382
+          },
+          {
+            "R": 16,
+            "ofColumn": 0.00043408748002556546,
+            "contrastLocal": 0.9559625201601536,
+            "inside": 4.47e-7
+          },
+          {
+            "R": 20,
+            "ofColumn": 0.0005325093446162221,
+            "contrastLocal": 0.9297394343168062,
+            "inside": 1.465e-7
+          }
+        ],
+        "worst": {
+          "R": 20,
+          "ofColumn": 0.0005325093446162221,
+          "contrastLocal": 0.9297394343168062,
+          "inside": 1.465e-7
+        },
+        "mid": 0.0002558,
+        "zForTarget": 7.35,
+        "massInside": {
+          "thin": 0.99879,
+          "thick": 0.99257
+        },
+        "massInsideAtTarget": {
+          "thin": 0.99929,
+          "thick": 0.99257
+        }
+      },
+      "radial": {
+        "cut": 25,
+        "ofColumn": 0.000267,
+        "contrastLocal": 1
+      },
+      "spheroid": null,
+      "halo": {
+        "ofColumn": 2.29e-10,
+        "rMax": 100
+      }
+    },
+    "SBa": {
+      "truncation": {
+        "discRadius": 25,
+        "discHeight": 3,
+        "spheroidRadius": 6
+      },
+      "vertical": {
+        "rows": [
+          {
+            "R": 0.5,
+            "ofColumn": 0.000006090868019161807,
+            "contrastLocal": 0.9883279218974008,
+            "inside": 0.00007895
+          },
+          {
+            "R": 2,
+            "ofColumn": 0.0001484660449188352,
+            "contrastLocal": 0.9826022744817516,
+            "inside": 0.00004561
+          },
+          {
+            "R": 4,
+            "ofColumn": 0.00017526512375288673,
+            "contrastLocal": 0.9823956183924002,
+            "inside": 0.00003
+          },
+          {
+            "R": 8,
+            "ofColumn": 0.00023989307984450303,
+            "contrastLocal": 0.982489828374259,
+            "inside": 0.00001047
+          },
+          {
+            "R": 12,
+            "ofColumn": 0.00031912550591974974,
+            "contrastLocal": 0.9796171798344213,
+            "inside": 0.000003358
+          },
+          {
+            "R": 16,
+            "ofColumn": 0.00041039515150302327,
+            "contrastLocal": 0.9702623209273551,
+            "inside": 0.000001008
+          },
+          {
+            "R": 20,
+            "ofColumn": 0.0005082743037843405,
+            "contrastLocal": 0.9464413880886681,
+            "inside": 2.807e-7
+          }
+        ],
+        "worst": {
+          "R": 20,
+          "ofColumn": 0.0005082743037843405,
+          "contrastLocal": 0.9464413880886681,
+          "inside": 2.807e-7
+        },
+        "mid": 0.0005837,
+        "zForTarget": 5.85,
+        "massInside": {
+          "thin": 0.99916,
+          "thick": 0.99257
+        },
+        "massInsideAtTarget": {
+          "thin": 0.99929,
+          "thick": 0.99257
+        }
+      },
+      "radial": {
+        "cut": 25,
+        "ofColumn": 0.000293,
+        "contrastLocal": 1
+      },
+      "spheroid": null,
+      "halo": {
+        "ofColumn": 1.15e-11,
+        "rMax": 100
+      }
+    },
+    "SBc": {
+      "truncation": {
+        "discRadius": 35,
+        "discHeight": 4.199999999999999,
+        "spheroidRadius": 6
+      },
+      "vertical": {
+        "rows": [
+          {
+            "R": 0.5,
+            "ofColumn": 0.000009924214909034448,
+            "contrastLocal": 0.8684322013299421,
+            "inside": 0.00007085
+          },
+          {
+            "R": 2,
+            "ofColumn": 0.00009573804322002069,
+            "contrastLocal": 0.8711150317321532,
+            "inside": 0.00005099
+          },
+          {
+            "R": 4,
+            "ofColumn": 0.00010874286522473135,
+            "contrastLocal": 0.9069152587748456,
+            "inside": 0.00003711
+          },
+          {
+            "R": 8,
+            "ofColumn": 0.0001393022135634534,
+            "contrastLocal": 0.9355158452188098,
+            "inside": 0.00001466
+          },
+          {
+            "R": 12,
+            "ofColumn": 0.00017673762097402413,
+            "contrastLocal": 0.949201608111265,
+            "inside": 0.000006467
+          },
+          {
+            "R": 16,
+            "ofColumn": 0.00022164002295072747,
+            "contrastLocal": 0.9394074617858583,
+            "inside": 0.000002329
+          },
+          {
+            "R": 20,
+            "ofColumn": 0.0002741524738424122,
+            "contrastLocal": 0.9456368180362789,
+            "inside": 0.000001297
+          }
+        ],
+        "worst": {
+          "R": 20,
+          "ofColumn": 0.0002741524738424122,
+          "contrastLocal": 0.9456368180362789,
+          "inside": 0.000001297
+        },
+        "mid": 0.004194,
+        "zForTarget": 6.95,
+        "massInside": {
+          "thin": 0.99855,
+          "thick": 0.98793
+        },
+        "massInsideAtTarget": {
+          "thin": 0.99858,
+          "thick": 0.98822
+        }
+      },
+      "radial": {
+        "cut": 35,
+        "ofColumn": 0.000259,
+        "contrastLocal": 1
+      },
+      "spheroid": null,
+      "halo": {
+        "ofColumn": 1.73e-10,
+        "rMax": 140
+      }
+    },
+    "SBd": {
+      "truncation": {
+        "discRadius": 37.5,
+        "discHeight": 4.5,
+        "spheroidRadius": 6
+      },
+      "vertical": {
+        "rows": [
+          {
+            "R": 0.5,
+            "ofColumn": 0.000006016178771786506,
+            "contrastLocal": 0.6013450134424314,
+            "inside": 0.00004253
+          },
+          {
+            "R": 2,
+            "ofColumn": 0.00006840640427758155,
+            "contrastLocal": 0.7486531309374773,
+            "inside": 0.00004463
+          },
+          {
+            "R": 4,
+            "ofColumn": 0.00007735558178585325,
+            "contrastLocal": 0.8168993292097945,
+            "inside": 0.00002972
+          },
+          {
+            "R": 8,
+            "ofColumn": 0.00009840352585027812,
+            "contrastLocal": 0.8853483731539034,
+            "inside": 0.00001192
+          },
+          {
+            "R": 12,
+            "ofColumn": 0.00012439739649748984,
+            "contrastLocal": 0.9129844804723733,
+            "inside": 0.000005279
+          },
+          {
+            "R": 16,
+            "ofColumn": 0.00015606742506995362,
+            "contrastLocal": 0.9139712208837479,
+            "inside": 0.000002261
+          },
+          {
+            "R": 20,
+            "ofColumn": 0.00019401426319571728,
+            "contrastLocal": 0.9299702824967989,
+            "inside": 0.000001378
+          }
+        ],
+        "worst": {
+          "R": 20,
+          "ofColumn": 0.00019401426319571728,
+          "contrastLocal": 0.9299702824967989,
+          "inside": 0.000001378
+        },
+        "mid": 0.005785,
+        "zForTarget": 6.55,
+        "massInside": {
+          "thin": 0.99835,
+          "thick": 0.98665
+        },
+        "massInsideAtTarget": {
+          "thin": 0.99838,
+          "thick": 0.98688
+        }
+      },
+      "radial": {
+        "cut": 37.5,
+        "ofColumn": 0.000195,
+        "contrastLocal": 1
+      },
+      "spheroid": null,
+      "halo": {
+        "ofColumn": 2.13e-10,
+        "rMax": 150
+      }
+    },
+    "Irr": {
+      "truncation": {
+        "discRadius": 12,
+        "discHeight": 3.2,
+        "spheroidRadius": 5.144653167389282
+      },
+      "vertical": {
+        "rows": [
+          {
+            "R": 0.5,
+            "ofColumn": 0.00011371343323716386,
+            "contrastLocal": 0.9884512703847169,
+            "inside": 0.00002022
+          },
+          {
+            "R": 2,
+            "ofColumn": 0.00042953110931340715,
+            "contrastLocal": 0.9938177173543333,
+            "inside": 0.00002812
+          },
+          {
+            "R": 4,
+            "ofColumn": 0.0003272713254665636,
+            "contrastLocal": 0.9956543570058253,
+            "inside": 0.00001372
+          },
+          {
+            "R": 8,
+            "ofColumn": 0.0002333223925604249,
+            "contrastLocal": 0.9964091243262154,
+            "inside": 0.000003348
+          }
+        ],
+        "worst": {
+          "R": 2,
+          "ofColumn": 0.00042953110931340715,
+          "contrastLocal": 0.9938177173543333,
+          "inside": 0.00002812
+        },
+        "mid": 0.1155,
+        "zForTarget": 3.95,
+        "massInside": {
+          "thin": 0.96289,
+          "thick": 0.88831
+        },
+        "massInsideAtTarget": {
+          "thin": 0.96297,
+          "thick": 0.88831
+        }
+      },
+      "radial": {
+        "cut": 12,
+        "ofColumn": 0.0103,
+        "contrastLocal": 1
+      },
+      "spheroid": {
+        "profile": "sersic n=1",
+        "sMax": 5.144653167389282,
+        "ofColumn": 0.000421,
+        "contrastLocal": 0.002,
+        "massInside": null,
+        "sForTarget": 5.19,
+        "kpcNow": 2.06,
+        "kpcAtTarget": 2.08,
+        "massInsideAtTarget": null
+      },
+      "halo": {
+        "ofColumn": 1.01e-10,
+        "rMax": 80
+      }
+    }
+  }
+}

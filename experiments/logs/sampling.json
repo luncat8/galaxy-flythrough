@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-26T13:49:52.089Z",
+  "date": "2026-09-26T14:37:24.478Z",
   "seed": 42,
   "sampleSize": 400000,
-  "sampleMs": 450,
+  "sampleMs": 685,
   "totalChecks": 19,
   "passed": 19,
   "failed": 0,
@@ -12,73 +12,73 @@
       "pass": true,
       "detail": {
         "thin": {
-          "sampled": 0.6215875,
-          "model": 0.6213941312311437,
-          "relative": 0.0003111853799988649
+          "sampled": 0.6173525,
+          "model": 0.6170817405659208,
+          "relative": 0.00043877401692498546
         },
         "thick": {
-          "sampled": 0.19425,
-          "model": 0.19435486636275726,
-          "relative": 0.0005395612917739871
+          "sampled": 0.1998025,
+          "model": 0.199945933898101,
+          "relative": 0.0007173634157227084
         },
         "bulge": {
-          "sampled": 0.1839275,
-          "model": 0.18398932578327615,
-          "relative": 0.00033602918545926557
+          "sampled": 0.18261,
+          "model": 0.18271246491328938,
+          "relative": 0.0005607987026939423
         },
         "halo": {
           "sampled": 0.000235,
-          "model": 0.00026167662282280073,
-          "relative": 0.10194499812413628
+          "model": 0.00025986062268882395,
+          "relative": 0.0956690645607891
         }
       }
     },
     {
       "name": "galactocentric R distribution matches the model (TV < 6%)",
       "pass": true,
-      "detail": 0.036134599854746347
+      "detail": 0.03586791295133235
     },
     {
       "name": "vertical |z| distribution matches the model (TV < 6%)",
       "pass": true,
-      "detail": 0.0025191257626757694
+      "detail": 0.0037996923557861227
     },
     {
       "name": "azimuthal distribution matches the model (TV < 6%)",
       "pass": true,
-      "detail": 0.006585582487277728
+      "detail": 0.006123515677532639
     },
     {
       "name": "distance-to-arm distribution matches the model (TV < 5%)",
       "pass": true,
-      "detail": 0.011386438196556006
+      "detail": 0.011005711102774426
     },
     {
       "name": "arm ridge is denser than the zone 2 kpc away",
       "pass": true,
       "detail": {
-        "ridge": 0.7858606856765974,
-        "far": 0.09751251257519025
+        "ridge": 0.7855645789668866,
+        "far": 0.09779451900680436
       }
     },
     {
       "name": "population mix inside a 4-8 kpc annulus, past the bar end, matches the model (worst 4%)",
       "pass": true,
       "detail": {
-        "worst": 0.007335863580799486,
+        "worst": 0.006970267824081423,
         "thin": {
-          "sampled": 0.81176,
+          "sampled": 0.81183,
           "model": 0.81318
         },
         "thick": {
-          "sampled": 0.18819,
+          "sampled": 0.18812,
           "model": 0.18682
         },
         "bulge": {
           "sampled": 0,
           "model": 0
         },
-        "stars": 101600
+        "stars": 100898
       }
     },
     {
@@ -116,12 +116,12 @@
       "detail": {
         "M": 349226,
         "K": 35270,
-        "WD": 8821,
-        "F": 1887,
-        "G": 3450,
-        "B": 395,
-        "RG": 505,
-        "A": 437,
+        "WD": 8838,
+        "F": 1873,
+        "G": 3451,
+        "B": 391,
+        "RG": 507,
+        "A": 435,
         "O": 9
       }
     },
@@ -131,12 +131,12 @@
       "detail": {
         "M": 349226,
         "K": 35270,
-        "WD": 8821,
-        "F": 1887,
-        "G": 3450,
-        "B": 395,
-        "RG": 505,
-        "A": 437,
+        "WD": 8838,
+        "F": 1873,
+        "G": 3451,
+        "B": 391,
+        "RG": 507,
+        "A": 435,
         "O": 9
       }
     },
@@ -145,16 +145,16 @@
       "pass": true,
       "detail": {
         "O": 0.8888888888888888,
-        "B": 0.7229551451187335
+        "B": 0.728
       }
     },
     {
       "name": "mean ages order halo > bulge > thick > thin",
       "pass": true,
       "detail": {
-        "thin": 4.629343103513553,
-        "thick": 8.333547222718323,
-        "bulge": 9.885293804063629,
+        "thin": 4.62976320121669,
+        "thick": 8.333463605322795,
+        "bulge": 9.884833001643358,
         "halo": 11.380261994769961
       }
     },
@@ -162,8 +162,8 @@
       "name": "red giants and white dwarfs exist",
       "pass": true,
       "detail": {
-        "RG": 505,
-        "WD": 8821
+        "RG": 507,
+        "WD": 8838
       }
     },
     {

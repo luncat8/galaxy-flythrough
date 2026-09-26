@@ -63,7 +63,11 @@ function boxIntegral(model, box, rMax) {
 		Math.hypot(Math.max(box.xMin - cx, box.xMax - cx), Math.max(box.yMin - cy, box.yMax - cy)),
 		Math.hypot(Math.min(box.xMin - cx, box.xMax - cx), Math.min(box.yMin - cy, box.yMax - cy)));
 	const ref = { total: 0, R: new Float64Array(24), Rtotal: 0, z: new Float64Array(20), component: [0, 0, 0, 0] };
-	const nR = 240, nPhi = 96, nZ = 60;
+	// The reference has to out-resolve the sharpest body in the box: a bar is
+	// 2.3 kpc of steep slice profile inside a 40 kpc box, and at 240x96x60 its
+	// own quadrature error (0.4% of the box mass) was the largest term in the
+	// share comparison below, not the sampler.
+	const nR = 480, nPhi = 192, nZ = 90;
 	const dR = rMaxBox / nR;
 	const dPhi = (2 * Math.PI) / nPhi;
 	const dZ = (box.zMax - box.zMin) / nZ;

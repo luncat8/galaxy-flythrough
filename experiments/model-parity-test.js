@@ -56,7 +56,13 @@ for (const group of ['thin', 'thick']) {
 	const rho = group === 'thin' ? density.rhoThin : density.rhoThick;
 	histogram(`compact ${group} radius`, buf, (i) => buf.R[i], model.truncation.discRadius,
 		(r) => 2 * Math.PI * r * rho(model, r, 0));
-	histogram(`compact ${group} height`, buf, (i) => Math.abs(buf.z[i]), model.truncation.discHeight,
+	// 0.4.8 M3.1: the vertical support is the authored slab *or* the height
+	// where this profile reaches the truncation floor, whichever is farther
+	// out (here the latter — the 0.4 kpc slab would cut the disc mid-profile).
+	// Measured at the outer edge, which is the tallest column of a flared disc.
+	const kind = group === 'thin' ? 'sech2' : 'laplace';
+	const zSupport = density.discVerticalCut(model, model[group], model.truncation.discRadius, kind);
+	histogram(`compact ${group} height`, buf, (i) => Math.abs(buf.z[i]), zSupport,
 		(z) => 2 * rho(model, 0, z));
 	check(`${group}: central profile is exponential, not an unmodelled plateau`,
 		near(rho(model, 0.005, 0) / rho(model, 0, 0), Math.exp(-0.005 / model[group].L), 1e-12));
@@ -171,13 +177,17 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 		// Joint (R, z) histogram vs the field quadrature: catches a sampler
 		// that draws z from the flat H while the field flares.
 		const nR = 12, nZ = 8;
+		// The window is the old slab; the disc now reaches past it, so both
+		// histograms are normalised over what falls inside the window.
 		const zSupport = model.truncation.discHeight;
 		const dR = 12 / nR, dZ = zSupport / nZ;
 		const obs = new Float64Array(nR * nZ);
+		let inWindow = 0;
 		for (let i = 0; i < buf.count; i++) {
 			const x = buf.x[i], y = buf.y[i], z = buf.z[i];
 			const R = Math.sqrt(x * x + y * y);
 			if (R >= 12 || Math.abs(z) >= zSupport) continue;
+			inWindow++;
 			obs[Math.min(nZ - 1, Math.floor(Math.abs(z) / dZ)) * nR + Math.min(nR - 1, Math.floor(R / dR))]++;
 		}
 		const ref = new Float64Array(nR * nZ);
@@ -198,7 +208,7 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 			}
 		}
 		let tv = 0;
-		for (let k = 0; k < obs.length; k++) tv += Math.abs(obs[k] / buf.count - ref[k] / refTotal);
+		for (let k = 0; k < obs.length; k++) tv += Math.abs(obs[k] / inWindow - ref[k] / refTotal);
 		tv /= 2;
 		check('the flared disc sample matches the joint (R, z) field (TV < 5%)', tv < 0.05, +tv.toFixed(4));
 	}

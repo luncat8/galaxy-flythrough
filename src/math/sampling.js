@@ -34,9 +34,11 @@
 // not allocate per-star objects, and star i is a pure function of (seed, i).
 //
 // The field reproduces the model *inside the sampled volume*: the disc is
-// truncated at |z| = discHeight and the spheroid at spheroidRadius, which
-// removes 0.01% / 3.6% / 4% of the thin, thick and bulge mass in the Milky Way
-// preset. Component weights are the mass each population delivers after
+// truncated at density.discVerticalCut (the authored |z| = discHeight slab, or
+// the height where the component's own profile has fallen to a thousandth of
+// its midplane value, whichever is farther out) and the spheroid at the
+// model's pushed-out spheroidRadius, which together remove 0.08% / 0.7% / 0%
+// of the thin, thick and bulge mass in the Milky Way preset. Component weights are the mass each population delivers after
 // truncation (deliveredMasses()), so both the counts and the local density
 // ratios are correct; the removed tails are not redistributed.
 
@@ -320,11 +322,13 @@ function sampleBarPoint(model, sampler, uXi, uEta, uZeta, out) {
 			sampleDiscRadius(u1, thinRadial, scratch);
 			// The z CDF is exact per radius: a flared disc draws |z| from the
 			// sech^2 at H(R), which is how the field reads.
-			z = sampleSech2Z(u2, discHeightAt(model.thin, scratch[0]), t.discHeight);
+			z = sampleSech2Z(u2, discHeightAt(model.thin, scratch[0]),
+				density.discVerticalCut(model, model.thin, scratch[0], 'sech2'));
 		} else if (u0 < wThick) {
 			component = density.COMPONENT_THICK;
 			sampleDiscRadius(u1, thickRadial, scratch);
-			z = sampleLaplaceZ(u2, discHeightAt(model.thick, scratch[0]), t.discHeight);
+			z = sampleLaplaceZ(u2, discHeightAt(model.thick, scratch[0]),
+				density.discVerticalCut(model, model.thick, scratch[0], 'laplace'));
 		} else if (u0 < wBulge) {
 				component = density.COMPONENT_BULGE;
 				const sp = model.spheroid;

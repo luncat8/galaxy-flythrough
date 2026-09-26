@@ -1,0 +1,329 @@
+{
+  "stars": 400000,
+  "youngClasses": [
+    "O",
+    "B"
+  ],
+  "report": {
+    "SBb (preset)": {
+      "thinH": 0.3,
+      "gasLaneH": 0.15,
+      "youngStarH": 0.3227,
+      "oldStarH": 0.3018,
+      "ratioYoungToOld": 1.069,
+      "ratioYoungToGasLane": 2.151,
+      "classes": {
+        "M": {
+          "stars": 215717,
+          "medianZ": 0.3316,
+          "scaleHeight": 0.3018,
+          "meanAgeGyr": null
+        },
+        "K": {
+          "stars": 21509,
+          "medianZ": 0.3357,
+          "scaleHeight": 0.3055,
+          "meanAgeGyr": null
+        },
+        "F": {
+          "stars": 1721,
+          "medianZ": 0.3276,
+          "scaleHeight": 0.2982,
+          "meanAgeGyr": null
+        },
+        "WD": {
+          "stars": 4297,
+          "medianZ": 0.3321,
+          "scaleHeight": 0.3023,
+          "meanAgeGyr": null
+        },
+        "G": {
+          "stars": 2296,
+          "medianZ": 0.3531,
+          "scaleHeight": 0.3214,
+          "meanAgeGyr": null
+        },
+        "RG": {
+          "stars": 276,
+          "medianZ": 0.3142,
+          "scaleHeight": 0.286,
+          "meanAgeGyr": null
+        },
+        "B": {
+          "stars": 456,
+          "medianZ": 0.3593,
+          "scaleHeight": 0.3271,
+          "meanAgeGyr": null
+        },
+        "A": {
+          "stars": 406,
+          "medianZ": 0.3366,
+          "scaleHeight": 0.3064,
+          "meanAgeGyr": null
+        },
+        "O": {
+          "stars": 17,
+          "medianZ": 0.2239,
+          "scaleHeight": 0.2038,
+          "meanAgeGyr": null
+        }
+      }
+    },
+    "Sb": {
+      "thinH": 0.234,
+      "gasLaneH": 0.1404,
+      "youngStarH": 0.2779,
+      "oldStarH": 0.2589,
+      "ratioYoungToOld": 1.073,
+      "ratioYoungToGasLane": 1.979,
+      "classes": {
+        "M": {
+          "stars": 225910,
+          "medianZ": 0.2844,
+          "scaleHeight": 0.2589,
+          "meanAgeGyr": null
+        },
+        "K": {
+          "stars": 22579,
+          "medianZ": 0.2878,
+          "scaleHeight": 0.262,
+          "meanAgeGyr": null
+        },
+        "F": {
+          "stars": 1799,
+          "medianZ": 0.2845,
+          "scaleHeight": 0.259,
+          "meanAgeGyr": null
+        },
+        "WD": {
+          "stars": 4512,
+          "medianZ": 0.2866,
+          "scaleHeight": 0.2609,
+          "meanAgeGyr": null
+        },
+        "G": {
+          "stars": 2400,
+          "medianZ": 0.2985,
+          "scaleHeight": 0.2717,
+          "meanAgeGyr": null
+        },
+        "RG": {
+          "stars": 285,
+          "medianZ": 0.2668,
+          "scaleHeight": 0.2429,
+          "meanAgeGyr": null
+        },
+        "B": {
+          "stars": 483,
+          "medianZ": 0.3091,
+          "scaleHeight": 0.2813,
+          "meanAgeGyr": null
+        },
+        "A": {
+          "stars": 425,
+          "medianZ": 0.2835,
+          "scaleHeight": 0.258,
+          "meanAgeGyr": null
+        },
+        "O": {
+          "stars": 17,
+          "medianZ": 0.1983,
+          "scaleHeight": 0.1805,
+          "meanAgeGyr": null
+        }
+      }
+    },
+    "Sc": {
+      "thinH": 0.2548,
+      "gasLaneH": 0.1529,
+      "youngStarH": 0.3697,
+      "oldStarH": 0.3345,
+      "ratioYoungToOld": 1.105,
+      "ratioYoungToGasLane": 2.419,
+      "classes": {
+        "M": {
+          "stars": 265963,
+          "medianZ": 0.3675,
+          "scaleHeight": 0.3345,
+          "meanAgeGyr": null
+        },
+        "K": {
+          "stars": 26662,
+          "medianZ": 0.3695,
+          "scaleHeight": 0.3364,
+          "meanAgeGyr": null
+        },
+        "F": {
+          "stars": 2378,
+          "medianZ": 0.3642,
+          "scaleHeight": 0.3315,
+          "meanAgeGyr": null
+        },
+        "G": {
+          "stars": 2827,
+          "medianZ": 0.3783,
+          "scaleHeight": 0.3443,
+          "meanAgeGyr": null
+        },
+        "WD": {
+          "stars": 5016,
+          "medianZ": 0.3672,
+          "scaleHeight": 0.3342,
+          "meanAgeGyr": null
+        },
+        "RG": {
+          "stars": 293,
+          "medianZ": 0.3749,
+          "scaleHeight": 0.3412,
+          "meanAgeGyr": null
+        },
+        "B": {
+          "stars": 600,
+          "medianZ": 0.4111,
+          "scaleHeight": 0.3742,
+          "meanAgeGyr": null
+        },
+        "A": {
+          "stars": 593,
+          "medianZ": 0.3642,
+          "scaleHeight": 0.3315,
+          "meanAgeGyr": null
+        },
+        "O": {
+          "stars": 20,
+          "medianZ": 0.2593,
+          "scaleHeight": 0.236,
+          "meanAgeGyr": null
+        }
+      }
+    },
+    "Sd": {
+      "thinH": 0.234,
+      "gasLaneH": 0.1404,
+      "youngStarH": 0.3557,
+      "oldStarH": 0.3333,
+      "ratioYoungToOld": 1.067,
+      "ratioYoungToGasLane": 2.533,
+      "classes": {
+        "M": {
+          "stars": 291362,
+          "medianZ": 0.3662,
+          "scaleHeight": 0.3333,
+          "meanAgeGyr": null
+        },
+        "K": {
+          "stars": 29267,
+          "medianZ": 0.3683,
+          "scaleHeight": 0.3352,
+          "meanAgeGyr": null
+        },
+        "WD": {
+          "stars": 5305,
+          "medianZ": 0.366,
+          "scaleHeight": 0.3332,
+          "meanAgeGyr": null
+        },
+        "G": {
+          "stars": 3095,
+          "medianZ": 0.3784,
+          "scaleHeight": 0.3444,
+          "meanAgeGyr": null
+        },
+        "F": {
+          "stars": 2782,
+          "medianZ": 0.3647,
+          "scaleHeight": 0.332,
+          "meanAgeGyr": null
+        },
+        "B": {
+          "stars": 692,
+          "medianZ": 0.3947,
+          "scaleHeight": 0.3593,
+          "meanAgeGyr": null
+        },
+        "A": {
+          "stars": 693,
+          "medianZ": 0.356,
+          "scaleHeight": 0.324,
+          "meanAgeGyr": null
+        },
+        "RG": {
+          "stars": 307,
+          "medianZ": 0.3402,
+          "scaleHeight": 0.3097,
+          "meanAgeGyr": null
+        },
+        "O": {
+          "stars": 22,
+          "medianZ": 0.2648,
+          "scaleHeight": 0.241,
+          "meanAgeGyr": null
+        }
+      }
+    },
+    "Irr": {
+      "thinH": 0.208,
+      "gasLaneH": 0.1664,
+      "youngStarH": 0.3438,
+      "oldStarH": 0.2959,
+      "ratioYoungToOld": 1.162,
+      "ratioYoungToGasLane": 2.066,
+      "classes": {
+        "M": {
+          "stars": 211858,
+          "medianZ": 0.3251,
+          "scaleHeight": 0.2959,
+          "meanAgeGyr": null
+        },
+        "K": {
+          "stars": 21111,
+          "medianZ": 0.3283,
+          "scaleHeight": 0.2988,
+          "meanAgeGyr": null
+        },
+        "F": {
+          "stars": 2066,
+          "medianZ": 0.328,
+          "scaleHeight": 0.2986,
+          "meanAgeGyr": null
+        },
+        "WD": {
+          "stars": 3675,
+          "medianZ": 0.3228,
+          "scaleHeight": 0.2939,
+          "meanAgeGyr": null
+        },
+        "G": {
+          "stars": 2278,
+          "medianZ": 0.3349,
+          "scaleHeight": 0.3048,
+          "meanAgeGyr": null
+        },
+        "B": {
+          "stars": 537,
+          "medianZ": 0.3818,
+          "scaleHeight": 0.3475,
+          "meanAgeGyr": null
+        },
+        "A": {
+          "stars": 518,
+          "medianZ": 0.3331,
+          "scaleHeight": 0.3032,
+          "meanAgeGyr": null
+        },
+        "O": {
+          "stars": 18,
+          "medianZ": 0.2579,
+          "scaleHeight": 0.2347,
+          "meanAgeGyr": null
+        },
+        "RG": {
+          "stars": 204,
+          "medianZ": 0.3214,
+          "scaleHeight": 0.2926,
+          "meanAgeGyr": null
+        }
+      }
+    }
+  }
+}

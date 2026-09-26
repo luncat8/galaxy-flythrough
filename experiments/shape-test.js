@@ -366,6 +366,61 @@ function sliceMean(model, z, res) {
 	}
 }
 
+// ---- 6. the truncation edges (0.4.8 M3.1) --------------------------------
+//
+// A cut is the one discontinuity the step detector above cannot soften away:
+// the field simply stops. It is invisible only where the profile is already
+// dark, so the gate is the drop measured against the brightest thing in the
+// same view — the column's own midplane for a disc, the s = 1 level for a
+// spheroid. density.js pushes every cut out to the TRUNCATION_FLOOR level for
+// exactly this reason; this check is what keeps an authored number from
+// quietly cutting a profile mid-light again. Measurements and the
+// alternatives that were rejected: experiments/truncation-edge.js.
+const EDGE_LIMIT = 1.2 * density.TRUNCATION_FLOOR;
+const EPS_KPC = 1e-6;
+
+for (const model of ALL) {
+	const c = model.centre;
+	if (model.thin.amp > 0 || model.thick.amp > 0) {
+		let worstZ = 0;
+		let worstR = 0;
+		for (const R of [0.5, 2, 4, 8, 12, 16, 20].filter((r) => r < model.truncation.discRadius)) {
+			const zCut = Math.max(density.discVerticalCut(model, model.thin, R, 'sech2'),
+				density.discVerticalCut(model, model.thick, R, 'laplace'));
+			const mid = density.rhoTotal(model, c.x + R, c.y, c.z);
+			const drop = density.rhoTotal(model, c.x + R, c.y, c.z + zCut - EPS_KPC)
+				- density.rhoTotal(model, c.x + R, c.y, c.z + zCut + EPS_KPC);
+			if (mid > 0) worstZ = Math.max(worstZ, drop / mid);
+		}
+		const rCut = density.discRadialCut(model);
+		const ref = density.rhoTotal(model, c.x + 0.5 * model.thin.L, c.y, c.z);
+		const dropR = density.rhoTotal(model, c.x + rCut - EPS_KPC, c.y, c.z)
+			- density.rhoTotal(model, c.x + rCut + EPS_KPC, c.y, c.z);
+		if (ref > 0) worstR = dropR / ref;
+		check(`${model.type}: the disc's vertical cut is dark where it cuts`,
+			worstZ <= EDGE_LIMIT, { ofColumn: +worstZ.toExponential(2), limit: EDGE_LIMIT });
+		// The radial cut is authored, not derived: a disc break is a real
+		// feature, so the gate only asks that it stay at the percent level —
+		// Irr's 5.8 scale lengths is the one type that reaches it.
+		check(`${model.type}: the disc's radial cut is faint where it cuts`,
+			worstR <= 1.5e-2, { ofColumn: +worstR.toExponential(2), cutKpc: +rCut.toFixed(2) });
+	}
+	const sp = model.spheroid;
+	if (sp.amp > 0 && sp.profileId !== density.PROFILE_BAR) {
+		const sMax = model.truncation.spheroidRadius;
+		const tilt = sp.tiltDeg * Math.PI / 180;
+		const at = (sv) => {
+			const d = sv * sp.a * sp.r0;
+			return density.rhoTotal(model, c.x + d * Math.cos(tilt), c.y + d * Math.sin(tilt), c.z);
+		};
+		const drop = at(sMax - EPS_KPC) - at(sMax + EPS_KPC);
+		const reference = at(1);
+		check(`${model.type}: the spheroid's cut is dark where it cuts`,
+			reference > 0 && drop / reference <= EDGE_LIMIT,
+			{ ofReference: +(drop / Math.max(reference, 1e-30)).toExponential(2), sMax: +sMax.toFixed(2) });
+	}
+}
+
 // ---- report --------------------------------------------------------------
 
 fs.mkdirSync(OUT_DIR, { recursive: true });

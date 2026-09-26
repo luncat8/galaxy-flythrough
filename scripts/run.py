@@ -65,6 +65,8 @@ EXPERIMENTS = {
     'precision':             'experiments/precision-test.js',
     'packing':               'experiments/packing-test.js',
     'filter':                'experiments/filter-test.js',
+    'truncation-edge':       'experiments/truncation-edge.js',
+    'young-vertical':        'experiments/young-vertical.js',
     # Needs one dev-only dependency: `npm install wgsl_reflect` at the repo
     # root. Executes the shipping WGSL on the CPU; not part of all-tests.
     'wgsl-exec':             'experiments/wgsl-exec-check.js',
@@ -79,7 +81,8 @@ TYPES = {
                'density-distribution',
                'star-types-evolution', 'nebula-placement', 'object-placement', 'galaxy-age',
                'orbit'],
-    'study':  ['damping-formula', 'hash-quality', 'precision', 'packing', 'filter'],
+    'study':  ['damping-formula', 'hash-quality', 'precision', 'packing', 'filter',
+               'truncation-edge', 'young-vertical'],
     'sim':    ['wgsl-exec'],
     'asset':  ['tile-encoder', 'visualize-data'],
 }

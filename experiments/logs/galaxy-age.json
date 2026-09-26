@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-26T13:50:09.510Z",
+  "date": "2026-09-26T14:38:04.263Z",
   "types": [
     "E0",
     "E1",
@@ -532,9 +532,9 @@
         4.164
       ],
       "13.5": [
-        5.642,
-        8.336,
-        9.885,
+        5.64,
+        8.34,
+        9.886,
         11.322
       ]
     },
@@ -552,24 +552,24 @@
         4.164
       ],
       "13.5": [
-        4.625,
-        8.336,
-        9.885,
+        4.623,
+        8.34,
+        9.886,
         11.322
       ]
     },
     "componentCounts": [
       {
         "component": "thin",
-        "stars": 74576
+        "stars": 74049
       },
       {
         "component": "thick",
-        "stars": 23330
+        "stars": 24019
       },
       {
         "component": "bulge",
-        "stars": 22060
+        "stars": 21898
       },
       {
         "component": "halo",
@@ -848,49 +848,49 @@
   "population": {
     "thinDisc": {
       "1": {
-        "n": 74576,
-        "obPct": 0.668,
+        "n": 74049,
+        "obPct": 0.667,
         "giantPct": 0.028,
-        "wdPct": 0.355,
+        "wdPct": 0.357,
         "youngPct": 61.22,
-        "meanColour": 5.831,
-        "meanLuminosity": 3.08
+        "meanColour": 5.8311,
+        "meanLuminosity": 3.09
       },
       "2": {
-        "n": 74576,
-        "obPct": 0.489,
+        "n": 74049,
+        "obPct": 0.488,
         "giantPct": 0.046,
-        "wdPct": 0.519,
+        "wdPct": 0.521,
         "youngPct": 40.29,
-        "meanColour": 5.8416,
-        "meanLuminosity": 3.7
+        "meanColour": 5.8418,
+        "meanLuminosity": 3.72
       },
       "8": {
-        "n": 74576,
+        "n": 74049,
         "obPct": 0.205,
         "giantPct": 0.086,
-        "wdPct": 1.301,
+        "wdPct": 1.299,
         "youngPct": 22.07,
         "meanColour": 5.8818,
-        "meanLuminosity": 4.66
+        "meanLuminosity": 4.7
       },
       "0.5": {
-        "n": 74576,
+        "n": 74049,
         "obPct": 0.782,
         "giantPct": 0.023,
         "wdPct": 0.247,
         "youngPct": 90.91,
-        "meanColour": 5.8243,
-        "meanLuminosity": 3.06
+        "meanColour": 5.8244,
+        "meanLuminosity": 3.07
       },
       "13.5": {
-        "n": 74576,
+        "n": 74049,
         "obPct": 0.166,
-        "giantPct": 0.135,
-        "wdPct": 1.777,
-        "youngPct": 19.69,
+        "giantPct": 0.136,
+        "wdPct": 1.773,
+        "youngPct": 19.7,
         "meanColour": 5.9035,
-        "meanLuminosity": 7.45
+        "meanLuminosity": 7.51
       }
     },
     "E4": {
@@ -931,63 +931,63 @@
         "magOffset": 0
       },
       "Sa@0.5": {
-        "meanL": 3.047,
-        "referenceL": 7.483,
-        "magOffset": -0.9753
+        "meanL": 3.143,
+        "referenceL": 7.706,
+        "magOffset": -0.9738
       },
       "Sa@2": {
-        "meanL": 4.37,
-        "referenceL": 7.483,
-        "magOffset": -0.584
+        "meanL": 4.854,
+        "referenceL": 7.706,
+        "magOffset": -0.502
       },
       "Sa@8": {
-        "meanL": 7.89,
-        "referenceL": 7.483,
-        "magOffset": 0.0576
+        "meanL": 8.5,
+        "referenceL": 7.706,
+        "magOffset": 0.1064
       },
       "Sa@13.5": {
-        "meanL": 7.483,
-        "referenceL": 7.483,
+        "meanL": 7.706,
+        "referenceL": 7.706,
         "magOffset": 0
       },
       "SBb@0.5": {
         "meanL": 3.333,
-        "referenceL": 8.434,
-        "magOffset": -1.0079
+        "referenceL": 8.433,
+        "magOffset": -1.0077
       },
       "SBb@2": {
         "meanL": 4.108,
-        "referenceL": 8.434,
-        "magOffset": -0.7809
+        "referenceL": 8.433,
+        "magOffset": -0.7808
       },
       "SBb@8": {
-        "meanL": 4.948,
-        "referenceL": 8.434,
-        "magOffset": -0.5791
+        "meanL": 4.947,
+        "referenceL": 8.433,
+        "magOffset": -0.5792
       },
       "SBb@13.5": {
-        "meanL": 8.434,
-        "referenceL": 8.434,
+        "meanL": 8.433,
+        "referenceL": 8.433,
         "magOffset": 0
       },
       "Sc@0.5": {
         "meanL": 5.552,
-        "referenceL": 7.466,
-        "magOffset": -0.3215
+        "referenceL": 7.059,
+        "magOffset": -0.2607
       },
       "Sc@2": {
-        "meanL": 3.863,
-        "referenceL": 7.466,
-        "magOffset": -0.7153
+        "meanL": 3.86,
+        "referenceL": 7.059,
+        "magOffset": -0.6554
       },
       "Sc@8": {
         "meanL": 6.011,
-        "referenceL": 7.466,
-        "magOffset": -0.2353
+        "referenceL": 7.059,
+        "magOffset": -0.1745
       },
       "Sc@13.5": {
-        "meanL": 7.466,
-        "referenceL": 7.466,
+        "meanL": 7.059,
+        "referenceL": 7.059,
         "magOffset": 0
       },
       "Irr@0.5": {
@@ -1266,20 +1266,20 @@
       "2": {
         "placed": 400,
         "byType": {
-          "globular": 40,
-          "open": 179,
-          "HII": 98,
+          "globular": 39,
+          "open": 178,
+          "HII": 99,
           "SNR": 18,
-          "planetary": 65
+          "planetary": 66
         }
       },
       "8": {
         "placed": 400,
         "byType": {
-          "planetary": 95,
-          "open": 139,
+          "planetary": 96,
+          "open": 137,
           "SNR": 29,
-          "HII": 79,
+          "HII": 80,
           "globular": 58
         }
       },
@@ -1296,11 +1296,11 @@
       "13.5": {
         "placed": 400,
         "byType": {
-          "globular": 91,
+          "globular": 88,
           "SNR": 57,
-          "open": 56,
-          "planetary": 149,
-          "HII": 47
+          "open": 55,
+          "planetary": 150,
+          "HII": 50
         }
       }
     },
@@ -1308,20 +1308,20 @@
       "2": {
         "placed": 400,
         "byType": {
-          "planetary": 58,
-          "open": 167,
-          "HII": 132,
-          "SNR": 34,
+          "planetary": 59,
+          "open": 168,
+          "HII": 131,
+          "SNR": 33,
           "globular": 9
         }
       },
       "8": {
         "placed": 400,
         "byType": {
-          "planetary": 85,
+          "planetary": 87,
           "open": 143,
-          "SNR": 45,
-          "HII": 118,
+          "SNR": 44,
+          "HII": 117,
           "globular": 9
         }
       },
@@ -1331,16 +1331,16 @@
           "globular": 11,
           "HII": 135,
           "open": 167,
-          "planetary": 56,
-          "SNR": 31
+          "planetary": 55,
+          "SNR": 32
         }
       },
       "13.5": {
         "placed": 400,
         "byType": {
           "open": 114,
-          "planetary": 110,
-          "SNR": 66,
+          "planetary": 111,
+          "SNR": 65,
           "HII": 88,
           "globular": 22
         }
@@ -1350,30 +1350,30 @@
       "2": {
         "placed": 400,
         "byType": {
-          "globular": 349,
-          "planetary": 51
+          "globular": 354,
+          "planetary": 46
         }
       },
       "8": {
         "placed": 400,
         "byType": {
-          "globular": 349,
-          "planetary": 51
+          "globular": 354,
+          "planetary": 46
         }
       },
       "0.5": {
         "placed": 400,
         "byType": {
-          "globular": 345,
-          "planetary": 50,
-          "open": 5
+          "globular": 350,
+          "planetary": 44,
+          "open": 6
         }
       },
       "13.5": {
         "placed": 400,
         "byType": {
-          "globular": 349,
-          "planetary": 51
+          "globular": 354,
+          "planetary": 46
         }
       }
     }
@@ -1471,9 +1471,9 @@
       "name": "the assembly order survives: halo oldest, thin disc youngest",
       "pass": true,
       "detail": [
-        4.625,
-        8.336,
-        9.885,
+        4.623,
+        8.34,
+        9.886,
         11.322
       ]
     },
@@ -1492,9 +1492,9 @@
       "pass": true,
       "detail": {
         "now": [
-          4.625,
-          8.336,
-          9.885,
+          4.623,
+          8.34,
+          9.886,
           11.322
         ],
         "priors": [
@@ -1515,7 +1515,7 @@
       "name": "the thin disc loses its O/B stars as the galaxy ages",
       "pass": true,
       "detail": {
-        "at1Gyr": 0.668,
+        "at1Gyr": 0.667,
         "at13_5": 0.166
       }
     },
@@ -1524,14 +1524,14 @@
       "pass": true,
       "detail": {
         "young": 0.023,
-        "old": 0.135
+        "old": 0.136
       }
     },
     {
       "name": "the mean colour index reddens with age",
       "pass": true,
       "detail": {
-        "young": 5.8243,
+        "young": 5.8244,
         "old": 5.9035
       }
     },
@@ -1540,16 +1540,16 @@
       "pass": true,
       "detail": {
         "at0_5": 0.247,
-        "at1": 0.355,
-        "at13_5": 1.777
+        "at1": 0.357,
+        "at13_5": 1.773
       }
     },
     {
       "name": "the field brightens as turnoff giants join the still-forming OB tail (~2.4×)",
       "pass": true,
       "detail": {
-        "young": 3.06,
-        "old": 7.45
+        "young": 3.07,
+        "old": 7.51
       }
     },
     {
@@ -1636,11 +1636,11 @@
           "globular": 40
         },
         "at13_5": {
-          "globular": 91,
+          "globular": 88,
           "SNR": 57,
-          "open": 56,
-          "planetary": 149,
-          "HII": 47
+          "open": 55,
+          "planetary": 150,
+          "HII": 50
         }
       }
     },
@@ -1654,7 +1654,7 @@
       "pass": true,
       "detail": {
         "at0_5": 40,
-        "at13_5": 91
+        "at13_5": 88
       }
     },
     {
@@ -1665,13 +1665,13 @@
           "globular": 11,
           "HII": 135,
           "open": 167,
-          "planetary": 56,
-          "SNR": 31
+          "planetary": 55,
+          "SNR": 32
         },
         "at13_5": {
           "open": 114,
-          "planetary": 110,
-          "SNR": 66,
+          "planetary": 111,
+          "SNR": 65,
           "HII": 88,
           "globular": 22
         }
@@ -1695,13 +1695,13 @@
       "pass": true,
       "detail": {
         "at0_5": {
-          "globular": 345,
-          "planetary": 50,
-          "open": 5
+          "globular": 350,
+          "planetary": 44,
+          "open": 6
         },
         "at13_5": {
-          "globular": 349,
-          "planetary": 51
+          "globular": 354,
+          "planetary": 46
         }
       }
     },
@@ -1743,9 +1743,9 @@
       "name": "Sa peaks late: dimmer young, within 0.15 mag of the reference at 8 Gyr",
       "pass": true,
       "detail": {
-        "at0_5": -0.975,
-        "at2": -0.584,
-        "at8": 0.058
+        "at0_5": -0.974,
+        "at2": -0.502,
+        "at8": 0.106
       }
     },
     {
@@ -1756,7 +1756,7 @@
     {
       "name": "the preset at the default age needs no offset at all",
       "pass": true,
-      "detail": 8.4342
+      "detail": 8.4329
     }
   ]
 }

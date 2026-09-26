@@ -252,10 +252,27 @@ function relNear(a, b, tol) {
 		relNear(models.Sc.thin.L, galaxy.DISC_L_KPC * 1.4, 1e-12)
 		&& relNear(models.Sc.truncation.discRadius, 25.0 * 1.4, 1e-12),
 		{ L: models.Sc.thin.L, discRadius: models.Sc.truncation.discRadius });
+	// The cut is in units of s, so scaleKpc never moves it; 0.4.8 M3.1 pushes
+	// it out to the profile's own floor radius where the authored number would
+	// cut mid-light (an n = 4 Sérsic at s = 8 is still at 5.4e-3 of its
+	// effective-radius density), and leaves it alone where it is already past.
 	check('the spheroid cut is in units of s, so scaleKpc does not move it',
 		models.Sc.truncation.spheroidRadius === galaxy.TYPE_SPECS.Sc.spheroidRadius
-		&& models.E4.truncation.spheroidRadius === galaxy.TYPE_SPECS.E4.spheroidRadius,
+		&& models.E4.truncation.spheroidRadius > galaxy.TYPE_SPECS.E4.spheroidRadius
+		&& galaxy.createGalaxy({ type: 'E4', seed: 42 }).truncation.spheroidRadius
+			=== models.E4.truncation.spheroidRadius,
 		{ Sc: models.Sc.truncation.spheroidRadius, E4: models.E4.truncation.spheroidRadius });
+	// Every model: the cut is at least the profile's floor radius, and at
+	// least the authored minimum. E4 is the pushed case, Sc the untouched one.
+	check('a cut never sits where the profile is still above the truncation floor',
+		ALL.every((m) => m.spheroid.profileId === density.PROFILE_BAR
+			|| (m.truncation.spheroidRadius + 1e-9
+				>= density.spheroidFloorRadius(m.spheroid.profileId, m.spheroid.n)
+				&& m.truncation.spheroidRadius + 1e-9 >= galaxy.TYPE_SPECS[m.type].spheroidRadius))
+		&& models.E4.truncation.spheroidRadius
+			=== density.spheroidFloorRadius(density.PROFILE_SERSIC, models.E4.spheroid.n),
+		{ E4: +models.E4.truncation.spheroidRadius.toFixed(3),
+			floorE4: +density.spheroidFloorRadius(density.PROFILE_SERSIC, models.E4.spheroid.n).toFixed(3) });
 }
 
 // --- 4. The sampler weights itself with the truncated mass ---------------
@@ -290,7 +307,10 @@ function relNear(a, b, tol) {
 			const dx = buf.x[i] - model.centre.x;
 			const dy = buf.y[i] - model.centre.y;
 			if (buf.component[i] === density.COMPONENT_THIN || buf.component[i] === density.COMPONENT_THICK) {
-				if (!density.insideDisc(model, buf.R[i], buf.z[i])) outside++;
+				// Each disc component carries its own vertical cut (0.4.8 M3.1).
+				const thin = buf.component[i] === density.COMPONENT_THIN;
+				if (!density.insideDisc(model, buf.R[i], buf.z[i],
+					thin ? model.thin : model.thick, thin ? 'sech2' : 'laplace')) outside++;
 			} else if (buf.component[i] === density.COMPONENT_BULGE) {
 				let s;
 				if (model.spheroid.profileId === density.PROFILE_BAR) {
@@ -853,10 +873,13 @@ function relNear(a, b, tol) {
 				? home.yaw === 0 && home.pitch === 0
 				: near(home.yaw, Math.atan2(dy, dx), 1e-9) && near(home.pitch, Math.asin(dz / d), 1e-9),
 			{ yaw: +home.yaw.toFixed(4), pitch: +home.pitch.toFixed(4) });
-		// The framing rule: far enough to see the body, close enough to fill it.
-		const span = model.truncation.spheroidRadius * model.spheroid.a;
+		// The framing rule: far enough to see the body, close enough to fill
+		// it. The body is the bright one homeFor derives from — the disc scale
+		// length, or the spheroid's semimajor axis — not the truncation, which
+		// since 0.4.8 M3.1 reaches out to the profile's 1e-3 floor.
+		const span = model.thin.amp > 0 ? model.thin.L : model.spheroid.a;
 		check(`${model.type}: the home view frames the body it was derived from`,
-			d > span * 0.4 && d < span * 8, { distance: +d.toFixed(3), span: +span.toFixed(3) });
+			d > span * 2 && d < span * 8, { distance: +d.toFixed(3), span: +span.toFixed(3) });
 	}
 	check('only the Milky Way preset orbits the Sun',
 		MW.home.orbitName === 'Sun' && MW.home.orbitDistance === 0.01
