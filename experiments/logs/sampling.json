@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-24T19:53:55.460Z",
+  "date": "2026-09-26T12:28:59.093Z",
   "seed": 42,
   "sampleSize": 400000,
-  "sampleMs": 480,
+  "sampleMs": 454,
   "totalChecks": 19,
   "passed": 19,
   "failed": 0,
@@ -36,17 +36,17 @@
     {
       "name": "galactocentric R distribution matches the model (TV < 6%)",
       "pass": true,
-      "detail": 0.03479841105676972
+      "detail": 0.03479841105676971
     },
     {
       "name": "vertical |z| distribution matches the model (TV < 6%)",
       "pass": true,
-      "detail": 0.0032320153560347837
+      "detail": 0.003232015356034783
     },
     {
       "name": "azimuthal distribution matches the model (TV < 6%)",
       "pass": true,
-      "detail": 0.0050920552778503225
+      "detail": 0.004755941262195447
     },
     {
       "name": "distance-to-arm distribution matches the model (TV < 5%)",

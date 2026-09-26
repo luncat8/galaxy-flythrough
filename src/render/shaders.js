@@ -105,8 +105,9 @@ struct DensityParams {
         spheroid: vec4f,        // a, b, c, r0
         spheroidShape: vec4f,   // amp, n, tiltDeg, profileId
         // Only the bar profile reads this one: the peanut's vertical stretch,
-        // the exponential end-cap scale and the plateau it starts from.
-        barShape: vec4f,        // peanut, endCap, plateau, -
+        // the exponential end-cap scale and the plateau it starts from, plus
+        // the slice profile's vertical exponent (the vertical boxiness).
+        barShape: vec4f,        // peanut, endCap, plateau, vertical
         halo: vec4f,            // a_h, rMax, power, amp
         arms: vec4f,            // m, amp, pitchDeg, Rs
         // w: low 16 bits of the model seed (the noise hash reads exactly
@@ -183,31 +184,48 @@ fn rhoThick(params: DensityParams, R: f32, z: f32) -> f32 {
         return params.thick.z * radial * exp(-abs(z) / H);
 }
 
+// Interior falloff of the bar's cross-section profile, mirroring
+// density.BAR_SLICE_FALLOFF: a shape constant, the same for every model.
+const BAR_SLICE_FALLOFF: f32 = 1.5;
+
+// Mirror of density.barSliceProfile: the bar's cross-section profile in the
+// slice coordinates (u = eta/tau, v = zeta/(peanut*tau)). It reaches zero at
+// the envelope with zero slope, which is what keeps the body's edge invisible.
+fn barSliceProfile(n: f32, cv: f32, u: f32, v: f32) -> f32 {
+        let m: f32 = pow(abs(u), n) + pow(abs(v), cv);
+        if (m >= 1.0) { return 0.0; }
+        return pow(1.0 - m, BAR_SLICE_FALLOFF);
+}
+
 // Both spheroid profiles are truncated at params.truncation.z, in units of s —
 // the same cut the sampler draws inside, because the truncation is part of the
 // model and not of the sampling.
 fn rhoSpheroid(params: DensityParams, x: f32, y: f32, z: f32) -> f32 {
         let dx: f32 = x - params.centre.x;
         let dy: f32 = y - params.centre.y;
-        // The bar (boxy/peanut inner part + exponential end caps): a boxy
-        // superellipsoid cross-section whose vertical half-extent grows with |xi|
-        // (the peanut) and tapers to a point at the bar's end, uniform inside.
+        // The bar (boxy/peanut inner part + exponential end caps): the density
+        // is the cross-section's slice profile, scaled by the local section
+        // (tau) and the peanut stretch, so the body has no rim and falls off
+        // inside like a real bar's vertical profile does.
         if (params.spheroidShape.w >= PROFILE_BAR) {
                 let t: f32 = radians(params.spheroidShape.z);
                 let ct: f32 = cos(t);
                 let st: f32 = sin(t);
                 let axes: vec3f = params.spheroid.xyz * params.spheroid.w;
                 let xi: f32 = (dx * ct + dy * st) / axes.x;
+                let ax: f32 = abs(xi);
+                let n: f32 = params.spheroidShape.y;
+                let tip: f32 = min(1.0, params.truncation.z);
+                if (ax >= tip) { return 0.0; }
+                let tau: f32 = pow(max(0.0, pow(tip, n) - pow(ax, n)), 1.0 / n);
+                if (tau <= 0.0) { return 0.0; }
                 let eta: f32 = (-dx * st + dy * ct) / axes.y;
                 let peanut: f32 = 1.0 + params.barShape.x * xi * xi;
-                let n: f32 = params.spheroidShape.y;
-                let ax: f32 = abs(xi);
-                let ay: f32 = abs(eta);
-                let az: f32 = abs((z - params.centre.z) / axes.z / peanut);
-                let s: f32 = pow(pow(ax, n) + pow(ay, n) + pow(az, n), 1.0 / n);
-                if (s > min(1.0, params.truncation.z)) { return 0.0; }
+                let slice: f32 = barSliceProfile(n, params.barShape.w, eta / tau,
+                        (z - params.centre.z) / (axes.z * peanut * tau));
+                if (slice <= 0.0) { return 0.0; }
                 let cap: f32 = exp(-(ax - params.barShape.z) / params.barShape.y);
-                return params.spheroidShape.x * select(cap, 1.0, ax <= params.barShape.z);
+                return params.spheroidShape.x * select(cap, 1.0, ax <= params.barShape.z) * slice;
         }
         let s: f32 = spheroidEllipsoidRadius(params, dx, dy, z - params.centre.z);
         if (s > params.truncation.z) { return 0.0; }
@@ -274,11 +292,26 @@ fn armsArmed(params: DensityParams) -> bool {
         return params.arms.y > 0.0 && params.arms.x > 0.0 && params.arms.z > 0.0;
 }
 
+// Fade of the arm pattern in *inside* the inner edge it is allowed from: a
+// pattern that switches on at a radius is a ring-shaped step in the field,
+// visible wherever the disc is bright. Zero at (1 - ARM_INNER_FADE)*minRadius,
+// full contrast at minRadius, which is what keeps the ridges attached to the
+// bar's end. Mirrors density.armInnerFade.
+const ARM_INNER_FADE: f32 = 0.5;
+
+fn armInnerFade(params: DensityParams, R: f32) -> f32 {
+        let inner: f32 = params.armShape.y * (1.0 - ARM_INNER_FADE);
+        if (inner <= 0.0) { return 1.0; }
+        let t: f32 = clamp((R - inner) / (params.armShape.y - inner), 0.0, 1.0);
+        return t * t * (3.0 - 2.0 * t);
+}
+
 // amp 0 or m 0 is a smooth disc, which is how S0 and the E types read.
 fn armFactor(params: DensityParams, R: f32, phi: f32) -> f32 {
-        let amp: f32 = params.arms.y;
         let m: f32 = params.arms.x;
-        if (!armsArmed(params) || R < params.armShape.y) { return 1.0; }
+        if (!armsArmed(params)) { return 1.0; }
+        let amp: f32 = params.arms.y * armInnerFade(params, R);
+        if (amp <= 0.0) { return 1.0; }
         let k: f32 = armWavenumber(params);
         let arg: f32 = m * phi - k * log(R / params.arms.w) + params.armShape.x;
         let grandDesign: f32 = cos(arg);

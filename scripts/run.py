@@ -50,6 +50,7 @@ EXPERIMENTS = {
     'tile-stream':           'experiments/tile-stream-test.js',
     'tile-encoder-smoke':    'experiments/tile-encoder-smoke-test.js',
     'galaxy-types':          'experiments/galaxy-types-test.js',
+    'shape':                 'experiments/shape-test.js',
     'model-parity':          'experiments/model-parity-test.js',
     'sampling':              'experiments/sampling-test.js',
     'density-distribution':  'experiments/density-distribution-test.js',
@@ -73,7 +74,7 @@ EXPERIMENTS = {
 
 TYPES = {
     'test':   ['export-parity', 'm1-smoke', 'wgsl-validate', 'camera', 'input', 'renderer', 'hdr',
-               'landmark', 'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'model-parity', 'sampling',
+               'landmark', 'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'shape', 'model-parity', 'sampling',
                'density-distribution',
                'star-types-evolution', 'nebula-placement', 'object-placement', 'galaxy-age',
                'orbit'],

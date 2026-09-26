@@ -87,6 +87,17 @@
 		BAR_PEANUT: [[-1, 0.55], [1, 0.55], [3, 0.45], [5, 0.30], [6, 0.22], [9, 0.22]],
 		BAR_PLATEAU: [[-1, 0.50], [1, 0.50], [3, 0.55], [5, 0.60], [6, 0.65], [9, 0.65]],
 		BAR_END_CAP: [[-1, 0.16], [1, 0.16], [3, 0.18], [5, 0.22], [6, 0.26], [9, 0.26]],
+		// The bar's vertical boxiness (density.js barSliceProfile): the density
+		// falls off inside the body as (1 - |u|^n - |v|^cv)^q, and this is `cv`,
+		// the exponent of the vertical term. 2 is a smooth, elliptical-topped
+		// vertical profile; larger values flatten the top and steepen the walls,
+		// which is what "boxy" means in the vertical direction. It stays >= 2
+		// because a smaller exponent puts a cusp at the midplane: real bars are
+		// fitted with sech^2-like vertical profiles, which are smooth in the
+		// middle, not with the |z| cusp an exponential would give (Wegg et al.
+		// 2015, MNRAS 450, 4050; Portail et al. 2017, MNRAS 465, 1621). Early
+		// bars are the squarest, the late ones the roundest.
+		BAR_VERTICAL: [[-1, 2.60], [1, 2.60], [3, 2.40], [5, 2.20], [6, 2.00], [9, 2.00]],
 	};
 
 	// The Milky Way preset: verbatim the constants density.js used to export.
@@ -397,6 +408,7 @@
 				peanut: interpAnchors(ANCHORS.BAR_PEANUT, T),
 				endCap: interpAnchors(ANCHORS.BAR_END_CAP, T),
 				plateau: interpAnchors(ANCHORS.BAR_PLATEAU, T),
+				vertical: interpAnchors(ANCHORS.BAR_VERTICAL, T),
 			} : Object.assign({}, density.BAR_NONE),
 			halo: { a_h: HALO_A_H_KPC * k, rMax: HALO_RMAX_KPC * k, power: HALO_POWER, amp: 0 },
 			arms: {
@@ -739,7 +751,7 @@
 		// A bar's axes, boxiness and tilt are the spheroid group's (one fact, one
 		// slot); this group carries what only the bar profile has.
 		{ name: 'spheroidShape', source: 'spheroid', fields: ['amp', 'n', 'tiltDeg', 'profileId'] },
-		{ name: 'barShape', source: 'bar', fields: ['peanut', 'endCap', 'plateau', 'unused'] },
+		{ name: 'barShape', source: 'bar', fields: ['peanut', 'endCap', 'plateau', 'vertical'] },
 		{ name: 'halo', source: 'halo', fields: ['a_h', 'rMax', 'power', 'amp'] },
 		{ name: 'arms', source: 'arms', fields: ['m', 'amp', 'pitchDeg', 'Rs'] },
 		// w carries the low 16 bits of the model seed: the value noise reads

@@ -211,26 +211,101 @@ function rhoThick(model, R, z) {
 //   tau(xi)^n = tip^n - |xi|^n                 (the boxy cross-section, tapering to
 //                                               a point at the bar's end)
 //
-// The body is the boxy superellipsoid of exponent n (the boxiness) whose vertical
-// half-extent is P(xi)*tau(xi), and it is *uniform* inside the cross-section — that
-// is what "boxy volume" means, and it is what makes the sampler a uniform draw plus
-// one inverse CDF. Along the major axis the density is flat out to `plateau` and
-// exponential beyond; that pair of terms is the plan's "boxy/peanut inner part and
-// exponential end caps". The level radius
-//   s = (|xi|^n + |eta|^n + (|zeta|/P)^n)^(1/n)
-// is the same s the other profiles are truncated in, so `truncation.spheroidRadius`
-// crops a bar exactly like it crops a Sérsic tail.
+// and the density is the *slice profile* of that cross-section, not a constant:
 //
-// A model that has no bar carries BAR_NONE, which degenerates to a plain boxy
-// ellipsoid; it is never read, because this profile is only reached when
-// profileId is PROFILE_BAR.
+//   u = eta / tau(xi),  v = zeta / (P(xi)*tau(xi))     slice coordinates
+//   T(u, v) = (1 - |u|^n - |v|^cv)^q                   inside |u|^n + |v|^cv <= 1
+//   rho_bar = amp * L(xi) * T(u, v)
+//
+// `n` is the in-plane boxiness (a boxy superellipse in the face-on plane), `cv`
+// the *vertical* profile exponent — the authored `bar.vertical` — and `q` the
+// interior falloff (BAR_SLICE_FALLOFF). The envelope is the same bar body as
+// before: it still tapers to a point at |xi| = tip and its vertical half-extent
+// is still P(xi)*tau(xi) on the major axis. What changes is that the density
+// falls off *inside* the envelope instead of filling it. A bar seen edge-on is a
+// smooth, vertically extended boxy/peanut structure, not a flat-topped slab with
+// a rim: the Milky Way's bar falls off roughly exponentially along its principal
+// axes (scale lengths 0.70 : 0.44 : 0.18 kpc, Wegg 2014 arXiv:1408.0219), its
+// vertical profile is sech^2-like rather than flat (Wegg et al. 2015, MNRAS 450,
+// 4050), and the vertical scale height grows toward the ends of the boxy/peanut
+// region — the "peanut height function", here P(xi) (Tahmasebzadeh et al. 2023,
+// arXiv:2309.11557 eq. 6; Fragkoudi et al. 2015).
+//
+// q >= 1 makes T reach zero at the envelope with zero slope, so the body has no
+// visible edge; q = 0 reproduces the uniform slab this replaces, and cv = n with
+// q = 0 is exactly the old field (the identity barSliceMass -> lnDiskArea).
+//
+// Because T is a fixed shape scaled by (tau, P*tau), a slice's mass is
+// L(xi)*P(xi)*tau(xi)^2 times a constant — the weight the longitudinal sampler
+// already integrates — so the xi CDF, the tip and the truncation fractions are
+// untouched, and sampling.js inverts the slice in one pass:
+// p(u) ~ (1-|u|^n)^(q + 1/cv) then p(w) ~ (1-w^cv)^q for the scaled v.
+//
+// A model that has no bar carries BAR_NONE; it is never read, because this
+// profile is only reached when profileId is PROFILE_BAR.
 
-const BAR_NONE = { peanut: 0, endCap: 1, plateau: 1 };
+const BAR_NONE = { peanut: 0, endCap: 1, plateau: 1, vertical: 2 };
+// Interior falloff of the slice profile. 1.5 keeps a bar reading as a solid body
+// with a smooth edge: below ~1 the slice is flat-topped again, above ~3 it is a
+// thin spike and the bar's mass collapses into a needle.
+const BAR_SLICE_FALLOFF = 1.5;
 // Fixed Simpson quadrature, the same 1024-bin contract the disc radial integral
 // uses: the field's mass and the sampler's CDF agree by construction.
 const BAR_RADIAL_STEPS = 1024;
 
-// Area of the unit L^n disk in 2D: 4*Gamma(1+1/n)^2 / Gamma(1+2/n).
+// The vertical profile exponent of a model's bar, defaulted for the models that
+// carry BAR_NONE and for a partial override that never touches the field.
+function barVerticalExponent(model) {
+	const cv = model.bar.vertical;
+	return cv > 0 ? cv : 2;
+}
+
+// The slice profile T(u, v) — one formula for the field, the sampler's tables
+// and the tests. Symmetric in both coordinates, zero outside the envelope.
+function barSliceProfile(model, u, v) {
+	const n = model.spheroid.n;
+	const m = Math.pow(Math.abs(u), n) + Math.pow(Math.abs(v), barVerticalExponent(model));
+	if (!(m < 1)) return 0;
+	return Math.pow(1 - m, BAR_SLICE_FALLOFF);
+}
+
+// Marginal of the slice over u: the v integral at fixed u is
+// K*(1-|u|^n)^q*(1-|u|^n)^(1/cv), so p(u) ~ (1-|u|^n)^(q + 1/cv). The sampler's
+// u table and the tests read this.
+function barSliceUMarginal(model, u) {
+	const a = Math.abs(u);
+	if (!(a < 1)) return 0;
+	return Math.pow(1 - Math.pow(a, model.spheroid.n), BAR_SLICE_FALLOFF + 1 / barVerticalExponent(model));
+}
+
+// Conditional of the slice along v, in the coordinate w = v/V(u) scaled by the
+// slice's own v half-extent V = (1-|u|^n)^(1/cv) — which makes it independent of
+// u: p(w) ~ (1 - w^cv)^q on [0, 1]. One table therefore serves every slice.
+function barSliceWMarginal(model, w) {
+	const a = Math.abs(w);
+	if (!(a < 1)) return 0;
+	return Math.pow(1 - Math.pow(a, barVerticalExponent(model)), BAR_SLICE_FALLOFF);
+}
+
+// Closed-form slice mass, m_slice = integral of T over the slice plane:
+//
+//   m_slice = 4 * Ku * Kv,
+//   Kv = (1/cv) * B(1/cv, q+1),  Ku = (1/n) * B(1/n, q + 1/cv + 1)
+//
+// i.e. four quadrants times the w-integral times the u-integral. q = 0 with
+// cv = n reduces it to lnDiskArea(n), the uniform slab's slice mass.
+function barSliceMass(model) {
+	const n = model.spheroid.n;
+	const c = barVerticalExponent(model);
+	const q = BAR_SLICE_FALLOFF;
+	const kv = Math.exp(logGamma(1 / c) + logGamma(q + 1) - logGamma(q + 1 + 1 / c)) / c;
+	const ku = Math.exp(logGamma(1 / n) + logGamma(q + 1 / c + 1) - logGamma(q + 1 / c + 1 + 1 / n)) / n;
+	return 4 * kv * ku;
+}
+
+// Area of the unit L^n disk in 2D: 4*Gamma(1+1/n)^2 / Gamma(1+2/n). The uniform
+// slab's slice mass — the q = 0 case. It stays because the identity with
+// barSliceMass at q = 0, cv = n is what pins the generalisation.
 function lnDiskArea(n) {
 	return 4 * Math.exp(2 * logGamma(1 + 1 / n) - logGamma(1 + 2 / n));
 }
@@ -303,13 +378,16 @@ function rhoSpheroid(model, x, y, z) {
 		const st = Math.sin(t);
 		const xi = (dx * ct + dy * st) / (sp.a * sp.r0);
 		const eta = (-dx * st + dy * ct) / (sp.b * sp.r0);
-		const az = Math.abs(dz / (sp.c * sp.r0) / barVerticalStretch(model, xi));
-		const n = sp.n;
 		const ax = Math.abs(xi);
-		const ay = Math.abs(eta);
-		const s = Math.pow(Math.pow(ax, n) + Math.pow(ay, n) + Math.pow(az, n), 1 / n);
-		if (s > barTipRadius(model)) return 0;
-		return sp.amp * barLongitudinalProfile(model, xi);
+		const tip = barTipRadius(model);
+		if (ax > tip) return 0;
+		const tau = barCrossSectionRadius(model, xi, tip);
+		if (!(tau > 0)) return 0;
+		const u = eta / tau;
+		const v = dz / (sp.c * sp.r0) / (barVerticalStretch(model, xi) * tau);
+		const slice = barSliceProfile(model, u, v);
+		if (slice <= 0) return 0;
+		return sp.amp * barLongitudinalProfile(model, xi) * slice;
 	}
 	const s = spheroidEllipsoidRadius(model, x - model.centre.x, y - model.centre.y, z - model.centre.z);
 	if (s > model.truncation.spheroidRadius) return 0;
@@ -462,11 +540,30 @@ function armsArmed(model) {
 	return a.amp > 0 && a.m > 0 && a.pitchDeg > 0;
 }
 
+// Fade of the arm pattern inside the inner edge it is allowed from. The pattern
+// is a wave, and a wave that switches on at a radius is a ring-shaped step in
+// the field (measured: a 3.5% jump in an Irr at R = minRadius, where the disc is
+// bright). So the pattern does not switch on — it ramps in *inward*, from zero
+// at (1 - ARM_INNER_FADE)*minRadius to full contrast at minRadius. Full contrast
+// at minRadius is what keeps the arms attached to the bar's end: phase0 is
+// solved so a ridge passes exactly through (minRadius, bar tilt).
+const ARM_INNER_FADE = 0.5;
+
+function armInnerFade(model, R) {
+	const a = model.arms;
+	const inner = a.minRadius * (1 - ARM_INNER_FADE);
+	if (!(inner > 0)) return 1;
+	const t = Math.min(1, Math.max(0, (R - inner) / (a.minRadius - inner)));
+	return t * t * (3 - 2 * t);
+}
+
 // Spiral arm modulation of the disc: factor in [1-A, 1+A]. `amp` 0 or `m` 0 is
 // a smooth disc, which is how S0 and the E types read.
 function armFactor(model, R, phi) {
 	const a = model.arms;
-	if (!armsArmed(model) || R < a.minRadius) return 1.0;
+	if (!armsArmed(model)) return 1.0;
+	const amp = a.amp * armInnerFade(model, R);
+	if (amp <= 0) return 1.0;
 	const k = armWavenumber(model);
 	const arg = a.m * phi - k * Math.log(R / a.Rs) + a.phase0;
 	const grandDesign = Math.cos(arg);
@@ -475,9 +572,9 @@ function armFactor(model, R, phi) {
 		const v = arg / Math.PI;
 		const fbm = fbm2D(u, v, noiseSeed(model));
 		const combined = (1.0 - a.flocculence) * grandDesign + a.flocculence * fbm;
-		return 1.0 + a.amp * combined;
+		return 1.0 + amp * combined;
 	}
-	return 1.0 + a.amp * grandDesign;
+	return 1.0 + amp * grandDesign;
 }
 
 // Cross-arm width of the young ridge (kpc): the lane the newborn O/B stars and
@@ -553,11 +650,13 @@ function massIntegrals(model) {
 	const bn = sersicBn(sp.n);
 	let bulgeIntegral;
 	if (sp.profileId === PROFILE_BAR) {
-		// The bar's body is the unit boxy superellipsoid, so its mass is the L^n
-		// disk area, times the axes and the longitudinal marginal integrated over
-		// the half-body (the sign of xi is symmetric). The end caps and the peanut
-		// both live inside that one-dimensional integral.
-		bulgeIntegral = 2 * axes * lnDiskArea(sp.n) * barLongitudinalIntegral(model, 1);
+		// The bar's body is the unit boxy superellipsoid, so its mass is the
+		// slice plane's mass, times the axes and the longitudinal marginal
+		// integrated over the half-body (the sign of xi is symmetric). The end
+		// caps and the peanut both live inside that squared radius; the slice
+		// profile rides in barSliceMass, which degenerates to the uniform
+		// slab's lnDiskArea at q = 0.
+		bulgeIntegral = 2 * axes * barSliceMass(model) * barLongitudinalIntegral(model, 1);
 	} else if (sp.profileId === PROFILE_SERSIC) {
 		bulgeIntegral = 4 * Math.PI * axes * Math.exp(bn) * sp.n * Math.pow(bn, -3 * sp.n) * Math.exp(logGamma(3 * sp.n));
 	} else {
@@ -700,12 +799,14 @@ const DensityLib = {
 	discRadialWeight,
 	toGalactocentric, spheroidEllipsoidRadius, insideDisc,
 	rhoThin, rhoThick, rhoSpheroid, rhoHalo,
-	armFactor, armRidgeWidth, distanceToNearestArm, armRidgeAzimuth, armWavenumber, armsArmed,
+	armFactor, armInnerFade, armRidgeWidth, distanceToNearestArm, armRidgeAzimuth, armWavenumber, armsArmed,
+	ARM_INNER_FADE,
 	hash2DNoise, fbm2D, hash3DNoise, fbm3D, noiseSeed,
 	clumpFactor, irregularFactor, irregularFieldFactor,
 	sersicMassFraction, sersicRadiusForFraction,
 	barTipRadius, barVerticalStretch, barLongitudinalProfile, barCrossSectionRadius,
 	barLongitudinalWeight, barLongitudinalIntegral, barEnclosedMassFraction, lnDiskArea, BAR_NONE,
+	barSliceProfile, barSliceUMarginal, barSliceWMarginal, barSliceMass, barVerticalExponent, BAR_SLICE_FALLOFF,
 	rhoTotal, rhoDecomposed, dominantComponent, sampleComponentIndex,
 };
 if (typeof module !== 'undefined') module.exports = DensityLib;

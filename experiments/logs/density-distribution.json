@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-24T19:54:01.488Z",
+  "date": "2026-09-26T12:29:05.223Z",
   "seed": 42,
   "suite": [
     "E4",
@@ -9,7 +9,7 @@
     "Sc",
     "Irr"
   ],
-  "totalSampleMs": 1229,
+  "totalSampleMs": 1291,
   "totalChecks": 51,
   "passed": 51,
   "failed": 0,
@@ -203,34 +203,34 @@
     {
       "name": "SBa (table): the box contains model mass",
       "pass": true,
-      "detail": 56.904145556109455
+      "detail": 57.00145235145351
     },
     {
       "name": "SBa (table): galactocentric R matches the field (TV < 8%)",
       "pass": true,
-      "detail": 0.0094
+      "detail": 0.0097
     },
     {
       "name": "SBa (table): z matches the field (TV < 8%)",
       "pass": true,
-      "detail": 0.0053
+      "detail": 0.0036
     },
     {
       "name": "SBa (table): component shares match the analytic masses (within 2%)",
       "pass": true,
       "detail": {
-        "worst": 0.0061,
+        "worst": 0.0043,
         "thin": {
           "observed": 0.50023,
-          "expected": 0.49979
+          "expected": 0.4989
         },
         "thick": {
           "observed": 0.15192,
-          "expected": 0.15284
+          "expected": 0.15257
         },
         "bulge": {
           "observed": 0.34768,
-          "expected": 0.34717
+          "expected": 0.34832
         },
         "halo": {
           "observed": 0.00017,
@@ -260,7 +260,7 @@
     {
       "name": "Sc (table): the box contains model mass",
       "pass": true,
-      "detail": 98.00159742360123
+      "detail": 97.99615098896115
     },
     {
       "name": "Sc (table): galactocentric R matches the field (TV < 8%)",
@@ -276,10 +276,10 @@
       "name": "Sc (table): component shares match the analytic masses (within 2%)",
       "pass": true,
       "detail": {
-        "worst": 0.0082,
+        "worst": 0.0083,
         "thin": {
           "observed": 0.77585,
-          "expected": 0.77456
+          "expected": 0.77455
         },
         "thick": {
           "observed": 0.16937,
@@ -317,7 +317,7 @@
     {
       "name": "Irr (table): the box contains model mass",
       "pass": true,
-      "detail": 10.884333557701524
+      "detail": 10.884334103113327
     },
     {
       "name": "Irr (table): galactocentric R matches the field (TV < 8%)",

@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-24T19:53:52.959Z",
+  "date": "2026-09-26T12:28:57.081Z",
   "totalChecks": 89,
   "passed": 89,
   "failed": 0,
@@ -204,7 +204,7 @@
       "name": "bar major-axis marginal: histogram matches integrated field (TV < 2%)",
       "pass": true,
       "detail": {
-        "tv": 0.007236463173264758,
+        "tv": 0.006044876376973726,
         "mass": 0.6989120761430065
       }
     },
@@ -217,8 +217,8 @@
       "name": "bar vertical marginal: histogram matches integrated field (TV < 2%)",
       "pass": true,
       "detail": {
-        "tv": 0.0066540732337436286,
-        "mass": 0.6655208487860711
+        "tv": 0.005538167119415318,
+        "mass": 0.40923749147917743
       }
     },
     {
@@ -226,7 +226,7 @@
       "pass": true,
       "detail": {
         "centre": 0,
-        "lobe": 0.6065306597126335
+        "lobe": 0.018335743997186533
       }
     },
     {

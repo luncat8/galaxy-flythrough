@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-24T19:53:50.350Z",
+  "date": "2026-09-26T12:28:50.104Z",
   "types": [
     "E0",
     "E1",
@@ -593,8 +593,8 @@
       ]
     }
   ],
-  "totalChecks": 502,
-  "passed": 502,
+  "totalChecks": 506,
+  "passed": 506,
   "failed": 0,
   "checks": [
     {
@@ -2307,7 +2307,7 @@
         "amps": {
           "thin": 0.262090047033834,
           "thick": 0.04133256568970822,
-          "bulge": 13.68342446318099,
+          "bulge": 26.935490203903,
           "halo": 0.00048
         },
         "delivered": {
@@ -2340,7 +2340,7 @@
         "amps": {
           "thin": 0.6290161128812014,
           "thick": 0.0900131430575868,
-          "bulge": 6.465418058853017,
+          "bulge": 12.727019121344167,
           "halo": 0.00064
         },
         "delivered": {
@@ -2373,7 +2373,7 @@
         "amps": {
           "thin": 0.7407197735531099,
           "thick": 0.06814163786828893,
-          "bulge": 3.2744317768736657,
+          "bulge": 7.290906533142245,
           "halo": 0.0010400000000000001
         },
         "delivered": {
@@ -2406,7 +2406,7 @@
         "amps": {
           "thin": 0.7871861651135736,
           "thick": 0.050709222645748994,
-          "bulge": 3.617054530855809,
+          "bulge": 8.719469638775454,
           "halo": 0.00112
         },
         "delivered": {
@@ -3808,97 +3808,97 @@
     {
       "name": "SBb: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "E0: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "E1: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "E2: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "E3: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "E4: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "E5: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "E6: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "E7: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "S0: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "Sa: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "Sb: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "Sc: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "Sd: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "SB0: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "SBa: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "SBc: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "SBd: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "Irr: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 7
+      "detail": 6
     },
     {
       "name": "every barred table type carries the bar profile",
@@ -3911,55 +3911,87 @@
       ]
     },
     {
-      "name": "SB0: the n=2 bar with no peanut is exactly the ellipsoid volume",
+      "name": "SB0: the n=2 bar with no peanut has the analytic slice-profile mass",
       "pass": true,
-      "detail": 1.4962777490517474
+      "detail": 0.6797605902950139
+    },
+    {
+      "name": "SB0: the bar's vertical profile exponent is a smooth-top boxiness",
+      "pass": true,
+      "detail": {
+        "vertical": 2.6,
+        "T": 0
+      }
     },
     {
       "name": "SB0: the bar mass integral is the field's own integral",
       "pass": true,
       "detail": {
-        "grid": 1.8151,
-        "integral": 1.813
+        "grid": 0.9209,
+        "integral": 0.921
       }
     },
     {
-      "name": "SBa: the n=2 bar with no peanut is exactly the ellipsoid volume",
+      "name": "SBa: the n=2 bar with no peanut has the analytic slice-profile mass",
       "pass": true,
-      "detail": 2.5333803158548105
+      "detail": 1.1509174015576957
+    },
+    {
+      "name": "SBa: the bar's vertical profile exponent is a smooth-top boxiness",
+      "pass": true,
+      "detail": {
+        "vertical": 2.6,
+        "T": 1
+      }
     },
     {
       "name": "SBa: the bar mass integral is the field's own integral",
       "pass": true,
       "detail": {
-        "grid": 3.0703,
-        "integral": 3.0697
+        "grid": 1.5593,
+        "integral": 1.5594
       }
     },
     {
-      "name": "SBc: the n=2 bar with no peanut is exactly the ellipsoid volume",
+      "name": "SBc: the n=2 bar with no peanut has the analytic slice-profile mass",
       "pass": true,
-      "detail": 1.3138515658873584
+      "detail": 0.5520001370568408
+    },
+    {
+      "name": "SBc: the bar's vertical profile exponent is a smooth-top boxiness",
+      "pass": true,
+      "detail": {
+        "vertical": 2.2,
+        "T": 5
+      }
     },
     {
       "name": "SBc: the bar mass integral is the field's own integral",
       "pass": true,
       "detail": {
-        "grid": 1.6421,
-        "integral": 1.6416
+        "grid": 0.7373,
+        "integral": 0.7372
       }
     },
     {
-      "name": "SBd: the n=2 bar with no peanut is exactly the ellipsoid volume",
+      "name": "SBd: the n=2 bar with no peanut has the analytic slice-profile mass",
       "pass": true,
-      "detail": 0.547210148224639
+      "detail": 0.21888405928985535
+    },
+    {
+      "name": "SBd: the bar's vertical profile exponent is a smooth-top boxiness",
+      "pass": true,
+      "detail": {
+        "vertical": 2,
+        "T": 6
+      }
     },
     {
       "name": "SBd: the bar mass integral is the field's own integral",
       "pass": true,
       "detail": {
-        "grid": 0.6405,
-        "integral": 0.6402
+        "grid": 0.2656,
+        "integral": 0.2656
       }
     },
     {
@@ -3967,7 +3999,7 @@
       "pass": true,
       "detail": {
         "delivered": 0.1657,
-        "untruncated": 1.813
+        "untruncated": 0.921
       }
     },
     {
@@ -3985,7 +4017,7 @@
       "pass": true,
       "detail": {
         "delivered": 0.1657,
-        "untruncated": 3.0697
+        "untruncated": 1.5594
       }
     },
     {
@@ -4003,7 +4035,7 @@
       "pass": true,
       "detail": {
         "delivered": 0.1386,
-        "untruncated": 1.6416
+        "untruncated": 0.7372
       }
     },
     {
@@ -4021,7 +4053,7 @@
       "pass": true,
       "detail": {
         "delivered": 0.131,
-        "untruncated": 0.6402
+        "untruncated": 0.2656
       }
     },
     {

@@ -443,7 +443,9 @@ function relNear(a, b, tol) {
 	const bar = TABLE.filter((m) => m.spheroid.profileId === density.PROFILE_BAR);
 	check('every barred table type carries the bar profile', bar.length === 4,
 		bar.map((m) => m.type));
-	// The bar frame: the level radius s the field truncates in, from a world point.
+	// The bar frame as the field measures it: |xi| along the major axis, and the
+	// slice coordinates (u, v) inside the cross-section. Since 0.4.8 the body is
+	// the *slice envelope* (|u|^n + |v|^cv = 1), not an s <= 1 level.
 	function barLevel(model, x, y, z) {
 		const sp = model.spheroid;
 		const t = sp.tiltDeg * Math.PI / 180;
@@ -452,26 +454,41 @@ function relNear(a, b, tol) {
 		const dx = x - model.centre.x;
 		const dy = y - model.centre.y;
 		const dz = z - model.centre.z;
+		const n = sp.n;
 		const xi = (dx * ct + dy * st) / (sp.a * sp.r0);
 		const eta = (-dx * st + dy * ct) / (sp.b * sp.r0);
-		const stretch = 1 + model.bar.peanut * xi * xi;
-		const n = sp.n;
-		const ax = Math.abs(xi);
-		const ay = Math.abs(eta);
-		const az = Math.abs(dz / (sp.c * sp.r0) / stretch);
-		return { s: Math.pow(Math.pow(ax, n) + Math.pow(ay, n) + Math.pow(az, n), 1 / n), xi };
+		const tau = density.barCrossSectionRadius(model, xi, density.barTipRadius(model));
+		const stretch = density.barVerticalStretch(model, xi);
+		const u = tau > 0 ? eta / tau : Infinity;
+		const v = tau > 0 ? dz / (sp.c * sp.r0 * stretch * tau) : Infinity;
+		const cv = density.barVerticalExponent(model);
+		const m = tau > 0 ? Math.pow(Math.abs(u), n) + Math.pow(Math.abs(v), cv) : Infinity;
+		return { m, xi };
 	}
 	for (const model of bar) {
 		const sp = model.spheroid;
 		const axes = sp.a * sp.b * sp.c * sp.r0 ** 3;
-		// n = 2 with no peanut and no cap is exactly the ellipsoid: the L^2 disk
-		// area is pi and the longitudinal weight integrates to 2/3 per side.
+		// The 0.4.8 slice pin: at n = 2 with no peanut and no cap the boxy body
+		// is the ellipsoid of the axes, the longitudinal weight integrates to
+		// 2/3 per side, and the slice mass is the closed form barSliceMass
+		// carries — which is *the* check that the analytic mass and the
+		// generalised slice profile describe the same body. (The uniform slab
+		// this replaces is the q = 0, cv = n case of the same family, pinned
+		// separately in shape-test.js.)
 		const ell = galaxy.createGalaxy({ type: model.type, overrides: {
 			spheroid: { n: 2 }, bar: { peanut: 0, plateau: 1, endCap: 1 },
 		} });
-		check(`${model.type}: the n=2 bar with no peanut is exactly the ellipsoid volume`,
-			relNear(density.massIntegrals(ell).bulge, 4 / 3 * Math.PI * axes, 1e-9),
+		check(`${model.type}: the n=2 bar with no peanut has the analytic slice-profile mass`,
+			relNear(density.massIntegrals(ell).bulge,
+				2 * axes * density.barSliceMass(ell) * 2 / 3, 1e-9),
 			density.massIntegrals(ell).bulge);
+		// The vertical boxiness is authored per stage: >= 2 everywhere, so the
+		// bar's vertical profile has a smooth top (a smaller exponent would put
+		// a cusp at the midplane), and squarest in the early types.
+		check(`${model.type}: the bar's vertical profile exponent is a smooth-top boxiness`,
+			model.bar.vertical >= 2 && model.bar.vertical <= 4
+			&& model.bar.vertical === galaxy.interpAnchors(galaxy.ANCHORS.BAR_VERTICAL, model.T),
+			{ vertical: model.bar.vertical, T: model.T });
 		// Midpoint sum of rhoSpheroid over the bar's bounding box, divided by amp:
 		// the field's own integral, with no use of the closed bookkeeping.
 		const span = 1.05 * Math.max(sp.a, sp.b) * sp.r0;
@@ -509,7 +526,7 @@ function relNear(a, b, tol) {
 		for (let i = 0; i < buf.count; i++) {
 			if (buf.component[i] !== density.COMPONENT_BULGE) continue;
 			const level = barLevel(cut, buf.x[i], buf.y[i], buf.z[i]);
-			if (level.s > 0.5 + 1e-6 || Math.abs(level.xi) > 0.5 + 1e-6) outside++;
+			if (level.m > 1 + 1e-6 || Math.abs(level.xi) > 0.5 + 1e-6) outside++;
 		}
 		check(`${model.type}: no bar star is drawn past the cropped tip`, outside === 0, outside);
 		const whole = sampling.createBuffers(6000);
@@ -517,7 +534,8 @@ function relNear(a, b, tol) {
 		let strayed = 0;
 		for (let i = 0; i < whole.count; i++) {
 			if (whole.component[i] !== density.COMPONENT_BULGE) continue;
-			if (barLevel(model, whole.x[i], whole.y[i], whole.z[i]).s > 1 + 1e-6) strayed++;
+			const level = barLevel(model, whole.x[i], whole.y[i], whole.z[i]);
+			if (level.m > 1 + 1e-6 || Math.abs(level.xi) > 1 + 1e-6) strayed++;
 		}
 		check(`${model.type}: every sampled bar star lies inside the body the field draws`,
 			strayed === 0, strayed);

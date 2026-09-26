@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-26T09:42:05.579Z",
+  "date": "2026-09-26T12:28:38.294Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -7,11 +7,11 @@
     },
     {
       "name": "density",
-      "lines": 334
+      "lines": 367
     },
     {
       "name": "orbit",
-      "lines": 260
+      "lines": 262
     },
     {
       "name": "simple-step",
@@ -19,7 +19,7 @@
     },
     {
       "name": "star-sprite",
-      "lines": 420
+      "lines": 423
     },
     {
       "name": "star-sprite-hdr",
@@ -49,8 +49,8 @@
     "tonemap",
     "simple-step"
   ],
-  "totalChecks": 172,
-  "passed": 172,
+  "totalChecks": 180,
+  "passed": 180,
   "failed": 0,
   "checks": [
     {
@@ -79,11 +79,11 @@
         ],
         [
           "density",
-          16084
+          17747
         ],
         [
           "orbit",
-          13012
+          13167
         ],
         [
           "simple-step",
@@ -91,7 +91,7 @@
         ],
         [
           "star-sprite",
-          20333
+          20519
         ],
         [
           "star-sprite-hdr",
@@ -173,7 +173,7 @@
     {
       "name": "density: declares its functions",
       "pass": true,
-      "detail": 23
+      "detail": 25
     },
     {
       "name": "orbit: braces and parentheses balance",
@@ -320,9 +320,44 @@
       "detail": 6
     },
     {
+      "name": "star-sprite: every call target resolves in the module",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "star-sprite-hdr: every call target resolves in the module",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "nebula-billboard: every call target resolves in the module",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "tonemap: every call target resolves in the module",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "procedural-gen: every call target resolves in the module",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "cull: every call target resolves in the module",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "simple-step: every call target resolves in the module",
+      "pass": true,
+      "detail": []
+    },
+    {
       "name": "density.wgsl declares a DensityParams struct",
       "pass": true,
-      "detail": 1935
+      "detail": 2021
     },
     {
       "name": "DensityParams has one vec4 per layout group, in the same order",
@@ -479,6 +514,14 @@
       "name": "density.wgsl hard-codes no galaxy numbers",
       "pass": true,
       "detail": []
+    },
+    {
+      "name": "density.wgsl profile constants match the JS model",
+      "pass": true,
+      "detail": {
+        "barSliceFalloff": 1.5,
+        "armInnerFade": 0.5
+      }
     },
     {
       "name": "density.wgsl component indices match the JS model",
@@ -1176,8 +1219,14 @@
       "pass": true
     },
     {
-      "name": "engine ids 0/1/2 match classic/simple/apocenter GPU dispatch",
-      "pass": true
+      "name": "the engine lane is the bit mask the classic/simple/apocenter dispatch shares",
+      "pass": true,
+      "detail": {
+        "classic": 1,
+        "simple": 2,
+        "apocenter": 4,
+        "both": 6
+      }
     },
     {
       "name": "the step uniform is five vec4s (20 floats) packed per frame under simple",

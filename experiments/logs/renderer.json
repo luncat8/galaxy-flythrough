@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-26T09:42:06.671Z",
+  "date": "2026-09-26T12:28:39.485Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 136,
+  "prepareMs": 137,
   "totalChecks": 121,
   "passed": 121,
   "failed": 0,
@@ -283,10 +283,10 @@
         "packed": 34,
         "gas": 34,
         "byType": {
-          "planetary": 25,
+          "planetary": 26,
           "HII": 6,
           "globular": 3,
-          "SNR": 3,
+          "SNR": 2,
           "open": 3
         }
       }
@@ -386,7 +386,7 @@
       "name": "uniform carries the exposure and sprite sizes",
       "pass": true,
       "detail": {
-        "exposure": 12,
+        "exposure": 22,
         "base": 1.2999999523162842,
         "max": 14
       }
@@ -458,14 +458,14 @@
       }
     },
     {
-      "name": "uniform engine lane carries (0, eccMax, 0, 0) under the default classic engine",
+      "name": "uniform engine lane carries (classic bit, apocenterForce, no tilt, share)",
       "pass": true,
       "detail": {
         "engine": [
+          1,
+          0.44999998807907104,
           0,
-          0.20666666328907013,
-          0,
-          0
+          1
         ]
       }
     },
@@ -674,7 +674,7 @@
     {
       "name": "exposure key raises magZero by one step",
       "pass": true,
-      "detail": 12.75
+      "detail": 22.75
     },
     {
       "name": "the exposure action is consumed",
@@ -882,8 +882,11 @@
       }
     },
     {
-      "name": "classic frames carry engine id 0 and dispatch no compute",
-      "pass": true
+      "name": "classic frames carry only the classic bit and dispatch no compute",
+      "pass": true,
+      "detail": {
+        "engine": 1
+      }
     },
     {
       "name": "setEngine(simple) switches the state and re-seeds the epoch",
@@ -893,11 +896,11 @@
       }
     },
     {
-      "name": "simple frames carry engine id 1 with the model eccMax beside it",
+      "name": "simple frames carry the simple bit with the apocenter force beside it",
       "pass": true,
       "detail": {
-        "id": 1,
-        "ecc": 0.20666666328907013
+        "mask": 2,
+        "force": 0.44999998807907104
       }
     },
     {
@@ -936,12 +939,13 @@
       "pass": true
     },
     {
-      "name": "apocenter packs engine id, bounded eccentricity and the model bar angle",
+      "name": "apocenter packs its mask bit, the bounded force, the model bar angle and the share",
       "pass": true,
       "detail": {
-        "id": 2,
-        "ecc": 0.44999998807907104,
-        "barTilt": 0.471238911151886
+        "mask": 4,
+        "force": 0.44999998807907104,
+        "barTilt": 0.471238911151886,
+        "share": 1
       }
     },
     {

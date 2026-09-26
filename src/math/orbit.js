@@ -572,7 +572,14 @@ function setEngine(id) {
 	return engine;
 }
 function getEngine() { return engine; }
-function engineName() { return (engine & ENGINE_SIMPLE ? 'simple ' : '') + (engine & ENGINE_APOCENTER ? 'apocenter' : '') || 'classic'; }
+function engineName() {
+	// The lane is a mask, so the friendly name is the enabled passes joined in
+	// order; the bare classic bit (or an empty selection) reports 'classic'.
+	const names = [];
+	if (engine & ENGINE_SIMPLE) names.push('simple');
+	if (engine & ENGINE_APOCENTER) names.push('apocenter');
+	return names.length ? names.join(' ') : 'classic';
+}
 
 // Demo anchors: sigma 0.25 rad at m = 2 / pitch 15 deg, eccMax 0.2. The sigma
 // scales with the pattern's own arm spacing (narrower spacing, narrower lane)
@@ -913,9 +920,11 @@ function packSimpleParams(model, out, offset, dtStar, count, starTimeMyr) {
 	return out;
 }
 
-// CameraUniform engine vec4 at offset 44: (id, eccentricityMax, barTilt, 0).
-// The simple vertex reconstruction reads eccentricityMax; apocenter also reads
-// the model-derived bar angle. Pattern phase remains in the orbit uniform.
+// CameraUniform engine vec4 at offset 44: the 0.4.7 lane is
+// (mask, apocenterForce, barTilt, apocenterShare) — a bit mask, not an id.
+// The vertex stage tests mask bits 2 and 4; apocenter reads the force and the
+// model-derived bar angle, simple reads the integrated azimuths instead.
+// Pattern phase remains in the orbit uniform.
 function packEngineVec(model, out, offset) {
 	out[offset] = engine;
 	// y is the apocenter force; simple uses a conservative fixed eccentricity

@@ -105,13 +105,18 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 	const halfHeight = (xi) => density.barCrossSectionRadius(bar, xi, tip) * stretch(xi);
 	histogram('bar major-axis marginal', barBuf, (i) => Math.abs(barBuf.x[i]) / A, tip,
 		(xi) => density.barLongitudinalWeight(bar, xi, tip));
-	// The vertical marginal: at each xi the slice of the boxy cross-section, so
-	// the unconditional one weighs each slice by the bar's own xi marginal — which
-	// is what makes this a test of the peanut rather than of a plain tube.
+	// The vertical marginal: at each xi the slice profile's own u-marginal
+	// integrated out of the way, so the unconditional expectation weighs each
+	// slice by the bar's xi marginal — which is what makes this a test of the
+	// peanut and of the slice profile rather than of a plain tube. Integrating u
+	// over (1 - |u|^n - |v|^cv)^q leaves (1 - |v|^cv)^(q + 1/n), times a
+	// constant that cancels: the histogram compares normalised shapes.
 	const zetaSlice = (xi, zeta) => {
 		const tau = density.barCrossSectionRadius(bar, xi, tip);
-		const inner = Math.pow(tau, nBar) - Math.pow(Math.abs(zeta) / stretch(xi), nBar);
-		return inner > 0 ? Math.pow(inner, 1 / nBar) : 0;
+		const v = zeta / (tau * stretch(xi));
+		const cv = density.barVerticalExponent(bar);
+		if (!(Math.abs(v) < 1)) return 0;
+		return Math.pow(1 - Math.pow(Math.abs(v), cv), density.BAR_SLICE_FALLOFF + 1 / nBar);
 	};
 	let zReach = 0;
 	for (let i = 0; i <= 512; i++) zReach = Math.max(zReach, halfHeight(i * tip / 512));

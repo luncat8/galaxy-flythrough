@@ -799,13 +799,21 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 	const savedEngine = orbit.getEngine();
 	const savedDamp = orbit.getWaveDamping();
 
+	// The engine lane is a composable bit mask (0.4.7): classic is the base
+	// law and is also the fallback, simple and apocenter are passes the vertex
+	// tests by bit, and a list of names ORs them together.
 	check('the classic engine is the default and unknown names fall back to it',
 		savedEngine === orbit.ENGINE_CLASSIC && orbit.engineName() === 'classic'
-		&& orbit.ENGINE_SIMPLE === 1,
+		&& orbit.ENGINE_SIMPLE === 2 && orbit.ENGINE_APOCENTER === 4,
 		{ engine: savedEngine, name: orbit.engineName() });
-	check('the engine switch round-trips by name and by id',
-		orbit.setEngine('simple') === 1 && orbit.engineName() === 'simple'
-		&& orbit.setEngine('bogus') === 0 && orbit.setEngine(1) === 1 && orbit.setEngine(0) === 0);
+	check('the engine switch round-trips by name, by id and as a mask',
+		orbit.setEngine('simple') === orbit.ENGINE_SIMPLE && orbit.engineName() === 'simple'
+		&& orbit.setEngine('bogus') === orbit.ENGINE_CLASSIC
+		&& orbit.setEngine(orbit.ENGINE_SIMPLE) === orbit.ENGINE_SIMPLE
+		&& orbit.setEngine(orbit.ENGINE_CLASSIC) === orbit.ENGINE_CLASSIC
+		&& orbit.setEngine(['simple', 'apocenter']) === (orbit.ENGINE_SIMPLE | orbit.ENGINE_APOCENTER)
+		&& orbit.engineName() === 'simple apocenter',
+		{ mask: orbit.getEngine(), name: orbit.engineName() });
 
 	// Per-type derivation table (plan §10.1): the demo's hand-tuned constants
 	// become the model's own curve, group speed, arms and dispersion.
@@ -909,8 +917,10 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 	const E = new Float32Array(4);
 	orbit.setEngine('simple');
 	orbit.packEngineVec(sb, E, 0);
-	check('the engine lane carries (id, eccMax, 0, 0)',
-		E[0] === 1 && E[1] === Math.fround(Psb.eccMax) && E[2] === 0 && E[3] === 0);
+	check('the engine lane carries (mask, apocenterForce, barTilt, share)',
+		E[0] === orbit.ENGINE_SIMPLE && E[1] === Math.fround(orbit.getApocenterForce())
+		&& E[2] === 0 && E[3] === orbit.getApocenterShare(),
+		{ lane: Array.from(E) });
 	orbit.setEngine(savedEngine);
 
 	// Vertex mirror: the azimuth turns in the star's own centre-crossing orbital
@@ -975,9 +985,9 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 	orbit.setPatternScale(1, 0, MW);
 	orbit.resetPatternPhaseOffset();
 	orbit.setEngine('apocenter');
-	check('apocenter is a named third engine and engine id 2 round-trips',
-		orbit.ENGINE_APOCENTER === 2 && orbit.setEngine(2) === 2
-		&& orbit.engineName() === 'apocenter' && orbit.setEngine('apocenter') === 2);
+	check('apocenter is a named third engine and its mask bit round-trips',
+		orbit.ENGINE_APOCENTER === 4 && orbit.setEngine(4) === 4
+		&& orbit.engineName() === 'apocenter' && orbit.setEngine('apocenter') === 4);
 
 	let identityWorst = 0;
 	for (let family = 0; family < 4; family++) {

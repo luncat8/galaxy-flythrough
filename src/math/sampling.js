@@ -12,8 +12,8 @@
 //   thick disc: R from the field's radial marginal (core + flare included),
 //               phi ~ arm profile, z ~ exp(-|z|/H(R))
 //   spheroid:   plummer radius or sersic radius, uniform direction, axis scaling
-//   bar (SB*):  |xi| from the longitudinal CDF (plateau + exponential end caps),
-//               then uniform in the boxy/peanut cross-section at that xi
+//   bar (SB*):  xi from the longitudinal CDF (plateau + exponential end caps),
+//               then the slice profile's own u and v CDFs at that xi
 //   halo:       r ~ r^-1.5 on [a_h, rMax] (i.e. rho ~ r^-3.5), uniform direction
 //
 // Irregulars are two-stage: after the base draw, CLUMP_SHARE of the disc stars
@@ -102,56 +102,61 @@
 		out[0] = sampleTable(u, sampler.radii, sampler.cdf, sampler.total);
 	}
 
-	// ---- the bar ------------------------------------------------------------
-	//
-	// The bar's field is uniform inside a boxy cross-section, so the sampler is a
-	// uniform draw in that cross-section plus one inverse CDF along the major axis
-	// (the plan's "exponential cap rejection replaced by an inverse-CDF"). Both
-	// tables are built from the weight the field integrates, so the stars and the
-	// field cannot drift apart; the transverse one is scale-free and depends on
-	// the boxiness alone.
-	function buildBarSampler(model) {
-		const n = model.spheroid.n;
-		const tip = density.barTipRadius(model);
-		const xi = new Float64Array(RADIAL_CDF_STEPS + 1);
-		const cdf = new Float64Array(RADIAL_CDF_STEPS + 1);
-		const h = tip / RADIAL_CDF_STEPS;
-		for (let i = 0; i <= RADIAL_CDF_STEPS; i++) xi[i] = i * h;
-		let total = 0;
-		for (let i = 0; i < RADIAL_CDF_STEPS; i++) {
-			total += (h / 6) * (density.barLongitudinalWeight(model, xi[i], tip)
-				+ 4 * density.barLongitudinalWeight(model, 0.5 * (xi[i] + xi[i + 1]), tip)
-				+ density.barLongitudinalWeight(model, xi[i + 1], tip));
-			cdf[i + 1] = total;
-		}
-		// Uniform in the unit L^n disk: the slice marginal p(y) ~ (1-|y|^n)^(1/n),
-		// then a uniform z inside the slice at that y.
-		const slice = (y) => Math.pow(Math.max(0, 1 - Math.pow(Math.abs(y), n)), 1 / n);
-		const ty = new Float64Array(RADIAL_CDF_STEPS + 1);
-		const tyCdf = new Float64Array(RADIAL_CDF_STEPS + 1);
-		const th = 2 / RADIAL_CDF_STEPS;
-		for (let i = 0; i <= RADIAL_CDF_STEPS; i++) ty[i] = -1 + i * th;
-		let yTotal = 0;
-		for (let i = 0; i < RADIAL_CDF_STEPS; i++) {
-			yTotal += (th / 6) * (slice(ty[i]) + 4 * slice(0.5 * (ty[i] + ty[i + 1])) + slice(ty[i + 1]));
-			tyCdf[i + 1] = yTotal;
-		}
-		return { xi, cdf, total, ty, tyCdf, yTotal, n, tip };
-	}
+// ---- the bar ------------------------------------------------------------
+//
+// The bar's field is a slice profile T(u, v) scaled by the local cross-section,
+// so the sampler is three independent inverse CDFs, all of them exact and
+// single-pass: the major axis (plateau + exponential end caps, unchanged) and
+// the two slice coordinates. Every table is built from the marginal density.js
+// integrates, so the stars and the field cannot drift apart.
+//
+// All three densities are symmetric, so each table spans [-1, 1] and one
+// uniform inverts sign and magnitude together — no second draw for the sign,
+// and no rejection near u = 0.
 
-	// Bar-frame offsets (unrotated, centre-relative): the caller applies the tilt.
-	function sampleBarPoint(model, sampler, u1, u2, u3, u4, out) {
-		const sign = u2 < 0.5 ? -1 : 1;
-		const xi = sign * sampleTable(u1, sampler.xi, sampler.cdf, sampler.total);
-		const tau = density.barCrossSectionRadius(model, xi, sampler.tip);
-		const stretch = density.barVerticalStretch(model, xi);
-		const eta = sampleTable(u3, sampler.ty, sampler.tyCdf, sampler.yTotal);
-		const zeta = (2 * u4 - 1) * Math.pow(Math.max(0, 1 - Math.pow(Math.abs(eta), sampler.n)), 1 / sampler.n);
-		const sp = model.spheroid;
-		out[0] = sp.a * sp.r0 * xi;
-		out[1] = sp.b * sp.r0 * tau * eta;
-		out[2] = sp.c * sp.r0 * tau * stretch * zeta;
+// A symmetric 1-D density on [-1, 1] as a (grid, cdf) table. Fixed Simpson, the
+// same 1024-bin contract the disc radial sampler uses.
+function buildSymmetricSampler(weight, steps) {
+	const grid = new Float64Array(steps + 1);
+	const cdf = new Float64Array(steps + 1);
+	const h = 2 / steps;
+	for (let i = 0; i <= steps; i++) grid[i] = -1 + i * h;
+	let total = 0;
+	for (let i = 0; i < steps; i++) {
+		total += (h / 6) * (weight(grid[i]) + 4 * weight(0.5 * (grid[i] + grid[i + 1])) + weight(grid[i + 1]));
+		cdf[i + 1] = total;
 	}
+	return { grid, cdf, total };
+}
+
+function buildBarSampler(model) {
+	const tip = density.barTipRadius(model);
+	// xi: the longitudinal marginal L(xi)*P(xi)*tau(xi)^2, in units of the tip.
+	// u: (1 - |u|^n)^(q + 1/cv), the slice's own marginal over the intermediate
+	// axis. w: (1 - |w|^cv)^q, the scaled v marginal — independent of u, which is
+	// why the slice costs two tables and not a grid.
+	const xi = buildSymmetricSampler((x) => density.barLongitudinalWeight(model, x * tip, tip), RADIAL_CDF_STEPS);
+	const u = buildSymmetricSampler((x) => density.barSliceUMarginal(model, x), RADIAL_CDF_STEPS);
+	const w = buildSymmetricSampler((x) => density.barSliceWMarginal(model, x), RADIAL_CDF_STEPS);
+	// v = V*w with V = (1 - |u|^n)^(1/cv) — the exposed exponent, so folding the
+	// u draw into the v draw stays one multiply.
+	return { tip, xi, u, w, n: model.spheroid.n,
+		vExponent: 1 / density.barVerticalExponent(model) };
+}
+
+// Bar-frame offsets (unrotated, centre-relative): the caller applies the tilt.
+function sampleBarPoint(model, sampler, uXi, uEta, uZeta, out) {
+	const xi = sampleTable(uXi, sampler.xi.grid, sampler.xi.cdf, sampler.xi.total) * sampler.tip;
+	const tau = density.barCrossSectionRadius(model, xi, sampler.tip);
+	const stretch = density.barVerticalStretch(model, xi);
+	const eta = sampleTable(uEta, sampler.u.grid, sampler.u.cdf, sampler.u.total);
+	const w = sampleTable(uZeta, sampler.w.grid, sampler.w.cdf, sampler.w.total);
+	const vHalf = Math.pow(Math.max(0, 1 - Math.pow(Math.abs(eta), sampler.n)), sampler.vExponent);
+	const sp = model.spheroid;
+	out[0] = sp.a * sp.r0 * xi;
+	out[1] = sp.b * sp.r0 * tau * eta;
+	out[2] = sp.c * sp.r0 * tau * stretch * vHalf * w;
+}
 
 	// z ~ sech^2(z / 2H) truncated to |z| <= zMax. The untruncated CDF is
 	// F(z) = (1 + tanh(z/2H)) / 2, so scaling the uniform into the truncation
@@ -324,7 +329,7 @@
 				component = density.COMPONENT_BULGE;
 				const sp = model.spheroid;
 				if (barSampler) {
-					sampleBarPoint(model, barSampler, u1, u2, u3, u4, scratch);
+					sampleBarPoint(model, barSampler, u1, u2, u3, scratch);
 				} else {
 					const s = sp.r0 * sampleSpheroidRadius(model, u1);
 					sampleDirection(u2, u3, scratch);
@@ -367,8 +372,12 @@
 			// populate half the azimuths (m = 2) and the sky would have a seam.
 		const R = scratch[0];
 		let phi = TAU * u3;
-		if (armArmed && R >= model.arms.minRadius) {
-			const theta = sampleArmPhase(u3, A);
+		// The arm contrast at this radius, including the fade-in from
+		// arms.minRadius that density.armFactor applies: same amplitude, or the
+		// sampled stars would carry a pattern the field does not have.
+		const armAmp = armArmed ? A * density.armInnerFade(model, R) : 0;
+		if (armAmp > 0) {
+			const theta = sampleArmPhase(u3, armAmp);
 			const replica = Math.min(armM - 1, Math.floor(u4 * armM));
 			phi = (theta + armK * Math.log(R / armRs) - armPhase0) / armM + TAU * replica / armM;
 		}

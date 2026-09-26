@@ -4,6 +4,71 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-09-26 — A "no visible step" gate must measure against the model peak, not the local jump
+
+The first shape-test drafts failed on fields that were smooth. An Sersic spheroid
+has a cusp in drho/dr at its s = 0 core (the profile's slope is finite, the second
+difference is not), and a young-population annulus can fall off steeply enough that
+a finite jump threshold sees a step where there is none — E0 measured 0.84 of the
+local bin value at the core, SBd 2.2% at a bulge annulus, both smooth. A local
+threshold cannot separate those from a real defect, because the defect (the old
+flat-z bar slab) had a *first* difference of 0.28–0.84 *of the model peak* while the
+smooth features only looked large next to the local value.
+
+The gate that works: take the cut, compute second differences on a fixed 0.005 kpc
+bin, and normalise by the peak of the whole cut, not by the bin. A real discontinuity
+still shows up (0.28+ of the peak); a cusp or a steep-but-smooth falloff does not
+(after the slice-profile rewrite every type's worst residual is ≤ 0.0076 of the
+peak against a 0.02 limit). Keep a tighter bound — 0.01 — when the cut is taken
+inside the component under test, since the body is then the signal rather than a
+tail. The corollary is that the check must run on the *field*, before sampling:
+Poisson noise in a sampled histogram is its own much larger second difference, which
+is why the same test's population checks use total variation at 250k stars instead.
+
+## 2026-09-26 — Hard-truncating a pattern inward prints a rim; fade the contrast instead
+
+`armFactor` used to switch the spiral pattern on at `arms.minRadius`: below it the
+field was pure disc, above it the arms were at full contrast. That binary edge is a
+discontinuity in rho, and the step detector found it in the Irr type at z ≈ 0.4 as a
+2.3%-of-peak residual — small, but an edge-on view of an unbarred galaxy is exactly
+where such an annulus shows.
+
+The fix is to ramp the pattern's contrast to zero before its declared inner edge
+(`ARM_INNER_FADE = 0.5`: full contrast at `minRadius`, zero at
+`(1 − ARM_INNER_FADE)·minRadius`). Two traps: the ramp must go *inward* — starting
+from `minRadius` and ramping outward instead removes the bar-end ridge coupling,
+because `armFactor` at `minRadius` must still be the documented `1 + amp` for the
+arm-couples-to-the-bar-end rule, and the model-parity pins catch it immediately.
+And the sampler's azimuthal draw has to multiply by the same fade factor, or the
+birth distribution disagrees with the field it is sampling and the marginal
+histograms drift even though both look plausible in isolation.
+
+## 2026-09-26 — A boxy/peanut bar is a superellipse slice family, and both its mass and sampler are closed-form
+
+The 0.4.8 bar profile is rho = amp · L(xi) · (1 − |u|^n − |v|^cv)^q with
+u = eta/tau, v = zeta/(P·tau) and tau the shrinking cross-section radius. Writing it
+as a slice family is what makes the 3-D shape affordable: sampling needs no
+rejection, and the mass integral needs no Sersic stand-in.
+
+Two facts do the work. First, the unit superellipse integral is a beta function in
+each axis, so the slice mass is `4·K(cv,q)·(1/n)·B(1/n, q+1/cv+1)` with
+`K(c,q) = (1/c)·B(1/c, q+1)` — the closed form the volume pin now uses. Second, the
+marginal in one coordinate keeps the same shape with the exponent raised by the other
+axis's reciprocal: `p(u) ∝ (1−|u|^n)^(q+1/cv)` and `p(w) ∝ (1−w^cv)^q`, where
+`w = v/(1−|u|^n)^(1/cv)`, so the vertical draw is independent of `u` and three
+symmetric inverse-CDF tables suffice. Check any rewrite against the `q = 0` identity:
+the same integral must reproduce the old flat ln-disk area, which is what guarantees
+the new field is a refinement of the old one rather than a new look.
+
+The knob's floor is a physical, not arithmetic, constraint: `cv < 2` makes rho(z)
+turn over with infinite slope at the midplane, i.e. a crease along the galaxy's
+midplane when seen edge-on, so the authored anchors stay at or above 2.0 (shipped
+2.60 → 2.00) even though the plan's first draft suggested 1.8 → 1.3. And `q ≥ 1` is
+what actually removes the rim: the profile meets its envelope with zero gradient, the
+same reason the Plummer truncation never shows.
+
+---
+
 ## 2026-09-21 — WGSL comments live inside a JS template literal; a backtick ends the string
 
 Every shader in `src/render/shaders.js` is a JS template literal, so WGSL comments are

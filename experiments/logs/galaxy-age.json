@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-24T19:54:11.754Z",
+  "date": "2026-09-26T12:29:15.999Z",
   "types": [
     "E0",
     "E1",
@@ -1266,9 +1266,9 @@
       "2": {
         "placed": 400,
         "byType": {
-          "globular": 37,
+          "globular": 36,
           "open": 152,
-          "planetary": 73,
+          "planetary": 74,
           "HII": 105,
           "SNR": 33
         }
@@ -1276,21 +1276,21 @@
       "8": {
         "placed": 400,
         "byType": {
-          "planetary": 105,
+          "planetary": 106,
           "open": 118,
           "SNR": 49,
           "HII": 75,
-          "globular": 53
+          "globular": 52
         }
       },
       "0.5": {
         "placed": 400,
         "byType": {
           "open": 151,
-          "planetary": 73,
+          "planetary": 74,
           "HII": 107,
           "SNR": 33,
-          "globular": 36
+          "globular": 35
         }
       },
       "13.5": {
@@ -1630,10 +1630,10 @@
       "detail": {
         "at0_5": {
           "open": 151,
-          "planetary": 73,
+          "planetary": 74,
           "HII": 107,
           "SNR": 33,
-          "globular": 36
+          "globular": 35
         },
         "at13_5": {
           "globular": 80,
@@ -1653,7 +1653,7 @@
       "name": "SBb: globular clusters need time, so they accumulate with age",
       "pass": true,
       "detail": {
-        "at0_5": 36,
+        "at0_5": 35,
         "at13_5": 80
       }
     },
@@ -1715,7 +1715,7 @@
       "pass": true,
       "detail": {
         "oldestObjectGyr": 1,
-        "globulars": 37
+        "globulars": 36
       }
     },
     {

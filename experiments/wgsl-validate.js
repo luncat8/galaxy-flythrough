@@ -188,8 +188,19 @@ function wgslConsts(part) {
         // keeps the Milky Way's shape.
         const stray = [...densitySrc.matchAll(/^const\s+([A-Za-z_0-9]+)\s*:/gm)].map(m => m[1])
                 .filter(n => !['COMPONENT_THIN', 'COMPONENT_THICK', 'COMPONENT_BULGE', 'COMPONENT_HALO',
-                        'PROFILE_PLUMMER', 'PROFILE_SERSIC', 'PROFILE_BAR', 'ARM_MIN_RADIUS'].includes(n));
+                        'PROFILE_PLUMMER', 'PROFILE_SERSIC', 'PROFILE_BAR', 'ARM_MIN_RADIUS',
+                        'BAR_SLICE_FALLOFF', 'ARM_INNER_FADE'].includes(n));
         check('density.wgsl hard-codes no galaxy numbers', stray.length === 0, stray);
+        // Profile constants are not galaxy numbers — they are properties of the
+        // shape family, identical for every type — so they ride as consts. They
+        // still have to match their JS originals, and the bar slice falloff and
+        // the arm fade are what the 0.4.8 shapes are built on.
+        const shapeConsts = wgslConsts('density');
+        check('density.wgsl profile constants match the JS model',
+                shapeConsts.BAR_SLICE_FALLOFF === density.BAR_SLICE_FALLOFF
+                && shapeConsts.ARM_INNER_FADE === density.ARM_INNER_FADE
+                && shapeConsts.PROFILE_BAR === density.PROFILE_BAR,
+                { barSliceFalloff: shapeConsts.BAR_SLICE_FALLOFF, armInnerFade: shapeConsts.ARM_INNER_FADE });
 
         const c = wgslConsts('density');
         check('density.wgsl component indices match the JS model',
@@ -415,7 +426,8 @@ function wgslConsts(part) {
         check('the star sprite binds the simple-engine azimuths at binding 3',
                 /@group\(0\)\s*@binding\(3\)\s*var<storage,\s*read>\s+theta/.test(sprite));
         check('the star vertex branches on the engine lane (uniform control flow)',
-                /camera\.engine\.x\s*>\s*0\.5/.test(sprite)
+                /\(u32\(camera\.engine\.x\)\s*&\s*2u\)\s*!=\s*0u/.test(sprite)
+                && /\(u32\(camera\.engine\.x\)\s*&\s*4u\)\s*!=\s*0u/.test(sprite)
                 && /simplePosition\([^;]*theta\[starIdx\]/s.test(sprite)
                 && /orbitPosition\([^;]*camera\.params\.w/s.test(sprite));
 
@@ -517,8 +529,8 @@ function wgslConsts(part) {
                 /function apocenterPosition\(/.test(orbitSrc) && /fn apocenterPosition\(/.test(orbitWgsl)
                 && /for \(let i = 0; i < 5; i\+\+\)/.test(orbitSrc)
                 && /for \(var i: u32 = 0u; i < 5u; i = i \+ 1u\)/.test(orbitWgsl)
-                && /camera\.engine\.x > 1\.5[\s\S]*?apocenterPosition\(/.test(shaders.SHADERS['star-sprite'])
-                && orbit.ENGINE_APOCENTER === 2 && orbit.ENGINE_NAMES[2] === 'apocenter');
+                && /\(u32\(camera\.engine\.x\) & 4u\)[\s\S]*?apocenterPosition\(/.test(shaders.SHADERS['star-sprite'])
+                && orbit.ENGINE_APOCENTER === 4 && orbit.ENGINE_NAMES[2] === 'apocenter');
         check('the packer fills the orbit vec4s and the engine lane (16 at 28, 4 at 44)',
                 /packOrbitDynamics\(model,\s*uniform,\s*28\)/.test(readSource('src/render/star-sprites.js'))
                 && /packEngineVec\(model,\s*uniform,\s*44\)/.test(readSource('src/render/star-sprites.js'))
@@ -543,10 +555,17 @@ function wgslConsts(part) {
                 /function simplePositionFromTheta\(/.test(orbitSrc)
                 && /^fn simplePosition\(/m.test(orbitWgsl)
                 && /simplePositionFromTheta/.test(readSource('src/math/orbit.js')));
-        check('engine ids 0/1/2 match classic/simple/apocenter GPU dispatch',
-                /ENGINE_CLASSIC = 0, ENGINE_SIMPLE = 1, ENGINE_APOCENTER = 2/.test(orbitSrc)
-                && /camera\.engine\.x > 1\.5[\s\S]*?camera\.engine\.x > 0\.5/.test(shaders.SHADERS['star-sprite'])
-                && /id === 'apocenter'/.test(orbitSrc));
+        // The engine lane is a bit mask, not an id: classic is the base law,
+        // simple and apocenter are composable passes the vertex tests by bit.
+        check('the engine lane is the bit mask the classic/simple/apocenter dispatch shares',
+                orbit.ENGINE_CLASSIC === 1 && orbit.ENGINE_SIMPLE === 2 && orbit.ENGINE_APOCENTER === 4
+                && orbit.setEngine('simple') === 2 && orbit.setEngine('apocenter') === 4
+                && orbit.setEngine(['simple', 'apocenter']) === 6
+                && orbit.setEngine('classic') === 1
+                && /engine & ENGINE_SIMPLE/.test(orbitSrc) && /engine & ENGINE_APOCENTER/.test(orbitSrc)
+                && /packEngineVec\(model, out, offset\).*?out\[offset\] = engine/s.test(orbitSrc),
+                { classic: orbit.ENGINE_CLASSIC, simple: orbit.ENGINE_SIMPLE, apocenter: orbit.ENGINE_APOCENTER,
+                        both: orbit.setEngine(['simple', 'apocenter']) });
         check('the step uniform is five vec4s (20 floats) packed per frame under simple',
                 /stepA: vec4f/.test(simpleWgsl) && /stepE: vec4f/.test(simpleWgsl)
                 && /SIMPLE_UNIFORM_FLOATS = 20/.test(orbitSrc)

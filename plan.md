@@ -146,7 +146,11 @@ with `a = 1.5 kpc, b = 0.5 kpc, c = 0.4 kpc`, oriented 25° from the Sun–centr
 That is the Milky Way preset's authored bulge. The table's barred types (`SB*`) use the
 boxy/peanut bar profile instead — a boxy, peanut-stretched volume with a flat inner part
 and exponential end caps, sampled by inverse CDF along the bar's major axis — specified in
-`0.3.0-plan-galaxy-types-star-distribution.md` §0.3.1.
+`0.3.0-plan-galaxy-types-star-distribution.md` §0.3.1 and made a realistic 3-D shape in
+`0.4.8-plan-realistic-3d-shapes.md` §3 (slice profile `barSliceProfile` in `density.js`
+with its WGSL mirror, the vertical boxiness knob `bar.vertical`, and the closed-form
+slice mass). The preset's own bulge is still the Plummer form above; moving it to that
+profile is M2 of the 0.4.8 plan.
 
 ### Stellar halo
 

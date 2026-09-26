@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-26T09:42:40.661Z",
+  "date": "2026-09-26T12:29:20.484Z",
   "totalChecks": 102,
   "passed": 102,
   "failed": 0,
@@ -549,13 +549,17 @@
       "name": "the classic engine is the default and unknown names fall back to it",
       "pass": true,
       "detail": {
-        "engine": 0,
+        "engine": 1,
         "name": "classic"
       }
     },
     {
-      "name": "the engine switch round-trips by name and by id",
-      "pass": true
+      "name": "the engine switch round-trips by name, by id and as a mask",
+      "pass": true,
+      "detail": {
+        "mask": 6,
+        "name": "simple apocenter"
+      }
     },
     {
       "name": "an armed SBb derives the demo-anchored lane (σ ≈ 0.20, ecc ≈ 0.21)",
@@ -674,8 +678,16 @@
       "pass": true
     },
     {
-      "name": "the engine lane carries (id, eccMax, 0, 0)",
-      "pass": true
+      "name": "the engine lane carries (mask, apocenterForce, barTilt, share)",
+      "pass": true,
+      "detail": {
+        "lane": [
+          2,
+          0.44999998807907104,
+          0,
+          1
+        ]
+      }
     },
     {
       "name": "the 3-D reconstruction rotates in its centre-crossing plane and conserves radius",
@@ -705,7 +717,7 @@
       }
     },
     {
-      "name": "apocenter is a named third engine and engine id 2 round-trips",
+      "name": "apocenter is a named third engine and its mask bit round-trips",
       "pass": true
     },
     {

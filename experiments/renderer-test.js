@@ -485,12 +485,14 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 waveA[0] === 0 && waveA[1] === fr(model.arms.m) && waveA[3] === fr(model.arms.phase0)
                 && waveB[0] === fr(model.arms.Rs) && waveB[2] === fr(model.arms.amp) && waveB[3] === 0,
                 { waveA, waveB, arms: model.arms });
-        // The engine lane rides at offset 44: (id, eccMax, 0, 0). Classic is
-        // the default, so the id is 0 on every frame so far.
+        // The engine lane rides at offset 44: the 0.4.7 vec4 is
+        // (mask, apocenterForce, barTilt, apocenterShare). The mask is a bit
+        // field, not an id: classic is bit 1 and is the default.
         const engine = [uniform[44], uniform[45], uniform[46], uniform[47]];
-        check('uniform engine lane carries (0, eccMax, 0, 0) under the default classic engine',
-                engine[0] === 0 && engine[1] === fr(window.OrbitLib.simpleEccMax(model))
-                && engine[2] === 0 && engine[3] === 0,
+        check('uniform engine lane carries (classic bit, apocenterForce, no tilt, share)',
+                engine[0] === window.OrbitLib.ENGINE_CLASSIC
+                && engine[1] === fr(window.OrbitLib.getApocenterForce())
+                && engine[2] === 0 && engine[3] === fr(window.OrbitLib.getApocenterShare()),
                 { engine });
 
         // The tonemap uniform carries linear exposure (x) and white point (y)
@@ -878,9 +880,10 @@ function cellManagerFrom(m, budget) {
 
         engRenderer.render(camera, 320, 200, 10, input, 1);
         const classicUniform = readUniform(engGpu.uniformWrites[engGpu.uniformWrites.length - 1]);
-        check('classic frames carry engine id 0 and dispatch no compute',
-                classicUniform[44] === 0 && engGpu.computePasses.length === 0
-                && engGpu.simpleUniformWrites.length === 0);
+        check('classic frames carry only the classic bit and dispatch no compute',
+                classicUniform[44] === window.OrbitLib.ENGINE_CLASSIC && engGpu.computePasses.length === 0
+                && engGpu.simpleUniformWrites.length === 0,
+                { engine: classicUniform[44] });
 
         check('setEngine(simple) switches the state and re-seeds the epoch',
                 engRenderer.setEngine('simple') === 'simple'
@@ -890,10 +893,10 @@ function cellManagerFrom(m, budget) {
         const simpleUniform = readUniform(engGpu.uniformWrites[engGpu.uniformWrites.length - 1]);
         const stepUniform = readUniform(engGpu.simpleUniformWrites[engGpu.simpleUniformWrites.length - 1]);
         const stepPass = engGpu.computePasses[engGpu.computePasses.length - 1];
-        check('simple frames carry engine id 1 with the model eccMax beside it',
-                simpleUniform[44] === 1
-                && simpleUniform[45] === Math.fround(window.OrbitLib.simpleEccMax(engModel)),
-                { id: simpleUniform[44], ecc: simpleUniform[45] });
+        check('simple frames carry the simple bit with the apocenter force beside it',
+                simpleUniform[44] === window.OrbitLib.ENGINE_SIMPLE
+                && simpleUniform[45] === Math.fround(window.OrbitLib.getApocenterForce()),
+                { mask: simpleUniform[44], force: simpleUniform[45] });
         check('a simple frame packs the step uniform (nSub > 0, count = slots)',
                 stepUniform.length === 20 && stepUniform[1] >= 1 && stepUniform[2] === totalSlots
                 && stepUniform[0] > 0,
@@ -915,11 +918,13 @@ function cellManagerFrom(m, budget) {
                 engRenderer.setEngine('apocenter') === 'apocenter');
         engRenderer.render(camera, 320, 200, 14, input, 1);
         const apoUniform = readUniform(engGpu.uniformWrites[engGpu.uniformWrites.length - 1]);
-        check('apocenter packs engine id, bounded eccentricity and the model bar angle',
-                apoUniform[44] === 2 && apoUniform[45] === Math.fround(window.OrbitLib.APOCENTER_ECC_MAX)
+        check('apocenter packs its mask bit, the bounded force, the model bar angle and the share',
+                apoUniform[44] === window.OrbitLib.ENGINE_APOCENTER
+                && apoUniform[45] === Math.fround(window.OrbitLib.APOCENTER_ECC_MAX)
                 && Math.abs(apoUniform[46] - Math.fround(engModel.spheroid.tiltDeg * Math.PI / 180)) < 1e-7
+                && apoUniform[47] === Math.fround(window.OrbitLib.getApocenterShare())
                 && engGpu.computePasses.length === passesBefore,
-                { id: apoUniform[44], ecc: apoUniform[45], barTilt: apoUniform[46] });
+                { mask: apoUniform[44], force: apoUniform[45], barTilt: apoUniform[46], share: apoUniform[47] });
         engRenderer.setEngine('classic');
 
         // Headroom / highlight desat ride the tonemap uniform's second vec4.

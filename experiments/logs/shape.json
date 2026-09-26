@@ -1,0 +1,1433 @@
+{
+  "experiment": "shape",
+  "date": "2026-09-26",
+  "stepBinKpc": 0.005,
+  "stepLimits": {
+    "bar": 0.01,
+    "visible": 0.02
+  },
+  "checks": 69,
+  "failed": 0,
+  "results": [
+    {
+      "name": "SBb: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.00061,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.00061,
+            "stepOfLocal": 0,
+            "at": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.00034,
+            "stepOfLocal": 0,
+            "at": [
+              0,
+              -0.05,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.00015,
+            "stepOfLocal": 0,
+            "at": [
+              0.42,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 0.00023,
+            "stepOfLocal": 242.45,
+            "at": [
+              1.3,
+              0,
+              3
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 0.000027,
+            "stepOfLocal": 813.45,
+            "at": [
+              -8,
+              0,
+              3
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "E0: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.00049,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.00049,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.00049,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              -0.05,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.00039,
+            "stepOfLocal": 0.01,
+            "at": [
+              0.05,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 3.7e-9,
+            "stepOfLocal": 0,
+            "at": [
+              1.95,
+              0,
+              0
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 9.9e-12,
+            "stepOfLocal": 0,
+            "at": [
+              -8,
+              0,
+              0
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "E1: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.00047,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.00046,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.00047,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              -0.05,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.00039,
+            "stepOfLocal": 0.01,
+            "at": [
+              0.05,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 4.9e-9,
+            "stepOfLocal": 0,
+            "at": [
+              1.95,
+              0,
+              0
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 1.3e-11,
+            "stepOfLocal": 0,
+            "at": [
+              -8,
+              0,
+              0
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "E2: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.00044,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.00043,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.00044,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              -0.05,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.00039,
+            "stepOfLocal": 0.01,
+            "at": [
+              0.05,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 6.6e-9,
+            "stepOfLocal": 0,
+            "at": [
+              1.95,
+              0,
+              0
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 1.7e-11,
+            "stepOfLocal": 0,
+            "at": [
+              -8,
+              0,
+              0
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "E3: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.00041,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.00039,
+            "stepOfLocal": 0.02,
+            "at": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.00041,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              -0.05,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.00039,
+            "stepOfLocal": 0.01,
+            "at": [
+              0.05,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 9.4e-9,
+            "stepOfLocal": 0,
+            "at": [
+              1.95,
+              0,
+              0
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 2.5e-11,
+            "stepOfLocal": 0,
+            "at": [
+              -8,
+              0,
+              0
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "E4: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.00039,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.00035,
+            "stepOfLocal": 0.02,
+            "at": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.00038,
+            "stepOfLocal": 0.02,
+            "at": [
+              0,
+              -0.05,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.00039,
+            "stepOfLocal": 0.01,
+            "at": [
+              0.05,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 1.4e-8,
+            "stepOfLocal": 0,
+            "at": [
+              1.95,
+              0,
+              0
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 0.0000025,
+            "stepOfLocal": 1034826262.23,
+            "at": [
+              -8,
+              0,
+              -4.56
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "E5: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.00079,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.00071,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.00079,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              -0.05,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.00078,
+            "stepOfLocal": 0.01,
+            "at": [
+              0.05,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 0.0000074,
+            "stepOfLocal": 1594957596.76,
+            "at": [
+              1.95,
+              0,
+              -4.59
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 0.0000074,
+            "stepOfLocal": 1591946687.83,
+            "at": [
+              -8,
+              0,
+              -3.47
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "E6: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.0014,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.0013,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.0014,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              -0.05,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.0012,
+            "stepOfLocal": 0.01,
+            "at": [
+              0.05,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 0.000018,
+            "stepOfLocal": 2463118488.38,
+            "at": [
+              1.95,
+              0,
+              -3.14
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 0.000018,
+            "stepOfLocal": 2455134878.22,
+            "at": [
+              -8,
+              0,
+              -2.38
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "E7: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.0021,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.0021,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.002,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              -0.05,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.0012,
+            "stepOfLocal": 0,
+            "at": [
+              0.05,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 0.000032,
+            "stepOfLocal": 3642070636.43,
+            "at": [
+              1.95,
+              0,
+              1.69
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 0.000032,
+            "stepOfLocal": 3654846508.63,
+            "at": [
+              -8,
+              0,
+              1.27
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "S0: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.0016,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.0016,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.0016,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              -0.05,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.0016,
+            "stepOfLocal": 0.01,
+            "at": [
+              0.05,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 0.000016,
+            "stepOfLocal": 0.25,
+            "at": [
+              1.3,
+              0,
+              3
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 0.0000022,
+            "stepOfLocal": 1313.5,
+            "at": [
+              -8,
+              0,
+              3
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "Sa: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.0018,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.0018,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.0017,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              -0.05,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.0017,
+            "stepOfLocal": 0,
+            "at": [
+              0.05,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 0.000096,
+            "stepOfLocal": 765.88,
+            "at": [
+              1.3,
+              0,
+              3.51
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 0.0000066,
+            "stepOfLocal": 937.24,
+            "at": [
+              -8,
+              0,
+              3
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "Sb: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.0019,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.0019,
+            "stepOfLocal": 0.01,
+            "at": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.0018,
+            "stepOfLocal": 0,
+            "at": [
+              0,
+              -0.05,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.0017,
+            "stepOfLocal": 0,
+            "at": [
+              0.05,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 0.00012,
+            "stepOfLocal": 2.98,
+            "at": [
+              1.3,
+              0,
+              2.9
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 0.0000091,
+            "stepOfLocal": 747.59,
+            "at": [
+              -8,
+              0,
+              3
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "Sc: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.00033,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.00016,
+            "stepOfLocal": 0,
+            "at": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.00033,
+            "stepOfLocal": 0,
+            "at": [
+              0,
+              -0.67,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.00026,
+            "stepOfLocal": 0,
+            "at": [
+              0.56,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 0.00013,
+            "stepOfLocal": 0,
+            "at": [
+              1.82,
+              0,
+              0
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 0.000031,
+            "stepOfLocal": 97.39,
+            "at": [
+              -8,
+              0,
+              -4.2
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "Sd: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.00043,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.00043,
+            "stepOfLocal": 0,
+            "at": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.00028,
+            "stepOfLocal": 0,
+            "at": [
+              0,
+              0.65,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.00027,
+            "stepOfLocal": 0,
+            "at": [
+              0.61,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 0.00012,
+            "stepOfLocal": 0,
+            "at": [
+              1.95,
+              0,
+              0
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 0.000032,
+            "stepOfLocal": 0,
+            "at": [
+              -8,
+              0,
+              0
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "SB0: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.0076,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.0041,
+            "stepOfLocal": 0.54,
+            "at": [
+              0,
+              0,
+              0.5
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.0076,
+            "stepOfLocal": 0.82,
+            "at": [
+              0,
+              -0.49,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.0033,
+            "stepOfLocal": 0.37,
+            "at": [
+              0.95,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 0.0016,
+            "stepOfLocal": 0.21,
+            "at": [
+              0.81,
+              0,
+              -0.42
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 0.000013,
+            "stepOfLocal": 1313.5,
+            "at": [
+              -8,
+              0,
+              3
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "SB0: the bar's own body has no step at all (no rim)",
+      "pass": true,
+      "detail": {
+        "worst": 0.0046
+      }
+    },
+    {
+      "name": "SBa: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.0054,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.003,
+            "stepOfLocal": 0.12,
+            "at": [
+              0,
+              0,
+              0.6
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.0054,
+            "stepOfLocal": 0.12,
+            "at": [
+              0,
+              -0.63,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.0053,
+            "stepOfLocal": 0.01,
+            "at": [
+              1.01,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 0.0021,
+            "stepOfLocal": 0.11,
+            "at": [
+              0.9,
+              0,
+              0.57
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 0.000032,
+            "stepOfLocal": 1216.92,
+            "at": [
+              -8,
+              0,
+              3
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "SBa: the bar's own body has no step at all (no rim)",
+      "pass": true,
+      "detail": {
+        "worst": 0.0035
+      }
+    },
+    {
+      "name": "SBc: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.0048,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.0028,
+            "stepOfLocal": 0.06,
+            "at": [
+              0,
+              0,
+              -0.5
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.0048,
+            "stepOfLocal": 0.05,
+            "at": [
+              0,
+              0.46,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.0023,
+            "stepOfLocal": 0.03,
+            "at": [
+              0.86,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 0.0014,
+            "stepOfLocal": 0.02,
+            "at": [
+              0.76,
+              0,
+              -0.33
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 0.000019,
+            "stepOfLocal": 102.07,
+            "at": [
+              -8,
+              0,
+              -4.2
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "SBc: the bar's own body has no step at all (no rim)",
+      "pass": true,
+      "detail": {
+        "worst": 0.0049
+      }
+    },
+    {
+      "name": "SBd: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.0067,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.0046,
+            "stepOfLocal": 35.67,
+            "at": [
+              0,
+              0,
+              0.36
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.0067,
+            "stepOfLocal": 0.17,
+            "at": [
+              0,
+              -0.38,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.0039,
+            "stepOfLocal": 0.07,
+            "at": [
+              0.67,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 0.0025,
+            "stepOfLocal": 0.07,
+            "at": [
+              0.54,
+              0,
+              0.25
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 0.000014,
+            "stepOfLocal": 0,
+            "at": [
+              -8,
+              0,
+              0
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "SBd: the bar's own body has no step at all (no rim)",
+      "pass": true,
+      "detail": {
+        "worst": 0.0068
+      }
+    },
+    {
+      "name": "Irr: no step in the field is visible against the model peak",
+      "pass": true,
+      "detail": {
+        "worst": 0.0015,
+        "cuts": {
+          "z through the centre": {
+            "stepOfModel": 0.00058,
+            "stepOfLocal": 0,
+            "at": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "y through the centre": {
+            "stepOfModel": 0.0009,
+            "stepOfLocal": 0,
+            "at": [
+              0,
+              0.37,
+              0
+            ]
+          },
+          "x to the body edge": {
+            "stepOfModel": 0.0015,
+            "stepOfLocal": 118239.09,
+            "at": [
+              12,
+              0,
+              0
+            ]
+          },
+          "z at the bar lobe": {
+            "stepOfModel": 0.00043,
+            "stepOfLocal": 341.74,
+            "at": [
+              1.04,
+              0,
+              3.21
+            ]
+          },
+          "z through the disc at R = 8": {
+            "stepOfModel": 0.00028,
+            "stepOfLocal": 5529.98,
+            "at": [
+              -8,
+              0,
+              3.21
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "SB0: the bar's vertical profile falls monotonically inside the body",
+      "pass": true,
+      "detail": {
+        "centre": 26.9355,
+        "envelopeZeta": 0.998
+      }
+    },
+    {
+      "name": "SB0: the bar's density is already small at its envelope (no rim)",
+      "pass": true,
+      "detail": {
+        "atEnvelope": 0.0138,
+        "envelopeZeta": 0.998,
+        "cv": 2.6
+      }
+    },
+    {
+      "name": "SB0: the analytic slice mass is the numeric integral of the slice profile",
+      "pass": true,
+      "detail": {
+        "numeric": 1.883767,
+        "analytic": 1.883767
+      }
+    },
+    {
+      "name": "SB0: the L^n disk area is the closed form of the slab's slice mass",
+      "pass": true,
+      "detail": 3.7081493546027433
+    },
+    {
+      "name": "SB0: the bar's vertical support is the authored body, not more",
+      "pass": true,
+      "detail": {
+        "centre": 1,
+        "lobe": 1.1571
+      }
+    },
+    {
+      "name": "SBa: the bar's vertical profile falls monotonically inside the body",
+      "pass": true,
+      "detail": {
+        "centre": 12.727,
+        "envelopeZeta": 0.998
+      }
+    },
+    {
+      "name": "SBa: the bar's density is already small at its envelope (no rim)",
+      "pass": true,
+      "detail": {
+        "atEnvelope": 0.0138,
+        "envelopeZeta": 0.998,
+        "cv": 2.6
+      }
+    },
+    {
+      "name": "SBa: the analytic slice mass is the numeric integral of the slice profile",
+      "pass": true,
+      "detail": {
+        "numeric": 1.883767,
+        "analytic": 1.883767
+      }
+    },
+    {
+      "name": "SBa: the L^n disk area is the closed form of the slab's slice mass",
+      "pass": true,
+      "detail": 3.7081493546027433
+    },
+    {
+      "name": "SBa: the bar's vertical support is the authored body, not more",
+      "pass": true,
+      "detail": {
+        "centre": 1,
+        "lobe": 1.1571
+      }
+    },
+    {
+      "name": "SBc: the bar's vertical profile falls monotonically inside the body",
+      "pass": true,
+      "detail": {
+        "centre": 7.2909,
+        "envelopeZeta": 0.998
+      }
+    },
+    {
+      "name": "SBc: the bar's density is already small at its envelope (no rim)",
+      "pass": true,
+      "detail": {
+        "atEnvelope": 0.0108,
+        "envelopeZeta": 0.998,
+        "cv": 2.2
+      }
+    },
+    {
+      "name": "SBc: the analytic slice mass is the numeric integral of the slice profile",
+      "pass": true,
+      "detail": {
+        "numeric": 1.586836,
+        "analytic": 1.586836
+      }
+    },
+    {
+      "name": "SBc: the L^n disk area is the closed form of the slab's slice mass",
+      "pass": true,
+      "detail": 3.533277500570899
+    },
+    {
+      "name": "SBc: the bar's vertical support is the authored body, not more",
+      "pass": true,
+      "detail": {
+        "centre": 1,
+        "lobe": 1.0217
+      }
+    },
+    {
+      "name": "SBd: the bar's vertical profile falls monotonically inside the body",
+      "pass": true,
+      "detail": {
+        "centre": 8.7195,
+        "envelopeZeta": 0.998
+      }
+    },
+    {
+      "name": "SBd: the bar's density is already small at its envelope (no rim)",
+      "pass": true,
+      "detail": {
+        "atEnvelope": 0.0094,
+        "envelopeZeta": 0.998,
+        "cv": 2
+      }
+    },
+    {
+      "name": "SBd: the analytic slice mass is the numeric integral of the slice profile",
+      "pass": true,
+      "detail": {
+        "numeric": 1.402497,
+        "analytic": 1.402497
+      }
+    },
+    {
+      "name": "SBd: the L^n disk area is the closed form of the slab's slice mass",
+      "pass": true,
+      "detail": 3.3809353625373944
+    },
+    {
+      "name": "SBd: the bar's vertical support is the authored body, not more",
+      "pass": true,
+      "detail": {
+        "centre": 1,
+        "lobe": 0.9469
+      }
+    },
+    {
+      "name": "SB0: the bar's vertical extent does not fall off toward its ends",
+      "pass": true,
+      "detail": {
+        "centre": 0.5,
+        "lobe": 0.5926,
+        "atXi": 0.7,
+        "ratio": 1.1853
+      }
+    },
+    {
+      "name": "SB0: an early-type bar carries a strong boxy/peanut",
+      "pass": true,
+      "detail": {
+        "ratio": 1.185
+      }
+    },
+    {
+      "name": "SB0: the peanut never exceeds the authored body",
+      "pass": true,
+      "detail": {
+        "lobe": 0.5926,
+        "max": 0.775
+      }
+    },
+    {
+      "name": "SBa: the bar's vertical extent does not fall off toward its ends",
+      "pass": true,
+      "detail": {
+        "centre": 0.6,
+        "lobe": 0.7112,
+        "atXi": 0.7,
+        "ratio": 1.1853
+      }
+    },
+    {
+      "name": "SBa: an early-type bar carries a strong boxy/peanut",
+      "pass": true,
+      "detail": {
+        "ratio": 1.185
+      }
+    },
+    {
+      "name": "SBa: the peanut never exceeds the authored body",
+      "pass": true,
+      "detail": {
+        "lobe": 0.7112,
+        "max": 0.93
+      }
+    },
+    {
+      "name": "SBc: the bar's vertical extent does not fall off toward its ends",
+      "pass": true,
+      "detail": {
+        "centre": 0.504,
+        "lobe": 0.5182,
+        "atXi": 0.493,
+        "ratio": 1.0282
+      }
+    },
+    {
+      "name": "SBc: the peanut never exceeds the authored body",
+      "pass": true,
+      "detail": {
+        "lobe": 0.5182,
+        "max": 0.6552
+      }
+    },
+    {
+      "name": "SBd: the bar's vertical extent does not fall off toward its ends",
+      "pass": true,
+      "detail": {
+        "centre": 0.36,
+        "lobe": 0.3606,
+        "atXi": 0.185,
+        "ratio": 1.0016
+      }
+    },
+    {
+      "name": "SBd: the peanut never exceeds the authored body",
+      "pass": true,
+      "detail": {
+        "lobe": 0.3606,
+        "max": 0.4392
+      }
+    },
+    {
+      "name": "SB0: the bar's half-density height is bar-like (0.03-0.30 of its half-length)",
+      "pass": true,
+      "detail": {
+        "halfDensityHeightKpc": 0.341,
+        "halfLengthKpc": 1.62,
+        "ratio": 0.2106
+      }
+    },
+    {
+      "name": "SB0: the bar's axis ratios are in the observed band",
+      "pass": true,
+      "detail": {
+        "bOverA": 0.272,
+        "cOverA": 0.309
+      }
+    },
+    {
+      "name": "SBa: the bar's half-density height is bar-like (0.03-0.30 of its half-length)",
+      "pass": true,
+      "detail": {
+        "halfDensityHeightKpc": 0.409,
+        "halfLengthKpc": 1.8,
+        "ratio": 0.2275
+      }
+    },
+    {
+      "name": "SBa: the bar's axis ratios are in the observed band",
+      "pass": true,
+      "detail": {
+        "bOverA": 0.311,
+        "cOverA": 0.333
+      }
+    },
+    {
+      "name": "SBc: the bar's half-density height is bar-like (0.03-0.30 of its half-length)",
+      "pass": true,
+      "detail": {
+        "halfDensityHeightKpc": 0.321,
+        "halfLengthKpc": 1.512,
+        "ratio": 0.2122
+      }
+    },
+    {
+      "name": "SBc: the bar's axis ratios are in the observed band",
+      "pass": true,
+      "detail": {
+        "bOverA": 0.272,
+        "cOverA": 0.333
+      }
+    },
+    {
+      "name": "SBd: the bar's half-density height is bar-like (0.03-0.30 of its half-length)",
+      "pass": true,
+      "detail": {
+        "halfDensityHeightKpc": 0.219,
+        "halfLengthKpc": 1.08,
+        "ratio": 0.2028
+      }
+    },
+    {
+      "name": "SBd: the bar's axis ratios are in the observed band",
+      "pass": true,
+      "detail": {
+        "bOverA": 0.311,
+        "cOverA": 0.333
+      }
+    },
+    {
+      "name": "SB0: the sampled stars follow the bar's longitudinal profile",
+      "pass": true,
+      "detail": {
+        "totalVariation": 0.0046,
+        "stars": 126511
+      }
+    },
+    {
+      "name": "SB0: the sampled stars follow the bar's vertical profile",
+      "pass": true,
+      "detail": {
+        "totalVariation": 0.0111
+      }
+    },
+    {
+      "name": "SBa: the sampled stars follow the bar's longitudinal profile",
+      "pass": true,
+      "detail": {
+        "totalVariation": 0.0074,
+        "stars": 75831
+      }
+    },
+    {
+      "name": "SBa: the sampled stars follow the bar's vertical profile",
+      "pass": true,
+      "detail": {
+        "totalVariation": 0.0114
+      }
+    },
+    {
+      "name": "SBc: the sampled stars follow the bar's longitudinal profile",
+      "pass": true,
+      "detail": {
+        "totalVariation": 0.0195,
+        "stars": 12622
+      }
+    },
+    {
+      "name": "SBc: the sampled stars follow the bar's vertical profile",
+      "pass": true,
+      "detail": {
+        "totalVariation": 0.0187
+      }
+    },
+    {
+      "name": "SBd: the sampled stars follow the bar's longitudinal profile",
+      "pass": true,
+      "detail": {
+        "totalVariation": 0.0239,
+        "stars": 5048
+      }
+    },
+    {
+      "name": "SBd: the sampled stars follow the bar's vertical profile",
+      "pass": true,
+      "detail": {
+        "totalVariation": 0.0304
+      }
+    }
+  ]
+}
