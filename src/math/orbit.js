@@ -409,6 +409,11 @@ function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
 
 const APOCENTER_ECC_MAX = 0.45;
 const APOCENTER_ECC_CAP = 0.55;
+// The menu's startup values (also the Defaults button and the presets module):
+// share 0.35 mixes the pass spatially without a visible front slice, force
+// 0.22 is the measured noise floor of the guided pull.
+const APOCENTER_SHARE_UI_DEFAULT = 0.35;
+const APOCENTER_FORCE_UI_DEFAULT = 0.22;
 // Apocenter controls are intentionally view state: they can be tuned without
 // rebuilding the sampled galaxy. Share is a deterministic per-star mask, so
 // lowering it reduces noise instead of making an arbitrary front slice vanish.
@@ -944,7 +949,7 @@ const OrbitAPI = {
 	PATTERN_SCALE_MAX, PATTERN_SCALE_UI_DEFAULT,
 	ORBIT_INCLINATION_DISC, ORBIT_INCLINATION_BAR, ORBIT_INCLINATION_PRESSURE, orbitInclination,
 	ENGINE_CLASSIC, ENGINE_SIMPLE, ENGINE_APOCENTER, ENGINE_NAMES,
-	APOCENTER_ECC_MAX, APOCENTER_ECC_CAP,
+	APOCENTER_ECC_MAX, APOCENTER_ECC_CAP, APOCENTER_SHARE_UI_DEFAULT, APOCENTER_FORCE_UI_DEFAULT,
 	SIMPLE_SIGMA_BASE, SIMPLE_ECC_MAX, SIMPLE_SUBSTEP_DTHETA, SIMPLE_SUBSTEP_MAX,
 	SIMPLE_R_MIN, SIMPLE_UNIFORM_FLOATS,
 	familyFromFlags, flagsWithFamily, encodeJitter, readOrbit,

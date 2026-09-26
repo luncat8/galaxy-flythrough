@@ -71,6 +71,18 @@ function readParams(search) {
                 // field's rotation rate (0 frozen … 3, 1 = the derived group
                 // speed). Clamped by orbit.setPatternScale.
                 pattern: number('pattern', window.OrbitLib.PATTERN_SCALE_UI_DEFAULT),
+                // The rest of the settings menu, so a preset string and the URL
+                // speak one language. Absent = the startup default, applied by
+                // boot below.
+                time: number('time', 5),
+                wave: number('wave', window.OrbitLib.WAVE_DAMPING_UI_DEFAULT),
+                apoShare: number('apoShare', window.OrbitLib.APOCENTER_SHARE_UI_DEFAULT),
+                apoForce: number('apoForce', window.OrbitLib.APOCENTER_FORCE_UI_DEFAULT),
+                brightness: number('brightness', window.StarRenderer.LINEAR_EXPOSURE_DEFAULT),
+                white: number('white', window.StarRenderer.WHITE_POINT_DEFAULT),
+                sat: number('sat', window.StarRenderer.SATURATION_DEFAULT),
+                headroom: number('headroom', window.StarRenderer.HEADROOM_DEFAULT),
+                highlight: number('highlight', window.StarRenderer.HIGHLIGHT_DESAT_DEFAULT),
         };
 }
 
@@ -89,9 +101,13 @@ async function boot() {
         let starTimeMyr = 0;
 	let starTimeRate = 5;
 	let lastNonZeroTimeRate = starTimeRate;
+        // ?time= / ?wave= speak the same language as the preset strings
+        // (Presets), and their defaults are the startup values above.
+        starTimeRate = params.time;
+        if (starTimeRate > 0) lastNonZeroTimeRate = starTimeRate;
         // View control, not a model field. 0.6 is the measured hold (Sun ring
         // cosine 0.10 → ~0.6 in 300 Myr). 0 is the 0.4.3 shear.
-        let waveDamping = window.OrbitLib.setWaveDamping(window.OrbitLib.WAVE_DAMPING_UI_DEFAULT);
+        let waveDamping = window.OrbitLib.setWaveDamping(params.wave);
         // View control, not a model field: the derived Omega_p of whatever
         // model is loaded, times this. 1 is the model's own group speed.
         let patternScale = window.OrbitLib.setPatternScale(params.pattern, starTimeMyr, model);
@@ -161,6 +177,14 @@ async function boot() {
                 return;
         }
         if (params.exposure !== null) renderer.setExposure(params.exposure);
+        // The rest of the menu as boot params — the language the preset
+        // strings share. Defaults are no-ops, so applying them directly is
+        // the same as absent.
+        renderer.setLinearExposure(params.brightness);
+        renderer.setWhitePoint(params.white);
+        renderer.setSaturation(params.sat);
+        renderer.setHeadroom(params.headroom);
+        renderer.setHighlightDesat(params.highlight);
 
         // 0.4.5 simple engine: the CPU landmark mirror's birth table, static
         // for the session (named stars are Milky Way data). Re-initialised
@@ -176,7 +200,7 @@ async function boot() {
         function initSimpleLandmarks() {
                 window.OrbitLib.simpleLandmarksInit(landmarkPos, landmarkColors, landmarks.count, model);
         }
-        renderer.setEngine(params.engine);
+        renderer.setEngine(window.Presets.parseEngineList(params.engine));
         initSimpleLandmarks();
 
         // --- Settings menu (Tab to toggle) -----------------------------------
@@ -328,27 +352,167 @@ async function boot() {
                 window.OrbitLib.setApocenterForce(Number(sliderApoForce.value));
                 document.getElementById('val-apocenter-force').textContent = Number(sliderApoForce.value).toFixed(2);
         });
-        window.OrbitLib.setApocenterShare(Number(sliderApoShare.value));
-        window.OrbitLib.setApocenterForce(Number(sliderApoForce.value));
+        sliderApoShare.value = window.OrbitLib.setApocenterShare(params.apoShare);
+        sliderApoForce.value = window.OrbitLib.setApocenterForce(params.apoForce);
+        document.getElementById('val-apocenter-share').textContent = `${Math.round(window.OrbitLib.getApocenterShare() * 100)}%`;
+        document.getElementById('val-apocenter-force').textContent = window.OrbitLib.getApocenterForce().toFixed(2);
         syncEngine();
+        function syncApocenterSliders() {
+                sliderApoShare.value = window.OrbitLib.getApocenterShare();
+                sliderApoForce.value = window.OrbitLib.getApocenterForce();
+                document.getElementById('val-apocenter-share').textContent = `${Math.round(window.OrbitLib.getApocenterShare() * 100)}%`;
+                document.getElementById('val-apocenter-force').textContent = window.OrbitLib.getApocenterForce().toFixed(2);
+        }
         btnDefaults.addEventListener('click', () => {
-                renderer.setExposure(window.StarRenderer.EXPOSURE_DEFAULT);
-                renderer.setLinearExposure(window.StarRenderer.LINEAR_EXPOSURE_DEFAULT);
-                renderer.setWhitePoint(window.StarRenderer.WHITE_POINT_DEFAULT);
-                renderer.setSaturation(window.StarRenderer.SATURATION_DEFAULT);
-                renderer.setHeadroom(window.StarRenderer.HEADROOM_DEFAULT);
-                renderer.setHighlightDesat(window.StarRenderer.HIGHLIGHT_DESAT_DEFAULT);
-                window.OrbitLib.setApocenterShare(0.35);
-                window.OrbitLib.setApocenterForce(0.22);
-                sliderApoShare.value = 0.35;
-                sliderApoForce.value = 0.22;
-                document.getElementById('val-apocenter-share').textContent = '35%';
-                document.getElementById('val-apocenter-force').textContent = '0.22';
-                waveDamping = window.OrbitLib.setWaveDamping(window.OrbitLib.WAVE_DAMPING_UI_DEFAULT);
-                patternScale = window.OrbitLib.setPatternScale(window.OrbitLib.PATTERN_SCALE_UI_DEFAULT, starTimeMyr, model);
+                const d = window.Presets.menuDefaults();
+                renderer.setExposure(d.exposure);
+                renderer.setLinearExposure(d.brightness);
+                renderer.setWhitePoint(d.white);
+                renderer.setSaturation(d.sat);
+                renderer.setHeadroom(d.headroom);
+                renderer.setHighlightDesat(d.highlight);
+                window.OrbitLib.setApocenterShare(d.apoShare);
+                window.OrbitLib.setApocenterForce(d.apoForce);
+                waveDamping = window.OrbitLib.setWaveDamping(d.wave);
+                patternScale = window.OrbitLib.setPatternScale(d.pattern, starTimeMyr, model);
+                syncApocenterSliders();
                 syncSlidersFromRenderer();
                 syncWave();
                 syncPattern();
+        });
+
+        // --- Presets: copy/paste/save/load, and the LLM prompt ----------------
+        // The whole menu as one text line (Presets owns the format). Copy puts
+        // the line in the box and the clipboard; Paste reads the clipboard and
+        // applies; Apply re-applies an edited box; Save/Load are a plain local
+        // file; LLM prompt writes the build-this-system prompt instead.
+        const presetText = document.getElementById('preset-text');
+        const presetFile = document.getElementById('preset-file');
+        const btnPresetCopy = document.getElementById('preset-copy');
+        const btnPresetPaste = document.getElementById('preset-paste');
+        const btnPresetApply = document.getElementById('preset-apply');
+        const btnPresetSave = document.getElementById('preset-save');
+        const btnPresetLoad = document.getElementById('preset-load');
+        const btnPresetPrompt = document.getElementById('preset-prompt');
+
+        function collectSettings() {
+                return {
+                        type: model.type,
+                        seed: model.seed,
+                        age: model.populations.age,
+                        engine: selectedEngines(),
+                        time: starTimeRate,
+                        wave: waveDamping,
+                        pattern: patternScale,
+                        apoShare: window.OrbitLib.getApocenterShare(),
+                        apoForce: window.OrbitLib.getApocenterForce(),
+                        exposure: renderer.state.magZero,
+                        brightness: renderer.state.linearExposure,
+                        white: renderer.state.whitePoint,
+                        sat: renderer.state.saturation,
+                        headroom: renderer.state.headroom,
+                        highlight: renderer.state.highlightDesat,
+                        stars: params.stars,
+                        catalog: params.catalogStars,
+                };
+        }
+
+        function applyPreset(query) {
+                const s = window.Presets.parse(query);
+                if (!Object.keys(s).length) return;
+                if (s.type !== undefined || s.seed !== undefined || s.age !== undefined) {
+                        regenerateGalaxy(
+                                s.type !== undefined ? s.type : model.type,
+                                s.seed !== undefined ? s.seed : model.seed,
+                                s.age !== undefined ? s.age : model.populations.age);
+                }
+                if (s.engine !== undefined) {
+                        renderer.setEngine(s.engine);
+                        initSimpleLandmarks();
+                        syncEngine();
+                }
+                if (s.time !== undefined) {
+                        starTimeRate = s.time;
+                        if (starTimeRate > 0) lastNonZeroTimeRate = starTimeRate;
+                        syncStarTime();
+                }
+                if (s.wave !== undefined) {
+                        waveDamping = window.OrbitLib.setWaveDamping(s.wave);
+                        syncWave();
+                }
+                if (s.pattern !== undefined) {
+                        patternScale = window.OrbitLib.setPatternScale(s.pattern, starTimeMyr, model);
+                        syncPattern();
+                }
+                if (s.apoShare !== undefined) window.OrbitLib.setApocenterShare(s.apoShare);
+                if (s.apoForce !== undefined) window.OrbitLib.setApocenterForce(s.apoForce);
+                if (s.apoShare !== undefined || s.apoForce !== undefined) syncApocenterSliders();
+                if (s.exposure !== undefined) renderer.setExposure(s.exposure);
+                if (s.brightness !== undefined) renderer.setLinearExposure(s.brightness);
+                if (s.white !== undefined) renderer.setWhitePoint(s.white);
+                if (s.sat !== undefined) renderer.setSaturation(s.sat);
+                if (s.headroom !== undefined) renderer.setHeadroom(s.headroom);
+                if (s.highlight !== undefined) renderer.setHighlightDesat(s.highlight);
+                syncSlidersFromRenderer();
+                updateOverlay(renderer.state, camera.getState(statsText));
+        }
+
+        // Clipboard with a selection fallback: not every file:// context is
+        // granted the async clipboard API, and the box is visible anyway.
+        function copyText(text) {
+                presetText.value = text;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(text).catch(() => {
+                                presetText.focus();
+                                presetText.select();
+                        });
+                        return;
+                }
+                presetText.focus();
+                presetText.select();
+                try { document.execCommand('copy'); } catch (err) { /* the box is the fallback */ }
+        }
+
+        function pastePreset() {
+                const focusBox = () => { presetText.focus(); presetText.select(); };
+                if (!(navigator.clipboard && navigator.clipboard.readText)) {
+                        focusBox();
+                        return;
+                }
+                navigator.clipboard.readText().then((text) => {
+                        const clean = String(text || '').trim();
+                        if (!clean) {
+                                focusBox();
+                                return;
+                        }
+                        presetText.value = clean;
+                        applyPreset(clean);
+                }).catch(focusBox);
+        }
+
+        function savePreset() {
+                if (!presetText.value.trim()) presetText.value = window.Presets.serialize(collectSettings());
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(new Blob([presetText.value], { type: 'text/plain' }));
+                link.download = 'galaxy-preset.txt';
+                link.click();
+                URL.revokeObjectURL(link.href);
+        }
+
+        btnPresetCopy.addEventListener('click', () => copyText(window.Presets.serialize(collectSettings())));
+        btnPresetPaste.addEventListener('click', pastePreset);
+        btnPresetApply.addEventListener('click', () => applyPreset(presetText.value));
+        btnPresetSave.addEventListener('click', savePreset);
+        btnPresetLoad.addEventListener('click', () => presetFile.click());
+        btnPresetPrompt.addEventListener('click', () => copyText(window.Presets.buildLlmPrompt(collectSettings())));
+        presetFile.addEventListener('change', () => {
+                const file = presetFile.files && presetFile.files[0];
+                if (!file) return;
+                presetFile.value = '';
+                file.text().then((text) => {
+                        presetText.value = String(text).trim();
+                        applyPreset(presetText.value);
+                });
         });
 
         const galaxyType = document.getElementById('galaxy-type');

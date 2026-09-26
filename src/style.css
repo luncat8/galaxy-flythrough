@@ -221,3 +221,35 @@ html, body {
 }
 .engine-checks label { display: inline-flex; gap: 3px; align-items: center; cursor: pointer; }
 .engine-checks input { accent-color: #6fae6f; }
+
+/* Preset row: the copy/paste box spans both columns; the buttons wrap. */
+.preset-row textarea {
+	grid-column: 1 / -1;
+	width: 100%;
+	background: #0e1b0e;
+	border: 1px solid #2f5f2f;
+	color: #cdeccd;
+	font-family: inherit;
+	font-size: 10px;
+	line-height: 1.4;
+	padding: 4px 6px;
+	border-radius: 3px;
+	resize: vertical;
+}
+.preset-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+.preset-actions button {
+	flex: 1 0 auto;
+	background: #1a331a;
+	border: 1px solid #2f5f2f;
+	color: #cdeccd;
+	font-family: inherit;
+	font-size: 10px;
+	padding: 3px 6px;
+	border-radius: 3px;
+	cursor: pointer;
+}
+.preset-actions button:hover { background: #244824; }

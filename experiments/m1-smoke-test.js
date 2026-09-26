@@ -80,14 +80,14 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 	const BROWSER_GLOBALS = new Set([
 		'devicePixelRatio', 'innerWidth', 'innerHeight', 'addEventListener', 'removeEventListener',
 		'requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'location', 'navigator',
-		'matchMedia', 'Device', 'GalaxyShaders', 'HashLib', 'DensityLib', 'GalaxyLib', 'SamplingLib',
+		'matchMedia', 'Device', 'Presets', 'GalaxyShaders', 'HashLib', 'DensityLib', 'GalaxyLib', 'SamplingLib',
 		'StarRecord', 'StarTypesLib', 'NebulaLib', 'ObjectsLib', 'Coords', 'Camera', 'Input', 'Loop', 'Selection',
 		'Landmarks', 'Constellations', 'StarRenderer', 'LabelLayer',
 		'TileLoader', 'CellManager', '__galaxy_catalog', 'self', 'document', 'setTimeout',
 	]);
 	const defined = new Set();
 	const undefinedReads = [];
-	const NAMESPACES = ['Device', 'Camera', 'Input', 'Loop', 'Selection', 'StarRenderer', 'LabelLayer',
+	const NAMESPACES = ['Device', 'Camera', 'Input', 'Loop', 'Selection', 'Presets', 'StarRenderer', 'LabelLayer',
 		'TileLoader', 'CellManager', 'GalaxyShaders', 'HashLib', 'DensityLib', 'GalaxyLib', 'SamplingLib',
 		'StarRecord', 'StarTypesLib', 'NebulaLib', 'ObjectsLib', 'Coords', 'Landmarks', 'Constellations'];
 	for (const file of scripts) {
@@ -119,6 +119,7 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		['../src/math/objects.js', 'ObjectsLib'], ['../src/math/coords.js', 'Coords'],
 		['../src/core/camera.js', 'Camera'], ['../src/core/input.js', 'Input'],
 		['../src/core/selection.js', 'Selection'], ['../src/core/loop.js', 'Loop'],
+		['../src/core/presets.js', 'Presets'],
 		['../src/core/device.js', 'Device'],
 		['../src/data/landmarks.js', 'Landmarks'], ['../src/data/constellations.js', 'Constellations'],
 		['../src/render/shaders.js', 'GalaxyShaders'], ['../src/render/star-sprites.js', 'StarRenderer'],

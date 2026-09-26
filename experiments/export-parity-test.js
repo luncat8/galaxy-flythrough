@@ -32,6 +32,7 @@ const MODULES = [
 	{ file: '../src/math/coords.js', global: 'Coords' },
 	{ file: '../src/core/camera.js', global: 'Camera' },
 	{ file: '../src/core/input.js', global: 'Input' },
+	{ file: '../src/core/presets.js', global: 'Presets' },
 	{ file: '../src/core/selection.js', global: 'Selection' },
 	{ file: '../src/core/loop.js', global: 'Loop' },
 	{ file: '../src/core/device.js', global: 'Device' },

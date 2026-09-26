@@ -103,7 +103,20 @@
                 <div class="menu-row menu-actions">
                         <button id="menu-defaults">Defaults</button>
                 </div>
-                <div class="menu-hint">Tab toggles this panel · drag sliders live · G cycles galaxy type</div>
+                <div class="menu-header menu-header-galaxy"><span>Preset</span></div>
+                <div class="menu-row preset-row">
+                        <textarea id="preset-text" rows="3" spellcheck="false" title="The settings as one text line. Copy puts the current settings here, Paste/Apply reads it back."></textarea>
+                </div>
+                <div class="menu-row preset-actions">
+                        <button id="preset-copy" title="All settings as one text line, into the box and the clipboard">Copy</button>
+                        <button id="preset-paste" title="Clipboard into the box, then apply it">Paste</button>
+                        <button id="preset-apply" title="Apply the box content">Apply</button>
+                        <button id="preset-save" title="Download the box content as galaxy-preset.txt">Save</button>
+                        <button id="preset-load" title="Load a saved preset file into the box and apply it">Load</button>
+                        <button id="preset-prompt" title="Copy an LLM prompt that recreates this star system in another project">LLM prompt</button>
+                        <input type="file" id="preset-file" accept=".txt,text/plain" hidden>
+                </div>
+                <div class="menu-hint">Tab toggles this panel · drag sliders live · G cycles galaxy type · star counts apply at boot</div>
         </div>
         <pre id="help">
                      fly                     orbit
@@ -144,6 +157,7 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
         <script src="core/input.js"></script>
         <script src="core/selection.js"></script>
         <script src="core/loop.js"></script>
+        <script src="core/presets.js"></script>
         <!-- Data after math (landmarks bake their positions through coords.js at
              load), before the renderer that writes them into the star buffer. -->
         <script src="data/landmarks.js"></script>

@@ -66,6 +66,7 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 - `src/data/landmarks.js` + `src/data/constellations.js` — the named stars (positions/magnitudes baked at load through `src/math/coords.js`) and the constellation figures as landmark-name edges; drawn as a fixed block of the star buffer plus a 2D label overlay.
 - `src/stream/` — catalog streaming: `tile-loader.js` (bundle injection, manifest, per-cell decode) and `cell-manager.js` (residency set, nearest-first budget, decoded-payload LRU).
 - `src/render/shaders.js` — all WGSL, as JS strings; `WIRED_SHADERS` lists what the renderer actually compiles.
+- `src/core/presets.js` — the settings-preset format: the whole menu as one URL-language text line (serialize/parse, menu defaults) plus the LLM prompt builder of `archive/copy-paste-preset-prompt.md`; main.js owns the DOM glue (copy/paste/save/load/apply).
 
 ## Workflow
 

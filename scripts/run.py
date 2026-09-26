@@ -44,6 +44,7 @@ EXPERIMENTS = {
     'wgsl-validate':         'experiments/wgsl-validate.js',
     'camera':                'experiments/camera-test.js',
     'input':                 'experiments/input-test.js',
+    'preset':                'experiments/preset-test.js',
     'renderer':              'experiments/renderer-test.js',
     'hdr':                   'experiments/hdr-test.js',
     'landmark':              'experiments/landmark-test.js',
@@ -73,7 +74,7 @@ EXPERIMENTS = {
 }
 
 TYPES = {
-    'test':   ['export-parity', 'm1-smoke', 'wgsl-validate', 'camera', 'input', 'renderer', 'hdr',
+    'test':   ['export-parity', 'm1-smoke', 'wgsl-validate', 'camera', 'input', 'preset', 'renderer', 'hdr',
                'landmark', 'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'shape', 'model-parity', 'sampling',
                'density-distribution',
                'star-types-evolution', 'nebula-placement', 'object-placement', 'galaxy-age',

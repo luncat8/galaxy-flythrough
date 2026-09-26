@@ -1,0 +1,61 @@
+{
+  "checks": [
+    {
+      "name": "serialize covers every field, in FIELDS order",
+      "pass": true
+    },
+    {
+      "name": "serialize → parse is the identity on the full settings object",
+      "pass": true
+    },
+    {
+      "name": "serialize → parse is the identity on a non-default system",
+      "pass": true
+    },
+    {
+      "name": "partial presets survive: absent keys are absent, junk is dropped",
+      "pass": true
+    },
+    {
+      "name": "engine serializes as names joined by + and parses back",
+      "pass": true
+    },
+    {
+      "name": "parseEngineList normalizes order, case and junk",
+      "pass": true
+    },
+    {
+      "name": "serializeEngine falls back to classic for an empty list",
+      "pass": true
+    },
+    {
+      "name": "menuDefaults matches the modules that own the numbers",
+      "pass": true
+    },
+    {
+      "name": "the default system round-trips and the model it names exists",
+      "pass": true
+    },
+    {
+      "name": "the prompt names the star system and every setting",
+      "pass": true
+    },
+    {
+      "name": "the prompt references the project and sketches the approach offline",
+      "pass": true
+    },
+    {
+      "name": "the prompt asks the two scoping questions before writing code",
+      "pass": true
+    },
+    {
+      "name": "index.html loads presets.js before main.js and has the preset section",
+      "pass": true
+    },
+    {
+      "name": "main.js wires collect, apply, clipboard, file and prompt through Presets",
+      "pass": true
+    }
+  ],
+  "failed": 0
+}
