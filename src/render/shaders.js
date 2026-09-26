@@ -599,6 +599,8 @@ fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, d
 // Apocenter-guided Kepler ellipse, mirrored by orbit.apocenterPosition.
 fn apocenterPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, waveA: vec4f, waveB: vec4f, engine: vec4f) -> vec3f {
         if (time == 0.0) { return p; }
+        let selector: f32 = hash01(hash4(bitcast<u32>(p.x), bitcast<u32>(p.y), bitcast<u32>(p.z), 9137u));
+        if (selector >= engine.w) { return p; }
         let flags: u32 = (packed >> 16u) & 0xFFu;
         let family: u32 = (flags >> 3u) & 3u;
         let phaseBits: u32 = (packed >> 24u) & 15u;
@@ -606,8 +608,6 @@ fn apocenterPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4
         let q: vec3f = p - centre;
         let radius: f32 = length(q);
         if (radius <= 1e-9) { return centre; }
-        let selector: f32 = hash01(hash4(floatBitsToUint(p.x), floatBitsToUint(p.y), floatBitsToUint(p.z), 9137u));
-        if (selector >= engine.w) { return p; }
         let theta0: f32 = atan2(q.y, q.x);
         let R: f32 = max(length(q.xy), 0.001);
         var apo: f32 = theta0;
@@ -1722,13 +1722,13 @@ const SHADER_PARTS = {
 // Complete, compilable modules. WGSL has no include mechanism, so the shared
 // parts are concatenated here rather than fake-included in the source.
 const SHADERS = {
-        'star-sprite': STAR_SPRITE,
+        'star-sprite': PCG_HASH + STAR_SPRITE,
         'star-sprite-hdr': STAR_SPRITE_HDR,
         'nebula-billboard': NEBULA_BILLBOARD,
         'tonemap': TONEMAP,
         'procedural-gen': PCG_HASH + DENSITY + PROCEDURAL_GEN,
         'cull': PCG_HASH + CULL,
-        'simple-step': ORBIT + SIMPLE_STEP,
+        'simple-step': PCG_HASH + ORBIT + SIMPLE_STEP,
 };
 
 // Wired shaders: the renderer compiles star-sprite + nebula-billboard + tonemap

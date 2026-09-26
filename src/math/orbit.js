@@ -55,6 +55,9 @@
 const density = (typeof module !== 'undefined' && module.exports)
 	? require('./density.js')
 	: window.DensityLib;
+const hash = (typeof module !== 'undefined' && module.exports)
+	? require('./hash.js')
+	: window.HashLib;
 
 const FAMILY_PATTERN = 0, FAMILY_DISC = 1, FAMILY_BAR = 2, FAMILY_PRESSURE = 3;
 const FAMILY_NAMES = ['pattern', 'disc', 'bar', 'pressure'];
@@ -415,10 +418,14 @@ function setApocenterShare(value) { apocenterShare = Math.max(0, Math.min(1, Num
 function setApocenterForce(value) { apocenterForce = Math.max(0, Math.min(APOCENTER_ECC_CAP, Number(value) || 0)); return apocenterForce; }
 function getApocenterShare() { return apocenterShare; }
 function getApocenterForce() { return apocenterForce; }
+const selectorF32 = new Float32Array(3);
+const selectorBits = new Uint32Array(selectorF32.buffer);
+
+// Hash the birth f32 bit patterns, exactly as the shader bitcasts them: a
+// sin() hash of kpc-scale arguments diverges between f64 and GPU f32.
 function apocenterSelected(x, y, z) {
-	// A cheap stable hash; CPU labels and the shader receive the same birth f32s.
-	const n = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
-	return (n - Math.floor(n)) < apocenterShare;
+	selectorF32[0] = x; selectorF32[1] = y; selectorF32[2] = z;
+	return hash.hash01(hash.hash4(selectorBits[0], selectorBits[1], selectorBits[2], 9137)) < apocenterShare;
 }
 
 function apocenterAngle(theta, radius, family, model) {
@@ -916,7 +923,7 @@ function packEngineVec(model, out, offset) {
 	out[offset + 1] = apocenterForce;
 	out[offset + 2] = engine === ENGINE_APOCENTER
 		? (((model && model.spheroid && model.spheroid.tiltDeg) || 0) * Math.PI / 180) : 0;
-	out[offset + 3] = 0;
+	out[offset + 3] = apocenterShare;
 	return out;
 }
 

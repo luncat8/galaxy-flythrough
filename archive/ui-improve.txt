@@ -1,0 +1,11 @@
+## make startup default:
+
+exposure 22
+star time 5
+camera around galaxy center
+
+## refactor camera UI:
+
+- in fly mode use as current behavior (Esc and tab to show cursor and use menu)
+
+- in rot camera around galaxy or object center mode: show cursor, camera movement with press and drag canvas, avoid pass event from menu and sliders interaction

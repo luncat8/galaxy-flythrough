@@ -78,6 +78,25 @@ function readSource(relPath) {
                 const fnCount = (src.match(/^fn\s/gm) || []).length;
                 check(`${name}: declares its functions`, fnCount > 0, fnCount);
         }
+
+        // WGSL has no includes: every call must resolve inside the concatenated
+        // module (a part that starts calling hash4 must pull PCG_HASH in).
+        const BUILTINS = new Set(('abs acos all any array asin atan atan2 atomicAdd atomicSub atomicMax atomicMin atomicLoad atomicStore '
+                + 'bitcast bool ceil clamp cos cosh countOneBits cross degrees determinant distance dot dpdx dpdy '
+                + 'exp exp2 extractBits f32 floor fma fract fwidth i32 insertBits inverseSqrt ldexp length log log2 '
+                + 'mat2x2f mat3x3f mat4x4f max min mix modf normalize pack2x16float pow radians reflect round saturate '
+                + 'select sign sin sinh smoothstep sqrt step storageBarrier tan tanh textureDimensions textureLoad '
+                + 'textureSample textureSampleLevel transpose trunc u32 unpack2x16float vec2 vec2f vec2i vec2u vec3 '
+                + 'vec3f vec3i vec3u vec4 vec4f vec4i vec4u workgroupBarrier arrayLength').split(' '));
+        const KEYWORDS = new Set(['if', 'for', 'while', 'switch', 'return', 'fn', 'loop', 'workgroup_size']);
+        for (const [name, src] of Object.entries(shaders.SHADERS)) {
+                const code = src.replace(/\/\/[^\n]*/g, '');
+                const defined = new Set([...code.matchAll(/\bfn\s+(\w+)/g)].map(m => m[1]));
+                const structs = new Set([...code.matchAll(/\bstruct\s+(\w+)/g)].map(m => m[1]));
+                const unresolved = [...new Set([...code.matchAll(/(?<![@.\w])([A-Za-z_]\w*)\s*(?:<[^>()]*>)?\s*\(/g)].map(m => m[1]))]
+                        .filter(c => !defined.has(c) && !structs.has(c) && !BUILTINS.has(c) && !KEYWORDS.has(c));
+                check(`${name}: every call target resolves in the module`, unresolved.length === 0, unresolved);
+        }
 }
 
 // Grab one function's source out of a JS file, braces matched. Lets a check
