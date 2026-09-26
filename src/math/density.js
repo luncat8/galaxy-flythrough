@@ -365,8 +365,9 @@ function barEnclosedMassFraction(model, tip) {
 	return total > 0 ? barLongitudinalIntegral(model, tip) / total : 1;
 }
 
-// The spheroid: Plummer (what a spiral's bulge is), Sérsic (E/S0 body) or
-// Bar (boxy/peanut bulge). Truncated at `truncation.spheroidRadius` in units of s.
+// The spheroid: Plummer (a smooth round bulge), Sérsic (E/S0 body) or
+// Bar (boxy/peanut bulge — the Milky Way preset's central component).
+// Truncated at `truncation.spheroidRadius` in units of s.
 function rhoSpheroid(model, x, y, z) {
 	const sp = model.spheroid;
 	if (sp.profileId === PROFILE_BAR) {

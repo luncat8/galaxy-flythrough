@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-26T13:27:00.650Z",
+  "date": "2026-09-26T13:50:09.510Z",
   "types": [
     "E0",
     "E1",
@@ -527,14 +527,14 @@
       ],
       "5": [
         1.714,
-        2.89,
-        3.558,
+        2.888,
+        3.559,
         4.164
       ],
       "13.5": [
         5.642,
-        8.334,
-        9.887,
+        8.336,
+        9.885,
         11.322
       ]
     },
@@ -547,29 +547,29 @@
       ],
       "5": [
         1.414,
-        2.89,
-        3.558,
+        2.888,
+        3.559,
         4.164
       ],
       "13.5": [
         4.625,
-        8.334,
-        9.887,
+        8.336,
+        9.885,
         11.322
       ]
     },
     "componentCounts": [
       {
         "component": "thin",
-        "stars": 75120
+        "stars": 74576
       },
       {
         "component": "thick",
-        "stars": 23543
+        "stars": 23330
       },
       {
         "component": "bulge",
-        "stars": 21303
+        "stars": 22060
       },
       {
         "component": "halo",
@@ -848,49 +848,49 @@
   "population": {
     "thinDisc": {
       "1": {
-        "n": 75120,
-        "obPct": 0.67,
+        "n": 74576,
+        "obPct": 0.668,
         "giantPct": 0.028,
-        "wdPct": 0.354,
-        "youngPct": 61.23,
+        "wdPct": 0.355,
+        "youngPct": 61.22,
         "meanColour": 5.831,
         "meanLuminosity": 3.08
       },
       "2": {
-        "n": 75120,
-        "obPct": 0.491,
-        "giantPct": 0.045,
-        "wdPct": 0.518,
+        "n": 74576,
+        "obPct": 0.489,
+        "giantPct": 0.046,
+        "wdPct": 0.519,
         "youngPct": 40.29,
         "meanColour": 5.8416,
         "meanLuminosity": 3.7
       },
       "8": {
-        "n": 75120,
-        "obPct": 0.208,
-        "giantPct": 0.085,
-        "wdPct": 1.298,
-        "youngPct": 22.06,
-        "meanColour": 5.8817,
+        "n": 74576,
+        "obPct": 0.205,
+        "giantPct": 0.086,
+        "wdPct": 1.301,
+        "youngPct": 22.07,
+        "meanColour": 5.8818,
         "meanLuminosity": 4.66
       },
       "0.5": {
-        "n": 75120,
-        "obPct": 0.784,
+        "n": 74576,
+        "obPct": 0.782,
         "giantPct": 0.023,
-        "wdPct": 0.245,
-        "youngPct": 90.92,
+        "wdPct": 0.247,
+        "youngPct": 90.91,
         "meanColour": 5.8243,
-        "meanLuminosity": 3.07
+        "meanLuminosity": 3.06
       },
       "13.5": {
-        "n": 75120,
-        "obPct": 0.169,
-        "giantPct": 0.134,
-        "wdPct": 1.772,
-        "youngPct": 19.68,
-        "meanColour": 5.9033,
-        "meanLuminosity": 7.43
+        "n": 74576,
+        "obPct": 0.166,
+        "giantPct": 0.135,
+        "wdPct": 1.777,
+        "youngPct": 19.69,
+        "meanColour": 5.9035,
+        "meanLuminosity": 7.45
       }
     },
     "E4": {
@@ -961,9 +961,9 @@
         "magOffset": -0.7809
       },
       "SBb@8": {
-        "meanL": 5.035,
+        "meanL": 4.948,
         "referenceL": 8.434,
-        "magOffset": -0.56
+        "magOffset": -0.5791
       },
       "SBb@13.5": {
         "meanL": 8.434,
@@ -1266,41 +1266,41 @@
       "2": {
         "placed": 400,
         "byType": {
-          "globular": 36,
-          "open": 152,
-          "planetary": 74,
-          "HII": 105,
-          "SNR": 33
+          "globular": 40,
+          "open": 179,
+          "HII": 98,
+          "SNR": 18,
+          "planetary": 65
         }
       },
       "8": {
         "placed": 400,
         "byType": {
-          "planetary": 106,
-          "open": 118,
-          "SNR": 49,
-          "HII": 75,
-          "globular": 52
+          "planetary": 95,
+          "open": 139,
+          "SNR": 29,
+          "HII": 79,
+          "globular": 58
         }
       },
       "0.5": {
         "placed": 400,
         "byType": {
-          "open": 151,
-          "planetary": 74,
-          "HII": 107,
-          "SNR": 33,
-          "globular": 35
+          "open": 176,
+          "HII": 100,
+          "SNR": 19,
+          "planetary": 65,
+          "globular": 40
         }
       },
       "13.5": {
         "placed": 400,
         "byType": {
-          "globular": 80,
-          "planetary": 172,
-          "SNR": 68,
-          "open": 39,
-          "HII": 41
+          "globular": 91,
+          "SNR": 57,
+          "open": 56,
+          "planetary": 149,
+          "HII": 47
         }
       }
     },
@@ -1472,8 +1472,8 @@
       "pass": true,
       "detail": [
         4.625,
-        8.334,
-        9.887,
+        8.336,
+        9.885,
         11.322
       ]
     },
@@ -1493,8 +1493,8 @@
       "detail": {
         "now": [
           4.625,
-          8.334,
-          9.887,
+          8.336,
+          9.885,
           11.322
         ],
         "priors": [
@@ -1515,8 +1515,8 @@
       "name": "the thin disc loses its O/B stars as the galaxy ages",
       "pass": true,
       "detail": {
-        "at1Gyr": 0.67,
-        "at13_5": 0.169
+        "at1Gyr": 0.668,
+        "at13_5": 0.166
       }
     },
     {
@@ -1524,7 +1524,7 @@
       "pass": true,
       "detail": {
         "young": 0.023,
-        "old": 0.134
+        "old": 0.135
       }
     },
     {
@@ -1532,24 +1532,24 @@
       "pass": true,
       "detail": {
         "young": 5.8243,
-        "old": 5.9033
+        "old": 5.9035
       }
     },
     {
       "name": "the remnant fraction rises with age and accumulates past 1 Gyr",
       "pass": true,
       "detail": {
-        "at0_5": 0.245,
-        "at1": 0.354,
-        "at13_5": 1.772
+        "at0_5": 0.247,
+        "at1": 0.355,
+        "at13_5": 1.777
       }
     },
     {
       "name": "the field brightens as turnoff giants join the still-forming OB tail (~2.4×)",
       "pass": true,
       "detail": {
-        "young": 3.07,
-        "old": 7.43
+        "young": 3.06,
+        "old": 7.45
       }
     },
     {
@@ -1629,18 +1629,18 @@
       "pass": true,
       "detail": {
         "at0_5": {
-          "open": 151,
-          "planetary": 74,
-          "HII": 107,
-          "SNR": 33,
-          "globular": 35
+          "open": 176,
+          "HII": 100,
+          "SNR": 19,
+          "planetary": 65,
+          "globular": 40
         },
         "at13_5": {
-          "globular": 80,
-          "planetary": 172,
-          "SNR": 68,
-          "open": 39,
-          "HII": 41
+          "globular": 91,
+          "SNR": 57,
+          "open": 56,
+          "planetary": 149,
+          "HII": 47
         }
       }
     },
@@ -1653,8 +1653,8 @@
       "name": "SBb: globular clusters need time, so they accumulate with age",
       "pass": true,
       "detail": {
-        "at0_5": 35,
-        "at13_5": 80
+        "at0_5": 40,
+        "at13_5": 91
       }
     },
     {
@@ -1715,7 +1715,7 @@
       "pass": true,
       "detail": {
         "oldestObjectGyr": 1,
-        "globulars": 36
+        "globulars": 41
       }
     },
     {

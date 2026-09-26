@@ -1,0 +1,72 @@
+{
+  "target": {
+    "plummerBulgeMass": 15.0796,
+    "scaleKpc": [
+      0.7,
+      0.44,
+      0.18
+    ],
+    "halfLengthKpc": [
+      2.2,
+      2.5
+    ],
+    "tiltDeg": [
+      27,
+      29
+    ]
+  },
+  "authored": {
+    "spheroid": {
+      "profile": "bar",
+      "profileId": 2,
+      "a": 2.3,
+      "b": 0.4052,
+      "c": 0.1888,
+      "r0": 1,
+      "n": 3.5,
+      "amp": 31.373,
+      "tiltDeg": 27
+    },
+    "bar": {
+      "peanut": 0.45,
+      "endCap": 0.30434782608695654,
+      "plateau": 0.55,
+      "vertical": 2.4
+    }
+  },
+  "measured": {
+    "bulgeMass": 15.0796,
+    "massDriftPct": -0.001,
+    "hmdY": 0.305,
+    "hmdZ": 0.1248,
+    "hmdTargetY": 0.305,
+    "hmdTargetZ": 0.1248,
+    "edgeFitY": 0.041,
+    "edgeFitZ": 0.026,
+    "longitudinalScaleKpc": 0.7,
+    "longitudinalHalfDensityKpc": 1.75,
+    "halfMassXikpc": 1.77,
+    "ridgeDensityAtTip": 0.228,
+    "loopRatioBA": 0.1762,
+    "omegaPatternOld": 0.043934,
+    "omegaPatternNew": 0.028653,
+    "truncationBulge": 1,
+    "truncationBulgeOld": 0.95973,
+    "componentMasses": {
+      "thin": 50.9692,
+      "thick": 16.6253,
+      "bulge": 15.0796,
+      "halo": 0.0214,
+      "total": 82.6955
+    },
+    "componentMassesOld": {
+      "thin": 50.9692,
+      "thick": 16.6253,
+      "bulge": 15.0796,
+      "halo": 0.0214,
+      "total": 82.6956
+    },
+    "bulgeShareOld": 0.1824,
+    "bulgeShareNew": 0.1824
+  }
+}

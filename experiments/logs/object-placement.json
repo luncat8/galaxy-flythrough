@@ -1,9 +1,9 @@
 {
-  "date": "2026-09-26T13:27:00.601Z",
+  "date": "2026-09-26T13:50:09.468Z",
   "seed": 99,
   "targetN": 1200,
   "placedN": 1200,
-  "placeMs": 236,
+  "placeMs": 346,
   "box": {
     "xMin": -20,
     "xMax": 20,
@@ -13,19 +13,19 @@
     "zMax": 2
   },
   "byType": {
-    "planetary": 550,
-    "open": 152,
-    "HII": 120,
-    "SNR": 185,
-    "globular": 193
+    "planetary": 536,
+    "open": 180,
+    "globular": 254,
+    "HII": 110,
+    "SNR": 120
   },
   "byComponent": {
-    "bulge": 360,
-    "thin": 676,
-    "thick": 164
+    "bulge": 492,
+    "thin": 558,
+    "thick": 150
   },
-  "totalMembers": 251209,
-  "meanRichness": 209.34083333333334,
+  "totalMembers": 325549,
+  "meanRichness": 271.29083333333335,
   "totalChecks": 50,
   "passed": 50,
   "failed": 0,
@@ -60,63 +60,63 @@
       "name": "all five object types are present",
       "pass": true,
       "detail": {
-        "planetary": 550,
-        "open": 152,
-        "HII": 120,
-        "SNR": 185,
-        "globular": 193
+        "planetary": 536,
+        "open": 180,
+        "globular": 254,
+        "HII": 110,
+        "SNR": 120
       }
     },
     {
       "name": "HII regions are present but not dominant",
       "pass": true,
-      "detail": 0.1
+      "detail": 0.09166666666666666
     },
     {
       "name": "HII regions sit on the arm ridges (mean distance-to-arm < 0.35 kpc)",
       "pass": true,
-      "detail": 0.275
+      "detail": 0.25
     },
     {
       "name": "HII regions hug the arms tighter than the disc-wide open clusters",
       "pass": true,
       "detail": {
-        "hII": 0.275,
-        "open": 0.766
+        "hII": 0.25,
+        "open": 17.755
       }
     },
     {
       "name": "open clusters stay in the thin disc (mean |zp| < 0.3 kpc)",
       "pass": true,
-      "detail": 0.132
+      "detail": 0.125
     },
     {
       "name": "globulars concentrate centrally (mean R < 3 kpc, bulge-dominated majority)",
       "pass": true,
       "detail": {
-        "meanR": 1.88,
-        "bulgeFrac": 0.81
+        "meanR": 1.8,
+        "bulgeFrac": 0.84
       }
     },
     {
       "name": "planetaries favour the inner galaxy (R < 3 kpc for over 40%)",
       "pass": true,
-      "detail": 0.67
+      "detail": 0.68
     },
     {
-      "name": "SNR trace the thin disc and the arms (thin majority, mean arm distance < 5 kpc)",
+      "name": "SNR trace the thin disc and the arms (thin majority, mean arm distance < 5 kpc in the arm region)",
       "pass": true,
       "detail": {
-        "thinFrac": 0.68,
-        "meanArm": 3.08
+        "thinFrac": 0.78,
+        "meanArm": 0.68
       }
     },
     {
       "name": "almost no object leaks into the halo or above |z| = 1 kpc",
       "pass": true,
       "detail": {
-        "haloish": 39,
-        "fraction": 0.0325
+        "haloish": 44,
+        "fraction": 0.0367
       }
     },
     {
@@ -131,12 +131,12 @@
     {
       "name": "every planetary is one central star with the 2 pc shell size",
       "pass": true,
-      "detail": 550
+      "detail": 536
     },
     {
       "name": "SNR carry no members and a 20-120 pc shell size",
       "pass": true,
-      "detail": 185
+      "detail": 120
     },
     {
       "name": "open members follow the truncated Plummer enclosed-mass curve (within 0.02)",
@@ -246,7 +246,7 @@
       "name": "a different seed moves essentially every member",
       "pass": true,
       "detail": {
-        "diffRecords": 18721,
+        "diffRecords": 11097,
         "written": 20000
       }
     },
@@ -288,9 +288,9 @@
       "name": "association members include O/B stars (over 0.3% of the HII census)",
       "pass": true,
       "detail": {
-        "ob": 93,
-        "written": 12862,
-        "frac": 0.0072
+        "ob": 88,
+        "written": 12431,
+        "frac": 0.0071
       }
     },
     {
@@ -302,17 +302,17 @@
       "name": "globular members show the old mix (RG+WD over 1%)",
       "pass": true,
       "detail": {
-        "old": 456,
-        "written": 13331,
-        "frac": 0.0342
+        "old": 432,
+        "written": 13379,
+        "frac": 0.0323
       }
     },
     {
       "name": "open clusters span young and old (O/B/A/F and WD/RG both present)",
       "pass": true,
       "detail": {
-        "openYoung": 27,
-        "openOld": 6
+        "openYoung": 49,
+        "openOld": 5
       }
     },
     {
@@ -332,8 +332,8 @@
       "name": "writeObjectBillboards packs one record per gas object and skips clusters",
       "pass": true,
       "detail": {
-        "written": 855,
-        "gas": 855,
+        "written": 766,
+        "gas": 766,
         "total": 1200
       }
     },
@@ -341,8 +341,8 @@
       "name": "billboard tints are NEBULA_COLORS for the object type",
       "pass": true,
       "detail": {
-        "tintOk": 855,
-        "written": 855
+        "tintOk": 766,
+        "written": 766
       }
     },
     {

@@ -91,14 +91,16 @@ function relNear(a, b, tol) {
 		['centre.x', MW.centre.x, 8.178],
 		['thin.L', MW.thin.L, 2.6], ['thin.H', MW.thin.H, 0.3], ['thin.amp', MW.thin.amp, 1.0],
 		['thick.L', MW.thick.L, 3.5], ['thick.H', MW.thick.H, 0.9], ['thick.amp', MW.thick.amp, 0.12],
-		['spheroid.a', MW.spheroid.a, 1.5], ['spheroid.b', MW.spheroid.b, 0.5], ['spheroid.c', MW.spheroid.c, 0.4],
-		['spheroid.r0', MW.spheroid.r0, 1.0], ['spheroid.amp', MW.spheroid.amp, 12.0],
-		['spheroid.tiltDeg', MW.spheroid.tiltDeg, 27], ['spheroid.profile', MW.spheroid.profile, 'plummer'],
-		['spheroid.profileId', MW.spheroid.profileId, density.PROFILE_PLUMMER],
+		['spheroid.a', MW.spheroid.a, 2.3], ['spheroid.b', MW.spheroid.b, 0.405], ['spheroid.c', MW.spheroid.c, 0.189],
+		['spheroid.r0', MW.spheroid.r0, 1.0], ['spheroid.amp', MW.spheroid.amp, 31.36],
+		['spheroid.tiltDeg', MW.spheroid.tiltDeg, 27], ['spheroid.profile', MW.spheroid.profile, 'bar'],
+		['spheroid.profileId', MW.spheroid.profileId, density.PROFILE_BAR],
+		['bar.peanut', MW.bar.peanut, 0.45], ['bar.endCap', MW.bar.endCap, 0.304],
+		['bar.plateau', MW.bar.plateau, 0.55], ['bar.vertical', MW.bar.vertical, 2.40],
 		['halo.a_h', MW.halo.a_h, 1.0], ['halo.rMax', MW.halo.rMax, 100.0],
 		['halo.power', MW.halo.power, 3.5], ['halo.amp', MW.halo.amp, 0.0008],
 		['arms.m', MW.arms.m, 2], ['arms.amp', MW.arms.amp, 0.2], ['arms.pitchDeg', MW.arms.pitchDeg, 12],
-		['arms.Rs', MW.arms.Rs, 3.0], ['arms.phase0', MW.arms.phase0, 0], ['arms.minRadius', MW.arms.minRadius, 0.5],
+		['arms.Rs', MW.arms.Rs, 3.0], ['arms.phase0', MW.arms.phase0, 2.8406], ['arms.minRadius', MW.arms.minRadius, 2.3],
 		['truncation.discRadius', MW.truncation.discRadius, 25.0],
 		['truncation.discHeight', MW.truncation.discHeight, 3.0],
 		['truncation.spheroidRadius', MW.truncation.spheroidRadius, 6.0],
@@ -122,6 +124,40 @@ function relNear(a, b, tol) {
 		{ bulgeShare: +bulgeShare.toFixed(4), anchorBT: galaxy.interpAnchors(galaxy.ANCHORS.B_T, 3) });
 	check('the preset is not re-solved: its disc amplitude is the authored 1.0',
 		MW.thin.amp === 1.0 && density.componentMasses(MW).thin > 0, density.componentMasses(MW).thin);
+	// 0.4.8 M2: the central component is the observed boxy/peanut bar. The
+	// three Wegg & Gerhard axis scale lengths (0.70 : 0.44 : 0.18 kpc) are
+	// matched where the family has the knob: the longitudinal cap IS an
+	// exponential of scale endCap·a, and the transverse/vertical half-density
+	// extents stand in for the exponential scales (an exponential of scale h
+	// has half-density extent ln2·h). The amplitude is whatever hands the
+	// Plummer bulge's mass over at the observed thinness.
+	check('the preset bar carries the observed half-length and axis scale lengths', (() => {
+		const LN2 = Math.log(2);
+		const t = MW.spheroid.tiltDeg * Math.PI / 180;
+		const along = (axis, s) => {
+			const ux = axis === 'x' ? Math.cos(t) : axis === 'y' ? -Math.sin(t) : 0;
+			const uy = axis === 'x' ? Math.sin(t) : axis === 'y' ? Math.cos(t) : 0;
+			return density.rhoSpheroid(MW, MW.centre.x + ux * s, MW.centre.y + uy * s,
+				axis === 'z' ? s : 0) / MW.spheroid.amp;
+		};
+		const halfExtent = (axis) => {
+			let lo = 1e-6, hi = MW.spheroid.a;
+			for (let i = 0; i < 60; i++) {
+				const mid = (lo + hi) / 2;
+				if (along(axis, mid) > 0.5) lo = mid; else hi = mid;
+			}
+			return (lo + hi) / 2;
+		};
+		const halfY = halfExtent('y');
+		const halfZ = halfExtent('z');
+		return near(MW.spheroid.a * MW.spheroid.r0, 2.3, 1e-12)
+			&& near(MW.bar.endCap * MW.spheroid.a, 0.6992, 1e-3)
+			&& near(halfY, 0.44 * LN2, 0.0044 * LN2)
+			&& near(halfZ, 0.18 * LN2, 0.0018 * LN2);
+	})(), { endCapScale: +(MW.bar.endCap * MW.spheroid.a).toFixed(4) });
+	check('the preset bar hands back the Plummer bulge mass it replaced',
+		near(density.componentMasses(MW).bulge, 15.0796, 0.001),
+		+ density.componentMasses(MW).bulge.toFixed(5));
 }
 
 // The menu contains all regular types, while G remains a short tour.
@@ -286,10 +322,11 @@ function relNear(a, b, tol) {
 {
 	const sersic = ALL.filter((m) => m.spheroid.profileId === density.PROFILE_SERSIC);
 	const bar = ALL.filter((m) => m.spheroid.profileId === density.PROFILE_BAR);
-	check('the unbarred table types are Sersic while barred are Bar and preset stayed Plummer',
-		sersic.length + bar.length === TABLE.length && MW.spheroid.profileId === density.PROFILE_PLUMMER
+	check('the unbarred table types are Sersic while every barred type, the preset included, is Bar',
+		sersic.length + bar.length === ALL.length && bar.includes(MW)
+		&& bar.every((m) => m.barred) && sersic.every((m) => !m.barred)
 		&& models.Sc.spheroid.profileId === density.PROFILE_SERSIC,
-		{ sersic: sersic.map((m) => m.type), bar: bar.map((m) => m.type), preset: MW.spheroid.profile });
+		{ sersic: sersic.map((m) => m.type), bar: bar.map((m) => m.type) });
 	// One index field for two profiles: a Sérsic index for the unbarred types, the
 	// boxiness for a bar, and an authored `n` (the E stages) wins over both.
 	check('the spheroid index follows the authored value or the profile\'s anchor',
@@ -324,12 +361,14 @@ function relNear(a, b, tol) {
 			rhoAtS(model, sMax + 0.01) === 0 && rhoAtS(model, 0) > rhoAtS(model, 2),
 			{ atCut: rhoAtS(model, sMax + 0.01), centre: +rhoAtS(model, 0).toFixed(4) });
 	}
-	check('a Sersic spheroid is centrally steeper than the Plummer bulge it replaces',
-		rhoAtS(models.E4, 0) / rhoAtS(models.E4, 2) > rhoAtS(MW, 0) / rhoAtS(MW, 2),
-		{ E4: +(rhoAtS(models.E4, 0) / rhoAtS(models.E4, 2)).toFixed(1),
-			MW: +(rhoAtS(MW, 0) / rhoAtS(MW, 2)).toFixed(1) });
-	check('a Plummer bulge delivers almost all of its mass inside the cut',
-		density.truncationFractions(MW).bulge > 0.9 && density.truncationFractions(MW).bulge < 1,
+	// The comparison points are inside the bodies: half an axis out, the Sérsic
+	// has already lost 2/3 of its peak while the bar's plateau is still flat.
+	check('a Sersic spheroid is centrally steeper than the preset bar, even at half an axis',
+		rhoAtS(models.E4, 0) / rhoAtS(models.E4, 0.5) > rhoAtS(MW, 0) / rhoAtS(MW, 0.5),
+		{ E4: +(rhoAtS(models.E4, 0) / rhoAtS(models.E4, 0.5)).toFixed(1),
+			MW: +(rhoAtS(MW, 0) / rhoAtS(MW, 0.5)).toFixed(1) });
+	check('the bounded bar delivers its whole mass inside its tip',
+		density.truncationFractions(MW).bulge === 1,
 		+ density.truncationFractions(MW).bulge.toFixed(4));
 }
 
@@ -364,7 +403,7 @@ function relNear(a, b, tol) {
 		slot(models.E4, 'spheroidShape', 'amp') === Math.fround(models.E4.spheroid.amp)
 		&& slot(models.E4, 'spheroidShape', 'n') === Math.fround(models.E4.spheroid.n)
 		&& slot(models.E4, 'spheroidShape', 'profileId') === density.PROFILE_SERSIC
-		&& slot(MW, 'spheroidShape', 'profileId') === density.PROFILE_PLUMMER,
+		&& slot(MW, 'spheroidShape', 'profileId') === density.PROFILE_BAR,
 		{ e4n: slot(models.E4, 'spheroidShape', 'n'), preset: slot(MW, 'spheroidShape', 'profileId') });
 	check('the boolean population flag arrives as 1.0 or 0.0',
 		slot(MW, 'populations', 'gasRich') === 1 && slot(models.S0, 'populations', 'gasRich') === 0,
@@ -438,8 +477,8 @@ function relNear(a, b, tol) {
 	// integral is a quadrature over that body rather than a closed form. Two
 	// independent checks: the ellipsoid limit is exact, and a midpoint sum of the
 	// *field function itself* has to reproduce the delivered component mass.
-	// SBb is the authored preset (a Plummer bulge), so the table carries four
-	// barred types: SB0, SBa, SBc, SBd.
+	// SBb is the authored preset (a bar bulge since 0.4.8 M2), so the table
+	// carries four barred types: SB0, SBa, SBc, SBd.
 	const bar = TABLE.filter((m) => m.spheroid.profileId === density.PROFILE_BAR);
 	check('every barred table type carries the bar profile', bar.length === 4,
 		bar.map((m) => m.type));
@@ -596,9 +635,21 @@ function relNear(a, b, tol) {
 			density.distanceToNearestArm(model, model.arms.minRadius * 2, tiltRad) > 0.1,
 			density.distanceToNearestArm(model, model.arms.minRadius * 2, tiltRad));
 	}
-	check('the authored preset keeps its own arm inner edge and phase',
-		near(MW.arms.minRadius, 0.5, 1e-12) && near(MW.arms.phase0, 0, 1e-12),
-		{ minRadius: MW.arms.minRadius, phase0: MW.arms.phase0 });
+	// The preset couples its arms to its bar end through the same solved phase
+	// the table path derives (galaxy.tableGeometry): minRadius = a·r0 and a
+	// ridge through the tip at the bar tilt.
+	check('the authored preset couples its arms to the bar end like the table path', (() => {
+		const pitchRad = MW.arms.pitchDeg * Math.PI / 180;
+		const tiltRad = MW.spheroid.tiltDeg * Math.PI / 180;
+		const m = MW.arms.m;
+		const phase = (m / Math.tan(pitchRad)) * Math.log(MW.arms.minRadius / MW.arms.Rs) - m * tiltRad;
+		const wrapped = phase - 2 * Math.PI * Math.floor(phase / (2 * Math.PI));
+		return near(MW.arms.minRadius, MW.spheroid.a * MW.spheroid.r0, 1e-12)
+			// phase0 is authored rounded to 4 decimals; the ridge sits ~1e-5 kpc
+			// off the tip as a result, which no view can see.
+			&& near(MW.arms.phase0, wrapped, 1e-4)
+			&& near(density.distanceToNearestArm(MW, MW.arms.minRadius, tiltRad), 0, 1e-4);
+	})(), { minRadius: MW.arms.minRadius, phase0: MW.arms.phase0 });
 
 	// The pitch angle is the angle the arms actually wind at. This measures the
 	// field itself — no formula from the library is re-used — by finding the arm
@@ -760,7 +811,7 @@ function relNear(a, b, tol) {
 		return nebula.nebulaProbabilityAt(model, model.centre.x + R * Math.cos(phi),
 			model.centre.y + R * Math.sin(phi), z).p;
 	};
-	const ridgePhi = density.armRidgeAzimuth(MW, 6) * 180 / Math.PI;
+	const ridgePhi = density.armRidgeAzimuth(models.Sc, 6) * 180 / Math.PI;
 	const GAS_TYPES = ['HII', 'reflection', 'dark'];
 	for (const model of ALL) {
 		const phi = density.armRidgeAzimuth(model, 6) * 180 / Math.PI;

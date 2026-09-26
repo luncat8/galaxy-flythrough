@@ -943,3 +943,31 @@ properties, so its thetas survive — re-seeding there diverges labels and picks
 from the sprites and snaps the visible epoch. Re-seed on galaxy change,
 engine switch and R reset only. The test-side shape of this rule: `renderer`
 pins the theta re-seed on `setEngine`, not on `regenerate`.
+
+## 2026-09-26 — Probe the arm lane where the arm field lives, and carry its phase
+
+Three couplings bit at once when the MW preset's arms moved to the bar tip
+(`minRadius` 0.5 → 2.3, `phase0` 0 → 2.8406):
+
+- `density.distanceToNearestArm` returns **99** for `R < arms.minRadius` — any
+  "distance to arm" statistic that averages over all R silently eats 99s. Filter
+  to `R >= minRadius` first (sampling, object-placement).
+- The simple lane's base is `K·ln(ρ/Rs) + Φp` with
+  `Φp = Ωp·T − phase0/m` (`orbit.simplePatternPhase`). A hand-rolled on-arm
+  probe or f32 replay that passes `patternPhase = 0` is off-ridge by
+  `phase0/m` once the preset's phase0 is nonzero — pass
+  `simplePatternPhase(model, T)`, which is what the packed uniform carries.
+- A test that borrows one model's ridge azimuth to probe another's field only
+  works while both share `phase0`. Compute the ridge from the model actually
+  probed.
+
+## 2026-09-26 — wgsl-exec vertex-mirror sessions: stale theta buffer
+
+The four `debugVertex` checks (simple rebuild, eccentric rho, apocenter T=0 and
+Kepler path) fail at the base commit with wgsl_reflect 1.6.0: the GPU reads a
+stale binding-3 value (both sim runs return the *same* position for θ = π/2 and
+θ = 0), so the session does not see the re-bound theta buffer. The compute-path
+checks on the same suite pass, and `all-tests` is unaffected (wgsl-exec is
+TYPES['sim'], not test). Until reconciled: treat those four as a known harness
+failure, not a shader regression — the same vertex path is pinned f64-side by
+orbit-test's mirror checks.

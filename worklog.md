@@ -13,6 +13,7 @@ No separate 0.2 implementation entry exists in the original log. The combined
 0.3/0.4 planning entry lives in 0.3.x; 0.4.x implementation entries live in the
 archive log above. Historical entries are preserved verbatim; plans remain clean.
 
-Next step suggestion: visually compare classic, simple, and apocenter engines on
-barred and unbarred galaxies. Measure time-averaged density histograms and review
-apocenter eccentricity calibration before changing its non-default status.
+Next step suggestion: M3 of the 0.4.8 realistic-shapes plan — sweep the disc, halo and
+clump truncation edges with the shape gate's step detector (Sérsic s ≤ 8, thick-disc
+|z| = 3 kpc, the preset bar's vertical skirt), then the young-population vertical
+audit.

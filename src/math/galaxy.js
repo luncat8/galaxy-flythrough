@@ -100,17 +100,33 @@
 		BAR_VERTICAL: [[-1, 2.60], [1, 2.60], [3, 2.40], [5, 2.20], [6, 2.00], [9, 2.00]],
 	};
 
-	// The Milky Way preset: verbatim the constants density.js used to export.
-	// `n` is unused by a plummer profile; it is present because the packed uniform
-	// struct has one layout for every type.
+	// The Milky Way preset: verbatim the constants density.js used to export,
+	// with the central component re-authored in 0.4.8 M2 as the boxy/peanut
+	// bar it actually is (0.4.8-plan-realistic-3d-shapes.md §4, Wegg & Gerhard
+	// 2013). Half-length a = 2.3 kpc; the longitudinal cap 0.304 is the
+	// observed 0.70 kpc exponential scale over that half-length; b and c put
+	// the slice profile's half-density extents on the observed 0.44 / 0.18 kpc
+	// scale lengths (an exponential of scale h has half-density extent ln2·h:
+	// 0.405 → 0.305 kpc, 0.189 → 0.125 kpc); tilt 27 deg. The amplitude is
+	// what hands the Plummer bulge's mass over at those axis ratios
+	// (experiments/preset-bar-fit.js: 31.36 · 0.48085 = 15.0796, the Plummer's
+	// component mass to 0.002%) — the bounded body is ~2.6x the old central
+	// contrast, which is what matching mass at the observed thinness costs.
+	// `n` is the boxiness (the SBb anchor); `bar` carries the slice knobs —
+	// peanut/plateau/vertical at the SBb anchors, endCap authored.
 	const MILKY_WAY_STRUCTURE = {
 		scaleKpc: 1.0,
 		centre: { x: 8.178, y: 0, z: 0 },        // Sun–centre distance, GRAVITY 2019
 		thin: { L: 2.6, H: 0.300, amp: 1.0 },
 		thick: { L: 3.5, H: 0.900, amp: 0.12 },
-		spheroid: { profile: 'plummer', a: 1.5, b: 0.5, c: 0.4, r0: 1.0, n: 1, amp: 12.0, tiltDeg: 27 },
+		spheroid: { profile: 'bar', a: 2.3, b: 0.405, c: 0.189, r0: 1.0, n: 3.5, amp: 31.36, tiltDeg: 27 },
+		bar: { peanut: 0.45, endCap: 0.304, plateau: 0.55, vertical: 2.40 },
 		halo: { a_h: 1.0, rMax: 100.0, power: 3.5, amp: 0.0008 },
-		arms: { m: 2, amp: 0.20, pitchDeg: 12, Rs: 3.0, phase0: 0, minRadius: 0.5, flocculence: 0 },
+		// Arms leave at the bar's end (minRadius = a·r0), and phase0 is the
+		// same solved coupling the table path uses, so a ridge passes through
+		// the bar tip at the bar tilt: (m/tan(pitch))·ln(minRadius/Rs)
+		//   − m·tilt, wrapped into [0, 2π) = 2.8406 for these numbers.
+		arms: { m: 2, amp: 0.20, pitchDeg: 12, Rs: 3.0, phase0: 2.8406, minRadius: 2.3, flocculence: 0 },
 		truncation: { discRadius: 25.0, discHeight: 3.0, spheroidRadius: 6.0 },
 		// tauSfh is the Sb stage value (ANCHORS.TAU_SFH at T = 3): the preset
 		// authors its own numbers rather than reading the table it cross-checks.
@@ -148,9 +164,9 @@
 			dynamics: { vFlat: 0.230, rCore: 1.0, sigmaThin: 0.031,
 				sigmaThick: 0.051, sigmaSpheroid: 0.100, spinLambda: 0.15 },
 		},
-		SBb: {
-			T: 3, barred: true, preset: true, profile: 'plummer', scaleKpc: 1.0, massTotal: 1.00,
-			axes: [1.50, 0.50, 0.40], discRadius: 25.0, discHeight: 3.0, spheroidRadius: 6.0,
+	SBb: {
+		T: 3, barred: true, preset: true, profile: 'bar', scaleKpc: 1.0, massTotal: 1.00,
+		axes: [2.30, 0.405, 0.189], discRadius: 25.0, discHeight: 3.0, spheroidRadius: 6.0,
 			halo: true, thickShare: 0.246, youngScaleHeight: 0.5,
 			dynamics: { vFlat: 0.225, rCore: 0.5, sigmaThin: 0.031,
 				sigmaThick: 0.051, sigmaSpheroid: 0.150, spinLambda: 0.15 },
@@ -563,10 +579,10 @@
 		const dynamics = spec.dynamics;
 		if (!(dynamics.vFlat > 0)) return 0;
 		const sp = structure.spheroid;
-		if (spec.barred) {
-			// The bar's body ends at |xi| = barTipRadius (density.js); a bulge that
-			// is not a bar profile — the Milky Way preset — ends at its own a.
-			const extent = sp.profile === 'bar' ? density.barTipRadius(structure) : 1;
+	if (spec.barred) {
+		// A bar ends at |xi| = barTipRadius (density.js); any other barred
+		// bulge profile ends at its own a.
+		const extent = sp.profile === 'bar' ? density.barTipRadius(structure) : 1;
 			return PRECESSION_FACTOR * omegaAt(dynamics, sp.a * sp.r0 * extent);
 		}
 		if (!(structure.arms.amp > 0)) return 0;

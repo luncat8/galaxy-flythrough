@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-26T13:26:35.102Z",
+  "date": "2026-09-26T13:49:42.128Z",
   "types": [
     "E0",
     "E1",
@@ -30,18 +30,18 @@
       "gasFraction": 0.15,
       "gasRich": true,
       "fromPreset": true,
-      "totalMass": 81.3514,
+      "totalMass": 81.9584,
       "delivered": {
         "thin": 50.92849,
         "thick": 15.92902,
-        "bulge": 14.47246,
+        "bulge": 15.07948,
         "halo": 0.02145,
-        "total": 81.35141
+        "total": 81.95843
       },
       "truncationFractions": {
         "thin": 0.9992,
         "thick": 0.95812,
-        "bulge": 0.95973,
+        "bulge": 1,
         "halo": 1
       },
       "home": [
@@ -60,13 +60,13 @@
       "gasFraction": 0,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 13.1479,
+      "totalMass": 13.1478,
       "delivered": {
         "thin": 0,
         "thick": 0,
-        "bulge": 13.14787,
+        "bulge": 13.14784,
         "halo": 0,
-        "total": 13.14787
+        "total": 13.14784
       },
       "truncationFractions": {
         "thin": 0,
@@ -90,13 +90,13 @@
       "gasFraction": 0,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 13.1479,
+      "totalMass": 13.1478,
       "delivered": {
         "thin": 0,
         "thick": 0,
-        "bulge": 13.14787,
+        "bulge": 13.14784,
         "halo": 0,
-        "total": 13.14787
+        "total": 13.14784
       },
       "truncationFractions": {
         "thin": 0,
@@ -120,13 +120,13 @@
       "gasFraction": 0,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 13.1479,
+      "totalMass": 13.1478,
       "delivered": {
         "thin": 0,
         "thick": 0,
-        "bulge": 13.14787,
+        "bulge": 13.14784,
         "halo": 0,
-        "total": 13.14787
+        "total": 13.14784
       },
       "truncationFractions": {
         "thin": 0,
@@ -150,13 +150,13 @@
       "gasFraction": 0,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 13.1479,
+      "totalMass": 13.1478,
       "delivered": {
         "thin": 0,
         "thick": 0,
-        "bulge": 13.14787,
+        "bulge": 13.14784,
         "halo": 0,
-        "total": 13.14787
+        "total": 13.14784
       },
       "truncationFractions": {
         "thin": 0,
@@ -180,13 +180,13 @@
       "gasFraction": 0,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 13.1479,
+      "totalMass": 13.1478,
       "delivered": {
         "thin": 0,
         "thick": 0,
-        "bulge": 13.14787,
+        "bulge": 13.14784,
         "halo": 0,
-        "total": 13.14787
+        "total": 13.14784
       },
       "truncationFractions": {
         "thin": 0,
@@ -214,9 +214,9 @@
       "delivered": {
         "thin": 0,
         "thick": 0,
-        "bulge": 15.3273,
+        "bulge": 15.32727,
         "halo": 0,
-        "total": 15.3273
+        "total": 15.32727
       },
       "truncationFractions": {
         "thin": 0,
@@ -244,9 +244,9 @@
       "delivered": {
         "thin": 0,
         "thick": 0,
-        "bulge": 17.58464,
+        "bulge": 17.58461,
         "halo": 0,
-        "total": 17.58464
+        "total": 17.58461
       },
       "truncationFractions": {
         "thin": 0,
@@ -270,13 +270,13 @@
       "gasFraction": 0,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 19.5515,
+      "totalMass": 19.5514,
       "delivered": {
         "thin": 0,
         "thick": 0,
-        "bulge": 19.55148,
+        "bulge": 19.55144,
         "halo": 0,
-        "total": 19.55148
+        "total": 19.55144
       },
       "truncationFractions": {
         "thin": 0,
@@ -300,13 +300,13 @@
       "gasFraction": 0.02,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 45.9265,
+      "totalMass": 45.9264,
       "delivered": {
-        "thin": 17.33795,
-        "thick": 6.82542,
-        "bulge": 21.75024,
+        "thin": 17.33791,
+        "thick": 6.82541,
+        "bulge": 21.7502,
         "halo": 0.01287,
-        "total": 45.92649
+        "total": 45.92639
       },
       "truncationFractions": {
         "thin": 0.99838,
@@ -330,13 +330,13 @@
       "gasFraction": 0.08,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 62.3222,
+      "totalMass": 62.322,
       "delivered": {
-        "thin": 33.31481,
-        "thick": 12.3608,
-        "bulge": 16.62939,
+        "thin": 33.31475,
+        "thick": 12.36078,
+        "bulge": 16.62935,
         "halo": 0.01716,
-        "total": 62.32216
+        "total": 62.32203
       },
       "truncationFractions": {
         "thin": 0.99916,
@@ -360,13 +360,13 @@
       "gasFraction": 0.15,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 80.7118,
+      "totalMass": 80.7117,
       "delivered": {
-        "thin": 52.94598,
-        "thick": 16.78914,
-        "bulge": 10.95525,
+        "thin": 52.94587,
+        "thick": 16.78911,
+        "bulge": 10.95523,
         "halo": 0.02145,
-        "total": 80.71182
+        "total": 80.71166
       },
       "truncationFractions": {
         "thin": 0.99899,
@@ -390,13 +390,13 @@
       "gasFraction": 0.3,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 106.8672,
+      "totalMass": 106.867,
       "delivered": {
-        "thin": 81.58383,
-        "thick": 19.84655,
-        "bulge": 5.36033,
+        "thin": 81.58366,
+        "thick": 19.84651,
+        "bulge": 5.36032,
         "halo": 0.0765,
-        "total": 106.86721
+        "total": 106.86699
       },
       "truncationFractions": {
         "thin": 0.99854,
@@ -420,13 +420,13 @@
       "gasFraction": 0.45,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 115.2588,
+      "totalMass": 115.2585,
       "delivered": {
-        "thin": 96.27912,
-        "thick": 16.56924,
+        "thin": 96.27893,
+        "thick": 16.56921,
         "bulge": 2.30906,
         "halo": 0.10134,
-        "total": 115.25876
+        "total": 115.25853
       },
       "truncationFractions": {
         "thin": 0.99834,
@@ -450,13 +450,13 @@
       "gasFraction": 0.02,
       "gasRich": false,
       "fromPreset": false,
-      "totalMass": 48.9849,
+      "totalMass": 48.9848,
       "delivered": {
-        "thin": 17.33795,
-        "thick": 6.82542,
-        "bulge": 24.80868,
+        "thin": 17.33791,
+        "thick": 6.82541,
+        "bulge": 24.80863,
         "halo": 0.01287,
-        "total": 48.98492
+        "total": 48.98482
       },
       "truncationFractions": {
         "thin": 0.99838,
@@ -480,13 +480,13 @@
       "gasFraction": 0.08,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 65.5397,
+      "totalMass": 65.5396,
       "delivered": {
-        "thin": 33.31481,
-        "thick": 12.3608,
-        "bulge": 19.84694,
+        "thin": 33.31475,
+        "thick": 12.36078,
+        "bulge": 19.8469,
         "halo": 0.01716,
-        "total": 65.53972
+        "total": 65.53958
       },
       "truncationFractions": {
         "thin": 0.99916,
@@ -510,13 +510,13 @@
       "gasFraction": 0.3,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 106.8821,
+      "totalMass": 106.8819,
       "delivered": {
-        "thin": 81.58383,
-        "thick": 19.84655,
-        "bulge": 5.37521,
+        "thin": 81.58366,
+        "thick": 19.84651,
+        "bulge": 5.3752,
         "halo": 0.0765,
-        "total": 106.8821
+        "total": 106.88188
       },
       "truncationFractions": {
         "thin": 0.99854,
@@ -540,13 +540,13 @@
       "gasFraction": 0.45,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 115.2652,
+      "totalMass": 115.2649,
       "delivered": {
-        "thin": 96.27912,
-        "thick": 16.56924,
-        "bulge": 2.31548,
+        "thin": 96.27893,
+        "thick": 16.56921,
+        "bulge": 2.31547,
         "halo": 0.10134,
-        "total": 115.26517
+        "total": 115.26494
       },
       "truncationFractions": {
         "thin": 0.99834,
@@ -570,13 +570,13 @@
       "gasFraction": 0.5,
       "gasRich": true,
       "fromPreset": false,
-      "totalMass": 11.4809,
+      "totalMass": 11.4808,
       "delivered": {
-        "thin": 7.02286,
-        "thick": 4.21088,
+        "thin": 7.02285,
+        "thick": 4.21087,
         "bulge": 0.24546,
         "halo": 0.00165,
-        "total": 11.48085
+        "total": 11.48083
       },
       "truncationFractions": {
         "thin": 0.96286,
@@ -593,8 +593,8 @@
       ]
     }
   ],
-  "totalChecks": 506,
-  "passed": 506,
+  "totalChecks": 512,
+  "passed": 512,
   "failed": 0,
   "checks": [
     {
@@ -779,24 +779,24 @@
       "name": "the Milky Way preset keeps spheroid.a",
       "pass": true,
       "detail": {
-        "preset": 1.5,
-        "expected": 1.5
+        "preset": 2.3,
+        "expected": 2.3
       }
     },
     {
       "name": "the Milky Way preset keeps spheroid.b",
       "pass": true,
       "detail": {
-        "preset": 0.5,
-        "expected": 0.5
+        "preset": 0.405,
+        "expected": 0.405
       }
     },
     {
       "name": "the Milky Way preset keeps spheroid.c",
       "pass": true,
       "detail": {
-        "preset": 0.4,
-        "expected": 0.4
+        "preset": 0.189,
+        "expected": 0.189
       }
     },
     {
@@ -811,8 +811,8 @@
       "name": "the Milky Way preset keeps spheroid.amp",
       "pass": true,
       "detail": {
-        "preset": 12,
-        "expected": 12
+        "preset": 31.36,
+        "expected": 31.36
       }
     },
     {
@@ -827,16 +827,48 @@
       "name": "the Milky Way preset keeps spheroid.profile",
       "pass": true,
       "detail": {
-        "preset": "plummer",
-        "expected": "plummer"
+        "preset": "bar",
+        "expected": "bar"
       }
     },
     {
       "name": "the Milky Way preset keeps spheroid.profileId",
       "pass": true,
       "detail": {
-        "preset": 0,
-        "expected": 0
+        "preset": 2,
+        "expected": 2
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps bar.peanut",
+      "pass": true,
+      "detail": {
+        "preset": 0.45,
+        "expected": 0.45
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps bar.endCap",
+      "pass": true,
+      "detail": {
+        "preset": 0.304,
+        "expected": 0.304
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps bar.plateau",
+      "pass": true,
+      "detail": {
+        "preset": 0.55,
+        "expected": 0.55
+      }
+    },
+    {
+      "name": "the Milky Way preset keeps bar.vertical",
+      "pass": true,
+      "detail": {
+        "preset": 2.4,
+        "expected": 2.4
       }
     },
     {
@@ -907,16 +939,16 @@
       "name": "the Milky Way preset keeps arms.phase0",
       "pass": true,
       "detail": {
-        "preset": 0,
-        "expected": 0
+        "preset": 2.8406,
+        "expected": 2.8406
       }
     },
     {
       "name": "the Milky Way preset keeps arms.minRadius",
       "pass": true,
       "detail": {
-        "preset": 0.5,
-        "expected": 0.5
+        "preset": 2.3,
+        "expected": 2.3
       }
     },
     {
@@ -1035,7 +1067,7 @@
       "name": "the preset is bulgier than the anchor curve, and is left that way",
       "pass": true,
       "detail": {
-        "bulgeShare": 0.1824,
+        "bulgeShare": 0.1823,
         "anchorBT": 0.15
       }
     },
@@ -1043,6 +1075,18 @@
       "name": "the preset is not re-solved: its disc amplitude is the authored 1.0",
       "pass": true,
       "detail": 50.9691992118408
+    },
+    {
+      "name": "the preset bar carries the observed half-length and axis scale lengths",
+      "pass": true,
+      "detail": {
+        "endCapScale": 0.6992
+      }
+    },
+    {
+      "name": "the preset bar hands back the Plummer bulge mass it replaced",
+      "pass": true,
+      "detail": 15.07948
     },
     {
       "name": "the regular type menu is complete and has no duplicates",
@@ -1464,8 +1508,8 @@
       "name": "S0: the components add up to the authored mass",
       "pass": true,
       "detail": {
-        "components": 49.6174,
-        "authored": 49.6174
+        "components": 49.6173,
+        "authored": 49.6173
       }
     },
     {
@@ -1497,8 +1541,8 @@
       "name": "Sa: the components add up to the authored mass",
       "pass": true,
       "detail": {
-        "components": 66.1565,
-        "authored": 66.1565
+        "components": 66.1563,
+        "authored": 66.1563
       }
     },
     {
@@ -1530,8 +1574,8 @@
       "name": "Sb: the components add up to the authored mass",
       "pass": true,
       "detail": {
-        "components": 82.6956,
-        "authored": 82.6956
+        "components": 82.6954,
+        "authored": 82.6954
       }
     },
     {
@@ -1563,8 +1607,8 @@
       "name": "Sc: the components add up to the authored mass",
       "pass": true,
       "detail": {
-        "components": 107.5043,
-        "authored": 107.5043
+        "components": 107.5041,
+        "authored": 107.5041
       }
     },
     {
@@ -1596,8 +1640,8 @@
       "name": "Sd: the components add up to the authored mass",
       "pass": true,
       "detail": {
-        "components": 115.7738,
-        "authored": 115.7738
+        "components": 115.7736,
+        "authored": 115.7736
       }
     },
     {
@@ -1629,8 +1673,8 @@
       "name": "SB0: the components add up to the authored mass",
       "pass": true,
       "detail": {
-        "components": 49.6174,
-        "authored": 49.6174
+        "components": 49.6173,
+        "authored": 49.6173
       }
     },
     {
@@ -1662,8 +1706,8 @@
       "name": "SBa: the components add up to the authored mass",
       "pass": true,
       "detail": {
-        "components": 66.1565,
-        "authored": 66.1565
+        "components": 66.1563,
+        "authored": 66.1563
       }
     },
     {
@@ -1695,8 +1739,8 @@
       "name": "SBc: the components add up to the authored mass",
       "pass": true,
       "detail": {
-        "components": 107.5043,
-        "authored": 107.5043
+        "components": 107.5041,
+        "authored": 107.5041
       }
     },
     {
@@ -1728,8 +1772,8 @@
       "name": "SBd: the components add up to the authored mass",
       "pass": true,
       "detail": {
-        "components": 115.7738,
-        "authored": 115.7738
+        "components": 115.7736,
+        "authored": 115.7736
       }
     },
     {
@@ -1834,7 +1878,7 @@
       "detail": {
         "thin": 0.999201278332001,
         "thick": 0.958118785014785,
-        "bulge": 0.9597346285934372,
+        "bulge": 1,
         "halo": 1
       }
     },
@@ -1845,13 +1889,13 @@
         "amps": {
           "thin": 1,
           "thick": 0.12,
-          "bulge": 12,
+          "bulge": 31.36,
           "halo": 0.0008
         },
         "delivered": {
           "thin": 50.92849,
           "thick": 15.92902,
-          "bulge": 14.47246,
+          "bulge": 15.07948,
           "halo": 0.02145
         }
       }
@@ -1878,13 +1922,13 @@
         "amps": {
           "thin": 0,
           "thick": 0,
-          "bulge": 0.05894011819962416,
+          "bulge": 0.058939998470549176,
           "halo": 0
         },
         "delivered": {
           "thin": 0,
           "thick": 0,
-          "bulge": 13.14787,
+          "bulge": 13.14784,
           "halo": 0
         }
       }
@@ -1911,13 +1955,13 @@
         "amps": {
           "thin": 0,
           "thick": 0,
-          "bulge": 0.07463136207613061,
+          "bulge": 0.07463121047236362,
           "halo": 0
         },
         "delivered": {
           "thin": 0,
           "thick": 0,
-          "bulge": 13.14787,
+          "bulge": 13.14784,
           "halo": 0
         }
       }
@@ -1944,13 +1988,13 @@
         "amps": {
           "thin": 0,
           "thick": 0,
-          "bulge": 0.09758297715169559,
+          "bulge": 0.09758277892475026,
           "halo": 0
         },
         "delivered": {
           "thin": 0,
           "thick": 0,
-          "bulge": 13.14787,
+          "bulge": 13.14784,
           "halo": 0
         }
       }
@@ -1977,13 +2021,13 @@
         "amps": {
           "thin": 0,
           "thick": 0,
-          "bulge": 0.13312279661123466,
+          "bulge": 0.1331225261898344,
           "halo": 0
         },
         "delivered": {
           "thin": 0,
           "thick": 0,
-          "bulge": 13.14787,
+          "bulge": 13.14784,
           "halo": 0
         }
       }
@@ -2010,13 +2054,13 @@
         "amps": {
           "thin": 0,
           "thick": 0,
-          "bulge": 0.1926147653582489,
+          "bulge": 0.19261437408676202,
           "halo": 0
         },
         "delivered": {
           "thin": 0,
           "thick": 0,
-          "bulge": 13.14787,
+          "bulge": 13.14784,
           "halo": 0
         }
       }
@@ -2043,13 +2087,13 @@
         "amps": {
           "thin": 0,
           "thick": 0,
-          "bulge": 0.3835721072487268,
+          "bulge": 0.3835713280725902,
           "halo": 0
         },
         "delivered": {
           "thin": 0,
           "thick": 0,
-          "bulge": 15.3273,
+          "bulge": 15.32727,
           "halo": 0
         }
       }
@@ -2076,13 +2120,13 @@
         "amps": {
           "thin": 0,
           "thick": 0,
-          "bulge": 0.9005778379986494,
+          "bulge": 0.9005760085935721,
           "halo": 0
         },
         "delivered": {
           "thin": 0,
           "thick": 0,
-          "bulge": 17.58464,
+          "bulge": 17.58461,
           "halo": 0
         }
       }
@@ -2109,13 +2153,13 @@
         "amps": {
           "thin": 0,
           "thick": 0,
-          "bulge": 2.951256018286402,
+          "bulge": 2.951250023199119,
           "halo": 0
         },
         "delivered": {
           "thin": 0,
           "thick": 0,
-          "bulge": 19.55148,
+          "bulge": 19.55144,
           "halo": 0
         }
       }
@@ -2140,15 +2184,15 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 0.262090047033834,
-          "thick": 0.04133256568970822,
-          "bulge": 1.45750877384201,
+          "thin": 0.2620895146324773,
+          "thick": 0.04133248172805345,
+          "bulge": 1.4575058131052048,
           "halo": 0.00048
         },
         "delivered": {
-          "thin": 17.33795,
-          "thick": 6.82542,
-          "bulge": 21.75024,
+          "thin": 17.33791,
+          "thick": 6.82541,
+          "bulge": 21.7502,
           "halo": 0.01287
         }
       }
@@ -2173,15 +2217,15 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 0.6290161128812014,
-          "thick": 0.0900131430575868,
-          "bulge": 0.7637747076460393,
+          "thin": 0.6290148351179454,
+          "thick": 0.09001296020776084,
+          "bulge": 0.7637731561384747,
           "halo": 0.00064
         },
         "delivered": {
-          "thin": 33.31481,
-          "thick": 12.3608,
-          "bulge": 16.62939,
+          "thin": 33.31475,
+          "thick": 12.36078,
+          "bulge": 16.62935,
           "halo": 0.01716
         }
       }
@@ -2206,15 +2250,15 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 1.211930094833941,
-          "thick": 0.14549898124104355,
-          "bulge": 0.8840364859274428,
+          "thin": 1.2119276329578264,
+          "thick": 0.1454986856790568,
+          "bulge": 0.8840346901239402,
           "halo": 0.0008
         },
         "delivered": {
-          "thin": 52.94598,
-          "thick": 16.78914,
-          "bulge": 10.95525,
+          "thin": 52.94587,
+          "thick": 16.78911,
+          "bulge": 10.95523,
           "halo": 0.02145
         }
       }
@@ -2239,15 +2283,15 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 0.7407197735531099,
-          "thick": 0.06814163786828893,
-          "bulge": 0.7512610231550354,
+          "thin": 0.7407182688786026,
+          "thick": 0.06814149944754055,
+          "bulge": 0.75125949706737,
           "halo": 0.0010400000000000001
         },
         "delivered": {
-          "thin": 81.58383,
-          "thick": 19.84655,
-          "bulge": 5.36033,
+          "thin": 81.58366,
+          "thick": 19.84651,
+          "bulge": 5.36032,
           "halo": 0.0765
         }
       }
@@ -2272,14 +2316,14 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 0.7871861651135736,
-          "thick": 0.050709222645748994,
-          "bulge": 0.7770119394564107,
+          "thin": 0.7871845660487214,
+          "thick": 0.05070911963665254,
+          "bulge": 0.7770103610591561,
           "halo": 0.00112
         },
         "delivered": {
-          "thin": 96.27912,
-          "thick": 16.56924,
+          "thin": 96.27893,
+          "thick": 16.56921,
           "bulge": 2.30906,
           "halo": 0.10134
         }
@@ -2305,15 +2349,15 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 0.262090047033834,
-          "thick": 0.04133256568970822,
-          "bulge": 26.935490203903,
+          "thin": 0.2620895146324773,
+          "thick": 0.04133248172805345,
+          "bulge": 26.935435488007876,
           "halo": 0.00048
         },
         "delivered": {
-          "thin": 17.33795,
-          "thick": 6.82542,
-          "bulge": 24.80868,
+          "thin": 17.33791,
+          "thick": 6.82541,
+          "bulge": 24.80863,
           "halo": 0.01287
         }
       }
@@ -2338,15 +2382,15 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 0.6290161128812014,
-          "thick": 0.0900131430575868,
-          "bulge": 12.727019121344167,
+          "thin": 0.6290148351179454,
+          "thick": 0.09001296020776084,
+          "bulge": 12.726993268083719,
           "halo": 0.00064
         },
         "delivered": {
-          "thin": 33.31481,
-          "thick": 12.3608,
-          "bulge": 19.84694,
+          "thin": 33.31475,
+          "thick": 12.36078,
+          "bulge": 19.8469,
           "halo": 0.01716
         }
       }
@@ -2371,15 +2415,15 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 0.7407197735531099,
-          "thick": 0.06814163786828893,
-          "bulge": 7.290906533142245,
+          "thin": 0.7407182688786026,
+          "thick": 0.06814149944754055,
+          "bulge": 7.290891722627409,
           "halo": 0.0010400000000000001
         },
         "delivered": {
-          "thin": 81.58383,
-          "thick": 19.84655,
-          "bulge": 5.37521,
+          "thin": 81.58366,
+          "thick": 19.84651,
+          "bulge": 5.3752,
           "halo": 0.0765
         }
       }
@@ -2404,15 +2448,15 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 0.7871861651135736,
-          "thick": 0.050709222645748994,
-          "bulge": 8.719469638775454,
+          "thin": 0.7871845660487214,
+          "thick": 0.05070911963665254,
+          "bulge": 8.71945192632312,
           "halo": 0.00112
         },
         "delivered": {
-          "thin": 96.27912,
-          "thick": 16.56924,
-          "bulge": 2.31548,
+          "thin": 96.27893,
+          "thick": 16.56921,
+          "bulge": 2.31547,
           "halo": 0.10134
         }
       }
@@ -2437,14 +2481,14 @@
       "pass": true,
       "detail": {
         "amps": {
-          "thin": 0.23708794466055463,
-          "thick": 0.05756156701466521,
-          "bulge": 0.1873153782618133,
+          "thin": 0.23708746304767075,
+          "thick": 0.057561450085935106,
+          "bulge": 0.18731499775533228,
           "halo": 0.00012
         },
         "delivered": {
-          "thin": 7.02286,
-          "thick": 4.21088,
+          "thin": 7.02285,
+          "thick": 4.21087,
           "bulge": 0.24546,
           "halo": 0.00165
         }
@@ -2454,18 +2498,18 @@
       "name": "SBb: the sampled mix follows the delivered masses",
       "pass": true,
       "detail": {
-        "worst": 0.0041,
+        "worst": 0.0045,
         "sampled": {
-          "thin": 0.6301,
-          "thick": 0.19555,
-          "bulge": 0.174,
+          "thin": 0.62585,
+          "thick": 0.19355,
+          "bulge": 0.18025,
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.6260307853143772,
-          "thick": 0.1958050832853596,
-          "bulge": 0.17790050222603904,
-          "halo": 0.0002636291742241057
+          "thin": 0.6213941312311437,
+          "thick": 0.19435486636275726,
+          "bulge": 0.18398932578327615,
+          "halo": 0.00026167662282280073
         }
       }
     },
@@ -2678,10 +2722,10 @@
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.37751527592073464,
-          "thick": 0.1486162883849872,
-          "bulge": 0.4735882495840182,
-          "halo": 0.00028018611026007383
+          "thin": 0.3775152757058672,
+          "thick": 0.14861628830040036,
+          "bulge": 0.4735882493144696,
+          "halo": 0.00028018667926288024
         }
       }
     },
@@ -2702,10 +2746,10 @@
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.5345581030799633,
-          "thick": 0.1983371777031999,
-          "bulge": 0.2668294193066175,
-          "halo": 0.00027529991021940403
+          "thin": 0.5345581027810189,
+          "thick": 0.19833717759228245,
+          "bulge": 0.26682941915739666,
+          "halo": 0.0002753004693020331
         }
       }
     },
@@ -2726,10 +2770,10 @@
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.6559878908631341,
-          "thick": 0.2080134422775355,
-          "bulge": 0.13573294859064444,
-          "halo": 0.0002657182686858748
+          "thin": 0.6559878905090497,
+          "thick": 0.2080134421652555,
+          "bulge": 0.1357329485173795,
+          "halo": 0.00026571880831515387
         }
       }
     },
@@ -2750,10 +2794,10 @@
           "halo": 0.00075
         },
         "model": {
-          "thin": 0.7634130952213014,
-          "thick": 0.18571225232893546,
-          "bulge": 0.05015877025904158,
-          "halo": 0.000715882190721445
+          "thin": 0.7634130941111285,
+          "thick": 0.1857122520588684,
+          "bulge": 0.05015877018609954,
+          "halo": 0.0007158836439035787
         }
       }
     },
@@ -2774,10 +2818,10 @@
           "halo": 0.0008
         },
         "model": {
-          "thin": 0.835330181461919,
-          "thick": 0.14375687881816382,
-          "bulge": 0.02003374223222449,
-          "halo": 0.0008791974876927415
+          "thin": 0.8353301799700381,
+          "thick": 0.1437568785614173,
+          "bulge": 0.020033742196444687,
+          "halo": 0.0008791992720998558
         }
       }
     },
@@ -2798,10 +2842,10 @@
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.3539446326052887,
-          "thick": 0.1393372426143374,
-          "bulge": 0.5064554324439771,
-          "halo": 0.00026269233639681684
+          "thin": 0.3539446324164147,
+          "thick": 0.13933724253998342,
+          "bulge": 0.5064554321737194,
+          "halo": 0.00026269286988254916
         }
       }
     },
@@ -2822,10 +2866,10 @@
           "halo": 0.00035
         },
         "model": {
-          "thin": 0.5083149034287163,
-          "thick": 0.1886001591775424,
-          "bulge": 0.30282315285344386,
-          "halo": 0.0002617845402975352
+          "thin": 0.5083149031584037,
+          "thick": 0.18860015907724823,
+          "bulge": 0.30282315269240795,
+          "halo": 0.0002617850719401629
         }
       }
     },
@@ -2846,10 +2890,10 @@
           "halo": 0.00075
         },
         "model": {
-          "thin": 0.7633067702161225,
-          "thick": 0.1856863870977595,
-          "bulge": 0.050291060200494724,
-          "halo": 0.0007157824856232323
+          "thin": 0.7633067691062586,
+          "thick": 0.18568638682776764,
+          "bulge": 0.05029106012737049,
+          "halo": 0.0007157839386031178
         }
       }
     },
@@ -2870,10 +2914,10 @@
           "halo": 0.0008
         },
         "model": {
-          "thin": 0.8352837100881545,
-          "thick": 0.14374888128641528,
-          "bulge": 0.020088260049552154,
-          "halo": 0.0008791485758780244
+          "thin": 0.8352837085964396,
+          "thick": 0.14374888102969732,
+          "bulge": 0.02008826001367698,
+          "halo": 0.0008791503601859552
         }
       }
     },
@@ -2894,10 +2938,10 @@
           "halo": 0.00015
         },
         "model": {
-          "thin": 0.6117022227203631,
-          "thick": 0.3667743923974277,
-          "bulge": 0.021379919953297796,
-          "halo": 0.0001434649289114046
+          "thin": 0.6117022225420944,
+          "thick": 0.36677439229053843,
+          "bulge": 0.021379919947067033,
+          "halo": 0.0001434652203002642
         }
       }
     },
@@ -2917,7 +2961,7 @@
       }
     },
     {
-      "name": "the unbarred table types are Sersic while barred are Bar and preset stayed Plummer",
+      "name": "the unbarred table types are Sersic while every barred type, the preset included, is Bar",
       "pass": true,
       "detail": {
         "sersic": [
@@ -2937,12 +2981,12 @@
           "Irr"
         ],
         "bar": [
+          "SBb",
           "SB0",
           "SBa",
           "SBc",
           "SBd"
-        ],
-        "preset": "plummer"
+        ]
       }
     },
     {
@@ -3051,7 +3095,7 @@
       "pass": true,
       "detail": {
         "atCut": 0,
-        "centre": 125.8931
+        "centre": 125.8929
       }
     },
     {
@@ -3082,7 +3126,7 @@
       "pass": true,
       "detail": {
         "atCut": 0,
-        "centre": 159.4088
+        "centre": 159.4085
       }
     },
     {
@@ -3113,7 +3157,7 @@
       "pass": true,
       "detail": {
         "atCut": 0,
-        "centre": 208.4323
+        "centre": 208.4319
       }
     },
     {
@@ -3144,7 +3188,7 @@
       "pass": true,
       "detail": {
         "atCut": 0,
-        "centre": 284.3436
+        "centre": 284.343
       }
     },
     {
@@ -3175,7 +3219,7 @@
       "pass": true,
       "detail": {
         "atCut": 0,
-        "centre": 411.4155
+        "centre": 411.4146
       }
     },
     {
@@ -3206,7 +3250,7 @@
       "pass": true,
       "detail": {
         "atCut": 0,
-        "centre": 215.9627
+        "centre": 215.9623
       }
     },
     {
@@ -3237,7 +3281,7 @@
       "pass": true,
       "detail": {
         "atCut": 0,
-        "centre": 133.6576
+        "centre": 133.6573
       }
     },
     {
@@ -3268,7 +3312,7 @@
       "pass": true,
       "detail": {
         "atCut": 0,
-        "centre": 115.4569
+        "centre": 115.4567
       }
     },
     {
@@ -3299,7 +3343,7 @@
       "pass": true,
       "detail": {
         "atCut": 0,
-        "centre": 154.9954
+        "centre": 154.9951
       }
     },
     {
@@ -3330,7 +3374,7 @@
       "pass": true,
       "detail": {
         "atCut": 0,
-        "centre": 49.2635
+        "centre": 49.2634
       }
     },
     {
@@ -3458,17 +3502,17 @@
       }
     },
     {
-      "name": "a Sersic spheroid is centrally steeper than the Plummer bulge it replaces",
+      "name": "a Sersic spheroid is centrally steeper than the preset bar, even at half an axis",
       "pass": true,
       "detail": {
-        "E4": 9111.2,
-        "MW": 55.9
+        "E4": 630.7,
+        "MW": 1
       }
     },
     {
-      "name": "a Plummer bulge delivers almost all of its mass inside the cut",
+      "name": "the bounded bar delivers its whole mass inside its tip",
       "pass": true,
-      "detail": 0.9597
+      "detail": 1
     },
     {
       "name": "the layout, the packer and the struct agree on the size",
@@ -3488,7 +3532,7 @@
       "name": "repacking a different model overwrites every slot",
       "pass": true,
       "detail": {
-        "changed": 34
+        "changed": 40
       }
     },
     {
@@ -3496,7 +3540,7 @@
       "pass": true,
       "detail": {
         "e4n": 4,
-        "preset": 0
+        "preset": 2
       }
     },
     {
@@ -4110,10 +4154,10 @@
       "name": "MW: the crest spacing is the pattern's own, e^(2*pi/K)",
       "pass": true,
       "detail": {
-        "pitchFromSpacing": 12.004,
+        "pitchFromSpacing": 12.001,
         "anchor": 12,
-        "lambdaSpacing": 5.6881,
-        "lambdaWidth": 5.6865
+        "lambdaSpacing": 7.6912,
+        "lambdaWidth": 7.6908
       }
     },
     {
@@ -4179,11 +4223,11 @@
       "detail": 0.11716750164126331
     },
     {
-      "name": "the authored preset keeps its own arm inner edge and phase",
+      "name": "the authored preset couples its arms to the bar end like the table path",
       "pass": true,
       "detail": {
-        "minRadius": 0.5,
-        "phase0": 0
+        "minRadius": 2.3,
+        "phase0": 2.8406
       }
     },
     {
@@ -4279,7 +4323,7 @@
     {
       "name": "the field shows the hotspot boost at a clump centre",
       "pass": true,
-      "detail": 3.226665248453123
+      "detail": 3.2266652484531235
     },
     {
       "name": "the sampler assigns stars to the clumps the field carries",
@@ -4740,7 +4784,7 @@
       "pass": true,
       "detail": {
         "distance": 8.178,
-        "span": 9
+        "span": 13.8
       }
     },
     {
@@ -5050,14 +5094,14 @@
         "base": {
           "L": 2.6,
           "H": 0.23399999999999999,
-          "amp": 1.3331231043173353,
+          "amp": 1.3331203962536091,
           "flare": 0,
           "coreRadius": 0
         },
         "tweaked": {
           "L": 2.6,
           "H": 0.5,
-          "amp": 1.3331231043173353,
+          "amp": 1.3331203962536091,
           "flare": 0,
           "coreRadius": 0
         }

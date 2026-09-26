@@ -143,14 +143,20 @@ r_e = √(x² / a² + y² / b² + z² / c²)
 
 with `a = 1.5 kpc, b = 0.5 kpc, c = 0.4 kpc`, oriented 25° from the Sun–centre line ([Portail 2016](https://academic.oup.com)).
 
-That is the Milky Way preset's authored bulge. The table's barred types (`SB*`) use the
-boxy/peanut bar profile instead — a boxy, peanut-stretched volume with a flat inner part
-and exponential end caps, sampled by inverse CDF along the bar's major axis — specified in
+That *was* the Milky Way preset's authored bulge. Since 0.4.8 M2 the preset's central
+component is the boxy/peanut bar itself, at the observed parameters: half-length
+`a = 2.3 kpc`, tilt 27°, the Wegg & Gerhard axis scale lengths carried by the slice
+family's knobs (longitudinal cap `endCap·a = 0.70 kpc`; transverse/vertical half-density
+extents `ln2·0.44` / `ln2·0.18` kpc via `b = 0.405`, `c = 0.189`), and the amplitude
+`31.36` that preserves the Plummer bulge's mass at those axis ratios
+(`experiments/preset-bar-fit.js`). The table's barred types (`SB*`) share the profile —
+a boxy, peanut-stretched volume with a flat inner part and exponential end caps,
+sampled by inverse CDF along the bar's major axis — specified in
 `0.3.0-plan-galaxy-types-star-distribution.md` §0.3.1 and made a realistic 3-D shape in
 `0.4.8-plan-realistic-3d-shapes.md` §3 (slice profile `barSliceProfile` in `density.js`
 with its WGSL mirror, the vertical boxiness knob `bar.vertical`, and the closed-form
-slice mass). The preset's own bulge is still the Plummer form above; moving it to that
-profile is M2 of the 0.4.8 plan.
+slice mass). The Plummer form above remains the smooth-bulge profile for any model that
+authors it.
 
 ### Stellar halo
 

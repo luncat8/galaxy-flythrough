@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-26T13:30:06.566Z",
+  "date": "2026-09-26T13:49:29.834Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -489,7 +489,7 @@
       "name": "a packed record round-trips through StarPacked",
       "pass": true,
       "detail": {
-        "x": 3.0869743824005127,
+        "x": 13.136022567749023,
         "absMag": 10.117647058823529
       }
     },

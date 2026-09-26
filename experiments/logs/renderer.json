@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-26T13:30:07.704Z",
+  "date": "2026-09-26T13:49:31.281Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 129,
+  "prepareMs": 156,
   "totalChecks": 121,
   "passed": 121,
   "failed": 0,
@@ -169,7 +169,7 @@
       "name": "the procedural field covers the galaxy, not just the solar neighbourhood",
       "pass": true,
       "detail": {
-        "minRadius": 0.206,
+        "minRadius": 0.207,
         "maxRadius": 41.374
       }
     },
@@ -201,7 +201,7 @@
       "pass": true,
       "detail": {
         "vertices": 4,
-        "instances": 25659,
+        "instances": 25655,
         "firstVertex": 0,
         "firstInstance": 0,
         "pipeline": {
@@ -219,7 +219,7 @@
       "pass": true,
       "detail": {
         "vertices": 4,
-        "instances": 34,
+        "instances": 28,
         "firstVertex": 0,
         "firstInstance": 0,
         "pipeline": {
@@ -249,7 +249,7 @@
     {
       "name": "the resident catalog fits the budget",
       "pass": true,
-      "detail": 1076
+      "detail": 1078
     },
     {
       "name": "all cells of this small catalog are resident",
@@ -263,7 +263,7 @@
       "name": "density parity thinned the catalog (fewer visible stars than raw)",
       "pass": true,
       "detail": {
-        "thinned": 1076,
+        "thinned": 1078,
         "raw": 3829
       }
     },
@@ -272,22 +272,22 @@
       "pass": true,
       "detail": {
         "writes": 1,
-        "bytes": 1088,
-        "count": 34
+        "bytes": 896,
+        "count": 28
       }
     },
     {
       "name": "packed billboards are exactly the gas objects (HII, planetary, SNR)",
       "pass": true,
       "detail": {
-        "packed": 34,
-        "gas": 34,
+        "packed": 28,
+        "gas": 28,
         "byType": {
-          "planetary": 26,
+          "planetary": 19,
           "HII": 6,
           "globular": 3,
-          "SNR": 2,
-          "open": 3
+          "SNR": 3,
+          "open": 9
         }
       }
     },
@@ -407,13 +407,13 @@
         "dynA": [
           0.22499999403953552,
           0.5,
-          0.04393398389220238,
+          0.028652597218751907,
           0.15000000596046448
         ],
         "expectA": [
           0.22499999403953552,
           0.5,
-          0.04393398389220238,
+          0.028652597218751907,
           0.15000000596046448
         ]
       }
@@ -424,7 +424,7 @@
       "detail": {
         "dynB": [
           0.03099999949336052,
-          0.44999998807907104,
+          0.6899999976158142,
           3,
           0
         ]
@@ -438,11 +438,11 @@
           0,
           2,
           9.409259796142578,
-          0
+          2.84060001373291
         ],
         "waveB": [
           3,
-          0.5,
+          2.299999952316284,
           0.20000000298023224,
           0
         ],
@@ -451,8 +451,8 @@
           "amp": 0.2,
           "pitchDeg": 12,
           "Rs": 3,
-          "phase0": 0,
-          "minRadius": 0.5,
+          "phase0": 2.8406,
+          "minRadius": 2.3,
           "flocculence": 0
         }
       }
@@ -562,8 +562,8 @@
       "pass": true,
       "detail": {
         "boot": [
-          8.159640312194824,
-          0.31986889243125916
+          8.124785423278809,
+          -0.06693926453590393
         ],
         "game": [
           0.7466135621070862,
@@ -584,7 +584,7 @@
       "pass": true,
       "detail": {
         "resident": 2045,
-        "stars": 1076
+        "stars": 1078
       }
     },
     {
@@ -722,7 +722,7 @@
     {
       "name": "the drawn instance count follows the new residency (global + landmarks + objects + local + catalog)",
       "pass": true,
-      "detail": 25787
+      "detail": 25797
     },
     {
       "name": "a camera outside the catalog volume drops every catalog star",
@@ -878,7 +878,7 @@
       "pass": true,
       "detail": {
         "bytes": 4636,
-        "firstTheta": 1.604601263999939
+        "firstTheta": 1.8690835237503052
       }
     },
     {

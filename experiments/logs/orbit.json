@@ -1,7 +1,7 @@
 {
-  "date": "2026-09-26T13:27:05.034Z",
-  "totalChecks": 102,
-  "passed": 102,
+  "date": "2026-09-26T13:50:14.015Z",
+  "totalChecks": 103,
+  "passed": 103,
   "failed": 0,
   "checks": [
     {
@@ -21,41 +21,41 @@
       "name": "the Milky Way pattern speed is the group precession rate at the bulge radius",
       "pass": true,
       "detail": {
-        "omegaPattern": 0.04393398282201788,
-        "expected": 0.04393398282201788
+        "omegaPattern": 0.02865259749262036,
+        "expected": 0.02865259749262036
       }
     },
     {
-      "name": "bar/pattern period 143 ± 1 Myr (derived ω_p = 0.0439 rad/Myr = 43 km/s/kpc)",
+      "name": "bar/pattern period 219 ± 1 Myr (derived ω_p = 0.0287 rad/Myr = 28 km/s/kpc)",
       "pass": true,
       "detail": {
-        "omega": 0.04393398282201788,
-        "period": 143.01424327117266
+        "omega": 0.02865259749262036,
+        "period": 219.2885063491314
       }
     },
     {
-      "name": "the streaming rate is zero at corotation (R_CR = 5.12 kpc)",
+      "name": "the streaming rate is zero at corotation (R_CR = 7.85 kpc)",
       "pass": true,
       "detail": {
         "at": 0,
-        "in": 0.04393398282201788,
-        "out": -0.02196699141100894
+        "in": 0.02865259749262036,
+        "out": -0.01432629874631018
       }
     },
     {
       "name": "the streaming rate falls with radius inside corotation (inner stars lap the bar fastest)",
       "pass": true,
       "detail": {
-        "r1": 0.18106601717798212,
-        "r3": 0.031066017177982116,
-        "r5": 0.0010660171779821176
+        "r1": 0.19634740250737964,
+        "r3": 0.046347402507379634,
+        "r5": 0.01634740250737964
       }
     },
     {
       "name": "the belt/disc is differential (no corotation lock): ω = vFlat/max(r, rCore)",
       "pass": true,
       "detail": {
-        "wIn": 0.04868738439947454,
+        "wIn": 0.0306010403646747,
         "w2": 0.1125,
         "w6": 0.0375
       }
@@ -86,39 +86,39 @@
       "name": "patternLock pins even the outer disc to the pattern speed",
       "pass": true,
       "detail": {
-        "wFar": 0.04393398282201788
+        "wFar": 0.02865259749262036
       }
     },
     {
       "name": "the pattern is one group: bar seat and young stars sweep the same angle (< 0.1°)",
       "pass": true,
       "detail": {
-        "bar": -1.8884242279040053,
-        "young": -1.8890417110550013
+        "bar": 2.8658117227318756,
+        "young": 2.8652598478520828
       }
     },
     {
       "name": "the embedded disc star overtakes the pattern inside corotation (differential belt)",
       "pass": true,
       "detail": {
-        "disc": 1.66388860738009,
-        "young": -1.8890417110550013
+        "disc": 0.885,
+        "young": 2.865
       }
     },
     {
       "name": "a bar star is off its rigid seat after 40 Myr (it streams, it is not glued)",
       "pass": true,
       "detail": {
-        "offSeat": 0.16154196743302335,
-        "loop": 2.3512516985689236
+        "offSeat": 0.1769791025745798,
+        "loop": 1.6549888242218254
       }
     },
     {
       "name": "the bar loop stays bounded (never leaves the bar: ≤ 2 × the amplitude)",
       "pass": true,
       "detail": {
-        "maxOff": 0.06537956731864812,
-        "bound": 0.13500099999999998
+        "maxOff": 0.10026491543386422,
+        "bound": 0.207001
       }
     },
     {
@@ -302,10 +302,18 @@
       }
     },
     {
-      "name": "every barred type: derived ω_p in the observed 33-55 km/s/kpc band, corotation past the bar end",
+      "name": "every barred table type: derived ω_p in the observed 33-55 km/s/kpc band, corotation past the bar end",
       "pass": true,
       "detail": {
         "bad": []
+      }
+    },
+    {
+      "name": "the MW preset derives 28 km/s/kpc — below the band, documented drift — with corotation past the bar end",
+      "pass": true,
+      "detail": {
+        "km": 28.02,
+        "rCr": 7.85
       }
     },
     {
@@ -327,7 +335,7 @@
       "name": "pattern and disc shear apart outside R_CR (plan §3.3 survives)",
       "pass": true,
       "detail": {
-        "d": 1.8493792033502308
+        "d": 3.07629874631018
       }
     },
     {
@@ -376,7 +384,7 @@
         "dynA": [
           0.22499999403953552,
           0.5,
-          0.04393398389220238,
+          0.028652597218751907,
           0.15000000596046448
         ]
       }
@@ -387,7 +395,7 @@
       "detail": {
         "dynB": [
           0.03099999949336052,
-          0.44999998807907104,
+          0.6899999976158142,
           3,
           0
         ]
@@ -409,9 +417,9 @@
           0,
           2,
           9.409259796142578,
-          0,
+          2.84060001373291,
           3,
-          0.5,
+          2.299999952316284,
           0.20000000298023224,
           0
         ]
@@ -421,8 +429,8 @@
       "name": "pressure amplitude cap: MW bulge ≤ 0.3 × spheroid semimajor axis",
       "pass": true,
       "detail": {
-        "scale": 0.44999999999999996,
-        "axis": 1.5
+        "scale": 0.69,
+        "axis": 2.3
       }
     },
     {
@@ -567,7 +575,7 @@
       "detail": {
         "sigma": 0.2008,
         "ecc": 0.2067,
-        "omegaP": 0.0439
+        "omegaP": 0.0287
       }
     },
     {
@@ -605,9 +613,9 @@
       "name": "inside corotation the star overtakes the pattern between arms and sticks on them",
       "pass": true,
       "detail": {
-        "off": 0.1125,
+        "off": 0.0562,
         "on": 0,
-        "omegaP": 0.0439
+        "omegaP": 0.0287
       }
     },
     {
@@ -622,7 +630,7 @@
       "name": "the bar field captures on its major axis, streams in the wings and releases with height",
       "pass": true,
       "detail": {
-        "onAxis": 0.06999,
+        "onAxis": 0.06051,
         "wing": 0.1125,
         "high": 0.1125,
         "circ": 0.1125
@@ -655,7 +663,7 @@
       }
     },
     {
-      "name": "the pattern phase is wrap(Ωp·T) per frame, zero without a pattern",
+      "name": "the pattern phase is wrap(Ωp·T − phase0/m) per frame, the T=0 lane phase when frozen",
       "pass": true
     },
     {
@@ -669,7 +677,7 @@
         "h": 0.3333333432674408,
         "nSub": 3,
         "count": 1000,
-        "phase": 4.3934,
+        "phase": 1.445,
         "damping": 0.6000000238418579
       }
     },
@@ -713,7 +721,7 @@
       "name": "f64 reference vs f32 step replay drift < 1e-4 rad over 1000 Myr",
       "pass": true,
       "detail": {
-        "drift": 0.00000421
+        "drift": 0.00000553
       }
     },
     {
@@ -729,8 +737,8 @@
       "name": "disc apsides select the nearest spiral ridge and bar apsides use the model bar angle",
       "pass": true,
       "detail": {
-        "actualArmApo": 1.4728461823864354,
-        "expectedArmApo": 1.4728461823864354,
+        "actualArmApo": 0.05254618238643527,
+        "expectedArmApo": 0.05254618238643527,
         "barApo": 0.47123889803846897,
         "expectedBarApo": 0.47123889803846897
       }
@@ -739,9 +747,9 @@
       "name": "an apocenter at corotation rotates with the pattern around the model centre",
       "pass": true,
       "detail": {
-        "initialRadius": 5.121320343559642,
-        "finalRadius": 5.12132034355964,
-        "angle": 0.2531231700605262
+        "initialRadius": 7.852691193458116,
+        "finalRadius": 7.852691193458114,
+        "angle": 0.5381614457437502
       }
     },
     {
@@ -759,12 +767,12 @@
     {
       "name": "apocenter CPU law agrees with an f32 replay of its WGSL inputs within 0.05 kpc",
       "pass": true,
-      "detail": 0.000060899798279588815
+      "detail": 0.00005754314027579659
     },
     {
       "name": "changing pattern speed preserves apocenter-orbit phase",
       "pass": true,
-      "detail": 1.7763568394002505e-15
+      "detail": 1.9891280697202825e-15
     }
   ]
 }

@@ -6,54 +6,54 @@
     "bar": 0.01,
     "visible": 0.02
   },
-  "checks": 69,
+  "checks": 82,
   "failed": 0,
   "results": [
     {
       "name": "SBb: no step in the field is visible against the model peak",
       "pass": true,
       "detail": {
-        "worst": 0.00061,
+        "worst": 0.014,
         "cuts": {
           "z through the centre": {
-            "stepOfModel": 0.00061,
-            "stepOfLocal": 0,
+            "stepOfModel": 0.014,
+            "stepOfLocal": 0.33,
             "at": [
               0,
               0,
-              -0.05
+              -0.19
             ]
           },
           "y through the centre": {
-            "stepOfModel": 0.00034,
-            "stepOfLocal": 0,
+            "stepOfModel": 0.0061,
+            "stepOfLocal": 0.21,
             "at": [
               0,
-              -0.05,
+              0.45,
               0
             ]
           },
           "x to the body edge": {
-            "stepOfModel": 0.00015,
-            "stepOfLocal": 0,
+            "stepOfModel": 0.0031,
+            "stepOfLocal": 0.12,
             "at": [
-              0.42,
+              0.88,
               0,
               0
             ]
           },
           "z at the bar lobe": {
-            "stepOfModel": 0.00023,
-            "stepOfLocal": 242.45,
+            "stepOfModel": 0.000098,
+            "stepOfLocal": 238.9,
             "at": [
-              1.3,
+              1.15,
               0,
               3
             ]
           },
           "z through the disc at R = 8": {
-            "stepOfModel": 0.000027,
-            "stepOfLocal": 813.45,
+            "stepOfModel": 0.000016,
+            "stepOfLocal": 1213.25,
             "at": [
               -8,
               0,
@@ -61,6 +61,13 @@
             ]
           }
         }
+      }
+    },
+    {
+      "name": "SBb: the bar's own body has no step at all (no rim)",
+      "pass": true,
+      "detail": {
+        "worst": 0.0044
       }
     },
     {
@@ -323,7 +330,7 @@
           },
           "z through the disc at R = 8": {
             "stepOfModel": 0.0000025,
-            "stepOfLocal": 1034826262.23,
+            "stepOfLocal": 1034824160.12,
             "at": [
               -8,
               0,
@@ -368,7 +375,7 @@
           },
           "z at the bar lobe": {
             "stepOfModel": 0.0000074,
-            "stepOfLocal": 1594957596.76,
+            "stepOfLocal": 1594954356.81,
             "at": [
               1.95,
               0,
@@ -377,7 +384,7 @@
           },
           "z through the disc at R = 8": {
             "stepOfModel": 0.0000074,
-            "stepOfLocal": 1591946687.83,
+            "stepOfLocal": 1591943454,
             "at": [
               -8,
               0,
@@ -422,7 +429,7 @@
           },
           "z at the bar lobe": {
             "stepOfModel": 0.000018,
-            "stepOfLocal": 2463118488.38,
+            "stepOfLocal": 2463113484.88,
             "at": [
               1.95,
               0,
@@ -431,7 +438,7 @@
           },
           "z through the disc at R = 8": {
             "stepOfModel": 0.000018,
-            "stepOfLocal": 2455134878.22,
+            "stepOfLocal": 2455129890.94,
             "at": [
               -8,
               0,
@@ -476,7 +483,7 @@
           },
           "z at the bar lobe": {
             "stepOfModel": 0.000032,
-            "stepOfLocal": 3642070636.43,
+            "stepOfLocal": 3642063238.04,
             "at": [
               1.95,
               0,
@@ -485,7 +492,7 @@
           },
           "z through the disc at R = 8": {
             "stepOfModel": 0.000032,
-            "stepOfLocal": 3654846508.63,
+            "stepOfLocal": 3654839084.29,
             "at": [
               -8,
               0,
@@ -569,7 +576,7 @@
             "stepOfLocal": 0.01,
             "at": [
               0,
-              -0.05,
+              0.05,
               0
             ]
           },
@@ -804,7 +811,7 @@
             "at": [
               0.81,
               0,
-              -0.42
+              0.42
             ]
           },
           "z through the disc at R = 8": {
@@ -1035,7 +1042,7 @@
           },
           "x to the body edge": {
             "stepOfModel": 0.0015,
-            "stepOfLocal": 118239.09,
+            "stepOfLocal": 118238.85,
             "at": [
               12,
               0,
@@ -1053,7 +1060,7 @@
           },
           "z through the disc at R = 8": {
             "stepOfModel": 0.00028,
-            "stepOfLocal": 5529.98,
+            "stepOfLocal": 5529.97,
             "at": [
               -8,
               0,
@@ -1064,10 +1071,48 @@
       }
     },
     {
+      "name": "SBb: the bar's vertical profile falls monotonically inside the body",
+      "pass": true,
+      "detail": {
+        "centre": 31.36,
+        "envelopeZeta": 0.998
+      }
+    },
+    {
+      "name": "SBb: the bar's density is already small at its envelope (no rim)",
+      "pass": true,
+      "detail": {
+        "atEnvelope": 0.0123,
+        "envelopeZeta": 0.998,
+        "cv": 2.4
+      }
+    },
+    {
+      "name": "SBb: the analytic slice mass is the numeric integral of the slice profile",
+      "pass": true,
+      "detail": {
+        "numeric": 1.745528,
+        "analytic": 1.745528
+      }
+    },
+    {
+      "name": "SBb: the L^n disk area is the closed form of the slab's slice mass",
+      "pass": true,
+      "detail": 3.6358808119336357
+    },
+    {
+      "name": "SBb: the bar's vertical support is the authored body, not more",
+      "pass": true,
+      "detail": {
+        "centre": 1,
+        "lobe": 1.1028
+      }
+    },
+    {
       "name": "SB0: the bar's vertical profile falls monotonically inside the body",
       "pass": true,
       "detail": {
-        "centre": 26.9355,
+        "centre": 26.9354,
         "envelopeZeta": 0.998
       }
     },
@@ -1216,6 +1261,31 @@
       }
     },
     {
+      "name": "SBb: the bar's vertical extent does not fall off toward its ends",
+      "pass": true,
+      "detail": {
+        "centre": 0.189,
+        "lobe": 0.2096,
+        "atXi": 0.675,
+        "ratio": 1.1088
+      }
+    },
+    {
+      "name": "SBb: an early-type bar carries a strong boxy/peanut",
+      "pass": true,
+      "detail": {
+        "ratio": 1.109
+      }
+    },
+    {
+      "name": "SBb: the peanut never exceeds the authored body",
+      "pass": true,
+      "detail": {
+        "lobe": 0.2096,
+        "max": 0.2741
+      }
+    },
+    {
       "name": "SB0: the bar's vertical extent does not fall off toward its ends",
       "pass": true,
       "detail": {
@@ -1302,6 +1372,23 @@
       }
     },
     {
+      "name": "SBb: the bar's half-density height is bar-like (0.03-0.30 of its half-length)",
+      "pass": true,
+      "detail": {
+        "halfDensityHeightKpc": 0.125,
+        "halfLengthKpc": 2.3,
+        "ratio": 0.0543
+      }
+    },
+    {
+      "name": "SBb: the bar's axis ratios are in the observed band",
+      "pass": true,
+      "detail": {
+        "bOverA": 0.176,
+        "cOverA": 0.082
+      }
+    },
+    {
       "name": "SB0: the bar's half-density height is bar-like (0.03-0.30 of its half-length)",
       "pass": true,
       "detail": {
@@ -1367,6 +1454,21 @@
       "detail": {
         "bOverA": 0.311,
         "cOverA": 0.333
+      }
+    },
+    {
+      "name": "SBb: the sampled stars follow the bar's longitudinal profile",
+      "pass": true,
+      "detail": {
+        "totalVariation": 0.0083,
+        "stars": 46150
+      }
+    },
+    {
+      "name": "SBb: the sampled stars follow the bar's vertical profile",
+      "pass": true,
+      "detail": {
+        "totalVariation": 0.0092
       }
     },
     {

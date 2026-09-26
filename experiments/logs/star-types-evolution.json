@@ -1,25 +1,25 @@
 {
-  "date": "2026-09-26T13:26:57.780Z",
+  "date": "2026-09-26T13:50:06.266Z",
   "seed": 7,
   "sampleSize": 200000,
-  "sampleMs": 226,
-  "deriveMs": 435,
+  "sampleMs": 251,
+  "deriveMs": 485,
   "byClass": {
     "M": 174519,
     "K": 17671,
-    "WD": 4408,
-    "G": 1764,
-    "RG": 236,
-    "B": 234,
-    "F": 945,
-    "A": 220,
+    "WD": 4419,
+    "G": 1763,
+    "RG": 237,
+    "B": 230,
+    "F": 941,
+    "A": 217,
     "O": 3
   },
   "byComponent": {
-    "bulge": 35687,
-    "thin": 125140,
-    "thick": 39130,
-    "halo": 43
+    "bulge": 36914,
+    "thin": 124224,
+    "thick": 38820,
+    "halo": 42
   },
   "classVsArmDistance": {
     "O": {
@@ -29,52 +29,52 @@
       "fracInLane": 0.6666666666666666
     },
     "B": {
-      "n": 218,
-      "mean": 0.3751298381670361,
-      "meanZ": 0.989584821897366,
-      "fracInLane": 0.6376146788990825
+      "n": 214,
+      "mean": 0.3738942796056524,
+      "meanZ": 0.9886934259707203,
+      "fracInLane": 0.6448598130841121
     },
     "A": {
-      "n": 181,
-      "mean": 0.4757115248694742,
-      "meanZ": 1.2463217988513378,
-      "fracInLane": 0.5580110497237569
+      "n": 178,
+      "mean": 0.4814849416276517,
+      "meanZ": 1.2582885321627342,
+      "fracInLane": 0.550561797752809
     },
     "F": {
-      "n": 664,
-      "mean": 0.7862484858803754,
-      "meanZ": 1.9964214481499178,
-      "fracInLane": 0.34036144578313254
+      "n": 659,
+      "mean": 0.7876299838189686,
+      "meanZ": 1.9975241599692566,
+      "fracInLane": 0.33990895295902884
     },
     "G": {
-      "n": 953,
-      "mean": 0.9319619689241065,
-      "meanZ": 2.3165455560178767,
-      "fracInLane": 0.23924449108079748
+      "n": 920,
+      "mean": 0.9378278373395164,
+      "meanZ": 2.310362680964553,
+      "fracInLane": 0.23804347826086958
     },
     "K": {
-      "n": 9427,
-      "mean": 0.9269329277229222,
-      "meanZ": 2.311869381844313,
-      "fracInLane": 0.23369046356210885
+      "n": 9094,
+      "mean": 0.936903330656231,
+      "meanZ": 2.3189947573486216,
+      "fracInLane": 0.2312513745326589
     },
     "M": {
-      "n": 92935,
-      "mean": 0.9279354000743681,
-      "meanZ": 2.303877463452585,
-      "fracInLane": 0.23565933179103674
+      "n": 89636,
+      "mean": 0.9373142751414896,
+      "meanZ": 2.3100957052568027,
+      "fracInLane": 0.23439243161229864
     },
     "WD": {
-      "n": 2017,
-      "mean": 1.0376288912585547,
-      "meanZ": 2.5729067734442244,
-      "fracInLane": 0.13584531482399603
+      "n": 1895,
+      "mean": 1.0602793940634463,
+      "meanZ": 2.589470129512254,
+      "fracInLane": 0.12981530343007916
     },
     "RG": {
-      "n": 107,
-      "mean": 1.0782817395351758,
-      "meanZ": 2.645845705920391,
-      "fracInLane": 0.14018691588785046
+      "n": 106,
+      "mean": 1.1032474577286333,
+      "meanZ": 2.7234892432968203,
+      "fracInLane": 0.11320754716981132
     },
     "RGe": {
       "n": 0,
@@ -86,28 +86,28 @@
   "ageCensus": {
     "1": {
       "thin": {
-        "n": 37425,
+        "n": 37145,
         "meanAge": 0.266,
         "oldest": 0.75,
-        "obPct": 0.681,
+        "obPct": 0.676,
         "giantPct": 0.035,
         "wdPct": 0.315
       },
       "thick": {
-        "n": 11939,
+        "n": 11870,
         "meanAge": 0.561,
         "oldest": 0.9,
-        "obPct": 0.369,
-        "giantPct": 0.025,
-        "wdPct": 0.595
+        "obPct": 0.379,
+        "giantPct": 0.034,
+        "wdPct": 0.598
       },
       "bulge": {
-        "n": 10620,
+        "n": 10969,
         "meanAge": 0.704,
         "oldest": 1,
-        "obPct": 0.358,
-        "giantPct": 0.028,
-        "wdPct": 0.574
+        "obPct": 0.346,
+        "giantPct": 0.027,
+        "wdPct": 0.583
       },
       "halo": {
         "n": 16,
@@ -120,28 +120,28 @@
     },
     "5": {
       "thin": {
-        "n": 37425,
-        "meanAge": 1.414,
+        "n": 37145,
+        "meanAge": 1.413,
         "oldest": 3.75,
-        "obPct": 0.267,
-        "giantPct": 0.069,
-        "wdPct": 0.975
+        "obPct": 0.269,
+        "giantPct": 0.07,
+        "wdPct": 0.969
       },
       "thick": {
-        "n": 11939,
-        "meanAge": 2.89,
-        "oldest": 4.499,
+        "n": 11870,
+        "meanAge": 2.892,
+        "oldest": 4.5,
         "obPct": 0,
-        "giantPct": 0.075,
-        "wdPct": 1.692
+        "giantPct": 0.076,
+        "wdPct": 1.727
       },
       "bulge": {
-        "n": 10620,
-        "meanAge": 3.567,
+        "n": 10969,
+        "meanAge": 3.566,
         "oldest": 4.999,
         "obPct": 0,
-        "giantPct": 0.047,
-        "wdPct": 1.808
+        "giantPct": 0.055,
+        "wdPct": 1.787
       },
       "halo": {
         "n": 16,
@@ -154,28 +154,28 @@
     },
     "13.5": {
       "thin": {
-        "n": 37425,
-        "meanAge": 4.618,
+        "n": 37145,
+        "meanAge": 4.615,
         "oldest": 10.125,
-        "obPct": 0.179,
-        "giantPct": 0.131,
-        "wdPct": 1.798
+        "obPct": 0.18,
+        "giantPct": 0.132,
+        "wdPct": 1.796
       },
       "thick": {
-        "n": 11939,
-        "meanAge": 8.316,
-        "oldest": 12.149,
+        "n": 11870,
+        "meanAge": 8.323,
+        "oldest": 12.15,
         "obPct": 0,
-        "giantPct": 0.117,
-        "wdPct": 2.722
+        "giantPct": 0.126,
+        "wdPct": 2.746
       },
       "bulge": {
-        "n": 10620,
-        "meanAge": 9.914,
+        "n": 10969,
+        "meanAge": 9.912,
         "oldest": 13.498,
         "obPct": 0,
-        "giantPct": 0.151,
-        "wdPct": 2.966
+        "giantPct": 0.146,
+        "wdPct": 2.945
       },
       "halo": {
         "n": 16,
@@ -205,12 +205,12 @@
       "detail": {
         "M": 174519,
         "K": 17671,
-        "WD": 4408,
-        "G": 1764,
-        "RG": 236,
-        "B": 234,
-        "F": 945,
-        "A": 220,
+        "WD": 4419,
+        "G": 1763,
+        "RG": 237,
+        "B": 230,
+        "F": 941,
+        "A": 217,
         "O": 3
       }
     },
@@ -222,14 +222,14 @@
     {
       "name": "hot stars are rare (O+B below 3% of the census)",
       "pass": true,
-      "detail": 0.001185
+      "detail": 0.001165
     },
     {
       "name": "giants and white dwarfs are both present",
       "pass": true,
       "detail": {
-        "RG": 236,
-        "WD": 4408
+        "RG": 237,
+        "WD": 4419
       }
     },
     {
@@ -256,32 +256,32 @@
       "name": "O/B stars sit inside the arm lane far more often than M dwarfs",
       "pass": true,
       "detail": {
-        "obInLane": 0.638,
-        "M": 0.2357,
-        "n": 221
+        "obInLane": 0.6452,
+        "M": 0.2344,
+        "n": 217
       }
     },
     {
       "name": "O/B stars are born in the lane: mean ridge distance under 1 sigma",
       "pass": true,
       "detail": {
-        "B": 0.99,
-        "M": 2.304
+        "B": 0.989,
+        "M": 2.31
       }
     },
     {
       "name": "M dwarfs meet the lane at the area rate, O/B at the born rate",
       "pass": true,
       "detail": {
-        "M": 0.2357,
-        "obInLane": 0.638,
+        "M": 0.2344,
+        "obInLane": 0.6452,
         "areaRate": 0.2
       }
     },
     {
       "name": "hot stars exist at all in the sample",
       "pass": true,
-      "detail": 221
+      "detail": 217
     },
     {
       "name": "Sa: the arm-young population is a half-normal in the model's ridge width",
@@ -331,7 +331,7 @@
     {
       "name": "the halo is old (> 8 Gyr on average)",
       "pass": true,
-      "detail": 11.37
+      "detail": 11.39
     },
     {
       "name": "the bulge is the most metal rich population",
@@ -388,7 +388,7 @@
       "name": "giants are a rising share of every component big enough to measure",
       "pass": true,
       "detail": {
-        "thin": 0.131,
+        "thin": 0.132,
         "haloStars": 16
       }
     },
@@ -398,17 +398,17 @@
       "detail": [
         {
           "age": 1,
-          "thin": 0.681,
-          "bulge": 0.358
+          "thin": 0.676,
+          "bulge": 0.346
         },
         {
           "age": 5,
-          "thin": 0.267,
+          "thin": 0.269,
           "bulge": 0
         },
         {
           "age": 13.5,
-          "thin": 0.179,
+          "thin": 0.18,
           "bulge": 0
         }
       ]
@@ -418,28 +418,28 @@
       "pass": true,
       "detail": {
         "thin": {
-          "n": 37425,
-          "meanAge": 4.618,
+          "n": 37145,
+          "meanAge": 4.615,
           "oldest": 10.125,
-          "obPct": 0.179,
-          "giantPct": 0.131,
-          "wdPct": 1.798
+          "obPct": 0.18,
+          "giantPct": 0.132,
+          "wdPct": 1.796
         },
         "thick": {
-          "n": 11939,
-          "meanAge": 8.316,
-          "oldest": 12.149,
+          "n": 11870,
+          "meanAge": 8.323,
+          "oldest": 12.15,
           "obPct": 0,
-          "giantPct": 0.117,
-          "wdPct": 2.722
+          "giantPct": 0.126,
+          "wdPct": 2.746
         },
         "bulge": {
-          "n": 10620,
-          "meanAge": 9.914,
+          "n": 10969,
+          "meanAge": 9.912,
           "oldest": 13.498,
           "obPct": 0,
-          "giantPct": 0.151,
-          "wdPct": 2.966
+          "giantPct": 0.146,
+          "wdPct": 2.945
         },
         "halo": {
           "n": 16,
@@ -455,7 +455,7 @@
       "name": "the spheroid stops making hot stars once its formation window has closed",
       "pass": true,
       "detail": {
-        "at1Gyr": 0.358,
+        "at1Gyr": 0.346,
         "at5Gyr": 0
       }
     },
@@ -463,8 +463,8 @@
       "name": "a young galaxy is a blue galaxy: the disc is hotter at 1 Gyr than at 13.5",
       "pass": true,
       "detail": {
-        "obAt1": 0.681,
-        "obAt13_5": 0.179
+        "obAt1": 0.676,
+        "obAt13_5": 0.18
       }
     },
     {
@@ -597,7 +597,7 @@
       "name": "star-forming types keep O/B stars and the supergiant top of the branch",
       "pass": true,
       "detail": {
-        "SBb": 0.123,
+        "SBb": 0.122,
         "ScMax": 5.44
       }
     },
@@ -606,7 +606,7 @@
       "pass": true,
       "detail": {
         "E4teff": 11174,
-        "SBbTeff": 14605
+        "SBbTeff": 14587
       }
     }
   ]

@@ -229,7 +229,11 @@ console.log(`  ${Date.now() - t0} ms, ${ref.total.toFixed(1)} model mass units`)
 				const re = density.spheroidEllipsoidRadius(model, x - model.centre.x, y - model.centre.y, z);
 				modelMasses[0] += d.thin * cell;
 				modelMasses[1] += d.thick * cell;
-				modelMasses[2] += (re <= T.spheroidRadius * model.spheroid.r0 ? d.bulge : 0) * cell;
+				// The bar has no ellipsoid-radius gate (it is bounded by its own
+				// tip) and is exactly zero in this annulus past its 2.3 kpc end.
+				modelMasses[2] += (model.spheroid.profileId === density.PROFILE_BAR
+					? d.bulge
+					: (re <= T.spheroidRadius * model.spheroid.r0 ? d.bulge : 0)) * cell;
 				modelMasses[3] += d.halo * cell;
 			}
 		}
@@ -248,11 +252,17 @@ console.log(`  ${Date.now() - t0} ms, ${ref.total.toFixed(1)} model mass units`)
 	for (let c = 0; c < 3; c++) {   // halo is empty in this volume
 		const sampledShare = counts[c] / sampled;
 		const modelShare = modelMasses[c] / (modelMasses[0] + modelMasses[1] + modelMasses[2]);
+		// The bulge is legitimately absent from this annulus now the bar ends
+		// at 2.3 kpc; absent on both sides is agreement, not a division by 0.
+		if (modelShare === 0 && sampledShare === 0) {
+			detail[density.COMPONENT_NAMES[c]] = { sampled: 0, model: 0 };
+			continue;
+		}
 		const relative = Math.abs(sampledShare - modelShare) / modelShare;
 		detail[density.COMPONENT_NAMES[c]] = { sampled: +sampledShare.toFixed(5), model: +modelShare.toFixed(5) };
 		worst = Math.max(worst, relative);
 	}
-	check('population mix inside a 4-8 kpc annulus matches the model (worst 4%)', worst < 0.04, { worst, ...detail, stars: sampled });
+	check('population mix inside a 4-8 kpc annulus, past the bar end, matches the model (worst 4%)', worst < 0.04, { worst, ...detail, stars: sampled });
 }
 
 // --- 4. Determinism ------------------------------------------------------
@@ -320,8 +330,13 @@ console.log(`  ${Date.now() - t0} ms, ${ref.total.toFixed(1)} model mass units`)
 		sumAge[component] = (sumAge[component] || 0) + derived.age;
 		if (derived.distToArm === undefined) armTotals[cls] = (armTotals[cls] || 0) + 1;
 		if (cls === 'O' || cls === 'B') {
-			armTotals[cls] = (armTotals[cls] || 0) + 1;
-			if (stars.distToArm[i] < 0.5) armCounts[cls] = (armCounts[cls] || 0) + 1;
+			// The bar region has no ridge to concentrate on (distToArm is 99
+			// inside the arm inner edge), so the arm statistic runs over the
+			// arm region the modulation actually lives in.
+			if (stars.R[i] >= model.arms.minRadius) {
+				armTotals[cls] = (armTotals[cls] || 0) + 1;
+				if (stars.distToArm[i] < 0.5) armCounts[cls] = (armCounts[cls] || 0) + 1;
+			}
 		}
 	}
 	const meanAge = {};

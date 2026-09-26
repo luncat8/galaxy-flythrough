@@ -86,9 +86,12 @@ const counts = summary.byType;
 		planetary.filter(o => o.R < 3).length / planetary.length > 0.4,
 		+(planetary.filter(o => o.R < 3).length / planetary.length).toFixed(2));
 	const snrThin = snr.filter(o => o.component === 'thin').length / snr.length;
-	check('SNR trace the thin disc and the arms (thin majority, mean arm distance < 5 kpc)',
-		snrThin > 0.5 && mean(snr, o => o.distToArm) < 5.0,
-		{ thinFrac: +snrThin.toFixed(2), meanArm: +mean(snr, o => o.distToArm).toFixed(2) });
+	// distToArm is 99 inside the arm inner edge (the bar region has no ridge to
+	// be near), so the arm statistic runs over the arm region only.
+	const snrArms = snr.filter(o => o.R >= model.arms.minRadius);
+	check('SNR trace the thin disc and the arms (thin majority, mean arm distance < 5 kpc in the arm region)',
+		snrThin > 0.5 && snrArms.length > 0 && mean(snrArms, o => o.distToArm) < 5.0,
+		{ thinFrac: +snrThin.toFixed(2), meanArm: +mean(snrArms, o => o.distToArm).toFixed(2) });
 
 	const haloish = placed.filter(o => o.component === 'halo' || Math.abs(o.z) > 1.0).length;
 	check('almost no object leaks into the halo or above |z| = 1 kpc',
