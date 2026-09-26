@@ -174,10 +174,10 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 	const main = require('../src/main.js');
 	check('main.js exposes its helpers without booting in Node',
 		typeof main.boot === 'function' && typeof main.readParams === 'function');
-	const parsed = main.readParams('?stars=5000&catalog=10000&seed=7&exposure=22');
-	check('readParams reads every documented parameter',
+	const parsed = main.readParams('?stars=5000&catalog=10000&seed=7&exposure=22&engine=apocenter');
+	check('readParams reads every documented parameter including the apocenter engine',
 		parsed.stars === 5000 && parsed.catalogStars === 10000
-		&& parsed.seed === 7 && parsed.exposure === 22, parsed);
+		&& parsed.seed === 7 && parsed.exposure === 22 && parsed.engine === 'apocenter', parsed);
 	const defaults = main.readParams('');
 	check('readParams falls back to the renderer defaults',
 		defaults.stars === global.window.StarRenderer.PROCEDURAL_STARS_DEFAULT

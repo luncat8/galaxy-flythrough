@@ -181,7 +181,7 @@ function dist3(a, b) {
 	const dyn = orbit.fillDynamics({}, MW);
 	let maxOff = 0;
 	for (let tt = 0; tt <= 2000; tt += 7) {
-		orbit.orbitPosition(out, px, py, 0.05, orbit.FAMILY_BAR, 4, 15, tt, MW);
+		orbit.orbitPosition(out, px, py, 0, orbit.FAMILY_BAR, 0, 15, tt, MW);
 		const th = MW.dynamics.omegaPattern * tt;
 		const sx = Math.cos(th) * (px - MW.centre.x) - Math.sin(th) * py;
 		const sy = Math.sin(th) * (px - MW.centre.x) + Math.cos(th) * py;
@@ -400,8 +400,8 @@ function orbitPositionF32(px, py, pz, packed, cx, time, dynA, dynB, waveA, waveB
 	const phase = fr(fr(f32i((packed >>> 24) & 15)) * fr(0.392699081699));
 	const amp = fr(f32i((packed >>> 28) & 15));
 	const qx = fr(fr(px) - fr(cx)); const qy = fr(fr(py) - fr(0)); const qz = fr(fr(pz) - fr(0));
-	let rx = fr(qx * qx); let ry = fr(qy * qy);
-	const r = fr(Math.max(fr(Math.sqrt(fr(rx + ry))), fr(0.001)));
+	const qxx = fr(qx * qx), qyy = fr(qy * qy);
+	const r = fr(Math.max(fr(Math.sqrt(fr(qxx + qyy))), fr(0.001)));
 	// omega — mirrors orbitOmega exactly, including the pattern-without-a-
 	// pattern fallback and the hybrid pressure clock (disc curve / Keplerian).
 	const pressureClockF = () => (dynA[0] > 0
@@ -460,35 +460,110 @@ function orbitPositionF32(px, py, pz, packed, cx, time, dynA, dynB, waveA, waveB
 	const sinTauF = (arg) => fr(Math.sin(fr(fr(6.28318530718) * fractf(fr(fr(arg) * fr(0.159154943092))))));
 	const sinPh = sinTauF(phase);
 	const sinPhV = sinTauF(fr(phase + fr(1.57079632679)));
-	let wrx = 0, wry = 0, wz = 0;
+	let wr = 0, wz = 0;
 	if (family === 2) {
-		// The bar's x1 loop: circulate at the rate the star laps the pattern.
 		const stream = fr(circF() - dynA[2]);
 		const ah = fr(fr(rank * fr(0.15)) * dynB[1]);
-		const wr = fr(ah * fr(sinTauF(fr(phase + stream * time)) - sinPh));
-		wrx = fr(wr * qx / r); wry = fr(wr * qy / r);
+		wr = fr(ah * fr(sinTauF(fr(phase + stream * time)) - sinPh));
 	} else if (family === 1) {
 		const kappa = fr(fr(1.41421356237) * fr(dynA[0] / fr(Math.max(r, dynA[1]))));
 		const ah = fr(fr(fr(rank * 2) * dynB[0]) / fr(Math.max(kappa, fr(1e-6))));
 		const av = fr(Math.min(fr(fr(0.2) * ah), fr(Math.max(fr(dynB[2] - fr(Math.abs(qz))), 0))));
-		const wr = fr(ah * fr(sinTauF(fr(phase + kappa * time)) - sinPh));
+		wr = fr(ah * fr(sinTauF(fr(phase + kappa * time)) - sinPh));
 		wz = fr(av * fr(sinTauF(fr(phase + fr(1.57079632679) + kappa * time)) - sinPhV));
-		wrx = fr(wr * qx / r); wry = fr(wr * qy / r);
 	} else if (family === 3) {
 		const a = fr(rank * dynB[1]);
 		const mean = pressureClockF();
-		const wr = fr(a * fr(sinTauF(fr(phase + mean * time)) - sinPh));
+		wr = fr(a * fr(sinTauF(fr(phase + mean * time)) - sinPh));
 		wz = fr(a * fr(sinTauF(fr(phase + fr(1.57079632679) + mean * time)) - sinPhV));
-		wrx = fr(wr * qx / r); wry = fr(wr * qy / r);
 	}
-	const ct = fr(Math.cos(theta)); const st = fr(Math.sin(theta));
-	const bx = fr(qx + wrx); const by = fr(qy + wry);
+	const radius = fr(Math.sqrt(fr(fr(qx * qx) + fr(qy * qy) + fr(qz * qz))));
+	const invRadius = radius > 1e-9 ? fr(1 / radius) : 0;
+	const e0x = radius > 1e-9 ? fr(qx * invRadius) : 1;
+	const e0y = radius > 1e-9 ? fr(qy * invRadius) : 0;
+	const e0z = radius > 1e-9 ? fr(qz * invRadius) : 0;
+	const xy = fr(Math.sqrt(fr(fr(qx * qx) + fr(qy * qy))));
+	const azx = xy > 1e-9 ? fr(-qy / xy) : 0;
+	const azy = xy > 1e-9 ? fr(qx / xy) : 1;
+	const ezx = fr(-e0z * azy), ezy = fr(e0z * azx), ezz = fr(fr(e0x * azy) - fr(e0y * azx));
+	const rankIncl = fr(fr(amp + 0.5) / 16);
+	const direction = fr(Math.sin(fr(fr(phase / fr(6.28318530718)) * fr(6.28318530718))));
+	const maxInc = family === 2 ? 0.12 : family === 3 ? 0.30 : 0.045;
+	const inc = fr(fr(maxInc * rankIncl) * direction);
+	const ci = fr(Math.cos(inc)), si = fr(Math.sin(inc));
+	const e1x = fr(fr(azx * ci) + fr(ezx * si));
+	const e1y = fr(fr(azy * ci) + fr(ezy * si));
+	const e1z = fr(ezz * si);
+	const nx = fr(fr(e0y * e1z) - fr(e0z * e1y));
+	const ny = fr(fr(e0z * e1x) - fr(e0x * e1z));
+	const nz = fr(fr(e0x * e1y) - fr(e0y * e1x));
+	const ct = fr(Math.cos(theta)), st = fr(Math.sin(theta));
+	const rx = fr(fr(e0x * ct) + fr(e1x * st));
+	const ry = fr(fr(e0y * ct) + fr(e1y * st));
+	const rz = fr(fr(e0z * ct) + fr(e1z * st));
+	const orbitRadius = radius > 1e-9 ? fr(radius + wr) : 0;
+	const normalWobble = radius > 1e-9 ? wz : 0;
 	return [
-		fr(fr(cx) + fr(fr(ct * bx) - fr(st * by))),
-		fr(fr(0) + fr(fr(st * bx) + fr(ct * by))),
-		fr(fr(0) + fr(qz + wz)),
+		fr(fr(cx) + fr(fr(orbitRadius * rx) + fr(normalWobble * nx))),
+		fr(fr(0) + fr(fr(orbitRadius * ry) + fr(normalWobble * ny))),
+		fr(fr(0) + fr(fr(orbitRadius * rz) + fr(normalWobble * nz))),
 	];
 }
+function apocenterPositionF32(px, py, pz, packed, centre, time, dynA, waveA, waveB, engine) {
+	const fr = Math.fround, TAU = fr(6.28318530718), PI = fr(3.14159265359);
+	if (time === 0) return [fr(px), fr(py), fr(pz)];
+	const flags = (packed >>> 16) & 255;
+	const family = (flags >>> 3) & 3;
+	const phaseBits = (packed >>> 24) & 15, ampBits = (packed >>> 28) & 15;
+	const qx = fr(fr(px) - fr(centre[0])), qy = fr(fr(py) - fr(centre[1])), qz = fr(fr(pz) - fr(centre[2]));
+	const radius = fr(Math.hypot(qx, qy, qz));
+	if (radius <= 1e-9) return centre.map(fr);
+	const theta0 = fr(Math.atan2(qy, qx));
+	const R = fr(Math.max(fr(Math.hypot(qx, qy)), fr(0.001)));
+	let apo = theta0;
+	if ((family === 1 || family === 0) && waveA[1] >= 1 && waveB[2] > 0 && R >= waveB[1]) {
+		const ridge = fr(fr(fr(waveA[2] * fr(Math.log(fr(R / waveB[0])))) - waveA[3]) / waveA[1]);
+		apo = fr(ridge + fr(Math.floor(fr(fr(fr(theta0 - ridge) * waveA[1]) / TAU) + 0.5) * fr(TAU / waveA[1])));
+	} else if (family === 2) {
+		apo = fr(engine[2] + fr(Math.floor(fr(fr(theta0 - engine[2]) / PI + 0.5)) * PI));
+	}
+	const rawDelta = fr(fr(apo + PI) - theta0);
+	const delta0 = fr(rawDelta - fr(TAU * Math.floor(fr(fr(rawDelta + PI) / TAU))));
+	const rank = fr(fr(ampBits + 0.5) * fr(0.0625));
+	const ecc = fr(Math.min(fr(engine[1] * rank), 0.55));
+	const root = fr(Math.sqrt(fr(1 - fr(ecc * ecc))));
+	const cosF = fr(Math.cos(delta0)), sinF = fr(-Math.sin(delta0));
+	const E0 = fr(Math.atan2(fr(root * sinF), fr(ecc + cosF)));
+	const M0 = fr(E0 - fr(ecc * fr(Math.sin(E0))));
+	const a = fr(fr(radius * fr(1 + fr(ecc * cosF))) / fr(1 - fr(ecc * ecc)));
+	const localOmega = dynA[0] > 0 ? fr(dynA[0] / fr(Math.max(R, dynA[1])))
+		: fr(fr(0.05) / fr(Math.max(fr(Math.pow(fr(Math.max(R, 0.1)), 1.5)), 0.01)));
+	const meanRaw = fr(M0 + fr(fr(localOmega - dynA[2]) * fr(time)) - waveB[3]);
+	const mean = fr(meanRaw - fr(TAU * Math.floor(fr(fr(meanRaw + PI) / TAU))));
+	let E = mean;
+	for (let i = 0; i < 5; i++) E = fr(E - fr(fr(E - fr(ecc * fr(Math.sin(E))) - mean) / fr(1 - fr(ecc * fr(Math.cos(E))))));
+	const nu = fr(Math.atan2(fr(root * fr(Math.sin(E))), fr(Math.cos(E) - ecc)));
+	const orbitRadius = fr(a * fr(1 - fr(ecc * fr(Math.cos(E)))));
+	const delta = fr(fr(delta0 + fr(dynA[2] * fr(time))) + waveB[3]);
+	const e0x = fr(qx / radius), e0y = fr(qy / radius), e0z = fr(qz / radius);
+	const xy = fr(Math.hypot(qx, qy));
+	const azx = xy > 1e-9 ? fr(-qy / xy) : 0, azy = xy > 1e-9 ? fr(qx / xy) : 1;
+	const ezx = fr(-e0z * azy), ezy = fr(e0z * azx), ezz = fr(fr(e0x * azy) - fr(e0y * azx));
+	const phase = fr(phaseBits * fr(0.392699081699));
+	const incMax = family === 2 ? 0.12 : family === 3 ? 0.30 : 0.045;
+	const inc = fr(fr(incMax * rank) * fr(Math.sin(phase)));
+	const ci = fr(Math.cos(inc)), si = fr(Math.sin(inc));
+	const e1x = fr(fr(azx * ci) + fr(ezx * si)), e1y = fr(fr(azy * ci) + fr(ezy * si)), e1z = fr(ezz * si);
+	const cd = fr(Math.cos(delta)), sd = fr(Math.sin(delta)), cv = fr(Math.cos(nu)), sv = fr(Math.sin(nu));
+	const px1 = fr(fr(e0x * cd) + fr(e1x * sd)), py1 = fr(fr(e0y * cd) + fr(e1y * sd)), pz1 = fr(fr(e0z * cd) + fr(e1z * sd));
+	const qpx = fr(fr(-e0x * sd) + fr(e1x * cd)), qpy = fr(fr(-e0y * sd) + fr(e1y * cd)), qpz = fr(fr(-e0z * sd) + fr(e1z * cd));
+	return [
+		fr(centre[0] + fr(orbitRadius * fr(fr(px1 * cv) + fr(qpx * sv)))),
+		fr(centre[1] + fr(orbitRadius * fr(fr(py1 * cv) + fr(qpy * sv)))),
+		fr(centre[2] + fr(orbitRadius * fr(fr(pz1 * cv) + fr(qpz * sv)))),
+	];
+}
+
 function fractf(x) {
 	return frLocal(x - Math.floor(x));
 }
@@ -838,13 +913,15 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 		E[0] === 1 && E[1] === Math.fround(Psb.eccMax) && E[2] === 0 && E[3] === 0);
 	orbit.setEngine(savedEngine);
 
-	// Vertex mirror: integrated theta + birth record = position, birth height
-	// kept. A solar-ring star stepped a quarter turn lands on the +Y axis.
+	// Vertex mirror: the azimuth turns in the star's own centre-crossing orbital
+	// plane, so spherical galactocentric radius (not birth z) is conserved.
 	orbit.simpleLandmarksInit(new Float64Array([MW.centre.x + 8.178, 0, 0.1]), new Uint8Array([5]), 1, MW);
 	const thSun = Math.atan2(0 - 0, MW.centre.x + 8.178 - MW.centre.x);
+	const birthRadius = Math.hypot(8.178, 0.1);
 	orbit.simplePositionFromTheta(out, Math.PI / 2, MW.centre.x + 8.178, 0, 0.1, 0, orbit.FAMILY_DISC, Ps.eccMax, MW);
-	check('the reconstruction keeps the birth height and rotates the birth radius',
-		dist3(out, [MW.centre.x, 8.178, 0.1]) < 1e-9, { pos: [out[0], out[1], out[2]], thSun });
+	check('the 3-D reconstruction rotates in its centre-crossing plane and conserves radius',
+		Math.abs(Math.hypot(out[0] - MW.centre.x, out[1], out[2]) - birthRadius) < 1e-9,
+		{ pos: [out[0], out[1], out[2]], thSun, birthRadius });
 
 	// The CPU landmark mirror steps the same Euler the GPU dispatches, so it
 	// must agree with the reference step bit-for-bit — labels and picks ride it.
@@ -888,6 +965,99 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 		drift < 1e-4, { drift: +drift.toExponential(2) });
 
 	orbit.setWaveDamping(savedDamp);
+}
+
+// --- 12. Apocenter-guided engine (0.4.7) -------------------------------
+{
+	const savedEngine = orbit.getEngine();
+	const savedScale = orbit.getPatternScale();
+	const apoOut = new Float64Array(3);
+	orbit.setPatternScale(1, 0, MW);
+	orbit.resetPatternPhaseOffset();
+	orbit.setEngine('apocenter');
+	check('apocenter is a named third engine and engine id 2 round-trips',
+		orbit.ENGINE_APOCENTER === 2 && orbit.setEngine(2) === 2
+		&& orbit.engineName() === 'apocenter' && orbit.setEngine('apocenter') === 2);
+
+	let identityWorst = 0;
+	for (let family = 0; family < 4; family++) {
+		orbit.orbitPosition(apoOut, MW.centre.x + 5.2, -1.3, 0.4, family, 7, 15, 0, MW);
+		identityWorst = Math.max(identityWorst, dist3(apoOut, [MW.centre.x + 5.2, -1.3, 0.4]));
+	}
+	check('apocenter T = 0 is exact for all four families at a non-origin centre', identityWorst === 0, identityWorst);
+
+	const targetR = 8;
+	const ridge = density.armRidgeAzimuth(MW, targetR);
+	const expectedArmApo = ridge + Math.floor((0 - ridge) * MW.arms.m / orbit.TAU + 0.5) * orbit.TAU / MW.arms.m;
+	const actualArmApo = orbit.apocenterAngle(0, targetR, orbit.FAMILY_DISC, MW);
+	const barApo = orbit.apocenterAngle(0, 2, orbit.FAMILY_BAR, MW);
+	const expectedBarApo = MW.spheroid.tiltDeg * Math.PI / 180
+		+ Math.floor((0 - MW.spheroid.tiltDeg * Math.PI / 180) / Math.PI + 0.5) * Math.PI;
+	check('disc apsides select the nearest spiral ridge and bar apsides use the model bar angle',
+		Math.abs(actualArmApo - expectedArmApo) < 1e-12 && Math.abs(barApo - expectedBarApo) < 1e-12,
+		{ actualArmApo, expectedArmApo, barApo, expectedBarApo });
+
+	const cr = MW.dynamics.vFlat / orbit.effectivePatternSpeed(MW);
+	const crApo = orbit.apocenterAngle(0, cr, orbit.FAMILY_DISC, MW);
+	const crX = MW.centre.x + cr * Math.cos(crApo), crY = cr * Math.sin(crApo);
+	orbit.orbitPosition(apoOut, crX, crY, 0, orbit.FAMILY_DISC, 0, 15, 0, MW);
+	orbit.orbitPosition(out, crX, crY, 0, orbit.FAMILY_DISC, 0, 15, 20, MW);
+	const crAngleAfter = Math.atan2(out[1], out[0] - MW.centre.x);
+	const crRadiusAfter = Math.hypot(out[0] - MW.centre.x, out[1]);
+	check('an apocenter at corotation rotates with the pattern around the model centre',
+		Math.abs(crRadiusAfter - cr) < 1e-8
+		&& Math.abs(Math.atan2(Math.sin(crAngleAfter - crApo - orbit.effectivePatternSpeed(MW) * 20),
+			Math.cos(crAngleAfter - crApo - orbit.effectivePatternSpeed(MW) * 20))) < 1e-8,
+		{ initialRadius: cr, finalRadius: crRadiusAfter, angle: crAngleAfter });
+
+	const eccentricity = orbit.APOCENTER_ECC_MAX * 15.5 / 16;
+	const apoAngularRate = Math.sqrt(1 - eccentricity * eccentricity) / ((1 + eccentricity) * (1 + eccentricity));
+	const periAngularRate = Math.sqrt(1 - eccentricity * eccentricity) / ((1 - eccentricity) * (1 - eccentricity));
+	check('Kepler motion dwells at apocenter (angular speed lower than at pericenter)',
+		apoAngularRate < periAngularRate && Number.isFinite(orbit.solveEccentricAnomaly(1e6, eccentricity)),
+		{ apoAngularRate, periAngularRate });
+
+	let bounded = true;
+	for (const t of [-10000, -2500, 2500, 10000]) {
+		orbit.orbitPosition(apoOut, MW.centre.x + 6, 2, 0.4, orbit.FAMILY_DISC, 9, 15, t, MW);
+		const d = Math.hypot(apoOut[0] - MW.centre.x, apoOut[1], apoOut[2]);
+		bounded = bounded && Number.isFinite(d) && d > 0 && d < 20;
+	}
+	check('the eccentric orbit stays finite and bounded in both time directions', bounded);
+
+	const packedDynamics = new Float32Array(16);
+	orbit.packOrbitDynamics(MW, packedDynamics, 0);
+	const apoDynA = Array.from(packedDynamics.subarray(0, 4));
+	const apoWaveA = Array.from(packedDynamics.subarray(8, 12));
+	const apoWaveB = Array.from(packedDynamics.subarray(12, 16));
+	const apoEngine = [2, orbit.APOCENTER_ECC_MAX, MW.spheroid.tiltDeg * Math.PI / 180, 0].map(Math.fround);
+	const apoCases = [
+		[MW.centre.x + 6, 1.5, 0.4, orbit.FAMILY_DISC, 5, 13, 120],
+		[MW.centre.x + 2, -0.7, 0.2, orbit.FAMILY_BAR, 11, 15, 900],
+		[MW.centre.x + 8, 0.2, -0.1, orbit.FAMILY_PRESSURE, 7, 9, -3000],
+		[MW.centre.x + 3, 2, 0.6, orbit.FAMILY_PATTERN, 1, 12, 10000],
+	];
+	let apoParityWorst = 0;
+	for (const [x, y, z, family, phase, amp, t] of apoCases) {
+		const packed = records.packPacked(4, 3,
+			orbit.flagsWithFamily(records.FLAG_VISIBLE, family), orbit.encodeJitter(phase, amp));
+		orbit.apocenterPosition(apoOut, x, y, z, family, phase, amp, t, MW);
+		const gpu = apocenterPositionF32(x, y, z, packed,
+			[MW.centre.x, MW.centre.y, MW.centre.z], t, apoDynA, apoWaveA, apoWaveB, apoEngine);
+		apoParityWorst = Math.max(apoParityWorst, dist3(apoOut, gpu));
+	}
+	check('apocenter CPU law agrees with an f32 replay of its WGSL inputs within 0.05 kpc',
+		apoParityWorst < 0.05, apoParityWorst);
+
+	orbit.setPatternScale(1, 0, MW);
+	orbit.resetPatternPhaseOffset();
+	orbit.orbitPosition(apoOut, MW.centre.x + 6, 2, 0.2, orbit.FAMILY_DISC, 6, 12, 100, MW);
+	orbit.setPatternScale(1.5, 100, MW);
+	orbit.orbitPosition(out, MW.centre.x + 6, 2, 0.2, orbit.FAMILY_DISC, 6, 12, 100, MW);
+	check('changing pattern speed preserves apocenter-orbit phase', dist3(apoOut, out) < 1e-8, dist3(apoOut, out));
+	orbit.setPatternScale(savedScale, 0, MW);
+	orbit.resetPatternPhaseOffset();
+	orbit.setEngine(savedEngine);
 }
 
 // --- Report --------------------------------------------------------------

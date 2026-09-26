@@ -1,10 +1,10 @@
 {
-  "date": "2026-09-24T19:53:39.025Z",
+  "date": "2026-09-26T09:42:06.671Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 141,
-  "totalChecks": 119,
-  "passed": 119,
+  "prepareMs": 136,
+  "totalChecks": 121,
+  "passed": 121,
   "failed": 0,
   "checks": [
     {
@@ -91,7 +91,7 @@
       }
     },
     {
-      "name": "both star and tonemap pipelines target the swapchain format",
+      "name": "star and nebula pipelines target the RGBA16Float intermediate; tonemap targets the swapchain",
       "pass": true
     },
     {
@@ -930,6 +930,19 @@
     {
       "name": "leaving the engine stops the dispatch again",
       "pass": true
+    },
+    {
+      "name": "apocenter selection uses the analytic vertex path without compute dispatch",
+      "pass": true
+    },
+    {
+      "name": "apocenter packs engine id, bounded eccentricity and the model bar angle",
+      "pass": true,
+      "detail": {
+        "id": 2,
+        "ecc": 0.44999998807907104,
+        "barTilt": 0.471238911151886
+      }
     },
     {
       "name": "headroom and highlight desat reach the tonemap uniform",

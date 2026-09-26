@@ -243,7 +243,7 @@ function createStarRenderer(device, context, format, options) {
                         module: shaderModule,
                         entryPoint: 'fs_main',
                         targets: [{
-                                format,
+                                format: HDR_INTERMEDIATE_FORMAT,
                                 // Premultiplied additive: the fragment shader already returns
                                 // colour * alpha, so the blender must not multiply again.
                                 blend: {
@@ -338,7 +338,7 @@ function createStarRenderer(device, context, format, options) {
                         module: nebulaModule,
                         entryPoint: 'fs_main',
                         targets: [{
-                                format,
+                                format: HDR_INTERMEDIATE_FORMAT,
                                 blend: {
                                         color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
                                         alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
@@ -547,13 +547,13 @@ function createStarRenderer(device, context, format, options) {
                 return highlightDesat;
         }
 
-        // Engine select (0.4.5): classic (closed form, default) or simple
-        // (friction field, integrated). Entering either engine re-seeds the
-        // simple state from the birth field — a fresh integration epoch, so
-        // the switch itself can never strand stars mid-orbit.
+        // Engine select: classic (closed form), simple (integrated friction
+        // field), or apocenter (analytic Kepler ellipses). Reseed the simple
+        // theta block on every switch so stale integration state cannot leak
+        // into its next selection.
         function setEngine(id) {
                 const next = orbit.setEngine ? orbit.setEngine(id) : 0;
-                state.engine = next === 1 ? 'simple' : 'classic';
+                state.engine = next === 2 ? 'apocenter' : next === 1 ? 'simple' : 'classic';
                 seedThetaAll();
                 return state.engine;
         }

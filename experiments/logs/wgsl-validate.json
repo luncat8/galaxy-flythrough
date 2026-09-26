@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-24T19:53:37.829Z",
+  "date": "2026-09-26T09:42:05.579Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -11,7 +11,7 @@
     },
     {
       "name": "orbit",
-      "lines": 164
+      "lines": 260
     },
     {
       "name": "simple-step",
@@ -19,7 +19,7 @@
     },
     {
       "name": "star-sprite",
-      "lines": 320
+      "lines": 420
     },
     {
       "name": "star-sprite-hdr",
@@ -49,8 +49,8 @@
     "tonemap",
     "simple-step"
   ],
-  "totalChecks": 171,
-  "passed": 171,
+  "totalChecks": 172,
+  "passed": 172,
   "failed": 0,
   "checks": [
     {
@@ -83,7 +83,7 @@
         ],
         [
           "orbit",
-          8229
+          13012
         ],
         [
           "simple-step",
@@ -91,7 +91,7 @@
         ],
         [
           "star-sprite",
-          15248
+          20333
         ],
         [
           "star-sprite-hdr",
@@ -99,7 +99,7 @@
         ],
         [
           "nebula-billboard",
-          4115
+          4134
         ],
         [
           "tonemap",
@@ -191,7 +191,7 @@
     {
       "name": "orbit: declares its functions",
       "pass": true,
-      "detail": 7
+      "detail": 9
     },
     {
       "name": "simple-step: braces and parentheses balance",
@@ -227,7 +227,7 @@
     {
       "name": "star-sprite: declares its functions",
       "pass": true,
-      "detail": 12
+      "detail": 14
     },
     {
       "name": "star-sprite-hdr: braces and parentheses balance",
@@ -1156,6 +1156,10 @@
       "pass": true
     },
     {
+      "name": "apocenter engine mirrors its bounded Kepler solve and has its own vertex dispatch",
+      "pass": true
+    },
+    {
       "name": "the packer fills the orbit vec4s and the engine lane (16 at 28, 4 at 44)",
       "pass": true
     },
@@ -1172,7 +1176,7 @@
       "pass": true
     },
     {
-      "name": "the engine ids are 0/1 on the JS side and the branch reads them on the GPU side",
+      "name": "engine ids 0/1/2 match classic/simple/apocenter GPU dispatch",
       "pass": true
     },
     {

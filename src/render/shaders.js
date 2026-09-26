@@ -596,9 +596,62 @@ fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, d
         return centre + orbitRadius * radial + normalWobble * normal;
 }
 
+// Apocenter-guided Kepler ellipse, mirrored by orbit.apocenterPosition.
+fn apocenterPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, waveA: vec4f, waveB: vec4f, engine: vec4f) -> vec3f {
+        if (time == 0.0) { return p; }
+        let flags: u32 = (packed >> 16u) & 0xFFu;
+        let family: u32 = (flags >> 3u) & 3u;
+        let phaseBits: u32 = (packed >> 24u) & 15u;
+        let ampBits: u32 = (packed >> 28u) & 15u;
+        let q: vec3f = p - centre;
+        let radius: f32 = length(q);
+        if (radius <= 1e-9) { return centre; }
+        let theta0: f32 = atan2(q.y, q.x);
+        let R: f32 = max(length(q.xy), 0.001);
+        var apo: f32 = theta0;
+        if ((family == FAMILY_DISC || family == FAMILY_PATTERN) && waveA.y >= 1.0 && waveB.z > 0.0 && R >= waveB.y) {
+                let ridge: f32 = (waveA.z * log(R / waveB.x) - waveA.w) / waveA.y;
+                apo = ridge + floor((theta0 - ridge) * waveA.y / TAU + 0.5) * TAU / waveA.y;
+        } else if (family == FAMILY_BAR) {
+                apo = engine.z + floor((theta0 - engine.z) / PI + 0.5) * PI;
+        }
+        let delta0: f32 = (apo + PI - theta0) - TAU * floor((apo + PI - theta0 + PI) / TAU);
+        let rank: f32 = (f32(ampBits) + 0.5) * 0.0625;
+        let ecc: f32 = min(engine.y * rank, 0.55);
+        let root: f32 = sqrt(1.0 - ecc * ecc);
+        let cosF: f32 = cos(delta0);
+        let sinF: f32 = -sin(delta0);
+        let E0: f32 = atan2(root * sinF, ecc + cosF);
+        let M0: f32 = E0 - ecc * sin(E0);
+        let a: f32 = radius * (1.0 + ecc * cosF) / (1.0 - ecc * ecc);
+        var localOmega: f32 = pressureClock(dynA, R);
+        if (dynA.x > 0.0) { localOmega = dynA.x / max(R, dynA.y); }
+        let phaseOffset: f32 = waveB.w;
+        let meanRaw: f32 = M0 + (localOmega - dynA.z) * time - phaseOffset;
+        let mean: f32 = meanRaw - TAU * floor((meanRaw + PI) / TAU);
+        var E: f32 = mean;
+        for (var i: u32 = 0u; i < 5u; i = i + 1u) {
+                E = E - (E - ecc * sin(E) - mean) / (1.0 - ecc * cos(E));
+        }
+        let nu: f32 = atan2(root * sin(E), cos(E) - ecc);
+        let orbitRadius: f32 = a * (1.0 - ecc * cos(E));
+        let delta: f32 = delta0 + dynA.z * time + phaseOffset;
+        let e0: vec3f = q / radius;
+        let xy: f32 = length(q.xy);
+        var az: vec3f = vec3f(0.0, 1.0, 0.0);
+        if (xy > 1e-9) { az = vec3f(-q.y / xy, q.x / xy, 0.0); }
+        let eZ: vec3f = cross(e0, az);
+        let inc: f32 = orbitInclination(family, phaseBits, ampBits);
+        let e1: vec3f = az * cos(inc) + eZ * sin(inc);
+        let eP: vec3f = e0 * cos(delta) + e1 * sin(delta);
+        let eQ: vec3f = -e0 * sin(delta) + e1 * cos(delta);
+        return centre + orbitRadius * (eP * cos(nu) + eQ * sin(nu));
+}
+
 // 0.4.5 simple engine: reconstruct from the integrated azimuth. Mirrors
 // orbit.simplePositionFromTheta. Family-agnostic except for the eccentric
-// rho, which only disc/pattern carry; the birth height is kept exactly.
+// rho, which only disc/pattern carry; the full centre-crossing birth vector
+// sets the orbital plane.
 fn simplePosition(p: vec3f, packed: u32, theta: f32, centre: vec3f, eccMax: f32) -> vec3f {
         let flags: u32 = (packed >> 16u) & 0xFFu;
         let family: u32 = (flags >> 3u) & 3u;
@@ -736,7 +789,7 @@ struct CameraUniform {
         // struct and do not read the pair — gas stays on the pattern.
         waveA: vec4f,       // damping, m, K, phase0
         waveB: vec4f,       // Rs, minRadius, amp, patternPhaseOffset
-        // Engine select packed by orbit.packEngineVec: (id, eccMax, 0, 0).
+        // Engine select: (id, eccentricityMax, barTiltRadians, spare).
         // Nebulae share this struct and ignore the lane.
         engine: vec4f,
 };
@@ -803,7 +856,11 @@ fn vs_main(
         // 0.4.5 engine branch: uniform control flow, no divergence. The simple
         // lane reconstructs from the compute-integrated azimuth in binding 3.
         var moved: vec3f;
-        if (camera.engine.x > 0.5) {
+        if (camera.engine.x > 1.5) {
+                moved = apocenterPosition(vec3f(star.x, star.y, star.z), star.packed,
+                        vec3f(camera.cameraPos.w, 0.0, 0.0), camera.params.w,
+                        camera.dynA, camera.waveA, camera.waveB, camera.engine);
+        } else if (camera.engine.x > 0.5) {
                 moved = simplePosition(vec3f(star.x, star.y, star.z), star.packed,
                         theta[starIdx], vec3f(camera.cameraPos.w, 0.0, 0.0), camera.engine.y);
         } else {

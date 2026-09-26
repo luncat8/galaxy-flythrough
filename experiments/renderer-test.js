@@ -224,8 +224,9 @@ console.log(`Prepared in ${prepareMs} ms: ${prepareState.proceduralStars} proced
                 && nebulaPipeline.fragment.targets[0].blend.color.dstFactor === 'one'
                 && nebulaPipeline.depthStencil === undefined,
                 nebulaPipeline.fragment.targets[0].blend);
-        check('both star and tonemap pipelines target the swapchain format',
-                spritePipeline.fragment.targets[0].format === 'bgra8unorm'
+        check('star and nebula pipelines target the RGBA16Float intermediate; tonemap targets the swapchain',
+                spritePipeline.fragment.targets[0].format === 'rgba16float'
+                && nebulaPipeline.fragment.targets[0].format === 'rgba16float'
                 && tonemapPipeline.fragment.targets[0].format === 'bgra8unorm');
         check('the color LUT is uploaded as rgba8unorm-srgb (so palette bytes authored as sRGB get linearised)',
                 gpu.textures.some(t => t.label === 'star-color-lut' && t.format === 'rgba8unorm-srgb'),
@@ -910,6 +911,16 @@ function cellManagerFrom(m, budget) {
         check('leaving the engine stops the dispatch again',
                 engRenderer.setEngine('classic') === 'classic'
                 && (engRenderer.render(camera, 320, 200, 13, input, 1), engGpu.computePasses.length === passesBefore));
+        check('apocenter selection uses the analytic vertex path without compute dispatch',
+                engRenderer.setEngine('apocenter') === 'apocenter');
+        engRenderer.render(camera, 320, 200, 14, input, 1);
+        const apoUniform = readUniform(engGpu.uniformWrites[engGpu.uniformWrites.length - 1]);
+        check('apocenter packs engine id, bounded eccentricity and the model bar angle',
+                apoUniform[44] === 2 && apoUniform[45] === Math.fround(window.OrbitLib.APOCENTER_ECC_MAX)
+                && Math.abs(apoUniform[46] - Math.fround(engModel.spheroid.tiltDeg * Math.PI / 180)) < 1e-7
+                && engGpu.computePasses.length === passesBefore,
+                { id: apoUniform[44], ecc: apoUniform[45], barTilt: apoUniform[46] });
+        engRenderer.setEngine('classic');
 
         // Headroom / highlight desat ride the tonemap uniform's second vec4.
         engRenderer.setHeadroom(4);

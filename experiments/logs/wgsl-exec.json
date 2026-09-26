@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-24T18:54:29.530Z",
+  "date": "2026-09-26T09:20:47.283Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 102,
-  "passed": 102,
+  "totalChecks": 104,
+  "passed": 104,
   "failed": 0,
   "checks": [
     {
@@ -187,8 +187,8 @@
           1.5152278204317446
         ],
         "cpu": [
-          5.5405847083304645,
-          1.5152262489883257
+          5.540584708330465,
+          1.5152262489883255
         ]
       }
     },
@@ -201,8 +201,8 @@
           1.5152278204317446
         ],
         "shear": [
-          5.865352620316133,
-          1.97573583851609
+          5.865352620316134,
+          1.9757358385160897
         ]
       }
     },
@@ -243,15 +243,41 @@
       }
     },
     {
+      "name": "on-WGSL: apocenter engine preserves its birth point at T = 0",
+      "pass": true,
+      "detail": {
+        "clip": [
+          14.178417205810547,
+          -3.4992592334747314,
+          0.20000000298023224,
+          1
+        ]
+      }
+    },
+    {
+      "name": "on-WGSL: apocenter vertex path matches the CPU Kepler mirror (< 20 pc)",
+      "pass": true,
+      "detail": {
+        "gpu": [
+          7.973717301686605,
+          -4.872127268755878
+        ],
+        "cpu": [
+          7.973714313890333,
+          -4.87212724101437
+        ]
+      }
+    },
+    {
       "name": "on-WGSL: all 64 simple-step invocations run to completion",
       "pass": true
     },
     {
-      "name": "on-WGSL: the kernel matches the CPU law on every live slot (< 1e-4 rad)",
+      "name": "on-WGSL: the kernel matches the CPU law on every live slot (< 4e-4 rad)",
       "pass": true,
       "detail": {
-        "worstRad": 5.291714391120195e-7,
-        "slot": 8,
+        "worstRad": 0.0003250540508350497,
+        "slot": 18,
         "nan": -1
       }
     },

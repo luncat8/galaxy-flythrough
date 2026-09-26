@@ -320,6 +320,7 @@ const orbitScratch = { vFlat: 0, rCore: 0, omegaPattern: 0, spinLambda: 0, sigma
 // sinTau(arg0)) term are exactly zero, so the transform is the identity
 // (within one add's rounding). Every plane still passes through `centre`.
 function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
+	if (engine === ENGINE_APOCENTER) return apocenterPosition(out, x, y, z, family, phase, amplitude, time, model);
 	const dyn = fillDynamics(orbitScratch, model);
 	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
 	const qx = x - c.x, qy = y - c.y, qz = z - c.z;
@@ -403,6 +404,85 @@ function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
 	return out;
 }
 
+const APOCENTER_ECC_MAX = 0.45;
+const APOCENTER_ECC_CAP = 0.55;
+
+function apocenterAngle(theta, radius, family, model) {
+	const arms = model && model.arms;
+	if ((family === FAMILY_DISC || family === FAMILY_PATTERN)
+		&& arms && arms.amp > 0 && arms.m >= 1 && arms.pitchDeg > 0 && arms.Rs > 0
+		&& radius >= (arms.minRadius || 0)) {
+		const ridge = density.armRidgeAzimuth(model, radius);
+		return ridge + Math.floor((theta - ridge) * arms.m / TAU + 0.5) * TAU / arms.m;
+	}
+	if (family === FAMILY_BAR) {
+		const tilt = ((model && model.spheroid && model.spheroid.tiltDeg) || 0) * Math.PI / 180;
+		return tilt + Math.floor((theta - tilt) / Math.PI + 0.5) * Math.PI;
+	}
+	return theta;
+}
+
+function solveEccentricAnomaly(mean, eccentricity) {
+	const M = reduceAngle(mean);
+	let E = M;
+	for (let i = 0; i < 5; i++) {
+		E -= (E - eccentricity * Math.sin(E) - M) / (1 - eccentricity * Math.cos(E));
+	}
+	return E;
+}
+
+// Analytic Kepler ellipse with its apocenter aligned to the nearest density
+// ridge. Five Newton steps are bounded by e <= 0.55 and need no per-star state.
+function apocenterPosition(out, x, y, z, family, phase, amplitude, time, model) {
+	if (time === 0) {
+		out[0] = x; out[1] = y; out[2] = z;
+		return out;
+	}
+	const dyn = fillDynamics(orbitScratch, model);
+	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
+	const qx = x - c.x, qy = y - c.y, qz = z - c.z;
+	const radius = Math.hypot(qx, qy, qz);
+	if (!(radius > 1e-9)) {
+		out[0] = c.x; out[1] = c.y; out[2] = c.z;
+		return out;
+	}
+	const theta0 = Math.atan2(qy, qx);
+	const R = Math.max(Math.hypot(qx, qy), 0.001);
+	const apo = apocenterAngle(theta0, R, family, model);
+	const delta0 = reduceAngle(apo + Math.PI - theta0);
+	const rank = ((amplitude & 15) + 0.5) / 16;
+	const eccentricity = Math.min(APOCENTER_ECC_CAP, APOCENTER_ECC_MAX * rank);
+	const root = Math.sqrt(1 - eccentricity * eccentricity);
+	const cosF = Math.cos(delta0), sinF = -Math.sin(delta0);
+	const E0 = Math.atan2(root * sinF, eccentricity + cosF);
+	const M0 = E0 - eccentricity * Math.sin(E0);
+	const a = radius * (1 + eccentricity * cosF) / (1 - eccentricity * eccentricity);
+	const localOmega = dyn.vFlat > 0
+		? dyn.vFlat / Math.max(R, dyn.rCore)
+		: pressureClock(dyn, R);
+	const mean = M0 + (localOmega - dyn.omegaPattern) * time - patternPhaseOffset;
+	const E = solveEccentricAnomaly(mean, eccentricity);
+	const nu = Math.atan2(root * Math.sin(E), Math.cos(E) - eccentricity);
+	const orbitRadius = a * (1 - eccentricity * Math.cos(E));
+	const delta = delta0 + dyn.omegaPattern * time + patternPhaseOffset;
+	const e0x = qx / radius, e0y = qy / radius, e0z = qz / radius;
+	const xy = Math.hypot(qx, qy);
+	const azx = xy > 1e-9 ? -qy / xy : 0;
+	const azy = xy > 1e-9 ? qx / xy : 1;
+	const ezx = -e0z * azy, ezy = e0z * azx, ezz = e0x * azy - e0y * azx;
+	const inc = orbitInclination(family, phase, amplitude);
+	const ci = Math.cos(inc), si = Math.sin(inc);
+	const e1x = azx * ci + ezx * si, e1y = azy * ci + ezy * si, e1z = ezz * si;
+	const cd = Math.cos(delta), sd = Math.sin(delta);
+	const cv = Math.cos(nu), sv = Math.sin(nu);
+	const px = e0x * cd + e1x * sd, py = e0y * cd + e1y * sd, pz = e0z * cd + e1z * sd;
+	const qpx = -e0x * sd + e1x * cd, qpy = -e0y * sd + e1y * cd, qpz = -e0z * sd + e1z * cd;
+	out[0] = c.x + orbitRadius * (px * cv + qpx * sv);
+	out[1] = c.y + orbitRadius * (py * cv + qpy * sv);
+	out[2] = c.z + orbitRadius * (pz * cv + qpz * sv);
+	return out;
+}
+
 // The four vec4s the star shader reads as camera.dynA / dynB / waveA / waveB.
 // Nebulae share the buffer and ignore the wave pair (gas stays on the pattern).
 // Layout contract shared with SHADER_PARTS['orbit'] and CameraUniform:
@@ -457,14 +537,15 @@ function formatTimeRate(value, speed) { return value < 0 ? `follow ×${(-value).
 // Gaussian D on the log-spiral phase, pattern phase accumulated separately);
 // its hand-tuned constants are derived per galaxy type instead. Deliberately
 // not ported: the pink arm tint (real spectral types must not be tinted by
-// position) and the z(theta) redistribution (birth heights are kept, so the
-// motion preserves the density field by construction).
+// position) and the z(theta) redistribution; the orbit-plane transform is
+// instead anchored at the galaxy centre and keeps each star's orbital radius.
 
-const ENGINE_CLASSIC = 0, ENGINE_SIMPLE = 1;
-const ENGINE_NAMES = ['classic', 'simple'];
+const ENGINE_CLASSIC = 0, ENGINE_SIMPLE = 1, ENGINE_APOCENTER = 2;
+const ENGINE_NAMES = ['classic', 'simple', 'apocenter'];
 let engine = ENGINE_CLASSIC;
 function setEngine(id) {
-	engine = (id === ENGINE_SIMPLE || id === 'simple') ? ENGINE_SIMPLE : ENGINE_CLASSIC;
+	engine = id === ENGINE_APOCENTER || id === 'apocenter' ? ENGINE_APOCENTER
+		: id === ENGINE_SIMPLE || id === 'simple' ? ENGINE_SIMPLE : ENGINE_CLASSIC;
 	return engine;
 }
 function getEngine() { return engine; }
@@ -631,7 +712,7 @@ function simplePatternPhase(model, starTimeMyr) {
 	const arms = (model && model.arms) || {};
 	const m = arms.m >= 1 ? arms.m : 1;
 	const phase0 = arms.m >= 1 ? (arms.phase0 || 0) : 0;
-	const elapsed = w > 0 && Number.isFinite(starTimeMyr) ? w * starTimeMyr : 0;
+	const elapsed = w > 0 && Number.isFinite(starTimeMyr) && starTimeMyr > 0 ? w * starTimeMyr : 0;
 	return wrapAngle(elapsed + patternPhaseOffset - phase0 / m);
 }
 
@@ -809,13 +890,14 @@ function packSimpleParams(model, out, offset, dtStar, count, starTimeMyr) {
 	return out;
 }
 
-// CameraUniform engine vec4 at offset 44: (id, eccMax, 0, 0). The vertex
-// branch reads the id; the reconstruction reads eccMax. Damping and the
-// pattern phase live in the compute uniform — the vertex never needs them.
+// CameraUniform engine vec4 at offset 44: (id, eccentricityMax, barTilt, 0).
+// The simple vertex reconstruction reads eccentricityMax; apocenter also reads
+// the model-derived bar angle. Pattern phase remains in the orbit uniform.
 function packEngineVec(model, out, offset) {
 	out[offset] = engine;
-	out[offset + 1] = simpleEccMax(model);
-	out[offset + 2] = 0;
+	out[offset + 1] = engine === ENGINE_APOCENTER ? APOCENTER_ECC_MAX : simpleEccMax(model);
+	out[offset + 2] = engine === ENGINE_APOCENTER
+		? (((model && model.spheroid && model.spheroid.tiltDeg) || 0) * Math.PI / 180) : 0;
 	out[offset + 3] = 0;
 	return out;
 }
@@ -827,14 +909,15 @@ const OrbitAPI = {
 	WAVE_DAMPING_MAX, WAVE_DAMPING_UI_DEFAULT,
 	PATTERN_SCALE_MAX, PATTERN_SCALE_UI_DEFAULT,
 	ORBIT_INCLINATION_DISC, ORBIT_INCLINATION_BAR, ORBIT_INCLINATION_PRESSURE, orbitInclination,
-	ENGINE_CLASSIC, ENGINE_SIMPLE, ENGINE_NAMES,
+	ENGINE_CLASSIC, ENGINE_SIMPLE, ENGINE_APOCENTER, ENGINE_NAMES,
+	APOCENTER_ECC_MAX, APOCENTER_ECC_CAP,
 	SIMPLE_SIGMA_BASE, SIMPLE_ECC_MAX, SIMPLE_SUBSTEP_DTHETA, SIMPLE_SUBSTEP_MAX,
 	SIMPLE_R_MIN, SIMPLE_UNIFORM_FLOATS,
 	familyFromFlags, flagsWithFamily, encodeJitter, readOrbit,
 	familyFromColorIndex, familyForStar,
 	fillDynamics, pressureClock, omegaFor, omegaFrom, omegaStream,
 	setWaveDamping, getWaveDamping, setPatternScale, getPatternScale, getPatternPhaseOffset, resetPatternPhaseOffset, effectivePatternSpeed,
-	dampedDiscTheta, orbitPosition,
+	dampedDiscTheta, orbitPosition, apocenterPosition, apocenterAngle, solveEccentricAnomaly,
 	packOrbitDynamics, sinTau, sliderValueToRate, formatTimeRate,
 	setEngine, getEngine, engineName,
 	simpleArmed, simpleSigma, simpleEccMax, simpleOmega, simpleEccOf, simplePeriOf,

@@ -1135,6 +1135,10 @@ sense as this document, kept beside it rather than folded in:
   one-shader architecture decision, and the star time slider (camera-coupled /
   frozen / 0.5–99 Myr/s). Wave damping, the optional pattern-frame capture on the
   disc family, is `damping-plan.md`.
+- `0.4.7-draft-new-star-movement-type.md` — apocenter-guided orbital movement:
+  a third, opt-in analytic engine that aims stellar apsides at spiral ridges and
+  bars, rotates them at the model pattern speed, and preserves the galaxy centre.
+  *(implemented; visual density calibration remains an open follow-up)*
 
 Implement from those files plus this one; the per-release plans reference their own
 tests and extend the file layout of §11 as needed.

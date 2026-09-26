@@ -63,8 +63,8 @@ function readParams(search) {
                 // to the model's own range, so ?age=99 is the oldest galaxy there
                 // is rather than an error.
                 age: number('age', window.GalaxyLib.AGE_DEFAULT),
-                // The star-motion math: classic (closed form, default) or
-                // simple (integrated friction field). Anything else falls back
+                // Star-motion engine: classic closed form, simple friction
+                // field, or apocenter-guided ellipses. Unknown values fall back
                 // to classic in orbit.setEngine.
                 engine: text('engine', 'classic'),
                 // Multiplier of the model's derived pattern speed: the friction
@@ -291,7 +291,8 @@ async function boot() {
         syncPattern();
         function syncEngine() {
                 engineSelect.value = renderer.state.engine;
-                valEngine.textContent = renderer.state.engine === 'simple' ? 'friction field' : 'closed form';
+                valEngine.textContent = renderer.state.engine === 'simple' ? 'friction field'
+                        : renderer.state.engine === 'apocenter' ? 'guided ellipses' : 'closed form';
         }
         engineSelect.addEventListener('change', () => {
                 renderer.setEngine(engineSelect.value);

@@ -483,7 +483,7 @@ function wgslConsts(part) {
                 if (!m) return null;
                 return [...m[1].matchAll(/^\s*([A-Za-z_0-9]+):\s*(?:vec4f|mat4x4)/gm)].map(x => x[1]);
         };
-        // 0.4.5: the engine lane rides last (id, eccMax, 0, 0); nebulae pad
+        // The engine lane rides last (id, eccMax, barTilt, 0); nebulae pad
         // it and ignore it, like the wave pair.
         const expected = ['viewProj', 'cameraPos', 'viewport', 'params', 'dynA', 'dynB', 'waveA', 'waveB', 'engine'];
         const spriteFields = fields(shaders.SHADERS['star-sprite']);
@@ -494,6 +494,12 @@ function wgslConsts(part) {
                 { star: spriteFields, nebula: nebulaFields });
         check('the star vertex shader feeds camera.dynA/dynB/waveA/waveB into orbitPosition',
                 /orbitPosition\([^;]*camera\.dynA,\s*camera\.dynB,\s*camera\.waveA,\s*camera\.waveB\)/s.test(shaders.SHADERS['star-sprite']));
+        check('apocenter engine mirrors its bounded Kepler solve and has its own vertex dispatch',
+                /function apocenterPosition\(/.test(orbitSrc) && /fn apocenterPosition\(/.test(orbitWgsl)
+                && /for \(let i = 0; i < 5; i\+\+\)/.test(orbitSrc)
+                && /for \(var i: u32 = 0u; i < 5u; i = i \+ 1u\)/.test(orbitWgsl)
+                && /camera\.engine\.x > 1\.5[\s\S]*?apocenterPosition\(/.test(shaders.SHADERS['star-sprite'])
+                && orbit.ENGINE_APOCENTER === 2 && orbit.ENGINE_NAMES[2] === 'apocenter');
         check('the packer fills the orbit vec4s and the engine lane (16 at 28, 4 at 44)',
                 /packOrbitDynamics\(model,\s*uniform,\s*28\)/.test(readSource('src/render/star-sprites.js'))
                 && /packEngineVec\(model,\s*uniform,\s*44\)/.test(readSource('src/render/star-sprites.js'))
@@ -518,9 +524,10 @@ function wgslConsts(part) {
                 /function simplePositionFromTheta\(/.test(orbitSrc)
                 && /^fn simplePosition\(/m.test(orbitWgsl)
                 && /simplePositionFromTheta/.test(readSource('src/math/orbit.js')));
-        check('the engine ids are 0/1 on the JS side and the branch reads them on the GPU side',
-                /ENGINE_CLASSIC = 0/.test(orbitSrc) && /ENGINE_SIMPLE = 1/.test(orbitSrc)
-                && /camera\.engine\.x > 0\.5/.test(shaders.SHADERS['star-sprite']));
+        check('engine ids 0/1/2 match classic/simple/apocenter GPU dispatch',
+                /ENGINE_CLASSIC = 0, ENGINE_SIMPLE = 1, ENGINE_APOCENTER = 2/.test(orbitSrc)
+                && /camera\.engine\.x > 1\.5[\s\S]*?camera\.engine\.x > 0\.5/.test(shaders.SHADERS['star-sprite'])
+                && /id === 'apocenter'/.test(orbitSrc));
         check('the step uniform is five vec4s (20 floats) packed per frame under simple',
                 /stepA: vec4f/.test(simpleWgsl) && /stepE: vec4f/.test(simpleWgsl)
                 && /SIMPLE_UNIFORM_FLOATS = 20/.test(orbitSrc)

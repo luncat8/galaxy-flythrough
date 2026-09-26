@@ -1,7 +1,7 @@
 {
-  "date": "2026-09-24T19:54:16.085Z",
-  "totalChecks": 94,
-  "passed": 94,
+  "date": "2026-09-26T09:42:40.661Z",
+  "totalChecks": 102,
+  "passed": 102,
   "failed": 0,
   "checks": [
     {
@@ -93,31 +93,31 @@
       "name": "the pattern is one group: bar seat and young stars sweep the same angle (< 0.1°)",
       "pass": true,
       "detail": {
-        "bar": -1.8897870249777977,
-        "young": -1.8897870249777982
+        "bar": -1.8884242279040053,
+        "young": -1.8890417110550013
       }
     },
     {
       "name": "the embedded disc star overtakes the pattern inside corotation (differential belt)",
       "pass": true,
       "detail": {
-        "disc": 1.6638788563985323,
-        "young": -1.8897870249777982
+        "disc": 1.66388860738009,
+        "young": -1.8890417110550013
       }
     },
     {
       "name": "a bar star is off its rigid seat after 40 Myr (it streams, it is not glued)",
       "pass": true,
       "detail": {
-        "offSeat": 0.11126906458701491,
-        "loop": 2.350035244188141
+        "offSeat": 0.16154196743302335,
+        "loop": 2.3512516985689236
       }
     },
     {
       "name": "the bar loop stays bounded (never leaves the bar: ≤ 2 × the amplitude)",
       "pass": true,
       "detail": {
-        "maxOff": 0.13072870985482887,
+        "maxOff": 0.06537956731864812,
         "bound": 0.13500099999999998
       }
     },
@@ -319,7 +319,7 @@
       "name": "a disc star returns to its start after one period (229 Myr, < 0.1 kpc)",
       "pass": true,
       "detail": {
-        "dist": 0.04418394046874531,
+        "dist": 0.0441839404687414,
         "tPeriod": 456.7456839299081
       }
     },
@@ -359,14 +359,14 @@
       "name": "disc wobble phase stays continuous across a bulk-angle wrap (< 1 pc jump)",
       "pass": true,
       "detail": {
-        "dist": 0.00047598444072992764
+        "dist": 0.00047739276070328735
       }
     },
     {
       "name": "bulk angle returns after one pattern period (xy close to start)",
       "pass": true,
       "detail": {
-        "bulkBack": 0.09015180581142676
+        "bulkBack": 0.07827797049793281
       }
     },
     {
@@ -437,11 +437,11 @@
       "name": "f64 CPU law vs f32 WGSL replay agree within 0.05 kpc up to T = 10 000 Myr",
       "pass": true,
       "detail": {
-        "worst": 0.00018657052216731058,
+        "worst": 0.00018623570595355794,
         "worstCase": {
           "fam": 1,
           "t": 10000,
-          "d": 0.00018657052216731058
+          "d": 0.00018623570595355794
         }
       }
     },
@@ -468,7 +468,7 @@
     {
       "name": "wave damping keeps T = 0 the identity (offset star, α = 1)",
       "pass": true,
-      "detail": 0
+      "detail": 1.7763568394002505e-15
     },
     {
       "name": "outside corotation, capture pulls the star the wave is sweeping onto the crest",
@@ -485,7 +485,7 @@
       "pass": true,
       "detail": {
         "dIn0": 0.35,
-        "dIn": 0.019249111873258506,
+        "dIn": 0.019249111873259395,
         "sheer": 0.9816392075243634
       }
     },
@@ -493,15 +493,15 @@
       "name": "a whole ring tightens on both sides of corotation at the UI default (α = 0.6)",
       "pass": true,
       "detail": {
-        "inner": 0.16231599638131636,
-        "outer": 0.5886289252581136,
+        "inner": 0.16231599638131652,
+        "outer": 0.5886289252581134,
         "uniform": 0.7853981633974483
       }
     },
     {
       "name": "a star born on the crest stays on it under full capture",
       "pass": true,
-      "detail": 0.03772436539587787
+      "detail": 0.037724365395874315
     },
     {
       "name": "pattern family ignores wave damping (already on the wave)",
@@ -523,14 +523,14 @@
       "pass": true,
       "detail": {
         "now": [
-          13.476717703662066,
-          1.2346144051647636,
-          0.5107588905858855
+          13.481402087561824,
+          1.2420499972835808,
+          0.1835531494993131
         ],
         "plain": [
-          13.476717703662066,
-          1.2346144051647636,
-          0.5107588905858855
+          13.481402087561824,
+          1.2420499972835808,
+          0.1835531494993131
         ]
       }
     },
@@ -542,7 +542,7 @@
       "name": "f64 capture vs f32 shader replay agree within 0.05 kpc",
       "pass": true,
       "detail": {
-        "waveWorst": 0.000016797266032120102
+        "waveWorst": 0.000017210481405271433
       }
     },
     {
@@ -678,15 +678,16 @@
       "pass": true
     },
     {
-      "name": "the reconstruction keeps the birth height and rotates the birth radius",
+      "name": "the 3-D reconstruction rotates in its centre-crossing plane and conserves radius",
       "pass": true,
       "detail": {
         "pos": [
           8.178,
-          8.178,
-          0.1
+          8.178611373576814,
+          6.123233995736766e-18
         ],
-        "thSun": 0
+        "thSun": 0,
+        "birthRadius": 8.178611373576814
       }
     },
     {
@@ -702,6 +703,56 @@
       "detail": {
         "drift": 0.00000421
       }
+    },
+    {
+      "name": "apocenter is a named third engine and engine id 2 round-trips",
+      "pass": true
+    },
+    {
+      "name": "apocenter T = 0 is exact for all four families at a non-origin centre",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "disc apsides select the nearest spiral ridge and bar apsides use the model bar angle",
+      "pass": true,
+      "detail": {
+        "actualArmApo": 1.4728461823864354,
+        "expectedArmApo": 1.4728461823864354,
+        "barApo": 0.47123889803846897,
+        "expectedBarApo": 0.47123889803846897
+      }
+    },
+    {
+      "name": "an apocenter at corotation rotates with the pattern around the model centre",
+      "pass": true,
+      "detail": {
+        "initialRadius": 5.121320343559642,
+        "finalRadius": 5.12132034355964,
+        "angle": 0.2531231700605262
+      }
+    },
+    {
+      "name": "Kepler motion dwells at apocenter (angular speed lower than at pericenter)",
+      "pass": true,
+      "detail": {
+        "apoAngularRate": 0.4364759389014773,
+        "periAngularRate": 2.828635104354407
+      }
+    },
+    {
+      "name": "the eccentric orbit stays finite and bounded in both time directions",
+      "pass": true
+    },
+    {
+      "name": "apocenter CPU law agrees with an f32 replay of its WGSL inputs within 0.05 kpc",
+      "pass": true,
+      "detail": 0.000060899798279588815
+    },
+    {
+      "name": "changing pattern speed preserves apocenter-orbit phase",
+      "pass": true,
+      "detail": 1.7763568394002505e-15
     }
   ]
 }

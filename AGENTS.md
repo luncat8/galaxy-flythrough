@@ -53,6 +53,7 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 - `0.2-plan-HDR-saturation.md` — the 0.2 plan (HDR menu controls + local star density parity).
 - `0.3.0-plan-galaxy-types-star-distribution.md` — the 0.3.x plan: galaxy types (0.3.0), full type zoo + star distributions (0.3.1), nebula-like objects with proper star distributions (0.3.2), galaxy age (0.3.3).
 - `0.4.0-plan-star-move.md` — the 0.4 plan: star movement on predefined orbits, star time slider, per-type orbit distributions, RTX 3050 budget.
+- `0.4.7-draft-new-star-movement-type.md` — implementation plan for the opt-in apocenter-guided movement engine.
 - `findings-pitfalls-skills.md` — notes and pitfalls for LLM agents. Write here when you find a good way to do something, a non-obvious gotcha, or a useful technique. Append-only.
 - `worklog.md` — index of versioned implementation logs.
 - `archive/` — versioned worklogs (`0.3.x-worklog.md`, etc.) and superseded plans. When `plan.md` is rewritten substantially, the old version moves here.

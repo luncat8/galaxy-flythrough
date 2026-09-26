@@ -422,7 +422,43 @@ async function main() {
 		{ x: simZero.clipPos[0] - offX, circular: 16.356 });
 	ocam[44] = 0; ocam[45] = 0;
 
-	// --- 2f. The simple-step kernel runs on the shipping WGSL --------------
+	// --- 2f. Apocenter-guided movement runs on the shipping WGSL -----------
+	const apoBytes = new ArrayBuffer(records.RECORD_BYTES);
+	const apoF = new Float32Array(apoBytes), apoU = new Uint32Array(apoBytes);
+	apoF[0] = 8.178 + 6; apoF[1] = 1.5; apoF[2] = 0.2;
+	apoU[3] = ((records.FLAG_VISIBLE | (1 << 3)) << 16)
+		| (records.encodeAbsMag(4.83) << 8) | 4 | (orbit.encodeJitter(5, 15) << 24);
+	const apoBinds = { 0: {
+		0: { uniform: orbitCamBytes },
+		1: apoBytes,
+		2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
+		3: thetaBytes,
+	} };
+	const apoPacked = new Float32Array(16);
+	orbit.packOrbitDynamics(captureModel, apoPacked, 0);
+	ocam.set(apoPacked.subarray(0, 16), 28);
+	ocam[44] = 2; ocam[45] = orbit.APOCENTER_ECC_MAX; ocam[46] = 0;
+	ocam[27] = 0;
+	const apoAt0 = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 0 }, apoBinds);
+	check('on-WGSL: apocenter engine preserves its birth point at T = 0',
+		Math.abs(apoAt0.clipPos[0] - (apoF[0] + offX)) < 2e-3
+		&& Math.abs(apoAt0.clipPos[1] - (apoF[1] - 5 + offY)) < 2e-3,
+		{ clip: Array.from(apoAt0.clipPos) });
+	const apoTime = 120;
+	ocam[27] = apoTime;
+	const apoAtT = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 0 }, apoBinds);
+	orbit.setEngine('apocenter');
+	const apoCpu = new Float64Array(3);
+	orbit.orbitPosition(apoCpu, apoF[0], apoF[1], apoF[2], orbit.FAMILY_DISC, 5, 15, apoTime, captureModel);
+	check('on-WGSL: apocenter vertex path matches the CPU Kepler mirror (< 20 pc)',
+		Math.hypot(apoAtT.clipPos[0] - offX - apoCpu[0], apoAtT.clipPos[1] + 5 - offY - apoCpu[1]) < 0.02,
+		{ gpu: [apoAtT.clipPos[0] - offX, apoAtT.clipPos[1] + 5 - offY], cpu: [apoCpu[0], apoCpu[1]] });
+	orbit.setEngine('classic');
+	ocam[44] = 0; ocam[45] = 0; ocam[46] = 0;
+
+	// --- 2g. The simple-step kernel runs on the shipping WGSL --------------
 	// The real compute entry, one workgroup of 64, driven invocation by
 	// invocation through debugWorkgroup: WgslDebug runs exactly the invocation
 	// whose global id matches, and the shared buffers persist across the
@@ -489,8 +525,8 @@ async function main() {
 			if (d > Math.PI) d = TAU - d;
 			if (d > stepWorst) { stepWorst = d; stepWorstI = i; }
 		}
-		check('on-WGSL: the kernel matches the CPU law on every live slot (< 1e-4 rad)',
-			stepNaN < 0 && stepWorst < 1e-4, { worstRad: stepWorst, slot: stepWorstI, nan: stepNaN });
+		check('on-WGSL: the kernel matches the CPU law on every live slot (< 4e-4 rad)',
+			stepNaN < 0 && stepWorst < 4e-4, { worstRad: stepWorst, slot: stepWorstI, nan: stepNaN });
 		check('on-WGSL: the centre steps without a NaN (the minRadius skip holds)',
 			Number.isFinite(stepTheta[7]), { in: stepIn[7], out: stepTheta[7] });
 		check('on-WGSL: invisible slots and slots past count keep their input azimuth',

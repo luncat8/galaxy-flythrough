@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-24T19:53:37.751Z",
+  "date": "2026-09-26T09:42:05.518Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -174,7 +174,7 @@
       "name": "OrbitLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 69
+        "keys": 81
       }
     },
     {
@@ -331,7 +331,7 @@
       "pass": true
     },
     {
-      "name": "readParams reads every documented parameter",
+      "name": "readParams reads every documented parameter including the apocenter engine",
       "pass": true,
       "detail": {
         "stars": 5000,
@@ -340,7 +340,7 @@
         "seed": 7,
         "type": null,
         "age": 13.5,
-        "engine": "classic",
+        "engine": "apocenter",
         "pattern": 1
       }
     },
