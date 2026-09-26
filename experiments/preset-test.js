@@ -230,6 +230,58 @@ check('main.js hides the rows of the passes that are not selected', () => {
 	assert.ok(sync.includes('row.style.display'), 'toggled from syncEngine');
 });
 
+check('the Milky Way builtin is the Sun-centred preset, frozen on arrival', () => {
+	const preset = Presets.builtinById('milkyway');
+	assert.equal(preset.label, 'Milky Way');
+	assert.deepEqual(preset.view, { time: 0, epoch: 0, fly: true, home: true, constellations: true });
+	const settings = Presets.builtinSettings('milkyway');
+	assert.equal(settings.type, GalaxyLib.MILKY_WAY_TYPE);
+	assert.equal(settings.seed, GalaxyLib.DEFAULT_SEED);
+	assert.equal(settings.time, 0);
+	assert.deepEqual(settings.engine, ['classic']);
+	const query = Presets.builtinQuery('milkyway');
+	assert.equal(query, Presets.serialize(settings));
+	assert.equal(new URLSearchParams(query).get('time'), '0');
+	const model = GalaxyLib.createGalaxy({ type: settings.type, seed: settings.seed, age: settings.age });
+	assert.equal(model.milkyWay, true);
+	assert.equal(model.home.orbitName, 'Sun');
+	assert.deepEqual(model.home.orbitTarget, [0, 0, 0]);
+	assert.ok(Math.hypot(model.home.position[0], model.home.position[1], model.home.position[2] - 0.005) < 1e-12);
+	const landmarks = require('../src/data/landmarks.js');
+	const sun = landmarks.ENTRIES[landmarks.indexOf('Sun')];
+	assert.ok(sun && sun.x === 0 && sun.y === 0 && sun.z === 0, 'the preset has no Sun star');
+	// The arrival camera, without the page: fly mode, then H, stands 5 pc
+	// above the Sun. Orbit-then-home would circle it from 10 pc instead.
+	const Camera = require('../src/core/camera.js');
+	const cam = Camera.createCamera();
+	cam.setFrame(model);
+	cam.setMode(Camera.MODE_ORBIT_GC);
+	cam.setMode(Camera.MODE_FLY);
+	cam.goHome();
+	const state = cam.getState();
+	assert.equal(state.mode, Camera.MODE_FLY);
+	assert.ok(Math.hypot(state.position[0] - model.home.position[0],
+		state.position[1] - model.home.position[1],
+		state.position[2] - model.home.position[2]) < 1e-9, state.position);
+});
+
+check('switching to the Milky Way preset flies home with the figures on', () => {
+	const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
+	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
+	assert.ok(html.includes('id="preset-builtin"'), 'builtin row');
+	assert.ok(main.includes('preset.id'), 'buttons built from BUILTIN');
+	assert.ok(main.includes('applyPresetView(preset.view)'), 'arrival view');
+	// Fly first, then home: goHome in an orbit mode would circle the Sun
+	// instead of standing beside it.
+	const view = main.slice(main.indexOf('function applyPresetView'), main.indexOf('function applyBuiltin'));
+	const flyAt = view.indexOf('MODE_FLY');
+	const homeAt = view.indexOf('goHome()');
+	assert.ok(flyAt > 0 && homeAt > flyAt, 'fly before home');
+	assert.ok(view.includes('setConstellations'), 'constellation lines');
+	assert.ok(view.includes('starTimeRate = view.time'), 'frozen rate');
+	assert.ok(view.includes('starTimeMyr = view.epoch'), 'catalog epoch');
+});
+
 check('main.js wires collect, apply, clipboard, file and prompt through Presets', () => {
 	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
 	for (const snippet of [

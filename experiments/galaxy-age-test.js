@@ -450,25 +450,35 @@ const log = { date: new Date().toISOString(), types: TYPES, sfh: {}, windows: {}
 	// A quenched E4 peaks after its burst: dimmer than the reference before
 	// its giants arrive (nothing older than 0.5 Gyr has left the main
 	// sequence), brighter at the 2 Gyr giant bump, then fading toward the
-	// old red reference. Star-forming types never bump — their giants keep
-	// arriving, so the young field stays the dimmer one at every age.
+	// old red reference. Star-forming types keep making giants, so they never
+	// show a bump of this size; the later-type check below is the bound.
 	check('a quenched E4 is dimmer pre-bump, brighter at the bump, fading after',
 		offsets.E4[0.5] < -1 && offsets.E4[2] > 0.3
 		&& offsets.E4[8] > 0 && offsets.E4[8] < offsets.E4[2],
 		{ at0_5: +offsets.E4[0.5].toFixed(3), at2: +offsets.E4[2].toFixed(3), at8: +offsets.E4[8].toFixed(3) });
-	// Sa is the transition type: bulge-heavy and early-fading, its bright end
-	// peaks late — still climbing at 8 Gyr (+0.06 mag over the reference),
-	// dimmer before that. The later types never overshoot at all.
+	// Sa is the transition type: bulge-heavy and early-fading, dimmer than the
+	// reference before 8 Gyr and within 0.15 mag of it there. (0.4.8 M3.3 moved
+	// the 8 Gyr point from +0.06 to about −0.08: the reference field lost its
+	// high-z young stars, so the late climb no longer clears it.)
 	check('Sa peaks late: dimmer young, within 0.15 mag of the reference at 8 Gyr',
 		offsets.Sa[0.5] < offsets.Sa[2] && offsets.Sa[2] < 0 && Math.abs(offsets.Sa[8]) < 0.15,
 		{ at0_5: +offsets.Sa[0.5].toFixed(3), at2: +offsets.Sa[2].toFixed(3), at8: +offsets.Sa[8].toFixed(3) });
+	// Later types keep forming giants, so they never show the quenched bump
+	// (E4 at 2 Gyr is +0.5 mag). They are dim before any giant has left the
+	// main sequence, and back under the reference once the disc is old. A 2 Gyr
+	// Sc can sit ~0.14 mag above its reference: M3.3's heating floor removes
+	// the reference age's high-z O/B stars, and the arriving giants briefly
+	// outshine what is left. That is a bump, not the quenched one.
 	let sfBreak = null;
 	for (const type of ['SBb', 'Sc', 'Irr']) {
-		for (const age of [0.5, 2, 8]) {
-			if (offsets[type][age] > 0) sfBreak = sfBreak || { type, age, offset: offsets[type][age] };
+		const young = offsets[type][0.5];
+		const bump = offsets[type][2];
+		const old = offsets[type][8];
+		if (!(young < -0.5 && bump < 0.25 && old < 0.1)) {
+			sfBreak = sfBreak || { type, at0_5: young, at2: bump, at8: old };
 		}
 	}
-	check('later star-forming types are dimmer young at every age (giants still arriving)',
+	check('later star-forming types stay dim young and never show the quenched giant bump',
 		sfBreak === null, sfBreak);
 	// The offset is a property of the population, so a preset at the reference
 	// epoch keeps the sky 0.3.2 tuned: same positions, same exposure defaults.

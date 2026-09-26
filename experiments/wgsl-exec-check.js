@@ -700,8 +700,8 @@ async function main() {
 	return vec4f(armFactor(model, p.x, p.y), distanceToNearestArm(model, p.x, p.y), 0.0, 0.0);
 }
 @fragment fn ageProbe(@location(0) p: vec4f, @location(1) q: vec4f) -> @location(0) vec4f {
-	// sampleLocalAge(model, component, distToArm, R, u1, u2)
-	return vec4f(sampleLocalAge(model, u32(p.x), p.y, p.z, p.w, q.x), 0.0, 0.0, 0.0);
+	// sampleLocalAge(model, component, distToArm, R, u1, u2, zOverH)
+	return vec4f(sampleLocalAge(model, u32(p.x), p.y, p.z, p.w, q.x, q.y), 0.0, 0.0, 0.0);
 }
 `;
 	const modelBuffer = new Float32Array(galaxy.DENSITY_PARAMS_FLOATS);
@@ -788,18 +788,21 @@ async function main() {
 	{
 		const starTypes = require('../src/math/star-types.js');
 		const probes = [
-			[density.COMPONENT_THIN, 0.1, 8, 0.3, 0.3],   // young arm branch
+			[density.COMPONENT_THIN, 0.1, 8, 0.3, 0.3, 0],   // young arm branch, midplane
 			// Two probes inside the branch's own width, one on each side of the
 			// Milky Way's old fixed 0.3 kpc cut: the outer one is young only
 			// because sigma scales with the pattern, the inner one is not.
-			[density.COMPONENT_THIN, 0.45, 8, 0.45, 0.45],
-			[density.COMPONENT_THIN, 0.35, 4, 0.4, 0.4],
-			[density.COMPONENT_THIN, 0.3, 5, 0.5, 0.6],   // mid-ridge
-			[density.COMPONENT_THIN, 1.2, 8, 0.2, 0.1],   // off-ridge (gate fails)
-			[density.COMPONENT_THIN, 0.1, 20, 0.4, 0.2],  // R past youngOuterR
-			[density.COMPONENT_THICK, 0.1, 8, 0.7, 0.5],
-			[density.COMPONENT_BULGE, 0.1, 1, 0.5, 0.5],
-			[density.COMPONENT_HALO, 99, 30, 0.9, 0.1],
+			[density.COMPONENT_THIN, 0.45, 8, 0.45, 0.45, 0],
+			[density.COMPONENT_THIN, 0.35, 4, 0.4, 0.4, 0],
+			[density.COMPONENT_THIN, 0.3, 5, 0.5, 0.6, 0],   // mid-ridge
+			[density.COMPONENT_THIN, 1.2, 8, 0.2, 0.1, 0],   // off-ridge (gate fails)
+			[density.COMPONENT_THIN, 0.1, 20, 0.4, 0.2, 0],  // R past youngOuterR
+			[density.COMPONENT_THICK, 0.1, 8, 0.7, 0.5, 0],
+			[density.COMPONENT_BULGE, 0.1, 1, 0.5, 0.5, 0],
+			[density.COMPONENT_HALO, 99, 30, 0.9, 0.1, 0],
+			// Two scale heights up the arm gate is closed and the heating floor
+			// is the age. zOverH is the sixth component (q.y).
+			[density.COMPONENT_THIN, 0.05, 8, 0.2, 0.01, 2],
 		];
 		// The clock is part of what the shader reads, so the probes cover more than
 		// the reference epoch: a 1 Gyr Sc truncates a wide SFH early, and an E4 at
@@ -815,10 +818,10 @@ async function main() {
 			let worstSfh = 0;
 			let armProbes = 0;
 			let sfhProbes = 0;
-			for (const [component, dArm, R, u1, u2] of probes) {
+			for (const [component, dArm, R, u1, u2, zOverH] of probes) {
 				const actual = runStage(densityCode, 'ageProbe', 'debugFragment',
-					{ 0: [component, dArm, R, u1].map(Math.fround), 1: [u2, 0, 0, 0].map(Math.fround) }, densityBinds);
-				const expected = starTypes.sampleLocalAge(model, component, dArm, R, u1, u2);
+					{ 0: [component, dArm, R, u1].map(Math.fround), 1: [u2, zOverH, 0, 0].map(Math.fround) }, densityBinds);
+				const expected = starTypes.sampleLocalAge(model, component, dArm, R, u1, u2, zOverH);
 				// Which branch JS took decides the tolerance, and it is read off the
 				// branch's own closed form rather than guessed from the probe list.
 				const armAge = Math.min(model.populations.age,

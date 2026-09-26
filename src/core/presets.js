@@ -224,8 +224,54 @@ function buildLlmPrompt(settings) {
 	return lines.join('\n');
 }
 
+// Named built-in presets. A query is the settings line (the same language
+// serialize emits). `view` is what the page does after that line lands:
+// camera mode and constellation lines are not menu fields, so they are not
+// in the line. The Milky Way one is the unmodified preset — the only model
+// that has a Sun — frozen, in fly mode, at the H position beside the Sun,
+// with the figures drawn.
+const BUILTIN = [
+	{
+		id: 'milkyway',
+		label: 'Milky Way',
+		title: 'The Sun-centred Milky Way. Freezes star time, flies home beside the Sun, and turns constellation lines on.',
+		view: { time: 0, epoch: 0, fly: true, home: true, constellations: true },
+	},
+];
+
+function builtinById(id) {
+	for (let i = 0; i < BUILTIN.length; i++) {
+		if (BUILTIN[i].id === id) return BUILTIN[i];
+	}
+	return null;
+}
+
+// The settings line a built-in preset applies. Lazy: the numbers belong to
+// the modules that clamp them, and this file loads before those modules in
+// the page. An unknown id is an empty line, which apply treats as a no-op.
+function builtinSettings(id) {
+	if (id !== 'milkyway') return null;
+	const g = typeof window !== 'undefined' ? window : global;
+	const galaxy = g.GalaxyLib;
+	const renderer = g.StarRenderer;
+	return Object.assign({
+		type: galaxy.MILKY_WAY_TYPE,
+		seed: galaxy.DEFAULT_SEED,
+		age: galaxy.AGE_DEFAULT,
+		engine: ['classic'],
+		stars: renderer.PROCEDURAL_STARS_DEFAULT,
+		catalog: renderer.CATALOG_BUDGET_DEFAULT,
+	}, menuDefaults(), { time: 0 });
+}
+
+function builtinQuery(id) {
+	const settings = builtinSettings(id);
+	return settings ? serialize(settings) : '';
+}
+
 const Presets = {
 	FIELDS, PROJECT_URL, ENGINE_ORDER, ENGINE_DESCRIPTIONS, TIME_DEFAULT,
+	BUILTIN, builtinById, builtinSettings, builtinQuery,
 	menuDefaults, parseEngineList, serializeEngine, engineListOf, fieldActive, activeFields,
 	serialize, parse, describe, buildLlmPrompt,
 };

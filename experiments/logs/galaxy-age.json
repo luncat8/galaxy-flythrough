@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-26T14:38:04.263Z",
+  "date": "2026-09-26T15:23:35.797Z",
   "types": [
     "E0",
     "E1",
@@ -931,83 +931,83 @@
         "magOffset": 0
       },
       "Sa@0.5": {
-        "meanL": 3.143,
-        "referenceL": 7.706,
-        "magOffset": -0.9738
+        "meanL": 2.299,
+        "referenceL": 7.539,
+        "magOffset": -1.2892
       },
       "Sa@2": {
-        "meanL": 4.854,
-        "referenceL": 7.706,
-        "magOffset": -0.502
+        "meanL": 7.226,
+        "referenceL": 7.539,
+        "magOffset": -0.046
       },
       "Sa@8": {
-        "meanL": 8.5,
-        "referenceL": 7.706,
-        "magOffset": 0.1064
+        "meanL": 7.007,
+        "referenceL": 7.539,
+        "magOffset": -0.0795
       },
       "Sa@13.5": {
-        "meanL": 7.706,
-        "referenceL": 7.706,
+        "meanL": 7.539,
+        "referenceL": 7.539,
         "magOffset": 0
       },
       "SBb@0.5": {
-        "meanL": 3.333,
-        "referenceL": 8.433,
-        "magOffset": -1.0077
+        "meanL": 2.071,
+        "referenceL": 9.26,
+        "magOffset": -1.6259
       },
       "SBb@2": {
-        "meanL": 4.108,
-        "referenceL": 8.433,
-        "magOffset": -0.7808
+        "meanL": 6.679,
+        "referenceL": 9.26,
+        "magOffset": -0.3547
       },
       "SBb@8": {
-        "meanL": 4.947,
-        "referenceL": 8.433,
-        "magOffset": -0.5792
+        "meanL": 3.952,
+        "referenceL": 9.26,
+        "magOffset": -0.9244
       },
       "SBb@13.5": {
-        "meanL": 8.433,
-        "referenceL": 8.433,
+        "meanL": 9.26,
+        "referenceL": 9.26,
         "magOffset": 0
       },
       "Sc@0.5": {
-        "meanL": 5.552,
-        "referenceL": 7.059,
-        "magOffset": -0.2607
+        "meanL": 2.712,
+        "referenceL": 5.574,
+        "magOffset": -0.782
       },
       "Sc@2": {
-        "meanL": 3.86,
-        "referenceL": 7.059,
-        "magOffset": -0.6554
+        "meanL": 6.316,
+        "referenceL": 5.574,
+        "magOffset": 0.1357
       },
       "Sc@8": {
-        "meanL": 6.011,
-        "referenceL": 7.059,
-        "magOffset": -0.1745
+        "meanL": 5.234,
+        "referenceL": 5.574,
+        "magOffset": -0.0682
       },
       "Sc@13.5": {
-        "meanL": 7.059,
-        "referenceL": 7.059,
+        "meanL": 5.574,
+        "referenceL": 5.574,
         "magOffset": 0
       },
       "Irr@0.5": {
-        "meanL": 2.979,
-        "referenceL": 7.604,
-        "magOffset": -1.0175
+        "meanL": 2.423,
+        "referenceL": 7.382,
+        "magOffset": -1.2097
       },
       "Irr@2": {
-        "meanL": 2.178,
-        "referenceL": 7.604,
-        "magOffset": -1.3576
+        "meanL": 4.614,
+        "referenceL": 7.382,
+        "magOffset": -0.5103
       },
       "Irr@8": {
-        "meanL": 5.972,
-        "referenceL": 7.604,
-        "magOffset": -0.2622
+        "meanL": 7.29,
+        "referenceL": 7.382,
+        "magOffset": -0.0136
       },
       "Irr@13.5": {
-        "meanL": 7.604,
-        "referenceL": 7.604,
+        "meanL": 7.382,
+        "referenceL": 7.382,
         "magOffset": 0
       }
     }
@@ -1743,20 +1743,20 @@
       "name": "Sa peaks late: dimmer young, within 0.15 mag of the reference at 8 Gyr",
       "pass": true,
       "detail": {
-        "at0_5": -0.974,
-        "at2": -0.502,
-        "at8": 0.106
+        "at0_5": -1.289,
+        "at2": -0.046,
+        "at8": -0.079
       }
     },
     {
-      "name": "later star-forming types are dimmer young at every age (giants still arriving)",
+      "name": "later star-forming types stay dim young and never show the quenched giant bump",
       "pass": true,
       "detail": null
     },
     {
       "name": "the preset at the default age needs no offset at all",
       "pass": true,
-      "detail": 8.4329
+      "detail": 9.2597
     }
   ]
 }

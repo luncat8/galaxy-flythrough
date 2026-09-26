@@ -201,31 +201,48 @@
 		return sfhFormationTime(model, formQ[i] + (formQ[i + 1] - formQ[i]) * u);
 	}
 
-	// Age in Gyr for a population. u1, u2 are independent uniforms.
+	// Age in Gyr for a population. u1, u2 are independent uniforms. `zOverH` is
+	// |z| / H(R) of the thin disc (signed is fine — the gate squares it). Omit
+	// it, or pass 0, for the midplane, where the vertical gate is fully open and
+	// this is the 0.3.3 age exactly.
 	//
 	// The arm branch is the O/B source and keeps the shape 0.3.1 built: a
 	// half-normal gate on distToArm in units of the model's own ridge width
 	// (density.armRidgeWidth), `u1³·0.3 Gyr` young inside the star-forming
-	// annulus, gas-rich models only. Its ceiling is clamped to the galaxy's age,
-	// so a 0.2 Gyr galaxy contains no 0.3 Gyr stars. No gas factor rides on the
-	// gate: with the reference-epoch gas law every reachable age has at least the
-	// observed gas, so a continuous boost could only re-tune one type.
+	// annulus, gas-rich models only. 0.4.8 M3.3 multiplies that gate by the same
+	// half-normal in height, sigma = populations.youngScaleHeight (the gas lane,
+	// in units of H(R)). A newborn has to be in the arm *and* in the lane. The
+	// ceiling is clamped to the galaxy's age, so a 0.2 Gyr galaxy contains no
+	// 0.3 Gyr stars. No gas factor rides on the gate: with the reference-epoch
+	// gas law every reachable age has at least the observed gas, so a continuous
+	// boost could only re-tune one type.
 	//
-	// Everything else is `age − t_f` from the component's formation window, which
-	// is what makes the assembly order (halo first, thin disc still forming)
-	// survive at any age — a 1 Gyr galaxy has a 1 Gyr halo, and a 13.5 Gyr
-	// irregular has a middle-aged disc.
-	function sampleLocalAge(model, componentIndex, distToArm, R, u1, u2) {
-		const p = model.populations;
-		if (componentIndex === density.COMPONENT_THIN && p.gasRich) {
-			const armWidth = density.armRidgeWidth(model, R);
-			const pArm = Math.exp(-0.5 * (distToArm * distToArm) / (armWidth * armWidth));
-			if (u2 < pArm && R > model.arms.Rs && R < p.youngOuterR) {
-				return Math.min(p.age, Math.pow(u1, 3.0) * YOUNG_ARM_MAX_GYR);
-			}
+	// The field branch is still `age − t_f` from the component's formation
+	// window — that is what keeps the assembly order (halo first, thin disc
+	// still forming) at any age. It then takes a heating floor
+	// `YOUNG_ARM_MAX_GYR · (z/lane)²`. Discs heat as they age, so a field star
+	// one gas-lane above the midplane is at least as old as the oldest newborn;
+	// without the floor the SFH's young tail plants O/B stars at every height
+	// and the arm gate cannot thin the layer. The floor uses no new constant.
+	function sampleLocalAge(model, componentIndex, distToArm, R, u1, u2, zOverH) {
+	const p = model.populations;
+	if (componentIndex === density.COMPONENT_THIN && p.gasRich) {
+		const armWidth = density.armRidgeWidth(model, R);
+		const pArm = Math.exp(-0.5 * (distToArm * distToArm) / (armWidth * armWidth));
+		const lane = p.youngScaleHeight > 1e-3 ? p.youngScaleHeight : 1e-3;
+		const zh = zOverH || 0;
+		const z2 = zh * zh;
+		const lane2 = lane * lane;
+		const pZ = Math.exp(-0.5 * z2 / lane2);
+		if (u2 < pArm * pZ && R > model.arms.Rs && R < p.youngOuterR) {
+			return Math.min(p.age, Math.pow(u1, 3.0) * YOUNG_ARM_MAX_GYR);
 		}
-		return p.age - sampleFormationTime(model, componentIndex, u1);
+		const age = p.age - sampleFormationTime(model, componentIndex, u1);
+		const floor = YOUNG_ARM_MAX_GYR * z2 / lane2;
+		return Math.min(p.age, Math.max(age, floor));
 	}
+	return p.age - sampleFormationTime(model, componentIndex, u1);
+}
 
 	// The seed a field star at index `i` is derived with — the renderer's
 	// convention, named so the exposure calibration derives exactly the stars the
@@ -247,7 +264,7 @@
 		let sum = 0;
 		for (let i = 0; i < n; i++) {
 			deriveStar(model, fieldStarSeed(model.seed, i), stars.component[i], stars.R[i],
-				stars.distToArm[i], calibrationRecord);
+				stars.distToArm[i], calibrationRecord, stars.z[i]);
 			sum += calibrationRecord.luminosity;
 		}
 		return sum / n;
@@ -342,11 +359,20 @@
 		return out;
 	}
 
-	// Core derivation. `out` is mutated in place and returned.
-	function deriveStar(model, seed, componentIndex, R, distToArm, out) {
+	// Core derivation. `out` is mutated in place and returned. `z` is the
+	// world-frame height; omitted, the star is derived as if it sat on the
+	// midplane (the vertical gate open). Callers that have a position must
+	// pass it — the exposure calibration and the renderer both do, so a
+	// caller that drops it derives a different population than the sky.
+	function deriveStar(model, seed, componentIndex, R, distToArm, out, z) {
 		const mass = sampleMassIMF(hash.hash01(seed * 31 + 1));
+		let zOverH = 0;
+		if (z !== undefined && z !== null && model.thin && model.thin.H > 0) {
+			const H = density.discHeightAt(model.thin, R);
+			if (H > 0) zOverH = (z - model.centre.z) / H;
+		}
 		const age = sampleLocalAge(model, componentIndex, distToArm, R,
-			hash.hash01(seed * 31 + 2), hash.hash01(seed * 31 + 3));
+			hash.hash01(seed * 31 + 2), hash.hash01(seed * 31 + 3), zOverH);
 		return evolveStar(model, seed, mass, age, componentIndex, R, distToArm, out);
 	}
 
@@ -390,7 +416,7 @@
 		const componentIndex = density.sampleComponentIndex(d, hash.hash01(seed * 31 + 7));
 		const out = deriveStar(model, seed, componentIndex, d.R, d.distToArm, {
 			x, y, z, phi: d.phi, zp: d.zp, componentName: density.COMPONENT_NAMES[componentIndex],
-		});
+		}, z);
 		out.color = classColor(out.spectralClass);
 		out.distPc = Math.sqrt(x * x + y * y + z * z) * 1000;
 		out.appMag = out.absMag + 5 * Math.log10(Math.max(1, out.distPc)) - 5;

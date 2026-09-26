@@ -505,6 +505,50 @@ async function boot() {
                 URL.revokeObjectURL(link.href);
         }
 
+        // A built-in preset is a settings line plus an arrival view. The view
+        // is applied after the line, and fly mode before home: goHome in an
+        // orbit mode circles the target instead of standing beside it.
+        function applyPresetView(view) {
+                if (!view) return;
+                if (view.epoch !== undefined) {
+                        starTimeMyr = view.epoch;
+                        renderer.resetSimpleState();
+                        initSimpleLandmarks();
+                }
+                if (view.time !== undefined) {
+                        starTimeRate = view.time;
+                        if (starTimeRate > 0) lastNonZeroTimeRate = starTimeRate;
+                        syncStarTime();
+                }
+                if (view.constellations !== undefined) labels.setConstellations(view.constellations);
+                if (view.fly) {
+                        camera.setMode(window.Camera.MODE_FLY);
+                        input.setFlyMode(true);
+                }
+                if (view.home) camera.goHome();
+        }
+
+        function applyBuiltin(id) {
+                const preset = window.Presets.builtinById(id);
+                if (!preset) return;
+                const query = window.Presets.builtinQuery(id);
+                presetText.value = query;
+                applyPreset(query);
+                applyPresetView(preset.view);
+                updateOverlay(renderer.state, camera.getState(statsText));
+        }
+
+        const builtinBox = document.getElementById('preset-builtin');
+        for (const preset of window.Presets.BUILTIN) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.id = 'preset-' + preset.id;
+                button.textContent = preset.label;
+                button.title = preset.title || '';
+                button.addEventListener('click', () => applyBuiltin(preset.id));
+                builtinBox.appendChild(button);
+        }
+
         btnPresetCopy.addEventListener('click', () => copyText(window.Presets.serialize(collectSettings())));
         btnPresetPaste.addEventListener('click', pastePreset);
         btnPresetApply.addEventListener('click', () => applyPreset(presetText.value));

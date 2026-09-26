@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-26T14:37:01.576Z",
+  "date": "2026-09-26T15:22:34.715Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 253,
+  "prepareMs": 180,
   "totalChecks": 121,
   "passed": 121,
   "failed": 0,
@@ -105,8 +105,8 @@
       "name": "the storage buffer holds procedural + landmarks + objects + local gap-fill + catalog capacity",
       "pass": true,
       "detail": {
-        "size": 734208,
-        "expected": 734208
+        "size": 734224,
+        "expected": 734224
       }
     },
     {
@@ -120,8 +120,8 @@
       "name": "the renderer reports the landmark block from the data module",
       "pass": true,
       "detail": {
-        "landmarkStars": 59,
-        "table": 59
+        "landmarkStars": 60,
+        "table": 60
       }
     },
     {
@@ -183,8 +183,8 @@
       "pass": true,
       "detail": {
         "writes": 1,
-        "offset": 352944,
-        "localOffset": 352944
+        "offset": 352960,
+        "localOffset": 352960
       }
     },
     {
@@ -201,7 +201,7 @@
       "pass": true,
       "detail": {
         "vertices": 4,
-        "instances": 25655,
+        "instances": 25656,
         "firstVertex": 0,
         "firstInstance": 0,
         "pipeline": {
@@ -535,7 +535,7 @@
       "detail": {
         "mode": "hybrid",
         "type": "SBb",
-        "landmarks": 59,
+        "landmarks": 60,
         "catalog": 3829
       }
     },
@@ -576,7 +576,7 @@
       "pass": true,
       "detail": {
         "catalog": 3829,
-        "landmarks": 59
+        "landmarks": 60
       }
     },
     {
@@ -626,7 +626,7 @@
       "name": "the named stars keep their real magnitudes: they are data, not a what-if",
       "pass": true,
       "detail": {
-        "landmarks": 59,
+        "landmarks": 60,
         "catalog": 3829
       }
     },
@@ -634,9 +634,9 @@
       "name": "a young galaxy is a dimmer one, so the offset brightens it back",
       "pass": true,
       "detail": {
-        "offset": -0.837,
-        "meanMagYoung": 8.467,
-        "meanMagRef": 9.448
+        "offset": -2.114,
+        "meanMagYoung": 7.21,
+        "meanMagRef": 9.477
       }
     },
     {
@@ -667,8 +667,8 @@
       "name": "the default objects block sizes the buffer",
       "pass": true,
       "detail": {
-        "size": 642544,
-        "expected": 642544
+        "size": 642560,
+        "expected": 642560
       }
     },
     {
@@ -722,7 +722,7 @@
     {
       "name": "the drawn instance count follows the new residency (global + landmarks + objects + local + catalog)",
       "pass": true,
-      "detail": 25797
+      "detail": 25798
     },
     {
       "name": "a camera outside the catalog volume drops every catalog star",
@@ -743,7 +743,7 @@
       "pass": true,
       "detail": {
         "vertices": 4,
-        "instances": 22059,
+        "instances": 22060,
         "firstVertex": 0,
         "firstInstance": 0,
         "pipeline": {
@@ -863,21 +863,21 @@
       "pass": true,
       "detail": {
         "engine": "classic",
-        "slots": 1659
+        "slots": 1660
       }
     },
     {
       "name": "state.bufferBytes counts the star, nebula and theta buffers",
       "pass": true,
       "detail": {
-        "bufferBytes": 33340
+        "bufferBytes": 33360
       }
     },
     {
       "name": "prepare seeds the fixed-block azimuths from the birth positions",
       "pass": true,
       "detail": {
-        "bytes": 4636,
+        "bytes": 4640,
         "firstTheta": 1.8690835237503052
       }
     },
@@ -909,7 +909,7 @@
       "detail": {
         "h": 0.3333333432674408,
         "nSub": 3,
-        "count": 1659
+        "count": 1660
       }
     },
     {
@@ -923,7 +923,7 @@
             1
           ]
         ],
-        "slots": 1659
+        "slots": 1660
       }
     },
     {

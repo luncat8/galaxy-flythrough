@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-26T14:36:59.709Z",
+  "date": "2026-09-26T15:22:33.241Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -7,7 +7,7 @@
     },
     {
       "name": "density",
-      "lines": 376
+      "lines": 377
     },
     {
       "name": "orbit",
@@ -35,7 +35,7 @@
     },
     {
       "name": "procedural-gen",
-      "lines": 276
+      "lines": 291
     },
     {
       "name": "cull",
@@ -79,7 +79,7 @@
         ],
         [
           "density",
-          18384
+          18478
         ],
         [
           "orbit",
@@ -107,7 +107,7 @@
         ],
         [
           "procedural-gen",
-          13069
+          14272
         ],
         [
           "cull",
@@ -357,7 +357,7 @@
     {
       "name": "density.wgsl declares a DensityParams struct",
       "pass": true,
-      "detail": 2021
+      "detail": 2115
     },
     {
       "name": "DensityParams has one vec4 per layout group, in the same order",

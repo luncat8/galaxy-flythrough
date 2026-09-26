@@ -782,15 +782,17 @@
 		// w carries the low 16 bits of the model seed: the value noise reads
 		// exactly those bits, and 16 bits round-trip an f32 exactly.
 		{ name: 'armShape', fields: ['phase0', 'minRadius', 'flocculence', 'noiseSeed'] },
-		// Only the fields the mirrored *formulas* read. youngScaleHeight and
-		// spheroidOld are consumed on the CPU (nebula placement), so they stay
-		// out of the uniform rather than riding along to the GPU unused.
+		// Only the fields the mirrored *formulas* read. spheroidOld is consumed
+		// on the CPU (nebula placement), so it stays out of the uniform.
+		// youngScaleHeight used to be CPU-only too; the age gate now reads it
+		// (clock.w), so it rides.
 		{ name: 'populations', source: 'populations', fields: ['gasFraction', 'youngOuterR', 'gasRich', 'gradientSteep'] },
 		// The galaxy's clock: what the mirrored population formulas read of the
-		// age. `gasNow` — the gas actually left at `age`, which `gasFraction`
-		// above is the observed anchor of — stays off the uniform by the same rule
-		// as youngScaleHeight: only the CPU's gas layer reads it.
-		{ name: 'clock', source: 'populations', fields: ['age', 'tauSfh', 'sfhSpan', 'unused'] },
+		// age, plus the gas-lane thickness the age gate scales height by.
+		// `gasNow` — the gas actually left at `age`, which `gasFraction`
+		// above is the observed anchor of — stays off the uniform: only the
+		// CPU's gas layer reads it.
+		{ name: 'clock', source: 'populations', fields: ['age', 'tauSfh', 'sfhSpan', 'youngScaleHeight'] },
 		// The component formation windows, as CDF intervals of the truncated SFH:
 		// one pair per component, indexed like density.COMPONENT_*. A draw is a
 		// mix and one inverse lookup, so both halves ride in the uniform.

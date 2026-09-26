@@ -456,6 +456,50 @@ const armStats = starTypes.classVsArmDistance(stars, model);
 		{ E4teff: Math.round(census.E4.wdMeanTeff), SBbTeff: Math.round(census.SBb.wdMeanTeff) });
 }
 
+// --- Young stars live in the gas lane (0.4.8 M3.3) ------------------------
+// z/H = 0 is the old age, so every check above still describes the midplane.
+// These describe the height the sky actually draws.
+{
+	const mid = starTypes.sampleLocalAge(model, density.COMPONENT_THIN, 0.05, 8, 0.2, 0.01, 0);
+	const high = starTypes.sampleLocalAge(model, density.COMPONENT_THIN, 0.05, 8, 0.2, 0.01, 2);
+	check('the midplane arm branch is still a newborn', mid < 0.05, mid);
+	check('two scale heights up, the same draw is no longer young', high > 1 && high > mid, { mid, high });
+	const lane = model.populations.youngScaleHeight;
+	const atLane = starTypes.sampleLocalAge(model, density.COMPONENT_THIN, 4, 8, 0.5, 0.99, lane);
+	const field = starTypes.sampleLocalAge(model, density.COMPONENT_THIN, 4, 8, 0.5, 0.99, 0);
+	check('one gas-lane up, a field star is at least a newborn-ceiling old',
+		atLane + 1e-9 >= starTypes.YOUNG_ARM_MAX_GYR && atLane + 1e-12 >= field,
+		{ atLane, field, ceiling: starTypes.YOUNG_ARM_MAX_GYR });
+
+	// Re-derive the sampled field with its height. The pin is lane occupancy,
+	// not a median of a few dozen O/B stars: most newborns should sit inside
+	// two gas-lane heights, and a larger share of them than of the M dwarfs.
+	const gasLane = model.thin.H * model.populations.youngScaleHeight;
+	const record = {};
+	let ob = 0;
+	let obIn = 0;
+	let m = 0;
+	let mIn = 0;
+	for (let i = 0; i < buf.count; i++) {
+		if (buf.component[i] !== density.COMPONENT_THIN) continue;
+		starTypes.deriveStar(model, SEED * 31 + i + 1, buf.component[i], buf.R[i], buf.distToArm[i], record, buf.z[i]);
+		const z = Math.abs(buf.z[i] - model.centre.z);
+		const inside = z < 2 * gasLane;
+		if (record.spectralClass === 'O' || record.spectralClass === 'B') {
+			ob++;
+			if (inside) obIn++;
+		} else if (record.spectralClass === 'M') {
+			m++;
+			if (inside) mIn++;
+		}
+	}
+	const obFrac = obIn / Math.max(1, ob);
+	const mFrac = mIn / Math.max(1, m);
+	check('O/B stars sit in the gas lane far more often than M dwarfs',
+		ob > 20 && obFrac > 0.6 && obFrac > mFrac + 0.2,
+		{ ob, obFrac: +obFrac.toFixed(3), mFrac: +mFrac.toFixed(3), gasLane: +gasLane.toFixed(3) });
+}
+
 // --- Report --------------------------------------------------------------
 console.log('Class distribution:', Object.entries(classes).map(([k, v]) => `${k} ${v}`).join(', '));
 

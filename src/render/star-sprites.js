@@ -707,7 +707,8 @@ function createStarRenderer(device, context, format, options) {
                 const derived = {};
                 for (let i = 0; i < proceduralCount; i++) {
                         starTypes.deriveStar(model, starTypes.fieldStarSeed(seed, i),
-                                fieldStars.component[i], fieldStars.R[i], fieldStars.distToArm[i], derived);
+                                fieldStars.component[i], fieldStars.R[i], fieldStars.distToArm[i], derived,
+                                fieldStars.z[i]);
                         records.writeRecord(
                                 view, i * records.RECORD_BYTES,
                                 fieldStars.x[i], fieldStars.y[i], fieldStars.z[i],
@@ -926,7 +927,7 @@ function createStarRenderer(device, context, format, options) {
                                 const R = decomposed.R;
                                 const distToArm = decomposed.distToArm;
                                 const deriveSeed = Math.imul(slotSeed, 31) + 5;
-                                localStarTypes.deriveStar(model, deriveSeed, component, R, distToArm, localDerived);
+                                localStarTypes.deriveStar(model, deriveSeed, component, R, distToArm, localDerived, sz);
                                 const jitter = localHash.pcgHash(slotSeed ^ 0xFACE) & 0xFF;
                                 records.writeRecord(
                                         view, byteOffset + slot * bytesPerRecord,

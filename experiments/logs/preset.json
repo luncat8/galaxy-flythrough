@@ -77,6 +77,14 @@
       "pass": true
     },
     {
+      "name": "the Milky Way builtin is the Sun-centred preset, frozen on arrival",
+      "pass": true
+    },
+    {
+      "name": "switching to the Milky Way preset flies home with the figures on",
+      "pass": true
+    },
+    {
       "name": "main.js wires collect, apply, clipboard, file and prompt through Presets",
       "pass": true
     }

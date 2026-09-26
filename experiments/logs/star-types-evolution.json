@@ -1,9 +1,9 @@
 {
-  "date": "2026-09-26T14:37:59.782Z",
+  "date": "2026-09-26T15:23:31.306Z",
   "seed": 7,
   "sampleSize": 200000,
-  "sampleMs": 358,
-  "deriveMs": 553,
+  "sampleMs": 282,
+  "deriveMs": 442,
   "byClass": {
     "M": 174519,
     "K": 17671,
@@ -187,8 +187,8 @@
       }
     }
   },
-  "totalChecks": 50,
-  "passed": 50,
+  "totalChecks": 54,
+  "passed": 54,
   "failed": 0,
   "checks": [
     {
@@ -607,6 +607,38 @@
       "detail": {
         "E4teff": 11174,
         "SBbTeff": 14579
+      }
+    },
+    {
+      "name": "the midplane arm branch is still a newborn",
+      "pass": true,
+      "detail": 0.0024000000000000007
+    },
+    {
+      "name": "two scale heights up, the same draw is no longer young",
+      "pass": true,
+      "detail": {
+        "mid": 0.0024000000000000007,
+        "high": 8.448933464091326
+      }
+    },
+    {
+      "name": "one gas-lane up, a field star is at least a newborn-ceiling old",
+      "pass": true,
+      "detail": {
+        "atLane": 5.893902766608864,
+        "field": 5.893902766608864,
+        "ceiling": 0.3
+      }
+    },
+    {
+      "name": "O/B stars sit in the gas lane far more often than M dwarfs",
+      "pass": true,
+      "detail": {
+        "ob": 76,
+        "obFrac": 0.961,
+        "mFrac": 0.46,
+        "gasLane": 0.15
       }
     }
   ]

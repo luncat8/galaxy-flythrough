@@ -8,320 +8,320 @@
     "SBb (preset)": {
       "thinH": 0.3,
       "gasLaneH": 0.15,
-      "youngStarH": 0.3227,
+      "youngStarH": 0.0942,
       "oldStarH": 0.3018,
-      "ratioYoungToOld": 1.069,
-      "ratioYoungToGasLane": 2.151,
+      "ratioYoungToOld": 0.312,
+      "ratioYoungToGasLane": 0.628,
       "classes": {
         "M": {
           "stars": 215717,
           "medianZ": 0.3316,
           "scaleHeight": 0.3018,
-          "meanAgeGyr": null
+          "meanAgeGyr": 6.453
         },
         "K": {
           "stars": 21509,
           "medianZ": 0.3357,
           "scaleHeight": 0.3055,
-          "meanAgeGyr": null
-        },
-        "F": {
-          "stars": 1721,
-          "medianZ": 0.3276,
-          "scaleHeight": 0.2982,
-          "meanAgeGyr": null
+          "meanAgeGyr": 6.443
         },
         "WD": {
-          "stars": 4297,
-          "medianZ": 0.3321,
-          "scaleHeight": 0.3023,
-          "meanAgeGyr": null
+          "stars": 5530,
+          "medianZ": 0.4002,
+          "scaleHeight": 0.3642,
+          "meanAgeGyr": 7.704
         },
-        "G": {
-          "stars": 2296,
-          "medianZ": 0.3531,
-          "scaleHeight": 0.3214,
-          "meanAgeGyr": null
+        "F": {
+          "stars": 1219,
+          "medianZ": 0.2261,
+          "scaleHeight": 0.2058,
+          "meanAgeGyr": 3.232
         },
         "RG": {
-          "stars": 276,
-          "medianZ": 0.3142,
-          "scaleHeight": 0.286,
-          "meanAgeGyr": null
+          "stars": 309,
+          "medianZ": 0.3325,
+          "scaleHeight": 0.3027,
+          "meanAgeGyr": 6.782
+        },
+        "G": {
+          "stars": 2123,
+          "medianZ": 0.3211,
+          "scaleHeight": 0.2923,
+          "meanAgeGyr": 5.898
         },
         "B": {
-          "stars": 456,
-          "medianZ": 0.3593,
-          "scaleHeight": 0.3271,
-          "meanAgeGyr": null
+          "stars": 123,
+          "medianZ": 0.1031,
+          "scaleHeight": 0.0938,
+          "meanAgeGyr": 0.198
         },
         "A": {
-          "stars": 406,
-          "medianZ": 0.3366,
-          "scaleHeight": 0.3064,
-          "meanAgeGyr": null
+          "stars": 159,
+          "medianZ": 0.1435,
+          "scaleHeight": 0.1306,
+          "meanAgeGyr": 0.62
         },
         "O": {
-          "stars": 17,
-          "medianZ": 0.2239,
-          "scaleHeight": 0.2038,
-          "meanAgeGyr": null
+          "stars": 6,
+          "medianZ": 0.1122,
+          "scaleHeight": 0.1021,
+          "meanAgeGyr": 0.007
         }
       }
     },
     "Sb": {
       "thinH": 0.234,
       "gasLaneH": 0.1404,
-      "youngStarH": 0.2779,
+      "youngStarH": 0.0939,
       "oldStarH": 0.2589,
-      "ratioYoungToOld": 1.073,
-      "ratioYoungToGasLane": 1.979,
+      "ratioYoungToOld": 0.363,
+      "ratioYoungToGasLane": 0.669,
       "classes": {
         "M": {
           "stars": 225910,
           "medianZ": 0.2844,
           "scaleHeight": 0.2589,
-          "meanAgeGyr": null
+          "meanAgeGyr": 5.999
         },
         "K": {
           "stars": 22579,
           "medianZ": 0.2878,
           "scaleHeight": 0.262,
-          "meanAgeGyr": null
-        },
-        "F": {
-          "stars": 1799,
-          "medianZ": 0.2845,
-          "scaleHeight": 0.259,
-          "meanAgeGyr": null
+          "meanAgeGyr": 5.987
         },
         "WD": {
-          "stars": 4512,
-          "medianZ": 0.2866,
-          "scaleHeight": 0.2609,
-          "meanAgeGyr": null
+          "stars": 5587,
+          "medianZ": 0.3328,
+          "scaleHeight": 0.3029,
+          "meanAgeGyr": 7.231
+        },
+        "F": {
+          "stars": 1376,
+          "medianZ": 0.2163,
+          "scaleHeight": 0.1969,
+          "meanAgeGyr": 3.083
         },
         "G": {
-          "stars": 2400,
-          "medianZ": 0.2985,
-          "scaleHeight": 0.2717,
-          "meanAgeGyr": null
+          "stars": 2292,
+          "medianZ": 0.2841,
+          "scaleHeight": 0.2586,
+          "meanAgeGyr": 5.62
         },
         "RG": {
-          "stars": 285,
-          "medianZ": 0.2668,
-          "scaleHeight": 0.2429,
-          "meanAgeGyr": null
+          "stars": 314,
+          "medianZ": 0.2785,
+          "scaleHeight": 0.2535,
+          "meanAgeGyr": 6.551
         },
         "B": {
-          "stars": 483,
-          "medianZ": 0.3091,
-          "scaleHeight": 0.2813,
-          "meanAgeGyr": null
+          "stars": 149,
+          "medianZ": 0.1002,
+          "scaleHeight": 0.0912,
+          "meanAgeGyr": 0.181
         },
         "A": {
-          "stars": 425,
-          "medianZ": 0.2835,
-          "scaleHeight": 0.258,
-          "meanAgeGyr": null
+          "stars": 195,
+          "medianZ": 0.1391,
+          "scaleHeight": 0.1266,
+          "meanAgeGyr": 0.597
         },
         "O": {
-          "stars": 17,
-          "medianZ": 0.1983,
-          "scaleHeight": 0.1805,
-          "meanAgeGyr": null
+          "stars": 8,
+          "medianZ": 0.1582,
+          "scaleHeight": 0.144,
+          "meanAgeGyr": 0.006
         }
       }
     },
     "Sc": {
       "thinH": 0.2548,
       "gasLaneH": 0.1529,
-      "youngStarH": 0.3697,
+      "youngStarH": 0.1237,
       "oldStarH": 0.3345,
-      "ratioYoungToOld": 1.105,
-      "ratioYoungToGasLane": 2.419,
+      "ratioYoungToOld": 0.37,
+      "ratioYoungToGasLane": 0.809,
       "classes": {
         "M": {
           "stars": 265963,
           "medianZ": 0.3675,
           "scaleHeight": 0.3345,
-          "meanAgeGyr": null
+          "meanAgeGyr": 5.547
         },
         "K": {
           "stars": 26662,
           "medianZ": 0.3695,
           "scaleHeight": 0.3364,
-          "meanAgeGyr": null
-        },
-        "F": {
-          "stars": 2378,
-          "medianZ": 0.3642,
-          "scaleHeight": 0.3315,
-          "meanAgeGyr": null
-        },
-        "G": {
-          "stars": 2827,
-          "medianZ": 0.3783,
-          "scaleHeight": 0.3443,
-          "meanAgeGyr": null
+          "meanAgeGyr": 5.54
         },
         "WD": {
-          "stars": 5016,
-          "medianZ": 0.3672,
-          "scaleHeight": 0.3342,
-          "meanAgeGyr": null
+          "stars": 6357,
+          "medianZ": 0.4389,
+          "scaleHeight": 0.3995,
+          "meanAgeGyr": 6.85
+        },
+        "G": {
+          "stars": 2706,
+          "medianZ": 0.3597,
+          "scaleHeight": 0.3274,
+          "meanAgeGyr": 5.105
+        },
+        "F": {
+          "stars": 1858,
+          "medianZ": 0.286,
+          "scaleHeight": 0.2603,
+          "meanAgeGyr": 2.882
         },
         "RG": {
-          "stars": 293,
-          "medianZ": 0.3749,
-          "scaleHeight": 0.3412,
-          "meanAgeGyr": null
+          "stars": 323,
+          "medianZ": 0.3969,
+          "scaleHeight": 0.3613,
+          "meanAgeGyr": 6.194
         },
         "B": {
-          "stars": 600,
-          "medianZ": 0.4111,
-          "scaleHeight": 0.3742,
-          "meanAgeGyr": null
+          "stars": 188,
+          "medianZ": 0.1353,
+          "scaleHeight": 0.1231,
+          "meanAgeGyr": 0.194
         },
         "A": {
-          "stars": 593,
-          "medianZ": 0.3642,
-          "scaleHeight": 0.3315,
-          "meanAgeGyr": null
+          "stars": 285,
+          "medianZ": 0.1838,
+          "scaleHeight": 0.1673,
+          "meanAgeGyr": 0.688
         },
         "O": {
-          "stars": 20,
-          "medianZ": 0.2593,
-          "scaleHeight": 0.236,
-          "meanAgeGyr": null
+          "stars": 10,
+          "medianZ": 0.1493,
+          "scaleHeight": 0.1359,
+          "meanAgeGyr": 0.008
         }
       }
     },
     "Sd": {
       "thinH": 0.234,
       "gasLaneH": 0.1404,
-      "youngStarH": 0.3557,
+      "youngStarH": 0.1238,
       "oldStarH": 0.3333,
-      "ratioYoungToOld": 1.067,
-      "ratioYoungToGasLane": 2.533,
+      "ratioYoungToOld": 0.371,
+      "ratioYoungToGasLane": 0.882,
       "classes": {
         "M": {
           "stars": 291362,
           "medianZ": 0.3662,
           "scaleHeight": 0.3333,
-          "meanAgeGyr": null
+          "meanAgeGyr": 5.29
         },
         "K": {
           "stars": 29267,
           "medianZ": 0.3683,
           "scaleHeight": 0.3352,
-          "meanAgeGyr": null
+          "meanAgeGyr": 5.284
         },
         "WD": {
-          "stars": 5305,
-          "medianZ": 0.366,
-          "scaleHeight": 0.3332,
-          "meanAgeGyr": null
+          "stars": 6807,
+          "medianZ": 0.4432,
+          "scaleHeight": 0.4034,
+          "meanAgeGyr": 6.63
         },
         "G": {
-          "stars": 3095,
-          "medianZ": 0.3784,
-          "scaleHeight": 0.3444,
-          "meanAgeGyr": null
+          "stars": 2965,
+          "medianZ": 0.3596,
+          "scaleHeight": 0.3273,
+          "meanAgeGyr": 4.872
         },
         "F": {
-          "stars": 2782,
-          "medianZ": 0.3647,
-          "scaleHeight": 0.332,
-          "meanAgeGyr": null
+          "stars": 2184,
+          "medianZ": 0.2823,
+          "scaleHeight": 0.257,
+          "meanAgeGyr": 2.761
         },
         "B": {
-          "stars": 692,
-          "medianZ": 0.3947,
-          "scaleHeight": 0.3593,
-          "meanAgeGyr": null
+          "stars": 230,
+          "medianZ": 0.1351,
+          "scaleHeight": 0.123,
+          "meanAgeGyr": 0.182
         },
         "A": {
-          "stars": 693,
-          "medianZ": 0.356,
-          "scaleHeight": 0.324,
-          "meanAgeGyr": null
+          "stars": 336,
+          "medianZ": 0.1861,
+          "scaleHeight": 0.1694,
+          "meanAgeGyr": 0.694
         },
         "RG": {
-          "stars": 307,
-          "medianZ": 0.3402,
-          "scaleHeight": 0.3097,
-          "meanAgeGyr": null
+          "stars": 364,
+          "medianZ": 0.3906,
+          "scaleHeight": 0.3555,
+          "meanAgeGyr": 5.982
         },
         "O": {
-          "stars": 22,
-          "medianZ": 0.2648,
-          "scaleHeight": 0.241,
-          "meanAgeGyr": null
+          "stars": 10,
+          "medianZ": 0.1556,
+          "scaleHeight": 0.1417,
+          "meanAgeGyr": 0.008
         }
       }
     },
     "Irr": {
       "thinH": 0.208,
       "gasLaneH": 0.1664,
-      "youngStarH": 0.3438,
+      "youngStarH": 0.1458,
       "oldStarH": 0.2959,
-      "ratioYoungToOld": 1.162,
-      "ratioYoungToGasLane": 2.066,
+      "ratioYoungToOld": 0.493,
+      "ratioYoungToGasLane": 0.876,
       "classes": {
         "M": {
           "stars": 211858,
           "medianZ": 0.3251,
           "scaleHeight": 0.2959,
-          "meanAgeGyr": null
+          "meanAgeGyr": 4.641
         },
         "K": {
           "stars": 21111,
           "medianZ": 0.3283,
           "scaleHeight": 0.2988,
-          "meanAgeGyr": null
-        },
-        "F": {
-          "stars": 2066,
-          "medianZ": 0.328,
-          "scaleHeight": 0.2986,
-          "meanAgeGyr": null
+          "meanAgeGyr": 4.636
         },
         "WD": {
-          "stars": 3675,
-          "medianZ": 0.3228,
-          "scaleHeight": 0.2939,
-          "meanAgeGyr": null
+          "stars": 4487,
+          "medianZ": 0.3817,
+          "scaleHeight": 0.3474,
+          "meanAgeGyr": 6.023
+        },
+        "F": {
+          "stars": 1786,
+          "medianZ": 0.287,
+          "scaleHeight": 0.2613,
+          "meanAgeGyr": 2.622
         },
         "G": {
-          "stars": 2278,
-          "medianZ": 0.3349,
-          "scaleHeight": 0.3048,
-          "meanAgeGyr": null
+          "stars": 2236,
+          "medianZ": 0.3292,
+          "scaleHeight": 0.2997,
+          "meanAgeGyr": 4.378
         },
         "B": {
-          "stars": 537,
-          "medianZ": 0.3818,
-          "scaleHeight": 0.3475,
-          "meanAgeGyr": null
+          "stars": 223,
+          "medianZ": 0.158,
+          "scaleHeight": 0.1438,
+          "meanAgeGyr": 0.19
         },
         "A": {
-          "stars": 518,
-          "medianZ": 0.3331,
-          "scaleHeight": 0.3032,
-          "meanAgeGyr": null
+          "stars": 316,
+          "medianZ": 0.2049,
+          "scaleHeight": 0.1865,
+          "meanAgeGyr": 0.671
         },
         "O": {
-          "stars": 18,
-          "medianZ": 0.2579,
-          "scaleHeight": 0.2347,
-          "meanAgeGyr": null
+          "stars": 12,
+          "medianZ": 0.2012,
+          "scaleHeight": 0.1831,
+          "meanAgeGyr": 0.008
         },
         "RG": {
-          "stars": 204,
-          "medianZ": 0.3214,
-          "scaleHeight": 0.2926,
-          "meanAgeGyr": null
+          "stars": 236,
+          "medianZ": 0.3627,
+          "scaleHeight": 0.3302,
+          "meanAgeGyr": 5.326
         }
       }
     }

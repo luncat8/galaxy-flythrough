@@ -75,10 +75,15 @@ const W = 800, H = 600;
 
 	let fieldsOk = true;
 	for (const e of landmarks.ENTRIES) {
-		if (!(e.ra >= 0 && e.ra < 360) || !(e.dec >= -90 && e.dec <= 90) || !(e.distPc > 0)) fieldsOk = false;
+		const sun = e.name === 'Sun';
+		if (!(e.ra >= 0 && e.ra < 360) || !(e.dec >= -90 && e.dec <= 90)) fieldsOk = false;
+		if (!sun && !(e.distPc > 0)) fieldsOk = false;
+		if (sun && e.distPc !== 0) fieldsOk = false;
 		if (!Number.isFinite(e.mag) || !Number.isInteger(e.colorIndex) || e.colorIndex < 0 || e.colorIndex >= records.SPECTRAL_CLASSES.length) fieldsOk = false;
-		// IAU abbreviations are mixed case: CMa, UMa, PsA...
-		if (!/^[A-Z][A-Za-z]{2}$/.test(e.constellation)) fieldsOk = false;
+		// IAU abbreviations are mixed case: CMa, UMa, PsA... The Sun is the
+		// origin, not a member of a figure, so it carries no abbreviation.
+		if (!sun && !/^[A-Z][A-Za-z]{2}$/.test(e.constellation)) fieldsOk = false;
+		if (sun && e.constellation !== '') fieldsOk = false;
 	}
 	check('every entry has valid ra/dec/distPc/mag/colorIndex/constellation', fieldsOk);
 
@@ -87,7 +92,8 @@ const W = 800, H = 600;
 		const e = landmarks.ENTRIES[i];
 		const r = Math.hypot(e.x, e.y, e.z);
 		if (Math.abs(r - e.distPc / 1000) > 1e-9 * Math.max(1, r)) radiusOk = false;
-		if (Math.abs(e.absMag - coords.absoluteMagnitude(e.mag, e.distPc)) > 1e-9) magOk = false;
+		const expectedMag = e.name === 'Sun' ? landmarks.SUN_ABS_MAG : coords.absoluteMagnitude(e.mag, e.distPc);
+		if (Math.abs(e.absMag - expectedMag) > 1e-9) magOk = false;
 		const g = coords.raDecParallaxToGalactic(e.ra, e.dec, 1000 / e.distPc);
 		if (Math.abs(g.x - e.x) + Math.abs(g.y - e.y) + Math.abs(g.z - e.z) > 1e-12) recomputeOk = false;
 	}
@@ -103,15 +109,24 @@ const W = 800, H = 600;
 		&& sirius.constellation === 'CMa' && sirius.colorIndex === records.spectralClassIndex('A'),
 		sirius && { distPc: sirius.distPc, mag: sirius.mag, constellation: sirius.constellation });
 
-	let brightest = 0;
-	for (let i = 1; i < landmarks.count; i++) {
-		if (landmarks.ENTRIES[i].mag < landmarks.ENTRIES[brightest].mag) brightest = i;
+	const sunIdx = landmarks.indexOf('Sun');
+	const sun = landmarks.ENTRIES[sunIdx];
+	check('the Sun is the frame origin, a G star of solar absolute magnitude',
+		sunIdx >= 0 && sun.x === 0 && sun.y === 0 && sun.z === 0
+		&& sun.distPc === 0 && sun.absMag === landmarks.SUN_ABS_MAG
+		&& sun.colorIndex === records.spectralClassIndex('G') && sun.mag === -26.74,
+		sun && { x: sun.x, absMag: sun.absMag, mag: sun.mag });
+
+	let brightest = -1;
+	for (let i = 0; i < landmarks.count; i++) {
+		if (landmarks.ENTRIES[i].name === 'Sun') continue;
+		if (brightest < 0 || landmarks.ENTRIES[i].mag < landmarks.ENTRIES[brightest].mag) brightest = i;
 	}
-	check('the brightest landmark is Sirius', brightest === siriusIdx, landmarks.ENTRIES[brightest].name);
+	check('the brightest night-sky landmark is Sirius', brightest === siriusIdx, landmarks.ENTRIES[brightest].name);
 
 	let tooClose = 0;
-	for (const e of landmarks.ENTRIES) if (e.distPc < 1) tooClose++;
-	check('no landmark sits at the Sun (the camera starts there)', tooClose === 0);
+	for (const e of landmarks.ENTRIES) if (e.name !== 'Sun' && e.distPc < 1) tooClose++;
+	check('no night-sky landmark sits on the Sun (the camera homes 5 pc above it)', tooClose === 0);
 	check('indexOf resolves every entry and rejects unknown names',
 		landmarks.ENTRIES.every((e, i) => landmarks.indexOf(e.name) === i) && landmarks.indexOf('NotAStar') === -1);
 }

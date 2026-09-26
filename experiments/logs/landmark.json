@@ -1,10 +1,10 @@
 {
-  "date": "2026-09-26T14:37:01.690Z",
-  "landmarks": 59,
+  "date": "2026-09-26T15:22:34.816Z",
+  "landmarks": 60,
   "constellations": 15,
   "edges": 41,
-  "totalChecks": 46,
-  "passed": 46,
+  "totalChecks": 47,
+  "passed": 47,
   "failed": 0,
   "checks": [
     {
@@ -53,7 +53,7 @@
     {
       "name": "the table holds 30–60 named stars",
       "pass": true,
-      "detail": 59
+      "detail": 60
     },
     {
       "name": "no landmark name is duplicated",
@@ -91,12 +91,21 @@
       }
     },
     {
-      "name": "the brightest landmark is Sirius",
+      "name": "the Sun is the frame origin, a G star of solar absolute magnitude",
+      "pass": true,
+      "detail": {
+        "x": 0,
+        "absMag": 4.83,
+        "mag": -26.74
+      }
+    },
+    {
+      "name": "the brightest night-sky landmark is Sirius",
       "pass": true,
       "detail": "Sirius"
     },
     {
-      "name": "no landmark sits at the Sun (the camera starts there)",
+      "name": "no night-sky landmark sits on the Sun (the camera homes 5 pc above it)",
       "pass": true
     },
     {
@@ -142,12 +151,12 @@
     {
       "name": "picking the screen centre while aimed at Sirius selects Sirius",
       "pass": true,
-      "detail": 0
+      "detail": 1
     },
     {
       "name": "picking the screen centre while aimed at Betelgeuse selects Betelgeuse",
       "pass": true,
-      "detail": 9
+      "detail": 10
     },
     {
       "name": "the pick at the exact centre is the centred star",

@@ -151,16 +151,20 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		selected = index;
 	}
 
-	function toggleConstellations() {
-		showLines = !showLines;
+	function setConstellations(next) {
+		showLines = !!next;
 		return showLines;
+	}
+
+	function toggleConstellations() {
+		return setConstellations(!showLines);
 	}
 
 	function constellationsVisible() {
 		return showLines;
 	}
 
-	return { resize, draw, setSelected, setOrbitState, toggleConstellations, constellationsVisible, setEnabled };
+	return { resize, draw, setSelected, setOrbitState, toggleConstellations, setConstellations, constellationsVisible, setEnabled };
 }
 
 const LabelLayer = {

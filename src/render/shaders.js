@@ -117,9 +117,10 @@ struct DensityParams {
         // The galaxy's clock: age in Gyr, the SFH timescale (clamped positive on
         // the CPU) and the span star formation actually covers,
         // min(age, quenchTime). Solved by galaxy.solvePopulationClock, read here
-        // by the population mirrors. The gas left at that age is a CPU-only
-        // number, like youngScaleHeight, so it does not ride along.
-        clock: vec4f,           // age, tauSfh, sfhSpan, -
+        // by the population mirrors. w is the gas-lane thickness in units of
+        // thin.H (populations.youngScaleHeight): the age gate reads it, so it
+        // rides. The gas left at that age stays a CPU-only number.
+        clock: vec4f,           // age, tauSfh, sfhSpan, youngScaleHeight
         // Component formation windows as CDF intervals of the truncated SFH,
         // indexed like COMPONENT_*: a draw is one mix and one inverse.
         formLo: vec4f,          // thin, thick, bulge, halo — window start
@@ -1384,19 +1385,29 @@ const YOUNG_ARM_MAX_GYR: f32 = 0.3;
 // means here; the star-forming annulus is the model's, not a hard-coded 3..12.
 // Off the arms a star is (age − t_f), which is what makes the assembly order
 // (halo first, thin disc still forming) survive at any age and keeps every star
-// younger than its galaxy.
-fn sampleLocalAge(params: DensityParams, component: u32, distToArm: f32, R: f32, u1: f32, u2: f32) -> f32 {
+// younger than its galaxy. zOverH is z / H(R) of the thin disc: the newborn
+// gate falls off over the gas lane (clock.w), and the field takes the same
+// (z/lane)² heating floor the CPU applies. zOverH = 0 is the old midplane age.
+fn sampleLocalAge(params: DensityParams, component: u32, distToArm: f32, R: f32, u1: f32, u2: f32, zOverH: f32) -> f32 {
         if (component == COMPONENT_THIN && params.populations.z >= 0.5) {
                 // Gaussian ridge gate, not a hard cut — mirrors star-types exactly: the
                 // newborn lane is a half-normal whose sigma is the pattern's own ridge
                 // width, 0.12 * (2*pi*R*sin(pitch)/m) / (1 + amp), so every type's O/B
-                // stars hug their own arms instead of an MW-tuned distance.
+                // stars hug their own arms instead of an MW-tuned distance. The same
+                // half-normal in height, sigma = youngScaleHeight, keeps them in the
+                // gas lane.
                 let ridgeLambda: f32 = 6.283185307 * R * sin(radians(params.arms.z)) / max(1.0, params.arms.x);
                 let armWidth: f32 = 0.12 * ridgeLambda / (1.0 + params.arms.y);
                 let pArm: f32 = exp(-0.5 * distToArm * distToArm / (armWidth * armWidth));
-                if (u2 < pArm && R > params.arms.w && R < params.populations.y) {
+                let lane: f32 = max(params.clock.w, 1e-3);
+                let z2: f32 = zOverH * zOverH;
+                let pZ: f32 = exp(-0.5 * z2 / (lane * lane));
+                if (u2 < pArm * pZ && R > params.arms.w && R < params.populations.y) {
                         return min(params.clock.x, pow(u1, 3.0) * YOUNG_ARM_MAX_GYR);
                 }
+                let age: f32 = params.clock.x - sampleFormationTime(params, component, u1);
+                let floor: f32 = YOUNG_ARM_MAX_GYR * z2 / (lane * lane);
+                return min(params.clock.x, max(age, floor));
         }
         return params.clock.x - sampleFormationTime(params, component, u1);
 }
@@ -1451,9 +1462,14 @@ fn main(@global_invocation_id gid: vec3u) {
                 let dy: f32 = pos.y - densityParams.centre.y;
                 let R: f32 = sqrt(dx * dx + dy * dy);
                 let distToArm: f32 = distanceToNearestArm(densityParams, R, atan2(dy, dx));
+                // H(R) = H·(1 + flare·R/L), the same flare discHeightAt applies.
+                // A zero scale length would make the flare term meaningless; the
+                // floor keeps the ratio finite and the age on the midplane.
+                let Hscale: f32 = densityParams.thin.y * (1.0 + densityParams.thin.w * R / max(densityParams.thin.x, 1e-4));
+                let zOverH: f32 = (pos.z - densityParams.centre.z) / max(Hscale, 1e-4);
 
                 let mass: f32 = sampleMassIMF(hash01(slotSeed * 31u + 1u));
-                let age: f32 = sampleLocalAge(densityParams, component, distToArm, R, hash01(slotSeed * 31u + 2u), hash01(slotSeed * 31u + 3u));
+                let age: f32 = sampleLocalAge(densityParams, component, distToArm, R, hash01(slotSeed * 31u + 2u), hash01(slotSeed * 31u + 3u), zOverH);
 
                 // 0.4.5: below 8 Msun the giant branch is temporary — past
                 // tMS*1.1 + tGiant the star is a cooling white dwarf, as in

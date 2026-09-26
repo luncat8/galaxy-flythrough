@@ -20,7 +20,13 @@ const landmarkDeps = (typeof module !== 'undefined' && module.exports)
 	: { coords: window.Coords, records: window.StarRecord };
 
 // RA deg, Dec deg, distance pc, V mag, class, constellation.
+// The Sun is the frame origin, not a night-sky star: distPc 0 bakes to
+// (0, 0, 0) and absolute magnitude 4.83, and no figure includes it. The
+// Milky Way preset is the only model that draws this table, and it stands
+// 5 pc above this point.
+const SUN_ABS_MAG = 4.83;
 const RAW = [
+	['Sun',               0.000,    0.000,    0.00, -26.74, 'G', ''],
 	['Sirius',          101.287,  -16.716,    2.64, -1.46, 'A', 'CMa'],
 	['Canopus',          95.988,  -52.696,   95.0,  -0.74, 'F', 'Car'],
 	['Rigil Kentaurus', 219.902,  -60.834,    1.34, -0.27, 'G', 'Cen'],
@@ -91,11 +97,17 @@ for (let i = 0; i < landmarkCount; i++) {
 	const row = RAW[i];
 	const name = row[0], ra = row[1], dec = row[2], distPc = row[3], mag = row[4];
 	const cls = row[5], constellation = row[6];
-	const g = landmarkDeps.coords.raDecParallaxToGalactic(ra, dec, 1000 / distPc);
+	// Parallax is 1000/distPc. The Sun is the origin, so that division is not
+	// a position — it is baked directly, and its absolute magnitude is the
+	// solar value rather than m − 5 log d + 5 at d = 0.
+	const sun = distPc === 0;
+	const g = sun
+		? { x: 0, y: 0, z: 0 }
+		: landmarkDeps.coords.raDecParallaxToGalactic(ra, dec, 1000 / distPc);
 	ENTRIES[i] = {
 		name, ra, dec, distPc, mag, constellation,
 		colorIndex: landmarkDeps.records.spectralClassIndex(cls),
-		absMag: landmarkDeps.coords.absoluteMagnitude(mag, distPc),
+		absMag: sun ? SUN_ABS_MAG : landmarkDeps.coords.absoluteMagnitude(mag, distPc),
 		x: g.x, y: g.y, z: g.z,
 	};
 	landmarkPositions[i * 3] = g.x;
@@ -109,6 +121,6 @@ function landmarkIndexOf(name) {
 	return i === undefined ? -1 : i;
 }
 
-const Landmarks = { ENTRIES, positions: landmarkPositions, count: landmarkCount, indexOf: landmarkIndexOf };
+const Landmarks = { ENTRIES, positions: landmarkPositions, count: landmarkCount, indexOf: landmarkIndexOf, SUN_ABS_MAG };
 if (typeof module !== 'undefined') module.exports = Landmarks;
 if (typeof window !== 'undefined') window.Landmarks = Landmarks;

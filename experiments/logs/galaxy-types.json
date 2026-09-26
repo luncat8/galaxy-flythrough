@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-26T14:37:13.798Z",
+  "date": "2026-09-26T15:22:46.313Z",
   "types": [
     "E0",
     "E1",
@@ -3540,7 +3540,7 @@
       "name": "repacking a different model overwrites every slot",
       "pass": true,
       "detail": {
-        "changed": 40
+        "changed": 41
       }
     },
     {
@@ -3860,97 +3860,97 @@
     {
       "name": "SBb: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "E0: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "E1: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "E2: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "E3: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "E4: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "E5: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "E6: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "E7: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "S0: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "Sa: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "Sb: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "Sc: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "Sd: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "SB0: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "SBa: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "SBc: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "SBd: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "Irr: padding slots are zero, never stale memory",
       "pass": true,
-      "detail": 6
+      "detail": 5
     },
     {
       "name": "every barred table type carries the bar profile",
