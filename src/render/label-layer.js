@@ -71,7 +71,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 				// 0.4.5: under the simple engine the labels ride the CPU
 				// landmark mirror (stepped per frame in main.js), not the
 				// closed form — the same orbit the GPU draws, either way.
-				if (orbit.getEngine() === orbit.ENGINE_SIMPLE && orbit.simpleLandmarksReady()) {
+				if ((orbit.getEngine() & orbit.ENGINE_SIMPLE) && orbit.simpleLandmarksReady()) {
 					orbit.simpleLandmarkPosition(orbitScratch, i, pz);
 				} else {
 					orbit.orbitPosition(orbitScratch, px, py, pz,

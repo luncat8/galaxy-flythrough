@@ -64,14 +64,24 @@
                         <input type="range" id="slider-pattern" min="0" max="3" step="0.05" value="1">
                         <span id="val-pattern" class="menu-val">×1.00</span>
                 </div>
+                <div class="menu-row engine-row">
+                        <label title="Movement passes are composable. Classic is the closed-form base; Simple adds friction-field integration; Apocenter adds guided ellipses.">Movement passes</label>
+                        <div class="engine-checks">
+                                <label><input type="checkbox" id="engine-classic" checked> classic</label>
+                                <label><input type="checkbox" id="engine-simple"> simple</label>
+                                <label><input type="checkbox" id="engine-apocenter"> apocenter</label>
+                        </div>
+                        <span id="val-engine" class="menu-val">classic</span>
+                </div>
                 <div class="menu-row">
-                        <label for="engine" title="Star-motion model. Classic is closed-form kinematics; simple integrates the friction field; apocenter guides ellipse apocenters onto arms and bars.">Engine</label>
-                        <select id="engine">
-                                <option value="classic" selected>classic</option>
-                                <option value="simple">simple</option>
-                                <option value="apocenter">apocenter</option>
-                        </select>
-                        <span id="val-engine" class="menu-val">closed form</span>
+                        <label for="slider-apocenter-share" title="Share of stars receiving the apocenter pass. Selection is deterministic and spatially mixed.">Apocenter stars</label>
+                        <input type="range" id="slider-apocenter-share" min="0" max="1" step="0.05" value="0.35">
+                        <span id="val-apocenter-share" class="menu-val">35%</span>
+                </div>
+                <div class="menu-row">
+                        <label for="slider-apocenter-force" title="Maximum apocenter eccentricity. Lower values reduce the noisy visual pull toward density ridges.">Apocenter force</label>
+                        <input type="range" id="slider-apocenter-force" min="0" max="0.55" step="0.01" value="0.22">
+                        <span id="val-apocenter-force" class="menu-val">0.22</span>
                 </div>
                 <div class="menu-row">
                         <label for="galaxy-type">Type <span class="kbd">G</span></label>

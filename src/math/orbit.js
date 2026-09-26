@@ -320,7 +320,7 @@ const orbitScratch = { vFlat: 0, rCore: 0, omegaPattern: 0, spinLambda: 0, sigma
 // sinTau(arg0)) term are exactly zero, so the transform is the identity
 // (within one add's rounding). Every plane still passes through `centre`.
 function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
-	if (engine === ENGINE_APOCENTER) return apocenterPosition(out, x, y, z, family, phase, amplitude, time, model);
+	if (engine & ENGINE_APOCENTER) return apocenterPosition(out, x, y, z, family, phase, amplitude, time, model);
 	const dyn = fillDynamics(orbitScratch, model);
 	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
 	const qx = x - c.x, qy = y - c.y, qz = z - c.z;
@@ -406,6 +406,20 @@ function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
 
 const APOCENTER_ECC_MAX = 0.45;
 const APOCENTER_ECC_CAP = 0.55;
+// Apocenter controls are intentionally view state: they can be tuned without
+// rebuilding the sampled galaxy. Share is a deterministic per-star mask, so
+// lowering it reduces noise instead of making an arbitrary front slice vanish.
+let apocenterShare = 1;
+let apocenterForce = APOCENTER_ECC_MAX;
+function setApocenterShare(value) { apocenterShare = Math.max(0, Math.min(1, Number(value) || 0)); return apocenterShare; }
+function setApocenterForce(value) { apocenterForce = Math.max(0, Math.min(APOCENTER_ECC_CAP, Number(value) || 0)); return apocenterForce; }
+function getApocenterShare() { return apocenterShare; }
+function getApocenterForce() { return apocenterForce; }
+function apocenterSelected(x, y, z) {
+	// A cheap stable hash; CPU labels and the shader receive the same birth f32s.
+	const n = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
+	return (n - Math.floor(n)) < apocenterShare;
+}
 
 function apocenterAngle(theta, radius, family, model) {
 	const arms = model && model.arms;
@@ -434,7 +448,7 @@ function solveEccentricAnomaly(mean, eccentricity) {
 // Analytic Kepler ellipse with its apocenter aligned to the nearest density
 // ridge. Five Newton steps are bounded by e <= 0.55 and need no per-star state.
 function apocenterPosition(out, x, y, z, family, phase, amplitude, time, model) {
-	if (time === 0) {
+	if (time === 0 || !apocenterSelected(x, y, z)) {
 		out[0] = x; out[1] = y; out[2] = z;
 		return out;
 	}
@@ -451,7 +465,7 @@ function apocenterPosition(out, x, y, z, family, phase, amplitude, time, model) 
 	const apo = apocenterAngle(theta0, R, family, model);
 	const delta0 = reduceAngle(apo + Math.PI - theta0);
 	const rank = ((amplitude & 15) + 0.5) / 16;
-	const eccentricity = Math.min(APOCENTER_ECC_CAP, APOCENTER_ECC_MAX * rank);
+	const eccentricity = Math.min(APOCENTER_ECC_CAP, apocenterForce * rank);
 	const root = Math.sqrt(1 - eccentricity * eccentricity);
 	const cosF = Math.cos(delta0), sinF = -Math.sin(delta0);
 	const E0 = Math.atan2(root * sinF, eccentricity + cosF);
@@ -540,16 +554,18 @@ function formatTimeRate(value, speed) { return value < 0 ? `follow ×${(-value).
 // position) and the z(theta) redistribution; the orbit-plane transform is
 // instead anchored at the galaxy centre and keeps each star's orbital radius.
 
-const ENGINE_CLASSIC = 0, ENGINE_SIMPLE = 1, ENGINE_APOCENTER = 2;
+const ENGINE_CLASSIC = 1, ENGINE_SIMPLE = 2, ENGINE_APOCENTER = 4;
 const ENGINE_NAMES = ['classic', 'simple', 'apocenter'];
 let engine = ENGINE_CLASSIC;
 function setEngine(id) {
-	engine = id === ENGINE_APOCENTER || id === 'apocenter' ? ENGINE_APOCENTER
-		: id === ENGINE_SIMPLE || id === 'simple' ? ENGINE_SIMPLE : ENGINE_CLASSIC;
+	if (Array.isArray(id)) { engine = id.reduce((mask, name) => mask | (name === 'simple' ? ENGINE_SIMPLE : name === 'apocenter' ? ENGINE_APOCENTER : ENGINE_CLASSIC), 0); }
+	else if (typeof id === 'number') engine = id & 7;
+	else engine = id === 'apocenter' ? ENGINE_APOCENTER : id === 'simple' ? ENGINE_SIMPLE : ENGINE_CLASSIC;
+	if (!engine) engine = ENGINE_CLASSIC;
 	return engine;
 }
 function getEngine() { return engine; }
-function engineName() { return ENGINE_NAMES[engine]; }
+function engineName() { return (engine & ENGINE_SIMPLE ? 'simple ' : '') + (engine & ENGINE_APOCENTER ? 'apocenter' : '') || 'classic'; }
 
 // Demo anchors: sigma 0.25 rad at m = 2 / pitch 15 deg, eccMax 0.2. The sigma
 // scales with the pattern's own arm spacing (narrower spacing, narrower lane)
@@ -895,7 +911,9 @@ function packSimpleParams(model, out, offset, dtStar, count, starTimeMyr) {
 // the model-derived bar angle. Pattern phase remains in the orbit uniform.
 function packEngineVec(model, out, offset) {
 	out[offset] = engine;
-	out[offset + 1] = engine === ENGINE_APOCENTER ? APOCENTER_ECC_MAX : simpleEccMax(model);
+	// y is the apocenter force; simple uses a conservative fixed eccentricity
+	// when both engines are enabled.
+	out[offset + 1] = apocenterForce;
 	out[offset + 2] = engine === ENGINE_APOCENTER
 		? (((model && model.spheroid && model.spheroid.tiltDeg) || 0) * Math.PI / 180) : 0;
 	out[offset + 3] = 0;
@@ -920,6 +938,7 @@ const OrbitAPI = {
 	dampedDiscTheta, orbitPosition, apocenterPosition, apocenterAngle, solveEccentricAnomaly,
 	packOrbitDynamics, sinTau, sliderValueToRate, formatTimeRate,
 	setEngine, getEngine, engineName,
+	setApocenterShare, setApocenterForce, getApocenterShare, getApocenterForce, apocenterSelected,
 	simpleArmed, simpleSigma, simpleEccMax, simpleOmega, simpleEccOf, simplePeriOf,
 	simpleDerived, simpleOmegaMax, simpleSubsteps, wrapAngle, simplePatternPhase,
 	simpleStepTheta, simplePositionFromTheta,

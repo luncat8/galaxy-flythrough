@@ -553,7 +553,8 @@ function createStarRenderer(device, context, format, options) {
         // into its next selection.
         function setEngine(id) {
                 const next = orbit.setEngine ? orbit.setEngine(id) : 0;
-                state.engine = next === 2 ? 'apocenter' : next === 1 ? 'simple' : 'classic';
+                state.engine = (next & 1 ? 'classic ' : '') + (next & 2 ? 'simple ' : '') + (next & 4 ? 'apocenter' : '');
+                state.engine = state.engine.trim() || 'classic';
                 seedThetaAll();
                 return state.engine;
         }
@@ -1070,7 +1071,7 @@ function createStarRenderer(device, context, format, options) {
                 // Simple engine: pack the step uniform and count the substeps
                 // first — nSub = 0 (frozen time) skips the dispatch entirely.
                 let simpleSteps = 0;
-                if (orbit.packSimpleParams && (orbit.getEngine ? orbit.getEngine() === 1 : false)) {
+                if (orbit.packSimpleParams && (orbit.getEngine ? (orbit.getEngine() & orbit.ENGINE_SIMPLE) : false)) {
                         orbit.packSimpleParams(model, simpleUniform, 0, dtStar, totalRecordCount, time);
                         simpleSteps = simpleUniform[1] | 0;
                         if (simpleSteps > 0) device.queue.writeBuffer(simpleUniformBuffer, 0, simpleUniformData);

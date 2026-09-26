@@ -210,3 +210,14 @@ html, body {
 	margin-top: 4px;
 	text-align: center;
 }
+
+.engine-row { grid-template-columns: 1fr auto; }
+.engine-checks {
+	grid-column: 1 / -1;
+	display: flex;
+	gap: 7px;
+	flex-wrap: wrap;
+	color: #a9c9a9;
+}
+.engine-checks label { display: inline-flex; gap: 3px; align-items: center; cursor: pointer; }
+.engine-checks input { accent-color: #6fae6f; }

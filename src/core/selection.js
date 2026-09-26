@@ -33,7 +33,7 @@ function createSelection(camera, landmarks) {
 			if (orbitModel) {
 				// 0.4.5: picks ride the simple-engine CPU mirror under that
 				// engine, so the click target is what the GPU draws.
-				if (selectionOrbit.getEngine() === selectionOrbit.ENGINE_SIMPLE
+				if ((selectionOrbit.getEngine() & selectionOrbit.ENGINE_SIMPLE)
 					&& selectionOrbit.simpleLandmarksReady && selectionOrbit.simpleLandmarksReady()) {
 					selectionOrbit.simpleLandmarkPosition(orbitScratch, i, pz);
 				} else {

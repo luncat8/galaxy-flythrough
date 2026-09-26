@@ -189,7 +189,11 @@ async function boot() {
         const sliderStarTime = document.getElementById('slider-star-time');
         const sliderWave = document.getElementById('slider-wave');
         const sliderPattern = document.getElementById('slider-pattern');
-        const engineSelect = document.getElementById('engine');
+        const engineClassic = document.getElementById('engine-classic');
+        const engineSimple = document.getElementById('engine-simple');
+        const engineApocenter = document.getElementById('engine-apocenter');
+        const sliderApoShare = document.getElementById('slider-apocenter-share');
+        const sliderApoForce = document.getElementById('slider-apocenter-force');
         const valExp = document.getElementById('val-exposure');
         const valBright = document.getElementById('val-brightness');
         const valWhite = document.getElementById('val-white');
@@ -289,17 +293,38 @@ async function boot() {
                 syncPattern();
         });
         syncPattern();
-        function syncEngine() {
-                engineSelect.value = renderer.state.engine;
-                valEngine.textContent = renderer.state.engine === 'simple' ? 'friction field'
-                        : renderer.state.engine === 'apocenter' ? 'guided ellipses' : 'closed form';
+        function selectedEngines() {
+                const selected = [];
+                if (engineClassic.checked) selected.push('classic');
+                if (engineSimple.checked) selected.push('simple');
+                if (engineApocenter.checked) selected.push('apocenter');
+                return selected.length ? selected : ['classic'];
         }
-        engineSelect.addEventListener('change', () => {
-                renderer.setEngine(engineSelect.value);
+        function syncEngine() {
+                const active = renderer.state.engine;
+                engineClassic.checked = active === 'classic' || active.includes('classic');
+                engineSimple.checked = active.includes('simple');
+                engineApocenter.checked = active.includes('apocenter');
+                valEngine.textContent = active === 'classic' ? 'closed form' : active.trim();
+        }
+        function changeEngines() {
+                const selected = selectedEngines();
+                renderer.setEngine(selected);
                 initSimpleLandmarks();
                 syncEngine();
                 updateOverlay(renderer.state, camera.getState(statsText));
+        }
+        [engineClassic, engineSimple, engineApocenter].forEach((box) => box.addEventListener('change', changeEngines));
+        sliderApoShare.addEventListener('input', () => {
+                window.OrbitLib.setApocenterShare(Number(sliderApoShare.value));
+                document.getElementById('val-apocenter-share').textContent = `${Math.round(Number(sliderApoShare.value) * 100)}%`;
         });
+        sliderApoForce.addEventListener('input', () => {
+                window.OrbitLib.setApocenterForce(Number(sliderApoForce.value));
+                document.getElementById('val-apocenter-force').textContent = Number(sliderApoForce.value).toFixed(2);
+        });
+        window.OrbitLib.setApocenterShare(Number(sliderApoShare.value));
+        window.OrbitLib.setApocenterForce(Number(sliderApoForce.value));
         syncEngine();
         btnDefaults.addEventListener('click', () => {
                 renderer.setExposure(window.StarRenderer.EXPOSURE_DEFAULT);
@@ -308,6 +333,12 @@ async function boot() {
                 renderer.setSaturation(window.StarRenderer.SATURATION_DEFAULT);
                 renderer.setHeadroom(window.StarRenderer.HEADROOM_DEFAULT);
                 renderer.setHighlightDesat(window.StarRenderer.HIGHLIGHT_DESAT_DEFAULT);
+                window.OrbitLib.setApocenterShare(0.35);
+                window.OrbitLib.setApocenterForce(0.22);
+                sliderApoShare.value = 0.35;
+                sliderApoForce.value = 0.22;
+                document.getElementById('val-apocenter-share').textContent = '35%';
+                document.getElementById('val-apocenter-force').textContent = '0.22';
                 waveDamping = window.OrbitLib.setWaveDamping(window.OrbitLib.WAVE_DAMPING_UI_DEFAULT);
                 patternScale = window.OrbitLib.setPatternScale(window.OrbitLib.PATTERN_SCALE_UI_DEFAULT, starTimeMyr, model);
                 syncSlidersFromRenderer();
@@ -484,7 +515,7 @@ async function boot() {
                 // The simple engine's CPU mirror steps beside the GPU buffer —
                 // same dtStar the renderer dispatches, so labels and picks ride
                 // what the sprites draw. Classic ignores both.
-                if (renderer.state.engine === 'simple' && dtStar > 0) {
+                if (renderer.state.engine.includes('simple') && dtStar > 0) {
                         window.OrbitLib.simpleLandmarksStep(dtStar, starTimeMyr);
                 }
                 // R puts the orbit target back on the Sun, so a stale selection would

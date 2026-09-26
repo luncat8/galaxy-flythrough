@@ -606,6 +606,8 @@ fn apocenterPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4
         let q: vec3f = p - centre;
         let radius: f32 = length(q);
         if (radius <= 1e-9) { return centre; }
+        let selector: f32 = hash01(hash4(floatBitsToUint(p.x), floatBitsToUint(p.y), floatBitsToUint(p.z), 9137u));
+        if (selector >= engine.w) { return p; }
         let theta0: f32 = atan2(q.y, q.x);
         let R: f32 = max(length(q.xy), 0.001);
         var apo: f32 = theta0;
@@ -856,16 +858,17 @@ fn vs_main(
         // 0.4.5 engine branch: uniform control flow, no divergence. The simple
         // lane reconstructs from the compute-integrated azimuth in binding 3.
         var moved: vec3f;
-        if (camera.engine.x > 1.5) {
-                moved = apocenterPosition(vec3f(star.x, star.y, star.z), star.packed,
-                        vec3f(camera.cameraPos.w, 0.0, 0.0), camera.params.w,
+        let birth = vec3f(star.x, star.y, star.z);
+        let centre = vec3f(camera.cameraPos.w, 0.0, 0.0);
+        moved = orbitPosition(birth, star.packed, centre, camera.params.w, camera.dynA, camera.dynB, camera.waveA, camera.waveB);
+        if ((u32(camera.engine.x) & 2u) != 0u) {
+                // Simple is a composable friction pass. Its integrated azimuth
+                // provides the broad shape; apocenter can then tighten a subset.
+                moved = simplePosition(birth, star.packed, theta[starIdx], centre, 0.45);
+        }
+        if ((u32(camera.engine.x) & 4u) != 0u) {
+                moved = apocenterPosition(moved, star.packed, centre, camera.params.w,
                         camera.dynA, camera.waveA, camera.waveB, camera.engine);
-        } else if (camera.engine.x > 0.5) {
-                moved = simplePosition(vec3f(star.x, star.y, star.z), star.packed,
-                        theta[starIdx], vec3f(camera.cameraPos.w, 0.0, 0.0), camera.engine.y);
-        } else {
-                moved = orbitPosition(vec3f(star.x, star.y, star.z), star.packed,
-                        vec3f(camera.cameraPos.w, 0.0, 0.0), camera.params.w, camera.dynA, camera.dynB, camera.waveA, camera.waveB);
         }
         let rel: vec3f = moved - camera.cameraPos.xyz;
         let clip: vec4f = camera.viewProj * vec4f(rel.x, rel.y, rel.z, 1.0);
