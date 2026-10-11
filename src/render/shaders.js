@@ -639,16 +639,34 @@ fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, d
         return centre + orbitRadius * radial + normalWobble * normal;
 }
 
-// Apocenter-guided Kepler ellipse, mirrored by orbit.apocenterPosition.
-fn apocenterPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, waveA: vec4f, waveB: vec4f, engine: vec4f) -> vec3f {
+// The simple reconstruction's eccentricity, mirrored from orbit.simpleEccMax:
+// clamp(2·SIMPLE_ECC_K · sigmaThin / vFlat, 0, SIMPLE_ECC_MAX). It rides the
+// already-packed dynamics lanes, so the GPU rebuild and the CPU landmark
+// mirror read one rule — the shader hard-codes no galaxy number and no fixed
+// substitute. Mirrors orbit.SIMPLE_ECC_K / SIMPLE_ECC_MAX (pinned by
+// wgsl-validate).
+const SIMPLE_ECC_GAIN: f32 = 1.5;   // 2 * orbit.SIMPLE_ECC_K
+const SIMPLE_ECC_CAP: f32 = 0.6;    // orbit.SIMPLE_ECC_MAX
+
+fn simpleEccMax(dynA: vec4f, dynB: vec4f) -> f32 {
+        if (!(dynA.x > 0.0)) { return 0.0; }
+        return clamp(SIMPLE_ECC_GAIN * dynB.x / dynA.x, 0.0, SIMPLE_ECC_CAP);
+}
+
+// Apocenter-guided Kepler ellipse, mirrored by orbit.apocenterPosition. The
+// ellipse and its membership are built from the immutable BIRTH position; p is
+// the baseline the earlier passes produced, returned unchanged for unselected
+// stars and at T = 0 (identity). Hashing p instead of birth would re-roll the
+// guided subset every frame.
+fn apocenterPosition(p: vec3f, birth: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, waveA: vec4f, waveB: vec4f, engine: vec4f) -> vec3f {
         if (time == 0.0) { return p; }
-        let selector: f32 = hash01(hash4(bitcast<u32>(p.x), bitcast<u32>(p.y), bitcast<u32>(p.z), 9137u));
+        let selector: f32 = hash01(hash4(bitcast<u32>(birth.x), bitcast<u32>(birth.y), bitcast<u32>(birth.z), 9137u));
         if (selector >= engine.w) { return p; }
         let flags: u32 = (packed >> 16u) & 0xFFu;
         let family: u32 = (flags >> 3u) & 3u;
         let phaseBits: u32 = (packed >> 24u) & 15u;
         let ampBits: u32 = (packed >> 28u) & 15u;
-        let q: vec3f = p - centre;
+        let q: vec3f = birth - centre;
         let radius: f32 = length(q);
         if (radius <= 1e-9) { return centre; }
         let theta0: f32 = atan2(q.y, q.x);
@@ -834,8 +852,10 @@ struct CameraUniform {
         // struct and do not read the pair — gas stays on the pattern.
         waveA: vec4f,       // damping, m, K, phase0
         waveB: vec4f,       // Rs, minRadius, amp, patternPhaseOffset
-        // Engine select: (id, eccentricityMax, barTiltRadians, spare).
-        // Nebulae share this struct and ignore the lane.
+        // Engine select: (mask, apocenterForce, barTiltRadians, apocenterShare);
+        // mask bits classic=1, simple=2, apocenter=4. The simple reconstruction
+        // derives its own eccentricity from dynA/dynB (simpleEccMax). Nebulae
+        // share this struct and ignore the lane.
         engine: vec4f,
 };
 
@@ -898,19 +918,30 @@ fn vs_main(
                 return hidden(vid);
         }
 
-        // 0.4.5 engine branch: uniform control flow, no divergence. The simple
-        // lane reconstructs from the compute-integrated azimuth in binding 3.
-        var moved: vec3f;
+        // Engine-mask dispatch (movement-parity-plan): uniform control flow, no
+        // divergence. Passes run in the canonical order classic → simple →
+        // apocenter, each REPLACING the position — simple rebuilds from birth +
+        // the compute-integrated azimuth in binding 3, apocenter from birth + its
+        // Kepler solve — so no pass consumes the previous pass's output and the
+        // mask selects which law owns the star. The baseline with neither classic
+        // nor simple bit is the birth position itself (apocenter-only leaves the
+        // unselected fraction frozen); the apocenter pass then replaces the
+        // baseline for the birth-selected subset. The CPU twin of this dispatch is
+        // orbit.engineLandmarkPosition (labels and picking).
+        let mask: u32 = u32(camera.engine.x);
         let birth = vec3f(star.x, star.y, star.z);
         let centre = vec3f(camera.cameraPos.w, 0.0, 0.0);
-        moved = orbitPosition(birth, star.packed, centre, camera.params.w, camera.dynA, camera.dynB, camera.waveA, camera.waveB);
-        if ((u32(camera.engine.x) & 2u) != 0u) {
-                // Simple is a composable friction pass. Its integrated azimuth
-                // provides the broad shape; apocenter can then tighten a subset.
-                moved = simplePosition(birth, star.packed, theta[starIdx], centre, 0.45);
+        var moved: vec3f;
+        if ((mask & 2u) != 0u) {
+                moved = simplePosition(birth, star.packed, theta[starIdx], centre,
+                        simpleEccMax(camera.dynA, camera.dynB));
+        } else if ((mask & 1u) != 0u) {
+                moved = orbitPosition(birth, star.packed, centre, camera.params.w, camera.dynA, camera.dynB, camera.waveA, camera.waveB);
+        } else {
+                moved = birth;
         }
-        if ((u32(camera.engine.x) & 4u) != 0u) {
-                moved = apocenterPosition(moved, star.packed, centre, camera.params.w,
+        if ((mask & 4u) != 0u) {
+                moved = apocenterPosition(moved, birth, star.packed, centre, camera.params.w,
                         camera.dynA, camera.waveA, camera.waveB, camera.engine);
         }
         let rel: vec3f = moved - camera.cameraPos.xyz;

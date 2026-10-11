@@ -4,6 +4,33 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-10-11 — GPU/CPU subset membership needs bit-exact f32 hashes — and never hash moved coordinates
+
+Two traps met while unifying the engine-mask dispatch (movement-parity-plan):
+
+1. A per-star subset gate (the apocenter share) must decide IDENTICALLY on the
+   GPU and on the CPU mirror, or a label/pick drifts off its rendered star.
+   WGSL `hash01` rounds both the hash and the quotient to f32
+   (`f32(pcg) / 4294967296.0`), while the CPU helper returns the exact f64
+   quotient — and the uniform's share is f32 too. The selector therefore has
+   to be reproduced in f32 on the CPU: `Math.fround(Math.fround(h) / 4294967296)`
+   compared against `Math.fround(share)`. The integer hash chain (pcgHash /
+   hash4) already matches u32 exactly via Math.imul, so that is the only fix
+   needed. Any future mirror of a WGSL `hash01` gate must do the same.
+2. Membership and any birth-anchored construction (the apocenter ellipse)
+   must read the immutable BIRTH position. Feeding the previous pass's moved
+   position into the hash re-rolls the subset every frame (stars pop in and
+   out of the pass), and anchoring the ellipse to a moving point feeds back
+   into whatever produced it. Composable passes work as a PARTITION of
+   stars (stable birth hash picks the subset; each pass rebuilds from birth),
+   not as a cascade of coordinates.
+3. Related dispatch trap: a bitmask lane that runtime code clamps to nonzero
+   (setEngine never leaves mask 0) still reaches shaders as 0 in tests and
+   fixtures. Decide what mask 0 means in the shader (we made it the identity
+   baseline) and make fixtures pack a real mask via the shipping packer
+   instead of hand-writing lane values — stale hand-written IDs were half of
+   the wgsl-exec failures this round.
+
 ## 2026-09-26 — A "no visible step" gate must measure against the model peak, not the local jump
 
 The first shape-test drafts failed on fields that were smooth. An Sersic spheroid

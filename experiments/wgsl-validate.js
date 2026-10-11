@@ -429,16 +429,22 @@ function wgslConsts(part) {
                 /let\s+s:\s*f32\s*=\s*1\.0\s*-\s*r2/.test(nebula) && /s\s*\*\s*s/.test(nebula)
                 && !/texture/.test(nebula));
 
-        // 0.4.5: the simple engine's vertex lane — binding 3 carries the
-        // integrated azimuths, and the engine id branches uniform control
-        // flow between the closed form and the reconstruction.
-        check('the star sprite binds the simple-engine azimuths at binding 3',
-                /@group\(0\)\s*@binding\(3\)\s*var<storage,\s*read>\s+theta/.test(sprite));
-        check('the star vertex branches on the engine lane (uniform control flow)',
-                /\(u32\(camera\.engine\.x\)\s*&\s*2u\)\s*!=\s*0u/.test(sprite)
-                && /\(u32\(camera\.engine\.x\)\s*&\s*4u\)\s*!=\s*0u/.test(sprite)
-                && /simplePosition\([^;]*theta\[starIdx\]/s.test(sprite)
-                && /orbitPosition\([^;]*camera\.params\.w/s.test(sprite));
+	// 0.4.5: the simple engine's vertex lane — binding 3 carries the
+	// integrated azimuths. Movement parity: the engine MASK branches uniform
+	// control flow across the canonical pass order classic → simple →
+	// apocenter, each pass replacing the position; the baseline without a
+	// classic or simple bit is the birth position itself.
+	check('the star sprite binds the simple-engine azimuths at binding 3',
+		/@group\(0\)\s*@binding\(3\)\s*var<storage,\s*read>\s+theta/.test(sprite));
+	check('the star vertex branches on the engine mask (uniform control flow)',
+		/let mask: u32 = u32\(camera\.engine\.x\);/.test(sprite)
+		&& /\(mask & 2u\) != 0u/.test(sprite)
+		&& /\(mask & 1u\) != 0u/.test(sprite)
+		&& /\(mask & 4u\) != 0u/.test(sprite)
+		&& /simplePosition\([^;]*theta\[starIdx\]/s.test(sprite)
+		&& /orbitPosition\([^;]*camera\.params\.w/s.test(sprite)
+		&& /moved = birth;/.test(sprite),
+		shaders.SHADERS['star-sprite'].includes('mask & 4u'));
 
         // 0.4.5: the simple-step compute module — concatenated after the
         // orbit part for the family constants and the pressure clock.
@@ -534,12 +540,39 @@ function wgslConsts(part) {
                 { star: spriteFields, nebula: nebulaFields });
         check('the star vertex shader feeds camera.dynA/dynB/waveA/waveB into orbitPosition',
                 /orbitPosition\([^;]*camera\.dynA,\s*camera\.dynB,\s*camera\.waveA,\s*camera\.waveB\)/s.test(shaders.SHADERS['star-sprite']));
-        check('apocenter engine mirrors its bounded Kepler solve and has its own vertex dispatch',
-                /function apocenterPosition\(/.test(orbitSrc) && /fn apocenterPosition\(/.test(orbitWgsl)
-                && /for \(let i = 0; i < 5; i\+\+\)/.test(orbitSrc)
-                && /for \(var i: u32 = 0u; i < 5u; i = i \+ 1u\)/.test(orbitWgsl)
-                && /\(u32\(camera\.engine\.x\) & 4u\)[\s\S]*?apocenterPosition\(/.test(shaders.SHADERS['star-sprite'])
-                && orbit.ENGINE_APOCENTER === 4 && orbit.ENGINE_NAMES[2] === 'apocenter');
+	check('apocenter engine mirrors its bounded Kepler solve and has its own vertex dispatch',
+		/function apocenterPosition\(/.test(orbitSrc) && /fn apocenterPosition\(/.test(orbitWgsl)
+		&& /for \(let i = 0; i < 5; i\+\+\)/.test(orbitSrc)
+		&& /for \(var i: u32 = 0u; i < 5u; i = i \+ 1u\)/.test(orbitWgsl)
+		&& /\(mask & 4u\)[\s\S]*?apocenterPosition\(moved, birth,/.test(shaders.SHADERS['star-sprite'])
+		&& orbit.ENGINE_APOCENTER === 4 && orbit.ENGINE_NAMES[2] === 'apocenter');
+	// Movement parity decisions 1/2: the apocenter pass is birth-anchored on
+	// both sides — selection hash AND ellipse read the immutable record — and
+	// orbitPosition stays the pure classic law (no engine short-circuit).
+	check('the apocenter pass builds its ellipse and membership from the birth position',
+		/bitcast<u32>\(birth\.x\)/.test(orbitWgsl)
+		&& /let q: vec3f = birth - centre;/.test(orbitWgsl)
+		&& !/ENGINE_APOCENTER|apocenterPosition/.test(extractFunction(orbitSrc, 'orbitPosition'))
+		&& !/engine\.w[\s\S]*?bitcast<u32>\(p\.x\)/.test(orbitWgsl));
+	// Movement parity decision 3: the simple reconstruction reads the
+	// model-derived eccentricity off the packed dynamics lanes, not a
+	// hard-coded substitute.
+	check('the simple reconstruction reads simpleEccMax(dynA, dynB), mirrored constants pinned',
+		/simplePosition\([^;]*simpleEccMax\(camera\.dynA,\s*camera\.dynB\)/s.test(shaders.SHADERS['star-sprite'])
+		&& !/centre,\s*0\.45\)/.test(shaders.SHADERS['star-sprite'])
+		&& c.SIMPLE_ECC_GAIN === orbit.SIMPLE_ECC_K * 2
+		&& c.SIMPLE_ECC_CAP === orbit.SIMPLE_ECC_MAX
+		&& /SIMPLE_ECC_K \* 2 \* \(d\.sigmaThin \|\| 0\) \/ d\.vFlat/.test(orbitSrc),
+		{ gain: c.SIMPLE_ECC_GAIN, cap: c.SIMPLE_ECC_CAP });
+	// Movement parity decision 4: labels and picking share the one CPU
+	// dispatch, which runs the same pass order as the vertex stage.
+	check('labels and picking share orbit.engineLandmarkPosition, the CPU twin of the vertex dispatch',
+		/function engineLandmarkPosition\(/.test(orbitSrc)
+		&& /engineLandmarkPosition/.test(readSource('src/render/label-layer.js'))
+		&& /engineLandmarkPosition/.test(readSource('src/core/selection.js'))
+		&& /engine & ENGINE_SIMPLE/.test(extractFunction(orbitSrc, 'engineLandmarkPosition'))
+		&& /engine & ENGINE_CLASSIC/.test(extractFunction(orbitSrc, 'engineLandmarkPosition'))
+		&& /engine & ENGINE_APOCENTER/.test(extractFunction(orbitSrc, 'engineLandmarkPosition')));
         check('the packer fills the orbit vec4s and the engine lane (16 at 28, 4 at 44)',
                 /packOrbitDynamics\(model,\s*uniform,\s*28\)/.test(readSource('src/render/star-sprites.js'))
                 && /packEngineVec\(model,\s*uniform,\s*44\)/.test(readSource('src/render/star-sprites.js'))

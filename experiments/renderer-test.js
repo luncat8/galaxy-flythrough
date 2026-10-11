@@ -918,14 +918,34 @@ function cellManagerFrom(m, budget) {
                 engRenderer.setEngine('apocenter') === 'apocenter');
         engRenderer.render(camera, 320, 200, 14, input, 1);
         const apoUniform = readUniform(engGpu.uniformWrites[engGpu.uniformWrites.length - 1]);
-        check('apocenter packs its mask bit, the bounded force, the model bar angle and the share',
-                apoUniform[44] === window.OrbitLib.ENGINE_APOCENTER
-                && apoUniform[45] === Math.fround(window.OrbitLib.APOCENTER_ECC_MAX)
-                && Math.abs(apoUniform[46] - Math.fround(engModel.spheroid.tiltDeg * Math.PI / 180)) < 1e-7
-                && apoUniform[47] === Math.fround(window.OrbitLib.getApocenterShare())
-                && engGpu.computePasses.length === passesBefore,
-                { mask: apoUniform[44], force: apoUniform[45], barTilt: apoUniform[46], share: apoUniform[47] });
-        engRenderer.setEngine('classic');
+	check('apocenter packs its mask bit, the bounded force, the model bar angle and the share',
+		apoUniform[44] === window.OrbitLib.ENGINE_APOCENTER
+		&& apoUniform[45] === Math.fround(window.OrbitLib.APOCENTER_ECC_MAX)
+		&& Math.abs(apoUniform[46] - Math.fround(engModel.spheroid.tiltDeg * Math.PI / 180)) < 1e-7
+		&& apoUniform[47] === Math.fround(window.OrbitLib.getApocenterShare())
+		&& engGpu.computePasses.length === passesBefore,
+		{ mask: apoUniform[44], force: apoUniform[45], barTilt: apoUniform[46], share: apoUniform[47] });
+
+	// Combined masks (movement parity): the bar tilt rides every mask that
+	// carries the apocenter bit — not only the bare one — and simple+apocenter
+	// still dispatches the friction-field step.
+	engRenderer.setEngine(['classic', 'apocenter']);
+	engRenderer.render(camera, 320, 200, 15, input, 1);
+	const comboCA = readUniform(engGpu.uniformWrites[engGpu.uniformWrites.length - 1]);
+	check('classic+apocenter packs both bits and keeps the model bar angle',
+		comboCA[44] === (window.OrbitLib.ENGINE_CLASSIC | window.OrbitLib.ENGINE_APOCENTER)
+		&& Math.abs(comboCA[46] - Math.fround(engModel.spheroid.tiltDeg * Math.PI / 180)) < 1e-7
+		&& engGpu.computePasses.length === passesBefore,
+		{ mask: comboCA[44], barTilt: comboCA[46] });
+	engRenderer.setEngine(['simple', 'apocenter']);
+	engRenderer.render(camera, 320, 200, 16, input, 1);
+	const comboSA = readUniform(engGpu.uniformWrites[engGpu.uniformWrites.length - 1]);
+	check('simple+apocenter packs both bits, the bar angle, and dispatches the simple step',
+		comboSA[44] === (window.OrbitLib.ENGINE_SIMPLE | window.OrbitLib.ENGINE_APOCENTER)
+		&& Math.abs(comboSA[46] - Math.fround(engModel.spheroid.tiltDeg * Math.PI / 180)) < 1e-7
+		&& engGpu.computePasses.length === passesBefore + 1,
+		{ mask: comboSA[44], barTilt: comboSA[46] });
+	engRenderer.setEngine('classic');
 
         // Headroom / highlight desat ride the tonemap uniform's second vec4.
         engRenderer.setHeadroom(4);

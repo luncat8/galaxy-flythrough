@@ -1,7 +1,7 @@
 {
-  "date": "2026-09-26T14:38:09.001Z",
-  "totalChecks": 103,
-  "passed": 103,
+  "date": "2026-10-11T21:26:47.091Z",
+  "totalChecks": 113,
+  "passed": 113,
   "failed": 0,
   "checks": [
     {
@@ -765,6 +765,18 @@
       "pass": true
     },
     {
+      "name": "the packed apocenter lane is (mask bit, force, model bar angle, share)",
+      "pass": true,
+      "detail": {
+        "lane": [
+          4,
+          0.44999998807907104,
+          0.471238911151886,
+          1
+        ]
+      }
+    },
+    {
       "name": "apocenter CPU law agrees with an f32 replay of its WGSL inputs within 0.05 kpc",
       "pass": true,
       "detail": 0.00005754314027579659
@@ -773,6 +785,89 @@
       "name": "changing pattern speed preserves apocenter-orbit phase",
       "pass": true,
       "detail": 1.9891280697202825e-15
+    },
+    {
+      "name": "every mask 1–7 lands on the dispatch table (classic → simple → apocenter, birth baseline)",
+      "pass": true,
+      "detail": {
+        "tableWorst": 0,
+        "tableWorstMask": 0
+      }
+    },
+    {
+      "name": "classic, simple and apocenter-only are three distinct laws at T = 250",
+      "pass": true,
+      "detail": {
+        "sepCS": 0.6338214420434721,
+        "sepCA": 0.6466101733546458,
+        "sepSA": 0.17259286211925423
+      }
+    },
+    {
+      "name": "mask 3 masks classic (simple rebuilds from birth), mask 5/6 replace only the guided subset",
+      "pass": true,
+      "detail": {
+        "m3vsm2": 0,
+        "m5classic": 0.6466101733546458,
+        "m6simple": 0.10715514588663186
+      }
+    },
+    {
+      "name": "mask 4 at T = 0 is the exact birth position (identity baseline + apocenter identity)",
+      "pass": true,
+      "detail": [
+        16.356,
+        0,
+        0.1
+      ]
+    },
+    {
+      "name": "mask 5 at T = 0 is the birth position (classic identity)",
+      "pass": true,
+      "detail": [
+        11.678,
+        2.2,
+        -0.15
+      ]
+    },
+    {
+      "name": "share 0 leaves every star at its birth position (the pass never runs)",
+      "pass": true,
+      "detail": [
+        16.356,
+        0,
+        0.1
+      ]
+    },
+    {
+      "name": "share 0.5 splits the landmarks by the birth hash — both branches run — and the subset is the same at every time",
+      "pass": true,
+      "detail": {
+        "splitOk": true,
+        "stableOk": true,
+        "guidedSeen": true,
+        "frozenSeen": true
+      }
+    },
+    {
+      "name": "force 0 conserves the birth radius (circular limit) and differs from the eccentric orbit",
+      "pass": true,
+      "detail": {
+        "rBirth": 8.178611373576814,
+        "rForce0": 8.178611373576814,
+        "sep": 0.09671870083539998
+      }
+    },
+    {
+      "name": "all seven masks orbit the nonzero model centre (positions stay bounded around it)",
+      "pass": true,
+      "detail": {
+        "centre": [
+          8.178,
+          0,
+          0
+        ]
+      }
     }
   ]
 }

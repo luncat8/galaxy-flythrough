@@ -124,17 +124,17 @@ async function main() {
 	const viewProj = new Float32Array(16);
 	viewProj[0] = 1; viewProj[5] = 1; viewProj[11] = -1; viewProj[14] = 1;
 	// 192 bytes: camera block (16+4+4+4) + orbit dynA/dynB/waveA/waveB (16)
-	// + engine lane (id, eccMax, 0, 0). The dyn, wave and engine slots stay
-	// zero for the radiance fixtures: family bits in the fixture records are
-	// 0 (pattern), omega = dynA.z = 0, T = 0 — frozen under the classic engine.
+	// + engine lane (mask, apocenterForce, barTilt, apocenterShare). The dyn,
+	// wave and engine slots stay zero for the radiance fixtures: mask 0 hits
+	// the dispatch's identity baseline (moved = birth), T = 0 — frozen.
 	const cameraBytes = new ArrayBuffer(48 * 4);
 	const cam = new Float32Array(cameraBytes);
 	cam.set(viewProj, 0);
 	cam[20] = 1920; cam[21] = 1080; cam[22] = 2 / 1920; cam[23] = 2 / 1080;
 	cam[24] = MAG_ZERO; cam[25] = BASE_SIZE_PX; cam[26] = MAX_SIZE_PX; cam[27] = 0;
 	// The simple-engine azimuth array the renderer always binds (binding 3).
-	// Classic fixtures never read it — engine id 0 — but the simple fixtures
-	// below step and reconstruct through it.
+	// Non-simple masks never read it, but the simple fixtures below step and
+	// reconstruct through it.
 	const thetaBytes = new ArrayBuffer(64 * 4);
 
 	// The real LUT the renderer uploads. WgslDebug's textureLoad returns the
@@ -197,8 +197,9 @@ async function main() {
 	// runs. Half a period later the star must be at x ≈ 8.178 + 8.178.
 	// 192 bytes, matching CameraUniform. waveA/waveB stay 0, so this fixture
 	// measures the undamped 0.4.3 law (damping 0 is the shear, bit for bit).
-	// The engine lane stays 0 here — the simple reconstruction gets its own
-	// fixture in 2e below.
+	// The engine lane carries the classic MASK BIT — the dispatch's identity
+	// baseline (mask 0) is reserved for the radiance fixtures; the simple and
+	// apocenter passes get their own fixtures in 2e/2f/2h below.
 	const orbitCamBytes = new ArrayBuffer(48 * 4);
 	const ocam = new Float32Array(orbitCamBytes);
 	ocam[0] = 1; ocam[5] = 1; ocam[10] = 1; ocam[15] = 1;   // identity viewProj
@@ -208,6 +209,7 @@ async function main() {
 	ocam[24] = MAG_ZERO; ocam[25] = BASE_SIZE_PX; ocam[26] = MAX_SIZE_PX;
 	ocam[28] = 0.225; ocam[29] = 0.5; ocam[30] = 0.041; ocam[31] = 0;      // dynA
 	ocam[32] = 0.031; ocam[33] = 0.45; ocam[34] = 3; ocam[35] = 0;         // dynB
+	ocam[44] = orbit.ENGINE_CLASSIC;                                        // engine mask
 
 	const sunBytes = new ArrayBuffer(records.RECORD_BYTES);
 	const sunF = new Float32Array(sunBytes);
@@ -372,11 +374,14 @@ async function main() {
 	ocam.set(savedWave, 36);
 
 	// --- 2e. The simple-engine reconstruction runs on the shipping WGSL ----
-	// Engine id 1 in the uniform lane: the vertex ignores the orbit law and
-	// rebuilds the position from the integrated azimuth, birth radius and the
-	// eccentric rho. Same camera as 2b (identity, 5 kpc up, centre x = 8.178);
-	// the star is born at (16.356, 0, 0), family disc, jitter 0x00
-	// (eccU = 0.03125, peri = 0), eccMax = 0.2 in the engine lane.
+	// The engine lane is a MASK (movement-parity-plan): the simple bit is 2.
+	// The vertex skips the closed form and rebuilds the position from the
+	// integrated azimuth, the birth radius and the eccentric rho. Same camera
+	// as 2b (identity, 5 kpc up, centre x = 8.178); the star is born at
+	// (16.356, 0, 0), family disc, jitter 0x00 (eccU = 0.03125, peri = 0).
+	// The eccentricity is the MODEL rule — simpleEccMax reads vFlat (dynA.x)
+	// and sigmaThin (dynB.x) off the lanes already packed for 2b:
+	// 1.5 · 0.031 / 0.225 ≈ 0.20667 — no hard-coded value in the shader.
 	const simBytes = new ArrayBuffer(records.RECORD_BYTES);
 	const simF = new Float32Array(simBytes);
 	const simU = new Uint32Array(simBytes);
@@ -392,15 +397,18 @@ async function main() {
 			3: simThetaBytes,
 		},
 	};
-	const simModel = { centre: { x: 8.178, y: 0, z: 0 } };
+	const simModel = { centre: { x: 8.178, y: 0, z: 0 }, dynamics: { vFlat: 0.225, sigmaThin: 0.031 } };
+	const simEcc = orbit.simpleEccMax(simModel);   // = 1.5 · dynB.x / dynA.x
 	const simCpu = new Float64Array(3);
-	ocam[44] = 1; ocam[45] = 0.2;
+	check('the fixture dyn lanes give the reconstruction a nonzero model eccentricity',
+		Math.abs(simEcc - 1.5 * 0.031 / 0.225) < 1e-12 && simEcc > 0.15, simEcc);
+	ocam[44] = orbit.ENGINE_SIMPLE; ocam[45] = 0; ocam[46] = 0; ocam[47] = 0;
 	simTheta[0] = Math.PI / 2;
 	const simQuarter = runStage(spriteCode, 'vs_main', 'debugVertex',
 		{ vertex_index: 3, instance_index: 0 }, simBinds);
 	orbit.simplePositionFromTheta(simCpu, Math.PI / 2, simF[0], simF[1], simF[2], 0,
-		orbit.FAMILY_DISC, 0.2, simModel);
-	check('on-WGSL: engine 1 rebuilds the quarter-turn position from the azimuth (< 2 pc)',
+		orbit.FAMILY_DISC, simEcc, simModel);
+	check('on-WGSL: the simple mask rebuilds the quarter-turn position from the azimuth (< 2 pc)',
 		Math.abs((simQuarter.clipPos[0] - offX) - simCpu[0]) < 2e-3
 		&& Math.abs((simQuarter.clipPos[1] + 5 - offY) - simCpu[1]) < 2e-3,
 		{ gpu: [simQuarter.clipPos[0] - offX, simQuarter.clipPos[1] + 5 - offY],
@@ -409,7 +417,7 @@ async function main() {
 	const simZero = runStage(spriteCode, 'vs_main', 'debugVertex',
 		{ vertex_index: 3, instance_index: 0 }, simBinds);
 	orbit.simplePositionFromTheta(simCpu, 0, simF[0], simF[1], simF[2], 0,
-		orbit.FAMILY_DISC, 0.2, simModel);
+		orbit.FAMILY_DISC, simEcc, simModel);
 	check('on-WGSL: the eccentric rho shapes the rebuilt radius at theta = 0',
 		Math.abs((simZero.clipPos[0] - offX) - simCpu[0]) < 2e-3
 		&& Math.abs((simZero.clipPos[1] + 5 - offY) - simCpu[1]) < 2e-3,
@@ -420,9 +428,27 @@ async function main() {
 	check('on-WGSL: that radius is eccentric, not the birth circle (off by 51 pc)',
 		Math.abs((simZero.clipPos[0] - offX) - 16.356) > 0.01,
 		{ x: simZero.clipPos[0] - offX, circular: 16.356 });
-	ocam[44] = 0; ocam[45] = 0;
+	// Non-vacuity: the eccentricity really is the model rule off the dyn
+	// lanes — double sigmaThin and the rebuilt radius must change, and the
+	// old fixed 0.45 answer must NOT fit.
+	const savedSigma = ocam[32];
+	ocam[32] = 2 * savedSigma;
+	const simDoubled = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 0 }, simBinds);
+	ocam[32] = savedSigma;
+	orbit.simplePositionFromTheta(simCpu, 0, simF[0], simF[1], simF[2], 0,
+		orbit.FAMILY_DISC, 0.45, simModel);
+	check('on-WGSL: the reconstruction reads simpleEccMax(dynA, dynB) — not a fixed constant',
+		Math.abs(simDoubled.clipPos[0] - simZero.clipPos[0]) > 0.01
+		&& Math.abs((simZero.clipPos[0] - offX) - simCpu[0]) > 0.01,
+		{ dx: simDoubled.clipPos[0] - simZero.clipPos[0],
+			gpuX: simZero.clipPos[0] - offX, fixed045: simCpu[0] });
+	ocam[44] = 0; ocam[45] = 0; ocam[46] = 0; ocam[47] = 0;
 
 	// --- 2f. Apocenter-guided movement runs on the shipping WGSL -----------
+	// The apocenter mask bit is 4; the lane is packed by the shipping packer
+	// (mask, force, barTilt, share). captureModel has no bar tilt, so lane z
+	// is 0; share must be 1 or the pass would (correctly) guide nothing.
 	const apoBytes = new ArrayBuffer(records.RECORD_BYTES);
 	const apoF = new Float32Array(apoBytes), apoU = new Uint32Array(apoBytes);
 	apoF[0] = 8.178 + 6; apoF[1] = 1.5; apoF[2] = 0.2;
@@ -437,7 +463,19 @@ async function main() {
 	const apoPacked = new Float32Array(16);
 	orbit.packOrbitDynamics(captureModel, apoPacked, 0);
 	ocam.set(apoPacked.subarray(0, 16), 28);
-	ocam[44] = 2; ocam[45] = orbit.APOCENTER_ECC_MAX; ocam[46] = 0;
+	const savedEngine = orbit.getEngine();
+	const savedShare = orbit.getApocenterShare();
+	const savedForce = orbit.getApocenterForce();
+	orbit.setEngine(orbit.ENGINE_APOCENTER);
+	orbit.setApocenterShare(1);
+	orbit.setApocenterForce(orbit.APOCENTER_ECC_MAX);
+	const apoLane = new Float32Array(4);
+	orbit.packEngineVec(captureModel, apoLane, 0);
+	ocam.set(apoLane, 44);
+	check('the apocenter lane packs (mask bit, force, tilt, share) — share 1 guides every star',
+		ocam[44] === orbit.ENGINE_APOCENTER && ocam[45] === Math.fround(orbit.APOCENTER_ECC_MAX)
+		&& ocam[46] === 0 && ocam[47] === 1,
+		{ lane: [ocam[44], ocam[45], ocam[46], ocam[47]] });
 	ocam[27] = 0;
 	const apoAt0 = runStage(spriteCode, 'vs_main', 'debugVertex',
 		{ vertex_index: 3, instance_index: 0 }, apoBinds);
@@ -445,18 +483,166 @@ async function main() {
 		Math.abs(apoAt0.clipPos[0] - (apoF[0] + offX)) < 2e-3
 		&& Math.abs(apoAt0.clipPos[1] - (apoF[1] - 5 + offY)) < 2e-3,
 		{ clip: Array.from(apoAt0.clipPos) });
+	// Share 0: the membership gate lets no star through — the mask is set but
+	// nothing moves off the birth baseline.
+	ocam[47] = 0;
+	ocam[27] = 120;
+	const apoShare0 = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 0 }, apoBinds);
+	check('on-WGSL: share 0 freezes every star at its birth position (the gate holds)',
+		Math.abs(apoShare0.clipPos[0] - (apoF[0] + offX)) < 2e-3
+		&& Math.abs(apoShare0.clipPos[1] - (apoF[1] - 5 + offY)) < 2e-3,
+		{ clip: Array.from(apoShare0.clipPos) });
+	ocam[47] = 1;
 	const apoTime = 120;
 	ocam[27] = apoTime;
 	const apoAtT = runStage(spriteCode, 'vs_main', 'debugVertex',
 		{ vertex_index: 3, instance_index: 0 }, apoBinds);
-	orbit.setEngine('apocenter');
 	const apoCpu = new Float64Array(3);
-	orbit.orbitPosition(apoCpu, apoF[0], apoF[1], apoF[2], orbit.FAMILY_DISC, 5, 15, apoTime, captureModel);
+	orbit.apocenterPosition(apoCpu, apoF[0], apoF[1], apoF[2], orbit.FAMILY_DISC, 5, 15, apoTime, captureModel);
 	check('on-WGSL: apocenter vertex path matches the CPU Kepler mirror (< 20 pc)',
 		Math.hypot(apoAtT.clipPos[0] - offX - apoCpu[0], apoAtT.clipPos[1] + 5 - offY - apoCpu[1]) < 0.02,
 		{ gpu: [apoAtT.clipPos[0] - offX, apoAtT.clipPos[1] + 5 - offY], cpu: [apoCpu[0], apoCpu[1]] });
-	orbit.setEngine('classic');
-	ocam[44] = 0; ocam[45] = 0; ocam[46] = 0;
+	// Non-vacuity: the star really left its birth circle — a dead pass would
+	// sit on the share-0 answer.
+	check('on-WGSL: the guided star actually moves (apocenter pass is not a no-op)',
+		Math.hypot(apoAtT.clipPos[0] - apoShare0.clipPos[0], apoAtT.clipPos[1] - apoShare0.clipPos[1]) > 0.05,
+		{ moved: Math.hypot(apoAtT.clipPos[0] - apoShare0.clipPos[0], apoAtT.clipPos[1] - apoShare0.clipPos[1]) });
+	orbit.setEngine(savedEngine);
+	orbit.setApocenterShare(savedShare);
+	orbit.setApocenterForce(savedForce);
+	ocam[44] = 0; ocam[45] = 0; ocam[46] = 0; ocam[47] = 0;
+
+	// --- 2h. The mask sweep: executed WGSL vs the CPU dispatch table -------
+	// Every mask 1–7 through vs_main, lanes packed by the shipping packers
+	// (packOrbitDynamics + packEngineVec, exported engine constants — no old
+	// IDs written by hand), compared against a CPU reference that re-states
+	// the dispatch table. Two stars: a disc star and a bar star, so the bar
+	// apsis lane (the model's tilt) is exercised under combined masks.
+	const sweepModel = { ...captureModel, spheroid: { ...captureModel.spheroid, tiltDeg: 25 } };
+	const sweepBytes = new ArrayBuffer(2 * records.RECORD_BYTES);
+	const sweepF = new Float32Array(sweepBytes);
+	const sweepU = new Uint32Array(sweepBytes);
+	// [x, y, z, family, phase, amp]
+	const sweepStars = [
+		[8.178 + 5, 2.1, 0.3, 1, 3, 9],
+		[8.178 + 1.3, -0.4, 0.1, 2, 11, 15],
+	];
+	sweepStars.forEach((st, s) => {
+		sweepF[s * 4] = st[0]; sweepF[s * 4 + 1] = st[1]; sweepF[s * 4 + 2] = st[2];
+		sweepU[s * 4 + 3] = ((records.FLAG_VISIBLE | (st[3] << 3)) << 16)
+			| (records.encodeAbsMag(4.83) << 8) | 4 | (orbit.encodeJitter(st[4], st[5]) << 24);
+	});
+	const sweepThetaBytes = new ArrayBuffer(8);
+	const sweepTheta = new Float32Array(sweepThetaBytes);
+	for (let s = 0; s < 2; s++) {
+		sweepTheta[s] = Math.atan2(sweepStars[s][1], sweepStars[s][0] - 8.178) + (s === 0 ? 0.35 : -0.2);
+	}
+	const sweepBinds = { 0: {
+		0: { uniform: orbitCamBytes },
+		1: sweepBytes,
+		2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
+		3: sweepThetaBytes,
+	} };
+	const sweepPacked = new Float32Array(16);
+	orbit.setWaveDamping(0);
+	orbit.packOrbitDynamics(sweepModel, sweepPacked, 0);
+	ocam.set(sweepPacked.subarray(0, 16), 28);
+	const sweepT = 120;
+	ocam[27] = sweepT;
+	const sweepLane = new Float32Array(4);
+	const sweepRef = new Float64Array(3);
+	function sweepReference(mask, s) {
+		const [bx, by, bz, fam, ph, amp] = sweepStars[s];
+		if (mask & orbit.ENGINE_SIMPLE) {
+			orbit.simplePositionFromTheta(sweepRef, sweepTheta[s], bx, by, bz,
+				orbit.encodeJitter(ph, amp), fam, orbit.simpleEccMax(sweepModel), sweepModel);
+		} else if (mask & orbit.ENGINE_CLASSIC) {
+			orbit.orbitPosition(sweepRef, bx, by, bz, fam, ph, amp, sweepT, sweepModel);
+		} else {
+			sweepRef[0] = bx; sweepRef[1] = by; sweepRef[2] = bz;
+		}
+		if ((mask & orbit.ENGINE_APOCENTER) && sweepT !== 0 && orbit.apocenterSelected(bx, by, bz)) {
+			orbit.apocenterPosition(sweepRef, bx, by, bz, fam, ph, amp, sweepT, sweepModel);
+		}
+		return sweepRef;
+	}
+	const savedSweepShare = orbit.getApocenterShare();
+	const savedSweepForce = orbit.getApocenterForce();
+	orbit.setApocenterShare(1);
+	orbit.setApocenterForce(orbit.APOCENTER_ECC_MAX);
+	let sweepWorst = 0, sweepWorstCase = null;
+	const sweepPos = {};
+	let sweepTiltOk = true;
+	for (let mask = 1; mask <= 7; mask++) {
+		orbit.setEngine(mask);
+		orbit.packEngineVec(sweepModel, sweepLane, 0);
+		ocam.set(sweepLane, 44);
+		if ((mask & orbit.ENGINE_APOCENTER)
+			&& Math.abs(ocam[46] - Math.fround(25 * Math.PI / 180)) > 1e-7) sweepTiltOk = false;
+		sweepPos[mask] = [];
+		for (let s = 0; s < 2; s++) {
+			const v = runStage(spriteCode, 'vs_main', 'debugVertex',
+				{ vertex_index: 3, instance_index: s }, sweepBinds);
+			const gx = v.clipPos[0] - offX, gy = v.clipPos[1] + 5 - offY;
+			const ref = sweepReference(mask, s);
+			const d = Math.hypot(gx - ref[0], gy - ref[1]);
+			if (d > sweepWorst) { sweepWorst = d; sweepWorstCase = { mask, star: s, d }; }
+			sweepPos[mask].push([gx, gy]);
+		}
+	}
+	check('on-WGSL: every mask 1–7 lands where the CPU dispatch table says (both stars, < 20 pc)',
+		sweepWorst < 0.02, { sweepWorst, sweepWorstCase });
+	check('packEngineVec fills the bar tilt under every mask carrying the apocenter bit',
+		sweepTiltOk, { tilt: Math.fround(25 * Math.PI / 180) });
+	const sep2 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+	check('on-WGSL: masks 1, 2 and 4 are three distinct renderings at T = 120 (> 0.1 kpc apart)',
+		sep2(sweepPos[1][0], sweepPos[2][0]) > 0.1
+		&& sep2(sweepPos[1][0], sweepPos[4][0]) > 0.1
+		&& sep2(sweepPos[2][1], sweepPos[4][1]) > 0.1,
+		{ disc: [sep2(sweepPos[1][0], sweepPos[2][0]), sep2(sweepPos[1][0], sweepPos[4][0])],
+			bar: sep2(sweepPos[2][1], sweepPos[4][1]) });
+	check('on-WGSL: mask 3 renders exactly what mask 2 renders (simple masks classic)',
+		sep2(sweepPos[3][0], sweepPos[2][0]) < 2e-3 && sep2(sweepPos[3][1], sweepPos[2][1]) < 2e-3,
+		{ d0: sep2(sweepPos[3][0], sweepPos[2][0]), d1: sep2(sweepPos[3][1], sweepPos[2][1]) });
+	// T = 0 identity for the masks without the simple bit.
+	ocam[27] = 0;
+	orbit.setEngine(orbit.ENGINE_APOCENTER);
+	orbit.packEngineVec(sweepModel, sweepLane, 0);
+	ocam.set(sweepLane, 44);
+	const sweepAt0 = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 0 }, sweepBinds);
+	check('on-WGSL: mask 4 at T = 0 renders the birth position (identity baseline)',
+		Math.abs(sweepAt0.clipPos[0] - (sweepStars[0][0] + offX)) < 2e-3
+		&& Math.abs(sweepAt0.clipPos[1] - (sweepStars[0][1] - 5 + offY)) < 2e-3,
+		{ clip: [sweepAt0.clipPos[0], sweepAt0.clipPos[1]] });
+	// Force 0 degenerates the ellipse to the circular rate: the disc star's
+	// radius about the centre is conserved (its plane is nearly the disc
+	// plane, so the xy radius carries it), while the bounded force is
+	// eccentric. The local Kepler phase creeps at Ω−Ωp ≈ 6e-4 rad/Myr here,
+	// so the breathing needs a long baseline to open up.
+	const sweepR0 = Math.hypot(sweepStars[0][0] - 8.178, sweepStars[0][1]);
+	ocam[27] = 2000;
+	orbit.setApocenterForce(0);
+	orbit.packEngineVec(sweepModel, sweepLane, 0);
+	ocam.set(sweepLane, 44);
+	const circ = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 0 }, sweepBinds);
+	const circR = Math.hypot(circ.clipPos[0] - offX - 8.178, circ.clipPos[1] + 5 - offY);
+	orbit.setApocenterForce(orbit.APOCENTER_ECC_MAX);
+	orbit.packEngineVec(sweepModel, sweepLane, 0);
+	ocam.set(sweepLane, 44);
+	const ecc = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 0 }, sweepBinds);
+	const eccR = Math.hypot(ecc.clipPos[0] - offX - 8.178, ecc.clipPos[1] + 5 - offY);
+	check('on-WGSL: force 0 conserves the birth radius (circular limit), nonzero force is eccentric',
+		Math.abs(circR - sweepR0) < 0.01 && Math.abs(eccR - sweepR0) > 0.1,
+		{ birthR: sweepR0, circR, eccR });
+	orbit.setEngine(orbit.ENGINE_CLASSIC);
+	orbit.setApocenterShare(savedSweepShare);
+	orbit.setApocenterForce(savedSweepForce);
+	ocam[27] = 0;
+	ocam[44] = 0; ocam[45] = 0; ocam[46] = 0; ocam[47] = 0;
 
 	// --- 2g. The simple-step kernel runs on the shipping WGSL --------------
 	// The real compute entry, one workgroup of 64, driven invocation by

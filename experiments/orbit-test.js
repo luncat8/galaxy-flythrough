@@ -527,6 +527,8 @@ function orbitPositionF32(px, py, pz, packed, cx, time, dynA, dynB, waveA, waveB
 function apocenterPositionF32(px, py, pz, packed, centre, time, dynA, waveA, waveB, engine) {
 	const fr = Math.fround, TAU = fr(6.28318530718), PI = fr(3.14159265359);
 	if (time === 0) return [fr(px), fr(py), fr(pz)];
+	// The shipping CPU selector IS the f32 mirror of the WGSL gate.
+	if (!orbit.apocenterSelected(px, py, pz)) return [fr(px), fr(py), fr(pz)];
 	const flags = (packed >>> 16) & 255;
 	const family = (flags >>> 3) & 3;
 	const phaseBits = (packed >>> 24) & 15, ampBits = (packed >>> 28) & 15;
@@ -974,7 +976,7 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 		const ref = new Float64Array(3);
 		orbit.simplePositionFromTheta(ref, th, bx, by, bz, 0, fam, orbit.simpleEccMax(MW), MW);
 		const got = new Float64Array(3);
-		orbit.simpleLandmarkPosition(got, i, bz);
+		orbit.simpleLandmarkPosition(got, i);
 		mirrorWorst = Math.max(mirrorWorst, dist3(ref, got));
 	}
 	check('the landmark mirror agrees with the reference step bit-for-bit',
@@ -1007,14 +1009,16 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 	const apoOut = new Float64Array(3);
 	orbit.setPatternScale(1, 0, MW);
 	orbit.resetPatternPhaseOffset();
-	orbit.setEngine('apocenter');
 	check('apocenter is a named third engine and its mask bit round-trips',
 		orbit.ENGINE_APOCENTER === 4 && orbit.setEngine(4) === 4
 		&& orbit.engineName() === 'apocenter' && orbit.setEngine('apocenter') === 4);
+	orbit.setEngine(savedEngine);
 
+	// The law itself, independent of the mask dispatch (which §13 covers):
+	// share 1 guides every star, the default force is APOCENTER_ECC_MAX.
 	let identityWorst = 0;
 	for (let family = 0; family < 4; family++) {
-		orbit.orbitPosition(apoOut, MW.centre.x + 5.2, -1.3, 0.4, family, 7, 15, 0, MW);
+		orbit.apocenterPosition(apoOut, MW.centre.x + 5.2, -1.3, 0.4, family, 7, 15, 0, MW);
 		identityWorst = Math.max(identityWorst, dist3(apoOut, [MW.centre.x + 5.2, -1.3, 0.4]));
 	}
 	check('apocenter T = 0 is exact for all four families at a non-origin centre', identityWorst === 0, identityWorst);
@@ -1033,8 +1037,8 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 	const cr = MW.dynamics.vFlat / orbit.effectivePatternSpeed(MW);
 	const crApo = orbit.apocenterAngle(0, cr, orbit.FAMILY_DISC, MW);
 	const crX = MW.centre.x + cr * Math.cos(crApo), crY = cr * Math.sin(crApo);
-	orbit.orbitPosition(apoOut, crX, crY, 0, orbit.FAMILY_DISC, 0, 15, 0, MW);
-	orbit.orbitPosition(out, crX, crY, 0, orbit.FAMILY_DISC, 0, 15, 20, MW);
+	orbit.apocenterPosition(apoOut, crX, crY, 0, orbit.FAMILY_DISC, 0, 15, 0, MW);
+	orbit.apocenterPosition(out, crX, crY, 0, orbit.FAMILY_DISC, 0, 15, 20, MW);
 	const crAngleAfter = Math.atan2(out[1], out[0] - MW.centre.x);
 	const crRadiusAfter = Math.hypot(out[0] - MW.centre.x, out[1]);
 	check('an apocenter at corotation rotates with the pattern around the model centre',
@@ -1052,7 +1056,7 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 
 	let bounded = true;
 	for (const t of [-10000, -2500, 2500, 10000]) {
-		orbit.orbitPosition(apoOut, MW.centre.x + 6, 2, 0.4, orbit.FAMILY_DISC, 9, 15, t, MW);
+		orbit.apocenterPosition(apoOut, MW.centre.x + 6, 2, 0.4, orbit.FAMILY_DISC, 9, 15, t, MW);
 		const d = Math.hypot(apoOut[0] - MW.centre.x, apoOut[1], apoOut[2]);
 		bounded = bounded && Number.isFinite(d) && d > 0 && d < 20;
 	}
@@ -1063,7 +1067,21 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 	const apoDynA = Array.from(packedDynamics.subarray(0, 4));
 	const apoWaveA = Array.from(packedDynamics.subarray(8, 12));
 	const apoWaveB = Array.from(packedDynamics.subarray(12, 16));
-	const apoEngine = [2, orbit.APOCENTER_ECC_MAX, MW.spheroid.tiltDeg * Math.PI / 180, 0].map(Math.fround);
+	// The lane the GPU actually reads, via the shipping packer: mask bit 4,
+	// the force, the model bar angle and share 1 (every star guided).
+	// The CPU law and the replay below both read the module's share/force, so
+	// they run under exactly the state the lane packs: apocenter mask, share 1.
+	const savedShare = orbit.getApocenterShare();
+	orbit.setEngine(orbit.ENGINE_APOCENTER);
+	orbit.setApocenterShare(1);
+	const apoLane = new Float32Array(4);
+	orbit.packEngineVec(MW, apoLane, 0);
+	const apoEngine = Array.from(apoLane);
+	check('the packed apocenter lane is (mask bit, force, model bar angle, share)',
+		apoEngine[0] === orbit.ENGINE_APOCENTER && apoEngine[1] === Math.fround(orbit.getApocenterForce())
+		&& Math.abs(apoEngine[2] - Math.fround(MW.spheroid.tiltDeg * Math.PI / 180)) < 1e-7
+		&& apoEngine[3] === 1,
+		{ lane: apoEngine });
 	const apoCases = [
 		[MW.centre.x + 6, 1.5, 0.4, orbit.FAMILY_DISC, 5, 13, 120],
 		[MW.centre.x + 2, -0.7, 0.2, orbit.FAMILY_BAR, 11, 15, 900],
@@ -1084,13 +1102,181 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 
 	orbit.setPatternScale(1, 0, MW);
 	orbit.resetPatternPhaseOffset();
-	orbit.orbitPosition(apoOut, MW.centre.x + 6, 2, 0.2, orbit.FAMILY_DISC, 6, 12, 100, MW);
+	orbit.apocenterPosition(apoOut, MW.centre.x + 6, 2, 0.2, orbit.FAMILY_DISC, 6, 12, 100, MW);
 	orbit.setPatternScale(1.5, 100, MW);
-	orbit.orbitPosition(out, MW.centre.x + 6, 2, 0.2, orbit.FAMILY_DISC, 6, 12, 100, MW);
+	orbit.apocenterPosition(out, MW.centre.x + 6, 2, 0.2, orbit.FAMILY_DISC, 6, 12, 100, MW);
 	check('changing pattern speed preserves apocenter-orbit phase', dist3(apoOut, out) < 1e-8, dist3(apoOut, out));
 	orbit.setPatternScale(savedScale, 0, MW);
 	orbit.resetPatternPhaseOffset();
 	orbit.setEngine(savedEngine);
+	orbit.setApocenterShare(savedShare);
+}
+
+// --- 13. The engine-mask dispatch (movement parity) ----------------------
+// The vertex stage and orbit.engineLandmarkPosition must run one contract:
+// passes classic → simple → apocenter, each replacing the position, baseline
+// birth when neither classic nor simple is set, and the apocenter pass on the
+// birth-selected subset only. The reference below re-states the contract's
+// table independently of the dispatch implementation.
+{
+	const model = MW;
+	const savedEngine = orbit.getEngine();
+	const savedShare = orbit.getApocenterShare();
+	const savedForce = orbit.getApocenterForce();
+	const c = model.centre;
+	const T = 250;
+	// Four landmarks at distinct birth points (f64, like
+	// landmarks.positions): a disc star, a pattern star, a third disc star
+	// and one whose birth hash is SELECTED at share 0.5 — so the intermediate
+	// share check exercises both sides of the subset.
+	const lmBirth = Float64Array.of(
+		c.x + 8.178, 0, 0.1,
+		c.x + 3.5, 2.2, -0.15,
+		c.x + 1.2, -0.9, 0.6,
+		c.x + 3.05, -1.1, 0.15);
+	const lmColor = Uint8Array.of(5, 1, 3, 5);   // G (disc), B (pattern), F (disc), G (disc)
+	const N = 4;
+	const dispatchOut = new Float64Array(3);
+	const refOut = new Float64Array(3);
+
+	function initMirror() {
+		orbit.simpleLandmarksInit(lmBirth, lmColor, N, model);
+	}
+	// The contract's table, stated independently of engineLandmarkPosition.
+	function reference(mask, i, time) {
+		const bx = lmBirth[i * 3], by = lmBirth[i * 3 + 1], bz = lmBirth[i * 3 + 2];
+		const fam = orbit.familyFromColorIndex(lmColor[i]);
+		if (mask & orbit.ENGINE_SIMPLE) {
+			const P = orbit.simpleDerived(model, {});
+			const phase = orbit.simplePatternPhase(model, time);
+			const r0 = Math.hypot(bx - c.x, by - c.y);
+			const th = orbit.simpleStepTheta(Math.atan2(by - c.y, bx - c.x), r0,
+				orbit.simpleEccOf(0), orbit.simplePeriOf(0), fam, P, phase, time, bz);
+			orbit.simplePositionFromTheta(refOut, th, bx, by, bz, 0, fam, orbit.simpleEccMax(model), model);
+		} else if (mask & orbit.ENGINE_CLASSIC) {
+			orbit.orbitPosition(refOut, bx, by, bz, fam, 0, 0, time, model);
+		} else {
+			refOut[0] = bx; refOut[1] = by; refOut[2] = bz;
+		}
+		if ((mask & orbit.ENGINE_APOCENTER) && time !== 0 && orbit.apocenterSelected(bx, by, bz)) {
+			orbit.apocenterPosition(refOut, bx, by, bz, fam, 0, 0, time, model);
+		}
+		return refOut;
+	}
+
+	orbit.setApocenterShare(1);
+	orbit.setApocenterForce(orbit.APOCENTER_ECC_MAX);
+	let tableWorst = 0, tableWorstMask = 0;
+	const maskPositions = {};
+	for (let mask = 1; mask <= 7; mask++) {
+		orbit.setEngine(mask);
+		initMirror();
+		if (mask & orbit.ENGINE_SIMPLE) orbit.simpleLandmarksStep(T, T);
+		maskPositions[mask] = [];
+		for (let i = 0; i < N; i++) {
+			orbit.engineLandmarkPosition(dispatchOut, i, lmBirth[i * 3], lmBirth[i * 3 + 1], lmBirth[i * 3 + 2], lmColor[i], T, model);
+			reference(mask, i, T);
+			const d = dist3(dispatchOut, refOut);
+			if (d > tableWorst) { tableWorst = d; tableWorstMask = mask; }
+			maskPositions[mask].push([dispatchOut[0], dispatchOut[1], dispatchOut[2]]);
+		}
+	}
+	check('every mask 1–7 lands on the dispatch table (classic → simple → apocenter, birth baseline)',
+		tableWorst < 1e-9, { tableWorst, tableWorstMask });
+
+	// Non-vacuity at T = 250: each pair of laws must separate by > 0.1 kpc
+	// on at least one landmark (inner stars rotate through a similar angle in
+	// all three laws, so the proof is per-pair, not per-star) — or the table
+	// check above could be passing on three copies of one law.
+	const sep = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+	const maxSep = (ma, mb) => Math.max(...Array.from({ length: N }, (_, i) => sep(maskPositions[ma][i], maskPositions[mb][i])));
+	const sepCS = maxSep(1, 2), sepCA = maxSep(1, 4), sepSA = maxSep(2, 4);
+	check('classic, simple and apocenter-only are three distinct laws at T = 250',
+		sepCS > 0.1 && sepCA > 0.1 && sepSA > 0.1, { sepCS, sepCA, sepSA });
+	check('mask 3 masks classic (simple rebuilds from birth), mask 5/6 replace only the guided subset',
+		sep(maskPositions[3][0], maskPositions[2][0]) < 1e-9
+		&& sep(maskPositions[5][1], maskPositions[1][1]) > 0.1
+		&& sep(maskPositions[6][0], maskPositions[2][0]) > 0.1,
+		{ m3vsm2: sep(maskPositions[3][0], maskPositions[2][0]),
+			m5classic: sep(maskPositions[5][1], maskPositions[1][1]),
+			m6simple: sep(maskPositions[6][0], maskPositions[2][0]) });
+
+	// T = 0: identity for masks without the simple bit; the simple masks keep
+	// their documented eccentric-rho shape (seeded theta = birth azimuth).
+	orbit.setEngine(orbit.ENGINE_APOCENTER);
+	orbit.engineLandmarkPosition(dispatchOut, 0, lmBirth[0], lmBirth[1], lmBirth[2], lmColor[0], 0, model);
+	check('mask 4 at T = 0 is the exact birth position (identity baseline + apocenter identity)',
+		dist3(dispatchOut, [lmBirth[0], lmBirth[1], lmBirth[2]]) === 0, Array.from(dispatchOut));
+	orbit.setEngine(orbit.ENGINE_CLASSIC | orbit.ENGINE_APOCENTER);
+	orbit.engineLandmarkPosition(dispatchOut, 1, lmBirth[3], lmBirth[4], lmBirth[5], lmColor[1], 0, model);
+	check('mask 5 at T = 0 is the birth position (classic identity)',
+		dist3(dispatchOut, [lmBirth[3], lmBirth[4], lmBirth[5]]) < 1e-9, Array.from(dispatchOut));
+
+	// Share edges: 0 freezes the apocenter pass entirely, 1 guides everyone,
+	// and an intermediate share splits the landmarks deterministically by the
+	// birth hash — the SAME subset at any time (membership is time-stable).
+	orbit.setEngine(orbit.ENGINE_APOCENTER);
+	const tA = 120, tB = 400;
+	orbit.setApocenterShare(0);
+	orbit.engineLandmarkPosition(dispatchOut, 0, lmBirth[0], lmBirth[1], lmBirth[2], lmColor[0], tA, model);
+	check('share 0 leaves every star at its birth position (the pass never runs)',
+		dist3(dispatchOut, [lmBirth[0], lmBirth[1], lmBirth[2]]) === 0, Array.from(dispatchOut));
+	orbit.setApocenterShare(0.5);
+	let splitOk = true, stableOk = true, guidedSeen = false, frozenSeen = false;
+	for (let i = 0; i < N; i++) {
+		const bx = lmBirth[i * 3], by = lmBirth[i * 3 + 1], bz = lmBirth[i * 3 + 2];
+		const sel = orbit.apocenterSelected(bx, by, bz);
+		if (sel) guidedSeen = true; else frozenSeen = true;
+		for (const t of [tA, tB]) {
+			orbit.engineLandmarkPosition(dispatchOut, i, bx, by, bz, lmColor[i], t, model);
+			reference(orbit.ENGINE_APOCENTER, i, t);
+			if (dist3(dispatchOut, refOut) > 1e-9) splitOk = false;
+			// The ungated law: force share 1 while evaluating it, so the
+			// membership the dispatch chose is what gets measured.
+			let lawOk;
+			if (sel) {
+				orbit.setApocenterShare(1);
+				orbit.apocenterPosition(refOut, bx, by, bz, orbit.familyFromColorIndex(lmColor[i]), 0, 0, t, model);
+				orbit.setApocenterShare(0.5);
+				lawOk = dist3(dispatchOut, refOut) < 1e-9;
+			} else {
+				lawOk = dist3(dispatchOut, [bx, by, bz]) === 0;
+			}
+			if (!lawOk) stableOk = false;
+		}
+	}
+	check('share 0.5 splits the landmarks by the birth hash — both branches run — and the subset is the same at every time',
+		splitOk && stableOk && guidedSeen && frozenSeen, { splitOk, stableOk, guidedSeen, frozenSeen });
+
+	// Force edges: force 0 degenerates the ellipse to the local circular rate
+	// (the birth radius is conserved exactly), nonzero force is eccentric.
+	orbit.setApocenterShare(1);
+	orbit.setApocenterForce(0);
+	orbit.engineLandmarkPosition(dispatchOut, 0, lmBirth[0], lmBirth[1], lmBirth[2], lmColor[0], tB, model);
+	const rBirth0 = Math.hypot(lmBirth[0] - c.x, lmBirth[1], lmBirth[2] - c.z);
+	const rNow0 = Math.hypot(dispatchOut[0] - c.x, dispatchOut[1], dispatchOut[2] - c.z);
+	orbit.setApocenterForce(orbit.APOCENTER_ECC_MAX);
+	orbit.engineLandmarkPosition(refOut, 0, lmBirth[0], lmBirth[1], lmBirth[2], lmColor[0], tB, model);
+	check('force 0 conserves the birth radius (circular limit) and differs from the eccentric orbit',
+		Math.abs(rNow0 - rBirth0) < 1e-6 && dist3(dispatchOut, refOut) > 0.05,
+		{ rBirth: rBirth0, rForce0: rNow0, sep: dist3(dispatchOut, refOut) });
+
+	// The dispatch centres on the model's centre, not the world origin: the
+	// Milky Way centre is at x = 8.178, and every mask's position must stay
+	// within the model's scale of it.
+	let centreOk = true;
+	for (let mask = 1; mask <= 7; mask++) {
+		for (let i = 0; i < N; i++) {
+			const p = maskPositions[mask][i];
+			if (!(Math.hypot(p[0] - c.x, p[1], p[2]) < 20)) centreOk = false;
+		}
+	}
+	check('all seven masks orbit the nonzero model centre (positions stay bounded around it)',
+		centreOk && c.x !== 0, { centre: [c.x, c.y, c.z] });
+
+	orbit.setEngine(savedEngine);
+	orbit.setApocenterShare(savedShare);
+	orbit.setApocenterForce(savedForce);
 }
 
 // --- Report --------------------------------------------------------------

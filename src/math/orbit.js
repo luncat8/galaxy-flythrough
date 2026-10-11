@@ -322,8 +322,9 @@ const orbitScratch = { vFlat: 0, rCore: 0, omegaPattern: 0, spinLambda: 0, sigma
 // radial/normal wobble. At T = 0 both theta and every (sinTau(arg) −
 // sinTau(arg0)) term are exactly zero, so the transform is the identity
 // (within one add's rounding). Every plane still passes through `centre`.
+// Purely the classic law: the mask dispatch lives in engineLandmarkPosition
+// (CPU) and the sprite vertex stage (GPU), which mirror each other.
 function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
-	if (engine & ENGINE_APOCENTER) return apocenterPosition(out, x, y, z, family, phase, amplitude, time, model);
 	const dyn = fillDynamics(orbitScratch, model);
 	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
 	const qx = x - c.x, qy = y - c.y, qz = z - c.z;
@@ -426,11 +427,20 @@ function getApocenterForce() { return apocenterForce; }
 const selectorF32 = new Float32Array(3);
 const selectorBits = new Uint32Array(selectorF32.buffer);
 
-// Hash the birth f32 bit patterns, exactly as the shader bitcasts them: a
-// sin() hash of kpc-scale arguments diverges between f64 and GPU f32.
-function apocenterSelected(x, y, z) {
+// Bit-exact mirror of the shader's membership gate (movement-parity-plan
+// decision 2): hash the BIRTH f32 bit patterns, exactly as the shader
+// bitcasts them, then reduce selector and share to f32 — WGSL's hash01
+// rounds both the hash and the quotient to f32, so an f64 selector here
+// would not agree with the GPU's gate on every star, and a label would
+// drift off its rendered apocenter star.
+function apocenterSelector(x, y, z) {
 	selectorF32[0] = x; selectorF32[1] = y; selectorF32[2] = z;
-	return hash.hash01(hash.hash4(selectorBits[0], selectorBits[1], selectorBits[2], 9137)) < apocenterShare;
+	const h = hash.hash4(selectorBits[0], selectorBits[1], selectorBits[2], 9137);
+	return Math.fround(Math.fround(h) / 4294967296);
+}
+
+function apocenterSelected(x, y, z) {
+	return apocenterSelector(x, y, z) < Math.fround(apocenterShare);
 }
 
 function apocenterAngle(theta, radius, family, model) {
@@ -506,6 +516,30 @@ function apocenterPosition(out, x, y, z, family, phase, amplitude, time, model) 
 	out[0] = c.x + orbitRadius * (px * cv + qpx * sv);
 	out[1] = c.y + orbitRadius * (py * cv + qpy * sv);
 	out[2] = c.z + orbitRadius * (pz * cv + qpz * sv);
+	return out;
+}
+
+// The one mask dispatch shared by labels and picking — the CPU twin of the
+// sprite vertex stage's dispatch (movement-parity-plan decision 1/4): passes
+// run classic → simple → apocenter, each replacing the position, and no pass
+// consumes the previous pass's output. Baseline is the simple mirror when its
+// bit is set (and ready), else the classic law when its bit is set, else the
+// birth position itself; the apocenter pass then replaces the baseline for the
+// birth-selected subset at T ≠ 0. `i` indexes the simple landmark mirror;
+// (bx, by, bz) is the birth position, whose f32 bits the apocenter selection
+// hashes exactly as the GPU hashes the record's f32 position.
+function engineLandmarkPosition(out, i, bx, by, bz, colorIndex, time, model) {
+	const family = familyFromColorIndex(colorIndex);
+	if ((engine & ENGINE_SIMPLE) && simpleLandmarksReady()) simpleLandmarkPosition(out, i);
+	else if (engine & ENGINE_CLASSIC) orbitPosition(out, bx, by, bz, family, 0, 0, time, model);
+	else {
+		out[0] = bx; out[1] = by; out[2] = bz;
+	}
+	// apocenterPosition is the identity write for T = 0 and unselected stars,
+	// but that write would clobber a non-classic baseline — gate it here.
+	if ((engine & ENGINE_APOCENTER) && time !== 0 && apocenterSelected(bx, by, bz)) {
+		apocenterPosition(out, bx, by, bz, family, 0, 0, time, model);
+	}
 	return out;
 }
 
@@ -854,7 +888,7 @@ function simpleLandmarksStep(dtStar, starTimeMyr) {
 	}
 	return simpleLMCount;
 }
-function simpleLandmarkPosition(out, i, z) {
+function simpleLandmarkPosition(out, i) {
 	const c = simpleLMModel.centre;
 	const th = simpleLMTheta[i];
 	const fam = simpleLMFam[i];
@@ -932,10 +966,12 @@ function packSimpleParams(model, out, offset, dtStar, count, starTimeMyr) {
 // Pattern phase remains in the orbit uniform.
 function packEngineVec(model, out, offset) {
 	out[offset] = engine;
-	// y is the apocenter force; simple uses a conservative fixed eccentricity
-	// when both engines are enabled.
+	// y is the apocenter force; the simple reconstruction derives its own
+	// eccentricity from dynA/dynB (simpleEccMax), never from this lane.
 	out[offset + 1] = apocenterForce;
-	out[offset + 2] = engine === ENGINE_APOCENTER
+	// The bar's apsis direction is needed whenever the apocenter pass can
+	// run — under any mask carrying its bit, not only the bare one.
+	out[offset + 2] = (engine & ENGINE_APOCENTER)
 		? (((model && model.spheroid && model.spheroid.tiltDeg) || 0) * Math.PI / 180) : 0;
 	out[offset + 3] = apocenterShare;
 	return out;
@@ -950,7 +986,7 @@ const OrbitAPI = {
 	ORBIT_INCLINATION_DISC, ORBIT_INCLINATION_BAR, ORBIT_INCLINATION_PRESSURE, orbitInclination,
 	ENGINE_CLASSIC, ENGINE_SIMPLE, ENGINE_APOCENTER, ENGINE_NAMES,
 	APOCENTER_ECC_MAX, APOCENTER_ECC_CAP, APOCENTER_SHARE_UI_DEFAULT, APOCENTER_FORCE_UI_DEFAULT,
-	SIMPLE_SIGMA_BASE, SIMPLE_ECC_MAX, SIMPLE_SUBSTEP_DTHETA, SIMPLE_SUBSTEP_MAX,
+	SIMPLE_SIGMA_BASE, SIMPLE_ECC_K, SIMPLE_ECC_MAX, SIMPLE_SUBSTEP_DTHETA, SIMPLE_SUBSTEP_MAX,
 	SIMPLE_R_MIN, SIMPLE_UNIFORM_FLOATS,
 	familyFromFlags, flagsWithFamily, encodeJitter, readOrbit,
 	familyFromColorIndex, familyForStar,
@@ -959,7 +995,8 @@ const OrbitAPI = {
 	dampedDiscTheta, orbitPosition, apocenterPosition, apocenterAngle, solveEccentricAnomaly,
 	packOrbitDynamics, sinTau, sliderValueToRate, formatTimeRate,
 	setEngine, getEngine, engineName,
-	setApocenterShare, setApocenterForce, getApocenterShare, getApocenterForce, apocenterSelected,
+	setApocenterShare, setApocenterForce, getApocenterShare, getApocenterForce,
+	apocenterSelector, apocenterSelected, engineLandmarkPosition,
 	simpleArmed, simpleSigma, simpleEccMax, simpleOmega, simpleEccOf, simplePeriOf,
 	simpleDerived, simpleOmegaMax, simpleSubsteps, wrapAngle, simplePatternPhase,
 	simpleStepTheta, simplePositionFromTheta,

@@ -20,6 +20,8 @@ const landmarks = require('../src/data/landmarks.js');
 const constellations = require('../src/data/constellations.js');
 const selectionModule = require('../src/core/selection.js');
 const labelModule = require('../src/render/label-layer.js');
+const orbit = require('../src/math/orbit.js');
+const galaxy = require('../src/math/galaxy.js');
 
 const checks = [];
 function check(name, pass, detail) {
@@ -209,14 +211,14 @@ function aimAt(cam, x, y, z) {
 
 // --- 6. The label layer -----------------------------------------------------
 function createMockLayer() {
-	const calls = { clearRect: 0, beginPath: 0, moveTo: 0, lineTo: 0, stroke: 0, arc: 0, fillTexts: [], strokeTexts: 0, transforms: [] };
+	const calls = { clearRect: 0, beginPath: 0, moveTo: 0, lineTo: 0, stroke: 0, arc: 0, fillTexts: [], strokeTexts: 0, transforms: [], movePoints: [], linePoints: [] };
 	const ctx = {
 		font: '', fillStyle: '', strokeStyle: '', lineWidth: 0, textBaseline: '',
 		setTransform(...a) { calls.transforms.push(a); },
 		clearRect() { calls.clearRect++; },
 		beginPath() { calls.beginPath++; },
-		moveTo() { calls.moveTo++; },
-		lineTo() { calls.lineTo++; },
+		moveTo(x, y) { calls.moveTo++; calls.movePoints.push([x, y]); },
+		lineTo(x, y) { calls.lineTo++; calls.linePoints.push([x, y]); },
 		stroke() { calls.stroke++; },
 		arc() { calls.arc++; },
 		strokeText(text) { calls.strokeTexts++; calls.fillTexts.push(text); },
@@ -226,6 +228,7 @@ function createMockLayer() {
 	function reset() {
 		calls.clearRect = 0; calls.beginPath = 0; calls.moveTo = 0; calls.lineTo = 0;
 		calls.stroke = 0; calls.arc = 0; calls.fillTexts = []; calls.strokeTexts = 0;
+		calls.movePoints = []; calls.linePoints = [];
 	}
 	return { canvas, calls, reset };
 }
@@ -294,6 +297,141 @@ function createMockLayer() {
 	aimAt(cam, -s.x, -s.y, -s.z);
 	layer.draw(cam, W, H);
 	check('the selection ring is culled with its star', mock.calls.arc === 0, mock.calls.arc);
+}
+
+// --- 7. Labels and picks under the engine-mask dispatch ----------------------
+// The rendered star, its label and its pick target must agree for every
+// engine mask (movement-parity-plan). The reference re-states the dispatch
+// table — simple mirror else classic else birth, then apocenter(birth) for
+// the selected subset — and the click/label positions must land on it.
+{
+	const model = galaxy.createGalaxy({ type: 'SBb', seed: 3 });
+	const c = model.centre;
+	const savedEngine = orbit.getEngine();
+	const savedShare = orbit.getApocenterShare();
+	const savedForce = orbit.getApocenterForce();
+	const savedDamp = orbit.getWaveDamping();
+	orbit.setWaveDamping(0);
+	orbit.setApocenterForce(orbit.APOCENTER_ECC_MAX);
+	const T = 300;
+
+	// Two synthetic landmarks near the model centre; the second offset is
+	// nudged deterministically until the pair straddles the share-0.5 subset.
+	const posA = [c.x + 4.0, 0.3, 0.05];
+	let posB = [c.x + 3.2, -0.6, 0.1];
+	orbit.setApocenterShare(0.5);
+	for (let k = 0; k < 40 && orbit.apocenterSelected(...posA) === orbit.apocenterSelected(...posB); k++) {
+		posB = [c.x + 3.2, -0.6 + 0.05 * (k + 1), 0.1];
+	}
+	orbit.setApocenterShare(savedShare);
+	const synth = {
+		count: 2,
+		positions: Float64Array.of(...posA, ...posB),
+		ENTRIES: [
+			{ name: 'A', x: posA[0], y: posA[1], z: posA[2], colorIndex: 5 },
+			{ name: 'B', x: posB[0], y: posB[1], z: posB[2], colorIndex: 5 },
+		],
+	};
+	const synthLines = { LINES: [{ name: 'AB', edges: [0, 1] }] };
+
+	const refOut = new Float64Array(3);
+	function reference(mask, i, time) {
+		const bx = synth.positions[i * 3], by = synth.positions[i * 3 + 1], bz = synth.positions[i * 3 + 2];
+		const fam = orbit.familyFromColorIndex(synth.ENTRIES[i].colorIndex);
+		if (mask & orbit.ENGINE_SIMPLE) {
+			const P = orbit.simpleDerived(model, {});
+			const phase = orbit.simplePatternPhase(model, time);
+			const r0 = Math.hypot(bx - c.x, by - c.y);
+			const th = orbit.simpleStepTheta(Math.atan2(by - c.y, bx - c.x), r0,
+				orbit.simpleEccOf(0), orbit.simplePeriOf(0), fam, P, phase, time, bz);
+			orbit.simplePositionFromTheta(refOut, th, bx, by, bz, 0, fam, orbit.simpleEccMax(model), model);
+		} else if (mask & orbit.ENGINE_CLASSIC) {
+			orbit.orbitPosition(refOut, bx, by, bz, fam, 0, 0, time, model);
+		} else {
+			refOut[0] = bx; refOut[1] = by; refOut[2] = bz;
+		}
+		if ((mask & orbit.ENGINE_APOCENTER) && time !== 0 && orbit.apocenterSelected(bx, by, bz)) {
+			orbit.apocenterPosition(refOut, bx, by, bz, fam, 0, 0, time, model);
+		}
+		return refOut;
+	}
+
+	const cam = cameraModule.createCamera();
+	const sel = selectionModule.createSelection(cam, synth);
+	const mock = createMockLayer();
+	const layer = labelModule.createLabelLayer(mock.canvas, synth, synthLines);
+	layer.resize(W, H, 1);
+	const proj = new Float32Array(3);
+
+	function runMask(mask, share) {
+		orbit.setEngine(mask);
+		orbit.setApocenterShare(share);
+		const f32pos = new Float32Array(synth.positions.length);
+		f32pos.set(synth.positions);
+		orbit.simpleLandmarksInit(f32pos, Uint8Array.of(5, 5), 2, model);
+		if (mask & orbit.ENGINE_SIMPLE) orbit.simpleLandmarksStep(T, T);
+		sel.setOrbitState(model, T);
+		layer.setOrbitState(model, T);
+		const expected = [Array.from(reference(mask, 0, T)), Array.from(reference(mask, 1, T))];
+		let pickOk = true, lineOk = true, movedCount = 0, birthWrong = 0;
+		for (let i = 0; i < 2; i++) {
+			aimAt(cam, expected[i][0], expected[i][1], expected[i][2]);
+			if (sel.pick(W / 2, H / 2, W, H) !== i) pickOk = false;
+			// A star that really moved: clicking its BIRTH spot must miss it
+			// (whenever the dispatched position projects far from that spot —
+			// otherwise the two click targets are indistinguishable).
+			const bx = synth.positions[i * 3], by = synth.positions[i * 3 + 1], bz = synth.positions[i * 3 + 2];
+			if (Math.hypot(expected[i][0] - bx, expected[i][1] - by, expected[i][2] - bz) > 0.2) {
+				movedCount++;
+				aimAt(cam, bx, by, bz);
+				const vpB = cam.buildViewProj(W / H);
+				const far = coords.projectToScreen(vpB, expected[i][0], expected[i][1], expected[i][2],
+					0, 0, 0, W, H, proj) && Math.hypot(proj[0] - W / 2, proj[1] - H / 2) > 25;
+				if (far && sel.pick(W / 2, H / 2, W, H) === i) birthWrong++;
+			}
+		}
+		// The constellation line's endpoints are the projected dispatch
+		// positions of both stars, in one draw.
+		aimAt(cam, expected[0][0], expected[0][1], expected[0][2]);
+		mock.reset();
+		layer.draw(cam, W, H);
+		const vp = cam.buildViewProj(W / H);
+		if (mock.calls.movePoints.length !== 1 || mock.calls.linePoints.length !== 1) lineOk = false;
+		else for (const [pt, idx] of [[mock.calls.movePoints[0], 0], [mock.calls.linePoints[0], 1]]) {
+			if (!coords.projectToScreen(vp, expected[idx][0], expected[idx][1], expected[idx][2],
+				cam.cameraPos[0], cam.cameraPos[1], cam.cameraPos[2], W, H, proj)
+				|| Math.hypot(pt[0] - proj[0], pt[1] - proj[1]) > 1.5) lineOk = false;
+		}
+		return { pickOk, lineOk, movedCount, birthWrong };
+	}
+
+	orbit.setApocenterShare(1);
+	let allPickOk = true, allLineOk = true, movedTotal = 0, birthWrongTotal = 0;
+	for (const mask of [1, 2, 3, 4, 5, 6, 7]) {
+		const r = runMask(mask, 1);
+		if (!r.pickOk) allPickOk = false;
+		if (!r.lineOk) allLineOk = false;
+		movedTotal += r.movedCount;
+		birthWrongTotal += r.birthWrong;
+	}
+	check('picking lands on the dispatched position for every mask 1–7 (share 1)',
+		allPickOk && movedTotal >= 7, { allPickOk, movedTotal });
+	check('label lines connect the dispatched positions for every mask 1–7', allLineOk);
+	check('clicking a moved star at its birth spot misses — the pick target followed the dispatch',
+		birthWrongTotal === 0, { birthWrongTotal });
+
+	// The share-0.5 subset: the picked positions follow the SAME partition as
+	// the birth hash — one landmark guided, the other on the baseline.
+	const r05 = runMask(orbit.ENGINE_APOCENTER, 0.5);
+	const selA = orbit.apocenterSelected(posA[0], posA[1], posA[2]);
+	const selB = orbit.apocenterSelected(posB[0], posB[1], posB[2]);
+	check('under share 0.5 the pick targets follow the birth-hash subset (one guided, one frozen)',
+		r05.pickOk && selA !== selB, { pickOk: r05.pickOk, selA, selB });
+
+	orbit.setEngine(savedEngine);
+	orbit.setApocenterShare(savedShare);
+	orbit.setApocenterForce(savedForce);
+	orbit.setWaveDamping(savedDamp);
 }
 
 // --- Report ------------------------------------------------------------------

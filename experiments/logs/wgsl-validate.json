@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-26T15:22:33.241Z",
+  "date": "2026-10-11T21:25:41.339Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -11,7 +11,7 @@
     },
     {
       "name": "orbit",
-      "lines": 262
+      "lines": 280
     },
     {
       "name": "simple-step",
@@ -19,7 +19,7 @@
     },
     {
       "name": "star-sprite",
-      "lines": 423
+      "lines": 454
     },
     {
       "name": "star-sprite-hdr",
@@ -49,8 +49,8 @@
     "tonemap",
     "simple-step"
   ],
-  "totalChecks": 181,
-  "passed": 181,
+  "totalChecks": 184,
+  "passed": 184,
   "failed": 0,
   "checks": [
     {
@@ -83,7 +83,7 @@
         ],
         [
           "orbit",
-          13167
+          14167
         ],
         [
           "simple-step",
@@ -91,7 +91,7 @@
         ],
         [
           "star-sprite",
-          20519
+          22325
         ],
         [
           "star-sprite-hdr",
@@ -191,7 +191,7 @@
     {
       "name": "orbit: declares its functions",
       "pass": true,
-      "detail": 9
+      "detail": 10
     },
     {
       "name": "simple-step: braces and parentheses balance",
@@ -227,7 +227,7 @@
     {
       "name": "star-sprite: declares its functions",
       "pass": true,
-      "detail": 14
+      "detail": 15
     },
     {
       "name": "star-sprite-hdr: braces and parentheses balance",
@@ -1100,8 +1100,9 @@
       "pass": true
     },
     {
-      "name": "the star vertex branches on the engine lane (uniform control flow)",
-      "pass": true
+      "name": "the star vertex branches on the engine mask (uniform control flow)",
+      "pass": true,
+      "detail": true
     },
     {
       "name": "simple-step is a 64-wide compute module over the orbit part",
@@ -1208,6 +1209,22 @@
     },
     {
       "name": "apocenter engine mirrors its bounded Kepler solve and has its own vertex dispatch",
+      "pass": true
+    },
+    {
+      "name": "the apocenter pass builds its ellipse and membership from the birth position",
+      "pass": true
+    },
+    {
+      "name": "the simple reconstruction reads simpleEccMax(dynA, dynB), mirrored constants pinned",
+      "pass": true,
+      "detail": {
+        "gain": 1.5,
+        "cap": 0.6
+      }
+    },
+    {
+      "name": "labels and picking share orbit.engineLandmarkPosition, the CPU twin of the vertex dispatch",
       "pass": true
     },
     {

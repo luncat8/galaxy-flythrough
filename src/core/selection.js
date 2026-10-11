@@ -11,9 +11,15 @@ const PICK_RADIUS_PX = 20;
 const selectionCoords = (typeof module !== 'undefined' && module.exports)
 	? require('../math/coords.js')
 	: window.Coords;
-const selectionOrbit = (typeof module !== 'undefined' && module.exports)
-	? { orbitPosition: () => {}, familyFromColorIndex: () => 1, getEngine: () => 0 }
-	: window.OrbitLib;
+// Live lookup (like label-layer.js): the orbit module loads before selection
+// on the page, but tests load orderings vary. Without an orbit module there is
+// no movement to dispatch, so the fallback is the identity.
+const selectionOrbitFallback = {
+	engineLandmarkPosition: (out, i, bx, by, bz) => { out[0] = bx; out[1] = by; out[2] = bz; return out; },
+};
+function selectionOrbit() {
+	return (typeof window !== 'undefined' && window.OrbitLib) || selectionOrbitFallback;
+}
 
 function createSelection(camera, landmarks) {
 	const scratch = new Float32Array(3);
@@ -31,15 +37,10 @@ function createSelection(camera, landmarks) {
 		for (let i = 0; i < landmarks.count; i++) {
 			let px = pos[i * 3], py = pos[i * 3 + 1], pz = pos[i * 3 + 2];
 			if (orbitModel) {
-				// 0.4.5: picks ride the simple-engine CPU mirror under that
-				// engine, so the click target is what the GPU draws.
-				if ((selectionOrbit.getEngine() & selectionOrbit.ENGINE_SIMPLE)
-					&& selectionOrbit.simpleLandmarksReady && selectionOrbit.simpleLandmarksReady()) {
-					selectionOrbit.simpleLandmarkPosition(orbitScratch, i, pz);
-				} else {
-					selectionOrbit.orbitPosition(orbitScratch, px, py, pz,
-						selectionOrbit.familyFromColorIndex(landmarks.ENTRIES[i].colorIndex), 0, 0, orbitTime, orbitModel);
-				}
+				// The shared mask dispatch — the click target is what the GPU
+				// draws, for every engine mask (labels use the same call).
+				selectionOrbit().engineLandmarkPosition(orbitScratch, i, px, py, pz,
+					landmarks.ENTRIES[i].colorIndex, orbitTime, orbitModel);
 				px = orbitScratch[0]; py = orbitScratch[1]; pz = orbitScratch[2];
 			}
 			if (!selectionCoords.projectToScreen(viewProj, px, py, pz,

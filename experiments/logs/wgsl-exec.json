@@ -1,9 +1,9 @@
 {
-  "date": "2026-10-11T19:43:56.389Z",
+  "date": "2026-10-11T21:26:50.854Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 104,
-  "passed": 100,
-  "failed": 4,
+  "totalChecks": 115,
+  "passed": 115,
+  "failed": 0,
   "checks": [
     {
       "name": "star-sprite: the shipped source parses as WGSL",
@@ -207,12 +207,17 @@
       }
     },
     {
-      "name": "on-WGSL: engine 1 rebuilds the quarter-turn position from the azimuth (< 2 pc)",
-      "pass": false,
+      "name": "the fixture dyn lanes give the reconstruction a nonzero model eccentricity",
+      "pass": true,
+      "detail": 0.20666666666666667
+    },
+    {
+      "name": "on-WGSL: the simple mask rebuilds the quarter-turn position from the azimuth (< 2 pc)",
+      "pass": true,
       "detail": {
         "gpu": [
-          14.023583501180013,
-          -5.789962504351581
+          8.17800053914388,
+          8.178000475918806
         ],
         "cpu": [
           8.178,
@@ -222,14 +227,14 @@
     },
     {
       "name": "on-WGSL: the eccentric rho shapes the rebuilt radius at theta = 0",
-      "pass": false,
+      "pass": true,
       "detail": {
         "gpu": [
-          14.023583501180013,
-          -5.789962504351581
+          16.408816426595052,
+          -2.1263405128768738e-7
         ],
         "cpu": [
-          16.407113405895235,
+          16.40881715608279,
           0
         ]
       }
@@ -238,34 +243,131 @@
       "name": "on-WGSL: that radius is eccentric, not the birth circle (off by 51 pc)",
       "pass": true,
       "detail": {
-        "x": 14.023583501180013,
+        "x": 16.408816426595052,
         "circular": 16.356
       }
     },
     {
+      "name": "on-WGSL: the reconstruction reads simpleEccMax(dynA, dynB) — not a fixed constant",
+      "pass": true,
+      "detail": {
+        "dx": 0.05281639099121094,
+        "gpuX": 16.408816426595052,
+        "fixed045": 16.47100403792858
+      }
+    },
+    {
+      "name": "the apocenter lane packs (mask bit, force, tilt, share) — share 1 guides every star",
+      "pass": true,
+      "detail": {
+        "lane": [
+          4,
+          0.44999998807907104,
+          0,
+          1
+        ]
+      }
+    },
+    {
       "name": "on-WGSL: apocenter engine preserves its birth point at T = 0",
-      "pass": false,
+      "pass": true,
       "detail": {
         "clip": [
-          13.332804679870605,
-          -4.9985151290893555,
-          0.11133851855993271,
+          14.178417205810547,
+          -3.4992592334747314,
+          0.20000000298023224,
+          1
+        ]
+      }
+    },
+    {
+      "name": "on-WGSL: share 0 freezes every star at its birth position (the gate holds)",
+      "pass": true,
+      "detail": {
+        "clip": [
+          14.178417205810547,
+          -3.4992592334747314,
+          0.20000000298023224,
           1
         ]
       }
     },
     {
       "name": "on-WGSL: apocenter vertex path matches the CPU Kepler mirror (< 20 pc)",
-      "pass": false,
+      "pass": true,
       "detail": {
         "gpu": [
-          13.33238801320394,
-          0.0007441301699037904
+          7.973717301686605,
+          -4.872127268755878
         ],
         "cpu": [
           7.973714313890333,
           -4.87212724101437
         ]
+      }
+    },
+    {
+      "name": "on-WGSL: the guided star actually moves (apocenter pass is not a no-op)",
+      "pass": true,
+      "detail": {
+        "moved": 8.893657107648133
+      }
+    },
+    {
+      "name": "on-WGSL: every mask 1–7 lands where the CPU dispatch table says (both stars, < 20 pc)",
+      "pass": true,
+      "detail": {
+        "sweepWorst": 0.000008073531375758553,
+        "sweepWorstCase": {
+          "mask": 4,
+          "star": 1,
+          "d": 0.000008073531375758553
+        }
+      }
+    },
+    {
+      "name": "packEngineVec fills the bar tilt under every mask carrying the apocenter bit",
+      "pass": true,
+      "detail": {
+        "tilt": 0.4363323152065277
+      }
+    },
+    {
+      "name": "on-WGSL: masks 1, 2 and 4 are three distinct renderings at T = 120 (> 0.1 kpc apart)",
+      "pass": true,
+      "detail": {
+        "disc": [
+          8.441288912233967,
+          0.13242877001978473
+        ],
+        "bar": 0.1839655223237485
+      }
+    },
+    {
+      "name": "on-WGSL: mask 3 renders exactly what mask 2 renders (simple masks classic)",
+      "pass": true,
+      "detail": {
+        "d0": 0,
+        "d1": 0
+      }
+    },
+    {
+      "name": "on-WGSL: mask 4 at T = 0 renders the birth position (identity baseline)",
+      "pass": true,
+      "detail": {
+        "clip": [
+          13.178417205810547,
+          -2.899259328842163
+        ]
+      }
+    },
+    {
+      "name": "on-WGSL: force 0 conserves the birth radius (circular limit), nonzero force is eccentric",
+      "pass": true,
+      "detail": {
+        "birthR": 5.4230987451825,
+        "circR": 5.42732939597301,
+        "eccR": 5.2043257719170555
       }
     },
     {
