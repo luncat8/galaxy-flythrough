@@ -55,6 +55,8 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 - `0.4.0-plan-star-move.md` — the 0.4 plan: star movement on predefined orbits, star time slider, per-type orbit distributions, RTX 3050 budget.
 - `0.4.7-draft-new-star-movement-type.md` — implementation plan for the opt-in apocenter-guided movement engine.
 - `findings-pitfalls-skills.md` — notes and pitfalls for LLM agents. Write here when you find a good way to do something, a non-obvious gotcha, or a useful technique. Append-only.
+- `movement-parity-plan.md` — next correctness task: engine-mask dispatch and rendered/CPU position agreement.
+- `deferred-browser-visual-plan.md` — non-blocking browser checks, preset actions, bar polish and GPU profiling; separate from analytical model contracts.
 - `worklog.md` — index of versioned implementation logs.
 - `archive/` — versioned worklogs (`0.3.x-worklog.md`, etc.) and superseded plans. When `plan.md` is rewritten substantially, the old version moves here.
 - `experiments/` — Node measurement and validation scripts. Not loaded by the page. Run these manually to validate assumptions (hash quality, density model, precision, memory budget). `experiments/tonemap-mirror.js` is a shared model helper (not a test).

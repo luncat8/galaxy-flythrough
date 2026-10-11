@@ -16,3 +16,9 @@ archive log above. Historical entries are preserved verbatim; plans remain clean
 The 0.4.8 realistic-shapes task list is complete (M3.3 landed: age coupled to height,
 young/old scale-height ratio 0.31 on the Milky Way preset). The plan's remaining limits
 are a dimpled X-shaped bar and leaving star movement on geometry rather than density.
+
+
+Current priority: [movement dispatch and CPU/WGSL parity](movement-parity-plan.md).
+The browser engine/preset pass and non-critical bar polish are explicitly deferred
+in [a separate plan](deferred-browser-visual-plan.md), not completed or blocking.
+See the 2026-10-11 triage entry in the 0.4.x log for reproduced failures and scope.

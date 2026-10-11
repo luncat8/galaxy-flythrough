@@ -153,6 +153,13 @@ The CPU keeps world positions in `f64`. GPU rendering uses camera-relative `f32`
 
 See [`plan.md`](plan.md) for the complete design, the versioned plans for model details, and [`worklog.md`](worklog.md) for implementation history.
 
+## Next priorities
+
+[Movement CPU/WGSL parity](movement-parity-plan.md) takes priority over visual tuning.
+The outstanding real-browser engine/preset checks and non-critical bar polish are
+tracked in a [separate deferred plan](deferred-browser-visual-plan.md). Passing the
+Node suite does not certify browser rendering or clipboard/file permissions.
+
 ## License
 
 [MIT](LICENSE)
