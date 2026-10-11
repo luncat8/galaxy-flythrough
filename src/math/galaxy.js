@@ -102,7 +102,7 @@
 
 	// The Milky Way preset: verbatim the constants density.js used to export,
 	// with the central component re-authored in 0.4.8 M2 as the boxy/peanut
-	// bar it actually is (0.4.8-plan-realistic-3d-shapes.md §4, Wegg & Gerhard
+	// bar it actually is (archive/0.4.8-plan-realistic-3d-shapes.md §4, Wegg & Gerhard
 	// 2013). Half-length a = 2.3 kpc; the longitudinal cap 0.304 is the
 	// observed 0.70 kpc exponential scale over that half-length; b and c put
 	// the slice profile's half-density extents on the observed 0.44 / 0.18 kpc

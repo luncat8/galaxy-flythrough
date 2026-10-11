@@ -152,8 +152,8 @@ extents `ln2·0.44` / `ln2·0.18` kpc via `b = 0.405`, `c = 0.189`), and the amp
 (`experiments/preset-bar-fit.js`). The table's barred types (`SB*`) share the profile —
 a boxy, peanut-stretched volume with a flat inner part and exponential end caps,
 sampled by inverse CDF along the bar's major axis — specified in
-`0.3.0-plan-galaxy-types-star-distribution.md` §0.3.1 and made a realistic 3-D shape in
-`0.4.8-plan-realistic-3d-shapes.md` §3 (slice profile `barSliceProfile` in `density.js`
+`archive/0.3.0-plan-galaxy-types-star-distribution.md` §0.3.1 and made a realistic 3-D shape in
+`archive/0.4.8-plan-realistic-3d-shapes.md` §3 (slice profile `barSliceProfile` in `density.js`
 with its WGSL mirror, the vertical boxiness knob `bar.vertical`, and the closed-form
 slice mass). The Plummer form above remains the smooth-bulge profile for any model that
 authors it.
@@ -196,7 +196,7 @@ compressed lane on the ridge, which is narrower. Its cross-arm width is the patt
 width the loose nebulae admit gas on, so stars and clouds trace one lane. Everything that
 reads a distance to the ridge (`star-types.js`'s arm-young branch, `nebula.js`) reads this
 one function, `density.armRidgeWidth(model, R)`; the numbers and the tests that pin them
-live in `0.3.0-plan-galaxy-types-star-distribution.md` §0.3.1.
+live in `archive/0.3.0-plan-galaxy-types-star-distribution.md` §0.3.1.
 
 ### Combined
 
@@ -894,7 +894,7 @@ The split between the JS model (testable in Node) and the WGSL mirror (what the 
 
 `archive/0.1.1-draft.md` is the original one-line brief and `archive/0.1.1-plan.md`
 the first expansion of it; both are superseded by this section, which is the spec
-a fork should implement from. `plan-0.1.1-tasks.md` is the per-file checklist.
+a fork should implement from. `archive/plan-0.1.1-tasks.md` is the per-file checklist.
 
 ### 0.1.1 — Camera modes (implemented)
 
@@ -1151,25 +1151,43 @@ Order: 0.1.1 → 0.1.2 → 0.1.5. 0.1.1 touched no assets or shaders, so it land
 ## 19. Later release plans (0.2 and up)
 
 Versioned releases after 0.1.x get their own plan files — clean artifacts in the same
-sense as this document, kept beside it rather than folded in:
+sense as this document, kept beside it rather than folded in. A series that has shipped
+moves to `archive/` next to its worklog; the archived plan stays the spec a fork
+reimplements from.
 
-- `0.2-plan-HDR-saturation.md` — HDR controls (exposure / brightness / white point menu) and local
-  star density parity near the camera. *(shipped)*
-- `0.3.0-plan-galaxy-types-star-distribution.md` — galaxy types and populations:
+Shipped, in `archive/`:
+
+- `archive/0.2-plan-HDR-saturation.md` — HDR controls (exposure / brightness / white point
+  menu) and local star density parity near the camera. *(shipped)*
+- `archive/0.3.0-plan-galaxy-types-star-distribution.md` — galaxy types and populations:
   0.3.0 the `GalaxyModel` type
   framework, 0.3.1 the full Hubble zoo with improved star distributions, 0.3.2
   nebula-like objects with proper internal star distributions, 0.3.3 galaxy age.
   *(0.3.0, 0.3.1, 0.3.2 (composite objects plus the nebula billboard pass) and 0.3.3
   (galaxy age) implemented; the release series is complete)*
-- `0.4.0-plan-star-move.md` — star movement: predefined orbits without gravity, orbit
+- `archive/0.4.0-plan-star-move.md` — star movement: predefined orbits without gravity, orbit
   distributions per galaxy type, the moving-star budget on a typical RTX 3050, the
   one-shader architecture decision, and the star time slider (camera-coupled /
   frozen / 0.5–99 Myr/s). Wave damping, the optional pattern-frame capture on the
-  disc family, is `damping-plan.md`.
-- `0.4.7-draft-new-star-movement-type.md` — apocenter-guided orbital movement:
+  disc family, is `archive/damping-plan.md` *(shipped as 0.4.4)*.
+- `archive/0.4.7-draft-new-star-movement-type.md` — apocenter-guided orbital movement:
   a third, opt-in analytic engine that aims stellar apsides at spiral ridges and
   bars, rotates them at the model pattern speed, and preserves the galaxy centre.
-  *(implemented; visual density calibration remains an open follow-up)*
+  *(implemented; the engine lane is now a composable mask per `movement-parity-plan.md`,
+  and visual density calibration remains an open follow-up)*
+- `archive/0.4.8-plan-realistic-3d-shapes.md` — realistic 3-D shapes: the bar as a bounded
+  slice family (peanut, vertical boxiness, smooth envelope), the Milky Way preset's central
+  bar, and the truncation/age-height audit. *(task list complete; the browser visual pass is
+  deferred)*
+- `archive/plan-0.1.1-tasks.md` — the per-file checklist of §18. *(0.1.x complete)*
+
+Next series:
+
+- `0.5.0-plan-planet-generator.md` — lazy planet-system generation for selected stars:
+  star selection and multi-select (0.5.0), the deterministic planet/belt generator (0.5.1),
+  star and planet search (0.5.2), the close-system schematic view (0.5.3), the delta-v map
+  (0.5.4) and routes/autopilot (0.5.5). CPU-only by construction: the star buffer, the
+  WGSL and the three render paths are untouched.
 
 Implement from those files plus this one; the per-release plans reference their own
 tests and extend the file layout of §11 as needed.
@@ -1187,3 +1205,7 @@ tests and extend the file layout of §11 as needed.
    These are not prerequisites for sandbox-safe correctness work and are not marked
    passed by CPU/stub tests. The 0.4.8 analytical shape implementation is complete;
    this does not imply browser visual validation is complete.
+4. [The 0.5 planet series](0.5.0-plan-planet-generator.md): planned, not started. It is
+   CPU-only and additive (selection, planet generation, schematic view, delta-v, routes),
+   so it neither blocks nor depends on the parity work above — except that 0.5.0's picker
+   must dispatch star positions through the same engine-mask law the parity plan pins.

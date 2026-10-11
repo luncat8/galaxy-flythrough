@@ -1036,3 +1036,55 @@ wrong, and both said so only when their own sampling was raised:
 The cheap diagnostic in both cases: re-run the same statistic at 10× the sample (and, for a
 reference integral, at 2× the grid) before touching the limit. If the number moves toward the
 observation, the check was under-resolved; if it does not, the model changed.
+
+## 2026-10-11 — Compute every number in a plan before writing it down
+
+The 0.5 planet plan (`0.5.0-plan-planet-generator.md`) pins a lot of physics: delta-v
+budgets, transfer times, equilibrium temperatures, tidal locking. Every number in it was
+produced by running the plan's own formulas in a scratch script and comparing against a
+published value, rather than recalled. That caught five errors a read-through would not:
+
+- **The Hohmann launch phase angle is `π·(1 − 2·t_H/P2)`, not `π·(1 − t_H/P2)`.** The
+  factor 2 is easy to drop because the formula looks like the transfer-angle identity.
+  Corrected, Earth→Mars gives 44.4° against the published 44°; the wrong form gives 88°,
+  which is not a number anyone would recognise but which is also not obviously absurd.
+- **A brachistochrone leg's distance is the arc `π·(a1+a2)/2`, not the radius gap
+  `|a2−a1|`.** With the gap, Earth→Mars crossover dv came out at 14 km/s — inside a
+  chemical tank — and a 1 g ship read 2.1 days. With the arc, crossover is 106 km/s, a
+  chemical hull cannot beat the ellipse at all, and 1 g reads 5.7 days. The gap version is
+  *self-consistent and wrong in the direction that flatters the model*, which is the worst
+  kind of error for a plan that will be implemented from.
+- **A greenhouse table keyed on planet type alone makes every habitable-band world
+  Earth-like, including Mars.** The fix is a mass gate (0.02 M⊕ for any atmosphere, 0.3 M⊕
+  for a working cycle) plus a runaway branch with its own cloud albedo. Six real bodies then
+  fall out of four constants: Mercury 433/440 K, Venus 742/737, Earth 288/288, Mars
+  216/210, Moon 270/250, Ceres 163/168. A model that reproduces six bodies with one
+  threshold is worth pinning; one that reproduces one body with six tunables is not.
+- **A ship table needs an internal invariant.** `dv ≥ 2·v_cruise` for any interstellar
+  class, or the class cannot reach the cruise speed its own row advertises. Two of five rows
+  violated it as first drafted. The invariant is now a test, not a comment.
+- **Numbers copied between two sections drift.** The transit table computed the generation
+  ship's ceiling from 0.01 m/s² while the ship table two sections later said 0.001.
+  Recomputing exposed a property nobody had intended and everybody should know: at
+  0.001 m/s² that class's ceiling on Earth→Mars is 48.7 km/s, under the 106 km/s crossover,
+  so a 6 000 km/s tank buys no in-system speed-up over a 20 km/s chemical hull. When the same
+  constant appears twice, one of them is the table and the other is a citation — cite it,
+  never retype it.
+
+The transferable rule: when a plan carries numbers, the numbers are part of the design and
+get the same treatment as code — execute them, compare against an independent source, and
+write the comparison into the plan as a pin table. A pin table that says "model 3.91,
+published 3.9, tolerance ±0.3" is also the acceptance test for whoever implements it.
+
+Related, same pass: **selection identity in this repo cannot be a buffer index.** The
+renderer says so in a comment ("Streaming slots are not stable star identities") because the
+local gap-fill and catalog blocks are rewritten on every residency change. Anything that
+remembers a star — a selection, a generated planet system, a route endpoint — has to key on
+a stable per-record identity, and the cheapest stable identity is a parallel `Uint32Array`
+filled where the block is written.
+
+Also found, not fixed here (out of scope for a documentation pass): `scripts/run.py`'s
+`TYPES['study']` lists `damping-formula`, but `EXPERIMENTS` has no such key, so
+`python3 scripts/run.py damping-formula` prints "Unknown command" and exits 1 while
+`node experiments/damping-formula-check.js` works. One missing line in `EXPERIMENTS`, and
+`all-tests` never touches it because it iterates `TYPES['test']`.

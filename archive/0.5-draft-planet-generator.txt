@@ -1,0 +1,44 @@
+lazy planet system generation in selected star(s)
+
+## selection
+
+improve star(s) selection with pointer. user can select one, add button so select stars in radius around selected
+to easy manage we keep both 1st selected and multiple selected (array of stars) to perform operations on single (like show in editor) and on multiple stars (like generate planets and/or search planet with some parameters cross selected star systems) without need to do difficult things
+
+## search:
+star type, planet by type and/or temperature, 
+search modes: in all galaxy (fallback if no selected) or across selected stars.
+
+
+## planet render
+
+button to enter close star system render mode with planets and belts. (in fly mode some function to fly to selected star)
+
+planets as icon with color coded types
+
+belt(s)
+
+no need real sizes of planets, but easy to view and select
+
+## planet scheme dv render
+
+Map of the needed delta-v to travel directly (without gravity assist) 
+planets  including:
+- Low orbit
+- Geostationary orbit – GEO
+- L5 Lagrangian point
+i not sure if need:
+- Geostationary transfer orbit – GTO
+- Escape orbits with low pericentre – C3 = 0
+
+
+belt (dv simplify as typical asteroid without details), 
+
+and average time to economy travel with selected energy budget. do not need to be precise on this development stage, just realistic looking. more important now to make easy and good looking to use
+
+## gameplay
+
+typical gameplay to understand purpose: conventional rockets inside star system and some sci-fi engine or oversized Generation ship between stars.
+user select start,end points to make 2-way automatic route (to transport or trade) or to setup single ship 1-direction autopilot
+
+

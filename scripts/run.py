@@ -61,6 +61,7 @@ EXPERIMENTS = {
     'galaxy-age':            'experiments/galaxy-age-test.js',
     'orbit':                 'experiments/orbit-test.js',
     # Studies: they print a recommendation rather than pass/fail.
+    'damping-formula':     'experiments/damping-formula-check.js',
     'hash-quality':          'experiments/hash-quality-test.js',
     'precision':             'experiments/precision-test.js',
     'packing':               'experiments/packing-test.js',

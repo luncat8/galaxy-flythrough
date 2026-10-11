@@ -1,6 +1,6 @@
 // experiments/orbit-test.js
 // The 0.4 orbit law, on the numbers of plan §1.1/§1.4 of
-// 0.4.0-plan-star-move.md plus the 0.4.3 group-kinematics rewrite:
+// archive/0.4.0-plan-star-move.md plus the 0.4.3 group-kinematics rewrite:
 //
 //   * T = 0 is the identity for every family
 //   * reference periods (solar circle, bar/pattern, halo clock)

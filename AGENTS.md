@@ -49,16 +49,13 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 ## Files
 
 - `AGENTS.md` — this file. Project rules.
-- `plan.md` — the development plan. Clean artifact, no implementation log. §19 points at the per-release plans below.
-- `0.2-plan-HDR-saturation.md` — the 0.2 plan (HDR menu controls + local star density parity).
-- `0.3.0-plan-galaxy-types-star-distribution.md` — the 0.3.x plan: galaxy types (0.3.0), full type zoo + star distributions (0.3.1), nebula-like objects with proper star distributions (0.3.2), galaxy age (0.3.3).
-- `0.4.0-plan-star-move.md` — the 0.4 plan: star movement on predefined orbits, star time slider, per-type orbit distributions, RTX 3050 budget.
-- `0.4.7-draft-new-star-movement-type.md` — implementation plan for the opt-in apocenter-guided movement engine.
+- `plan.md` — the development plan. Clean artifact, no implementation log. §19 indexes the per-release plans; shipped ones live in `archive/`, the open one is listed below.
+- `0.5.0-plan-planet-generator.md` — the 0.5 plan: star selection and multi-select (0.5.0), the lazy deterministic planet-system generator (0.5.1), star and planet search (0.5.2), the close-system schematic view (0.5.3), the delta-v map (0.5.4), routes and autopilot (0.5.5). CPU-only: no star-buffer or WGSL growth.
 - `findings-pitfalls-skills.md` — notes and pitfalls for LLM agents. Write here when you find a good way to do something, a non-obvious gotcha, or a useful technique. Append-only.
 - `movement-parity-plan.md` — next correctness task: engine-mask dispatch and rendered/CPU position agreement.
 - `deferred-browser-visual-plan.md` — non-blocking browser checks, preset actions, bar polish and GPU profiling; separate from analytical model contracts.
 - `worklog.md` — index of versioned implementation logs.
-- `archive/` — versioned worklogs (`0.3.x-worklog.md`, etc.) and superseded plans. When `plan.md` is rewritten substantially, the old version moves here.
+- `archive/` — versioned worklogs (`0.3.x-worklog.md`, etc.), superseded plans, and the plans of release series that have shipped (`archive/0.2-plan-HDR-saturation.md`, `archive/0.3.0-plan-galaxy-types-star-distribution.md`, `archive/0.4.0-plan-star-move.md`, `archive/0.4.7-draft-new-star-movement-type.md`, `archive/0.4.8-plan-realistic-3d-shapes.md`, `archive/damping-plan.md`, `archive/plan-0.1.1-tasks.md`). A shipped plan stays the spec a fork reimplements from — archive it, do not delete it, and keep `plan.md` §19 pointing at it. When `plan.md` is rewritten substantially, the old version moves here too.
 - `experiments/` — Node measurement and validation scripts. Not loaded by the page. Run these manually to validate assumptions (hash quality, density model, precision, memory budget). `experiments/tonemap-mirror.js` is a shared model helper (not a test).
 - `experiments/logs/` — keep useful results. Delete logs that turned out to be dead ends. The point is to leave a trail of *what was measured and what was learned*, not a full audit.
 - `package.json` — dev-only dependencies for experiments (`wgsl_reflect`, the CPU WGSL interpreter behind `wgsl-exec`). The page never touches it; the runtime stays dependency-free.
