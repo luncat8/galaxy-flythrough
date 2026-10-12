@@ -1,0 +1,189 @@
+{
+  "date": "2026-10-12T01:15:02.591Z",
+  "model": {
+    "type": "SBb",
+    "seed": 12345
+  },
+  "totalChecks": 30,
+  "passed": 30,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "systemSeed is the domain hash of (key, model seed, block)",
+      "pass": true,
+      "detail": 2859850513
+    },
+    {
+      "name": "systemSeed is deterministic",
+      "pass": true,
+      "detail": 2859850513
+    },
+    {
+      "name": "systemSeed separates block kinds, keys and model seeds",
+      "pass": true
+    },
+    {
+      "name": "the five block ids name the renderer's five blocks in buffer order",
+      "pass": true,
+      "detail": [
+        "field",
+        "landmark",
+        "object",
+        "local",
+        "catalog"
+      ]
+    },
+    {
+      "name": "fieldStarSeed is injective over 20k indices (keys double as slots)",
+      "pass": true,
+      "detail": 20000
+    },
+    {
+      "name": "the stored u32 field key re-derives the same star (pcgHash reads mod 2^32)",
+      "pass": true
+    },
+    {
+      "name": "landmark keys are unique across the whole landmark table",
+      "pass": true,
+      "detail": 60
+    },
+    {
+      "name": "landmarkKey equals the domain hash",
+      "pass": true,
+      "detail": 1146418759
+    },
+    {
+      "name": "catalogKey is (cell, slot-in-cell) and separates both",
+      "pass": true,
+      "detail": 2123821740
+    },
+    {
+      "name": "objectMemberSeed is stable and unique per (object, member)",
+      "pass": true,
+      "detail": 2571327586
+    },
+    {
+      "name": "the Sun (G, M_V 4.83 → L 1.00) inverts to 1.00 ± 0.02 M☉",
+      "pass": true,
+      "detail": {
+        "mass": 1,
+        "lum": 1
+      }
+    },
+    {
+      "name": "Sirius A (A, M_V 1.43 → L 22.9) inverts to 2.45 ± 0.15 M☉",
+      "pass": true,
+      "detail": {
+        "mass": 2.4466476439896327,
+        "lum": 22.908676527677734
+      }
+    },
+    {
+      "name": "a K landmark (M_V 7.5 → L 0.086) clamps to the bracket floor 0.55",
+      "pass": true,
+      "detail": {
+        "mass": 0.55,
+        "lum": 0.08550667128846832
+      }
+    },
+    {
+      "name": "every class clamps into its own bracket at both magnitude extremes",
+      "pass": true
+    },
+    {
+      "name": "the smallest surviving branch root wins (0.3 L☉ → 0.593 M☉, not 0.740)",
+      "pass": true,
+      "detail": 0.5924632479557088
+    },
+    {
+      "name": "the law jumps down at 0.7 M☉ (0.440 → 0.240) — the reason smallest wins",
+      "pass": true,
+      "detail": {
+        "lo": 0.4401318376360187,
+        "hi": 0.24009999999999992
+      }
+    },
+    {
+      "name": "a white dwarf's tiny L lands on its 0.5 M☉ remnant floor",
+      "pass": true,
+      "detail": 0.5
+    },
+    {
+      "name": "a giant's L clamps into the initial-mass bracket, by state not by cooling",
+      "pass": true,
+      "detail": 3
+    },
+    {
+      "name": "R★(1 L☉, 5772 K) = 1.000 by construction",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "a 100 L☉ giant at 4000 K has R★ = 20.8 R☉",
+      "pass": true,
+      "detail": 20.822490000000002
+    },
+    {
+      "name": "a degenerate luminosity gives a zero radius, not NaN",
+      "pass": true
+    },
+    {
+      "name": "the field block re-derives bit-exactly from the identity key",
+      "pass": true,
+      "detail": {
+        "worst": 0,
+        "classMismatch": 0
+      }
+    },
+    {
+      "name": "a keyless field ref falls back to the seed formula and agrees",
+      "pass": true
+    },
+    {
+      "name": "every field snapshot carries the derived rStar",
+      "pass": true,
+      "detail": 0.3248171720940827
+    },
+    {
+      "name": "the local block re-derives bit-exactly from the key (position through rhoDecomposed)",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "the object block keeps key, age and component aligned with the record",
+      "pass": true,
+      "detail": {
+        "contextBad": 0,
+        "slots": 820,
+        "planetary": 9
+      }
+    },
+    {
+      "name": "object members re-derive bit-exactly from key + member context",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "a landmark takes state/Teff from its class, age from the model, Z from the thin disc",
+      "pass": true,
+      "detail": {
+        "state": "ms",
+        "teff": 5585.6960175075765,
+        "age": 13.5,
+        "metal": 0.02
+      }
+    },
+    {
+      "name": "the landmark snapshot echoes the record and carries the derived radius",
+      "pass": true
+    },
+    {
+      "name": "a catalog giant reports state giant and the top of its bracket",
+      "pass": true,
+      "detail": {
+        "mass": 3,
+        "state": "giant"
+      }
+    }
+  ]
+}

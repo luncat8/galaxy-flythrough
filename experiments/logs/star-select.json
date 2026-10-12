@@ -1,0 +1,291 @@
+{
+  "date": "2026-10-12T01:15:09.796Z",
+  "model": {
+    "type": "SBb",
+    "seed": 12345
+  },
+  "totalChecks": 31,
+  "passed": 31,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "pickAny hits a star the dispatch draws, for masks 1/2/4/5 and all five blocks",
+      "pass": true,
+      "detail": {
+        "mismatches": 0,
+        "hits": 314
+      }
+    },
+    {
+      "name": "the simple-mask approximation is reported, not silent",
+      "pass": true,
+      "detail": 70
+    },
+    {
+      "name": "a miss is null and an empty residency is not a crash",
+      "pass": true
+    },
+    {
+      "name": "pickAny without a renderer misses instead of throwing",
+      "pass": true
+    },
+    {
+      "name": "a tie on the same pixel goes to the brighter magnitude",
+      "pass": true,
+      "detail": {
+        "key": 2827,
+        "absMag": -0.9411764705882355
+      }
+    },
+    {
+      "name": "outside PICK_TIE_PX the nearer star wins even against a brighter one",
+      "pass": true,
+      "detail": {
+        "key": 2570,
+        "cOff": 6.111328125
+      }
+    },
+    {
+      "name": "the reported hit carries its slot, block and record",
+      "pass": true,
+      "detail": {
+        "kind": 4,
+        "index": 0
+      }
+    },
+    {
+      "name": "radius select equals the brute-force list, ascending",
+      "pass": true,
+      "detail": {
+        "n": 1,
+        "expected": 1,
+        "asc": true,
+        "first": {
+          "key": 382760,
+          "d2": 0
+        },
+        "last": {
+          "key": 382760,
+          "d2": 0
+        }
+      }
+    },
+    {
+      "name": "the scan truncates at the caller's capacity and reports the rest",
+      "pass": true,
+      "detail": {
+        "capped": 1,
+        "truncated": 0
+      }
+    },
+    {
+      "name": "a plain click is a one-star set and shift adds without moving the primary",
+      "pass": true
+    },
+    {
+      "name": "shift-click on a member removes it",
+      "pass": true
+    },
+    {
+      "name": "N cycles forward and backward through the set",
+      "pass": true,
+      "detail": {
+        "cycled": 1,
+        "back": 0
+      }
+    },
+    {
+      "name": "overflow drops the farthest from the camera, never the primary",
+      "pass": true,
+      "detail": {
+        "far": -1,
+        "near": 255,
+        "dropped": 2,
+        "hasPrimary": true
+      }
+    },
+    {
+      "name": "snapshot stellar inputs equal a fresh derivation (bit-equal)",
+      "pass": true,
+      "detail": {
+        "worst": 0,
+        "seen": 4
+      }
+    },
+    {
+      "name": "the snapshot carries the dispatch's approximation flag",
+      "pass": true,
+      "detail": 256
+    },
+    {
+      "name": "the field snapshot is a function of the key, not of the resident record",
+      "pass": true,
+      "detail": {
+        "mass": [
+          0.0938610600903326,
+          0.0938610600903326
+        ]
+      }
+    },
+    {
+      "name": "rings are drawn for the resolvable set members only",
+      "pass": true,
+      "detail": {
+        "arcs": 2
+      }
+    },
+    {
+      "name": "the map is not rebuilt per frame (drawing stays stable)",
+      "pass": true,
+      "detail": 4
+    },
+    {
+      "name": "after a block rebuild the keys still resolve to their new slots",
+      "pass": true,
+      "detail": {
+        "arcs": 6
+      }
+    },
+    {
+      "name": "an empty set draws no rings",
+      "pass": true,
+      "detail": {
+        "arcs": 6
+      }
+    },
+    {
+      "name": "catalog keys are stable under a residency/thinning change",
+      "pass": true,
+      "detail": {
+        "nA": 3558,
+        "nB": 504,
+        "shared": 504,
+        "same": 504
+      }
+    },
+    {
+      "name": "writeInto without a key array still writes records",
+      "pass": true
+    },
+    {
+      "name": "a pick slice stays inside the loop's 8 ms budget (+clock overhead) for every mask",
+      "pass": true,
+      "detail": {
+        "worstSlice": 5.488824000000022,
+        "worstMask": 5,
+        "measured": {
+          "1": {
+            "total": 89.78,
+            "slice": 1.6,
+            "slices": 10,
+            "perRecordNs": 299
+          },
+          "2": {
+            "total": 29.55,
+            "slice": 0.5,
+            "slices": 10,
+            "perRecordNs": 99
+          },
+          "5": {
+            "total": 428.46,
+            "slice": 5.49,
+            "slices": 10,
+            "perRecordNs": 1428
+          }
+        }
+      }
+    },
+    {
+      "name": "a whole 300k sweep is a bounded number of frames, not a freeze",
+      "pass": true,
+      "detail": {
+        "slices": [
+          10,
+          10,
+          10
+        ]
+      }
+    },
+    {
+      "name": "the cheap mask finishes a whole 300k pick in a handful of frames",
+      "pass": true,
+      "detail": {
+        "simpleTotal": 29.553084000000126,
+        "measured": {
+          "1": {
+            "total": 89.78,
+            "slice": 1.6,
+            "slices": 10,
+            "perRecordNs": 299
+          },
+          "2": {
+            "total": 29.55,
+            "slice": 0.5,
+            "slices": 10,
+            "perRecordNs": 99
+          },
+          "5": {
+            "total": 428.46,
+            "slice": 5.49,
+            "slices": 10,
+            "perRecordNs": 1428
+          }
+        }
+      }
+    },
+    {
+      "name": "the dispatch is the cost, and the walk reports what it measured",
+      "pass": true,
+      "detail": {
+        "1": {
+          "total": 89.78,
+          "slice": 1.6,
+          "slices": 10,
+          "perRecordNs": 299
+        },
+        "2": {
+          "total": 29.55,
+          "slice": 0.5,
+          "slices": 10,
+          "perRecordNs": 99
+        },
+        "5": {
+          "total": 428.46,
+          "slice": 5.49,
+          "slices": 10,
+          "perRecordNs": 1428
+        }
+      }
+    },
+    {
+      "name": "the chunked sweep finds the same star as the one-call walk",
+      "pass": true,
+      "detail": {
+        "sweep": 551773,
+        "sync": 551773
+      }
+    },
+    {
+      "name": "a rebuild during a sweep aborts it instead of mixing two frames",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "the select-radius slider spans Selection's own bounds and default",
+      "pass": true,
+      "detail": [
+        "-1",
+        "5",
+        "1.69897"
+      ]
+    },
+    {
+      "name": "the menu has the select-around and clear buttons",
+      "pass": true
+    },
+    {
+      "name": "the help text lists the three new keys",
+      "pass": true
+    }
+  ]
+}

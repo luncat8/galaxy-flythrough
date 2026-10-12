@@ -291,9 +291,31 @@ function createCellManager(manifest, options) {
 	// near-Sun cells are reduced to match expected density. Returns bytes
 	// written (only *visible* records are written, packed contiguously —
 	// invisible records are dropped to save GPU bandwidth).
-	function writeInto(bytes, byteOffset) {
+	// `keys` / `keyBase` (0.5.0) are optional: when given, each written record's
+	// stable key is `hash4(DOMAIN_CATALOG, cellId, slotInCell, 0)` where
+	// `slotInCell` is the record's index **inside the cell payload**, not its
+	// index in the output. That distinction is the whole reason the key is stable:
+	// this function thins and compacts, so an output index would re-key the same
+	// star every time the camera moved and the residency set changed.
+	// The catalog key is defined once, in math/planets.js (its domain constant and
+	// its `hash4(cell, slotInCell)` shape). This module looks the function up
+	// lazily rather than keeping a second copy of the constant: the renderer loads
+	// both, and a test that loads the stream alone simply writes no keys.
+	let catalogKeyFn = null;
+	function resolveCatalogKey() {
+		if (catalogKeyFn) return catalogKeyFn;
+		const planets = (typeof module !== 'undefined' && module.exports)
+			? require('../math/planets.js')
+			: window.PlanetsLib;
+		catalogKeyFn = planets && planets.catalogKey ? planets.catalogKey : null;
+		return catalogKeyFn;
+	}
+
+	function writeInto(bytes, byteOffset, keys, keyBase) {
 		let writeOff = byteOffset;
+		let slot = 0;
 		let visible = 0;
+		const keyFn = keys ? resolveCatalogKey() : null;
 		for (let i = 0; i < selectedCount; i++) {
 			const cellId = selectedIdx[i];
 			const info = lastCellInfo[i];
@@ -303,7 +325,11 @@ function createCellManager(manifest, options) {
 			if (n <= keep) {
 				// Nothing to thin: copy the whole cell verbatim.
 				bytes.set(payload, writeOff);
+				if (keyFn) {
+					for (let r = 0; r < n; r++) keys[keyBase + slot + r] = keyFn(cellId, r);
+				}
 				writeOff += payload.length;
+				slot += n;
 				visible += n;
 				continue;
 			}
@@ -314,7 +340,9 @@ function createCellManager(manifest, options) {
 			for (let k = 0; k < keepCount; k++) {
 				const recOff = order[k].i * 16;
 				for (let b = 0; b < 16; b++) bytes[writeOff++] = payload[recOff + b];
+				if (keyFn) keys[keyBase + slot + k] = keyFn(cellId, order[k].i);
 			}
+			slot += keepCount;
 			visible += keepCount;
 		}
 		residentStarsVisible = visible;

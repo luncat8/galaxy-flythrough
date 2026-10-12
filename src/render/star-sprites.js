@@ -423,6 +423,37 @@ function createStarRenderer(device, context, format, options) {
         let catalogCapacity = 0;
         let proceduralCount = 0;
         let catalogResident = 0;
+        // Star identity (0.5.0): one stable u32 key per record slot, written by the
+        // same code that writes the record. Streaming slots are not identities
+        // (uploadDynamic rewrites them), so a selection stores the key and resolves
+        // it back to a slot instead of remembering an index — see the plan §2.2.
+        // Allocated with the staging buffer; every writer fills its own range.
+        let identity = null;
+        let identityView = null;       // DataView over `staging`, for the picker
+        // Object-block member context (0.5.0): a record carries no age and no
+        // component, and an object member's star is derived with the object's
+        // coeval age (or as a planetary nebula's central star), so the two
+        // numbers ride beside the block and are written by the member writer.
+        // Indexed by the block-local slot — see objects.writeObjectMembers.
+        let memberAge = null;
+        let memberComponent = null;
+        const BLOCK_LAYOUT = [
+                { kind: 'field', offset: 0, count: 0 },
+                { kind: 'landmark', offset: 0, count: 0 },
+                { kind: 'object', offset: 0, count: 0 },
+                { kind: 'local', offset: 0, count: 0 },
+                { kind: 'catalog', offset: 0, count: 0 },
+        ];
+        // Returned by starBlocks() and mutated in place: the picker, the label layer
+        // and the search read live counts and never allocate per frame.
+        const blockInfo = {
+                identity: null, view: null, blocks: BLOCK_LAYOUT, total: 0, dynamicVersion: 0,
+                member: { age: null, component: null },
+        };
+        const fieldInfo = { x: null, y: null, z: null, R: null, distToArm: null, component: null, count: 0 };
+        const planets = (typeof module !== 'undefined' && module.exports)
+                ? require('../math/planets.js')
+                : window.PlanetsLib;
         let lastTime = 0;
         let lastStarTime = 0;
         // Simple-engine azimuths (0.4.5): one f32 per record slot, seeded from
@@ -579,10 +610,30 @@ function createStarRenderer(device, context, format, options) {
                         throw new Error(`Star buffer of ${(totalBytes / 1048576).toFixed(1)} MB exceeds the device limit of ${(maxStorageBytes / 1048576).toFixed(1)} MB`);
                 }
                 staging = new ArrayBuffer(Math.max(records.RECORD_BYTES, totalBytes));
+                identity = new Uint32Array(totalRecords);
+                identityView = new DataView(staging);
+                memberAge = new Float64Array(objectCapacity);
+                memberComponent = new Int8Array(objectCapacity);
                 landmarkByteOffset = proceduralCount * records.RECORD_BYTES;
                 objectByteOffset = (proceduralCount + landmarkCount) * records.RECORD_BYTES;
                 localProceduralByteOffset = (proceduralCount + landmarkCount + objectCapacity) * records.RECORD_BYTES;
                 catalogByteOffset = (proceduralCount + landmarkCount + objectCapacity + localProceduralCapacity) * records.RECORD_BYTES;
+                // The block table mirrors the byte offsets above; the keys are the
+                // slot index of the block's first record. Unwritten slots (object
+                // capacity above the placed member count, catalog above the thinned
+                // count) keep key 0 and are skipped by every reader, which tests
+                // FLAG_VISIBLE first.
+                blockInfo.identity = identity;
+                blockInfo.view = identityView;
+                blockInfo.total = totalRecords;
+                blockInfo.member.age = memberAge;
+                blockInfo.member.component = memberComponent;
+                BLOCK_LAYOUT[0].offset = 0;
+                BLOCK_LAYOUT[1].offset = proceduralCount;
+                BLOCK_LAYOUT[2].offset = proceduralCount + landmarkCount;
+                BLOCK_LAYOUT[3].offset = proceduralCount + landmarkCount + objectCapacity;
+                BLOCK_LAYOUT[4].offset = proceduralCount + landmarkCount + objectCapacity + localProceduralCapacity;
+                for (let b = 0; b < BLOCK_LAYOUT.length; b++) BLOCK_LAYOUT[b].count = 0;
                 starBuffer = device.createBuffer({
                         label: 'star-storage',
                         size: Math.max(16, totalBytes),
@@ -672,6 +723,7 @@ function createStarRenderer(device, context, format, options) {
         function sampleField() {
                 if (proceduralCount === 0) {
                         fieldStars = null;
+                        fieldInfo.count = 0;
                         referenceLuminosity = 0;
                         return;
                 }
@@ -679,6 +731,16 @@ function createStarRenderer(device, context, format, options) {
                 const starTypes = window.StarTypesLib;
                 const galaxyLib = window.GalaxyLib;
                 fieldStars = sampling.sampleGalaxyStars(model, seed, proceduralCount, fieldStars);
+                // The sampler's own arrays are the field block's inputs: the planet
+                // module re-derives a picked field star from exactly these values
+                // (component/R/distToArm/z), which is what makes that path bit-exact.
+                fieldInfo.x = fieldStars ? fieldStars.x : null;
+                fieldInfo.y = fieldStars ? fieldStars.y : null;
+                fieldInfo.z = fieldStars ? fieldStars.z : null;
+                fieldInfo.R = fieldStars ? fieldStars.R : null;
+                fieldInfo.distToArm = fieldStars ? fieldStars.distToArm : null;
+                fieldInfo.component = fieldStars ? fieldStars.component : null;
+                fieldInfo.count = fieldStars ? fieldStars.count : 0;
                 state.fieldSamples++;
                 referenceLuminosity = starTypes.meanFieldLuminosity(
                         galaxyLib.modelAtAge(model, galaxyLib.AGE_REF), fieldStars, CALIBRATION_STARS);
@@ -706,7 +768,8 @@ function createStarRenderer(device, context, format, options) {
                 const view = new DataView(staging, 0, proceduralCount * records.RECORD_BYTES);
                 const derived = {};
                 for (let i = 0; i < proceduralCount; i++) {
-                        starTypes.deriveStar(model, starTypes.fieldStarSeed(seed, i),
+                        const key = starTypes.fieldStarSeed(seed, i);
+                        starTypes.deriveStar(model, key,
                                 fieldStars.component[i], fieldStars.R[i], fieldStars.distToArm[i], derived,
                                 fieldStars.z[i]);
                         records.writeRecord(
@@ -715,7 +778,9 @@ function createStarRenderer(device, context, format, options) {
                                 derived.colorIndex, derived.absMag + magOffset,
                                 orbit.flagsWithFamily(records.FLAG_VISIBLE, orbit.familyForStar(fieldStars.component[i], derived.spectralClass, model.barred)), Math.imul(i, 2654435761) & 0xFF,
                         );
+                        identity[i] = key;
                 }
+                BLOCK_LAYOUT[0].count = proceduralCount;
                 state.proceduralStars = proceduralCount;
                 return proceduralCount;
         }
@@ -727,6 +792,7 @@ function createStarRenderer(device, context, format, options) {
         // ride the same orbit the GPU draws.
         function writeLandmarks() {
                 const view = new DataView(staging, landmarkByteOffset, landmarkCount * records.RECORD_BYTES);
+                const base = BLOCK_LAYOUT[1].offset;
                 for (let i = 0; i < landmarkCount; i++) {
                         const e = landmarks.ENTRIES[i];
                         records.writeRecord(
@@ -738,7 +804,11 @@ function createStarRenderer(device, context, format, options) {
                                         orbit.familyFromColorIndex(e.colorIndex)),
                                 0,
                         );
+                        // Positional: a landmark's key is its index in the table
+                        // (plan §2.2), so it needs no cell bookkeeping.
+                        identity[base + i] = planets.landmarkKey(i);
                 }
+                BLOCK_LAYOUT[1].count = landmarkCount;
                 state.landmarkStars = landmarkCount;
                 return landmarkCount;
         }
@@ -758,7 +828,10 @@ function createStarRenderer(device, context, format, options) {
                 const view = new DataView(staging, objectByteOffset, objectCapacity * records.RECORD_BYTES);
                 // Members are procedural stars, so they carry the same exposure
                 // offset as the field they sit in.
-                const written = objectsLib.writeObjectMembers(model, placed, view, 0, objectCapacity, magOffset).written;
+                const written = objectsLib.writeObjectMembers(model, placed, view, 0, objectCapacity, magOffset,
+                        identity, BLOCK_LAYOUT[2].offset,
+                        { age: memberAge, component: memberComponent }).written;
+                BLOCK_LAYOUT[2].count = written;
                 state.objectStars = written;
                 state.objectCount = placed.length;
                 if (nebulaStaging) {
@@ -939,6 +1012,10 @@ function createStarRenderer(device, context, format, options) {
                                         localDerived.colorIndex, localDerived.absMag + magOffset,
                                         orbit.flagsWithFamily(records.FLAG_VISIBLE, orbit.familyForStar(component, localDerived.spectralClass, model.barred)), jitter,
                                 );
+                                // The identity key *is* the seed this record was
+                                // derived from (slotSeed), so the planet module can
+                                // re-derive the exact star from the key alone.
+                                identity[BLOCK_LAYOUT[3].offset + slot] = slotSeed >>> 0;
                                 slot++;
                         }
                 }
@@ -966,12 +1043,16 @@ function createStarRenderer(device, context, format, options) {
                 const localView = new DataView(staging, localProceduralByteOffset, localProceduralCapacity * records.RECORD_BYTES);
                 const localCount = writeLocalProceduralStars(info.cells, localView, 0);
                 localProceduralCount = Math.min(localCount, localProceduralCapacity);
+                BLOCK_LAYOUT[3].count = localProceduralCount;
 
                 // 3) Write catalog (decoded + thinned by cell manager; writeInto
-                // returns the number of thinned, visible bytes).
+                // returns the number of thinned, visible bytes). The manager writes
+                // each record's stable key beside it — keyed on the record's index
+                // inside its own cell, so thinning cannot re-key a star.
                 const catBytes = new Uint8Array(staging, catalogByteOffset, catalogCapacity * records.RECORD_BYTES);
-                const catalogBytes = manager.writeInto(catBytes, 0);
+                const catalogBytes = manager.writeInto(catBytes, 0, identity, BLOCK_LAYOUT[4].offset);
                 catalogResident = catalogBytes / records.RECORD_BYTES;
+                BLOCK_LAYOUT[4].count = catalogResident;
 
                 // 4) Upload the dynamic range (local + catalog) in one write.
                 const dynamicBytes = (localProceduralCount * records.RECORD_BYTES) + catalogBytes;
@@ -998,6 +1079,10 @@ function createStarRenderer(device, context, format, options) {
                 state.catalogResidentStars = catalogResident;
                 state.catalogThinnedStars = stats.visibleStars || catalogResident;
                 state.localProceduralStars = localProceduralCount;
+                // The streaming blocks were rewritten: slot indices resolved from
+                // keys are stale from here on (the label layer and the picker watch
+                // this counter instead of diffing counts, which can coincide).
+                blockInfo.dynamicVersion++;
                 return { localCount, catalogResident };
         }
 
@@ -1163,6 +1248,12 @@ function createStarRenderer(device, context, format, options) {
                 prepare,
                 regenerate,
                 render,
+                // Read-only views of what is resident, for the picker, the label
+                // layer and the search (0.5.0). Both objects are allocated once and
+                // mutated in place, so a per-pick or per-frame caller allocates
+                // nothing; the counts inside `starBlocks().blocks` are live.
+                starBlocks: () => blockInfo,
+                fieldBuffers: () => fieldInfo,
                 setExposure,
                 setLinearExposure,
                 setWhitePoint,

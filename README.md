@@ -40,6 +40,10 @@ No framework, bundler, module loader, or runtime network connection is required.
   - **apocenter** — experimental feature-guided elliptical orbits
 - Fly, galactic-centre orbit, and selected-object orbit cameras
 - Named-star selection, labels, and constellation lines
+- Star selection and multi-select: click any drawn star (procedural, object, catalog or
+  landmark), Shift+click to build a set of up to 256, select-around by a world-space radius,
+  fly to one (`F`), cycle the set (`N`), clear it (`X`) — each member snapshotted with its
+  stellar properties, so the set survives the streaming rebuild
 - Copyable settings presets and deterministic URL parameters
 - CPU mirrors and model/parity tests for the JavaScript and WGSL implementations
 
@@ -52,7 +56,8 @@ This is a visual galaxy model, not an N-body gravity simulation. The analytical 
 | Input | Fly camera | Orbit camera |
 |---|---|---|
 | Mouse | Click to lock, then look | Press and drag the canvas |
-| Click without dragging | Select a star as the object target | Select a star as the object target |
+| Click without dragging | Select a star (Shift adds to the set) | Select a star (Shift adds to the set) |
+| F / N / Shift+N / X | Fly to the primary · next star · previous star · clear the set | same |
 | W / S | Forward / backward | Closer / farther |
 | A / D | Strafe | Circle target |
 | E / Q | Up / down | Over / under target |

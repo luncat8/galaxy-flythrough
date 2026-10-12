@@ -374,7 +374,21 @@
 	// to absMag before packing: object members are procedural stars, so they
 	// follow the field they sit in. It defaults to 0, which keeps every other
 	// caller — and every test that pins a member's magnitude — on the unoffset sky.
-	function writeObjectMembers(model, objects, view, byteOffset, maxMembers, magOffset) {
+	//
+	// `identity` / `identityBase` (0.5.0) are optional: when given, each member's
+	// stable key — `objectMemberSeed(oSeed, i)`, the seed this loop already
+	// derives it from — is written to `identity[identityBase + slot]`. Writing it
+	// here rather than recomputing it in the renderer is what keeps the key from
+	// drifting away from the star it names.
+	//
+	// `memberMeta` (0.5.0) is optional too, indexed by the block-local `slot`: the
+	// two per-object numbers a member's 16-byte record cannot carry, so the planet
+	// module can re-derive the star from its key (plan §2.4). `age` is the
+	// object's coeval age in Gyr; `component` is the component index the member
+	// was derived with, or −1 for a planetary nebula's central star, which takes
+	// `derivePlanetaryCentral` instead. Both arrays are block-local because the
+	// renderer allocates them with the object block, whose slots do not move.
+	function writeObjectMembers(model, objects, view, byteOffset, maxMembers, magOffset, identity, identityBase, memberMeta) {
 		if (quotaScratch.length < objects.length) {
 			let n = Math.max(16, quotaScratch.length);
 			while (n < objects.length) n *= 2;
@@ -416,6 +430,11 @@
 					memberDerived.colorIndex, memberDerived.absMag + offset,
 					orbit.flagsWithFamily(records.FLAG_VISIBLE, family),
 					hash.pcgHash(memberSeed ^ 0xFACE) & 0xFF);
+				if (identity) identity[identityBase + slot] = memberSeed >>> 0;
+				if (memberMeta) {
+					memberMeta.age[slot] = obj.ageGyr;
+					memberMeta.component[slot] = obj.type === 'planetary' ? -1 : component;
+				}
 				slot++;
 			}
 		}
@@ -491,6 +510,7 @@
 		GAS_TYPES, BILLBOARD_RECORD_FLOATS, BILLBOARD_RECORD_BYTES,
 		BILLBOARD_MIN_PX, BILLBOARD_MAX_DIST_KPC, BILLBOARD_OPACITY,
 		objectContext, objectProbabilitiesAt, placeObjects,
+		objectMemberSeed,
 		plummerRadius, kingRadius, sampleMemberOffset, objectQuotas, writeObjectMembers,
 		objectHasGas, billboardScreenPx, billboardVisible, writeObjectBillboards,
 		summariseObjects,

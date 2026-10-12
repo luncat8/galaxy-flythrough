@@ -34,6 +34,7 @@ const FIELDS = [
 	{ key: 'pattern', label: 'pattern speed', prefix: 'x' },
 	{ key: 'apoShare', label: 'apocenter stars', engine: 'apocenter' },
 	{ key: 'apoForce', label: 'apocenter force', engine: 'apocenter' },
+	{ key: 'selrad', label: 'select radius', unit: ' ly (log)' },
 	{ key: 'exposure', label: 'exposure' },
 	{ key: 'brightness', label: 'brightness', suffix: 'x' },
 	{ key: 'white', label: 'white point' },
@@ -54,6 +55,8 @@ function menuDefaults() {
 	const r = g.StarRenderer;
 	const o = g.OrbitLib;
 	return {
+		// Owned by selection.js like every other numeric default (plan §9.4).
+		selrad: g.Selection ? g.Selection.SELRAD_DEFAULT_LOG : 1.69897,
 		exposure: r.EXPOSURE_DEFAULT,
 		brightness: r.LINEAR_EXPOSURE_DEFAULT,
 		white: r.WHITE_POINT_DEFAULT,
@@ -193,7 +196,7 @@ function buildLlmPrompt(settings) {
 	lines.push('- star system: ' + ['type ' + (d.type || 'SBb'), 'seed ' + (d.seed || '42'),
 		'age ' + (d.age || '13.5 Gyr')].join(', '));
 	lines.push('- star movement stability engine: ' + (d.engine || 'classic'));
-	for (const key of ['time', 'wave', 'pattern', 'apoShare', 'apoForce']) {
+	for (const key of ['time', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad']) {
 		const field = FIELDS.find((f) => f.key === key);
 		if (d[key] !== undefined) lines.push('- ' + field.label + ': ' + d[key]);
 	}

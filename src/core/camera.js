@@ -52,6 +52,9 @@ const VELOCITY_TAU = 0.22;            // s, velocity response time constant
 const LOOK_SENSITIVITY = 0.0022;      // rad per pixel
 const ORBIT_DISTANCE_MIN = 0.0001;    // 0.1 pc
 const ORBIT_DISTANCE_MAX = 100.0;     // kpc
+// Fly-to stand-off (plan §3.4): standOffKpc = clamp(K·sqrt(L/L☉), MIN, MAX).
+const STAND_OFF_KPC_PER_SQRT_L = 0.0006;
+const STAND_OFF_KPC_MAX = 0.01;       // 10 pc
 const ORBIT_TURN_RATE = 1.0;          // rad/s for A/D/E/Q in orbit
 const ORBIT_DOLLY_RATE = 1.0;         // octaves/s for W/S in orbit: distance halves or doubles per second
 const ORBIT_KEY_BOOST = 4.0;          // Shift x4, Ctrl x1/4 on orbit key rates; x100 would be 16 turns a second
@@ -345,6 +348,26 @@ function createCamera() {
 		if (mode === MODE_ORBIT_OBJECT) snapToOrbit();
 	}
 
+	// Stand-off for a star of luminosity `lum` L☉ (plan §3.4): the Sun lands at
+	// 0.6 pc ≈ 2 ly, a late M dwarf sits on the 0.1 pc floor, and a 10 000 L☉
+	// supergiant clamps to the 10 pc ceiling — the whole field in front of it
+	// rather than the camera inside the star.
+	function orbitStandOff(lum) {
+		const l = lum > 0 ? lum : 0;
+		return clamp(STAND_OFF_KPC_PER_SQRT_L * Math.sqrt(l), ORBIT_DISTANCE_MIN, STAND_OFF_KPC_MAX);
+	}
+
+	// Fly to a star (plan §3.4, key F): aim at it and orbit it at the stand-off.
+	// A camera move, not a mode change — the viewer can still `C` back to fly.
+	function flyToStar(x, y, z, name, standOffKpc) {
+		assignObjectTarget(x, y, z, name);
+		if (mode !== MODE_ORBIT_OBJECT) setMode(MODE_ORBIT_OBJECT);
+		else snapToOrbit();
+		if (standOffKpc > 0) orbitDistance = clamp(standOffKpc, ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX);
+		placeOnOrbit();
+		return orbitDistance;
+	}
+
 	// --- Frame / home / reset -------------------------------------------------
 	// Install a galaxy's frame. A type change rehomes the camera rather than
 	// re-driving it: the mode and velocity stay, the positions they were measured
@@ -579,6 +602,8 @@ function createCamera() {
 		setMode,
 		toggleMode,
 		setOrbitTarget,
+		flyToStar,
+		orbitStandOff,
 		buildViewProj,
 		getState,
 		setState,
@@ -604,7 +629,7 @@ const Camera = {
 	BOOST_FACTOR, SLOW_FACTOR, WHEEL_NOTCH_PX,
 	VELOCITY_TAU, LOOK_SENSITIVITY,
 	ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX, ORBIT_TURN_RATE, ORBIT_DOLLY_RATE,
-	ORBIT_KEY_BOOST, HOME_ORBIT_DISTANCE,
+	ORBIT_KEY_BOOST, HOME_ORBIT_DISTANCE, STAND_OFF_KPC_PER_SQRT_L, STAND_OFF_KPC_MAX,
 	START_POSITION, SUN_POSITION, GALACTIC_CENTRE_TARGET,
 };
 if (typeof module !== 'undefined') module.exports = Camera;

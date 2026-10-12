@@ -19,6 +19,10 @@ const StarRenderer = require('../src/render/star-sprites.js');
 const OrbitLib = require('../src/math/orbit.js');
 const GalaxyLib = require('../src/math/galaxy.js');
 const Presets = require('../src/core/presets.js');
+// presets.js resolves the numeric defaults from the modules that own them
+// (0.5.0 added `selrad`, owned by selection.js), so the modules it reads must be
+// registered before menuDefaults() is called.
+const Selection = require('../src/core/selection.js');
 
 const checks = [];
 function check(name, test) {
@@ -33,7 +37,7 @@ const SRC = path.join(__dirname, '..', 'src');
 const SETTINGS = {
 	type: 'SBb', seed: 42, age: 13.5, engine: ['classic', 'apocenter'],
 	time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
-	exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
+	selrad: 1.69897, exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
 	stars: 300000, catalog: 250000,
 };
 
@@ -139,7 +143,9 @@ check('menuDefaults matches the modules that own the numbers', () => {
 	assert.equal(d.pattern, OrbitLib.PATTERN_SCALE_UI_DEFAULT);
 	assert.equal(d.apoShare, OrbitLib.APOCENTER_SHARE_UI_DEFAULT);
 	assert.equal(d.apoForce, OrbitLib.APOCENTER_FORCE_UI_DEFAULT);
+	assert.equal(d.selrad, Selection.SELRAD_DEFAULT_LOG);
 	assert.deepEqual(d, {
+		selrad: 1.69897,
 		exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
 		time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
 	});

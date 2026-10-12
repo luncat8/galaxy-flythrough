@@ -9,7 +9,8 @@
 // Consumers take what they own and leave the rest:
 //   * camera   : keys, lookDx/lookDy, wheelDelta, actions.reset/home/cameraMode
 //   * renderer : actions.exposure
-//   * selection: actions.pick + pickX/pickY, actions.constellations
+//   * selection: actions.pick + pickX/pickY, actions.constellations,
+//                actions.flyTo/nextStar/clearSet, keys.boost (Shift+click)
 //
 // No allocations in the hot path: listeners write into the shared state, and
 // deltas are zeroed by whoever consumed them.
@@ -37,7 +38,8 @@ function createInput(canvas) {
 		pointerLocked: false,
 		pickX: 0,
 		pickY: 0,
-		actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, galaxyCycle: 0, freezeTime: 0 },
+		actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, galaxyCycle: 0, freezeTime: 0,
+			flyTo: 0, nextStar: 0, clearSet: 0 },
 	};
 
 	// Held keys: true while down. Ctrl is the brief's slow modifier; Ctrl+W
@@ -57,7 +59,12 @@ function createInput(canvas) {
 	// not cycle browser focus, hence preventDefault.
 	// G regenerates the galaxy, so it is a one-shot like the other toggles:
 	// key repeat would otherwise rebuild a 300k-star field at 30 Hz.
-	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyC: 'cameraMode', KeyP: 'constellations', KeyG: 'galaxyCycle', KeyT: 'freezeTime', Tab: 'menu' };
+	// 0.5.0 adds the star-selection keys: F flies to the primary, N cycles it
+	// through the set (Shift+N, read as the held `boost` key, walks backwards),
+	// X clears the set. One-shots like the rest: a held N must not cycle the
+	// primary at the key-repeat rate.
+	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyC: 'cameraMode', KeyP: 'constellations', KeyG: 'galaxyCycle', KeyT: 'freezeTime', Tab: 'menu',
+		KeyF: 'flyTo', KeyN: 'nextStar', KeyX: 'clearSet' };
 	// Exposure accumulates, so key repeat is one more step per repeat.
 	const exposureMap = { BracketLeft: -1, Minus: -1, BracketRight: 1, Equal: 1 };
 	// Linear exposure (ACES pre-multiplier) in half-stop steps. ; darker, ' brighter.

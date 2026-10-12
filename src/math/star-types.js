@@ -41,16 +41,23 @@
 		? require('./star-record.js')
 		: window.StarRecord;
 
+	// The main-sequence class boundaries, hottest first: [class, floor K]. One
+	// list, two readers — this classifier and planets.js's record→temperature
+	// inversion, which has to land a colour index back inside the same band the
+	// renderer classified the star into. The WGSL mirror carries the same
+	// numbers (procedural-gen.wgsl, pinned by wgsl-validate).
+	const CLASS_TEMP_BOUNDS = [
+		['O', 30000], ['B', 10000], ['A', 7500], ['F', 6000],
+		['G', 5200], ['K', 3700], ['M', 0],
+	];
+
 	// Spectral class from temperature and evolution state.
 	function classifyByTempAndState(Teff, evolvedState) {
 		if (evolvedState === 'wd') return 'WD';
 		if (evolvedState === 'giant') return 'RG';
-		if (Teff >= 30000) return 'O';
-		if (Teff >= 10000) return 'B';
-		if (Teff >= 7500) return 'A';
-		if (Teff >= 6000) return 'F';
-		if (Teff >= 5200) return 'G';
-		if (Teff >= 3700) return 'K';
+		for (let i = 0; i < CLASS_TEMP_BOUNDS.length; i++) {
+			if (Teff >= CLASS_TEMP_BOUNDS[i][1]) return CLASS_TEMP_BOUNDS[i][0];
+		}
 		return 'M';
 	}
 
@@ -466,7 +473,7 @@
 	}
 
 	const StarTypesLib = {
-		MASS_TEFF_TABLE, YOUNG_ARM_MAX_GYR, SFH_TABLE_STEPS, SFH_SOLVE_STEPS,
+		MASS_TEFF_TABLE, CLASS_TEMP_BOUNDS, YOUNG_ARM_MAX_GYR, SFH_TABLE_STEPS, SFH_SOLVE_STEPS,
 		classifyByTempAndState, classColor, luminosityFromMass, teffFromMass,
 		msLifetimeGyr, giantLifetimeGyr, sampleMassIMF, sampleLocalAge, metallicityFor,
 		TGIANT_FRAC, TGIANT_MIN, TGIANT_MAX, WD_COOL_TAU, WD_TEFF_FLOOR, WD_LUM_FLOOR,

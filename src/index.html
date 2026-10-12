@@ -100,6 +100,19 @@
                         <input type="range" id="galaxy-age" min="0.2" max="13.5" step="0.1" value="13.5">
                         <span id="val-galaxy-age" class="menu-val">13.5 Gyr</span>
                 </div>
+                <!-- Star selection (0.5.0): the radius is world-space in light-years
+                     (log slider, 0.1 ly … 100 000 ly) because what the set is for —
+                     a neighbourhood search, a route — is physical, not on-screen. -->
+                <div class="menu-header menu-header-selection"><span>Selection</span></div>
+                <div class="menu-row">
+                        <label for="slider-selrad" title="Select-around radius, log scale. World-space: the stars the operations actually reach.">Select radius</label>
+                        <input type="range" id="slider-selrad" min="-1" max="5" step="0.00001" value="1.69897">
+                        <span id="val-selrad" class="menu-val">50 ly</span>
+                </div>
+                <div class="menu-row menu-actions">
+                        <button id="btn-select-around" title="Select every star within the radius of the primary (F flies to it, N cycles, X clears)">Select around</button>
+                        <button id="btn-clear-set" title="Clear the selection set (X)">Clear set</button>
+                </div>
                 <div class="menu-row menu-actions">
                         <button id="menu-defaults">Defaults</button>
                 </div>
@@ -129,6 +142,9 @@ scroll               speed x2 per notch      distance x2 per notch
 Shift / Ctrl         speed x100 / x0.1       rates x4 / x0.25
 C                    camera: fly -> orbit galactic centre -> orbit object
 P                    constellation lines on / off
+F                    fly to the selected star
+N / Shift+N          next / previous star in the selection set
+X                    clear the selection set (click selects, Shift+click adds)
 H                    home: the Sun, or a generated galaxy's centre
 G                    new galaxy: cycle type (rebuilds the field, about a second)
 R                    reset everything
@@ -149,6 +165,10 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
         <script src="math/sampling.js"></script>
         <script src="math/star-record.js"></script>
         <script src="math/star-types.js"></script>
+        <!-- The lazy planet generator's input tier (0.5.0): reads the four
+             namespaces above, and is read by cell-manager and star-sprites for
+             the per-record identity keys. -->
+        <script src="math/planets.js"></script>
         <script src="math/orbit.js"></script>
         <script src="math/nebula.js"></script>
         <script src="math/objects.js"></script>
@@ -157,6 +177,9 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
         <script src="core/camera.js"></script>
         <script src="core/input.js"></script>
         <script src="core/selection.js"></script>
+        <!-- The selection set (0.5.0): snapshots keyed by the renderer's identity
+             array, so it depends on nothing at load and main.js fills it. -->
+        <script src="core/star-set.js"></script>
         <script src="core/loop.js"></script>
         <script src="core/presets.js"></script>
         <!-- Data after math (landmarks bake their positions through coords.js at

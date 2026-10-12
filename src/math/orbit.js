@@ -543,6 +543,31 @@ function engineLandmarkPosition(out, i, bx, by, bz, colorIndex, time, model) {
 	return out;
 }
 
+// The record twin of engineLandmarkPosition above: the same mask ladder for a
+// *record* rather than for a landmark, reading family/phase/amplitude out of the
+// packed flags and magnitude byte exactly as the vertex stage does. The picker
+// (0.5.0, plan §2.6) walks every block, so it needs this dispatch; landmarks keep
+// their own path, which stays exact under the simple engine.
+//
+// The simple bit is the honest gap: a record's θ lives in the GPU compute buffer
+// and the CPU never reads it back, so under a simple mask this returns the
+// classic law (when that bit is also set) or the birth position, and reports so.
+// The readout line uses the report instead of inferring from the engine name.
+// Returns true when the position was approximated.
+function engineRecordPosition(out, x, y, z, packed, time, model) {
+	const orbit = readOrbit(packed);
+	if (engine & ENGINE_CLASSIC) orbitPosition(out, x, y, z, orbit.family, orbit.phase, orbit.amplitude, time, model);
+	else {
+		out[0] = x; out[1] = y; out[2] = z;
+	}
+	// apocenterPosition rebuilds from the birth position and is a no-op for T = 0
+	// and unselected stars; gate it here so it cannot clobber the baseline above.
+	if ((engine & ENGINE_APOCENTER) && time !== 0 && apocenterSelected(x, y, z)) {
+		apocenterPosition(out, x, y, z, orbit.family, orbit.phase, orbit.amplitude, time, model);
+	}
+	return (engine & ENGINE_SIMPLE) !== 0;
+}
+
 // The four vec4s the star shader reads as camera.dynA / dynB / waveA / waveB.
 // Nebulae share the buffer and ignore the wave pair (gas stays on the pattern).
 // Layout contract shared with SHADER_PARTS['orbit'] and CameraUniform:
@@ -996,7 +1021,7 @@ const OrbitAPI = {
 	packOrbitDynamics, sinTau, sliderValueToRate, formatTimeRate,
 	setEngine, getEngine, engineName,
 	setApocenterShare, setApocenterForce, getApocenterShare, getApocenterForce,
-	apocenterSelector, apocenterSelected, engineLandmarkPosition,
+	apocenterSelector, apocenterSelected, engineLandmarkPosition, engineRecordPosition,
 	simpleArmed, simpleSigma, simpleEccMax, simpleOmega, simpleEccOf, simplePeriOf,
 	simpleDerived, simpleOmegaMax, simpleSubsteps, wrapAngle, simplePatternPhase,
 	simpleStepTheta, simplePositionFromTheta,

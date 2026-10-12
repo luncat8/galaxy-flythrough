@@ -43,6 +43,14 @@ All rows remain **deferred / not verified** until evidence is recorded.
 | V5 | Bar polish | Capture face-on and edge-on SBa/SBb/SBc/SBd and Milky Way views. Classify the concern: silhouette, arm attachment, contrast/exposure, or time-dependent deformation. First compare frozen vs moving and hold exposure fixed. Tune only after a reproducible issue is isolated; a dimpled X/barlens or new vertical component is a separate model feature, not a quick cosmetic fix. |
 | V6 | Performance and extended coverage | Only if needed: target-GPU timing, high budgets, HDR display behavior, other types and long-running sessions. Record GPU, browser, resolution and budget. No target-FPS claim from the CPU interpreter or software rendering. |
 
+0.5 section (added 2026-10-12, with 0.5.0): the selection work is CPU-only, so the
+browser pass asks whether it *reads*, not whether it computes.
+
+| ID | Task | Acceptance / evidence |
+|---|---|---|
+| V7 | 0.5.0 picking and the set | Milky Way preset, labels on. Click a field star, an object member and a catalog star: the yellow primary ring lands on the star under the cursor, and the `selected` line names it (a landmark keeps its name; anything else is `S<key36>`). Shift+click adds; the dimmer set rings appear; `N` cycles the primary, `X` clears, `F` flies in and stops at a readable stand-off (not inside the star, not with the star behind the camera). Repeat under each engine mask and record: (a) whether the ring appears on the click or a few frames later (the sweep is chunked; ~170 ms classic, ~400 ms apocenter at 300k), (b) whether the readout's `approximated` case is visible under the apocenter pass, (c) whether a click during star-time motion lands on the star as drawn. |
+| V8 | 0.5.0 radius select | `Select around` at 50 ly and at 10 kly: the readout count matches what is visible, the set rings appear only for stars still resident (a member whose cell streamed out keeps its readout line and loses its ring), and the log slider's readout reads back in ly. Then change the galaxy age with a set held: the readout's mass/lum/age must follow the new epoch (re-derived in place), and a type/seed change must clear the set. |
+
 For each engine start from the same reset/reload state rather than inheriting the
 previous engine's accumulated time. Copy a complete preset for reproduction;
 record camera pose/view separately because the settings line does not serialize it.

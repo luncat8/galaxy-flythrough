@@ -1,6 +1,8 @@
 // src/render/label-layer.js
 // A 2D canvas over the WebGPU canvas: landmark name labels, constellation
-// lines, and a ring around the selected star.
+// lines, a ring around the selected star, and — as of 0.5.0 — a smaller ring on
+// every member of the selection set (plan §3.5), resolved through the renderer's
+// identity array by key so a ring survives a residency rebuild.
 //
 // Drawn EVERY frame, not at the overlay's 4 Hz cadence — a label that lags a
 // quarter second behind its star is visibly wrong while the camera moves.
@@ -27,10 +29,28 @@ const SELECT_FILL = 'rgba(255, 215, 94, 0.95)';
 const SELECT_RING = 'rgba(255, 215, 94, 0.8)';
 const LABEL_OFFSET_PX = 6;
 const SELECT_RING_PX = 7;
+// Set members (plan §3.5): smaller and dimmer than the primary's ring, so a
+// many-star selection still reads as one primary plus a cloud.
+const SET_RING_PX = 4;
+const SET_RING = 'rgba(255, 215, 94, 0.45)';
+// Key→slot map: MAP_SIZE slots, linear probing. The key is stored next to the
+// slot and a separate `used` byte marks occupancy — a 32-bit key can be zero or
+// negative, so neither the key nor the slot can double as the empty marker.
+const MAP_SIZE = 1024;
+const MAP_MASK = MAP_SIZE - 1;
+const MAP_LOAD_MAX = 640;        // above this a rebuild falls back to a plain scan
 
 const labelCoords = (typeof module !== 'undefined' && module.exports)
 	? require('../math/coords.js')
 	: window.Coords;
+
+function labelRecords() {
+	return (typeof window !== 'undefined' && window.StarRecord) || null;
+}
+
+function labelOrbit() {
+	return (typeof window !== 'undefined' && window.OrbitLib) || null;
+}
 
 function createLabelLayer(canvas, landmarks, constellations) {
 	const ctx = canvas.getContext('2d');
@@ -47,6 +67,163 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	let orbitTime = 0;
 	const orbitScratch = new Float64Array(3);
 	function setOrbitState(model, time) { orbitModel = model; orbitTime = time || 0; }
+
+	// --- Star-set rings (plan §3.5) ---------------------------------------
+	// The renderer's identity array, the set's keys, and the key→slot map that
+	// connects them. The map is rebuilt only when the set changes or the block
+	// contents change (`dynamicVersion`), never per frame.
+	let starSource = null;              // renderer.starBlocks()
+	let lastDynamicVersion = -1;
+	let setKeys = null;                 // the set's keys (Uint32Array), borrowed
+	let setCount = 0;
+	let mapDirty = false;
+	let mapOk = false;                  // false → the plain-scan fallback
+	const mapKey = new Uint32Array(MAP_SIZE);
+	const mapSlot = new Int32Array(MAP_SIZE);   // global slot, or −1 if not resident
+	const mapKind = new Int8Array(MAP_SIZE);    // block kind, or −1
+	const mapUsed = new Uint8Array(MAP_SIZE);
+
+	function mapHash(key) {
+		// One multiplicative mix; the low bits of a PCG key are already well
+		// distributed, so a mask is enough at this load factor.
+		return (Math.imul(key, 0x9e3779b1) >>> 0) & MAP_MASK;
+	}
+
+	// Probe for `key`, returning the slot it occupies or −1 when absent.
+	function mapProbe(key, forInsert) {
+		let slot = mapHash(key);
+		let guard = 0;
+		while (mapUsed[slot] && mapKey[slot] !== key) {
+			if (++guard > MAP_SIZE) return -1;
+			slot = (slot + 1) & MAP_MASK;
+		}
+		if (mapUsed[slot]) return slot;
+		return forInsert ? slot : -1;
+	}
+
+	function setStarSource(ref) {
+		starSource = ref || null;
+		mapDirty = true;
+	}
+
+	function setSelectedKeys(keys, count) {
+		setKeys = keys || null;
+		setCount = count > 0 ? count : 0;
+		mapDirty = true;
+	}
+
+	// Insert the set's keys, then fill the slots with one pass over the live
+	// blocks. Probing is unambiguous because the key is stored beside its slot;
+	// a key that is not resident keeps slot −1 and its ring is simply not drawn.
+	function rebuildMap() {
+		mapDirty = false;
+		mapOk = false;
+		const records = labelRecords();
+		const info = starSource;
+		if (!records || !info || !info.identity || !info.view || !setKeys
+			|| setCount <= 0 || setCount > MAP_LOAD_MAX) return;
+		mapUsed.fill(0);
+		for (let i = 0; i < setCount; i++) {
+			const key = setKeys[i] >>> 0;
+			const slot = mapProbe(key, true);
+			if (slot < 0) return;                       // table full: plain scan
+			mapUsed[slot] = 1;
+			mapKey[slot] = key;
+			mapSlot[slot] = -1;
+			mapKind[slot] = -1;
+		}
+		const identity = info.identity;
+		const view = info.view;
+		const blocks = info.blocks;
+		const visibleBit = records.FLAG_VISIBLE << 16;
+		for (let k = 0; k < blocks.length; k++) {
+			const block = blocks[k];
+			const count = block.count | 0;
+			if (count <= 0) continue;
+			const end = (block.offset | 0) + count;
+			for (let slot = block.offset | 0; slot < end; slot++) {
+				const probe = mapProbe(identity[slot] >>> 0, false);
+				if (probe < 0 || mapSlot[probe] >= 0) continue;
+				if ((view.getUint32(slot * records.RECORD_BYTES + 12, true) & visibleBit) === 0) continue;
+				mapSlot[probe] = slot;
+				mapKind[probe] = k;
+			}
+		}
+		mapOk = true;
+	}
+
+	// The plain-scan fallback: membership by a linear search of the set. Only
+	// reachable if the map ever fills, which 256 keys in 1024 slots cannot do.
+	function isSetKey(key) {
+		if (!mapOk) {
+			for (let i = 0; i < setCount; i++) if ((setKeys[i] >>> 0) === key) return true;
+			return false;
+		}
+		return mapProbe(key, false) >= 0;
+	}
+
+	function drawSetRings(camera, width, height) {
+		const records = labelRecords();
+		const info = starSource;
+		if (!records || !info || !info.identity || !info.view || !setKeys || setCount <= 0) return;
+		if (mapDirty || lastDynamicVersion !== info.dynamicVersion) {
+			lastDynamicVersion = info.dynamicVersion;
+			rebuildMap();
+		}
+		const orbit = labelOrbit();
+		const view = info.view;
+		const viewProj = camera.buildViewProj(width / height);
+		const cam = camera.cameraPos;
+		const blocks = info.blocks;
+		const visibleBit = records.FLAG_VISIBLE << 16;
+		ctx.strokeStyle = SET_RING;
+		ctx.lineWidth = 1;
+		ctx.beginPath();
+		if (mapOk) {
+			for (let i = 0; i < setCount; i++) {
+				const probe = mapProbe(setKeys[i] >>> 0, false);
+				if (probe < 0 || mapSlot[probe] < 0) continue;
+				ringAtSlot(view, info, records, mapSlot[probe], mapKind[probe],
+					orbit, viewProj, cam, width, height);
+			}
+		} else {
+			for (let k = 0; k < blocks.length; k++) {
+				const block = blocks[k];
+				const count = block.count | 0;
+				if (count <= 0) continue;
+				const end = (block.offset | 0) + count;
+				for (let slot = block.offset | 0; slot < end; slot++) {
+					if ((view.getUint32(slot * records.RECORD_BYTES + 12, true) & visibleBit) === 0) continue;
+					if (!isSetKey(info.identity[slot] >>> 0)) continue;
+					ringAtSlot(view, info, records, slot, k, orbit, viewProj, cam, width, height);
+				}
+			}
+		}
+		ctx.stroke();
+	}
+
+	// One ring, at the position the record is *drawn* at (the shared mask
+	// dispatch), which is why a ring can sit off the label of the same star.
+	function ringAtSlot(view, info, records, slot, kind, orbit, viewProj, cam, width, height) {
+		const byteOffset = slot * records.RECORD_BYTES;
+		const packed = view.getUint32(byteOffset + 12, true);
+		let px = view.getFloat32(byteOffset, true);
+		let py = view.getFloat32(byteOffset + 4, true);
+		let pz = view.getFloat32(byteOffset + 8, true);
+		if (orbit && orbitModel) {
+			if (kind === 1) {
+				orbit.engineLandmarkPosition(orbitScratch, slot - info.blocks[1].offset, px, py, pz,
+					packed & 0xFF, orbitTime, orbitModel);
+			} else {
+				orbit.engineRecordPosition(orbitScratch, px, py, pz, packed, orbitTime, orbitModel);
+			}
+			px = orbitScratch[0]; py = orbitScratch[1]; pz = orbitScratch[2];
+		}
+		if (!labelCoords.projectToScreen(viewProj, px, py, pz,
+			cam[0], cam[1], cam[2], width, height, scratch)) return;
+		ctx.moveTo(scratch[0] + SET_RING_PX, scratch[1]);
+		ctx.arc(scratch[0], scratch[1], SET_RING_PX, 0, Math.PI * 2);
+	}
 
 	function resize(widthCss, heightCss, dpr) {
 		const w = Math.max(1, Math.round(widthCss * dpr));
@@ -142,6 +319,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		if (showLines) drawLines();
 		drawLabels();
 		drawSelectedRing();
+		drawSetRings(camera, width, height);
 	}
 
 	function setSelected(index) {
@@ -161,13 +339,16 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		return showLines;
 	}
 
-	return { resize, draw, setSelected, setOrbitState, toggleConstellations, setConstellations, constellationsVisible, setEnabled };
+	return {
+		resize, draw, setSelected, setOrbitState, setStarSource, setSelectedKeys,
+		toggleConstellations, setConstellations, constellationsVisible, setEnabled,
+	};
 }
 
 const LabelLayer = {
 	createLabelLayer,
 	LABEL_FONT, LABEL_FILL, LINE_STROKE, SELECT_FILL, SELECT_RING,
-	LABEL_OFFSET_PX, SELECT_RING_PX,
+	LABEL_OFFSET_PX, SELECT_RING_PX, SET_RING_PX, SET_RING, MAP_SIZE,
 };
 if (typeof module !== 'undefined') module.exports = LabelLayer;
 if (typeof window !== 'undefined') window.LabelLayer = LabelLayer;
