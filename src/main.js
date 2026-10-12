@@ -241,7 +241,7 @@ async function boot() {
         }
 
         function syncSelection() {
-                labels.setSelectedKeys(starSet.keys(), starSet.count());
+                labels.setSelectedKeys(starSet.keys, starSet.count());
                 updateSelectionBox();
         }
 
@@ -613,7 +613,7 @@ async function boot() {
                         // The selection contents, primary first: the keys are
                         // stable identities, so the working set survives the
                         // copy and another viewer reproduces it.
-                        selstars: starSet.count() > 0 ? [...starSet.keys().slice(0, starSet.count())] : null,
+                        selstars: starSet.count() > 0 ? [...starSet.keys.slice(0, starSet.count())] : null,
                         stars: params.stars,
                         catalog: params.catalogStars,
                 };

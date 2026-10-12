@@ -1,53 +1,53 @@
 {
-  "date": "2026-10-12T01:42:36.805Z",
+  "date": "2026-10-12T01:48:46.884Z",
   "model": {
     "type": "SBb",
     "seed": 3
   },
   "timeMyr": 300,
   "timings": {
-    "fixtureBuildMs": 351,
+    "fixtureBuildMs": 480,
     "pickFrozenMs": {
-      "median": 3.220864,
-      "p90": 3.364324,
-      "max": 31.861661
+      "median": 3.269684,
+      "p90": 3.410301,
+      "max": 4.275596
     },
     "pickDispatchedMs": {
-      "median": 57.308958,
-      "p90": 63.999291,
-      "max": 68.244324
+      "median": 68.406472,
+      "p90": 73.748145,
+      "max": 76.878781
     },
     "dispatchedHitMovedKpc": 0.2617349841210823,
     "radiusScanMs": {
-      "median": 2.638182,
-      "p90": 2.733333,
-      "max": 3.312448
+      "median": 2.961673,
+      "p90": 3.483149,
+      "max": 3.967676
     },
     "radiusByRadius": [
       {
         "radiusLy": 50,
         "matches": 1,
-        "ms": 0.974809
+        "ms": 1.111706
       },
       {
         "radiusLy": 500,
         "matches": 256,
-        "ms": 1.023041
+        "ms": 1.146165
       },
       {
         "radiusLy": 5000,
         "matches": 256,
-        "ms": 1.7223
+        "ms": 1.846364
       },
       {
         "radiusLy": 50000,
         "matches": 256,
-        "ms": 1.608518
+        "ms": 2.049953
       },
       {
         "radiusLy": 100000,
         "matches": 256,
-        "ms": 1.509701
+        "ms": 1.642819
       }
     ],
     "records": 300000,
@@ -469,18 +469,18 @@
       "name": "pickAny at T = 0 walks 300000 records inside the 16 ms budget",
       "pass": true,
       "detail": {
-        "median": 3.220864,
-        "p90": 3.364324,
-        "max": 31.861661
+        "median": 3.269684,
+        "p90": 3.410301,
+        "max": 4.275596
       }
     },
     {
       "name": "selectAround at 300000 records inside the 5 ms budget",
       "pass": true,
       "detail": {
-        "median": 2.638182,
-        "p90": 2.733333,
-        "max": 3.312448
+        "median": 2.961673,
+        "p90": 3.483149,
+        "max": 3.967676
       }
     },
     {
@@ -488,14 +488,14 @@
       "pass": true,
       "detail": {
         "dispatched": {
-          "median": 57.308958,
-          "p90": 63.999291,
-          "max": 68.244324
+          "median": 68.406472,
+          "p90": 73.748145,
+          "max": 76.878781
         },
         "frozen": {
-          "median": 3.220864,
-          "p90": 3.364324,
-          "max": 31.861661
+          "median": 3.269684,
+          "p90": 3.410301,
+          "max": 4.275596
         },
         "hitMoved": 0.2617349841210823
       }
