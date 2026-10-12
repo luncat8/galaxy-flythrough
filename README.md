@@ -39,7 +39,10 @@ No framework, bundler, module loader, or runtime network connection is required.
   - **simple** — responsive friction-field integration
   - **apocenter** — experimental feature-guided elliptical orbits
 - Fly, galactic-centre orbit, and selected-object orbit cameras
-- Named-star selection, labels, and constellation lines
+- Star selection: pick any drawn star, Shift+click to build a multi-select set, radius
+  select by log light-year range, `F` to fly to the primary star with a brightness-scaled
+  stand-off, `N` to cycle the primary and `X` to clear — with a live selection readout
+- Named-star selection, labels, constellation lines and selection rings
 - Copyable settings presets and deterministic URL parameters
 - CPU mirrors and model/parity tests for the JavaScript and WGSL implementations
 
@@ -68,6 +71,10 @@ Other controls:
 - `G` — cycle galaxy type and rebuild the field
 - `P` — toggle constellation lines
 - `T` — pause/resume star time
+- `F` — fly to the primary selected star
+- `N` / `Shift+N` — cycle the primary through the selection
+- `X` — clear the selection
+- `Shift+click` — add or remove one star from the selection
 - `[` / `]` — exposure
 - `;` / `'` — overall brightness
 - `Esc` — release the pointer in fly mode
@@ -99,6 +106,8 @@ Useful parameters include:
 | `brightness`, `white`, `sat` | Display gain, white point, and saturation |
 | `headroom`, `highlight` | HDR ceiling and highlight desaturation |
 | `apoShare`, `apoForce` | Apocenter-engine population share and eccentricity force |
+| `selrad` | Selection radius in light years |
+| `selstars` | Dot-joined base36 selection keys, primary first |
 
 The Preset section in the UI serializes the complete active configuration in this same format.
 
@@ -128,6 +137,7 @@ Useful commands:
 python3 scripts/run.py orbit          # movement and CPU-mirror invariants
 python3 scripts/run.py shape          # 3D component shape and sampler parity
 python3 scripts/run.py renderer       # render pipeline contracts
+python3 scripts/run.py star-select    # picking, selection set, radius select, fly-to
 python3 scripts/run.py wgsl-validate  # WGSL structure and JS mirror checks
 python3 scripts/run.py wgsl-exec      # execute shipping WGSL on the CPU
 ```
@@ -146,7 +156,7 @@ The runtime is organized as classic-script namespaces under `src/`:
 - `render/shaders.js` — all WGSL shader source
 - `render/star-sprites.js` — procedural generation, culling, HDR star passes, and tone mapping
 - `stream/` — catalog bundle loading and cell residency
-- `core/` — camera, input, loop, selection, and presets
+- `core/` — camera, input, loop, star set + selection, and presets
 - `data/` — named landmarks, constellations, and the packed catalog
 
 The CPU keeps world positions in `f64`. GPU rendering uses camera-relative `f32` coordinates. Procedural objects are derived from stable hashes rather than mutable random-number state, so a galaxy is reproducible from its type and seed.

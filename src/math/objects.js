@@ -374,7 +374,12 @@
 	// to absMag before packing: object members are procedural stars, so they
 	// follow the field they sit in. It defaults to 0, which keeps every other
 	// caller — and every test that pins a member's magnitude — on the unoffset sky.
-	function writeObjectMembers(model, objects, view, byteOffset, maxMembers, magOffset) {
+	//
+	// `identity` (optional) receives one u32 key per written slot at
+	// `identityOffset`, the same (memberSeed) value the records are derived
+	// from: a member is a pure function of (object seed, i), so the key needs
+	// nothing but the seed that is already being hashed for its position.
+	function writeObjectMembers(model, objects, view, byteOffset, maxMembers, magOffset, identity, identityOffset) {
 		if (quotaScratch.length < objects.length) {
 			let n = Math.max(16, quotaScratch.length);
 			while (n < objects.length) n *= 2;
@@ -416,6 +421,7 @@
 					memberDerived.colorIndex, memberDerived.absMag + offset,
 					orbit.flagsWithFamily(records.FLAG_VISIBLE, family),
 					hash.pcgHash(memberSeed ^ 0xFACE) & 0xFF);
+				if (identity) identity[identityOffset + slot] = memberSeed;
 				slot++;
 			}
 		}

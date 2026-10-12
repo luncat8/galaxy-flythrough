@@ -23,11 +23,17 @@ function currentDpr() {
 
 // Three significant figures, trailing zeros dropped: 8, 0.125, 2050.
 function formatSpeed(lyPerSec) {
-        return `${Number(lyPerSec.toPrecision(3))} ly/s`;
+	return `${Number(lyPerSec.toPrecision(3))} ly/s`;
 }
 
 function formatDistance(kpc) {
-        return kpc >= 1 ? `${kpc.toFixed(3)} kpc` : `${(kpc * 1000).toFixed(2)} pc`;
+	return kpc >= 1 ? `${kpc.toFixed(3)} kpc` : `${(kpc * 1000).toFixed(2)} pc`;
+}
+
+// A light-year radius for the readout: 50 ly reads as "50 ly", 0.1 as "0.1 ly",
+// 100000 as "100000 ly". No units conversion here — the slider is already ly.
+function formatLy(ly) {
+	return `${Number(ly.toPrecision(3))} ly`;
 }
 
 const FACTOR_LABELS = { 100: 'Shift', 0.1: 'Ctrl', 10: 'Shift+Ctrl' };
@@ -83,6 +89,8 @@ function readParams(search) {
                 sat: number('sat', window.StarRenderer.SATURATION_DEFAULT),
                 headroom: number('headroom', window.StarRenderer.HEADROOM_DEFAULT),
                 highlight: number('highlight', window.StarRenderer.HIGHLIGHT_DESAT_DEFAULT),
+                // Select-around radius, world-space in light-years (0.5.0).
+                selrad: number('selrad', window.Selection.SELECT_RADIUS_LY_DEFAULT),
         };
 }
 
@@ -150,7 +158,6 @@ async function boot() {
                 document.getElementById('labels'), landmarks, window.Constellations);
 
         const selection = window.Selection.createSelection(camera, landmarks);
-        let selected = -1;
 
         // The renderer works out its own parity target (the global field plus whatever
         // catalog budget the model allows), because how much catalog a galaxy has is the
@@ -185,6 +192,167 @@ async function boot() {
         renderer.setSaturation(params.sat);
         renderer.setHeadroom(params.headroom);
         renderer.setHighlightDesat(params.highlight);
+
+        // --- Star selection (0.5.0) -----------------------------------------
+        // Pick any drawn star (not just the named table), keep a primary plus a
+        // multi-select set, select around a world-space radius, and fly to the
+        // primary. The set holds identity keys, never buffer slots: the local
+        // gap-fill and catalog blocks are rewritten on every residency change,
+        // so a stored slot would silently become another star as the viewer
+        // flies. Both accessors are callbacks for the same reason.
+        const selectionBox = document.getElementById('selection');
+        const starSet = window.StarSet.createStarSet();
+        selection.setRecordBlocks(() => renderer.starBlocks());
+        labels.setRecordSource(() => renderer.starBlocks());
+
+        // Preallocated: the pick result, the primary's resolved position and
+        // the selection readout never allocate per click or per overlay tick.
+        const pickHit = { key: 0, blockKind: '', index: -1, x: 0, y: 0, z: 0, packed: 0, dist2: 0 };
+        const primaryPos = new Float64Array(3);
+        let selPrimary = '';          // designation: the landmark name, or S<key36>
+        let selPrimaryDetail = '';    // class and absolute magnitude, as picked
+        let selApproximated = false;  // the pick fell back to the classic baseline (simple mask)
+        let selectRadiusLy = params.selrad;
+
+        // A picked star's name: the named table when the record came from the
+        // landmark block (its slot range is fixed), the §4.11 designation
+        // otherwise. The hash is not inverted — the block the slot sits in says
+        // which it is.
+        function starDisplayName(key, slot) {
+                const blocks = renderer.starBlocks();
+                const landmark = blocks.blocks[1];
+                if (slot >= landmark.offset && slot < landmark.offset + landmark.count) {
+                        return landmarks.ENTRIES[slot - landmark.offset].name;
+                }
+                return window.StarSet.keyDesignation(key);
+        }
+
+        function classAndMag(packed) {
+                const cls = window.StarRecord.SPECTRAL_CLASSES[packed & 0xFF];
+                return `${cls}  M ${window.StarRecord.decodeAbsMag((packed >>> 8) & 255).toFixed(1)}`;
+        }
+
+        // The key's slot, name and packed word in one pass over the identity
+        // array; (0, '', 0) when the star is not resident right now.
+        function starSummary(key) {
+                const slot = selection.resolveSlot(key);
+                if (slot < 0) return { slot: -1, name: window.StarSet.keyDesignation(key), packed: 0 };
+                return { slot, name: starDisplayName(key, slot), packed: selection.recordWordAt(slot) };
+        }
+
+        function syncSelection() {
+                labels.setSelectedKeys(starSet.keys(), starSet.count());
+                updateSelectionBox();
+        }
+
+        function setPrimaryHit(hit) {
+                selPrimary = starDisplayName(hit.key, hit.index);
+                selPrimaryDetail = classAndMag(hit.packed);
+                primaryPos[0] = hit.x;
+                primaryPos[1] = hit.y;
+                primaryPos[2] = hit.z;
+        }
+
+        // Distance from the camera, kpc: the set's nearest-first order is the
+        // viewer's, so an added star sits where it looks like it should.
+        function cameraDistance(pos) {
+                const cam = camera.cameraPos;
+                return Math.hypot(pos[0] - cam[0], pos[1] - cam[1], pos[2] - cam[2]);
+        }
+
+        function selectPickedStar(hit, toggle) {
+                const blocks = renderer.starBlocks();
+                selApproximated = window.OrbitLib.recordPositionApproximated();
+                if (toggle) {
+                        starSet.toggleStar(hit.key, cameraDistance(hit));
+                        // Removing the primary promotes the nearest member;
+                        // an emptied set drops the primary with it.
+                        if (starSet.count() === 0) {
+                                selPrimary = '';
+                                selPrimaryDetail = '';
+                        } else if (!starSet.hasStar(hit.key) || selPrimary === '') {
+                                setPrimaryKey(starSet.keyAt(starSet.nearestSetStar()));
+                        }
+                } else {
+                        starSet.setStar(hit.key, cameraDistance(hit));
+                        setPrimaryHit(hit);
+                }
+                labels.setSelected(hit.blockKind === 'landmark' && !toggle
+                        ? hit.index - blocks.blocks[1].offset : -1);
+                syncSelection();
+        }
+
+        function setPrimaryKey(key) {
+                const summary = starSummary(key);
+                selPrimary = summary.name;
+                selPrimaryDetail = summary.packed ? classAndMag(summary.packed) : '';
+                if (summary.slot >= 0) selection.recordPositionAt(summary.slot, primaryPos);
+        }
+
+        function flyToPrimary() {
+                const key = starSet.primary();
+                if (key === 0) return;
+                const slot = selection.resolveSlot(key);
+                if (slot < 0 || !selection.recordPositionAt(slot, primaryPos)) return;
+                const packed = selection.recordWordAt(slot);
+                const absMag = packed ? window.StarRecord.decodeAbsMag((packed >>> 8) & 255) : 4.83;
+                selApproximated = window.OrbitLib.recordPositionApproximated();
+                camera.flyToStar(primaryPos[0], primaryPos[1], primaryPos[2], absMag,
+                        { name: selPrimary || starDisplayName(key, slot) });
+                updateSelectionBox();
+        }
+
+        function cyclePrimary(step) {
+                if (starSet.count() < 2) return;
+                starSet.setPrimary(starSet.keyAt(step >= 0 ? 1 : starSet.count() - 1));
+                setPrimaryKey(starSet.primary());
+                syncSelection();
+        }
+
+        function clearSelection() {
+                starSet.clearSet();
+                selPrimary = '';
+                selPrimaryDetail = '';
+                selApproximated = false;
+                labels.setSelected(-1);
+                syncSelection();
+        }
+
+        // One pass over the resident records, collecting everything inside
+        // `selectRadiusLy` of the primary — world-space, so a neighbourhood
+        // means the same thing at every distance (plan §3.3). The primary is
+        // re-set at slot 0 afterwards, so a lone star keeps a non-empty set.
+        function selectAroundPrimary() {
+                const key = starSet.primary();
+                if (key === 0) return;
+                const slot = selection.resolveSlot(key);
+                if (slot < 0 || !selection.recordPositionAt(slot, primaryPos)) return;
+                const found = selection.selectAround(primaryPos[0], primaryPos[1], primaryPos[2],
+                        selectRadiusLy * window.Camera.LY_TO_KPC);
+                starSet.clearSet();
+                for (let i = 0; i < found.count; i++) starSet.addStar(found.keys[i], found.dists[i]);
+                starSet.setPrimary(key);
+                syncSelection();
+        }
+
+        function updateSelectionBox() {
+                if (!selPrimary || starSet.count() === 0) {
+                        selectionBox.style.display = 'none';
+                        return;
+                }
+                const count = starSet.count();
+                const approx = selApproximated
+                        ? '   (position approximated: simple engine keeps star θ on the GPU)'
+                        : '';
+                const primary = count === 1
+                        ? `selected  ${selPrimary}   ${selPrimaryDetail}${approx}`
+                        : `selected  ${selPrimary}   ${selPrimaryDetail}   [primary of ${count}]${approx}`;
+                const set = count === 1
+                        ? 'set       1 star   Shift+click adds · F fly to · X clear'
+                        : `set       ${count} stars within ${formatLy(selectRadiusLy)} of ${selPrimary} · N next · F fly to · X clear`;
+                selectionBox.textContent = primary + '\n' + set;
+                selectionBox.style.display = 'block';
+        }
 
         // 0.4.5 simple engine: the CPU landmark mirror's birth table, static
         // for the session (named stars are Milky Way data). Re-initialised
@@ -231,6 +399,28 @@ async function boot() {
         const valPattern = document.getElementById('val-pattern');
         const valEngine = document.getElementById('val-engine');
         const btnDefaults = document.getElementById('menu-defaults');
+        const sliderSelrad = document.getElementById('slider-selrad');
+        const valSelrad = document.getElementById('val-selrad');
+        const btnSelectAround = document.getElementById('select-around');
+        const btnSelectFly = document.getElementById('select-fly');
+        const btnSelectClear = document.getElementById('select-clear');
+
+        // Log10 select radius: 0.1 … 100 000 ly is two decades and a half of
+        // slider travel either way, and the physical neighbourhoods that matter
+        // (a few hundred stars, a whole arm) sit at both ends. The mapping
+        // lives in Selection beside the constants.
+        function syncSelrad() {
+                sliderSelrad.value = window.Selection.sliderFromRadius(selectRadiusLy);
+                valSelrad.textContent = formatLy(selectRadiusLy);
+        }
+        sliderSelrad.addEventListener('input', () => {
+                selectRadiusLy = window.Selection.radiusFromSlider(Number(sliderSelrad.value));
+                syncSelrad();
+        });
+        btnSelectAround.addEventListener('click', selectAroundPrimary);
+        btnSelectFly.addEventListener('click', flyToPrimary);
+        btnSelectClear.addEventListener('click', clearSelection);
+        syncSelrad();
 
         // Brightness slider is linear in multiplier (0.125 – 8.0), not stops,
         // so dragging it feels proportional — stops-based sliders jump at the
@@ -385,6 +575,7 @@ async function boot() {
                 syncSlidersFromRenderer();
                 syncWave();
                 syncPattern();
+                syncSelrad();
         });
 
         // --- Presets: copy/paste/save/load, and the LLM prompt ----------------
@@ -418,6 +609,11 @@ async function boot() {
                         sat: renderer.state.saturation,
                         headroom: renderer.state.headroom,
                         highlight: renderer.state.highlightDesat,
+                        selrad: selectRadiusLy,
+                        // The selection contents, primary first: the keys are
+                        // stable identities, so the working set survives the
+                        // copy and another viewer reproduces it.
+                        selstars: starSet.count() > 0 ? [...starSet.keys().slice(0, starSet.count())] : null,
                         stars: params.stars,
                         catalog: params.catalogStars,
                 };
@@ -459,6 +655,21 @@ async function boot() {
                 if (s.sat !== undefined) renderer.setSaturation(s.sat);
                 if (s.headroom !== undefined) renderer.setHeadroom(s.headroom);
                 if (s.highlight !== undefined) renderer.setHighlightDesat(s.highlight);
+                if (s.selrad !== undefined) {
+                        selectRadiusLy = s.selrad;
+                        syncSelrad();
+                }
+                // The pasted selection is restored in serialized order, which is
+                // nearest-first with the primary at slot 0. Distances are the
+                // serial order's until the next select-around re-measures them.
+                if (s.selstars !== undefined) {
+                        starSet.clearSet();
+                        for (let i = 0; i < s.selstars.length; i++) starSet.addStar(s.selstars[i], i);
+                        if (starSet.count() > 0) setPrimaryKey(starSet.primary());
+                        else { selPrimary = ''; selPrimaryDetail = ''; }
+                        labels.setSelected(-1);
+                        syncSelection();
+                }
                 syncSlidersFromRenderer();
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
@@ -620,10 +831,9 @@ async function boot() {
                 initSimpleLandmarks();
                 camera.setFrame(model);
                 labels.setEnabled(model.milkyWay);
-                if (selected >= 0) {
-                        selected = -1;
-                        labels.setSelected(-1);
-                }
+                // Another galaxy is another set of stars: the identity keys
+                // name stars this model does not have, so the set goes with it.
+                clearSelection();
                 syncGalaxyControls();
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
@@ -637,7 +847,10 @@ async function boot() {
                 renderer.regenerate(model);
                 // No mirror re-seed here: positions don't move under an age
                 // change, so both the GPU thetas and this CPU mirror stay
-                // valid — re-seeding either side would snap the epoch.
+                // valid — re-seeding either side would snap the epoch. The
+                // selection stays valid for the same reason (the set holds
+                // positions' identities, not derived stellar inputs, so there
+                // is nothing to re-derive until 0.5.1 adds them).
                 syncGalaxyControls();
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
@@ -685,11 +898,6 @@ async function boot() {
                 return `camera ${c.modeName}   ${c.targetName}   distance ${formatDistance(c.orbitDistance)}`;
         }
 
-        function selectedLine(cameraState) {
-                if (selected < 0 || cameraState.mode !== window.Camera.MODE_FLY) return '';
-                return `\nselected ${landmarks.ENTRIES[selected].name}   (C cycles to orbit object)`;
-        }
-
         function updateOverlay(state, cameraState) {
                 const shutter = state.magZero.toFixed(1);
                 const linExp = state.linearExposure.toFixed(2);
@@ -710,8 +918,7 @@ async function boot() {
                         `   buffer ${(state.bufferBytes / 1048576).toFixed(1)} MB\n` +
                         `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   engine ${state.engine}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   pattern ${window.OrbitLib.effectivePatternSpeed(model).toFixed(3)} rad/Myr (x${patternScale.toFixed(2)})   Tab menu\n` +
                         `pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
-                        cameraLine(cameraState) +
-                        selectedLine(cameraState);
+                        cameraLine(cameraState);
         }
 
         const loop = window.Loop.createLoop((dt, time) => {
@@ -742,8 +949,7 @@ async function boot() {
                 // contradict it the next time the user cycles into orbit-object mode.
                 // It also restarts the simple epoch on both sides of the mirror.
                 if (resetting) {
-                        selected = -1;
-                        labels.setSelected(-1);
+                        clearSelection();
                         renderer.resetSimpleState();
                         initSimpleLandmarks();
                 }
@@ -765,17 +971,25 @@ async function boot() {
                 selection.setOrbitState(model, starTimeMyr);
                 if (actions.pick) {
                         actions.pick = 0;
-                        // Named stars only exist for the Milky Way preset, so a procedural-only
-                        // galaxy has nothing to pick and nothing to orbit.
-                        const hit = model.milkyWay
-                        ? selection.pick(input.state.pickX, input.state.pickY, canvas.clientWidth, canvas.clientHeight)
-                        : -1;
-                        if (hit >= 0) {
-                                selected = hit;
-                                const entry = landmarks.ENTRIES[hit];
-                                camera.setOrbitTarget(entry.x, entry.y, entry.z, entry.name);
-                                labels.setSelected(hit);
-                        }
+                        // Any drawn star, from any of the five record blocks —
+                        // not just the named table. Shift toggles set membership
+                        // without moving the primary; a plain click replaces the
+                        // set with this one star and makes it the primary.
+                        const hit = selection.pickAny(input.state.pickX, input.state.pickY,
+                                canvas.clientWidth, canvas.clientHeight, pickHit);
+                        if (hit) selectPickedStar(hit, input.state.keys.boost);
+                }
+                if (actions.flyToStar) {
+                        actions.flyToStar = 0;
+                        flyToPrimary();
+                }
+                if (actions.cycleStar) {
+                        cyclePrimary(actions.cycleStar);
+                        actions.cycleStar = 0;
+                }
+                if (actions.clearSet) {
+                        actions.clearSet = 0;
+                        clearSelection();
                 }
                 if (actions.constellations) {
                         actions.constellations = 0;

@@ -5,6 +5,10 @@
       "pass": true
     },
     {
+      "name": "the selection keys serialize base36, primary first, and round-trip",
+      "pass": true
+    },
+    {
       "name": "serialize → parse is the identity on the full settings object",
       "pass": true
     },

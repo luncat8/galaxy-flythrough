@@ -18,6 +18,7 @@ global.window = global;
 const StarRenderer = require('../src/render/star-sprites.js');
 const OrbitLib = require('../src/math/orbit.js');
 const GalaxyLib = require('../src/math/galaxy.js');
+const Selection = require('../src/core/selection.js');
 const Presets = require('../src/core/presets.js');
 
 const checks = [];
@@ -34,6 +35,7 @@ const SETTINGS = {
 	type: 'SBb', seed: 42, age: 13.5, engine: ['classic', 'apocenter'],
 	time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
 	exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
+	selrad: 50, selstars: [123456789, 4294967295, 7],
 	stars: 300000, catalog: 250000,
 };
 
@@ -41,6 +43,15 @@ check('serialize covers every field, in FIELDS order', () => {
 	const query = Presets.serialize(SETTINGS);
 	const keys = [...new URLSearchParams(query).keys()];
 	assert.deepEqual(keys, Presets.FIELDS.map((f) => f.key));   // SETTINGS runs apocenter
+});
+
+check('the selection keys serialize base36, primary first, and round-trip', () => {
+	const query = Presets.serialize(SETTINGS);
+	// 123456789, 4294967295, 7 in base36 — the §4.11 form without the S.
+	assert.equal(new URLSearchParams(query).get('selstars'), '21I3V9.1Z141Z3.7');
+	assert.deepEqual(Presets.parse(query).selstars, SETTINGS.selstars);
+	// An empty selection is absent from the line, not an empty token.
+	assert.ok(!Presets.serialize(Object.assign({}, SETTINGS, { selstars: [] })).includes('selstars='));
 });
 
 check('serialize → parse is the identity on the full settings object', () => {
@@ -53,6 +64,7 @@ check('serialize → parse is the identity on a non-default system', () => {
 		type: 'Irr', seed: 7, age: 2.25, engine: ['simple', 'apocenter'],
 		time: -1, wave: 0, pattern: 2.5, apoShare: 1, apoForce: 0,
 		exposure: 18.5, brightness: 0.125, white: 16, sat: 0.5, headroom: 1, highlight: 0,
+		selrad: 0.1, selstars: [1, 2, 3],
 		stars: 50000, catalog: 0,
 	});
 	assert.deepEqual(Presets.parse(Presets.serialize(other)), other);
@@ -139,9 +151,11 @@ check('menuDefaults matches the modules that own the numbers', () => {
 	assert.equal(d.pattern, OrbitLib.PATTERN_SCALE_UI_DEFAULT);
 	assert.equal(d.apoShare, OrbitLib.APOCENTER_SHARE_UI_DEFAULT);
 	assert.equal(d.apoForce, OrbitLib.APOCENTER_FORCE_UI_DEFAULT);
+	assert.equal(d.selrad, Selection.SELECT_RADIUS_LY_DEFAULT);
 	assert.deepEqual(d, {
 		exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
 		time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
+		selrad: 50,
 	});
 });
 
@@ -171,10 +185,13 @@ check('the prompt names the star system and every setting', () => {
 	const described = Presets.describe(SETTINGS);
 	for (const field of Presets.FIELDS) {
 		if (field.key === 'engine') continue;   // array value, checked below by name
+		if (field.prompt === false) continue;   // the working set is not part of the galaxy
 		assert.ok(PROMPT.includes(described[field.key]), field.key);
 	}
 	assert.ok(PROMPT.includes('star system: type SBb, seed 42, age 13.5 Gyr'));
 	assert.ok(PROMPT.includes('classic, apocenter'));
+	// The selection rides the settings line but not the LLM prompt.
+	assert.ok(!/123456789|21I8LC/.test(PROMPT), 'the selection leaked into the prompt');
 });
 
 check('the prompt references the project and sketches the approach offline', () => {

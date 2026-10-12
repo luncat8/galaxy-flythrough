@@ -1,0 +1,504 @@
+{
+  "date": "2026-10-12T01:42:36.805Z",
+  "model": {
+    "type": "SBb",
+    "seed": 3
+  },
+  "timeMyr": 300,
+  "timings": {
+    "fixtureBuildMs": 351,
+    "pickFrozenMs": {
+      "median": 3.220864,
+      "p90": 3.364324,
+      "max": 31.861661
+    },
+    "pickDispatchedMs": {
+      "median": 57.308958,
+      "p90": 63.999291,
+      "max": 68.244324
+    },
+    "dispatchedHitMovedKpc": 0.2617349841210823,
+    "radiusScanMs": {
+      "median": 2.638182,
+      "p90": 2.733333,
+      "max": 3.312448
+    },
+    "radiusByRadius": [
+      {
+        "radiusLy": 50,
+        "matches": 1,
+        "ms": 0.974809
+      },
+      {
+        "radiusLy": 500,
+        "matches": 256,
+        "ms": 1.023041
+      },
+      {
+        "radiusLy": 5000,
+        "matches": 256,
+        "ms": 1.7223
+      },
+      {
+        "radiusLy": 50000,
+        "matches": 256,
+        "ms": 1.608518
+      },
+      {
+        "radiusLy": 100000,
+        "matches": 256,
+        "ms": 1.509701
+      }
+    ],
+    "records": 300000,
+    "budgets": {
+      "pickMs": 16,
+      "radiusMs": 5
+    }
+  },
+  "totalChecks": 63,
+  "passed": 63,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "the set is bounded and preallocated (256 snapshots)",
+      "pass": true,
+      "detail": 256
+    },
+    {
+      "name": "addStar keeps the set nearest-first",
+      "pass": true,
+      "detail": [
+        22,
+        33,
+        11
+      ]
+    },
+    {
+      "name": "the primary is slot 0",
+      "pass": true
+    },
+    {
+      "name": "indexOf and hasStar agree, and reject absent keys",
+      "pass": true
+    },
+    {
+      "name": "a re-added key is re-placed at its new distance, not duplicated",
+      "pass": true
+    },
+    {
+      "name": "a duplicate add at the same distance is a no-op",
+      "pass": true
+    },
+    {
+      "name": "an unknown key cannot become the primary",
+      "pass": true
+    },
+    {
+      "name": "removeStar shifts the tail down and reports membership",
+      "pass": true,
+      "detail": [
+        4,
+        11,
+        33
+      ]
+    },
+    {
+      "name": "removing an absent key is a no-op",
+      "pass": true
+    },
+    {
+      "name": "toggleStar removes a member and adds a stranger",
+      "pass": true
+    },
+    {
+      "name": "setPrimary rotates the chosen key to slot 0 and keeps the rest ordered",
+      "pass": true,
+      "detail": [
+        7,
+        9,
+        8
+      ]
+    },
+    {
+      "name": "nearestSetStar finds the smallest stored distance whatever the ordering",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "setStar replaces the whole set with one star",
+      "pass": true
+    },
+    {
+      "name": "the set fills to exactly its capacity",
+      "pass": true,
+      "detail": [
+        256,
+        256,
+        0
+      ]
+    },
+    {
+      "name": "a nearer newcomer evicts the farthest",
+      "pass": true,
+      "detail": 256
+    },
+    {
+      "name": "a farther newcomer is dropped and reports it",
+      "pass": true
+    },
+    {
+      "name": "an existing key at a nearer distance is re-placed without evicting",
+      "pass": true
+    },
+    {
+      "name": "keyDesignation is §4.11’s S<base36> form",
+      "pass": true,
+      "detail": [
+        "S21I3V9",
+        "S1Z141Z3"
+      ]
+    },
+    {
+      "name": "a click straight at the one drawn star picks it",
+      "pass": true
+    },
+    {
+      "name": "pickAny with no record source returns null",
+      "pass": true
+    },
+    {
+      "name": "pickAny over an empty buffer returns null",
+      "pass": true
+    },
+    {
+      "name": "a click with the camera facing away picks nothing",
+      "pass": true
+    },
+    {
+      "name": "a degenerate viewport picks nothing",
+      "pass": true
+    },
+    {
+      "name": "a buffer of invisible records picks nothing and throws nothing",
+      "pass": true,
+      "detail": {
+        "threw": false,
+        "miss": null
+      }
+    },
+    {
+      "name": "masks 1/4/5 pick the record the dispatch moved, in every one of the five blocks",
+      "pass": true,
+      "detail": {
+        "exact": 18,
+        "of": 18,
+        "moved": 36
+      }
+    },
+    {
+      "name": "masks 2/3/6/7 report the simple-engine approximation and still pick the baseline star",
+      "pass": true,
+      "detail": {
+        "approxOk": 24,
+        "of": 24
+      }
+    },
+    {
+      "name": "the swept stars never crowd each other inside the 3 px tie band",
+      "pass": true,
+      "detail": 6.370578674078196
+    },
+    {
+      "name": "the dispatch really moved the swept stars at T = 300 Myr",
+      "pass": true,
+      "detail": {
+        "moved": 36,
+        "of": 6
+      }
+    },
+    {
+      "name": "under apocenter share 0.5 the pick target follows the birth-hash subset (one guided, one frozen)",
+      "pass": true,
+      "detail": {
+        "selA": true,
+        "selB": false,
+        "ok": [
+          true,
+          true
+        ]
+      }
+    },
+    {
+      "name": "the tie fixture is a real pair: both visible, outside the tie band apart",
+      "pass": true,
+      "detail": {
+        "sep": 4.500457763671875,
+        "tie": 3
+      }
+    },
+    {
+      "name": "outside the tie band the nearer star wins, either way round",
+      "pass": true,
+      "detail": {
+        "bright": 101,
+        "faint": 202,
+        "sep": 4.500457763671875
+      }
+    },
+    {
+      "name": "inside the tie band the brighter absolute magnitude wins over the nearer star",
+      "pass": true,
+      "detail": 101
+    },
+    {
+      "name": "the reported packed words carry both magnitudes (bright byte < faint byte)",
+      "pass": true,
+      "detail": {
+        "bright": 111,
+        "faint": 179
+      }
+    },
+    {
+      "name": "resolveSlot maps every fixture key back to its slot",
+      "pass": true,
+      "detail": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "name": "resolveSlot rejects an unknown key and the reserved zero key",
+      "pass": true
+    },
+    {
+      "name": "recordWordAt returns the stored packed word",
+      "pass": true,
+      "detail": {
+        "word": 1510032384,
+        "packed": 1510032384
+      }
+    },
+    {
+      "name": "recordWordAt reports 0 for an out-of-range slot",
+      "pass": true
+    },
+    {
+      "name": "recordPositionAt returns the stored position at time 0",
+      "pass": true,
+      "detail": [
+        10.477999687194824,
+        0.699999988079071,
+        0.05000000074505806
+      ]
+    },
+    {
+      "name": "recordPositionAt rejects an out-of-range slot",
+      "pass": true
+    },
+    {
+      "name": "recordPositionAt dispatches the record through the shared mask at T ≠ 0",
+      "pass": true,
+      "detail": {
+        "movedPos": [
+          6.10831365569789,
+          1.2231394695256939,
+          -0.053167835946736325
+        ],
+        "dispatched": [
+          6.10831365569789,
+          1.2231394695256939,
+          -0.053167835946736325
+        ]
+      }
+    },
+    {
+      "name": "the readers allocate nothing: one hit object and one result object, reused",
+      "pass": true
+    },
+    {
+      "name": "selectAround equals an independent brute-force list, nearest-first",
+      "pass": true,
+      "detail": {
+        "count": 18,
+        "expected": 18,
+        "keysOk": true,
+        "distsOk": true
+      }
+    },
+    {
+      "name": "select-around on a star returns a non-empty set with that star at index 0",
+      "pass": true,
+      "detail": {
+        "key": 1013,
+        "dist": 0
+      }
+    },
+    {
+      "name": "an empty radius, and a selection with no record source, collect nothing",
+      "pass": true
+    },
+    {
+      "name": "the select radius slider round-trips (log10 0.1 … 100 000 ly)",
+      "pass": true,
+      "detail": {
+        "roundTrip": 49.98043135782391,
+        "min": 0.1,
+        "max": 100000
+      }
+    },
+    {
+      "name": "the label layer rings resident set members: primary bright, member dim",
+      "pass": true,
+      "detail": {
+        "arcs": [
+          {
+            "x": 640,
+            "y": 400,
+            "r": 7,
+            "stroke": "rgba(255, 215, 94, 0.8)"
+          },
+          {
+            "x": 1073.2607421875,
+            "y": 451.5616760253906,
+            "r": 4,
+            "stroke": "rgba(255, 215, 94, 0.45)"
+          }
+        ],
+        "selectRingPx": 7,
+        "setRingPx": 4
+      }
+    },
+    {
+      "name": "a block-count change rebuilds the key→slot map (the departed star loses its ring)",
+      "pass": true,
+      "detail": [
+        {
+          "x": 640,
+          "y": 400,
+          "r": 7,
+          "stroke": "rgba(255, 215, 94, 0.8)"
+        }
+      ]
+    },
+    {
+      "name": "at most SET_RINGS_MAX set members are ringed",
+      "pass": true,
+      "detail": 16
+    },
+    {
+      "name": "clearing the set leaves no rings behind",
+      "pass": true
+    },
+    {
+      "name": "the stand-off is the Sun’s at solar magnitude",
+      "pass": true,
+      "detail": 0.0006
+    },
+    {
+      "name": "a supergiant stands off at the 10 pc ceiling",
+      "pass": true,
+      "detail": 0.01
+    },
+    {
+      "name": "a faint dwarf clamps to the 0.1 pc orbit floor",
+      "pass": true,
+      "detail": 0.0001
+    },
+    {
+      "name": "a non-finite magnitude falls back to the solar stand-off",
+      "pass": true,
+      "detail": 0.0006
+    },
+    {
+      "name": "flyToStar returns the stand-off used and orbits the target from it",
+      "pass": true,
+      "detail": {
+        "used": 0.0006,
+        "dist": 0.0006000000000000911,
+        "mode": "orbit object",
+        "name": "S1Z141Z3"
+      }
+    },
+    {
+      "name": "the camera ends up aimed at the target",
+      "pass": true,
+      "detail": 1.0000000008466128
+    },
+    {
+      "name": "an explicit stand-off overrides the brightness-derived one",
+      "pass": true,
+      "detail": 0.02
+    },
+    {
+      "name": "an out-of-range stand-off clamps to ORBIT_DISTANCE_MAX, like every orbit distance",
+      "pass": true,
+      "detail": 100
+    },
+    {
+      "name": "flying while already in orbit object turns by a small angle (a dolly, not a spin)",
+      "pass": true,
+      "detail": {
+        "turn": 0.07874662301492971,
+        "nearby": 0.01
+      }
+    },
+    {
+      "name": "after fly-to the viewer can still switch back to fly",
+      "pass": true
+    },
+    {
+      "name": "at 300k the radius scan truncates at the set capacity to the nearest stars",
+      "pass": true,
+      "detail": {
+        "count": 256,
+        "inside": 98955,
+        "truncOk": true,
+        "ascending": true
+      }
+    },
+    {
+      "name": "pickAny at T = 0 walks 300000 records inside the 16 ms budget",
+      "pass": true,
+      "detail": {
+        "median": 3.220864,
+        "p90": 3.364324,
+        "max": 31.861661
+      }
+    },
+    {
+      "name": "selectAround at 300000 records inside the 5 ms budget",
+      "pass": true,
+      "detail": {
+        "median": 2.638182,
+        "p90": 2.733333,
+        "max": 3.312448
+      }
+    },
+    {
+      "name": "the dispatched walk is the slow path and really moves the star it reports",
+      "pass": true,
+      "detail": {
+        "dispatched": {
+          "median": 57.308958,
+          "p90": 63.999291,
+          "max": 68.244324
+        },
+        "frozen": {
+          "median": 3.220864,
+          "p90": 3.364324,
+          "max": 31.861661
+        },
+        "hitMoved": 0.2617349841210823
+      }
+    }
+  ]
+}

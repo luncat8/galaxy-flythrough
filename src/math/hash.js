@@ -36,6 +36,17 @@ function hash01(seed) {
 	return pcgHash(seed) / 4294967296;
 }
 
+// Identity-key domains (0.5.0). Every drawn record carries a u32 key that
+// identifies the star it was generated from, written by the block's own
+// writer at regeneration/rebuild time (star-sprites.js) and read back by the
+// picker, the selection set and the label layer. Keys are namespaced per
+// domain so a landmark index can never collide with a catalog slot, and they
+// are pure hash functions of stable coordinates, so the key survives a
+// residency change (catalog cells stream in and out; the star they describe
+// does not change).
+const DOMAIN_LANDMARK = 0x1a4d5a01;   // landmark table index
+const DOMAIN_CATALOG = 0x0a9c47a1;    // (cell id, slot within the cell)
+
 // hash01 of stream (seed, channel) — the non-allocating primitive every
 // sampler in this repo is built from. `channel` decorrelates the draws that
 // describe one star (mass, age, spin, ...).
@@ -70,6 +81,9 @@ function wangHash(input) {
 	return (h ^ (h >>> 16)) >>> 0;
 }
 
-const HashLib = { pcgHash, hash4, hash01, hash01At, hash2D, hash3D, wangHash };
+const HashLib = {
+	pcgHash, hash4, hash01, hash01At, hash2D, hash3D, wangHash,
+	DOMAIN_LANDMARK, DOMAIN_CATALOG,
+};
 if (typeof module !== 'undefined') module.exports = HashLib;
 if (typeof window !== 'undefined') window.HashLib = HashLib;

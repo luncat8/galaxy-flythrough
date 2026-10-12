@@ -10,6 +10,7 @@
         <canvas id="canvas" tabindex="0"></canvas>
         <canvas id="labels"></canvas>
         <pre id="overlay"></pre>
+        <pre id="selection" style="display:none"></pre>
         <pre id="error" style="display:none"></pre>
         <div id="menu">
                 <div class="menu-header">
@@ -103,6 +104,17 @@
                 <div class="menu-row menu-actions">
                         <button id="menu-defaults">Defaults</button>
                 </div>
+                <div class="menu-header menu-header-galaxy"><span>Selection</span></div>
+                <div class="menu-row menu-actions">
+                        <button id="select-around" title="Collect every drawn star inside the select radius of the primary selection">Select around</button>
+                        <button id="select-fly" title="Fly to the primary selection and orbit it (F)">Fly to</button>
+                        <button id="select-clear" title="Clear the selection set (X)">Clear</button>
+                </div>
+                <div class="menu-row">
+                        <label for="slider-selrad" title="World-space radius in light-years, log scale: a neighbourhood is physical, not a screen area.">Select radius</label>
+                        <input type="range" id="slider-selrad" min="0" max="100" step="0.01" value="44.98">
+                        <span id="val-selrad" class="menu-val">50 ly</span>
+                </div>
                 <div class="menu-header menu-header-galaxy"><span>Preset</span></div>
                 <div class="menu-row preset-actions" id="preset-builtin"></div>
                 <div class="menu-row preset-row">
@@ -132,6 +144,10 @@ P                    constellation lines on / off
 H                    home: the Sun, or a generated galaxy's centre
 G                    new galaxy: cycle type (rebuilds the field, about a second)
 R                    reset everything
+F                    fly to the selected star and orbit it
+N / Shift+N          next / previous star in the selection (primary)
+X                    clear the selection set
+Shift+click          toggle a star in the selection (plain click selects it alone)
 Esc                  release cursor in fly mode
 Tab                  settings menu (releases cursor)
 [ / ]                exposure (how faint a star still shows)
@@ -156,6 +172,7 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
         <script src="core/device.js"></script>
         <script src="core/camera.js"></script>
         <script src="core/input.js"></script>
+        <script src="core/star-set.js"></script>
         <script src="core/selection.js"></script>
         <script src="core/loop.js"></script>
         <script src="core/presets.js"></script>

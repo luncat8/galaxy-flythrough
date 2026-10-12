@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-11T21:25:41.272Z",
+  "date": "2026-10-12T01:42:33.422Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -14,6 +14,7 @@
     "core/device.js",
     "core/camera.js",
     "core/input.js",
+    "core/star-set.js",
     "core/selection.js",
     "core/loop.js",
     "core/presets.js",
@@ -33,6 +34,7 @@
     "core/loop.js",
     "core/presets.js",
     "core/selection.js",
+    "core/star-set.js",
     "data/constellations.js",
     "data/landmarks.js",
     "main.js",
@@ -52,8 +54,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 55,
-  "passed": 55,
+  "totalChecks": 56,
+  "passed": 56,
   "failed": 0,
   "checks": [
     {
@@ -65,8 +67,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 24,
-        "sources": 24,
+        "scripts": 25,
+        "sources": 25,
         "missing": []
       }
     },
@@ -139,6 +141,7 @@
         "Device",
         "Camera",
         "Input",
+        "StarSet",
         "Selection",
         "Loop",
         "Presets",
@@ -155,7 +158,7 @@
       "name": "HashLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 7
+        "keys": 9
       }
     },
     {
@@ -197,7 +200,7 @@
       "name": "OrbitLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 91
+        "keys": 93
       }
     },
     {
@@ -225,7 +228,7 @@
       "name": "Camera loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 27
+        "keys": 30
       }
     },
     {
@@ -239,7 +242,14 @@
       "name": "Selection loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 2
+        "keys": 8
+      }
+    },
+    {
+      "name": "StarSet loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 3
       }
     },
     {
@@ -295,7 +305,7 @@
       "name": "LabelLayer loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 8
+        "keys": 11
       }
     },
     {
@@ -380,7 +390,8 @@
         "white": 4,
         "sat": 1.4,
         "headroom": 8,
-        "highlight": 1
+        "highlight": 1,
+        "selrad": 50
       }
     },
     {
@@ -403,7 +414,8 @@
         "white": 4,
         "sat": 1.4,
         "headroom": 8,
-        "highlight": 1
+        "highlight": 1,
+        "selrad": 50
       }
     },
     {
@@ -426,7 +438,8 @@
         "white": 4,
         "sat": 1.4,
         "headroom": 8,
-        "highlight": 1
+        "highlight": 1,
+        "selrad": 50
       }
     },
     {

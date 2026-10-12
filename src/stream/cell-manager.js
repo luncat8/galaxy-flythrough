@@ -73,6 +73,14 @@ const cellDensity = (typeof module !== 'undefined' && module.exports)
 const cellGalaxy = (typeof module !== 'undefined' && module.exports)
 	? require('../math/galaxy.js')
 	: window.GalaxyLib;
+// The shared PCG hash, for the identity keys written by writeInto. Unlike the
+// FNV above, hash4 is what every other block writer (star-sprites.js, the
+// landmark table) builds keys with, so a catalog key has to come from the
+// same function or it cannot be compared with them. hash.js has no
+// dependencies of its own, so this does not widen the require chain.
+const cellHash = (typeof module !== 'undefined' && module.exports)
+	? require('../math/hash.js')
+	: window.HashLib;
 
 // Expected-star weights come from the same density field the procedural stars
 // are sampled from, so the thinned catalog and the gap-fill agree with the sky.
@@ -291,8 +299,16 @@ function createCellManager(manifest, options) {
 	// near-Sun cells are reduced to match expected density. Returns bytes
 	// written (only *visible* records are written, packed contiguously —
 	// invisible records are dropped to save GPU bandwidth).
-	function writeInto(bytes, byteOffset) {
+	// Copy the resident cells into `bytes` at `byteOffset`; returns the number
+	// of bytes written. `identity` (optional) receives one u32 key per written
+	// record at `identityOffset`, keyed on (cell id, slot within the cell):
+	// thinning skips slots, so the key names the *catalog* slot the record
+	// came from rather than its output position. Both are deterministic
+	// functions of the resident set, so the key of a resident catalog star is
+	// the same across a residency change that keeps the cell resident.
+	function writeInto(bytes, byteOffset, identity, identityOffset) {
 		let writeOff = byteOffset;
+		let slot = 0;
 		let visible = 0;
 		for (let i = 0; i < selectedCount; i++) {
 			const cellId = selectedIdx[i];
@@ -303,7 +319,11 @@ function createCellManager(manifest, options) {
 			if (n <= keep) {
 				// Nothing to thin: copy the whole cell verbatim.
 				bytes.set(payload, writeOff);
+				if (identity) {
+					for (let s = 0; s < n; s++) identity[identityOffset + slot + s] = cellHash.hash4(cellHash.DOMAIN_CATALOG, cellId, s, 0);
+				}
 				writeOff += payload.length;
+				slot += n;
 				visible += n;
 				continue;
 			}
@@ -314,6 +334,8 @@ function createCellManager(manifest, options) {
 			for (let k = 0; k < keepCount; k++) {
 				const recOff = order[k].i * 16;
 				for (let b = 0; b < 16; b++) bytes[writeOff++] = payload[recOff + b];
+				if (identity) identity[identityOffset + slot] = cellHash.hash4(cellHash.DOMAIN_CATALOG, cellId, order[k].i, 0);
+				slot++;
 			}
 			visible += keepCount;
 		}

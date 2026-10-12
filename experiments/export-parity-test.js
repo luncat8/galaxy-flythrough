@@ -34,6 +34,7 @@ const MODULES = [
 	{ file: '../src/core/input.js', global: 'Input' },
 	{ file: '../src/core/presets.js', global: 'Presets' },
 	{ file: '../src/core/selection.js', global: 'Selection' },
+	{ file: '../src/core/star-set.js', global: 'StarSet' },
 	{ file: '../src/core/loop.js', global: 'Loop' },
 	{ file: '../src/core/device.js', global: 'Device' },
 	{ file: '../src/data/landmarks.js', global: 'Landmarks' },

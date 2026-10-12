@@ -48,6 +48,7 @@ EXPERIMENTS = {
     'renderer':              'experiments/renderer-test.js',
     'hdr':                   'experiments/hdr-test.js',
     'landmark':              'experiments/landmark-test.js',
+    'star-select':           'experiments/star-select-test.js',
     'tile-stream':           'experiments/tile-stream-test.js',
     'tile-encoder-smoke':    'experiments/tile-encoder-smoke-test.js',
     'galaxy-types':          'experiments/galaxy-types-test.js',
@@ -58,7 +59,7 @@ EXPERIMENTS = {
     'star-types-evolution':  'experiments/star-types-evolution-test.js',
     'nebula-placement':      'experiments/nebula-placement-test.js',
     'object-placement':      'experiments/object-placement-test.js',
-    'galaxy-age':            'experiments/galaxy-age-test.js',
+    'galaxy-age':             'experiments/galaxy-age-test.js',
     'orbit':                 'experiments/orbit-test.js',
     # Studies: they print a recommendation rather than pass/fail.
     'damping-formula':     'experiments/damping-formula-check.js',
@@ -78,7 +79,8 @@ EXPERIMENTS = {
 
 TYPES = {
     'test':   ['export-parity', 'm1-smoke', 'wgsl-validate', 'camera', 'input', 'preset', 'renderer', 'hdr',
-               'landmark', 'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'shape', 'model-parity', 'sampling',
+               'landmark', 'star-select', 'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'shape',
+               'model-parity', 'sampling',
                'density-distribution',
                'star-types-evolution', 'nebula-placement', 'object-placement', 'galaxy-age',
                'orbit'],

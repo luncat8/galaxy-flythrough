@@ -698,6 +698,31 @@ billions represented statistically via density cells
 
 That separation is what makes the project scalable. A 1 M star hybrid scene and a 100 star scene use the same renderer — only the budgets differ.
 
+### Selection pick cost (measured, 0.5.0)
+
+A click walks every resident record to project it, so the cost is the residency size
+whether or not anything is hit. `experiments/star-select-test.js` at 300 000 records
+(`experiments/logs/star-select.json`):
+
+```
+pickAny, time === 0 (frozen sky)          3.2 ms   — inside the 16 ms click budget
+pickAny, dispatched (classic, time 300)  55    ms   — over: one orbitPosition per record
+selectAround, any radius 50 ly…100 kly   1.0–2.6 ms — inside the 5 ms budget
+```
+
+The dispatched path is the current limit; the specified fix is the view-axis pre-reject
+(a coarse screen-space reject before any dispatch), not a spatial index. The radius scan
+does not need one: its cost follows the number of *matches*, which saturates at the
+selection capacity of 256.
+
+### Simple-engine approximation (0.5.0)
+
+The simple engine's field-star azimuths are integrated on the GPU, so the CPU pick cannot
+reproduce them. Picked positions, and the label layer's set rings, therefore use the
+identity/classic baseline plus the apocenter pass, and
+`OrbitLib.recordPositionApproximated()` reports that this is what happened. Resolution
+belongs to `movement-parity-plan.md`.
+
 ---
 
 ## 13. Implementation Order
@@ -1188,6 +1213,10 @@ Next series:
   star and planet search (0.5.2), the close-system schematic view (0.5.3), the delta-v map
   (0.5.4) and routes/autopilot (0.5.5). CPU-only by construction: the star buffer, the
   WGSL and the three render paths are untouched.
+  *(0.5.0 implemented: identity keys per record, `pickAny` over all five blocks with
+  engine-mask dispatch parity, the snapshot selection set, radius select, fly-to and the
+  set rings — `experiments/star-select-test.js`, 63 checks. The file stays in the root
+  until the series ships and then moves to `archive/`.)*
 
 Implement from those files plus this one; the per-release plans reference their own
 tests and extend the file layout of §11 as needed.
@@ -1205,7 +1234,8 @@ tests and extend the file layout of §11 as needed.
    These are not prerequisites for sandbox-safe correctness work and are not marked
    passed by CPU/stub tests. The 0.4.8 analytical shape implementation is complete;
    this does not imply browser visual validation is complete.
-4. [The 0.5 planet series](0.5.0-plan-planet-generator.md): planned, not started. It is
-   CPU-only and additive (selection, planet generation, schematic view, delta-v, routes),
-   so it neither blocks nor depends on the parity work above — except that 0.5.0's picker
-   must dispatch star positions through the same engine-mask law the parity plan pins.
+4. [The 0.5 planet series](0.5.0-plan-planet-generator.md): 0.5.0 (star selection) is
+   implemented; 0.5.1 (the lazy planet-system generator) is next. It is CPU-only and
+   additive, so it neither blocks nor depends on the parity work above — except that the
+   picker dispatches star positions through the same engine-mask law the parity plan pins,
+   which is why 0.5.0's pick test travels with `orbit-test`.

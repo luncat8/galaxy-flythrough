@@ -543,6 +543,36 @@ function engineLandmarkPosition(out, i, bx, by, bz, colorIndex, time, model) {
 	return out;
 }
 
+// The same mask dispatch for a *record* rather than for a landmark: the picker
+// walks every block of the star buffer, and each record carries its own
+// family/jitter in the packed word, so it needs no table lookup to be moved.
+// (bx, by, bz) is the record's stored position, whose f32 bits the apocenter
+// selection hashes exactly as the GPU hashes the record's f32 position.
+//
+// One honest gap, stated by the plan: the simple engine's CPU mirror is the
+// landmark table only, because field-star azimuths are stepped on the GPU and
+// never read back (the indirect-draw rule). A mask with the simple bit
+// therefore dispatches the classic/identity baseline here and says so —
+// recordPositionApproximated() reports what the last call fell back to, and
+// the pick readout prints it instead of claiming parity it does not have.
+function engineRecordPosition(out, x, y, z, packed, time, model) {
+	const jitter = (packed >>> 24) & 255;
+	const family = familyFromFlags((packed >>> 16) & 255);
+	const phase = jitter & 15;
+	const amplitude = jitter >>> 4;
+	recordApproximated = (engine & ENGINE_SIMPLE) !== 0;
+	if (engine & ENGINE_CLASSIC) orbitPosition(out, x, y, z, family, phase, amplitude, time, model);
+	else {
+		out[0] = x; out[1] = y; out[2] = z;
+	}
+	if ((engine & ENGINE_APOCENTER) && time !== 0 && apocenterSelected(x, y, z)) {
+		apocenterPosition(out, x, y, z, family, phase, amplitude, time, model);
+	}
+	return out;
+}
+
+function recordPositionApproximated() { return recordApproximated; }
+
 // The four vec4s the star shader reads as camera.dynA / dynB / waveA / waveB.
 // Nebulae share the buffer and ignore the wave pair (gas stays on the pattern).
 // Layout contract shared with SHADER_PARTS['orbit'] and CameraUniform:
@@ -610,6 +640,11 @@ function setEngine(id) {
 	if (!engine) engine = ENGINE_CLASSIC;
 	return engine;
 }
+// Set by engineRecordPosition: true when the call had to fall back to the
+// classic/identity baseline because the active mask includes the simple pass,
+// whose field-star azimuths live on the GPU. Read by the pick readout so the
+// UI says "approximated" instead of claiming parity.
+let recordApproximated = false;
 function getEngine() { return engine; }
 function engineName() {
 	// The lane is a mask, so the friendly name is the enabled passes joined in
@@ -997,6 +1032,7 @@ const OrbitAPI = {
 	setEngine, getEngine, engineName,
 	setApocenterShare, setApocenterForce, getApocenterShare, getApocenterForce,
 	apocenterSelector, apocenterSelected, engineLandmarkPosition,
+	engineRecordPosition, recordPositionApproximated,
 	simpleArmed, simpleSigma, simpleEccMax, simpleOmega, simpleEccOf, simplePeriOf,
 	simpleDerived, simpleOmegaMax, simpleSubsteps, wrapAngle, simplePatternPhase,
 	simpleStepTheta, simplePositionFromTheta,

@@ -46,6 +46,23 @@ html, body {
 	pointer-events: none;
 }
 
+/* The selection readout (0.5.0): the primary star and its set. Anchored
+   bottom-left, clear of the overlay above and the key legend beside it. */
+#selection {
+	position: fixed;
+	bottom: 12px;
+	left: 12px;
+	font-family: 'Menlo', 'Consolas', monospace;
+	font-size: 12px;
+	line-height: 1.5;
+	color: #d8c68a;
+	background: rgba(0, 0, 0, 0.5);
+	padding: 8px 12px;
+	border-radius: 4px;
+	white-space: pre;
+	pointer-events: none;
+}
+
 #error {
 	position: fixed;
 	top: 50%;

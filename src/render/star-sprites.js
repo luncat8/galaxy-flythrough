@@ -417,6 +417,15 @@ function createStarRenderer(device, context, format, options) {
         let starBuffer = null;
         let bindGroup = null;
         let staging = null;            // ArrayBuffer: [procedural][landmarks][objects][local][catalog]
+        // Identity keys (0.5.0): one u32 per record slot, written by the block's
+        // own writer where the key's inputs are already in hand. The picker hands
+        // the key to the selection set and the label layer resolves it back to a
+        // slot, so a selection outlives the buffer slot it was picked from (the
+        // catalog streams in and out on every residency change).
+        let identity = null;           // Uint32Array(totalRecords)
+        let stagingView = null;        // DataView over the whole staging buffer
+        let stagingFloat = null;       // Float32Array(Uint32Array) reads: the pick walk
+        let stagingBits = null;        // reads 16-byte records without method-call overhead
         let landmarkByteOffset = 0;
         let objectByteOffset = 0;
         let catalogByteOffset = 0;
@@ -579,6 +588,15 @@ function createStarRenderer(device, context, format, options) {
                         throw new Error(`Star buffer of ${(totalBytes / 1048576).toFixed(1)} MB exceeds the device limit of ${(maxStorageBytes / 1048576).toFixed(1)} MB`);
                 }
                 staging = new ArrayBuffer(Math.max(records.RECORD_BYTES, totalBytes));
+                // Fresh allocation means fresh identities: the written slots are
+                // re-filled by the block writers that follow, unwritten ones stay
+                // zero. A zero key is never produced by any writer below, so it
+                // means "not a star" the same way an all-zero record does.
+                identity = new Uint32Array(totalRecords);
+                stagingView = new DataView(staging);
+                stagingFloat = new Float32Array(staging);
+                stagingBits = new Uint32Array(staging);
+                updateBlocks();
                 landmarkByteOffset = proceduralCount * records.RECORD_BYTES;
                 objectByteOffset = (proceduralCount + landmarkCount) * records.RECORD_BYTES;
                 localProceduralByteOffset = (proceduralCount + landmarkCount + objectCapacity) * records.RECORD_BYTES;
@@ -634,6 +652,62 @@ function createStarRenderer(device, context, format, options) {
                         ],
                 });
                 state.bufferBytes = totalBytes + nebulaBytes + thetaBytes;
+        }
+
+        // --- Record blocks + identity keys (0.5.0) ---------------------------
+        // The five blocks in buffer order. One table and one wrapper, refreshed
+        // in place: the picker reads this on every click and the label layer on
+        // every set change, so nothing here is allocated per call. Offsets are
+        // the buffer layout allocate() lays out (capacity based); counts are
+        // what each block currently holds, so an unwritten slot is not walked.
+        // Consumers must read what they need before the next pick — pickAny and
+        // the label layer resolve the map immediately, they do not hold it.
+        const blockTable = [
+                { kind: 'procedural', offset: 0, count: 0 },
+                { kind: 'landmark', offset: 0, count: 0 },
+                { kind: 'objects', offset: 0, count: 0 },
+                { kind: 'local', offset: 0, count: 0 },
+                { kind: 'catalog', offset: 0, count: 0 },
+        ];
+        const blocksOut = {
+                identity: null, view: null, float32: null, uint32: null,
+                blocks: blockTable, total: 0,
+        };
+
+        function updateBlocks() {
+                blockTable[0].count = proceduralCount;
+                blockTable[1].count = landmarkCount;
+                blockTable[2].count = objectCapacity;
+                blockTable[3].count = localProceduralCapacity;
+                blockTable[4].count = catalogResident;
+                let offset = 0;
+                for (let i = 0; i < blockTable.length; i++) {
+                        blockTable[i].offset = offset;
+                        offset += blockTable[i].count;
+                }
+                blocksOut.identity = identity;
+                blocksOut.view = stagingView;
+                blocksOut.float32 = stagingFloat;
+                blocksOut.uint32 = stagingBits;
+                blocksOut.total = totalRecordCount;
+        }
+
+        // Every written record: the bytes, its identity key, and the two
+        // typed-array readers over the staging bytes. `view` is the DataView
+        // the block writers use; `float32`/`uint32` are what the pick walk
+        // reads instead, because a 300k-record pass with method calls per
+        // field costs more than the dispatch it feeds.
+        function starBlocks() {
+                updateBlocks();
+                return blocksOut;
+        }
+
+        // The field sampling buffers the procedural records were derived from
+        // (x, y, z, R, distToArm, component, count). Callers that need to
+        // reproduce a record's derivation read these; the record walk needs
+        // only the bytes.
+        function fieldBuffers() {
+                return fieldStars;
         }
 
         // Seed the simple-engine azimuths from the birth positions in staging.
@@ -706,7 +780,11 @@ function createStarRenderer(device, context, format, options) {
                 const view = new DataView(staging, 0, proceduralCount * records.RECORD_BYTES);
                 const derived = {};
                 for (let i = 0; i < proceduralCount; i++) {
-                        starTypes.deriveStar(model, starTypes.fieldStarSeed(seed, i),
+                        // The key is the seed the record is derived from, so the
+                        // selection set and the generator (0.5.1 draws the
+                        // system from the same seed) name the same star.
+                        identity[i] = starTypes.fieldStarSeed(seed, i);
+                        starTypes.deriveStar(model, identity[i],
                                 fieldStars.component[i], fieldStars.R[i], fieldStars.distToArm[i], derived,
                                 fieldStars.z[i]);
                         records.writeRecord(
@@ -729,6 +807,10 @@ function createStarRenderer(device, context, format, options) {
                 const view = new DataView(staging, landmarkByteOffset, landmarkCount * records.RECORD_BYTES);
                 for (let i = 0; i < landmarkCount; i++) {
                         const e = landmarks.ENTRIES[i];
+                        // The named table is fixed, so its index is a stable
+                        // identity: it only needs the domain hash to be unique
+                        // against the other blocks' keys.
+                        identity[proceduralCount + i] = hashLib.hash4(hashLib.DOMAIN_LANDMARK, i, 0, 0);
                         records.writeRecord(
                                 view, i * records.RECORD_BYTES,
                                 e.x, e.y, e.z,
@@ -757,8 +839,10 @@ function createStarRenderer(device, context, format, options) {
                 const placed = objectsLib.placeObjects(model, (seed | 0) ^ 0x0B5E55, objectCount, null);
                 const view = new DataView(staging, objectByteOffset, objectCapacity * records.RECORD_BYTES);
                 // Members are procedural stars, so they carry the same exposure
-                // offset as the field they sit in.
-                const written = objectsLib.writeObjectMembers(model, placed, view, 0, objectCapacity, magOffset).written;
+                // offset as the field they sit in. The identity block runs slot
+                // for slot behind the record block, at this one's offset.
+                const written = objectsLib.writeObjectMembers(model, placed, view, 0, objectCapacity, magOffset,
+                        identity, proceduralCount + landmarkCount).written;
                 state.objectStars = written;
                 state.objectCount = placed.length;
                 if (nebulaStaging) {
@@ -893,7 +977,7 @@ function createStarRenderer(device, context, format, options) {
         // streaming cell up to its expected density when the catalog is too
         // sparse. Keyed on (localSeed, cellId, slot) so the same camera position
         // always produces the same stars (no popping).
-        const localHash = window.HashLib;
+        const hashLib = window.HashLib;
         const localStarTypes = window.StarTypesLib;
         const localDerived = {};
 
@@ -903,6 +987,9 @@ function createStarRenderer(device, context, format, options) {
                 const localSeed = (seed | 0) ^ 0x10ca1cab;
                 let slot = 0;
                 const bytesPerRecord = records.RECORD_BYTES;
+                // Slot of this block's first record in the whole buffer: the
+                // identity array is indexed the same way the staging bytes are.
+                const identityBase = localProceduralByteOffset / bytesPerRecord;
                 for (const cell of cellList) {
                         const n = cell.fillNeeded;
                         if (n <= 0) continue;
@@ -912,9 +999,9 @@ function createStarRenderer(device, context, format, options) {
                                 const slotSeed = Math.imul(localSeed, 0x9e3779b1)
                                         ^ Math.imul(cell.id, 0x85ebca6b)
                                         ^ Math.imul(i + 1, 0xc2b2ae3d);
-                                const u0 = localHash.hash01At(slotSeed, 0);
-                                const u1 = localHash.hash01At(slotSeed, 1);
-                                const u2 = localHash.hash01At(slotSeed, 2);
+                                const u0 = hashLib.hash01At(slotSeed, 0);
+                                const u1 = hashLib.hash01At(slotSeed, 1);
+                                const u2 = hashLib.hash01At(slotSeed, 2);
                                 // Position: uniform jitter inside the cell AABB.
                                 const sx = ox + u0 * cs;
                                 const sy = oy + u1 * cs;
@@ -923,12 +1010,12 @@ function createStarRenderer(device, context, format, options) {
                                 // density at the star's position — same pipeline
                                 // the global field uses.
                                 const decomposed = window.DensityLib.rhoDecomposed(model, sx, sy, sz);
-                                const component = window.DensityLib.sampleComponentIndex(decomposed, localHash.hash01At(slotSeed, 3));
+                                const component = window.DensityLib.sampleComponentIndex(decomposed, hashLib.hash01At(slotSeed, 3));
                                 const R = decomposed.R;
                                 const distToArm = decomposed.distToArm;
                                 const deriveSeed = Math.imul(slotSeed, 31) + 5;
                                 localStarTypes.deriveStar(model, deriveSeed, component, R, distToArm, localDerived, sz);
-                                const jitter = localHash.pcgHash(slotSeed ^ 0xFACE) & 0xFF;
+                                const jitter = hashLib.pcgHash(slotSeed ^ 0xFACE) & 0xFF;
                                 records.writeRecord(
                                         view, byteOffset + slot * bytesPerRecord,
                                         sx, sy, sz,
@@ -939,6 +1026,11 @@ function createStarRenderer(device, context, format, options) {
                                         localDerived.colorIndex, localDerived.absMag + magOffset,
                                         orbit.flagsWithFamily(records.FLAG_VISIBLE, orbit.familyForStar(component, localDerived.spectralClass, model.barred)), jitter,
                                 );
+                                // The key is the slot seed the star is derived
+                                // from: (localSeed, cellId, i) is stable, so a
+                                // resident gap-fill star keeps its key across a
+                                // residency change that keeps the same cell.
+                                identity[identityBase + slot] = slotSeed;
                                 slot++;
                         }
                 }
@@ -957,10 +1049,14 @@ function createStarRenderer(device, context, format, options) {
                 // 1) Zero the dynamic region in the staging buffer so slots we
                 // no longer use don't carry old star data (no FLAG_VISIBLE set
                 // means the shader skips them via the MASK_VISIBLE guard, but we
-                // zero them anyway for cleanliness / debug).
+                // zero them anyway for cleanliness / debug). The identity range
+                // is zeroed with it: a slot that no longer holds a star must not
+                // keep resolving the previous star's key.
                 const dynamicCapacity = (localProceduralCapacity + catalogCapacity) * records.RECORD_BYTES;
                 const dynRegion = new Uint8Array(staging, localProceduralByteOffset, dynamicCapacity);
                 dynRegion.fill(0);
+                const identityStart = localProceduralByteOffset / records.RECORD_BYTES;
+                if (identity) identity.fill(0, identityStart, identityStart + localProceduralCapacity + catalogCapacity);
 
                 // 2) Write local procedural gap-fill (after landmarks).
                 const localView = new DataView(staging, localProceduralByteOffset, localProceduralCapacity * records.RECORD_BYTES);
@@ -968,9 +1064,11 @@ function createStarRenderer(device, context, format, options) {
                 localProceduralCount = Math.min(localCount, localProceduralCapacity);
 
                 // 3) Write catalog (decoded + thinned by cell manager; writeInto
-                // returns the number of thinned, visible bytes).
+                // returns the number of thinned, visible bytes) and its identity
+                // keys, slot for slot behind the bytes.
                 const catBytes = new Uint8Array(staging, catalogByteOffset, catalogCapacity * records.RECORD_BYTES);
-                const catalogBytes = manager.writeInto(catBytes, 0);
+                const catalogStart = catalogByteOffset / records.RECORD_BYTES;
+                const catalogBytes = manager.writeInto(catBytes, 0, identity, catalogStart);
                 catalogResident = catalogBytes / records.RECORD_BYTES;
 
                 // 4) Upload the dynamic range (local + catalog) in one write.
@@ -1172,6 +1270,8 @@ function createStarRenderer(device, context, format, options) {
                 setEngine,
                 resetSimpleState,
                 dispose,
+                starBlocks,
+                fieldBuffers,
                 state,
                 stats: () => state,
                 shaderError: () => shaderError,

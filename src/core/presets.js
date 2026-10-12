@@ -34,6 +34,13 @@ const FIELDS = [
 	{ key: 'pattern', label: 'pattern speed', prefix: 'x' },
 	{ key: 'apoShare', label: 'apocenter stars', engine: 'apocenter' },
 	{ key: 'apoForce', label: 'apocenter force', engine: 'apocenter' },
+	{ key: 'selrad', label: 'select radius', unit: ' ly', prompt: false },
+	// The selection's keys, primary first, '.'-separated. §3.2 keeps the set as
+	// identities rather than buffer slots, so the contents survive a camera
+	// move and a pasted line reproduces the same working set. `prompt: false`
+	// keeps it out of the LLM prompt, which describes the galaxy, not the
+	// viewer's working set.
+	{ key: 'selstars', label: 'selected stars', list: true, prompt: false },
 	{ key: 'exposure', label: 'exposure' },
 	{ key: 'brightness', label: 'brightness', suffix: 'x' },
 	{ key: 'white', label: 'white point' },
@@ -53,6 +60,7 @@ function menuDefaults() {
 	const g = typeof window !== 'undefined' ? window : global;
 	const r = g.StarRenderer;
 	const o = g.OrbitLib;
+	const s = g.Selection;
 	return {
 		exposure: r.EXPOSURE_DEFAULT,
 		brightness: r.LINEAR_EXPOSURE_DEFAULT,
@@ -65,6 +73,7 @@ function menuDefaults() {
 		pattern: o.PATTERN_SCALE_UI_DEFAULT,
 		apoShare: o.APOCENTER_SHARE_UI_DEFAULT,
 		apoForce: o.APOCENTER_FORCE_UI_DEFAULT,
+		selrad: s.SELECT_RADIUS_LY_DEFAULT,
 	};
 }
 
@@ -115,7 +124,21 @@ function serializeEngine(value) {
 
 // Numbers at six significant figures: enough for every slider here, and
 // Number(x.toPrecision(6)) drops the trailing zeros so 22 stays "22".
-function formatValue(value) {
+// A `list` field is an array of numbers serialized as '.'-separated base36
+// tokens — §4.11's designation form without the leading S, which the field
+// label already states.
+const LIST_SEPARATOR = '.';
+function formatList(value) {
+	const parts = [];
+	for (const item of value) {
+		if (!Number.isFinite(item) || item <= 0) continue;
+		parts.push(Math.trunc(item).toString(36).toUpperCase());
+	}
+	return parts.join(LIST_SEPARATOR);
+}
+
+function formatValue(field, value) {
+	if (field.list && Array.isArray(value)) return formatList(value);
 	if (typeof value === 'number') return String(Number(value.toPrecision(6)));
 	if (Array.isArray(value)) return serializeEngine(value);
 	return String(value);
@@ -129,7 +152,8 @@ function serialize(settings) {
 	for (const field of activeFields(s)) {
 		const value = s[field.key];
 		if (value === undefined || value === null || value === '') continue;
-		pairs.push(field.key + '=' + encodeURIComponent(formatValue(value)));
+		if (field.list && (!Array.isArray(value) || value.length === 0)) continue;
+		pairs.push(field.key + '=' + encodeURIComponent(formatValue(field, value)));
 	}
 	return pairs.join('&');
 }
@@ -153,6 +177,13 @@ function parse(query) {
 			out.type = raw;
 			continue;
 		}
+		if (field.list) {
+			const keys = raw.split(LIST_SEPARATOR)
+				.map((token) => parseInt(token, 36))
+				.filter((key) => Number.isFinite(key) && key > 0);
+			if (keys.length) out[field.key] = keys;
+			continue;
+		}
 		const value = Number(raw);
 		if (Number.isFinite(value)) out[field.key] = value;
 	}
@@ -165,6 +196,7 @@ function describeValue(field, value) {
 	if (field.key === 'engine') return serializeEngine(value).split('+').join(', ');
 	if (field.prefix === 'x') return 'x' + value;
 	if (field.key === 'time' && value > 0) return '+' + value;
+	if (field.list) return value.length + (value.length === 1 ? ' star' : ' stars');
 	return String(value) + (field.suffix || '') + (field.unit || '');
 }
 
@@ -176,6 +208,7 @@ function describe(settings) {
 	for (const field of activeFields(s)) {
 		const value = s[field.key];
 		if (value === undefined || value === null || value === '') continue;
+		if (field.prompt === false) continue;
 		byKey[field.key] = describeValue(field, value);
 	}
 	return byKey;

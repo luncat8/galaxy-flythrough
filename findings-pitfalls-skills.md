@@ -4,6 +4,44 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-10-12 — A CPU pick over an evolving star field pays one dispatch per record; measure it, and make capped insertions short-circuit
+
+Five things met while pinning 0.5.0's picker (`experiments/star-select-test.js`):
+
+1. **The click budget is a measurement, not an argument.** At 300k records the same click
+   costs 3.2 ms when the sky is frozen (`time === 0`, the stored bytes project directly)
+   and 55 ms when it is moving (one `orbitPosition` per record). That is the difference
+   between "the pick is free" and "the pick drops three frames", so the test logs all three
+   paths (frozen / dispatched / radius scan) with a median rather than a single sample —
+   `Date.now()` showed 2–13 ms for a walk whose hrtime median was 2.86 ms, because one GC
+   pause lands in the sample.
+2. **Walk the staging buffer as typed arrays, never through a DataView.** The pick reads
+   four fields per record across 300k records; `view.getFloat32(off)` per field costs more
+   than the dispatch it feeds. `blocksOut.float32` / `.uint32` over the same ArrayBuffer are
+   the readers.
+3. **A sentinel of 0 in an index map is a bug waiting for a valid index 0.** The label
+   layer's key→slot map left unmapped entries at 0, so a selection key that was *not
+   resident* resolved to slot 0 and rang whichever star happened to sit there — a departed
+   star keeps a ring, or the wrong star gains one. Any "found → index" map needs
+   `fill(-1)`.
+4. **Insertion into a capped array costs (matches × capacity), not (matches).** A 3 kpc
+   select-around at 300k records matched ~80k stars and walked the 256-slot sorted array for
+   every one: 18 ms, over a 5 ms budget. A full array can only reject a newcomer no nearer
+   than the farthest it already holds, so short-circuit that case — the answer is provably
+   unchanged, and the cost stops growing with the radius (it saturates at the capacity).
+   Rule: when a bounded structure only ever *inserts*, the overflow branch is the hot path.
+5. **When comparing a dispatch, read the record's stored f32 bytes, not the f64 you wrote.**
+   The fixture's reference dispatch initially compared against the original f64 positions
+   and disagreed with the pick by ~1e-6 kpc — exactly the f32 rounding of the record. Feed
+   both sides the stored bytes and the world error goes to 0, which turns a loose tolerance
+   into a bit-exact pin.
+
+Also worth doing after any `run.py all-tests`: the run rewrites the `date` field of every
+log it touches (and machine timings in a few), which turns a clean diff into noise. Revert
+the date/timing-only ones and keep the logs whose content genuinely changed.
+
+---
+
 ## 2026-10-11 — GPU/CPU subset membership needs bit-exact f32 hashes — and never hash moved coordinates
 
 Two traps met while unifying the engine-mask dispatch (movement-parity-plan):

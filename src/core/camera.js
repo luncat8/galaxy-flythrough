@@ -56,6 +56,13 @@ const ORBIT_TURN_RATE = 1.0;          // rad/s for A/D/E/Q in orbit
 const ORBIT_DOLLY_RATE = 1.0;         // octaves/s for W/S in orbit: distance halves or doubles per second
 const ORBIT_KEY_BOOST = 4.0;          // Shift x4, Ctrl x1/4 on orbit key rates; x100 would be 16 turns a second
 const HOME_ORBIT_DISTANCE = 0.01;     // kpc, H in orbit: the Sun from 10 pc
+// Fly-to-stand-off (0.5.0 §3.4): 0.0006 kpc at L = 1 L☉ is 2 ly, which clamps
+// to the 0.1 pc floor — the floor is ORBIT_DISTANCE_MIN and is not lowered in
+// this series (the near plane and the sprite ramp are tuned against it). The
+// ceiling of 10 pc frames the largest discs; ORBIT_DISTANCE_MAX still bounds.
+const SOLAR_ABS_MAG = 4.83;
+const FLY_TO_STAND_OFF = 0.0006;
+const FLY_TO_STAND_OFF_MAX = 0.01;
 const QUAT_EPS = 1e-12;
 // The default frame is the Milky Way preset's: the Sun-centred origin, the view
 // from 5 pc above it, the galactic centre as the orbit centre. setFrame() swaps
@@ -345,6 +352,38 @@ function createCamera() {
 		if (mode === MODE_ORBIT_OBJECT) snapToOrbit();
 	}
 
+	// --- Fly to a star (0.5.0 §3.4) ----------------------------------------
+	// Fly-to-exact-position, then orbit the star from a stand-off derived from
+	// its brightness: the same distance every time for the same magnitude, so
+	// the arrival frame is reproducible and a supergiant is framed wider than
+	// a dwarf. L comes from the inverted absolute magnitude of §2.5
+	// (L = 10^((4.83 − M)/2.5)); the mass bracket inversion is 0.5.1 work and
+	// this needs only the luminosity.
+	function standOffFromMag(absMag) {
+		const mag = Number.isFinite(absMag) ? absMag : SOLAR_ABS_MAG;
+		const luminosity = Math.pow(10, (SOLAR_ABS_MAG - mag) / 2.5);
+		return clamp(FLY_TO_STAND_OFF * Math.sqrt(luminosity),
+			ORBIT_DISTANCE_MIN, FLY_TO_STAND_OFF_MAX);
+	}
+
+	// A camera move, not a mode change: afterwards the viewer is in orbit
+	// object and can still C back to fly. `opts.standOffKpc` overrides the
+	// brightness-derived distance; returns the stand-off actually used.
+	function flyToStar(x, y, z, absMag, opts) {
+		const o = opts || {};
+		const standOff = clamp(Number.isFinite(o.standOffKpc) ? o.standOffKpc : standOffFromMag(absMag),
+			ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX);
+		assignObjectTarget(x, y, z, o.name || 'selected star');
+		if (mode === MODE_ORBIT_OBJECT) snapToOrbit();
+		else setMode(MODE_ORBIT_OBJECT);
+		// The viewing direction survives the mode switch (snapToOrbit aims at
+		// the target from where the camera stands); only the radius changes, so
+		// the arrival is a dolly rather than a spin when already looking at it.
+		orbitDistance = standOff;
+		placeOnOrbit();
+		return standOff;
+	}
+
 	// --- Frame / home / reset -------------------------------------------------
 	// Install a galaxy's frame. A type change rehomes the camera rather than
 	// re-driving it: the mode and velocity stay, the positions they were measured
@@ -579,6 +618,8 @@ function createCamera() {
 		setMode,
 		toggleMode,
 		setOrbitTarget,
+		flyToStar,
+		standOffFromMag,
 		buildViewProj,
 		getState,
 		setState,
@@ -605,6 +646,7 @@ const Camera = {
 	VELOCITY_TAU, LOOK_SENSITIVITY,
 	ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX, ORBIT_TURN_RATE, ORBIT_DOLLY_RATE,
 	ORBIT_KEY_BOOST, HOME_ORBIT_DISTANCE,
+	SOLAR_ABS_MAG, FLY_TO_STAND_OFF, FLY_TO_STAND_OFF_MAX,
 	START_POSITION, SUN_POSITION, GALACTIC_CENTRE_TARGET,
 };
 if (typeof module !== 'undefined') module.exports = Camera;
