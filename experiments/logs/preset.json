@@ -37,6 +37,10 @@
       "pass": true
     },
     {
+      "name": "search rides as a string token, scope as one of two names",
+      "pass": true
+    },
+    {
       "name": "parseEngineList normalizes order, case and junk",
       "pass": true
     },
@@ -66,6 +70,10 @@
     },
     {
       "name": "index.html loads presets.js before main.js and has the preset section",
+      "pass": true
+    },
+    {
+      "name": "the search section is wired: controls, readout, Search glue and token preset",
       "pass": true
     },
     {

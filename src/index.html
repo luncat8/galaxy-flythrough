@@ -11,6 +11,9 @@
         <canvas id="labels"></canvas>
         <pre id="overlay"></pre>
         <pre id="error" style="display:none"></pre>
+        <!-- Search results (0.5.2) and, from 0.5.3, the system-view readout:
+             one <pre> styled like #overlay, hidden while empty. -->
+        <pre id="sysread"></pre>
         <div id="menu">
                 <div class="menu-header">
                         <span>Display</span>
@@ -116,6 +119,44 @@
                 <div class="menu-row menu-actions">
                         <button id="menu-defaults">Defaults</button>
                 </div>
+                <!-- Star and planet search (0.5.2, plan §5.4): the quick
+                     controls own their filter dimensions and mirror into the
+                     token box, which is the whole filter (presets carry it).
+                     The class/type selects are filled from the libraries. -->
+                <div class="menu-header menu-header-galaxy"><span>Search</span></div>
+                <div class="menu-row search-row">
+                        <label for="search-scope">Scope</label>
+                        <select id="search-scope" title="Selection scans the set (empty set falls back to the galaxy); galaxy always scans everything">
+                                <option value="selection" selected>selected</option>
+                                <option value="galaxy">galaxy</option>
+                        </select>
+                        <label for="search-class">Class</label>
+                        <select id="search-class" title="Spectral class (single; the token box can hold several)"></select>
+                        <label for="search-ptype">Type</label>
+                        <select id="search-ptype" title="Planet display type (single; the token box can hold several)"></select>
+                </div>
+                <div class="menu-row search-row">
+                        <label for="search-tsurf-min" title="Surface-temperature range in kelvin; empty ends stay open">Tsurf</label>
+                        <input type="number" id="search-tsurf-min" placeholder="180" min="0" step="1">
+                        <span class="search-dash">–</span>
+                        <input type="number" id="search-tsurf-max" placeholder="320" min="0" step="1">
+                        <span class="search-unit">K</span>
+                        <label class="search-check" title="Only systems with a terran world"><input type="checkbox" id="search-terran"> terran</label>
+                        <label class="search-check" title="Only systems with a debris belt"><input type="checkbox" id="search-belt"> belt</label>
+                        <label class="search-check" title="Only systems with no planets"><input type="checkbox" id="search-barren"> no planets</label>
+                </div>
+                <div class="menu-row search-row">
+                        <label for="search-token" title="The whole filter as a compact token (plan §5.5): classes, flags and ranges separated by |. Quick controls edit their own dimensions of it.">Filter</label>
+                        <input type="text" id="search-token" spellcheck="false" placeholder="G,K|terran|220-300">
+                </div>
+                <div class="menu-row menu-actions">
+                        <button id="btn-search" title="Run the filter (N cycles the results once added)">Search</button>
+                        <button id="btn-search-add" title="Push the kept rows into the selection set, nearest-first under the set's capacity rules">Add results to selection</button>
+                        <button id="btn-search-clear" title="Drop the results">Clear</button>
+                </div>
+                <div class="menu-row search-row">
+                        <span id="val-search" class="menu-val search-report">no search yet</span>
+                </div>
                 <div class="menu-header menu-header-galaxy"><span>Preset</span></div>
                 <div class="menu-row preset-actions" id="preset-builtin"></div>
                 <div class="menu-row preset-row">
@@ -180,6 +221,9 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
         <!-- The selection set (0.5.0): snapshots keyed by the renderer's identity
              array, so it depends on nothing at load and main.js fills it. -->
         <script src="core/star-set.js"></script>
+        <!-- Star and planet search (0.5.2): pure scan over the renderer's
+             blocks and the selection set, so it depends on nothing at load. -->
+        <script src="core/search.js"></script>
         <script src="core/loop.js"></script>
         <script src="core/presets.js"></script>
         <!-- Data after math (landmarks bake their positions through coords.js at

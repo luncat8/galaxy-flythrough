@@ -46,6 +46,29 @@ html, body {
 	pointer-events: none;
 }
 
+#sysread {
+	position: fixed;
+	left: 12px;
+	bottom: 12px;
+	font-family: 'Menlo', 'Consolas', monospace;
+	font-size: 12px;
+	line-height: 1.5;
+	color: #6fae6f;
+	background: rgba(0, 0, 0, 0.5);
+	padding: 8px 12px;
+	border-radius: 4px;
+	white-space: pre;
+	pointer-events: none;
+	max-width: 72vw;
+	overflow: hidden;
+}
+
+/* The readout owns no pixels while nobody writes to it — the search
+   section and (from 0.5.3) the system view share the one element. */
+#sysread:empty {
+	display: none;
+}
+
 #error {
 	position: fixed;
 	top: 50%;
@@ -202,6 +225,45 @@ html, body {
 	margin-right: 6px;
 }
 .menu-actions button:hover { background: #244824; }
+
+/* Search rows (0.5.2): several small controls share the row, flex-wrapped so
+   the 260 px menu never scrolls sideways. Overrides the grid placement the
+   generic .menu-row rules give labels, selects and number fields. */
+.search-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 6px;
+	align-items: center;
+}
+.search-row label {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	font-size: 11px;
+	color: #a9c9a9;
+	white-space: nowrap;
+}
+.search-row select,
+.search-row input[type=number],
+.search-row input[type=text] {
+	background: #0e1b0e;
+	border: 1px solid #2f5f2f;
+	color: #cdeccd;
+	font-family: inherit;
+	font-size: 11px;
+	padding: 3px 6px;
+	border-radius: 3px;
+}
+.search-row select { cursor: pointer; max-width: 108px; }
+.search-row select option { background: #0e1b0e; }
+.search-row input[type=number] { width: 56px; }
+.search-row input[type=text] { flex: 1 1 120px; min-width: 0; }
+.search-row input::placeholder { color: #4f6f4f; }
+.search-row input[type=checkbox] { accent-color: #6fae6f; }
+.search-row .search-check { cursor: pointer; }
+.search-row .search-dash { color: #6f8e6f; }
+.search-row .search-unit { font-size: 11px; color: #6f8e6f; }
+.search-row .search-report { flex: 1 1 100%; text-align: left; white-space: normal; }
 
 .menu-hint {
 	grid-column: 1 / -1;

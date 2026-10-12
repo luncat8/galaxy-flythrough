@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-12T21:36:46.814Z",
+  "date": "2026-10-12T23:47:37.741Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -17,6 +17,7 @@
     "core/input.js",
     "core/selection.js",
     "core/star-set.js",
+    "core/search.js",
     "core/loop.js",
     "core/presets.js",
     "data/landmarks.js",
@@ -34,6 +35,7 @@
     "core/input.js",
     "core/loop.js",
     "core/presets.js",
+    "core/search.js",
     "core/selection.js",
     "core/star-set.js",
     "data/constellations.js",
@@ -69,8 +71,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 26,
-        "sources": 26,
+        "scripts": 27,
+        "sources": 27,
         "missing": []
       }
     },
@@ -146,6 +148,7 @@
         "Input",
         "Selection",
         "StarSet",
+        "Search",
         "Loop",
         "Presets",
         "Landmarks",

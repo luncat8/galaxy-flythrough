@@ -1,0 +1,317 @@
+{
+  "checks": [
+    {
+      "name": "the plan §5.5 example parses (bare class list, flag, bare tsurf range)",
+      "pass": true,
+      "detail": "class:G,K|tsurf:220-300|terran"
+    },
+    {
+      "name": "format is canonical and re-parses to the same filter",
+      "pass": true,
+      "detail": "class:G,K|tsurf:220-300|terran"
+    },
+    {
+      "name": "an empty token is the unconstrained filter and formats to empty",
+      "pass": true
+    },
+    {
+      "name": "every keyed clause parses",
+      "pass": true,
+      "detail": "class:O,B|state:ms,giant|comp:thin,halo|lum:0.5-2|mass:-3|dist:10-|tsurf:180-320|teq:-400|pmass:0.5-|a:0.8-1.5|ptype:TERRAN,GAS_GIANT|terran|belt|barren|n:2"
+    },
+    {
+      "name": "a full filter round-trips through format byte-identically in meaning",
+      "pass": true
+    },
+    {
+      "name": "junk clauses are ignored, junk numbers fall back to open",
+      "pass": true
+    },
+    {
+      "name": "malformed ranges (two dashes, negatives) are ignored, not half-parsed",
+      "pass": true
+    },
+    {
+      "name": "the bit helpers resolve every table and reject junk",
+      "pass": true
+    },
+    {
+      "name": "an empty set falls back to the galaxy and says so",
+      "pass": true,
+      "detail": {
+        "scope": "galaxy",
+        "scanned": 6184,
+        "matched": 6184,
+        "truncated": 5672,
+        "msStage1": 3.0648630000000026,
+        "msStage2": 2.8080489999999827,
+        "msRefine": 0
+      }
+    },
+    {
+      "name": "explicit galaxy scope scans the whole field",
+      "pass": true,
+      "detail": {
+        "scope": "galaxy",
+        "scanned": 6184,
+        "matched": 6184,
+        "truncated": 5672,
+        "msStage1": 0.7730180000000075,
+        "msStage2": 0.834493000000009,
+        "msRefine": 0
+      }
+    },
+    {
+      "name": "a non-empty set runs the set (one member, one scanned)",
+      "pass": true,
+      "detail": {
+        "scope": "selection",
+        "scanned": 1,
+        "matched": 1,
+        "truncated": 0,
+        "msStage1": 0.16165699999999106,
+        "msStage2": 0.00283999999999196,
+        "msRefine": 0
+      }
+    },
+    {
+      "name": "the 26-filter battery matches the brute force (identity, order, props, display planet)",
+      "pass": true,
+      "detail": {
+        "empty (match-all)": [
+          6184,
+          6184
+        ],
+        "class G": [
+          61,
+          61
+        ],
+        "class M": [
+          5320,
+          5320
+        ],
+        "classes G,K (token)": [
+          600,
+          600
+        ],
+        "class RGe (record slots only)": [
+          6,
+          6
+        ],
+        "state ms": [
+          6013,
+          6013
+        ],
+        "states giant+wd": [
+          171,
+          171
+        ],
+        "lum 0.5-2": [
+          88,
+          88
+        ],
+        "mass 0.8-1.2": [
+          137,
+          137
+        ],
+        "dist 0-30 ly": [
+          9,
+          9
+        ],
+        "dist 100-3000 ly": [
+          65,
+          65
+        ],
+        "comp thin": [
+          3839,
+          3839
+        ],
+        "comp halo": [
+          19,
+          19
+        ],
+        "ptype GAS_GIANT": [
+          132,
+          132
+        ],
+        "terran (token)": [
+          97,
+          97
+        ],
+        "tsurf 180-320 (token)": [
+          711,
+          711
+        ],
+        "teq 200-300 + tsurf 180-320 (straddle-prone)": [
+          513,
+          513
+        ],
+        "pmass 0.5-2 + a 0.8-1.5": [
+          87,
+          87
+        ],
+        "minPlanets 2": [
+          1604,
+          1604
+        ],
+        "barren": [
+          2545,
+          2545
+        ],
+        "belt": [
+          2628,
+          2628
+        ],
+        "class G + terran (token)": [
+          2,
+          2
+        ],
+        "class K + tsurf + minPlanets": [
+          61,
+          61
+        ],
+        "barren + class M": [
+          2063,
+          2063
+        ],
+        "dist + terran": [
+          53,
+          53
+        ],
+        "ptype + pmass range": [
+          70,
+          70
+        ]
+      }
+    },
+    {
+      "name": "every battery filter matches at least one star",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "the match-all overflows the result cap",
+      "pass": true,
+      "detail": [
+        6184,
+        6184
+      ]
+    },
+    {
+      "name": "a bare barren query confirms its pre-check zeroes without a summary",
+      "pass": true,
+      "detail": {
+        "calls": 3641,
+        "scanned": 6184,
+        "matched": 2545
+      }
+    },
+    {
+      "name": "a terran query skips the summary for its pre-check zeroes",
+      "pass": true,
+      "detail": {
+        "calls": 3641,
+        "scanned": 6184,
+        "matched": 97
+      }
+    },
+    {
+      "name": "kept rows are nearest-first, unique, and carry true distances",
+      "pass": true,
+      "detail": {
+        "count": 512,
+        "ascending": true,
+        "dupes": 0,
+        "distOk": true
+      }
+    },
+    {
+      "name": "the set holds members from all five blocks plus two stale slots",
+      "pass": true,
+      "detail": 46
+    },
+    {
+      "name": "stale members resolve with kind −1 instead of throwing",
+      "pass": true,
+      "detail": {
+        "staleRows": 2,
+        "scope": "selection",
+        "scanned": 46,
+        "matched": 46,
+        "truncated": 0,
+        "msStage1": 0.12689399999999296,
+        "msStage2": 0.0033129999999346182,
+        "msRefine": 0
+      }
+    },
+    {
+      "name": "the 9-filter set battery matches the set-aware brute force (snapshot props kept)",
+      "pass": true
+    },
+    {
+      "name": "a 10 ly distance filter finds exactly the landmarks within 10 ly",
+      "pass": true,
+      "detail": {
+        "inRange": 3,
+        "missing": 0,
+        "extra": 0
+      }
+    },
+    {
+      "name": "null filter/env/renderer, empty blocks and impossible ranges return empty, never throw",
+      "pass": true
+    },
+    {
+      "name": "the results object is reused across runs (no per-run allocation)",
+      "pass": true
+    },
+    {
+      "name": "the ly→kpc fallback carries camera.js digits",
+      "pass": true,
+      "detail": 0.000306601
+    },
+    {
+      "name": "COMP_* are the density component ids as bits",
+      "pass": true
+    },
+    {
+      "name": "the state bits are three distinct powers of two",
+      "pass": true
+    },
+    {
+      "name": "ten spectral classes fit the u32 classes mask",
+      "pass": true
+    },
+    {
+      "name": "star-only class filter over the galaxy stays under 120 ms",
+      "pass": true,
+      "detail": 22.407040000000052
+    },
+    {
+      "name": "planet filter (G + terran) over the galaxy stays under 600 ms",
+      "pass": true,
+      "detail": 24.55381699999998
+    },
+    {
+      "name": "planet filter (tsurf range, exact refine) over the galaxy stays under 600 ms",
+      "pass": true,
+      "detail": 451.930922
+    },
+    {
+      "name": "planet filter over a 214-star set stays under 2 ms",
+      "pass": true,
+      "detail": 0.3033479999994597
+    },
+    {
+      "name": "the stage timers split the wall time (sort + overhead bounded)",
+      "pass": true,
+      "detail": {
+        "msStage1": 6.710865000002286,
+        "msStage2": 313.14527699999826,
+        "msRefine": 131.7718769999983,
+        "wall": 451.930922
+      }
+    }
+  ],
+  "failed": 0
+}

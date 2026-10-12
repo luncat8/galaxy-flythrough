@@ -38,6 +38,7 @@ const SETTINGS = {
 	type: 'SBb', seed: 42, age: 13.5, engine: ['classic', 'apocenter'],
 	time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
 	selrad: 1.69897, exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
+	search: 'G,K|terran|220-300', scope: 'selection',
 	stars: 300000, catalog: 250000,
 };
 
@@ -57,6 +58,7 @@ check('serialize → parse is the identity on a non-default system', () => {
 		type: 'Irr', seed: 7, age: 2.25, engine: ['simple', 'apocenter'],
 		time: -1, wave: 0, pattern: 2.5, apoShare: 1, apoForce: 0,
 		exposure: 18.5, brightness: 0.125, white: 16, sat: 0.5, headroom: 1, highlight: 0,
+		search: 'M|barren', scope: 'galaxy',
 		stars: 50000, catalog: 0,
 	});
 	assert.deepEqual(Presets.parse(Presets.serialize(other)), other);
@@ -112,6 +114,18 @@ check('engine serializes as names joined by + and parses back', () => {
 	const query = Presets.serialize({ engine: ['simple', 'apocenter'] });
 	assert.equal(new URLSearchParams(query).get('engine'), 'simple+apocenter');
 	assert.deepEqual(Presets.parse(query), { engine: ['simple', 'apocenter'] });
+});
+
+check('search rides as a string token, scope as one of two names', () => {
+	const query = Presets.serialize({ search: 'G,K|terran|220-300', scope: 'selection' });
+	assert.equal(new URLSearchParams(query).get('search'), 'G,K|terran|220-300');
+	assert.equal(new URLSearchParams(query).get('scope'), 'selection');
+	assert.deepEqual(Presets.parse(query), { search: 'G,K|terran|220-300', scope: 'selection' });
+	// An unconstrained filter adds nothing to the line; junk scope is
+	// dropped rather than smuggled through, leaving the menu default.
+	assert.equal(Presets.serialize({ search: '', scope: 'selection' }), 'scope=selection');
+	assert.deepEqual(Presets.parse('search=M|barren&scope=banana'), { search: 'M|barren' });
+	assert.deepEqual(Presets.parse('scope=galaxy'), { scope: 'galaxy' });
 });
 
 check('parseEngineList normalizes order, case and junk', () => {
@@ -210,6 +224,26 @@ check('index.html loads presets.js before main.js and has the preset section', (
 	for (const id of ['preset-text', 'preset-file', 'preset-copy', 'preset-paste',
 		'preset-apply', 'preset-save', 'preset-load', 'preset-prompt']) {
 		assert.equal(html.split(`id="${id}"`).length, 2, id);
+	}
+});
+
+check('the search section is wired: controls, readout, Search glue and token preset', () => {
+	const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
+	for (const id of ['search-scope', 'search-class', 'search-ptype', 'search-tsurf-min',
+		'search-tsurf-max', 'search-terran', 'search-belt', 'search-barren', 'search-token',
+		'btn-search', 'btn-search-add', 'btn-search-clear', 'val-search', 'sysread']) {
+		assert.equal(html.split(`id="${id}"`).length, 2, id);
+	}
+	const searchAt = html.indexOf('src="core/search.js"');
+	const mainAt = html.indexOf('src="main.js"');
+	assert.ok(searchAt > 0 && mainAt > searchAt, 'search.js before main.js');
+	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
+	for (const snippet of [
+		'window.Search', 'createSearch()', 'tokenToControls', 'controlsToToken',
+		'markSearchStale', 'searchSnapshot', 'sysread.textContent',
+		's.search', 's.scope',
+	]) {
+		assert.ok(main.includes(snippet), snippet);
 	}
 });
 

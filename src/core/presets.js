@@ -15,9 +15,11 @@
 const PROJECT_URL = 'https://github.com/luncat8/galaxy-flythrough';
 
 // The preset fields in serialized order — galaxy first (what the system is),
-// then movement (how it moves), then look (how it is drawn). Boot-only counts
-// ride at the end: a pasted preset cannot rebuild the star buffers, so the
-// menu hint says they apply on the next boot.
+// then movement (how it moves), then look (how it is drawn), then the search
+// query (what the viewer asked for). Boot-only counts ride at the end: a
+// pasted preset cannot rebuild the star buffers, so the menu hint says they
+// apply on the next boot. The result list itself is transient, like the
+// camera position — only the filter and the scope are preset state (0.5.2).
 //
 // `engine` on a field names the movement pass that reads it: such a field is
 // part of the preset only while that pass is selected. Copying a system whose
@@ -41,6 +43,8 @@ const FIELDS = [
 	{ key: 'sat', label: 'saturation', suffix: 'x' },
 	{ key: 'headroom', label: 'headroom' },
 	{ key: 'highlight', label: 'highlight desat' },
+	{ key: 'search', label: 'search filter' },
+	{ key: 'scope', label: 'search scope' },
 	{ key: 'stars', label: 'procedural stars' },
 	{ key: 'catalog', label: 'catalog budget' },
 ];
@@ -152,8 +156,14 @@ function parse(query) {
 			if (selected && selected.length) out.engine = selected;
 			continue;
 		}
-		if (field.key === 'type') {
-			out.type = raw;
+		if (field.key === 'type' || field.key === 'search') {
+			out[field.key] = raw;
+			continue;
+		}
+		// Only the two scopes the menu offers survive: junk cannot smuggle
+		// a third scope into the page, it just leaves the menu default.
+		if (field.key === 'scope') {
+			if (raw === 'selection' || raw === 'galaxy') out.scope = raw;
 			continue;
 		}
 		const value = Number(raw);
@@ -206,6 +216,11 @@ function buildLlmPrompt(settings) {
 	lines.push('- star counts: ' + ['stars', 'catalog']
 		.filter((key) => d[key] !== undefined)
 		.map((key) => d[key] + ' ' + (key === 'stars' ? 'procedural' : 'catalog budget')).join(', '));
+	// The query, not the results: what the viewer asked for reproduces from
+	// the filter and the scope, the way the system reproduces from type and
+	// seed. An unconstrained filter is absent, never an empty line.
+	if (d.search !== undefined) lines.push('- search filter: ' + d.search);
+	if (d.scope !== undefined) lines.push('- search scope: ' + d.scope);
 	lines.push('');
 	lines.push('Reference implementation: ' + PROJECT_URL + ' (WebGPU, vanilla JS, no build step).');
 	lines.push('If you have no internet access, this short description is the whole approach:');

@@ -298,6 +298,243 @@ async function boot() {
                 updateOverlay(renderer.state, camera.getState(statsText));
         });
 
+        // --- Star and planet search (0.5.2, plan §5) --------------------------
+        // The filter token box is the whole filter (plan §5.5); the quick
+        // controls own their dimensions of it and merge per-dimension, so
+        // touching the terran box never drops a token-only range. The scope
+        // select is separate preset state. Results are transient: any filter
+        // change clears them, and the Add button reads a snapshot copy — the
+        // results object itself is the search's, reused by the next run.
+        const searchLib = window.Search;
+        const search = searchLib.createSearch();
+        const scopeSelect = document.getElementById('search-scope');
+        const classSelect = document.getElementById('search-class');
+        const ptypeSelect = document.getElementById('search-ptype');
+        const tsurfMinBox = document.getElementById('search-tsurf-min');
+        const tsurfMaxBox = document.getElementById('search-tsurf-max');
+        const terranCheck = document.getElementById('search-terran');
+        const beltCheck = document.getElementById('search-belt');
+        const barrenCheck = document.getElementById('search-barren');
+        const tokenBox = document.getElementById('search-token');
+        const btnSearch = document.getElementById('btn-search');
+        const btnSearchAdd = document.getElementById('btn-search-add');
+        const btnSearchClear = document.getElementById('btn-search-clear');
+        const valSearch = document.getElementById('val-search');
+        const sysread = document.getElementById('sysread');
+        const searchClassNames = window.StarRecord.SPECTRAL_CLASSES;
+        // window.PlanetsLib, not the selectPlanets alias: this block runs
+        // before that alias is declared, and the namespace is already live.
+        const searchTypeNames = window.PlanetsLib.DISPLAY_TYPES.map((t) => t.name);
+        let searchSnapshot = [];
+
+        // The class/type selects are filled from the libraries (the
+        // galaxy-type select works the same way), so a table rename cannot
+        // strand the menu.
+        function fillSearchSelect(select, names) {
+                select.textContent = '';
+                const any = document.createElement('option');
+                any.value = '';
+                any.textContent = 'any';
+                select.appendChild(any);
+                for (const name of names) {
+                        const opt = document.createElement('option');
+                        opt.value = name;
+                        opt.textContent = name;
+                        select.appendChild(opt);
+                }
+        }
+        fillSearchSelect(classSelect, searchClassNames);
+        fillSearchSelect(ptypeSelect, searchTypeNames);
+
+        // A single known bit names its option; anything else the token holds
+        // (several classes, none of them the menu's) shows as an honest
+        // (mixed) marker instead of a lying 'any'.
+        const SEARCH_MIXED = '(mixed)';
+        function maskedOptionName(mask, names, bitOf) {
+                let found = null;
+                for (const name of names) {
+                        if ((mask & bitOf(name)) !== 0) {
+                                if (found !== null) return undefined;
+                                found = name;
+                        }
+                }
+                return found;
+        }
+        function setSelectToMask(select, names, mask, bitOf) {
+                const marked = select.querySelector('option[data-mixed]');
+                if (marked) marked.remove();
+                const single = maskedOptionName(mask, names, bitOf);
+                if (single === undefined) {
+                        const opt = document.createElement('option');
+                        opt.value = SEARCH_MIXED;
+                        opt.textContent = SEARCH_MIXED;
+                        opt.dataset.mixed = '1';
+                        select.appendChild(opt);
+                        select.value = SEARCH_MIXED;
+                } else {
+                        select.value = single === null ? '' : single;
+                }
+        }
+
+        function searchNumberOr(text, fallback) {
+                const clean = String(text).trim();
+                if (clean === '') return fallback;
+                const v = Number(clean);
+                return Number.isFinite(v) ? Math.max(0, v) : fallback;
+        }
+
+        // The quick controls overwrite only their own dimensions of the live
+        // token: a token-only range survives a checkbox, and a picked class
+        // replaces a pasted multi-class only when the menu means it. A stale
+        // (mixed) marker goes away as soon as the select holds a real value.
+        function controlsToToken() {
+                const f = searchLib.parseFilter(tokenBox.value);
+                if (classSelect.value !== SEARCH_MIXED) {
+                        f.classes = classSelect.value ? searchLib.classBit(classSelect.value) : 0;
+                }
+                if (ptypeSelect.value !== SEARCH_MIXED) {
+                        f.planetTypes = ptypeSelect.value ? searchLib.ptypeBit(ptypeSelect.value) : 0;
+                }
+                f.tsurfMin = searchNumberOr(tsurfMinBox.value, 0);
+                f.tsurfMax = searchNumberOr(tsurfMaxBox.value, Infinity);
+                f.terranOnly = terranCheck.checked;
+                f.needsBelt = beltCheck.checked;
+                f.barrenOnly = barrenCheck.checked;
+                tokenBox.value = searchLib.formatFilter(f);
+                for (const select of [classSelect, ptypeSelect]) {
+                        if (select.value !== SEARCH_MIXED) {
+                                const marked = select.querySelector('option[data-mixed]');
+                                if (marked) marked.remove();
+                        }
+                }
+        }
+
+        function tokenToControls() {
+                const f = searchLib.parseFilter(tokenBox.value);
+                setSelectToMask(classSelect, searchClassNames, f.classes, searchLib.classBit);
+                setSelectToMask(ptypeSelect, searchTypeNames, f.planetTypes, searchLib.ptypeBit);
+                tsurfMinBox.value = f.tsurfMin > 0 ? String(f.tsurfMin) : '';
+                tsurfMaxBox.value = f.tsurfMax < Infinity ? String(f.tsurfMax) : '';
+                terranCheck.checked = f.terranOnly;
+                beltCheck.checked = f.needsBelt;
+                barrenCheck.checked = f.barrenOnly;
+        }
+
+        // Results belong to the filter that ran them: any change clears the
+        // report, the snapshot and the readout until the next Search.
+        function markSearchStale() {
+                searchSnapshot = [];
+                valSearch.textContent = 'no search yet';
+                sysread.textContent = '';
+        }
+
+        function onSearchControl() {
+                controlsToToken();
+                markSearchStale();
+        }
+        for (const el of [classSelect, ptypeSelect, tsurfMinBox, tsurfMaxBox,
+                terranCheck, beltCheck, barrenCheck]) {
+                el.addEventListener('change', onSearchControl);
+        }
+        tokenBox.addEventListener('change', () => {
+                tokenBox.value = searchLib.formatFilter(searchLib.parseFilter(tokenBox.value));
+                tokenToControls();
+                markSearchStale();
+        });
+        scopeSelect.addEventListener('change', markSearchStale);
+
+        // Plan §5.4's top-12 lines: designation, class, distance, matched
+        // planet, Tsurf. The class reads the same colorIndex map as the
+        // selected line, so the two readouts never disagree about a star.
+        function searchRowLine(res, i) {
+                const key = res.keys[i] >>> 0;
+                const kind = res.kind[i];
+                const index = res.index[i];
+                let name = 'S' + key.toString(36).toUpperCase();
+                if (kind === selectPlanets.BLOCK_LANDMARK && landmarks.ENTRIES[index]) {
+                        name = landmarks.ENTRIES[index].name;
+                }
+                const cls = window.StarRecord.SPECTRAL_CLASSES[res.colorIndex[i]] || '?';
+                const dist = formatLy(Math.sqrt(res.dist2[i]) * LY_PER_KPC);
+                let planet = '—';
+                if (res.nPlanets[i] === 0) planet = 'no planets';
+                else if (res.best[i * 4 + 3] !== searchLib.BEST_NONE) {
+                        const typeName = searchTypeNames[res.best[i * 4 + 3]] || '?';
+                        const letter = res.bestLetter[i] >= 0
+                                ? ' ' + String.fromCharCode(98 + res.bestLetter[i]) : '';
+                        const tsurf = Number.isFinite(res.best[i * 4 + 2])
+                                ? '  ' + Math.round(res.best[i * 4 + 2]) + ' K' : '';
+                        planet = typeName + letter + tsurf;
+                }
+                return name.padEnd(12) + '  ' + cls.padEnd(3) + '  ' + dist.padEnd(9) + '  ' + planet;
+        }
+
+        function runSearch() {
+                tokenBox.value = searchLib.formatFilter(searchLib.parseFilter(tokenBox.value));
+                tokenToControls();
+                const filter = searchLib.parseFilter(tokenBox.value);
+                const scope = scopeSelect.value === 'galaxy' ? 'galaxy' : 'selection';
+                const cam = camera.cameraPos;
+                const t0 = performance.now();
+                const res = search.run(filter, {
+                        scope, camX: cam[0], camY: cam[1], camZ: cam[2],
+                        model, renderer, set: starSet,
+                });
+                const ms = performance.now() - t0;
+                searchSnapshot = [];
+                for (let i = 0; i < res.count; i++) {
+                        searchSnapshot.push({
+                                key: res.keys[i] >>> 0, kind: res.kind[i], index: res.index[i],
+                                x: res.x[i], y: res.y[i], z: res.z[i],
+                                colorIndex: res.colorIndex[i], absMag: res.absMag[i],
+                        });
+                }
+                valSearch.textContent = res.stats.scope + ' · scanned ' + res.stats.scanned.toLocaleString()
+                        + ' · matched ' + res.stats.matched.toLocaleString() + ' · kept ' + res.count
+                        + ' · ' + ms.toFixed(ms < 10 ? 1 : 0) + ' ms';
+                const lines = ['search ' + (tokenBox.value || '(all)') + ' · ' + valSearch.textContent];
+                if (res.count === 0) lines.push('no matches');
+                const show = Math.min(res.count, 12);
+                for (let i = 0; i < show; i++) lines.push(searchRowLine(res, i));
+                if (res.count > show) lines.push('… +' + (res.count - show) + ' more');
+                sysread.textContent = lines.join('\n');
+        }
+        btnSearch.addEventListener('click', runSearch);
+        btnSearchClear.addEventListener('click', markSearchStale);
+
+        // Plan §5.4: the kept rows join the set through insert's own
+        // capacity/nearest-first rules, so a search becomes a working set for
+        // a route in two clicks. Unresolved rows stay out: a kind of −1 means
+        // the member's slot moved on, and the set already holds its key.
+        function addResultsToSelection() {
+                if (searchSnapshot.length === 0) return;
+                const cam = camera.cameraPos;
+                const ctx = {
+                        model,
+                        field: renderer.fieldBuffers(),
+                        member: renderer.starBlocks().member,
+                };
+                for (const row of searchSnapshot) {
+                        if (row.kind === searchLib.KIND_UNRESOLVED) continue;
+                        aroundPick.key = row.key;
+                        aroundPick.kind = row.kind;
+                        aroundPick.index = row.index;
+                        aroundPick.x = row.x;
+                        aroundPick.y = row.y;
+                        aroundPick.z = row.z;
+                        aroundPick.colorIndex = row.colorIndex;
+                        aroundPick.absMag = row.absMag;
+                        aroundPick.approximated = 0;
+                        const inputs = selectPlanets.stellarInputs(aroundPick, ctx, starInputs);
+                        starSet.insert(aroundPick, inputs, cam[0], cam[1], cam[2], row.index);
+                }
+                if (starSet.count > 0 && starSet.primary < 0) starSet.setPrimary(0);
+                setLabel = '';
+                syncSetUi();
+                updateOverlay(renderer.state, camera.getState(statsText));
+        }
+        btnSearchAdd.addEventListener('click', addResultsToSelection);
+
         function toggleMenu() {
                 const visible = menu.style.display !== 'none';
                 menu.style.display = visible ? 'none' : 'block';
@@ -465,6 +702,8 @@ async function boot() {
                         sat: renderer.state.saturation,
                         headroom: renderer.state.headroom,
                         highlight: renderer.state.highlightDesat,
+                        search: searchLib.formatFilter(searchLib.parseFilter(tokenBox.value)),
+                        scope: scopeSelect.value === 'galaxy' ? 'galaxy' : 'selection',
                         stars: params.stars,
                         catalog: params.catalogStars,
                 };
@@ -510,6 +749,18 @@ async function boot() {
                 if (s.sat !== undefined) renderer.setSaturation(s.sat);
                 if (s.headroom !== undefined) renderer.setHeadroom(s.headroom);
                 if (s.highlight !== undefined) renderer.setHighlightDesat(s.highlight);
+                // The filter and scope are preset state; the results are not
+                // (plan §5.5) — a pasted query lands in the controls and the
+                // old results clear, so nothing stale survives the paste.
+                if (s.search !== undefined) {
+                        tokenBox.value = searchLib.formatFilter(searchLib.parseFilter(s.search));
+                        tokenToControls();
+                        markSearchStale();
+                }
+                if (s.scope !== undefined) {
+                        scopeSelect.value = s.scope === 'galaxy' ? 'galaxy' : 'selection';
+                        markSearchStale();
+                }
                 syncSlidersFromRenderer();
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
