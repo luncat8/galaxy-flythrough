@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-11T21:25:41.272Z",
+  "date": "2026-10-12T02:58:01.608Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -7,6 +7,7 @@
     "math/sampling.js",
     "math/star-record.js",
     "math/star-types.js",
+    "math/planets.js",
     "math/orbit.js",
     "math/nebula.js",
     "math/objects.js",
@@ -15,6 +16,7 @@
     "core/camera.js",
     "core/input.js",
     "core/selection.js",
+    "core/star-set.js",
     "core/loop.js",
     "core/presets.js",
     "data/landmarks.js",
@@ -33,6 +35,7 @@
     "core/loop.js",
     "core/presets.js",
     "core/selection.js",
+    "core/star-set.js",
     "data/constellations.js",
     "data/landmarks.js",
     "main.js",
@@ -43,6 +46,7 @@
     "math/nebula.js",
     "math/objects.js",
     "math/orbit.js",
+    "math/planets.js",
     "math/sampling.js",
     "math/star-record.js",
     "math/star-types.js",
@@ -52,8 +56,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 55,
-  "passed": 55,
+  "totalChecks": 57,
+  "passed": 57,
   "failed": 0,
   "checks": [
     {
@@ -65,8 +69,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 24,
-        "sources": 24,
+        "scripts": 26,
+        "sources": 26,
         "missing": []
       }
     },
@@ -132,6 +136,7 @@
         "SamplingLib",
         "StarRecord",
         "StarTypesLib",
+        "PlanetsLib",
         "OrbitLib",
         "NebulaLib",
         "ObjectsLib",
@@ -140,6 +145,7 @@
         "Camera",
         "Input",
         "Selection",
+        "StarSet",
         "Loop",
         "Presets",
         "Landmarks",
@@ -190,14 +196,21 @@
       "name": "StarTypesLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 30
+        "keys": 31
+      }
+    },
+    {
+      "name": "PlanetsLib loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 75
       }
     },
     {
       "name": "OrbitLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 91
+        "keys": 92
       }
     },
     {
@@ -211,7 +224,7 @@
       "name": "ObjectsLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 47
+        "keys": 48
       }
     },
     {
@@ -225,7 +238,7 @@
       "name": "Camera loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 27
+        "keys": 29
       }
     },
     {
@@ -237,6 +250,13 @@
     },
     {
       "name": "Selection loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 8
+      }
+    },
+    {
+      "name": "StarSet loads under Node and is registered on window",
       "pass": true,
       "detail": {
         "keys": 2
@@ -295,7 +315,7 @@
       "name": "LabelLayer loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 8
+        "keys": 11
       }
     },
     {

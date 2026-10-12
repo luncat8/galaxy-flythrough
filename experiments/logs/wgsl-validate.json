@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-11T21:25:41.339Z",
+  "date": "2026-10-12T02:58:01.679Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -49,8 +49,8 @@
     "tonemap",
     "simple-step"
   ],
-  "totalChecks": 184,
-  "passed": 184,
+  "totalChecks": 185,
+  "passed": 185,
   "failed": 0,
   "checks": [
     {
@@ -1225,6 +1225,10 @@
     },
     {
       "name": "labels and picking share orbit.engineLandmarkPosition, the CPU twin of the vertex dispatch",
+      "pass": true
+    },
+    {
+      "name": "the record dispatch mirrors the vertex mask ladder and reports the simple gap (engineRecordPosition)",
       "pass": true
     },
     {

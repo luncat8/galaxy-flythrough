@@ -1,7 +1,7 @@
 {
-  "date": "2026-10-11T21:26:47.091Z",
-  "totalChecks": 113,
-  "passed": 113,
+  "date": "2026-10-12T02:59:24.066Z",
+  "totalChecks": 120,
+  "passed": 120,
   "failed": 0,
   "checks": [
     {
@@ -867,6 +867,63 @@
           0,
           0
         ]
+      }
+    },
+    {
+      "name": "record smoke: the classic mask moves the star through its packed orbit bits and reports false",
+      "pass": true,
+      "detail": {
+        "pos": [
+          11.26036689640327,
+          1.2446072282308236,
+          0.3999589521349185
+        ],
+        "moved": 0.04796595498702254,
+        "toLaw": 0,
+        "approx": false
+      }
+    },
+    {
+      "name": "record smoke: the packed phase/amplitude nibbles enter the classic law",
+      "pass": true,
+      "detail": 0.00074854470064902
+    },
+    {
+      "name": "record smoke: the simple mask returns the birth position and reports true",
+      "pass": true,
+      "detail": [
+        11.278,
+        1.2,
+        0.4
+      ]
+    },
+    {
+      "name": "record smoke: in the apocenter pool, the apocenter-only mask moves the record (open question 1)",
+      "pass": true,
+      "detail": {
+        "moved": 0.11285269778203667,
+        "toLaw": 0,
+        "approx": false
+      }
+    },
+    {
+      "name": "record smoke: T = 0 is the exact birth position and share 0 freezes the pass",
+      "pass": true
+    },
+    {
+      "name": "record smoke: share 0.5 splits records by the birth hash — both branches run",
+      "pass": true,
+      "detail": {
+        "splitOk": true,
+        "guided": true,
+        "frozen": true
+      }
+    },
+    {
+      "name": "record smoke: the apocenter pass composes with classic — replaces for the pool, plain classic otherwise",
+      "pass": true,
+      "detail": {
+        "composed": true
       }
     }
   ]

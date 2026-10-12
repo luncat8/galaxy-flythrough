@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-26T15:22:33.019Z",
-  "modules": 23,
-  "totalChecks": 118,
-  "passed": 118,
+  "date": "2026-10-12T02:58:01.485Z",
+  "modules": 24,
+  "totalChecks": 123,
+  "passed": 123,
   "failed": 0,
   "checks": [
     {
@@ -185,7 +185,7 @@
       }
     },
     {
-      "name": "StarTypesLib has identical key sets (30 keys)",
+      "name": "StarTypesLib has identical key sets (31 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -194,6 +194,38 @@
     },
     {
       "name": "StarTypesLib binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "PlanetsLib loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "PlanetsLib registers exactly one window namespace (PlanetsLib)",
+      "pass": true,
+      "detail": [
+        "PlanetsLib"
+      ]
+    },
+    {
+      "name": "PlanetsLib exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "PlanetsLib has identical key sets (75 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "PlanetsLib binds every key to the same value",
       "pass": true,
       "detail": []
     },
@@ -217,7 +249,7 @@
       }
     },
     {
-      "name": "OrbitLib has identical key sets (88 keys)",
+      "name": "OrbitLib has identical key sets (92 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -281,7 +313,7 @@
       }
     },
     {
-      "name": "ObjectsLib has identical key sets (47 keys)",
+      "name": "ObjectsLib has identical key sets (48 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -345,7 +377,7 @@
       }
     },
     {
-      "name": "Camera has identical key sets (27 keys)",
+      "name": "Camera has identical key sets (29 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -441,7 +473,7 @@
       }
     },
     {
-      "name": "Selection has identical key sets (2 keys)",
+      "name": "Selection has identical key sets (8 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -665,7 +697,7 @@
       }
     },
     {
-      "name": "LabelLayer has identical key sets (8 keys)",
+      "name": "LabelLayer has identical key sets (11 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],

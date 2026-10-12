@@ -1,11 +1,11 @@
 {
-  "date": "2026-10-12T01:15:02.591Z",
+  "date": "2026-10-12T02:59:08.303Z",
   "model": {
     "type": "SBb",
     "seed": 12345
   },
-  "totalChecks": 30,
-  "passed": 30,
+  "totalChecks": 44,
+  "passed": 44,
   "failed": 0,
   "checks": [
     {
@@ -183,6 +183,129 @@
       "detail": {
         "mass": 3,
         "state": "giant"
+      }
+    },
+    {
+      "name": "the μ table is the plan's census shape, class for class",
+      "pass": true,
+      "detail": {
+        "O": 0.02,
+        "B": 0.1,
+        "A": 0.35,
+        "F": 0.9,
+        "G": 1.2,
+        "K": 1.3,
+        "M": 1.6,
+        "WD": 0.15,
+        "RG": 0.4,
+        "RGe": 0.3
+      }
+    },
+    {
+      "name": "E[n] pins the analytic mean: 0.825 at μ = 1.2, 1.0195 at 1.6, 0.0198 at 0.02",
+      "pass": true,
+      "detail": {
+        "e12": 0.82504647654339,
+        "e16": 1.0194864037980311,
+        "e02": 0.019803272295884737
+      }
+    },
+    {
+      "name": "P(n = 0) = 0.455 and P(n ≥ 4) = 0.0135 at μ = 1.2 (closed forms)",
+      "pass": true,
+      "detail": {
+        "p0": 0.45454545454545453,
+        "pGe4": 0.013486513486513483
+      }
+    },
+    {
+      "name": "the count draw matches the analytic mean within 2% over 100k draws (§4.12)",
+      "pass": true,
+      "detail": {
+        "mcMean": 0.81749,
+        "analytic": 0.82504647654339
+      }
+    },
+    {
+      "name": "the chain is the documented channels, deterministic, and never exceeds MAX_PLANETS",
+      "pass": true,
+      "detail": {
+        "chainBad": 0,
+        "detBad": 0,
+        "capHits": 0,
+        "pZero": 0.45753
+      }
+    },
+    {
+      "name": "census: M averages more planets than G, O/B under 0.1 (20k systems per class)",
+      "pass": true,
+      "detail": {
+        "O": 0.022,
+        "B": 0.097,
+        "A": 0.301,
+        "F": 0.656,
+        "G": 0.826,
+        "K": 0.879,
+        "M": 1.025,
+        "WD": 0.136,
+        "RG": 0.344,
+        "RGe": 0.266
+      }
+    },
+    {
+      "name": "f_Z is (Z/0.02)² clamped to [0.05, 4]",
+      "pass": true,
+      "detail": {
+        "halo": 0.05,
+        "bulge": 3.062500000000001
+      }
+    },
+    {
+      "name": "the bulk weight table is the plan's, rows in class order, columns in BULKS order",
+      "pass": true
+    },
+    {
+      "name": "every load-time CDF row is nondecreasing and ends at exactly 1",
+      "pass": true
+    },
+    {
+      "name": "bulkCdfFor: fast path is the load-time row, modified rows renormalise to a CDF",
+      "pass": true,
+      "detail": {
+        "last": 1,
+        "mono": 6
+      }
+    },
+    {
+      "name": "f_Z scales gas/icegiant/mini only, by exactly (Z/0.02)²",
+      "pass": true
+    },
+    {
+      "name": "the giant state scales rock/ice/super by 0.25 (only wide survivors)",
+      "pass": true
+    },
+    {
+      "name": "the wd state is the debris row itself: rock 0.30, dwarf 0.70, for every class",
+      "pass": true
+    },
+    {
+      "name": "the giant fraction rises by ≥ 3× between halo and bulge Z, every class",
+      "pass": true,
+      "detail": {
+        "minRatio": 4.282633371169125,
+        "worstCls": "B",
+        "ratios": {
+          "O": 5.55,
+          "B": 4.28,
+          "A": 12.14,
+          "F": 23.13,
+          "G": 26.36,
+          "K": 30.02,
+          "M": 42.33,
+          "WD": 48.58,
+          "RG": 16.28,
+          "RGe": 21.37
+        }
       }
     }
   ]

@@ -257,9 +257,12 @@ const W = 1280, H = 800;
 // --- 3. Radius select against brute force ------------------------------------
 {
 	// Camera parked away from the cluster so the chosen centre is empty of it.
+	// The radius holds ~26 field records plus a few others (buffer order, not
+	// distance order), which is what makes the truncation pin below real: a
+	// population larger than the cap exercises both refusals and evictions.
 	const cam = camera.cameraPos;
 	const px = field.x[FIELD_ROWS], py = field.y[FIELD_ROWS], pz = field.z[FIELD_ROWS];
-	const radiusKpc = 0.05;
+	const radiusKpc = 1.2;
 	const sel = selectionLib.createSelection(camera, null);
 	sel.setRenderer(renderer);
 	sel.setOrbitState(model, 0.5);
@@ -289,9 +292,12 @@ const W = 1280, H = 800;
 		&& asc,
 		{ n, expected: expected.length, asc, first: got[0], last: got[got.length - 1] });
 	const capped = sel.selectAround(px, py, pz, radiusKpc, 5);
+	const got5 = [];
+	for (let i = 0; i < capped; i++) got5.push({ key: sel.around.keys[i], d2: sel.around.dist2[i] });
 	check('the scan truncates at the caller\'s capacity and reports the rest',
-		capped === Math.min(5, expected.length) && sel.around.truncated === Math.max(0, expected.length - 5),
-		{ capped, truncated: sel.around.truncated });
+		capped === Math.min(5, expected.length) && sel.around.truncated === Math.max(0, expected.length - 5)
+		&& got5.every((e, i) => expected[i] && expected[i].key === e.key),
+		{ capped, truncated: sel.around.truncated, inside: expected.length });
 }
 
 // --- 4. The set --------------------------------------------------------------
@@ -472,9 +478,10 @@ function stubLabelCanvas() {
 // --- 8. Timings at 300k ------------------------------------------------------
 // The walk is dispatch-bound, not projection-bound: the projection is ~15 ns per
 // record, `orbit.engineRecordPosition` is ~0.3 µs under the classic mask and
-// ~1.5 µs with the apocenter pass (its Kepler solve runs for the selected
-// share). So the budget is a *slice* budget — the picker is chunked across
-// frames (plan §3.1) — and the numbers below are what the plan quotes.
+// ~1.2 µs with the apocenter pass (its Kepler solve runs for the selected
+// share; machine-dependent, this run prints the live figures). So the budget is
+// a *slice* budget — the picker is chunked across frames (plan §3.1) — and the
+// numbers below are what the plan quotes.
 {
 	const BIG_N = 300000;
 	const bigStaging = new ArrayBuffer(BIG_N * records.RECORD_BYTES);

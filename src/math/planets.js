@@ -10,9 +10,12 @@
 //     (mass, luminosity, Teff, R★, age, Z, state, spectral class) (plan §2.4),
 //   * `massFromClassAndMag` — the inversion of what a 16-byte StarPacked record
 //     still carries, for the blocks that are not re-derivable (plan §2.5),
-//   * the authored display-type, bulk and occurrence tables the generator reads.
+//   * the authored display-type, bulk and occurrence tables the generator reads,
+//   * the occurrence tier (plan §4.4, 0.5.1-3): the μ table and bulk weights
+//     with their `f_Z` / state modifiers (`bulkWeightsFor`/`bulkCdfFor`), and
+//     the geometric count draw (`planetCount`, `expectedPlanetCount`).
 //
-// 0.5.1 adds the generator itself (occurrence draw, architecture, temperatures,
+// 0.5.1 adds the generator itself (architecture, temperatures,
 // belts, SystemRecord) behind this same object. Everything here is a pure
 // function of (model, key, record): no PRNG state, no allocation, `out` params.
 //
@@ -128,6 +131,48 @@
 	// Mean planet count by stellar class (plan §4.4), from the Kepler/RV census
 	// shape: M dwarfs most productive per star, O/B the least.
 	const CLASS_MU = { O: 0.02, B: 0.10, A: 0.35, F: 0.90, G: 1.20, K: 1.30, M: 1.60, WD: 0.15, RG: 0.40, RGe: 0.30 };
+
+	// Bulk weights by stellar class (plan §4.4), rows in records.SPECTRAL_CLASSES
+	// order, columns in BULKS order (rock, ice, super, mini, gas, icegiant,
+	// dwarf). Authored, not fitted; each row sums to 1. The test pins the table
+	// against the plan and the row/column alignment against the two lists.
+	const CLASS_BULK_WEIGHTS = [
+		[0.00, 0.00, 0.00, 0.00, 0.55, 0.25, 0.20],   // O
+		[0.00, 0.00, 0.05, 0.10, 0.50, 0.25, 0.10],   // B
+		[0.08, 0.10, 0.15, 0.20, 0.27, 0.12, 0.08],   // A
+		[0.22, 0.12, 0.20, 0.15, 0.13, 0.08, 0.10],   // F
+		[0.26, 0.12, 0.20, 0.14, 0.10, 0.07, 0.11],   // G
+		[0.28, 0.12, 0.22, 0.12, 0.08, 0.06, 0.12],   // K
+		[0.36, 0.10, 0.28, 0.10, 0.01, 0.02, 0.13],   // M
+		[0.30, 0.15, 0.10, 0.03, 0.02, 0.03, 0.37],   // WD
+		[0.10, 0.18, 0.15, 0.15, 0.22, 0.12, 0.08],   // RG
+		[0.14, 0.24, 0.15, 0.12, 0.17, 0.10, 0.08],   // RGe
+	];
+
+	// Each row normalised into a CDF once at module load (plan §4.4): the common
+	// case (thin-disc Z, main sequence — `f_Z` = 1 and no state rule) is then a
+	// 7-float copy per system instead of a renormalise, and the modified case
+	// has a reference to be pinned against. Row order matches
+	// records.SPECTRAL_CLASSES; the last entry of each row is forced to exactly
+	// 1 so a `u < cdf[i]` walk always terminates inside the row. f32 thresholds
+	// are the plan's contract (a reimplementation must land on the same
+	// systems), so the modified path rounds its writes through Math.fround —
+	// the copy path and the renormalise path are then bit-identical.
+	const CLASS_BULK_CDF = (function () {
+		const cdf = new Float32Array(CLASS_BULK_WEIGHTS.length * BULKS.length);
+		for (let r = 0; r < CLASS_BULK_WEIGHTS.length; r++) {
+			const row = CLASS_BULK_WEIGHTS[r];
+			let sum = 0;
+			for (let c = 0; c < row.length; c++) sum += row[c];
+			let acc = 0;
+			for (let c = 0; c < row.length; c++) {
+				acc += row[c] / sum;
+				cdf[r * BULKS.length + c] = acc;
+			}
+			cdf[r * BULKS.length + row.length - 1] = 1;
+		}
+		return cdf;
+	})();
 
 	// Mass bracket per spectral class (plan §2.5): the window the
 	// magnitude-derived mass is clamped into. A record carries no mass, and the
@@ -348,6 +393,107 @@
 		return finishInputs(out, false);
 	}
 
+	// --- Occurrence (plan §4.4) ---------------------------------------------
+
+	// Fischer & Valenti's P(giant) ∝ 10^(2[Fe/H]) with [Fe/H] = log10(Z/0.020)
+	// — i.e. (Z/0.020)² — clamped so a halo star cannot erase its giant row and
+	// a super-solar star cannot flood it.
+	function fZFactor(z) {
+		const f = (z / 0.020) * (z / 0.020);
+		return f < 0.05 ? 0.05 : (f > 4 ? 4 : f);
+	}
+
+	// Mean planet count: the class row of the μ table (plan §4.4), 'M' as the
+	// module's fallback for a class outside the closed list.
+	function muForClass(spectralClass) {
+		const mu = CLASS_MU[spectralClass];
+		return mu === undefined ? CLASS_MU.M : mu;
+	}
+
+	// The class's row in the weight tables, 'M' as the fallback — one place for
+	// the lookup every occurrence function shares.
+	function classRowOf(spectralClass) {
+		const i = records.SPECTRAL_CLASSES.indexOf(spectralClass);
+		return i < 0 ? records.SPECTRAL_CLASSES.indexOf('M') : i;
+	}
+
+	// The per-system bulk weights (plan §4.4): the class row with `f_Z` applied
+	// to the giant columns (gas, icegiant, mini) and the state rule applied,
+	// raw (unnormalised) so the modifiers read exactly as the plan writes them.
+	// `state` is `stellarInputs`' field: 'ms', 'giant' (only wide survivors —
+	// rock/ice/super × 0.25) or 'wd' (the debris row IS the system: rock 0.30,
+	// dwarf 0.70, replacing the class row). The rules touch disjoint columns
+	// (f_Z only the giants, the giant state only rock/ice/super, the wd rule
+	// everything), so their order does not matter.
+	function bulkWeightsFor(spectralClass, metal, state, out) {
+		if (state === 'wd') {
+			for (let i = 0; i < BULKS.length; i++) out[i] = 0;
+			out[BULK_INDEX.rock] = 0.30;
+			out[BULK_INDEX.dwarf] = 0.70;
+			return out;
+		}
+		const row = CLASS_BULK_WEIGHTS[classRowOf(spectralClass)];
+		for (let i = 0; i < BULKS.length; i++) out[i] = row[i];
+		const fz = fZFactor(metal);
+		out[BULK_INDEX.gas] *= fz;
+		out[BULK_INDEX.icegiant] *= fz;
+		out[BULK_INDEX.mini] *= fz;
+		if (state === 'giant') {
+			out[BULK_INDEX.rock] *= 0.25;
+			out[BULK_INDEX.ice] *= 0.25;
+			out[BULK_INDEX.super] *= 0.25;
+		}
+		return out;
+	}
+
+	// The draw's scratch (plan §4.4): the modified weights renormalised into a
+	// CDF, 7 floats in the caller's array, in place. The unmodified common case
+	// is the load-time row copied — same values, since both paths round through
+	// f32 (see CLASS_BULK_CDF).
+	function bulkCdfFor(spectralClass, metal, state, out) {
+		if (state !== 'ms' && state !== 'giant' && state !== 'wd') state = 'ms';
+		const rowBase = classRowOf(spectralClass) * BULKS.length;
+		if (state === 'ms' && fZFactor(metal) === 1) {
+			for (let i = 0; i < BULKS.length; i++) out[i] = CLASS_BULK_CDF[rowBase + i];
+			return out;
+		}
+		bulkWeightsFor(spectralClass, metal, state, out);
+		let sum = 0;
+		for (let i = 0; i < BULKS.length; i++) sum += out[i];
+		let acc = 0;
+		for (let i = 0; i < BULKS.length; i++) {
+			acc += out[i] / sum;
+			out[i] = Math.fround(acc);
+		}
+		out[BULKS.length - 1] = 1;
+		return out;
+	}
+
+	// The count draw (plan §4.4): a geometric chain over the system's channel
+	// stream — no PRNG state, no allocation, capped at MAX_PLANETS. Each step
+	// continues with probability μ/(μ+n+1), so most stars have no planets, a
+	// minority have a handful, and almost none are packed.
+	function planetCount(systemSeed, mu) {
+		let n = 0;
+		while (n < MAX_PLANETS
+			&& hash.hash01At(systemSeed, CH_COUNT_BASE + n) < mu / (mu + n + 1)) n++;
+		return n;
+	}
+
+	// E[n] = Σ_{k≥1} Π_{j≤k} μ/(μ+j) — the analytic mean of the chain above
+	// (plan §4.4): at μ = 1.2 it is 0.825, at 1.6 it is 1.020, at 0.02 it is
+	// 0.0198. The test pins these numbers and checks the draw against the
+	// formula, so the chain cannot silently change shape.
+	function expectedPlanetCount(mu) {
+		let sum = 0, term = 1;
+		for (let k = 1; k <= 1024; k++) {
+			term *= mu / (mu + k);
+			sum += term;
+			if (term < 1e-12) break;
+		}
+		return sum;
+	}
+
 	const PlanetsLib = {
 		AU_M, M_SUN_KG, G_SI, M_EARTH_KG, R_EARTH_M, R_SUN_M, TEFF_SUN, RHO_EARTH,
 		MAX_PLANETS, MAX_BELTS, STIPPLE_N, A_SNOW_K, HZ_S_IN, HZ_S_OUT, K_HILL,
@@ -358,10 +504,12 @@
 		CH_ESCALE, CH_COUNT_BASE, CH_SLOT_BASE, CH_BULK, CH_AXIS, CH_MASS, CH_ECC,
 		CH_INC, CH_PERI, CH_PHASE, CH_ROT, CH_BELT_INNER, CH_BELT_OUTER, CH_STIPPLE_BASE,
 		DISPLAY_TYPES, DISPLAY_INDEX, ATMOSPHERES, BULKS, BULK_INDEX, CLASS_MU,
+		CLASS_BULK_WEIGHTS, CLASS_BULK_CDF,
 		CLASS_MASS_BRACKETS, CLASS_TEFF_BANDS,
 		systemSeed, landmarkKey, catalogKey,
 		massFromLuminosity, massFromClassAndMag, luminosityFromMag, stellarRadius,
 		teffForClass, stateForClass, stellarInputs,
+		fZFactor, muForClass, bulkWeightsFor, bulkCdfFor, planetCount, expectedPlanetCount,
 	};
 	if (typeof module !== 'undefined') module.exports = PlanetsLib;
 	if (typeof window !== 'undefined') window.PlanetsLib = PlanetsLib;

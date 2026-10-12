@@ -3,7 +3,10 @@
 // writes beside every record (plan §2.2/§2.3), the magnitude→mass inversion
 // (§2.5), the stellar radius, and the per-block `stellarInputs` paths (§2.4) —
 // the three re-derivable blocks pinned bit-exactly against the derivation the
-// renderer itself runs, the two record-only blocks pinned to the inversion.
+// renderer itself runs, the two record-only blocks pinned to the inversion —
+// and the occurrence tier (0.5.1-3, §4.4): the μ table, the bulk weights with
+// their f_Z / state modifiers, and the geometric count draw pinned against the
+// analytic mean (E[n] = 0.825 at μ = 1.2).
 //
 // Output: experiments/logs/planet-gen.json
 
@@ -323,6 +326,208 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 		cat.state === 'giant' && cat.mass === 3.0 && cat.spectralClass === 'RG', { mass: cat.mass, state: cat.state });
 }
 
+// --- 5. Occurrence: μ, f_Z, state, the count draw (plan §4.4, 0.5.1-3) -----
+{
+	// The μ table is the plan's, class for class, and muForClass reads it.
+	const planMu = { O: 0.02, B: 0.10, A: 0.35, F: 0.90, G: 1.20, K: 1.30, M: 1.60, WD: 0.15, RG: 0.40, RGe: 0.30 };
+	const muOk = records.SPECTRAL_CLASSES.every(cls => planets.CLASS_MU[cls] === planMu[cls])
+		&& planets.muForClass('G') === 1.20 && planets.muForClass('M') === 1.60
+		&& planets.muForClass('no-such-class') === planMu.M;
+	check('the μ table is the plan\'s census shape, class for class', muOk, planets.CLASS_MU);
+
+	// The mean is analytic (plan §4.4): the test pins the formula, not a
+	// Monte-Carlo average. The series is summed here independently of the
+	// module's loop and against the plan's published values.
+	const series = (mu) => {
+		let sum = 0, term = 1;
+		for (let k = 1; k <= 100; k++) { term *= mu / (mu + k); sum += term; }
+		return sum;
+	};
+	const e12 = planets.expectedPlanetCount(1.2);
+	const e16 = planets.expectedPlanetCount(1.6);
+	const e02 = planets.expectedPlanetCount(0.02);
+	check('E[n] pins the analytic mean: 0.825 at μ = 1.2, 1.0195 at 1.6, 0.0198 at 0.02',
+		Math.abs(e12 - 0.825) < 5e-4 && Math.abs(e16 - 1.0195) < 5e-5 && Math.abs(e02 - 0.0198) < 5e-5
+		&& Math.abs(e12 - series(1.2)) < 1e-9 && Math.abs(e16 - series(1.6)) < 1e-9
+		&& Math.abs(e02 - series(0.02)) < 1e-9,
+		{ e12, e16, e02 });
+	// P(n = 0) = 1/(μ+1) and P(n ≥ 4) = Π_{j<4} μ/(μ+j+1), the plan's other two
+	// published consequences of the same chain.
+	const p0 = 1 / (1 + 1.2);
+	const pGe4 = (1.2 / 2.2) * (1.2 / 3.2) * (1.2 / 4.2) * (1.2 / 5.2);
+	check('P(n = 0) = 0.455 and P(n ≥ 4) = 0.0135 at μ = 1.2 (closed forms)',
+		Math.abs(p0 - 0.455) < 5e-4 && Math.abs(pGe4 - 0.0135) < 5e-5, { p0, pGe4 });
+
+	// The draw itself, over 100k fresh system seeds: the Monte-Carlo mean is
+	// within 2% of the formula (plan §4.12), the chain is the documented
+	// channels (hash01At(seed, 2 + n), recomputed here independently), and it
+	// is a pure function of the seed.
+	const chainRef = (seed, mu) => {
+		let n = 0;
+		while (n < planets.MAX_PLANETS && hash.hash01At(seed, 2 + n) < mu / (mu + n + 1)) n++;
+		return n;
+	};
+	let sum12 = 0, zero12 = 0, capHits = 0, chainBad = 0, detBad = 0;
+	for (let i = 0; i < 100000; i++) {
+		const seed = hash.pcgHash(i * 2654435761 + 7);
+		const n = planets.planetCount(seed, 1.2);
+		sum12 += n;
+		if (n === 0) zero12++;
+		if (n >= planets.MAX_PLANETS) capHits++;
+		if (n !== chainRef(seed, 1.2)) chainBad++;
+		if (planets.planetCount(seed, 1.2) !== n) detBad++;
+	}
+	const mcMean = sum12 / 100000;
+	check('the count draw matches the analytic mean within 2% over 100k draws (§4.12)',
+		Math.abs(mcMean - e12) < 0.02 * e12, { mcMean, analytic: e12 });
+	check('the chain is the documented channels, deterministic, and never exceeds MAX_PLANETS',
+		chainBad === 0 && detBad === 0 && capHits === 0 && zero12 / 100000 > 0.44 && zero12 / 100000 < 0.47,
+		{ chainBad, detBad, capHits, pZero: zero12 / 100000 });
+
+	// Class census over 20k systems per class (plan §4.4's emergent pins that
+	// this tier can already measure): M dwarfs out-produce G, O/B average under
+	// 0.1 planets a star.
+	const meanFor = (clsIdx) => {
+		const cls = records.SPECTRAL_CLASSES[clsIdx];
+		const mu = planets.muForClass(cls);
+		let sum = 0;
+		for (let i = 0; i < 20000; i++) sum += planets.planetCount(hash.pcgHash((i + 1) * 0x9E3779B1 + clsIdx), mu);
+		return sum / 20000;
+	};
+	const means = {};
+	for (let r = 0; r < records.SPECTRAL_CLASSES.length; r++) means[records.SPECTRAL_CLASSES[r]] = +meanFor(r).toFixed(3);
+	check('census: M averages more planets than G, O/B under 0.1 (20k systems per class)',
+		means.M > means.G && means.O < 0.1 && means.B < 0.1
+		&& Math.abs(means.G - e12) < 0.05 * e12 && Math.abs(means.M - e16) < 0.05 * e16,
+		means);
+}
+
+{
+	// f_Z: (Z/0.020)² with the plan's clamps (Fischer & Valenti, giants only).
+	// The decimal literals are not exact binary fractions, so the identity is
+	// pinned to 1e-12, the clamps exactly.
+	const fzClose = (z, want) => Math.abs(planets.fZFactor(z) - want) < 1e-12;
+	check('f_Z is (Z/0.02)² clamped to [0.05, 4]',
+		planets.fZFactor(0.020) === 1 && fzClose(0.01, 0.25) && fzClose(0.035, 3.0625)
+		&& planets.fZFactor(0.001) === 0.05 && planets.fZFactor(0.0001) === 0.05
+		&& planets.fZFactor(0.04) === 4 && planets.fZFactor(0.2) === 4,
+		{ halo: planets.fZFactor(0.001), bulge: planets.fZFactor(0.035) });
+
+	// The weight table: the plan's rows, in SPECTRAL_CLASSES order, columns in
+	// BULKS order, each row normalised into a load-time CDF.
+	const planRows = {
+		O: [0, 0, 0, 0, 0.55, 0.25, 0.20], B: [0, 0, 0.05, 0.10, 0.50, 0.25, 0.10],
+		A: [0.08, 0.10, 0.15, 0.20, 0.27, 0.12, 0.08], F: [0.22, 0.12, 0.20, 0.15, 0.13, 0.08, 0.10],
+		G: [0.26, 0.12, 0.20, 0.14, 0.10, 0.07, 0.11], K: [0.28, 0.12, 0.22, 0.12, 0.08, 0.06, 0.12],
+		M: [0.36, 0.10, 0.28, 0.10, 0.01, 0.02, 0.13], WD: [0.30, 0.15, 0.10, 0.03, 0.02, 0.03, 0.37],
+		RG: [0.10, 0.18, 0.15, 0.15, 0.22, 0.12, 0.08], RGe: [0.14, 0.24, 0.15, 0.12, 0.17, 0.10, 0.08],
+	};
+	let rowsOk = true;
+	for (let r = 0; r < records.SPECTRAL_CLASSES.length; r++) {
+		const row = planets.CLASS_BULK_WEIGHTS[r];
+		const want = planRows[records.SPECTRAL_CLASSES[r]];
+		if (!row || !want || row.length !== 7) { rowsOk = false; break; }
+		let sum = 0;
+		for (let c = 0; c < 7; c++) {
+			if (row[c] !== want[c]) rowsOk = false;
+			sum += row[c];
+		}
+		if (Math.abs(sum - 1) > 1e-12) rowsOk = false;
+	}
+	// Column c is BULKS[c]: rock..dwarf in plan order (the state rules below
+	// pin the columns by name, so this is the alignment check).
+	if (planets.BULKS.map(b => b.name).join(',') !== 'rock,ice,super,mini,gas,icegiant,dwarf') rowsOk = false;
+	check('the bulk weight table is the plan\'s, rows in class order, columns in BULKS order', rowsOk);
+
+	const N = planets.BULKS.length;
+	let cdfOk = true;
+	for (let r = 0; r < records.SPECTRAL_CLASSES.length; r++) {
+		let prev = 0;
+		for (let c = 0; c < N; c++) {
+			const v = planets.CLASS_BULK_CDF[r * N + c];
+			if (!(v >= prev)) cdfOk = false;
+			prev = v;
+		}
+		if (prev !== 1) cdfOk = false;
+	}
+	check('every load-time CDF row is nondecreasing and ends at exactly 1', cdfOk);
+
+	// bulkCdfFor: the fast path (thin-disc Z, main sequence) is the load-time
+	// row, and the slow path renormalises the same weights — pinned against a
+	// test-side cumsum of the raw row.
+	const out = new Float64Array(N);
+	planets.bulkCdfFor('G', 0.020, 'ms', out);
+	const rowG = planets.CLASS_BULK_WEIGHTS[records.SPECTRAL_CLASSES.indexOf('G')];
+	let acc = 0, cumOk = true;
+	for (let i = 0; i < N; i++) {
+		acc += rowG[i];
+		if (out[i] !== planets.CLASS_BULK_CDF[records.SPECTRAL_CLASSES.indexOf('G') * N + i]) cumOk = false;
+		if (Math.abs(out[i] - Math.fround(acc)) > 1e-12) cumOk = false;
+	}
+	planets.bulkCdfFor('G', 0.035, 'giant', out);
+	let mono = 0;
+	for (let i = 1; i < N; i++) if (out[i] >= out[i - 1]) mono++;
+	check('bulkCdfFor: fast path is the load-time row, modified rows renormalise to a CDF',
+		cumOk && out[N - 1] === 1 && mono === N - 1, { last: out[N - 1], mono });
+}
+
+{
+	// The modifiers at weight level (plan §4.4): f_Z scales the giant columns
+	// only, the giant state scales rock/ice/super by 0.25 only, the wd state
+	// replaces the row with the debris inventory. The emergent draw-level
+	// pins (giant fraction over 20k systems) land with the bulk draw (0.5.1-4);
+	// what is pinned here is exactly the rule the draw will consume.
+	const w = new Float64Array(7);
+	const base = new Float64Array(7);
+	const GIANTS = ['gas', 'icegiant', 'mini'].map(n => planets.BULK_INDEX[n]);
+	const SURVIVORS = ['rock', 'ice', 'super'].map(n => planets.BULK_INDEX[n]);
+
+	planets.bulkWeightsFor('G', 0.020, 'ms', base);
+	planets.bulkWeightsFor('G', 0.035, 'ms', w);
+	let fzOnlyGiants = true;
+	for (let i = 0; i < 7; i++) {
+		const want = GIANTS.includes(i) ? base[i] * 3.0625 : base[i];
+		if (!(Math.abs(w[i] - want) <= 1e-12 * Math.max(1e-9, Math.abs(want)))) fzOnlyGiants = false;
+	}
+	check('f_Z scales gas/icegiant/mini only, by exactly (Z/0.02)²', fzOnlyGiants);
+
+	planets.bulkWeightsFor('G', 0.020, 'giant', w);
+	let giantRule = true;
+	for (let i = 0; i < 7; i++) {
+		const want = SURVIVORS.includes(i) ? base[i] * 0.25 : base[i];
+		if (w[i] !== want) giantRule = false;
+	}
+	check('the giant state scales rock/ice/super by 0.25 (only wide survivors)', giantRule);
+
+	let wdRule = true;
+	for (const cls of records.SPECTRAL_CLASSES) {
+		planets.bulkWeightsFor(cls, 0.035, 'wd', w);
+		for (let i = 0; i < 7; i++) {
+			const want = i === planets.BULK_INDEX.rock ? 0.30 : i === planets.BULK_INDEX.dwarf ? 0.70 : 0;
+			if (w[i] !== want) wdRule = false;
+		}
+	}
+	check('the wd state is the debris row itself: rock 0.30, dwarf 0.70, for every class', wdRule);
+
+	// The giant share of the weights is the bulk draw's expectation: it must
+	// rise by ≥ 3× between halo and bulge metallicity (plan §4.4/§4.12).
+	const giantShare = (cls, z, state) => {
+		planets.bulkWeightsFor(cls, z, state, w);
+		let giant = 0, all = 0;
+		for (let i = 0; i < 7; i++) { all += w[i]; if (GIANTS.includes(i)) giant += w[i]; }
+		return giant / all;
+	};
+	let minRatio = Infinity, worstCls = '';
+	const ratios = {};
+	for (const cls of records.SPECTRAL_CLASSES) {
+		const ratio = giantShare(cls, 0.035, 'ms') / giantShare(cls, 0.001, 'ms');
+		ratios[cls] = +ratio.toFixed(2);
+		if (ratio < minRatio) { minRatio = ratio; worstCls = cls; }
+	}
+	check('the giant fraction rises by ≥ 3× between halo and bulge Z, every class',
+		minRatio >= 3, { minRatio, worstCls, ratios });
+}
+
 // --- Report ------------------------------------------------------------------
 let passed = 0;
 let failed = 0;
@@ -344,5 +549,5 @@ fs.writeFileSync(logPath, JSON.stringify({
 }, null, 2));
 console.log(`Wrote ${logPath}`);
 console.log('\n=== VERDICT ===');
-console.log(failed === 0 ? 'PASS — identity keys, the inversion and every stellar-input path behave as documented' : `FAIL — ${failed} checks failed`);
+console.log(failed === 0 ? 'PASS — identity keys, the inversion, every stellar-input path and the occurrence tier behave as documented' : `FAIL — ${failed} checks failed`);
 process.exit(failed === 0 ? 0 : 1);

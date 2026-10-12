@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-12T01:15:09.796Z",
+  "date": "2026-10-12T02:59:14.172Z",
   "model": {
     "type": "SBb",
     "seed": 12345
@@ -57,16 +57,16 @@
       "name": "radius select equals the brute-force list, ascending",
       "pass": true,
       "detail": {
-        "n": 1,
-        "expected": 1,
+        "n": 26,
+        "expected": 26,
         "asc": true,
         "first": {
           "key": 382760,
           "d2": 0
         },
         "last": {
-          "key": 382760,
-          "d2": 0
+          "key": 385163,
+          "d2": 1.415548849616144
         }
       }
     },
@@ -74,8 +74,9 @@
       "name": "the scan truncates at the caller's capacity and reports the rest",
       "pass": true,
       "detail": {
-        "capped": 1,
-        "truncated": 0
+        "capped": 5,
+        "truncated": 21,
+        "inside": 26
       }
     },
     {
@@ -171,26 +172,26 @@
       "name": "a pick slice stays inside the loop's 8 ms budget (+clock overhead) for every mask",
       "pass": true,
       "detail": {
-        "worstSlice": 5.488824000000022,
+        "worstSlice": 5.171621000000414,
         "worstMask": 5,
         "measured": {
           "1": {
-            "total": 89.78,
-            "slice": 1.6,
+            "total": 84.58,
+            "slice": 1.49,
             "slices": 10,
-            "perRecordNs": 299
+            "perRecordNs": 282
           },
           "2": {
-            "total": 29.55,
-            "slice": 0.5,
+            "total": 17.17,
+            "slice": 0.25,
             "slices": 10,
-            "perRecordNs": 99
+            "perRecordNs": 57
           },
           "5": {
-            "total": 428.46,
-            "slice": 5.49,
+            "total": 309.27,
+            "slice": 5.17,
             "slices": 10,
-            "perRecordNs": 1428
+            "perRecordNs": 1031
           }
         }
       }
@@ -210,25 +211,25 @@
       "name": "the cheap mask finishes a whole 300k pick in a handful of frames",
       "pass": true,
       "detail": {
-        "simpleTotal": 29.553084000000126,
+        "simpleTotal": 17.16805999999997,
         "measured": {
           "1": {
-            "total": 89.78,
-            "slice": 1.6,
+            "total": 84.58,
+            "slice": 1.49,
             "slices": 10,
-            "perRecordNs": 299
+            "perRecordNs": 282
           },
           "2": {
-            "total": 29.55,
-            "slice": 0.5,
+            "total": 17.17,
+            "slice": 0.25,
             "slices": 10,
-            "perRecordNs": 99
+            "perRecordNs": 57
           },
           "5": {
-            "total": 428.46,
-            "slice": 5.49,
+            "total": 309.27,
+            "slice": 5.17,
             "slices": 10,
-            "perRecordNs": 1428
+            "perRecordNs": 1031
           }
         }
       }
@@ -238,22 +239,22 @@
       "pass": true,
       "detail": {
         "1": {
-          "total": 89.78,
-          "slice": 1.6,
+          "total": 84.58,
+          "slice": 1.49,
           "slices": 10,
-          "perRecordNs": 299
+          "perRecordNs": 282
         },
         "2": {
-          "total": 29.55,
-          "slice": 0.5,
+          "total": 17.17,
+          "slice": 0.25,
           "slices": 10,
-          "perRecordNs": 99
+          "perRecordNs": 57
         },
         "5": {
-          "total": 428.46,
-          "slice": 5.49,
+          "total": 309.27,
+          "slice": 5.17,
           "slices": 10,
-          "perRecordNs": 1428
+          "perRecordNs": 1031
         }
       }
     },

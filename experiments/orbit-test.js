@@ -1279,6 +1279,112 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 	orbit.setApocenterForce(savedForce);
 }
 
+// --- 14. The record dispatch (engineRecordPosition) -----------------------
+// The picker walks *records*, so the record twin of the dispatch above has its
+// own smoke (0.5.0-3): family/phase/amplitude come out of the packed word
+// exactly as readOrbit decodes them, the classic mask moves the star and
+// reports false, the simple mask is the honest gap (birth position + reports
+// true), and the apocenter pass composes with both. The apocenter-only case is
+// the one that needs a star actually IN the pool: with the UI default share
+// the smoke star can sit outside the 30–35% subset and the run proves nothing
+// either way (0.5.x worklog, open question 1). This retest forces share 1 —
+// the packed word of that question, 0x00030000, at T = 0.5 — and pins the
+// selected and unselected branches against the laws themselves.
+{
+	const model = galaxy.createGalaxy({ type: 'SBb', seed: 3 });
+	const savedEngine = orbit.getEngine();
+	const savedShare = orbit.getApocenterShare();
+	const savedForce = orbit.getApocenterForce();
+	const T = 0.5;
+	const packed = 0x00030000;          // flags 0x03, jitter 0 → pattern, phase 0, amp 0
+	const bx = model.centre.x + 3.1, by = 1.2, bz = 0.4;
+	const recOut = new Float64Array(3);
+	const refOut = new Float64Array(3);
+	const bits = orbit.readOrbit(packed);
+	const finite = () => Number.isFinite(recOut[0]) && Number.isFinite(recOut[1]) && Number.isFinite(recOut[2]);
+
+	orbit.setApocenterForce(orbit.APOCENTER_ECC_MAX);
+
+	// Classic: the record's own bits drive orbitPosition, the star moves, and
+	// the dispatch reports "not approximated".
+	orbit.setEngine(orbit.ENGINE_CLASSIC);
+	const approxClassic = orbit.engineRecordPosition(recOut, bx, by, bz, packed, T, model);
+	orbit.orbitPosition(refOut, bx, by, bz, bits.family, bits.phase, bits.amplitude, T, model);
+	check('record smoke: the classic mask moves the star through its packed orbit bits and reports false',
+		approxClassic === false && dist3(recOut, refOut) < 1e-12 && dist3(recOut, [bx, by, bz]) > 0.01 && finite(),
+		{ pos: Array.from(recOut), moved: dist3(recOut, [bx, by, bz]), toLaw: dist3(recOut, refOut), approx: approxClassic });
+
+	// The jitter byte is not decoration: phase/amplitude change the result.
+	const packed2 = (packed & 0x00FFFFFF) | (orbit.encodeJitter(9, 14) << 24);
+	orbit.engineRecordPosition(recOut, bx, by, bz, packed2, T, model);
+	check('record smoke: the packed phase/amplitude nibbles enter the classic law',
+		dist3(recOut, refOut) > 1e-6, dist3(recOut, refOut));
+
+	// Simple: a record's θ lives in the GPU compute buffer, so the dispatch
+	// returns the birth position and SAYS so — the approximation is reported,
+	// not silent.
+	orbit.setEngine(orbit.ENGINE_SIMPLE);
+	const approxSimple = orbit.engineRecordPosition(recOut, bx, by, bz, packed, T, model);
+	check('record smoke: the simple mask returns the birth position and reports true',
+		approxSimple === true && dist3(recOut, [bx, by, bz]) === 0, Array.from(recOut));
+
+	// The open-question case: apocenter-only, the question's packed word,
+	// T = 0.5 — with the star forced into the pool.
+	orbit.setEngine(orbit.ENGINE_APOCENTER);
+	orbit.setApocenterShare(1);
+	const approxApo = orbit.engineRecordPosition(recOut, bx, by, bz, packed, T, model);
+	orbit.apocenterPosition(refOut, bx, by, bz, bits.family, bits.phase, bits.amplitude, T, model);
+	check('record smoke: in the apocenter pool, the apocenter-only mask moves the record (open question 1)',
+		approxApo === false && finite() && dist3(recOut, [bx, by, bz]) > 0.05 && dist3(recOut, refOut) < 1e-12,
+		{ moved: dist3(recOut, [bx, by, bz]), toLaw: dist3(recOut, refOut), approx: approxApo });
+
+	// T = 0 is the identity and share 0 freezes the pass entirely.
+	orbit.engineRecordPosition(recOut, bx, by, bz, packed, 0, model);
+	const atZero = dist3(recOut, [bx, by, bz]) === 0;
+	orbit.setApocenterShare(0);
+	orbit.engineRecordPosition(recOut, bx, by, bz, packed, T, model);
+	check('record smoke: T = 0 is the exact birth position and share 0 freezes the pass',
+		atZero && dist3(recOut, [bx, by, bz]) === 0);
+
+	// Per-star branch consistency at an intermediate share: selected records
+	// follow the ellipse, unselected ones stay at birth, at every time.
+	orbit.setApocenterShare(0.5);
+	let splitOk = true, guided = false, frozen = false;
+	for (let i = 0; i < 8; i++) {
+		const sx = model.centre.x + 0.7 + i * 0.9, sy = -1.3 + i * 0.4, sz = 0.11 * i;
+		const sel = orbit.apocenterSelected(sx, sy, sz);
+		if (sel) guided = true; else frozen = true;
+		for (const t of [T, 40]) {
+			orbit.engineRecordPosition(recOut, sx, sy, sz, packed, t, model);
+			if (sel) {
+				orbit.setApocenterShare(1);
+				orbit.apocenterPosition(refOut, sx, sy, sz, bits.family, bits.phase, bits.amplitude, t, model);
+				orbit.setApocenterShare(0.5);
+				if (dist3(recOut, refOut) > 1e-12) splitOk = false;
+			} else if (dist3(recOut, [sx, sy, sz]) !== 0) splitOk = false;
+		}
+	}
+	check('record smoke: share 0.5 splits records by the birth hash — both branches run',
+		splitOk && guided && frozen, { splitOk, guided, frozen });
+
+	// The composition rule: apocenter replaces the classic baseline for the
+	// selected subset only; with the pass off it is exactly the classic law.
+	orbit.setEngine(orbit.ENGINE_CLASSIC | orbit.ENGINE_APOCENTER);
+	orbit.setApocenterShare(1);
+	orbit.engineRecordPosition(recOut, bx, by, bz, packed, T, model);
+	orbit.apocenterPosition(refOut, bx, by, bz, bits.family, bits.phase, bits.amplitude, T, model);
+	const composed = dist3(recOut, refOut) < 1e-12;
+	orbit.setApocenterShare(0);
+	orbit.engineRecordPosition(recOut, bx, by, bz, packed, T, model);
+	orbit.orbitPosition(refOut, bx, by, bz, bits.family, bits.phase, bits.amplitude, T, model);
+	check('record smoke: the apocenter pass composes with classic — replaces for the pool, plain classic otherwise',
+		composed && dist3(recOut, refOut) < 1e-12, { composed });
+
+	orbit.setEngine(savedEngine);
+	orbit.setApocenterShare(savedShare);
+	orbit.setApocenterForce(savedForce);
+}
+
 // --- Report --------------------------------------------------------------
 {
 	let passed = 0, failed = 0;

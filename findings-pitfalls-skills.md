@@ -1088,3 +1088,39 @@ Also found, not fixed here (out of scope for a documentation pass): `scripts/run
 `python3 scripts/run.py damping-formula` prints "Unknown command" and exits 1 while
 `node experiments/damping-formula-check.js` works. One missing line in `EXPERIMENTS`, and
 `all-tests` never touches it because it iterates `TYPES['test']`.
+
+## 2026-10-12 — A top-k pin needs a population larger than the cap, in buffer order
+
+Reviewing 0.5.0's `selectAround` found a truncation counter that undercounted and a test
+that could not see it. The scan keeps the nearest `maxCount` records by insertion sort into
+a fixed array; when the kept list is full and a nearer record arrives, the farthest kept
+member is shifted off the end — and was **not** counted in `truncated`, while a record that
+arrives when full and sorts past the end **was**. So `truncated` equaled "refused on
+arrival", not "inside the radius but not kept".
+
+The existing pin (`truncated === expected.length - 5`) looked exactly right and passed —
+because the chosen radius held exactly **one** record (the centre star itself), so both
+sides were 0. The fix is twofold and both halves matter:
+
+- **An eviction is a drop: count it where "not kept" is the contract.** Refused and evicted
+  records are the same event to the caller. (The `star-set` capacity overflow already did
+  this right — it counts both the refused star and the replaced one in `dropped`.)
+- **When a test pins top-k or truncation behavior, the population must exceed the cap, in
+  adversarial order** — buffer order, not distance order, so insertions and evictions both
+  run. The strengthened case runs a 1.2 kpc radius (~26 records) at cap 5 and pins
+  `truncated === 21` and the kept five against the brute-force top five. A vacuous pin is
+  worse than no pin: it says "covered".
+
+Same pass, two smaller ones:
+
+- **Cross-check plan numbers with an independent series, not the module's own loop.** The
+  occurrence tier's E[n] pin recomputed Σ Π μ/(μ+j) in the test and caught the plan's
+  published "E[n] = 1.020 at μ = 1.6" (true value 1.0195 — the 3-decimal rounding was
+  optimistic). The plan number was corrected in place; the pin is now ±5e-5. This is the
+  same rule as *"Compute every number in a plan before writing it down"*, applied at
+  validation time.
+- **Correction to the 2026-10-11 entry's runner note:** the `scripts/run.py`
+  `damping-formula` gap it recorded is not present at HEAD — `EXPERIMENTS` has the key
+  (`experiments/damping-formula-check.js`), `run.py damping-formula` exits 0, and `run.py
+  list` shows it under Studies. Either it was fixed before the commit landed or the note
+  described an uncommitted state; verified 2026-10-12, nothing to do.

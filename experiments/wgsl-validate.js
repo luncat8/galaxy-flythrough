@@ -573,6 +573,28 @@ function wgslConsts(part) {
 		&& /engine & ENGINE_SIMPLE/.test(extractFunction(orbitSrc, 'engineLandmarkPosition'))
 		&& /engine & ENGINE_CLASSIC/.test(extractFunction(orbitSrc, 'engineLandmarkPosition'))
 		&& /engine & ENGINE_APOCENTER/.test(extractFunction(orbitSrc, 'engineLandmarkPosition')));
+	// 0.5.0's picker walks records through `engineRecordPosition`, so the
+	// record dispatch must be the vertex stage's twin wherever a twin can
+	// exist: the same packed-word unpack (readOrbit ↔ the shader's
+	// (packed >> 16/24/28) reads), the same classic baseline, the same gated
+	// apocenter pass off the birth position. The simple bit is the honest gap
+	// (a record's θ lives in the GPU compute buffer): the dispatch reports it
+	// instead of silently misdispatching.
+	check('the record dispatch mirrors the vertex mask ladder and reports the simple gap (engineRecordPosition)',
+		/function engineRecordPosition\(/.test(orbitSrc)
+		&& /engineRecordPosition/.test(readSource('src/core/selection.js'))
+		&& /engineRecordPosition/.test(readSource('src/render/label-layer.js'))
+		&& /readOrbit\(packed\)/.test(extractFunction(orbitSrc, 'engineRecordPosition'))
+		&& /engine & ENGINE_CLASSIC/.test(extractFunction(orbitSrc, 'engineRecordPosition'))
+		&& /engine & ENGINE_APOCENTER/.test(extractFunction(orbitSrc, 'engineRecordPosition'))
+		&& /time !== 0 && apocenterSelected/.test(extractFunction(orbitSrc, 'engineRecordPosition'))
+		&& /return \(engine & ENGINE_SIMPLE\) !== 0/.test(extractFunction(orbitSrc, 'engineRecordPosition'))
+		&& /flags = \(packed >>> 16\) & 255/.test(extractFunction(orbitSrc, 'readOrbit'))
+		&& /\(packed >> 16u\) & 0xFFu/.test(orbitWgsl)
+		&& /\(packed >> 24u\) & 15u/.test(orbitWgsl)
+		&& /\(packed >> 28u\) & 15u/.test(orbitWgsl)
+		&& /\(mask & 2u\)[\s\S]*?\(mask & 1u\)[\s\S]*?\(mask & 4u\)/.test(shaders.SHADERS['star-sprite'])
+		&& /apocenterPosition\(moved, birth,/.test(shaders.SHADERS['star-sprite']));
         check('the packer fills the orbit vec4s and the engine lane (16 at 28, 4 at 44)',
                 /packOrbitDynamics\(model,\s*uniform,\s*28\)/.test(readSource('src/render/star-sprites.js'))
                 && /packEngineVec\(model,\s*uniform,\s*44\)/.test(readSource('src/render/star-sprites.js'))

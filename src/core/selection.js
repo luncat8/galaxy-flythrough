@@ -154,23 +154,31 @@ function createSelection(camera, landmarks) {
 				const d2 = dx * dx + dy * dy + dz * dz;
 				if (d2 > r2) continue;
 				// Insertion sort, descending scan: the list is ascending.
+				// The shift at i == cap is skipped, which is what drops the
+				// kept list's farthest member when a nearer one arrives.
 				let i = n;
 				while (i > 0 && around.dist2[i - 1] > d2) {
-					around.dist2[i] = around.dist2[i - 1];
-					around.keys[i] = around.keys[i - 1];
-					around.kind[i] = around.kind[i - 1];
-					around.index[i] = around.index[i - 1];
-					around.x[i] = around.x[i - 1];
-					around.y[i] = around.y[i - 1];
-					around.z[i] = around.z[i - 1];
-					around.packed[i] = around.packed[i - 1];
-					around.colorIndex[i] = around.colorIndex[i - 1];
-					around.absMag[i] = around.absMag[i - 1];
-					around.approximated[i] = around.approximated[i - 1];
+					if (i < cap) {
+						around.dist2[i] = around.dist2[i - 1];
+						around.keys[i] = around.keys[i - 1];
+						around.kind[i] = around.kind[i - 1];
+						around.index[i] = around.index[i - 1];
+						around.x[i] = around.x[i - 1];
+						around.y[i] = around.y[i - 1];
+						around.z[i] = around.z[i - 1];
+						around.packed[i] = around.packed[i - 1];
+						around.colorIndex[i] = around.colorIndex[i - 1];
+						around.absMag[i] = around.absMag[i - 1];
+						around.approximated[i] = around.approximated[i - 1];
+					}
 					i--;
 				}
+				// `truncated` counts every in-radius record that did not make
+				// the kept list — refused on arrival *and* evicted later by a
+				// nearer one — so it always equals (inside − kept).
 				if (i >= cap) { around.truncated++; continue; }
 				if (n < cap) n++;
+				else around.truncated++;
 				around.dist2[i] = d2;
 				around.keys[i] = identity[slot] >>> 0;
 				around.kind[i] = k;
@@ -200,10 +208,12 @@ function createSelection(camera, landmarks) {
 	// hit test compared. Returns `out` on a hit, null on a miss.
 	//
 	// The walk is **chunked across frames** because it is dispatch-bound, not
-	// projection-bound: `orbit.engineRecordPosition` costs ~0.27 µs per record
-	// under the classic mask and ~1.5 µs with the apocenter pass (measured, see
-	// experiments/star-select-test.js), so one synchronous pass over 300k records
-	// is 80–460 ms — a visible hitch on every click. `beginPick` starts a sweep,
+	// projection-bound: `orbit.engineRecordPosition` costs ~0.3 µs per record
+	// under the classic mask and ~1.2 µs with the apocenter pass (measured at
+	// 300k — the live figures are printed by experiments/star-select-test.js
+	// and logged in experiments/logs/star-select.json), so one synchronous pass
+	// over 300k records is 90–360 ms — a visible hitch on every click.
+	// `beginPick` starts a sweep,
 	// `pickStep(maxRecords)` walks a slice and returns true when the sweep is
 	// done, and `pickResult()` is the hit (or null). `pickAny` is the same walk in
 	// one call, for tests and for callers that already hold a small field.
@@ -251,7 +261,7 @@ function createSelection(camera, landmarks) {
 	}
 
 	// Walk a slice of the current sweep: up to `maxRecords` records, and no longer
-	// than `maxMs` of wall time (checked every CHECK_INTERVAL records, so the
+	// than `maxMs` of wall time (checked every STEP_CHECK_RECORDS records, so the
 	// clock call is not itself the cost). Both limits matter: the per-record cost
 	// depends on the engine mask by a factor of four (see the header), so a fixed
 	// record count would be a 2 ms slice under one mask and a 40 ms hitch under

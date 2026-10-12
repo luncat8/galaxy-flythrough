@@ -8,7 +8,7 @@ Implementation history is grouped by release series. Append entries to the match
 | 0.1.x | [0.1.x worklog](archive/0.1.x-worklog.md) | Initial planning, experiments, runtime, streaming, cameras, landmarks and HDR |
 | 0.3.x | [0.3.x worklog](archive/0.3.x-worklog.md) | 0.3/0.4 planning, GalaxyModel, galaxy types and distributions, composite objects, nebula billboards, galaxy age |
 | 0.4.x | [0.4.x worklog](archive/0.4.x-worklog.md) | Kinematic orbits, star-time control, group kinematics, wave-damping capture, simple and apocenter-guided engines, giant-branch evolution, HDR headroom/desat knobs, realistic 3D shapes (bar peanut, truncation floors, age–height coupling), settings presets, engine-mask dispatch |
-| 0.5.x | [0.5.x worklog](archive/0.5.x-worklog.md) | Planet series: planning pass, then 0.5.0 — per-record star identity, the chunked CPU picker, the snapshot selection set (primary + 256), fly-to, radius select, set rings, and the planet module's input tier. Generator/search/schematic/delta-v/routes still to come. |
+| 0.5.x | [0.5.x worklog](archive/0.5.x-worklog.md) | Planet series: planning pass, 0.5.0 — per-record star identity, the chunked CPU picker, the snapshot selection set (primary + 256), fly-to, radius select, set rings — and 0.5.1-3 — the planet module's input tier and the occurrence tier (μ, f_Z/state bulk weights, the geometric count draw). Generator architecture/search/schematic/delta-v/routes still to come. |
 
 No separate 0.2 implementation entry exists in the original log. The combined
 0.3/0.4 planning entry lives in 0.3.x; 0.4.x implementation entries live in the
@@ -32,8 +32,10 @@ The browser engine/preset pass and non-critical bar polish are explicitly deferr
 in [a separate plan](deferred-browser-visual-plan.md), not completed or blocking.
 See the 2026-10-11 triage entry in the 0.4.x log for reproduced failures and scope.
 
-Next series, planned and not started: [the 0.5 planet generator](0.5.0-plan-planet-generator.md).
-It is CPU-only and additive, so it neither blocks nor depends on the parity work — with one
-coupling, stated in the plan: 0.5.0's arbitrary-star picker must dispatch positions through
-the same engine-mask law the parity plan pins, and until a field-star `simple` mirror exists
-the picker approximates that mask and says so on screen.
+Active: [the 0.5 planet series](0.5.0-plan-planet-generator.md) — 0.5.0 (selection)
+shipped, 0.5.1 (the generator) under way (input and occurrence tiers landed). It is
+CPU-only and additive, so it neither blocks nor depends on the parity work above — with one
+coupling, stated in the plan and landed with 0.5.0: the arbitrary-star picker dispatches
+positions through the same engine-mask law the parity plan pins
+(`orbit.engineRecordPosition`), and until a field-star `simple` mirror exists the picker
+approximates that mask and says so on screen.
