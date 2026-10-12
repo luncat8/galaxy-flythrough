@@ -4,6 +4,47 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-10-12 — Bulk-index and display-type-id are different numeric spaces — do not conflate
+
+A thermal index sized by `DISPLAY_TYPES.length` (10 entries) and indexed by `bulkIndex`
+(0–6) reads out of bounds for the upper bulk indices: dwarf at index 6 reads slot 6 in a
+10-element array, which happens to hold MINI_NEPTUNE's display-type id (also 6) — wrong
+bulk, wrong type, passes only by coincidence when the id happens to match. The fix is to
+size the index by `BULKS.length` (7) so every bulk index lands on its own slot, or — if
+the constant-type mapping is the contract — to name it `PLANET_DISPLAY_THERMAL_INDEX` and
+document that entries are display-type ids, not bulk indices, so a consumer cannot
+accidentally index the display-type table with the result.
+
+Dwarf is the one bulk whose display type is NOT constant across bands: LAVA in band 0
+(extreme heat), DWARF in bands 1–3. A constant thermal-index entry of DWARF is therefore
+wrong for band 0. The clean fix is a special-case early return in `planetDisplay` rather
+than a conditional that would make the thermal index depend on the band.
+
+---
+
+## 2026-10-12 — A test's expected display type must follow the plan's band-refinement table, not intuition
+
+Three test expectations in the six-body Solar temperature table were wrong in the first
+draft:
+
+- **Mercury** (M=0.055, band 1): the plan's table says "rock, 0.02 ≤ M < 0.3 → BARREN".
+  The first draft expected LAVA, confusing "close to the star" with "below the airless
+  threshold" — but Mercury at 0.055 M⊕ is above AIRLESS_M (0.02), so it retains enough
+  surface to be BARREN, not LAVA. The LAVA tier is for bodies below 0.02 M⊕ in band 0/1.
+- **Mars** (S=0.431, band 2): the test expected band 1. 0.431 > 0.35, so Mars is in band 2
+  (the habitable zone), not band 1 (the hot/runaway zone). Mars's actual temperature
+  (216 K) and display type (DESERT) follow from the band-2 table, not band 1.
+- **Venus** (runaway, albedo 0.70): the test expected Teq = 302 K (the base DESERT albedo
+  of 0.28) but the plan's 742 K uses the runaway albedo 0.70 (cloud-shrouded), which gives
+  Teq = 242 K. The albedo column in the §4.2 table is what the table assigns, not the base
+  display type's — Venus is the one body where these differ.
+
+Rule: when writing a temperature pin against the plan, check the plan's own band-refinement
+table for the display type and its albedo, not what the planet "should be" by solar-system
+analogy.
+
+---
+
 ## 2026-10-11 — GPU/CPU subset membership needs bit-exact f32 hashes — and never hash moved coordinates
 
 Two traps met while unifying the engine-mask dispatch (movement-parity-plan):

@@ -10,7 +10,11 @@
 // (0.5.1-4, §4.5): disc edges, the log-uniform axes, the bulk/mass draws, the
 // Hill repair and the orbital elements, bit-equal to a test-side
 // reimplementation and holding the §4.12 stability invariants over 20k
-// systems.
+// systems — and the insolation/temperature/band tier (0.5.1-5, §4.6):
+// the six-body Solar temperature table (Mercury 433 … Ceres 163 K), the
+// Earth Teq identity (254.6 K), the band-refinement mass tiers, the
+// runaway/thermostat rules, the tidal-locking pins (TRAPPIST-1/Proxima locked,
+// Sun not) and the HZ/terran flags.
 //
 // Output: experiments/logs/planet-gen.json
 
@@ -831,6 +835,275 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 		{ usPerCall: +usPerCall.toFixed(3) });
 }
 
+// --- 7. Insolation, temperatures, band refinement, locking, HZ/terran
+//     (plan §4.6, 0.5.1-5) ---------------------------------------------------
+{
+	// 7a. Earth Teq identity (plan §4.6 pin): L 1 L☉, Teff 5772 K, R★ 1 R☉,
+	// a 1 AU, A 0.30 → Teq 254.6 K.  This is the §4.6 formula with the Sun's
+	// own values, not a Monte-Carlo average.
+	const AU = planets.AU_M;
+	const R_SUN = planets.R_SUN_M;
+	const rock = planets.BULK_INDEX.rock, ice = planets.BULK_INDEX.ice;
+	const superBi = planets.BULK_INDEX.super;
+	const Teq_Earth = planets.equilibriumTemp(planets.TEFF_SUN, 1, 1 * AU, 0.30);
+	check('Teq identity: Sun (1 L☉, 5772 K, 1 R☉, 1 AU, A 0.30) → 254.6 ± 0.5 K',
+		Math.abs(Teq_Earth - 254.6) < 0.5, Teq_Earth);
+
+	// 7b. Band boundaries and the six-body Solar table (plan §4.2/§4.6).
+	// Each body is typed: bulk → display (with runaway override for Venus)
+	// → Teq → ΔT → Tsurf.  The published values are the plan's, rounded to
+	// whole Kelvin; the tolerances allow for rounding in the published column.
+	const solarBodies = [
+		{ name: 'Mercury', a: 0.387, mass: 0.055, bulk: 'rock',
+			wantDisplay: 'BARREN', wantBand: 1, wantTeq: 433, wantTsurf: 433, tol: 8 },
+		{ name: 'Venus',   a: 0.723, mass: 0.815, bulk: 'rock',
+			wantDisplay: 'DESERT', wantBand: 1, wantTeq: 242, wantTsurf: 742, tol: 8,
+			// Runaway override: the plan's 742 K uses the runaway albedo 0.70
+			// (cloud-shrouded), so Teq is computed at A=0.70, not the base
+			// DESERT albedo 0.28 — the §4.2 table says "A 0.70" for Venus.
+			runaway: true },
+		{ name: 'Earth',   a: 1.000, mass: 1.000, bulk: 'rock',
+			wantDisplay: 'TERRAN', wantBand: 2, wantTeq: 255, wantTsurf: 288, tol: 0.5 },
+		{ name: 'Mars',    a: 1.524, mass: 0.107, bulk: 'rock',
+			wantDisplay: 'DESERT', wantBand: 2, wantTeq: 208, wantTsurf: 216, tol: 8 },
+		{ name: 'Moon',    a: 1.000, mass: 0.012, bulk: 'rock',
+			wantDisplay: 'BARREN', wantBand: 2, wantTeq: 270, wantTsurf: 270, tol: 8 },
+		{ name: 'Ceres',   a: 2.766, mass: 0.00016, bulk: 'dwarf',
+			wantDisplay: 'DWARF',  wantBand: 3, wantTeq: 163, wantTsurf: 163, tol: 8 },
+	];
+	let solarOk = true;
+	const solarDetails = [];
+	for (const b of solarBodies) {
+		const S = planets.insolation(1, b.a);
+		const band = planets.planetBand(S);
+		const bi = planets.BULK_INDEX[bulkIdx(b.bulk)];
+		const displayId = planets.planetDisplay(bi, b.mass, band);
+		const displayName = planets.DISPLAY_TYPES[displayId].name;
+		// For Venus, the runaway path uses the runaway albedo 0.70, matching
+		// the §4.2 display table's instruction (runaway → albedo RUNAWAY_ALBEDO).
+		const albedo = b.runaway ? planets.RUNAWAY_ALBEDO : planets.DISPLAY_TYPES[displayId].albedo;
+		const Teq = planets.equilibriumTemp(planets.TEFF_SUN, 1, b.a * AU, albedo);
+		const runaway = planets.runawayGreenhouse(bi, b.mass, band);
+		const Tsurf = planets.surfaceTemp(Teq, displayId, S, band, b.mass);
+		const bodyOk = displayName === b.wantDisplay
+			&& band === b.wantBand
+			&& Math.abs(Teq - b.wantTeq) <= b.tol
+			&& Math.abs(Tsurf - b.wantTsurf) <= b.tol;
+		if (!bodyOk) {
+			solarOk = false;
+			solarDetails.push({
+				name: b.name, display: displayName, band, Teq: +Teq.toFixed(1), Tsurf: +Tsurf.toFixed(1),
+				wantDisplay: b.wantDisplay, wantBand: b.wantBand,
+				wantTeq: b.wantTeq, wantTsurf: b.wantTsurf,
+			});
+		}
+	}
+	// Helper for bulk index lookup (needs to be a function for the loop above).
+	// planets.BULK_INDEX is a name→number map, so BULK_INDEX['rock'] = 0, etc.
+	function bulkIdx(name) { return name; }
+	check('six-body Solar temperature table (Mercury 433 … Ceres 163, plan §4.2/§4.6)',
+		solarOk, solarDetails.length ? solarDetails : 'all six match');
+
+	// 7c. Display-type refinement mass tiers in band 2 (plan §4.6 table).
+	// Rock/ice/super split by mass: < 0.02 → BARREN, < 0.3 → DESERT,
+	// ≥ 0.3 → TERRAN (rock/ice) or SUPER_EARTH (super).  Gas types and
+	// dwarf are constant across all bands.
+	const dtNames = (id) => planets.DISPLAY_TYPES[id].name;
+	const band2M = [
+		[rock, 0.01,  'BARREN'], [ice, 0.01,  'BARREN'],
+		[rock, 0.10,  'DESERT'], [ice, 0.10,  'DESERT'],
+		[rock, 1.00,  'TERRAN'], [ice, 1.00,  'TERRAN'],
+		[superBi, 1.00, 'SUPER_EARTH'],
+		[planets.BULK_INDEX.gas, 318, 'GAS_GIANT'],
+		[planets.BULK_INDEX.mini, 10, 'MINI_NEPTUNE'],
+		[planets.BULK_INDEX.icegiant, 17, 'ICE_GIANT'],
+		[planets.BULK_INDEX.dwarf, 0.01, 'DWARF'],
+	];
+	let dtRefineOk = true;
+	const dtDetails = [];
+	for (const [bi, m, want] of band2M) {
+		const got = dtNames(planets.planetDisplay(bi, m, 2));
+		if (got !== want) { dtRefineOk = false; dtDetails.push({ bi, m, got, want }); }
+	}
+	check('band 2 refinement: mass tiers for rock/ice/super and the constant gas/dwarf types',
+		dtRefineOk, dtDetails.length ? dtDetails : dtNames);
+
+	// 7d. Runaway greenhouse (plan §4.2): rock ≥ 0.3 M⊕ in band 1 gets
+	// DESERT + runaway + albedo 0.70, ΔT 500 K.  Below 0.3 M⊕ no runaway.
+	const runawayOk = planets.runawayGreenhouse(rock, 0.5, 1)
+		&& planets.runawayGreenhouse(ice, 0.5, 1)
+		&& planets.runawayGreenhouse(superBi, 0.5, 1)
+		&& !planets.runawayGreenhouse(rock, 0.1, 1)
+		&& !planets.runawayGreenhouse(rock, 0.5, 2)  // not in band 2
+		&& !planets.runawayGreenhouse(rock, 0.5, 0); // not in band 1
+	check('runaway greenhouse: ≥ 0.3 M⊕ rock/ice/super in band 1 only', runawayOk);
+
+	// 7e. Thermostat monotonicity band (plan §4.12): across band 2,
+	// Tsurf stays in [260, 296] K for every TERRAN/SUPER_EARTH whatever the
+	// insolation, while sub-ATM_RETAIN_M worlds in the same band fall
+	// monotonically with distance.
+	const sunStar7 = { mass: 1, lum: 1, teff: planets.TEFF_SUN, rStar: 1 };
+	const SSteps = [1.05, 0.90, 0.70, 0.55, 0.40, 0.35];
+	let thermoRange = true, thermoDetails = [];
+	for (const S of SSteps) {
+		const aAU = Math.sqrt(1 / S);
+		const Teq = planets.equilibriumTemp(sunStar7.teff, sunStar7.rStar, aAU * AU, 0.30);
+		const dId = planets.planetDisplay(rock, 1, 2);  // TERRAN in band 2
+		const Ts = planets.surfaceTemp(Teq, dId, S, 2, 1);
+		if (Ts < 260 || Ts > 296) { thermoRange = false; thermoDetails.push({ S, Ts: +Ts.toFixed(1) }); }
+	}
+	// Mars analogs in band 2: MONOTONICALLY falling with distance.
+	let marsMono = true;
+	let prevT = Infinity;
+	for (const S of [0.90, 0.70, 0.55, 0.434, 0.35]) {
+		const aAU = Math.sqrt(1 / S);
+		const Teq = planets.equilibriumTemp(sunStar7.teff, sunStar7.rStar, aAU * AU, 0.28);
+		const dId = planets.planetDisplay(rock, 0.107, 2);  // DESERT in band 2
+		const Ts = planets.surfaceTemp(Teq, dId, S, 2, 0.107);
+		if (Ts >= prevT) marsMono = false;
+		prevT = Ts;
+	}
+	// The band 3 case: Mars drops into ICE below S = 0.35.
+	const marsA3 = Math.sqrt(1 / 0.30);
+	const marsTeq3 = planets.equilibriumTemp(sunStar7.teff, sunStar7.rStar, marsA3 * AU, 0.65);
+	const marsTs3 = planets.surfaceTemp(marsTeq3, planets.planetDisplay(rock, 0.107, 3), 0.30, 3, 0.107);
+	marsMono = marsMono && marsTs3 < prevT;
+	check('thermostat: TERRAN Tsurf stays in [260, 296] K across band 2; Mars analogs fall monotonically',
+		thermoRange && marsMono, { range: thermoDetails, marsMono,
+			marsBand3: +marsTs3.toFixed(1), marsBand2Outer: +prevT.toFixed(1) });
+
+	// 7f. Tidal locking (plan §4.6): the lock radius scales as
+	// sqrt(M★), and the published real cases reproduce.
+	const lockCases = [
+		{ name: 'TRAPPIST-1', M: 0.090, L: 0.0039, aHzIn: 0.061, aHzOut: 0.106,
+			lock: 0.090, wantHzLocked: true },
+		{ name: 'Proxima Cen', M: 0.122, L: 0.0079, aHzIn: 0.087, aHzOut: 0.150,
+			lock: 0.105, wantHzLocked: true },
+		{ name: 'Sun', M: 1.000, L: 1.000, aHzIn: 0.976, aHzOut: 1.690,
+			lock: 0.300, wantHzLocked: false },
+		{ name: '0.30 Msun', M: 0.300, L: 0.063, aHzIn: 0.244, aHzOut: 0.423,
+			lock: 0.164, wantHzLocked: false },
+	];
+	let lockOk = true;
+	const lockDetails = [];
+	for (const lc of lockCases) {
+		const lockR = planets.A_LOCK * Math.sqrt(lc.M);
+		const hzIn = Math.sqrt(lc.L / planets.HZ_S_IN);
+		const hzOut = Math.sqrt(lc.L / planets.HZ_S_OUT);
+		const lockRadOk = Math.abs(lockR - lc.lock) < 0.001;
+		const hzLocked = lockR >= hzIn;
+		const hzOk = Math.abs(hzIn - lc.aHzIn) < 0.002 && Math.abs(hzOut - lc.aHzOut) < 0.002;
+		if (!lockRadOk || hzLocked !== lc.wantHzLocked || !hzOk) {
+			lockOk = false;
+			lockDetails.push({ name: lc.name, lockR: +lockR.toFixed(3), hzLocked, hzIn: +hzIn.toFixed(3) });
+		}
+	}
+	check('tidal locking: lock radius scales as sqrt(M★); TRAPPIST-1/Proxima HZ locked, Sun not',
+		lockOk, lockDetails.length ? lockDetails : 'all four match');
+
+	// 7g. Habitable-zone and terran flags (plan §4.6): inHZ = band 2,
+	// terran requires TERRAN/SUPER_EARTH + 0.5–5 M⊕ + age > 0.5 Gyr +
+	// not runaway + not locked.
+	const flagsSun = planets.terranPlanet(
+		planets.planetDisplay(rock, 1, 2), 1, 2, false, false, 5);
+	const flagsMars = planets.terranPlanet(
+		planets.planetDisplay(rock, 0.107, 2), 0.107, 2, false, false, 5);
+	const flagsVenus = planets.terranPlanet(
+		planets.planetDisplay(rock, 0.815, 1), 0.815, 1, false, true, 5);
+	const flagsMoon = planets.terranPlanet(
+		planets.planetDisplay(rock, 0.012, 2), 0.012, 2, false, false, 5);
+	const flagsCeres = planets.terranPlanet(
+		planets.planetDisplay(planets.BULK_INDEX.dwarf, 0.00016, 3), 0.00016, 3, false, false, 5);
+	const flagsMercury = planets.terranPlanet(
+		planets.planetDisplay(rock, 0.055, 1), 0.055, 1, false, false, 5);
+	check('HZ/terran flags: Earth in HZ and terran; Mars/Venus/Moon/Ceres/Mercury not terran',
+		flagsSun.inHZ && flagsSun.terran
+		&& !flagsMars.terran && !flagsVenus.terran
+		&& !flagsMoon.terran && !flagsCeres.terran && !flagsMercury.terran,
+		{ earth: flagsSun, mars: flagsMars, venus: flagsVenus, moon: flagsMoon });
+
+	// 7h. Tidally-locked HZ worlds: lockedHZ set, terran clear.
+	const flagsTRAPPIST1e = planets.terranPlanet(
+		planets.planetDisplay(rock, 1, 2), 1, 2, true, false, 5);
+	const flagsProxima = planets.terranPlanet(
+		planets.planetDisplay(rock, 1, 2), 1, 2, true, false, 5);
+	check('locked HZ worlds: lockedHZ set, terran clear (TRAPPIST-1 e, Proxima b analog)',
+		flagsTRAPPIST1e.inHZ && flagsTRAPPIST1e.lockedHZ && !flagsTRAPPIST1e.terran
+		&& flagsProxima.inHZ && flagsProxima.lockedHZ && !flagsProxima.terran,
+		{ trappist: flagsTRAPPIST1e, proxima: flagsProxima });
+
+	// 7i. Planet band from insolation: the §4.6 boundaries.
+	const bandTests = [
+		[0.10, 3], [0.349, 3], [0.35, 2], [0.50, 2], [1.05, 2],
+		[1.06, 1], [2.0, 1], [8.0, 1], [8.01, 0], [20.0, 0],
+	];
+	let bandOk = true;
+	for (const [S, want] of bandTests) {
+		if (planets.planetBand(S) !== want) bandOk = false;
+	}
+	check('planetBand: insolation → band index at the §4.6 boundaries', bandOk);
+
+	// 7j. Band refinement full table (plan §4.6): the entire 10×4 grid for
+	// rock/ice/super mass tiers plus the constant gas types.
+	const fullTable = [
+		// band 0: S > 8 — all rock/ice/super LAVA; dwarf LAVA in band 0
+		{ bi: rock, m: 0.01, band: 0, want: 'LAVA' },
+		{ bi: rock, m: 0.10, band: 0, want: 'LAVA' },
+		{ bi: rock, m: 1.00, band: 0, want: 'LAVA' },
+		{ bi: superBi, m: 1.00, band: 0, want: 'LAVA' },
+		{ bi: planets.BULK_INDEX.mini, m: 10, band: 0, want: 'MINI_NEPTUNE' },
+		{ bi: planets.BULK_INDEX.gas, m: 300, band: 0, want: 'GAS_GIANT' },
+		{ bi: planets.BULK_INDEX.icegiant, m: 20, band: 0, want: 'ICE_GIANT' },
+		{ bi: planets.BULK_INDEX.dwarf, m: 0.01, band: 0, want: 'LAVA' },
+		// band 1: 1.05 < S ≤ 8
+		{ bi: rock, m: 0.01, band: 1, want: 'LAVA' },
+		{ bi: rock, m: 0.10, band: 1, want: 'BARREN' },
+		{ bi: rock, m: 0.50, band: 1, want: 'DESERT' },
+		{ bi: superBi, m: 0.50, band: 1, want: 'DESERT' },
+		{ bi: planets.BULK_INDEX.dwarf, m: 0.01, band: 1, want: 'DWARF' },
+		// band 2: 0.35 ≤ S ≤ 1.05 — the habitable zone
+		{ bi: rock, m: 0.01, band: 2, want: 'BARREN' },
+		{ bi: rock, m: 0.10, band: 2, want: 'DESERT' },
+		{ bi: rock, m: 1.00, band: 2, want: 'TERRAN' },
+		{ bi: superBi, m: 1.00, band: 2, want: 'SUPER_EARTH' },
+		{ bi: ice, m: 1.00, band: 2, want: 'TERRAN' },
+		{ bi: planets.BULK_INDEX.mini, m: 10, band: 2, want: 'MINI_NEPTUNE' },
+		{ bi: planets.BULK_INDEX.gas, m: 300, band: 2, want: 'GAS_GIANT' },
+		{ bi: planets.BULK_INDEX.icegiant, m: 20, band: 2, want: 'ICE_GIANT' },
+		{ bi: planets.BULK_INDEX.dwarf, m: 0.01, band: 2, want: 'DWARF' },
+		// band 3: S < 0.35 — all ice
+		{ bi: rock, m: 0.01, band: 3, want: 'ICE' },
+		{ bi: rock, m: 0.10, band: 3, want: 'ICE' },
+		{ bi: rock, m: 1.00, band: 3, want: 'ICE' },
+		{ bi: superBi, m: 1.00, band: 3, want: 'ICE' },
+		{ bi: planets.BULK_INDEX.dwarf, m: 0.01, band: 3, want: 'DWARF' },
+	];
+	let fullTblOk = true;
+	const fullTblDetails = [];
+	for (const t of fullTable) {
+		const got = dtNames(planets.planetDisplay(t.bi, t.m, t.band));
+		if (got !== t.want) {
+			fullTblOk = false;
+			fullTblDetails.push({ bi: t.bi, m: t.m, band: t.band, got, want: t.want });
+		}
+	}
+	check('full band-refinement table: 27 entries across all 4 bands and all bulk/mass tiers',
+		fullTblOk, fullTblDetails.length ? fullTblDetails : 'all 27 match');
+
+	// 7k. The §4.12 thermostat boundary: at S = 1.0, TERRAN ΔT is exactly
+	// TERRAN_DT_BASE (33 K, Earth's insolation), and at S = 0.35 the
+	// thermostat saturates at TERRAN_DT_MAX (65 K).  These are the two ends
+	// of the Walker thermostat (Walker, Hays & Kasting 1981).
+	const teqInner = planets.equilibriumTemp(planets.TEFF_SUN, 1, Math.sqrt(1/1.0) * AU, 0.30);
+	const tsurfInner = planets.surfaceTemp(teqInner, planets.DISPLAY_INDEX.TERRAN, 1.0, 2, 1);
+	const teqOuter = planets.equilibriumTemp(planets.TEFF_SUN, 1, Math.sqrt(1/0.35) * AU, 0.30);
+	const tsurfOuter = planets.surfaceTemp(teqOuter, planets.DISPLAY_INDEX.TERRAN, 0.35, 2, 1);
+	check('thermostat endpoints: ΔT = 33 at S = 1.0 (Earth), ΔT = 65 at S = 0.35 (Walker 1981)',
+		Math.abs((tsurfInner - teqInner) - 33) < 0.5
+		&& Math.abs((tsurfOuter - teqOuter) - 65) < 0.5,
+		{ dT_inner: +(tsurfInner - teqInner).toFixed(1), dT_outer: +(tsurfOuter - teqOuter).toFixed(1) });
+}
+
 // --- Report ------------------------------------------------------------------
 let passed = 0;
 let failed = 0;
@@ -852,5 +1125,5 @@ fs.writeFileSync(logPath, JSON.stringify({
 }, null, 2));
 console.log(`Wrote ${logPath}`);
 console.log('\n=== VERDICT ===');
-console.log(failed === 0 ? 'PASS — identity keys, the inversion, every stellar-input path, the occurrence tier and the architecture tier behave as documented' : `FAIL — ${failed} checks failed`);
+console.log(failed === 0 ? 'PASS — identity keys, the inversion, every stellar-input path, the occurrence tier, the architecture tier and the insolation/temperature/band tier behave as documented' : `FAIL — ${failed} checks failed`);
 process.exit(failed === 0 ? 0 : 1);

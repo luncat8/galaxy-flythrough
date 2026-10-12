@@ -1,11 +1,11 @@
 {
-  "date": "2026-10-12T15:50:20.677Z",
+  "date": "2026-10-12T16:39:39.944Z",
   "model": {
     "type": "SBb",
     "seed": 12345
   },
-  "totalChecks": 57,
-  "passed": 57,
+  "totalChecks": 68,
+  "passed": 68,
   "failed": 0,
   "checks": [
     {
@@ -396,14 +396,106 @@
       "name": "architecture allocates nothing per call (coarse heap delta < 2 MB over 100k calls)",
       "pass": true,
       "detail": {
-        "heapDelta": -910912
+        "heapDelta": 1150960
       }
     },
     {
       "name": "architecture is far inside the 20 µs generateSystem budget",
       "pass": true,
       "detail": {
-        "usPerCall": 0.304
+        "usPerCall": 0.246
+      }
+    },
+    {
+      "name": "Teq identity: Sun (1 L☉, 5772 K, 1 R☉, 1 AU, A 0.30) → 254.6 ± 0.5 K",
+      "pass": true,
+      "detail": 254.5857729432723
+    },
+    {
+      "name": "six-body Solar temperature table (Mercury 433 … Ceres 163, plan §4.2/§4.6)",
+      "pass": true,
+      "detail": "all six match"
+    },
+    {
+      "name": "band 2 refinement: mass tiers for rock/ice/super and the constant gas/dwarf types",
+      "pass": true
+    },
+    {
+      "name": "runaway greenhouse: ≥ 0.3 M⊕ rock/ice/super in band 1 only",
+      "pass": true
+    },
+    {
+      "name": "thermostat: TERRAN Tsurf stays in [260, 296] K across band 2; Mars analogs fall monotonically",
+      "pass": true,
+      "detail": {
+        "range": [],
+        "marsMono": true,
+        "marsBand3": 166.4,
+        "marsBand2Outer": 205.2
+      }
+    },
+    {
+      "name": "tidal locking: lock radius scales as sqrt(M★); TRAPPIST-1/Proxima HZ locked, Sun not",
+      "pass": true,
+      "detail": "all four match"
+    },
+    {
+      "name": "HZ/terran flags: Earth in HZ and terran; Mars/Venus/Moon/Ceres/Mercury not terran",
+      "pass": true,
+      "detail": {
+        "earth": {
+          "inHZ": true,
+          "terran": true,
+          "lockedHZ": false
+        },
+        "mars": {
+          "inHZ": true,
+          "terran": false,
+          "lockedHZ": false
+        },
+        "venus": {
+          "inHZ": false,
+          "terran": false,
+          "lockedHZ": false
+        },
+        "moon": {
+          "inHZ": true,
+          "terran": false,
+          "lockedHZ": false
+        }
+      }
+    },
+    {
+      "name": "locked HZ worlds: lockedHZ set, terran clear (TRAPPIST-1 e, Proxima b analog)",
+      "pass": true,
+      "detail": {
+        "trappist": {
+          "inHZ": true,
+          "terran": false,
+          "lockedHZ": true
+        },
+        "proxima": {
+          "inHZ": true,
+          "terran": false,
+          "lockedHZ": true
+        }
+      }
+    },
+    {
+      "name": "planetBand: insolation → band index at the §4.6 boundaries",
+      "pass": true
+    },
+    {
+      "name": "full band-refinement table: 27 entries across all 4 bands and all bulk/mass tiers",
+      "pass": true,
+      "detail": "all 27 match"
+    },
+    {
+      "name": "thermostat endpoints: ΔT = 33 at S = 1.0 (Earth), ΔT = 65 at S = 0.35 (Walker 1981)",
+      "pass": true,
+      "detail": {
+        "dT_inner": 33,
+        "dT_outer": 65
       }
     }
   ]

@@ -18,9 +18,14 @@
 //     (`innerEdgeAU`/`outerEdgeAU`), the log-uniform axis draw, the bulk/mass
 //     draws, the Hill repair with its drop-on-overflow rule, and the orbital
 //     elements — one `architecture(seed, star, out)` chain into the
-//     struct-of-arrays record `createArchitecture` builds.
+//     struct-of-arrays record `createArchitecture` builds,
+//   * the insolation/temperature/band tier (plan §4.6, 0.5.1-5): insolation
+//     and equilibrium temperature, the four-band classification, the mass-tier
+//     band-refinement table (one flat lookup, no iteration), the runaway-
+//     greenhouse bifurcation, the carbonate-silicate Walker thermostat, the
+//     tidal-locking rule and the HZ/terran flags.
 //
-// 0.5.1's remaining tiers add temperatures, belts and the SystemRecord behind
+// 0.5.1's remaining tiers add belts and the SystemRecord behind
 // this same object. Everything here is a pure
 // function of (model, key, record): no PRNG state, no allocation, `out` params.
 //
@@ -642,6 +647,148 @@
 		return out;
 	}
 
+	// --- Insolation, temperature, band refinement (plan §4.6) ---------------
+
+	// Insolation in S⊕: L★/a², a in AU.  No albedo — it enters through Teq,
+	// not through the band or the display type.
+	function insolation(lum, aAU) {
+		return lum / (aAU * aAU);
+	}
+
+	// Equilibrium temperature (plan §4.6): the effective temperature scaled by
+	// the square root of the solid-angle fraction, dimmed by (1−A)^0.25.
+	// `teff` in K, `rStar` in R☉, `aM` in metres.
+	function equilibriumTemp(teff, rStar, aM, albedo) {
+		const rM = rStar * R_SUN_M;
+		return teff * Math.sqrt(rM / (2 * aM)) * Math.pow(1 - albedo, 0.25);
+	}
+
+	// Insolation → band index, matching the plan's boundaries exactly:
+	//   0: S > 8   (extreme: everything is LAVA or a hot giant)
+	//   1: S > 1.05  (hot: runaway possible for ≥ 0.3 M⊕)
+	//   2: S ≥ 0.35  (the habitable zone, thermostat-active)
+	//   3: S < 0.35  (cold: everything freezes to ICE or a cold giant)
+	// The boundaries HZ_S_IN (1.05) and HZ_S_OUT (0.35) are the same pair of
+	// constants that define `inHZ`, so the two uses cannot disagree.
+	function planetBand(insol) {
+		if (insol > 8) return 0;
+		if (insol > HZ_S_IN) return 1;
+		if (insol >= HZ_S_OUT) return 2;
+		return 3;
+	}
+
+	// The band-refinement table (plan §4.6): four entries per band, one per
+	// mass tier (M < 0.02, M < 0.3, M ≥ 0.3 rock/ice, M ≥ 0.3 super).
+	// Rock, ice and super share the same display-type sequence; super's
+	// tier-3 slot gives SUPER_EARTH instead of TERRAN.  The four gas types
+	// and dwarf are constant across bands (they never enter the lookup).
+	const _LAVA = DISPLAY_INDEX.LAVA, _BARREN = DISPLAY_INDEX.BARREN;
+	const _DESERT = DISPLAY_INDEX.DESERT, _TERRAN = DISPLAY_INDEX.TERRAN;
+	const _ICE = DISPLAY_INDEX.ICE, _SE = DISPLAY_INDEX.SUPER_EARTH;
+	const _MN = DISPLAY_INDEX.MINI_NEPTUNE, _GG = DISPLAY_INDEX.GAS_GIANT;
+	const _IG = DISPLAY_INDEX.ICE_GIANT, _DWARF = DISPLAY_INDEX.DWARF;
+	const BAND_REFINEMENT_SIZE = 4;
+	const PLANET_BAND_DISPLAY = [
+		// band 0: S > 8 — all rock/ice/super LAVA; dwarf handled separately
+		_LAVA, _LAVA, _LAVA, _LAVA,
+		// band 1: 1.05 < S ≤ 8
+		_LAVA, _BARREN, _DESERT, _DESERT,
+		// band 2: 0.35 ≤ S ≤ 1.05 — the habitable zone
+		_BARREN, _DESERT, _TERRAN, _SE,
+		// band 3: S < 0.35 — all ice
+		_ICE, _ICE, _ICE, _ICE,
+	];
+
+	// Thermal index: one entry per bulk class (BULKS.length).  The gas types
+	// and dwarf are constant across bands; rock/ice/super vary by band and
+	// mass, so their index entry is −1 (signalling that PLANET_BAND_DISPLAY
+	// must be consulted).  Entries are display-type ids, so the mapping is
+	// built-in.
+	// Dwarf is constant except in band 0 (LAVA), so it is NOT in the thermal
+	// index — it gets a special-case early return in planetDisplay.
+	const PLANET_DISPLAY_THERMAL_INDEX = (function () {
+		const idx = new Int8Array(BULKS.length).fill(-1);
+		idx[BULK_INDEX.mini] = _MN;
+		idx[BULK_INDEX.gas] = _GG;
+		idx[BULK_INDEX.icegiant] = _IG;
+		return idx;
+	})();
+
+	// The band-refinement function (plan §4.6): one flat lookup, no iteration,
+	// no convergence question.  Returns a display-type id.
+	function planetDisplay(bulkIndex, mass, band) {
+		const constIdx = PLANET_DISPLAY_THERMAL_INDEX[bulkIndex];
+		if (constIdx >= 0) return constIdx;
+		// Dwarf: LAVA in band 0 (extreme heat), DWARF elsewhere.  The plan's
+		// table says "LAVA | DWARF | DWARF | DWARF" for dwarf across bands.
+		if (bulkIndex === BULK_INDEX.dwarf) return band === 0 ? _LAVA : _DWARF;
+		// Rock/ice/super share one mass-tier list:
+		//   tier 0: M < AIRLESS_M (0.02)   → LAVA
+		//   tier 1: M < ATM_RETAIN_M (0.3) → BARREN
+		//   tier 2: M ≥ 0.3, rock or ice   → DESERT (band 2 maps to TERRAN)
+		//   tier 3: M ≥ 0.3, super         → SUPER_EARTH in band 2
+		// The tier for rock/ice (most common) is computed; super overrides
+		// the tier-3 slot.
+		const tier = mass < AIRLESS_M ? 0 : mass < ATM_RETAIN_M ? 1
+			: (bulkIndex === BULK_INDEX.super) ? 3 : 2;
+		return PLANET_BAND_DISPLAY[band * 4 + tier];
+	}
+
+	// Runaway greenhouse (plan §4.2): a rocky/icy/super world of
+	// M ≥ ATM_RETAIN_M in band 1 (above the HZ inner edge) boils its oceans
+	// and never comes back.  Below the threshold there are no volatiles to
+	// run away with — a Mercury-like world keeps its equilibrium temperature.
+	function runawayGreenhouse(bulkIndex, mass, band) {
+		if (band !== 1) return false;
+		if (mass < ATM_RETAIN_M) return false;
+		return bulkIndex === BULK_INDEX.rock || bulkIndex === BULK_INDEX.ice
+			|| bulkIndex === BULK_INDEX.super;
+	}
+
+	// Surface temperature: Teq + ΔT (plan §4.2/§4.6).  The ΔT is the display
+	// type's base, modified by two rules — the carbonate-silicate thermostat
+	// (Walker, Hays & Kasting 1981) for TERRAN/SUPER_EARTH in band 2, and the
+	// runaway bifurcation for M ≥ 0.3 in band 1.
+	function surfaceTemp(teq, displayId, insol, band, mass) {
+		let dt = DISPLAY_TYPES[displayId].dtBase;
+		if (band === 2 && (displayId === _TERRAN || displayId === _SE)) {
+			// The thermostat: a colder world outgasses more CO₂, so the
+			// greenhouse term grows as insolation falls.  At S = 1 it is 33 K
+			// (Earth), at S = 0.35 it saturates at 65 K.
+			dt = TERRAN_DT_BASE + TERRAN_DT_SPAN * (1 - insol);
+			if (dt > TERRAN_DT_MAX) dt = TERRAN_DT_MAX;
+		}
+		if (band === 1 && mass >= ATM_RETAIN_M
+			&& (displayId === _DESERT || displayId === _TERRAN || displayId === _SE)) {
+			// Runaway: the ΔT override and the cloud-shrouded albedo.
+			dt = RUNAWAY_DT;
+		}
+		return teq + dt;
+	}
+
+	// Tidal locking (plan §4.6): locked below A_LOCK·sqrt(M★) or at S > 50.
+	// `massStar` is the host star's mass in M☉.
+	function isTidallyLocked(aAU, insol, massStar) {
+		return aAU < A_LOCK * Math.sqrt(massStar) || insol > 50;
+	}
+
+	// The habitable-zone and terran flags (plan §4.6): one pair of insolation
+	// boundaries, two consumers (band and flag), so they cannot disagree.
+	// `locked` excludes tidally-locked M-dwarf worlds from the plain `terran`
+	// flag — they are still searchable by temperature, but "terran" means an
+	// Earth analog with free rotation.  A separate `lockedHZ` flag keeps them
+	// findable.  `age` is in Gyr.
+	function terranPlanet(displayId, mass, band, locked, runaway, age) {
+		const inHZ = band === 2;
+		const terran = inHZ
+			&& (displayId === _TERRAN || displayId === _SE)
+			&& mass >= 0.5 && mass <= 5
+			&& age > 0.5
+			&& !runaway && !locked;
+		const lockedHZ = locked && inHZ;
+		return { inHZ, terran, lockedHZ };
+	}
+
 	const PlanetsLib = {
 		AU_M, M_SUN_KG, G_SI, M_EARTH_KG, R_EARTH_M, R_SUN_M, TEFF_SUN, RHO_EARTH,
 		MAX_PLANETS, MAX_BELTS, STIPPLE_N, A_SNOW_K, HZ_S_IN, HZ_S_OUT, K_HILL,
@@ -661,6 +808,9 @@
 		AU_PER_R_SUN, M_EARTH_SUN,
 		innerEdgeAU, outerEdgeAU, hillPushFactor, drawBulkIndex, massForBulk,
 		createArchitecture, architecture,
+		BAND_REFINEMENT_SIZE, PLANET_BAND_DISPLAY, PLANET_DISPLAY_THERMAL_INDEX,
+		insolation, equilibriumTemp, planetBand, planetDisplay, runawayGreenhouse,
+		surfaceTemp, isTidallyLocked, terranPlanet,
 	};
 	if (typeof module !== 'undefined') module.exports = PlanetsLib;
 	if (typeof window !== 'undefined') window.PlanetsLib = PlanetsLib;
