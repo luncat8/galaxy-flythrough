@@ -4,6 +4,36 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-10-12 — A schematic canvas measures nothing: heap deltas under a stub context are noise, and per-frame colours are strings built once
+
+Two things met while drawing 0.5.3-2's log-polar layout (`src/render/system-layer.js`):
+
+1. **A stub 2D context that records `[name, args]` per call allocates more than the layer
+   under test.** The first no-allocation probe measured 6.6 MB over 1000 draws — about
+   6 KB per draw, which is exactly what ~60 `[name, args]` pairs cost. Fix: the stub
+   counts calls and copies its first four numeric args into preallocated arrays, so the
+   harness retains nothing per call. With that, 1000 warm draws measured −16 B / +7.8 KB
+   across trials while the *closed*-layer control (no drawing at all) measured +48 B /
+   +8 KB — i.e. the layer's own delta is inside Node's measurement noise. Rule: measure
+   against a control loop, and make the measuring instrument allocation-free before
+   believing the number.
+2. **Per-frame `rgb()` strings are allocations, so the palette is built once at load.**
+   `ICON_FILL` / `ICON_RING` / `STAR_FILL` / `STAR_HALO` are strings assembled from
+   `PlanetsLib.DISPLAY_COLORS` and `StarRecord.CLASS_COLORS` at module evaluation; the
+   frame loop only assigns `fillStyle`. A 12-planet draw is then ~120 canvas calls with
+   zero JS heap traffic.
+3. **The habit of a top-level dependency lookup in a new `<script>` file collides again —
+   check the existing top-level namespace before naming anything.** `system-layer.js`
+   first named its two dependency bindings `planetsLib` / `recordLib` (the obvious names)
+   and `core/search.js` already declares top-level *functions* of both names; then `TAU`
+   and `HALF_PI`, which `math/orbit.js` owns. Three `SyntaxError`s at boot, all caught by
+   `m1-smoke-test.js`'s page-order vm run, none visible to a per-file `require()`.
+   `sysPlanets` / `sysRecords` / `SYS_TAU` / `SYS_HALF_PI` are the file-local forms. The
+   owned-names list keeps growing: `density.js` → `GALACTIC_CENTRE`, `orbit.js` → `TAU`,
+   `HALF_PI`, `search.js` → `planetsLib()`, `recordLib()`.
+
+---
+
 ## 2026-10-12 — A parity fixture must feed the reference the same derived-path inputs, and classic `<script>` tags share one global scope
 
 Five traps met while shipping 0.5.2's search (`experiments/search-test.js`):
