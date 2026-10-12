@@ -1251,3 +1251,37 @@ work, and why — all measured on Node 22, 1M-call loops:
   draws + 384 `exp`) is 2.8 µs and runs once per *opened* system; folded into the per-star
   loop it read as 3.3 µs/system and looked like a budget miss against `architecture`'s
   0.19 µs. Measure the loop the search actually walks.
+
+## 2026-10-12 — A pin that re-derives a boundary invariant needs the boundary's own tolerance
+
+Writing the 0.5.1-7 record pins turned two test-side bugs into failures that looked like
+generator bugs:
+
+- The record-level §4.12 check compared `a[i] − a[i−1] ≥ K_HILL·r_H` exactly. The architecture
+  tier's own pin for the same invariant carries `(1 − 1e−9)`, because the stability repair
+  pushes a body *onto* the requirement — the surviving gap is the product of the same
+  `cbrt` and a division, and the last bit can land either side. 86 of 5 000 systems failed on
+  rounding, not on spacing. Rule: when a second pin re-derives an invariant the first pin
+  already states, copy the first pin's tolerance (or assert the identical statement). A
+  tighter re-derivation is not a stricter test, it is a different one.
+- The designation check read `designationToString(buffer, end)` *after* a second
+  `writeStarDesignation` had overwritten the same 16-byte buffer, so it compared the second
+  key's digits against the first key's end offset. The detail string gave it away (`S0`, the
+  smaller key, reported 7 digits). Rule: a writer that returns a length into a reused buffer
+  must be read before the next call — and the shortest-form rule (no zero padding) makes the
+  reuse *more* dangerous, because a 1-digit and a 7-digit result both fit in the same bytes.
+
+## 2026-10-12 — Check a record's field list against every consumer's predicate list
+
+The 0.5.1-7 summary tier was written to §4.10's field list — `count`, both histograms, a
+`bestTerran` candidate, `maxPlanetMass`, `beltCount` — and pinned green. §5.1, the consumer's
+spec, then lists four *range* predicates over per-planet values (`aMin/aMax`,
+`planetMassMin/planetMassMax`, `teqMin/teqMax`, `tsurfMin/tsurfMax`): "does this star have a
+planet with X in [lo, hi]" is `max ≥ lo && min ≤ hi`, and a single `maxPlanetMass` answers
+only the lower bound. Three of those rows could not have been implemented from the summary as
+specified. The tier now carries all four pairs, with `±Infinity` sentinels so a planetless
+system cannot match a range without a special case (742 of the 2 000 pinned systems are
+barren, so the sentinel path is pinned too). Rule: before a tier is called done, diff its
+field list against the predicate list of every module that reads it — a field a consumer
+cannot act on is as much a bug as a missing one, and both are invisible to a test written
+against the tier's own spec.

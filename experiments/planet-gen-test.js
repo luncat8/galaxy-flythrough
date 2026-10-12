@@ -20,7 +20,13 @@
 // (0.90·fade − 0.35·nGiants), the bit-equal belt chain over main-sequence,
 // giant and wd stars, the Solar belt ranges (inner 1.485–2.565 AU, outer
 // 14–32 AU), the wd's single forced compact ring, the scouring that empties a
-// belt, the stipple seed and law, and floor(moonMax·u³).
+// belt, the stipple seed and law, and floor(moonMax·u³) — and the record tier
+// (0.5.1-7, §4.9/§4.10/§4.11): the byte-identical system record, the star block
+// as `stellarInputs`' own output with its four edges, every planet row as the
+// tiers' arithmetic (the §4.3 mass–radius law and its ρ anchors, the repair's
+// Hill conversion, Kepler III, one `thermal` pass, the moon count on the
+// rotation channel), the §4.12 invariants read off the record, the summary
+// equal to the full tier, the §4.11 designation writers, and the two budgets.
 //
 // Output: experiments/logs/planet-gen.json
 
@@ -1243,14 +1249,36 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 		{ sun: planets.snowLineAU(1), faint: +planets.snowLineAU(0.1).toFixed(3) });
 	const bodyRho = planets.BELT_BODY_MASS_KG
 		/ ((4 / 3) * Math.PI * planets.BELT_BODY_R_M * planets.BELT_BODY_R_M * planets.BELT_BODY_R_M);
-	check('typical body: the Ceres analog (R 470 km, M 9.4e20 kg, ρ 2160 kg/m³, μ = G·M, albedo 0.09)',
+	check('typical body: the Ceres analog (R 470 km, M 9.4e20 kg, ρ 2161 kg/m³ derived, μ = G·M, albedo 0.09)',
 		Math.abs(planets.BELT_BODY_R_M - 470e3) < 1
 		&& Math.abs(planets.BELT_BODY_MASS_KG - 9.4e20) < 1e18
-		&& Math.abs(bodyRho - 2160) / 2160 < 0.01
+		&& Math.abs(bodyRho - 2161) < 0.5
 		&& planets.BELT_BODY_RHO === bodyRho
 		&& Math.abs(planets.BELT_BODY_MU - planets.G_SI * 9.4e20) < 1e5
 		&& planets.BELT_BODY_ALBEDO === 0.09,
 		{ rho: +bodyRho.toFixed(1), mu: planets.BELT_BODY_MU.toExponential(4) });
+
+	// 8a-2. The scouring count (plan §4.7) is the three bulks §4.4's `f_Z`
+	// scales — gas, ice giant, mini-Neptune — and nothing else: a rock or an ice
+	// world inside the belt radius does not clear it, which is what makes "four
+	// giants ⇒ no belt" a statement about the giant columns only.
+	const scourArch = planets.createArchitecture();
+	scourArch.n = 7;
+	const scourBulks = [planets.BULK_INDEX.rock, planets.BULK_INDEX.ice,
+		planets.BULK_INDEX.super, planets.BULK_INDEX.gas, planets.BULK_INDEX.mini,
+		planets.BULK_INDEX.icegiant, planets.BULK_INDEX.dwarf];
+	for (let i = 0; i < 7; i++) {
+		scourArch.bulk[i] = scourBulks[i];
+		scourArch.a[i] = 1 + i * 0.5;
+		scourArch.mass[i] = 1;
+	}
+	check('the scouring count is gas + ice giant + mini-Neptune, never rock/ice/super/dwarf',
+		planets.giantsInsideBelt(scourArch, 1.5) === 0
+		&& planets.giantsInsideBelt(scourArch, 3.6) === 3
+		&& planets.giantsInsideBelt(scourArch, 100) === 3,
+		{ inside1p5: planets.giantsInsideBelt(scourArch, 1.5),
+			inside3p6: planets.giantsInsideBelt(scourArch, 3.6),
+			inside100: planets.giantsInsideBelt(scourArch, 100) });
 
 	// 8b. The presence law (plan §4.7): P = clamp(0.90·fade(age) − 0.35·nGiants,
 	// 0, 1) with fade = 0.25 + 0.75·exp(−age/1.5 Gyr).
@@ -1534,6 +1562,393 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 		{ usPerSystem: +beltUs.toFixed(3), usPerStippleFill: +stippleUs.toFixed(3) });
 }
 
+// --- 9. The SystemRecord, generateSystem and the summary (0.5.1-7) ----------
+// Plan §4.9/§4.10/§4.11: the record a pick resolves to, the one walk both tiers
+// run, and the designations.
+{
+	// 9a. Determinism and statelessness: the same (ref, ctx) gives a
+	// byte-identical record, a record that already held another system carries
+	// nothing over, and the two keyless blocks fall back to their positional
+	// identity.
+	const record = planets.createSystemRecord();
+	const record2 = planets.createSystemRecord();
+	const cols = ['a', 'mass', 'radius', 'density', 'e', 'inc', 'peri', 'phase',
+		'period', 'teq', 'tsurf', 'insolation', 'rHill', 'rotHours', 'moons',
+		'bulk', 'displayType', 'flags'];
+	// The live fields only: the tail of a fixed-capacity column is allowed to
+	// hold the previous system's bytes, exactly as the architecture record does.
+	function recordBytes(r) {
+		const parts = [r.star.key, r.star.mass, r.star.lum, r.star.teff, r.star.rStar,
+			r.star.age, r.star.metal, r.star.state, r.star.spectralClass, r.star.colorIndex,
+			r.star.aHzIn, r.star.aHzOut, r.star.aSnow, r.star.aOut, r.star.nameLen,
+			Array.from(r.star.name.subarray(0, r.star.nameLen)).join(','),
+			r.counts.planets, r.counts.terranCount, r.counts.giantCount,
+			r.belts.count, Array.from(r.belts.kind.subarray(0, r.belts.count)).join(','),
+			Array.from(r.belts.a.subarray(0, r.belts.count)).join(','),
+			Array.from(r.belts.dlnA.subarray(0, r.belts.count)).join(','),
+			Array.from(r.belts.mass.subarray(0, r.belts.count)).join(','),
+			Array.from(r.belts.stippleSeed.subarray(0, r.belts.count)).join(',')];
+		for (const c of cols) {
+			parts.push(c + '=' + Array.from(r.planets[c].subarray(0, r.counts.planets)).join(','));
+		}
+		return parts.join('|');
+	}
+	const fieldCtx = { model, field, name: 'Test Star' };
+	const fieldRef = { kind: planets.BLOCK_FIELD, index: 7, key: starTypes.fieldStarSeed(model.seed, 7) >>> 0 };
+	planets.generateSystem(fieldRef, fieldCtx, record);
+	planets.generateSystem(fieldRef, fieldCtx, record2);
+	const firstBytes = recordBytes(record);
+	// A giant in between (a different star, a different system), then the field
+	// star again into the record that already held it.
+	const giantRef = { kind: planets.BLOCK_LANDMARK, index: 4,
+		colorIndex: records.SPECTRAL_CLASSES.indexOf('K'), absMag: -0.05 };
+	planets.generateSystem(giantRef, { model, name: 'Arcturus' }, record2);
+	const giantBytes = recordBytes(record2);
+	planets.generateSystem(fieldRef, fieldCtx, record2);
+	check('two calls with the same (ref, ctx) give a byte-identical system record',
+		firstBytes === recordBytes(record2) && firstBytes !== giantBytes
+		&& record.star.key === (fieldRef.key >>> 0),
+		{ key: record.star.key, planets: record.counts.planets, belts: record.belts.count });
+
+	const landmarkRef = { kind: planets.BLOCK_LANDMARK, index: 0,
+		colorIndex: records.SPECTRAL_CLASSES.indexOf('G'), absMag: landmarks.SUN_ABS_MAG };
+	const sunRec = planets.createSystemRecord();
+	planets.generateSystem(landmarkRef, { model, name: 'Sun' }, sunRec);
+	check('a keyless landmark ref keys off landmarkKey(index) — the §2.2 identity, not slot 0',
+		sunRec.star.key === planets.landmarkKey(0)
+		&& planets.systemSeed(sunRec.star.key, model.seed, planets.BLOCK_LANDMARK) !== 0,
+		sunRec.star.key);
+
+	// 9b. The star block is the input tier's own output, and its four edges are
+	// the four helpers — Earth's star puts them at 0.976 / 1.690 / 2.7 / 40.
+	const sun = planets.createStellarInputs();
+	planets.stellarInputs(landmarkRef, { model }, sun);
+	check('the star block equals stellarInputs\' record; the four edges are its helpers',
+		sunRec.star.mass === sun.mass && sunRec.star.lum === sun.lum
+		&& sunRec.star.teff === sun.teff && sunRec.star.rStar === sun.rStar
+		&& sunRec.star.age === sun.age && sunRec.star.metal === sun.metal
+		&& sunRec.star.state === sun.state && sunRec.star.spectralClass === sun.spectralClass
+		&& sunRec.star.colorIndex === sun.colorIndex
+		&& sunRec.star.aHzIn === planets.hzInnerAU(sun.lum)
+		&& sunRec.star.aHzOut === planets.hzOuterAU(sun.lum)
+		&& sunRec.star.aSnow === planets.snowLineAU(sun.lum)
+		&& sunRec.star.aOut === planets.outerEdgeAU(sun.mass, sun.state),
+		{ key: sunRec.star.key, mass: sunRec.star.mass, aOut: sunRec.star.aOut });
+	check('a Sun-like star: HZ 0.9759–1.6903 AU, snow 2.7 AU, a_out 40 AU',
+		Math.abs(sunRec.star.aHzIn - 0.9759) < 0.001 && Math.abs(sunRec.star.aHzOut - 1.6903) < 0.001
+		&& Math.abs(sunRec.star.aSnow - 2.7) < 1e-9 && Math.abs(sunRec.star.aOut - 40) < 0.01,
+		{ hzIn: +sunRec.star.aHzIn.toFixed(4), hzOut: +sunRec.star.aHzOut.toFixed(4),
+			snow: sunRec.star.aSnow, aOut: sunRec.star.aOut });
+	check('the caller\'s name lands in the record as bytes, capped at 32',
+		sunRec.star.nameLen === 3
+		&& String.fromCharCode.apply(null, sunRec.star.name.subarray(0, 3)) === 'Sun'
+		&& record.star.nameLen === 9
+		&& String.fromCharCode.apply(null, record.star.name.subarray(0, 9)) === 'Test Star',
+		{ landmark: sunRec.star.nameLen, field: record.star.nameLen });
+
+	// 9b-2. §4.9's belt block: exactly the §4.7 record, plus the typical body as
+	// two references to the §4.7 constants (every belt carries the same body, so
+	// they are scalars on the block, not per-slot columns).
+	check('the belt block is the §4.7 record plus the two typical-body constants',
+		sunRec.belts.typicalBodyMu === planets.BELT_BODY_MU
+		&& sunRec.belts.typicalBodyR === planets.BELT_BODY_R_M
+		&& sunRec.belts.a.length === planets.MAX_BELTS
+		&& sunRec.belts.stippleSeed.length === planets.MAX_BELTS
+		&& sunRec.belts.count >= 0 && sunRec.belts.count <= planets.MAX_BELTS,
+		{ mu: sunRec.belts.typicalBodyMu, r: sunRec.belts.typicalBodyR });
+
+	// 9c. Every live planet row is the tiers' own arithmetic: §4.3's radius and
+	// density law, the repair's Hill conversion, Kepler III, exactly one
+	// `thermal` pass, and the moon count on the rotation channel.
+	const star = planets.createStellarInputs();
+	const arch = planets.createArchitecture();
+	const th = planets.createThermal();
+	let rows = 0, lawBad = 0, thermalBad = 0, flagsBad = 0, moonsBad = 0;
+	for (let s = 0; s < 400; s++) {
+		const idx = (s * 37) % fieldCount;
+		const key = starTypes.fieldStarSeed(model.seed, idx) >>> 0;
+		const ref = { kind: planets.BLOCK_FIELD, index: idx, key };
+		planets.generateSystem(ref, { model, field }, record);
+		planets.stellarInputs(ref, { model, field }, star);
+		const seed = planets.systemSeed(key, model.seed, planets.BLOCK_FIELD);
+		planets.architecture(seed, star, arch);
+		for (let i = 0; i < record.counts.planets; i++) {
+			rows++;
+			const bulkIndex = record.planets.bulk[i];
+			const b = planets.BULKS[bulkIndex];
+			const aAU = record.planets.a[i];
+			const mass = record.planets.mass[i];
+			const radius = planets.radiusFor(bulkIndex, mass);
+			if (record.planets.radius[i] !== radius
+				|| record.planets.density[i] !== planets.planetDensity(mass, radius)
+				|| record.planets.rHill[i] !== aAU * planets.hillRatio(mass, star.mass)
+				|| record.planets.period[i] !== Math.sqrt(aAU * aAU * aAU / star.mass)
+				|| arch.a[i] !== aAU || arch.bulk[i] !== bulkIndex
+				|| mass < b.massMin || mass > b.massMax) lawBad++;
+			planets.thermal(star, aAU, bulkIndex, mass, th);
+			if (record.planets.teq[i] !== th.teq || record.planets.tsurf[i] !== th.tsurf
+				|| record.planets.insolation[i] !== th.insol
+				|| record.planets.displayType[i] !== th.displayId) thermalBad++;
+			let flags = 0;
+			if (th.locked) flags |= planets.FLAG_LOCKED;
+			if (th.hotJupiter) flags |= planets.FLAG_HOT_JUPITER;
+			if (th.terran) flags |= planets.FLAG_TERRAN;
+			if (th.inHZ) flags |= planets.FLAG_IN_HZ;
+			if (record.planets.flags[i] !== flags) flagsBad++;
+			if (th.locked
+				&& record.planets.rotHours[i] !== record.planets.period[i] * planets.HOURS_PER_YEAR) flagsBad++;
+			const u = hash.hash01At(seed, planets.CH_SLOT_BASE + 8 * arch.slot[i] + planets.CH_ROT);
+			if (record.planets.moons[i] !== planets.moonCount(bulkIndex, u)) moonsBad++;
+			if (record.planets.moons[i] > b.moonsMax) moonsBad++;
+		}
+	}
+	check('planet rows are the tiers\' own numbers (law, rHill, period, elements) over 400 systems',
+		lawBad === 0 && rows > 300, { rows, lawBad });
+	check('the thermal columns are exactly one thermal() pass; flags and the locked rot = P override follow it',
+		thermalBad === 0 && flagsBad === 0, { thermalBad, flagsBad });
+	check('the moon count is floor(moonMax·u³) on the architecture\'s own slot draw',
+		moonsBad === 0, moonsBad);
+
+	// 9c-2. §4.3's law at its anchors: R = Rref at M = Mref by construction, and
+	// the density column reproduces the table's checks (rock is exact).
+	const anchors = [
+		['rock', 1, 1.00, 5514], ['ice', 1, 1.10, 4143], ['super', 5, 1.60, 6731],
+		['mini', 10, 2.80, 2512], ['gas', 318, 11.20, 1248], ['icegiant', 17, 4.00, 1465],
+	];
+	let anchorBad = 0;
+	const anchorRows = [];
+	for (const [name, mass, wantR, wantRho] of anchors) {
+		const bulkIndex = planets.BULK_INDEX[name];
+		const radius = planets.radiusFor(bulkIndex, mass);
+		const rho = planets.planetDensity(mass, radius);
+		anchorRows.push([name, +radius.toFixed(4), +rho.toFixed(1)]);
+		if (radius !== planets.BULKS[bulkIndex].radiusRef
+			|| Math.abs(rho - wantRho) > 2) anchorBad++;
+	}
+	const dwarfKm = planets.radiusFor(planets.BULK_INDEX.dwarf, 0.0005) * planets.R_EARTH_M / 1000;
+	check('the mass–radius law is Rref at Mref for every bulk, densities match §4.3',
+		anchorBad === 0 && Math.abs(dwarfKm - 519) < 2,
+		{ anchors: anchorRows, dwarfKm: +dwarfKm.toFixed(1) });
+}
+
+// --- 10. The summary tier, the invariants on the record, budgets ------------
+{
+	const record = planets.createSystemRecord();
+	const summary = planets.createSystemSummary();
+	const star = planets.createStellarInputs();
+
+	function recordHistograms(r) {
+		const bulk = new Uint8Array(planets.BULKS.length);
+		const type = new Uint8Array(planets.DISPLAY_TYPES.length);
+		for (let i = 0; i < r.counts.planets; i++) {
+			bulk[r.planets.bulk[i]]++;
+			type[r.planets.displayType[i]]++;
+		}
+		return { bulk, type };
+	}
+
+	// 10a. §4.12's structural list, read off the record: clearance, the disc
+	// edge, the Hill spacing between consecutive pairs, ascending `a`, the mass
+	// brackets, the HZ flag ⟺ the HZ edges, and the counts.
+	const giantInside = (bulkIndex) => bulkIndex === planets.BULK_INDEX.gas
+		|| bulkIndex === planets.BULK_INDEX.icegiant || bulkIndex === planets.BULK_INDEX.mini;
+	let systems = 0, invariantBad = 0, hzBad = 0, countBad = 0, terranSeen = 0, giantSeen = 0;
+	for (let s = 0; s < 5000; s++) {
+		const idx = (s * 7919) % fieldCount;
+		const key = starTypes.fieldStarSeed(model.seed, idx) >>> 0;
+		planets.generateSystem({ kind: planets.BLOCK_FIELD, index: idx, key }, { model, field }, record);
+		planets.stellarInputs({ kind: planets.BLOCK_FIELD, index: idx, key }, { model, field }, star);
+		systems++;
+		const n = record.counts.planets;
+		const aLo = planets.innerEdgeAU(record.star.rStar);
+		let terrans = 0, giants = 0;
+		for (let i = 0; i < n; i++) {
+			const aAU = record.planets.a[i];
+			if (aAU < aLo * (1 - 1e-12) || aAU > record.star.aOut * (1 + 1e-12)) invariantBad++;
+			if (i > 0 && aAU <= record.planets.a[i - 1]) invariantBad++;
+			if (i > 0) {
+				// A pushed survivor sits exactly on the requirement, so the
+				// comparison carries the architecture pin's own tolerance.
+				const rH = Math.cbrt((record.planets.mass[i - 1] + record.planets.mass[i])
+					* planets.M_EARTH_SUN / (3 * record.star.mass))
+					* (aAU + record.planets.a[i - 1]) / 2;
+				if (aAU - record.planets.a[i - 1] < planets.K_HILL * rH * (1 - 1e-9)) invariantBad++;
+			}
+			const inHZ = aAU >= record.star.aHzIn && aAU <= record.star.aHzOut;
+			if (((record.planets.flags[i] & planets.FLAG_IN_HZ) !== 0) !== inHZ) hzBad++;
+			if ((record.planets.flags[i] & planets.FLAG_TERRAN) !== 0) terrans++;
+			if (giantInside(record.planets.bulk[i])) giants++;
+		}
+		if (terrans !== record.counts.terranCount) countBad++;
+		if (giants !== record.counts.giantCount) countBad++;
+		if (record.belts.count > 2 || record.belts.count < 0) countBad++;
+		terranSeen += terrans;
+		giantSeen += giants;
+	}
+	check('record invariants over 5 000 systems: clearance, a_out, K_HILL spacing, ascending a',
+		invariantBad === 0, { systems, invariantBad });
+	check('inHZ ⟺ a ∈ [a_hz_in, a_hz_out] on every row, and the counts are the rows\' own',
+		hzBad === 0 && countBad === 0 && terranSeen > 0 && giantSeen > 0,
+		{ hzBad, countBad, terranSeen, giantSeen });
+
+	// 10b. §4.12's identity: the summary is the full tier's histograms, terran
+	// flag, belt count and all four extremes — over 2 000 systems, plus the
+	// best-terran candidate satisfying its own |S − 1| rule. A planetless system
+	// reports the empty sentinels, so no range predicate can match it (`max ≥ lo
+	// && min ≤ hi` is false when `max = -Infinity` and `min = +Infinity`).
+	function recordExtremes(r) {
+		const e = { aMin: Infinity, aMax: -Infinity, massMin: Infinity, massMax: -Infinity,
+			teqMin: Infinity, teqMax: -Infinity, tsurfMin: Infinity, tsurfMax: -Infinity };
+		for (let i = 0; i < r.counts.planets; i++) {
+			e.aMin = Math.min(e.aMin, r.planets.a[i]); e.aMax = Math.max(e.aMax, r.planets.a[i]);
+			e.massMin = Math.min(e.massMin, r.planets.mass[i]); e.massMax = Math.max(e.massMax, r.planets.mass[i]);
+			e.teqMin = Math.min(e.teqMin, r.planets.teq[i]); e.teqMax = Math.max(e.teqMax, r.planets.teq[i]);
+			e.tsurfMin = Math.min(e.tsurfMin, r.planets.tsurf[i]); e.tsurfMax = Math.max(e.tsurfMax, r.planets.tsurf[i]);
+		}
+		return e;
+	}
+	let summaryBad = 0, bestBad = 0, compared = 0, bestSeen = 0, barrenSeen = 0;
+	for (let s = 0; s < 2000; s++) {
+		const idx = (s * 104729) % fieldCount;
+		const key = starTypes.fieldStarSeed(model.seed, idx) >>> 0;
+		const ref = { kind: planets.BLOCK_FIELD, index: idx, key };
+		planets.generateSystem(ref, { model, field }, record);
+		planets.systemSummary(ref, { model, field }, summary);
+		compared++;
+		const h = recordHistograms(record);
+		let diff = summary.count !== record.counts.planets
+			|| summary.terranCount !== record.counts.terranCount
+			|| summary.beltCount !== record.belts.count;
+		for (let k = 0; k < h.bulk.length && !diff; k++) if (summary.bulkHistogram[k] !== h.bulk[k]) diff++;
+		for (let k = 0; k < h.type.length && !diff; k++) if (summary.typeHistogram[k] !== h.type[k]) diff++;
+		const ext = recordExtremes(record);
+		for (const k in ext) if (summary[k] !== ext[k]) diff++;
+		if (record.counts.planets === 0) {
+			barrenSeen++;
+			if (summary.aMin !== Infinity || summary.aMax !== -Infinity
+				|| summary.massMin !== Infinity || summary.massMax !== -Infinity
+				|| summary.teqMin !== Infinity || summary.teqMax !== -Infinity
+				|| summary.tsurfMin !== Infinity || summary.tsurfMax !== -Infinity) diff++;
+		}
+		if (diff) summaryBad++;
+		// The named candidate: the terran row with the smallest |S − 1|, ties to
+		// the inner one — the same rule the walk applies.
+		let bestD = Infinity, bestI = -1;
+		for (let i = 0; i < record.counts.planets; i++) {
+			if ((record.planets.flags[i] & planets.FLAG_TERRAN) === 0) continue;
+			const d = Math.abs(record.planets.insolation[i] - 1);
+			if (d < bestD) { bestD = d; bestI = i; }
+		}
+		if (bestI >= 0) {
+			bestSeen++;
+			if (summary.bestTerranA !== record.planets.a[bestI]
+				|| summary.bestTerranMass !== record.planets.mass[bestI]
+				|| summary.bestTerranTsurf !== record.planets.tsurf[bestI]
+				|| summary.bestTerranS !== record.planets.insolation[bestI]
+				|| summary.bestTerranType !== record.planets.displayType[bestI]) bestBad++;
+		}
+	}
+	check('the summary equals the full tier\'s histograms, terran flag, belt count and all four extremes (2 000 systems)',
+		summaryBad === 0 && compared === 2000 && barrenSeen > 0, { compared, summaryBad, barrenSeen });
+	check('bestTerran is the |S − 1| minimum among the terran rows, ties to the inner one',
+		bestBad === 0 && bestSeen > 0, { bestSeen, bestBad });
+
+	// 10c. The scratch records are not a channel between calls: a summary taken
+	// before and after a full generation of a different star is unchanged.
+	const refA = { kind: planets.BLOCK_FIELD, index: 3, key: starTypes.fieldStarSeed(model.seed, 3) >>> 0 };
+	const refB = { kind: planets.BLOCK_FIELD, index: 900 % fieldCount, key: starTypes.fieldStarSeed(model.seed, 900 % fieldCount) >>> 0 };
+	planets.systemSummary(refA, { model, field }, summary);
+	const beforeKey = summary.count + '|' + summary.beltCount + '|' + summary.bestTerranS
+		+ '|' + Array.from(summary.typeHistogram).join(',');
+	planets.generateSystem(refB, { model, field }, record);
+	planets.systemSummary(refA, { model, field }, summary);
+	const afterKey = summary.count + '|' + summary.beltCount + '|' + summary.bestTerranS
+		+ '|' + Array.from(summary.typeHistogram).join(',');
+	check('summary and generator share module scratch without leaking between calls',
+		beforeKey === afterKey, beforeKey === afterKey ? 'identical' : { beforeKey, afterKey });
+
+	// 10d. Budgets and allocation (§4.12): the whole call under 20 µs, the
+	// summary under 6 µs, no objects allocated. The stipple is not in either —
+	// §6.5 hashes it once when a system is opened, never per star.
+	function budgetLoop(calls, fn) {
+		const t0 = performance.now();
+		for (let s = 0; s < calls; s++) fn(s);
+		return (performance.now() - t0) * 1000 / calls;
+	}
+	const budgetRef = { kind: planets.BLOCK_FIELD, index: 11, key: starTypes.fieldStarSeed(model.seed, 11) >>> 0 };
+	const stepRef = (s) => {
+		const idx = s % fieldCount;
+		budgetRef.index = idx;
+		budgetRef.key = starTypes.fieldStarSeed(model.seed, idx) >>> 0;
+	};
+	for (let s = 0; s < 1000; s++) {
+		stepRef(s);
+		planets.generateSystem(budgetRef, { model, field }, record);
+		planets.systemSummary(budgetRef, { model, field }, summary);
+	}
+	const heapBefore = process.memoryUsage().heapUsed;
+	const fullUs = budgetLoop(10000, (s) => {
+		stepRef(s);
+		planets.generateSystem(budgetRef, { model, field }, record);
+	});
+	const summaryUs = budgetLoop(10000, (s) => {
+		stepRef(s);
+		planets.systemSummary(budgetRef, { model, field }, summary);
+	});
+	for (let s = 0; s < 100000; s++) {
+		stepRef(s);
+		planets.generateSystem(budgetRef, { model, field }, record);
+	}
+	const heapDelta = process.memoryUsage().heapUsed - heapBefore;
+	check('generateSystem stays inside the 20 µs budget and the summary inside 6 µs',
+		fullUs < 20 && summaryUs < 6,
+		{ usPerSystem: +fullUs.toFixed(3), usPerSummary: +summaryUs.toFixed(3) });
+	check('generateSystem allocates no objects (coarse heap delta < 2 MB over 100k calls)',
+		heapDelta < 2 * 1024 * 1024, { heapDelta });
+}
+
+// --- 11. Designations (plan §4.11, 0.5.1-7) ---------------------------------
+{
+	// S + the key's uppercase base36, shortest form: the buffer writer must
+	// agree with `(key >>> 0).toString(36).toUpperCase()` for every key.
+	let bad = 0, sample = '';
+	for (let i = 0; i < 2000; i++) {
+		const key = hash.pcgHash(Math.imul(i, 2654435761));
+		const end = planets.writeStarDesignation(key, planets.DESIGNATION, 0);
+		const text = planets.designationToString(planets.DESIGNATION, end);
+		if (text !== 'S' + (key >>> 0).toString(36).toUpperCase()) bad++;
+		if (i === 0) sample = text;
+	}
+	// The buffer is reusable, so each write is read before the next — the
+	// shortest form is part of the contract, not a formatting detail.
+	const zeroEnd = planets.writeStarDesignation(0, planets.DESIGNATION, 0);
+	const zeroText = planets.designationToString(planets.DESIGNATION, zeroEnd);
+	const maxEnd = planets.writeStarDesignation(0xFFFFFFFF, planets.DESIGNATION, 0);
+	const maxText = planets.designationToString(planets.DESIGNATION, maxEnd);
+	check('star designations: S<key36 uppercase>, shortest form, 2 000 keys',
+		bad === 0 && zeroEnd === 2 && zeroText === 'S0'
+		&& maxEnd === 8 && maxText === 'S1Z141Z3' && maxEnd < planets.DESIGNATION_CAPACITY,
+		{ sample, zero: zeroText, max: maxText, maxEnd });
+
+	// The IAU letters and the belt names: composition is the caller's (a
+	// landmark prefix, the S-form, or nothing), the suffix law is here.
+	let lettersOk = true, letters = '';
+	for (let i = 0; i < planets.MAX_PLANETS; i++) {
+		const end = planets.writePlanetLetter(i, planets.DESIGNATION, 0);
+		const text = planets.designationToString(planets.DESIGNATION, end);
+		letters += text;
+		if (text !== ' ' + String.fromCharCode(98 + i)) lettersOk = false;
+	}
+	const beltNames = [0, 1].map((slot) => {
+		const end = planets.writeBeltName(slot, planets.DESIGNATION, 0);
+		return planets.designationToString(planets.DESIGNATION, end);
+	});
+	check('planet letters run b…m in `a` order, belts read belt 1 / belt 2 by radius order',
+		lettersOk && letters === ' b c d e f g h i j k l m'
+		&& beltNames[0] === 'belt 1' && beltNames[1] === 'belt 2',
+		{ letters: letters.trim(), belts: beltNames });
+}
+
 // --- Report ------------------------------------------------------------------
 let passed = 0;
 let failed = 0;
@@ -1555,5 +1970,5 @@ fs.writeFileSync(logPath, JSON.stringify({
 }, null, 2));
 console.log(`Wrote ${logPath}`);
 console.log('\n=== VERDICT ===');
-console.log(failed === 0 ? 'PASS — identity keys, the inversion, every stellar-input path, the occurrence tier, the architecture tier, the insolation/temperature/band tier and the belt/moon tier behave as documented' : `FAIL — ${failed} checks failed`);
+console.log(failed === 0 ? 'PASS — identity keys, the inversion, every stellar-input path, the occurrence tier, the architecture tier, the insolation/temperature/band tier, the belt/moon tier and the record/summary/designation tier behave as documented' : `FAIL — ${failed} checks failed`);
 process.exit(failed === 0 ? 0 : 1);

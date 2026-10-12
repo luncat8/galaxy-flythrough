@@ -30,10 +30,15 @@
 //     fade, the presence law with its giant scouring, the two belts' authored
 //     coefficient rows, the cap that keeps the inner belt inside the outer one
 //     (the degenerate giant and wd cases), the Ceres typical-body constants,
-//     the per-belt stipple seed and its angle/radius law, and the moon count.
+//     the per-belt stipple seed and its angle/radius law, and the moon count,
+//   * the record tier (plan §4.9/§4.10/§4.11, 0.5.1-7): `createSystemRecord`'s
+//     struct-of-arrays layout, the one `generateSystem(ref, ctx, out)` call that
+//     runs `stellarInputs` → occurrence → architecture → `thermal` per planet →
+//     belts → moons into it, the shared `walkPlanets` that makes
+//     `systemSummary`'s histograms equal the full tier's by construction, and
+//     the §4.11 designation writers (a reusable byte buffer, not concatenation).
 //
-// 0.5.1's remaining tier adds the SystemRecord behind
-// this same object. Everything here is a pure function of (model, key, record): no PRNG
+// Everything here is a pure function of (model, key, record): no PRNG
 // state and no objects allocated — every entry point mutates a caller-owned `out` record,
 // which is also what keeps V8's escape analysis from being the only thing standing between
 // the search loop and a per-call allocation (see findings-pitfalls-skills.md).
@@ -106,6 +111,11 @@
 	// Ceres density, so the three numbers cannot drift apart.
 	const BELT_BODY_RHO = BELT_BODY_MASS_KG
 		/ ((4 / 3) * Math.PI * BELT_BODY_R_M * BELT_BODY_R_M * BELT_BODY_R_M);
+	// The record and its designations (plan §4.9/§4.11).
+	const NAME_CAPACITY = 32;            // the record's landmark label, bytes
+	const DESIGNATION_CAPACITY = 16;     // "S1Y3K9P b" / "belt 2" — 12 is already enough
+	const HOURS_PER_YEAR = 365.25 * 24;  // a tidally locked world's rotHours = period·8766
+	const FLAG_LOCKED = 1, FLAG_HOT_JUPITER = 2, FLAG_TERRAN = 4, FLAG_IN_HZ = 8;
 	const BELT_BODY_MU = G_SI * BELT_BODY_MASS_KG;   // m³/s², the dv map's belt node
 
 	// --- Star identity (plan §2.2/§2.3) -------------------------------------
@@ -337,6 +347,20 @@
 
 	// --- Per-block stellar inputs (plan §2.4) -------------------------------
 
+	// The §2.4 record, one shape for every path: `deriveStar` writes
+	// `luminosity`/`metallicity`, a record-derived star is built from
+	// `lum`/`metal`, and `finishInputs` mirrors whichever pair its writer used.
+	// `generateSystem` keeps one at module scope, so the generator allocates
+	// nothing per call; a caller owns its own (a snapshot, a test) and gets the
+	// same monomorphic shape.
+	function createStellarInputs() {
+		return {
+			mass: 0, lum: 0, luminosity: 0, teff: 0, rStar: 0, age: 0,
+			metal: 0, metallicity: 0, state: 'ms', spectralClass: 'M',
+			colorIndex: 0, absMag: 0,
+		};
+	}
+
 	// One shape for the snapshot, whichever path filled it: `deriveStar` writes
 	// `luminosity`/`metallicity`, a record-derived star is built from `lum`, and
 	// everything above this module reads `lum`/`metal`/`rStar`. `fromDerivation`
@@ -556,12 +580,18 @@
 		return state === 'wd' && aOut > 0.05 ? 0.05 : aOut;
 	}
 
+	// The Hill conversion both Hill users share (plan §4.5): planet masses in
+	// M⊕ against the star's M☉, so the ratio is never fed a mixed-unit pair.
+	// The repair multiplies it by K_HILL/2; the record's `rHill` is a·this.
+	function hillRatio(massEarth, massStar) {
+		return Math.cbrt(massEarth * M_EARTH_SUN / (3 * massStar));
+	}
+
 	// The Hill repair's closed form (plan §4.5): the pair (i, i+1) is stable
-	// when a_{i+1} ≥ a_i·(1+c)/(1−c) with this c. Masses in M⊕, the star's in
-	// M☉ — the conversion lives here so the ratio is never fed a mixed-unit
-	// pair. c ≥ 1 means no finite separation exists and the planet drops.
+	// when a_{i+1} ≥ a_i·(1+c)/(1−c) with this c. c ≥ 1 means no finite
+	// separation exists and the planet drops.
 	function hillPushFactor(massSumEarth, massStar) {
-		return 0.5 * K_HILL * Math.cbrt(massSumEarth * M_EARTH_SUN / (3 * massStar));
+		return 0.5 * K_HILL * hillRatio(massSumEarth, massStar);
 	}
 
 	// Walk a 7-entry CDF (bulkCdfFor's output). The last entry is forced to 1,
@@ -576,6 +606,21 @@
 	function massForBulk(bulkIndex, u) {
 		const b = BULKS[bulkIndex];
 		return b.massMin * Math.pow(b.massMax / b.massMin, u);
+	}
+
+	// §4.3's mass–radius law, the one place a planet's radius comes from:
+	// R = Rref·(M/Mref)^p, one row per bulk.
+	function radiusFor(bulkIndex, massEarth) {
+		const b = BULKS[bulkIndex];
+		return b.radiusRef * Math.pow(massEarth / b.massRef, b.p);
+	}
+
+	// The density that law implies, anchored on Earth's own `RHO_EARTH`:
+	// ρ/ρ⊕ = (M/M⊕)/(R/R⊕)³, so rock's 1 M⊕ row is 5514 kg/m³ by construction
+	// and the authored radius law is the record's only density input (plan
+	// §4.3) — no second mass–radius table can drift from the first.
+	function planetDensity(massEarth, radiusEarth) {
+		return RHO_EARTH * massEarth / (radiusEarth * radiusEarth * radiusEarth);
 	}
 
 	// The architecture record: struct-of-arrays at MAX_PLANETS capacity,
@@ -1028,8 +1073,321 @@
 		return (BULKS[bulkIndex].moonsMax * u * u * u) | 0;
 	}
 
+	// --- The system record and its two tiers (plan §4.9/§4.10, 0.5.1-7) -----
+
+	// §4.9's record: fixed capacity, struct-of-arrays, one instance per open
+	// system (the view owns one, the test another). Nothing here is per-frame —
+	// the readout reads it at 4 Hz and the schematic reads it per draw, which is
+	// why the buffer is caller-owned rather than a module singleton with hidden
+	// state.
+	function createSystemRecord() {
+		// The belt block *is* the §4.7 record — `belts()` writes into it — and
+		// the only thing added on top is the typical body: §4.7's two module
+		// constants, references rather than per-slot columns, because every
+		// belt in the galaxy carries the same Ceres analog.
+		const belts = createBelts();
+		belts.typicalBodyMu = BELT_BODY_MU;
+		belts.typicalBodyR = BELT_BODY_R_M;
+		return {
+			star: {
+				key: 0, mass: 0, lum: 0, teff: 0, rStar: 0, age: 0, metal: 0,
+				state: 'ms', spectralClass: 'M', colorIndex: 0,
+				aHzIn: 0, aHzOut: 0, aSnow: 0, aOut: 0,
+				name: new Uint8Array(NAME_CAPACITY), nameLen: 0,
+			},
+		planets: {
+			a: new Float64Array(MAX_PLANETS),
+			mass: new Float64Array(MAX_PLANETS),
+			radius: new Float64Array(MAX_PLANETS),
+			density: new Float64Array(MAX_PLANETS),
+			e: new Float64Array(MAX_PLANETS),
+			inc: new Float64Array(MAX_PLANETS),
+			peri: new Float64Array(MAX_PLANETS),
+			phase: new Float64Array(MAX_PLANETS),
+			period: new Float64Array(MAX_PLANETS),
+			teq: new Float64Array(MAX_PLANETS),
+			tsurf: new Float64Array(MAX_PLANETS),
+			insolation: new Float64Array(MAX_PLANETS),
+			rHill: new Float64Array(MAX_PLANETS),
+			rotHours: new Float64Array(MAX_PLANETS),
+			moons: new Uint8Array(MAX_PLANETS),
+			bulk: new Uint8Array(MAX_PLANETS),
+			displayType: new Uint8Array(MAX_PLANETS),
+			flags: new Uint8Array(MAX_PLANETS),
+		},
+			// §4.7's own record, plus the two typical-body scalars set above.
+			belts,
+			counts: { planets: 0, terranCount: 0, giantCount: 0 },
+		};
+	}
+
+	// §4.10's summary: what a search needs to decide, and nothing a search
+	// cannot act on. The four extreme pairs are §5.1's range predicates —
+	// "does this star have a planet with `a`/mass/Teq/Tsurf inside [lo, hi]"
+	// is `max ≥ lo && min ≤ hi` — and they start at the empty sentinels
+	// (`+Infinity` / `-Infinity`) so a planetless system cannot match a
+	// range. `bestTerranS` is the winning candidate's insolation — the value
+	// the |S − 1| ordering reads — so the rule needs no hidden walk state.
+	// One `resetSummary` owns the empty state, so the factory below and the
+	// per-call reset in `systemSummary` cannot drift apart.
+	function resetSummary(out) {
+		out.count = 0;
+		out.terranCount = 0;
+		out.beltCount = 0;
+		out.aMin = Infinity; out.aMax = -Infinity;
+		out.massMin = Infinity; out.massMax = -Infinity;
+		out.teqMin = Infinity; out.teqMax = -Infinity;
+		out.tsurfMin = Infinity; out.tsurfMax = -Infinity;
+		out.bulkHistogram.fill(0);
+		out.typeHistogram.fill(0);
+		out.bestTerranA = 0;
+		out.bestTerranMass = 0;
+		out.bestTerranTsurf = 0;
+		out.bestTerranS = 0;
+		out.bestTerranType = 0;
+		return out;
+	}
+
+	function createSystemSummary() {
+		return resetSummary({
+			count: 0, terranCount: 0, beltCount: 0,
+			aMin: 0, aMax: 0, massMin: 0, massMax: 0,
+			teqMin: 0, teqMax: 0, tsurfMin: 0, tsurfMax: 0,
+			bulkHistogram: new Uint8Array(BULKS.length),
+			typeHistogram: new Uint8Array(DISPLAY_TYPES.length),
+			bestTerranA: 0, bestTerranMass: 0, bestTerranTsurf: 0,
+			bestTerranS: 0, bestTerranType: 0,
+		});
+	}
+
+	// One planet's record row: the architecture's elements, the thermal pass's
+	// outputs, and the three derived columns — radius and density from §4.3's
+	// law, `rHill` from the same conversion the stability repair uses. The
+	// rotation is the architecture's own draw, replaced by the period when §4.6
+	// locked the world, and the moon count reads that same channel-39 draw.
+	function writePlanet(p, i, seed, star, arch, th) {
+		const bulkIndex = arch.bulk[i];
+		const b = BULKS[bulkIndex];
+		const mass = arch.mass[i];
+		const aAU = arch.a[i];
+		const radius = radiusFor(bulkIndex, mass);
+		const u = hash.hash01At(seed, CH_SLOT_BASE + 8 * arch.slot[i] + CH_ROT);
+		p.a[i] = aAU;
+		p.mass[i] = mass;
+		p.radius[i] = radius;
+		p.density[i] = planetDensity(mass, radius);
+		p.e[i] = arch.e[i];
+		p.inc[i] = arch.inc[i];
+		p.peri[i] = arch.peri[i];
+		p.phase[i] = arch.phase[i];
+		p.period[i] = arch.period[i];
+		p.teq[i] = th.teq;
+		p.tsurf[i] = th.tsurf;
+		p.insolation[i] = th.insol;
+		p.rHill[i] = aAU * hillRatio(mass, star.mass);
+		p.rotHours[i] = th.locked ? arch.period[i] * HOURS_PER_YEAR : arch.rotHours[i];
+		p.moons[i] = moonCount(bulkIndex, u);
+		p.bulk[i] = bulkIndex;
+		p.displayType[i] = th.displayId;
+		let flags = 0;
+		if (th.locked) flags |= FLAG_LOCKED;
+		if (th.hotJupiter) flags |= FLAG_HOT_JUPITER;
+		if (th.terran) flags |= FLAG_TERRAN;
+		if (th.inHZ) flags |= FLAG_IN_HZ;
+		p.flags[i] = flags;
+	}
+
+	// The one planet walk both tiers run (plan §4.10): the same count draw, the
+	// same architecture, the same per-planet `thermal` pass — the full tier
+	// writes the record's columns and counts, the summary accumulates. One
+	// function, so "a summary of a system and the full system always agree" is
+	// structural rather than a promise, and the pass a summary skips (orbits)
+	// is 0.1 µs of its 6 µs budget.
+	function walkPlanets(seed, star, arch, record, summary) {
+		for (let i = 0; i < arch.n; i++) {
+			const bulkIndex = arch.bulk[i];
+			const mass = arch.mass[i];
+			const th = thermal(star, arch.a[i], bulkIndex, mass, THERMAL_SCRATCH);
+			if (record) {
+				writePlanet(record.planets, i, seed, star, arch, th);
+				if (th.terran) record.counts.terranCount++;
+				if (bulkIndex === BULK_INDEX.gas || bulkIndex === BULK_INDEX.icegiant
+					|| bulkIndex === BULK_INDEX.mini) record.counts.giantCount++;
+			}
+				if (summary) {
+					summary.bulkHistogram[bulkIndex]++;
+					summary.typeHistogram[th.displayId]++;
+					// §5.1's range predicates read these eight numbers.
+					const aAU = arch.a[i];
+					if (aAU < summary.aMin) summary.aMin = aAU;
+					if (aAU > summary.aMax) summary.aMax = aAU;
+					if (mass < summary.massMin) summary.massMin = mass;
+					if (mass > summary.massMax) summary.massMax = mass;
+					if (th.teq < summary.teqMin) summary.teqMin = th.teq;
+					if (th.teq > summary.teqMax) summary.teqMax = th.teq;
+					if (th.tsurf < summary.tsurfMin) summary.tsurfMin = th.tsurf;
+					if (th.tsurf > summary.tsurfMax) summary.tsurfMax = th.tsurf;
+					if (th.terran) {
+						summary.terranCount++;
+						if (summary.terranCount === 1
+							|| Math.abs(th.insol - 1) < Math.abs(summary.bestTerranS - 1)) {
+							summary.bestTerranA = aAU;
+						summary.bestTerranMass = mass;
+						summary.bestTerranTsurf = th.tsurf;
+						summary.bestTerranS = th.insol;
+						summary.bestTerranType = th.displayId;
+					}
+				}
+			}
+		}
+		return record || summary;
+	}
+
+	// The record's label: the caller's string (a landmark's name, per §4.11),
+	// copied once when the system is generated rather than looked up per draw —
+	// `math/` cannot depend on `data/landmarks.js`, and Node has no window.
+	function writeName(out, text) {
+		if (!text) return 0;
+		const n = text.length < NAME_CAPACITY ? text.length : NAME_CAPACITY;
+		for (let i = 0; i < n; i++) out[i] = text.charCodeAt(i) & 0xFF;
+		return n;
+	}
+
+	// The §2.2 identity a pick resolves to: the renderer's key when the caller
+	// has it, and the two blocks whose key is positional when it does not (the
+	// field block's own §2.4 fallback, landmarks by index). Every draw hangs
+	// off this, so a stale slot can never become the seed.
+	function identityKey(ref, modelSeed) {
+		if (ref.key !== undefined && ref.key !== null) return ref.key >>> 0;
+		const kind = ref.kind | 0;
+		if (kind === BLOCK_FIELD) return starTypes.fieldStarSeed(modelSeed, ref.index | 0) >>> 0;
+		if (kind === BLOCK_LANDMARK) return landmarkKey(ref.index | 0);
+		return 0;
+	}
+
+	function writeStar(out, star, key, ctx) {
+		out.key = key;
+		out.mass = star.mass;
+		out.lum = star.lum;
+		out.teff = star.teff;
+		out.rStar = star.rStar;
+		out.age = star.age;
+		out.metal = star.metal;
+		out.state = star.state;
+		out.spectralClass = star.spectralClass;
+		out.colorIndex = star.colorIndex & 0xFF;
+		out.aHzIn = hzInnerAU(star.lum);
+		out.aHzOut = hzOuterAU(star.lum);
+		out.aSnow = snowLineAU(star.lum);
+		out.aOut = outerEdgeAU(star.mass, star.state);
+		out.nameLen = writeName(out.name, ctx.name);
+		return out;
+	}
+
+	// The whole generator (plan §4.9): one call from a pick to a record —
+	// stellar inputs → occurrence → architecture → `thermal` per planet →
+	// belts → counts. `ctx` is the input tier's own context
+	// `{ model, field, member }`, plus `name` for a landmark's label.
+	function generateSystem(ref, ctx, out) {
+		const model = ctx.model;
+		const star = stellarInputs(ref, ctx, STAR_SCRATCH);
+		const key = identityKey(ref, model.seed);
+		const seed = systemSeed(key, model.seed, ref.kind | 0);
+		writeStar(out.star, star, key, ctx);
+		architecture(seed, star, ARCH_SCRATCH);
+		out.counts.planets = ARCH_SCRATCH.n;
+		out.counts.terranCount = 0;
+		out.counts.giantCount = 0;
+		walkPlanets(seed, star, ARCH_SCRATCH, out, null);
+		belts(seed, star, ARCH_SCRATCH, out.belts);
+		return out;
+	}
+
+	// The summary tier (plan §4.10): the same star, the same seed, the same
+	// walk — with the record's columns left untouched. The belt count is the
+	// one belt fact a search reads (§5.1's `needsBelt`), and it comes from the
+	// same `belts()` pass, into a scratch slot that no caller can see.
+	function systemSummary(ref, ctx, out) {
+		const model = ctx.model;
+		const star = stellarInputs(ref, ctx, STAR_SCRATCH);
+		const seed = systemSeed(identityKey(ref, model.seed), model.seed, ref.kind | 0);
+			architecture(seed, star, ARCH_SCRATCH);
+			resetSummary(out);
+			out.count = ARCH_SCRATCH.n;
+			walkPlanets(seed, star, ARCH_SCRATCH, null, out);
+		belts(seed, star, ARCH_SCRATCH, BELT_SCRATCH);
+		out.beltCount = BELT_SCRATCH.count;
+		return out;
+	}
+
+	// --- Designations (plan §4.11) ------------------------------------------
+
+	const BASE36 = (function () {
+		const digits = new Uint8Array(36);
+		for (let i = 0; i < 10; i++) digits[i] = 48 + i;      // '0' … '9'
+		for (let i = 10; i < 36; i++) digits[i] = 55 + i;     // 'A' … 'Z'
+		return digits;
+	})();
+
+	// The reusable buffer §4.11 asks for: written by the writers below, turned
+	// into text only when something changes (the 4 Hz readout, a hover) —
+	// never concatenated in a frame.
+	const DESIGNATION = new Uint8Array(DESIGNATION_CAPACITY);
+
+	// "S" + the key's uppercase base36, shortest form: no zero padding, so a
+	// landmark-sized key and a small one read the same way.
+	function writeStarDesignation(key, out, off) {
+		let k = key >>> 0;
+		let digits = 1;
+		for (let t = k; t >= 36; t = (t / 36) | 0) digits++;
+		const end = off + 1 + digits;
+		out[off] = 83;                                        // 'S'
+		for (let i = end - 1; i > off; i--) {
+			out[i] = BASE36[k % 36];
+			k = (k / 36) | 0;
+		}
+		return end;
+	}
+
+	// " b", " c", … in `a` order — the IAU lowercase series, never 'a'. With
+	// MAX_PLANETS = 12 the letter stops at 'm', so the two-letter continuation
+	// is unreachable.
+	function writePlanetLetter(index, out, off) {
+		out[off] = 32;                                        // ' '
+		out[off + 1] = 98 + (index & 0x7F);                   // 'b' + index
+		return off + 2;
+	}
+
+	// "belt 1" / "belt 2" in radius order — the slot, not the kind: a system
+	// whose only belt is the Kuiper analog still has a belt 1, because the
+	// record's slots are already radius-ordered (§4.7).
+	function writeBeltName(slot, out, off) {
+		out[off] = 98; out[off + 1] = 101; out[off + 2] = 108; out[off + 3] = 116;
+		out[off + 4] = 32;
+		out[off + 5] = 49 + (slot & 0x07);                    // '1' + slot
+		return off + 6;
+	}
+
+	// The one place a designation becomes a string (plan §4.11): the 4 Hz
+	// readout and the hover change, never a per-frame draw.
+	function designationToString(out, end) {
+		let text = '';
+		for (let i = 0; i < end; i++) text += String.fromCharCode(out[i]);
+		return text;
+	}
+
+	// The §4.10/§2.6 star record, architecture and thermal records are reused
+	// across calls (module scope, like `ARCH_CDF`): every entry point is
+	// synchronous and writes its caller's `out`, so there is nothing to nest.
+	const STAR_SCRATCH = createStellarInputs();
+	const ARCH_SCRATCH = createArchitecture();
+	const THERMAL_SCRATCH = createThermal();
+	const BELT_SCRATCH = createBelts();
+
 	const PlanetsLib = {
 		AU_M, M_SUN_KG, G_SI, M_EARTH_KG, R_EARTH_M, R_SUN_M, TEFF_SUN, RHO_EARTH,
+		NAME_CAPACITY, DESIGNATION_CAPACITY, HOURS_PER_YEAR,
+		FLAG_LOCKED, FLAG_HOT_JUPITER, FLAG_TERRAN, FLAG_IN_HZ,
 		MAX_PLANETS, MAX_BELTS, STIPPLE_N, A_SNOW_K, HZ_S_IN, HZ_S_OUT, K_HILL,
 		STAR_CLEARANCE, DISK_OUT_AU, A_LOCK, S_EXTREME, S_LOCK, S_HOT_JUPITER,
 		RUNAWAY_DT, RUNAWAY_ALBEDO, TERRAN_DT_BASE, TERRAN_DT_SPAN, TERRAN_DT_MAX,
@@ -1046,10 +1404,11 @@
 		CLASS_MASS_BRACKETS, CLASS_TEFF_BANDS,
 		systemSeed, landmarkKey, catalogKey,
 		massFromLuminosity, massFromClassAndMag, luminosityFromMag, stellarRadius,
-		teffForClass, stateForClass, stellarInputs,
+		teffForClass, stateForClass, createStellarInputs, stellarInputs,
 		fZFactor, muForClass, bulkWeightsFor, bulkCdfFor, planetCount, expectedPlanetCount,
 		AU_PER_R_SUN, M_EARTH_SUN,
-		innerEdgeAU, outerEdgeAU, hillPushFactor, drawBulkIndex, massForBulk,
+		innerEdgeAU, outerEdgeAU, hillRatio, hillPushFactor, drawBulkIndex, massForBulk,
+		radiusFor, planetDensity,
 		createArchitecture, architecture,
 		BAND_REFINEMENT_SIZE, PLANET_BAND_DISPLAY, PLANET_DISPLAY_THERMAL_INDEX,
 		insolation, hzInnerAU, hzOuterAU, equilibriumTemp, planetBand, massTier,
@@ -1060,6 +1419,9 @@
 		snowLineAU, debrisFade, beltPresence, giantsInsideBelt, createBelts,
 		beltStippleSeed, fillStipple, belts,
 		moonCount,
+		createSystemRecord, createSystemSummary, identityKey, generateSystem, systemSummary,
+		BASE36, DESIGNATION, writeStarDesignation, writePlanetLetter, writeBeltName,
+		designationToString,
 	};
 	if (typeof module !== 'undefined') module.exports = PlanetsLib;
 	if (typeof window !== 'undefined') window.PlanetsLib = PlanetsLib;
