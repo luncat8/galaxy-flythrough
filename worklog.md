@@ -8,7 +8,7 @@ Implementation history is grouped by release series. Append entries to the match
 | 0.1.x | [0.1.x worklog](archive/0.1.x-worklog.md) | Initial planning, experiments, runtime, streaming, cameras, landmarks and HDR |
 | 0.3.x | [0.3.x worklog](archive/0.3.x-worklog.md) | 0.3/0.4 planning, GalaxyModel, galaxy types and distributions, composite objects, nebula billboards, galaxy age |
 | 0.4.x | [0.4.x worklog](archive/0.4.x-worklog.md) | Kinematic orbits, star-time control, group kinematics, wave-damping capture, simple and apocenter-guided engines, giant-branch evolution, HDR headroom/desat knobs, realistic 3D shapes (bar peanut, truncation floors, age–height coupling), settings presets, engine-mask dispatch |
-| 0.5.x | [0.5.x worklog](archive/0.5.x-worklog.md) | Planet series: planning entry, then 0.5.0 star selection implemented (identity keys, `pickAny` over all five blocks with engine-mask dispatch parity, the snapshot selection set, radius select, fly-to, set rings) |
+| 0.5.x | [0.5.x worklog](archive/0.5.x-worklog.md) | Planet series: planning entry, then 0.5.0 star selection implemented (identity keys, `pickAny` over all five blocks with engine-mask dispatch parity, the snapshot selection set, radius select, fly-to, set rings), 0.5.1 the lazy planet-system generator, 0.5.2 star and planet search (two-stage scan, scope fallback, preset token, `#sysread`) |
 
 No separate 0.2 implementation entry exists in the original log. The combined
 0.3/0.4 planning entry lives in 0.3.x; 0.4.x implementation entries live in the
@@ -33,8 +33,9 @@ in [a separate plan](deferred-browser-visual-plan.md), not completed or blocking
 See the 2026-10-11 triage entry in the 0.4.x log for reproduced failures and scope.
 
 Next series: [the 0.5 planet generator](0.5.0-plan-planet-generator.md). 0.5.0 (star
-selection) is implemented — see the 2026-10-12 entry in the 0.5.x log — and 0.5.1 (the
-lazy deterministic planet-system generator) is next. It is CPU-only and additive, so it
+selection), 0.5.1 (the lazy deterministic planet-system generator) and 0.5.2 (star and
+planet search) are implemented — see the 2026-10-12 entries in the 0.5.x log — and 0.5.3
+(the close-system schematic view) is next. The series is CPU-only and additive, so it
 neither blocks nor depends on the parity work — with one coupling, stated in the plan:
 0.5.0's arbitrary-star picker dispatches positions through the same engine-mask law the
 parity plan pins, and until a field-star `simple` mirror exists the picker approximates

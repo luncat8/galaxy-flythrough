@@ -463,6 +463,19 @@
 				aHzIn: 0, aHzOut: 0, aSnow: 0, aOut: 0,
 				name: new Uint8Array(NAME_MAX),
 			},
+			// The per-planet environment the search's range filters read
+			// (§5.1: tsurf, teq, mass, a). The walk classifies every planet
+			// before the orbit side is skipped, so these are the same values
+			// the full record writes — recorded here in both tiers, never
+			// re-derived, so a summary and a full walk cannot disagree.
+			env: {
+				a: new Float64Array(MAX_PLANETS),
+				mass: new Float64Array(MAX_PLANETS),
+				teq: new Float64Array(MAX_PLANETS),
+				tsurf: new Float64Array(MAX_PLANETS),
+				display: new Uint8Array(MAX_PLANETS),
+			},
+			envCount: 0,
 			planetCount: 0,
 			beltCount: 0,
 			terranCount: 0,
@@ -610,7 +623,8 @@
 		const hash01At = hash.hash01At;
 		const pcgHash = hash.pcgHash;
 		// A record is reused across calls, so the histograms start empty: what a
-		// caller reads is this system, not the sum of the two.
+		// caller reads is this system, not the sum of the two. The env block is
+		// bounded by envCount instead of reset — a reader never passes it.
 		out.bulkHistogram.fill(0);
 		out.typeHistogram.fill(0);
 		out.bestTerranA = 0;
@@ -729,6 +743,12 @@
 			if (m > maxPlanetMass) maxPlanetMass = m;
 			out.bulkHistogram[b]++;
 			out.typeHistogram[info.display]++;
+			const env = out.env;
+			env.a[p] = a;
+			env.mass[p] = m;
+			env.teq[p] = info.teq;
+			env.tsurf[p] = info.tsurf;
+			env.display[p] = info.display;
 			if (!full) continue;
 
 			const radius = BULK_RREF[b] * Math.pow(m / BULK_MREF[b], BULK_P[b]);
@@ -783,6 +803,7 @@
 		}
 
 		out.planetCount = n;
+		out.envCount = n;
 		out.beltCount = beltCount;
 		out.terranCount = terranCount;
 		out.giantCount = giantTotal;

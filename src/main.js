@@ -352,6 +352,11 @@ async function boot() {
                         : `set       ${count} stars within ${formatLy(selectRadiusLy)} of ${selPrimary} · N next · F fly to · X clear`;
                 selectionBox.textContent = primary + '\n' + set;
                 selectionBox.style.display = 'block';
+                // Both readouts share the bottom-left corner: the search
+                // results sit below the selection, so the selection lifts
+                // above them while they are on screen.
+                selectionBox.style.bottom = sysreadBox.style.display === 'none'
+                        ? '' : `${24 + sysreadBox.offsetHeight}px`;
         }
 
         // 0.4.5 simple engine: the CPU landmark mirror's birth table, static
@@ -421,6 +426,165 @@ async function boot() {
         btnSelectFly.addEventListener('click', flyToPrimary);
         btnSelectClear.addEventListener('click', clearSelection);
         syncSelrad();
+
+        // --- Star and planet search (0.5.2) ----------------------------------
+        // One scan over the resident records: stage 1 filters on the record
+        // bytes and the star's own derivation, stage 2 runs the planet
+        // generator's summary tier on the survivors. The scope is the
+        // selection whenever it holds anything and the whole galaxy otherwise
+        // (§5.2), and the readout says which one ran, so the fallback is never
+        // invisible. The filter is preset state; the results are not.
+        const search = window.Search.createSearch();
+        search.setSource({
+                blocks: () => renderer.starBlocks(),
+                field: () => renderer.fieldBuffers(),
+                model: () => model,
+                set: starSet,
+                cameraPos: () => camera.cameraPos,
+        });
+        let searchScope = 'auto';
+        let searchFilter = window.Search.normalizeFilter({});
+        const searchResults = search.results;
+        const sysreadBox = document.getElementById('sysread');
+
+        // The two class/type selects are built from the tables they index, so
+        // a new class or display type appears in the menu without touching
+        // this file. The class option's value is the class name and the type
+        // option's value is the token name Search parses.
+        const searchScopeSel = document.getElementById('search-scope');
+        const searchClass = document.getElementById('search-class');
+        const searchPtype = document.getElementById('search-ptype');
+        const searchTsurfMin = document.getElementById('search-tsurf-min');
+        const searchTsurfMax = document.getElementById('search-tsurf-max');
+        const searchTerran = document.getElementById('search-terran');
+        const searchBelt = document.getElementById('search-belt');
+        const searchBarren = document.getElementById('search-barren');
+        // Both selects start with an "any" (no constraint) option.
+        const anyOption = document.createElement('option');
+        anyOption.value = '';
+        anyOption.textContent = 'any';
+        searchClass.appendChild(anyOption);
+        const anyType = document.createElement('option');
+        anyType.value = '';
+        anyType.textContent = 'any';
+        searchPtype.appendChild(anyType);
+        for (const cls of window.StarRecord.SPECTRAL_CLASSES) {
+                const option = document.createElement('option');
+                option.value = cls;
+                option.textContent = cls;
+                searchClass.appendChild(option);
+        }
+        for (let i = 0; i < window.PlanetsLib.DISPLAY_NAMES.length; i++) {
+                const option = document.createElement('option');
+                option.value = window.Search.TOKEN_TYPES[i];
+                option.textContent = window.PlanetsLib.DISPLAY_NAMES[i].replace('_', ' ');
+                searchPtype.appendChild(option);
+        }
+
+        // An empty number field is an unbounded side, not a zero: "Tsurf up to
+        // 300 K" must not also demand at least 0 K of nothing.
+        function fieldNumber(input) {
+                const value = Number(input.value);
+                return input.value.trim() === '' || !Number.isFinite(value) ? undefined : value;
+        }
+
+        function readSearchFilter() {
+                const classIndex = searchClass.value === '' ? -1
+                        : window.StarRecord.spectralClassIndex(searchClass.value);
+                const typeIndex = searchPtype.value === '' ? -1
+                        : window.Search.TOKEN_TYPES.indexOf(searchPtype.value);
+                return window.Search.normalizeFilter({
+                        classes: classIndex >= 0 ? window.Search.classBit(classIndex) : 0,
+                        planetTypes: typeIndex >= 0 ? window.Search.planetTypeBit(typeIndex) : 0,
+                        tsurfMin: fieldNumber(searchTsurfMin),
+                        tsurfMax: fieldNumber(searchTsurfMax),
+                        terranOnly: searchTerran.checked,
+                        needsBelt: searchBelt.checked,
+                        barrenOnly: searchBarren.checked,
+                });
+        }
+
+        // A pasted preset restores the whole filter, including the fields the
+        // menu does not expose: the controls show what they can, and the
+        // canonical filter keeps the rest for the next serialize.
+        function writeSearchControls(filter) {
+                const classes = [], types = [];
+                for (let i = 0; i < window.StarRecord.SPECTRAL_CLASSES.length; i++) {
+                        if ((filter.classMask >>> i) & 1) classes.push(window.StarRecord.SPECTRAL_CLASSES[i]);
+                        if ((filter.planetTypeMask >>> i) & 1) types.push(window.Search.TOKEN_TYPES[i]);
+                }
+                searchClass.value = classes.length === 1 ? classes[0] : '';
+                searchPtype.value = types.length === 1 ? types[0] : '';
+                searchTsurfMin.value = filter.tsurfMin > 0 ? String(filter.tsurfMin) : '';
+                searchTsurfMax.value = filter.tsurfMax < Infinity ? String(filter.tsurfMax) : '';
+                searchTerran.checked = filter.terranOnly;
+                searchBelt.checked = filter.needsBelt;
+                searchBarren.checked = filter.barrenOnly;
+        }
+
+        // The result list, top twelve lines (§5.4): designation, class,
+        // distance, matched planet, Tsurf. The selection box sits below it, so
+        // the readout's height pushes it up while both are visible.
+        function updateSysread() {
+                const s = search.stats;
+                const scopeName = s.scope === 'selection' ? 'selected stars' : 'galaxy';
+                const ms = (s.msStage1 + s.msStage2).toFixed(1);
+                let text = `search   ${scopeName}   scanned ${s.scanned.toLocaleString()}`
+                        + `   matched ${s.matched.toLocaleString()}`
+                        + (s.truncated ? `   nearest ${searchResults.count} shown` : '')
+                        + `   ${ms} ms\n`;
+                const shown = Math.min(searchResults.count, 12);
+                for (let i = 0; i < shown; i++) {
+                        const o = i * 4;
+                        const type = searchResults.best[o + 3];
+                        const planet = type > 0
+                                ? `${window.PlanetsLib.DISPLAY_NAMES[type]}  a ${searchResults.best[o].toFixed(2)} AU  ${searchResults.best[o + 2].toFixed(0)} K`
+                                : '—';
+                        text += `${starDisplayName(searchResults.keys[i], searchResults.slot[i]).padEnd(10)}`
+                                + `${window.StarRecord.SPECTRAL_CLASSES[searchResults.class[i]].padEnd(4)}`
+                                + `${formatDistance(searchResults.dist[i]).padStart(12)}   ${planet}\n`;
+                }
+                sysreadBox.textContent = text;
+                sysreadBox.style.display = 'block';
+                updateSelectionBox();
+        }
+
+        function clearSearchReadout() {
+                sysreadBox.style.display = 'none';
+                sysreadBox.textContent = '';
+                updateSelectionBox();
+        }
+
+        function runSearch() {
+                searchFilter = readSearchFilter();
+                searchScope = ['auto', 'selection', 'galaxy'].includes(searchScopeSel.value)
+                        ? searchScopeSel.value : 'auto';
+                search.run(searchFilter, searchScope);
+                updateSysread();
+        }
+
+        // Every control re-runs the scan on commit: the readout is the answer
+        // to what the menu currently says, and a half-edited filter is never
+        // what the preset line carries.
+        for (const control of [searchScopeSel, searchClass, searchPtype, searchTsurfMin,
+                searchTsurfMax, searchTerran, searchBelt, searchBarren]) {
+                control.addEventListener('change', runSearch);
+        }
+        document.getElementById('search-run').addEventListener('click', runSearch);
+        document.getElementById('search-add').addEventListener('click', () => {
+                // The same capacity and nearest-first rules as §3.2: a search
+                // becomes a working set for a route in one click, and the
+                // primary stays where it was unless the set was empty.
+                const hadPrimary = starSet.count() > 0;
+                const primaryKey = starSet.primary();
+                for (let i = 0; i < searchResults.count; i++) {
+                        starSet.addStar(searchResults.keys[i], searchResults.dist[i]);
+                }
+                if (!hadPrimary && starSet.count() > 0) setPrimaryKey(starSet.primary());
+                else if (hadPrimary) starSet.setPrimary(primaryKey);
+                syncSelection();
+        });
+        document.getElementById('search-clear').addEventListener('click', clearSearchReadout);
 
         // Brightness slider is linear in multiplier (0.125 – 8.0), not stops,
         // so dragging it feels proportional — stops-based sliders jump at the
@@ -610,6 +774,12 @@ async function boot() {
                         headroom: renderer.state.headroom,
                         highlight: renderer.state.highlightDesat,
                         selrad: selectRadiusLy,
+                        // The search filter and the scope it ran in: the query
+                        // is part of the settings, so a pasted preset
+                        // reproduces it. The results are not — they are
+                        // transient, like the camera position.
+                        search: window.Search.serializeFilter(searchFilter),
+                        scope: searchScope,
                         // The selection contents, primary first: the keys are
                         // stable identities, so the working set survives the
                         // copy and another viewer reproduces it.
@@ -658,6 +828,19 @@ async function boot() {
                 if (s.selrad !== undefined) {
                         selectRadiusLy = s.selrad;
                         syncSelrad();
+                }
+                // A pasted search: the filter into the controls (and the
+                // canonical struct, for the fields the menu does not expose),
+                // the scope into its select, then the query runs again — the
+                // plan's "a pasted preset should reproduce the same query".
+                if (s.search !== undefined || s.scope !== undefined) {
+                        if (s.scope !== undefined) {
+                                searchScope = ['auto', 'selection', 'galaxy'].includes(s.scope) ? s.scope : 'auto';
+                                searchScopeSel.value = searchScope;
+                        }
+                        searchFilter = window.Search.parseFilter(s.search || '');
+                        writeSearchControls(searchFilter);
+                        runSearch();
                 }
                 // The pasted selection is restored in serialized order, which is
                 // nearest-first with the primary at slot 0. Distances are the
@@ -834,6 +1017,8 @@ async function boot() {
                 // Another galaxy is another set of stars: the identity keys
                 // name stars this model does not have, so the set goes with it.
                 clearSelection();
+                // …and a result list naming stars of the old galaxy with it.
+                clearSearchReadout();
                 syncGalaxyControls();
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
@@ -850,7 +1035,11 @@ async function boot() {
                 // valid — re-seeding either side would snap the epoch. The
                 // selection stays valid for the same reason (the set holds
                 // positions' identities, not derived stellar inputs, so there
-                // is nothing to re-derive until 0.5.1 adds them).
+                // is nothing to re-derive until 0.5.1 adds them). A search
+                // result's planet columns *are* re-derived by the new
+                // population, so the readout is dismissed rather than left
+                // naming the previous epoch's worlds.
+                clearSearchReadout();
                 syncGalaxyControls();
                 updateOverlay(renderer.state, camera.getState(statsText));
         }

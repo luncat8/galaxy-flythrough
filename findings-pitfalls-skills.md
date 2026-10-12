@@ -4,6 +4,41 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-10-12 — A parity fixture must feed the reference the same derived-path inputs, and classic `<script>` tags share one global scope
+
+Five traps met while shipping 0.5.2's search (`experiments/search-test.js`):
+
+1. **When a scan disagrees with a reference evaluation, check whose ref is wrong first.**
+   The first parity run mismatched on mass, planet-type and tsurf filters — mixed
+   directions, small counts. The reference built `stellarInputs` refs without the record's
+   `colorIndex`/`absMag`, so `recordInputs` silently fell back to its solar defaults (G,
+   M_V 4.83) for every landmark, catalog and local record: masses near 1 M☉, planets
+   re-rolled. The fix was in the test, not the module. Rule: a ref handed to a derived-path
+   function carries the packed word's two derived fields or it does not carry the star.
+2. **Classic `<script>` tags put every top-level `const` in one global scope.** `core/search.js`
+   declared `COMPONENT_THIN`/`COMPONENT_NAMES` at top level; `math/density.js` already owns
+   both. Result: a `SyntaxError` at boot, caught by `m1-smoke-test.js`'s page-order vm run,
+   invisible to any per-file `require()` test. A file loaded by `<script>` must either live
+   in an IIFE (like `math/planets.js`) or prefix its file-local constants (`BIT_THIN`);
+   the public names then live as properties of the module's API object.
+3. **Stage-2 timing belongs around the summary call, not the whole loop.** `msStage1` is
+   derived as (total − msStage2), so a `performance.now()` per *matched* record distorts
+   only the planet path, and a class-only filter reports stage 2 as exactly 0.0 ms — which
+   is the pin that proves no planet work ran at all.
+4. **Luminosity bounds fold into magnitude bounds.** `lumMin/lumMax` and the record's
+   absolute magnitude are the same number under `M_V = 4.83 − 2.5·log10 L`, and they are
+   monotone in opposite directions. Comparing the packed magnitude byte (after two log10s
+   at filter-normalize time) avoids a `log10` per star at 300k.
+5. **A selection scope is a hash set, not 256 passes.** With a ≤256-member set, walking
+   300k records once with an open-addressing membership table (rebuilt per scan, `fill(0)`
+   and insert) costs ~1.5 ms; a key→slot resolution per member would be 256 walks.
+
+Also worth doing after any `run.py all-tests`: the run rewrites the `date` field of every
+log it touches (and machine timings in a few), which turns a clean diff into noise. Revert
+the date/timing-only ones and keep the logs whose content genuinely changed.
+
+---
+
 ## 2026-10-12 — A CPU pick over an evolving star field pays one dispatch per record; measure it, and make capped insertions short-circuit
 
 Five things met while pinning 0.5.0's picker (`experiments/star-select-test.js`):

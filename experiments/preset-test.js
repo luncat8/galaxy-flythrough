@@ -36,6 +36,7 @@ const SETTINGS = {
 	time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
 	exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
 	selrad: 50, selstars: [123456789, 4294967295, 7],
+	search: 'cls=G,K;pt=terran;ts=220-300', scope: 'galaxy',
 	stars: 300000, catalog: 250000,
 };
 
@@ -65,9 +66,37 @@ check('serialize → parse is the identity on a non-default system', () => {
 		time: -1, wave: 0, pattern: 2.5, apoShare: 1, apoForce: 0,
 		exposure: 18.5, brightness: 0.125, white: 16, sat: 0.5, headroom: 1, highlight: 0,
 		selrad: 0.1, selstars: [1, 2, 3],
+		scope: 'selection',
 		stars: 50000, catalog: 0,
 	});
 	assert.deepEqual(Presets.parse(Presets.serialize(other)), other);
+});
+
+check('the search filter rides the settings line as one token and stays out of the prompt', () => {
+	const query = Presets.serialize(SETTINGS);
+	assert.equal(new URLSearchParams(query).get('search'), 'cls=G,K;pt=terran;ts=220-300');
+	assert.equal(new URLSearchParams(query).get('scope'), 'galaxy');
+	// An empty filter is absent, like an empty selection: the default query is
+	// no constraint, not a token that carries none.
+	assert.ok(!Presets.serialize(Object.assign({}, SETTINGS, { search: '' })).includes('search='));
+	const described = Presets.describe(SETTINGS);
+	assert.ok(described.search === undefined && described.scope === undefined);
+	const prompt = Presets.buildLlmPrompt(SETTINGS);
+	assert.ok(!/220-300/.test(prompt), 'the search filter leaked into the prompt');
+});
+
+check('the search token round-trips through Search, not through a private parser', () => {
+	const Search = require('../src/core/search.js');
+	const query = Presets.serialize(SETTINGS);
+	const parsed = Presets.parse(query);
+	const filter = Search.normalizeFilter(Search.parseFilter(parsed.search));
+	assert.equal(parsed.search, Search.serializeFilter(filter));
+	assert.equal(filter.classMask, Search.classBit(4) | Search.classBit(5));
+	assert.equal(filter.planetTypeMask, Search.planetTypeBit(3));
+	assert.equal(filter.tsurfMin, 220);
+	assert.equal(filter.tsurfMax, 300);
+	assert.equal(Search.serializeFilter(Search.parseFilter('mass=0.5-1.5;minp=3;flag=terran+belt+noplanets;pt=gas-giant,ice-giant')),
+		'mass=0.5-1.5;pt=gas-giant,ice-giant;minp=3;flag=terran+belt+noplanets');
 });
 
 // --- disabled passes are not part of the preset -----------------------------
@@ -309,6 +338,29 @@ check('main.js wires collect, apply, clipboard, file and prompt through Presets'
 	]) {
 		assert.ok(main.includes(snippet), snippet);
 	}
+});
+
+check('the search is wired end to end: controls, readout, set and preset', () => {
+	const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
+	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
+	// The menu block's controls and the readout the plan names (§5.4).
+	for (const id of ['search-scope', 'search-class', 'search-ptype', 'search-tsurf-min',
+		'search-tsurf-max', 'search-terran', 'search-belt', 'search-barren',
+		'search-run', 'search-add', 'search-clear', 'sysread']) {
+		assert.equal(html.split(`id="${id}"`).length, 2, id);
+	}
+	// The scanner's source, the preset fields and the results-to-set push.
+	for (const snippet of [
+		'window.Search.createSearch()', 'search.setSource({',
+		'search: window.Search.serializeFilter(searchFilter),', 'scope: searchScope,',
+		'window.Search.parseFilter(s.search || \'\')', 'runSearch();',
+		'starSet.addStar(searchResults.keys[i], searchResults.dist[i]);',
+	]) {
+		assert.ok(main.includes(snippet), snippet);
+	}
+	// A new galaxy is another set of stars, so the readout goes with the
+	// selection rather than naming stars this model does not have.
+	assert.ok(main.includes('clearSearchReadout();'), 'stale readout discarded');
 });
 
 const failed = checks.filter((c) => !c.pass).length;

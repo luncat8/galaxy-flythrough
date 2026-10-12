@@ -17,6 +17,14 @@
       "pass": true
     },
     {
+      "name": "the search filter rides the settings line as one token and stays out of the prompt",
+      "pass": true
+    },
+    {
+      "name": "the search token round-trips through Search, not through a private parser",
+      "pass": true
+    },
+    {
       "name": "serialize drops the fields of a pass that is not selected",
       "pass": true
     },
@@ -90,6 +98,10 @@
     },
     {
       "name": "main.js wires collect, apply, clipboard, file and prompt through Presets",
+      "pass": true
+    },
+    {
+      "name": "the search is wired end to end: controls, readout, set and preset",
       "pass": true
     }
   ],

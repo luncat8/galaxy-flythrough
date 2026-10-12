@@ -11,6 +11,7 @@
         <canvas id="labels"></canvas>
         <pre id="overlay"></pre>
         <pre id="selection" style="display:none"></pre>
+        <pre id="sysread" style="display:none"></pre>
         <pre id="error" style="display:none"></pre>
         <div id="menu">
                 <div class="menu-header">
@@ -115,6 +116,40 @@
                         <input type="range" id="slider-selrad" min="0" max="100" step="0.01" value="44.98">
                         <span id="val-selrad" class="menu-val">50 ly</span>
                 </div>
+                <div class="menu-header menu-header-galaxy"><span>Search</span></div>
+                <div class="menu-row">
+                        <label for="search-scope" title="What the scan covers. Auto searches the selection when it holds stars, the whole galaxy when it does not.">Scope</label>
+                        <select id="search-scope">
+                                <option value="auto" selected>auto — selection or galaxy</option>
+                                <option value="selection">selected stars</option>
+                                <option value="galaxy">whole galaxy</option>
+                        </select>
+                </div>
+                <div class="menu-row">
+                        <label for="search-class">Spectral class</label>
+                        <select id="search-class"></select>
+                </div>
+                <div class="menu-row">
+                        <label for="search-ptype" title="A star matches when any of its planets is of this display type.">Planet type</label>
+                        <select id="search-ptype"></select>
+                </div>
+                <div class="menu-row">
+                        <label for="search-tsurf-min" title="Surface temperature range in kelvin, on any planet of the star.">Tsurf K</label>
+                        <span class="search-range">
+                                <input type="number" id="search-tsurf-min" min="0" max="2000" step="10" placeholder="min">
+                                <input type="number" id="search-tsurf-max" min="0" max="2000" step="10" placeholder="max">
+                        </span>
+                </div>
+                <div class="menu-row search-checks">
+                        <label><input type="checkbox" id="search-terran"> terran only</label>
+                        <label><input type="checkbox" id="search-belt"> has belt</label>
+                        <label><input type="checkbox" id="search-barren"> no planets</label>
+                </div>
+                <div class="menu-row menu-actions">
+                        <button id="search-run" title="Scan the resident records and list the matches in the readout">Search</button>
+                        <button id="search-add" title="Push the results into the selection set, nearest first">Add to selection</button>
+                        <button id="search-clear" title="Dismiss the result list">Clear</button>
+                </div>
                 <div class="menu-header menu-header-galaxy"><span>Preset</span></div>
                 <div class="menu-row preset-actions" id="preset-builtin"></div>
                 <div class="menu-row preset-row">
@@ -179,6 +214,7 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
         <script src="core/input.js"></script>
         <script src="core/star-set.js"></script>
         <script src="core/selection.js"></script>
+        <script src="core/search.js"></script>
         <script src="core/loop.js"></script>
         <script src="core/presets.js"></script>
         <!-- Data after math (landmarks bake their positions through coords.js at

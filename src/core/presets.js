@@ -35,6 +35,12 @@ const FIELDS = [
 	{ key: 'apoShare', label: 'apocenter stars', engine: 'apocenter' },
 	{ key: 'apoForce', label: 'apocenter force', engine: 'apocenter' },
 	{ key: 'selrad', label: 'select radius', unit: ' ly', prompt: false },
+	// The search filter as one compact token (Search's grammar, e.g.
+	// `cls=G,K;pt=terran;ts=220-300`) and the scope the scan ran in. Both are
+	// `prompt: false` like the working set: the LLM prompt describes the
+	// galaxy, not what this viewer asked of it.
+	{ key: 'search', label: 'search filter', text: true, prompt: false },
+	{ key: 'scope', label: 'search scope', text: true, prompt: false },
 	// The selection's keys, primary first, '.'-separated. §3.2 keeps the set as
 	// identities rather than buffer slots, so the contents survive a camera
 	// move and a pasted line reproduces the same working set. `prompt: false`
@@ -175,6 +181,10 @@ function parse(query) {
 		}
 		if (field.key === 'type') {
 			out.type = raw;
+			continue;
+		}
+		if (field.text) {
+			out[field.key] = raw;
 			continue;
 		}
 		if (field.list) {

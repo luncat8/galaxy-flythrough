@@ -46,8 +46,25 @@ html, body {
 	pointer-events: none;
 }
 
-/* The selection readout (0.5.0): the primary star and its set. Anchored
-   bottom-left, clear of the overlay above and the key legend beside it. */
+/* The system readout (0.5.2): search results now, the open system later.
+   Bottom-left, where the selection box also sits — main.js lifts the
+   selection above it while the readout is visible, so the two never overlap. */
+#sysread {
+	position: fixed;
+	bottom: 12px;
+	left: 12px;
+	max-width: min(640px, calc(100vw - 24px));
+	font-family: 'Menlo', 'Consolas', monospace;
+	font-size: 12px;
+	line-height: 1.5;
+	color: #a8cbe0;
+	background: rgba(0, 0, 0, 0.5);
+	padding: 8px 12px;
+	border-radius: 4px;
+	white-space: pre;
+	overflow: hidden;
+	pointer-events: none;
+}
 #selection {
 	position: fixed;
 	bottom: 12px;
@@ -239,8 +256,24 @@ html, body {
 .engine-checks label { display: inline-flex; gap: 3px; align-items: center; cursor: pointer; }
 .engine-checks input { accent-color: #6fae6f; }
 
-/* Preset row: the copy/paste box spans both columns; the buttons wrap. */
-.preset-row textarea {
+/* Search block (0.5.2): the Tsurf range is two number fields sharing the
+   row's wide column; the checkboxes wrap beside their labels. */
+.search-range {
+	grid-column: 1 / -1;
+	display: flex;
+	gap: 6px;
+}
+.search-range input { flex: 1 1 0; min-width: 0; }
+.search-checks {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 10px;
+	color: #a9c9a9;
+}
+.search-checks label { display: inline-flex; gap: 3px; align-items: center; cursor: pointer; }
+.search-checks input { accent-color: #6fae6f; }
+
+/* Preset row: the copy/paste box spans both columns; the buttons wrap. */.preset-row textarea {
 	grid-column: 1 / -1;
 	width: 100%;
 	background: #0e1b0e;

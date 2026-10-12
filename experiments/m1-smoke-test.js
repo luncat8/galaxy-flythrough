@@ -78,17 +78,17 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 // --- 2. No global is read before it is defined --------------------------
 {
 	const BROWSER_GLOBALS = new Set([
-		'devicePixelRatio', 'innerWidth', 'innerHeight', 'addEventListener', 'removeEventListener',
-		'requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'location', 'navigator',
-		'matchMedia', 		'Device', 'Presets', 'GalaxyShaders', 'HashLib', 'DensityLib', 'GalaxyLib', 'SamplingLib',
-		'StarRecord', 'StarTypesLib', 'NebulaLib', 'ObjectsLib', 'Coords', 'Camera', 'Input', 'Loop', 'Selection',
-		'StarSet',
-		'Landmarks', 'Constellations', 'StarRenderer', 'LabelLayer',
-		'TileLoader', 'CellManager', '__galaxy_catalog', 'self', 'document', 'setTimeout',
-	]);
-	const defined = new Set();
-	const undefinedReads = [];
-	const NAMESPACES = ['Device', 'Camera', 'Input', 'Loop', 'Selection', 'StarSet', 'Presets', 'StarRenderer', 'LabelLayer',
+ 		'devicePixelRatio', 'innerWidth', 'innerHeight', 'addEventListener', 'removeEventListener',
+ 		'requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'location', 'navigator',
+ 		'matchMedia', 		'Device', 'Presets', 'GalaxyShaders', 'HashLib', 'DensityLib', 'GalaxyLib', 'SamplingLib',
+ 		'StarRecord', 'StarTypesLib', 'NebulaLib', 'ObjectsLib', 'Coords', 'Camera', 'Input', 'Loop', 'Selection',
+ 		'StarSet', 'Search',
+ 		'Landmarks', 'Constellations', 'StarRenderer', 'LabelLayer',
+ 		'TileLoader', 'CellManager', '__galaxy_catalog', 'self', 'document', 'setTimeout',
+ 	]);
+ 	const defined = new Set();
+ 	const undefinedReads = [];
+ 	const NAMESPACES = ['Device', 'Camera', 'Input', 'Loop', 'Selection', 'StarSet', 'Search', 'Presets', 'StarRenderer', 'LabelLayer',
 		'TileLoader', 'CellManager', 'GalaxyShaders', 'HashLib', 'DensityLib', 'GalaxyLib', 'SamplingLib',
 		'StarRecord', 'StarTypesLib', 'NebulaLib', 'ObjectsLib', 'Coords', 'Landmarks', 'Constellations'];
 	for (const file of scripts) {
@@ -118,9 +118,10 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		['../src/math/sampling.js', 'SamplingLib'], ['../src/math/star-record.js', 'StarRecord'],
 		['../src/math/star-types.js', 'StarTypesLib'], ['../src/math/planets.js', 'PlanetsLib'], ['../src/math/orbit.js', 'OrbitLib'], ['../src/math/nebula.js', 'NebulaLib'],
 		['../src/math/objects.js', 'ObjectsLib'], ['../src/math/coords.js', 'Coords'],
-		['../src/core/camera.js', 'Camera'], ['../src/core/input.js', 'Input'],
-		['../src/core/selection.js', 'Selection'], ['../src/core/star-set.js', 'StarSet'],
-		['../src/core/loop.js', 'Loop'],
+ 		['../src/core/camera.js', 'Camera'], ['../src/core/input.js', 'Input'],
+ 		['../src/core/selection.js', 'Selection'], ['../src/core/star-set.js', 'StarSet'],
+ 		['../src/core/search.js', 'Search'],
+ 		['../src/core/loop.js', 'Loop'],
 		['../src/core/presets.js', 'Presets'],
 		['../src/core/device.js', 'Device'],
 		['../src/data/landmarks.js', 'Landmarks'], ['../src/data/constellations.js', 'Constellations'],
