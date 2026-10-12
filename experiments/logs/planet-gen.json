@@ -1,0 +1,745 @@
+{
+  "date": "2026-10-12T15:57:20.176Z",
+  "model": {
+    "type": "SBb",
+    "seed": 42
+  },
+  "stats": {
+    "occurrence": [
+      {
+        "label": "G",
+        "mean": 0.8198,
+        "analytic": 0.8250464765429275,
+        "p0": 0.45585,
+        "analyticP0": 0.45454545454545453,
+        "atCapacity": 0,
+        "histogram": [
+          9117,
+          6795,
+          2978,
+          860,
+          197,
+          43,
+          8,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "label": "M",
+        "mean": 1.0141,
+        "analytic": 1.019486403782106,
+        "p0": 0.3847,
+        "analyticP0": 0.3846153846153846,
+        "atCapacity": 0,
+        "histogram": [
+          7694,
+          6829,
+          3645,
+          1328,
+          371,
+          109,
+          18,
+          6,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "metallicity": {
+      "haloZ": 0.001,
+      "bulgeZ": 0.035,
+      "haloFraction": 0.012920526572403706,
+      "bulgeFraction": 0.31781290046988464,
+      "ratio": 24.59751920240503
+    },
+    "wd": {
+      "systems": 6000,
+      "belted": 5133,
+      "planets": 840,
+      "outside": 0,
+      "otherBulk": 0
+    },
+    "giant": {
+      "systems": 6000,
+      "planets": 2028,
+      "insideStar": 0,
+      "innerBulks": 305
+    },
+    "blocks": {
+      "proceduralExact": 64,
+      "sirius": {
+        "mass": 2.186764240725495,
+        "lum": 22.866929548811942,
+        "spec": 2,
+        "age": 4.12866466440688
+      },
+      "objectMember": {
+        "mass": 0.15890727718173328,
+        "age": 11.191203402588144,
+        "freshMass": 0.15890727718173328,
+        "freshAge": 11.191203402588144
+      },
+      "catalog": {
+        "mass": 0.1604048115261939,
+        "age": 10.503263154203744,
+        "spec": 6
+      }
+    },
+    "heap": {
+      "trials": [
+        -1002064,
+        -1002016,
+        -1001800,
+        1059264,
+        1882560
+      ],
+      "median": -1001800,
+      "exposedGc": false
+    },
+    "timings": {
+      "generateUs": 1.595,
+      "summaryUs": 1.02
+    }
+  },
+  "totalChecks": 75,
+  "passed": 75,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "the module exposes the record factories, the generators and the readers",
+      "pass": true,
+      "detail": 136
+    },
+    {
+      "name": "the same key regenerates a bit-identical system (no PRNG, no clock)",
+      "pass": true
+    },
+    {
+      "name": "a different block yields a different system (§2.3 domain separation)",
+      "pass": true,
+      "detail": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "a different galaxy seed yields a different system",
+      "pass": true,
+      "detail": [
+        39.91250508420078,
+        0.19263696690343216
+      ]
+    },
+    {
+      "name": "the module owns one shared record of each tier, and only the full one has orbits",
+      "pass": true
+    },
+    {
+      "name": "a reused record reports only its new system (histograms are reset)",
+      "pass": true,
+      "detail": {
+        "wide": 0,
+        "next": 2
+      }
+    },
+    {
+      "name": "the Sun (G, M_V 4.83) inverts to 1.000 M☉ ± 0.02",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "the Sun’s luminosity is 1.00 L☉ ± 0.02",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "the Sun’s radius is 1.000 R☉ ± 0.01 (teff comes from the mass table)",
+      "pass": true,
+      "detail": 0.9903681331747918
+    },
+    {
+      "name": "Sirius A (A, M_V 1.43) inverts to 2.0 M☉ ± 0.2",
+      "pass": true,
+      "detail": 2.1877616239495525
+    },
+    {
+      "name": "a K landmark (61 Cyg-class, M_V 7.5) reads 0.70 M☉ ± 0.06",
+      "pass": true,
+      "detail": 0.7
+    },
+    {
+      "name": "a 100 L☉ giant at 4000 K reads 20.8 R☉, inside the real 5–50 range",
+      "pass": true,
+      "detail": 20.822490000000002
+    },
+    {
+      "name": "the mass brackets match the Delfosse skeleton and cover every class",
+      "pass": true,
+      "detail": [
+        16,
+        0.55,
+        0.5
+      ]
+    },
+    {
+      "name": "the class indices agree with StarRecord.SPECTRAL_CLASSES",
+      "pass": true,
+      "detail": "OBAFGKMWDRGRGe"
+    },
+    {
+      "name": "no two features share a hash channel across the whole map",
+      "pass": true,
+      "detail": {
+        "collisions": 0,
+        "channels": 120
+      }
+    },
+    {
+      "name": "the moon channel is outside the planet slots and inside the spare gap",
+      "pass": true,
+      "detail": {
+        "CH_MOON": 128,
+        "lastPlanetChannel": 127
+      }
+    },
+    {
+      "name": "a solar twin’s HZ is 0.976 – 1.690 AU",
+      "pass": true,
+      "detail": [
+        0.9759000729485332,
+        1.6903085094570331
+      ]
+    },
+    {
+      "name": "a solar twin’s snow line is 2.7 AU and its disc ends at 40 AU",
+      "pass": true,
+      "detail": [
+        2.7,
+        40
+      ]
+    },
+    {
+      "name": "TRAPPIST-1 (0.090 M☉) reads L 0.0039 L☉, HZ 0.061 – 0.106 AU, lock radius 0.09 AU",
+      "pass": true,
+      "detail": [
+        0.0039333063361246525,
+        0.06120462428938218,
+        0.09
+      ]
+    },
+    {
+      "name": "Proxima b (0.122 M☉) reads HZ 0.087 – 0.150 AU, lock radius 0.105 AU",
+      "pass": true,
+      "detail": [
+        0.08683986822049704,
+        0.10478549517943789
+      ]
+    },
+    {
+      "name": "the Sun and a 0.30 M☉ star have HZs outside their lock radii",
+      "pass": true,
+      "detail": {
+        "halfSolar": 0.06271607717423541,
+        "lockRadius": 0.1643167672515498,
+        "hzIn": 0.24439639381299313
+      }
+    },
+    {
+      "name": "Mercury (0.387 AU, 0.055 M⊕) reads Teq 433 K, Tsurf 433 K, published 440",
+      "pass": true,
+      "detail": {
+        "teq": 433.33603553456345,
+        "tsurf": 433.33603553456345,
+        "dT": 0,
+        "display": "BARREN",
+        "albedo": 0.12
+      }
+    },
+    {
+      "name": "Venus (0.723 AU, 0.815 M⊕) reads Teq 242 K, +500 runaway, 742 K, published 737",
+      "pass": true,
+      "detail": {
+        "teq": 242.25390439208013,
+        "tsurf": 742.2539043920801,
+        "dT": 500,
+        "display": "DESERT",
+        "albedo": 0.7
+      }
+    },
+    {
+      "name": "Earth (1 AU, 1 M⊕) reads Teq 255 K, +33 thermostat, 288 K, published 288",
+      "pass": true,
+      "detail": {
+        "teq": 254.5857729432723,
+        "tsurf": 287.58577294327233,
+        "dT": 33,
+        "display": "TERRAN",
+        "albedo": 0.3
+      }
+    },
+    {
+      "name": "Mars (1.524 AU, 0.107 M⊕) reads Teq 208 K, Tsurf 216 K, published 210",
+      "pass": true,
+      "detail": {
+        "teq": 207.68267111870986,
+        "tsurf": 215.68267111870986,
+        "dT": 8,
+        "display": "DESERT",
+        "albedo": 0.28
+      }
+    },
+    {
+      "name": "Moon (1 AU, 0.012 M⊕) reads Teq 270 K, Tsurf 270 K, published 250",
+      "pass": true,
+      "detail": {
+        "teq": 269.5754186143804,
+        "tsurf": 269.5754186143804,
+        "dT": 0,
+        "display": "BARREN",
+        "albedo": 0.12
+      }
+    },
+    {
+      "name": "Ceres (2.766 AU, 0.00016 M⊕) reads Teq 163 K, Tsurf 163 K, published 168",
+      "pass": true,
+      "detail": {
+        "teq": 163.00246036825567,
+        "tsurf": 163.00246036825567,
+        "dT": 0,
+        "display": "DWARF",
+        "albedo": 0.1
+      }
+    },
+    {
+      "name": "the albedo column reads 0.30 for Earth and 0.70 for the runaway Venus",
+      "pass": true,
+      "detail": [
+        0.3,
+        0.7
+      ]
+    },
+    {
+      "name": "TERRAN worlds hold 260 – 296 K across the whole habitable band",
+      "pass": true,
+      "detail": {
+        "terrMin": 260.8173375469827,
+        "terrMax": 289.62953990368624,
+        "terrCount": 40
+      }
+    },
+    {
+      "name": "sub-retention worlds cool monotonically outward across the same band",
+      "pass": true,
+      "detail": {
+        "subCount": 41,
+        "last": 272.88371134792243
+      }
+    },
+    {
+      "name": "at S = 0.58 the greenhouse is 56 K, for a 278 K surface",
+      "pass": true,
+      "detail": [
+        56.10000000000001,
+        278.27292290512605
+      ]
+    },
+    {
+      "name": "at S = 0.35 the greenhouse saturates at 65 K, for a 261 K surface",
+      "pass": true,
+      "detail": [
+        65,
+        260.8173375469827
+      ]
+    },
+    {
+      "name": "SUPER_EARTH carries the thermostat too, and never a runaway inside the HZ",
+      "pass": true,
+      "detail": {
+        "dT": 65,
+        "tsurf": 264.22413376977727,
+        "albedo": 0.25
+      }
+    },
+    {
+      "name": "a band-1 terran-size planet runs away at +500 K",
+      "pass": true,
+      "detail": [
+        500,
+        2
+      ]
+    },
+    {
+      "name": "below the retention mass the runaway stops (no atmosphere to run away)",
+      "pass": true,
+      "detail": [
+        0,
+        1
+      ]
+    },
+    {
+      "name": "the plan’s own analytic chain: G mean 0.825, P(0) 0.455, P(≥4) 0.0135",
+      "pass": true,
+      "detail": {
+        "mean": 0.8250464765429275,
+        "zero": 0.45454545454545453,
+        "geFour": 0.013486513486513483
+      }
+    },
+    {
+      "name": "the plan’s own analytic chain: M mean 1.020, P(0) 0.385",
+      "pass": true,
+      "detail": {
+        "mean": 1.019486403782106,
+        "zero": 0.3846153846153846,
+        "geFour": 0.027180548919679363
+      }
+    },
+    {
+      "name": "the plan’s own analytic chain: O mean 0.0198",
+      "pass": true,
+      "detail": {
+        "mean": 0.01980327229588498,
+        "zero": 0.9803921568627451,
+        "geFour": 6.3963975079865595e-9
+      }
+    },
+    {
+      "name": "G stars average 0.825 planets over 20000 keys",
+      "pass": true,
+      "detail": {
+        "mean": 0.8198,
+        "want": 0.8250464765429275
+      }
+    },
+    {
+      "name": "G stars have an empty system 45.5% of the time",
+      "pass": true,
+      "detail": {
+        "p0": 0.45585,
+        "want": 0.45454545454545453
+      }
+    },
+    {
+      "name": "no G system exceeds MAX_PLANETS",
+      "pass": true,
+      "detail": [
+        9117,
+        6795,
+        2978,
+        860,
+        197,
+        43,
+        8,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "M stars average 1.019 planets over 20000 keys",
+      "pass": true,
+      "detail": {
+        "mean": 1.0141,
+        "want": 1.019486403782106
+      }
+    },
+    {
+      "name": "M stars have an empty system 38.5% of the time",
+      "pass": true,
+      "detail": {
+        "p0": 0.3847,
+        "want": 0.3846153846153846
+      }
+    },
+    {
+      "name": "no M system exceeds MAX_PLANETS",
+      "pass": true,
+      "detail": [
+        7694,
+        6829,
+        3645,
+        1328,
+        371,
+        109,
+        18,
+        6,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "60 000 systems keep every planet outside 6 R★, inside a_out and ascending",
+      "pass": true,
+      "detail": {
+        "systems": 60000,
+        "planetsTotal": 54491,
+        "insideStar": 0,
+        "beyondDisc": 0,
+        "unordered": 0,
+        "tooClose": 0
+      }
+    },
+    {
+      "name": "no pair of neighbours is closer than K_HILL mutual Hill radii",
+      "pass": true,
+      "detail": {
+        "insideStar": 0,
+        "beyondDisc": 0,
+        "unordered": 0,
+        "tooClose": 0,
+        "pushedToEdge": 8
+      }
+    },
+    {
+      "name": "the repair pass really has work to do (planets reach the disc edge)",
+      "pass": true,
+      "detail": {
+        "planetsTotal": 54491,
+        "pushedToEdge": 8
+      }
+    },
+    {
+      "name": "the giant fraction rises at least 3× from halo to bulge metallicity",
+      "pass": true,
+      "detail": {
+        "haloZ": 0.001,
+        "bulgeZ": 0.035,
+        "haloFraction": 0.012920526572403706,
+        "bulgeFraction": 0.31781290046988464,
+        "ratio": 24.59751920240503
+      }
+    },
+    {
+      "name": "f_Z clamps at 0.05 below Z 0.0022 and at 4 above Z 0.040",
+      "pass": true,
+      "detail": {
+        "haloZ": 0.001,
+        "bulgeZ": 0.035,
+        "haloFraction": 0.012920526572403706,
+        "bulgeFraction": 0.31781290046988464,
+        "ratio": 24.59751920240503
+      }
+    },
+    {
+      "name": "WD systems are compact: every planet inside 1 AU",
+      "pass": true,
+      "detail": {
+        "systems": 6000,
+        "belted": 5133,
+        "planets": 840,
+        "outside": 0,
+        "otherBulk": 0
+      }
+    },
+    {
+      "name": "WD systems are debris-rich (a belt more than 60% of the time)",
+      "pass": true,
+      "detail": {
+        "belted": 5133,
+        "of": 6000
+      }
+    },
+    {
+      "name": "WD systems draw only rock and dwarf planets",
+      "pass": true,
+      "detail": {
+        "systems": 6000,
+        "belted": 5133,
+        "planets": 840,
+        "outside": 0,
+        "otherBulk": 0
+      }
+    },
+    {
+      "name": "a giant star has no planet inside its stellar radius",
+      "pass": true,
+      "detail": {
+        "systems": 6000,
+        "planets": 2028,
+        "insideStar": 0,
+        "innerBulks": 305
+      }
+    },
+    {
+      "name": "a giant star keeps few small planets (the wide survivors)",
+      "pass": true,
+      "detail": {
+        "systems": 6000,
+        "planets": 2028,
+        "insideStar": 0,
+        "innerBulks": 305
+      }
+    },
+    {
+      "name": "systemSummary walks the same system as generateSystem, count for count",
+      "pass": true,
+      "detail": {
+        "compared": 5000,
+        "mismatched": 0
+      }
+    },
+    {
+      "name": "a reused record reports zeros, not the previous system’s terran candidate",
+      "pass": true,
+      "detail": {
+        "seeded": 1,
+        "cleared": 2
+      }
+    },
+    {
+      "name": "procedural snapshot inputs equal a fresh deriveStar for the same key",
+      "pass": true,
+      "detail": {
+        "exact": 64,
+        "of": 64
+      }
+    },
+    {
+      "name": "Sirius’s snapshot reads A, 2.19 M☉, from its own class and magnitude",
+      "pass": true,
+      "detail": {
+        "mass": 2.186764240725495,
+        "lum": 22.866929548811942,
+        "spec": 2,
+        "age": 4.12866466440688
+      }
+    },
+    {
+      "name": "a landmark keeps its name in the record",
+      "pass": true,
+      "detail": "Sirius"
+    },
+    {
+      "name": "a landmark’s population age is a function of its key and galaxy, not the system seed",
+      "pass": true,
+      "detail": 4.12866466440688
+    },
+    {
+      "name": "a local gap-fill star re-derives exactly from its slot seed",
+      "pass": true,
+      "detail": [
+        0.43274881409013877,
+        0.43274881409013877
+      ]
+    },
+    {
+      "name": "an object member re-derives at its object’s coeval age",
+      "pass": true,
+      "detail": {
+        "mass": 0.15890727718173328,
+        "age": 11.191203402588144,
+        "freshMass": 0.15890727718173328,
+        "freshAge": 11.191203402588144
+      }
+    },
+    {
+      "name": "the catalog path inverts the packed word (M, 0.08–0.55 M☉, a population age)",
+      "pass": true,
+      "detail": {
+        "mass": 0.1604048115261939,
+        "age": 10.503263154203744,
+        "spec": 6
+      }
+    },
+    {
+      "name": "the star designation matches star-set.js’s keyDesignation byte for byte",
+      "pass": true,
+      "detail": "S21I3V9"
+    },
+    {
+      "name": "planets take IAU letters and belts are numbered",
+      "pass": true,
+      "detail": [
+        "S21I3V9 b",
+        "S21I3V9 belt 2"
+      ]
+    },
+    {
+      "name": "the letters cover every possible planet",
+      "pass": true
+    },
+    {
+      "name": "1 M⊕ in 1 R⊕ is 5514 kg/m³",
+      "pass": true,
+      "detail": 5513.443375519388
+    },
+    {
+      "name": "318 M⊕ in the gas bulk radius is 1250 kg/m³ (Jupiter, 1330)",
+      "pass": true,
+      "detail": 1247.946509298103
+    },
+    {
+      "name": "5 M⊕ in the super-earth radius is 6730 kg/m³, and the law puts 1.13 M⊕ at 1.07 R⊕ (α Cen Bb, 1.04)",
+      "pass": true,
+      "detail": {
+        "five": 6730.277558007065,
+        "alphaCenBb": 1.070851529270876
+      }
+    },
+    {
+      "name": "the belt’s typical body is 470 km, 9.4e20 kg, ρ 2160",
+      "pass": true,
+      "detail": 2160
+    },
+    {
+      "name": "every planet’s mass and radius come from its bulk’s table",
+      "pass": true,
+      "detail": {
+        "bulksSeen": 7
+      }
+    },
+    {
+      "name": "generateSystem allocates nothing over 100 000 systems",
+      "pass": true,
+      "detail": {
+        "trials": [
+          -1002064,
+          -1002016,
+          -1001800,
+          1059264,
+          1882560
+        ],
+        "median": -1001800,
+        "exposedGc": false
+      }
+    },
+    {
+      "name": "generateSystem runs inside the 20 µs budget",
+      "pass": true,
+      "detail": {
+        "generateUs": 1.595,
+        "summaryUs": 1.02
+      }
+    },
+    {
+      "name": "systemSummary runs inside the 6 µs budget",
+      "pass": true,
+      "detail": {
+        "generateUs": 1.595,
+        "summaryUs": 1.02
+      }
+    },
+    {
+      "name": "the summary is the cheap path",
+      "pass": true,
+      "detail": {
+        "generateUs": 1.595,
+        "summaryUs": 1.02
+      }
+    }
+  ]
+}

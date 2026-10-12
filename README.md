@@ -43,6 +43,11 @@ No framework, bundler, module loader, or runtime network connection is required.
   select by log light-year range, `F` to fly to the primary star with a brightness-scaled
   stand-off, `N` to cycle the primary and `X` to clear — with a live selection readout
 - Named-star selection, labels, constellation lines and selection rings
+- A deterministic lazy planet-system generator: any drawn star's planetary system is
+  derived on demand from its stable identity key — planet count, bulk classes, orbits,
+  insolation, equilibrium and surface temperatures, habitable-zone and tidal-locking
+  flags, debris belts — reproducible across runs and machines, with a cheap summary tier
+  for searching
 - Copyable settings presets and deterministic URL parameters
 - CPU mirrors and model/parity tests for the JavaScript and WGSL implementations
 

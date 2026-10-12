@@ -272,6 +272,17 @@
 		return (Math.imul(i + 1, 0x9e3779b1) ^ Math.imul(objSeed | 0, 0x85ebca6b)) | 0;
 	}
 
+	// The population a member of this object is drawn from: young gas-bearing
+	// objects feed the thin disc, globulars the halo, and the rest the component
+	// their dominant density sits in. planets.js re-derives an object member's
+	// stellar inputs from the same rule, so the two cannot disagree.
+	function objectMemberComponent(obj) {
+		const thin = obj.type === 'HII' || obj.type === 'open';
+		if (thin) return density.COMPONENT_THIN;
+		if (obj.type === 'globular') return density.COMPONENT_HALO;
+		return density.COMPONENT_NAMES.indexOf(obj.dominant);
+	}
+
 	const dirScratch = new Float64Array(3);
 
 	// Offset of member i from the object centre (kpc), a pure function of
@@ -395,10 +406,7 @@
 			const quota = quotaScratch[j];
 			if (quota <= 0) continue;
 			const oSeed = obj.seed | 0;
-			const thin = obj.type === 'HII' || obj.type === 'open';
-			const component = thin ? density.COMPONENT_THIN
-				: obj.type === 'globular' ? density.COMPONENT_HALO
-				: density.COMPONENT_NAMES.indexOf(obj.dominant);
+			const component = objectMemberComponent(obj);
 			for (let i = 0; i < quota && slot < maxMembers; i++) {
 				const memberSeed = objectMemberSeed(oSeed, i);
 				sampleMemberOffset(obj, i, memberOffset);
@@ -498,6 +506,7 @@
 		BILLBOARD_MIN_PX, BILLBOARD_MAX_DIST_KPC, BILLBOARD_OPACITY,
 		objectContext, objectProbabilitiesAt, placeObjects,
 		plummerRadius, kingRadius, sampleMemberOffset, objectQuotas, writeObjectMembers,
+		objectMemberSeed, objectMemberComponent,
 		objectHasGas, billboardScreenPx, billboardVisible, writeObjectBillboards,
 		summariseObjects,
 	};

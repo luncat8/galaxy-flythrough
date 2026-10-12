@@ -165,6 +165,11 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
         <script src="math/sampling.js"></script>
         <script src="math/star-record.js"></script>
         <script src="math/star-types.js"></script>
+        <!-- The planet generator derives a star's system from its identity key
+             alone, so it needs no new buffers and no render path (0.5.1): load
+             after star-types, whose derivation of the procedural blocks it
+             re-runs. objects.js and star-set.js are looked up at call time. -->
+        <script src="math/planets.js"></script>
         <script src="math/orbit.js"></script>
         <script src="math/nebula.js"></script>
         <script src="math/objects.js"></script>

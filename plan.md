@@ -1215,8 +1215,9 @@ Next series:
   WGSL and the three render paths are untouched.
   *(0.5.0 implemented: identity keys per record, `pickAny` over all five blocks with
   engine-mask dispatch parity, the snapshot selection set, radius select, fly-to and the
-  set rings — `experiments/star-select-test.js`, 63 checks. The file stays in the root
-  until the series ships and then moves to `archive/`.)*
+  set rings — `experiments/star-select-test.js`, 63 checks. 0.5.1 implemented: the lazy
+  planet-system generator, `math/planets.js`, with `experiments/planet-gen-test.js`, 73
+  checks. The file stays in the root until the series ships and then moves to `archive/`.)*
 
 Implement from those files plus this one; the per-release plans reference their own
 tests and extend the file layout of §11 as needed.

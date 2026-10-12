@@ -116,7 +116,7 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		['../src/math/hash.js', 'HashLib'], ['../src/math/density.js', 'DensityLib'],
 		['../src/math/galaxy.js', 'GalaxyLib'],
 		['../src/math/sampling.js', 'SamplingLib'], ['../src/math/star-record.js', 'StarRecord'],
-		['../src/math/star-types.js', 'StarTypesLib'], ['../src/math/orbit.js', 'OrbitLib'], ['../src/math/nebula.js', 'NebulaLib'],
+		['../src/math/star-types.js', 'StarTypesLib'], ['../src/math/planets.js', 'PlanetsLib'], ['../src/math/orbit.js', 'OrbitLib'], ['../src/math/nebula.js', 'NebulaLib'],
 		['../src/math/objects.js', 'ObjectsLib'], ['../src/math/coords.js', 'Coords'],
 		['../src/core/camera.js', 'Camera'], ['../src/core/input.js', 'Input'],
 		['../src/core/selection.js', 'Selection'], ['../src/core/star-set.js', 'StarSet'],

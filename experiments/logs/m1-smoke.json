@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-12T01:42:33.422Z",
+  "date": "2026-10-12T15:56:41.573Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -7,6 +7,7 @@
     "math/sampling.js",
     "math/star-record.js",
     "math/star-types.js",
+    "math/planets.js",
     "math/orbit.js",
     "math/nebula.js",
     "math/objects.js",
@@ -45,6 +46,7 @@
     "math/nebula.js",
     "math/objects.js",
     "math/orbit.js",
+    "math/planets.js",
     "math/sampling.js",
     "math/star-record.js",
     "math/star-types.js",
@@ -54,8 +56,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 56,
-  "passed": 56,
+  "totalChecks": 57,
+  "passed": 57,
   "failed": 0,
   "checks": [
     {
@@ -67,8 +69,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 25,
-        "sources": 25,
+        "scripts": 26,
+        "sources": 26,
         "missing": []
       }
     },
@@ -134,6 +136,7 @@
         "SamplingLib",
         "StarRecord",
         "StarTypesLib",
+        "PlanetsLib",
         "OrbitLib",
         "NebulaLib",
         "ObjectsLib",
@@ -197,6 +200,13 @@
       }
     },
     {
+      "name": "PlanetsLib loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 136
+      }
+    },
+    {
       "name": "OrbitLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
@@ -214,7 +224,7 @@
       "name": "ObjectsLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 47
+        "keys": 49
       }
     },
     {

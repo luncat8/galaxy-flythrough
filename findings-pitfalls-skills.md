@@ -1126,3 +1126,84 @@ Also found, not fixed here (out of scope for a documentation pass): `scripts/run
 `python3 scripts/run.py damping-formula` prints "Unknown command" and exits 1 while
 `node experiments/damping-formula-check.js` works. One missing line in `EXPERIMENTS`, and
 `all-tests` never touches it because it iterates `TYPES['test']`.
+
+---
+
+## 2026-10-12 — A lazy dependency lookup that costs a `require()` per call is a hidden per-call allocation (0.5.1, `planets.js`)
+
+A generator running at 2 µs/system in a two-module Node harness measured 7.6 µs in the
+real test process, which blew a 6 µs budget on the summary tier. Nothing in the model had
+changed. `--cpu-prof` showed the answer immediately: `internalModuleStat` — the filesystem
+stats `require` performs while resolving a request — dominated the profile, at 70 ms of a
+150 ms run. The module resolved its five dependencies through a helper on every call:
+
+```js
+function hashLib() { return mod('HashLib', './hash.js'); }   // mod() ends in require()
+```
+
+`mod` has to be lazy, because `planets.js` loads *before* `objects.js` in the page and
+must not assume a load order it does not control. The fix keeps the laziness and drops the
+per-call cost — resolve once, cache the result:
+
+```js
+let hashDep = null;
+function hashLib() { return hashDep || (hashDep = mod('HashLib', './hash.js')); }
+```
+
+Measured after: `generateSystem` 1.56 µs, `systemSummary` 1.08 µs (both were 7.6 / 6.6).
+In the browser the same helper reads `window.HashLib`, which is already cheap — so this
+cost is invisible to a browser-only intuition and shows up only under Node, where the
+identical lookup is a filesystem-touching `require()`.
+
+The transferable rule: **a lazy lookup memoizes, or it is not lazy but repeated.** A
+helper that resolves on each call is a per-call cost that a microbenchmark in isolation
+cannot see, because the isolated harness resolves the same dependency once at its own
+top level. When a module's budget is stated in microseconds per call and the first
+measurement in the real process misses it, profile before touching the model — the
+profile named `internalModuleStat` in one line, and the fix was five `let` statements.
+
+Related, same pass: **when two numbers in a plan disagree, the one computed with the
+plan's own tables is the right one, and the other is a note.** Two of the 0.5.1 draft's
+pins were computed with a law the shipped table does not implement ("15 M⊕ → 5480 kg/m³"
+against a mass–radius law that gives 6730 at 5 M⊕) or with the wrong geophysics ("a
+100 L☉ giant at 4000 K → 6.4 R☉", where `sqrt(L)·(5772/Teff)²` gives 20.8 R☉ — the
+published 5–50 R☉ range makes 20.8 obviously the right one). Both are now pins of the
+shipped formula with the real-world cross-check restated next to them, and the deviations
+are recorded in the plan's §11.1 so a fork does not re-derive the wrong number.
+
+---
+
+## 2026-10-12 — A channel map is a claimed address space, so the test is an occupancy set (0.5.1, `planets.js`)
+
+The generator draws ~120 values from one seed through a fixed channel map, written down
+precisely so "two features cannot silently share a draw". The first ship passed 73/73 checks
+including determinism and every pin. Re-deriving the map by hand afterwards found this:
+
+```js
+const CH_PLANET = 32;   // 32 + 8·p  bulk class, 39 + 8·p rotation period
+const CH_MOON = 40;     // 40 + 8·p  moon count   ← 40 + 8·0 === 32 + 8·1
+```
+
+Planet 0's moon count and planet 1's bulk class were the same draw. Both planet slots were
+"documented" correctly in isolation; the shared channel is an artefact of the 8-wide stride,
+and no shipped test could see it because nothing compares planet 0 against planet 1.
+
+The fix has two halves, and the second is the one worth keeping:
+
+```js
+// claim every channel in the map into one set; any second consumer is a collision
+for (let p = 0; p < MAX_PLANETS; p++) {
+    for (let k = 0; k < 8; k++) add(CH_PLANET + 8 * p + k);
+    add(CH_MOON + p);
+}
+```
+
+Checking `CH_PLANET + 8 * p` is a spot-check that passes forever while the map drifts.
+Claiming the *whole address space* into one occupancy set and asserting no channel appears
+twice is the same cost and catches every collision — including the one the next feature
+introduces. The same shape applies to any hand-numbered space: WGSL binding indices, buffer
+field offsets, engine-mask bits, block ranges in a star buffer.
+
+The transferable rule: **when a design is a table of ranges rather than of values, the test
+asserts the table is disjoint, not that one cell is what it claims.** A range collision is a
+bug you cannot observe from either side.
