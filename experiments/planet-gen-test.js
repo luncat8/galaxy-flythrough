@@ -11,10 +11,16 @@
 // Hill repair and the orbital elements, bit-equal to a test-side
 // reimplementation and holding the §4.12 stability invariants over 20k
 // systems — and the insolation/temperature/band tier (0.5.1-5, §4.6):
-// the six-body Solar temperature table (Mercury 433 … Ceres 163 K), the
-// Earth Teq identity (254.6 K), the band-refinement mass tiers, the
-// runaway/thermostat rules, the tidal-locking pins (TRAPPIST-1/Proxima locked,
-// Sun not) and the HZ/terran flags.
+// the six-body Solar temperature table driven through the one `thermal` pass
+// (Mercury 433 … Ceres 163 K), the Earth Teq identity (254.6 K), the
+// band-refinement mass tiers, the runaway/thermostat rules with the
+// clamp(1 − S, 0, 1) anchor, the tidal-locking pins (TRAPPIST-1/Proxima locked,
+// Sun not), the HZ/terran flags and the HZ-edges identity — and the belt and
+// moon tier (0.5.1-6, §4.7/§4.8): the snow line, the presence law
+// (0.90·fade − 0.35·nGiants), the bit-equal belt chain over main-sequence,
+// giant and wd stars, the Solar belt ranges (inner 1.485–2.565 AU, outer
+// 14–32 AU), the wd's single forced compact ring, the scouring that empties a
+// belt, the stipple seed and law, and floor(moonMax·u³).
 //
 // Output: experiments/logs/planet-gen.json
 
@@ -840,68 +846,66 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 {
 	// 7a. Earth Teq identity (plan §4.6 pin): L 1 L☉, Teff 5772 K, R★ 1 R☉,
 	// a 1 AU, A 0.30 → Teq 254.6 K.  This is the §4.6 formula with the Sun's
-	// own values, not a Monte-Carlo average.
-	const AU = planets.AU_M;
-	const R_SUN = planets.R_SUN_M;
+	// own values, not a Monte-Carlo average. Distances are AU (the module's
+	// unit) — passing metres scales Teq by sqrt(1 AU), so the arity is the pin.
 	const rock = planets.BULK_INDEX.rock, ice = planets.BULK_INDEX.ice;
 	const superBi = planets.BULK_INDEX.super;
-	const Teq_Earth = planets.equilibriumTemp(planets.TEFF_SUN, 1, 1 * AU, 0.30);
+	const sunStar = { mass: 1, lum: 1, teff: planets.TEFF_SUN, rStar: 1, age: 5, metal: 0.02, state: 'ms', spectralClass: 'G' };
+	// One record per kept result: `thermal` mutates its out record, so two calls
+	// into one record alias each other (which is the point of the out-param
+	// style — the caller owns the storage).
+	const th = () => planets.createThermal();
+	const thermal = th();
+	const Teq_Earth = planets.equilibriumTemp(planets.TEFF_SUN, 1, 1, 0.30);
 	check('Teq identity: Sun (1 L☉, 5772 K, 1 R☉, 1 AU, A 0.30) → 254.6 ± 0.5 K',
 		Math.abs(Teq_Earth - 254.6) < 0.5, Teq_Earth);
 
-	// 7b. Band boundaries and the six-body Solar table (plan §4.2/§4.6).
-	// Each body is typed: bulk → display (with runaway override for Venus)
-	// → Teq → ΔT → Tsurf.  The published values are the plan's, rounded to
-	// whole Kelvin; the tolerances allow for rounding in the published column.
+	// 7b. The six-body Solar table (plan §4.2/§4.6), driven through the one
+	// `thermal` pass rather than through hand-assembled primitive calls: the
+	// table then pins the pass the generator actually runs (band → display →
+	// runaway → albedo → Teq → Tsurf), including Venus's runaway albedo 0.70.
+	// The published values are the plan's, rounded to whole Kelvin.
 	const solarBodies = [
 		{ name: 'Mercury', a: 0.387, mass: 0.055, bulk: 'rock',
 			wantDisplay: 'BARREN', wantBand: 1, wantTeq: 433, wantTsurf: 433, tol: 8 },
 		{ name: 'Venus',   a: 0.723, mass: 0.815, bulk: 'rock',
 			wantDisplay: 'DESERT', wantBand: 1, wantTeq: 242, wantTsurf: 742, tol: 8,
-			// Runaway override: the plan's 742 K uses the runaway albedo 0.70
-			// (cloud-shrouded), so Teq is computed at A=0.70, not the base
-			// DESERT albedo 0.28 — the §4.2 table says "A 0.70" for Venus.
-			runaway: true },
+			albedo: planets.RUNAWAY_ALBEDO, runaway: true },
 		{ name: 'Earth',   a: 1.000, mass: 1.000, bulk: 'rock',
-			wantDisplay: 'TERRAN', wantBand: 2, wantTeq: 255, wantTsurf: 288, tol: 0.5 },
+			wantDisplay: 'TERRAN', wantBand: 2, wantTeq: 255, wantTsurf: 288, tol: 0.5,
+			albedo: 0.30, terran: true },
 		{ name: 'Mars',    a: 1.524, mass: 0.107, bulk: 'rock',
-			wantDisplay: 'DESERT', wantBand: 2, wantTeq: 208, wantTsurf: 216, tol: 8 },
+			wantDisplay: 'DESERT', wantBand: 2, wantTeq: 208, wantTsurf: 216, tol: 8, albedo: 0.28 },
 		{ name: 'Moon',    a: 1.000, mass: 0.012, bulk: 'rock',
-			wantDisplay: 'BARREN', wantBand: 2, wantTeq: 270, wantTsurf: 270, tol: 8 },
+			wantDisplay: 'BARREN', wantBand: 2, wantTeq: 270, wantTsurf: 270, tol: 8, albedo: 0.12 },
 		{ name: 'Ceres',   a: 2.766, mass: 0.00016, bulk: 'dwarf',
-			wantDisplay: 'DWARF',  wantBand: 3, wantTeq: 163, wantTsurf: 163, tol: 8 },
+			wantDisplay: 'DWARF',  wantBand: 3, wantTeq: 163, wantTsurf: 163, tol: 8, albedo: 0.10 },
 	];
 	let solarOk = true;
 	const solarDetails = [];
 	for (const b of solarBodies) {
-		const S = planets.insolation(1, b.a);
-		const band = planets.planetBand(S);
-		const bi = planets.BULK_INDEX[bulkIdx(b.bulk)];
-		const displayId = planets.planetDisplay(bi, b.mass, band);
-		const displayName = planets.DISPLAY_TYPES[displayId].name;
-		// For Venus, the runaway path uses the runaway albedo 0.70, matching
-		// the §4.2 display table's instruction (runaway → albedo RUNAWAY_ALBEDO).
-		const albedo = b.runaway ? planets.RUNAWAY_ALBEDO : planets.DISPLAY_TYPES[displayId].albedo;
-		const Teq = planets.equilibriumTemp(planets.TEFF_SUN, 1, b.a * AU, albedo);
-		const runaway = planets.runawayGreenhouse(bi, b.mass, band);
-		const Tsurf = planets.surfaceTemp(Teq, displayId, S, band, b.mass);
+		const bi = planets.BULK_INDEX[b.bulk];
+		const t = planets.thermal(sunStar, b.a, bi, b.mass, thermal);
+		const displayName = planets.DISPLAY_TYPES[t.displayId].name;
 		const bodyOk = displayName === b.wantDisplay
-			&& band === b.wantBand
-			&& Math.abs(Teq - b.wantTeq) <= b.tol
-			&& Math.abs(Tsurf - b.wantTsurf) <= b.tol;
+			&& t.band === b.wantBand
+			&& Math.abs(t.insol - planets.insolation(1, b.a)) < 1e-12
+			&& (b.albedo === undefined || Math.abs(t.albedo - b.albedo) < 1e-12)
+			&& (b.runaway === undefined || t.runaway === b.runaway)
+			&& (b.terran === undefined || t.terran === b.terran)
+			&& Math.abs(t.teq - b.wantTeq) <= b.tol
+			&& Math.abs(t.tsurf - b.wantTsurf) <= b.tol;
 		if (!bodyOk) {
 			solarOk = false;
 			solarDetails.push({
-				name: b.name, display: displayName, band, Teq: +Teq.toFixed(1), Tsurf: +Tsurf.toFixed(1),
+				name: b.name, display: displayName, band: t.band, albedo: t.albedo,
+				teq: +t.teq.toFixed(1), tsurf: +t.tsurf.toFixed(1), runaway: t.runaway,
 				wantDisplay: b.wantDisplay, wantBand: b.wantBand,
 				wantTeq: b.wantTeq, wantTsurf: b.wantTsurf,
 			});
 		}
 	}
-	// Helper for bulk index lookup (needs to be a function for the loop above).
-	// planets.BULK_INDEX is a name→number map, so BULK_INDEX['rock'] = 0, etc.
-	function bulkIdx(name) { return name; }
-	check('six-body Solar temperature table (Mercury 433 … Ceres 163, plan §4.2/§4.6)',
+	check('six-body Solar table through `thermal` (Mercury 433 … Ceres 163, plan §4.2/§4.6)',
 		solarOk, solarDetails.length ? solarDetails : 'all six match');
 
 	// 7c. Display-type refinement mass tiers in band 2 (plan §4.6 table).
@@ -938,39 +942,78 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 		&& !planets.runawayGreenhouse(rock, 0.5, 0); // not in band 1
 	check('runaway greenhouse: ≥ 0.3 M⊕ rock/ice/super in band 1 only', runawayOk);
 
-	// 7e. Thermostat monotonicity band (plan §4.12): across band 2,
-	// Tsurf stays in [260, 296] K for every TERRAN/SUPER_EARTH whatever the
-	// insolation, while sub-ATM_RETAIN_M worlds in the same band fall
-	// monotonically with distance.
-	const sunStar7 = { mass: 1, lum: 1, teff: planets.TEFF_SUN, rStar: 1 };
+	// 7e. Thermostat monotonicity band (plan §4.12, numbers from §4.6):
+	// across band 2, Tsurf holds 261–290 K for every TERRAN and 264–295 K for
+	// every SUPER_EARTH whatever the insolation — the thermostat at work, and
+	// the tighter window is what makes the clamp(1 − S, 0, 1) in the formula
+	// visible: without it the inner edge would read 288 K for TERRAN (30.25 K
+	// of greenhouse instead of the 33 K anchor). Sub-ATM_RETAIN_M worlds in the
+	// same band have nothing regulating them and fall monotonically.
+	const sunStar7 = { mass: 1, lum: 1, teff: planets.TEFF_SUN, rStar: 1, age: 5 };
 	const SSteps = [1.05, 0.90, 0.70, 0.55, 0.40, 0.35];
-	let thermoRange = true, thermoDetails = [];
+	let thermoOk = true, thermoDetails = [];
+	let terrRange = [Infinity, -Infinity], seRange = [Infinity, -Infinity];
 	for (const S of SSteps) {
 		const aAU = Math.sqrt(1 / S);
-		const Teq = planets.equilibriumTemp(sunStar7.teff, sunStar7.rStar, aAU * AU, 0.30);
-		const dId = planets.planetDisplay(rock, 1, 2);  // TERRAN in band 2
-		const Ts = planets.surfaceTemp(Teq, dId, S, 2, 1);
-		if (Ts < 260 || Ts > 296) { thermoRange = false; thermoDetails.push({ S, Ts: +Ts.toFixed(1) }); }
+		const tTerr = planets.thermal(sunStar7, aAU, rock, 1, th());       // TERRAN
+		const tSE = planets.thermal(sunStar7, aAU, superBi, 5, th());      // SUPER_EARTH
+		if (tTerr.displayId !== planets.DISPLAY_INDEX.TERRAN
+			|| tSE.displayId !== planets.DISPLAY_INDEX.SUPER_EARTH) {
+			thermoOk = false;
+			thermoDetails.push({ S, terr: tTerr.displayId, se: tSE.displayId });
+		}
+		terrRange[0] = Math.min(terrRange[0], tTerr.tsurf);
+		terrRange[1] = Math.max(terrRange[1], tTerr.tsurf);
+		seRange[0] = Math.min(seRange[0], tSE.tsurf);
+		seRange[1] = Math.max(seRange[1], tSE.tsurf);
+		// §4.12's window, exactly: the band is habitable for a world with an
+		// atmosphere, and the spread across it is a few tens of kelvin.
+		if (tTerr.tsurf < 260 || tTerr.tsurf > 296 || tSE.tsurf < 260 || tSE.tsurf > 296) {
+			thermoOk = false;
+			thermoDetails.push({ S, terr: +tTerr.tsurf.toFixed(1), se: +tSE.tsurf.toFixed(1) });
+		}
 	}
+	// Both extremes sit at the band's edges, so the sweep's range must equal the
+	// formula at HZ_S_IN and HZ_S_OUT — the plan's "261–290" and "264–295" to
+	// the tenth of a kelvin, not a rounded coincidence.
+	const edgeTsurf = (bulk, mass, S) =>
+		planets.thermal(sunStar7, Math.sqrt(1 / S), bulk, mass, thermal).tsurf;
+	const terrEdge = [edgeTsurf(rock, 1, planets.HZ_S_IN), edgeTsurf(rock, 1, planets.HZ_S_OUT)];
+	const seEdge = [edgeTsurf(superBi, 5, planets.HZ_S_IN), edgeTsurf(superBi, 5, planets.HZ_S_OUT)];
+	const edgesOk = Math.abs(terrRange[1] - terrEdge[0]) < 1e-9
+		&& Math.abs(terrRange[0] - terrEdge[1]) < 1e-9
+		&& Math.abs(seRange[1] - seEdge[0]) < 1e-9
+		&& Math.abs(seRange[0] - seEdge[1]) < 1e-9;
 	// Mars analogs in band 2: MONOTONICALLY falling with distance.
 	let marsMono = true;
 	let prevT = Infinity;
 	for (const S of [0.90, 0.70, 0.55, 0.434, 0.35]) {
-		const aAU = Math.sqrt(1 / S);
-		const Teq = planets.equilibriumTemp(sunStar7.teff, sunStar7.rStar, aAU * AU, 0.28);
-		const dId = planets.planetDisplay(rock, 0.107, 2);  // DESERT in band 2
-		const Ts = planets.surfaceTemp(Teq, dId, S, 2, 0.107);
-		if (Ts >= prevT) marsMono = false;
-		prevT = Ts;
+		const t = planets.thermal(sunStar7, Math.sqrt(1 / S), rock, 0.107, thermal);
+		if (t.tsurf >= prevT) marsMono = false;
+		prevT = t.tsurf;
 	}
 	// The band 3 case: Mars drops into ICE below S = 0.35.
-	const marsA3 = Math.sqrt(1 / 0.30);
-	const marsTeq3 = planets.equilibriumTemp(sunStar7.teff, sunStar7.rStar, marsA3 * AU, 0.65);
-	const marsTs3 = planets.surfaceTemp(marsTeq3, planets.planetDisplay(rock, 0.107, 3), 0.30, 3, 0.107);
-	marsMono = marsMono && marsTs3 < prevT;
-	check('thermostat: TERRAN Tsurf stays in [260, 296] K across band 2; Mars analogs fall monotonically',
-		thermoRange && marsMono, { range: thermoDetails, marsMono,
+	const marsT3 = planets.thermal(sunStar7, Math.sqrt(1 / 0.30), rock, 0.107, thermal);
+	const marsTs3 = marsT3.tsurf;
+	marsMono = marsMono && marsT3.displayId === planets.DISPLAY_INDEX.ICE && marsTs3 < prevT;
+	check('thermostat: across band 2 TERRAN holds 260.8–290.7 K and SUPER_EARTH 264.2–295.2 K, both extremes at the band edges; Mars analogs fall monotonically',
+		thermoOk && edgesOk && marsMono, { range: thermoDetails, edgesOk, marsMono,
+			terr: terrRange.map((x) => +x.toFixed(2)), se: seRange.map((x) => +x.toFixed(2)),
 			marsBand3: +marsTs3.toFixed(1), marsBand2Outer: +prevT.toFixed(1) });
+
+	// 7e2. The clamp itself (plan §4.2's `clamp(1 − S, 0, 1)`): ΔT is exactly
+	// the 33 K anchor from S = 1.0 out to the HZ inner edge, and the 65 K
+	// maximum from S = 0.418 2 inwards (where 33 + 55·(1 − S) reaches 65). The
+	// unclamped formula would read 30.25 K at S = 1.05.
+	const dTerr = (S) => {
+		const t = planets.thermal(sunStar7, Math.sqrt(1 / S), rock, 1, thermal);
+		return t.tsurf - t.teq;
+	};
+	check('thermostat clamp: ΔT = 33 K at S 1.0 and 1.05, ΔT = 65 K at S 0.35 and at the 0.418 2 knee',
+		Math.abs(dTerr(1.0) - 33) < 0.01 && Math.abs(dTerr(1.05) - 33) < 0.01
+		&& Math.abs(dTerr(0.35) - 65) < 0.01 && Math.abs(dTerr(0.4182) - 65) < 0.05
+		&& dTerr(0.50) > 33 && dTerr(0.50) < 65,
+		{ dT: [1.05, 1.0, 0.7, 0.5, 0.4182, 0.35].map((S) => +dTerr(S).toFixed(3)) });
 
 	// 7f. Tidal locking (plan §4.6): the lock radius scales as
 	// sqrt(M★), and the published real cases reproduce.
@@ -988,8 +1031,8 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 	const lockDetails = [];
 	for (const lc of lockCases) {
 		const lockR = planets.A_LOCK * Math.sqrt(lc.M);
-		const hzIn = Math.sqrt(lc.L / planets.HZ_S_IN);
-		const hzOut = Math.sqrt(lc.L / planets.HZ_S_OUT);
+		const hzIn = planets.hzInnerAU(lc.L);
+		const hzOut = planets.hzOuterAU(lc.L);
 		const lockRadOk = Math.abs(lockR - lc.lock) < 0.001;
 		const hzLocked = lockR >= hzIn;
 		const hzOk = Math.abs(hzIn - lc.aHzIn) < 0.002 && Math.abs(hzOut - lc.aHzOut) < 0.002;
@@ -1001,36 +1044,54 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 	check('tidal locking: lock radius scales as sqrt(M★); TRAPPIST-1/Proxima HZ locked, Sun not',
 		lockOk, lockDetails.length ? lockDetails : 'all four match');
 
-	// 7g. Habitable-zone and terran flags (plan §4.6): inHZ = band 2,
-	// terran requires TERRAN/SUPER_EARTH + 0.5–5 M⊕ + age > 0.5 Gyr +
-	// not runaway + not locked.
-	const flagsSun = planets.terranPlanet(
-		planets.planetDisplay(rock, 1, 2), 1, 2, false, false, 5);
-	const flagsMars = planets.terranPlanet(
-		planets.planetDisplay(rock, 0.107, 2), 0.107, 2, false, false, 5);
-	const flagsVenus = planets.terranPlanet(
-		planets.planetDisplay(rock, 0.815, 1), 0.815, 1, false, true, 5);
-	const flagsMoon = planets.terranPlanet(
-		planets.planetDisplay(rock, 0.012, 2), 0.012, 2, false, false, 5);
-	const flagsCeres = planets.terranPlanet(
-		planets.planetDisplay(planets.BULK_INDEX.dwarf, 0.00016, 3), 0.00016, 3, false, false, 5);
-	const flagsMercury = planets.terranPlanet(
-		planets.planetDisplay(rock, 0.055, 1), 0.055, 1, false, false, 5);
-	check('HZ/terran flags: Earth in HZ and terran; Mars/Venus/Moon/Ceres/Mercury not terran',
-		flagsSun.inHZ && flagsSun.terran
-		&& !flagsMars.terran && !flagsVenus.terran
-		&& !flagsMoon.terran && !flagsCeres.terran && !flagsMercury.terran,
-		{ earth: flagsSun, mars: flagsMars, venus: flagsVenus, moon: flagsMoon });
+	// 7g. Habitable-zone and terran flags (plan §4.6), through the same
+	// `thermal` pass the generator runs: inHZ = band 2, terran requires
+	// TERRAN/SUPER_EARTH + 0.5–5 M⊕ + age > 0.5 Gyr + free rotation. There is
+	// no runaway test in the flag — runaway is band 1 and inHZ is band 2 — so
+	// Venus reads not-terran through its band, not through a second condition.
+	const tEarth = planets.thermal(sunStar, 1, rock, 1, th());
+	const tMars = planets.thermal(sunStar, 1.524, rock, 0.107, th());
+	const tVenus = planets.thermal(sunStar, 0.723, rock, 0.815, th());
+	const tMoon = planets.thermal(sunStar, 1, rock, 0.012, th());
+	const tCeres = planets.thermal(sunStar, 2.766, planets.BULK_INDEX.dwarf, 0.00016, th());
+	const tMercury = planets.thermal(sunStar, 0.387, rock, 0.055, th());
+	// A young world in the band: age is the only flag input that is not orbital.
+	const tYoung = planets.thermal({ mass: 1, lum: 1, teff: planets.TEFF_SUN, rStar: 1, age: 0.4 }, 1, rock, 1, th());
+	const tHeavy = planets.thermal(sunStar, 1, superBi, 6, th());
+	check('HZ/terran flags: Earth is inHZ + terran; Mars/Venus/Moon/Ceres/Mercury are not terran',
+		tEarth.inHZ && tEarth.terran
+		&& !tMars.terran && !tVenus.terran && !tMoon.terran && !tCeres.terran
+		&& !tMercury.terran && !tVenus.inHZ && tMars.inHZ && !tMars.locked,
+		{ earth: { inHZ: tEarth.inHZ, terran: tEarth.terran },
+			mars: { inHZ: tMars.inHZ, terran: tMars.terran, band: tMars.band },
+			venus: { inHZ: tVenus.inHZ, runaway: tVenus.runaway, band: tVenus.band },
+			moon: { terran: tMoon.terran }, ceres: { terran: tCeres.terran } });
+	check('terran window: a 0.4 Gyr world and a 6 M⊕ super-Earth are in the band but not terran; a 5 M⊕ one is',
+		!tYoung.terran && !tHeavy.terran
+		&& planets.thermal(sunStar, 1, superBi, 5, thermal).terran
+		&& planets.thermal(sunStar, 1, superBi, 0.45, thermal).terran === false,
+		{ young: tYoung.terran, heavy: tHeavy.terran });
 
-	// 7h. Tidally-locked HZ worlds: lockedHZ set, terran clear.
-	const flagsTRAPPIST1e = planets.terranPlanet(
-		planets.planetDisplay(rock, 1, 2), 1, 2, true, false, 5);
-	const flagsProxima = planets.terranPlanet(
-		planets.planetDisplay(rock, 1, 2), 1, 2, true, false, 5);
-	check('locked HZ worlds: lockedHZ set, terran clear (TRAPPIST-1 e, Proxima b analog)',
-		flagsTRAPPIST1e.inHZ && flagsTRAPPIST1e.lockedHZ && !flagsTRAPPIST1e.terran
-		&& flagsProxima.inHZ && flagsProxima.lockedHZ && !flagsProxima.terran,
-		{ trappist: flagsTRAPPIST1e, proxima: flagsProxima });
+	// 7h. Tidally-locked HZ worlds: lockedHZ set, terran clear (TRAPPIST-1 e,
+	// Proxima b analog) — the flag pair that keeps them searchable.
+	// 0.08 and 0.10 AU: inside the two lock radii (0.090, 0.105) and inside the
+	// two HZ inner edges (0.061, 0.087) — exactly the §4.6 table's cases.
+	const tTrappist = planets.thermal({ mass: 0.09, lum: 0.0039, teff: 2560, rStar: 0.117, age: 7 }, 0.08, rock, 1, th());
+	const tProxima = planets.thermal({ mass: 0.122, lum: 0.0079, teff: 3042, rStar: 0.15, age: 5 }, 0.10, rock, 1, th());
+	check('locked HZ worlds: locked + lockedHZ set, terran clear (TRAPPIST-1 e, Proxima b analog)',
+		tTrappist.inHZ && tTrappist.locked && tTrappist.lockedHZ && !tTrappist.terran
+		&& tProxima.inHZ && tProxima.locked && tProxima.lockedHZ && !tProxima.terran,
+		{ trappist: { band: tTrappist.band, locked: tTrappist.locked, lockedHZ: tTrappist.lockedHZ, terran: tTrappist.terran },
+			proxima: { band: tProxima.band, locked: tProxima.locked, lockedHZ: tProxima.lockedHZ, terran: tProxima.terran } });
+
+	// 7h2. Flags are pure in their inputs: the same call after a different one
+	// returns the same record, because hzFlags writes every flag it reads.
+	const first = JSON.stringify(planets.thermal(sunStar, 1, rock, 1, thermal));
+	planets.thermal(sunStar, 0.02, planets.BULK_INDEX.gas, 3000, thermal);
+	planets.thermal(sunStar, 30, planets.BULK_INDEX.dwarf, 0.0001, thermal);
+	const again = JSON.stringify(planets.thermal(sunStar, 1, rock, 1, thermal));
+	check('thermal is pure in (star, a, bulk, mass): the record has no stale fields',
+		first === again, { first, again });
 
 	// 7i. Planet band from insolation: the §4.6 boundaries.
 	const bandTests = [
@@ -1055,8 +1116,10 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 		{ bi: planets.BULK_INDEX.gas, m: 300, band: 0, want: 'GAS_GIANT' },
 		{ bi: planets.BULK_INDEX.icegiant, m: 20, band: 0, want: 'ICE_GIANT' },
 		{ bi: planets.BULK_INDEX.dwarf, m: 0.01, band: 0, want: 'LAVA' },
-		// band 1: 1.05 < S ≤ 8
-		{ bi: rock, m: 0.01, band: 1, want: 'LAVA' },
+		// band 1: 1.05 < S ≤ 8 — airless worlds stay BARREN at any insolation
+		// (the plan's table row A): nothing boils away from a body that has no
+		// atmosphere, and LAVA above 8 is the molten-surface case.
+		{ bi: rock, m: 0.01, band: 1, want: 'BARREN' },
 		{ bi: rock, m: 0.10, band: 1, want: 'BARREN' },
 		{ bi: rock, m: 0.50, band: 1, want: 'DESERT' },
 		{ bi: superBi, m: 0.50, band: 1, want: 'DESERT' },
@@ -1094,14 +1157,381 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 	// TERRAN_DT_BASE (33 K, Earth's insolation), and at S = 0.35 the
 	// thermostat saturates at TERRAN_DT_MAX (65 K).  These are the two ends
 	// of the Walker thermostat (Walker, Hays & Kasting 1981).
-	const teqInner = planets.equilibriumTemp(planets.TEFF_SUN, 1, Math.sqrt(1/1.0) * AU, 0.30);
-	const tsurfInner = planets.surfaceTemp(teqInner, planets.DISPLAY_INDEX.TERRAN, 1.0, 2, 1);
-	const teqOuter = planets.equilibriumTemp(planets.TEFF_SUN, 1, Math.sqrt(1/0.35) * AU, 0.30);
-	const tsurfOuter = planets.surfaceTemp(teqOuter, planets.DISPLAY_INDEX.TERRAN, 0.35, 2, 1);
+	const teqInner = planets.equilibriumTemp(planets.TEFF_SUN, 1, Math.sqrt(1 / 1.0), 0.30);
+	const tsurfInner = planets.surfaceTemp(teqInner, planets.DISPLAY_INDEX.TERRAN, 1.0, false);
+	const teqOuter = planets.equilibriumTemp(planets.TEFF_SUN, 1, Math.sqrt(1 / 0.35), 0.30);
+	const tsurfOuter = planets.surfaceTemp(teqOuter, planets.DISPLAY_INDEX.TERRAN, 0.35, false);
 	check('thermostat endpoints: ΔT = 33 at S = 1.0 (Earth), ΔT = 65 at S = 0.35 (Walker 1981)',
 		Math.abs((tsurfInner - teqInner) - 33) < 0.5
 		&& Math.abs((tsurfOuter - teqOuter) - 65) < 0.5,
 		{ dT_inner: +(tsurfInner - teqInner).toFixed(1), dT_outer: +(tsurfOuter - teqOuter).toFixed(1) });
+
+	// 7l. The HZ edges are the band's edges (plan §4.6): `inHZ` and
+	// `a_hz_in ≤ a ≤ a_hz_out` are the same statement, because the two use one
+	// pair of insolation constants. Swept over luminosities and axes, the two
+	// readings must agree everywhere — no rounding gap at either edge.
+	let hzIdentity = true;
+	for (let k = 0; k < 4000; k++) {
+		const L = Math.pow(10, -3 + 4 * ((k * 7919) % 1000) / 1000);
+		const lum = (k % 7 === 0) ? 1 : L;
+		const u = (((k * 104729) % 997) + 0.5) / 997;
+		const aAU = Math.pow(10, -2 + 3 * u);           // 0.01 … 10 AU
+		const inHZ = planets.planetBand(planets.insolation(lum, aAU)) === 2;
+		const inside = aAU >= planets.hzInnerAU(lum) && aAU <= planets.hzOuterAU(lum);
+		if (inHZ !== inside) hzIdentity = false;
+	}
+	check('HZ identity: band 2 ⟺ a_hz_in ≤ a ≤ a_hz_out over 4 000 (L, a) pairs',
+		hzIdentity && Math.abs(planets.hzInnerAU(1) - 0.976) < 0.002
+		&& Math.abs(planets.hzOuterAU(1) - 1.690) < 0.002,
+		{ hzInner: +planets.hzInnerAU(1).toFixed(3), hzOuter: +planets.hzOuterAU(1).toFixed(3) });
+
+	// 7m. The albedo the pass uses (plan §4.2): the runaway override is the
+	// display type's albedo replaced by RUNAWAY_ALBEDO, and the base values are
+	// the table's. This is the one place the displayed type and the temperature
+	// can disagree, so it is pinned explicitly.
+	const albedoOk = Math.abs(planets.albedoFor(planets.DISPLAY_INDEX.DESERT, true) - planets.RUNAWAY_ALBEDO) < 1e-12
+		&& Math.abs(planets.albedoFor(planets.DISPLAY_INDEX.DESERT, false) - 0.28) < 1e-12
+		&& Math.abs(planets.albedoFor(planets.DISPLAY_INDEX.TERRAN, false) - 0.30) < 1e-12
+		&& planets.albedoFor(planets.DISPLAY_INDEX.TERRAN, true) === planets.RUNAWAY_ALBEDO;
+	check('albedoFor: runaway → 0.70 (Venus), otherwise the display type\'s own column', albedoOk,
+		{ desertRunaway: planets.albedoFor(planets.DISPLAY_INDEX.DESERT, true) });
+
+	// 7n. The hot-Jupiter flag (plan §4.6): gas and mini-Neptune above
+	// S_HOT_JUPITER, never a display type — a rock at the same insolation is
+	// LAVA-and-hot, not a hot Jupiter.
+	const hjOk = planets.isHotJupiter(planets.BULK_INDEX.gas, 25)
+		&& planets.isHotJupiter(planets.BULK_INDEX.mini, 21)
+		&& !planets.isHotJupiter(planets.BULK_INDEX.gas, 19.9)
+		&& !planets.isHotJupiter(rock, 25)
+		&& !planets.isHotJupiter(planets.BULK_INDEX.icegiant, 25)
+		&& planets.thermal(sunStar, 0.15, planets.BULK_INDEX.gas, 400, thermal).hotJupiter
+		&& planets.thermal(sunStar, 0.15, rock, 1, thermal).band === 0;
+	check('hot-Jupiter flag: gas/mini above S = 20 only (not ice giants, not rock)', hjOk);
+
+	// 7o. The runaway/band invariant (plan §4.6): runaway is band 1 and inHZ is
+	// band 2, so a runaway world is never in the HZ and the flags need no second
+	// test. Pinned over 20 000 systems × their planets, so the two rules cannot
+	// drift apart into overlapping bands.
+	const archT = planets.createArchitecture();
+	let invOk = true;
+	for (let s = 0; s < 20000 && invOk; s++) {
+		const seed = hash.pcgHash(s);
+		const st = {
+			mass: 0.2 + (s % 5) * 0.4, lum: 0.01 + (s % 13) * 0.3,
+			teff: 3000 + (s % 9) * 700, rStar: 0.5 + (s % 4), age: 1 + (s % 11),
+			metal: 0.02, state: 'ms', spectralClass: records.SPECTRAL_CLASSES[s % 10],
+		};
+		planets.architecture(seed, st, archT);
+		for (let i = 0; i < archT.n; i++) {
+			planets.thermal(st, archT.a[i], archT.bulk[i], archT.mass[i], thermal);
+			if (thermal.runaway && thermal.inHZ) invOk = false;
+			if (thermal.band !== (thermal.insol > 8 ? 0 : thermal.insol > planets.HZ_S_IN ? 1 : thermal.insol >= planets.HZ_S_OUT ? 2 : 3)) invOk = false;
+		}
+	}
+	check('runaway ⟹ not inHZ over 20 000 systems, and every band follows from its own insolation',
+		invOk);
+}
+
+// --- 8. Belts and the moon count (plan §4.7/§4.8, 0.5.1-6) -----------------
+{
+	// 8a. The snow line and the typical body (plan §4.7). 2.7 AU for the Sun is
+	// the definition of A_SNOW_K; the Ceres analog's density is derived from its
+	// own mass and radius, so the three authored numbers cannot drift.
+	check('snow line: 2.7 AU at 1 L☉, sqrt(L) law (0.854 AU at 0.1 L☉)',
+		Math.abs(planets.snowLineAU(1) - 2.7) < 1e-12
+		&& Math.abs(planets.snowLineAU(0.1) - 2.7 * Math.sqrt(0.1)) < 1e-12,
+		{ sun: planets.snowLineAU(1), faint: +planets.snowLineAU(0.1).toFixed(3) });
+	const bodyRho = planets.BELT_BODY_MASS_KG
+		/ ((4 / 3) * Math.PI * planets.BELT_BODY_R_M * planets.BELT_BODY_R_M * planets.BELT_BODY_R_M);
+	check('typical body: the Ceres analog (R 470 km, M 9.4e20 kg, ρ 2160 kg/m³, μ = G·M, albedo 0.09)',
+		Math.abs(planets.BELT_BODY_R_M - 470e3) < 1
+		&& Math.abs(planets.BELT_BODY_MASS_KG - 9.4e20) < 1e18
+		&& Math.abs(bodyRho - 2160) / 2160 < 0.01
+		&& planets.BELT_BODY_RHO === bodyRho
+		&& Math.abs(planets.BELT_BODY_MU - planets.G_SI * 9.4e20) < 1e5
+		&& planets.BELT_BODY_ALBEDO === 0.09,
+		{ rho: +bodyRho.toFixed(1), mu: planets.BELT_BODY_MU.toExponential(4) });
+
+	// 8b. The presence law (plan §4.7): P = clamp(0.90·fade(age) − 0.35·nGiants,
+	// 0, 1) with fade = 0.25 + 0.75·exp(−age/1.5 Gyr).
+	const fade0 = planets.debrisFade(0), fade5 = planets.debrisFade(5), fade20 = planets.debrisFade(20);
+	const fadeOk = Math.abs(fade0 - 1) < 1e-12
+		&& Math.abs(fade5 - 0.27678) < 1e-4
+		&& fade20 > 0.25 && fade20 < 0.251
+		&& fade0 > fade5 && fade5 > fade20;                      // monotone decline
+	const presenceOk = Math.abs(planets.beltPresence(0, 0) - 0.90) < 1e-12
+		&& planets.beltPresence(2, 0) > planets.beltPresence(2, 1)
+		&& planets.beltPresence(2, 1) > planets.beltPresence(2, 2)
+		&& planets.beltPresence(2, 3) === 0                      // 0.9·0.4 − 1.05 < 0
+		&& planets.beltPresence(0, 0) <= 1 && planets.beltPresence(20, 9) === 0;
+	check('presence: 0.90·fade − 0.35·nGiants clamped to [0, 1], monotone in age and in giants inside',
+		fadeOk && presenceOk,
+		{ fade: [+fade0.toFixed(4), +fade5.toFixed(4), +fade20.toFixed(4)],
+			p: [0, 1, 2, 3].map((g) => +planets.beltPresence(2, g).toFixed(3)) });
+
+	// 8c. The chain is the documented channels (plan §2.3): bit-equal to a
+	// test-side reimplementation with literal channel numbers, over 500 systems
+	// across a main-sequence star, a giant and a wd.
+	const beltArch = planets.createArchitecture();
+	const beltOut = planets.createBelts();
+	const beltRef = planets.createBelts();
+	function beltsReference(seed, star, arch, out) {
+		out.count = 0;
+		const aLo = planets.innerEdgeAU(star.rStar);
+		const aHi = planets.outerEdgeAU(star.mass, star.state);
+		if (aLo >= aHi) return out;
+		const snow = planets.A_SNOW_K * Math.sqrt(star.lum);
+		for (let k = 0; k <= 1; k++) {
+			if (k === 1 && star.state === 'wd') break;
+			const base = k === 0 ? 200 : 210;
+			const k0 = k === 0 ? 0.55 : 0.35, k1 = k === 0 ? 0.40 : 0.45;
+			const d0 = k === 0 ? 0.10 : 0.15, d1 = k === 0 ? 0.25 : 0.35;
+			const m0 = k === 0 ? -4 : -2, m1 = k === 0 ? 2.5 : 2.0;
+			const ceiling = k === 0 ? aHi * 0.35 : aHi;
+			if (aLo >= ceiling) continue;
+			const uAxis = hash.hash01At(seed, base + 1);
+			const uWidth = hash.hash01At(seed, base + 2);
+			const uMass = hash.hash01At(seed, base + 3);
+			const ref = k === 0 ? snow : aHi;
+			const capped = ref < ceiling ? ref : ceiling;
+			let a = capped * (k0 + k1 * uAxis);
+			if (a < aLo) a = aLo;
+			else if (a > ceiling) a = ceiling;
+			let giants = 0;
+			for (let i = 0; i < arch.n; i++) {
+				if (arch.a[i] >= a) break;
+				const b = arch.bulk[i];
+				if (b === planets.BULK_INDEX.gas || b === planets.BULK_INDEX.icegiant
+					|| b === planets.BULK_INDEX.mini) giants++;
+			}
+			let p = planets.BELT_P_MAX * planets.debrisFade(star.age) - planets.BELT_SCOUR * giants;
+			if (p < 0) p = 0; else if (p > 1) p = 1;
+			if (star.state === 'wd') p = planets.BELT_WD_PRESENCE;
+			if (hash.hash01At(seed, base) >= p) continue;
+			const i = out.count;
+			out.kind[i] = k;
+			out.a[i] = a;
+			out.dlnA[i] = d0 + d1 * uWidth;
+			out.mass[i] = Math.pow(10, m0 + m1 * uMass);
+			out.stippleSeed[i] = hash.hash4(seed, base + 4, planets.CH_STIPPLE_BASE, planets.STIPPLE_N);
+			out.count = i + 1;
+		}
+		return out;
+	}
+	const beltStars = [
+		{ mass: 1, lum: 1, teff: planets.TEFF_SUN, rStar: 1, age: 2, metal: 0.02, state: 'ms', spectralClass: 'G' },
+		{ mass: 1.2, lum: 1200, teff: 3600, rStar: 90, age: 11, metal: 0.035, state: 'giant', spectralClass: 'RG' },
+		{ mass: 0.6, lum: 0.001, teff: 9000, rStar: 0.013, age: 6, metal: 0.02, state: 'wd', spectralClass: 'WD' },
+	];
+	let beltChainOk = true, beltDetails = [];
+	for (let s = 0; s < 500; s++) {
+		const st = beltStars[s % beltStars.length];
+		const seed = hash.hash4(0x7BE17, s, 3, st.state.length);
+		planets.architecture(seed, st, beltArch);
+		planets.belts(seed, st, beltArch, beltOut);
+		beltsReference(seed, st, beltArch, beltRef);
+		for (let i = 0; i < Math.max(beltOut.count, beltRef.count); i++) {
+			if (beltOut.kind[i] !== beltRef.kind[i] || beltOut.a[i] !== beltRef.a[i]
+				|| beltOut.dlnA[i] !== beltRef.dlnA[i] || beltOut.mass[i] !== beltRef.mass[i]
+				|| beltOut.stippleSeed[i] !== beltRef.stippleSeed[i]) {
+				beltChainOk = false;
+				beltDetails.push({ s, i, got: beltOut.a[i], want: beltRef.a[i] });
+			}
+		}
+	}
+	check('belt chain: bit-equal to a reimplementation over 500 systems (500 main-sequence, giant and wd draws)',
+		beltChainOk, beltDetails.length ? beltDetails.slice(0, 3) : 'all equal');
+
+	// 8d. Purity and determinism: same (seed, star) twice is byte-identical, a
+	// different seed differs, and the record carries no state across calls.
+	planets.belts(0x1234, beltStars[0], beltArch, beltOut);
+	const beltFirst = beltOut.count + '|' + Array.from(beltOut.a).join(',') + '|'
+		+ Array.from(beltOut.mass).join(',') + '|' + Array.from(beltOut.stippleSeed).join(',');
+	planets.belts(0x1234, beltStars[1], beltArch, beltOut);        // a giant pass in between
+	planets.belts(0x1234, beltStars[0], beltArch, beltOut);
+	const beltSecond = beltOut.count + '|' + Array.from(beltOut.a).join(',') + '|'
+		+ Array.from(beltOut.mass).join(',') + '|' + Array.from(beltOut.stippleSeed).join(',');
+	planets.belts(0x1235, beltStars[0], beltArch, beltOut);
+	const beltThird = beltOut.count + '|' + Array.from(beltOut.a).join(',');
+	check('belts are pure in (seed, star, arch): repeat calls identical, another seed differs',
+		beltFirst === beltSecond && beltThird !== beltFirst);
+
+	// 8e. The Solar-System ranges of plan §4.7, over 20 000 Sun-like draws at
+	// 2 Gyr: the asteroid analog inside the snow line's 0.55–0.95 span
+	// (1.485–2.565 AU), the Kuiper analog in the disc edge's 0.35–0.80 span
+	// (14–32 AU), and the masses inside the brackets that span produces.
+	const sunBelt = beltStars[0];
+	const innerA = [Infinity, -Infinity], outerA = [Infinity, -Infinity];
+	const innerM = [Infinity, -Infinity], outerM = [Infinity, -Infinity];
+	let counts = [0, 0, 0], orderViolations = 0, twoBelt = 0;
+	let innerPresent = 0, outerPresent = 0;
+	const innerDln = [Infinity, -Infinity];
+	for (let s = 0; s < 20000; s++) {
+		const seed = hash.pcgHash(s);
+		planets.architecture(seed, sunBelt, beltArch);
+		planets.belts(seed, sunBelt, beltArch, beltOut);
+		counts[beltOut.count]++;
+		for (let i = 0; i < beltOut.count; i++) {
+			if (beltOut.kind[i] === 0) {
+				innerPresent++;
+				innerA[0] = Math.min(innerA[0], beltOut.a[i]); innerA[1] = Math.max(innerA[1], beltOut.a[i]);
+				innerM[0] = Math.min(innerM[0], beltOut.mass[i]); innerM[1] = Math.max(innerM[1], beltOut.mass[i]);
+				innerDln[0] = Math.min(innerDln[0], beltOut.dlnA[i]); innerDln[1] = Math.max(innerDln[1], beltOut.dlnA[i]);
+			} else {
+				outerPresent++;
+				outerA[0] = Math.min(outerA[0], beltOut.a[i]); outerA[1] = Math.max(outerA[1], beltOut.a[i]);
+				outerM[0] = Math.min(outerM[0], beltOut.mass[i]); outerM[1] = Math.max(outerM[1], beltOut.mass[i]);
+			}
+			if (i > 0 && beltOut.a[i] <= beltOut.a[i - 1]) orderViolations++;
+			if (beltOut.mass[i] <= 0) orderViolations += 1000;    // no zero-mass placeholder
+		}
+		if (beltOut.count === 2) twoBelt++;
+	}
+	const rangeOk = innerA[0] >= 1.485 - 1e-9 && innerA[1] <= 2.565 + 1e-9
+		&& outerA[0] >= 14 - 1e-9 && outerA[1] <= 32 + 1e-9
+		&& innerDln[0] >= 0.10 && innerDln[1] <= 0.35
+		&& innerM[0] >= 1e-4 - 1e-15 && innerM[1] <= Math.pow(10, -1.5) + 1e-15
+		&& outerM[0] >= 1e-2 - 1e-15 && outerM[1] <= 1 + 1e-15;
+	check('Sun-like belts: inner 1.485–2.565 AU (1e-4 – 0.032 M⊕), outer 14–32 AU (1e-2 – 1 M⊕), ascending, never empty',
+		rangeOk && orderViolations === 0 && counts[0] > 0 && counts[1] > 0 && twoBelt > 0,
+		{ counts, orderViolations, innerA: innerA.map((x) => +x.toFixed(3)),
+			outerA: outerA.map((x) => +x.toFixed(1)),
+			innerM: innerM.map((x) => +x.toExponential(2)), outerM: outerM.map((x) => +x.toExponential(2)),
+			inner: innerPresent / 20000, outer: outerPresent / 20000 });
+
+	// 8f. The scouring is what empties a belt (plan §4.7): with four gas giants
+	// inside the belt radius the presence draw cannot pass, and the emergent rate
+	// over 2 000 draws is exactly zero — measured on a synthetic architecture so
+	// the pin does not depend on how often a real system draws four giants.
+	const scoured = planets.createArchitecture();
+	scoured.n = 4; scoured.aOut = 40;
+	for (let i = 0; i < 4; i++) {
+		scoured.slot[i] = i; scoured.bulk[i] = planets.BULK_INDEX.gas;
+		scoured.mass[i] = 300; scoured.a[i] = 0.5 + i;
+	}
+	const empty = planets.createArchitecture();
+	empty.n = 0; empty.aOut = 40;
+	let presentClean = 0, presentScoured = 0;
+	for (let s = 0; s < 2000; s++) {
+		const seed = hash.pcgHash(s + 90000);
+		planets.belts(seed, sunBelt, empty, beltOut);
+		if (beltOut.count > 0 && beltOut.kind[0] === 0) presentClean++;
+		planets.belts(seed, sunBelt, scoured, beltOut);
+		if (beltOut.count > 0) presentScoured++;
+	}
+	// The unscoured inner rate is 0.90·fade(2) = 0.403; each giant inside takes
+	// 0.35 off it, so four of them cannot leave a belt however the draw falls.
+	check('scouring: four giants inside the inner belt ⇒ no belt at all (2 000 draws), unscoured inner rate ≈ 0.40',
+		presentScoured === 0 && presentClean > 700 && presentClean < 900,
+		{ presentClean, presentScoured, expected: +(planets.BELT_P_MAX * planets.debrisFade(2)).toFixed(3) });
+
+	// 8g. The wd rule (plan §4.4/§4.7): one belt only, forced presence, inside
+	// the 0.05 AU cut. And the giant case: the snow line falls outside the disc,
+	// so the inner belt is capped below the outer belt and the ordering survives.
+	const wdBelt = beltStars[2], giantBelt = beltStars[1];
+	let wdOk = true, wdPresent = 0, wdAMax = -Infinity, wdAMin = Infinity;
+	let giantOrderOk = true, giantInner = Infinity, giantOuter = -Infinity;
+	for (let s = 0; s < 5000; s++) {
+		const seed = hash.pcgHash(s + 4242);
+		planets.architecture(seed, wdBelt, beltArch);
+		planets.belts(seed, wdBelt, beltArch, beltOut);
+		if (beltOut.count > 1) wdOk = false;                      // never an outer belt
+		for (let i = 0; i < beltOut.count; i++) {
+			wdPresent++;
+			if (beltOut.kind[i] !== 0) wdOk = false;
+			wdAMax = Math.max(wdAMax, beltOut.a[i]); wdAMin = Math.min(wdAMin, beltOut.a[i]);
+			if (beltOut.a[i] < 0.012 || beltOut.a[i] > 0.05) wdOk = false;
+		}
+		planets.architecture(seed, giantBelt, beltArch);
+		planets.belts(seed, giantBelt, beltArch, beltOut);
+		for (let i = 0; i < beltOut.count; i++) {
+			if (i > 0 && beltOut.a[i] <= beltOut.a[i - 1]) giantOrderOk = false;
+			if (beltOut.kind[i] === 0) giantInner = Math.min(giantInner, beltOut.a[i]);
+			else giantOuter = Math.max(giantOuter, beltOut.a[i]);
+		}
+	}
+	check('wd belts: exactly one, forced presence (0.80), all inside [0.012, 0.05] AU',
+		wdOk && Math.abs(wdPresent / 5000 - 0.8) < 0.02,
+		{ rate: wdPresent / 5000, a: [+wdAMin.toFixed(4), +wdAMax.toFixed(4)] });
+	check('giant belts: the capped snow line keeps the inner belt strictly inside the outer belt',
+		giantOrderOk && giantInner < giantOuter && giantInner < 0.35 * 40 * Math.sqrt(giantBelt.mass),
+		{ inner: +giantInner.toFixed(3), outer: +giantOuter.toFixed(3) });
+
+	// 8h. The stipple (plan §4.7/§6.2): one seed per belt, different seeds for
+	// the two belts and different systems, STIPPLE_N dots whose angles cover the
+	// circle and whose radii fill the belt's own ±Δln a — the drawn belt is as
+	// thick as the record says.
+	const stAngles = new Float64Array(planets.STIPPLE_N);
+	const stRadii = new Float64Array(planets.STIPPLE_N);
+	const stAnglesRef = new Float64Array(planets.STIPPLE_N);
+	const seedA = planets.beltStippleSeed(0x1234, planets.CH_BELT_INNER);
+	const seedB = planets.beltStippleSeed(0x1234, planets.CH_BELT_OUTER);
+	const seedC = planets.beltStippleSeed(0x9999, planets.CH_BELT_INNER);
+	planets.fillStipple(seedA, 2.0, 0.2, stAngles, stRadii);
+	planets.fillStipple(seedA, 2.0, 0.2, stAnglesRef, new Float64Array(planets.STIPPLE_N));
+	let stAngleMin = Infinity, stAngleMax = -Infinity;
+	let stRatioMin = Infinity, stRatioMax = -Infinity;
+	for (let j = 0; j < planets.STIPPLE_N; j++) {
+		stAngleMin = Math.min(stAngleMin, stAngles[j]);
+		stAngleMax = Math.max(stAngleMax, stAngles[j]);
+		stRatioMin = Math.min(stRatioMin, stRadii[j] / 2.0);
+		stRatioMax = Math.max(stRatioMax, stRadii[j] / 2.0);
+	}
+	let stBytesOk = true;
+	for (let j = 0; j < planets.STIPPLE_N; j++) if (stAngles[j] !== stAnglesRef[j]) stBytesOk = false;
+	check('stipple: STIPPLE_N dots, angles in [0, 2π), radii log-uniform inside exp(±Δln a), repeatable',
+		seedA !== seedB && seedA !== seedC && stBytesOk
+		&& stAngleMin >= 0 && stAngleMax < Math.PI * 2
+		&& stRatioMin >= Math.exp(-0.2) - 1e-9 && stRatioMax <= Math.exp(0.2) + 1e-9
+		&& stAngleMax - stAngleMin > 6.0 && stRatioMin < 0.9 && stRatioMax > 1.1,
+		{ angle: [+stAngleMin.toFixed(3), +stAngleMax.toFixed(3)],
+			ratio: [+stRatioMin.toFixed(4), +stRatioMax.toFixed(4)] });
+
+	// 8i. The §4.8 moon count: a count, not a system — floor(moonMax·u³), so the
+	// median is far below the maximum and a giant reaches its real scale.
+	const moonsOk = planets.moonCount(planets.BULK_INDEX.gas, 1) === 80
+		&& planets.moonCount(planets.BULK_INDEX.gas, 0.5) === 10
+		&& planets.moonCount(planets.BULK_INDEX.rock, 1) === 1
+		&& planets.moonCount(planets.BULK_INDEX.dwarf, 1) === 0
+		&& planets.moonCount(planets.BULK_INDEX.icegiant, 0.9999) <= 30;
+	let moonMono = true, prevMoons = -1;
+	for (let j = 0; j <= 100; j++) {
+		const m = planets.moonCount(planets.BULK_INDEX.gas, j / 100);
+		if (m < prevMoons) moonMono = false;
+		prevMoons = m;
+	}
+	check('moons: floor(moonMax·u³) — 80 at u = 1 for a gas giant, 10 at u = 0.5, 0 for a dwarf, monotone in u',
+		moonsOk && moonMono);
+
+	// 8j. Budget and allocation (plan §4.12 for generateSystem): the belt pass
+	// and the stipple fill write into caller-owned arrays and allocate nothing —
+	// a coarse heap delta over 200k belt passes, the same technique the encoder
+	// and the architecture tier use. The stipple is costed separately: it runs
+	// once when a system is opened (§6.5), not per star in a search.
+	for (let s = 0; s < 1000; s++) {
+		planets.architecture(hash.pcgHash(s), sunBelt, beltArch);
+		planets.belts(hash.pcgHash(s), sunBelt, beltArch, beltOut);
+	}
+	const beltHeapBefore = process.memoryUsage().heapUsed;
+	const beltT0 = performance.now();
+	for (let s = 0; s < 200000; s++) {
+		planets.architecture(hash.pcgHash(s), sunBelt, beltArch);
+		planets.belts(hash.pcgHash(s), sunBelt, beltArch, beltOut);
+	}
+	const beltUs = (performance.now() - beltT0) * 1000 / 200000;
+	const beltHeapDelta = process.memoryUsage().heapUsed - beltHeapBefore;
+	planets.belts(0x1234, sunBelt, beltArch, beltOut);
+	const stippleSeed = beltOut.count > 0 ? beltOut.stippleSeed[0] : seedA;
+	const stippleT0 = performance.now();
+	for (let s = 0; s < 20000; s++) {
+		planets.fillStipple(stippleSeed, 2.0, 0.2, stAngles, stRadii);
+	}
+	const stippleUs = (performance.now() - stippleT0) * 1000 / 20000;
+	check('belts allocate nothing per call (coarse heap delta < 2 MB over 200k passes)',
+		beltHeapDelta < 2 * 1024 * 1024, { beltHeapDelta });
+	check('architecture + belts stay inside the 20 µs per-system budget; one stipple fill is a frame-safe one-off',
+		beltUs < 20 && stippleUs < 200,
+		{ usPerSystem: +beltUs.toFixed(3), usPerStippleFill: +stippleUs.toFixed(3) });
 }
 
 // --- Report ------------------------------------------------------------------
@@ -1125,5 +1555,5 @@ fs.writeFileSync(logPath, JSON.stringify({
 }, null, 2));
 console.log(`Wrote ${logPath}`);
 console.log('\n=== VERDICT ===');
-console.log(failed === 0 ? 'PASS — identity keys, the inversion, every stellar-input path, the occurrence tier, the architecture tier and the insolation/temperature/band tier behave as documented' : `FAIL — ${failed} checks failed`);
+console.log(failed === 0 ? 'PASS — identity keys, the inversion, every stellar-input path, the occurrence tier, the architecture tier, the insolation/temperature/band tier and the belt/moon tier behave as documented' : `FAIL — ${failed} checks failed`);
 process.exit(failed === 0 ? 0 : 1);

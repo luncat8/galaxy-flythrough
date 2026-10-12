@@ -8,7 +8,7 @@ Implementation history is grouped by release series. Append entries to the match
 | 0.1.x | [0.1.x worklog](archive/0.1.x-worklog.md) | Initial planning, experiments, runtime, streaming, cameras, landmarks and HDR |
 | 0.3.x | [0.3.x worklog](archive/0.3.x-worklog.md) | 0.3/0.4 planning, GalaxyModel, galaxy types and distributions, composite objects, nebula billboards, galaxy age |
 | 0.4.x | [0.4.x worklog](archive/0.4.x-worklog.md) | Kinematic orbits, star-time control, group kinematics, wave-damping capture, simple and apocenter-guided engines, giant-branch evolution, HDR headroom/desat knobs, realistic 3D shapes (bar peanut, truncation floors, age–height coupling), settings presets, engine-mask dispatch |
-| 0.5.x | [0.5.x worklog](archive/0.5.x-worklog.md) | Planet series: planning pass, 0.5.0 — per-record star identity, the chunked CPU picker, the snapshot selection set (primary + 256), fly-to, radius select, set rings — and 0.5.1 under way: the input tier, the occurrence tier (μ, f_Z/state bulk weights, the geometric count draw), the architecture tier (disc edges, log-uniform axes, bulk/mass draws, Hill repair, orbital elements) and the insolation/temperature/band tier (Teq, band refinement, runaway/thermostat, locking, HZ/terran flags). Belts/SystemRecord, then search/schematic/delta-v/routes still to come. |
+| 0.5.x | [0.5.x worklog](archive/0.5.x-worklog.md) | Planet series: planning pass, 0.5.0 — per-record star identity, the chunked CPU picker, the snapshot selection set (primary + 256), fly-to, radius select, set rings — and 0.5.1 under way: the input tier, the occurrence tier (μ, f_Z/state bulk weights, the geometric count draw), the architecture tier (disc edges, log-uniform axes, bulk/mass draws, Hill repair, orbital elements), the insolation/temperature/band tier (one `thermal` pass: Teq, band refinement, runaway/thermostat with its clamp, locking, HZ/terran/hot-Jupiter flags) and the belt/moon tier (snow line, fade, scouring, the cap that orders the two belts, the Ceres typical body, the stipple seed and law, `floor(moonMax·u³)`). The 0.5.1-5 review corrected five plan/code divergences. SystemRecord, then search/schematic/delta-v/routes still to come. |
 
 No separate 0.2 implementation entry exists in the original log. The combined
 0.3/0.4 planning entry lives in 0.3.x; 0.4.x implementation entries live in the
@@ -33,8 +33,9 @@ in [a separate plan](deferred-browser-visual-plan.md), not completed or blocking
 See the 2026-10-11 triage entry in the 0.4.x log for reproduced failures and scope.
 
 Active: [the 0.5 planet series](0.5.0-plan-planet-generator.md) — 0.5.0 (selection)
-shipped, 0.5.1 (the generator) under way (input, occurrence, architecture and
-insolation/temperature/band tiers landed; belts and the SystemRecord remain). It is
+shipped, 0.5.1 (the generator) under way (input, occurrence, architecture,
+insolation/temperature/band and belt/moon tiers landed; the SystemRecord, `generateSystem`
+and the summary tier remain). It is
 CPU-only and additive, so it neither blocks nor depends on the parity work above — with one
 coupling, stated in the plan and landed with 0.5.0: the arbitrary-star picker dispatches
 positions through the same engine-mask law the parity plan pins

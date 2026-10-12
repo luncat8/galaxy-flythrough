@@ -1187,8 +1187,8 @@ Next series:
   star selection and multi-select (**0.5.0 shipped**: per-record identity keys, the chunked
   CPU picker, the snapshot selection set, fly-to, radius select and set rings, plus the
   planet module's `stellarInputs` input tier), the deterministic planet/belt generator
-  (0.5.1, in progress — input, occurrence, architecture and insolation/temperature/band tiers
-  landed), star and planet search (0.5.2),
+  (0.5.1, in progress — input, occurrence, architecture, insolation/temperature/band and
+  belt/moon tiers landed), star and planet search (0.5.2),
   the close-system schematic view (0.5.3), the delta-v map (0.5.4) and routes/autopilot
   (0.5.5). CPU-only by construction: the star buffer, the WGSL and the three render paths
   are untouched.

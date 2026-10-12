@@ -1,11 +1,11 @@
 {
-  "date": "2026-10-12T16:39:39.944Z",
+  "date": "2026-10-12T20:55:10.363Z",
   "model": {
     "type": "SBb",
     "seed": 12345
   },
-  "totalChecks": 68,
-  "passed": 68,
+  "totalChecks": 88,
+  "passed": 88,
   "failed": 0,
   "checks": [
     {
@@ -396,14 +396,14 @@
       "name": "architecture allocates nothing per call (coarse heap delta < 2 MB over 100k calls)",
       "pass": true,
       "detail": {
-        "heapDelta": 1150960
+        "heapDelta": 411184
       }
     },
     {
       "name": "architecture is far inside the 20 µs generateSystem budget",
       "pass": true,
       "detail": {
-        "usPerCall": 0.246
+        "usPerCall": 0.212
       }
     },
     {
@@ -412,7 +412,7 @@
       "detail": 254.5857729432723
     },
     {
-      "name": "six-body Solar temperature table (Mercury 433 … Ceres 163, plan §4.2/§4.6)",
+      "name": "six-body Solar table through `thermal` (Mercury 433 … Ceres 163, plan §4.2/§4.6)",
       "pass": true,
       "detail": "all six match"
     },
@@ -425,13 +425,36 @@
       "pass": true
     },
     {
-      "name": "thermostat: TERRAN Tsurf stays in [260, 296] K across band 2; Mars analogs fall monotonically",
+      "name": "thermostat: across band 2 TERRAN holds 260.8–290.7 K and SUPER_EARTH 264.2–295.2 K, both extremes at the band edges; Mars analogs fall monotonically",
       "pass": true,
       "detail": {
         "range": [],
+        "edgesOk": true,
         "marsMono": true,
+        "terr": [
+          260.82,
+          290.71
+        ],
+        "se": [
+          264.22,
+          295.19
+        ],
         "marsBand3": 166.4,
         "marsBand2Outer": 205.2
+      }
+    },
+    {
+      "name": "thermostat clamp: ΔT = 33 K at S 1.0 and 1.05, ΔT = 65 K at S 0.35 and at the 0.418 2 knee",
+      "pass": true,
+      "detail": {
+        "dT": [
+          33,
+          33,
+          49.5,
+          60.5,
+          64.999,
+          65
+        ]
       }
     },
     {
@@ -440,45 +463,63 @@
       "detail": "all four match"
     },
     {
-      "name": "HZ/terran flags: Earth in HZ and terran; Mars/Venus/Moon/Ceres/Mercury not terran",
+      "name": "HZ/terran flags: Earth is inHZ + terran; Mars/Venus/Moon/Ceres/Mercury are not terran",
       "pass": true,
       "detail": {
         "earth": {
           "inHZ": true,
-          "terran": true,
-          "lockedHZ": false
+          "terran": true
         },
         "mars": {
           "inHZ": true,
           "terran": false,
-          "lockedHZ": false
+          "band": 2
         },
         "venus": {
           "inHZ": false,
-          "terran": false,
-          "lockedHZ": false
+          "runaway": true,
+          "band": 1
         },
         "moon": {
-          "inHZ": true,
-          "terran": false,
-          "lockedHZ": false
+          "terran": false
+        },
+        "ceres": {
+          "terran": false
         }
       }
     },
     {
-      "name": "locked HZ worlds: lockedHZ set, terran clear (TRAPPIST-1 e, Proxima b analog)",
+      "name": "terran window: a 0.4 Gyr world and a 6 M⊕ super-Earth are in the band but not terran; a 5 M⊕ one is",
+      "pass": true,
+      "detail": {
+        "young": false,
+        "heavy": false
+      }
+    },
+    {
+      "name": "locked HZ worlds: locked + lockedHZ set, terran clear (TRAPPIST-1 e, Proxima b analog)",
       "pass": true,
       "detail": {
         "trappist": {
-          "inHZ": true,
-          "terran": false,
-          "lockedHZ": true
+          "band": 2,
+          "locked": true,
+          "lockedHZ": true,
+          "terran": false
         },
         "proxima": {
-          "inHZ": true,
-          "terran": false,
-          "lockedHZ": true
+          "band": 2,
+          "locked": true,
+          "lockedHZ": true,
+          "terran": false
         }
+      }
+    },
+    {
+      "name": "thermal is pure in (star, a, bulk, mass): the record has no stale fields",
+      "pass": true,
+      "detail": {
+        "first": "{\"insol\":1,\"band\":2,\"displayId\":3,\"albedo\":0.3,\"teq\":254.5857729432723,\"tsurf\":287.58577294327233,\"runaway\":false,\"locked\":false,\"hotJupiter\":false,\"inHZ\":true,\"terran\":true,\"lockedHZ\":false}",
+        "again": "{\"insol\":1,\"band\":2,\"displayId\":3,\"albedo\":0.3,\"teq\":254.5857729432723,\"tsurf\":287.58577294327233,\"runaway\":false,\"locked\":false,\"hotJupiter\":false,\"inHZ\":true,\"terran\":true,\"lockedHZ\":false}"
       }
     },
     {
@@ -496,6 +537,162 @@
       "detail": {
         "dT_inner": 33,
         "dT_outer": 65
+      }
+    },
+    {
+      "name": "HZ identity: band 2 ⟺ a_hz_in ≤ a ≤ a_hz_out over 4 000 (L, a) pairs",
+      "pass": true,
+      "detail": {
+        "hzInner": 0.976,
+        "hzOuter": 1.69
+      }
+    },
+    {
+      "name": "albedoFor: runaway → 0.70 (Venus), otherwise the display type's own column",
+      "pass": true,
+      "detail": {
+        "desertRunaway": 0.7
+      }
+    },
+    {
+      "name": "hot-Jupiter flag: gas/mini above S = 20 only (not ice giants, not rock)",
+      "pass": true
+    },
+    {
+      "name": "runaway ⟹ not inHZ over 20 000 systems, and every band follows from its own insolation",
+      "pass": true
+    },
+    {
+      "name": "snow line: 2.7 AU at 1 L☉, sqrt(L) law (0.854 AU at 0.1 L☉)",
+      "pass": true,
+      "detail": {
+        "sun": 2.7,
+        "faint": 0.854
+      }
+    },
+    {
+      "name": "typical body: the Ceres analog (R 470 km, M 9.4e20 kg, ρ 2160 kg/m³, μ = G·M, albedo 0.09)",
+      "pass": true,
+      "detail": {
+        "rho": 2161.5,
+        "mu": "6.2736e+10"
+      }
+    },
+    {
+      "name": "presence: 0.90·fade − 0.35·nGiants clamped to [0, 1], monotone in age and in giants inside",
+      "pass": true,
+      "detail": {
+        "fade": [
+          1,
+          0.2768,
+          0.25
+        ],
+        "p": [
+          0.403,
+          0.053,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "belt chain: bit-equal to a reimplementation over 500 systems (500 main-sequence, giant and wd draws)",
+      "pass": true,
+      "detail": "all equal"
+    },
+    {
+      "name": "belts are pure in (seed, star, arch): repeat calls identical, another seed differs",
+      "pass": true
+    },
+    {
+      "name": "Sun-like belts: inner 1.485–2.565 AU (1e-4 – 0.032 M⊕), outer 14–32 AU (1e-2 – 1 M⊕), ascending, never empty",
+      "pass": true,
+      "detail": {
+        "counts": [
+          8959,
+          8430,
+          2611
+        ],
+        "orderViolations": 0,
+        "innerA": [
+          1.485,
+          2.565
+        ],
+        "outerA": [
+          14,
+          32
+        ],
+        "innerM": [
+          0.0001,
+          0.0316
+        ],
+        "outerM": [
+          0.01,
+          0.999
+        ],
+        "inner": 0.3555,
+        "outer": 0.3271
+      }
+    },
+    {
+      "name": "scouring: four giants inside the inner belt ⇒ no belt at all (2 000 draws), unscoured inner rate ≈ 0.40",
+      "pass": true,
+      "detail": {
+        "presentClean": 790,
+        "presentScoured": 0,
+        "expected": 0.403
+      }
+    },
+    {
+      "name": "wd belts: exactly one, forced presence (0.80), all inside [0.012, 0.05] AU",
+      "pass": true,
+      "detail": {
+        "rate": 0.7944,
+        "a": [
+          0.012,
+          0.0166
+        ]
+      }
+    },
+    {
+      "name": "giant belts: the capped snow line keeps the inner belt strictly inside the outer belt",
+      "pass": true,
+      "detail": {
+        "inner": 8.443,
+        "outer": 35.043
+      }
+    },
+    {
+      "name": "stipple: STIPPLE_N dots, angles in [0, 2π), radii log-uniform inside exp(±Δln a), repeatable",
+      "pass": true,
+      "detail": {
+        "angle": [
+          0.001,
+          6.254
+        ],
+        "ratio": [
+          0.8211,
+          1.2181
+        ]
+      }
+    },
+    {
+      "name": "moons: floor(moonMax·u³) — 80 at u = 1 for a gas giant, 10 at u = 0.5, 0 for a dwarf, monotone in u",
+      "pass": true
+    },
+    {
+      "name": "belts allocate nothing per call (coarse heap delta < 2 MB over 200k passes)",
+      "pass": true,
+      "detail": {
+        "beltHeapDelta": -1124192
+      }
+    },
+    {
+      "name": "architecture + belts stay inside the 20 µs per-system budget; one stipple fill is a frame-safe one-off",
+      "pass": true,
+      "detail": {
+        "usPerSystem": 0.353,
+        "usPerStippleFill": 2.507
       }
     }
   ]

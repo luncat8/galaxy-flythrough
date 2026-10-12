@@ -19,15 +19,24 @@
 //     draws, the Hill repair with its drop-on-overflow rule, and the orbital
 //     elements — one `architecture(seed, star, out)` chain into the
 //     struct-of-arrays record `createArchitecture` builds,
-//   * the insolation/temperature/band tier (plan §4.6, 0.5.1-5): insolation
-//     and equilibrium temperature, the four-band classification, the mass-tier
-//     band-refinement table (one flat lookup, no iteration), the runaway-
-//     greenhouse bifurcation, the carbonate-silicate Walker thermostat, the
-//     tidal-locking rule and the HZ/terran flags.
+//   * the insolation/temperature/band tier (plan §4.6, 0.5.1-5): insolation,
+//     the HZ edges, the equilibrium temperature, the four-band classification,
+//     the mass-tier band-refinement table (one flat lookup, no iteration), the
+//     runaway-greenhouse bifurcation, the carbonate-silicate Walker thermostat
+//     with its clamp, the tidal-locking rule, the hot-Jupiter flag and the
+//     HZ/terran/lockedHZ flags — the whole pass in one `thermal()` call so the
+//     full tier and the summary tier cannot drift apart,
+//   * the belt/moon tier (plan §4.7/§4.8, 0.5.1-6): the snow line, the debris
+//     fade, the presence law with its giant scouring, the two belts' authored
+//     coefficient rows, the cap that keeps the inner belt inside the outer one
+//     (the degenerate giant and wd cases), the Ceres typical-body constants,
+//     the per-belt stipple seed and its angle/radius law, and the moon count.
 //
-// 0.5.1's remaining tiers add belts and the SystemRecord behind
-// this same object. Everything here is a pure
-// function of (model, key, record): no PRNG state, no allocation, `out` params.
+// 0.5.1's remaining tier adds the SystemRecord behind
+// this same object. Everything here is a pure function of (model, key, record): no PRNG
+// state and no objects allocated — every entry point mutates a caller-owned `out` record,
+// which is also what keeps V8's escape analysis from being the only thing standing between
+// the search loop and a per-call allocation (see findings-pitfalls-skills.md).
 //
 // Why the conversion exists at all: the renderer's procedural blocks can be
 // re-derived bit-exactly (same call, same arguments, same channels), but a
@@ -69,6 +78,9 @@
 	const STAR_CLEARANCE = 6;            // innermost orbit, in stellar radii
 	const DISK_OUT_AU = 40;              // a_out = DISK_OUT_AU·sqrt(M★/M☉)
 	const A_LOCK = 0.30;                 // AU; locked below A_LOCK·sqrt(M★/M☉)
+	const S_EXTREME = 8;                 // S⊕; band 0 above this — molten at any mass
+	const S_LOCK = 50;                   // S⊕; the same locking rule's insolation catch
+	const S_HOT_JUPITER = 20;            // S⊕; the readout/search flag, not a display type
 	const RUNAWAY_DT = 500;              // K, Venus-calibrated
 	const RUNAWAY_ALBEDO = 0.70;
 	const TERRAN_DT_BASE = 33;
@@ -76,7 +88,25 @@
 	const TERRAN_DT_MAX = 65;
 	const AIRLESS_M = 0.02;              // M⊕; below this, no atmosphere at all
 	const ATM_RETAIN_M = 0.3;            // M⊕; below this, no runaway, no thermostat
+	const TERRAN_M_MIN = 0.5;            // M⊕; the `terran` flag's mass window
+	const TERRAN_M_MAX = 5;
+	const TERRAN_AGE_MIN = 0.5;          // Gyr; a biosphere needs time
 	const DEORBIT_DV = 0.15;             // km/s; the floor of a landing burn
+	// Belts (plan §4.7). The per-belt coefficients are the BELT_KINDS rows;
+	// these are the scalars the presence law and the typical body need.
+	const BELT_P_MAX = 0.90;             // presence ceiling at zero scouring
+	const BELT_SCOUR = 0.35;             // per giant orbiting inside the belt
+	const BELT_FADE_FLOOR = 0.25;        // the residual old-disc population
+	const BELT_FADE_TAU = 1.5;           // Gyr; fade = floor + (1−floor)·exp(−age/τ)
+	const BELT_WD_PRESENCE = 0.80;       // §4.4: a wd's inner belt is forced
+	const BELT_BODY_R_M = 470e3;         // the Ceres analog every belt carries
+	const BELT_BODY_MASS_KG = 9.4e20;
+	const BELT_BODY_ALBEDO = 0.09;
+	// Derived, not authored twice: M/(4/3·π·R³) is 2161 kg/m³, the published
+	// Ceres density, so the three numbers cannot drift apart.
+	const BELT_BODY_RHO = BELT_BODY_MASS_KG
+		/ ((4 / 3) * Math.PI * BELT_BODY_R_M * BELT_BODY_R_M * BELT_BODY_R_M);
+	const BELT_BODY_MU = G_SI * BELT_BODY_MASS_KG;   // m³/s², the dv map's belt node
 
 	// --- Star identity (plan §2.2/§2.3) -------------------------------------
 	// Block kinds are hashed into the system seed, so a landmark and a field star
@@ -105,14 +135,17 @@
 	// module reads for drag, aerocapture and landing credit — one table, three
 	// consumers. Colours are sRGB bytes, deliberately not the star palette's
 	// blues-for-hot convention: a blue planet and a blue star must not read the
-	// same.
+	// same. `dtBase` is the greenhouse term added to Teq *unless* a rule owns
+	// it: TERRAN and SUPER_EARTH share the TERRAN_DT_BASE anchor because the
+	// thermostat (§4.2) regulates both to the same target, and the super's
+	// extra warmth comes from its lower albedo, not from a bigger ΔT.
 	const DISPLAY_TYPES = [
 		{ id: 0, name: 'LAVA', bulk: 'rock', color: [255, 90, 42], albedo: 0.10, atmosphere: 'none', dtBase: 0 },
 		{ id: 1, name: 'BARREN', bulk: 'rock', color: [154, 143, 130], albedo: 0.12, atmosphere: 'none', dtBase: 0 },
 		{ id: 2, name: 'DESERT', bulk: 'rock', color: [217, 164, 91], albedo: 0.28, atmosphere: 'thin', dtBase: 8 },
 		{ id: 3, name: 'TERRAN', bulk: 'rock', color: [79, 157, 224], albedo: 0.30, atmosphere: 'breathable', dtBase: TERRAN_DT_BASE },
 		{ id: 4, name: 'ICE', bulk: 'ice', color: [207, 232, 245], albedo: 0.65, atmosphere: 'thin', dtBase: 8 },
-		{ id: 5, name: 'SUPER_EARTH', bulk: 'super', color: [164, 209, 106], albedo: 0.25, atmosphere: 'thick', dtBase: 40 },
+		{ id: 5, name: 'SUPER_EARTH', bulk: 'super', color: [164, 209, 106], albedo: 0.25, atmosphere: 'thick', dtBase: TERRAN_DT_BASE },
 		{ id: 6, name: 'MINI_NEPTUNE', bulk: 'mini', color: [127, 212, 208], albedo: 0.45, atmosphere: 'hhe', dtBase: 60 },
 		{ id: 7, name: 'GAS_GIANT', bulk: 'gas', color: [224, 176, 112], albedo: 0.50, atmosphere: 'hhe', dtBase: 30 },
 		{ id: 8, name: 'ICE_GIANT', bulk: 'icegiant', color: [111, 159, 224], albedo: 0.55, atmosphere: 'hhe', dtBase: 25 },
@@ -650,38 +683,52 @@
 	// --- Insolation, temperature, band refinement (plan §4.6) ---------------
 
 	// Insolation in S⊕: L★/a², a in AU.  No albedo — it enters through Teq,
-	// not through the band or the display type.
+	// not through the band or the display type, and that is what makes the whole
+	// tier one straight pass with nothing to iterate.
 	function insolation(lum, aAU) {
 		return lum / (aAU * aAU);
 	}
 
-	// Equilibrium temperature (plan §4.6): the effective temperature scaled by
-	// the square root of the solid-angle fraction, dimmed by (1−A)^0.25.
-	// `teff` in K, `rStar` in R☉, `aM` in metres.
-	function equilibriumTemp(teff, rStar, aM, albedo) {
-		const rM = rStar * R_SUN_M;
-		return teff * Math.sqrt(rM / (2 * aM)) * Math.pow(1 - albedo, 0.25);
+	// The habitable zone's edges in AU (plan §4.6) — the same two constants the
+	// band's edges use, so `inHZ` and `a_hz_in ≤ a ≤ a_hz_out` cannot disagree.
+	// The schematic's HZ annulus (§6.2) and the search read these, not a copy.
+	function hzInnerAU(lum) {
+		return Math.sqrt(lum / HZ_S_IN);
+	}
+
+	function hzOuterAU(lum) {
+		return Math.sqrt(lum / HZ_S_OUT);
+	}
+
+	// Equilibrium temperature (plan §4.6): Teff★ scaled by the square root of
+	// the solid-angle fraction, dimmed by (1 − A)^0.25. Distances in AU and
+	// radii in R☉ — the units the rest of the module speaks — through the one
+	// derived ratio AU_PER_R_SUN, so no caller can hand this metres by mistake.
+	// The fourth root is sqrt∘sqrt rather than Math.pow(x, 0.25): the same value
+	// to within an ulp, on a path a 300k-star search walks once per planet.
+	function equilibriumTemp(teff, rStar, aAU, albedo) {
+		const absorb = 1 - albedo;
+		return teff * Math.sqrt(rStar * AU_PER_R_SUN / (2 * aAU))
+			* Math.sqrt(Math.sqrt(absorb));
 	}
 
 	// Insolation → band index, matching the plan's boundaries exactly:
-	//   0: S > 8   (extreme: everything is LAVA or a hot giant)
-	//   1: S > 1.05  (hot: runaway possible for ≥ 0.3 M⊕)
-	//   2: S ≥ 0.35  (the habitable zone, thermostat-active)
-	//   3: S < 0.35  (cold: everything freezes to ICE or a cold giant)
-	// The boundaries HZ_S_IN (1.05) and HZ_S_OUT (0.35) are the same pair of
-	// constants that define `inHZ`, so the two uses cannot disagree.
+	//   0: S > S_EXTREME  (everything is LAVA or a hot giant)
+	//   1: S > HZ_S_IN    (hot: runaway for M ≥ ATM_RETAIN_M)
+	//   2: S ≥ HZ_S_OUT   (the habitable band, thermostat-active)
+	//   3: below that     (cold: everything freezes to ICE or a cold giant)
 	function planetBand(insol) {
-		if (insol > 8) return 0;
+		if (insol > S_EXTREME) return 0;
 		if (insol > HZ_S_IN) return 1;
 		if (insol >= HZ_S_OUT) return 2;
 		return 3;
 	}
 
-	// The band-refinement table (plan §4.6): four entries per band, one per
-	// mass tier (M < 0.02, M < 0.3, M ≥ 0.3 rock/ice, M ≥ 0.3 super).
-	// Rock, ice and super share the same display-type sequence; super's
-	// tier-3 slot gives SUPER_EARTH instead of TERRAN.  The four gas types
-	// and dwarf are constant across bands (they never enter the lookup).
+	// The band-refinement table (plan §4.6): BAND_REFINEMENT_SIZE mass tiers per
+	// band, one flat lookup. The tiers are the two atmosphere-retention
+	// thresholds plus super's own top row; the three gas bulks never enter it
+	// (their display type does not depend on insolation) and dwarf is its own
+	// two-case rule.
 	const _LAVA = DISPLAY_INDEX.LAVA, _BARREN = DISPLAY_INDEX.BARREN;
 	const _DESERT = DISPLAY_INDEX.DESERT, _TERRAN = DISPLAY_INDEX.TERRAN;
 	const _ICE = DISPLAY_INDEX.ICE, _SE = DISPLAY_INDEX.SUPER_EARTH;
@@ -689,23 +736,20 @@
 	const _IG = DISPLAY_INDEX.ICE_GIANT, _DWARF = DISPLAY_INDEX.DWARF;
 	const BAND_REFINEMENT_SIZE = 4;
 	const PLANET_BAND_DISPLAY = [
-		// band 0: S > 8 — all rock/ice/super LAVA; dwarf handled separately
+		// band 0: S > S_EXTREME — molten at any mass
 		_LAVA, _LAVA, _LAVA, _LAVA,
-		// band 1: 1.05 < S ≤ 8
-		_LAVA, _BARREN, _DESERT, _DESERT,
-		// band 2: 0.35 ≤ S ≤ 1.05 — the habitable zone
+		// band 1: hot. An airless world has nothing to boil, so tiers 0–1 keep
+		// their band-2 types; only M ≥ ATM_RETAIN_M reaches DESERT, and its
+		// runaway is a ΔT/albedo override, not another display type.
+		_BARREN, _BARREN, _DESERT, _DESERT,
+		// band 2: the habitable band
 		_BARREN, _DESERT, _TERRAN, _SE,
-		// band 3: S < 0.35 — all ice
+		// band 3: cold
 		_ICE, _ICE, _ICE, _ICE,
 	];
 
-	// Thermal index: one entry per bulk class (BULKS.length).  The gas types
-	// and dwarf are constant across bands; rock/ice/super vary by band and
-	// mass, so their index entry is −1 (signalling that PLANET_BAND_DISPLAY
-	// must be consulted).  Entries are display-type ids, so the mapping is
-	// built-in.
-	// Dwarf is constant except in band 0 (LAVA), so it is NOT in the thermal
-	// index — it gets a special-case early return in planetDisplay.
+	// The display types whose answer does not depend on band or mass. Rock, ice,
+	// super and dwarf are −1: consult PLANET_BAND_DISPLAY instead.
 	const PLANET_DISPLAY_THERMAL_INDEX = (function () {
 		const idx = new Int8Array(BULKS.length).fill(-1);
 		idx[BULK_INDEX.mini] = _MN;
@@ -714,24 +758,22 @@
 		return idx;
 	})();
 
-	// The band-refinement function (plan §4.6): one flat lookup, no iteration,
-	// no convergence question.  Returns a display-type id.
+	// The table's row: below AIRLESS_M nothing is retained at all, below
+	// ATM_RETAIN_M there is no cycle to run, and above it a super-Earth is its
+	// own row (SUPER_EARTH where rock and ice are TERRAN).
+	function massTier(bulkIndex, mass) {
+		if (mass < AIRLESS_M) return 0;
+		if (mass < ATM_RETAIN_M) return 1;
+		return bulkIndex === BULK_INDEX.super ? 3 : 2;
+	}
+
+	// The band refinement (plan §4.6): one flat lookup, no iteration, no
+	// convergence question. Returns a display-type id.
 	function planetDisplay(bulkIndex, mass, band) {
-		const constIdx = PLANET_DISPLAY_THERMAL_INDEX[bulkIndex];
-		if (constIdx >= 0) return constIdx;
-		// Dwarf: LAVA in band 0 (extreme heat), DWARF elsewhere.  The plan's
-		// table says "LAVA | DWARF | DWARF | DWARF" for dwarf across bands.
+		const constant = PLANET_DISPLAY_THERMAL_INDEX[bulkIndex];
+		if (constant >= 0) return constant;
 		if (bulkIndex === BULK_INDEX.dwarf) return band === 0 ? _LAVA : _DWARF;
-		// Rock/ice/super share one mass-tier list:
-		//   tier 0: M < AIRLESS_M (0.02)   → LAVA
-		//   tier 1: M < ATM_RETAIN_M (0.3) → BARREN
-		//   tier 2: M ≥ 0.3, rock or ice   → DESERT (band 2 maps to TERRAN)
-		//   tier 3: M ≥ 0.3, super         → SUPER_EARTH in band 2
-		// The tier for rock/ice (most common) is computed; super overrides
-		// the tier-3 slot.
-		const tier = mass < AIRLESS_M ? 0 : mass < ATM_RETAIN_M ? 1
-			: (bulkIndex === BULK_INDEX.super) ? 3 : 2;
-		return PLANET_BAND_DISPLAY[band * 4 + tier];
+		return PLANET_BAND_DISPLAY[band * BAND_REFINEMENT_SIZE + massTier(bulkIndex, mass)];
 	}
 
 	// Runaway greenhouse (plan §4.2): a rocky/icy/super world of
@@ -745,55 +787,256 @@
 			|| bulkIndex === BULK_INDEX.super;
 	}
 
-	// Surface temperature: Teq + ΔT (plan §4.2/§4.6).  The ΔT is the display
-	// type's base, modified by two rules — the carbonate-silicate thermostat
-	// (Walker, Hays & Kasting 1981) for TERRAN/SUPER_EARTH in band 2, and the
-	// runaway bifurcation for M ≥ 0.3 in band 1.
-	function surfaceTemp(teq, displayId, insol, band, mass) {
+	// The albedo the temperature pass uses (plan §4.2): a runaway world is
+	// cloud-shrouded, so it reflects far more than its display type's base
+	// albedo — this is what puts Venus at Teq 242 K instead of 302 K. One
+	// function, so the type table and the runaway rule cannot disagree.
+	function albedoFor(displayId, runaway) {
+		return runaway ? RUNAWAY_ALBEDO : DISPLAY_TYPES[displayId].albedo;
+	}
+
+	// Surface temperature: Teq + ΔT (plan §4.2/§4.6), three branches and no
+	// iteration — runaway, thermostat, or the display type's own base. `runaway`
+	// comes from runawayGreenhouse, so the predicate lives in one place.
+	function surfaceTemp(teq, displayId, insol, runaway) {
+		if (runaway) return teq + RUNAWAY_DT;
 		let dt = DISPLAY_TYPES[displayId].dtBase;
-		if (band === 2 && (displayId === _TERRAN || displayId === _SE)) {
-			// The thermostat: a colder world outgasses more CO₂, so the
-			// greenhouse term grows as insolation falls.  At S = 1 it is 33 K
-			// (Earth), at S = 0.35 it saturates at 65 K.
-			dt = TERRAN_DT_BASE + TERRAN_DT_SPAN * (1 - insol);
-			if (dt > TERRAN_DT_MAX) dt = TERRAN_DT_MAX;
-		}
-		if (band === 1 && mass >= ATM_RETAIN_M
-			&& (displayId === _DESERT || displayId === _TERRAN || displayId === _SE)) {
-			// Runaway: the ΔT override and the cloud-shrouded albedo.
-			dt = RUNAWAY_DT;
-		}
+		if (displayId !== _TERRAN && displayId !== _SE) return teq + dt;
+		// The carbonate-silicate thermostat (Walker, Hays & Kasting 1981): a
+		// colder world outgasses more CO₂, so the greenhouse term grows as
+		// insolation falls, anchored at the type's own base (33 K at S = 1 for
+		// Earth) and capped at the maximum greenhouse the cycle can hold. The
+		// upper clamp is unreachable inside band 2 (S ≥ 0.35) and is what makes
+		// the formula right for any caller.
+		let feed = 1 - insol;
+		if (feed < 0) feed = 0;
+		else if (feed > 1) feed = 1;
+		dt += TERRAN_DT_SPAN * feed;
+		if (dt > TERRAN_DT_MAX) dt = TERRAN_DT_MAX;
 		return teq + dt;
 	}
 
-	// Tidal locking (plan §4.6): locked below A_LOCK·sqrt(M★) or at S > 50.
-	// `massStar` is the host star's mass in M☉.
+	// Tidal locking (plan §4.6): locked inside A_LOCK·sqrt(M★) or above the
+	// insolation catch, which is what makes every hot Jupiter locked.
 	function isTidallyLocked(aAU, insol, massStar) {
-		return aAU < A_LOCK * Math.sqrt(massStar) || insol > 50;
+		return aAU < A_LOCK * Math.sqrt(massStar) || insol > S_LOCK;
 	}
 
-	// The habitable-zone and terran flags (plan §4.6): one pair of insolation
-	// boundaries, two consumers (band and flag), so they cannot disagree.
-	// `locked` excludes tidally-locked M-dwarf worlds from the plain `terran`
-	// flag — they are still searchable by temperature, but "terran" means an
-	// Earth analog with free rotation.  A separate `lockedHZ` flag keeps them
-	// findable.  `age` is in Gyr.
-	function terranPlanet(displayId, mass, band, locked, runaway, age) {
+	// The hot-Jupiter flag (plan §4.6): a gas or mini-Neptune world above
+	// S_HOT_JUPITER. Readout and search only — never a display type.
+	function isHotJupiter(bulkIndex, insol) {
+		if (insol <= S_HOT_JUPITER) return false;
+		return bulkIndex === BULK_INDEX.gas || bulkIndex === BULK_INDEX.mini;
+	}
+
+	// The habitable-zone and terran flags (plan §4.6), written into `out` (the
+	// thermal record) so a per-planet pass allocates nothing. `locked` excludes
+	// the tidally-locked M-dwarf worlds from the plain `terran` flag: they are
+	// still searchable by temperature, but "terran" here means an Earth analog
+	// with free rotation, and `lockedHZ` keeps them findable. No runaway test —
+	// runaway is band 1 and `inHZ` is band 2, so the two are already exclusive
+	// by construction (the test pins that invariant instead of a dead `&&`).
+	function hzFlags(displayId, mass, band, locked, age, out) {
 		const inHZ = band === 2;
-		const terran = inHZ
+		out.inHZ = inHZ;
+		out.lockedHZ = inHZ && locked;
+		out.terran = inHZ && !locked
 			&& (displayId === _TERRAN || displayId === _SE)
-			&& mass >= 0.5 && mass <= 5
-			&& age > 0.5
-			&& !runaway && !locked;
-		const lockedHZ = locked && inHZ;
-		return { inHZ, terran, lockedHZ };
+			&& mass >= TERRAN_M_MIN && mass <= TERRAN_M_MAX
+			&& age > TERRAN_AGE_MIN;
+		return out;
+	}
+
+	// One planet's whole §4.6 pass, in the plan's order: S needs no albedo, so
+	// band → display → runaway → albedo → Teq → Tsurf → flags is a straight
+	// line. The full tier (generateSystem, 0.5.1-7) and the summary tier (§4.10)
+	// both call this, which is what makes "a summary always agrees with the full
+	// system" an identity rather than a hope.
+	function createThermal() {
+		return {
+			insol: 0, band: 0, displayId: 0, albedo: 0, teq: 0, tsurf: 0,
+			runaway: false, locked: false, hotJupiter: false,
+			inHZ: false, terran: false, lockedHZ: false,
+		};
+	}
+
+	// `star` is stellarInputs' record (lum, teff, rStar, mass, age); `aAU`,
+	// `bulkIndex` and `mass` (M⊕) come from the architecture record.
+	function thermal(star, aAU, bulkIndex, mass, out) {
+		const insol = insolation(star.lum, aAU);
+		const band = planetBand(insol);
+		const displayId = planetDisplay(bulkIndex, mass, band);
+		const runaway = runawayGreenhouse(bulkIndex, mass, band);
+		const albedo = albedoFor(displayId, runaway);
+		const teq = equilibriumTemp(star.teff, star.rStar, aAU, albedo);
+		out.insol = insol;
+		out.band = band;
+		out.displayId = displayId;
+		out.albedo = albedo;
+		out.runaway = runaway;
+		out.hotJupiter = isHotJupiter(bulkIndex, insol);
+		out.teq = teq;
+		out.tsurf = surfaceTemp(teq, displayId, insol, runaway);
+		out.locked = isTidallyLocked(aAU, insol, star.mass);
+		return hzFlags(displayId, mass, band, out.locked, star.age, out);
+	}
+
+	// --- Belts (plan §4.7) ---------------------------------------------------
+
+	const BELT_INNER = 0, BELT_OUTER = 1;
+	// One row per belt: `channel` is the §2.3 base (its presence draws at +0),
+	// `k0/k1` the centre as a fraction of the belt's reference radius (the snow
+	// line for the asteroid analog, the disc edge for the Kuiper analog),
+	// `dln0/dln1` the width span in ln a and `m0/m1` the mass span in
+	// log10 M⊕. Authored from the Solar System's two belts, not fitted.
+	const BELT_KINDS = [
+		{ name: 'inner', channel: CH_BELT_INNER, k0: 0.55, k1: 0.40, dln0: 0.10, dln1: 0.25, m0: -4, m1: 2.5 },
+		{ name: 'outer', channel: CH_BELT_OUTER, k0: 0.35, k1: 0.45, dln0: 0.15, dln1: 0.35, m0: -2, m1: 2.0 },
+	];
+	// A belt's channel offsets at its base (200 inner, 210 outer). Every belt
+	// reads all five whether or not its presence draw passes, so a missing belt
+	// never shifts another one's draws.
+	const BELT_CH_PRESENCE = 0, BELT_CH_AXIS = 1, BELT_CH_WIDTH = 2;
+	const BELT_CH_MASS = 3, BELT_CH_STIPPLE = 4;
+
+	// The snow line (plan §4.7): the ices condense here, so it is the asteroid
+	// belt's reference radius and — through `sqrt(L)` — the one thing that moves
+	// the belts when a star evolves. 2.7 AU for the Sun.
+	function snowLineAU(lum) {
+		return A_SNOW_K * Math.sqrt(lum);
+	}
+
+	// The debris fade (plan §4.7): fractional luminosity falls by about an order
+	// of magnitude over the first Gyr, so a young system is belt-rich and an old
+	// one keeps the floor's residual population.
+	function debrisFade(ageGyr) {
+		return BELT_FADE_FLOOR
+			+ (1 - BELT_FADE_FLOOR) * Math.exp(-ageGyr / BELT_FADE_TAU);
+	}
+
+	// Presence (plan §4.7): the faded disc fraction minus the scouring, one term
+	// per giant orbiting inside the belt. Steep on purpose — three giants inside
+	// and the belt is gone.
+	function beltPresence(ageGyr, giants) {
+		const p = BELT_P_MAX * debrisFade(ageGyr) - BELT_SCOUR * giants;
+		return p < 0 ? 0 : p > 1 ? 1 : p;
+	}
+
+	// The scouring count (plan §4.7): gas, ice giant and mini-Neptune worlds
+	// inside the belt's centre. `arch.a` is ascending — the architecture tier
+	// insertion-sorts it — so the walk stops at the first orbit beyond the belt.
+	function giantsInsideBelt(arch, aBelt) {
+		let n = 0;
+		for (let i = 0; i < arch.n; i++) {
+			if (arch.a[i] >= aBelt) break;
+			const b = arch.bulk[i];
+			if (b === BULK_INDEX.gas || b === BULK_INDEX.icegiant
+				|| b === BULK_INDEX.mini) n++;
+		}
+		return n;
+	}
+
+	// The belt record: two slots, struct-of-arrays, filled by `belts()`. A belt
+	// whose presence draw fails is not written — `count` is 0, 1 or 2 and there
+	// is never a zero-mass placeholder (plan §4.7). `kind` keeps which belt is
+	// which, since a failed inner belt leaves the outer one at slot 0.
+	function createBelts() {
+		return {
+			count: 0,
+			kind: new Uint8Array(MAX_BELTS),
+			a: new Float64Array(MAX_BELTS),
+			dlnA: new Float64Array(MAX_BELTS),
+			mass: new Float64Array(MAX_BELTS),
+			stippleSeed: new Uint32Array(MAX_BELTS),
+		};
+	}
+
+	// The stipple's own seed (plan §2.3 channel 204/214 → §4.9's `stippleSeed`):
+	// a hash4 of the belt's stipple-base channel, so the 2·STIPPLE_N dot draws
+	// live in a fresh channel space per belt and a record can carry one number
+	// instead of 768 of them.
+	function beltStippleSeed(seed, channelBase) {
+		return hash.hash4(seed, channelBase + BELT_CH_STIPPLE, CH_STIPPLE_BASE, STIPPLE_N);
+	}
+
+	// The stipple law (plan §4.7, drawn by §6.2): the angle uniform, the radius
+	// log-uniform across the belt's own ±Δln a, so the drawn belt is exactly as
+	// thick as the record says. `angles`/`radii` are the layer's preallocated
+	// arrays (§6.5) — STIPPLE_N entries of each, no allocation here — and the
+	// layer only maps (angle, radius) through ρ(a) and the belt's own Kepler
+	// rotation, once per system.
+	function fillStipple(stippleSeed, aBelt, dlnA, angles, radii) {
+		for (let j = 0; j < STIPPLE_N; j++) {
+			angles[j] = TAU * hash.hash01At(stippleSeed, 2 * j);
+			radii[j] = aBelt
+				* Math.exp(dlnA * (2 * hash.hash01At(stippleSeed, 2 * j + 1) - 1));
+		}
+	}
+
+	// The §4.7 pass: `star` is stellarInputs' record, `arch` the architecture
+	// record whose giants do the scouring. Both belts draw first and test
+	// presence second, so a missing belt costs no shift in the draws.
+	function belts(seed, star, arch, out) {
+		out.count = 0;
+		const aLo = innerEdgeAU(star.rStar);
+		const aHi = outerEdgeAU(star.mass, star.state);
+		if (aLo >= aHi) return out;                  // no disc, no belts
+		const snow = snowLineAU(star.lum);
+		const wd = star.state === 'wd';
+		for (let k = 0; k < MAX_BELTS; k++) {
+			if (k === BELT_OUTER && wd) break;       // §4.4: a wd has no Kuiper analog
+			const kind = BELT_KINDS[k];
+			// The inner belt can never start beyond the outer belt's innermost
+			// possible centre. That clamp is what keeps `a` ascending whatever a
+			// giant's or a remnant's luminosity does to the snow line — a giant
+			// star's snow line falls outside its disc, and this is where the
+			// asteroid analog goes instead of past the Kuiper analog.
+			const ceiling = k === BELT_INNER ? aHi * BELT_KINDS[BELT_OUTER].k0 : aHi;
+			if (aLo >= ceiling) continue;            // no room for this belt
+			const uAxis = hash.hash01At(seed, kind.channel + BELT_CH_AXIS);
+			const uWidth = hash.hash01At(seed, kind.channel + BELT_CH_WIDTH);
+			const uMass = hash.hash01At(seed, kind.channel + BELT_CH_MASS);
+			// The reference radius capped at the ceiling, then the clamp into the
+			// disc. For a wd the snow line is outside the 0.05 AU cut, so the cap
+			// is what turns its belt into the compact debris ring §4.4 asks for
+			// instead of a ring beyond the disc.
+			const ref = k === BELT_INNER ? snow : aHi;
+			const capped = ref < ceiling ? ref : ceiling;
+			let a = capped * (kind.k0 + kind.k1 * uAxis);
+			if (a < aLo) a = aLo;
+			else if (a > ceiling) a = ceiling;
+			const presence = wd ? BELT_WD_PRESENCE
+				: beltPresence(star.age, giantsInsideBelt(arch, a));
+			if (hash.hash01At(seed, kind.channel + BELT_CH_PRESENCE) >= presence) continue;
+			const i = out.count;
+			out.kind[i] = k;
+			out.a[i] = a;
+			out.dlnA[i] = kind.dln0 + kind.dln1 * uWidth;
+			out.mass[i] = Math.pow(10, kind.m0 + kind.m1 * uMass);
+			out.stippleSeed[i] = beltStippleSeed(seed, kind.channel);
+			out.count = i + 1;
+		}
+		return out;
+	}
+
+	// --- Moons (plan §4.8) ---------------------------------------------------
+
+	// A count, not a system: u³, so most worlds have none and a giant reaches
+	// its real scale (Jupiter 95, Saturn 146) without a per-moon pass. Shares
+	// the rotation channel — the one channel §2.3 gives it (row 39).
+	function moonCount(bulkIndex, u) {
+		return (BULKS[bulkIndex].moonsMax * u * u * u) | 0;
 	}
 
 	const PlanetsLib = {
 		AU_M, M_SUN_KG, G_SI, M_EARTH_KG, R_EARTH_M, R_SUN_M, TEFF_SUN, RHO_EARTH,
 		MAX_PLANETS, MAX_BELTS, STIPPLE_N, A_SNOW_K, HZ_S_IN, HZ_S_OUT, K_HILL,
-		STAR_CLEARANCE, DISK_OUT_AU, A_LOCK, RUNAWAY_DT, RUNAWAY_ALBEDO,
-		TERRAN_DT_BASE, TERRAN_DT_SPAN, TERRAN_DT_MAX, AIRLESS_M, ATM_RETAIN_M, DEORBIT_DV,
+		STAR_CLEARANCE, DISK_OUT_AU, A_LOCK, S_EXTREME, S_LOCK, S_HOT_JUPITER,
+		RUNAWAY_DT, RUNAWAY_ALBEDO, TERRAN_DT_BASE, TERRAN_DT_SPAN, TERRAN_DT_MAX,
+		AIRLESS_M, ATM_RETAIN_M, TERRAN_M_MIN, TERRAN_M_MAX, TERRAN_AGE_MIN, DEORBIT_DV,
+		BELT_P_MAX, BELT_SCOUR, BELT_FADE_FLOOR, BELT_FADE_TAU, BELT_WD_PRESENCE,
+		BELT_BODY_R_M, BELT_BODY_MASS_KG, BELT_BODY_RHO, BELT_BODY_ALBEDO,
+		BELT_BODY_MU,
 		BLOCK_FIELD, BLOCK_LANDMARK, BLOCK_OBJECT, BLOCK_LOCAL, BLOCK_CATALOG, BLOCK_NAMES,
 		DOMAIN_PLANETS, DOMAIN_LANDMARK, DOMAIN_CATALOG,
 		CH_ESCALE, CH_COUNT_BASE, CH_SLOT_BASE, CH_BULK, CH_AXIS, CH_MASS, CH_ECC,
@@ -809,8 +1052,14 @@
 		innerEdgeAU, outerEdgeAU, hillPushFactor, drawBulkIndex, massForBulk,
 		createArchitecture, architecture,
 		BAND_REFINEMENT_SIZE, PLANET_BAND_DISPLAY, PLANET_DISPLAY_THERMAL_INDEX,
-		insolation, equilibriumTemp, planetBand, planetDisplay, runawayGreenhouse,
-		surfaceTemp, isTidallyLocked, terranPlanet,
+		insolation, hzInnerAU, hzOuterAU, equilibriumTemp, planetBand, massTier,
+		planetDisplay, runawayGreenhouse, albedoFor, surfaceTemp, isTidallyLocked,
+		isHotJupiter, hzFlags, createThermal, thermal,
+		BELT_INNER, BELT_OUTER, BELT_KINDS, BELT_CH_PRESENCE, BELT_CH_AXIS,
+		BELT_CH_WIDTH, BELT_CH_MASS, BELT_CH_STIPPLE,
+		snowLineAU, debrisFade, beltPresence, giantsInsideBelt, createBelts,
+		beltStippleSeed, fillStipple, belts,
+		moonCount,
 	};
 	if (typeof module !== 'undefined') module.exports = PlanetsLib;
 	if (typeof window !== 'undefined') window.PlanetsLib = PlanetsLib;

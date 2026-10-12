@@ -1185,3 +1185,69 @@ Two catches from the 0.5.1-4 architecture pass:
   test recomputes with `a ** 3` (1270 of 9148 planets in the 20k-system sweep). When a
   test mirrors a formula for bit-exact comparison, mirror the *operations*, not the
   mathematics — the same rule the WGSL mirrors already follow.
+
+## 2026-10-12 — A plan's prose numbers are a second implementation: cross-check them
+
+The 0.5.1-5 review found a divergence that no test could catch, because the test agreed with
+the code and both disagreed with the plan:
+
+- §4.2 writes the thermostat as `ΔT = min(65, 33 + 55·clamp(1 − S, 0, 1))`; the code had
+  dropped the `clamp`, which only bites in `S ∈ (1, 1.05]` — the inner edge of band 2. The
+  pin at S = 1.0 passes either way (the clamp is inactive there), and the §4.12 window
+  [260, 296] K passes either way too (288.0 unclamped vs 290.7 clamped). **What exposed it
+  was the plan's own prose ranges**: §4.6 claims TERRAN holds 261–290 K and SUPER_EARTH
+  264–295 K across the band, and those are the *clamped* values (290.7 and 295.2). The
+  prose and the formula were the two witnesses; the code was the outlier. Rule: when a plan
+  states a range or an endpoint, recompute it from the formula before pinning, and pin the
+  endpoint (the band-edge value) rather than a rounded pair of integers.
+- The same pass caught three authored numbers that could not be true: §4.2's "at S = 0.35
+  it saturates at 65 K (279 K)" (the formula gives 261 K — 279 is the S = 0.58 value
+  written twice), §4.7's inner-belt mass comment "0.0001 – 0.079" for `10^(−4 + 2.5u)`
+  (the range is 1e-4 – 3.16e-2), and §4.2's SUPER_EARTH ΔT base of 40 K, which is dead:
+  SUPER_EARTH only appears in band 2, where the thermostat overrides the base with the
+  TERRAN anchor. Dead authored constants are the same failure as a wrong one — set the
+  column to the value the live path uses and say which rule owns it.
+- **A wrong table cell survives because the test copies the table.** The band-1 row for
+  airless worlds (M < 0.02) said BARREN in the plan and LAVA in both the code and the test:
+  a Moon-mass body at Mercury's insolation would read molten while Mercury reads barren,
+  and the code's own comment claimed the plan's row. The fix is small, but the class of bug
+  is not: a table whose test was written by transcribing the implementation cannot
+  validate it. Transcribe from the *plan* and diff against the code, or state the physical
+  reason (no atmosphere ⇒ nothing to boil ⇒ no LAVA below S = 8) and let the pin follow it.
+
+## 2026-10-12 — Measuring per-call allocation in V8: heap deltas lie, `--trace-gc` sums do not
+
+The `§4.12` "generateSystem allocates nothing" pin needed a real instrument. What does *not*
+work, and why — all measured on Node 22, 1M-call loops:
+
+- **A heap delta is blind to non-escaping objects.** `terranPlanet(…)` returned a fresh
+  `{inHZ, terran, lockedHZ}` per call and a 100k-call heap delta read 341 KB — comfortably
+  inside the test's 2 MB threshold. V8's escape analysis scalar-replaces the object when the
+  result is only read (measured: 1 scavenge per 1M calls), and only boxes it when the value
+  escapes (24 scavenges per 1M). So a heap-delta pin approves an allocating function *and*
+  fails the shape it is meant to protect. The guard has to be the code convention —
+  out-param records, no returned objects — not a measurement.
+- **`--heap-prof` misses young-generation allocation entirely here.** A control loop that
+  pushes 500 000 live objects shows 0.27 MB in the profile while `--trace-gc` reports 11
+  scavenges. Do not use it as the allocation oracle for a hot loop.
+- **A `PerformanceObserver` GC count is dominated by unrelated events.** `architecture` ×
+  200k showed 13 entries, the allocating `terranPlanet` showed 2 — backwards, for the same
+  scalar-replacement reason.
+- **What works: sum the scavenge bytes from `--trace-gc` after a warm-up, in a child
+  process.** Emit a marker line between the warm-up loop and the measured loop, then sum
+  `before − after` of every `Scavenge a (b) -> c (d) MB` line that follows the marker.
+  Control loops (`pcgHash` × 1M, a pure arithmetic loop) sit at 0.3–0.9 MB; adding one
+  `hash01At()` call per iteration adds ~6 B/call; the architecture tier's eight draws per
+  planet cost 89 B/planet, and a class with no planets (`μ = 0.02`, 0 planets in 1M calls)
+  costs exactly 0 — which is how the site was localised to the per-planet loop rather than
+  the setup.
+- **The residual is V8 boxing a returned double, not our objects.** `hash01At` returns a
+  double; when the call is not inlined the value must be tagged, and ~36% of the time
+  `pcgHash`'s `state >>> 0` also exceeds the Smi range, so it boxes too. Writing the same
+  expression inline in the caller cut the churn 3.5× — but that means copying the hash into
+  `planets.js`, which is worse than the garbage. Record it as a codegen cost, state the pin
+  as "no objects", and keep the module's own allocations at zero.
+- Corollary for budgets: cost the one-off work separately. `fillStipple` (384 dots × 2
+  draws + 384 `exp`) is 2.8 µs and runs once per *opened* system; folded into the per-star
+  loop it read as 3.3 µs/system and looked like a budget miss against `architecture`'s
+  0.19 µs. Measure the loop the search actually walks.

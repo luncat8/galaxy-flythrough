@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-12T02:58:01.608Z",
+  "date": "2026-10-12T20:54:32.667Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -203,7 +203,7 @@
       "name": "PlanetsLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 75
+        "keys": 135
       }
     },
     {
