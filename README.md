@@ -48,6 +48,12 @@ No framework, bundler, module loader, or runtime network connection is required.
   insolation, equilibrium and surface temperatures, habitable-zone and tidal-locking
   flags, debris belts — reproducible across runs and machines, with a cheap summary tier
   for searching
+- Star and planet search over the resident records, by class, state, luminosity, mass,
+  component, distance, planet type, temperature and more — over the whole galaxy or the
+  current selection
+- The close-system schematic entry point: `V` (or the menu's System view button) opens the
+  primary selection's system on its own overlay, points the camera at the star and turns
+  the readout into that system's
 - Copyable settings presets and deterministic URL parameters
 - CPU mirrors and model/parity tests for the JavaScript and WGSL implementations
 

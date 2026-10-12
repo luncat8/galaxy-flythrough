@@ -52,14 +52,21 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		!/text\/x-wgsl/.test(html), 'wgsl blocks');
 	check('index.html references the stylesheet and the overlay elements',
 		/<link[^>]+href="style\.css"/.test(html)
-		&& /id="canvas"/.test(html) && /id="labels"/.test(html) && /id="overlay"/.test(html) && /id="error"/.test(html),
-		{ css: /style\.css/.test(html), elements: ['canvas', 'labels', 'overlay', 'error'].map(id => html.includes(`id="${id}"`)) });
+		&& /id="canvas"/.test(html) && /id="labels"/.test(html) && /id="system"/.test(html)
+		&& /id="overlay"/.test(html) && /id="error"/.test(html) && /id="sysread"/.test(html),
+		{ css: /style\.css/.test(html), elements: ['canvas', 'labels', 'system', 'overlay', 'error', 'sysread'].map(id => html.includes(`id="${id}"`)) });
+	check('the schematic canvas paints above the label layer',
+		html.indexOf('id="system"') > html.indexOf('id="labels"'), 'later in the document');
 }
 
 {
 	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
 	check('the menu iterates the full type table, not the G-key shortlist',
 		/for \(const type of galaxy\.GALAXY_TYPES\)/.test(main));
+	check('the system view actions are consumed and its menu row is gated',
+		/if \(actions\.systemView\)/.test(main) && /if \(actions\.systemViewClose\)/.test(main)
+		&& /data-view="system"/.test(html)
+		&& /querySelectorAll\('#menu \[data-view\]'\)/.test(main));
 	const exposureDefault = require('../src/render/star-sprites.js').EXPOSURE_DEFAULT;
 	check('startup exposure is 22 and the slider agrees',
 		exposureDefault === 22 && /id="slider-exposure"[^>]+value="22"/.test(html));
@@ -84,11 +91,12 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
  		'StarRecord', 'StarTypesLib', 'NebulaLib', 'ObjectsLib', 'Coords', 'Camera', 'Input', 'Loop', 'Selection',
  		'StarSet', 'Search',
  		'Landmarks', 'Constellations', 'StarRenderer', 'LabelLayer',
+ 		'SystemLayer',
  		'TileLoader', 'CellManager', '__galaxy_catalog', 'self', 'document', 'setTimeout',
  	]);
  	const defined = new Set();
  	const undefinedReads = [];
- 	const NAMESPACES = ['Device', 'Camera', 'Input', 'Loop', 'Selection', 'StarSet', 'Search', 'Presets', 'StarRenderer', 'LabelLayer',
+ 	const NAMESPACES = ['Device', 'Camera', 'Input', 'Loop', 'Selection', 'StarSet', 'Search', 'Presets', 'StarRenderer', 'LabelLayer', 'SystemLayer',
 		'TileLoader', 'CellManager', 'GalaxyShaders', 'HashLib', 'DensityLib', 'GalaxyLib', 'SamplingLib',
 		'StarRecord', 'StarTypesLib', 'NebulaLib', 'ObjectsLib', 'Coords', 'Landmarks', 'Constellations'];
 	for (const file of scripts) {
@@ -126,7 +134,7 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		['../src/core/device.js', 'Device'],
 		['../src/data/landmarks.js', 'Landmarks'], ['../src/data/constellations.js', 'Constellations'],
 		['../src/render/shaders.js', 'GalaxyShaders'], ['../src/render/star-sprites.js', 'StarRenderer'],
-		['../src/render/label-layer.js', 'LabelLayer'],
+		['../src/render/label-layer.js', 'LabelLayer'], ['../src/render/system-layer.js', 'SystemLayer'],
 		['../src/stream/tile-loader.js', 'TileLoader'], ['../src/stream/cell-manager.js', 'CellManager'],
 	];
 	for (const [file, name] of namespaces) {

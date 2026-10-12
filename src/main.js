@@ -36,6 +36,25 @@ function formatLy(ly) {
 	return `${Number(ly.toPrecision(3))} ly`;
 }
 
+// The system clock's rate (§6.4), as the menu value and the readout name it: 0
+// is the frozen default, a negative rate follows the camera speed.
+function formatSystemTime(rate) {
+	if (rate === 0) return '0 y/s';
+	if (rate < 0) return `follow ×${(-rate).toFixed(1)}`;
+	return `+${Number(rate.toPrecision(3))} y/s`;
+}
+
+// A radius in AU, compact where the readout's example is compact: 34 AU reads
+// "34" and 1.48 AU reads "1.48".
+function formatAu(au) {
+	return au >= 10 ? String(Math.round(au)) : au.toFixed(2);
+}
+
+// padEnd for the readout's fixed columns.
+function pad(text, width) {
+	return text.length >= width ? text : text + ' '.repeat(width - text.length);
+}
+
 const FACTOR_LABELS = { 100: 'Shift', 0.1: 'Ctrl', 10: 'Shift+Ctrl' };
 function formatFactor(factor) {
         const label = FACTOR_LABELS[factor];
@@ -157,6 +176,13 @@ async function boot() {
         const labels = window.LabelLayer.createLabelLayer(
                 document.getElementById('labels'), landmarks, window.Constellations);
 
+        // The close-system schematic (0.5.3): a second 2D overlay over the
+        // WebGPU canvas, drawn only while the system view is open. main.js
+        // generates the primary's system on enter and hands the record to the
+        // layer; the layer owns the canvas, the open state and nothing else.
+        const systemCanvas = document.getElementById('system');
+        const systemLayer = window.SystemLayer.createSystemLayer(systemCanvas);
+
         const selection = window.Selection.createSelection(camera, landmarks);
 
         // The renderer works out its own parity target (the global field plus whatever
@@ -214,17 +240,30 @@ async function boot() {
         let selApproximated = false;  // the pick fell back to the classic baseline (simple mask)
         let selectRadiusLy = params.selrad;
 
+        // The named table's own name when a buffer slot is one of its records,
+        // null otherwise. The landmark block's slot range is fixed, so the
+        // block a slot sits in says which it is — the hash is not inverted.
+        function landmarkNameAtSlot(slot) {
+                const landmark = renderer.starBlocks().blocks[1];
+                if (slot < landmark.offset || slot >= landmark.offset + landmark.count) return null;
+                return landmarks.ENTRIES[slot - landmark.offset].name;
+        }
+
         // A picked star's name: the named table when the record came from the
-        // landmark block (its slot range is fixed), the §4.11 designation
-        // otherwise. The hash is not inverted — the block the slot sits in says
-        // which it is.
+        // landmark block, the §4.11 designation otherwise.
         function starDisplayName(key, slot) {
-                const blocks = renderer.starBlocks();
-                const landmark = blocks.blocks[1];
-                if (slot >= landmark.offset && slot < landmark.offset + landmark.count) {
-                        return landmarks.ENTRIES[slot - landmark.offset].name;
+                return landmarkNameAtSlot(slot) || window.StarSet.keyDesignation(key);
+        }
+
+        // Which of the five record blocks a buffer slot sits in, as the
+        // BLOCK_* index planets.js dispatches stellar inputs on. The slot
+        // ranges are the renderer's own layout.
+        function blockIndexOfSlot(slot) {
+                const table = renderer.starBlocks().blocks;
+                for (let i = 0; i < table.length; i++) {
+                        if (slot >= table[i].offset && slot < table[i].offset + table[i].count) return i;
                 }
-                return window.StarSet.keyDesignation(key);
+                return -1;
         }
 
         function classAndMag(packed) {
@@ -251,6 +290,7 @@ async function boot() {
                 primaryPos[0] = hit.x;
                 primaryPos[1] = hit.y;
                 primaryPos[2] = hit.z;
+                syncSystemViewToPrimary();
         }
 
         // Distance from the camera, kpc: the set's nearest-first order is the
@@ -287,6 +327,7 @@ async function boot() {
                 selPrimary = summary.name;
                 selPrimaryDetail = summary.packed ? classAndMag(summary.packed) : '';
                 if (summary.slot >= 0) selection.recordPositionAt(summary.slot, primaryPos);
+                syncSystemViewToPrimary();
         }
 
         function flyToPrimary() {
@@ -315,6 +356,9 @@ async function boot() {
                 selPrimaryDetail = '';
                 selApproximated = false;
                 labels.setSelected(-1);
+                // The schematic's star was selected away: the view closes with
+                // the selection rather than freezing the last system on screen.
+                closeSystemView();
                 syncSelection();
         }
 
@@ -446,6 +490,11 @@ async function boot() {
         let searchFilter = window.Search.normalizeFilter({});
         const searchResults = search.results;
         const sysreadBox = document.getElementById('sysread');
+        // Whether the readout currently shows the result list. The open system
+        // takes the element over while the system view is open (§6.6), and the
+        // list has to come back when it closes — so "was a list showing" is a
+        // flag, not a re-derivation from the results.
+        let searchReadoutShown = false;
 
         // The two class/type selects are built from the tables they index, so
         // a new class or display type appears in the menu without touching
@@ -524,8 +573,10 @@ async function boot() {
 
         // The result list, top twelve lines (§5.4): designation, class,
         // distance, matched planet, Tsurf. The selection box sits below it, so
-        // the readout's height pushes it up while both are visible.
+        // the readout's height pushes it up while both are visible. While a
+        // system is open the system readout owns the element instead (§6.6).
         function updateSysread() {
+                if (systemViewOpen) return;
                 const s = search.stats;
                 const scopeName = s.scope === 'selection' ? 'selected stars' : 'galaxy';
                 const ms = (s.msStage1 + s.msStage2).toFixed(1);
@@ -546,12 +597,15 @@ async function boot() {
                 }
                 sysreadBox.textContent = text;
                 sysreadBox.style.display = 'block';
+                searchReadoutShown = true;
                 updateSelectionBox();
         }
 
         function clearSearchReadout() {
+                if (systemViewOpen) return;
                 sysreadBox.style.display = 'none';
                 sysreadBox.textContent = '';
+                searchReadoutShown = false;
                 updateSelectionBox();
         }
 
@@ -585,6 +639,153 @@ async function boot() {
                 syncSelection();
         });
         document.getElementById('search-clear').addEventListener('click', clearSearchReadout);
+
+        // --- The system view (0.5.3) ------------------------------------------
+        // Open the primary star as a schematic: generate its system (§4.9),
+        // hand the record to the layer, point the camera at the star, and let
+        // #sysread become the open system's readout. A system is a pure
+        // function of the primary's identity key, so entering the view costs
+        // one generateSystem and no cache — closing and reopening the same
+        // star produces byte-identical records, and a star that leaves the
+        // residency set simply stops being describable.
+        const systemRef = {
+                key: 0, block: 0, slot: -1, x: 0, y: 0, z: 0,
+                model: null, field: null, colorIndex: 0, absMag: 0, name: undefined,
+        };
+        // Preallocated once: the stellar snapshot, the record and the derived
+        // ref are mutated in place, never rebuilt per entry.
+        const systemStar = window.PlanetsLib.createStellarInputs();
+        const systemRecord = window.PlanetsLib.createSystemRecord();
+        let systemViewOpen = false;
+        let systemTimeRate = 0;
+        // §6.5: closer than a parsec, the camera already frames the star, so
+        // entering the view only turns it; farther, it flies in.
+        const SYSTEM_LOCK_FAR_KPC = 0.001;
+
+        // The primary's system, regenerated in place. False when there is no
+        // primary or it is not resident right now.
+        function generatePrimarySystem() {
+                const key = starSet.primary();
+                const slot = key === 0 ? -1 : selection.resolveSlot(key);
+                if (slot < 0 || !selection.recordPositionAt(slot, primaryPos)) return false;
+                const packed = selection.recordWordAt(slot);
+                systemRef.key = key;
+                systemRef.block = blockIndexOfSlot(slot);
+                systemRef.slot = slot;
+                systemRef.x = primaryPos[0];
+                systemRef.y = primaryPos[1];
+                systemRef.z = primaryPos[2];
+                systemRef.model = model;
+                systemRef.field = renderer.fieldBuffers();
+                systemRef.colorIndex = packed & 0xFF;
+                systemRef.absMag = window.StarRecord.decodeAbsMag((packed >>> 8) & 255);
+                // The landmark's own name when it has one; undefined otherwise,
+                // so the record's designation stays the S<key36> form (§4.11).
+                systemRef.name = landmarkNameAtSlot(slot) || undefined;
+                window.PlanetsLib.stellarInputs(systemRef, systemStar);
+                window.PlanetsLib.generateSystem(systemRef, systemStar, systemRecord);
+                systemLayer.setSystem(systemRecord);
+                return true;
+        }
+
+        // The view tracks the primary (§6.5): a new primary regenerates the
+        // schematic, and one that is no longer resident closes the view.
+        function syncSystemViewToPrimary() {
+                if (!systemViewOpen) return;
+                if (generatePrimarySystem()) updateSystemReadout();
+                else closeSystemView();
+        }
+
+        function openSystemView() {
+                if (systemViewOpen || !generatePrimarySystem()) return;
+                systemViewOpen = true;
+                systemLayer.setEnabled(true);
+                systemCanvas.style.display = 'block';
+                // §6.5: the schematic's star is what the camera looks at. In
+                // orbit object the fly translation keys are already orbit
+                // keys, so the view cannot be flown away from underneath.
+                const cam = camera.cameraPos;
+                const far = Math.hypot(primaryPos[0] - cam[0], primaryPos[1] - cam[1],
+                        primaryPos[2] - cam[2]) > SYSTEM_LOCK_FAR_KPC;
+                const name = selPrimary || 'selected star';
+                if (far) {
+                        camera.flyToStar(primaryPos[0], primaryPos[1], primaryPos[2],
+                                systemRef.absMag, { name });
+                } else {
+                        camera.setOrbitTarget(primaryPos[0], primaryPos[1], primaryPos[2], name);
+                        camera.setMode(window.Camera.MODE_ORBIT_OBJECT);
+                }
+                syncViewRows();
+                updateSystemReadout();
+        }
+
+        function closeSystemView() {
+                const wasOpen = systemViewOpen;
+                systemViewOpen = false;
+                // A canvas keeps its last frame: the layer erases it and the
+                // element is hidden beside it. The camera keeps its target.
+                systemLayer.setEnabled(false);
+                systemCanvas.style.display = 'none';
+                syncViewRows();
+                if (!wasOpen) return;
+                // The readout returns to what it held before the view opened:
+                // the search result list, or nothing.
+                if (searchReadoutShown) updateSysread();
+                else clearSearchReadout();
+        }
+
+        function toggleSystemView() {
+                if (systemViewOpen) closeSystemView();
+                else openSystemView();
+        }
+
+        // The open system's readout (§6.6): the star block and the geometry
+        // line now; 0.5.3-5 writes the per-planet, belt and delta-v lines.
+        // Text at the overlay's 4 Hz cadence, never per frame.
+        function updateSystemReadout() {
+                if (!systemViewOpen) return;
+                const star = systemRecord.star;
+                const planets = systemRecord.planetCount, belts = systemRecord.beltCount;
+                sysreadBox.textContent =
+                        pad(window.PlanetsLib.starDesignation(systemRecord), 10)
+                        + pad(window.StarRecord.SPECTRAL_CLASSES[star.colorIndex], 3)
+                        + `${star.mass.toFixed(2)} M☉  ${star.lum.toFixed(3)} L☉  `
+                        + `${Math.round(star.teff)} K  ${star.rStar.toFixed(2)} R☉  `
+                        + `age ${star.age.toFixed(1)} Gyr  Z ${star.metal.toFixed(3)}\n`
+                        + `HZ ${formatAu(star.aHzIn)} – ${formatAu(star.aHzOut)} AU   `
+                        + `snow ${formatAu(star.aSnow)} AU   a_out ${formatAu(star.aOut)} AU   `
+                        + `system time ${formatSystemTime(systemTimeRate)}   `
+                        + `${planets} planet${planets === 1 ? '' : 's'}, `
+                        + `${belts} belt${belts === 1 ? '' : 's'}`;
+                sysreadBox.style.display = 'block';
+                updateSelectionBox();
+        }
+
+        const btnSystemView = document.getElementById('system-view');
+        const sliderSystime = document.getElementById('slider-systime');
+        const valSystime = document.getElementById('val-systime');
+        // Rows a view owns (data-view in index.html), hidden while that view is
+        // closed — the engine rows' data-engine mechanism, one level up, so a
+        // control that means nothing outside its view is hidden, not disabled.
+        const viewRows = Array.from(document.querySelectorAll('#menu [data-view]'));
+        function syncViewRows() {
+                const openView = systemViewOpen ? 'system' : '';
+                for (const row of viewRows) row.style.display = row.dataset.view === openView ? '' : 'none';
+        }
+        btnSystemView.addEventListener('click', toggleSystemView);
+        function syncSystime() {
+                sliderSystime.value = systemTimeRate;
+                valSystime.textContent = formatSystemTime(systemTimeRate);
+        }
+        sliderSystime.addEventListener('input', () => {
+                systemTimeRate = Number(sliderSystime.value);
+                syncSystime();
+                // The geometry line names the rate, so the readout answers the
+                // slider without waiting for the next overlay tick.
+                updateSystemReadout();
+        });
+        syncSystime();
+        syncViewRows();
 
         // Brightness slider is linear in multiplier (0.125 – 8.0), not stops,
         // so dragging it feels proportional — stops-based sliders jump at the
@@ -1038,7 +1239,10 @@ async function boot() {
                 // is nothing to re-derive until 0.5.1 adds them). A search
                 // result's planet columns *are* re-derived by the new
                 // population, so the readout is dismissed rather than left
-                // naming the previous epoch's worlds.
+                // naming the previous epoch's worlds. The open system follows
+                // the same rule: its star's age feeds the belt presence and
+                // the terran flag, so it is regenerated for the new epoch.
+                syncSystemViewToPrimary();
                 clearSearchReadout();
                 syncGalaxyControls();
                 updateOverlay(renderer.state, camera.getState(statsText));
@@ -1180,6 +1384,15 @@ async function boot() {
                         actions.clearSet = 0;
                         clearSelection();
                 }
+                if (actions.systemView) {
+                        actions.systemView = 0;
+                        toggleSystemView();
+                }
+                // Esc is close-only: a press with no view open is a no-op.
+                if (actions.systemViewClose) {
+                        actions.systemViewClose = 0;
+                        closeSystemView();
+                }
                 if (actions.constellations) {
                         actions.constellations = 0;
                         labels.toggleConstellations();
@@ -1193,11 +1406,21 @@ async function boot() {
                 renderer.render(camera, canvas.width, canvas.height, starTimeMyr, input.state, dtStar);
                 labels.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
                 labels.draw(camera, canvas.clientWidth, canvas.clientHeight);
+                // The schematic resizes off the WebGPU canvas, not its own: the
+                // element is hidden while the view is closed, and a hidden
+                // element has no client size. draw() is one boolean test and a
+                // return while closed.
+                systemLayer.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
+                systemLayer.draw(canvas.clientWidth, canvas.clientHeight);
 
                 overlayTimer += dt;
                 if (overlayTimer >= OVERLAY_INTERVAL) {
                         overlayTimer = 0;
                         updateOverlay(renderer.state, camera.getState(statsText));
+                        // The open system's readout at the overlay's 4 Hz
+                        // cadence: it is text, and nothing in it moves per
+                        // frame while the phases are frozen (0.5.3-3).
+                        if (systemViewOpen) updateSystemReadout();
                         // Keep slider readouts in sync with keyboard shortcuts
                         // while the menu is open.
                         if (menu.style.display !== 'none') syncSlidersFromRenderer();

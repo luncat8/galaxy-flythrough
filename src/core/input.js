@@ -37,7 +37,7 @@ function createInput(canvas) {
 		pointerLocked: false,
 		pickX: 0,
 		pickY: 0,
-		actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, galaxyCycle: 0, freezeTime: 0, flyToStar: 0, cycleStar: 0, clearSet: 0 },
+		actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, galaxyCycle: 0, freezeTime: 0, flyToStar: 0, cycleStar: 0, clearSet: 0, systemView: 0, systemViewClose: 0 },
 	};
 
 	// Held keys: true while down. Ctrl is the brief's slow modifier; Ctrl+W
@@ -60,8 +60,9 @@ function createInput(canvas) {
 	// G regenerates the galaxy, so it is a one-shot like the other toggles:
 	// key repeat would otherwise rebuild a 300k-star field at 30 Hz. F / N / X
 	// are the 0.5.0 selection actions: fly to the primary, cycle it through the
-	// set, clear the set.
-	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyC: 'cameraMode', KeyP: 'constellations', KeyG: 'galaxyCycle', KeyT: 'freezeTime', Tab: 'menu', KeyF: 'flyToStar', KeyN: 'cycleStar', KeyX: 'clearSet' };
+	// set, clear the set. V opens the close-system schematic and Esc closes it
+	// (0.5.3): Esc is close-only, so a stray press outside the view is a no-op.
+	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyC: 'cameraMode', KeyP: 'constellations', KeyG: 'galaxyCycle', KeyT: 'freezeTime', Tab: 'menu', KeyF: 'flyToStar', KeyN: 'cycleStar', KeyX: 'clearSet', KeyV: 'systemView', Escape: 'systemViewClose' };
 	// Exposure accumulates, so key repeat is one more step per repeat.
 	const exposureMap = { BracketLeft: -1, Minus: -1, BracketRight: 1, Equal: 1 };
 	// Linear exposure (ACES pre-multiplier) in half-stop steps. ; darker, ' brighter.
@@ -100,7 +101,11 @@ function createInput(canvas) {
 			// direction travels with the action: a held Shift is also the camera
 			// boost and cannot be re-read when the action is consumed.
 			if (!e.repeat) state.actions[press] = press === 'cycleStar' ? (e.shiftKey ? -1 : 1) : 1;
-			e.preventDefault();   // Ctrl+R would reload, Tab would move focus, etc.
+			// Esc is the one action whose browser default is the feature: the
+			// pointer lock releases on it in fly mode (`#help` documents that),
+			// and a preventDefault here would trap the cursor. The system
+			// view's close rides on the same key and adds nothing to swallow.
+			if (e.code !== 'Escape') e.preventDefault();   // Ctrl+R would reload, Tab would move focus, etc.
 			return;
 		}
 		const exposure = exposureMap[e.code];

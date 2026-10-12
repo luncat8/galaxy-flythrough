@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-12T20:52:23.084Z",
+  "date": "2026-10-12T22:14:21.466Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -27,6 +27,7 @@
     "stream/cell-manager.js",
     "render/star-sprites.js",
     "render/label-layer.js",
+    "render/system-layer.js",
     "main.js"
   ],
   "sourceFiles": [
@@ -55,11 +56,12 @@
     "render/label-layer.js",
     "render/shaders.js",
     "render/star-sprites.js",
+    "render/system-layer.js",
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 58,
-  "passed": 58,
+  "totalChecks": 61,
+  "passed": 61,
   "failed": 0,
   "checks": [
     {
@@ -71,8 +73,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 27,
-        "sources": 27,
+        "scripts": 28,
+        "sources": 28,
         "missing": []
       }
     },
@@ -95,12 +97,23 @@
           true,
           true,
           true,
+          true,
+          true,
           true
         ]
       }
     },
     {
+      "name": "the schematic canvas paints above the label layer",
+      "pass": true,
+      "detail": "later in the document"
+    },
+    {
       "name": "the menu iterates the full type table, not the G-key shortlist",
+      "pass": true
+    },
+    {
+      "name": "the system view actions are consumed and its menu row is gated",
       "pass": true
     },
     {
@@ -157,7 +170,8 @@
         "TileLoader",
         "CellManager",
         "StarRenderer",
-        "LabelLayer"
+        "LabelLayer",
+        "SystemLayer"
       ]
     },
     {
@@ -326,6 +340,13 @@
       "pass": true,
       "detail": {
         "keys": 11
+      }
+    },
+    {
+      "name": "SystemLayer loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 1
       }
     },
     {

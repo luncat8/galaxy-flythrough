@@ -1242,3 +1242,45 @@ field offsets, engine-mask bits, block ranges in a star buffer.
 The transferable rule: **when a design is a table of ranges rather than of values, the test
 asserts the table is disjoint, not that one cell is what it claims.** A range collision is a
 bug you cannot observe from either side.
+
+## 2026-10-12 — A hidden overlay canvas has no client size, so size it from the canvas under it (0.5.3)
+
+`#system` is `display: none` while the close-system view is closed, and the layer clears the
+canvas on exit — a canvas keeps its last frame, so hiding an element does not hide what is
+already on it. A hidden element also has no client size, so an overlay sized from its own
+`clientWidth`/`clientHeight` is a `max(1, 0)`-style backing store that is never drawn into
+again the moment the view closes.
+
+```js
+// fed the WebGPU canvas's client size every frame, never the overlay's own
+systemLayer.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
+```
+
+The device-pixel backing store and the `devicePixelRatio` transform stay inside the layer
+(the same contract `label-layer.js` already has), so the page hands both overlays the one
+size that is always real.
+
+The transferable rule: **an overlay that is hidden most of the time is sized by the surface
+it overlays, not by itself.** The same trap catches any resize path that reads the overlay's
+own geometry instead of the visible one.
+
+---
+
+## 2026-10-12 — Escape is the one key whose default action is the feature (0.5.3)
+
+`input.js`'s one-shot press map ends in a blanket `e.preventDefault()` — Ctrl+R would
+reload, Tab would move focus instead of toggling the menu. The 0.5.3 system view adds `Esc`
+as its close key on that same path, and swallowing it there would cancel the pointer-lock
+release in fly mode: the help panel documents `Esc` as *release cursor*, and a page that
+eats the key traps the cursor with no documented way out.
+
+```js
+if (e.code !== 'Escape') e.preventDefault();
+```
+
+The one key the browser needs is the one key the page does not own. The system view's close
+still fires — it only stops cancelling a default it had no reason to cancel, and in the
+state where the view is open there is no pointer lock left to release.
+
+The transferable rule: **a blanket `preventDefault` is a claim over the browser's own keys;
+name the exclusions explicitly, or one of them turns out to be the user's way out.**

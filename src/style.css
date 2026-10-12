@@ -31,6 +31,17 @@ html, body {
 	pointer-events: none;
 }
 
+/* The close-system schematic (0.5.3): the same overlay contract as #labels,
+   above it in paint order so the schematic sits over the sky. */
+#system {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+}
+
 #overlay {
 	position: fixed;
 	top: 12px;
@@ -46,14 +57,17 @@ html, body {
 	pointer-events: none;
 }
 
-/* The system readout (0.5.2): search results now, the open system later.
-   Bottom-left, where the selection box also sits — main.js lifts the
-   selection above it while the readout is visible, so the two never overlap. */
+/* The system readout (0.5.2): search results, and the open system's readout
+   while the system view is open (0.5.3). Bottom-left, where the selection box
+   also sits — main.js lifts the selection above it while the readout is
+   visible, so the two never overlap.
+   The width carries the system readout's geometry line (§6.6's example is
+   86 characters); the search list's lines are all shorter. */
 #sysread {
 	position: fixed;
 	bottom: 12px;
 	left: 12px;
-	max-width: min(640px, calc(100vw - 24px));
+	max-width: min(720px, calc(100vw - 24px));
 	font-family: 'Menlo', 'Consolas', monospace;
 	font-size: 12px;
 	line-height: 1.5;

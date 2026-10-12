@@ -632,7 +632,8 @@ galaxy-flythrough/
     ├── render/
     │   ├── shaders.js                # all WGSL as JS strings
     │   ├── star-sprites.js           # star draw path (global + landmarks + objects + local + catalog)
-    │   └── label-layer.js            # 2D overlay canvas: labels + constellation lines
+    │   ├── label-layer.js            # 2D overlay canvas: labels + constellation lines
+    │   └── system-layer.js           # 2D overlay canvas: the close-system schematic (0.5.3)
     ├── data/
     │   ├── gaia-subset.csv           # source catalog (5,000 rows)
     │   ├── landmarks.js              # named stars, galactic XYZ baked at load
@@ -1219,7 +1220,9 @@ Next series:
    planet-system generator, `math/planets.js`, with `experiments/planet-gen-test.js`, 75
    checks. 0.5.2 implemented: star and planet search, `core/search.js`, a two-stage scan
    whose summary tier carries the per-planet `env` block, the scope fallback and the
-   `search`/`scope` preset fields — `experiments/search-test.js`, 27 checks. The file stays
+   `search`/`scope` preset fields — `experiments/search-test.js`, 27 checks. 0.5.3
+   started: the close-system skeleton, `render/system-layer.js` with its `#system` canvas,
+   the enter/exit plumbing and `#sysread` as the open system's readout. The file stays
    in the root until the series ships and then moves to `archive/`.)*
 
 Implement from those files plus this one; the per-release plans reference their own
@@ -1239,8 +1242,9 @@ tests and extend the file layout of §11 as needed.
    passed by CPU/stub tests. The 0.4.8 analytical shape implementation is complete;
    this does not imply browser visual validation is complete.
 4. [The 0.5 planet series](0.5.0-plan-planet-generator.md): 0.5.0 (star selection), 0.5.1
-   (the lazy planet-system generator) and 0.5.2 (star and planet search) are implemented;
-   0.5.3 (the close-system schematic view) is next. The series is CPU-only and additive, so
+   (the lazy planet-system generator) and 0.5.2 (star and planet search) are implemented,
+   and 0.5.3 (the close-system schematic view) is under way with its skeleton landed. The
+   series is CPU-only and additive, so
    it neither blocks nor depends on the parity work above — except that the picker
    dispatches star positions through the same engine-mask law the parity plan pins, which is
    why 0.5.0's pick test travels with `orbit-test`.

@@ -9,6 +9,9 @@
 <body>
         <canvas id="canvas" tabindex="0"></canvas>
         <canvas id="labels"></canvas>
+        <!-- The close-system schematic (0.5.3): above the label layer, below
+             the menu. Hidden and cleared while no system is open. -->
+        <canvas id="system" style="display:none"></canvas>
         <pre id="overlay"></pre>
         <pre id="selection" style="display:none"></pre>
         <pre id="sysread" style="display:none"></pre>
@@ -115,6 +118,15 @@
                         <label for="slider-selrad" title="World-space radius in light-years, log scale: a neighbourhood is physical, not a screen area.">Select radius</label>
                         <input type="range" id="slider-selrad" min="0" max="100" step="0.01" value="44.98">
                         <span id="val-selrad" class="menu-val">50 ly</span>
+                </div>
+                <div class="menu-header menu-header-galaxy"><span>System</span></div>
+                <div class="menu-row menu-actions">
+                        <button id="system-view" title="Open the close-system schematic of the primary selection (V)">System view</button>
+                </div>
+                <div class="menu-row" data-view="system">
+                        <label for="slider-systime" title="The system's own clock in years per second. 0 freezes the orbits, -1 follows the camera speed. The galaxy's star time slider does not drive it — one Myr/s would be a million Earth orbits a second.">System time</label>
+                        <input type="range" id="slider-systime" min="-1" max="99" step="0.5" value="0">
+                        <span id="val-systime" class="menu-val">0 y/s</span>
                 </div>
                 <div class="menu-header menu-header-galaxy"><span>Search</span></div>
                 <div class="menu-row">
@@ -229,6 +241,9 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
         <script src="stream/cell-manager.js"></script>
         <script src="render/star-sprites.js"></script>
         <script src="render/label-layer.js"></script>
+        <!-- The close-system schematic (0.5.3): the second 2D overlay, after
+             the label layer it paints above. -->
+        <script src="render/system-layer.js"></script>
         <script src="main.js"></script>
 </body>
 </html>
