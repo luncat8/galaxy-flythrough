@@ -13,10 +13,15 @@
 //   * the authored display-type, bulk and occurrence tables the generator reads,
 //   * the occurrence tier (plan §4.4, 0.5.1-3): the μ table and bulk weights
 //     with their `f_Z` / state modifiers (`bulkWeightsFor`/`bulkCdfFor`), and
-//     the geometric count draw (`planetCount`, `expectedPlanetCount`).
+//     the geometric count draw (`planetCount`, `expectedPlanetCount`),
+//   * the architecture tier (plan §4.5, 0.5.1-4): the disc edges
+//     (`innerEdgeAU`/`outerEdgeAU`), the log-uniform axis draw, the bulk/mass
+//     draws, the Hill repair with its drop-on-overflow rule, and the orbital
+//     elements — one `architecture(seed, star, out)` chain into the
+//     struct-of-arrays record `createArchitecture` builds.
 //
-// 0.5.1 adds the generator itself (architecture, temperatures,
-// belts, SystemRecord) behind this same object. Everything here is a pure
+// 0.5.1's remaining tiers add temperatures, belts and the SystemRecord behind
+// this same object. Everything here is a pure
 // function of (model, key, record): no PRNG state, no allocation, `out` params.
 //
 // Why the conversion exists at all: the renderer's procedural blocks can be
@@ -481,7 +486,7 @@
 	}
 
 	// E[n] = Σ_{k≥1} Π_{j≤k} μ/(μ+j) — the analytic mean of the chain above
-	// (plan §4.4): at μ = 1.2 it is 0.825, at 1.6 it is 1.020, at 0.02 it is
+	// (plan §4.4): at μ = 1.2 it is 0.825, at 1.6 it is 1.0195, at 0.02 it is
 	// 0.0198. The test pins these numbers and checks the draw against the
 	// formula, so the chain cannot silently change shape.
 	function expectedPlanetCount(mu) {
@@ -492,6 +497,149 @@
 			if (term < 1e-12) break;
 		}
 		return sum;
+	}
+
+	// --- Architecture (plan §4.5) --------------------------------------------
+
+	const TAU = Math.PI * 2;
+	const AU_PER_R_SUN = R_SUN_M / AU_M;        // 0.0046504 — derived, not a second constant
+	const M_EARTH_SUN = M_EARTH_KG / M_SUN_KG;  // planet masses → M☉ for the Hill ratio
+
+	// The giant state's a_0 ≥ 1.5·R★_AU is an invariant here, not a branch:
+	// STAR_CLEARANCE = 6 > 1.5 and R★ is the giant's inflated radius, so the
+	// clearance already guarantees it (plan §4.5; the test pins it).
+	function innerEdgeAU(rStar) {
+		const edge = STAR_CLEARANCE * rStar * AU_PER_R_SUN;
+		return edge > 0.012 ? edge : 0.012;
+	}
+
+	function outerEdgeAU(massStar, state) {
+		const aOut = DISK_OUT_AU * Math.sqrt(massStar);
+		return state === 'wd' && aOut > 0.05 ? 0.05 : aOut;
+	}
+
+	// The Hill repair's closed form (plan §4.5): the pair (i, i+1) is stable
+	// when a_{i+1} ≥ a_i·(1+c)/(1−c) with this c. Masses in M⊕, the star's in
+	// M☉ — the conversion lives here so the ratio is never fed a mixed-unit
+	// pair. c ≥ 1 means no finite separation exists and the planet drops.
+	function hillPushFactor(massSumEarth, massStar) {
+		return 0.5 * K_HILL * Math.cbrt(massSumEarth * M_EARTH_SUN / (3 * massStar));
+	}
+
+	// Walk a 7-entry CDF (bulkCdfFor's output). The last entry is forced to 1,
+	// so the walk always lands inside the row.
+	function drawBulkIndex(cdf, u) {
+		for (let i = 0; i < BULKS.length - 1; i++) if (u < cdf[i]) return i;
+		return BULKS.length - 1;
+	}
+
+	// Log-uniform inside the bulk's §4.3 bracket: the ranges span decades, and
+	// a flat draw would put nearly every giant at the top of its bracket.
+	function massForBulk(bulkIndex, u) {
+		const b = BULKS[bulkIndex];
+		return b.massMin * Math.pow(b.massMax / b.massMin, u);
+	}
+
+	// The architecture record: struct-of-arrays at MAX_PLANETS capacity,
+	// allocated once by the owner (the module's generateSystem in 0.5.1-7, the
+	// tests directly). `slot` is each survivor's channel slot — the §2.3 `p`,
+	// assigned at the axis sort and carried through the repair, so a dropped
+	// neighbour never reshuffles a survivor's own draws.
+	function createArchitecture() {
+		return {
+			n: 0, dropped: 0, a0: 0, aOut: 0, eScale: 0,
+			slot: new Uint8Array(MAX_PLANETS),
+			bulk: new Uint8Array(MAX_PLANETS),
+			a: new Float64Array(MAX_PLANETS),
+			mass: new Float64Array(MAX_PLANETS),
+			e: new Float64Array(MAX_PLANETS),
+			inc: new Float64Array(MAX_PLANETS),
+			peri: new Float64Array(MAX_PLANETS),
+			phase: new Float64Array(MAX_PLANETS),
+			period: new Float64Array(MAX_PLANETS),
+			rotHours: new Float64Array(MAX_PLANETS),
+		};
+	}
+
+	const ARCH_CDF = new Float64Array(BULKS.length);
+
+	// The §4.5 chain: count → axes → bulks → masses → repair → e/i/ω/θ/P/rot.
+	// `star` is stellarInputs' output (mass, rStar, metal, state,
+	// spectralClass); everything else is hash01At(seed, channel) on the §2.3
+	// map. Pure in (seed, star), no allocation, out mutated and returned.
+	function architecture(seed, star, out) {
+		out.a0 = innerEdgeAU(star.rStar);
+		out.aOut = outerEdgeAU(star.mass, star.state);
+		out.n = 0;
+		out.dropped = 0;
+		out.eScale = 0.2 + 1.6 * hash.hash01At(seed, CH_ESCALE);
+		// Crossed edges mean no disc at all (plan §4.5): reachable when a
+		// record-derived WD claims a large radius.
+		if (out.a0 >= out.aOut) return out;
+		const drawn = planetCount(seed, muForClass(star.spectralClass));
+		if (drawn === 0) return out;
+		const cdf = bulkCdfFor(star.spectralClass, star.metal, star.state, ARCH_CDF);
+
+		// Axes per slot, insertion-sorted ascending with the slot carried.
+		const lnA0 = Math.log(out.a0);
+		const lnSpan = Math.log(out.aOut) - lnA0;
+		for (let p = 0; p < drawn; p++) {
+			const axis = Math.exp(lnA0 + lnSpan * hash.hash01At(seed, CH_SLOT_BASE + 8 * p + CH_AXIS));
+			let j = p;
+			while (j > 0 && out.a[j - 1] > axis) {
+				out.a[j] = out.a[j - 1];
+				out.slot[j] = out.slot[j - 1];
+				j--;
+			}
+			out.a[j] = axis;
+			out.slot[j] = p;
+		}
+
+		// Bulks and masses before the repair — the Hill radius needs both masses.
+		for (let i = 0; i < drawn; i++) {
+			const base = CH_SLOT_BASE + 8 * out.slot[i];
+			const b = drawBulkIndex(cdf, hash.hash01At(seed, base + CH_BULK));
+			out.bulk[i] = b;
+			out.mass[i] = massForBulk(b, hash.hash01At(seed, base + CH_MASS));
+		}
+
+		// The repair: push out to K_HILL mutual Hill radii or drop on overflow,
+		// compacting survivors in place (reads stay ahead of writes).
+		let n = 0;
+		for (let i = 0; i < drawn; i++) {
+			let axis = out.a[i];
+			if (n > 0) {
+				const c = hillPushFactor(out.mass[n - 1] + out.mass[i], star.mass);
+				if (c >= 1) continue;
+				const required = out.a[n - 1] * (1 + c) / (1 - c);
+				if (axis < required) axis = required;
+			}
+			if (axis > out.aOut) continue;
+			out.a[n] = axis;
+			out.slot[n] = out.slot[i];
+			out.bulk[n] = out.bulk[i];
+			out.mass[n] = out.mass[i];
+			n++;
+		}
+		out.n = n;
+		out.dropped = drawn - n;
+
+		// Elements per survivor, every channel its slot's (plan §4.5): one
+		// eScale for the whole system, u² biasing e toward circular, the
+		// inclination in degrees, Kepler III in (AU, M☉, yr), the rotation on
+		// the channel the moon count will share.
+		for (let i = 0; i < n; i++) {
+			const base = CH_SLOT_BASE + 8 * out.slot[i];
+			const b = BULKS[out.bulk[i]];
+			const ue = hash.hash01At(seed, base + CH_ECC);
+			out.e[i] = out.eScale * b.eccMax * ue * ue;
+			out.inc[i] = out.eScale * 3 * hash.hash01At(seed, base + CH_INC);
+			out.peri[i] = TAU * hash.hash01At(seed, base + CH_PERI);
+			out.phase[i] = TAU * hash.hash01At(seed, base + CH_PHASE);
+			out.period[i] = Math.sqrt(out.a[i] * out.a[i] * out.a[i] / star.mass);
+			out.rotHours[i] = b.rotMin + (b.rotMax - b.rotMin) * hash.hash01At(seed, base + CH_ROT);
+		}
+		return out;
 	}
 
 	const PlanetsLib = {
@@ -510,6 +658,9 @@
 		massFromLuminosity, massFromClassAndMag, luminosityFromMag, stellarRadius,
 		teffForClass, stateForClass, stellarInputs,
 		fZFactor, muForClass, bulkWeightsFor, bulkCdfFor, planetCount, expectedPlanetCount,
+		AU_PER_R_SUN, M_EARTH_SUN,
+		innerEdgeAU, outerEdgeAU, hillPushFactor, drawBulkIndex, massForBulk,
+		createArchitecture, architecture,
 	};
 	if (typeof module !== 'undefined') module.exports = PlanetsLib;
 	if (typeof window !== 'undefined') window.PlanetsLib = PlanetsLib;

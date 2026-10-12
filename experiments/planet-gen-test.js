@@ -6,7 +6,11 @@
 // renderer itself runs, the two record-only blocks pinned to the inversion —
 // and the occurrence tier (0.5.1-3, §4.4): the μ table, the bulk weights with
 // their f_Z / state modifiers, and the geometric count draw pinned against the
-// analytic mean (E[n] = 0.825 at μ = 1.2).
+// analytic mean (E[n] = 0.825 at μ = 1.2) — and the architecture tier
+// (0.5.1-4, §4.5): disc edges, the log-uniform axes, the bulk/mass draws, the
+// Hill repair and the orbital elements, bit-equal to a test-side
+// reimplementation and holding the §4.12 stability invariants over 20k
+// systems.
 //
 // Output: experiments/logs/planet-gen.json
 
@@ -528,6 +532,305 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 		minRatio >= 3, { minRatio, worstCls, ratios });
 }
 
+// --- 6. Architecture: edges, axes, Hill repair, elements (plan §4.5, 0.5.1-4) --
+{
+	const AU_PER_R_SUN = 6.957e8 / 1.495978707e11;
+	const EARTH_SUN = 5.9722e24 / 1.98892e30;
+
+	// Deterministic star factory for the sweeps: class, metallicity tier and
+	// mass cycle; luminosity by state (the architecture only reads mass,
+	// rStar, metal, state, class).
+	const METALS = [0.001, 0.008, 0.020, 0.035];
+	function makeStar(i) {
+		const cls = records.SPECTRAL_CLASSES[i % records.SPECTRAL_CLASSES.length];
+		const u = hash.hash01At(hash.pcgHash(i + 1), 11);
+		const bracket = planets.CLASS_MASS_BRACKETS[cls];
+		const mass = bracket[0] * Math.pow(bracket[1] / bracket[0], u);
+		const state = planets.stateForClass(cls);
+		const teff = planets.teffForClass(cls);
+		const lum = state === 'wd' ? 0.001 + 0.01 * u
+			: state === 'giant' ? 50 + 150 * u
+			: starTypes.luminosityFromMass(mass);
+		return {
+			mass, rStar: planets.stellarRadius(lum, teff),
+			metal: METALS[i % METALS.length], state, spectralClass: cls,
+		};
+	}
+
+	// Disc edges (plan §4.5): the Sun's clearance, the 0.012 floor, the
+	// sqrt(M★) outer edge, the wd cut — and the AU-per-R☉ factor derived from
+	// the two §4.1 constants rather than authored twice.
+	check('disc edges: Sun a0 = 6 R★ = 0.0279 AU, a_out = 40 AU; floor at 0.012; wd cut at 0.05',
+		Math.abs(planets.AU_PER_R_SUN - AU_PER_R_SUN) < 1e-18
+		&& Math.abs(planets.innerEdgeAU(1) - 6 * AU_PER_R_SUN) < 1e-15
+		&& Math.abs(planets.innerEdgeAU(1) - 0.0279) < 2e-4
+		&& planets.innerEdgeAU(0.2) === 0.012
+		&& planets.outerEdgeAU(1, 'ms') === 40
+		&& Math.abs(planets.outerEdgeAU(0.2, 'ms') - 40 * Math.sqrt(0.2)) < 1e-12
+		&& planets.outerEdgeAU(0.6, 'wd') === 0.05
+		&& planets.outerEdgeAU(1e-6, 'wd') === 40 * Math.sqrt(1e-6),
+		{ sunA0: planets.innerEdgeAU(1), m02Out: planets.outerEdgeAU(0.2, 'ms') });
+
+	// The Hill closed form (plan §4.5's corrected worked numbers): K_HILL·r_H
+	// at 1 AU mean distance is 0.41 AU for one Jupiter, 0.52 for two; the push
+	// lands the second Jupiter at 1.70 AU; a near-stellar pair around a small
+	// star has c ≥ 1 — no finite separation, the drop branch.
+	const cJ1 = planets.hillPushFactor(318, 1);
+	const cJ2 = planets.hillPushFactor(636, 1);
+	check('Hill: one Jupiter at 1 AU needs 0.41 AU, two 0.52; the push lands at 1.70; c ≥ 1 drops',
+		Math.abs(2 * cJ1 - 0.41) < 0.005 && Math.abs(2 * cJ2 - 0.52) < 0.005
+		&& Math.abs((1 + cJ2) / (1 - cJ2) - 1.696) < 0.005
+		&& planets.hillPushFactor(6000, 0.08) >= 1
+		&& Math.abs(cJ1 - 0.5 * planets.K_HILL * Math.cbrt(318 * EARTH_SUN / 3)) < 1e-15,
+		{ oneJupiter: 2 * cJ1, twoJupiters: 2 * cJ2, push: (1 + cJ2) / (1 - cJ2) });
+
+	// massForBulk is log-uniform inside the §4.3 bracket: exact at the ends,
+	// the geometric mean at u = 0.5.
+	let massLawOk = true;
+	for (let b = 0; b < planets.BULKS.length; b++) {
+		const bulk = planets.BULKS[b];
+		if (Math.abs(planets.massForBulk(b, 0) - bulk.massMin) > 1e-12 * bulk.massMin) massLawOk = false;
+		if (Math.abs(planets.massForBulk(b, 1) - bulk.massMax) > 1e-12 * bulk.massMax) massLawOk = false;
+		const mid = Math.sqrt(bulk.massMin * bulk.massMax);
+		if (Math.abs(planets.massForBulk(b, 0.5) - mid) > 1e-12 * mid) massLawOk = false;
+	}
+	check('massForBulk is log-uniform: bracket ends exact, geometric mean at u = 0.5', massLawOk,
+		{ gasMid: planets.massForBulk(planets.BULK_INDEX.gas, 0.5) });
+
+	// Crossed edges mean no disc (plan §4.5): a record-derived WD claiming a
+	// 2 R☉ radius has a0 = 0.056 > the 0.05 cut, so n = 0 whatever the count
+	// chain would have drawn.
+	const arch = planets.createArchitecture();
+	const bigWd = { mass: 0.8, rStar: 2, metal: 0.020, state: 'wd', spectralClass: 'WD' };
+	let noDisc = true;
+	for (let s = 0; s < 50; s++) {
+		planets.architecture(hash.pcgHash(s + 77), bigWd, arch);
+		if (arch.n !== 0 || arch.dropped !== 0 || arch.a0 <= arch.aOut) noDisc = false;
+	}
+	check('crossed edges (a0 ≥ a_out) produce no disc: n = 0 for a swollen record-derived WD', noDisc,
+		{ a0: arch.a0, aOut: arch.aOut });
+
+	// Determinism and purity: the same (seed, star) into two fresh records is
+	// field-identical; a different seed or metallicity diverges.
+	const archB = planets.createArchitecture();
+	const sunStar = { mass: 1, rStar: 1, metal: 0.020, state: 'ms', spectralClass: 'G' };
+	const FIELDS = ['slot', 'bulk', 'a', 'mass', 'e', 'inc', 'peri', 'phase', 'period', 'rotHours'];
+	const sameRecord = (x, y) => {
+		if (x.n !== y.n || x.dropped !== y.dropped || !Object.is(x.a0, y.a0)
+			|| !Object.is(x.aOut, y.aOut) || !Object.is(x.eScale, y.eScale)) return false;
+		for (const f of FIELDS) for (let i = 0; i < x.n; i++) if (!Object.is(x[f][i], y[f][i])) return false;
+		return true;
+	};
+	let det = true, diverged = false;
+	for (let s = 0; s < 200; s++) {
+		const seed = hash.pcgHash(s * 331 + 17);
+		planets.architecture(seed, sunStar, arch);
+		planets.architecture(seed, sunStar, archB);
+		if (!sameRecord(arch, archB)) det = false;
+		planets.architecture(hash.pcgHash(s * 331 + 18), sunStar, archB);
+		if (!sameRecord(arch, archB)) diverged = true;
+	}
+	check('architecture is pure in (seed, star): identical twice, diverging across seeds',
+		det && diverged);
+
+	// The strongest pin: a test-side reimplementation of the whole §4.5 chain
+	// — channels as literals (eScale 0, count 2+n, slot fields 32+8p …39+8p),
+	// the slot carried through sort and repair, one eScale for the system —
+	// bit-equal over 500 mixed systems.
+	const refCdf = new Float64Array(7);
+	function refArchitecture(seed, star, out) {
+		out.a0 = Math.max(0.012, 6 * star.rStar * AU_PER_R_SUN);
+		out.aOut = 40 * Math.sqrt(star.mass);
+		if (star.state === 'wd' && out.aOut > 0.05) out.aOut = 0.05;
+		out.eScale = 0.2 + 1.6 * hash.hash01At(seed, 0);
+		out.n = 0; out.dropped = 0;
+		if (out.a0 >= out.aOut) return out;
+		const mu = planets.muForClass(star.spectralClass);
+		let drawn = 0;
+		while (drawn < 12 && hash.hash01At(seed, 2 + drawn) < mu / (mu + drawn + 1)) drawn++;
+		if (drawn === 0) return out;
+		planets.bulkCdfFor(star.spectralClass, star.metal, star.state, refCdf);
+		const lnA0 = Math.log(out.a0), lnSpan = Math.log(out.aOut) - lnA0;
+		const axes = [], slots = [];
+		for (let p = 0; p < drawn; p++) {
+			axes.push(Math.exp(lnA0 + lnSpan * hash.hash01At(seed, 33 + 8 * p)));
+			slots.push(p);
+		}
+		for (let i = 1; i < drawn; i++) {
+			const a = axes[i], s = slots[i];
+			let j = i;
+			while (j > 0 && axes[j - 1] > a) { axes[j] = axes[j - 1]; slots[j] = slots[j - 1]; j--; }
+			axes[j] = a; slots[j] = s;
+		}
+		const bulks = [], masses = [];
+		for (let i = 0; i < drawn; i++) {
+			const u = hash.hash01At(seed, 32 + 8 * slots[i]);
+			let b = 6;
+			for (let k = 0; k < 6; k++) if (u < refCdf[k]) { b = k; break; }
+			bulks.push(b);
+			const bk = planets.BULKS[b];
+			masses.push(bk.massMin * Math.pow(bk.massMax / bk.massMin, hash.hash01At(seed, 34 + 8 * slots[i])));
+		}
+		let n = 0;
+		for (let i = 0; i < drawn; i++) {
+			let a = axes[i];
+			if (n > 0) {
+				const c = 3 * Math.cbrt((masses[n - 1] + masses[i]) * EARTH_SUN / (3 * star.mass));
+				if (c >= 1) continue;
+				const required = axes[n - 1] * (1 + c) / (1 - c);
+				if (a < required) a = required;
+			}
+			if (a > out.aOut) continue;
+			axes[n] = a; slots[n] = slots[i]; bulks[n] = bulks[i]; masses[n] = masses[i];
+			n++;
+		}
+		out.n = n; out.dropped = drawn - n;
+		for (let i = 0; i < n; i++) {
+			const base = 32 + 8 * slots[i];
+			const bk = planets.BULKS[bulks[i]];
+			const ue = hash.hash01At(seed, base + 3);
+			out.slot[i] = slots[i]; out.bulk[i] = bulks[i]; out.a[i] = axes[i]; out.mass[i] = masses[i];
+			out.e[i] = out.eScale * bk.eccMax * ue * ue;
+			out.inc[i] = out.eScale * 3 * hash.hash01At(seed, base + 4);
+			out.peri[i] = 2 * Math.PI * hash.hash01At(seed, base + 5);
+			out.phase[i] = 2 * Math.PI * hash.hash01At(seed, base + 6);
+			out.period[i] = Math.sqrt(axes[i] * axes[i] * axes[i] / star.mass);
+			out.rotHours[i] = bk.rotMin + (bk.rotMax - bk.rotMin) * hash.hash01At(seed, base + 7);
+		}
+		return out;
+	}
+	const ref = planets.createArchitecture();
+	let bitEqual = 0;
+	for (let s = 0; s < 500; s++) {
+		const star = makeStar(s);
+		const seed = hash.hash4(0xA5C1, s, 0, 0);
+		planets.architecture(seed, star, arch);
+		refArchitecture(seed, star, ref);
+		if (sameRecord(arch, ref)) bitEqual++;
+	}
+	check('the chain is the documented channels: bit-equal to a reimplementation over 500 systems',
+		bitEqual === 500, { bitEqual });
+
+	// The §4.12 invariants over 20k mixed systems: ordered axes inside
+	// [a0, a_out] and outside the clearance (for giants: outside 1.5 R★, the
+	// plan's stated invariant), every pair at ≥ K_HILL mutual Hill radii,
+	// masses inside their §4.3 brackets, the element ranges, Kepler III exact,
+	// n + dropped equal to the count draw — and the drop is the rare outcome.
+	let invariants = true, systems = 0, planetsSeen = 0, droppedSystems = 0, maxE = 0;
+	const TAU = 2 * Math.PI;
+	for (let s = 0; s < 20000; s++) {
+		const star = makeStar(s);
+		const seed = hash.hash4(0x5EED, s, 1, 2);
+		planets.architecture(seed, star, arch);
+		systems++;
+		planetsSeen += arch.n;
+		if (arch.dropped > 0) droppedSystems++;
+		const drawn = planets.planetCount(seed, planets.muForClass(star.spectralClass));
+		if (arch.a0 < arch.aOut && arch.n + arch.dropped !== drawn) invariants = false;
+		for (let i = 0; i < arch.n; i++) {
+			const b = planets.BULKS[arch.bulk[i]];
+			if (arch.a[i] < arch.a0 * (1 - 1e-12) || arch.a[i] > arch.aOut * (1 + 1e-12)) invariants = false;
+			if (arch.a[i] < planets.STAR_CLEARANCE * star.rStar * AU_PER_R_SUN * (1 - 1e-12)) invariants = false;
+			if (star.state === 'giant' && arch.a[i] < 1.5 * star.rStar * AU_PER_R_SUN) invariants = false;
+			if (i > 0) {
+				if (arch.a[i] <= arch.a[i - 1]) invariants = false;
+				const rH = Math.cbrt((arch.mass[i - 1] + arch.mass[i]) * EARTH_SUN / (3 * star.mass))
+					* (arch.a[i - 1] + arch.a[i]) / 2;
+				if (arch.a[i] - arch.a[i - 1] < planets.K_HILL * rH * (1 - 1e-9)) invariants = false;
+			}
+			if (arch.mass[i] < b.massMin * (1 - 1e-12) || arch.mass[i] > b.massMax * (1 + 1e-12)) invariants = false;
+			if (arch.e[i] < 0 || arch.e[i] > 1.8 * b.eccMax) invariants = false;
+			if (arch.e[i] > maxE) maxE = arch.e[i];
+			if (arch.inc[i] < 0 || arch.inc[i] > 5.4) invariants = false;
+			if (arch.peri[i] < 0 || arch.peri[i] >= TAU || arch.phase[i] < 0 || arch.phase[i] >= TAU) invariants = false;
+			if (arch.rotHours[i] < b.rotMin || arch.rotHours[i] > b.rotMax) invariants = false;
+			// a·a·a, not a**3: the exponent form rounds differently in the last bit.
+			if (!Object.is(arch.period[i], Math.sqrt(arch.a[i] * arch.a[i] * arch.a[i] / star.mass))) invariants = false;
+		}
+	}
+	check('§4.12 invariants over 20k systems: clearance, a_out, K_HILL spacing, brackets, elements',
+		invariants, { systems, planets: planetsSeen, maxE: +maxE.toFixed(3) });
+	check('dropping on overflow is the rare outcome (plan §4.5): under 10% of systems',
+		droppedSystems / systems < 0.10, { dropRate: +(droppedSystems / systems).toFixed(4) });
+
+	// Axis law: over single-planet Sun-like systems (the repair is a no-op at
+	// n = 1) the ln-axis median and quartiles sit at 1/2, 1/4 and 3/4 of
+	// [ln a0, ln a_out] — the draw is log-uniform, not flat.
+	const lnAxes = [];
+	for (let s = 0; s < 30000 && lnAxes.length < 6000; s++) {
+		planets.architecture(hash.hash4(0xAE5, s, 3, 4), sunStar, arch);
+		if (arch.n === 1 && arch.dropped === 0) lnAxes.push(Math.log(arch.a[0]));
+	}
+	lnAxes.sort((p, q) => p - q);
+	const lnA0 = Math.log(planets.innerEdgeAU(1)), span = Math.log(40) - lnA0;
+	const at = (q) => lnAxes[Math.floor(q * (lnAxes.length - 1))];
+	check('axes are log-uniform: single-planet quartiles at 1/4, 1/2, 3/4 of [ln a0, ln a_out]',
+		lnAxes.length >= 5000
+		&& Math.abs(at(0.5) - (lnA0 + 0.5 * span)) < 0.02 * span
+		&& Math.abs(at(0.25) - (lnA0 + 0.25 * span)) < 0.02 * span
+		&& Math.abs(at(0.75) - (lnA0 + 0.75 * span)) < 0.02 * span,
+		{ samples: lnAxes.length, median: +at(0.5).toFixed(3), mid: +(lnA0 + 0.5 * span).toFixed(3) });
+
+	// WD systems are compact and debris-rich (plan §4.4/§4.12): every orbit in
+	// [0.012, 0.05] — the factor-of-four span — and every bulk rock or dwarf.
+	let wdOk = true, wdPlanets = 0;
+	const wdStar = { mass: 0.8, rStar: 0.012, metal: 0.020, state: 'wd', spectralClass: 'WD' };
+	for (let s = 0; s < 20000; s++) {
+		planets.architecture(hash.hash4(0x3D, s, 5, 6), wdStar, arch);
+		for (let i = 0; i < arch.n; i++) {
+			wdPlanets++;
+			if (arch.a[i] < 0.012 * (1 - 1e-12) || arch.a[i] > 0.05 * (1 + 1e-12)) wdOk = false;
+			const name = planets.BULKS[arch.bulk[i]].name;
+			if (name !== 'rock' && name !== 'dwarf') wdOk = false;
+		}
+	}
+	check('wd systems are compact debris: orbits inside [0.012, 0.05] AU, bulks rock/dwarf only',
+		wdOk && wdPlanets > 1000, { wdPlanets });
+
+	// The emergent metallicity pin at draw level (§4.12): the drawn
+	// gas/icegiant/mini share rises ≥ 3× between halo and bulge Z.
+	const giantShareDrawn = (cls, metal) => {
+		const bracket = planets.CLASS_MASS_BRACKETS[cls];
+		const star = {
+			mass: Math.sqrt(bracket[0] * bracket[1]), rStar: 1, metal,
+			state: 'ms', spectralClass: cls,
+		};
+		let giant = 0, all = 0;
+		for (let s = 0; s < 20000; s++) {
+			planets.architecture(hash.hash4(0x21, s, 7, cls.charCodeAt(0)), star, arch);
+			for (let i = 0; i < arch.n; i++) {
+				all++;
+				const name = planets.BULKS[arch.bulk[i]].name;
+				if (name === 'gas' || name === 'icegiant' || name === 'mini') giant++;
+			}
+		}
+		return giant / all;
+	};
+	const drawRatios = {};
+	let minDrawRatio = Infinity;
+	for (const cls of ['B', 'G', 'M']) {
+		const ratio = giantShareDrawn(cls, 0.035) / giantShareDrawn(cls, 0.001);
+		drawRatios[cls] = +ratio.toFixed(2);
+		if (ratio < minDrawRatio) minDrawRatio = ratio;
+	}
+	check('the drawn giant share rises ≥ 3× between halo and bulge Z (B, G, M at draw level)',
+		minDrawRatio >= 3, drawRatios);
+
+	// Allocation and budget: a coarse heap-delta over 100k calls (per-call
+	// object churn would be megabytes) and the per-call time against the §4.9
+	// generateSystem budget of 20 µs — architecture is most of its draws.
+	for (let s = 0; s < 1000; s++) planets.architecture(hash.pcgHash(s), makeStar(s), arch);
+	const heapBefore = process.memoryUsage().heapUsed;
+	const t0 = performance.now();
+	for (let s = 0; s < 100000; s++) planets.architecture(hash.pcgHash(s), sunStar, arch);
+	const usPerCall = (performance.now() - t0) * 1000 / 100000;
+	const heapDelta = process.memoryUsage().heapUsed - heapBefore;
+	check('architecture allocates nothing per call (coarse heap delta < 2 MB over 100k calls)',
+		heapDelta < 2 * 1024 * 1024, { heapDelta });
+	check('architecture is far inside the 20 µs generateSystem budget', usPerCall < 20,
+		{ usPerCall: +usPerCall.toFixed(3) });
+}
+
 // --- Report ------------------------------------------------------------------
 let passed = 0;
 let failed = 0;
@@ -549,5 +852,5 @@ fs.writeFileSync(logPath, JSON.stringify({
 }, null, 2));
 console.log(`Wrote ${logPath}`);
 console.log('\n=== VERDICT ===');
-console.log(failed === 0 ? 'PASS — identity keys, the inversion, every stellar-input path and the occurrence tier behave as documented' : `FAIL — ${failed} checks failed`);
+console.log(failed === 0 ? 'PASS — identity keys, the inversion, every stellar-input path, the occurrence tier and the architecture tier behave as documented' : `FAIL — ${failed} checks failed`);
 process.exit(failed === 0 ? 0 : 1);

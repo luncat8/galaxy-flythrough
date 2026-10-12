@@ -1,11 +1,11 @@
 {
-  "date": "2026-10-12T02:59:08.303Z",
+  "date": "2026-10-12T15:50:20.677Z",
   "model": {
     "type": "SBb",
     "seed": 12345
   },
-  "totalChecks": 44,
-  "passed": 44,
+  "totalChecks": 57,
+  "passed": 57,
   "failed": 0,
   "checks": [
     {
@@ -306,6 +306,104 @@
           "RG": 16.28,
           "RGe": 21.37
         }
+      }
+    },
+    {
+      "name": "disc edges: Sun a0 = 6 R★ = 0.0279 AU, a_out = 40 AU; floor at 0.012; wd cut at 0.05",
+      "pass": true,
+      "detail": {
+        "sunA0": 0.027902803565772946,
+        "m02Out": 17.88854381999832
+      }
+    },
+    {
+      "name": "Hill: one Jupiter at 1 AU needs 0.41 AU, two 0.52; the push lands at 1.70; c ≥ 1 drops",
+      "pass": true,
+      "detail": {
+        "oneJupiter": 0.40966187481996974,
+        "twoJupiters": 0.5161416194250784,
+        "push": 1.695675040397183
+      }
+    },
+    {
+      "name": "massForBulk is log-uniform: bracket ends exact, geometric mean at u = 0.5",
+      "pass": true,
+      "detail": {
+        "gasMid": 387.2983346207417
+      }
+    },
+    {
+      "name": "crossed edges (a0 ≥ a_out) produce no disc: n = 0 for a swollen record-derived WD",
+      "pass": true,
+      "detail": {
+        "a0": 0.05580560713154589,
+        "aOut": 0.05
+      }
+    },
+    {
+      "name": "architecture is pure in (seed, star): identical twice, diverging across seeds",
+      "pass": true
+    },
+    {
+      "name": "the chain is the documented channels: bit-equal to a reimplementation over 500 systems",
+      "pass": true,
+      "detail": {
+        "bitEqual": 500
+      }
+    },
+    {
+      "name": "§4.12 invariants over 20k systems: clearance, a_out, K_HILL spacing, brackets, elements",
+      "pass": true,
+      "detail": {
+        "systems": 20000,
+        "planets": 9148,
+        "maxE": 0.6
+      }
+    },
+    {
+      "name": "dropping on overflow is the rare outcome (plan §4.5): under 10% of systems",
+      "pass": true,
+      "detail": {
+        "dropRate": 0.0001
+      }
+    },
+    {
+      "name": "axes are log-uniform: single-planet quartiles at 1/4, 1/2, 3/4 of [ln a0, ln a_out]",
+      "pass": true,
+      "detail": {
+        "samples": 6000,
+        "median": 0.021,
+        "mid": 0.055
+      }
+    },
+    {
+      "name": "wd systems are compact debris: orbits inside [0.012, 0.05] AU, bulks rock/dwarf only",
+      "pass": true,
+      "detail": {
+        "wdPlanets": 2850
+      }
+    },
+    {
+      "name": "the drawn giant share rises ≥ 3× between halo and bulge Z (B, G, M at draw level)",
+      "pass": true,
+      "detail": {
+        "B": 4.02,
+        "G": 26.52,
+        "M": 38.43
+      }
+    },
+    {
+      "name": "architecture allocates nothing per call (coarse heap delta < 2 MB over 100k calls)",
+      "pass": true,
+      "detail": {
+        "heapDelta": -910912
+      }
+    },
+    {
+      "name": "architecture is far inside the 20 µs generateSystem budget",
+      "pass": true,
+      "detail": {
+        "usPerCall": 0.304
       }
     }
   ]

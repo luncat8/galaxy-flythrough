@@ -1124,3 +1124,23 @@ Same pass, two smaller ones:
   (`experiments/damping-formula-check.js`), `run.py damping-formula` exits 0, and `run.py
   list` shows it under Studies. Either it was fixed before the commit landed or the note
   described an uncommitted state; verified 2026-10-12, nothing to do.
+
+## 2026-10-12 — Worked examples in a plan are code too, and `a ** 3` is not `a·a·a`
+
+Two catches from the 0.5.1-4 architecture pass:
+
+- **Recompute a plan's illustrative numbers before pinning around them.** §4.5's prose
+  said "One Jupiter at 1 AU around the Sun is 6·r_H = 0.59 AU (0.74 against a second
+  Jupiter)" — both numbers omit the `/3` inside the Hill cube root
+  (`((m_i+m_j)/(3·M★))^(1/3)`); the correct values are 0.41 and 0.52 AU. The formula in
+  the same code block was right, so an implementation following the formula silently
+  disagrees with the example beside it, and a reviewer "checking the numbers" would chase
+  the wrong side. Same family as the E[n] = 1.020 → 1.0195 catch: a worked example is a
+  statement the test must be able to reproduce, so compute it with the same code path the
+  pin uses, then write it down.
+- **`x ** 3` and `x * x * x` differ in the last bit.** The exponent operator goes through
+  pow and rounds once; the repeated multiply rounds per step. A bit-equality pin
+  (`Object.is`) against a module that writes `a * a * a` fails ~14% of the time when the
+  test recomputes with `a ** 3` (1270 of 9148 planets in the 20k-system sweep). When a
+  test mirrors a formula for bit-exact comparison, mirror the *operations*, not the
+  mathematics — the same rule the WGSL mirrors already follow.
