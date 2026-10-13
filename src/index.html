@@ -136,6 +136,20 @@
 			<input type="range" id="slider-systime" min="-1" max="99" step="0.5" value="0">
 			<span id="val-systime" class="menu-val">0 y/s</span>
 		</div>
+		<div class="menu-row menu-actions" data-view="system">
+			<button id="btn-dvmap" title="Toggle the delta-v map (B)">Delta-v map</button>
+			<label for="slider-dvbudget" title="Energy budget (log scale): 0 = minimum-energy Hohmann, 1 = ship ceiling. Sliding toward 1 spends more Δv to shorten the leg; below dv_x extra Δv buys nothing.">Budget</label>
+			<input type="range" id="slider-dvbudget" min="0" max="1" step="0.01" value="0.35">
+			<span id="val-dvbudget" class="menu-val">0.35</span>
+			<label for="dv-ship">Ship</label>
+			<select id="dv-ship" title="Ship class for the feasibility / time-at-budget readout.">
+				<option value="chemical" selected>chemical</option>
+				<option value="nuclear">nuclear</option>
+				<option value="fusion">fusion</option>
+				<option value="stardrive">stardrive</option>
+				<option value="generation">generation</option>
+			</select>
+		</div>
                 <!-- Star and planet search (0.5.2, plan §5.4): the quick
                      controls own their filter dimensions and mirror into the
                      token box, which is the whole filter (presets carry it).
@@ -204,6 +218,7 @@ F                    fly to the selected star
 N / Shift+N          next / previous star in the selection set
 X                    clear the selection set (click selects, Shift+click adds)
 V                    system view of the selected star (Esc or V closes)
+B                    delta-v map (inside the system view)
 H                    home: the Sun, or a generated galaxy's centre
 G                    new galaxy: cycle type (rebuilds the field, about a second)
 R                    reset everything
@@ -230,6 +245,12 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
         <script src="math/planets.js"></script>
         <script src="math/orbit.js"></script>
         <script src="math/nebula.js"></script>
+        <!-- Delta-v map (0.5.4): pure SI closed forms for one-body wells,
+             Hohmann transfers, Oberth departure, aerocapture credit, and the
+             energy-budget time blend. Loaded last among math files so its
+             dependencies (planets.js constants and DISPLAY_TYPES, orbit.js)
+             are present, and before render files that read from it. -->
+        <script src="math/deltav.js"></script>
         <script src="math/objects.js"></script>
         <script src="math/coords.js"></script>
         <script src="core/device.js"></script>

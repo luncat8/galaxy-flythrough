@@ -29,6 +29,7 @@ const MODULES = [
 	{ file: '../src/math/planets.js', global: 'PlanetsLib' },
 	{ file: '../src/math/orbit.js', global: 'OrbitLib' },
 	{ file: '../src/math/nebula.js', global: 'NebulaLib' },
+	{ file: '../src/math/deltav.js', global: 'DeltaVLib' },
 	{ file: '../src/math/objects.js', global: 'ObjectsLib' },
 	{ file: '../src/math/coords.js', global: 'Coords' },
 	{ file: '../src/core/camera.js', global: 'Camera' },

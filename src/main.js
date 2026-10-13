@@ -88,6 +88,8 @@ function readParams(search) {
 		// unchanged (plan §14 Q6).
 		systime: number('systime', window.SystemLayer.SYSTIME_DEFAULT),
 		sysview: number('sysview', 0),
+		dvmap: number('dvmap', window.SystemLayer.DVMAP_DEFAULT ? 1 : 0),
+		dvbudget: number('dvbudget', window.SystemLayer.BUDGET_DEFAULT),
 	};
 }
 
@@ -580,6 +582,37 @@ async function boot() {
                 syncSysTime();
         });
 
+        // Delta-v map controls (0.5.4): toggle (B), budget slider, ship select.
+        const btnDvMap = document.getElementById('btn-dvmap');
+        const sliderDvBudget = document.getElementById('slider-dvbudget');
+        const valDvBudget = document.getElementById('val-dvbudget');
+        const selDvShip = document.getElementById('dv-ship');
+        sliderDvBudget.min = window.SystemLayer.BUDGET_MIN;
+        sliderDvBudget.max = window.SystemLayer.BUDGET_MAX;
+        sliderDvBudget.step = window.SystemLayer.BUDGET_STEP;
+        function syncDvUi() {
+                btnDvMap.textContent = systemLayer.isDvMapOpen() ? 'Close delta-v map' : 'Delta-v map';
+                sliderDvBudget.value = systemLayer.getBudget();
+                valDvBudget.textContent = Number(systemLayer.getBudget()).toFixed(2);
+                selDvShip.value = systemLayer.getShipClass();
+        }
+        function toggleDvMap() {
+                systemLayer.setDvMap(!systemLayer.isDvMapOpen());
+                syncDvUi();
+                writeSystemReadout();
+        }
+        btnDvMap.addEventListener('click', () => { if (systemLayer.isOpen()) toggleDvMap(); });
+        sliderDvBudget.addEventListener('input', () => {
+                systemLayer.setBudget(Number(sliderDvBudget.value));
+                syncDvUi();
+                writeSystemReadout();
+        });
+        selDvShip.addEventListener('change', () => {
+                systemLayer.setShipClass(selDvShip.value);
+                syncDvUi();
+                writeSystemReadout();
+        });
+
         function syncViewRows() {
                 const viewOpen = systemLayer.isOpen();
                 for (const row of viewRows) {
@@ -656,6 +689,10 @@ async function boot() {
 
         systemLayer.setTimeRate(params.systime);
         syncSysTime();
+        systemLayer.setDvMap(window.SystemLayer.DVMAP_DEFAULT);
+        systemLayer.setBudget(params.dvbudget !== undefined ? params.dvbudget : window.SystemLayer.BUDGET_DEFAULT);
+        systemLayer.setShipClass('chemical');
+        syncDvUi();
         syncViewRows();
         if (params.sysview) openSystemView(true);   // no selection at boot: a no-op
 
@@ -834,6 +871,8 @@ async function boot() {
                         scope: scopeSelect.value === 'galaxy' ? 'galaxy' : 'selection',
                         sysview: systemLayer.isOpen() ? 1 : 0,
                         systime: systemLayer.getTimeRate(),
+                        dvmap: systemLayer.isDvMapOpen() ? 1 : 0,
+                        dvbudget: systemLayer.getBudget(),
                         stars: params.stars,
                         catalog: params.catalogStars,
                 };
@@ -902,6 +941,13 @@ async function boot() {
                         if (s.sysview) openSystemView(true);
                         else closeSystemView();
                 }
+                if (s.dvmap !== undefined) {
+                        systemLayer.setDvMap(!!s.dvmap);
+                }
+                if (s.dvbudget !== undefined) {
+                        systemLayer.setBudget(s.dvbudget);
+                }
+                syncDvUi();
                 syncSlidersFromRenderer();
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
@@ -1487,6 +1533,10 @@ async function boot() {
                 if (actions.systemViewExit) {
                         actions.systemViewExit = 0;
                         closeSystemView();
+                }
+                if (actions.dvMap) {
+                        actions.dvMap = 0;
+                        if (systemLayer.isOpen()) toggleDvMap();
                 }
                 if (actions.constellations) {
                         actions.constellations = 0;
