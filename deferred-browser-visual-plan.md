@@ -12,7 +12,8 @@ Keep this plan separate from the analytical contracts in `plan.md` and the
 0.4.x model plans. Results belong in `archive/0.4.x-worklog.md`; a proposed model
 change needs its own contract, measurement, and parity tests before implementation.
 
-**Priority:** complete [movement parity](movement-parity-plan.md) first. Visual
+**Priority:** movement parity shipped 2026-10-11 (`movement-parity-plan.md`); its
+browser-side validation is V1/V2 below. Visual
 polish must not block it. Clipboard/file browser behavior is a functional check,
 not cosmetic tuning, even though its real-browser validation is deferred here.
 

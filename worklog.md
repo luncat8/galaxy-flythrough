@@ -8,7 +8,7 @@ Implementation history is grouped by release series. Append entries to the match
 | 0.1.x | [0.1.x worklog](archive/0.1.x-worklog.md) | Initial planning, experiments, runtime, streaming, cameras, landmarks and HDR |
 | 0.3.x | [0.3.x worklog](archive/0.3.x-worklog.md) | 0.3/0.4 planning, GalaxyModel, galaxy types and distributions, composite objects, nebula billboards, galaxy age |
 | 0.4.x | [0.4.x worklog](archive/0.4.x-worklog.md) | Kinematic orbits, star-time control, group kinematics, wave-damping capture, simple and apocenter-guided engines, giant-branch evolution, HDR headroom/desat knobs, realistic 3D shapes (bar peanut, truncation floors, age–height coupling), settings presets, engine-mask dispatch |
-| 0.5.x | [0.5.x worklog](archive/0.5.x-worklog.md) | Planet series: planning entry, then 0.5.0 star selection implemented (identity keys, `pickAny` over all five blocks with engine-mask dispatch parity, the snapshot selection set, radius select, fly-to, set rings), 0.5.1 the lazy planet-system generator, 0.5.2 star and planet search (two-stage scan, scope fallback, preset token, `#sysread`), 0.5.3-1 the system-view skeleton (`#system` canvas, `render/system-layer.js`, enter/exit plumbing, the open system's readout), 0.5.3-2 the log-polar layout (habitable-zone annulus, orbit ellipses, star and planet icons), 0.5.3-3 the belt stipples hashed once per system and the system view's own clock (`systime`/`sysview` on the settings line), 0.5.3-4 schematic picking, the selection ring and the hovered designation, with `experiments/system-layer-test.js` as the headless contract for the whole readout, 0.5.3-5 the readout's per-planet and belt lines, 0.5.4 the delta-v map (`src/math/deltav.js`, the §7.5 graph and table on the `#system` canvas, `B` plus the `budget` slider and `ship` select, `experiments/dv-map-test.js`), 0.5.5 routes and the autopilot (`src/core/route.js`: the leg chain, the synodic wait, the interstellar cruise, the two-way totals and `routePosition`, with the ship icon and the graph's endpoint picking in `src/render/system-layer.js` and `experiments/route-test.js`). Series complete: 0.5.0–0.5.5 |
+| 0.5.x | [0.5.x worklog](archive/0.5.x-worklog.md) | Planet series: planning entry, then 0.5.0 star selection implemented (identity keys, `pickAny` over all five blocks with engine-mask dispatch parity, the snapshot selection set, radius select, fly-to, set rings), 0.5.1 the lazy planet-system generator, 0.5.2 star and planet search (two-stage scan, scope fallback, preset token, `#sysread`), 0.5.3-1 the system-view skeleton (`#system` canvas, `render/system-layer.js`, enter/exit plumbing, the open system's readout), 0.5.3-2 the log-polar layout (habitable-zone annulus, orbit ellipses, star and planet icons), 0.5.3-3 the belt stipples hashed once per system and the system view's own clock (`systime`/`sysview` on the settings line), 0.5.3-4 schematic picking, the selection ring and the hovered designation, with `experiments/system-layer-test.js` as the headless contract for the whole readout, 0.5.3-5 the readout's per-planet and belt lines, 0.5.4 the delta-v map (`src/math/deltav.js`, the §7.5 graph and table on the `#system` canvas, `B` plus the `budget` slider and `ship` select, `experiments/dv-map-test.js`), 0.5.5 routes and the autopilot (`src/core/route.js`: the leg chain, the synodic wait, the interstellar cruise, the two-way totals and `routePosition`, with the ship icon and the graph's endpoint picking in `src/render/system-layer.js` and `experiments/route-test.js`), plus 0.5.x-3 the series' README close-out (the §2.3 channel map written into the architecture list, the experiments test table filled out, the stale parity pointers corrected). Series complete: 0.5.0–0.5.5 |
 
 No separate 0.2 implementation entry exists in the original log. The combined
 0.3/0.4 planning entry lives in 0.3.x; 0.4.x implementation entries live in the
@@ -27,10 +27,12 @@ index: shipped plans under one heading, the open series under the next. An archi
 still the spec a fork reimplements from — archived, never deleted.
 
 
-Current priority: [movement dispatch and CPU/WGSL parity](movement-parity-plan.md).
-The browser engine/preset pass and non-critical bar polish are explicitly deferred
-in [a separate plan](deferred-browser-visual-plan.md), not completed or blocking.
-See the 2026-10-11 triage entry in the 0.4.x log for reproduced failures and scope.
+Current priority: the deferred browser/WebGPU pass on real hardware
+(`deferred-browser-visual-plan.md` — V8 for the 0.5 routes and autopilot, then V1–V4
+for the engines, labels and presets). Movement dispatch and CPU/WGSL parity shipped
+2026-10-11 (0.4.x log entry; `wgsl-exec` 100/104 → 115/115); the numerical
+movement-density measurements that must precede any experimental-engine calibration
+are next in plan.md's follow-up order.
 
 Next series: [the 0.5 planet generator](0.5.0-plan-planet-generator.md). 0.5.0 (star
 selection), 0.5.1 (the lazy deterministic planet-system generator), 0.5.2 (star and

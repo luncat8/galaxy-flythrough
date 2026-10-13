@@ -177,9 +177,18 @@ The runtime is organized as classic-script namespaces under `src/`:
 - `math/density.js` — analytical stellar density components
 - `math/sampling.js` — deterministic sampling from those components
 - `math/star-types.js` — stellar populations and age evolution
+- `math/planets.js` — the lazy planet-system generator: any drawn star's planetary
+  system as a pure function of its identity key through one fixed hash channel map
+  (plan §2.3 — one draw per channel: the count chain 2+n, each planet 32+8·p, moon
+  counts 128+p, the two belts 200 and 210, belt stipples 300+s on the belt's own
+  seed), so a system is reproducible across runs and machines
+- `math/deltav.js` — closed-form delta-v budgets: the node table, the inter-body
+  chain, the energy-budget travel-time blend, and the ship classes it is read against
 - `math/orbit.js` — movement engines and CPU mirrors
 - `render/shaders.js` — all WGSL shader source
 - `render/star-sprites.js` — procedural generation, culling, HDR star passes, and tone mapping
+- `render/label-layer.js` and `render/system-layer.js` — the CPU 2D overlays: landmark
+  and constellation labels, and the close-system schematic with its delta-v map and route
 - `stream/` — catalog bundle loading and cell residency
 - `core/` — camera, input, loop, star set + selection, search + routes, and presets
 - `data/` — named landmarks, constellations, and the packed catalog

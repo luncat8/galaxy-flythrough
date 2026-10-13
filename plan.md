@@ -1255,9 +1255,13 @@ tests and extend the file layout of §11 as needed.
 
 ### Current follow-up order
 
-1. [Movement dispatch and CPU/WGSL parity](movement-parity-plan.md): resolve
-   engine-mask composition and align rendered positions, labels and picking;
-   repair stale shader-execution fixtures without masking real discrepancies.
+1. ~~Movement dispatch and CPU/WGSL parity~~ — **done** (2026-10-11, see
+   `movement-parity-plan.md` and the 0.4.x worklog entry): one dispatch order
+   classic → simple → apocenter, each pass replacing the position, the apocenter
+   pass anchored to the immutable birth position, the model-derived simple
+   eccentricity mirrored from the packed lanes, and labels/picking sharing the
+   dispatch. `wgsl-exec` went 100/104 → 115/115; browser visual validation of the
+   engines is still deferred (V1/V2).
 2. Numerical movement-density measurements before experimental-engine calibration
    or any change of default engine.
 3. [Deferred browser/WebGPU validation and visual polish](deferred-browser-visual-plan.md):

@@ -1,4 +1,4 @@
-# Next session prompt — galaxy fly-through (0.5 series complete)
+# Next session prompt — galaxy fly-through (0.5 series complete, docs closed)
 
 Paste this as the opening message of the next session.
 
@@ -8,46 +8,40 @@ Continue development of the galaxy fly-through engine in `/home/user/galaxy-flyt
 (AGENTS.md conventions: single tab indent, no per-frame allocations, classic script tags,
 plan-first, worklog + plan + findings updates with each step).
 
-**Shipped this session (0.5.5 + the series' docs):**
+**Shipped this session (0.5.x-3, docs only):**
 
-- 0.5.5 — new file `src/core/route.js` (`RouteLib`, loaded in `index.html` after
-  `core/search.js`, hence after `math/deltav.js` and `math/orbit.js` which it requires):
-  the §8.0 leg chain (ascent → synodic wait → transfer → descent, layover, return; one
-  preallocated timeline of 16 legs), `buildRoute(out, near, far, from, to, shipName, budget,
-  tSysYr)`, the §8.4 synodic wait (shortest path to the window — the signed relative angular
-  rate decides the direction), the §8.3 interstellar cruise, two-way totals, `routeStatus`
-  and `routePosition` (Kepler ellipse via `orbit.js`'s solver, the brachistochrone chord,
-  the Cartesian blend of the two).
-- 0.5.5-3/-4 — `system-layer.js` gained `setRoute` / `setRouteEndpoints` / `pickNode` /
-  `timeYr`: the dashed polyline and class-coloured ship triangle over the schematic, the
-  endpoint rings on §7.5's graph and the click test against its node positions. main.js owns
-  the alternating endpoint state machine, `rebuildRoute` (on a state change and at the
-  readout's 4 Hz cadence while the system clock moves), `routeBlock`, the `Autopilot` /
-  `Clear route` menu buttons, the `K` action in `input.js`, `#help`, and the far-system
-  derivation (`deriveSystemInto`, `generateFarSystem`) a two-star route needs.
-- Tests: new `experiments/route-test.js` (56 checks, registered in `scripts/run.py` as
-  `route`), `experiments/system-layer-test.js` extended to 58 checks (route drawing,
-  `pickNode`, endpoint rings), `experiments/preset-test.js` 30/30 (routes transient but
-  wired), `experiments/input-test.js` 18/18 (K is a one-shot), `dv-map-test.js` 46/46,
-  `m1-smoke` 61/61 (route.js loaded once, after orbit.js). `python3 scripts/run.py
-  all-tests` → ALL TESTS PASSED, with the timing/date churn reverted so only the five
-  logs carrying new checks (`route`, `system-layer`, `preset`, `input`, `m1-smoke`) are
-  modified — keep that convention when you rerun.
-- Docs: `0.5.0-plan-planet-generator.md` (§8 rewritten in place with the ship list, the
-  endpoint/chain model, endpoint picking, autopilot and rebuild cadence; §9.1/§9.2/§9.3/§9.4;
-  §10; §11 task table; five new §11.1 deviations incl. the §8.6 economy cut), `plan.md` §11
-  tree + §19 + follow-up order, `worklog.md` + `archive/0.5.x-worklog.md` entry, `AGENTS.md`
-  file lines, `README.md` capabilities + controls + architecture, `findings-pitfalls-skills.md`
-  one 2026-10-13 entry, `deferred-browser-visual-plan.md` V8 row.
+- The **0.5.2-1 remand is closed**. Verified before editing: `src/math/planets.js` has
+  carried the whole plan §2.3 channel map since 0.5.1 (`CH_ESCALE` 0, the count chain
+  `2+n`, each planet `32+8·p`, moon counts `128+p`, belts 200/210, stipples `300+s` on
+  the belt's own seed), and `experiments/planet-gen-test.js` claims the entire map into
+  one `Set` and fails on the first duplicate. The gap was the README: its architecture
+  list predated the 0.5 series and named none of the new modules.
+- `README.md` architecture now lists `math/planets.js` (with the channel map in one
+  bullet), `math/deltav.js`, and the two render overlays (`label-layer.js` +
+  `system-layer.js`).
+- Stale pointers corrected after checking their logs: `plan.md` §19's follow-up order
+  marks movement parity **done** (shipped 2026-10-11, P1–P4, `wgsl-exec` 100/104 →
+  115/115; browser validation of the engines still deferred at V1/V2), and `worklog.md`'s
+  priority block is the browser pass.
+- The same drift fixed one directory over: `experiments/README.md`'s Tests table was frozen
+  at `galaxy-age-test.js` and now carries all 27 registered tests (`input`, `preset`,
+  `star-select`, `search`, `system-layer`, `shape`, `orbit`, `planet-gen`, `dv-map`,
+  `route`, …), described from each test's own header. `AGENTS.md` gained a `README.md`
+  file line saying both tables move with the release, and the findings entry records the
+  verify-both-sides rule.
+- Docs: `archive/0.5.x-worklog.md` gained the 0.5.x-3 entry. No runtime change;
+  `python3 scripts/run.py all-tests` → ALL TESTS PASSED.
 
 **Still open (nothing is blocked):**
 
 1. **The 0.5 browser pass** — `deferred-browser-visual-plan.md` **V8** (routes and
-   autopilot) is the freshest row, then V1–V4; the CPU tests pin the chain, the wait law, the
-   cruise table, `routePosition` and the ship's position, not whether any of it reads.
-2. **Movement dispatch and CPU/WGSL parity** — `movement-parity-plan.md`, the first item of
-   plan.md's follow-up order; it and the browser pass are independent.
-3. **0.5.2-1 remand** — `src/math/planets.js` lacks the README §2.3 channel map.
+   autopilot) is the freshest row, then V1–V4. This environment has no WebGPU-capable
+   browser (`which chromium firefox` is empty), so the pass needs the user's machine or
+   a machine with a real GPU. The CPU tests pin the chain, the wait law, the cruise
+   table, `routePosition` and the ship's position, not whether any of it reads.
+2. **Numerical movement-density measurements** — plan.md's follow-up item 2, the
+   measurement that must precede any experimental-engine calibration or default change
+   (time-averaged radial/vertical/arm density, `experiments/` + `logs/`).
 
 **Known follow-ups / caveats:**
 
@@ -58,12 +52,17 @@ plan-first, worklog + plan + findings updates with each step).
   no automated pin of the report text exists (same caveat the dv block carries).
 - Browser-side checks (endpoint rings, the ship through a wait/transfer/layover, `K`'s
   handover to the system clock, interstellar text) are deferred in V8 — not verified.
+- `experiments/README.md`'s Tests table was frozen at `galaxy-age-test.js` — now filled out
+  to all 27 registered tests, so check it against `scripts/run.py` whenever a test ships.
+- `scripts/run.py` keeps its entries alphabetised inside each group — a new experiment
+  goes in the `EXPERIMENTS` dict, the `TYPES['test']` list, `m1-smoke-test.js`'s
+  namespace list and `index.html`, in that order of failure.
 
-**State:** all of the above is in the working tree, uncommitted (the user was not asked
-for a commit). `git status` shows the new files (`src/core/route.js`,
-`experiments/route-test.js`, `experiments/logs/route.json`) and the modified files
-(`src/main.js`, `src/render/system-layer.js`, `src/core/input.js`, `src/index.html`,
-`scripts/run.py`, the four tests, the five logs, and the seven docs).
+**State:** 0.5.x-2 and 0.5.5 are committed; the 0.5.x-3 doc edits are uncommitted
+(`README.md`, `experiments/README.md`, `plan.md`, `worklog.md`, `AGENTS.md`,
+`archive/0.5.x-worklog.md`, `findings-pitfalls-skills.md`, `NEXT_SESSION.md`).
+The user was not asked for a commit.
 
-**First actions:** read AGENTS.md + `plan.md` §11/§19 and `0.5.0-plan-planet-generator.md`
-§11, then pick up V8 (browser pass) or `movement-parity-plan.md`.
+**First actions:** read AGENTS.md + `plan.md` §11/§19, then either start V8 on a real
+browser (record the blocked case and stop if no adapter) or write the movement-density
+measurement as an `experiments/` script with its log.

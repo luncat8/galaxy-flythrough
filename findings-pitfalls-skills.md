@@ -4,6 +4,25 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-10-13 — A remand that names the code is often a doc gap — check both sides before editing
+
+Closing the 0.5.x-2 handoff's "0.5.2-1 remand — `src/math/planets.js` lacks the README §2.3
+channel map" took no code at all: the module had carried the whole map since 0.5.1
+(`CH_ESCALE` 0, count chain `2+n`, planets `32+8·p`, moon counts `128+p`, belts 200/210,
+stipples `300+s` on the belt's own seed), and `planet-gen-test.js` claims the entire map into
+one `Set` so the first duplicate channel fails the build. What was actually stale was the
+README's Architecture list, which stopped at the pre-0.5 tree — three runtime modules
+(`planets.js`, `deltav.js`, `route.js`), the two CPU overlays and the system view all shipped
+with no row. Rule: when a handoff note says "X lacks the README Y", read both sides first —
+adding a channel map the code already has would have been pure churn, and the real fix was
+one bullet.
+
+The same session found `experiments/README.md`'s Tests table frozen at `galaxy-age-test.js`
+(ten later tests registered in `scripts/run.py`, no rows) — the identical failure one
+directory over. So treat the README architecture list and the experiments test table as part
+of a release's diff, not as cleanup that "can happen later": they drift silently, and the
+next agent inherits them as fact.
+
 ## 2026-10-13 — The synodic wait must travel the way the angle actually goes, and a module's own scratch structs are safest
 
 Two things met while building 0.5.5's route chain (`src/core/route.js`):
