@@ -1194,6 +1194,26 @@ Shipped, in `archive/`:
   (0.5.5 shipped; optional economy omitted). CPU-only by construction: the star buffer, the WGSL and the three render paths
   are untouched.
 
+- **0.5.6 — system-view review pass** (on top of the archived 0.5 plan, §6–§8):
+  the system/ship controls move out of the right-hand galaxy menu into their own
+  left panel (`#sysmenu`; Tab toggles both panels, the overlay/readout inset
+  follows the left panel). The system-time slider speaks a geometric ladder of
+  rates (`SystemLayer.SYSTIME_LADDER`: −1 follow-camera, 0 frozen, then
+  1e-4 … 100 y/s) because one linear range cannot show both a ~1e-4 y launch
+  and a ~0.4 y Hohmann transfer; the slowest timed stop plays a launch in ~1 s.
+  The delta-v map gains a second render beside the 0.5.4 classic graph —
+  `delta-v rails`, one row per node kind so the escape rail and the L5 rail run
+  level across the columns — selected with the schematic in one View dropdown
+  (`system` / `delta-v classic` / `delta-v rails`, preset field `dvmap` 0/1/2,
+  `B` cycles). L5 is a second exit beside the escape node: a route that starts
+  or ends on an L5 node spends only the star-frame burns on that side (no well
+  leg, no capture), exactly as an escape-node endpoint already did; same-body
+  L5 legs keep the one-body drift edge. The ship marker rides every leg on both
+  map renders and the schematic — transfers along the rail they use, local
+  legs along their well edge (`leg.fromNode`/`leg.toNode`), waits on the node
+  the departure burn leaves from. Tests: `route-test.js` (L5 exit pins),
+  `system-layer-test.js` (ladder, rail rows, ship on a local leg).
+
 Implement from those files plus this one; the per-release plans reference their own
 tests and extend the file layout of §11 as needed.
 

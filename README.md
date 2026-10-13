@@ -81,22 +81,33 @@ Other controls:
 - `P` — toggle constellation lines
 - `T` — pause/resume star time
 - `V` — open/close the close-system schematic of the selected star
-- `B` — toggle the centered delta-v map inside the system view
+- `B` — cycle the system view: schematic → delta-v map → delta-v rails
 - `[` / `]` — exposure
 - `;` / `'` — overall brightness
 - `Esc` — close the system view; release the pointer in fly mode
 
 The settings panel opens at startup and exposes galaxy type, seed, age, star time, movement engine, pattern controls, tone mapping, and presets.
 
-## Ships, routes and autopilot (0.5.5)
+## Ships, routes and autopilot (0.5.5, reviewed in 0.5.6)
 
-1. Select a star and press **V**, then **B** to open its delta-v map.
-2. Click a start node, then a destination node (surface, LO, GEO, escape or L5).
+The system and ship controls live in their own panel on the left (`Tab` toggles
+both panels); the galaxy settings stay on the right.
+
+1. Select a star and press **V**, then pick a render in the left panel's **View**
+   dropdown: the system schematic, the classic delta-v map, or the delta-v rails
+   map (one row per node kind, so the escape and L5 rails run level across the
+   bodies). **B** cycles the three.
+2. On a delta-v render, click a start node, then a destination node (surface,
+   LO, GEO, escape or L5). Escape and L5 are both exits: a route starting or
+   ending on either spends only the star-frame burns on that side.
 3. Choose a ship and energy budget. **Round trip** adds a return after a
    0.25-year layover; fuel is not replenished. The report compares all five classes.
-4. Set **System time** above zero and start autopilot. Press **B** again to watch
-   the class-colour ship and dashed trajectory on the schematic. Start/resume
-   pauses or resumes flight; time zero freezes it. Changing the plan cancels flight.
+4. Set **System time** above zero and start autopilot. The clock is a geometric
+   ladder (slowest timed stop 1e-4 y/s, about 0.9 h/s — slow enough to watch a
+   launch and see the ship crawl; frozen at 0). The class-colour ship and dashed
+   trajectory ride every leg on the schematic and on both delta-v renders,
+   local legs included. Start/resume pauses or resumes flight; time zero
+   freezes it. Changing the plan cancels flight.
 5. For interstellar travel, select two stars with Shift-click (or add search results),
    open a system, then use **Selected stars**. It uses the first two selected stars
    and reports parking-orbit escape, cruise and capture in real years. Interstellar
@@ -133,7 +144,7 @@ Useful parameters include:
 | `apoShare`, `apoForce` | Apocenter-engine population share and eccentricity force |
 | `sysview` | `1` opens the system schematic at load (a no-op without a selection) |
 | `systime` | Schematic clock rate in years/s (`-1` follows the camera fly speed, `0` freezes) |
-| `dvmap`, `dvbudget` | Delta-v map toggle (`0`/`1`) and energy budget (`0`–`1`) |
+| `dvmap`, `dvbudget` | System render (`0` schematic, `1` delta-v classic, `2` delta-v rails) and energy budget (`0`–`1`) |
 | `ship` | `chemical`, `nuclear`, `fusion`, `stardrive`, or `generation` |
 
 The Preset section in the UI serializes the complete active configuration in this same format.

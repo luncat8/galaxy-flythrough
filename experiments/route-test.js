@@ -91,6 +91,33 @@ test('escape-node departure spends heliocentric dv, not another escape burn', ()
 	route.buildRoute({ ...a, node: 3 }, b, 'chemical', 0, r);
 	near(r.legs[0].dv, hh.dvDep, 1e-6);
 });
+test('L5 is a second exit: L5 endpoints spend only the star-frame burns', () => {
+	const edge = dv.legLoToLo(MU, earth, mars, false, {});
+	// Leaving from L5 costs exactly leaving from the escape node: the ship is
+	// already heliocentric, so no LO capture or well leg is charged again.
+	route.buildRoute({ ...a, node: 4 }, b, 'nuclear', 0, r);
+	near(r.totalDv, edge.dvDepStar + edge.dvCapB, 1e-6);
+	assert.ok(!r.legs.slice(0, r.count).some(l => l.kind === 'launch'));
+	// Arriving at L5 pays the star-frame arrival, not a capture plus a drift.
+	route.buildRoute(a, { ...b, node: 4 }, 'nuclear', 0, r);
+	near(r.totalDv, edge.dvDepLo + edge.dvArrStar, 1e-6);
+	assert.ok(!r.legs.slice(0, r.count).some(l => l.kind === 'landing'));
+	route.buildRoute({ ...a, node: 4 }, { ...b, node: 4 }, 'nuclear', 0, r);
+	near(r.totalDv, edge.dvDepStar + edge.dvArrStar, 1e-6);
+	// The map rides the well edge on local legs and sits on its node in a wait.
+	route.buildRoute({ ...a, node: 0 }, { ...b, node: 4 }, 'nuclear', 0, r);
+	const launch = r.legs.slice(0, r.count).find(l => l.kind === 'launch');
+	assert.strictEqual(launch.fromNode, 0); assert.strictEqual(launch.toNode, 1);
+	const wait = r.legs.slice(0, r.count).find(l => l.kind === 'wait');
+	if (wait) { assert.strictEqual(wait.fromNode, 1); assert.strictEqual(wait.toNode, 1); }
+});
+test('same-body L5 legs still ride the one-body drift edge', () => {
+	route.buildRoute(a, { ...a, node: 4 }, 'chemical', 0, r);
+	assert.ok(r.feasible);
+	near(r.totalDv, dv.dvLoToL5(earth, {}), 1e-6);
+	const leg = r.legs.slice(0, r.count).find(l => l.kind === 'landing');
+	assert.strictEqual(leg.fromNode, 1); assert.strictEqual(leg.toNode, 4);
+});
 test('round trip includes layover, reverse capture and its own window', () => {
 	route.buildRoute(a, b, 'nuclear', 0, r, true);
 	assert.ok(r.feasible); assert.ok(r.count <= route.MAX_LEGS);

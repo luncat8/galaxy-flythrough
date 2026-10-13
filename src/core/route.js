@@ -13,7 +13,7 @@ const NODE_NAMES = ['surface', 'LO', 'GEO', 'escape', 'L5'];
 
 function createRoute() {
 	const legs = [];
-	for (let i = 0; i < MAX_LEGS; i++) legs.push({ kind: '', label: '', start: 0, end: 0, dv: 0, a1: 0, a2: 0, angle: 0, endAngle: 0, phase: 0, period: 0, powered: false, from: null, to: null, endpoint: null, x1: 0, y1: 0, z1: 0, x2: 0, y2: 0, z2: 0, distance: 0, cruiseSpeed: 0 });
+	for (let i = 0; i < MAX_LEGS; i++) legs.push({ kind: '', label: '', start: 0, end: 0, dv: 0, a1: 0, a2: 0, angle: 0, endAngle: 0, phase: 0, period: 0, powered: false, from: null, to: null, endpoint: null, fromNode: 1, toNode: 1, x1: 0, y1: 0, z1: 0, x2: 0, y2: 0, z2: 0, distance: 0, cruiseSpeed: 0 });
 	return { legs, count: 0, totalDv: 0, totalYears: 0, roundTripYears: 0, feasible: false, fuelFeasible: false, lifeFeasible: false, reason: '', ship: dv.SHIP_CLASSES[0], twoWay: false, start: null, end: null, epoch: 0, edge: {}, times: {}, tank: { accel: 0, dvMax: 0 }, scratch: {} };
 }
 function phaseAt(ref, t) {
@@ -61,8 +61,12 @@ function append(route, kind, label, cost, seconds, from, to, powered) {
 	leg.cruiseSpeed = kind === 'cruise' ? route.scratch.speed : 0;
 	// Both endpoints are kept: the map traces a transfer from one to the other
 	// (system-layer §7.5); `endpoint` stays the single body a leg ends on.
+	// fromNode/toNode are the graph nodes the ship rides between on the map:
+	// most legs sit on one node, local legs ride the well edge to or from LO.
 	leg.from = from;
 	leg.to = to;
+	leg.fromNode = from.node;
+	leg.toNode = to.node;
 	leg.endpoint = kind === 'capture' || kind === 'landing' ? to : from;
 	route.totalDv += cost;
 	route.totalYears = leg.end;
@@ -79,11 +83,18 @@ function localLeg(route, ref, arriving) {
 	if (ref.node === 1 || ref.node === 3) return;
 	const kind = arriving ? 'landing' : 'launch';
 	const seconds = ref.node === 4 ? dv.L5_PHASE_FRACTION * ref.body.periodS : cost / route.ship.accel;
+	const before = route.count;
 	append(route, kind, ref.label + ' ' + (arriving ? 'LO → ' + NODE_NAMES[ref.node] : NODE_NAMES[ref.node] + ' → LO'), cost, seconds, ref, ref, false);
+	if (route.count > before) {
+		// The ship rides the well edge: out of the node to LO, or LO into it.
+		const leg = route.legs[before];
+		leg.fromNode = arriving ? 1 : ref.node;
+		leg.toNode = arriving ? ref.node : 1;
+	}
 }
 function systemChain(route, from, to, budget) {
-	localLeg(route, from, false);
 	if (from.body === to.body) {
+		localLeg(route, from, false);
 		if (from.node === 3 || to.node === 3) {
 			const cost = dv.dvLoToEscape(from.body, route.scratch);
 			append(route, 'departure', 'LO ↔ escape', cost, cost / route.ship.accel, from, to, false);
@@ -91,18 +102,32 @@ function systemChain(route, from, to, budget) {
 		localLeg(route, to, true);
 		return;
 	}
+	// An escape or L5 endpoint is already heliocentric, so that side has no
+	// well leg: the ship neither climbs back to LO to leave nor captures into
+	// LO to arrive. L5 is a second exit beside the escape node (§7.5 rails).
+	if (from.node !== 4) localLeg(route, from, false);
 	const edge = route.edge;
 	dv.legLoToLo(from.muStar, from.body, to.body, false, edge);
-	if (from.node === 3) edge.dvLoToLo += edge.dvDepStar - edge.dvDepLo;
-	if (to.node === 3) edge.dvLoToLo += edge.dvArrStar - edge.dvCapB;
+	if (from.node === 3 || from.node === 4) edge.dvLoToLo += edge.dvDepStar - edge.dvDepLo;
+	if (to.node === 3 || to.node === 4) edge.dvLoToLo += edge.dvArrStar - edge.dvCapB;
 	route.tank.accel = route.ship.accel;
-	route.tank.dvMax = Math.max(0, route.ship.dvMax - route.totalDv - localCost(to, true, route.scratch));
+	const reserve = (to.node === 0 || to.node === 2) ? localCost(to, true, route.scratch) : 0;
+	route.tank.dvMax = Math.max(0, route.ship.dvMax - route.totalDv - reserve);
 	dv.legTimes(edge, route.tank, budget, route.times);
 	const times = route.times;
 	const wait = launchWindow(from.body, to.body, phaseAt(from, route.epoch + route.totalYears), phaseAt(to, route.epoch + route.totalYears), edge.tH, times.s);
-	if (wait > 0) append(route, 'wait', from.label + ' launch window', 0, wait, from, from, false);
-	const dep = from.node === 3 ? edge.dvDepStar : edge.dvDepLo;
-	const cap = to.node === 3 ? edge.dvArrStar : edge.dvCapB;
+	if (wait > 0) {
+		const before = route.count;
+		append(route, 'wait', from.label + ' launch window', 0, wait, from, from, false);
+		if (route.count > before) {
+			// The wait is spent where the departure burn happens: in LO after
+			// a launch, on the escape/L5 node when leaving from there.
+			const leg = route.legs[before];
+			leg.fromNode = leg.toNode = (from.node === 0 || from.node === 2) ? 1 : from.node;
+		}
+	}
+	const dep = (from.node === 3 || from.node === 4) ? edge.dvDepStar : edge.dvDepLo;
+	const cap = (to.node === 3 || to.node === 4) ? edge.dvArrStar : edge.dvCapB;
 	const extra = Math.max(0, times.dvLeg - edge.dvLoToLo);
 	const depCost = dep;
 	const capCost = cap;
@@ -111,19 +136,19 @@ function systemChain(route, from, to, budget) {
 	append(route, 'departure', from.label + ' departure', depCost, 0, from, from, false);
 	append(route, 'transfer', from.label + ' → ' + to.label, extra, times.t, from, to, !times.belowCrossover);
 	append(route, 'capture', to.label + ' capture', capCost, 0, to, to, false);
-	localLeg(route, to, true);
+	if (to.node !== 4) localLeg(route, to, true);
 	if (!times.feasible) route.reason = 'transfer exceeds fuel/acceleration';
 }
 function stellarChain(route, from, to) {
-	localLeg(route, from, false);
-	const dep = from.node === 3 ? 0 : dv.dvLoToEscape(from.body, route.scratch);
+	if (from.node !== 4) localLeg(route, from, false);
+	const dep = (from.node === 3 || from.node === 4) ? 0 : dv.dvLoToEscape(from.body, route.scratch);
 	append(route, 'departure', from.label + ' escape', dep, dep / route.ship.accel, from, from, false);
 	const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
 	interstellarLeg(Math.hypot(dx, dy, dz) * KPC_M, route.ship, route.scratch);
 	append(route, 'cruise', from.label + ' → ' + to.label + ' interstellar', route.scratch.dv, route.scratch.timeS, from, to, true);
-	const cap = to.node === 3 ? 0 : dv.dvLoToEscape(to.body, route.scratch);
+	const cap = (to.node === 3 || to.node === 4) ? 0 : dv.dvLoToEscape(to.body, route.scratch);
 	append(route, 'capture', to.label + ' capture', cap, cap / route.ship.accel, to, to, false);
-	localLeg(route, to, true);
+	if (to.node !== 4) localLeg(route, to, true);
 }
 function buildRoute(startRef, endRef, shipClass, budget, out, twoWay, epoch) {
 	out.count = 0; out.totalDv = 0; out.totalYears = 0; out.roundTripYears = 0;

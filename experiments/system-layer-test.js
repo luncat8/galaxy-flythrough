@@ -786,6 +786,30 @@ check('the icon constants are still the plan\'s and the star icon keeps its radi
 	check('the L5 rail rung carries the drift-plus-transfer number between columns',
 		nodesAreBodiesCheck(l5Rungs, drawn), { l5Rungs, drawn: drawn.length });
 
+	// The ship rides local legs too: a same-body LO → L5 flight walks the
+	// column from the LO node to the L5 node instead of sitting on its
+	// destination for the whole drift.
+	layer.setShipClass('fusion');
+	layer.clearRoute();
+	layer.chooseRouteNode(1, 1);
+	layer.chooseRouteNode(1, 4);
+	const loXY = new Float64Array(2), l5XY = new Float64Array(2);
+	layer.dvNodeXYFor(1, 1, loXY);
+	layer.dvNodeXYFor(1, 4, l5XY);
+	layer.setTimeRate(1);
+	const flew = layer.toggleAutopilot();
+	layer.stepTime(0.125, 0);          // half of the 0.25 y drift
+	layer.draw(W, H, 284, 0);
+	const midY = (loXY[1] + l5XY[1]) * 0.5;
+	check('the ship rides a local leg on the map (halfway LO → L5 at half-time)',
+		flew && near(layer.mapShipXY[0], loXY[0], 1e-9) && near(layer.mapShipXY[1], midY, 1e-6),
+		{ ship: Array.from(layer.mapShipXY), lo: Array.from(loXY), l5: Array.from(l5XY) });
+	layer.stepTime(1, 0);              // past the end: parked on the L5 node
+	layer.draw(W, H, 284, 0);
+	check('the ship parks on the destination node when the flight ends',
+		near(layer.mapShipXY[0], l5XY[0], 1e-9) && near(layer.mapShipXY[1], l5XY[1], 1e-9),
+		{ ship: Array.from(layer.mapShipXY), l5: Array.from(l5XY) });
+
 	const op0 = canvas.ctx.ops.total;
 	const t0 = process.hrtime.bigint();
 	for (let i = 0; i < 100; i++) layer.draw(W, H, 284, 0);

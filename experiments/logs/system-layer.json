@@ -290,7 +290,7 @@
       "name": "1 000 draw calls allocate nothing (heap delta inside the 2 MB coarse bound)",
       "pass": true,
       "detail": {
-        "heapDelta": -46616
+        "heapDelta": -50952
       }
     },
     {
@@ -327,10 +327,42 @@
       }
     },
     {
+      "name": "the ship rides a local leg on the map (halfway LO → L5 at half-time)",
+      "pass": true,
+      "detail": {
+        "ship": [
+          410,
+          192
+        ],
+        "lo": [
+          410,
+          126
+        ],
+        "l5": [
+          410,
+          258
+        ]
+      }
+    },
+    {
+      "name": "the ship parks on the destination node when the flight ends",
+      "pass": true,
+      "detail": {
+        "ship": [
+          410,
+          258
+        ],
+        "l5": [
+          410,
+          258
+        ]
+      }
+    },
+    {
       "name": "the rail render stays inside the map op budget",
       "pass": true,
       "detail": {
-        "railOps": 285
+        "railOps": 304
       }
     }
   ],

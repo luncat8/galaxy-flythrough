@@ -965,16 +965,19 @@ function createSystemLayer(canvas) {
 	// rail and the L5 rail run straight across the columns and both read as ways
 	// out of a system: the escape rail injects from low orbit and captures at
 	// the destination, the L5 rail drifts out at the 60° point and arrives in
-	// the destination's drift without a capture burn. The rung numbers are the
-	// whole low-orbit-to-low-orbit chains of §7.2, i.e. what the route builder
-	// actually charges — the column labels beside them are the parts.
+	// the destination's drift without a capture burn. The escape rung is the
+	// route builder's low-orbit-to-low-orbit chain of §7.2; the L5 rung is the
+	// same journey begun in low orbit and left through the drift (from the L5
+	// node itself the builder charges only the two star-frame burns).
 	function drawDvRails() {
 		ctx.fillStyle = DV_TEXT_FILL; ctx.font = DV_HEADER_FONT;
 		ctx.fillText(mapHeader, 20, 24);
 		ctx.font = DV_LABEL_FONT;
+		// The legends sit in the gap between the L5 row and the table: at the
+		// top they would share their lines with the column headers.
 		ctx.fillStyle = DV_ROW_CAPTION;
-		ctx.fillText(RAIL_LEGEND_ESC, DV_COL_X0, 42);
-		ctx.fillText(RAIL_LEGEND_L5, DV_COL_X0, 56);
+		ctx.fillText(RAIL_LEGEND_ESC, DV_COL_X0, DV_TABLE_TOP - 26);
+		ctx.fillText(RAIL_LEGEND_L5, DV_COL_X0, DV_TABLE_TOP - 12);
 		// The selected body's column, behind everything (plan §6.3: the map
 		// reads the same selection the schematic does).
 		const selBody = selectedKind === BODY_PLANET ? selectedIndex
@@ -1061,9 +1064,11 @@ function createSystemLayer(canvas) {
 	}
 	// --- The route trace (plan §7.5): the ship rides the graph ---------------
 	// The map is a picture of the itinerary once a route exists: its transfer
-	// legs are traced along the rail they use and the ship marker sits where the
-	// flight clock has reached. Purely presentational — every number is the
-	// route builder's (§8.5); this only projects them onto the graph.
+	// legs are traced along the rail they use, its local legs along the well
+	// edge they climb or drop, and the ship marker sits where the flight clock
+	// has reached — on every leg, so the marker never teleports between nodes.
+	// Purely presentational — every number is the route builder's (§8.5); this
+	// only projects them onto the graph.
 	//
 	// A transfer leaves its origin's node, joins the rail row (the L5 rail when
 	// either end is a drift node, the escape rail otherwise), crosses, and drops
@@ -1078,10 +1083,14 @@ function createSystemLayer(canvas) {
 		out[at + 1] = dvTmpXY[1];
 	}
 	function buildTransferPath(from, to) {
-		const rail = (from.node === 4 || to.node === 4) ? 4 : 3;
+		// The L5 rail only exists for a body that has an L5 node; the other
+		// end of an L5 journey joins the escape rail instead of a phantom row.
+		const l5 = from.node === 4 || to.node === 4;
+		const railFrom = l5 && nodeExists(from.bodyIndex, 4) ? 4 : 3;
+		const railTo = l5 && nodeExists(to.bodyIndex, 4) ? 4 : 3;
 		nodeXYInto(from.bodyIndex, from.node, mapPathXY, 0);
-		nodeXYInto(from.bodyIndex, rail, mapPathXY, 2);
-		nodeXYInto(to.bodyIndex, rail, mapPathXY, 4);
+		nodeXYInto(from.bodyIndex, railFrom, mapPathXY, 2);
+		nodeXYInto(to.bodyIndex, railTo, mapPathXY, 4);
 		nodeXYInto(to.bodyIndex, to.node, mapPathXY, 6);
 	}
 	function mapPathPoint(out, f) {
@@ -1111,28 +1120,44 @@ function createSystemLayer(canvas) {
 		ctx.strokeStyle = activeRoute.ship.color;
 		for (let li = 0; li < activeRoute.count; li++) {
 			const leg = activeRoute.legs[li];
-			if (leg.kind !== 'transfer' || !leg.from || !leg.to) continue;
-			buildTransferPath(leg.from, leg.to);
+			if (!leg.from || !leg.to) continue;
+			if (leg.kind === 'transfer') {
+				buildTransferPath(leg.from, leg.to);
+				ctx.beginPath();
+				ctx.moveTo(mapPathXY[0], mapPathXY[1]);
+				ctx.lineTo(mapPathXY[2], mapPathXY[3]);
+				ctx.lineTo(mapPathXY[4], mapPathXY[5]);
+				ctx.lineTo(mapPathXY[6], mapPathXY[7]);
+				ctx.stroke();
+				continue;
+			}
+			// A local leg rides its well edge (launch, landing, the same-body
+			// escape hop): trace it so the ship has a line to ride, not a jump.
+			if (leg.from.bodyIndex === undefined || leg.to.bodyIndex === undefined) continue;
+			nodeXYInto(leg.from.bodyIndex, leg.fromNode, mapPathXY, 0);
+			nodeXYInto(leg.to.bodyIndex, leg.toNode, mapPathXY, 2);
+			if (mapPathXY[0] === mapPathXY[2] && mapPathXY[1] === mapPathXY[3]) continue;
 			ctx.beginPath();
 			ctx.moveTo(mapPathXY[0], mapPathXY[1]);
 			ctx.lineTo(mapPathXY[2], mapPathXY[3]);
-			ctx.lineTo(mapPathXY[4], mapPathXY[5]);
-			ctx.lineTo(mapPathXY[6], mapPathXY[7]);
 			ctx.stroke();
 		}
 		ctx.setLineDash(noDash);
 		const li = mapLegIndexAt(flightElapsed);
 		if (li < 0) return;
 		const leg = activeRoute.legs[li];
-		const ref = leg.endpoint;
-		if (!ref || ref.bodyIndex === undefined) return;
-		if (leg.kind === 'transfer' && leg.from && leg.to) {
+		if (!leg.from || !leg.to) return;
+		const f = leg.end > leg.start
+			? clamp01((flightElapsed - leg.start) / (leg.end - leg.start)) : 1;
+		if (leg.kind === 'transfer') {
 			buildTransferPath(leg.from, leg.to);
-			const f = leg.end > leg.start
-				? clamp01((flightElapsed - leg.start) / (leg.end - leg.start)) : 1;
 			mapPathPoint(mapShipXY, f);
 		} else {
-			dvNodeXYFor(ref.bodyIndex, ref.node, mapShipXY);
+			if (leg.from.bodyIndex === undefined || leg.to.bodyIndex === undefined) return;
+			nodeXYInto(leg.from.bodyIndex, leg.fromNode, mapPathXY, 0);
+			nodeXYInto(leg.to.bodyIndex, leg.toNode, mapPathXY, 2);
+			mapShipXY[0] = mapPathXY[0] + (mapPathXY[2] - mapPathXY[0]) * f;
+			mapShipXY[1] = mapPathXY[1] + (mapPathXY[3] - mapPathXY[1]) * f;
 		}
 		ctx.fillStyle = activeRoute.ship.color;
 		ctx.beginPath();

@@ -775,10 +775,18 @@ async function boot() {
                 input.releaseAll();
                 if (document.pointerLockElement === canvas) document.exitPointerLock();
         }
+        // The overlay and the readout start where the left panel ends; when
+        // the panel is hidden they take the column back.
+        function syncOverlayInset() {
+                const left = sysMenu.style.display === 'none' ? '12px' : '292px';
+                overlay.style.left = left;
+                sysread.style.left = left;
+        }
         function toggleMenu() {
                 const visible = menu.style.display !== 'none' || sysMenu.style.display !== 'none';
                 menu.style.display = visible ? 'none' : 'block';
                 sysMenu.style.display = visible ? 'none' : 'block';
+                syncOverlayInset();
                 if (visible) {
                         input.releaseAll();
                         canvas.focus({ preventScroll: true });
@@ -788,6 +796,7 @@ async function boot() {
         }
         function closePanel(panel) {
                 panel.style.display = 'none';
+                syncOverlayInset();
                 releasePanelInput();
                 canvas.focus({ preventScroll: true });
         }

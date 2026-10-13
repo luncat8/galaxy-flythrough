@@ -41,6 +41,14 @@
 			"pass": true
 		},
 		{
+			"name": "L5 is a second exit: L5 endpoints spend only the star-frame burns",
+			"pass": true
+		},
+		{
+			"name": "same-body L5 legs still ride the one-body drift edge",
+			"pass": true
+		},
+		{
 			"name": "round trip includes layover, reverse capture and its own window",
 			"pass": true
 		},
@@ -153,6 +161,6 @@
 			"pass": true
 		}
 	],
-	"passed": 38,
+	"passed": 40,
 	"failed": 0
 }
