@@ -225,7 +225,10 @@ test('DV toggle, budget, ship survive presets and invalid ship is rejected', () 
 });
 
 // Exercise the actual layer, not a second UI model.
-const ctx = new Proxy({ ops: 0 }, { get(target, key) { return key in target ? target[key] : () => { target.ops++; }; } });
+const ctx = new Proxy({ ops: 0, lastMoveX: 0, lastMoveY: 0 }, { get(target, key) {
+	if (key === 'moveTo') return (x, y) => { target.ops++; target.lastMoveX = x; target.lastMoveY = y; };
+	return key in target ? target[key] : () => { target.ops++; };
+} });
 const layer = layerLib.createSystemLayer({ width: 0, height: 0, getContext: () => ctx });
 Object.assign(layer.record.star, record.star);
 Object.assign(layer.record.counts, record.counts);
@@ -256,18 +259,45 @@ test('map fits narrow screens, DPR and menu clearance', () => {
 });
 test('graph endpoint picking, pause/resume and frozen system clock', () => {
 	layer.setShipClass('nuclear'); layer.setBudget(0); layer.chooseRouteNode(0, 1); layer.chooseRouteNode(1, 1);
+	assert.strictEqual(layer.autopilotState(), 'ready');
 	assert.ok(layer.routeState().feasible); assert.ok(layer.toggleAutopilot());
+	assert.strictEqual(layer.autopilotState(), 'running');
 	layer.setTimeRate(0); layer.stepTime(10, 0); assert.ok(layer.autopilotRunning());
 	layer.setTimeRate(0.5); layer.stepTime(0.1, 0); assert.ok(layer.autopilotRunning());
 	assert.strictEqual(layer.toggleAutopilot(), false);
+	assert.strictEqual(layer.autopilotState(), 'paused');
 	assert.ok(layer.toggleAutopilot());
-	layer.setBudget(0.2); assert.ok(!layer.autopilotRunning());
+	assert.strictEqual(layer.autopilotState(), 'running');
+	layer.setBudget(0.2); assert.strictEqual(layer.autopilotState(), 'ready');
 });
-test('completion stops flight, schematic draws ship and report has live fuel', () => {
-	layer.setBudget(0); layer.toggleAutopilot(); layer.setTimeRate(99);
-	layer.setView(layerLib.VIEW_SYSTEM); layer.stepTime(1, 0); layer.draw(1280, 800);
-	assert.ok(!layer.autopilotRunning()); assert.ok(layer.readoutText().includes('dv spent'));
-	layer.clearRoute(); assert.strictEqual(layer.routeState().count, 0);
+test('system schematic ship follows System time, freezes at zero and reports flight state', () => {
+	layer.setView(layerLib.VIEW_SYSTEM); layer.setBudget(0);
+	assert.strictEqual(layer.autopilotState(), 'ready');
+	layer.setTimeRate(0); assert.ok(layer.toggleAutopilot());
+	layer.draw(1280, 800);
+	const frozenX = ctx.lastMoveX, frozenY = ctx.lastMoveY;
+	layer.stepTime(1, 0); layer.draw(1280, 800);
+	near(ctx.lastMoveX, frozenX); near(ctx.lastMoveY, frozenY);
+	assert.strictEqual(layer.autopilotState(), 'running');
+	assert.ok(layer.readoutText().includes('dv spent'));
+
+	layer.setTimeRate(0.5); layer.stepTime(1 / 60, 0); layer.draw(1280, 800);
+	assert.ok(Math.hypot(ctx.lastMoveX - frozenX, ctx.lastMoveY - frozenY) > 0.1,
+		'ship marker advances on the schematic at a positive clock rate');
+	assert.ok(layer.autopilotRunning());
+	assert.strictEqual(layer.toggleAutopilot(), false);
+	assert.strictEqual(layer.autopilotState(), 'paused');
+	const pausedX = ctx.lastMoveX, pausedY = ctx.lastMoveY;
+	layer.stepTime(1, 0); layer.draw(1280, 800);
+	near(ctx.lastMoveX, pausedX); near(ctx.lastMoveY, pausedY);
+
+	assert.ok(layer.toggleAutopilot());
+	layer.setTimeRate(100); layer.stepTime(1, 0); layer.draw(1280, 800);
+	assert.strictEqual(layer.autopilotState(), 'complete');
+	layer.exit();
+	assert.strictEqual(layer.autopilotState(), 'empty');
+	assert.strictEqual(layer.routeState().count, 0);
+	layer.prepare(); layer.resize(1280, 800, 1);
 });
 test('selected belt readout uses packed body index, not MAX_PLANETS', () => {
 	layer.setSelected(layerLib.BODY_BELT, 0);
@@ -396,6 +426,12 @@ test('search UI calls the exported planet-type bit function', () => {
 	assert.strictEqual(typeof search.planetTypeBit, 'function');
 	assert.ok(main.includes('searchLib.planetTypeBit'));
 	assert.ok(!main.includes('searchLib.ptypeBit'));
+});
+test('System panel close exits the view and the route hint does not send V to autopilot', () => {
+	const main = fs.readFileSync('src/main.js', 'utf8');
+	assert.match(main, /function closeSystemPanel\(\)\s*\{\s*closeSystemView\(\);\s*closePanel\(sysMenu\);\s*\}/);
+	assert.ok(main.includes("sysMenuClose.addEventListener('click', closeSystemPanel)"));
+	assert.ok(!main.includes('V to fly it'));
 });
 fs.writeFileSync('experiments/logs/route.json', JSON.stringify({ checks, passed: checks.filter(c => c.pass).length, failed: checks.filter(c => !c.pass).length }, null, '\t') + '\n');
 console.log(`\n${checks.filter(c => c.pass).length}/${checks.length} passed`);

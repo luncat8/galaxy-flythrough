@@ -358,6 +358,13 @@ function createSystemLayer(canvas) {
 	}
 	function routeState() { return activeRoute; }
 	function autopilotRunning() { return flightRunning; }
+	function autopilotState() {
+		if (!routeStart || !routeEnd) return 'empty';
+		if (!activeRoute.feasible) return 'infeasible';
+		if (flightRunning) return 'running';
+		if (!flightStarted) return 'ready';
+		return flightElapsed >= activeRoute.totalYears ? 'complete' : 'paused';
+	}
 	function projectRoutePoint(out, point) {
 		const r = Math.hypot(point[0], point[1]);
 		const scale = r > 0 ? radiusPx(clamp01(rhoOf(r / layerDv.AU_M))) / r : 0;
@@ -533,6 +540,7 @@ function createSystemLayer(canvas) {
 	function exit() {
 		if (!open) return;
 		open = false;
+		clearRoute();
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 		selectedKind = BODY_NONE;
 		selectedIndex = -1;
@@ -1463,7 +1471,7 @@ function createSystemLayer(canvas) {
 		record, layout,
 		planetScreenXY, planetIconR, planetRho,
 		beltStippleXY, beltAngles, beltRadii, beltRho, beltRhoC, beltPeriod,
-		pickDvNode, chooseRouteNode, clearRoute, setRoundTrip, toggleAutopilot, routeState, autopilotRunning, planExternalRoute, mapLayout, mapShipXY, dvNodeXYFor,
+		pickDvNode, chooseRouteNode, clearRoute, setRoundTrip, toggleAutopilot, routeState, autopilotRunning, autopilotState, planExternalRoute, mapLayout, mapShipXY, dvNodeXYFor,
 		setView, getView, cycleView, isMapOpen, setBudget, getBudget, setShipClass, getShipClass, buildDv,
 	};
 }

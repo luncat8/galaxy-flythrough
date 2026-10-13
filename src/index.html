@@ -185,7 +185,7 @@
 	<div id="sysmenu" class="panel">
 		<div class="menu-header">
 			<span>System</span>
-			<button id="sysmenu-close" title="Close (Tab)">×</button>
+			<button id="sysmenu-close" title="Exit the system view and close this panel">×</button>
 		</div>
 		<div class="menu-row">
 			<label for="sys-view">View <span class="kbd">V</span></label>
@@ -197,7 +197,7 @@
 			<button id="btn-system-view" title="Open or close the view (V; Esc also closes)">Open</button>
 		</div>
 		<div class="menu-row" data-view="system">
-			<label for="slider-systime" title="The view's own clock, picked off a geometric ladder: the slowest timed stop is 1e-4 y/s, slow enough to watch a launch and fast enough to see the ship move. -1 follows the camera fly speed, 0 freezes. Independent of the galaxy's Myr/s star time; the arrow keys step one stop.">System time</label>
+			<label for="slider-systime" title="The view's own clock, independent of galaxy star time. -1 follows camera speed; 0 freezes. Try 0.1–1 y/s for a visible route flight; higher rates fast-forward and may finish between frames. Arrow keys step the ladder.">System time</label>
 			<input type="range" id="slider-systime" min="0" max="20" step="1" value="1">
 			<span id="val-systime" class="menu-val">0 y/s</span>
 		</div>
@@ -213,11 +213,11 @@
 			<button id="route-clear">Clear route</button>
 		</div>
 		<div class="menu-row menu-actions" data-view="system">
-			<button id="route-fly" title="Uses system time; set a positive rate to watch the ship">Start autopilot</button>
+			<button id="route-fly" title="Starts or pauses the route using System time. At 0 the ship waits; 0.1–1 y/s is easiest to watch.">Start autopilot</button>
 			<button id="route-stars" title="Plan between the first two selected stars, using stellar parking orbits">Selected stars</button>
 		</div>
-		<div class="menu-row" data-view="system"><span id="route-hint">B: pick two graph nodes. Then start autopilot.</span></div>
-		<div class="menu-hint">V opens the view · B cycles schematic / map / rails · the ship rides the route</div>
+		<div class="menu-row" data-view="system"><span id="route-hint">Choose a delta-v view, then pick a start and destination.</span></div>
+		<div class="menu-hint">V opens / closes the view · B cycles schematic / map / rails · × exits to the galaxy · Tab hides both panels</div>
 	</div>
         <pre id="help">
                      fly                     orbit

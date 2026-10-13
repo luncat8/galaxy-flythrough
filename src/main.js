@@ -646,14 +646,28 @@ async function boot() {
 	const dvPick = { body: -1, node: -1 };
 	function syncRouteUi() {
 		const r = systemLayer.routeState();
-		btnRouteFly.textContent = systemLayer.autopilotRunning() ? 'Pause autopilot' : 'Start / resume';
+		const state = systemLayer.autopilotState();
+		const rate = systemLayer.getTimeRate();
+		btnRouteFly.textContent = state === 'running' ? 'Pause autopilot'
+			: state === 'paused' ? 'Resume autopilot'
+			: state === 'complete' ? 'Restart autopilot' : 'Start autopilot';
 		btnRouteFly.disabled = !r.feasible;
-		// The map is a view now, not a toggle: the hint talks about the graph on
-		// screen rather than about opening it.
-		routeHint.textContent = !r.start ? 'On a delta-v view: click a start node, then a destination.'
-			: !r.end ? 'Click the destination node.' : !r.feasible ? r.reason
-			: systemLayer.getView() === window.SystemLayer.VIEW_SYSTEM ? 'Route ready — B to the map, or V to fly it.'
-			: systemLayer.getTimeRate() === 0 ? 'Clock frozen — set system time > 0 to fly.' : 'Route ready. Start autopilot to watch the ship.';
+		if (!r.start) { routeHint.textContent = 'On a delta-v view: choose a start node, then a destination.'; return; }
+		if (!r.end) { routeHint.textContent = 'Start selected — choose a destination node.'; return; }
+		if (!r.feasible) { routeHint.textContent = r.reason; return; }
+		if (state === 'running') {
+			routeHint.textContent = rate === 0 ? 'Autopilot armed, but System time is frozen. Set it above 0 to move the ship.'
+				: rate > 1 ? 'Autopilot fast-forwarding. Use 0.1–1 y/s to watch the ship move.'
+				: rate > 0 && rate < 0.01 ? 'Autopilot is very slow at this rate. Use 0.1–1 y/s to watch a transfer.'
+				: 'Autopilot running — Pause holds the ship at its current leg.';
+			return;
+		}
+		if (state === 'paused') { routeHint.textContent = 'Autopilot paused — Resume continues from the current leg.'; return; }
+		if (state === 'complete') { routeHint.textContent = 'Flight complete — Restart to fly the route again.'; return; }
+		routeHint.textContent = rate === 0 ? 'Route ready, but System time is frozen. Set it above 0, then start autopilot.'
+			: rate > 1 ? 'Route ready. High rates can finish between frames; use 0.1–1 y/s to watch.'
+			: rate > 0 && rate < 0.01 ? 'Route ready. This rate is very slow for transfers; try 0.1–1 y/s.'
+			: 'Route ready — press Start autopilot to move the ship.';
 	}
 	routeRoundtrip.addEventListener('change', () => {
 		systemLayer.setRoundTrip(routeRoundtrip.checked); writeSystemReadout();
@@ -728,9 +742,9 @@ async function boot() {
                 return true;
         }
 
-        // Exit: the layer erases its canvas, #sysread returns to the search
-        // report (empty → the CSS :empty rule hides it), the camera keeps its
-        // orbit target and the fly keys return with the camera's mode (§6.5).
+        // Exit: the layer erases its canvas and discards its transient route;
+        // #sysread returns to the search report (empty → CSS hides it), while
+        // the camera keeps its orbit target and fly keys follow its mode (§6.5).
         function closeSystemView() {
                 if (!systemLayer.isOpen()) return;
                 systemLayer.exit();
@@ -768,9 +782,10 @@ async function boot() {
         syncViewRows();
         if (params.sysview) openSystemView(true);   // no selection at boot: a no-op
 
-        // Tab is one toggle for the settings UI as a whole: the two panels open
-        // and close together. Their own x buttons close one panel only, and
-        // opening either releases the pointer lock and any held key.
+        // Tab toggles both control panels without changing the view. The System
+        // panel's × is an explicit exit as well as a close, so a delta-v render
+        // cannot be left over with its controls hidden. Opening either panel
+        // releases pointer lock and any held key.
         function releasePanelInput() {
                 input.releaseAll();
                 if (document.pointerLockElement === canvas) document.exitPointerLock();
@@ -800,8 +815,12 @@ async function boot() {
                 releasePanelInput();
                 canvas.focus({ preventScroll: true });
         }
+        function closeSystemPanel() {
+                closeSystemView();
+                closePanel(sysMenu);
+        }
         menuClose.addEventListener('click', () => closePanel(menu));
-        sysMenuClose.addEventListener('click', () => closePanel(sysMenu));
+        sysMenuClose.addEventListener('click', closeSystemPanel);
 
         sliderExp.addEventListener('input', () => {
                 renderer.setExposure(Number(sliderExp.value));

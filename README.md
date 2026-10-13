@@ -85,6 +85,7 @@ Other controls:
 - `[` / `]` — exposure
 - `;` / `'` — overall brightness
 - `Esc` — close the system view; release the pointer in fly mode
+- System panel `×` — exit the system view and close its controls; `Tab` hides both panels without exiting
 
 The settings panel opens at startup and exposes galaxy type, seed, age, star time, movement engine, pattern controls, tone mapping, and presets.
 
@@ -103,11 +104,12 @@ both panels); the galaxy settings stay on the right.
 3. Choose a ship and energy budget. **Round trip** adds a return after a
    0.25-year layover; fuel is not replenished. The report compares all five classes.
 4. Set **System time** above zero and start autopilot. The clock is a geometric
-   ladder (slowest timed stop 1e-4 y/s, about 0.9 h/s — slow enough to watch a
-   launch and see the ship crawl; frozen at 0). The class-colour ship and dashed
-   trajectory ride every leg on the schematic and on both delta-v renders,
-   local legs included. Start/resume pauses or resumes flight; time zero
-   freezes it. Changing the plan cancels flight.
+   ladder (slowest timed stop 1e-4 y/s; 0 freezes). Around 0.1–1 y/s is a useful
+   range for watching a transfer; high rates fast-forward and can finish short
+   flights between rendered frames. The class-colour ship and dashed trajectory
+   ride every leg on the schematic and both delta-v renders, local legs included.
+   Start/resume pauses or resumes flight; changing the plan or exiting the view
+   cancels it.
 5. For interstellar travel, select two stars with Shift-click (or add search results),
    open a system, then use **Selected stars**. It uses the first two selected stars
    and reports parking-orbit escape, cruise and capture in real years. Interstellar

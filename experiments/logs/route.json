@@ -121,7 +121,7 @@
 			"pass": true
 		},
 		{
-			"name": "completion stops flight, schematic draws ship and report has live fuel",
+			"name": "system schematic ship follows System time, freezes at zero and reports flight state",
 			"pass": true
 		},
 		{
@@ -159,8 +159,12 @@
 		{
 			"name": "search UI calls the exported planet-type bit function",
 			"pass": true
+		},
+		{
+			"name": "System panel close exits the view and the route hint does not send V to autopilot",
+			"pass": true
 		}
 	],
-	"passed": 40,
+	"passed": 41,
 	"failed": 0
 }
