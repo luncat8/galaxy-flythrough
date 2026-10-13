@@ -1,0 +1,554 @@
+{
+ "passed": 56,
+ "failed": 0,
+ "checks": [
+  {
+   "name": "the surface→surface chain is ascent, wait, transfer, descent, layover, then the return",
+   "pass": true,
+   "detail": {
+    "legCount": 9,
+    "outCount": 4,
+    "layoverIndex": 4,
+    "kinds": [
+     1,
+     0,
+     2,
+     3,
+     5,
+     1,
+     0,
+     2,
+     3
+    ]
+   }
+  },
+  {
+   "name": "the outbound burns are launch, the blended transfer and the landing",
+   "pass": true,
+   "detail": {
+    "launch": 9.657242864451037,
+    "land": 1.4966046310506813,
+    "transfer": 8.17093511246303,
+    "dvMin": 5.045920512819272
+   }
+  },
+  {
+   "name": "the transfer leg spends the §7.4 blend at the budget",
+   "pass": true,
+   "detail": {
+    "dv": 8.17093511246303,
+    "expected": 8.17093511246303,
+    "tYr": 0.7087960643352611
+   }
+  },
+  {
+   "name": "the outbound total is launch + transfer + landing",
+   "pass": true,
+   "detail": {
+    "outDv": 19.324782607964746,
+    "handTotal": 19.324782607964746
+   }
+  },
+  {
+   "name": "the layover is LAYOVER_Y at the arrival body",
+   "pass": true,
+   "detail": {
+    "tYr": 0.25,
+    "nearSide": true
+   }
+  },
+  {
+   "name": "the layover is drawable and every leg of the in-system route is",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "a LEO→LEO route is wait, transfer, layover, and the return",
+   "pass": true,
+   "detail": {
+    "legCount": 5,
+    "kinds": [
+     0,
+     2,
+     5,
+     0,
+     2
+    ]
+   }
+  },
+  {
+   "name": "a surface→GEO route on one body is launch + zero transfer + GEO burn",
+   "pass": true,
+   "detail": {
+    "legCount": 7,
+    "dv": 0,
+    "total": 17.67861958660286,
+    "expected": 17.67861958660286
+   }
+  },
+  {
+   "name": "a GEO endpoint ascends by the reverse GEO burn, with no drift time",
+   "pass": true,
+   "detail": {
+    "dv": 3.9141159324314008,
+    "expected": 3.9141159324314008,
+    "tYr": 0
+   }
+  },
+  {
+   "name": "an L5 endpoint ascends with the L5 burn and its §7.1 drift time",
+   "pass": true,
+   "detail": {
+    "dv": 3.8084120407118283,
+    "tYr": 0.25,
+    "expected": 0.25
+   }
+  },
+  {
+   "name": "the real pair has S = 779.9 d and φ_req = 44.4°",
+   "pass": true,
+   "detail": {
+    "synodicDays": 779.6550634581988,
+    "phiReqDeg": 44.37293997925979
+   }
+  },
+  {
+   "name": "every wait lands the pair at φ_req and no wait outlasts one synodic period",
+   "pass": true,
+   "detail": {
+    "misaligned": 0,
+    "tooLong": 0,
+    "count": 400
+   }
+  },
+  {
+   "name": "the wait averages S/2 = 390 d and peaks at S = 780 d",
+   "pass": true,
+   "detail": {
+    "meanDays": 389.2364232934048,
+    "expectedMean": 389.8275317290994,
+    "maxDays": 778.0893861931817,
+    "expectedMax": 779.6550634581988
+   }
+  },
+  {
+   "name": "the two ways have their own waits",
+   "pass": true,
+   "detail": {
+    "outWait": 27.98710354667369,
+    "backWait": 362.7647458799386
+   }
+  },
+  {
+   "name": "a chemical tank cannot reach dv_x: even the full budget still waits",
+   "pass": true,
+   "detail": {
+    "legCount": 5,
+    "days": 23.844082888847137,
+    "hohmannDays": 27.98710354667369
+   }
+  },
+  {
+   "name": "t_wait·(1−s) scales the wait between zero and the Hohmann value",
+   "pass": true,
+   "detail": {
+    "blend": 26.60188498585856,
+    "hohmann": 27.98710354667369
+   }
+  },
+  {
+   "name": "an accel-limited fusion leg flies the brachistochrone time and waits nothing",
+   "pass": true,
+   "detail": {
+    "dv": 843.6415148666525,
+    "expectedDv": 843.6415148666525,
+    "days": 32.54789795010233
+   }
+  },
+  {
+   "name": "a belt endpoint would wait zero — its bodies fill a ring",
+   "pass": true,
+   "detail": "law: from.kind or to.kind a belt ⇒ 0"
+  },
+  {
+   "name": "the chemical two-way surface route is over its tank, and the one way is not",
+   "pass": true,
+   "detail": {
+    "outDv": 19.324782607964746,
+    "roundDv": 33.18601209951465,
+    "tank": 20
+   }
+  },
+  {
+   "name": "every class reports a verdict on the same chain",
+   "pass": true,
+   "detail": {
+    "parts": [
+     "chemical over the tank",
+     "nuclear ok",
+     "fusion ok",
+     "stardrive ok",
+     "generation ok"
+    ]
+   }
+  },
+  {
+   "name": "a wait leg holds on the departure body, at its own phase",
+   "pass": true,
+   "detail": {
+    "r": 1,
+    "a1": 1,
+    "theta": 0,
+    "holdTheta": 0
+   }
+  },
+  {
+   "name": "the transfer starts on the departure body at the angle the wait ended on",
+   "pass": true,
+   "detail": {
+    "r": 1,
+    "theta": 0.48144601723469893,
+    "theta1": 0.481446017234699
+   }
+  },
+  {
+   "name": "the transfer ends at the arrival body, half a turn on",
+   "pass": true,
+   "detail": {
+    "r": 1.524,
+    "theta": -2.660146636355094,
+    "expected": 3.623038670824492
+   }
+  },
+  {
+   "name": "the blended leg interpolates between the ellipse and the chord by s",
+   "pass": true,
+   "detail": {
+    "x": -0.5638204302895876,
+    "y": 1.115498698556591,
+    "expectedX": -0.5638204302895876,
+    "expectedY": 1.115498698556591,
+    "blend": 0.04949488819037741,
+    "rE": 1.3149061880642157
+   }
+  },
+  {
+   "name": "a budget-0 leg flies the pure transfer ellipse, on the Kepler solver",
+   "pass": true,
+   "detail": {
+    "x": -0.6088821717918194,
+    "y": 1.165435877379637,
+    "r": 1.3149061880642157,
+    "rKepler": 1.3149061880642157
+   }
+  },
+  {
+   "name": "routePosition is continuous across the two-way chain",
+   "pass": true,
+   "detail": {
+    "samples": 2001,
+    "off": 0,
+    "maxStep": 0.009245307863032294
+   }
+  },
+  {
+   "name": "the status names the leg under the clock and what the tank has spent",
+   "pass": true,
+   "detail": {
+    "legIndex": 1,
+    "legCount": 9,
+    "label": "wait for window",
+    "dvSpent": 9.657242864451037,
+    "tank": 20
+   }
+  },
+  {
+   "name": "the end of the chain reports done with nothing remaining",
+   "pass": true,
+   "detail": {
+    "done": true,
+    "dvSpent": 33.18601209951465,
+    "totalDv": 33.18601209951465
+   }
+  },
+  {
+   "name": "10 ly fusion cruise is D/v + v/a and dv = 2·v_cruise",
+   "pass": true,
+   "detail": {
+    "tYr": 500.6326811373287,
+    "expected": 500.6326811373287,
+    "dv": 11991.69832,
+    "expectedDv": 11991.69832
+   }
+  },
+  {
+   "name": "1 kpc fusion cruise is D/v + v/a and dv = 2·v_cruise",
+   "pass": true,
+   "detail": {
+    "tYr": 163078.8221816873,
+    "expected": 163078.8221816873,
+    "dv": 11991.69832,
+    "expectedDv": 11991.69832
+   }
+  },
+  {
+   "name": "10 ly stardrive cruise is D/v + v/a and dv = 2·v_cruise",
+   "pass": true,
+   "detail": {
+    "tYr": 100.0948700616821,
+    "expected": 100.0948700616821,
+    "dv": 59958.4916,
+    "expectedDv": 59958.4916
+   }
+  },
+  {
+   "name": "1 kpc stardrive cruise is D/v + v/a and dv = 2·v_cruise",
+   "pass": true,
+   "detail": {
+    "tYr": 32615.732770171682,
+    "expected": 32615.732770171682,
+    "dv": 59958.4916,
+    "expectedDv": 59958.4916
+   }
+  },
+  {
+   "name": "10 ly generation cruise is D/v + v/a and dv = 2·v_cruise",
+   "pass": true,
+   "detail": {
+    "tYr": 2047.4966799620627,
+    "expected": 2047.4966799620627,
+    "dv": 2997.92458,
+    "expectedDv": 2997.92458
+   }
+  },
+  {
+   "name": "1 kpc generation cruise is D/v + v/a and dv = 2·v_cruise",
+   "pass": true,
+   "detail": {
+    "tYr": 652360.2546821621,
+    "expected": 652360.2546821621,
+    "dv": 2997.92458,
+    "expectedDv": 2997.92458
+   }
+  },
+  {
+   "name": "the §8.3 interstellar table is built from the cruises themselves",
+   "pass": true,
+   "detail": [
+    "fusion 10 ly 501 y dv 11992 km/s",
+    "fusion 1 kpc 163079 y dv 11992 km/s",
+    "stardrive 10 ly 100 y dv 59958 km/s",
+    "stardrive 1 kpc 32616 y dv 59958 km/s",
+    "generation 10 ly 2047 y dv 2998 km/s",
+    "generation 1 kpc 652360 y dv 2998 km/s"
+   ]
+  },
+  {
+   "name": "10 ly by fusion reads 501 y",
+   "pass": true,
+   "detail": {
+    "tYr": 500.6326811373287,
+    "expected": 501
+   }
+  },
+  {
+   "name": "10 ly by stardrive reads 100 y",
+   "pass": true,
+   "detail": {
+    "tYr": 100.0948700616821,
+    "expected": 100
+   }
+  },
+  {
+   "name": "10 ly by generation reads 2048 y",
+   "pass": true,
+   "detail": {
+    "tYr": 2047.4966799620627,
+    "expected": 2048
+   }
+  },
+  {
+   "name": "1 kpc by fusion reads 163,000 y",
+   "pass": true,
+   "detail": {
+    "tYr": 163078.8221816873,
+    "expected": 163000
+   }
+  },
+  {
+   "name": "1 kpc by stardrive reads 32,600 y",
+   "pass": true,
+   "detail": {
+    "tYr": 32615.732770171682,
+    "expected": 32600
+   }
+  },
+  {
+   "name": "1 kpc by generation reads 652,000 y",
+   "pass": true,
+   "detail": {
+    "tYr": 652360.2546821621,
+    "expected": 652000
+   }
+  },
+  {
+   "name": "the interstellar chain is ascent, cruise, layover, cruise, descent",
+   "pass": true,
+   "detail": {
+    "legCount": 5,
+    "kinds": [
+     1,
+     4,
+     5,
+     4,
+     3
+    ]
+   }
+  },
+  {
+   "name": "a cruise and a far layover are never drawn, the ascent and descent are",
+   "pass": true,
+   "detail": [
+    true,
+    false,
+    false,
+    false,
+    true
+   ]
+  },
+  {
+   "name": "the ship is off-system during a cruise",
+   "pass": true,
+   "detail": 0
+  },
+  {
+   "name": "the ship is on-system during the departure ascent",
+   "pass": true,
+   "detail": 1
+  },
+  {
+   "name": "the round trip is the two cruises, the layover and the two endpoint burns",
+   "pass": true,
+   "detail": {
+    "totalTimeYr": 326157.8943633746,
+    "expected": 326157.8943633746,
+    "totalDv": 23993.24702772174,
+    "cruises": 23983.39664
+   }
+  },
+  {
+   "name": "an unresolved far star still builds and says so",
+   "pass": true,
+   "detail": {
+    "legCount": 5,
+    "farResolved": false
+   }
+  },
+  {
+   "name": "its cruise is still the honest two-way cruise",
+   "pass": true,
+   "detail": {
+    "totalTimeYr": 326157.8943633746
+   }
+  },
+  {
+   "name": "the distance is the captured gap between the two stars",
+   "pass": true,
+   "detail": {
+    "distanceKpc": 1,
+    "kpc": 1
+   }
+  },
+  {
+   "name": "a generated system has planets to route between",
+   "pass": true,
+   "detail": 2
+  },
+  {
+   "name": "the chain is bounded and its timeline is monotone",
+   "pass": true,
+   "detail": {
+    "legCount": 9,
+    "legs": [
+     [
+      "ascent",
+      0
+     ],
+     [
+      "wait window",
+      0.1184683816635034
+     ],
+     [
+      "transfer",
+      1.2427547231149132
+     ],
+     [
+      "descent",
+      0
+     ],
+     [
+      "layover",
+      0.25
+     ],
+     [
+      "ascent",
+      0
+     ],
+     [
+      "wait window",
+      0.031057454693977776
+     ],
+     [
+      "transfer",
+      1.2427547231149134
+     ],
+     [
+      "descent",
+      0
+     ]
+    ]
+   }
+  },
+  {
+   "name": "every leg starts no earlier than the previous one",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "each leg spans exactly its own duration",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "the totals equal the sum of the legs",
+   "pass": true,
+   "detail": {
+    "totalDv": 156.91039131553418,
+    "totalTimeYr": 2.8850352825873076
+   }
+  },
+  {
+   "name": "the same request builds the same chain",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "2 000 warm builds and status walks allocate nothing measurable (run with --expose-gc)",
+   "pass": true,
+   "detail": "skipped, no gc"
+  }
+ ],
+ "sections": [
+  "6/6 1",
+  "1/1 2",
+  "6/6 10",
+  "24/24 the",
+  "9/9 a",
+  "3/3 an",
+  "3/3 every",
+  "1/1 t_wait·(1−s)",
+  "1/1 routePosition",
+  "1/1 its",
+  "1/1 each"
+ ]
+}

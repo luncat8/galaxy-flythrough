@@ -317,7 +317,7 @@
       }
     },
     {
-      "name": "the map graph has nothing to pick yet (0.5.5 picks endpoints)",
+      "name": "the schematic’s icons are unreachable over the map",
       "pass": true
     },
     {
@@ -332,6 +332,98 @@
         "x": 316.5324363501729,
         "y": 227.2663277418955,
         "r": 5
+      }
+    },
+    {
+      "name": "the graph laid out nodes to aim at",
+      "pass": true,
+      "detail": 17
+    },
+    {
+      "name": "pickNode returns the node the graph placed, nearest first",
+      "pass": true,
+      "detail": [
+        {
+          "kind": 1,
+          "index": 0,
+          "node": 1
+        },
+        {
+          "kind": 1,
+          "index": 0,
+          "node": 2
+        }
+      ]
+    },
+    {
+      "name": "the picker’s kind and index are the layer’s own body codes",
+      "pass": true,
+      "detail": {
+        "kind": 0,
+        "index": -1,
+        "node": 0
+      }
+    },
+    {
+      "name": "a click on empty space picks nothing",
+      "pass": true
+    },
+    {
+      "name": "each picked endpoint is rung on the graph, in its own colour",
+      "pass": true,
+      "detail": {
+        "fromRings": 1,
+        "toRings": 1
+      }
+    },
+    {
+      "name": "clearing the endpoints clears the rings",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "the route draws its dashed polyline over the orbits",
+      "pass": true,
+      "detail": {
+        "routeStrokes": 1,
+        "dashCount": 1
+      }
+    },
+    {
+      "name": "the ship is a triangle in the class colour, above the planets",
+      "pass": true,
+      "detail": {
+        "shipFill": "#7ce7a2",
+        "expected": "#7ce7a2"
+      }
+    },
+    {
+      "name": "the ship translates once on top of the orbit frame",
+      "pass": true,
+      "detail": 2
+    },
+    {
+      "name": "the ship at the start of the chain rides the departure body’s orbit",
+      "pass": true,
+      "detail": {
+        "shipR": 181.32055827340832,
+        "iconR": 181.32055827340832
+      }
+    },
+    {
+      "name": "the ship’s position follows the route clock",
+      "pass": true,
+      "detail": {
+        "angle0": -0.7853995522425469,
+        "angle1": 0.827267227391812
+      }
+    },
+    {
+      "name": "no route, no ship and no polyline",
+      "pass": true,
+      "detail": {
+        "transCount": 1,
+        "dashCount": 0
       }
     },
     {
@@ -352,13 +444,13 @@
       "pass": true,
       "detail": {
         "trials": [
-          12438496,
-          -3745912,
-          -3988752,
-          -4062128,
-          12432480
+          -10248808,
+          8258080,
+          -8236312,
+          8257872,
+          -8236256
         ],
-        "median": -3745912,
+        "median": -8236256,
         "exposedGc": false
       }
     }
@@ -384,15 +476,19 @@
       "bodies": 4,
       "edges": 17
     },
+    "route": {
+      "legs": 5,
+      "ship": "fusion"
+    },
     "heap": {
       "trials": [
-        12438496,
-        -3745912,
-        -3988752,
-        -4062128,
-        12432480
+        -10248808,
+        8258080,
+        -8236312,
+        8257872,
+        -8236256
       ],
-      "median": -3745912,
+      "median": -8236256,
       "exposedGc": false
     }
   }

@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-13T05:42:20.005Z",
+  "date": "2026-10-13T08:32:38.145Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -19,6 +19,7 @@
     "core/star-set.js",
     "core/selection.js",
     "core/search.js",
+    "core/route.js",
     "core/loop.js",
     "core/presets.js",
     "data/landmarks.js",
@@ -37,6 +38,7 @@
     "core/input.js",
     "core/loop.js",
     "core/presets.js",
+    "core/route.js",
     "core/search.js",
     "core/selection.js",
     "core/star-set.js",
@@ -75,8 +77,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 29,
-        "sources": 29,
+        "scripts": 30,
+        "sources": 30,
         "missing": []
       }
     },
@@ -165,6 +167,7 @@
         "StarSet",
         "Selection",
         "Search",
+        "RouteLib",
         "Loop",
         "Presets",
         "Landmarks",
@@ -349,7 +352,7 @@
       "name": "SystemLayer loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 21
+        "keys": 27
       }
     },
     {

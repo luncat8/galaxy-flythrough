@@ -65,6 +65,7 @@ EXPERIMENTS = {
     'orbit':                 'experiments/orbit-test.js',
     'planet-gen':            'experiments/planet-gen-test.js',
     'dv-map':                'experiments/dv-map-test.js',
+    'route':                 'experiments/route-test.js',
     # Studies: they print a recommendation rather than pass/fail.
     'damping-formula':     'experiments/damping-formula-check.js',
     'hash-quality':          'experiments/hash-quality-test.js',
@@ -89,7 +90,8 @@ TYPES = {
                'star-types-evolution', 'nebula-placement', 'object-placement', 'galaxy-age',
                 'orbit',
                 'planet-gen',
-                'dv-map'],
+                'dv-map',
+                'route'],
     'study':  ['damping-formula', 'hash-quality', 'precision', 'packing', 'filter',
                'truncation-edge', 'young-vertical'],
     'sim':    ['wgsl-exec'],

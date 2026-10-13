@@ -617,6 +617,7 @@ galaxy-flythrough/
     │   ├── selection.js                # click picking against the landmarks
     │   ├── star-set.js                 # snapshot selection set, primary, capacity (0.5.0)
     │   ├── search.js                   # star/planet search, two-stage scan (0.5.2)
+    │   ├── route.js                    # routes, synodic waits, autopilot (0.5.5)
     │   └── loop.js                     # frame loop, dt clamp, stats
     ├── math/
     │   ├── hash.js                   # PCG/Wang (mirrors WGSL)
@@ -637,7 +638,7 @@ galaxy-flythrough/
     │   ├── shaders.js                # all WGSL as JS strings
     │   ├── star-sprites.js           # star draw path (global + landmarks + objects + local + catalog)
     │   ├── label-layer.js            # 2D overlay canvas: labels + constellation lines
-    │   ├── system-layer.js           # 2D overlay canvas: the close-system schematic + the delta-v map (0.5.3–0.5.4)
+    │   ├── system-layer.js           # 2D overlay canvas: the close-system schematic, the delta-v map and the route (0.5.3–0.5.5)
     ├── data/
     │   ├── gaia-subset.csv           # source catalog (5,000 rows)
     │   ├── landmarks.js              # named stars, galactic XYZ baked at load
@@ -1217,7 +1218,10 @@ Next series:
   star selection and multi-select (0.5.0), the deterministic planet/belt generator (0.5.1),
   star and planet search (0.5.2), the close-system schematic view (0.5.3), the delta-v map
   (0.5.4) and routes/autopilot (0.5.5). CPU-only by construction: the star buffer, the
-  WGSL and the three render paths are untouched.
+  WGSL and the three render paths are untouched. *(all six releases implemented: 0.5.5
+  closes the series with `core/route.js`, the leg chain over the delta-v closed forms, the
+  synodic wait, the interstellar cruise, the two-way totals, `routePosition` and the
+  autopilot — `route-test.js` 56 checks, `system-layer-test.js` 58, `dv-map-test.js` 46)*
    *(0.5.0 implemented: identity keys per record, `pickAny` over all five blocks with
    engine-mask dispatch parity, the snapshot selection set, radius select, fly-to and the
    set rings — `experiments/star-select-test.js`, 63 checks. 0.5.1 implemented: the lazy
@@ -1236,8 +1240,14 @@ Next series:
     §8.1 ship classes — drawn as §7.5's graph on the `#system` canvas and read out as
     §7.5's table, with `B`, the `budget` slider and the `ship` select, and
     `experiments/dv-map-test.js` (46 checks) pinning the whole Solar-System table. 0.5.5
-    (ships, routes, autopilot) is next. The file stays in the root until the series ships
-    and then moves to `archive/`.)*
+    implemented: routes and the autopilot, `core/route.js` — the §8.0 leg chain over the
+    §7 closed forms, the §8.4 synodic wait (the shortest path to the window, whose
+    statistics are the real 26-month window), the §8.3 interstellar cruise, the two-way
+    totals and the per-class feasibility — with `routePosition`'s Kepler ellipse and
+    brachistochrone chord, the ship icon and the endpoint picking on §7.5's graph in
+    `system-layer.js`, and `experiments/route-test.js` (56 checks) beside
+    `system-layer-test.js` (58 checks) as the permanent headless contracts. The file
+    stays in the root until the series ships and then moves to `archive/`.)*
 
 Implement from those files plus this one; the per-release plans reference their own
 tests and extend the file layout of §11 as needed.
@@ -1260,8 +1270,9 @@ tests and extend the file layout of §11 as needed.
    close-system schematic view) and 0.5.4 (the delta-v map) are implemented — the
    schematic draws the log-polar system, picks bodies, rings the selection, and carries
    §7.5's delta-v graph and table over the §7 closed forms, all verified headlessly.
-   0.5.5 (ships, routes, autopilot) is the next task in the series. The series is
-   CPU-only and additive, so
+   0.5.5 built routes and the autopilot over the same model: legs, synodic waits, the
+   interstellar cruise, the two-way totals and a ship that flies the chain on the
+   schematic. The series is CPU-only and additive, so
    it neither blocks nor depends on the parity work above — except that the picker
    dispatches star positions through the same engine-mask law the parity plan pins, which is
    why 0.5.0's pick test travels with `orbit-test`.

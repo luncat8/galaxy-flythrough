@@ -33,6 +33,10 @@
       "pass": true
     },
     {
+      "name": "the autopilot key is a one-shot action, like the other view toggles",
+      "pass": true
+    },
+    {
       "name": "menu controls own keyboard input except Tab",
       "pass": true
     },

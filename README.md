@@ -54,6 +54,15 @@ No framework, bundler, module loader, or runtime network connection is required.
 - The close-system schematic entry point: `V` (or the menu's System view button) opens the
   primary selection's system on its own overlay, points the camera at the star and turns
   the readout into that system's
+- The delta-v map over that schematic (`B`): a graph of the bodies' own nodes and the
+  transfers between them, the closed-form cost of every leg, and the ship class and energy
+  budget the travel times are read against
+- Routes and the autopilot: pick a start and an end node on the map and the readout shows
+  the whole chain — the burns, the synodic wait a low-energy transfer has to sit out, the
+  totals and every ship class's verdict on it — with `K` flying a ship along it on the
+  system's own clock. Two stars' endpoints build an interstellar route: an accel–coast–decel
+  cruise between them, whose length is what makes a crossing of the disc a generation ship's
+  errand
 - Copyable settings presets and deterministic URL parameters
 - CPU mirrors and model/parity tests for the JavaScript and WGSL implementations
 
@@ -86,6 +95,11 @@ Other controls:
 - `N` / `Shift+N` — cycle the primary through the selection
 - `X` — clear the selection
 - `Shift+click` — add or remove one star from the selection
+- `V` / `Esc` — open / close the selected star's system
+- `B` — delta-v map over the open system
+- click in the schematic — select a planet or belt
+- click in the delta-v map — pick the route's start node, then its end node
+- `K` — autopilot along the route
 - `[` / `]` — exposure
 - `;` / `'` — overall brightness
 - `Esc` — release the pointer in fly mode
@@ -167,7 +181,7 @@ The runtime is organized as classic-script namespaces under `src/`:
 - `render/shaders.js` — all WGSL shader source
 - `render/star-sprites.js` — procedural generation, culling, HDR star passes, and tone mapping
 - `stream/` — catalog bundle loading and cell residency
-- `core/` — camera, input, loop, star set + selection, and presets
+- `core/` — camera, input, loop, star set + selection, search + routes, and presets
 - `data/` — named landmarks, constellations, and the packed catalog
 
 The CPU keeps world positions in `f64`. GPU rendering uses camera-relative `f32` coordinates. Procedural objects are derived from stable hashes rather than mutable random-number state, so a galaxy is reproducible from its type and seed.

@@ -50,20 +50,33 @@ function createStubContext() {
 	const ax = new Float64Array(CAP), ay = new Float64Array(CAP), ar = new Float64Array(CAP);
 	const aFill = new Array(CAP), aStroke = new Array(CAP), aOp = new Array(CAP);
 	const fStyle = new Array(512), fFrom = new Int32Array(512), fTo = new Int32Array(512);
+	const sStyle = new Array(512), sFrom = new Int32Array(512), sTo = new Int32Array(512);
+	const transX = new Float64Array(16), transY = new Float64Array(16);
 	const tx = new Float64Array(64), ty = new Float64Array(64), tText = new Array(64);
 	const ctx = {
 		arcX: ax, arcY: ay, arcR: ar, arcFill: aFill, arcStroke: aStroke, arcOp: aOp,
 		arcCount: 0, fillCount: 0, strokeCount: 0, clearCount: 0, ops: 0,
 		fillStyle: null, fillFrom: fFrom, fillTo: fTo, fillStyleLog: fStyle,
+		transX: transX, transY: transY, transCount: 0,
+		strokeStyleLog: sStyle, strokeFrom: sFrom, strokeTo: sTo,
 		textX: tx, textY: ty, textS: tText, textCount: 0,
-		mark: 0,
+		mark: 0, sMark: 0, dashCount: 0,
 		reset() {
 			for (let i = 0; i < ctx.mark; i++) aOp[i] = null;
 			ctx.arcCount = 0; ctx.fillCount = 0; ctx.strokeCount = 0;
 			ctx.clearCount = 0; ctx.ops = 0; ctx.textCount = 0; ctx.mark = 0;
+			ctx.sMark = 0; ctx.dashCount = 0; ctx.transCount = 0;
 		},
 		setTransform() { ctx.ops++; },
-		translate() { ctx.ops++; },
+		setLineDash() { ctx.ops++; ctx.dashCount++; },
+		translate(x, y) {
+			ctx.ops++;
+			if (ctx.transCount < transX.length) {
+				transX[ctx.transCount] = x;
+				transY[ctx.transCount] = y;
+				ctx.transCount++;
+			}
+		},
 		save() { ctx.ops++; },
 		restore() { ctx.ops++; },
 		rotate() { ctx.ops++; },
@@ -89,6 +102,9 @@ function createStubContext() {
 		},
 		stroke() {
 			ctx.ops++; ctx.strokeCount++;
+			const f = ctx.strokeCount - 1;
+			sStyle[f] = ctx.strokeStyle; sFrom[f] = ctx.sMark; sTo[f] = ctx.arcCount;
+			ctx.sMark = ctx.arcCount;
 			for (let i = ctx.mark; i < ctx.arcCount; i++) aOp[i] = 'stroke';
 			ctx.mark = ctx.arcCount;
 		},
@@ -152,9 +168,10 @@ function openLayer(record, ctx) {
 
 // One frame into a fresh log: the stub accumulates, and every check reads the
 // frame that is on screen, exactly like a pick between frames does.
-function frame(layer, ctx, pointerX, pointerY) {
+function frame(layer, ctx, pointerX, pointerY, routeT) {
 	ctx.reset();
-	layer.draw(W, H, pointerX === undefined ? -1 : pointerX, pointerY === undefined ? -1 : pointerY);
+	layer.draw(W, H, pointerX === undefined ? -1 : pointerX, pointerY === undefined ? -1 : pointerY,
+		routeT === undefined ? -1 : routeT);
 	return ctx;
 }
 
@@ -667,8 +684,11 @@ function beltRadius(axis, aAu) {
 	check('every edge is labelled in km/s to 0.1, the launch leg first',
 		labelsOk, { count: edgeLabels.length, first: edgeLabels[0], launch: launch.toFixed(1) });
 
-	check('the map graph has nothing to pick yet (0.5.5 picks endpoints)',
-		layer.pick(CX, CY) === null);
+	// §8.5's endpoint picking lives on the graph's own node positions, so the
+	// section below aims a click at one.
+	const firstNode = nodes[0];
+	check('the schematic’s icons are unreachable over the map',
+		layer.pick(CX, CY) === null && layer.pick(firstNode[0], firstNode[1]) === null);
 
 	layer.setSelectedBody(systemLayer.BODY_PLANET, 1);
 	frame(layer, ctx);
@@ -685,6 +705,125 @@ function beltRadius(axis, aAu) {
 		!!icon && !!hitInfo(layer.pick(icon.x, icon.y)), icon);
 
 	stats.map = { bodies: bodyCount, edges: edgeLabels.length };
+}
+
+// ---- 7b. The route and its endpoint picking (§8.5) ------------------------
+{
+	const routeLib = require('../src/core/route.js');
+	const entry = findSystem('sun', r => separated(r, 3) && r.beltCount >= 1);
+	const ctx = createStubContext();
+	const layer = openLayer(entry, ctx);
+	layer.setMapOpen(true);
+	frame(layer, ctx);
+
+	// The node positions the layout placed, so a click can be aimed at one.
+	const nodes = [];
+	for (let i = 0; i < ctx.arcCount; i++) {
+		if (ctx.arcR[i] === systemLayer.MAP_NODE_R) nodes.push([ctx.arcX[i], ctx.arcY[i]]);
+	}
+	check('the graph laid out nodes to aim at', nodes.length >= 4, nodes.length);
+
+	// Two distinct nodes of the same body: the shortest chain that exercises the
+	// ascent, the (degenerate) transfer and the descent.
+	const picks = [];
+	let bodyKey = '';
+	for (const xy of nodes) {
+		const hit = layer.pickNode(xy[0], xy[1]);
+		if (!hit) continue;
+		const key = `${hit.kind}:${hit.index}`;
+		if (picks.length === 0) {
+			bodyKey = key;
+			picks.push({ kind: hit.kind, index: hit.index, node: hit.node });
+			continue;
+		}
+		if (key !== bodyKey) continue;
+		if (picks.length === 1) {
+			if (hit.node !== picks[0].node) picks.push({ kind: hit.kind, index: hit.index, node: hit.node });
+			continue;
+		}
+		break;
+	}
+	check('pickNode returns the node the graph placed, nearest first',
+		picks.length === 2, picks);
+	const probe = layer.pickNode(nodes[0][0], nodes[0][1]);
+	check('the picker’s kind and index are the layer’s own body codes',
+		!!probe && (probe.kind === systemLayer.BODY_PLANET || probe.kind === systemLayer.BODY_BELT)
+		&& probe.index >= 0, probe);
+	check('a click on empty space picks nothing',
+		layer.pickNode(3, 3) === null);
+
+	// The two endpoint rings, in the endpoint colours.
+	const from = routeLib.createEndpoint();
+	from.kind = picks[0].kind;
+	from.index = picks[0].index;
+	from.node = picks[0].node;
+	from.starKey = 1;
+	const to = routeLib.createEndpoint();
+	to.kind = picks[1].kind;
+	to.index = picks[1].index;
+	to.node = picks[1].node;
+	to.starKey = 1;
+	layer.setRouteEndpoints(from, to);
+	frame(layer, ctx);
+	let fromRings = 0, toRings = 0;
+	for (let i = 0; i < ctx.arcCount; i++) {
+		if (ctx.arcStroke[i] === systemLayer.ROUTE_FROM_RING) fromRings++;
+		if (ctx.arcStroke[i] === systemLayer.ROUTE_TO_RING) toRings++;
+	}
+	check('each picked endpoint is rung on the graph, in its own colour',
+		fromRings === 1 && toRings === 1, { fromRings, toRings });
+	layer.setRouteEndpoints(null, null);
+	frame(layer, ctx);
+	fromRings = 0;
+	for (let i = 0; i < ctx.arcCount; i++) {
+		if (ctx.arcStroke[i] === systemLayer.ROUTE_FROM_RING) fromRings++;
+	}
+	check('clearing the endpoints clears the rings', fromRings === 0, fromRings);
+
+	// The route itself, over the schematic: the dashed polyline, then the ship.
+	layer.setMapOpen(false);
+	const near = routeLib.createSystemSide();
+	near.record = entry;
+	near.starKey = 1;
+	const route = routeLib.createRoute();
+	routeLib.buildRoute(route, near, null, from, to, 'fusion', 0.35, 0);
+	layer.setRoute(route);
+	frame(layer, ctx, -1, -1, 0);
+	let routeStrokes = 0, shipFill = -1;
+	for (let i = 0; i < ctx.strokeCount; i++) {
+		if (ctx.strokeStyleLog[i] === systemLayer.ROUTE_LINE) routeStrokes++;
+	}
+	shipFill = ctx.fillCount > 0 ? ctx.fillStyleLog[ctx.fillCount - 1] : null;
+	check('the route draws its dashed polyline over the orbits',
+		routeStrokes === 1 && ctx.dashCount >= 1, { routeStrokes, dashCount: ctx.dashCount });
+	check('the ship is a triangle in the class colour, above the planets',
+		shipFill === systemLayer.SHIP_COLORS[route.ship], { shipFill, expected: systemLayer.SHIP_COLORS[route.ship] });
+	check('the ship translates once on top of the orbit frame',
+		ctx.transCount === 2, ctx.transCount);
+
+	// A waiting ship rides the body it waits beside: its position is on that
+	// body's own orbit radius, the radius its icon was drawn at.
+	const icon = planetIcon(layer, ctx, entry, picks[0].index);
+	const shipIndex = ctx.transCount - 1;
+	const shipR = ctx.transCount > 1 ? Math.hypot(ctx.transX[shipIndex] - CX, ctx.transY[shipIndex] - CY) : -1;
+	const iconR = icon ? Math.hypot(icon.x - CX, icon.y - CY) : -1;
+	check('the ship at the start of the chain rides the departure body’s orbit',
+		icon !== null && Math.abs(shipR - iconR) < 0.01, { shipR, iconR });
+
+	// The ship moves with the route clock, and the polyline is redrawn per frame
+	// because the legs' bodies move with the system clock.
+	frame(layer, ctx, -1, -1, 0.25);
+	const angle0 = ctx.transCount > 1 ? Math.atan2(ctx.transY[shipIndex] - CY, ctx.transX[shipIndex] - CX) : 0;
+	frame(layer, ctx, -1, -1, 0.5);
+	const angle1 = ctx.transCount > 1 ? Math.atan2(ctx.transY[shipIndex] - CY, ctx.transX[shipIndex] - CX) : 0;
+	check('the ship’s position follows the route clock',
+		Math.abs(wrapAngle(angle0 - angle1)) > 1e-6, { angle0, angle1 });
+	layer.setRoute(null);
+	frame(layer, ctx, -1, -1, 0.25);
+	check('no route, no ship and no polyline',
+		ctx.transCount === 1 && ctx.dashCount === 0, { transCount: ctx.transCount, dashCount: ctx.dashCount });
+
+	stats.route = { legs: route.legCount, ship: route.shipName };
 }
 
 // ---- 8. A closed view is inert -------------------------------------------

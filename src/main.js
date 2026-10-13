@@ -50,6 +50,16 @@ function formatAu(au) {
 	return au >= 10 ? String(Math.round(au)) : au.toFixed(2);
 }
 
+// A duration in years, as the route's legs span it: a month is "91 d", a
+// century "101 y", a kiloparsec hop "652 000 y". The route table's one unit,
+// so a leg row never mixes y and d on the same line.
+function formatYears(years) {
+	if (!(years > 0)) return '0 d';
+	if (years < 1) return `${Math.round(years * 365.25).toLocaleString()} d`;
+	if (years < 1000) return `${Number(years.toPrecision(3))} y`;
+	return `${Math.round(years).toLocaleString()} y`;
+}
+
 // padEnd for the readout's fixed columns.
 function pad(text, width) {
 	return text.length >= width ? text : text + ' '.repeat(width - text.length);
@@ -661,10 +671,21 @@ async function boot() {
                 key: 0, block: 0, slot: -1, x: 0, y: 0, z: 0,
                 model: null, field: null, colorIndex: 0, absMag: 0, name: undefined,
         };
+        // 0.5.5's far end: the same shape, its own record and its own position
+        // buffer, so deriving it cannot disturb the open system's ref.
+        const farRef = {
+                key: 0, block: 0, slot: -1, x: 0, y: 0, z: 0,
+                model: null, field: null, colorIndex: 0, absMag: 0, name: undefined,
+        };
+        const farPos = new Float64Array(3);
         // Preallocated once: the stellar snapshot, the record and the derived
-        // ref are mutated in place, never rebuilt per entry.
+        // ref are mutated in place, never rebuilt per entry. The second set is
+        // 0.5.5's: a route's far end, derived on demand into its own record and
+        // never resident.
         const systemStar = window.PlanetsLib.createStellarInputs();
         const systemRecord = window.PlanetsLib.createSystemRecord();
+        const farStar = window.PlanetsLib.createStellarInputs();
+        const farRecord = window.PlanetsLib.createSystemRecord();
         let systemViewOpen = false;
         // §6.4's clock rate for the open system, in years per second: the menu
         // slider's value, clamped to the layer's own range so a hand-edited URL
@@ -695,38 +716,58 @@ async function boot() {
         // entering the view only turns it; farther, it flies in.
         const SYSTEM_LOCK_FAR_KPC = 0.001;
 
+        // One star's system, derived in place from its identity key: the shared
+        // half of the open system and 0.5.5's far end. The position lands in
+        // `posOut` so the caller's own buffer stays authoritative.
+        function deriveSystemInto(key, ref, snapshot, record, posOut) {
+                const slot = key === 0 ? -1 : selection.resolveSlot(key);
+                if (slot < 0 || !selection.recordPositionAt(slot, posOut)) return false;
+                const packed = selection.recordWordAt(slot);
+                ref.key = key;
+                ref.block = blockIndexOfSlot(slot);
+                ref.slot = slot;
+                ref.x = posOut[0];
+                ref.y = posOut[1];
+                ref.z = posOut[2];
+                ref.model = model;
+                ref.field = renderer.fieldBuffers();
+                ref.colorIndex = packed & 0xFF;
+                ref.absMag = window.StarRecord.decodeAbsMag((packed >>> 8) & 255);
+                // The landmark's own name when it has one; undefined otherwise,
+                // so the record's designation stays the S<key36> form (§4.11).
+                ref.name = landmarkNameAtSlot(slot) || undefined;
+                window.PlanetsLib.stellarInputs(ref, snapshot);
+                window.PlanetsLib.generateSystem(ref, snapshot, record);
+                return true;
+        }
+
         // The primary's system, regenerated in place. False when there is no
         // primary or it is not resident right now.
         function generatePrimarySystem() {
-                const key = starSet.primary();
-                const slot = key === 0 ? -1 : selection.resolveSlot(key);
-                if (slot < 0 || !selection.recordPositionAt(slot, primaryPos)) return false;
-                const packed = selection.recordWordAt(slot);
-                systemRef.key = key;
-                systemRef.block = blockIndexOfSlot(slot);
-                systemRef.slot = slot;
-                systemRef.x = primaryPos[0];
-                systemRef.y = primaryPos[1];
-                systemRef.z = primaryPos[2];
-                systemRef.model = model;
-                systemRef.field = renderer.fieldBuffers();
-                systemRef.colorIndex = packed & 0xFF;
-                systemRef.absMag = window.StarRecord.decodeAbsMag((packed >>> 8) & 255);
-                // The landmark's own name when it has one; undefined otherwise,
-                // so the record's designation stays the S<key36> form (§4.11).
-                systemRef.name = landmarkNameAtSlot(slot) || undefined;
-                window.PlanetsLib.stellarInputs(systemRef, systemStar);
-                window.PlanetsLib.generateSystem(systemRef, systemStar, systemRecord);
+                if (!deriveSystemInto(starSet.primary(), systemRef, systemStar, systemRecord, primaryPos)) return false;
                 systemLayer.setSystem(systemRecord);
                 return true;
         }
 
+        // 0.5.5: the other end of an interstellar route. A route is a pair of
+        // endpoints, and the far one was picked when its star was the primary —
+        // so it is resident until the viewer flies far enough away. When it is
+        // not, the route still builds and says it is unresolved.
+        function generateFarSystem(key) {
+                return deriveSystemInto(key, farRef, farStar, farRecord, farPos);
+        }
+
         // The view tracks the primary (§6.5): a new primary regenerates the
-        // schematic, and one that is no longer resident closes the view.
+        // schematic, and one that is no longer resident closes the view. A route
+        // is anchored in the open system, so the primary moving rebuilds it —
+        // and a primary that is neither endpoint leaves it unresolved rather
+        // than wrong.
         function syncSystemViewToPrimary() {
                 if (!systemViewOpen) return;
-                if (generatePrimarySystem()) updateSystemReadout();
-                else closeSystemView();
+                if (generatePrimarySystem()) {
+                        rebuildRoute();
+                        updateSystemReadout();
+                } else closeSystemView();
         }
 
         function openSystemView() {
@@ -762,6 +803,17 @@ async function boot() {
                 // The map is a view over the schematic: closing the view
                 // closes it too, so a reopening starts from the schematic.
                 setDvMap(false);
+                // A route is anchored in the open system: closing the view stops
+                // the flight and forgets the endpoints, so a reopening starts
+                // from the schematic's own state (§8.5).
+                autopilot = false;
+                routeTimeYr = 0;
+                routeFrom.starKey = 0;
+                routeTo.starKey = 0;
+                routePickFrom = true;
+                routeReady = false;
+                systemLayer.setRoute(null);
+                systemLayer.setRouteEndpoints(null, null);
                 syncViewRows();
                 if (!wasOpen) return;
                 // The readout returns to what it held before the view opened:
@@ -781,6 +833,12 @@ async function boot() {
         // never per frame; the body selected in the schematic carries the marker.
         function updateSystemReadout() {
                 if (!systemViewOpen) return;
+                // §8.5's rebuild cadence: the route is rebuilt here, at the
+                // readout's 4 Hz, while the system clock moves, so the wait is
+                // measured against the phases the schematic is drawing. The
+                // autopilot's clock survives it — the legs' times are
+                // route-relative.
+                if (routeReady && systemTimeRate !== 0) rebuildRoute();
                 const P = window.PlanetsLib;
                 const star = systemRecord.star;
                 const planets = systemRecord.planetCount, belts = systemRecord.beltCount;
@@ -806,6 +864,7 @@ async function boot() {
                                 selected.which === window.SystemLayer.BODY_BELT && selected.index === b);
                 }
                 if (dvMapOpen) sysreadBox.textContent += deltaVBlock();
+                sysreadBox.textContent += routeBlock();
                 sysreadBox.style.display = 'block';
                 updateSelectionBox();
         }
@@ -972,6 +1031,8 @@ async function boot() {
         const sliderSystime = document.getElementById('slider-systime');
         const valSystime = document.getElementById('val-systime');
         const btnDvmap = document.getElementById('dvmap-toggle');
+        const btnAutopilot = document.getElementById('route-autopilot');
+        const btnRouteClear = document.getElementById('route-clear');
         const sliderBudget = document.getElementById('slider-budget');
         const valBudget = document.getElementById('val-budget');
         const selectShip = document.getElementById('select-ship');
@@ -1023,6 +1084,7 @@ async function boot() {
         sliderBudget.addEventListener('input', () => {
                 dvBudget = clampBudget(Number(sliderBudget.value));
                 syncBudget();
+                rebuildRoute();
                 updateSystemReadout();
         });
         function syncShip() {
@@ -1031,11 +1093,166 @@ async function boot() {
         selectShip.addEventListener('change', () => {
                 dvShip = clampShip(selectShip.value);
                 syncShip();
+                rebuildRoute();
                 updateSystemReadout();
         });
         syncBudget();
         syncShip();
         syncViewRows();
+
+        // --- Routes and the autopilot (0.5.5, §8) ---------------------------
+        // Two endpoints picked off the graph, the chain RouteLib builds over
+        // them, and the clock the autopilot flies it on. Everything is
+        // preallocated: the chain rebuilds on a state change and at the
+        // readout's cadence while the system clock moves, never per frame.
+        const routeNearSide = window.RouteLib.createSystemSide();
+        const routeFarSide = window.RouteLib.createSystemSide();
+        const routeFrom = window.RouteLib.createEndpoint();
+        const routeTo = window.RouteLib.createEndpoint();
+        const route = window.RouteLib.createRoute();
+        const routeScratch = window.RouteLib.createRoute();
+        const routeStatus = window.RouteLib.createStatus();
+        // The far side of the last build, kept so the per-class line rebuilds the
+        // same route: null until a route straddles two stars.
+        let routeFarSideRef = null;
+        let routePickFrom = true;         // the next graph click fills `from`, then `to`
+        let routeReady = false;
+        let autopilot = false;
+        let routeTimeYr = 0;
+
+        function routeShipName() {
+                return window.DeltaVLib.SHIP_CLASSES[dvShip].name;
+        }
+
+        // The anchored system is the open one; the other endpoint's star, when
+        // the two differ, supplies its own record on demand. buildRoute marks
+        // the far end unresolved when that star has left the residency set.
+        function rebuildRoute() {
+                if (routeFrom.starKey === 0 || routeTo.starKey === 0) {
+                        routeReady = false;
+                        systemLayer.setRoute(null);
+                        return;
+                }
+                routeNearSide.record = systemRecord;
+                routeNearSide.starKey = systemRef.key;
+                routeNearSide.x = systemRef.x;
+                routeNearSide.y = systemRef.y;
+                routeNearSide.z = systemRef.z;
+                let far = null;
+                if (routeFrom.starKey !== routeTo.starKey) {
+                        const farKey = routeFrom.starKey === systemRef.key ? routeTo.starKey : routeFrom.starKey;
+                        if (generateFarSystem(farKey)) {
+                                routeFarSide.record = farRecord;
+                                routeFarSide.starKey = farRef.key;
+                                routeFarSide.x = farRef.x;
+                                routeFarSide.y = farRef.y;
+                                routeFarSide.z = farRef.z;
+                                far = routeFarSide;
+                        }
+                }
+                routeFarSideRef = far;
+                window.RouteLib.buildRoute(route, routeNearSide, far, routeFrom, routeTo,
+                        routeShipName(), dvBudget, systemLayer.timeYr());
+                routeReady = route.legCount > 0;
+                systemLayer.setRoute(route);
+        }
+
+        // §8.5's endpoint state machine: the two graph slots alternate, so
+        // either end can be re-picked. Each endpoint remembers the star it
+        // belongs to and where it was, so a second system can supply the other
+        // end of an interstellar route.
+        function pickRouteEndpoint(hit) {
+                const endpoint = routePickFrom ? routeFrom : routeTo;
+                endpoint.kind = hit.kind;
+                endpoint.index = hit.index;
+                endpoint.node = hit.node;
+                endpoint.starKey = systemRef.key;
+                endpoint.x = systemRef.x;
+                endpoint.y = systemRef.y;
+                endpoint.z = systemRef.z;
+                routePickFrom = !routePickFrom;
+                autopilot = false;
+                routeTimeYr = 0;
+                rebuildRoute();
+                systemLayer.setRouteEndpoints(routeFrom, routeTo);
+                updateSystemReadout();
+        }
+
+        function clearRoute() {
+                routeFrom.starKey = 0;
+                routeTo.starKey = 0;
+                routePickFrom = true;
+                autopilot = false;
+                routeTimeYr = 0;
+                systemLayer.setRouteEndpoints(null, null);
+                rebuildRoute();
+                updateSystemReadout();
+        }
+
+        // §8.5: K toggles the autopilot. Engaging restarts the flight at the
+        // start of the chain — the route is a plan, and flying it again from the
+        // top is the predictable reading of the key.
+        function toggleAutopilot() {
+                if (!systemViewOpen || !routeReady) return;
+                autopilot = !autopilot;
+                if (autopilot) routeTimeYr = 0;
+                updateSystemReadout();
+        }
+
+        btnAutopilot.addEventListener('click', toggleAutopilot);
+        btnRouteClear.addEventListener('click', clearRoute);
+
+        // §8.4's report in §6.6's place: the whole chain one line per leg, the
+        // totals, the feasibility of every ship class (the chain rebuilt once
+        // per class — five builds, not a second table of thresholds) and §8.5's
+        // autopilot line.
+        function routeBlock() {
+                if (!routeReady) return '';
+                const V = window.DeltaVLib;
+                const R = window.RouteLib;
+                const ship = V.SHIP_CLASSES[dvShip];
+                const ends = (endpoint) => `${endpoint.kind === window.SystemLayer.BODY_PLANET
+                        ? window.PlanetsLib.PLANET_LETTERS[endpoint.index]
+                        : 'belt ' + (endpoint.index + 1)} ${V.NODE_SHORT[nodeSlotOf(endpoint.node)]}`;
+                let text = `\nroute  ${ship.name} · budget ${Math.round(dvBudget * 100)}% · `
+                        + `${ends(routeFrom)} → ${ends(routeTo)}`
+                        + (route.kind === R.ROUTE_INTERSTELLAR
+                                ? `   ${route.distanceKpc.toFixed(2)} kpc apart` : '')
+                        + (route.farResolved ? '' : '   far system not resident') + '\n'
+                        + '  ' + pad('leg', 26) + pad('dv km/s', 10) + pad('t', 10) + 'wait\n';
+                for (let i = 0; i < route.legCount; i++) {
+                        const leg = route.legs[i];
+                        // A hold leg goes nowhere: its row is the label and the
+                        // span, not a node pair.
+                        const nodes = leg.kind === R.LEG_WAIT || leg.kind === R.LEG_LAYOVER
+                                ? ''
+                                : `  ${V.NODE_SHORT[nodeSlotOf(leg.fromNode)]}→${V.NODE_SHORT[nodeSlotOf(leg.toNode)]}`;
+                        text += `  ${pad(`${leg.label}${nodes}`, 26)}`
+                                + `${leg.dv > 0 ? pad(leg.dv.toFixed(2), 10) : pad('—', 10)}`
+                                + `${leg.tYr > 0 ? pad(formatYears(leg.tYr), 10) : pad('—', 10)}`
+                                // The wait's own column: the leg that is the wait
+                                // prints its span twice, once as the leg and once
+                                // as the wait it spends on the transfer behind it.
+                                + (leg.kind === R.LEG_WAIT ? formatYears(leg.tYr) : '') + '\n';
+                }
+                text += `  total  dv ${route.totalDv.toFixed(1)} km/s   one way ${formatYears(route.outTimeYr)}`
+                        + `   round trip ${formatYears(route.totalTimeYr)}   ${route.legCount} legs\n`;
+                let classes = '';
+                for (const other of V.SHIP_CLASSES) {
+                        window.RouteLib.buildRoute(routeScratch, routeNearSide, routeFarSideRef,
+                                routeFrom, routeTo, other.name, dvBudget, route.tSysYr);
+                        classes += (classes ? ' · ' : '  ') + other.name + ' '
+                                + R.FEAS_NAMES[R.feasibility(routeScratch, other)];
+                }
+                text += classes + '\n';
+                if (autopilot) {
+                        R.routeStatus(routeStatus, route, routeTimeYr);
+                        text += `autopilot  leg ${routeStatus.legIndex + 1}/${routeStatus.legCount} (${routeStatus.label})`
+                                + `   ${formatYears(routeStatus.remainingYr)} remaining`
+                                + `   dv spent ${routeStatus.dvSpent.toFixed(1)}/${routeStatus.dvTank} km/s\n`;
+                }
+                return text;
+        }
 
         // Brightness slider is linear in multiplier (0.125 – 8.0), not stops,
         // so dragging it feels proportional — stops-based sliders jump at the
@@ -1624,9 +1841,20 @@ async function boot() {
                 // camera speed by the same FLIGHT_TIME_GAIN law the star-time
                 // slider uses — resolved here, where the camera state already
                 // is — and 0 freezes. The layer owns the accumulated years.
-                systemLayer.advance(dt, systemTimeRate < 0
+                const systemRate = systemTimeRate < 0
                         ? (-systemTimeRate) * window.OrbitLib.FLIGHT_TIME_GAIN * cameraStateForTime.speedLyPerSec
-                        : systemTimeRate);
+                        : systemTimeRate;
+                systemLayer.advance(dt, systemRate);
+                // §8.5: the autopilot flies the route on the view's own clock,
+                // so the rate the viewer set for the planets is the rate the
+                // ship moves at. Reaching the end of the chain stops the flight.
+                if (autopilot && routeReady) {
+                        routeTimeYr += systemRate * dt;
+                        if (routeTimeYr >= route.totalTimeYr) {
+                                routeTimeYr = route.totalTimeYr;
+                                autopilot = false;
+                        }
+                }
                 // The simple engine's CPU mirror steps beside the GPU buffer —
                 // same dtStar the renderer dispatches, so labels and picks ride
                 // what the sprites draw. Classic ignores both.
@@ -1664,14 +1892,18 @@ async function boot() {
                                 // open — a distance test against the icons the
                                 // draw placed, no projection and no camera. A
                                 // miss clears the system-view selection and
-                                // stays in the view. The delta-v map is a graph
-                                // with nothing to hit yet (0.5.5 picks its
-                                // endpoints), so a click over it falls through
-                                // to the star picker below.
+                                // stays in the view.
                                 const body = systemLayer.pick(input.state.pickX, input.state.pickY);
                                 systemLayer.setSelectedBody(body ? body.which : window.SystemLayer.BODY_NONE,
                                         body ? body.index : -1);
-                        } else if (!systemViewOpen) {
+                        } else if (systemViewOpen) {
+                                // §8.5: the map owns the click while it is open —
+                                // a distance test against the graph's own node
+                                // positions, nearest wins. A click on empty space
+                                // picks nothing; the pair is cleared from the menu.
+                                const node = systemLayer.pickNode(input.state.pickX, input.state.pickY);
+                                if (node) pickRouteEndpoint(node);
+                        } else {
                                 // Any drawn star, from any of the five record blocks —
                                 // not just the named table. Shift toggles set membership
                                 // without moving the primary; a plain click replaces the
@@ -1703,6 +1935,12 @@ async function boot() {
                         actions.dvmap = 0;
                         toggleDvMap();
                 }
+                // §8.5: K is the autopilot's toggle, inside the view like B —
+                // a flight without an open system has no chain to fly.
+                if (actions.autopilot) {
+                        actions.autopilot = 0;
+                        toggleAutopilot();
+                }
                 // Esc is close-only: a press with no view open is a no-op.
                 if (actions.systemViewClose) {
                         actions.systemViewClose = 0;
@@ -1729,7 +1967,7 @@ async function boot() {
                 // draws no hovered designation.
                 systemLayer.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
                 systemLayer.draw(canvas.clientWidth, canvas.clientHeight,
-                        input.state.pointerX, input.state.pointerY);
+                        input.state.pointerX, input.state.pointerY, routeTimeYr);
 
                 overlayTimer += dt;
                 if (overlayTimer >= OVERLAY_INTERVAL) {

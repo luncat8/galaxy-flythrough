@@ -4,6 +4,33 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-10-13 — The synodic wait must travel the way the angle actually goes, and a module's own scratch structs are safest
+
+Two things met while building 0.5.5's route chain (`src/core/route.js`):
+
+1. **A relative-angle formula hides its sign, and the sign decides whether you wait 28 days
+   or 751.** `S = 1/|1/P₁ − 1/P₂|` is a period, so it is tempting to write
+   `t_wait = wrap(φ_req − φ_now)/(2π/S)` and be done. But the relative angle travels at
+   `ω = 2π(1/P_arr − 1/P_dep)`, which is **negative** whenever the destination is the slower
+   orbit — the usual outward transfer. With the unsigned period, half the starting phases
+   wait for the window's *next* recurrence instead of its coming one: the law still produces
+   mean `S/2` and max `S` (both wraps are uniform), so a statistics-only test cannot see the
+   bug. It showed up as a discontinuity between the transfer's end angle and the arrival
+   body's position 724 days later, and the fix's test pins the **outcome** — the relative
+   angle at departure *is* φ_req, and the arrival body is exactly half a turn from where the
+   ship left — rather than the arithmetic. Rule: when a spec gives a wrapped period, derive
+   the signed rate and take the shortest path; pin the invariant, not the formula.
+2. **Two modules sharing one module-scratch struct is a drift waiting to happen.** `route.js`
+   first borrowed the caller's `DeltaVLib.createLeg()` struct for its intermediate transfer,
+   then made its own because main.js holds one while a route is built — two writers on one
+   struct break the moment one of them re-enters. Related and sharper: a `pickNode`-style
+   result that returns codes from *another* module's numbering (`bodyDesignation`'s 1/2 vs
+   `bodyFromSystem`'s 0/1) silently produced a belt body from a planet endpoint, which read as
+   `dv = −1` and `NaN` three hops away. One mapping function, commented at the call, and the
+   test asserts the pick codes against both tables.
+
+---
+
 ## 2026-10-12 — A schematic canvas measures nothing: heap deltas under a stub context are noise, and per-frame colours are strings built once
 
 Two things met while drawing 0.5.3-2's log-polar layout (`src/render/system-layer.js`):

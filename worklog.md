@@ -8,7 +8,7 @@ Implementation history is grouped by release series. Append entries to the match
 | 0.1.x | [0.1.x worklog](archive/0.1.x-worklog.md) | Initial planning, experiments, runtime, streaming, cameras, landmarks and HDR |
 | 0.3.x | [0.3.x worklog](archive/0.3.x-worklog.md) | 0.3/0.4 planning, GalaxyModel, galaxy types and distributions, composite objects, nebula billboards, galaxy age |
 | 0.4.x | [0.4.x worklog](archive/0.4.x-worklog.md) | Kinematic orbits, star-time control, group kinematics, wave-damping capture, simple and apocenter-guided engines, giant-branch evolution, HDR headroom/desat knobs, realistic 3D shapes (bar peanut, truncation floors, age–height coupling), settings presets, engine-mask dispatch |
-| 0.5.x | [0.5.x worklog](archive/0.5.x-worklog.md) | Planet series: planning entry, then 0.5.0 star selection implemented (identity keys, `pickAny` over all five blocks with engine-mask dispatch parity, the snapshot selection set, radius select, fly-to, set rings), 0.5.1 the lazy planet-system generator, 0.5.2 star and planet search (two-stage scan, scope fallback, preset token, `#sysread`), 0.5.3-1 the system-view skeleton (`#system` canvas, `render/system-layer.js`, enter/exit plumbing, the open system's readout), 0.5.3-2 the log-polar layout (habitable-zone annulus, orbit ellipses, star and planet icons), 0.5.3-3 the belt stipples hashed once per system and the system view's own clock (`systime`/`sysview` on the settings line), 0.5.3-4 schematic picking, the selection ring and the hovered designation, with `experiments/system-layer-test.js` as the headless contract for the whole readout, 0.5.3-5 the readout's per-planet and belt lines, 0.5.4 the delta-v map (`src/math/deltav.js`, the §7.5 graph and table on the `#system` canvas, `B` plus the `budget` slider and `ship` select, `experiments/dv-map-test.js`) |
+| 0.5.x | [0.5.x worklog](archive/0.5.x-worklog.md) | Planet series: planning entry, then 0.5.0 star selection implemented (identity keys, `pickAny` over all five blocks with engine-mask dispatch parity, the snapshot selection set, radius select, fly-to, set rings), 0.5.1 the lazy planet-system generator, 0.5.2 star and planet search (two-stage scan, scope fallback, preset token, `#sysread`), 0.5.3-1 the system-view skeleton (`#system` canvas, `render/system-layer.js`, enter/exit plumbing, the open system's readout), 0.5.3-2 the log-polar layout (habitable-zone annulus, orbit ellipses, star and planet icons), 0.5.3-3 the belt stipples hashed once per system and the system view's own clock (`systime`/`sysview` on the settings line), 0.5.3-4 schematic picking, the selection ring and the hovered designation, with `experiments/system-layer-test.js` as the headless contract for the whole readout, 0.5.3-5 the readout's per-planet and belt lines, 0.5.4 the delta-v map (`src/math/deltav.js`, the §7.5 graph and table on the `#system` canvas, `B` plus the `budget` slider and `ship` select, `experiments/dv-map-test.js`), 0.5.5 routes and the autopilot (`src/core/route.js`: the leg chain, the synodic wait, the interstellar cruise, the two-way totals and `routePosition`, with the ship icon and the graph's endpoint picking in `src/render/system-layer.js` and `experiments/route-test.js`). Series complete: 0.5.0–0.5.5 |
 
 No separate 0.2 implementation entry exists in the original log. The combined
 0.3/0.4 planning entry lives in 0.3.x; 0.4.x implementation entries live in the
@@ -43,10 +43,12 @@ the system view's own clock, with `systime`/`sysview` on the settings line) and
 `experiments/system-layer-test.js` as the headless contract for the whole readout),
 0.5.3-5 (the readout's per-planet and belt lines) and 0.5.4 (the delta-v map:
 `src/math/deltav.js`, the §7.5 graph and table on the `#system` canvas, `B` plus the
-`budget` slider and `ship` select, `experiments/dv-map-test.js`) are implemented —
-see the 2026-10-12 and 2026-10-13 entries in the 0.5.x log — and 0.5.5
-(`src/core/route.js`: the in-system legs, synodic waits and two-way routes) is next.
-The series is CPU-only and additive, so it
+`budget` slider and `ship` select, `experiments/dv-map-test.js`) and 0.5.5 (routes and
+the autopilot: `src/core/route.js`, the leg chain over the delta-v closed forms, the
+synodic wait, the interstellar cruise, the two-way totals, `routePosition` and the ship
+icon with the graph's endpoint picking in `system-layer.js`,
+`experiments/route-test.js`) are implemented — see the 2026-10-12 and 2026-10-13 entries
+in the 0.5.x log. The series is complete: 0.5.0 through 0.5.5, CPU-only and additive, so it
 neither blocks nor depends on the parity work — with one coupling, stated in the plan:
 0.5.0's arbitrary-star picker dispatches positions through the same engine-mask law the
 parity plan pins, and until a field-star `simple` mirror exists the picker approximates

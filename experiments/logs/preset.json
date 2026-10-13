@@ -37,6 +37,10 @@
       "pass": true
     },
     {
+      "name": "the route is transient state, wired but not preset state",
+      "pass": true
+    },
+    {
       "name": "serialize drops the fields of a pass that is not selected",
       "pass": true
     },

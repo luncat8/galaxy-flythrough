@@ -41,6 +41,12 @@ const sysLabels = (typeof module !== 'undefined' && module.exports)
 const sysDeltaV = (typeof module !== 'undefined' && module.exports)
 	? require('../math/deltav.js')
 	: window.DeltaVLib;
+// Routes (0.5.5, §8.5): core/route.js owns the leg model and routePosition, this
+// canvas owns the ship icon and the dashed polyline over it. route.js loads
+// before this file in the page for exactly that reason.
+const sysRoute = (typeof module !== 'undefined' && module.exports)
+	? require('../core/route.js')
+	: window.RouteLib;
 
 // ---- the schematic's constants (§6.1, §6.2) --------------------------------
 const SYS_TAU = Math.PI * 2;
@@ -110,6 +116,17 @@ const MAP_NODE_ORDER = [
 	sysDeltaV.NODE_SURFACE, sysDeltaV.NODE_BELT_BODY, sysDeltaV.NODE_LOW_ORBIT,
 	sysDeltaV.NODE_GEO, sysDeltaV.NODE_L5, sysDeltaV.NODE_ESCAPE,
 ];
+
+// The route (0.5.5, §8.5): the ship is a triangle in its class colour, the route
+// a dashed polyline sampled along the legs behind it. The class colour is the
+// §8.1 table's order, which is deltav.js's SHIP_CLASSES order.
+const SHIP_R = 5;
+const SHIP_COLORS = ['#9fd4ff', '#ffd166', '#7ce7a2', '#e58bff', '#ff9d8a'];
+const ROUTE_LINE = 'rgba(159, 212, 255, 0.55)';
+const ROUTE_LINE_DASH = [5, 5];
+const ROUTE_FROM_RING = '#7ce7a2';
+const ROUTE_TO_RING = '#ffd166';
+const ROUTE_SAMPLES = 9;              // samples per leg, the flip point landing on one
 
 // §6.4's clock: years per second of the open system, -1 camera-coupled (the
 // menu's follow), 0 the frozen default, the rest a direct rate. Owned here
@@ -233,7 +250,22 @@ function createSystemLayer(canvas) {
 	let mapOpen = false;
 	let mapDirty = true;
 	let mapW = 0, mapH = 0;
+	let mapLayoutValid = false;
 	let starText = '';
+	// §8.5's route: the RouteLib struct main.js builds and the scratch position
+	// routePosition writes into per frame. The layer draws the route main.js
+	// built; the clock it is drawn at is draw()'s parameter, because the route
+	// clock is the view's own time, which main.js owns (§6.4). The polyline is
+	// sampled per frame because the legs' bodies move with the system clock;
+	// nothing here is per-leg state, so nothing needs a dirty flag.
+	let route = null;
+	const shipPos = new Float64Array(3);
+	// §8.5's endpoint rings on the graph: the two picked nodes, in the endpoint
+	// colours. Each is {kind, index, node} or null — the layer draws them and
+	// pickNode tests the same positions.
+	let routeFromPick = null, routeToPick = null;
+	// §8.5's pickNode result, preallocated like the schematic's two.
+	const nodePickOut = { kind: BODY_NONE, index: -1, node: 0 };
 
 	// The stipple of §6.2 item 3: STIPPLE_N angle/radius pairs per belt, hashed
 	// once per system into these two arrays and never re-derived per frame. One
@@ -556,8 +588,8 @@ function createSystemLayer(canvas) {
 		out.which = BODY_NONE;
 		out.index = -1;
 		out.dist = Infinity;
-		// The map is a graph, not a sky: it has no icons to hit, and endpoint
-		// picking arrives with 0.5.5.
+		// The map is a graph, not a sky: its nodes are hit by pickNode (§8.5),
+		// which is why this walk refuses while the map is open.
 		if (mapOpen) return null;
 		if (!open || !system || !layoutValid) return null;
 		const planets = system.planets;
@@ -597,6 +629,36 @@ function createSystemLayer(canvas) {
 	// scratch object, valid until the next pick: read it, do not hold it.
 	function pick(x, y) {
 		return findBody(x, y, pickOut);
+	}
+
+	// §8.5's endpoint picking over the graph: the same kind of distance test the
+	// schematic's icons use — MAP_NODE_R + PICK_PAD_PX about the node positions
+	// the layout placed, nearest wins. Returns the shared {kind, index, node}
+	// scratch, or null for a hit on empty space, which picks nothing (the pair is
+	// cleared from the menu).
+	function pickNode(x, y) {
+		nodePickOut.kind = BODY_NONE;
+		nodePickOut.index = -1;
+		nodePickOut.node = 0;
+		if (!mapOpen || !open || !system || !mapLayoutValid) return null;
+		const pad = MAP_NODE_R + PICK_PAD_PX;
+		let best = Infinity;
+		for (let b = 0; b < mapBodyCount; b++) {
+			for (let s = 0; s < MAP_NODE_ORDER.length; s++) {
+				const code = MAP_NODE_ORDER[s];
+				if (!(mapBodies[b].nodes & code)) continue;
+				const i = (b * MAP_NODE_ORDER.length + s) * 2;
+				const dx = mapNodeXY[i] - x, dy = mapNodeXY[i + 1] - y;
+				const d2 = dx * dx + dy * dy;
+				if (d2 > pad * pad || d2 >= best) continue;
+				best = d2;
+				const planet = b < system.planetCount;
+				nodePickOut.kind = planet ? BODY_PLANET : BODY_BELT;
+				nodePickOut.index = planet ? b : b - system.planetCount;
+				nodePickOut.node = code;
+			}
+		}
+		return nodePickOut.index >= 0 ? nodePickOut : null;
 	}
 
 	function setSelectedBody(which, index) {
@@ -677,7 +739,7 @@ function createSystemLayer(canvas) {
 		ctx.fillText(text, x, y);
 	}
 
-	function draw(width, height, pointerX, pointerY) {
+	function draw(width, height, pointerX, pointerY, routeT) {
 		if (!open) return;
 		if (!ctx || !(width > 0) || !(height > 0) || !system) return;
 		// A summary-tier record has no orbit arrays: there is nothing to lay
@@ -702,11 +764,102 @@ function createSystemLayer(canvas) {
 		drawBelts(cx, cy);
 		drawStar(cx, cy);
 		drawPlanets(cx, cy, planets);
+		// §8.5's route: the polyline over the orbits, the ship at its position —
+		// above the planets, below the selection ring, so the ring still names
+		// the body a click hit.
+		if (route) drawRoute(cx, cy, routeT);
 		// §6.2 item 6: the hovered body, then the selection ring above it —
 		// the hover is recomputed against the icons this frame just placed.
 		updateHover(pointerX, pointerY);
 		drawHoverLabel(cx, cy, pointerX, pointerY);
 		drawSelectionRing(cx, cy);
+	}
+
+	// --- the route (0.5.5, §8.5) --------------------------------------------
+	function setRoute(next) {
+		route = next || null;
+	}
+
+	// The two picked endpoints, as main.js's endpoint structs or null. Held by
+	// reference so the next pick is visible without a further call.
+	function setRouteEndpoints(from, to) {
+		routeFromPick = from || null;
+		routeToPick = to || null;
+	}
+
+	// The system clock main.js anchors a route at, read once per build.
+	function timeYr() {
+		return systemTimeYr;
+	}
+
+	// A point of the system plane to canvas-local CSS pixels: the radial axis of
+	// §6.1 and the angle the point arrived at.
+	function routePointPx(cx, cy, x, y, out) {
+		const r = Math.hypot(x, y);
+		const rPx = radiusPx(r);
+		if (r > 1e-12) {
+			out[0] = cx + rPx * (x / r);
+			out[1] = cy + rPx * (y / r);
+		} else {
+			out[0] = cx;
+			out[1] = cy;
+		}
+		return out;
+	}
+
+	const routeSamplePx = new Float64Array(2);
+	const shipHeadPx = new Float64Array(2);
+	const shipHeadPos = new Float64Array(3);
+
+	function drawRoute(cx, cy, routeT) {
+		ctx.save();		ctx.strokeStyle = ROUTE_LINE;
+		ctx.lineWidth = 1;
+		ctx.setLineDash(ROUTE_LINE_DASH);
+		ctx.beginPath();
+		let pen = false;
+		for (let i = 0; i < route.legCount; i++) {
+			const leg = route.legs[i];
+			// A leg of the other system has no place on this canvas: the
+			// polyline is one system's plan, and the cruise is text.
+			if (!leg.nearSide) {
+				pen = false;
+				continue;
+			}
+			for (let s = 0; s < ROUTE_SAMPLES; s++) {
+				const f = ROUTE_SAMPLES > 1 ? s / (ROUTE_SAMPLES - 1) : 1;
+				sysRoute.routePosition(shipPos, route, leg.tStart + leg.tYr * f);
+				if (shipPos[2] !== 1) {
+					pen = false;
+					continue;
+				}
+				routePointPx(cx, cy, shipPos[0], shipPos[1], routeSamplePx);
+				if (pen) ctx.lineTo(routeSamplePx[0], routeSamplePx[1]);
+				else ctx.moveTo(routeSamplePx[0], routeSamplePx[1]);
+				pen = true;
+			}
+		}
+		ctx.stroke();
+		ctx.restore();
+		// The ship itself: a triangle in the class colour, pointing along the
+		// route a hair ahead of it. A hold leg has no heading, and the two
+		// samples agree there, which is the right answer.
+		sysRoute.routePosition(shipPos, route, routeT);
+		if (shipPos[2] !== 1) return;
+		const ahead = Math.min(routeT + 1e-3, route.totalTimeYr);
+		sysRoute.routePosition(shipHeadPos, route, ahead);
+		routePointPx(cx, cy, shipPos[0], shipPos[1], routeSamplePx);
+		routePointPx(cx, cy, shipHeadPos[0], shipHeadPos[1], shipHeadPx);
+		ctx.save();
+		ctx.translate(routeSamplePx[0], routeSamplePx[1]);
+		ctx.rotate(Math.atan2(shipHeadPx[1] - routeSamplePx[1], shipHeadPx[0] - routeSamplePx[0]));
+		ctx.fillStyle = SHIP_COLORS[route.ship] || SHIP_COLORS[0];
+		ctx.beginPath();
+		ctx.moveTo(SHIP_R, 0);
+		ctx.lineTo(-SHIP_R * 0.6, SHIP_R * 0.6);
+		ctx.lineTo(-SHIP_R * 0.6, -SHIP_R * 0.6);
+		ctx.closePath();
+		ctx.fill();
+		ctx.restore();
 	}
 
 	// --- the delta-v map (§7.5) ---------------------------------------------
@@ -766,6 +919,37 @@ function createSystemLayer(canvas) {
 		mapDirty = false;
 		mapW = width;
 		mapH = height;
+		mapLayoutValid = true;
+	}
+
+	// A picked endpoint's node index in the layout arrays, or -1 when it is not
+	// a node this system's bodies have — a stale pick from another system.
+	function endpointNodeIndex(pick) {
+		if (!pick) return -1;
+		const b = pick.kind === BODY_PLANET ? pick.index : system.planetCount + pick.index;
+		if (b < 0 || b >= mapBodyCount) return -1;
+		if (!(mapBodies[b].nodes & pick.node)) return -1;
+		return (b * MAP_NODE_ORDER.length + nodeSlot(pick.node)) * 2;
+	}
+
+	// §8.5's endpoint rings over the graph's nodes: the start pick in green, the
+	// end pick in amber, each about the node the click test would have hit.
+	function drawEndpointRings() {
+		ctx.lineWidth = SYS_SELECT_LINE;
+		ctx.strokeStyle = ROUTE_FROM_RING;
+		const from = endpointNodeIndex(routeFromPick);
+		if (from >= 0) {
+			ctx.beginPath();
+			ctx.arc(mapNodeXY[from], mapNodeXY[from + 1], MAP_NODE_R + 3, 0, SYS_TAU);
+			ctx.stroke();
+		}
+		ctx.strokeStyle = ROUTE_TO_RING;
+		const to = endpointNodeIndex(routeToPick);
+		if (to >= 0) {
+			ctx.beginPath();
+			ctx.arc(mapNodeXY[to], mapNodeXY[to + 1], MAP_NODE_R + 3, 0, SYS_TAU);
+			ctx.stroke();
+		}
 	}
 
 	function countPresent(body) {
@@ -862,10 +1046,16 @@ function createSystemLayer(canvas) {
 				ctx.stroke();
 			}
 		}
+		// §8.5's two endpoint rings last, so they read above whichever body's
+		// nodes they mark.
+		drawEndpointRings();
 		ctx.textAlign = 'left';
 	}
 
-	return { resize, draw, setSystem, setEnabled, enabled, advance, pick, setSelectedBody, selectedBody, setMapOpen };
+	return {
+		resize, draw, setSystem, setEnabled, enabled, advance, pick, setSelectedBody,
+		selectedBody, setMapOpen, pickNode, setRoute, setRouteEndpoints, timeYr,
+	};
 }
 
 const SystemLayer = {
@@ -876,6 +1066,8 @@ const SystemLayer = {
 	// pins the same numbers the draw uses rather than restating them.
 	R_STAR_PX, EDGE_FRACTION, STIPPLE_RADIUS, ICON_RADII, ICON_MASS_EDGES,
 	MAP_NODE_R, MAP_STAR_R, MAP_NODE_DY, SYS_SELECT_RING,
+	// §8.5's route and endpoint constants, for the same reason.
+	SHIP_R, SHIP_COLORS, ROUTE_LINE, ROUTE_SAMPLES, ROUTE_FROM_RING, ROUTE_TO_RING,
 	STAR_R_MS, STAR_R_GIANT, STAR_R_WD,
 };
 if (typeof module !== 'undefined') module.exports = SystemLayer;

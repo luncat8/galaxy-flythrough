@@ -135,6 +135,20 @@ check('wheel zoom is canvas-only and normalizes line units', () => {
 	assert.equal(state.wheelDelta, 100);
 	input.releaseAll();
 });
+check('the autopilot key is a one-shot action, like the other view toggles', () => {
+	assert.equal(state.actions.autopilot, 0);
+	canvas.emit('keydown', { code: 'KeyK' });
+	assert.equal(state.actions.autopilot, 1);
+	canvas.emit('keyup', { code: 'KeyK' });
+	// A one-shot arms, and stays armed until the loop consumes it: it does not
+	// accumulate the way the exposure keys do.
+	canvas.emit('keydown', { code: 'KeyK' });
+	assert.equal(state.actions.autopilot, 1);
+	state.actions.autopilot = 0;
+	// A slider owns the keyboard: K must not fly a route while a field has focus.
+	slider.emit('keydown', { code: 'KeyK' });
+	assert.equal(state.actions.autopilot, 0);
+});
 check('menu controls own keyboard input except Tab', () => {
 	for (const target of [slider, button, panel]) {
 		assert.equal(target.emit('keydown', { code: 'ArrowUp' }).defaultPrevented, undefined);

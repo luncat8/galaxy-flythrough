@@ -152,6 +152,26 @@ check('the delta-v map rides the line and main.js wires its three controls', () 
 	assert.ok(/B\s+delta-v map over the schematic/.test(html), '#help documents B');
 });
 
+// 0.5.5 adds no preset field: a route is transient like the selection contents
+// (§5.5), and its clock is the system view's own. What it does add is wiring —
+// the two menu buttons, the K action and the readout's route block.
+check('the route is transient state, wired but not preset state', () => {
+	const keys = Presets.FIELDS.map((f) => f.key);
+	assert.ok(!keys.includes('route') && !keys.includes('autopilot'), keys.join(','));
+	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
+	assert.ok(main.includes('actions.autopilot'), 'K is consumed');
+	assert.ok(main.includes('function rebuildRoute') && main.includes('function routeBlock'),
+			'the route builds and reports');
+	assert.ok(main.includes('function pickRouteEndpoint') && main.includes('systemLayer.pickNode'),
+			'the graph picks endpoints');
+	const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
+	assert.ok(html.includes('id="route-autopilot"') && html.includes('id="route-clear"'),
+			'the two buttons exist');
+	assert.ok(/K\s+autopilot along the route/.test(html), '#help documents K');
+	const input = fs.readFileSync(path.join(SRC, 'core/input.js'), 'utf-8');
+	assert.ok(input.includes("KeyK: 'autopilot'"), 'pressMap carries K');
+});
+
 // --- disabled passes are not part of the preset -----------------------------
 // A knob of a movement pass that is not selected describes nothing that runs:
 // the copied line must not carry it, a pasted line must not apply it, and the

@@ -131,6 +131,10 @@
                 <div class="menu-row menu-actions" data-view="system">
                         <button id="dvmap-toggle" title="The delta-v map of the open system: nodes, edges and transfer costs (B)">Delta-v map</button>
                 </div>
+                <div class="menu-row menu-actions" data-view="system">
+                        <button id="route-autopilot" title="Fly the route built from the graph's two picked endpoints, on the system's own clock (K)">Autopilot</button>
+                        <button id="route-clear" title="Forget the route's two endpoints and stop the flight">Clear route</button>
+                </div>
                 <div class="menu-row" data-view="system">
                         <label for="slider-budget" title="Share of the ship's engine a leg may burn. 0 is the minimum-energy transfer, 1 the whole tank. Below the crossover dv_x a chemical hull buys nothing.">Energy budget</label>
                         <input type="range" id="slider-budget" min="0" max="1" step="0.01" value="0.35">
@@ -210,6 +214,8 @@ Shift+click          toggle a star in the selection (plain click selects it alon
 V                    close-system schematic of the selected star (Esc closes)
 B                    delta-v map over the schematic (inside the system view)
 click in schematic   select a planet or belt, empty space clears
+K                    autopilot along the route (inside the system view)
+click in delta-v map pick the route's start node, then its end node
 Esc                  release cursor in fly mode
 Tab                  settings menu (releases cursor)
 [ / ]                exposure (how faint a star still shows)
@@ -245,6 +251,10 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
         <script src="core/star-set.js"></script>
         <script src="core/selection.js"></script>
         <script src="core/search.js"></script>
+        <!-- Routes and autopilot (0.5.5): the leg model over the delta-v closed
+             forms and the Kepler solver, so it loads after both — and before
+             system-layer.js, which draws the route it builds. -->
+        <script src="core/route.js"></script>
         <script src="core/loop.js"></script>
         <script src="core/presets.js"></script>
         <!-- Data after math (landmarks bake their positions through coords.js at
