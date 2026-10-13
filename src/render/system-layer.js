@@ -36,6 +36,11 @@ const sysHash = (typeof module !== 'undefined' && module.exports)
 const sysLabels = (typeof module !== 'undefined' && module.exports)
 	? require('../render/label-layer.js')
 	: window.LabelLayer;
+// The delta-v map (§7.5) is drawn on this same canvas from the closed forms of
+// deltav.js, which loads before this file in the page.
+const sysDeltaV = (typeof module !== 'undefined' && module.exports)
+	? require('../math/deltav.js')
+	: window.DeltaVLib;
 
 // ---- the schematic's constants (§6.1, §6.2) --------------------------------
 const SYS_TAU = Math.PI * 2;
@@ -84,6 +89,27 @@ const HOVER_OFFSET_PX = 6;
 const BODY_PLANET = 1;
 const BODY_BELT = 2;
 const BODY_NONE = 0;
+
+// §7.5's map, drawn on the same canvas over the schematic. All colours and
+// spacings are module constants; the node positions and the edge labels live
+// in preallocated arrays recomputed on a dirty flag, never per frame.
+const MAP_EDGE = 'rgba(150, 175, 215, 0.35)';
+const MAP_EDGE_LABEL = 'rgba(198, 208, 228, 0.8)';
+const MAP_NODE_FILL = 'rgba(18, 24, 38, 0.9)';
+const MAP_NODE_EDGE = 'rgba(160, 180, 215, 0.7)';
+const MAP_GROUND_FILL = 'rgba(120, 140, 180, 0.9)';
+const MAP_COLUMN_LABEL = 'rgba(220, 226, 240, 0.85)';
+const MAP_NODE_DY = 46;              // px between a column's stacked nodes
+const MAP_STAR_X = 64;               // the star sits at the left
+const MAP_COL_X0 = 122;              // the first body column
+const MAP_MARGIN_R = 26;
+const MAP_NODE_R = 4;
+const MAP_STAR_R = 10;
+// Column order, bottom (the grounded node) to top (the escape).
+const MAP_NODE_ORDER = [
+	sysDeltaV.NODE_SURFACE, sysDeltaV.NODE_BELT_BODY, sysDeltaV.NODE_LOW_ORBIT,
+	sysDeltaV.NODE_GEO, sysDeltaV.NODE_L5, sysDeltaV.NODE_ESCAPE,
+];
 
 // §6.4's clock: years per second of the open system, -1 camera-coupled (the
 // menu's follow), 0 the frozen default, the rest a direct rate. Owned here
@@ -187,6 +213,28 @@ function createSystemLayer(canvas) {
 	const CH_STIPPLE = sysPlanets.CH_STIPPLE;
 	const hash01At = sysHash.hash01At;
 
+	// --- the delta-v map's own state (§7.5) ---------------------------------
+	// One body array and one leg struct, allocated once and rebuilt in place:
+	// the graph is redrawn per frame but its numbers change only when the
+	// system does.
+	const MAX_MAP_BODIES = sysPlanets.MAX_PLANETS + MAX_BELTS;
+	const MAX_MAP_EDGES = MAX_MAP_BODIES * 4 + MAX_MAP_BODIES;
+	const mapBodies = new Array(MAX_MAP_BODIES);
+	for (let i = 0; i < MAX_MAP_BODIES; i++) mapBodies[i] = sysDeltaV.createBody();
+	const mapLeg = sysDeltaV.createLeg();
+	const mapNodeXY = new Float32Array(MAX_MAP_BODIES * MAP_NODE_ORDER.length * 2);
+	const edgeFrom = new Uint8Array(MAX_MAP_EDGES);
+	const edgeFromNode = new Uint8Array(MAX_MAP_EDGES);
+	const edgeTo = new Uint8Array(MAX_MAP_EDGES);
+	const edgeToNode = new Uint8Array(MAX_MAP_EDGES);
+	const edgeDv = new Float64Array(MAX_MAP_EDGES);
+	const edgeText = new Array(MAX_MAP_EDGES);
+	let mapBodyCount = 0, mapEdgeCount = 0;
+	let mapOpen = false;
+	let mapDirty = true;
+	let mapW = 0, mapH = 0;
+	let starText = '';
+
 	// The stipple of §6.2 item 3: STIPPLE_N angle/radius pairs per belt, hashed
 	// once per system into these two arrays and never re-derived per frame. One
 	// block per belt keeps the dot loop contiguous — belt b owns
@@ -213,13 +261,24 @@ function createSystemLayer(canvas) {
 		if (system && system.planets) {
 			hashBelts();
 			hashDesignations();
+			mapDirty = true;
 		}
+	}
+
+	// §7.5's toggle: the map replaces the schematic while it is open. The
+	// schematic's own bodies stay selected — the map highlights the same body
+	// — so toggling back is one boolean test away.
+	function setMapOpen(next) {
+		if (next === mapOpen) return;
+		mapOpen = next;
+		mapDirty = true;
 	}
 
 	// One §4.11 designation per body, at system entry: the star's own name (or
 	// S<key36>) plus the IAU letter / belt number. Reading the same
 	// bodyDesignation the readout and search use keeps one source of truth.
 	function hashDesignations() {
+		starText = sysPlanets.bodyDesignation(system, BODY_NONE, 0);
 		for (let p = 0; p < system.planetCount; p++) {
 			bodyText[p] = sysPlanets.bodyDesignation(system, BODY_PLANET, p);
 		}
@@ -497,6 +556,9 @@ function createSystemLayer(canvas) {
 		out.which = BODY_NONE;
 		out.index = -1;
 		out.dist = Infinity;
+		// The map is a graph, not a sky: it has no icons to hit, and endpoint
+		// picking arrives with 0.5.5.
+		if (mapOpen) return null;
 		if (!open || !system || !layoutValid) return null;
 		const planets = system.planets;
 		const belts = system.belts;
@@ -545,6 +607,17 @@ function createSystemLayer(canvas) {
 		}
 		selWhich = BODY_NONE;
 		selIndex = -1;
+	}
+
+	// The §6.6 readout names the selected body with a marker, so it reads the
+	// same two integers the ring draws from. One preallocated result, valid
+	// until the next click — the readout is 4 Hz text, but the convention in
+	// this file is one scratch per result.
+	const selectedOut = { which: BODY_NONE, index: -1 };
+	function selectedBody() {
+		selectedOut.which = selWhich;
+		selectedOut.index = selIndex;
+		return selectedOut;
 	}
 
 	// Each frame's hover: the body under the pointer, if there is one. The
@@ -611,6 +684,10 @@ function createSystemLayer(canvas) {
 		// out, and the enter path always hands over the full tier.
 		const planets = system.planets;
 		if (!planets) return;
+		if (mapOpen) {
+			drawMap(width, height);
+			return;
+		}
 		frameW = width;
 		frameH = height;
 		ctx.clearRect(0, 0, width, height);
@@ -632,7 +709,163 @@ function createSystemLayer(canvas) {
 		drawSelectionRing(cx, cy);
 	}
 
-	return { resize, draw, setSystem, setEnabled, enabled, advance, pick, setSelectedBody };
+	// --- the delta-v map (§7.5) ---------------------------------------------
+	// The recognisable shape of a published map: the star at the left, the
+	// bodies in columns ordered by a, each column stacking the nodes it has,
+	// the edges straight and labelled in km/s to 0.1. Belts are one column with
+	// a single node. Edges and labels recompute only when the system or the
+	// canvas size changes — a dirty flag, not a per-frame recompute — while the
+	// graph itself is redrawn per frame, because 0.5.5's ship icon moves over
+	// it.
+	function layoutMap(width, height) {
+		const n = system.planetCount + system.beltCount;
+		mapBodyCount = n;
+		for (let i = 0; i < n; i++) {
+			sysDeltaV.bodyFromSystem(mapBodies[i], system,
+				i < system.planetCount ? sysDeltaV.BODY_KIND_PLANET : sysDeltaV.BODY_KIND_BELT,
+				i < system.planetCount ? i : i - system.planetCount);
+		}
+		const span = width - MAP_MARGIN_R - MAP_COL_X0;
+		const colW = n > 0 ? span / n : span;
+		const cy = height * 0.5;
+		for (let i = 0; i < n; i++) {
+			const body = mapBodies[i];
+			const present0 = countPresent(body);
+			const x = MAP_COL_X0 + (i + 0.5) * colW;
+			const base = i * MAP_NODE_ORDER.length;
+			let present = 0;
+			for (let s = 0; s < MAP_NODE_ORDER.length; s++) {
+				// Every node code is one bit, so the mask answers presence.
+				if (!(body.nodes & MAP_NODE_ORDER[s])) continue;
+				mapNodeXY[(base + s) * 2] = x;
+				// Bottom-up: the last present slot lands at cy − (k−1)/2 · dy.
+				mapNodeXY[(base + s) * 2 + 1] = cy + ((present0 - 1) * 0.5 - present) * MAP_NODE_DY;
+				present++;
+			}
+		}
+		mapEdgeCount = 0;
+		for (let i = 0; i < n; i++) {
+			const body = mapBodies[i];
+			const ground = sysDeltaV.groundNode(body);
+			// The column's own legs: ground → low orbit, and low orbit out to
+			// GEO, L5 and the escape.
+			if (body.nodes & (sysDeltaV.NODE_SURFACE | sysDeltaV.NODE_BELT_BODY)) {
+				pushMapEdge(i, ground, i, sysDeltaV.NODE_LOW_ORBIT,
+					sysDeltaV.nodeLegDv(body, sysDeltaV.NODE_LOW_ORBIT));
+			}
+			pushMapEdge(i, sysDeltaV.NODE_LOW_ORBIT, i, sysDeltaV.NODE_GEO, sysDeltaV.geoDv(body));
+			pushMapEdge(i, sysDeltaV.NODE_LOW_ORBIT, i, sysDeltaV.NODE_L5, sysDeltaV.l5Dv(body));
+			pushMapEdge(i, sysDeltaV.NODE_LOW_ORBIT, i, sysDeltaV.NODE_ESCAPE, sysDeltaV.escapeDv(body));
+			// The transfer to the next body out, low orbit to low orbit.
+			if (i + 1 < n) {
+				const to = mapBodies[i + 1];
+				sysDeltaV.legBetween(mapLeg, body, sysDeltaV.NODE_LOW_ORBIT, to, sysDeltaV.NODE_LOW_ORBIT);
+				pushMapEdge(i, sysDeltaV.NODE_LOW_ORBIT, i + 1, sysDeltaV.NODE_LOW_ORBIT, mapLeg.dv);
+			}
+		}
+		mapDirty = false;
+		mapW = width;
+		mapH = height;
+	}
+
+	function countPresent(body) {
+		let present = 0;
+		for (let s = 0; s < MAP_NODE_ORDER.length; s++) {
+			const code = MAP_NODE_ORDER[s];
+			if (body.nodes & code) present++;
+		}
+		return present;
+	}
+
+	// One edge into the parallel arrays. A dv of -1 is a node the body does not
+	// have (no GEO node), and it is not drawn.
+	function pushMapEdge(fromBody, fromNode, toBody, toNode, dvKms) {
+		if (dvKms < 0 || !Number.isFinite(dvKms)) return;
+		const e = mapEdgeCount;
+		if (e >= MAX_MAP_EDGES) return;
+		edgeFrom[e] = fromBody;
+		edgeFromNode[e] = fromNode;
+		edgeTo[e] = toBody;
+		edgeToNode[e] = toNode;
+		edgeDv[e] = dvKms;
+		edgeText[e] = dvKms.toFixed(1);
+		mapEdgeCount = e + 1;
+	}
+
+	// The node's column slot, so an edge can look its endpoints up.
+	function nodeSlot(code) {
+		for (let s = 0; s < MAP_NODE_ORDER.length; s++) {
+			if (MAP_NODE_ORDER[s] === code) return s;
+		}
+		return 2;   // low orbit, the one node every body has
+	}
+
+	function nodeXY(bodyIndex, node) {
+		const s = nodeSlot(node);
+		const i = (bodyIndex * MAP_NODE_ORDER.length + s) * 2;
+		return i;
+	}
+
+	function drawMap(width, height) {
+		if (mapDirty || mapW !== width || mapH !== height) layoutMap(width, height);
+		ctx.clearRect(0, 0, width, height);
+		ctx.font = HOVER_FONT;
+		ctx.textBaseline = 'alphabetic';
+		ctx.lineWidth = 1;
+		const cy = height * 0.5;
+		ctx.strokeStyle = MAP_EDGE;
+		for (let e = 0; e < mapEdgeCount; e++) {
+			const i = nodeXY(edgeFrom[e], edgeFromNode[e]);
+			const j = nodeXY(edgeTo[e], edgeToNode[e]);
+			ctx.beginPath();
+			ctx.moveTo(mapNodeXY[i], mapNodeXY[i + 1]);
+			ctx.lineTo(mapNodeXY[j], mapNodeXY[j + 1]);
+			ctx.stroke();
+			// The label rides the midpoint, offset above the line.
+			const mx = (mapNodeXY[i] + mapNodeXY[j]) * 0.5;
+			const my = (mapNodeXY[i + 1] + mapNodeXY[j + 1]) * 0.5 - 4;
+			ctx.fillStyle = MAP_EDGE_LABEL;
+			ctx.fillText(edgeText[e], mx, my);
+		}
+		// The star, then one column per body: its label, its nodes, and the
+		// selected body's nodes ringed in the schematic's own ring colour.
+		const starY = cy;
+		ctx.fillStyle = STAR_FILL[system.star.colorIndex];
+		ctx.beginPath();
+		ctx.arc(MAP_STAR_X, starY, MAP_STAR_R, 0, SYS_TAU);
+		ctx.fill();
+		ctx.fillStyle = MAP_COLUMN_LABEL;
+		ctx.textAlign = 'center';
+		ctx.fillText(starText, MAP_STAR_X, starY - MAP_STAR_R - 8);
+		for (let b = 0; b < mapBodyCount; b++) {
+			const body = mapBodies[b];
+			const label = b < system.planetCount ? bodyText[b]
+				: bodyText[sysPlanets.MAX_PLANETS + (b - system.planetCount)];
+			const selected = selWhich === (b < system.planetCount ? BODY_PLANET : BODY_BELT)
+				&& selIndex === (b < system.planetCount ? b : b - system.planetCount);
+			ctx.fillStyle = MAP_COLUMN_LABEL;
+			ctx.fillText(label, mapNodeXY[(b * MAP_NODE_ORDER.length) * 2], cy
+				- (countPresent(body) - 1) * 0.5 * MAP_NODE_DY - 12);
+			for (let s = 0; s < MAP_NODE_ORDER.length; s++) {
+				const code = MAP_NODE_ORDER[s];
+				if (!(body.nodes & code)) continue;
+				const i = (b * MAP_NODE_ORDER.length + s) * 2;
+				const x = mapNodeXY[i], y = mapNodeXY[i + 1];
+				const ground = code === sysDeltaV.NODE_SURFACE || code === sysDeltaV.NODE_BELT_BODY;
+				// The ring colour is chosen before the arc, the way the
+				// schematic rings its icons: fill after stroke would hide it.
+				ctx.strokeStyle = selected ? SYS_SELECT_RING : MAP_NODE_EDGE;
+				ctx.beginPath();
+				ctx.arc(x, y, MAP_NODE_R, 0, SYS_TAU);
+				ctx.fillStyle = ground ? MAP_GROUND_FILL : MAP_NODE_FILL;
+				ctx.fill();
+				ctx.stroke();
+			}
+		}
+		ctx.textAlign = 'left';
+	}
+
+	return { resize, draw, setSystem, setEnabled, enabled, advance, pick, setSelectedBody, selectedBody, setMapOpen };
 }
 
 const SystemLayer = {
@@ -642,6 +875,7 @@ const SystemLayer = {
 	// The layout and icon tables of §6.1 / §6.2 item 5, so the headless test
 	// pins the same numbers the draw uses rather than restating them.
 	R_STAR_PX, EDGE_FRACTION, STIPPLE_RADIUS, ICON_RADII, ICON_MASS_EDGES,
+	MAP_NODE_R, MAP_STAR_R, MAP_NODE_DY, SYS_SELECT_RING,
 	STAR_R_MS, STAR_R_GIANT, STAR_R_WD,
 };
 if (typeof module !== 'undefined') module.exports = SystemLayer;

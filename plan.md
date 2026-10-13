@@ -615,6 +615,8 @@ galaxy-flythrough/
     │   ├── camera.js                   # fly (momentum) + orbit modes, ly/s speeds
     │   ├── input.js                    # keyboard/mouse, wheel normalised to px
     │   ├── selection.js                # click picking against the landmarks
+    │   ├── star-set.js                 # snapshot selection set, primary, capacity (0.5.0)
+    │   ├── search.js                   # star/planet search, two-stage scan (0.5.2)
     │   └── loop.js                     # frame loop, dt clamp, stats
     ├── math/
     │   ├── hash.js                   # PCG/Wang (mirrors WGSL)
@@ -625,6 +627,8 @@ galaxy-flythrough/
     │   ├── star-types.js             # IMF, ages, evolution state, class
     │   ├── nebula.js                 # nebula probability + placement
     │   ├── objects.js                # composite objects + member profiles
+    │   ├── planets.js                # lazy planet-system generator (0.5.1)
+    │   ├── deltav.js                 # delta-v nodes, closed forms, budget blend (0.5.4)
     │   └── coords.js                 # RA/Dec/parallax → galactic XYZ, world → screen
     ├── stream/
     │   ├── tile-loader.js            # bundle injection, decode, manifest
@@ -633,7 +637,7 @@ galaxy-flythrough/
     │   ├── shaders.js                # all WGSL as JS strings
     │   ├── star-sprites.js           # star draw path (global + landmarks + objects + local + catalog)
     │   ├── label-layer.js            # 2D overlay canvas: labels + constellation lines
-    │   └── system-layer.js           # 2D overlay canvas: the close-system schematic (0.5.3)
+    │   ├── system-layer.js           # 2D overlay canvas: the close-system schematic + the delta-v map (0.5.3–0.5.4)
     ├── data/
     │   ├── gaia-subset.csv           # source catalog (5,000 rows)
     │   ├── landmarks.js              # named stars, galactic XYZ baked at load
@@ -1221,15 +1225,19 @@ Next series:
    checks. 0.5.2 implemented: star and planet search, `core/search.js`, a two-stage scan
    whose summary tier carries the per-planet `env` block, the scope fallback and the
     `search`/`scope` preset fields — `experiments/search-test.js`, 27 checks. 0.5.3
-    started: the close-system skeleton, `render/system-layer.js` with its `#system` canvas,
-    the enter/exit plumbing and `#sysread` as the open system's readout; the log-polar
-    layout now draws the habitable-zone annulus, the orbit ellipses, the star and planet
-    icons, and the belt stipples hashed once per system; the system view runs on its own
-    clock (§6.4 of the 0.5 plan), with `systime`/`sysview` on the settings line; and the
-    schematic is pickable — §6.3's distance test over the drawn icons, the selection ring
-    and the hovered designation, with `experiments/system-layer-test.js` (39 checks) now
-    the permanent headless contract for the whole readout. The file stays in the root
-    until the series ships and then moves to `archive/`.)*
+    implemented: the close-system schematic, `render/system-layer.js` with its `#system`
+    canvas, the log-polar layout (habitable-zone annulus, orbit ellipses, star and
+    planet icons, belt stipples hashed once per system), its own clock (§6.4),
+    `systime`/`sysview` on the settings line, §6.3's picking with the selection ring
+    and the hovered designation, and the per-planet, belt and delta-v readout lines —
+    `experiments/system-layer-test.js` (46 checks) the permanent headless contract.
+    0.5.4 implemented: the delta-v map, `math/deltav.js` — the §7.1 node table and the
+    §7.2 closed forms over any generated record, the §7.4 energy-budget blend and the
+    §8.1 ship classes — drawn as §7.5's graph on the `#system` canvas and read out as
+    §7.5's table, with `B`, the `budget` slider and the `ship` select, and
+    `experiments/dv-map-test.js` (46 checks) pinning the whole Solar-System table. 0.5.5
+    (ships, routes, autopilot) is next. The file stays in the root until the series ships
+    and then moves to `archive/`.)*
 
 Implement from those files plus this one; the per-release plans reference their own
 tests and extend the file layout of §11 as needed.
@@ -1248,12 +1256,11 @@ tests and extend the file layout of §11 as needed.
    passed by CPU/stub tests. The 0.4.8 analytical shape implementation is complete;
    this does not imply browser visual validation is complete.
 4. [The 0.5 planet series](0.5.0-plan-planet-generator.md): 0.5.0 (star selection), 0.5.1
-   (the lazy planet-system generator), 0.5.2 (star and planet search) are implemented,
-   and 0.5.3 (the close-system schematic view) is under way with its skeleton landed,
-   the log-polar layout drawn (habitable-zone annulus, orbit ellipses, star and
-   planet icons), the belt stipples rotating on the view's own clock, and the
-   schematic pickable (the selection ring and the hovered designation, verified
-   headlessly against the draw). The series is
+   (the lazy planet-system generator), 0.5.2 (star and planet search), 0.5.3 (the
+   close-system schematic view) and 0.5.4 (the delta-v map) are implemented — the
+   schematic draws the log-polar system, picks bodies, rings the selection, and carries
+   §7.5's delta-v graph and table over the §7 closed forms, all verified headlessly.
+   0.5.5 (ships, routes, autopilot) is the next task in the series. The series is
    CPU-only and additive, so
    it neither blocks nor depends on the parity work above — except that the picker
    dispatches star positions through the same engine-mask law the parity plan pins, which is

@@ -10,7 +10,8 @@
 //   * camera   : keys, lookDx/lookDy, wheelDelta, actions.reset/home/cameraMode
 //   * renderer : actions.exposure
 //   * selection: actions.pick + pickX/pickY, actions.constellations
-//   * system   : pointerX/pointerY, the schematic's hover (0.5.3-4)
+	//   * system   : pointerX/pointerY, the schematic's hover (0.5.3-4)
+	//   * dv map   : actions.dvmap, the B toggle inside the system view (0.5.4)
 //
 // No allocations in the hot path: listeners write into the shared state, and
 // deltas are zeroed by whoever consumed them.
@@ -45,7 +46,7 @@ function createInput(canvas) {
 		// (0.5.3-4), so it is tracked whether or not a drag is in progress.
 		pointerX: -1,
 		pointerY: -1,
-		actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, galaxyCycle: 0, freezeTime: 0, flyToStar: 0, cycleStar: 0, clearSet: 0, systemView: 0, systemViewClose: 0 },
+		actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, galaxyCycle: 0, freezeTime: 0, flyToStar: 0, cycleStar: 0, clearSet: 0, systemView: 0, systemViewClose: 0, dvmap: 0 },
 	};
 
 	// Held keys: true while down. Ctrl is the brief's slow modifier; Ctrl+W
@@ -70,7 +71,8 @@ function createInput(canvas) {
 	// are the 0.5.0 selection actions: fly to the primary, cycle it through the
 	// set, clear the set. V opens the close-system schematic and Esc closes it
 	// (0.5.3): Esc is close-only, so a stray press outside the view is a no-op.
-	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyC: 'cameraMode', KeyP: 'constellations', KeyG: 'galaxyCycle', KeyT: 'freezeTime', Tab: 'menu', KeyF: 'flyToStar', KeyN: 'cycleStar', KeyX: 'clearSet', KeyV: 'systemView', Escape: 'systemViewClose' };
+	// B toggles the delta-v map over the open schematic (0.5.4).
+	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyC: 'cameraMode', KeyP: 'constellations', KeyG: 'galaxyCycle', KeyT: 'freezeTime', Tab: 'menu', KeyF: 'flyToStar', KeyN: 'cycleStar', KeyX: 'clearSet', KeyV: 'systemView', Escape: 'systemViewClose', KeyB: 'dvmap' };
 	// Exposure accumulates, so key repeat is one more step per repeat.
 	const exposureMap = { BracketLeft: -1, Minus: -1, BracketRight: 1, Equal: 1 };
 	// Linear exposure (ACES pre-multiplier) in half-stop steps. ; darker, ' brighter.

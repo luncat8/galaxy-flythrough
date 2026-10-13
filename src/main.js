@@ -114,6 +114,11 @@ function readParams(search) {
                 // open system, −1 camera-coupled, 0 frozen. Its bounds belong
                 // to the layer the rate acts on.
                 systime: number('systime', window.SystemLayer.SYSTEM_TIME_RATE_DEFAULT),
+                // The delta-v map (§7.4, §7.5): the share of the engine a leg
+                // may burn and the ship class it is read against. Both are
+                // view settings, and their bounds belong to DeltaVLib.
+                budget: number('budget', window.DeltaVLib.BUDGET_DEFAULT),
+                ship: text('ship', window.DeltaVLib.SHIP_DEFAULT),
         };
 }
 
@@ -669,6 +674,23 @@ async function boot() {
                         Math.max(window.SystemLayer.SYSTEM_TIME_RATE_MIN, value));
         }
         let systemTimeRate = clampSystemRate(params.systime);
+        // §7.4's budget and §8.1's ship class: view settings, clamped at the
+        // edge against DeltaVLib so a pasted preset or a URL names values that
+        // exist. The one body pair and leg struct the dv block fills are
+        // preallocated with the rest of the system-view state.
+        function clampBudget(value) {
+                if (!Number.isFinite(value)) return window.DeltaVLib.BUDGET_DEFAULT;
+                return Math.min(window.DeltaVLib.BUDGET_MAX, Math.max(window.DeltaVLib.BUDGET_MIN, value));
+        }
+        function clampShip(name) {
+                return window.DeltaVLib.shipIndex(name);
+        }
+        let dvMapOpen = false;
+        let dvBudget = clampBudget(params.budget);
+        let dvShip = clampShip(params.ship);
+        const dvFrom = window.DeltaVLib.createBody();
+        const dvTo = window.DeltaVLib.createBody();
+        const dvLegOut = window.DeltaVLib.createLeg();
         // §6.5: closer than a parsec, the camera already frames the star, so
         // entering the view only turns it; farther, it flies in.
         const SYSTEM_LOCK_FAR_KPC = 0.001;
@@ -737,6 +759,9 @@ async function boot() {
                 // element is hidden beside it. The camera keeps its target.
                 systemLayer.setEnabled(false);
                 systemCanvas.style.display = 'none';
+                // The map is a view over the schematic: closing the view
+                // closes it too, so a reopening starts from the schematic.
+                setDvMap(false);
                 syncViewRows();
                 if (!wasOpen) return;
                 // The readout returns to what it held before the view opened:
@@ -750,13 +775,16 @@ async function boot() {
                 else openSystemView();
         }
 
-        // The open system's readout (§6.6): the star block and the geometry
-        // line now; 0.5.3-5 writes the per-planet, belt and delta-v lines.
-        // Text at the overlay's 4 Hz cadence, never per frame.
+        // The open system's readout (§6.6): the star block, the geometry line,
+        // one line per planet in outward order, then the belts, then §7.5's
+        // dv block while the map is open. Text at the overlay's 4 Hz cadence,
+        // never per frame; the body selected in the schematic carries the marker.
         function updateSystemReadout() {
                 if (!systemViewOpen) return;
+                const P = window.PlanetsLib;
                 const star = systemRecord.star;
                 const planets = systemRecord.planetCount, belts = systemRecord.beltCount;
+                const selected = systemLayer.selectedBody();
                 sysreadBox.textContent =
                         pad(window.PlanetsLib.starDesignation(systemRecord), 10)
                         + pad(window.StarRecord.SPECTRAL_CLASSES[star.colorIndex], 3)
@@ -767,14 +795,192 @@ async function boot() {
                         + `snow ${formatAu(star.aSnow)} AU   a_out ${formatAu(star.aOut)} AU   `
                         + `system time ${formatSystemTime(systemTimeRate)}   `
                         + `${planets} planet${planets === 1 ? '' : 's'}, `
-                        + `${belts} belt${belts === 1 ? '' : 's'}`;
+                        + `${belts} belt${belts === 1 ? '' : 's'}\n`;
+                const rows = systemRecord.planets;
+                for (let p = 0; p < planets; p++) {
+                        sysreadBox.textContent += planetLine(P, rows, p,
+                                selected.which === window.SystemLayer.BODY_PLANET && selected.index === p);
+                }
+                for (let b = 0; b < belts; b++) {
+                        sysreadBox.textContent += beltLine(systemRecord, b,
+                                selected.which === window.SystemLayer.BODY_BELT && selected.index === b);
+                }
+                if (dvMapOpen) sysreadBox.textContent += deltaVBlock();
                 sysreadBox.style.display = 'block';
                 updateSelectionBox();
+        }
+
+        // One planet row of §6.6: letter and display type, orbit, mass, radius,
+        // insolation, temperatures, eccentricity, period, moons and flags. The
+        // example's columns are the contract — the readout is the checkable
+        // output of §4, not decoration.
+        function planetLine(P, rows, p, selected) {
+                const mass = rows.mass[p];
+                let text = `  ${P.PLANET_LETTERS[p]}  ${P.DISPLAY_NAMES[rows.display[p]].padEnd(12)}`
+                        + `${rows.a[p].toFixed(2).padStart(7)} AU`
+                        + `${(mass >= 0.01 ? mass.toFixed(2) : mass.toExponential(1)).padStart(8)} M⊕`
+                        + `${rows.radius[p].toFixed(2).padStart(8)} R⊕`
+                        + `   S ${Number(rows.insolation[p].toPrecision(3))}`
+                        + `   Teq ${Math.round(rows.teq[p]).toString().padStart(4)} K`
+                        + `  Tsurf ${Math.round(rows.tsurf[p]).toString().padStart(4)} K`
+                        + `  e ${rows.ecc[p].toFixed(2)}`
+                        + `  P ${Number(rows.period[p].toPrecision(4)).toString().padStart(6)} y`;
+                const moons = rows.moons[p];
+                if (moons > 0) text += `  ${moons} moon${moons === 1 ? '' : 's'}`;
+                const flags = rows.flags[p];
+                if (flags & P.FLAG_LOCKED) text += '  locked';
+                if (flags & P.FLAG_RUNAWAY) text += '  runaway';
+                if (flags & P.FLAG_TERRAN) text += '  HZ terran';
+                return text + (selected ? '  ◀ selected' : '') + '\n';
+        }
+
+        // One belt row of §6.6: axis, width in ln a, total mass and the §4.7
+        // typical body every belt in the galaxy shares.
+        function beltLine(record, b, selected) {
+                return `belt ${b + 1}   ${record.belts.a[b].toFixed(2)} AU`
+                        + `   Δln a ${record.belts.dlnA[b].toFixed(2)}`
+                        + `   mass ${record.belts.mass[b].toExponential(1)} M⊕`
+                        + `   typical body ${(window.PlanetsLib.BELT_TYPICAL_R_M / 1000).toFixed(0)} km`
+                        + ` / ${window.PlanetsLib.BELT_TYPICAL_MASS_KG.toExponential(1)} kg`
+                        + (selected ? '  ◀ selected' : '') + '\n';
+        }
+
+        // §7.5's table in §6.6's place: one row per node pair from the
+        // selected body's low orbit — its own legs first, then the transfer to
+        // each other body — with the dv, the minimum-energy time, the time at
+        // the current budget, and what the ship makes of it. The origin is the
+        // schematic's selected body, or the innermost planet when none is.
+        function deltaVBlock() {
+                const V = window.DeltaVLib;
+                const planets = systemRecord.planetCount;
+                const total = planets + systemRecord.beltCount;
+                if (total < 1) return '';
+                const sel = systemLayer.selectedBody();
+                let origin = sel.which === window.SystemLayer.BODY_PLANET ? sel.index
+                        : (sel.which === window.SystemLayer.BODY_BELT ? planets + sel.index : 0);
+                if (origin < 0 || origin >= total) origin = 0;
+                const ship = V.SHIP_CLASSES[dvShip];
+                dvColumnTo(dvFrom, origin);
+                let text = `\ndv  ${dvName(origin)}   budget ${Math.round(dvBudget * 100)}% ${ship.name}`
+                        + `   tank ${ship.dv} km/s, accel ${ship.accel} m/s²\n`
+                        + '  ' + pad('leg', 26) + pad('dv km/s', 10) + pad('t@0', 8)
+                        + pad('t@budget', 11) + 'ship\n';
+                // The origin's own legs, outward from its low orbit.
+                const ownRows = [V.NODE_LOW_ORBIT, V.NODE_GEO, V.NODE_L5, V.NODE_ESCAPE];
+                for (const node of ownRows) {
+                        const dv = V.nodeLegDv(dvFrom, node);
+                        if (dv < 0) continue;
+                        const t = V.nodeLegTimeYr(dvFrom, node);
+                        text += `  ${pad(node === V.NODE_LOW_ORBIT ? 'ground → LEO' : 'LEO → ' + V.NODE_SHORT[nodeSlotOf(node)], 24)}`
+                                + `${pad(dv.toFixed(2), 10)}`
+                                + `${pad(t > 0 ? `${(t * 365.25).toFixed(0)} d` : '', 8)}\n`;
+                }
+                // The transfer to every other body, low orbit to low orbit and
+                // surface to surface where both bodies have a ground node.
+                for (let q = 0; q < total; q++) {
+                        if (q === origin) continue;
+                        dvColumnTo(dvTo, q);
+                        const grounded = (dvFrom.nodes & (V.NODE_SURFACE | V.NODE_BELT_BODY))
+                                && (dvTo.nodes & (V.NODE_SURFACE | V.NODE_BELT_BODY));
+                        const rows = grounded ? [V.NODE_LOW_ORBIT, V.groundNode(dvFrom)] : [V.NODE_LOW_ORBIT];
+                        for (const fromNode of rows) {
+                                const toNode = fromNode === V.NODE_LOW_ORBIT ? V.NODE_LOW_ORBIT : V.groundNode(dvTo);
+                                V.legBetween(dvLegOut, dvFrom, fromNode, dvTo, toNode);
+                                // A leg the tank cannot buy has no time at the
+                                // budget: the row says so instead of repeating
+                                // t_H as though the ship were going.
+                                const over = dvMinOverTank(dvLegOut.dvMin, ship);
+                                text += `  ${pad(`${dvShort(origin)} → ${dvShort(q)}  ${V.NODE_SHORT[nodeSlotOf(fromNode)]}→${V.NODE_SHORT[nodeSlotOf(toNode)]}`, 26)}`
+                                        + `${pad(dvLegOut.dv.toFixed(2), 10)}`
+                                        + `${pad(`${(dvLegOut.tHYr * 365.25).toFixed(0)} d`, 8)}`
+                                        + `${pad(over ? '' : `${flightDays(dvLegOut).toFixed(0)} d`, 11)}`
+                                        + `${feasibility(dvLegOut, ship)}\n`;
+                        }
+                }
+                return text;
+        }
+
+        // The travel time of one leg at the viewer's own budget and ship.
+        function flightDays(leg) {
+                const V = window.DeltaVLib;
+                const ship = V.SHIP_CLASSES[dvShip];
+                const tHS = leg.tHYr * 365.25 * 86400;
+                const ceiling = V.dvCeilingKms(ship, leg.arcM);
+                const dvLeg = V.dvLegKms(leg.dvMin, ceiling, dvBudget);
+                return V.legTimeS(dvLeg, leg.dvMin, leg.arcM, tHS) / 86400;
+        }
+
+        // What the current ship makes of one leg, in the model's own words:
+        // the crossover dv_x, the tank, and the blend between them.
+        function feasibility(leg, ship) {
+                const V = window.DeltaVLib;
+                const tHS = leg.tHYr * 365.25 * 86400;
+                const ceiling = V.dvCeilingKms(ship, leg.arcM);
+                const dvLeg = V.dvLegKms(leg.dvMin, ceiling, dvBudget);
+                if (dvMinOverTank(leg.dvMin, ship)) return 'over the tank';
+                const dvX = ((4 * leg.arcM) / tHS) / 1000;
+                const blend = V.blendFactor(dvLeg, leg.dvMin, leg.arcM, tHS);
+                if (blend <= 0) return `below dv_x ${dvX.toFixed(0)}`;
+                if (blend >= 1) return `brachistochrone over dv_x ${dvX.toFixed(0)}`;
+                return `blend ${blend.toFixed(2)} at dv_x ${dvX.toFixed(0)}`;
+        }
+
+        function dvMinOverTank(dvMin, ship) {
+                return dvMin > ship.dv + 1e-9;
+        }
+
+        // §7.1's six nodes as row-label text, without the ground/belt pair that
+        // a body carries one of.
+        function nodeSlotOf(node) {
+                const V = window.DeltaVLib;
+                if (node === V.NODE_SURFACE || node === V.NODE_BELT_BODY) return 0;
+                if (node === V.NODE_LOW_ORBIT) return 1;
+                if (node === V.NODE_GEO) return 2;
+                if (node === V.NODE_L5) return 3;
+                return 4;
+        }
+
+        // The map's column order, shared with the layer's graph: planets in
+        // outward order, then the belts.
+        function dvColumnTo(out, column) {
+                const planets = systemRecord.planetCount;
+                if (column < planets) {
+                        return window.DeltaVLib.bodyFromSystem(out, systemRecord,
+                                window.DeltaVLib.BODY_KIND_PLANET, column);
+                }
+                return window.DeltaVLib.bodyFromSystem(out, systemRecord,
+                        window.DeltaVLib.BODY_KIND_BELT, column - planets);
+        }
+
+        function dvName(column) {
+                const planets = systemRecord.planetCount;
+                return column < planets
+                        ? window.PlanetsLib.bodyDesignation(systemRecord, 1, column)
+                        : window.PlanetsLib.bodyDesignation(systemRecord, 2, column - planets);
+        }
+
+        // The row label's short form: the IAU letter for a planet, "belt n" for
+        // a belt. The star is named once, in the table's own header.
+        function dvShort(column) {
+                const planets = systemRecord.planetCount;
+                return column < planets
+                        ? window.PlanetsLib.PLANET_LETTERS[column]
+                        : 'belt' + (column - planets + 1);
         }
 
         const btnSystemView = document.getElementById('system-view');
         const sliderSystime = document.getElementById('slider-systime');
         const valSystime = document.getElementById('val-systime');
+        const btnDvmap = document.getElementById('dvmap-toggle');
+        const sliderBudget = document.getElementById('slider-budget');
+        const valBudget = document.getElementById('val-budget');
+        const selectShip = document.getElementById('select-ship');
+        for (const ship of window.DeltaVLib.SHIP_CLASSES) {
+                const option = document.createElement('option');
+                option.value = ship.name;
+                option.textContent = `${ship.name} — accel ${ship.accel} m/s², dv ${ship.dv} km/s`;
+                selectShip.appendChild(option);
+        }
         // Rows a view owns (data-view in index.html), hidden while that view is
         // closed — the engine rows' data-engine mechanism, one level up, so a
         // control that means nothing outside its view is hidden, not disabled.
@@ -796,6 +1002,39 @@ async function boot() {
                 updateSystemReadout();
         });
         syncSystime();
+
+        // §7.5's map toggle and §7.4's budget/ship pair. B is the key; the
+        // button is the menu's own. The map is a view over the schematic, so
+        // it only opens inside the system view.
+        function setDvMap(open) {
+                dvMapOpen = !!open;
+                systemLayer.setMapOpen(dvMapOpen);
+                updateSystemReadout();
+        }
+        function toggleDvMap() {
+                if (!systemViewOpen) return;
+                setDvMap(!dvMapOpen);
+        }
+        btnDvmap.addEventListener('click', toggleDvMap);
+        function syncBudget() {
+                sliderBudget.value = dvBudget;
+                valBudget.textContent = Math.round(dvBudget * 100) + '%';
+        }
+        sliderBudget.addEventListener('input', () => {
+                dvBudget = clampBudget(Number(sliderBudget.value));
+                syncBudget();
+                updateSystemReadout();
+        });
+        function syncShip() {
+                selectShip.value = window.DeltaVLib.SHIP_CLASSES[dvShip].name;
+        }
+        selectShip.addEventListener('change', () => {
+                dvShip = clampShip(selectShip.value);
+                syncShip();
+                updateSystemReadout();
+        });
+        syncBudget();
+        syncShip();
         syncViewRows();
 
         // Brightness slider is linear in multiplier (0.125 – 8.0), not stops,
@@ -993,6 +1232,12 @@ async function boot() {
                         // view state, like the search query, not model state.
                         sysview: systemViewOpen ? 1 : 0,
                         systime: systemTimeRate,
+                        // The delta-v map's own state (§7.5): whether the map
+                        // is open over the schematic, the budget it spends and
+                        // the ship class that reads the budget.
+                        dvmap: dvMapOpen ? 1 : 0,
+                        budget: dvBudget,
+                        ship: window.DeltaVLib.SHIP_CLASSES[dvShip].name,
                         // The search filter and the scope it ran in: the query
                         // is part of the settings, so a pasted preset
                         // reproduces it. The results are not — they are
@@ -1076,6 +1321,18 @@ async function boot() {
                         systemTimeRate = clampSystemRate(s.systime);
                         syncSystime();
                 }
+                // The map's two knobs first, then the view, then the map: the
+                // budget and the ship are clamping-valid, the view is what the
+                // map opens over, and a pasted dvmap=0 closes a map the same
+                // line would have closed with the view.
+                if (s.budget !== undefined) {
+                        dvBudget = clampBudget(s.budget);
+                        syncBudget();
+                }
+                if (s.ship !== undefined) {
+                        dvShip = clampShip(s.ship);
+                        syncShip();
+                }
                 // The view is applied last: opening needs a primary to open
                 // on, and a pasted line may have just restored the selection.
                 // A closed view closes — the line is what is on screen.
@@ -1083,6 +1340,7 @@ async function boot() {
                         if (s.sysview) openSystemView();
                         else closeSystemView();
                 }
+                if (s.dvmap !== undefined) setDvMap(!!s.dvmap);
                 if (systemViewOpen) updateSystemReadout();
                 syncSlidersFromRenderer();
                 updateOverlay(renderer.state, camera.getState(statsText));
@@ -1401,16 +1659,19 @@ async function boot() {
                 selection.setOrbitState(model, starTimeMyr);
                 if (actions.pick) {
                         actions.pick = 0;
-                        if (systemViewOpen) {
+                        if (systemViewOpen && !dvMapOpen) {
                                 // §6.3: the schematic owns the click while it is
                                 // open — a distance test against the icons the
                                 // draw placed, no projection and no camera. A
                                 // miss clears the system-view selection and
-                                // stays in the view.
+                                // stays in the view. The delta-v map is a graph
+                                // with nothing to hit yet (0.5.5 picks its
+                                // endpoints), so a click over it falls through
+                                // to the star picker below.
                                 const body = systemLayer.pick(input.state.pickX, input.state.pickY);
                                 systemLayer.setSelectedBody(body ? body.which : window.SystemLayer.BODY_NONE,
                                         body ? body.index : -1);
-                        } else {
+                        } else if (!systemViewOpen) {
                                 // Any drawn star, from any of the five record blocks —
                                 // not just the named table. Shift toggles set membership
                                 // without moving the primary; a plain click replaces the
@@ -1435,6 +1696,12 @@ async function boot() {
                 if (actions.systemView) {
                         actions.systemView = 0;
                         toggleSystemView();
+                }
+                // §7.5: B only means something inside the view — a map without
+                // an open system has nothing to map.
+                if (actions.dvmap) {
+                        actions.dvmap = 0;
+                        toggleDvMap();
                 }
                 // Esc is close-only: a press with no view open is a no-op.
                 if (actions.systemViewClose) {

@@ -20,6 +20,7 @@ const OrbitLib = require('../src/math/orbit.js');
 const GalaxyLib = require('../src/math/galaxy.js');
 const Selection = require('../src/core/selection.js');
 const SystemLayer = require('../src/render/system-layer.js');
+const DeltaV = require('../src/math/deltav.js');
 const Presets = require('../src/core/presets.js');
 
 const checks = [];
@@ -38,6 +39,7 @@ const SETTINGS = {
 	exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
 	selrad: 50, selstars: [123456789, 4294967295, 7],
 	sysview: 1, systime: 2,
+	dvmap: 0, budget: 0.35, ship: 'chemical',
 	search: 'cls=G,K;pt=terran;ts=220-300', scope: 'galaxy',
 	stars: 300000, catalog: 250000,
 };
@@ -126,6 +128,30 @@ check('main.js applies the system-view fields and advances the view clock', () =
 	assert.ok(/FLIGHT_TIME_GAIN \* cameraStateForTime\.speedLyPerSec/.test(main), 'the follow rate');
 });
 
+check('the delta-v map rides the line and main.js wires its three controls', () => {
+	// §9.4: dvmap, budget and ship — the map is a view over the schematic, so
+	// its state rides the line beside the view's own.
+	const query = Presets.serialize(SETTINGS);
+	assert.ok(new URLSearchParams(query).get('dvmap') === '0');
+	assert.ok(new URLSearchParams(query).get('budget') === '0.35');
+	assert.ok(new URLSearchParams(query).get('ship') === 'chemical');
+	assert.deepEqual(Presets.parse('dvmap=1&budget=0.8&ship=fusion'), { dvmap: 1, budget: 0.8, ship: 'fusion' });
+	const described = Presets.describe(SETTINGS);
+	assert.ok(described.dvmap === undefined && described.budget === undefined && described.ship === undefined);
+	assert.ok(!Presets.buildLlmPrompt(SETTINGS).includes('chemical'), 'the ship class leaked into the prompt');
+	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
+	assert.ok(/if \(s\.budget !== undefined\)/.test(main), 'budget applied');
+	assert.ok(/if \(s\.ship !== undefined\)/.test(main), 'ship applied');
+	assert.ok(/if \(s\.dvmap !== undefined\)/.test(main), 'dvmap applied');
+	assert.ok(main.includes('clampBudget') && main.includes('clampShip'), 'clamped at the edge');
+	assert.ok(main.includes('actions.dvmap'), 'B is consumed');
+	assert.ok(main.includes('function deltaVBlock'), 'the dv block is written');
+	const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
+	assert.ok(html.includes('id="dvmap-toggle"') && html.includes('id="slider-budget"') && html.includes('id="select-ship"'),
+			'the menu rows exist');
+	assert.ok(/B\s+delta-v map over the schematic/.test(html), '#help documents B');
+});
+
 // --- disabled passes are not part of the preset -----------------------------
 // A knob of a movement pass that is not selected describes nothing that runs:
 // the copied line must not carry it, a pasted line must not apply it, and the
@@ -209,10 +235,12 @@ check('menuDefaults matches the modules that own the numbers', () => {
 	assert.equal(d.apoForce, OrbitLib.APOCENTER_FORCE_UI_DEFAULT);
 	assert.equal(d.selrad, Selection.SELECT_RADIUS_LY_DEFAULT);
 	assert.equal(d.systime, SystemLayer.SYSTEM_TIME_RATE_DEFAULT);
+	assert.equal(d.budget, DeltaV.BUDGET_DEFAULT);
+	assert.equal(d.ship, DeltaV.SHIP_DEFAULT);
 	assert.deepEqual(d, {
 		exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
 		time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
-		selrad: 50, systime: 0,
+		selrad: 50, systime: 0, dvmap: 0, budget: 0.35, ship: 'chemical',
 	});
 });
 

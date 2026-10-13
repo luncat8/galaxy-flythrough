@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-12T15:57:20.176Z",
+  "date": "2026-10-13T05:42:59.393Z",
   "model": {
     "type": "SBb",
     "seed": 42
@@ -95,18 +95,18 @@
     },
     "heap": {
       "trials": [
-        -1002064,
-        -1002016,
-        -1001800,
-        1059264,
-        1882560
+        -540480,
+        -540416,
+        -540008,
+        76128,
+        1521632
       ],
-      "median": -1001800,
+      "median": -540008,
       "exposedGc": false
     },
     "timings": {
-      "generateUs": 1.595,
-      "summaryUs": 1.02
+      "generateUs": 1.688,
+      "summaryUs": 1.08
     }
   },
   "totalChecks": 75,
@@ -116,7 +116,7 @@
     {
       "name": "the module exposes the record factories, the generators and the readers",
       "pass": true,
-      "detail": 136
+      "detail": 137
     },
     {
       "name": "the same key regenerates a bit-identical system (no PRNG, no clock)",
@@ -707,13 +707,13 @@
       "pass": true,
       "detail": {
         "trials": [
-          -1002064,
-          -1002016,
-          -1001800,
-          1059264,
-          1882560
+          -540480,
+          -540416,
+          -540008,
+          76128,
+          1521632
         ],
-        "median": -1001800,
+        "median": -540008,
         "exposedGc": false
       }
     },
@@ -721,24 +721,24 @@
       "name": "generateSystem runs inside the 20 µs budget",
       "pass": true,
       "detail": {
-        "generateUs": 1.595,
-        "summaryUs": 1.02
+        "generateUs": 1.688,
+        "summaryUs": 1.08
       }
     },
     {
       "name": "systemSummary runs inside the 6 µs budget",
       "pass": true,
       "detail": {
-        "generateUs": 1.595,
-        "summaryUs": 1.02
+        "generateUs": 1.688,
+        "summaryUs": 1.08
       }
     },
     {
       "name": "the summary is the cheap path",
       "pass": true,
       "detail": {
-        "generateUs": 1.595,
-        "summaryUs": 1.02
+        "generateUs": 1.688,
+        "summaryUs": 1.08
       }
     }
   ]

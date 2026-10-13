@@ -281,6 +281,60 @@
       ]
     },
     {
+      "name": "the map labels the star and one column per body, planets outward then belts",
+      "pass": true,
+      "detail": [
+        "S740I",
+        "S740I b",
+        "S740I c",
+        "S740I d",
+        "S740I belt 1"
+      ]
+    },
+    {
+      "name": "the map draws the star and every node the bodies have",
+      "pass": true,
+      "detail": {
+        "arcs": 18,
+        "expected": 18
+      }
+    },
+    {
+      "name": "each column stacks its nodes on its own x, MAP_NODE_DY apart",
+      "pass": true,
+      "detail": {
+        "nodes": 17,
+        "expected": 17
+      }
+    },
+    {
+      "name": "every edge is labelled in km/s to 0.1, the launch leg first",
+      "pass": true,
+      "detail": {
+        "count": 17,
+        "first": "10.5",
+        "launch": "10.5"
+      }
+    },
+    {
+      "name": "the map graph has nothing to pick yet (0.5.5 picks endpoints)",
+      "pass": true
+    },
+    {
+      "name": "the selected body’s nodes are rung in the schematic’s own ring colour",
+      "pass": true,
+      "detail": 4
+    },
+    {
+      "name": "closing the map returns to the schematic, pickable again",
+      "pass": true,
+      "detail": {
+        "x": 316.5324363501729,
+        "y": 227.2663277418955,
+        "r": 5
+      }
+    },
+    {
       "name": "a closed view draws nothing, picks nothing and keeps no time",
       "pass": true,
       "detail": 0
@@ -298,13 +352,13 @@
       "pass": true,
       "detail": {
         "trials": [
-          321112,
-          240280,
-          240240,
-          240240,
-          240480
+          12438496,
+          -3745912,
+          -3988752,
+          -4062128,
+          12432480
         ],
-        "median": 240280,
+        "median": -3745912,
         "exposedGc": false
       }
     }
@@ -326,15 +380,19 @@
       "planets": 3,
       "dots": 384
     },
+    "map": {
+      "bodies": 4,
+      "edges": 17
+    },
     "heap": {
       "trials": [
-        321112,
-        240280,
-        240240,
-        240240,
-        240480
+        12438496,
+        -3745912,
+        -3988752,
+        -4062128,
+        12432480
       ],
-      "median": 240280,
+      "median": -3745912,
       "exposedGc": false
     }
   }

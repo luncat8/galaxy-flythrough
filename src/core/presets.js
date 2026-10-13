@@ -48,6 +48,14 @@ const FIELDS = [
 	// the rate acts on.
 	{ key: 'sysview', label: 'system view', prompt: false },
 	{ key: 'systime', label: 'system time', unit: ' y/s', prompt: false },
+	// The delta-v map (0.5.4): whether the map is open over the schematic, the
+	// share of the engine a leg may burn, and the ship class that share is read
+	// against. Like the system view's own state, not the galaxy's — the ship
+	// table and the budget bounds belong to DeltaVLib, the module that clamps
+	// them.
+	{ key: 'dvmap', label: 'delta-v map', prompt: false },
+	{ key: 'budget', label: 'energy budget', prompt: false },
+	{ key: 'ship', label: 'ship class', text: true, prompt: false },
 	// The selection's keys, primary first, '.'-separated. §3.2 keeps the set as
 	// identities rather than buffer slots, so the contents survive a camera
 	// move and a pasted line reproduces the same working set. `prompt: false`
@@ -74,6 +82,7 @@ function menuDefaults() {
 	const r = g.StarRenderer;
 	const o = g.OrbitLib;
 	const s = g.Selection;
+	const v = g.DeltaVLib;
 	return {
 		exposure: r.EXPOSURE_DEFAULT,
 		brightness: r.LINEAR_EXPOSURE_DEFAULT,
@@ -88,6 +97,9 @@ function menuDefaults() {
 		apoForce: o.APOCENTER_FORCE_UI_DEFAULT,
 		selrad: s.SELECT_RADIUS_LY_DEFAULT,
 		systime: g.SystemLayer.SYSTEM_TIME_RATE_DEFAULT,
+		dvmap: 0,
+		budget: v.BUDGET_DEFAULT,
+		ship: v.SHIP_DEFAULT,
 	};
 }
 

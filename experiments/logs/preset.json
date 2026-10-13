@@ -33,6 +33,10 @@
       "pass": true
     },
     {
+      "name": "the delta-v map rides the line and main.js wires its three controls",
+      "pass": true
+    },
+    {
       "name": "serialize drops the fields of a pass that is not selected",
       "pass": true
     },

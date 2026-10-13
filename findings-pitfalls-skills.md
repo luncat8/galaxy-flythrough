@@ -1374,3 +1374,40 @@ of the rest of its system**, so drawing a system of one planet places that plane
 where the full schematic draws it. Promoting a planet to slot 0 and drawing it alone reads
 its icon position off the canvas without assuming any ordering, which is what makes an
 overlapping-pads fixture honest.
+
+## 2026-10-13 — the delta-v map: node codes must be bits, and a stub records arc-time styles
+
+**Enum codes that double as a bitmask must be powers of two.** `deltav.js` first wrote its
+node codes as `SURFACE 0, LOW_ORBIT 1, GEO 2, L5 3, ESCAPE 4, BELT_BODY 5` — sequential, the
+way every other enum in the repo is written. `NODE_L5 = 3` then overlapped
+`LOW_ORBIT | GEO` in the mask, and `NODE_SURFACE = 0` was invisible to `&` entirely, so
+every planet appeared to have a geostationary orbit and no solid body carried a surface. The
+bug is invisible in any check that reads a single code and fatal in every check that reads
+the set; a generated-system invariant ("a gas giant carries no surface node") caught it on
+the first run. If a field is ever tested with `&`, its codes are bits from the start.
+
+**A stub 2D context records the style at `arc()` time, not at `stroke()` time.** The
+schematic sets `strokeStyle` *before* queuing its ring arc, so an arc-time capture is correct
+there — and the same capture silently lies for a draw that fills and then strokes one arc,
+because the style in force at the stroke is the one the reader needs. The fix on the draw
+side is to set the style before the arc (one line, and it reads the same way the schematic
+rings its icons); on the stub side, a `stroke()`-time capture would be the general answer,
+but matching the draw to the existing stub was the smaller change.
+
+## 2026-10-13 — patched conics: the departure burn at periapsis already is the escape
+
+Writing §7.2's inter-body chain, the standard textbook composition is escape-then-depart:
+C3 = 0 out of the primary's well, then the Hohmann departure burn at the star's distance. It
+is wrong by one burn — the departure burn is made at the low-orbit periapsis, and the same
+km/s that takes the craft from the planet's heliocentric orbit onto the transfer ellipse also
+carries the hyperbolic excess that leaves the well. Adding a separate (√2−1)·v_circ escape
+burn on top double-counts, and the published Earth-surface → Mars-surface budget says so:
+the honest chain is launch + departure + arrival + landing at ~15.4 km/s, against ~18.6 for
+the five-term sum.
+
+The number that settled it was not physics but the plan's own pins: §7.3's
+`Earth surface → Mars surface = 15.37` and §6.6's readout block `13.85` are both four-term
+numbers, computed from the four-term chain. When a spec's prose and its worked example
+disagree, the worked example is the contract — the test asserts it, and the prose gets
+edited to match (documented in §11.1). Same lesson as the H/He aerocapture fraction: a "—"
+in a constants table means *no credit*, and writing 1 gave gas giants free arrival burns.

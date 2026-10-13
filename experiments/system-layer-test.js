@@ -601,7 +601,93 @@ function beltRadius(axis, aAu) {
 	stats.ring = { planets: entry.planetCount, dots: dots.length };
 }
 
-// ---- 7. A closed view is inert -------------------------------------------
+// ---- 7. The delta-v map (§7.5) --------------------------------------------
+{
+	const dv = require('../src/math/deltav.js');
+	const entry = findSystem('sun', r => separated(r, 3) && r.beltCount >= 1);
+	const ctx = createStubContext();
+	const layer = openLayer(entry, ctx);
+	const bodyCount = entry.planetCount + entry.beltCount;
+	const bodies = [];
+	for (let i = 0; i < bodyCount; i++) {
+		const b = dv.createBody();
+		dv.bodyFromSystem(b, entry, i < entry.planetCount ? dv.BODY_KIND_PLANET : dv.BODY_KIND_BELT,
+			i < entry.planetCount ? i : i - entry.planetCount);
+		bodies.push(b);
+	}
+	let expectedNodes = 1;   // the star
+	for (const b of bodies) {
+		let bits = b.nodes;
+		while (bits) { expectedNodes += bits & 1; bits >>>= 1; }
+	}
+
+	layer.setMapOpen(true);
+	frame(layer, ctx);
+	// The star's own label sits at the end of the frame, after the edges: the
+	// last bodyCount + 1 texts are the star and one column per body.
+	const columns = [];
+	for (let i = ctx.textCount - (bodyCount + 1); i < ctx.textCount; i++) columns.push(ctx.textS[i]);
+	const expectedColumns = [planets.bodyDesignation(entry, 0, 0)];
+	for (let p = 0; p < entry.planetCount; p++) expectedColumns.push(planets.bodyDesignation(entry, 1, p));
+	for (let b = 0; b < entry.beltCount; b++) expectedColumns.push(planets.bodyDesignation(entry, 2, b));
+	check('the map labels the star and one column per body, planets outward then belts',
+		JSON.stringify(columns) === JSON.stringify(expectedColumns), columns);
+
+	const nodes = [];
+	for (let i = 0; i < ctx.arcCount; i++) {
+		if (ctx.arcR[i] === systemLayer.MAP_NODE_R) nodes.push([ctx.arcX[i], ctx.arcY[i]]);
+	}
+	check('the map draws the star and every node the bodies have',
+		ctx.arcCount === expectedNodes && ctx.clearCount === 1,
+		{ arcs: ctx.arcCount, expected: expectedNodes });
+
+	// Each column's nodes are stacked on its x, spaced MAP_NODE_DY apart.
+	let stacked = true;
+	let index = 0;
+	for (const b of bodies) {
+		let bits = b.nodes, present = 0;
+		while (bits) { present += bits & 1; bits >>>= 1; }
+		const ys = [];
+		for (let k = 0; k < present; k++) ys.push(nodes[index + k]);
+		index += present;
+		for (let k = 1; k < ys.length; k++) {
+			if (Math.abs(ys[k][0] - ys[0][0]) > 0.01) stacked = false;
+			if (Math.abs(Math.abs(ys[k][1] - ys[k - 1][1]) - systemLayer.MAP_NODE_DY) > 0.01) stacked = false;
+		}
+	}
+	check('each column stacks its nodes on its own x, MAP_NODE_DY apart', stacked && index === nodes.length, { nodes: nodes.length, expected: index });
+
+	// The edge labels are km/s to one decimal, and the first one is the origin
+	// column's launch leg — the same closed form dv-map-test.js pins.
+	const edgeLabels = [];
+	for (let i = 0; i < ctx.textCount - (bodyCount + 1); i++) edgeLabels.push(ctx.textS[i]);
+	let labelsOk = edgeLabels.length > 0 && edgeLabels.every((t) => /^\d+\.\d$/.test(t));
+	const launch = dv.nodeLegDv(bodies[0], dv.NODE_LOW_ORBIT);
+	if (launch >= 0 && edgeLabels.length) labelsOk = labelsOk && edgeLabels[0] === launch.toFixed(1);
+	check('every edge is labelled in km/s to 0.1, the launch leg first',
+		labelsOk, { count: edgeLabels.length, first: edgeLabels[0], launch: launch.toFixed(1) });
+
+	check('the map graph has nothing to pick yet (0.5.5 picks endpoints)',
+		layer.pick(CX, CY) === null);
+
+	layer.setSelectedBody(systemLayer.BODY_PLANET, 1);
+	frame(layer, ctx);
+	let rung = 0;
+	for (let i = 0; i < ctx.arcCount; i++) {
+		if (ctx.arcStroke[i] === systemLayer.SYS_SELECT_RING) rung++;
+	}
+	check('the selected body’s nodes are rung in the schematic’s own ring colour', rung >= 2, rung);
+
+	layer.setMapOpen(false);
+	frame(layer, ctx);
+	const icon = planetIcon(layer, ctx, entry, 0);
+	check('closing the map returns to the schematic, pickable again',
+		!!icon && !!hitInfo(layer.pick(icon.x, icon.y)), icon);
+
+	stats.map = { bodies: bodyCount, edges: edgeLabels.length };
+}
+
+// ---- 8. A closed view is inert -------------------------------------------
 {
 	const entry = findSystem('sun', r => separated(r, 2));
 	const ctx = createStubContext();
@@ -640,7 +726,7 @@ function beltRadius(axis, aAu) {
 		reopened, { dots: spun.length, clears: ctx.clearCount });
 }
 
-// ---- 8. No allocation across 1 000 draw calls ----------------------------
+// ---- 9. No allocation across 1 000 draw calls ----------------------------
 {
 	const entry = findSystem('sun', r => separated(r, 2) && r.beltCount >= 1);
 	const ctx = createStubContext();

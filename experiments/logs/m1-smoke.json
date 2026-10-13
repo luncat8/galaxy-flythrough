@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-13T03:03:14.242Z",
+  "date": "2026-10-13T05:42:20.005Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -8,6 +8,7 @@
     "math/star-record.js",
     "math/star-types.js",
     "math/planets.js",
+    "math/deltav.js",
     "math/orbit.js",
     "math/nebula.js",
     "math/objects.js",
@@ -43,6 +44,7 @@
     "data/landmarks.js",
     "main.js",
     "math/coords.js",
+    "math/deltav.js",
     "math/density.js",
     "math/galaxy.js",
     "math/hash.js",
@@ -73,8 +75,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 28,
-        "sources": 28,
+        "scripts": 29,
+        "sources": 29,
         "missing": []
       }
     },
@@ -152,6 +154,7 @@
         "StarRecord",
         "StarTypesLib",
         "PlanetsLib",
+        "DeltaVLib",
         "OrbitLib",
         "NebulaLib",
         "ObjectsLib",
@@ -220,7 +223,7 @@
       "name": "PlanetsLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 136
+        "keys": 137
       }
     },
     {
@@ -346,7 +349,7 @@
       "name": "SystemLayer loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 17
+        "keys": 21
       }
     },
     {
@@ -433,7 +436,9 @@
         "headroom": 8,
         "highlight": 1,
         "selrad": 50,
-        "systime": 0
+        "systime": 0,
+        "budget": 0.35,
+        "ship": "chemical"
       }
     },
     {
@@ -458,7 +463,9 @@
         "headroom": 8,
         "highlight": 1,
         "selrad": 50,
-        "systime": 0
+        "systime": 0,
+        "budget": 0.35,
+        "ship": "chemical"
       }
     },
     {
@@ -483,7 +490,9 @@
         "headroom": 8,
         "highlight": 1,
         "selrad": 50,
-        "systime": 0
+        "systime": 0,
+        "budget": 0.35,
+        "ship": "chemical"
       }
     },
     {
