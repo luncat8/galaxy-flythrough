@@ -155,7 +155,7 @@ function paramOfBelt(record, k, muStar, out) {
 	out.hasL5    = false;
 	out.aM       = aM;
 	out.vOrbStar = vCirc(muStar, aM);
-	out.periodS  = Math.sqrt(aM * aM * aM / muStar);
+	out.periodS  = TAU * Math.sqrt(aM * aM * aM / muStar);
 	out.incDeg   = 0;
 	return out;
 }
@@ -272,29 +272,24 @@ function legLoToLo(muStar, bodyA, bodyB, propulsive, out) {
 	const a1 = bodyA.aM, a2 = bodyB.aM;
 	// Inward vs outward — formulas are symmetric in absolute value; we still
 	// compute the forward direction because capture on A/B differs in body.
-	const hh = {};
-	hohmannStarFrame(muStar, a1, a2, hh);
-	const dep = {};
-	departureBurnLo(bodyA, hh.dvDep, dep);
-	const capB = {};
-	captureBurn(bodyB, hh.dvArr, propulsive, capB);
-	out.dvDepLo = dep.dv;
-	out.dvDepStar = hh.dvDep;
-	out.dvCapB = capB.dv;
-	out.dvCapRawB = capB.dvCap;
-	out.aeroFracB = capB.aeroFrac;
-	out.dvArrStar = hh.dvArr;
-	out.dvLoToLo = dep.dv + capB.dv;
-	out.tH = hh.tH;
-	out.aT = hh.aT;
+	hohmannStarFrame(muStar, a1, a2, out);
+	departureBurnLo(bodyA, out.dvDep, out);
+	out.dvDepLo = out.dv;
+	out.dvDepStar = out.dvDep;
+	captureBurn(bodyB, out.dvArr, propulsive, out);
+	out.dvCapB = out.dv;
+	out.dvCapRawB = out.dvCap;
+	out.aeroFracB = out.aeroFrac;
+	out.dvArrStar = out.dvArr;
+	out.dvLoToLo = out.dvDepLo + out.dvCapB;
 	// Path length d = π·(a1+a2)/2 metres (the Hohmann half-ellipse arc, §7.4)
 	// and the crossover dv at which brachistochrone beats the ellipse.
 	out.arcM = Math.PI * 0.5 * (a1 + a2);
-	out.dvX = 4 * out.arcM / hh.tH;
+	out.dvX = 4 * out.arcM / out.tH;
 	// Phase/synodic wait for the alignment window (plan §8.4):
 	// t_syn = 2π/|n1 − n2|, n = 2π/P ⇒ t_syn = P1·P2/|P2 − P1|.
 	const P1 = bodyA.periodS, P2 = bodyB.periodS;
-	const tSyn = Math.abs(P1 * P2 / (P2 - P1));
+	const tSyn = P1 === P2 ? Infinity : Math.abs(P1 * P2 / (P2 - P1));
 	out.tWaitSyn = tSyn;
 	return out;
 }
@@ -312,7 +307,7 @@ function legTimes(leg, ship, budget, out) {
 	const dvX = leg.dvX;
 	// dv_ceiling = min(2·sqrt(a·d), ship.dvMax)
 	const dvAccel = 2 * Math.sqrt(Math.max(0, ship.accel) * d);
-	const dvCeiling = Math.min(dvAccel, ship.dvMax > 0 ? ship.dvMax : Infinity);
+	const dvCeiling = Math.min(dvAccel, Math.max(0, ship.dvMax));
 	const b = budget < 0 ? 0 : budget > 1 ? 1 : budget;
 	let dvLeg;
 	if (dvMin <= 0 || dvCeiling <= dvMin || !(isFinite(dvCeiling))) {
@@ -326,7 +321,7 @@ function legTimes(leg, ship, budget, out) {
 	const tBrach = dvLeg > 0 ? 4 * d / Math.max(dvLeg, dvX) : Infinity;
 	const t = tH * (1 - sClamp) + tBrach * sClamp;
 	// Wait scales with (1 − s): more energy → less need for alignment.
-	const tWait = leg.tWaitSyn * (1 - sClamp);
+	const tWait = sClamp === 1 ? 0 : leg.tWaitSyn * (1 - sClamp);
 	// Feasibility: required accel a = dv²/(4d) ≤ ship.accel AND dv ≤ tank.
 	const aRequired = (d > 0) ? (dvLeg * dvLeg) / (4 * d) : 0;
 	const feasible = dvLeg <= ship.dvMax + 1e-6 && aRequired <= ship.accel + 1e-9;
@@ -486,16 +481,13 @@ function interEdgeIndex(nBodies, i, j) {
 	return i * (nBodies - 1) + col;
 }
 
-// --- Ship classes (plan §8.1): 0.5.4 only needs the dv-budget math, so the
-// table lives here and route.js imports it. Classes not yet used by routes
-// are still exposed so the time-at-budget readout can print all five rows
-// (§6.6's example shows chemical/fusion/stardrive in the dv block).
+// Shared ship table (plan §8.1); vCruise is a fraction of c, dvMax is m/s.
 const SHIP_CLASSES = [
-	{ id: 'chemical',   accel: 3,     dvMax: 20e3,     vCruise: 0, domain: 'in-system',       label: 'chemical' },
-	{ id: 'nuclear',    accel: 1,     dvMax: 40e3,     vCruise: 0, domain: 'in-system',       label: 'nuclear' },
-	{ id: 'fusion',     accel: 0.3,   dvMax: 12e6,     vCruise: 0.02, domain: 'interstellar', label: 'fusion' },
-	{ id: 'stardrive',  accel: 10,    dvMax: 200e6,    vCruise: 0.10, domain: 'interstellar', label: 'stardrive' },
-	{ id: 'generation', accel: 0.001, dvMax: 6e6,      vCruise: 0.005, domain: 'interstellar', label: 'generation' },
+	{ id: 'chemical',   accel: 3,     dvMax: 20e3,     vCruise: 0, domain: 'in-system',       label: 'chemical', cargo: 20, crew: 6, lifeYears: 2, color: '#ffcc80' },
+	{ id: 'nuclear',    accel: 1,     dvMax: 40e3,     vCruise: 0, domain: 'in-system',       label: 'nuclear', cargo: 80, crew: 12, lifeYears: 4, color: '#ffe680' },
+	{ id: 'fusion',     accel: 0.3,   dvMax: 12e6,     vCruise: 0.02, domain: 'interstellar', label: 'fusion', cargo: 2000, crew: 40, lifeYears: 30, color: '#80e8ff' },
+	{ id: 'stardrive',  accel: 10,    dvMax: 200e6,    vCruise: 0.10, domain: 'interstellar', label: 'stardrive', cargo: 20000, crew: 200, lifeYears: 200, color: '#bd9fff' },
+	{ id: 'generation', accel: 0.001, dvMax: 6e6,      vCruise: 0.005, domain: 'interstellar', label: 'generation', cargo: 1000000, crew: 5000, lifeYears: Infinity, color: '#a4e890' },
 ];
 function shipById(id) {
 	for (let i = 0; i < SHIP_CLASSES.length; i++) {

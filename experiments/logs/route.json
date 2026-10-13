@@ -1,0 +1,146 @@
+{
+	"checks": [
+		{
+			"name": "shared ship table, payload, crew and full-tank burn times",
+			"pass": true
+		},
+		{
+			"name": "all interstellar ships can accelerate and decelerate at their cruise speed",
+			"pass": true
+		},
+		{
+			"name": "Earth–Mars launch angle and synodic period pins",
+			"pass": true
+		},
+		{
+			"name": "signed outward window reaches required phase",
+			"pass": true
+		},
+		{
+			"name": "signed inward window reaches required phase",
+			"pass": true
+		},
+		{
+			"name": "high-energy legs have no wait; equal periods never yield NaN",
+			"pass": true
+		},
+		{
+			"name": "mean low-energy wait is half the synodic period",
+			"pass": true
+		},
+		{
+			"name": "one-way LO chain uses the DV map once and fits a chemical hull",
+			"pass": true
+		},
+		{
+			"name": "surface chain includes launch and landing with cumulative fuel",
+			"pass": true
+		},
+		{
+			"name": "escape-node departure spends heliocentric dv, not another escape burn",
+			"pass": true
+		},
+		{
+			"name": "round trip includes layover, reverse capture and its own window",
+			"pass": true
+		},
+		{
+			"name": "identical nodes and absent GEO/surface nodes reject launch",
+			"pass": true
+		},
+		{
+			"name": "same-body GEO route costs only the one-body edge",
+			"pass": true
+		},
+		{
+			"name": "acceleration ceiling is self-consistent and max budget speeds fusion up",
+			"pass": true
+		},
+		{
+			"name": "Hohmann ellipse starts at departure and arrives at target, also inward",
+			"pass": true
+		},
+		{
+			"name": "powered flip is half the chord at midpoint",
+			"pass": true
+		},
+		{
+			"name": "wait holds at moving departure, spent dv stays bounded",
+			"pass": true
+		},
+		{
+			"name": "10 ly and 1 kpc cruise times, tank and life limits",
+			"pass": true
+		},
+		{
+			"name": "short interstellar legs use triangular burns and nonnegative coasting",
+			"pass": true
+		},
+		{
+			"name": "interstellar ship position follows XYZ snapshots and flip/coast timing",
+			"pass": true
+		},
+		{
+			"name": "interstellar fuel stays constant during coasting",
+			"pass": true
+		},
+		{
+			"name": "zero remaining tank never becomes unlimited fuel",
+			"pass": true
+		},
+		{
+			"name": "route rebuild resets all previous totals and feasibility",
+			"pass": true
+		},
+		{
+			"name": "belt period equals the dots’ Kepler-year clock (2π regression)",
+			"pass": true
+		},
+		{
+			"name": "DV toggle, budget, ship survive presets and invalid ship is rejected",
+			"pass": true
+		},
+		{
+			"name": "DV map is centered, fitted above report and graph picking uses its transform",
+			"pass": true
+		},
+		{
+			"name": "map fits narrow screens, DPR and menu clearance",
+			"pass": true
+		},
+		{
+			"name": "graph endpoint picking, pause/resume and frozen system clock",
+			"pass": true
+		},
+		{
+			"name": "completion stops flight, schematic draws ship and report has live fuel",
+			"pass": true
+		},
+		{
+			"name": "selected belt readout uses packed body index, not MAX_PLANETS",
+			"pass": true
+		},
+		{
+			"name": "two graph draws do not reformat labels or allocate leg structures",
+			"pass": true
+		},
+		{
+			"name": "transfer Kepler solver remains accurate up to e = 0.9999",
+			"pass": true
+		},
+		{
+			"name": "round-trip fuel is not reset at layover; life covers waits",
+			"pass": true
+		},
+		{
+			"name": "maximum generated body count fits and remains pickable",
+			"pass": true
+		},
+		{
+			"name": "search UI calls the exported planet-type bit function",
+			"pass": true
+		}
+	],
+	"passed": 35,
+	"failed": 0
+}

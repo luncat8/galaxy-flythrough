@@ -32,6 +32,7 @@ const MODULES = [
 	{ file: '../src/math/deltav.js', global: 'DeltaVLib' },
 	{ file: '../src/math/objects.js', global: 'ObjectsLib' },
 	{ file: '../src/math/coords.js', global: 'Coords' },
+	{ file: '../src/core/route.js', global: 'RouteLib' },
 	{ file: '../src/core/camera.js', global: 'Camera' },
 	{ file: '../src/core/input.js', global: 'Input' },
 	{ file: '../src/core/presets.js', global: 'Presets' },

@@ -50,6 +50,9 @@ const FIELDS = [
 	// pasted sysview=1 with no primary opens nothing — an honest no-op.
 	{ key: 'sysview', label: 'system view' },
 	{ key: 'systime', label: 'system time', unit: ' y/s' },
+	{ key: 'dvmap', label: 'delta-v map' },
+	{ key: 'dvbudget', label: 'energy budget' },
+	{ key: 'ship', label: 'ship class' },
 	{ key: 'stars', label: 'procedural stars' },
 	{ key: 'catalog', label: 'catalog budget' },
 ];
@@ -81,6 +84,7 @@ function menuDefaults() {
 		// 0, the frozen default. Whether the view is *open* is working state
 		// like the search results — the Defaults button does not close it.
 		systime: g.SystemLayer ? g.SystemLayer.SYSTIME_DEFAULT : 0,
+		dvmap: 0, dvbudget: g.SystemLayer ? g.SystemLayer.BUDGET_DEFAULT : 0.35, ship: 'chemical',
 	};
 }
 
@@ -165,6 +169,10 @@ function parse(query) {
 			if (selected && selected.length) out.engine = selected;
 			continue;
 		}
+		if (field.key === 'ship') {
+			if (['chemical', 'nuclear', 'fusion', 'stardrive', 'generation'].includes(raw)) out.ship = raw;
+			continue;
+		}
 		if (field.key === 'type' || field.key === 'search') {
 			out[field.key] = raw;
 			continue;
@@ -216,7 +224,7 @@ function buildLlmPrompt(settings) {
 	lines.push('- star system: ' + ['type ' + (d.type || 'SBb'), 'seed ' + (d.seed || '42'),
 		'age ' + (d.age || '13.5 Gyr')].join(', '));
 	lines.push('- star movement stability engine: ' + (d.engine || 'classic'));
-	for (const key of ['time', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad', 'sysview', 'systime']) {
+	for (const key of ['time', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad', 'sysview', 'systime', 'dvmap', 'dvbudget', 'ship']) {
 		const field = FIELDS.find((f) => f.key === key);
 		if (d[key] !== undefined) lines.push('- ' + field.label + ': ' + d[key]);
 	}

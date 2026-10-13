@@ -1181,9 +1181,7 @@ Shipped, in `archive/`:
   deferred)*
 - `archive/plan-0.1.1-tasks.md` — the per-file checklist of §18. *(0.1.x complete)*
 
-Next series:
-
-- `0.5.0-plan-planet-generator.md` — lazy planet-system generation for selected stars:
+- `archive/0.5.0-plan-planet-generator.md` — lazy planet-system generation for selected stars:
   star selection and multi-select (**0.5.0 shipped**: per-record identity keys, the chunked
   CPU picker, the snapshot selection set, fly-to, radius select and set rings, plus the
   planet module's `stellarInputs` input tier), the deterministic planet/belt generator
@@ -1192,8 +1190,8 @@ Next series:
   and the designations), star and planet search (0.5.2 shipped — the two-stage scan, the
   token filter, results in `#sysread`), the close-system schematic view (0.5.3 shipped —
   `render/system-layer.js`, the log-polar schematic with its own system-time clock and the
-  `V` key), the delta-v map (0.5.4) and routes/autopilot
-  (0.5.5). CPU-only by construction: the star buffer, the WGSL and the three render paths
+  `V` key), the delta-v map (0.5.4 shipped) and routes/autopilot
+  (0.5.5 shipped; optional economy omitted). CPU-only by construction: the star buffer, the WGSL and the three render paths
   are untouched.
 
 Implement from those files plus this one; the per-release plans reference their own
@@ -1212,8 +1210,7 @@ tests and extend the file layout of §11 as needed.
    These are not prerequisites for sandbox-safe correctness work and are not marked
    passed by CPU/stub tests. The 0.4.8 analytical shape implementation is complete;
    this does not imply browser visual validation is complete.
-4. [The 0.5 planet series](0.5.0-plan-planet-generator.md): 0.5.0–0.5.3 shipped (selection,
-   the generator, search, the close-system schematic); delta-v and routes still to come.
-   It is CPU-only and additive, so it neither blocks nor depends on the parity work above —
-   except that the picker dispatches star positions through the same engine-mask law the
-   parity plan pins (done in 0.5.0, `orbit.engineRecordPosition`).
+
+The [0.5 planet series](archive/0.5.0-plan-planet-generator.md) is complete:
+selection, generator, search, schematic, delta-v map and ships/routes/autopilot.
+The picker still shares the engine-mask position contract above.

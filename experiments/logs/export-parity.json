@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-13T01:01:21.832Z",
-  "modules": 25,
-  "totalChecks": 128,
-  "passed": 128,
+  "date": "2026-10-13T05:26:02.611Z",
+  "modules": 27,
+  "totalChecks": 138,
+  "passed": 138,
   "failed": 0,
   "checks": [
     {
@@ -294,6 +294,38 @@
       "detail": []
     },
     {
+      "name": "DeltaVLib loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "DeltaVLib registers exactly one window namespace (DeltaVLib)",
+      "pass": true,
+      "detail": [
+        "DeltaVLib"
+      ]
+    },
+    {
+      "name": "DeltaVLib exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "DeltaVLib has identical key sets (46 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "DeltaVLib binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
       "name": "ObjectsLib loads under Node",
       "pass": true,
       "detail": null
@@ -354,6 +386,38 @@
     },
     {
       "name": "Coords binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "RouteLib loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "RouteLib registers exactly one window namespace (RouteLib)",
+      "pass": true,
+      "detail": [
+        "RouteLib"
+      ]
+    },
+    {
+      "name": "RouteLib exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "RouteLib has identical key sets (14 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "RouteLib binds every key to the same value",
       "pass": true,
       "detail": []
     },
@@ -729,7 +793,7 @@
       }
     },
     {
-      "name": "SystemLayer has identical key sets (37 keys)",
+      "name": "SystemLayer has identical key sets (42 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],

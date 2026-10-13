@@ -81,11 +81,30 @@ Other controls:
 - `P` — toggle constellation lines
 - `T` — pause/resume star time
 - `V` — open/close the close-system schematic of the selected star
+- `B` — toggle the centered delta-v map inside the system view
 - `[` / `]` — exposure
 - `;` / `'` — overall brightness
 - `Esc` — close the system view; release the pointer in fly mode
 
 The settings panel opens at startup and exposes galaxy type, seed, age, star time, movement engine, pattern controls, tone mapping, and presets.
+
+## Ships, routes and autopilot (0.5.5)
+
+1. Select a star and press **V**, then **B** to open its delta-v map.
+2. Click a start node, then a destination node (surface, LO, GEO, escape or L5).
+3. Choose a ship and energy budget. **Round trip** adds a return after a
+   0.25-year layover; fuel is not replenished. The report compares all five classes.
+4. Set **System time** above zero and start autopilot. Press **B** again to watch
+   the class-colour ship and dashed trajectory on the schematic. Start/resume
+   pauses or resumes flight; time zero freezes it. Changing the plan cancels flight.
+5. For interstellar travel, select two stars with Shift-click (or add search results),
+   open a system, then use **Selected stars**. It uses the first two selected stars
+   and reports parking-orbit escape, cruise and capture in real years. Interstellar
+   progress is shown in the report, not projected into a local orbital diagram.
+
+Fuel, acceleration and life support decide feasibility; impossible plans cannot
+launch. Routes are transient. Ship class, map toggle and budget survive presets.
+The optional trade-price/economy milestone is intentionally omitted.
 
 ## URL parameters
 
@@ -114,6 +133,8 @@ Useful parameters include:
 | `apoShare`, `apoForce` | Apocenter-engine population share and eccentricity force |
 | `sysview` | `1` opens the system schematic at load (a no-op without a selection) |
 | `systime` | Schematic clock rate in years/s (`-1` follows the camera fly speed, `0` freezes) |
+| `dvmap`, `dvbudget` | Delta-v map toggle (`0`/`1`) and energy budget (`0`–`1`) |
+| `ship` | `chemical`, `nuclear`, `fusion`, `stardrive`, or `generation` |
 
 The Preset section in the UI serializes the complete active configuration in this same format.
 

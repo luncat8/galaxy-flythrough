@@ -150,6 +150,15 @@
 				<option value="generation">generation</option>
 			</select>
 		</div>
+		<div class="menu-row" data-view="system">
+			<label for="route-roundtrip">Round trip</label><input type="checkbox" id="route-roundtrip" title="Return after a 0.25-year layover; no refueling">
+			<button id="route-clear">Clear route</button>
+		</div>
+		<div class="menu-row" data-view="system">
+			<button id="route-fly" title="Uses system time; set a positive rate to watch the ship">Start autopilot</button>
+			<button id="route-stars" title="Plan between the first two selected stars, using stellar parking orbits">Selected stars</button>
+		</div>
+		<div class="menu-row" data-view="system"><span id="route-hint">B: pick two graph nodes. Then start autopilot.</span></div>
                 <!-- Star and planet search (0.5.2, plan §5.4): the quick
                      controls own their filter dimensions and mirror into the
                      token box, which is the whole filter (presets carry it).
@@ -218,7 +227,7 @@ F                    fly to the selected star
 N / Shift+N          next / previous star in the selection set
 X                    clear the selection set (click selects, Shift+click adds)
 V                    system view of the selected star (Esc or V closes)
-B                    delta-v map (inside the system view)
+B                    delta-v map (click start/destination nodes; menu autopilot)
 H                    home: the Sun, or a generated galaxy's centre
 G                    new galaxy: cycle type (rebuilds the field, about a second)
 R                    reset everything
@@ -263,6 +272,7 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
         <!-- Star and planet search (0.5.2): pure scan over the renderer's
              blocks and the selection set, so it depends on nothing at load. -->
         <script src="core/search.js"></script>
+	<script src="core/route.js"></script>
         <script src="core/loop.js"></script>
         <script src="core/presets.js"></script>
         <!-- Data after math (landmarks bake their positions through coords.js at

@@ -90,6 +90,7 @@ function readParams(search) {
 		sysview: number('sysview', 0),
 		dvmap: number('dvmap', window.SystemLayer.DVMAP_DEFAULT ? 1 : 0),
 		dvbudget: number('dvbudget', window.SystemLayer.BUDGET_DEFAULT),
+		ship: text('ship', 'chemical'),
 	};
 }
 
@@ -403,7 +404,7 @@ async function boot() {
                         f.classes = classSelect.value ? searchLib.classBit(classSelect.value) : 0;
                 }
                 if (ptypeSelect.value !== SEARCH_MIXED) {
-                        f.planetTypes = ptypeSelect.value ? searchLib.ptypeBit(ptypeSelect.value) : 0;
+                        f.planetTypes = ptypeSelect.value ? searchLib.planetTypeBit(ptypeSelect.value) : 0;
                 }
                 f.tsurfMin = searchNumberOr(tsurfMinBox.value, 0);
                 f.tsurfMax = searchNumberOr(tsurfMaxBox.value, Infinity);
@@ -422,7 +423,7 @@ async function boot() {
         function tokenToControls() {
                 const f = searchLib.parseFilter(tokenBox.value);
                 setSelectToMask(classSelect, searchClassNames, f.classes, searchLib.classBit);
-                setSelectToMask(ptypeSelect, searchTypeNames, f.planetTypes, searchLib.ptypeBit);
+                setSelectToMask(ptypeSelect, searchTypeNames, f.planetTypes, searchLib.planetTypeBit);
                 tsurfMinBox.value = f.tsurfMin > 0 ? String(f.tsurfMin) : '';
                 tsurfMaxBox.value = f.tsurfMax < Infinity ? String(f.tsurfMax) : '';
                 terranCheck.checked = f.terranOnly;
@@ -595,6 +596,7 @@ async function boot() {
                 sliderDvBudget.value = systemLayer.getBudget();
                 valDvBudget.textContent = Number(systemLayer.getBudget()).toFixed(2);
                 selDvShip.value = systemLayer.getShipClass();
+		document.body.classList.toggle('dv-map', systemLayer.isOpen() && systemLayer.isDvMapOpen());
         }
         function toggleDvMap() {
                 systemLayer.setDvMap(!systemLayer.isDvMapOpen());
@@ -613,8 +615,49 @@ async function boot() {
                 writeSystemReadout();
         });
 
+	const btnRouteFly = document.getElementById('route-fly');
+	const routeHint = document.getElementById('route-hint');
+	const routeRoundtrip = document.getElementById('route-roundtrip');
+	const dvPick = { body: -1, node: -1 };
+	function syncRouteUi() {
+		const r = systemLayer.routeState();
+		btnRouteFly.textContent = systemLayer.autopilotRunning() ? 'Pause autopilot' : 'Start / resume';
+		btnRouteFly.disabled = !r.feasible;
+		routeHint.textContent = !r.start ? 'B: click a start node, then a destination.'
+			: !r.end ? 'Click a destination node.' : !r.feasible ? r.reason
+			: systemLayer.getTimeRate() === 0 ? 'Clock frozen — set system time > 0 to fly.' : 'Route ready. Close B to watch the ship.';
+	}
+	routeRoundtrip.addEventListener('change', () => {
+		systemLayer.setRoundTrip(routeRoundtrip.checked); writeSystemReadout();
+	});
+	document.getElementById('route-clear').addEventListener('click', () => {
+		systemLayer.clearRoute(); writeSystemReadout();
+	});
+	btnRouteFly.addEventListener('click', () => {
+		systemLayer.toggleAutopilot(); writeSystemReadout();
+	});
+	function stellarEndpoint(i) {
+		const inputs = deriveMemberInputs(i);
+		const d = window.DeltaVLib;
+		const mu = d.G_SI * inputs.mass * d.M_SUN_KG;
+		const radius = Math.max(0.01 * d.AU_M, inputs.rStar * selectPlanets.AU_PER_R_SUN * d.AU_M * 10);
+		const body = d.createBodyParam();
+		body.mu = mu; body.aM = radius; body.rLoM = radius;
+		body.vCircLo = d.vCirc(mu, radius); body.vEscLo = d.vEsc(mu, radius);
+		body.periodS = d.TAU * Math.sqrt(radius ** 3 / mu);
+		return { body, node: 1, muStar: mu, phase: 0, systemKey: starSet.keys[i], label: memberName(i),
+			x: starSet.x[i], y: starSet.y[i], z: starSet.z[i] };
+	}
+	document.getElementById('route-stars').addEventListener('click', () => {
+		if (starSet.count < 2) { routeHint.textContent = 'Shift-click two stars in galaxy view first.'; return; }
+		systemLayer.planExternalRoute(stellarEndpoint(0), stellarEndpoint(1));
+		writeSystemReadout();
+	});
+
         function syncViewRows() {
                 const viewOpen = systemLayer.isOpen();
+		document.body.classList.toggle('system-view', viewOpen);
+		syncDvUi(); syncRouteUi();
                 for (const row of viewRows) {
                         row.style.display = viewOpen && row.dataset.view === 'system' ? '' : 'none';
                 }
@@ -677,6 +720,7 @@ async function boot() {
         // ◀ marker never lags the ring.
         function writeSystemReadout() {
                 sysread.textContent = systemLayer.readoutText();
+		syncRouteUi();
         }
 
         // The cursor over the schematic. The canvas spans the viewport at
@@ -689,9 +733,9 @@ async function boot() {
 
         systemLayer.setTimeRate(params.systime);
         syncSysTime();
-        systemLayer.setDvMap(window.SystemLayer.DVMAP_DEFAULT);
+        systemLayer.setDvMap(!!params.dvmap);
         systemLayer.setBudget(params.dvbudget !== undefined ? params.dvbudget : window.SystemLayer.BUDGET_DEFAULT);
-        systemLayer.setShipClass('chemical');
+        systemLayer.setShipClass(params.ship);
         syncDvUi();
         syncViewRows();
         if (params.sysview) openSystemView(true);   // no selection at boot: a no-op
@@ -828,6 +872,11 @@ async function boot() {
                 // The view's clock is a knob; whether the view is open is
                 // working state, like the search results — Defaults keeps it.
                 systemLayer.setTimeRate(d.systime);
+		systemLayer.setBudget(d.dvbudget);
+		systemLayer.setShipClass(d.ship);
+		systemLayer.setDvMap(!!d.dvmap);
+		syncDvUi();
+		if (systemLayer.isOpen()) writeSystemReadout();
                 syncApocenterSliders();
                 syncSlidersFromRenderer();
                 syncWave();
@@ -873,6 +922,7 @@ async function boot() {
                         systime: systemLayer.getTimeRate(),
                         dvmap: systemLayer.isDvMapOpen() ? 1 : 0,
                         dvbudget: systemLayer.getBudget(),
+			ship: systemLayer.getShipClass(),
                         stars: params.stars,
                         catalog: params.catalogStars,
                 };
@@ -947,7 +997,9 @@ async function boot() {
                 if (s.dvbudget !== undefined) {
                         systemLayer.setBudget(s.dvbudget);
                 }
+		if (s.ship !== undefined) systemLayer.setShipClass(s.ship);
                 syncDvUi();
+		if (systemLayer.isOpen()) writeSystemReadout();
                 syncSlidersFromRenderer();
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
@@ -1466,9 +1518,13 @@ async function boot() {
                                 // immediate — the layer already has every body's
                                 // screen position. An empty click clears the body
                                 // selection but does not leave the view.
-                                systemLayer.pick(input.state.pickX, input.state.pickY, bodyPick);
-                                if (bodyPick.kind === window.SystemLayer.BODY_NONE) systemLayer.clearBodySelection();
-                                else systemLayer.setSelected(bodyPick.kind, bodyPick.index);
+                                if (systemLayer.isDvMapOpen()) {
+						if (systemLayer.pickDvNode(input.state.pickX, input.state.pickY, dvPick)) systemLayer.chooseRouteNode(dvPick.body, dvPick.node);
+					} else {
+						systemLayer.pick(input.state.pickX, input.state.pickY, bodyPick);
+						if (bodyPick.kind === window.SystemLayer.BODY_NONE) systemLayer.clearBodySelection();
+						else systemLayer.setSelected(bodyPick.kind, bodyPick.index);
+					}
                                 writeSystemReadout();
                         } else {
                                 const px = input.state.pickX;
@@ -1557,7 +1613,7 @@ async function boot() {
                         systemLayer.stepTime(dt, cameraStateForTime.speedLyPerSec);
                         systemLayer.updateHover(hoverX, hoverY);
                         systemLayer.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
-                        systemLayer.draw(canvas.clientWidth, canvas.clientHeight);
+                        systemLayer.draw(canvas.clientWidth, canvas.clientHeight, menu.style.display === 'none' ? 0 : 284);
                 }
 
                 overlayTimer += dt;

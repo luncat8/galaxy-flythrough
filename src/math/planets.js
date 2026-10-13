@@ -1,5 +1,5 @@
 // src/math/planets.js
-// The lazy planet-system generator (plan: 0.5.0-plan-planet-generator.md).
+// The lazy planet-system generator (plan: archive/0.5.0-plan-planet-generator.md).
 //
 // 0.5.0 lands the *input tier* of this module, because a selection snapshot has
 // to carry a star's derived properties (plan §3.2) and the snapshot's anti-drift

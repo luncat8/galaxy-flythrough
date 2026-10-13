@@ -46,6 +46,8 @@ const layerOrbit = (typeof module !== 'undefined' && module.exports)
 const layerDv = (typeof module !== 'undefined' && module.exports)
 	? require('../math/deltav.js')
 	: ((typeof window !== 'undefined') ? window.DeltaVLib : null);
+const layerRoute = (typeof module !== 'undefined' && module.exports)
+	? require('../core/route.js') : window.RouteLib;
 const layerLabels = (typeof module !== 'undefined' && module.exports)
 	? require('./label-layer.js')
 	: ((typeof window !== 'undefined') ? window.LabelLayer : null);
@@ -100,23 +102,17 @@ const BUDGET_MIN = 0, BUDGET_MAX = 1, BUDGET_STEP = 0.01, BUDGET_DEFAULT = 0.35;
 
 // Delta-v graph drawing constants (plan §7.5).
 const DV_COL_X0 = 90;                // left margin of the graph
-const DV_COL_W = 130;                // spacing between body columns
-const DV_COL_TOP = 40;               // top of the graph
-const DV_NODE_DY = 28;               // vertical gap between nodes in a column
+const DV_COL_W = 160;                // spacing between body columns
+const DV_COL_TOP = 82;               // top of the graph
+const DV_NODE_DY = 44;               // vertical gap between nodes in a column
 const DV_NODE_R = 5;
-const DV_NODE_PAD = 10;
 const DV_EDGE_STROKE = 'rgba(150, 200, 240, 0.55)';
-const DV_EDGE_WIDTH = 1.5;
-const DV_EDGE_SELECTED = 'rgba(255, 215, 94, 0.95)';
-const DV_EDGE_WIDTH_SEL = 2;
 const DV_NODE_FILL = 'rgba(150, 200, 240, 0.85)';
 const DV_NODE_FILL_SURF = 'rgba(150, 180, 150, 0.85)';
 const DV_NODE_STAR_FILL = 'rgba(255, 240, 180, 0.9)';
 const DV_TEXT_FILL = 'rgba(220, 230, 240, 0.85)';
 const DV_LABEL_FONT = '11px Menlo, Consolas, monospace';
 const DV_HEADER_FONT = '12px Menlo, Consolas, monospace';
-const DV_TABLE_LEFT = 14;             // left edge of the feasibility table
-const DV_TABLE_TOP_MARGIN = 18;       // gap under the graph before the table
 
 // Body kinds for picking, selection and hover.
 const BODY_NONE = -1, BODY_STAR = 0, BODY_PLANET = 1, BODY_BELT = 2;
@@ -229,8 +225,7 @@ function createSystemLayer(canvas) {
 	}
 
 	// --- Delta-v map (plan §7): per-body nodes and one-body edges, plus the
-	// inter-body Hohmann chain. Allocated once here; buildDv() fills on open
-	// and on every dirty trigger (budget change, ship change).
+	// inter-body Hohmann chain. Allocated once; filled when the system opens.
 	const dvN = layerDv.MAX_BODIES;
 	const dvBodies = [];
 	const dvNodes = [];
@@ -241,28 +236,88 @@ function createSystemLayer(canvas) {
 		dvOneEdges.push(layerDv.createOneBodyEdges());
 	}
 	// Inter edges: N·(N−1) directional legs.
-	const dvInterN = dvN * (dvN - 1);
 	const dvInterEdges = [];
-	for (let di = 0; di < dvN * dvN; di++) dvInterEdges.push(layerDv.createInterEdge());
-	// Per-node screen positions for graph drawing/picking (per-frame).
-	// Column order = star column (left, 1 node) then sorted bodies by a.
-	const dvNodeXY = new Float32Array(dvN * 8 * 2); // generous; N bodies × 8 nodes × 2
+	for (let di = 0; di < dvN * (dvN - 1); di++) dvInterEdges.push(layerDv.createInterEdge());
 	let dvNBodies = 0;
 	// Order permutation: dvOrder[i] = original body index for column (i+1).
 	const dvOrder = new Int16Array(dvN);
-	// Node counts per column (column 0 is the star, 1 escape node; columns 1..N
-	// are bodies with SURFACE/LO/GEO/L5/ESCAPE).
-	const dvNodeCount = new Uint8Array(dvN + 1);
-	const dvMuStar = layerDv.G_SI * layerDv.M_SUN_KG;     // recomputed per open with the real mass
 	let dvMapOpen = DVMAP_DEFAULT;
 	let dvBudget = BUDGET_DEFAULT;
 	let dvShipClass = 'chemical';
-	let dvDirty = true;                                   // rebuild edges when system/budget/ship changes
-	// Selected leg source/target in dv body indices: dvSrc = -1 for primary;
-	// when the schematic selection is a planet/belt we use its dv index. The
-	// graph shows all edges; the selected leg drives the table.
-	let dvSrc = -1, dvDst = -1;
 	let dvMuStarVal = 0;     // set per open from record.star.mass (buildDv)
+
+	const activeRoute = layerRoute.createRoute();
+	const alternativeRoute = layerRoute.createRoute();
+	const routeFeasibility = [];
+	let routeStart = null, routeEnd = null, routeTwoWay = false;
+	let flightRunning = false, flightStarted = false, flightElapsed = 0;
+	const routeXY = new Float64Array(2);
+	const routeScreen = new Float64Array(2);
+	const routeDash = [4, 5];
+	const noDash = [];
+	function endpointOf(bi, node) {
+		const ns = dvNodes[bi];
+		return { body: dvBodies[bi], node, muStar: dvMuStarVal, phase: ns.kind === 0 ? record.planets.phase[ns.index] + record.planets.peri[ns.index] : 0,
+			systemKey: record.star.key, label: ns.letter, x: 0, y: 0, z: 0 };
+	}
+	function rebuildRoute() {
+		flightRunning = false; flightStarted = false; flightElapsed = 0;
+		layerRoute.buildRoute(routeStart, routeEnd, dvShipClass, dvBudget, activeRoute, routeTwoWay, timeYears);
+		routeFeasibility.length = 0;
+		if (!routeStart || !routeEnd) return;
+		for (const ship of layerDv.SHIP_CLASSES) {
+			layerRoute.buildRoute(routeStart, routeEnd, ship.id, dvBudget, alternativeRoute, routeTwoWay, timeYears);
+			routeFeasibility.push('  ' + ship.label + ': ' + (alternativeRoute.feasible ? 'feasible' : alternativeRoute.reason)
+				+ ' · ' + layerDv.formatDuration(alternativeRoute.totalYears * layerDv.SECONDS_PER_YEAR));
+		}
+	}
+	function chooseRouteNode(bi, node) {
+		if (bi < 0 || bi >= dvNBodies || !nodeExists(bi, node)) return false;
+		if (!routeStart || routeEnd) { routeStart = endpointOf(bi, node); routeEnd = null; }
+		else routeEnd = endpointOf(bi, node);
+		const ns = dvNodes[bi];
+		setSelected(ns.kind === 0 ? BODY_PLANET : BODY_BELT, ns.index);
+		rebuildRoute();
+		return true;
+	}
+	function planExternalRoute(start, end) { routeStart = start; routeEnd = end; rebuildRoute(); return activeRoute; }
+	function clearRoute() { routeStart = null; routeEnd = null; rebuildRoute(); }
+	function setRoundTrip(on) { routeTwoWay = !!on; rebuildRoute(); }
+	function toggleAutopilot() {
+		if (flightRunning) { flightRunning = false; return false; }
+		if (!flightStarted || flightElapsed >= activeRoute.totalYears) rebuildRoute();
+		if (!activeRoute.feasible) return false;
+		flightRunning = true; flightStarted = true;
+		return true;
+	}
+	function routeState() { return activeRoute; }
+	function autopilotRunning() { return flightRunning; }
+	function projectRoutePoint(out, point) {
+		const r = Math.hypot(point[0], point[1]);
+		const scale = r > 0 ? radiusPx(clamp01(rhoOf(r / layerDv.AU_M))) / r : 0;
+		out[0] = layout.cx + point[0] * scale; out[1] = layout.cy + point[1] * scale;
+	}
+	function drawRoute() {
+		if (!activeRoute.count || !Number.isFinite(activeRoute.totalYears) || activeRoute.start.systemKey !== activeRoute.end.systemKey) return;
+		ctx.strokeStyle = activeRoute.ship.color; ctx.lineWidth = 1; ctx.setLineDash(routeDash);
+		for (let li = 0; li < activeRoute.count; li++) {
+			const leg = activeRoute.legs[li];
+			if (leg.kind !== 'transfer') continue;
+			ctx.beginPath();
+			for (let s = 0; s <= 48; s++) {
+				layerRoute.routePosition(routeXY, activeRoute, leg.start + (leg.end - leg.start) * s / 48);
+				projectRoutePoint(routeScreen, routeXY);
+				if (!s) ctx.moveTo(routeScreen[0], routeScreen[1]); else ctx.lineTo(routeScreen[0], routeScreen[1]);
+			}
+			ctx.stroke();
+		}
+		ctx.setLineDash(noDash);
+		layerRoute.routePosition(routeXY, activeRoute, flightElapsed);
+		projectRoutePoint(routeScreen, routeXY);
+		ctx.fillStyle = activeRoute.ship.color;
+		ctx.beginPath(); ctx.moveTo(routeScreen[0] + 6, routeScreen[1]);
+		ctx.lineTo(routeScreen[0] - 4, routeScreen[1] - 4); ctx.lineTo(routeScreen[0] - 4, routeScreen[1] + 4); ctx.closePath(); ctx.fill();
+	}
 
 	// --- Star icon + designation caches (open-time) --------------------------
 	let starRadiusPx = STAR_RADIUS_PX.ms;
@@ -349,7 +404,9 @@ function createSystemLayer(canvas) {
 		starPrefix = decodeName(star);
 
 		timeYears = 0;
-		clearBodySelection();
+		mapLayout.valid = false;
+		clearRoute();
+		selectedKind = BODY_NONE; selectedIndex = -1;
 		hoverKind = BODY_NONE;
 		hoverIndex = -1;
 		hoverLabel = '';
@@ -361,8 +418,7 @@ function createSystemLayer(canvas) {
 	}
 
 	// Build the delta-v tables (plan §7). Called on every enter, and again
-	// whenever budget / ship class changes — edges recompute on first access
-	// after a dirty flag so the per-frame draw stays allocation-free.
+	// on system changes. Budget / ship changes refresh only display text.
 	function buildDv() {
 		// muStar = G·M★ with M★ in kg (record.star.mass is in M☉).
 		const muStarLoc = layerDv.G_SI * record.star.mass * layerDv.M_SUN_KG;
@@ -396,9 +452,7 @@ function createSystemLayer(canvas) {
 				layerDv.legLoToLo(muStarLoc, dvBodies[i], dvBodies[j], false, edge);
 			}
 		}
-		dvSrc = -1;
-		dvDst = -1;
-		dvDirty = false;
+		cacheMapLabels();
 	}
 
 	// Enter (plan §6.5): generate the system (plan §4.9) and adopt it. The
@@ -441,7 +495,12 @@ function createSystemLayer(canvas) {
 		if (!open || !(dt > 0)) return;
 		const speed = speedLyPerSec > 0 ? speedLyPerSec : 0;
 		const rate = timeRate < 0 ? (-timeRate) * layerOrbit.FLIGHT_TIME_GAIN * speed : timeRate;
-		timeYears += rate * dt;
+		const advance = rate * dt;
+		timeYears += advance;
+		if (flightRunning) {
+			flightElapsed = Math.min(activeRoute.totalYears, flightElapsed + advance);
+			if (flightElapsed >= activeRoute.totalYears) flightRunning = false;
+		}
 	}
 
 	function resize(widthCss, heightCss, dpr) {
@@ -456,12 +515,12 @@ function createSystemLayer(canvas) {
 	}
 
 	// --- Draw (plan §6.2, back to front; §7.5 for the dv map) ---------------
-	function draw(width, height) {
+	function draw(width, height, rightInset) {
 		if (!open) return;                      // the only cost while closed
 		ctx.clearRect(0, 0, width, height);
 		if (!(width > 0) || !(height > 0)) return;
 		if (dvMapOpen) {
-			drawDvMap(width, height);
+			drawDvMap(width - (rightInset || 0), height);
 			return;
 		}
 		layout.cx = width * 0.5;
@@ -475,6 +534,7 @@ function createSystemLayer(canvas) {
 		drawStar();
 		drawPlanets();
 		drawBodyMarks();
+		drawRoute();
 	}
 
 	// 1. The habitable annulus, clamped into the view: a giant's HZ can reach
@@ -648,251 +708,150 @@ function createSystemLayer(canvas) {
 		ctx.fillText(hoverLabel, x, y);
 	}
 
-	// --- Delta-v map drawing (plan §7.5) ---------------------------------------
-	// The graph is a node-and-edge layout: star (escape) at column 0; bodies
-	// ordered by semi-major axis in columns 1..N; nodes stacked vertically
-	// per column (surface, low orbit, GEO, L5 — skipping what the body lacks).
-	// Edges are straight lines between nodes, labelled in km/s. The table
-	// below is the §6.6/§7.4 per-leg time at budget + ship feasibility block.
-	//
-	// Screen X/Y of each node are written into dvNodeXY (column-major, each
-	// node per body) during layout so picking can read them.
-	function dvNodeOffset(kind) {
-		// Node id to vertical slot offset within its column. 0 = top.
-		// kind: 0 = SURFACE, 1 = LOW_ORBIT, 2 = GEO, 3 = ESCAPE, 4 = L5.
-		return kind;
+	// Centered logical map, uniformly fitted to the clear canvas region.
+	const mapLayout = { x: 0, y: 0, scale: 1, width: 0, height: 0, valid: false };
+	const nodeLabels = ['surf', 'LO', 'GEO', 'esc', 'L5'];
+	const tableLines = [];
+	let mapHeader = '';
+	function nodeExists(bi, kind) {
+		const n = dvNodes[bi];
+		return kind === 1 || kind === 3 || (kind === 0 && n.hasSurface)
+			|| (kind === 2 && n.hasGeo) || (kind === 4 && n.hasL5);
 	}
-	function dvColumnCount(colBody) {
-		// Column 0 (star): 1 node (ESCAPE / C3=0).
-		if (colBody < 0) return 1;
-		const ns = dvNodes[colBody];
-		let c = 0;
-		if (ns.hasSurface) c++;          // SURFACE
-		c++;                             // LOW_ORBIT (always)
-		if (ns.hasGeo) c++;              // GEO
-		c++;                             // ESCAPE
-		if (ns.hasL5) c++;               // L5
-		return c;
-	}
-	function dvNodeXYFor(colBody, kind, out) {
-		// Returns { x, y }-like into out[0..1].
-		const colX = DV_COL_X0 + (colBody < 0 ? 0 : (dvColumnIndexOf(colBody) + 1) * DV_COL_W);
-		const colY0 = DV_COL_TOP;
-		// Stack nodes from top down, centred so even/odd count is balanced.
-		let slot = 0;
-		let nSlots = 1;
-		if (colBody < 0) {
-			// star column: only ESCAPE
-			slot = 0; nSlots = 1;
-		} else {
-			const ns = dvNodes[colBody];
-			const slots = [];
-			if (ns.hasSurface) slots.push(0);
-			slots.push(1);
-			if (ns.hasGeo) slots.push(2);
-			slots.push(3);
-			if (ns.hasL5) slots.push(4);
-			nSlots = slots.length;
-			for (let s = 0; s < slots.length; s++) if (slots[s] === kind) { slot = s; break; }
-		}
-		out[0] = colX;
-		out[1] = colY0 + slot * DV_NODE_DY;
-		return out;
-	}
-	// Map a body index (dvBodies) → column in the graph (1-based; 0 is star).
-	// Uses dvOrder which was built in buildDv sorted by a.
 	function dvColumnIndexOf(bodyIdx) {
-		for (let c = 0; c < dvNBodies; c++) if (dvOrder[c] === bodyIdx) return c;
+		for (let i = 0; i < dvNBodies; i++) if (dvOrder[i] === bodyIdx) return i;
 		return 0;
+	}
+	function dvNodeXYFor(bi, kind, out) {
+		let slot = 0;
+		if (bi >= 0) for (let k = 0; k < kind; k++) if (nodeExists(bi, k)) slot++;
+		out[0] = DV_COL_X0 + (bi < 0 ? 0 : dvColumnIndexOf(bi) + 1) * DV_COL_W;
+		out[1] = DV_COL_TOP + slot * DV_NODE_DY;
+		return out;
 	}
 	const dvTmpXY = new Float64Array(2);
 	const dvTmpXY2 = new Float64Array(2);
-
+	const tableTimes = {};
+	function refreshMapText() {
+		mapHeader = starPrefix + ' · delta-v (km/s) · click start, then destination';
+		tableLines.length = 0;
+		let from = selectedKind === BODY_PLANET ? selectedIndex
+			: selectedKind === BODY_BELT ? record.counts.planets + selectedIndex : -1;
+		if (from < 0 || from >= dvNBodies) from = dvNBodies ? dvOrder[0] : -1;
+		if (from < 0) { tableLines.push('No orbiting bodies in this system.'); return; }
+		tableLines.push('From ' + dvNodes[from].letter + ' LO · budget ' + dvBudget.toFixed(2) + ' · ' + dvShipClass);
+		tableLines.push('to        dv km/s      Hohmann       at budget       feasibility');
+		for (let j = 0; j < dvNBodies; j++) {
+			const to = dvOrder[j];
+			if (to === from) continue;
+			const edge = dvInterEdges[layerDv.interEdgeIndex(dvNBodies, from, to)];
+			layerDv.legTimes(edge, layerDv.shipById(dvShipClass), dvBudget, tableTimes);
+			tableLines.push(dvNodes[to].letter.padEnd(10) + layerDv.formatKms(edge.dvLoToLo).padStart(7)
+				+ layerDv.formatDuration(edge.tH).padStart(14) + layerDv.formatDuration(tableTimes.t).padStart(16)
+				+ '    ' + (!tableTimes.feasible ? 'exceeds hull' : tableTimes.belowCrossover ? 'below dv_x' : 'feasible'));
+		}
+	}
+	function mapEdge(bi, k1, bj, k2, label) {
+		dvNodeXYFor(bi, k1, dvTmpXY);
+		dvNodeXYFor(bj, k2, dvTmpXY2);
+		ctx.beginPath(); ctx.moveTo(dvTmpXY[0], dvTmpXY[1]);
+		if (bi === bj) {
+			const offset = k2 === 3 ? -50 : k2 === 4 ? 46 : -24;
+			const x = dvTmpXY[0] + offset;
+			ctx.lineTo(x, dvTmpXY[1]); ctx.lineTo(x, dvTmpXY2[1]);
+			ctx.lineTo(dvTmpXY2[0], dvTmpXY2[1]); ctx.stroke();
+			if (label) ctx.fillText(label, x + (offset < 0 ? -34 : 4), (dvTmpXY[1] + dvTmpXY2[1]) * 0.5 - 3);
+			return;
+		}
+		ctx.lineTo(dvTmpXY2[0], dvTmpXY2[1]); ctx.stroke();
+		if (label) ctx.fillText(label, (dvTmpXY[0] + dvTmpXY2[0]) * 0.5 - 16, (dvTmpXY[1] + dvTmpXY2[1]) * 0.5 - 5);
+	}
+	const edgeLabels = [];
+	const interLabels = [];
+	function cacheMapLabels() {
+		edgeLabels.length = 0; interLabels.length = 0;
+		for (let i = 0; i < dvNBodies; i++) {
+			const e = dvOneEdges[i];
+			edgeLabels.push([layerDv.formatKms(e.dvSurfaceToLo), '', layerDv.formatKms(e.dvLoToGeo), layerDv.formatKms(e.dvLoToEscape), layerDv.formatKms(e.dvLoToL5)]);
+		}
+		for (let i = 0; i < dvNBodies - 1; i++) {
+			const e = dvInterEdges[layerDv.interEdgeIndex(dvNBodies, dvOrder[i], dvOrder[i + 1])];
+			interLabels.push(layerDv.formatKms(e.dvDepStar + e.dvArrStar));
+		}
+		refreshMapText();
+	}
 	function drawDvMap(width, height) {
-		ctx.textBaseline = 'alphabetic';
-		// Header: system prefix + column count.
-		ctx.font = DV_HEADER_FONT;
-		ctx.fillStyle = DV_TEXT_FILL;
-		ctx.fillText(starPrefix + '   delta-v map   (' + dvNBodies + ' bodies)', DV_COL_X0 - DV_COL_W + 10, 24);
-		// Draw edges (one-body edges + inter edges). One-body edges are within
-		// each body column between the relevant node pairs; inter edges run
-		// from ESCAPE of the departure body column to ESCAPE of the target
-		// body column at the heliocentric Hohmann number, and from LO to LO
-		// at the full chain number (which is the §7.2 single-burn figure).
-		// To keep the graph readable we draw inter edges only between
-		// adjacent bodies in column order (the chain structure of a
-		// published map) plus one highlighted edge from the selected body
-		// to its neighbour; the table prints all node pairs from the selected
-		// body's LO as per plan §7.5.
-		//
-		// First: draw one-body edges (SURFACE↔LO, LO↔GEO, LO↔ESCAPE, LO↔L5).
-		ctx.strokeStyle = DV_EDGE_STROKE;
-		ctx.lineWidth = DV_EDGE_WIDTH;
-		ctx.fillStyle = DV_TEXT_FILL;
-		ctx.font = DV_LABEL_FONT;
-		// Star escape node (column 0):
-		dvNodeXYFor(-1, 3, dvTmpXY);
-		ctx.fillStyle = DV_NODE_STAR_FILL;
-		ctx.beginPath(); ctx.arc(dvTmpXY[0], dvTmpXY[1], DV_NODE_R + 2, 0, TAU); ctx.fill();
-		ctx.fillStyle = DV_TEXT_FILL;
-		ctx.fillText('C3=0', dvTmpXY[0] - 14, dvTmpXY[1] - DV_NODE_PAD);
-		ctx.fillText('star', dvTmpXY[0] - 14, dvTmpXY[1] + DV_NODE_PAD + 8);
-
-		for (let ii = 0; ii < dvNBodies; ii++) {
-			const bi = dvOrder[ii];
-			const ns = dvNodes[bi];
-			const ed = dvOneEdges[bi];
-			// SURFACE↔LO (if hasSurface)
-			if (ns.hasSurface) {
-				dvNodeXYFor(bi, 0, dvTmpXY);
-				dvNodeXYFor(bi, 1, dvTmpXY2);
-				ctx.strokeStyle = DV_EDGE_STROKE;
-				ctx.beginPath(); ctx.moveTo(dvTmpXY[0], dvTmpXY[1]); ctx.lineTo(dvTmpXY2[0], dvTmpXY2[1]); ctx.stroke();
-				ctx.fillStyle = DV_TEXT_FILL;
-				ctx.fillText(layerDv.formatKms(ed.dvSurfaceToLo), (dvTmpXY[0] + dvTmpXY2[0]) * 0.5 + 6, (dvTmpXY[1] + dvTmpXY2[1]) * 0.5 + 3);
-			}
-			// LO↔GEO
-			if (ns.hasGeo) {
-				dvNodeXYFor(bi, 1, dvTmpXY);
-				dvNodeXYFor(bi, 2, dvTmpXY2);
-				ctx.beginPath(); ctx.moveTo(dvTmpXY[0], dvTmpXY[1]); ctx.lineTo(dvTmpXY2[0], dvTmpXY2[1]); ctx.stroke();
-				ctx.fillText(layerDv.formatKms(ed.dvLoToGeo), (dvTmpXY[0] + dvTmpXY2[0]) * 0.5 + 6, (dvTmpXY[1] + dvTmpXY2[1]) * 0.5 + 3);
-			}
-			// LO↔ESCAPE
-			dvNodeXYFor(bi, 1, dvTmpXY);
-			dvNodeXYFor(bi, 3, dvTmpXY2);
-			ctx.beginPath(); ctx.moveTo(dvTmpXY[0], dvTmpXY[1]); ctx.lineTo(dvTmpXY2[0], dvTmpXY2[1]); ctx.stroke();
-			ctx.fillText(layerDv.formatKms(ed.dvLoToEscape), (dvTmpXY[0] + dvTmpXY2[0]) * 0.5 + 6, (dvTmpXY[1] + dvTmpXY2[1]) * 0.5 + 3);
-			// LO↔L5
-			if (ns.hasL5) {
-				dvNodeXYFor(bi, 1, dvTmpXY);
-				dvNodeXYFor(bi, 4, dvTmpXY2);
-				ctx.beginPath(); ctx.moveTo(dvTmpXY[0], dvTmpXY[1]); ctx.lineTo(dvTmpXY2[0], dvTmpXY2[1]); ctx.stroke();
-				ctx.fillText(layerDv.formatKms(ed.dvLoToL5), (dvTmpXY[0] + dvTmpXY2[0]) * 0.5 + 6, (dvTmpXY[1] + dvTmpXY2[1]) * 0.5 + 3);
+		const logicalW = Math.max(740, DV_COL_X0 + (dvNBodies + 0.5) * DV_COL_W);
+		const logicalH = 330 + tableLines.length * 16;
+		mapLayout.scale = Math.min(1, (width - 32) / logicalW, (height * 0.70 - 32) / logicalH);
+		mapLayout.x = (width - logicalW * mapLayout.scale) * 0.5;
+		mapLayout.y = (height * 0.70 - logicalH * mapLayout.scale) * 0.5 + 12;
+		mapLayout.width = logicalW; mapLayout.height = logicalH;
+		ctx.save();
+		ctx.translate(mapLayout.x, mapLayout.y); ctx.scale(mapLayout.scale, mapLayout.scale);
+		ctx.fillStyle = 'rgba(3,8,16,0.94)'; ctx.fillRect(0, 0, logicalW, logicalH);
+		ctx.fillStyle = DV_TEXT_FILL; ctx.font = DV_HEADER_FONT;
+		ctx.fillText(mapHeader, 20, 24);
+		ctx.font = DV_LABEL_FONT; ctx.strokeStyle = DV_EDGE_STROKE; ctx.lineWidth = 1;
+		for (let i = 0; i < dvNBodies; i++) {
+			for (let k = 0; k < 5; k++) {
+				if (k === 1 || !nodeExists(i, k)) continue;
+				mapEdge(i, 1, i, k, edgeLabels[i][k]);
 			}
 		}
-		// Inter edges between adjacent columns (LO→LO chain). Edge from the
-		// escape node of the inner body to the escape node of the next is
-		// the heliocentric Hohmann number (the published map's "2.9" edge);
-		// the LO→LO number is the §7.2 single-burn-to-capture chain.
-		for (let ii = 0; ii < dvNBodies - 1; ii++) {
-			const iInner = dvOrder[ii];
-			const iOuter = dvOrder[ii + 1];
-			const eIdx = layerDv.interEdgeIndex(dvNBodies, iInner, iOuter);
-			const edge = dvInterEdges[eIdx];
-			// Escape → Escape (heliocentric Hohmann number): dv_dep + dv_arr
-			dvNodeXYFor(iInner, 3, dvTmpXY);
-			dvNodeXYFor(iOuter, 3, dvTmpXY2);
-			ctx.strokeStyle = DV_EDGE_STROKE;
-			ctx.lineWidth = DV_EDGE_WIDTH;
-			ctx.beginPath(); ctx.moveTo(dvTmpXY[0], dvTmpXY[1]); ctx.lineTo(dvTmpXY2[0], dvTmpXY2[1]); ctx.stroke();
-			ctx.fillStyle = DV_TEXT_FILL;
-			ctx.fillText(layerDv.formatKms(edge.dvDepStar + edge.dvArrStar),
-				(dvTmpXY[0] + dvTmpXY2[0]) * 0.5 - 12, (dvTmpXY[1] + dvTmpXY2[1]) * 0.5 - 4);
-			// LO → LO (the full chain, aerocapture credited)
-			dvNodeXYFor(iInner, 1, dvTmpXY);
-			dvNodeXYFor(iOuter, 1, dvTmpXY2);
-			ctx.strokeStyle = 'rgba(150,200,240,0.30)';
-			ctx.beginPath(); ctx.moveTo(dvTmpXY[0], dvTmpXY[1]); ctx.lineTo(dvTmpXY2[0], dvTmpXY2[1]); ctx.stroke();
-		}
-		// Draw nodes (after edges, so dots paint over line ends).
-		for (let ii = 0; ii < dvNBodies; ii++) {
-			const bi = dvOrder[ii];
-			const ns = dvNodes[bi];
-			const kinds = [];
-			if (ns.hasSurface) kinds.push({ k: 0, fill: DV_NODE_FILL_SURF, label: 'surf' });
-			kinds.push({ k: 1, fill: DV_NODE_FILL, label: 'LO' });
-			if (ns.hasGeo) kinds.push({ k: 2, fill: DV_NODE_FILL, label: 'GEO' });
-			kinds.push({ k: 3, fill: DV_NODE_FILL, label: 'esc' });
-			if (ns.hasL5) kinds.push({ k: 4, fill: DV_NODE_FILL, label: 'L5' });
-			// Draw label for the body name above its column (top-most node's y − 12).
-			dvNodeXYFor(bi, kinds[0].k, dvTmpXY);
-			ctx.fillStyle = DV_TEXT_FILL;
-			ctx.fillText(ns.letter, dvTmpXY[0] - 8, dvTmpXY[1] - DV_NODE_DY - 2);
-			ctx.fillStyle = 'rgba(180,190,210,0.6)';
-			ctx.fillText(ns.label, dvTmpXY[0] - 22, dvTmpXY[1] - DV_NODE_DY + 10);
-			for (const kn of kinds) {
-				dvNodeXYFor(bi, kn.k, dvTmpXY);
-				ctx.fillStyle = kn.fill;
+		for (let i = 0; i < dvNBodies - 1; i++) mapEdge(dvOrder[i], 3, dvOrder[i + 1], 3, interLabels[i]);
+		for (let col = 0; col < dvNBodies; col++) {
+			const bi = dvOrder[col];
+			dvNodeXYFor(bi, 0, dvTmpXY);
+			ctx.fillStyle = DV_TEXT_FILL; ctx.fillText(dvNodes[bi].letter, dvTmpXY[0] - 8, DV_COL_TOP - 16);
+			for (let k = 0; k < 5; k++) {
+				if (!nodeExists(bi, k)) continue;
+				dvNodeXYFor(bi, k, dvTmpXY);
+				ctx.fillStyle = k === 0 ? DV_NODE_FILL_SURF : DV_NODE_FILL;
 				ctx.beginPath(); ctx.arc(dvTmpXY[0], dvTmpXY[1], DV_NODE_R, 0, TAU); ctx.fill();
-				ctx.fillStyle = 'rgba(180,190,210,0.55)';
-				ctx.fillText(kn.label, dvTmpXY[0] + 8, dvTmpXY[1] + 3);
+				ctx.fillStyle = DV_TEXT_FILL; ctx.fillText(nodeLabels[k], dvTmpXY[0] + 9, dvTmpXY[1] + 3);
+				if ((routeStart && routeStart.body === dvBodies[bi] && routeStart.node === k)
+					|| (routeEnd && routeEnd.body === dvBodies[bi] && routeEnd.node === k)) {
+					ctx.strokeStyle = activeRoute.ship.color; ctx.beginPath(); ctx.arc(dvTmpXY[0], dvTmpXY[1], DV_NODE_R + 4, 0, TAU); ctx.stroke();
+				}
 			}
 		}
-		// Draw the selected body table (plan §7.5): dv from the primary's low
-		// orbit to each destination body at budget 0, at the current budget,
-		// and ship feasibility per class. Falls back to the first body if
-		// nothing is selected.
-		drawDvTable(width, height);
+		ctx.fillStyle = DV_NODE_STAR_FILL; dvNodeXYFor(-1, 3, dvTmpXY);
+		ctx.beginPath(); ctx.arc(dvTmpXY[0], dvTmpXY[1], DV_NODE_R + 2, 0, TAU); ctx.fill();
+		ctx.fillStyle = DV_TEXT_FILL; ctx.fillText('star', dvTmpXY[0] - 14, dvTmpXY[1] + 20);
+		for (let i = 0; i < tableLines.length; i++) ctx.fillText(tableLines[i], 20, 320 + i * 16);
+		ctx.restore();
+		mapLayout.valid = true;
 	}
-
-	function drawDvTable(width, height) {
-		// Pick the "from" body: the currently selected planet/belt, or the
-		// first body for an empty selection.
-		let fromBody = -1;
-		if (selectedKind === BODY_PLANET && selectedIndex >= 0) fromBody = selectedIndex;
-		else if (selectedKind === BODY_BELT) fromBody = planets.MAX_PLANETS + selectedIndex;
-		if (fromBody < 0 || fromBody >= dvNBodies) fromBody = dvNBodies > 0 ? dvOrder[0] : -1;
-		if (fromBody < 0) return;
-		const ship = layerDv.shipById(dvShipClass);
-		// Compute table y starting below the graph. The graph height depends
-		// on the column with the most nodes; at most 5 nodes × 28 px = 140 px
-		// plus 40 px header, so table starts around 200 px.
-		let y = DV_COL_TOP + 5 * DV_NODE_DY + DV_TABLE_TOP_MARGIN;
-		ctx.font = DV_HEADER_FONT;
-		ctx.fillStyle = DV_TEXT_FILL;
-		ctx.fillText('From ' + dvNodes[fromBody].letter + ' low orbit   budget ' + dvBudget.toFixed(2) + '   ship ' + dvShipClass,
-			DV_TABLE_LEFT, y);
-		y += 18;
-		ctx.font = DV_LABEL_FONT;
-		const header = '  to       dv km/s   t_H        t(budget)   feasibility';
-		ctx.fillStyle = 'rgba(180,190,210,0.7)';
-		ctx.fillText(header, DV_TABLE_LEFT, y);
-		y += 14;
-		for (let jj = 0; jj < dvNBodies; jj++) {
-			const jBody = dvOrder[jj];
-			if (jBody === fromBody) continue;
-			// Find the inter edge for fromBody→jBody in the column-ordered
-			// table — we built edges in dvOrder (ii,jj) space but stored them
-			// keyed by ii*(N-1)+col. Easier: recompute legLoToLo for each
-			// pair since N ≤ 14 (≤ 13 recomputes per frame, ~1e3 ops total).
-			const leg = {};
-			layerDv.legLoToLo(dvMuStarVal, dvBodies[fromBody], dvBodies[jBody], false, leg);
-			const t0 = {};
-			layerDv.legTimes(leg, ship, 0, t0);
-			const tB = {};
-			layerDv.legTimes(leg, ship, dvBudget, tB);
-			let feasNote = '';
-			if (!tB.feasible) feasNote = 'exceeds ' + ship.label;
-			else if (tB.belowCrossover) feasNote = 'below dv_x, no gain';
-			else feasNote = layerDv.formatDuration(tB.t);
-			// Surface-to-surface chain if the destination has a surface
-			const surfChain = (dvNodes[fromBody].hasSurface ? dvOneEdges[fromBody].dvSurfaceToLo : 0)
-				+ leg.dvLoToLo
-				+ (dvNodes[jBody].hasSurface ? dvOneEdges[jBody].dvLoToSurface : 0);
-			const line = (dvNodes[jBody].letter + '        ').slice(0, 8)
-				+ layerDv.formatKms(leg.dvLoToLo).padStart(6)
-				+ layerDv.formatDuration(leg.tH).padStart(11)
-				+ layerDv.formatDuration(tB.t).padStart(13)
-				+ '   ' + feasNote;
-			ctx.fillStyle = DV_TEXT_FILL;
-			ctx.fillText(line, DV_TABLE_LEFT, y);
-			y += 14;
+	function pickDvNode(x, y, out) {
+		out.body = -1; out.node = -1;
+		if (!open || !dvMapOpen || !mapLayout.valid || !(mapLayout.scale > 0)) return false;
+		const lx = (x - mapLayout.x) / mapLayout.scale, ly = (y - mapLayout.y) / mapLayout.scale;
+		let best = (10 / mapLayout.scale) ** 2;
+		for (let bi = 0; bi < dvNBodies; bi++) {
+			for (let k = 0; k < 5; k++) {
+				if (!nodeExists(bi, k)) continue;
+				dvNodeXYFor(bi, k, dvTmpXY);
+				const d = (lx - dvTmpXY[0]) ** 2 + (ly - dvTmpXY[1]) ** 2;
+				if (d <= best) { best = d; out.body = bi; out.node = k; }
+			}
 		}
+		return out.body >= 0;
 	}
 
-	function setDvMap(on) { dvMapOpen = !!on; dvDirty = true; }
+	function setDvMap(on) { dvMapOpen = !!on; mapLayout.valid = false; refreshMapText(); }
 	function isDvMapOpen() { return dvMapOpen; }
 	function setBudget(b) {
 		const v = Number(b);
 		dvBudget = Number.isFinite(v) ? (v < BUDGET_MIN ? BUDGET_MIN : v > BUDGET_MAX ? BUDGET_MAX : v) : BUDGET_DEFAULT;
-		dvDirty = true;
+		refreshMapText(); rebuildRoute();
 		return dvBudget;
 	}
 	function getBudget() { return dvBudget; }
 	function setShipClass(id) {
-		for (const s of layerDv.SHIP_CLASSES) if (s.id === id) { dvShipClass = id; dvDirty = true; return id; }
-		dvShipClass = 'chemical'; dvDirty = true; return dvShipClass;
+		dvShipClass = layerDv.shipById(id).id;
+		refreshMapText(); rebuildRoute();
+		return dvShipClass;
 	}
 	function getShipClass() { return dvShipClass; }
 
@@ -903,7 +862,7 @@ function createSystemLayer(canvas) {
 	function pick(x, y, out) {
 		out.kind = BODY_NONE;
 		out.index = -1;
-		if (!open || !(layout.rSpan > 0)) return out;
+		if (!open || dvMapOpen || !(layout.rSpan > 0)) return out;
 		const dxs = x - layout.cx;
 		const dys = y - layout.cy;
 		let bestD2 = Infinity;
@@ -943,14 +902,14 @@ function createSystemLayer(canvas) {
 	function setSelected(kind, index) {
 		if (kind === BODY_STAR) { selectedKind = kind; selectedIndex = 0; return; }
 		if (kind === BODY_PLANET && index >= 0 && index < record.counts.planets) {
-			selectedKind = kind; selectedIndex = index; return;
+			selectedKind = kind; selectedIndex = index; refreshMapText(); return;
 		}
 		if (kind === BODY_BELT && index >= 0 && index < record.belts.count) {
-			selectedKind = kind; selectedIndex = index; return;
+			selectedKind = kind; selectedIndex = index; refreshMapText(); return;
 		}
 		clearBodySelection();
 	}
-	function clearBodySelection() { selectedKind = BODY_NONE; selectedIndex = -1; }
+	function clearBodySelection() { selectedKind = BODY_NONE; selectedIndex = -1; refreshMapText(); }
 	function selectedKindOf() { return selectedKind; }
 	function selectedIndexOf() { return selectedIndex; }
 
@@ -1062,7 +1021,7 @@ function createSystemLayer(canvas) {
 		if (dvNBodies > 0) {
 			let fromBody = -1;
 			if (selectedKind === BODY_PLANET && selectedIndex >= 0) fromBody = selectedIndex;
-			else if (selectedKind === BODY_BELT) fromBody = planets.MAX_PLANETS + selectedIndex;
+			else if (selectedKind === BODY_BELT) fromBody = record.counts.planets + selectedIndex;
 			if (fromBody >= 0 && fromBody < dvNBodies) {
 				lines.push('');
 				const ns = dvNodes[fromBody];
@@ -1100,6 +1059,9 @@ function createSystemLayer(canvas) {
 				}
 			}
 		}
+		if (routeStart) {
+			lines.unshift(...layerRoute.reportLines(activeRoute, flightStarted ? flightElapsed : undefined), ...routeFeasibility, '');
+		}
 		return lines;
 	}
 
@@ -1116,6 +1078,7 @@ function createSystemLayer(canvas) {
 		record, layout,
 		planetScreenXY, planetIconR, planetRho,
 		beltStippleXY, beltAngles, beltRadii, beltRho, beltRhoC, beltPeriod,
+		pickDvNode, chooseRouteNode, clearRoute, setRoundTrip, toggleAutopilot, routeState, autopilotRunning, planExternalRoute, mapLayout, dvNodeXYFor,
 		setDvMap, isDvMapOpen, setBudget, getBudget, setShipClass, getShipClass, buildDv,
 	};
 }

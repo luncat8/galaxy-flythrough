@@ -460,8 +460,13 @@ function apocenterAngle(theta, radius, family, model) {
 
 function solveEccentricAnomaly(mean, eccentricity) {
 	const M = reduceAngle(mean);
-	let E = M;
+	let E = eccentricity > 0.8 ? (M < 0 ? -Math.PI : Math.PI) : M;
 	for (let i = 0; i < 5; i++) {
+		E -= (E - eccentricity * Math.sin(E) - M) / (1 - eccentricity * Math.cos(E));
+	}
+	// Galaxy e ≤ 0.55 retains the exact WGSL-mirrored five-step law.
+	// System transfer ellipses can approach e = 1 and need more iterations.
+	if (eccentricity > 0.55) for (let i = 0; i < 11; i++) {
 		E -= (E - eccentricity * Math.sin(E) - M) / (1 - eccentricity * Math.cos(E));
 	}
 	return E;

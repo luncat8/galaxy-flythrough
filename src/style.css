@@ -328,3 +328,16 @@ html, body {
 	cursor: pointer;
 }
 .preset-actions button:hover { background: #244824; }
+
+/* Reserve the report area instead of painting the map below debug text. */
+body.dv-map #overlay { display: none; }
+body.system-view #sysread {
+	max-height: 25vh;
+	max-width: calc(100vw - 300px);
+	overflow: auto;
+	pointer-events: auto;
+}
+#route-hint { color: #9cbea8; line-height: 1.4; }
+@media (max-width: 700px) {
+	body.system-view #sysread { max-width: calc(100vw - 24px); }
+}

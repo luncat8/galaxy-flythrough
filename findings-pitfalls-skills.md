@@ -1326,3 +1326,17 @@ barren, so the sentinel path is pinned too). Rule: before a tier is called done,
 field list against the predicate list of every module that reads it — a field a consumer
 cannot act on is as much a bug as a missing one, and both are invisible to a test written
 against the tier's own spec.
+
+## 2026-10-13 — Route clocks, signed windows and browser-only search glue
+
+Belt SI periods need `2π sqrt(a³/μ)`; the schematic's `sqrt(a_AU³/M_solar)`
+year law already includes that factor through the unit system. Compare the two
+clocks directly to catch unit drift. Synodic windows also need the sign of
+`n_target - n_source`; absolute angular velocity alone works only in one
+transfer direction. Fuel zero is a genuine empty tank, not an absent limit.
+
+Node-side search math passed while its browser UI called nonexistent `ptypeBit`
+instead of exported `planetTypeBit`. A real DOM/control run exposed it; module
+export parity alone cannot check call sites. Headless Chromium's software WebGPU
+lost its external instance in this sandbox: CPU canvas and UI tests still work,
+but those results must not be presented as successful WebGPU galaxy rendering.

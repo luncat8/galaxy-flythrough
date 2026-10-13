@@ -65,3 +65,12 @@ python3 scripts/run.py camera      # one script
   tested against a stub device (see `renderer-test.js`), validated statically
   (`m1-smoke-test.js`, `wgsl-validate.js`), or — for actual shader behaviour —
   interpreted on the CPU (`wgsl-exec-check.js`).
+
+### Routes and delta-v
+
+`python3 scripts/run.py dv-map` pins the published Solar-System map (38 checks).
+`python3 scripts/run.py route` checks 0.5.5 ship invariants, signed launch windows,
+cumulative fuel/life support, round trips, interstellar cruise/short-leg profiles,
+Kepler/chord autopilot, transformed DV picking, maximum-body fitting and presets
+(35 checks). Both are included in `all-tests`. The headless layer tests do not
+claim a real WebGPU galaxy visual pass.

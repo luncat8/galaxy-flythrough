@@ -41,7 +41,7 @@ const SETTINGS = {
 	time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
 	selrad: 1.69897, exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
 	search: 'G,K|terran|220-300', scope: 'selection',
-	sysview: 0, systime: 2,
+	sysview: 0, systime: 2, dvmap: 1, dvbudget: 0.35, ship: 'fusion',
 	stars: 300000, catalog: 250000,
 };
 
@@ -166,7 +166,7 @@ check('menuDefaults matches the modules that own the numbers', () => {
 		selrad: 1.69897,
 		exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
 		time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
-		systime: 0,
+		systime: 0, dvmap: 0, dvbudget: 0.35, ship: 'chemical',
 	});
 });
 
