@@ -72,8 +72,18 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		/camera\.setFrame\(model\);[\s\S]*?camera\.setMode\(window\.Camera\.MODE_ORBIT_GC\);\s*const input = window\.Input\.createInput\(canvas\);\s*input\.setFlyMode\(false\);/.test(main));
 	check('input policy follows camera mode after stepping',
 		/camera\.step\(dt, input\.state\);[\s\S]*?input\.setFlyMode\(cameraStateForTime\.mode === window\.Camera\.MODE_FLY\);/.test(main));
-	check('opening the menu releases pointer lock',
-		/if \(!visible && document\.pointerLockElement === canvas\) document\.exitPointerLock\(\);/.test(main));
+	check('every element main.js looks up exists in index.html',
+		(function () {
+			const ids = new Set([...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]));
+			const used = [...main.matchAll(/getElementById\('([^']+)'\)/g)].map((m) => m[1]);
+			const missing = used.filter((id) => !ids.has(id));
+			return missing.length === 0;
+		})(), 'missing ids');
+	check('the sysmenu selector main.js queries is an id in the page',
+		/#sysmenu \[data-view\]/.test(main) && /id="sysmenu"/.test(html));
+	check('opening a panel releases pointer lock',
+		/function releasePanelInput\(\) \{[\s\S]*?document\.exitPointerLock\(\);[\s\S]*?\}/.test(main)
+		&& /\} else \{\s*releasePanelInput\(\);/.test(main));
 }
 
 // --- 2. No global is read before it is defined --------------------------

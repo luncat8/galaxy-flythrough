@@ -1,8 +1,11 @@
 // src/render/system-layer.js
-// The close-system schematic (0.5.3, plan §6): a 2D canvas above the label
+// The close-system view (0.5.3/0.5.6, plan §6/§7): a 2D canvas above the label
 // layer that draws the opened star's generated system — log-polar orbits, the
 // habitable annulus, belt stipples, colour-coded planet icons — plus exact
-// screen-space picking and the #sysread text.
+// screen-space picking and the #sysread text. The same canvas carries the two
+// delta-v map renders (§7.5): the 0.5.4 star-shaped graph and the rail render,
+// which puts every node kind on its own row so the escape rail and the L5 rail
+// run straight across the columns and both read as ways out of the system.
 //
 // CPU-only by construction (plan §1.1): one system is ≤ 12 planets + 2 belts,
 // so this is ~800 canvas ops a frame with zero allocations. Drawn every frame
@@ -23,7 +26,9 @@
 // Time (plan §6.4) is the view's own clock in years/s, independent of the
 // galaxy's Myr/s star time: at 1 Myr/s an Earth orbit strobes at 10⁶ turns per
 // second. −1 couples the rate to the camera fly speed the way the star-time
-// slider does, through orbit.js's own FLIGHT_TIME_GAIN.
+// slider does, through orbit.js's own FLIGHT_TIME_GAIN. The rate is picked off
+// a geometric ladder, because the legs the ship flies span six decades: a
+// low-orbit launch is ~1e-4 y, a Hohmann transfer ~0.4 y.
 
 (function () {
 'use strict';
@@ -90,21 +95,43 @@ const STAR_RADIUS_PX = { ms: 12, giant: 20, wd: 6 };
 const PICK_PAD_PX = 4;                // bodies: iconRadius + 4 px, nearest wins
 const BELT_PICK_PX = 6;               // belts: |r_click − r_belt| < 6 px
 
-// --- System time (plan §6.4): the view's own clock ----------------------------
+// --- System time (plan §6.4): the view's own clock, on a geometric ladder ----
+// The 0.5.5 range (−1 … 99, step 0.5) was a strobe at its slow end: the ship
+// spends a whole Hohmann transfer in ~0.4 y and a launch in ~1e-4 y, so the
+// slowest stop has to sit five decades below the old minimum to show the ship
+// moving at all. The ladder is the control — every stop is a deliberate rate,
+// and −1 (follow the camera) and 0 (frozen) ride at the bottom, ahead of the
+// slowest timed stop.
+const SYSTIME_LADDER = [-1, 0, 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3,
+	0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
+const SYSTIME_INDEX_MIN = 0;
+const SYSTIME_INDEX_MAX = SYSTIME_LADDER.length - 1;
+const SYSTIME_INDEX_DEFAULT = 1;      // frozen
 const SYSTIME_MIN = -1;               // −1 couples to the camera fly speed
-const SYSTIME_MAX = 99;               // years per second
-const SYSTIME_STEP = 0.5;
+const SYSTIME_MAX = 100;              // years per second
 const SYSTIME_DEFAULT = 0;            // frozen
 
-// --- Delta-v map (plan §7): toggle + budget slider ----------------------------
-const DVMAP_DEFAULT = false;
+// --- The open view (plan §6.5, §7.5) -----------------------------------------
+// One view is open at a time on the one canvas: the schematic or one of the two
+// delta-v map renders. The rail render puts every node kind on its own row, so
+// the escape and L5 rails run straight across the columns.
+const VIEW_SYSTEM = 0;
+const VIEW_DV_CLASSIC = 1;
+const VIEW_DV_RAILS = 2;
+const VIEW_COUNT = 3;
+const VIEW_DEFAULT = VIEW_SYSTEM;
+const VIEW_NAMES = ['system', 'delta-v classic', 'delta-v rails'];
+
+// --- Delta-v map (plan §7): budget slider + ship ------------------------------
 const BUDGET_MIN = 0, BUDGET_MAX = 1, BUDGET_STEP = 0.01, BUDGET_DEFAULT = 0.35;
 
-// Delta-v graph drawing constants (plan §7.5).
+// Delta-v graph drawing constants (plan §7.5). Both renders share the column
+// width and the row pitch; they differ in how a node's row is chosen and in
+// what is drawn between the columns.
 const DV_COL_X0 = 90;                // left margin of the graph
 const DV_COL_W = 160;                // spacing between body columns
 const DV_COL_TOP = 82;               // top of the graph
-const DV_NODE_DY = 44;               // vertical gap between nodes in a column
+const DV_NODE_DY = 44;               // vertical gap between rows
 const DV_NODE_R = 5;
 const DV_EDGE_STROKE = 'rgba(150, 200, 240, 0.55)';
 const DV_NODE_FILL = 'rgba(150, 200, 240, 0.85)';
@@ -113,6 +140,18 @@ const DV_NODE_STAR_FILL = 'rgba(255, 240, 180, 0.9)';
 const DV_TEXT_FILL = 'rgba(220, 230, 240, 0.85)';
 const DV_LABEL_FONT = '11px Menlo, Consolas, monospace';
 const DV_HEADER_FONT = '12px Menlo, Consolas, monospace';
+// Rails render (0.5.6): the escape and L5 rails are the two ways out of a
+// system, so they get their own colours — the classic Hohmann rail warm, the
+// L5 drift rail cool and dashed.
+const DV_RAIL_EDGE = 'rgba(240, 200, 140, 0.55)';
+const DV_RAIL_L5 = 'rgba(140, 220, 235, 0.5)';
+const DV_RAIL_LABEL = 'rgba(240, 210, 160, 0.9)';
+const DV_RAIL_L5_LABEL = 'rgba(160, 225, 240, 0.9)';
+const DV_INNER_STROKE = 'rgba(150, 175, 215, 0.35)';
+const DV_ROW_CAPTION = 'rgba(150, 170, 195, 0.75)';
+const DV_PANEL_FILL = 'rgba(3, 8, 16, 0.94)';
+const DV_SELECT_COL = 'rgba(150, 200, 240, 0.07)';
+const DV_TABLE_TOP = 320;            // first table row, below the graph
 
 // Body kinds for picking, selection and hover.
 const BODY_NONE = -1, BODY_STAR = 0, BODY_PLANET = 1, BODY_BELT = 2;
@@ -158,11 +197,35 @@ function starRadiusForState(state) {
 	return r === undefined ? STAR_RADIUS_PX.ms : r;
 }
 
-// The system-time slider's readout: the star-time formatter's shape, in y/s.
+// The system-time slider's readout. Above a hundredth of a year per second the
+// rate reads as y/s; below that it reads in the unit that is legible for it
+// (a stop of 1e-4 y/s moves 0.9 h of system time per second).
 function formatSysTimeRate(rate) {
 	if (rate < 0) return 'follow \u00d7' + (-rate).toFixed(1);
 	if (rate === 0) return '0 y/s';
-	return rate + ' y/s';
+	if (rate >= 1) return rate + ' y/s';
+	if (rate >= 0.01) return rate.toFixed(3) + ' y/s';
+	const daysPerSec = rate * 365.25;
+	if (daysPerSec >= 1) return daysPerSec.toFixed(1) + ' d/s';
+	return (daysPerSec * 24).toFixed(1) + ' h/s';
+}
+
+// The rate at a ladder stop, and the stop nearest a rate. The slider speaks
+// indices — what the stops are is this file's business, not the DOM's.
+function sysTimeRateAt(index) {
+	if (!Number.isFinite(index)) return SYSTIME_LADDER[SYSTIME_INDEX_DEFAULT];
+	const i = Math.round(index);
+	return SYSTIME_LADDER[i < SYSTIME_INDEX_MIN ? SYSTIME_INDEX_MIN : i > SYSTIME_INDEX_MAX ? SYSTIME_INDEX_MAX : i];
+}
+
+function sysTimeIndexOf(rate) {
+	let best = SYSTIME_INDEX_DEFAULT;
+	let bestGap = Infinity;
+	for (let i = 0; i < SYSTIME_LADDER.length; i++) {
+		const gap = Math.abs(SYSTIME_LADDER[i] - rate);
+		if (gap < bestGap) { bestGap = gap; best = i; }
+	}
+	return best;
 }
 
 // The §6.6 readout's number formats. Each is the column the worked example
@@ -241,7 +304,7 @@ function createSystemLayer(canvas) {
 	let dvNBodies = 0;
 	// Order permutation: dvOrder[i] = original body index for column (i+1).
 	const dvOrder = new Int16Array(dvN);
-	let dvMapOpen = DVMAP_DEFAULT;
+	let view = VIEW_DEFAULT;
 	let dvBudget = BUDGET_DEFAULT;
 	let dvShipClass = 'chemical';
 	let dvMuStarVal = 0;     // set per open from record.star.mass (buildDv)
@@ -257,7 +320,10 @@ function createSystemLayer(canvas) {
 	const noDash = [];
 	function endpointOf(bi, node) {
 		const ns = dvNodes[bi];
-		return { body: dvBodies[bi], node, muStar: dvMuStarVal, phase: ns.kind === 0 ? record.planets.phase[ns.index] + record.planets.peri[ns.index] : 0,
+		// `bodyIndex` is what the map's route trace needs (plan §7.5): the graph
+		// column a leg's endpoint sits in. A stellar endpoint (main.js's
+		// selected-star route) simply has none, and such a route is readout-only.
+		return { body: dvBodies[bi], bodyIndex: bi, node, muStar: dvMuStarVal, phase: ns.kind === 0 ? record.planets.phase[ns.index] + record.planets.peri[ns.index] : 0,
 			systemKey: record.star.key, label: ns.letter, x: 0, y: 0, z: 0 };
 	}
 	function rebuildRoute() {
@@ -512,20 +578,28 @@ function createSystemLayer(canvas) {
 		}
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		ctx.textBaseline = 'alphabetic';
+		ctx.textAlign = 'left';
 	}
 
 	// --- Draw (plan §6.2, back to front; §7.5 for the dv map) ---------------
-	function draw(width, height, rightInset) {
+	// The map is fitted between the two panels: `leftInset` is the control
+	// panel's width, `rightInset` the settings menu's, so neither covers it.
+	function draw(width, height, rightInset, leftInset) {
 		if (!open) return;                      // the only cost while closed
 		ctx.clearRect(0, 0, width, height);
 		if (!(width > 0) || !(height > 0)) return;
-		if (dvMapOpen) {
-			drawDvMap(width - (rightInset || 0), height);
+		if (view !== VIEW_SYSTEM) {
+			drawDvMap(width, height, rightInset || 0, leftInset || 0);
 			return;
 		}
-		layout.cx = width * 0.5;
+		// Centre in the free strip, not on the canvas: with the control panel
+		// open, centring on the canvas would tuck the inner system behind it.
+		// The disk never grows past the strip, so nothing hides under a panel.
+		const x0 = leftInset || 0;
+		const x1 = Math.max(x0 + 1, width - (rightInset || 0));
+		layout.cx = x0 + (x1 - x0) * 0.5;
 		layout.cy = height * 0.5;
-		layout.rEdge = Math.min(width, height) * R_EDGE_FRAC;
+		layout.rEdge = Math.min(x1 - x0, height) * R_EDGE_FRAC;
 		layout.rSpan = layout.rEdge - R_STAR_PX;
 		if (!(layout.rSpan > 0)) return;
 		drawHabitableZone();
@@ -708,11 +782,17 @@ function createSystemLayer(canvas) {
 		ctx.fillText(hoverLabel, x, y);
 	}
 
+	// --- The delta-v map, logic size --------------------------------------
 	// Centered logical map, uniformly fitted to the clear canvas region.
 	const mapLayout = { x: 0, y: 0, scale: 1, width: 0, height: 0, valid: false };
 	const nodeLabels = ['surf', 'LO', 'GEO', 'esc', 'L5'];
+	const rowCaptions = ['surface', 'low orbit', 'GEO', 'escape C3=0', 'L5 drift'];
 	const tableLines = [];
 	let mapHeader = '';
+	// The two rails of the rail render are the same heliocentric transfer; they
+	// differ in what waits at the ends, which is the one thing the caption says.
+	const RAIL_LEGEND_ESC = 'escape rail — Hohmann injection, capture into the destination low orbit';
+	const RAIL_LEGEND_L5 = 'L5 rail — the 60\u00b0 drift, the same transfer, no capture burn';
 	function nodeExists(bi, kind) {
 		const n = dvNodes[bi];
 		return kind === 1 || kind === 3 || (kind === 0 && n.hasSurface)
@@ -722,9 +802,16 @@ function createSystemLayer(canvas) {
 		for (let i = 0; i < dvNBodies; i++) if (dvOrder[i] === bodyIdx) return i;
 		return 0;
 	}
+	// A node's logical position in the graph. The rail render gives every kind
+	// its own row, so the escape and L5 rails stay level across the columns (a
+	// body without a GEO leaves a gap instead of shifting its neighbours); the
+	// classic render packs the rows per body, which is the shape 0.5.4 drew.
 	function dvNodeXYFor(bi, kind, out) {
-		let slot = 0;
-		if (bi >= 0) for (let k = 0; k < kind; k++) if (nodeExists(bi, k)) slot++;
+		let slot = kind;
+		if (view !== VIEW_DV_RAILS) {
+			slot = 0;
+			if (bi >= 0) for (let k = 0; k < kind; k++) if (nodeExists(bi, k)) slot++;
+		}
 		out[0] = DV_COL_X0 + (bi < 0 ? 0 : dvColumnIndexOf(bi) + 1) * DV_COL_W;
 		out[1] = DV_COL_TOP + slot * DV_NODE_DY;
 		return out;
@@ -733,7 +820,8 @@ function createSystemLayer(canvas) {
 	const dvTmpXY2 = new Float64Array(2);
 	const tableTimes = {};
 	function refreshMapText() {
-		mapHeader = starPrefix + ' · delta-v (km/s) · click start, then destination';
+		mapHeader = starPrefix + ' · delta-v (km/s) · ' + (view === VIEW_DV_RAILS ? 'rail render' : 'classic render')
+			+ ' · click start, then destination';
 		tableLines.length = 0;
 		let from = selectedKind === BODY_PLANET ? selectedIndex
 			: selectedKind === BODY_BELT ? record.counts.planets + selectedIndex : -1;
@@ -766,30 +854,93 @@ function createSystemLayer(canvas) {
 		ctx.lineTo(dvTmpXY2[0], dvTmpXY2[1]); ctx.stroke();
 		if (label) ctx.fillText(label, (dvTmpXY[0] + dvTmpXY2[0]) * 0.5 - 16, (dvTmpXY[1] + dvTmpXY2[1]) * 0.5 - 5);
 	}
+	// Every string the two renders draw is built here, once per system: the
+	// frame loop only reads these (plan §7.5 — no per-frame formatting).
 	const edgeLabels = [];
 	const interLabels = [];
+	const railEscapeLabels = [];
+	const railL5Labels = [];
+	const railHeads = [];
+	const railAux = [];
 	function cacheMapLabels() {
 		edgeLabels.length = 0; interLabels.length = 0;
+		railEscapeLabels.length = 0; railL5Labels.length = 0;
+		railHeads.length = 0; railAux.length = 0;
+		for (let bi = 0; bi < dvNBodies; bi++) {
+			const au = dvBodies[bi].aM / layerDv.AU_M;
+			railHeads.push(dvNodes[bi].letter + '  ' + dvNodes[bi].label);
+			railAux.push(au >= 10 ? au.toFixed(0) + ' AU' : au.toFixed(2) + ' AU');
+		}
 		for (let i = 0; i < dvNBodies; i++) {
 			const e = dvOneEdges[i];
 			edgeLabels.push([layerDv.formatKms(e.dvSurfaceToLo), '', layerDv.formatKms(e.dvLoToGeo), layerDv.formatKms(e.dvLoToEscape), layerDv.formatKms(e.dvLoToL5)]);
 		}
 		for (let i = 0; i < dvNBodies - 1; i++) {
-			const e = dvInterEdges[layerDv.interEdgeIndex(dvNBodies, dvOrder[i], dvOrder[i + 1])];
+			const a = dvOrder[i], b = dvOrder[i + 1];
+			const e = dvInterEdges[layerDv.interEdgeIndex(dvNBodies, a, b)];
 			interLabels.push(layerDv.formatKms(e.dvDepStar + e.dvArrStar));
+			// The rail readings (§7.2's chains): the escape rail is the route
+			// builder's own low-orbit-to-low-orbit number (Oberth departure plus
+			// credited capture); the L5 rail adds the drift out of the origin's
+			// well to the same heliocentric transfer, and nothing at the far end
+			// — arriving at L5 is arriving.
+			railEscapeLabels.push(layerDv.formatKms(e.dvLoToLo));
+			railL5Labels.push(layerDv.formatKms(dvOneEdges[a].dvLoToL5 + e.dvDepStar + e.dvArrStar));
 		}
 		refreshMapText();
 	}
-	function drawDvMap(width, height) {
-		const logicalW = Math.max(740, DV_COL_X0 + (dvNBodies + 0.5) * DV_COL_W);
-		const logicalH = 330 + tableLines.length * 16;
-		mapLayout.scale = Math.min(1, (width - 32) / logicalW, (height * 0.70 - 32) / logicalH);
-		mapLayout.x = (width - logicalW * mapLayout.scale) * 0.5;
-		mapLayout.y = (height * 0.70 - logicalH * mapLayout.scale) * 0.5 + 12;
-		mapLayout.width = logicalW; mapLayout.height = logicalH;
-		ctx.save();
-		ctx.translate(mapLayout.x, mapLayout.y); ctx.scale(mapLayout.scale, mapLayout.scale);
-		ctx.fillStyle = 'rgba(3,8,16,0.94)'; ctx.fillRect(0, 0, logicalW, logicalH);
+	// One node, drawn the same in both renders. L5 is a diamond: it is the one
+	// node that is not a point on the body's own well (plan §7.1).
+	function drawMapNode(bi, k) {
+		dvNodeXYFor(bi, k, dvTmpXY);
+		ctx.fillStyle = k === 0 ? DV_NODE_FILL_SURF : DV_NODE_FILL;
+		if (k === 4) {
+			const r = DV_NODE_R;
+			ctx.beginPath();
+			ctx.moveTo(dvTmpXY[0], dvTmpXY[1] - r);
+			ctx.lineTo(dvTmpXY[0] + r, dvTmpXY[1]);
+			ctx.lineTo(dvTmpXY[0], dvTmpXY[1] + r);
+			ctx.lineTo(dvTmpXY[0] - r, dvTmpXY[1]);
+			ctx.closePath();
+			ctx.fill();
+		} else {
+			ctx.beginPath(); ctx.arc(dvTmpXY[0], dvTmpXY[1], DV_NODE_R, 0, TAU); ctx.fill();
+		}
+	}
+	// The endpoint rings of the chosen route (plan §8.4): both ends of the
+	// itinerary are marked on the graph, whichever node they are.
+	function drawMapEndpointRing(bi, k) {
+		if (!routeStart && !routeEnd) return;
+		const isStart = routeStart && routeStart.bodyIndex === bi && routeStart.node === k;
+		const isEnd = routeEnd && routeEnd.bodyIndex === bi && routeEnd.node === k;
+		if (!isStart && !isEnd) return;
+		dvNodeXYFor(bi, k, dvTmpXY);
+		ctx.strokeStyle = activeRoute.ship.color;
+		ctx.lineWidth = 1;
+		ctx.beginPath(); ctx.arc(dvTmpXY[0], dvTmpXY[1], DV_NODE_R + 4, 0, TAU); ctx.stroke();
+	}
+	function drawMapNodes() {
+		for (let col = 0; col < dvNBodies; col++) {
+			const bi = dvOrder[col];
+			for (let k = 0; k < 5; k++) {
+				if (!nodeExists(bi, k)) continue;
+				drawMapNode(bi, k);
+			}
+		}
+		ctx.fillStyle = DV_TEXT_FILL;
+		for (let col = 0; col < dvNBodies; col++) {
+			const bi = dvOrder[col];
+			for (let k = 0; k < 5; k++) {
+				if (!nodeExists(bi, k)) continue;
+				dvNodeXYFor(bi, k, dvTmpXY);
+				ctx.fillText(nodeLabels[k], dvTmpXY[0] + 9, dvTmpXY[1] + 3);
+				drawMapEndpointRing(bi, k);
+			}
+		}
+	}
+	// The 0.5.4 render, unchanged in shape: rows packed per body, edges fanning
+	// out of LOW_ORBIT, adjacent columns joined along the escape row.
+	function drawDvClassic() {
 		ctx.fillStyle = DV_TEXT_FILL; ctx.font = DV_HEADER_FONT;
 		ctx.fillText(mapHeader, 20, 24);
 		ctx.font = DV_LABEL_FONT; ctx.strokeStyle = DV_EDGE_STROKE; ctx.lineWidth = 1;
@@ -804,28 +955,221 @@ function createSystemLayer(canvas) {
 			const bi = dvOrder[col];
 			dvNodeXYFor(bi, 0, dvTmpXY);
 			ctx.fillStyle = DV_TEXT_FILL; ctx.fillText(dvNodes[bi].letter, dvTmpXY[0] - 8, DV_COL_TOP - 16);
-			for (let k = 0; k < 5; k++) {
-				if (!nodeExists(bi, k)) continue;
-				dvNodeXYFor(bi, k, dvTmpXY);
-				ctx.fillStyle = k === 0 ? DV_NODE_FILL_SURF : DV_NODE_FILL;
-				ctx.beginPath(); ctx.arc(dvTmpXY[0], dvTmpXY[1], DV_NODE_R, 0, TAU); ctx.fill();
-				ctx.fillStyle = DV_TEXT_FILL; ctx.fillText(nodeLabels[k], dvTmpXY[0] + 9, dvTmpXY[1] + 3);
-				if ((routeStart && routeStart.body === dvBodies[bi] && routeStart.node === k)
-					|| (routeEnd && routeEnd.body === dvBodies[bi] && routeEnd.node === k)) {
-					ctx.strokeStyle = activeRoute.ship.color; ctx.beginPath(); ctx.arc(dvTmpXY[0], dvTmpXY[1], DV_NODE_R + 4, 0, TAU); ctx.stroke();
-				}
-			}
 		}
+		drawMapNodes();
 		ctx.fillStyle = DV_NODE_STAR_FILL; dvNodeXYFor(-1, 3, dvTmpXY);
 		ctx.beginPath(); ctx.arc(dvTmpXY[0], dvTmpXY[1], DV_NODE_R + 2, 0, TAU); ctx.fill();
 		ctx.fillStyle = DV_TEXT_FILL; ctx.fillText('star', dvTmpXY[0] - 14, dvTmpXY[1] + 20);
-		for (let i = 0; i < tableLines.length; i++) ctx.fillText(tableLines[i], 20, 320 + i * 16);
+	}
+	// The rail render (0.5.6). Every node kind keeps its own row, so the escape
+	// rail and the L5 rail run straight across the columns and both read as ways
+	// out of a system: the escape rail injects from low orbit and captures at
+	// the destination, the L5 rail drifts out at the 60° point and arrives in
+	// the destination's drift without a capture burn. The rung numbers are the
+	// whole low-orbit-to-low-orbit chains of §7.2, i.e. what the route builder
+	// actually charges — the column labels beside them are the parts.
+	function drawDvRails() {
+		ctx.fillStyle = DV_TEXT_FILL; ctx.font = DV_HEADER_FONT;
+		ctx.fillText(mapHeader, 20, 24);
+		ctx.font = DV_LABEL_FONT;
+		ctx.fillStyle = DV_ROW_CAPTION;
+		ctx.fillText(RAIL_LEGEND_ESC, DV_COL_X0, 42);
+		ctx.fillText(RAIL_LEGEND_L5, DV_COL_X0, 56);
+		// The selected body's column, behind everything (plan §6.3: the map
+		// reads the same selection the schematic does).
+		const selBody = selectedKind === BODY_PLANET ? selectedIndex
+			: selectedKind === BODY_BELT ? record.counts.planets + selectedIndex : -1;
+		if (selBody >= 0 && selBody < dvNBodies) {
+			dvNodeXYFor(selBody, 0, dvTmpXY);
+			ctx.fillStyle = DV_SELECT_COL;
+			ctx.fillRect(dvTmpXY[0] - DV_COL_W * 0.5 + 4, DV_COL_TOP - DV_NODE_DY * 1.5, DV_COL_W - 8, DV_NODE_DY * 6);
+		}
+		// Row captions once, in the clear margin left of the first column.
+		for (let k = 0; k < 5; k++) {
+			dvNodeXYFor(-1, k, dvTmpXY);
+			ctx.fillStyle = DV_ROW_CAPTION;
+			ctx.fillText(rowCaptions[k], DV_COL_X0 - 14, dvTmpXY[1] + 3);
+		}
+		// The rails, drawn before the nodes so the markers sit on top.
+		ctx.lineWidth = 1;
+		for (let i = 0; i < dvNBodies - 1; i++) {
+			const a = dvOrder[i], b = dvOrder[i + 1];
+			mapRail(a, b, 3, DV_RAIL_EDGE, DV_RAIL_LABEL, railEscapeLabels[i]);
+			if (nodeExists(a, 4) && nodeExists(b, 4)) mapRail(a, b, 4, DV_RAIL_L5, DV_RAIL_L5_LABEL, railL5Labels[i]);
+		}
+		// The well edges of each column, and the column headers.
+		for (let col = 0; col < dvNBodies; col++) {
+			const bi = dvOrder[col];
+			dvNodeXYFor(bi, 0, dvTmpXY);
+			const hx = dvTmpXY[0] - DV_COL_W * 0.5 + 8;
+			ctx.fillStyle = DV_TEXT_FILL;
+			ctx.fillText(railHeads[bi], hx, DV_COL_TOP - 40);
+			ctx.fillStyle = DV_ROW_CAPTION;
+			ctx.fillText(railAux[bi], hx, DV_COL_TOP - 26);
+			for (let k = 0; k < 5; k++) {
+				if (k === 1 || !nodeExists(bi, k)) continue;
+				mapWellEdge(bi, k, edgeLabels[bi][k]);
+			}
+		}
+		drawMapNodes();
+	}
+	// One well edge of a column, drawn as a vertical beside the LO node — the
+	// escape and L5 edges are offset to opposite sides so the three edges that
+	// leave LO never overlap — with its number beside it.
+	function mapWellEdge(bi, k, label) {
+		dvNodeXYFor(bi, 1, dvTmpXY);
+		dvNodeXYFor(bi, k, dvTmpXY2);
+		const offset = k === 3 ? -10 : k === 4 ? 10 : 0;
+		const x = dvTmpXY[0] + offset;
+		ctx.strokeStyle = k === 3 ? DV_RAIL_EDGE : k === 4 ? DV_RAIL_L5 : DV_INNER_STROKE;
+		ctx.beginPath();
+		ctx.moveTo(x, dvTmpXY[1]);
+		ctx.lineTo(x, dvTmpXY2[1]);
+		if (offset) {
+			// Short elbows back to the two nodes, so an offset edge still reads
+			// as leaving LO rather than floating beside it.
+			ctx.moveTo(dvTmpXY[0], dvTmpXY[1]);
+			ctx.lineTo(x, dvTmpXY[1]);
+			ctx.moveTo(x, dvTmpXY2[1]);
+			ctx.lineTo(dvTmpXY2[0], dvTmpXY2[1]);
+		}
+		ctx.stroke();
+		if (!label) return;
+		ctx.fillStyle = DV_TEXT_FILL;
+		const midY = (dvTmpXY[1] + dvTmpXY2[1]) * 0.5 + 3;
+		if (offset < 0) {
+			ctx.textAlign = 'right';
+			ctx.fillText(label, x - 6, midY);
+			ctx.textAlign = 'left';
+			return;
+		}
+		ctx.fillText(label, x + 6, midY);
+	}
+	// One rail rung between adjacent columns at `row`, drawn flat with its
+	// journey number centred above it.
+	function mapRail(a, b, row, stroke, labelFill, label) {
+		dvNodeXYFor(a, row, dvTmpXY);
+		dvNodeXYFor(b, row, dvTmpXY2);
+		ctx.strokeStyle = stroke;
+		ctx.beginPath();
+		ctx.moveTo(dvTmpXY[0], dvTmpXY[1]);
+		ctx.lineTo(dvTmpXY2[0], dvTmpXY2[1]);
+		ctx.stroke();
+		if (!label) return;
+		ctx.fillStyle = labelFill;
+		ctx.fillText(label, (dvTmpXY[0] + dvTmpXY2[0]) * 0.5 - 14, dvTmpXY[1] - 7);
+	}
+	// --- The route trace (plan §7.5): the ship rides the graph ---------------
+	// The map is a picture of the itinerary once a route exists: its transfer
+	// legs are traced along the rail they use and the ship marker sits where the
+	// flight clock has reached. Purely presentational — every number is the
+	// route builder's (§8.5); this only projects them onto the graph.
+	//
+	// A transfer leaves its origin's node, joins the rail row (the L5 rail when
+	// either end is a drift node, the escape rail otherwise), crosses, and drops
+	// onto the destination's node. The row join is what makes the marker ride
+	// the lines that are drawn rather than a chord between two dots.
+	const mapPathXY = new Float64Array(8);      // 4 graph points
+	const mapShipXY = new Float64Array(2);
+	const RAIL_STEP = 0.15;                     // of the leg, in and out of the rail
+	function nodeXYInto(bi, kind, out, at) {
+		dvNodeXYFor(bi, kind, dvTmpXY);
+		out[at] = dvTmpXY[0];
+		out[at + 1] = dvTmpXY[1];
+	}
+	function buildTransferPath(from, to) {
+		const rail = (from.node === 4 || to.node === 4) ? 4 : 3;
+		nodeXYInto(from.bodyIndex, from.node, mapPathXY, 0);
+		nodeXYInto(from.bodyIndex, rail, mapPathXY, 2);
+		nodeXYInto(to.bodyIndex, rail, mapPathXY, 4);
+		nodeXYInto(to.bodyIndex, to.node, mapPathXY, 6);
+	}
+	function mapPathPoint(out, f) {
+		const seg = f <= RAIL_STEP ? 0 : f >= 1 - RAIL_STEP ? 2 : 1;
+		const t = seg === 0 ? f / RAIL_STEP
+			: seg === 2 ? (f - (1 - RAIL_STEP)) / RAIL_STEP
+			: (f - RAIL_STEP) / (1 - 2 * RAIL_STEP);
+		const a = seg * 2;
+		out[0] = mapPathXY[a] + (mapPathXY[a + 2] - mapPathXY[a]) * t;
+		out[1] = mapPathXY[a + 1] + (mapPathXY[a + 3] - mapPathXY[a + 1]) * t;
+		return out;
+	}
+	// The leg the flight clock is in; -1 when there is no itinerary.
+	function mapLegIndexAt(t) {
+		if (!activeRoute.count) return -1;
+		for (let i = 0; i < activeRoute.count; i++) {
+			if (t < activeRoute.legs[i].end || i === activeRoute.count - 1) return i;
+		}
+		return activeRoute.count - 1;
+	}
+	function drawMapRoute() {
+		if (!activeRoute.count || !activeRoute.start || !activeRoute.end) return;
+		// Interstellar itineraries are readout-only (the map is one system).
+		if (activeRoute.start.systemKey !== activeRoute.end.systemKey) return;
+		ctx.lineWidth = 1.5;
+		ctx.setLineDash(routeDash);
+		ctx.strokeStyle = activeRoute.ship.color;
+		for (let li = 0; li < activeRoute.count; li++) {
+			const leg = activeRoute.legs[li];
+			if (leg.kind !== 'transfer' || !leg.from || !leg.to) continue;
+			buildTransferPath(leg.from, leg.to);
+			ctx.beginPath();
+			ctx.moveTo(mapPathXY[0], mapPathXY[1]);
+			ctx.lineTo(mapPathXY[2], mapPathXY[3]);
+			ctx.lineTo(mapPathXY[4], mapPathXY[5]);
+			ctx.lineTo(mapPathXY[6], mapPathXY[7]);
+			ctx.stroke();
+		}
+		ctx.setLineDash(noDash);
+		const li = mapLegIndexAt(flightElapsed);
+		if (li < 0) return;
+		const leg = activeRoute.legs[li];
+		const ref = leg.endpoint;
+		if (!ref || ref.bodyIndex === undefined) return;
+		if (leg.kind === 'transfer' && leg.from && leg.to) {
+			buildTransferPath(leg.from, leg.to);
+			const f = leg.end > leg.start
+				? clamp01((flightElapsed - leg.start) / (leg.end - leg.start)) : 1;
+			mapPathPoint(mapShipXY, f);
+		} else {
+			dvNodeXYFor(ref.bodyIndex, ref.node, mapShipXY);
+		}
+		ctx.fillStyle = activeRoute.ship.color;
+		ctx.beginPath();
+		ctx.moveTo(mapShipXY[0] + 6, mapShipXY[1]);
+		ctx.lineTo(mapShipXY[0] - 4, mapShipXY[1] - 4);
+		ctx.lineTo(mapShipXY[0] - 4, mapShipXY[1] + 4);
+		ctx.closePath();
+		ctx.fill();
+	}
+
+	// Fit, draw and mark valid: the map is centred in the clear canvas region —
+	// between the control panel and the settings menu when both are open — and
+	// the same transform serves picking, so a click can never disagree with the
+	// draw.
+	function drawDvMap(width, height, rightInset, leftInset) {
+		const logicalW = Math.max(740, DV_COL_X0 + (dvNBodies + 0.5) * DV_COL_W);
+		const logicalH = DV_TABLE_TOP + 10 + tableLines.length * 16;
+		const availW = width - rightInset - leftInset;
+		const availH = height * 0.70;
+		mapLayout.scale = Math.min(1, (availW - 32) / logicalW, (availH - 32) / logicalH);
+		if (!(mapLayout.scale > 0)) { mapLayout.valid = false; return; }
+		mapLayout.x = leftInset + (availW - logicalW * mapLayout.scale) * 0.5;
+		mapLayout.y = (availH - logicalH * mapLayout.scale) * 0.5 + 12;
+		mapLayout.width = logicalW; mapLayout.height = logicalH;
+		ctx.save();
+		ctx.translate(mapLayout.x, mapLayout.y); ctx.scale(mapLayout.scale, mapLayout.scale);
+		ctx.fillStyle = DV_PANEL_FILL; ctx.fillRect(0, 0, logicalW, logicalH);
+		if (view === VIEW_DV_RAILS) drawDvRails(); else drawDvClassic();
+		drawMapRoute();
+		ctx.fillStyle = DV_TEXT_FILL; ctx.font = DV_LABEL_FONT;
+		for (let i = 0; i < tableLines.length; i++) ctx.fillText(tableLines[i], 20, DV_TABLE_TOP + i * 16);
 		ctx.restore();
 		mapLayout.valid = true;
 	}
 	function pickDvNode(x, y, out) {
 		out.body = -1; out.node = -1;
-		if (!open || !dvMapOpen || !mapLayout.valid || !(mapLayout.scale > 0)) return false;
+		if (!open || view === VIEW_SYSTEM || !mapLayout.valid || !(mapLayout.scale > 0)) return false;
 		const lx = (x - mapLayout.x) / mapLayout.scale, ly = (y - mapLayout.y) / mapLayout.scale;
 		let best = (10 / mapLayout.scale) ** 2;
 		for (let bi = 0; bi < dvNBodies; bi++) {
@@ -839,8 +1183,24 @@ function createSystemLayer(canvas) {
 		return out.body >= 0;
 	}
 
-	function setDvMap(on) { dvMapOpen = !!on; mapLayout.valid = false; refreshMapText(); }
-	function isDvMapOpen() { return dvMapOpen; }
+	// The open view (plan §6.5/§7.5). setView takes one of the VIEW_* ids;
+	// cycleView is what the B key walks. A view change invalidates the map
+	// transform (the logical size differs) and re-reads the table header, which
+	// names the render.
+	function setView(v) {
+		const n = Number(v);
+		const wanted = Number.isFinite(n) ? (n < 0 ? 0 : n > VIEW_COUNT - 1 ? VIEW_COUNT - 1 : Math.round(n)) : VIEW_DEFAULT;
+		if (wanted !== view) {
+			view = wanted;
+			mapLayout.valid = false;
+			if (view === VIEW_SYSTEM) { hoverKind = BODY_NONE; hoverIndex = -1; hoverLabel = ''; }
+		}
+		refreshMapText();
+		return view;
+	}
+	function getView() { return view; }
+	function cycleView() { return setView((view + 1) % VIEW_COUNT); }
+	function isMapOpen() { return view !== VIEW_SYSTEM; }
 	function setBudget(b) {
 		const v = Number(b);
 		dvBudget = Number.isFinite(v) ? (v < BUDGET_MIN ? BUDGET_MIN : v > BUDGET_MAX ? BUDGET_MAX : v) : BUDGET_DEFAULT;
@@ -862,7 +1222,7 @@ function createSystemLayer(canvas) {
 	function pick(x, y, out) {
 		out.kind = BODY_NONE;
 		out.index = -1;
-		if (!open || dvMapOpen || !(layout.rSpan > 0)) return out;
+		if (!open || view !== VIEW_SYSTEM || !(layout.rSpan > 0)) return out;
 		const dxs = x - layout.cx;
 		const dys = y - layout.cy;
 		let bestD2 = Infinity;
@@ -1078,8 +1438,8 @@ function createSystemLayer(canvas) {
 		record, layout,
 		planetScreenXY, planetIconR, planetRho,
 		beltStippleXY, beltAngles, beltRadii, beltRho, beltRhoC, beltPeriod,
-		pickDvNode, chooseRouteNode, clearRoute, setRoundTrip, toggleAutopilot, routeState, autopilotRunning, planExternalRoute, mapLayout, dvNodeXYFor,
-		setDvMap, isDvMapOpen, setBudget, getBudget, setShipClass, getShipClass, buildDv,
+		pickDvNode, chooseRouteNode, clearRoute, setRoundTrip, toggleAutopilot, routeState, autopilotRunning, planExternalRoute, mapLayout, mapShipXY, dvNodeXYFor,
+		setView, getView, cycleView, isMapOpen, setBudget, getBudget, setShipClass, getShipClass, buildDv,
 	};
 }
 
@@ -1091,10 +1451,14 @@ const SystemLayer = {
 	BELT_DOT_PX, GIANT_RING_K,
 	ICON_MASS_EDGES, ICON_RADII_PX, STAR_RADIUS_PX,
 	PICK_PAD_PX, BELT_PICK_PX,
-	SYSTIME_MIN, SYSTIME_MAX, SYSTIME_STEP, SYSTIME_DEFAULT,
-	DVMAP_DEFAULT, BUDGET_MIN, BUDGET_MAX, BUDGET_STEP, BUDGET_DEFAULT,
+	SYSTIME_LADDER, SYSTIME_INDEX_MIN, SYSTIME_INDEX_MAX, SYSTIME_INDEX_DEFAULT,
+	SYSTIME_MIN, SYSTIME_MAX, SYSTIME_DEFAULT,
+	VIEW_SYSTEM, VIEW_DV_CLASSIC, VIEW_DV_RAILS, VIEW_COUNT, VIEW_DEFAULT, VIEW_NAMES,
+	BUDGET_MIN, BUDGET_MAX, BUDGET_STEP, BUDGET_DEFAULT,
+	DV_COL_X0, DV_COL_W, DV_TABLE_TOP, DV_NODE_DY, DV_COL_TOP,
 	BODY_NONE, BODY_STAR, BODY_PLANET, BODY_BELT, TYPE_FILLS,
-	viewInnerAU, viewOuterAU, iconRadiusForMass, starRadiusForState, formatSysTimeRate,
+	viewInnerAU, viewOuterAU, iconRadiusForMass, starRadiusForState,
+	formatSysTimeRate, sysTimeRateAt, sysTimeIndexOf,
 };
 if (typeof module !== 'undefined') module.exports = SystemLayer;
 if (typeof window !== 'undefined') window.SystemLayer = SystemLayer;

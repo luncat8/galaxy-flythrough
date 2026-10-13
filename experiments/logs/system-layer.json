@@ -23,11 +23,48 @@
       }
     },
     {
-      "name": "the system-time formatter reads follow / frozen-0 / y/s",
+      "name": "the system-time formatter reads follow / frozen-0 / y/s, and days or hours below 0.01 y/s",
       "pass": true
     },
     {
-      "name": "the slider constants are the plan's: −1 … 99 y/s, step 0.5, default frozen",
+      "name": "the clock ladder is geometric, monotone, and spans the legs the ship flies",
+      "pass": true,
+      "detail": {
+        "ladder": [
+          -1,
+          0,
+          0.0001,
+          0.0002,
+          0.0005,
+          0.001,
+          0.002,
+          0.005,
+          0.01,
+          0.02,
+          0.05,
+          0.1,
+          0.2,
+          0.5,
+          1,
+          2,
+          5,
+          10,
+          20,
+          50,
+          100
+        ]
+      }
+    },
+    {
+      "name": "the ladder index round-trips a rate to its own stop and clamps outside it",
+      "pass": true
+    },
+    {
+      "name": "the exported view ids are three, named, and default to the schematic",
+      "pass": true
+    },
+    {
+      "name": "the icon constants are still the plan's and the star icon keeps its radii",
       "pass": true
     },
     {
@@ -206,7 +243,7 @@
       "detail": 2
     },
     {
-      "name": "setTimeRate clamps to −1 … 99 and rejects junk with the default",
+      "name": "setTimeRate clamps to −1 … 100 and rejects junk with the default",
       "pass": true
     },
     {
@@ -253,7 +290,7 @@
       "name": "1 000 draw calls allocate nothing (heap delta inside the 2 MB coarse bound)",
       "pass": true,
       "detail": {
-        "heapDelta": 469616
+        "heapDelta": -46616
       }
     },
     {
@@ -261,6 +298,39 @@
       "pass": true,
       "detail": {
         "opsPerFrame": 426
+      }
+    },
+    {
+      "name": "setView takes the three ids, cycles, and is what gates the map",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "the rail render keeps every node kind on its own row for every body",
+      "pass": true
+    },
+    {
+      "name": "the rail render names the two rails and draws both of them",
+      "pass": true
+    },
+    {
+      "name": "the L5 rail rung carries the drift-plus-transfer number between columns",
+      "pass": true,
+      "detail": {
+        "l5Rungs": [
+          "35.81",
+          "18.11",
+          "13.56",
+          "26.59"
+        ],
+        "drawn": 69
+      }
+    },
+    {
+      "name": "the rail render stays inside the map op budget",
+      "pass": true,
+      "detail": {
+        "railOps": 285
       }
     }
   ],

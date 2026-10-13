@@ -13,7 +13,7 @@ const NODE_NAMES = ['surface', 'LO', 'GEO', 'escape', 'L5'];
 
 function createRoute() {
 	const legs = [];
-	for (let i = 0; i < MAX_LEGS; i++) legs.push({ kind: '', label: '', start: 0, end: 0, dv: 0, a1: 0, a2: 0, angle: 0, endAngle: 0, phase: 0, period: 0, powered: false, endpoint: null, x1: 0, y1: 0, z1: 0, x2: 0, y2: 0, z2: 0, distance: 0, cruiseSpeed: 0 });
+	for (let i = 0; i < MAX_LEGS; i++) legs.push({ kind: '', label: '', start: 0, end: 0, dv: 0, a1: 0, a2: 0, angle: 0, endAngle: 0, phase: 0, period: 0, powered: false, from: null, to: null, endpoint: null, x1: 0, y1: 0, z1: 0, x2: 0, y2: 0, z2: 0, distance: 0, cruiseSpeed: 0 });
 	return { legs, count: 0, totalDv: 0, totalYears: 0, roundTripYears: 0, feasible: false, fuelFeasible: false, lifeFeasible: false, reason: '', ship: dv.SHIP_CLASSES[0], twoWay: false, start: null, end: null, epoch: 0, edge: {}, times: {}, tank: { accel: 0, dvMax: 0 }, scratch: {} };
 }
 function phaseAt(ref, t) {
@@ -59,6 +59,10 @@ function append(route, kind, label, cost, seconds, from, to, powered) {
 	leg.x2 = to.x * KPC_M; leg.y2 = to.y * KPC_M; leg.z2 = to.z * KPC_M;
 	leg.distance = kind === 'cruise' ? route.scratch.distanceM : 0;
 	leg.cruiseSpeed = kind === 'cruise' ? route.scratch.speed : 0;
+	// Both endpoints are kept: the map traces a transfer from one to the other
+	// (system-layer §7.5); `endpoint` stays the single body a leg ends on.
+	leg.from = from;
+	leg.to = to;
 	leg.endpoint = kind === 'capture' || kind === 'landing' ? to : from;
 	route.totalDv += cost;
 	route.totalYears = leg.end;

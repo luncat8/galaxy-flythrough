@@ -18,7 +18,7 @@
         <!-- Search results (0.5.2) and, from 0.5.3, the system-view readout:
              one <pre> styled like #overlay, hidden while empty. -->
         <pre id="sysread"></pre>
-        <div id="menu">
+        <div id="menu" class="panel">
                 <div class="menu-header">
                         <span>Display</span>
                         <button id="menu-close" title="Close (Tab)">×</button>
@@ -123,42 +123,6 @@
 		<div class="menu-row menu-actions">
 			<button id="menu-defaults">Defaults</button>
 		</div>
-		<!-- System view (0.5.3, plan §6): the schematic of the primary
-		     selection's generated planet system. Its clock is its own control
-		     (years/s, not the galaxy's Myr/s), and the slider row is gated to
-		     the open view through data-view, mirroring the data-engine rows. -->
-		<div class="menu-header menu-header-galaxy"><span>System</span></div>
-		<div class="menu-row menu-actions">
-			<button id="btn-system-view" title="Open the close-system schematic of the primary selection (V; Esc or V closes)">System view</button>
-		</div>
-		<div class="menu-row" data-view="system">
-			<label for="slider-systime" title="The schematic's own clock: years per second. -1 follows the camera fly speed, 0 freezes. Independent of the galaxy's Myr/s star time.">System time</label>
-			<input type="range" id="slider-systime" min="-1" max="99" step="0.5" value="0">
-			<span id="val-systime" class="menu-val">0 y/s</span>
-		</div>
-		<div class="menu-row menu-actions" data-view="system">
-			<button id="btn-dvmap" title="Toggle the delta-v map (B)">Delta-v map</button>
-			<label for="slider-dvbudget" title="Energy budget (log scale): 0 = minimum-energy Hohmann, 1 = ship ceiling. Sliding toward 1 spends more Δv to shorten the leg; below dv_x extra Δv buys nothing.">Budget</label>
-			<input type="range" id="slider-dvbudget" min="0" max="1" step="0.01" value="0.35">
-			<span id="val-dvbudget" class="menu-val">0.35</span>
-			<label for="dv-ship">Ship</label>
-			<select id="dv-ship" title="Ship class for the feasibility / time-at-budget readout.">
-				<option value="chemical" selected>chemical</option>
-				<option value="nuclear">nuclear</option>
-				<option value="fusion">fusion</option>
-				<option value="stardrive">stardrive</option>
-				<option value="generation">generation</option>
-			</select>
-		</div>
-		<div class="menu-row" data-view="system">
-			<label for="route-roundtrip">Round trip</label><input type="checkbox" id="route-roundtrip" title="Return after a 0.25-year layover; no refueling">
-			<button id="route-clear">Clear route</button>
-		</div>
-		<div class="menu-row" data-view="system">
-			<button id="route-fly" title="Uses system time; set a positive rate to watch the ship">Start autopilot</button>
-			<button id="route-stars" title="Plan between the first two selected stars, using stellar parking orbits">Selected stars</button>
-		</div>
-		<div class="menu-row" data-view="system"><span id="route-hint">B: pick two graph nodes. Then start autopilot.</span></div>
                 <!-- Star and planet search (0.5.2, plan §5.4): the quick
                      controls own their filter dimensions and mirror into the
                      token box, which is the whole filter (presets carry it).
@@ -213,6 +177,48 @@
                 </div>
                 <div class="menu-hint">Tab toggles this panel · drag sliders live · G cycles galaxy type · star counts apply at boot</div>
         </div>
+	<!-- System and ship (0.5.6): the view, its clock, the delta-v budget, the
+	     ship class and the route are one workflow, so they live in their own
+	     panel on the left instead of between the galaxy settings on the right.
+	     Rows that mean nothing while the view is closed are gated on
+	     data-view="system", the mirror of the movement passes' data-engine. -->
+	<div id="sysmenu" class="panel">
+		<div class="menu-header">
+			<span>System</span>
+			<button id="sysmenu-close" title="Close (Tab)">×</button>
+		</div>
+		<div class="menu-row">
+			<label for="sys-view">View <span class="kbd">V</span></label>
+			<select id="sys-view" title="What the system canvas shows of the primary selection's generated system. Picking one opens the view; B cycles the three while it is open.">
+				<option value="0" selected>system schematic</option>
+				<option value="1">delta-v map</option>
+				<option value="2">delta-v rails</option>
+			</select>
+			<button id="btn-system-view" title="Open or close the view (V; Esc also closes)">Open</button>
+		</div>
+		<div class="menu-row" data-view="system">
+			<label for="slider-systime" title="The view's own clock, picked off a geometric ladder: the slowest timed stop is 1e-4 y/s, slow enough to watch a launch and fast enough to see the ship move. -1 follows the camera fly speed, 0 freezes. Independent of the galaxy's Myr/s star time; the arrow keys step one stop.">System time</label>
+			<input type="range" id="slider-systime" min="0" max="20" step="1" value="1">
+			<span id="val-systime" class="menu-val">0 y/s</span>
+		</div>
+		<div class="menu-row" data-view="system">
+			<label for="slider-dvbudget" title="Energy budget (log scale): 0 = minimum-energy Hohmann, 1 = ship ceiling. Sliding toward 1 spends more Δv to shorten the leg; below dv_x extra Δv buys nothing.">Budget</label>
+			<input type="range" id="slider-dvbudget" min="0" max="1" step="0.01" value="0.35">
+			<span id="val-dvbudget" class="menu-val">0.35</span>
+			<label for="dv-ship">Ship</label>
+			<select id="dv-ship" title="Ship class for the feasibility / time-at-budget readout. Filled from the one ship table."></select>
+		</div>
+		<div class="menu-row" data-view="system">
+			<label for="route-roundtrip">Round trip</label><input type="checkbox" id="route-roundtrip" title="Return after a 0.25-year layover; no refueling">
+			<button id="route-clear">Clear route</button>
+		</div>
+		<div class="menu-row menu-actions" data-view="system">
+			<button id="route-fly" title="Uses system time; set a positive rate to watch the ship">Start autopilot</button>
+			<button id="route-stars" title="Plan between the first two selected stars, using stellar parking orbits">Selected stars</button>
+		</div>
+		<div class="menu-row" data-view="system"><span id="route-hint">B: pick two graph nodes. Then start autopilot.</span></div>
+		<div class="menu-hint">V opens the view · B cycles schematic / map / rails · the ship rides the route</div>
+	</div>
         <pre id="help">
                      fly                     orbit
 mouse                click to lock / look   press + drag canvas (cursor visible)
@@ -227,12 +233,13 @@ F                    fly to the selected star
 N / Shift+N          next / previous star in the selection set
 X                    clear the selection set (click selects, Shift+click adds)
 V                    system view of the selected star (Esc or V closes)
-B                    delta-v map (click start/destination nodes; menu autopilot)
+                     left panel: clock, budget, ship, route
+B                    cycle system / delta-v map / delta-v rails (click two graph nodes)
 H                    home: the Sun, or a generated galaxy's centre
 G                    new galaxy: cycle type (rebuilds the field, about a second)
 R                    reset everything
 Esc                  release cursor in fly mode
-Tab                  settings menu (releases cursor)
+Tab                  both panels (releases cursor)
 [ / ]                exposure (how faint a star still shows)
 ; / '                brightness (overall gain)
 Ctrl+W closes the tab: fly slowly with Ctrl + arrows

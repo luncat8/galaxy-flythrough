@@ -85,15 +85,15 @@ function createInput(canvas) {
 	let downX = 0;
 	let downY = 0;
 
-	// The settings menu holds form fields, and they must own their keys:
+	// The settings panels hold form fields, and they must own their keys:
 	// a number input has to accept its digits, and a focused slider has to
 	// move with the arrows instead of flying the camera. Tab is the one key
-	// that still belongs to the menu, because it is how the menu closes.
+	// that still belongs to the panels, because it is how they close.
 	function editingField(e) {
 		const target = e.target;
 		if (!target || !target.tagName) return false;
 		return e.code !== 'Tab' && (FORM_TAG.test(target.tagName)
-			|| target.tagName === 'BUTTON' || !!target.closest('#menu'));
+			|| target.tagName === 'BUTTON' || !!target.closest('.panel'));
 	}
 
 	function onKeyDown(e) {

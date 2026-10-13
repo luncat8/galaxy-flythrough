@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-13T01:01:24.325Z",
+  "date": "2026-10-13T06:36:48.148Z",
   "mockStars": 32000,
   "seed": 20240919,
   "summary": {
@@ -12,7 +12,7 @@
     "cellCount": 33
   },
   "bundleBytes": 2810,
-  "encodeMs": 2,
+  "encodeMs": 5,
   "totalChecks": 31,
   "passed": 31,
   "failed": 0,

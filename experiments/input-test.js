@@ -24,7 +24,7 @@ class Target {
 	}
 	removeEventListener(type, fn) { this.listeners.get(type)?.delete(fn); }
 	closest(selector) {
-		return selector === '#menu' && this.inMenu ? this : null;
+		return selector === '.panel' && this.inMenu ? this : null;
 	}
 	emit(type, fields = {}) {
 		const event = { target: this, button: 0, clientX: 110, clientY: 220,

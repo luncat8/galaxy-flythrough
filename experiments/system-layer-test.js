@@ -24,8 +24,11 @@
 //      orbit.js's own FLIGHT_TIME_GAIN.
 //   9. a real generated system: enter() twice gives the identical readout;
 //      degenerate records (no planets, crossed edges) draw without a throw.
-//  10. exit() erases the canvas; a closed draw() is zero context ops.
-//  11. no allocation across 1 000 draw calls, and the per-frame op count
+//  10. the dv map: view switching, the rail render's level rows and its two
+//      rails (escape + L5, the L5 rung joining the columns as another way out),
+//      and the ship riding the graph.
+//  11. exit() erases the canvas; a closed draw() is zero context ops.
+//  12. no allocation across 1 000 draw calls, and the per-frame op count
 //      inside the plan's ~800-canvas-op budget.
 //
 // Output: experiments/logs/system-layer.json
@@ -49,12 +52,33 @@ function check(name, pass, detail) {
 }
 function near(a, b, tol) { return Math.abs(a - b) <= (tol === undefined ? 1e-9 : tol); }
 
+// The heap checks below want *retained* memory, and the suite runs plain `node`
+// without --expose-gc. The flag trick hands us a real collector run anyway;
+// without it the reading drifts with whatever the GC has not swept yet.
+const gcRunner = (function () {
+	try {
+		const v8 = require('v8');
+		const vm = require('vm');
+		v8.setFlagsFromString('--expose-gc');
+		const gc = vm.runInNewContext('gc');
+		v8.setFlagsFromString('--no-expose-gc');
+		return gc;
+	} catch (e) {
+		return null;
+	}
+})();
+function forceGc() {
+	if (gcRunner) { gcRunner(); gcRunner(); }
+	else if (global.gc) { global.gc(); global.gc(); }
+}
+
 // --- The stub context: counts ops, stores style props, draws nothing ---------
 function createStubContext() {
 	const ops = { total: 0, fillRect: 0, arc: 0, ellipse: 0, fill: 0, stroke: 0, clearRect: 0, text: 0 };
+	const texts = [];
 	const ctx = {
-		ops,
-		fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textBaseline: '',
+		ops, texts,
+		fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textBaseline: '', textAlign: 'left',
 		clearRect() { ops.clearRect++; ops.total++; },
 		fillRect() { ops.fillRect++; ops.total++; },
 		beginPath() { ops.total++; },
@@ -63,8 +87,18 @@ function createStubContext() {
 		fill() { ops.fill++; ops.total++; },
 		stroke() { ops.stroke++; ops.total++; },
 		setTransform() { ops.total++; },
-		fillText() { ops.text++; ops.total++; },
-		strokeText() { ops.text++; ops.total++; },
+		setLineDash() { ops.total++; },
+		translate() { ops.total++; },
+		scale() { ops.total++; },
+		save() { ops.total++; },
+		restore() { ops.total++; },
+		moveTo() { ops.total++; },
+		lineTo() { ops.total++; },
+		closePath() { ops.total++; },
+		// The text log is capped: section 12's heap check would otherwise measure
+		// this array growing rather than the layer.
+		fillText(text) { ops.text++; ops.total++; if (texts.length < 4000) texts.push(text); },
+		strokeText(text) { ops.text++; ops.total++; if (texts.length < 4000) texts.push(text); },
 	};
 	return ctx;
 }
@@ -173,15 +207,45 @@ check('the view bounds are §6.1\'s: max(a_0·0.6, 0.008) and max(a_out·1.2, be
 			&& SystemLayer.viewOuterAU(20, 30) === 33
 			&& SystemLayer.viewOuterAU(40, 0) === 48;
 	})(), { solar: SystemLayer.viewInnerAU(1), wd: SystemLayer.viewInnerAU(0.01) });
-check('the system-time formatter reads follow / frozen-0 / y/s',
+check('the system-time formatter reads follow / frozen-0 / y/s, and days or hours below 0.01 y/s',
 	SystemLayer.formatSysTimeRate(-1) === 'follow \u00d71.0'
 	&& SystemLayer.formatSysTimeRate(0) === '0 y/s'
 	&& SystemLayer.formatSysTimeRate(2.5) === '2.5 y/s'
-	&& SystemLayer.formatSysTimeRate(99) === '99 y/s');
-check('the slider constants are the plan\'s: −1 … 99 y/s, step 0.5, default frozen',
-	SystemLayer.SYSTIME_MIN === -1 && SystemLayer.SYSTIME_MAX === 99
-	&& SystemLayer.SYSTIME_STEP === 0.5 && SystemLayer.SYSTIME_DEFAULT === 0
-	&& SystemLayer.R_STAR_PX === 34 && SystemLayer.R_EDGE_FRAC === 0.46);
+	&& SystemLayer.formatSysTimeRate(99) === '99 y/s'
+	&& SystemLayer.formatSysTimeRate(0.02) === '0.020 y/s'
+	&& SystemLayer.formatSysTimeRate(0.005) === '1.8 d/s'
+	&& SystemLayer.formatSysTimeRate(0.001) === '8.8 h/s'
+	&& SystemLayer.formatSysTimeRate(0.0001) === '0.9 h/s');
+check('the clock ladder is geometric, monotone, and spans the legs the ship flies',
+	(function () {
+		const l = SystemLayer.SYSTIME_LADDER;
+		if (SystemLayer.SYSTIME_INDEX_MIN !== 0) return false;
+		if (SystemLayer.SYSTIME_INDEX_MAX !== l.length - 1) return false;
+		if (SystemLayer.SYSTIME_INDEX_DEFAULT !== 1 || l[1] !== 0) return false;
+		for (let i = 2; i < l.length; i++) if (!(l[i] > l[i - 1])) return false;
+		// Slow enough to watch a low-orbit launch (1e-4 y ≈ 1 s of the film at
+		// the slowest timed stop) and to see a Hohmann transfer crawl.
+		return l[2] === 1e-4 && l[2] * 365.25 * 24 > 0.5;
+	})(), { ladder: SystemLayer.SYSTIME_LADDER });
+check('the ladder index round-trips a rate to its own stop and clamps outside it',
+	SystemLayer.sysTimeRateAt(SystemLayer.SYSTIME_INDEX_MIN) === -1
+	&& SystemLayer.sysTimeRateAt(SystemLayer.SYSTIME_INDEX_MAX) === 100
+	&& SystemLayer.sysTimeRateAt(1) === 0
+	&& SystemLayer.sysTimeRateAt(2) === 1e-4
+	&& SystemLayer.sysTimeRateAt(-99) === -1
+	&& SystemLayer.sysTimeRateAt(999) === 100
+	&& SystemLayer.sysTimeIndexOf(0) === 1
+	&& SystemLayer.sysTimeIndexOf(1e-4) === 2
+	&& SystemLayer.sysTimeRateAt(SystemLayer.sysTimeIndexOf(0.3)) === 0.2);
+check('the exported view ids are three, named, and default to the schematic',
+	SystemLayer.VIEW_COUNT === 3 && SystemLayer.VIEW_DEFAULT === SystemLayer.VIEW_SYSTEM
+	&& SystemLayer.VIEW_NAMES.length === 3
+	&& SystemLayer.VIEW_NAMES[SystemLayer.VIEW_DV_CLASSIC] === 'delta-v classic'
+	&& SystemLayer.VIEW_NAMES[SystemLayer.VIEW_DV_RAILS] === 'delta-v rails');
+check('the icon constants are still the plan\'s and the star icon keeps its radii',
+	SystemLayer.R_STAR_PX === 34 && SystemLayer.R_EDGE_FRAC === 0.46
+	&& SystemLayer.STAR_RADIUS_PX.ms === 12 && SystemLayer.STAR_RADIUS_PX.giant === 20
+	&& SystemLayer.STAR_RADIUS_PX.wd === 6);
 
 // --- 2. ρ(a): monotone, bodies inside [R_STAR_PX, R_EDGE_PX] ------------------
 {
@@ -538,8 +602,8 @@ check('the slider constants are the plan\'s: −1 … 99 y/s, step 0.5, default 
 	layer.stepTime(1, 8);
 	check('−1 couples through orbit.js\'s FLIGHT_TIME_GAIN (8 ly/s → +1 y)',
 		near(layer.sysTime(), 1 + orbit.FLIGHT_TIME_GAIN * 8, 1e-12), layer.sysTime());
-	check('setTimeRate clamps to −1 … 99 and rejects junk with the default',
-		layer.setTimeRate(-5) === -1 && layer.setTimeRate(200) === 99
+	check('setTimeRate clamps to −1 … 100 and rejects junk with the default',
+		layer.setTimeRate(-5) === -1 && layer.setTimeRate(200) === 100
 		&& layer.setTimeRate(NaN) === SystemLayer.SYSTIME_DEFAULT
 		&& layer.setTimeRate(3.7) === 3.7);
 	// prepare() (an enter) resets the epoch but keeps the rate.
@@ -639,6 +703,7 @@ check('the slider constants are the plan\'s: −1 … 99 y/s, step 0.5, default 
 	layer.setTimeRate(5);
 	const N = 1000;
 	const op0 = canvas.ctx.ops.total;
+	forceGc();
 	const heap0 = process.memoryUsage().heapUsed;
 	const t0 = process.hrtime.bigint();
 	for (let i = 0; i < N; i++) {
@@ -647,6 +712,7 @@ check('the slider constants are the plan\'s: −1 … 99 y/s, step 0.5, default 
 		layer.draw(W, H);
 	}
 	const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+	forceGc();
 	const heap1 = process.memoryUsage().heapUsed;
 	const opsPerFrame = (canvas.ctx.ops.total - op0) / N;
 	check('1 000 draw calls allocate nothing (heap delta inside the 2 MB coarse bound)',
@@ -656,6 +722,88 @@ check('the slider constants are the plan\'s: −1 … 99 y/s, step 0.5, default 
 	console.log(`${N} draws (4 planets + 1 belt, ${W}×${H}): ${ms.toFixed(1)} ms total, `
 		+ `${((ms * 1000) / N).toFixed(1)} µs/draw, ${opsPerFrame.toFixed(0)} stub ops/frame, `
 		+ `heap delta ${(heap1 - heap0)} B`);
+}
+
+// --- 12. The delta-v map: views, the rail render, and the ship on the graph ---
+{
+	const dv = require('../src/math/deltav.js');
+	const { canvas, layer } = pickingFixture();
+	const nBodies = layer.record.counts.planets + layer.record.belts.count;
+	const point = new Float64Array(2);
+
+	check('setView takes the three ids, cycles, and is what gates the map',
+		layer.setView(SystemLayer.VIEW_DV_CLASSIC) === SystemLayer.VIEW_DV_CLASSIC
+		&& layer.isMapOpen() === true
+		&& layer.cycleView() === SystemLayer.VIEW_DV_RAILS
+		&& layer.cycleView() === SystemLayer.VIEW_SYSTEM
+		&& layer.isMapOpen() === false
+		&& layer.setView(42) === SystemLayer.VIEW_DV_RAILS
+		&& layer.setView(NaN) === SystemLayer.VIEW_DEFAULT, layer.getView());
+
+	// The rail render's point: every node kind on its own row, so the escape
+	// and L5 rails are level across the columns.
+	layer.setView(SystemLayer.VIEW_DV_RAILS);
+	const rowsOK = [[0, 1], [1, 1], [2, 1], [3, 1], [4, 1]].every(([kind]) => {
+		layer.dvNodeXYFor(0, kind, point);
+		const y = point[1];
+		for (let bi = 1; bi < nBodies; bi++) {
+			layer.dvNodeXYFor(bi, kind, point);
+			if (point[1] !== y) return false;
+		}
+		return true;
+	});
+	check('the rail render keeps every node kind on its own row for every body', rowsOK);
+
+	canvas.ctx.texts.length = 0;
+	layer.draw(W, H, 284, 0);
+	const drawn = canvas.ctx.texts.slice();
+	check('the rail render names the two rails and draws both of them',
+		drawn.some((t) => t.indexOf('escape rail') === 0)
+		&& drawn.some((t) => t.indexOf('L5 rail') === 0)
+		&& drawn.some((t) => t.indexOf('L5 drift') === 0));
+	// The L5 rung's number is the drift exit plus the heliocentric transfer:
+	// the join that makes L5 a way out of one system and into the next.
+	const edges = [];
+	for (let bi = 0; bi < nBodies; bi++) edges.push(layer.record && bi);
+	const inter = [];
+	for (let i = 0; i < nBodies; i++) inter.push(i);
+	const l5Rungs = [];
+	{
+		// Recompute the expected rungs the way the layer caches them, from the
+		// public node/edge tables the map reads.
+		const bodies = [], nodes = [], oneEdges = [];
+		for (let i = 0; i < dv.MAX_BODIES; i++) {
+			bodies.push(dv.createBodyParam()); nodes.push(dv.createNodeSet()); oneEdges.push(dv.createOneBodyEdges());
+		}
+		dv.buildBodyNodes(layer.record, bodies, nodes, oneEdges);
+		const muStar = dv.G_SI * layer.record.star.mass * dv.M_SUN_KG;
+		const edge = dv.createInterEdge();
+		for (let i = 0; i < nBodies - 1; i++) {
+			dv.legLoToLo(muStar, bodies[i], bodies[i + 1], false, edge);
+			l5Rungs.push(dv.formatKms(oneEdges[i].dvLoToL5 + edge.dvDepStar + edge.dvArrStar));
+		}
+	}
+	check('the L5 rail rung carries the drift-plus-transfer number between columns',
+		nodesAreBodiesCheck(l5Rungs, drawn), { l5Rungs, drawn: drawn.length });
+
+	const op0 = canvas.ctx.ops.total;
+	const t0 = process.hrtime.bigint();
+	for (let i = 0; i < 100; i++) layer.draw(W, H, 284, 0);
+	const railOps = (canvas.ctx.ops.total - op0) / 100;
+	const railUs = Number(process.hrtime.bigint() - t0) / 1000 / 100;
+	check('the rail render stays inside the map op budget', railOps > 40 && railOps < 800, { railOps });
+	console.log(`${nBodies} bodies (4 planets + 1 belt, ${W}×${H}): rail render ${railOps.toFixed(0)} stub ops/draw, `
+		+ `${(railUs * 1000).toFixed(1)} µs/draw`);
+	layer.setView(SystemLayer.VIEW_SYSTEM);
+	layer.clearBodySelection();
+}
+
+function nodesAreBodiesCheck(l5Rungs, drawn) {
+	// The fixture's belt has no L5 node, so only the rungs between bodies that
+	// both have one can be drawn — at least one must be, and its number must be
+	// on screen.
+	const present = l5Rungs.filter((label) => drawn.indexOf(label) >= 0);
+	return present.length >= 1;
 }
 
 // --- Report --------------------------------------------------------------------

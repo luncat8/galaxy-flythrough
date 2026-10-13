@@ -208,7 +208,7 @@ layer.prepare(); layer.resize(1280, 800, 1);
 const hit = { body: -1, node: -1 };
 const point = new Float64Array(2);
 test('DV map is centered, fitted above report and graph picking uses its transform', () => {
-	layer.setDvMap(true); layer.draw(1280, 800);
+	layer.setView(layerLib.VIEW_DV_CLASSIC); layer.draw(1280, 800);
 	const m = layer.mapLayout;
 	near(m.x + m.width * m.scale / 2, 640);
 	assert.ok(m.y > 0 && m.y + m.height * m.scale < 600);
@@ -238,7 +238,7 @@ test('graph endpoint picking, pause/resume and frozen system clock', () => {
 });
 test('completion stops flight, schematic draws ship and report has live fuel', () => {
 	layer.setBudget(0); layer.toggleAutopilot(); layer.setTimeRate(99);
-	layer.setDvMap(false); layer.stepTime(1, 0); layer.draw(1280, 800);
+	layer.setView(layerLib.VIEW_SYSTEM); layer.stepTime(1, 0); layer.draw(1280, 800);
 	assert.ok(!layer.autopilotRunning()); assert.ok(layer.readoutText().includes('dv spent'));
 	layer.clearRoute(); assert.strictEqual(layer.routeState().count, 0);
 });
@@ -246,12 +246,90 @@ test('selected belt readout uses packed body index, not MAX_PLANETS', () => {
 	layer.setSelected(layerLib.BODY_BELT, 0);
 	assert.ok(layer.readoutText().includes('dv  belt1'));
 });
-test('two graph draws do not reformat labels or allocate leg structures', () => {
-	layer.setDvMap(true);
+test('no map render reformats a label or builds a string per frame', () => {
 	const original = dv.formatKms;
-	dv.formatKms = () => { throw new Error('per-frame formatting'); };
-	try { layer.draw(1280, 800); layer.draw(1280, 800); } finally { dv.formatKms = original; }
+	const toFixed = Number.prototype.toFixed;
+	for (const view of [layerLib.VIEW_DV_CLASSIC, layerLib.VIEW_DV_RAILS]) {
+		layer.setView(view);                 // builds the cached label strings
+		dv.formatKms = () => { throw new Error('per-frame formatting'); };
+		Number.prototype.toFixed = function () { throw new Error('per-frame toFixed'); };
+		try {
+			layer.draw(1280, 800);
+			layer.draw(1280, 800);
+		} finally {
+			dv.formatKms = original;
+			Number.prototype.toFixed = toFixed;
+		}
+	}
+	layer.setView(layerLib.VIEW_DV_CLASSIC);
 });
+test('view switching cycles the three renders and gates picking', () => {
+	layer.setView(layerLib.VIEW_SYSTEM);
+	assert.strictEqual(layer.isMapOpen(), false);
+	layer.cycleView();
+	assert.strictEqual(layer.getView(), layerLib.VIEW_DV_CLASSIC);
+	assert.ok(layer.isMapOpen());
+	layer.cycleView();
+	assert.strictEqual(layer.getView(), layerLib.VIEW_DV_RAILS);
+	layer.cycleView();
+	assert.strictEqual(layer.getView(), layerLib.VIEW_SYSTEM);
+	assert.strictEqual(layer.setView(99), layerLib.VIEW_DV_RAILS);
+	assert.strictEqual(layer.setView(-4), layerLib.VIEW_SYSTEM);
+});
+
+test('the rail render puts every node kind on its own row and joins both rails', () => {
+	layer.setView(layerLib.VIEW_DV_RAILS);
+	// A crossed body (the belt, no GEO/L5) must not shift its neighbours: the
+	// escape and L5 rows are the same y for every column.
+	const escRows = [], l5Rows = [];
+	for (let bi = 0; bi < layer.record.counts.planets + layer.record.belts.count; bi++) {
+		layer.dvNodeXYFor(bi, 3, point);
+		escRows.push(point[1]);
+		layer.dvNodeXYFor(bi, 4, point);
+		l5Rows.push(point[1]);
+	}
+	assert.ok(escRows.every((y) => y === escRows[0]), String(escRows));
+	assert.ok(l5Rows.every((y) => y === l5Rows[0]), String(l5Rows));
+	assert.ok(l5Rows[0] > escRows[0]);
+	// The nodes are drawn on those rows for both renders, and the draw with the
+	// L5 rail present runs without a throw.
+	layer.resize(1280, 800, 1); layer.draw(1280, 800, 284);
+	assert.ok(layer.mapLayout.valid);
+});
+
+test('the ship rides the map graph: the rail row mid-leg, the node at the ends', () => {
+	layer.setView(layerLib.VIEW_DV_CLASSIC);
+	layer.setShipClass('nuclear'); layer.setBudget(0);
+	layer.chooseRouteNode(0, 1); layer.chooseRouteNode(1, 1);
+	const route = layer.routeState();
+	assert.ok(route.feasible && route.count >= 3);
+	const transfer = route.legs.find((l) => l.kind === 'transfer');
+	assert.ok(transfer && transfer.from && transfer.to);
+	// The marker follows the same clock the schematic uses: it moves while the
+	// autopilot runs (flightElapsed only advances then), and the dashed path is
+	// drawn from the plan either way.
+	layer.setTimeRate(0); layer.stepTime(0, 0);
+	layer.draw(1280, 800);            // t = 0: the origin's low orbit
+	layer.dvNodeXYFor(0, 1, point);
+	const atStart = [layer.mapShipXY[0], layer.mapShipXY[1]];
+	near(atStart[0], point[0], 1e-6); near(atStart[1], point[1], 1e-6);
+	// Mid-transfer: on the escape rail row, between the two columns.
+	const mid = (transfer.start + transfer.end) * 0.5;
+	layer.setTimeRate(1);
+	assert.ok(layer.toggleAutopilot(), 'autopilot starts');
+	layer.stepTime(mid, 0);
+	layer.draw(1280, 800);
+	layer.dvNodeXYFor(0, 3, point);
+	near(layer.mapShipXY[1], point[1], 1e-6);
+	assert.ok(layer.mapShipXY[0] > point[0] && layer.mapShipXY[0] < point[0] + layerLib.DV_COL_W);
+	// At the end of the leg the marker is the destination's node.
+	layer.stepTime(transfer.end - mid, 0);
+	layer.draw(1280, 800);
+	layer.dvNodeXYFor(1, 1, point);
+	near(layer.mapShipXY[0], point[0], 1e-6); near(layer.mapShipXY[1], point[1], 1e-6);
+	layer.clearRoute();
+});
+
 test('transfer Kepler solver remains accurate up to e = 0.9999', () => {
 	const orbit = require('../src/math/orbit.js');
 	for (const e of [0, 0.55, 0.9, 0.99, 0.9999]) {

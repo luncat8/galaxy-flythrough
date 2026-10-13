@@ -44,10 +44,12 @@ html, body {
 	pointer-events: none;
 }
 
+/* The debug overlay starts where the left panel ends: the panel owns the
+   left column, the overlay and the readout share the strip beside it. */
 #overlay {
 	position: fixed;
 	top: 12px;
-	left: 12px;
+	left: 292px;
 	font-family: 'Menlo', 'Consolas', monospace;
 	font-size: 12px;
 	line-height: 1.5;
@@ -61,7 +63,7 @@ html, body {
 
 #sysread {
 	position: fixed;
-	left: 12px;
+	left: 292px;
 	bottom: 12px;
 	font-family: 'Menlo', 'Consolas', monospace;
 	font-size: 12px;
@@ -81,6 +83,45 @@ html, body {
 #sysread:empty {
 	display: none;
 }
+
+/* The system and ship panel (0.5.6) — the left counterpart of #menu. It is a
+   .panel like #menu, which is what input.js's field test looks for; its rows
+   that only mean something with the view open carry data-view="system" and are
+   hidden with it (syncViewRows). */
+#sysmenu {
+	position: fixed;
+	top: 12px;
+	left: 12px;
+	width: 268px;
+	max-height: calc(100vh - 24px);
+	overflow-y: auto;
+	font-family: 'Menlo', 'Consolas', monospace;
+	font-size: 12px;
+	color: #cdeccd;
+	background: rgba(10, 14, 22, 0.88);
+	border: 1px solid #2f4f6f;
+	border-radius: 4px;
+	padding: 10px 12px;
+	z-index: 20;
+}
+#sysmenu .menu-header {
+	color: #7fb0d0;
+	border-bottom-color: #2f4f6f;
+}
+#sysmenu .menu-header button { border-color: #2f4f6f; }
+#sysmenu .menu-header button:hover { background: #1a2a3a; }
+#sysmenu .menu-row button { background: #16283a; border-color: #2f4f6f; }
+#sysmenu .menu-row button:hover { background: #1f3a52; }
+#sysmenu .menu-row select,
+#sysmenu .menu-row input[type=number] { background: #0c1620; border-color: #2f4f6f; }
+#sysmenu .menu-row select option { background: #0c1620; }
+#sysmenu .menu-actions { border-top-color: #1f3448; }
+#sysmenu .menu-actions button { background: #16283a; border-color: #2f4f6f; }
+#sysmenu .menu-actions button:hover { background: #1f3a52; }
+#sysmenu input[type=range] { accent-color: #7fb0d0; }
+#sysmenu input[type=checkbox] { accent-color: #7fb0d0; }
+#sysmenu #route-hint { color: #9cbea8; line-height: 1.4; grid-column: 1 / -1; }
+#sysmenu .menu-row #slider-dvbudget { grid-column: 1; }
 
 #error {
 	position: fixed;
@@ -333,11 +374,15 @@ html, body {
 body.dv-map #overlay { display: none; }
 body.system-view #sysread {
 	max-height: 25vh;
-	max-width: calc(100vw - 300px);
+	max-width: calc(100vw - 292px - 300px);
 	overflow: auto;
 	pointer-events: auto;
 }
-#route-hint { color: #9cbea8; line-height: 1.4; }
-@media (max-width: 700px) {
-	body.system-view #sysread { max-width: calc(100vw - 24px); }
+/* Narrow screens: the two panels and the readout cannot all keep their
+   margins, so the readout takes the width it can and the panels stay put. */
+@media (max-width: 900px) {
+	#overlay, #sysread { left: 12px; top: auto; }
+	#overlay { display: none; }
+	body.system-view #sysread { max-width: calc(100vw - 24px); bottom: 12px; }
+	#sysread { max-width: calc(100vw - 24px); }
 }

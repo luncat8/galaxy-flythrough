@@ -121,7 +121,19 @@
 			"pass": true
 		},
 		{
-			"name": "two graph draws do not reformat labels or allocate leg structures",
+			"name": "no map render reformats a label or builds a string per frame",
+			"pass": true
+		},
+		{
+			"name": "view switching cycles the three renders and gates picking",
+			"pass": true
+		},
+		{
+			"name": "the rail render puts every node kind on its own row and joins both rails",
+			"pass": true
+		},
+		{
+			"name": "the ship rides the map graph: the rail row mid-leg, the node at the ends",
 			"pass": true
 		},
 		{
@@ -141,6 +153,6 @@
 			"pass": true
 		}
 	],
-	"passed": 35,
+	"passed": 38,
 	"failed": 0
 }

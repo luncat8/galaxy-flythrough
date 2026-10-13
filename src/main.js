@@ -88,7 +88,9 @@ function readParams(search) {
 		// unchanged (plan §14 Q6).
 		systime: number('systime', window.SystemLayer.SYSTIME_DEFAULT),
 		sysview: number('sysview', 0),
-		dvmap: number('dvmap', window.SystemLayer.DVMAP_DEFAULT ? 1 : 0),
+		// Which render the view shows (0 schematic, 1 classic map, 2 rail map):
+		// the 0.5.4 `dvmap=1` still means the map it was copied from.
+		dvmap: number('dvmap', window.SystemLayer.VIEW_DEFAULT),
 		dvbudget: number('dvbudget', window.SystemLayer.BUDGET_DEFAULT),
 		ship: text('ship', 'chemical'),
 	};
@@ -556,12 +558,15 @@ async function boot() {
         // screen-space picking; main.js owns the enter/exit glue (camera, menu
         // rows, #sysread) and routes the canvas clicks to it while open.
         const systemLayer = window.SystemLayer.createSystemLayer(document.getElementById('system'));
+        const sysMenu = document.getElementById('sysmenu');
+        const sysMenuClose = document.getElementById('sysmenu-close');
         const btnSystemView = document.getElementById('btn-system-view');
+        const sysViewSelect = document.getElementById('sys-view');
         const sliderSysTime = document.getElementById('slider-systime');
         const valSysTime = document.getElementById('val-systime');
         // Rows that mean nothing outside the view are hidden rather than
         // disabled — the data-view mirror of the data-engine mechanism (§6.5).
-        const viewRows = Array.from(document.querySelectorAll('#menu [data-view]'));
+        const viewRows = Array.from(document.querySelectorAll('#sysmenu [data-view]'));
         const bodyPick = { kind: -1, index: -1 };
         const systemCtx = {};
         let hoverX = -1e9, hoverY = -1e9;
@@ -569,41 +574,61 @@ async function boot() {
         // only switches the orbit target (plan §6.5).
         const SYSTEM_VIEW_FLY_KPC = 0.001;
 
-        // The slider's range belongs to the layer that clamps it (the rule the
-        // galaxy-age slider follows), never a second copy typed in here.
-        sliderSysTime.min = window.SystemLayer.SYSTIME_MIN;
-        sliderSysTime.max = window.SystemLayer.SYSTIME_MAX;
-        sliderSysTime.step = window.SystemLayer.SYSTIME_STEP;
+        // The slider speaks ladder indices: the stops (and their bounds) belong
+        // to the layer that owns the clock, never a second copy typed in here
+        // (the rule the galaxy-age slider follows). The rate itself is only
+        // clamped there, so a preset may carry a rate that is not a stop.
+        sliderSysTime.min = window.SystemLayer.SYSTIME_INDEX_MIN;
+        sliderSysTime.max = window.SystemLayer.SYSTIME_INDEX_MAX;
+        sliderSysTime.step = 1;
         function syncSysTime() {
-                sliderSysTime.value = systemLayer.getTimeRate();
-                valSysTime.textContent = window.SystemLayer.formatSysTimeRate(systemLayer.getTimeRate());
+                const rate = systemLayer.getTimeRate();
+                sliderSysTime.value = window.SystemLayer.sysTimeIndexOf(rate);
+                valSysTime.textContent = window.SystemLayer.formatSysTimeRate(rate);
+                valSysTime.title = window.SystemLayer.formatSysTimeRate(rate);
         }
         sliderSysTime.addEventListener('input', () => {
-                systemLayer.setTimeRate(Number(sliderSysTime.value));
+                systemLayer.setTimeRate(window.SystemLayer.sysTimeRateAt(Number(sliderSysTime.value)));
                 syncSysTime();
+                if (systemLayer.isOpen()) writeSystemReadout();
         });
 
-        // Delta-v map controls (0.5.4): toggle (B), budget slider, ship select.
-        const btnDvMap = document.getElementById('btn-dvmap');
+        // Delta-v controls (0.5.4, reshaped in 0.5.6): the render select (B
+        // cycles it), the budget slider and the ship select. The ship list is
+        // filled from the one ship table, so a class rename cannot strand it.
         const sliderDvBudget = document.getElementById('slider-dvbudget');
         const valDvBudget = document.getElementById('val-dvbudget');
         const selDvShip = document.getElementById('dv-ship');
         sliderDvBudget.min = window.SystemLayer.BUDGET_MIN;
         sliderDvBudget.max = window.SystemLayer.BUDGET_MAX;
         sliderDvBudget.step = window.SystemLayer.BUDGET_STEP;
+        selDvShip.textContent = '';
+        for (const ship of window.DeltaVLib.SHIP_CLASSES) {
+                const option = document.createElement('option');
+                option.value = ship.id;
+                option.textContent = ship.label;
+                selDvShip.appendChild(option);
+        }
         function syncDvUi() {
-                btnDvMap.textContent = systemLayer.isDvMapOpen() ? 'Close delta-v map' : 'Delta-v map';
                 sliderDvBudget.value = systemLayer.getBudget();
                 valDvBudget.textContent = Number(systemLayer.getBudget()).toFixed(2);
                 selDvShip.value = systemLayer.getShipClass();
-		document.body.classList.toggle('dv-map', systemLayer.isOpen() && systemLayer.isDvMapOpen());
+                sysViewSelect.value = String(systemLayer.getView());
+		document.body.classList.toggle('dv-map', systemLayer.isOpen() && systemLayer.isMapOpen());
         }
-        function toggleDvMap() {
-                systemLayer.setDvMap(!systemLayer.isDvMapOpen());
+        function cycleDvView() {
+                systemLayer.cycleView();
                 syncDvUi();
                 writeSystemReadout();
         }
-        btnDvMap.addEventListener('click', () => { if (systemLayer.isOpen()) toggleDvMap(); });
+        // Picking a render is opening the view: the select is the entry point
+        // as well as the switch, so a viewer never has to find V first.
+        sysViewSelect.addEventListener('change', () => {
+                systemLayer.setView(Number(sysViewSelect.value));
+                if (!systemLayer.isOpen()) openSystemView(true);
+                syncViewRows();
+                writeSystemReadout();
+        });
         sliderDvBudget.addEventListener('input', () => {
                 systemLayer.setBudget(Number(sliderDvBudget.value));
                 syncDvUi();
@@ -623,9 +648,12 @@ async function boot() {
 		const r = systemLayer.routeState();
 		btnRouteFly.textContent = systemLayer.autopilotRunning() ? 'Pause autopilot' : 'Start / resume';
 		btnRouteFly.disabled = !r.feasible;
-		routeHint.textContent = !r.start ? 'B: click a start node, then a destination.'
-			: !r.end ? 'Click a destination node.' : !r.feasible ? r.reason
-			: systemLayer.getTimeRate() === 0 ? 'Clock frozen — set system time > 0 to fly.' : 'Route ready. Close B to watch the ship.';
+		// The map is a view now, not a toggle: the hint talks about the graph on
+		// screen rather than about opening it.
+		routeHint.textContent = !r.start ? 'On a delta-v view: click a start node, then a destination.'
+			: !r.end ? 'Click the destination node.' : !r.feasible ? r.reason
+			: systemLayer.getView() === window.SystemLayer.VIEW_SYSTEM ? 'Route ready — B to the map, or V to fly it.'
+			: systemLayer.getTimeRate() === 0 ? 'Clock frozen — set system time > 0 to fly.' : 'Route ready. Start autopilot to watch the ship.';
 	}
 	routeRoundtrip.addEventListener('change', () => {
 		systemLayer.setRoundTrip(routeRoundtrip.checked); writeSystemReadout();
@@ -661,7 +689,7 @@ async function boot() {
                 for (const row of viewRows) {
                         row.style.display = viewOpen && row.dataset.view === 'system' ? '' : 'none';
                 }
-                btnSystemView.textContent = viewOpen ? 'Close system view' : 'System view';
+                btnSystemView.textContent = viewOpen ? 'Close' : 'Open';
         }
         btnSystemView.addEventListener('click', () => toggleSystemView());
 
@@ -733,21 +761,38 @@ async function boot() {
 
         systemLayer.setTimeRate(params.systime);
         syncSysTime();
-        systemLayer.setDvMap(!!params.dvmap);
+        systemLayer.setView(params.dvmap);
         systemLayer.setBudget(params.dvbudget !== undefined ? params.dvbudget : window.SystemLayer.BUDGET_DEFAULT);
         systemLayer.setShipClass(params.ship);
         syncDvUi();
         syncViewRows();
         if (params.sysview) openSystemView(true);   // no selection at boot: a no-op
 
-        function toggleMenu() {
-                const visible = menu.style.display !== 'none';
-                menu.style.display = visible ? 'none' : 'block';
-		input.releaseAll();
-		if (!visible && document.pointerLockElement === canvas) document.exitPointerLock();
-		if (visible) canvas.focus({ preventScroll: true });
+        // Tab is one toggle for the settings UI as a whole: the two panels open
+        // and close together. Their own x buttons close one panel only, and
+        // opening either releases the pointer lock and any held key.
+        function releasePanelInput() {
+                input.releaseAll();
+                if (document.pointerLockElement === canvas) document.exitPointerLock();
         }
-        menuClose.addEventListener('click', toggleMenu);
+        function toggleMenu() {
+                const visible = menu.style.display !== 'none' || sysMenu.style.display !== 'none';
+                menu.style.display = visible ? 'none' : 'block';
+                sysMenu.style.display = visible ? 'none' : 'block';
+                if (visible) {
+                        input.releaseAll();
+                        canvas.focus({ preventScroll: true });
+                } else {
+                        releasePanelInput();
+                }
+        }
+        function closePanel(panel) {
+                panel.style.display = 'none';
+                releasePanelInput();
+                canvas.focus({ preventScroll: true });
+        }
+        menuClose.addEventListener('click', () => closePanel(menu));
+        sysMenuClose.addEventListener('click', () => closePanel(sysMenu));
 
         sliderExp.addEventListener('input', () => {
                 renderer.setExposure(Number(sliderExp.value));
@@ -874,7 +919,7 @@ async function boot() {
                 systemLayer.setTimeRate(d.systime);
 		systemLayer.setBudget(d.dvbudget);
 		systemLayer.setShipClass(d.ship);
-		systemLayer.setDvMap(!!d.dvmap);
+		systemLayer.setView(d.dvmap);
 		syncDvUi();
 		if (systemLayer.isOpen()) writeSystemReadout();
                 syncApocenterSliders();
@@ -920,7 +965,7 @@ async function boot() {
                         scope: scopeSelect.value === 'galaxy' ? 'galaxy' : 'selection',
                         sysview: systemLayer.isOpen() ? 1 : 0,
                         systime: systemLayer.getTimeRate(),
-                        dvmap: systemLayer.isDvMapOpen() ? 1 : 0,
+                        dvmap: systemLayer.getView(),
                         dvbudget: systemLayer.getBudget(),
 			ship: systemLayer.getShipClass(),
                         stars: params.stars,
@@ -992,7 +1037,7 @@ async function boot() {
                         else closeSystemView();
                 }
                 if (s.dvmap !== undefined) {
-                        systemLayer.setDvMap(!!s.dvmap);
+                        systemLayer.setView(s.dvmap);
                 }
                 if (s.dvbudget !== undefined) {
                         systemLayer.setBudget(s.dvbudget);
@@ -1518,7 +1563,7 @@ async function boot() {
                                 // immediate — the layer already has every body's
                                 // screen position. An empty click clears the body
                                 // selection but does not leave the view.
-                                if (systemLayer.isDvMapOpen()) {
+                                if (systemLayer.isMapOpen()) {
 						if (systemLayer.pickDvNode(input.state.pickX, input.state.pickY, dvPick)) systemLayer.chooseRouteNode(dvPick.body, dvPick.node);
 					} else {
 						systemLayer.pick(input.state.pickX, input.state.pickY, bodyPick);
@@ -1592,7 +1637,7 @@ async function boot() {
                 }
                 if (actions.dvMap) {
                         actions.dvMap = 0;
-                        if (systemLayer.isOpen()) toggleDvMap();
+                        if (systemLayer.isOpen()) cycleDvView();
                 }
                 if (actions.constellations) {
                         actions.constellations = 0;
@@ -1613,7 +1658,11 @@ async function boot() {
                         systemLayer.stepTime(dt, cameraStateForTime.speedLyPerSec);
                         systemLayer.updateHover(hoverX, hoverY);
                         systemLayer.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
-                        systemLayer.draw(canvas.clientWidth, canvas.clientHeight, menu.style.display === 'none' ? 0 : 284);
+                        // Both panels inset themselves: the map is fitted between
+                        // them, so neither covers the graph.
+                        systemLayer.draw(canvas.clientWidth, canvas.clientHeight,
+                                menu.style.display === 'none' ? 0 : 284,
+                                sysMenu.style.display === 'none' ? 0 : 292);
                 }
 
                 overlayTimer += dt;

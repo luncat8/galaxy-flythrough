@@ -254,7 +254,7 @@ check('the search section is wired: controls, readout, Search glue and token pre
 
 check('the system view is wired: canvas, button, clock slider, view-gated rows', () => {
 	const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
-	for (const id of ['system', 'btn-system-view', 'slider-systime', 'val-systime', 'sysread']) {
+	for (const id of ['system', 'sysmenu', 'btn-system-view', 'sys-view', 'slider-systime', 'val-systime', 'sysread']) {
 		assert.equal(html.split(`id="${id}"`).length, 2, id);
 	}
 	const labelsAt = html.indexOf('src="render/label-layer.js"');
@@ -270,8 +270,8 @@ check('the system view is wired: canvas, button, clock slider, view-gated rows',
 	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
 	for (const snippet of [
 		'window.SystemLayer', 'createSystemLayer(', 'openSystemView(', 'closeSystemView(',
-		'toggleSystemView(', 'writeSystemReadout(', '#menu [data-view]',
-		'SYSTIME_MIN', 'SYSTIME_MAX', 'SYSTIME_STEP', 's.sysview',
+		'toggleSystemView(', 'writeSystemReadout(', '#sysmenu [data-view]',
+		'SYSTIME_INDEX_MIN', 'SYSTIME_INDEX_MAX', 'sysTimeRateAt', 's.sysview',
 	]) {
 		assert.ok(main.includes(snippet), snippet);
 	}

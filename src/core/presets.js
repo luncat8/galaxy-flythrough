@@ -50,7 +50,10 @@ const FIELDS = [
 	// pasted sysview=1 with no primary opens nothing — an honest no-op.
 	{ key: 'sysview', label: 'system view' },
 	{ key: 'systime', label: 'system time', unit: ' y/s' },
-	{ key: 'dvmap', label: 'delta-v map' },
+	// Which render the open view shows: 0 the schematic, 1 the classic
+	// delta-v map, 2 the rail map (0.5.6). 1 is what 0.5.4 wrote, so a pasted
+	// old preset lands on the render it was copied from.
+	{ key: 'dvmap', label: 'system render' },
 	{ key: 'dvbudget', label: 'energy budget' },
 	{ key: 'ship', label: 'ship class' },
 	{ key: 'stars', label: 'procedural stars' },
@@ -84,7 +87,8 @@ function menuDefaults() {
 		// 0, the frozen default. Whether the view is *open* is working state
 		// like the search results — the Defaults button does not close it.
 		systime: g.SystemLayer ? g.SystemLayer.SYSTIME_DEFAULT : 0,
-		dvmap: 0, dvbudget: g.SystemLayer ? g.SystemLayer.BUDGET_DEFAULT : 0.35, ship: 'chemical',
+		dvmap: g.SystemLayer ? g.SystemLayer.VIEW_DEFAULT : 0,
+		dvbudget: g.SystemLayer ? g.SystemLayer.BUDGET_DEFAULT : 0.35, ship: 'chemical',
 	};
 }
 
@@ -194,6 +198,11 @@ function describeValue(field, value) {
 	if (field.key === 'apoShare') return Math.round(value * 100) + '%';
 	if (field.key === 'engine') return serializeEngine(value).split('+').join(', ');
 	if (field.key === 'sysview') return value ? 'open' : 'closed';
+	if (field.key === 'dvmap') {
+		const scope = typeof window !== 'undefined' ? window : global;
+		const names = scope.SystemLayer ? scope.SystemLayer.VIEW_NAMES : null;
+		return names && names[value] ? names[value] : String(value);
+	}
 	if (field.prefix === 'x') return 'x' + value;
 	if (field.key === 'time' && value > 0) return '+' + value;
 	return String(value) + (field.suffix || '') + (field.unit || '');
