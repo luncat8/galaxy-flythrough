@@ -7,9 +7,13 @@
         <link rel="stylesheet" href="style.css">
 </head>
 <body>
-        <canvas id="canvas" tabindex="0"></canvas>
-        <canvas id="labels"></canvas>
-        <pre id="overlay"></pre>
+	<canvas id="canvas" tabindex="0"></canvas>
+	<canvas id="labels"></canvas>
+	<!-- Close-system schematic (0.5.3): 2D canvas above #labels, below #menu.
+	     Drawn only while the system view is open; pointer events fall through
+	     to the WebGPU canvas, which routes its clicks to the layer. -->
+	<canvas id="system"></canvas>
+	<pre id="overlay"></pre>
         <pre id="error" style="display:none"></pre>
         <!-- Search results (0.5.2) and, from 0.5.3, the system-view readout:
              one <pre> styled like #overlay, hidden while empty. -->
@@ -116,9 +120,22 @@
                         <button id="btn-select-around" title="Select every star within the radius of the primary (F flies to it, N cycles, X clears)">Select around</button>
                         <button id="btn-clear-set" title="Clear the selection set (X)">Clear set</button>
                 </div>
-                <div class="menu-row menu-actions">
-                        <button id="menu-defaults">Defaults</button>
-                </div>
+		<div class="menu-row menu-actions">
+			<button id="menu-defaults">Defaults</button>
+		</div>
+		<!-- System view (0.5.3, plan §6): the schematic of the primary
+		     selection's generated planet system. Its clock is its own control
+		     (years/s, not the galaxy's Myr/s), and the slider row is gated to
+		     the open view through data-view, mirroring the data-engine rows. -->
+		<div class="menu-header menu-header-galaxy"><span>System</span></div>
+		<div class="menu-row menu-actions">
+			<button id="btn-system-view" title="Open the close-system schematic of the primary selection (V; Esc or V closes)">System view</button>
+		</div>
+		<div class="menu-row" data-view="system">
+			<label for="slider-systime" title="The schematic's own clock: years per second. -1 follows the camera fly speed, 0 freezes. Independent of the galaxy's Myr/s star time.">System time</label>
+			<input type="range" id="slider-systime" min="-1" max="99" step="0.5" value="0">
+			<span id="val-systime" class="menu-val">0 y/s</span>
+		</div>
                 <!-- Star and planet search (0.5.2, plan §5.4): the quick
                      controls own their filter dimensions and mirror into the
                      token box, which is the whole filter (presets carry it).
@@ -186,6 +203,7 @@ P                    constellation lines on / off
 F                    fly to the selected star
 N / Shift+N          next / previous star in the selection set
 X                    clear the selection set (click selects, Shift+click adds)
+V                    system view of the selected star (Esc or V closes)
 H                    home: the Sun, or a generated galaxy's centre
 G                    new galaxy: cycle type (rebuilds the field, about a second)
 R                    reset everything
@@ -236,8 +254,12 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
         <script src="render/shaders.js"></script>
         <script src="stream/tile-loader.js"></script>
         <script src="stream/cell-manager.js"></script>
-        <script src="render/star-sprites.js"></script>
-        <script src="render/label-layer.js"></script>
-        <script src="main.js"></script>
+	<script src="render/star-sprites.js"></script>
+	<script src="render/label-layer.js"></script>
+	<!-- The close-system schematic (0.5.3): draws the opened system's record on
+	     its own 2D canvas; loads after the label layer whose ring colour, font
+	     and halo it reuses. -->
+	<script src="render/system-layer.js"></script>
+	<script src="main.js"></script>
 </body>
 </html>

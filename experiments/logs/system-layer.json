@@ -1,0 +1,268 @@
+{
+  "checks": [
+    {
+      "name": "the icon ramp is the plan's five log-mass buckets, at their edges",
+      "pass": true,
+      "detail": [
+        0.1,
+        2,
+        20,
+        100
+      ]
+    },
+    {
+      "name": "the star icon radius follows the state (ms 12, giant 20, wd 6)",
+      "pass": true
+    },
+    {
+      "name": "the view bounds are §6.1's: max(a_0·0.6, 0.008) and max(a_out·1.2, belt·1.1)",
+      "pass": true,
+      "detail": {
+        "solar": 0.016741682139463768,
+        "wd": 0.008
+      }
+    },
+    {
+      "name": "the system-time formatter reads follow / frozen-0 / y/s",
+      "pass": true
+    },
+    {
+      "name": "the slider constants are the plan's: −1 … 99 y/s, step 0.5, default frozen",
+      "pass": true
+    },
+    {
+      "name": "ρ(a) is monotone in a and every body maps inside [R_STAR_PX, R_EDGE_PX]",
+      "pass": true,
+      "detail": {
+        "n": 4,
+        "rEdge": 368
+      }
+    },
+    {
+      "name": "the stipple dots stay bounded (ρ ≤ 1.1) and inside the canvas",
+      "pass": true
+    },
+    {
+      "name": "the belt stipple is hashed once: bytes unchanged across two draws",
+      "pass": true
+    },
+    {
+      "name": "the stipple equals the record's own fillStipple, inside ±Δln a, with ρ(radius) precomputed",
+      "pass": true,
+      "detail": {
+        "lo": 2.0468268826949547,
+        "hi": 3.0535068954004245
+      }
+    },
+    {
+      "name": "a planet rides the ellipse drawn for it, at θ(t) = θ₀ + TAU·t/P",
+      "pass": true
+    },
+    {
+      "name": "the position is periodic in the planet's own period",
+      "pass": true,
+      "detail": {
+        "P": 0.28284271247461906
+      }
+    },
+    {
+      "name": "the belt rotates at its own Kepler rate (dot 0 recomputed independently)",
+      "pass": true,
+      "detail": {
+        "beltP": 25.298221281347036,
+        "thetaBelt": 10.004836413106508
+      }
+    },
+    {
+      "name": "a click on the centre picks the star",
+      "pass": true,
+      "detail": {
+        "kind": 0,
+        "index": 0
+      }
+    },
+    {
+      "name": "a click on each drawn planet picks that planet",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "a click past iconRadius + 4 px misses the planet",
+      "pass": true,
+      "detail": {
+        "kind": -1,
+        "index": -1
+      }
+    },
+    {
+      "name": "a click within 6 px of the belt radius picks the belt",
+      "pass": true,
+      "detail": {
+        "kind": 2,
+        "index": 0
+      }
+    },
+    {
+      "name": "a click 7 px off the belt radius misses it",
+      "pass": true,
+      "detail": {
+        "kind": -1,
+        "index": -1
+      }
+    },
+    {
+      "name": "a body on the belt circle wins over the belt band",
+      "pass": true,
+      "detail": {
+        "kind": 1,
+        "index": 0
+      }
+    },
+    {
+      "name": "a click on empty space between the orbits picks nothing",
+      "pass": true,
+      "detail": {
+        "emptyProbes": 3
+      }
+    },
+    {
+      "name": "setSelected keeps a valid body",
+      "pass": true
+    },
+    {
+      "name": "setSelected rejects an index past the gate",
+      "pass": true
+    },
+    {
+      "name": "picking before the first draw is a NONE no-op",
+      "pass": true
+    },
+    {
+      "name": "the readout reproduces plan §6.6's worked example byte-for-byte",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "the ◀ selected marker rides the selected planet's line only",
+      "pass": true,
+      "detail": [
+        "  c  TERRAN       0.72 AU    1.04 M⊕   1.01 R⊕   S 0.58   Teq  222 K  Tsurf  278 K  e 0.02  P   0.71 y  1 moon   HZ terran  ◀ selected"
+      ]
+    },
+    {
+      "name": "a selected belt marks the belt line",
+      "pass": true,
+      "detail": [
+        "belt 1   1.11 AU   Δln a 0.21   mass 3.1e-3 M⊕   typical body 470 km / 9.4e20 kg  ◀ selected"
+      ]
+    },
+    {
+      "name": "a selected star marks the head line",
+      "pass": true,
+      "detail": [
+        "S1Y3K9P   K  0.74 M☉  0.300 L☉  4637 K  0.85 R☉  age 5.0 Gyr  Z 0.020  ◀ selected"
+      ]
+    },
+    {
+      "name": "the head block reports the clock (system time 2.5 y/s)",
+      "pass": true
+    },
+    {
+      "name": "designationOf writes S<key36>, \" b\" and \"belt 1\" through the §4.11 writers",
+      "pass": true,
+      "detail": [
+        "S1Y3K9P b",
+        "S1Y3K9P belt 1"
+      ]
+    },
+    {
+      "name": "a named star's bodies read \"Sirius A b\" / \"Sirius A belt 1\"",
+      "pass": true
+    },
+    {
+      "name": "hover picks the planet under the cursor and builds its label once",
+      "pass": true
+    },
+    {
+      "name": "hover off every body clears the label",
+      "pass": true
+    },
+    {
+      "name": "the clock starts frozen at 0",
+      "pass": true
+    },
+    {
+      "name": "frozen stays frozen whatever the camera does",
+      "pass": true
+    },
+    {
+      "name": "2 y/s over 0.5 s advances one year",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "−1 couples through orbit.js's FLIGHT_TIME_GAIN (8 ly/s → +1 y)",
+      "pass": true,
+      "detail": 2
+    },
+    {
+      "name": "setTimeRate clamps to −1 … 99 and rejects junk with the default",
+      "pass": true
+    },
+    {
+      "name": "re-entering resets t_sys to 0 and keeps the rate",
+      "pass": true
+    },
+    {
+      "name": "enter() twice on the same ref gives the identical system and readout",
+      "pass": true,
+      "detail": {
+        "n": 0
+      }
+    },
+    {
+      "name": "the generated record is the generator's own (star block = stellarInputs)",
+      "pass": true
+    },
+    {
+      "name": "a real generated system draws and reads without a throw",
+      "pass": true
+    },
+    {
+      "name": "a planetless system reads \"0 planets, 0 belts\" and draws",
+      "pass": true
+    },
+    {
+      "name": "a crossed-edge record keeps ρ finite and draws without a throw",
+      "pass": true
+    },
+    {
+      "name": "the counts read singular (\"1 planet, 1 belt\")",
+      "pass": true,
+      "detail": "HZ 0.98 – 1.69 AU   snow 2.70 AU   a_out 40 AU   system time 0 y/s   1 planet, 1 belt"
+    },
+    {
+      "name": "exit() erases the canvas (it keeps its last frame otherwise)",
+      "pass": true
+    },
+    {
+      "name": "a closed layer draws nothing, steps nothing and hovers nothing (zero context ops)",
+      "pass": true
+    },
+    {
+      "name": "1 000 draw calls allocate nothing (heap delta inside the 2 MB coarse bound)",
+      "pass": true,
+      "detail": {
+        "heapDelta": -47256
+      }
+    },
+    {
+      "name": "the per-frame op count stays inside the plan's ~800-op budget (one belt)",
+      "pass": true,
+      "detail": {
+        "opsPerFrame": 426
+      }
+    }
+  ],
+  "failed": 0
+}

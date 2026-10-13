@@ -42,6 +42,7 @@ const MODULES = [
 	{ file: '../src/render/shaders.js', global: 'GalaxyShaders' },
 	{ file: '../src/render/star-sprites.js', global: 'StarRenderer' },
 	{ file: '../src/render/label-layer.js', global: 'LabelLayer' },
+	{ file: '../src/render/system-layer.js', global: 'SystemLayer' },
 	{ file: '../src/stream/tile-loader.js', global: 'TileLoader' },
 	{ file: '../src/stream/cell-manager.js', global: 'CellManager' },
 ];

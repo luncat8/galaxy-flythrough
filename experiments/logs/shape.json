@@ -1,6 +1,6 @@
 {
   "experiment": "shape",
-  "date": "2026-10-12",
+  "date": "2026-10-13",
   "stepBinKpc": 0.005,
   "stepLimits": {
     "bar": 0.01,

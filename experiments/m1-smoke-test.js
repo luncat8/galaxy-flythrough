@@ -52,8 +52,9 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		!/text\/x-wgsl/.test(html), 'wgsl blocks');
 	check('index.html references the stylesheet and the overlay elements',
 		/<link[^>]+href="style\.css"/.test(html)
-		&& /id="canvas"/.test(html) && /id="labels"/.test(html) && /id="overlay"/.test(html) && /id="error"/.test(html),
-		{ css: /style\.css/.test(html), elements: ['canvas', 'labels', 'overlay', 'error'].map(id => html.includes(`id="${id}"`)) });
+		&& /id="canvas"/.test(html) && /id="labels"/.test(html) && /id="system"/.test(html)
+		&& /id="overlay"/.test(html) && /id="error"/.test(html),
+		{ css: /style\.css/.test(html), elements: ['canvas', 'labels', 'system', 'overlay', 'error'].map(id => html.includes(`id="${id}"`)) });
 }
 
 {
@@ -82,12 +83,12 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		'requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'location', 'navigator',
 		'matchMedia', 'Device', 'Presets', 'GalaxyShaders', 'HashLib', 'DensityLib', 'GalaxyLib', 'SamplingLib',
 		'StarRecord', 'StarTypesLib', 'PlanetsLib', 'NebulaLib', 'ObjectsLib', 'Coords', 'Camera', 'Input', 'Loop', 'Selection', 'StarSet',
-		'Landmarks', 'Constellations', 'StarRenderer', 'LabelLayer',
+		'Landmarks', 'Constellations', 'StarRenderer', 'LabelLayer', 'SystemLayer',
 		'TileLoader', 'CellManager', '__galaxy_catalog', 'self', 'document', 'setTimeout',
 	]);
 	const defined = new Set();
 	const undefinedReads = [];
-	const NAMESPACES = ['Device', 'Camera', 'Input', 'Loop', 'Selection', 'StarSet', 'Presets', 'StarRenderer', 'LabelLayer',
+	const NAMESPACES = ['Device', 'Camera', 'Input', 'Loop', 'Selection', 'StarSet', 'Presets', 'StarRenderer', 'LabelLayer', 'SystemLayer',
 		'TileLoader', 'CellManager', 'GalaxyShaders', 'HashLib', 'DensityLib', 'GalaxyLib', 'SamplingLib',
 		'StarRecord', 'StarTypesLib', 'PlanetsLib', 'NebulaLib', 'ObjectsLib', 'Coords', 'Landmarks', 'Constellations'];
 	for (const file of scripts) {
@@ -126,6 +127,7 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		['../src/data/landmarks.js', 'Landmarks'], ['../src/data/constellations.js', 'Constellations'],
 		['../src/render/shaders.js', 'GalaxyShaders'], ['../src/render/star-sprites.js', 'StarRenderer'],
 		['../src/render/label-layer.js', 'LabelLayer'],
+		['../src/render/system-layer.js', 'SystemLayer'],
 		['../src/stream/tile-loader.js', 'TileLoader'], ['../src/stream/cell-manager.js', 'CellManager'],
 	];
 	for (const [file, name] of namespaces) {
@@ -153,6 +155,8 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		&& typeof global.window.GalaxyLib.createGalaxy === 'function'
 		&& typeof global.window.GalaxyLib.packDensityParams === 'function'
 		&& typeof global.window.Camera.createCamera().setFrame === 'function'
+		// The schematic view main.js opens on V (§6.5).
+		&& typeof global.window.SystemLayer.createSystemLayer === 'function'
 		// The two calls a galaxy change makes on the draw side: rebuild the field,
 		// and silence the label layer for a model that has no named stars.
 		&& typeof global.window.LabelLayer.createLabelLayer({ getContext: () => null },

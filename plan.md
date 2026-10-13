@@ -1189,8 +1189,10 @@ Next series:
   planet module's `stellarInputs` input tier), the deterministic planet/belt generator
   (0.5.1 shipped — the input, occurrence, architecture, insolation/temperature/band,
   belt/moon and record tiers: `SystemRecord`/`generateSystem`, the `systemSummary` pointer
-  and the designations), star and planet search (0.5.2),
-  the close-system schematic view (0.5.3), the delta-v map (0.5.4) and routes/autopilot
+  and the designations), star and planet search (0.5.2 shipped — the two-stage scan, the
+  token filter, results in `#sysread`), the close-system schematic view (0.5.3 shipped —
+  `render/system-layer.js`, the log-polar schematic with its own system-time clock and the
+  `V` key), the delta-v map (0.5.4) and routes/autopilot
   (0.5.5). CPU-only by construction: the star buffer, the WGSL and the three render paths
   are untouched.
 
@@ -1210,8 +1212,8 @@ tests and extend the file layout of §11 as needed.
    These are not prerequisites for sandbox-safe correctness work and are not marked
    passed by CPU/stub tests. The 0.4.8 analytical shape implementation is complete;
    this does not imply browser visual validation is complete.
-4. [The 0.5 planet series](0.5.0-plan-planet-generator.md): 0.5.0 (selection) and 0.5.1 (the
-   generator) shipped; search, schematic, delta-v and routes still to come.
+4. [The 0.5 planet series](0.5.0-plan-planet-generator.md): 0.5.0–0.5.3 shipped (selection,
+   the generator, search, the close-system schematic); delta-v and routes still to come.
    It is CPU-only and additive, so it neither blocks nor depends on the parity work above —
    except that the picker dispatches star positions through the same engine-mask law the
    parity plan pins (done in 0.5.0, `orbit.engineRecordPosition`).

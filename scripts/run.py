@@ -63,6 +63,7 @@ EXPERIMENTS = {
     'object-placement':      'experiments/object-placement-test.js',
     'galaxy-age':            'experiments/galaxy-age-test.js',
     'orbit':                 'experiments/orbit-test.js',
+    'system-layer':          'experiments/system-layer-test.js',
     # Studies: they print a recommendation rather than pass/fail.
     'damping-formula':     'experiments/damping-formula-check.js',
     'hash-quality':          'experiments/hash-quality-test.js',
@@ -84,7 +85,7 @@ TYPES = {
                'landmark', 'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'shape', 'model-parity', 'sampling',
                'density-distribution',
                'star-types-evolution', 'planet-gen', 'star-select', 'search', 'nebula-placement', 'object-placement',
-               'galaxy-age', 'orbit'],
+               'galaxy-age', 'orbit', 'system-layer'],
     'study':  ['damping-formula', 'hash-quality', 'precision', 'packing', 'filter',
                'truncation-edge', 'young-vertical'],
     'sim':    ['wgsl-exec'],

@@ -20,9 +20,11 @@ const OrbitLib = require('../src/math/orbit.js');
 const GalaxyLib = require('../src/math/galaxy.js');
 const Presets = require('../src/core/presets.js');
 // presets.js resolves the numeric defaults from the modules that own them
-// (0.5.0 added `selrad`, owned by selection.js), so the modules it reads must be
-// registered before menuDefaults() is called.
+// (0.5.0 added `selrad`, owned by selection.js; 0.5.3 added `systime`, owned
+// by system-layer.js), so the modules it reads must be registered before
+// menuDefaults() is called.
 const Selection = require('../src/core/selection.js');
+const SystemLayer = require('../src/render/system-layer.js');
 
 const checks = [];
 function check(name, test) {
@@ -39,6 +41,7 @@ const SETTINGS = {
 	time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
 	selrad: 1.69897, exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
 	search: 'G,K|terran|220-300', scope: 'selection',
+	sysview: 0, systime: 2,
 	stars: 300000, catalog: 250000,
 };
 
@@ -158,10 +161,12 @@ check('menuDefaults matches the modules that own the numbers', () => {
 	assert.equal(d.apoShare, OrbitLib.APOCENTER_SHARE_UI_DEFAULT);
 	assert.equal(d.apoForce, OrbitLib.APOCENTER_FORCE_UI_DEFAULT);
 	assert.equal(d.selrad, Selection.SELRAD_DEFAULT_LOG);
+	assert.equal(d.systime, SystemLayer.SYSTIME_DEFAULT);
 	assert.deepEqual(d, {
 		selrad: 1.69897,
 		exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
 		time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
+		systime: 0,
 	});
 });
 
@@ -242,6 +247,31 @@ check('the search section is wired: controls, readout, Search glue and token pre
 		'window.Search', 'createSearch()', 'tokenToControls', 'controlsToToken',
 		'markSearchStale', 'searchSnapshot', 'sysread.textContent',
 		's.search', 's.scope',
+	]) {
+		assert.ok(main.includes(snippet), snippet);
+	}
+});
+
+check('the system view is wired: canvas, button, clock slider, view-gated rows', () => {
+	const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
+	for (const id of ['system', 'btn-system-view', 'slider-systime', 'val-systime', 'sysread']) {
+		assert.equal(html.split(`id="${id}"`).length, 2, id);
+	}
+	const labelsAt = html.indexOf('src="render/label-layer.js"');
+	const systemAt = html.indexOf('src="render/system-layer.js"');
+	const mainAt = html.indexOf('src="main.js"');
+	assert.ok(labelsAt > 0 && systemAt > labelsAt && mainAt > systemAt, 'script order');
+	// The systime row is gated on the open view, the data-view mirror of the
+	// data-engine mechanism (§6.5): the gate tag sits in the slider's own row.
+	const sliderAt = html.indexOf('id="slider-systime"');
+	const row = html.slice(0, sliderAt).lastIndexOf('<div class="menu-row"');
+	const tag = html.slice(0, sliderAt).lastIndexOf('data-view="system"');
+	assert.ok(row > 0 && tag > row, 'slider sits in the gated row');
+	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
+	for (const snippet of [
+		'window.SystemLayer', 'createSystemLayer(', 'openSystemView(', 'closeSystemView(',
+		'toggleSystemView(', 'writeSystemReadout(', '#menu [data-view]',
+		'SYSTIME_MIN', 'SYSTIME_MAX', 'SYSTIME_STEP', 's.sysview',
 	]) {
 		assert.ok(main.includes(snippet), snippet);
 	}

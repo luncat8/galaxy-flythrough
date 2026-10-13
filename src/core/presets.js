@@ -45,6 +45,11 @@ const FIELDS = [
 	{ key: 'highlight', label: 'highlight desat' },
 	{ key: 'search', label: 'search filter' },
 	{ key: 'scope', label: 'search scope' },
+	// System view (0.5.3, plan §9.4): the toggle serialized 0/1, and the view's
+	// own clock in y/s. The selection *contents* are not preset state, so a
+	// pasted sysview=1 with no primary opens nothing — an honest no-op.
+	{ key: 'sysview', label: 'system view' },
+	{ key: 'systime', label: 'system time', unit: ' y/s' },
 	{ key: 'stars', label: 'procedural stars' },
 	{ key: 'catalog', label: 'catalog budget' },
 ];
@@ -72,6 +77,10 @@ function menuDefaults() {
 		pattern: o.PATTERN_SCALE_UI_DEFAULT,
 		apoShare: o.APOCENTER_SHARE_UI_DEFAULT,
 		apoForce: o.APOCENTER_FORCE_UI_DEFAULT,
+		// The system view's own clock, owned by system-layer.js (plan §6.4):
+		// 0, the frozen default. Whether the view is *open* is working state
+		// like the search results — the Defaults button does not close it.
+		systime: g.SystemLayer ? g.SystemLayer.SYSTIME_DEFAULT : 0,
 	};
 }
 
@@ -176,6 +185,7 @@ function parse(query) {
 function describeValue(field, value) {
 	if (field.key === 'apoShare') return Math.round(value * 100) + '%';
 	if (field.key === 'engine') return serializeEngine(value).split('+').join(', ');
+	if (field.key === 'sysview') return value ? 'open' : 'closed';
 	if (field.prefix === 'x') return 'x' + value;
 	if (field.key === 'time' && value > 0) return '+' + value;
 	return String(value) + (field.suffix || '') + (field.unit || '');
@@ -206,7 +216,7 @@ function buildLlmPrompt(settings) {
 	lines.push('- star system: ' + ['type ' + (d.type || 'SBb'), 'seed ' + (d.seed || '42'),
 		'age ' + (d.age || '13.5 Gyr')].join(', '));
 	lines.push('- star movement stability engine: ' + (d.engine || 'classic'));
-	for (const key of ['time', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad']) {
+	for (const key of ['time', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad', 'sysview', 'systime']) {
 		const field = FIELDS.find((f) => f.key === key);
 		if (d[key] !== undefined) lines.push('- ' + field.label + ': ' + d[key]);
 	}

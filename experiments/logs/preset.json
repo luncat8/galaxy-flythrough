@@ -77,6 +77,10 @@
       "pass": true
     },
     {
+      "name": "the system view is wired: canvas, button, clock slider, view-gated rows",
+      "pass": true
+    },
+    {
       "name": "every engine-owned field has its menu row tagged with the same pass",
       "pass": true
     },

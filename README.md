@@ -44,6 +44,13 @@ No framework, bundler, module loader, or runtime network connection is required.
   landmark), Shift+click to build a set of up to 256, select-around by a world-space radius,
   fly to one (`F`), cycle the set (`N`), clear it (`X`) — each member snapshotted with its
   stellar properties, so the set survives the streaming rebuild
+- Deterministic per-star planetary systems: planets, belts, moons, insolation and
+  temperatures, HZ/terran/locked flags, generated lazily on the CPU for the selected star
+- Star and planet search with a compact token filter (`G,K|terran|220-300`), scoped to the
+  selection or the galaxy, with add-results-to-selection
+- Close-system schematic view: `V` opens a log-polar map of the primary selection — HZ
+  annulus, orbit ellipses, stippled belts, star and planet icons — with its own
+  system-time clock and a full-figures readout
 - Copyable settings presets and deterministic URL parameters
 - CPU mirrors and model/parity tests for the JavaScript and WGSL implementations
 
@@ -73,9 +80,10 @@ Other controls:
 - `G` — cycle galaxy type and rebuild the field
 - `P` — toggle constellation lines
 - `T` — pause/resume star time
+- `V` — open/close the close-system schematic of the selected star
 - `[` / `]` — exposure
 - `;` / `'` — overall brightness
-- `Esc` — release the pointer in fly mode
+- `Esc` — close the system view; release the pointer in fly mode
 
 The settings panel opens at startup and exposes galaxy type, seed, age, star time, movement engine, pattern controls, tone mapping, and presets.
 
@@ -104,6 +112,8 @@ Useful parameters include:
 | `brightness`, `white`, `sat` | Display gain, white point, and saturation |
 | `headroom`, `highlight` | HDR ceiling and highlight desaturation |
 | `apoShare`, `apoForce` | Apocenter-engine population share and eccentricity force |
+| `sysview` | `1` opens the system schematic at load (a no-op without a selection) |
+| `systime` | Schematic clock rate in years/s (`-1` follows the camera fly speed, `0` freezes) |
 
 The Preset section in the UI serializes the complete active configuration in this same format.
 

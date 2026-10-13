@@ -347,7 +347,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 
 const LabelLayer = {
 	createLabelLayer,
-	LABEL_FONT, LABEL_FILL, LINE_STROKE, SELECT_FILL, SELECT_RING,
+	LABEL_FONT, LABEL_FILL, LABEL_HALO, LINE_STROKE, SELECT_FILL, SELECT_RING,
 	LABEL_OFFSET_PX, SELECT_RING_PX, SET_RING_PX, SET_RING, MAP_SIZE,
 };
 if (typeof module !== 'undefined') module.exports = LabelLayer;

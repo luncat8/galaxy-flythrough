@@ -78,12 +78,17 @@ function readParams(search) {
                 wave: number('wave', window.OrbitLib.WAVE_DAMPING_UI_DEFAULT),
                 apoShare: number('apoShare', window.OrbitLib.APOCENTER_SHARE_UI_DEFAULT),
                 apoForce: number('apoForce', window.OrbitLib.APOCENTER_FORCE_UI_DEFAULT),
-                brightness: number('brightness', window.StarRenderer.LINEAR_EXPOSURE_DEFAULT),
-                white: number('white', window.StarRenderer.WHITE_POINT_DEFAULT),
-                sat: number('sat', window.StarRenderer.SATURATION_DEFAULT),
-                headroom: number('headroom', window.StarRenderer.HEADROOM_DEFAULT),
-                highlight: number('highlight', window.StarRenderer.HIGHLIGHT_DESAT_DEFAULT),
-        };
+		brightness: number('brightness', window.StarRenderer.LINEAR_EXPOSURE_DEFAULT),
+		white: number('white', window.StarRenderer.WHITE_POINT_DEFAULT),
+		sat: number('sat', window.StarRenderer.SATURATION_DEFAULT),
+		headroom: number('headroom', window.StarRenderer.HEADROOM_DEFAULT),
+		highlight: number('highlight', window.StarRenderer.HIGHLIGHT_DESAT_DEFAULT),
+		// The system view (0.5.3): its own clock in y/s, and the toggle. An
+		// absent key is the frozen, closed default — pre-0.5 presets paste
+		// unchanged (plan §14 Q6).
+		systime: number('systime', window.SystemLayer.SYSTIME_DEFAULT),
+		sysview: number('sysview', 0),
+	};
 }
 
 async function boot() {
@@ -326,6 +331,9 @@ async function boot() {
         // before that alias is declared, and the namespace is already live.
         const searchTypeNames = window.PlanetsLib.DISPLAY_TYPES.map((t) => t.name);
         let searchSnapshot = [];
+        // The search report's own copy of #sysread: the system view takes the
+        // element over while open (0.5.3) and hands it back on exit.
+        let sysreadSearchText = '';
 
         // The class/type selects are filled from the libraries (the
         // galaxy-type select works the same way), so a table rename cannot
@@ -425,7 +433,10 @@ async function boot() {
         function markSearchStale() {
                 searchSnapshot = [];
                 valSearch.textContent = 'no search yet';
-                sysread.textContent = '';
+                sysreadSearchText = '';
+                // While the system view owns #sysread, only the copy clears —
+                // the schematic's readout stays until the view exits.
+                if (!systemLayer.isOpen()) sysread.textContent = '';
         }
 
         function onSearchControl() {
@@ -497,7 +508,8 @@ async function boot() {
                 const show = Math.min(res.count, 12);
                 for (let i = 0; i < show; i++) lines.push(searchRowLine(res, i));
                 if (res.count > show) lines.push('… +' + (res.count - show) + ' more');
-                sysread.textContent = lines.join('\n');
+                sysreadSearchText = lines.join('\n');
+                if (!systemLayer.isOpen()) sysread.textContent = sysreadSearchText;
         }
         btnSearch.addEventListener('click', runSearch);
         btnSearchClear.addEventListener('click', markSearchStale);
@@ -534,6 +546,118 @@ async function boot() {
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
         btnSearchAdd.addEventListener('click', addResultsToSelection);
+
+        // --- System view (0.5.3, plan §6) -------------------------------------
+        // The schematic of the primary selection's generated system. The layer
+        // owns the record, the log-polar layout, its own years/s clock and the
+        // screen-space picking; main.js owns the enter/exit glue (camera, menu
+        // rows, #sysread) and routes the canvas clicks to it while open.
+        const systemLayer = window.SystemLayer.createSystemLayer(document.getElementById('system'));
+        const btnSystemView = document.getElementById('btn-system-view');
+        const sliderSysTime = document.getElementById('slider-systime');
+        const valSysTime = document.getElementById('val-systime');
+        // Rows that mean nothing outside the view are hidden rather than
+        // disabled — the data-view mirror of the data-engine mechanism (§6.5).
+        const viewRows = Array.from(document.querySelectorAll('#menu [data-view]'));
+        const bodyPick = { kind: -1, index: -1 };
+        const systemCtx = {};
+        let hoverX = -1e9, hoverY = -1e9;
+        // 1 pc in kpc: closer than this, entering keeps the camera distance and
+        // only switches the orbit target (plan §6.5).
+        const SYSTEM_VIEW_FLY_KPC = 0.001;
+
+        // The slider's range belongs to the layer that clamps it (the rule the
+        // galaxy-age slider follows), never a second copy typed in here.
+        sliderSysTime.min = window.SystemLayer.SYSTIME_MIN;
+        sliderSysTime.max = window.SystemLayer.SYSTIME_MAX;
+        sliderSysTime.step = window.SystemLayer.SYSTIME_STEP;
+        function syncSysTime() {
+                sliderSysTime.value = systemLayer.getTimeRate();
+                valSysTime.textContent = window.SystemLayer.formatSysTimeRate(systemLayer.getTimeRate());
+        }
+        sliderSysTime.addEventListener('input', () => {
+                systemLayer.setTimeRate(Number(sliderSysTime.value));
+                syncSysTime();
+        });
+
+        function syncViewRows() {
+                const viewOpen = systemLayer.isOpen();
+                for (const row of viewRows) {
+                        row.style.display = viewOpen && row.dataset.view === 'system' ? '' : 'none';
+                }
+                btnSystemView.textContent = viewOpen ? 'Close system view' : 'System view';
+        }
+        btnSystemView.addEventListener('click', () => toggleSystemView());
+
+        function landmarkNameFor(i) {
+                if (starSet.blockKind[i] === selectPlanets.BLOCK_LANDMARK) {
+                        const entry = landmarks.ENTRIES[starSet.bufferIdx[i]];
+                        if (entry) return entry.name;
+                }
+                return null;
+        }
+
+        // Enter (plan §6.5): requires the primary; the layer generates the
+        // record and hashes the belt stipples, then the camera comes onto the
+        // star — flyToStar at the luminosity stand-off when farther than 1 pc,
+        // otherwise just the orbit-object switch, current distance kept.
+        function openSystemView(moveCamera) {
+                const p = starSet.primary;
+                if (p < 0) return false;
+                const ref = memberRefFor(p);
+                systemCtx.model = model;
+                systemCtx.field = renderer.fieldBuffers();
+                systemCtx.member = renderer.starBlocks().member;
+                systemCtx.name = landmarkNameFor(p);
+                systemLayer.enter(ref, systemCtx);
+                if (moveCamera !== false) {
+                        const cam = camera.cameraPos;
+                        const dx = starSet.x[p] - cam[0];
+                        const dy = starSet.y[p] - cam[1];
+                        const dz = starSet.z[p] - cam[2];
+                        const far = Math.sqrt(dx * dx + dy * dy + dz * dz) > SYSTEM_VIEW_FLY_KPC;
+                        camera.flyToStar(starSet.x[p], starSet.y[p], starSet.z[p], memberName(p),
+                                far ? camera.orbitStandOff(starSet.lum[p]) : 0);
+                }
+                syncViewRows();
+                writeSystemReadout();
+                return true;
+        }
+
+        // Exit: the layer erases its canvas, #sysread returns to the search
+        // report (empty → the CSS :empty rule hides it), the camera keeps its
+        // orbit target and the fly keys return with the camera's mode (§6.5).
+        function closeSystemView() {
+                if (!systemLayer.isOpen()) return;
+                systemLayer.exit();
+                syncViewRows();
+                sysread.textContent = sysreadSearchText;
+        }
+
+        function toggleSystemView() {
+                if (systemLayer.isOpen()) closeSystemView();
+                else openSystemView(true);
+        }
+
+        // The readout is text at the overlay's 4 Hz cadence (plan §6.6), plus
+        // an immediate refresh on enter and on a schematic click, so the
+        // ◀ marker never lags the ring.
+        function writeSystemReadout() {
+                sysread.textContent = systemLayer.readoutText();
+        }
+
+        // The cursor over the schematic. The canvas spans the viewport at
+        // (0,0), so client coords are its CSS pixels; hover resolution itself
+        // runs per frame in the loop — bodies move under a still cursor.
+        canvas.addEventListener('mousemove', (e) => {
+                hoverX = e.clientX;
+                hoverY = e.clientY;
+        });
+
+        systemLayer.setTimeRate(params.systime);
+        syncSysTime();
+        syncViewRows();
+        if (params.sysview) openSystemView(true);   // no selection at boot: a no-op
 
         function toggleMenu() {
                 const visible = menu.style.display !== 'none';
@@ -664,10 +788,14 @@ async function boot() {
                 window.OrbitLib.setApocenterForce(d.apoForce);
                 waveDamping = window.OrbitLib.setWaveDamping(d.wave);
                 patternScale = window.OrbitLib.setPatternScale(d.pattern, starTimeMyr, model);
+                // The view's clock is a knob; whether the view is open is
+                // working state, like the search results — Defaults keeps it.
+                systemLayer.setTimeRate(d.systime);
                 syncApocenterSliders();
                 syncSlidersFromRenderer();
                 syncWave();
                 syncPattern();
+                syncSysTime();
         });
 
         // --- Presets: copy/paste/save/load, and the LLM prompt ----------------
@@ -704,6 +832,8 @@ async function boot() {
                         highlight: renderer.state.highlightDesat,
                         search: searchLib.formatFilter(searchLib.parseFilter(tokenBox.value)),
                         scope: scopeSelect.value === 'galaxy' ? 'galaxy' : 'selection',
+                        sysview: systemLayer.isOpen() ? 1 : 0,
+                        systime: systemLayer.getTimeRate(),
                         stars: params.stars,
                         catalog: params.catalogStars,
                 };
@@ -760,6 +890,17 @@ async function boot() {
                 if (s.scope !== undefined) {
                         scopeSelect.value = s.scope === 'galaxy' ? 'galaxy' : 'selection';
                         markSearchStale();
+                }
+                // The system view (0.5.3): the clock lands either way; opening
+                // needs a primary, and the selection contents are not preset
+                // state (plan §5.5), so sysview=1 without one is a no-op.
+                if (s.systime !== undefined) {
+                        systemLayer.setTimeRate(s.systime);
+                        syncSysTime();
+                }
+                if (s.sysview !== undefined) {
+                        if (s.sysview) openSystemView(true);
+                        else closeSystemView();
                 }
                 syncSlidersFromRenderer();
                 updateOverlay(renderer.state, camera.getState(statsText));
@@ -946,6 +1087,10 @@ async function boot() {
                 // The set survives: same keys, same positions, new evolutionary
                 // state — re-derived in place (plan §3.2).
                 rederiveSet();
+                // An open schematic follows the refreshed snapshot: a new epoch
+                // can re-roll the star's state and luminosity, so the record
+                // regenerates — without a camera move, nothing moved.
+                if (systemLayer.isOpen()) openSystemView(false);
                 syncGalaxyControls();
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
@@ -1068,6 +1213,9 @@ async function boot() {
         }
 
         function clearSelection() {
+                // The system view is the primary's view: no primary, no
+                // schematic. X, R and a galaxy change all come through here.
+                if (systemLayer.isOpen()) closeSystemView();
                 starSet.clear();
                 setLabel = '';
                 selected = -1;
@@ -1267,18 +1415,29 @@ async function boot() {
                 selection.setOrbitState(model, starTimeMyr);
                 if (actions.pick) {
                         actions.pick = 0;
-                        const px = input.state.pickX;
-                        const py = input.state.pickY;
-                        const w = canvas.clientWidth;
-                        const h = canvas.clientHeight;
-                        // Any drawn star (plan §3.1): the walk covers the five
-                        // blocks, so a procedural star, an object member, a catalog
-                        // star and a landmark are all selectable. It is chunked
-                        // across frames (the walk is dispatch-bound), so the click
-                        // only starts it — `pendingShift` carries the click's
-                        // modifier to the frame the sweep finishes on.
-                        pendingShift = input.state.keys.boost ? 1 : 0;
-                        selection.beginPick(px, py, w, h, pickOut);
+                        if (systemLayer.isOpen()) {
+                                // Schematic picking (plan §6.3): exact and
+                                // immediate — the layer already has every body's
+                                // screen position. An empty click clears the body
+                                // selection but does not leave the view.
+                                systemLayer.pick(input.state.pickX, input.state.pickY, bodyPick);
+                                if (bodyPick.kind === window.SystemLayer.BODY_NONE) systemLayer.clearBodySelection();
+                                else systemLayer.setSelected(bodyPick.kind, bodyPick.index);
+                                writeSystemReadout();
+                        } else {
+                                const px = input.state.pickX;
+                                const py = input.state.pickY;
+                                const w = canvas.clientWidth;
+                                const h = canvas.clientHeight;
+                                // Any drawn star (plan §3.1): the walk covers the five
+                                // blocks, so a procedural star, an object member, a catalog
+                                // star and a landmark are all selectable. It is chunked
+                                // across frames (the walk is dispatch-bound), so the click
+                                // only starts it — `pendingShift` carries the click's
+                                // modifier to the frame the sweep finishes on.
+                                pendingShift = input.state.keys.boost ? 1 : 0;
+                                selection.beginPick(px, py, w, h, pickOut);
+                        }
                 }
                 // Walk the pending sweep a slice further; the frame it finishes on
                 // is the frame the selection changes. A miss stays a no-op.
@@ -1300,6 +1459,10 @@ async function boot() {
                                         selected = -1;
                                         labels.setSelected(-1);
                                 }
+                                // The schematic is the primary's view: the rare
+                                // pick that lands while it is open (V pressed
+                                // mid-sweep) switches it to the new star.
+                                if (!additive && systemLayer.isOpen()) openSystemView(true);
                         }
                 }
                 if (actions.flyTo) {
@@ -1309,10 +1472,21 @@ async function boot() {
                 if (actions.nextStar) {
                         actions.nextStar = 0;
                         cyclePrimary(input.state.keys.boost ? -1 : 1);
+                        // The view follows the primary (plan §3.2): cycling with
+                        // the schematic open walks the systems, camera included.
+                        if (systemLayer.isOpen()) openSystemView(true);
                 }
                 if (actions.clearSet) {
                         actions.clearSet = 0;
                         clearSelection();
+                }
+                if (actions.systemView) {
+                        actions.systemView = 0;
+                        toggleSystemView();
+                }
+                if (actions.systemViewExit) {
+                        actions.systemViewExit = 0;
+                        closeSystemView();
                 }
                 if (actions.constellations) {
                         actions.constellations = 0;
@@ -1327,11 +1501,20 @@ async function boot() {
                 renderer.render(camera, canvas.width, canvas.height, starTimeMyr, input.state, dtStar);
                 labels.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
                 labels.draw(camera, canvas.clientWidth, canvas.clientHeight);
+                // The schematic (plan §6): its own clock first, then hover and
+                // the draw. Closed, the whole block is one boolean test.
+                if (systemLayer.isOpen()) {
+                        systemLayer.stepTime(dt, cameraStateForTime.speedLyPerSec);
+                        systemLayer.updateHover(hoverX, hoverY);
+                        systemLayer.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
+                        systemLayer.draw(canvas.clientWidth, canvas.clientHeight);
+                }
 
                 overlayTimer += dt;
                 if (overlayTimer >= OVERLAY_INTERVAL) {
                         overlayTimer = 0;
                         updateOverlay(renderer.state, camera.getState(statsText));
+                        if (systemLayer.isOpen()) writeSystemReadout();
                         // Keep slider readouts in sync with keyboard shortcuts
                         // while the menu is open.
                         if (menu.style.display !== 'none') syncSlidersFromRenderer();

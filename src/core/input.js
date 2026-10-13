@@ -11,6 +11,8 @@
 //   * renderer : actions.exposure
 //   * selection: actions.pick + pickX/pickY, actions.constellations,
 //                actions.flyTo/nextStar/clearSet, keys.boost (Shift+click)
+//   * system   : actions.systemView (V) / systemViewExit (Esc) — main.js routes
+//                actions.pick to the schematic while the view is open (0.5.3)
 //
 // No allocations in the hot path: listeners write into the shared state, and
 // deltas are zeroed by whoever consumed them.
@@ -39,7 +41,7 @@ function createInput(canvas) {
 		pickX: 0,
 		pickY: 0,
 		actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, galaxyCycle: 0, freezeTime: 0,
-			flyTo: 0, nextStar: 0, clearSet: 0 },
+			flyTo: 0, nextStar: 0, clearSet: 0, systemView: 0, systemViewExit: 0 },
 	};
 
 	// Held keys: true while down. Ctrl is the brief's slow modifier; Ctrl+W
@@ -62,9 +64,13 @@ function createInput(canvas) {
 	// 0.5.0 adds the star-selection keys: F flies to the primary, N cycles it
 	// through the set (Shift+N, read as the held `boost` key, walks backwards),
 	// X clears the set. One-shots like the rest: a held N must not cycle the
-	// primary at the key-repeat rate.
+	// primary at the key-repeat rate. 0.5.3 adds V (system view on/off) and
+	// Escape as its explicit exit: under pointer lock the browser swallows Esc
+	// to release the lock and no keydown arrives — which is fine, because the
+	// system view runs in orbit mode, where Esc does arrive and the action is
+	// a no-op outside the view.
 	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyC: 'cameraMode', KeyP: 'constellations', KeyG: 'galaxyCycle', KeyT: 'freezeTime', Tab: 'menu',
-		KeyF: 'flyTo', KeyN: 'nextStar', KeyX: 'clearSet' };
+		KeyF: 'flyTo', KeyN: 'nextStar', KeyX: 'clearSet', KeyV: 'systemView', Escape: 'systemViewExit' };
 	// Exposure accumulates, so key repeat is one more step per repeat.
 	const exposureMap = { BracketLeft: -1, Minus: -1, BracketRight: 1, Equal: 1 };
 	// Linear exposure (ACES pre-multiplier) in half-stop steps. ; darker, ' brighter.

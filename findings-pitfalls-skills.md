@@ -4,6 +4,47 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-10-13 — A plan's worked example is a byte-level spec: read the column widths off it and pin it in a test
+
+The §6.6 readout example carries the format the prose only describes: `288.00 M⊕` says the
+mass column is 8 characters right-aligned, `18.40 AU` says a planet's axis is *always* two
+decimals — even at ≥ 10 AU — while `a_out 34 AU` (from 34.4) says only head-line scales
+round. Re-deriving paddings from the prose produced a `padStart(7)` mass column in the
+first draft; it fit every plausible value and broke the example. The fix that generalizes:
+when a plan prints a worked output example, the test fabricates a record reproducing that
+example's system and pins the joined lines byte-for-byte (`system-layer-test.js` §6).
+Prose states intent; the example encodes widths, and only a byte-exact pin catches a
+one-character padding drift.
+
+---
+
+## 2026-10-13 — One element, two writers: give the non-owning feature a shadow copy
+
+`#sysread` serves the search report (0.5.2) and the system-view readout (0.5.3). Two
+writers into one `<pre>` need an ownership rule, not a merge: while the view is open the
+schematic owns the element at its 4 Hz cadence, and a search that runs underneath updates
+only its own `sysreadSearchText` copy — never the DOM. Closing restores the copy (empty →
+the CSS `:empty` rule hides it again); clearing search results while the view is open
+clears only the copy. Any scheme where both writers touch `textContent` fights at the
+refresh cadence and flickers. The same pattern will cover 0.5.4's delta-v block, which
+extends the schematic's readout rather than adding a third writer.
+
+---
+
+## 2026-10-13 — Overlay picking stays exact only while the body rides the drawn primitive
+
+The schematic is flat (plan §14 Q4) because every planet is positioned by the *same*
+ellipse that `ctx.ellipse` drew — `θ(t) = θ₀ + TAU·t/P` on the `(A, A·√(1−e²)·cos i)`
+figure rotated by ω — so "click what you see" is an identity, not an approximation: pick
+reads the `Float32Array` the draw wrote. The moment a representation diverges from the
+position law (a 2.5D tilt, a projected belt band), picking must mirror the transform or
+silently drift from the pixels. Two testing notes: recompute expected positions in f64 and
+compare with ~0.02 px slack — the f32 storage rounds at ~1e-4 px there, so the tolerance
+stays 100× tighter than any real law bug; and a heap-delta assertion across 1 000 draws
+must bound, not zero — V8's GC makes the delta routinely negative, which is a pass.
+
+---
+
 ## 2026-10-12 — Bulk-index and display-type-id are different numeric spaces — do not conflate
 
 A thermal index sized by `DISPLAY_TYPES.length` (10 entries) and indexed by `bulkIndex`

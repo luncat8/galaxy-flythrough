@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-12T23:47:37.741Z",
+  "date": "2026-10-13T01:01:21.958Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -27,6 +27,7 @@
     "stream/cell-manager.js",
     "render/star-sprites.js",
     "render/label-layer.js",
+    "render/system-layer.js",
     "main.js"
   ],
   "sourceFiles": [
@@ -55,11 +56,12 @@
     "render/label-layer.js",
     "render/shaders.js",
     "render/star-sprites.js",
+    "render/system-layer.js",
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 57,
-  "passed": 57,
+  "totalChecks": 58,
+  "passed": 58,
   "failed": 0,
   "checks": [
     {
@@ -71,8 +73,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 27,
-        "sources": 27,
+        "scripts": 28,
+        "sources": 28,
         "missing": []
       }
     },
@@ -92,6 +94,7 @@
       "detail": {
         "css": true,
         "elements": [
+          true,
           true,
           true,
           true,
@@ -157,7 +160,8 @@
         "TileLoader",
         "CellManager",
         "StarRenderer",
-        "LabelLayer"
+        "LabelLayer",
+        "SystemLayer"
       ]
     },
     {
@@ -318,7 +322,14 @@
       "name": "LabelLayer loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 11
+        "keys": 12
+      }
+    },
+    {
+      "name": "SystemLayer loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 37
       }
     },
     {
@@ -403,7 +414,9 @@
         "white": 4,
         "sat": 1.4,
         "headroom": 8,
-        "highlight": 1
+        "highlight": 1,
+        "systime": 0,
+        "sysview": 0
       }
     },
     {
@@ -426,7 +439,9 @@
         "white": 4,
         "sat": 1.4,
         "headroom": 8,
-        "highlight": 1
+        "highlight": 1,
+        "systime": 0,
+        "sysview": 0
       }
     },
     {
@@ -449,7 +464,9 @@
         "white": 4,
         "sat": 1.4,
         "headroom": 8,
-        "highlight": 1
+        "highlight": 1,
+        "systime": 0,
+        "sysview": 0
       }
     },
     {
