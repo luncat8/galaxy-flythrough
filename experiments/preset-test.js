@@ -19,6 +19,7 @@ const StarRenderer = require('../src/render/star-sprites.js');
 const OrbitLib = require('../src/math/orbit.js');
 const GalaxyLib = require('../src/math/galaxy.js');
 const Selection = require('../src/core/selection.js');
+const SystemLayer = require('../src/render/system-layer.js');
 const Presets = require('../src/core/presets.js');
 
 const checks = [];
@@ -36,6 +37,7 @@ const SETTINGS = {
 	time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
 	exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
 	selrad: 50, selstars: [123456789, 4294967295, 7],
+	sysview: 1, systime: 2,
 	search: 'cls=G,K;pt=terran;ts=220-300', scope: 'galaxy',
 	stars: 300000, catalog: 250000,
 };
@@ -97,6 +99,31 @@ check('the search token round-trips through Search, not through a private parser
 	assert.equal(filter.tsurfMax, 300);
 	assert.equal(Search.serializeFilter(Search.parseFilter('mass=0.5-1.5;minp=3;flag=terran+belt+noplanets;pt=gas-giant,ice-giant')),
 		'mass=0.5-1.5;pt=gas-giant,ice-giant;minp=3;flag=terran+belt+noplanets');
+});
+
+check('the system-view fields carry the view state and take their default from the layer', () => {
+	// §6.4's clock is a view control: the rate and the open flag ride the line
+	// like the search query, and neither reaches the LLM prompt.
+	const query = Presets.serialize(SETTINGS);
+	assert.equal(new URLSearchParams(query).get('sysview'), '1');
+	assert.equal(new URLSearchParams(query).get('systime'), '2');
+	assert.deepEqual(Presets.parse('sysview=0&systime=-1'), { sysview: 0, systime: -1 });
+	const described = Presets.describe(SETTINGS);
+	assert.ok(described.sysview === undefined && described.systime === undefined);
+	assert.ok(!Presets.buildLlmPrompt(SETTINGS).includes('system time'));
+	// The frozen default belongs to the module that owns the slider.
+	assert.equal(Presets.menuDefaults().systime, SystemLayer.SYSTEM_TIME_RATE_DEFAULT);
+	assert.equal(SystemLayer.SYSTEM_TIME_RATE_DEFAULT, 0);
+});
+
+check('main.js applies the system-view fields and advances the view clock', () => {
+	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
+	assert.ok(main.includes('systemLayer.advance('), 'the clock is stepped');
+	assert.ok(main.includes('clampSystemRate'), 'the rate is clamped to the layer range');
+	assert.ok(/if \(s\.systime !== undefined\)/.test(main), 'systime applied');
+	assert.ok(/if \(s\.sysview !== undefined\)/.test(main), 'sysview applied');
+	// The rate is resolved through the camera speed by the star-time law.
+	assert.ok(/FLIGHT_TIME_GAIN \* cameraStateForTime\.speedLyPerSec/.test(main), 'the follow rate');
 });
 
 // --- disabled passes are not part of the preset -----------------------------
@@ -181,10 +208,11 @@ check('menuDefaults matches the modules that own the numbers', () => {
 	assert.equal(d.apoShare, OrbitLib.APOCENTER_SHARE_UI_DEFAULT);
 	assert.equal(d.apoForce, OrbitLib.APOCENTER_FORCE_UI_DEFAULT);
 	assert.equal(d.selrad, Selection.SELECT_RADIUS_LY_DEFAULT);
+	assert.equal(d.systime, SystemLayer.SYSTEM_TIME_RATE_DEFAULT);
 	assert.deepEqual(d, {
 		exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
 		time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
-		selrad: 50,
+		selrad: 50, systime: 0,
 	});
 });
 

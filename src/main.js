@@ -110,6 +110,10 @@ function readParams(search) {
                 highlight: number('highlight', window.StarRenderer.HIGHLIGHT_DESAT_DEFAULT),
                 // Select-around radius, world-space in light-years (0.5.0).
                 selrad: number('selrad', window.Selection.SELECT_RADIUS_LY_DEFAULT),
+                // The system view's own clock (§6.4): years per second of the
+                // open system, −1 camera-coupled, 0 frozen. Its bounds belong
+                // to the layer the rate acts on.
+                systime: number('systime', window.SystemLayer.SYSTEM_TIME_RATE_DEFAULT),
         };
 }
 
@@ -657,7 +661,14 @@ async function boot() {
         const systemStar = window.PlanetsLib.createStellarInputs();
         const systemRecord = window.PlanetsLib.createSystemRecord();
         let systemViewOpen = false;
-        let systemTimeRate = 0;
+        // §6.4's clock rate for the open system, in years per second: the menu
+        // slider's value, clamped to the layer's own range so a hand-edited URL
+        // or pasted preset names a rate that exists.
+        function clampSystemRate(value) {
+                return Math.min(window.SystemLayer.SYSTEM_TIME_RATE_MAX,
+                        Math.max(window.SystemLayer.SYSTEM_TIME_RATE_MIN, value));
+        }
+        let systemTimeRate = clampSystemRate(params.systime);
         // §6.5: closer than a parsec, the camera already frames the star, so
         // entering the view only turns it; farther, it flies in.
         const SYSTEM_LOCK_FAR_KPC = 0.001;
@@ -941,6 +952,8 @@ async function boot() {
                 syncWave();
                 syncPattern();
                 syncSelrad();
+                systemTimeRate = clampSystemRate(d.systime);
+                syncSystime();
         });
 
         // --- Presets: copy/paste/save/load, and the LLM prompt ----------------
@@ -975,6 +988,11 @@ async function boot() {
                         headroom: renderer.state.headroom,
                         highlight: renderer.state.highlightDesat,
                         selrad: selectRadiusLy,
+                        // The system view's own state (§6.4): whether the
+                        // schematic is open and the rate its clock runs at —
+                        // view state, like the search query, not model state.
+                        sysview: systemViewOpen ? 1 : 0,
+                        systime: systemTimeRate,
                         // The search filter and the scope it ran in: the query
                         // is part of the settings, so a pasted preset
                         // reproduces it. The results are not — they are
@@ -1054,6 +1072,18 @@ async function boot() {
                         labels.setSelected(-1);
                         syncSelection();
                 }
+                if (s.systime !== undefined) {
+                        systemTimeRate = clampSystemRate(s.systime);
+                        syncSystime();
+                }
+                // The view is applied last: opening needs a primary to open
+                // on, and a pasted line may have just restored the selection.
+                // A closed view closes — the line is what is on screen.
+                if (s.sysview !== undefined) {
+                        if (s.sysview) openSystemView();
+                        else closeSystemView();
+                }
+                if (systemViewOpen) updateSystemReadout();
                 syncSlidersFromRenderer();
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
@@ -1332,6 +1362,13 @@ async function boot() {
                 const dtStar = effectiveTimeRate * dt;
                 starTimeMyr += dtStar;
                 if (starTimeMyr >= STAR_TIME_WRAP || starTimeMyr < 0) starTimeMyr = ((starTimeMyr % STAR_TIME_WRAP) + STAR_TIME_WRAP) % STAR_TIME_WRAP;
+                // §6.4: the system view's own clock. −1 couples it to the
+                // camera speed by the same FLIGHT_TIME_GAIN law the star-time
+                // slider uses — resolved here, where the camera state already
+                // is — and 0 freezes. The layer owns the accumulated years.
+                systemLayer.advance(dt, systemTimeRate < 0
+                        ? (-systemTimeRate) * window.OrbitLib.FLIGHT_TIME_GAIN * cameraStateForTime.speedLyPerSec
+                        : systemTimeRate);
                 // The simple engine's CPU mirror steps beside the GPU buffer —
                 // same dtStar the renderer dispatches, so labels and picks ride
                 // what the sprites draw. Classic ignores both.

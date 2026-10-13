@@ -8,11 +8,10 @@
 // boolean test and a return, so a closed view costs the frame loop nothing.
 //
 // 0.5.3-1 shipped the state machine: open/closed, canvas lifetime and the
-// SystemRecord intake. 0.5.3-2 (this file) draws the log-polar layout — the
-// radial axis of §6.1, the habitable-zone annulus, the orbit ellipses, the star
-// and the planet icons. The belt stipples and the system clock are 0.5.3-3;
-// schematic picking, the selection ring and the hovered designation are
-// 0.5.3-4.
+// SystemRecord intake. 0.5.3-2 (the radial axis, annulus, ellipses, star and
+// planet icons) and 0.5.3-3 (the belt stipples, hashed once per system, and
+// the system clock of §6.4) draw the schematic. Schematic picking, the
+// selection ring and the hovered designation are 0.5.3-4.
 
 'use strict';
 
@@ -28,6 +27,9 @@ const sysPlanets = (typeof module !== 'undefined' && module.exports)
 const sysRecords = (typeof module !== 'undefined' && module.exports)
 	? require('../math/star-record.js')
 	: window.StarRecord;
+const sysHash = (typeof module !== 'undefined' && module.exports)
+	? require('../math/hash.js')
+	: window.HashLib;
 
 // ---- the schematic's constants (§6.1, §6.2) --------------------------------
 const SYS_TAU = Math.PI * 2;
@@ -44,9 +46,19 @@ const BELT_VIEW_OUT = 1.1;               // … outermost belt · this
 const HZ_FILL = 'rgba(96, 200, 128, 0.07)';
 const HZ_EDGE = 'rgba(96, 200, 128, 0.25)';
 const ORBIT_STROKE = 'rgba(150, 175, 215, 0.22)';
+const BELT_STIPPLE = 'rgba(190, 180, 160, 0.35)';
 const TERRAN_RING = 'rgba(96, 200, 128, 0.85)';
 const LOCKED_SHADE = 'rgba(6, 8, 14, 0.55)';   // the unlit half of a locked world
 const STAR_HALO_ALPHA = 0.18;
+const STIPPLE_RADIUS = 1;                      // px — §6.2 item 3's dots
+
+// §6.4's clock: years per second of the open system, -1 camera-coupled (the
+// menu's follow), 0 the frozen default, the rest a direct rate. Owned here
+// because the layer is what the rate acts on — presets.js and main.js read
+// the bounds rather than restating them.
+const SYSTEM_TIME_RATE_MIN = -1;
+const SYSTEM_TIME_RATE_MAX = 99;
+const SYSTEM_TIME_RATE_DEFAULT = 0;
 
 // Star icon radius by state (§6.2 item 4).
 const STAR_R_MS = 12, STAR_R_GIANT = 20, STAR_R_WD = 6;
@@ -93,9 +105,9 @@ function createSystemLayer(canvas) {
 	// view is closed: main.js owns the record, the layer only reads it.
 	let system = null;
 	let dpr = 1;
-	// §6.4's own clock, in years of the open system. Frozen at 0 until 0.5.3-3
-	// gives the menu slider a rate to write here; the phase draw already reads
-	// it, so the clock lands without touching the layout.
+	// §6.4's own clock, in years of the open system. Frozen at the default rate
+	// until the menu slider gives main.js a rate to write here; the phase draw
+	// and the belt spin both read it.
 	let systemTimeYr = 0;
 	// The radial mapping of the current frame, and where the icons ended up:
 	// the picker of 0.5.3-4 reads these instead of projecting anything.
@@ -112,6 +124,21 @@ function createSystemLayer(canvas) {
 	const A0_MIN_AU = sysPlanets.A0_MIN_AU;
 	const STAR_CLEARANCE = sysPlanets.STAR_CLEARANCE;
 	const GIANT_A0_FACTOR = sysPlanets.GIANT_A0_FACTOR;
+	const MAX_BELTS = sysPlanets.MAX_BELTS;
+	const STIPPLE_N = sysPlanets.STIPPLE_N;
+	const CH_STIPPLE = sysPlanets.CH_STIPPLE;
+	const hash01At = sysHash.hash01At;
+
+	// The stipple of §6.2 item 3: STIPPLE_N angle/radius pairs per belt, hashed
+	// once per system into these two arrays and never re-derived per frame. One
+	// block per belt keeps the dot loop contiguous — belt b owns
+	// [b·STIPPLE_N, (b+1)·STIPPLE_N) in both.
+	const beltStippleAngle = new Float32Array(MAX_BELTS * STIPPLE_N);
+	const beltStippleRadius = new Float32Array(MAX_BELTS * STIPPLE_N);
+	// Where each belt's dots sit at system time 0, from one more channel past
+	// the 2·STIPPLE_N the pairs use, so a belt's start angle never reuses a
+	// stipple draw.
+	const beltPhase = new Float32Array(MAX_BELTS);
 
 	function enabled() {
 		return open;
@@ -119,6 +146,35 @@ function createSystemLayer(canvas) {
 
 	function setSystem(record) {
 		system = record || null;
+		// The dots are hashed once per system (§6.2 item 3), on the belt's own
+		// stipple seed, and a summary-tier record carries no belt geometry to
+		// hash — the enter path always hands over the full tier.
+		if (system && system.planets) hashBelts();
+	}
+
+	// 2·STIPPLE_N draws per belt: the first STIPPLE_N are the dot angles, the
+	// rest the radial offsets, both on the belt's own seed (plan §11.1: a
+	// channel of the system seed would make the two belts share one range and
+	// the record's per-belt seed meaningless).
+	function hashBelts() {
+		const belts = system.belts;
+		for (let b = 0; b < system.beltCount; b++) {
+			const seed = belts.stipple[b];
+			const base = b * STIPPLE_N;
+			for (let s = 0; s < STIPPLE_N; s++) {
+				beltStippleAngle[base + s] = SYS_TAU * hash01At(seed, CH_STIPPLE + s);
+				beltStippleRadius[base + s] = hash01At(seed, CH_STIPPLE + STIPPLE_N + s);
+			}
+			beltPhase[b] = SYS_TAU * hash01At(seed, CH_STIPPLE + 2 * STIPPLE_N);
+		}
+	}
+
+	// §6.4: the clock runs only while the view is open — it is a property of
+	// the view, so closing and reopening a system keeps its accumulated years.
+	// main.js resolves a negative (camera-coupled) rate into a positive one.
+	function advance(dt, rate) {
+		if (!open || rate === 0 || !(dt > 0)) return;
+		systemTimeYr += rate * dt;
 	}
 
 	// The label layer's rule, for the same reason: a canvas keeps its last
@@ -237,6 +293,40 @@ function createSystemLayer(canvas) {
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 	}
 
+	// §6.2 item 3: the belt stipples, between the orbits and the star. Dots sit
+	// at a_b·exp(dlnA·(2u−1)) — the belt's own width in ln a, centred on a_b —
+	// rotated by the belt's phase plus its Kepler angle: P = sqrt(a³/M) is the
+	// period in years with a in AU and M in M☉, the units §6.4's clock counts.
+	// One path and one fill for every dot: they share a colour, so batching is
+	// the same picture as 768 separate fills for a fraction of the overhead.
+	function drawBelts(cx, cy) {
+		const count = system.beltCount;
+		if (count === 0) return;
+		const belts = system.belts;
+		const mass = system.star.mass;
+		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+		ctx.fillStyle = BELT_STIPPLE;
+		ctx.beginPath();
+		for (let b = 0; b < count; b++) {
+			const aB = belts.a[b];
+			const width = belts.dlnA[b];
+			const theta0 = beltPhase[b] + SYS_TAU * (systemTimeYr / Math.sqrt(aB * aB * aB / mass));
+			const base = b * STIPPLE_N;
+			for (let s = 0; s < STIPPLE_N; s++) {
+				const a = aB * Math.exp(width * (beltStippleRadius[base + s] * 2 - 1));
+				const rPx = radiusPx(a);
+				const theta = theta0 + beltStippleAngle[base + s];
+				const x = cx + rPx * Math.cos(theta);
+				const y = cy + rPx * Math.sin(theta);
+				// moveTo first: without it the path connects consecutive dots
+				// with a chord and the fill paints the belt as one filled ring.
+				ctx.moveTo(x + STIPPLE_RADIUS, y);
+				ctx.arc(x, y, STIPPLE_RADIUS, 0, SYS_TAU);
+			}
+		}
+		ctx.fill();
+	}
+
 	// §6.2 item 4: the star, class-coloured, sized by state, with a halo at
 	// twice the radius so a faint class still reads as the system's centre.
 	function drawStar(cx, cy) {
@@ -256,7 +346,7 @@ function createSystemLayer(canvas) {
 	// §6.2 item 5: the icons. A locked world is drawn as a half disc with the
 	// star-facing half lit; gas and ice giants carry a ring; a terran-flagged
 	// world carries the green outline. The mean anomaly is the phase at system
-	// time 0 — 0.5.3-3's clock advances it, the draw does not change.
+	// time 0 — §6.4's clock advances it, the draw does not change.
 	function drawPlanets(cx, cy, planets) {
 		const n = system.planetCount;
 		for (let p = 0; p < n; p++) {
@@ -319,16 +409,19 @@ function createSystemLayer(canvas) {
 		computeRadialSpan();
 		drawHabitableZone(cx, cy);
 		drawOrbits(cx, cy, planets);
+		drawBelts(cx, cy);
 		drawStar(cx, cy);
 		drawPlanets(cx, cy, planets);
-		// 0.5.3-3 adds the belt stipples here, between the orbits and the
-		// star; 0.5.3-4 adds the selection ring and the hovered designation
-		// above the planets.
+		// 0.5.3-4 adds the selection ring and the hovered designation above
+		// the planets.
 	}
 
-	return { resize, draw, setSystem, setEnabled, enabled };
+	return { resize, draw, setSystem, setEnabled, enabled, advance };
 }
 
-const SystemLayer = { createSystemLayer };
+const SystemLayer = {
+	createSystemLayer,
+	SYSTEM_TIME_RATE_MIN, SYSTEM_TIME_RATE_MAX, SYSTEM_TIME_RATE_DEFAULT,
+};
 if (typeof module !== 'undefined') module.exports = SystemLayer;
 if (typeof window !== 'undefined') window.SystemLayer = SystemLayer;

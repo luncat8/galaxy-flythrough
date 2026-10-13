@@ -1314,3 +1314,28 @@ state where the view is open there is no pointer lock left to release.
 
 The transferable rule: **a blanket `preventDefault` is a claim over the browser's own keys;
 name the exclusions explicitly, or one of them turns out to be the user's way out.**
+
+## 2026-10-13 — N same-colour dots are one path and one fill, with a moveTo before every arc (0.5.3)
+
+A belt stipple is `STIPPLE_N` dots per belt in the same `rgba` at the same radius.
+Drawn as 384 `beginPath`/`arc`/`fill` triples that is 1152 calls; drawn as one
+`beginPath`, 384 `moveTo`+`arc` pairs and one `fill` it is 769, and the picture is
+identical because every dot shares a style.
+
+The trap is the path itself: `arc` adds a line from the current point to the arc's
+start, so omitting the `moveTo` connects consecutive dots with chords and the fill
+paints the belt as one filled annulus instead of dots.
+
+```js
+ctx.beginPath();
+for (let s = 0; s < STIPPLE_N; s++) {
+	const x = cx + rPx * Math.cos(theta), y = cy + rPx * Math.sin(theta);
+	ctx.moveTo(x + STIPPLE_RADIUS, y);
+	ctx.arc(x, y, STIPPLE_RADIUS, 0, SYS_TAU);
+}
+ctx.fill();
+```
+
+The transferable rule: **when every mark in a brush shares a style, one path and one
+fill replace N fills — and a sub-path that begins with an implicit line from the
+previous point turns a field of dots into a blob.**

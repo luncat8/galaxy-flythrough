@@ -1220,12 +1220,13 @@ Next series:
    planet-system generator, `math/planets.js`, with `experiments/planet-gen-test.js`, 75
    checks. 0.5.2 implemented: star and planet search, `core/search.js`, a two-stage scan
    whose summary tier carries the per-planet `env` block, the scope fallback and the
-   `search`/`scope` preset fields — `experiments/search-test.js`, 27 checks. 0.5.3
-   started: the close-system skeleton, `render/system-layer.js` with its `#system` canvas,
-   the enter/exit plumbing and `#sysread` as the open system's readout; the log-polar
-   layout now draws the habitable-zone annulus, the orbit ellipses and the star and
-   planet icons. The file stays
-   in the root until the series ships and then moves to `archive/`.)*
+    `search`/`scope` preset fields — `experiments/search-test.js`, 27 checks. 0.5.3
+    started: the close-system skeleton, `render/system-layer.js` with its `#system` canvas,
+    the enter/exit plumbing and `#sysread` as the open system's readout; the log-polar
+    layout now draws the habitable-zone annulus, the orbit ellipses, the star and planet
+    icons, and the belt stipples hashed once per system; the system view runs on its own
+    clock (§6.4 of the 0.5 plan), with `systime`/`sysview` on the settings line. The file stays
+    in the root until the series ships and then moves to `archive/`.)*
 
 Implement from those files plus this one; the per-release plans reference their own
 tests and extend the file layout of §11 as needed.
@@ -1245,9 +1246,10 @@ tests and extend the file layout of §11 as needed.
    this does not imply browser visual validation is complete.
 4. [The 0.5 planet series](0.5.0-plan-planet-generator.md): 0.5.0 (star selection), 0.5.1
    (the lazy planet-system generator), 0.5.2 (star and planet search) are implemented,
-   and 0.5.3 (the close-system schematic view) is under way with its skeleton landed
-   and the log-polar layout drawn (habitable-zone annulus, orbit ellipses, star and
-   planet icons). The series is CPU-only and additive, so
+   and 0.5.3 (the close-system schematic view) is under way with its skeleton landed,
+   the log-polar layout drawn (habitable-zone annulus, orbit ellipses, star and
+   planet icons) and the belt stipples rotating on the view's own clock. The series is
+   CPU-only and additive, so
    it neither blocks nor depends on the parity work above — except that the picker
    dispatches star positions through the same engine-mask law the parity plan pins, which is
    why 0.5.0's pick test travels with `orbit-test`.

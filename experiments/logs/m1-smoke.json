@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-12T22:14:21.466Z",
+  "date": "2026-10-13T00:31:44.145Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -346,7 +346,7 @@
       "name": "SystemLayer loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 1
+        "keys": 4
       }
     },
     {
@@ -432,7 +432,8 @@
         "sat": 1.4,
         "headroom": 8,
         "highlight": 1,
-        "selrad": 50
+        "selrad": 50,
+        "systime": 0
       }
     },
     {
@@ -456,7 +457,8 @@
         "sat": 1.4,
         "headroom": 8,
         "highlight": 1,
-        "selrad": 50
+        "selrad": 50,
+        "systime": 0
       }
     },
     {
@@ -480,7 +482,8 @@
         "sat": 1.4,
         "headroom": 8,
         "highlight": 1,
-        "selrad": 50
+        "selrad": 50,
+        "systime": 0
       }
     },
     {

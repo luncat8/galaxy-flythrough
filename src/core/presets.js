@@ -41,6 +41,13 @@ const FIELDS = [
 	// galaxy, not what this viewer asked of it.
 	{ key: 'search', label: 'search filter', text: true, prompt: false },
 	{ key: 'scope', label: 'search scope', text: true, prompt: false },
+	// The close-system view's own state (0.5.3): whether the schematic is open
+	// and the rate of its separate clock (§6.4). Both are `prompt: false` like
+	// the working set — the LLM prompt describes the galaxy, not what this
+	// viewer has open — and `systime`'s bounds live in SystemLayer, the module
+	// the rate acts on.
+	{ key: 'sysview', label: 'system view', prompt: false },
+	{ key: 'systime', label: 'system time', unit: ' y/s', prompt: false },
 	// The selection's keys, primary first, '.'-separated. §3.2 keeps the set as
 	// identities rather than buffer slots, so the contents survive a camera
 	// move and a pasted line reproduces the same working set. `prompt: false`
@@ -80,6 +87,7 @@ function menuDefaults() {
 		apoShare: o.APOCENTER_SHARE_UI_DEFAULT,
 		apoForce: o.APOCENTER_FORCE_UI_DEFAULT,
 		selrad: s.SELECT_RADIUS_LY_DEFAULT,
+		systime: g.SystemLayer.SYSTEM_TIME_RATE_DEFAULT,
 	};
 }
 

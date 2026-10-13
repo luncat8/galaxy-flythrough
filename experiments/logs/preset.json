@@ -25,6 +25,14 @@
       "pass": true
     },
     {
+      "name": "the system-view fields carry the view state and take their default from the layer",
+      "pass": true
+    },
+    {
+      "name": "main.js applies the system-view fields and advances the view clock",
+      "pass": true
+    },
+    {
       "name": "serialize drops the fields of a pass that is not selected",
       "pass": true
     },
