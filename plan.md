@@ -1225,8 +1225,11 @@ Next series:
     the enter/exit plumbing and `#sysread` as the open system's readout; the log-polar
     layout now draws the habitable-zone annulus, the orbit ellipses, the star and planet
     icons, and the belt stipples hashed once per system; the system view runs on its own
-    clock (§6.4 of the 0.5 plan), with `systime`/`sysview` on the settings line. The file stays
-    in the root until the series ships and then moves to `archive/`.)*
+    clock (§6.4 of the 0.5 plan), with `systime`/`sysview` on the settings line; and the
+    schematic is pickable — §6.3's distance test over the drawn icons, the selection ring
+    and the hovered designation, with `experiments/system-layer-test.js` (39 checks) now
+    the permanent headless contract for the whole readout. The file stays in the root
+    until the series ships and then moves to `archive/`.)*
 
 Implement from those files plus this one; the per-release plans reference their own
 tests and extend the file layout of §11 as needed.
@@ -1248,7 +1251,9 @@ tests and extend the file layout of §11 as needed.
    (the lazy planet-system generator), 0.5.2 (star and planet search) are implemented,
    and 0.5.3 (the close-system schematic view) is under way with its skeleton landed,
    the log-polar layout drawn (habitable-zone annulus, orbit ellipses, star and
-   planet icons) and the belt stipples rotating on the view's own clock. The series is
+   planet icons), the belt stipples rotating on the view's own clock, and the
+   schematic pickable (the selection ring and the hovered designation, verified
+   headlessly against the draw). The series is
    CPU-only and additive, so
    it neither blocks nor depends on the parity work above — except that the picker
    dispatches star positions through the same engine-mask law the parity plan pins, which is

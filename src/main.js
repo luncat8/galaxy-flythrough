@@ -1401,13 +1401,24 @@ async function boot() {
                 selection.setOrbitState(model, starTimeMyr);
                 if (actions.pick) {
                         actions.pick = 0;
-                        // Any drawn star, from any of the five record blocks —
-                        // not just the named table. Shift toggles set membership
-                        // without moving the primary; a plain click replaces the
-                        // set with this one star and makes it the primary.
-                        const hit = selection.pickAny(input.state.pickX, input.state.pickY,
-                                canvas.clientWidth, canvas.clientHeight, pickHit);
-                        if (hit) selectPickedStar(hit, input.state.keys.boost);
+                        if (systemViewOpen) {
+                                // §6.3: the schematic owns the click while it is
+                                // open — a distance test against the icons the
+                                // draw placed, no projection and no camera. A
+                                // miss clears the system-view selection and
+                                // stays in the view.
+                                const body = systemLayer.pick(input.state.pickX, input.state.pickY);
+                                systemLayer.setSelectedBody(body ? body.which : window.SystemLayer.BODY_NONE,
+                                        body ? body.index : -1);
+                        } else {
+                                // Any drawn star, from any of the five record blocks —
+                                // not just the named table. Shift toggles set membership
+                                // without moving the primary; a plain click replaces the
+                                // set with this one star and makes it the primary.
+                                const hit = selection.pickAny(input.state.pickX, input.state.pickY,
+                                        canvas.clientWidth, canvas.clientHeight, pickHit);
+                                if (hit) selectPickedStar(hit, input.state.keys.boost);
+                        }
                 }
                 if (actions.flyToStar) {
                         actions.flyToStar = 0;
@@ -1445,10 +1456,13 @@ async function boot() {
                 labels.draw(camera, canvas.clientWidth, canvas.clientHeight);
                 // The schematic resizes off the WebGPU canvas, not its own: the
                 // element is hidden while the view is closed, and a hidden
-                // element has no client size. draw() is one boolean test and a
-                // return while closed.
+                // element has no client size. draw() is one boolean test and
+                // return while closed, so the pointer is only ever read by an
+                // open view — and -1 (off the canvas, over the menu, locked)
+                // draws no hovered designation.
                 systemLayer.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
-                systemLayer.draw(canvas.clientWidth, canvas.clientHeight);
+                systemLayer.draw(canvas.clientWidth, canvas.clientHeight,
+                        input.state.pointerX, input.state.pointerY);
 
                 overlayTimer += dt;
                 if (overlayTimer >= OVERLAY_INTERVAL) {

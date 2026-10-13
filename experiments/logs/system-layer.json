@@ -1,0 +1,341 @@
+{
+  "checks": [
+    {
+      "name": "every planet of the system is drawn once",
+      "pass": true,
+      "detail": {
+        "icons": 4,
+        "planets": 4
+      }
+    },
+    {
+      "name": "every drawn body maps inside [R_STAR_PX, R_EDGE_PX]",
+      "pass": true,
+      "detail": {
+        "edge": 322,
+        "radii": [
+          105,
+          164,
+          241,
+          258
+        ]
+      }
+    },
+    {
+      "name": "the radial axis is monotone in a for every planet",
+      "pass": true,
+      "detail": {
+        "a": {
+          "0": 0.1177239497744904,
+          "1": 0.607360258051038,
+          "2": 5.086091580321906,
+          "3": 8.190355935793512
+        },
+        "radii": [
+          105,
+          164,
+          241,
+          258
+        ]
+      }
+    },
+    {
+      "name": "every belt dot is drawn inside the schematic",
+      "pass": true,
+      "detail": {
+        "dots": 384,
+        "belts": 1
+      }
+    },
+    {
+      "name": "the icon radius is a non-decreasing step function of mass over the five buckets",
+      "pass": true,
+      "detail": {
+        "samples": 320,
+        "buckets": [
+          3,
+          5,
+          7,
+          10,
+          13
+        ]
+      }
+    },
+    {
+      "name": "one fill paints the whole belt batch",
+      "pass": true,
+      "detail": {
+        "beltFill": 1,
+        "fills": 6,
+        "dots": 768
+      }
+    },
+    {
+      "name": "rate 0 is a true freeze",
+      "pass": true,
+      "detail": {
+        "dots": 768
+      }
+    },
+    {
+      "name": "the same system hashes to the same dots in a second layer",
+      "pass": true
+    },
+    {
+      "name": "one belt period returns every dot home",
+      "pass": true,
+      "detail": {
+        "period": 1.434300580848209
+      }
+    },
+    {
+      "name": "a quarter period rotates the belt exactly 90°",
+      "pass": true
+    },
+    {
+      "name": "a one-planet schematic draws exactly one icon",
+      "pass": true
+    },
+    {
+      "name": "a click on the icon returns that planet",
+      "pass": true,
+      "detail": {
+        "which": 1,
+        "index": 0,
+        "dist": 0.000024430946845227113
+      }
+    },
+    {
+      "name": "a click inside the pad hits",
+      "pass": true,
+      "detail": {
+        "which": 1,
+        "index": 0,
+        "dist": 6.500024082383952
+      }
+    },
+    {
+      "name": "a click past the pad misses",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "a click on the star is not a body",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "the fixture has two icons whose pads overlap",
+      "pass": true,
+      "detail": 3
+    },
+    {
+      "name": "every icon picks back as its own planet",
+      "pass": true
+    },
+    {
+      "name": "nearest wins between overlapping pads",
+      "pass": true,
+      "detail": {
+        "hit": {
+          "which": 1,
+          "index": 0,
+          "dist": 3.489267404810105
+        },
+        "near": 0,
+        "di": 3.4892726741077578,
+        "dj": 13.957090696430999
+      }
+    },
+    {
+      "name": "empty space is a miss",
+      "pass": true
+    },
+    {
+      "name": "a pick before the first draw is a miss",
+      "pass": true
+    },
+    {
+      "name": "the fixture solves the log-polar axis",
+      "pass": true,
+      "detail": {
+        "A": 187.60342174625933,
+        "B": 36.12181573601748
+      }
+    },
+    {
+      "name": "a click inside the belt band picks that belt",
+      "pass": true,
+      "detail": {
+        "rB": 195.85399236514095,
+        "hits": 4
+      }
+    },
+    {
+      "name": "a click past the 6 px band picks no belt",
+      "pass": true,
+      "detail": {
+        "misses": 4
+      }
+    },
+    {
+      "name": "the two-belt fixture solves the log-polar axis",
+      "pass": true,
+      "detail": {
+        "A": 187.6034217462594,
+        "B": 36.12181573601743
+      }
+    },
+    {
+      "name": "each belt band picks its own belt",
+      "pass": true,
+      "detail": {
+        "r0": 192.66348089656256,
+        "r1": 302.0172057325908,
+        "a": {
+          "which": 2,
+          "index": 0,
+          "dist": 0
+        },
+        "b": {
+          "which": 2,
+          "index": 1,
+          "dist": 5.684341886080802e-14
+        }
+      }
+    },
+    {
+      "name": "every dot lies inside its own belt band",
+      "pass": true,
+      "detail": {
+        "dots": 768
+      }
+    },
+    {
+      "name": "the ring fixture draws every planet",
+      "pass": true,
+      "detail": 3
+    },
+    {
+      "name": "an untouched schematic labels nothing",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "the selected planet carries the ring colour at icon radius + pad",
+      "pass": true,
+      "detail": {
+        "ring": {
+          "x": 320.7776184082031,
+          "y": 536.532958984375,
+          "r": 11
+        },
+        "icon": {
+          "x": 320.77762099786923,
+          "y": 536.5329688813787,
+          "r": 7
+        }
+      }
+    },
+    {
+      "name": "the selected belt is rung inside its own dot band",
+      "pass": true,
+      "detail": {
+        "beltRing": 211.99550164315997
+      }
+    },
+    {
+      "name": "hovering a planet draws its designation",
+      "pass": true,
+      "detail": [
+        1,
+        "S740I b"
+      ]
+    },
+    {
+      "name": "a held hover redraws one label, not one per frame",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "hovering another planet swaps the designation",
+      "pass": true,
+      "detail": "S740I c"
+    },
+    {
+      "name": "hovering empty space draws no label",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "a pointer off the canvas draws no label",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "hovering a belt dot draws the belt designation",
+      "pass": true,
+      "detail": [
+        1,
+        "S740I belt 1"
+      ]
+    },
+    {
+      "name": "a closed view draws nothing, picks nothing and keeps no time",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "the clock stops with the view, and reopening re-hashes the system",
+      "pass": true,
+      "detail": {
+        "dots": 0,
+        "clears": 1
+      }
+    },
+    {
+      "name": "1 000 warm draws allocate nothing measurable",
+      "pass": true,
+      "detail": {
+        "trials": [
+          321112,
+          240280,
+          240240,
+          240240,
+          240480
+        ],
+        "median": 240280,
+        "exposedGc": false
+      }
+    }
+  ],
+  "failed": 0,
+  "stats": {
+    "layout": {
+      "planets": 4,
+      "belts": 1,
+      "ops": 835
+    },
+    "iconSamples": 320,
+    "kepler": {
+      "period": 1.434300580848209,
+      "dots": 768,
+      "ops": 1578
+    },
+    "ring": {
+      "planets": 3,
+      "dots": 384
+    },
+    "heap": {
+      "trials": [
+        321112,
+        240280,
+        240240,
+        240240,
+        240480
+      ],
+      "median": 240280,
+      "exposedGc": false
+    }
+  }
+}

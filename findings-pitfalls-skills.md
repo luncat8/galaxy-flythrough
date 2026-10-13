@@ -1339,3 +1339,38 @@ ctx.fill();
 The transferable rule: **when every mark in a brush shares a style, one path and one
 fill replace N fills — and a sub-path that begins with an implicit line from the
 previous point turns a field of dots into a blob.**
+
+---
+
+## 2026-10-13 — A headless 2D overlay is testable, but its stub must forget between frames and its results must be copied out (0.5.3)
+
+`experiments/system-layer-test.js` records what `render/system-layer.js` draws on a stub 2D
+context, so the picking checks ask *the draw*, not the layer: a click is tested against the
+arc positions the frame actually produced. Two traps cost three failing runs to find, and
+both are one-liners to fix.
+
+**A stub that accumulates is a test that compares a frame against three frames.** The layer
+clears the canvas at the top of every `draw`, so the stub's `clearRect` is the frame
+boundary: reset the log there (or immediately before each draw) or every read after the
+first frame sees the concatenation of the whole history.
+
+**A preallocated result is a live alias.** The layer hands pick and hover one scratch result
+each, which is what keeps a click allocation-free — and means two variables holding "the
+result" are the same object:
+
+```js
+const a = layer.pick(x1, y1);          // a and b are one object
+const b = layer.pick(x2, y2);          // a.which is now b's answer
+```
+
+When only one thing ever holds the answer (main.js's click routing, read in the next
+statement) the alias is invisible; in a test, in a loop, or in any code that keeps two
+answers, it silently compares the newest against itself. Either copy the fields, or
+document the lifetime in the API — the layer's `pick` now says the hit is valid until the
+next pick.
+
+The third lesson was free: **a planet's phase, period and radial placement are independent
+of the rest of its system**, so drawing a system of one planet places that planet exactly
+where the full schematic draws it. Promoting a planet to slot 0 and drawing it alone reads
+its icon position off the canvas without assuming any ordering, which is what makes an
+overlapping-pads fixture honest.

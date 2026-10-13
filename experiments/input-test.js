@@ -67,6 +67,24 @@ check('orbit hover does not look or request pointer lock', () => {
 	assert.equal(state.lookDx, 0);
 	assert.equal(lockRequests, 0);
 });
+check('the pointer is tracked in canvas-local CSS pixels without a drag', () => {
+	canvas.emit('mousemove');
+	assert.equal(state.pointerX, 100);
+	assert.equal(state.pointerY, 200);
+	canvas.emit('mousemove', { clientX: 305, clientY: 140 });
+	assert.equal(state.pointerX, 295);
+	assert.equal(state.pointerY, 120);
+	slider.emit('mousemove', { clientX: 400, clientY: 400 });
+	assert.equal(state.pointerX, -1);
+	assert.equal(state.pointerY, -1);
+	canvas.emit('mouseleave');
+	assert.equal(state.pointerX, -1);
+	canvas.emit('mousemove', { clientX: 210, clientY: 320 });
+	assert.equal(state.pointerX, 200);
+	assert.equal(state.pointerY, 300);
+	input.releaseAll();
+	assert.equal(state.pointerX, -1);
+});
 check('orbit canvas drag looks without locking, and returning to origin is not a pick', () => {
 	canvas.emit('mousedown');
 	canvas.emit('mousemove', { movementX: 12, movementY: -6 });
@@ -146,8 +164,11 @@ check('fly mode locks on press and keeps free-look after release', () => {
 	canvas.emit('mousedown');
 	assert.equal(lockRequests, 1);
 	lockChanged(true);
+	// A locked cursor has no position: the schematic's hover must not follow
+	// the frozen lock point.
 	canvas.emit('mousemove', { movementX: 999 });
 	assert.equal(state.lookDx, 0); // synthetic lock transition is swallowed
+	assert.equal(state.pointerX, -1);
 	canvas.emit('mouseup');
 	assert.equal(state.actions.pick, 1);
 	assert.equal(state.pickX, 400);

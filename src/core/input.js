@@ -10,6 +10,7 @@
 //   * camera   : keys, lookDx/lookDy, wheelDelta, actions.reset/home/cameraMode
 //   * renderer : actions.exposure
 //   * selection: actions.pick + pickX/pickY, actions.constellations
+//   * system   : pointerX/pointerY, the schematic's hover (0.5.3-4)
 //
 // No allocations in the hot path: listeners write into the shared state, and
 // deltas are zeroed by whoever consumed them.
@@ -37,6 +38,13 @@ function createInput(canvas) {
 		pointerLocked: false,
 		pickX: 0,
 		pickY: 0,
+		// The pointer's position in canvas-local CSS pixels — the space the
+		// picker reports and the 2D overlays draw in. -1 while the pointer is
+		// off the canvas, over the menu, or locked away in fly mode. The
+		// close-system schematic's hovered designation reads it every frame
+		// (0.5.3-4), so it is tracked whether or not a drag is in progress.
+		pointerX: -1,
+		pointerY: -1,
 		actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, galaxyCycle: 0, freezeTime: 0, flyToStar: 0, cycleStar: 0, clearSet: 0, systemView: 0, systemViewClose: 0 },
 	};
 
@@ -164,7 +172,28 @@ function createInput(canvas) {
 		}
 	}
 
+	// The pointer's canvas-local position, refreshed on every move: the
+	// schematic's hover needs it while the pointer is *not* dragging, which is
+	// the whole time in orbit mode. A locked cursor has no position to report
+	// and the menu owns the pointer while it is over it, so both are -1.
+	function trackPointer(e) {
+		if (state.pointerLocked || e.target !== canvas) {
+			state.pointerX = -1;
+			state.pointerY = -1;
+			return;
+		}
+		const rect = canvas.getBoundingClientRect();
+		state.pointerX = e.clientX - rect.left;
+		state.pointerY = e.clientY - rect.top;
+	}
+
+	function onMouseLeave() {
+		state.pointerX = -1;
+		state.pointerY = -1;
+	}
+
 	function onMouseMove(e) {
+		trackPointer(e);
 		if (!state.pointerLocked && (!state.dragging || e.target !== canvas)) return;
 		if (swallowNextMove) {
 			swallowNextMove = false;
@@ -188,6 +217,10 @@ function createInput(canvas) {
 		state.lookDy = 0;
 		state.wheelDelta = 0;
 		state.actions.pick = 0;
+		// A blur or a lock change takes the cursor with it: a hover that
+		// outlives its pointer would ring a body the viewer cannot see.
+		state.pointerX = -1;
+		state.pointerY = -1;
 	}
 
 	function setFlyMode(enabled) {
@@ -229,6 +262,7 @@ function createInput(canvas) {
 	canvas.addEventListener('mousedown', onMouseDown);
 	window.addEventListener('mouseup', onMouseUp);
 	window.addEventListener('mousemove', onMouseMove);
+	canvas.addEventListener('mouseleave', onMouseLeave);
 	canvas.addEventListener('wheel', onWheel, { passive: false });
 	window.addEventListener('blur', onBlur);
 	window.addEventListener('focusin', onFocusIn);
@@ -243,6 +277,7 @@ function createInput(canvas) {
 		canvas.removeEventListener('mousedown', onMouseDown);
 		window.removeEventListener('mouseup', onMouseUp);
 		window.removeEventListener('mousemove', onMouseMove);
+		canvas.removeEventListener('mouseleave', onMouseLeave);
 		canvas.removeEventListener('wheel', onWheel);
 		window.removeEventListener('blur', onBlur);
 		window.removeEventListener('focusin', onFocusIn);

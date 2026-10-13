@@ -5,6 +5,10 @@
       "pass": true
     },
     {
+      "name": "the pointer is tracked in canvas-local CSS pixels without a drag",
+      "pass": true
+    },
+    {
       "name": "orbit canvas drag looks without locking, and returning to origin is not a pick",
       "pass": true
     },

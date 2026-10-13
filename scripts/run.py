@@ -50,6 +50,7 @@ EXPERIMENTS = {
     'landmark':              'experiments/landmark-test.js',
     'star-select':           'experiments/star-select-test.js',
     'search':                'experiments/search-test.js',
+    'system-layer':          'experiments/system-layer-test.js',
     'tile-stream':           'experiments/tile-stream-test.js',
     'tile-encoder-smoke':    'experiments/tile-encoder-smoke-test.js',
     'galaxy-types':          'experiments/galaxy-types-test.js',
@@ -81,7 +82,7 @@ EXPERIMENTS = {
 
 TYPES = {
     'test':   ['export-parity', 'm1-smoke', 'wgsl-validate', 'camera', 'input', 'preset', 'renderer', 'hdr',
-               'landmark', 'star-select', 'search', 'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'shape',
+                'landmark', 'star-select', 'search', 'system-layer', 'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'shape',
                'model-parity', 'sampling',
                'density-distribution',
                'star-types-evolution', 'nebula-placement', 'object-placement', 'galaxy-age',

@@ -10,17 +10,20 @@
 // 0.5.3-1 shipped the state machine: open/closed, canvas lifetime and the
 // SystemRecord intake. 0.5.3-2 (the radial axis, annulus, ellipses, star and
 // planet icons) and 0.5.3-3 (the belt stipples, hashed once per system, and
-// the system clock of §6.4) draw the schematic. Schematic picking, the
-// selection ring and the hovered designation are 0.5.3-4.
+// the system clock of §6.4) draw the schematic. 0.5.3-4 picks it: §6.3's
+// distance test over the icons the draw placed, the selection ring of §6.2
+// item 6 and the hovered body's designation.
 
 'use strict';
 
 // The generator owns the tables the icons read (display-type colours, bulk
-// codes, flags); star-record.js owns the class colour LUT. Resolved once, the
-// way label-layer.js resolves Coords: the page has every script evaluated long
-// before a system opens, and Node's require is the same lookup. Named for this
-// file — classic <script> tags share one global scope, and search.js already
-// declares planetsLib() for its own use.
+// codes, flags); star-record.js owns the class colour LUT; label-layer.js owns
+// the label and ring styles the schematic borrows, so a hovered designation
+// reads exactly like a landmark's. Resolved once, the way label-layer.js
+// resolves Coords: the page has every script evaluated long before a system
+// opens, and Node's require is the same lookup. Named for this file — classic
+// <script> tags share one global scope, and search.js already declares
+// planetsLib() for its own use.
 const sysPlanets = (typeof module !== 'undefined' && module.exports)
 	? require('../math/planets.js')
 	: window.PlanetsLib;
@@ -30,6 +33,9 @@ const sysRecords = (typeof module !== 'undefined' && module.exports)
 const sysHash = (typeof module !== 'undefined' && module.exports)
 	? require('../math/hash.js')
 	: window.HashLib;
+const sysLabels = (typeof module !== 'undefined' && module.exports)
+	? require('../render/label-layer.js')
+	: window.LabelLayer;
 
 // ---- the schematic's constants (§6.1, §6.2) --------------------------------
 const SYS_TAU = Math.PI * 2;
@@ -51,6 +57,33 @@ const TERRAN_RING = 'rgba(96, 200, 128, 0.85)';
 const LOCKED_SHADE = 'rgba(6, 8, 14, 0.55)';   // the unlit half of a locked world
 const STAR_HALO_ALPHA = 0.18;
 const STIPPLE_RADIUS = 1;                      // px — §6.2 item 3's dots
+
+// §6.3: a click is a distance test against the icon the draw placed —
+// iconRadius + 4 px for a planet, |r_click − r_belt| < 6 px for a belt. No
+// projection, no camera, nearest wins.
+const PICK_PAD_PX = 4;
+const BELT_PICK_PX = 6;
+// §6.2 item 6: the selected body takes the label layer's ring colour and a
+// radius 4 px past its icon, so the ring bounds exactly what the click hit.
+// Named for this file, not for the label layer's own constants: classic
+// <script> tags share one global scope, and SELECT_RING is already taken.
+const SYS_SELECT_RING = sysLabels.SELECT_RING;
+const SYS_SELECT_LINE = 1.5;
+// §6.2 item 6: the hovered body's designation, in the label layer's own type
+// and halo, so a schematic label and a landmark label are one look.
+const HOVER_FONT = sysLabels.LABEL_FONT;
+const HOVER_FILL = sysLabels.LABEL_FILL;
+const HOVER_HALO = sysLabels.LABEL_HALO;
+const HOVER_HALO_PX = 3;
+const HOVER_OFFSET_PX = 6;
+
+// Body codes, shared with planets.js's bodyDesignation: 1 a planet, 2 a belt.
+// The star is not selectable — it is the schematic's centre, and neither the
+// delta-v map (§7) nor a route (§8) takes it as an endpoint, so a ring around
+// it would select nothing (§11.1).
+const BODY_PLANET = 1;
+const BODY_BELT = 2;
+const BODY_NONE = 0;
 
 // §6.4's clock: years per second of the open system, -1 camera-coupled (the
 // menu's follow), 0 the frozen default, the rest a direct rate. Owned here
@@ -112,7 +145,32 @@ function createSystemLayer(canvas) {
 	// The radial mapping of the current frame, and where the icons ended up:
 	// the picker of 0.5.3-4 reads these instead of projecting anything.
 	let lnIn = 0, lnSpan = 1, edge = 1;
+	// True once a full draw has laid this system out. A pick or a hover tests
+	// the frame that is on screen, so both are refused until there is one —
+	// and a click on the frame the view opened would otherwise be tested
+	// against the previous system's icons.
+	let layoutValid = false;
 	const planetScreenXY = new Float32Array(sysPlanets.MAX_PLANETS * 2);
+	// §4.11's designations, built once per system (the star's own plus one
+	// suffix per body). Hover changes are pointer events, not frames, but a
+	// cached string per body keeps them allocation-free as well: AGENTS.md
+	// bans string concat in the frame loop and a sweep across twelve planets
+	// would otherwise concatenate twelve times.
+	const bodyText = new Array(sysPlanets.MAX_PLANETS + sysPlanets.MAX_BELTS);
+	// The selected and hovered bodies (BODY_* / index, BODY_NONE for none).
+	// The selection is the viewer's; the hover is recomputed each frame from
+	// the pointer main.js feeds draw().
+	let selWhich = BODY_NONE, selIndex = -1;
+	let hoverWhich = BODY_NONE, hoverIndex = -1;
+	// §6.3's result, preallocated: one click walk writes into it and never
+	// allocates. `dist` is the pick score — the icon distance for a planet,
+	// the radial offset for a belt — which is what "nearest wins" compares.
+	const pickOut = { which: BODY_NONE, index: -1, dist: Infinity };
+	// The hover walk's own result, so a hover cannot clobber the last click's.
+	const hoverOut = { which: BODY_NONE, index: -1, dist: Infinity };
+	// The laid-out frame's size, set by draw(): a pick arrives between frames
+	// and is tested against the frame that is on screen.
+	let frameW = 0, frameH = 0;
 
 	const STATE_GIANT = sysPlanets.STATE_GIANT;
 	const STATE_WD = sysPlanets.STATE_WD;
@@ -146,10 +204,28 @@ function createSystemLayer(canvas) {
 
 	function setSystem(record) {
 		system = record || null;
+		// A new system has no selected or hovered body: the indices belong to
+		// the stars, not the viewer.
+		clearBodyState();
 		// The dots are hashed once per system (§6.2 item 3), on the belt's own
 		// stipple seed, and a summary-tier record carries no belt geometry to
 		// hash — the enter path always hands over the full tier.
-		if (system && system.planets) hashBelts();
+		if (system && system.planets) {
+			hashBelts();
+			hashDesignations();
+		}
+	}
+
+	// One §4.11 designation per body, at system entry: the star's own name (or
+	// S<key36>) plus the IAU letter / belt number. Reading the same
+	// bodyDesignation the readout and search use keeps one source of truth.
+	function hashDesignations() {
+		for (let p = 0; p < system.planetCount; p++) {
+			bodyText[p] = sysPlanets.bodyDesignation(system, BODY_PLANET, p);
+		}
+		for (let b = 0; b < system.beltCount; b++) {
+			bodyText[sysPlanets.MAX_PLANETS + b] = sysPlanets.bodyDesignation(system, BODY_BELT, b);
+		}
 	}
 
 	// 2·STIPPLE_N draws per belt: the first STIPPLE_N are the dot angles, the
@@ -193,8 +269,19 @@ function createSystemLayer(canvas) {
 		open = next;
 		if (!open) {
 			system = null;
+			clearBodyState();
 			clearCanvas();
 		}
+	}
+
+	// The selection and hover are per-system: a body index from one system
+	// means nothing in the next, and a closed view has no bodies at all.
+	function clearBodyState() {
+		selWhich = BODY_NONE;
+		selIndex = -1;
+		hoverWhich = BODY_NONE;
+		hoverIndex = -1;
+		layoutValid = false;
 	}
 
 	// Device-pixel backing store, drawn in CSS pixels under the devicePixelRatio
@@ -213,6 +300,10 @@ function createSystemLayer(canvas) {
 			canvas.height = h;
 		}
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+		// The hovered designation's type, set here and not per frame: the same
+		// contract the label layer has.
+		ctx.font = HOVER_FONT;
+		ctx.textBaseline = 'alphabetic';
 	}
 
 	// §6.1: the radial axis is logarithmic — 0.03 AU to 40 AU is a factor of
@@ -396,32 +487,162 @@ function createSystemLayer(canvas) {
 		}
 	}
 
-	function draw(width, height) {
+	// §6.3's walk: every body the draw placed, as a distance test. A planet's
+	// candidate is its icon radius plus PICK_PAD_PX; a belt's is a 6 px band
+	// about its own radius. The two scores are different units — an icon
+	// distance against a radial offset — but both answer "how far from that
+	// body is the click", which is what nearest-wins compares. Writes into
+	// `out`, returns it, or null when nothing is hit.
+	function findBody(x, y, out) {
+		out.which = BODY_NONE;
+		out.index = -1;
+		out.dist = Infinity;
+		if (!open || !system || !layoutValid) return null;
+		const planets = system.planets;
+		const belts = system.belts;
+		if (!planets || !belts) return null;   // a summary tier has no bodies to pick
+		const cx = frameW * 0.5, cy = frameH * 0.5;
+		const n = system.planetCount;
+		for (let p = 0; p < n; p++) {
+			const dx = planetScreenXY[p * 2] - x;
+			const dy = planetScreenXY[p * 2 + 1] - y;
+			const d2 = dx * dx + dy * dy;
+			const pad = iconRadius(planets.mass[p]) + PICK_PAD_PX;
+			if (d2 > pad * pad) continue;
+			const d = Math.sqrt(d2);
+			if (d < out.dist) {
+				out.dist = d;
+				out.which = BODY_PLANET;
+				out.index = p;
+			}
+		}
+		for (let b = 0; b < system.beltCount; b++) {
+			const dx = x - cx, dy = y - cy;
+			const d = Math.abs(Math.sqrt(dx * dx + dy * dy) - radiusPx(belts.a[b]));
+			if (d >= BELT_PICK_PX) continue;
+			if (d < out.dist) {
+				out.dist = d;
+				out.which = BODY_BELT;
+				out.index = b;
+			}
+		}
+		return out.index >= 0 ? out : null;
+	}
+
+	// The click path: the body under (x, y) in canvas-local CSS pixels, or
+	// null for empty space — which clears the selection and stays in the
+	// view (§6.3: leaving is V / Esc / the button). The hit is one shared
+	// scratch object, valid until the next pick: read it, do not hold it.
+	function pick(x, y) {
+		return findBody(x, y, pickOut);
+	}
+
+	function setSelectedBody(which, index) {
+		if ((which === BODY_PLANET || which === BODY_BELT) && index >= 0) {
+			selWhich = which;
+			selIndex = index;
+			return;
+		}
+		selWhich = BODY_NONE;
+		selIndex = -1;
+	}
+
+	// Each frame's hover: the body under the pointer, if there is one. The
+	// text is already cached per body, so moving across the schematic changes
+	// two integers and a string reference and nothing else.
+	function updateHover(x, y) {
+		const hit = x >= 0 && y >= 0 ? findBody(x, y, hoverOut) : null;
+		if (hit) {
+			hoverWhich = hit.which;
+			hoverIndex = hit.index;
+		} else {
+			hoverWhich = BODY_NONE;
+			hoverIndex = -1;
+		}
+	}
+
+	// §6.2 item 6: the selected body's ring, in the label layer's ring colour.
+	// A planet's ring bounds its pick target — the icon radius plus the same
+	// 4 px the click test uses — and a belt's is the circle the click test
+	// measures its 6 px band against, since a belt has no single icon.
+	function drawSelectionRing(cx, cy) {
+		if (selWhich === BODY_NONE) return;
+		ctx.strokeStyle = SYS_SELECT_RING;
+		ctx.lineWidth = SYS_SELECT_LINE;
+		ctx.beginPath();
+		if (selWhich === BODY_PLANET) {
+			const r = iconRadius(system.planets.mass[selIndex]) + PICK_PAD_PX;
+			ctx.arc(planetScreenXY[selIndex * 2], planetScreenXY[selIndex * 2 + 1], r, 0, SYS_TAU);
+		} else {
+			ctx.arc(cx, cy, radiusPx(system.belts.a[selIndex]), 0, SYS_TAU);
+		}
+		ctx.stroke();
+	}
+
+	// §6.2 item 6: the hovered body's designation, in the label layer's own
+	// type and halo, so a schematic label reads like a landmark's. A planet's
+	// label sits beside its icon; a belt's sits where the pointer crosses its
+	// band, at the belt's own radius.
+	function drawHoverLabel(cx, cy, px, py) {
+		if (hoverWhich === BODY_NONE) return;
+		let x, y;
+		if (hoverWhich === BODY_PLANET) {
+			x = planetScreenXY[hoverIndex * 2] + HOVER_OFFSET_PX;
+			y = planetScreenXY[hoverIndex * 2 + 1] - HOVER_OFFSET_PX;
+		} else {
+			const r = radiusPx(system.belts.a[hoverIndex]);
+			const theta = Math.atan2(py - cy, px - cx);
+			x = cx + r * Math.cos(theta) + HOVER_OFFSET_PX;
+			y = cy + r * Math.sin(theta) - HOVER_OFFSET_PX;
+		}
+		const text = bodyText[hoverWhich === BODY_PLANET ? hoverIndex
+			: sysPlanets.MAX_PLANETS + hoverIndex];
+		ctx.lineWidth = HOVER_HALO_PX;
+		ctx.strokeStyle = HOVER_HALO;
+		ctx.strokeText(text, x, y);
+		ctx.fillStyle = HOVER_FILL;
+		ctx.fillText(text, x, y);
+	}
+
+	function draw(width, height, pointerX, pointerY) {
 		if (!open) return;
 		if (!ctx || !(width > 0) || !(height > 0) || !system) return;
 		// A summary-tier record has no orbit arrays: there is nothing to lay
 		// out, and the enter path always hands over the full tier.
 		const planets = system.planets;
 		if (!planets) return;
+		frameW = width;
+		frameH = height;
 		ctx.clearRect(0, 0, width, height);
 		const cx = width * 0.5, cy = height * 0.5;
 		edge = Math.min(width, height) * EDGE_FRACTION;
 		computeRadialSpan();
+		// From here on the radial axis matches this system, so a pick or a
+		// hover tests this frame's geometry rather than the previous one's.
+		layoutValid = true;
 		drawHabitableZone(cx, cy);
 		drawOrbits(cx, cy, planets);
 		drawBelts(cx, cy);
 		drawStar(cx, cy);
 		drawPlanets(cx, cy, planets);
-		// 0.5.3-4 adds the selection ring and the hovered designation above
-		// the planets.
+		// §6.2 item 6: the hovered body, then the selection ring above it —
+		// the hover is recomputed against the icons this frame just placed.
+		updateHover(pointerX, pointerY);
+		drawHoverLabel(cx, cy, pointerX, pointerY);
+		drawSelectionRing(cx, cy);
 	}
 
-	return { resize, draw, setSystem, setEnabled, enabled, advance };
+	return { resize, draw, setSystem, setEnabled, enabled, advance, pick, setSelectedBody };
 }
 
 const SystemLayer = {
 	createSystemLayer,
 	SYSTEM_TIME_RATE_MIN, SYSTEM_TIME_RATE_MAX, SYSTEM_TIME_RATE_DEFAULT,
+	BODY_PLANET, BODY_BELT, BODY_NONE, PICK_PAD_PX, BELT_PICK_PX,
+	// The layout and icon tables of §6.1 / §6.2 item 5, so the headless test
+	// pins the same numbers the draw uses rather than restating them.
+	R_STAR_PX, EDGE_FRACTION, STIPPLE_RADIUS, ICON_RADII, ICON_MASS_EDGES,
+	STAR_R_MS, STAR_R_GIANT, STAR_R_WD,
 };
 if (typeof module !== 'undefined') module.exports = SystemLayer;
 if (typeof window !== 'undefined') window.SystemLayer = SystemLayer;
