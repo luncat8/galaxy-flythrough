@@ -1,4 +1,4 @@
-# Next session prompt — galaxy fly-through (0.5 series complete, docs closed)
+# Next session prompt — galaxy fly-through (0.4.9 shipped: the vertical column)
 
 Paste this as the opening message of the next session.
 
@@ -8,61 +8,70 @@ Continue development of the galaxy fly-through engine in `/home/user/galaxy-flyt
 (AGENTS.md conventions: single tab indent, no per-frame allocations, classic script tags,
 plan-first, worklog + plan + findings updates with each step).
 
-**Shipped this session (0.5.x-3, docs only):**
+**Shipped this session (0.4.9, model + tests + docs):**
 
-- The **0.5.2-1 remand is closed**. Verified before editing: `src/math/planets.js` has
-  carried the whole plan §2.3 channel map since 0.5.1 (`CH_ESCALE` 0, the count chain
-  `2+n`, each planet `32+8·p`, moon counts `128+p`, belts 200/210, stipples `300+s` on
-  the belt's own seed), and `experiments/planet-gen-test.js` claims the entire map into
-  one `Set` and fails on the first duplicate. The gap was the README: its architecture
-  list predated the 0.5 series and named none of the new modules.
-- `README.md` architecture now lists `math/planets.js` (with the channel map in one
-  bullet), `math/deltav.js`, and the two render overlays (`label-layer.js` +
-  `system-layer.js`).
-- Stale pointers corrected after checking their logs: `plan.md` §19's follow-up order
-  marks movement parity **done** (shipped 2026-10-11, P1–P4, `wgsl-exec` 100/104 →
-  115/115; browser validation of the engines still deferred at V1/V2), and `worklog.md`'s
-  priority block is the browser pass.
-- The same drift fixed one directory over: `experiments/README.md`'s Tests table was frozen
-  at `galaxy-age-test.js` and now carries all 27 registered tests (`input`, `preset`,
-  `star-select`, `search`, `system-layer`, `shape`, `orbit`, `planet-gen`, `dv-map`,
-  `route`, …), described from each test's own header. `AGENTS.md` gained a `README.md`
-  file line saying both tables move with the release, and the findings entry records the
-  verify-both-sides rule.
-- Docs: `archive/0.5.x-worklog.md` gained the 0.5.x-3 entry. No runtime change;
-  `python3 scripts/run.py all-tests` → ALL TESTS PASSED.
+- **plan.md follow-up order item 2a is closed** — the vertical-preservation contract
+  (0.4.0 §1.4's deferred amplitude-calibration pass), planned in
+  `archive/0.4.9-plan-vertical-column.md` before any code was touched.
+- The mechanism, measured first (0.4.x worklog + `experiments/logs/movement-density.json`):
+  every engine swept a per-star orbital plane *through the galaxy centre*, which put
+  `(qz/|q|)·cos α` into a star's height — a birth height decays with the orbit, so the
+  time-averaged column came out at **mean|z| 0.66–0.87** of the field's and worst log-bin
+  **0.038–0.049** against the 0.03 budget. The diagnostic that named it: the column was
+  *compressed*, never heated, so no amplitude retune could fix it.
+- The fix is one anchor decision, extracted into `orbit.orbitPlane` (CPU) and
+  `fn orbitPlane` (WGSL, `OrbitPlane` struct): **disc/pattern stars sweep a plane parallel
+  to the galactic plane through their own birth height** (the height is carried; the
+  epicycle's bounded `av` wobble is the only vertical motion), **bar/pressure keep the
+  centred inclined plane** the per-star basis was introduced for. `ORBIT_INCLINATION_DISC`
+  is gone. All four CPU call sites and all three WGSL call sites are now call sites, not
+  copies.
+- The guided ellipse's semi-major axis now reads `pl.anchor`, so it passes through the
+  birth point again (it was 0.6 pc off) and force 0 conserves the birth radius.
+- Measured after, same run/state: vertical worst bin **0.000–0.009** (budget 0.03), mean|z|
+  **1.000** on the lanes that carry exactly and 1.025–1.076 where the classic wobble runs;
+  radial (0.002–0.011), arm ratios, meanR and the truncation gates unchanged.
+- Pins: `orbit-test` 115/115 (two checks re-stated to the new law — cylinder/height for a
+  disc star, spherical radius for a spheroidal one), `movement-density` 98/98 (the vertical
+  column is now gated on §1.4's budget, not pinned as a known deviation), `wgsl-exec`
+  118/118 (new 2i section: its orbit fixtures all sat at z = 0, so the shader had never
+  executed the carry branch), `all-tests` → ALL TESTS PASSED.
+- Docs moved with the release: `plan.md` §19 + follow-up 2a, `worklog.md`, the 0.4.x
+  worklog entry, `experiments/README.md`, `README.md`'s priorities block, AGENTS.md's
+  archive list, `deferred-browser-visual-plan.md`'s V1 row, `findings-pitfalls-skills.md`.
 
 **Still open (nothing is blocked):**
 
-1. **The 0.5 browser pass** — `deferred-browser-visual-plan.md` **V8** (routes and
+1. **The 0.5/0.4 browser pass** — `deferred-browser-visual-plan.md` **V8** (routes and
    autopilot) is the freshest row, then V1–V4. This environment has no WebGPU-capable
-   browser (`which chromium firefox` is empty), so the pass needs the user's machine or
-   a machine with a real GPU. The CPU tests pin the chain, the wait law, the cruise
-   table, `routePosition` and the ship's position, not whether any of it reads.
-2. **Numerical movement-density measurements** — plan.md's follow-up item 2, the
-   measurement that must precede any experimental-engine calibration or default change
-   (time-averaged radial/vertical/arm density, `experiments/` + `logs/`).
+   browser (`which chromium firefox` is empty), so the pass needs the user's machine or a
+   machine with a real GPU. The CPU tests pin the numbers, not whether any of it reads;
+   V1 now also asks the eye to confirm that the disc no longer warps vertically as it
+   turns.
+2. **The experimental-engine calibration** — both of plan.md's follow-up items that gate a
+   default-engine change are now closed (parity 2026-10-11, the density measurement
+   2026-10-13, the vertical contract 2026-10-14), so the guides' arm overshoot (wave 0.6
+   holds 1.7–4.3× the authored contrast) and the guided-only arm floor are the next model
+   questions, each needing its own plan entry.
 
 **Known follow-ups / caveats:**
 
-- `routePosition`'s blend is a Cartesian interpolation (plan §8.5 as written); §8.5 also
-  describes a wait holding at the departure body's phase, and the layover holds at the
-  arrival body — both are per-frame redraws, no dirty flag, which is the point.
-- `#sysread`'s route block was eyeballed against a hand-built record for column alignment;
-  no automated pin of the report text exists (same caveat the dv block carries).
-- Browser-side checks (endpoint rings, the ship through a wait/transfer/layover, `K`'s
-  handover to the system clock, interstellar text) are deferred in V8 — not verified.
-- `experiments/README.md`'s Tests table was frozen at `galaxy-age-test.js` — now filled out
-  to all 27 registered tests, so check it against `scripts/run.py` whenever a test ships.
-- `scripts/run.py` keeps its entries alphabetised inside each group — a new experiment
-  goes in the `EXPERIMENTS` dict, the `TYPES['test']` list, `m1-smoke-test.js`'s
-  namespace list and `index.html`, in that order of failure.
+- The classic lane's bounded vertical wobble can reach `|z| + 2·av`; the measured over-cut
+  share stays 0.0000 on mw/Sa/SBc over 400 Myr, but the wobble cap is the authored
+  `discHeight` slab, not the sech² cut — worth a pin if a taller disc ever trips it.
+- Browser-side checks (the three engines, labels/picking, the disc's new vertical
+  behaviour, V1–V8) are deferred — not verified.
+- `experiments/README.md`'s Tests table and the README architecture list move with the
+  release; check both against `scripts/run.py` whenever a test or `src/` file ships.
+- `scripts/run.py` keeps its entries alphabetised inside each group — a new experiment goes
+  in the `EXPERIMENTS` dict, the `TYPES['test']` list, `m1-smoke-test.js`'s namespace list
+  and `index.html`, in that order of failure.
 
-**State:** 0.5.x-2 and 0.5.5 are committed; the 0.5.x-3 doc edits are uncommitted
-(`README.md`, `experiments/README.md`, `plan.md`, `worklog.md`, `AGENTS.md`,
-`archive/0.5.x-worklog.md`, `findings-pitfalls-skills.md`, `NEXT_SESSION.md`).
-The user was not asked for a commit.
+**State:** 0.4.9 is implemented, documented and validated, and **uncommitted** —
+`src/math/orbit.js`, `src/render/shaders.js`, `experiments/{orbit-test,movement-density-test,wgsl-exec-check}.js`,
+the regenerated `experiments/logs/*.json`, and the docs listed above, plus the new
+`archive/0.4.9-plan-vertical-column.md`. The user was not asked for a commit.
 
-**First actions:** read AGENTS.md + `plan.md` §11/§19, then either start V8 on a real
-browser (record the blocked case and stop if no adapter) or write the movement-density
-measurement as an `experiments/` script with its log.
+**First actions:** read AGENTS.md + `plan.md` §19/follow-up order, then either start V8 on a
+real browser (record the blocked case and stop if no adapter) or open the engine-calibration
+question the closed follow-ups now unblock.

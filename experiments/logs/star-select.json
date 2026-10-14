@@ -1,53 +1,53 @@
 {
-  "date": "2026-10-14T00:26:12.680Z",
+  "date": "2026-10-14T03:04:19.897Z",
   "model": {
     "type": "SBb",
     "seed": 3
   },
   "timeMyr": 300,
   "timings": {
-    "fixtureBuildMs": 402,
+    "fixtureBuildMs": 351,
     "pickFrozenMs": {
-      "median": 3.311899,
-      "p90": 3.398135,
-      "max": 3.512388
+      "median": 3.203092,
+      "p90": 3.234772,
+      "max": 3.389565
     },
     "pickDispatchedMs": {
-      "median": 59.123332,
-      "p90": 60.810761,
-      "max": 61.197406
+      "median": 50.041801,
+      "p90": 51.458652,
+      "max": 62.53196
     },
     "dispatchedHitMovedKpc": 0.2617349841210823,
     "radiusScanMs": {
-      "median": 2.679066,
-      "p90": 2.937774,
-      "max": 3.551052
+      "median": 2.609728,
+      "p90": 2.657737,
+      "max": 3.336666
     },
     "radiusByRadius": [
       {
         "radiusLy": 50,
         "matches": 1,
-        "ms": 0.998012
+        "ms": 0.975933
       },
       {
         "radiusLy": 500,
         "matches": 256,
-        "ms": 1.007737
+        "ms": 1.027626
       },
       {
         "radiusLy": 5000,
         "matches": 256,
-        "ms": 1.748858
+        "ms": 1.724769
       },
       {
         "radiusLy": 50000,
         "matches": 256,
-        "ms": 1.615076
+        "ms": 1.605878
       },
       {
         "radiusLy": 100000,
         "matches": 256,
-        "ms": 1.528044
+        "ms": 1.494351
       }
     ],
     "records": 300000,
@@ -207,7 +207,7 @@
     {
       "name": "the swept stars never crowd each other inside the 3 px tie band",
       "pass": true,
-      "detail": 6.370578674078196
+      "detail": 16.907349948215803
     },
     {
       "name": "the dispatch really moved the swept stars at T = 300 Myr",
@@ -309,14 +309,14 @@
       "pass": true,
       "detail": {
         "movedPos": [
-          6.10831365569789,
-          1.2231394695256939,
-          -0.053167835946736325
+          6.108008643938653,
+          1.2227568565492857,
+          0.05000000074505806
         ],
         "dispatched": [
-          6.10831365569789,
-          1.2231394695256939,
-          -0.053167835946736325
+          6.108008643938653,
+          1.2227568565492857,
+          0.05000000074505806
         ]
       }
     },
@@ -469,18 +469,18 @@
       "name": "pickAny at T = 0 walks 300000 records inside the 16 ms budget",
       "pass": true,
       "detail": {
-        "median": 3.311899,
-        "p90": 3.398135,
-        "max": 3.512388
+        "median": 3.203092,
+        "p90": 3.234772,
+        "max": 3.389565
       }
     },
     {
       "name": "selectAround at 300000 records inside the 5 ms budget",
       "pass": true,
       "detail": {
-        "median": 2.679066,
-        "p90": 2.937774,
-        "max": 3.551052
+        "median": 2.609728,
+        "p90": 2.657737,
+        "max": 3.336666
       }
     },
     {
@@ -488,14 +488,14 @@
       "pass": true,
       "detail": {
         "dispatched": {
-          "median": 59.123332,
-          "p90": 60.810761,
-          "max": 61.197406
+          "median": 50.041801,
+          "p90": 51.458652,
+          "max": 62.53196
         },
         "frozen": {
-          "median": 3.311899,
-          "p90": 3.398135,
-          "max": 3.512388
+          "median": 3.203092,
+          "p90": 3.234772,
+          "max": 3.389565
         },
         "hitMoved": 0.2617349841210823
       }

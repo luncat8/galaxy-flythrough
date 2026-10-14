@@ -200,10 +200,13 @@ See [`plan.md`](plan.md) for the complete design, the versioned plans for model 
 
 ## Next priorities
 
-[Movement CPU/WGSL parity](movement-parity-plan.md) takes priority over visual tuning.
-The outstanding real-browser engine/preset checks and non-critical bar polish are
-tracked in a [separate deferred plan](deferred-browser-visual-plan.md). Passing the
-Node suite does not certify browser rendering or clipboard/file permissions.
+Movement dispatch and CPU/WGSL parity shipped (2026-10-11), and the engines' density
+preservation is now measured headlessly — radial, vertical and arm-density against the
+field, per engine (`python3 scripts/run.py movement-density`). What is left that the
+Node suite cannot answer is the real-browser pass: the outstanding engine/preset checks
+and non-critical bar polish are tracked in a
+[separate deferred plan](deferred-browser-visual-plan.md). Passing the Node suite does
+not certify browser rendering or clipboard/file permissions.
 
 ## License
 

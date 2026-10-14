@@ -1210,6 +1210,14 @@ Shipped, in `archive/`:
   slice family (peanut, vertical boxiness, smooth envelope), the Milky Way preset's central
   bar, and the truncation/age-height audit. *(task list complete; the browser visual pass is
   deferred)*
+- `archive/0.4.9-plan-vertical-column.md` — the vertical-density contract, §1.4's
+  amplitude-calibration pass: two sweep anchors (a disc/pattern plane parallel to the
+  galactic plane through the star's own birth height; the centred inclined plane kept for
+  the spheroidal bar/pressure families) extracted into one `orbit.orbitPlane` basis shared
+  by the four CPU call sites and the WGSL mirror, after the measurement showed the centred
+  plane rotating a birth height into an oscillation (column at 0.66–0.87). *(shipped as
+  0.4.9: worst bin 0.000–0.009 against §1.4's 3% budget, mean|z| 1.000 on the exact
+  lanes; radial, arm and truncation unchanged)*
 - `archive/plan-0.1.1-tasks.md` — the per-file checklist of §18. *(0.1.x complete)*
 
 Next series:
@@ -1275,20 +1283,21 @@ tests and extend the file layout of §11 as needed.
    worst bin 1.7%); the **arm** pattern is held by the capture lane alone — wave 0
    loses it (ratio 0.06), wave 0.3/0.6/1.0 hold and overshoot it (0.6 → 1.7–4.3×
    the authored contrast) — and the guided-only mask's frozen fraction is left
-   behind by the rotating pattern (see item 2a below). The **vertical** column does
-   **not** meet the budget: worst bin 0.038–0.049 against 0.03, mean|z| at
-   0.66–0.78 of the birth column, because the per-star inclined orbital plane
-   rotates a star's birth height into an oscillation about the galactic plane
-   (classic mean|z| 0.71, simple 0.67, guided 0.87). Log: `experiments/logs/movement-density.json`.
-   2a. **Vertical-preservation fix (open, and a prerequisite for trusting any engine
-   default change).** The measured compression is the amplitude-calibration pass
-   §1.4 deferred ("the tables are not final until then"): the orbital-plane
-   inclination ~0.045 rad × the star's radius is a vertical excursion of the same
-   order as the disc's own scale height, so the law must carry the birth height
-   rather than rotate it into an oscillation. The contract, measurement and parity
-   tests belong to that release (plan first, per AGENTS.md); the measurement above
-   is its baseline and its gate, and the pin in the test stops the number
-   regressing while it is open.
+   behind by the rotating pattern. Log: `experiments/logs/movement-density.json`.
+   2a. ~~**Vertical-preservation contract**~~ — **done** (2026-10-14, 0.4.9,
+   `archive/0.4.9-plan-vertical-column.md`). The measured compression (worst bin
+   0.038–0.049 against the 0.03 budget, mean|z| 0.66–0.87 of the birth column)
+   was the centred orbital plane putting `(qz/|q|)·cos α` into a star's height:
+   a birth height cannot survive a plane that rotates through the galactic one.
+   The sweep basis is now `orbit.orbitPlane` — disc and pattern stars sweep a
+   plane parallel to the galactic plane through their own birth height (the
+   height is carried; the epicycle's bounded `av` wobble is the only vertical
+   motion), the spheroidal bar/pressure families keep the centred inclined plane
+   the per-star basis was introduced for — mirrored in the orbit WGSL part and
+   shared by all four CPU call sites, so the engines cannot drift apart. Measured
+   after: vertical worst bin 0.000–0.009 inside the budget on every lane, mean|z|
+   1.000 on the lanes that carry exactly, 1.025–1.076 on the classic lane's
+   wobble; radial, arm and truncation numbers unchanged.
 3. [Deferred browser/WebGPU validation and visual polish](deferred-browser-visual-plan.md):
    real-browser engine/preset checks, then optional bar appearance and GPU profiling.
    These are not prerequisites for sandbox-safe correctness work and are not marked

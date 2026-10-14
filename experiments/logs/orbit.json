@@ -1,13 +1,13 @@
 {
-  "date": "2026-10-14T00:26:47.971Z",
-  "totalChecks": 113,
-  "passed": 113,
+  "date": "2026-10-14T03:04:54.842Z",
+  "totalChecks": 115,
+  "passed": 115,
   "failed": 0,
   "checks": [
     {
       "name": "T = 0 is the identity for every family (|Δ| < 1e-9 kpc)",
       "pass": true,
-      "detail": 0
+      "detail": 1.1102230246251565e-16
     },
     {
       "name": "solar circle R = 8.2 kpc turns in 229 ± 2 Myr",
@@ -94,7 +94,7 @@
       "pass": true,
       "detail": {
         "bar": 2.8658117227318756,
-        "young": 2.8652598478520828
+        "young": 2.865259749262036
       }
     },
     {
@@ -327,7 +327,7 @@
       "name": "a disc star returns to its start after one period (229 Myr, < 0.1 kpc)",
       "pass": true,
       "detail": {
-        "dist": 0.0441839404687414,
+        "dist": 0.04418394046874531,
         "tPeriod": 456.7456839299081
       }
     },
@@ -367,14 +367,14 @@
       "name": "disc wobble phase stays continuous across a bulk-angle wrap (< 1 pc jump)",
       "pass": true,
       "detail": {
-        "dist": 0.00047739276070328735
+        "dist": 0.00047598444072992764
       }
     },
     {
       "name": "bulk angle returns after one pattern period (xy close to start)",
       "pass": true,
       "detail": {
-        "bulkBack": 0.07827797049793281
+        "bulkBack": 0.09015180581142676
       }
     },
     {
@@ -445,11 +445,11 @@
       "name": "f64 CPU law vs f32 WGSL replay agree within 0.05 kpc up to T = 10 000 Myr",
       "pass": true,
       "detail": {
-        "worst": 0.00018623570595355794,
+        "worst": 0.00018657052216731058,
         "worstCase": {
           "fam": 1,
           "t": 10000,
-          "d": 0.00018623570595355794
+          "d": 0.00018657052216731058
         }
       }
     },
@@ -501,8 +501,8 @@
       "name": "a whole ring tightens on both sides of corotation at the UI default (α = 0.6)",
       "pass": true,
       "detail": {
-        "inner": 0.16231599638131652,
-        "outer": 0.5886289252581134,
+        "inner": 0.16231599638131644,
+        "outer": 0.5886289252581136,
         "uniform": 0.7853981633974483
       }
     },
@@ -531,14 +531,14 @@
       "pass": true,
       "detail": {
         "now": [
-          13.481402087561824,
-          1.2420499972835808,
-          0.1835531494993131
+          13.476717703662064,
+          1.234614405164763,
+          0.5107588905858855
         ],
         "plain": [
-          13.481402087561824,
-          1.2420499972835808,
-          0.1835531494993131
+          13.476717703662064,
+          1.234614405164763,
+          0.5107588905858855
         ]
       }
     },
@@ -550,7 +550,7 @@
       "name": "f64 capture vs f32 shader replay agree within 0.05 kpc",
       "pass": true,
       "detail": {
-        "waveWorst": 0.000017210481405271433
+        "waveWorst": 0.000017940822941403276
       }
     },
     {
@@ -698,16 +698,28 @@
       }
     },
     {
-      "name": "the 3-D reconstruction rotates in its centre-crossing plane and conserves radius",
+      "name": "the reconstruction conserves the birth cylinder and carries the height for a disc star",
       "pass": true,
       "detail": {
-        "pos": [
-          8.178,
-          8.178611373576814,
-          6.123233995736766e-18
-        ],
-        "thSun": 0,
-        "birthRadius": 8.178611373576814
+        "cyl": 8.178,
+        "birthCyl": 8.178,
+        "z": 0.1
+      }
+    },
+    {
+      "name": "a spheroidal star still sweeps its centred plane (spherical radius conserved)",
+      "pass": true,
+      "detail": {
+        "sph": 3.6400549446402586,
+        "birth": 3.640054944640259
+      }
+    },
+    {
+      "name": "the disc star keeps its birth height and sweeps its own plane at every azimuth",
+      "pass": true,
+      "detail": {
+        "carried": true,
+        "planar": true
       }
     },
     {
@@ -784,7 +796,7 @@
     {
       "name": "changing pattern speed preserves apocenter-orbit phase",
       "pass": true,
-      "detail": 1.9891280697202825e-15
+      "detail": 3.202372833989377e-15
     },
     {
       "name": "every mask 1–7 lands on the dispatch table (classic → simple → apocenter, birth baseline)",
@@ -798,9 +810,9 @@
       "name": "classic, simple and apocenter-only are three distinct laws at T = 250",
       "pass": true,
       "detail": {
-        "sepCS": 0.6338214420434721,
-        "sepCA": 0.6466101733546458,
-        "sepSA": 0.17259286211925423
+        "sepCS": 0.6334046217887989,
+        "sepCA": 0.6461849428413593,
+        "sepSA": 0.17240845703792057
       }
     },
     {
@@ -808,8 +820,8 @@
       "pass": true,
       "detail": {
         "m3vsm2": 0,
-        "m5classic": 0.6466101733546458,
-        "m6simple": 0.10715514588663186
+        "m5classic": 0.6461849428413593,
+        "m6simple": 0.10714713574630146
       }
     },
     {
@@ -855,7 +867,7 @@
       "detail": {
         "rBirth": 8.178611373576814,
         "rForce0": 8.178611373576814,
-        "sep": 0.09671870083539998
+        "sep": 0.09671147084788896
       }
     },
     {

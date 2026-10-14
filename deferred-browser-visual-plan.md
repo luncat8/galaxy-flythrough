@@ -12,9 +12,10 @@ Keep this plan separate from the analytical contracts in `plan.md` and the
 0.4.x model plans. Results belong in `archive/0.4.x-worklog.md`; a proposed model
 change needs its own contract, measurement, and parity tests before implementation.
 
-**Priority:** movement parity shipped 2026-10-11 (`movement-parity-plan.md`); its
-browser-side validation is V1/V2 below. Visual
-polish must not block it. Clipboard/file browser behavior is a functional check,
+**Priority:** movement parity shipped 2026-10-11 (`movement-parity-plan.md`) and the
+engines' time-averaged density is measured on the CPU as of 2026-10-14 (0.4.9,
+`archive/0.4.9-plan-vertical-column.md`); its browser-side validation is V1/V2 below.
+Visual polish must not block it. Clipboard/file browser behavior is a functional check,
 not cosmetic tuning, even though its real-browser validation is deferred here.
 
 ## Environment and stop rule
@@ -37,7 +38,7 @@ All rows remain **deferred / not verified** until evidence is recorded.
 
 | ID | Task | Acceptance / evidence |
 |---|---|---|
-| V1 | Three movement engines | Compare `classic`, `simple`, `apocenter` separately on Sb, SBb and the Milky Way preset. Use identical seed, age, star budget, camera and display settings. Observe frozen time, 1 and 5 Myr/s; pause/resume, reset, switch engines, and change pattern speed. Record disappearing stars, discontinuities, unstable arms/bars, or unexpected centre drift. Do not assume every engine switch preserves positions: record the time/reset behavior. |
+| V1 | Three movement engines | Compare `classic`, `simple`, `apocenter` separately on Sb, SBb and the Milky Way preset. Use identical seed, age, star budget, camera and display settings. Observe frozen time, 1 and 5 Myr/s; pause/resume, reset, switch engines, and change pattern speed. Record disappearing stars, discontinuities, unstable arms/bars, or unexpected centre drift. Do not assume every engine switch preserves positions: record the time/reset behavior. Two things the CPU suite already pins and the eye should confirm: since 0.4.9 a disc star sweeps a plane parallel to the galactic one through its own birth height (the earlier centred plane compressed the vertical column to 0.66–0.87 of the field's), so the disc should no longer warp vertically as it turns; and the guided lane's arm-negative ellipse should read as the arms it aims at. |
 | V2 | Labels, picking and combinations | After movement parity is fixed, repeat the Milky Way view with labels, constellations and a selected star under each engine and a simple+apocenter combination. Labels and click targets must follow rendered stars; menu use must not move/pick the scene inadvertently. |
 | V3 | Preset copy/paste | Copy settings, change them, then paste/apply. Confirm active engine fields and controls round-trip. Exercise clipboard allowed, denied/unavailable, empty clipboard, and manual textarea paste + Apply. Denial must leave a usable manual fallback, not an unhandled error. |
 | V4 | Preset save/load | Save a populated textarea (Save currently saves its contents), and test an empty textarea (serializes current settings). Load each file and confirm the same supported settings. Check file-dialog cancellation and invalid/empty input without crashing or applying unintended settings. General presets carry settings, not camera/epoch; separately verify the Milky Way button's frozen Sun-side arrival and constellations. |

@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-14T00:27:59.171Z",
+  "date": "2026-10-14T03:06:01.794Z",
   "model": {
     "type": "SBb",
     "seed": 42
@@ -95,18 +95,18 @@
     },
     "heap": {
       "trials": [
-        -1002208,
-        -1001560,
-        1059664,
-        1059712,
-        1145752
+        -1592728,
+        468400,
+        468528,
+        468672,
+        625544
       ],
-      "median": 1059664,
+      "median": 468528,
       "exposedGc": false
     },
     "timings": {
-      "generateUs": 1.704,
-      "summaryUs": 1.0790000000000002
+      "generateUs": 1.65,
+      "summaryUs": 1.067
     }
   },
   "totalChecks": 75,
@@ -707,13 +707,13 @@
       "pass": true,
       "detail": {
         "trials": [
-          -1002208,
-          -1001560,
-          1059664,
-          1059712,
-          1145752
+          -1592728,
+          468400,
+          468528,
+          468672,
+          625544
         ],
-        "median": 1059664,
+        "median": 468528,
         "exposedGc": false
       }
     },
@@ -721,24 +721,24 @@
       "name": "generateSystem runs inside the 20 µs budget",
       "pass": true,
       "detail": {
-        "generateUs": 1.704,
-        "summaryUs": 1.0790000000000002
+        "generateUs": 1.65,
+        "summaryUs": 1.067
       }
     },
     {
       "name": "systemSummary runs inside the 6 µs budget",
       "pass": true,
       "detail": {
-        "generateUs": 1.704,
-        "summaryUs": 1.0790000000000002
+        "generateUs": 1.65,
+        "summaryUs": 1.067
       }
     },
     {
       "name": "the summary is the cheap path",
       "pass": true,
       "detail": {
-        "generateUs": 1.704,
-        "summaryUs": 1.0790000000000002
+        "generateUs": 1.65,
+        "summaryUs": 1.067
       }
     }
   ]

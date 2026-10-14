@@ -432,17 +432,14 @@ function engrave(prep, mask, label, m) {
 //
 //   * PLAN BUDGET — plan 0.4.0 §1.4 states the distribution-preservation
 //     contract as "3% per bin" for a time-averaged histogram against the
-//     analytic profile. The radial column meets it on every engine and every
-//     type measured here, so it is a hard gate.
-//   * KNOWN DEVIATION PIN — the vertical column does not meet it (measured
-//     0.038-0.049, ten times over) because the per-star inclined orbital plane
-//     rotates a star's birth height into an oscillation about the galactic
-//     plane: mean|z| lands at 0.66-0.78 of the birth column on the classic and
-//     simple lanes. That is the amplitude-calibration pass plan §1.4 deferred
-//     ("the tables are not final until then"), it is a model change with its own
-//     contract, and it is the open follow-up item this experiment was built to
-//     quantify. Until then the pin only stops the deviation from regressing —
-//     it is not an accepted contract, and the number stays printed in the table.
+//     analytic profile. Both the radial and the vertical columns are gated on
+//     it now: 0.4.9 re-anchored the sweep basis (orbitPlane) so a disc star's
+//     birth height is carried instead of rotated into an oscillation about the
+//     plane. Before that pass the vertical column read 0.038-0.049 of worst bin
+//     with mean|z| at 0.66-0.87 of the field's — a contraction the centred
+//     plane's (qz/|q|)·cos(theta) term cannot avoid — and it was pinned here as
+//     a known deviation rather than gated. The numbers that replaced them are in
+//     the log and in the 0.4.x worklog entry.
 //   * MOTION PROPERTY — the guided ellipse is arm-negative by construction and
 //     the apocenter-only mask freezes its unselected fraction (movement-parity
 //     decision 1), so its arm number is gated on a floor, not on preservation.
@@ -450,9 +447,15 @@ function engrave(prep, mask, label, m) {
 //     needs a couple of corotation-crossing times before the pattern is held, so
 //     a short run reads lower (SBc at 120 Myr is mid-capture at 0.74).
 const RADIAL_BUDGET = 0.03;
-const VERT_BUDGET = 0.06;
-const VERT_MEAN_LOW = 0.6;
-const VERT_MEAN_HIGH = 0.9;
+const VERT_BUDGET = 0.03;
+// mean|z| is the second read on the same contract: the column's scale, not its
+// shape. The classic law still carries the epicycle's bounded vertical wobble
+// (VERTICAL_WOBBLE_RATIO · ah, capped by discHeight − |z|), which lifts the
+// column by up to ~8% on the tallest disc measured (SBc); the simple and
+// apocenter lanes carry the height through the sweep basis exactly.
+const VERT_MEAN_LOW = 0.95;
+const VERT_MEAN_HIGH = 1.10;
+const VERT_MEAN_EXACT_HIGH = 1.01;
 const MEANR_LOW = 0.97;
 const MEANR_HIGH = 1.03;
 const ARM_FLOOR = 0.7;
@@ -464,11 +467,13 @@ function gateEngine(prep, mask, label, m) {
 	// Radial profile: plan §1.4's per-bin budget, on every lane.
 	check(`${type} mask ${mask} (${label}): radial profile holds the field within plan 1.4's per-bin budget`,
 		m.radialMaxBin <= RADIAL_BUDGET, { maxBin: +m.radialMaxBin.toFixed(4), budget: RADIAL_BUDGET });
-	// Vertical column: the known-deviation pin (see the block above).
-	check(`${type} mask ${mask} (${label}): vertical column stays inside the known-deviation pin`,
+	// Vertical column: the same budget, which the 0.4.9 re-anchor made hold.
+	check(`${type} mask ${mask} (${label}): vertical column holds the field within plan 1.4's per-bin budget`,
 		m.vertMaxBin <= VERT_BUDGET, { maxBin: +m.vertMaxBin.toFixed(4), budget: VERT_BUDGET });
-	check(`${type} mask ${mask} (${label}): the column is compressed, not heated (no vertical blow-up)`,
-		m.meanZ >= VERT_MEAN_LOW && m.meanZ <= VERT_MEAN_HIGH, { meanZ: +m.meanZ.toFixed(4), band: [VERT_MEAN_LOW, VERT_MEAN_HIGH] });
+	const meanHigh = (mask & orbit.ENGINE_CLASSIC) === 0 ? VERT_MEAN_EXACT_HIGH : VERT_MEAN_HIGH;
+	check(`${type} mask ${mask} (${label}): the column is neither compressed nor blown up`,
+		m.meanZ >= VERT_MEAN_LOW && m.meanZ <= meanHigh,
+		{ meanZ: +m.meanZ.toFixed(4), band: [VERT_MEAN_LOW, meanHigh], exact: meanHigh === VERT_MEAN_EXACT_HIGH });
 	check(`${type} mask ${mask} (${label}): no radial drift of the disc population`,
 		m.meanR >= MEANR_LOW && m.meanR <= MEANR_HIGH, { meanR: +m.meanR.toFixed(4), band: [MEANR_LOW, MEANR_HIGH] });
 	// Arm pattern: a shipping lane must hold the authored pattern (the capture
@@ -696,8 +701,8 @@ console.log(`\n${passed}/${checks.length} passed, ${checks.length - passed} fail
 		console.log(`  radial   preserved on every lane — worst bin ${(rad * 100).toFixed(1)}% against plan 1.4's 3% budget`);
 		console.log(`  arm      held by the capture lane alone — wave 0 ratio ${results.control ? results.control.metrics.armRatio.toFixed(2) : '?'}, ` +
 			`wave ${WAVE_UI} ratio ${classic.metrics.armRatio.toFixed(2)} (overshoot is a calibration question, reported not gated)`);
-		console.log(`  vertical NOT preserved — worst bin ${(vert * 100).toFixed(1)}%, mean|z| ${Math.min(...meanZ).toFixed(2)}-${Math.max(...meanZ).toFixed(2)} of the birth column:`);
-		console.log(`  the inclined orbital plane rotates the birth height into an oscillation about the plane (known deviation, plan follow-up 2a)`);
+		console.log(`  vertical preserved (0.4.9) — worst bin ${(vert * 100).toFixed(1)}%, mean|z| ${Math.min(...meanZ).toFixed(2)}-${Math.max(...meanZ).toFixed(2)} of the birth column:`);
+		console.log(`  the sweep basis carries the birth height, and the classic law's bounded vertical wobble is the only term that moves it`);
 	}
 }
 
@@ -708,7 +713,7 @@ fs.writeFileSync(logPath, JSON.stringify({
 	date: new Date().toISOString().slice(0, 10),
 	setup: { types: TYPE_LIST, stars: N, spanMyr: SPAN, snapMyr: SNAP, dtMyr: DT, seed: SEED, shareUI: SHARE_UI, forceUI: FORCE_UI, waveUI: WAVE_UI },
 	radBins: RAD_BINS, vertBins: VERT_BINS, armBins: ARM_BINS,
-	gates: { radialBudget: RADIAL_BUDGET, vertBudget: VERT_BUDGET, armFloor: ARM_FLOOR, armFloorGuided: ARM_FLOOR_GUIDED, meanR: [MEANR_LOW, MEANR_HIGH], meanZ: [VERT_MEAN_LOW, VERT_MEAN_HIGH] },
+	gates: { radialBudget: RADIAL_BUDGET, vertBudget: VERT_BUDGET, armFloor: ARM_FLOOR, armFloorGuided: ARM_FLOOR_GUIDED, meanR: [MEANR_LOW, MEANR_HIGH], meanZ: [VERT_MEAN_LOW, VERT_MEAN_HIGH], meanZExactLanes: VERT_MEAN_EXACT_HIGH },
 	results,
 	checks,
 }, null, 2));
