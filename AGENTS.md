@@ -55,7 +55,8 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 - `movement-parity-plan.md` — the engine-mask dispatch and rendered/CPU position contract
   (shipped 2026-10-11; the file is the contract, not an open task).
 - `evolution-plan.md` — the 0.6 series, galaxy evolution over time: E1 the epoch tier
-  (shipped, with the runtime coupling E1b), E2 live evolution, E3 morphology, E4 events,
+  (shipped, with the runtime coupling E1b), E2 the epoch's live clock (shipped: the
+  epoch runs on the star-time axis, `galaxy.evolveTick`), E3 morphology, E4 events,
   E5 chemical evolution (optional).
 - `deferred-browser-visual-plan.md` — non-blocking browser checks, preset actions, bar polish and GPU profiling; separate from analytical model contracts.
 - `worklog.md` — index of versioned implementation logs.
@@ -72,7 +73,7 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 - `src/render/shaders.js` — all WGSL, as JS strings; `WIRED_SHADERS` lists what the renderer actually compiles.
 - `src/render/system-layer.js` — the 0.5.3 close-system schematic (plan §6): a log-polar 2D-canvas overlay for the opened system — HZ annulus, `cos i`-squashed orbit ellipses, belt stipples hashed once per `enter`, star/planet icons on the five-bucket mass ramp, its own system-time clock (−1…100 y/s, −1 coupled to the camera fly speed), picking (bodies before belts), autopilot state and the byte-exact §6.6 readout. CPU-only like the label layer; main.js owns enter/exit orchestration (V/Esc/view button/System-panel ×), the orbit-object camera lock, the shared `#sysread` and the `data-view` menu gating.
 - `src/core/route.js` — CPU-only fixed-cap itineraries, shared ship table, cumulative fuel/life support, signed launch windows, interstellar cruise, closed-form autopilot positions. The system layer draws local routes; main.js wires node picking, round trips, selected-star endpoints and start/pause/resume.
-- `src/core/presets.js` — the settings-preset format: the whole menu as one URL-language text line (serialize/parse, menu defaults) plus the LLM prompt builder of `archive/copy-paste-preset-prompt.md`, and the built-in named presets (the Milky Way arrival: frozen sky, fly home beside the Sun, constellation lines). main.js owns the DOM glue (copy/paste/save/load/apply, and the builtin buttons). A field tagged with the movement pass that owns it (`engine: 'apocenter'`) is part of the preset only while that pass is selected, and the menu hides the same rows through their `data-engine` attribute.
+- `src/core/presets.js` — the settings-preset format: the whole menu as one URL-language text line (serialize/parse, menu defaults) plus the LLM prompt builder of `archive/copy-paste-preset-prompt.md`, and the built-in named presets (the Milky Way arrival: frozen sky, fly home beside the Sun, constellation lines; and `Evolve`: the same type from `AGE_MIN` with the star clock at its top rate). main.js owns the DOM glue (copy/paste/save/load/apply, and the builtin buttons). A field tagged with the movement pass that owns it (`engine: 'apocenter'`) is part of the preset only while that pass is selected, and the menu hides the same rows through their `data-engine` attribute.
 
 ## Workflow
 

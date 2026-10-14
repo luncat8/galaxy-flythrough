@@ -10,11 +10,12 @@
 
 const OVERLAY_INTERVAL = 0.25;      // s
 const MAX_DPR = 2;                  // retinal 3x costs fill rate for no gain
-// Age slider: the step the model is worth reading at (0.1 Gyr is far finer than
-// any population change here) and the shortest gap between two field rebuilds.
-// A rebuild is ~0.27 s at 300k stars, so this keeps a drag interactive instead
-// of queueing one rebuild per pixel.
-const AGE_STEP = 0.1;               // Gyr
+// The shortest gap between two field rebuilds, in loop time: a rebuild is ~0.7 s
+// at 300k stars, so this keeps a drag interactive instead of queueing one rebuild
+// per pixel. The epoch's live clock (E2) takes the same number as its own
+// interval — a live step and a drag are the same rebuild, on one timeline.
+// The Age slider's step is the model's own (galaxy.AGE_STEP): the slider, the
+// readout and the live clock step by one quantum, so they cannot disagree.
 const AGE_REGEN_INTERVAL = 0.35;    // s, in loop time
 
 function currentDpr() {
@@ -63,6 +64,11 @@ function readParams(search) {
                 // to the model's own range, so ?age=99 is the oldest galaxy there
                 // is rather than an error.
                 age: number('age', window.GalaxyLib.AGE_DEFAULT),
+                // The epoch's live clock (E2): while it runs, the star clock drives
+                // the galaxy's own clock. A run that boots within one step of the
+                // end of the range replays from the beginning, exactly as the
+                // toggle does.
+                evolve: number('evolve', 0),
                 // Star-motion engine: classic closed form, simple friction
                 // field, or apocenter-guided ellipses. Unknown values fall back
                 // to classic in orbit.setEngine.
@@ -102,10 +108,20 @@ async function boot() {
         const errorBox = document.getElementById('error');
         const params = readParams();
         const galaxy = window.GalaxyLib;
+        // The epoch's live clock (0.6 E2). `debt` is the star time accrued since the
+        // last applied step and `lastAt` the loop time it happened at — the same
+        // timeline the Age slider's drag throttle reads, because a live step and a
+        // drag are the same rebuild. The clock needs no enabled flag: the tick block
+        // is skipped while the toggle is off.
+        const ageRebuild = { debt: 0, lastAt: -Infinity };
+        let evolveOn = params.evolve > 0;
         // One descriptor for the whole galaxy: the density field, the star buffer, the
         // camera frame and the overlay's label all read this object, so switching
         // galaxies builds a new one and hands it round instead of poking four modules.
-        let model = galaxy.createGalaxy({ type: params.type, seed: params.seed, age: params.age });
+        let model = galaxy.createGalaxy({
+                type: params.type, seed: params.seed,
+                age: evolveOn ? galaxy.evolveStartAge(params.age) : params.age,
+        });
         // 0.4 global stellar clock. It is f64 on the CPU and exported as one
         // f32 uniform only after the documented epoch wrap.
         let starTimeMyr = 0;
@@ -976,6 +992,7 @@ async function boot() {
                         type: model.type,
                         seed: model.seed,
                         age: model.populations.age,
+                        evolve: evolveOn ? 1 : 0,
                         engine: selectedEngines(),
                         time: starTimeRate,
                         wave: waveDamping,
@@ -1010,6 +1027,10 @@ async function boot() {
                                 s.seed !== undefined ? s.seed : model.seed,
                                 s.age !== undefined ? s.age : model.populations.age);
                 }
+                // The epoch's live clock (E2), landed after the age above so a preset
+                // that carries both reaches its own epoch first and the replay rule
+                // (which reads the age the field was built at) sees it.
+                if (s.evolve !== undefined) setEvolve(s.evolve > 0);
                 if (s.engine !== undefined) {
                         renderer.setEngine(s.engine);
                         initSimpleLandmarks();
@@ -1183,6 +1204,8 @@ async function boot() {
         const galaxySeed = document.getElementById('galaxy-seed');
         const galaxyAge = document.getElementById('galaxy-age');
         const galaxyAgeVal = document.getElementById('val-galaxy-age');
+        const galaxyEvolve = document.getElementById('galaxy-evolve');
+        const valEpoch = document.getElementById('val-epoch');
         const galaxyLabelVal = document.getElementById('val-galaxy');
         const btnGalaxyApply = document.getElementById('galaxy-apply');
         // The option list is the type table itself: adding a row to galaxy.js puts the
@@ -1193,13 +1216,25 @@ async function boot() {
                 option.textContent = type;
                 galaxyType.appendChild(option);
         }
-        // The slider's range is the model's, not a copy of it typed in twice.
+        // The slider's range and step are the model's, not a copy typed in twice:
+        // the epoch's own quantum is what the live clock steps by.
         galaxyAge.min = galaxy.AGE_MIN;
         galaxyAge.max = galaxy.AGE_MAX;
-        galaxyAge.step = AGE_STEP;
+        galaxyAge.step = galaxy.AGE_STEP;
 
         function formatAge(age) {
                 return age.toFixed(1) + ' Gyr';
+        }
+
+        // The epoch readout (E2): the epoch the *field* was built at, never the
+        // clock's wish, so the readout, the Age slider and what is drawn cannot
+        // disagree. The tooltip carries the rest of the E1 epoch — the numbers the
+        // viewer is watching move.
+        function syncEpoch() {
+                valEpoch.textContent = formatAge(model.populations.age);
+                const e = model.epoch;
+                valEpoch.title = `bulge ${(e.spheroidProgress * 100).toFixed(0)}%   arms ×${e.armContrast.toFixed(2)}` +
+                        `   heat ${e.heat.toFixed(2)}   gas ×${e.gasRatio.toFixed(2)}`;
         }
 
         function syncGalaxyControls() {
@@ -1207,17 +1242,18 @@ async function boot() {
                 galaxySeed.value = model.seed;
                 galaxyAge.value = model.populations.age;
                 galaxyAgeVal.textContent = formatAge(model.populations.age);
+                galaxyEvolve.checked = evolveOn;
                 galaxyLabelVal.textContent = `${model.type} #${model.seed} ${model.milkyWay ? '(catalog)' : '(procedural)'}`;
-                // Another model is another derived Omega_p, so the pattern-speed
-                // readout is re-derived with the rest of the galaxy controls.
+                // Another model is another derived Omega_p and another epoch, so
+                // both readouts are re-derived with the rest of the galaxy controls.
+                syncEpoch();
                 syncPattern();
         }
 
-        // The throttled age drag: a value waiting to be rebuilt, and the loop time
-        // the last rebuild happened at. Declared before the rebuilds that clear and
-        // read them.
+        // The throttled age drag: a value waiting to be rebuilt. The throttle's own
+        // timeline (`ageRebuild.lastAt`) is shared with the live clock, which is
+        // created before the model because the boot age depends on it.
         let pendingAge = null;
-        let lastAgeRegen = -Infinity;
 
         // Rebuilding the field is the expensive path (~0.6 s at 300k stars) and it is
         // deliberately synchronous: the density model is the source of truth, so there
@@ -1280,6 +1316,22 @@ async function boot() {
                 pendingAge = Number(galaxyAge.value);
                 galaxyAgeVal.textContent = formatAge(pendingAge);
         });
+
+        // The live clock's toggle (E2). Ticking it on within one step of the end of
+        // the range replays the life that got there; anywhere else the run continues
+        // from where the galaxy is, and a drag of the Age slider is the seek that
+        // retargets the next step. The clock's debt starts over either way.
+        function setEvolve(on) {
+                evolveOn = !!on;
+                galaxyEvolve.checked = evolveOn;
+                ageRebuild.debt = 0;
+                if (evolveOn) {
+                        const start = galaxy.evolveStartAge(model.populations.age);
+                        if (start !== model.populations.age) pendingAge = start;
+                }
+                syncEpoch();
+        }
+        galaxyEvolve.addEventListener('change', () => setEvolve(galaxyEvolve.checked));
 
         galaxyType.addEventListener('change', () => {
                 regenerateGalaxy(galaxyType.value, model.seed, model.populations.age);
@@ -1605,7 +1657,7 @@ async function boot() {
                         ` + catalog ${catKept.toLocaleString()}/${state.catalogTotalStars.toLocaleString()}\n` +
                         `cells ${state.cellsResident}/${state.catalogCells}   decoded ${(state.decodedBytes / 1024).toFixed(0)} KB` +
                         `   buffer ${(state.bufferBytes / 1048576).toFixed(1)} MB\n` +
-                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   engine ${state.engine}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   pattern ${window.OrbitLib.effectivePatternSpeed(model).toFixed(3)} rad/Myr (x${patternScale.toFixed(2)})   Tab menu\n` +
+                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   engine ${state.engine}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)${evolveOn ? ' +evolve' : ''}   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   pattern ${window.OrbitLib.effectivePatternSpeed(model).toFixed(3)} rad/Myr (x${patternScale.toFixed(2)})   Tab menu\n` +
                         `pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
                         cameraLine(cameraState) +
                         selectionLines(cameraState) +
@@ -1654,11 +1706,20 @@ async function boot() {
                 // The age slider's trailing edge: applied here, in loop time, so a
                 // drag rebuilds at most every AGE_REGEN_INTERVAL and the value the
                 // user let go of is the one that lands.
-                if (pendingAge !== null && time - lastAgeRegen >= AGE_REGEN_INTERVAL) {
-                        lastAgeRegen = time;
+                if (pendingAge !== null && time - ageRebuild.lastAt >= AGE_REGEN_INTERVAL) {
+                        ageRebuild.lastAt = time;
                         const age = pendingAge;
                         pendingAge = null;
                         regenerateAge(age);
+                }
+                // The epoch's live clock (E2): the same dt the stars just integrated,
+                // one Age-slider quantum per EVOLVE_MYR_PER_STEP of star time, one
+                // rebuild per AGE_REGEN_INTERVAL. The tick shares the drag's throttle,
+                // so the two paths cannot double-fire; the debt it drops is star time
+                // the field could not have been re-drawn for anyway.
+                if (evolveOn) {
+                        const evolved = galaxy.evolveTick(ageRebuild, model.populations.age, dtStar, time, AGE_REGEN_INTERVAL);
+                        if (evolved > 0) regenerateAge(evolved);
                 }
                 labels.setOrbitState(model, starTimeMyr);
                 selection.setOrbitState(model, starTimeMyr);
@@ -1794,5 +1855,5 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 }
 if (typeof module !== 'undefined') {
         module.exports = { boot, readParams, formatSpeed, formatDistance, formatFactor, OVERLAY_INTERVAL, MAX_DPR,
-                AGE_STEP, AGE_REGEN_INTERVAL };
+                AGE_REGEN_INTERVAL };
 }

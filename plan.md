@@ -1229,10 +1229,14 @@ Shipped, in `archive/`:
   `AGE_REF` so no pin describing today's galaxies moved) together with the runtime
   coupling it forced (**E1b**: an age change is a geometry change, so the renderer
   re-samples the field, `main.js` re-seeds the simple mirror and re-resolves the
-  selection set by key). Later milestones in the same file: E2 live evolution on the
-  star-time axis, E3 morphology (sizes and the bar's length), E4 events, E5 chemical
-  evolution (optional). Tests: `experiments/galaxy-evolution-test.js` (18 checks) plus
-  the re-stated age pins in `galaxy-age`, `renderer`, `galaxy-types` and `m1-smoke`.
+  selection set by key). **E2 shipped**: that clock now runs on the star-time axis
+  (`galaxy.evolveTick` — one `AGE_STEP` quantum per 100 Myr of star time, one rebuild
+  per `AGE_REGEN_INTERVAL`, the debt dropped rather than banked), with the epoch
+  readout and the toggle beside the Myr/s control, the `evolve` preset field and an
+  `Evolve` built-in preset. Later milestones in the same file: E3 morphology (sizes and
+  the bar's length), E4 events, E5 chemical evolution (optional). Tests:
+  `experiments/galaxy-evolution-test.js` (28 checks) plus the re-stated age pins in
+  `galaxy-age`, `renderer`, `galaxy-types`, `preset` and `m1-smoke`.
 
 Implement from those files plus this one; the per-release plans reference their own
 tests and extend the file layout of §11 as needed.

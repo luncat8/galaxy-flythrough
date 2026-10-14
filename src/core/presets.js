@@ -30,6 +30,8 @@ const FIELDS = [
 	{ key: 'type', label: 'galaxy type' },
 	{ key: 'seed', label: 'seed' },
 	{ key: 'age', label: 'age', unit: ' Gyr' },
+	// The epoch's live clock (0.6 E2): the toggle 0/1, beside the epoch it runs.
+	{ key: 'evolve', label: 'evolve with star time' },
 	{ key: 'engine', label: 'engine' },
 	{ key: 'time', label: 'star time', unit: ' Myr/s' },
 	{ key: 'wave', label: 'wave damping' },
@@ -69,9 +71,12 @@ function menuDefaults() {
 	const g = typeof window !== 'undefined' ? window : global;
 	const r = g.StarRenderer;
 	const o = g.OrbitLib;
-	return {
-		// Owned by selection.js like every other numeric default (plan §9.4).
-		selrad: g.Selection ? g.Selection.SELRAD_DEFAULT_LOG : 1.69897,
+		return {
+			// Owned by selection.js like every other numeric default (plan §9.4).
+			selrad: g.Selection ? g.Selection.SELRAD_DEFAULT_LOG : 1.69897,
+			// The live clock is off unless asked for (E2); a frozen epoch is what
+			// every pre-0.6 preset means.
+			evolve: 0,
 		exposure: r.EXPOSURE_DEFAULT,
 		brightness: r.LINEAR_EXPOSURE_DEFAULT,
 		white: r.WHITE_POINT_DEFAULT,
@@ -198,6 +203,7 @@ function describeValue(field, value) {
 	if (field.key === 'apoShare') return Math.round(value * 100) + '%';
 	if (field.key === 'engine') return serializeEngine(value).split('+').join(', ');
 	if (field.key === 'sysview') return value ? 'open' : 'closed';
+	if (field.key === 'evolve') return value ? 'running' : 'frozen';
 	if (field.key === 'dvmap') {
 		const scope = typeof window !== 'undefined' ? window : global;
 		const names = scope.SystemLayer ? scope.SystemLayer.VIEW_NAMES : null;
@@ -233,7 +239,7 @@ function buildLlmPrompt(settings) {
 	lines.push('- star system: ' + ['type ' + (d.type || 'SBb'), 'seed ' + (d.seed || '42'),
 		'age ' + (d.age || '13.5 Gyr')].join(', '));
 	lines.push('- star movement stability engine: ' + (d.engine || 'classic'));
-	for (const key of ['time', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad', 'sysview', 'systime', 'dvmap', 'dvbudget', 'ship']) {
+	for (const key of ['time', 'evolve', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad', 'sysview', 'systime', 'dvmap', 'dvbudget', 'ship']) {
 		const field = FIELDS.find((f) => f.key === key);
 		if (d[key] !== undefined) lines.push('- ' + field.label + ': ' + d[key]);
 	}
@@ -282,6 +288,11 @@ const BUILTIN = [
 		title: 'The Sun-centred Milky Way. Freezes star time, flies home beside the Sun, and turns constellation lines on.',
 		view: { time: 0, epoch: 0, fly: true, home: true, constellations: true },
 	},
+	{
+		id: 'evolve',
+		label: 'Evolve',
+		title: 'A barred spiral watched from its infancy: the star clock at the top rate and the epoch running with it, one 0.1 Gyr step per 100 Myr of star time. Each step re-draws the field (~0.7 s at 300k stars), so a lower star budget is smoother — star counts apply at the next boot.',
+	},
 ];
 
 function builtinById(id) {
@@ -295,10 +306,14 @@ function builtinById(id) {
 // the modules that clamp them, and this file loads before those modules in
 // the page. An unknown id is an empty line, which apply treats as a no-op.
 function builtinSettings(id) {
-	if (id !== 'milkyway') return null;
+	if (id !== 'milkyway' && id !== 'evolve') return null;
 	const g = typeof window !== 'undefined' ? window : global;
 	const galaxy = g.GalaxyLib;
 	const renderer = g.StarRenderer;
+	// The evolve preset is the same galaxy sent back to its first light with the
+	// star clock at the slider's top rate: the run needs no view, so it carries
+	// settings only.
+	const over = id === 'evolve' ? { age: galaxy.AGE_MIN, time: 99, evolve: 1 } : { time: 0 };
 	return Object.assign({
 		type: galaxy.MILKY_WAY_TYPE,
 		seed: galaxy.DEFAULT_SEED,
@@ -306,7 +321,7 @@ function builtinSettings(id) {
 		engine: ['classic'],
 		stars: renderer.PROCEDURAL_STARS_DEFAULT,
 		catalog: renderer.CATALOG_BUDGET_DEFAULT,
-	}, menuDefaults(), { time: 0 });
+	}, menuDefaults(), over);
 }
 
 function builtinQuery(id) {

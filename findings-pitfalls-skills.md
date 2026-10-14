@@ -1452,3 +1452,33 @@ And the pin that caught it was the *old* pin (`the gas-driven object counts fall
 gas is used up`), which had been green for two releases. When a new rule makes an old
 pin red, the pin is a hypothesis: check whether the model or the pin is wrong before
 re-stating either. Here the model was.
+
+## 2026-10-14 — A live clock is a grid, not a sum: float accumulation costs a rebuild
+
+E2's `steppedAge(age)` was written the obvious way, `age + AGE_STEP`, and the test
+walking 0.2 Gyr to 13.5 Gyr at 0.1 Gyr steps caught it: the 133rd step landed at
+`13.499999999999968`, one ulp short of the ceiling, so the run needed a 134th micro-step
+(3e-14 Gyr) to cross it. In a *display* that is invisible; in a renderer where every step
+is a field re-sample and a rebuild it is a wasted frame, and the run's own specification
+("133 steps") is simply false. The fix is at the root: recompute the target on the grid
+from the floor, `AGE_MIN + AGE_STEP·round((age − AGE_MIN)/AGE_STEP + 1)`, which also makes
+every step land on the value the *slider* shows — the grid the user can see is the grid
+the model should use. Two lessons for a similar slice:
+
+- **A stepping clock is a grid, not an accumulator.** Any law that says "advance by a
+  fixed quantum, N times" has a grid implied in it; writing the accumulator loses the
+  grid's exactness for free. The bug shows up as an *extra* step at the clamp boundary,
+  which is the one place a test that only checks monotonicity will not look.
+- **Loosening the assertion would have hidden a real cost.** The failing check demanded a
+  whole quantum from the final step; the tempting fix was a tolerance on the last step.
+  Because a step here is 0.67 s of sampling, the tolerance would have bought a rebuild
+  that redraws an identical f32 geometry — the sloppy version is cheap only by accident
+  (`sameGeometry` packs f32 and cannot see a 3e-14 Gyr change).
+
+The companion trap is a test-authoring one, and it looked exactly like a code bug:
+
+- **Do not read a mutable accumulator after the call that consumes it.** A check on the
+  throttle read `state.debt` *after* the tick that had just reset it, so the law under
+  test looked broken (`{"early":0,"late":3.1,"debt":0}`) while the code was right.
+  Capture the intermediate state (`const debtHeld = state.debt;`) before the consuming
+  call. Mutable-state laws want their assertions adjacent to the mutation they check.

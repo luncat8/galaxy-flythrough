@@ -37,7 +37,7 @@ const SRC = path.join(__dirname, '..', 'src');
 // --- serialize / parse round trip -----------------------------------------
 
 const SETTINGS = {
-	type: 'SBb', seed: 42, age: 13.5, engine: ['classic', 'apocenter'],
+	type: 'SBb', seed: 42, age: 13.5, evolve: 1, engine: ['classic', 'apocenter'],
 	time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
 	selrad: 1.69897, exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
 	search: 'G,K|terran|220-300', scope: 'selection',
@@ -58,7 +58,7 @@ check('serialize → parse is the identity on the full settings object', () => {
 
 check('serialize → parse is the identity on a non-default system', () => {
 	const other = Object.assign({}, SETTINGS, {
-		type: 'Irr', seed: 7, age: 2.25, engine: ['simple', 'apocenter'],
+		type: 'Irr', seed: 7, age: 2.25, evolve: 0, engine: ['simple', 'apocenter'],
 		time: -1, wave: 0, pattern: 2.5, apoShare: 1, apoForce: 0,
 		exposure: 18.5, brightness: 0.125, white: 16, sat: 0.5, headroom: 1, highlight: 0,
 		search: 'M|barren', scope: 'galaxy',
@@ -163,7 +163,7 @@ check('menuDefaults matches the modules that own the numbers', () => {
 	assert.equal(d.selrad, Selection.SELRAD_DEFAULT_LOG);
 	assert.equal(d.systime, SystemLayer.SYSTIME_DEFAULT);
 	assert.deepEqual(d, {
-		selrad: 1.69897,
+		selrad: 1.69897, evolve: 0,
 		exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
 		time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
 		systime: 0, dvmap: 0, dvbudget: 0.35, ship: 'chemical',
@@ -333,6 +333,32 @@ check('the Milky Way builtin is the Sun-centred preset, frozen on arrival', () =
 	assert.ok(Math.hypot(state.position[0] - model.home.position[0],
 		state.position[1] - model.home.position[1],
 		state.position[2] - model.home.position[2]) < 1e-9, state.position);
+});
+
+check('the Evolve builtin is the same galaxy sent to its first light, running', () => {
+	const preset = Presets.builtinById('evolve');
+	assert.equal(preset.label, 'Evolve');
+	assert.equal(preset.view, undefined);   // settings only: the camera stays put
+	const settings = Presets.builtinSettings('evolve');
+	assert.equal(settings.type, GalaxyLib.MILKY_WAY_TYPE);
+	assert.equal(settings.age, GalaxyLib.AGE_MIN);
+	assert.equal(settings.evolve, 1);
+	// The top of the star-time slider, so the run is watchable at the default
+	// rebuild cadence.
+	assert.equal(settings.time, 99);
+	const query = Presets.builtinQuery('evolve');
+	assert.equal(query, Presets.serialize(settings));
+	// A preset that carries both lands on its own epoch: the replay rule reads
+	// the age the field was built at, and the line says 0.2 Gyr.
+	assert.equal(Presets.parse(query).age, GalaxyLib.AGE_MIN);
+	assert.equal(GalaxyLib.evolveStartAge(GalaxyLib.AGE_DEFAULT), GalaxyLib.AGE_MIN);
+});
+
+check('the live clock is described and serialized by name', () => {
+	assert.equal(Presets.describe({ evolve: 1 }).evolve, 'running');
+	assert.equal(Presets.describe({ evolve: 0 }).evolve, 'frozen');
+	assert.ok(Presets.serialize({ evolve: 1 }).includes('evolve=1'));
+	assert.ok(Presets.buildLlmPrompt(SETTINGS).includes('evolve with star time: running'));
 });
 
 check('switching to the Milky Way preset flies home with the figures on', () => {

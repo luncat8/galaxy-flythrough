@@ -22,7 +22,9 @@ them — are unchanged. This is not a re-tune of the density field.
 1. **One clock.** The epoch numbers are solved from `(T, tauSfh, age)` — the same
    three numbers the population tier already uses — and from the same
    `FORMATION_WINDOW` table. There is no per-type evolution table and no second clock
-   that could drift from `populations.gasNow`.
+   that could drift from `populations.gasNow`. E2 runs that clock on the star-time
+   axis — the same `dt` the stars integrate with — so the epoch has no rate of its
+   own either.
 
 2. **Structural consistency.** The *population* tier keeps reading the
    span-compressed windows `solvePopulationClock` writes into `populations.formQ`
@@ -143,7 +145,7 @@ measurement that killed it (worklog 0.6.0 has the numbers):
 
 * `model.epoch = { age, assembly, spheroidProgress, meanAge, meanAgeRef, heat, gasRatio, armContrast, gasNow, gasRich }`
   — solved once at build and again on every re-solve (`modelAtAge`); read by the tests
-  today, and by later milestones (E2's epoch readout is its first UI consumer).
+  today and by E2's epoch readout, its first UI consumer.
   `assembly` is the existing galaxy-wide `sfhProgress`, which is what `gasNow`
   already derives from.
 * `model.epochBase` — the reference-epoch values of the eight scaled numbers
@@ -203,15 +205,82 @@ Shipped as `experiments/galaxy-evolution-test.js` (18 checks, registered in
   identity keys survive it, and that a resolved key follows the new field; `m1-smoke`
   pins that `main.js`'s age path re-seeds the mirror and calls `resolveSet`.
 
+## E2 — the epoch's live clock (shipped)
+
+E1 made the galaxy's structure a function of its own clock; E2 lets that clock run.
+While the toggle is on, the age advances on the **star-time axis** — the same `dt` the
+stars integrate with, so `T` freezes both and the star-rate slider scales both — and
+the field follows in a sequence of epochs.
+
+### The law
+
+Three things, solved in `galaxy.js` beside the epoch tier so the page and the tests
+cannot hold different ones:
+
+| name | value | why |
+|---|---|---|
+| `AGE_STEP` | 0.1 Gyr | The epoch's own quantum. It is the Age slider's step, so the readout, the slider and the drawn field cannot disagree about where the galaxy is. |
+| `EVOLVE_MYR_PER_STEP` | `AGE_STEP · 1000` = 100 Myr | The unit bridge, not a second rate: the star clock is in Myr and the epoch in Gyr, and one quantum costs 100 Myr of star time. |
+| `evolveTick(state, age, dtStar, time, interval)` | the age to rebuild at, or 0 | One tick: accrue the star time, step when a whole quantum is paid for *and* the shell's rebuild interval has passed. |
+
+`state.debt` is **dropped, not banked**: an applied step resets it to 0, so one step is
+never more than one quantum even when the star clock runs far ahead (the top slider
+rate, or a camera-coupled flight rate). The field cannot be re-drawn faster than it can
+be sampled, so the clock is *sampled* rather than integrated, and the visible evolution
+is a sequence of epochs by construction rather than by luck.
+
+A step lands on `steppedAge(age)` — one quantum toward the present, on the slider's
+own grid (`AGE_MIN + k·AGE_STEP`, recomputed from the floor rather than accumulated,
+so the run is exactly 133 steps from 0.2 Gyr to the ceiling), holding at `AGE_MAX`,
+because nothing in the model is older than the universe. A run that starts
+within one step of `AGE_MAX` **replays** from `AGE_MIN` (`evolveStartAge`): at present
+day there is nothing left to watch, and that is what makes the toggle do something the
+first time it is ticked. Anywhere else the run continues from where the galaxy is, and
+the Age slider stays a **seek**: dragging it retargets the next step.
+
+### The surface
+
+* A Galaxy-menu row: the `Evolve with star time` checkbox and the epoch readout
+  (`#val-epoch`) beside the Myr/s control. The readout is the epoch **the field was
+  built at** (`model.populations.age`), never the clock's wish, and its tooltip carries
+  the rest of `model.epoch` (bulge, arm contrast, heat, gas) — E1's first UI consumer.
+* The preset field `evolve` (0/1) beside `age`, and `?evolve=1` at boot.
+* A built-in preset, `Evolve`: a barred spiral from `AGE_MIN` with the star clock at
+  its top rate, so the run is one click instead of three settings.
+
+### The cadence
+
+A step is a full field re-sample — the epoch is packed geometry (E1b), so nothing
+cheaper is honest — and that is what bounds the run: `createGalaxy` is a fraction of a
+millisecond, while `sampleGalaxyStars` at the default 300 000 stars is ~0.32 s and one
+`renderer.regenerate` ~0.67 s (measured). The tick therefore takes the shell's existing
+`AGE_REGEN_INTERVAL` (0.35 s) as its interval — the same shortest-gap-between-rebuilds
+the Age slider's drag already uses, because it is the same rebuild — and the two paths
+share one timeline, so a drag and a live step can never double-fire.
+
+Stated consequences, not discoveries:
+
+* **Positions jump.** Every step re-draws the field: the stars are a new draw of the
+  same galaxy, not a morph between two draws. Everything the viewer holds follows
+  through E1b's rebuild path (camera, labels, the selection set re-resolved by key), so
+  nothing is thrown away — but the step is a jump.
+* **The frame a step lands on pays the rebuild**: ~0.7 s at the default 300 000 stars,
+  ~0.11 s at 50 000. The loop's own `dt` clamp (0.1 s) hides most of it from the sim
+  clock, so the star clock loses at most 0.1 s per step.
+* **Rate.** One step per 100 Myr of star time: at the top slider rate the whole
+  0.2 → 13.5 Gyr life is 133 steps, ~2.2 min of star time. The default 5 Myr/s makes
+  it a 44-minute drift, which is why the built-in preset exists.
+
+### Validation
+
+`experiments/galaxy-evolution-test.js` gains the E2 law — the quantum, the drop, the
+hold, the replay, one step per tick, and the run's step count — and records the
+measured step cost. `m1-smoke` pins the surface (the toggle, the loop's step path, the
+boot gate) and `preset-test` the round trip. No renderer or WGSL change: a live step
+*is* the age rebuild the renderer already re-samples for, and E1b's pins cover it.
+
 ## Later milestones
 
-* **E2 — live evolution.** Let the epoch advance on the star-time axis, not only on
-  the slider: a throttled rebuild (measured 0.02–2.4 ms per model build) reprojects
-  the structure and the population while the epoch readout follows. UI: an "evolve
-  with star time" toggle and a Gyr readout beside the Myr/s control. Open question:
-  the natural rate is ~0.1–0.5 Gyr per rebuild, so the visible evolution is a
-  sequence of epochs, not a continuous morph — the plan must state the step size and
-  that positions jump with it.
 * **E3 — morphology growth.** Sizes, not just amplitudes: `spheroid.a/b/c` self-similar
   in the assembled spheroid mass (`∝ mass^⅓`), the bar's length following it, and the
   arm ridge re-anchored to the moving bar tip by the *additive* correction

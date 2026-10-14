@@ -5,7 +5,7 @@
 // assembled, how cold the disc still is, how much gas the arms have to work
 // with — beside what its stars are, which 0.3.3 already did.
 //
-// Five things are checked, in order:
+// Six things are checked, in order:
 //   1. exactness: at AGE_REF every epoch factor is exactly 1 and a re-derived
 //      model is bit-identical to a fresh build, in both directions
 //   2. the factors' laws across [AGE_MIN, AGE_REF] for every type: monotone,
@@ -20,6 +20,9 @@
 //   5. the disc law: the disc and the halo keep their present mass at every
 //      epoch, which is what keeps the gas-driven layers (nebulae, HII regions,
 //      open clusters) consistent with the field they live in
+//   6. E2's live clock: the quantum and its star-time price, drop-not-bank,
+//      the throttle, the hold at present day, the replay, and one end-to-end
+//      run whose steps are always whole quanta
 //
 // Output: experiments/logs/galaxy-evolution.json
 
@@ -34,7 +37,7 @@ const sampling = require('../src/math/sampling.js');
 
 const TYPES = galaxy.GALAXY_TYPES;
 const checks = [];
-const log = { version: '0.6 E1 the epoch tier', laws: {}, field: {} };
+const log = { version: '0.6 E1 the epoch tier + E2 the live clock', laws: {}, field: {} };
 
 function check(name, pass, detail) {
 	checks.push({ name, pass: !!pass, detail });
@@ -348,6 +351,138 @@ function sameFloats(a, b) {
 		discBreak === null, discBreak);
 	check('the spheroid moves before its window closes and is its reference self after',
 		windowBreak === null, windowBreak);
+}
+
+// --- 6. E2: the epoch's live clock ---------------------------------------
+// The clock that runs the epoch on the star-time axis, checked as the law the
+// page calls rather than as numbers read out of main.js: the quantum and its
+// star-time price, the drop-not-bank rule, the throttle, the hold at present
+// day, the replay, and one end-to-end run that can never jump more than one
+// step.
+{
+	check('the epoch quantum is the slider step and its price is the unit bridge',
+		galaxy.AGE_STEP === 0.1 && galaxy.EVOLVE_MYR_PER_STEP === galaxy.AGE_STEP * 1000,
+		{ step: galaxy.AGE_STEP, myrPerStep: galaxy.EVOLVE_MYR_PER_STEP });
+
+	// Whole quanta from the slider's floor reach its ceiling exactly and hold
+	// there: no float creep past AGE_MAX, and no step beyond it.
+	let age = galaxy.AGE_MIN;
+	let quanta = 0;
+	let gridBreak = null;
+	while (age < galaxy.AGE_MAX && quanta <= 1000) {
+		const next = galaxy.steppedAge(age);
+		const delta = next - age;
+		// A whole quantum, on the slider's grid, up to and including the step
+		// that lands on the ceiling: the grid is recomputed from the floor, so
+		// float accumulation cannot leave a remainder to cross.
+		const bad = !(delta > 0) || Math.abs(delta - galaxy.AGE_STEP) > 1e-12
+			|| next !== Math.min(galaxy.AGE_MAX, galaxy.AGE_MIN + galaxy.AGE_STEP * (quanta + 1));
+		if (bad) gridBreak = gridBreak || { age, next };
+		if (!(delta > 0)) break;
+		age = next;
+		quanta++;
+	}
+	check('whole quanta reach the present day exactly and hold there',
+		gridBreak === null && age === galaxy.AGE_MAX && quanta > 0
+		&& galaxy.steppedAge(galaxy.AGE_MAX) === galaxy.AGE_MAX
+		&& quanta === Math.round((galaxy.AGE_MAX - galaxy.AGE_MIN) / galaxy.AGE_STEP),
+		gridBreak || { age, quanta });
+
+	// The replay: a run ticked on at the end of the range starts over, because
+	// at present day there is nothing left to watch.
+	check('a run that starts at the end replays from the beginning',
+		galaxy.evolveStartAge(galaxy.AGE_MAX) === galaxy.AGE_MIN
+		&& galaxy.evolveStartAge(galaxy.AGE_MAX - galaxy.AGE_STEP / 2) === galaxy.AGE_MIN
+		&& galaxy.evolveStartAge(2) === 2 && galaxy.evolveStartAge(galaxy.AGE_MIN) === galaxy.AGE_MIN);
+
+	// One tick at a time. `time` is loop seconds and `lastAt` starts at
+	// -Infinity, which is the boot state: no rebuild has happened yet.
+	const state = { debt: 0, lastAt: -Infinity };
+	const INTERVAL = 0.35;
+	const belowCost = galaxy.evolveTick(state, 2, galaxy.EVOLVE_MYR_PER_STEP * 0.9, 0, INTERVAL) === 0;
+	check('a debt below the quantum does not step and is kept',
+		belowCost && state.debt === galaxy.EVOLVE_MYR_PER_STEP * 0.9, state);
+
+	const stepped = galaxy.evolveTick(state, 2, galaxy.EVOLVE_MYR_PER_STEP * 0.1, 0, INTERVAL);
+	check('a whole quantum steps exactly one Age step and clears the debt',
+		stepped === galaxy.steppedAge(2) && Math.abs(stepped - 2 - galaxy.AGE_STEP) < 1e-12
+		&& state.debt === 0 && state.lastAt === 0, { stepped, state });
+
+	// The debt is dropped, not banked: ten quanta of star time in one tick is
+	// still one step. Banking would turn a fast star clock (or a camera-coupled
+	// flight rate) into a multi-Gyr jump on the step that follows.
+	const burst = galaxy.evolveTick(state, 2, galaxy.EVOLVE_MYR_PER_STEP * 10, 1, INTERVAL);
+	check('a burst of star time advances one step, never more',
+		burst === galaxy.steppedAge(2) && state.debt === 0, { burst, state });
+
+	// The throttle holds a due step without losing it: the step lands the moment
+	// the loop can afford the rebuild, which is what makes the readout follow the
+	// field rather than the clock's wish.
+	const early = galaxy.evolveTick(state, 3, galaxy.EVOLVE_MYR_PER_STEP, 1 + INTERVAL * 0.5, INTERVAL);
+	const debtHeld = state.debt;
+	const late = galaxy.evolveTick(state, 3, 0, 1 + INTERVAL, INTERVAL);
+	check('a step due inside the interval waits with its debt intact, then lands',
+		early === 0 && debtHeld >= galaxy.EVOLVE_MYR_PER_STEP && late === galaxy.steppedAge(3),
+		{ early, late, debtHeld });
+
+	// At present day the clock stops rather than banking star time it can no
+	// longer spend.
+	const held = { debt: 0, lastAt: late === 0 ? -Infinity : state.lastAt };
+	const heldStep = galaxy.evolveTick(held, galaxy.AGE_MAX, galaxy.EVOLVE_MYR_PER_STEP * 5, 10, INTERVAL);
+	check('the run holds at present day and stops the clock',
+		heldStep === 0 && held.debt === 0, { heldStep, held });
+
+	// The run's own number: 60 fps frames at the slider's top rate, with the
+	// frame a step lands on paying the rebuild (0.67 s for a whole
+	// renderer.regenerate at 300k stars, measured on the 0.6 development box;
+	// only the wall time below depends on it). The loop clamps dt after such a
+	// frame, which is why the sim clock loses at most MAX_DT per step.
+	const loop = require('../src/core/loop.js');
+	const run = { debt: 0, lastAt: -Infinity };
+	const RATE = 99;                       // Myr/s, the slider's top rate
+	const FRAME = 1 / 60;
+	const REBUILD = 0.67;                  // s
+	let runAge = galaxy.AGE_MIN;
+	let runSteps = 0;
+	let starMyr = 0;
+	let wall = 0;
+	let maxJump = 0;
+	let dtSim = FRAME;
+	while (runAge < galaxy.AGE_MAX && wall < 3600) {
+		starMyr += RATE * dtSim;
+		const next = galaxy.evolveTick(run, runAge, RATE * dtSim, wall, INTERVAL);
+		if (next > 0) {
+			maxJump = Math.max(maxJump, next - runAge);
+			runAge = next;
+			runSteps++;
+			wall += REBUILD;
+			dtSim = Math.min(REBUILD, loop.MAX_DT);
+			continue;
+		}
+		wall += FRAME;
+		dtSim = FRAME;
+	}
+	check('a run reaches present day in whole quanta, never jumping more than one',
+		runAge === galaxy.AGE_MAX && runSteps === quanta && maxJump <= galaxy.AGE_STEP + 1e-9,
+		{ runAge, runSteps, quanta, maxJump });
+	check('every step costs a whole quantum of star time',
+		starMyr >= runSteps * galaxy.EVOLVE_MYR_PER_STEP, { starMyr, runSteps });
+
+	// The cadence's own number: a step is a full field re-sample, so what the
+	// interval protects is the sampler, not the model build.
+	const stepBuf = sampling.createBuffers(300000);
+	const costModel = galaxy.createGalaxy({ type: 'SBb', seed: 42, age: 2 });
+	sampling.sampleGalaxyStars(costModel, 42, 300000, stepBuf);
+	const t0 = process.hrtime.bigint();
+	sampling.sampleGalaxyStars(galaxy.modelAtAge(costModel, 2 + galaxy.AGE_STEP), 42, 300000, stepBuf);
+	const samplingMs = Number(process.hrtime.bigint() - t0) / 1e6;
+	log.evolve = {
+		stepGyr: galaxy.AGE_STEP, myrPerStep: galaxy.EVOLVE_MYR_PER_STEP,
+		steps: runSteps, starMyr, wallSeconds: wall, maxJump,
+		rate: RATE, rebuildSeconds: REBUILD, samplingMs,
+	};
+	console.log(`  ..   live run: ${runSteps} steps, ${(starMyr / 1000).toFixed(1)} Gyr of star time,`
+		+ ` ${(wall / 60).toFixed(1)} min of wall time, ${samplingMs.toFixed(0)} ms per re-sample`);
 }
 
 // --- Report -------------------------------------------------------------

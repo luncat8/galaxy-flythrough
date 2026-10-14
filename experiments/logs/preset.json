@@ -93,6 +93,14 @@
       "pass": true
     },
     {
+      "name": "the Evolve builtin is the same galaxy sent to its first light, running",
+      "pass": true
+    },
+    {
+      "name": "the live clock is described and serialized by name",
+      "pass": true
+    },
+    {
       "name": "switching to the Milky Way preset flies home with the figures on",
       "pass": true
     },

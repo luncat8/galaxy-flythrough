@@ -34,6 +34,11 @@ No framework, bundler, module loader, or runtime network connection is required.
 - Milky Way preset plus the Hubble type sequence: elliptical, lenticular, spiral, barred spiral, and irregular galaxies
 - Thin/thick discs, spiral arms, smooth spheroids, stellar halos, and a boxy/peanut 3D bar
 - Age-dependent stellar populations, luminosity, colour, giant branches, and white dwarfs
+- Epoch-dependent structure: the bulge/bar assembles, the arms follow the gas that is left and the
+  disc heats with the age of its stars — exactly the type table's present-day galaxy at the
+  reference epoch, and a younger, thinner, more gas-rich one before it
+- A live epoch clock: the galaxy ages with star time (one 0.1 Gyr step per 100 Myr of star time,
+  rebuilt at the field's own sampling cadence), with the epoch readout beside the Myr/s control
 - Three selectable movement models:
   - **classic** — closed-form bounded kinematic orbits; currently the most balanced default
   - **simple** — responsive friction-field integration
@@ -80,6 +85,8 @@ Other controls:
 - `G` — cycle galaxy type and rebuild the field
 - `P` — toggle constellation lines
 - `T` — pause/resume star time
+- the **Evolve with star time** checkbox — the galaxy's age runs with star time from 0.2 Gyr to
+  present day; the Age slider is the seek, and the epoch readout next to it shows the field's epoch
 - `V` — open/close the close-system schematic of the selected star
 - `B` — cycle the system view: schematic → delta-v map → delta-v rails
 - `[` / `]` — exposure
@@ -87,7 +94,7 @@ Other controls:
 - `Esc` — close the system view; release the pointer in fly mode
 - System panel `×` — exit the system view and close its controls; `Tab` hides both panels without exiting
 
-The settings panel opens at startup and exposes galaxy type, seed, age, star time, movement engine, pattern controls, tone mapping, and presets.
+The settings panel opens at startup and exposes galaxy type, seed, age, the live epoch clock, star time, movement engine, pattern controls, tone mapping, and presets.
 
 ## Ships, routes and autopilot (0.5.5, reviewed in 0.5.6)
 
@@ -134,6 +141,7 @@ Useful parameters include:
 | `type` | Galaxy type, such as `E4`, `Sc`, `SBb`, or `Irr` |
 | `seed` | Deterministic generation seed |
 | `age` | Frozen galaxy age in Gyr |
+| `evolve` | `1` runs the epoch with star time (from `0.2` Gyr, holding at present day); `0` freezes it |
 | `stars` | Procedural star budget |
 | `catalog` | Catalog star budget; `0` selects procedural-only rendering |
 | `engine` | `classic`, `simple`, `apocenter`, or a `+`-joined combination |

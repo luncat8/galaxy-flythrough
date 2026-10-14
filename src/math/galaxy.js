@@ -642,6 +642,65 @@
 		return model;
 	}
 
+	// ---- 0.6 E2: the epoch's live clock -------------------------------------
+	//
+	// E1 made the galaxy's structure a function of its own clock; this lets that
+	// clock run. While the toggle is on, the age advances on the star-time axis:
+	// the debt accrues by the same dt the stars integrate with, so T freezes both
+	// and the star-rate slider scales both. There is no epoch rate anywhere.
+	//
+	// The star clock is in Myr and the epoch in Gyr, so one Age-slider quantum
+	// costs AGE_STEP·1000 Myr of star time. That is the unit bridge, not a second
+	// rate. AGE_STEP is the slider's own step, so the readout, the slider and the
+	// field cannot disagree about where the galaxy is.
+	//
+	// The debt is dropped, not banked. A step is a full field re-sample (the epoch
+	// is packed geometry, E1b), so the field cannot follow anything faster than it
+	// can be drawn; banking would turn a fast star clock — the top slider rate, or
+	// a camera-coupled flight rate — into a multi-Gyr jump on the step after it.
+	// One applied step is never more than one quantum, which is what makes the
+	// visible evolution a sequence of epochs by construction.
+	const AGE_STEP = 0.1;              // Gyr, the Age slider's own step
+	const EVOLVE_MYR_PER_STEP = AGE_STEP * 1000;
+
+	// One quantum toward the present, on the slider's own grid (`AGE_MIN + k·AGE_STEP`),
+	// holding at AGE_MAX: nothing in the model is older than the universe. The grid is
+	// recomputed from the floor rather than accumulated, so whole quanta land on the
+	// ages the slider shows — an accumulated 0.2 + 133·0.1 stops one ulp short of the
+	// ceiling and would cost a second, pointless rebuild to cross it.
+	function steppedAge(age) {
+		const next = AGE_MIN + AGE_STEP * Math.round((age - AGE_MIN) / AGE_STEP + 1);
+		return next < AGE_MAX ? next : AGE_MAX;
+	}
+
+	// The age a live run starts from. At the end of the range there is nothing
+	// left to watch, so a run ticked on within one step of AGE_MAX replays from
+	// the beginning; anywhere else it continues from where the galaxy is.
+	function evolveStartAge(age) {
+		return age >= AGE_MAX - AGE_STEP ? AGE_MIN : age;
+	}
+
+	// One tick of the live clock. `state` is { debt, lastAt }: the star time
+	// accrued since the last applied step (Myr) and the loop time it happened at
+	// — the shell shares that second field with the Age slider's drag throttle,
+	// because a live step and a drag are the same rebuild. `interval` is that
+	// throttle. Returns the age to rebuild at, or 0 for no step this tick.
+	function evolveTick(state, age, dtStar, time, interval) {
+		state.debt += dtStar;
+		if (state.debt < EVOLVE_MYR_PER_STEP) return 0;
+		const next = steppedAge(age);
+		if (next <= age) {
+			// The run has reached the present day: the clock stops rather than
+			// banking star time it can no longer spend.
+			state.debt = 0;
+			return 0;
+		}
+		if (time - state.lastAt < interval) return 0;
+		state.debt = 0;
+		state.lastAt = time;
+		return next;
+	}
+
 	// Every age-derived population and structure fact, solved in one place at build
 	// and again after an override, so no consumer can hold a stale half of the clock.
 	function solvePopulationClock(model) {
@@ -1060,12 +1119,14 @@
 		DEFAULT_SEED, MILKY_WAY_TYPE, MILKY_WAY,
 		ANCHORS, TYPE_SPECS, GALAXY_TYPES, GALAXY_TYPE_CYCLE,
 		DISC_L_KPC, THICK_L_RATIO, THICK_H_RATIO, HALO_AMP_UNIT, YOUNG_OUTER_R_KPC, GAS_RICH_MIN,
-		GAS_NORMAL, AGE_REF, AGE_MIN, AGE_MAX, AGE_DEFAULT, FORMATION_WINDOW,
+		GAS_NORMAL, AGE_REF, AGE_MIN, AGE_MAX, AGE_DEFAULT, AGE_STEP, EVOLVE_MYR_PER_STEP,
+		FORMATION_WINDOW,
 		QUENCH_STAGE_MAX, QUENCH_TAU_MULT, TAU_SFH_MIN, HEAT_EXP, ARM_CONTRAST_MAX,
 		CLUMP_COUNT, CLUMP_BOOST, CLUMP_KFBM, CLUMP_SPAN_R, CLUMP_Z_RATIO, CLUMP_R_OVER_K,
 		interpAnchors, createGalaxy, createMilkyWay, modelAtAge, cycleGalaxyType, galaxyLabel, homeFor,
 		sfhCumulative, sfhSpanAt, sfhProgress, gasFractionAt, solvePopulationClock,
 		solveEpoch, applyEpoch, sfhMoment1, spheroidProgressAt,
+		steppedAge, evolveStartAge, evolveTick,
 		DENSITY_PARAMS_LAYOUT, GEOMETRY_GROUPS, GEOMETRY_KEY_FLOATS,
 		DENSITY_PARAMS_CLUMPS, DENSITY_PARAMS_CLUMP_FLOATS,
 		DENSITY_PARAMS_FLOATS, DENSITY_PARAMS_BYTES,

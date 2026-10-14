@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-14T06:51:27.190Z",
+  "date": "2026-10-14T07:55:26.527Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -64,8 +64,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 61,
-  "passed": 61,
+  "totalChecks": 63,
+  "passed": 63,
   "failed": 0,
   "checks": [
     {
@@ -141,6 +141,14 @@
       "detail": 1133
     },
     {
+      "name": "the live clock is wired: the toggle, the boot gate and the step path",
+      "pass": true
+    },
+    {
+      "name": "the epoch readout and the rebuild throttle are the shared ones",
+      "pass": true
+    },
+    {
       "name": "opening a panel releases pointer lock",
       "pass": true
     },
@@ -202,7 +210,7 @@
       "name": "GalaxyLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 56
+        "keys": 61
       }
     },
     {
@@ -424,6 +432,7 @@
         "seed": 7,
         "type": null,
         "age": 13.5,
+        "evolve": 1,
         "engine": "apocenter",
         "pattern": 1,
         "time": 5,
@@ -452,6 +461,7 @@
         "seed": 42,
         "type": null,
         "age": 13.5,
+        "evolve": 0,
         "engine": "classic",
         "pattern": 1,
         "time": 5,
@@ -480,6 +490,7 @@
         "seed": 42,
         "type": null,
         "age": 13.5,
+        "evolve": 0,
         "engine": "classic",
         "pattern": 1,
         "time": 5,

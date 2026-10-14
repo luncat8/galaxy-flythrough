@@ -1,5 +1,5 @@
 {
- "version": "0.6 E1 the epoch tier",
+ "version": "0.6 E1 the epoch tier + E2 the live clock",
  "laws": {
   "E0": [
    {
@@ -1284,6 +1284,17 @@
    "armContrast": 2
   }
  },
+ "evolve": {
+  "stepGyr": 0.1,
+  "myrPerStep": 100,
+  "steps": 133,
+  "starMyr": 13386.449999998265,
+  "wallSeconds": 211.11000000003392,
+  "maxJump": 0.10000000000000142,
+  "rate": 99,
+  "rebuildSeconds": 0.67,
+  "samplingMs": 336.923931
+ },
  "ageRange": [
   0.2,
   13.5
@@ -1302,8 +1313,8 @@
   0.25
  ],
  "types": 19,
- "totalChecks": 18,
- "passed": 18,
+ "totalChecks": 28,
+ "passed": 28,
  "failed": 0,
  "checks": [
   {
@@ -1399,6 +1410,94 @@
    "name": "the spheroid moves before its window closes and is its reference self after",
    "pass": true,
    "detail": null
+  },
+  {
+   "name": "the epoch quantum is the slider step and its price is the unit bridge",
+   "pass": true,
+   "detail": {
+    "step": 0.1,
+    "myrPerStep": 100
+   }
+  },
+  {
+   "name": "whole quanta reach the present day exactly and hold there",
+   "pass": true,
+   "detail": {
+    "age": 13.5,
+    "quanta": 133
+   }
+  },
+  {
+   "name": "a run that starts at the end replays from the beginning",
+   "pass": true
+  },
+  {
+   "name": "a debt below the quantum does not step and is kept",
+   "pass": true,
+   "detail": {
+    "debt": 0,
+    "lastAt": 1.35
+   }
+  },
+  {
+   "name": "a whole quantum steps exactly one Age step and clears the debt",
+   "pass": true,
+   "detail": {
+    "stepped": 2.1,
+    "state": {
+     "debt": 0,
+     "lastAt": 1.35
+    }
+   }
+  },
+  {
+   "name": "a burst of star time advances one step, never more",
+   "pass": true,
+   "detail": {
+    "burst": 2.1,
+    "state": {
+     "debt": 0,
+     "lastAt": 1.35
+    }
+   }
+  },
+  {
+   "name": "a step due inside the interval waits with its debt intact, then lands",
+   "pass": true,
+   "detail": {
+    "early": 0,
+    "late": 3.1000000000000005,
+    "debtHeld": 100
+   }
+  },
+  {
+   "name": "the run holds at present day and stops the clock",
+   "pass": true,
+   "detail": {
+    "heldStep": 0,
+    "held": {
+     "debt": 0,
+     "lastAt": 1.35
+    }
+   }
+  },
+  {
+   "name": "a run reaches present day in whole quanta, never jumping more than one",
+   "pass": true,
+   "detail": {
+    "runAge": 13.5,
+    "runSteps": 133,
+    "quanta": 133,
+    "maxJump": 0.10000000000000142
+   }
+  },
+  {
+   "name": "every step costs a whole quantum of star time",
+   "pass": true,
+   "detail": {
+    "starMyr": 13386.449999998265,
+    "runSteps": 133
+   }
   }
  ]
 }

@@ -90,6 +90,21 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		!!ageFn && /renderer\.regenerate\(model\)/.test(ageFn[0])
 		&& /initSimpleLandmarks\(\);/.test(ageFn[0]) && /resolveSet\(\);/.test(ageFn[0]),
 		ageFn ? ageFn[0].length : null);
+	// 0.6 E2: the epoch's live clock. The law (quantum, price, drop, hold,
+	// replay) is pinned numerically in galaxy-evolution-test.js — what cannot be
+	// run here is the wiring: the toggle, the boot gate and the loop's step path,
+	// which has to hand the tick the same dtStar the stars just integrated.
+	check('the live clock is wired: the toggle, the boot gate and the step path',
+		/id="galaxy-evolve"/.test(html) && /id="val-epoch"/.test(html)
+		&& /galaxyEvolve\.addEventListener\('change'/.test(main)
+		&& /const start = galaxy\.evolveStartAge\(model\.populations\.age\);/.test(main)
+		&& /if \(evolveOn\) \{\s*const evolved = galaxy\.evolveTick\(ageRebuild, model\.populations\.age, dtStar, time, AGE_REGEN_INTERVAL\);/.test(main)
+		&& /if \(evolved > 0\) regenerateAge\(evolved\);/.test(main)
+		&& /evolveOn \? galaxy\.evolveStartAge\(params\.age\) : params\.age/.test(main)
+		&& /galaxyAge\.step = galaxy\.AGE_STEP;/.test(main));
+	check('the epoch readout and the rebuild throttle are the shared ones',
+		/valEpoch\.textContent = formatAge\(model\.populations\.age\);/.test(main)
+		&& /time - ageRebuild\.lastAt >= AGE_REGEN_INTERVAL/.test(main));
 	check('opening a panel releases pointer lock',
 		/function releasePanelInput\(\) \{[\s\S]*?document\.exitPointerLock\(\);[\s\S]*?\}/.test(main)
 		&& /\} else \{\s*releasePanelInput\(\);/.test(main));
@@ -213,15 +228,16 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 	const main = require('../src/main.js');
 	check('main.js exposes its helpers without booting in Node',
 		typeof main.boot === 'function' && typeof main.readParams === 'function');
-	const parsed = main.readParams('?stars=5000&catalog=10000&seed=7&exposure=22&engine=apocenter');
+	const parsed = main.readParams('?stars=5000&catalog=10000&seed=7&exposure=22&engine=apocenter&evolve=1');
 	check('readParams reads every documented parameter including the apocenter engine',
 		parsed.stars === 5000 && parsed.catalogStars === 10000
-		&& parsed.seed === 7 && parsed.exposure === 22 && parsed.engine === 'apocenter', parsed);
+		&& parsed.seed === 7 && parsed.exposure === 22 && parsed.engine === 'apocenter'
+		&& parsed.evolve === 1, parsed);
 	const defaults = main.readParams('');
 	check('readParams falls back to the renderer defaults',
 		defaults.stars === global.window.StarRenderer.PROCEDURAL_STARS_DEFAULT
 		&& defaults.catalogStars === global.window.StarRenderer.CATALOG_BUDGET_DEFAULT
-		&& defaults.exposure === null, defaults);
+		&& defaults.exposure === null && defaults.evolve === 0, defaults);
 	const junk = main.readParams('?stars=abc&catalog=&seed=NaN');
 	check('readParams ignores non-numeric values',
 		junk.stars === global.window.StarRenderer.PROCEDURAL_STARS_DEFAULT

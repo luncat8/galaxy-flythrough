@@ -61,6 +61,16 @@
                         <input type="range" id="slider-star-time" min="-1" max="99" step="0.5" value="5">
                         <span id="val-star-time" class="menu-val">5 Myr/s</span>
                 </div>
+                <!-- The epoch's live clock (0.6 E2): while it runs, the star clock
+                     drives the galaxy's own clock — one 0.1 Gyr step per 100 Myr of
+                     star time, rebuilt no faster than the field samples (~0.7 s per
+                     step at 300k stars). The readout is the epoch the field was built
+                     at; a run ticked on at present day replays from 0.2 Gyr. -->
+                <div class="menu-row">
+                        <label for="galaxy-evolve" title="The galaxy ages with the star clock: one 0.1 Gyr step per 100 Myr of star time, rebuilt no faster than the field samples (~0.7 s per step at 300k stars). Ticked on at present day it replays from 0.2 Gyr; the Age slider below is the seek.">Evolve with star time</label>
+                        <input type="checkbox" id="galaxy-evolve">
+                        <span id="val-epoch" class="menu-val">13.5 Gyr</span>
+                </div>
                 <div class="menu-row">
                         <label for="slider-wave" title="Disc stars drift onto the spiral and stay. 0 is pure shear.">Wave damping</label>
                         <input type="range" id="slider-wave" min="0" max="1" step="0.05" value="0.6">
@@ -100,8 +110,9 @@
                         <input type="number" id="galaxy-seed" step="1" min="0" value="42">
                         <button id="galaxy-apply">Apply</button>
                 </div>
-                <!-- The epoch the galaxy is frozen at, not a time-lapse: dragging
-                     it regenerates the population (throttled, positions kept). -->
+                <!-- The epoch the galaxy is frozen at (0.6 E1); with the live clock
+                     below running it is the epoch the field was last built at.
+                     Dragging it regenerates the field (throttled). -->
                 <div class="menu-row">
                         <label for="galaxy-age">Age</label>
                         <input type="range" id="galaxy-age" min="0.2" max="13.5" step="0.1" value="13.5">
