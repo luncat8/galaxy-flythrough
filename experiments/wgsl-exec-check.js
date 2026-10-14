@@ -644,6 +644,79 @@ async function main() {
 	ocam[27] = 0;
 	ocam[44] = 0; ocam[45] = 0; ocam[46] = 0; ocam[47] = 0;
 
+	// --- 2i. The vertical column on the shipping WGSL (0.4.9) ---------------
+	// orbitPlane's second anchor: a disc/pattern star sweeps a plane parallel
+	// to the galactic one through its own birth height, so z is CARRIED, while
+	// a spheroidal star keeps the centred inclined plane and swings in z. The
+	// fixtures above all sit at z = 0, so this is the only executed check of
+	// the carry. The star is a disc star born off the plane at half the model's
+	// disc height, swept half a turn — exactly where the centred basis the law
+	// had before would have dropped it to z ≈ −0.35 (it put (qz/|q|)·cos θ in z
+	// and measured the column at 0.66-0.87 of the field's).
+	const vertDisc = new ArrayBuffer(records.RECORD_BYTES);
+	const vertDiscF = new Float32Array(vertDisc), vertDiscU = new Uint32Array(vertDisc);
+	vertDiscF[0] = 8.178 + 4.2; vertDiscF[1] = -1.7; vertDiscF[2] = 0.35;
+	vertDiscU[3] = ((records.FLAG_VISIBLE | (1 << 3)) << 16)
+		| (records.encodeAbsMag(4.83) << 8) | 4 | (orbit.encodeJitter(7, 11) << 24);
+	const vertPress = new ArrayBuffer(records.RECORD_BYTES);
+	const vertPressF = new Float32Array(vertPress), vertPressU = new Uint32Array(vertPress);
+	vertPressF[0] = 8.178 + 4.2; vertPressF[1] = -1.7; vertPressF[2] = 0.35;
+	vertPressU[3] = ((records.FLAG_VISIBLE | (3 << 3)) << 16)
+		| (records.encodeAbsMag(4.83) << 8) | 4 | (orbit.encodeJitter(7, 11) << 24);
+	const vertBinds = { 0: {
+		0: { uniform: orbitCamBytes },
+		1: vertDisc,
+		2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
+		3: thetaBytes,
+	} };
+	const vertPressBinds = { 0: {
+		0: { uniform: orbitCamBytes },
+		1: vertPress,
+		2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
+		3: thetaBytes,
+	} };
+	// No damping, so the azimuth is the plain differential rate: half a turn of
+	// the solar-circle disc rate at this radius.
+	const vertModel = {
+		centre: fixtureModel.centre,
+		dynamics: { ...fixtureModel.dynamics, omegaPattern: 0.041 },
+		spheroid: fixtureModel.spheroid,
+		truncation: { discHeight: 3 },
+	};
+	const vertR = Math.hypot(4.2, 1.7);
+	const vertHalf = Math.PI / (0.225 / vertR);
+	orbit.setWaveDamping(0);
+	ocam[44] = orbit.ENGINE_CLASSIC;
+	ocam[27] = vertHalf;
+	const vertGpu = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 0 }, vertBinds);
+	const vertCpu = new Float64Array(3);
+	orbit.orbitPosition(vertCpu, vertDiscF[0], vertDiscF[1], vertDiscF[2], orbit.FAMILY_DISC, 7, 11, vertHalf, vertModel);
+	const gpuZ = vertGpu.clipPos[2];
+	check('on-WGSL: a disc star carries its birth height through half a turn (0.4.9 anchor)',
+		Math.abs(gpuZ - vertCpu[2]) < 2e-3, { gpuZ, cpuZ: vertCpu[2], birthZ: 0.35 });
+	// The centred basis the law had before would read z = 0.35·cos(π) = −0.35
+	// here. What the height may still move by is the classic law's bounded
+	// vertical wobble, re-derived from the fixture's own lanes: the plane
+	// carries the height, the epicycle wobbles about it.
+	const wobbleRank = (11 + 0.5) / 16;
+	const wobbleKappa = Math.SQRT2 * (0.225 / Math.max(vertR, 0.5));
+	const wobbleAh = wobbleRank * 2 * 0.031 / wobbleKappa;
+	const wobbleAv = Math.min(orbit.VERTICAL_WOBBLE_RATIO * wobbleAh, 3 - 0.35);
+	check('on-WGSL: that height is the carried one — the only motion is the bounded wobble (< 2·av)',
+		Math.abs(gpuZ - 0.35) <= 2 * wobbleAv + 1e-3 && Math.abs(gpuZ - 0.35) < Math.abs(gpuZ + 0.35),
+		{ gpuZ, wobbleBound: 2 * wobbleAv, centredWouldBe: -0.35 });
+	ocam[44] = orbit.ENGINE_CLASSIC;
+	const pressGpu = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 0 }, vertPressBinds);
+	const pressCpu = new Float64Array(3);
+	orbit.orbitPosition(pressCpu, vertPressF[0], vertPressF[1], vertPressF[2], orbit.FAMILY_PRESSURE, 7, 11, vertHalf, vertModel);
+	check('on-WGSL: a spheroidal star still sweeps its centred plane (z swings, matches CPU)',
+		Math.abs(pressGpu.clipPos[2] - pressCpu[2]) < 2e-3 && Math.abs(pressGpu.clipPos[2] - 0.35) > 0.05,
+		{ gpuZ: pressGpu.clipPos[2], cpuZ: pressCpu[2], birthZ: 0.35 });
+	ocam[27] = 0;
+	ocam[44] = 0; ocam[45] = 0; ocam[46] = 0; ocam[47] = 0;
+
 	// --- 2g. The simple-step kernel runs on the shipping WGSL --------------
 	// The real compute entry, one workgroup of 64, driven invocation by
 	// invocation through debugWorkgroup: WgslDebug runs exactly the invocation

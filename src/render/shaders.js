@@ -563,17 +563,64 @@ fn dampedDiscTheta(theta0: f32, thetaArm: f32, omega: f32, omegaP: f32, time: f3
         return TAU * fract((advance + omegaP * time) * INV_TAU);
 }
 
-const ORBIT_INCLINATION_DISC: f32 = 0.045;
+// Deterministic orbital inclinations for the spheroidal families only: a disc
+// or pattern star sweeps a horizontal plane (orbitPlane) and has no inclination
+// to scatter. Mirrors orbit.orbitInclination.
 const ORBIT_INCLINATION_BAR: f32 = 0.12;
 const ORBIT_INCLINATION_PRESSURE: f32 = 0.30;
 
 fn orbitInclination(family: u32, phase: u32, amplitude: u32) -> f32 {
-        let rank: f32 = (f32(amplitude) + 0.5) * 0.0625;
-        let direction: f32 = sin(f32(phase) * 0.392699081699);
-        var maximum: f32 = ORBIT_INCLINATION_DISC;
+        var maximum: f32 = 0.0;
         if (family == FAMILY_BAR) { maximum = ORBIT_INCLINATION_BAR; }
         else if (family == FAMILY_PRESSURE) { maximum = ORBIT_INCLINATION_PRESSURE; }
+        if (maximum == 0.0) { return 0.0; }
+        let rank: f32 = (f32(amplitude) + 0.5) * 0.0625;
+        let direction: f32 = sin(f32(phase) * 0.392699081699);
         return maximum * rank * direction;
+}
+
+// Mirrors orbit.orbitPlane: the sweep basis, with two anchors by family.
+//   * disc/pattern sweep a plane parallel to the galactic plane through the
+//     star's own birth height, so the height is carried rather than rotated
+//     into an oscillation about the plane — the centred basis put
+//     (qz/|q|)·cos(theta) into z and measured 0.66-0.87 of the field's column
+//     (movement-density-test.js, plan follow-up 2a). A rigid pattern sweeps a
+//     cylinder for the same reason.
+//   * bar/pressure keep the centred inclined plane the per-star basis exists
+//     for; a star exactly on the axis keeps it too (no horizontal plane).
+struct OrbitPlane {
+        e0: vec3f,
+        e1: vec3f,
+        nrm: vec3f,
+        anchor: f32,
+        carry: f32,
+};
+
+fn orbitPlane(q: vec3f, family: u32, phaseBits: u32, ampBits: u32) -> OrbitPlane {
+        var pl: OrbitPlane;
+        let xy: f32 = length(q.xy);
+        if ((family == FAMILY_DISC || family == FAMILY_PATTERN) && xy > 1e-9) {
+                let invXy: f32 = 1.0 / xy;
+                pl.e0 = vec3f(q.x * invXy, q.y * invXy, 0.0);
+                pl.e1 = vec3f(-q.y * invXy, q.x * invXy, 0.0);
+                pl.nrm = vec3f(0.0, 0.0, 1.0);
+                pl.anchor = xy;
+                pl.carry = q.z;
+                return pl;
+        }
+        let radius: f32 = length(q);
+        var e0: vec3f = vec3f(1.0, 0.0, 0.0);
+        if (radius > 1e-9) { e0 = q / radius; }
+        var az: vec3f = vec3f(0.0, 1.0, 0.0);
+        if (xy > 1e-9) { az = vec3f(-q.y / xy, q.x / xy, 0.0); }
+        let eZ: vec3f = cross(e0, az);
+        let inc: f32 = orbitInclination(family, phaseBits, ampBits);
+        pl.e0 = e0;
+        pl.e1 = az * cos(inc) + eZ * sin(inc);
+        pl.nrm = cross(e0, pl.e1);
+        pl.anchor = radius;
+        pl.carry = 0.0;
+        return pl;
 }
 
 fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, dynB: vec4f, waveA: vec4f, waveB: vec4f) -> vec3f {
@@ -619,24 +666,16 @@ fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, d
                 wz = a * (sinTau(phase + HALF_PI + mean * time) - sinPhV);
         }
 
-        // Each star has a deterministic orbital plane through the galaxy's
-        // centre point. This avoids making all 3-D stars rotate around one
-        // infinite galaxy-axis line.
-        let radius: f32 = length(q);
-        var e0: vec3f = vec3f(1.0, 0.0, 0.0);
-        if (radius > 1e-9) { e0 = q / radius; }
-        let xy: f32 = length(q.xy);
-        var az: vec3f = vec3f(0.0, 1.0, 0.0);
-        if (xy > 1e-9) { az = vec3f(-q.y / xy, q.x / xy, 0.0); }
-        let eZ: vec3f = cross(e0, az);
-        let inc: f32 = orbitInclination(family, phaseBits, ampBits);
-        let ci: f32 = cos(inc); let si: f32 = sin(inc);
-        let e1: vec3f = az * ci + eZ * si;
-        let normal: vec3f = cross(e0, e1);
-        let radial: vec3f = e0 * cos(theta) + e1 * sin(theta);
-        let orbitRadius: f32 = select(0.0, radius + wr, radius > 1e-9);
-        let normalWobble: f32 = select(0.0, wz, radius > 1e-9);
-        return centre + orbitRadius * radial + normalWobble * normal;
+        // Every star gets its own sweep basis (orbitPlane): the spheroidal
+        // families keep a plane through the centre point, which avoids making
+        // all 3-D stars rotate around one infinite galaxy-axis line, while a
+        // disc/pattern star sweeps the plane parallel to the galactic one
+        // through its own birth height.
+        let pl: OrbitPlane = orbitPlane(q, family, phaseBits, ampBits);
+        let radial: vec3f = pl.e0 * cos(theta) + pl.e1 * sin(theta);
+        let orbitRadius: f32 = select(0.0, pl.anchor + wr, pl.anchor > 1e-9);
+        let normalWobble: f32 = select(0.0, wz, pl.anchor > 1e-9);
+        return centre + orbitRadius * radial + normalWobble * pl.nrm + vec3f(0.0, 0.0, pl.carry);
 }
 
 // The simple reconstruction's eccentricity, mirrored from orbit.simpleEccMax:
@@ -686,7 +725,11 @@ fn apocenterPosition(p: vec3f, birth: vec3f, packed: u32, centre: vec3f, time: f
         let sinF: f32 = -sin(delta0);
         let E0: f32 = atan2(root * sinF, ecc + cosF);
         let M0: f32 = E0 - ecc * sin(E0);
-        let a: f32 = radius * (1.0 + ecc * cosF) / (1.0 - ecc * ecc);
+        // The plane's own anchor radius, so the ellipse passes through the birth
+        // point: a centred plane sweeps the 3-D radius, a horizontal one sweeps
+        // the birth cylinder and carries the height beside it.
+        let pl: OrbitPlane = orbitPlane(q, family, phaseBits, ampBits);
+        let a: f32 = pl.anchor * (1.0 + ecc * cosF) / (1.0 - ecc * ecc);
         var localOmega: f32 = pressureClock(dynA, R);
         if (dynA.x > 0.0) { localOmega = dynA.x / max(R, dynA.y); }
         let phaseOffset: f32 = waveB.w;
@@ -699,47 +742,33 @@ fn apocenterPosition(p: vec3f, birth: vec3f, packed: u32, centre: vec3f, time: f
         let nu: f32 = atan2(root * sin(E), cos(E) - ecc);
         let orbitRadius: f32 = a * (1.0 - ecc * cos(E));
         let delta: f32 = delta0 + dynA.z * time + phaseOffset;
-        let e0: vec3f = q / radius;
-        let xy: f32 = length(q.xy);
-        var az: vec3f = vec3f(0.0, 1.0, 0.0);
-        if (xy > 1e-9) { az = vec3f(-q.y / xy, q.x / xy, 0.0); }
-        let eZ: vec3f = cross(e0, az);
-        let inc: f32 = orbitInclination(family, phaseBits, ampBits);
-        let e1: vec3f = az * cos(inc) + eZ * sin(inc);
-        let eP: vec3f = e0 * cos(delta) + e1 * sin(delta);
-        let eQ: vec3f = -e0 * sin(delta) + e1 * cos(delta);
-        return centre + orbitRadius * (eP * cos(nu) + eQ * sin(nu));
+        let eP: vec3f = pl.e0 * cos(delta) + pl.e1 * sin(delta);
+        let eQ: vec3f = -pl.e0 * sin(delta) + pl.e1 * cos(delta);
+        return centre + orbitRadius * (eP * cos(nu) + eQ * sin(nu)) + vec3f(0.0, 0.0, pl.carry);
 }
 
 // 0.4.5 simple engine: reconstruct from the integrated azimuth. Mirrors
 // orbit.simplePositionFromTheta. Family-agnostic except for the eccentric
-// rho, which only disc/pattern carry; the full centre-crossing birth vector
-// sets the orbital plane.
+// rho, which only disc/pattern carry; orbitPlane sets the sweep basis — the
+// horizontal plane through the birth height for disc/pattern, the centred
+// inclined plane for the spheroidal families.
 fn simplePosition(p: vec3f, packed: u32, theta: f32, centre: vec3f, eccMax: f32) -> vec3f {
         let flags: u32 = (packed >> 16u) & 0xFFu;
         let family: u32 = (flags >> 3u) & 3u;
         let phaseBits: u32 = (packed >> 24u) & 15u;
         let ampBits: u32 = (packed >> 28u) & 15u;
         let q: vec3f = p - centre;
-        let radius: f32 = length(q);
-        var e0: vec3f = vec3f(1.0, 0.0, 0.0);
-        if (radius > 1e-9) { e0 = q / radius; }
-        let xy: f32 = length(q.xy);
-        var az: vec3f = vec3f(0.0, 1.0, 0.0);
-        if (xy > 1e-9) { az = vec3f(-q.y / xy, q.x / xy, 0.0); }
-        let eZ: vec3f = cross(e0, az);
-        let inc: f32 = orbitInclination(family, phaseBits, ampBits);
-        let e1: vec3f = az * cos(inc) + eZ * sin(inc);
+        let pl: OrbitPlane = orbitPlane(q, family, phaseBits, ampBits);
         let theta0: f32 = atan2(q.y, q.x);
         let delta: f32 = theta - theta0;
-        var rho: f32 = radius;
-        if ((family == FAMILY_DISC || family == FAMILY_PATTERN) && eccMax > 0.0 && radius > 0.0) {
+        var rho: f32 = pl.anchor;
+        if ((family == FAMILY_DISC || family == FAMILY_PATTERN) && eccMax > 0.0 && rho > 0.0) {
                 let eccU: f32 = (f32(ampBits) + 0.5) * 0.0625;
                 let peri: f32 = f32(phaseBits) * 0.392699081699;
-                rho = radius * (1.0 + eccMax * eccU * cos(theta - peri));
+                rho = pl.anchor * (1.0 + eccMax * eccU * cos(theta - peri));
         }
-        let radial: vec3f = e0 * cos(delta) + e1 * sin(delta);
-        return centre + rho * radial;
+        let radial: vec3f = pl.e0 * cos(delta) + pl.e1 * sin(delta);
+        return centre + rho * radial + vec3f(0.0, 0.0, pl.carry);
 }
 `;
 

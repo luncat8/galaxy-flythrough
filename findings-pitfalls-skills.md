@@ -4,6 +4,53 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-10-14 — A centred orbit plane contracts a column; the fix is an anchor choice, and it wants one extracted basis
+
+Follow-up 2a (the vertical column) turned out to be one decision, not a calibration.
+The measurement said the column was *compressed*, never heated, which rules out any
+amplitude retune: heating would raise `mean|z|`. A centred plane puts
+`(qz/|q|)·cos α` into z, so the birth height decays with the orbit and the time
+average is `mean|cos α| ≈ 0.64` of the birth column no matter what the inclination
+does — an oscillation *about the plane* cannot be the fixed point of a steady-state
+column. Only carrying the height can.
+
+So the anchor is a per-family choice, stated once: **disc and pattern stars sweep a
+plane parallel to the galactic plane through their own birth height** (basis =
+radial/azimuthal unit pair, normal = +z, `carry = qz`), and **bar/pressure keep the
+centred inclined plane**, which is what the per-star basis was introduced for. The
+vertical life a disc star keeps is the epicycle's bounded `av` wobble, which lifts
+`mean|z|` by 3.7–7.6% (it is the only reason the classic lane is not exactly 1.000).
+A rigid pattern belongs on the horizontal anchor too: a pattern seat sweeps a
+cylinder, so the old centred circle was wrong for it in a second, visible way.
+
+Three techniques worth reusing:
+
+- **One basis function, mirrored once.** The plane was built four times on the CPU
+  (`orbitPosition`, `apocenterPosition`, `simplePositionFromTheta`,
+  `simpleLandmarkPosition`) and three times in WGSL. Extracting `orbit.orbitPlane`
+  (writing `e0/e1/nrm`, the sweep radius and the carried height into a shared
+  scratch object) plus `fn orbitPlane` returning a struct turned the change into one
+  edit per side and made a future drift impossible — the same argument as the
+  channel-map one, for geometry.
+- **A re-anchored ellipse must re-derive its scale from the new anchor.** The guided
+  ellipse's semi-major axis came from the 3-D radius; with a horizontal plane that
+  leaves the ellipse 0.6 pc off the birth point for ever, and force 0 stops
+  conserving the birth radius. `a = pl.anchor·(1 + e·cosF)/(1 − e²)` fixes both, and
+  the force-0 pin catches it if someone reverts it.
+- **A gate built for a known deviation has to be rewritten, not loosened, when the
+  deviation is fixed.** `movement-density-test.js` had the vertical column pinned at
+  a 0.06 band with `mean|z|` gated to [0.6, 0.9] — a band that *requires* the bug.
+  The fix replaced it with plan §1.4's own 3%-per-bin budget, a [0.95, 1.10] mean
+  band, and [0.95, 1.01] on the lanes that carry exactly (no classic wobble).
+  Leaving the old pin in place would have failed the build on the fixed build.
+
+Also: `wgsl-exec`'s orbit fixtures all sit at z = 0, so the shipped shader had never
+executed the vertical branch. Adding a z = 0.35 disc star swept half a turn (and a
+pressure star that still swings) is what makes the WGSL side of this claim executed
+rather than mirrored-in-text.
+
+---
+
 ## 2026-10-13 — A plan's worked example is a byte-level spec: read the column widths off it and pin it in a test
 
 The §6.6 readout example carries the format the prose only describes: `288.00 M⊕` says the

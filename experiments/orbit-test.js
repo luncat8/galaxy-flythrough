@@ -493,35 +493,48 @@ function orbitPositionF32(px, py, pz, packed, cx, time, dynA, dynB, waveA, waveB
 		wz = fr(a * fr(sinTauF(fr(phase + fr(1.57079632679) + mean * time)) - sinPhV));
 	}
 	const radius = fr(Math.sqrt(fr(fr(qx * qx) + fr(qy * qy) + fr(qz * qz))));
-	const invRadius = radius > 1e-9 ? fr(1 / radius) : 0;
-	const e0x = radius > 1e-9 ? fr(qx * invRadius) : 1;
-	const e0y = radius > 1e-9 ? fr(qy * invRadius) : 0;
-	const e0z = radius > 1e-9 ? fr(qz * invRadius) : 0;
 	const xy = fr(Math.sqrt(fr(fr(qx * qx) + fr(qy * qy))));
-	const azx = xy > 1e-9 ? fr(-qy / xy) : 0;
-	const azy = xy > 1e-9 ? fr(qx / xy) : 1;
-	const ezx = fr(-e0z * azy), ezy = fr(e0z * azx), ezz = fr(fr(e0x * azy) - fr(e0y * azx));
-	const rankIncl = fr(fr(amp + 0.5) / 16);
-	const direction = fr(Math.sin(fr(fr(phase / fr(6.28318530718)) * fr(6.28318530718))));
-	const maxInc = family === 2 ? 0.12 : family === 3 ? 0.30 : 0.045;
-	const inc = fr(fr(maxInc * rankIncl) * direction);
-	const ci = fr(Math.cos(inc)), si = fr(Math.sin(inc));
-	const e1x = fr(fr(azx * ci) + fr(ezx * si));
-	const e1y = fr(fr(azy * ci) + fr(ezy * si));
-	const e1z = fr(ezz * si);
-	const nx = fr(fr(e0y * e1z) - fr(e0z * e1y));
-	const ny = fr(fr(e0z * e1x) - fr(e0x * e1z));
-	const nz = fr(fr(e0x * e1y) - fr(e0y * e1x));
+	// orbitPlane: disc/pattern sweep a horizontal plane through the birth
+	// height (anchor = the birth cylinder, carry = qz); bar/pressure keep the
+	// centred inclined plane (anchor = the 3-D radius, carry = 0).
+	let e0x, e0y, e0z, e1x, e1y, e1z, nx, ny, nz, anchor, carry;
+	if ((family === 1 || family === 0) && xy > 1e-9) {
+		const invXy = fr(1 / xy);
+		e0x = fr(qx * invXy); e0y = fr(qy * invXy); e0z = 0;
+		e1x = fr(-qy * invXy); e1y = fr(qx * invXy); e1z = 0;
+		nx = 0; ny = 0; nz = 1;
+		anchor = xy; carry = qz;
+	} else {
+		const invRadius = radius > 1e-9 ? fr(1 / radius) : 0;
+		e0x = radius > 1e-9 ? fr(qx * invRadius) : 1;
+		e0y = radius > 1e-9 ? fr(qy * invRadius) : 0;
+		e0z = radius > 1e-9 ? fr(qz * invRadius) : 0;
+		const azx = xy > 1e-9 ? fr(-qy / xy) : 0;
+		const azy = xy > 1e-9 ? fr(qx / xy) : 1;
+		const ezx = fr(-e0z * azy), ezy = fr(e0z * azx), ezz = fr(fr(e0x * azy) - fr(e0y * azx));
+		const rankIncl = fr(fr(amp + 0.5) / 16);
+		const direction = fr(Math.sin(fr(fr(phase / fr(6.28318530718)) * fr(6.28318530718))));
+		const maxInc = family === 2 ? 0.12 : family === 3 ? 0.30 : 0;
+		const inc = fr(fr(maxInc * rankIncl) * direction);
+		const ci = fr(Math.cos(inc)), si = fr(Math.sin(inc));
+		e1x = fr(fr(azx * ci) + fr(ezx * si));
+		e1y = fr(fr(azy * ci) + fr(ezy * si));
+		e1z = fr(ezz * si);
+		nx = fr(fr(e0y * e1z) - fr(e0z * e1y));
+		ny = fr(fr(e0z * e1x) - fr(e0x * e1z));
+		nz = fr(fr(e0x * e1y) - fr(e0y * e1x));
+		anchor = radius; carry = 0;
+	}
 	const ct = fr(Math.cos(theta)), st = fr(Math.sin(theta));
 	const rx = fr(fr(e0x * ct) + fr(e1x * st));
 	const ry = fr(fr(e0y * ct) + fr(e1y * st));
 	const rz = fr(fr(e0z * ct) + fr(e1z * st));
-	const orbitRadius = radius > 1e-9 ? fr(radius + wr) : 0;
-	const normalWobble = radius > 1e-9 ? wz : 0;
+	const orbitRadius = anchor > 1e-9 ? fr(anchor + wr) : 0;
+	const normalWobble = anchor > 1e-9 ? wz : 0;
 	return [
 		fr(fr(cx) + fr(fr(orbitRadius * rx) + fr(normalWobble * nx))),
 		fr(fr(0) + fr(fr(orbitRadius * ry) + fr(normalWobble * ny))),
-		fr(fr(0) + fr(fr(orbitRadius * rz) + fr(normalWobble * nz))),
+		fr(fr(0) + fr(fr(orbitRadius * rz) + fr(normalWobble * nz) + carry)),
 	];
 }
 function apocenterPositionF32(px, py, pz, packed, centre, time, dynA, waveA, waveB, engine) {
@@ -552,7 +565,30 @@ function apocenterPositionF32(px, py, pz, packed, centre, time, dynA, waveA, wav
 	const cosF = fr(Math.cos(delta0)), sinF = fr(-Math.sin(delta0));
 	const E0 = fr(Math.atan2(fr(root * sinF), fr(ecc + cosF)));
 	const M0 = fr(E0 - fr(ecc * fr(Math.sin(E0))));
-	const a = fr(fr(radius * fr(1 + fr(ecc * cosF))) / fr(1 - fr(ecc * ecc)));
+	// orbitPlane: disc/pattern sweep a horizontal plane through the birth
+	// height (anchor = the birth cylinder, carry = qz); bar/pressure keep the
+	// centred inclined plane (anchor = the 3-D radius, carry = 0). `a` reads the
+	// anchor so the ellipse passes through the birth point.
+	const xy = fr(Math.hypot(qx, qy));
+	let e0x, e0y, e0z, e1x, e1y, e1z, anchor, carry;
+	if ((family === 1 || family === 0) && xy > 1e-9) {
+		const invXy = fr(1 / xy);
+		e0x = fr(qx * invXy); e0y = fr(qy * invXy); e0z = 0;
+		e1x = fr(-qy * invXy); e1y = fr(qx * invXy); e1z = 0;
+		anchor = xy; carry = qz;
+	} else {
+		const invRadius = fr(1 / radius);
+		e0x = fr(qx * invRadius); e0y = fr(qy * invRadius); e0z = fr(qz * invRadius);
+		const azx = xy > 1e-9 ? fr(-qy / xy) : 0, azy = xy > 1e-9 ? fr(qx / xy) : 1;
+		const ezx = fr(-e0z * azy), ezy = fr(e0z * azx), ezz = fr(fr(e0x * azy) - fr(e0y * azx));
+		const phase = fr(phaseBits * fr(0.392699081699));
+		const incMax = family === 2 ? 0.12 : family === 3 ? 0.30 : 0;
+		const inc = fr(fr(incMax * rank) * fr(Math.sin(phase)));
+		const ci = fr(Math.cos(inc)), si = fr(Math.sin(inc));
+		e1x = fr(fr(azx * ci) + fr(ezx * si)), e1y = fr(fr(azy * ci) + fr(ezy * si)), e1z = fr(ezz * si);
+		anchor = radius; carry = 0;
+	}
+	const a = fr(fr(anchor * fr(1 + fr(ecc * cosF))) / fr(1 - fr(ecc * ecc)));
 	const localOmega = dynA[0] > 0 ? fr(dynA[0] / fr(Math.max(R, dynA[1])))
 		: fr(fr(0.05) / fr(Math.max(fr(Math.pow(fr(Math.max(R, 0.1)), 1.5)), 0.01)));
 	const meanRaw = fr(M0 + fr(fr(localOmega - dynA[2]) * fr(time)) - waveB[3]);
@@ -562,22 +598,13 @@ function apocenterPositionF32(px, py, pz, packed, centre, time, dynA, waveA, wav
 	const nu = fr(Math.atan2(fr(root * fr(Math.sin(E))), fr(Math.cos(E) - ecc)));
 	const orbitRadius = fr(a * fr(1 - fr(ecc * fr(Math.cos(E)))));
 	const delta = fr(fr(delta0 + fr(dynA[2] * fr(time))) + waveB[3]);
-	const e0x = fr(qx / radius), e0y = fr(qy / radius), e0z = fr(qz / radius);
-	const xy = fr(Math.hypot(qx, qy));
-	const azx = xy > 1e-9 ? fr(-qy / xy) : 0, azy = xy > 1e-9 ? fr(qx / xy) : 1;
-	const ezx = fr(-e0z * azy), ezy = fr(e0z * azx), ezz = fr(fr(e0x * azy) - fr(e0y * azx));
-	const phase = fr(phaseBits * fr(0.392699081699));
-	const incMax = family === 2 ? 0.12 : family === 3 ? 0.30 : 0.045;
-	const inc = fr(fr(incMax * rank) * fr(Math.sin(phase)));
-	const ci = fr(Math.cos(inc)), si = fr(Math.sin(inc));
-	const e1x = fr(fr(azx * ci) + fr(ezx * si)), e1y = fr(fr(azy * ci) + fr(ezy * si)), e1z = fr(ezz * si);
 	const cd = fr(Math.cos(delta)), sd = fr(Math.sin(delta)), cv = fr(Math.cos(nu)), sv = fr(Math.sin(nu));
 	const px1 = fr(fr(e0x * cd) + fr(e1x * sd)), py1 = fr(fr(e0y * cd) + fr(e1y * sd)), pz1 = fr(fr(e0z * cd) + fr(e1z * sd));
 	const qpx = fr(fr(-e0x * sd) + fr(e1x * cd)), qpy = fr(fr(-e0y * sd) + fr(e1y * cd)), qpz = fr(fr(-e0z * sd) + fr(e1z * cd));
 	return [
 		fr(centre[0] + fr(orbitRadius * fr(fr(px1 * cv) + fr(qpx * sv)))),
 		fr(centre[1] + fr(orbitRadius * fr(fr(py1 * cv) + fr(qpy * sv)))),
-		fr(centre[2] + fr(orbitRadius * fr(fr(pz1 * cv) + fr(qpz * sv)))),
+		fr(centre[2] + fr(orbitRadius * fr(fr(pz1 * cv) + fr(qpz * sv))) + carry),
 	];
 }
 
@@ -945,15 +972,40 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 		{ lane: Array.from(E) });
 	orbit.setEngine(savedEngine);
 
-	// Vertex mirror: the azimuth turns in the star's own centre-crossing orbital
-	// plane, so spherical galactocentric radius (not birth z) is conserved.
-	orbit.simpleLandmarksInit(new Float64Array([MW.centre.x + 8.178, 0, 0.1]), new Uint8Array([5]), 1, MW);
-	const thSun = Math.atan2(0 - 0, MW.centre.x + 8.178 - MW.centre.x);
-	const birthRadius = Math.hypot(8.178, 0.1);
+	// Vertex mirror: the sweep basis is orbitPlane's. A disc star turns in the
+	// plane parallel to the galactic one through its own birth height, so it
+	// conserves the birth CYLINDER and carries the height (0.4.9: rotating a
+	// centred plane put (qz/|q|)·cos(theta) into z and measured the field's
+	// column at 0.66-0.87). A spheroidal star keeps the centred inclined plane,
+	// where the spherical radius is the conserved quantity.
+	const cylBirth = Math.hypot(8.178, 0);
+	const sphBirth = Math.hypot(-3, 2, 0.5);
 	orbit.simplePositionFromTheta(out, Math.PI / 2, MW.centre.x + 8.178, 0, 0.1, 0, orbit.FAMILY_DISC, Ps.eccMax, MW);
-	check('the 3-D reconstruction rotates in its centre-crossing plane and conserves radius',
-		Math.abs(Math.hypot(out[0] - MW.centre.x, out[1], out[2]) - birthRadius) < 1e-9,
-		{ pos: [out[0], out[1], out[2]], thSun, birthRadius });
+	const discCyl = Math.hypot(out[0] - MW.centre.x, out[1]);
+	const discZ = out[2];
+	orbit.simplePositionFromTheta(out, Math.PI / 2, MW.centre.x - 3, 2, 0.5, 0, orbit.FAMILY_PRESSURE, Ps.eccMax, MW);
+	const sphNow = Math.hypot(out[0] - MW.centre.x, out[1], out[2]);
+	check('the reconstruction conserves the birth cylinder and carries the height for a disc star',
+		Math.abs(discCyl - cylBirth) < 1e-9 && Math.abs(discZ - 0.1) < 1e-9,
+		{ cyl: discCyl, birthCyl: cylBirth, z: discZ });
+	check('a spheroidal star still sweeps its centred plane (spherical radius conserved)',
+		Math.abs(sphNow - sphBirth) < 1e-9,
+		{ sph: sphNow, birth: sphBirth });
+	// The height is carried at every azimuth, not only at the quarter turn, and
+	// the sweep stays in the horizontal plane: the horizontal distance is the
+	// law's own eccentric rho (the vertical life an epicycle gives a disc star
+	// is the classic law's bounded av, not this plane's geometry).
+	let carried = true, planar = true;
+	const eccU = (0 + 0.5) / 16, peri = 0;
+	for (let k = 0; k < 24; k++) {
+		const th = k * Math.PI / 12;
+		orbit.simplePositionFromTheta(out, th, MW.centre.x + 8.178, 0, 0.1, 0, orbit.FAMILY_DISC, Ps.eccMax, MW);
+		const rho = cylBirth * (1 + Ps.eccMax * eccU * Math.cos(th - peri));
+		if (Math.abs(out[2] - 0.1) > 1e-9) carried = false;
+		if (Math.abs(Math.hypot(out[0] - MW.centre.x, out[1]) - rho) > 1e-9) planar = false;
+	}
+	check('the disc star keeps its birth height and sweeps its own plane at every azimuth',
+		carried && planar, { carried, planar });
 
 	// The CPU landmark mirror steps the same Euler the GPU dispatches, so it
 	// must agree with the reference step bit-for-bit — labels and picks ride it.
@@ -1315,8 +1367,10 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 		{ pos: Array.from(recOut), moved: dist3(recOut, [bx, by, bz]), toLaw: dist3(recOut, refOut), approx: approxClassic });
 
 	// The jitter byte is not decoration: phase/amplitude change the result.
-	const packed2 = (packed & 0x00FFFFFF) | (orbit.encodeJitter(9, 14) << 24);
+	const packedDisc = (packed & 0x0000FFFF) | (orbit.flagsWithFamily(records.FLAG_VISIBLE, orbit.FAMILY_DISC) << 16);
+	const packed2 = packedDisc | (orbit.encodeJitter(9, 14) << 24);
 	orbit.engineRecordPosition(recOut, bx, by, bz, packed2, T, model);
+	orbit.orbitPosition(refOut, bx, by, bz, orbit.FAMILY_DISC, 0, 0, T, model);
 	check('record smoke: the packed phase/amplitude nibbles enter the classic law',
 		dist3(recOut, refOut) > 1e-6, dist3(recOut, refOut));
 

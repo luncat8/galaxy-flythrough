@@ -298,20 +298,82 @@ function sinTau(arg) {
 	return Math.sin(TAU * (x - Math.floor(x)));
 }
 
-// Small, deterministic orbital inclinations.  The inclination is derived from
-// the record's existing jitter byte, so no buffer expansion or per-star random
-// state is needed.  Thin-disc stars stay close to the plane; bar/pressure stars
-// get a wider spread.  The important distinction is that each plane is anchored
-// at the common centre point, not that every star shares the z axis.
-const ORBIT_INCLINATION_DISC = 0.045;
+// Small, deterministic orbital inclinations, derived from the record's jitter
+// byte. Only the spheroidal families sweep a centred plane (see orbitPlane), so
+// this is 0 for disc/pattern — a disc's plane is parallel to the galactic plane
+// and has no inclination to scatter.
 const ORBIT_INCLINATION_BAR = 0.12;
 const ORBIT_INCLINATION_PRESSURE = 0.30;
 function orbitInclination(family, phase, amplitude) {
+	const max = family === FAMILY_BAR ? ORBIT_INCLINATION_BAR
+		: family === FAMILY_PRESSURE ? ORBIT_INCLINATION_PRESSURE : 0;
+	if (max === 0) return 0;
 	const rank = ((amplitude & 15) + 0.5) / 16;
 	const direction = Math.sin(((phase & 15) / 16) * TAU);
-	const max = family === FAMILY_BAR ? ORBIT_INCLINATION_BAR
-		: family === FAMILY_PRESSURE ? ORBIT_INCLINATION_PRESSURE : ORBIT_INCLINATION_DISC;
 	return max * rank * direction;
+}
+
+// The sweep basis every engine evaluates: e0/e1 span the plane the star moves
+// in, nrm is its normal, `anchor` the radius the sweep multiplies and `carry`
+// the height held above the centre. Written into a caller-owned scratch object
+// allocated once at load — the hot path allocates nothing.
+//
+// Two anchors, by family (0.4.9: the vertical-column contract):
+//   * DISC and PATTERN sweep a plane PARALLEL to the galactic plane through
+//     the star's own birth height. The centred basis this law had before put
+//     (qz/|q|)·cos(theta) into z, so a star's birth height decayed as it
+//     orbited and the time-averaged column came out at 0.66-0.87 of the
+//     field's (movement-density-test.js, plan follow-up 2a) — a contraction
+//     that no per-star amplitude can undo, because the field's birth column is
+//     the steady state the transform has to be the fixed point of. The height
+//     is now carried, and the vertical life an epicycle gives a star is the
+//     bounded wobble `av`, capped by discHeight - |z|. A rigid pattern belongs
+//     on the same anchor: rotating a pattern seat sweeps a cylinder, not a
+//     circle through the centre.
+//   * BAR and PRESSURE keep the centred inclined plane. They are the
+//     spheroidal families the per-star basis exists for — one shared galactic
+//     axis reads as wrong for a halo orbit — and their columns are tall and
+//     spheroidal rather than the pinned sech2 disc.
+// A star exactly on the axis has no horizontal plane, so it keeps the centred
+// basis rather than freezing.
+const orbitPlaneScratch = {
+	e0x: 0, e0y: 0, e0z: 0, e1x: 0, e1y: 0, e1z: 0,
+	nx: 0, ny: 0, nz: 0, anchor: 0, carry: 0,
+};
+function orbitPlane(qx, qy, qz, family, phase, amplitude, out) {
+	const pl = out || orbitPlaneScratch;
+	const xy = Math.hypot(qx, qy);
+	if ((family === FAMILY_DISC || family === FAMILY_PATTERN) && xy > 1e-9) {
+		const invXy = 1 / xy;
+		pl.e0x = qx * invXy; pl.e0y = qy * invXy; pl.e0z = 0;
+		pl.e1x = -qy * invXy; pl.e1y = qx * invXy; pl.e1z = 0;
+		pl.nx = 0; pl.ny = 0; pl.nz = 1;
+		pl.anchor = xy;
+		pl.carry = qz;
+		return pl;
+	}
+	const radius = Math.hypot(qx, qy, qz);
+	const invRadius = radius > 1e-9 ? 1 / radius : 0;
+	pl.e0x = radius > 1e-9 ? qx * invRadius : 1;
+	pl.e0y = radius > 1e-9 ? qy * invRadius : 0;
+	pl.e0z = radius > 1e-9 ? qz * invRadius : 0;
+	let azx, azy;
+	if (xy > 1e-9) { azx = -qy / xy; azy = qx / xy; }
+	else { azx = 0; azy = 1; }
+	const ezx = -pl.e0z * azy;
+	const ezy = pl.e0z * azx;
+	const ezz = pl.e0x * azy - pl.e0y * azx;
+	const inc = orbitInclination(family, phase, amplitude);
+	const ci = Math.cos(inc), si = Math.sin(inc);
+	pl.e1x = azx * ci + ezx * si;
+	pl.e1y = azy * ci + ezy * si;
+	pl.e1z = ezz * si;
+	pl.nx = pl.e0y * pl.e1z - pl.e0z * pl.e1y;
+	pl.ny = pl.e0z * pl.e1x - pl.e0x * pl.e1z;
+	pl.nz = pl.e0x * pl.e1y - pl.e0y * pl.e1x;
+	pl.anchor = radius;
+	pl.carry = 0;
+	return pl;
 }
 
 // Shared scratch: fill-then-read inside one call, single-threaded, no
@@ -368,43 +430,24 @@ function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
 		wr = a * (sinTau(ph + mean * time) - sinPh);
 		wz = a * (sinTau(ph + HALF_PI + mean * time) - sinPhV);
 	}
-	// Every star gets its own orbital plane through the galaxy's centre.  The
-	// old Rot_z transform made every 3-D star sweep around one infinite line
-	// (the galaxy axis), which is visibly wrong for halo, bar and thick-disc
-	// stars.  e0/e1 are a per-star plane basis: e0 is the birth radius and e1
-	// is a deterministic, slightly inclined tangent.  The circle therefore
-	// always has the same centre point `c`, while no single axis owns all stars.
-	const radius = Math.hypot(qx, qy, qz);
-	const invRadius = radius > 1e-9 ? 1 / radius : 0;
-	const e0x = radius > 1e-9 ? qx * invRadius : 1;
-	const e0y = radius > 1e-9 ? qy * invRadius : 0;
-	const e0z = radius > 1e-9 ? qz * invRadius : 0;
-	const xy = Math.hypot(qx, qy);
-	let azx, azy;
-	if (xy > 1e-9) { azx = -qy / xy; azy = qx / xy; }
-	else { azx = 0; azy = 1; }
-	const ezx = -e0z * azy;
-	const ezy = e0z * azx;
-	const ezz = e0x * azy - e0y * azx;
-	const inc = orbitInclination(family, phase, amplitude);
-	const ci = Math.cos(inc), si = Math.sin(inc);
-	const e1x = azx * ci + ezx * si;
-	const e1y = azy * ci + ezy * si;
-	const e1z = ezz * si;
-	const nx = e0y * e1z - e0z * e1y;
-	const ny = e0z * e1x - e0x * e1z;
-	const nz = e0x * e1y - e0y * e1x;
+	// Every star gets its own orbital plane, anchored so its birth height is
+	// carried rather than rotated into an oscillation about the galactic plane
+	// (orbitPlane: the two families that sweep a centred plane are the ones the
+	// per-star basis was introduced for). Every plane still passes through
+	// `centre` for those families; a disc star sweeps the plane parallel to the
+	// galactic one through its own birth height.
+	const pl = orbitPlane(qx, qy, qz, family, phase, amplitude, orbitPlaneScratch);
 	const ct = Math.cos(theta), st = Math.sin(theta);
-	const rx = e0x * ct + e1x * st;
-	const ry = e0y * ct + e1y * st;
-	const rz = e0z * ct + e1z * st;
+	const rx = pl.e0x * ct + pl.e1x * st;
+	const ry = pl.e0y * ct + pl.e1y * st;
+	const rz = pl.e0z * ct + pl.e1z * st;
 	// There is no meaningful radial direction at the exact centre; keep a
 	// central star at the centre instead of applying a basis-dependent wobble.
-	const orbitRadius = radius > 1e-9 ? radius + wr : 0;
-	const normalWobble = radius > 1e-9 ? wz : 0;
-	out[0] = c.x + orbitRadius * rx + normalWobble * nx;
-	out[1] = c.y + orbitRadius * ry + normalWobble * ny;
-	out[2] = c.z + orbitRadius * rz + normalWobble * nz;
+	const orbitRadius = pl.anchor > 1e-9 ? pl.anchor + wr : 0;
+	const normalWobble = pl.anchor > 1e-9 ? wz : 0;
+	out[0] = c.x + orbitRadius * rx + normalWobble * pl.nx;
+	out[1] = c.y + orbitRadius * ry + normalWobble * pl.ny;
+	out[2] = c.z + orbitRadius * rz + normalWobble * pl.nz + pl.carry;
 	return out;
 }
 
@@ -497,7 +540,11 @@ function apocenterPosition(out, x, y, z, family, phase, amplitude, time, model) 
 	const cosF = Math.cos(delta0), sinF = -Math.sin(delta0);
 	const E0 = Math.atan2(root * sinF, eccentricity + cosF);
 	const M0 = E0 - eccentricity * Math.sin(E0);
-	const a = radius * (1 + eccentricity * cosF) / (1 - eccentricity * eccentricity);
+	// The plane's own anchor radius, so the ellipse passes through the birth
+	// point: a centred plane sweeps the 3-D radius, a horizontal one sweeps the
+	// birth cylinder and carries the height beside it.
+	const pl = orbitPlane(qx, qy, qz, family, phase, amplitude, orbitPlaneScratch);
+	const a = pl.anchor * (1 + eccentricity * cosF) / (1 - eccentricity * eccentricity);
 	const localOmega = dyn.vFlat > 0
 		? dyn.vFlat / Math.max(R, dyn.rCore)
 		: pressureClock(dyn, R);
@@ -506,21 +553,13 @@ function apocenterPosition(out, x, y, z, family, phase, amplitude, time, model) 
 	const nu = Math.atan2(root * Math.sin(E), Math.cos(E) - eccentricity);
 	const orbitRadius = a * (1 - eccentricity * Math.cos(E));
 	const delta = delta0 + dyn.omegaPattern * time + patternPhaseOffset;
-	const e0x = qx / radius, e0y = qy / radius, e0z = qz / radius;
-	const xy = Math.hypot(qx, qy);
-	const azx = xy > 1e-9 ? -qy / xy : 0;
-	const azy = xy > 1e-9 ? qx / xy : 1;
-	const ezx = -e0z * azy, ezy = e0z * azx, ezz = e0x * azy - e0y * azx;
-	const inc = orbitInclination(family, phase, amplitude);
-	const ci = Math.cos(inc), si = Math.sin(inc);
-	const e1x = azx * ci + ezx * si, e1y = azy * ci + ezy * si, e1z = ezz * si;
 	const cd = Math.cos(delta), sd = Math.sin(delta);
 	const cv = Math.cos(nu), sv = Math.sin(nu);
-	const px = e0x * cd + e1x * sd, py = e0y * cd + e1y * sd, pz = e0z * cd + e1z * sd;
-	const qpx = -e0x * sd + e1x * cd, qpy = -e0y * sd + e1y * cd, qpz = -e0z * sd + e1z * cd;
+	const px = pl.e0x * cd + pl.e1x * sd, py = pl.e0y * cd + pl.e1y * sd, pz = pl.e0z * cd + pl.e1z * sd;
+	const qpx = -pl.e0x * sd + pl.e1x * cd, qpy = -pl.e0y * sd + pl.e1y * cd, qpz = -pl.e0z * sd + pl.e1z * cd;
 	out[0] = c.x + orbitRadius * (px * cv + qpx * sv);
 	out[1] = c.y + orbitRadius * (py * cv + qpy * sv);
-	out[2] = c.z + orbitRadius * (pz * cv + qpz * sv);
+	out[2] = c.z + orbitRadius * (pz * cv + qpz * sv) + pl.carry;
 	return out;
 }
 
@@ -829,38 +868,23 @@ function simpleStepTheta(theta, r0, eccU, peri, family, P, patternPhase, dtStar,
 }
 
 // Vertex mirror: birth record + integrated theta = position. Family-agnostic
-// except for the eccentric rho, which only disc/pattern carry. The orbit plane
-// is 3-D, so even the birth height participates in the centre-point orbit.
+// except for the eccentric rho, which only disc/pattern carry. The sweep plane
+// is orbitPlane's: horizontal through the birth height for disc/pattern, the
+// centred inclined plane for the spheroidal families.
 function simplePositionFromTheta(out, theta, x, y, z, jitter, family, eccMax, model) {
 	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
 	const qx = x - c.x, qy = y - c.y, qz = z - c.z;
-	const radius = Math.hypot(qx, qy, qz);
-	const invRadius = radius > 1e-9 ? 1 / radius : 0;
-	const e0x = radius > 1e-9 ? qx * invRadius : 1;
-	const e0y = radius > 1e-9 ? qy * invRadius : 0;
-	const e0z = radius > 1e-9 ? qz * invRadius : 0;
-	const xy = Math.hypot(qx, qy);
-	let azx, azy;
-	if (xy > 1e-9) { azx = -qy / xy; azy = qx / xy; }
-	else { azx = 0; azy = 1; }
-	const ezx = -e0z * azy;
-	const ezy = e0z * azx;
-	const ezz = e0x * azy - e0y * azx;
-	const inc = orbitInclination(family, jitter & 15, jitter >>> 4);
-	const ci = Math.cos(inc), si = Math.sin(inc);
-	const e1x = azx * ci + ezx * si;
-	const e1y = azy * ci + ezy * si;
-	const e1z = ezz * si;
+	const pl = orbitPlane(qx, qy, qz, family, jitter & 15, jitter >>> 4, orbitPlaneScratch);
 	const theta0 = Math.atan2(qy, qx);
 	const delta = theta - theta0;
-	let rho = radius;
-	if ((family === FAMILY_DISC || family === FAMILY_PATTERN) && eccMax > 0 && radius > 0) {
-		rho = radius * (1 + eccMax * simpleEccOf(jitter) * Math.cos(theta - simplePeriOf(jitter)));
+	let rho = pl.anchor;
+	if ((family === FAMILY_DISC || family === FAMILY_PATTERN) && eccMax > 0 && pl.anchor > 0) {
+		rho = pl.anchor * (1 + eccMax * simpleEccOf(jitter) * Math.cos(theta - simplePeriOf(jitter)));
 	}
 	const ct = Math.cos(delta), st = Math.sin(delta);
-	out[0] = c.x + rho * (e0x * ct + e1x * st);
-	out[1] = c.y + rho * (e0y * ct + e1y * st);
-	out[2] = c.z + rho * (e0z * ct + e1z * st);
+	out[0] = c.x + rho * (pl.e0x * ct + pl.e1x * st);
+	out[1] = c.y + rho * (pl.e0y * ct + pl.e1y * st);
+	out[2] = c.z + rho * (pl.e0z * ct + pl.e1z * st) + pl.carry;
 	return out;
 }
 
@@ -923,33 +947,17 @@ function simpleLandmarkPosition(out, i) {
 	const th = simpleLMTheta[i];
 	const fam = simpleLMFam[i];
 	const qx = simpleLandmarkQX[i], qy = simpleLandmarkQY[i], qz = simpleLandmarkQZ[i];
-	const radius = Math.hypot(qx, qy, qz);
-	const invRadius = radius > 1e-9 ? 1 / radius : 0;
-	const e0x = radius > 1e-9 ? qx * invRadius : 1;
-	const e0y = radius > 1e-9 ? qy * invRadius : 0;
-	const e0z = radius > 1e-9 ? qz * invRadius : 0;
-	const xy = Math.hypot(qx, qy);
-	let azx, azy;
-	if (xy > 1e-9) { azx = -qy / xy; azy = qx / xy; }
-	else { azx = 0; azy = 1; }
-	const ezx = -e0z * azy;
-	const ezy = e0z * azx;
-	const ezz = e0x * azy - e0y * azx;
-	const inc = orbitInclination(fam, 0, 0);
-	const ci = Math.cos(inc), si = Math.sin(inc);
-	const e1x = azx * ci + ezx * si;
-	const e1y = azy * ci + ezy * si;
-	const e1z = ezz * si;
+	const pl = orbitPlane(qx, qy, qz, fam, 0, 0, orbitPlaneScratch);
 	const theta0 = Math.atan2(qy, qx);
 	const delta = th - theta0;
-	let rho = radius;
+	let rho = pl.anchor;
 	if ((fam === FAMILY_DISC || fam === FAMILY_PATTERN) && simpleLMEcc > 0 && rho > 0) {
 		rho *= 1 + simpleLMEcc * simpleEccOf(0) * Math.cos(th - simplePeriOf(0));
 	}
 	const ct = Math.cos(delta), st = Math.sin(delta);
-	out[0] = c.x + rho * (e0x * ct + e1x * st);
-	out[1] = c.y + rho * (e0y * ct + e1y * st);
-	out[2] = c.z + rho * (e0z * ct + e1z * st);
+	out[0] = c.x + rho * (pl.e0x * ct + pl.e1x * st);
+	out[1] = c.y + rho * (pl.e0y * ct + pl.e1y * st);
+	out[2] = c.z + rho * (pl.e0z * ct + pl.e1z * st) + pl.carry;
 	return out;
 }
 
@@ -1013,7 +1021,7 @@ const OrbitAPI = {
 	VERTICAL_WOBBLE_RATIO, BAR_LOOP_FRACTION,
 	WAVE_DAMPING_MAX, WAVE_DAMPING_UI_DEFAULT,
 	PATTERN_SCALE_MAX, PATTERN_SCALE_UI_DEFAULT,
-	ORBIT_INCLINATION_DISC, ORBIT_INCLINATION_BAR, ORBIT_INCLINATION_PRESSURE, orbitInclination,
+	ORBIT_INCLINATION_BAR, ORBIT_INCLINATION_PRESSURE, orbitInclination, orbitPlane,
 	ENGINE_CLASSIC, ENGINE_SIMPLE, ENGINE_APOCENTER, ENGINE_NAMES,
 	APOCENTER_ECC_MAX, APOCENTER_ECC_CAP, APOCENTER_SHARE_UI_DEFAULT, APOCENTER_FORCE_UI_DEFAULT,
 	SIMPLE_SIGMA_BASE, SIMPLE_ECC_K, SIMPLE_ECC_MAX, SIMPLE_SUBSTEP_DTHETA, SIMPLE_SUBSTEP_MAX,

@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-11T21:26:50.854Z",
+  "date": "2026-10-14T03:39:03.984Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 115,
-  "passed": 115,
+  "totalChecks": 118,
+  "passed": 118,
   "failed": 0,
   "checks": [
     {
@@ -184,11 +184,11 @@
       "detail": {
         "gpu": [
           5.54058656056722,
-          1.5152278204317446
+          1.5152280588503237
         ],
         "cpu": [
           5.540584708330465,
-          1.5152262489883255
+          1.515226248988326
         ]
       }
     },
@@ -198,11 +198,11 @@
       "detail": {
         "gpu": [
           5.54058656056722,
-          1.5152278204317446
+          1.5152280588503237
         ],
         "shear": [
           5.865352620316134,
-          1.9757358385160897
+          1.97573583851609
         ]
       }
     },
@@ -297,12 +297,12 @@
       "pass": true,
       "detail": {
         "gpu": [
-          7.973717301686605,
-          -4.872127268755878
+          7.968134492238363,
+          -4.874914858782733
         ],
         "cpu": [
-          7.973714313890333,
-          -4.87212724101437
+          7.968131988028799,
+          -4.874914715827449
         ]
       }
     },
@@ -310,7 +310,7 @@
       "name": "on-WGSL: the guided star actually moves (apocenter pass is not a no-op)",
       "pass": true,
       "detail": {
-        "moved": 8.893657107648133
+        "moved": 8.899549208020998
       }
     },
     {
@@ -337,8 +337,8 @@
       "pass": true,
       "detail": {
         "disc": [
-          8.441288912233967,
-          0.13242877001978473
+          8.443097841437513,
+          0.1269221282370316
         ],
         "bar": 0.1839655223237485
       }
@@ -366,8 +366,35 @@
       "pass": true,
       "detail": {
         "birthR": 5.4230987451825,
-        "circR": 5.42732939597301,
-        "eccR": 5.2043257719170555
+        "circR": 5.423098871848572,
+        "eccR": 5.203712832605787
+      }
+    },
+    {
+      "name": "on-WGSL: a disc star carries its birth height through half a turn (0.4.9 anchor)",
+      "pass": true,
+      "detail": {
+        "gpuZ": 0.5452813506126404,
+        "cpuZ": 0.5452814290905343,
+        "birthZ": 0.35
+      }
+    },
+    {
+      "name": "on-WGSL: that height is the carried one — the only motion is the bounded wobble (< 2·av)",
+      "pass": true,
+      "detail": {
+        "gpuZ": 0.5452813506126404,
+        "wobbleBound": 0.2538203842663859,
+        "centredWouldBe": -0.35
+      }
+    },
+    {
+      "name": "on-WGSL: a spheroidal star still sweeps its centred plane (z swings, matches CPU)",
+      "pass": true,
+      "detail": {
+        "gpuZ": 0.9247668981552124,
+        "cpuZ": 0.9247668326455467,
+        "birthZ": 0.35
       }
     },
     {

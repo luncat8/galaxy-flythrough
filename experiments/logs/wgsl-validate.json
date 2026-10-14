@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-13T06:36:46.538Z",
+  "date": "2026-10-14T03:47:42.489Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -11,7 +11,7 @@
     },
     {
       "name": "orbit",
-      "lines": 280
+      "lines": 309
     },
     {
       "name": "simple-step",
@@ -19,7 +19,7 @@
     },
     {
       "name": "star-sprite",
-      "lines": 454
+      "lines": 483
     },
     {
       "name": "star-sprite-hdr",
@@ -83,7 +83,7 @@
         ],
         [
           "orbit",
-          14167
+          15696
         ],
         [
           "simple-step",
@@ -91,7 +91,7 @@
         ],
         [
           "star-sprite",
-          22325
+          23854
         ],
         [
           "star-sprite-hdr",
@@ -191,7 +191,7 @@
     {
       "name": "orbit: declares its functions",
       "pass": true,
-      "detail": 10
+      "detail": 11
     },
     {
       "name": "simple-step: braces and parentheses balance",
@@ -227,7 +227,7 @@
     {
       "name": "star-sprite: declares its functions",
       "pass": true,
-      "detail": 15
+      "detail": 16
     },
     {
       "name": "star-sprite-hdr: braces and parentheses balance",
