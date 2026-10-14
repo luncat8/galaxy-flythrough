@@ -716,6 +716,78 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 && renderer.epochSweepState().stale === false,
                 { lane: Array.from(lane) });
 
+        // The map is a *continuous* function of the age — the property the
+        // rejected rebase did not have: it held only at the instants it ran. The
+        // check is a refinement: halving the age step must halve the worst step
+        // of a pattern-family probe's walk, the walk's total length must converge
+        // to the same number, and the net turn must not depend on the step at all
+        // (a fixed jump — what "return back in time" was — shows up as a worst
+        // step that does not shrink, and a net turn that does). Once the epoch's
+        // geometry has settled (the assembly windows close) the map stops moving
+        // the probe altogether: from there the running rotation is the lane's,
+        // `omegaPattern*T` = the accumulator, never a re-derived rescale of the
+        // elapsed clock.
+        const orbitLib = window.OrbitLib;
+        const probeA = new Float64Array(3), probeB = new Float64Array(3);
+        const probeAt = (age, out) => {
+                const m = galaxy.modelAtAge(model, age);
+                renderer.epochParams(m, lane);
+                return orbitLib.epochMap(out, model.centre.x + 2, model.centre.y + 0.5, 0.1,
+                        orbitLib.FAMILY_PATTERN, window.StarRecord.FLAG_EPOCH, m);
+        };
+        const turnTo = (p) => Math.atan2(p[1] - model.centre.y, p[0] - model.centre.x);
+        // orbit.wrapAngle lands in [0, 2*pi): a small negative difference must be
+        // read signed, or the check would read the 2*pi it wrapped as a jump.
+        const signedTurn = (a, b) => {
+                const u = (b - a) / (2 * Math.PI);
+                return 2 * Math.PI * (u - Math.round(u));
+        };
+        const mapWalk = (step) => {
+                let worst = 0, total = 0, settled = 0;
+                probeAt(0.3, probeA);
+                const first = turnTo(probeA);
+                for (let a = 0.3 + step; a <= 13.0 + 1e-9; a += step) {
+                        probeAt(a, probeB);
+                        const turn = Math.abs(signedTurn(turnTo(probeA), turnTo(probeB)));
+                        total += turn;
+                        if (a > 7) settled = Math.max(settled, turn); else worst = Math.max(worst, turn);
+                        probeA.set(probeB);
+                }
+                return { worst, total, settled, net: Math.abs(signedTurn(first, turnTo(probeA))) };
+        };
+        const coarse = mapWalk(0.05), fine = mapWalk(0.025);
+        check('the epoch map turns the field continuously and settles with the geometry',
+                fine.worst < 0.75 * coarse.worst
+                && Math.abs(fine.total - coarse.total) < 0.05 * coarse.total
+                && Math.abs(fine.net - coarse.net) < 0.02
+                && coarse.settled < 1e-6 && fine.settled < 1e-6
+                && coarse.net > 0.2,
+                {
+                        worst: [+coarse.worst.toFixed(4), +fine.worst.toFixed(4)],
+                        total: [+coarse.total.toFixed(4), +fine.total.toFixed(4)],
+                        net: [+coarse.net.toFixed(4), +fine.net.toFixed(4)],
+                        settled: [coarse.settled, fine.settled],
+                });
+
+        // The objects are the block the map cannot place: their seats read the
+        // *current* arms and the current gas, so an epoch change re-places them
+        // rather than carrying them — rationed by age, so a continuous clock is
+        // a bounded cost and not a per-frame one.
+        renderer.setEpoch(galaxy.modelAtAge(model, 0.5));
+        const placedAt = renderer.state.objectsEpochAge;
+        const placedAgain = renderer.refreshObjects();
+        const stillAt = renderer.state.objectsEpochAge;
+        renderer.setEpoch(galaxy.modelAtAge(model, 0.6));
+        const walkedAge = renderer.state.galaxyAge;
+        renderer.refreshObjects();
+        const movedTo = renderer.state.objectsEpochAge;
+        renderer.setEpoch(model);
+        renderer.refreshObjects();
+        check('an epoch change re-places the objects, rationed by age',
+                placedAt === 0.5 && placedAgain === 0 && stillAt === placedAt
+                && movedTo === 0.6 && walkedAge === 0.6,
+                { placedAt, placedAgain, stillAt, movedTo, age: walkedAge });
+
         // The reuse path is a property of the packed geometry, not a shortcut
         // taken whenever the model object changes: a model that differs only in
         // its population — a gas override at the reference epoch, which the epoch

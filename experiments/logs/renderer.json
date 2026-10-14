@@ -1,10 +1,10 @@
 {
-  "date": "2026-10-14T22:59:01.698Z",
+  "date": "2026-10-14T23:09:36.255Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 192,
-  "totalChecks": 132,
-  "passed": 132,
+  "prepareMs": 165,
+  "totalChecks": 134,
+  "passed": 134,
   "failed": 0,
   "checks": [
     {
@@ -618,7 +618,7 @@
       "name": "the epoch lane carries the two scale laws and the arm re-anchoring",
       "pass": true,
       "detail": {
-        "armRotation": -2.6907901763916016,
+        "armRotation": 6.733987808227539,
         "spheroidScale": 0.23898528516292572,
         "heatScale": 0.15832597017288208
       }
@@ -670,6 +670,39 @@
           1,
           -2.926142454147339
         ]
+      }
+    },
+    {
+      "name": "the epoch map turns the field continuously and settles with the geometry",
+      "pass": true,
+      "detail": {
+        "worst": [
+          0.4731,
+          0.2458
+        ],
+        "total": [
+          8.2946,
+          8.2946
+        ],
+        "net": [
+          2.0114,
+          2.0114
+        ],
+        "settled": [
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "an epoch change re-places the objects, rationed by age",
+      "pass": true,
+      "detail": {
+        "placedAt": 0.5,
+        "placedAgain": 0,
+        "stillAt": 0.5,
+        "movedTo": 0.6,
+        "age": 0.6
       }
     },
     {
@@ -794,8 +827,8 @@
       "name": "crossing a cell boundary re-uploads the dynamic region",
       "pass": true,
       "detail": {
-        "before": 18,
-        "after": 19
+        "before": 28,
+        "after": 29
       }
     },
     {

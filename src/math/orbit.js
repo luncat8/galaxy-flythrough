@@ -354,14 +354,26 @@ function solveEpochParams(model) {
 	const arms = (model && model.arms) || {};
 	const sph = (model && model.spheroid) || {};
 	const heat = model && model.epoch ? Number(model.epoch.heat) : 1;
-	const armed = arms.m >= 1 && arms.pitchDeg > 0;
-	// The ridge sits at (K·ln(R/Rs) − phase0)/m, so a phase0 that moves with the
-	// epoch moves every ridge-anchored azimuth by −Δphase0/m. Only the pattern
-	// family needs it: a disc star's own lane already measures it against the
-	// current ridge, and the bar rides the pattern's rotation, not the ridge.
-	epochParams.armRotation = armed ? -wrapAngle((Number(arms.phase0) || 0) - epochBase.phase0) / arms.m : 0;
+	const m = Number(arms.m) || 0;
+	const pitchOk = Number(arms.pitchDeg) > 0;
+	const armed = m > 0 && pitchOk;
 	const a = Number(sph.a) || 0;
 	epochParams.spheroidScale = epochBase.spheroidA > 0 && a > 0 ? a / epochBase.spheroidA : 1;
+	// The ridge sits at (K·ln(R/Rs) − phase0)/m, so a phase0 that moves with the
+	// epoch moves every ridge-anchored azimuth by −Δphase0/m. That difference is
+	// read from the *size ratio* — E3's own law is Δphase0 = K·ln(size), and the
+	// size ratio is the homology scale — and never from the two stored phase0s:
+	// the model wraps phase0 into one turn (the field is invariant under that,
+	// the ridge *set* repeats every 2π), but a point rotation is not, so a
+	// difference of wrapped angles jumps by 2π/m where the wrap crosses and the
+	// map would turn the arms in one step. K·ln(scale) is continuous and is
+	// exactly 0 at the base. Only the pattern family needs the turn: a disc
+	// star's own lane already measures it against the current ridge, and the bar
+	// rides the pattern's rotation, not the ridge.
+	epochParams.armRotation = armed
+		? -(m / Math.tan(Number(arms.pitchDeg) * Math.PI / 180) * Math.log(epochParams.spheroidScale)) / m
+		: 0;
+	if (!Number.isFinite(epochParams.armRotation)) epochParams.armRotation = 0;
 	const h = heat > 0 && Number.isFinite(heat) ? heat : 1;
 	const ratio = h / epochBase.heat;
 	epochParams.heatScale = ratio * ratio;

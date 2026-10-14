@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-14T23:00:06.794Z",
+  "date": "2026-10-14T23:10:38.043Z",
   "model": {
     "type": "SBb",
     "seed": 12345
@@ -172,26 +172,26 @@
       "name": "a pick slice stays inside the loop's 8 ms budget (+clock overhead) for every mask",
       "pass": true,
       "detail": {
-        "worstSlice": 6.838194999999359,
+        "worstSlice": 5.054841000000124,
         "worstMask": 5,
         "measured": {
           "1": {
-            "total": 72.1,
-            "slice": 1.21,
+            "total": 71.22,
+            "slice": 1.19,
             "slices": 10,
-            "perRecordNs": 240
+            "perRecordNs": 237
           },
           "2": {
-            "total": 14.81,
-            "slice": 0.36,
+            "total": 14.45,
+            "slice": 0.24,
             "slices": 10,
-            "perRecordNs": 49
+            "perRecordNs": 48
           },
           "5": {
-            "total": 390.94,
-            "slice": 6.84,
+            "total": 298.6,
+            "slice": 5.05,
             "slices": 10,
-            "perRecordNs": 1303
+            "perRecordNs": 995
           }
         }
       }
@@ -211,25 +211,25 @@
       "name": "the cheap mask finishes a whole 300k pick in a handful of frames",
       "pass": true,
       "detail": {
-        "simpleTotal": 14.809571000000233,
+        "simpleTotal": 14.451395000000048,
         "measured": {
           "1": {
-            "total": 72.1,
-            "slice": 1.21,
+            "total": 71.22,
+            "slice": 1.19,
             "slices": 10,
-            "perRecordNs": 240
+            "perRecordNs": 237
           },
           "2": {
-            "total": 14.81,
-            "slice": 0.36,
+            "total": 14.45,
+            "slice": 0.24,
             "slices": 10,
-            "perRecordNs": 49
+            "perRecordNs": 48
           },
           "5": {
-            "total": 390.94,
-            "slice": 6.84,
+            "total": 298.6,
+            "slice": 5.05,
             "slices": 10,
-            "perRecordNs": 1303
+            "perRecordNs": 995
           }
         }
       }
@@ -239,22 +239,22 @@
       "pass": true,
       "detail": {
         "1": {
-          "total": 72.1,
-          "slice": 1.21,
+          "total": 71.22,
+          "slice": 1.19,
           "slices": 10,
-          "perRecordNs": 240
+          "perRecordNs": 237
         },
         "2": {
-          "total": 14.81,
-          "slice": 0.36,
+          "total": 14.45,
+          "slice": 0.24,
           "slices": 10,
-          "perRecordNs": 49
+          "perRecordNs": 48
         },
         "5": {
-          "total": 390.94,
-          "slice": 6.84,
+          "total": 298.6,
+          "slice": 5.05,
           "slices": 10,
-          "perRecordNs": 1303
+          "perRecordNs": 995
         }
       }
     },

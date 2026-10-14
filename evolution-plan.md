@@ -436,6 +436,18 @@ the field. Consequences, all pinned:
   (`FLAG_EPOCH_SPHEROID`), and the disc height law scales a disc/arm member's vertical
   rank (`heat_now/heat_base)²`). It is the exact identity at the base epoch — the
   `active` gate makes a freshly drawn field bit-for-bit the field that was drawn.
+  The rotation is read from the **size ratio**, `−K·ln(scale)/m`, which is E3's own
+  `Δphase0 = K·ln(size)` seen as a turn — never from the difference of the two stored
+  `phase0`s. The stored values are wrapped into one turn (the *field* is invariant
+  under that: the ridge set repeats every 2π in `phase0`), but a point rotation by
+  `2π/m` is not the identity, so a difference of wrapped angles puts a `2π/m` jump
+  into the middle of a run. The size ratio is continuous and exactly 1 at the base.
+* **The composite objects are the one block the map cannot carry.** Their seats are
+  read from the *current* model — the arms at this epoch, the gas at this age — so an
+  epoch change re-places them (`renderer.refreshObjects`, object + billboard ranges
+  re-uploaded, the field's records untouched) and rations it by age
+  (`OBJECT_REFRESH_AGE = 0.02` Gyr): at the top clock rate that is one re-place per
+  ~0.2 s of run, not a per-frame cost.
 * The map is *view state of the lane's rank*: `orbit.packEpochParams` writes
   `camera.epoch = (armRotation, spheroidScale, heatScale, fieldMagOffset)` at float 48
   (uniform 192 → 208 B) and the vertex stage applies the same transform in WGSL
@@ -463,14 +475,18 @@ the field. Consequences, all pinned:
 
 ### Validation
 
-`renderer-test.js` (132 pins) gains the E4 block: the uniform is 208 B with the epoch
-lane at 48; an epoch change writes `PROCEDURAL·16` B and only the look half — the birth
-bytes and the keys are byte-identical, every rewritten record carries `FLAG_EPOCH`,
-`sweptLook > 0`, and `epochSweepState().stale === false` only after a finished pass;
-the young-vs-reference lane check (< 1 record changed) and the dim-young check
-(`state.magOffset` against `2.5·log10(meanLum_young/meanLum_ref)` over
+`renderer-test.js` (130 → 134 pins) gains the E4 block: the uniform is 208 B with the
+epoch lane at 48; an epoch change writes `PROCEDURAL·16` B and only the look half — the
+birth bytes and the keys are byte-identical, every rewritten record carries
+`FLAG_EPOCH`, `sweptLook > 0`, and `epochSweepState().stale === false` only after a
+finished pass; the young-vs-reference lane check (< 1 record changed) and the dim-young
+check (`state.magOffset` against `2.5·log10(meanLum_young/meanLum_ref)` over
 `StarTypesLib.meanFieldLuminosity`); the simple-lane θ seeds come from the *placed*
-azimuths while landmarks keep the mirror's. `galaxy-evolution-test.js` §6/§8 (36 → 38)
+azimuths while landmarks keep the mirror's; the map's continuity (a pattern probe's
+walk under a 0.05 Gyr and a 0.025 Gyr refinement: the worst step halves, the walk's
+total length converges within 5 %, the net turn agrees within 0.02 rad, and the map is
+*stationary* once the assembly windows close — the running rotation is the lane's); and
+the objects' re-place with its age rationing. `galaxy-evolution-test.js` §6/§8 (36 → 38)
 pins the continuous-run laws (`modelAtAge` + `packEpochParams` < 2 ms, `epochMap`
 300 k < 100 ms, no field re-sample) and the accumulator against the naïve law: the
 naïve `Ω_p(T)·T` drifts **1.27 rad** over a 13.3 Gyr run at 99 Myr/s (its worst
@@ -498,6 +514,12 @@ pin the accumulator's algebra and the camera-member order; `wgsl-exec-check.js`
 * **`Ω_p(T)·T` with the current rate, and the `patternPhaseOffset` rebase it needed.**
   The offset form is what the rejected commit did: correct only at the moments it
   rebases. The accumulator makes the same angle *by construction*, at every frame.
+* **Reading `Δphase0` as the difference of the two stored `phase0`s.** It looks
+  equivalent and it is not: both are wrapped into one turn, and the wrap crosses
+  somewhere in the run. `wrapTwoPi(phase0_now − phase0_base)` then jumps by `2π/m`
+  and the arms turn in a single step — the very artifact E4 exists to remove,
+  caught by the refinement check above (worst step 6.27 rad, step-size independent)
+  and fixed by reading E3's own `K·ln(size)`.
 * **Rotating every family in the map.** Rotating BAR records is exactly what the
   earlier epoch tier got wrong (the bar is not ridge-anchored), and rotating DISC
   records double-counts the ridge the disc lane already carries. Only `FAMILY_PATTERN`

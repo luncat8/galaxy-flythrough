@@ -1578,3 +1578,19 @@ a family of phase bugs was invisible to a green suite. Pin such laws at a large 
 (and pin the *un-fixed* law as non-vacuity: the naïve form drifts 1.27 rad over a run
 while the accumulator drifts 1e-14). The tell in the user's report was "every Evolve
 step", i.e. the defect scaled with the clock; a check at `T = 0` cannot see one.
+
+## 2026-10-14 — A 2π-invariant quantity is invariant as a *field*, not as a point transform
+
+The epoch map turns the arms by `−Δphase0/m`, and the first implementation read
+`Δphase0` as the difference of two stored `phase0`s wrapped into one turn. That is
+correct for the *density field* — the ridge condition `m·φ − K·ln(R/Rs) + phase0 = 2πn`
+makes `phase0` and `phase0 + 2π` the same set of ridges, because `n` absorbs it — and
+wrong for a *rotation of points*: a turn by `2π/m` maps an arm onto the *next* arm, not
+onto itself, so a difference of wrapped angles puts a hard `2π/m` jump into the middle
+of a run. The tell is a continuity check done by *refinement*: sample the walk at step
+δ and at δ/2 and require the worst step to halve, the total path length to converge and
+the net turn to be step-independent. A fixed jump fails all three (the measured worst
+step was 6.27 rad, unchanged by refining), which a single-step bound never shows because
+any bound large enough to pass is also large enough to hide it. The fix reads the
+quantity that is continuous by construction — E3's own `K·ln(size)`, from the homology
+scale ratio — instead of the wrapped pair it is equivalent to modulo 2π.
