@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-13T11:12:16.621Z",
+  "date": "2026-10-14T00:26:15.068Z",
   "model": {
     "type": "SBb",
     "seed": 3
@@ -143,23 +143,23 @@
       }
     },
     "budgets": {
-      "classOnlyMs": 1.304275,
-      "classOnlyStage1": 1.0555649999998877,
+      "classOnlyMs": 1.286869,
+      "classOnlyStage1": 1.1407010000000355,
       "classOnlyStage2": 0,
-      "planetMs": 253.975134,
-      "planetStage1": 249.76704200000518,
-      "planetStage2": 4.023877999994738,
-      "massMs": 111.296198,
-      "selectionMs": 1.703707,
+      "planetMs": 234.171509,
+      "planetStage1": 230.03487700000755,
+      "planetStage2": 3.2031969999925423,
+      "massMs": 109.249249,
+      "selectionMs": 1.518363,
       "selectionScanned": 214
     },
     "heap": {
       "trials": [
-        -10206952,
+        -10071120,
+        2484696,
         2484704,
-        2484704,
-        2484944,
-        2487896
+        2485744,
+        2487904
       ],
       "median": 2484704,
       "exposedGc": false
@@ -415,14 +415,14 @@
       "name": "a star-only galaxy scan is inside the 120 ms budget, and stage 2 never ran",
       "pass": true,
       "detail": {
-        "classOnlyMs": 1.304275,
-        "classOnlyStage1": 1.0555649999998877,
+        "classOnlyMs": 1.286869,
+        "classOnlyStage1": 1.1407010000000355,
         "classOnlyStage2": 0,
-        "planetMs": 253.975134,
-        "planetStage1": 249.76704200000518,
-        "planetStage2": 4.023877999994738,
-        "massMs": 111.296198,
-        "selectionMs": 1.703707,
+        "planetMs": 234.171509,
+        "planetStage1": 230.03487700000755,
+        "planetStage2": 3.2031969999925423,
+        "massMs": 109.249249,
+        "selectionMs": 1.518363,
         "selectionScanned": 214
       }
     },
@@ -430,14 +430,14 @@
       "name": "a planet galaxy scan is inside the 600 ms budget",
       "pass": true,
       "detail": {
-        "classOnlyMs": 1.304275,
-        "classOnlyStage1": 1.0555649999998877,
+        "classOnlyMs": 1.286869,
+        "classOnlyStage1": 1.1407010000000355,
         "classOnlyStage2": 0,
-        "planetMs": 253.975134,
-        "planetStage1": 249.76704200000518,
-        "planetStage2": 4.023877999994738,
-        "massMs": 111.296198,
-        "selectionMs": 1.703707,
+        "planetMs": 234.171509,
+        "planetStage1": 230.03487700000755,
+        "planetStage2": 3.2031969999925423,
+        "massMs": 109.249249,
+        "selectionMs": 1.518363,
         "selectionScanned": 214
       }
     },
@@ -445,14 +445,14 @@
       "name": "a mass filter costs one derivation per star and is measured, not assumed",
       "pass": true,
       "detail": {
-        "classOnlyMs": 1.304275,
-        "classOnlyStage1": 1.0555649999998877,
+        "classOnlyMs": 1.286869,
+        "classOnlyStage1": 1.1407010000000355,
         "classOnlyStage2": 0,
-        "planetMs": 253.975134,
-        "planetStage1": 249.76704200000518,
-        "planetStage2": 4.023877999994738,
-        "massMs": 111.296198,
-        "selectionMs": 1.703707,
+        "planetMs": 234.171509,
+        "planetStage1": 230.03487700000755,
+        "planetStage2": 3.2031969999925423,
+        "massMs": 109.249249,
+        "selectionMs": 1.518363,
         "selectionScanned": 214
       }
     },
@@ -460,14 +460,14 @@
       "name": "a planet filter over a 214-star selection is inside the 2 ms budget",
       "pass": true,
       "detail": {
-        "classOnlyMs": 1.304275,
-        "classOnlyStage1": 1.0555649999998877,
+        "classOnlyMs": 1.286869,
+        "classOnlyStage1": 1.1407010000000355,
         "classOnlyStage2": 0,
-        "planetMs": 253.975134,
-        "planetStage1": 249.76704200000518,
-        "planetStage2": 4.023877999994738,
-        "massMs": 111.296198,
-        "selectionMs": 1.703707,
+        "planetMs": 234.171509,
+        "planetStage1": 230.03487700000755,
+        "planetStage2": 3.2031969999925423,
+        "massMs": 109.249249,
+        "selectionMs": 1.518363,
         "selectionScanned": 214
       }
     },
@@ -476,11 +476,11 @@
       "pass": true,
       "detail": {
         "trials": [
-          -10206952,
+          -10071120,
+          2484696,
           2484704,
-          2484704,
-          2484944,
-          2487896
+          2485744,
+          2487904
         ],
         "median": 2484704,
         "exposedGc": false
