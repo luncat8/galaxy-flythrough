@@ -327,9 +327,10 @@ function orbitInclination(family, phase, amplitude) {
 //     that no per-star amplitude can undo, because the field's birth column is
 //     the steady state the transform has to be the fixed point of. The height
 //     is now carried, and the vertical life an epicycle gives a star is the
-//     bounded wobble `av`, capped by discHeight - |z|. A rigid pattern belongs
-//     on the same anchor: rotating a pattern seat sweeps a cylinder, not a
-//     circle through the centre.
+//     bounded wobble `av`. Its sine-difference can move by 2·av from birth, so
+//     the cap is half the remaining headroom to the explicit disc-height slab.
+//     A rigid pattern belongs on that anchor too: rotating its seat sweeps a
+//     cylinder, not a circle through the centre.
 //   * BAR and PRESSURE keep the centred inclined plane. They are the
 //     spheroidal families the per-star basis exists for — one shared galactic
 //     axis reads as wrong for a halo orbit — and their columns are tall and
@@ -421,7 +422,7 @@ function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
 	} else if (family === FAMILY_DISC) {
 		const kappa = SQRT2 * (dyn.vFlat / Math.max(r, dyn.rCore));
 		const ah = rank * 2 * dyn.sigmaThin / Math.max(kappa, 1e-6);
-		const av = Math.min(VERTICAL_WOBBLE_RATIO * ah, Math.max(dyn.discHeight - Math.abs(qz), 0));
+		const av = Math.min(VERTICAL_WOBBLE_RATIO * ah, 0.5 * Math.max(dyn.discHeight - Math.abs(qz), 0));
 		wr = ah * (sinTau(ph + kappa * time) - sinPh);
 		wz = av * (sinTau(ph + HALF_PI + kappa * time) - sinPhV);
 	} else if (family === FAMILY_PRESSURE) {

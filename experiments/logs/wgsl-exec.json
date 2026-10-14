@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-14T03:39:03.984Z",
+  "date": "2026-10-14T04:36:19.567Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 118,
-  "passed": 118,
+  "totalChecks": 119,
+  "passed": 119,
   "failed": 0,
   "checks": [
     {
@@ -386,6 +386,26 @@
         "gpuZ": 0.5452813506126404,
         "wobbleBound": 0.2538203842663859,
         "centredWouldBe": -0.35
+      }
+    },
+    {
+      "name": "on-WGSL: the half-headroom vertical wobble respects both disc-height edges",
+      "pass": true,
+      "detail": {
+        "cut": 3,
+        "margin": 0.02,
+        "edgeDetails": [
+          {
+            "birthZ": 2.98,
+            "gpuZ": 3,
+            "cpuZ": 3
+          },
+          {
+            "birthZ": -2.98,
+            "gpuZ": -3,
+            "cpuZ": -3
+          }
+        ]
       }
     },
     {

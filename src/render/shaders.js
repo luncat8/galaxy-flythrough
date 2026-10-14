@@ -656,7 +656,8 @@ fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, d
         } else if (family == FAMILY_DISC) {
                 let kappa: f32 = SQRT2 * (dynA.x / max(r, dynA.y));
                 let ah: f32 = rank * 2.0 * dynB.x / max(kappa, 1e-6);
-                let av: f32 = min(VERTICAL_WOBBLE_RATIO * ah, max(dynB.z - abs(q.z), 0.0));
+                // The sine difference moves up to 2*av from birth; reserve half the slab headroom.
+                let av: f32 = min(VERTICAL_WOBBLE_RATIO * ah, 0.5 * max(dynB.z - abs(q.z), 0.0));
                 wr = ah * (sinTau(phase + kappa * time) - sinPh);
                 wz = av * (sinTau(phase + HALF_PI + kappa * time) - sinPhV);
         } else if (family == FAMILY_PRESSURE) {

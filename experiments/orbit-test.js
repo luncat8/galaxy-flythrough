@@ -483,7 +483,7 @@ function orbitPositionF32(px, py, pz, packed, cx, time, dynA, dynB, waveA, waveB
 	} else if (family === 1) {
 		const kappa = fr(fr(1.41421356237) * fr(dynA[0] / fr(Math.max(r, dynA[1]))));
 		const ah = fr(fr(fr(rank * 2) * dynB[0]) / fr(Math.max(kappa, fr(1e-6))));
-		const av = fr(Math.min(fr(fr(0.2) * ah), fr(Math.max(fr(dynB[2] - fr(Math.abs(qz))), 0))));
+		const av = fr(Math.min(fr(fr(0.2) * ah), fr(fr(0.5) * fr(Math.max(fr(dynB[2] - fr(Math.abs(qz))), 0)))));
 		wr = fr(ah * fr(sinTauF(fr(phase + kappa * time)) - sinPh));
 		wz = fr(av * fr(sinTauF(fr(phase + fr(1.57079632679) + kappa * time)) - sinPhV));
 	} else if (family === 3) {
@@ -980,6 +980,35 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 	// where the spherical radius is the conserved quantity.
 	const cylBirth = Math.hypot(8.178, 0);
 	const sphBirth = Math.hypot(-3, 2, 0.5);
+	const edgeDyn = orbit.fillDynamics({}, MW);
+	const edgeR = 8.178;
+	const edgeKappa = Math.SQRT2 * edgeDyn.vFlat / Math.max(edgeR, edgeDyn.rCore);
+	const edgeTime = Math.PI / edgeKappa;
+	const edgeMargin = 0.02;
+	const edgeCut = edgeDyn.discHeight;
+	const edgePackedDyn = new Float32Array(16);
+	orbit.packOrbitDynamics(MW, edgePackedDyn, 0);
+	const edgeDynA = edgePackedDyn.subarray(0, 4), edgeDynB = edgePackedDyn.subarray(4, 8);
+	const edgeWaveA = edgePackedDyn.subarray(8, 12), edgeWaveB = edgePackedDyn.subarray(12, 16);
+	orbit.orbitPosition(out, MW.centre.x + edgeR, MW.centre.y, MW.centre.z + edgeCut - edgeMargin,
+		orbit.FAMILY_DISC, 8, 15, edgeTime, MW);
+	const upperEdgeZ = out[2] - MW.centre.z;
+	orbit.orbitPosition(out, MW.centre.x + edgeR, MW.centre.y, MW.centre.z - edgeCut + edgeMargin,
+		orbit.FAMILY_DISC, 0, 15, edgeTime, MW);
+	const lowerEdgeZ = out[2] - MW.centre.z;
+	const edgeFlags = records.FLAG_VISIBLE | (1 << 3);
+	const upperPacked = records.packPacked(4, 4.83, edgeFlags, orbit.encodeJitter(8, 15));
+	const lowerPacked = records.packPacked(4, 4.83, edgeFlags, orbit.encodeJitter(0, 15));
+	const upperF32 = orbitPositionF32(MW.centre.x + edgeR, MW.centre.y, MW.centre.z + edgeCut - edgeMargin,
+		upperPacked, MW.centre.x, edgeTime, edgeDynA, edgeDynB, edgeWaveA, edgeWaveB);
+	const lowerF32 = orbitPositionF32(MW.centre.x + edgeR, MW.centre.y, MW.centre.z - edgeCut + edgeMargin,
+		lowerPacked, MW.centre.x, edgeTime, edgeDynA, edgeDynB, edgeWaveA, edgeWaveB);
+	const upperF32Z = upperF32[2] - MW.centre.z, lowerF32Z = lowerF32[2] - MW.centre.z;
+	check('the classic vertical wobble stays inside the explicit disc-height cut at both edges',
+		upperEdgeZ <= edgeCut + 1e-8 && lowerEdgeZ >= -edgeCut - 1e-8
+		&& Math.abs(upperEdgeZ - edgeCut) < 1e-8 && Math.abs(lowerEdgeZ + edgeCut) < 1e-8
+		&& upperF32Z <= edgeCut + 1e-5 && lowerF32Z >= -edgeCut - 1e-5,
+		{ upper: [upperEdgeZ, upperF32Z], lower: [lowerEdgeZ, lowerF32Z], cut: edgeCut, margin: edgeMargin });
 	orbit.simplePositionFromTheta(out, Math.PI / 2, MW.centre.x + 8.178, 0, 0.1, 0, orbit.FAMILY_DISC, Ps.eccMax, MW);
 	const discCyl = Math.hypot(out[0] - MW.centre.x, out[1]);
 	const discZ = out[2];

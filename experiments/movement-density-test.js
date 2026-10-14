@@ -450,9 +450,10 @@ const RADIAL_BUDGET = 0.03;
 const VERT_BUDGET = 0.03;
 // mean|z| is the second read on the same contract: the column's scale, not its
 // shape. The classic law still carries the epicycle's bounded vertical wobble
-// (VERTICAL_WOBBLE_RATIO · ah, capped by discHeight − |z|), which lifts the
-// column by up to ~8% on the tallest disc measured (SBc); the simple and
-// apocenter lanes carry the height through the sweep basis exactly.
+// (VERTICAL_WOBBLE_RATIO · ah, capped at half of discHeight − |z| because the
+// sine-difference can move 2·av from birth), which lifts the column by up to
+// ~8% on the tallest disc measured (SBc); the simple and apocenter lanes carry
+// the height through the sweep basis exactly.
 const VERT_MEAN_LOW = 0.95;
 const VERT_MEAN_HIGH = 1.10;
 const VERT_MEAN_EXACT_HIGH = 1.01;

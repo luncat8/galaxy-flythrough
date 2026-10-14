@@ -1,7 +1,7 @@
 {
-  "date": "2026-10-14T03:48:56.464Z",
-  "totalChecks": 122,
-  "passed": 122,
+  "date": "2026-10-14T04:38:54.947Z",
+  "totalChecks": 123,
+  "passed": 123,
   "failed": 0,
   "checks": [
     {
@@ -695,6 +695,22 @@
           0,
           1
         ]
+      }
+    },
+    {
+      "name": "the classic vertical wobble stays inside the explicit disc-height cut at both edges",
+      "pass": true,
+      "detail": {
+        "upper": [
+          3,
+          3
+        ],
+        "lower": [
+          -3,
+          -3
+        ],
+        "cut": 3,
+        "margin": 0.02
       }
     },
     {

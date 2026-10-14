@@ -4,6 +4,20 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-10-14 — A difference-of-sines wobble needs half the headroom, not all of it
+
+The classic vertical epicycle is `Δz = av·(sin(ψ + κt) − sin ψ)`, so its
+maximum displacement from birth is `2·av`, not `av`. Capping `av` at the full
+remaining slab height sounds safe but is not: on the Milky Way model, a star at
+`z = 2.9 kpc` with a `3 kpc` cut, phase 8 and the top amplitude rank reaches
+`z = 3.1 kpc` at half an epicycle. Cap it at `0.5·max(H − |z|, 0)` (or clamp
+the final displacement) and mirror that exact rule in WGSL and any f32 replay.
+Population histograms can miss this sparse edge case, so pair them with an
+adversarial single-star test at both slab edges and execute that fixture on the
+shipping shader.
+
+---
+
 ## 2026-10-14 — A centred orbit plane contracts a column; the fix is an anchor choice, and it wants one extracted basis
 
 Follow-up 2a (the vertical column) turned out to be one decision, not a calibration.

@@ -702,11 +702,40 @@ async function main() {
 	const wobbleRank = (11 + 0.5) / 16;
 	const wobbleKappa = Math.SQRT2 * (0.225 / Math.max(vertR, 0.5));
 	const wobbleAh = wobbleRank * 2 * 0.031 / wobbleKappa;
-	const wobbleAv = Math.min(orbit.VERTICAL_WOBBLE_RATIO * wobbleAh, 3 - 0.35);
+	const wobbleAv = Math.min(orbit.VERTICAL_WOBBLE_RATIO * wobbleAh, 0.5 * (3 - 0.35));
 	check('on-WGSL: that height is the carried one — the only motion is the bounded wobble (< 2·av)',
 		Math.abs(gpuZ - 0.35) <= 2 * wobbleAv + 1e-3 && Math.abs(gpuZ - 0.35) < Math.abs(gpuZ + 0.35),
 		{ gpuZ, wobbleBound: 2 * wobbleAv, centredWouldBe: -0.35 });
+	// A difference of two sine values moves by up to 2*av from birth. At either
+	// slab edge the GPU cap must therefore spend only half the remaining room.
+	const edgeCut = vertModel.truncation.discHeight;
+	const edgeMargin = 0.02;
+	const edgeTime = Math.PI / wobbleKappa;
+	const edgeCases = [[edgeCut - edgeMargin, 8], [-edgeCut + edgeMargin, 0]];
+	const edgeCpu = new Float64Array(3);
+	const edgeDetails = [];
+	let edgeSafe = true;
+	for (const [birthZ, phase] of edgeCases) {
+		vertDiscF[2] = birthZ;
+		vertDiscU[3] = ((records.FLAG_VISIBLE | (1 << 3)) << 16)
+			| (records.encodeAbsMag(4.83) << 8) | 4 | (orbit.encodeJitter(phase, 15) << 24);
+		ocam[27] = edgeTime;
+		const edgeGpu = runStage(spriteCode, 'vs_main', 'debugVertex',
+			{ vertex_index: 3, instance_index: 0 }, vertBinds);
+		orbit.orbitPosition(edgeCpu, vertDiscF[0], vertDiscF[1], vertDiscF[2],
+			orbit.FAMILY_DISC, phase, 15, edgeTime, vertModel);
+		const edgeGpuZ = edgeGpu.clipPos[2] - vertModel.centre.z;
+		const edgeCpuZ = edgeCpu[2] - vertModel.centre.z;
+		if (Math.abs(edgeGpuZ - edgeCpuZ) >= 2e-3
+			|| Math.abs(edgeGpuZ) > edgeCut + 2e-3
+			|| Math.abs(edgeCpuZ) > edgeCut + 1e-8
+			|| Math.abs(Math.abs(edgeGpuZ) - edgeCut) >= 3e-3) edgeSafe = false;
+		edgeDetails.push({ birthZ, gpuZ: edgeGpuZ, cpuZ: edgeCpuZ });
+	}
+	check('on-WGSL: the half-headroom vertical wobble respects both disc-height edges',
+		edgeSafe, { cut: edgeCut, margin: edgeMargin, edgeDetails });
 	ocam[44] = orbit.ENGINE_CLASSIC;
+	ocam[27] = vertHalf;
 	const pressGpu = runStage(spriteCode, 'vs_main', 'debugVertex',
 		{ vertex_index: 3, instance_index: 0 }, vertPressBinds);
 	const pressCpu = new Float64Array(3);
