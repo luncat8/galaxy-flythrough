@@ -16,9 +16,9 @@ const PROJECT_URL = 'https://github.com/luncat8/galaxy-flythrough';
 
 // The preset fields in serialized order — galaxy first (what the system is),
 // then movement (how it moves), then look (how it is drawn), then the search
-// query (what the viewer asked for). Boot-only counts ride at the end: a
-// pasted preset cannot rebuild the star buffers, so the menu hint says they
-// apply on the next boot. The result list itself is transient, like the
+// query (what the viewer asked for). The counts ride at the end: `stars` is
+// the menu's star budget and a pasted preset re-draws the field with it (0.6);
+// `catalog` still only applies at boot. The result list itself is transient, like the
 // camera position — only the filter and the scope are preset state (0.5.2).
 //
 // `engine` on a field names the movement pass that reads it: such a field is
@@ -291,7 +291,7 @@ const BUILTIN = [
 	{
 		id: 'evolve',
 		label: 'Evolve',
-		title: 'A barred spiral watched from its infancy: the star clock at the top rate and the epoch running with it, one 0.1 Gyr step per 100 Myr of star time. Each step re-draws the field (~0.7 s at 300k stars), so a lower star budget is smoother — star counts apply at the next boot.',
+		title: 'A barred spiral watched from its infancy: the star clock at the top rate and the epoch running with it, one 0.1 Gyr step per 100 Myr of star time. Each step re-draws the field (~0.3 s at 300k stars), so a lower Stars budget is smoother; the budget you set is kept.',
 	},
 ];
 
@@ -309,19 +309,30 @@ function builtinSettings(id) {
 	if (id !== 'milkyway' && id !== 'evolve') return null;
 	const g = typeof window !== 'undefined' ? window : global;
 	const galaxy = g.GalaxyLib;
-	const renderer = g.StarRenderer;
 	// The evolve preset is the same galaxy sent back to its first light with the
 	// star clock at the slider's top rate: the run needs no view, so it carries
-	// settings only.
+	// settings only. Neither carries the star counts: those are the viewer's
+	// machine budget, not part of the look, and a built-in must not undo a
+	// budget lowered for a smoother Evolve run.
 	const over = id === 'evolve' ? { age: galaxy.AGE_MIN, time: 99, evolve: 1 } : { time: 0 };
 	return Object.assign({
 		type: galaxy.MILKY_WAY_TYPE,
 		seed: galaxy.DEFAULT_SEED,
 		age: galaxy.AGE_DEFAULT,
 		engine: ['classic'],
-		stars: renderer.PROCEDURAL_STARS_DEFAULT,
-		catalog: renderer.CATALOG_BUDGET_DEFAULT,
 	}, menuDefaults(), over);
+}
+
+// What a clipboard holds is not a preset until it parses as one. A copied
+// page URL keeps only its query; text with no preset key is '' so the page
+// can leave the box alone instead of printing someone else's clipboard there.
+function presetQueryOf(text) {
+	let query = String(text || '').trim();
+	const mark = query.indexOf('?');
+	if (mark > 0 && query.slice(0, mark).indexOf('=') < 0) query = query.slice(mark + 1);
+	const hash = query.indexOf('#');
+	if (hash >= 0) query = query.slice(0, hash);
+	return Object.keys(parse(query)).length ? query : '';
 }
 
 function builtinQuery(id) {
@@ -333,7 +344,7 @@ const Presets = {
 	FIELDS, PROJECT_URL, ENGINE_ORDER, ENGINE_DESCRIPTIONS, TIME_DEFAULT,
 	BUILTIN, builtinById, builtinSettings, builtinQuery,
 	menuDefaults, parseEngineList, serializeEngine, engineListOf, fieldActive, activeFields,
-	serialize, parse, describe, buildLlmPrompt,
+	serialize, parse, presetQueryOf, describe, buildLlmPrompt,
 };
 if (typeof module !== 'undefined') module.exports = Presets;
 if (typeof window !== 'undefined') window.Presets = Presets;

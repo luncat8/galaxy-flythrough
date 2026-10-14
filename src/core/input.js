@@ -96,8 +96,14 @@ function createInput(canvas) {
 			|| target.tagName === 'BUTTON' || !!target.closest('.panel'));
 	}
 
+	// Ctrl/Cmd+V over the scene is a paste, not V: main.js applies a preset
+	// from the paste event, which a preventDefault on this keydown would cancel.
+	function pasteChord(e) {
+		return e.code === 'KeyV' && (e.ctrlKey || e.metaKey);
+	}
+
 	function onKeyDown(e) {
-		if (editingField(e)) return;
+		if (editingField(e) || pasteChord(e)) return;
 		const held = keyMap[e.code];
 		if (held) {
 			keys[held] = true;

@@ -6,7 +6,7 @@
 // density), how cold the disc still is, how much gas the arms have to work
 // with — beside what its stars are, which 0.3.3 already did.
 //
-// Seven things are checked, in order:
+// Eight things are checked, in order:
 //   1. exactness: at AGE_REF every epoch factor is exactly 1 and a re-derived
 //      model is bit-identical to a fresh build, in both directions
 //   2. the factors' laws across [AGE_MIN, AGE_REF] for every type: monotone,
@@ -29,6 +29,8 @@
 //      mass still exactly spheroidProgress), the arm ridge re-anchored to the
 //      moving bar tip by the additive Δphase0 = K·ln(size), and the bar's
 //      pattern speed re-derived from its own length
+//   8. the pattern's orientation across epoch re-draws: the phase origin is
+//      rebased so the bar and arms do not turn back by ΔΩ_p·T at each step
 //
 // Output: experiments/logs/galaxy-evolution.json
 
@@ -673,6 +675,57 @@ function sameFloats(a, b) {
 	}
 	check('the sampled bulge is the smaller one: its mean radius rides the size factor',
 		extentBreak === null, extentBreak);
+}
+
+// --- 8. The pattern keeps its orientation across epochs ------------------
+// E3 re-derives Ω_p from the bar's own length, and the star clock T is not
+// reset by a re-draw, so the bar's angle Ω_p·T + offset would jump by ΔΩ_p·T
+// at every live step — backwards, since the bar slows as it grows. The shell
+// rebases the phase origin on every age re-draw (orbit.rebasePatternPhase,
+// the Pattern speed slider's own rule); this pins it over a whole live run.
+{
+	const orbit = require('../src/math/orbit.js');
+	const angle = (m, t) => orbit.patternRotation(m, t);
+	const wrapPi = (a) => a - 2 * Math.PI * Math.floor((a + Math.PI) / (2 * Math.PI));
+	orbit.resetPatternPhaseOffset();
+	orbit.setPatternScale(1, 0, null);
+	let m = galaxy.createGalaxy({ type: 'SBb', age: galaxy.AGE_MIN });
+	let t = 300;
+	let worstRebased = 0;
+	let worstNaive = 0;
+	let barWorst = 0;
+	const bar = new Float64Array(3);
+	const barNext = new Float64Array(3);
+	while (m.populations.age < galaxy.AGE_MAX) {
+		t += galaxy.EVOLVE_MYR_PER_STEP;
+		const next = galaxy.createGalaxy({ type: 'SBb', age: galaxy.steppedAge(m.populations.age) });
+		const before = angle(m, t);
+		orbit.orbitPosition(bar, 0.8, 0.1, 0, orbit.FAMILY_BAR, 0, 0, t, m);
+		const naive = wrapPi(angle(next, t) - before);
+		orbit.rebasePatternPhase(m, next, t);
+		const after = wrapPi(angle(next, t) - before);
+		orbit.orbitPosition(barNext, 0.8, 0.1, 0, orbit.FAMILY_BAR, 0, 0, t, next);
+		const barTurn = Math.abs(wrapPi(Math.atan2(barNext[1], barNext[0]) - Math.atan2(bar[1], bar[0])));
+		barWorst = Math.max(barWorst, barTurn);
+		worstRebased = Math.max(worstRebased, Math.abs(after));
+		worstNaive = Math.max(worstNaive, Math.abs(naive));
+		m = next;
+	}
+	log.patternContinuity = { worstRebased, worstNaive, barWorst, finalT: t };
+	check('without the rebase a live step turns the pattern by radians (the defect is real)',
+		worstNaive > 1, { worstNaive });
+	check('with the rebase the pattern angle is continuous across every epoch step',
+		worstRebased < 1e-9, { worstRebased });
+	// Not exact: the star's x1 loop runs at the epoch's own stream rate, so
+	// its loop phase moves with the epoch — a few-mrad epicycle (≈2 pc at
+	// 0.8 kpc), not the pattern turning, which was radians before the rebase.
+	check('a bar-family star keeps its azimuth across every epoch step (to its x1 loop)',
+		barWorst < 0.01, { barWorst });
+	const unchanged = orbit.getPatternPhaseOffset();
+	orbit.rebasePatternPhase(m, m, t);
+	check('a re-draw of the same model (a star-budget change) leaves the phase alone',
+		orbit.getPatternPhaseOffset() === unchanged, { before: unchanged, after: orbit.getPatternPhaseOffset() });
+	orbit.resetPatternPhaseOffset();
 }
 
 // --- Report -------------------------------------------------------------

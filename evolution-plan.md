@@ -285,9 +285,23 @@ Stated consequences, not discoveries:
   same galaxy, not a morph between two draws. Everything the viewer holds follows
   through E1b's rebuild path (camera, labels, the selection set re-resolved by key), so
   nothing is thrown away — but the step is a jump.
-* **The frame a step lands on pays the rebuild**: ~0.7 s at the default 300 000 stars,
-  ~0.11 s at 50 000. The loop's own `dt` clamp (0.1 s) hides most of it from the sim
-  clock, so the star clock loses at most 0.1 s per step.
+* **The pattern does not jump.** The star clock `T` is *not* reset by a step (the
+  re-drawn births sit in the `T = 0` frame and are advanced by the full `T`, exactly
+  like the stars they replace), but E3 re-derives Ω_p per epoch — 0.13 rad/Myr at
+  0.2 Gyr, 0.029 at present for SBb — so the bar and arm angle Ω_p·T would move by
+  ΔΩ_p·T at every step: radians once a few hundred Myr have run, and backwards, since
+  the bar slows as it grows. Every same-galaxy re-draw (a live step, an Age drag, a
+  star-budget change) therefore rebases the phase origin by the Pattern speed slider's
+  own rule (`orbit.rebasePatternPhase`: `offset += (Ω_old − Ω_new)·T`), and the simple
+  lane's re-seeded field and object thetas are turned by the pattern's current
+  rotation (`orbit.patternRotation` = Ω_p·T + offset) while its landmarks keep the
+  azimuths the CPU mirror integrated (`simpleLandmarksRebind`). A type or seed change
+  is another galaxy and still resets the offset to 0.
+* **The frame a step lands on pays the rebuild**: ~0.3–0.7 s at the default 300 000
+  stars, ~0.11 s at 50 000. The loop's own `dt` clamp (0.1 s) hides most of it from the
+  sim clock, so the star clock loses at most 0.1 s per step. The **Stars** slider in the
+  Galaxy menu (a 30k–500k ladder, applied on release by one re-draw, carried by the
+  `stars` preset field) is the knob for a smoother run; built-in presets leave it alone.
 * **Rate.** One step per 100 Myr of star time: at the top slider rate the whole
   0.2 → 13.5 Gyr life is 133 steps, ~2.2 min of star time. The default 5 Myr/s makes
   it a 44-minute drift, which is why the built-in preset exists.

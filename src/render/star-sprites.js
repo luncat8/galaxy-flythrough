@@ -39,6 +39,7 @@ const UNIFORM_FLOATS = 48;              // 192 bytes: camera block 28 + orbit dy
 // then headroom, highlightDesat, 0, 0.
 const TONEMAP_UNIFORM_FLOATS = 8;
 const PROCEDURAL_STARS_DEFAULT = 300000;
+const TWO_PI = 2 * Math.PI;
 const CATALOG_BUDGET_DEFAULT = 250000;
 const LOCAL_PROCEDURAL_DEFAULT = 20000; // gap-fill for density parity near the camera
 const BASE_SIZE_PX = 1.3;               // point sources
@@ -140,7 +141,7 @@ function createStarRenderer(device, context, format, options) {
         let seed = model.seed | 0;
         const landmarkTable = landmarks.count;
         let lastManifest = null;
-        const proceduralTarget = Math.max(0, opts.proceduralStars === undefined ? PROCEDURAL_STARS_DEFAULT : opts.proceduralStars);
+        let proceduralTarget = Math.max(0, opts.proceduralStars === undefined ? PROCEDURAL_STARS_DEFAULT : opts.proceduralStars);
         const catalogBudgetRequested = Math.max(0, opts.catalogBudgetStars === undefined ? CATALOG_BUDGET_DEFAULT : opts.catalogBudgetStars);
         // Landmarks and the Gaia subset are Milky Way data: for any other type
         // both blocks are empty, which is what "Game mode" means here — the same
@@ -710,6 +711,24 @@ function createStarRenderer(device, context, format, options) {
                 device.queue.writeBuffer(thetaBuffer, recordStart * 4, thetaData, recordStart * 4, recordCount * 4);
         }
 
+        // The simple lane across an age rebuild of the same galaxy (0.6): the
+        // re-drawn field and object members are turned by `carry.thetaShift`
+        // (the pattern's rotation since the birth frame) so they land on the arms
+        // already on screen instead of on the T = 0 layout, and the landmarks
+        // continue from the CPU mirror's azimuths — the same stars, not a draw.
+        function carryThetas(carry) {
+                if (!carry || !thetaStaging) return;
+                const shift = carry.thetaShift || 0;
+                const objectStart = proceduralCount + landmarkCount;
+                for (let i = 0; i < proceduralCount + landmarkCount + objectCapacity; i++) {
+                        if (i === proceduralCount) i = objectStart;
+                        const t = thetaStaging[i] + shift;
+                        thetaStaging[i] = t - TWO_PI * Math.floor((t + Math.PI) / TWO_PI);
+                }
+                if (!carry.landmarks || !orbit.simpleLandmarksReady || !orbit.simpleLandmarksReady()) return;
+                for (let i = 0; i < landmarkCount; i++) thetaStaging[proceduralCount + i] = orbit.simpleLandmarkTheta(i);
+        }
+
         function seedThetaAll() {
                 if (!thetaStaging || totalRecordCount <= 0) return 0;
                 const n = seedThetaRange(0, totalRecordCount);
@@ -848,7 +867,21 @@ function createStarRenderer(device, context, format, options) {
         // Target total stars (procedural + catalog) for density parity
         // normalization. Passed down to the cell manager so expected per-cell
         // counts match what the global procedural field delivers.
-        const targetStars = opts.targetStars || (proceduralTarget + catalogBudget);
+        let targetStars = opts.targetStars || (proceduralTarget + catalogBudget);
+        let budgetDirty = false;
+
+        // The star budget is a menu control (0.6): it takes effect on the next
+        // allocating rebuild, which the caller forces with `regenerate`. The
+        // parity target moves with it, so the catalog gap-fill keeps matching
+        // the field's density per cell.
+        function setProceduralStars(count) {
+                const next = Math.max(0, Math.round(Number(count) || 0));
+                if (next === proceduralTarget) return proceduralTarget;
+                if (!opts.targetStars) targetStars += next - proceduralTarget;
+                proceduralTarget = next;
+                budgetDirty = true;
+                return proceduralTarget;
+        }
 
         function attachCatalog(manifest) {
                 state.catalogTotalStars = manifest.starCount;
@@ -868,7 +901,7 @@ function createStarRenderer(device, context, format, options) {
         // One-shot setup: allocate, generate, upload, expose. Procedural field,
         // landmarks and object members are all fixed until the next regenerate,
         // so they share one upload. Local gap-fill + catalog upload per rebuild.
-        function prepare(manifest) {
+        function prepare(manifest, carry) {
                 // Keep the last manifest that had content: a Game-mode rebuild passes none, and
                 // coming back to the preset has to find the catalog still there.
                 if (manifest) lastManifest = manifest;
@@ -898,6 +931,7 @@ function createStarRenderer(device, context, format, options) {
                         state.clampedProcedural = true;
                 }
                 allocate(procedural, catalog);
+                budgetDirty = false;
                 sampleField();
                 writeLandmarks();
                 rebuildPopulation();
@@ -907,6 +941,7 @@ function createStarRenderer(device, context, format, options) {
                 // thetas are a function of the birth positions it just drew.
                 const fixedRecords = proceduralCount + landmarkCount + objectCapacity;
                 seedThetaRange(0, fixedRecords);
+                carryThetas(carry);
                 uploadThetaRange(0, fixedRecords);
                 return state;
         }
@@ -940,13 +975,13 @@ function createStarRenderer(device, context, format, options) {
         // decided by the packed geometry rather than by the type name, so an
         // override cannot sneak past it. Nothing 0.6 releases needs the reusable
         // path: the epoch tier is packed geometry, so the age slider re-samples.
-        function regenerate(nextModel) {
+        function regenerate(nextModel, carry) {
                 const previous = model;
                 // The seed is compared whole: the uniform carries only its low 16
                 // bits (the noise hash reads exactly those), while the field
                 // hashes all 32. `milkyWay` decides the fixed block's layout, so
                 // flipping it has to take the allocating path.
-                const populationOnly = fieldStars !== null && proceduralCount > 0
+                const populationOnly = fieldStars !== null && proceduralCount > 0 && !budgetDirty
                         && previous.milkyWay === nextModel.milkyWay
                         && (previous.seed | 0) === (nextModel.seed | 0)
                         && window.GalaxyLib.sameGeometry(previous, nextModel);
@@ -956,7 +991,7 @@ function createStarRenderer(device, context, format, options) {
                         uploadDynamic();
                         return state;
                 }
-                prepare(nextModel.milkyWay ? lastManifest : null);
+                prepare(nextModel.milkyWay ? lastManifest : null, carry);
                 uploadDynamic();
                 return state;
         }
@@ -1262,6 +1297,8 @@ function createStarRenderer(device, context, format, options) {
                 setHighlightDesat,
                 setEngine,
                 resetSimpleState,
+                setProceduralStars,
+                proceduralTarget: () => proceduralTarget,
                 dispose,
                 state,
                 stats: () => state,

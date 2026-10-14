@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-14T17:17:46.653Z",
+  "date": "2026-10-14T21:21:08.420Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -136,9 +136,9 @@
       "pass": true
     },
     {
-      "name": "the age change re-seeds the simple mirror and re-resolves the set",
+      "name": "the age change re-draws through one path: phase rebase, seed carry, mirror, set",
       "pass": true,
-      "detail": 1133
+      "detail": 1107
     },
     {
       "name": "the live clock is wired: the toggle, the boot gate and the step path",
@@ -245,7 +245,7 @@
       "name": "OrbitLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 92
+        "keys": 96
       }
     },
     {
@@ -308,7 +308,7 @@
       "name": "Presets loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 19
+        "keys": 20
       }
     },
     {

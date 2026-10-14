@@ -130,6 +130,16 @@ check('menu controls own keyboard input except Tab', () => {
 	assert.equal(state.actions.menu, 1);
 	state.actions.menu = 0;
 });
+check('Ctrl/Cmd+V over the scene is a paste, not the system-view key', () => {
+	for (const mod of [{ ctrlKey: true }, { metaKey: true }]) {
+		const ev = canvas.emit('keydown', Object.assign({ code: 'KeyV' }, mod));
+		assert.equal(ev.defaultPrevented, undefined);
+		assert.equal(state.actions.systemView, 0);
+	}
+	canvas.emit('keydown', { code: 'KeyV' });
+	assert.equal(state.actions.systemView, 1);
+	state.actions.systemView = 0;
+});
 check('UI focus cancels held keys and drag; keyup in a field never leaves a stuck key', () => {
 	canvas.emit('keydown', { code: 'KeyW' });
 	canvas.emit('mousedown');

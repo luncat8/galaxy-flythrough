@@ -81,15 +81,22 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		})(), 'missing ids');
 	check('the sysmenu selector main.js queries is an id in the page',
 		/#sysmenu \[data-view\]/.test(main) && /id="sysmenu"/.test(html));
-	// 0.6 E1b: an age change re-draws the field, so the two pieces of runtime
-	// state that were seeded from the old birth positions have to follow it — the
-	// simple engine's CPU mirror and the selection set's per-key resolution. Both
-	// live in one function here because there is no browser to run it in.
+	// 0.6 E1b: an age change re-draws the field, so the runtime state tied to the
+	// old draw has to follow it — the selection set's per-key resolution, and the
+	// simple engine's CPU mirror, which since the first browser pass keeps its
+	// landmark azimuths and only takes the new epoch's law. Every same-galaxy
+	// re-draw (age, live step, star budget) goes through one function, which also
+	// rebases the pattern phase so the bar does not turn back by ΔΩ_p·T. Checked
+	// as text here because there is no browser to run it in.
 	const ageFn = main.match(/function regenerateAge\(age\) \{[\s\S]*?\n        \}/);
-	check('the age change re-seeds the simple mirror and re-resolves the set',
-		!!ageFn && /renderer\.regenerate\(model\)/.test(ageFn[0])
-		&& /initSimpleLandmarks\(\);/.test(ageFn[0]) && /resolveSet\(\);/.test(ageFn[0]),
-		ageFn ? ageFn[0].length : null);
+	const drawFn = main.match(/function redrawField\(next\) \{[\s\S]*?\n        \}/);
+	check('the age change re-draws through one path: phase rebase, seed carry, mirror, set',
+		!!ageFn && /redrawField\(galaxy\.createGalaxy\(/.test(ageFn[0])
+		&& !!drawFn && /rebasePatternPhase\(previous, model, starTimeMyr\)/.test(drawFn[0])
+		&& drawFn[0].indexOf('rebasePatternPhase') < drawFn[0].indexOf('renderer.regenerate(model, fieldCarry)')
+		&& /simpleLandmarksRebind\(model\)\) initSimpleLandmarks\(\);/.test(drawFn[0])
+		&& /resolveSet\(\);/.test(drawFn[0]),
+		drawFn ? drawFn[0].length : null);
 	// 0.6 E2: the epoch's live clock. The law (quantum, price, drop, hold,
 	// replay) is pinned numerically in galaxy-evolution-test.js — what cannot be
 	// run here is the wiring: the toggle, the boot gate and the loop's step path,

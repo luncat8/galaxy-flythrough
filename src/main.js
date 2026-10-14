@@ -256,7 +256,7 @@ async function boot() {
 
         // --- Settings menu (Tab to toggle) -----------------------------------
         const menu = document.getElementById('menu');
-        const menuClose = document.getElementById('menu-close');
+        const menuCollapse = document.getElementById('menu-collapse');
         const sliderExp = document.getElementById('slider-exposure');
         const sliderBright = document.getElementById('slider-brightness');
         const sliderWhite = document.getElementById('slider-white');
@@ -575,7 +575,7 @@ async function boot() {
         // rows, #sysread) and routes the canvas clicks to it while open.
         const systemLayer = window.SystemLayer.createSystemLayer(document.getElementById('system'));
         const sysMenu = document.getElementById('sysmenu');
-        const sysMenuClose = document.getElementById('sysmenu-close');
+        const sysMenuCollapse = document.getElementById('sysmenu-collapse');
         const btnSystemView = document.getElementById('btn-system-view');
         const sysViewSelect = document.getElementById('sys-view');
         const sliderSysTime = document.getElementById('slider-systime');
@@ -798,10 +798,11 @@ async function boot() {
         syncViewRows();
         if (params.sysview) openSystemView(true);   // no selection at boot: a no-op
 
-        // Tab toggles both control panels without changing the view. The System
-        // panel's × is an explicit exit as well as a close, so a delta-v render
-        // cannot be left over with its controls hidden. Opening either panel
-        // releases pointer lock and any held key.
+        // Tab toggles both control panels without changing the view. A panel's
+        // own ▾ collapses it to its header instead of closing it, so there is
+        // always a handle to expand it again; collapsing the System panel keeps
+        // the view open (V, Esc and its Close button are the exits). Opening
+        // either panel releases pointer lock and any held key.
         function releasePanelInput() {
                 input.releaseAll();
                 if (document.pointerLockElement === canvas) document.exitPointerLock();
@@ -825,18 +826,19 @@ async function boot() {
                         releasePanelInput();
                 }
         }
-        function closePanel(panel) {
-                panel.style.display = 'none';
-                syncOverlayInset();
+        function toggleCollapse(panel, button) {
+                const collapsed = panel.classList.toggle('collapsed');
+                button.textContent = collapsed ? '\u25b8' : '\u25be';
+                button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
                 releasePanelInput();
                 canvas.focus({ preventScroll: true });
         }
-        function closeSystemPanel() {
-                closeSystemView();
-                closePanel(sysMenu);
+        function wireCollapse(panel, button) {
+                button.addEventListener('click', () => toggleCollapse(panel, button));
+                panel.querySelector('.menu-header > span').addEventListener('click', () => toggleCollapse(panel, button));
         }
-        menuClose.addEventListener('click', () => closePanel(menu));
-        sysMenuClose.addEventListener('click', closeSystemPanel);
+        wireCollapse(menu, menuCollapse);
+        wireCollapse(sysMenu, sysMenuCollapse);
 
         sliderExp.addEventListener('input', () => {
                 renderer.setExposure(Number(sliderExp.value));
@@ -911,6 +913,7 @@ async function boot() {
         // from the copied line — a knob of a pass that is not running is not
         // part of the settings.
         const engineRows = Array.from(document.querySelectorAll('#menu [data-engine]'));
+        const apocenterNote = document.getElementById('apocenter-note');
         function syncEngine() {
                 const active = renderer.state.engine;
                 engineClassic.checked = active === 'classic' || active.includes('classic');
@@ -918,6 +921,10 @@ async function boot() {
                 engineApocenter.checked = active.includes('apocenter');
                 valEngine.textContent = active === 'classic' ? 'closed form' : active.trim();
                 for (const row of engineRows) row.style.display = active.includes(row.dataset.engine) ? '' : 'none';
+                // Mask 4 is birth for the unselected share by contract (movement
+                // parity plan, decision 1), so at 0% nothing moves. Say so where
+                // the share slider is, instead of letting it read as a freeze.
+                apocenterNote.hidden = active !== 'apocenter';
         }
         function changeEngines() {
                 const selected = selectedEngines();
@@ -1020,12 +1027,21 @@ async function boot() {
 
         function applyPreset(query) {
                 const s = window.Presets.parse(query);
-                if (!Object.keys(s).length) return;
+                if (!Object.keys(s).length) return false;
+                // The star budget lands before the galaxy rebuild below, so a preset
+                // that changes both costs one re-draw, not two.
+                const budgetChanged = s.stars !== undefined && renderer.setProceduralStars(s.stars) !== params.stars;
+                if (budgetChanged) {
+                        params.stars = renderer.proceduralTarget();
+                        syncStars();
+                }
                 if (s.type !== undefined || s.seed !== undefined || s.age !== undefined) {
                         regenerateGalaxy(
                                 s.type !== undefined ? s.type : model.type,
                                 s.seed !== undefined ? s.seed : model.seed,
                                 s.age !== undefined ? s.age : model.populations.age);
+                } else if (budgetChanged) {
+                        redrawField(model);
                 }
                 // The epoch's live clock (E2), landed after the age above so a preset
                 // that carries both reaches its own epoch first and the replay rule
@@ -1096,6 +1112,7 @@ async function boot() {
 		if (systemLayer.isOpen()) writeSystemReadout();
                 syncSlidersFromRenderer();
                 updateOverlay(renderer.state, camera.getState(statsText));
+                return true;
         }
 
         // Clipboard with a selection fallback: not every file:// context is
@@ -1114,22 +1131,54 @@ async function boot() {
                 try { document.execCommand('copy'); } catch (err) { /* the box is the fallback */ }
         }
 
+        // One status line under the buttons, so a paste that found nothing says
+        // so instead of silently doing nothing (or printing the clipboard).
+        const presetStatus = document.getElementById('preset-status');
+        function presetSay(text) {
+                presetStatus.textContent = text;
+        }
+
+        // Pasted text becomes the box only if it is a preset: anything else is
+        // left out of the box and reported, so a stray clipboard never lands in
+        // the settings line.
+        function takePastedText(text) {
+                const query = window.Presets.presetQueryOf(text);
+                if (!query) {
+                        presetSay(String(text || '').trim() ? 'clipboard holds no preset — nothing applied' : 'clipboard is empty');
+                        return false;
+                }
+                presetText.value = query;
+                applyPreset(query);
+                presetSay('preset applied from the clipboard');
+                return true;
+        }
+
+        // The button goes through the async clipboard API, which some browsers
+        // guard with a prompt on every read (Firefox's Paste popup, Chrome on
+        // file://). Ctrl/Cmd+V over the scene is the prompt-free path: a paste
+        // event carries its own clipboard data.
         function pastePreset() {
-                const focusBox = () => { presetText.focus(); presetText.select(); };
                 if (!(navigator.clipboard && navigator.clipboard.readText)) {
-                        focusBox();
+                        presetText.focus();
+                        presetSay('no clipboard access here — press Ctrl+V over the scene, or paste into the box and Apply');
                         return;
                 }
-                navigator.clipboard.readText().then((text) => {
-                        const clean = String(text || '').trim();
-                        if (!clean) {
-                                focusBox();
-                                return;
-                        }
-                        presetText.value = clean;
-                        applyPreset(clean);
-                }).catch(focusBox);
+                navigator.clipboard.readText().then(takePastedText).catch(() => {
+                        presetSay('clipboard read refused — press Ctrl+V over the scene, or paste into the box and Apply');
+                });
         }
+        // A field that takes typed text keeps its own paste; a slider, a button
+        // or the scene does not take text, so there the paste is a preset.
+        function typingTarget(t) {
+                if (!t || !t.tagName) return false;
+                if (t.tagName === 'TEXTAREA' || t.isContentEditable) return true;
+                return t.tagName === 'INPUT' && /^(text|number|search|url|email|password)$/.test(t.type);
+        }
+        document.addEventListener('paste', (event) => {
+                if (typingTarget(event.target)) return;
+                const text = event.clipboardData ? event.clipboardData.getData('text/plain') : '';
+                if (takePastedText(text)) event.preventDefault();
+        });
 
         function savePreset() {
                 if (!presetText.value.trim()) presetText.value = window.Presets.serialize(collectSettings());
@@ -1184,9 +1233,14 @@ async function boot() {
                 builtinBox.appendChild(button);
         }
 
-        btnPresetCopy.addEventListener('click', () => copyText(window.Presets.serialize(collectSettings())));
+        btnPresetCopy.addEventListener('click', () => {
+                copyText(window.Presets.serialize(collectSettings()));
+                presetSay('settings copied');
+        });
         btnPresetPaste.addEventListener('click', pastePreset);
-        btnPresetApply.addEventListener('click', () => applyPreset(presetText.value));
+        btnPresetApply.addEventListener('click', () => {
+                presetSay(applyPreset(presetText.value) ? 'preset applied' : 'the box holds no preset — nothing applied');
+        });
         btnPresetSave.addEventListener('click', savePreset);
         btnPresetLoad.addEventListener('click', () => presetFile.click());
         btnPresetPrompt.addEventListener('click', () => copyText(window.Presets.buildLlmPrompt(collectSettings())));
@@ -1195,8 +1249,14 @@ async function boot() {
                 if (!file) return;
                 presetFile.value = '';
                 file.text().then((text) => {
-                        presetText.value = String(text).trim();
-                        applyPreset(presetText.value);
+                        const query = window.Presets.presetQueryOf(text);
+                        if (!query) {
+                                presetSay(`${file.name} holds no preset — nothing applied`);
+                                return;
+                        }
+                        presetText.value = query;
+                        applyPreset(query);
+                        presetSay(`preset loaded from ${file.name}`);
                 });
         });
 
@@ -1288,13 +1348,26 @@ async function boot() {
         // no camera move, no dropped selection, no label change — but the field,
         // the birth thetas and the resolved set all follow the new epoch.
         function regenerateAge(age) {
-                model = galaxy.createGalaxy({ type: model.type, seed: model.seed, age });
-                renderer.regenerate(model);
-                // Fresh positions mean a fresh simple epoch on the CPU side too,
-                // exactly as a type change re-seeds it: prepare re-seeded the GPU
-                // thetas from the new birth positions, and the mirror integrates
-                // the same law, so both sides have to start from the same birth.
-                initSimpleLandmarks();
+                redrawField(galaxy.createGalaxy({ type: model.type, seed: model.seed, age }));
+        }
+
+        // A re-draw of the *same* galaxy — another epoch, or another star budget
+        // — at the current star time. The star clock is not reset: the pattern
+        // keeps the orientation it has on screen. Ω_p is re-derived per epoch
+        // (E3), so the phase origin is rebased exactly as the Pattern speed
+        // slider rebases it; otherwise every live step would turn the bar back
+        // by ΔΩ_p·T and the galaxy would read as running backwards. The simple
+        // lane's re-drawn field is turned onto that same pattern, and its
+        // landmarks keep the azimuths the CPU mirror integrated (same stars).
+        const fieldCarry = { thetaShift: 0, landmarks: true };
+        function redrawField(next) {
+                const previous = model;
+                model = next;
+                window.OrbitLib.rebasePatternPhase(previous, model, starTimeMyr);
+                fieldCarry.thetaShift = window.OrbitLib.patternRotation(model, starTimeMyr);
+                renderer.regenerate(model, fieldCarry);
+                if (!window.OrbitLib.simpleLandmarksRebind(model)) initSimpleLandmarks();
+                briefModel = null;   // the brief re-reads the star from the new draw
                 // The set survives per key (plan §3.2) but not per slot: every
                 // member is resolved against the field that was just drawn.
                 resolveSet();
@@ -1332,6 +1405,42 @@ async function boot() {
                 syncEpoch();
         }
         galaxyEvolve.addEventListener('change', () => setEvolve(galaxyEvolve.checked));
+
+        // The star budget (0.6). A ladder of stops rather than a free slider:
+        // the value is a buffer size, and round numbers read back in presets.
+        // The readout follows the drag; the re-draw happens once, on release.
+        // A URL or preset may carry an off-ladder count — it is kept as given
+        // and the slider shows the nearest stop.
+        const STAR_STOPS = [30000, 50000, 75000, 100000, 150000, 200000, 300000, 400000, 500000];
+        const sliderStars = document.getElementById('slider-stars');
+        const valStars = document.getElementById('val-stars');
+        sliderStars.max = STAR_STOPS.length - 1;
+        function formatStars(count) {
+                return count >= 1e6 ? (count / 1e6).toFixed(2) + 'M' : Math.round(count / 1000) + 'k';
+        }
+        function nearestStarStop(count) {
+                let best = 0;
+                for (let i = 1; i < STAR_STOPS.length; i++) {
+                        if (Math.abs(STAR_STOPS[i] - count) < Math.abs(STAR_STOPS[best] - count)) best = i;
+                }
+                return best;
+        }
+        function syncStars() {
+                sliderStars.value = nearestStarStop(params.stars);
+                valStars.textContent = formatStars(params.stars);
+        }
+        function setStarBudget(count) {
+                const next = renderer.setProceduralStars(count);
+                if (next === params.stars) return;
+                params.stars = next;
+                syncStars();
+                redrawField(model);
+        }
+        sliderStars.addEventListener('input', () => {
+                valStars.textContent = formatStars(STAR_STOPS[Number(sliderStars.value)]);
+        });
+        sliderStars.addEventListener('change', () => setStarBudget(STAR_STOPS[Number(sliderStars.value)]));
+        syncStars();
 
         galaxyType.addEventListener('change', () => {
                 regenerateGalaxy(galaxyType.value, model.seed, model.populations.age);
@@ -1615,6 +1724,69 @@ async function boot() {
                 return `\nselected ${landmarks.ENTRIES[selected].name}   (C cycles to orbit object)`;
         }
 
+        // The system brief: the primary's generated system on one line — the
+        // star, the counts, and a strip of body icons with the gap between
+        // neighbours in AU (☀️-0.39-🌋-0.33-🌍-…) — so a star can be judged
+        // before V opens the schematic. Generated when the primary or the field
+        // it was resolved against changes, never per overlay tick.
+        const BODY_ICONS = {
+                LAVA: '\u{1F30B}', BARREN: '\u{1F311}', DESERT: '\u{1F7E0}', TERRAN: '\u{1F30D}',
+                ICE: '\u{1F9CA}', SUPER_EARTH: '\u{1F30F}', MINI_NEPTUNE: '\u{1F4A7}',
+                GAS_GIANT: '\u{1FA90}', ICE_GIANT: '\u{1F535}', DWARF: '\u26AB',
+        };
+        const DISPLAY_ICON = selectPlanets.DISPLAY_TYPES.map((t) => BODY_ICONS[t.name] || '\u2022');
+        const STAR_ICON = { ms: '\u2600\uFE0F', giant: '\u{1F534}', wd: '\u26AA' };
+        const STAR_STATE = { ms: '', giant: ' giant', wd: ' white dwarf' };
+        const BELT_ICON = '\u2604\uFE0F';
+        const briefRecord = selectPlanets.createSystemRecord();
+        const briefCtx = {};
+        let briefKey = -1;
+        let briefModel = null;
+        let briefText = '';
+
+        function formatGapAU(d) {
+                if (d < 1) return d.toPrecision(2);
+                return d < 10 ? d.toFixed(1) : String(Math.round(d));
+        }
+
+        function buildSystemBrief(p) {
+                const ref = memberRefFor(p);
+                briefCtx.model = model;
+                briefCtx.field = renderer.fieldBuffers();
+                briefCtx.member = renderer.starBlocks().member;
+                briefCtx.name = landmarkNameFor(p);
+                const rec = selectPlanets.generateSystem(ref, briefCtx, briefRecord);
+                const n = rec.counts.planets;
+                const belts = rec.belts;
+                let text = `\nsystem    ${rec.star.spectralClass}${STAR_STATE[rec.star.state] || ''} \u00b7 ` +
+                        `${n === 0 ? 'no' : n} planet${n === 1 ? '' : 's'}` +
+                        (belts.count ? `, ${belts.count} belt${belts.count === 1 ? '' : 's'}` : '') + '   ' +
+                        (STAR_ICON[rec.star.state] || STAR_ICON.ms);
+                // Planets and belts are each ascending in a; merge the two walks.
+                let i = 0, k = 0, last = 0;
+                while (i < n || k < belts.count) {
+                        const takePlanet = k >= belts.count || (i < n && rec.planets.a[i] <= belts.a[k]);
+                        const a = takePlanet ? rec.planets.a[i] : belts.a[k];
+                        const icon = takePlanet ? DISPLAY_ICON[rec.planets.displayType[i]] : BELT_ICON;
+                        text += `-${formatGapAU(a - last)}-${icon}`;
+                        last = a;
+                        if (takePlanet) i++;
+                        else k++;
+                }
+                return n || belts.count ? text + ' AU' : text;
+        }
+
+        function systemBriefLine(p) {
+                if (systemLayer.isOpen()) return '';
+                const key = starSet.keys[p] >>> 0;
+                if (key !== briefKey || model !== briefModel) {
+                        briefKey = key;
+                        briefModel = model;
+                        briefText = buildSystemBrief(p);
+                }
+                return briefText;
+        }
+
         // The selection readout (plan §3.6). One line for the primary — class, mass,
         // luminosity, distance — and one for the set. Any member's snapshot fields
         // are shown, so a pick never has to re-derive anything to be described.
@@ -1630,6 +1802,7 @@ async function boot() {
                 let text = `\nselected  ${memberName(i)}  (${cls}, ${starSet.mass[i].toFixed(2)} M\u2609, ` +
                         `${starSet.lum[i].toFixed(2)} L\u2609, ${formatLy(distLy)})`;
                 if (starSet.approximated[i]) text += '  \u00b7 position approximate under this engine mask';
+                text += systemBriefLine(i);
                 if (starSet.count > 1) {
                         text += `\nset       ${setLabel || `${starSet.count} stars`}` +
                                 ' \u00b7 N next \u00b7 X clear \u00b7 F fly to';

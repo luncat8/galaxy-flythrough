@@ -161,7 +161,7 @@
 			"pass": true
 		},
 		{
-			"name": "System panel close exits the view and the route hint does not send V to autopilot",
+			"name": "panels collapse to their header (never closed for good) and the route hint does not send V to autopilot",
 			"pass": true
 		}
 	],

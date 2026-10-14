@@ -386,3 +386,13 @@ body.system-view #sysread {
 	body.system-view #sysread { max-width: calc(100vw - 24px); bottom: 12px; }
 	#sysread { max-width: calc(100vw - 24px); }
 }
+
+/* Collapsible panels: the header stays as the handle, so a panel is never
+   lost (Tab still hides both outright). !important beats the inline
+   display the data-engine / data-view row gating writes. */
+.panel.collapsed > :not(:first-child) { display: none !important; }
+.panel.collapsed > .menu-header { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+.panel > .menu-header:first-child > span { cursor: pointer; user-select: none; flex: 1; }
+.menu-header .panel-collapse { font-size: 12px; min-width: 26px; }
+.menu-note { font-size: 10px; color: #c9b27a; line-height: 1.35; }
+.menu-note[hidden] { display: none; }

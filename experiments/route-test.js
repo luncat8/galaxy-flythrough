@@ -427,10 +427,19 @@ test('search UI calls the exported planet-type bit function', () => {
 	assert.ok(main.includes('searchLib.planetTypeBit'));
 	assert.ok(!main.includes('searchLib.ptypeBit'));
 });
-test('System panel close exits the view and the route hint does not send V to autopilot', () => {
+test('panels collapse to their header (never closed for good) and the route hint does not send V to autopilot', () => {
 	const main = fs.readFileSync('src/main.js', 'utf8');
-	assert.match(main, /function closeSystemPanel\(\)\s*\{\s*closeSystemView\(\);\s*closePanel\(sysMenu\);\s*\}/);
-	assert.ok(main.includes("sysMenuClose.addEventListener('click', closeSystemPanel)"));
+	const html = fs.readFileSync('src/index.html', 'utf8');
+	// A collapsed panel keeps its header as the handle; the System panel's
+	// collapse leaves the view open, so its controls are one click away and
+	// V / Esc / the view button remain the exits.
+	assert.ok(html.includes('id="menu-collapse"') && html.includes('id="sysmenu-collapse"'));
+	assert.ok(!html.includes('id="menu-close"') && !html.includes('id="sysmenu-close"'));
+	assert.ok(main.includes('wireCollapse(menu, menuCollapse)') && main.includes('wireCollapse(sysMenu, sysMenuCollapse)'));
+	const toggle = main.slice(main.indexOf('function toggleCollapse'), main.indexOf('function wireCollapse'));
+	assert.ok(toggle.includes("classList.toggle('collapsed')") && !toggle.includes('closeSystemView'));
+	const css = fs.readFileSync('src/style.css', 'utf8');
+	assert.ok(css.includes('.panel.collapsed > :not(:first-child)'));
 	assert.ok(!main.includes('V to fly it'));
 });
 fs.writeFileSync('experiments/logs/route.json', JSON.stringify({ checks, passed: checks.filter(c => c.pass).length, failed: checks.filter(c => !c.pass).length }, null, '\t') + '\n');

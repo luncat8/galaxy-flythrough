@@ -2598,7 +2598,13 @@
   "maxJump": 0.10000000000000142,
   "rate": 99,
   "rebuildSeconds": 0.67,
-  "samplingMs": 307.485071
+  "samplingMs": 299.739705
+ },
+ "patternContinuity": {
+  "worstRebased": 4.4853010194856324e-14,
+  "worstNaive": 3.111002072076272,
+  "barWorst": 0.0020491486699288908,
+  "finalT": 13600
  },
  "ageRange": [
   0.2,
@@ -2618,8 +2624,8 @@
   0.25
  ],
  "types": 19,
- "totalChecks": 37,
- "passed": 37,
+ "totalChecks": 41,
+ "passed": 41,
  "failed": 0,
  "checks": [
   {
@@ -2848,6 +2854,35 @@
    "name": "the sampled bulge is the smaller one: its mean radius rides the size factor",
    "pass": true,
    "detail": null
+  },
+  {
+   "name": "without the rebase a live step turns the pattern by radians (the defect is real)",
+   "pass": true,
+   "detail": {
+    "worstNaive": 3.111002072076272
+   }
+  },
+  {
+   "name": "with the rebase the pattern angle is continuous across every epoch step",
+   "pass": true,
+   "detail": {
+    "worstRebased": 4.4853010194856324e-14
+   }
+  },
+  {
+   "name": "a bar-family star keeps its azimuth across every epoch step (to its x1 loop)",
+   "pass": true,
+   "detail": {
+    "barWorst": 0.0020491486699288908
+   }
+  },
+  {
+   "name": "a re-draw of the same model (a star-budget change) leaves the phase alone",
+   "pass": true,
+   "detail": {
+    "before": 5.822745747385433,
+    "after": 5.822745747385433
+   }
   }
  ]
 }

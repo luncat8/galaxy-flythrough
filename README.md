@@ -81,18 +81,24 @@ This is a visual galaxy model, not an N-body gravity simulation. The analytical 
 
 Other controls:
 
-- `Tab` — toggle settings
+- `Tab` — hide/show both panels; a panel's own `▾` (or a click on its title) collapses it to its header
 - `G` — cycle galaxy type and rebuild the field
 - `P` — toggle constellation lines
 - `T` — pause/resume star time
 - the **Evolve with star time** checkbox — the galaxy's age runs with star time from 0.2 Gyr to
-  present day; the Age slider is the seek, and the epoch readout next to it shows the field's epoch
+  present day; the Age slider is the seek, and the epoch readout next to it shows the field's epoch.
+  The bar and arms keep their orientation across steps; each step re-draws the field, so lower
+  **Stars** (30k–500k, applied on release) for a smaller hitch per step
 - `V` — open/close the close-system schematic of the selected star
 - `B` — cycle the system view: schematic → delta-v map → delta-v rails
 - `[` / `]` — exposure
 - `;` / `'` — overall brightness
 - `Esc` — close the system view; release the pointer in fly mode
-- System panel `×` — exit the system view and close its controls; `Tab` hides both panels without exiting
+- System panel `▾` — collapse its controls to the header without leaving the view (`V`, `Esc` or **Close** exit)
+- selecting a star adds a one-line system brief under the `selected` line: star class, planet and belt
+  counts, and the bodies in order with the gap between neighbours in AU, e.g. `☀️-0.39-🌋-0.33-🌍-1.3-🪐 AU`
+- `Ctrl+V` over the scene (not in a text field) applies a preset from the clipboard without the browser's
+  paste prompt; text that is not a preset is ignored rather than printed into the box
 
 The settings panel opens at startup and exposes galaxy type, seed, age, the live epoch clock, star time, movement engine, pattern controls, tone mapping, and presets.
 
@@ -142,7 +148,7 @@ Useful parameters include:
 | `seed` | Deterministic generation seed |
 | `age` | Frozen galaxy age in Gyr |
 | `evolve` | `1` runs the epoch with star time (from `0.2` Gyr, holding at present day); `0` freezes it |
-| `stars` | Procedural star budget |
+| `stars` | Procedural star budget (also the **Stars** slider; a pasted preset re-draws with it) |
 | `catalog` | Catalog star budget; `0` selects procedural-only rendering |
 | `engine` | `classic`, `simple`, `apocenter`, or a `+`-joined combination |
 | `time` | Stellar time rate in Myr/s |
@@ -151,7 +157,7 @@ Useful parameters include:
 | `exposure` | Faint-star magnitude threshold |
 | `brightness`, `white`, `sat` | Display gain, white point, and saturation |
 | `headroom`, `highlight` | HDR ceiling and highlight desaturation |
-| `apoShare`, `apoForce` | Apocenter-engine population share and eccentricity force |
+| `apoShare`, `apoForce` | Apocenter-engine population share and eccentricity force (apocenter alone leaves the unshared stars at birth: add `classic` for a moving baseline) |
 | `sysview` | `1` opens the system schematic at load (a no-op without a selection) |
 | `systime` | Schematic clock rate in years/s (`-1` follows the camera fly speed, `0` freezes) |
 | `dvmap`, `dvbudget` | System render (`0` schematic, `1` delta-v classic, `2` delta-v rails) and energy budget (`0`–`1`) |

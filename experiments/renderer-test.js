@@ -684,6 +684,75 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 }
 
 
+// --- The star budget and the simple lane across a re-draw (0.6) -----------
+// The menu's Stars control re-draws the same galaxy with another budget, so a
+// budget change must take the allocating path even when the model object is
+// unchanged — and only then: the next same-model regenerate is the population
+// path again. An age re-draw hands the renderer a carry: the field and object
+// thetas turned by the pattern's rotation, the landmarks continued from the
+// CPU mirror, so the simple lane does not snap back to the birth layout.
+{
+        const budGpu = createMockGpu();
+        const bud = rendererModule.createStarRenderer(budGpu.device, budGpu.context, budGpu.format, {
+                proceduralStars: 2000, catalogBudgetStars: 0, objectMembers: 200, objectCount: 8, model,
+        });
+        bud.prepare(null);
+        const samples0 = bud.state.fieldSamples;
+        const same = bud.setProceduralStars(2000);
+        const kept = bud.regenerate(model);
+        check('an unchanged budget keeps the population-only path',
+                same === 2000 && kept.fieldSamples === samples0 && kept.proceduralStars === 2000,
+                { fieldSamples: kept.fieldSamples });
+        bud.setProceduralStars(3000);
+        const grown = bud.regenerate(model);
+        check('a new star budget re-draws the same model at the new count',
+                grown.proceduralStars === 3000 && grown.fieldSamples === samples0 + 1
+                && bud.proceduralTarget() === 3000 && bud.fieldBuffers().count === 3000,
+                { procedural: grown.proceduralStars, fieldSamples: grown.fieldSamples });
+        const again = bud.regenerate(model);
+        check('after the re-draw the budget is clean again',
+                again.fieldSamples === samples0 + 1, { fieldSamples: again.fieldSamples });
+
+        const orbitLib = window.OrbitLib;
+        const lmCount = window.Landmarks.count;
+        const lmPos = new Float32Array(lmCount * 3);
+        const lmColor = new Uint8Array(lmCount);
+        for (let i = 0; i < lmCount; i++) {
+                lmPos[i * 3] = window.Landmarks.ENTRIES[i].x;
+                lmPos[i * 3 + 1] = window.Landmarks.ENTRIES[i].y;
+                lmPos[i * 3 + 2] = window.Landmarks.ENTRIES[i].z;
+                lmColor[i] = window.Landmarks.ENTRIES[i].colorIndex;
+        }
+        orbitLib.simpleLandmarksInit(lmPos, lmColor, lmCount, model);
+        orbitLib.simpleLandmarksStep(400, 400);
+        const shift = 1.25;
+        bud.setProceduralStars(2500);
+        bud.regenerate(model, { thetaShift: shift, landmarks: true });
+        const fixed = budGpu.bufferWrites.filter(w => w.buffer.label === 'star-storage' && w.offset === 0).pop();
+        const view = new DataView(fixed.bytes.buffer, fixed.bytes.byteOffset, fixed.bytes.byteLength);
+        const thetaWrite = budGpu.thetaWrites.filter(w => w.offset === 0).pop();
+        const theta = new Float32Array(thetaWrite.bytes.buffer, thetaWrite.bytes.byteOffset, thetaWrite.bytes.byteLength / 4);
+        const wrapPi = (a) => a - 2 * Math.PI * Math.floor((a + Math.PI) / (2 * Math.PI));
+        const cx = model.centre.x, cy = model.centre.y;
+        let fieldErr = 0;
+        for (let i = 0; i < 2500; i += 7) {
+                const r = records.readRecord(view, i * records.RECORD_BYTES);
+                const want = wrapPi(Math.atan2(r.y - cy, r.x - cx) + shift);
+                fieldErr = Math.max(fieldErr, Math.abs(wrapPi(theta[i] - want)));
+        }
+        let lmErr = 0, lmMoved = 0;
+        for (let i = 0; i < lmCount; i++) {
+                lmErr = Math.max(lmErr, Math.abs(theta[2500 + i] - Math.fround(orbitLib.simpleLandmarkTheta(i))));
+                const birth = Math.atan2(lmPos[i * 3 + 1] - cy, lmPos[i * 3] - cx);
+                if (Math.abs(wrapPi(theta[2500 + i] - birth)) > 1e-4) lmMoved++;
+        }
+        check('an age re-draw turns the field thetas by the pattern rotation',
+                fieldErr < 1e-5, { maxErr: fieldErr });
+        check('an age re-draw continues the landmark thetas from the CPU mirror',
+                lmErr === 0 && lmMoved > lmCount / 2, { maxErr: lmErr, moved: lmMoved, of: lmCount });
+}
+
+
 // --- Object-block defaults ------------------------------------------------
 // Omitted object options fall back to the ObjectsLib budgets: 400 whole-galaxy
 // objects apportioned to exactly 20000 members.

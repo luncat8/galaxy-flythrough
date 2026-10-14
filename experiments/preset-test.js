@@ -390,6 +390,36 @@ check('main.js wires collect, apply, clipboard, file and prompt through Presets'
 	}
 });
 
+check('a clipboard is a preset only when it parses as one', () => {
+	const line = Presets.serialize(SETTINGS);
+	assert.equal(Presets.presetQueryOf(line), line);
+	assert.equal(Presets.presetQueryOf('  ' + line + '\n'), line);
+	// A copied page URL keeps its query (and drops a fragment).
+	assert.equal(Presets.presetQueryOf('file:///home/u/src/index.html?' + line + '#top'), line);
+	assert.equal(Presets.presetQueryOf('?' + line), '?' + line);
+	// Anything else is not printed into the box.
+	for (const junk of ['', '   ', 'hello world', 'https://example.com/page', 'foo=1&bar=2', 'seed=abc']) {
+		assert.equal(Presets.presetQueryOf(junk), '', JSON.stringify(junk));
+	}
+});
+
+check('built-in presets leave the star budget alone', () => {
+	for (const preset of Presets.BUILTIN) {
+		const query = new URLSearchParams(Presets.builtinQuery(preset.id));
+		assert.ok(!query.has('stars') && !query.has('catalog'), preset.id);
+	}
+});
+
+check('main.js routes paste, load and the star budget through the preset line', () => {
+	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
+	const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
+	assert.ok(main.includes('window.Presets.presetQueryOf(text)'), 'paste/load validate first');
+	assert.ok(main.includes("document.addEventListener('paste'"), 'prompt-free Ctrl+V path');
+	assert.ok(main.includes('renderer.setProceduralStars(s.stars)'), 'pasted budget applies');
+	assert.ok(html.includes('id="preset-status"') && html.includes('id="slider-stars"'), 'status line and Stars slider');
+	assert.ok(!html.includes('star counts apply at boot'), 'stale hint');
+});
+
 const failed = checks.filter((c) => !c.pass).length;
 for (const c of checks) console.log(`${c.pass ? 'OK  ' : 'FAIL'} ${c.name}${c.detail ? ': ' + c.detail : ''}`);
 console.log(`\n${checks.length - failed}/${checks.length} passed`);

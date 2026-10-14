@@ -235,6 +235,26 @@ function setPatternScale(value, time, model) {
 	return patternScale;
 }
 function getPatternScale() { return patternScale; }
+// The same continuity for a rebuild of the same galaxy at another epoch: E3
+// re-derives Ω_p from the bar's own length (0.13 rad/Myr at 0.2 Gyr, 0.029 at
+// the present for SBb), so without a rebase every live-clock step would turn
+// the bar and the arm pattern back by ΔΩ_p·T — after a few hundred Myr of
+// star time that is radians, and the galaxy reads as running backwards.
+function rebasePatternPhase(previous, next, time) {
+	const t = Number(time);
+	if (!Number.isFinite(t) || t === 0) return patternPhaseOffset;
+	const before = fillDynamics(orbitScratch, previous).omegaPattern;
+	const after = fillDynamics(orbitScratch, next).omegaPattern;
+	if (before !== after) patternPhaseOffset = wrapAngle(patternPhaseOffset + (before - after) * t);
+	return patternPhaseOffset;
+}
+// The pattern's inertial rotation since the birth frame (T = 0): what a field
+// re-drawn at time T must be turned by to land on the arms already on screen.
+function patternRotation(model, time) {
+	const t = Number(time);
+	const w = fillDynamics(orbitScratch, model).omegaPattern;
+	return wrapAngle((Number.isFinite(t) ? w * t : 0) + patternPhaseOffset);
+}
 function getPatternPhaseOffset() { return patternPhaseOffset; }
 function resetPatternPhaseOffset() { patternPhaseOffset = 0; return patternPhaseOffset; }
 // What the multiplier means on this model: the derived group speed times the
@@ -928,6 +948,17 @@ function simpleLandmarksInit(positions, colorIndices, count, model) {
 	simpleLMEcc = simpleEccMax(model);
 	return count;
 }
+// An age rebuild of the same galaxy keeps the landmark azimuths: the named
+// stars are fixed data, not a re-draw, so only the law they step under (the
+// new epoch's Ω_p and arms) changes — re-initialising them would snap every
+// label back to its birth azimuth on each live-clock step.
+function simpleLandmarksRebind(model) {
+	if (!simpleLandmarksReady() || !model) return 0;
+	simpleLMModel = model;
+	simpleLMEcc = simpleEccMax(model);
+	return simpleLMCount;
+}
+function simpleLandmarkTheta(i) { return simpleLMTheta[i]; }
 function simpleLandmarksReady() { return simpleLMModel !== null && simpleLMCount > 0; }
 function simpleLandmarksStep(dtStar, starTimeMyr) {
 	if (!simpleLandmarksReady() || !(dtStar > 0)) return 0;
@@ -1030,7 +1061,7 @@ const OrbitAPI = {
 	familyFromFlags, flagsWithFamily, encodeJitter, readOrbit,
 	familyFromColorIndex, familyForStar,
 	fillDynamics, pressureClock, omegaFor, omegaFrom, omegaStream,
-	setWaveDamping, getWaveDamping, setPatternScale, getPatternScale, getPatternPhaseOffset, resetPatternPhaseOffset, effectivePatternSpeed,
+	setWaveDamping, getWaveDamping, setPatternScale, getPatternScale, getPatternPhaseOffset, resetPatternPhaseOffset, rebasePatternPhase, patternRotation, effectivePatternSpeed,
 	dampedDiscTheta, orbitPosition, apocenterPosition, apocenterAngle, solveEccentricAnomaly,
 	packOrbitDynamics, sinTau, sliderValueToRate, formatTimeRate,
 	setEngine, getEngine, engineName,
@@ -1039,7 +1070,7 @@ const OrbitAPI = {
 	simpleArmed, simpleSigma, simpleEccMax, simpleOmega, simpleEccOf, simplePeriOf,
 	simpleDerived, simpleOmegaMax, simpleSubsteps, wrapAngle, simplePatternPhase,
 	simpleStepTheta, simplePositionFromTheta,
-	simpleLandmarksInit, simpleLandmarksReady, simpleLandmarksStep, simpleLandmarkPosition,
+	simpleLandmarksInit, simpleLandmarksRebind, simpleLandmarkTheta, simpleLandmarksReady, simpleLandmarksStep, simpleLandmarkPosition,
 	packSimpleParams, packEngineVec,
 };
 if (typeof module !== 'undefined') module.exports = OrbitAPI;

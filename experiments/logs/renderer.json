@@ -1,10 +1,10 @@
 {
-  "date": "2026-10-14T17:17:47.994Z",
+  "date": "2026-10-14T21:21:10.008Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 139,
-  "totalChecks": 125,
-  "passed": 125,
+  "prepareMs": 145,
+  "totalChecks": 130,
+  "passed": 130,
   "failed": 0,
   "checks": [
     {
@@ -668,6 +668,44 @@
       "detail": {
         "offset": 0,
         "fieldSamples": 7
+      }
+    },
+    {
+      "name": "an unchanged budget keeps the population-only path",
+      "pass": true,
+      "detail": {
+        "fieldSamples": 1
+      }
+    },
+    {
+      "name": "a new star budget re-draws the same model at the new count",
+      "pass": true,
+      "detail": {
+        "procedural": 3000,
+        "fieldSamples": 2
+      }
+    },
+    {
+      "name": "after the re-draw the budget is clean again",
+      "pass": true,
+      "detail": {
+        "fieldSamples": 2
+      }
+    },
+    {
+      "name": "an age re-draw turns the field thetas by the pattern rotation",
+      "pass": true,
+      "detail": {
+        "maxErr": 1.826830100526422e-7
+      }
+    },
+    {
+      "name": "an age re-draw continues the landmark thetas from the CPU mirror",
+      "pass": true,
+      "detail": {
+        "maxErr": 0,
+        "moved": 60,
+        "of": 60
       }
     },
     {

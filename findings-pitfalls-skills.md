@@ -1522,3 +1522,28 @@ stated "of the shipped field" that is only true "of the inputs": check which one
 composed factor is written against, and pin the composed invariant
 (`bulge mass fraction === spheroidProgress`, to 1e-12) so the double count cannot
 return.
+
+## 2026-10-14 — A re-derived rate on an un-reset clock is a phase jump: rebase the origin
+
+Any angle written `Ω·T + offset` on an absolute clock jumps by `ΔΩ·T` the moment Ω is
+re-derived, and the jump grows with how long the clock has run. E3 made Ω_p a function
+of the epoch, so each live Evolve step turned the bar back by radians — the user read
+it as "going back in time", and no unit test caught it because every E3 check
+compared models at `T = 0`. The fix already existed for the Pattern speed slider
+(`offset += (Ω_old − Ω_new)·T`); the lesson is that *every* path that swaps the model
+under a running clock (age drag, live step, budget re-draw) is the same event as a
+slider move and needs the same rebase — route them through one function. Test such
+laws at a large `T`, and pin the un-rebased jump as non-vacuity so the check proves
+the defect it guards. Companion: a stateful lane seeded from births (the simple
+engine) also needs its seeds turned into the current pattern frame, or it snaps back
+to the `T = 0` layout even with a continuous phase.
+
+## 2026-10-14 — Clipboard: readText prompts are the browser's; the paste event is not
+
+`navigator.clipboard.readText()` may prompt on *every* call (Firefox's Paste popup;
+Chrome without a persisted permission, e.g. `file://`) and no page can suppress it. A
+`paste` event's `clipboardData` needs no permission, so a document-level listener
+gives a prompt-free Ctrl+V path. Two traps: a global key handler that maps `KeyV` and
+calls `preventDefault` on Ctrl+V cancels the paste event itself; and a listener must
+skip only fields that take typed text (textarea, text/number inputs) — a focused
+range slider or button should still let the scene take the paste.

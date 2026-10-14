@@ -33,6 +33,10 @@
       "pass": true
     },
     {
+      "name": "Ctrl/Cmd+V over the scene is a paste, not the system-view key",
+      "pass": true
+    },
+    {
       "name": "UI focus cancels held keys and drag; keyup in a field never leaves a stuck key",
       "pass": true
     },
