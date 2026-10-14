@@ -939,6 +939,9 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 		sub0.n === 0 && sub0.h === 0 && subMW.n === 3 && Math.abs(subMW.h - 1 / 3) < 1e-12
 		&& subSpike.n === 8 && subSpike.h === 125,
 		{ subMW, subSpike });
+	// A fresh accumulator: with no pattern history yet, the mean rate *is* the
+	// model's own, and the lane phase is the closed form the trace tools use.
+	orbit.resetPatternPhase();
 	check('the pattern phase is wrap(Ωp·T − phase0/m) per frame, the T=0 lane phase when frozen',
 		Math.abs(orbit.simplePatternPhase(MW, 100) - 1.445) < 0.001
 		&& Math.abs(orbit.simplePatternPhase(MW, 0) - 4.8629) < 0.001
@@ -1088,8 +1091,8 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 	const savedEngine = orbit.getEngine();
 	const savedScale = orbit.getPatternScale();
 	const apoOut = new Float64Array(3);
-	orbit.setPatternScale(1, 0, MW);
-	orbit.resetPatternPhaseOffset();
+	orbit.setPatternScale(1);
+	orbit.resetPatternPhase();
 	check('apocenter is a named third engine and its mask bit round-trips',
 		orbit.ENGINE_APOCENTER === 4 && orbit.setEngine(4) === 4
 		&& orbit.engineName() === 'apocenter' && orbit.setEngine('apocenter') === 4);
@@ -1181,14 +1184,29 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 	check('apocenter CPU law agrees with an f32 replay of its WGSL inputs within 0.05 kpc',
 		apoParityWorst < 0.05, apoParityWorst);
 
-	orbit.setPatternScale(1, 0, MW);
-	orbit.resetPatternPhaseOffset();
+	orbit.setPatternScale(1);
+	orbit.resetPatternPhase();
+	// The accumulator is what the slider's continuity rides on (0.6 E4): at the
+	// clock the field is on screen at, a rate change moves nothing — the phase
+	// already turned is history — and only the future turns faster.
+	orbit.setPatternClock(100, MW);
 	orbit.apocenterPosition(apoOut, MW.centre.x + 6, 2, 0.2, orbit.FAMILY_DISC, 6, 12, 100, MW);
-	orbit.setPatternScale(1.5, 100, MW);
+	orbit.setPatternScale(1.5);
 	orbit.apocenterPosition(out, MW.centre.x + 6, 2, 0.2, orbit.FAMILY_DISC, 6, 12, 100, MW);
-	check('changing pattern speed preserves apocenter-orbit phase', dist3(apoOut, out) < 1e-8, dist3(apoOut, out));
-	orbit.setPatternScale(savedScale, 0, MW);
-	orbit.resetPatternPhaseOffset();
+	const turnedAtOne = orbit.getPatternPhase();
+	// Now the same 200 Myr turned at twice the rate: the phase the lanes carry
+	// is the integral, and the product (mean rate)·T reproduces it exactly.
+	orbit.setPatternScale(2);
+	orbit.resetPatternPhase();
+	orbit.setPatternClock(200, MW);
+	orbit.apocenterPosition(out, MW.centre.x + 6, 2, 0.2, orbit.FAMILY_DISC, 6, 12, 200, MW);
+	const mean = orbit.meanPatternSpeed(MW);
+	check('changing pattern speed preserves the turned phase and integrates the future',
+		Math.abs(turnedAtOne - 100 * MW.dynamics.omegaPattern) < 1e-9
+		&& Math.abs(mean * 200 - orbit.getPatternPhase()) < 1e-9
+		&& dist3(apoOut, out) > 0.05, { turnedAtOne, meanTimes: mean * 200 });
+	orbit.setPatternScale(savedScale);
+	orbit.resetPatternPhase();
 	orbit.setEngine(savedEngine);
 	orbit.setApocenterShare(savedShare);
 }

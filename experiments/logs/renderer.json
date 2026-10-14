@@ -1,10 +1,10 @@
 {
-  "date": "2026-10-14T21:21:10.008Z",
+  "date": "2026-10-14T22:59:01.698Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 145,
-  "totalChecks": 130,
-  "passed": 130,
+  "prepareMs": 192,
+  "totalChecks": 132,
+  "passed": 132,
   "failed": 0,
   "checks": [
     {
@@ -397,7 +397,7 @@
       "detail": 0.01666666753590107
     },
     {
-      "name": "uniform is exactly 192 bytes (camera block + orbit dynamics + wave + engine)",
+      "name": "uniform is exactly 208 bytes (camera block + orbit dynamics + wave + engine + epoch)",
       "pass": true
     },
     {
@@ -606,27 +606,40 @@
       }
     },
     {
-      "name": "an age change re-draws the field for the new epoch",
+      "name": "an age change places the field instead of re-drawing it",
       "pass": true,
       "detail": {
-        "newWrites": 1,
-        "fieldSamples": 4,
+        "fullWrites": 0,
+        "fieldSamples": 3,
         "age": 0.5
       }
     },
     {
-      "name": "the identity keys survive the re-sample: a key is a slot, not a position",
+      "name": "the epoch lane carries the two scale laws and the arm re-anchoring",
       "pass": true,
       "detail": {
-        "firstBreak": -1
+        "armRotation": -2.6907901763916016,
+        "spheroidScale": 0.23898528516292572,
+        "heatScale": 0.15832597017288208
       }
     },
     {
-      "name": "a resolved key follows the new field: another position, another star",
+      "name": "the identity keys and the birth vectors survive an epoch step: the same stars",
       "pass": true,
       "detail": {
-        "movedPosition": 499,
-        "movedStar": 500
+        "firstBreak": -1,
+        "movedPosition": 0,
+        "epochFlagged": 500
+      }
+    },
+    {
+      "name": "the look sweep rewrites the look of a slice and never its birth vector",
+      "pass": true,
+      "detail": {
+        "sweptMoved": 0,
+        "sweptLook": 25,
+        "sweptBytes": 320000,
+        "records": 320000
       }
     },
     {
@@ -638,19 +651,32 @@
       }
     },
     {
-      "name": "a young galaxy is a dimmer one, so the offset brightens it back",
+      "name": "a young galaxy is a dimmer one, so the uniform's offset brightens it back",
       "pass": true,
       "detail": {
-        "offset": -1.714,
-        "meanMagYoung": 7.615,
+        "offset": -2.926,
+        "want": -2.926,
+        "meanMagYoung": 9.324,
         "meanMagRef": 9.477
+      }
+    },
+    {
+      "name": "the reference epoch is the map's exact identity",
+      "pass": true,
+      "detail": {
+        "lane": [
+          0,
+          1,
+          1,
+          -2.926142454147339
+        ]
       }
     },
     {
       "name": "a model that differs only in its population keeps the sampled field",
       "pass": true,
       "detail": {
-        "fieldSamples": 5,
+        "fieldSamples": 3,
         "objects": 40
       }
     },
@@ -658,7 +684,7 @@
       "name": "another type re-draws the field even at the same age",
       "pass": true,
       "detail": {
-        "fieldSamples": 6,
+        "fieldSamples": 4,
         "type": "Sc"
       }
     },
@@ -667,7 +693,7 @@
       "pass": true,
       "detail": {
         "offset": 0,
-        "fieldSamples": 7
+        "fieldSamples": 5
       }
     },
     {
@@ -693,14 +719,14 @@
       }
     },
     {
-      "name": "an age re-draw turns the field thetas by the pattern rotation",
+      "name": "the simple lane seeds from the placed azimuths, with no carry to turn",
       "pass": true,
       "detail": {
-        "maxErr": 1.826830100526422e-7
+        "maxErr": 1.1910999120345878e-7
       }
     },
     {
-      "name": "an age re-draw continues the landmark thetas from the CPU mirror",
+      "name": "the named stars keep the azimuths the CPU mirror integrated",
       "pass": true,
       "detail": {
         "maxErr": 0,
@@ -768,8 +794,8 @@
       "name": "crossing a cell boundary re-uploads the dynamic region",
       "pass": true,
       "detail": {
-        "before": 17,
-        "after": 18
+        "before": 18,
+        "after": 19
       }
     },
     {

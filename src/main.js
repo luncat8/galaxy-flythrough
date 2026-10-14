@@ -12,11 +12,11 @@ const OVERLAY_INTERVAL = 0.25;      // s
 const MAX_DPR = 2;                  // retinal 3x costs fill rate for no gain
 // The shortest gap between two field rebuilds, in loop time: a rebuild is ~0.7 s
 // at 300k stars, so this keeps a drag interactive instead of queueing one rebuild
-// per pixel. The epoch's live clock (E2) takes the same number as its own
-// interval — a live step and a drag are the same rebuild, on one timeline.
-// The Age slider's step is the model's own (galaxy.AGE_STEP): the slider, the
-// readout and the live clock step by one quantum, so they cannot disagree.
-const AGE_REGEN_INTERVAL = 0.35;    // s, in loop time
+// per pixel. The epoch's live clock (E4) shares the star-time dt with the
+// stars, and the Age slider's step is the model's own (galaxy.AGE_STEP): the
+// slider, the readout and the live clock step by one quantum, so they cannot
+// disagree. E4 removed the rebuild interval that used to ration an epoch step —
+// the field follows the epoch every frame now.
 
 function currentDpr() {
         return Math.min((typeof window !== 'undefined' && window.devicePixelRatio) || 1, MAX_DPR);
@@ -113,7 +113,9 @@ async function boot() {
         // timeline the Age slider's drag throttle reads, because a live step and a
         // drag are the same rebuild. The clock needs no enabled flag: the tick block
         // is skipped while the toggle is off.
-        const ageRebuild = { debt: 0, lastAt: -Infinity };
+        // The pattern's phase is an accumulator now (orbit.advancePatternPhase):
+        // the shell only reads it back for the readout, and never rebases it.
+
         let evolveOn = params.evolve > 0;
         // One descriptor for the whole galaxy: the density field, the star buffer, the
         // camera frame and the overlay's label all read this object, so switching
@@ -1310,9 +1312,10 @@ async function boot() {
                 syncPattern();
         }
 
-        // The throttled age drag: a value waiting to be rebuilt. The throttle's own
-        // timeline (`ageRebuild.lastAt`) is shared with the live clock, which is
-        // created before the model because the boot age depends on it.
+        // The age drag's newest value: applied by the frame loop (never by a
+        // timer), so the value the user let go of is the one that lands. Since
+        // E4 an epoch change is a model re-solve, not a rebuild, so there is no
+        // throttle left here — the loop applies whatever the drag last wrote.
         let pendingAge = null;
 
         // Rebuilding the field is the expensive path (~0.6 s at 300k stars) and it is
@@ -1323,7 +1326,7 @@ async function boot() {
         function regenerateGalaxy(type, seed, age) {
                 pendingAge = null;
                 model = galaxy.createGalaxy({ type, seed, age });
-                if (window.OrbitLib.resetPatternPhaseOffset) window.OrbitLib.resetPatternPhaseOffset();
+                if (window.OrbitLib.resetPatternPhase) window.OrbitLib.resetPatternPhase();
                 renderer.regenerate(model);
                 // Another centre means another birth field: the simple-engine
                 // CPU mirror re-seeds with the GPU thetas (which prepare did).
@@ -1341,31 +1344,33 @@ async function boot() {
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
 
-        // The same galaxy at another epoch. 0.6's epoch tier moves the disc the
-        // field is drawn from, so an age change is a rebuild of the field, not
-        // just of the records: another draw of the same galaxy, colder, with
-        // more contrasted arms. Nothing the viewer is looking at is thrown away —
-        // no camera move, no dropped selection, no label change — but the field,
-        // the birth thetas and the resolved set all follow the new epoch.
-        function regenerateAge(age) {
-                redrawField(galaxy.createGalaxy({ type: model.type, seed: model.seed, age }));
+        // Another epoch of the *same* field (0.6 E4). Nothing is re-drawn: the
+        // records keep their stars and the birth frame they were drawn in, and
+        // the renderer's epoch map places them in the new frame every frame
+        // (the bulge homology, the disc's height law, the arms' re-anchoring).
+        // The look follows in the renderer's background sweep, a slice a frame,
+        // so the clock can run continuously with no step to pay for. An open
+        // schematic follows on the same clock.
+        function setEpoch(age) {
+                const next = Number(age);
+                if (!Number.isFinite(next) || next === model.populations.age) return;
+                model = galaxy.modelAtAge(model, Math.min(galaxy.AGE_MAX, Math.max(galaxy.AGE_MIN, next)));
+                renderer.setEpoch(model);
+                if (systemLayer.isOpen()) openSystemView(false);
+                syncGalaxyControls();
         }
 
         // A re-draw of the *same* galaxy — another epoch, or another star budget
-        // — at the current star time. The star clock is not reset: the pattern
-        // keeps the orientation it has on screen. Ω_p is re-derived per epoch
-        // (E3), so the phase origin is rebased exactly as the Pattern speed
-        // slider rebases it; otherwise every live step would turn the bar back
-        // by ΔΩ_p·T and the galaxy would read as running backwards. The simple
-        // lane's re-drawn field is turned onto that same pattern, and its
-        // landmarks keep the azimuths the CPU mirror integrated (same stars).
-        const fieldCarry = { thetaShift: 0, landmarks: true };
+        // — at the current star time. The star clock and the pattern's phase are
+        // not reset: the pattern keeps the orientation it has on screen, because
+        // the phase is an accumulator (orbit.advancePatternPhase) and not the
+        // current rate times the clock. Since E4 nothing here turns the field to
+        // meet the arms either: the field is drawn *into* the current frame
+        // (orbit.setEpochBase), so there is nothing to carry and no `carry`
+        // argument left to pass.
         function redrawField(next) {
-                const previous = model;
                 model = next;
-                window.OrbitLib.rebasePatternPhase(previous, model, starTimeMyr);
-                fieldCarry.thetaShift = window.OrbitLib.patternRotation(model, starTimeMyr);
-                renderer.regenerate(model, fieldCarry);
+                renderer.regenerate(model);
                 if (!window.OrbitLib.simpleLandmarksRebind(model)) initSimpleLandmarks();
                 briefModel = null;   // the brief re-reads the star from the new draw
                 // The set survives per key (plan §3.2) but not per slot: every
@@ -1379,25 +1384,24 @@ async function boot() {
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
 
-        // Live, but throttled. A drag fires an `input` per pixel and the rebuild is
-        // a third of a second, so the readout follows the drag while the field
-        // follows at most every AGE_REGEN_INTERVAL. The pending value is applied
-        // from the frame loop rather than from a timer: the loop is what draws, so
-        // the last position of the drag always lands, and there is no queue of
-        // intermediate rebuilds to work through.
+        // Live, and no longer throttled: a drag fires an `input` per pixel and
+        // the readout follows it immediately, because the field follows the
+        // epoch every frame now (E4) — there is no rebuild to ration. The value
+        // is applied from the frame loop rather than from the event, so a drag
+        // that outruns the loop still lands on the value the user let go of.
         galaxyAge.addEventListener('input', () => {
                 pendingAge = Number(galaxyAge.value);
                 galaxyAgeVal.textContent = formatAge(pendingAge);
         });
 
-        // The live clock's toggle (E2). Ticking it on within one step of the end of
+        // The live clock's toggle (E4). Ticking it on within one step of the end of
         // the range replays the life that got there; anywhere else the run continues
         // from where the galaxy is, and a drag of the Age slider is the seek that
-        // retargets the next step. The clock's debt starts over either way.
+        // retargets the next frame. Nothing is throttled and nothing is owed:
+        // the epoch is a continuous parameter of the placement now.
         function setEvolve(on) {
                 evolveOn = !!on;
                 galaxyEvolve.checked = evolveOn;
-                ageRebuild.debt = 0;
                 if (evolveOn) {
                         const start = galaxy.evolveStartAge(model.populations.age);
                         if (start !== model.populations.age) pendingAge = start;
@@ -1855,6 +1859,16 @@ async function boot() {
                 const dtStar = effectiveTimeRate * dt;
                 starTimeMyr += dtStar;
                 if (starTimeMyr >= STAR_TIME_WRAP || starTimeMyr < 0) starTimeMyr = ((starTimeMyr % STAR_TIME_WRAP) + STAR_TIME_WRAP) % STAR_TIME_WRAP;
+                // The pattern's phase (0.6 E4) is integrated with the frame's own
+                // star time *before* anything places a star, so the bar and the
+                // arms cannot be a frame behind the clock — and a rate change
+                // (the epoch re-derives Ω_p, the slider rescales it) adds no jump
+                // because nothing multiplies the current rate by the clock. A
+                // star-time seek turns the pattern the way the stars turn with
+                // it, because the phase is advanced over the interval, not
+                // recomputed from the end of it.
+                window.OrbitLib.setPatternClock(starTimeMyr, model);
+                labels.setOrbitState(model, starTimeMyr);
                 // The simple engine's CPU mirror steps beside the GPU buffer —
                 // same dtStar the renderer dispatches, so labels and picks ride
                 // what the sprites draw. Classic ignores both.
@@ -1876,23 +1890,21 @@ async function boot() {
                         actions.galaxyCycle = 0;
                         regenerateGalaxy(galaxy.cycleGalaxyType(model.type), model.seed, model.populations.age);
                 }
-                // The age slider's trailing edge: applied here, in loop time, so a
-                // drag rebuilds at most every AGE_REGEN_INTERVAL and the value the
-                // user let go of is the one that lands.
-                if (pendingAge !== null && time - ageRebuild.lastAt >= AGE_REGEN_INTERVAL) {
-                        ageRebuild.lastAt = time;
-                        const age = pendingAge;
-                        pendingAge = null;
-                        regenerateAge(age);
-                }
-                // The epoch's live clock (E2): the same dt the stars just integrated,
-                // one Age-slider quantum per EVOLVE_MYR_PER_STEP of star time, one
-                // rebuild per AGE_REGEN_INTERVAL. The tick shares the drag's throttle,
-                // so the two paths cannot double-fire; the debt it drops is star time
-                // the field could not have been re-drawn for anyway.
+                // The age slider's trailing edge: applied here, in loop time, so
+                // the value the user let go of is the one that lands. Since E4 an
+                // epoch change is not a rebuild at all, so the drag is applied
+                // every frame it changed rather than on a throttle.
+                if (pendingAge !== null && pendingAge !== model.populations.age) setEpoch(pendingAge);
+                pendingAge = null;
+                // The epoch's live clock (E4): the same dt the stars just integrated,
+                // one Age-slider step per AGE_STEP·1000 Myr of star time, applied
+                // every frame. E4 places the field from the epoch instead of
+                // re-drawing it (orbit.epochMap), so an epoch step costs a model
+                // re-solve and a uniform, not a 300k-star rebuild: no throttle, no
+                // debt, no visible step to hide.
                 if (evolveOn) {
-                        const evolved = galaxy.evolveTick(ageRebuild, model.populations.age, dtStar, time, AGE_REGEN_INTERVAL);
-                        if (evolved > 0) regenerateAge(evolved);
+                        const evolved = galaxy.evolveAge(model.populations.age, dtStar);
+                        if (evolved !== model.populations.age) setEpoch(evolved);
                 }
                 labels.setOrbitState(model, starTimeMyr);
                 selection.setOrbitState(model, starTimeMyr);
@@ -2028,5 +2040,5 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 }
 if (typeof module !== 'undefined') {
         module.exports = { boot, readParams, formatSpeed, formatDistance, formatFactor, OVERLAY_INTERVAL, MAX_DPR,
-                AGE_REGEN_INTERVAL };
+                };
 }

@@ -218,8 +218,12 @@ function accumulate(prep, pos, acc, odd, time) {
 	const c = model.centre;
 	const n = prep.n;
 	// The pattern's rotation over this frame, so the arm phase is read in the
-	// pattern frame (the crest the eye follows), not in the birth frame.
-	const armTurn = prep.armed ? prep.armM * (prep.omegaP * time + orbit.getPatternPhaseOffset()) : 0;
+	// pattern frame (the crest the eye follows), not in the birth frame. Since
+	// 0.6 E4 the pattern's phase is the accumulator, not rate×clock: the test
+	// drives the same clock the shell does, so `meanPatternSpeed` times the star
+	// time is the accumulated rotation.
+	orbit.setPatternClock(time, model);
+	const armTurn = prep.armed ? prep.armM * (orbit.meanPatternSpeed(model) * time) : 0;
 	for (let i = 0; i < n; i++) {
 		const dx = pos.x[i] - c.x, dy = pos.y[i] - c.y, dz = pos.z[i] - c.z;
 		const R = Math.sqrt(dx * dx + dy * dy);
@@ -501,8 +505,8 @@ const savedEngine = orbit.getEngine();
 const savedShare = orbit.getApocenterShare();
 const savedForce = orbit.getApocenterForce();
 
-orbit.resetPatternPhaseOffset();
-orbit.setPatternScale(1, 0, null);
+orbit.resetPatternPhase();
+orbit.setPatternScale(1);
 orbit.setWaveDamping(WAVE_UI);
 orbit.setApocenterShare(SHARE_UI);
 orbit.setApocenterForce(FORCE_UI);
@@ -673,7 +677,7 @@ if (WANT_SWEEPS) {
 
 orbit.setEngine(savedEngine);
 orbit.setWaveDamping(savedWave);
-orbit.setPatternScale(savedScale, 0, null);
+orbit.setPatternScale(savedScale);
 orbit.setApocenterShare(savedShare);
 orbit.setApocenterForce(savedForce);
 

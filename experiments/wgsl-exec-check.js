@@ -123,11 +123,11 @@ async function main() {
 	// x' = x, y' = y, w' = -z: a star on -Z projects to the viewport centre.
 	const viewProj = new Float32Array(16);
 	viewProj[0] = 1; viewProj[5] = 1; viewProj[11] = -1; viewProj[14] = 1;
-	// 192 bytes: camera block (16+4+4+4) + orbit dynA/dynB/waveA/waveB (16)
+	// 208 bytes: camera block (16+4+4+4) + orbit dynA/dynB/waveA/waveB (16)
 	// + engine lane (mask, apocenterForce, barTilt, apocenterShare). The dyn,
 	// wave and engine slots stay zero for the radiance fixtures: mask 0 hits
 	// the dispatch's identity baseline (moved = birth), T = 0 — frozen.
-	const cameraBytes = new ArrayBuffer(48 * 4);
+	const cameraBytes = new ArrayBuffer(52 * 4);
 	const cam = new Float32Array(cameraBytes);
 	cam.set(viewProj, 0);
 	cam[20] = 1920; cam[21] = 1080; cam[22] = 2 / 1920; cam[23] = 2 / 1080;
@@ -195,12 +195,14 @@ async function main() {
 	// dynA/dynB, identity viewProj and the camera 5 kpc up +Y, so clip.xy is
 	// (moved.x, moved.y − 5) plus the same sub-pixel corner offset in both
 	// runs. Half a period later the star must be at x ≈ 8.178 + 8.178.
-	// 192 bytes, matching CameraUniform. waveA/waveB stay 0, so this fixture
+	// 208 bytes, matching CameraUniform. waveA/waveB stay 0 and the epoch lane
+	// stays (0, 1, 1, 0) — the map's identity — so the fixtures below are the
+	// same laws as before E4 for a record that carries no epoch bit. This fixture
 	// measures the undamped 0.4.3 law (damping 0 is the shear, bit for bit).
 	// The engine lane carries the classic MASK BIT — the dispatch's identity
 	// baseline (mask 0) is reserved for the radiance fixtures; the simple and
 	// apocenter passes get their own fixtures in 2e/2f/2h below.
-	const orbitCamBytes = new ArrayBuffer(48 * 4);
+	const orbitCamBytes = new ArrayBuffer(52 * 4);
 	const ocam = new Float32Array(orbitCamBytes);
 	ocam[0] = 1; ocam[5] = 1; ocam[10] = 1; ocam[15] = 1;   // identity viewProj
 	ocam[17] = 5;                                           // camera y

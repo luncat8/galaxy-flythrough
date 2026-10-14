@@ -34,10 +34,18 @@
 
 'use strict';
 
-const UNIFORM_FLOATS = 48;              // 192 bytes: camera block 28 + orbit dynA/dynB/waveA/waveB 16 + engine 4
+const UNIFORM_FLOATS = 52;              // 208 bytes: camera block 28 + orbit dynA/dynB/waveA/waveB 16 + engine 4 + epoch 4
 // Tonemap uniform: x=exposure, y=whitePoint, z=saturation, w=outputMode (0=SDR, 1=HDR),
 // then headroom, highlightDesat, 0, 0.
 const TONEMAP_UNIFORM_FLOATS = 8;
+// Per-frame CPU budget for one slice of the epoch look sweep: a full 300k pass
+// takes about half a second in slices this size, which is faster than the
+// fastest star clock (a whole field per ~0.4 s at the top rate), so the sweep
+// never becomes the bottleneck.
+const EPOCH_SLICE_MS = 3;
+// Stars the sweep's own exposure ratio is measured over: cheap enough to
+// recompute once per sweep, and the same stars on both sides of the ratio.
+const EPOCH_CALIBRATION_STARS = 4096;
 const PROCEDURAL_STARS_DEFAULT = 300000;
 const TWO_PI = 2 * Math.PI;
 const CATALOG_BUDGET_DEFAULT = 250000;
@@ -521,6 +529,7 @@ function createStarRenderer(device, context, format, options) {
                 // implied.
                 galaxyAge: model.populations.age,
                 magOffset: 0,
+                epochSweepAt: 0,
                 fieldSamples: 0,
         };
         configureMode(model);
@@ -697,11 +706,27 @@ function createStarRenderer(device, context, format, options) {
                 const view = new DataView(staging);
                 const cx = model.centre ? model.centre.x : 0;
                 const cy = model.centre ? model.centre.y : 0;
+                const map = [0, 0, 0];
                 for (let i = 0; i < recordCount; i++) {
-                        const off = (recordStart + i) * records.RECORD_BYTES;
-                        const x = view.getFloat32(off, true);
-                        const y = view.getFloat32(off + 4, true);
-                        thetaStaging[recordStart + i] = Math.atan2(y - cy, x - cx);
+                        const index = recordStart + i;
+                        const off = index * records.RECORD_BYTES;
+                        let x = view.getFloat32(off, true);
+                        let y = view.getFloat32(off + 4, true);
+                        // Seed from where the record is *placed*, not from the
+                        // bytes it was drawn with: the simple lane's integrator
+                        // runs on the same epoch-mapped birth the vertex stage
+                        // reconstructs from, and the landmarks that keep their
+                        // CPU azimuths are the ones whose seeds are untouched.
+                        if (index < proceduralCount + landmarkCount + objectCapacity) {
+                                const packed = view.getUint32(off + 12, true);
+                                const flags = (packed >>> 16) & 255;
+                                if ((flags & records.FLAG_EPOCH) !== 0) {
+                                        orbit.epochMap(map, x, y, view.getFloat32(off + 8, true),
+                                                (flags >> 3) & 3, flags, model);
+                                        x = map[0]; y = map[1];
+                                }
+                        }
+                        thetaStaging[index] = Math.atan2(y - cy, x - cx);
                 }
                 return recordCount;
         }
@@ -711,22 +736,17 @@ function createStarRenderer(device, context, format, options) {
                 device.queue.writeBuffer(thetaBuffer, recordStart * 4, thetaData, recordStart * 4, recordCount * 4);
         }
 
-        // The simple lane across an age rebuild of the same galaxy (0.6): the
-        // re-drawn field and object members are turned by `carry.thetaShift`
-        // (the pattern's rotation since the birth frame) so they land on the arms
-        // already on screen instead of on the T = 0 layout, and the landmarks
-        // continue from the CPU mirror's azimuths — the same stars, not a draw.
-        function carryThetas(carry) {
-                if (!carry || !thetaStaging) return;
-                const shift = carry.thetaShift || 0;
-                const objectStart = proceduralCount + landmarkCount;
-                for (let i = 0; i < proceduralCount + landmarkCount + objectCapacity; i++) {
-                        if (i === proceduralCount) i = objectStart;
-                        const t = thetaStaging[i] + shift;
-                        thetaStaging[i] = t - TWO_PI * Math.floor((t + Math.PI) / TWO_PI);
-                }
-                if (!carry.landmarks || !orbit.simpleLandmarksReady || !orbit.simpleLandmarksReady()) return;
+        // The named stars' azimuths are *integrated* by the CPU mirror (they are
+        // on the simple lane too, and the mirror is what labels and picks use),
+        // so the buffer takes the mirror's numbers rather than a fresh atan2 of
+        // the drawn position. That is a sync, not a carry: E4 retired the
+        // pattern-phase shift the old `carryThetas` also applied, because the
+        // field is drawn into the frame it is displayed in.
+        function syncLandmarkThetas() {
+                if (!thetaStaging || landmarkCount <= 0) return 0;
+                if (!orbit.simpleLandmarksReady || !orbit.simpleLandmarksReady()) return 0;
                 for (let i = 0; i < landmarkCount; i++) thetaStaging[proceduralCount + i] = orbit.simpleLandmarkTheta(i);
+                return landmarkCount;
         }
 
         function seedThetaAll() {
@@ -765,6 +785,133 @@ function createStarRenderer(device, context, format, options) {
                         galaxyLib.modelAtAge(model, galaxyLib.AGE_REF), fieldStars, CALIBRATION_STARS);
         }
 
+        // ---- 0.6 E4: the running epoch ------------------------------------
+        //
+        // The field is drawn once, in the frame its own epoch defines (the
+        // setEpochBase call in writeProceduralRecords), and *placed* by the
+        // epoch map from then on: same stars, same identity, no re-sample and no
+        // step. What still has to follow the clock is the look — the same star
+        // at another age is a different colour and a different brightness (E1's
+        // clock is a real clock, not a texture). Re-deriving all 300k looks at
+        // once is exactly the ~0.25 s a 0.6 epoch step was paying; here the
+        // field is swept in a few-millisecond slice per frame and only that
+        // slice is re-uploaded, so the look follows continuously and nothing
+        // ever blocks the frame. A sweep always reads the *current* model, so a
+        // clock that outruns it cannot make it lag: it just keeps sweeping.
+        let epochCalibrationStars = 0;
+        let epochCalibrationRef = 0;
+        const epochSweep = { at: 0, stale: false };
+
+        // The exposure offset over the sweep's own star sample, so it can be
+        // recomputed at every sweep without the 16k-star cost of the startup
+        // calibration and without the two halves of the ratio disagreeing.
+        function sweepExposure() {
+                if (!fieldStars || epochCalibrationStars <= 0 || !(epochCalibrationRef > 0)) return magOffset;
+                const now = window.StarTypesLib.meanFieldLuminosity(model, fieldStars, epochCalibrationStars);
+                return now > 0 ? 2.5 * Math.log10(now / epochCalibrationRef) : magOffset;
+        }
+
+        function nowMs() {
+                return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        }
+
+        // One slice: re-derive the look of the stars at [at, at+n) at the current
+        // epoch's age and upload exactly that range. The records keep their
+        // *birth* vectors — the vertex stage maps them per frame — so only the
+        // look half of a record is ever rewritten here.
+        //
+        // The look's geometry is the star's own drawn structure (the R and
+        // distance-to-arm it was drawn with: the identity a run must not
+        // re-roll) with the epoch's two scale laws applied to the numbers those
+        // laws actually move — the spheroid homology moves a bulge member's
+        // radius, the height law moves a disc star's z. A rotation would not
+        // enter: the look reads radius, distance-to-arm and height, and the map's
+        // turn is a turn of all three.
+        function sweepEpochLook(modelNow, budgetMs) {
+                if (!fieldStars || proceduralCount === 0) return 0;
+                const starTypes = window.StarTypesLib;
+                const view = new DataView(staging, 0, proceduralCount * records.RECORD_BYTES);
+                const derived = {};
+                const params = orbit.solveEpochParams(modelNow);
+                if (epochSweep.at === 0) {
+                        // New sweep: one exposure for the whole pass, or a
+                        // half-swept field would show a brightness seam.
+                        magOffset = sweepExposure();
+                        state.magOffset = magOffset;
+                }
+                const start = epochSweep.at;
+                const t0 = nowMs();
+                let i = start;
+                while (i < proceduralCount) {
+                        const off = i * records.RECORD_BYTES;
+                        const packed = view.getUint32(off + 12, true);
+                        const flags = (packed >>> 16) & 255;
+                        // Branch on the record's own bits, the same way the
+                        // vertex stage does, so the two sides cannot disagree
+                        // about which stars the bulge homology moves.
+                        const spheroid = (flags & records.FLAG_EPOCH_SPHEROID) !== 0;
+                        const family = (flags >> 3) & 3;
+                        const scale = spheroid ? params.spheroidScale
+                                : ((family === orbit.FAMILY_DISC || family === orbit.FAMILY_PATTERN) ? params.heatScale : 1);
+                        const R = fieldStars.R[i] * scale;
+                        const distToArm = fieldStars.distToArm[i] * scale;
+                        starTypes.deriveStar(modelNow, starTypes.fieldStarSeed(seed, i),
+                                fieldStars.component[i], R, distToArm, derived, fieldStars.z[i] * scale);
+                        records.writeRecord(
+                                view, off, fieldStars.x[i], fieldStars.y[i], fieldStars.z[i],
+                                derived.colorIndex, derived.absMag,
+                                orbit.flagsWithFamily(records.FLAG_VISIBLE
+                                        | (flags & (records.FLAG_EPOCH | records.FLAG_EPOCH_SPHEROID)),
+                                        orbit.familyForStar(fieldStars.component[i], derived.spectralClass, modelNow.barred)),
+                                Math.imul(i, 2654435761) & 0xFF,
+                        );
+                        i++;
+                        if ((i & 511) === 0 && nowMs() - t0 >= budgetMs) break;
+                }
+                if (i > start) {
+                        const byteStart = start * records.RECORD_BYTES;
+                        const bytes = (i - start) * records.RECORD_BYTES;
+                        device.queue.writeBuffer(starBuffer, byteStart, staging, byteStart, bytes);
+                }
+                epochSweep.at = i;
+                if (i >= proceduralCount) {
+                        epochSweep.at = 0;
+                        epochSweep.stale = false;
+                }
+                state.epochSweepAt = epochSweep.at;
+                return i - start;
+        }
+
+        // The sweep, driven by hand: the tests step it a slice at a time and
+        // read the records back, and a caller with no frame loop can finish a
+        // whole pass in one call (`budget` large).
+        function stepEpoch(modelNow, budgetMs) {
+                if (!fieldStars || proceduralCount === 0) return 0;
+                if (!modelNow) modelNow = model;
+                return sweepEpochLook(modelNow, budgetMs === undefined ? EPOCH_SLICE_MS : budgetMs);
+        }
+        function epochSweepState() {
+                return { at: epochSweep.at, stale: epochSweep.stale, calibrationStars: epochCalibrationStars };
+        }
+
+        // The epoch half of the vertex stage's lane, for callers that place a
+        // record themselves (labels, picking, tests): the same numbers the
+        // uniform carries.
+        function epochParams(modelNow, out) {
+                return orbit.packEpochParams(modelNow, out, 0, state.magOffset || 0);
+        }
+
+        // A new epoch on an unchanged field (0.6 E4). The age slider and the
+        // live clock reach this: the records stay, the map places them, and the
+        // look follows in the background sweep.
+        function setEpoch(nextModel) {
+                model = nextModel;
+                state.galaxyAge = model.populations.age;
+                state.galaxyLabel = window.GalaxyLib.galaxyLabel(nextModel);
+                epochSweep.stale = true;
+                return state;
+        }
+
         // The offset, in magnitudes, between this field and the same field at the
         // reference epoch: 2.5·log10(mean L now / mean L at AGE_REF). Negative for
         // a young galaxy (fewer giants, so a dimmer field that the offset
@@ -781,6 +928,20 @@ function createStarRenderer(device, context, format, options) {
                 state.galaxyAge = model.populations.age;
         }
 
+        // The epoch bits a field record carries (0.6 E4): FLAG_EPOCH says the
+        // birth vector lives in the frame the field was drawn in, so the running
+        // epoch places it; FLAG_EPOCH_SPHEROID says the vector is a point inside
+        // the spheroid homology and scales with it. The spheroid bit follows the
+        // family the vertex stage computes from the same record (a bulge star
+        // whose colour puts it on the pattern is an arm star, not a spheroid
+        // member), because the two sides must branch identically.
+        function epochFlagsFor(component, spectralClass) {
+                if (component < 2) return records.FLAG_EPOCH;
+                return orbit.familyForStar(component, spectralClass, model.barred) === orbit.FAMILY_PATTERN
+                        ? records.FLAG_EPOCH
+                        : (records.FLAG_EPOCH | records.FLAG_EPOCH_SPHEROID);
+        }
+
         function writeProceduralRecords() {
                 if (proceduralCount === 0) return 0;
                 const starTypes = window.StarTypesLib;
@@ -794,13 +955,31 @@ function createStarRenderer(device, context, format, options) {
                         records.writeRecord(
                                 view, i * records.RECORD_BYTES,
                                 fieldStars.x[i], fieldStars.y[i], fieldStars.z[i],
-                                derived.colorIndex, derived.absMag + magOffset,
-                                orbit.flagsWithFamily(records.FLAG_VISIBLE, orbit.familyForStar(fieldStars.component[i], derived.spectralClass, model.barred)), Math.imul(i, 2654435761) & 0xFF,
+                                // Raw magnitude: the field's exposure offset rides
+                                // the uniform (camera.epoch.w), so neither a step
+                                // nor a sweep has to rewrite a record to keep the
+                                // field at one brightness.
+                                derived.colorIndex, derived.absMag,
+                                orbit.flagsWithFamily(records.FLAG_VISIBLE | epochFlagsFor(fieldStars.component[i], derived.spectralClass),
+                                        orbit.familyForStar(fieldStars.component[i], derived.spectralClass, model.barred)),
+                                Math.imul(i, 2654435761) & 0xFF,
                         );
                         identity[i] = key;
                 }
                 BLOCK_LAYOUT[0].count = proceduralCount;
                 state.proceduralStars = proceduralCount;
+                // This draw *is* the epoch frame: every mapped number is measured
+                // against it, and the map is the exact identity here.
+                orbit.setEpochBase(model);
+                epochCalibrationStars = Math.min(proceduralCount, EPOCH_CALIBRATION_STARS);
+                epochCalibrationRef = epochCalibrationStars > 0
+                        ? window.StarTypesLib.meanFieldLuminosity(
+                                window.GalaxyLib.modelAtAge(model, window.GalaxyLib.AGE_REF), fieldStars, epochCalibrationStars)
+                        : 0;
+                // This draw is already at the epoch it was drawn into: nothing
+                // for the sweep to catch up on until the epoch moves.
+                epochSweep.at = 0;
+                epochSweep.stale = false;
                 return proceduralCount;
         }
 
@@ -901,7 +1080,7 @@ function createStarRenderer(device, context, format, options) {
         // One-shot setup: allocate, generate, upload, expose. Procedural field,
         // landmarks and object members are all fixed until the next regenerate,
         // so they share one upload. Local gap-fill + catalog upload per rebuild.
-        function prepare(manifest, carry) {
+        function prepare(manifest) {
                 // Keep the last manifest that had content: a Game-mode rebuild passes none, and
                 // coming back to the preset has to find the catalog still there.
                 if (manifest) lastManifest = manifest;
@@ -941,7 +1120,7 @@ function createStarRenderer(device, context, format, options) {
                 // thetas are a function of the birth positions it just drew.
                 const fixedRecords = proceduralCount + landmarkCount + objectCapacity;
                 seedThetaRange(0, fixedRecords);
-                carryThetas(carry);
+                syncLandmarkThetas();
                 uploadThetaRange(0, fixedRecords);
                 return state;
         }
@@ -975,7 +1154,7 @@ function createStarRenderer(device, context, format, options) {
         // decided by the packed geometry rather than by the type name, so an
         // override cannot sneak past it. Nothing 0.6 releases needs the reusable
         // path: the epoch tier is packed geometry, so the age slider re-samples.
-        function regenerate(nextModel, carry) {
+        function regenerate(nextModel) {
                 const previous = model;
                 // The seed is compared whole: the uniform carries only its low 16
                 // bits (the noise hash reads exactly those), while the field
@@ -991,7 +1170,7 @@ function createStarRenderer(device, context, format, options) {
                         uploadDynamic();
                         return state;
                 }
-                prepare(nextModel.milkyWay ? lastManifest : null, carry);
+                prepare(nextModel.milkyWay ? lastManifest : null);
                 uploadDynamic();
                 return state;
         }
@@ -1044,8 +1223,12 @@ function createStarRenderer(device, context, format, options) {
                                         // field, so the same exposure offset — a
                                         // gap-fill star that ignored it would be a
                                         // different colour of the same sky.
-                                        localDerived.colorIndex, localDerived.absMag + magOffset,
-                                        orbit.flagsWithFamily(records.FLAG_VISIBLE, orbit.familyForStar(component, localDerived.spectralClass, model.barred)), jitter,
+                                        // Raw, like the field: the exposure offset
+                                        // rides the uniform, and the epoch bits make
+                                        // this star follow the running epoch too.
+                                        localDerived.colorIndex, localDerived.absMag,
+                                        orbit.flagsWithFamily(records.FLAG_VISIBLE | epochFlagsFor(component, localDerived.spectralClass),
+                                                orbit.familyForStar(component, localDerived.spectralClass, model.barred)), jitter,
                                 );
                                 // The identity key *is* the seed this record was
                                 // derived from (slotSeed), so the planet module can
@@ -1175,6 +1358,20 @@ function createStarRenderer(device, context, format, options) {
                 // lane rides at offset 44 for the vertex branch.
                 if (orbit.packOrbitDynamics) orbit.packOrbitDynamics(model, uniform, 28);
                 if (orbit.packEngineVec) orbit.packEngineVec(model, uniform, 44);
+                // E4: the look of the field follows the running epoch in slices,
+                // a few ms a frame — after the uniform is packed, so the frame
+                // that draws this update is drawn with it.
+                // Only with a queue to upload the slice into: the node harnesses
+                // build a renderer without one.
+                if (epochSweep.stale && device.queue && device.queue.writeBuffer) {
+                        sweepEpochLook(model, EPOCH_SLICE_MS);
+                }
+
+                // The epoch map (0.6 E4): how this frame's epoch places a record
+                // drawn at the field's base epoch, plus the field's own exposure
+                // offset. Solved from the same model the lanes came from, so the
+                // shader and the CPU twins (orbit.epochMap) cannot disagree.
+                if (orbit.packEpochParams) orbit.packEpochParams(model, uniform, 48, state.magOffset || 0);
                 device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
                 tonemapUniform[0] = linearExposure;
@@ -1282,6 +1479,7 @@ function createStarRenderer(device, context, format, options) {
         return {
                 prepare,
                 regenerate,
+                setEpoch, stepEpoch, epochSweepState, epochParams,
                 render,
                 // Read-only views of what is resident, for the picker, the label
                 // layer and the search (0.5.0). Both objects are allocated once and
@@ -1308,6 +1506,7 @@ function createStarRenderer(device, context, format, options) {
 
 const StarRenderer = {
         createStarRenderer, EMPTY_MANIFEST, UNIFORM_FLOATS, TONEMAP_UNIFORM_FLOATS,
+        EPOCH_SLICE_MS, EPOCH_CALIBRATION_STARS,
         PROCEDURAL_STARS_DEFAULT, CATALOG_BUDGET_DEFAULT, LOCAL_PROCEDURAL_DEFAULT,
         BASE_SIZE_PX, MAX_SIZE_PX, MIN_SIZE_PX, MIN_ALPHA, EXPOSURE_DEFAULT, EXPOSURE_STEP,
         LINEAR_EXPOSURE_DEFAULT, LINEAR_EXPOSURE_MIN, LINEAR_EXPOSURE_MAX,

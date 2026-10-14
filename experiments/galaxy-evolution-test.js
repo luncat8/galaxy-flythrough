@@ -385,40 +385,43 @@ function sameFloats(a, b) {
 		windowBreak === null, windowBreak);
 }
 
-// --- 6. E2: the epoch's live clock ---------------------------------------
+// --- 6. E4: the epoch's live clock ---------------------------------------
 // The clock that runs the epoch on the star-time axis, checked as the law the
-// page calls rather than as numbers read out of main.js: the quantum and its
-// star-time price, the drop-not-bank rule, the throttle, the hold at present
-// day, the replay, and one end-to-end run that can never jump more than one
-// step.
+// page calls rather than as numbers read out of main.js. E4 changed what a step
+// *is*: the field is drawn once and placed by the epoch (orbit.epochMap), so a
+// step is a model re-solve and a uniform lane instead of a 300k-star rebuild.
+// The unit bridge, the monotone run, the hold at present day and the replay are
+// the same laws as E2's; what is measured here is the step's cost, which is now
+// independent of the star count.
 {
 	check('the epoch quantum is the slider step and its price is the unit bridge',
-		galaxy.AGE_STEP === 0.1 && galaxy.EVOLVE_MYR_PER_STEP === galaxy.AGE_STEP * 1000,
-		{ step: galaxy.AGE_STEP, myrPerStep: galaxy.EVOLVE_MYR_PER_STEP });
+		galaxy.AGE_STEP === 0.1 && galaxy.EVOLVE_GYR_PER_MYR === 0.001
+		&& Math.abs(galaxy.AGE_STEP * 1000 * galaxy.EVOLVE_GYR_PER_MYR - galaxy.AGE_STEP) < 1e-12,
+		{ step: galaxy.AGE_STEP, gyrPerMyr: galaxy.EVOLVE_GYR_PER_MYR });
 
-	// Whole quanta from the slider's floor reach its ceiling exactly and hold
-	// there: no float creep past AGE_MAX, and no step beyond it.
+	// A continuous run: one 60 fps frame at the slider's top rate is 1.65 Myr of
+	// star time, which the unit bridge turns into 0.00165 Gyr of age. The age is
+	// monotone, it never jumps more than a frame is worth, and it holds at
+	// present day rather than banking star time it can no longer spend.
+	const FRAME_MYR = 99 / 60;
 	let age = galaxy.AGE_MIN;
-	let quanta = 0;
-	let gridBreak = null;
-	while (age < galaxy.AGE_MAX && quanta <= 1000) {
-		const next = galaxy.steppedAge(age);
-		const delta = next - age;
-		// A whole quantum, on the slider's grid, up to and including the step
-		// that lands on the ceiling: the grid is recomputed from the floor, so
-		// float accumulation cannot leave a remainder to cross.
-		const bad = !(delta > 0) || Math.abs(delta - galaxy.AGE_STEP) > 1e-12
-			|| next !== Math.min(galaxy.AGE_MAX, galaxy.AGE_MIN + galaxy.AGE_STEP * (quanta + 1));
-		if (bad) gridBreak = gridBreak || { age, next };
-		if (!(delta > 0)) break;
+	let steps = 0;
+	let maxJump = 0;
+	while (age < galaxy.AGE_MAX && steps < 1000000) {
+		const next = galaxy.evolveAge(age, FRAME_MYR);
+		if (!(next > age)) break;
+		maxJump = Math.max(maxJump, next - age);
 		age = next;
-		quanta++;
+		steps++;
 	}
-	check('whole quanta reach the present day exactly and hold there',
-		gridBreak === null && age === galaxy.AGE_MAX && quanta > 0
-		&& galaxy.steppedAge(galaxy.AGE_MAX) === galaxy.AGE_MAX
-		&& quanta === Math.round((galaxy.AGE_MAX - galaxy.AGE_MIN) / galaxy.AGE_STEP),
-		gridBreak || { age, quanta });
+	const frameStep = FRAME_MYR * galaxy.EVOLVE_GYR_PER_MYR;
+	check('a continuous run is monotone, never jumps more than a frame is worth, and holds at present day',
+		age === galaxy.AGE_MAX && steps === Math.ceil((galaxy.AGE_MAX - galaxy.AGE_MIN) / frameStep)
+		&& maxJump <= frameStep + 1e-12 && galaxy.evolveAtEnd(age),
+		{ age, steps, maxJump, frameStep });
+	check('the run stops where the model does',
+		galaxy.evolveAge(galaxy.AGE_MAX, 1000) === galaxy.AGE_MAX
+		&& galaxy.evolveAtEnd(galaxy.AGE_MAX) && !galaxy.evolveAtEnd(galaxy.AGE_MAX - galaxy.AGE_STEP / 2));
 
 	// The replay: a run ticked on at the end of the range starts over, because
 	// at present day there is nothing left to watch.
@@ -427,95 +430,62 @@ function sameFloats(a, b) {
 		&& galaxy.evolveStartAge(galaxy.AGE_MAX - galaxy.AGE_STEP / 2) === galaxy.AGE_MIN
 		&& galaxy.evolveStartAge(2) === 2 && galaxy.evolveStartAge(galaxy.AGE_MIN) === galaxy.AGE_MIN);
 
-	// One tick at a time. `time` is loop seconds and `lastAt` starts at
-	// -Infinity, which is the boot state: no rebuild has happened yet.
-	const state = { debt: 0, lastAt: -Infinity };
-	const INTERVAL = 0.35;
-	const belowCost = galaxy.evolveTick(state, 2, galaxy.EVOLVE_MYR_PER_STEP * 0.9, 0, INTERVAL) === 0;
-	check('a debt below the quantum does not step and is kept',
-		belowCost && state.debt === galaxy.EVOLVE_MYR_PER_STEP * 0.9, state);
+	// What a step costs now. `modelAtAge` re-solves the epoch (E1/E3 laws) and
+	// `packEpochParams` is one vec4; neither reads the star count, which is the
+	// whole point — 0.6's step paid 325 ms of re-sample at 300k stars.
+	const orbit = require('../src/math/orbit.js');
+	const lane = new Float32Array(orbit.EPOCH_FLOATS);
+	let m = galaxy.createGalaxy({ type: 'SBb', age: 2 });
+	const t0 = process.hrtime.bigint();
+	for (let i = 0; i < 200; i++) {
+		m = galaxy.modelAtAge(m, 2 + (i % 100) * galaxy.AGE_STEP);
+		orbit.packEpochParams(m, lane, 0, -0.42);
+	}
+	const stepMs = Number(process.hrtime.bigint() - t0) / 1e6 / 200;
+	check('an epoch step costs a model re-solve and one uniform lane, not a field',
+		stepMs < 2, { stepMs: +stepMs.toFixed(4) });
 
-	const stepped = galaxy.evolveTick(state, 2, galaxy.EVOLVE_MYR_PER_STEP * 0.1, 0, INTERVAL);
-	check('a whole quantum steps exactly one Age step and clears the debt',
-		stepped === galaxy.steppedAge(2) && Math.abs(stepped - 2 - galaxy.AGE_STEP) < 1e-12
-		&& state.debt === 0 && state.lastAt === 0, { stepped, state });
+	// The CPU mirror every pick and every label uses, and the one the sweep
+	// reads: O(1) per star with the trig hoisted into solveEpochParams.
+	orbit.setEpochBase(galaxy.createGalaxy({ type: 'SBb', age: galaxy.AGE_REF }));
+	orbit.packEpochParams(galaxy.createGalaxy({ type: 'SBb', age: 0.5 }), lane, 0, 0);
+	const out = [0, 0, 0];
+	const flags = require('../src/math/star-record.js').FLAG_EPOCH;
+	const t1 = process.hrtime.bigint();
+	for (let i = 0; i < 300000; i++) orbit.epochMap(out, 5 + (i % 7) * 0.1, 1, 0.2, orbit.FAMILY_PATTERN, flags, m);
+	const mapMs = Number(process.hrtime.bigint() - t1) / 1e6;
+	check('the epoch map is a per-star constant-time placement (300k under 100 ms)',
+		mapMs < 100, { mapMs: +mapMs.toFixed(1) });
 
-	// The debt is dropped, not banked: ten quanta of star time in one tick is
-	// still one step. Banking would turn a fast star clock (or a camera-coupled
-	// flight rate) into a multi-Gyr jump on the step that follows.
-	const burst = galaxy.evolveTick(state, 2, galaxy.EVOLVE_MYR_PER_STEP * 10, 1, INTERVAL);
-	check('a burst of star time advances one step, never more',
-		burst === galaxy.steppedAge(2) && state.debt === 0, { burst, state });
-
-	// The throttle holds a due step without losing it: the step lands the moment
-	// the loop can afford the rebuild, which is what makes the readout follow the
-	// field rather than the clock's wish.
-	const early = galaxy.evolveTick(state, 3, galaxy.EVOLVE_MYR_PER_STEP, 1 + INTERVAL * 0.5, INTERVAL);
-	const debtHeld = state.debt;
-	const late = galaxy.evolveTick(state, 3, 0, 1 + INTERVAL, INTERVAL);
-	check('a step due inside the interval waits with its debt intact, then lands',
-		early === 0 && debtHeld >= galaxy.EVOLVE_MYR_PER_STEP && late === galaxy.steppedAge(3),
-		{ early, late, debtHeld });
-
-	// At present day the clock stops rather than banking star time it can no
-	// longer spend.
-	const held = { debt: 0, lastAt: late === 0 ? -Infinity : state.lastAt };
-	const heldStep = galaxy.evolveTick(held, galaxy.AGE_MAX, galaxy.EVOLVE_MYR_PER_STEP * 5, 10, INTERVAL);
-	check('the run holds at present day and stops the clock',
-		heldStep === 0 && held.debt === 0, { heldStep, held });
-
-	// The run's own number: 60 fps frames at the slider's top rate, with the
-	// frame a step lands on paying the rebuild (0.67 s for a whole
-	// renderer.regenerate at 300k stars, measured on the 0.6 development box;
-	// only the wall time below depends on it). The loop clamps dt after such a
-	// frame, which is why the sim clock loses at most MAX_DT per step.
-	const loop = require('../src/core/loop.js');
-	const run = { debt: 0, lastAt: -Infinity };
+	// The cadence's own number is gone: a run that used to pay a rebuild per
+	// step now pays nothing at all for the field. What is left is the sweep,
+	// which is the renderer's business (a slice per frame) and is measured in
+	// the renderer's own test.
 	const RATE = 99;                       // Myr/s, the slider's top rate
-	const FRAME = 1 / 60;
-	const REBUILD = 0.67;                  // s
+	const runWall = ((galaxy.AGE_MAX - galaxy.AGE_MIN) * 1000) / RATE / 60;
 	let runAge = galaxy.AGE_MIN;
 	let runSteps = 0;
 	let starMyr = 0;
-	let wall = 0;
-	let maxJump = 0;
-	let dtSim = FRAME;
-	while (runAge < galaxy.AGE_MAX && wall < 3600) {
-		starMyr += RATE * dtSim;
-		const next = galaxy.evolveTick(run, runAge, RATE * dtSim, wall, INTERVAL);
-		if (next > 0) {
-			maxJump = Math.max(maxJump, next - runAge);
-			runAge = next;
-			runSteps++;
-			wall += REBUILD;
-			dtSim = Math.min(REBUILD, loop.MAX_DT);
-			continue;
-		}
-		wall += FRAME;
-		dtSim = FRAME;
+	while (runAge < galaxy.AGE_MAX && runSteps < 1000000) {
+		starMyr += RATE / 60;
+		const next = galaxy.evolveAge(runAge, RATE / 60);
+		if (!(next > runAge)) break;
+		runAge = next;
+		runSteps++;
 	}
-	check('a run reaches present day in whole quanta, never jumping more than one',
-		runAge === galaxy.AGE_MAX && runSteps === quanta && maxJump <= galaxy.AGE_STEP + 1e-9,
-		{ runAge, runSteps, quanta, maxJump });
-	check('every step costs a whole quantum of star time',
-		starMyr >= runSteps * galaxy.EVOLVE_MYR_PER_STEP, { starMyr, runSteps });
-
-	// The cadence's own number: a step is a full field re-sample, so what the
-	// interval protects is the sampler, not the model build.
-	const stepBuf = sampling.createBuffers(300000);
-	const costModel = galaxy.createGalaxy({ type: 'SBb', seed: 42, age: 2 });
-	sampling.sampleGalaxyStars(costModel, 42, 300000, stepBuf);
-	const t0 = process.hrtime.bigint();
-	sampling.sampleGalaxyStars(galaxy.modelAtAge(costModel, 2 + galaxy.AGE_STEP), 42, 300000, stepBuf);
-	const samplingMs = Number(process.hrtime.bigint() - t0) / 1e6;
+	check('every frame of a whole run is a real step, in bounded star time',
+		runAge === galaxy.AGE_MAX && starMyr >= (galaxy.AGE_MAX - galaxy.AGE_MIN) * 1000,
+		{ runSteps, starMyr });
 	log.evolve = {
-		stepGyr: galaxy.AGE_STEP, myrPerStep: galaxy.EVOLVE_MYR_PER_STEP,
-		steps: runSteps, starMyr, wallSeconds: wall, maxJump,
-		rate: RATE, rebuildSeconds: REBUILD, samplingMs,
+		stepGyr: galaxy.AGE_STEP, gyrPerMyr: galaxy.EVOLVE_GYR_PER_MYR,
+		steps: runSteps, starMyr, runMinutes: runWall, maxJump, rate: RATE,
+		stepMs: +stepMs.toFixed(4), mapMs300k: +mapMs.toFixed(1),
 	};
-	console.log(`  ..   live run: ${runSteps} steps, ${(starMyr / 1000).toFixed(1)} Gyr of star time,`
-		+ ` ${(wall / 60).toFixed(1)} min of wall time, ${samplingMs.toFixed(0)} ms per re-sample`);
+	console.log(`  ..   live run: ${runSteps} frames, ${(starMyr / 1000).toFixed(1)} Gyr of star time,`
+		+ ` ${runWall.toFixed(1)} min of wall time at ${RATE} Myr/s; a step costs ${stepMs.toFixed(3)} ms`
+		+ ` and the field is never re-sampled`);
 }
+
 
 // --- 7. E3: the morphology grows -----------------------------------------
 // The assembled spheroid mass occupies a self-similar volume at the reference
@@ -679,54 +649,80 @@ function sameFloats(a, b) {
 
 // --- 8. The pattern keeps its orientation across epochs ------------------
 // E3 re-derives Ω_p from the bar's own length, and the star clock T is not
-// reset by a re-draw, so the bar's angle Ω_p·T + offset would jump by ΔΩ_p·T
-// at every live step — backwards, since the bar slows as it grows. The shell
-// rebases the phase origin on every age re-draw (orbit.rebasePatternPhase,
-// the Pattern speed slider's own rule); this pins it over a whole live run.
+// reset by a re-draw, so a law of the form Ω_p·T would jump by ΔΩ_p·T at every
+// live step — backwards, since the bar slows as it grows. E2 patched that by
+// rebasing a phase origin on each re-draw; E4 removed the product instead. The
+// phase is an accumulator, advanced per frame by the frame's own star time
+// (orbit.advancePatternPhase), and the lanes multiply by the *mean* rate
+// (orbit.meanPatternSpeed) so that mean·T is the accumulator itself. This pins
+// both halves over a whole live run, and pins the naive law's failure so the
+// defect cannot come back unnoticed.
 {
 	const orbit = require('../src/math/orbit.js');
-	const angle = (m, t) => orbit.patternRotation(m, t);
 	const wrapPi = (a) => a - 2 * Math.PI * Math.floor((a + Math.PI) / (2 * Math.PI));
-	orbit.resetPatternPhaseOffset();
-	orbit.setPatternScale(1, 0, null);
+	// The naive law the epoch tier broke: the current rate times the whole
+	// elapsed clock. Its drift is the integral of t·dΩ_p against the integral of
+	// Ω_p, and it is measured here as the gap between the two at the end of a
+	// whole run, plus the largest single-frame jump the law makes on the way.
+	const naiveAngle = (m, t) => m.dynamics.omegaPattern * t;
+	orbit.setPatternScale(1);
+	orbit.resetPatternPhase();
 	let m = galaxy.createGalaxy({ type: 'SBb', age: galaxy.AGE_MIN });
-	let t = 300;
-	let worstRebased = 0;
-	let worstNaive = 0;
+	let t = 0;
+	let phi = 0;                 // the accumulator, unwrapped, summed frame by frame
+	let worstNaiveJump = 0;
+	let worstAccumulated = 0;
 	let barWorst = 0;
 	const bar = new Float64Array(3);
 	const barNext = new Float64Array(3);
 	while (m.populations.age < galaxy.AGE_MAX) {
-		t += galaxy.EVOLVE_MYR_PER_STEP;
-		const next = galaxy.createGalaxy({ type: 'SBb', age: galaxy.steppedAge(m.populations.age) });
-		const before = angle(m, t);
+		// One frame of star time at the top rate, and one age step: the epoch
+		// advances with the clock, which is the shipping arrangement.
+		const dtStar = 99 / 60;
+		t += dtStar;
+		const next = galaxy.modelAtAge(m, galaxy.evolveAge(m.populations.age, dtStar));
+		if (next.populations.age === m.populations.age) break;
+		// The shipping order (main.js): the phase is advanced at the rate the
+		// model had *while the frame elapsed*, before the epoch tick that follows.
+		const phaseBefore = orbit.getPatternPhase();
+		const phaseMid = orbit.setPatternClock(t, m);
+		const gain = wrapPi(phaseMid - phaseBefore);
+		phi += gain;
+		worstAccumulated = Math.max(worstAccumulated,
+			Math.abs(wrapPi(gain - dtStar * orbit.instantPatternSpeed(m))));
 		orbit.orbitPosition(bar, 0.8, 0.1, 0, orbit.FAMILY_BAR, 0, 0, t, m);
-		const naive = wrapPi(angle(next, t) - before);
-		orbit.rebasePatternPhase(m, next, t);
-		const after = wrapPi(angle(next, t) - before);
+		const naiveJump = wrapPi(naiveAngle(next, t) - naiveAngle(m, t));
+		worstNaiveJump = Math.max(worstNaiveJump, Math.abs(naiveJump));
+		orbit.setPatternClock(t, next);
 		orbit.orbitPosition(barNext, 0.8, 0.1, 0, orbit.FAMILY_BAR, 0, 0, t, next);
 		const barTurn = Math.abs(wrapPi(Math.atan2(barNext[1], barNext[0]) - Math.atan2(bar[1], bar[0])));
 		barWorst = Math.max(barWorst, barTurn);
-		worstRebased = Math.max(worstRebased, Math.abs(after));
-		worstNaive = Math.max(worstNaive, Math.abs(naive));
 		m = next;
 	}
-	log.patternContinuity = { worstRebased, worstNaive, barWorst, finalT: t };
-	check('without the rebase a live step turns the pattern by radians (the defect is real)',
-		worstNaive > 1, { worstNaive });
-	check('with the rebase the pattern angle is continuous across every epoch step',
-		worstRebased < 1e-9, { worstRebased });
-	// Not exact: the star's x1 loop runs at the epoch's own stream rate, so
-	// its loop phase moves with the epoch — a few-mrad epicycle (≈2 pc at
-	// 0.8 kpc), not the pattern turning, which was radians before the rebase.
+	// The drift the naive law accumulates over the run: the rate is re-derived by
+	// every epoch step, and every step of the clock then re-scales the whole
+	// elapsed history. It is what the user saw as "back in time every Evolve
+	// step" — radians, not milliradians.
+	const naiveDrift = wrapPi(naiveAngle(m, t) - phi);
+	log.patternContinuity = { worstNaiveJump, naiveDrift, worstAccumulated, barWorst, finalT: t, phi };
+	check('the naive rate-times-clock law drifts radians over a run (the defect is real)',
+		Math.abs(naiveDrift) > 1, { naiveDrift, naiveJump: worstNaiveJump });
+	check('the accumulator adds exactly the frame\'s own rate over the frame\'s own time',
+		worstAccumulated < 1e-9, { worstAccumulated });
+	// Not exact: the star's x1 loop runs at the epoch's own stream rate, so its
+	// loop phase moves with the epoch — a few-mrad epicycle (≈2 pc at 0.8 kpc),
+	// not the pattern turning, which was radians under the naive law.
 	check('a bar-family star keeps its azimuth across every epoch step (to its x1 loop)',
 		barWorst < 0.01, { barWorst });
-	const unchanged = orbit.getPatternPhaseOffset();
-	orbit.rebasePatternPhase(m, m, t);
-	check('a re-draw of the same model (a star-budget change) leaves the phase alone',
-		orbit.getPatternPhaseOffset() === unchanged, { before: unchanged, after: orbit.getPatternPhaseOffset() });
-	orbit.resetPatternPhaseOffset();
+	// The lanes multiply by the mean rate, and the product is the accumulator —
+	// the invariant that lets a closed-form law ride a rate that moves.
+	const mean = orbit.meanPatternSpeed(m);
+	check('the lane rate times the clock is the accumulated phase',
+		Math.abs(wrapPi(mean * t - orbit.getPatternPhase())) < 1e-9,
+		{ product: mean * t, phase: orbit.getPatternPhase() });
+	orbit.resetPatternPhase();
 }
+
 
 // --- Report -------------------------------------------------------------
 let passed = 0;

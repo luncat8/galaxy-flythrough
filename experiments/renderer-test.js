@@ -463,7 +463,7 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 && uniform[26] === Math.fround(rendererModule.MAX_SIZE_PX),
                 { exposure: uniform[24], base: uniform[25], max: uniform[26] });
         check('uniform carries the star time in params.w', uniform[27] === Math.fround(1 / 60), uniform[27]);
-        check('uniform is exactly 192 bytes (camera block + orbit dynamics + wave + engine)', gpu.uniformWrites[gpu.uniformWrites.length - 1].length === 192);
+        check('uniform is exactly 208 bytes (camera block + orbit dynamics + wave + engine + epoch)', gpu.uniformWrites[gpu.uniformWrites.length - 1].length === 208);
         // Orbit dynamics ride in dynA/dynB — the per-model numbers the shader
         // must never hard-code (packed by orbit.packOrbitDynamics).
         const fr = Math.fround;
@@ -580,17 +580,18 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 }
 
 
-// --- Galaxy age: the epoch is geometry ------------------------------------
-// 0.3.3 made the age a generation parameter, and the age slider regenerates
-// live. 0.6's epoch tier moved the disc the field is drawn from, so an age
-// change is a re-sample: another draw of the same galaxy, colder and with more
-// contrasted arms. What must survive is the identity — a key is
-// `fieldStarSeed(seed, slot)`, which does not read the age — and everything the
-// viewer is looking at that is not the field: the landmarks, the catalog, the
-// buffer. This is the contract main.js's `resolveSet` resolves the selection
-// against (plan E1b).
+// --- Galaxy age: the epoch places the field (0.6 E4) -----------------------
+// 0.3.3 made the age a generation parameter and 0.6 E3 made the epoch geometry;
+// both re-drew the field, which is the 300 ms and the visible rewind E4
+// removed. The contract now: an age change keeps every drawn star and its birth
+// vector, and the epoch *places* them (orbit.epochMap / the camera.epoch lane) —
+// the bulge homology, the disc height law, the arms' re-anchoring. The look
+// follows in the background sweep, a slice a frame, so nothing blocks and
+// nothing is re-rolled. What must survive is the identity — a key is
+// `fieldStarSeed(seed, slot)` — and everything the viewer is looking at that is
+// not the field: the landmarks, the catalog, the buffer.
 {
-        const fixedWrites = () => gpu.bufferWrites.filter(w => w.buffer.label === 'star-storage' && w.offset === 0);
+        const fixedWrites = () => gpu.bufferWrites.filter(w => w.buffer.label === 'star-storage');
         const asView = (write) => new DataView(write.bytes.buffer, write.bytes.byteOffset, write.bytes.byteLength);
         const meanMag = (view, n) => {
                 let sum = 0;
@@ -598,46 +599,82 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 return sum / n;
         };
         const landmarkByte = PROCEDURAL * records.RECORD_BYTES;
-        const refView = asView(fixedWrites().pop());
+        // A *full* write is the whole fixed block (field + landmarks + objects):
+        // the epoch look sweep also writes at offset 0, one slice at a time, and
+        // it must not be mistaken for a re-draw.
+        const fixedBytes = () => (PROCEDURAL + window.Landmarks.count + (renderer.state.objectStars || 0)) * records.RECORD_BYTES;
+        const fullWrites = () => fixedWrites().filter(w => w.offset === 0 && w.bytes.byteLength >= PROCEDURAL * records.RECORD_BYTES);
+        const refView = asView(fullWrites().pop());
         const refSamples = renderer.state.fieldSamples;
         const refMean = meanMag(refView, 2000);
-        const writesBefore = fixedWrites().length;
+        const writesBefore = fullWrites().length;
         check('the preset boots at the reference age, needing no exposure offset',
                 renderer.state.galaxyAge === galaxy.AGE_REF && renderer.state.magOffset === 0
                 && refSamples > 0,
                 { age: renderer.state.galaxyAge, offset: renderer.state.magOffset, fieldSamples: refSamples });
 
-        const aged = renderer.regenerate(galaxy.modelAtAge(model, 0.5));
-        const agedView = asView(fixedWrites().pop());
-        check('an age change re-draws the field for the new epoch',
-                fixedWrites().length === writesBefore + 1 && aged.fieldSamples === refSamples + 1
+        // Everything the age change must not touch, captured while the field is
+        // still the reference draw (the staging buffer is the same bytes; the
+        // harness copies every write, so these views are stable).
+        const baseView = asView(fullWrites().pop());
+        const youngModel = galaxy.modelAtAge(model, 0.5);
+        const lane = new Float32Array(4);
+        renderer.epochParams(youngModel, lane);
+        const aged = renderer.setEpoch(youngModel);
+        check('an age change places the field instead of re-drawing it',
+                fullWrites().length === writesBefore && aged.fieldSamples === refSamples
                 && aged.proceduralStars === PROCEDURAL && aged.galaxyAge === 0.5,
-                { newWrites: fixedWrites().length - writesBefore, fieldSamples: aged.fieldSamples, age: aged.galaxyAge });
-        // The keys are the invariant `resolveSet` resolves by: `fieldStarSeed`
-        // reads the seed and the draw index, never the age, so a re-sample keeps
-        // every key valid and a member resolves to whatever star now sits in its
-        // slot. The record in that slot is a different star of a different field.
+                { fullWrites: fullWrites().length - writesBefore, fieldSamples: aged.fieldSamples, age: aged.galaxyAge });
+        check('the epoch lane carries the two scale laws and the arm re-anchoring',
+                lane[0] !== 0 && lane[1] < 1 && lane[1] > 0 && lane[2] < 1 && lane[2] > 0
+                && renderer.epochSweepState().stale === true,
+                { armRotation: lane[0], spheroidScale: lane[1], heatScale: lane[2] });
+        // Every drawn star is the same star: same slot, same key, same birth
+        // bytes. The map is a view of the epoch, not a rewrite of the field.
         const identity = renderer.starBlocks().identity;
         let keyBreak = -1;
         for (let i = 0; i < 500 && keyBreak < 0; i++) {
                 if ((identity[i] >>> 0) !== (window.StarTypesLib.fieldStarSeed(model.seed, i) >>> 0)) keyBreak = i;
         }
-        check('the identity keys survive the re-sample: a key is a slot, not a position',
-                keyBreak < 0, { firstBreak: keyBreak });
-        let movedPosition = 0;
-        let movedStar = 0;
+        let movedPosition = 0, movedLook = 0, epochFlagged = 0;
         for (let i = 0; i < 500; i++) {
                 const a = records.readRecord(refView, i * records.RECORD_BYTES);
-                const b = records.readRecord(agedView, i * records.RECORD_BYTES);
+                const b = records.readRecord(baseView, i * records.RECORD_BYTES);
                 if (a.x !== b.x || a.y !== b.y || a.z !== b.z) movedPosition++;
-                if (a.packed !== b.packed) movedStar++;
+                if (a.packed !== b.packed) movedLook++;
+                if (b.flags & window.StarRecord.FLAG_EPOCH) epochFlagged++;
         }
-        check('a resolved key follows the new field: another position, another star',
-                movedPosition > 400 && movedStar > 400, { movedPosition, movedStar });
+        check('the identity keys and the birth vectors survive an epoch step: the same stars',
+                keyBreak < 0 && movedPosition === 0 && epochFlagged === 500,
+                { firstBreak: keyBreak, movedPosition, epochFlagged });
+
+        // The look is what follows the clock. One full sweep (a slice with a
+        // budget no frame would use) re-derives every record at the new age and
+        // uploads just those bytes: the positions stay byte-identical, the
+        // magnitudes do not.
+        const sweepsBefore = fixedWrites().length;
+        renderer.stepEpoch(youngModel, 1e9);
+        const swept = fixedWrites().slice(sweepsBefore);
+        let sweptBytes = 0;
+        for (const w of swept) sweptBytes += w.bytes.byteLength;
+        const youngView = asView(fixedWrites()[fixedWrites().length - 1]);
+        let sweptMoved = 0, sweptLook = 0, sweptEpochBits = 0;
+        for (let i = 0; i < 500; i++) {
+                const a = records.readRecord(refView, i * records.RECORD_BYTES);
+                const b = records.readRecord(youngView, i * records.RECORD_BYTES);
+                if (a.x !== b.x || a.y !== b.y || a.z !== b.z) sweptMoved++;
+                if (a.packed !== b.packed) sweptLook++;
+                if ((b.flags & window.StarRecord.FLAG_EPOCH) === 0) sweptEpochBits++;
+        }
+        check('the look sweep rewrites the look of a slice and never its birth vector',
+                sweptMoved === 0 && sweptLook > 0 && sweptEpochBits === 0
+                && sweptBytes === PROCEDURAL * records.RECORD_BYTES
+                && renderer.epochSweepState().stale === false,
+                { sweptMoved, sweptLook, sweptBytes, records: PROCEDURAL * records.RECORD_BYTES });
         let landmarkKept = true;
         for (let i = 0; i < window.Landmarks.count; i++) {
                 const a = records.readRecord(refView, landmarkByte + i * records.RECORD_BYTES);
-                const b = records.readRecord(agedView, landmarkByte + i * records.RECORD_BYTES);
+                const b = records.readRecord(baseView, landmarkByte + i * records.RECORD_BYTES);
                 if (a.packed !== b.packed || a.x !== b.x) { landmarkKept = false; break; }
         }
         check('the named stars keep their real magnitudes: they are data, not a what-if',
@@ -649,11 +686,35 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         // arrived, and the same lane height that is mid-disc at the reference
         // epoch is high above a cold young disc, so the heating floor ages those
         // stars. The reference read is the counterfactual (this field at 13.5
-        // Gyr, thicker lane), so the gap is large; the offset brightens the
-        // displayed field back either way.
-        check('a young galaxy is a dimmer one, so the offset brightens it back',
-                aged.magOffset < -0.5 && meanMag(agedView, 2000) < refMean - 0.5,
-                { offset: +aged.magOffset.toFixed(3), meanMagYoung: +meanMag(agedView, 2000).toFixed(3), meanMagRef: +refMean.toFixed(3) });
+        // Gyr, thicker lane), so the gap is large; the uniform's offset brightens
+        // the displayed field back either way.
+        // The offset is the *exposure*, and since E4 it rides the uniform rather
+        // than each record: a record's magnitude can follow the clock through the
+        // sweep, but the field's held-back brightness cannot be per-record or a
+        // half-swept field would show a seam. So the check is the offset itself,
+        // against the mean-luminosity ratio it is defined as.
+        const youngMeanLum = window.StarTypesLib.meanFieldLuminosity(youngModel, renderer.fieldBuffers(), 4096);
+        const refMeanLum = window.StarTypesLib.meanFieldLuminosity(
+                galaxy.modelAtAge(youngModel, galaxy.AGE_REF), renderer.fieldBuffers(), 4096);
+        const wantOffset = 2.5 * Math.log10(youngMeanLum / refMeanLum);
+        check('a young galaxy is a dimmer one, so the uniform\'s offset brightens it back',
+                renderer.state.magOffset < -0.5
+                && Math.abs(renderer.state.magOffset - wantOffset) < 0.5,
+                {
+                        offset: +renderer.state.magOffset.toFixed(3),
+                        want: +wantOffset.toFixed(3),
+                        meanMagYoung: +meanMag(youngView, 2000).toFixed(3),
+                        meanMagRef: +refMean.toFixed(3),
+                });
+        // Back to the reference age: the map is the exact identity, so the lane
+        // is (0, 1, 1) and the drawn field is the field again.
+        renderer.setEpoch(model);
+        renderer.epochParams(model, lane);
+        renderer.stepEpoch(model, 1e9);
+        check('the reference epoch is the map\'s exact identity',
+                lane[0] === 0 && lane[1] === 1 && lane[2] === 1
+                && renderer.epochSweepState().stale === false,
+                { lane: Array.from(lane) });
 
         // The reuse path is a property of the packed geometry, not a shortcut
         // taken whenever the model object changes: a model that differs only in
@@ -665,7 +726,7 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         galaxy.solvePopulationClock(richer);
         const reused = renderer.regenerate(richer);
         check('a model that differs only in its population keeps the sampled field',
-                reused.fieldSamples === refSamples + 2 && reused.proceduralStars === PROCEDURAL
+                reused.fieldSamples === refSamples && reused.proceduralStars === PROCEDURAL
                 && reused.galaxyAge === galaxy.AGE_REF,
                 { fieldSamples: reused.fieldSamples, objects: reused.objectCount });
 
@@ -673,13 +734,13 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         // is drawn again even at the same age.
         const other = renderer.regenerate(galaxy.createGalaxy({ type: 'Sc', seed: 7, age: 0.5 }));
         check('another type re-draws the field even at the same age',
-                other.fieldSamples === refSamples + 3 && other.galaxyType === 'Sc' && other.galaxyAge === 0.5,
+                other.fieldSamples === refSamples + 1 && other.galaxyType === 'Sc' && other.galaxyAge === 0.5,
                 { fieldSamples: other.fieldSamples, type: other.galaxyType });
         renderer.regenerate(model);
         renderer.render(camera, WIDTH, HEIGHT, 5 / 60, input);
         check('coming back to the preset at the reference age lands on the boot sky',
                 renderer.state.magOffset === 0 && renderer.state.mode === 'hybrid'
-                && renderer.state.fieldSamples === refSamples + 4,
+                && renderer.state.fieldSamples === refSamples + 2,
                 { offset: renderer.state.magOffset, fieldSamples: renderer.state.fieldSamples });
 }
 
@@ -725,9 +786,12 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         }
         orbitLib.simpleLandmarksInit(lmPos, lmColor, lmCount, model);
         orbitLib.simpleLandmarksStep(400, 400);
-        const shift = 1.25;
+        // E4: `regenerate` takes no carry. The simple lane's seeds are the
+        // azimuths of the records as *placed* — the field was drawn into the
+        // frame the epoch was at, so there is nothing to turn and nothing to
+        // shift (the retired `carry.thetaShift` did exactly this by hand).
         bud.setProceduralStars(2500);
-        bud.regenerate(model, { thetaShift: shift, landmarks: true });
+        bud.regenerate(model);
         const fixed = budGpu.bufferWrites.filter(w => w.buffer.label === 'star-storage' && w.offset === 0).pop();
         const view = new DataView(fixed.bytes.buffer, fixed.bytes.byteOffset, fixed.bytes.byteLength);
         const thetaWrite = budGpu.thetaWrites.filter(w => w.offset === 0).pop();
@@ -737,7 +801,7 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         let fieldErr = 0;
         for (let i = 0; i < 2500; i += 7) {
                 const r = records.readRecord(view, i * records.RECORD_BYTES);
-                const want = wrapPi(Math.atan2(r.y - cy, r.x - cx) + shift);
+                const want = wrapPi(Math.atan2(r.y - cy, r.x - cx));
                 fieldErr = Math.max(fieldErr, Math.abs(wrapPi(theta[i] - want)));
         }
         let lmErr = 0, lmMoved = 0;
@@ -746,9 +810,9 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 const birth = Math.atan2(lmPos[i * 3 + 1] - cy, lmPos[i * 3] - cx);
                 if (Math.abs(wrapPi(theta[2500 + i] - birth)) > 1e-4) lmMoved++;
         }
-        check('an age re-draw turns the field thetas by the pattern rotation',
+        check('the simple lane seeds from the placed azimuths, with no carry to turn',
                 fieldErr < 1e-5, { maxErr: fieldErr });
-        check('an age re-draw continues the landmark thetas from the CPU mirror',
+        check('the named stars keep the azimuths the CPU mirror integrated',
                 lmErr === 0 && lmMoved > lmCount / 2, { maxErr: lmErr, moved: lmMoved, of: lmCount });
 }
 

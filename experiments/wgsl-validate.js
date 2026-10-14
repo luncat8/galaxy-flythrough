@@ -529,9 +529,10 @@ function wgslConsts(part) {
                 if (!m) return null;
                 return [...m[1].matchAll(/^\s*([A-Za-z_0-9]+):\s*(?:vec4f|mat4x4)/gm)].map(x => x[1]);
         };
-        // The engine lane rides last (id, eccMax, barTilt, 0); nebulae pad
-        // it and ignore it, like the wave pair.
-        const expected = ['viewProj', 'cameraPos', 'viewport', 'params', 'dynA', 'dynB', 'waveA', 'waveB', 'engine'];
+        // The engine lane (mask, force, barTilt, share) and then the 0.6 E4
+        // epoch lane ride last (armRotation, spheroidScale, heatScale,
+        // fieldMagOffset); nebulae pad both and ignore them.
+        const expected = ['viewProj', 'cameraPos', 'viewport', 'params', 'dynA', 'dynB', 'waveA', 'waveB', 'engine', 'epoch'];
         const spriteFields = fields(shaders.SHADERS['star-sprite']);
         const nebulaFields = fields(shaders.SHADERS['nebula-billboard']);
         check('CameraUniform carries dynA/dynB after the camera block, star and nebula alike',
@@ -595,10 +596,24 @@ function wgslConsts(part) {
 		&& /\(packed >> 28u\) & 15u/.test(orbitWgsl)
 		&& /\(mask & 2u\)[\s\S]*?\(mask & 1u\)[\s\S]*?\(mask & 4u\)/.test(shaders.SHADERS['star-sprite'])
 		&& /apocenterPosition\(moved, birth,/.test(shaders.SHADERS['star-sprite']));
-        check('the packer fills the orbit vec4s and the engine lane (16 at 28, 4 at 44)',
+        check('the packer fills the orbit vec4s, the engine lane and the epoch lane (16 at 28, 4 at 44, 4 at 48)',
                 /packOrbitDynamics\(model,\s*uniform,\s*28\)/.test(readSource('src/render/star-sprites.js'))
                 && /packEngineVec\(model,\s*uniform,\s*44\)/.test(readSource('src/render/star-sprites.js'))
-                && /UNIFORM_FLOATS = 48/.test(readSource('src/render/star-sprites.js')));
+                && /packEpochParams\(model,\s*uniform,\s*48/.test(readSource('src/render/star-sprites.js'))
+                && /UNIFORM_FLOATS = 52/.test(readSource('src/render/star-sprites.js'))
+                // The epoch lane the vertex stage reads and the packer writes must
+                // stay one contract: four floats, and the shader must branch on the
+                // same two flag bits the records are written with.
+                && /const EPOCH_FLOATS = 4/.test(orbitSrc)
+                && /FLAG_EPOCH = 32/.test(readSource('src/math/star-record.js'))
+                && /FLAG_EPOCH_SPHEROID = 64/.test(readSource('src/math/star-record.js'))
+                && /MASK_EPOCH: u32 = 0x00200000u/.test(shaders.SHADERS['star-sprite'])
+                && /MASK_EPOCH_SPHEROID: u32 = 0x00400000u/.test(shaders.SHADERS['star-sprite'])
+                && /fn epochMap\(p: vec3f, packed: u32, centre: vec3f, epoch: vec4f\)/.test(shaders.SHADERS['star-sprite'])
+                && /epochMap\(vec3f\(star\.x, star\.y, star\.z\), star\.packed, centre, camera\.epoch\)/.test(shaders.SHADERS['star-sprite'])
+                // The CPU twin must exist and must be what the picker uses.
+                && /function epochMap\(out, x, y, z, family, flags, model\)/.test(orbitSrc)
+                && /epochMap\(epochMapScratch/.test(extractFunction(orbitSrc, 'engineRecordPosition')));
         // 0.4.5: the inertial form now EXISTS — as the simple engine. The ban
         // scopes to the classic law (which keeps pattern-frame capture) while
         // the simple pair must carry the slowdown on both sides.

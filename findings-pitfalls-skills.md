@@ -1547,3 +1547,34 @@ gives a prompt-free Ctrl+V path. Two traps: a global key handler that maps `KeyV
 calls `preventDefault` on Ctrl+V cancels the paste event itself; and a listener must
 skip only fields that take typed text (textarea, text/number inputs) — a focused
 range slider or button should still let the scene take the paste.
+
+## 2026-10-14 — Improve the rebase into an accumulator: `rate·clock` is a phase jump waiting for a rate change
+
+The previous entry fixed a re-derived rate by rebasing the phase origin on every
+re-draw (`offset += (Ω_old − Ω_new)·T`). That is correct *at the instants it runs* and
+wrong everywhere else: the phase is still a function of the current rate times the
+whole elapsed clock, so any path that changes Ω without rebasing — and a continuous
+clock changes it every frame — jumps again. The user's report ("return back in time
+every Evolve step") survived the rebase for exactly this reason. The durable form is to
+stop multiplying: keep the angle as an **accumulator** (`phase += Ω_instant·dt`, driven
+by the frame loop's own `dt`, before anything reads it) and hand the lanes the *mean*
+rate `wrapAngle(phase)/clock`, so every consumer's `rate·clock` product reproduces the
+accumulated phase exactly — in f32, at any clock, with no rebase term anywhere. Keep one
+accessor for the consumers that genuinely integrate (the simple lane's own steps) and
+they must keep the *instant* rate, not the mean: the split is "closed form reads the
+mean, an integrator reads the instant". Two corollaries from the same slice: (1) a
+*re-sample* cannot continue anything — new inverse-CDF draws are new identities, so
+"keep the stars that survive" is a placement problem, not a speed problem; (2) an
+expensive per-star pass that has to follow a clock should be sliced across frames with a
+byte-range upload (`epochSweepState().stale`, one slice per frame) rather than blocked
+on the frame the clock moved, and any *global* number it feeds (an exposure offset)
+belongs on a uniform, never baked per record — a record-level offset that changes
+mid-sweep is a visible seam.
+
+## 2026-10-14 — When a step is a jump, the test has to run at a large clock
+
+Every E3 pin compared models at `T = 0`, where `Ω_p·T` and `ΔΩ_p·T` are both zero — so
+a family of phase bugs was invisible to a green suite. Pin such laws at a large `T`
+(and pin the *un-fixed* law as non-vacuity: the naïve form drifts 1.27 rad over a run
+while the accumulator drifts 1e-14). The tell in the user's report was "every Evolve
+step", i.e. the defect scaled with the clock; a check at `T = 0` cannot see one.

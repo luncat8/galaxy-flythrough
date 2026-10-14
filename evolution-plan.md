@@ -71,10 +71,15 @@ them — are unchanged. This is not a re-tune of the density field.
    `wgsl-validate` stays a structural check; `wgsl-exec` runs a young-epoch bar
    through the real WGSL for the numeric parity.
 
-6. **An epoch change is a geometry change.** `sameGeometry` already compares the
-   numbers the GPU receives, so once the epoch moves them, an age step re-samples
-   the field instead of only rewriting records. That is the correct outcome (the
-   field *is* the epoch) and it is why the runtime coupling in E1b exists.
+6. **An epoch change is a geometry change** (E1–E3; **revised by E4**). `sameGeometry`
+   already compares the numbers the GPU receives, so once the epoch moves them, an age
+   step re-samples the field instead of only rewriting records. That is the correct
+   outcome (the field *is* the epoch) and it is why the runtime coupling in E1b exists.
+   E4 keeps the physics and moves the *mechanism*: the field is drawn once per
+   (type, seed, budget, overrides) and the epoch is a continuous parameter of where
+   that field is *placed*, so a run of the clock no longer re-samples at all. The
+   re-sample is what a *new* field pays (another galaxy, another budget, another
+   override), not what an epoch pays.
 
 ## E1 — the epoch tier (shipped)
 
@@ -271,6 +276,12 @@ the Age slider stays a **seek**: dragging it retargets the next step.
 
 ### The cadence
 
+**Superseded by E4** — the step's *clock* (`evolveAge`, `AGE_STEP`, the rate) is the
+shipped law and E4 keeps it; the re-sample this section makes the step, and the
+`rebasePatternPhase` it leans on, are exactly the two mechanisms E4 replaced
+(continuous placement and the phase accumulator). Read the rest of this section as the
+record of the defect, and E4 for what the release does.
+
 A step is a full field re-sample — the epoch is packed geometry (E1b), so nothing
 cheaper is honest — and that is what bounds the run: `createGalaxy` is a fraction of a
 millisecond, while `sampleGalaxyStars` at the default 300 000 stars is ~0.32 s and one
@@ -379,12 +390,135 @@ at `AGE_MIN` sits on the `rCore` floor (a 0.27 kpc stub inside a 0.5 kpc core). 
 renderer change: an age step is still the E1b re-sample, now of a differently
 shaped field.
 
+## E4 — continuous epochs (shipped)
+
+### The defect
+
+E2 shipped a live clock on the E1b coupling: one Age-slider step per
+`AGE_STEP·1000` Myr of star time, each step a re-solve plus the re-sample the epoch
+*is* (§6). At 300 k stars that is 325 ms of per-star work per step, and — because the
+re-sample is a fresh draw and because the closed-form laws recomputed the pattern's
+rotation as `omegaPattern·T` with the *current* rate — the user saw the field
+re-drawn and the bar and arms jump back on every step ("looks like return back in
+time every Evolve step").
+
+The two halves of that artifact are independent and both are structural:
+
+* **The clock's rate is not the elapsed rotation.** A model whose `omegaPattern`
+  changes with the epoch (E3 re-derives it from the bar's own length) makes
+  `Ω_p(T)·T` a different angle for the same star at the same star time; the pattern
+  teleports by `ΔΩ_p·T`. Re-basing an offset on each rebuild — the fix the previous
+  commit attempted, and which the user rejected — does not survive a *continuous*
+  clock either: it re-derives a jump-free phase only at the moments a rebuild happens.
+* **A re-sample is not a continuation.** New inverse-CDF draws give new stars: new
+  identities, new keys, new azimuths. "Keep the stars that survive" cannot be met by
+  re-drawing faster.
+
+### The contract
+
+**The field is drawn once per `(type, seed, budget, overrides)` and *placed* at the
+running epoch.** The epoch is a continuous parameter of the placement, not a step of
+the field. Consequences, all pinned:
+
+* An epoch change is `galaxy.modelAtAge` (a re-solve, §E1's laws) plus view state — it
+  is **never** `prepare()`/`regenerate()`. `state.fieldSamples` does not move, the
+  records' birth bytes and the stars' keys do not move, and the thetas are not
+  re-seeded.
+* The birth vector of a record is in the frame of the model at the draw (the **base
+  epoch**); `orbit.setEpochBase(model)` is called by the draw that establishes it, and
+  `orbit.epochMap` maps a record from there into the running epoch. A record without
+  `FLAG_EPOCH` (catalog stars, landmarks, catalog-space gap-fill) is the observed sky
+  and the model's clock never moves it.
+* The map is exactly the epoch's own laws, one rigid transform: the ridge re-anchor is
+  a rotation for the **pattern family only** (`−Δphase0/m`; a disc star's lane already
+  measures it against the current ridge and the bar rides the pattern's rotation, not
+  the ridge), the spheroid homology scales a bulge/halo member's birth vector
+  (`FLAG_EPOCH_SPHEROID`), and the disc height law scales a disc/arm member's vertical
+  rank (`heat_now/heat_base)²`). It is the exact identity at the base epoch — the
+  `active` gate makes a freshly drawn field bit-for-bit the field that was drawn.
+* The map is *view state of the lane's rank*: `orbit.packEpochParams` writes
+  `camera.epoch = (armRotation, spheroidScale, heatScale, fieldMagOffset)` at float 48
+  (uniform 192 → 208 B) and the vertex stage applies the same transform in WGSL
+  (`fn epochMap`), on the birth vector, before the engine mask ladder. The CPU twin is
+  `orbit.epochMap`, used by picking and the label layer, so the three consumers place a
+  record identically.
+* **The pattern's phase is an accumulator, never a rate times a clock.** `orbit.setPatternClock(time, model)` advances `patternPhase += Ω_p_instant·Δt` — called from the frame loop with the frame's own star time, before anything places a star. The lanes carry `orbit.meanPatternSpeed(model)` (`wrapAngle(patternPhase)/starClock`), so the shader's and the CPU laws' `omegaPattern·T` product *is* the accumulated phase, exactly, in f32, at any clock (`STAR_TIME_WRAP` included). A rate change therefore adds no jump: it changes the rate of *future* phases only. `orbit.instantPatternSpeed` exists for the one consumer that is an integrator and wants a rate — the simple lane's own steps.
+* **The look follows the epoch in slices.** The same star at another age is another
+  colour and another brightness, and re-deriving 300 k looks at once is the 250 ms the
+  defect was paying. `renderer` sweeps the field a few ms per frame
+  (`EPOCH_SLICE_MS = 3`): each slice re-derives the look of the stars in `[at, at+n)`
+  at the current model from their *own drawn* structure (× the epoch's scale law for
+  their family) and uploads exactly that byte range. At 300 k a full pass is ≈ 1 s of
+  frames and no frame pays more than the budget.
+* **The exposure rides the uniform, not the records.** Records hold the raw `absMag`;
+  the field's offset is `camera.epoch.w` (`state.magOffset = 2.5·log10(L_now/L_ref)`),
+  recomputed once per sweep *pass* over the renderer's own 4096-star sample of the
+  drawn field (`epochCalibrationRef` is that sample at `AGE_REF`), so a half-swept
+  field cannot show a brightness seam and no sweep has to rewrite a record to keep one
+  brightness.
+* **The clock is continuous.** The frame loop calls `galaxy.evolveAge(age, dtStar)`
+  (a real differential clock at `EVOLVE_GYR_PER_MYR`) and applies the result through
+  `setEpoch` — there is no step accumulator, no `AGE_REGEN_INTERVAL`, no debt and
+  nothing to hide: `AGE_STEP` remains the *slider's* quantum only.
+
+### Validation
+
+`renderer-test.js` (132 pins) gains the E4 block: the uniform is 208 B with the epoch
+lane at 48; an epoch change writes `PROCEDURAL·16` B and only the look half — the birth
+bytes and the keys are byte-identical, every rewritten record carries `FLAG_EPOCH`,
+`sweptLook > 0`, and `epochSweepState().stale === false` only after a finished pass;
+the young-vs-reference lane check (< 1 record changed) and the dim-young check
+(`state.magOffset` against `2.5·log10(meanLum_young/meanLum_ref)` over
+`StarTypesLib.meanFieldLuminosity`); the simple-lane θ seeds come from the *placed*
+azimuths while landmarks keep the mirror's. `galaxy-evolution-test.js` §6/§8 (36 → 38)
+pins the continuous-run laws (`modelAtAge` + `packEpochParams` < 2 ms, `epochMap`
+300 k < 100 ms, no field re-sample) and the accumulator against the naïve law: the
+naïve `Ω_p(T)·T` drifts **1.27 rad** over a 13.3 Gyr run at 99 Myr/s (its worst
+single-frame jump 0.077 rad — invisible in one 1.65 Myr frame, which is why the
+defect survived the earlier suite), while the accumulator adds exactly the frame's own
+rate over the frame's own interval (1.3e-14 rad) and a bar-family star keeps its
+azimuth across every epoch step to its x1 loop (1.1e-6 rad). `m1-smoke-test.js` (64)
+pins the shell side: an age change places the field through `setEpoch`, `redrawField`
+is the re-draw path, nothing rebases `OrbitLib.setPatternClock`/`resetPatternPhase`,
+and `AGE_REGEN_INTERVAL` is gone. `orbit-test.js` (123) and `wgsl-validate.js` (185)
+pin the accumulator's algebra and the camera-member order; `wgsl-exec-check.js`
+(121) keeps the real WGSL laws at the identity epoch lane.
+
+### Cost, measured (node, 300 k)
+
+| path | before (E2) | E4 |
+| --- | --- | --- |
+| epoch step: model re-solve | ~0.02 ms | ~0.02 ms |
+| epoch step: field re-sample | 339 ms (`sampleGalaxyStars`) | — |
+| epoch step: per-star look | ~250 ms | 3 ms/frame, amortized over ~1 s |
+| epoch step: geometry | re-place, 325 ms total | `packEpochParams` O(1) + map O(1)/record |
+
+### Rejected during implementation
+
+* **`Ω_p(T)·T` with the current rate, and the `patternPhaseOffset` rebase it needed.**
+  The offset form is what the rejected commit did: correct only at the moments it
+  rebases. The accumulator makes the same angle *by construction*, at every frame.
+* **Rotating every family in the map.** Rotating BAR records is exactly what the
+  earlier epoch tier got wrong (the bar is not ridge-anchored), and rotating DISC
+  records double-counts the ridge the disc lane already carries. Only `FAMILY_PATTERN`
+  turns; `epochMap`'s doc comment says which law decided each term.
+* **Baking the exposure offset into the records.** One offset per record cannot follow
+  a continuous clock without rewriting every record on every pass, and a slice-wise
+  rewrite of it *is* a visible seam.
+* **Driving the sweep from a timer.** A slice is uploaded with
+  `device.queue.writeBuffer`; the pass has to run inside the frame that draws it, and
+  the tests drive it by hand (`renderer.stepEpoch(model, budget)`), which is also the
+  only way a harness without a queue can pin it.
+* **A re-draw at a threshold.** "Re-draw when the map's error grows" trades the
+  artifact for a smaller artifact: identity is the requirement, so the base epoch
+  changes only with the *field*, never with the clock.
+
 ## Later milestones
 
-* **E4 — events.** Minor mergers, tidal streams and a starburst episode. These need a
+* **E5 — events.** Minor mergers, tidal streams and a starburst episode. These need a
   new object family (the composite-object layer is the host) and a re-sampling path,
   so they are a release of their own.
-* **E5 — chemical evolution (optional).** Metallicity as a function of the epoch
+* **E6 — chemical evolution (optional).** Metallicity as a function of the epoch
   rather than one authored gradient. The observables (`gasNow`, `progress`) already
   exist; the population tier's colour law would need the measurement first.
 

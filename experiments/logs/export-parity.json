@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-14T21:21:08.297Z",
+  "date": "2026-10-14T22:58:59.728Z",
   "modules": 27,
   "totalChecks": 138,
   "passed": 138,
@@ -153,7 +153,7 @@
       }
     },
     {
-      "name": "StarRecord has identical key sets (17 keys)",
+      "name": "StarRecord has identical key sets (21 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -249,7 +249,7 @@
       }
     },
     {
-      "name": "OrbitLib has identical key sets (96 keys)",
+      "name": "OrbitLib has identical key sets (104 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -729,7 +729,7 @@
       }
     },
     {
-      "name": "StarRenderer has identical key sets (30 keys)",
+      "name": "StarRenderer has identical key sets (32 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],

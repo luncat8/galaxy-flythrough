@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-14T17:19:07.911Z",
+  "date": "2026-10-14T23:00:42.645Z",
   "totalChecks": 123,
   "passed": 123,
   "failed": 0,
@@ -810,9 +810,12 @@
       "detail": 0.00005754314027579659
     },
     {
-      "name": "changing pattern speed preserves apocenter-orbit phase",
+      "name": "changing pattern speed preserves the turned phase and integrates the future",
       "pass": true,
-      "detail": 3.202372833989377e-15
+      "detail": {
+        "turnedAtOne": 2.865259749262036,
+        "meanTimes": 5.177853689868558
+      }
     },
     {
       "name": "every mask 1–7 lands on the dispatch table (classic → simple → apocenter, birth baseline)",

@@ -13,8 +13,18 @@
 //   packed bits 0-7   colorIndex   index into the 256-entry colour LUT
 //   packed bits 8-15  absMagByte   absolute magnitude, ABS_MAG_MIN..ABS_MAG_MAX
 //   packed bits 16-23 flags        bit 0 visible, 1 landmark, 2 variable,
-//                                  bits 3-4 orbit family
+//                                  bits 3-4 orbit family, bit 5 epoch-mapped,
+//                                  bit 6 epoch-scaled spheroid
 //   packed bits 24-31 orbit         low nibble epicycle phase, high nibble amplitude rank
+//
+// The two epoch bits (0.6 E4) say how the record's birth vector is read by the
+// epoch map: FLAG_EPOCH marks a vector that lives in the frame of the epoch the
+// field was drawn at, so a running epoch places it (orbit.epochMap); the flag is
+// clear for the observed sky — catalog stars, the named landmarks and the
+// gap-fill stars drawn in catalog space — which the model's clock must not move.
+// FLAG_EPOCH_SPHEROID marks a bulge member, whose vector is a point inside the
+// epoch's spheroid homology (a/b/c ∝ spheroidProgress^⅓) rather than a disc
+// point that only rotates with the ridge.
 //
 // Apparent magnitude is deliberately NOT stored: the vertex shader derives it
 // from the camera distance, so flying towards a star makes it brighter and
@@ -31,6 +41,11 @@ const ABS_MAG_SPAN = ABS_MAG_MAX - ABS_MAG_MIN;   // 30 mag over 256 steps = 0.1
 const FLAG_VISIBLE = 1;
 const FLAG_LANDMARK = 2;
 const FLAG_VARIABLE = 4;
+const FLAG_EPOCH = 32;
+const FLAG_EPOCH_SPHEROID = 64;
+
+function epochMapped(flags) { return (flags & FLAG_EPOCH) !== 0; }
+function epochSpheroid(flags) { return (flags & FLAG_EPOCH_SPHEROID) !== 0; }
 
 // LUT order. Index == position in this list; the colour LUT texture is built
 // from the same list so encoder and shader can never disagree.
@@ -123,7 +138,8 @@ function buildColorLUT() {
 // page, which is exactly how this file shipped a boot-time TypeError.
 const API = {
 	RECORD_BYTES, ABS_MAG_MIN, ABS_MAG_MAX, ABS_MAG_SPAN,
-	FLAG_VISIBLE, FLAG_LANDMARK, FLAG_VARIABLE,
+	FLAG_VISIBLE, FLAG_LANDMARK, FLAG_VARIABLE, FLAG_EPOCH, FLAG_EPOCH_SPHEROID,
+	epochMapped, epochSpheroid,
 	SPECTRAL_CLASSES, CLASS_COLORS, DEFAULT_CLASS_INDEX,
 	spectralClassIndex, encodeAbsMag, decodeAbsMag, packPacked,
 	writeRecord, readRecord, buildColorLUT,

@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-14T17:17:46.713Z",
+  "date": "2026-10-14T22:58:59.968Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -19,15 +19,15 @@
     },
     {
       "name": "star-sprite",
-      "lines": 484
+      "lines": 530
     },
     {
       "name": "star-sprite-hdr",
-      "lines": 114
+      "lines": 119
     },
     {
       "name": "nebula-billboard",
-      "lines": 121
+      "lines": 122
     },
     {
       "name": "tonemap",
@@ -91,15 +91,15 @@
         ],
         [
           "star-sprite",
-          23960
+          26815
         ],
         [
           "star-sprite-hdr",
-          3754
+          4116
         ],
         [
           "nebula-billboard",
-          4134
+          4218
         ],
         [
           "tonemap",
@@ -227,7 +227,7 @@
     {
       "name": "star-sprite: declares its functions",
       "pass": true,
-      "detail": 16
+      "detail": 17
     },
     {
       "name": "star-sprite-hdr: braces and parentheses balance",
@@ -1188,7 +1188,8 @@
           "dynB",
           "waveA",
           "waveB",
-          "engine"
+          "engine",
+          "epoch"
         ],
         "nebula": [
           "viewProj",
@@ -1199,7 +1200,8 @@
           "dynB",
           "waveA",
           "waveB",
-          "engine"
+          "engine",
+          "epoch"
         ]
       }
     },
@@ -1232,7 +1234,7 @@
       "pass": true
     },
     {
-      "name": "the packer fills the orbit vec4s and the engine lane (16 at 28, 4 at 44)",
+      "name": "the packer fills the orbit vec4s, the engine lane and the epoch lane (16 at 28, 4 at 44, 4 at 48)",
       "pass": true
     },
     {

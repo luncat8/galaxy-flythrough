@@ -50,6 +50,13 @@
 // `dynamics.omegaPattern` once, in fillDynamics, so the classic law, the simple
 // integrator, the bar's streaming rate, the capture and the nebula billboards
 // cannot disagree about how fast the pattern turns.
+//
+// The pattern's rotation is an *accumulated* phase (0.6 E4), never Ω_p·T: the
+// epoch re-derives Ω_p as it runs (E3: a shorter bar is a faster pattern), so a
+// product of the current rate and the absolute clock would teleport the bar and
+// the arms by ΔΩ_p·T on every change of the epoch or of the slider. The phase is
+// integrated once per frame with that frame's own star time, which is exact for
+// a rate that moves and leaves nothing to rebase.
 'use strict';
 
 const density = (typeof module !== 'undefined' && module.exports)
@@ -58,6 +65,9 @@ const density = (typeof module !== 'undefined' && module.exports)
 const hash = (typeof module !== 'undefined' && module.exports)
 	? require('./hash.js')
 	: window.HashLib;
+const records = (typeof module !== 'undefined' && module.exports)
+	? require('./star-record.js')
+	: window.StarRecord;
 
 const FAMILY_PATTERN = 0, FAMILY_DISC = 1, FAMILY_BAR = 2, FAMILY_PRESSURE = 3;
 const FAMILY_NAMES = ['pattern', 'disc', 'bar', 'pressure'];
@@ -151,7 +161,9 @@ function fillDynamics(dyn, model) {
 	const axis = (sph.a || 1) * (sph.r0 || 1);
 	dyn.vFlat = d.vFlat || 0;
 	dyn.rCore = d.rCore > 0 ? d.rCore : DEFAULT_R_CORE;
-	dyn.omegaPattern = (d.omegaPattern || 0) * patternScale;
+	// What the lanes multiply by T is the mean rate (patternPhase/T), not the
+	// rate this model happens to have now: the product is the accumulated phase.
+	dyn.omegaPattern = effectivePatternSpeed(model);
 	dyn.spinLambda = d.spinLambda == null ? DEFAULT_SPIN : d.spinLambda;
 	dyn.sigmaThin = d.sigmaThin || 0;
 	// Virial scale evaluated on the same clock the law boils at (r = 1 kpc).
@@ -213,55 +225,209 @@ function setWaveDamping(value) {
 function getWaveDamping() { return waveDamping; }
 
 // Pattern-speed multiplier. Same shape as the damping control: one number, no
-// model field, read every time dynamics are filled.
+// model field, read every time dynamics are filled. The slider changes the rate
+// the phase accumulator integrates, so the change itself is continuous — the
+// phase was integrated, not recomputed from the rate.
 let patternScale = PATTERN_SCALE_UI_DEFAULT;
-// The slider changes the angular rate, not the epoch.  This offset is the
-// phase origin that makes an in-flight rate change continuous: when Ω changes
-// at time T, the new law uses Ωnew*T + offsetNew = Ωold*T + offsetOld.
-// It is deliberately global view state, just like patternScale and
-// waveDamping, rather than a field/model property.
-let patternPhaseOffset = 0;
-function setPatternScale(value, time, model) {
+function setPatternScale(value) {
 	const v = Number(value);
 	// NaN and negatives are the frozen end, not an error: the slider's floor is 0.
-	const next = v > 0 ? (v > PATTERN_SCALE_MAX ? PATTERN_SCALE_MAX : v) : 0;
-	const t = Number(time);
-	if (model && Number.isFinite(t) && t !== 0 && next !== patternScale) {
-		const baseOmega = model.dynamics && Number(model.dynamics.omegaPattern)
-			? Number(model.dynamics.omegaPattern) : 0;
-		patternPhaseOffset = wrapAngle(patternPhaseOffset + baseOmega * (patternScale - next) * t);
-	}
-	patternScale = next;
+	patternScale = v > 0 ? (v > PATTERN_SCALE_MAX ? PATTERN_SCALE_MAX : v) : 0;
 	return patternScale;
 }
 function getPatternScale() { return patternScale; }
-// The same continuity for a rebuild of the same galaxy at another epoch: E3
-// re-derives Ω_p from the bar's own length (0.13 rad/Myr at 0.2 Gyr, 0.029 at
-// the present for SBb), so without a rebase every live-clock step would turn
-// the bar and the arm pattern back by ΔΩ_p·T — after a few hundred Myr of
-// star time that is radians, and the galaxy reads as running backwards.
-function rebasePatternPhase(previous, next, time) {
-	const t = Number(time);
-	if (!Number.isFinite(t) || t === 0) return patternPhaseOffset;
-	const before = fillDynamics(orbitScratch, previous).omegaPattern;
-	const after = fillDynamics(orbitScratch, next).omegaPattern;
-	if (before !== after) patternPhaseOffset = wrapAngle(patternPhaseOffset + (before - after) * t);
-	return patternPhaseOffset;
+
+// The pattern's rotation since the birth frame (T = 0), in radians — the
+// absolute phase of the bar and of the arm ridge. Advanced by the frame's own
+// star time, scaled by the model's own (derived × multiplier) rate; reset only
+// by another galaxy, where there is no continuity to keep.
+//
+// The lanes do not read this number directly: they read the *mean* rate
+// patternPhase/starClock, so that the closed-form laws' omegaPattern·T product
+// reproduces the accumulated phase exactly — in f32, and without a per-star
+// term. A model whose rate changes with the epoch (E3 derives omegaPattern from
+// the bar's own length) therefore turns the bar and the arms by the integral of
+// their speed, never by the current speed times the whole elapsed clock, which
+// is the "rewind" of 0.6: at T = 300 Myr a step of the age slider at 0.2 Gyr
+// moved omegaPattern by 0.07 rad/Myr and the whole pattern jumped 21 rad.
+let patternPhase = 0;
+let starClock = 0;              // the star time (Myr) patternPhase belongs to
+function patternRate(model) {
+	const d = (model && model.dynamics) || {};
+	return (d.omegaPattern || 0) * patternScale;
 }
-// The pattern's inertial rotation since the birth frame (T = 0): what a field
-// re-drawn at time T must be turned by to land on the arms already on screen.
-function patternRotation(model, time) {
+function resetPatternPhase() { patternPhase = 0; starClock = 0; return patternPhase; }
+// Advance the accumulator to `time` at the model's *instantaneous* rate: the
+// per-frame running clock (dtStar), a star-time slider jump and a preset
+// re-time all land here, and all of them are continuous in the phase because
+// they add the rate over the interval instead of rescaling the elapsed time.
+function setPatternClock(time, model) {
 	const t = Number(time);
-	const w = fillDynamics(orbitScratch, model).omegaPattern;
-	return wrapAngle((Number.isFinite(t) ? w * t : 0) + patternPhaseOffset);
+	if (!Number.isFinite(t)) return patternPhase;
+	const rate = patternRate(model);
+	patternPhase = wrapAngle(patternPhase + rate * (t - starClock));
+	starClock = t;
+	return patternPhase;
 }
-function getPatternPhaseOffset() { return patternPhaseOffset; }
-function resetPatternPhaseOffset() { patternPhaseOffset = 0; return patternPhaseOffset; }
+// The same phase, as the rate whose product with the clock is it — the number
+// every lane packer and every CPU twin multiplies by `time`. Wrapped, so the
+// product stays exact in f32 at any clock: |value| < 2π either way.
+function meanPatternSpeed(model) {
+	const instant = patternRate(model);
+	if (instant === 0 || !(starClock > 0)) return instant;
+	return wrapAngle(patternPhase) / starClock;
+}
+function patternRotation() { return patternPhase; }
+function getPatternPhase() { return patternPhase; }
 // What the multiplier means on this model: the derived group speed times the
 // multiplier, rad/Myr. 0 for a model with no pattern, at any setting.
-function effectivePatternSpeed(model) {
-	return fillDynamics(orbitScratch, model).omegaPattern;
+function effectivePatternSpeed(model) { return meanPatternSpeed(model); }
+// The model's own rate right now, multiplier included — the integrator's rate
+// (simpleStepTheta, the epochs' own clock), never a lane's.
+function instantPatternSpeed(model) { return patternRate(model); }
+
+// ---- 0.6 E4: the epoch map ------------------------------------------------
+//
+// The field is drawn once per (type, seed, budget, overrides) and *placed* at
+// the epoch that runs afterwards, instead of being re-drawn every epoch step.
+// A record's birth vector is a point of the frame of the model at the draw
+// (the base epoch); the running epoch maps it into its own frame through the
+// epoch's own laws, which for this field are exactly one rigid transform:
+//
+//   arms (pattern/disc)   the ridge re-anchor is a rotation
+//                         phi += (phase0_now − phase0_base)/m
+//   bulge (spheroid bit)  the spheroid homology scales the birth vector
+//                         q *= a_now / a_base          (E3: a/b/c ∝ size)
+//   disc height (heat)    q.z *= (heat_now / heat_base)²
+//
+// Nothing else about the field changes with the epoch: the star keeps its own
+// draw, so the stars that survive a run are the same stars, and every mapped
+// number is a continuous function of the epoch — no step, no re-draw, no jump.
+// At the base epoch the map is the exact identity (the `active` gate below), so
+// a freshly drawn field is bit-for-bit the field that was drawn.
+//
+// The remaining epoch laws are not geometry per star and are not mapped here:
+// the disc dispersion rides the packed dynamics lanes (dynB.x), the arm
+// *contrast* is a redistribution of the drawn azimuths and is refreshed star by
+// star in the renderer's background pass, and the population's own clock (E1)
+// is the model's, re-derived per refresh.
+const EPOCH_FLOATS = 4;
+const epochBase = {
+	phase0: 0,        // arms.phase0 at the draw
+	spheroidA: 0,     // spheroid.a at the draw (b, c follow it exactly)
+	heat: 1,          // populations.heat at the draw
+	valid: false,
+	version: 0,       // bumped by setEpochBase, the solve's cache key
+};
+// Solved once per frame (the renderer packs it) and read by every consumer
+// that places a record: the shader's uniform, the picker, the label layer.
+const epochParams = {
+	active: 0,        // 1 while any of the three transform numbers is not 1
+	armRotation: 0,   // rad, the ridge re-anchor at the current epoch
+	spheroidScale: 1, // a_now / a_base
+	heatScale: 1,     // (heat_now / heat_base)²
+	solvedVersion: -1,  // the base version this solve was made against
+	solvedModel: null,  // and the model, so a per-record caller is never stale
+};
+// The draw that establishes the frame: called when the field is drawn, and once
+// when a model is built without a field (the identity map).
+function setEpochBase(model) {
+	const arms = (model && model.arms) || {};
+	const sph = (model && model.spheroid) || {};
+	const heat = model && model.epoch ? Number(model.epoch.heat) : 1;
+	epochBase.phase0 = Number(arms.phase0) || 0;
+	epochBase.spheroidA = Number(sph.a) || 0;
+	epochBase.heat = heat > 0 ? heat : 1;
+	epochBase.valid = true;
+	epochBase.version++;
+	epochParams.solvedVersion = -1;
+	return epochBase;
 }
+function getEpochBase() { return epochBase; }
+
+function solveEpochParams(model) {
+	if (!epochBase.valid) setEpochBase(model);
+	// Cheap to call per record (the picker's walk) and never stale: solved
+	// against the model the caller is placing with, and re-solved only when
+	// either that model or the base it is measured against has changed.
+	if (epochParams.solvedVersion === epochBase.version && epochParams.solvedModel === model) return epochParams;
+	const arms = (model && model.arms) || {};
+	const sph = (model && model.spheroid) || {};
+	const heat = model && model.epoch ? Number(model.epoch.heat) : 1;
+	const armed = arms.m >= 1 && arms.pitchDeg > 0;
+	// The ridge sits at (K·ln(R/Rs) − phase0)/m, so a phase0 that moves with the
+	// epoch moves every ridge-anchored azimuth by −Δphase0/m. Only the pattern
+	// family needs it: a disc star's own lane already measures it against the
+	// current ridge, and the bar rides the pattern's rotation, not the ridge.
+	epochParams.armRotation = armed ? -wrapAngle((Number(arms.phase0) || 0) - epochBase.phase0) / arms.m : 0;
+	const a = Number(sph.a) || 0;
+	epochParams.spheroidScale = epochBase.spheroidA > 0 && a > 0 ? a / epochBase.spheroidA : 1;
+	const h = heat > 0 && Number.isFinite(heat) ? heat : 1;
+	const ratio = h / epochBase.heat;
+	epochParams.heatScale = ratio * ratio;
+	epochParams.active = (epochParams.armRotation !== 0
+		|| epochParams.spheroidScale !== 1 || epochParams.heatScale !== 1) ? 1 : 0;
+	epochParams.solvedVersion = epochBase.version;
+	epochParams.solvedModel = model;
+	return epochParams;
+}
+
+// The map itself: the CPU mirror of the vertex stage's placement. `flags` is
+// the record's flags byte (16-23); a record without the epoch bit — catalog
+// stars, landmarks, catalog-space gap-fill — is left alone, because the
+// observed sky does not run on the model's clock. Writes into `out` and
+// returns it; no allocation.
+//
+// Three terms, and each is exactly the epoch's own law seen from one star:
+// the spheroid homology scales a bulge or halo member's birth vector; the disc
+// height law scales the vertical rank of a disc or arm star; and the arms'
+// re-anchoring turns the ridge-anchored population. A disc star and a bar star
+// are deliberately left unmoved — their lanes already measure them against the
+// current ridge and the current pattern phase, which is what keeps the drawn
+// structure the structure they were drawn into.
+function epochMap(out, x, y, z, family, flags, model) {
+	if (!epochParams.active || (flags & records.FLAG_EPOCH) === 0) {
+		out[0] = x; out[1] = y; out[2] = z;
+		return out;
+	}
+	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
+	let qx = x - c.x, qy = y - c.y, qz = z - c.z;
+	if ((flags & records.FLAG_EPOCH_SPHEROID) !== 0) {
+		const s = epochParams.spheroidScale;
+		qx *= s; qy *= s; qz *= s;
+	} else {
+		if (family === FAMILY_DISC || family === FAMILY_PATTERN) qz *= epochParams.heatScale;
+		if (family === FAMILY_PATTERN && epochParams.armRotation !== 0) {
+			const ct = Math.cos(epochParams.armRotation), st = Math.sin(epochParams.armRotation);
+			const rx = qx * ct - qy * st;
+			const ry = qx * st + qy * ct;
+			qx = rx; qy = ry;
+		}
+	}
+	out[0] = c.x + qx;
+	out[1] = c.y + qy;
+	out[2] = c.z + qz;
+	return out;
+}
+
+// The four floats the vertex stage reads as camera.epoch, and the values the
+// CPU's own map uses: (armRotation, spheroidScale, heatScale, fieldMagOffset).
+// Packed per frame beside dynA/dynB — the map is view state of the same rank as
+// a dynamics lane, and a re-draw only moves the base it is measured against.
+// The fourth lane is the field's exposure offset, which has to ride a uniform
+// rather than a record once the field's look is swept across epochs in slices:
+// a per-record offset cannot follow a clock without rewriting every record, and
+// a half-swept field would show a brightness seam.
+function packEpochParams(model, out, offset, magOffset) {
+	const p = solveEpochParams(model);
+	out[offset] = p.armRotation;
+	out[offset + 1] = p.spheroidScale;
+	out[offset + 2] = p.heatScale;
+	out[offset + 3] = Number.isFinite(magOffset) ? magOffset : 0;
+	return out;
+}
+
+const epochMapScratch = [0, 0, 0];
 
 // χ wrapped to (-π, π]. Same floor form on both sides of the mirror.
 function reduceAngle(x) {
@@ -302,7 +468,7 @@ function discWaveTheta(qx, qy, r, omega, omegaP, time, model) {
 	const arms = model && model.arms;
 	if (!arms || !(arms.amp > 0) || !(arms.m >= 1) || !(arms.pitchDeg > 0) || !(arms.Rs > 0)) return omega * time;
 	if (r < arms.minRadius) return omega * time;
-	return dampedDiscTheta(Math.atan2(qy, qx), density.armRidgeAzimuth(model, r) + patternPhaseOffset, omega, omegaP, time, waveDamping, arms.m);
+	return dampedDiscTheta(Math.atan2(qy, qx), density.armRidgeAzimuth(model, r), omega, omegaP, time, waveDamping, arms.m);
 }
 
 function omegaFor(family, x, y, model) {
@@ -415,14 +581,10 @@ function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
 	const omega = omegaFrom(dyn, family, r);
 	// patternLock is the cosmetic rigid disc. It already has no shear to damp,
 	// and applying capture on top of it would fight the flag.
+	// Pattern and bar rotate at the pattern's *mean* rate since the birth frame
+	// (effectivePatternSpeed), so their azimuth is the accumulated phase and
+	// nothing has to be rebased when the model's own rate changes under it.
 	let theta = omega * time;
-	// Pattern/bar geometry is a stateful-looking view of an absolute clock.  The
-	// phase origin keeps it continuous when the Pattern Speed slider changes;
-	// without it Ωnew*T would teleport every pattern star at the instant of the
-	// input event.
-	if (family === FAMILY_PATTERN || family === FAMILY_BAR) {
-		theta += patternPhaseOffset;
-	}
 	if (family === FAMILY_DISC && !dyn.patternLock) theta = discWaveTheta(qx, qy, r, omega, dyn.omegaPattern, time, model);
 	const u = theta * INV_TAU;
 	theta = TAU * (u - Math.floor(u));
@@ -569,11 +731,11 @@ function apocenterPosition(out, x, y, z, family, phase, amplitude, time, model) 
 	const localOmega = dyn.vFlat > 0
 		? dyn.vFlat / Math.max(R, dyn.rCore)
 		: pressureClock(dyn, R);
-	const mean = M0 + (localOmega - dyn.omegaPattern) * time - patternPhaseOffset;
+	const mean = M0 + (localOmega - dyn.omegaPattern) * time;
 	const E = solveEccentricAnomaly(mean, eccentricity);
 	const nu = Math.atan2(root * Math.sin(E), Math.cos(E) - eccentricity);
 	const orbitRadius = a * (1 - eccentricity * Math.cos(E));
-	const delta = delta0 + dyn.omegaPattern * time + patternPhaseOffset;
+	const delta = delta0 + dyn.omegaPattern * time;
 	const cd = Math.cos(delta), sd = Math.sin(delta);
 	const cv = Math.cos(nu), sv = Math.sin(nu);
 	const px = pl.e0x * cd + pl.e1x * sd, py = pl.e0y * cd + pl.e1y * sd, pz = pl.e0z * cd + pl.e1z * sd;
@@ -621,6 +783,15 @@ function engineLandmarkPosition(out, i, bx, by, bz, colorIndex, time, model) {
 // Returns true when the position was approximated.
 function engineRecordPosition(out, x, y, z, packed, time, model) {
 	const orbit = readOrbit(packed);
+	// The epoch map comes first, on the birth vector, exactly as in the vertex
+	// stage: a record drawn at the field's base epoch is placed in the running
+	// epoch's frame before any lane touches it, and a record without the epoch
+	// bit (observed sky) is left where it is.
+	const flags = (packed >>> 16) & 255;
+	if ((flags & records.FLAG_EPOCH) !== 0 && solveEpochParams(model).active) {
+		epochMap(epochMapScratch, x, y, z, orbit.family, flags, model);
+		x = epochMapScratch[0]; y = epochMapScratch[1]; z = epochMapScratch[2];
+	}
 	if (engine & ENGINE_CLASSIC) orbitPosition(out, x, y, z, orbit.family, orbit.phase, orbit.amplitude, time, model);
 	else {
 		out[0] = x; out[1] = y; out[2] = z;
@@ -639,7 +810,7 @@ function engineRecordPosition(out, x, y, z, packed, time, model) {
 //   dynA  = (vFlat, rCore, omegaPattern, spinLambda)
 //   dynB  = (sigmaThin, pressureAmpScale, discHeight, patternLock)
 //   waveA = (damping, m, K, phase0)     K = m / tan(pitch), 0 when unarmed
-//   waveB = (Rs, minRadius, amp, patternPhaseOffset)
+//   waveB = (Rs, minRadius, amp, 0)   (0.6 E4: the lane retired — the mean rate)
 // Unarmed (amp 0, pitch 0, m < 1) packs m = 0 so the shader takes the same
 // skip the CPU does, without a hard-coded galaxy.
 function packOrbitDynamics(model, out, offset) {
@@ -661,7 +832,7 @@ function packOrbitDynamics(model, out, offset) {
 	out[offset + 12] = armed ? arms.Rs : 1;
 	out[offset + 13] = armed ? arms.minRadius : 0;
 	out[offset + 14] = armed ? arms.amp : 0;
-	out[offset + 15] = patternPhaseOffset;
+	out[offset + 15] = 0;
 	return out;
 }
 
@@ -802,7 +973,9 @@ function simpleDerived(model, out) {
 	const dyn = fillDynamics(orbitScratch, model);
 	P.vFlat = dyn.vFlat;
 	P.rCore = dyn.rCore;
-	P.omegaP = dyn.omegaPattern;
+	// The friction field is an integrator, so it steps at the rate the model
+	// has now: only its *phase* (stepA.w) needs the accumulated one.
+	P.omegaP = instantPatternSpeed(model);
 	P.spinLambda = dyn.spinLambda;
 	P.barTilt = model && model.spheroid ? (model.spheroid.tiltDeg || 0) * Math.PI / 180 : 0;
 	P.verticalScale = model && model.truncation ? (model.truncation.discHeight || 1) : 1;
@@ -856,23 +1029,28 @@ function wrapAngle(x) {
 	return TAU * (u - Math.floor(u));
 }
 
-// The pattern phase is derived per frame from the f64 star time, never a
-// second accumulator, so it cannot diverge from T across engine switches and
-// nebulae need no engine branch (their theta is the same product in f32).
-// It is the crest's inertial azimuth offset: the classic capture measures the
-// star against density.armRidgeAzimuth, whose ridge sits at
-// (K·ln(R/Rs) − phase0)/m, so the simple lane's base K·ln(ρ/Rs) + Φp must carry
-// Φp = Ω_p·T − phase0/m or the friction field would sit off the arms it is
-// supposed to be the jam of (phase0 is 0 for the Milky Way preset and nonzero
-// for every type whose arms are solved to leave the bar's end).
+// The pattern phase is the accumulator itself, never a second one, so it cannot
+// diverge from T across engine switches and nebulae need no engine branch (their
+// theta is the same phase in f32). It is the crest's inertial azimuth offset:
+// the classic capture measures the star against density.armRidgeAzimuth, whose
+// ridge sits at (K·ln(R/Rs) − phase0)/m, so the simple lane's base
+// K·ln(ρ/Rs) + Φp must carry Φp = patternRotation() − phase0/m or the friction
+// field would sit off the arms it is supposed to be the jam of (phase0 is 0 for
+// the Milky Way preset and nonzero for every type whose arms leave the bar's
+// end).
 function simplePatternPhase(model, starTimeMyr) {
-	const dyn = fillDynamics(orbitScratch, model);
-	const w = dyn.omegaPattern > 0 ? dyn.omegaPattern : 0;
 	const arms = (model && model.arms) || {};
 	const m = arms.m >= 1 ? arms.m : 1;
 	const phase0 = arms.m >= 1 ? (arms.phase0 || 0) : 0;
-	const elapsed = w > 0 && Number.isFinite(starTimeMyr) && starTimeMyr > 0 ? w * starTimeMyr : 0;
-	return wrapAngle(elapsed + patternPhaseOffset - phase0 / m);
+	// The mean rate times the clock is the accumulated phase (meanPatternSpeed
+	// is exactly patternPhase/starClock while the clock is set), and the mean
+	// rate times any other time is the same law's own extrapolation — which is
+	// what a caller that passes a time but never drives the clock gets, and why
+	// this stays the pure function of (model, time) the trace tools expect.
+	const w = meanPatternSpeed(model);
+	const t = Number(starTimeMyr);
+	const elapsed = w > 0 && Number.isFinite(t) && t > 0 ? w * t : 0;
+	return wrapAngle(elapsed - phase0 / m);
 }
 
 // CPU reference step: one star, substepped Euler, pattern held per frame like
@@ -1061,7 +1239,9 @@ const OrbitAPI = {
 	familyFromFlags, flagsWithFamily, encodeJitter, readOrbit,
 	familyFromColorIndex, familyForStar,
 	fillDynamics, pressureClock, omegaFor, omegaFrom, omegaStream,
-	setWaveDamping, getWaveDamping, setPatternScale, getPatternScale, getPatternPhaseOffset, resetPatternPhaseOffset, rebasePatternPhase, patternRotation, effectivePatternSpeed,
+	setWaveDamping, getWaveDamping, setPatternScale, getPatternScale,
+	resetPatternPhase, setPatternClock, getPatternPhase, patternRotation,
+	meanPatternSpeed, effectivePatternSpeed, instantPatternSpeed,
 	dampedDiscTheta, orbitPosition, apocenterPosition, apocenterAngle, solveEccentricAnomaly,
 	packOrbitDynamics, sinTau, sliderValueToRate, formatTimeRate,
 	setEngine, getEngine, engineName,
@@ -1072,6 +1252,7 @@ const OrbitAPI = {
 	simpleStepTheta, simplePositionFromTheta,
 	simpleLandmarksInit, simpleLandmarksRebind, simpleLandmarkTheta, simpleLandmarksReady, simpleLandmarksStep, simpleLandmarkPosition,
 	packSimpleParams, packEngineVec,
+	setEpochBase, getEpochBase, solveEpochParams, epochMap, packEpochParams, EPOCH_FLOATS,
 };
 if (typeof module !== 'undefined') module.exports = OrbitAPI;
 if (typeof window !== 'undefined') window.OrbitLib = OrbitAPI;

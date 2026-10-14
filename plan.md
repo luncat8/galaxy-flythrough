@@ -1230,12 +1230,19 @@ Shipped, in `archive/`:
   coupling it forced (**E1b**: an age change is a geometry change, so the renderer
   re-samples the field, `main.js` re-seeds the simple mirror and re-resolves the
   selection set by key). **E2 shipped**: that clock now runs on the star-time axis
-  (`galaxy.evolveTick` — one `AGE_STEP` quantum per 100 Myr of star time, one rebuild
-  per `AGE_REGEN_INTERVAL`, the debt dropped rather than banked), with the epoch
-  readout and the toggle beside the Myr/s control, the `evolve` preset field and an
-  `Evolve` built-in preset. Later milestones in the same file: E3 morphology (sizes and
-  the bar's length), E4 events, E5 chemical evolution (optional). Tests:
-  `experiments/galaxy-evolution-test.js` (28 checks) plus the re-stated age pins in
+  (one `AGE_STEP` quantum per 100 Myr of star time), with the epoch readout and the
+  toggle beside the Myr/s control, the `evolve` preset field and an `Evolve` built-in
+  preset. **E3 shipped** (morphology growth: the spheroid assembles in size, the arm
+  ridge re-anchors to the moving bar tip, the bar's pattern speed follows its own
+  length). **E4 shipped — continuous epochs**: the field is drawn once per
+  `(type, seed, budget, overrides)` and placed at the running epoch; the pattern's
+  phase is an accumulator (`orbit.setPatternClock`/`meanPatternSpeed`), the epoch map
+  is a uniform lane (`camera.epoch` at float 48, `orbit.epochMap` + the WGSL twin), the
+  look follows in per-frame slices (`renderer.stepEpoch`), and an epoch change is
+  `modelAtAge` + view state — never a re-sample (the 0.6 `evolveTick`,
+  `AGE_REGEN_INTERVAL` step and the `rebasePatternPhase` rebase are gone). Later
+  milestones in the same file: E5 events, E6 chemical evolution (optional). Tests:
+  `experiments/galaxy-evolution-test.js` (38 checks) plus the re-stated age pins in
   `galaxy-age`, `renderer`, `galaxy-types`, `preset` and `m1-smoke`.
 
 Implement from those files plus this one; the per-release plans reference their own

@@ -887,6 +887,15 @@ struct CameraUniform {
         // derives its own eccentricity from dynA/dynB (simpleEccMax). Nebulae
         // share this struct and ignore the lane.
         engine: vec4f,
+        // 0.6 E4 epoch map, packed by orbit.packEpochParams:
+        //   x armRotation    the arms' re-anchoring since the field's own draw
+        //   y spheroidScale  a_now/a_base, the bulge homology (E3 a/b/c ∝ size)
+        //   z heatScale      (heat_now/heat_base)², the disc height law
+        //   w fieldMagOffset the field's exposure offset (2.5·log10 L/L_ref)
+        // A record carrying FLAG_EPOCH was drawn at the field's base epoch and is
+        // placed by this lane; one without it is the observed sky (catalog stars,
+        // landmarks) and the model's clock must not move it.
+        epoch: vec4f,
 };
 
 struct StarPacked {
@@ -911,8 +920,38 @@ struct VertexOut {
 const ABS_MAG_MIN: f32 = -12.0;
 const ABS_MAG_SPAN: f32 = 30.0;
 const MASK_VISIBLE: u32 = 0x00010000u;   // flags byte bit 0
+// Epoch bits (star-record FLAG_EPOCH / FLAG_EPOCH_SPHEROID) and the family
+// field (bits 3-4 of the flags byte) the map branches on.
+const MASK_EPOCH: u32 = 0x00200000u;          // flags byte bit 5
+const MASK_EPOCH_SPHEROID: u32 = 0x00400000u; // flags byte bit 6
 const LOG2_OVER_LOG10: f32 = 3.321928095;   // log2(10)
 const MAG_TO_FLUX: f32 = 1.328771238;       // 0.4 * log2(10)
+
+// The epoch map, the vertex stage's half of orbit.epochMap: a record drawn at
+// the field's base epoch is placed in the running epoch's frame. Bulge and halo
+// members scale with the spheroid homology (E3: a/b/c ∝ size), the disc's
+// vertical rank rides the epoch's own height law (H ∝ heat², exactly 1 at the
+// reference age), and the ridge-anchored population — the pattern family, the
+// young stars that *are* the arms — turns with the arms' re-anchoring. A disc
+// star and a bar star are deliberately left alone: their own lane already
+// measures them against the current ridge and the current pattern phase, which
+// is what keeps the drawn structure the structure they were drawn into. At the
+// base epoch the lane is (0, 1, 1) and every term is the exact identity.
+fn epochMap(p: vec3f, packed: u32, centre: vec3f, epoch: vec4f) -> vec3f {
+        if ((packed & MASK_EPOCH) == 0u) { return p; }
+        var q: vec3f = p - centre;
+        if ((packed & MASK_EPOCH_SPHEROID) != 0u) {
+                return centre + q * epoch.y;
+        }
+        let family: u32 = (packed >> 19u) & 3u;
+        if (family <= 1u) { q.z = q.z * epoch.z; }
+        if (family == 0u) {
+                let c: f32 = cos(epoch.x);
+                let s: f32 = sin(epoch.x);
+                q = vec3f(q.x * c - q.y * s, q.x * s + q.y * c, q.z);
+        }
+        return centre + q;
+}
 
 fn decodeAbsMag(packed: u32) -> f32 {
         return ABS_MAG_MIN + f32((packed >> 8u) & 0xFFu) * (ABS_MAG_SPAN / 255.0);
@@ -959,8 +998,11 @@ fn vs_main(
         // baseline for the birth-selected subset. The CPU twin of this dispatch is
         // orbit.engineLandmarkPosition (labels and picking).
         let mask: u32 = u32(camera.engine.x);
-        let birth = vec3f(star.x, star.y, star.z);
         let centre = vec3f(camera.cameraPos.w, 0.0, 0.0);
+        // Birth, then the epoch map: the field is drawn once and placed by the
+        // running epoch, so the stars that survive a run are the same stars
+        // (0.6 E4). Identity at the epoch the field was drawn at.
+        let birth = epochMap(vec3f(star.x, star.y, star.z), star.packed, centre, camera.epoch);
         var moved: vec3f;
         if ((mask & 2u) != 0u) {
                 moved = simplePosition(birth, star.packed, theta[starIdx], centre,
@@ -981,7 +1023,11 @@ fn vs_main(
         }
 
         let distPc: f32 = max(length(rel) * 1000.0, 0.1);
-        let appMag: f32 = decodeAbsMag(star.packed) + 5.0 * log2(distPc) / LOG2_OVER_LOG10 - 5.0;
+        var appMag: f32 = decodeAbsMag(star.packed) + 5.0 * log2(distPc) / LOG2_OVER_LOG10 - 5.0;
+        // The field's own exposure offset (calibrated so the same field at any
+        // epoch reads at the reference brightness) rides the uniform, so it can
+        // follow a continuous clock without rewriting a record per step.
+        if ((star.packed & MASK_EPOCH) != 0u) { appMag = appMag + camera.epoch.w; }
         let magDiff: f32 = appMag - camera.params.x;   // negative = brighter than the exposure
         let flux: f32 = exp2(-MAG_TO_FLUX * magDiff);
         // No per-star Reinhard: the additive blend into the rgba16float HDR
@@ -1047,6 +1093,9 @@ struct CameraUniform {
         cameraPos: vec4f,
         viewport: vec4f,
         params: vec4f,
+        // The buffer is shared with the orbiting sprite shader, whose lane this
+        // one only needs the exposure offset (w) of: this variant does not orbit.
+        epoch: vec4f,
 };
 
 struct StarPacked {
@@ -1075,6 +1124,7 @@ struct VertexOut {
 const ABS_MAG_MIN: f32 = -12.0;
 const ABS_MAG_SPAN: f32 = 30.0;
 const MASK_VISIBLE: u32 = 0x00010000u;
+const MASK_EPOCH: u32 = 0x00200000u;   // star-record FLAG_EPOCH: the field's exposure lane
 const LOG2_OVER_LOG10: f32 = 3.321928095;
 const MAG_TO_FLUX: f32 = 1.328771238;
 
@@ -1118,7 +1168,8 @@ fn vs_main(
         }
 
         let distPc: f32 = max(length(rel) * 1000.0, 0.1);
-        let appMag: f32 = decodeAbsMag(star.packed) + 5.0 * log2(distPc) / LOG2_OVER_LOG10 - 5.0;
+        var appMag: f32 = decodeAbsMag(star.packed) + 5.0 * log2(distPc) / LOG2_OVER_LOG10 - 5.0;
+        if ((star.packed & MASK_EPOCH) != 0u) { appMag = appMag + camera.epoch.w; }
         let magDiff: f32 = appMag - camera.params.x;
         let flux: f32 = exp2(-MAG_TO_FLUX * magDiff);
 
@@ -1722,6 +1773,7 @@ struct CameraUniform {
         waveA: vec4f,       // shared layout with the star shader; nebulae ignore it
         waveB: vec4f,
         engine: vec4f,      // engine select lane; nebulae ignore it (gas rides the pattern)
+        epoch: vec4f,       // 0.6 E4 epoch lane; nebulae ignore it (layout parity)
 };
 
 struct NebulaPacked {

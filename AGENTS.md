@@ -59,7 +59,11 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
   epoch runs on the star-time axis, `galaxy.evolveTick`), E3 morphology growth
   (shipped: the spheroid assembles in size, `a/b/c ∝ mass^⅓`, the arm ridge
   re-anchored additively to the moving bar tip, the bar's pattern speed re-derived
-  from its own length), E4 events, E5 chemical evolution (optional).
+  from its own length), E4 continuous epochs (shipped: the field is drawn once and
+  *placed* at the running epoch — the pattern's phase is an accumulator
+  (`orbit.setPatternClock`), the epoch map rides a uniform lane (`camera.epoch`,
+  `orbit.epochMap`), the look follows in per-frame slices (`renderer.stepEpoch`), and
+  an epoch change is never a re-sample), E5 events, E6 chemical evolution (optional).
 - `deferred-browser-visual-plan.md` — non-blocking browser checks, preset actions, bar polish and GPU profiling; separate from analytical model contracts.
 - `worklog.md` — index of versioned implementation logs.
 - `archive/` — versioned worklogs (`0.3.x-worklog.md`, etc.), superseded plans, and the plans of release series that have shipped (`archive/0.2-plan-HDR-saturation.md`, `archive/0.3.0-plan-galaxy-types-star-distribution.md`, `archive/0.4.0-plan-star-move.md`, `archive/0.4.7-draft-new-star-movement-type.md`, `archive/0.4.8-plan-realistic-3d-shapes.md`, `archive/damping-plan.md`, `archive/plan-0.1.1-tasks.md`). A shipped plan stays the spec a fork reimplements from — archive it, do not delete it, and keep `plan.md` §19 pointing at it. When `plan.md` is rewritten substantially, the old version moves here too.

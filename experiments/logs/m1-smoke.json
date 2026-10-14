@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-14T21:21:08.420Z",
+  "date": "2026-10-14T22:58:59.879Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -64,8 +64,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 63,
-  "passed": 63,
+  "totalChecks": 64,
+  "passed": 64,
   "failed": 0,
   "checks": [
     {
@@ -136,16 +136,20 @@
       "pass": true
     },
     {
-      "name": "the age change re-draws through one path: phase rebase, seed carry, mirror, set",
+      "name": "an age change places the field through setEpoch: no re-draw, no rebase, no carry",
       "pass": true,
-      "detail": 1107
+      "detail": 880
+    },
+    {
+      "name": "nothing rebases the pattern phase: the loop advances it and a draw never turns the field",
+      "pass": true
     },
     {
       "name": "the live clock is wired: the toggle, the boot gate and the step path",
       "pass": true
     },
     {
-      "name": "the epoch readout and the rebuild throttle are the shared ones",
+      "name": "the epoch readout is the model's own age, and the drag applies every frame it changed",
       "pass": true
     },
     {
@@ -224,7 +228,7 @@
       "name": "StarRecord loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 17
+        "keys": 21
       }
     },
     {
@@ -245,7 +249,7 @@
       "name": "OrbitLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 96
+        "keys": 104
       }
     },
     {
@@ -343,7 +347,7 @@
       "name": "StarRenderer loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 30
+        "keys": 32
       }
     },
     {

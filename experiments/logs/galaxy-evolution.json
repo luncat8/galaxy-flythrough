@@ -2591,20 +2591,22 @@
  },
  "evolve": {
   "stepGyr": 0.1,
-  "myrPerStep": 100,
-  "steps": 133,
-  "starMyr": 13386.449999998265,
-  "wallSeconds": 211.11000000003392,
-  "maxJump": 0.10000000000000142,
+  "gyrPerMyr": 0.001,
+  "steps": 8061,
+  "starMyr": 13300.64999999813,
+  "runMinutes": 2.239057239057239,
+  "maxJump": 0.0016500000000001513,
   "rate": 99,
-  "rebuildSeconds": 0.67,
-  "samplingMs": 299.739705
+  "stepMs": 0.0215,
+  "mapMs300k": 27.2
  },
  "patternContinuity": {
-  "worstRebased": 4.4853010194856324e-14,
-  "worstNaive": 3.111002072076272,
-  "barWorst": 0.0020491486699288908,
-  "finalT": 13600
+  "worstNaiveJump": 0.07673345682851362,
+  "naiveDrift": -1.2657726293527105,
+  "worstAccumulated": 1.2538581284360362e-14,
+  "barWorst": 0.0000011191859796699788,
+  "finalT": 13300.64999999813,
+  "phi": 508.0276496131118
  },
  "ageRange": [
   0.2,
@@ -2624,8 +2626,8 @@
   0.25
  ],
  "types": 19,
- "totalChecks": 41,
- "passed": 41,
+ "totalChecks": 38,
+ "passed": 38,
  "failed": 0,
  "checks": [
   {
@@ -2727,87 +2729,47 @@
    "pass": true,
    "detail": {
     "step": 0.1,
-    "myrPerStep": 100
+    "gyrPerMyr": 0.001
    }
   },
   {
-   "name": "whole quanta reach the present day exactly and hold there",
+   "name": "a continuous run is monotone, never jumps more than a frame is worth, and holds at present day",
    "pass": true,
    "detail": {
     "age": 13.5,
-    "quanta": 133
+    "steps": 8061,
+    "maxJump": 0.0016500000000001513,
+    "frameStep": 0.00165
    }
+  },
+  {
+   "name": "the run stops where the model does",
+   "pass": true
   },
   {
    "name": "a run that starts at the end replays from the beginning",
    "pass": true
   },
   {
-   "name": "a debt below the quantum does not step and is kept",
+   "name": "an epoch step costs a model re-solve and one uniform lane, not a field",
    "pass": true,
    "detail": {
-    "debt": 0,
-    "lastAt": 1.35
+    "stepMs": 0.0215
    }
   },
   {
-   "name": "a whole quantum steps exactly one Age step and clears the debt",
+   "name": "the epoch map is a per-star constant-time placement (300k under 100 ms)",
    "pass": true,
    "detail": {
-    "stepped": 2.1,
-    "state": {
-     "debt": 0,
-     "lastAt": 1.35
-    }
+    "mapMs": 27.2
    }
   },
   {
-   "name": "a burst of star time advances one step, never more",
+   "name": "every frame of a whole run is a real step, in bounded star time",
    "pass": true,
    "detail": {
-    "burst": 2.1,
-    "state": {
-     "debt": 0,
-     "lastAt": 1.35
-    }
-   }
-  },
-  {
-   "name": "a step due inside the interval waits with its debt intact, then lands",
-   "pass": true,
-   "detail": {
-    "early": 0,
-    "late": 3.1000000000000005,
-    "debtHeld": 100
-   }
-  },
-  {
-   "name": "the run holds at present day and stops the clock",
-   "pass": true,
-   "detail": {
-    "heldStep": 0,
-    "held": {
-     "debt": 0,
-     "lastAt": 1.35
-    }
-   }
-  },
-  {
-   "name": "a run reaches present day in whole quanta, never jumping more than one",
-   "pass": true,
-   "detail": {
-    "runAge": 13.5,
-    "runSteps": 133,
-    "quanta": 133,
-    "maxJump": 0.10000000000000142
-   }
-  },
-  {
-   "name": "every step costs a whole quantum of star time",
-   "pass": true,
-   "detail": {
-    "starMyr": 13386.449999998265,
-    "runSteps": 133
+    "runSteps": 8061,
+    "starMyr": 13300.64999999813
    }
   },
   {
@@ -2856,32 +2818,33 @@
    "detail": null
   },
   {
-   "name": "without the rebase a live step turns the pattern by radians (the defect is real)",
+   "name": "the naive rate-times-clock law drifts radians over a run (the defect is real)",
    "pass": true,
    "detail": {
-    "worstNaive": 3.111002072076272
+    "naiveDrift": -1.2657726293527105,
+    "naiveJump": 0.07673345682851362
    }
   },
   {
-   "name": "with the rebase the pattern angle is continuous across every epoch step",
+   "name": "the accumulator adds exactly the frame's own rate over the frame's own time",
    "pass": true,
    "detail": {
-    "worstRebased": 4.4853010194856324e-14
+    "worstAccumulated": 1.2538581284360362e-14
    }
   },
   {
    "name": "a bar-family star keeps its azimuth across every epoch step (to its x1 loop)",
    "pass": true,
    "detail": {
-    "barWorst": 0.0020491486699288908
+    "barWorst": 0.0000011191859796699788
    }
   },
   {
-   "name": "a re-draw of the same model (a star-budget change) leaves the phase alone",
+   "name": "the lane rate times the clock is the accumulated phase",
    "pass": true,
    "detail": {
-    "before": 5.822745747385433,
-    "after": 5.822745747385433
+    "product": 5.372825038649148,
+    "phase": 5.372825038649148
    }
   }
  ]

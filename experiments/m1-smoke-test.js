@@ -81,22 +81,29 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		})(), 'missing ids');
 	check('the sysmenu selector main.js queries is an id in the page',
 		/#sysmenu \[data-view\]/.test(main) && /id="sysmenu"/.test(html));
-	// 0.6 E1b: an age change re-draws the field, so the runtime state tied to the
-	// old draw has to follow it — the selection set's per-key resolution, and the
-	// simple engine's CPU mirror, which since the first browser pass keeps its
-	// landmark azimuths and only takes the new epoch's law. Every same-galaxy
-	// re-draw (age, live step, star budget) goes through one function, which also
-	// rebases the pattern phase so the bar does not turn back by ΔΩ_p·T. Checked
-	// as text here because there is no browser to run it in.
-	const ageFn = main.match(/function regenerateAge\(age\) \{[\s\S]*?\n        \}/);
+	// 0.6 E4: an age change is *not* a re-draw. The epoch places the field the
+	// field was drawn into (renderer.setEpoch → orbit.epochMap), the look follows
+	// in the renderer's background sweep, and only a new galaxy, seed or star
+	// budget goes through redrawField at all. The phase is an accumulator
+	// (orbit.advancePatternPhase), so nothing rebases it and nothing carries a
+	// theta shift across a draw any more — a run of the clock adds a rate over an
+	// interval instead of multiplying the current rate by the whole elapsed
+	// clock, which is what the "return back in time every Evolve step" was.
+	// Checked as text here because there is no browser to run it in.
+	const epochFn = main.match(/function setEpoch\(age\) \{[\s\S]*?\n        \}/);
 	const drawFn = main.match(/function redrawField\(next\) \{[\s\S]*?\n        \}/);
-	check('the age change re-draws through one path: phase rebase, seed carry, mirror, set',
-		!!ageFn && /redrawField\(galaxy\.createGalaxy\(/.test(ageFn[0])
-		&& !!drawFn && /rebasePatternPhase\(previous, model, starTimeMyr\)/.test(drawFn[0])
-		&& drawFn[0].indexOf('rebasePatternPhase') < drawFn[0].indexOf('renderer.regenerate(model, fieldCarry)')
+	check('an age change places the field through setEpoch: no re-draw, no rebase, no carry',
+		!!epochFn && /galaxy\.modelAtAge\(model, /.test(epochFn[0])
+		&& /renderer\.setEpoch\(model\);/.test(epochFn[0])
+		&& !/regenerateAge|redrawField/.test(epochFn[0])
+		&& !!drawFn && /renderer\.regenerate\(model\);/.test(drawFn[0])
 		&& /simpleLandmarksRebind\(model\)\) initSimpleLandmarks\(\);/.test(drawFn[0])
 		&& /resolveSet\(\);/.test(drawFn[0]),
 		drawFn ? drawFn[0].length : null);
+	check('nothing rebases the pattern phase: the loop advances it and a draw never turns the field',
+		/OrbitLib\.setPatternClock\(starTimeMyr, model\)/.test(main)
+		&& /OrbitLib\.resetPatternPhase\(\)/.test(main)
+		&& !/rebasePatternPhase|patternPhaseOffset|thetaShift/.test(main));
 	// 0.6 E2: the epoch's live clock. The law (quantum, price, drop, hold,
 	// replay) is pinned numerically in galaxy-evolution-test.js — what cannot be
 	// run here is the wiring: the toggle, the boot gate and the loop's step path,
@@ -105,13 +112,14 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		/id="galaxy-evolve"/.test(html) && /id="val-epoch"/.test(html)
 		&& /galaxyEvolve\.addEventListener\('change'/.test(main)
 		&& /const start = galaxy\.evolveStartAge\(model\.populations\.age\);/.test(main)
-		&& /if \(evolveOn\) \{\s*const evolved = galaxy\.evolveTick\(ageRebuild, model\.populations\.age, dtStar, time, AGE_REGEN_INTERVAL\);/.test(main)
-		&& /if \(evolved > 0\) regenerateAge\(evolved\);/.test(main)
+		&& /if \(evolveOn\) \{\s*const evolved = galaxy\.evolveAge\(model\.populations\.age, dtStar\);/.test(main)
+		&& /if \(evolved !== model\.populations\.age\) setEpoch\(evolved\);/.test(main)
 		&& /evolveOn \? galaxy\.evolveStartAge\(params\.age\) : params\.age/.test(main)
 		&& /galaxyAge\.step = galaxy\.AGE_STEP;/.test(main));
-	check('the epoch readout and the rebuild throttle are the shared ones',
+	check('the epoch readout is the model\'s own age, and the drag applies every frame it changed',
 		/valEpoch\.textContent = formatAge\(model\.populations\.age\);/.test(main)
-		&& /time - ageRebuild\.lastAt >= AGE_REGEN_INTERVAL/.test(main));
+		&& /if \(pendingAge !== null && pendingAge !== model\.populations\.age\) setEpoch\(pendingAge\);/.test(main)
+		&& !/AGE_REGEN_INTERVAL/.test(main));
 	check('opening a panel releases pointer lock',
 		/function releasePanelInput\(\) \{[\s\S]*?document\.exitPointerLock\(\);[\s\S]*?\}/.test(main)
 		&& /\} else \{\s*releasePanelInput\(\);/.test(main));
