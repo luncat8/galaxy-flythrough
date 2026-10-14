@@ -322,6 +322,15 @@
 		return anchors[anchors.length - 1][1];
 	}
 
+	// One turn, [0, 2*pi). phase0 is only ever read modulo 2*pi, and a small
+	// number keeps the WGSL mirror's f32 residual precise. The identity on a
+	// value already inside the range, but not on one outside it — which is why
+	// the epoch tier's additive re-anchor (E3) keeps the stored base verbatim
+	// whenever its delta is exactly 0, instead of wrapping unconditionally.
+	function wrapTwoPi(x) {
+		return x - 2 * Math.PI * Math.floor(x / (2 * Math.PI));
+	}
+
 	function cloneGroup(src) {
 		const out = {};
 		for (const key of Object.keys(src)) {
@@ -408,7 +417,7 @@
 		const minRadius = spec.barred ? spec.axes[0] * k * r0 : ARM_MIN_RADIUS_KPC * k;
 		const barCoupled = spec.barred && pitchDeg > 0 && m > 0;
 		const barPhase = (m / Math.tan(pitchRad)) * Math.log(minRadius / Rs) - m * barTiltRad;
-		const phase0 = barCoupled ? barPhase - 2 * Math.PI * Math.floor(barPhase / (2 * Math.PI)) : 0;
+		const phase0 = barCoupled ? wrapTwoPi(barPhase) : 0;
 		return {
 			scaleKpc: k,
 			centre: { x: 0, y: 0, z: 0 },
@@ -512,17 +521,26 @@
 	// population tier reads, and exactly the reference epoch at AGE_REF: every
 	// factor below is a ratio of the same expression evaluated at the same point,
 	// so it is 1 in IEEE arithmetic rather than 0.99999. Multiplying by exactly 1
-	// is exact, so an AGE_REF model is bit-identical to the pre-0.6 model and no
-	// pin describing today's galaxies can move.
+	// is exact, and the E3 re-anchor's additive form is exact the same way
+	// (Δphase0 = K·ln 1 = 0, and a `delta === 0` guard keeps the stored base
+	// verbatim, since wrapping is not the identity on every authored base) — so
+	// an AGE_REF model is bit-identical to the pre-0.6 model and no pin describing
+	// today's galaxies can move.
 	//
-	// The tier scales amplitudes, dispersions and scale heights. It never changes a
-	// length, an angle or a profile exponent, so every derived quantity
-	// (dynamics.omegaPattern, dynamics.loopRatio, the arm ridge coupling) stays
-	// exactly as the type table solves it and no consumer can disagree with the
-	// field. Sizes are E3 (evolution-plan.md).
+	// The tier scales dispersions, scale heights and the arms' contrast, and —
+	// since E3 — the spheroid's own size: the assembled spheroid mass grows in
+	// self-similarly, `a/b/c ∝ mass^⅓` at the reference density, and the
+	// bar-coupled arm ridge re-anchors to the moving bar tip. What it never moves
+	// is a disc length, an angle or a profile exponent: thin.L/thick.L, pitch,
+	// tilt, the spheroid's shape numbers and the disc amplitudes are the type
+	// table's at every epoch. Derived quantities follow the field they derive
+	// from: the bar's pattern speed re-derives from the bar's own length, while
+	// loopRatio (b/a) cancels under a self-similar scale and stays the build-time
+	// value — re-deriving it would only add rounding.
 	//
-	// The three factors, all dimensionless and all 1 at AGE_REF: `spheroidProgress`
-	// for the bulge, `armContrast` for the arms, `heat` for the disc. See the plan
+	// The factors, all dimensionless and all 1 at AGE_REF: `spheroidProgress`
+	// (the assembled spheroid mass) and its `spheroidSize` = progress^⅓ for the
+	// bulge/bar, `armContrast` for the arms, `heat` for the disc. See the plan
 	// for the derivations; the comments here state the one non-obvious choice each
 	// makes.
 
@@ -552,12 +570,16 @@
 	// means as a number. Normalised by the whole window, so the factor is exactly 1
 	// at AGE_REF: there `min(AGE_REF, w1·spanRef) === w1·spanRef` on both sides.
 	//
-	// Only the spheroid is scaled. The disc and the halo keep their present mass at
+	// Only the spheroid assembles. The disc and the halo keep their present mass at
 	// every epoch on purpose: the gas-driven layers (nebulae, HII regions, open
 	// clusters) live in the disc and scale with `gasNow`, so a field whose disc
 	// emptied while its gas layer stayed full would put this project's own "the
-	// field is the source of truth" rule in contradiction with itself. The mass
-	// budget moves with the gas field that can follow it (evolution-plan.md, E3).
+	// field is the source of truth" rule in contradiction with itself. Since E3
+	// this factor is the spheroid's assembled *mass* delivered by size rather than
+	// by dimming: `spheroidSize = progress^⅓` scales the axes self-similarly at
+	// the reference density, so the field's bulge mass fraction is exactly this
+	// number at every epoch (scaling both amp and size would double-count the
+	// assembly into progress² — measured and rejected, evolution-plan.md E3).
 	function spheroidProgressAt(tauSfh, quenchTime, age) {
 		const w0 = FORMATION_WINDOW[density.COMPONENT_BULGE * 2];
 		const w1 = FORMATION_WINDOW[density.COMPONENT_BULGE * 2 + 1];
@@ -581,6 +603,11 @@
 		p.sfhSpan = sfhSpanAt(p.age, p.quenchTime);
 		const assembly = sfhProgress(p.tauSfh, p.quenchTime, p.age);
 		const spheroidProgress = spheroidProgressAt(p.tauSfh, p.quenchTime, p.age);
+		// E3: the assembled spheroid mass occupies a self-similar volume at the
+		// reference density, so its linear size is the cube root of the mass
+		// fraction. cbrt(1) === 1 exactly, which is the tier's whole exactness
+		// contract in one function call.
+		const spheroidSize = Math.cbrt(spheroidProgress);
 		// Mean stellar age of the population that exists at this epoch. Formation
 		// freezes at the quenching time while the stars keep ageing, which is
 		// exactly what a dead disc does, so the quenched branch reads the span at
@@ -598,7 +625,7 @@
 		const root = Math.sqrt(gasRatio);
 		const armContrast = root < ARM_CONTRAST_MAX ? root : ARM_CONTRAST_MAX;
 		return {
-			age: p.age, assembly, spheroidProgress,
+			age: p.age, assembly, spheroidProgress, spheroidSize,
 			meanAge, meanAgeRef, heat, gasRatio, armContrast,
 			gasNow, gasRich: gasNow >= GAS_RICH_MIN,
 		};
@@ -614,7 +641,9 @@
 			model.epochBase = {
 				thinH: model.thin.H, thickH: model.thick.H,
 				thinAmp: model.thin.amp, thickAmp: model.thick.amp,
-				spheroidAmp: model.spheroid.amp, armsAmp: model.arms.amp,
+				armsAmp: model.arms.amp,
+				spheroidA: model.spheroid.a, spheroidB: model.spheroid.b, spheroidC: model.spheroid.c,
+				armsPhase0: model.arms.phase0, armsMinRadius: model.arms.minRadius,
 				sigmaThin: model.dynamics.sigmaThin, sigmaThick: model.dynamics.sigmaThick,
 			};
 		}
@@ -627,6 +656,7 @@
 		// keep placing HII regions and open clusters, because it is mid-burst.
 		const heat = (base.thinAmp > 0 || base.thickAmp > 0) ? epoch.heat : 1;
 		const heat2 = heat * heat;
+		const size = epoch.spheroidSize;
 		model.thin = cloneGroup(model.thin);
 		model.thick = cloneGroup(model.thick);
 		model.spheroid = cloneGroup(model.spheroid);
@@ -634,10 +664,38 @@
 		model.dynamics = cloneGroup(model.dynamics);
 		model.thin.H = base.thinH * heat2;
 		model.thick.H = base.thickH * heat2;
-		model.spheroid.amp = base.spheroidAmp * epoch.spheroidProgress;
 		model.arms.amp = base.armsAmp * epoch.armContrast;
 		model.dynamics.sigmaThin = base.sigmaThin * heat;
 		model.dynamics.sigmaThick = base.sigmaThick * heat;
+		// E3: the spheroid assembles in size, not in dimness — its amp stays the
+		// reference density and its axes carry the assembled mass (∝ mass^⅓,
+		// self-similar, so boxiness b/a, flatness c/a and loopRatio all hold).
+		model.spheroid.a = base.spheroidA * size;
+		model.spheroid.b = base.spheroidB * size;
+		model.spheroid.c = base.spheroidC * size;
+		if (model.barred) {
+			// The arms leave at the bar's end at every epoch, the table's own
+			// identity (minRadius = a·r0), so the inner edge rides the tip…
+			model.arms.minRadius = base.armsMinRadius * size;
+			// …and the ridge re-anchors to it additively: a ridge through
+			// (Rmin, tilt) stays a ridge through (s·Rmin, tilt) under
+			// Δphase0 = K·ln(R'min/Rmin) = K·ln(size) — exactly 0 at AGE_REF,
+			// the one form that leaves the preset's literal phase0 pin standing.
+			// The guard keeps the stored base verbatim at Δ = 0: wrapping is the
+			// identity inside [0, 2π) but not on an override that sits outside it.
+			// An uncoupled bar (SB0: pitch 0) has no ridge to re-anchor, and its
+			// K = m/tan(0) would be infinite — the same gate the table solves
+			// phase0 under.
+			const delta = (model.arms.m > 0 && model.arms.pitchDeg > 0)
+				? density.armWavenumber(model) * Math.log(size)
+				: 0;
+			model.arms.phase0 = delta === 0 ? base.armsPhase0 : wrapTwoPi(base.armsPhase0 + delta);
+			// The bar's pattern speed is derived from the bar's own length, so it
+			// follows the epoch's bar through the build's own function — no
+			// second law. A non-barred model's pattern speed is the disc-wide
+			// wave's, whose derivation the epoch does not move.
+			model.dynamics.omegaPattern = barPatternSpeed(model.dynamics, model.spheroid, model);
+		}
 		model.epoch = epoch;
 		return model;
 	}
@@ -772,16 +830,22 @@
 		return den > 0 ? num / den : 0;
 	}
 
+	// The bar's pattern speed, read where the pattern is set: its own end. One
+	// function serves the build and the epoch tier, so a bar that E3 has scaled
+	// re-derives its speed through the same arithmetic rather than a copy of it
+	// (at the reference epoch the two paths are bit-identical by construction).
+	function barPatternSpeed(dynamics, spheroid, model) {
+		if (!(dynamics.vFlat > 0)) return 0;
+		// A bar ends at |xi| = barTipRadius (density.js); any other barred
+		// bulge profile ends at its own a.
+		const extent = spheroid.profile === 'bar' ? density.barTipRadius(model) : 1;
+		return PRECESSION_FACTOR * omegaAt(dynamics, spheroid.a * spheroid.r0 * extent);
+	}
+
 	function patternSpeed(spec, structure) {
 		const dynamics = spec.dynamics;
 		if (!(dynamics.vFlat > 0)) return 0;
-		const sp = structure.spheroid;
-	if (spec.barred) {
-		// A bar ends at |xi| = barTipRadius (density.js); any other barred
-		// bulge profile ends at its own a.
-		const extent = sp.profile === 'bar' ? density.barTipRadius(structure) : 1;
-			return PRECESSION_FACTOR * omegaAt(dynamics, sp.a * sp.r0 * extent);
-		}
+		if (spec.barred) return barPatternSpeed(dynamics, structure.spheroid, structure);
 		if (!(structure.arms.amp > 0)) return 0;
 		const weight = (R) => density.discRadialWeight(structure.thin, R, structure.truncation.discHeight, 'sech2');
 		return PRECESSION_FACTOR * meanOmega(dynamics, weight, structure.truncation.discRadius);
@@ -1125,7 +1189,7 @@
 		CLUMP_COUNT, CLUMP_BOOST, CLUMP_KFBM, CLUMP_SPAN_R, CLUMP_Z_RATIO, CLUMP_R_OVER_K,
 		interpAnchors, createGalaxy, createMilkyWay, modelAtAge, cycleGalaxyType, galaxyLabel, homeFor,
 		sfhCumulative, sfhSpanAt, sfhProgress, gasFractionAt, solvePopulationClock,
-		solveEpoch, applyEpoch, sfhMoment1, spheroidProgressAt,
+		solveEpoch, applyEpoch, sfhMoment1, spheroidProgressAt, wrapTwoPi, barPatternSpeed,
 		steppedAge, evolveStartAge, evolveTick,
 		DENSITY_PARAMS_LAYOUT, GEOMETRY_GROUPS, GEOMETRY_KEY_FLOATS,
 		DENSITY_PARAMS_CLUMPS, DENSITY_PARAMS_CLUMP_FLOATS,

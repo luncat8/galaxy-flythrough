@@ -1,19 +1,21 @@
 // experiments/galaxy-evolution-test.js
-// Validates 0.6 E1: the epoch tier (evolution-plan.md). The type table
+// Validates 0.6 E1+E3: the epoch tier (evolution-plan.md). The type table
 // describes *present-day* galaxies, so `modelAtAge(model, age)` now re-solves
 // what the galaxy is at an earlier epoch — how much of the spheroid has
-// assembled, how cold the disc still is, how much gas the arms have to work
+// assembled (since E3, in size: the axes carry the mass at the reference
+// density), how cold the disc still is, how much gas the arms have to work
 // with — beside what its stars are, which 0.3.3 already did.
 //
-// Six things are checked, in order:
+// Seven things are checked, in order:
 //   1. exactness: at AGE_REF every epoch factor is exactly 1 and a re-derived
 //      model is bit-identical to a fresh build, in both directions
 //   2. the factors' laws across [AGE_MIN, AGE_REF] for every type: monotone,
 //      bounded, exactly 1 at the reference epoch, and the thick:thin height
 //      ratio preserved (the disc heats, it does not re-shape)
-//   3. only the epoch's numbers move: no length, angle, profile exponent or
-//      pattern speed differs, and the geometry key differs in exactly the
-//      amplitudes the tier owns
+//   3. only the epoch's numbers move: no disc length, angle or profile
+//      exponent differs, and the geometry key differs in exactly the slots
+//      the tier owns (heights, arm contrast, the spheroid's axes, and — for
+//      a bar — the arm anchor that rides its tip)
 //   4. non-vacuity, measured on sampled stars: the arm contrast the parameter
 //      names is the contrast the field carries, and the bulge share matches
 //      the mass the sampler was told to deliver
@@ -23,6 +25,10 @@
 //   6. E2's live clock: the quantum and its star-time price, drop-not-bank,
 //      the throttle, the hold at present day, the replay, and one end-to-end
 //      run whose steps are always whole quanta
+//   7. E3's morphology: the size law (self-similar, ∝ mass^⅓, the assembled
+//      mass still exactly spheroidProgress), the arm ridge re-anchored to the
+//      moving bar tip by the additive Δphase0 = K·ln(size), and the bar's
+//      pattern speed re-derived from its own length
 //
 // Output: experiments/logs/galaxy-evolution.json
 
@@ -37,7 +43,7 @@ const sampling = require('../src/math/sampling.js');
 
 const TYPES = galaxy.GALAXY_TYPES;
 const checks = [];
-const log = { version: '0.6 E1 the epoch tier + E2 the live clock', laws: {}, field: {} };
+const log = { version: '0.6 E1 the epoch tier + E2 the live clock + E3 morphology', laws: {}, field: {}, e3: {} };
 
 function check(name, pass, detail) {
 	checks.push({ name, pass: !!pass, detail });
@@ -121,13 +127,21 @@ function sameFloats(a, b) {
 			const e = m.epoch;
 			row.push({
 				age, heat: +e.heat.toFixed(6), armContrast: +e.armContrast.toFixed(6),
-				spheroidProgress: +e.spheroidProgress.toFixed(6), assembly: +e.assembly.toFixed(6),
+				spheroidProgress: +e.spheroidProgress.toFixed(6), spheroidSize: +e.spheroidSize.toFixed(6),
+				assembly: +e.assembly.toFixed(6),
 			});
 			if (prev) {
 				const monotone = e.heat >= prev.heat - 1e-12
 					&& e.armContrast <= prev.armContrast + 1e-12
 					&& e.spheroidProgress >= prev.spheroidProgress - 1e-12;
 				if (!monotone) lawBreak = lawBreak || { type, age, prev, now: e };
+			}
+			// E3's factor is E1's mass factor under the cube root — one clock,
+			// no second schedule — and exactly 1 when the mass factor is.
+			if (!(e.spheroidSize === Math.cbrt(e.spheroidProgress)
+				&& (e.spheroidProgress === 1) === (e.spheroidSize === 1)
+				&& e.spheroidSize > 0 && e.spheroidSize <= 1 + 1e-12)) {
+				boundsBreak = boundsBreak || { type, age, spheroidSize: e.spheroidSize, spheroidProgress: e.spheroidProgress };
 			}
 			if (!(e.heat > 0 && e.heat <= 1 + 1e-12)) boundsBreak = boundsBreak || { type, age, heat: e.heat };
 			if (!(e.armContrast >= 1 - 1e-12 && e.armContrast <= galaxy.ARM_CONTRAST_MAX + 1e-12)) {
@@ -147,7 +161,7 @@ function sameFloats(a, b) {
 		log.laws[type] = row;
 	}
 	check('every epoch factor is monotone in age, for every type', lawBreak === null, lawBreak);
-	check('heat ≤ 1, 1 ≤ armContrast ≤ ARM_CONTRAST_MAX, 0 < spheroidProgress ≤ 1',
+	check('heat ≤ 1, 1 ≤ armContrast ≤ ARM_CONTRAST_MAX, 0 < spheroidProgress ≤ 1, size = progress^⅓ ∈ (0, 1]',
 		boundsBreak === null, boundsBreak);
 	check('the thick:thin height ratio is preserved at every epoch, every type',
 		ratioBreak === null, ratioBreak);
@@ -156,12 +170,15 @@ function sameFloats(a, b) {
 }
 
 // --- 3. Only the epoch's numbers move ------------------------------------
-// A tier that also moved a length, an angle or a profile exponent would put
-// every consumer of the field out of step with the table: the pattern speed,
-// the arm ridge coupling and the orbit engines all read the model's own
-// geometry, and the plan's contract is that they stay the type table's.
+// A tier that moved a disc length, an angle or a profile exponent would put
+// every consumer of the field out of step with the table: the orbit engines,
+// the renderer's packed uniforms and the arm ridge coupling all read the
+// model's own geometry. E3's contract is the spheroid's own size — its axes,
+// the arm anchor that rides the bar tip, and (for a bar) the pattern speed
+// that derives from its length — and nothing else.
 {
-	const declared = ['thin.H', 'thick.H', 'spheroidShape.amp', 'arms.amp'];
+	const declared = ['thin.H', 'thick.H', 'arms.amp',
+		'spheroid.a', 'spheroid.b', 'spheroid.c', 'armShape.phase0', 'armShape.minRadius'];
 	const a = new Float32Array(galaxy.DENSITY_PARAMS_FLOATS);
 	const b = new Float32Array(galaxy.DENSITY_PARAMS_FLOATS);
 	let geometryBreak = null;
@@ -192,14 +209,19 @@ function sameFloats(a, b) {
 		const extra = moved.filter((name) => declared.indexOf(name) < 0);
 		if (extra.length) geometryBreak = geometryBreak || { type, extra, moved };
 		// ...and the halves that must move, so the tier cannot pass by doing
-		// nothing: the assembling spheroid, and — for a model that has a disc —
-		// the disc heights. A model with neither disc amplitude (the E sequence)
-		// keeps its heights on purpose: they are read nowhere but the gas lane,
-		// and thinning the lane of a starburst that never formed a disc would
-		// hide its HII regions (galaxy.applyEpoch).
+		// nothing: the assembling spheroid (its axes, at every age below the
+		// window's close), the arm anchor of a bar that rides its tip, and —
+		// for a model that has a disc — the disc heights. A model with neither
+		// disc amplitude (the E sequence) keeps its heights on purpose: they
+		// are read nowhere but the gas lane, and thinning the lane of a
+		// starburst that never formed a disc would hide its HII regions
+		// (galaxy.applyEpoch).
 		const hasDisc = young.thin.amp > 0 || young.thick.amp > 0;
-		if (!(moved.indexOf('spheroidShape.amp') >= 0)) {
+		if (!(moved.indexOf('spheroid.a') >= 0 && moved.indexOf('spheroid.b') >= 0 && moved.indexOf('spheroid.c') >= 0)) {
 			structureBreak = structureBreak || { type, moved };
+		}
+		if (fresh.barred && !(moved.indexOf('armShape.minRadius') >= 0)) {
+			structureBreak = structureBreak || { type, moved, bar: true };
 		}
 		if (hasDisc) {
 			heatedTypes++;
@@ -209,25 +231,33 @@ function sameFloats(a, b) {
 		} else if (moved.indexOf('thin.H') >= 0 || moved.indexOf('thick.H') >= 0) {
 			coldBreak = coldBreak || { type, moved };
 		}
-		// The disc's own amplitudes, the halo's, and every length and angle:
-		// compared on the model rather than through the uniform, so a group that
-		// is not packed cannot hide here.
+		// Every disc length and angle, the shape numbers and the amplitudes the
+		// tier does not own: compared on the model rather than through the
+		// uniform, so a group that is not packed cannot hide here. E3 moved four
+		// names off this list and onto the declared one (the spheroid's axes and
+		// the bar's arm anchor); the spheroid's *amp* joined it instead — the
+		// assembly is size now, and the density stays the reference's. The arm
+		// anchor and the bar's pattern speed move only with a bar: a non-barred
+		// model's ridge and wave speed are the type table's at every epoch.
 		const pairs = [
 			['thin.L', fresh.thin.L, young.thin.L], ['thick.L', fresh.thick.L, young.thick.L],
 			['thin.amp', fresh.thin.amp, young.thin.amp], ['thick.amp', fresh.thick.amp, young.thick.amp],
-			['spheroid.a', fresh.spheroid.a, young.spheroid.a], ['spheroid.b', fresh.spheroid.b, young.spheroid.b],
-			['spheroid.c', fresh.spheroid.c, young.spheroid.c], ['spheroid.r0', fresh.spheroid.r0, young.spheroid.r0],
+			['spheroid.amp', fresh.spheroid.amp, young.spheroid.amp],
+			['spheroid.r0', fresh.spheroid.r0, young.spheroid.r0],
 			['spheroid.n', fresh.spheroid.n, young.spheroid.n], ['spheroid.tiltDeg', fresh.spheroid.tiltDeg, young.spheroid.tiltDeg],
 			['halo.a_h', fresh.halo.a_h, young.halo.a_h], ['halo.rMax', fresh.halo.rMax, young.halo.rMax],
 			['halo.power', fresh.halo.power, young.halo.power], ['halo.amp', fresh.halo.amp, young.halo.amp],
 			['arms.m', fresh.arms.m, young.arms.m], ['arms.pitchDeg', fresh.arms.pitchDeg, young.arms.pitchDeg],
-			['arms.Rs', fresh.arms.Rs, young.arms.Rs], ['arms.phase0', fresh.arms.phase0, young.arms.phase0],
-			['arms.minRadius', fresh.arms.minRadius, young.arms.minRadius],
+			['arms.Rs', fresh.arms.Rs, young.arms.Rs],
 			['dynamics.vFlat', fresh.dynamics.vFlat, young.dynamics.vFlat],
 			['dynamics.rCore', fresh.dynamics.rCore, young.dynamics.rCore],
-			['dynamics.omegaPattern', fresh.dynamics.omegaPattern, young.dynamics.omegaPattern],
 			['dynamics.loopRatio', fresh.dynamics.loopRatio, young.dynamics.loopRatio],
 		];
+		if (!fresh.barred) {
+			pairs.push(['arms.phase0', fresh.arms.phase0, young.arms.phase0],
+				['arms.minRadius', fresh.arms.minRadius, young.arms.minRadius],
+				['dynamics.omegaPattern', fresh.dynamics.omegaPattern, young.dynamics.omegaPattern]);
+		}
 		for (const [name, before, after] of pairs) {
 			if (!Object.is(before, after)) lengthBreak = lengthBreak || { type, name, before, after };
 		}
@@ -244,13 +274,13 @@ function sameFloats(a, b) {
 			}
 		}
 	}
-	check('the geometry key moves only inside the four amplitudes the tier owns',
+	check('the geometry key moves only inside the slots the tier owns',
 		geometryBreak === null, geometryBreak);
-	check('the assembling spheroid always moves, and the disc heights move with it wherever a disc exists',
+	check('the assembling spheroid always moves, its bar\'s arm anchor with it, and the disc heights move wherever a disc exists',
 		structureBreak === null && heatedTypes > 0, structureBreak || { heated: heatedTypes });
 	check('a model with no disc keeps its own heights: the starburst lane does not thin',
 		coldBreak === null, coldBreak);
-	check('no length, angle, profile exponent, pattern speed or disc amplitude moves',
+	check('no disc length, angle, profile exponent or unclaimed amplitude moves, and a non-barred model keeps its ridge and wave speed',
 		lengthBreak === null, lengthBreak);
 	check('the two disc dispersions scale by one heat factor below 1, wherever a disc exists',
 		counterBreak === null && counted > 0, counterBreak || { types: counted });
@@ -341,7 +371,7 @@ function sameFloats(a, b) {
 			const closed = young.populations.quenchTime > 0
 				? age >= 0.45 * Math.min(galaxy.AGE_REF, young.populations.quenchTime)
 				: age >= 0.45 * galaxy.AGE_REF;
-			const scaled = young.spheroid.amp !== fresh.spheroid.amp;
+			const scaled = young.spheroid.a !== fresh.spheroid.a;
 			if (closed ? scaled : !scaled) {
 				windowBreak = windowBreak || { type, age, closed, progress: young.epoch.spheroidProgress };
 			}
@@ -483,6 +513,166 @@ function sameFloats(a, b) {
 	};
 	console.log(`  ..   live run: ${runSteps} steps, ${(starMyr / 1000).toFixed(1)} Gyr of star time,`
 		+ ` ${(wall / 60).toFixed(1)} min of wall time, ${samplingMs.toFixed(0)} ms per re-sample`);
+}
+
+// --- 7. E3: the morphology grows -----------------------------------------
+// The assembled spheroid mass occupies a self-similar volume at the reference
+// density: the axes carry `∝ mass^⅓`, the amp stays the type table's, and the
+// delivered bulge mass fraction is therefore still exactly E1's
+// `spheroidProgress` — the double-counting reading (amp and size both scaled,
+// mass ∝ progress²) is what this section's mass row rejects by measurement.
+// A bar drags two things with its tip: the arm's inner edge (the table's own
+// identity, minRadius = a·r0, at every epoch) and the ridge that leaves from
+// it, re-anchored additively by Δphase0 = K·ln(R'min/Rmin) — the one form
+// that is exactly 0 at AGE_REF (ln 1 = 0) and so leaves the preset's literal
+// phase0 standing. The bar's pattern speed then follows from its own length
+// through the build's own derivation.
+{
+	const PRECESSION = 1 - 1 / Math.SQRT2;
+	const ages = [galaxy.AGE_MIN, 0.5, 1, 2, 5, 8, galaxy.AGE_REF];
+	let sizeBreak = null;
+	let similarBreak = null;
+	let massBreak = null;
+	let tipBreak = null;
+	let ridgeBreak = null;
+	let additiveBreak = null;
+	let patternBreak = null;
+	let monotoneBreak = null;
+	for (const type of TYPES) {
+		const fresh = galaxy.createGalaxy({ type, seed: 21 });
+		const ref = galaxy.modelAtAge(fresh, galaxy.AGE_REF);
+		const refMass = density.componentMasses(ref).bulge;
+		const ratioRef = fresh.spheroid.b / fresh.spheroid.a;
+		const flatRef = fresh.spheroid.c / fresh.spheroid.a;
+		const tiltRad = fresh.spheroid.tiltDeg * Math.PI / 180;
+		const coupled = fresh.barred && fresh.arms.m > 0 && fresh.arms.pitchDeg > 0;
+		const row = [];
+		let prevOmega = null;
+		for (const age of ages) {
+			const m = galaxy.modelAtAge(fresh, age);
+			const e = m.epoch;
+			const size = e.spheroidSize;
+			row.push({ age, size: +size.toFixed(4), a: +m.spheroid.a.toFixed(4),
+				minRadius: +m.arms.minRadius.toFixed(4), phase0: +m.arms.phase0.toFixed(4),
+				omegaPattern: +m.dynamics.omegaPattern.toFixed(6) });
+			// The axes are the reference axes under one factor, so the shape the
+			// type table authored (boxiness, flatness, loopRatio) is the shape
+			// at every epoch — the spheroid shrinks, it does not reshape.
+			if (!(Object.is(m.spheroid.a, fresh.spheroid.a * size)
+				&& Object.is(m.spheroid.b, fresh.spheroid.b * size)
+				&& Object.is(m.spheroid.c, fresh.spheroid.c * size))) {
+				sizeBreak = sizeBreak || { type, age, size };
+			}
+			if (Math.abs(m.spheroid.b / m.spheroid.a / ratioRef - 1) > 1e-12
+				|| Math.abs(m.spheroid.c / m.spheroid.a / flatRef - 1) > 1e-12
+				|| !Object.is(m.dynamics.loopRatio, fresh.dynamics.loopRatio)) {
+				similarBreak = similarBreak || { type, age };
+			}
+			// The mass law: the field's bulge mass fraction is the epoch's own
+			// spheroidProgress — assembly moved from amp to size, it did not
+			// double. The amp itself never moves.
+			const bulgeNow = density.componentMasses(m).bulge;
+			if (!Object.is(m.spheroid.amp, fresh.spheroid.amp)
+				|| (refMass > 0 && Math.abs(bulgeNow / refMass - e.spheroidProgress) > 1e-12)) {
+				massBreak = massBreak || { type, age, fraction: bulgeNow / refMass, progress: e.spheroidProgress };
+			}
+			if (!fresh.barred) continue;
+			// The arms leave at the bar's end at every epoch, and — where a
+			// ridge is coupled to that end — it still passes through it at the
+			// bar's tilt, because the correction is the additive K·ln(size).
+			if (Math.abs(m.arms.minRadius - m.spheroid.a * m.spheroid.r0) > 1e-12) {
+				tipBreak = tipBreak || { type, age, minRadius: m.arms.minRadius, tip: m.spheroid.a * m.spheroid.r0 };
+			}
+			if (coupled) {
+				// The preset authors phase0 rounded to 4 decimals, so the ridge
+				// sits ~1e-5 kpc off the tip at every epoch — the galaxy-types
+				// tolerance, now at a moved tip.
+				const d = density.distanceToNearestArm(m, m.arms.minRadius, tiltRad);
+				if (!(d < 1e-4)) ridgeBreak = ridgeBreak || { type, age, d };
+				const delta = density.armWavenumber(m) * Math.log(size);
+				const want = delta === 0 ? fresh.arms.phase0 : galaxy.wrapTwoPi(fresh.arms.phase0 + delta);
+				if (Math.abs(m.arms.phase0 - want) > 1e-12) {
+					additiveBreak = additiveBreak || { type, age, phase0: m.arms.phase0, want };
+				}
+			} else if (!Object.is(m.arms.phase0, fresh.arms.phase0)) {
+				additiveBreak = additiveBreak || { type, age, uncoupled: m.arms.phase0 };
+			}
+			// The pattern speed is the build's own law read on the epoch's own
+			// bar: shorter bar, faster pattern, flat at the rCore floor — and
+			// bit-identical to the build's value at the reference epoch.
+			const extent = Math.min(1, m.truncation.spheroidRadius);
+			const wantOmega = m.dynamics.vFlat > 0
+				? PRECESSION * m.dynamics.vFlat / Math.max(m.spheroid.a * m.spheroid.r0 * extent, m.dynamics.rCore)
+				: 0;
+			if (!Object.is(m.dynamics.omegaPattern, galaxy.barPatternSpeed(m.dynamics, m.spheroid, m))
+				|| Math.abs(m.dynamics.omegaPattern - wantOmega) > 1e-15) {
+				patternBreak = patternBreak || { type, age, omega: m.dynamics.omegaPattern, want: wantOmega };
+			}
+			// Ages walk upward, so the pattern must never speed up: a longer
+			// bar is a slower one, flat only while the tip sits inside rCore.
+			if (prevOmega !== null && m.dynamics.omegaPattern > prevOmega + 1e-15) {
+				monotoneBreak = monotoneBreak || { type, age, omega: m.dynamics.omegaPattern, prev: prevOmega };
+			}
+			prevOmega = m.dynamics.omegaPattern;
+			if (age === galaxy.AGE_REF) {
+				if (!Object.is(m.dynamics.omegaPattern, fresh.dynamics.omegaPattern)
+					|| !Object.is(m.arms.phase0, fresh.arms.phase0)
+					|| !Object.is(m.arms.minRadius, fresh.arms.minRadius)) {
+					patternBreak = patternBreak || { type, age, ref: true };
+				}
+			}
+		}
+		log.e3[type] = row;
+	}
+	check('the spheroid\'s axes are the reference axes under one size factor, at every epoch',
+		sizeBreak === null, sizeBreak);
+	check('the growth is self-similar: boxiness, flatness and loopRatio are the type\'s at every epoch',
+		similarBreak === null, similarBreak);
+	check('the delivered bulge mass is still exactly spheroidProgress: assembly moved from amp to size',
+		massBreak === null, massBreak);
+	check('the arms leave at the bar\'s end at every epoch (minRadius = a·r0)',
+		tipBreak === null, tipBreak);
+	check('the coupled ridge still passes through the moved bar tip at the bar\'s tilt',
+		ridgeBreak === null, ridgeBreak);
+	check('the re-anchor is the additive Δphase0 = K·ln(size), and exactly nothing at the reference epoch',
+		additiveBreak === null, additiveBreak);
+	check('the bar\'s pattern speed is the build\'s own law on the epoch\'s own length',
+		patternBreak === null, patternBreak);
+	check('a younger bar is a shorter bar is a faster pattern, monotonically',
+		monotoneBreak === null, monotoneBreak);
+
+	// Non-vacuity on the stars themselves: the bulge the sampler draws is the
+	// smaller one. Its mean radius scales with the axes — the same u-draws land
+	// on the same s under the same profile, at the epoch's own scale.
+	const N = 300000;
+	const buf = sampling.createBuffers(N);
+	let extentBreak = null;
+	for (const type of ['SBb', 'E4']) {
+		const fresh = galaxy.createGalaxy({ type, seed: 42 });
+		const meanBulgeR = (model) => {
+			const f = sampling.sampleGalaxyStars(model, 42, N, buf);
+			let sum = 0;
+			let n = 0;
+			for (let i = 0; i < f.count; i++) {
+				if (f.component[i] !== density.COMPONENT_BULGE) continue;
+				sum += f.R[i];
+				n++;
+			}
+			return { mean: sum / n, n };
+		};
+		const refMean = meanBulgeR(galaxy.modelAtAge(fresh, galaxy.AGE_REF));
+		log.e3[type + '-bulgeR'] = { reference: +refMean.mean.toFixed(4) };
+		for (const age of [0.5, 2, 8]) {
+			const m = galaxy.modelAtAge(fresh, age);
+			const young = meanBulgeR(m);
+			log.e3[type + '-bulgeR'][age] = { mean: +young.mean.toFixed(4), size: +m.epoch.spheroidSize.toFixed(4) };
+			if (Math.abs(young.mean / refMean.mean / m.epoch.spheroidSize - 1) > 0.03) {
+				extentBreak = extentBreak || { type, age, ratio: young.mean / refMean.mean, size: m.epoch.spheroidSize };
+			}
+		}
+	}
+	check('the sampled bulge is the smaller one: its mean radius rides the size factor',
+		extentBreak === null, extentBreak);
 }
 
 // --- Report -------------------------------------------------------------

@@ -40,25 +40,36 @@ them — are unchanged. This is not a re-tune of the density field.
 3. **The reference epoch is exact, not approximate.** Every factor is a ratio of the
    same expression evaluated at the same point, so it is `1` in IEEE arithmetic, not
    `0.9999999`. Scaling a value by exactly 1 is exact, so an `AGE_REF` model is
-   bit-identical to the pre-0.6 model. Anything that cannot be made exact at the
-   reference epoch (a re-solved length, a re-anchored ridge phase) is deferred to a
-   milestone that states the exact-zero form it uses — see E3.
+   bit-identical to the pre-0.6 model. E3's re-anchor is the additive form of the
+   same rule: `Δphase0 = K·ln(R'min/Rmin)` is exactly `0` at `AGE_REF` (`ln 1 = 0`),
+   and a `Δ === 0` guard then keeps the stored `phase0` verbatim instead of
+   re-wrapping it — wrapping is the identity on a value inside `[0, 2π)`, but not on
+   an authored base outside it. Its re-solved length is exact the same way: the bar's
+   pattern speed re-derives through the build's own function on bit-identical
+   inputs.
 
-4. **Scale, do not re-author.** E1 multiplies amplitudes, dispersions and scale
-   heights. It never changes a length, an angle, or a profile exponent, so every
-   derived quantity (`dynamics.omegaPattern`, `dynamics.loopRatio`, the arm ridge
-   coupling `arms.minRadius`/`phase0`) stays exactly as the type table solves it and
-   no consumer can disagree with the field. One width does follow the field by
-   construction: `density.armRidgeWidth` is `ARM_RIDGE_FRAC·λ/(1 + arms.amp)` read
+4. **Scale, do not re-author.** The tier multiplies the numbers the type table
+   solved: amplitudes, dispersions, scale heights and — since E3 — the spheroid's
+   own axes, self-similarly, with the two numbers a bar's length decides (its arm
+   anchor, its pattern speed) following it. It never changes a disc length, an
+   angle, a profile exponent or a disc/halo amplitude. A derived quantity whose
+   inputs do not move stays exactly the type table's (`dynamics.loopRatio` — `b/a`
+   cancels under a self-similar scale); one whose inputs move follows the field
+   through its own build-time derivation, never a second copy of it — the bar's
+   pattern speed re-derives through `galaxy.barPatternSpeed`, and the arm ridge
+   re-anchors by the additive `Δphase0` that solves the table's own coupling at the
+   moved tip, so no consumer can disagree with the field. One width does follow the
+   field by construction: `density.armRidgeWidth` is `ARM_RIDGE_FRAC·λ/(1 + arms.amp)` read
    live, so the newborn lane narrows as the arms strengthen — which is the lane the
    O/B stars, the nebulae and the HII regions are placed in, so it is the field's own
    answer and not a second decision.
 
-5. **No WGSL growth.** Every number the shipped tier moves is already packed per
-   model (`thin`/`thick` H and amp, `spheroidShape.amp`, `arms.amp`, and the disc
-   dispersions in the orbit block). The shader's density mirror reads the same
-   numbers, so E1 adds no constant to WGSL and `wgsl-validate` stays a structural
-   check.
+5. **No WGSL growth.** Every number the tier moves is already packed per model
+   (`thin`/`thick` H, `arms.amp`, the spheroid's `a`/`b`/`c`, `armShape`'s
+   `phase0`/`minRadius`, and the disc dispersions in the orbit block). The shader's
+   density mirror reads the same numbers, so the series adds no constant to WGSL and
+   `wgsl-validate` stays a structural check; `wgsl-exec` runs a young-epoch bar
+   through the real WGSL for the numeric parity.
 
 6. **An epoch change is a geometry change.** `sameGeometry` already compares the
    numbers the GPU receives, so once the epoch moves them, an age step re-samples
@@ -93,6 +104,11 @@ M1(x)       = 2 − e^−x (x² + 2x + 2)                 first SFH moment
   quenched S0, 6.075 Gyr for an Sb), which is what "the bulge forms first" means as
   a number.
 
+* **`spheroidSize`** (E3) — the linear scale the assembled spheroid mass occupies
+  at the reference density: `spheroidProgress^⅓` (`Math.cbrt`), so a self-similar
+  volume carries exactly the assembled mass. `cbrt(1) === 1` exactly, which is the
+  exactness contract above in one call.
+
 * **`meanAge`** — the mean stellar age of the population that exists at the epoch,
   from the SFH's own moments: `age − tauSfh · M1(x)/F(x)` over `x = x(age)`. For a
   quenched type the formation time freezes at the quenching time while `age` keeps
@@ -108,7 +124,7 @@ M1(x)       = 2 − e^−x (x² + 2x + 2)                 first SFH moment
 
 | law | factor | why |
 |---|---|---|
-| spheroid assembly | `spheroid.amp ×= spheroidProgress` | The bulge/bar assembles; the bar's length, its boxiness and its pattern speed are the type's own (sizes are E3, and the exact-zero form `Δphase0 = K·ln(R'min/Rmin)` is what E3 must use). |
+| spheroid assembly | `spheroid.a/b/c ×= spheroidSize` (= `spheroidProgress^⅓`), `spheroid.amp` untouched | The bulge/bar assembles inside-out at the reference density, so the field's bulge mass fraction is exactly `spheroidProgress` at every epoch and the shape numbers (boxiness `b/a`, flatness `c/a`, `loopRatio`) hold. This is E3's form; E1's first slice dimmed the amplitude instead — the same assembled mass — and keeping *both* would double-count the assembly into `progress²` (measured and rejected, see E3). The bar's length and pattern speed follow the assembled mass; see E3 for the arm anchor that rides the tip. |
 | arm contrast | `arms.amp ×= min(sqrt(gasRatio), ARM_CONTRAST_MAX)` | Arms are the gas: the wave's contrast follows the gas left relative to the type's own anchor, sub-linearly, and saturates at `ARM_CONTRAST_MAX = 2` — beyond that the linear density-wave response is not believable and the field would read as two bright stripes. |
 | disc heat | `σ ×= heat`, `thin.H ×= heat²`, `thick.H ×= heat²`, `heat = (meanAge / meanAge_ref)^HEAT_EXP`, **gated on the model having a disc** (`thin.amp > 0 ∥ thick.amp > 0`) | Disc heating: dispersion grows with the population's age (age–velocity relation, `HEAT_EXP = 0.25`), and an isothermal disc's thickness follows dispersion squared. One exponent, two visible outcomes, both discs and both dispersions by the same factor, so the type table's thick:thin height ratio is preserved exactly at every epoch. |
 
@@ -117,7 +133,9 @@ load-bearing decision of the slice: the gas-driven layers (nebulae, HII regions,
 open clusters) live in the disc and scale with `gasNow`, so a tier that also
 emptied the disc would put the model in contradiction with its own gas layer — a
 young galaxy would show a full nebula lane over a disc that had lost its stars.
-The mass budget moves with the gas field that can follow it, which is E3's job.
+The spheroid is the one component whose mass budget moves — it assembles — and
+since E3 it moves as size: the same budget E1's law delivered, carried by a
+smaller, equally dense body (see E3).
 
 The heat gate is the same rule seen from the other side. A model with no disc at
 all — the E sequence, `thin.amp` and `thick.amp` both 0 — has no disc scale height
@@ -143,16 +161,17 @@ measurement that killed it (worklog 0.6.0 has the numbers):
 
 ### Model surface
 
-* `model.epoch = { age, assembly, spheroidProgress, meanAge, meanAgeRef, heat, gasRatio, armContrast, gasNow, gasRich }`
+* `model.epoch = { age, assembly, spheroidProgress, spheroidSize, meanAge, meanAgeRef, heat, gasRatio, armContrast, gasNow, gasRich }`
   — solved once at build and again on every re-solve (`modelAtAge`); read by the tests
   today and by E2's epoch readout, its first UI consumer.
   `assembly` is the existing galaxy-wide `sfhProgress`, which is what `gasNow`
   already derives from.
-* `model.epochBase` — the reference-epoch values of the eight scaled numbers
-  (`thinH`, `thickH`, `thinAmp`, `thickAmp`, `spheroidAmp`, `armsAmp`, `sigmaThin`,
-  `sigmaThick`), written by the tier before it scales them. `modelAtAge` has to be
-  able to undo and redo the epoch, and an exact undo is a stored value, not a
-  division.
+* `model.epochBase` — the reference-epoch values of the numbers the tier scales
+  (`thinH`, `thickH`, `armsAmp`, `spheroidA`, `spheroidB`, `spheroidC`,
+  `armsPhase0`, `armsMinRadius`, `sigmaThin`, `sigmaThick`), written by the tier
+  before it scales them, plus the two disc amplitudes (`thinAmp`, `thickAmp`) which
+  never move and are stored as the heat gate's inputs. `modelAtAge` has to be able
+  to undo and redo the epoch, and an exact undo is a stored value, not a division.
 * `solveEpoch(populations, T)` clamps the clock once (one place, so the population
   and structure tiers cannot hold different clocks) and `applyEpoch(model, epoch)`
   writes the scaled groups, cloning each group it writes so a re-solve never
@@ -192,11 +211,13 @@ Shipped as `experiments/galaxy-evolution-test.js` (18 checks, registered in
   and the round trip young → reference lands back on the fresh build. The Milky Way
   preset's literal pins and the type-anchor pins pass unchanged.
 * **Laws:** monotone in age and bounded for every type (`heat ∈ (0, 1]`,
-  `1 ≤ armContrast ≤ 2`, `0 < spheroidProgress ≤ 1`), exactly 1 at `AGE_REF`, and the
-  thick:thin height ratio preserved at every epoch.
-* **Scope:** of the packed geometry groups, only the four amplitude slots the tier
-  owns ever move; no length, angle, profile exponent, pattern speed or disc amplitude
-  moves; a model with no disc keeps its heights.
+  `1 ≤ armContrast ≤ 2`, `0 < spheroidProgress ≤ 1`, `spheroidSize = progress^⅓`),
+  exactly 1 at `AGE_REF`, and the thick:thin height ratio preserved at every epoch.
+* **Scope:** of the packed geometry groups, only the slots the tier owns ever move —
+  the disc heights, the arm contrast, and (since E3) the spheroid's axes and a bar's
+  arm anchor; no disc length, angle, profile exponent or disc/halo amplitude moves, a
+  non-barred model keeps its ridge phase and wave speed, and a model with no disc
+  keeps its heights.
 * **Field honesty:** the sampled arms carry exactly the parameter's contrast (mean
   azimuthal cosine ≈ `arms.amp/2`, measured on 300 k stars; the young/reference ratio
   matches `armContrast` within 5 %), and the sampled bulge share is the mass
@@ -279,14 +300,73 @@ measured step cost. `m1-smoke` pins the surface (the toggle, the loop's step pat
 boot gate) and `preset-test` the round trip. No renderer or WGSL change: a live step
 *is* the age rebuild the renderer already re-samples for, and E1b's pins cover it.
 
+## E3 — morphology growth (shipped)
+
+E1 scaled the epoch's amplitudes; E3 gives the assembled mass its own geometry. The
+spheroid — bulge or bar — grows in self-similarly at the reference density, and the
+two numbers a bar's length decides (the arm anchor at its tip, the pattern speed at
+its end) follow it through their own build-time derivations. No second clock, one
+new factor (the cube root the `∝ mass^⅓` law already implies), and no WGSL growth:
+every moved number is already packed per model.
+
+### The laws
+
+| name | value | why |
+|---|---|---|
+| `spheroidSize` | `spheroidProgress^⅓` (`Math.cbrt`) | The linear scale the assembled spheroid mass occupies at the reference density. Exactly `1` at `AGE_REF` (`cbrt(1) = 1`), monotone in age, in `(0, 1]`. |
+| spheroid growth | `spheroid.a/b/c ×= spheroidSize`, `spheroid.amp` untouched | The assembly is the size: the field's bulge mass fraction stays exactly `spheroidProgress` (E1's budget, its numbers of record), the body is a smaller, equally dense one, and boxiness `b/a`, flatness `c/a` and `loopRatio` hold at every epoch — the spheroid shrinks, it does not reshape. |
+| bar-tip anchor | `arms.minRadius ×= spheroidSize` (barred models) | The table's own identity — the arms leave where the bar ends, `minRadius = a·r0` — at every epoch rather than only at the reference one. |
+| ridge re-anchor | `phase0 → wrap₂π(base + Δphase0)`, `Δphase0 = K·ln(R'min/Rmin) = K·ln(spheroidSize)`, `K = m/tan(pitch)` — coupled bars only (`m > 0`, `pitchDeg > 0`) | A log-spiral's phase is logarithmic in `R`, so the ridge that passed through the old tip at the bar tilt passes through the moved tip at the same tilt under exactly the wind-up between the two tips. The correction is *additive*, hence exactly `0` at `AGE_REF` (`ln 1 = 0`) — the one form that leaves the preset's literal `phase0` pin standing. At `Δ = 0` the guard keeps the stored base verbatim, because wrapping is the identity inside `[0, 2π)` but not on an authored base outside it. An uncoupled bar (SB0: pitch 0) has no ridge to re-anchor, and its `K = m/tan 0` would be infinite — the same gate the table solves `phase0` under. |
+| bar pattern speed | `dynamics.omegaPattern = barPatternSpeed(...)` on the epoch's own bar (barred models) | Derived, never authored: the build's own function, read on the scaled length — one law, one place. A shorter bar is a faster pattern, flat at the `rCore` floor while the tip sits inside the core; outside it the fast-bar ratio `R_CR/a = 1/(1 − 1/√2) ≈ 3.41` is invariant by construction, so the bar grows at its type's own corotation. A non-barred model's wave speed is the disc-wide derivation's, whose inputs the epoch does not move, and stays the build-time value. |
+
+### The assembly is the size, not a dimming (rejected by arithmetic)
+
+E1's first slice carried the assembled spheroid mass in a dimmed amplitude
+(`amp ×= spheroidProgress`). The double-scaling reading of E3 — keep the dimming
+*and* scale the axes — was rejected before shipping, by the plan's own two laws:
+the field's bulge mass fraction would become `progress²` (SBb at 2 Gyr: 3.2 %
+instead of the recorded 18 %), the size law `∝ mass^⅓` would be false of the
+shipped field (the size would ride `mass^½`), and every E1 mass number of record —
+the delivered-mass pins, the object counts, the exposure bands — would silently
+move. Given *mass fraction = `spheroidProgress`* and *size = `mass^⅓`*, the
+solution is unique: the amp stays the reference density and the axes carry the
+assembly. The shipped pin *the delivered bulge mass is still exactly
+`spheroidProgress`* is the guard against the double count coming back.
+
+### Non-movers
+
+Disc lengths, angles, profile exponents, disc and halo amplitudes, `arms.m`,
+`arms.pitchDeg`, `arms.Rs`, `dynamics.vFlat`/`rCore`, and — for a non-barred model
+— `arms.phase0`, `arms.minRadius` and `dynamics.omegaPattern`: the type table's at
+every epoch. `dynamics.loopRatio` (`b/a`) cancels under a self-similar scale, so
+the build-time value *is* the epoch's; re-deriving it would only add rounding.
+
+### Validation
+
+`galaxy-evolution-test.js` gains a seventh section (suite 28 → 37): the axes are the
+reference axes under one size factor at every epoch (bitwise), the growth is
+self-similar (boxiness, flatness, `loopRatio`), the mass law holds (delivered bulge
+fraction `=== spheroidProgress` to 1e-12, the amp bitwise unmoved), the tip identity
+`minRadius = a·r0` holds at every epoch, the coupled ridge passes through the moved
+tip at the bar tilt (the preset's authored-rounding tolerance, 1e-4), the re-anchor
+is the additive `K·ln(size)` form and bitwise nothing at the reference epoch, the
+pattern speed is the build's law on the epoch's length, monotone in age and bitwise
+the build's value at the reference epoch, and — non-vacuity on 300 k sampled stars —
+the bulge's mean radius rides the size factor within 3 %. E1's reference-epoch
+bit-identity pins (packed bytes, both directions) pass unchanged; the restated
+scope/window pins are the contract change, not a moved number. `wgsl-exec` gains the
+preset at a 2 Gyr epoch in its density-parity list (119 → 121): the real WGSL reads
+the same packed numbers at the moved ridge and the shorter bar. Numbers of record:
+SBb's bar is 0.55 kpc at 0.5 Gyr (`size` 0.239, `Δphase0` −13.5 rad), 1.30 kpc at
+2 Gyr (0.564, −5.4 rad) and full length from its window's close at 6.075 Gyr; its
+pattern speed runs 0.120 → 0.051 → 0.029 rad/Myr over the same ages at the
+invariant 3.41 corotation ratio; a quenched E4 is full size from 0.27 Gyr, and SBa
+at `AGE_MIN` sits on the `rCore` floor (a 0.27 kpc stub inside a 0.5 kpc core). No
+renderer change: an age step is still the E1b re-sample, now of a differently
+shaped field.
+
 ## Later milestones
 
-* **E3 — morphology growth.** Sizes, not just amplitudes: `spheroid.a/b/c` self-similar
-  in the assembled spheroid mass (`∝ mass^⅓`), the bar's length following it, and the
-  arm ridge re-anchored to the moving bar tip by the *additive* correction
-  `Δphase0 = K·ln(R'min/Rmin)` (exactly 0 at `AGE_REF`, since `ln 1 = 0`), which is the
-  one form that can grow the bar without breaking the preset's literal `phase0` pin.
-  A bar's pattern speed then follows from its own length, as it already does.
 * **E4 — events.** Minor mergers, tidal streams and a starburst episode. These need a
   new object family (the composite-object layer is the host) and a re-sampling path,
   so they are a release of their own.

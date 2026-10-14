@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-14T07:55:28.229Z",
+  "date": "2026-10-14T17:17:47.994Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 164,
+  "prepareMs": 139,
   "totalChecks": 125,
   "passed": 125,
   "failed": 0,
@@ -625,7 +625,7 @@
       "name": "a resolved key follows the new field: another position, another star",
       "pass": true,
       "detail": {
-        "movedPosition": 490,
+        "movedPosition": 499,
         "movedStar": 500
       }
     },

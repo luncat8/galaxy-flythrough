@@ -1009,13 +1009,19 @@ async function main() {
 	models.push(galaxy.createGalaxy({ type: 'Sb', overrides: {
 		thin: { flare: 0.3, coreRadius: 0.8 }, thick: { flare: 0.1 },
 	} }));
+	// A young-epoch bar (0.6 E3): the axes have shrunk by the assembled mass's
+	// cube root, the arm anchor has ridden the tip and phase0 carries the
+	// additive re-anchor K·ln(size). The mirror reads the same packed numbers,
+	// so the parity has to hold at the moved ridge and the shorter bar too.
+	models.push(galaxy.modelAtAge(galaxy.MILKY_WAY, 2));
 	for (const model of models) {
 		galaxy.packDensityParams(model, modelBuffer);
 		const n = galaxy.GALAXY_TYPES.length;
 		const name = model.centre.z === 4 ? 'shifted/scaled/phase-shifted Sc'
 			: (model === models[n + 1] ? 'flocculent Sc, seed 7'
 			: (model === models[n + 2] ? 'flared/cored Sd'
-			: (model === models[n + 3] ? 'asymmetric flare/core Sb' : model.type)));
+			: (model === models[n + 3] ? 'asymmetric flare/core Sb'
+			: (model === models[n + 4] ? 'the preset at a 2 Gyr epoch' : model.type))));
 		const offsets = [[0, 0, 0], [0.005, 0, 0], [4.1, 1.3, 0.2], [-8, 0.4, -0.3], [model.halo.rMax + 1, 0, 0]];
 		if (model.clumps && model.clumps.length > 0) {
 			// A clump centre: the hotspot boost and the FBM texture live there.

@@ -1228,12 +1228,12 @@ async function boot() {
 
         // The epoch readout (E2): the epoch the *field* was built at, never the
         // clock's wish, so the readout, the Age slider and what is drawn cannot
-        // disagree. The tooltip carries the rest of the E1 epoch — the numbers the
-        // viewer is watching move.
+        // disagree. The tooltip carries the rest of the epoch — the numbers the
+        // viewer is watching move, E3's spheroid size among them.
         function syncEpoch() {
                 valEpoch.textContent = formatAge(model.populations.age);
                 const e = model.epoch;
-                valEpoch.title = `bulge ${(e.spheroidProgress * 100).toFixed(0)}%   arms ×${e.armContrast.toFixed(2)}` +
+                valEpoch.title = `bulge ${(e.spheroidProgress * 100).toFixed(0)}% mass, ×${e.spheroidSize.toFixed(2)} size   arms ×${e.armContrast.toFixed(2)}` +
                         `   heat ${e.heat.toFixed(2)}   gas ×${e.gasRatio.toFixed(2)}`;
         }
 

@@ -1482,3 +1482,43 @@ The companion trap is a test-authoring one, and it looked exactly like a code bu
   test looked broken (`{"early":0,"late":3.1,"debt":0}`) while the code was right.
   Capture the intermediate state (`const debtHeld = state.debt;`) before the consuming
   call. Mutable-state laws want their assertions adjacent to the mutation they check.
+
+## 2026-10-14 — Exact-zero is a form you choose: `ln 1 = 0` beats a re-solved phase, and a wrap is not the identity
+
+E3 had to move the spiral ridge's anchor phase when the bar it hangs off grows, while
+keeping the reference epoch *bit-identical* (the series' whole exactness contract). Two
+forms can re-anchor a log-spiral ridge from `Rmin` to `R'min`: **re-solve** the coupling
+(`phase0' = wrap(K·ln(R'min/Rs) − m·tilt)`) or **add** the wind-up between the two tips
+(`phase0' = wrap(phase0 + K·ln(R'min/Rmin))`). They are the same number in exact
+arithmetic and different numbers in IEEE: the re-solve recomputes a chain whose
+rounding never reproduces the authored literal (the preset pins `phase0 = 2.8406`),
+while the additive form is exactly `+0` at the reference epoch because `ln 1 = +0` and
+`x + 0 = x` for every `x`. When a tier's contract is "every factor is exactly 1 (or 0)
+at the reference point", prefer the *additive identity* for phases and the
+*multiplicative identity* for scales — `Math.cbrt(1) === 1` and `Math.pow(1, x) === 1`
+are spec-guaranteed, so `base × factor` needs no guard.
+
+The additive form has one trap the multiplicative one does not:
+
+- **A wrap is not the identity, so guard the no-op.** `wrap₂π(x)` is exact for
+  `x ∈ [0, 2π)` but maps an authored base *outside* the range (an override
+  `phase0: 7`) to a different number — so `wrap(base + Δ)` at `Δ = 0` would break
+  bit-identity for that model even though the physics did not move. The shipped form
+  is `Δ === 0 ? base : wrap(base + Δ)`: the guard costs one comparison and makes the
+  reference epoch exact for *every* base, authored, table-solved or overridden.
+- **Gate the coefficient, not just the delta.** The same block computes
+  `K = m/tan(pitch)`, which is `Infinity` for the uncoupled SB0 (pitch 0) — and
+  `Inf · ln(size)` is `-Inf`, whose wrap is `NaN`. The gate is the table's own
+  coupling condition (`m > 0 && pitchDeg > 0`), reused verbatim so the epoch and the
+  build cannot disagree about which bars have a ridge to move.
+
+Companion lesson from the same slice: when two laws share a quantity, compose them by
+substitution, not by multiplication. "Mass fraction = `progress`" (E1) and
+"size = `mass^⅓`" (E3) have exactly one consistent solution — the amplitude stops
+scaling and the axes carry the assembly. Keeping E1's `amp ×= progress` *and* adding
+`axes ×= progress^⅓` makes the delivered mass `progress²` and quietly falsifies the
+`∝ mass^⅓` law of the field itself (the size would ride `mass^½`). The tell is a law
+stated "of the shipped field" that is only true "of the inputs": check which one a
+composed factor is written against, and pin the composed invariant
+(`bulge mass fraction === spheroidProgress`, to 1e-12) so the double count cannot
+return.

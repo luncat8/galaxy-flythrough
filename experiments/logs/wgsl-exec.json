@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-14T06:51:03.566Z",
+  "date": "2026-10-14T17:12:36.545Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 119,
-  "passed": 119,
+  "totalChecks": 121,
+  "passed": 121,
   "failed": 0,
   "checks": [
     {
@@ -1265,6 +1265,30 @@
       "pass": true,
       "detail": {
         "armError": 2.3193259616688726e-7
+      }
+    },
+    {
+      "name": "the preset at a 2 Gyr epoch: executed density WGSL matches JS components",
+      "pass": true,
+      "detail": {
+        "worst": 0.0000010747977039660172,
+        "worstCase": {
+          "p": [
+            8.87169075012207,
+            0.3534528613090515,
+            0.10582703351974487
+          ],
+          "component": 2,
+          "actual": 2.809643268585205,
+          "expected": 2.8096402487903167
+        }
+      }
+    },
+    {
+      "name": "the preset at a 2 Gyr epoch: executed WGSL arm threshold and phase match JS",
+      "pass": true,
+      "detail": {
+        "armError": 1.960038088863587e-7
       }
     },
     {

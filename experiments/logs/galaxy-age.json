@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-14T07:56:42.594Z",
+  "date": "2026-10-14T17:18:47.051Z",
   "types": [
     "E0",
     "E1",
@@ -1266,10 +1266,10 @@
       "2": {
         "placed": 400,
         "byType": {
-          "planetary": 65,
-          "open": 187,
-          "HII": 111,
-          "SNR": 19,
+          "planetary": 58,
+          "open": 176,
+          "HII": 128,
+          "SNR": 20,
           "globular": 18
         }
       },
@@ -1286,11 +1286,11 @@
       "0.5": {
         "placed": 400,
         "byType": {
-          "globular": 6,
-          "open": 199,
-          "HII": 127,
-          "SNR": 20,
-          "planetary": 48
+          "globular": 9,
+          "HII": 142,
+          "open": 185,
+          "SNR": 21,
+          "planetary": 43
         }
       },
       "13.5": {
@@ -1308,10 +1308,10 @@
       "2": {
         "placed": 400,
         "byType": {
-          "planetary": 48,
+          "planetary": 49,
           "open": 181,
           "HII": 141,
-          "SNR": 26,
+          "SNR": 25,
           "globular": 4
         }
       },
@@ -1328,11 +1328,11 @@
       "0.5": {
         "placed": 400,
         "byType": {
-          "globular": 6,
-          "HII": 147,
+          "globular": 5,
+          "HII": 146,
           "open": 184,
           "SNR": 22,
-          "planetary": 41
+          "planetary": 43
         }
       },
       "13.5": {
@@ -1629,11 +1629,11 @@
       "pass": true,
       "detail": {
         "at0_5": {
-          "globular": 6,
-          "open": 199,
-          "HII": 127,
-          "SNR": 20,
-          "planetary": 48
+          "globular": 9,
+          "HII": 142,
+          "open": 185,
+          "SNR": 21,
+          "planetary": 43
         },
         "at13_5": {
           "globular": 88,
@@ -1653,7 +1653,7 @@
       "name": "SBb: globular clusters need time, so they accumulate with age",
       "pass": true,
       "detail": {
-        "at0_5": 6,
+        "at0_5": 9,
         "at13_5": 88
       }
     },
@@ -1662,11 +1662,11 @@
       "pass": true,
       "detail": {
         "at0_5": {
-          "globular": 6,
-          "HII": 147,
+          "globular": 5,
+          "HII": 146,
           "open": 184,
           "SNR": 22,
-          "planetary": 41
+          "planetary": 43
         },
         "at13_5": {
           "open": 114,
@@ -1686,7 +1686,7 @@
       "name": "Sc: globular clusters need time, so they accumulate with age",
       "pass": true,
       "detail": {
-        "at0_5": 6,
+        "at0_5": 5,
         "at13_5": 22
       }
     },
@@ -1715,7 +1715,7 @@
       "pass": true,
       "detail": {
         "oldestObjectGyr": 1,
-        "globulars": 11
+        "globulars": 9
       }
     },
     {
