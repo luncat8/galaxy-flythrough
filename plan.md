@@ -1262,8 +1262,33 @@ tests and extend the file layout of §11 as needed.
    eccentricity mirrored from the packed lanes, and labels/picking sharing the
    dispatch. `wgsl-exec` went 100/104 → 115/115; browser visual validation of the
    engines is still deferred (V1/V2).
-2. Numerical movement-density measurements before experimental-engine calibration
-   or any change of default engine.
+2. ~~Numerical movement-density measurements before experimental-engine calibration
+   or any change of default engine~~ — **measured** (2026-10-13,
+   `experiments/movement-density-test.js`, §1.4's gate): time-averaged radial
+   (log-R), vertical (log-|z|) and arm-density (the m-th harmonic of the
+   pattern-referenced phase, in `arms.amp` units) on a population drawn from the
+   field, per engine mask at the shipped view state, every number against its own
+   sampling noise. Results, over 0…400 Myr on the Milky Way preset, Sa and SBc:
+   the **radial** profile meets the 3%-per-bin budget on every lane (worst bin
+   1.1%); the **truncation** is never crossed; the guided ellipse keeps the radial
+   profile inside the budget at every share and force the menu offers (share 1.0
+   worst bin 1.7%); the **arm** pattern is held by the capture lane alone — wave 0
+   loses it (ratio 0.06), wave 0.3/0.6/1.0 hold and overshoot it (0.6 → 1.7–4.3×
+   the authored contrast) — and the guided-only mask's frozen fraction is left
+   behind by the rotating pattern (see item 2a below). The **vertical** column does
+   **not** meet the budget: worst bin 0.038–0.049 against 0.03, mean|z| at
+   0.66–0.78 of the birth column, because the per-star inclined orbital plane
+   rotates a star's birth height into an oscillation about the galactic plane
+   (classic mean|z| 0.71, simple 0.67, guided 0.87). Log: `experiments/logs/movement-density.json`.
+   2a. **Vertical-preservation fix (open, and a prerequisite for trusting any engine
+   default change).** The measured compression is the amplitude-calibration pass
+   §1.4 deferred ("the tables are not final until then"): the orbital-plane
+   inclination ~0.045 rad × the star's radius is a vertical excursion of the same
+   order as the disc's own scale height, so the law must carry the birth height
+   rather than rotate it into an oscillation. The contract, measurement and parity
+   tests belong to that release (plan first, per AGENTS.md); the measurement above
+   is its baseline and its gate, and the pin in the test stops the number
+   regressing while it is open.
 3. [Deferred browser/WebGPU validation and visual polish](deferred-browser-visual-plan.md):
    real-browser engine/preset checks, then optional bar appearance and GPU profiling.
    These are not prerequisites for sandbox-safe correctness work and are not marked

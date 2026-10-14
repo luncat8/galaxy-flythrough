@@ -160,6 +160,7 @@ Useful commands:
 
 ```bash
 python3 scripts/run.py orbit          # movement and CPU-mirror invariants
+python3 scripts/run.py movement-density  # do the engines hold the density field in time
 python3 scripts/run.py shape          # 3D component shape and sampler parity
 python3 scripts/run.py renderer       # render pipeline contracts
 python3 scripts/run.py star-select    # picking, selection set, radius select, fly-to

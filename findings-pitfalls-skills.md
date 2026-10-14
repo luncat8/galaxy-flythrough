@@ -1457,3 +1457,56 @@ numbers, computed from the four-term chain. When a spec's prose and its worked e
 disagree, the worked example is the contract — the test asserts it, and the prose gets
 edited to match (documented in §11.1). Same lesson as the H/He aerocapture fraction: a "—"
 in a constants table means *no credit*, and writing 1 gave gas giants free arrival burns.
+
+## 2026-10-13 — An arm-density metric must be referenced to the rotating crest, or a good pattern averages to zero
+
+Measuring whether a movement law holds the galaxy's arms, the obvious statistic is
+the m-th harmonic of the population's azimuth in an annulus. Both halves of that
+sentence are wrong. The ridge of a log spiral is not at a fixed azimuth: its crest
+azimuth sweeps `K·ln(R2/R1)/m` across any annulus wide enough to hold stars, so a
+fixed-azimuth harmonic cancels even a perfect arm (measured: the Milky Way's birth
+amplitude reads 0.04 in azimuth and 0.21 in the phase variable
+`u = m·φ − K·ln(R/Rs) + phase0` — the same variable `density.armFactor` is written
+in, so the number is directly in `arms.amp` units). And a *time average* of a
+static reference smears a rigidly rotating pattern to nothing: the same field that
+reads 1.01 at one instant averaged 0.05 over 400 Myr, purely from phase drift.
+
+The working form subtracts the pattern's own rotation:
+`u = m·φ − K·ln(R/Rs) + phase0 − m·(Ω_p·t + phaseOffset)`, in the pattern frame the
+capture lane itself drives stars into (`dampedDiscTheta`'s crest target), with the
+annulus population fixed by birth radius and the phase read at the instantaneous
+position. Radial migration then reads as arm loss (a migrated star's phase shifts
+by `K·ΔlnR`, which is large — 0.9 rad for a 10% radial change at pitch 12°) instead
+of as an annulus edge effect. Bonus: the harmonic of a cyclic histogram needs no
+complex arithmetic — accumulate the histogram, then take `2·|Σ h_b·e^{−i2πb/n}|/Σh_b`,
+which returns exactly `A` for a distribution `p(u) ∝ 1 + A·cos(u)`.
+
+## 2026-10-13 — Report a distribution measurement against its own sampling noise, or counting noise reads as drift
+
+Comparing a time-averaged histogram with a birth histogram always shows a nonzero
+distance: the birth field is one draw, the average is another. Splitting the
+snapshots into odd and even halves and reporting the distance between those two
+halves gives the noise of the very run being judged, cheaply and without a
+resampling scheme — at 40 000 stars the radial TV noise is 0.001 against a real
+epicycle effect of 0.010, and the vertical noise is 0.002 against a real
+compression of 0.17, so the same table settles both columns. Anything whose effect
+is below its own noise gets dropped rather than explained, and the remaining
+numbers can be gated at physics tolerances (here, plan §1.4's 3%-per-bin budget)
+instead of at tuned fudge factors.
+
+## 2026-10-13 — An inclined orbit plane through the centre carries the radius but throws the height away
+
+The 0.4.x plane basis (an orbit in the plane spanned by the birth radius and the
+tilted azimuth) fixed the line-sweep where an in-plane rotation sent a 3-D star
+around an infinite line, and it is T = 0 exact. What it costs is the vertical
+distribution: the star's z becomes `z₀·cosθ + r·sin(i)·sinθ`, so its birth height is
+rotated into an oscillation about the galactic plane whose amplitude is
+`r·sin(inclination)`. With the disc inclination ≈ 0.045 rad that is ~0.4 kpc at the
+solar radius — the same order as the disc's own scale height — so a star that lived
+at |z| = 0.5 kpc now sweeps through zero: a sinusoid averages 2/π of its peak and
+the column compresses (measured time-averaged mean|z| at 0.71 classic / 0.67 simple /
+0.87 guided, worst log-bin deviation 0.041/0.047/0.019 against the 0.03 budget). The
+diagnostic that pinned the mechanism was `mean|z|` *falling* while every other
+vertical statistic looked merely noisy — a heating law would have raised it. A law
+that must preserve a distribution needs the observable it rotates to be the one the
+distribution is written in: here the height, not the 3-D radius.

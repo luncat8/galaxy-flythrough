@@ -1,0 +1,1609 @@
+{
+  "experiment": "movement-density",
+  "date": "2026-10-13",
+  "setup": {
+    "types": [
+      "mw",
+      "Sa",
+      "SBc"
+    ],
+    "stars": 40000,
+    "spanMyr": 400,
+    "snapMyr": 4,
+    "dtMyr": 2,
+    "seed": 42,
+    "shareUI": 0.35,
+    "forceUI": 0.22,
+    "waveUI": 0.6
+  },
+  "radBins": 40,
+  "vertBins": 28,
+  "armBins": 32,
+  "gates": {
+    "radialBudget": 0.03,
+    "vertBudget": 0.06,
+    "armFloor": 0.7,
+    "armFloorGuided": 0.15,
+    "meanR": [
+      0.97,
+      1.03
+    ],
+    "meanZ": [
+      0.6,
+      0.9
+    ]
+  },
+  "results": {
+    "engines": [
+      {
+        "type": "mw",
+        "mask": 1,
+        "metrics": {
+          "radialTV": 0.011494823386114501,
+          "radialNoise": 0.001106577344701594,
+          "vertTV": 0.1676537951540965,
+          "vertNoise": 0.0019375577610800713,
+          "armBirth": 0.20738151588468598,
+          "armA": 0.7500834758814611,
+          "armNoise": 0.008129986558744084,
+          "armFinal": 1.0075083768214355,
+          "meanR": 1.0068351920862206,
+          "meanZ": 0.7145064287187566,
+          "excursion": 0.24570304171771837,
+          "overCutShare": 0.0000012054486277976455,
+          "overCutBirthShare": 0,
+          "armCount": 1720900,
+          "discCount": 3284000,
+          "thinCount": 2488700,
+          "ms": 1287,
+          "radialMaxBin": 0.0016601705237515238,
+          "vertMaxBin": 0.04087073572547917,
+          "radialExcess": 0.010388246041412906,
+          "vertExcess": 0.16571623739301644,
+          "armRatio": 3.6169254172996945,
+          "armRatioFinal": 4.858236147630718
+        }
+      },
+      {
+        "type": "mw",
+        "mask": 2,
+        "metrics": {
+          "radialTV": 0.014457369062119358,
+          "radialNoise": 0.00046772228989037544,
+          "vertTV": 0.19578695704584725,
+          "vertNoise": 0.002328926748905044,
+          "armBirth": 0.20738151588468598,
+          "armA": 0.8890200872576645,
+          "armNoise": 0.00982754677024289,
+          "armFinal": 1.105634906350699,
+          "meanR": 1.0121866097927652,
+          "meanZ": 0.6731397991289552,
+          "excursion": 0.25217059138620146,
+          "overCutShare": 0.000012054486277976453,
+          "overCutBirthShare": 0,
+          "armCount": 1720900,
+          "discCount": 3284000,
+          "thinCount": 2488700,
+          "ms": 4188,
+          "radialMaxBin": 0.0038206455542021955,
+          "vertMaxBin": 0.04715072126009563,
+          "radialExcess": 0.013989646772228982,
+          "vertExcess": 0.1934580302969422,
+          "armRatio": 4.286881998451598,
+          "armRatioFinal": 5.331405268372542
+        }
+      },
+      {
+        "type": "mw",
+        "mask": 3,
+        "metrics": {
+          "radialTV": 0.014457369062119358,
+          "radialNoise": 0.00046772228989037544,
+          "vertTV": 0.19578695704584725,
+          "vertNoise": 0.002328926748905044,
+          "armBirth": 0.20738151588468598,
+          "armA": 0.8890200872576645,
+          "armNoise": 0.00982754677024289,
+          "armFinal": 1.105634906350699,
+          "meanR": 1.0121866097927652,
+          "meanZ": 0.6731397991289552,
+          "excursion": 0.25217059138620146,
+          "overCutShare": 0.000012054486277976453,
+          "overCutBirthShare": 0,
+          "armCount": 1720900,
+          "discCount": 3284000,
+          "thinCount": 2488700,
+          "ms": 4198,
+          "radialMaxBin": 0.0038206455542021955,
+          "vertMaxBin": 0.04715072126009563,
+          "radialExcess": 0.013989646772228982,
+          "vertExcess": 0.1934580302969422,
+          "armRatio": 4.286881998451598,
+          "armRatioFinal": 5.331405268372542
+        }
+      },
+      {
+        "type": "mw",
+        "mask": 4,
+        "metrics": {
+          "radialTV": 0.017428745432399514,
+          "radialNoise": 0.0005018270401948974,
+          "vertTV": 0.07508458231205045,
+          "vertNoise": 0.001203037730542065,
+          "armBirth": 0.20738151588468598,
+          "armA": 0.07482719232446379,
+          "armNoise": 0.0006030107962803205,
+          "armFinal": 0.10546085413770379,
+          "meanR": 0.9863132152765909,
+          "meanZ": 0.8730302435013362,
+          "excursion": 0.07405751919075551,
+          "overCutShare": 0,
+          "overCutBirthShare": 0,
+          "armCount": 1720900,
+          "discCount": 3284000,
+          "thinCount": 2488700,
+          "ms": 1019,
+          "radialMaxBin": 0.005997868453105973,
+          "vertMaxBin": 0.019352674086872662,
+          "radialExcess": 0.01692691839220462,
+          "vertExcess": 0.07388154458150839,
+          "armRatio": 0.36081900551865614,
+          "armRatioFinal": 0.5085354578869269
+        }
+      },
+      {
+        "type": "mw",
+        "mask": 5,
+        "metrics": {
+          "radialTV": 0.020513093788063347,
+          "radialNoise": 0.0009360535931790525,
+          "vertTV": 0.18476433479326554,
+          "vertNoise": 0.0020709607425563555,
+          "armBirth": 0.20738151588468598,
+          "armA": 0.5126670466074378,
+          "armNoise": 0.0052768974571966165,
+          "armFinal": 0.6811670993300162,
+          "meanR": 0.9909062510830822,
+          "meanZ": 0.6869323805161619,
+          "excursion": 0.2368865943677739,
+          "overCutShare": 0.0000012054486277976455,
+          "overCutBirthShare": 0,
+          "armCount": 1720900,
+          "discCount": 3284000,
+          "thinCount": 2488700,
+          "ms": 2083,
+          "radialMaxBin": 0.00640347137637029,
+          "vertMaxBin": 0.04474665488005786,
+          "radialExcess": 0.019577040194884293,
+          "vertExcess": 0.18269337405070918,
+          "armRatio": 2.472096148108519,
+          "armRatioFinal": 3.2846085458685605
+        }
+      },
+      {
+        "type": "mw",
+        "mask": 6,
+        "metrics": {
+          "radialTV": 0.020503958587088915,
+          "radialNoise": 0.0005785627283800268,
+          "vertTV": 0.203536384457749,
+          "vertNoise": 0.0024398280226624347,
+          "armBirth": 0.20738151588468598,
+          "armA": 0.6020361378375536,
+          "armNoise": 0.006502808087665235,
+          "armFinal": 0.7550546489686819,
+          "meanR": 0.9943408308621345,
+          "meanZ": 0.6592731621558339,
+          "excursion": 0.2413769433897112,
+          "overCutShare": 0.000004821794511190582,
+          "overCutBirthShare": 0,
+          "armCount": 1720900,
+          "discCount": 3284000,
+          "thinCount": 2488700,
+          "ms": 5099,
+          "radialMaxBin": 0.0071096224116930645,
+          "vertMaxBin": 0.04910354803712781,
+          "radialExcess": 0.019925395858708887,
+          "vertExcess": 0.20109655643508656,
+          "armRatio": 2.903036634047532,
+          "armRatioFinal": 3.640896565673328
+        }
+      },
+      {
+        "type": "mw",
+        "mask": 7,
+        "metrics": {
+          "radialTV": 0.020503958587088915,
+          "radialNoise": 0.0005785627283800268,
+          "vertTV": 0.203536384457749,
+          "vertNoise": 0.0024398280226624347,
+          "armBirth": 0.20738151588468598,
+          "armA": 0.6020361378375536,
+          "armNoise": 0.006502808087665235,
+          "armFinal": 0.7550546489686819,
+          "meanR": 0.9943408308621345,
+          "meanZ": 0.6592731621558339,
+          "excursion": 0.2413769433897112,
+          "overCutShare": 0.000004821794511190582,
+          "overCutBirthShare": 0,
+          "armCount": 1720900,
+          "discCount": 3284000,
+          "thinCount": 2488700,
+          "ms": 4985,
+          "radialMaxBin": 0.0071096224116930645,
+          "vertMaxBin": 0.04910354803712781,
+          "radialExcess": 0.019925395858708887,
+          "vertExcess": 0.20109655643508656,
+          "armRatio": 2.903036634047532,
+          "armRatioFinal": 3.640896565673328
+        }
+      },
+      {
+        "type": "Sa",
+        "mask": 1,
+        "metrics": {
+          "radialTV": 0.015317767773008046,
+          "radialNoise": 0.0017143056573482695,
+          "vertTV": 0.1600342531840988,
+          "vertNoise": 0.0027315708220764226,
+          "armBirth": 0.1578438235869828,
+          "armA": 0.44211509585726394,
+          "armNoise": 0.004600163295460036,
+          "armFinal": 0.5997777507549298,
+          "meanR": 1.0077083185724318,
+          "meanZ": 0.7234666148663887,
+          "excursion": 0.275796813314816,
+          "overCutShare": 0.00000868390582786569,
+          "overCutBirthShare": 0,
+          "armCount": 1672500,
+          "discCount": 2865300,
+          "thinCount": 2072800,
+          "ms": 1345,
+          "radialMaxBin": 0.0027054758664014286,
+          "vertMaxBin": 0.03935401389424932,
+          "radialExcess": 0.013603462115659777,
+          "vertExcess": 0.15730268236202238,
+          "armRatio": 2.8009654467957574,
+          "armRatioFinal": 3.7998176749970267
+        }
+      },
+      {
+        "type": "Sa",
+        "mask": 2,
+        "metrics": {
+          "radialTV": 0.013528775346386065,
+          "radialNoise": 0.0007042892541793107,
+          "vertTV": 0.1941677923581629,
+          "vertNoise": 0.0032207641837128467,
+          "armBirth": 0.1578438235869828,
+          "armA": 0.4050931665142742,
+          "armNoise": 0.0034904238858344816,
+          "armFinal": 0.44714753696759124,
+          "meanR": 1.0158148153953843,
+          "meanZ": 0.6735630475826132,
+          "excursion": 0.28414890937628673,
+          "overCutShare": 0.000013508297954457739,
+          "overCutBirthShare": 0,
+          "armCount": 1672500,
+          "discCount": 2865300,
+          "thinCount": 2072800,
+          "ms": 4029,
+          "radialMaxBin": 0.00207447736711687,
+          "vertMaxBin": 0.04753232342724817,
+          "radialExcess": 0.012824486092206756,
+          "vertExcess": 0.19094702817445006,
+          "armRatio": 2.5664175975250627,
+          "armRatioFinal": 2.832847854329772
+        }
+      },
+      {
+        "type": "Sa",
+        "mask": 4,
+        "metrics": {
+          "radialTV": 0.015206435626286957,
+          "radialNoise": 0.0005758559313161016,
+          "vertTV": 0.07455663836356617,
+          "vertNoise": 0.0014183712852180671,
+          "armBirth": 0.1578438235869828,
+          "armA": 0.10694549354227258,
+          "armNoise": 0.0008334278785443044,
+          "armFinal": 0.09835326705834449,
+          "meanR": 0.9890353511404949,
+          "meanZ": 0.873995057831059,
+          "excursion": 0.07732802353076643,
+          "overCutShare": 0,
+          "overCutBirthShare": 0,
+          "armCount": 1672500,
+          "discCount": 2865300,
+          "thinCount": 2072800,
+          "ms": 943,
+          "radialMaxBin": 0.005236100931839599,
+          "vertMaxBin": 0.017893670397529912,
+          "radialExcess": 0.014630579694970856,
+          "vertExcess": 0.0731382670783481,
+          "armRatio": 0.6775399322694325,
+          "armRatioFinal": 0.6231049452761456
+        }
+      },
+      {
+        "type": "Sa",
+        "mask": 6,
+        "metrics": {
+          "radialTV": 0.01793878476948315,
+          "radialNoise": 0.0010854011796321554,
+          "vertTV": 0.2009943072172906,
+          "vertNoise": 0.0028425318409880294,
+          "armBirth": 0.1578438235869828,
+          "armA": 0.30554708497486965,
+          "armNoise": 0.0029331308993498784,
+          "armFinal": 0.3400008739408855,
+          "meanR": 0.9993001907118118,
+          "meanZ": 0.6610243528606728,
+          "excursion": 0.2645789089539119,
+          "overCutShare": 0.000009648784253184099,
+          "overCutBirthShare": 0,
+          "armCount": 1672500,
+          "discCount": 2865300,
+          "thinCount": 2072800,
+          "ms": 4698,
+          "radialMaxBin": 0.005314975744250175,
+          "vertMaxBin": 0.0491933616364338,
+          "radialExcess": 0.016853383589850994,
+          "vertExcess": 0.19815177537630257,
+          "armRatio": 1.9357557237993048,
+          "armRatioFinal": 2.154033437700663
+        }
+      },
+      {
+        "type": "SBc",
+        "mask": 1,
+        "metrics": {
+          "radialTV": 0.011975318387538148,
+          "radialNoise": 0.001220397852857596,
+          "vertTV": 0.14059593782654126,
+          "vertNoise": 0.0018998171368860982,
+          "armBirth": 0.26111798354864835,
+          "armA": 0.43683387444186655,
+          "armNoise": 0.0049440192474720646,
+          "armFinal": 0.7538917199296203,
+          "meanR": 1.0031799788960882,
+          "meanZ": 0.7765298257326013,
+          "excursion": 0.23795987908266378,
+          "overCutShare": 0,
+          "overCutBirthShare": 0,
+          "armCount": 2136400,
+          "discCount": 3800400,
+          "thinCount": 3062400,
+          "ms": 1421,
+          "radialMaxBin": 0.004563203873276495,
+          "vertMaxBin": 0.03824777951933124,
+          "radialExcess": 0.010754920534680551,
+          "vertExcess": 0.13869612068965514,
+          "armRatio": 1.6729367640834318,
+          "armRatioFinal": 2.887168894627912
+        }
+      },
+      {
+        "type": "SBc",
+        "mask": 2,
+        "metrics": {
+          "radialTV": 0.010936217240290497,
+          "radialNoise": 0.0006257236080412561,
+          "vertTV": 0.17856844305120165,
+          "vertNoise": 0.002024555903866234,
+          "armBirth": 0.26111798354864835,
+          "armA": 0.4707420616427481,
+          "armNoise": 0.00389326925402228,
+          "armFinal": 0.46168646729161783,
+          "meanR": 1.0114339330883195,
+          "meanZ": 0.6940072992791206,
+          "excursion": 0.24477766160019881,
+          "overCutShare": 0,
+          "overCutBirthShare": 0,
+          "armCount": 2136400,
+          "discCount": 3800400,
+          "thinCount": 3062400,
+          "ms": 4696,
+          "radialMaxBin": 0.0020324176402483976,
+          "vertMaxBin": 0.046217998955067924,
+          "radialExcess": 0.010310493632249241,
+          "vertExcess": 0.1765438871473354,
+          "armRatio": 1.8027944887030163,
+          "armRatioFinal": 1.7681144018393584
+        }
+      },
+      {
+        "type": "SBc",
+        "mask": 4,
+        "metrics": {
+          "radialTV": 0.024473476476160393,
+          "radialNoise": 0.0006325649931586083,
+          "vertTV": 0.07399294670846394,
+          "vertNoise": 0.0010899947753396108,
+          "armBirth": 0.26111798354864835,
+          "armA": 0.050954052476227335,
+          "armNoise": 0.0026344368142586644,
+          "armFinal": 0.20857580454126087,
+          "meanR": 0.975707077746722,
+          "meanZ": 0.8724297031929896,
+          "excursion": 0.06990532748851672,
+          "overCutShare": 0,
+          "overCutBirthShare": 0,
+          "armCount": 2136400,
+          "discCount": 3800400,
+          "thinCount": 3062400,
+          "ms": 1017,
+          "radialMaxBin": 0.010761498789601087,
+          "vertMaxBin": 0.020279519331243473,
+          "radialExcess": 0.023840911483001784,
+          "vertExcess": 0.07290295193312434,
+          "armRatio": 0.19513804366804247,
+          "armRatioFinal": 0.7987799296956564
+        }
+      },
+      {
+        "type": "SBc",
+        "mask": 6,
+        "metrics": {
+          "radialTV": 0.02288943269129565,
+          "radialNoise": 0.0009330596779286486,
+          "vertTV": 0.18958006792058515,
+          "vertNoise": 0.0021381922675026274,
+          "armBirth": 0.26111798354864835,
+          "armA": 0.3389141835172432,
+          "armNoise": 0.002865926861345014,
+          "armFinal": 0.326230925375571,
+          "meanR": 0.9828825547332921,
+          "meanZ": 0.6745671062494298,
+          "excursion": 0.22653087192497018,
+          "overCutShare": 0,
+          "overCutBirthShare": 0,
+          "armCount": 2136400,
+          "discCount": 3800400,
+          "thinCount": 3062400,
+          "ms": 5476,
+          "radialMaxBin": 0.009569782128197021,
+          "vertMaxBin": 0.04932275339602926,
+          "radialExcess": 0.021956373013367003,
+          "vertExcess": 0.18744187565308254,
+          "armRatio": 1.2979350518540627,
+          "armRatioFinal": 1.2493621501745076
+        }
+      }
+    ],
+    "sweeps": {
+      "apocenterForce": [
+        {
+          "force": 0.1,
+          "radialMaxBin": 0.0039,
+          "vertMaxBin": 0.0186,
+          "armRatio": 0.096,
+          "excursion": 0.044,
+          "meanR": 0.9935,
+          "meanZ": 0.8789
+        },
+        {
+          "force": 0.22,
+          "radialMaxBin": 0.006,
+          "vertMaxBin": 0.0194,
+          "armRatio": 0.361,
+          "excursion": 0.074,
+          "meanR": 0.9863,
+          "meanZ": 0.873
+        },
+        {
+          "force": 0.35,
+          "radialMaxBin": 0.007,
+          "vertMaxBin": 0.0201,
+          "armRatio": 0.495,
+          "excursion": 0.105,
+          "meanR": 0.9822,
+          "meanZ": 0.8693
+        },
+        {
+          "force": 0.45,
+          "radialMaxBin": 0.0079,
+          "vertMaxBin": 0.0205,
+          "armRatio": 0.424,
+          "excursion": 0.127,
+          "meanR": 0.9818,
+          "meanZ": 0.8684
+        }
+      ],
+      "apocenterShare": [
+        {
+          "share": 0.25,
+          "radialMaxBin": 0.0044,
+          "vertMaxBin": 0.0131,
+          "armRatio": 0.28,
+          "excursion": 0.054,
+          "meanR": 0.9903,
+          "meanZ": 0.9086
+        },
+        {
+          "share": 0.35,
+          "radialMaxBin": 0.006,
+          "vertMaxBin": 0.0194,
+          "armRatio": 0.361,
+          "excursion": 0.074,
+          "meanR": 0.9863,
+          "meanZ": 0.873
+        },
+        {
+          "share": 0.6,
+          "radialMaxBin": 0.0115,
+          "vertMaxBin": 0.0317,
+          "armRatio": 0.554,
+          "excursion": 0.127,
+          "meanR": 0.9764,
+          "meanZ": 0.7819
+        },
+        {
+          "share": 1,
+          "radialMaxBin": 0.0169,
+          "vertMaxBin": 0.0526,
+          "armRatio": 0.879,
+          "excursion": 0.22,
+          "meanR": 0.9604,
+          "meanZ": 0.6327
+        }
+      ],
+      "waveDamping": [
+        {
+          "wave": 0,
+          "radialMaxBin": 0.0016,
+          "vertMaxBin": 0.0388,
+          "armRatio": 0.061,
+          "excursion": 0.247,
+          "meanZ": 0.7236
+        },
+        {
+          "wave": 0.3,
+          "radialMaxBin": 0.0016,
+          "vertMaxBin": 0.0413,
+          "armRatio": 2.73,
+          "excursion": 0.246,
+          "meanZ": 0.7127
+        },
+        {
+          "wave": 0.6,
+          "radialMaxBin": 0.0017,
+          "vertMaxBin": 0.0409,
+          "armRatio": 3.617,
+          "excursion": 0.246,
+          "meanZ": 0.7145
+        },
+        {
+          "wave": 1,
+          "radialMaxBin": 0.0017,
+          "vertMaxBin": 0.0407,
+          "armRatio": 4.197,
+          "excursion": 0.246,
+          "meanZ": 0.7158
+        }
+      ]
+    },
+    "convergence": {
+      "dtCoarse": 4,
+      "dtFine": 1,
+      "radialExcessCoarse": 0.0138,
+      "radialExcessFine": 0.014,
+      "armRatioCoarse": 4.223,
+      "armRatioFine": 4.304,
+      "vertExcessCoarse": 0.1936,
+      "vertExcessFine": 0.1935
+    },
+    "control": {
+      "type": "mw",
+      "wave": 0,
+      "metrics": {
+        "radialTV": 0.011432399512789279,
+        "radialNoise": 0.0010341047503045068,
+        "vertTV": 0.16139711495961748,
+        "vertNoise": 0.0023964318720617085,
+        "armBirth": 0.20738151588468598,
+        "armA": 0.012689888270051915,
+        "armNoise": 0.0016450262829640835,
+        "armFinal": 0.01433286177762171,
+        "meanR": 1.0067813764735776,
+        "meanZ": 0.7235560188880437,
+        "excursion": 0.24660385994614525,
+        "overCutShare": 0.000005223610720456463,
+        "overCutBirthShare": 0,
+        "armCount": 1720900,
+        "discCount": 3284000,
+        "thinCount": 2488700,
+        "ms": 960,
+        "radialMaxBin": 0.0016364190012180327,
+        "vertMaxBin": 0.038767227869972276,
+        "radialExcess": 0.010398294762484772,
+        "vertExcess": 0.15900068308755577,
+        "armRatio": 0.06119102860212527,
+        "armRatioFinal": 0.06911349700805286
+      }
+    }
+  },
+  "checks": [
+    {
+      "name": "mw mask 1 (classic): radial profile holds the field within plan 1.4's per-bin budget",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0017,
+        "budget": 0.03
+      }
+    },
+    {
+      "name": "mw mask 1 (classic): vertical column stays inside the known-deviation pin",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0409,
+        "budget": 0.06
+      }
+    },
+    {
+      "name": "mw mask 1 (classic): the column is compressed, not heated (no vertical blow-up)",
+      "pass": true,
+      "detail": {
+        "meanZ": 0.7145,
+        "band": [
+          0.6,
+          0.9
+        ]
+      }
+    },
+    {
+      "name": "mw mask 1 (classic): no radial drift of the disc population",
+      "pass": true,
+      "detail": {
+        "meanR": 1.0068,
+        "band": [
+          0.97,
+          1.03
+        ]
+      }
+    },
+    {
+      "name": "mw mask 1 (classic): arm pattern held (birth contrast 0.207)",
+      "pass": true,
+      "detail": {
+        "armA": 0.7501,
+        "ratio": 3.617,
+        "finalRatio": 4.858,
+        "floor": 0.7
+      }
+    },
+    {
+      "name": "mw mask 1 (classic): no star leaves the model's truncation",
+      "pass": true,
+      "detail": {
+        "overCut": 0,
+        "birth": 0
+      }
+    },
+    {
+      "name": "mw mask 2 (simple): radial profile holds the field within plan 1.4's per-bin budget",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0038,
+        "budget": 0.03
+      }
+    },
+    {
+      "name": "mw mask 2 (simple): vertical column stays inside the known-deviation pin",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0472,
+        "budget": 0.06
+      }
+    },
+    {
+      "name": "mw mask 2 (simple): the column is compressed, not heated (no vertical blow-up)",
+      "pass": true,
+      "detail": {
+        "meanZ": 0.6731,
+        "band": [
+          0.6,
+          0.9
+        ]
+      }
+    },
+    {
+      "name": "mw mask 2 (simple): no radial drift of the disc population",
+      "pass": true,
+      "detail": {
+        "meanR": 1.0122,
+        "band": [
+          0.97,
+          1.03
+        ]
+      }
+    },
+    {
+      "name": "mw mask 2 (simple): arm pattern held (birth contrast 0.207)",
+      "pass": true,
+      "detail": {
+        "armA": 0.889,
+        "ratio": 4.287,
+        "finalRatio": 5.331,
+        "floor": 0.7
+      }
+    },
+    {
+      "name": "mw mask 2 (simple): no star leaves the model's truncation",
+      "pass": true,
+      "detail": {
+        "overCut": 0.00001,
+        "birth": 0
+      }
+    },
+    {
+      "name": "mw mask 3 (undefined): radial profile holds the field within plan 1.4's per-bin budget",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0038,
+        "budget": 0.03
+      }
+    },
+    {
+      "name": "mw mask 3 (undefined): vertical column stays inside the known-deviation pin",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0472,
+        "budget": 0.06
+      }
+    },
+    {
+      "name": "mw mask 3 (undefined): the column is compressed, not heated (no vertical blow-up)",
+      "pass": true,
+      "detail": {
+        "meanZ": 0.6731,
+        "band": [
+          0.6,
+          0.9
+        ]
+      }
+    },
+    {
+      "name": "mw mask 3 (undefined): no radial drift of the disc population",
+      "pass": true,
+      "detail": {
+        "meanR": 1.0122,
+        "band": [
+          0.97,
+          1.03
+        ]
+      }
+    },
+    {
+      "name": "mw mask 3 (undefined): arm pattern held (birth contrast 0.207)",
+      "pass": true,
+      "detail": {
+        "armA": 0.889,
+        "ratio": 4.287,
+        "finalRatio": 5.331,
+        "floor": 0.7
+      }
+    },
+    {
+      "name": "mw mask 3 (undefined): no star leaves the model's truncation",
+      "pass": true,
+      "detail": {
+        "overCut": 0.00001,
+        "birth": 0
+      }
+    },
+    {
+      "name": "mw mask 4 (apocenter): radial profile holds the field within plan 1.4's per-bin budget",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.006,
+        "budget": 0.03
+      }
+    },
+    {
+      "name": "mw mask 4 (apocenter): vertical column stays inside the known-deviation pin",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0194,
+        "budget": 0.06
+      }
+    },
+    {
+      "name": "mw mask 4 (apocenter): the column is compressed, not heated (no vertical blow-up)",
+      "pass": true,
+      "detail": {
+        "meanZ": 0.873,
+        "band": [
+          0.6,
+          0.9
+        ]
+      }
+    },
+    {
+      "name": "mw mask 4 (apocenter): no radial drift of the disc population",
+      "pass": true,
+      "detail": {
+        "meanR": 0.9863,
+        "band": [
+          0.97,
+          1.03
+        ]
+      }
+    },
+    {
+      "name": "mw mask 4 (apocenter): arm pattern floor (birth contrast 0.207)",
+      "pass": true,
+      "detail": {
+        "armA": 0.0748,
+        "ratio": 0.361,
+        "finalRatio": 0.509,
+        "floor": 0.15
+      }
+    },
+    {
+      "name": "mw mask 4 (apocenter): no star leaves the model's truncation",
+      "pass": true,
+      "detail": {
+        "overCut": 0,
+        "birth": 0
+      }
+    },
+    {
+      "name": "mw mask 5 (classic+apocenter): radial profile holds the field within plan 1.4's per-bin budget",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0064,
+        "budget": 0.03
+      }
+    },
+    {
+      "name": "mw mask 5 (classic+apocenter): vertical column stays inside the known-deviation pin",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0447,
+        "budget": 0.06
+      }
+    },
+    {
+      "name": "mw mask 5 (classic+apocenter): the column is compressed, not heated (no vertical blow-up)",
+      "pass": true,
+      "detail": {
+        "meanZ": 0.6869,
+        "band": [
+          0.6,
+          0.9
+        ]
+      }
+    },
+    {
+      "name": "mw mask 5 (classic+apocenter): no radial drift of the disc population",
+      "pass": true,
+      "detail": {
+        "meanR": 0.9909,
+        "band": [
+          0.97,
+          1.03
+        ]
+      }
+    },
+    {
+      "name": "mw mask 5 (classic+apocenter): arm pattern held (birth contrast 0.207)",
+      "pass": true,
+      "detail": {
+        "armA": 0.5127,
+        "ratio": 2.472,
+        "finalRatio": 3.285,
+        "floor": 0.7
+      }
+    },
+    {
+      "name": "mw mask 5 (classic+apocenter): no star leaves the model's truncation",
+      "pass": true,
+      "detail": {
+        "overCut": 0,
+        "birth": 0
+      }
+    },
+    {
+      "name": "mw mask 6 (simple+apocenter): radial profile holds the field within plan 1.4's per-bin budget",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0071,
+        "budget": 0.03
+      }
+    },
+    {
+      "name": "mw mask 6 (simple+apocenter): vertical column stays inside the known-deviation pin",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0491,
+        "budget": 0.06
+      }
+    },
+    {
+      "name": "mw mask 6 (simple+apocenter): the column is compressed, not heated (no vertical blow-up)",
+      "pass": true,
+      "detail": {
+        "meanZ": 0.6593,
+        "band": [
+          0.6,
+          0.9
+        ]
+      }
+    },
+    {
+      "name": "mw mask 6 (simple+apocenter): no radial drift of the disc population",
+      "pass": true,
+      "detail": {
+        "meanR": 0.9943,
+        "band": [
+          0.97,
+          1.03
+        ]
+      }
+    },
+    {
+      "name": "mw mask 6 (simple+apocenter): arm pattern held (birth contrast 0.207)",
+      "pass": true,
+      "detail": {
+        "armA": 0.602,
+        "ratio": 2.903,
+        "finalRatio": 3.641,
+        "floor": 0.7
+      }
+    },
+    {
+      "name": "mw mask 6 (simple+apocenter): no star leaves the model's truncation",
+      "pass": true,
+      "detail": {
+        "overCut": 0,
+        "birth": 0
+      }
+    },
+    {
+      "name": "mw mask 7 (simple+apocenter+classic): radial profile holds the field within plan 1.4's per-bin budget",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0071,
+        "budget": 0.03
+      }
+    },
+    {
+      "name": "mw mask 7 (simple+apocenter+classic): vertical column stays inside the known-deviation pin",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0491,
+        "budget": 0.06
+      }
+    },
+    {
+      "name": "mw mask 7 (simple+apocenter+classic): the column is compressed, not heated (no vertical blow-up)",
+      "pass": true,
+      "detail": {
+        "meanZ": 0.6593,
+        "band": [
+          0.6,
+          0.9
+        ]
+      }
+    },
+    {
+      "name": "mw mask 7 (simple+apocenter+classic): no radial drift of the disc population",
+      "pass": true,
+      "detail": {
+        "meanR": 0.9943,
+        "band": [
+          0.97,
+          1.03
+        ]
+      }
+    },
+    {
+      "name": "mw mask 7 (simple+apocenter+classic): arm pattern held (birth contrast 0.207)",
+      "pass": true,
+      "detail": {
+        "armA": 0.602,
+        "ratio": 2.903,
+        "finalRatio": 3.641,
+        "floor": 0.7
+      }
+    },
+    {
+      "name": "mw mask 7 (simple+apocenter+classic): no star leaves the model's truncation",
+      "pass": true,
+      "detail": {
+        "overCut": 0,
+        "birth": 0
+      }
+    },
+    {
+      "name": "mw: the shipped capture lane is load-bearing — classic at wave 0 loses the arms it holds at wave 0.6",
+      "pass": true,
+      "detail": {
+        "armRatioNoDamping": 0.061,
+        "armRatioShipped": 3.617
+      }
+    },
+    {
+      "name": "mw: the simple lane's measurement is step-size converged (a 4x step span moves it less than 3%)",
+      "pass": true,
+      "detail": {
+        "dtCoarse": 4,
+        "dtFine": 1,
+        "radialExcessCoarse": 0.0138,
+        "radialExcessFine": 0.014,
+        "armRatioCoarse": 4.223,
+        "armRatioFine": 4.304,
+        "vertExcessCoarse": 0.1936,
+        "vertExcessFine": 0.1935
+      }
+    },
+    {
+      "name": "Sa mask 1 (classic): radial profile holds the field within plan 1.4's per-bin budget",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0027,
+        "budget": 0.03
+      }
+    },
+    {
+      "name": "Sa mask 1 (classic): vertical column stays inside the known-deviation pin",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0394,
+        "budget": 0.06
+      }
+    },
+    {
+      "name": "Sa mask 1 (classic): the column is compressed, not heated (no vertical blow-up)",
+      "pass": true,
+      "detail": {
+        "meanZ": 0.7235,
+        "band": [
+          0.6,
+          0.9
+        ]
+      }
+    },
+    {
+      "name": "Sa mask 1 (classic): no radial drift of the disc population",
+      "pass": true,
+      "detail": {
+        "meanR": 1.0077,
+        "band": [
+          0.97,
+          1.03
+        ]
+      }
+    },
+    {
+      "name": "Sa mask 1 (classic): arm pattern held (birth contrast 0.158)",
+      "pass": true,
+      "detail": {
+        "armA": 0.4421,
+        "ratio": 2.801,
+        "finalRatio": 3.8,
+        "floor": 0.7
+      }
+    },
+    {
+      "name": "Sa mask 1 (classic): no star leaves the model's truncation",
+      "pass": true,
+      "detail": {
+        "overCut": 0.00001,
+        "birth": 0
+      }
+    },
+    {
+      "name": "Sa mask 2 (simple): radial profile holds the field within plan 1.4's per-bin budget",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0021,
+        "budget": 0.03
+      }
+    },
+    {
+      "name": "Sa mask 2 (simple): vertical column stays inside the known-deviation pin",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0475,
+        "budget": 0.06
+      }
+    },
+    {
+      "name": "Sa mask 2 (simple): the column is compressed, not heated (no vertical blow-up)",
+      "pass": true,
+      "detail": {
+        "meanZ": 0.6736,
+        "band": [
+          0.6,
+          0.9
+        ]
+      }
+    },
+    {
+      "name": "Sa mask 2 (simple): no radial drift of the disc population",
+      "pass": true,
+      "detail": {
+        "meanR": 1.0158,
+        "band": [
+          0.97,
+          1.03
+        ]
+      }
+    },
+    {
+      "name": "Sa mask 2 (simple): arm pattern held (birth contrast 0.158)",
+      "pass": true,
+      "detail": {
+        "armA": 0.4051,
+        "ratio": 2.566,
+        "finalRatio": 2.833,
+        "floor": 0.7
+      }
+    },
+    {
+      "name": "Sa mask 2 (simple): no star leaves the model's truncation",
+      "pass": true,
+      "detail": {
+        "overCut": 0.00001,
+        "birth": 0
+      }
+    },
+    {
+      "name": "Sa mask 4 (apocenter): radial profile holds the field within plan 1.4's per-bin budget",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0052,
+        "budget": 0.03
+      }
+    },
+    {
+      "name": "Sa mask 4 (apocenter): vertical column stays inside the known-deviation pin",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0179,
+        "budget": 0.06
+      }
+    },
+    {
+      "name": "Sa mask 4 (apocenter): the column is compressed, not heated (no vertical blow-up)",
+      "pass": true,
+      "detail": {
+        "meanZ": 0.874,
+        "band": [
+          0.6,
+          0.9
+        ]
+      }
+    },
+    {
+      "name": "Sa mask 4 (apocenter): no radial drift of the disc population",
+      "pass": true,
+      "detail": {
+        "meanR": 0.989,
+        "band": [
+          0.97,
+          1.03
+        ]
+      }
+    },
+    {
+      "name": "Sa mask 4 (apocenter): arm pattern floor (birth contrast 0.158)",
+      "pass": true,
+      "detail": {
+        "armA": 0.1069,
+        "ratio": 0.678,
+        "finalRatio": 0.623,
+        "floor": 0.15
+      }
+    },
+    {
+      "name": "Sa mask 4 (apocenter): no star leaves the model's truncation",
+      "pass": true,
+      "detail": {
+        "overCut": 0,
+        "birth": 0
+      }
+    },
+    {
+      "name": "Sa mask 6 (simple+apocenter): radial profile holds the field within plan 1.4's per-bin budget",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0053,
+        "budget": 0.03
+      }
+    },
+    {
+      "name": "Sa mask 6 (simple+apocenter): vertical column stays inside the known-deviation pin",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0492,
+        "budget": 0.06
+      }
+    },
+    {
+      "name": "Sa mask 6 (simple+apocenter): the column is compressed, not heated (no vertical blow-up)",
+      "pass": true,
+      "detail": {
+        "meanZ": 0.661,
+        "band": [
+          0.6,
+          0.9
+        ]
+      }
+    },
+    {
+      "name": "Sa mask 6 (simple+apocenter): no radial drift of the disc population",
+      "pass": true,
+      "detail": {
+        "meanR": 0.9993,
+        "band": [
+          0.97,
+          1.03
+        ]
+      }
+    },
+    {
+      "name": "Sa mask 6 (simple+apocenter): arm pattern held (birth contrast 0.158)",
+      "pass": true,
+      "detail": {
+        "armA": 0.3055,
+        "ratio": 1.936,
+        "finalRatio": 2.154,
+        "floor": 0.7
+      }
+    },
+    {
+      "name": "Sa mask 6 (simple+apocenter): no star leaves the model's truncation",
+      "pass": true,
+      "detail": {
+        "overCut": 0.00001,
+        "birth": 0
+      }
+    },
+    {
+      "name": "SBc mask 1 (classic): radial profile holds the field within plan 1.4's per-bin budget",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0046,
+        "budget": 0.03
+      }
+    },
+    {
+      "name": "SBc mask 1 (classic): vertical column stays inside the known-deviation pin",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0382,
+        "budget": 0.06
+      }
+    },
+    {
+      "name": "SBc mask 1 (classic): the column is compressed, not heated (no vertical blow-up)",
+      "pass": true,
+      "detail": {
+        "meanZ": 0.7765,
+        "band": [
+          0.6,
+          0.9
+        ]
+      }
+    },
+    {
+      "name": "SBc mask 1 (classic): no radial drift of the disc population",
+      "pass": true,
+      "detail": {
+        "meanR": 1.0032,
+        "band": [
+          0.97,
+          1.03
+        ]
+      }
+    },
+    {
+      "name": "SBc mask 1 (classic): arm pattern held (birth contrast 0.261)",
+      "pass": true,
+      "detail": {
+        "armA": 0.4368,
+        "ratio": 1.673,
+        "finalRatio": 2.887,
+        "floor": 0.7
+      }
+    },
+    {
+      "name": "SBc mask 1 (classic): no star leaves the model's truncation",
+      "pass": true,
+      "detail": {
+        "overCut": 0,
+        "birth": 0
+      }
+    },
+    {
+      "name": "SBc mask 2 (simple): radial profile holds the field within plan 1.4's per-bin budget",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.002,
+        "budget": 0.03
+      }
+    },
+    {
+      "name": "SBc mask 2 (simple): vertical column stays inside the known-deviation pin",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0462,
+        "budget": 0.06
+      }
+    },
+    {
+      "name": "SBc mask 2 (simple): the column is compressed, not heated (no vertical blow-up)",
+      "pass": true,
+      "detail": {
+        "meanZ": 0.694,
+        "band": [
+          0.6,
+          0.9
+        ]
+      }
+    },
+    {
+      "name": "SBc mask 2 (simple): no radial drift of the disc population",
+      "pass": true,
+      "detail": {
+        "meanR": 1.0114,
+        "band": [
+          0.97,
+          1.03
+        ]
+      }
+    },
+    {
+      "name": "SBc mask 2 (simple): arm pattern held (birth contrast 0.261)",
+      "pass": true,
+      "detail": {
+        "armA": 0.4707,
+        "ratio": 1.803,
+        "finalRatio": 1.768,
+        "floor": 0.7
+      }
+    },
+    {
+      "name": "SBc mask 2 (simple): no star leaves the model's truncation",
+      "pass": true,
+      "detail": {
+        "overCut": 0,
+        "birth": 0
+      }
+    },
+    {
+      "name": "SBc mask 4 (apocenter): radial profile holds the field within plan 1.4's per-bin budget",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0108,
+        "budget": 0.03
+      }
+    },
+    {
+      "name": "SBc mask 4 (apocenter): vertical column stays inside the known-deviation pin",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0203,
+        "budget": 0.06
+      }
+    },
+    {
+      "name": "SBc mask 4 (apocenter): the column is compressed, not heated (no vertical blow-up)",
+      "pass": true,
+      "detail": {
+        "meanZ": 0.8724,
+        "band": [
+          0.6,
+          0.9
+        ]
+      }
+    },
+    {
+      "name": "SBc mask 4 (apocenter): no radial drift of the disc population",
+      "pass": true,
+      "detail": {
+        "meanR": 0.9757,
+        "band": [
+          0.97,
+          1.03
+        ]
+      }
+    },
+    {
+      "name": "SBc mask 4 (apocenter): arm pattern floor (birth contrast 0.261)",
+      "pass": true,
+      "detail": {
+        "armA": 0.051,
+        "ratio": 0.195,
+        "finalRatio": 0.799,
+        "floor": 0.15
+      }
+    },
+    {
+      "name": "SBc mask 4 (apocenter): no star leaves the model's truncation",
+      "pass": true,
+      "detail": {
+        "overCut": 0,
+        "birth": 0
+      }
+    },
+    {
+      "name": "SBc mask 6 (simple+apocenter): radial profile holds the field within plan 1.4's per-bin budget",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0096,
+        "budget": 0.03
+      }
+    },
+    {
+      "name": "SBc mask 6 (simple+apocenter): vertical column stays inside the known-deviation pin",
+      "pass": true,
+      "detail": {
+        "maxBin": 0.0493,
+        "budget": 0.06
+      }
+    },
+    {
+      "name": "SBc mask 6 (simple+apocenter): the column is compressed, not heated (no vertical blow-up)",
+      "pass": true,
+      "detail": {
+        "meanZ": 0.6746,
+        "band": [
+          0.6,
+          0.9
+        ]
+      }
+    },
+    {
+      "name": "SBc mask 6 (simple+apocenter): no radial drift of the disc population",
+      "pass": true,
+      "detail": {
+        "meanR": 0.9829,
+        "band": [
+          0.97,
+          1.03
+        ]
+      }
+    },
+    {
+      "name": "SBc mask 6 (simple+apocenter): arm pattern held (birth contrast 0.261)",
+      "pass": true,
+      "detail": {
+        "armA": 0.3389,
+        "ratio": 1.298,
+        "finalRatio": 1.249,
+        "floor": 0.7
+      }
+    },
+    {
+      "name": "SBc mask 6 (simple+apocenter): no star leaves the model's truncation",
+      "pass": true,
+      "detail": {
+        "overCut": 0,
+        "birth": 0
+      }
+    },
+    {
+      "name": "mw: mask 3 is mask 2 — the classic bit is masked while the simple bit is set",
+      "pass": true,
+      "detail": {
+        "radialTV": [
+          0.014457369062119358,
+          0.014457369062119358
+        ],
+        "armA": [
+          0.8890200872576645,
+          0.8890200872576645
+        ]
+      }
+    },
+    {
+      "name": "mw: mask 7 is mask 6 — the classic bit is masked while the simple bit is set",
+      "pass": true,
+      "detail": {
+        "radialTV": [
+          0.020503958587088915,
+          0.020503958587088915
+        ],
+        "armA": [
+          0.6020361378375536,
+          0.6020361378375536
+        ]
+      }
+    },
+    {
+      "name": "mw: mask 5's density is bounded by its classic and apocenter parts",
+      "pass": true,
+      "detail": {
+        "excursion": [
+          "0.246",
+          "0.237",
+          "0.074"
+        ],
+        "meanR": [
+          "1.0068",
+          "0.9909",
+          "0.9863"
+        ],
+        "armRatio": [
+          "3.617",
+          "2.472",
+          "0.361"
+        ]
+      }
+    },
+    {
+      "name": "mw: the guided ellipse keeps the radial profile inside plan 1.4's per-bin budget at every force the menu offers",
+      "pass": true,
+      "detail": [
+        {
+          "force": 0.1,
+          "radialMaxBin": 0.0039
+        },
+        {
+          "force": 0.22,
+          "radialMaxBin": 0.006
+        },
+        {
+          "force": 0.35,
+          "radialMaxBin": 0.007
+        },
+        {
+          "force": 0.45,
+          "radialMaxBin": 0.0079
+        }
+      ]
+    },
+    {
+      "name": "mw: guiding every star (share 1) still keeps the radial profile inside plan 1.4's budget and the arms above the guided floor",
+      "pass": true,
+      "detail": [
+        {
+          "share": 0.25,
+          "radialMaxBin": 0.0044,
+          "armRatio": 0.28
+        },
+        {
+          "share": 0.35,
+          "radialMaxBin": 0.006,
+          "armRatio": 0.361
+        },
+        {
+          "share": 0.6,
+          "radialMaxBin": 0.0115,
+          "armRatio": 0.554
+        },
+        {
+          "share": 1,
+          "radialMaxBin": 0.0169,
+          "armRatio": 0.879
+        }
+      ]
+    },
+    {
+      "name": "mw: the arm contrast the default lane holds rises with the capture slider (the lane is doing what it claims)",
+      "pass": true,
+      "detail": [
+        {
+          "wave": 0,
+          "armRatio": 0.061
+        },
+        {
+          "wave": 0.3,
+          "armRatio": 2.73
+        },
+        {
+          "wave": 0.6,
+          "armRatio": 3.617
+        },
+        {
+          "wave": 1,
+          "armRatio": 4.197
+        }
+      ]
+    }
+  ]
+}

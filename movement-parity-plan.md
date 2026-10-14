@@ -87,6 +87,9 @@ dispatch would materially change the visible movement, present the concrete
 alternatives before implementing; do not expand into bar tuning or a new engine.
 The apocenter pass becomes birth-anchored under combined masks (it previously
 read the GPU's classic-moved position); classic-only and simple-only rendering
-is bit-identical to before. Following this fix, a useful numerical follow-up is
-time-averaged radial/vertical/arm-density measurement for experimental engines,
-before changing their defaults or calibration.
+is bit-identical to before. The numerical follow-up this plan called for —
+time-averaged radial/vertical/arm-density measurement for the experimental
+engines — landed 2026-10-13 as `experiments/movement-density-test.js`
+(plan.md follow-up order item 2/2a): the radial profile, the truncation and the
+capture-lane arm pattern hold, and the vertical column does not, which is the
+open 2a contract.
