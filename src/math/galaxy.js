@@ -502,14 +502,151 @@
 		return gasFraction + (1 - gasFraction) * (1 - sfhProgress(tauSfh, quenchTime, age));
 	}
 
-	// Every age-derived population fact, solved in one place at build and again
-	// after an override, so no consumer can hold a stale half of the clock.
-	function solvePopulationClock(model) {
-		const p = model.populations;
+	// ---- 0.6 the epoch tier: the same galaxy at an earlier time --------------
+	//
+	// The type table describes present-day galaxies: every anchor is an observed
+	// value at AGE_REF. The population tier already re-solves what a young galaxy's
+	// stars *are* (0.3.3); this tier re-solves what it *is* — how much of the
+	// spheroid has assembled, how cold the disc still is, and how much gas the
+	// arms have to work with. One clock, solved from the same three numbers the
+	// population tier reads, and exactly the reference epoch at AGE_REF: every
+	// factor below is a ratio of the same expression evaluated at the same point,
+	// so it is 1 in IEEE arithmetic rather than 0.99999. Multiplying by exactly 1
+	// is exact, so an AGE_REF model is bit-identical to the pre-0.6 model and no
+	// pin describing today's galaxies can move.
+	//
+	// The tier scales amplitudes, dispersions and scale heights. It never changes a
+	// length, an angle or a profile exponent, so every derived quantity
+	// (dynamics.omegaPattern, dynamics.loopRatio, the arm ridge coupling) stays
+	// exactly as the type table solves it and no consumer can disagree with the
+	// field. Sizes are E3 (evolution-plan.md).
+	//
+	// The three factors, all dimensionless and all 1 at AGE_REF: `spheroidProgress`
+	// for the bulge, `armContrast` for the arms, `heat` for the disc. See the plan
+	// for the derivations; the comments here state the one non-obvious choice each
+	// makes.
+
+	// The first moment of the same delayed exponential, computed the same way as
+	// sfhCumulative: ∫₀^x u² e^−u du = 2 − e^−x(x² + 2x + 2). The mean formation
+	// time is τ·M1/F, and the mean stellar age at an epoch is `age` minus it.
+	function sfhMoment1(x) {
+		return 2 - Math.exp(-x) * (x * x + 2 * x + 2);
+	}
+
+	// Age–velocity relation exponent: the disc's stellar dispersion grows with the
+	// population's age, σ ∝ age^0.25 (Jenkins), and an isothermal disc's scale
+	// height follows dispersion squared. One exponent, two outcomes, no per-type
+	// constant: a young disc is thin *because* it is cold.
+	const HEAT_EXP = 0.25;
+	// Arm contrast ceiling. The wave's response to gas is sub-linear (the square
+	// root of the gas ratio below), and beyond twice the reference contrast the
+	// linear density-wave picture is not believable — the field would read as two
+	// painted stripes rather than as arms.
+	const ARM_CONTRAST_MAX = 2.0;
+
+	// The spheroid's assembly at `age`: the fraction of its own formation window
+	// that has already passed, against the type's own plan — the same
+	// FORMATION_WINDOW table, read in absolute time against the *reference* span.
+	// A young galaxy's bulge is a fraction of its present mass and grows in until
+	// its window closes (an Sb's at 6 Gyr), which is what "the bulge forms first"
+	// means as a number. Normalised by the whole window, so the factor is exactly 1
+	// at AGE_REF: there `min(AGE_REF, w1·spanRef) === w1·spanRef` on both sides.
+	//
+	// Only the spheroid is scaled. The disc and the halo keep their present mass at
+	// every epoch on purpose: the gas-driven layers (nebulae, HII regions, open
+	// clusters) live in the disc and scale with `gasNow`, so a field whose disc
+	// emptied while its gas layer stayed full would put this project's own "the
+	// field is the source of truth" rule in contradiction with itself. The mass
+	// budget moves with the gas field that can follow it (evolution-plan.md, E3).
+	function spheroidProgressAt(tauSfh, quenchTime, age) {
+		const w0 = FORMATION_WINDOW[density.COMPONENT_BULGE * 2];
+		const w1 = FORMATION_WINDOW[density.COMPONENT_BULGE * 2 + 1];
+		const spanRef = sfhSpanAt(AGE_REF, quenchTime);
+		const done = sfhCumulative(Math.min(age, w1 * spanRef) / tauSfh) - sfhCumulative(Math.min(age, w0 * spanRef) / tauSfh);
+		const total = sfhCumulative(w1 * spanRef / tauSfh) - sfhCumulative(w0 * spanRef / tauSfh);
+		if (!(total > 0)) return 1;
+		return done > 0 ? done / total : 0;
+	}
+
+	// The epoch solve: clamp the model's own clock (one place, so the population
+	// and structure tiers cannot hold different clocks), then derive. Writes the
+	// clamped age/tauSfh/quenchTime/span back onto `populations` — that is the
+	// population tier's own contract, and the returned epoch is what the structure
+	// tier scales by.
+	function solveEpoch(populations, T) {
+		const p = populations;
 		p.age = Math.min(AGE_MAX, Math.max(AGE_MIN, p.age === undefined ? AGE_DEFAULT : p.age));
 		p.tauSfh = p.tauSfh > TAU_SFH_MIN ? p.tauSfh : TAU_SFH_MIN;
-		p.quenchTime = model.T <= QUENCH_STAGE_MAX ? QUENCH_TAU_MULT * p.tauSfh : 0;
+		p.quenchTime = T <= QUENCH_STAGE_MAX ? QUENCH_TAU_MULT * p.tauSfh : 0;
 		p.sfhSpan = sfhSpanAt(p.age, p.quenchTime);
+		const assembly = sfhProgress(p.tauSfh, p.quenchTime, p.age);
+		const spheroidProgress = spheroidProgressAt(p.tauSfh, p.quenchTime, p.age);
+		// Mean stellar age of the population that exists at this epoch. Formation
+		// freezes at the quenching time while the stars keep ageing, which is
+		// exactly what a dead disc does, so the quenched branch reads the span at
+		// the quench and the epoch's own age.
+		const meanAgeAt = (age) => {
+			const x = sfhSpanAt(age, p.quenchTime) / p.tauSfh;
+			const mass = sfhCumulative(x);
+			return age - (mass > 0 ? p.tauSfh * sfhMoment1(x) / mass : 0);
+		};
+		const meanAge = meanAgeAt(p.age);
+		const meanAgeRef = meanAgeAt(AGE_REF);
+		const heat = meanAgeRef > 0 ? Math.pow(meanAge / meanAgeRef, HEAT_EXP) : 1;
+		const gasNow = gasFractionAt(p.tauSfh, p.quenchTime, p.gasFraction, p.age);
+		const gasRatio = p.gasFraction > 0 ? gasNow / p.gasFraction : 1;
+		const root = Math.sqrt(gasRatio);
+		const armContrast = root < ARM_CONTRAST_MAX ? root : ARM_CONTRAST_MAX;
+		return {
+			age: p.age, assembly, spheroidProgress,
+			meanAge, meanAgeRef, heat, gasRatio, armContrast,
+			gasNow, gasRich: gasNow >= GAS_RICH_MIN,
+		};
+	}
+
+	// The reference-epoch values of the numbers the epoch scales, recorded on the
+	// model before the first scaling. Re-deriving the epoch (modelAtAge) has to be
+	// able to undo it, and an exact undo is a stored value rather than a division.
+	// Written once per model; `applyEpoch` clones the groups it writes, so a
+	// re-solve never mutates a group another model object still shares.
+	function applyEpoch(model, epoch) {
+		if (!model.epochBase) {
+			model.epochBase = {
+				thinH: model.thin.H, thickH: model.thick.H,
+				thinAmp: model.thin.amp, thickAmp: model.thick.amp,
+				spheroidAmp: model.spheroid.amp, armsAmp: model.arms.amp,
+				sigmaThin: model.dynamics.sigmaThin, sigmaThick: model.dynamics.sigmaThick,
+			};
+		}
+		const base = model.epochBase;
+		// The disc heats: a young disc is thin because its stars are cold. A model
+		// with no disc at all — the E sequence, thin and thick amp both 0 — has no
+		// disc scale height to move, and its two heights are read nowhere but the
+		// gas lane. Scaling them there would thin the lane of a starburst that
+		// never formed a disc: a 0.5 Gyr E4 has gas and no disc, and it has to
+		// keep placing HII regions and open clusters, because it is mid-burst.
+		const heat = (base.thinAmp > 0 || base.thickAmp > 0) ? epoch.heat : 1;
+		const heat2 = heat * heat;
+		model.thin = cloneGroup(model.thin);
+		model.thick = cloneGroup(model.thick);
+		model.spheroid = cloneGroup(model.spheroid);
+		model.arms = cloneGroup(model.arms);
+		model.dynamics = cloneGroup(model.dynamics);
+		model.thin.H = base.thinH * heat2;
+		model.thick.H = base.thickH * heat2;
+		model.spheroid.amp = base.spheroidAmp * epoch.spheroidProgress;
+		model.arms.amp = base.armsAmp * epoch.armContrast;
+		model.dynamics.sigmaThin = base.sigmaThin * heat;
+		model.dynamics.sigmaThick = base.sigmaThick * heat;
+		model.epoch = epoch;
+		return model;
+	}
+
+	// Every age-derived population and structure fact, solved in one place at build
+	// and again after an override, so no consumer can hold a stale half of the clock.
+	function solvePopulationClock(model) {
+		const p = model.populations;
+		const epoch = solveEpoch(p, model.T);
 		const xEnd = p.sfhSpan / p.tauSfh;
 		const norm = sfhCumulative(xEnd);
 		const formQ = [];
@@ -521,8 +658,9 @@
 			formQ.push(norm > 0 ? sfhCumulative(FORMATION_WINDOW[c + 1] * xEnd) / norm : 1);
 		}
 		p.formQ = formQ;
-		p.gasNow = gasFractionAt(p.tauSfh, p.quenchTime, p.gasFraction, p.age);
-		p.gasRich = p.gasNow >= GAS_RICH_MIN;
+		p.gasNow = epoch.gasNow;
+		p.gasRich = epoch.gasRich;
+		model.epoch = epoch;
 		return model;
 	}
 
@@ -687,7 +825,7 @@
 		const model = assemble(MILKY_WAY_TYPE, TYPE_SPECS[MILKY_WAY_TYPE], DEFAULT_SEED,
 			cloneStructure(MILKY_WAY_STRUCTURE));
 		model.populations.age = age === undefined ? AGE_DEFAULT : age;
-		return solvePopulationClock(model);
+		return applyEpoch(solvePopulationClock(model), model.epoch);
 	}
 
 	// (type, seed, age, overrides) → model. Overrides are per-group and shallow,
@@ -720,17 +858,23 @@
 		}
 		// Last, so an override of `populations` (gasFraction, tauSfh, age) is
 		// what the clock is solved from rather than something it has to guess.
-		return solvePopulationClock(model);
+		// The epoch then scales the reference-epoch galaxy for that clock.
+		return applyEpoch(solvePopulationClock(model), model.epoch);
 	}
 
-	// The same galaxy frozen at another epoch: geometry shared (read-only), the
-	// clock re-solved. The renderer's exposure reference and the age tests both
-	// need "this model, at that age" without paying for a second build.
+	// The same galaxy frozen at another epoch: the clock re-solved and the epoch
+	// re-applied, both halves of it. The structure is re-derived from the recorded
+	// reference values rather than shared, because the epoch moves it too — a
+	// young galaxy has a colder, thinner disc and a smaller bar, and the exposure
+	// renormalisation compares exactly those two fields. The renderer's exposure
+	// reference and the age tests both need "this model, at that age" without
+	// paying for a second build.
 	function modelAtAge(model, age) {
 		const copy = Object.assign({}, model);
 		copy.populations = cloneGroup(model.populations);
 		copy.populations.age = age;
-		return solvePopulationClock(copy);
+		solvePopulationClock(copy);
+		return applyEpoch(copy, copy.epoch);
 	}
 
 	const OVERRIDABLE = ['scaleKpc', 'centre', 'thin', 'thick', 'spheroid', 'bar', 'halo',
@@ -917,10 +1061,11 @@
 		ANCHORS, TYPE_SPECS, GALAXY_TYPES, GALAXY_TYPE_CYCLE,
 		DISC_L_KPC, THICK_L_RATIO, THICK_H_RATIO, HALO_AMP_UNIT, YOUNG_OUTER_R_KPC, GAS_RICH_MIN,
 		GAS_NORMAL, AGE_REF, AGE_MIN, AGE_MAX, AGE_DEFAULT, FORMATION_WINDOW,
-		QUENCH_STAGE_MAX, QUENCH_TAU_MULT, TAU_SFH_MIN,
+		QUENCH_STAGE_MAX, QUENCH_TAU_MULT, TAU_SFH_MIN, HEAT_EXP, ARM_CONTRAST_MAX,
 		CLUMP_COUNT, CLUMP_BOOST, CLUMP_KFBM, CLUMP_SPAN_R, CLUMP_Z_RATIO, CLUMP_R_OVER_K,
 		interpAnchors, createGalaxy, createMilkyWay, modelAtAge, cycleGalaxyType, galaxyLabel, homeFor,
 		sfhCumulative, sfhSpanAt, sfhProgress, gasFractionAt, solvePopulationClock,
+		solveEpoch, applyEpoch, sfhMoment1, spheroidProgressAt,
 		DENSITY_PARAMS_LAYOUT, GEOMETRY_GROUPS, GEOMETRY_KEY_FLOATS,
 		DENSITY_PARAMS_CLUMPS, DENSITY_PARAMS_CLUMP_FLOATS,
 		DENSITY_PARAMS_FLOATS, DENSITY_PARAMS_BYTES,

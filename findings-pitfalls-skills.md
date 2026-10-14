@@ -1401,3 +1401,54 @@ instead of exported `planetTypeBit`. A real DOM/control run exposed it; module
 export parity alone cannot check call sites. Headless Chromium's software WebGPU
 lost its external instance in this sandbox: CPU canvas and UI tests still work,
 but those results must not be presented as successful WebGPU galaxy rendering.
+
+## 2026-10-14 — An epoch tier has to say which time base its windows live on
+
+Adding a structural tier beside an existing population tier looks like "multiply the
+same factors into both halves". It is not: the two tiers need **different time bases**,
+and getting that wrong is silent.
+
+The population tier compresses a galaxy's formation windows to its own age
+(`sfhSpanAt(age, quench)`), which is self-similar: a 2 Gyr Sb's thin disc forms over
+the same *fraction* of its life as a 13.5 Gyr one's. Feeding those compressed windows
+to a structure tier therefore cannot express assembly — the ratio is nearly the same
+at every age, so the tier either does nothing or drifts non-physically (an S0's thick
+disc and bulge saturated by 1 Gyr while the thin disc lagged). The structure tier has
+to read the same `FORMATION_WINDOW` table against the **reference** span
+(`min(age, w·span_ref)`), which is monotone, bounded, exactly 1 at the reference
+epoch, and is the only reading that answers "how much of this component exists yet".
+
+Two more rules fell out of the same slice, both worth carrying into any similar one:
+
+- **Check a scaling law against the layers that do not scale with it.** Scaling every
+  component's amplitude to 0.6 % of present mass at 0.5 Gyr looked fine in the model
+  tests and was wrong in the field: the gas-driven object layer scales with `gasNow`,
+  not with the disc's amplitude, so the galaxy showed a full nebula lane over an
+  emptied disc and its globular counts *rose* with age. A law that moves a mass has to
+  move everything that mass would carry, or nothing.
+- **A "no physical disc" type is not an edge case, it is 8 of 19 types.** The E
+  sequence has `thin.amp = thick.amp = 0`, no disc at all, yet its two scale heights
+  are still read — by the gas lane of the object layer. Heating them thinned a
+  starburst's lane and a mid-burst E4 silently stopped placing HII regions. When a
+  law's stated subject is a component, gate it on the component existing; the failure
+  otherwise surfaces in an unrelated layer, which is exactly where it will not be
+  looked for.
+
+Two smaller traps from the same slice, both about measurement rather than physics:
+
+- **A test that samples the field once and evaluates it at several ages stops measuring
+  the law.** Once the tier moves the disc the field is drawn from, one shared field
+  makes the exposure offset at 0.5 Gyr a mix of the population clock and the structural
+  term (the same absolute `z` read against a `heat²`-thinner lane). Sample the field
+  from the epoch's own model — which is what the renderer does — and read the
+  counterfactual back at the reference epoch from *that* field.
+- **Check what a scaled number feeds.** `arms.amp` is not only the sampler's contrast:
+  `density.armRidgeWidth = ARM_RIDGE_FRAC·λ/(1 + arms.amp)` is read live, so raising the
+  arm contrast narrows the newborn lane that the O/B stars, the nebulae and the HII
+  regions are placed in. That is the field's own answer, not a second decision — but it
+  is observable, so the plan states it and any lane measurement has to expect it.
+
+And the pin that caught it was the *old* pin (`the gas-driven object counts fall as the
+gas is used up`), which had been green for two releases. When a new rule makes an old
+pin red, the pin is a hypothesis: check whether the model or the pin is wrong before
+re-stating either. Here the model was.

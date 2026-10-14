@@ -81,6 +81,15 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		})(), 'missing ids');
 	check('the sysmenu selector main.js queries is an id in the page',
 		/#sysmenu \[data-view\]/.test(main) && /id="sysmenu"/.test(html));
+	// 0.6 E1b: an age change re-draws the field, so the two pieces of runtime
+	// state that were seeded from the old birth positions have to follow it — the
+	// simple engine's CPU mirror and the selection set's per-key resolution. Both
+	// live in one function here because there is no browser to run it in.
+	const ageFn = main.match(/function regenerateAge\(age\) \{[\s\S]*?\n        \}/);
+	check('the age change re-seeds the simple mirror and re-resolves the set',
+		!!ageFn && /renderer\.regenerate\(model\)/.test(ageFn[0])
+		&& /initSimpleLandmarks\(\);/.test(ageFn[0]) && /resolveSet\(\);/.test(ageFn[0]),
+		ageFn ? ageFn[0].length : null);
 	check('opening a panel releases pointer lock',
 		/function releasePanelInput\(\) \{[\s\S]*?document\.exitPointerLock\(\);[\s\S]*?\}/.test(main)
 		&& /\} else \{\s*releasePanelInput\(\);/.test(main));

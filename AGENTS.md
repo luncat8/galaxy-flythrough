@@ -52,7 +52,11 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 - `plan.md` — the development plan. Clean artifact, no implementation log. §19 indexes the per-release plans; shipped ones live in `archive/`, the completed 0.5 series is also archived below.
 - `archive/0.5.0-plan-planet-generator.md` — the 0.5 plan: star selection and multi-select (0.5.0), the lazy deterministic planet-system generator (0.5.1), star and planet search (0.5.2), the close-system schematic view (0.5.3), the delta-v map (0.5.4), routes and autopilot (0.5.5). CPU-only: no star-buffer or WGSL growth.
 - `findings-pitfalls-skills.md` — notes and pitfalls for LLM agents. Write here when you find a good way to do something, a non-obvious gotcha, or a useful technique. Append-only.
-- `movement-parity-plan.md` — next correctness task: engine-mask dispatch and rendered/CPU position agreement.
+- `movement-parity-plan.md` — the engine-mask dispatch and rendered/CPU position contract
+  (shipped 2026-10-11; the file is the contract, not an open task).
+- `evolution-plan.md` — the 0.6 series, galaxy evolution over time: E1 the epoch tier
+  (shipped, with the runtime coupling E1b), E2 live evolution, E3 morphology, E4 events,
+  E5 chemical evolution (optional).
 - `deferred-browser-visual-plan.md` — non-blocking browser checks, preset actions, bar polish and GPU profiling; separate from analytical model contracts.
 - `worklog.md` — index of versioned implementation logs.
 - `archive/` — versioned worklogs (`0.3.x-worklog.md`, etc.), superseded plans, and the plans of release series that have shipped (`archive/0.2-plan-HDR-saturation.md`, `archive/0.3.0-plan-galaxy-types-star-distribution.md`, `archive/0.4.0-plan-star-move.md`, `archive/0.4.7-draft-new-star-movement-type.md`, `archive/0.4.8-plan-realistic-3d-shapes.md`, `archive/damping-plan.md`, `archive/plan-0.1.1-tasks.md`). A shipped plan stays the spec a fork reimplements from — archive it, do not delete it, and keep `plan.md` §19 pointing at it. When `plan.md` is rewritten substantially, the old version moves here too.

@@ -456,25 +456,39 @@ function relNear(a, b, tol) {
 			&& q[7] <= q[5] && q[5] <= q[3] && q[3] <= q[1],
 			q.map((v) => +v.toFixed(4)));
 	}
-	// The renderer's property-only regenerate trusts this verdict with 300k
-	// stars, so it has to say "the field moves" exactly when the field moves: an
-	// age step or a gas override keeps the positions, anything structural does
-	// not. Note the pairs are built from one base each — the preset and a
-	// table-built SBb are *not* the same geometry, which is the point of the
-	// preset existing.
+	// The renderer's regenerate trusts this verdict with 300k stars, so it has to
+	// say "the field moves" exactly when the field moves. Since 0.6 the epoch is
+	// structure (evolution-plan.md): a young galaxy has a colder, thinner disc and
+	// a smaller bulge, so an age step moves the positions and the field is
+	// re-sampled — which is why the age slider re-samples instead of only
+	// rewriting records. What still holds is the *reference-epoch* re-derivation:
+	// `modelAtAge(model, AGE_REF)` is bit-identical to the model built at AGE_REF,
+	// which is what the exposure renormalisation leans on. Note the pairs are
+	// built from one base each — the preset and a table-built SBb are *not* the
+	// same geometry, which is the point of the preset existing.
 	const overrideOf = (overrides) => galaxy.createGalaxy({ type: 'Sc', seed: 42, overrides });
 	const geometryPairs = [
-		['the preset at another age', MW, galaxy.modelAtAge(MW, 2), true],
-		['a table type at another age', models.Sc, galaxy.modelAtAge(models.Sc, 0.5), true],
-		['a gas override', models.Sc, overrideOf({ populations: { gasFraction: 0.4 } }), true],
-		['an age override', models.Sc, overrideOf({ populations: { age: 3 } }), true],
+		['the preset re-derived at the reference epoch', MW, galaxy.modelAtAge(MW, galaxy.AGE_REF), true],
+		['a table type re-derived at the reference epoch', models.Sc, galaxy.modelAtAge(models.Sc, galaxy.AGE_REF), true],
+		['a gas override at the reference epoch', models.Sc, overrideOf({ populations: { gasFraction: 0.4 } }), true],
+		['the preset at another age', MW, galaxy.modelAtAge(MW, 2), false],
+		['a table type at another age', models.Sc, galaxy.modelAtAge(models.Sc, 0.5), false],
+		['an age override', models.Sc, overrideOf({ populations: { age: 3 } }), false],
+		// The SFH timescale is a *population* knob the epoch tier also reads, but
+		// at the reference epoch every factor is 1 whatever the schedule is, so it
+		// is a no-op for the field there. At a young epoch it is not — the pair
+		// below is the coupling stated as a test.
+		['a star-formation-timescale override', models.Sc, overrideOf({ populations: { tauSfh: 9 } }), true],
+		['the same young epoch under two SFH timescales',
+			galaxy.createGalaxy({ type: 'Sc', seed: 42, age: 3 }),
+			galaxy.createGalaxy({ type: 'Sc', seed: 42, age: 3, overrides: { populations: { tauSfh: 9 } } }), false],
 		['a disc-thickness override', models.Sc, overrideOf({ thin: { H: 0.4 } }), false],
 		['an arm-contrast override', models.Sc, overrideOf({ arms: { amp: 0.4 } }), false],
 		['another seed', MW, galaxy.createGalaxy({ type: 'SBb', seed: 43 }), false],
 		['another type', models.Sc, models.Sd, false],
 	];
 	const wrongGeometry = geometryPairs.filter((pair) => galaxy.sameGeometry(pair[1], pair[2]) !== pair[3]);
-	check('sameGeometry holds across an age change and breaks on anything that moves stars',
+	check('sameGeometry holds exactly when the field holds: the epoch is structure',
 		wrongGeometry.length === 0,
 		wrongGeometry.map((pair) => ({ pair: pair[0], expected: pair[3] })));
 	for (const model of ALL) {

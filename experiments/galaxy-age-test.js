@@ -392,6 +392,13 @@ const log = { date: new Date().toISOString(), types: TYPES, sfh: {}, windows: {}
 			mixes[age] = { placed: placed.length, byType };
 		}
 		log.objects[type] = mixes;
+		// The gas-driven counts burn down with the reservoir, and nothing in the
+		// epoch tier may get in the way of that: a 0.5 Gyr E4 is mid-burst and
+		// gas-rich (`gasNow` 0.2), so it places open clusters even though its
+		// present-day self has none. The tier's disc heating is what could break
+		// this — a colder disc is a thinner gas lane — and it is exactly why the
+		// heating is gated on the model *having* a disc: an E has none, so its
+		// lane keeps the type's own scale and its starburst still shows.
 		check(`${type}: the gas-driven object counts fall as the gas is used up`,
 			(mixes[0.5].byType.HII || 0) + (mixes[0.5].byType.open || 0)
 				> (mixes[13.5].byType.HII || 0) + (mixes[13.5].byType.open || 0)
@@ -426,11 +433,17 @@ const log = { date: new Date().toISOString(), types: TYPES, sfh: {}, windows: {}
 	log.population.exposure = {};
 	for (const type of ['E4', 'Sa', 'SBb', 'Sc', 'Irr']) {
 		const base = galaxy.createGalaxy({ type, seed: 42 });
-		const field = sampling.sampleGalaxyStars(base, 42, STAR_DRAWS);
-		const ref = starTypes.meanFieldLuminosity(galaxy.modelAtAge(base, galaxy.AGE_REF), field, CALIBRATION_STARS);
 		offsets[type] = {};
 		for (const age of [0.5, 2, 8, galaxy.AGE_REF]) {
 			const model = galaxy.modelAtAge(base, age);
+			// The field is sampled from the epoch's own model, which is what the
+			// renderer does (star-sprites.sampleField): 0.6's epoch tier moves
+			// the disc the field is drawn from, so one field used at every age
+			// would be measuring the tier's structural term instead of the
+			// population's. The reference is that same field read back at the
+			// reference epoch — the renderer's own counterfactual.
+			const field = sampling.sampleGalaxyStars(model, 42, STAR_DRAWS);
+			const ref = starTypes.meanFieldLuminosity(galaxy.modelAtAge(base, galaxy.AGE_REF), field, CALIBRATION_STARS);
 			const now = starTypes.meanFieldLuminosity(model, field, CALIBRATION_STARS);
 			// The renderer's arithmetic, in full: an offset in magnitudes, added to
 			// absMag before packing. A dimmer field gets a negative offset, which
@@ -459,16 +472,17 @@ const log = { date: new Date().toISOString(), types: TYPES, sfh: {}, windows: {}
 	// Sa is the transition type: bulge-heavy and early-fading, dimmer than the
 	// reference before 8 Gyr and within 0.15 mag of it there. (0.4.8 M3.3 moved
 	// the 8 Gyr point from +0.06 to about −0.08: the reference field lost its
-	// high-z young stars, so the late climb no longer clears it.)
+	// high-z young stars. 0.6's epoch tier, which samples the field from the
+	// epoch's own disc, put it at −0.145: still inside the band, but the band is
+	// now the margin.)
 	check('Sa peaks late: dimmer young, within 0.15 mag of the reference at 8 Gyr',
 		offsets.Sa[0.5] < offsets.Sa[2] && offsets.Sa[2] < 0 && Math.abs(offsets.Sa[8]) < 0.15,
 		{ at0_5: +offsets.Sa[0.5].toFixed(3), at2: +offsets.Sa[2].toFixed(3), at8: +offsets.Sa[8].toFixed(3) });
 	// Later types keep forming giants, so they never show the quenched bump
-	// (E4 at 2 Gyr is +0.5 mag). They are dim before any giant has left the
-	// main sequence, and back under the reference once the disc is old. A 2 Gyr
-	// Sc can sit ~0.14 mag above its reference: M3.3's heating floor removes
-	// the reference age's high-z O/B stars, and the arriving giants briefly
-	// outshine what is left. That is a bump, not the quenched one.
+	// (E4 at 2 Gyr is +0.5 mag). Sampled from their own epoch's disc they stay
+	// under the reference at every age — the young field is dim for want of
+	// turnoff giants, and the stronger arms that hold its O/B stars are
+	// narrower, so the gap runs −1.2 to −1.8 mag at 0.5 Gyr and never closes.
 	let sfBreak = null;
 	for (const type of ['SBb', 'Sc', 'Irr']) {
 		const young = offsets[type][0.5];

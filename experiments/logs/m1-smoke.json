@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-14T03:47:42.418Z",
+  "date": "2026-10-14T06:51:27.190Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -64,8 +64,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 60,
-  "passed": 60,
+  "totalChecks": 61,
+  "passed": 61,
   "failed": 0,
   "checks": [
     {
@@ -136,6 +136,11 @@
       "pass": true
     },
     {
+      "name": "the age change re-seeds the simple mirror and re-resolves the set",
+      "pass": true,
+      "detail": 1133
+    },
+    {
       "name": "opening a panel releases pointer lock",
       "pass": true
     },
@@ -197,7 +202,7 @@
       "name": "GalaxyLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 50
+        "keys": 56
       }
     },
     {

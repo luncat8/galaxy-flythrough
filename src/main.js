@@ -1245,21 +1245,25 @@ async function boot() {
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
 
-        // The same galaxy at another epoch. The renderer keeps the sampled positions
-        // and rewrites the records (~0.27 s), so nothing the viewer is looking at
-        // moves: no camera reset, no dropped selection, no label rebuild. Moving the
-        // age is asking a what-if about this galaxy, not travelling to another one.
+        // The same galaxy at another epoch. 0.6's epoch tier moves the disc the
+        // field is drawn from, so an age change is a rebuild of the field, not
+        // just of the records: another draw of the same galaxy, colder, with
+        // more contrasted arms. Nothing the viewer is looking at is thrown away —
+        // no camera move, no dropped selection, no label change — but the field,
+        // the birth thetas and the resolved set all follow the new epoch.
         function regenerateAge(age) {
                 model = galaxy.createGalaxy({ type: model.type, seed: model.seed, age });
                 renderer.regenerate(model);
-                // No mirror re-seed here: positions don't move under an age
-                // change, so both the GPU thetas and this CPU mirror stay
-                // valid — re-seeding either side would snap the epoch.
-                // The set survives: same keys, same positions, new evolutionary
-                // state — re-derived in place (plan §3.2).
-                rederiveSet();
+                // Fresh positions mean a fresh simple epoch on the CPU side too,
+                // exactly as a type change re-seeds it: prepare re-seeded the GPU
+                // thetas from the new birth positions, and the mirror integrates
+                // the same law, so both sides have to start from the same birth.
+                initSimpleLandmarks();
+                // The set survives per key (plan §3.2) but not per slot: every
+                // member is resolved against the field that was just drawn.
+                resolveSet();
                 // An open schematic follows the refreshed snapshot: a new epoch
-                // can re-roll the star's state and luminosity, so the record
+                // re-rolls the star's state and luminosity, so the record
                 // regenerates — without a camera move, nothing moved.
                 if (systemLayer.isOpen()) openSystemView(false);
                 syncGalaxyControls();
@@ -1358,12 +1362,86 @@ async function boot() {
                 labels.setSelectedKeys(starSet.keys, starSet.count);
         }
 
-        // An age change re-rolls every star's evolutionary state but moves nothing:
-        // the snapshots are re-derived from their keys in place (plan §3.2).
-        function rederiveSet() {
-                for (let i = 0; i < starSet.count; i++) {
-                        const inputs = deriveMemberInputs(i);
-                        starSet.updateStellar(i, inputs);
+        // --- Re-resolving the set after a re-sample (0.6, plan E1b) -----------
+        // An age change re-draws the field: the epoch tier moves the disc the
+        // sampler draws from, so the star in a member's slot is a different star
+        // and the member's snapshot describes a record that is no longer on
+        // screen. The key is the invariant — `fieldStarSeed(seed, slot)` does not
+        // read the age — so the set is re-resolved by key: one pass over the live
+        // blocks fills a small open-addressed map of the set's keys (the same scan
+        // label-layer's map runs for the rings), and every hit rewrites the
+        // member's slot, position, colour, magnitude and five stellar inputs from
+        // the record it now names. A key that is not resident keeps its readout
+        // line and loses its slot — the ring's existing missing-slot behaviour.
+        const RESOLVE_SIZE = 1024;              // ≤ 256 members, so ≤ 25% load
+        const RESOLVE_MASK = RESOLVE_SIZE - 1;
+        const resolveKey = new Uint32Array(RESOLVE_SIZE);
+        const resolveMember = new Int32Array(RESOLVE_SIZE);
+        const resolveUsed = new Uint8Array(RESOLVE_SIZE);
+        const resolvePick = {
+                key: 0, kind: 0, index: 0, x: 0, y: 0, z: 0,
+                colorIndex: 0, absMag: 0, approximated: 0,
+        };
+
+        function resolveProbe(key, forInsert) {
+                let slot = (Math.imul(key, 0x9e3779b1) >>> 0) & RESOLVE_MASK;
+                let guard = 0;
+                while (resolveUsed[slot] && resolveKey[slot] !== key) {
+                        if (++guard > RESOLVE_SIZE) return -1;
+                        slot = (slot + 1) & RESOLVE_MASK;
+                }
+                if (resolveUsed[slot]) return slot;
+                return forInsert ? slot : -1;
+        }
+
+        function resolveSet() {
+                const info = renderer.starBlocks();
+                const count = starSet.count;
+                if (!info || !info.identity || !info.view || count <= 0) return;
+                const identity = info.identity;
+                const view = info.view;
+                const blocks = info.blocks;
+                const cam = camera.cameraPos;
+                resolveUsed.fill(0);
+                for (let i = 0; i < count; i++) {
+                        const key = starSet.keys[i] >>> 0;
+                        const home = resolveProbe(key, true);
+                        if (home < 0) return;                   // table full: leaves the set alone
+                        resolveUsed[home] = 1;
+                        resolveKey[home] = key;
+                        resolveMember[home] = i;
+                        starSet.bufferIdx[i] = -1;
+                }
+                for (let k = 0; k < blocks.length; k++) {
+                        const block = blocks[k];
+                        const n = block.count | 0;
+                        if (n <= 0) continue;
+                        const offset = block.offset | 0;
+                        for (let slot = 0; slot < n; slot++) {
+                                const global = offset + slot;
+                                const home = resolveProbe(identity[global] >>> 0, false);
+                                if (home < 0 || starSet.bufferIdx[resolveMember[home]] >= 0) continue;
+                                const byteOffset = global * window.StarRecord.RECORD_BYTES;
+                                const packed = view.getUint32(byteOffset + 12, true);
+                                if ((packed & (window.StarRecord.FLAG_VISIBLE << 16)) === 0) continue;
+                                // Block-local, which is what stellarInputs indexes
+                                // both the field arrays and the member context by.
+                                resolvePick.key = resolveKey[home];
+                                resolvePick.kind = k;
+                                resolvePick.index = slot;
+                                resolvePick.x = view.getFloat32(byteOffset, true);
+                                resolvePick.y = view.getFloat32(byteOffset + 4, true);
+                                resolvePick.z = view.getFloat32(byteOffset + 8, true);
+                                resolvePick.colorIndex = packed & 0xFF;
+                                resolvePick.absMag = window.StarRecord.decodeAbsMag((packed >>> 8) & 0xFF);
+                                resolvePick.approximated = 0;
+                                const inputs = selectPlanets.stellarInputs(resolvePick, {
+                                        model,
+                                        field: renderer.fieldBuffers(),
+                                        member: info.member,
+                                }, starInputs);
+                                starSet.insert(resolvePick, inputs, cam[0], cam[1], cam[2], slot);
+                        }
                 }
         }
 

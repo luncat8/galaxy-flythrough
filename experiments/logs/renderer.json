@@ -1,10 +1,10 @@
 {
-  "date": "2026-10-14T03:47:43.923Z",
+  "date": "2026-10-14T06:51:28.749Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 169,
-  "totalChecks": 123,
-  "passed": 123,
+  "prepareMs": 164,
+  "totalChecks": 125,
+  "passed": 125,
   "failed": 0,
   "checks": [
     {
@@ -606,19 +606,26 @@
       }
     },
     {
-      "name": "an age-only regenerate rewrites the fixed block without re-drawing the field",
+      "name": "an age change re-draws the field for the new epoch",
       "pass": true,
       "detail": {
         "newWrites": 1,
-        "fieldSamples": 3,
+        "fieldSamples": 4,
         "age": 0.5
       }
     },
     {
-      "name": "the same stars stay where they were and change what they are",
+      "name": "the identity keys survive the re-sample: a key is a slot, not a position",
       "pass": true,
       "detail": {
-        "samePosition": true,
+        "firstBreak": -1
+      }
+    },
+    {
+      "name": "a resolved key follows the new field: another position, another star",
+      "pass": true,
+      "detail": {
+        "movedPosition": 490,
         "movedStar": 500
       }
     },
@@ -634,16 +641,24 @@
       "name": "a young galaxy is a dimmer one, so the offset brightens it back",
       "pass": true,
       "detail": {
-        "offset": -2.114,
-        "meanMagYoung": 7.21,
+        "offset": -1.714,
+        "meanMagYoung": 7.615,
         "meanMagRef": 9.477
+      }
+    },
+    {
+      "name": "a model that differs only in its population keeps the sampled field",
+      "pass": true,
+      "detail": {
+        "fieldSamples": 5,
+        "objects": 40
       }
     },
     {
       "name": "another type re-draws the field even at the same age",
       "pass": true,
       "detail": {
-        "fieldSamples": 4,
+        "fieldSamples": 6,
         "type": "Sc"
       }
     },
@@ -652,7 +667,7 @@
       "pass": true,
       "detail": {
         "offset": 0,
-        "fieldSamples": 5
+        "fieldSamples": 7
       }
     },
     {
@@ -715,8 +730,8 @@
       "name": "crossing a cell boundary re-uploads the dynamic region",
       "pass": true,
       "detail": {
-        "before": 16,
-        "after": 17
+        "before": 17,
+        "after": 18
       }
     },
     {

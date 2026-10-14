@@ -1,9 +1,9 @@
 {
-  "date": "2026-10-14T03:48:35.162Z",
+  "date": "2026-10-14T06:52:19.479Z",
   "seed": 7,
   "sampleSize": 200000,
-  "sampleMs": 242,
-  "deriveMs": 428,
+  "sampleMs": 255,
+  "deriveMs": 386,
   "byClass": {
     "M": 174519,
     "K": 17671,
@@ -87,11 +87,11 @@
     "1": {
       "thin": {
         "n": 36870,
-        "meanAge": 0.265,
+        "meanAge": 0.271,
         "oldest": 0.75,
-        "obPct": 0.673,
-        "giantPct": 0.035,
-        "wdPct": 0.317
+        "obPct": 0.667,
+        "giantPct": 0.033,
+        "wdPct": 0.325
       },
       "thick": {
         "n": 12205,
@@ -121,11 +121,11 @@
     "5": {
       "thin": {
         "n": 36870,
-        "meanAge": 1.411,
+        "meanAge": 1.451,
         "oldest": 3.75,
-        "obPct": 0.269,
+        "obPct": 0.26,
         "giantPct": 0.071,
-        "wdPct": 0.971
+        "wdPct": 0.985
       },
       "thick": {
         "n": 12205,
@@ -398,12 +398,12 @@
       "detail": [
         {
           "age": 1,
-          "thin": 0.673,
+          "thin": 0.667,
           "bulge": 0.348
         },
         {
           "age": 5,
-          "thin": 0.269,
+          "thin": 0.26,
           "bulge": 0
         },
         {
@@ -463,7 +463,7 @@
       "name": "a young galaxy is a blue galaxy: the disc is hotter at 1 Gyr than at 13.5",
       "pass": true,
       "detail": {
-        "obAt1": 0.673,
+        "obAt1": 0.667,
         "obAt13_5": 0.179
       }
     },

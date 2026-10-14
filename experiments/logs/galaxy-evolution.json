@@ -1,0 +1,1404 @@
+{
+ "version": "0.6 E1 the epoch tier",
+ "laws": {
+  "E0": [
+   {
+    "age": 0.2,
+    "heat": 0.272375,
+    "armContrast": 1,
+    "spheroidProgress": 0.612953,
+    "assembly": 0.204001
+   },
+   {
+    "age": 0.5,
+    "heat": 0.352846,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 0.803674
+   },
+   {
+    "age": 1,
+    "heat": 0.472231,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 2,
+    "heat": 0.595496,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 3,
+    "heat": 0.670218,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 5,
+    "heat": 0.771249,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 8,
+    "heat": 0.873391,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 11,
+    "heat": 0.948667,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "E1": [
+   {
+    "age": 0.2,
+    "heat": 0.272375,
+    "armContrast": 1,
+    "spheroidProgress": 0.612953,
+    "assembly": 0.204001
+   },
+   {
+    "age": 0.5,
+    "heat": 0.352846,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 0.803674
+   },
+   {
+    "age": 1,
+    "heat": 0.472231,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 2,
+    "heat": 0.595496,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 3,
+    "heat": 0.670218,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 5,
+    "heat": 0.771249,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 8,
+    "heat": 0.873391,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 11,
+    "heat": 0.948667,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "E2": [
+   {
+    "age": 0.2,
+    "heat": 0.272375,
+    "armContrast": 1,
+    "spheroidProgress": 0.612953,
+    "assembly": 0.204001
+   },
+   {
+    "age": 0.5,
+    "heat": 0.352846,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 0.803674
+   },
+   {
+    "age": 1,
+    "heat": 0.472231,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 2,
+    "heat": 0.595496,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 3,
+    "heat": 0.670218,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 5,
+    "heat": 0.771249,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 8,
+    "heat": 0.873391,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 11,
+    "heat": 0.948667,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "E3": [
+   {
+    "age": 0.2,
+    "heat": 0.272375,
+    "armContrast": 1,
+    "spheroidProgress": 0.612953,
+    "assembly": 0.204001
+   },
+   {
+    "age": 0.5,
+    "heat": 0.352846,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 0.803674
+   },
+   {
+    "age": 1,
+    "heat": 0.472231,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 2,
+    "heat": 0.595496,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 3,
+    "heat": 0.670218,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 5,
+    "heat": 0.771249,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 8,
+    "heat": 0.873391,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 11,
+    "heat": 0.948667,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "E4": [
+   {
+    "age": 0.2,
+    "heat": 0.272375,
+    "armContrast": 1,
+    "spheroidProgress": 0.612953,
+    "assembly": 0.204001
+   },
+   {
+    "age": 0.5,
+    "heat": 0.352846,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 0.803674
+   },
+   {
+    "age": 1,
+    "heat": 0.472231,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 2,
+    "heat": 0.595496,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 3,
+    "heat": 0.670218,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 5,
+    "heat": 0.771249,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 8,
+    "heat": 0.873391,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 11,
+    "heat": 0.948667,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "E5": [
+   {
+    "age": 0.2,
+    "heat": 0.272375,
+    "armContrast": 1,
+    "spheroidProgress": 0.612953,
+    "assembly": 0.204001
+   },
+   {
+    "age": 0.5,
+    "heat": 0.352846,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 0.803674
+   },
+   {
+    "age": 1,
+    "heat": 0.472231,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 2,
+    "heat": 0.595496,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 3,
+    "heat": 0.670218,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 5,
+    "heat": 0.771249,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 8,
+    "heat": 0.873391,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 11,
+    "heat": 0.948667,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "E6": [
+   {
+    "age": 0.2,
+    "heat": 0.272375,
+    "armContrast": 1,
+    "spheroidProgress": 0.612953,
+    "assembly": 0.204001
+   },
+   {
+    "age": 0.5,
+    "heat": 0.352846,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 0.803674
+   },
+   {
+    "age": 1,
+    "heat": 0.472231,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 2,
+    "heat": 0.595496,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 3,
+    "heat": 0.670218,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 5,
+    "heat": 0.771249,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 8,
+    "heat": 0.873391,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 11,
+    "heat": 0.948667,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "E7": [
+   {
+    "age": 0.2,
+    "heat": 0.272375,
+    "armContrast": 1,
+    "spheroidProgress": 0.612953,
+    "assembly": 0.204001
+   },
+   {
+    "age": 0.5,
+    "heat": 0.352846,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 0.803674
+   },
+   {
+    "age": 1,
+    "heat": 0.472231,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 2,
+    "heat": 0.595496,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 3,
+    "heat": 0.670218,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 5,
+    "heat": 0.771249,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 8,
+    "heat": 0.873391,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 11,
+    "heat": 0.948667,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "S0": [
+   {
+    "age": 0.2,
+    "heat": 0.27176,
+    "armContrast": 2,
+    "spheroidProgress": 0.119073,
+    "assembly": 0.039629
+   },
+   {
+    "age": 0.5,
+    "heat": 0.345956,
+    "armContrast": 2,
+    "spheroidProgress": 0.612953,
+    "assembly": 0.204001
+   },
+   {
+    "age": 1,
+    "heat": 0.419742,
+    "armContrast": 2,
+    "spheroidProgress": 1,
+    "assembly": 0.597595
+   },
+   {
+    "age": 2,
+    "heat": 0.547507,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 3,
+    "heat": 0.641169,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 5,
+    "heat": 0.756366,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 8,
+    "heat": 0.866877,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 11,
+    "heat": 0.946374,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "Sa": [
+   {
+    "age": 0.2,
+    "heat": 0.30094,
+    "armContrast": 2,
+    "spheroidProgress": 0.003539,
+    "assembly": 0.002264
+   },
+   {
+    "age": 0.5,
+    "heat": 0.379986,
+    "armContrast": 2,
+    "spheroidProgress": 0.020705,
+    "assembly": 0.013247
+   },
+   {
+    "age": 1,
+    "heat": 0.455,
+    "armContrast": 2,
+    "spheroidProgress": 0.074286,
+    "assembly": 0.047529
+   },
+   {
+    "age": 2,
+    "heat": 0.548486,
+    "armContrast": 2,
+    "spheroidProgress": 0.24022,
+    "assembly": 0.153696
+   },
+   {
+    "age": 3,
+    "heat": 0.615118,
+    "armContrast": 2,
+    "spheroidProgress": 0.439875,
+    "assembly": 0.281437
+   },
+   {
+    "age": 5,
+    "heat": 0.716923,
+    "armContrast": 2,
+    "spheroidProgress": 0.82623,
+    "assembly": 0.528631
+   },
+   {
+    "age": 8,
+    "heat": 0.834673,
+    "armContrast": 1.83635,
+    "spheroidProgress": 1,
+    "assembly": 0.793723
+   },
+   {
+    "age": 11,
+    "heat": 0.930851,
+    "armContrast": 1.308703,
+    "spheroidProgress": 1,
+    "assembly": 0.938026
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "Sb": [
+   {
+    "age": 0.2,
+    "heat": 0.315652,
+    "armContrast": 2,
+    "spheroidProgress": 0.002272,
+    "assembly": 0.001037
+   },
+   {
+    "age": 0.5,
+    "heat": 0.397902,
+    "armContrast": 2,
+    "spheroidProgress": 0.013649,
+    "assembly": 0.006227
+   },
+   {
+    "age": 1,
+    "heat": 0.475153,
+    "armContrast": 2,
+    "spheroidProgress": 0.051119,
+    "assembly": 0.023322
+   },
+   {
+    "age": 2,
+    "heat": 0.569726,
+    "armContrast": 2,
+    "spheroidProgress": 0.179563,
+    "assembly": 0.081923
+   },
+   {
+    "age": 3,
+    "heat": 0.635663,
+    "armContrast": 2,
+    "spheroidProgress": 0.355618,
+    "assembly": 0.162245
+   },
+   {
+    "age": 5,
+    "heat": 0.733888,
+    "armContrast": 2,
+    "spheroidProgress": 0.77086,
+    "assembly": 0.351693
+   },
+   {
+    "age": 8,
+    "heat": 0.844579,
+    "armContrast": 1.756034,
+    "spheroidProgress": 1,
+    "assembly": 0.632296
+   },
+   {
+    "age": 11,
+    "heat": 0.934446,
+    "armContrast": 1.341186,
+    "spheroidProgress": 1,
+    "assembly": 0.859039
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "Sc": [
+   {
+    "age": 0.2,
+    "heat": 0.326648,
+    "armContrast": 1.825351,
+    "spheroidProgress": 0.001739,
+    "assembly": 0.000611
+   },
+   {
+    "age": 0.5,
+    "heat": 0.41138,
+    "armContrast": 1.823359,
+    "spheroidProgress": 0.010604,
+    "assembly": 0.003726
+   },
+   {
+    "age": 1,
+    "heat": 0.490487,
+    "armContrast": 1.816581,
+    "spheroidProgress": 0.040699,
+    "assembly": 0.0143
+   },
+   {
+    "age": 2,
+    "heat": 0.586316,
+    "armContrast": 1.791752,
+    "spheroidProgress": 0.149979,
+    "assembly": 0.052696
+   },
+   {
+    "age": 3,
+    "heat": 0.65221,
+    "armContrast": 1.754489,
+    "spheroidProgress": 0.31116,
+    "assembly": 0.109329
+   },
+   {
+    "age": 5,
+    "heat": 0.748639,
+    "armContrast": 1.652026,
+    "spheroidProgress": 0.736906,
+    "assembly": 0.258918
+   },
+   {
+    "age": 8,
+    "heat": 0.85468,
+    "armContrast": 1.451629,
+    "spheroidProgress": 1,
+    "assembly": 0.525474
+   },
+   {
+    "age": 11,
+    "heat": 0.939043,
+    "armContrast": 1.216382,
+    "spheroidProgress": 1,
+    "assembly": 0.794464
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "Sd": [
+   {
+    "age": 0.2,
+    "heat": 0.333572,
+    "armContrast": 1.49053,
+    "spheroidProgress": 0.001491,
+    "assembly": 0.000443
+   },
+   {
+    "age": 0.5,
+    "heat": 0.419881,
+    "armContrast": 1.489595,
+    "spheroidProgress": 0.009167,
+    "assembly": 0.002723
+   },
+   {
+    "age": 1,
+    "heat": 0.500192,
+    "armContrast": 1.486363,
+    "spheroidProgress": 0.035668,
+    "assembly": 0.010594
+   },
+   {
+    "age": 2,
+    "heat": 0.596891,
+    "armContrast": 1.474178,
+    "spheroidProgress": 0.135041,
+    "assembly": 0.040108
+   },
+   {
+    "age": 3,
+    "heat": 0.662848,
+    "armContrast": 1.455261,
+    "spheroidProgress": 0.287704,
+    "assembly": 0.085449
+   },
+   {
+    "age": 5,
+    "heat": 0.758317,
+    "armContrast": 1.400644,
+    "spheroidProgress": 0.717394,
+    "assembly": 0.21307
+   },
+   {
+    "age": 8,
+    "heat": 0.861575,
+    "armContrast": 1.28588,
+    "spheroidProgress": 1,
+    "assembly": 0.465329
+   },
+   {
+    "age": 11,
+    "heat": 0.942345,
+    "armContrast": 1.14082,
+    "spheroidProgress": 1,
+    "assembly": 0.753342
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "SB0": [
+   {
+    "age": 0.2,
+    "heat": 0.27176,
+    "armContrast": 2,
+    "spheroidProgress": 0.119073,
+    "assembly": 0.039629
+   },
+   {
+    "age": 0.5,
+    "heat": 0.345956,
+    "armContrast": 2,
+    "spheroidProgress": 0.612953,
+    "assembly": 0.204001
+   },
+   {
+    "age": 1,
+    "heat": 0.419742,
+    "armContrast": 2,
+    "spheroidProgress": 1,
+    "assembly": 0.597595
+   },
+   {
+    "age": 2,
+    "heat": 0.547507,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 3,
+    "heat": 0.641169,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 5,
+    "heat": 0.756366,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 8,
+    "heat": 0.866877,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 11,
+    "heat": 0.946374,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "SBa": [
+   {
+    "age": 0.2,
+    "heat": 0.30094,
+    "armContrast": 2,
+    "spheroidProgress": 0.003539,
+    "assembly": 0.002264
+   },
+   {
+    "age": 0.5,
+    "heat": 0.379986,
+    "armContrast": 2,
+    "spheroidProgress": 0.020705,
+    "assembly": 0.013247
+   },
+   {
+    "age": 1,
+    "heat": 0.455,
+    "armContrast": 2,
+    "spheroidProgress": 0.074286,
+    "assembly": 0.047529
+   },
+   {
+    "age": 2,
+    "heat": 0.548486,
+    "armContrast": 2,
+    "spheroidProgress": 0.24022,
+    "assembly": 0.153696
+   },
+   {
+    "age": 3,
+    "heat": 0.615118,
+    "armContrast": 2,
+    "spheroidProgress": 0.439875,
+    "assembly": 0.281437
+   },
+   {
+    "age": 5,
+    "heat": 0.716923,
+    "armContrast": 2,
+    "spheroidProgress": 0.82623,
+    "assembly": 0.528631
+   },
+   {
+    "age": 8,
+    "heat": 0.834673,
+    "armContrast": 1.83635,
+    "spheroidProgress": 1,
+    "assembly": 0.793723
+   },
+   {
+    "age": 11,
+    "heat": 0.930851,
+    "armContrast": 1.308703,
+    "spheroidProgress": 1,
+    "assembly": 0.938026
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "SBb": [
+   {
+    "age": 0.2,
+    "heat": 0.315652,
+    "armContrast": 2,
+    "spheroidProgress": 0.002272,
+    "assembly": 0.001037
+   },
+   {
+    "age": 0.5,
+    "heat": 0.397902,
+    "armContrast": 2,
+    "spheroidProgress": 0.013649,
+    "assembly": 0.006227
+   },
+   {
+    "age": 1,
+    "heat": 0.475153,
+    "armContrast": 2,
+    "spheroidProgress": 0.051119,
+    "assembly": 0.023322
+   },
+   {
+    "age": 2,
+    "heat": 0.569726,
+    "armContrast": 2,
+    "spheroidProgress": 0.179563,
+    "assembly": 0.081923
+   },
+   {
+    "age": 3,
+    "heat": 0.635663,
+    "armContrast": 2,
+    "spheroidProgress": 0.355618,
+    "assembly": 0.162245
+   },
+   {
+    "age": 5,
+    "heat": 0.733888,
+    "armContrast": 2,
+    "spheroidProgress": 0.77086,
+    "assembly": 0.351693
+   },
+   {
+    "age": 8,
+    "heat": 0.844579,
+    "armContrast": 1.756034,
+    "spheroidProgress": 1,
+    "assembly": 0.632296
+   },
+   {
+    "age": 11,
+    "heat": 0.934446,
+    "armContrast": 1.341186,
+    "spheroidProgress": 1,
+    "assembly": 0.859039
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "SBc": [
+   {
+    "age": 0.2,
+    "heat": 0.326648,
+    "armContrast": 1.825351,
+    "spheroidProgress": 0.001739,
+    "assembly": 0.000611
+   },
+   {
+    "age": 0.5,
+    "heat": 0.41138,
+    "armContrast": 1.823359,
+    "spheroidProgress": 0.010604,
+    "assembly": 0.003726
+   },
+   {
+    "age": 1,
+    "heat": 0.490487,
+    "armContrast": 1.816581,
+    "spheroidProgress": 0.040699,
+    "assembly": 0.0143
+   },
+   {
+    "age": 2,
+    "heat": 0.586316,
+    "armContrast": 1.791752,
+    "spheroidProgress": 0.149979,
+    "assembly": 0.052696
+   },
+   {
+    "age": 3,
+    "heat": 0.65221,
+    "armContrast": 1.754489,
+    "spheroidProgress": 0.31116,
+    "assembly": 0.109329
+   },
+   {
+    "age": 5,
+    "heat": 0.748639,
+    "armContrast": 1.652026,
+    "spheroidProgress": 0.736906,
+    "assembly": 0.258918
+   },
+   {
+    "age": 8,
+    "heat": 0.85468,
+    "armContrast": 1.451629,
+    "spheroidProgress": 1,
+    "assembly": 0.525474
+   },
+   {
+    "age": 11,
+    "heat": 0.939043,
+    "armContrast": 1.216382,
+    "spheroidProgress": 1,
+    "assembly": 0.794464
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "SBd": [
+   {
+    "age": 0.2,
+    "heat": 0.333572,
+    "armContrast": 1.49053,
+    "spheroidProgress": 0.001491,
+    "assembly": 0.000443
+   },
+   {
+    "age": 0.5,
+    "heat": 0.419881,
+    "armContrast": 1.489595,
+    "spheroidProgress": 0.009167,
+    "assembly": 0.002723
+   },
+   {
+    "age": 1,
+    "heat": 0.500192,
+    "armContrast": 1.486363,
+    "spheroidProgress": 0.035668,
+    "assembly": 0.010594
+   },
+   {
+    "age": 2,
+    "heat": 0.596891,
+    "armContrast": 1.474178,
+    "spheroidProgress": 0.135041,
+    "assembly": 0.040108
+   },
+   {
+    "age": 3,
+    "heat": 0.662848,
+    "armContrast": 1.455261,
+    "spheroidProgress": 0.287704,
+    "assembly": 0.085449
+   },
+   {
+    "age": 5,
+    "heat": 0.758317,
+    "armContrast": 1.400644,
+    "spheroidProgress": 0.717394,
+    "assembly": 0.21307
+   },
+   {
+    "age": 8,
+    "heat": 0.861575,
+    "armContrast": 1.28588,
+    "spheroidProgress": 1,
+    "assembly": 0.465329
+   },
+   {
+    "age": 11,
+    "heat": 0.942345,
+    "armContrast": 1.14082,
+    "spheroidProgress": 1,
+    "assembly": 0.753342
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ],
+  "Irr": [
+   {
+    "age": 0.2,
+    "heat": 0.336489,
+    "armContrast": 1.414077,
+    "spheroidProgress": 0.001401,
+    "assembly": 0.000387
+   },
+   {
+    "age": 0.5,
+    "heat": 0.423465,
+    "armContrast": 1.413369,
+    "spheroidProgress": 0.008639,
+    "assembly": 0.002388
+   },
+   {
+    "age": 1,
+    "heat": 0.504287,
+    "armContrast": 1.410906,
+    "spheroidProgress": 0.033799,
+    "assembly": 0.009344
+   },
+   {
+    "age": 2,
+    "heat": 0.601363,
+    "armContrast": 1.401512,
+    "spheroidProgress": 0.129368,
+    "assembly": 0.035764
+   },
+   {
+    "age": 3,
+    "heat": 0.667358,
+    "armContrast": 1.386716,
+    "spheroidProgress": 0.278597,
+    "assembly": 0.077019
+   },
+   {
+    "age": 5,
+    "heat": 0.762445,
+    "armContrast": 1.343079,
+    "spheroidProgress": 0.709485,
+    "assembly": 0.196138
+   },
+   {
+    "age": 8,
+    "heat": 0.864549,
+    "armContrast": 1.248352,
+    "spheroidProgress": 1,
+    "assembly": 0.441618
+   },
+   {
+    "age": 11,
+    "heat": 0.943791,
+    "armContrast": 1.124243,
+    "spheroidProgress": 1,
+    "assembly": 0.736078
+   },
+   {
+    "age": 13.5,
+    "heat": 1,
+    "armContrast": 1,
+    "spheroidProgress": 1,
+    "assembly": 1
+   }
+  ]
+ },
+ "field": {
+  "SBb": {
+   "ref": {
+    "cos": 0.0979773716644668,
+    "halfAmp": 0.1,
+    "bulgeShare": 0.1829,
+    "bulgeDelivered": 0.18271246491328938
+   },
+   "young": {
+    "cos": 0.19916996193752107,
+    "halfAmp": 0.2,
+    "bulgeShare": 0.11050666666666667,
+    "bulgeDelivered": 0.10996752536466946
+   },
+   "armContrast": 2
+  },
+  "Sc": {
+   "ref": {
+    "cos": 0.1241206928893509,
+    "halfAmp": 0.125,
+    "bulgeShare": 0.04956,
+    "bulgeDelivered": 0.05000284574192669
+   },
+   "young": {
+    "cos": 0.2232445724270821,
+    "halfAmp": 0.22396899782225538,
+    "bulgeShare": 0.022126666666666666,
+    "bulgeDelivered": 0.0224118110616577
+   },
+   "armContrast": 1.791751982578043
+  },
+  "Sa": {
+   "ref": {
+    "cos": 0.07278693821483823,
+    "halfAmp": 0.075,
+    "bulgeShare": 0.2871533333333333,
+    "bulgeDelivered": 0.28684678012570275
+   },
+   "young": {
+    "cos": 0.14860264053503022,
+    "halfAmp": 0.15,
+    "bulgeShare": 0.24294333333333334,
+    "bulgeDelivered": 0.24287363180817667
+   },
+   "armContrast": 2
+  }
+ },
+ "ageRange": [
+  0.2,
+  13.5
+ ],
+ "ageRef": 13.5,
+ "heatExp": 0.25,
+ "armContrastMax": 2,
+ "formationWindow": [
+  0.25,
+  1,
+  0.1,
+  0.65,
+  0,
+  0.45,
+  0,
+  0.25
+ ],
+ "types": 19,
+ "totalChecks": 18,
+ "passed": 18,
+ "failed": 0,
+ "checks": [
+  {
+   "name": "a model re-derived at the reference epoch packs to the same bytes as a fresh build",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "every epoch factor is exactly 1 at the reference epoch, every type",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "the population clock is exactly the reference clock at the reference epoch",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "a young model re-derived back to the reference epoch lands on the fresh build",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "every epoch factor is monotone in age, for every type",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "heat ≤ 1, 1 ≤ armContrast ≤ ARM_CONTRAST_MAX, 0 < spheroidProgress ≤ 1",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "the thick:thin height ratio is preserved at every epoch, every type",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "every factor is exactly 1 at the reference epoch, at the top of the table",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "the geometry key moves only inside the four amplitudes the tier owns",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "the assembling spheroid always moves, and the disc heights move with it wherever a disc exists",
+   "pass": true,
+   "detail": {
+    "heated": 11
+   }
+  },
+  {
+   "name": "a model with no disc keeps its own heights: the starburst lane does not thin",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "no length, angle, profile exponent, pattern speed or disc amplitude moves",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "the two disc dispersions scale by one heat factor below 1, wherever a disc exists",
+   "pass": true,
+   "detail": {
+    "types": 11
+   }
+  },
+  {
+   "name": "the sampled arms carry exactly the contrast the parameter names",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "the young field's arm contrast is the tier's armContrast, measured on stars",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "the sampled bulge share is the mass the sampler was told to deliver",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "the disc and the halo keep their present mass at every epoch",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "the spheroid moves before its window closes and is its reference self after",
+   "pass": true,
+   "detail": null
+  }
+ ]
+}

@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-14T03:47:55.309Z",
+  "date": "2026-10-14T06:51:39.826Z",
   "types": [
     "E0",
     "E1",
@@ -3853,7 +3853,7 @@
       ]
     },
     {
-      "name": "sameGeometry holds across an age change and breaks on anything that moves stars",
+      "name": "sameGeometry holds exactly when the field holds: the epoch is structure",
       "pass": true,
       "detail": []
     },

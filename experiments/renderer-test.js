@@ -580,12 +580,15 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 }
 
 
-// --- Galaxy age: the property-only regenerate -----------------------------
+// --- Galaxy age: the epoch is geometry ------------------------------------
 // 0.3.3 made the age a generation parameter, and the age slider regenerates
-// live. Positions are age-independent, so a regenerate that only moves the
-// population keeps the sampled field and rewrites the records: the same stars,
-// at another epoch. What must still change is the sky, and what must not change
-// is anything the viewer is looking at — the landmarks, the catalog, the buffer.
+// live. 0.6's epoch tier moved the disc the field is drawn from, so an age
+// change is a re-sample: another draw of the same galaxy, colder and with more
+// contrasted arms. What must survive is the identity — a key is
+// `fieldStarSeed(seed, slot)`, which does not read the age — and everything the
+// viewer is looking at that is not the field: the landmarks, the catalog, the
+// buffer. This is the contract main.js's `resolveSet` resolves the selection
+// against (plan E1b).
 {
         const fixedWrites = () => gpu.bufferWrites.filter(w => w.buffer.label === 'star-storage' && w.offset === 0);
         const asView = (write) => new DataView(write.bytes.buffer, write.bytes.byteOffset, write.bytes.byteLength);
@@ -606,20 +609,31 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 
         const aged = renderer.regenerate(galaxy.modelAtAge(model, 0.5));
         const agedView = asView(fixedWrites().pop());
-        check('an age-only regenerate rewrites the fixed block without re-drawing the field',
-                fixedWrites().length === writesBefore + 1 && aged.fieldSamples === refSamples
+        check('an age change re-draws the field for the new epoch',
+                fixedWrites().length === writesBefore + 1 && aged.fieldSamples === refSamples + 1
                 && aged.proceduralStars === PROCEDURAL && aged.galaxyAge === 0.5,
                 { newWrites: fixedWrites().length - writesBefore, fieldSamples: aged.fieldSamples, age: aged.galaxyAge });
-        let samePosition = true;
+        // The keys are the invariant `resolveSet` resolves by: `fieldStarSeed`
+        // reads the seed and the draw index, never the age, so a re-sample keeps
+        // every key valid and a member resolves to whatever star now sits in its
+        // slot. The record in that slot is a different star of a different field.
+        const identity = renderer.starBlocks().identity;
+        let keyBreak = -1;
+        for (let i = 0; i < 500 && keyBreak < 0; i++) {
+                if ((identity[i] >>> 0) !== (window.StarTypesLib.fieldStarSeed(model.seed, i) >>> 0)) keyBreak = i;
+        }
+        check('the identity keys survive the re-sample: a key is a slot, not a position',
+                keyBreak < 0, { firstBreak: keyBreak });
+        let movedPosition = 0;
         let movedStar = 0;
         for (let i = 0; i < 500; i++) {
                 const a = records.readRecord(refView, i * records.RECORD_BYTES);
                 const b = records.readRecord(agedView, i * records.RECORD_BYTES);
-                if (a.x !== b.x || a.y !== b.y || a.z !== b.z) { samePosition = false; break; }
+                if (a.x !== b.x || a.y !== b.y || a.z !== b.z) movedPosition++;
                 if (a.packed !== b.packed) movedStar++;
         }
-        check('the same stars stay where they were and change what they are',
-                samePosition && movedStar > 400, { samePosition, movedStar });
+        check('a resolved key follows the new field: another position, another star',
+                movedPosition > 400 && movedStar > 400, { movedPosition, movedStar });
         let landmarkKept = true;
         for (let i = 0; i < window.Landmarks.count; i++) {
                 const a = records.readRecord(refView, landmarkByte + i * records.RECORD_BYTES);
@@ -630,26 +644,42 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 landmarkKept && aged.landmarkStars === window.Landmarks.count
                 && aged.catalogTotalStars === manifest.starCount && aged.bufferBytes === renderer.state.bufferBytes,
                 { landmarks: aged.landmarkStars, catalog: aged.catalogTotalStars });
-        // -0.84 mag here (was past -1): the young Milky Way is still the
-        // dimmer field — its turnoff giants have not arrived yet — but the
-        // gap shrank with the permanent-giant tail, from 11× to ~2.2× in
-        // luminosity. The offset brightens it back either way.
+        // -1.7 mag here (0.3.3 read -0.84, before the epoch tier): the young
+        // Milky Way is the dimmer field twice over — its turnoff giants have not
+        // arrived, and the same lane height that is mid-disc at the reference
+        // epoch is high above a cold young disc, so the heating floor ages those
+        // stars. The reference read is the counterfactual (this field at 13.5
+        // Gyr, thicker lane), so the gap is large; the offset brightens the
+        // displayed field back either way.
         check('a young galaxy is a dimmer one, so the offset brightens it back',
                 aged.magOffset < -0.5 && meanMag(agedView, 2000) < refMean - 0.5,
                 { offset: +aged.magOffset.toFixed(3), meanMagYoung: +meanMag(agedView, 2000).toFixed(3), meanMagRef: +refMean.toFixed(3) });
 
+        // The reuse path is a property of the packed geometry, not a shortcut
+        // taken whenever the model object changes: a model that differs only in
+        // its population — a gas override at the reference epoch, which the epoch
+        // tier leaves at exactly 1 — keeps the sampled field and rewrites records.
+        const richer = Object.assign({}, model, {
+                populations: Object.assign({}, model.populations, { gasFraction: 0.4 }),
+        });
+        galaxy.solvePopulationClock(richer);
+        const reused = renderer.regenerate(richer);
+        check('a model that differs only in its population keeps the sampled field',
+                reused.fieldSamples === refSamples + 2 && reused.proceduralStars === PROCEDURAL
+                && reused.galaxyAge === galaxy.AGE_REF,
+                { fieldSamples: reused.fieldSamples, objects: reused.objectCount });
+
         // The complementary direction: a new type is a new galaxy, so the field
-        // is drawn again — the reuse is a property of the geometry, not a shortcut
-        // taken whenever the model object changes.
+        // is drawn again even at the same age.
         const other = renderer.regenerate(galaxy.createGalaxy({ type: 'Sc', seed: 7, age: 0.5 }));
         check('another type re-draws the field even at the same age',
-                other.fieldSamples === refSamples + 1 && other.galaxyType === 'Sc' && other.galaxyAge === 0.5,
+                other.fieldSamples === refSamples + 3 && other.galaxyType === 'Sc' && other.galaxyAge === 0.5,
                 { fieldSamples: other.fieldSamples, type: other.galaxyType });
         renderer.regenerate(model);
         renderer.render(camera, WIDTH, HEIGHT, 5 / 60, input);
         check('coming back to the preset at the reference age lands on the boot sky',
                 renderer.state.magOffset === 0 && renderer.state.mode === 'hybrid'
-                && renderer.state.fieldSamples === refSamples + 2,
+                && renderer.state.fieldSamples === refSamples + 4,
                 { offset: renderer.state.magOffset, fieldSamples: renderer.state.fieldSamples });
 }
 

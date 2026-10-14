@@ -902,9 +902,9 @@ function createStarRenderer(device, context, format, options) {
                 writeLandmarks();
                 rebuildPopulation();
                 // Fresh positions mean a fresh simple epoch for the fixed
-                // block; uploadDynamic seeds the streaming range below it.
-                // (An age-only regenerate skips prepare, so its integrated
-                // thetas survive — positions don't move under an age change.)
+                // block; uploadDynamic seeds the streaming range below it. Any
+                // caller that reaches prepare re-seeds, which is the point: the
+                // thetas are a function of the birth positions it just drew.
                 const fixedRecords = proceduralCount + landmarkCount + objectCapacity;
                 seedThetaRange(0, fixedRecords);
                 uploadThetaRange(0, fixedRecords);
@@ -934,12 +934,12 @@ function createStarRenderer(device, context, format, options) {
         // Rebuild the field for another galaxy. Deliberate and synchronous (the
         // same cost as the startup build), so it re-allocates rather than growing
         // a second path that patches buffers in place — with one exception. A
-        // model that differs only in its population (the age slider) lands on the
-        // same stars: positions are age-independent in 0.3, so re-sampling them
-        // would cost 0.32 s at 300k to produce the bytes already in staging and
-        // move nothing. That path keeps the field and rewrites the records
-        // (~0.27 s, measured), and it is decided by the packed geometry rather
-        // than by the type name, so an override cannot sneak past it.
+        // model that differs only in its population lands on the same stars, so
+        // the field is kept and the records are rewritten (~0.27 s, measured)
+        // instead of re-sampling bytes that would come back identical. That is
+        // decided by the packed geometry rather than by the type name, so an
+        // override cannot sneak past it. Nothing 0.6 releases needs the reusable
+        // path: the epoch tier is packed geometry, so the age slider re-samples.
         function regenerate(nextModel) {
                 const previous = model;
                 // The seed is compared whole: the uniform carries only its low 16

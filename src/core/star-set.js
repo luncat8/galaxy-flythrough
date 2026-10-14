@@ -15,17 +15,21 @@
 //   * capacity overflow drops the farthest member from the camera — except the
 //     primary, which is never evicted (a click cannot silently lose the star the
 //     readout is describing) — and counts the drop in `dropped`;
-//   * a model change clears the set; an *age* change does not, it re-derives the
-//     stellar fields from the keys in place (see `refreshStellar`).
+//   * a model change clears the set; an *age* change does not. 0.6's epoch tier
+//     re-draws the field under it, so the caller re-resolves every member by key
+//     against the new identity array — slot, position, colour, magnitude and the
+//     five stellar inputs — and a key that is no longer resident keeps its
+//     readout line and loses its ring (main.js `resolveSet`).
 //
 // A "pick" is one shape everywhere (selection.pickAny's `out`, a row of
 // selection.selectAround's SoA): `{ key, kind, index, x, y, z, colorIndex,
 // absMag }`, with `kind` the block index (0 = field … 4 = catalog).
 //
 // `bufferIdx` is the one slot-dependent field and it is only for drawing the
-// sky ring: it is filled on insert when the caller can compute it, and
-// refreshed by key whenever the blocks are rebuilt (label-layer's key→slot map,
-// plan §3.5).
+// sky ring: it is filled on insert when the caller can compute it, and written
+// again by the caller's key resolution whenever the blocks are rebuilt — by the
+// label layer's key→slot map for the ring, and by main.js's `resolveSet` after a
+// re-sample (plan §3.5, 0.6 E1b).
 
 'use strict';
 
@@ -33,7 +37,7 @@ const CAPACITY = 256;
 
 function createStarSet() {
 	// Struct-of-arrays, allocated once and mutated in place. Nothing below
-	// allocates: `insert` copies scalars, `refreshSlots` reads a caller map.
+	// allocates: every entry point copies scalars.
 	const keys = new Uint32Array(CAPACITY);
 	const blockKind = new Uint8Array(CAPACITY);
 	const bufferIdx = new Int32Array(CAPACITY);
@@ -59,7 +63,7 @@ function createStarSet() {
 		primary: -1,       // index into the arrays, or −1
 		dropped: 0,        // overflow drops since the last clear(), for the readout
 		clear, hasKey, indexOfKey, insert, addFromPick, setSingle, toggle,
-		cyclePrimary, removeAt, setPrimary, updateStellar, refreshStellar, refreshSlots,
+		cyclePrimary, removeAt, setPrimary, updateStellar,
 		distance2, setBufferIdx,
 	};
 	return set;
@@ -203,19 +207,6 @@ function createStarSet() {
 		if (set.primary > i) set.primary--;
 	}
 
-	// An age change moves nothing but re-rolls every star's evolutionary state:
-	// the caller re-derives each member from its key and writes the fields back.
-	// The loop itself stays here so the caller cannot walk the set inconsistently.
-	function refreshStellar(deriveInto) {
-		for (let i = 0; i < set.count; i++) deriveInto(i);
-	}
-
-	// After a block rebuild, re-resolve every member's sky slot by key through
-	// the label layer's map (or any caller-supplied lookup). `lookup` returns a
-	// global slot or −1; no map entry means "not resident", not "not selected".
-	function refreshSlots(lookup) {
-		for (let i = 0; i < set.count; i++) bufferIdx[i] = lookup(keys[i]) | 0;
-	}
 }
 
 const StarSet = { createStarSet, CAPACITY };

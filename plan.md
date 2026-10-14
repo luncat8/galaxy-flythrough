@@ -1222,6 +1222,18 @@ Shipped, in `archive/`:
   the departure burn leaves from. Tests: `route-test.js` (L5 exit pins),
   `system-layer-test.js` (ladder, rail rows, ship on a local leg).
 
+- [`evolution-plan.md`](evolution-plan.md) — the 0.6 series, galaxy evolution over time:
+  the type table describes present-day galaxies, so `modelAtAge` gains an **epoch tier**
+  that re-solves what the galaxy *is* at an earlier epoch beside what its stars are —
+  **E1 shipped** (spheroid assembly, disc heat, arm contrast, each factor exactly 1 at
+  `AGE_REF` so no pin describing today's galaxies moved) together with the runtime
+  coupling it forced (**E1b**: an age change is a geometry change, so the renderer
+  re-samples the field, `main.js` re-seeds the simple mirror and re-resolves the
+  selection set by key). Later milestones in the same file: E2 live evolution on the
+  star-time axis, E3 morphology (sizes and the bar's length), E4 events, E5 chemical
+  evolution (optional). Tests: `experiments/galaxy-evolution-test.js` (18 checks) plus
+  the re-stated age pins in `galaxy-age`, `renderer`, `galaxy-types` and `m1-smoke`.
+
 Implement from those files plus this one; the per-release plans reference their own
 tests and extend the file layout of §11 as needed.
 
