@@ -81,9 +81,54 @@ const placed = clusters.placeStarClusters(model, SEED, undefined, null);
 		&& mean(old, c => c.concentration) > mean(young, c => c.concentration),
 		{ oldScalePc: +(mean(old, c => c.scale) * 1000).toFixed(2), youngScalePc: +(mean(young, c => c.scale) * 1000).toFixed(2),
 			oldConc: +mean(old, c => c.concentration).toFixed(2), youngConc: +mean(young, c => c.concentration).toFixed(2) });
-	check('one galaxy hosts the whole continuum (disc and spheroid components both occur)',
-		placed.some(c => c.component === 0) && placed.some(c => c.component === 2),
+	check('one galaxy hosts the whole continuum (halo, bulge, thick and thin disc components all occur)',
+		placed.some(c => c.component === 0) && placed.some(c => c.component === 1)
+		&& placed.some(c => c.component === 2) && placed.some(c => c.component === 3),
 		clusters.summariseClusters(placed).byComponent);
+}
+
+// --- Population split: ~75% halo / ~25% disk+bulge across types and ages --
+{
+	const mwWeights = clusters.clusterComponentWeights(model);
+	check('reference Milky Way cluster weights are 75% halo to 25% disk/bulge',
+		Math.abs(mwWeights.haloFraction - 0.75) < 1e-12
+		&& Math.abs(mwWeights.diskBulgeFraction - 0.25) < 1e-12,
+		mwWeights);
+	const haloPlaced = placed.filter(c => c.component === 3).length / placed.length;
+	const diskBulgePlaced = placed.filter(c => c.component !== 3).length / placed.length;
+	check('placed Milky Way clusters realize the ~75% halo / ~25% disk+bulge split (within ±5%)',
+		Math.abs(haloPlaced - 0.75) <= 0.05 && Math.abs(diskBulgePlaced - 0.25) <= 0.05,
+		{ haloPlaced: +haloPlaced.toFixed(3), diskBulgePlaced: +diskBulgePlaced.toFixed(3) });
+
+	const spiralTypes = ['S0', 'Sa', 'Sb', 'SBb', 'Sc', 'Sd'];
+	const spiralWeights = spiralTypes.map(type => ({
+		type,
+		w: clusters.clusterComponentWeights(type === 'SBb' ? model : galaxy.createGalaxy({ type, seed: SEED })),
+	}));
+	const meanSpiralHalo = mean(spiralWeights, x => x.w.haloFraction);
+	const s0W = spiralWeights.find(x => x.type === 'S0').w;
+	const sdW = spiralWeights.find(x => x.type === 'Sd').w;
+	check('average disk galaxies cluster around ~70-75% halo / ~25-30% disk+bulge',
+		meanSpiralHalo >= 0.68 && meanSpiralHalo <= 0.78
+		&& spiralWeights.every(x => x.w.haloFraction >= 0.60 && x.w.haloFraction <= 0.80),
+		{ meanSpiralHalo: +meanSpiralHalo.toFixed(3), byType: Object.fromEntries(spiralWeights.map(x => [x.type, +x.w.haloFraction.toFixed(3)])) });
+	check('morphology shifts the in-situ 25-35% share: S0 is bulge-heavy while gas-rich Sd is thin-disc-heavy',
+		s0W.bulge > sdW.bulge && sdW.thin > s0W.thin && s0W.thin === 0,
+		{ S0: { bulge: +s0W.bulge.toFixed(3), thin: +s0W.thin.toFixed(3) }, Sd: { bulge: +sdW.bulge.toFixed(3), thin: +sdW.thin.toFixed(3) } });
+
+	const ageGrid = [0.5, 2, 5, 8, 13.5];
+	const ageWeights = ageGrid.map(age => ({
+		age,
+		w: clusters.clusterComponentWeights(galaxy.createGalaxy({ type: 'SBb', age, seed: SEED })),
+	}));
+	let monoHalo = true;
+	for (let i = 1; i < ageWeights.length; i++) {
+		if (!(ageWeights[i].w.haloFraction > ageWeights[i - 1].w.haloFraction)) monoHalo = false;
+	}
+	check('halo cluster fraction rises monotonically with galaxy age as gas is consumed and disc clusters dissolve (to 75% at 13.5 Gyr)',
+		monoHalo && ageWeights[0].w.haloFraction < 0.50
+		&& Math.abs(ageWeights[ageWeights.length - 1].w.haloFraction - 0.75) < 1e-12,
+		Object.fromEntries(ageWeights.map(x => [x.age + 'Gyr', +x.w.haloFraction.toFixed(3)])));
 }
 
 // --- Count follows the galaxy ---------------------------------------------
@@ -227,39 +272,70 @@ const placed = clusters.placeStarClusters(model, SEED, undefined, null);
 		{ oldClasses, written: oldWritten, frac: +(oldClasses / oldWritten).toFixed(4) });
 }
 
-// --- Proper motion ----------------------------------------------------------
+// --- Proper motion & orbital kinematics -----------------------------------
 {
 	const cap = 20000;
 	const buf = new ArrayBuffer(cap * records.RECORD_BYTES);
 	const dv = new DataView(buf);
-	clusters.writeClusterMembers(model, placed, dv, 0, cap, 0, null, 0, null);
+	const written = clusters.writeClusterMembers(model, placed, dv, 0, cap, 0, null, 0, null).written;
 	const quotas = objects.objectQuotas(placed, cap, new Uint32Array(placed.length), true);
 	let slot = 0;
 	let uniform = true;
+	let exactCentres = true;
 	for (let j = 0; j < placed.length; j++) {
 		if (quotas[j] === 0) continue;
+		const c = placed[j];
 		const first = records.readRecord(dv, slot * records.RECORD_BYTES);
-		for (let i = 1; i < quotas[j]; i++) {
+		if ((first.flags & records.FLAG_CLUSTER) === 0) uniform = false;
+		for (let i = 0; i < quotas[j]; i++) {
 			const r = records.readRecord(dv, (slot + i) * records.RECORD_BYTES);
 			if (r.jitter !== first.jitter || r.flags !== first.flags) uniform = false;
+			const cx = orbit.clusterCentreCoord(r.x);
+			const cy = orbit.clusterCentreCoord(r.y);
+			const cz = orbit.clusterCentreCoord(r.z);
+			if (cx !== c.x || cy !== c.y || cz !== c.z) exactCentres = false;
 		}
 		slot += quotas[j];
 	}
-	check('every member of a cluster carries the cluster family and the cluster jitter byte', uniform);
+	check('every member of a cluster carries FLAG_CLUSTER, the cluster family, and the cluster jitter byte', uniform);
+	check('every member record recovers the exact bit-identical cluster centre from its f32 coordinates alone',
+		written > 0 && exactCentres, { written, exactCentres });
 
-	// The counterfactual the fix answers: the same birth positions with a
-	// per-member jitter boil apart at the wobble amplitude; with the
-	// shared byte the system stays inside its own size for tens of Myr.
+	// Rigid single-object motion vs the old per-member differential shear:
+	// with FLAG_CLUSTER and the packed centre residue, all members of a
+	// cluster move by the cluster centre's displacement and never stretch
+	// into a curved arc, even after 2 000 Myr (multiple galactic orbits).
 	const out = new Float64Array(3);
+	const cPos = new Float64Array(3);
 	const off = new Float64Array(3);
-	const spread = (cluster, T, shared) => {
+	const spreadRigid = (cluster, T) => {
+		const fam = clusters.clusterFamily(model, cluster);
+		const j = clusters.clusterJitter(cluster);
+		const packed = records.packPacked(4, 4.83,
+			orbit.flagsWithFamily(records.FLAG_VISIBLE | records.FLAG_CLUSTER, fam), j);
+		orbit.orbitPosition(cPos, cluster.x, cluster.y, cluster.z, fam, j & 15, j >>> 4, T, model);
+		let maxRadius = 0;
+		let maxDrift = 0;
+		for (let i = 0; i < 40; i++) {
+			clusters.sampleClusterMemberOffset(cluster, i, off);
+			const mx = orbit.packClusterCoord(cluster.x, off[0]);
+			const my = orbit.packClusterCoord(cluster.y, off[1]);
+			const mz = orbit.packClusterCoord(cluster.z, off[2]);
+			orbit.engineRecordPosition(out, mx, my, mz, packed, T, model);
+			const dx = out[0] - cPos[0], dy = out[1] - cPos[1], dz = out[2] - cPos[2];
+			maxRadius = Math.max(maxRadius, Math.hypot(dx, dy, dz));
+			maxDrift = Math.max(maxDrift, Math.hypot(dx - (mx - cluster.x), dy - (my - cluster.y), dz - (mz - cluster.z)));
+		}
+		return { ratio: maxRadius / cluster.tidal, drift: maxDrift };
+	};
+	const spreadUnanchored = (cluster, T, sharedJitter) => {
 		const fam = clusters.clusterFamily(model, cluster);
 		const pts = [];
 		let cx = 0, cy = 0, cz = 0;
 		for (let i = 0; i < 40; i++) {
 			clusters.sampleClusterMemberOffset(cluster, i, off);
 			const ms = clusters.clusterMemberSeed(cluster.seed | 0, i);
-			const j = shared ? clusters.clusterJitter(cluster) : (hash.pcgHash(ms ^ 0xFACE) & 0xFF);
+			const j = sharedJitter ? clusters.clusterJitter(cluster) : (hash.pcgHash(ms ^ 0xFACE) & 0xFF);
 			orbit.orbitPosition(out, cluster.x + off[0], cluster.y + off[1], cluster.z + off[2],
 				fam, j & 15, j >>> 4, T, model);
 			pts.push([out[0], out[1], out[2]]);
@@ -270,14 +346,53 @@ const placed = clusters.placeStarClusters(model, SEED, undefined, null);
 		for (const p of pts) md = Math.max(md, Math.hypot(p[0] - cx, p[1] - cy, p[2] - cz));
 		return md / cluster.tidal;
 	};
-	const shared50 = sorted(placed.map(c => spread(c, 50, true)));
-	const random50 = sorted(placed.map(c => spread(c, 50, false)));
 	const med = (a) => a[Math.floor(a.length / 2)];
-	check('after 50 Myr the median cluster is still inside ~2 tidal radii (it moves as one system)',
-		med(shared50) < 2, +med(shared50).toFixed(2));
-	check('the shared byte is what holds it together (per-member jitter boils it >5x wider)',
-		med(random50) > 5 * med(shared50),
-		{ shared: +med(shared50).toFixed(2), perMember: +med(random50).toFixed(2) });
+	const rigid50 = placed.map(c => spreadRigid(c, 50));
+	const rigid2000 = placed.map(c => spreadRigid(c, 2000));
+	const random50 = sorted(placed.map(c => spreadUnanchored(c, 50, false)));
+	const sheared2000 = sorted(placed.map(c => spreadUnanchored(c, 2000, true)));
+	check('after 50 Myr and 2000 Myr every cluster stays inside 1 tidal radius (moves as one rigid object, never a curved line)',
+		rigid50.every(r => r.ratio <= 1.001 && r.drift < 1e-6)
+		&& rigid2000.every(r => r.ratio <= 1.001 && r.drift < 1e-6),
+		{ maxRatio50: +Math.max(...rigid50.map(r => r.ratio)).toFixed(4),
+			maxRatio2000: +Math.max(...rigid2000.map(r => r.ratio)).toFixed(4),
+			maxDriftKpc: Math.max(...rigid2000.map(r => r.drift)) });
+	check('without rigid centre anchoring, differential rotation shears clusters >10x wider into arcs over 2000 Myr',
+		med(sheared2000) > 10 * med(rigid2000.map(r => r.ratio)) && med(random50) > 5 * med(rigid50.map(r => r.ratio)),
+		{ rigidMed2000: +med(rigid2000.map(r => r.ratio)).toFixed(2), shearedMed2000: +med(sheared2000).toFixed(2) });
+
+	// Orbital directions:
+	//   - Disk and bulge clusters follow broadly prograde orbits aligned with
+	//     the Galactic disk (Lz = pl.nz > 0.98).
+	//   - Halo clusters distribute orbital directions broadly in 3-D (both
+	//     prograde and retrograde, plus polar/high-inclination orbits) with no
+	//     single dominant rotation axis.
+	const diskBulgeClusters = placed.filter(c => c.component !== 3);
+	const haloClusters = placed.filter(c => c.component === 3);
+	const planeFor = (c) => {
+		const fam = clusters.clusterFamily(model, c);
+		const j = clusters.clusterJitter(c);
+		return orbit.orbitPlane(c.x - model.centre.x, c.y - model.centre.y, c.z - model.centre.z,
+			fam, j & 15, j >>> 4, {});
+	};
+	const dbPlanes = diskBulgeClusters.map(planeFor);
+	const haloPlanes = haloClusters.map(planeFor);
+	const haloPrograde = haloPlanes.filter(p => p.nz > 0).length / Math.max(1, haloPlanes.length);
+	const haloRetrograde = haloPlanes.filter(p => p.nz < 0).length / Math.max(1, haloPlanes.length);
+	const haloPolar = haloPlanes.filter(p => Math.abs(p.nz) < 0.5).length / Math.max(1, haloPlanes.length);
+	const meanLx = mean(haloPlanes, p => p.nx);
+	const meanLy = mean(haloPlanes, p => p.ny);
+	const meanLz = mean(haloPlanes, p => p.nz);
+	const netHaloSpin = Math.hypot(meanLx, meanLy, meanLz);
+	check('disk and bulge clusters follow broadly prograde orbits aligned with the Galactic disk',
+		dbPlanes.length > 20 && dbPlanes.every(p => p.nz > 0.98),
+		{ count: dbPlanes.length, minNz: +Math.min(...dbPlanes.map(p => p.nz)).toFixed(4) });
+	check('halo clusters distribute orbital directions broadly (prograde, retrograde and polar) with no single dominant rotation',
+		haloPlanes.length > 80
+		&& haloPrograde >= 0.35 && haloRetrograde >= 0.35 && haloPolar >= 0.35
+		&& netHaloSpin < 0.20,
+		{ count: haloPlanes.length, prograde: +haloPrograde.toFixed(3), retrograde: +haloRetrograde.toFixed(3),
+			polar: +haloPolar.toFixed(3), netSpin: +netHaloSpin.toFixed(3) });
 }
 
 // --- Determinism -------------------------------------------------------------

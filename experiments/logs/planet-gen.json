@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-15T00:46:35.647Z",
+  "date": "2026-10-15T02:20:18.227Z",
   "model": {
     "type": "SBb",
     "seed": 12345
@@ -396,14 +396,14 @@
       "name": "architecture allocates nothing per call (coarse heap delta < 2 MB over 100k calls)",
       "pass": true,
       "detail": {
-        "heapDelta": -910872
+        "heapDelta": -482088
       }
     },
     {
       "name": "architecture is far inside the 20 µs generateSystem budget",
       "pass": true,
       "detail": {
-        "usPerCall": 0.279
+        "usPerCall": 0.28
       }
     },
     {
@@ -693,15 +693,15 @@
       "name": "belts allocate nothing per call (coarse heap delta < 2 MB over 200k passes)",
       "pass": true,
       "detail": {
-        "beltHeapDelta": 1262072
+        "beltHeapDelta": 1260216
       }
     },
     {
       "name": "architecture + belts stay inside the 20 µs per-system budget; one stipple fill is a frame-safe one-off",
       "pass": true,
       "detail": {
-        "usPerSystem": 0.48,
-        "usPerStippleFill": 3.78
+        "usPerSystem": 0.487,
+        "usPerStippleFill": 4.031
       }
     },
     {
@@ -857,15 +857,15 @@
       "name": "generateSystem stays inside the 20 µs budget and the summary inside 6 µs",
       "pass": true,
       "detail": {
-        "usPerSystem": 1.58,
-        "usPerSummary": 1.472
+        "usPerSystem": 2.572,
+        "usPerSummary": 1.829
       }
     },
     {
       "name": "generateSystem allocates no objects (coarse heap delta < 2 MB over 100k calls)",
       "pass": true,
       "detail": {
-        "heapDelta": 1264024
+        "heapDelta": -306136
       }
     },
     {

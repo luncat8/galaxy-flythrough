@@ -464,6 +464,7 @@ function sampleBarPoint(model, sampler, uXi, uEta, uZeta, out) {
 		// objects.js so the profile inverters are written once.
 		sampleTable,
 		sampleDirection,
+		sampleHaloRadius,
 		CLUMP_SHARE,
 	};
 	if (typeof module !== 'undefined') module.exports = api;

@@ -545,14 +545,18 @@ Clusters are **one generalized family, not predefined classes** (no separate
 open/globular types, profiles, age boxes or richness boxes). One formula reads the
 environment at the centre and turns it into continuous parameters:
 
-- centre: a field-sampler candidate accepted with weight
-  `(ρ_spheroid + ρ_halo + ½ρ_thick + gasWeight·ρ_thin) / ρ_total`, so cluster
-  centres trace the stellar density that can host them;
-- population component: one draw from the local component fractions
-  (`density.sampleComponentIndex`), and the cluster's age is drawn from that
-  component's own formation window (`galaxy.FORMATION_WINDOW`) — a halo draw is
-  old because the halo formed first, a thin-disc draw is younger, with no
-  per-class age range anywhere;
+- centre and population component: candidates accepted with weight
+  `(ρ_spheroid + S_halo·ρ_halo + ½ρ_thick + gasWeight·ρ_thin) / ρ_total` and
+  assigned between the spherical halo (`sampling.sampleHaloRadius` +
+  `sampling.sampleDirection`) and the in-situ disk/bulge components via
+  `clusterComponentWeights(model)`. At the Milky Way reference (`SBb` at
+  `13.5 Gyr`) the split is **75% halo to 25% disk/bulge** (Zinn 1985; Harris
+  1996/2010; Peng et al. 2006; Kruijssen 2015), averaging ~70–75% halo across
+  the spiral/lenticular sequence and rising monotonically with galaxy age as
+  gas is consumed and young disc clusters dissolve by GMC/bar tidal shocks.
+  Each cluster's age is drawn from its component's formation window
+  (`galaxy.FORMATION_WINDOW`) — a halo draw is old because the halo formed
+  first, a thin-disc draw is younger, with no per-class age range anywhere;
 - internal distribution: one truncated Plummer law for every cluster,
   `r = a/√(u^(−2/3) − 1)` scaled into the enclosed fraction at the tidal radius.
   The Plummer scale `a` is log-drawn (0.5–4 pc) and shrinks as the spheroid/halo
@@ -563,13 +567,23 @@ environment at the centre and turns it into continuous parameters:
   to the Milky Way preset (`≈160` clusters there), never a fixed mixed-object
   quota.
 
-**Proper motion.** A cluster moves as one system. Every member record carries
-the cluster's own orbit family (from its component and age) and the cluster's
-own jitter byte (epicycle phase/amplitude), so the movement engines apply one
-bulk orbit and one wobble to the whole cluster; members differ only by their
-birth offset inside it. Per-member orbit phases would boil a 10 pc cluster
-apart at the spheroid's wobble amplitude, which is the dispersal this rule
-exists to prevent.
+**Proper motion and orbital directions.** A cluster moves as one rigid object:
+- Each cluster centre is snapped to a `1/32 kpc` (`31.25 pc`) sub-grid inside a
+  `1.0 kpc` period (`> 2 × r_tidal,max`), and its 5-bit sub-grid residue is
+  packed into the low 5 mantissa bits of each member's `f32` birth coordinates
+  (`orbit.packClusterCoord`, `< 0.1 pc` perturbation) alongside
+  `StarRecord.FLAG_CLUSTER` (`bit 7` of `flags`, `0x00800000u` in `packed`).
+  Both CPU (`orbit.js`) and GPU (`shaders.js`) recover the exact bit-identical
+  cluster centre `C = clusterCentre(p)` from the 16-byte `StarPacked` record
+  alone, evaluate the orbital displacement at `C(T)`, and add back the member's
+  rigid offset `δ = p - C`, so differential rotation never shears a cluster
+  into a curved arc of stars.
+- Disk and bulge clusters (`thin`, `thick`, `bulge` in disk galaxies) follow
+  broadly prograde orbits aligned with the Galactic disk (`FAMILY_PATTERN`,
+  `FAMILY_DISC`, `FAMILY_BAR`). Halo clusters (`component = 3`, `FAMILY_PRESSURE`)
+  distribute their orbital tangent directions uniformly over `0..2π` in
+  `orbitInclination`, producing broad 3-D orbital directions (prograde, polar,
+  and retrograde) with no single dominant rotation axis.
 
 **Density budget and the exaggeration coefficient.** Cluster stars are drawn
 *on top of* the field, so their count must follow the selected star budget, not

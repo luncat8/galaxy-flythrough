@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-15T00:45:43.300Z",
+  "date": "2026-10-15T02:19:25.552Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -11,15 +11,15 @@
     },
     {
       "name": "orbit",
-      "lines": 310
+      "lines": 333
     },
     {
       "name": "simple-step",
-      "lines": 80
+      "lines": 82
     },
     {
       "name": "star-sprite",
-      "lines": 530
+      "lines": 553
     },
     {
       "name": "star-sprite-hdr",
@@ -49,8 +49,8 @@
     "tonemap",
     "simple-step"
   ],
-  "totalChecks": 185,
-  "passed": 185,
+  "totalChecks": 186,
+  "passed": 186,
   "failed": 0,
   "checks": [
     {
@@ -83,15 +83,15 @@
         ],
         [
           "orbit",
-          15802
+          16854
         ],
         [
           "simple-step",
-          3749
+          3905
         ],
         [
           "star-sprite",
-          26815
+          27867
         ],
         [
           "star-sprite-hdr",
@@ -191,7 +191,7 @@
     {
       "name": "orbit: declares its functions",
       "pass": true,
-      "detail": 11
+      "detail": 13
     },
     {
       "name": "simple-step: braces and parentheses balance",
@@ -227,7 +227,7 @@
     {
       "name": "star-sprite: declares its functions",
       "pass": true,
-      "detail": 17
+      "detail": 19
     },
     {
       "name": "star-sprite-hdr: braces and parentheses balance",
@@ -1270,6 +1270,10 @@
     },
     {
       "name": "the nebula billboards rigidly follow the pattern speed (plan §7.4)",
+      "pass": true
+    },
+    {
+      "name": "star-cluster rigid motion mirrors clusterCentreCoord/clusterCentre and FLAG_CLUSTER across CPU and WGSL",
       "pass": true
     }
   ]

@@ -746,6 +746,10 @@ function createStarRenderer(device, context, format, options) {
                         if (index < proceduralCount + landmarkCount + objectCapacity) {
                                 const packed = view.getUint32(off + 12, true);
                                 const flags = (packed >>> 16) & 255;
+                                if ((flags & records.FLAG_CLUSTER) !== 0) {
+                                        x = orbit.clusterCentreCoord(x);
+                                        y = orbit.clusterCentreCoord(y);
+                                }
                                 if ((flags & records.FLAG_EPOCH) !== 0) {
                                         orbit.epochMap(map, x, y, view.getFloat32(off + 8, true),
                                                 (flags >> 3) & 3, flags, model);

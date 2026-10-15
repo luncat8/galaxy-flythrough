@@ -496,19 +496,65 @@ function sinTau(arg) {
 	return Math.sin(TAU * (x - Math.floor(x)));
 }
 
-// Small, deterministic orbital inclinations, derived from the record's jitter
-// byte. Only the spheroidal families sweep a centred plane (see orbitPlane), so
-// this is 0 for disc/pattern — a disc's plane is parallel to the galactic plane
-// and has no inclination to scatter.
+// Rigid cluster-centre encoding: a star cluster has tidal radius ≤ 0.318 kpc,
+// well inside half of a 1.0 kpc coarse grid period. Snapping each cluster's
+// birth centre to a 32-step sub-grid (g = 1/32 = 0.03125 kpc = 31.25 pc) and
+// storing the 5-bit sub-grid residue in the low 5 mantissa bits of each member's
+// f32 birth coordinate (< 0.1 pc perturbation) lets both CPU and GPU recover
+// the exact bit-identical cluster centre C and rigid offset delta = p - C from
+// the 16-byte StarPacked record alone (flagged by StarRecord.FLAG_CLUSTER).
+const CLUSTER_GRID_BITS = 5;
+const CLUSTER_GRID_MASK = (1 << CLUSTER_GRID_BITS) - 1;
+const CLUSTER_GRID_STEP = 1 / (1 << CLUSTER_GRID_BITS);
+const clusterF32 = new Float32Array(1);
+const clusterBits = new Uint32Array(clusterF32.buffer);
+
+function snapClusterCoord(c) {
+	return Math.round(c / CLUSTER_GRID_STEP) * CLUSTER_GRID_STEP;
+}
+
+function packClusterCoord(centreCoord, offsetCoord) {
+	const c = snapClusterCoord(centreCoord);
+	const rx = ((Math.round(c / CLUSTER_GRID_STEP) % 32) + 32) % 32;
+	let val = Math.fround(c + offsetCoord);
+	if (Math.abs(val) < 1e-4) val = val < 0 ? -1e-4 : 1e-4;
+	clusterF32[0] = val;
+	clusterBits[0] = (clusterBits[0] & ~CLUSTER_GRID_MASK) | rx;
+	return clusterF32[0];
+}
+
+function clusterCentreCoord(p) {
+	clusterF32[0] = p;
+	const rx = clusterBits[0] & CLUSTER_GRID_MASK;
+	const base = rx * CLUSTER_GRID_STEP;
+	return Math.floor((clusterF32[0] - base) + 0.5) + base;
+}
+
+function clusterCentre(out, px, py, pz) {
+	out[0] = clusterCentreCoord(px);
+	out[1] = clusterCentreCoord(py);
+	out[2] = clusterCentreCoord(pz);
+	return out;
+}
+
+// Deterministic orbital inclinations, derived from the record's jitter byte.
+// Disc and pattern sweep a horizontal plane parallel to the galactic disk (0).
+// Bar orbits stay broadly prograde and aligned with the disk (≤ 0.12 rad).
+// Pressure/halo orbits distribute tangent directions uniformly over [0, 2π),
+// giving broad 3-D orbital directions (prograde, polar, retrograde) with no
+// single dominant rotation axis.
 const ORBIT_INCLINATION_BAR = 0.12;
 const ORBIT_INCLINATION_PRESSURE = 0.30;
 function orbitInclination(family, phase, amplitude) {
-	const max = family === FAMILY_BAR ? ORBIT_INCLINATION_BAR
-		: family === FAMILY_PRESSURE ? ORBIT_INCLINATION_PRESSURE : 0;
-	if (max === 0) return 0;
 	const rank = ((amplitude & 15) + 0.5) / 16;
-	const direction = Math.sin(((phase & 15) / 16) * TAU);
-	return max * rank * direction;
+	if (family === FAMILY_BAR) {
+		const direction = Math.sin(((phase & 15) / 16) * TAU);
+		return ORBIT_INCLINATION_BAR * rank * direction;
+	}
+	if (family === FAMILY_PRESSURE) {
+		return (((phase & 15) + rank) / 16) * TAU;
+	}
+	return 0;
 }
 
 // The sweep basis every engine evaluates: e0/e1 span the plane the star moves
@@ -586,6 +632,13 @@ const orbitScratch = { vFlat: 0, rCore: 0, omegaPattern: 0, spinLambda: 0, sigma
 // Purely the classic law: the mask dispatch lives in engineLandmarkPosition
 // (CPU) and the sprite vertex stage (GPU), which mirror each other.
 function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
+	let offX = 0, offY = 0, offZ = 0;
+	if ((family & records.FLAG_CLUSTER) !== 0) {
+		const cx = clusterCentreCoord(x), cy = clusterCentreCoord(y), cz = clusterCentreCoord(z);
+		offX = x - cx; offY = y - cy; offZ = z - cz;
+		x = cx; y = cy; z = cz;
+		family &= 3;
+	}
 	const dyn = fillDynamics(orbitScratch, model);
 	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
 	const qx = x - c.x, qy = y - c.y, qz = z - c.z;
@@ -640,9 +693,9 @@ function orbitPosition(out, x, y, z, family, phase, amplitude, time, model) {
 	// central star at the centre instead of applying a basis-dependent wobble.
 	const orbitRadius = pl.anchor > 1e-9 ? pl.anchor + wr : 0;
 	const normalWobble = pl.anchor > 1e-9 ? wz : 0;
-	out[0] = c.x + orbitRadius * rx + normalWobble * pl.nx;
-	out[1] = c.y + orbitRadius * ry + normalWobble * pl.ny;
-	out[2] = c.z + orbitRadius * rz + normalWobble * pl.nz + pl.carry;
+	out[0] = c.x + orbitRadius * rx + normalWobble * pl.nx + offX;
+	out[1] = c.y + orbitRadius * ry + normalWobble * pl.ny + offY;
+	out[2] = c.z + orbitRadius * rz + normalWobble * pl.nz + pl.carry + offZ;
 	return out;
 }
 
@@ -713,8 +766,15 @@ function solveEccentricAnomaly(mean, eccentricity) {
 // Analytic Kepler ellipse with its apocenter aligned to the nearest density
 // ridge. Five Newton steps are bounded by e <= 0.55 and need no per-star state.
 function apocenterPosition(out, x, y, z, family, phase, amplitude, time, model) {
+	let offX = 0, offY = 0, offZ = 0;
+	if ((family & records.FLAG_CLUSTER) !== 0) {
+		const cx = clusterCentreCoord(x), cy = clusterCentreCoord(y), cz = clusterCentreCoord(z);
+		offX = x - cx; offY = y - cy; offZ = z - cz;
+		x = cx; y = cy; z = cz;
+		family &= 3;
+	}
 	if (time === 0 || !apocenterSelected(x, y, z)) {
-		out[0] = x; out[1] = y; out[2] = z;
+		out[0] = x + offX; out[1] = y + offY; out[2] = z + offZ;
 		return out;
 	}
 	const dyn = fillDynamics(orbitScratch, model);
@@ -722,7 +782,7 @@ function apocenterPosition(out, x, y, z, family, phase, amplitude, time, model) 
 	const qx = x - c.x, qy = y - c.y, qz = z - c.z;
 	const radius = Math.hypot(qx, qy, qz);
 	if (!(radius > 1e-9)) {
-		out[0] = c.x; out[1] = c.y; out[2] = c.z;
+		out[0] = c.x + offX; out[1] = c.y + offY; out[2] = c.z + offZ;
 		return out;
 	}
 	const theta0 = Math.atan2(qy, qx);
@@ -752,9 +812,9 @@ function apocenterPosition(out, x, y, z, family, phase, amplitude, time, model) 
 	const cv = Math.cos(nu), sv = Math.sin(nu);
 	const px = pl.e0x * cd + pl.e1x * sd, py = pl.e0y * cd + pl.e1y * sd, pz = pl.e0z * cd + pl.e1z * sd;
 	const qpx = -pl.e0x * sd + pl.e1x * cd, qpy = -pl.e0y * sd + pl.e1y * cd, qpz = -pl.e0z * sd + pl.e1z * cd;
-	out[0] = c.x + orbitRadius * (px * cv + qpx * sv);
-	out[1] = c.y + orbitRadius * (py * cv + qpy * sv);
-	out[2] = c.z + orbitRadius * (pz * cv + qpz * sv) + pl.carry;
+	out[0] = c.x + orbitRadius * (px * cv + qpx * sv) + offX;
+	out[1] = c.y + orbitRadius * (py * cv + qpy * sv) + offY;
+	out[2] = c.z + orbitRadius * (pz * cv + qpz * sv) + pl.carry + offZ;
 	return out;
 }
 
@@ -798,8 +858,15 @@ function engineRecordPosition(out, x, y, z, packed, time, model) {
 	// The epoch map comes first, on the birth vector, exactly as in the vertex
 	// stage: a record drawn at the field's base epoch is placed in the running
 	// epoch's frame before any lane touches it, and a record without the epoch
-	// bit (observed sky) is left where it is.
+	// bit (observed sky) is left where it is. Cluster members evaluate the
+	// orbit at the cluster centre and add back their rigid member offset.
 	const flags = (packed >>> 16) & 255;
+	let offX = 0, offY = 0, offZ = 0;
+	if ((flags & records.FLAG_CLUSTER) !== 0) {
+		const cx = clusterCentreCoord(x), cy = clusterCentreCoord(y), cz = clusterCentreCoord(z);
+		offX = x - cx; offY = y - cy; offZ = z - cz;
+		x = cx; y = cy; z = cz;
+	}
 	if ((flags & records.FLAG_EPOCH) !== 0 && solveEpochParams(model).active) {
 		epochMap(epochMapScratch, x, y, z, orbit.family, flags, model);
 		x = epochMapScratch[0]; y = epochMapScratch[1]; z = epochMapScratch[2];
@@ -813,6 +880,7 @@ function engineRecordPosition(out, x, y, z, packed, time, model) {
 	if ((engine & ENGINE_APOCENTER) && time !== 0 && apocenterSelected(x, y, z)) {
 		apocenterPosition(out, x, y, z, orbit.family, orbit.phase, orbit.amplitude, time, model);
 	}
+	out[0] += offX; out[1] += offY; out[2] += offZ;
 	return (engine & ENGINE_SIMPLE) !== 0;
 }
 
@@ -1083,6 +1151,13 @@ function simpleStepTheta(theta, r0, eccU, peri, family, P, patternPhase, dtStar,
 // is orbitPlane's: horizontal through the birth height for disc/pattern, the
 // centred inclined plane for the spheroidal families.
 function simplePositionFromTheta(out, theta, x, y, z, jitter, family, eccMax, model) {
+	let offX = 0, offY = 0, offZ = 0;
+	if ((family & records.FLAG_CLUSTER) !== 0) {
+		const cx = clusterCentreCoord(x), cy = clusterCentreCoord(y), cz = clusterCentreCoord(z);
+		offX = x - cx; offY = y - cy; offZ = z - cz;
+		x = cx; y = cy; z = cz;
+		family &= 3;
+	}
 	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
 	const qx = x - c.x, qy = y - c.y, qz = z - c.z;
 	const pl = orbitPlane(qx, qy, qz, family, jitter & 15, jitter >>> 4, orbitPlaneScratch);
@@ -1093,9 +1168,9 @@ function simplePositionFromTheta(out, theta, x, y, z, jitter, family, eccMax, mo
 		rho = pl.anchor * (1 + eccMax * simpleEccOf(jitter) * Math.cos(theta - simplePeriOf(jitter)));
 	}
 	const ct = Math.cos(delta), st = Math.sin(delta);
-	out[0] = c.x + rho * (pl.e0x * ct + pl.e1x * st);
-	out[1] = c.y + rho * (pl.e0y * ct + pl.e1y * st);
-	out[2] = c.z + rho * (pl.e0z * ct + pl.e1z * st) + pl.carry;
+	out[0] = c.x + rho * (pl.e0x * ct + pl.e1x * st) + offX;
+	out[1] = c.y + rho * (pl.e0y * ct + pl.e1y * st) + offY;
+	out[2] = c.z + rho * (pl.e0z * ct + pl.e1z * st) + pl.carry + offZ;
 	return out;
 }
 
@@ -1244,6 +1319,8 @@ const OrbitAPI = {
 	WAVE_DAMPING_MAX, WAVE_DAMPING_UI_DEFAULT,
 	PATTERN_SCALE_MAX, PATTERN_SCALE_UI_DEFAULT,
 	ORBIT_INCLINATION_BAR, ORBIT_INCLINATION_PRESSURE, orbitInclination, orbitPlane,
+	CLUSTER_GRID_BITS, CLUSTER_GRID_MASK, CLUSTER_GRID_STEP,
+	snapClusterCoord, packClusterCoord, clusterCentreCoord, clusterCentre,
 	ENGINE_CLASSIC, ENGINE_SIMPLE, ENGINE_APOCENTER, ENGINE_NAMES,
 	APOCENTER_ECC_MAX, APOCENTER_ECC_CAP, APOCENTER_SHARE_UI_DEFAULT, APOCENTER_FORCE_UI_DEFAULT,
 	SIMPLE_SIGMA_BASE, SIMPLE_ECC_K, SIMPLE_ECC_MAX, SIMPLE_SUBSTEP_DTHETA, SIMPLE_SUBSTEP_MAX,

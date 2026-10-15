@@ -1,19 +1,20 @@
 {
-  "date": "2026-10-15T00:46:54.051Z",
+  "date": "2026-10-15T02:20:35.845Z",
   "seed": 12345,
   "summary": {
     "total": 160,
     "byComponent": {
-      "thick": 32,
-      "thin": 93,
-      "bulge": 35
+      "halo": 118,
+      "thin": 19,
+      "bulge": 12,
+      "thick": 11
     },
-    "meanAgeGyr": 6.490463474547431,
-    "totalWeight": 295.9616807035748
+    "meanAgeGyr": 10.358169086931593,
+    "totalWeight": 298.096533391486
   },
   "budgetAt100k": 5000,
-  "totalChecks": 40,
-  "passed": 40,
+  "totalChecks": 48,
+  "passed": 48,
   "failed": 0,
   "checks": [
     {
@@ -63,7 +64,7 @@
     {
       "name": "sizes are continuous draws, not per-class constants (over 100 distinct scales)",
       "pass": true,
-      "detail": 155
+      "detail": 142
     },
     {
       "name": "ages are continuous draws, not per-class boxes (over 100 distinct ages)",
@@ -86,19 +87,81 @@
       "name": "the old spheroid end of the continuum is more compact and more concentrated",
       "pass": true,
       "detail": {
-        "oldScalePc": 1.13,
+        "oldScalePc": 1.28,
         "youngScalePc": 1.79,
-        "oldConc": 1.5,
-        "youngConc": 1.15
+        "oldConc": 1.43,
+        "youngConc": 1.17
       }
     },
     {
-      "name": "one galaxy hosts the whole continuum (disc and spheroid components both occur)",
+      "name": "one galaxy hosts the whole continuum (halo, bulge, thick and thin disc components all occur)",
       "pass": true,
       "detail": {
-        "thick": 32,
-        "thin": 93,
-        "bulge": 35
+        "halo": 118,
+        "thin": 19,
+        "bulge": 12,
+        "thick": 11
+      }
+    },
+    {
+      "name": "reference Milky Way cluster weights are 75% halo to 25% disk/bulge",
+      "pass": true,
+      "detail": {
+        "thin": 0.08826431156497751,
+        "thick": 0.05719854938357911,
+        "bulge": 0.10453713905144339,
+        "halo": 0.75,
+        "total": 1,
+        "haloFraction": 0.75,
+        "diskBulgeFraction": 0.25
+      }
+    },
+    {
+      "name": "placed Milky Way clusters realize the ~75% halo / ~25% disk+bulge split (within ±5%)",
+      "pass": true,
+      "detail": {
+        "haloPlaced": 0.738,
+        "diskBulgePlaced": 0.263
+      }
+    },
+    {
+      "name": "average disk galaxies cluster around ~70-75% halo / ~25-30% disk+bulge",
+      "pass": true,
+      "detail": {
+        "meanSpiralHalo": 0.719,
+        "byType": {
+          "S0": 0.702,
+          "Sa": 0.742,
+          "Sb": 0.762,
+          "SBb": 0.75,
+          "Sc": 0.714,
+          "Sd": 0.646
+        }
+      }
+    },
+    {
+      "name": "morphology shifts the in-situ 25-35% share: S0 is bulge-heavy while gas-rich Sd is thin-disc-heavy",
+      "pass": true,
+      "detail": {
+        "S0": {
+          "bulge": 0.257,
+          "thin": 0
+        },
+        "Sd": {
+          "bulge": 0.01,
+          "thin": 0.308
+        }
+      }
+    },
+    {
+      "name": "halo cluster fraction rises monotonically with galaxy age as gas is consumed and disc clusters dissolve (to 75% at 13.5 Gyr)",
+      "pass": true,
+      "detail": {
+        "0.5Gyr": 0.387,
+        "2Gyr": 0.422,
+        "5Gyr": 0.511,
+        "8Gyr": 0.597,
+        "13.5Gyr": 0.75
       }
     },
     {
@@ -152,7 +215,7 @@
       "detail": {
         "age": 2,
         "count": 48,
-        "maxAge": 1.896277909958735
+        "maxAge": 1.9985405799234286
       }
     },
     {
@@ -161,7 +224,7 @@
       "detail": {
         "age": 5,
         "count": 93,
-        "maxAge": 4.848949190694839
+        "maxAge": 4.9963514498085715
       }
     },
     {
@@ -170,13 +233,13 @@
       "detail": {
         "age": 13.5,
         "count": 160,
-        "maxAge": 13.474170023552142
+        "maxAge": 13.485650013084523
       }
     },
     {
       "name": "a 2 Gyr galaxy has no ancient (10+ Gyr) cluster forced into it",
       "pass": true,
-      "detail": 1.896277909958735
+      "detail": 1.9985405799234286
     },
     {
       "name": "the true-scale fraction is a tenth of a percent of the field",
@@ -213,9 +276,9 @@
       "pass": true,
       "detail": {
         "min": 1,
-        "median": 24,
-        "p90": 76,
-        "max": 107
+        "median": 23,
+        "p90": 79,
+        "max": 105
       }
     },
     {
@@ -253,26 +316,57 @@
       "name": "old clusters show the evolved mix (RG+WD over 1%)",
       "pass": true,
       "detail": {
-        "oldClasses": 263,
+        "oldClasses": 249,
         "written": 8000,
-        "frac": 0.0329
+        "frac": 0.0311
       }
     },
     {
-      "name": "every member of a cluster carries the cluster family and the cluster jitter byte",
+      "name": "every member of a cluster carries FLAG_CLUSTER, the cluster family, and the cluster jitter byte",
       "pass": true
     },
     {
-      "name": "after 50 Myr the median cluster is still inside ~2 tidal radii (it moves as one system)",
-      "pass": true,
-      "detail": 0.84
-    },
-    {
-      "name": "the shared byte is what holds it together (per-member jitter boils it >5x wider)",
+      "name": "every member record recovers the exact bit-identical cluster centre from its f32 coordinates alone",
       "pass": true,
       "detail": {
-        "shared": 0.84,
-        "perMember": 28.7
+        "written": 20000,
+        "exactCentres": true
+      }
+    },
+    {
+      "name": "after 50 Myr and 2000 Myr every cluster stays inside 1 tidal radius (moves as one rigid object, never a curved line)",
+      "pass": true,
+      "detail": {
+        "maxRatio50": 0.9857,
+        "maxRatio2000": 0.9857,
+        "maxDriftKpc": 2.7755575615628914e-17
+      }
+    },
+    {
+      "name": "without rigid centre anchoring, differential rotation shears clusters >10x wider into arcs over 2000 Myr",
+      "pass": true,
+      "detail": {
+        "rigidMed2000": 0.42,
+        "shearedMed2000": 11.54
+      }
+    },
+    {
+      "name": "disk and bulge clusters follow broadly prograde orbits aligned with the Galactic disk",
+      "pass": true,
+      "detail": {
+        "count": 42,
+        "minNz": 0.9915
+      }
+    },
+    {
+      "name": "halo clusters distribute orbital directions broadly (prograde, retrograde and polar) with no single dominant rotation",
+      "pass": true,
+      "detail": {
+        "count": 118,
+        "prograde": 0.381,
+        "retrograde": 0.619,
+        "polar": 0.576,
+        "netSpin": 0.158
       }
     },
     {
@@ -282,7 +376,7 @@
     {
       "name": "a different seed moves the clusters",
       "pass": true,
-      "detail": 54971
+      "detail": 55068
     }
   ]
 }

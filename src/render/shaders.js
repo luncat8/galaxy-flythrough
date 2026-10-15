@@ -563,20 +563,37 @@ fn dampedDiscTheta(theta0: f32, thetaArm: f32, omega: f32, omegaP: f32, time: f3
         return TAU * fract((advance + omegaP * time) * INV_TAU);
 }
 
+// Rigid cluster-centre recovery (mirrors orbit.clusterCentreCoord / clusterCentre).
+const MASK_CLUSTER: u32 = 0x00800000u;
+
+fn clusterCentreCoord(p: f32) -> f32 {
+        let rx: u32 = bitcast<u32>(p) & 31u;
+        let base: f32 = f32(rx) * 0.03125;
+        return floor((p - base) + 0.5) + base;
+}
+
+fn clusterCentre(p: vec3f) -> vec3f {
+        return vec3f(clusterCentreCoord(p.x), clusterCentreCoord(p.y), clusterCentreCoord(p.z));
+}
+
 // Deterministic orbital inclinations for the spheroidal families only: a disc
 // or pattern star sweeps a horizontal plane (orbitPlane) and has no inclination
-// to scatter. Mirrors orbit.orbitInclination.
+// to scatter; bar orbits stay broadly prograde and aligned with the disk;
+// pressure/halo orbits distribute tangent directions over 0..2π. Mirrors
+// orbit.orbitInclination.
 const ORBIT_INCLINATION_BAR: f32 = 0.12;
 const ORBIT_INCLINATION_PRESSURE: f32 = 0.30;
 
 fn orbitInclination(family: u32, phase: u32, amplitude: u32) -> f32 {
-        var maximum: f32 = 0.0;
-        if (family == FAMILY_BAR) { maximum = ORBIT_INCLINATION_BAR; }
-        else if (family == FAMILY_PRESSURE) { maximum = ORBIT_INCLINATION_PRESSURE; }
-        if (maximum == 0.0) { return 0.0; }
         let rank: f32 = (f32(amplitude) + 0.5) * 0.0625;
-        let direction: f32 = sin(f32(phase) * 0.392699081699);
-        return maximum * rank * direction;
+        if (family == FAMILY_BAR) {
+                let direction: f32 = sin(f32(phase) * 0.392699081699);
+                return ORBIT_INCLINATION_BAR * rank * direction;
+        }
+        if (family == FAMILY_PRESSURE) {
+                return (f32(phase) + rank) * 0.392699081699;
+        }
+        return 0.0;
 }
 
 // Mirrors orbit.orbitPlane: the sweep basis, with two anchors by family.
@@ -629,7 +646,9 @@ fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, d
         let phaseBits: u32 = (packed >> 24u) & 15u;
         let phase: f32 = f32(phaseBits) * 0.392699081699;
         let ampBits: u32 = (packed >> 28u) & 15u;
-        let q: vec3f = p - centre;
+        let anchorPos: vec3f = select(p, clusterCentre(p), (packed & MASK_CLUSTER) != 0u);
+        let memberOffset: vec3f = p - anchorPos;
+        let q: vec3f = anchorPos - centre;
         let r: f32 = max(length(q.xy), 0.001);
         let omega: f32 = orbitOmega(family, r, dynA, dynB);
         // waveA = (damping, m, K, phase0), waveB = (Rs, minRadius, amp, patternPhaseOffset).
@@ -676,7 +695,7 @@ fn orbitPosition(p: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, d
         let radial: vec3f = pl.e0 * cos(theta) + pl.e1 * sin(theta);
         let orbitRadius: f32 = select(0.0, pl.anchor + wr, pl.anchor > 1e-9);
         let normalWobble: f32 = select(0.0, wz, pl.anchor > 1e-9);
-        return centre + orbitRadius * radial + normalWobble * pl.nrm + vec3f(0.0, 0.0, pl.carry);
+        return centre + orbitRadius * radial + normalWobble * pl.nrm + vec3f(0.0, 0.0, pl.carry) + memberOffset;
 }
 
 // The simple reconstruction's eccentricity, mirrored from orbit.simpleEccMax:
@@ -698,8 +717,10 @@ fn simpleEccMax(dynA: vec4f, dynB: vec4f) -> f32 {
 // the baseline the earlier passes produced, returned unchanged for unselected
 // stars and at T = 0 (identity). Hashing p instead of birth would re-roll the
 // guided subset every frame.
-fn apocenterPosition(p: vec3f, birth: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, waveA: vec4f, waveB: vec4f, engine: vec4f) -> vec3f {
+fn apocenterPosition(p: vec3f, birthIn: vec3f, packed: u32, centre: vec3f, time: f32, dynA: vec4f, waveA: vec4f, waveB: vec4f, engine: vec4f) -> vec3f {
         if (time == 0.0) { return p; }
+        let birth: vec3f = select(birthIn, clusterCentre(birthIn), (packed & MASK_CLUSTER) != 0u);
+        let memberOffset: vec3f = birthIn - birth;
         let selector: f32 = hash01(hash4(bitcast<u32>(birth.x), bitcast<u32>(birth.y), bitcast<u32>(birth.z), 9137u));
         if (selector >= engine.w) { return p; }
         let flags: u32 = (packed >> 16u) & 0xFFu;
@@ -708,7 +729,7 @@ fn apocenterPosition(p: vec3f, birth: vec3f, packed: u32, centre: vec3f, time: f
         let ampBits: u32 = (packed >> 28u) & 15u;
         let q: vec3f = birth - centre;
         let radius: f32 = length(q);
-        if (radius <= 1e-9) { return centre; }
+        if (radius <= 1e-9) { return centre + memberOffset; }
         let theta0: f32 = atan2(q.y, q.x);
         let R: f32 = max(length(q.xy), 0.001);
         var apo: f32 = theta0;
@@ -745,7 +766,7 @@ fn apocenterPosition(p: vec3f, birth: vec3f, packed: u32, centre: vec3f, time: f
         let delta: f32 = delta0 + dynA.z * time + phaseOffset;
         let eP: vec3f = pl.e0 * cos(delta) + pl.e1 * sin(delta);
         let eQ: vec3f = -pl.e0 * sin(delta) + pl.e1 * cos(delta);
-        return centre + orbitRadius * (eP * cos(nu) + eQ * sin(nu)) + vec3f(0.0, 0.0, pl.carry);
+        return centre + orbitRadius * (eP * cos(nu) + eQ * sin(nu)) + vec3f(0.0, 0.0, pl.carry) + memberOffset;
 }
 
 // 0.4.5 simple engine: reconstruct from the integrated azimuth. Mirrors
@@ -758,7 +779,9 @@ fn simplePosition(p: vec3f, packed: u32, theta: f32, centre: vec3f, eccMax: f32)
         let family: u32 = (flags >> 3u) & 3u;
         let phaseBits: u32 = (packed >> 24u) & 15u;
         let ampBits: u32 = (packed >> 28u) & 15u;
-        let q: vec3f = p - centre;
+        let anchorPos: vec3f = select(p, clusterCentre(p), (packed & MASK_CLUSTER) != 0u);
+        let memberOffset: vec3f = p - anchorPos;
+        let q: vec3f = anchorPos - centre;
         let pl: OrbitPlane = orbitPlane(q, family, phaseBits, ampBits);
         let theta0: f32 = atan2(q.y, q.x);
         let delta: f32 = theta - theta0;
@@ -769,7 +792,7 @@ fn simplePosition(p: vec3f, packed: u32, theta: f32, centre: vec3f, eccMax: f32)
                 rho = pl.anchor * (1.0 + eccMax * eccU * cos(theta - peri));
         }
         let radial: vec3f = pl.e0 * cos(delta) + pl.e1 * sin(delta);
-        return centre + rho * radial + vec3f(0.0, 0.0, pl.carry);
+        return centre + rho * radial + vec3f(0.0, 0.0, pl.carry) + memberOffset;
 }
 `;
 
@@ -838,8 +861,10 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
         if (idx >= u32(simple.stepA.z)) { return; }
         let star: StepStar = stepStars[idx];
         if ((star.packed & SIMPLE_MASK_VISIBLE) == 0u) { return; }
-        let qx: f32 = star.x - simple.stepD.w;
-        let qy: f32 = star.y - simple.stepE.y;
+        let rawPos: vec3f = vec3f(star.x, star.y, star.z);
+        let pos: vec3f = select(rawPos, clusterCentre(rawPos), (star.packed & MASK_CLUSTER) != 0u);
+        let qx: f32 = pos.x - simple.stepD.w;
+        let qy: f32 = pos.y - simple.stepE.y;
         let r0: f32 = length(vec2f(qx, qy));
         let family: u32 = (star.packed >> 19u) & 3u;
         let eccU: f32 = (f32((star.packed >> 28u) & 15u) + 0.5) * 0.0625;
@@ -848,7 +873,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
         let nSub: u32 = u32(simple.stepA.y);
         let h: f32 = simple.stepA.x;
         for (var s: u32 = 0u; s < nSub; s = s + 1u) {
-                th = th + simpleOmega(th, r0, eccU, peri, family, star.z) * h;
+                th = th + simpleOmega(th, r0, eccU, peri, family, pos.z) * h;
         }
         stepTheta[idx] = TAU * fract(th * INV_TAU);
 }

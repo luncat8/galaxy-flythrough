@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-15T00:46:54.089Z",
+  "date": "2026-10-15T02:20:35.883Z",
   "types": [
     "E0",
     "E1",
@@ -1628,8 +1628,8 @@
       "name": "SBb: old star clusters accumulate with the galaxy's age",
       "pass": true,
       "detail": {
-        "youngMax": 0.43,
-        "oldAncient": 112
+        "youngMax": 0.47,
+        "oldAncient": 145
       }
     },
     {
@@ -1657,8 +1657,8 @@
       "name": "Sc: old star clusters accumulate with the galaxy's age",
       "pass": true,
       "detail": {
-        "youngMax": 0.43,
-        "oldAncient": 139
+        "youngMax": 0.49,
+        "oldAncient": 186
       }
     },
     {
@@ -1690,7 +1690,7 @@
       "name": "a 1 Gyr galaxy has no 10 Gyr globular in it",
       "pass": true,
       "detail": {
-        "oldestClusterGyr": 0.854,
+        "oldestClusterGyr": 0.979,
         "clusters": 31
       }
     },

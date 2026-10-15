@@ -31,11 +31,17 @@
 //   count      proportional to the galaxy's delivered stellar mass against
 //              the Milky Way preset (COUNT_AT_REFERENCE clusters there).
 //
-// Proper motion: a cluster moves as one system. All its member records
-// carry the cluster's orbit family and the cluster's jitter byte, so the
-// movement engines give the whole cluster one bulk orbit and one wobble;
-// members differ only by their birth offset. Per-member phases would boil
-// a ~10 pc cluster apart at the spheroid wobble amplitude.
+// Proper motion: a cluster moves as one rigid object. All its member records
+// carry the cluster's orbit family, the cluster's jitter byte, and
+// StarRecord.FLAG_CLUSTER with the cluster centre's 5-bit sub-grid residue
+// packed into the low mantissa bits of each member's f32 coordinates
+// (orbit.packClusterCoord / orbit.clusterCentre). The movement engines
+// evaluate the orbit at the shared cluster centre C(T) and add back each
+// member's rigid birth offset delta = p0 - C(0), so a cluster never shears
+// into an arc under differential rotation. Disk and bulge clusters orbit on
+// broadly prograde paths aligned with the Galactic disk; halo clusters
+// distribute orbital directions broadly in 3-D with no single dominant
+// rotation.
 //
 // Density budget (plan §10): at true scale the cluster system is
 // TRUE_FRACTION of the galaxy's stars, which in a 100 000-star render is
@@ -102,6 +108,16 @@
 	// coefficient: at 100k field stars the typical cluster lands at
 	// ~10–100 particles, the single heaviest only modestly above.
 	const CLUSTER_WEIGHT_RATIO = 4;
+	// Reference Milky Way cluster split: ~75% metal-poor halo globulars to
+	// ~25% disk/bulge clusters (Zinn 1985; Harris 1996/2010; Peng et al. 2006;
+	// Kruijssen 2015). Because the field stellar halo holds ~0.1% of the
+	// galaxy's stellar mass while hosting ~75% of its surviving clusters, the
+	// halo's specific cluster frequency is ~1000x the field's.
+	const CLUSTER_HALO_FRACTION_REFERENCE = 0.75;
+	const CLUSTER_HALO_SPECIFIC_FREQUENCY = 1000;
+	const CLUSTER_HALO_CORE_FACTOR = 2.5;
+	const CLUSTER_HALO_RMAX_KPC = 35;
+	const CLUSTER_THIN_SURVIVAL = 0.25;
 
 	// The exaggeration coefficient: view state, one number, clamped in the
 	// one place that writes it (the orbit sliders' contract).
@@ -124,9 +140,62 @@
 	// delivered masses already carry the truncation, so this is the mass
 	// the sampler can actually show, in the field's own units.
 	let referenceMass = 0;
+	let referenceInSituShare = 0;
 	function referenceDeliveredMass() {
-		if (!(referenceMass > 0)) referenceMass = sampling.deliveredMasses(galaxy.MILKY_WAY).total;
+		if (!(referenceMass > 0)) {
+			const m = sampling.deliveredMasses(galaxy.MILKY_WAY);
+			referenceMass = m.total;
+			const inSitu = m.bulge + 0.5 * m.thick + CLUSTER_THIN_SURVIVAL * m.thin;
+			referenceInSituShare = m.total > 0 ? inSitu / m.total : 0.25;
+		}
 		return referenceMass;
+	}
+
+	// Component cluster-hosting weights for `model`, across galaxy types and
+	// galaxy ages:
+	//   - At the Milky Way reference (SBb at 13.5 Gyr), haloFraction = 0.75
+	//     (75% halo to 25% disk/bulge).
+	//   - Across morphology, gas-rich late-type spirals and irregulars boost
+	//     young thin-disc cluster formation (~30-35% disk/bulge, ~65-70% halo),
+	//     while gas-poor lenticulars shift their in-situ share to the bulge and
+	//     thick disc (~70% halo, ~30% bulge+thick); halo-less ellipticals
+	//     (masses.halo = 0) keep 100% in their spheroid component.
+	//   - Across galaxy age, young gas-rich discs form a higher share of bound
+	//     in-situ disc clusters that progressively dissolve by GMC/bar tidal
+	//     shocks as gas is consumed over cosmic time, raising the surviving
+	//     halo fraction smoothly with age to 75% at AGE_REF.
+	function clusterComponentWeights(model) {
+		if (!model) return { thin: 0, thick: 0, bulge: 0, halo: 0, total: 0, haloFraction: 0, diskBulgeFraction: 0 };
+		referenceDeliveredMass();
+		const masses = sampling.deliveredMasses(model);
+		if (!(masses.total > 0)) {
+			return { thin: 0, thick: 0, bulge: 0, halo: 0, total: 0, haloFraction: 0, diskBulgeFraction: 0 };
+		}
+		if (!(masses.halo > 0)) {
+			return { thin: 0, thick: 0, bulge: 1, halo: 0, total: 1, haloFraction: 0, diskBulgeFraction: 1 };
+		}
+		const pop = model.populations || {};
+		const gasWeight = pop.gasRich ? pop.gasNow / galaxy.GAS_NORMAL : 0;
+		const age = pop.age > 0 ? pop.age : galaxy.AGE_REF;
+		const ageFactor = 1 + 0.6 * Math.max(0, 1 - age / galaxy.AGE_REF);
+		const bulge = masses.bulge / masses.total;
+		const thick = 0.5 * (masses.thick / masses.total);
+		const thin = CLUSTER_THIN_SURVIVAL * gasWeight * ageFactor * (masses.thin / masses.total);
+		const inSitu = bulge + thick + thin;
+		const halo = (CLUSTER_HALO_FRACTION_REFERENCE / (1 - CLUSTER_HALO_FRACTION_REFERENCE)) * referenceInSituShare;
+		const total = inSitu + halo;
+		if (!(total > 0)) {
+			return { thin: 0, thick: 0, bulge: 0, halo: 1, total: 1, haloFraction: 1, diskBulgeFraction: 0 };
+		}
+		return {
+			thin: thin / total,
+			thick: thick / total,
+			bulge: bulge / total,
+			halo: halo / total,
+			total: 1,
+			haloFraction: halo / total,
+			diskBulgeFraction: inSitu / total,
+		};
 	}
 
 	// How many clusters this galaxy hosts: its delivered stellar mass
@@ -141,39 +210,50 @@
 
 	// The hosting environment at a position: how much of the local stellar
 	// density can host a cluster, and how much of it is the old spheroid /
-	// halo population. One pair of numbers, read by placement and by the
-	// per-cluster parameter draws, so the two cannot disagree.
+	// halo population. The halo density is weighted by its specific cluster
+	// frequency so outer-halo positions reflect their old globular character.
 	function clusterEnvironment(model, x, y, z) {
 		const dec = density.rhoDecomposed(model, x, y, z);
-		const total = dec.thin + dec.thick + dec.bulge + dec.halo;
+		const haloCluster = dec.halo * CLUSTER_HALO_SPECIFIC_FREQUENCY;
+		const total = dec.thin + dec.thick + dec.bulge + haloCluster;
 		const gasWeight = model.populations.gasRich ? model.populations.gasNow / galaxy.GAS_NORMAL : 0.0;
-		const hostMass = dec.bulge + dec.halo + 0.5 * dec.thick + gasWeight * dec.thin;
+		const hostMass = dec.bulge + haloCluster + 0.5 * dec.thick + gasWeight * dec.thin;
 		let dom = 'thin';
 		let best = dec.thin;
 		if (dec.thick > best) { dom = 'thick'; best = dec.thick; }
 		if (dec.bulge > best) { dom = 'bulge'; best = dec.bulge; }
-		if (dec.halo > best) { dom = 'halo'; best = dec.halo; }
+		if (haloCluster > best) { dom = 'halo'; best = haloCluster; }
 		return {
 			dec, dom,
 			host: total > 0 ? Math.min(1, hostMass / total) : 0,
-			oldFrac: total > 0 ? (dec.bulge + dec.halo) / total : 0,
+			oldFrac: total > 0 ? (dec.bulge + haloCluster) / total : 0,
 		};
 	}
 
+	const dirScratch = new Float64Array(3);
+
 	// Place up to N clusters (default: this galaxy's own count). Candidates
 	// come from the field sampler (inside `box`, or whole-galaxy when `box`
-	// is null), each accepted with CLUSTER_HOST_RATE × host. An empty model
-	// yields no clusters.
+	// is null), accepted with CLUSTER_HOST_RATE × host, and assigned between
+	// the spherical halo and the disk/bulge components according to
+	// clusterComponentWeights(model). Centres are snapped to orbit.CLUSTER_GRID_STEP
+	// so every member record encodes the exact cluster centre for rigid motion.
 	function placeStarClusters(model, seed, N, box) {
 		const count = N === undefined || N === null ? clusterCountFor(model) : Math.max(0, Math.round(N));
 		const out = [];
 		if (count === 0) return out;
+		const weights = clusterComponentWeights(model);
 		const batch = sampling.createBuffers(4096);
 		let batchSeed = seed | 0;
 		let attempts = 0;
 		const maxAttempts = count * 4096;
 		const galaxyAge = model.populations.age;
 		const sfhSpan = model.populations.sfhSpan > 0 ? model.populations.sfhSpan : galaxyAge;
+		const gasWeight = model.populations.gasRich ? model.populations.gasNow / galaxy.GAS_NORMAL : 0.0;
+		const ageFactor = 1 + 0.6 * Math.max(0, 1 - galaxyAge / galaxy.AGE_REF);
+		const haloCut = Math.min((model.halo && model.halo.rMax) || CLUSTER_HALO_RMAX_KPC,
+			CLUSTER_HALO_RMAX_KPC * (model.scaleKpc || 1));
+		const haloMass = weights.halo > 0 ? density.haloRadialMass(model, haloCut) : 0;
 		while (out.length < count && attempts < maxAttempts) {
 			if (box) sampling.sampleStarsInBox(model, batchSeed, 4096, box, batch);
 			else sampling.sampleGalaxyStars(model, batchSeed, 4096, batch);
@@ -181,15 +261,38 @@
 			batchSeed = (Math.imul(batchSeed, 0x9e3779b1) + 0x2545f491) | 0;
 			for (let i = 0; i < batch.count && out.length < count; i++) {
 				attempts++;
-				const x = batch.x[i];
-				const y = batch.y[i];
-				const z = batch.z[i];
-				const env = clusterEnvironment(model, x, y, z);
+				let x = orbit.snapClusterCoord(batch.x[i]);
+				let y = orbit.snapClusterCoord(batch.y[i]);
+				let z = orbit.snapClusterCoord(batch.z[i]);
+				let env = clusterEnvironment(model, x, y, z);
 				const base = (seed | 0) + batchSeed + i;
 				if (hash.hash01At(base, 0) >= CLUSTER_HOST_RATE * env.host) continue;
-				// Population first: one component from the local fractions,
-				// then an age from that component's own formation window.
-				const component = density.sampleComponentIndex(env.dec, hash.hash01At(base, 1));
+				const isHalo = haloMass > 0 && hash.hash01At(base, 6) < weights.halo;
+				let component;
+				if (isHalo) {
+					const r = sampling.sampleHaloRadius(model, hash.hash01At(base, 7), haloMass);
+					sampling.sampleDirection(hash.hash01At(base, 8), hash.hash01At(base, 9), dirScratch);
+					x = orbit.snapClusterCoord(model.centre.x + r * dirScratch[0]);
+					y = orbit.snapClusterCoord(model.centre.y + r * dirScratch[1]);
+					z = orbit.snapClusterCoord(model.centre.z + r * dirScratch[2]);
+					if (box && (x < box.xMin || x > box.xMax || y < box.yMin || y > box.yMax || z < box.zMin || z > box.zMax)) {
+						continue;
+					}
+					env = clusterEnvironment(model, x, y, z);
+					component = density.COMPONENT_HALO;
+				} else {
+					const wThin = CLUSTER_THIN_SURVIVAL * gasWeight * ageFactor * env.dec.thin;
+					const wThick = 0.5 * env.dec.thick;
+					const wBulge = env.dec.bulge;
+					const wSum = wThin + wThick + wBulge;
+					if (wSum > 0) {
+						const u = hash.hash01At(base, 1) * wSum;
+						component = u < wThin ? density.COMPONENT_THIN
+							: (u < wThin + wThick ? density.COMPONENT_THICK : density.COMPONENT_BULGE);
+					} else {
+						component = density.sampleComponentIndex(env.dec, hash.hash01At(base, 1));
+					}
+				}
 				const w0 = galaxy.FORMATION_WINDOW[component * 2];
 				const w1 = galaxy.FORMATION_WINDOW[component * 2 + 1];
 				const formedAt = sfhSpan * (w0 + hash.hash01At(base, 2) * (w1 - w0));
@@ -233,8 +336,6 @@
 		return objects.objectMemberSeed(clusterSeed, i);
 	}
 
-	const dirScratch = new Float64Array(3);
-
 	// Offset of member i from the cluster centre (kpc), a pure function of
 	// (cluster seed, i). `out` is a caller-provided length-3 array.
 	function sampleClusterMemberOffset(cluster, i, out) {
@@ -247,15 +348,20 @@
 		return out;
 	}
 
-	// The cluster's bulk orbit family: young clusters ride the pattern they
-	// formed in (plan §1.2, the same 100 Myr rule the gas objects use);
-	// older ones follow their component. The representative class 'G' is
-	// deliberate — the family is the cluster's, not whichever spectral
-	// class a member happens to draw, or hot members would leave the
-	// cluster on the pattern while the rest stay behind.
+	// The cluster's bulk orbit family:
+	//   - Young clusters (< 100 Myr) ride the spiral/bar pattern they formed in.
+	//   - Disk and bulge clusters (components 0..2 in a disk galaxy with vFlat > 0)
+	//     follow broadly prograde orbits aligned with the Galactic disk (FAMILY_BAR
+	//     when barred, FAMILY_DISC otherwise).
+	//   - Halo clusters (component 3) and pressure-supported ellipticals (vFlat = 0)
+	//     use FAMILY_PRESSURE, whose orbital tangent directions span [0, 2π) with
+	//     no single dominant rotation.
 	function clusterFamily(model, cluster) {
 		if (cluster.ageGyr < 0.1) return orbit.FAMILY_PATTERN;
-		return orbit.familyForStar(cluster.component, 'G', model.barred);
+		if (cluster.component === density.COMPONENT_BULGE && model && model.dynamics && model.dynamics.vFlat > 0) {
+			return model.barred ? orbit.FAMILY_BAR : orbit.FAMILY_DISC;
+		}
+		return orbit.familyForStar(cluster.component, 'G', model && model.barred);
 	}
 
 	// The cluster's shared orbit jitter (epicycle phase / amplitude byte):
@@ -294,13 +400,13 @@
 			if (quota <= 0) continue;
 			const family = clusterFamily(model, cluster);
 			const jitter = clusterJitter(cluster);
-			const flags = orbit.flagsWithFamily(records.FLAG_VISIBLE, family);
+			const flags = orbit.flagsWithFamily(records.FLAG_VISIBLE | records.FLAG_CLUSTER, family);
 			for (let i = 0; i < quota && slot < maxMembers; i++) {
 				const memberSeed = clusterMemberSeed(cluster.seed | 0, i);
 				sampleClusterMemberOffset(cluster, i, memberOffset);
-				const x = cluster.x + memberOffset[0];
-				const y = cluster.y + memberOffset[1];
-				const z = cluster.z + memberOffset[2];
+				const x = orbit.packClusterCoord(cluster.x, memberOffset[0]);
+				const y = orbit.packClusterCoord(cluster.y, memberOffset[1]);
+				const z = orbit.packClusterCoord(cluster.z, memberOffset[2]);
 				const dx = x - gcX;
 				const dy = y - gcY;
 				const R = Math.sqrt(dx * dx + dy * dy);
@@ -343,8 +449,10 @@
 		CLUSTER_COUNT_REFERENCE, CLUSTER_HOST_RATE,
 		CLUSTER_SCALE_MIN, CLUSTER_SCALE_MAX, CLUSTER_CONC_MIN, CLUSTER_CONC_MAX,
 		CLUSTER_WEIGHT_RATIO,
+		CLUSTER_HALO_FRACTION_REFERENCE, CLUSTER_HALO_SPECIFIC_FREQUENCY,
+		CLUSTER_HALO_CORE_FACTOR, CLUSTER_HALO_RMAX_KPC, CLUSTER_THIN_SURVIVAL,
 		setClusterExaggeration, getClusterExaggeration,
-		clusterMemberBudget, clusterCountFor, clusterEnvironment,
+		clusterMemberBudget, clusterCountFor, clusterComponentWeights, clusterEnvironment,
 		placeStarClusters, plummerRadius, clusterMemberSeed,
 		sampleClusterMemberOffset, clusterFamily, clusterJitter,
 		writeClusterMembers, summariseClusters,

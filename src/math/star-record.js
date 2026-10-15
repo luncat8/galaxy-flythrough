@@ -14,7 +14,7 @@
 //   packed bits 8-15  absMagByte   absolute magnitude, ABS_MAG_MIN..ABS_MAG_MAX
 //   packed bits 16-23 flags        bit 0 visible, 1 landmark, 2 variable,
 //                                  bits 3-4 orbit family, bit 5 epoch-mapped,
-//                                  bit 6 epoch-scaled spheroid
+//                                  bit 6 epoch-scaled spheroid, bit 7 cluster member
 //   packed bits 24-31 orbit         low nibble epicycle phase, high nibble amplitude rank
 //
 // The two epoch bits (0.6 E4) say how the record's birth vector is read by the
@@ -43,9 +43,11 @@ const FLAG_LANDMARK = 2;
 const FLAG_VARIABLE = 4;
 const FLAG_EPOCH = 32;
 const FLAG_EPOCH_SPHEROID = 64;
+const FLAG_CLUSTER = 128;
 
 function epochMapped(flags) { return (flags & FLAG_EPOCH) !== 0; }
 function epochSpheroid(flags) { return (flags & FLAG_EPOCH_SPHEROID) !== 0; }
+function clusterMember(flags) { return (flags & FLAG_CLUSTER) !== 0; }
 
 // LUT order. Index == position in this list; the colour LUT texture is built
 // from the same list so encoder and shader can never disagree.
@@ -138,8 +140,8 @@ function buildColorLUT() {
 // page, which is exactly how this file shipped a boot-time TypeError.
 const API = {
 	RECORD_BYTES, ABS_MAG_MIN, ABS_MAG_MAX, ABS_MAG_SPAN,
-	FLAG_VISIBLE, FLAG_LANDMARK, FLAG_VARIABLE, FLAG_EPOCH, FLAG_EPOCH_SPHEROID,
-	epochMapped, epochSpheroid,
+	FLAG_VISIBLE, FLAG_LANDMARK, FLAG_VARIABLE, FLAG_EPOCH, FLAG_EPOCH_SPHEROID, FLAG_CLUSTER,
+	epochMapped, epochSpheroid, clusterMember,
 	SPECTRAL_CLASSES, CLASS_COLORS, DEFAULT_CLASS_INDEX,
 	spectralClassIndex, encodeAbsMag, decodeAbsMag, packPacked,
 	writeRecord, readRecord, buildColorLUT,

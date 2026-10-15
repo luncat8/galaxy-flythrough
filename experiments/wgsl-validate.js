@@ -655,6 +655,14 @@ function wgslConsts(part) {
                 simpleWgsl.match(/\b0\.225\b|\b0\.041\b|\b0\.031\b|\b0\.23\b/g));
         check('the nebula billboards rigidly follow the pattern speed (plan §7.4)',
                 /camera\.dynA\.z \* camera\.params\.w/.test(shaders.SHADERS['nebula-billboard']));
+        check('star-cluster rigid motion mirrors clusterCentreCoord/clusterCentre and FLAG_CLUSTER across CPU and WGSL',
+                /function clusterCentreCoord\(/.test(orbitSrc)
+                && /function clusterCentre\(/.test(orbitSrc)
+                && /^fn clusterCentreCoord\(/m.test(orbitWgsl)
+                && /^fn clusterCentre\(/m.test(orbitWgsl)
+                && /FLAG_CLUSTER = 128/.test(readSource('src/math/star-record.js'))
+                && /MASK_CLUSTER: u32 = 0x00800000u/.test(orbitWgsl)
+                && /clusterCentre\(/.test(simpleWgsl));
 }
 
 // --- Report --------------------------------------------------------------

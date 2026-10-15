@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-15T00:47:18.861Z",
+  "date": "2026-10-15T02:20:59.816Z",
   "totalChecks": 123,
   "passed": 123,
   "failed": 0,
@@ -726,7 +726,7 @@
       "name": "a spheroidal star still sweeps its centred plane (spherical radius conserved)",
       "pass": true,
       "detail": {
-        "sph": 3.6400549446402586,
+        "sph": 3.6400549446402577,
         "birth": 3.640054944640259
       }
     },
@@ -807,7 +807,7 @@
     {
       "name": "apocenter CPU law agrees with an f32 replay of its WGSL inputs within 0.05 kpc",
       "pass": true,
-      "detail": 0.00005754314027579659
+      "detail": 0.00005732677725424644
     },
     {
       "name": "changing pattern speed preserves the turned phase and integrates the future",

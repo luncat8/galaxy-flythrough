@@ -514,8 +514,8 @@ function orbitPositionF32(px, py, pz, packed, cx, time, dynA, dynB, waveA, waveB
 		const ezx = fr(-e0z * azy), ezy = fr(e0z * azx), ezz = fr(fr(e0x * azy) - fr(e0y * azx));
 		const rankIncl = fr(fr(amp + 0.5) / 16);
 		const direction = fr(Math.sin(fr(fr(phase / fr(6.28318530718)) * fr(6.28318530718))));
-		const maxInc = family === 2 ? 0.12 : family === 3 ? 0.30 : 0;
-		const inc = fr(fr(maxInc * rankIncl) * direction);
+		const inc = family === 2 ? fr(fr(0.12 * rankIncl) * direction)
+			: family === 3 ? fr(phase + fr(rankIncl * fr(0.392699081699))) : 0;
 		const ci = fr(Math.cos(inc)), si = fr(Math.sin(inc));
 		e1x = fr(fr(azx * ci) + fr(ezx * si));
 		e1y = fr(fr(azy * ci) + fr(ezy * si));
@@ -582,8 +582,8 @@ function apocenterPositionF32(px, py, pz, packed, centre, time, dynA, waveA, wav
 		const azx = xy > 1e-9 ? fr(-qy / xy) : 0, azy = xy > 1e-9 ? fr(qx / xy) : 1;
 		const ezx = fr(-e0z * azy), ezy = fr(e0z * azx), ezz = fr(fr(e0x * azy) - fr(e0y * azx));
 		const phase = fr(phaseBits * fr(0.392699081699));
-		const incMax = family === 2 ? 0.12 : family === 3 ? 0.30 : 0;
-		const inc = fr(fr(incMax * rank) * fr(Math.sin(phase)));
+		const inc = family === 2 ? fr(fr(0.12 * rank) * fr(Math.sin(phase)))
+			: family === 3 ? fr(phase + fr(rank * fr(0.392699081699))) : 0;
 		const ci = fr(Math.cos(inc)), si = fr(Math.sin(inc));
 		e1x = fr(fr(azx * ci) + fr(ezx * si)), e1y = fr(fr(azy * ci) + fr(ezy * si)), e1z = fr(ezz * si);
 		anchor = radius; carry = 0;
