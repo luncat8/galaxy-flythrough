@@ -168,12 +168,25 @@ function createStarRenderer(device, context, format, options) {
                 state.galaxyLabel = window.GalaxyLib.galaxyLabel(nextModel);
         }
         const localProceduralBudget = Math.max(0, opts.localProceduralStars === undefined ? LOCAL_PROCEDURAL_DEFAULT : opts.localProceduralStars);
-        // Composite objects (0.3.2a): clusters and associations, written once per
-        // regenerate like the global field. The members block is fixed capacity;
-        // unwritten slots are zero records, which the shader culls.
+        // Composite objects (0.3.2a), now two layers in one block: star
+        // clusters (clusters.js — stars only, inside this galaxy) written
+        // first under their own exaggeration-scaled budget, then the gas
+        // objects (objects.js) in what remains. Written once per regenerate
+        // like the global field. The block capacity is computed in
+        // allocate() from the procedural budget (plan §10), so the extra
+        // stars can never outweigh the field they decorate; `objectMembers`
+        // remains a test override for the total capacity. Unwritten slots
+        // are zero records, which the shader culls.
         const objectsLib = window.ObjectsLib;
-        const objectCapacity = Math.max(0, opts.objectMembers === undefined ? objectsLib.OBJECT_MEMBERS_DEFAULT : opts.objectMembers);
+        const clustersLib = window.ClustersLib;
+        let objectCapacity = 0;
         const objectCount = Math.max(0, opts.objectCount === undefined ? objectsLib.OBJECT_COUNT_DEFAULT : opts.objectCount);
+        const clusterCountOpt = opts.clusterCount === undefined ? null : Math.max(0, opts.clusterCount);
+        // The exaggeration coefficient is view state in clusters.js (like
+        // the orbit sliders): set here from the boot option, changed later
+        // through setClusterExaggeration + a re-draw that re-allocates.
+        clustersLib.setClusterExaggeration(opts.clusterExaggeration === undefined
+                ? clustersLib.getClusterExaggeration() : opts.clusterExaggeration);
         const billboardBytes = objectsLib.BILLBOARD_RECORD_BYTES;
 
         // Output mode: SDR (bgra8unorm / rgba8unorm) clamps tonemap to [0,1];
@@ -498,6 +511,11 @@ function createStarRenderer(device, context, format, options) {
                 landmarkStars: 0,
                 objectStars: 0,
                 objectCount: 0,
+                clusterStars: 0,
+                clusterCount: 0,
+                clusterExaggeration: clustersLib.getClusterExaggeration(),
+                gasObjectStars: 0,
+                gasObjectCount: 0,
                 nebulaBillboards: 0,
                 localProceduralStars: 0,
                 catalogResidentStars: 0,
@@ -614,6 +632,13 @@ function createStarRenderer(device, context, format, options) {
                 if (starBuffer) starBuffer.destroy();
                 proceduralCount = procedural;
                 catalogCapacity = catalog;
+                // Plan §10: the object block is cluster particles under the
+                // exaggeration coefficient plus the gas layer's scaled
+                // allowance — both linear in the field budget just chosen.
+                objectCapacity = opts.objectMembers === undefined
+                        ? clustersLib.clusterMemberBudget(procedural, clustersLib.getClusterExaggeration())
+                                + objectsLib.gasMemberBudget(procedural)
+                        : Math.max(0, Math.round(opts.objectMembers));
                 localProceduralCapacity = localProceduralBudget;
                 const totalRecords = proceduralCount + landmarkCount + objectCapacity + localProceduralCapacity + catalogCapacity;
                 const totalBytes = totalRecords * records.RECORD_BYTES;
@@ -1040,29 +1065,51 @@ function createStarRenderer(device, context, format, options) {
                 return landmarkCount;
         }
 
-        // Composite-object members: placed whole-galaxy, apportioned into the
-        // fixed block. The placement seed is domain-separated from the field
-        // seed so the objects do not sit on field stars.
+        // Composite-object members: placed whole-galaxy, apportioned into
+        // the shared block. Star clusters come first, capped by their own
+        // budget (field stars × true fraction × exaggeration — plan §10);
+        // the gas objects fill what remains. The placement seeds are
+        // domain-separated from the field seed and from each other, so no
+        // layer sits on another layer's stars.
         function generateObjects() {
                 if (objectCapacity === 0) {
                         state.objectStars = 0;
                         state.objectCount = 0;
+                        state.clusterStars = 0;
+                        state.clusterCount = 0;
+                        state.gasObjectStars = 0;
+                        state.gasObjectCount = 0;
                         state.nebulaBillboards = 0;
                         nebulaCount = 0;
                         return 0;
                 }
                 objectsEpochAge = model.populations.age;
                 state.objectsEpochAge = objectsEpochAge;
+                const placedClusters = clustersLib.placeStarClusters(model, (seed | 0) ^ 0xC1057E5,
+                        clusterCountOpt === null ? clustersLib.clusterCountFor(model) : clusterCountOpt, null);
                 const placed = objectsLib.placeObjects(model, (seed | 0) ^ 0x0B5E55, objectCount, null);
-                const view = new DataView(staging, objectByteOffset, objectCapacity * records.RECORD_BYTES);
                 // Members are procedural stars, so they carry the same exposure
                 // offset as the field they sit in.
-                const written = objectsLib.writeObjectMembers(model, placed, view, 0, objectCapacity, magOffset,
-                        identity, BLOCK_LAYOUT[2].offset,
+                const clusterBudget = Math.min(objectCapacity,
+                        clustersLib.clusterMemberBudget(proceduralCount, clustersLib.getClusterExaggeration()));
+                const clusterView = new DataView(staging, objectByteOffset, objectCapacity * records.RECORD_BYTES);
+                const clusterWritten = clustersLib.writeClusterMembers(model, placedClusters, clusterView, 0,
+                        clusterBudget, magOffset, identity, BLOCK_LAYOUT[2].offset,
                         { age: memberAge, component: memberComponent }).written;
+                const gasCapacity = objectCapacity - clusterWritten;
+                const gasView = new DataView(staging, objectByteOffset + clusterWritten * records.RECORD_BYTES,
+                        gasCapacity * records.RECORD_BYTES);
+                const gasWritten = objectsLib.writeObjectMembers(model, placed, gasView, 0, gasCapacity, magOffset,
+                        identity, BLOCK_LAYOUT[2].offset + clusterWritten,
+                        { age: memberAge.subarray(clusterWritten), component: memberComponent.subarray(clusterWritten) }).written;
+                const written = clusterWritten + gasWritten;
                 BLOCK_LAYOUT[2].count = written;
                 state.objectStars = written;
-                state.objectCount = placed.length;
+                state.clusterStars = clusterWritten;
+                state.clusterCount = placedClusters.length;
+                state.gasObjectStars = gasWritten;
+                state.gasObjectCount = placed.length;
+                state.objectCount = placedClusters.length + placed.length;
                 if (nebulaStaging) {
                         new Uint8Array(nebulaStaging).fill(0);
                         nebulaCount = objectsLib.writeObjectBillboards(
@@ -1072,6 +1119,15 @@ function createStarRenderer(device, context, format, options) {
                 }
                 state.nebulaBillboards = nebulaCount;
                 return written;
+        }
+
+        // The cluster exaggeration coefficient (plan §10): view state in
+        // clusters.js, clamped there. Changing it changes the block's size,
+        // so the caller re-draws (allocate reads it); this only records it.
+        function setClusterExaggeration(value) {
+                const next = clustersLib.setClusterExaggeration(value);
+                state.clusterExaggeration = next;
+                return next;
         }
 
         // Target total stars (procedural + catalog) for density parity
@@ -1526,6 +1582,7 @@ function createStarRenderer(device, context, format, options) {
                 setHighlightDesat,
                 setEngine,
                 resetSimpleState,
+                setClusterExaggeration,
                 setProceduralStars,
                 proceduralTarget: () => proceduralTarget,
                 dispose,

@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-14T23:09:34.472Z",
+  "date": "2026-10-15T00:45:43.232Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -12,6 +12,7 @@
     "math/nebula.js",
     "math/deltav.js",
     "math/objects.js",
+    "math/clusters.js",
     "math/coords.js",
     "core/device.js",
     "core/camera.js",
@@ -45,6 +46,7 @@
     "data/constellations.js",
     "data/landmarks.js",
     "main.js",
+    "math/clusters.js",
     "math/coords.js",
     "math/deltav.js",
     "math/density.js",
@@ -64,8 +66,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 64,
-  "passed": 64,
+  "totalChecks": 65,
+  "passed": 65,
   "failed": 0,
   "checks": [
     {
@@ -77,8 +79,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 30,
-        "sources": 30,
+        "scripts": 31,
+        "sources": 31,
         "missing": []
       }
     },
@@ -176,6 +178,7 @@
         "NebulaLib",
         "DeltaVLib",
         "ObjectsLib",
+        "ClustersLib",
         "Coords",
         "Device",
         "Camera",
@@ -263,7 +266,14 @@
       "name": "ObjectsLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 48
+        "keys": 34
+      }
+    },
+    {
+      "name": "ClustersLib loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 23
       }
     },
     {
@@ -431,6 +441,7 @@
       "pass": true,
       "detail": {
         "stars": 5000,
+        "clusters": 50,
         "catalogStars": 10000,
         "exposure": 22,
         "seed": 7,
@@ -460,6 +471,7 @@
       "pass": true,
       "detail": {
         "stars": 300000,
+        "clusters": 50,
         "catalogStars": 250000,
         "exposure": null,
         "seed": 42,
@@ -489,6 +501,7 @@
       "pass": true,
       "detail": {
         "stars": 300000,
+        "clusters": 50,
         "catalogStars": 250000,
         "exposure": null,
         "seed": 42,

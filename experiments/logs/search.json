@@ -43,8 +43,8 @@
         "scanned": 6184,
         "matched": 6184,
         "truncated": 5672,
-        "msStage1": 3.3205370000000016,
-        "msStage2": 2.877340000000004,
+        "msStage1": 6.6681389999999965,
+        "msStage2": 3.677453999999983,
         "msRefine": 0
       }
     },
@@ -56,8 +56,8 @@
         "scanned": 6184,
         "matched": 6184,
         "truncated": 5672,
-        "msStage1": 2.538614999999993,
-        "msStage2": 6.378240000000005,
+        "msStage1": 1.1945210000000088,
+        "msStage2": 1.7068969999999979,
         "msRefine": 0
       }
     },
@@ -69,8 +69,8 @@
         "scanned": 1,
         "matched": 1,
         "truncated": 0,
-        "msStage1": 0.15670800000000895,
-        "msStage2": 0.0005159999999762022,
+        "msStage1": 0.16579400000000533,
+        "msStage2": 0.0033779999999978827,
         "msRefine": 0
       }
     },
@@ -87,12 +87,12 @@
           61
         ],
         "class M": [
-          5320,
-          5320
+          5318,
+          5318
         ],
         "classes G,K (token)": [
-          600,
-          600
+          601,
+          601
         ],
         "class RGe (record slots only)": [
           6,
@@ -123,12 +123,12 @@
           65
         ],
         "comp thin": [
-          3839,
-          3839
+          3857,
+          3857
         ],
         "comp halo": [
-          19,
-          19
+          1,
+          1
         ],
         "ptype GAS_GIANT": [
           132,
@@ -139,8 +139,8 @@
           97
         ],
         "tsurf 180-320 (token)": [
-          711,
-          711
+          712,
+          712
         ],
         "teq 200-300 + tsurf 180-320 (straddle-prone)": [
           513,
@@ -151,28 +151,28 @@
           87
         ],
         "minPlanets 2": [
-          1604,
-          1604
+          1602,
+          1602
         ],
         "barren": [
-          2545,
-          2545
+          2542,
+          2542
         ],
         "belt": [
-          2628,
-          2628
+          2639,
+          2639
         ],
         "class G + terran (token)": [
           2,
           2
         ],
         "class K + tsurf + minPlanets": [
-          61,
-          61
+          60,
+          60
         ],
         "barren + class M": [
-          2063,
-          2063
+          2058,
+          2058
         ],
         "dist + terran": [
           53,
@@ -201,16 +201,16 @@
       "name": "a bare barren query confirms its pre-check zeroes without a summary",
       "pass": true,
       "detail": {
-        "calls": 3641,
+        "calls": 3644,
         "scanned": 6184,
-        "matched": 2545
+        "matched": 2542
       }
     },
     {
       "name": "a terran query skips the summary for its pre-check zeroes",
       "pass": true,
       "detail": {
-        "calls": 3641,
+        "calls": 3644,
         "scanned": 6184,
         "matched": 97
       }
@@ -239,8 +239,8 @@
         "scanned": 46,
         "matched": 46,
         "truncated": 0,
-        "msStage1": 0.12667099999998754,
-        "msStage2": 0.0050039999999853535,
+        "msStage1": 0.13322199999993245,
+        "msStage2": 0.006796000000008462,
         "msRefine": 0
       }
     },
@@ -285,31 +285,31 @@
     {
       "name": "star-only class filter over the galaxy stays under 120 ms",
       "pass": true,
-      "detail": 23.48646399999984
+      "detail": 20.48580200000015
     },
     {
       "name": "planet filter (G + terran) over the galaxy stays under 600 ms",
       "pass": true,
-      "detail": 25.637960999999905
+      "detail": 24.752738000000136
     },
     {
       "name": "planet filter (tsurf range, exact refine) over the galaxy stays under 600 ms",
       "pass": true,
-      "detail": 463.2055730000002
+      "detail": 425.74336399999993
     },
     {
       "name": "planet filter over a 214-star set stays under 2 ms",
       "pass": true,
-      "detail": 0.3106819999993604
+      "detail": 0.3040920000003098
     },
     {
       "name": "the stage timers split the wall time (sort + overhead bounded)",
       "pass": true,
       "detail": {
-        "msStage1": 7.044397999999546,
-        "msStage2": 320.90111600000046,
-        "msRefine": 134.8697349999993,
-        "wall": 463.2055730000002
+        "msStage1": 6.353946999996424,
+        "msStage2": 294.823857999997,
+        "msRefine": 124.20552299999918,
+        "wall": 425.74336399999993
       }
     }
   ],

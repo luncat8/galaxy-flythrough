@@ -1,9 +1,9 @@
 {
-  "date": "2026-10-14T23:10:48.223Z",
+  "date": "2026-10-15T00:46:53.677Z",
   "seed": 99,
   "targetN": 6000,
   "placedN": 6000,
-  "placeMs": 1239,
+  "placeMs": 1754,
   "box": {
     "xMin": -20,
     "xMax": 20,
@@ -13,39 +13,38 @@
     "zMax": 2
   },
   "byType": {
-    "planetary": 2455,
-    "open": 1017,
-    "SNR": 680,
-    "globular": 1253,
-    "HII": 595
+    "SNR": 1135,
+    "planetary": 3896,
+    "HII": 969
   },
   "byComponent": {
-    "bulge": 2230,
-    "thin": 3056,
-    "thick": 713,
-    "halo": 1
+    "thin": 3230,
+    "bulge": 1920,
+    "thick": 848,
+    "halo": 2
   },
-  "totalMembers": 1639610,
-  "meanRichness": 273.2683333333333,
-  "totalChecks": 50,
-  "passed": 50,
+  "totalMembers": 113526,
+  "meanRichness": 18.921,
+  "totalChecks": 42,
+  "passed": 42,
   "failed": 0,
   "checks": [
     {
-      "name": "five object types, in the documented order",
+      "name": "the gas layer has exactly three types (star clusters live in clusters.js, not here)",
       "pass": true,
       "detail": [
         "HII",
-        "open",
-        "globular",
         "planetary",
         "SNR"
       ]
     },
     {
-      "name": "the member budget is 20000 StarPacked records (320 KB)",
+      "name": "the gas member allowance scales with the field star count (1% of it)",
       "pass": true,
-      "detail": 20000
+      "detail": {
+        "at100k": 1000,
+        "at200k": 2000
+      }
     },
     {
       "name": "the renderer places 400 whole-galaxy objects",
@@ -58,45 +57,30 @@
       "detail": 6000
     },
     {
-      "name": "all five object types are present",
+      "name": "all three gas types are present (no open/globular classes remain)",
       "pass": true,
       "detail": {
-        "planetary": 2455,
-        "open": 1017,
-        "SNR": 680,
-        "globular": 1253,
-        "HII": 595
+        "SNR": 1135,
+        "planetary": 3896,
+        "HII": 969
       }
     },
     {
       "name": "HII regions are present but not dominant",
       "pass": true,
-      "detail": 0.09916666666666667
+      "detail": 0.1615
     },
     {
       "name": "HII regions sit on the arm ridges (mean distance-to-arm < 0.35 kpc)",
       "pass": true,
-      "detail": 0.312
+      "detail": 0.301
     },
     {
-      "name": "HII regions hug the arms tighter than the disc-wide open clusters",
+      "name": "HII regions hug the arms tighter than the galaxy mean (planetaries trace stars, not gas)",
       "pass": true,
       "detail": {
-        "hII": 0.312,
-        "open": 17.514
-      }
-    },
-    {
-      "name": "open clusters stay in the thin disc (mean |zp| < 0.3 kpc)",
-      "pass": true,
-      "detail": 0.127
-    },
-    {
-      "name": "globulars concentrate centrally (mean R < 3 kpc, bulge-dominated majority)",
-      "pass": true,
-      "detail": {
-        "meanR": 1.7,
-        "bulgeFrac": 0.84
+        "hII": 0.301,
+        "planetary": 60.294
       }
     },
     {
@@ -108,7 +92,7 @@
       "name": "SNR trace the thin disc and the arms (thin majority, mean arm distance < 5 kpc in the arm region)",
       "pass": true,
       "detail": {
-        "thinFrac": 0.78,
+        "thinFrac": 0.77,
         "meanArm": 0.68
       }
     },
@@ -116,8 +100,8 @@
       "name": "almost no object leaks into the halo or above |z| = 1 kpc",
       "pass": true,
       "detail": {
-        "haloish": 203,
-        "fraction": 0.0338
+        "haloish": 292,
+        "fraction": 0.0487
       }
     },
     {
@@ -132,37 +116,12 @@
     {
       "name": "every planetary is one central star with the 2 pc shell size",
       "pass": true,
-      "detail": 2455
+      "detail": 3896
     },
     {
       "name": "SNR carry no members and a 20-120 pc shell size",
       "pass": true,
-      "detail": 680
-    },
-    {
-      "name": "open members follow the truncated Plummer enclosed-mass curve (within 0.02)",
-      "pass": true,
-      "detail": 0.0025
-    },
-    {
-      "name": "no open member leaves the tidal radius",
-      "pass": true,
-      "detail": 0.01965
-    },
-    {
-      "name": "globular members follow the King W0~6 curve (within 0.02)",
-      "pass": true,
-      "detail": 0.0053
-    },
-    {
-      "name": "no globular member leaves the tidal radius (12 r_c)",
-      "pass": true,
-      "detail": 11.707
-    },
-    {
-      "name": "half the globular members sit inside 4.5 core radii (concentrated)",
-      "pass": true,
-      "detail": 3.406
+      "detail": 1135
     },
     {
       "name": "no association member leaves the 2.5 R_e sphere",
@@ -219,12 +178,22 @@
       ]
     },
     {
-      "name": "the placed field apportions to exactly the 20k budget, every object kept",
+      "name": "the placed field apportions to exactly the scaled gas allowance, every object kept",
       "pass": true,
       "detail": {
-        "sum": 20000,
+        "sum": 10000,
+        "scaledCap": 10000,
         "minNonzero": 1
       }
+    },
+    {
+      "name": "relative cluster weights fill the budget through the same code (clusters reuse objectQuotas)",
+      "pass": true,
+      "detail": [
+        1,
+        12,
+        87
+      ]
     },
     {
       "name": "placement is deterministic in the seed",
@@ -247,38 +216,42 @@
       "name": "a different seed moves essentially every member",
       "pass": true,
       "detail": {
-        "diffRecords": 15502,
+        "diffRecords": 1237,
         "written": 20000
       }
     },
     {
-      "name": "a quenched elliptical has zero HII regions and zero open clusters",
+      "name": "a quenched elliptical has zero HII regions (its clusters live in the cluster layer)",
       "pass": true,
       "detail": {
-        "globular": 352,
-        "planetary": 48
+        "planetary": 400
       }
     },
     {
-      "name": "a gas-rich Sc is HII regions and open clusters in the majority",
+      "name": "a gas-rich Sc grows HII regions the quenched E4 cannot",
       "pass": true,
       "detail": {
-        "youngFrac": 0.53,
-        "HII": 83,
-        "planetary": 107,
-        "SNR": 68,
-        "open": 128,
-        "globular": 14
+        "planetary": 171,
+        "SNR": 101,
+        "HII": 128
       }
     },
     {
-      "name": "400 whole-galaxy objects fill the 20k budget for every one of the 19 types",
+      "name": "the gas block writes exactly min(allowance, placed richness) for every galaxy type",
       "pass": true,
       "detail": {
         "types": 19,
         "failedType": null,
-        "minMembers": 40286,
-        "minType": "Sd"
+        "minMembers": 363,
+        "minType": "S0"
+      }
+    },
+    {
+      "name": "the Milky Way gas layer fills its 100k-field allowance exactly",
+      "pass": true,
+      "detail": {
+        "mwWritten": 1000,
+        "cap": 1000
       }
     },
     {
@@ -289,31 +262,9 @@
       "name": "association members include O/B stars (over 0.3% of the HII census)",
       "pass": true,
       "detail": {
-        "ob": 506,
-        "written": 68157,
-        "frac": 0.0074
-      }
-    },
-    {
-      "name": "globular members have no O/B/A/F stars",
-      "pass": true,
-      "detail": 0
-    },
-    {
-      "name": "globular members show the old mix (RG+WD over 1%)",
-      "pass": true,
-      "detail": {
-        "old": 455,
-        "written": 13142,
-        "frac": 0.0346
-      }
-    },
-    {
-      "name": "open clusters span young and old (O/B/A/F and WD/RG both present)",
-      "pass": true,
-      "detail": {
-        "openYoung": 41,
-        "openOld": 4
+        "ob": 763,
+        "written": 109630,
+        "frac": 0.007
       }
     },
     {
@@ -330,11 +281,11 @@
       "pass": true
     },
     {
-      "name": "writeObjectBillboards packs one record per gas object and skips clusters",
+      "name": "writeObjectBillboards packs one record per object — every type here is gas (clusters never reach it)",
       "pass": true,
       "detail": {
-        "written": 3730,
-        "gas": 3730,
+        "written": 6000,
+        "gas": 6000,
         "total": 6000
       }
     },
@@ -342,16 +293,15 @@
       "name": "billboard tints are NEBULA_COLORS for the object type",
       "pass": true,
       "detail": {
-        "tintOk": 3730,
-        "written": 3730
+        "tintOk": 6000,
+        "written": 6000
       }
     },
     {
       "name": "a quenched E4 still billboards planetaries and SNR, never HII",
       "pass": true,
       "detail": {
-        "globular": 352,
-        "planetary": 48
+        "planetary": 400
       }
     },
     {

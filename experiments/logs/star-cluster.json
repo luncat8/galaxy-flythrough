@@ -1,0 +1,288 @@
+{
+  "date": "2026-10-15T00:46:54.051Z",
+  "seed": 12345,
+  "summary": {
+    "total": 160,
+    "byComponent": {
+      "thick": 32,
+      "thin": 93,
+      "bulge": 35
+    },
+    "meanAgeGyr": 6.490463474547431,
+    "totalWeight": 295.9616807035748
+  },
+  "budgetAt100k": 5000,
+  "totalChecks": 40,
+  "passed": 40,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "the gas layer no longer carries cluster classes (objects.js is gas only)",
+      "pass": true,
+      "detail": [
+        "HII",
+        "planetary",
+        "SNR"
+      ]
+    },
+    {
+      "name": "a placed cluster has no nebula type at all (it is not a billboard object)",
+      "pass": true,
+      "detail": [
+        "x",
+        "y",
+        "z",
+        "scale",
+        "concentration",
+        "tidal",
+        "ageGyr",
+        "weight",
+        "component",
+        "oldFrac",
+        "R",
+        "phi",
+        "zp",
+        "distToArm",
+        "dominant",
+        "index",
+        "seed"
+      ]
+    },
+    {
+      "name": "star clusters pack zero nebula billboards",
+      "pass": true
+    },
+    {
+      "name": "every cluster centre lies inside this galaxy (within 40 kpc of its centre)",
+      "pass": true
+    },
+    {
+      "name": "placement carries no class label (no open/globular kinds exist)",
+      "pass": true
+    },
+    {
+      "name": "sizes are continuous draws, not per-class constants (over 100 distinct scales)",
+      "pass": true,
+      "detail": 155
+    },
+    {
+      "name": "ages are continuous draws, not per-class boxes (over 100 distinct ages)",
+      "pass": true,
+      "detail": 160
+    },
+    {
+      "name": "scale and concentration stay inside the generalized ranges",
+      "pass": true
+    },
+    {
+      "name": "weights are continuous relative masses inside the documented ratio",
+      "pass": true,
+      "detail": {
+        "min": 1.001756451094615,
+        "max": 3.9795389838264428
+      }
+    },
+    {
+      "name": "the old spheroid end of the continuum is more compact and more concentrated",
+      "pass": true,
+      "detail": {
+        "oldScalePc": 1.13,
+        "youngScalePc": 1.79,
+        "oldConc": 1.5,
+        "youngConc": 1.15
+      }
+    },
+    {
+      "name": "one galaxy hosts the whole continuum (disc and spheroid components both occur)",
+      "pass": true,
+      "detail": {
+        "thick": 32,
+        "thin": 93,
+        "bulge": 35
+      }
+    },
+    {
+      "name": "the Milky Way preset hosts the reference count",
+      "pass": true,
+      "detail": 160
+    },
+    {
+      "name": "the placed count is the model count, not a constant",
+      "pass": true,
+      "detail": 160
+    },
+    {
+      "name": "the E4 cluster count scales with its delivered stellar mass",
+      "pass": true,
+      "detail": {
+        "type": "E4",
+        "count": 31,
+        "expect": 31
+      }
+    },
+    {
+      "name": "the Sc cluster count scales with its delivered stellar mass",
+      "pass": true,
+      "detail": {
+        "type": "Sc",
+        "count": 208,
+        "expect": 208
+      }
+    },
+    {
+      "name": "the Irr cluster count scales with its delivered stellar mass",
+      "pass": true,
+      "detail": {
+        "type": "Irr",
+        "count": 22,
+        "expect": 22
+      }
+    },
+    {
+      "name": "a quenched elliptical still hosts (old, bulge) clusters — they were never nebulae",
+      "pass": true
+    },
+    {
+      "name": "an empty model hosts no clusters",
+      "pass": true
+    },
+    {
+      "name": "no cluster is older than its 2 Gyr galaxy",
+      "pass": true,
+      "detail": {
+        "age": 2,
+        "count": 48,
+        "maxAge": 1.896277909958735
+      }
+    },
+    {
+      "name": "no cluster is older than its 5 Gyr galaxy",
+      "pass": true,
+      "detail": {
+        "age": 5,
+        "count": 93,
+        "maxAge": 4.848949190694839
+      }
+    },
+    {
+      "name": "no cluster is older than its 13.5 Gyr galaxy",
+      "pass": true,
+      "detail": {
+        "age": 13.5,
+        "count": 160,
+        "maxAge": 13.474170023552142
+      }
+    },
+    {
+      "name": "a 2 Gyr galaxy has no ancient (10+ Gyr) cluster forced into it",
+      "pass": true,
+      "detail": 1.896277909958735
+    },
+    {
+      "name": "the true-scale fraction is a tenth of a percent of the field",
+      "pass": true,
+      "detail": 100
+    },
+    {
+      "name": "the budget is linear in the field budget (it cannot outweigh the galaxy)",
+      "pass": true,
+      "detail": {
+        "at100k": 5000,
+        "at200k": 10000
+      }
+    },
+    {
+      "name": "the default coefficient puts 5000 particles into a 100k-star galaxy",
+      "pass": true,
+      "detail": 5000
+    },
+    {
+      "name": "coefficient 0 turns cluster particles off; the setter clamps to [0, 200]",
+      "pass": true
+    },
+    {
+      "name": "the writer spends exactly the budget (never more than the field allows)",
+      "pass": true,
+      "detail": {
+        "written": 5000,
+        "budget": 5000
+      }
+    },
+    {
+      "name": "at 100k field stars the typical cluster renders ~10–100 particles (the accepted exaggeration)",
+      "pass": true,
+      "detail": {
+        "min": 1,
+        "median": 24,
+        "p90": 76,
+        "max": 107
+      }
+    },
+    {
+      "name": "every placed cluster is represented (quota at least 1 at the default coefficient)",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "halving the coefficient halves the written members exactly",
+      "pass": true
+    },
+    {
+      "name": "members follow the one truncated Plummer enclosed-mass curve (within 0.02)",
+      "pass": true,
+      "detail": 0.0045
+    },
+    {
+      "name": "no member leaves the cluster tidal radius",
+      "pass": true,
+      "detail": 0.01994
+    },
+    {
+      "name": "members are coeval, share the cluster component, and carry stable member keys",
+      "pass": true
+    },
+    {
+      "name": "old (globular-like) clusters have no O/B/A/F members",
+      "pass": true,
+      "detail": {
+        "written": 8000,
+        "youngClasses": 0
+      }
+    },
+    {
+      "name": "old clusters show the evolved mix (RG+WD over 1%)",
+      "pass": true,
+      "detail": {
+        "oldClasses": 263,
+        "written": 8000,
+        "frac": 0.0329
+      }
+    },
+    {
+      "name": "every member of a cluster carries the cluster family and the cluster jitter byte",
+      "pass": true
+    },
+    {
+      "name": "after 50 Myr the median cluster is still inside ~2 tidal radii (it moves as one system)",
+      "pass": true,
+      "detail": 0.84
+    },
+    {
+      "name": "the shared byte is what holds it together (per-member jitter boils it >5x wider)",
+      "pass": true,
+      "detail": {
+        "shared": 0.84,
+        "perMember": 28.7
+      }
+    },
+    {
+      "name": "cluster placement and members are byte-identical for the same seed",
+      "pass": true
+    },
+    {
+      "name": "a different seed moves the clusters",
+      "pass": true,
+      "detail": 54971
+    }
+  ]
+}

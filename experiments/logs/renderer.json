@@ -1,10 +1,10 @@
 {
-  "date": "2026-10-14T23:09:36.255Z",
+  "date": "2026-10-15T00:45:45.556Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 165,
-  "totalChecks": 134,
-  "passed": 134,
+  "prepareMs": 183,
+  "totalChecks": 135,
+  "passed": 135,
   "failed": 0,
   "checks": [
     {
@@ -140,24 +140,28 @@
       "name": "the renderer reports the placed objects and their apportioned members",
       "pass": true,
       "detail": {
-        "objects": 40,
-        "members": 2000
+        "objects": 200,
+        "members": 1894,
+        "expected": {
+          "clusterBudget": 1000,
+          "members": 1894
+        }
       }
     },
     {
-      "name": "every objects-block record is visible and finite",
+      "name": "every written objects-block record is visible and finite",
       "pass": true,
       "detail": {
-        "visible": 2000,
-        "finite": 2000
+        "visible": 1894,
+        "finite": 1894
       }
     },
     {
-      "name": "every objects-block record carries a valid colour and magnitude",
+      "name": "every written objects-block record carries a valid colour and magnitude",
       "pass": true,
       "detail": {
-        "classOk": 2000,
-        "magOk": 2000
+        "classOk": 1894,
+        "magOk": 1894
       }
     },
     {
@@ -219,7 +223,7 @@
       "pass": true,
       "detail": {
         "vertices": 4,
-        "instances": 28,
+        "instances": 40,
         "firstVertex": 0,
         "firstInstance": 0,
         "pipeline": {
@@ -272,22 +276,20 @@
       "pass": true,
       "detail": {
         "writes": 1,
-        "bytes": 896,
-        "count": 28
+        "bytes": 1280,
+        "count": 40
       }
     },
     {
       "name": "packed billboards are exactly the gas objects (HII, planetary, SNR)",
       "pass": true,
       "detail": {
-        "packed": 28,
-        "gas": 28,
+        "packed": 40,
+        "gas": 40,
         "byType": {
-          "planetary": 19,
-          "HII": 6,
-          "globular": 3,
-          "SNR": 3,
-          "open": 9
+          "planetary": 26,
+          "HII": 8,
+          "SNR": 6
         }
       }
     },
@@ -314,7 +316,7 @@
       "pass": true
     },
     {
-      "name": "open and globular clusters have no gas billboard",
+      "name": "star clusters have no gas billboard (they are stars in this galaxy, not nebulae)",
       "pass": true
     },
     {
@@ -710,7 +712,7 @@
       "pass": true,
       "detail": {
         "fieldSamples": 3,
-        "objects": 40
+        "objects": 200
       }
     },
     {
@@ -768,19 +770,28 @@
       }
     },
     {
-      "name": "omitted object options default to 400 objects / 20000 members",
+      "name": "omitted object options default to the scaled cluster+gas budgets",
       "pass": true,
       "detail": {
-        "objects": 400,
-        "members": 20000
+        "objects": 560,
+        "members": 6,
+        "capacity": 6
       }
     },
     {
       "name": "the default objects block sizes the buffer",
       "pass": true,
       "detail": {
-        "size": 642560,
-        "expected": 642560
+        "size": 322656,
+        "expected": 322656
+      }
+    },
+    {
+      "name": "cluster exaggeration x0 draws gas members only, and x200 scales the block",
+      "pass": true,
+      "detail": {
+        "clusterStars": 0,
+        "gasObjectStars": 1000
       }
     },
     {

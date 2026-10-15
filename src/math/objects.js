@@ -1,15 +1,23 @@
 // src/math/objects.js
-// Composite objects: an HII region *is* its OB association, a reflection nebula
-// sits on its B stars, a globular cluster is a stellar system that happens to
-// be spectacular. 0.3.2a places the objects and generates their member stars;
-// 0.3.2b draws the gas as camera-facing billboards from the shell sizes below.
+// Gas objects: HII regions, planetary nebulae and supernova remnants — the
+// nebula layer, with member stars where the object has them (an HII region
+// *is* its OB association; a planetary nebula is its central star; an SNR is
+// a shell with no members). 0.3.2a places the objects and generates their
+// member stars; 0.3.2b draws the gas as camera-facing billboards from the
+// shell sizes below.
+//
+// Star clusters are NOT here and are not nebulae: a globular cluster is a
+// bound group of stars inside this galaxy, so it lives in clusters.js as
+// stars only (no billboard, no nebula tint). The predefined open/globular
+// classes that used to sit in this type list were removed with it —
+// clusters.js is one generalized family, not classes.
 //
 // Placement generalises nebula.js: candidates come from the field sampler and
-// each is accepted with p = min(1, pHII + pOpen + pGlobular + pPlanetary + pSNR),
-// the type rolled proportionally. Members are ordinary stars through the same
-// IMF pipeline as field stars (star-types.js), coeval at the object's age, at
-// centre + profile offset. Member i of object j is a pure function of
-// (seed, j, i): the same galaxy rebuilds the same members on any machine.
+// each is accepted with p = min(1, pHII + pPlanetary + pSNR), the type rolled
+// proportionally. Members are ordinary stars through the same IMF pipeline
+// as field stars (star-types.js), coeval at the object's age, at centre +
+// profile offset. Member i of object j is a pure function of (seed, j, i):
+// the same galaxy rebuilds the same members on any machine.
 //
 // Units: kpc. Ages: Gyr.
 
@@ -42,56 +50,47 @@
 		: window.OrbitLib;
 
 	const TAU = Math.PI * 2;
-	const OBJECT_TYPES = ['HII', 'open', 'globular', 'planetary', 'SNR'];
-	// The renderer's objects block: 20k StarPacked records (320 KB), filled from
-	// 400 whole-galaxy objects — enough that every type fills the budget (an E
-	// from ~two dozen globulars, an Sc from ~two hundred associations/clusters).
-	const OBJECT_MEMBERS_DEFAULT = 20000;
+	const OBJECT_TYPES = ['HII', 'planetary', 'SNR'];
 	const OBJECT_COUNT_DEFAULT = 400;
+	// The member allowance for this gas layer scales with the selected field
+	// budget (plan §10): the block is drawn on top of the field, so a fixed
+	// member count would outweigh a small galaxy and vanish in a large one.
+	// Cluster members carry their own, separately controlled budget
+	// (clusters.clusterMemberBudget); this fraction is only the gas layer's.
+	const GAS_MEMBER_FRACTION = 0.01;
+	function gasMemberBudget(fieldStars) {
+		return Math.round(Math.max(0, Number(fieldStars) || 0) * GAS_MEMBER_FRACTION);
+	}
 
 	// Acceptance rates at unit gas weight, on the ridge, in the midplane. HII
 	// matches the loose gas layer's rate (it *is* that layer, with members);
-	// open clusters are disc-wide at a lower rate; globulars scale with the
-	// spheroid share (see objectContext); planetaries are the unchanged stellar
-	// term; SNR are massive-star remnants, so the stellar term times the thin
-	// fraction times an arm tracer.
+	// planetaries are the unchanged stellar term; SNR are massive-star
+	// remnants, so the stellar term times the thin fraction times an arm
+	// tracer.
 	const RATE_HII = 0.05;
-	const RATE_OPEN = 0.020;
-	const RATE_GLOBULAR = 0.010;
 	const RATE_STELLAR = 0.005;
 
-	// Richness [lo, hi], uniform.
+	// Richness [lo, hi], uniform. These are apportionment weights for the
+	// member budget, not star counts the galaxy is claimed to have.
 	const RICHNESS = {
 		HII: [20, 200],
-		open: [30, 300],
-		globular: [200, 2000],
 		planetary: [1, 1],
 		SNR: [0, 0],
 	};
 	// HII effective radius (the fractal keeps candidates inside 2.5·R_e).
 	const HII_R_MIN = 0.05;
 	const HII_R_MAX = 0.15;
-	// Open clusters: Plummer with a 1 pc scale, tidally cut at 10–30 pc.
-	const OPEN_RC = 0.001;
-	const OPEN_RT_MIN = 0.010;
-	const OPEN_RT_MAX = 0.030;
-	// Globulars: King W0 ≈ 6 (concentration c ≈ 1.1, x_t = 12), r_c 1–3 pc.
-	const GLOB_RC_MIN = 0.001;
-	const GLOB_RC_MAX = 0.003;
-	const GLOB_XT = 12;
-	// Coeval ages (Gyr): HII uniform, open log-uniform, globular uniform.
+	// Coeval ages (Gyr): HII uniform, planetary the old-population age.
 	const HII_AGE_MIN = 0.001;
 	const HII_AGE_MAX = 0.020;
-	const OPEN_AGE_MIN = 0.010;
-	const OPEN_AGE_MAX = 1.0;
-	const GLOB_AGE_MIN = 10.0;
-	const GLOB_AGE_MAX = 13.0;
 	const PLANETARY_AGE = 10.0;
 	// Shell sizes for the billboard pass.
 	const PLANETARY_SIZE = 0.002;
 	const SNR_SIZE_MIN = 0.020;
 	const SNR_SIZE_MAX = 0.120;
-	// Gas types get a billboard; open/globular clusters are stars only.
+	// Every object type here is gas, so every type gets a billboard. Star
+	// clusters (clusters.js) are the stars-only systems; they never reach
+	// this table, which is what keeps a cluster out of the nebula pass.
 	const GAS_TYPES = { HII: true, planetary: true, SNR: true };
 	const BILLBOARD_RECORD_FLOATS = 8;
 	const BILLBOARD_RECORD_BYTES = BILLBOARD_RECORD_FLOATS * 4;
@@ -105,18 +104,10 @@
 	const FRACTAL_RADIUS = 2.5;
 	const FRACTAL_RETRIES = 10;
 
-	// Setup-time context for the per-candidate probabilities: the delivered
-	// spheroid share, which the per-candidate path must not recompute (mass
-	// quadrature per candidate would dominate placement).
-	function objectContext(model) {
-		const m = sampling.deliveredMasses(model);
-		return { spheroidFrac: m.total > 0 ? m.bulge / m.total : 0 };
-	}
-
 	// Per-type acceptance probabilities at a position. The gas terms reuse the
 	// nebula layer's lane, vertical scale and suppressions, so the young stars,
-	// the gas clouds and the composite objects trace one lane.
-	function objectProbabilitiesAt(model, x, y, z, ctx) {
+	// the gas clouds and the gas objects trace one lane.
+	function objectProbabilitiesAt(model, x, y, z) {
 		const dec = density.rhoDecomposed(model, x, y, z);
 		let dom = 'thin';
 		let best = dec.thin;
@@ -137,24 +128,19 @@
 		// fades as a galaxy burns its reservoir.
 		const gasWeight = model.populations.gasRich ? model.populations.gasNow / galaxy.GAS_NORMAL : 0.0;
 		const pHII = Math.min(1.0, RATE_HII * gasWeight * inDisc * armBoost * gasBulgeSuppress * gasHaloSuppress);
-		const pOpen = Math.min(1.0, RATE_OPEN * gasWeight * inDisc * gasBulgeSuppress * gasHaloSuppress);
-		const globBias = dom === 'bulge' ? 3 : dom === 'halo' ? 1 : 0.15;
-		const pGlobular = Math.min(1.0, RATE_GLOBULAR * (0.2 + 2 * ctx.spheroidFrac) * globBias);
 		const pPlanetary = RATE_STELLAR * (dec.bulge > 0.05 ? 4.0 : 1.0) * (dom === 'halo' ? 0.3 : 1.0);
 		const total = dec.thin + dec.thick + dec.bulge + dec.halo;
 		const pSNR = pPlanetary * (total > 0 ? dec.thin / total : 0) * (0.5 + armBoost);
 		return {
-			p: Math.min(1.0, pHII + pOpen + pGlobular + pPlanetary + pSNR),
-			pHII, pOpen, pGlobular, pPlanetary, pSNR, dec, dom,
+			p: Math.min(1.0, pHII + pPlanetary + pSNR),
+			pHII, pPlanetary, pSNR, dec, dom,
 		};
 	}
 
 	function pickObjectType(probs, u) {
-		const total = probs.pHII + probs.pOpen + probs.pGlobular + probs.pPlanetary + probs.pSNR;
+		const total = probs.pHII + probs.pPlanetary + probs.pSNR;
 		let r = u * total;
 		if ((r -= probs.pHII) < 0) return 'HII';
-		if ((r -= probs.pOpen) < 0) return 'open';
-		if ((r -= probs.pGlobular) < 0) return 'globular';
 		if ((r -= probs.pPlanetary) < 0) return 'planetary';
 		return 'SNR';
 	}
@@ -163,7 +149,6 @@
 	// `box`, or whole-galaxy when `box` is null), each accepted with the
 	// probability above. An empty model yields no objects.
 	function placeObjects(model, seed, N, box) {
-		const ctx = objectContext(model);
 		const out = [];
 		const batch = sampling.createBuffers(4096);
 		let batchSeed = seed | 0;
@@ -179,7 +164,7 @@
 				const x = batch.x[i];
 				const y = batch.y[i];
 				const z = batch.z[i];
-				const probs = objectProbabilitiesAt(model, x, y, z, ctx);
+				const probs = objectProbabilitiesAt(model, x, y, z);
 				const base = (seed | 0) + batchSeed + i;
 				if (hash.hash01At(base, 0) >= probs.p) continue;
 				const type = pickObjectType(probs, hash.hash01At(base, 1));
@@ -192,13 +177,6 @@
 				if (type === 'HII') {
 					size = HII_R_MIN + rSize * (HII_R_MAX - HII_R_MIN);
 					ageGyr = HII_AGE_MIN + rAge * (HII_AGE_MAX - HII_AGE_MIN);
-				} else if (type === 'open') {
-					size = OPEN_RT_MIN + rSize * (OPEN_RT_MAX - OPEN_RT_MIN);
-					ageGyr = Math.pow(10, Math.log10(OPEN_AGE_MIN)
-						+ rAge * (Math.log10(OPEN_AGE_MAX) - Math.log10(OPEN_AGE_MIN)));
-				} else if (type === 'globular') {
-					size = GLOB_RC_MIN + rSize * (GLOB_RC_MAX - GLOB_RC_MIN);
-					ageGyr = GLOB_AGE_MIN + rAge * (GLOB_AGE_MAX - GLOB_AGE_MIN);
 				} else if (type === 'planetary') {
 					size = PLANETARY_SIZE;
 					ageGyr = PLANETARY_AGE;
@@ -207,10 +185,10 @@
 					ageGyr = 0.01;
 				}
 				// No object is older than its galaxy: the ranges above are the
-				// observed present-day ones (a 10–13 Gyr globular, a 10 Gyr
-				// planetary nebula), and a 1 Gyr galaxy has had no time to make
-				// them. Clamping keeps the members' ages — which deriveStarWithAge
-				// imposes on the whole object — inside the model's clock.
+				// observed present-day ones (a 10 Gyr planetary nebula), and a
+				// 1 Gyr galaxy has had no time to make one. Clamping keeps the
+				// members' ages — which deriveStarWithAge imposes on the whole
+				// object — inside the model's clock.
 				const galaxyAge = model.populations.age;
 				if (ageGyr > galaxyAge) ageGyr = galaxyAge;
 				out.push({
@@ -228,70 +206,24 @@
 	}
 
 	// ---- member profiles ---------------------------------------------------
-	// Plummer: M(<r) = r³/(r²+a²)^3/2, so r = a/√(u^−2/3 − 1); u is scaled into
-	// the enclosed fraction at the tidal radius, which truncates exactly.
-	function plummerRadius(u, a, rt) {
-		const enclosed = Math.pow(rt, 3) / Math.pow(rt * rt + a * a, 1.5);
-		const v = u * enclosed;
-		if (!(v > 0)) return 0;
-		return a / Math.sqrt(Math.pow(v, -2 / 3) - 1);
-	}
-
-	// King W0 ≈ 6 in x = r/r_c: ρ(x) ∝ ((1+x²)^−1/2 − (1+x_t²)^−1/2)², cut at
-	// x_t. The profile depends on x alone, so one table serves every core
-	// radius; the CDF is the same 1024-bin Simpson the discs and the bar use.
-	const KING_STEPS = 1024;
-	let kingGrid = null;
-	let kingCdf = null;
-	let kingTotal = 0;
-	function kingProfile(x) {
-		const t = 1 / Math.sqrt(1 + x * x) - 1 / Math.sqrt(1 + GLOB_XT * GLOB_XT);
-		return t > 0 ? 4 * Math.PI * x * x * t * t : 0;
-	}
-	function kingSampler() {
-		if (kingGrid) return;
-		kingGrid = new Float64Array(KING_STEPS + 1);
-		kingCdf = new Float64Array(KING_STEPS + 1);
-		const h = GLOB_XT / KING_STEPS;
-		for (let i = 0; i <= KING_STEPS; i++) kingGrid[i] = i * h;
-		let total = 0;
-		for (let i = 0; i < KING_STEPS; i++) {
-			total += (h / 6) * (kingProfile(kingGrid[i])
-				+ 4 * kingProfile(0.5 * (kingGrid[i] + kingGrid[i + 1]))
-				+ kingProfile(kingGrid[i + 1]));
-			kingCdf[i + 1] = total;
-		}
-		kingTotal = total;
-	}
-	function kingRadius(u, rc) {
-		kingSampler();
-		return rc * sampling.sampleTable(u, kingGrid, kingCdf, kingTotal);
-	}
+	// The one member profile left here is the HII fractal below; the bounded
+	// stellar profile (truncated Plummer) moved to clusters.js with the star
+	// clusters, and the fixed King W0≈6 profile went with the globular class
+	// it belonged to.
 
 	function objectMemberSeed(objSeed, i) {
 		return (Math.imul(i + 1, 0x9e3779b1) ^ Math.imul(objSeed | 0, 0x85ebca6b)) | 0;
 	}
-
-	const dirScratch = new Float64Array(3);
 
 	// Offset of member i from the object centre (kpc), a pure function of
 	// (object seed, i). `out` is a caller-provided length-3 array.
 	function sampleMemberOffset(obj, i, out) {
 		const oSeed = obj.seed | 0;
 		const memberSeed = objectMemberSeed(oSeed, i);
-		if (obj.type === 'planetary') {
+		if (obj.type !== 'HII') {
+			// A planetary's only member is its central star, on the centre;
+			// an SNR has no members at all (richness 0, never sampled).
 			out[0] = 0; out[1] = 0; out[2] = 0;
-			return out;
-		}
-		if (obj.type === 'open' || obj.type === 'globular') {
-			const u = hash.hash01At(memberSeed, 0);
-			const r = obj.type === 'open'
-				? plummerRadius(u, OPEN_RC, obj.size)
-				: kingRadius(u, obj.size);
-			sampling.sampleDirection(hash.hash01At(memberSeed, 1), hash.hash01At(memberSeed, 2), dirScratch);
-			out[0] = r * dirScratch[0];
-			out[1] = r * dirScratch[1];
-			out[2] = r * dirScratch[2];
 			return out;
 		}
 		// Fractal OB: uniform candidates in the 2.5·R_e sphere, kept where the
@@ -321,43 +253,53 @@
 	const memberOffset = new Float64Array(3);
 	const memberDerived = {};
 
-	// Quota of rendered members for object j: richness is a weight, and the
-	// fixed block is apportioned over it, so a 2000-star globular renders ~10×
-	// the members of a 200-star association instead of hogging the block, and
-	// every placed object is represented. Cumulative rounding (Bresenham-style)
-	// keeps the total exact in one pass with O(1) state: quota_j is 1 plus the
-	// inner allocation over (richness − 1), which guarantees every non-empty
-	// object at least its first member. When everything fits, quotas are the
-	// richnesses; when even one member each does not fit (only via tiny test
-	// caps — the renderer places 400 objects into 20000 slots), the first
-	// objects win, in order.
-	function objectQuotas(objects, maxMembers, quotas) {
+	// Quota of rendered members for object j, apportioned over a per-object
+	// weight: `richness` here, a cluster's continuous `weight` in
+	// clusters.js (which reuses this one apportionment rather than growing a
+	// second). Cumulative rounding (Bresenham-style) keeps the total exact
+	// in one pass with O(1) state: quota_j is 1 plus the inner allocation
+	// over (weight − 1), which guarantees every weighted object at least
+	// its first member. When everything fits, quotas are the weights
+	// themselves — unless the caller passes `fill` (clusters do: their
+	// weights are relative masses, not counts, so the budget is always
+	// spent in proportion); when even one member each does not fit, the
+	// first objects win, in order.
+	function quotaWeight(o) {
+		const w = o.weight !== undefined ? o.weight : o.richness;
+		return w > 0 ? w : 0;
+	}
+	function objectQuotas(objects, maxMembers, quotas, fill) {
 		let total = 0;
 		let nonzero = 0;
+		let integerWeights = true;
 		for (let j = 0; j < objects.length; j++) {
-			if (objects[j].richness <= 0) { quotas[j] = 0; continue; }
-			total += objects[j].richness;
+			const w = quotaWeight(objects[j]);
+			if (w <= 0) { quotas[j] = 0; continue; }
+			if (w !== Math.floor(w)) integerWeights = false;
+			total += w;
 			nonzero++;
 		}
-		if (total <= maxMembers) {
-			for (let j = 0; j < objects.length; j++) quotas[j] = objects[j].richness;
+		if (!fill && integerWeights && total <= maxMembers) {
+			for (let j = 0; j < objects.length; j++) quotas[j] = Math.floor(quotaWeight(objects[j]));
 			return quotas;
 		}
 		if (nonzero > maxMembers) {
 			let left = maxMembers;
 			for (let j = 0; j < objects.length; j++) {
-				quotas[j] = objects[j].richness > 0 && left-- > 0 ? 1 : 0;
+				quotas[j] = quotaWeight(objects[j]) > 0 && left-- > 0 ? 1 : 0;
 			}
 			return quotas;
 		}
+		if (nonzero === 0 || maxMembers <= 0) return quotas;
 		const inner = total - nonzero;
 		const budget = maxMembers - nonzero;
 		let acc = 0;
 		let prev = 0;
 		for (let j = 0; j < objects.length; j++) {
-			if (objects[j].richness <= 0) { quotas[j] = 0; continue; }
-			acc += objects[j].richness - 1;
-			const f = Math.floor(acc * budget / inner);
+			const w = quotaWeight(objects[j]);
+			if (w <= 0) { quotas[j] = 0; continue; }
+			acc += w - 1;
+			const f = inner > 0 ? Math.floor(acc * budget / inner) : 0;
 			quotas[j] = 1 + (f - prev);
 			prev = f;
 		}
@@ -404,9 +346,7 @@
 			const quota = quotaScratch[j];
 			if (quota <= 0) continue;
 			const oSeed = obj.seed | 0;
-			const thin = obj.type === 'HII' || obj.type === 'open';
-			const component = thin ? density.COMPONENT_THIN
-				: obj.type === 'globular' ? density.COMPONENT_HALO
+			const component = obj.type === 'HII' ? density.COMPONENT_THIN
 				: density.COMPONENT_NAMES.indexOf(obj.dominant);
 			for (let i = 0; i < quota && slot < maxMembers; i++) {
 				const memberSeed = objectMemberSeed(oSeed, i);
@@ -422,7 +362,7 @@
 				else starTypes.deriveStarWithAge(model, memberSeed, component, R, distToArm, obj.ageGyr, memberDerived);
 				// Orbit family: members of young objects (age < 100 Myr,
 				// plan §1.2) ride the pattern with the arms they formed in;
-				// old members (globulars) follow their component's law.
+				// older members follow their component's law.
 				const family = obj.ageGyr < 0.1
 					? orbit.FAMILY_PATTERN
 					: orbit.familyForStar(component, memberDerived.spectralClass, model.barred);
@@ -499,19 +439,18 @@
 	}
 
 	const ObjectsLib = {
-		OBJECT_TYPES, OBJECT_MEMBERS_DEFAULT, OBJECT_COUNT_DEFAULT,
-		RATE_HII, RATE_OPEN, RATE_GLOBULAR, RATE_STELLAR,
-		RICHNESS, HII_R_MIN, HII_R_MAX, OPEN_RC, OPEN_RT_MIN, OPEN_RT_MAX,
-		GLOB_RC_MIN, GLOB_RC_MAX, GLOB_XT,
-		HII_AGE_MIN, HII_AGE_MAX, OPEN_AGE_MIN, OPEN_AGE_MAX,
-		GLOB_AGE_MIN, GLOB_AGE_MAX, PLANETARY_AGE,
+		OBJECT_TYPES, OBJECT_COUNT_DEFAULT,
+		GAS_MEMBER_FRACTION, gasMemberBudget,
+		RATE_HII, RATE_STELLAR,
+		RICHNESS, HII_R_MIN, HII_R_MAX,
+		HII_AGE_MIN, HII_AGE_MAX, PLANETARY_AGE,
 		PLANETARY_SIZE, SNR_SIZE_MIN, SNR_SIZE_MAX,
 		FRACTAL_RADIUS, FRACTAL_RETRIES,
 		GAS_TYPES, BILLBOARD_RECORD_FLOATS, BILLBOARD_RECORD_BYTES,
 		BILLBOARD_MIN_PX, BILLBOARD_MAX_DIST_KPC, BILLBOARD_OPACITY,
-		objectContext, objectProbabilitiesAt, placeObjects,
+		objectProbabilitiesAt, placeObjects,
 		objectMemberSeed,
-		plummerRadius, kingRadius, sampleMemberOffset, objectQuotas, writeObjectMembers,
+		sampleMemberOffset, objectQuotas, writeObjectMembers,
 		objectHasGas, billboardScreenPx, billboardVisible, writeObjectBillboards,
 		summariseObjects,
 	};

@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-14T23:09:34.340Z",
-  "modules": 27,
-  "totalChecks": 138,
-  "passed": 138,
+  "date": "2026-10-15T00:45:43.093Z",
+  "modules": 28,
+  "totalChecks": 143,
+  "passed": 143,
   "failed": 0,
   "checks": [
     {
@@ -345,7 +345,7 @@
       }
     },
     {
-      "name": "ObjectsLib has identical key sets (48 keys)",
+      "name": "ObjectsLib has identical key sets (34 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -354,6 +354,38 @@
     },
     {
       "name": "ObjectsLib binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "ClustersLib loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "ClustersLib registers exactly one window namespace (ClustersLib)",
+      "pass": true,
+      "detail": [
+        "ClustersLib"
+      ]
+    },
+    {
+      "name": "ClustersLib exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "ClustersLib has identical key sets (23 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "ClustersLib binds every key to the same value",
       "pass": true,
       "detail": []
     },

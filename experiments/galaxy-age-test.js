@@ -34,6 +34,7 @@ const density = require('../src/math/density.js');
 const galaxy = require('../src/math/galaxy.js');
 const hash = require('../src/math/hash.js');
 const objects = require('../src/math/objects.js');
+const clusters = require('../src/math/clusters.js');
 const sampling = require('../src/math/sampling.js');
 const starTypes = require('../src/math/star-types.js');
 
@@ -394,33 +395,46 @@ const log = { date: new Date().toISOString(), types: TYPES, sfh: {}, windows: {}
 		log.objects[type] = mixes;
 		// The gas-driven counts burn down with the reservoir, and nothing in the
 		// epoch tier may get in the way of that: a 0.5 Gyr E4 is mid-burst and
-		// gas-rich (`gasNow` 0.2), so it places open clusters even though its
+		// gas-rich (`gasNow` 0.2), so it places HII regions even though its
 		// present-day self has none. The tier's disc heating is what could break
 		// this — a colder disc is a thinner gas lane — and it is exactly why the
 		// heating is gated on the model *having* a disc: an E has none, so its
 		// lane keeps the type's own scale and its starburst still shows.
-		check(`${type}: the gas-driven object counts fall as the gas is used up`,
-			(mixes[0.5].byType.HII || 0) + (mixes[0.5].byType.open || 0)
-				> (mixes[13.5].byType.HII || 0) + (mixes[13.5].byType.open || 0)
-			&& (mixes[0.5].byType.HII || 0) >= (mixes[2].byType.HII || 0)
-			&& (mixes[2].byType.HII || 0) >= (mixes[8].byType.HII || 0),
-			{ at0_5: mixes[0.5].byType, at13_5: mixes[13.5].byType });
-		check(`${type}: no object is older than its galaxy`, ageBreak === null, ageBreak);
-		// The old populations move the other way: a globular cluster needs time,
-		// so a young galaxy has few and an old one has its full share.
-		if (type !== 'E4') {
-			check(`${type}: globular clusters need time, so they accumulate with age`,
-				(mixes[13.5].byType.globular || 0) > (mixes[0.5].byType.globular || 0),
-				{ at0_5: mixes[0.5].byType.globular || 0, at13_5: mixes[13.5].byType.globular || 0 });
+		if (type === 'E4') {
+			// A disc-less elliptical grows no HII regions at any age: its gas
+			// story lives in the reservoir checks above, and its star
+			// clusters (below) are the spheroid's own. (The young disc
+			// clusters that used to show this count are cluster-layer now.)
+			check(`${type}: a disc-less elliptical places no HII regions at any age`,
+				ages.every((age) => (mixes[age].byType.HII || 0) === 0),
+				{ at0_5: mixes[0.5].byType, at13_5: mixes[13.5].byType });
+		} else {
+			check(`${type}: the gas-driven object counts fall as the gas is used up`,
+				(mixes[0.5].byType.HII || 0) > (mixes[13.5].byType.HII || 0)
+				&& (mixes[0.5].byType.HII || 0) >= (mixes[2].byType.HII || 0)
+				&& (mixes[2].byType.HII || 0) >= (mixes[8].byType.HII || 0),
+				{ at0_5: mixes[0.5].byType, at13_5: mixes[13.5].byType });
 		}
+		check(`${type}: no object is older than its galaxy`, ageBreak === null, ageBreak);
+		// The cluster layer (clusters.js — star clusters in this galaxy, not
+		// nebulae) moves the other way: an old cluster population needs time
+		// to exist, so an old galaxy hosts ancient clusters and a young one
+		// cannot, whatever its type.
+		const youngClusters = clusters.placeStarClusters(galaxy.modelAtAge(base, 0.5), 42 ^ 0xC1057E5, undefined, null);
+		const oldClusters = clusters.placeStarClusters(galaxy.modelAtAge(base, 13.5), 42 ^ 0xC1057E5, undefined, null);
+		check(`${type}: old star clusters accumulate with the galaxy's age`,
+			youngClusters.every((c) => c.ageGyr <= 0.5 + 1e-9)
+			&& oldClusters.some((c) => c.ageGyr > 5),
+			{ youngMax: +Math.max(0, ...youngClusters.map((c) => c.ageGyr)).toFixed(2),
+				oldAncient: oldClusters.filter((c) => c.ageGyr > 5).length });
 	}
-	// The clamp, on the object that needs it: a 1 Gyr galaxy has had no time to
-	// make a 13 Gyr globular, and its members are coeval with it.
+	// The clamp, on the layer that needs it: a 1 Gyr galaxy has had no time
+	// to make a 10 Gyr globular, and every cluster in it is younger than it.
 	const young = galaxy.createGalaxy({ type: 'SBb', seed: 42, age: 1 });
-	const placed = objects.placeObjects(young, 42 ^ 0x0B5E55, OBJECT_DRAWS, null);
-	const oldest = placed.reduce((a, o) => Math.max(a, o.ageGyr), 0);
-	check('a 1 Gyr galaxy has no 10 Gyr globular in it', oldest <= 1 && placed.some((o) => o.type === 'globular'),
-		{ oldestObjectGyr: +oldest.toFixed(3), globulars: placed.filter((o) => o.type === 'globular').length });
+	const placedClusters = clusters.placeStarClusters(young, 42 ^ 0xC1057E5, undefined, null);
+	const oldest = placedClusters.reduce((a, c) => Math.max(a, c.ageGyr), 0);
+	check('a 1 Gyr galaxy has no 10 Gyr globular in it', oldest <= 1 && placedClusters.length > 0,
+		{ oldestClusterGyr: +oldest.toFixed(3), clusters: placedClusters.length });
 }
 
 // --- 6. The exposure renormalisation ------------------------------------

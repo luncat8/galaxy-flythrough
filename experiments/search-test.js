@@ -106,9 +106,22 @@ const genCtx = { model, field, member: memberMeta };
 		identity[offsets[1] + i] = planets.landmarkKey(i);
 	}
 	const objectsLib = require('../src/math/objects.js');
+	const clustersLib = require('../src/math/clusters.js');
+	// The renderer's block layout (plan §10): star clusters first, gas
+	// objects after. The halo-component members the battery's `comp halo`
+	// filter finds are a halo star cluster's — globulars were never
+	// nebulae, and the gas layer has no halo members to give.
+	const haloCluster = {
+		seed: 424242, x: 1.5, y: -2.0, z: 0.8, scale: 0.002, tidal: 0.03,
+		ageGyr: 12, weight: 1, component: density.COMPONENT_HALO,
+	};
+	const clusterSlots = clustersLib.writeClusterMembers(model, [haloCluster], view,
+		offsets[2] * records.RECORD_BYTES, 4, 0, identity, offsets[2], memberMeta).written;
 	const placed = objectsLib.placeObjects(model, (model.seed | 0) ^ 0x0B5E55, 4, null);
 	objectsLib.writeObjectMembers(model, placed, view,
-		offsets[2] * records.RECORD_BYTES, OBJECT_N, 0, identity, offsets[2], memberMeta);
+		(offsets[2] + clusterSlots) * records.RECORD_BYTES, OBJECT_N - clusterSlots, 0,
+		identity, offsets[2] + clusterSlots,
+		{ age: memberMeta.age.subarray(clusterSlots), component: memberMeta.component.subarray(clusterSlots) });
 	const localSeed = (model.seed | 0) ^ 0x10ca1cab;
 	const cell = { id: 7, x0: 1.2, y0: -0.4, z0: 0.05, size: 0.4 };
 	for (let i = 0; i < LOCAL_N; i++) {

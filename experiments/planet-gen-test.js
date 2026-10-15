@@ -276,9 +276,8 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 	for (let j = 0; j < placed.length && slot < written; j++) {
 		const obj = placed[j];
 		const quota = quotas[j];
-		const component = (obj.type === 'HII' || obj.type === 'open') ? density.COMPONENT_THIN
-			: obj.type === 'globular' ? density.COMPONENT_HALO
-				: density.COMPONENT_NAMES.indexOf(obj.dominant);
+		const component = obj.type === 'HII' ? density.COMPONENT_THIN
+			: density.COMPONENT_NAMES.indexOf(obj.dominant);
 		for (let i = 0; i < quota && slot < written; i++, slot++) {
 			if (slot % 5 !== 0) continue;
 			slots++;

@@ -528,6 +528,68 @@ This works under `file://` in all major browsers because classic script loading 
 
 Nebulae are independent of the star population. They render in their own pass and may be billboards, shells, or volumetric.
 
+### Star clusters are not nebulae (and not other galaxies)
+
+A globular cluster is a bound group of stars **inside the current galaxy** — an old,
+spheroid/halo-leaning example of the general star-cluster population, not a gas
+cloud and not an extragalactic object. The code keeps the two layers apart by name
+and by file, so the distinction cannot blur again:
+
+- `math/nebula.js` + the gas objects in `math/objects.js` (HII regions, planetary
+  nebulae, supernova remnants) are the *nebula* layer. Gas gets a billboard.
+- `math/clusters.js` is the *star-cluster* layer. A cluster is stars only: no
+  billboard, no `NEBULA_COLORS`, no gas opacity. Its centre is placed inside this
+  galaxy's own density field, and no other galaxy is modelled at this stage.
+
+Clusters are **one generalized family, not predefined classes** (no separate
+open/globular types, profiles, age boxes or richness boxes). One formula reads the
+environment at the centre and turns it into continuous parameters:
+
+- centre: a field-sampler candidate accepted with weight
+  `(ρ_spheroid + ρ_halo + ½ρ_thick + gasWeight·ρ_thin) / ρ_total`, so cluster
+  centres trace the stellar density that can host them;
+- population component: one draw from the local component fractions
+  (`density.sampleComponentIndex`), and the cluster's age is drawn from that
+  component's own formation window (`galaxy.FORMATION_WINDOW`) — a halo draw is
+  old because the halo formed first, a thin-disc draw is younger, with no
+  per-class age range anywhere;
+- internal distribution: one truncated Plummer law for every cluster,
+  `r = a/√(u^(−2/3) − 1)` scaled into the enclosed fraction at the tidal radius.
+  The Plummer scale `a` is log-drawn (0.5–4 pc) and shrinks as the spheroid/halo
+  fraction at the centre grows; the concentration `c = log10(r_tidal/a)` is
+  continuous (0.7–1.9) and grows with the same fraction. Diffuse young disc
+  clusters and compact old spheroid clusters are the two ends of one continuum;
+- cluster count: proportional to the galaxy's delivered stellar mass relative
+  to the Milky Way preset (`≈160` clusters there), never a fixed mixed-object
+  quota.
+
+**Proper motion.** A cluster moves as one system. Every member record carries
+the cluster's own orbit family (from its component and age) and the cluster's
+own jitter byte (epicycle phase/amplitude), so the movement engines apply one
+bulk orbit and one wobble to the whole cluster; members differ only by their
+birth offset inside it. Per-member orbit phases would boil a 10 pc cluster
+apart at the spheroid's wobble amplitude, which is the dispersal this rule
+exists to prevent.
+
+**Density budget and the exaggeration coefficient.** Cluster stars are drawn
+*on top of* the field, so their count must follow the selected star budget, not
+a fixed block. At true scale the whole cluster system is
+`CLUSTER_TRUE_FRACTION = 0.001` of the galaxy's stars — in a 100 000-star
+render that is ~100 stars spread over ~160 clusters, i.e. invisible. The layer
+therefore renders
+
+```
+clusterParticles = fieldStars × 0.001 × clusterExaggeration     (default ×50)
+```
+
+which is ~5 000 particles at 100k field stars, on the order of 10–100 per
+cluster. This is a **visual exaggeration, not a true scale ratio**: `×1` is the
+honest scale, `×0` is off, and the coefficient is a view control (menu slider,
+`clusters=` preset/URL key) exactly like the pattern-speed multiplier. The gas
+objects' member allowance scales with the same field budget
+(`objects.gasMemberBudget`), so raising or lowering **Stars** can never leave a
+fixed 20k-star object block sitting on a 30k-star galaxy.
+
 ### Three tiers
 
 | Tier | Technique | Use case | Cost |
@@ -624,7 +686,8 @@ galaxy-flythrough/
     │   ├── star-record.js            # StarPacked layout + colour LUT
     │   ├── star-types.js             # IMF, ages, evolution state, class
     │   ├── nebula.js                 # nebula probability + placement
-    │   ├── objects.js                # composite objects + member profiles
+    │   ├── objects.js                # gas objects (HII / planetary / SNR) + member profiles
+    │   ├── clusters.js               # star clusters in this galaxy: one generalized family, scaled particle budget
     │   └── coords.js                 # RA/Dec/parallax → galactic XYZ, world → screen
     ├── stream/
     │   ├── tile-loader.js            # bundle injection, decode, manifest

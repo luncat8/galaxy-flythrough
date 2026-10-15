@@ -60,6 +60,9 @@ const FIELDS = [
 	{ key: 'ship', label: 'ship class' },
 	{ key: 'stars', label: 'procedural stars' },
 	{ key: 'catalog', label: 'catalog budget' },
+	// Star clusters (plan §10): the visual-exaggeration coefficient of the
+	// cluster particle budget — a display ratio, not a star count.
+	{ key: 'clusters', label: 'cluster exaggeration', prefix: 'x' },
 ];
 
 // What the Defaults button restores and an absent preset key falls back to.
@@ -94,6 +97,9 @@ function menuDefaults() {
 		systime: g.SystemLayer ? g.SystemLayer.SYSTIME_DEFAULT : 0,
 		dvmap: g.SystemLayer ? g.SystemLayer.VIEW_DEFAULT : 0,
 		dvbudget: g.SystemLayer ? g.SystemLayer.BUDGET_DEFAULT : 0.35, ship: 'chemical',
+		// Owned by clusters.js, like the orbit numbers above are owned by
+		// orbit.js: the exaggeration the cluster budget is rendered at.
+		clusters: g.ClustersLib ? g.ClustersLib.CLUSTER_EXAGGERATION_DEFAULT : 50,
 	};
 }
 
@@ -249,6 +255,11 @@ function buildLlmPrompt(settings) {
 	lines.push('- star counts: ' + ['stars', 'catalog']
 		.filter((key) => d[key] !== undefined)
 		.map((key) => d[key] + ' ' + (key === 'stars' ? 'procedural' : 'catalog budget')).join(', '));
+	// Star clusters are stars inside the one galaxy (globulars included):
+	// never nebulae, never other galaxies. Their particle count is the true
+	// ~0.1% share times the exaggeration — a display ratio, not a scale.
+	if (d.clusters !== undefined) lines.push('- star clusters in this galaxy: particle budget = procedural stars x 0.1% x ' + d.clusters
+		+ ' visual exaggeration (not a true scale ratio; stars only, no nebula billboard)');
 	// The query, not the results: what the viewer asked for reproduces from
 	// the filter and the scope, the way the system reproduces from type and
 	// seed. An unconstrained filter is absent, never an empty line.

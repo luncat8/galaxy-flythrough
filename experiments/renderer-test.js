@@ -38,6 +38,9 @@ const rendererModule = require('../src/render/star-sprites.js');
 const records = require('../src/math/star-record.js');
 const loader = require('../src/stream/tile-loader.js');
 const objectsLib = require('../src/math/objects.js');
+// The renderer reads window.ClustersLib at construction (plan §10), so the
+// cluster layer must be registered before any renderer is created.
+const clustersLib = require('../src/math/clusters.js');
 const nebulaLib = require('../src/math/nebula.js');
 const Camera = require('../src/core/camera.js');
 
@@ -272,28 +275,46 @@ const catalogs = gpu.buffers.filter(b => b.label === 'star-storage');
 }
 
 // --- The objects block holds apportioned cluster members -----------------
+// Plan §10 layout: star clusters first (their own scaled budget), then the
+// gas objects in what remains. The expected member count is recomputed
+// from the two libraries, not hard-coded: clusters spend their budget in
+// full, gas writes min(remaining capacity, placed richness).
+function expectedObjectBlock(m, seedValue, gasCount, capacity, fieldStars) {
+        const clusterBudget = Math.min(capacity, clustersLib.clusterMemberBudget(fieldStars));
+        const gasPlaced = objectsLib.placeObjects(m, (seedValue | 0) ^ 0x0B5E55, gasCount, null);
+        const gasRichness = gasPlaced.reduce((a, o) => a + o.richness, 0);
+        return {
+                clusterBudget,
+                members: clusterBudget + Math.min(capacity - clusterBudget, gasRichness),
+        };
+}
 {
         const bytes = gpu.bufferWrites.filter(w => w.buffer.label === 'star-storage')[0].bytes;
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         const base = prepareState.proceduralStars + prepareState.landmarkStars;
+        const expected = expectedObjectBlock(model, 7, OBJECT_COUNT, OBJECT_MEMBERS, PROCEDURAL);
         check('the renderer reports the placed objects and their apportioned members',
-                prepareState.objectCount === OBJECT_COUNT && prepareState.objectStars === OBJECT_MEMBERS,
-                { objects: prepareState.objectCount, members: prepareState.objectStars });
+                prepareState.objectCount === OBJECT_COUNT + prepareState.clusterCount
+                && prepareState.gasObjectCount === OBJECT_COUNT
+                && prepareState.clusterCount === clustersLib.clusterCountFor(model)
+                && prepareState.clusterStars === expected.clusterBudget
+                && prepareState.objectStars === expected.members,
+                { objects: prepareState.objectCount, members: prepareState.objectStars, expected });
         let visible = 0;
         let finite = 0;
         let classOk = 0;
         let magOk = 0;
-        for (let i = 0; i < OBJECT_MEMBERS; i++) {
+        for (let i = 0; i < prepareState.objectStars; i++) {
                 const rec = records.readRecord(view, (base + i) * records.RECORD_BYTES);
                 if (rec.visible) visible++;
                 if (Number.isFinite(rec.x) && Number.isFinite(rec.y) && Number.isFinite(rec.z)) finite++;
                 if (rec.colorIndex < records.SPECTRAL_CLASSES.length) classOk++;
                 if (rec.absMag >= records.ABS_MAG_MIN && rec.absMag <= records.ABS_MAG_MAX) magOk++;
         }
-        check('every objects-block record is visible and finite',
-                visible === OBJECT_MEMBERS && finite === OBJECT_MEMBERS, { visible, finite });
-        check('every objects-block record carries a valid colour and magnitude',
-                classOk === OBJECT_MEMBERS && magOk === OBJECT_MEMBERS, { classOk, magOk });
+        check('every written objects-block record is visible and finite',
+                visible === prepareState.objectStars && finite === prepareState.objectStars, { visible, finite });
+        check('every written objects-block record carries a valid colour and magnitude',
+                classOk === prepareState.objectStars && magOk === prepareState.objectStars, { classOk, magOk });
 }
 
 // --- The procedural records are real stars ------------------------------
@@ -410,9 +431,11 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         check('anything past 5 kpc is culled even when it would be large on screen',
                 objectsLib.billboardVisible(0.15, 5.1, HEIGHT, fov) === false
                 && objectsLib.billboardVisible(0.15, 4.9, HEIGHT, fov) === true);
-        check('open and globular clusters have no gas billboard',
-                objectsLib.objectHasGas('open') === false && objectsLib.objectHasGas('globular') === false
-                && objectsLib.objectHasGas('HII') && objectsLib.objectHasGas('planetary') && objectsLib.objectHasGas('SNR'));
+        check('star clusters have no gas billboard (they are stars in this galaxy, not nebulae)',
+                objectsLib.OBJECT_TYPES.every(t => objectsLib.objectHasGas(t))
+                && objectsLib.objectHasGas('globular') === false && objectsLib.objectHasGas('open') === false
+                && clustersLib.placeStarClusters(model, 7, 5, null)
+                        .every(c => objectsLib.writeObjectBillboards([c], new DataView(new ArrayBuffer(32)), 0, 1) === 0));
 }
 
 
@@ -543,12 +566,15 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 && boot.landmarkStars === window.Landmarks.count && boot.catalogTotalStars === manifest.starCount,
                 { mode: boot.mode, type: boot.galaxyType, landmarks: boot.landmarkStars, catalog: boot.catalogTotalStars });
 
-        const game = renderer.regenerate(galaxy.createGalaxy({ type: 'E4', seed: 11 }));
+        const gameModel = galaxy.createGalaxy({ type: 'E4', seed: 11 });
+        const game = renderer.regenerate(gameModel);
+        const gameExpected = expectedObjectBlock(gameModel, 11, OBJECT_COUNT, OBJECT_MEMBERS, PROCEDURAL);
         check('a generated type runs Game mode: no named stars, no streamed catalog, but objects',
                 game.mode === 'game' && game.galaxyType === 'E4' && game.galaxySeed === 11
                 && game.landmarkStars === 0 && game.catalogTotalStars === 0
                 && game.catalogCells === 0 && game.localProceduralStars === 0
-                && game.objectCount === OBJECT_COUNT && game.objectStars === OBJECT_MEMBERS,
+                && game.objectCount === OBJECT_COUNT + clustersLib.clusterCountFor(gameModel)
+                && game.objectStars === gameExpected.members,
                 { landmarks: game.landmarkStars, catalog: game.catalogTotalStars, cells: game.catalogCells });
         renderer.render(camera, WIDTH, HEIGHT, 3 / 60, input);
         const gamePass = gpu.passes.filter(p => p.label === 'star-sprites').pop();
@@ -890,8 +916,10 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 
 
 // --- Object-block defaults ------------------------------------------------
-// Omitted object options fall back to the ObjectsLib budgets: 400 whole-galaxy
-// objects apportioned to exactly 20000 members.
+// Omitted object options fall back to the plan §10 budgets: the block is
+// clusterMemberBudget(field) + gasMemberBudget(field) — here the field is
+// 100 stars, so 5 cluster particles + 1 gas member. The block scales with
+// the selected star count instead of claiming a fixed 20000 members.
 {
         const defGpu = createMockGpu();
         const defRenderer = rendererModule.createStarRenderer(defGpu.device, defGpu.context, defGpu.format, {
@@ -900,16 +928,36 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 model,
         });
         const defState = defRenderer.prepare(null);
-        check('omitted object options default to 400 objects / 20000 members',
-                defState.objectCount === objectsLib.OBJECT_COUNT_DEFAULT
-                && defState.objectStars === objectsLib.OBJECT_MEMBERS_DEFAULT,
-                { objects: defState.objectCount, members: defState.objectStars });
+        const defCapacity = clustersLib.clusterMemberBudget(100) + objectsLib.gasMemberBudget(100);
+        check('omitted object options default to the scaled cluster+gas budgets',
+                defState.gasObjectCount === objectsLib.OBJECT_COUNT_DEFAULT
+                && defState.clusterCount === clustersLib.clusterCountFor(model)
+                && defState.objectStars === defCapacity
+                && defState.clusterStars === clustersLib.clusterMemberBudget(100),
+                { objects: defState.objectCount, members: defState.objectStars, capacity: defCapacity });
         const defBuffer = defGpu.buffers.find(b => b.label === 'star-storage');
-        const defExpected = (100 + defState.landmarkStars + objectsLib.OBJECT_MEMBERS_DEFAULT
+        const defExpected = (100 + defState.landmarkStars + defCapacity
                 + rendererModule.LOCAL_PROCEDURAL_DEFAULT) * records.RECORD_BYTES;
         check('the default objects block sizes the buffer',
                 defBuffer.size === defExpected, { size: defBuffer.size, expected: defExpected });
         defRenderer.dispose();
+
+        // The coefficient is a budget control, not a relabel: ×0 removes
+        // the cluster particles and leaves the gas allowance standing.
+        const zeroGpu = createMockGpu();
+        const zeroRenderer = rendererModule.createStarRenderer(zeroGpu.device, zeroGpu.context, zeroGpu.format, {
+                proceduralStars: 100000,
+                catalogBudgetStars: 0,
+                clusterExaggeration: 0,
+                model,
+        });
+        const zeroState = zeroRenderer.prepare(null);
+        check('cluster exaggeration x0 draws gas members only, and x200 scales the block',
+                zeroState.clusterStars === 0 && zeroState.gasObjectStars === objectsLib.gasMemberBudget(100000)
+                && zeroRenderer.setClusterExaggeration(200) === 200,
+                { clusterStars: zeroState.clusterStars, gasObjectStars: zeroState.gasObjectStars });
+        zeroRenderer.setClusterExaggeration(clustersLib.CLUSTER_EXAGGERATION_DEFAULT);
+        zeroRenderer.dispose();
 }
 
 // --- Exposure -----------------------------------------------------------

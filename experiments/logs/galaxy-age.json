@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-14T23:10:48.262Z",
+  "date": "2026-10-15T00:46:54.089Z",
   "types": [
     "E0",
     "E1",
@@ -1266,41 +1266,33 @@
       "2": {
         "placed": 400,
         "byType": {
-          "planetary": 58,
-          "open": 176,
-          "HII": 128,
-          "SNR": 20,
-          "globular": 18
+          "planetary": 105,
+          "SNR": 49,
+          "HII": 246
         }
       },
       "8": {
         "placed": 400,
         "byType": {
-          "planetary": 106,
-          "open": 119,
-          "SNR": 27,
-          "HII": 67,
-          "globular": 81
+          "planetary": 204,
+          "SNR": 58,
+          "HII": 138
         }
       },
       "0.5": {
         "placed": 400,
         "byType": {
-          "globular": 9,
-          "HII": 142,
-          "open": 185,
-          "SNR": 21,
-          "planetary": 43
+          "planetary": 76,
+          "SNR": 50,
+          "HII": 274
         }
       },
       "13.5": {
         "placed": 400,
         "byType": {
-          "globular": 88,
-          "SNR": 57,
-          "open": 55,
-          "planetary": 150,
-          "HII": 50
+          "planetary": 256,
+          "SNR": 78,
+          "HII": 66
         }
       }
     },
@@ -1308,41 +1300,33 @@
       "2": {
         "placed": 400,
         "byType": {
-          "planetary": 49,
-          "open": 181,
-          "HII": 141,
-          "SNR": 25,
-          "globular": 4
+          "planetary": 83,
+          "SNR": 56,
+          "HII": 261
         }
       },
       "8": {
         "placed": 400,
         "byType": {
-          "planetary": 88,
-          "open": 144,
-          "SNR": 42,
-          "HII": 112,
-          "globular": 14
+          "planetary": 131,
+          "SNR": 72,
+          "HII": 197
         }
       },
       "0.5": {
         "placed": 400,
         "byType": {
-          "globular": 5,
-          "HII": 146,
-          "open": 184,
-          "SNR": 22,
-          "planetary": 43
+          "planetary": 75,
+          "SNR": 54,
+          "HII": 271
         }
       },
       "13.5": {
         "placed": 400,
         "byType": {
-          "open": 114,
-          "planetary": 111,
-          "SNR": 65,
-          "HII": 88,
-          "globular": 22
+          "planetary": 152,
+          "SNR": 100,
+          "HII": 148
         }
       }
     },
@@ -1350,30 +1334,25 @@
       "2": {
         "placed": 400,
         "byType": {
-          "globular": 354,
-          "planetary": 46
+          "planetary": 400
         }
       },
       "8": {
         "placed": 400,
         "byType": {
-          "globular": 354,
-          "planetary": 46
+          "planetary": 400
         }
       },
       "0.5": {
         "placed": 400,
         "byType": {
-          "globular": 350,
-          "planetary": 44,
-          "open": 6
+          "planetary": 400
         }
       },
       "13.5": {
         "placed": 400,
         "byType": {
-          "globular": 354,
-          "planetary": 46
+          "planetary": 400
         }
       }
     }
@@ -1414,8 +1393,8 @@
     12,
     15
   ],
-  "totalChecks": 40,
-  "passed": 40,
+  "totalChecks": 41,
+  "passed": 41,
   "failed": 0,
   "checks": [
     {
@@ -1629,18 +1608,14 @@
       "pass": true,
       "detail": {
         "at0_5": {
-          "globular": 9,
-          "HII": 142,
-          "open": 185,
-          "SNR": 21,
-          "planetary": 43
+          "planetary": 76,
+          "SNR": 50,
+          "HII": 274
         },
         "at13_5": {
-          "globular": 88,
-          "SNR": 57,
-          "open": 55,
-          "planetary": 150,
-          "HII": 50
+          "planetary": 256,
+          "SNR": 78,
+          "HII": 66
         }
       }
     },
@@ -1650,11 +1625,11 @@
       "detail": null
     },
     {
-      "name": "SBb: globular clusters need time, so they accumulate with age",
+      "name": "SBb: old star clusters accumulate with the galaxy's age",
       "pass": true,
       "detail": {
-        "at0_5": 9,
-        "at13_5": 88
+        "youngMax": 0.43,
+        "oldAncient": 112
       }
     },
     {
@@ -1662,18 +1637,14 @@
       "pass": true,
       "detail": {
         "at0_5": {
-          "globular": 5,
-          "HII": 146,
-          "open": 184,
-          "SNR": 22,
-          "planetary": 43
+          "planetary": 75,
+          "SNR": 54,
+          "HII": 271
         },
         "at13_5": {
-          "open": 114,
-          "planetary": 111,
-          "SNR": 65,
-          "HII": 88,
-          "globular": 22
+          "planetary": 152,
+          "SNR": 100,
+          "HII": 148
         }
       }
     },
@@ -1683,25 +1654,22 @@
       "detail": null
     },
     {
-      "name": "Sc: globular clusters need time, so they accumulate with age",
+      "name": "Sc: old star clusters accumulate with the galaxy's age",
       "pass": true,
       "detail": {
-        "at0_5": 5,
-        "at13_5": 22
+        "youngMax": 0.43,
+        "oldAncient": 139
       }
     },
     {
-      "name": "E4: the gas-driven object counts fall as the gas is used up",
+      "name": "E4: a disc-less elliptical places no HII regions at any age",
       "pass": true,
       "detail": {
         "at0_5": {
-          "globular": 350,
-          "planetary": 44,
-          "open": 6
+          "planetary": 400
         },
         "at13_5": {
-          "globular": 354,
-          "planetary": 46
+          "planetary": 400
         }
       }
     },
@@ -1711,11 +1679,19 @@
       "detail": null
     },
     {
+      "name": "E4: old star clusters accumulate with the galaxy's age",
+      "pass": true,
+      "detail": {
+        "youngMax": 0.5,
+        "oldAncient": 31
+      }
+    },
+    {
       "name": "a 1 Gyr galaxy has no 10 Gyr globular in it",
       "pass": true,
       "detail": {
-        "oldestObjectGyr": 1,
-        "globulars": 9
+        "oldestClusterGyr": 0.854,
+        "clusters": 31
       }
     },
     {

@@ -129,6 +129,17 @@
                         <input type="range" id="slider-stars" min="0" max="8" step="1" value="6">
                         <span id="val-stars" class="menu-val">300k</span>
                 </div>
+                <!-- Star clusters (plan §10): globulars and their kin are stars
+                     inside this galaxy, not nebulae. At true scale (×1) the
+                     whole cluster system is ~0.1% of the stars — invisible
+                     in a rendered galaxy — so the particle count is the
+                     true share times this visual exaggeration. Not a true
+                     scale ratio. Applied on release (one re-draw). -->
+                <div class="menu-row">
+                        <label for="slider-clusters" title="Star-cluster particles = Stars × 0.1% × this coefficient. ×50 at 100k stars puts ~10–100 particles in a typical cluster: a visual exaggeration, not a true scale ratio. ×1 is the honest scale (nearly invisible), ×0 turns cluster particles off. Star clusters are stars in this galaxy — they get no nebula billboard.">Star clusters</label>
+                        <input type="range" id="slider-clusters" min="0" max="200" step="5" value="50">
+                        <span id="val-clusters" class="menu-val">×50</span>
+                </div>
                 <!-- Star selection (0.5.0): the radius is world-space in light-years
                      (log slider, 0.1 ly … 100 000 ly) because what the set is for —
                      a neighbourhood search, a route — is physical, not on-screen. -->
@@ -294,6 +305,10 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
              are present, and before render files that read from it. -->
         <script src="math/deltav.js"></script>
         <script src="math/objects.js"></script>
+        <!-- Star clusters (plan §10): stars-only systems inside this galaxy,
+             one generalized family — never nebulae, never other galaxies.
+             Loads after objects.js, whose budget apportionment it reuses. -->
+        <script src="math/clusters.js"></script>
         <script src="math/coords.js"></script>
         <script src="core/device.js"></script>
         <script src="core/camera.js"></script>

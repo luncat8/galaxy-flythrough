@@ -54,6 +54,9 @@ function readParams(search) {
         };
         return {
                 stars: number('stars', window.StarRenderer.PROCEDURAL_STARS_DEFAULT),
+                // Star-cluster visual exaggeration (plan §10): cluster
+                // particles = stars × 0.1% × this. ×1 is true scale.
+                clusters: number('clusters', window.ClustersLib.CLUSTER_EXAGGERATION_DEFAULT),
                 catalogStars: number('catalog', window.StarRenderer.CATALOG_BUDGET_DEFAULT),
                 exposure: params.has('exposure') ? number('exposure', window.StarRenderer.EXPOSURE_DEFAULT) : null,
                 seed: number('seed', window.GalaxyLib.DEFAULT_SEED),
@@ -206,6 +209,7 @@ async function boot() {
         // model's answer, not the URL's.
         const renderer = window.StarRenderer.createStarRenderer(device, context, format, {
                 proceduralStars: params.stars,
+                clusterExaggeration: params.clusters,
                 catalogBudgetStars: params.catalogStars,
                 model,
                 hdr,
@@ -1024,6 +1028,7 @@ async function boot() {
 			ship: systemLayer.getShipClass(),
                         stars: params.stars,
                         catalog: params.catalogStars,
+                        clusters: renderer.state.clusterExaggeration,
                 };
         }
 
@@ -1037,12 +1042,20 @@ async function boot() {
                         params.stars = renderer.proceduralTarget();
                         syncStars();
                 }
+                // The cluster coefficient resizes the object block, so it
+                // lands with the budgets, before the rebuild below.
+                let clusterChanged = false;
+                if (s.clusters !== undefined) {
+                        clusterChanged = renderer.setClusterExaggeration(s.clusters) !== params.clusters;
+                        params.clusters = renderer.state.clusterExaggeration;
+                        syncClusters();
+                }
                 if (s.type !== undefined || s.seed !== undefined || s.age !== undefined) {
                         regenerateGalaxy(
                                 s.type !== undefined ? s.type : model.type,
                                 s.seed !== undefined ? s.seed : model.seed,
                                 s.age !== undefined ? s.age : model.populations.age);
-                } else if (budgetChanged) {
+                } else if (budgetChanged || clusterChanged) {
                         redrawField(model);
                 }
                 // The epoch's live clock (E2), landed after the age above so a preset
@@ -1446,6 +1459,28 @@ async function boot() {
         sliderStars.addEventListener('change', () => setStarBudget(STAR_STOPS[Number(sliderStars.value)]));
         syncStars();
 
+        // Star clusters (plan §10): the exaggeration coefficient, applied
+        // on release like the star budget it multiplies — the re-draw
+        // re-allocates the object block at the new size. The readout
+        // follows the drag.
+        const sliderClusters = document.getElementById('slider-clusters');
+        const valClusters = document.getElementById('val-clusters');
+        function syncClusters() {
+                sliderClusters.value = params.clusters;
+                valClusters.textContent = '×' + params.clusters;
+        }
+        sliderClusters.addEventListener('input', () => {
+                valClusters.textContent = '×' + Number(sliderClusters.value);
+        });
+        sliderClusters.addEventListener('change', () => {
+                const next = renderer.setClusterExaggeration(Number(sliderClusters.value));
+                if (next === params.clusters) { syncClusters(); return; }
+                params.clusters = next;
+                syncClusters();
+                redrawField(model);
+        });
+        syncClusters();
+
         galaxyType.addEventListener('change', () => {
                 regenerateGalaxy(galaxyType.value, model.seed, model.populations.age);
         });
@@ -1828,8 +1863,8 @@ async function boot() {
                         `galaxy ${state.galaxyLabel}   age ${state.galaxyAge.toFixed(1)} Gyr   ${state.mode} mode\n` +
                         `stars drawn ${state.drawn.toLocaleString()}  =  global ${state.proceduralStars.toLocaleString()}` +
                         ` + landmarks ${state.landmarkStars.toLocaleString()}` +
-                        ` + objects ${state.objectStars.toLocaleString()}` +
-                        ` + nebulae ${state.nebulaBillboards.toLocaleString()}` +
+                        ` + objects ${state.objectStars.toLocaleString()} (${state.clusterCount.toLocaleString()} star clusters in this galaxy, ${state.gasObjectCount.toLocaleString()} gas)` +
+                        ` + nebulae ${state.nebulaBillboards.toLocaleString()} (gas only — clusters are stars, no billboard)` +
                         ` + local ${state.localProceduralStars.toLocaleString()}` +
                         ` + catalog ${catKept.toLocaleString()}/${state.catalogTotalStars.toLocaleString()}\n` +
                         `cells ${state.cellsResident}/${state.catalogCells}   decoded ${(state.decodedBytes / 1024).toFixed(0)} KB` +

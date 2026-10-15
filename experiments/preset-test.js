@@ -25,6 +25,9 @@ const Presets = require('../src/core/presets.js');
 // menuDefaults() is called.
 const Selection = require('../src/core/selection.js');
 const SystemLayer = require('../src/render/system-layer.js');
+// Same contract for the star-cluster exaggeration (`clusters`, plan §10):
+// owned by clusters.js, so it must be registered before menuDefaults().
+const ClustersLib = require('../src/math/clusters.js');
 
 const checks = [];
 function check(name, test) {
@@ -42,7 +45,7 @@ const SETTINGS = {
 	selrad: 1.69897, exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
 	search: 'G,K|terran|220-300', scope: 'selection',
 	sysview: 0, systime: 2, dvmap: 1, dvbudget: 0.35, ship: 'fusion',
-	stars: 300000, catalog: 250000,
+	stars: 300000, catalog: 250000, clusters: 75,
 };
 
 check('serialize covers every field, in FIELDS order', () => {
@@ -167,6 +170,7 @@ check('menuDefaults matches the modules that own the numbers', () => {
 		exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
 		time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
 		systime: 0, dvmap: 0, dvbudget: 0.35, ship: 'chemical',
+		clusters: ClustersLib.CLUSTER_EXAGGERATION_DEFAULT,
 	});
 });
 
