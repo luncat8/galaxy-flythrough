@@ -165,9 +165,13 @@ passed), birth record + drawn distance in one kept row, truncation and its count
 == one-call, the abort, degenerate calls, `resolveDrawn` parity across masks 1/2/4/5 and
 all five blocks (worst error 0.000000), its refusal of a slot its key does not name and of
 an invisible record, the end-to-end pin that a picked star resolves to where it was
-clicked (flight error 0, birth error > 0.5 kpc), and both slice budgets at 300k. Full suite
-`python3 scripts/run.py all-tests` → 30/30 suites passed, no test deleted, no tolerance
-widened.
+clicked (flight error 0, birth error > 0.5 kpc), and both slice budgets at 300k. `m1-smoke-test.js` 67 → 70 checks pins the
+main.js wiring that cannot be run headlessly — the fly-to/orbit-target/follow/readout all
+resolve through `resolveDrawn`, the scan is chunked and drawn-centred, and the two shapes
+that must not come back (a fly-to aimed at `starSet.x`, the landmarks-only/simple-only
+follow) are asserted absent; all three fail on the pre-fix `main.js`, so they have teeth.
+Full suite `python3 scripts/run.py all-tests` → 30/30 suites passed, no test deleted, no
+tolerance widened.
 
 **Next step suggestion.** Give the §5 search the same treatment — a chunked,
 dispatch-exact distance predicate — so "stars within 10 pc of this one" and "stars within

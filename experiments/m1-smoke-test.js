@@ -95,6 +95,29 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		&& /routeRoundtrip/.test(main)
 		&& /selection-swap/.test(html)
 		&& /asset-pair-first-set/.test(html));
+	// ui.2: the camera and the radius scan judge *drawn* positions, not the birth
+	// records the snapshots store. There is no browser to run this in, so the
+	// wiring is pinned as text — including the two shapes that must not come back
+	// (a fly-to aimed at starSet.x, and the landmarks-only/simple-only follow).
+	check('fly-to, the orbit target and the follow resolve drawn positions, not birth snapshots',
+		/function memberDrawnPosition\(i, out\) \{\s*return selection\.resolveDrawn\(memberRefFor\(i\), out\);/.test(main)
+		&& /memberDrawnPosition\(i, drawnPos\);\s*camera\.flyToStar\(drawnPos\[0\], drawnPos\[1\], drawnPos\[2\]/.test(main)
+		&& /selection\.resolveDrawn\(hit, drawnPos\);\s*camera\.setOrbitTarget\(drawnPos\[0\]/.test(main)
+		&& /memberDrawnPosition\(p, drawnPos\);[\s\S]{0,400}?camera\.flyToStar\(drawnPos\[0\]/.test(main)
+		&& /if \(followKey >= 0 && cameraStateForTime\.mode === window\.Camera\.MODE_ORBIT_OBJECT\) \{\s*followTarget\(\);/.test(main)
+		&& /const drawn = memberDrawnPosition\(i, drawnPos\);/.test(main)
+		&& !/camera\.flyToStar\(starSet\.x\[/.test(main)
+		&& !/simpleLandmarkPosition\(followPos/.test(main)
+		&& !/followLandmark/.test(main));
+	check('the radius scan is chunked on the picker\'s contract and centred on a drawn position',
+		/memberDrawnPosition\(p, aroundCentre\);/.test(main)
+		&& /selection\.beginSelectAround\(aroundCentre\[0\], aroundCentre\[1\],/.test(main)
+		&& /if \(aroundPending && selection\.selectAroundStep\(SWEEP_SLICE_RECORDS, SWEEP_SLICE_MS\)\) \{\s*applyAroundResult\(\);/.test(main)
+		&& /if \(around\.aborted\) \{/.test(main)
+		&& !/selection\.selectAround\(/.test(main));
+	check('the route endpoints and the readout distance are drawn-space too',
+		/x: drawnPos\[0\], y: drawnPos\[1\], z: drawnPos\[2\] \};/.test(main)
+		&& /selection\.resolveDrawn\(ref, drawnPos\);\s*return stellarEndpointFrom\(ref, ref\);/.test(main));
 	// 0.6 E4: an age change is *not* a re-draw. The epoch places the field the
 	// field was drawn into (renderer.setEpoch → orbit.epochMap), the look follows
 	// in the renderer's background sweep, and only a new galaxy, seed or star
