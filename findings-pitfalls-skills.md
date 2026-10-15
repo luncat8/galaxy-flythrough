@@ -1594,3 +1594,28 @@ step was 6.27 rad, unchanged by refining), which a single-step bound never shows
 any bound large enough to pass is also large enough to hide it. The fix reads the
 quantity that is continuous by construction — E3's own `K·ln(size)`, from the homology
 scale ratio — instead of the wrapped pair it is equivalent to modulo 2π.
+
+## 2026-10-15 — An arrival orientation needs a candidate chain for up, not one fallback
+
+A fly-to flight that ends looking at a target must pick an arrival up vector. One
+fallback ("if the approach is near world Z, keep the current up") is not enough: the
+default Sun view's up *is* world Z, so flying straight up a pole leaves both candidates
+parallel to the arrival forward and the basis extraction returns a garbage quaternion
+(the trace branches quietly produce a non-unit result instead of NaN — it normalizes
+into nonsense rather than failing). Use a candidate chain — world Z, then current up,
+then current right: of two orthonormal vectors at most one can be near-parallel to a
+given direction (`|f·u|² + |f·r|² ≤ 1`), so three candidates always contain one at
+`|dot| < 0.99`. Test it by flying the degenerate approach itself and asserting
+orthonormality every frame of the flight, not just at the arrival.
+
+## 2026-10-15 — A camera flight to a moving target: re-derive the arrival pose every frame
+
+To make a flight meet a moving object, do not store the arrival pose at launch and do
+not integrate a velocity toward it. Store only the launch pose and the arrival
+*bearing*; re-compute the arrival position/orientation from the live target each frame
+and lerp/slerp by `smoothstep(elapsed/duration)`. The moving endpoint drags the path,
+`elapsed/duration` makes the path dt-free (30/60/144 Hz land identically), and the
+arrival frame is exact by construction (`s = 1` copies the endpoint). The same trick
+makes the follow free: after arrival the orbit placement re-derives from the target
+each frame anyway, so a per-frame `updateTarget` keeps the object centred with no new
+camera code.

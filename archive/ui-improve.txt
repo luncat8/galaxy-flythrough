@@ -9,3 +9,34 @@ camera around galaxy center
 - in fly mode use as current behavior (Esc and tab to show cursor and use menu)
 
 - in rot camera around galaxy or object center mode: show cursor, camera movement with press and drag canvas, avoid pass event from menu and sliders interaction
+
+## selection
+
+### multiple selection storage groups:
+
+group 1 natural space objects:
+star, planet, other 
+group 1a array to search in:
+array of space objects
+
+group 2 ships and residential:
+ship, base, colony, specific dock port, cargo container, etc
+group 2a array of 2 type
+
+### selection store history (now 2 items):
+current selected, previous selected
+
+### use case to test:
+
+user click on star1. it 
+	group 1 current is star1
+
+user click search stars in radius 10pk
+	group 1a current is list of stars
+
+user click star2 in 1a current list
+	group 1 current is star2
+	group 1 previous is star1
+
+user click make ship travel route 2-way. and star to send ship between 2 stars
+

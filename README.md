@@ -47,7 +47,9 @@ No framework, bundler, module loader, or runtime network connection is required.
 - Named-star selection, labels, and constellation lines
 - Star selection and multi-select: click any drawn star (procedural, object, catalog or
   landmark), Shift+click to build a set of up to 256, select-around by a world-space radius,
-  fly to one (`F`), cycle the set (`N`), clear it (`X`) — each member snapshotted with its
+  fly to one (`F` — a 2 s eased flight that ends orbiting the star at its luminosity
+  stand-off, cancelled by any control input; a moving landmark stays centred), cycle the
+  set (`N`), clear it (`X`) — each member snapshotted with its
   stellar properties, so the set survives the streaming rebuild
 - Deterministic per-star planetary systems: planets, belts, moons, insolation and
   temperatures, HZ/terran/locked flags, generated lazily on the CPU for the selected star

@@ -758,6 +758,7 @@ async function boot() {
                         const far = Math.sqrt(dx * dx + dy * dy + dz * dz) > SYSTEM_VIEW_FLY_KPC;
                         camera.flyToStar(starSet.x[p], starSet.y[p], starSet.z[p], memberName(p),
                                 far ? camera.orbitStandOff(starSet.lum[p]) : 0);
+                        followLandmarkFor(p);
                 }
                 syncViewRows();
                 writeSystemReadout();
@@ -1665,6 +1666,7 @@ async function boot() {
                 // The system view is the primary's view: no primary, no
                 // schematic. X, R and a galaxy change all come through here.
                 if (systemLayer.isOpen()) closeSystemView();
+                followLandmark = -1;
                 starSet.clear();
                 setLabel = '';
                 selected = -1;
@@ -1738,11 +1740,22 @@ async function boot() {
         }
 
         // F (plan §3.4): orbit the primary at the stand-off its luminosity implies.
+        // While the orbited star is a landmark it moves on the CPU mirror under
+        // the simple engine — followLandmark carries its entry index so the
+        // camera's orbit target rides the live position (the same dispatch the
+        // labels draw); everything else keeps its snapshot position.
+        let followLandmark = -1;
+        const followPos = new Float64Array(3);
+        function followLandmarkFor(i) {
+                followLandmark = starSet.blockKind[i] === selectPlanets.BLOCK_LANDMARK
+                        ? starSet.bufferIdx[i] : -1;
+        }
         function flyToPrimary() {
                 const i = starSet.primary;
                 if (i < 0) return false;
                 const standOff = camera.orbitStandOff(starSet.lum[i]);
                 camera.flyToStar(starSet.x[i], starSet.y[i], starSet.z[i], memberName(i), standOff);
+                followLandmarkFor(i);
                 return true;
         }
 
@@ -1752,6 +1765,9 @@ async function boot() {
         }
 
         function cameraLine(c) {
+                if (c.flying) {
+                        return `camera flying to ${c.targetName}   ${Math.round(c.flightProgress * 100)}%`;
+                }
                 if (c.mode === window.Camera.MODE_FLY) {
                         return `camera ${c.modeName}   speed ${formatSpeed(c.speedLyPerSec)}  (x${c.speedMult})${formatFactor(c.speedFactor)}`;
                 }
@@ -1943,6 +1959,17 @@ async function boot() {
                 }
                 labels.setOrbitState(model, starTimeMyr);
                 selection.setOrbitState(model, starTimeMyr);
+                // Fly-to follow: while the camera orbits (or flies to) a landmark
+                // under a simple engine mask, its orbit target rides the star's
+                // live position — the same CPU mirror the labels draw — so the
+                // star stays centred instead of drifting off the birth snapshot.
+                if (followLandmark >= 0 && model.milkyWay
+                        && cameraStateForTime.mode === window.Camera.MODE_ORBIT_OBJECT
+                        && renderer.state.engine.includes('simple')
+                        && window.OrbitLib.simpleLandmarksReady()) {
+                        window.OrbitLib.simpleLandmarkPosition(followPos, followLandmark);
+                        camera.updateTarget(followPos[0], followPos[1], followPos[2]);
+                }
                 if (actions.pick) {
                         actions.pick = 0;
                         if (systemLayer.isOpen()) {
@@ -1989,6 +2016,7 @@ async function boot() {
                                         selected = hit.index;
                                         labels.setSelected(hit.index);
                                         camera.setOrbitTarget(hit.x, hit.y, hit.z, landmarks.ENTRIES[hit.index].name);
+                                        followLandmark = hit.index;
                                 } else {
                                         selected = -1;
                                         labels.setSelected(-1);

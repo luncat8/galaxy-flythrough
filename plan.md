@@ -1131,6 +1131,50 @@ dt-independent, distance clamps, the default object target is the Sun, `setOrbit
 re-snaps, `H` in fly and in orbit, `R` restores everything, orbit → fly is continuous
 with zero velocity, buffers are never reallocated across mode switches.
 
+#### Camera Fly-to flight and follow (implemented; supersedes the teleport in archive/0.5.0 §3.4)
+
+`flyToStar(x, y, z, name, standOffKpc)` animates the move instead of teleporting:
+the camera travels from its current pose to the stand-off orbit in a fixed
+`FLIGHT_DURATION_S = 2 s` of wall time, then orbit-object mode takes over. The
+stand-off law (`0.0006·√(L/L☉)` clamped to `[0.0001, 0.01]` kpc) is unchanged.
+
+* **Pose contract.** At launch the camera records position and quaternion and
+  stops (`velocity = 0`, speed multiplier untouched). The arrival pose is
+  derived live every frame, never stored once: arrival position
+  `E = T + approach·d` on the line from the target `T` back along the launch
+  bearing `approach = normalize(P0 − T)` (degenerate launch: along `−forward`),
+  at distance `d = clamp(standOffKpc)` — or the current target distance when
+  `standOffKpc ≤ 0`; arrival orientation looks at `T` with galactic north `+Z`
+  as up (a launch bearing within 0.01 of the pole keeps the camera's current
+  up instead), orthonormalized against the arrival forward.
+* **Path.** `s = clamp(elapsed/2)` eased with smoothstep `s²(3−2s)`; position
+  is the f64 lerp `P0 → E`, orientation the shortest-path quaternion slerp
+  `Q0 → Q`. Both endpoints re-evaluate while `s < 1`, so a target that moves
+  during the flight is met where it arrives, not where the launch aimed. A
+  straight line plus slerp is predictable, cannot sweep the camera through the
+  disc, and lands exactly.
+* **Follow.** New `camera.updateTarget(x, y, z)` moves the object target in
+  place — no re-snap, no rename. Orbit mode already re-derives the position
+  from the target every frame, so after arrival the star stays centred at the
+  stand-off for free; during the flight the live end pose does the same.
+  main.js feeds the landmark's live position (`OrbitLib.simpleLandmarkPosition`,
+  the same dispatch the labels draw) while the camera orbits a landmark under a
+  `simple` engine mask; other engines and field stars keep the snapshot target
+  (the documented honest gap — the CPU never reads the GPU's θ back).
+* **Handover and cancel.** At `s = 1` the flight ends with
+  `orbitDistance = d` and `placeOnOrbit()` — the pose the path already
+  reached, so arrival is continuous. Any user input cancels: a look delta, a
+  movement key, a wheel notch, or C/H/R ends the flight at the current pose
+  (`orbitDistance = |T − P|`, the same re-snap a mode switch uses) and hands
+  control over the same frame. A second `flyToStar` mid-flight relaunches from
+  the current pose. Galaxy-frame changes (`setFrame`, `goHome`, `reset`,
+  `setState`, `setOrbitTarget`) end the flight without flying on.
+* **Readout.** `getState()` exposes `flying` and `flightProgress`; the overlay
+  camera line reads `camera flying to <name> NN%` while the flight runs.
+* Allocation-free: the flight reuses preallocated f64 scratch (start pose,
+  approach, up, arrival quaternion); frame-rate independence comes from
+  easing on `elapsed/duration`, not on dt.
+
 ### 0.1.2 — Landmarks & constellations (implemented)
 
 **Goal:** 30–60 named stars with on-screen labels, `P` toggles constellation

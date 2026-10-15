@@ -16,8 +16,15 @@
 //     feel (drag right, the camera swings left) with no sign table.
 //   * Frame-rate independence. Fly velocity approaches the input target with
 //     v += (vTarget - v) * (1 - exp(-dt/tau)); orbit angles and distance are
-//     rates times dt. A per-frame constant damping factor makes the ship faster
-//     on a 144 Hz monitor than on a 60 Hz one.
+//     rates times dt; the fly-to flight eases on elapsed/duration. A per-frame
+//     constant damping factor makes the ship faster on a 144 Hz monitor than
+//     on a 60 Hz one.
+//   * Fly-to (key F, plan §18) is a 2 s flight, not a teleport: eased f64
+//     position lerp plus shortest-path quaternion slerp from the current pose
+//     to an arrival pose re-derived from the live target each frame, then the
+//     orbit handover. Any user input cancels into the usual orbit re-snap;
+//     updateTarget() moves the orbited object so the camera follows it
+//     centred.
 //   * The wheel steps by whole notches out of a persistent accumulator.
 //     Rounding each frame's delta made trackpads (3-10 px events) inert.
 //   * The speed multiplier walks a x2 grid, so its clamps are powers of two:
@@ -59,6 +66,10 @@ const ORBIT_TURN_RATE = 1.0;          // rad/s for A/D/E/Q in orbit
 const ORBIT_DOLLY_RATE = 1.0;         // octaves/s for W/S in orbit: distance halves or doubles per second
 const ORBIT_KEY_BOOST = 4.0;          // Shift x4, Ctrl x1/4 on orbit key rates; x100 would be 16 turns a second
 const HOME_ORBIT_DISTANCE = 0.01;     // kpc, H in orbit: the Sun from 10 pc
+// Fly-to flight (plan §18): eased translation + shortest-path slerp from the
+// current pose to the stand-off orbit, then the orbit handover.
+const FLIGHT_DURATION_S = 2.0;
+const FLIGHT_UP_POLE_COS = 0.99;      // approach this close to ±Z keeps the current up
 const QUAT_EPS = 1e-12;
 // The default frame is the Milky Way preset's: the Sun-centred origin, the view
 // from 5 pc above it, the galactic centre as the orbit centre. setFrame() swaps
@@ -185,7 +196,7 @@ function createCamera() {
 		updateAnglesFromBasis();
 	}
 
-	function setOrientationFromBasis(fx, fy, fz, rx, ry, rz, ux, uy, uz) {
+	function quatFromBasis(out, fx, fy, fz, rx, ry, rz, ux, uy, uz) {
 		// Standard local +Y maps to -right.
 		const m00 = fx, m01 = -rx, m02 = ux;
 		const m10 = fy, m11 = -ry, m12 = uy;
@@ -194,29 +205,33 @@ function createCamera() {
 		let s;
 		if (trace > 0) {
 			s = Math.sqrt(trace + 1) * 2;
-			orientation[3] = 0.25 * s;
-			orientation[0] = (m21 - m12) / s;
-			orientation[1] = (m02 - m20) / s;
-			orientation[2] = (m10 - m01) / s;
+			out[3] = 0.25 * s;
+			out[0] = (m21 - m12) / s;
+			out[1] = (m02 - m20) / s;
+			out[2] = (m10 - m01) / s;
 		} else if (m00 > m11 && m00 > m22) {
 			s = Math.sqrt(1 + m00 - m11 - m22) * 2;
-			orientation[3] = (m21 - m12) / s;
-			orientation[0] = 0.25 * s;
-			orientation[1] = (m01 + m10) / s;
-			orientation[2] = (m02 + m20) / s;
+			out[3] = (m21 - m12) / s;
+			out[0] = 0.25 * s;
+			out[1] = (m01 + m10) / s;
+			out[2] = (m02 + m20) / s;
 		} else if (m11 > m22) {
 			s = Math.sqrt(1 + m11 - m00 - m22) * 2;
-			orientation[3] = (m02 - m20) / s;
-			orientation[0] = (m01 + m10) / s;
-			orientation[1] = 0.25 * s;
-			orientation[2] = (m12 + m21) / s;
+			out[3] = (m02 - m20) / s;
+			out[0] = (m01 + m10) / s;
+			out[1] = 0.25 * s;
+			out[2] = (m12 + m21) / s;
 		} else {
 			s = Math.sqrt(1 + m22 - m00 - m11) * 2;
-			orientation[3] = (m10 - m01) / s;
-			orientation[0] = (m02 + m20) / s;
-			orientation[1] = (m12 + m21) / s;
-			orientation[2] = 0.25 * s;
+			out[3] = (m10 - m01) / s;
+			out[0] = (m02 + m20) / s;
+			out[1] = (m12 + m21) / s;
+			out[2] = 0.25 * s;
 		}
+	}
+
+	function setOrientationFromBasis(fx, fy, fz, rx, ry, rz, ux, uy, uz) {
+		quatFromBasis(orientation, fx, fy, fz, rx, ry, rz, ux, uy, uz);
 		updateBasis();
 	}
 
@@ -325,6 +340,7 @@ function createCamera() {
 
 	function setMode(next) {
 		if (next === mode) return;
+		flightActive = false;
 		mode = next;
 		if (mode === MODE_FLY) return;   // position and orientation continue; velocity is already zero
 		snapToOrbit();
@@ -344,6 +360,7 @@ function createCamera() {
 	// Selection hook (0.1.2 calls this on click). While the object is being
 	// orbited the camera turns towards the new one from where it is.
 	function setOrbitTarget(x, y, z, name) {
+		flightActive = false;
 		assignObjectTarget(x, y, z, name);
 		if (mode === MODE_ORBIT_OBJECT) snapToOrbit();
 	}
@@ -357,15 +374,148 @@ function createCamera() {
 		return clamp(STAND_OFF_KPC_PER_SQRT_L * Math.sqrt(l), ORBIT_DISTANCE_MIN, STAND_OFF_KPC_MAX);
 	}
 
-	// Fly to a star (plan §3.4, key F): aim at it and orbit it at the stand-off.
-	// A camera move, not a mode change — the viewer can still `C` back to fly.
+	// --- Fly-to flight ----------------------------------------------------
+	// flyToStar no longer teleports (plan §18): it launches a FLIGHT_DURATION_S
+	// flight from the current pose to the stand-off orbit. The arrival pose is
+	// re-derived from the live target every frame, so a moving object is met
+	// where it arrives; any user input cancels into the usual orbit re-snap.
+	const flightStartPos = new Float64Array(3);
+	const flightStartQuat = new Float64Array(4);
+	const flightApproach = new Float64Array(3);   // unit vector, target → launch point
+	const flightUp = new Float64Array(3);         // desired arrival up
+	const flightQuat = new Float64Array(4);       // arrival orientation, rebuilt per frame
+	let flightActive = false;
+	let flightElapsed = 0;
+	let flightDistance = HOME_ORBIT_DISTANCE;
+
+	// Shortest-path quaternion slerp into `orientation` (unit inputs assumed).
+	function slerpOrientation(a, b, t) {
+		let dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+		const sign = dot < 0 ? -1 : 1;
+		dot *= sign;
+		let w0, w1;
+		if (dot > 1 - 1e-9) {
+			// Nearly identical: NLERP, the acos/sin table would divide by ~0.
+			w0 = 1 - t;
+			w1 = t;
+		} else {
+			const theta = Math.acos(dot > 1 ? 1 : dot);
+			const invSin = 1 / Math.sin(theta);
+			w0 = Math.sin((1 - t) * theta) * invSin;
+			w1 = Math.sin(t * theta) * invSin;
+		}
+		w1 *= sign;
+		orientation[0] = a[0] * w0 + b[0] * w1;
+		orientation[1] = a[1] * w0 + b[1] * w1;
+		orientation[2] = a[2] * w0 + b[2] * w1;
+		orientation[3] = a[3] * w0 + b[3] * w1;
+	}
+
+	// Fly to a star (plan §3.4, key F): orbit it at the stand-off its
+	// luminosity implies, arriving by a 2 s flight instead of a jump. With
+	// standOffKpc ≤ 0 the current target distance is kept.
 	function flyToStar(x, y, z, name, standOffKpc) {
 		assignObjectTarget(x, y, z, name);
-		if (mode !== MODE_ORBIT_OBJECT) setMode(MODE_ORBIT_OBJECT);
-		else snapToOrbit();
-		if (standOffKpc > 0) orbitDistance = clamp(standOffKpc, ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX);
-		placeOnOrbit();
-		return orbitDistance;
+		const dx = position[0] - x, dy = position[1] - y, dz = position[2] - z;
+		const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+		flightDistance = standOffKpc > 0
+			? clamp(standOffKpc, ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX)
+			: clamp(mode === MODE_ORBIT_OBJECT ? orbitDistance : d, ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX);
+		mode = MODE_ORBIT_OBJECT;
+		if (d > QUAT_EPS) {
+			const inv = 1 / d;
+			flightApproach[0] = dx * inv;
+			flightApproach[1] = dy * inv;
+			flightApproach[2] = dz * inv;
+		} else {
+			// Already on the star: fly the in-place turn along -forward.
+			flightApproach[0] = -forwardExact[0];
+			flightApproach[1] = -forwardExact[1];
+			flightApproach[2] = -forwardExact[2];
+		}
+		// Arrival up is galactic north; an approach that rides the pole falls
+		// back to the current up, then to the current right — of two
+		// orthonormal vectors at most one can be near-parallel to the arrival
+		// forward (which is -approach), so the chain always finds a usable up.
+		if (Math.abs(flightApproach[2]) < FLIGHT_UP_POLE_COS) {
+			flightUp[0] = 0; flightUp[1] = 0; flightUp[2] = 1;
+		} else if (Math.abs(upExact[0] * flightApproach[0]
+			+ upExact[1] * flightApproach[1]
+			+ upExact[2] * flightApproach[2]) < FLIGHT_UP_POLE_COS) {
+			flightUp[0] = upExact[0]; flightUp[1] = upExact[1]; flightUp[2] = upExact[2];
+		} else {
+			flightUp[0] = rightExact[0]; flightUp[1] = rightExact[1]; flightUp[2] = rightExact[2];
+		}
+		stopVelocity();
+		flightStartPos[0] = position[0];
+		flightStartPos[1] = position[1];
+		flightStartPos[2] = position[2];
+		flightStartQuat[0] = orientation[0];
+		flightStartQuat[1] = orientation[1];
+		flightStartQuat[2] = orientation[2];
+		flightStartQuat[3] = orientation[3];
+		flightElapsed = 0;
+		flightActive = true;
+		return flightDistance;
+	}
+
+	function stepFlight(dt) {
+		flightElapsed += dt;
+		const s = flightElapsed >= FLIGHT_DURATION_S ? 1 : flightElapsed / FLIGHT_DURATION_S;
+		const ease = s * s * (3 - 2 * s);
+		// Arrival pose from the live target: the follow feed can move it under
+		// the camera, and the flight meets it where it ends up.
+		const ex = objectTarget[0] + flightApproach[0] * flightDistance;
+		const ey = objectTarget[1] + flightApproach[1] * flightDistance;
+		const ez = objectTarget[2] + flightApproach[2] * flightDistance;
+		if (s === 1) {
+			position[0] = ex; position[1] = ey; position[2] = ez;
+		} else {
+			position[0] = flightStartPos[0] + (ex - flightStartPos[0]) * ease;
+			position[1] = flightStartPos[1] + (ey - flightStartPos[1]) * ease;
+			position[2] = flightStartPos[2] + (ez - flightStartPos[2]) * ease;
+		}
+		const fx = -flightApproach[0], fy = -flightApproach[1], fz = -flightApproach[2];
+		const fdot = flightUp[0] * fx + flightUp[1] * fy + flightUp[2] * fz;
+		let ux = flightUp[0] - fdot * fx;
+		let uy = flightUp[1] - fdot * fy;
+		let uz = flightUp[2] - fdot * fz;
+		const ulen = Math.sqrt(ux * ux + uy * uy + uz * uz);
+		const invU = ulen > QUAT_EPS ? 1 / ulen : 0;
+		ux *= invU; uy *= invU; uz *= invU;
+		// right = forward × up (the image of the camera's local -Y axis).
+		const rx = fy * uz - fz * uy;
+		const ry = fz * ux - fx * uz;
+		const rz = fx * uy - fy * ux;
+		quatFromBasis(flightQuat, fx, fy, fz, rx, ry, rz, ux, uy, uz);
+		slerpOrientation(flightStartQuat, flightQuat, ease);
+		updateBasis();
+		updateCameraPos();
+		if (s === 1) {
+			// Handover: exactly the pose the path reached, so arrival is
+			// continuous and the orbit controls take over from here.
+			flightActive = false;
+			orbitDistance = flightDistance;
+			placeOnOrbit();
+		}
+	}
+
+	// User input (or a frame change) ends the flight at the current pose: the
+	// distance re-measures from where the camera is and the orientation
+	// re-aims — the same continuous re-snap a mode switch uses.
+	function cancelFlight() {
+		if (!flightActive) return;
+		flightActive = false;
+		snapToOrbit();
+	}
+
+	// Move the orbited object in place (fly-to follow): no re-snap, no rename.
+	// The next orbit step re-places the camera around the new position, so the
+	// star stays centred; during a flight the arrival pose follows it instead.
+	function updateTarget(x, y, z) {
+		objectTarget[0] = x;
+		objectTarget[1] = y;
+		objectTarget[2] = z;
 	}
 
 	// --- Frame / home / reset -------------------------------------------------
@@ -398,6 +548,7 @@ function createCamera() {
 	// target — the Sun for the Milky Way preset, the centre for any other type —
 	// keeping the viewing direction so the jump is a translation, not a spin.
 	function goHome() {
+		flightActive = false;
 		if (mode === MODE_FLY) {
 			setPosition(homePosition);
 			stopVelocity();
@@ -413,6 +564,7 @@ function createCamera() {
 
 	function reset() {
 		mode = MODE_FLY;
+		flightActive = false;
 		speedMult = 1.0;
 		wheelAccum = 0;
 		orbitDistance = homeOrbitDistance;
@@ -493,9 +645,24 @@ function createCamera() {
 	function step(dt, input) {
 		if (!(dt > 0)) return;
 		const actions = input.actions;
-		if (actions.cameraMode) { actions.cameraMode = 0; toggleMode(); }
-		if (actions.home) { actions.home = 0; goHome(); }
-		if (actions.reset) { actions.reset = 0; reset(); }
+		if (actions.cameraMode) { actions.cameraMode = 0; flightActive = false; toggleMode(); }
+		if (actions.home) { actions.home = 0; flightActive = false; goHome(); }
+		if (actions.reset) { actions.reset = 0; flightActive = false; reset(); }
+
+		const notches = takeWheelNotches(input);
+		if (flightActive) {
+			const keys = input.keys;
+			const wantsControl = input.lookDx !== 0 || input.lookDy !== 0 || notches !== 0
+				|| keys.forward || keys.back || keys.left || keys.right || keys.up || keys.down;
+			if (wantsControl) {
+				// Hand control over this frame: the input below applies to the
+				// re-snapped orbit pose, not to the abandoned flight.
+				cancelFlight();
+			} else {
+				stepFlight(dt);
+				return;
+			}
+		}
 
 		if (input.lookDx !== 0 || input.lookDy !== 0) {
 			applyLook(input.lookDx, input.lookDy);
@@ -503,7 +670,6 @@ function createCamera() {
 			input.lookDy = 0;
 		}
 
-		const notches = takeWheelNotches(input);
 		if (mode === MODE_FLY) stepFly(dt, input.keys, notches);
 		else stepOrbit(dt, input.keys, notches);
 	}
@@ -564,7 +730,11 @@ function createCamera() {
 		s.mode = mode;
 		s.modeName = MODE_NAMES[mode];
 		s.targetName = mode === MODE_ORBIT_GC ? GALACTIC_CENTRE_NAME : objectTargetName;
-		s.orbitDistance = orbitDistance;
+		s.flying = flightActive;
+		s.flightProgress = flightActive ? clamp(flightElapsed / FLIGHT_DURATION_S, 0, 1) : 1;
+		// Mid-flight the reported distance is the one being flown to, not the
+		// stale sphere radius the pose has not reached yet.
+		s.orbitDistance = flightActive ? flightDistance : orbitDistance;
 		s.speedMult = speedMult;
 		s.speedFactor = speedFactor;
 		s.speedKpcPerSec = BASE_SPEED_KPC_S * speedMult * speedFactor;
@@ -574,6 +744,7 @@ function createCamera() {
 
 	function setState(state) {
 		setPosition(state.position);
+		flightActive = false;
 		velocity[0] = state.velocity ? state.velocity[0] : 0;
 		velocity[1] = state.velocity ? state.velocity[1] : 0;
 		velocity[2] = state.velocity ? state.velocity[2] : 0;
@@ -603,6 +774,7 @@ function createCamera() {
 		toggleMode,
 		setOrbitTarget,
 		flyToStar,
+		updateTarget,
 		orbitStandOff,
 		buildViewProj,
 		getState,
@@ -630,6 +802,7 @@ const Camera = {
 	VELOCITY_TAU, LOOK_SENSITIVITY,
 	ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX, ORBIT_TURN_RATE, ORBIT_DOLLY_RATE,
 	ORBIT_KEY_BOOST, HOME_ORBIT_DISTANCE, STAND_OFF_KPC_PER_SQRT_L, STAND_OFF_KPC_MAX,
+	FLIGHT_DURATION_S, FLIGHT_UP_POLE_COS,
 	START_POSITION, SUN_POSITION, GALACTIC_CENTRE_TARGET,
 };
 if (typeof module !== 'undefined') module.exports = Camera;

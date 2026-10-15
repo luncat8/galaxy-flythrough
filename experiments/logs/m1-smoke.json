@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-15T02:19:25.479Z",
+  "date": "2026-10-15T09:39:54.008Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -287,7 +287,7 @@
       "name": "Camera loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 29
+        "keys": 31
       }
     },
     {

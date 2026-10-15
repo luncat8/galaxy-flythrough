@@ -43,8 +43,8 @@
         "scanned": 6184,
         "matched": 6184,
         "truncated": 5672,
-        "msStage1": 5.459131999999997,
-        "msStage2": 2.563085000000001,
+        "msStage1": 3.075244999999981,
+        "msStage2": 3.0180870000000084,
         "msRefine": 0
       }
     },
@@ -56,8 +56,8 @@
         "scanned": 6184,
         "matched": 6184,
         "truncated": 5672,
-        "msStage1": 0.26349500000000603,
-        "msStage2": 2.9523109999999804,
+        "msStage1": 3.8343079999999645,
+        "msStage2": 2.486069999999984,
         "msRefine": 0
       }
     },
@@ -69,8 +69,8 @@
         "scanned": 1,
         "matched": 1,
         "truncated": 0,
-        "msStage1": 0.15065899999999033,
-        "msStage2": 0.0005129999999837764,
+        "msStage1": 0.15826300000000515,
+        "msStage2": 0.044849999999996726,
         "msRefine": 0
       }
     },
@@ -239,8 +239,8 @@
         "scanned": 46,
         "matched": 46,
         "truncated": 0,
-        "msStage1": 0.1507490000000189,
-        "msStage2": 0.00587699999994129,
+        "msStage1": 0.1253950000000259,
+        "msStage2": 0.004225000000019463,
         "msRefine": 0
       }
     },
@@ -285,31 +285,31 @@
     {
       "name": "star-only class filter over the galaxy stays under 120 ms",
       "pass": true,
-      "detail": 19.567569999999932
+      "detail": 20.54989300000011
     },
     {
       "name": "planet filter (G + terran) over the galaxy stays under 600 ms",
       "pass": true,
-      "detail": 25.84477599999991
+      "detail": 22.267475999999988
     },
     {
       "name": "planet filter (tsurf range, exact refine) over the galaxy stays under 600 ms",
       "pass": true,
-      "detail": 412.5526719999998
+      "detail": 422.1215109999998
     },
     {
       "name": "planet filter over a 214-star set stays under 2 ms",
       "pass": true,
-      "detail": 0.28152399999999034
+      "detail": 0.31440500000007887
     },
     {
       "name": "the stage timers split the wall time (sort + overhead bounded)",
       "pass": true,
       "detail": {
-        "msStage1": 6.0679209999971135,
-        "msStage2": 284.6345420000007,
-        "msRefine": 121.51931800000102,
-        "wall": 412.5526719999998
+        "msStage1": 6.110525000000052,
+        "msStage2": 293.61452199999985,
+        "msRefine": 122.08419599999843,
+        "wall": 422.1215109999998
       }
     }
   ],

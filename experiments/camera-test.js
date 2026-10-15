@@ -618,6 +618,203 @@ function project(camera, x, y, z, aspect) {
 	check('orbit-centre ignores the object target', camera.getState().targetName === 'galactic centre');
 }
 
+// --- Fly-to flight and follow (plan §18) ------------------------------------
+{
+	const TARGET = [1.2, -0.5, 0.02];
+	const STAND_OFF = 0.0006;
+
+	function freshFlight() {
+		const camera = cameraModule.createCamera();
+		camera.flyToStar(TARGET[0], TARGET[1], TARGET[2], 'Flight star', STAND_OFF);
+		return camera;
+	}
+
+	function flyFrames(camera, frames, dt) {
+		const input = freshInput();
+		for (let i = 0; i < frames; i++) camera.step(dt || DT, input);
+		return camera.getState();
+	}
+
+	const launched = freshFlight();
+	const s0 = launched.getState();
+	check('flyToStar launches a flight instead of teleporting',
+		s0.flying === true && s0.mode === cameraModule.MODE_ORBIT_OBJECT && s0.targetName === 'Flight star'
+		&& distanceTo(s0, cameraModule.START_POSITION) < 1e-12,
+		{ flying: s0.flying, moved: distanceTo(s0, cameraModule.START_POSITION) });
+	check('the flight keeps the camera stopped (velocity zero, multiplier untouched)',
+		s0.velocity.every(v => v === 0) && s0.speedMult === 1, s0);
+
+	const midCamera = freshFlight();
+	const midState = flyFrames(midCamera, 60);
+	const d0 = distanceTo(midState, cameraModule.START_POSITION);
+	const dEnd = distanceTo(midState, TARGET);
+	check('mid-flight the camera is between start and arrival',
+		midState.flying === true && d0 > 1e-6 && dEnd > 2 * STAND_OFF, { fromStart: d0, toTarget: dEnd });
+	check('mid-flight the camera already turns towards the target',
+		aimError(midCamera, TARGET) < 0.05, aimError(midCamera, TARGET));
+
+	const arrivedCamera = freshFlight();
+	const arrived = flyFrames(arrivedCamera, 125);
+	check('the flight takes 2 s and ends at the stand-off',
+		arrived.flying === false && Math.abs(arrived.orbitDistance - STAND_OFF) < 1e-12
+		&& Math.abs(distanceTo(arrived, TARGET) - STAND_OFF) < 1e-9,
+		{ flying: arrived.flying, dist: distanceTo(arrived, TARGET) });
+	check('arrival is centred: the camera aims at the star', aimError(arrivedCamera, TARGET) < 1e-6);
+	check('arrival carries no velocity into the orbit', arrived.velocity.every(v => v === 0));
+
+	// Orbit controls continue from the arrival pose.
+	const post = freshInput();
+	post.lookDx = 100;
+	arrivedCamera.step(DT, post);
+	check('after arrival the orbit controls hold the stand-off distance',
+		Math.abs(distanceTo(arrivedCamera.getState(), TARGET) - STAND_OFF) < 1e-9
+		&& arrivedCamera.getState().flying === false);
+
+	// Frame-rate independence: the eased path is a function of elapsed time.
+	function arrivalAt(dt) {
+		const c = freshFlight();
+		const input = freshInput();
+		let elapsed = 0;
+		while (elapsed < cameraModule.FLIGHT_DURATION_S + 0.1) {
+			c.step(dt, input);
+			elapsed += dt;
+		}
+		return c.getState();
+	}
+	const at60 = arrivalAt(1 / 60);
+	const at144 = arrivalAt(1 / 144);
+	const at30 = arrivalAt(1 / 30);
+	const spread = Math.max(distanceTo(at60, TARGET), distanceTo(at144, TARGET), distanceTo(at30, TARGET))
+		- Math.min(distanceTo(at60, TARGET), distanceTo(at144, TARGET), distanceTo(at30, TARGET));
+	check('the flight lands identically at 30/60/144 Hz',
+		spread < 1e-12 && quatDot(at60.orientation, at144.orientation) > 1 - 1e-9,
+		{ spread, dot: quatDot(at60.orientation, at144.orientation) });
+
+	// Follow: updateTarget moves the orbited object in place and the camera
+	// keeps it centred at the same stand-off.
+	const followed = freshFlight();
+	flyFrames(followed, 125);
+	const movedTarget = [TARGET[0] + 0.001, TARGET[1] - 0.0005, TARGET[2] + 0.0002];
+	followed.updateTarget(movedTarget[0], movedTarget[1], movedTarget[2]);
+	flyFrames(followed, 1);
+	const followState = followed.getState();
+	check('updateTarget moves the camera with the object, keeping it centred',
+		Math.abs(distanceTo(followState, movedTarget) - STAND_OFF) < 1e-9
+		&& aimError(followed, movedTarget) < 1e-6 && followState.flying === false,
+		{ dist: distanceTo(followState, movedTarget), aim: aimError(followed, movedTarget) });
+
+	// Follow during the flight: the arrival pose tracks a moving target.
+	const chase = freshFlight();
+	flyFrames(chase, 60);
+	chase.updateTarget(movedTarget[0], movedTarget[1], movedTarget[2]);
+	const chased = flyFrames(chase, 80);
+	check('a target that moves mid-flight is met at the end of the flight',
+		chased.flying === false && Math.abs(distanceTo(chased, movedTarget) - STAND_OFF) < 1e-9,
+		{ dist: distanceTo(chased, movedTarget) });
+
+	// Cancellation: user input ends the flight at the current pose the same frame.
+	const grab = freshFlight();
+	flyFrames(grab, 30);
+	const before = grab.getState();
+	const cancel = freshInput();
+	cancel.lookDx = 60;
+	grab.step(DT, cancel);
+	const after = grab.getState();
+	check('a look delta cancels the flight and hands control over the same frame',
+		before.flying === true && after.flying === false, { before: before.flying, after: after.flying });
+	// Continuity: the re-snap lands on the sphere of the distance the camera
+	// already had; the look drag then swings it along that sphere, which keeps
+	// the radius — the same "turn, not move" contract as entering orbit.
+	check('cancelling re-snaps onto the sphere of the current distance',
+		Math.abs(distanceTo(after, TARGET) - distanceTo(before, TARGET)) < 1e-9,
+		{ radius: distanceTo(after, TARGET), was: distanceTo(before, TARGET) });
+	const postCancel = freshInput();
+	postCancel.lookDx = 100;
+	grab.step(DT, postCancel);
+	check('after a cancel the orbit re-snap aims at the target and holds the distance',
+		aimError(grab, TARGET) < 1e-6
+		&& Math.abs(grab.getState().orbitDistance - distanceTo(grab.getState(), TARGET)) < 1e-12,
+		{ aim: aimError(grab, TARGET) });
+
+	const keyed = freshFlight();
+	flyFrames(keyed, 30);
+	const keyInput = freshInput();
+	keyInput.keys.forward = true;
+	keyed.step(DT, keyInput);
+	check('a movement key cancels the flight too', keyed.getState().flying === false);
+
+	// standOffKpc ≤ 0 keeps the current orbit distance; large stand-offs clamp.
+	const keeper = cameraModule.createCamera();
+	keeper.setOrbitTarget(TARGET[0], TARGET[1], TARGET[2], 'Near star');
+	keeper.setMode(cameraModule.MODE_ORBIT_OBJECT);
+	const keepDist = keeper.getState().orbitDistance;
+	keeper.flyToStar(TARGET[0], TARGET[1], TARGET[2], 'Near star', 0);
+	const kept = flyFrames(keeper, 130);
+	check('standOff 0 keeps the current distance through the flight',
+		kept.flying === false && Math.abs(kept.orbitDistance - keepDist) < 1e-12, kept.orbitDistance);
+	const farCamera = cameraModule.createCamera();
+	farCamera.flyToStar(TARGET[0], TARGET[1], TARGET[2], 'Bright', 100);
+	const farState = farCamera.getState();
+	check('a stand-off above the ceiling clamps to ORBIT_DISTANCE_MAX',
+		farState.flying === true && farState.orbitDistance === cameraModule.ORBIT_DISTANCE_MAX);
+
+	// The pole approach: a launch straight along the arrival forward must not
+	// degenerate the basis (galactic-north up is unavailable twice over there).
+	const pole = cameraModule.createCamera();
+	pole.flyToStar(0, 0, 0.6, 'Pole star', 0.0006);
+	let poleWorst = 0;
+	flyFrames(pole, 130);
+	// Re-fly to measure inside the flight too.
+	const pole2 = cameraModule.createCamera();
+	pole2.flyToStar(0, 0, 0.6, 'Pole star', 0.0006);
+	for (let i = 0; i < 125; i++) {
+		pole2.step(DT, freshInput());
+		const f = pole2.forward, r = pole2.right, u = pole2.up;
+		const norm = (v) => Math.abs(Math.hypot(v[0], v[1], v[2]) - 1);
+		poleWorst = Math.max(poleWorst,
+			norm(f), norm(r), norm(u),
+			Math.abs(f[0] * r[0] + f[1] * r[1] + f[2] * r[2]),
+			Math.abs(f[0] * u[0] + f[1] * u[1] + f[2] * u[2]),
+			Math.abs(r[0] * u[0] + r[1] * u[1] + r[2] * u[2]));
+	}
+	check('an approach straight along ±Z keeps an orthonormal basis',
+		poleWorst < 1e-6, poleWorst);
+	check('the pole flight arrives centred, looking up at the star',
+		Math.abs(distanceTo(pole.getState(), [0, 0, 0.6]) - STAND_OFF) < 1e-9 && pole.forward[2] > 0.999,
+		{ dist: distanceTo(pole.getState(), [0, 0, 0.6]), fz: pole.forward[2] });
+
+	// Actions end the flight; a relaunch mid-flight restarts from the pose.
+	const acted = freshFlight();
+	flyFrames(acted, 30);
+	pressAction(acted, 'cameraMode');
+	check('C during a flight ends it (mode cycles from orbit-object to fly)',
+		acted.getState().flying === false && acted.getState().mode === cameraModule.MODE_FLY);
+	const relaunched = freshFlight();
+	flyFrames(relaunched, 60);
+	relaunched.flyToStar(-1, 0.5, 0, 'Other', 0.001);
+	const rel0 = relaunched.getState();
+	check('a second flyToStar mid-flight relaunches from the current pose',
+		rel0.flying === true && rel0.targetName === 'Other'
+		&& distanceTo(rel0, TARGET) < 0.75 * Math.hypot(
+			cameraModule.START_POSITION[0] - TARGET[0],
+			cameraModule.START_POSITION[1] - TARGET[1],
+			cameraModule.START_POSITION[2] - TARGET[2]));
+	const relaunchedEnd = flyFrames(relaunched, 150);
+	check('the relaunched flight lands on the new star',
+		relaunchedEnd.flying === false && Math.abs(distanceTo(relaunchedEnd, [-1, 0.5, 0]) - 0.001) < 1e-9,
+		{ dist: distanceTo(relaunchedEnd, [-1, 0.5, 0]) });
+
+	// The flight allocates nothing: buffer references survive a full flight.
+	const stable = freshFlight();
+	const refs = [stable.viewProj, stable.cameraPos, stable.forward, stable.right, stable.up];
+	flyFrames(stable, 130);
+	const out = stable.getState();
+	check('no buffers are reallocated across a flight', stable.viewProj === refs[0]
+		&& stable.cameraPos === refs[1] && stable.forward === refs[2]
+		&& stable.right === refs[3] && stable.up === refs[4]
+		&& typeof out.flying === 'boolean' && typeof out.flightProgress === 'number');
+}
+
 // --- 0.1.1: home and reset --------------------------------------------------
 {
 	const camera = cameraModule.createCamera();

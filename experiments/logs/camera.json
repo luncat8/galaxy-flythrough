@@ -1,7 +1,7 @@
 {
-  "date": "2026-10-15T02:19:25.611Z",
-  "totalChecks": 108,
-  "passed": 108,
+  "date": "2026-10-15T09:39:54.146Z",
+  "totalChecks": 131,
+  "passed": 131,
   "failed": 0,
   "checks": [
     {
@@ -484,6 +484,8 @@
           "mode": 0,
           "modeName": "fly",
           "targetName": "Sun",
+          "flying": false,
+          "flightProgress": 1,
           "orbitDistance": 0.005,
           "speedMult": 1,
           "speedFactor": 1,
@@ -517,6 +519,8 @@
           "mode": 2,
           "modeName": "orbit object",
           "targetName": "Sun",
+          "flying": false,
+          "flightProgress": 1,
           "orbitDistance": 0.005,
           "speedMult": 1,
           "speedFactor": 1,
@@ -637,6 +641,8 @@
           "mode": 1,
           "modeName": "orbit centre",
           "targetName": "galactic centre",
+          "flying": false,
+          "flightProgress": 1,
           "orbitDistance": 8.178001528490931,
           "speedMult": 1,
           "speedFactor": 1,
@@ -679,6 +685,8 @@
           "mode": 1,
           "modeName": "orbit centre",
           "targetName": "galactic centre",
+          "flying": false,
+          "flightProgress": 1,
           "orbitDistance": 8.178001528490931,
           "speedMult": 1,
           "speedFactor": 1,
@@ -721,6 +729,8 @@
           "mode": 1,
           "modeName": "orbit centre",
           "targetName": "galactic centre",
+          "flying": false,
+          "flightProgress": 1,
           "orbitDistance": 8.178001528490931,
           "speedMult": 1,
           "speedFactor": 1,
@@ -763,6 +773,8 @@
           "mode": 1,
           "modeName": "orbit centre",
           "targetName": "galactic centre",
+          "flying": false,
+          "flightProgress": 1,
           "orbitDistance": 8.178001528490931,
           "speedMult": 1,
           "speedFactor": 1,
@@ -824,6 +836,8 @@
             "mode": 1,
             "modeName": "orbit centre",
             "targetName": "galactic centre",
+            "flying": false,
+            "flightProgress": 1,
             "orbitDistance": 2.0445003821227368,
             "speedMult": 1,
             "speedFactor": 1,
@@ -862,6 +876,8 @@
             "mode": 1,
             "modeName": "orbit centre",
             "targetName": "galactic centre",
+            "flying": false,
+            "flightProgress": 1,
             "orbitDistance": 2.0445003821227585,
             "speedMult": 1,
             "speedFactor": 1,
@@ -929,6 +945,177 @@
     },
     {
       "name": "orbit-centre ignores the object target",
+      "pass": true
+    },
+    {
+      "name": "flyToStar launches a flight instead of teleporting",
+      "pass": true,
+      "detail": {
+        "flying": true,
+        "moved": 0
+      }
+    },
+    {
+      "name": "the flight keeps the camera stopped (velocity zero, multiplier untouched)",
+      "pass": true,
+      "detail": {
+        "position": [
+          0,
+          0,
+          0.005
+        ],
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "orbitTarget": [
+          1.2,
+          -0.5,
+          0.02
+        ],
+        "orientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "yaw": 0,
+        "pitch": 0,
+        "mode": 2,
+        "modeName": "orbit object",
+        "targetName": "Flight star",
+        "flying": true,
+        "flightProgress": 0,
+        "orbitDistance": 0.0006,
+        "speedMult": 1,
+        "speedFactor": 1,
+        "speedKpcPerSec": 0.002452808,
+        "speedLyPerSec": 8
+      }
+    },
+    {
+      "name": "mid-flight the camera is between start and arrival",
+      "pass": true,
+      "detail": {
+        "fromStart": 0.6497432677906924,
+        "toTarget": 0.6503432677906897
+      }
+    },
+    {
+      "name": "mid-flight the camera already turns towards the target",
+      "pass": true,
+      "detail": 0.019434990020679832
+    },
+    {
+      "name": "the flight takes 2 s and ends at the stand-off",
+      "pass": true,
+      "detail": {
+        "flying": false,
+        "dist": 0.0006000000000000774
+      }
+    },
+    {
+      "name": "arrival is centred: the camera aims at the star",
+      "pass": true
+    },
+    {
+      "name": "arrival carries no velocity into the orbit",
+      "pass": true
+    },
+    {
+      "name": "after arrival the orbit controls hold the stand-off distance",
+      "pass": true
+    },
+    {
+      "name": "the flight lands identically at 30/60/144 Hz",
+      "pass": true,
+      "detail": {
+        "spread": 0,
+        "dot": 1
+      }
+    },
+    {
+      "name": "updateTarget moves the camera with the object, keeping it centred",
+      "pass": true,
+      "detail": {
+        "dist": 0.0006000000000000774,
+        "aim": 3.2329026122823734e-9
+      }
+    },
+    {
+      "name": "a target that moves mid-flight is met at the end of the flight",
+      "pass": true,
+      "detail": {
+        "dist": 0.0006000000000000774
+      }
+    },
+    {
+      "name": "a look delta cancels the flight and hands control over the same frame",
+      "pass": true,
+      "detail": {
+        "before": true,
+        "after": false
+      }
+    },
+    {
+      "name": "cancelling re-snaps onto the sphere of the current distance",
+      "pass": true,
+      "detail": {
+        "radius": 1.0970417643967911,
+        "was": 1.0970417643967911
+      }
+    },
+    {
+      "name": "after a cancel the orbit re-snap aims at the target and holds the distance",
+      "pass": true,
+      "detail": {
+        "aim": -1.8304628923715427e-9
+      }
+    },
+    {
+      "name": "a movement key cancels the flight too",
+      "pass": true
+    },
+    {
+      "name": "standOff 0 keeps the current distance through the flight",
+      "pass": true,
+      "detail": 1.300086535581382
+    },
+    {
+      "name": "a stand-off above the ceiling clamps to ORBIT_DISTANCE_MAX",
+      "pass": true
+    },
+    {
+      "name": "an approach straight along ±Z keeps an orthonormal basis",
+      "pass": true,
+      "detail": 3.234523049400195e-8
+    },
+    {
+      "name": "the pole flight arrives centred, looking up at the star",
+      "pass": true,
+      "detail": {
+        "dist": 0.0006000000000000449,
+        "fz": 1
+      }
+    },
+    {
+      "name": "C during a flight ends it (mode cycles from orbit-object to fly)",
+      "pass": true
+    },
+    {
+      "name": "a second flyToStar mid-flight relaunches from the current pose",
+      "pass": true
+    },
+    {
+      "name": "the relaunched flight lands on the new star",
+      "pass": true,
+      "detail": {
+        "dist": 0.0009999999999999985
+      }
+    },
+    {
+      "name": "no buffers are reallocated across a flight",
       "pass": true
     },
     {
@@ -1007,6 +1194,8 @@
         "mode": 0,
         "modeName": "fly",
         "targetName": "Sun",
+        "flying": false,
+        "flightProgress": 1,
         "orbitDistance": 0.01,
         "speedMult": 1,
         "speedFactor": 1,
@@ -1053,6 +1242,8 @@
         "mode": 1,
         "modeName": "orbit centre",
         "targetName": "galactic centre",
+        "flying": false,
+        "flightProgress": 1,
         "orbitDistance": 7.457458280138081,
         "speedMult": 4,
         "speedFactor": 1,
