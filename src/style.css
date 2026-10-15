@@ -44,12 +44,12 @@ html, body {
 	pointer-events: none;
 }
 
-/* The debug overlay starts where the left panel ends: the panel owns the
-   left column, the overlay and the readout share the strip beside it. */
+/* The debug overlay starts where the widest visible left-side panel ends;
+   main.js updates the inset when a panel is hidden. */
 #overlay {
 	position: fixed;
 	top: 12px;
-	left: 292px;
+	left: 304px;
 	font-family: 'Menlo', 'Consolas', monospace;
 	font-size: 12px;
 	line-height: 1.5;
@@ -63,7 +63,7 @@ html, body {
 
 #sysread {
 	position: fixed;
-	left: 292px;
+	left: 304px;
 	bottom: 12px;
 	font-family: 'Menlo', 'Consolas', monospace;
 	font-size: 12px;
@@ -84,16 +84,195 @@ html, body {
 	display: none;
 }
 
-/* The system and ship panel (0.5.6) — the left counterpart of #menu. It is a
-   .panel like #menu, which is what input.js's field test looks for; its rows
-   that only mean something with the view open carry data-view="system" and are
-   hidden with it (syncViewRows). */
-#sysmenu {
+/* Search & Selection is its own panel, above System on the left. The panels
+   share one inset because they are vertically stacked, not side by side. */
+#selection-menu {
 	position: fixed;
 	top: 12px;
 	left: 12px;
+	width: 280px;
+	max-height: calc(56vh - 12px);
+	overflow-y: auto;
+	font-family: 'Menlo', 'Consolas', monospace;
+	font-size: 12px;
+	color: #d3eeee;
+	background: rgba(10, 15, 22, 0.92);
+	border: 1px solid #32616d;
+	border-radius: 4px;
+	padding: 10px 12px;
+	z-index: 20;
+}
+#selection-menu .menu-header {
+	color: #79bdc7;
+	border-bottom-color: #32616d;
+}
+#selection-menu .menu-header button { border-color: #32616d; }
+#selection-menu .menu-header button:hover { background: #183238; }
+#selection-menu .menu-row button,
+#selection-menu .menu-actions button { background: #173039; border-color: #32616d; }
+#selection-menu .menu-row button:hover,
+#selection-menu .menu-actions button:hover { background: #21444d; }
+#selection-menu .menu-row select,
+#selection-menu .menu-row input[type=number],
+#selection-menu .menu-row input[type=text] { background: #0c1a20; border-color: #32616d; }
+#selection-menu .menu-row select option { background: #0c1a20; }
+#selection-menu .menu-header .panel-collapse { color: #d3eeee; }
+#selection-menu input[type=range],
+#selection-menu input[type=checkbox] { accent-color: #79bdc7; }
+#selection-menu .menu-val { color: #91c6cc; }
+#selection-menu .menu-hint { color: #6f999f; }
+#selection-menu .selection-section-heading {
+	margin-top: 10px;
+	border-top: 1px solid #23434a;
+}
+#selection-menu .selection-section-heading small {
+	font-size: 10px;
+	font-weight: normal;
+	color: #6f999f;
+}
+.selection-history,
+.selection-asset-history,
+.selection-asset-pair {
+	display: grid;
+	gap: 5px;
+	margin: 6px 0 8px;
+}
+.selection-history-slot,
+.selection-asset-history > div,
+.selection-asset-pair > span {
+	min-width: 0;
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 8px;
+	padding: 5px 7px;
+	background: rgba(25, 48, 56, 0.7);
+	border: 1px solid #294c54;
+	border-radius: 3px;
+	font-size: 10px;
+	color: #82aeb3;
+}
+.selection-history-slot strong,
+.selection-asset-history strong,
+.selection-asset-pair strong {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 11px;
+	font-weight: normal;
+	color: #d3eeee;
+	text-align: right;
+}
+.selection-swap {
+	width: 100%;
+	background: #173039;
+	border: 1px solid #32616d;
+	color: #d3eeee;
+	font: inherit;
+	font-size: 11px;
+	padding: 4px 8px;
+	border-radius: 3px;
+	cursor: pointer;
+}
+.selection-swap:hover:not(:disabled) { background: #21444d; }
+.selection-swap:disabled { opacity: 0.45; cursor: default; }
+#selection-menu .selection-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+#selection-menu .selection-actions button {
+	grid-column: auto;
+	flex: 1 1 auto;
+	margin: 0;
+	padding: 4px 6px;
+}
+#selection-menu .selection-radius-row { grid-template-columns: minmax(0, 1fr) auto; }
+#selection-menu .search-row input[type=number]#search-radius-pc { width: 58px; }
+#search-results {
+	max-height: 170px;
+	overflow: auto;
+	margin: 2px 0 8px;
+	border: 1px solid #294c54;
+	border-radius: 3px;
+	background: rgba(0, 0, 0, 0.28);
+}
+.search-results:empty { display: none; }
+.search-result {
+	display: block;
+	width: 100%;
+	padding: 5px 7px;
+	border: 0;
+	border-bottom: 1px solid rgba(50, 97, 109, 0.45);
+	background: transparent;
+	color: #b7d3d5;
+	text-align: left;
+	font: 10px 'Menlo', 'Consolas', monospace;
+	white-space: pre;
+	cursor: pointer;
+}
+.search-result:last-child { border-bottom: 0; }
+.search-result:hover:not(:disabled) { background: rgba(50, 97, 109, 0.28); }
+.search-result.is-current { color: #fff; background: rgba(66, 119, 126, 0.38); }
+.search-result:disabled { color: #6c8588; cursor: default; opacity: 0.7; }
+.search-result:focus-visible,
+.selection-swap:focus-visible { outline: 1px solid #91d7e0; outline-offset: -1px; }
+.selection-asset-types {
+	font-size: 10px;
+	line-height: 1.5;
+	color: #8cb5b9;
+}
+.selection-asset-editor {
+	display: grid;
+	grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr);
+	gap: 4px;
+	align-items: center;
+	margin: 6px 0;
+	font-size: 10px;
+}
+.selection-asset-editor label { color: #8cb5b9; }
+#selection-menu .selection-asset-editor select,
+#selection-menu .selection-asset-editor input,
+#selection-menu .selection-asset-editor button {
+	min-width: 0;
+	box-sizing: border-box;
+	padding: 4px 5px;
+	font: inherit;
+	background: #0c1a20;
+	border: 1px solid #32616d;
+	border-radius: 3px;
+	color: #d3eeee;
+}
+#selection-menu .selection-asset-editor input[type=text] { width: 100%; }
+#selection-menu .selection-asset-editor button {
+	grid-column: 2 / -1;
+	background: #173039;
+	cursor: pointer;
+}
+#selection-menu .selection-asset-editor button:hover { background: #21444d; }
+.selection-asset-history,
+.selection-asset-pair { grid-template-columns: 1fr 1fr; }
+.selection-asset-pair > span {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+#selection-menu .selection-asset-pair button {
+	padding: 3px 5px;
+	font-size: 9px;
+}
+.selection-asset-pair button:disabled { opacity: 0.45; cursor: default; }
+
+/* The system and ship panel (0.5.6) — the lower left counterpart of #menu.
+   It is a .panel like the other two; its view-only rows carry data-view="system"
+   and are hidden while the view is closed (syncViewRows). */
+#sysmenu {
+	position: fixed;
+	bottom: 12px;
+	left: 12px;
 	width: 268px;
-	max-height: calc(100vh - 24px);
+	max-height: calc(42vh - 12px);
 	overflow-y: auto;
 	font-family: 'Menlo', 'Consolas', monospace;
 	font-size: 12px;
@@ -374,21 +553,26 @@ html, body {
 body.dv-map #overlay { display: none; }
 body.system-view #sysread {
 	max-height: 25vh;
-	max-width: calc(100vw - 292px - 300px);
+	max-width: calc(100vw - 304px - 300px);
 	overflow: auto;
 	pointer-events: auto;
 }
 /* Narrow screens: the two panels and the readout cannot all keep their
    margins, so the readout takes the width it can and the panels stay put. */
 @media (max-width: 900px) {
-	#overlay, #sysread { left: 12px; top: auto; }
 	#overlay { display: none; }
+	#sysread { left: 12px; top: auto; max-width: calc(100vw - 24px); }
 	body.system-view #sysread { max-width: calc(100vw - 24px); bottom: 12px; }
-	#sysread { max-width: calc(100vw - 24px); }
+}
+@media (max-width: 700px) {
+	#selection-menu, #sysmenu { width: calc(60vw - 24px); }
+	#menu { width: max(140px, calc(40vw - 24px)); }
+	#selection-menu { max-height: calc(56vh - 12px); }
+	#sysmenu { max-height: calc(42vh - 12px); }
 }
 
 /* Collapsible panels: the header stays as the handle, so a panel is never
-   lost (Tab still hides both outright). !important beats the inline
+   lost (Tab still hides all panels outright). !important beats the inline
    display the data-engine / data-view row gating writes. */
 .panel.collapsed > :not(:first-child) { display: none !important; }
 .panel.collapsed > .menu-header { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }

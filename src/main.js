@@ -181,16 +181,20 @@ async function boot() {
                 document.getElementById('labels'), landmarks, window.Constellations);
 
         const selection = window.Selection.createSelection(camera, landmarks);
+        const selectionStore = window.SelectionStore.createSelectionStore();
         let selected = -1;
 
         // The selection set (0.5.0, plan §3.2): snapshots keyed by the renderer's
         // per-record identity. `pickOut` is the pick record selection.pickAny fills
-        // in place and `starInputs` the derived stellar fields — one shape, reused so
-        // a click never allocates.
+        // in place and `starInputs` the derived stellar fields — both reusable; the
+        // separate typed history takes its own snapshot on selection.
         const starSet = window.StarSet.createStarSet();
         const pickOut = {};
         const starInputs = {};
         const memberRef = { kind: 0, key: 0, index: 0, x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0 };
+        const searchPick = { key: 0, kind: 0, index: 0, x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0, approximated: 0 };
+        const historyPick = { key: 0, kind: 0, index: 0, x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0, approximated: 0 };
+        const historyInputs = { mass: 0, lum: 0, teff: 0, age: 0, metal: 0 };
         const aroundPick = { key: 0, kind: 0, index: 0, x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0 };
         // A pick sweep is spread over frames (plan §3.1). The slice is bounded by
         // time as well as by records, because the per-record dispatch cost depends
@@ -260,9 +264,18 @@ async function boot() {
         renderer.setEngine(window.Presets.parseEngineList(params.engine));
         initSimpleLandmarks();
 
-        // --- Settings menu (Tab to toggle) -----------------------------------
+        // --- Settings and selection panels (Tab toggles all) -----------------
         const menu = document.getElementById('menu');
         const menuCollapse = document.getElementById('menu-collapse');
+        const selectionMenu = document.getElementById('selection-menu');
+        const selectionMenuCollapse = document.getElementById('selection-menu-collapse');
+        const currentSelectionLabel = document.getElementById('selection-current-label');
+        const previousSelectionLabel = document.getElementById('selection-previous-label');
+        const swapSelectionButton = document.getElementById('selection-swap');
+        const assetCurrentLabel = document.getElementById('asset-current-label');
+        const assetPreviousLabel = document.getElementById('asset-previous-label');
+        const assetPairFirst = document.getElementById('asset-pair-first');
+        const assetPairSecond = document.getElementById('asset-pair-second');
         const sliderExp = document.getElementById('slider-exposure');
         const sliderBright = document.getElementById('slider-brightness');
         const sliderWhite = document.getElementById('slider-white');
@@ -339,6 +352,8 @@ async function boot() {
         // results object itself is the search's, reused by the next run.
         const searchLib = window.Search;
         const search = searchLib.createSearch();
+        const searchCenterSelect = document.getElementById('search-center');
+        const searchRadiusBox = document.getElementById('search-radius-pc');
         const scopeSelect = document.getElementById('search-scope');
         const classSelect = document.getElementById('search-class');
         const ptypeSelect = document.getElementById('search-ptype');
@@ -352,12 +367,21 @@ async function boot() {
         const btnSearchAdd = document.getElementById('btn-search-add');
         const btnSearchClear = document.getElementById('btn-search-clear');
         const valSearch = document.getElementById('val-search');
+        const searchResultsList = document.getElementById('search-results');
+        const assetTypeSelect = document.getElementById('asset-type');
+        const assetIdBox = document.getElementById('asset-id');
+        const assetNameBox = document.getElementById('asset-name');
+        const assetSelectButton = document.getElementById('asset-select');
+        const assetClearButton = document.getElementById('asset-clear');
+        const assetPairFirstButton = document.getElementById('asset-pair-first-set');
+        const assetPairSecondButton = document.getElementById('asset-pair-second-set');
         const sysread = document.getElementById('sysread');
         const searchClassNames = window.StarRecord.SPECTRAL_CLASSES;
         // window.PlanetsLib, not the selectPlanets alias: this block runs
         // before that alias is declared, and the namespace is already live.
         const searchTypeNames = window.PlanetsLib.DISPLAY_TYPES.map((t) => t.name);
         let searchSnapshot = [];
+        let searchVersion = -1;
         // The search report's own copy of #sysread: the system view takes the
         // element over while open (0.5.3) and hands it back on exit.
         let sysreadSearchText = '';
@@ -432,6 +456,8 @@ async function boot() {
                 }
                 f.tsurfMin = searchNumberOr(tsurfMinBox.value, 0);
                 f.tsurfMax = searchNumberOr(tsurfMaxBox.value, Infinity);
+                const radiusPc = searchNumberOr(searchRadiusBox.value, Infinity);
+                f.distMax = radiusPc < Infinity ? radiusPc * LY_PER_PC : Infinity;
                 f.terranOnly = terranCheck.checked;
                 f.needsBelt = beltCheck.checked;
                 f.barrenOnly = barrenCheck.checked;
@@ -450,6 +476,8 @@ async function boot() {
                 setSelectToMask(ptypeSelect, searchTypeNames, f.planetTypes, searchLib.planetTypeBit);
                 tsurfMinBox.value = f.tsurfMin > 0 ? String(f.tsurfMin) : '';
                 tsurfMaxBox.value = f.tsurfMax < Infinity ? String(f.tsurfMax) : '';
+                searchRadiusBox.value = f.distMax < Infinity
+                        ? String(Number((f.distMax / LY_PER_PC).toPrecision(7))) : '';
                 terranCheck.checked = f.terranOnly;
                 beltCheck.checked = f.needsBelt;
                 barrenCheck.checked = f.barrenOnly;
@@ -459,6 +487,9 @@ async function boot() {
         // report, the snapshot and the readout until the next Search.
         function markSearchStale() {
                 searchSnapshot = [];
+                searchVersion = -1;
+                selectionStore.setSearchResults(window.SelectionStore.GROUP_SPACE, searchSnapshot);
+                searchResultsList.textContent = '';
                 valSearch.textContent = 'no search yet';
                 sysreadSearchText = '';
                 // While the system view owns #sysread, only the copy clears —
@@ -471,7 +502,7 @@ async function boot() {
                 markSearchStale();
         }
         for (const el of [classSelect, ptypeSelect, tsurfMinBox, tsurfMaxBox,
-                terranCheck, beltCheck, barrenCheck]) {
+                searchRadiusBox, terranCheck, beltCheck, barrenCheck]) {
                 el.addEventListener('change', onSearchControl);
         }
         tokenBox.addEventListener('change', () => {
@@ -480,6 +511,7 @@ async function boot() {
                 markSearchStale();
         });
         scopeSelect.addEventListener('change', markSearchStale);
+        searchCenterSelect.addEventListener('change', markSearchStale);
 
         // Plan §5.4's top-12 lines: designation, class, distance, matched
         // planet, Tsurf. The class reads the same colorIndex map as the
@@ -507,27 +539,60 @@ async function boot() {
                 return name.padEnd(12) + '  ' + cls.padEnd(3) + '  ' + dist.padEnd(9) + '  ' + planet;
         }
 
+        function renderSearchResults(res) {
+                const fragment = document.createDocumentFragment();
+                for (let i = 0; i < res.count; i++) {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'search-result';
+                        button.dataset.searchIndex = String(i);
+                        button.textContent = searchRowLine(res, i);
+                        button.setAttribute('role', 'option');
+                        if (res.kind[i] === searchLib.KIND_UNRESOLVED) {
+                                button.disabled = true;
+                                button.title = 'This selected-set member is no longer resident; it cannot be selected from this result.';
+                        }
+                        fragment.appendChild(button);
+                }
+                searchResultsList.replaceChildren(fragment);
+                syncSelectionPanel();
+        }
+
         function runSearch() {
+                controlsToToken();
                 tokenBox.value = searchLib.formatFilter(searchLib.parseFilter(tokenBox.value));
                 tokenToControls();
                 const filter = searchLib.parseFilter(tokenBox.value);
                 const scope = scopeSelect.value === 'galaxy' ? 'galaxy' : 'selection';
                 const cam = camera.cameraPos;
+                const selectedCenter = currentStarCenter();
+                const useSelectedCenter = searchCenterSelect.value === 'current' && !!selectedCenter;
+                const centerX = useSelectedCenter ? selectedCenter.x : cam[0];
+                const centerY = useSelectedCenter ? selectedCenter.y : cam[1];
+                const centerZ = useSelectedCenter ? selectedCenter.z : cam[2];
                 const t0 = performance.now();
                 const res = search.run(filter, {
                         scope, camX: cam[0], camY: cam[1], camZ: cam[2],
+                        centerX, centerY, centerZ,
                         model, renderer, set: starSet,
                 });
                 const ms = performance.now() - t0;
                 searchSnapshot = [];
                 for (let i = 0; i < res.count; i++) {
                         searchSnapshot.push({
+                                group: window.SelectionStore.GROUP_SPACE, type: 'star',
                                 key: res.keys[i] >>> 0, kind: res.kind[i], index: res.index[i],
                                 x: res.x[i], y: res.y[i], z: res.z[i],
                                 colorIndex: res.colorIndex[i], absMag: res.absMag[i],
                         });
                 }
-                valSearch.textContent = res.stats.scope + ' · scanned ' + res.stats.scanned.toLocaleString()
+                selectionStore.setSearchResults(window.SelectionStore.GROUP_SPACE, searchSnapshot);
+                searchVersion = renderer.starBlocks().dynamicVersion;
+                const centerName = useSelectedCenter ? selectionLabel(selectedCenter) : 'camera';
+                const radiusPc = searchNumberOr(searchRadiusBox.value, Infinity);
+                const radiusText = radiusPc < Infinity ? ' · ' + Number(radiusPc.toPrecision(4)) + ' pc' : '';
+                valSearch.textContent = res.stats.scope + ' · around ' + centerName + radiusText
+                        + ' · scanned ' + res.stats.scanned.toLocaleString()
                         + ' · matched ' + res.stats.matched.toLocaleString() + ' · kept ' + res.count
                         + ' · ' + ms.toFixed(ms < 10 ? 1 : 0) + ' ms';
                 const lines = ['search ' + (tokenBox.value || '(all)') + ' · ' + valSearch.textContent];
@@ -536,6 +601,7 @@ async function boot() {
                 for (let i = 0; i < show; i++) lines.push(searchRowLine(res, i));
                 if (res.count > show) lines.push('… +' + (res.count - show) + ' more');
                 sysreadSearchText = lines.join('\n');
+                renderSearchResults(res);
                 if (!systemLayer.isOpen()) sysread.textContent = sysreadSearchText;
         }
         btnSearch.addEventListener('click', runSearch);
@@ -573,6 +639,11 @@ async function boot() {
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
         btnSearchAdd.addEventListener('click', addResultsToSelection);
+        searchResultsList.addEventListener('click', (event) => {
+                const button = event.target.closest('button[data-search-index]');
+                if (!button || !searchResultsList.contains(button)) return;
+                selectSearchResult(Number(button.dataset.searchIndex));
+        });
 
         // --- System view (0.5.3, plan §6) -------------------------------------
         // The schematic of the primary selection's generated system. The layer
@@ -663,18 +734,22 @@ async function boot() {
         });
 
 	const btnRouteFly = document.getElementById('route-fly');
+	const routeStarsButton = document.getElementById('route-stars');
 	const routeHint = document.getElementById('route-hint');
 	const routeRoundtrip = document.getElementById('route-roundtrip');
 	const dvPick = { body: -1, node: -1 };
 	function syncRouteUi() {
 		const r = systemLayer.routeState();
 		const state = systemLayer.autopilotState();
+		routeStarsButton.disabled = !hasTwoStarEndpoints();
 		const rate = systemLayer.getTimeRate();
 		btnRouteFly.textContent = state === 'running' ? 'Pause autopilot'
 			: state === 'paused' ? 'Resume autopilot'
 			: state === 'complete' ? 'Restart autopilot' : 'Start autopilot';
 		btnRouteFly.disabled = !r.feasible;
-		if (!r.start) { routeHint.textContent = 'On a delta-v view: choose a start node, then a destination.'; return; }
+		if (!r.start) { routeHint.textContent = hasTwoStarEndpoints()
+			? 'Choose map nodes, or plan from previous star to current star.'
+			: 'Choose map nodes, or select two stars to plan an interstellar route.'; return; }
 		if (!r.end) { routeHint.textContent = 'Start selected — choose a destination node.'; return; }
 		if (!r.feasible) { routeHint.textContent = r.reason; return; }
 		if (state === 'running') {
@@ -700,8 +775,7 @@ async function boot() {
 	btnRouteFly.addEventListener('click', () => {
 		systemLayer.toggleAutopilot(); writeSystemReadout();
 	});
-	function stellarEndpoint(i) {
-		const inputs = deriveMemberInputs(i);
+	function stellarEndpointFrom(ref, inputs) {
 		const d = window.DeltaVLib;
 		const mu = d.G_SI * inputs.mass * d.M_SUN_KG;
 		const radius = Math.max(0.01 * d.AU_M, inputs.rStar * selectPlanets.AU_PER_R_SUN * d.AU_M * 10);
@@ -709,12 +783,35 @@ async function boot() {
 		body.mu = mu; body.aM = radius; body.rLoM = radius;
 		body.vCircLo = d.vCirc(mu, radius); body.vEscLo = d.vEsc(mu, radius);
 		body.periodS = d.TAU * Math.sqrt(radius ** 3 / mu);
-		return { body, node: 1, muStar: mu, phase: 0, systemKey: starSet.keys[i], label: memberName(i),
-			x: starSet.x[i], y: starSet.y[i], z: starSet.z[i] };
+		return { body, node: 1, muStar: mu, phase: 0, systemKey: ref.key >>> 0, label: selectionLabel(ref),
+			x: ref.x, y: ref.y, z: ref.z };
 	}
-	document.getElementById('route-stars').addEventListener('click', () => {
-		if (starSet.count < 2) { routeHint.textContent = 'Shift-click two stars in galaxy view first.'; return; }
-		systemLayer.planExternalRoute(stellarEndpoint(0), stellarEndpoint(1));
+	function stellarEndpoint(i) {
+		const ref = memberRefFor(i);
+		return stellarEndpointFrom(ref, deriveMemberInputs(i));
+	}
+	function historyEndpoint(ref) { return stellarEndpointFrom(ref, ref); }
+	function hasTwoStarEndpoints() {
+		const natural = selectionStore.natural;
+		const previous = natural.previous;
+		const current = natural.current;
+		return !!(previous && current && previous.type === 'star' && current.type === 'star')
+			|| starSet.count >= 2;
+	}
+	function selectedStarEndpoints() {
+		const natural = selectionStore.natural;
+		const previous = natural.previous;
+		const current = natural.current;
+		if (previous && current && previous.type === 'star' && current.type === 'star') {
+			return [historyEndpoint(previous), historyEndpoint(current)];
+		}
+		if (starSet.count >= 2) return [stellarEndpoint(0), stellarEndpoint(1)];
+		return null;
+	}
+	routeStarsButton.addEventListener('click', () => {
+		const endpoints = selectedStarEndpoints();
+		if (!endpoints) { routeHint.textContent = 'Select two stars or Shift-click to add a second set member.'; return; }
+		systemLayer.planExternalRoute(endpoints[0], endpoints[1]);
 		writeSystemReadout();
 	});
 
@@ -780,6 +877,57 @@ async function boot() {
                 else openSystemView(true);
         }
 
+        function restoreStarSnapshot(ref) {
+                if (!ref || ref.group !== window.SelectionStore.GROUP_SPACE || ref.type !== 'star') return false;
+                historyPick.key = ref.key >>> 0;
+                historyPick.kind = ref.kind;
+                historyPick.index = ref.index;
+                historyPick.x = ref.x; historyPick.y = ref.y; historyPick.z = ref.z;
+                historyPick.colorIndex = ref.colorIndex;
+                historyPick.absMag = ref.absMag;
+                historyPick.approximated = 0;
+                historyInputs.mass = ref.mass; historyInputs.lum = ref.lum;
+                historyInputs.teff = ref.teff; historyInputs.age = ref.age;
+                historyInputs.metal = ref.metal;
+                const cam = camera.cameraPos;
+                starSet.setSingle(historyPick, historyInputs, cam[0], cam[1], cam[2], ref.index);
+                setLabel = '';
+                if (ref.kind === selectPlanets.BLOCK_LANDMARK && model.milkyWay) {
+                        selected = ref.index;
+                        labels.setSelected(ref.index);
+                        const entry = landmarks.ENTRIES[ref.index];
+                        camera.setOrbitTarget(ref.x, ref.y, ref.z, entry ? entry.name : selectionLabel(ref));
+                        followLandmark = ref.index;
+                } else {
+                        selected = -1;
+                        labels.setSelected(-1);
+                        followLandmark = -1;
+                }
+                syncSetUi();
+                if (systemLayer.isOpen()) openSystemView(true);
+                updateOverlay(renderer.state, camera.getState(statsText));
+                return true;
+        }
+
+        function restoreHistorySelection(ref) {
+                if (!ref || ref.group !== window.SelectionStore.GROUP_SPACE) return false;
+                if (ref.type === 'star') return restoreStarSnapshot(ref);
+                const entity = ref.entity;
+                if ((ref.type !== 'planet' && ref.type !== 'other') || !entity || !entity.host) return false;
+                if (!restoreStarSnapshot(entity.host)) return false;
+                if (!systemLayer.isOpen()) openSystemView(true);
+                systemLayer.setSelected(entity.bodyKind, entity.index);
+                writeSystemReadout();
+                updateOverlay(renderer.state, camera.getState(statsText));
+                return true;
+        }
+
+        swapSelectionButton.addEventListener('click', () => {
+                const current = selectionStore.swap(window.SelectionStore.GROUP_SPACE);
+                if (current) restoreHistorySelection(current);
+                syncSelectionPanel();
+        });
+
         // The readout is text at the overlay's 4 Hz cadence (plan §6.6), plus
         // an immediate refresh on enter and on a schematic click, so the
         // ◀ marker never lags the ring.
@@ -805,25 +953,35 @@ async function boot() {
         syncViewRows();
         if (params.sysview) openSystemView(true);   // no selection at boot: a no-op
 
-        // Tab toggles both control panels without changing the view. A panel's
+        // Tab toggles all control panels without changing the view. Each panel's
         // own ▾ collapses it to its header instead of closing it, so there is
-        // always a handle to expand it again; collapsing the System panel keeps
-        // the view open (V, Esc and its Close button are the exits). Opening
-        // either panel releases pointer lock and any held key.
+        // always a handle to expand it again. Opening any panel releases pointer
+        // lock and any held key.
         function releasePanelInput() {
                 input.releaseAll();
                 if (document.pointerLockElement === canvas) document.exitPointerLock();
         }
         // The overlay and the readout start where the left panel ends; when
         // the panel is hidden they take the column back.
+        function leftPanelInset() {
+                let width = 0;
+                if (selectionMenu.style.display !== 'none') width = Math.max(width, 280);
+                if (sysMenu.style.display !== 'none') width = Math.max(width, 268);
+                return width ? width + 24 : 0;
+        }
         function syncOverlayInset() {
-                const left = sysMenu.style.display === 'none' ? '12px' : '292px';
+                const inset = leftPanelInset();
+                const left = window.innerWidth <= 900 || inset === 0 ? '12px' : inset + 'px';
                 overlay.style.left = left;
                 sysread.style.left = left;
+                return inset;
         }
         function toggleMenu() {
-                const visible = menu.style.display !== 'none' || sysMenu.style.display !== 'none';
+                const visible = menu.style.display !== 'none'
+                        || selectionMenu.style.display !== 'none'
+                        || sysMenu.style.display !== 'none';
                 menu.style.display = visible ? 'none' : 'block';
+                selectionMenu.style.display = visible ? 'none' : 'block';
                 sysMenu.style.display = visible ? 'none' : 'block';
                 syncOverlayInset();
                 if (visible) {
@@ -845,7 +1003,10 @@ async function boot() {
                 panel.querySelector('.menu-header > span').addEventListener('click', () => toggleCollapse(panel, button));
         }
         wireCollapse(menu, menuCollapse);
+        wireCollapse(selectionMenu, selectionMenuCollapse);
         wireCollapse(sysMenu, sysMenuCollapse);
+        syncOverlayInset();
+        window.addEventListener('resize', syncOverlayInset);
 
         sliderExp.addEventListener('input', () => {
                 renderer.setExposure(Number(sliderExp.value));
@@ -1514,6 +1675,7 @@ async function boot() {
         // index and equals PlanetsLib.BLOCK_*.
         const selectPlanets = window.PlanetsLib;
         const LY_PER_KPC = 1 / window.Camera.LY_TO_KPC;
+        const LY_PER_PC = LY_PER_KPC / 1000;
 
         // The designation of a set member (plan §4.11): a landmark keeps its name,
         // anything else is S<key in base36>. Built when the primary changes, not
@@ -1525,6 +1687,86 @@ async function boot() {
                 }
                 return 'S' + (starSet.keys[i] >>> 0).toString(36).toUpperCase();
         }
+
+        function selectionLabel(ref) {
+                if (!ref) return '—';
+                if (ref.group === window.SelectionStore.GROUP_ASSET) {
+                        return ref.type + ' · ' + (ref.name || ref.id || 'unnamed');
+                }
+                if (ref.name) return ref.name;
+                if (ref.type === 'star' && ref.key !== null) return 'S' + (ref.key >>> 0).toString(36).toUpperCase();
+                return ref.type + (ref.id == null ? '' : ' ' + ref.id);
+        }
+
+        function currentStarCenter() {
+                const current = selectionStore.natural.current;
+                if (current && current.type === 'star') return current;
+                const p = starSet.primary;
+                if (p < 0) return null;
+                return {
+                        group: window.SelectionStore.GROUP_SPACE,
+                        type: 'star', key: starSet.keys[p] >>> 0, name: memberName(p),
+                        x: starSet.x[p], y: starSet.y[p], z: starSet.z[p],
+                };
+        }
+
+        function syncSelectionPanel() {
+                const natural = selectionStore.natural;
+                const assets = selectionStore.assets;
+                currentSelectionLabel.textContent = natural.current ? selectionLabel(natural.current) : 'No object selected';
+                previousSelectionLabel.textContent = selectionLabel(natural.previous);
+                swapSelectionButton.disabled = !natural.current || !natural.previous;
+                assetCurrentLabel.textContent = selectionLabel(assets.current);
+                assetPreviousLabel.textContent = selectionLabel(assets.previous);
+                assetPairFirst.textContent = selectionLabel(selectionStore.assetPair[0]);
+                assetPairSecond.textContent = selectionLabel(selectionStore.assetPair[1]);
+                assetPairFirstButton.disabled = !assets.current;
+                assetPairSecondButton.disabled = !assets.current;
+                for (const button of searchResultsList.children) {
+                        const row = natural.searchResults[Number(button.dataset.searchIndex)];
+                        const isCurrent = !!(natural.current && row
+                                && window.SelectionStore.sameSelection(natural.current, row));
+                        button.classList.toggle('is-current', isCurrent);
+                        button.setAttribute('aria-selected', isCurrent ? 'true' : 'false');
+                }
+        }
+
+        function selectAssetReference() {
+                const id = assetIdBox.value.trim();
+                const name = assetNameBox.value.trim();
+                if (!id && !name) {
+                        assetIdBox.focus();
+                        return;
+                }
+                selectionStore.selectCurrent(window.SelectionStore.GROUP_ASSET, {
+                        type: assetTypeSelect.value,
+                        id: id || name,
+                        name: name || id,
+                });
+                syncSelectionPanel();
+        }
+        function setAssetPairSlot(index) {
+                const pair = selectionStore.assetPair;
+                if (!selectionStore.assets.current || (index !== 0 && index !== 1)) return;
+                selectionStore.setAssetPair(
+                        index === 0 ? selectionStore.assets.current : pair[0],
+                        index === 1 ? selectionStore.assets.current : pair[1]);
+                syncSelectionPanel();
+        }
+        assetSelectButton.addEventListener('click', selectAssetReference);
+        assetClearButton.addEventListener('click', () => {
+                selectionStore.clearHistory(window.SelectionStore.GROUP_ASSET);
+                selectionStore.clearAssetPair();
+                syncSelectionPanel();
+        });
+        assetIdBox.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') selectAssetReference();
+        });
+        assetNameBox.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') selectAssetReference();
+        });
+        assetPairFirstButton.addEventListener('click', () => setAssetPairSlot(0));
+        assetPairSecondButton.addEventListener('click', () => setAssetPairSlot(1));
 
         // A set member as a stellarInputs ref. `index` is block-local, which is
         // what both the field arrays and the object member context are indexed by;
@@ -1559,8 +1801,68 @@ async function boot() {
                 }, starInputs);
         }
 
+        function selectionFromPick(hit, inputs) {
+                const entry = hit.kind === selectPlanets.BLOCK_LANDMARK ? landmarks.ENTRIES[hit.index] : null;
+                return {
+                        group: window.SelectionStore.GROUP_SPACE,
+                        type: 'star',
+                        key: hit.key >>> 0,
+                        name: entry ? entry.name : '',
+                        kind: hit.kind | 0,
+                        index: hit.index | 0,
+                        x: hit.x, y: hit.y, z: hit.z,
+                        colorIndex: hit.colorIndex, absMag: hit.absMag,
+                        mass: inputs.mass, lum: inputs.lum, teff: inputs.teff,
+                        rStar: inputs.rStar, age: inputs.age, metal: inputs.metal,
+                };
+        }
+
+        function primarySnapshot() {
+                const p = starSet.primary;
+                if (p < 0) return null;
+                const key = starSet.keys[p] >>> 0;
+                const current = selectionStore.natural.current;
+                if (current && current.type === 'star' && current.key === key) return current;
+                const ref = memberRefFor(p);
+                return window.SelectionStore.copySelection(window.SelectionStore.GROUP_SPACE,
+                        selectionFromPick(ref, deriveMemberInputs(p)));
+        }
+
+        function recordSystemBodySelection(body) {
+                const p = starSet.primary;
+                if (p < 0 || !body || body.kind === window.SystemLayer.BODY_NONE) return;
+                const host = primarySnapshot();
+                if (!host) return;
+                let selection;
+                if (body.kind === window.SystemLayer.BODY_STAR) {
+                        const ref = memberRefFor(p);
+                        selection = selectionFromPick(ref, deriveMemberInputs(p));
+                } else if (body.kind === window.SystemLayer.BODY_PLANET) {
+                        const id = host.key + ':planet:' + body.index;
+                        selection = {
+                                type: 'planet', id,
+                                name: systemLayer.designationOf(body.kind, body.index),
+                                x: host.x, y: host.y, z: host.z,
+                                entity: { host, bodyKind: body.kind, index: body.index },
+                        };
+                } else if (body.kind === window.SystemLayer.BODY_BELT) {
+                        const id = host.key + ':belt:' + body.index;
+                        selection = {
+                                type: 'other', id,
+                                name: systemLayer.designationOf(body.kind, body.index),
+                                x: host.x, y: host.y, z: host.z,
+                                entity: { host, bodyKind: body.kind, index: body.index },
+                        };
+                } else {
+                        return;
+                }
+                selectionStore.selectCurrent(window.SelectionStore.GROUP_SPACE, selection);
+                syncSelectionPanel();
+        }
+
         function syncSetUi() {
                 labels.setSelectedKeys(starSet.keys, starSet.count);
+                syncSelectionPanel();
         }
 
         // --- Re-resolving the set after a re-sample (0.6, plan E1b) -----------
@@ -1646,28 +1948,79 @@ async function boot() {
                 }
         }
 
-        // Plain click → the set is that one star; Shift+click → membership toggles
-        // and the primary stays where it is (plan §3.2).
-        function applyPick(hit, additive) {
+        // Plain click → the set is that one star and history advances; Shift+click
+        // toggles membership without moving the primary or its history.
+        function applyPick(hit, additive, inputsOverride) {
                 const cam = camera.cameraPos;
-                const inputs = selectPlanets.stellarInputs(hit, {
+                const inputs = inputsOverride || selectPlanets.stellarInputs(hit, {
                         model,
                         field: renderer.fieldBuffers(),
                         member: renderer.starBlocks().member,
                 }, starInputs);
-                if (additive) starSet.toggle(hit, inputs, cam[0], cam[1], cam[2], hit.index);
-                else starSet.setSingle(hit, inputs, cam[0], cam[1], cam[2], hit.index);
-                if (starSet.count > 0 && starSet.primary < 0) starSet.setPrimary(0);
+                if (additive) {
+                        starSet.toggle(hit, inputs, cam[0], cam[1], cam[2], hit.index);
+                        if (starSet.count > 0 && starSet.primary < 0) starSet.setPrimary(0);
+                        const primary = starSet.primary;
+                        const current = selectionStore.natural.current;
+                        if (primary >= 0 && (!current || current.key !== (starSet.keys[primary] >>> 0))) {
+                                const ref = memberRefFor(primary);
+                                selectionStore.selectCurrent(window.SelectionStore.GROUP_SPACE,
+                                        selectionFromPick(ref, deriveMemberInputs(primary)));
+                        }
+                } else {
+                        starSet.setSingle(hit, inputs, cam[0], cam[1], cam[2], hit.index);
+                        selectionStore.selectCurrent(window.SelectionStore.GROUP_SPACE, selectionFromPick(hit, inputs));
+                }
                 setLabel = '';
                 syncSetUi();
         }
 
+        function handleStarPick(hit, additive, inputsOverride) {
+                applyPick(hit, additive, inputsOverride);
+                if (additive) return;
+                if (hit.kind === selectPlanets.BLOCK_LANDMARK && model.milkyWay) {
+                        selected = hit.index;
+                        labels.setSelected(hit.index);
+                        const entry = landmarks.ENTRIES[hit.index];
+                        camera.setOrbitTarget(hit.x, hit.y, hit.z, entry ? entry.name : selectionLabel(selectionStore.natural.current));
+                        followLandmark = hit.index;
+                } else {
+                        selected = -1;
+                        labels.setSelected(-1);
+                        followLandmark = -1;
+                }
+                if (systemLayer.isOpen()) openSystemView(true);
+        }
+
+        function selectSearchResult(index) {
+                const row = selectionStore.natural.searchResults[index];
+                if (!row) return;
+                const info = renderer.starBlocks();
+                if (!info || info.dynamicVersion !== searchVersion) {
+                        markSearchStale();
+                        valSearch.textContent = 'star field changed · search again';
+                        sysreadSearchText = valSearch.textContent;
+                        if (!systemLayer.isOpen()) sysread.textContent = sysreadSearchText;
+                        return;
+                }
+                searchPick.key = row.key;
+                searchPick.kind = row.kind;
+                searchPick.index = row.index;
+                searchPick.x = row.x; searchPick.y = row.y; searchPick.z = row.z;
+                searchPick.colorIndex = row.colorIndex;
+                searchPick.absMag = row.absMag;
+                searchPick.approximated = 0;
+                handleStarPick(searchPick, false);
+                updateOverlay(renderer.state, camera.getState(statsText));
+        }
+
         function clearSelection() {
                 // The system view is the primary's view: no primary, no
-                // schematic. X, R and a galaxy change all come through here.
+                // schematic. Group 2 has its own clear action and is independent.
                 if (systemLayer.isOpen()) closeSystemView();
                 followLandmark = -1;
                 starSet.clear();
+                selectionStore.clearHistory(window.SelectionStore.GROUP_SPACE);
                 setLabel = '';
                 selected = -1;
                 labels.setSelected(-1);
@@ -1762,6 +2115,14 @@ async function boot() {
         function cyclePrimary(delta) {
                 if (starSet.count === 0) return;
                 starSet.cyclePrimary(delta);
+                const i = starSet.primary;
+                const current = selectionStore.natural.current;
+                if (i >= 0 && (!current || current.key !== (starSet.keys[i] >>> 0))) {
+                        const ref = memberRefFor(i);
+                        selectionStore.selectCurrent(window.SelectionStore.GROUP_SPACE,
+                                selectionFromPick(ref, deriveMemberInputs(i)));
+                }
+                syncSetUi();
         }
 
         function cameraLine(c) {
@@ -1982,7 +2343,10 @@ async function boot() {
 					} else {
 						systemLayer.pick(input.state.pickX, input.state.pickY, bodyPick);
 						if (bodyPick.kind === window.SystemLayer.BODY_NONE) systemLayer.clearBodySelection();
-						else systemLayer.setSelected(bodyPick.kind, bodyPick.index);
+						else {
+							systemLayer.setSelected(bodyPick.kind, bodyPick.index);
+							recordSystemBodySelection(bodyPick);
+						}
 					}
                                 writeSystemReadout();
                         } else {
@@ -2006,26 +2370,7 @@ async function boot() {
                         const hit = selection.pickResult();
                         const additive = pendingShift === 1;
                         pendingShift = -1;
-                        if (hit) {
-                                applyPick(hit, additive);
-                                // A landmark keeps the old behaviour on top of the
-                                // snapshot: the yellow label ring and the orbit
-                                // target, which is what makes C -> orbit object land
-                                // on a named star.
-                                if (hit.kind === selectPlanets.BLOCK_LANDMARK && model.milkyWay) {
-                                        selected = hit.index;
-                                        labels.setSelected(hit.index);
-                                        camera.setOrbitTarget(hit.x, hit.y, hit.z, landmarks.ENTRIES[hit.index].name);
-                                        followLandmark = hit.index;
-                                } else {
-                                        selected = -1;
-                                        labels.setSelected(-1);
-                                }
-                                // The schematic is the primary's view: the rare
-                                // pick that lands while it is open (V pressed
-                                // mid-sweep) switches it to the new star.
-                                if (!additive && systemLayer.isOpen()) openSystemView(true);
-                        }
+                        if (hit) handleStarPick(hit, additive);
                 }
                 if (actions.flyTo) {
                         actions.flyTo = 0;
@@ -2077,7 +2422,7 @@ async function boot() {
                         // them, so neither covers the graph.
                         systemLayer.draw(canvas.clientWidth, canvas.clientHeight,
                                 menu.style.display === 'none' ? 0 : 284,
-                                sysMenu.style.display === 'none' ? 0 : 292);
+                                leftPanelInset());
                 }
 
                 overlayTimer += dt;

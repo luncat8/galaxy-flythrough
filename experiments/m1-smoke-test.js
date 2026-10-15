@@ -53,8 +53,9 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 	check('index.html references the stylesheet and the overlay elements',
 		/<link[^>]+href="style\.css"/.test(html)
 		&& /id="canvas"/.test(html) && /id="labels"/.test(html) && /id="system"/.test(html)
+		&& /id="selection-menu"/.test(html) && /id="search-results"/.test(html)
 		&& /id="overlay"/.test(html) && /id="error"/.test(html),
-		{ css: /style\.css/.test(html), elements: ['canvas', 'labels', 'system', 'overlay', 'error'].map(id => html.includes(`id="${id}"`)) });
+		{ css: /style\.css/.test(html), elements: ['canvas', 'labels', 'system', 'selection-menu', 'search-results', 'overlay', 'error'].map(id => html.includes(`id="${id}"`)) });
 }
 
 {
@@ -81,6 +82,19 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		})(), 'missing ids');
 	check('the sysmenu selector main.js queries is an id in the page',
 		/#sysmenu \[data-view\]/.test(main) && /id="sysmenu"/.test(html));
+	check('selection state, nearby-centred search, result picking and prior-to-current routing are wired',
+		/SelectionStore\.createSelectionStore\(\)/.test(main)
+		&& /selectionStore\.selectCurrent\(window\.SelectionStore\.GROUP_SPACE/.test(main)
+		&& /recordSystemBodySelection\(body\)/.test(main)
+		&& /type: 'planet'/.test(main) && /type: 'other'/.test(main)
+		&& /selectionStore\.setAssetPair/.test(main)
+		&& /centerX, centerY, centerZ/.test(main)
+		&& /searchResultsList\.addEventListener\('click'/.test(main)
+		&& /selectedStarEndpoints\(\)/.test(main)
+		&& /historyEndpoint\(previous\), historyEndpoint\(current\)/.test(main)
+		&& /routeRoundtrip/.test(main)
+		&& /selection-swap/.test(html)
+		&& /asset-pair-first-set/.test(html));
 	// 0.6 E4: an age change is *not* a re-draw. The epoch places the field the
 	// field was drawn into (renderer.setEpoch → orbit.epochMap), the look follows
 	// in the renderer's background sweep, and only a new galaxy, seed or star
@@ -131,13 +145,13 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		'devicePixelRatio', 'innerWidth', 'innerHeight', 'addEventListener', 'removeEventListener',
 		'requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'location', 'navigator',
 		'matchMedia', 'Device', 'Presets', 'GalaxyShaders', 'HashLib', 'DensityLib', 'GalaxyLib', 'SamplingLib',
-		'StarRecord', 'StarTypesLib', 'PlanetsLib', 'NebulaLib', 'ObjectsLib', 'Coords', 'Camera', 'Input', 'Loop', 'Selection', 'StarSet',
+		'StarRecord', 'StarTypesLib', 'PlanetsLib', 'NebulaLib', 'ObjectsLib', 'Coords', 'Camera', 'Input', 'Loop', 'Selection', 'StarSet', 'SelectionStore',
 		'Landmarks', 'Constellations', 'StarRenderer', 'LabelLayer', 'SystemLayer',
 		'TileLoader', 'CellManager', '__galaxy_catalog', 'self', 'document', 'setTimeout',
 	]);
 	const defined = new Set();
 	const undefinedReads = [];
-	const NAMESPACES = ['Device', 'Camera', 'Input', 'Loop', 'Selection', 'StarSet', 'Presets', 'StarRenderer', 'LabelLayer', 'SystemLayer',
+	const NAMESPACES = ['Device', 'Camera', 'Input', 'Loop', 'Selection', 'StarSet', 'SelectionStore', 'Presets', 'StarRenderer', 'LabelLayer', 'SystemLayer',
 		'TileLoader', 'CellManager', 'GalaxyShaders', 'HashLib', 'DensityLib', 'GalaxyLib', 'SamplingLib',
 		'StarRecord', 'StarTypesLib', 'PlanetsLib', 'NebulaLib', 'ObjectsLib', 'Coords', 'Landmarks', 'Constellations'];
 	for (const file of scripts) {
@@ -171,7 +185,7 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		['../src/math/coords.js', 'Coords'],
 		['../src/core/camera.js', 'Camera'], ['../src/core/input.js', 'Input'],
 		['../src/core/selection.js', 'Selection'], ['../src/core/star-set.js', 'StarSet'],
-		['../src/core/loop.js', 'Loop'],
+		['../src/core/selection-store.js', 'SelectionStore'], ['../src/core/loop.js', 'Loop'],
 		['../src/core/presets.js', 'Presets'],
 		['../src/core/device.js', 'Device'],
 		['../src/data/landmarks.js', 'Landmarks'], ['../src/data/constellations.js', 'Constellations'],

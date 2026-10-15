@@ -4,8 +4,8 @@
 // struct, and writes into preallocated result buffers. No DOM, no model.
 //
 // Two stages (plan §5.3). Stage 1 runs the star predicates — distance from the
-// camera, spectral class, state, luminosity, mass, component — from the record
-// alone where possible (colorIndex, absMag, position) and from one
+// supplied centre (camera by default), spectral class, state, luminosity, mass,
+// component — from the record alone where possible (colorIndex, absMag, position) and from one
 // `stellarInputs` where not. Stage 2 runs `planets.systemSummary` only for
 // survivors, and only when the filter carries a planet predicate at all.
 //
@@ -456,8 +456,8 @@ function createSearch() {
 		if (scope === SCOPE_SELECTION && (!set || set.count === 0)) scope = SCOPE_GALAXY;
 		stats.scope = scope;
 
-		// The predicate plan, decided once. Distance is in ly from the camera
-		// (plan §5.1); the scan compares kpc².
+		// The predicate plan, decided once. Distance is in ly from the supplied
+		// search centre (camera by default); the scan compares kpc².
 		const lyToKpc = searchLyToKpc();
 		const st = {
 			filter,
@@ -479,9 +479,9 @@ function createSearch() {
 			barrenOnly: !!filter.barrenOnly,
 			terranOnly: !!filter.terranOnly,
 			needsBelt: !!filter.needsBelt,
-			camX: env.camX || 0,
-			camY: env.camY || 0,
-			camZ: env.camZ || 0,
+			centerX: Number.isFinite(env.centerX) ? env.centerX : (env.camX || 0),
+			centerY: Number.isFinite(env.centerY) ? env.centerY : (env.camY || 0),
+			centerZ: Number.isFinite(env.centerZ) ? env.centerZ : (env.camZ || 0),
 			modelSeed: model.seed | 0,
 			blocks: null,
 			segStart: 0,
@@ -553,9 +553,9 @@ function createSearch() {
 				const x = view.getFloat32(byteOffset, true);
 				const y = view.getFloat32(byteOffset + 4, true);
 				const z = view.getFloat32(byteOffset + 8, true);
-				const dx = x - st.camX;
-				const dy = y - st.camY;
-				const dz = z - st.camZ;
+				const dx = x - st.centerX;
+				const dy = y - st.centerY;
+				const dz = z - st.centerZ;
 				const d2 = dx * dx + dy * dy + dz * dz;
 				if (d2 < st.distLo2 || d2 > st.distHi2) continue;
 				const color = packed & 0xFF;
@@ -633,9 +633,9 @@ function createSearch() {
 			const x = set.x[i];
 			const y = set.y[i];
 			const z = set.z[i];
-			const dx = x - st.camX;
-			const dy = y - st.camY;
-			const dz = z - st.camZ;
+			const dx = x - st.centerX;
+			const dy = y - st.centerY;
+			const dz = z - st.centerZ;
 			const d2 = dx * dx + dy * dy + dz * dz;
 			if (d2 < st.distLo2 || d2 > st.distHi2) continue;
 			const key = set.keys[i] >>> 0;

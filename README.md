@@ -55,6 +55,10 @@ No framework, bundler, module loader, or runtime network connection is required.
   temperatures, HZ/terran/locked flags, generated lazily on the CPU for the selected star
 - Star and planet search with a compact token filter (`G,K|terran|220-300`), scoped to the
   selection or the galaxy, with add-results-to-selection
+- A separate **Search & Selection** panel: star current/previous history with swap, a
+  default 10 pc search centred on the current star (camera fallback), and clickable results.
+  The typed asset history accepts ship/base/colony/dock-port/cargo-container references and
+  can capture its current entry in either slot of the two-entry asset pair.
 - Close-system schematic view: `V` opens a log-polar map of the primary selection — HZ
   annulus, orbit ellipses, stippled belts, star and planet icons — with its own
   system-time clock and a full-figures readout
@@ -125,10 +129,12 @@ both panels); the galaxy settings stay on the right.
    ride every leg on the schematic and both delta-v renders, local legs included.
    Start/resume pauses or resumes flight; changing the plan or exiting the view
    cancels it.
-5. For interstellar travel, select two stars with Shift-click (or add search results),
-   open a system, then use **Selected stars**. It uses the first two selected stars
-   and reports parking-orbit escape, cruise and capture in real years. Interstellar
-   progress is shown in the report, not projected into a local orbital diagram.
+5. For interstellar travel, select a first star and click a second star in the nearby
+   search results, then open a system and use **Current + previous**. When the natural-object
+   history contains two stars, the route runs previous → current; otherwise two
+   Shift-clicked or search-added set members are the fallback. **Round trip** controls
+   whether the route returns. The report covers parking-orbit escape, cruise and capture
+   in real years; progress is not projected into a local orbital diagram.
 
 Fuel, acceleration and life support decide feasibility; impossible plans cannot
 launch. Routes are transient. Ship class, map toggle and budget survive presets.
@@ -211,7 +217,7 @@ The runtime is organized as classic-script namespaces under `src/`:
 - `render/shaders.js` — all WGSL shader source
 - `render/star-sprites.js` — procedural generation, culling, HDR star passes, and tone mapping
 - `stream/` — catalog bundle loading and cell residency
-- `core/` — camera, input, loop, selection, and presets
+- `core/` — camera, input, loop, star-set selection, typed selection history, and presets
 - `data/` — named landmarks, constellations, and the packed catalog
 
 The CPU keeps world positions in `f64`. GPU rendering uses camera-relative `f32` coordinates. Procedural objects are derived from stable hashes rather than mutable random-number state, so a galaxy is reproducible from its type and seed.

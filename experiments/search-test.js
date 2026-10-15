@@ -27,8 +27,8 @@
 //      not budgeted.
 //   8. degrade: null filter/env/renderer, empty blocks, impossible ranges —
 //      empty results, never a throw.
-//   9. pins: the ly→kpc fallback digits, COMP_* against density's component
-//      ids, the state/component/planet-type bit helpers.
+//   9. pins: camera-default and explicit search centres, the ly→kpc fallback
+//      digits, COMP_* against density's component ids, and bit helpers.
 //
 // Output: experiments/logs/search.json
 
@@ -830,7 +830,31 @@ function bruteRun(stars, f, camX, camY, camZ) {
 		inRange > 0 && missing === 0 && extra === 0, { inRange, missing, extra });
 }
 
-// --- 8. Degrade, never throw ---------------------------------------------------
+// --- 8. Explicit search centre -----------------------------------------------
+{
+	const search = searchLib.createSearch();
+	const target = landmarks.ENTRIES.reduce((best, entry) =>
+		Math.hypot(entry.x, entry.y, entry.z) > Math.hypot(best.x, best.y, best.z) ? entry : best,
+		landmarks.ENTRIES[0]);
+	const center = { x: Math.fround(target.x), y: Math.fround(target.y), z: Math.fround(target.z) };
+	const f = filterFrom((filter) => { filter.distMax = 0.0001; });
+	const res = search.run(f, {
+		scope: 'galaxy', camX: center.x + 1, camY: center.y, camZ: center.z,
+		centerX: center.x, centerY: center.y, centerZ: center.z,
+		model, renderer, set: null,
+	});
+	const expected = bruteRun(galaxyStars(), f, center.x, center.y, center.z);
+	const expectedIds = expected.map((item) => `${item.star.kind}:${item.star.index}:${item.star.key}`).sort();
+	const actualIds = Array.from({ length: res.count }, (_, i) =>
+		`${res.kind[i]}:${res.index[i]}:${res.keys[i]}`).sort();
+	check('an explicit nearby-star centre overrides a distant camera and matches brute force',
+		res.stats.matched === expected.length && res.count === expected.length
+		&& expectedIds.join('|') === actualIds.join('|')
+		&& expected.length === 1 && res.dist2[0] === 0,
+		{ matched: res.stats.matched, brute: expected.length, kept: res.count });
+}
+
+// --- 9. Degrade, never throw ---------------------------------------------------
 {
 	const search = searchLib.createSearch();
 	const cam = camera.cameraPos;

@@ -238,9 +238,11 @@ check('index.html loads presets.js before main.js and has the preset section', (
 
 check('the search section is wired: controls, readout, Search glue and token preset', () => {
 	const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
-	for (const id of ['search-scope', 'search-class', 'search-ptype', 'search-tsurf-min',
+	for (const id of ['selection-menu', 'selection-current-label', 'selection-previous-label', 'selection-swap',
+		'search-center', 'search-radius-pc', 'search-scope', 'search-class', 'search-ptype', 'search-tsurf-min',
 		'search-tsurf-max', 'search-terran', 'search-belt', 'search-barren', 'search-token',
-		'btn-search', 'btn-search-add', 'btn-search-clear', 'val-search', 'sysread']) {
+		'btn-search', 'btn-search-add', 'btn-search-clear', 'search-results', 'val-search', 'sysread',
+		'asset-type', 'asset-id', 'asset-name', 'asset-select', 'asset-clear', 'asset-pair-first-set', 'asset-pair-second-set']) {
 		assert.equal(html.split(`id="${id}"`).length, 2, id);
 	}
 	const searchAt = html.indexOf('src="core/search.js"');
@@ -250,6 +252,8 @@ check('the search section is wired: controls, readout, Search glue and token pre
 	for (const snippet of [
 		'window.Search', 'createSearch()', 'tokenToControls', 'controlsToToken',
 		'markSearchStale', 'searchSnapshot', 'sysread.textContent',
+		'SelectionStore.createSelectionStore()', 'centerX, centerY, centerZ',
+		'searchResultsList.addEventListener', 'selectedStarEndpoints',
 		's.search', 's.scope',
 	]) {
 		assert.ok(main.includes(snippet), snippet);

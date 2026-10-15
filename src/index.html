@@ -140,59 +140,8 @@
                         <input type="range" id="slider-clusters" min="0" max="200" step="5" value="50">
                         <span id="val-clusters" class="menu-val">×50</span>
                 </div>
-                <!-- Star selection (0.5.0): the radius is world-space in light-years
-                     (log slider, 0.1 ly … 100 000 ly) because what the set is for —
-                     a neighbourhood search, a route — is physical, not on-screen. -->
-                <div class="menu-header menu-header-selection"><span>Selection</span></div>
-                <div class="menu-row">
-                        <label for="slider-selrad" title="Select-around radius, log scale. World-space: the stars the operations actually reach.">Select radius</label>
-                        <input type="range" id="slider-selrad" min="-1" max="5" step="0.00001" value="1.69897">
-                        <span id="val-selrad" class="menu-val">50 ly</span>
-                </div>
                 <div class="menu-row menu-actions">
-                        <button id="btn-select-around" title="Select every star within the radius of the primary (F flies to it, N cycles, X clears)">Select around</button>
-                        <button id="btn-clear-set" title="Clear the selection set (X)">Clear set</button>
-                </div>
-		<div class="menu-row menu-actions">
-			<button id="menu-defaults">Defaults</button>
-		</div>
-                <!-- Star and planet search (0.5.2, plan §5.4): the quick
-                     controls own their filter dimensions and mirror into the
-                     token box, which is the whole filter (presets carry it).
-                     The class/type selects are filled from the libraries. -->
-                <div class="menu-header menu-header-galaxy"><span>Search</span></div>
-                <div class="menu-row search-row">
-                        <label for="search-scope">Scope</label>
-                        <select id="search-scope" title="Selection scans the set (empty set falls back to the galaxy); galaxy always scans everything">
-                                <option value="selection" selected>selected</option>
-                                <option value="galaxy">galaxy</option>
-                        </select>
-                        <label for="search-class">Class</label>
-                        <select id="search-class" title="Spectral class (single; the token box can hold several)"></select>
-                        <label for="search-ptype">Type</label>
-                        <select id="search-ptype" title="Planet display type (single; the token box can hold several)"></select>
-                </div>
-                <div class="menu-row search-row">
-                        <label for="search-tsurf-min" title="Surface-temperature range in kelvin; empty ends stay open">Tsurf</label>
-                        <input type="number" id="search-tsurf-min" placeholder="180" min="0" step="1">
-                        <span class="search-dash">–</span>
-                        <input type="number" id="search-tsurf-max" placeholder="320" min="0" step="1">
-                        <span class="search-unit">K</span>
-                        <label class="search-check" title="Only systems with a terran world"><input type="checkbox" id="search-terran"> terran</label>
-                        <label class="search-check" title="Only systems with a debris belt"><input type="checkbox" id="search-belt"> belt</label>
-                        <label class="search-check" title="Only systems with no planets"><input type="checkbox" id="search-barren"> no planets</label>
-                </div>
-                <div class="menu-row search-row">
-                        <label for="search-token" title="The whole filter as a compact token (plan §5.5): classes, flags and ranges separated by |. Quick controls edit their own dimensions of it.">Filter</label>
-                        <input type="text" id="search-token" spellcheck="false" placeholder="G,K|terran|220-300">
-                </div>
-                <div class="menu-row menu-actions">
-                        <button id="btn-search" title="Run the filter (N cycles the results once added)">Search</button>
-                        <button id="btn-search-add" title="Push the kept rows into the selection set, nearest-first under the set's capacity rules">Add results to selection</button>
-                        <button id="btn-search-clear" title="Drop the results">Clear</button>
-                </div>
-                <div class="menu-row search-row">
-                        <span id="val-search" class="menu-val search-report">no search yet</span>
+                        <button id="menu-defaults">Defaults</button>
                 </div>
                 <div class="menu-header menu-header-galaxy"><span>Preset</span></div>
                 <div class="menu-row preset-actions" id="preset-builtin"></div>
@@ -211,8 +160,99 @@
                 <div class="menu-row search-row">
                         <span id="preset-status" class="menu-val search-report">Ctrl+V over the scene pastes a preset</span>
                 </div>
-                <div class="menu-hint">▾ collapses · Tab hides both panels · drag sliders live · G cycles galaxy type</div>
+                <div class="menu-hint">▾ collapses · Tab toggles panels · drag sliders live · G cycles galaxy type</div>
         </div>
+	<!-- Search & Selection is a separate workflow panel: typed object history,
+	     current-centred star search and the clickable result array. -->
+	<div id="selection-menu" class="panel">
+		<div class="menu-header">
+			<span>Search &amp; Selection</span>
+			<button id="selection-menu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab toggles all panels)" aria-expanded="true">▾</button>
+		</div>
+		<div class="menu-header selection-section-heading"><span>Natural objects</span><small>star · planet · other</small></div>
+		<div class="selection-history" aria-live="polite">
+			<div class="selection-history-slot"><span>Current</span><strong id="selection-current-label">No object selected</strong></div>
+			<div class="selection-history-slot"><span>Previous</span><strong id="selection-previous-label">—</strong></div>
+			<button id="selection-swap" class="selection-swap" type="button" disabled title="Swap the current and previous natural-object selections">Swap current ↔ previous</button>
+		</div>
+		<div class="menu-row selection-radius-row">
+			<label for="slider-selrad" title="Select-around radius, log scale, measured from the current star.">Select-set radius</label>
+			<input type="range" id="slider-selrad" min="-1" max="5" step="0.00001" value="1.69897">
+			<span id="val-selrad" class="menu-val">50 ly</span>
+		</div>
+		<div class="menu-row menu-actions selection-actions">
+			<button id="btn-select-around" title="Add every star within the radius of the current star (F flies to it, N cycles, X clears)">Select around</button>
+			<button id="btn-clear-set" title="Clear selection history and the selected-star set (X)">Clear selection</button>
+		</div>
+
+		<div class="menu-header selection-section-heading"><span>Search stars</span><small>group 1a</small></div>
+		<div class="menu-row search-row">
+			<label for="search-center">Center</label>
+			<select id="search-center" title="Search around the current star, or around the camera">
+				<option value="current" selected>current star</option>
+				<option value="camera">camera</option>
+			</select>
+			<label for="search-radius-pc">Radius</label>
+			<input type="number" id="search-radius-pc" value="10" min="0" step="0.1" title="Search radius in parsecs; the token filter stores this distance in light-years">
+			<span class="search-unit">pc</span>
+		</div>
+		<div class="menu-row search-row">
+			<label for="search-scope">Scope</label>
+			<select id="search-scope" title="Galaxy scans all stars; selection set scans only the current set">
+				<option value="galaxy" selected>galaxy</option>
+				<option value="selection">selection set</option>
+			</select>
+			<label for="search-class">Class</label>
+			<select id="search-class" title="Spectral class (single; the token box can hold several)"></select>
+			<label for="search-ptype">Planet</label>
+			<select id="search-ptype" title="Planet display type (single; the token box can hold several)"></select>
+		</div>
+		<div class="menu-row search-row">
+			<label for="search-tsurf-min" title="Surface-temperature range in kelvin; empty ends stay open">Tsurf</label>
+			<input type="number" id="search-tsurf-min" placeholder="180" min="0" step="1">
+			<span class="search-dash">–</span>
+			<input type="number" id="search-tsurf-max" placeholder="320" min="0" step="1">
+			<span class="search-unit">K</span>
+			<label class="search-check" title="Only systems with a terran world"><input type="checkbox" id="search-terran"> terran</label>
+			<label class="search-check" title="Only systems with a debris belt"><input type="checkbox" id="search-belt"> belt</label>
+			<label class="search-check" title="Only systems with no planets"><input type="checkbox" id="search-barren"> no planets</label>
+		</div>
+		<div class="menu-row search-row">
+			<label for="search-token" title="The whole filter as a compact token (plan §5.5): classes, flags and ranges separated by |. Distances in the token are light-years.">Filter</label>
+			<input type="text" id="search-token" spellcheck="false" placeholder="G,K|terran|220-300">
+		</div>
+		<div class="menu-row menu-actions selection-actions">
+			<button id="btn-search" title="Search the selected scope within the chosen radius">Search</button>
+			<button id="btn-search-add" title="Add kept results to the selected-star set, nearest-first">Add results to set</button>
+			<button id="btn-search-clear" title="Drop the result list">Clear results</button>
+		</div>
+		<div class="menu-row search-row"><span id="val-search" class="menu-val search-report">no search yet</span></div>
+		<div id="search-results" class="search-results" role="listbox" aria-label="Star search results"></div>
+
+		<div class="menu-header selection-section-heading"><span>Ships &amp; settlements</span><small>group 2</small></div>
+		<div class="selection-asset-types">ship · base · colony · dock port · cargo container</div>
+		<div class="selection-asset-editor">
+			<label for="asset-type">Type</label>
+			<select id="asset-type">
+				<option value="ship">ship</option><option value="base">base</option>
+				<option value="colony">colony</option><option value="dock-port">dock port</option>
+				<option value="cargo-container">cargo container</option><option value="other">other</option>
+			</select>
+			<input id="asset-id" type="text" placeholder="asset ID" aria-label="Asset identifier">
+			<input id="asset-name" type="text" placeholder="display name (optional)" aria-label="Asset display name">
+			<button id="asset-select" type="button">Set current</button>
+		</div>
+		<div class="selection-asset-history">
+			<div><span>Current</span><strong id="asset-current-label">—</strong></div>
+			<div><span>Previous</span><strong id="asset-previous-label">—</strong></div>
+		</div>
+		<button id="asset-clear" class="selection-swap" type="button">Clear asset history</button>
+		<div class="selection-asset-pair" aria-label="Two-slot asset pair">
+			<span>Pair 1 <strong id="asset-pair-first">—</strong><button id="asset-pair-first-set" type="button" disabled>Use current</button></span>
+			<span>Pair 2 <strong id="asset-pair-second">—</strong><button id="asset-pair-second-set" type="button" disabled>Use current</button></span>
+		</div>
+		<div class="menu-hint">Click a star row to select it · search radius is centred on the current star</div>
+	</div>
 	<!-- System and ship (0.5.6): the view, its clock, the delta-v budget, the
 	     ship class and the route are one workflow, so they live in their own
 	     panel on the left instead of between the galaxy settings on the right.
@@ -221,7 +261,7 @@
 	<div id="sysmenu" class="panel">
 		<div class="menu-header">
 			<span>System</span>
-			<button id="sysmenu-collapse" class="panel-collapse" title="Collapse to the header / expand (V, Esc or Close leave the view)" aria-expanded="true">▾</button>
+			<button id="sysmenu-collapse" class="panel-collapse" title="Collapse to the header / expand (V or Esc leave the view)" aria-expanded="true">▾</button>
 		</div>
 		<div class="menu-row">
 			<label for="sys-view">View <span class="kbd">V</span></label>
@@ -250,10 +290,10 @@
 		</div>
 		<div class="menu-row menu-actions" data-view="system">
 			<button id="route-fly" title="Starts or pauses the route using System time. At 0 the ship waits; 0.1–1 y/s is easiest to watch.">Start autopilot</button>
-			<button id="route-stars" title="Plan between the first two selected stars, using stellar parking orbits">Selected stars</button>
+				<button id="route-stars" title="Plan from the previous star to the current star; Shift+click set members are a fallback">Current + previous</button>
 		</div>
-		<div class="menu-row" data-view="system"><span id="route-hint">Choose a delta-v view, then pick a start and destination.</span></div>
-		<div class="menu-hint">V opens / closes the view · B cycles schematic / map / rails · ▾ collapses · Tab hides both panels</div>
+			<div class="menu-row" data-view="system"><span id="route-hint">Choose map nodes, or route from previous star to current star.</span></div>
+			<div class="menu-hint">V opens / closes the view · B cycles schematic / map / rails · ▾ collapses · Tab toggles panels</div>
 	</div>
         <pre id="help">
                      fly                     orbit
@@ -269,13 +309,13 @@ F                    fly to the selected star
 N / Shift+N          next / previous star in the selection set
 X                    clear the selection set (click selects, Shift+click adds)
 V                    system view of the selected star (Esc or V closes)
-                     left panel: clock, budget, ship, route
+                     left panels: search/selection + system clock, ship, route
 B                    cycle system / delta-v map / delta-v rails (click two graph nodes)
 H                    home: the Sun, or a generated galaxy's centre
 G                    new galaxy: cycle type (rebuilds the field, about a second)
 R                    reset everything
 Esc                  release cursor in fly mode
-Tab                  both panels (releases cursor); ▾ collapses one to its header
+Tab                  toggle panels (releases cursor); ▾ collapses one to its header
 Ctrl+V               paste a preset (over the scene, no browser prompt)
 [ / ]                exposure (how faint a star still shows)
 ; / '                brightness (overall gain)
@@ -317,6 +357,8 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
         <!-- The selection set (0.5.0): snapshots keyed by the renderer's identity
              array, so it depends on nothing at load and main.js fills it. -->
         <script src="core/star-set.js"></script>
+        <!-- Typed current/previous histories and the natural/asset result groups. -->
+        <script src="core/selection-store.js"></script>
         <!-- Star and planet search (0.5.2): pure scan over the renderer's
              blocks and the selection set, so it depends on nothing at load. -->
         <script src="core/search.js"></script>

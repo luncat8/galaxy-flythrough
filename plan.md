@@ -1343,6 +1343,24 @@ Shipped, in `archive/`:
   the departure burn leaves from. Tests: `route-test.js` (L5 exit pins),
   `system-layer-test.js` (ladder, rail rows, ship on a local leg).
 
+- **0.7.1 — Search & Selection workflow:** a third, dedicated panel holds
+  natural-object selection history and nearby-star search, separate from both
+  galaxy settings and the system/ship panel. `SelectionStore` models natural
+  objects (`star`, `planet`, `other`) with `current`/`previous` plus a transient
+  searchable result array; ships and settlements (`ship`, `base`, `colony`,
+  `dock-port`, `cargo-container`) have their own current/previous slots and a
+  fixed two-entry asset pair. These resolve the terse request's “group 2a array
+  of 2 type” as two typed asset references. The radius search defaults to 10 pc
+  (the “10 pk” interpretation), is centred on the current star (camera fallback),
+  and lists clickable star snapshots. Picking
+  a result promotes it to current and shifts the prior current to previous;
+  **Swap current ↔ previous** reverses that pair. The interstellar route action
+  uses previous → current when both are stars, retaining Shift+click set routing
+  as a fallback; the existing round-trip control still selects one-way vs
+  two-way travel. Distance filters and their preset representation remain in
+  light-years. Tests cover the typed store, centre-relative search and route
+  endpoint ordering.
+
 - [`evolution-plan.md`](evolution-plan.md) — the 0.6 series, galaxy evolution over time:
   the type table describes present-day galaxies, so `modelAtAge` gains an **epoch tier**
   that re-solves what the galaxy *is* at an earlier epoch beside what its stars are —
