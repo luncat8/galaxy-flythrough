@@ -196,16 +196,30 @@ async function boot() {
         const historyPick = { key: 0, kind: 0, index: 0, x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0, approximated: 0 };
         const historyInputs = { mass: 0, lum: 0, teff: 0, age: 0, metal: 0 };
         const aroundPick = { key: 0, kind: 0, index: 0, x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0 };
-        // A pick sweep is spread over frames (plan §3.1). The slice is bounded by
-        // time as well as by records, because the per-record dispatch cost depends
-        // on the engine mask: ~0.37 µs classic, ~1.5 µs with the apocenter pass
-        // (measured in experiments/star-select-test.js), so a record-only budget
-        // would be a 2 ms slice under one mask and a 40 ms hitch under another.
-        // -1 = no sweep pending, 0/1 = pending, with the click's Shift state for
-        // the frame it finishes on.
-        const PICK_SLICE_RECORDS = 32768;
-        const PICK_SLICE_MS = 8;
+        // One scratch for "where is this star drawn right now" (ui.2). A snapshot's
+        // x/y/z is the record's *birth* position — the one `stellarInputs` decomposes
+        // the density at, so it never changes meaning — while the camera, the radius
+        // scan, the readout and a route's separation are about the star the user is
+        // looking at. `selection.resolveDrawn` is the bridge: the same engine-mask
+        // dispatch the vertex stage, the labels and the picker run, and it falls back
+        // to the snapshot (reporting DRAWN_STALE) when the record is not resident.
+        const drawnPos = new Float64Array(3);
+        function memberDrawnPosition(i, out) {
+                return selection.resolveDrawn(memberRefFor(i), out);
+        }
+        // Both buffer sweeps — the click pick (plan §3.1) and the radius scan
+        // (§3.3) — are spread over frames. A slice is bounded by time as well as
+        // by records, because the per-record dispatch cost depends on the engine
+        // mask: ~0.37 µs classic, ~1.5 µs with the apocenter pass (measured in
+        // experiments/star-select-test.js), so a record-only budget would be a
+        // 2 ms slice under one mask and a 40 ms hitch under another.
+        // `pendingShift`: -1 = no pick sweep pending, 0/1 = pending, with the
+        // click's Shift state for the frame it finishes on.
+        const SWEEP_SLICE_RECORDS = 32768;
+        const SWEEP_SLICE_MS = 8;
         let pendingShift = -1;
+        let aroundPending = false;    // a radius scan is walking its slices
+        let aroundRadiusKpc = 0;      // the radius the pending scan was begun with
         let setLabel = '';            // the readout's "within 50 ly of …" tail
 
         // The renderer works out its own parity target (the global field plus whatever
@@ -335,7 +349,9 @@ async function boot() {
         sliderSelRad.addEventListener('input', syncSelRad);
         syncSelRad();
         btnSelectAround.addEventListener('click', () => {
-                selectAroundPrimary();
+                // The scan walks the buffer in slices (plan §3.3): the click starts
+                // it, the loop applies it on the frame it lands.
+                beginSelectAroundPrimary();
                 updateOverlay(renderer.state, camera.getState(statsText));
         });
         btnClearSet.addEventListener('click', () => {
@@ -775,6 +791,11 @@ async function boot() {
 	btnRouteFly.addEventListener('click', () => {
 		systemLayer.toggleAutopilot(); writeSystemReadout();
 	});
+	// The endpoints carry drawn-space positions (ui.2): the cruise leg's distance
+	// is the separation of the two stars the user is looking at, not of their birth
+	// records — which a moving engine separates by kiloparsecs. `drawnPos` already
+	// holds the snapshot when the record is not resident, so the fallback is the
+	// old behaviour rather than a hole.
 	function stellarEndpointFrom(ref, inputs) {
 		const d = window.DeltaVLib;
 		const mu = d.G_SI * inputs.mass * d.M_SUN_KG;
@@ -784,13 +805,18 @@ async function boot() {
 		body.vCircLo = d.vCirc(mu, radius); body.vEscLo = d.vEsc(mu, radius);
 		body.periodS = d.TAU * Math.sqrt(radius ** 3 / mu);
 		return { body, node: 1, muStar: mu, phase: 0, systemKey: ref.key >>> 0, label: selectionLabel(ref),
-			x: ref.x, y: ref.y, z: ref.z };
+			x: drawnPos[0], y: drawnPos[1], z: drawnPos[2] };
 	}
 	function stellarEndpoint(i) {
 		const ref = memberRefFor(i);
-		return stellarEndpointFrom(ref, deriveMemberInputs(i));
+		const inputs = deriveMemberInputs(i);
+		memberDrawnPosition(i, drawnPos);
+		return stellarEndpointFrom(ref, inputs);
 	}
-	function historyEndpoint(ref) { return stellarEndpointFrom(ref, ref); }
+	function historyEndpoint(ref) {
+		selection.resolveDrawn(ref, drawnPos);
+		return stellarEndpointFrom(ref, ref);
+	}
 	function hasTwoStarEndpoints() {
 		const natural = selectionStore.natural;
 		const previous = natural.previous;
@@ -849,13 +875,14 @@ async function boot() {
                 systemLayer.enter(ref, systemCtx);
                 if (moveCamera !== false) {
                         const cam = camera.cameraPos;
-                        const dx = starSet.x[p] - cam[0];
-                        const dy = starSet.y[p] - cam[1];
-                        const dz = starSet.z[p] - cam[2];
+                        memberDrawnPosition(p, drawnPos);
+                        const dx = drawnPos[0] - cam[0];
+                        const dy = drawnPos[1] - cam[1];
+                        const dz = drawnPos[2] - cam[2];
                         const far = Math.sqrt(dx * dx + dy * dy + dz * dz) > SYSTEM_VIEW_FLY_KPC;
-                        camera.flyToStar(starSet.x[p], starSet.y[p], starSet.z[p], memberName(p),
+                        camera.flyToStar(drawnPos[0], drawnPos[1], drawnPos[2], memberName(p),
                                 far ? camera.orbitStandOff(starSet.lum[p]) : 0);
-                        followLandmarkFor(p);
+                        followKey = starSet.keys[p] >>> 0;
                 }
                 syncViewRows();
                 writeSystemReadout();
@@ -896,12 +923,14 @@ async function boot() {
                         selected = ref.index;
                         labels.setSelected(ref.index);
                         const entry = landmarks.ENTRIES[ref.index];
-                        camera.setOrbitTarget(ref.x, ref.y, ref.z, entry ? entry.name : selectionLabel(ref));
-                        followLandmark = ref.index;
+                        selection.resolveDrawn(ref, drawnPos);
+                        camera.setOrbitTarget(drawnPos[0], drawnPos[1], drawnPos[2],
+                                entry ? entry.name : selectionLabel(ref));
+                        followKey = ref.key >>> 0;
                 } else {
                         selected = -1;
                         labels.setSelected(-1);
-                        followLandmark = -1;
+                        followKey = -1;
                 }
                 syncSetUi();
                 if (systemLayer.isOpen()) openSystemView(true);
@@ -1952,6 +1981,9 @@ async function boot() {
         // toggles membership without moving the primary or its history.
         function applyPick(hit, additive, inputsOverride) {
                 const cam = camera.cameraPos;
+                // A click while a radius scan is walking describes a different
+                // neighbourhood than the one the scan was begun for: drop the scan.
+                aroundPending = false;
                 const inputs = inputsOverride || selectPlanets.stellarInputs(hit, {
                         model,
                         field: renderer.fieldBuffers(),
@@ -1982,12 +2014,16 @@ async function boot() {
                         selected = hit.index;
                         labels.setSelected(hit.index);
                         const entry = landmarks.ENTRIES[hit.index];
-                        camera.setOrbitTarget(hit.x, hit.y, hit.z, entry ? entry.name : selectionLabel(selectionStore.natural.current));
-                        followLandmark = hit.index;
+                        // The orbit target is where the star is drawn, not the birth
+                        // position the pick carries: the click landed on the drawn one.
+                        selection.resolveDrawn(hit, drawnPos);
+                        camera.setOrbitTarget(drawnPos[0], drawnPos[1], drawnPos[2],
+                                entry ? entry.name : selectionLabel(selectionStore.natural.current));
+                        followKey = hit.key >>> 0;
                 } else {
                         selected = -1;
                         labels.setSelected(-1);
-                        followLandmark = -1;
+                        followKey = -1;
                 }
                 if (systemLayer.isOpen()) openSystemView(true);
         }
@@ -2018,7 +2054,8 @@ async function boot() {
                 // The system view is the primary's view: no primary, no
                 // schematic. Group 2 has its own clear action and is independent.
                 if (systemLayer.isOpen()) closeSystemView();
-                followLandmark = -1;
+                followKey = -1;
+                aroundPending = false;
                 starSet.clear();
                 selectionStore.clearHistory(window.SelectionStore.GROUP_SPACE);
                 setLabel = '';
@@ -2031,33 +2068,86 @@ async function boot() {
                 return Math.pow(10, Number(sliderSelRad.value)) * window.Camera.LY_TO_KPC;
         }
 
-        // Plan §3.3: the primary first (from its own snapshot — it is never
-        // re-derived from a record that may no longer be resident), then the scan's
-        // members in ascending distance.
-        function selectAroundPrimary() {
+        // Plan §3.3, dispatch-exact (ui.2). The scan compares where the sky
+        // *draws* each record with where it draws the primary — both through the
+        // engine-mask dispatch the picker and the labels use — because a birth-position
+        // scan answers a different question once the star clock has run: measured on a
+        // 120k field at 100 Myr, a 50 ly birth scan kept stars drawn up to 3 172 ly
+        // from the primary and missed the drawn neighbourhood. That costs a dispatch
+        // per record, so the click begins a sweep (the picker's own contract) and the
+        // loop applies it on the frame it lands. Nothing is precomputed per frame to
+        // make the click cheaper — selection is rare and user-initiated, and a spatial
+        // index kept warm in the frame loop would tax every frame to save one click.
+        const aroundInputs = { mass: 0, lum: 0, teff: 0, age: 0, metal: 0 };
+        const aroundPrimary = {
+                key: 0, kind: 0, index: 0, x: 0, y: 0, z: 0,
+                colorIndex: 0, absMag: 0, approximated: 0,
+        };
+        const aroundCentre = new Float64Array(3);
+        let aroundPrimaryKey = -1;    // the key the pending scan is centred on
+
+        // The primary's own snapshot, taken at begin time: it is never re-derived
+        // from a record that may no longer be resident when the sweep lands.
+        function snapshotAroundPrimary(p) {
+                aroundPrimary.key = starSet.keys[p] >>> 0;
+                aroundPrimary.kind = starSet.blockKind[p];
+                aroundPrimary.index = starSet.bufferIdx[p];
+                aroundPrimary.x = starSet.x[p];
+                aroundPrimary.y = starSet.y[p];
+                aroundPrimary.z = starSet.z[p];
+                aroundPrimary.colorIndex = starSet.colorIndex[p];
+                aroundPrimary.absMag = starSet.absMag[p];
+                aroundPrimary.approximated = starSet.approximated[p] ? 1 : 0;
+                aroundInputs.mass = starSet.mass[p];
+                aroundInputs.lum = starSet.lum[p];
+                aroundInputs.teff = starSet.teff[p];
+                aroundInputs.age = starSet.age[p];
+                aroundInputs.metal = starSet.metal[p];
+        }
+
+        function beginSelectAroundPrimary() {
                 const p = starSet.primary;
-                if (p < 0) return 0;
-                const cam = camera.cameraPos;
-                const px = starSet.x[p], py = starSet.y[p], pz = starSet.z[p];
-                const radiusKpc = selectionRadiusKpc();
-                const primaryKey = starSet.keys[p];
-                const primaryKind = starSet.blockKind[p];
-                const primarySlot = starSet.bufferIdx[p];
-                const primaryInputs = {
-                        mass: starSet.mass[p], lum: starSet.lum[p], teff: starSet.teff[p],
-                        age: starSet.age[p], metal: starSet.metal[p],
-                };
-                const primaryColor = starSet.colorIndex[p];
-                const primaryMag = starSet.absMag[p];
-                const n = selection.selectAround(px, py, pz, radiusKpc, starSet.capacity);
-                starSet.clear();
-                aroundPick.key = primaryKey; aroundPick.kind = primaryKind; aroundPick.index = primarySlot;
-                aroundPick.x = px; aroundPick.y = py; aroundPick.z = pz;
-                aroundPick.colorIndex = primaryColor; aroundPick.absMag = primaryMag;
-                aroundPick.approximated = starSet.approximated[p] ? 1 : 0;
-                starSet.setPrimary(starSet.insert(aroundPick, primaryInputs,
-                        cam[0], cam[1], cam[2], primarySlot));
+                if (p < 0) return false;
+                // The centre is drawn-space too: the primary's snapshot is a birth
+                // position, and the two are kpc apart once the clock has run.
+                memberDrawnPosition(p, aroundCentre);
+                snapshotAroundPrimary(p);
+                aroundPrimaryKey = aroundPrimary.key;
+                aroundRadiusKpc = selectionRadiusKpc();
+                aroundPending = selection.beginSelectAround(aroundCentre[0], aroundCentre[1],
+                        aroundCentre[2], aroundRadiusKpc, starSet.capacity);
+                return aroundPending;
+        }
+
+        // The frame the sweep lands on: the primary first, then the scan's members
+        // in ascending drawn distance.
+        function applyAroundResult() {
+                aroundPending = false;
                 const around = selection.around;
+                if (around.aborted) {
+                        // The streaming blocks were rewritten mid-scan, so the kept
+                        // rows would name slots holding other stars. The set is left
+                        // exactly as it was.
+                        setLabel = 'star field changed mid-scan \u00b7 select around again';
+                        syncSetUi();
+                        return 0;
+                }
+                const p = starSet.primary;
+                if (p < 0 || (starSet.keys[p] >>> 0) !== aroundPrimaryKey) return 0;
+                const n = around.count;
+                const cam = camera.cameraPos;
+                starSet.clear();
+                aroundPick.key = aroundPrimary.key;
+                aroundPick.kind = aroundPrimary.kind;
+                aroundPick.index = aroundPrimary.index;
+                aroundPick.x = aroundPrimary.x;
+                aroundPick.y = aroundPrimary.y;
+                aroundPick.z = aroundPrimary.z;
+                aroundPick.colorIndex = aroundPrimary.colorIndex;
+                aroundPick.absMag = aroundPrimary.absMag;
+                aroundPick.approximated = aroundPrimary.approximated;
+                starSet.setPrimary(starSet.insert(aroundPick, aroundInputs,
+                        cam[0], cam[1], cam[2], aroundPrimary.index));
                 for (let i = 0; i < n; i++) {
                         // The scan's own row is pick-shaped, so it feeds
                         // stellarInputs directly — through one reused record, so a
@@ -2080,7 +2170,7 @@ async function boot() {
                 }
                 const dropped = starSet.dropped > 0 ? ` (+${starSet.dropped} dropped)` : '';
                 setLabel = `${Math.max(1, starSet.count - 1)} stars within ` +
-                        `${formatLy(radiusKpc * LY_PER_KPC)} of ${memberName(starSet.primary)}${dropped}`;
+                        `${formatLy(aroundRadiusKpc * LY_PER_KPC)} of ${memberName(starSet.primary)}${dropped}`;
                 syncSetUi();
                 return starSet.count;
         }
@@ -2093,22 +2183,27 @@ async function boot() {
         }
 
         // F (plan §3.4): orbit the primary at the stand-off its luminosity implies.
-        // While the orbited star is a landmark it moves on the CPU mirror under
-        // the simple engine — followLandmark carries its entry index so the
-        // camera's orbit target rides the live position (the same dispatch the
-        // labels draw); everything else keeps its snapshot position.
-        let followLandmark = -1;
+        // The flight targets the star's *drawn* position, and the camera keeps
+        // riding it: followKey names the set member the camera's orbit target is,
+        // resolved by key every frame — so a residency rebuild that re-slots the
+        // member does not lose it, and a member that leaves the residency simply
+        // stops moving the target. One dispatch per frame, every block, every
+        // engine mask (the ui.0 feed ran for landmarks under `simple` only).
+        let followKey = -1;
         const followPos = new Float64Array(3);
-        function followLandmarkFor(i) {
-                followLandmark = starSet.blockKind[i] === selectPlanets.BLOCK_LANDMARK
-                        ? starSet.bufferIdx[i] : -1;
+        function followTarget() {
+                const m = starSet.indexOfKey(followKey);
+                if (m < 0) { followKey = -1; return; }
+                if (memberDrawnPosition(m, followPos) === window.Selection.DRAWN_STALE) return;
+                camera.updateTarget(followPos[0], followPos[1], followPos[2]);
         }
         function flyToPrimary() {
                 const i = starSet.primary;
                 if (i < 0) return false;
                 const standOff = camera.orbitStandOff(starSet.lum[i]);
-                camera.flyToStar(starSet.x[i], starSet.y[i], starSet.z[i], memberName(i), standOff);
-                followLandmarkFor(i);
+                memberDrawnPosition(i, drawnPos);
+                camera.flyToStar(drawnPos[0], drawnPos[1], drawnPos[2], memberName(i), standOff);
+                followKey = starSet.keys[i] >>> 0;
                 return true;
         }
 
@@ -2205,21 +2300,29 @@ async function boot() {
 
         // The selection readout (plan §3.6). One line for the primary — class, mass,
         // luminosity, distance — and one for the set. Any member's snapshot fields
-        // are shown, so a pick never has to re-derive anything to be described.
+        // are shown, so a pick never has to re-derive anything to be described. The
+        // distance is drawn-space (ui.2): after F the camera sits at the stand-off
+        // from the star it is looking at, so the readout has to say ~2 ly, not the
+        // kiloparsecs between the camera and that star's birth record.
         function selectionLines(cameraState) {
                 const i = starSet.primary;
                 if (i < 0) return '';
                 const cam = cameraState.position;
-                const dx = starSet.x[i] - cam[0];
-                const dy = starSet.y[i] - cam[1];
-                const dz = starSet.z[i] - cam[2];
+                const drawn = memberDrawnPosition(i, drawnPos);
+                const dx = drawnPos[0] - cam[0];
+                const dy = drawnPos[1] - cam[1];
+                const dz = drawnPos[2] - cam[2];
                 const distLy = Math.sqrt(dx * dx + dy * dy + dz * dz) * LY_PER_KPC;
                 const cls = window.StarRecord.SPECTRAL_CLASSES[starSet.colorIndex[i]] || '?';
                 let text = `\nselected  ${memberName(i)}  (${cls}, ${starSet.mass[i].toFixed(2)} M\u2609, ` +
                         `${starSet.lum[i].toFixed(2)} L\u2609, ${formatLy(distLy)})`;
-                if (starSet.approximated[i]) text += '  \u00b7 position approximate under this engine mask';
+                if (starSet.approximated[i] || drawn === window.Selection.DRAWN_APPROX) {
+                        text += '  \u00b7 position approximate under this engine mask';
+                } else if (drawn === window.Selection.DRAWN_STALE) {
+                        text += '  \u00b7 not resident: distance is to its birth record';
+                }
                 text += systemBriefLine(i);
-                if (starSet.count > 1) {
+                if (starSet.count > 1 || setLabel) {
                         text += `\nset       ${setLabel || `${starSet.count} stars`}` +
                                 ' \u00b7 N next \u00b7 X clear \u00b7 F fly to';
                 } else {
@@ -2320,16 +2423,12 @@ async function boot() {
                 }
                 labels.setOrbitState(model, starTimeMyr);
                 selection.setOrbitState(model, starTimeMyr);
-                // Fly-to follow: while the camera orbits (or flies to) a landmark
-                // under a simple engine mask, its orbit target rides the star's
-                // live position — the same CPU mirror the labels draw — so the
-                // star stays centred instead of drifting off the birth snapshot.
-                if (followLandmark >= 0 && model.milkyWay
-                        && cameraStateForTime.mode === window.Camera.MODE_ORBIT_OBJECT
-                        && renderer.state.engine.includes('simple')
-                        && window.OrbitLib.simpleLandmarksReady()) {
-                        window.OrbitLib.simpleLandmarkPosition(followPos, followLandmark);
-                        camera.updateTarget(followPos[0], followPos[1], followPos[2]);
+                // Fly-to follow (ui.2): while the camera orbits — or is still flying
+                // to — a set member, its target rides the star's drawn position, so
+                // the star stays centred instead of drifting off its birth snapshot.
+                // One dispatch per frame, for every block and every engine mask.
+                if (followKey >= 0 && cameraStateForTime.mode === window.Camera.MODE_ORBIT_OBJECT) {
+                        followTarget();
                 }
                 if (actions.pick) {
                         actions.pick = 0;
@@ -2364,13 +2463,18 @@ async function boot() {
                                 selection.beginPick(px, py, w, h, pickOut);
                         }
                 }
-                // Walk the pending sweep a slice further; the frame it finishes on
-                // is the frame the selection changes. A miss stays a no-op.
-                if (pendingShift >= 0 && selection.pickStep(PICK_SLICE_RECORDS, PICK_SLICE_MS)) {
+                // Walk the pending sweeps a slice further; the frame a sweep finishes
+                // on is the frame its answer lands. A pick miss stays a no-op, and an
+                // aborted radius scan leaves the set exactly as it was.
+                if (pendingShift >= 0 && selection.pickStep(SWEEP_SLICE_RECORDS, SWEEP_SLICE_MS)) {
                         const hit = selection.pickResult();
                         const additive = pendingShift === 1;
                         pendingShift = -1;
                         if (hit) handleStarPick(hit, additive);
+                }
+                if (aroundPending && selection.selectAroundStep(SWEEP_SLICE_RECORDS, SWEEP_SLICE_MS)) {
+                        applyAroundResult();
+                        updateOverlay(renderer.state, camera.getState(statsText));
                 }
                 if (actions.flyTo) {
                         actions.flyTo = 0;

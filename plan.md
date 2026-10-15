@@ -1138,7 +1138,10 @@ the camera travels from its current pose to the stand-off orbit in a fixed
 `FLIGHT_DURATION_S = 2 s` of wall time, then orbit-object mode takes over. The
 stand-off law (`0.0006·√(L/L☉)` clamped to `[0.0001, 0.01]` kpc) is unchanged.
 
-* **Pose contract.** At launch the camera records position and quaternion and
+* **Pose contract.** The `(x, y, z)` a caller hands `flyToStar` is where the sky
+  draws the star, not the record's birth position — main.js resolves it through
+  `selection.resolveDrawn` (§19's ui.2); the two are kiloparsecs apart once the
+  star clock has run. At launch the camera records position and quaternion and
   stops (`velocity = 0`, speed multiplier untouched). The arrival pose is
   derived live every frame, never stored once: arrival position
   `E = T + approach·d` on the line from the target `T` back along the launch
@@ -1157,10 +1160,14 @@ stand-off law (`0.0006·√(L/L☉)` clamped to `[0.0001, 0.01]` kpc) is unchang
   place — no re-snap, no rename. Orbit mode already re-derives the position
   from the target every frame, so after arrival the star stays centred at the
   stand-off for free; during the flight the live end pose does the same.
-  main.js feeds the landmark's live position (`OrbitLib.simpleLandmarkPosition`,
-  the same dispatch the labels draw) while the camera orbits a landmark under a
-  `simple` engine mask; other engines and field stars keep the snapshot target
-  (the documented honest gap — the CPU never reads the GPU's θ back).
+  main.js feeds it the star's **drawn** position every frame while the camera is
+  in orbit-object mode (see §19's ui.2): one `selection.resolveDrawn` dispatch —
+  the law the labels and the picker run — for every block and every engine mask,
+  keyed by the set member's identity so a residency rebuild that re-slots it does
+  not lose it. The narrower ui.0 feed (landmarks only, `simple` only, through
+  `OrbitLib.simpleLandmarkPosition`) is superseded; what remains of the honest
+  gap is the mask's own report — under a `simple` bit a field star's θ lives in
+  the GPU buffer, so the dispatch approximates and the readout says so.
 * **Handover and cancel.** At `s = 1` the flight ends with
   `orbitDistance = d` and `placeOnOrbit()` — the pose the path already
   reached, so arrival is continuous. Any user input cancels: a look delta, a
@@ -1343,7 +1350,12 @@ Shipped, in `archive/`:
   the departure burn leaves from. Tests: `route-test.js` (L5 exit pins),
   `system-layer-test.js` (ladder, rail rows, ship on a local leg).
 
-- **0.7.1 — Search & Selection workflow:** a third, dedicated panel holds
+- **Interface work carries no version number.** It can land at any time, beside or
+  between the model releases, so sequencing it against `0.x` implies a dependency
+  that does not exist. Its entries are `ui.<n>` and its log is
+  `archive/ui.x-worklog.md` (the series the tree briefly called `0.7.x`).
+
+- **ui.1 — Search & Selection workflow:** a third, dedicated panel holds
   natural-object selection history and nearby-star search, separate from both
   galaxy settings and the system/ship panel. `SelectionStore` models natural
   objects (`star`, `planet`, `other`) with `current`/`previous` plus a transient
@@ -1360,6 +1372,73 @@ Shipped, in `archive/`:
   two-way travel. Distance filters and their preset representation remain in
   light-years. Tests cover the typed store, centre-relative search and route
   endpoint ordering.
+
+- **ui.2 — the drawn-position contract for fly-to and select-around** *(shipped;
+  supersedes the birth-position scan of `archive/0.5.0-plan-planet-generator.md`
+  §3.3 and the follow gap of §18's flight section)*. Two features read a star's
+  **birth** record where the user means the star the sky is **drawing**: `F` flew
+  to where the picked star was born, and Select-around collected the birth
+  neighbourhood of that birth position. Under any movement mask with the star
+  clock running those frames of reference separate by kiloparsecs — measured on a
+  120k field at 100 Myr of star time (the default 5 Myr/s reaches that in 20 s of
+  watching): the primary's birth record sat **3.09 kpc (10 094 ly)** from its
+  drawn position, and a 50 ly select-around kept three stars of which **two were
+  drawn outside the radius, the worst 3 172 ly away — 60× the radius** — while the
+  drawn neighbourhood held a different star. The rule:
+
+  * **One frame of reference per question.** Identity and stellar derivation stay
+    in *birth* space: a record's `x/y/z` is what `stellarInputs` decomposes the
+    density at (BLOCK_LOCAL, BLOCK_OBJECT), and it is what a snapshot stores, so
+    `starSet.x/y/z`, a pick's `x/y/z` and `around.x/y/z` keep their meaning.
+    Everything *spatial that the user sees* — the fly-to target, the camera's
+    orbit target and its follow, the select-around centre and its radius test, the
+    readout's distance, a route's interstellar separation — is in *drawn* space:
+    the engine-mask dispatch the vertex stage, the labels and the picker already
+    share (`orbit.engineRecordPosition` / `engineLandmarkPosition`).
+  * **`selection.resolveDrawn(ref, out)`** is that dispatch for a single record:
+    `ref` is pick-shaped (`kind`, block-local `index`, `key`, birth `x/y/z`) — a
+    set member, a pick or a history snapshot — and the return says which case
+    applied: `DRAWN_EXACT`, `DRAWN_APPROX` (a `simple` bit's θ is GPU-only, §2.6's
+    honest gap) or `DRAWN_STALE` (no resident *visible* record holds that key, so
+    `out` keeps the snapshot). The slot is validated by key exactly as `resolveSet`
+    and the label layer's ring map validate theirs, so a stale index can never
+    resolve to the star that happens to sit in it now.
+  * **The follow is an identity key, not a landmark index.** main.js keeps
+    `followKey`; while the camera is in orbit-object mode — flying or arrived — it
+    resolves that member by key each frame and feeds `camera.updateTarget`. One
+    dispatch per frame, every block, every mask, and the ui.0 feed's
+    `model.milkyWay` / `engine.includes('simple')` / `simpleLandmarksReady()`
+    gates are gone with it.
+  * **Select-around is dispatch-exact and chunked, never background.** The scan now
+    costs what the picker costs (one dispatch per visible record: 212 ns/record
+    classic, 946 ns with the apocenter pass at 300k), so it borrows the picker's
+    contract instead of inventing one — `beginSelectAround` snapshots
+    `dynamicVersion`, `selectAroundStep(maxRecords, maxMs)` walks a slice under the
+    same 32 768-record / 8 ms budget, `selectAround` stays the one-call form for
+    tests, and a rebuild mid-sweep **aborts** (`around.aborted`) rather than mixing
+    two frames: the set is left exactly as it was and the readout says so. Measured
+    at 300k: 10 slices, worst slice 5.1 ms, ~0.2 s of frames for a whole scan.
+    Nothing is precomputed per frame to make the click cheaper — selection is rare
+    and user-initiated, and a spatial index kept warm in the frame loop would tax
+    every frame to save one click.
+  * The insertion sort carries only the scalars it decides on (`dist2`, `key`,
+    `kind`, `index`, `approximated`); `x/y/z`, `packed`, `colorIndex` and `absMag`
+    are re-read from the record once, when the sweep lands, for the ≤ 256 kept
+    rows. `around.dist2` is therefore drawn-space kpc² — the radius test and the
+    sort key — while `around.x/y/z` stay the birth record: two frames of reference
+    in one row, neither redundant.
+  * Still birth-space, knowingly, and the reason is budgetary rather than
+    conceptual: the §5 search scan (a synchronous one-frame catalogue query whose
+    §5.3 budgets a dispatch would break — making it exact needs the picker's
+    chunking) and with it the search's centre. Both are follow-ups.
+  * Tests: `experiments/star-select-test.js` — the radius scan against an
+    independent *dispatched* brute-force list under masks 1/4/5 at 100 Myr, the
+    non-vacuity pin that the drawn neighbourhood is not the birth one, birth
+    record + drawn distance in one kept row, truncation, chunked == one-call, the
+    abort, degenerate calls, `resolveDrawn` parity across masks 1/2/4/5 and every
+    block (worst error 0), its refusal of a slot its key does not name, the
+    clicked-star-is-the-flown-to-star end-to-end pin, and both slice budgets at
+    300k (45 checks).
 
 - [`evolution-plan.md`](evolution-plan.md) — the 0.6 series, galaxy evolution over time:
   the type table describes present-day galaxies, so `modelAtAge` gains an **epoch tier**

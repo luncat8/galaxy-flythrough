@@ -65,7 +65,7 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
   `orbit.epochMap`), the look follows in per-frame slices (`renderer.stepEpoch`), and
   an epoch change is never a re-sample), E5 events, E6 chemical evolution (optional).
 - `deferred-browser-visual-plan.md` — non-blocking browser checks, preset actions, bar polish and GPU profiling; separate from analytical model contracts.
-- `worklog.md` — index of versioned implementation logs.
+- `worklog.md` — index of the implementation logs, by release series and by the unversioned `ui.x` interface series.
 - `archive/` — versioned worklogs (`0.3.x-worklog.md`, etc.), superseded plans, and the plans of release series that have shipped (`archive/0.2-plan-HDR-saturation.md`, `archive/0.3.0-plan-galaxy-types-star-distribution.md`, `archive/0.4.0-plan-star-move.md`, `archive/0.4.7-draft-new-star-movement-type.md`, `archive/0.4.8-plan-realistic-3d-shapes.md`, `archive/damping-plan.md`, `archive/plan-0.1.1-tasks.md`). A shipped plan stays the spec a fork reimplements from — archive it, do not delete it, and keep `plan.md` §19 pointing at it. When `plan.md` is rewritten substantially, the old version moves here too.
 - `experiments/` — Node measurement and validation scripts. Not loaded by the page. Run these manually to validate assumptions (hash quality, density model, precision, memory budget). `experiments/tonemap-mirror.js` is a shared model helper (not a test).
 - `experiments/logs/` — keep useful results. Delete logs that turned out to be dead ends. The point is to leave a trail of *what was measured and what was learned*, not a full audit.
@@ -83,7 +83,7 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 
 ## Workflow
 
-- **Worklog**: record each development step and its validation in `archive/<major>.<minor>.x-worklog.md`, link new series from `worklog.md`, and end every entry with a next step suggestion.
+- **Worklog**: record each development step and its validation in `archive/<major>.<minor>.x-worklog.md`, link new series from `worklog.md`, and end every entry with a next step suggestion. Interface work is the one series with no version number — it can land at any time, beside or between the model releases — so it goes to `archive/ui.x-worklog.md` as `ui.<n>` entries.
 
 - **Plan changes**: edit `plan.md` directly. If the change is substantial, copy the previous version to `archive/plan-vN.md` first.
 - **Discoveries**: append to `findings-pitfalls-skills.md` with a date and a one-line summary heading.

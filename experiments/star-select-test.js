@@ -7,7 +7,12 @@
 //      every block; the simple mask is *reported* (`out.approximated`), not
 //      silently wrong; a miss is null and an empty residency is not a crash.
 //   2. tie-break: inside PICK_TIE_PX the brighter absolute magnitude wins.
-//   3. radius select equals an independent brute-force list, ascending.
+//   3. radius select equals an independent *dispatched* brute-force list,
+//      ascending, for masks 1/4/5 at 100 Myr of star time — and is a different
+//      answer from the birth-space scan it replaced; the chunked sweep equals the
+//      one-call scan and aborts on a rebuild.
+//   3b. `resolveDrawn` is the dispatch the picker and the sky use, and refuses a
+//      slot its key does not name.
 //   4. the set: shift-toggle, nearest-first cycling, capacity overflow dropping
 //      the farthest (never the primary), snapshot inputs equal a fresh
 //      derivation, and an age change re-deriving in place.
@@ -15,7 +20,10 @@
 //      rebuild, and the number of arcs drawn matches the resolvable members.
 //   6. catalog keys are (cell, slot-in-cell): the same star keeps its key when
 //      the resident set and the thinning change under it.
-//   7. timings: pick < 16 ms, radius scan < 5 ms at 300k records.
+//   7. timings: both sweeps are dispatch-bound, so both are chunked — a slice
+//      stays inside the loop's 8 ms budget and a whole 300k sweep is a bounded
+//      number of frames (the old "radius scan < 5 ms" budget belonged to the
+//      birth-space scan, which answered the wrong question).
 //
 // Output: experiments/logs/star-select.json
 
@@ -254,50 +262,228 @@ const W = 1280, H = 800;
 		hit && { kind: hit.kind, index: hit.index });
 }
 
-// --- 3. Radius select against brute force ------------------------------------
-{
-	// Camera parked away from the cluster so the chosen centre is empty of it.
-	// The radius holds ~26 field records plus a few others (buffer order, not
-	// distance order), which is what makes the truncation pin below real: a
-	// population larger than the cap exercises both refusals and evictions.
-	const cam = camera.cameraPos;
-	const px = field.x[FIELD_ROWS], py = field.y[FIELD_ROWS], pz = field.z[FIELD_ROWS];
-	const radiusKpc = 1.2;
-	const sel = selectionLib.createSelection(camera, null);
-	sel.setRenderer(renderer);
-	sel.setOrbitState(model, 0.5);
-	const n = sel.selectAround(px, py, pz, radiusKpc, starSetLib.CAPACITY);
-
-	// Brute force: every visible record inside the radius, sorted ascending.
-	const brute = [];
+// --- 3. Radius select against brute force (dispatch-exact, ui.2) --------------
+// The scan compares *drawn* positions on both sides: the centre is where the sky
+// draws the primary, and a candidate is inside when the sky draws it inside. The
+// birth-position scan this replaced answered a different question once the star
+// clock had run — at 100 Myr a picked star's birth record sits kiloparsecs from
+// where it is drawn, so its birth neighbourhood is not the neighbourhood on
+// screen. Both halves are pinned below: the drawn answer against an independent
+// dispatched brute force, and the divergence from the birth answer that makes the
+// dispatch non-vacuous.
+const AROUND_TIME = 100;          // Myr of star time: enough to separate the frames
+const drawnScratch = new Float64Array(3);
+const candidateScratch = new Float64Array(3);
+const centreScratch = new Float64Array(3);
+function drawRecord(kind, index, rec, time, out) {
+	if (kind === 1) orbit.engineLandmarkPosition(out, index, rec.x, rec.y, rec.z, rec.colorIndex, time, model);
+	else orbit.engineRecordPosition(out, rec.x, rec.y, rec.z, rec.packed, time, model);
+	return out;
+}
+// Every visible record's distance from a drawn centre, in one frame of
+// reference: `dispatched` picks drawn vs birth for both the centre and the
+// candidate, so the same builder produces the expected list and the list the old
+// scan would have produced.
+function bruteAround(centreKind, centreIndex, radiusKpc, time, dispatched) {
+	const crec = records.readRecord(view, blocks[centreKind].offset * records.RECORD_BYTES + centreIndex * records.RECORD_BYTES);
+	const c = dispatched
+		? drawRecord(centreKind, centreIndex, crec, time, centreScratch)
+		: (centreScratch[0] = crec.x, centreScratch[1] = crec.y, centreScratch[2] = crec.z, centreScratch);
+	const cx = c[0], cy = c[1], cz = c[2];
+	const list = [];
 	for (let k = 0; k < blocks.length; k++) {
 		const block = blocks[k];
 		for (let i = 0; i < block.count; i++) {
 			const slot = block.offset + i;
 			const rec = records.readRecord(view, slot * records.RECORD_BYTES);
 			if (!rec.visible) continue;
-			const d2 = (rec.x - px) ** 2 + (rec.y - py) ** 2 + (rec.z - pz) ** 2;
-			if (d2 <= radiusKpc * radiusKpc) brute.push({ key: identity[slot] >>> 0, d2 });
+			let qx = rec.x, qy = rec.y, qz = rec.z;
+			if (dispatched) {
+				const p = drawRecord(k, i, rec, time, candidateScratch);
+				qx = p[0]; qy = p[1]; qz = p[2];
+			}
+			const d2 = (qx - cx) ** 2 + (qy - cy) ** 2 + (qz - cz) ** 2;
+			if (d2 <= radiusKpc * radiusKpc) list.push({ key: identity[slot] >>> 0, d2, slot });
 		}
 	}
-	brute.sort((a, b) => a.d2 - b.d2);
-	const expected = brute.slice(0, starSetLib.CAPACITY);
-	const got = [];
-	for (let i = 0; i < n; i++) got.push({ key: sel.around.keys[i], d2: sel.around.dist2[i] });
-	let asc = true;
-	for (let i = 1; i < got.length; i++) if (got[i].d2 < got[i - 1].d2) asc = false;
-	check('radius select equals the brute-force list, ascending',
-		n === expected.length
-		&& expected.every((e, i) => got[i].key === e.key && Math.abs(got[i].d2 - e.d2) < 1e-18)
-		&& asc,
-		{ n, expected: expected.length, asc, first: got[0], last: got[got.length - 1] });
-	const capped = sel.selectAround(px, py, pz, radiusKpc, 5);
+	list.sort((a, b) => a.d2 - b.d2);
+	return list;
+}
+{
+	const radiusKpc = 1.2;
+	const sel = selectionLib.createSelection(camera, null);
+	sel.setRenderer(renderer);
+	sel.setOrbitState(model, AROUND_TIME);
+	orbit.setPatternClock(AROUND_TIME, model);
+	const centreKind = 0, centreIndex = FIELD_ROWS;
+	const centreRec = records.readRecord(view, (blocks[0].offset + centreIndex) * records.RECORD_BYTES);
+	const origEngine = orbit.getEngine();
+	for (const mask of [1, 4, 5]) {
+		orbit.setEngine(mask);
+		const centre = drawRecord(centreKind, centreIndex, centreRec, AROUND_TIME, new Float64Array(3));
+		const n = sel.selectAround(centre[0], centre[1], centre[2], radiusKpc, starSetLib.CAPACITY);
+		const expected = bruteAround(centreKind, centreIndex, radiusKpc, AROUND_TIME, true)
+			.slice(0, starSetLib.CAPACITY);
+		const got = [];
+		for (let i = 0; i < n; i++) got.push({ key: sel.around.keys[i], d2: sel.around.dist2[i] });
+		let asc = true;
+		for (let i = 1; i < got.length; i++) if (got[i].d2 < got[i - 1].d2) asc = false;
+		check(`radius select equals the dispatched brute-force list, ascending (mask ${mask})`,
+			n === expected.length && n > 1
+			&& expected.every((e, i) => got[i].key === e.key && Math.abs(got[i].d2 - e.d2) < 1e-18)
+			&& asc,
+			{ mask, n, expected: expected.length, asc, first: got[0], last: got[got.length - 1] });
+
+		// Non-vacuity: the birth-space answer is a *different* set of stars, so the
+		// dispatch is what the scan runs on. This is the regression pin — the old
+		// scan passed the birth brute force and failed this one.
+		const birth = bruteAround(centreKind, centreIndex, radiusKpc, AROUND_TIME, false);
+		const birthKeys = birth.map((e) => e.key).join(',');
+		const drawnKeys = expected.map((e) => e.key).join(',');
+		check(`the drawn neighbourhood is not the birth neighbourhood (mask ${mask})`,
+			birthKeys !== drawnKeys,
+			{ mask, drawn: n, birth: birth.length, centreMovedKpc: Math.hypot(
+				centre[0] - centreRec.x, centre[1] - centreRec.y, centre[2] - centreRec.z) });
+	}
+	orbit.setEngine(origEngine);
+
+	// The result keeps both frames of reference: dist2 is the drawn-space sort key,
+	// x/y/z stay the record's birth position (what a snapshot stores and what
+	// stellarInputs decomposes the density at).
+	orbit.setEngine(1);
+	const centre = drawRecord(centreKind, centreIndex, centreRec, AROUND_TIME, new Float64Array(3));
+	sel.selectAround(centre[0], centre[1], centre[2], radiusKpc, starSetLib.CAPACITY);
+	let fieldsOk = true;
+	for (let i = 0; i < sel.around.count; i++) {
+		const rec = records.readRecord(view,
+			(blocks[sel.around.kind[i]].offset + sel.around.index[i]) * records.RECORD_BYTES);
+		if (Math.abs(sel.around.x[i] - rec.x) > 1e-6 || Math.abs(sel.around.z[i] - rec.z) > 1e-6) fieldsOk = false;
+		if (sel.around.packed[i] !== rec.packed) fieldsOk = false;
+		const d = drawRecord(sel.around.kind[i], sel.around.index[i], rec, AROUND_TIME, new Float64Array(3));
+		const drawn2 = (d[0] - centre[0]) ** 2 + (d[1] - centre[1]) ** 2 + (d[2] - centre[2]) ** 2;
+		if (Math.abs(drawn2 - sel.around.dist2[i]) > 1e-18) fieldsOk = false;
+	}
+	check('a kept row carries its birth record and its drawn distance',
+		fieldsOk && sel.around.count > 1, { count: sel.around.count, fieldsOk });
+
+	// Truncation, and the count it reports.
+	const all = bruteAround(centreKind, centreIndex, radiusKpc, AROUND_TIME, true);
+	const capped = sel.selectAround(centre[0], centre[1], centre[2], radiusKpc, 5);
 	const got5 = [];
 	for (let i = 0; i < capped; i++) got5.push({ key: sel.around.keys[i], d2: sel.around.dist2[i] });
 	check('the scan truncates at the caller\'s capacity and reports the rest',
-		capped === Math.min(5, expected.length) && sel.around.truncated === Math.max(0, expected.length - 5)
-		&& got5.every((e, i) => expected[i] && expected[i].key === e.key),
-		{ capped, truncated: sel.around.truncated, inside: expected.length });
+		capped === Math.min(5, all.length) && sel.around.truncated === Math.max(0, all.length - 5)
+		&& got5.every((e, i) => all[i] && all[i].key === e.key),
+		{ capped, truncated: sel.around.truncated, inside: all.length });
+
+	// The chunked sweep is the one-call scan, slice by slice.
+	sel.beginSelectAround(centre[0], centre[1], centre[2], radiusKpc, starSetLib.CAPACITY);
+	let slices = 0;
+	while (!sel.selectAroundStep(64, 8)) slices++;
+	const swept = [];
+	for (let i = 0; i < sel.around.count; i++) swept.push(sel.around.keys[i]);
+	const oneCall = [];
+	sel.selectAround(centre[0], centre[1], centre[2], radiusKpc, starSetLib.CAPACITY);
+	for (let i = 0; i < sel.around.count; i++) oneCall.push(sel.around.keys[i]);
+	check('the chunked radius sweep finds the same set as the one-call scan',
+		swept.length === oneCall.length && swept.every((k, i) => k === oneCall[i]) && slices > 1,
+		{ slices, swept: swept.length, oneCall: oneCall.length });
+
+	// A rebuild mid-sweep aborts and leaves the caller's set alone.
+	sel.beginSelectAround(centre[0], centre[1], centre[2], radiusKpc, starSetLib.CAPACITY);
+	sel.selectAroundStep(64, 8);
+	info.dynamicVersion++;
+	sel.selectAroundStep(64, 8);
+	check('a rebuild during a radius sweep aborts it instead of mixing two frames',
+		sel.around.aborted === 1 && sel.around.count === 0,
+		{ aborted: sel.around.aborted, count: sel.around.count });
+	info.dynamicVersion--;
+
+	// A degenerate call is a no-op, not a crash.
+	check('a zero radius or a zero capacity scans nothing',
+		sel.selectAround(centre[0], centre[1], centre[2], 0, 256) === 0
+		&& sel.selectAround(centre[0], centre[1], centre[2], radiusKpc, 0) === 0
+		&& sel.beginSelectAround(centre[0], centre[1], centre[2], radiusKpc, 0) === false);
+}
+
+// --- 3b. resolveDrawn: where the sky draws one record ------------------------
+// The camera's fly-to target, its orbit follow, the readout's distance and the
+// radius scan's centre all read this. It has to be the position the picker's own
+// dispatch produced for the record it hit, for every mask, and it has to refuse a
+// slot whose key moved on rather than resolving to the star now sitting in it.
+{
+	const sel = selectionLib.createSelection(camera, landmarks);
+	sel.setRenderer(renderer);
+	sel.setOrbitState(model, AROUND_TIME);
+	orbit.setPatternClock(AROUND_TIME, model);
+	const out = {};
+	const pos = new Float64Array(3);
+	const want = new Float64Array(3);
+	const origEngine = orbit.getEngine();
+	let worst = 0, checked = 0, staleOk = true, approxOk = true;
+	for (const mask of [1, 2, 4, 5]) {
+		orbit.setEngine(mask);
+		for (let k = 0; k < blocks.length; k++) {
+			const block = blocks[k];
+			for (let i = 0; i < block.count; i += Math.max(1, block.count >> 5)) {
+				const slot = block.offset + i;
+				const rec = records.readRecord(view, slot * records.RECORD_BYTES);
+				const ref = { kind: k, index: i, key: identity[slot] >>> 0, x: rec.x, y: rec.y, z: rec.z };
+				const state = sel.resolveDrawn(ref, pos);
+				// A record the sky does not draw (§2 hid one of these) has no drawn
+				// position: it resolves to its snapshot and says so.
+				if (!rec.visible) {
+					if (state !== selectionLib.DRAWN_STALE) approxOk = false;
+					continue;
+				}
+				drawRecord(k, i, rec, AROUND_TIME, want);
+				const err = Math.hypot(pos[0] - want[0], pos[1] - want[1], pos[2] - want[2]);
+				if (err > worst) worst = err;
+				checked++;
+				// The landmark path is exact under every mask; a record under the
+				// simple bit is the documented approximation, and says so.
+				const isLandmark = block.kind === 'landmark';
+				if (state !== (isLandmark || (mask & 2) === 0 ? selectionLib.DRAWN_EXACT : selectionLib.DRAWN_APPROX)) {
+					approxOk = false;
+				}
+			}
+		}
+	}
+	orbit.setEngine(1);
+	// A key that does not name the slot resolves to the snapshot, and says so —
+	// never to the star that happens to sit in the slot now.
+	const movedRef = { kind: 0, index: 3, key: 0xDEADBEEF, x: 1.5, y: -2.5, z: 0.25 };
+	const movedState = sel.resolveDrawn(movedRef, pos);
+	if (movedState !== selectionLib.DRAWN_STALE
+		|| pos[0] !== movedRef.x || pos[1] !== movedRef.y || pos[2] !== movedRef.z) staleOk = false;
+	// Out of range, and no renderer at all.
+	if (sel.resolveDrawn({ kind: 0, index: 1 << 20, key: 1, x: 0, y: 0, z: 0 }, pos) !== selectionLib.DRAWN_STALE) staleOk = false;
+	const bare = selectionLib.createSelection(camera, null);
+	if (bare.resolveDrawn({ kind: 0, index: 0, key: 1, x: 4, y: 5, z: 6 }, pos) !== selectionLib.DRAWN_STALE
+		|| pos[0] !== 4) staleOk = false;
+	check('resolveDrawn is the dispatch the picker and the sky use, for masks 1/2/4/5',
+		worst < 1e-12 && checked > 100 && approxOk, { worst, checked, approxOk });
+	check('resolveDrawn refuses a slot its key does not name, and keeps the snapshot',
+		staleOk, { staleOk, movedState });
+
+	// The fly-to contract end to end: click where a star is drawn, and the
+	// position the camera would be flown to is that same drawn position — not the
+	// birth record the pick carries (the ui.2 bug: 3.09 kpc apart at 100 Myr).
+	orbit.setEngine(1);
+	const cam = camera.cameraPos;
+	const viewProj = camera.buildViewProj(W / H);
+	const scratch = new Float32Array(3);
+	const probeSlot = blocks[0].offset + FIELD_ROWS;
+	const probeRec = records.readRecord(view, probeSlot * records.RECORD_BYTES);
+	drawRecord(0, FIELD_ROWS, probeRec, AROUND_TIME, want);
+	coords.projectToScreen(viewProj, want[0], want[1], want[2], cam[0], cam[1], cam[2], W, H, scratch);
+	const hit = sel.pickAny(scratch[0], scratch[1], W, H, out);
+	const flightErr = hit ? (sel.resolveDrawn(hit, pos), Math.hypot(pos[0] - want[0], pos[1] - want[1], pos[2] - want[2])) : Infinity;
+	const birthErr = hit ? Math.hypot(hit.x - want[0], hit.y - want[1], hit.z - want[2]) : 0;
+	check('a picked star resolves to where it was clicked, not to its birth record',
+		!!hit && flightErr < 1e-9 && birthErr > 0.5,
+		{ flightErr, birthErrKpc: birthErr, key: hit && hit.key });
+	orbit.setEngine(origEngine);
 }
 
 // --- 4. The set --------------------------------------------------------------
@@ -508,8 +694,8 @@ function stubLabelCanvas() {
 	sel.setRenderer(bigRenderer);
 	sel.setOrbitState(model, 0.5);
 	const out = {};
-	const SLICE_RECORDS = 32768;       // main.js's PICK_SLICE_RECORDS
-	const SLICE_MS = 8;                // main.js's PICK_SLICE_MS
+	const SLICE_RECORDS = 32768;       // main.js's SWEEP_SLICE_RECORDS
+	const SLICE_MS = 8;                // main.js's SWEEP_SLICE_MS
 	const origEngine = orbit.getEngine();
 	const measured = {};
 	let worstSlice = 0;
@@ -560,6 +746,52 @@ function stubLabelCanvas() {
 		simpleTotal < 40, { simpleTotal, measured });
 	check('the dispatch is the cost, and the walk reports what it measured',
 		measured[1].perRecordNs > 100 && measured[1].perRecordNs < 1000, measured);
+
+	// The radius scan is dispatch-bound the same way, so it is chunked on the same
+	// budget: one slice inside the frame, the whole 300k sweep in a bounded number
+	// of them. The centre is a drawn position 1 kpc out, the radius 2 kpc, so the
+	// kept list is full and the sort runs its worst case.
+	{
+		const aroundSel = selectionLib.createSelection(camera, landmarks);
+		aroundSel.setRenderer(bigRenderer);
+		aroundSel.setOrbitState(model, AROUND_TIME);
+		orbit.setPatternClock(AROUND_TIME, model);
+		const centreRec = records.readRecord(bigView, 4000 * records.RECORD_BYTES);
+		const centre = new Float64Array(3);
+		let worstAroundSlice = 0;
+		const aroundMeasured = {};
+		for (const mask of [1, 5]) {
+			orbit.setEngine(mask);
+			drawRecord(0, 4000, centreRec, AROUND_TIME, centre);
+			let slice = Infinity;
+			let slices = 0;
+			for (let r = 0; r < 3; r++) {
+				aroundSel.beginSelectAround(centre[0], centre[1], centre[2], 2.0, starSetLib.CAPACITY);
+				slices = 0;
+				while (true) {
+					const t0 = performance.now();
+					const done = aroundSel.selectAroundStep(SLICE_RECORDS, SLICE_MS);
+					slice = Math.min(slice, performance.now() - t0);
+					slices++;
+					if (done) break;
+				}
+			}
+			aroundMeasured[mask] = {
+				slice: +slice.toFixed(2), slices,
+				kept: aroundSel.around.count, truncated: aroundSel.around.truncated,
+			};
+			if (slice > worstAroundSlice) worstAroundSlice = slice;
+		}
+		orbit.setEngine(origEngine);
+		console.log('300k radius scan: ' + [1, 5].map(m =>
+			`mask ${m}: slice ${aroundMeasured[m].slice} ms, ${aroundMeasured[m].slices} slices, ` +
+			`kept ${aroundMeasured[m].kept}, truncated ${aroundMeasured[m].truncated}`).join('  '));
+		check('a radius-scan slice stays inside the loop\'s 8 ms budget for every mask',
+			worstAroundSlice < 11, { worstAroundSlice, aroundMeasured });
+		check('a whole 300k radius scan is a bounded number of frames, not a freeze',
+			[1, 5].every(m => aroundMeasured[m].slices < 80 && aroundMeasured[m].kept > 0),
+			{ slices: [1, 5].map(m => aroundMeasured[m].slices) });
+	}
 
 	// The sweep and the one-call walk agree, record for record.
 	orbit.setEngine(1);

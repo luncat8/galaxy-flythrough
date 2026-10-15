@@ -1,11 +1,11 @@
 {
-  "date": "2026-10-15T09:40:52.700Z",
+  "date": "2026-10-15T23:29:26.799Z",
   "model": {
     "type": "SBb",
     "seed": 12345
   },
-  "totalChecks": 31,
-  "passed": 31,
+  "totalChecks": 45,
+  "passed": 45,
   "failed": 0,
   "checks": [
     {
@@ -54,20 +54,95 @@
       }
     },
     {
-      "name": "radius select equals the brute-force list, ascending",
+      "name": "radius select equals the dispatched brute-force list, ascending (mask 1)",
       "pass": true,
       "detail": {
-        "n": 26,
-        "expected": 26,
+        "mask": 1,
+        "n": 34,
+        "expected": 34,
         "asc": true,
         "first": {
           "key": 382760,
           "d2": 0
         },
         "last": {
-          "key": 385163,
-          "d2": 1.415548849616144
+          "key": 383463,
+          "d2": 1.4351942272678757
         }
+      }
+    },
+    {
+      "name": "the drawn neighbourhood is not the birth neighbourhood (mask 1)",
+      "pass": true,
+      "detail": {
+        "mask": 1,
+        "drawn": 34,
+        "birth": 26,
+        "centreMovedKpc": 10.29024675381664
+      }
+    },
+    {
+      "name": "radius select equals the dispatched brute-force list, ascending (mask 4)",
+      "pass": true,
+      "detail": {
+        "mask": 4,
+        "n": 20,
+        "expected": 20,
+        "asc": true,
+        "first": {
+          "key": 382760,
+          "d2": 0
+        },
+        "last": {
+          "key": 385892,
+          "d2": 1.2508093526740809
+        }
+      }
+    },
+    {
+      "name": "the drawn neighbourhood is not the birth neighbourhood (mask 4)",
+      "pass": true,
+      "detail": {
+        "mask": 4,
+        "drawn": 20,
+        "birth": 26,
+        "centreMovedKpc": 10.046621510886354
+      }
+    },
+    {
+      "name": "radius select equals the dispatched brute-force list, ascending (mask 5)",
+      "pass": true,
+      "detail": {
+        "mask": 5,
+        "n": 20,
+        "expected": 20,
+        "asc": true,
+        "first": {
+          "key": 382760,
+          "d2": 0
+        },
+        "last": {
+          "key": 385892,
+          "d2": 1.2508093526740809
+        }
+      }
+    },
+    {
+      "name": "the drawn neighbourhood is not the birth neighbourhood (mask 5)",
+      "pass": true,
+      "detail": {
+        "mask": 5,
+        "drawn": 20,
+        "birth": 26,
+        "centreMovedKpc": 10.046621510886354
+      }
+    },
+    {
+      "name": "a kept row carries its birth record and its drawn distance",
+      "pass": true,
+      "detail": {
+        "count": 34,
+        "fieldsOk": true
       }
     },
     {
@@ -75,8 +150,55 @@
       "pass": true,
       "detail": {
         "capped": 5,
-        "truncated": 21,
-        "inside": 26
+        "truncated": 29,
+        "inside": 34
+      }
+    },
+    {
+      "name": "the chunked radius sweep finds the same set as the one-call scan",
+      "pass": true,
+      "detail": {
+        "slices": 66,
+        "swept": 34,
+        "oneCall": 34
+      }
+    },
+    {
+      "name": "a rebuild during a radius sweep aborts it instead of mixing two frames",
+      "pass": true,
+      "detail": {
+        "aborted": 1,
+        "count": 0
+      }
+    },
+    {
+      "name": "a zero radius or a zero capacity scans nothing",
+      "pass": true
+    },
+    {
+      "name": "resolveDrawn is the dispatch the picker and the sky use, for masks 1/2/4/5",
+      "pass": true,
+      "detail": {
+        "worst": 0,
+        "checked": 812,
+        "approxOk": true
+      }
+    },
+    {
+      "name": "resolveDrawn refuses a slot its key does not name, and keeps the snapshot",
+      "pass": true,
+      "detail": {
+        "staleOk": true,
+        "movedState": 0
+      }
+    },
+    {
+      "name": "a picked star resolves to where it was clicked, not to its birth record",
+      "pass": true,
+      "detail": {
+        "flightErr": 0,
+        "birthErrKpc": 10.29024675381664,
+        "key": 382760
       }
     },
     {
@@ -172,26 +294,26 @@
       "name": "a pick slice stays inside the loop's 8 ms budget (+clock overhead) for every mask",
       "pass": true,
       "detail": {
-        "worstSlice": 4.5264509999997244,
+        "worstSlice": 4.646171999999751,
         "worstMask": 5,
         "measured": {
           "1": {
-            "total": 63.96,
-            "slice": 1.08,
+            "total": 63.76,
+            "slice": 1.05,
             "slices": 10,
             "perRecordNs": 213
           },
           "2": {
-            "total": 14.11,
-            "slice": 0.22,
+            "total": 13.87,
+            "slice": 0.23,
             "slices": 10,
-            "perRecordNs": 47
+            "perRecordNs": 46
           },
           "5": {
-            "total": 289.19,
-            "slice": 4.53,
+            "total": 277.62,
+            "slice": 4.65,
             "slices": 10,
-            "perRecordNs": 964
+            "perRecordNs": 925
           }
         }
       }
@@ -211,25 +333,25 @@
       "name": "the cheap mask finishes a whole 300k pick in a handful of frames",
       "pass": true,
       "detail": {
-        "simpleTotal": 14.109672000000046,
+        "simpleTotal": 13.867486999999983,
         "measured": {
           "1": {
-            "total": 63.96,
-            "slice": 1.08,
+            "total": 63.76,
+            "slice": 1.05,
             "slices": 10,
             "perRecordNs": 213
           },
           "2": {
-            "total": 14.11,
-            "slice": 0.22,
+            "total": 13.87,
+            "slice": 0.23,
             "slices": 10,
-            "perRecordNs": 47
+            "perRecordNs": 46
           },
           "5": {
-            "total": 289.19,
-            "slice": 4.53,
+            "total": 277.62,
+            "slice": 4.65,
             "slices": 10,
-            "perRecordNs": 964
+            "perRecordNs": 925
           }
         }
       }
@@ -239,23 +361,54 @@
       "pass": true,
       "detail": {
         "1": {
-          "total": 63.96,
-          "slice": 1.08,
+          "total": 63.76,
+          "slice": 1.05,
           "slices": 10,
           "perRecordNs": 213
         },
         "2": {
-          "total": 14.11,
-          "slice": 0.22,
+          "total": 13.87,
+          "slice": 0.23,
           "slices": 10,
-          "perRecordNs": 47
+          "perRecordNs": 46
         },
         "5": {
-          "total": 289.19,
-          "slice": 4.53,
+          "total": 277.62,
+          "slice": 4.65,
           "slices": 10,
-          "perRecordNs": 964
+          "perRecordNs": 925
         }
+      }
+    },
+    {
+      "name": "a radius-scan slice stays inside the loop's 8 ms budget for every mask",
+      "pass": true,
+      "detail": {
+        "worstAroundSlice": 4.982833000000028,
+        "aroundMeasured": {
+          "1": {
+            "slice": 1.37,
+            "slices": 10,
+            "kept": 256,
+            "truncated": 75925
+          },
+          "5": {
+            "slice": 4.98,
+            "slices": 10,
+            "kept": 256,
+            "truncated": 79656
+          }
+        }
+      }
+    },
+    {
+      "name": "a whole 300k radius scan is a bounded number of frames, not a freeze",
+      "pass": true,
+      "detail": {
+        "slices": [
+          10,
+          10
+        ]
       }
     },
     {

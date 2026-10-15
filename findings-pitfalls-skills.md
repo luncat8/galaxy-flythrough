@@ -1619,3 +1619,37 @@ arrival frame is exact by construction (`s = 1` copies the endpoint). The same t
 makes the follow free: after arrival the orbit placement re-derives from the target
 each frame anyway, so a per-frame `updateTarget` keeps the object centred with no new
 camera code.
+
+## 2026-10-15 — A stored position is a *birth* position: name the frame of reference, or the UI aims at empty sky
+
+Any feature that moves stars splits one number into two: the record's birth position
+(what it was sampled at, what a snapshot stores, what `stellarInputs` decomposes the
+density at) and the position the sky draws it at (the birth position through the
+engine-mask dispatch at the running star time). Storing the first is right — a snapshot
+has to survive a residency rebuild and a derivation has to be reproducible — and reading
+it as the second is a bug that no unit test on the storage catches, because the storage
+is fine. It only shows up as "the camera flew to empty sky" or "the selection is not the
+neighbourhood I clicked": with the shipping defaults (classic mask, star time 5 Myr/s)
+20 s of watching is 100 Myr of star time, and a disc star at 8 kpc has moved ~3 kpc from
+its birth record — measured 3.09 kpc (10 094 ly) between the two positions of one star.
+A radius scan that compares birth to birth is *self-consistent* and still wrong: the
+stars it keeps are the ones born near the primary, and differential rotation plus the
+per-star family spread scatters them, so a 50 ly scan kept stars drawn 3 172 ly away
+(60× the radius) while the drawn neighbourhood held a different star.
+
+The cure is one resolver and one naming rule. Name every position field by its frame of
+reference (`around.dist2` drawn, `around.x/y/z` birth — both in one row, neither
+redundant), and give the callers a single `resolveDrawn(ref, out)` that runs the same
+dispatch the vertex stage, the labels and the picker already run, validates the slot **by
+key** (a stale index must never resolve to the star now sitting in it), treats an
+invisible record as unresolvable, and returns which of the three cases applied — exact,
+approximated (a `simple` bit's θ is GPU-only), or stale (the snapshot stays, and the
+readout says so). Then the fly-to target, the camera follow, the scan centre and its
+radius test, the readout's distance and a route's separation all read through it, and the
+storage contract does not move at all.
+
+Corollary for the follow: key it on the object's **identity**, not on a slot or a
+sub-class of object. `followLandmark` (an entry index, landmarks only, one engine mask
+only) became `followKey` (the set member's key, resolved per frame), which is fewer lines
+and covers every block and every mask — and a member that leaves the residency stops
+moving the target instead of snapping it back to a birth record.

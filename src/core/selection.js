@@ -1,22 +1,31 @@
 // src/core/selection.js
-// Click picking, two entry points:
+// Click picking, the radius scan, and the one place that answers "where is this
+// star drawn right now". Every entry point that judges a *position* dispatches
+// through the shared orbit mask — the same calls the vertex stage makes
+// (`engineRecordPosition` for a record, `engineLandmarkPosition` for a landmark):
 //
 //   * `pick` (landmarks only) — projects the landmark table with the camera's
 //     viewProj and returns the nearest index within PICK_RADIUS_PX of the
 //     pointer. The caller feeds the hit to camera.setOrbitTarget — selection
 //     never mutates the camera itself, so a miss is a pure no-op.
 //   * `pickAny` (plan §3.1, 0.5.0) — walks every resident record in the
-//     renderer's five blocks, dispatches each through the shared orbit mask
-//     (the same calls the vertex stage makes: `engineRecordPosition` for a
-//     record, `engineLandmarkPosition` for a landmark),
-//     projects the drawn position, and returns the nearest hit within
-//     PICK_RADIUS_PX. Inside PICK_TIE_PX the brighter star wins, so a click on
-//     a pair takes the bright one in front rather than the faint one it hides.
+//     renderer's five blocks, dispatches each, projects the drawn position, and
+//     returns the nearest hit within PICK_RADIUS_PX. Inside PICK_TIE_PX the
+//     brighter star wins, so a click on a pair takes the bright one in front
+//     rather than the faint one it hides.
+//   * `resolveDrawn` (ui.2) — the same dispatch for one record: what the camera
+//     flies to, what it orbits, and what the readout measures.
+//   * `selectAround` (plan §3.3) — the radius scan, comparing drawn positions on
+//     both sides of the distance.
 //
-// `pickAny` needs the buffers, which do not exist when the selection object is
+// Both buffer walks are dispatch-bound, so both are chunked across frames with
+// the same begin/step contract and the same abort on a rebuild; neither is
+// warmed up per frame.
+//
+// The walks need the buffers, which do not exist when the selection object is
 // constructed, so `setRenderer(renderer)` is called by main.js after prepare().
-// The walk allocates nothing: the caller passes the `out` record (plan §3.1)
-// and it is filled in place.
+// Nothing here allocates: the caller passes the `out` record (plan §3.1) and the
+// scans write into their own preallocated SoA.
 
 'use strict';
 
@@ -37,6 +46,13 @@ const SELRAD_DEFAULT_LOG = 1.69897;
 // The scan's own bound: one full set (plan §3.2) is the largest useful answer, so
 // the scan never collects more than it can hand over, and its SoA is fixed.
 const AROUND_CAPACITY = 256;
+// Both chunked sweeps (the pick and the radius scan) check the clock every this
+// many records, so the clock call is not itself the cost.
+const STEP_CHECK_RECORDS = 2048;
+// resolveDrawn's three answers: which frame of reference the caller got.
+const DRAWN_STALE = 0;
+const DRAWN_APPROX = 1;
+const DRAWN_EXACT = 2;
 
 const selectionCoords = (typeof module !== 'undefined' && module.exports)
 	? require('../math/coords.js')
@@ -96,17 +112,84 @@ function createSelection(camera, landmarks) {
 		return best;
 	}
 
-	// Plan §3.3, "select around": one pass over the resident records, keeping
-	// everything inside `radiusKpc` of the primary's snapshot position, sorted by
-	// distance ascending (insertion sort into the preallocated arrays — the count
-	// is bounded by `AROUND_CAPACITY`) and truncated at `maxCount`. The result is
-	// written into this object's own SoA (never allocated) and returned as a
-	// count; the caller reads `around.keys[i]` … `around.dist2[i]`.
+	// --- Drawn position (ui.2) -------------------------------------------
+	// Where the sky draws one record right now: the dispatch twin of the pick's
+	// hit test, for a single star instead of the whole buffer. `ref` is
+	// pick-shaped ({ kind, index, key, x, y, z }, `index` block-local, `x/y/z`
+	// the record's birth position) — a selection-set member, a pick, or a
+	// history snapshot. `out` (Float64Array(3)) receives the drawn position.
 	//
-	// Distances are the record's own (birth) positions, the same field a snapshot
-	// stores, so the primary and a scan hit are compared in one frame of
-	// reference. A record that is not visible is not part of the sky and is
-	// skipped, exactly as in pickAny.
+	// The return is which of the three cases applied, so a caller can be honest
+	// about it instead of guessing from the engine name:
+	//   DRAWN_EXACT  — dispatched from the resident record the key names;
+	//   DRAWN_APPROX — dispatched, but the simple mask's θ is GPU-only (§2.6's
+	//                  honest gap: the CPU returns the classic law or birth);
+	//   DRAWN_STALE  — no resident record holds that key, so `out` keeps the
+	//                  ref's own snapshot position.
+	// The slot is validated by key exactly as resolveSet and the label layer's
+	// ring map validate theirs, so a stale index can never resolve to the star
+	// that happens to sit in it now.
+	function resolveDrawn(ref, out) {
+		if (!ref) return DRAWN_STALE;
+		out[0] = ref.x; out[1] = ref.y; out[2] = ref.z;
+		if (!renderer) return DRAWN_STALE;
+		const records = selectionRecords();
+		const info = renderer.starBlocks();
+		if (!records || !info || !info.view || !info.identity || !info.blocks) return DRAWN_STALE;
+		const kind = ref.kind | 0;
+		const block = info.blocks[kind];
+		const index = ref.index | 0;
+		if (!block || index < 0 || index >= (block.count | 0)) return DRAWN_STALE;
+		const slot = (block.offset | 0) + index;
+		if ((info.identity[slot] >>> 0) !== (ref.key >>> 0)) return DRAWN_STALE;
+		const byteOffset = slot * records.RECORD_BYTES;
+		const packed = info.view.getUint32(byteOffset + 12, true);
+		if ((packed & (records.FLAG_VISIBLE << 16)) === 0) return DRAWN_STALE;
+		const bx = info.view.getFloat32(byteOffset, true);
+		const by = info.view.getFloat32(byteOffset + 4, true);
+		const bz = info.view.getFloat32(byteOffset + 8, true);
+		if (!orbitModel) {
+			out[0] = bx; out[1] = by; out[2] = bz;
+			return DRAWN_EXACT;
+		}
+		if (block.kind === 'landmark') {
+			selectionOrbit().engineLandmarkPosition(orbitScratch, index, bx, by, bz,
+				packed & 0xFF, orbitTime, orbitModel);
+			out[0] = orbitScratch[0]; out[1] = orbitScratch[1]; out[2] = orbitScratch[2];
+			return DRAWN_EXACT;
+		}
+		const approximated = selectionOrbit().engineRecordPosition(orbitScratch,
+			bx, by, bz, packed, orbitTime, orbitModel) === true;
+		out[0] = orbitScratch[0]; out[1] = orbitScratch[1]; out[2] = orbitScratch[2];
+		return approximated ? DRAWN_APPROX : DRAWN_EXACT;
+	}
+
+	// Plan §3.3, "select around" — dispatch-exact since ui.2. One pass over the
+	// resident records keeping everything the sky draws inside `radiusKpc` of the
+	// centre it draws, ascending by distance, truncated at `maxCount`.
+	//
+	// The centre and the candidates are both **drawn** positions, through the same
+	// engine-mask law the vertex stage, the labels and the picker use. The birth
+	// scan this replaced answered a different question: measured on a 120k field
+	// at 100 Myr of star time, a 50 ly birth scan around a picked star kept three
+	// stars of which two were drawn outside the radius — the worst 3 172 ly away,
+	// 60× the radius — while the drawn neighbourhood held a different star.
+	//
+	// Two frames of reference, both in the result and neither redundant:
+	//   `dist2`   drawn-space kpc², the radius test and the sort key;
+	//   `x/y/z`   the record's birth position, what a snapshot stores and what
+	//             `stellarInputs` decomposes the density at (BLOCK_LOCAL,
+	//             BLOCK_OBJECT) — so it stays the birth position on purpose.
+	//
+	// The dispatch makes the scan cost what the picker costs (~0.3 µs/record
+	// classic, ~1.2 µs apocenter at 300k), so it borrows the picker's contract
+	// rather than inventing one: `beginSelectAround` snapshots `dynamicVersion`,
+	// `selectAroundStep(maxRecords, maxMs)` walks a slice under a record *and* a
+	// wall-clock budget, `selectAround` is the same sweep in one call for tests
+	// and small fields, and a rebuild mid-sweep aborts (`around.aborted`) instead
+	// of mixing two frames. Nothing is precomputed per frame to make the click
+	// cheaper: selection is rare and user-initiated, and a spatial index kept warm
+	// in the frame loop would tax every frame to save one click.
 	const around = {
 		keys: new Uint32Array(AROUND_CAPACITY),
 		kind: new Uint8Array(AROUND_CAPACITY),
@@ -121,81 +204,174 @@ function createSelection(camera, landmarks) {
 		dist2: new Float64Array(AROUND_CAPACITY),
 		count: 0,
 		truncated: 0,
+		aborted: 0,
 	};
-	function selectAround(px, py, pz, radiusKpc, maxCount) {
+	const aroundSweep = {
+		active: false, done: true,
+		k: 0, i: 0, n: 0, cap: 0, r2: 0,
+		px: 0, py: 0, pz: 0,
+		version: -1,
+	};
+
+	function beginSelectAround(px, py, pz, radiusKpc, maxCount) {
 		around.count = 0;
 		around.truncated = 0;
-		if (!renderer || !(radiusKpc > 0)) return 0;
+		around.aborted = 0;
+		aroundSweep.active = false;
+		aroundSweep.done = true;
+		aroundSweep.n = 0;
+		aroundSweep.cap = 0;
+		if (!renderer || !(radiusKpc > 0)) return false;
 		const records = selectionRecords();
 		const info = renderer.starBlocks();
-		if (!records || !info || !info.view || !info.identity) return 0;
+		if (!records || !info || !info.view || !info.identity) return false;
 		const cap = Math.min(AROUND_CAPACITY, Math.max(0, maxCount | 0));
-		if (cap === 0) return 0;
+		if (cap === 0) return false;
+		aroundSweep.px = px;
+		aroundSweep.py = py;
+		aroundSweep.pz = pz;
+		aroundSweep.r2 = radiusKpc * radiusKpc;
+		aroundSweep.cap = cap;
+		aroundSweep.k = 0;
+		aroundSweep.i = 0;
+		aroundSweep.version = info.dynamicVersion;
+		aroundSweep.active = true;
+		aroundSweep.done = false;
+		return true;
+	}
+
+	// The kept rows are decided on four scalars, so the insertion sort shifts four
+	// scalars; the record fields the caller reads (`x/y/z`, `packed`, `colorIndex`,
+	// `absMag`) are re-read once, from the record each kept row names, when the
+	// sweep lands. Sorting eleven parallel arrays on every arrival was the same
+	// answer reached the slow way.
+	function enrichAround(info, records) {
+		const view = info.view;
+		const blocks = info.blocks;
+		const n = aroundSweep.n;
+		for (let j = 0; j < n; j++) {
+			const block = blocks[around.kind[j]];
+			const byteOffset = ((block.offset | 0) + around.index[j]) * records.RECORD_BYTES;
+			const packed = view.getUint32(byteOffset + 12, true);
+			around.x[j] = view.getFloat32(byteOffset, true);
+			around.y[j] = view.getFloat32(byteOffset + 4, true);
+			around.z[j] = view.getFloat32(byteOffset + 8, true);
+			around.packed[j] = packed;
+			around.colorIndex[j] = packed & 0xFF;
+			around.absMag[j] = records.decodeAbsMag((packed >>> 8) & 0xFF);
+		}
+	}
+
+	function selectAroundStep(maxRecords, maxMs) {
+		if (!aroundSweep.active) return true;
+		const records = selectionRecords();
+		const info = renderer.starBlocks();
+		// The blocks were rebuilt under the sweep: the rows already kept name
+		// slots that may hold other stars now. Abort, and leave the caller's set
+		// alone — a half-applied neighbourhood is worse than a repeated click.
+		if (!records || !info || info.dynamicVersion !== aroundSweep.version) {
+			aroundSweep.active = false;
+			aroundSweep.done = true;
+			around.aborted = 1;
+			around.count = 0;
+			return true;
+		}
 		const view = info.view;
 		const identity = info.identity;
 		const blocks = info.blocks;
-		const r2 = radiusKpc * radiusKpc;
-		let n = 0;
-		for (let k = 0; k < blocks.length; k++) {
-			const block = blocks[k];
+		const orbit = selectionOrbit();
+		const visibleBit = records.FLAG_VISIBLE << 16;
+		const cap = aroundSweep.cap;
+		const r2 = aroundSweep.r2;
+		const cx = aroundSweep.px, cy = aroundSweep.py, cz = aroundSweep.pz;
+		const budget = maxRecords === undefined || maxRecords === Infinity ? Infinity : (maxRecords | 0);
+		const deadline = (maxMs > 0) ? performance.now() + maxMs : Infinity;
+		let steps = 0;
+		let sinceCheck = 0;
+		let n = aroundSweep.n;
+		while (aroundSweep.k < blocks.length && steps < budget) {
+			const block = blocks[aroundSweep.k];
 			const count = block.count | 0;
-			if (count <= 0) continue;
-			const end = (block.offset | 0) + count;
-			for (let slot = block.offset | 0; slot < end; slot++) {
+			if (count <= 0 || aroundSweep.i >= count) {
+				aroundSweep.k++;
+				aroundSweep.i = 0;
+				continue;
+			}
+			const base = block.offset | 0;
+			const isLandmark = block.kind === 'landmark';
+			while (aroundSweep.i < count && steps < budget) {
+				if (++sinceCheck >= STEP_CHECK_RECORDS) {
+					sinceCheck = 0;
+					if (performance.now() >= deadline) break;
+				}
+				const i = aroundSweep.i++;
+				steps++;
+				const slot = base + i;
 				const byteOffset = slot * records.RECORD_BYTES;
 				const packed = view.getUint32(byteOffset + 12, true);
-				if ((packed & (records.FLAG_VISIBLE << 16)) === 0) continue;
-				const x = view.getFloat32(byteOffset, true);
-				const y = view.getFloat32(byteOffset + 4, true);
-				const z = view.getFloat32(byteOffset + 8, true);
-				const dx = x - px;
-				const dy = y - py;
-				const dz = z - pz;
+				if ((packed & visibleBit) === 0) continue;
+				const bx = view.getFloat32(byteOffset, true);
+				const by = view.getFloat32(byteOffset + 4, true);
+				const bz = view.getFloat32(byteOffset + 8, true);
+				let dx = bx - cx, dy = by - cy, dz = bz - cz;
+				let approximated = false;
+				if (orbitModel) {
+					if (isLandmark) {
+						orbit.engineLandmarkPosition(orbitScratch, i, bx, by, bz,
+							packed & 0xFF, orbitTime, orbitModel);
+					} else {
+						approximated = orbit.engineRecordPosition(orbitScratch,
+							bx, by, bz, packed, orbitTime, orbitModel) === true;
+					}
+					dx = orbitScratch[0] - cx;
+					dy = orbitScratch[1] - cy;
+					dz = orbitScratch[2] - cz;
+				}
 				const d2 = dx * dx + dy * dy + dz * dz;
 				if (d2 > r2) continue;
-				// Insertion sort, descending scan: the list is ascending.
-				// The shift at i == cap is skipped, which is what drops the
-				// kept list's farthest member when a nearer one arrives.
-				let i = n;
-				while (i > 0 && around.dist2[i - 1] > d2) {
-					if (i < cap) {
-						around.dist2[i] = around.dist2[i - 1];
-						around.keys[i] = around.keys[i - 1];
-						around.kind[i] = around.kind[i - 1];
-						around.index[i] = around.index[i - 1];
-						around.x[i] = around.x[i - 1];
-						around.y[i] = around.y[i - 1];
-						around.z[i] = around.z[i - 1];
-						around.packed[i] = around.packed[i - 1];
-						around.colorIndex[i] = around.colorIndex[i - 1];
-						around.absMag[i] = around.absMag[i - 1];
-						around.approximated[i] = around.approximated[i - 1];
+				// Insertion sort, descending scan: the kept list is ascending. The
+				// shift at i === cap is skipped, which is what drops the farthest
+				// kept member when a nearer one arrives.
+				let at = n;
+				while (at > 0 && around.dist2[at - 1] > d2) {
+					if (at < cap) {
+						around.dist2[at] = around.dist2[at - 1];
+						around.keys[at] = around.keys[at - 1];
+						around.kind[at] = around.kind[at - 1];
+						around.index[at] = around.index[at - 1];
+						around.approximated[at] = around.approximated[at - 1];
 					}
-					i--;
+					at--;
 				}
-				// `truncated` counts every in-radius record that did not make
-				// the kept list — refused on arrival *and* evicted later by a
-				// nearer one — so it always equals (inside − kept).
-				if (i >= cap) { around.truncated++; continue; }
+				// `truncated` counts every in-radius record that did not make the
+				// kept list — refused on arrival *and* evicted later by a nearer
+				// one — so it always equals (inside − kept).
+				if (at >= cap) { around.truncated++; continue; }
 				if (n < cap) n++;
 				else around.truncated++;
-				around.dist2[i] = d2;
-				around.keys[i] = identity[slot] >>> 0;
-				around.kind[i] = k;
-				around.index[i] = slot - (block.offset | 0);
-				around.x[i] = x;
-				around.y[i] = y;
-				around.z[i] = z;
-				around.packed[i] = packed;
-				around.colorIndex[i] = packed & 0xFF;
-				around.absMag[i] = records.decodeAbsMag((packed >>> 8) & 0xFF);
-				// A radius scan never dispatches, so it never approximates: the
-				// flag is about the *pick's* position test, not the star's record.
-				around.approximated[i] = 0;
+				around.dist2[at] = d2;
+				around.keys[at] = identity[slot] >>> 0;
+				around.kind[at] = aroundSweep.k;
+				around.index[at] = i;
+				around.approximated[at] = approximated ? 1 : 0;
 			}
+			if (aroundSweep.i >= count) { aroundSweep.k++; aroundSweep.i = 0; }
 		}
-		around.count = n;
-		return n;
+		aroundSweep.n = n;
+		if (aroundSweep.k >= blocks.length) {
+			enrichAround(info, records);
+			around.count = n;
+			aroundSweep.active = false;
+			aroundSweep.done = true;
+			return true;
+		}
+		return steps < budget;   // budget exhausted mid-walk
+	}
+
+	function selectAround(px, py, pz, radiusKpc, maxCount) {
+		if (!beginSelectAround(px, py, pz, radiusKpc, maxCount)) return 0;
+		while (!selectAroundStep(1 << 24)) { /* one big step is the whole sweep */ }
+		return around.count;
 	}
 
 	// Plan §3.1. `out` is caller-owned and filled in place:
@@ -267,7 +443,6 @@ function createSelection(camera, landmarks) {
 	// record count would be a 2 ms slice under one mask and a 40 ms hitch under
 	// another. Returns true when the sweep is finished (including "finished with
 	// no hit"), false to be called again.
-	const STEP_CHECK_RECORDS = 2048;
 	function pickStep(maxRecords, maxMs) {
 		if (!sweep.active) return true;
 		const records = selectionRecords();
@@ -389,13 +564,15 @@ function createSelection(camera, landmarks) {
 	}
 
 	return {
-		pick, pickAny, beginPick, pickStep, pickResult, selectAround, around,
+		pick, pickAny, beginPick, pickStep, pickResult,
+		selectAround, beginSelectAround, selectAroundStep, around, resolveDrawn,
 		setOrbitState, setRenderer,
 	};
 }
 
 const Selection = {
-	createSelection, PICK_RADIUS_PX, PICK_TIE_PX, AROUND_CAPACITY,
+	createSelection, PICK_RADIUS_PX, PICK_TIE_PX, AROUND_CAPACITY, STEP_CHECK_RECORDS,
+	DRAWN_STALE, DRAWN_APPROX, DRAWN_EXACT,
 	SELRAD_MIN_LY, SELRAD_MAX_LY, SELRAD_DEFAULT_LY, SELRAD_DEFAULT_LOG,
 };
 if (typeof module !== 'undefined') module.exports = Selection;
