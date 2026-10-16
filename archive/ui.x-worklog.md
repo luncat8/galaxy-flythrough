@@ -152,11 +152,10 @@ readout's distance, and a route's interstellar separation.
   birth record`. Route endpoints (`stellarEndpoint`, `historyEndpoint`) carry drawn
   positions, so a cruise leg's separation is the one the user is looking at.
 
-**Left birth-space, knowingly:** the §5 search scan and therefore its centre. It is a
-synchronous one-frame catalogue query with §5.3 budgets a per-record dispatch would break
-(100–400 ms at 300k); making it exact means giving it the picker's chunking, which is a
-larger change to a 1 000-line module than this fix warranted. Recorded in plan.md §19's
-ui.2 entry as the follow-up.
+**At the ui.2 stage, the search still used birth-space.** It was a synchronous
+one-frame catalogue query, and the §5.3 budget did not yet include a per-record dispatch.
+The proposed follow-up was a chunked picker-style scan; ui.3 below supersedes that proposal
+with the user's chosen stop-and-inspect operation, retaining a single synchronous search.
 
 **Validation.** `experiments/star-select-test.js` 31 → 45 checks: the radius scan against
 an independent *dispatched* brute-force list under masks 1/4/5 at 100 Myr, a non-vacuity
@@ -173,7 +172,51 @@ follow) are asserted absent; all three fail on the pre-fix `main.js`, so they ha
 Full suite `python3 scripts/run.py all-tests` → 30/30 suites passed, no test deleted, no
 tolerance widened.
 
-**Next step suggestion.** Give the §5 search the same treatment — a chunked,
-dispatch-exact distance predicate — so "stars within 10 pc of this one" and "stars within
-50 ly of this one" answer in the same frame of reference; it needs `search.run` split into
-begin/step like the picker, and its §5.3 budgets restated as slice budgets.
+**Next step suggestion at ui.2 (superseded by ui.3).** Give the §5 search a chunked,
+dispatch-exact distance predicate and restate §5.3 as slice budgets. The user's later
+stop-and-inspect decision instead keeps `search.run` synchronous and pauses star time.
+
+## ui.3 — Frozen drawn-space search, result selection and flight
+
+**Decision and review.** Revisited the previous search/select/fly workflow instead of
+implementing ui.2's suggested multi-frame scan. The user's correction is decisive:
+search is a stop-and-inspect action, usually used at zero or low star time, and the
+clock must remain stopped while the user reviews results. Search remains one synchronous
+operation; the code does not auto-resume when it finishes. The existing `T` toggle
+restores the last signed non-zero rate.
+
+**Implementation.** `runSearch()` pauses star time before parsing and scanning, passes
+its fixed `starTimeMyr` to `Search.run`, and updates the slider/readout immediately. The
+selected-star centre resolves through `selection.resolveDrawn`; the camera remains the
+fallback. `core/search.js` applies the active `OrbitLib` record/landmark dispatch to
+both galaxy and selection-scope distance tests and nearest-first ordering. It retains
+birth coordinates for stellar derivation and result snapshots. The result buffers carry
+an approximation flag and the time used. The UI reports the snapshot epoch, marks
+approximate distances with `~`, identifies approximate/stale selected centres, and keeps
+per-row approximation metadata when a result is selected or added to the set. If the
+clock is resumed later, the displayed distances are still explicitly historical; a
+result's identity remains selectable, and **Fly to primary** (`F` or the new button)
+resolves the star's current drawn position for flight. `F/N/X` work from focused panel
+buttons, and `T` also works from panel text; editable fields still own their keys.
+
+This preserves the synchronous user experience while keeping the spatial answer
+consistent with the active movement engine. A measured 300k-star classic-engine query
+at 100 Myr took about 98 ms in the local test run; the test allows up to 1.5 s for that
+moving-time scan and retains the original §5.3 budgets at time zero.
+
+**Validation.** `experiments/search-test.js` 36 → 37 checks: exact frozen-time distances
+for galaxy and selection scopes, birth-coordinate preservation, explicit simple-engine
+approximation, plus the 300k moving-time performance pin. It passes 37/37. The focused
+`input-test.js` passes 18/18, `preset-test.js` 30/30, and `m1-smoke-test.js` 71/71,
+including the new fly-to control, single-operation pause wiring and keyboard scope.
+The full suite passed all 31 groups with
+`NODE_OPTIONS=--max-old-space-size=256 python3 scripts/run.py all-tests`. Two default-heap
+runs hit the existing `planet-gen-test.js` coarse heap-delta ceiling (about 3.3–3.6 MB transient
+measurements against a 2 MB limit); that suite passes standalone, and the constrained-heap
+suite passes without changing the test or its threshold. Generated experiment logs were
+restored so only source, test, plan and worklog changes remain.
+
+**Follow-up.** Browser interaction smoke when practical: run a search, confirm the rate
+slider stays at zero, click a result, press `F`, inspect the flight, then press `T` from
+the results area and confirm the star-time clock resumes. The synchronous design is
+intentional; do not chunk search unless the user revises that interaction decision.

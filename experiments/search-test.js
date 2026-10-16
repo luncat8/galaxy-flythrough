@@ -23,8 +23,8 @@
 //      record-path class), equivalence with a set-aware brute force.
 //   7. timings at 300k: star-only class filter < 120 ms, planet filter
 //      (class G + terran, and a tsurf range) < 600 ms, selection scope
-//      (214 stars) < 2 ms. A pathological loose range is measured and logged,
-//      not budgeted.
+//      (214 stars) < 2 ms, and an active-engine classic scan at 100 Myr < 1.5 s.
+//      A pathological loose range is measured and logged, not budgeted.
 //   8. degrade: null filter/env/renderer, empty blocks, impossible ranges —
 //      empty results, never a throw.
 //   9. pins: camera-default and explicit search centres, the ly→kpc fallback
@@ -854,6 +854,67 @@ function bruteRun(stars, f, camX, camY, camZ) {
 		{ matched: res.stats.matched, brute: expected.length, kept: res.count });
 }
 
+// --- 8b. Search the same drawn snapshot the sky presents -----------------------
+{
+	const index = 2457;
+	const slot = offsets[0] + index;
+	const byteOffset = slot * records.RECORD_BYTES;
+	const packed = view.getUint32(byteOffset + 12, true);
+	const x = view.getFloat32(byteOffset, true);
+	const y = view.getFloat32(byteOffset + 4, true);
+	const z = view.getFloat32(byteOffset + 8, true);
+	const key = identity[slot] >>> 0;
+	const time = 100;
+	const center = new Float64Array(3);
+	orbit.setEngine('classic');
+	orbit.engineRecordPosition(center, x, y, z, packed, time, model);
+	const birthGap = Math.hypot(center[0] - x, center[1] - y, center[2] - z);
+	const exact = filterFrom((f) => { f.distMax = 0; });
+	const search = searchLib.createSearch();
+	const env = {
+		scope: 'galaxy', centerX: center[0], centerY: center[1], centerZ: center[2],
+		time, model, renderer, set: null,
+	};
+	const galaxyResult = search.run(exact, env);
+	const galaxyOk = galaxyResult.count === 1 && galaxyResult.keys[0] === key
+		&& galaxyResult.dist2[0] === 0 && galaxyResult.approximated[0] === 0
+		&& galaxyResult.x[0] === x && galaxyResult.stats.timeMyr === time
+		&& birthGap > 1e-4;
+	check('galaxy distance uses the active engine at the frozen search time, retaining the birth snapshot',
+		galaxyOk, { count: galaxyResult.count, key: galaxyResult.keys[0], expected: key,
+			dist2: galaxyResult.dist2[0], birthGap, timeMyr: galaxyResult.stats.timeMyr });
+
+	const derived = {};
+	starTypes.deriveStar(model, key, field.component[index], field.R[index],
+		field.distToArm[index], derived, field.z[index]);
+	const set = {
+		count: 1,
+		keys: Uint32Array.of(key), blockKind: Uint8Array.of(planets.BLOCK_FIELD),
+		bufferIdx: Uint32Array.of(index),
+		x: Float64Array.of(x), y: Float64Array.of(y), z: Float64Array.of(z),
+		colorIndex: Uint8Array.of(view.getUint32(byteOffset + 12, true) & 0xFF),
+		absMag: Float64Array.of(records.decodeAbsMag((packed >>> 8) & 0xFF)),
+		mass: Float64Array.of(derived.mass), lum: Float64Array.of(derived.lum),
+		teff: Float64Array.of(derived.teff), age: Float64Array.of(derived.age),
+		metal: Float64Array.of(derived.metal),
+	};
+	const setResult = search.run(exact, Object.assign({}, env, { scope: 'selection', set }));
+	check('selection-scope distance also resolves its live record, not the set snapshot',
+		setResult.count === 1 && setResult.keys[0] === key && setResult.dist2[0] === 0
+		&& setResult.x[0] === x && setResult.approximated[0] === 0);
+
+	orbit.setEngine('simple');
+	const simpleDraw = new Float64Array(3);
+	const simpleApprox = orbit.engineRecordPosition(simpleDraw, x, y, z, packed, time, model);
+	const simpleResult = search.run(exact, Object.assign({}, env, {
+		centerX: simpleDraw[0], centerY: simpleDraw[1], centerZ: simpleDraw[2],
+	}));
+	check('GPU-only simple positions stay explicit as approximations in search results',
+		simpleApprox && simpleResult.count === 1 && simpleResult.keys[0] === key
+		&& simpleResult.approximated[0] === 1);
+	orbit.setEngine('classic');
+}
+
 // --- 9. Degrade, never throw ---------------------------------------------------
 {
 	const search = searchLib.createSearch();
@@ -980,16 +1041,22 @@ function bruteRun(stars, f, camX, camY, camZ) {
 	const onlyTerran = searchLib.parseFilter('terran');
 	const msSet = time(onlyTerran, setEnv);
 	const stSet = time.last;
+	orbit.setEngine('classic');
+	const movingEnv = Object.assign({}, env, { time: 100 });
+	const msMoving = time(classG, movingEnv);
+	const stMoving = time.last;
 	console.log(`300k: build ${buildMs} ms  ` +
 		`class-G ${msClass.toFixed(1)} ms (scanned ${stClass.scanned}, matched ${stClass.matched})  ` +
 		`G+terran ${msTerran.toFixed(1)} ms (matched ${stTerran.matched})  ` +
 		`tsurf ${msTsurf.toFixed(1)} ms (matched ${stTsurf.matched})  ` +
 		`loose-teq ${msLoose.toFixed(1)} ms (matched ${stLoose.matched})  ` +
-		`set-214 ${msSet.toFixed(2)} ms (matched ${stSet.matched})`);
+		`set-214 ${msSet.toFixed(2)} ms (matched ${stSet.matched})  ` +
+		`class-G @100 Myr ${msMoving.toFixed(1)} ms (matched ${stMoving.matched})`);
 	check('star-only class filter over the galaxy stays under 120 ms', msClass < 120, msClass);
 	check('planet filter (G + terran) over the galaxy stays under 600 ms', msTerran < 600, msTerran);
 	check('planet filter (tsurf range, exact refine) over the galaxy stays under 600 ms', msTsurf < 600, msTsurf);
 	check('planet filter over a 214-star set stays under 2 ms', msSet < 2, msSet);
+	check('a moving-time 300k star search with engine dispatch stays under 1.5 s', msMoving < 1500, msMoving);
 	check('the stage timers split the wall time (sort + overhead bounded)',
 		(() => {
 			const sum = stTsurf.msStage1 + stTsurf.msStage2 + stTsurf.msRefine;

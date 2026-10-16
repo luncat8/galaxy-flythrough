@@ -130,6 +130,25 @@ check('menu controls own keyboard input except Tab', () => {
 	assert.equal(state.actions.menu, 1);
 	state.actions.menu = 0;
 });
+check('selection and time shortcuts work with a result button focused, not in a field', () => {
+	for (const action of ['flyTo', 'nextStar', 'clearSet', 'freezeTime']) state.actions[action] = 0;
+	for (const code of ['KeyF', 'KeyN', 'KeyX', 'KeyT']) {
+		assert.equal(button.emit('keydown', { code }).defaultPrevented, true);
+	}
+	assert.equal(state.actions.flyTo, 1);
+	assert.equal(state.actions.nextStar, 1);
+	assert.equal(state.actions.clearSet, 1);
+	assert.equal(state.actions.freezeTime, 1);
+	for (const action of ['flyTo', 'nextStar', 'clearSet', 'freezeTime']) state.actions[action] = 0;
+	assert.equal(panel.emit('keydown', { code: 'KeyT' }).defaultPrevented, true);
+	assert.equal(state.actions.freezeTime, 1);
+	state.actions.freezeTime = 0;
+	for (const code of ['KeyF', 'KeyN', 'KeyX', 'KeyT']) {
+		assert.equal(slider.emit('keydown', { code }).defaultPrevented, undefined);
+	}
+	assert.equal(state.actions.flyTo, 0);
+	assert.equal(state.actions.freezeTime, 0);
+});
 check('Ctrl/Cmd+V over the scene is a paste, not the system-view key', () => {
 	for (const mod of [{ ctrlKey: true }, { metaKey: true }]) {
 		const ev = canvas.emit('keydown', Object.assign({ code: 'KeyV' }, mod));

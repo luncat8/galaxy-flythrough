@@ -318,6 +318,7 @@ async function boot() {
         const sliderSelRad = document.getElementById('slider-selrad');
         const valSelRad = document.getElementById('val-selrad');
         const btnSelectAround = document.getElementById('btn-select-around');
+        const btnFlyTo = document.getElementById('btn-fly-to');
         const btnClearSet = document.getElementById('btn-clear-set');
 
         // Brightness slider is linear in multiplier (0.125 – 8.0), not stops,
@@ -352,6 +353,10 @@ async function boot() {
                 // The scan walks the buffer in slices (plan §3.3): the click starts
                 // it, the loop applies it on the frame it lands.
                 beginSelectAroundPrimary();
+                updateOverlay(renderer.state, camera.getState(statsText));
+        });
+        btnFlyTo.addEventListener('click', () => {
+                if (!flyToPrimary()) return;
                 updateOverlay(renderer.state, camera.getState(statsText));
         });
         btnClearSet.addEventListener('click', () => {
@@ -398,6 +403,7 @@ async function boot() {
         const searchTypeNames = window.PlanetsLib.DISPLAY_TYPES.map((t) => t.name);
         let searchSnapshot = [];
         let searchVersion = -1;
+        const searchCenterPosition = new Float64Array(3);
         // The search report's own copy of #sysread: the system view takes the
         // element over while open (0.5.3) and hands it back on exit.
         let sysreadSearchText = '';
@@ -541,7 +547,8 @@ async function boot() {
                         name = landmarks.ENTRIES[index].name;
                 }
                 const cls = window.StarRecord.SPECTRAL_CLASSES[res.colorIndex[i]] || '?';
-                const dist = formatLy(Math.sqrt(res.dist2[i]) * LY_PER_KPC);
+                const dist = (res.approximated[i] ? '~' : '')
+                        + formatLy(Math.sqrt(res.dist2[i]) * LY_PER_KPC);
                 let planet = '—';
                 if (res.nPlanets[i] === 0) planet = 'no planets';
                 else if (res.best[i * 4 + 3] !== searchLib.BEST_NONE) {
@@ -567,6 +574,8 @@ async function boot() {
                         if (res.kind[i] === searchLib.KIND_UNRESOLVED) {
                                 button.disabled = true;
                                 button.title = 'This selected-set member is no longer resident; it cannot be selected from this result.';
+                        } else if (res.approximated[i]) {
+                                button.title = 'Distance is approximate under the active movement engine; the star identity is selectable.';
                         }
                         fragment.appendChild(button);
                 }
@@ -575,6 +584,7 @@ async function boot() {
         }
 
         function runSearch() {
+                pauseStarTimeForSearch();
                 controlsToToken();
                 tokenBox.value = searchLib.formatFilter(searchLib.parseFilter(tokenBox.value));
                 tokenToControls();
@@ -583,34 +593,50 @@ async function boot() {
                 const cam = camera.cameraPos;
                 const selectedCenter = currentStarCenter();
                 const useSelectedCenter = searchCenterSelect.value === 'current' && !!selectedCenter;
-                const centerX = useSelectedCenter ? selectedCenter.x : cam[0];
-                const centerY = useSelectedCenter ? selectedCenter.y : cam[1];
-                const centerZ = useSelectedCenter ? selectedCenter.z : cam[2];
+                let centerX = cam[0], centerY = cam[1], centerZ = cam[2];
+                let centerPositionStatus = window.Selection.DRAWN_EXACT;
+                if (useSelectedCenter) {
+                        centerPositionStatus = selection.resolveDrawn(selectedCenter, searchCenterPosition);
+                        centerX = searchCenterPosition[0];
+                        centerY = searchCenterPosition[1];
+                        centerZ = searchCenterPosition[2];
+                }
+                const searchTimeMyr = starTimeMyr;
                 const t0 = performance.now();
                 const res = search.run(filter, {
                         scope, camX: cam[0], camY: cam[1], camZ: cam[2],
                         centerX, centerY, centerZ,
+                        time: searchTimeMyr,
                         model, renderer, set: starSet,
                 });
                 const ms = performance.now() - t0;
                 searchSnapshot = [];
+                let approximateCount = 0;
                 for (let i = 0; i < res.count; i++) {
+                        const approximated = res.approximated[i] ? 1 : 0;
+                        if (approximated) approximateCount++;
                         searchSnapshot.push({
                                 group: window.SelectionStore.GROUP_SPACE, type: 'star',
                                 key: res.keys[i] >>> 0, kind: res.kind[i], index: res.index[i],
                                 x: res.x[i], y: res.y[i], z: res.z[i],
                                 colorIndex: res.colorIndex[i], absMag: res.absMag[i],
+                                approximated,
                         });
                 }
                 selectionStore.setSearchResults(window.SelectionStore.GROUP_SPACE, searchSnapshot);
                 searchVersion = renderer.starBlocks().dynamicVersion;
                 const centerName = useSelectedCenter ? selectionLabel(selectedCenter) : 'camera';
+                const centerQuality = !useSelectedCenter || centerPositionStatus === window.Selection.DRAWN_EXACT
+                        ? '' : centerPositionStatus === window.Selection.DRAWN_APPROX
+                                ? ' · approximate centre' : ' · snapshot centre';
                 const radiusPc = searchNumberOr(searchRadiusBox.value, Infinity);
                 const radiusText = radiusPc < Infinity ? ' · ' + Number(radiusPc.toPrecision(4)) + ' pc' : '';
-                valSearch.textContent = res.stats.scope + ' · around ' + centerName + radiusText
+                const approxText = approximateCount ? ` · ${approximateCount} approximate` : '';
+                valSearch.textContent = res.stats.scope + ' · around ' + centerName + centerQuality + radiusText
+                        + ' · snapshot ' + res.stats.timeMyr.toFixed(1) + ' Myr'
                         + ' · scanned ' + res.stats.scanned.toLocaleString()
                         + ' · matched ' + res.stats.matched.toLocaleString() + ' · kept ' + res.count
-                        + ' · ' + ms.toFixed(ms < 10 ? 1 : 0) + ' ms';
+                        + approxText + ' · ' + ms.toFixed(ms < 10 ? 1 : 0) + ' ms';
                 const lines = ['search ' + (tokenBox.value || '(all)') + ' · ' + valSearch.textContent];
                 if (res.count === 0) lines.push('no matches');
                 const show = Math.min(res.count, 12);
@@ -619,6 +645,7 @@ async function boot() {
                 sysreadSearchText = lines.join('\n');
                 renderSearchResults(res);
                 if (!systemLayer.isOpen()) sysread.textContent = sysreadSearchText;
+                updateOverlay(renderer.state, camera.getState(statsText));
         }
         btnSearch.addEventListener('click', runSearch);
         btnSearchClear.addEventListener('click', markSearchStale);
@@ -645,7 +672,7 @@ async function boot() {
                         aroundPick.z = row.z;
                         aroundPick.colorIndex = row.colorIndex;
                         aroundPick.absMag = row.absMag;
-                        aroundPick.approximated = 0;
+                        aroundPick.approximated = row.approximated ? 1 : 0;
                         const inputs = selectPlanets.stellarInputs(aroundPick, ctx, starInputs);
                         starSet.insert(aroundPick, inputs, cam[0], cam[1], cam[2], row.index);
                 }
@@ -1064,6 +1091,13 @@ async function boot() {
         function syncStarTime() {
                 sliderStarTime.value = starTimeRate;
                 valStarTime.textContent = window.OrbitLib.formatTimeRate(starTimeRate, 0);
+        }
+        function pauseStarTimeForSearch() {
+                if (starTimeRate === 0) return false;
+                lastNonZeroTimeRate = starTimeRate;
+                starTimeRate = 0;
+                syncStarTime();
+                return true;
         }
         sliderStarTime.addEventListener('input', () => {
                 starTimeRate = Number(sliderStarTime.value);
@@ -1735,7 +1769,9 @@ async function boot() {
                 return {
                         group: window.SelectionStore.GROUP_SPACE,
                         type: 'star', key: starSet.keys[p] >>> 0, name: memberName(p),
+                        kind: starSet.blockKind[p], index: starSet.bufferIdx[p],
                         x: starSet.x[p], y: starSet.y[p], z: starSet.z[p],
+                        colorIndex: starSet.colorIndex[p], absMag: starSet.absMag[p],
                 };
         }
 
@@ -1891,6 +1927,7 @@ async function boot() {
 
         function syncSetUi() {
                 labels.setSelectedKeys(starSet.keys, starSet.count);
+                btnFlyTo.disabled = starSet.primary < 0;
                 syncSelectionPanel();
         }
 
@@ -2045,7 +2082,7 @@ async function boot() {
                 searchPick.x = row.x; searchPick.y = row.y; searchPick.z = row.z;
                 searchPick.colorIndex = row.colorIndex;
                 searchPick.absMag = row.absMag;
-                searchPick.approximated = 0;
+                searchPick.approximated = row.approximated ? 1 : 0;
                 handleStarPick(searchPick, false);
                 updateOverlay(renderer.state, camera.getState(statsText));
         }

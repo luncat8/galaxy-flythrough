@@ -1427,10 +1427,9 @@ Shipped, in `archive/`:
     rows. `around.dist2` is therefore drawn-space kpc² — the radius test and the
     sort key — while `around.x/y/z` stay the birth record: two frames of reference
     in one row, neither redundant.
-  * Still birth-space, knowingly, and the reason is budgetary rather than
-    conceptual: the §5 search scan (a synchronous one-frame catalogue query whose
-    §5.3 budgets a dispatch would break — making it exact needs the picker's
-    chunking) and with it the search's centre. Both are follow-ups.
+  * The search's birth-space distance and centre were the remaining gap. **ui.3**
+    replaces that decision with a frozen, drawn-position snapshot rather than a
+    multi-frame search; see the next entry.
   * Tests: `experiments/star-select-test.js` — the radius scan against an
     independent *dispatched* brute-force list under masks 1/4/5 at 100 Myr, the
     non-vacuity pin that the drawn neighbourhood is not the birth one, birth
@@ -1439,6 +1438,28 @@ Shipped, in `archive/`:
     block (worst error 0), its refusal of a slot its key does not name, the
     clicked-star-is-the-flown-to-star end-to-end pin, and both slice budgets at
     300k (45 checks).
+
+- **ui.3 — frozen drawn-space search and result flight.** A search is a deliberate
+  stop-and-inspect operation: `runSearch` stores the current signed star-time rate,
+  sets the rate to zero, and calls `search.run` once synchronously. It does not
+  schedule a multi-frame scan or restore time on completion; the user resumes with
+  `T` (or the rate slider), so the result can be inspected before the sky moves.
+  The scan receives the fixed `starTimeMyr` and the active `OrbitLib` dispatch:
+  galaxy candidates and resident selection-set members are distance-tested and
+  sorted by where they are drawn at that instant, while their stored `x/y/z` remain
+  birth coordinates for identity and `stellarInputs`. The current-star centre is
+  resolved by key through `selection.resolveDrawn`, with the camera as fallback.
+  `simple` engine positions are still CPU-approximate and are marked with `~` in
+  result distances and in the report; stale selection members use their snapshot
+  and remain non-selectable. The report names the snapshot epoch in Myr, so if the
+  user later resumes time, the list stays an honest historical query. Selecting a
+  result promotes it to current; **Fly to primary** is available as a button and
+  `F`, and `F/N/X/T` continue to work when a result button has focus (form fields
+  still own their keys). The flight resolves the star's current drawn position.
+  Tests: `search-test.js` pins drawn-distance behavior at nonzero time for both
+  galaxy and selection scope, preserves birth snapshots, and marks the simple
+  approximation; `input-test.js` pins hotkeys from result buttons; `m1-smoke-test.js`
+  pins the pause/snapshot/fly wiring.
 
 - [`evolution-plan.md`](evolution-plan.md) — the 0.6 series, galaxy evolution over time:
   the type table describes present-day galaxies, so `modelAtAge` gains an **epoch tier**

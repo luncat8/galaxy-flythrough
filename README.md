@@ -54,9 +54,11 @@ No framework, bundler, module loader, or runtime network connection is required.
 - Deterministic per-star planetary systems: planets, belts, moons, insolation and
   temperatures, HZ/terran/locked flags, generated lazily on the CPU for the selected star
 - Star and planet search with a compact token filter (`G,K|terran|220-300`), scoped to the
-  selection or the galaxy, with add-results-to-selection
+  selection or the galaxy. Search pauses star time and runs once against the positions drawn
+  at that instant; results report the snapshot time, and `T` resumes the clock when you're ready.
 - A separate **Search & Selection** panel: star current/previous history with swap, a
-  default 10 pc search centred on the current star (camera fallback), and clickable results.
+  default 10 pc search centred on the current star (camera fallback), clickable results,
+  and a **Fly to primary** action (`F`) for the selected result.
   The typed asset history accepts ship/base/colony/dock-port/cargo-container references and
   can capture its current entry in either slot of the two-entry asset pair.
 - Close-system schematic view: `V` opens a log-polar map of the primary selection — HZ
@@ -90,7 +92,7 @@ Other controls:
 - `Tab` — hide/show both panels; a panel's own `▾` (or a click on its title) collapses it to its header
 - `G` — cycle galaxy type and rebuild the field
 - `P` — toggle constellation lines
-- `T` — pause/resume star time
+- `T` — pause/resume star time (also works after clicking a result button)
 - the **Evolve with star time** checkbox — the galaxy's age runs with star time from 0.2 Gyr to
   present day; the Age slider is the seek, and the epoch readout next to it shows the field's epoch.
   The bar and arms keep their orientation across steps; each step re-draws the field, so lower

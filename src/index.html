@@ -182,13 +182,14 @@
 		</div>
 		<div class="menu-row menu-actions selection-actions">
 			<button id="btn-select-around" title="Add every star within the radius of the current star (F flies to it, N cycles, X clears)">Select around</button>
+			<button id="btn-fly-to" type="button" disabled title="Fly to the selected primary and orbit at its luminosity stand-off (F)">Fly to primary (F)</button>
 			<button id="btn-clear-set" title="Clear selection history and the selected-star set (X)">Clear selection</button>
 		</div>
 
 		<div class="menu-header selection-section-heading"><span>Search stars</span><small>group 1a</small></div>
 		<div class="menu-row search-row">
 			<label for="search-center">Center</label>
-			<select id="search-center" title="Search around the current star, or around the camera">
+			<select id="search-center" title="Search from the current star's drawn position, or from the camera">
 				<option value="current" selected>current star</option>
 				<option value="camera">camera</option>
 			</select>
@@ -222,7 +223,7 @@
 			<input type="text" id="search-token" spellcheck="false" placeholder="G,K|terran|220-300">
 		</div>
 		<div class="menu-row menu-actions selection-actions">
-			<button id="btn-search" title="Search the selected scope within the chosen radius">Search</button>
+			<button id="btn-search" title="Freeze star time and run one search against the currently drawn positions; it stays paused so you can inspect and select results">Search</button>
 			<button id="btn-search-add" title="Add kept results to the selected-star set, nearest-first">Add results to set</button>
 			<button id="btn-search-clear" title="Drop the result list">Clear results</button>
 		</div>
@@ -251,7 +252,7 @@
 			<span>Pair 1 <strong id="asset-pair-first">—</strong><button id="asset-pair-first-set" type="button" disabled>Use current</button></span>
 			<span>Pair 2 <strong id="asset-pair-second">—</strong><button id="asset-pair-second-set" type="button" disabled>Use current</button></span>
 		</div>
-		<div class="menu-hint">Click a star row to select it · search radius is centred on the current star</div>
+		<div class="menu-hint">Search pauses star time · click a result, then Fly to primary (F) · T resumes time</div>
 	</div>
 	<!-- System and ship (0.5.6): the view, its clock, the delta-v budget, the
 	     ship class and the route are one workflow, so they live in their own

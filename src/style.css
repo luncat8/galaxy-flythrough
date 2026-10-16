@@ -188,6 +188,7 @@ html, body {
 	margin: 0;
 	padding: 4px 6px;
 }
+#selection-menu .selection-actions button:disabled { opacity: 0.45; cursor: default; }
 #selection-menu .selection-radius-row { grid-template-columns: minmax(0, 1fr) auto; }
 #selection-menu .search-row input[type=number]#search-radius-pc { width: 58px; }
 #search-results {

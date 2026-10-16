@@ -54,6 +54,7 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		/<link[^>]+href="style\.css"/.test(html)
 		&& /id="canvas"/.test(html) && /id="labels"/.test(html) && /id="system"/.test(html)
 		&& /id="selection-menu"/.test(html) && /id="search-results"/.test(html)
+		&& /id="btn-fly-to"/.test(html)
 		&& /id="overlay"/.test(html) && /id="error"/.test(html),
 		{ css: /style\.css/.test(html), elements: ['canvas', 'labels', 'system', 'selection-menu', 'search-results', 'overlay', 'error'].map(id => html.includes(`id="${id}"`)) });
 }
@@ -95,6 +96,18 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		&& /routeRoundtrip/.test(main)
 		&& /selection-swap/.test(html)
 		&& /asset-pair-first-set/.test(html));
+	const searchStart = main.indexOf('function runSearch()');
+	const searchEnd = main.indexOf("btnSearch.addEventListener('click', runSearch);");
+	const searchRun = main.slice(searchStart, searchEnd);
+	check('search pauses once, scans one drawn-position snapshot, and supports selecting then flying to a result',
+		searchStart >= 0 && searchEnd > searchStart
+		&& /function runSearch\(\) \{\s*pauseStarTimeForSearch\(\);/.test(searchRun)
+		&& /selection\.resolveDrawn\(selectedCenter, searchCenterPosition\)/.test(searchRun)
+		&& /search\.run\(filter, \{[\s\S]*?time: searchTimeMyr/.test(searchRun)
+		&& /snapshot '\s*\+ res\.stats\.timeMyr/.test(searchRun)
+		&& /btnFlyTo\.addEventListener\('click', \(\) => \{\s*if \(!flyToPrimary\(\)\) return;/.test(main)
+		&& /btnFlyTo\.disabled = starSet\.primary < 0/.test(main)
+		&& /id="btn-fly-to"[^>]*>Fly to primary \(F\)<\/button>/.test(html));
 	// ui.2: the camera and the radius scan judge *drawn* positions, not the birth
 	// records the snapshots store. There is no browser to run this in, so the
 	// wiring is pinned as text — including the two shapes that must not come back

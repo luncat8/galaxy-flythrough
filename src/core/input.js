@@ -72,6 +72,7 @@ function createInput(canvas) {
 	// a no-op outside the view.
 	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyC: 'cameraMode', KeyP: 'constellations', KeyG: 'galaxyCycle', KeyT: 'freezeTime', Tab: 'menu',
 		KeyF: 'flyTo', KeyN: 'nextStar', KeyX: 'clearSet', KeyV: 'systemView', KeyB: 'dvMap', Escape: 'systemViewExit' };
+	const PANEL_BUTTON_SHORTCUTS = { KeyF: 1, KeyN: 1, KeyX: 1 };
 	// Exposure accumulates, so key repeat is one more step per repeat.
 	const exposureMap = { BracketLeft: -1, Minus: -1, BracketRight: 1, Equal: 1 };
 	// Linear exposure (ACES pre-multiplier) in half-stop steps. ; darker, ' brighter.
@@ -85,15 +86,16 @@ function createInput(canvas) {
 	let downX = 0;
 	let downY = 0;
 
-	// The settings panels hold form fields, and they must own their keys:
-	// a number input has to accept its digits, and a focused slider has to
-	// move with the arrows instead of flying the camera. Tab is the one key
-	// that still belongs to the panels, because it is how they close.
+	// Form fields own their keys. T remains available on panel text as well as
+	// buttons; F/N/X work from panel buttons so a focused result can be flown to.
 	function editingField(e) {
 		const target = e.target;
-		if (!target || !target.tagName) return false;
-		return e.code !== 'Tab' && (FORM_TAG.test(target.tagName)
-			|| target.tagName === 'BUTTON' || !!target.closest('.panel'));
+		if (!target || !target.tagName || e.code === 'Tab') return false;
+		if (FORM_TAG.test(target.tagName)) return true;
+		const inPanel = !!target.closest('.panel');
+		if (inPanel) return e.code !== 'KeyT'
+			&& (target.tagName !== 'BUTTON' || !PANEL_BUTTON_SHORTCUTS[e.code]);
+		return target.tagName === 'BUTTON';
 	}
 
 	// Ctrl/Cmd+V over the scene is a paste, not V: main.js applies a preset

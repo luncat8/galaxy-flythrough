@@ -5,8 +5,9 @@
 //
 // Two stages (plan §5.3). Stage 1 runs the star predicates — distance from the
 // supplied centre (camera by default), spectral class, state, luminosity, mass,
-// component — from the record alone where possible (colorIndex, absMag, position) and from one
-// `stellarInputs` where not. Stage 2 runs `planets.systemSummary` only for
+// component — against the position the active engine draws at env.time. Birth
+// coordinates remain the inputs to stellar derivation and the saved snapshot.
+// Stage 2 runs `planets.systemSummary` only for
 // survivors, and only when the filter carries a planet predicate at all.
 //
 // Two exact pre-filters keep the budgets without changing a single answer:
@@ -39,7 +40,8 @@
 // A set member whose slot no longer holds its key (defensive only: the set
 // clears on regenerate, so the page cannot produce one) resolves through the
 // record path with kind −1, the existing stale convention — its slot index is
-// never trusted for another star's derivation.
+// never trusted for another star's derivation. Distances use the search-time
+// drawn position; `approximated` marks the simple engine's GPU-only position gap.
 
 (function () {
 'use strict';
@@ -56,6 +58,9 @@ const searchHash = (typeof module !== 'undefined' && module.exports)
 const searchDensity = (typeof module !== 'undefined' && module.exports)
 	? require('../math/density.js')
 	: ((typeof window !== 'undefined') ? window.DensityLib : null);
+const searchOrbit = (typeof module !== 'undefined' && module.exports)
+	? require('../math/orbit.js')
+	: ((typeof window !== 'undefined') ? window.OrbitLib : null);
 
 // 1 ly in kpc. Owned by camera.js; the fallback carries camera.js's own digits
 // for embeds that load this file without it, and search-test.js pins the two
@@ -77,7 +82,8 @@ function searchLyToKpc() {
 // (what stellarInputs and the member context read); `kind` is the block, or
 // KIND_UNRESOLVED (−1) for a set member whose slot no longer holds its key
 // (record path, never another star's derivation); `dist2` is kpc² from the
-// camera, the nearest-first sort key. `nPlanets`/`nBelts` are COUNT_UNKNOWN
+// supplied centre's drawn position, the nearest-first sort key.
+// `nPlanets`/`nBelts` are COUNT_UNKNOWN
 // when the query ran no summary (a star-only filter has no planet facts);
 // `best` holds the display planet's (a, mass, tsurf, type) with type
 // BEST_NONE and NaNs when no planet is named.
@@ -313,6 +319,7 @@ function createResults() {
 		z: new Float64Array(MAX_RESULTS),
 		colorIndex: new Uint8Array(MAX_RESULTS),
 		absMag: new Float64Array(MAX_RESULTS),
+		approximated: new Uint8Array(MAX_RESULTS),
 		starProps: new Float64Array(MAX_RESULTS * 5),
 		best: new Float64Array(MAX_RESULTS * 4),
 		bestLetter: new Int8Array(MAX_RESULTS),
@@ -321,7 +328,7 @@ function createResults() {
 		dist2: new Float64Array(MAX_RESULTS),
 		count: 0,
 		stats: {
-			scope: '', scanned: 0, matched: 0, truncated: 0,
+			scope: '', timeMyr: 0, scanned: 0, matched: 0, truncated: 0,
 			msStage1: 0, msStage2: 0, msRefine: 0,
 		},
 	};
@@ -341,7 +348,9 @@ function createSearch() {
 	const cMag = new Float64Array(CHUNK);
 	const cProps = new Float64Array(CHUNK * 5);
 	const cDerived = new Uint8Array(CHUNK);
+	const cApprox = new Uint8Array(CHUNK);
 	const cDist2 = new Float64Array(CHUNK);
+	const drawnPosition = new Float64Array(3);
 	// Summary matches awaiting the exactness refine (range queries only).
 	const staged = new Uint16Array(CHUNK);
 	// The nearest-first permutation and the row scratch it gathers through.
@@ -433,11 +442,27 @@ function createSearch() {
 		return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
 	}
 
+	function resolveDrawnPosition(st, kind, index, x, y, z, packed, out) {
+		if (kind === searchPlanets.BLOCK_LANDMARK && st.orbit
+			&& st.orbit.engineLandmarkPosition) {
+			st.orbit.engineLandmarkPosition(out, index, x, y, z,
+				packed & 0xFF, st.time, st.model);
+			return false;
+		}
+		if (!st.orbit || !st.orbit.engineRecordPosition || kind < 0) {
+			out[0] = x; out[1] = y; out[2] = z;
+			return kind < 0;
+		}
+		return st.orbit.engineRecordPosition(out, x, y, z, packed,
+			st.time, st.model) === true;
+	}
+
 	function run(filter, env) {
 		const res = results;
 		const stats = res.stats;
 		res.count = 0;
 		stats.scope = '';
+		stats.timeMyr = 0;
 		stats.scanned = 0;
 		stats.matched = 0;
 		stats.truncated = 0;
@@ -457,11 +482,13 @@ function createSearch() {
 		stats.scope = scope;
 
 		// The predicate plan, decided once. Distance is in ly from the supplied
-		// search centre (camera by default); the scan compares kpc².
+		// search centre (camera by default); the scan compares drawn-space kpc².
 		const lyToKpc = searchLyToKpc();
 		const st = {
 			filter,
 			model,
+			orbit: searchOrbit,
+			time: Number.isFinite(env.time) ? env.time : 0,
 			classMask: ((filter.classes | 0) | classMaskForStates(filter.states | 0)) >>> 0,
 			hasLum: filter.lumMin > 0 || filter.lumMax < Infinity,
 			hasMass: filter.massMin > 0 || filter.massMax < Infinity,
@@ -486,6 +513,7 @@ function createSearch() {
 			blocks: null,
 			segStart: 0,
 		};
+		stats.timeMyr = st.time;
 		st.hasClass = st.classMask !== 0;
 		st.hasComp = st.compMask !== 0;
 		st.hasRanges = st.hasTsurf || st.hasTeq || st.hasPmass || st.hasA;
@@ -553,15 +581,17 @@ function createSearch() {
 				const x = view.getFloat32(byteOffset, true);
 				const y = view.getFloat32(byteOffset + 4, true);
 				const z = view.getFloat32(byteOffset + 8, true);
-				const dx = x - st.centerX;
-				const dy = y - st.centerY;
-				const dz = z - st.centerZ;
+				const color = packed & 0xFF;
+				const index = slot - base;
+				const approximated = resolveDrawnPosition(st, k, index,
+					x, y, z, packed, drawnPosition);
+				const dx = drawnPosition[0] - st.centerX;
+				const dy = drawnPosition[1] - st.centerY;
+				const dz = drawnPosition[2] - st.centerZ;
 				const d2 = dx * dx + dy * dy + dz * dz;
 				if (d2 < st.distLo2 || d2 > st.distHi2) continue;
-				const color = packed & 0xFF;
 				const mag = R.decodeAbsMag((packed >>> 8) & 0xFF);
 				const key = identity[slot] >>> 0;
-				const index = slot - base;
 				let needDerive = false;
 				if (st.hasClass) {
 					if (isRecordClass) {
@@ -589,7 +619,7 @@ function createSearch() {
 						if ((((st.compMask >>> comp) & 1)) === 0) continue;
 					}
 				}
-				const j = appendChunk(key, k, index, x, y, z, color, mag, d2);
+				const j = appendChunk(key, k, index, x, y, z, color, mag, d2, approximated);
 				if (needDerive) {
 					ref.kind = k;
 					ref.key = key;
@@ -628,40 +658,53 @@ function createSearch() {
 		const P = searchPlanets;
 		const stats = results.stats;
 		const f = st.filter;
+		const visibleBit = searchRecords.FLAG_VISIBLE << 16;
 		stats.scanned = set.count;
 		for (let i = 0; i < set.count; i++) {
 			const x = set.x[i];
 			const y = set.y[i];
 			const z = set.z[i];
-			const dx = x - st.centerX;
-			const dy = y - st.centerY;
-			const dz = z - st.centerZ;
-			const d2 = dx * dx + dy * dy + dz * dz;
-			if (d2 < st.distLo2 || d2 > st.distHi2) continue;
 			const key = set.keys[i] >>> 0;
-			// Out-of-range kinds (a previous −1 stored in the set's Uint8
-			// array reads back as 255) resolve through the record path.
 			const rawKind = set.blockKind[i];
 			const kind = rawKind < st.blocks.length ? rawKind : KIND_UNRESOLVED;
 			const color = set.colorIndex[i];
 			const mag = set.absMag[i];
-			// The slot guard (main.js memberRefFor, by key rather than by
-			// seed): a member whose slot no longer holds its key resolves
-			// through the record path instead of another star's derivation.
-			// Defensive only — the set clears on regenerate — but a stale
-			// field index must never read another star's component.
 			let effKind = kind;
 			let blockIndex = set.bufferIdx[i] | 0;
-			if (kind === P.BLOCK_FIELD || kind === P.BLOCK_OBJECT) {
+			let approximated = 1;
+			if (kind >= 0) {
 				const block = st.blocks[kind];
-				const slot = blockIndex >= 0 ? (block.offset | 0) + blockIndex : -1;
-				if (blockIndex < 0 || blockIndex >= (block.count | 0)
+				const slot = block && blockIndex >= 0 && blockIndex < (block.count | 0)
+					? (block.offset | 0) + blockIndex : -1;
+				if (slot < 0 || slot >= info.identity.length
 					|| (info.identity[slot] >>> 0) !== key) {
 					effKind = KIND_UNRESOLVED;
 					blockIndex = 0;
+				} else {
+					const byteOffset = slot * searchRecords.RECORD_BYTES;
+					const packed = info.view.getUint32(byteOffset + 12, true);
+					if ((packed & visibleBit) === 0) {
+						effKind = KIND_UNRESOLVED;
+						blockIndex = 0;
+					} else {
+						const bx = info.view.getFloat32(byteOffset, true);
+						const by = info.view.getFloat32(byteOffset + 4, true);
+						const bz = info.view.getFloat32(byteOffset + 8, true);
+						approximated = resolveDrawnPosition(st, kind, blockIndex,
+							bx, by, bz, packed, drawnPosition) ? 1 : 0;
+					}
 				}
 			}
-			const isRecordClass = effKind !== kind
+			if (effKind < 0) {
+				drawnPosition[0] = x; drawnPosition[1] = y; drawnPosition[2] = z;
+				approximated = 1;
+			}
+			const dx = drawnPosition[0] - st.centerX;
+			const dy = drawnPosition[1] - st.centerY;
+			const dz = drawnPosition[2] - st.centerZ;
+			const d2 = dx * dx + dy * dy + dz * dz;
+			if (d2 < st.distLo2 || d2 > st.distHi2) continue;
+			const isRecordClass = effKind < 0
 				|| kind === P.BLOCK_LANDMARK || kind === P.BLOCK_CATALOG;
 			if (st.hasClass) {
 				if (isRecordClass) {
@@ -678,9 +721,8 @@ function createSearch() {
 					if (!((st.classMask & (bitByClass[inputs.spectralClass] || 0)))) continue;
 				}
 			}
-			// The snapshot is the set's truth (plan §3.2): lum and mass come
-			// from the member's own fields, never a re-derivation — and the
-			// same fields are what the collector stores.
+			// The snapshot is the set's truth: stellar properties and birth
+			// coordinates survive a residency rebuild; only the distance is live.
 			if (st.hasLum && (set.lum[i] < f.lumMin || set.lum[i] > f.lumMax)) continue;
 			if (st.hasMass && (set.mass[i] < f.massMin || set.mass[i] > f.massMax)) continue;
 			if (st.hasComp) {
@@ -698,7 +740,8 @@ function createSearch() {
 				}
 				if ((((st.compMask >>> comp) & 1)) === 0) continue;
 			}
-			const j = appendChunk(key, effKind, blockIndex, x, y, z, color, mag, d2);
+			const j = appendChunk(key, effKind, blockIndex, x, y, z,
+				color, mag, d2, approximated);
 			const o = j * 5;
 			cProps[o] = set.mass[i];
 			cProps[o + 1] = set.lum[i];
@@ -709,7 +752,7 @@ function createSearch() {
 		}
 	}
 
-	function appendChunk(key, kind, index, x, y, z, color, mag, d2) {
+	function appendChunk(key, kind, index, x, y, z, color, mag, d2, approximated) {
 		const j = chunkCount++;
 		cKey[j] = key >>> 0;
 		cKind[j] = kind;
@@ -718,6 +761,7 @@ function createSearch() {
 		cColor[j] = color;
 		cMag[j] = mag;
 		cDerived[j] = 0;
+		cApprox[j] = approximated ? 1 : 0;
 		cDist2[j] = d2;
 		return j;
 	}
@@ -916,6 +960,7 @@ function createSearch() {
 		res.x[i] = cX[j]; res.y[i] = cY[j]; res.z[i] = cZ[j];
 		res.colorIndex[i] = cColor[j];
 		res.absMag[i] = cMag[j];
+		res.approximated[i] = cApprox[j];
 		res.dist2[i] = cDist2[j];
 		// A star that matched without derivation (a distance-only filter, a
 		// record-class filter) still needs its snapshot fields for the
@@ -985,7 +1030,7 @@ function createSearch() {
 		const res = results;
 		const n = res.count;
 		for (let i = 0; i < n; i++) order[i] = i;
-		// Nearest-first, the cell manager's rule: sorting 512 entries is
+		// Nearest-first from the supplied centre: sorting 512 entries is
 		// ~0.1 ms and keeps "the nearest Earth-like world" a one-query
 		// question. TypedArray sort is in place — no allocation.
 		order.subarray(0, n).sort((a, b) => res.dist2[a] - res.dist2[b]);
@@ -1001,6 +1046,7 @@ function createSearch() {
 			res.z[i] = gather.z[s];
 			res.colorIndex[i] = gather.colorIndex[s];
 			res.absMag[i] = gather.absMag[s];
+			res.approximated[i] = gather.approximated[s];
 			res.dist2[i] = gather.dist2[s];
 			res.bestLetter[i] = gather.bestLetter[s];
 			res.nPlanets[i] = gather.nPlanets[s];
@@ -1032,6 +1078,7 @@ function createSearch() {
 		dst.z.set(src.z.subarray(0, n));
 		dst.colorIndex.set(src.colorIndex.subarray(0, n));
 		dst.absMag.set(src.absMag.subarray(0, n));
+		dst.approximated.set(src.approximated.subarray(0, n));
 		dst.dist2.set(src.dist2.subarray(0, n));
 		dst.bestLetter.set(src.bestLetter.subarray(0, n));
 		dst.nPlanets.set(src.nPlanets.subarray(0, n));
