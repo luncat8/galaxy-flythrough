@@ -31,7 +31,9 @@ function freshInput() {
 		lookDx: 0,
 		lookDy: 0,
 		wheelDelta: 0,
-		actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0 },
+		// Only what camera.step still consumes (ui.4): mode switches need the
+		// app's selection store, so main.js owns orbitCentre/orbitObject/flyMode.
+		actions: { reset: 0, home: 0, exposure: 0 },
 	};
 }
 
@@ -429,10 +431,13 @@ function project(camera, x, y, z, aspect) {
 		gc[0] === 8.178 && gc[1] === 0 && gc[2] === 0, Array.from(gc));
 
 	const before = camera.getState();
-	const input = pressAction(camera, 'cameraMode');
+	const input = pressAction(camera, 'home');
+	check('the home action is consumed by step()', input.actions.home === 0);
+	// The fresh camera already stands at home, so the press kept the pose;
+	// from here the modes are entered by setMode exactly as c/C/f do (ui.4).
+	camera.setMode(cameraModule.MODE_ORBIT_GC);
 	const orbitGc = camera.getState();
-	check('the cameraMode action is consumed by step()', input.actions.cameraMode === 0);
-	check('C from fly enters orbit-centre', orbitGc.mode === cameraModule.MODE_ORBIT_GC && orbitGc.modeName === 'orbit centre', orbitGc.modeName);
+	check('setMode from fly enters orbit-centre (Shift+C)', orbitGc.mode === cameraModule.MODE_ORBIT_GC && orbitGc.modeName === 'orbit centre', orbitGc.modeName);
 	check('orbit-centre targets the galactic centre',
 		orbitGc.orbitTarget[0] === gc[0] && orbitGc.orbitTarget[1] === gc[1] && orbitGc.orbitTarget[2] === gc[2] && orbitGc.targetName === 'galactic centre',
 		{ target: orbitGc.orbitTarget, name: orbitGc.targetName });
@@ -441,9 +446,9 @@ function project(camera, x, y, z, aspect) {
 	check('orbit distance is |Sun - centre|', Math.abs(orbitGc.orbitDistance - Math.hypot(8.178, 0, 0.005)) < 1e-9, orbitGc.orbitDistance);
 	check('the camera looks at the target', aimError(camera, gc) < 1e-9, aimError(camera, gc));
 
-	pressAction(camera, 'cameraMode');
+	camera.setMode(cameraModule.MODE_ORBIT_OBJECT);
 	const orbitObj = camera.getState();
-	check('C again enters orbit-object', orbitObj.mode === cameraModule.MODE_ORBIT_OBJECT && orbitObj.modeName === 'orbit object', orbitObj.modeName);
+	check('setMode enters orbit-object (c)', orbitObj.mode === cameraModule.MODE_ORBIT_OBJECT && orbitObj.modeName === 'orbit object', orbitObj.modeName);
 	check('the default object target is the Sun',
 		orbitObj.orbitTarget[0] === 0 && orbitObj.orbitTarget[1] === 0 && orbitObj.orbitTarget[2] === 0 && orbitObj.targetName === 'Sun',
 		{ target: orbitObj.orbitTarget, name: orbitObj.targetName });
@@ -454,9 +459,9 @@ function project(camera, x, y, z, aspect) {
 		{ moved: distanceTo(orbitObj, before.position), forward: Array.from(camera.forward), pitch: orbitObj.pitch });
 	check('orbit distance to the Sun is the 5 pc start height', Math.abs(orbitObj.orbitDistance - 0.005) < 1e-12, orbitObj.orbitDistance);
 
-	pressAction(camera, 'cameraMode');
+	camera.setMode(cameraModule.MODE_FLY);
 	const fly = camera.getState();
-	check('C a third time returns to fly', fly.mode === cameraModule.MODE_FLY, fly.modeName);
+	check('setMode returns to the free fly camera (f)', fly.mode === cameraModule.MODE_FLY, fly.modeName);
 	check('orbit -> fly is continuous: position and quaternion carry over, velocity is zero',
 		distanceTo(fly, orbitObj.position) < 1e-12 && quatDot(fly.orientation, orbitObj.orientation) > 1 - 1e-12
 		&& fly.velocity[0] === 0 && fly.velocity[1] === 0 && fly.velocity[2] === 0,
@@ -783,11 +788,11 @@ function project(camera, x, y, z, aspect) {
 		Math.abs(distanceTo(pole.getState(), [0, 0, 0.6]) - STAND_OFF) < 1e-9 && pole.forward[2] > 0.999,
 		{ dist: distanceTo(pole.getState(), [0, 0, 0.6]), fz: pole.forward[2] });
 
-	// Actions end the flight; a relaunch mid-flight restarts from the pose.
+	// A mode switch ends the flight; a relaunch mid-flight restarts from the pose.
 	const acted = freshFlight();
 	flyFrames(acted, 30);
-	pressAction(acted, 'cameraMode');
-	check('C during a flight ends it (mode cycles from orbit-object to fly)',
+	acted.setMode(cameraModule.MODE_FLY);
+	check('f during a flight ends it (setMode from orbit-object to fly)',
 		acted.getState().flying === false && acted.getState().mode === cameraModule.MODE_FLY);
 	const relaunched = freshFlight();
 	flyFrames(relaunched, 60);
@@ -886,8 +891,8 @@ function project(camera, x, y, z, aspect) {
 		input.keys.right = (i % 5) === 0;
 		input.lookDx = i % 7;
 		input.wheelDelta = (i % 90 === 0) ? -NOTCH : 0;
-		input.actions.cameraMode = (i % 100 === 0) ? 1 : 0;
 		input.actions.home = (i % 250 === 0) ? 1 : 0;
+		if (i % 100 === 99) c.setMode((c.getState().mode + 1) % 3);
 		c.step(DT, input);
 		c.buildViewProj(1.5);
 		const state = c.getState(out);

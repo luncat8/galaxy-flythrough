@@ -220,3 +220,51 @@ restored so only source, test, plan and worklog changes remain.
 slider stays at zero, click a result, press `F`, inspect the flight, then press `T` from
 the results area and confirm the star-time clock resumes. The synchronous design is
 intentional; do not chunk search unless the user revises that interaction decision.
+
+## ui.4 — explicit camera modes (c/C/f/F), G retired to the panel, g reserved for game mode
+
+**Decision and review.** The `C` cycle (fly → orbit centre → orbit object) was
+stateless: the same key made one of three moves depending on the mode the user
+had forgotten. It is replaced by explicit, case-paired keys — lowercase near,
+uppercase far: `c` orbits the last selected star on the spot, centred and
+followed (no flight); `Shift+C` orbits the galactic centre, centred; `f` takes
+the free fly camera and stops the orbit and the follow; `Shift+F` keeps the
+2 s fly-to, ending orbiting and following the object. The price is deliberate:
+the fly-to leaves plain `F` (the "fly" letter now grabs the fly camera) and a
+user holding Shift for boost who taps `f` gets the flight instead — the mapping
+is the brief's, so that edge stands. `G` no longer cycles galaxy type (the panel
+select already iterates the full table, and a 300k-star rebuild is a menu-size
+action, not a hotkey one); the key is reserved for game mode — for now a toggle
+with an honest placeholder line, the real design in `game-mode-plan.md`.
+
+**Implementation.** `input.js` drops `cameraMode`/`galaxyCycle`, adds
+`orbitCentre`/`orbitObject`/`flyMode`/`gameMode`, and maps `KeyC`/`KeyF`
+through a shift-cased pair (`casedPressMap`); one-shots still ignore
+`e.repeat`. The orbit/fly actions are consumed by main.js, not inside
+`camera.step`: entering object orbit needs the selection store's drawn
+position, and the camera only learns the target through `setOrbitTarget`
+afterwards — `toggleMode` and the mode consumption in `camera.js` are gone
+(setMode stays the single entry). `f` clears `followKey` explicitly even though
+the follow is inert outside object orbit, so "disable orbit and follow" is
+true state, not an accident of gating. `orbitPrimary()` beside `flyToPrimary()`
+is the drawn-space, follow-keyed switch `c` fires; `g` flips one boolean and the
+overlay gains a `mode game` line naming the plan file. Panel hints, the help
+overlay, README's table and the "G key" label on the type select follow.
+
+**Validation.** `input-test.js` 18 → 19 checks: the c/C/f/F/g mapping with
+shift, repeat suppression, the panel-button `F/N/X` path under the new letter,
+and menu field isolation re-pinned on the new action names. `camera-test.js`
+re-bases the mode section on `setMode` (consumption pinned on `home` instead of
+the retired `cameraMode`) and keeps the 600-frame no-reallocation contract with
+direct mode switches. New `m1-smoke-test.js` pins: the cased map and `KeyG` in
+`input.js`, the four loop consumers and `orbitPrimary`'s drawn+follow shape in
+`main.js`, and the absent shapes (`toggleMode`, `galaxyCycle`, the old
+`Fly to primary (F)` button label). `camera-test.js`, `input-test.js`,
+`m1-smoke-test.js` all pass; full suite pending at commit time below.
+
+**Next step suggestion.** G1 of `game-mode-plan.md` — `src/core/ship.js` holding
+velocity/tank/class with the accel cap and the burn integral, the three-line HUD
+(speed, fuel, distance + closing + ETA to the primary), and `ship-test.js`
+burn/ETA/no-alloc pins. The input routing (g gating c/C/F/Shift+F, Space
+all-stop) is a main.js change on top of the ui.4 action plumbing, which this
+entry kept deliberately thin for exactly that handoff.

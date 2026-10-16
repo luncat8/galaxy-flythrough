@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-15T23:31:07.812Z",
+  "date": "2026-10-16T04:32:56.046Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -68,8 +68,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 70,
-  "passed": 70,
+  "totalChecks": 72,
+  "passed": 72,
   "failed": 0,
   "checks": [
     {
@@ -113,7 +113,7 @@
       }
     },
     {
-      "name": "the menu iterates the full type table, not the G-key shortlist",
+      "name": "the menu iterates the full type table (galaxy type is menu-only since ui.4)",
       "pass": true
     },
     {
@@ -133,6 +133,10 @@
       "pass": true
     },
     {
+      "name": "the c/C/f/F key map is shift-cased and consumed by the loop, g toggles game mode",
+      "pass": true
+    },
+    {
       "name": "every element main.js looks up exists in index.html",
       "pass": true,
       "detail": "missing ids"
@@ -143,6 +147,10 @@
     },
     {
       "name": "selection state, nearby-centred search, result picking and prior-to-current routing are wired",
+      "pass": true
+    },
+    {
+      "name": "search pauses once, scans one drawn-position snapshot, and supports selecting then flying to a result",
       "pass": true
     },
     {

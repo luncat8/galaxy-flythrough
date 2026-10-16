@@ -33,6 +33,14 @@
       "pass": true
     },
     {
+      "name": "c/C/f/F carry the ui.4 camera modes and g the game mode, one-shots all",
+      "pass": true
+    },
+    {
+      "name": "selection and time shortcuts work with a result button focused, not in a field",
+      "pass": true
+    },
+    {
       "name": "Ctrl/Cmd+V over the scene is a paste, not the system-view key",
       "pass": true
     },

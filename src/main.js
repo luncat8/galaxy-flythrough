@@ -2219,7 +2219,7 @@ async function boot() {
                 return ly >= 100 ? `${ly.toFixed(0)} ly` : `${ly.toFixed(1)} ly`;
         }
 
-        // F (plan §3.4): orbit the primary at the stand-off its luminosity implies.
+        // Shift+F (plan §3.4): orbit the primary at the luminosity stand-off.
         // The flight targets the star's *drawn* position, and the camera keeps
         // riding it: followKey names the set member the camera's orbit target is,
         // resolved by key every frame — so a residency rebuild that re-slots the
@@ -2244,6 +2244,19 @@ async function boot() {
                 return true;
         }
 
+        // c (ui.4): orbit the primary where it stands — no flight, the camera
+        // only turns and centres on the star. The follow feeds the drawn
+        // position exactly like fly-to's does, so a moving star stays centred.
+        function orbitPrimary() {
+                const i = starSet.primary;
+                if (i < 0) return false;
+                memberDrawnPosition(i, drawnPos);
+                camera.setOrbitTarget(drawnPos[0], drawnPos[1], drawnPos[2], memberName(i));
+                camera.setMode(window.Camera.MODE_ORBIT_OBJECT);
+                followKey = starSet.keys[i] >>> 0;
+                return true;
+        }
+
         function cyclePrimary(delta) {
                 if (starSet.count === 0) return;
                 starSet.cyclePrimary(delta);
@@ -2255,6 +2268,14 @@ async function boot() {
                                 selectionFromPick(ref, deriveMemberInputs(i)));
                 }
                 syncSetUi();
+        }
+
+        // g (ui.4): the game-mode placeholder. Only the toggle and the notice
+        // exist; ship flight restrictions and the HUD are game-mode-plan.md.
+        let gameMode = false;
+        function gameModeLine() {
+                if (!gameMode) return '';
+                return `\nmode      game   ship display not implemented yet \u00b7 game-mode-plan.md \u00b7 g returns to observer`;
         }
 
         function cameraLine(c) {
@@ -2269,7 +2290,7 @@ async function boot() {
 
         function selectedLine(cameraState) {
                 if (selected < 0 || cameraState.mode !== window.Camera.MODE_FLY) return '';
-                return `\nselected ${landmarks.ENTRIES[selected].name}   (C cycles to orbit object)`;
+                return `\nselected ${landmarks.ENTRIES[selected].name}   (c orbits it \u00b7 Shift+F flies to it)`;
         }
 
         // The system brief: the primary's generated system on one line — the
@@ -2361,9 +2382,9 @@ async function boot() {
                 text += systemBriefLine(i);
                 if (starSet.count > 1 || setLabel) {
                         text += `\nset       ${setLabel || `${starSet.count} stars`}` +
-                                ' \u00b7 N next \u00b7 X clear \u00b7 F fly to';
+                                ' \u00b7 N next \u00b7 X clear \u00b7 c orbit \u00b7 Shift+F fly to';
                 } else {
-                        text += '   \u00b7 Shift+click adds \u00b7 F fly to';
+                        text += '   \u00b7 Shift+click adds \u00b7 c orbit \u00b7 Shift+F fly to';
                 }
                 return text;
         }
@@ -2389,6 +2410,7 @@ async function boot() {
                         `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   engine ${state.engine}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)${evolveOn ? ' +evolve' : ''}   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   pattern ${window.OrbitLib.effectivePatternSpeed(model).toFixed(3)} rad/Myr (x${patternScale.toFixed(2)})   Tab menu\n` +
                         `pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
                         cameraLine(cameraState) +
+                        gameModeLine() +
                         selectionLines(cameraState) +
                         selectedLine(cameraState);
         }
@@ -2438,9 +2460,28 @@ async function boot() {
                         initSimpleLandmarks();
                 }
 
-                if (actions.galaxyCycle) {
-                        actions.galaxyCycle = 0;
-                        regenerateGalaxy(galaxy.cycleGalaxyType(model.type), model.seed, model.populations.age);
+                // ui.4: the galaxy type is a menu-only control (the type select
+                // calls regenerateGalaxy directly); G is the game-mode toggle now
+                // and the orbit/fly modes are explicit keys, not a cycle.
+                if (actions.orbitCentre) {
+                        // Shift+C: orbit the galactic centre, centred.
+                        actions.orbitCentre = 0;
+                        camera.setMode(window.Camera.MODE_ORBIT_GC);
+                }
+                if (actions.orbitObject) {
+                        // c: orbit the last selected star on the spot — no flight.
+                        actions.orbitObject = 0;
+                        orbitPrimary();
+                }
+                if (actions.flyMode) {
+                        // f: the free fly camera — orbit and follow are both off.
+                        actions.flyMode = 0;
+                        camera.setMode(window.Camera.MODE_FLY);
+                        followKey = -1;
+                }
+                if (actions.gameMode) {
+                        actions.gameMode = 0;
+                        gameMode = !gameMode;
                 }
                 // The age slider's trailing edge: applied here, in loop time, so
                 // the value the user let go of is the one that lands. Since E4 an

@@ -124,28 +124,53 @@ check('menu controls own keyboard input except Tab', () => {
 		target.emit('keydown', { code: 'BracketRight' });
 	}
 	assert.equal(state.keys.forward, false);
-	assert.equal(state.actions.cameraMode, 0);
+	assert.equal(state.actions.orbitObject, 0);
+	assert.equal(state.actions.orbitCentre, 0);
 	assert.equal(state.actions.exposure, 0);
 	assert.equal(slider.emit('keydown', { code: 'Tab' }).defaultPrevented, true);
 	assert.equal(state.actions.menu, 1);
 	state.actions.menu = 0;
 });
+
+check('c/C/f/F carry the ui.4 camera modes and g the game mode, one-shots all', () => {
+	for (const action of ['orbitObject', 'orbitCentre', 'flyMode', 'flyTo', 'gameMode']) state.actions[action] = 0;
+	assert.equal(canvas.emit('keydown', { code: 'KeyC' }).defaultPrevented, true);
+	assert.equal(canvas.emit('keydown', { code: 'KeyC', shiftKey: true }).defaultPrevented, true);
+	assert.equal(canvas.emit('keydown', { code: 'KeyF' }).defaultPrevented, true);
+	assert.equal(canvas.emit('keydown', { code: 'KeyF', shiftKey: true }).defaultPrevented, true);
+	assert.equal(canvas.emit('keydown', { code: 'KeyG' }).defaultPrevented, true);
+	assert.equal(state.actions.orbitObject, 1);
+	assert.equal(state.actions.orbitCentre, 1);
+	assert.equal(state.actions.flyMode, 1);
+	assert.equal(state.actions.flyTo, 1);
+	assert.equal(state.actions.gameMode, 1);
+	state.actions.orbitObject = 0;
+	canvas.emit('keydown', { code: 'KeyC', repeat: true });
+	assert.equal(state.actions.orbitObject, 0, 'a held c must not re-orbit at the repeat rate');
+	state.actions.gameMode = 0;
+	canvas.emit('keydown', { code: 'KeyG', repeat: true });
+	assert.equal(state.actions.gameMode, 0, 'a held g must not flip game mode at the repeat rate');
+	for (const action of ['orbitObject', 'orbitCentre', 'flyMode', 'flyTo', 'gameMode']) state.actions[action] = 0;
+});
 check('selection and time shortcuts work with a result button focused, not in a field', () => {
-	for (const action of ['flyTo', 'nextStar', 'clearSet', 'freezeTime']) state.actions[action] = 0;
+	for (const action of ['flyMode', 'flyTo', 'nextStar', 'clearSet', 'freezeTime']) state.actions[action] = 0;
 	for (const code of ['KeyF', 'KeyN', 'KeyX', 'KeyT']) {
 		assert.equal(button.emit('keydown', { code }).defaultPrevented, true);
 	}
-	assert.equal(state.actions.flyTo, 1);
+	assert.equal(state.actions.flyMode, 1);
 	assert.equal(state.actions.nextStar, 1);
 	assert.equal(state.actions.clearSet, 1);
 	assert.equal(state.actions.freezeTime, 1);
-	for (const action of ['flyTo', 'nextStar', 'clearSet', 'freezeTime']) state.actions[action] = 0;
+	button.emit('keydown', { code: 'KeyF', shiftKey: true });
+	assert.equal(state.actions.flyTo, 1);
+	for (const action of ['flyMode', 'flyTo', 'nextStar', 'clearSet', 'freezeTime']) state.actions[action] = 0;
 	assert.equal(panel.emit('keydown', { code: 'KeyT' }).defaultPrevented, true);
 	assert.equal(state.actions.freezeTime, 1);
 	state.actions.freezeTime = 0;
 	for (const code of ['KeyF', 'KeyN', 'KeyX', 'KeyT']) {
 		assert.equal(slider.emit('keydown', { code }).defaultPrevented, undefined);
 	}
+	assert.equal(state.actions.flyMode, 0);
 	assert.equal(state.actions.flyTo, 0);
 	assert.equal(state.actions.freezeTime, 0);
 });

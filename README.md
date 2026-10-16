@@ -47,8 +47,9 @@ No framework, bundler, module loader, or runtime network connection is required.
 - Named-star selection, labels, and constellation lines
 - Star selection and multi-select: click any drawn star (procedural, object, catalog or
   landmark), Shift+click to build a set of up to 256, select-around by a world-space radius,
-  fly to one (`F` — a 2 s eased flight that ends orbiting the star at its luminosity
-  stand-off, cancelled by any control input; a moving landmark stays centred), cycle the
+  fly to one (`Shift+F` — a 2 s eased flight that ends orbiting the star at its luminosity
+  stand-off, cancelled by any control input; a moving landmark stays centred), orbit it on
+  the spot (`c`), cycle the
   set (`N`), clear it (`X`) — each member snapshotted with its
   stellar properties, so the set survives the streaming rebuild
 - Deterministic per-star planetary systems: planets, belts, moons, insolation and
@@ -58,7 +59,7 @@ No framework, bundler, module loader, or runtime network connection is required.
   at that instant; results report the snapshot time, and `T` resumes the clock when you're ready.
 - A separate **Search & Selection** panel: star current/previous history with swap, a
   default 10 pc search centred on the current star (camera fallback), clickable results,
-  and a **Fly to primary** action (`F`) for the selected result.
+  and a **Fly to primary** action (`Shift+F`) for the selected result.
   The typed asset history accepts ship/base/colony/dock-port/cargo-container references and
   can capture its current entry in either slot of the two-entry asset pair.
 - Close-system schematic view: `V` opens a log-polar map of the primary selection — HZ
@@ -77,20 +78,21 @@ This is a visual galaxy model, not an N-body gravity simulation. The analytical 
 |---|---|---|
 | Mouse | Click to lock, then look | Press and drag the canvas |
 | Click without dragging | Select a star (Shift adds to the set) | Select a star (Shift adds to the set) |
-| F / N / Shift+N / X | Fly to the primary · next star · previous star · clear the set | same |
+| Shift+F / N / Shift+N / X | Fly to the primary · next star · previous star · clear the set | same |
 | W / S | Forward / backward | Closer / farther |
 | A / D | Strafe | Circle target |
 | E / Q | Up / down | Over / under target |
 | Mouse wheel | Speed ×2 per notch | Distance ×2 per notch |
 | Shift / Ctrl | Rate ×100 / ×0.1 | Rate ×4 / ×0.25 |
-| C | Cycle fly → galactic centre → selected object | Same |
+| f / c / Shift+C | Free fly · orbit the selected star (follows it) · orbit the galactic centre | — |
 | H | Return home | Return to the Sun or generated-galaxy centre |
 | R | Reset the simulation and view | Same |
 
 Other controls:
 
 - `Tab` — hide/show both panels; a panel's own `▾` (or a click on its title) collapses it to its header
-- `G` — cycle galaxy type and rebuild the field
+- `G`/`g` — game mode: the spaceship HUD (a placeholder until
+  [game-mode-plan.md](game-mode-plan.md) ships; galaxy type changes live on the panel dropdown)
 - `P` — toggle constellation lines
 - `T` — pause/resume star time (also works after clicking a result button)
 - the **Evolve with star time** checkbox — the galaxy's age runs with star time from 0.2 Gyr to

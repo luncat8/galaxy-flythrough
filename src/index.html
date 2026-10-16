@@ -104,7 +104,7 @@
                         <span>Apocenter alone moves only its share; the rest stay at birth. Tick classic (or simple) for a moving baseline.</span>
                 </div>
                 <div class="menu-row">
-                        <label for="galaxy-type">Type <span class="kbd">G</span></label>
+                        <label for="galaxy-type">Type</label>
                         <select id="galaxy-type"></select>
                         <span id="val-galaxy" class="menu-val">SBb #42</span>
                 </div>
@@ -160,7 +160,7 @@
                 <div class="menu-row search-row">
                         <span id="preset-status" class="menu-val search-report">Ctrl+V over the scene pastes a preset</span>
                 </div>
-                <div class="menu-hint">▾ collapses · Tab toggles panels · drag sliders live · G cycles galaxy type</div>
+                <div class="menu-hint">▾ collapses · Tab toggles panels · drag sliders live · C centres the galaxy</div>
         </div>
 	<!-- Search & Selection is a separate workflow panel: typed object history,
 	     current-centred star search and the clickable result array. -->
@@ -181,8 +181,8 @@
 			<span id="val-selrad" class="menu-val">50 ly</span>
 		</div>
 		<div class="menu-row menu-actions selection-actions">
-			<button id="btn-select-around" title="Add every star within the radius of the current star (F flies to it, N cycles, X clears)">Select around</button>
-			<button id="btn-fly-to" type="button" disabled title="Fly to the selected primary and orbit at its luminosity stand-off (F)">Fly to primary (F)</button>
+			<button id="btn-select-around" title="Add every star within the radius of the current star (Shift+F flies to it, N cycles, X clears)">Select around</button>
+			<button id="btn-fly-to" type="button" disabled title="Fly to the selected primary and orbit at its luminosity stand-off (Shift+F)">Fly to primary (Shift+F)</button>
 			<button id="btn-clear-set" title="Clear selection history and the selected-star set (X)">Clear selection</button>
 		</div>
 
@@ -252,7 +252,7 @@
 			<span>Pair 1 <strong id="asset-pair-first">—</strong><button id="asset-pair-first-set" type="button" disabled>Use current</button></span>
 			<span>Pair 2 <strong id="asset-pair-second">—</strong><button id="asset-pair-second-set" type="button" disabled>Use current</button></span>
 		</div>
-		<div class="menu-hint">Search pauses star time · click a result, then Fly to primary (F) · T resumes time</div>
+		<div class="menu-hint">Search pauses star time · click a result, then Fly to primary (Shift+F) · T resumes time</div>
 	</div>
 	<!-- System and ship (0.5.6): the view, its clock, the delta-v budget, the
 	     ship class and the route are one workflow, so they live in their own
@@ -299,21 +299,23 @@
         <pre id="help">
                      fly                     orbit
 mouse                click to lock / look   press + drag canvas (cursor visible)
-click (no drag)      select the star as orbit target (C cycles modes)
+click (no drag)      select the star (c orbits it, Shift+F flies to it)
 WASD / arrows        forward / strafe        W/S closer / farther, A/D circle
 E / Q                local up / down         over / under
 scroll               speed x2 per notch      distance x2 per notch
 Shift / Ctrl         speed x100 / x0.1       rates x4 / x0.25
-C                    camera: fly -> orbit galactic centre -> orbit object
+f                    free fly (WASD): leaves any orbit and stops following
+c                    orbit the selected star, centred and followed
+C  (Shift+C)         orbit the galactic centre, centred
+F  (Shift+F)         2 s flight to the selected star, then orbit + follow it
 P                    constellation lines on / off
-F                    fly to the selected star
 N / Shift+N          next / previous star in the selection set
 X                    clear the selection set (click selects, Shift+click adds)
 V                    system view of the selected star (Esc or V closes)
                      left panels: search/selection + system clock, ship, route
 B                    cycle system / delta-v map / delta-v rails (click two graph nodes)
 H                    home: the Sun, or a generated galaxy's centre
-G                    new galaxy: cycle type (rebuilds the field, about a second)
+g                    game mode: spaceship HUD placeholder (game-mode-plan.md)
 R                    reset everything
 Esc                  release cursor in fly mode
 Tab                  toggle panels (releases cursor); ▾ collapses one to its header

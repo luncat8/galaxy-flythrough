@@ -297,7 +297,8 @@
 	const CLUMP_R_OVER_K = 0.3;     // clump width ~0.3 kpc at scaleKpc 1
 
 	const GALAXY_TYPES = Object.keys(TYPE_SPECS);
-	// What the G key walks through, in the order the plan lists them.
+	// The shortlist the retired G-key cycle walked (ui.4: type is a menu-only
+	// control); the table walker of galaxy-types-test keeps using it.
 	const GALAXY_TYPE_CYCLE = ['E4', 'S0', 'SBb', 'Sc', 'Irr'];
 
 	// Mass of the preset's components, the unit `massTotal` multiplies. Taken from

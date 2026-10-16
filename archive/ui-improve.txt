@@ -40,3 +40,20 @@ user click star2 in 1a current list
 
 user click make ship travel route 2-way. and star to send ship between 2 stars
 
+## input shortcuts, modes
+
+key, action:
+
+C, orbit galaxy center (center on it) 
+c, orbit selected object (last) and follow (center on it) 
+
+f, fly wasd, disable orbit and follow modes
+F, fly-to 2sec fly to object, then follow it and orbit. camera target is object.
+
+g, game mode, space ship display (not implemented yet)
+
+remove g as galaxy type change -  we have panel for change
+
+
+make plan for game mode, space ship and display.
+with ship restrictions to fly and useful info like speed, fuel, distance to selected object

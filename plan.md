@@ -976,12 +976,15 @@ a fork should implement from. `archive/plan-0.1.1-tasks.md` is the per-file chec
 ### 0.1.1 — Camera modes (implemented)
 
 **Brief:** fly / orbit the galactic centre / orbit the selected object, wheel ×2 speed
-or distance, 8 ly/s default, Shift ×100, Ctrl ×0.1, `H` home, `C` cycles modes.
+or distance, 8 ly/s default, Shift ×100, Ctrl ×0.1, `H` home. The cycle key this
+section introduced is superseded (ui.4): the modes are entered explicitly —
+`f` free fly, `c` orbit the selected object, `Shift+C` orbit the galactic centre.
 
 #### Modes and quaternion orientation
 
 ```
-MODE_FLY = 0 → MODE_ORBIT_GC = 1 → MODE_ORBIT_OBJECT = 2 → MODE_FLY   (KeyC)
+MODE_FLY = 0   MODE_ORBIT_GC = 1   MODE_ORBIT_OBJECT = 2
+f              Shift+C             c                    (ui.4; was the KeyC cycle)
 ```
 
 The camera orientation is a **unit quaternion**. Local axes are `+X` forward, `−Y`
@@ -1104,7 +1107,7 @@ Escape releases the cursor; opening the menu with Tab also releases pointer lock
 Both orbit modes keep the cursor visible; mouse rotation requires a primary-button
 drag begun on the canvas (keyboard orbit controls are unchanged). Switching out of fly releases pointer lock; switching
 back requires a fresh canvas press to lock again. The page synchronizes input
-policy from the camera mode after each camera step (including C, H and R).
+policy from the camera mode after each camera step (including c, C, f, H and R).
 
 Menu/form controls own their keyboard and mouse events (except Tab to toggle the
 menu). Wheel events affect the camera only over the canvas. A selection requires
@@ -1115,15 +1118,18 @@ clear pending look/drag/held-key state.
 #### Input additions
 
 `keys.slow` (`ControlLeft`/`ControlRight` — the DOM codes are `Control*`, not `Ctrl*`),
-`actions.home` (`KeyH`), `actions.cameraMode` (`KeyC`). One-shot actions ignore
-`e.repeat` so a held `C` does not cycle at the key-repeat rate; exposure keys accumulate
+`actions.home` (`KeyH`). ui.4 replaced the cycle action with a shift-cased pair
+(`KeyC` → `orbitObject` / `orbitCentre`, `KeyF` → `flyMode` / `flyTo`) plus
+`gameMode` (`KeyG`); the orbit/fly actions are consumed by main.js, which owns the
+selection store their target comes from. One-shot actions ignore `e.repeat` so a held
+key does not re-fire at the key-repeat rate; exposure keys accumulate
 (`+= ±1`) so repeat is one more step and two repeats in one frame are two steps.
 
 #### Tests (`experiments/camera-test.js`)
 
 Units (8 ly/s in kpc), wheel notch ×2 in both directions, accumulation across frames and
 remainder carry, clamps land on powers of two, boost ×100 / slow ×0.1 / both ×10, mode
-cycle and action consumption, orbit entry keeps the position and aims at the target,
+entry via `setMode` and action consumption, orbit entry keeps the position and aims at the target,
 position stays on the sphere under random look input, the camera can look straight up
 and loop past the old pitch pole, the projection keeps quaternion right/up at the pole,
 wheel and W/S change distance, A/D and E/Q turn at the documented rate and are
@@ -1454,12 +1460,40 @@ Shipped, in `archive/`:
   and remain non-selectable. The report names the snapshot epoch in Myr, so if the
   user later resumes time, the list stays an honest historical query. Selecting a
   result promotes it to current; **Fly to primary** is available as a button and
-  `F`, and `F/N/X/T` continue to work when a result button has focus (form fields
+  `Shift+F` (`F` at the time of this entry; ui.4 moved the flight to the shifted
+  key), and `F/N/X/T` continue to work when a result button has focus (form fields
   still own their keys). The flight resolves the star's current drawn position.
   Tests: `search-test.js` pins drawn-distance behavior at nonzero time for both
   galaxy and selection scope, preserves birth snapshots, and marks the simple
   approximation; `input-test.js` pins hotkeys from result buttons; `m1-smoke-test.js`
   pins the pause/snapshot/fly wiring.
+
+- **ui.4 — explicit camera modes (c/C/f/F) and the `g` reservation.** Cycle keys
+  are discoverable but stateless: pressing `C` does something different
+  depending on a mode the user may not remember. The cycle is replaced by
+  explicit, case-paired keys — lowercase reaches *near*, uppercase reaches
+  *far*: `c` orbits the last selected star on the spot (centred and followed,
+  no flight), `Shift+C` orbits the galactic centre, centred; `f` takes the free
+  fly camera and stops both the orbit and the follow; `Shift+F` keeps the 2 s
+  fly-to, ending orbiting and following the object. Consequences: the fly-to
+  moved off plain `F` (the "fly" letter now grabs the fly camera), the orbit
+  actions are consumed by main.js rather than inside `camera.step` (entering
+  object orbit needs the selection store's drawn position — the camera only
+  learns the target through `setOrbitTarget`), `camera.toggleMode` and the
+  `cameraMode` action are gone, and the galaxy-type cycle is retired to the
+  panel (the select that already iterated the full table). `KeyG` becomes the
+  game-mode toggle; the mode itself is a plan + a placeholder overlay line, not
+  an implemented ship (see the next entry). Tests: `input-test.js` pins the
+  shift-cased pair, the `g` one-shot and the panel-button `F/N/X` path;
+  `camera-test.js` re-bases the mode tests on `setMode`; `m1-smoke-test.js`
+  pins the loop's four new consumers and the retired shapes.
+
+- [`game-mode-plan.md`](game-mode-plan.md) — game mode: the g key flies the same
+  pipeline as a spaceship, restricted by the class table the delta-v map already
+  ships (accel cap, Δv tank, cruise fraction), with a HUD for speed, fuel and
+  the distance to the selected object; stages G1 ship state + text HUD, G2
+  chrome + burn/flip autopilot, G3 docking/refuel. CPU-only and additive, like
+  the 0.5 series.
 
 - [`evolution-plan.md`](evolution-plan.md) — the 0.6 series, galaxy evolution over time:
   the type table describes present-day galaxies, so `modelAtAge` gains an **epoch tier**
@@ -1516,6 +1550,10 @@ tests and extend the file layout of §11 as needed.
    These are not prerequisites for sandbox-safe correctness work and are not marked
    passed by CPU/stub tests. The 0.4.8 analytical shape implementation is complete;
    this does not imply browser visual validation is complete.
+4. [Game mode — spaceship flight, restrictions and display](game-mode-plan.md):
+   G1 (ship state, text HUD: speed / fuel / distance to the selected object, the
+   class restrictions) after the ui.4 placeholder. No prerequisites beyond it;
+   CPU-only and pipeline-neutral.
 
 The [0.5 planet series](archive/0.5.0-plan-planet-generator.md) is complete:
 selection, generator, search, schematic, delta-v map and ships/routes/autopilot.

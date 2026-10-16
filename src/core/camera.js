@@ -19,7 +19,7 @@
 //     rates times dt; the fly-to flight eases on elapsed/duration. A per-frame
 //     constant damping factor makes the ship faster on a 144 Hz monitor than
 //     on a 60 Hz one.
-//   * Fly-to (key F, plan §18) is a 2 s flight, not a teleport: eased f64
+//   * Fly-to (Shift+F, plan §18) is a 2 s flight, not a teleport: eased f64
 //     position lerp plus shortest-path quaternion slerp from the current pose
 //     to an arrival pose re-derived from the live target each frame, then the
 //     orbit handover. Any user input cancels into the usual orbit re-snap;
@@ -85,7 +85,6 @@ const MODE_FLY = 0;
 const MODE_ORBIT_GC = 1;
 const MODE_ORBIT_OBJECT = 2;
 const MODE_NAMES = ['fly', 'orbit centre', 'orbit object'];
-const MODE_COUNT = 3;
 
 // The orbit centre is the model's, not a second copy of 8.178.
 const GALACTIC_CENTRE_TARGET = Float64Array.of(
@@ -338,16 +337,14 @@ function createCamera() {
 		placeOnOrbit();
 	}
 
+	// The mode is chosen directly (c/C/f in input.js; ui.4 replaced the C
+	// cycle), never cycled: each key knows the mode it enters.
 	function setMode(next) {
 		if (next === mode) return;
 		flightActive = false;
 		mode = next;
 		if (mode === MODE_FLY) return;   // position and orientation continue; velocity is already zero
 		snapToOrbit();
-	}
-
-	function toggleMode() {
-		setMode((mode + 1) % MODE_COUNT);
 	}
 
 	function assignObjectTarget(x, y, z, name) {
@@ -411,7 +408,7 @@ function createCamera() {
 		orientation[3] = a[3] * w0 + b[3] * w1;
 	}
 
-	// Fly to a star (plan §3.4, key F): orbit it at the stand-off its
+	// Fly to a star (plan §3.4, Shift+F): orbit it at the stand-off its
 	// luminosity implies, arriving by a 2 s flight instead of a jump. With
 	// standOffKpc ≤ 0 the current target distance is kept.
 	function flyToStar(x, y, z, name, standOffKpc) {
@@ -645,7 +642,10 @@ function createCamera() {
 	function step(dt, input) {
 		if (!(dt > 0)) return;
 		const actions = input.actions;
-		if (actions.cameraMode) { actions.cameraMode = 0; flightActive = false; toggleMode(); }
+		// Mode switches (orbitCentre/orbitObject/flyMode) are consumed by the
+		// frame owner, not here: entering orbit on a selected object needs the
+		// selection store's drawn position — the camera only learns the target
+		// through setOrbitTarget/flyToStar afterwards.
 		if (actions.home) { actions.home = 0; flightActive = false; goHome(); }
 		if (actions.reset) { actions.reset = 0; flightActive = false; reset(); }
 
@@ -771,7 +771,6 @@ function createCamera() {
 		goHome,
 		setFrame,
 		setMode,
-		toggleMode,
 		setOrbitTarget,
 		flyToStar,
 		updateTarget,

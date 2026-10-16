@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-15T09:39:54.146Z",
+  "date": "2026-10-16T04:32:56.235Z",
   "totalChecks": 131,
   "passed": 131,
   "failed": 0,
@@ -367,11 +367,11 @@
       ]
     },
     {
-      "name": "the cameraMode action is consumed by step()",
+      "name": "the home action is consumed by step()",
       "pass": true
     },
     {
-      "name": "C from fly enters orbit-centre",
+      "name": "setMode from fly enters orbit-centre (Shift+C)",
       "pass": true,
       "detail": "orbit centre"
     },
@@ -414,7 +414,7 @@
       "detail": -8.08881894798219e-9
     },
     {
-      "name": "C again enters orbit-object",
+      "name": "setMode enters orbit-object (c)",
       "pass": true,
       "detail": "orbit object"
     },
@@ -449,7 +449,7 @@
       "detail": 0.005
     },
     {
-      "name": "C a third time returns to fly",
+      "name": "setMode returns to the free fly camera (f)",
       "pass": true,
       "detail": "fly"
     },
@@ -1100,7 +1100,7 @@
       }
     },
     {
-      "name": "C during a flight ends it (mode cycles from orbit-object to fly)",
+      "name": "f during a flight ends it (setMode from orbit-object to fly)",
       "pass": true
     },
     {

@@ -7,7 +7,9 @@
 //   * orbit: canvas press-and-drag only, with a visible cursor
 //
 // Consumers take what they own and leave the rest:
-//   * camera   : keys, lookDx/lookDy, wheelDelta, actions.reset/home/cameraMode
+//   * camera   : keys, lookDx/lookDy, wheelDelta, actions.reset/home
+//   * main.js  : actions.orbitCentre/orbitObject/flyMode (the mode switches —
+//                the object target lives in its selection store), actions.gameMode
 //   * renderer : actions.exposure
 //   * selection: actions.pick + pickX/pickY, actions.constellations,
 //                actions.flyTo/nextStar/clearSet, keys.boost (Shift+click)
@@ -41,8 +43,9 @@ function createInput(canvas) {
 		pointerLocked: false,
 		pickX: 0,
 		pickY: 0,
-		actions: { reset: 0, home: 0, cameraMode: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, galaxyCycle: 0, freezeTime: 0,
-			flyTo: 0, nextStar: 0, clearSet: 0, systemView: 0, systemViewExit: 0, dvMap: 0 },
+	actions: { reset: 0, home: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, freezeTime: 0,
+		orbitCentre: 0, orbitObject: 0, flyMode: 0, gameMode: 0,
+		flyTo: 0, nextStar: 0, clearSet: 0, systemView: 0, systemViewExit: 0, dvMap: 0 },
 	};
 
 	// Held keys: true while down. Ctrl is the brief's slow modifier; Ctrl+W
@@ -57,21 +60,26 @@ function createInput(canvas) {
 		ShiftLeft: 'boost', ShiftRight: 'boost',
 		ControlLeft: 'slow', ControlRight: 'slow',
 	};
-	// One-shot actions fire on the press only: a held C must not cycle camera
-	// modes at the key-repeat rate. Tab toggles the settings menu and must
+	// One-shot actions fire on the press only: a held C must not re-enter the
+	// orbit at the key-repeat rate. Tab toggles the settings menu and must
 	// not cycle browser focus, hence preventDefault.
-	// G regenerates the galaxy, so it is a one-shot like the other toggles:
-	// key repeat would otherwise rebuild a 300k-star field at 30 Hz.
-	// 0.5.0 adds the star-selection keys: F flies to the primary, N cycles it
-	// through the set (Shift+N, read as the held `boost` key, walks backwards),
-	// X clears the set. One-shots like the rest: a held N must not cycle the
-	// primary at the key-repeat rate. 0.5.3 adds V (system view on/off) and
-	// Escape as its explicit exit: under pointer lock the browser swallows Esc
-	// to release the lock and no keydown arrives — which is fine, because the
-	// system view runs in orbit mode, where Esc does arrive and the action is
-	// a no-op outside the view.
-	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyC: 'cameraMode', KeyP: 'constellations', KeyG: 'galaxyCycle', KeyT: 'freezeTime', Tab: 'menu',
-		KeyF: 'flyTo', KeyN: 'nextStar', KeyX: 'clearSet', KeyV: 'systemView', KeyB: 'dvMap', Escape: 'systemViewExit' };
+	// ui.4 replaces the C key's fly → orbit-centre → orbit-object cycle with
+	// explicit, lowercase/uppercase pairs: c orbits the selected star, Shift+C
+	// the galactic centre, f takes the free fly camera, Shift+F flies to the
+	// selected star. G switches game mode (game-mode-plan.md); the galaxy type
+	// it used to cycle is a menu-only control now.
+	// 0.5.0's other selection keys: N cycles the primary through the set
+	// (Shift+N, read as the held `boost` key, walks backwards), X clears the
+	// set. One-shots like the rest: a held N must not cycle the primary at the
+	// key-repeat rate. 0.5.3 adds V (system view on/off) and Escape as its
+	// explicit exit: under pointer lock the browser swallows Esc to release
+	// the lock and no keydown arrives — which is fine, because the system
+	// view runs in orbit mode, where Esc does arrive and the action is a
+	// no-op outside the view.
+	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyP: 'constellations', KeyG: 'gameMode', KeyT: 'freezeTime', Tab: 'menu',
+		KeyN: 'nextStar', KeyX: 'clearSet', KeyV: 'systemView', KeyB: 'dvMap', Escape: 'systemViewExit' };
+	// C and F carry a shift-cased pair each: [lowercase, Shift+uppercase].
+	const casedPressMap = { KeyC: ['orbitObject', 'orbitCentre'], KeyF: ['flyMode', 'flyTo'] };
 	const PANEL_BUTTON_SHORTCUTS = { KeyF: 1, KeyN: 1, KeyX: 1 };
 	// Exposure accumulates, so key repeat is one more step per repeat.
 	const exposureMap = { BracketLeft: -1, Minus: -1, BracketRight: 1, Equal: 1 };
@@ -87,7 +95,8 @@ function createInput(canvas) {
 	let downY = 0;
 
 	// Form fields own their keys. T remains available on panel text as well as
-	// buttons; F/N/X work from panel buttons so a focused result can be flown to.
+	// buttons; F/N/X work from panel buttons so a focused result still answers
+	// the selection keys (plain F grabs the free fly camera, Shift+F flies to).
 	function editingField(e) {
 		const target = e.target;
 		if (!target || !target.tagName || e.code === 'Tab') return false;
@@ -109,6 +118,12 @@ function createInput(canvas) {
 		const held = keyMap[e.code];
 		if (held) {
 			keys[held] = true;
+			e.preventDefault();
+			return;
+		}
+		const cased = casedPressMap[e.code];
+		if (cased) {
+			if (!e.repeat) state.actions[cased[e.shiftKey ? 1 : 0]] = 1;
 			e.preventDefault();
 			return;
 		}

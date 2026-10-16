@@ -61,7 +61,7 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 
 {
 	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
-	check('the menu iterates the full type table, not the G-key shortlist',
+	check('the menu iterates the full type table (galaxy type is menu-only since ui.4)',
 		/for \(const type of galaxy\.GALAXY_TYPES\)/.test(main));
 	const exposureDefault = require('../src/render/star-sprites.js').EXPOSURE_DEFAULT;
 	check('startup exposure is 22 and the slider agrees',
@@ -74,6 +74,24 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		/camera\.setFrame\(model\);[\s\S]*?camera\.setMode\(window\.Camera\.MODE_ORBIT_GC\);\s*const input = window\.Input\.createInput\(canvas\);\s*input\.setFlyMode\(false\);/.test(main));
 	check('input policy follows camera mode after stepping',
 		/camera\.step\(dt, input\.state\);[\s\S]*?input\.setFlyMode\(cameraStateForTime\.mode === window\.Camera\.MODE_FLY\);/.test(main));
+	// ui.4: the c/C/f/F mode keys and the g game-mode toggle. A handful of
+	// shapes must hold and not come back: the shift-cased pair in input.js, the
+	// four consumed actions in the loop, the orbit via drawn position + follow,
+	// and the retired G-cycle.
+	{
+		const inputSrc = fs.readFileSync(path.join(SRC, 'core', 'input.js'), 'utf-8');
+		check('the c/C/f/F key map is shift-cased and consumed by the loop, g toggles game mode',
+			/const casedPressMap = \{ KeyC: \['orbitObject', 'orbitCentre'\], KeyF: \['flyMode', 'flyTo'\] \};/.test(inputSrc)
+			&& /KeyG: 'gameMode'/.test(inputSrc)
+			&& !/cameraMode|galaxyCycle/.test(inputSrc)
+			&& /actions\.orbitCentre = 0;\s*camera\.setMode\(window\.Camera\.MODE_ORBIT_GC\);/.test(main)
+			&& /actions\.orbitObject = 0;\s*orbitPrimary\(\);/.test(main)
+			&& /actions\.flyMode = 0;\s*camera\.setMode\(window\.Camera\.MODE_FLY\);\s*followKey = -1;/.test(main)
+			&& /actions\.gameMode = 0;\s*gameMode = !gameMode;/.test(main)
+			&& /function orbitPrimary\(\) \{[\s\S]*?camera\.setOrbitTarget\(drawnPos\[0\][\s\S]*?camera\.setMode\(window\.Camera\.MODE_ORBIT_OBJECT\);\s*followKey = starSet\.keys\[i\] >>> 0;/.test(main)
+			&& !/actions\.galaxyCycle/.test(main)
+			&& !/toggleMode/.test(main));
+	}
 	check('every element main.js looks up exists in index.html',
 		(function () {
 			const ids = new Set([...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]));
@@ -107,7 +125,7 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		&& /snapshot '\s*\+ res\.stats\.timeMyr/.test(searchRun)
 		&& /btnFlyTo\.addEventListener\('click', \(\) => \{\s*if \(!flyToPrimary\(\)\) return;/.test(main)
 		&& /btnFlyTo\.disabled = starSet\.primary < 0/.test(main)
-		&& /id="btn-fly-to"[^>]*>Fly to primary \(F\)<\/button>/.test(html));
+		&& /id="btn-fly-to"[^>]*>Fly to primary \(Shift\+F\)<\/button>/.test(html));
 	// ui.2: the camera and the radius scan judge *drawn* positions, not the birth
 	// records the snapshots store. There is no browser to run this in, so the
 	// wiring is pinned as text — including the two shapes that must not come back
