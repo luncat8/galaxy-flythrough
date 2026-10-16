@@ -826,7 +826,9 @@ function stubLabelCanvas() {
 		&& Number(m[3]) === selectionLib.SELRAD_DEFAULT_LOG,
 		m && m.slice(1));
 	check('the menu has the select-around and clear buttons', /id="btn-select-around"/.test(html) && /id="btn-clear-set"/.test(html));
-	check('the help text lists the three new keys', /\nF /.test(html) && /N \/ Shift\+N/.test(html) && /X /.test(html));
+	check('the controls panel lists the selection keys (ui.6 replaced the help <pre>)',
+		/data-action="flyTo"/.test(html) && /data-action="nextStar"/.test(html)
+		&& /id="help-prev-star"/.test(html) && /data-action="clearSet"/.test(html));
 }
 
 // --- Report ------------------------------------------------------------------

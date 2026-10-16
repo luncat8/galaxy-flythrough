@@ -40,11 +40,12 @@
       "pass": true,
       "detail": {
         "scope": "galaxy",
+        "timeMyr": 0,
         "scanned": 6184,
         "matched": 6184,
         "truncated": 5672,
-        "msStage1": 3.075244999999981,
-        "msStage2": 3.0180870000000084,
+        "msStage1": 23.975081999999986,
+        "msStage2": 3.298499000000021,
         "msRefine": 0
       }
     },
@@ -53,11 +54,12 @@
       "pass": true,
       "detail": {
         "scope": "galaxy",
+        "timeMyr": 0,
         "scanned": 6184,
         "matched": 6184,
         "truncated": 5672,
-        "msStage1": 3.8343079999999645,
-        "msStage2": 2.486069999999984,
+        "msStage1": 13.922864999999973,
+        "msStage2": 0.9309360000000027,
         "msRefine": 0
       }
     },
@@ -66,11 +68,12 @@
       "pass": true,
       "detail": {
         "scope": "selection",
+        "timeMyr": 0,
         "scanned": 1,
         "matched": 1,
         "truncated": 0,
-        "msStage1": 0.15826300000000515,
-        "msStage2": 0.044849999999996726,
+        "msStage1": 0.22876099999999155,
+        "msStage2": 0.0007160000000112632,
         "msRefine": 0
       }
     },
@@ -236,11 +239,12 @@
       "detail": {
         "staleRows": 2,
         "scope": "selection",
+        "timeMyr": 0,
         "scanned": 46,
         "matched": 46,
         "truncated": 0,
-        "msStage1": 0.1253950000000259,
-        "msStage2": 0.004225000000019463,
+        "msStage1": 3.3071089999999685,
+        "msStage2": 0.004941000000030726,
         "msRefine": 0
       }
     },
@@ -256,6 +260,35 @@
         "missing": 0,
         "extra": 0
       }
+    },
+    {
+      "name": "an explicit nearby-star centre overrides a distant camera and matches brute force",
+      "pass": true,
+      "detail": {
+        "matched": 1,
+        "brute": 1,
+        "kept": 1
+      }
+    },
+    {
+      "name": "galaxy distance uses the active engine at the frozen search time, retaining the birth snapshot",
+      "pass": true,
+      "detail": {
+        "count": 1,
+        "key": 385153,
+        "expected": 385153,
+        "dist2": 0,
+        "birthGap": 11.851973160210951,
+        "timeMyr": 100
+      }
+    },
+    {
+      "name": "selection-scope distance also resolves its live record, not the set snapshot",
+      "pass": true
+    },
+    {
+      "name": "GPU-only simple positions stay explicit as approximations in search results",
+      "pass": true
     },
     {
       "name": "null filter/env/renderer, empty blocks and impossible ranges return empty, never throw",
@@ -285,31 +318,36 @@
     {
       "name": "star-only class filter over the galaxy stays under 120 ms",
       "pass": true,
-      "detail": 20.54989300000011
+      "detail": 76.53206300000011
     },
     {
       "name": "planet filter (G + terran) over the galaxy stays under 600 ms",
       "pass": true,
-      "detail": 22.267475999999988
+      "detail": 78.5598379999999
     },
     {
       "name": "planet filter (tsurf range, exact refine) over the galaxy stays under 600 ms",
       "pass": true,
-      "detail": 422.1215109999998
+      "detail": 488.6879329999997
     },
     {
       "name": "planet filter over a 214-star set stays under 2 ms",
       "pass": true,
-      "detail": 0.31440500000007887
+      "detail": 0.39908999999988737
+    },
+    {
+      "name": "a moving-time 300k star search with engine dispatch stays under 1.5 s",
+      "pass": true,
+      "detail": 96.5934870000001
     },
     {
       "name": "the stage timers split the wall time (sort + overhead bounded)",
       "pass": true,
       "detail": {
-        "msStage1": 6.110525000000052,
-        "msStage2": 293.61452199999985,
-        "msRefine": 122.08419599999843,
-        "wall": 422.1215109999998
+        "msStage1": 66.89136299999927,
+        "msStage2": 297.82129099999975,
+        "msRefine": 123.60344900000155,
+        "wall": 488.6879329999997
       }
     }
   ],

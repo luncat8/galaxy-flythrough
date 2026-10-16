@@ -44,6 +44,231 @@ const labelCoords = (typeof module !== 'undefined' && module.exports)
 	? require('../math/coords.js')
 	: window.Coords;
 
+// --- Ship chrome (game-mode-plan §6, G2) -------------------------------------
+// Drawn only while the ship is the rig. The geometry is live every frame from
+// the state record's floats; the strings are main.js's 4 Hz formatting. Screen
+// placement goes through camera space directly (the projection the sprite
+// shader applies, written out), so a marker behind the camera pins to the edge
+// in the direction the pilot has to turn.
+const CHROME_GAP_PX = 6;
+const CHROME_ARM_PX = 16;
+const CHROME_CORNER_PX = 24;
+const CHROME_CORNER_TICK_PX = 5;
+const CHROME_TRACK = 'rgba(205, 220, 255, 0.18)';
+const CHROME_CAP = 'rgba(255, 255, 255, 0.9)';
+const LADDER_X_PX = 160;
+const LADDER_H_PX = 220;
+const LADDER_RUNG_TICK_PX = 6;
+const LADDER_STUB_MAX_PX = 60;
+const BURN_MARK_PX = 7;
+const TARGET_BOX_PX = 8;
+const TAG_OFFSET_PX = 12;
+const EDGE_MARGIN_PX = 28;
+const EDGE_FAR_PX = 1e5;          // a direction's pin distance from the centre
+const STRIP_W_PX = 240;
+const STRIP_BOTTOM_PX = 36;
+const STRIP_FUEL_DY_PX = 10;
+const LADDER_RUNGS = [0.25, 0.5, 0.75];
+
+const chromeOffset = new Float64Array(2);
+const chromeAt = new Float64Array(3);       // x, y, pinned (1 when clamped to the edge)
+const chromeRel = new Float64Array(3);
+
+function createShipChromeState() {
+	return {
+		active: false,
+		color: '#ffffff',
+		throttle: 0,                 // applied burn over the current ceiling, 0..1
+		fuel: 0,                     // remaining Δv over dvMax, 0..1
+		speed: 0,                    // ship speed over the cruise cap (may exceed 1)
+		closing: 0,                  // closing rate over the cruise cap (may exceed 1)
+		hasAim: false,
+		aim: new Float64Array(3),    // unit commanded nose direction, world frame
+		hasTarget: false,
+		target: new Float64Array(3), // drawn position of the primary, kpc
+		tagText: '',
+		stripText: '',
+	};
+}
+
+// Camera-space offset of a point from the view centre, in CSS pixels. In front
+// it is the perspective projection; behind, the direction itself, pinned far
+// out so the edge clamp puts it on the side the pilot must turn toward.
+function chromeOffsetOf(xc, yc, zc, focalPx) {
+	if (zc > 0) {
+		chromeOffset[0] = focalPx * xc / zc;
+		chromeOffset[1] = -focalPx * yc / zc;
+		return;
+	}
+	const len = Math.sqrt(xc * xc + yc * yc);
+	// Dead astern there is no side to turn toward: pin upward, a fixed choice
+	// rather than a marker that reads as aligned on the crosshair.
+	if (!(len > 0)) { chromeOffset[0] = 0; chromeOffset[1] = -EDGE_FAR_PX; return; }
+	chromeOffset[0] = xc / len * EDGE_FAR_PX;
+	chromeOffset[1] = -yc / len * EDGE_FAR_PX;
+}
+
+// Clamps the centre-relative offset into the view minus the margin, writing
+// chromeAt. Scaling along the ray keeps the direction the offset points in.
+function chromeClampToView(cx, cy, halfW, halfH) {
+	const ox = chromeOffset[0], oy = chromeOffset[1];
+	const limX = Math.max(1, halfW - EDGE_MARGIN_PX), limY = Math.max(1, halfH - EDGE_MARGIN_PX);
+	const ax = Math.abs(ox), ay = Math.abs(oy);
+	const inside = ax <= limX && ay <= limY;
+	const s = inside ? 1 : Math.min(ax > 0 ? limX / ax : Infinity, ay > 0 ? limY / ay : Infinity);
+	chromeAt[0] = cx + ox * s;
+	chromeAt[1] = cy + oy * s;
+	chromeAt[2] = inside ? 0 : 1;
+}
+
+function chromeDot(v, camVec) {
+	return v[0] * camVec[0] + v[1] * camVec[1] + v[2] * camVec[2];
+}
+
+function chromeCrosshair(ctx, cx, cy) {
+	const g = CHROME_GAP_PX, a = CHROME_ARM_PX;
+	ctx.beginPath();
+	ctx.moveTo(cx - g - a, cy); ctx.lineTo(cx - g, cy);
+	ctx.moveTo(cx + g, cy); ctx.lineTo(cx + g + a, cy);
+	ctx.moveTo(cx, cy - g - a); ctx.lineTo(cx, cy - g);
+	ctx.moveTo(cx, cy + g); ctx.lineTo(cx, cy + g + a);
+	const k = CHROME_CORNER_PX, t = CHROME_CORNER_TICK_PX;
+	for (let i = 0; i < 4; i++) {
+		const sx = (i & 1) ? 1 : -1, sy = (i & 2) ? 1 : -1;
+		ctx.moveTo(cx + sx * k, cy + sy * (k - t));
+		ctx.lineTo(cx + sx * k, cy + sy * k);
+		ctx.lineTo(cx + sx * (k - t), cy + sy * k);
+	}
+	ctx.stroke();
+}
+
+function chromeBurnMarker(ctx, chrome, camera, cx, cy, focalPx, halfW, halfH) {
+	const aim = chrome.aim;
+	chromeOffsetOf(chromeDot(aim, camera.right), chromeDot(aim, camera.up),
+		chromeDot(aim, camera.forward), focalPx);
+	chromeClampToView(cx, cy, halfW, halfH);
+	const x = chromeAt[0], y = chromeAt[1];
+	ctx.beginPath();
+	ctx.arc(x, y, BURN_MARK_PX, 0, Math.PI * 2);
+	if (chromeAt[2] > 0) {
+		// Pinned: a tick points back at the view centre, the turn the pilot needs.
+		const dx = cx - x, dy = cy - y;
+		const len = Math.sqrt(dx * dx + dy * dy) || 1;
+		ctx.moveTo(x + dx / len * BURN_MARK_PX, y + dy / len * BURN_MARK_PX);
+		ctx.lineTo(x + dx / len * (BURN_MARK_PX + 8), y + dy / len * (BURN_MARK_PX + 8));
+	}
+	ctx.stroke();
+}
+
+function chromeLadder(ctx, chrome, cx, cy) {
+	const x = cx - LADDER_X_PX, top = cy - LADDER_H_PX * 0.5, bottom = top + LADDER_H_PX;
+	ctx.lineWidth = 1;
+	ctx.strokeStyle = CHROME_TRACK;
+	ctx.beginPath();
+	ctx.moveTo(x, top); ctx.lineTo(x, bottom);
+	for (let r = 0; r < LADDER_RUNGS.length; r++) {
+		const y = bottom - LADDER_RUNGS[r] * LADDER_H_PX;
+		ctx.moveTo(x - LADDER_RUNG_TICK_PX, y); ctx.lineTo(x + LADDER_RUNG_TICK_PX, y);
+	}
+	ctx.moveTo(x - 2 * LADDER_RUNG_TICK_PX, top); ctx.lineTo(x + 2 * LADDER_RUNG_TICK_PX, top);
+	ctx.stroke();
+
+	// The fill is the speed over the cap; whatever exceeds it (the ship's own
+	// speed after a handover, or a closure faster than the class can cruise)
+	// bleeds above the tape as one stub, both read the same way.
+	const fill = Math.min(chrome.speed, 1);
+	ctx.strokeStyle = chrome.color;
+	ctx.lineWidth = 4;
+	ctx.beginPath();
+	ctx.moveTo(x, bottom); ctx.lineTo(x, bottom - fill * LADDER_H_PX);
+	ctx.stroke();
+
+	const over = Math.max(chrome.speed, chrome.closing) - 1;
+	if (over > 0) {
+		const stub = Math.min(over * LADDER_H_PX, LADDER_STUB_MAX_PX);
+		ctx.strokeStyle = CHROME_CAP;
+		ctx.beginPath();
+		ctx.moveTo(x, top); ctx.lineTo(x, top - stub);
+		ctx.stroke();
+	}
+	if (chrome.closing > 0) {
+		const y = bottom - Math.min(chrome.closing, 1) * LADDER_H_PX;
+		ctx.strokeStyle = CHROME_CAP;
+		ctx.lineWidth = 1.5;
+		ctx.beginPath();
+		ctx.moveTo(x + 6, y); ctx.lineTo(x + 6 + 2 * LADDER_RUNG_TICK_PX, y);
+		ctx.stroke();
+	}
+}
+
+function chromeTarget(ctx, chrome, camera, cx, cy, focalPx, halfW, halfH) {
+	const t = chrome.target, cam = camera.cameraPos;
+	const rx = t[0] - cam[0], ry = t[1] - cam[1], rz = t[2] - cam[2];
+	chromeRel[0] = rx; chromeRel[1] = ry; chromeRel[2] = rz;
+	chromeOffsetOf(chromeDot(chromeRel, camera.right), chromeDot(chromeRel, camera.up),
+		chromeDot(chromeRel, camera.forward), focalPx);
+	chromeClampToView(cx, cy, halfW, halfH);
+	const x = chromeAt[0], y = chromeAt[1], B = TARGET_BOX_PX;
+	ctx.lineWidth = 1.5;
+	ctx.strokeStyle = chrome.color;
+	ctx.beginPath();
+	ctx.rect(x - B, y - B, 2 * B, 2 * B);
+	ctx.stroke();
+	if (chrome.tagText === '') return;
+	// The tag flips to the left of the box on the right half, so it stays on screen.
+	const left = x > cx;
+	const tx = left ? x - TAG_OFFSET_PX : x + TAG_OFFSET_PX;
+	const ty = y - TAG_OFFSET_PX;
+	ctx.textAlign = left ? 'right' : 'left';
+	ctx.lineWidth = 3;
+	ctx.strokeStyle = LABEL_HALO;
+	ctx.strokeText(chrome.tagText, tx, ty);
+	ctx.fillStyle = chrome.color;
+	ctx.fillText(chrome.tagText, tx, ty);
+	ctx.textAlign = 'left';
+}
+
+function chromeStrip(ctx, chrome, width, height) {
+	const x = width * 0.5 - STRIP_W_PX * 0.5, y = height - STRIP_BOTTOM_PX;
+	ctx.lineWidth = 4;
+	ctx.strokeStyle = CHROME_TRACK;
+	ctx.beginPath();
+	ctx.moveTo(x, y); ctx.lineTo(x + STRIP_W_PX, y);
+	ctx.moveTo(x, y + STRIP_FUEL_DY_PX); ctx.lineTo(x + STRIP_W_PX, y + STRIP_FUEL_DY_PX);
+	ctx.stroke();
+	ctx.strokeStyle = chrome.color;
+	ctx.beginPath();
+	ctx.moveTo(x, y); ctx.lineTo(x + STRIP_W_PX * Math.min(chrome.throttle, 1), y);
+	ctx.stroke();
+	ctx.beginPath();
+	ctx.moveTo(x, y + STRIP_FUEL_DY_PX);
+	ctx.lineTo(x + STRIP_W_PX * Math.min(chrome.fuel, 1), y + STRIP_FUEL_DY_PX);
+	ctx.stroke();
+	if (chrome.stripText === '') return;
+	ctx.lineWidth = 3;
+	ctx.strokeStyle = LABEL_HALO;
+	ctx.strokeText(chrome.stripText, x, y - 8);
+	ctx.fillStyle = chrome.color;
+	ctx.fillText(chrome.stripText, x, y - 8);
+}
+
+// The whole chrome pass: one call from the layer's draw, after the labels, so
+// the crosshair sits over everything the observer's layer shows.
+function drawShipChrome(ctx, chrome, camera, width, height) {
+	const cx = width * 0.5, cy = height * 0.5;
+	const focalPx = 0.5 * height / Math.tan(camera.fovY * 0.5);
+	const halfW = width * 0.5, halfH = height * 0.5;
+	ctx.strokeStyle = chrome.color;
+	ctx.fillStyle = chrome.color;
+	ctx.lineWidth = 1.5;
+	ctx.font = LABEL_FONT;
+	chromeCrosshair(ctx, cx, cy);
+	if (chrome.hasAim) chromeBurnMarker(ctx, chrome, camera, cx, cy, focalPx, halfW, halfH);
+	chromeLadder(ctx, chrome, cx, cy);
+	if (chrome.hasTarget) chromeTarget(ctx, chrome, camera, cx, cy, focalPx, halfW, halfH);
+	chromeStrip(ctx, chrome, width, height);
+}
+
 function labelRecords() {
 	return (typeof window !== 'undefined' && window.StarRecord) || null;
 }
@@ -66,6 +291,8 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	let orbitModel = null;
 	let orbitTime = 0;
 	const orbitScratch = new Float64Array(3);
+	let chrome = createShipChromeState();
+	let chromeDrawn = false;
 	function setOrbitState(model, time) { orbitModel = model; orbitTime = time || 0; }
 
 	// --- Star-set rings (plan §3.5) ---------------------------------------
@@ -311,15 +538,27 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		if (!enabled) ctx.clearRect(0, 0, canvas.width, canvas.height);
 	}
 
+	// The ship chrome (G2) is its own pass and outlives the observer's labels:
+	// with labels off and the ship flying, the canvas still carries the HUD
+	// marks; with both off, a cleared canvas is left alone.
 	function draw(camera, width, height) {
-		if (!enabled) return;
+		const chromeOn = chrome.active;
+		if (!enabled && !chromeOn && !chromeDrawn) return;
 		ctx.clearRect(0, 0, width, height);
+		chromeDrawn = chromeOn;
 		if (!(width > 0) || !(height > 0)) return;
-		projectAll(camera, width, height);
-		if (showLines) drawLines();
-		drawLabels();
-		drawSelectedRing();
-		drawSetRings(camera, width, height);
+		if (enabled) {
+			projectAll(camera, width, height);
+			if (showLines) drawLines();
+			drawLabels();
+			drawSelectedRing();
+			drawSetRings(camera, width, height);
+		}
+		if (chromeOn) drawShipChrome(ctx, chrome, camera, width, height);
+	}
+
+	function setShipChrome(state) {
+		chrome = state;
 	}
 
 	function setSelected(index) {
@@ -342,11 +581,12 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	return {
 		resize, draw, setSelected, setOrbitState, setStarSource, setSelectedKeys,
 		toggleConstellations, setConstellations, constellationsVisible, setEnabled,
+		setShipChrome,
 	};
 }
 
 const LabelLayer = {
-	createLabelLayer,
+	createLabelLayer, createShipChromeState, drawShipChrome,
 	LABEL_FONT, LABEL_FILL, LABEL_HALO, LINE_STROKE, SELECT_FILL, SELECT_RING,
 	LABEL_OFFSET_PX, SELECT_RING_PX, SET_RING_PX, SET_RING, MAP_SIZE,
 };

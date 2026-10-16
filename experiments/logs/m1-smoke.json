@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-16T05:02:01.867Z",
+  "date": "2026-10-17T02:58:38.717Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -22,6 +22,7 @@
     "core/selection-store.js",
     "core/search.js",
     "core/route.js",
+    "core/ship.js",
     "core/loop.js",
     "core/presets.js",
     "data/landmarks.js",
@@ -44,6 +45,7 @@
     "core/search.js",
     "core/selection-store.js",
     "core/selection.js",
+    "core/ship.js",
     "core/star-set.js",
     "data/constellations.js",
     "data/landmarks.js",
@@ -68,8 +70,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 72,
-  "passed": 72,
+  "totalChecks": 92,
+  "passed": 92,
   "failed": 0,
   "checks": [
     {
@@ -81,8 +83,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 32,
-        "sources": 32,
+        "scripts": 33,
+        "sources": 33,
         "missing": []
       }
     },
@@ -133,7 +135,83 @@
       "pass": true
     },
     {
-      "name": "the c/C/f/F key map is shift-cased and consumed by the loop, g toggles game mode",
+      "name": "the c/C/f/F key map is shift-cased and game-gated in the loop, g toggles game mode",
+      "pass": true
+    },
+    {
+      "name": "j toggles the chase follow and the Controls panel fires the same actions as the keys",
+      "pass": true
+    },
+    {
+      "name": "game mode flies the ship through the camera state pair and gates the observer keys",
+      "pass": true
+    },
+    {
+      "name": "the velocity handover seeds from the follow feed in physical units",
+      "pass": true
+    },
+    {
+      "name": "the HUD carries the §6 lines and the ladder rides the star-time slider",
+      "pass": true
+    },
+    {
+      "name": "the central Flight hangar and the gated controls ride the panel patterns",
+      "pass": true
+    },
+    {
+      "name": "the ship commands are consumed before the shared clock cap and refreshed after target motion",
+      "pass": true
+    },
+    {
+      "name": "the nose eases through the camera look accumulator and the chrome is fed each game frame",
+      "pass": true
+    },
+    {
+      "name": "the HUD carries the auto line and the chrome strings refresh at the overlay cadence",
+      "pass": true
+    },
+    {
+      "name": "the fleet, camera-axis speeds, target stop, and four-second time cap are wired",
+      "pass": true
+    },
+    {
+      "name": "the ship chrome is one label-layer pass, drawn with or without the observer labels",
+      "pass": true
+    },
+    {
+      "name": "the Controls panel: fly is the abort in game mode and the commands are not observer-gated",
+      "pass": true
+    },
+    {
+      "name": "Flight keeps manual thrust, destination, limits and route entry in one panel",
+      "pass": true
+    },
+    {
+      "name": "the destination snapshot resolves by key and the configured engage copies its plan",
+      "pass": true
+    },
+    {
+      "name": "the speed limit cuts only positive forward thrust and applied impulse powers the HUD",
+      "pass": true
+    },
+    {
+      "name": "a hull spawned, entered or selected at the camera carries the camera heading",
+      "pass": true
+    },
+    {
+      "name": "the speed reference resolves fixed frame points and names them",
+      "pass": true
+    },
+    {
+      "name": "C selects the centre reference and H the home reference, in both rigs",
+      "pass": true
+    },
+    {
+      "name": "the Controls panel carries the three reference buttons as one-shot actions",
+      "pass": true
+    },
+    {
+      "name": "the Pilot controls are mutually exclusive: touching one takes the forward axis",
       "pass": true
     },
     {
@@ -216,6 +294,7 @@
         "SelectionStore",
         "Search",
         "RouteLib",
+        "Ship",
         "Loop",
         "Presets",
         "Landmarks",
@@ -316,7 +395,7 @@
       "name": "Camera loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 31
+        "keys": 33
       }
     },
     {
@@ -324,6 +403,13 @@
       "pass": true,
       "detail": {
         "keys": 3
+      }
+    },
+    {
+      "name": "Ship loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 84
       }
     },
     {
@@ -400,7 +486,7 @@
       "name": "LabelLayer loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 12
+        "keys": 14
       }
     },
     {

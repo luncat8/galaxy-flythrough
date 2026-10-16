@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-15T09:39:53.851Z",
+  "date": "2026-10-17T02:58:38.557Z",
   "modules": 28,
   "totalChecks": 143,
   "passed": 143,
@@ -473,7 +473,7 @@
       }
     },
     {
-      "name": "Camera has identical key sets (31 keys)",
+      "name": "Camera has identical key sets (33 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -569,7 +569,7 @@
       }
     },
     {
-      "name": "Selection has identical key sets (8 keys)",
+      "name": "Selection has identical key sets (12 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -793,7 +793,7 @@
       }
     },
     {
-      "name": "LabelLayer has identical key sets (12 keys)",
+      "name": "LabelLayer has identical key sets (14 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],

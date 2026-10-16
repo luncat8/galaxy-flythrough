@@ -1,0 +1,671 @@
+{
+  "total": 87,
+  "passed": 87,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "dvSpent equals |a|·t exactly for constant thrust",
+      "pass": true,
+      "detail": {
+        "dvSpent": 26298000,
+        "expected": 26298000
+      }
+    },
+    {
+      "name": "velocity gain equals the paid Δv (m/s ↔ kpc/ship-s bridge)",
+      "pass": true,
+      "detail": {
+        "velSI": 26298000.000000007,
+        "dvSpent": 26298000
+      }
+    },
+    {
+      "name": "life support accrues on ship time",
+      "pass": true,
+      "detail": {
+        "lifeSpent": 2629800,
+        "T": 2629800
+      }
+    },
+    {
+      "name": "dvSpent tracks the applied factor (×4 reserve burns ×4 the Δv)",
+      "pass": true,
+      "detail": 30000.000000000007
+    },
+    {
+      "name": "the tank bounds the burn: dvSpent never exceeds dvMax",
+      "pass": true,
+      "detail": 20000
+    },
+    {
+      "name": "single axis burns at the class accel, bar 100%",
+      "pass": true,
+      "detail": {
+        "accelNow": 10
+      }
+    },
+    {
+      "name": "forward + strafe blends to √2 and the cap clips it back to 1×",
+      "pass": true,
+      "detail": {
+        "accelNow": 10
+      }
+    },
+    {
+      "name": "a partial blend burns proportionally (the bar reads the blend)",
+      "pass": true,
+      "detail": {
+        "accelNow": 5,
+        "frac": 0.5
+      }
+    },
+    {
+      "name": "Shift reserve: the ceiling scales ×4 and the bar is still 100%",
+      "pass": true,
+      "detail": 40
+    },
+    {
+      "name": "Shift reserve blends too: √2·4 clipped to 4×",
+      "pass": true,
+      "detail": 40
+    },
+    {
+      "name": "Ctrl finesse: the ceiling scales ×¼",
+      "pass": true,
+      "detail": 2.5
+    },
+    {
+      "name": "interstellar class clamps at vCruise·c",
+      "pass": true,
+      "detail": {
+        "speed": 9.715611890180196e-13,
+        "cap": 9.715611890180196e-13,
+        "c": 0.09999999999999999
+      }
+    },
+    {
+      "name": "in-system class caps at the escape-scale constant",
+      "pass": true,
+      "detail": {
+        "localSpeed": 4.857805945090099e-14,
+        "localCap": 4.857805945090099e-14
+      }
+    },
+    {
+      "name": "applyStop arms the commanded brake",
+      "pass": true
+    },
+    {
+      "name": "the stop burns counter-vector to rest and spends exactly the velocity killed",
+      "pass": true,
+      "detail": {
+        "dvSpent": 24685420.651930932,
+        "expected": 24685420.65193094
+      }
+    },
+    {
+      "name": "a stop that cannot finish leaves the residual and reports it",
+      "pass": true,
+      "detail": {
+        "residual": 4.967592207105562e-13,
+        "vel": 4.967592207105562e-13
+      }
+    },
+    {
+      "name": "manual thrust overrides an active stop",
+      "pass": true
+    },
+    {
+      "name": "applyStop on a stopped ship does nothing",
+      "pass": true
+    },
+    {
+      "name": "unclamped profile: t = 2√(d/a) and Δv = 2√(a·d)",
+      "pass": true,
+      "detail": {
+        "t": 632455.5320336758,
+        "dv": 6324555.320336759
+      }
+    },
+    {
+      "name": "unclamped profile peaks under the cruise cap",
+      "pass": true,
+      "detail": 3162277.6601683795
+    },
+    {
+      "name": "clamped profile: t = d/v_c + v_c/a and Δv = 2·v_c",
+      "pass": true,
+      "detail": {
+        "t": 2720098532.894836,
+        "dv": 59958491.6,
+        "years": 86.19472117318287
+      }
+    },
+    {
+      "name": "the profile is route.js interstellarLeg, not a re-derivation",
+      "pass": true,
+      "detail": {
+        "t": 2720098532.894836,
+        "dv": 59958491.6
+      }
+    },
+    {
+      "name": "an in-system class reports no interstellar profile",
+      "pass": true,
+      "detail": {
+        "t": null,
+        "speed": 0
+      }
+    },
+    {
+      "name": "chemical homes on a docking-resolution rung (~1% tank per tap)",
+      "pass": true,
+      "detail": {
+        "rung": 0.0001,
+        "tap": 0.007889400000000001
+      }
+    },
+    {
+      "name": "stardrive homes on a cruise-resolution rung (~1% tank per tap)",
+      "pass": true,
+      "detail": {
+        "rung": 0.5,
+        "tap": 0.013149
+      }
+    },
+    {
+      "name": "the home rung stays in the manual-flight band",
+      "pass": true,
+      "detail": [
+        0.0001,
+        0.5,
+        1
+      ]
+    },
+    {
+      "name": "frozen rung: the shared clock pauses",
+      "pass": true
+    },
+    {
+      "name": "timed rung reads its y/s value",
+      "pass": true
+    },
+    {
+      "name": "follow rung couples to the ship speed (R = gain·v/c)",
+      "pass": true,
+      "detail": 2
+    },
+    {
+      "name": "the write-through keeps the pose bit-exact and writes the velocity",
+      "pass": true,
+      "detail": {
+        "pos": [
+          1.25,
+          -0.5,
+          0.002
+        ],
+        "vel": [
+          3e-13,
+          -1e-14,
+          2e-15
+        ]
+      }
+    },
+    {
+      "name": "handover velocity is drawn motion per physical second",
+      "pass": true,
+      "detail": {
+        "seedC": 0.00022960666358275622
+      }
+    },
+    {
+      "name": "the hangar clamps an over-cap velocity to the class ceiling",
+      "pass": true,
+      "detail": 4.857805945090099e-14
+    },
+    {
+      "name": "the hangar re-arms the tank to the new class",
+      "pass": true,
+      "detail": 20000
+    },
+    {
+      "name": "selecting a hull re-poses the camera onto its stored heading",
+      "pass": true,
+      "detail": {
+        "q": [
+          -0.03405291669006897,
+          -0.11580192245595168,
+          -0.2800542534464327,
+          0.9523654386562788
+        ],
+        "heading": {
+          "0": -0.03405291669006897,
+          "1": -0.11580192245595168,
+          "2": -0.2800542534464327,
+          "3": 0.9523654386562788
+        }
+      }
+    },
+    {
+      "name": "a burn on a restored hull follows its stored heading",
+      "pass": true,
+      "detail": {
+        "along": 0.9999999848446884
+      }
+    },
+    {
+      "name": "the record heading tracks the live camera orientation",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "refuel re-arms the tank but keeps the flight state",
+      "pass": true,
+      "detail": {
+        "remain": 12000000,
+        "life": 1000000
+      }
+    },
+    {
+      "name": "reset zeroes velocity, tank, life and the stop command",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "no buffers are reallocated across 600 mixed frames",
+      "pass": true,
+      "detail": {
+        "keys": 17
+      }
+    },
+    {
+      "name": "a frozen clock burns and accepts nothing",
+      "pass": true,
+      "detail": {
+        "dvSpent": 0,
+        "accelNow": 0
+      }
+    },
+    {
+      "name": "fastest plan uses the class acceleration and speed cap",
+      "pass": true,
+      "detail": {
+        "accel": 10,
+        "speed": 29979245.799999997,
+        "time": 318572908.12411577
+      }
+    },
+    {
+      "name": "thrust-limit plan scales acceleration from the user setting",
+      "pass": true,
+      "detail": {
+        "accel": 2.5,
+        "time": 327566681.8641157,
+        "fastest": 318572908.12411577
+      }
+    },
+    {
+      "name": "speed-limit plan scales the cap and predicts lower Δv / longer time",
+      "pass": true,
+      "detail": {
+        "speed": 7494811.449999999,
+        "dv": 14989622.899999999,
+        "time": 1263049415.3214629
+      }
+    },
+    {
+      "name": "time-limit plan meets a feasible deadline with legal limits",
+      "pass": true,
+      "detail": {
+        "time": 637145816.2482315,
+        "deadline": 637145816.2482315,
+        "accel": 0.09321924712754578,
+        "speed": 29697126.650562886
+      }
+    },
+    {
+      "name": "time-limit plan refuses a deadline shorter than the fastest legal flight",
+      "pass": true,
+      "detail": {
+        "reason": 4,
+        "fastest": 318572908.1241157,
+        "requested": 159286454.06205788
+      }
+    },
+    {
+      "name": "destination planning preserves the in-system class restriction",
+      "pass": true,
+      "detail": {
+        "reason": 5,
+        "time": null
+      }
+    },
+    {
+      "name": "configured approach copies the forecast limits and checkout",
+      "pass": true,
+      "detail": {
+        "reason": 0,
+        "accel": 10,
+        "speed": 11991698.32,
+        "dv": 23983396.64
+      }
+    },
+    {
+      "name": "the desired-speed governor accepts only the impulse up to its target",
+      "pass": true,
+      "detail": {
+        "speed": 7.286708917635147e-13,
+        "target": 7.286708917635147e-13,
+        "charged": 22484434.349999998
+      }
+    },
+    {
+      "name": "forward thrust held at cruise cap is accepted as zero and costs no fuel",
+      "pass": true,
+      "detail": {
+        "fuel": 0,
+        "accel": 0,
+        "speed": 9.715611890180196e-13
+      }
+    },
+    {
+      "name": "steering at cruise cap pays the accepted velocity-vector change",
+      "pass": true,
+      "detail": {
+        "acceptedDv": 9999.99958275626,
+        "charged": 9999.99958275626
+      }
+    },
+    {
+      "name": "braking pays the speed actually removed",
+      "pass": true,
+      "detail": {
+        "acceptedDv": 9999.999999999989,
+        "charged": 9999.999999999989
+      }
+    },
+    {
+      "name": "a near-empty tank accepts only the affordable projected turn",
+      "pass": true,
+      "detail": {
+        "acceptedDv": 999.9999999996462,
+        "tank": 200000000
+      }
+    },
+    {
+      "name": "the commit arms a cold approach with the leg profile's Δv and ETA",
+      "pass": true,
+      "detail": {
+        "reason": 0,
+        "dvRequired": 59958491.6,
+        "dv": 59958491.6,
+        "etaTotalS": 318240725.9489938,
+        "timeS": 318240725.9489938
+      }
+    },
+    {
+      "name": "insufficient Δv refuses with the need, without burning",
+      "pass": true,
+      "detail": {
+        "rFuel": 4,
+        "need": 59958491.6
+      }
+    },
+    {
+      "name": "a hot approach refuses rather than braking through the target",
+      "pass": true,
+      "detail": {
+        "rHot": 5,
+        "closingMs": 26981321.219999995
+      }
+    },
+    {
+      "name": "an in-system class has no interstellar profile to fly",
+      "pass": true
+    },
+    {
+      "name": "a target already inside the shell is refused as already there",
+      "pass": true
+    },
+    {
+      "name": "the flown approach arrives on the shell inside the checkout",
+      "pass": true,
+      "detail": {
+        "steps": 1063,
+        "dist": 10017168483053.855,
+        "spent": 59372514.07392312,
+        "required": 59958491.6
+      }
+    },
+    {
+      "name": "the flight walks burn, coast and flip, and brakes with the nose retrograde",
+      "pass": true,
+      "detail": {
+        "phases": [
+          "burn",
+          "coast",
+          "flip",
+          "idle"
+        ],
+        "retrogradeSteps": 13
+      }
+    },
+    {
+      "name": "the flight time is the closed form's own scale",
+      "pass": true,
+      "detail": {
+        "shipS": 318600000,
+        "etaTotal": 318240725.9489938
+      }
+    },
+    {
+      "name": "a drifting target is met at the shell",
+      "pass": true,
+      "detail": {
+        "dist": 10018848953147.422,
+        "reason": "arrived"
+      }
+    },
+    {
+      "name": "target autopilot settles on the moving target with 0,0,0 relative speed",
+      "pass": true,
+      "detail": {
+        "reason": 0,
+        "steps": 1064,
+        "dist": 0,
+        "rel": 0,
+        "spent": 59957713.67300128,
+        "required": 60178491.6
+      }
+    },
+    {
+      "name": "target autopilot immediately settles inside its arrival tolerance",
+      "pass": true,
+      "detail": {
+        "nearReason": 6,
+        "x": 2.42406840554768e-9
+      }
+    },
+    {
+      "name": "velocity components project target-relative speed onto view forward/right/up",
+      "pass": true,
+      "detail": [
+        2,
+        -3,
+        3
+      ]
+    },
+    {
+      "name": "the autopilot time-rate cap preserves a four-second wall-time arrival",
+      "pass": true,
+      "detail": 2
+    },
+    {
+      "name": "abort ends the flight, keeps the velocity and burns nothing more",
+      "pass": true,
+      "detail": {
+        "reason": "autopilot off",
+        "spent": 0
+      }
+    },
+    {
+      "name": "the all-stop aborts the autopilot first",
+      "pass": true
+    },
+    {
+      "name": "a class swap ends the autopilot (its accel was the command's)",
+      "pass": true
+    },
+    {
+      "name": "follow nulls the relative velocity and trails at the stand-off (dt=3e+4)",
+      "pass": true,
+      "detail": {
+        "relStraightMs": 0.000026136710045411463,
+        "dist": 9993399995535.318,
+        "standOff": 10000000000000,
+        "resolutionM": 16600000000
+      }
+    },
+    {
+      "name": "follow spends only on the target's curve, not its straight run (dt=3e+4)",
+      "pass": true,
+      "detail": {
+        "straightCostMs": 0,
+        "curveCostMs": 21837870.63638661
+      }
+    },
+    {
+      "name": "follow re-nulls after the target curves (dt=3e+4)",
+      "pass": true,
+      "detail": {
+        "relCurveMs": 0.207482682075351
+      }
+    },
+    {
+      "name": "follow nulls the relative velocity and trails at the stand-off (dt=3e+5)",
+      "pass": true,
+      "detail": {
+        "relStraightMs": 2.2933751735969667,
+        "dist": 9934000000000.31,
+        "standOff": 10000000000000,
+        "resolutionM": 76000000000
+      }
+    },
+    {
+      "name": "follow spends only on the target's curve, not its straight run (dt=3e+5)",
+      "pass": true,
+      "detail": {
+        "straightCostMs": 0,
+        "curveCostMs": 3643498.7179162726
+      }
+    },
+    {
+      "name": "follow re-nulls after the target curves (dt=3e+5)",
+      "pass": true,
+      "detail": {
+        "relCurveMs": 2.953437934163958
+      }
+    },
+    {
+      "name": "follow nulls the relative velocity and trails at the stand-off (dt=1e+6)",
+      "pass": true,
+      "detail": {
+        "relStraightMs": 0.0007420740834623966,
+        "dist": 9779995557206.887,
+        "standOff": 10000000000000,
+        "resolutionM": 230000000000
+      }
+    },
+    {
+      "name": "follow spends only on the target's curve, not its straight run (dt=1e+6)",
+      "pass": true,
+      "detail": {
+        "straightCostMs": 0,
+        "curveCostMs": 1433418.410627462
+      }
+    },
+    {
+      "name": "follow re-nulls after the target curves (dt=1e+6)",
+      "pass": true,
+      "detail": {
+        "relCurveMs": 9.97556684166193
+      }
+    },
+    {
+      "name": "follow toggled off keeps the velocity it had",
+      "pass": true
+    },
+    {
+      "name": "no buffers are reallocated across the approach, the follow and the abort",
+      "pass": true,
+      "detail": {
+        "keys": 17
+      }
+    },
+    {
+      "name": "the target frame lands where the sprite projection puts the star",
+      "pass": true,
+      "detail": {
+        "box": [
+          443.9615242270663,
+          266.01923788646684,
+          16,
+          16
+        ],
+        "expect": [
+          451.96152210235596,
+          274.0192383527756
+        ]
+      }
+    },
+    {
+      "name": "a burn straight down the view draws its marker on the crosshair",
+      "pass": true,
+      "detail": [
+        400,
+        300,
+        7
+      ]
+    },
+    {
+      "name": "a nose dead astern pins upward, never onto the crosshair",
+      "pass": true,
+      "detail": [
+        400,
+        28,
+        7
+      ]
+    },
+    {
+      "name": "a target behind the camera pins to the edge on the side to turn toward",
+      "pass": true,
+      "detail": [
+        764,
+        292,
+        16,
+        16
+      ]
+    },
+    {
+      "name": "the velocity tape fills to the speed over the cap",
+      "pass": true,
+      "detail": 22
+    },
+    {
+      "name": "a speed over the cap bleeds above the tape as one stub",
+      "pass": true
+    },
+    {
+      "name": "the throttle and fuel strip reads the applied burn and the tank",
+      "pass": true
+    },
+    {
+      "name": "the chrome draws with the labels off, and stops when the ship is not the rig",
+      "pass": true,
+      "detail": {
+        "drawn": 1,
+        "after": 1
+      }
+    }
+  ]
+}

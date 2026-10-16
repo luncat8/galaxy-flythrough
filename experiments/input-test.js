@@ -152,6 +152,21 @@ check('c/C/f/F carry the ui.4 camera modes and g the game mode, one-shots all', 
 	assert.equal(state.actions.gameMode, 0, 'a held g must not flip game mode at the repeat rate');
 	for (const action of ['orbitObject', 'orbitCentre', 'flyMode', 'flyTo', 'gameMode']) state.actions[action] = 0;
 });
+check('j toggles the chase follow (ui.6), one-shot like the mode keys', () => {
+	assert.equal(canvas.emit('keydown', { code: 'KeyJ' }).defaultPrevented, true);
+	assert.equal(state.actions.chaseFollow, 1);
+	state.actions.chaseFollow = 0;
+	canvas.emit('keydown', { code: 'KeyJ', repeat: true });
+	assert.equal(state.actions.chaseFollow, 0, 'a held j must not flip the chase at the repeat rate');
+	state.actions.chaseFollow = 0;
+});
+check('Space is the ship\'s commanded all-stop (game-mode-plan §3), one-shot', () => {
+	assert.equal(canvas.emit('keydown', { code: 'Space' }).defaultPrevented, true);
+	assert.equal(state.actions.allStop, 1);
+	state.actions.allStop = 0;
+	canvas.emit('keydown', { code: 'Space', repeat: true });
+	assert.equal(state.actions.allStop, 0, 'a held Space must not re-fire the stop at the repeat rate');
+});
 check('selection and time shortcuts work with a result button focused, not in a field', () => {
 	for (const action of ['flyMode', 'flyTo', 'nextStar', 'clearSet', 'freezeTime']) state.actions[action] = 0;
 	for (const code of ['KeyF', 'KeyN', 'KeyX', 'KeyT']) {

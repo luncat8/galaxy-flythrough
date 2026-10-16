@@ -9,7 +9,10 @@
 // Consumers take what they own and leave the rest:
 //   * camera   : keys, lookDx/lookDy, wheelDelta, actions.reset/home
 //   * main.js  : actions.orbitCentre/orbitObject/flyMode (the mode switches —
-//                the object target lives in its selection store), actions.gameMode
+//                the object target lives in its selection store), actions.gameMode,
+//                actions.chaseFollow (j: the follow-behind object orbit),
+//                actions.allStop (Space: the ship's commanded brake) and
+//                actions.shipRefuel (the hangar refill button)
 //   * renderer : actions.exposure
 //   * selection: actions.pick + pickX/pickY, actions.constellations,
 //                actions.flyTo/nextStar/clearSet, keys.boost (Shift+click)
@@ -44,8 +47,9 @@ function createInput(canvas) {
 		pickX: 0,
 		pickY: 0,
 	actions: { reset: 0, home: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, freezeTime: 0,
-		orbitCentre: 0, orbitObject: 0, flyMode: 0, gameMode: 0,
-		flyTo: 0, nextStar: 0, clearSet: 0, systemView: 0, systemViewExit: 0, dvMap: 0 },
+	orbitCentre: 0, orbitObject: 0, flyMode: 0, gameMode: 0, chaseFollow: 0, allStop: 0, shipRefuel: 0,
+	flyTo: 0, nextStar: 0, clearSet: 0, systemView: 0, systemViewExit: 0, dvMap: 0,
+	speedRefTarget: 0, speedRefCentre: 0, speedRefHome: 0 },
 	};
 
 	// Held keys: true while down. Ctrl is the brief's slow modifier; Ctrl+W
@@ -67,7 +71,8 @@ function createInput(canvas) {
 	// explicit, lowercase/uppercase pairs: c orbits the selected star, Shift+C
 	// the galactic centre, f takes the free fly camera, Shift+F flies to the
 	// selected star. G switches game mode (game-mode-plan.md); the galaxy type
-	// it used to cycle is a menu-only control now.
+	// it used to cycle is a menu-only control now. J (ui.6) toggles the chase
+	// follow of the centred object.
 	// 0.5.0's other selection keys: N cycles the primary through the set
 	// (Shift+N, read as the held `boost` key, walks backwards), X clears the
 	// set. One-shots like the rest: a held N must not cycle the primary at the
@@ -75,9 +80,10 @@ function createInput(canvas) {
 	// explicit exit: under pointer lock the browser swallows Esc to release
 	// the lock and no keydown arrives — which is fine, because the system
 	// view runs in orbit mode, where Esc does arrive and the action is a
-	// no-op outside the view.
+	// no-op outside the view. Space is game mode's commanded all-stop
+	// (game-mode-plan.md §3): one-shot, like the other commands.
 	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyP: 'constellations', KeyG: 'gameMode', KeyT: 'freezeTime', Tab: 'menu',
-		KeyN: 'nextStar', KeyX: 'clearSet', KeyV: 'systemView', KeyB: 'dvMap', Escape: 'systemViewExit' };
+		KeyN: 'nextStar', KeyX: 'clearSet', KeyV: 'systemView', KeyB: 'dvMap', KeyJ: 'chaseFollow', Space: 'allStop', Escape: 'systemViewExit' };
 	// C and F carry a shift-cased pair each: [lowercase, Shift+uppercase].
 	const casedPressMap = { KeyC: ['orbitObject', 'orbitCentre'], KeyF: ['flyMode', 'flyTo'] };
 	const PANEL_BUTTON_SHORTCUTS = { KeyF: 1, KeyN: 1, KeyX: 1 };

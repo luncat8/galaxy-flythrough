@@ -49,7 +49,9 @@ No framework, bundler, module loader, or runtime network connection is required.
   landmark), Shift+click to build a set of up to 256, select-around by a world-space radius,
   fly to one (`Shift+F` — a 2 s eased flight that ends orbiting the star at its luminosity
   stand-off, cancelled by any control input; a moving landmark stays centred), orbit it on
-  the spot (`c`), cycle the
+  the spot (`c`), chase it from behind aligned with its motion (`j` — the star stays
+  dead-centre while the galaxy streams past where it is heading; a glance swings back),
+  cycle the
   set (`N`), clear it (`X`) — each member snapshotted with its
   stellar properties, so the set survives the streaming rebuild
 - Deterministic per-star planetary systems: planets, belts, moons, insolation and
@@ -74,25 +76,36 @@ This is a visual galaxy model, not an N-body gravity simulation. The analytical 
 
 ## Controls
 
-| Input | Fly camera | Orbit camera |
-|---|---|---|
-| Mouse | Click to lock, then look | Press and drag the canvas |
-| Click without dragging | Select a star (Shift adds to the set) | Select a star (Shift adds to the set) |
-| Shift+F / N / Shift+N / X | Fly to the primary · next star · previous star · clear the set | same |
-| W / S | Forward / backward | Closer / farther |
-| A / D | Strafe | Circle target |
-| E / Q | Up / down | Over / under target |
-| Mouse wheel | Speed ×2 per notch | Distance ×2 per notch |
-| Shift / Ctrl | Rate ×100 / ×0.1 | Rate ×4 / ×0.25 |
-| f / c / Shift+C | Free fly · orbit the selected star (follows it) · orbit the galactic centre | — |
-| H | Return home | Return to the Sun or generated-galaxy centre |
-| R | Reset the simulation and view | Same |
+| Input | Fly camera | Orbit camera | Game mode (`g`) |
+|---|---|---|---|
+| Mouse | Click to lock, then look | Press and drag the canvas | Aim (the thrust runs on the ship's axes) |
+| Click without dragging | Select a star (Shift adds to the set) | Select a star (Shift adds to the set) | same — Flight can lock it as the destination; otherwise the HUD uses the primary |
+| Shift+F / N / Shift+N / X | Fly to the primary · next star · previous star · clear the set | same | Shift+F runs the fastest approach to the locked destination (or primary) · next/prev/clear same |
+| W / S | Forward / backward | Closer / farther | Manual forward / backward override; the Flight thrust lever is persistent |
+| A / D | Strafe | Circle target | Thrust right / left |
+| E / Q | Up / down | Over / under target | Thrust up / down |
+| Mouse wheel | Speed ×2 per notch | Distance ×2 per notch | Ship clock rung ×1-2-5 |
+| Shift / Ctrl | Rate ×100 / ×0.1 | Rate ×4 / ×0.25 | Burn ×4 reserve / ×0.25 finesse |
+| Space | — | — | All-stop: burn counter-vector to rest (can run dry) |
+| f / c / Shift+C | Free fly · orbit the selected star (follows it) · orbit the galactic centre **and select it as the speed reference** | same (orbit only) | `f` aborts the autopilot · `c` gated — the ship is the fly rig · Shift+C selects the reference only (no re-pose) |
+| j | Chase the centred star from behind: the view aligns with its movement vector and swings back after a glance | — | the ship trails the selected star at its stand-off; press again to abort |
+| H | Return home **and select the home reference** | same (travel only) | selects the home reference only — ships do not teleport |
+
+**Speed reference** (game mode) — the object the axis velocities, the HUD target
+line and the autopilot answer against: the locked Flight destination, else the
+primary selection, by default. The **target ref / centre ref / home ref** buttons
+in the Controls panel select it directly; `Shift+C` selects the galactic centre
+and `H` the home (the Sun in the Milky Way) as a side effect. Centre and home are
+frame-fixed points: their relative velocities are zero, so the axes read absolute.
+| R | Reset the simulation and view | Same | reset active hull to camera home (full tank, zero velocity); parked hulls stay put |
 
 Other controls:
 
-- `Tab` — hide/show both panels; a panel's own `▾` (or a click on its title) collapses it to its header
-- `G`/`g` — game mode: the spaceship HUD (a placeholder until
-  [game-mode-plan.md](game-mode-plan.md) ships; galaxy type changes live on the panel dropdown)
+- **Controls panel** (bottom right) — the shortcut keys as clickable buttons and
+  checkboxes, each tooltip carrying the detail; `▾` collapses it to the header
+- `Tab` — hide/show all panels; a panel's own `▾` (or a click on its title) collapses it to its header
+- `G`/`g` — game mode: fly the same pipeline as a spaceship (see
+  [Game mode](#game-mode-g) below; galaxy type changes live on the panel dropdown)
 - `P` — toggle constellation lines
 - `T` — pause/resume star time (also works after clicking a result button)
 - the **Evolve with star time** checkbox — the galaxy's age runs with star time from 0.2 Gyr to
@@ -112,33 +125,117 @@ Other controls:
 
 The settings panel opens at startup and exposes galaxy type, seed, age, the live epoch clock, star time, movement engine, pattern controls, tone mapping, and presets.
 
+## Game mode (g)
+
+Game mode ([game-mode-plan.md](game-mode-plan.md), G1–G3 + ui.10) is the same
+pipeline flown as a **spaceship**: the camera *is* the active hull, its motion
+obeys the ship class instead of the observer's instant-response rig, and a HUD
+answers how fast, how much fuel and how far to the speed reference. `g` enters
+and leaves; each fleet hull keeps its own position, velocity, heading, class,
+tank and clock. First entry adopts the camera pose — position **and heading**;
+later entries restore the hull's saved state. Clicking a ship in the Flight
+list switches to it and enters game mode if needed.
+
+- **Restrictions are the game.** WASD/arrows burn real Δv along the ship's axes
+  (mouse aims); the ship accelerates, coasts on straight lines and runs out of
+  fuel. Speed clamps at the class cruise fraction (`fusion` 0.02c,
+  `stardrive` 0.1c, …); in-system classes (`chemical`, `nuclear`) cap at an
+  escape-scale speed and never leave the local group. Fuel is charged for the
+  **accepted velocity-vector impulse**: holding forward at the speed cap costs
+  nothing, while steering and braking pay the real change in velocity. `Space`
+  is a commanded brake that can run dry — the HUD reports the residual it could
+  not kill.
+- **One clock.** While flying, the ship's physics and the stars' drift advance
+  at the same rate — the ship-time ladder on the star-time slider (`1-2-5`
+  rungs from 1e-5 y/s to 1e6 y/s, wheel-stepped, `T` freezes ship and sky
+  together, a `follow` rung couples the pace to the ship's speed). One clock is
+  what makes a selected star reachable: at the shared rate the ship's cruise
+  outruns stellar drift by ~100×, so the star is met where it arrives. The
+  observer's Myr/s star time is parked while piloting and restored on exit.
+  Destination approach and target-stop autopilots cap the shared rate so travel
+  takes at least four wall-clock seconds; `T`'s freeze remains an override.
+- **The Flight workspace.** The lower-left **Flight** panel lists the session's
+  ships and has **Spawn at camera** for a stationary hull. Clicking a row pilots
+  that hull. The panel then keeps the normal task in one place: the two
+  **mutually exclusive** forward-axis controls — the persistent **Thrust** lever
+  (*thrust control*) and the **Desired speed** slider with *cut thrust*
+  (*speed control*; forward thrust cuts at the desired speed, no hidden brake) —
+  where touching one disables the other, select a destination, choose a plan
+  and engage it. **Use selected** snapshots the clicked star, so
+  inspecting another object cannot silently retarget a trip. The four plans are
+  **fastest**, **use thrust as limit**, **use speed as limit**, and **use time
+  limit**; the compact forecast shows predicted Δv cost (including the current
+  velocity match), tank margin, ship time and wall time before it will engage.
+  The System map and transport-route controls remain directly below it.
+- **The hangar.** The Flight panel's **Ship** selector changes the active
+  hull's class (0.5.4's classes: accel, Δv, cruise, life support); the swap
+  re-arms that hull's tank and re-snaps its clock to the class's home rung.
+  **Refuel** there (and **refuel ship** in Controls) is the hangar refill until
+  docking (G4) brings station service.
+- **The HUD** (the overlay, at its 4 Hz cadence) shows **accepted thrust** and
+  burn reserve, speed in c (km/s below 0.01c) and the live acceleration, the Δv
+  tank and life support, signed forward/sideways/vertical velocity components
+  on the camera axes (relative to the speed reference — its name is printed
+  above them), and the target line: drawn distance, closing rate, coast
+  ETA in ship *and* wall time, and autopilot ETA. It does not present forward
+  thrust discarded by the cruise clamp as a burn. On first entry, a live follow
+  (`c`, `j` or a completed Shift+F) seeds the new hull's physical velocity;
+  spawned hulls remain stationary and previously flown hulls restore their own
+  saved velocity.
+- **The autopilot.** `Shift+F` remains the fastest burn to the locked Flight
+  destination (or selected star when none is locked): a burn, a flip and a
+  brake in the star's own frame, stopping on a luminosity-based stand-off
+  (`f` aborts). **Engage plan** runs the locked destination with its forecast's
+  thrust, speed or deadline limits. **Autopilot to target** is the precision
+  checkbox: it closes on the live drawn position and matches the target's
+  physical velocity, ending with zero target-relative speed. These destination
+  flights check fuel first — `insufficient Δv: need X, have Y` — and refuse a
+  hot approach instead of braking through the star. While either destination
+  autopilot runs, the shared clock caps travel at a minimum of four wall seconds;
+  the effective rate is shown and `T` still freezes. `j` trails the star at its
+  stand-off with relative velocity nulled, so fuel burns only when the star
+  curves. The HUD auto line shows phase, fraction flown, ETA in ship and wall
+  time, and Δv spent against the checkout. The ship's nose follows the burn
+  through the camera's own look, so a glance still wins. Thrust keys, Space, a
+  class swap, target loss and `g` end a flight at the current velocity.
+- **The chrome.** A crosshair at the nose, a burn marker where the commanded
+  direction crosses the view, a velocity tape left of centre (over-cap speed
+  bleeds above it), a target frame on the speed reference (the locked
+  destination, selected star, galactic centre or home)
+  and an accepted-thrust/fuel strip in the class colour.
+
 ## Ships, routes and autopilot (0.5.5, reviewed in 0.5.6)
 
-The system and ship controls live in their own panel on the left (`Tab` toggles
-both panels); the galaxy settings stay on the right.
+The lower-left **Flight** panel is the task workspace: flight setup comes first,
+then the System map and route tools below it (`Tab` toggles all panels, the
+**Controls** panel included); the galaxy settings stay on the right.
 
-1. Select a star and press **V**, then pick a render in the left panel's **View**
+1. For an interstellar trip, select a star, click **Use selected**, choose a
+   travel mode and review the Flight forecast before **Engage plan**. The map
+   route below remains available for the economic / in-system leg.
+2. Select a star and press **V**, then pick a render in the same panel's **View**
    dropdown: the system schematic, the classic delta-v map, or the delta-v rails
    map (one row per node kind, so the escape and L5 rails run level across the
    bodies). **B** cycles the three.
-2. On a delta-v render, click a start node, then a destination node (surface,
+3. On a delta-v render, click a start node, then a destination node (surface,
    LO, GEO, escape or L5). Escape and L5 are both exits: a route starting or
    ending on either spends only the star-frame burns on that side.
-3. Choose a ship and energy budget. **Round trip** adds a return after a
+4. Choose a ship and energy budget. **Round trip** adds a return after a
    0.25-year layover; fuel is not replenished. The report compares all five classes.
-4. Set **System time** above zero and start autopilot. The clock is a geometric
+5. Set **System time** above zero and start autopilot. The clock is a geometric
    ladder (slowest timed stop 1e-4 y/s; 0 freezes). Around 0.1–1 y/s is a useful
    range for watching a transfer; high rates fast-forward and can finish short
    flights between rendered frames. The class-colour ship and dashed trajectory
    ride every leg on the schematic and both delta-v renders, local legs included.
    Start/resume pauses or resumes flight; changing the plan or exiting the view
    cancels it.
-5. For interstellar travel, select a first star and click a second star in the nearby
-   search results, then open a system and use **Current + previous**. When the natural-object
-   history contains two stars, the route runs previous → current; otherwise two
-   Shift-clicked or search-added set members are the fallback. **Round trip** controls
-   whether the route returns. The report covers parking-orbit escape, cruise and capture
-   in real years; progress is not projected into a local orbital diagram.
+6. For a transport route between stars, select a first star and click a second star
+   in the nearby search results, then open a system and use **Current + previous**.
+   When the natural-object history contains two stars, the route runs previous →
+   current; otherwise two Shift-clicked or search-added set members are the
+   fallback. **Round trip** controls whether the route returns. The report covers
+   parking-orbit escape, cruise and capture in real years; progress is not
+   projected into a local orbital diagram.
 
 Fuel, acceleration and life support decide feasibility; impossible plans cannot
 launch. Routes are transient. Ship class, map toggle and budget survive presets.

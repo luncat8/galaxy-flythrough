@@ -265,14 +265,14 @@ html, body {
 }
 .selection-asset-pair button:disabled { opacity: 0.45; cursor: default; }
 
-/* The system and ship panel (0.5.6) — the lower left counterpart of #menu.
-   It is a .panel like the other two; its view-only rows carry data-view="system"
-   and are hidden while the view is closed (syncViewRows). */
+/* Flight (G3) is the lower-left workspace: manual power and a destination
+   forecast sit above the existing system-map/route task, so a pilot does not
+   need to hunt across panels. View-only map rows still use data-view="system". */
 #sysmenu {
 	position: fixed;
 	bottom: 12px;
 	left: 12px;
-	width: 268px;
+	width: 292px;
 	max-height: calc(42vh - 12px);
 	overflow-y: auto;
 	font-family: 'Menlo', 'Consolas', monospace;
@@ -302,6 +302,228 @@ html, body {
 #sysmenu input[type=checkbox] { accent-color: #7fb0d0; }
 #sysmenu #route-hint { color: #9cbea8; line-height: 1.4; grid-column: 1 / -1; }
 #sysmenu .menu-row #slider-dvbudget { grid-column: 1; }
+#flight-console { margin-bottom: 10px; }
+.flight-section-heading {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 8px;
+	margin: 8px 0 7px;
+	padding-bottom: 4px;
+	border-bottom: 1px solid #1f3448;
+	color: #8fc0df;
+	font-weight: bold;
+}
+.flight-section-heading:first-child { margin-top: 0; }
+.flight-section-heading small {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 9px;
+	font-weight: normal;
+	color: #7897ad;
+	text-align: right;
+}
+.flight-fleet-bar {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 6px;
+	margin: -2px 0 5px;
+	font-size: 9px;
+	color: #7897ad;
+}
+#sysmenu .flight-fleet-bar button {
+	padding: 4px 7px;
+	font: inherit;
+	font-size: 10px;
+	color: #d7edf7;
+	background: #16283a;
+	border: 1px solid #2f4f6f;
+	border-radius: 3px;
+	cursor: pointer;
+}
+#sysmenu .flight-fleet-bar button:hover { background: #1f3a52; }
+.flight-ship-list {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 4px;
+	max-height: 92px;
+	overflow-y: auto;
+	margin-bottom: 8px;
+}
+#sysmenu .flight-ship-list button {
+	min-width: 0;
+	overflow: hidden;
+	padding: 5px 6px;
+	border: 1px solid #29465e;
+	border-radius: 3px;
+	background: rgba(4, 10, 16, 0.55);
+	color: #9bb7c8;
+	font: 9px 'Menlo', 'Consolas', monospace;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	text-align: left;
+	cursor: pointer;
+}
+#sysmenu .flight-ship-list button:hover { background: #1f3a52; }
+#sysmenu .flight-ship-list button.is-active {
+	border-color: #75bddb;
+	background: rgba(37, 89, 118, 0.45);
+	color: #e0f4ff;
+}
+#sysmenu .flight-ship-list button[aria-pressed="true"]::before {
+	content: "● ";
+	color: #79d9ff;
+}
+.flight-ship-row {
+	display: grid;
+	grid-template-columns: 38px minmax(0, 1fr) auto;
+	gap: 5px;
+	align-items: center;
+	margin-bottom: 7px;
+	font-size: 11px;
+}
+.flight-ship-row label { color: #a7c6d8; }
+#sysmenu .flight-ship-row select,
+#sysmenu .flight-ship-row button {
+	min-width: 0;
+	padding: 4px 5px;
+	font: inherit;
+	font-size: 11px;
+	color: #cdeccd;
+	background: #0c1620;
+	border: 1px solid #2f4f6f;
+	border-radius: 3px;
+}
+#sysmenu .flight-ship-row button { background: #16283a; cursor: pointer; }
+#sysmenu .flight-ship-row button:hover:not(:disabled) { background: #1f3a52; }
+.flight-control-row { margin-bottom: 7px; }
+.flight-control-row label { gap: 6px; }
+/* The Pilot controls are mutually exclusive: the row whose
+   control is off duty is muted, and its value line says which
+   control owns the forward axis. */
+.flight-control-row.is-off { opacity: 0.45; }
+.flight-velocity-ref {
+	font-size: 9px;
+	color: #7897ad;
+	margin: 0 0 2px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.flight-velocity-ref strong { color: #d7edf7; font-weight: normal; }
+.flight-check {
+	margin-left: auto;
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	font-size: 10px;
+	font-weight: normal;
+	color: #9cb9cb;
+	white-space: nowrap;
+}
+.flight-check input { margin: 0; }
+.flight-control-row .menu-val { min-width: 55px; }
+.flight-velocity {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 4px;
+	margin: 2px 0 9px;
+}
+.flight-velocity span {
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 4px 5px;
+	border: 1px solid #29465e;
+	border-radius: 3px;
+	background: rgba(4, 10, 16, 0.55);
+}
+.flight-velocity small {
+	color: #7897ad;
+	font-size: 8px;
+	text-transform: uppercase;
+}
+.flight-velocity strong {
+	overflow: hidden;
+	color: #d7edf7;
+	font-size: 9px;
+	font-weight: normal;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.flight-autopilot {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 1px 0 7px;
+	color: #b8d6e8;
+	font-size: 10px;
+	cursor: pointer;
+}
+.flight-autopilot input { margin: 0; }
+.flight-autopilot small {
+	margin-left: auto;
+	color: #7897ad;
+	font-size: 8px;
+	white-space: nowrap;
+}
+.flight-destination-row {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto auto;
+	gap: 5px;
+	align-items: center;
+	margin: 1px 0 7px;
+	font-size: 10px;
+	color: #91b6cc;
+}
+.flight-destination-row strong {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 11px;
+	font-weight: normal;
+	color: #e0eff8;
+}
+#sysmenu .flight-destination-row button,
+#sysmenu .flight-actions button {
+	grid-column: auto;
+	padding: 4px 6px;
+	font: inherit;
+	font-size: 10px;
+	color: #d7edf7;
+	background: #16283a;
+	border: 1px solid #2f4f6f;
+	border-radius: 3px;
+	cursor: pointer;
+}
+#sysmenu .flight-destination-row button:hover:not(:disabled),
+#sysmenu .flight-actions button:hover:not(:disabled) { background: #1f3a52; }
+.flight-forecast {
+	min-height: 54px;
+	margin: 2px 0 7px;
+	padding: 6px 7px;
+	border: 1px solid #29465e;
+	border-radius: 3px;
+	background: rgba(4, 10, 16, 0.55);
+	color: #a8c8db;
+	font: 10px/1.45 'Menlo', 'Consolas', monospace;
+	white-space: pre-wrap;
+}
+.flight-actions {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 5px;
+	margin-bottom: 8px;
+}
+#sysmenu button:disabled,
+#sysmenu select:disabled,
+#sysmenu input:disabled { opacity: 0.45; cursor: default; }
+.system-section-heading { margin-top: 10px; }
 
 #error {
 	position: fixed;
@@ -319,18 +541,79 @@ html, body {
 	white-space: pre-wrap;
 }
 
+/* Controls panel (ui.6): the old read-only help <pre>, now clickable — every
+   shortcut as a button or a checkbox. Bottom-right under the settings menu,
+   same width so the system map's right inset covers it too. */
 #help {
 	position: fixed;
 	bottom: 12px;
 	right: 12px;
+	width: 260px;
+	max-height: calc(52vh - 12px);
+	overflow-y: auto;
 	font-family: 'Menlo', 'Consolas', monospace;
-	font-size: 11px;
-	color: #888;
-	background: rgba(0, 0, 0, 0.5);
-	padding: 8px 12px;
+	font-size: 12px;
+	color: #cdeccd;
+	background: rgba(10, 14, 10, 0.88);
+	border: 1px solid #2f5f2f;
 	border-radius: 4px;
-	white-space: pre;
-	pointer-events: none;
+	padding: 10px 12px;
+	z-index: 20;
+}
+#help .menu-header {
+	color: #6fae6f;
+	border-bottom-color: #2f5f2f;
+}
+#help .menu-header button { border-color: #2f5f2f; }
+#help .menu-header button:hover { background: #1a331a; }
+#help .kbd {
+	font-size: 10px;
+	color: #6f8e6f;
+	background: rgba(47, 95, 47, 0.35);
+	border-radius: 2px;
+	padding: 0 4px;
+}
+#help .help-grid {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+#help .help-grid button {
+	flex: 1 1 auto;
+	background: #1a331a;
+	border: 1px solid #2f5f2f;
+	color: #cdeecd;
+	font: inherit;
+	font-size: 11px;
+	padding: 3px 6px;
+	border-radius: 3px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+#help .help-grid button:hover:not(:disabled) { background: #244824; }
+#help .help-grid button:disabled { opacity: 0.45; cursor: default; }
+#help .help-grid button.is-active { background: #244824; border-color: #4f8f4f; }
+#help .help-checks {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 4px 8px;
+	margin: 8px 0 2px;
+}
+#help .help-checks label {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 11px;
+	color: #a9c9a9;
+	cursor: pointer;
+	white-space: nowrap;
+}
+#help .help-checks input { accent-color: #6fae6f; }
+#help .help-hint {
+	font-size: 10px;
+	line-height: 1.5;
+	color: #5f7f5f;
+	margin-top: 8px;
 }
 
 /* Settings menu — top-right panel with sliders for the HDR knobs. */
@@ -568,6 +851,7 @@ body.system-view #sysread {
 @media (max-width: 700px) {
 	#selection-menu, #sysmenu { width: calc(60vw - 24px); }
 	#menu { width: max(140px, calc(40vw - 24px)); }
+	#help { width: max(140px, calc(40vw - 24px)); max-height: calc(40vh - 12px); }
 	#selection-menu { max-height: calc(56vh - 12px); }
 	#sysmenu { max-height: calc(42vh - 12px); }
 }

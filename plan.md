@@ -1551,8 +1551,9 @@ tests and extend the file layout of §11 as needed.
    passed by CPU/stub tests. The 0.4.8 analytical shape implementation is complete;
    this does not imply browser visual validation is complete.
 4. [Game mode — spaceship flight, restrictions and display](game-mode-plan.md):
-   G1 (ship state, text HUD: speed / fuel / distance to the selected object, the
-   class restrictions) after the ui.4 placeholder. No prerequisites beyond it;
+   G1 shipped (ui.7: `src/core/ship.js`, the class restrictions, the shared ship
+   clock on the system-ladder convention, the text HUD and the input gating);
+   G2 chrome + burn/flip autopilot, G3 docking/refuel, G4 presets remain.
    CPU-only and pipeline-neutral.
 
 The [0.5 planet series](archive/0.5.0-plan-planet-generator.md) is complete:

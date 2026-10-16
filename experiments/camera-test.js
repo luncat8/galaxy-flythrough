@@ -848,6 +848,187 @@ function project(camera, x, y, z, aspect) {
 		&& typeof out.flying === 'boolean' && typeof out.flightProgress === 'number');
 }
 
+// --- Chase follow (j, ui.6) --------------------------------------------------
+{
+	const TARGET = [1.2, -0.5, 0.02];
+	const STAND_OFF = 0.0006;
+	// kpc/s: a disc star's apparent speed at the default star time — far more
+	// than the 0.6 pc stand-off per second, exactly the case the follow feed
+	// exists for.
+	const VEL = [0.08, -0.05, 0.01];
+	const VEL_LEN = Math.hypot(VEL[0], VEL[1], VEL[2]);
+	const DIR_DOT = (camera, dir) =>
+		(camera.forward[0] * dir[0] + camera.forward[1] * dir[1] + camera.forward[2] * dir[2]);
+
+	// Arrive on the star first, so engage continuity is measured from the
+	// settled orbit pose exactly like c → j in the app.
+	function arrivedChase() {
+		const camera = cameraModule.createCamera();
+		camera.flyToStar(TARGET[0], TARGET[1], TARGET[2], 'Chase star', STAND_OFF);
+		run(camera, freshInput(), 130);
+		return camera;
+	}
+
+	// Chase a target that keeps its velocity; the feed is refreshed before
+	// each step exactly like main.js's followTarget, and the final target
+	// position is returned for the behind/centred checks.
+	function chaseFrames(camera, frames, dt, input) {
+		const step = dt || DT;
+		const keys = input || freshInput();
+		const pos = camera.getState().orbitTarget.slice();
+		for (let i = 0; i < frames; i++) {
+			pos[0] += VEL[0] * step;
+			pos[1] += VEL[1] * step;
+			pos[2] += VEL[2] * step;
+			camera.updateTarget(pos[0], pos[1], pos[2]);
+			camera.step(step, keys);
+		}
+		return pos;
+	}
+
+	check('chase is off by default', cameraModule.createCamera().getState().chase === false);
+
+	const engage = arrivedChase();
+	const before = engage.getState();
+	engage.setChase(true);
+	run(engage, freshInput(), 1);
+	const afterEngage = engage.getState();
+	check('engaging chase from a settled orbit is pose-continuous (behind = where it already is)',
+		afterEngage.chase === true
+		&& before.position.every((v, i) => Math.abs(v - afterEngage.position[i]) < 1e-12)
+		&& quatDot(before.orientation, afterEngage.orientation) > 1 - 1e-9
+		&& aimError(engage, TARGET) < 1e-6,
+		{ moved: Math.hypot(afterEngage.position[0] - before.position[0],
+			afterEngage.position[1] - before.position[1], afterEngage.position[2] - before.position[2]) });
+	check('enabling chase outside the object orbit is a no-op, not a chase of nothing',
+		(() => { const c = cameraModule.createCamera(); c.setMode(cameraModule.MODE_ORBIT_GC); c.setChase(true); return c.getState().chase === false; })());
+
+	const follower = arrivedChase();
+	follower.setChase(true);
+	const followPos = chaseFrames(follower, 240);      // 4 s, 8 × CHASE_DIR_TAU
+	const followed = follower.getState();
+	const behind = [followed.position[0] - followPos[0], followed.position[1] - followPos[1], followed.position[2] - followPos[2]];
+	const behindDot = (behind[0] * VEL[0] + behind[1] * VEL[1] + behind[2] * VEL[2]) / (Math.hypot(behind[0], behind[1], behind[2]) * VEL_LEN);
+	check('the chase converges behind the target, aligned with its motion',
+		DIR_DOT(follower, VEL) / VEL_LEN > 0.9999 && behindDot < -0.9999,
+		{ forwardDot: DIR_DOT(follower, VEL) / VEL_LEN, behindDot });
+	check('the followed object stays dead-centre at the orbit distance',
+		Math.abs(distanceTo(followed, followPos) - STAND_OFF) < 1e-9 && aimError(follower, followPos) < 1e-6,
+		{ dist: distanceTo(followed, followPos), aim: aimError(follower, followPos) });
+	check('the chase reports the target\'s own apparent speed',
+		Math.abs(followed.chaseSpeedLyPerSec - VEL_LEN / cameraModule.LY_TO_KPC) < 0.01,
+		{ reported: followed.chaseSpeedLyPerSec, actual: VEL_LEN / cameraModule.LY_TO_KPC });
+
+	// A glance: one hard look sideways, then the movement keeps flowing. The
+	// star never leaves centre (position = target - distance * forward is the
+	// orbit law with a different direction owner), and the alignment returns.
+	const glance = arrivedChase();
+	glance.setChase(true);
+	chaseFrames(glance, 240);
+	const spin = freshInput();
+	spin.lookDx = 400;
+	glance.step(DT, spin);
+	const spunPos = glance.getState().orbitTarget;
+	check('a glance keeps the followed object dead-centre (it orbits, not trails)',
+		aimError(glance, spunPos) < 1e-6 && Math.abs(distanceTo(glance.getState(), spunPos) - STAND_OFF) < 1e-9,
+		{ aim: aimError(glance, spunPos) });
+	chaseFrames(glance, 240);
+	check('the alignment always comes back after a glance',
+		DIR_DOT(glance, VEL) / VEL_LEN > 0.9999, DIR_DOT(glance, VEL) / VEL_LEN);
+
+	// Frozen star time: the drawn positions are bit-identical, the movement
+	// feed reads zero, and the chase degenerates to a free orbit of the
+	// looked direction.
+	const frozen = arrivedChase();
+	frozen.setChase(true);
+	chaseFrames(frozen, 240);
+	const frozenPos = frozen.getState().orbitTarget.slice();
+	const freezeSpin = freshInput();
+	freezeSpin.lookDx = 400;
+	frozen.step(DT, freezeSpin);
+	run(frozen, freshInput(), 60);                     // no updateTarget: time frozen
+	check('a frozen target keeps the looked direction and reports no motion',
+		aimError(frozen, frozenPos) < 1e-6
+		&& Math.abs(distanceTo(frozen.getState(), frozenPos) - STAND_OFF) < 1e-9
+		&& frozen.getState().chaseSpeedLyPerSec === 0,
+		{ aim: aimError(frozen, frozenPos), speed: frozen.getState().chaseSpeedLyPerSec });
+
+	// Leaving: the free orbit takes over at the exact pose the chase held.
+	const off = arrivedChase();
+	off.setChase(true);
+	chaseFrames(off, 240);
+	const beforeOff = off.getState();
+	off.setChase(false);
+	run(off, freshInput(), 1);
+	const afterOff = off.getState();
+	check('leaving chase is pose-continuous (the free orbit takes over exactly)',
+		afterOff.chase === false
+		&& beforeOff.position.every((v, i) => Math.abs(v - afterOff.position[i]) < 1e-12)
+		&& quatDot(beforeOff.orientation, afterOff.orientation) > 1 - 1e-9);
+
+	// Mode switches clear the sub-mode instead of chasing a target nobody orbits.
+	const clearedFly = arrivedChase();
+	clearedFly.setChase(true);
+	clearedFly.setMode(cameraModule.MODE_FLY);
+	check('f during a chase returns to free fly with chase off', clearedFly.getState().chase === false);
+	const clearedGC = arrivedChase();
+	clearedGC.setChase(true);
+	clearedGC.setMode(cameraModule.MODE_ORBIT_GC);
+	check('C during a chase returns to the centre orbit with chase off', clearedGC.getState().chase === false);
+
+	// The dolly keeps working: W halves the chase distance in one second.
+	const dolly = arrivedChase();
+	dolly.setChase(true);
+	chaseFrames(dolly, 240);
+	const dollyInput = freshInput();
+	dollyInput.keys.forward = true;
+	run(dolly, dollyInput, 60);
+	check('W/S and the wheel still dolly the chase distance',
+		Math.abs(dolly.getState().orbitDistance - STAND_OFF / 2) < 1e-12, dolly.getState().orbitDistance);
+
+	// Frame-rate independence: the ease composes over elapsed time.
+	function chaseAt(dt) {
+		const c = arrivedChase();
+		c.setChase(true);
+		const pos = chaseFrames(c, Math.round(1 / dt), dt);
+		return { state: c.getState(), pos };
+	}
+	const at60 = chaseAt(1 / 60);
+	const at30 = chaseAt(1 / 30);
+	const at144 = chaseAt(1 / 144);
+	const spread = Math.max(
+		Math.hypot(at60.state.position[0] - at30.state.position[0], at60.state.position[1] - at30.state.position[1], at60.state.position[2] - at30.state.position[2]),
+		Math.hypot(at60.state.position[0] - at144.state.position[0], at60.state.position[1] - at144.state.position[1], at60.state.position[2] - at144.state.position[2]));
+	check('the chase swing lands identically at 30/60/144 Hz',
+		spread < 1e-9 && quatDot(at60.state.orientation, at144.state.orientation) > 1 - 1e-9,
+		{ spread, dot: quatDot(at60.state.orientation, at144.state.orientation) });
+
+	// A circular target: the direction lags the motion by a bounded angle and
+	// the distance contract never breaks. The circle starts at the arrival
+	// point so the feed never reads a jump.
+	const orbiting = arrivedChase();
+	orbiting.setChase(true);
+	const orbitInput = freshInput();
+	const oPos = orbiting.getState().orbitTarget.slice();
+	const OMEGA = 0.5;                                 // rad/s of target motion
+	let worstDist = 0;
+	for (let i = 0; i < 600; i++) {
+		const a = OMEGA * DT * i;
+		oPos[0] = TARGET[0] + 0.5 * (Math.cos(a) - 1);
+		oPos[1] = TARGET[1] + 0.5 * Math.sin(a);
+		oPos[2] = TARGET[2];
+		orbiting.updateTarget(oPos[0], oPos[1], oPos[2]);
+		orbiting.step(DT, orbitInput);
+		worstDist = Math.max(worstDist, Math.abs(distanceTo(orbiting.getState(), oPos) - STAND_OFF));
+	}
+	const aEnd = OMEGA * DT * 599;
+	const tangent = [-Math.sin(aEnd), Math.cos(aEnd), 0];
+	const lag = Math.acos(Math.min(1, Math.max(-1, DIR_DOT(orbiting, tangent))));
+	check('a curving target holds the distance and lags the motion by a bounded angle',
+		worstDist < 1e-9 && lag < 2 * OMEGA * cameraModule.CHASE_DIR_TAU,
+		{ worstDist, lagRad: lag, bound: 2 * OMEGA * cameraModule.CHASE_DIR_TAU });
+}
+
 // --- 0.1.1: home and reset --------------------------------------------------
 {
 	const camera = cameraModule.createCamera();
@@ -921,6 +1102,10 @@ function project(camera, x, y, z, aspect) {
 		input.wheelDelta = (i % 90 === 0) ? -NOTCH : 0;
 		input.actions.home = (i % 250 === 0) ? 1 : 0;
 		if (i % 100 === 99) c.setMode((c.getState().mode + 1) % 3);
+		// Chase follow (ui.6) rides the mode cycle: enabled while the camera
+		// orbits an object with a moving feed, cleared by the mode switches.
+		if (i % 100 === 60) c.setChase(true);
+		if (i % 37 === 0) c.updateTarget(1 + i * 1e-4, -0.5, 0.02);
 		c.step(DT, input);
 		c.buildViewProj(1.5);
 		const state = c.getState(out);

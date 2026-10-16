@@ -1,7 +1,7 @@
 {
-  "date": "2026-10-16T05:02:01.726Z",
-  "totalChecks": 133,
-  "passed": 133,
+  "date": "2026-10-17T02:58:38.878Z",
+  "totalChecks": 148,
+  "passed": 148,
   "failed": 0,
   "checks": [
     {
@@ -484,6 +484,8 @@
           "mode": 0,
           "modeName": "fly",
           "targetName": "Sun",
+          "chase": false,
+          "chaseSpeedLyPerSec": 0,
           "flying": false,
           "flightProgress": 1,
           "orbitDistance": 0.005,
@@ -519,6 +521,8 @@
           "mode": 2,
           "modeName": "orbit object",
           "targetName": "Sun",
+          "chase": false,
+          "chaseSpeedLyPerSec": 0,
           "flying": false,
           "flightProgress": 1,
           "orbitDistance": 0.005,
@@ -641,6 +645,8 @@
           "mode": 1,
           "modeName": "orbit centre",
           "targetName": "galactic centre",
+          "chase": false,
+          "chaseSpeedLyPerSec": 0,
           "flying": false,
           "flightProgress": 1,
           "orbitDistance": 8.178001528490931,
@@ -685,6 +691,8 @@
           "mode": 1,
           "modeName": "orbit centre",
           "targetName": "galactic centre",
+          "chase": false,
+          "chaseSpeedLyPerSec": 0,
           "flying": false,
           "flightProgress": 1,
           "orbitDistance": 8.178001528490931,
@@ -729,6 +737,8 @@
           "mode": 1,
           "modeName": "orbit centre",
           "targetName": "galactic centre",
+          "chase": false,
+          "chaseSpeedLyPerSec": 0,
           "flying": false,
           "flightProgress": 1,
           "orbitDistance": 8.178001528490931,
@@ -773,6 +783,8 @@
           "mode": 1,
           "modeName": "orbit centre",
           "targetName": "galactic centre",
+          "chase": false,
+          "chaseSpeedLyPerSec": 0,
           "flying": false,
           "flightProgress": 1,
           "orbitDistance": 8.178001528490931,
@@ -836,6 +848,8 @@
             "mode": 1,
             "modeName": "orbit centre",
             "targetName": "galactic centre",
+            "chase": false,
+            "chaseSpeedLyPerSec": 0,
             "flying": false,
             "flightProgress": 1,
             "orbitDistance": 2.0445003821227368,
@@ -876,6 +890,8 @@
             "mode": 1,
             "modeName": "orbit centre",
             "targetName": "galactic centre",
+            "chase": false,
+            "chaseSpeedLyPerSec": 0,
             "flying": false,
             "flightProgress": 1,
             "orbitDistance": 2.0445003821227585,
@@ -985,6 +1001,8 @@
         "mode": 2,
         "modeName": "orbit object",
         "targetName": "Flight star",
+        "chase": false,
+        "chaseSpeedLyPerSec": 0,
         "flying": true,
         "flightProgress": 0,
         "orbitDistance": 0.0006,
@@ -1131,6 +1149,99 @@
       "pass": true
     },
     {
+      "name": "chase is off by default",
+      "pass": true
+    },
+    {
+      "name": "engaging chase from a settled orbit is pose-continuous (behind = where it already is)",
+      "pass": true,
+      "detail": {
+        "moved": 0
+      }
+    },
+    {
+      "name": "enabling chase outside the object orbit is a no-op, not a chase of nothing",
+      "pass": true
+    },
+    {
+      "name": "the chase converges behind the target, aligned with its motion",
+      "pass": true,
+      "detail": {
+        "forwardDot": 1.000000018409731,
+        "behindDot": -0.9999999979985773
+      }
+    },
+    {
+      "name": "the followed object stays dead-centre at the orbit distance",
+      "pass": true,
+      "detail": {
+        "dist": 0.0005999999999999839,
+        "aim": -2.041022972854023e-8
+      }
+    },
+    {
+      "name": "the chase reports the target's own apparent speed",
+      "pass": true,
+      "detail": {
+        "reported": 309.41950549755484,
+        "actual": 309.4195054975404
+      }
+    },
+    {
+      "name": "a glance keeps the followed object dead-centre (it orbits, not trails)",
+      "pass": true,
+      "detail": {
+        "aim": -1.0455924570607067e-8
+      }
+    },
+    {
+      "name": "the alignment always comes back after a glance",
+      "pass": true,
+      "detail": 0.9999999532248384
+    },
+    {
+      "name": "a frozen target keeps the looked direction and reports no motion",
+      "pass": true,
+      "detail": {
+        "aim": -1.0455924570607067e-8,
+        "speed": 0
+      }
+    },
+    {
+      "name": "leaving chase is pose-continuous (the free orbit takes over exactly)",
+      "pass": true
+    },
+    {
+      "name": "f during a chase returns to free fly with chase off",
+      "pass": true
+    },
+    {
+      "name": "C during a chase returns to the centre orbit with chase off",
+      "pass": true
+    },
+    {
+      "name": "W/S and the wheel still dolly the chase distance",
+      "pass": true,
+      "detail": 0.00030000000000000014
+    },
+    {
+      "name": "the chase swing lands identically at 30/60/144 Hz",
+      "pass": true,
+      "detail": {
+        "spread": 1.0406134632017335e-14,
+        "dot": 1.0000000000000002
+      }
+    },
+    {
+      "name": "a curving target holds the distance and lags the motion by a bounded angle",
+      "pass": true,
+      "detail": {
+        "worstDist": 1.0993810029003015e-16,
+        "lagRad": 0.2500232220089909,
+        "bound": 0.5
+      }
+    },
+    {
       "name": "the home action is consumed by step()",
       "pass": true
     },
@@ -1206,6 +1317,8 @@
         "mode": 0,
         "modeName": "fly",
         "targetName": "Sun",
+        "chase": false,
+        "chaseSpeedLyPerSec": 0,
         "flying": false,
         "flightProgress": 1,
         "orbitDistance": 0.01,
@@ -1254,6 +1367,8 @@
         "mode": 1,
         "modeName": "orbit centre",
         "targetName": "galactic centre",
+        "chase": false,
+        "chaseSpeedLyPerSec": 0,
         "flying": false,
         "flightProgress": 1,
         "orbitDistance": 7.457458280138081,

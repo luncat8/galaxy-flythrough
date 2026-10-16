@@ -37,6 +37,14 @@
       "pass": true
     },
     {
+      "name": "j toggles the chase follow (ui.6), one-shot like the mode keys",
+      "pass": true
+    },
+    {
+      "name": "Space is the ship's commanded all-stop (game-mode-plan §3), one-shot",
+      "pass": true
+    },
+    {
       "name": "selection and time shortcuts work with a result button focused, not in a field",
       "pass": true
     },

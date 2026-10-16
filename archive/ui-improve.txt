@@ -44,16 +44,20 @@ user click make ship travel route 2-way. and star to send ship between 2 stars
 
 key, action:
 
-C, orbit galaxy center (center on it) 
-c, orbit selected object (last) and follow (center on it) 
+orbit-camera:
+c, orbit-camera on selected object (last) and follow
+C - also select galaxy center.
+H - home, in Milkyway galaxy it select Sun
 
-f, fly wasd, disable orbit and follow modes
-F, fly-to 2sec fly to object, then follow it and orbit. camera target is object.
+free camera:
+f, free camera fly wasd qe, disable orbit and follow modes
+F, not-game mode = fly-to 2sec fly to object, then follow it and orbit. camera target is object.
+F, game mode = autopilot to depends on game/free mode
 
-g, game mode, space ship display (not implemented yet)
+g, game mode, space ship display, (also on when click ship in list). game mode cause slowdown star speed to reasonable value when enabled.
+	for test purpose enable game mode currently should spawn ship at camera position with same direction as camera.
 
-remove g as galaxy type change -  we have panel for change
+## game mode
 
-
-make plan for game mode, space ship and display.
+plan for game mode, space ship and display.
 with ship restrictions to fly and useful info like speed, fuel, distance to selected object

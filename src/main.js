@@ -136,6 +136,40 @@ async function boot() {
         // (Presets), and their defaults are the startup values above.
         starTimeRate = params.time;
         if (starTimeRate > 0) lastNonZeroTimeRate = starTimeRate;
+        // Game mode (game-mode-plan.md G1): the ship record and the toggle.
+        // Declared beside the time axis it takes over while flying (§4 — the
+        // ship clock and the stars' drift are one rate), and early enough that
+        // every boot-time repaint (the slider dress, the data-game row gating)
+        // reads the live flag. The physical state — velocity, tank, life —
+        // outlives the toggle; the observer's Myr/s rate stays parked in
+        // starTimeRate and is simply not consulted while the ship's clock runs.
+        const shipLib = window.Ship;
+        let gameMode = false;
+        const AUTOPILOT_MIN_WALL_SECONDS = 4;
+        let shipTimeRateCapY = Infinity;
+        let ship = shipLib.createShip(params.ship);
+        const fleet = [{ id: 1, name: 'Ship 1', ship, positioned: false, entered: false, button: null }];
+        let activeFleetShip = fleet[0];
+        let nextFleetId = 2;
+        // G3's Flight workspace owns one destination snapshot and one reusable
+        // forecast record. They are UI/state records, not render data: the target
+        // is still resolved by key through Selection every frame.
+        const flightPlan = shipLib.createFlightPlan();
+        const flightDestination = {
+                active: false, key: 0, kind: -1, index: -1,
+                x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0,
+                lum: 1, name: '',
+        };
+        let flightThrust = 0;
+        let flightSpeedFraction = 0.75;
+        // The Pilot controls are mutually exclusive (the two answers to
+        // "how fast"): the last one touched owns the forward axis. In
+        // thrust control the lever commands the burn and no speed is
+        // held; in speed control the desired speed cuts forward thrust
+        // and the lever is off duty.
+        let flightControl = 'speed';
+        let flightMode = shipLib.NAV_FASTEST;
+        let flightTimeLimitYears = 20;
         // View control, not a model field. 0.6 is the measured hold (Sun ring
         // cosine 0.10 → ~0.6 in 300 Myr). 0 is the 0.4.3 shear.
         let waveDamping = window.OrbitLib.setWaveDamping(params.wave);
@@ -179,6 +213,8 @@ async function boot() {
         const landmarks = window.Landmarks;
         const labels = window.LabelLayer.createLabelLayer(
                 document.getElementById('labels'), landmarks, window.Constellations);
+        const shipChrome = window.LabelLayer.createShipChromeState();
+        labels.setShipChrome(shipChrome);
 
         const selection = window.Selection.createSelection(camera, landmarks);
         const selectionStore = window.SelectionStore.createSelectionStore();
@@ -700,8 +736,9 @@ async function boot() {
         const sysViewSelect = document.getElementById('sys-view');
         const sliderSysTime = document.getElementById('slider-systime');
         const valSysTime = document.getElementById('val-systime');
-        // Rows that mean nothing outside the view are hidden rather than
-        // disabled — the data-view mirror of the data-engine mechanism (§6.5).
+        // Rows that mean nothing outside the map are hidden rather than
+        // disabled — the data-view mirror of the movement-pass controls. G3's
+        // ship and planner stay visible above them in the same Flight workspace.
         const viewRows = Array.from(document.querySelectorAll('#sysmenu [data-view]'));
         const bodyPick = { kind: -1, index: -1 };
         const systemCtx = {};
@@ -735,6 +772,34 @@ async function boot() {
         const sliderDvBudget = document.getElementById('slider-dvbudget');
         const valDvBudget = document.getElementById('val-dvbudget');
         const selDvShip = document.getElementById('dv-ship');
+        // G3's compact Flight workspace. These controls are deliberately next
+        // to the existing map routes: fly-one-star and plan-a-transport-route
+        // are adjacent tasks, not separate UI modes.
+        const flightStatus = document.getElementById('flight-status');
+        const flightThrustSlider = document.getElementById('flight-thrust');
+        const flightThrustValue = document.getElementById('val-flight-thrust');
+        const flightThrustRow = document.getElementById('flight-thrust-row');
+        const flightSpeedSlider = document.getElementById('flight-speed');
+        const flightSpeedGovernorBox = document.getElementById('flight-speed-governor');
+        const flightSpeedValue = document.getElementById('val-flight-speed');
+        const flightSpeedRow = document.getElementById('flight-speed-row');
+        const flightDestinationLabel = document.getElementById('flight-destination');
+        const flightUseSelected = document.getElementById('flight-use-selected');
+        const flightClearDestination = document.getElementById('flight-clear-destination');
+        const flightModeSelect = document.getElementById('flight-mode');
+        const flightTimeRow = document.getElementById('flight-time-row');
+        const flightTimeLimitBox = document.getElementById('flight-time-limit');
+        const flightForecast = document.getElementById('flight-forecast');
+        const flightRefuel = document.getElementById('flight-refuel');
+        const shipList = document.getElementById('ship-list');
+        const fleetCount = document.getElementById('fleet-count');
+        const shipSpawn = document.getElementById('ship-spawn');
+        const flightAutoDest = document.getElementById('flight-autopilot-dest');
+        const flightAutoTarget = document.getElementById('flight-autopilot-target');
+        const velocityForward = document.getElementById('velocity-forward');
+        const velocityRight = document.getElementById('velocity-right');
+        const velocityUp = document.getElementById('velocity-up');
+        const velocityRef = document.getElementById('velocity-ref');
         sliderDvBudget.min = window.SystemLayer.BUDGET_MIN;
         sliderDvBudget.max = window.SystemLayer.BUDGET_MAX;
         sliderDvBudget.step = window.SystemLayer.BUDGET_STEP;
@@ -745,6 +810,92 @@ async function boot() {
                 option.textContent = ship.label;
                 selDvShip.appendChild(option);
         }
+        function addFleetRow(entry) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.dataset.shipId = String(entry.id);
+                button.setAttribute('role', 'option');
+                entry.button = button;
+                shipList.appendChild(button);
+        }
+        function syncFleetUi() {
+                fleetCount.textContent = fleet.length + (fleet.length === 1 ? ' ship' : ' ships');
+                for (const entry of fleet) {
+                        if (!entry.button) addFleetRow(entry);
+                        const active = entry === activeFleetShip;
+                        entry.button.textContent = `${entry.name} · ${entry.ship.class.label}${active && gameMode ? ' · piloting' : ''}`;
+                        entry.button.title = `${entry.name} · ${entry.ship.class.label}${active ? ' · active ship' : ' · click to pilot'}`;
+                        entry.button.classList.toggle('is-active', active);
+                        entry.button.setAttribute('aria-selected', active ? 'true' : 'false');
+                        entry.button.setAttribute('aria-pressed', active ? 'true' : 'false');
+                }
+        }
+        function selectFleetShip(id) {
+                const entry = fleet.find((item) => item.id === id);
+                if (!entry) return;
+                if (entry !== activeFleetShip && ship.ap.mode !== shipLib.AP_OFF) {
+                        shipLib.apAbort(ship);
+                        setAutoMsg('autopilot off · switched ships');
+                }
+                activeFleetShip = entry;
+                ship = entry.ship;
+                autoRunning = false;
+                gameCommand = 0;
+                shipTimeRateCapY = Infinity;
+                systemLayer.setShipClass(ship.class.id);
+                if (gameMode) {
+                        positionCameraAtActiveShip();
+                        gameTargetFeed(0);
+                        gameTargetClosingKpcS = 0;
+                } else {
+                        gameMode = true;
+                        enterGameMode();
+                }
+                syncDvUi();
+                syncFleetUi();
+                syncStarTime();
+                syncFlightUi();
+                writeSystemReadout();
+        }
+        function spawnFleetShip() {
+                const state = camera.getState(rigState);
+                const newShip = shipLib.createShip(selDvShip.value || ship.class.id);
+                newShip.pos[0] = state.position[0];
+                newShip.pos[1] = state.position[1];
+                newShip.pos[2] = state.position[2];
+                // The spawn heading is the camera's own, so the new
+                // hull flies the way the view is aimed, not the
+                // galaxy-frame default.
+                newShip.heading[0] = state.orientation[0];
+                newShip.heading[1] = state.orientation[1];
+                newShip.heading[2] = state.orientation[2];
+                newShip.heading[3] = state.orientation[3];
+                const id = nextFleetId++;
+                // A spawned hull is a stationary launch, even if the observer
+                // currently follows a moving target; do not hand over its drift.
+                const entry = {
+                        id, name: 'Ship ' + id,
+                        ship: newShip, positioned: true, entered: true, button: null,
+                };
+                fleet.push(entry);
+                addFleetRow(entry);
+                syncFleetUi();
+                syncFlightUi();
+        }
+        addFleetRow(fleet[0]);
+        syncFleetUi();
+        shipList.addEventListener('click', (event) => {
+                const button = event.target.closest('button[data-ship-id]');
+                if (!button || !shipList.contains(button)) return;
+                selectFleetShip(Number(button.dataset.shipId));
+                releasePanelInput();
+                canvas.focus({ preventScroll: true });
+        });
+        shipSpawn.addEventListener('click', () => {
+                spawnFleetShip();
+                releasePanelInput();
+                canvas.focus({ preventScroll: true });
+        });
         function syncDvUi() {
                 sliderDvBudget.value = systemLayer.getBudget();
                 valDvBudget.textContent = Number(systemLayer.getBudget()).toFixed(2);
@@ -756,6 +907,15 @@ async function boot() {
                 systemLayer.cycleView();
                 syncDvUi();
                 writeSystemReadout();
+        }
+        function setFlightShipClass(classId) {
+                systemLayer.setShipClass(classId);
+                shipLib.setClass(ship, classId);
+                autoRunning = false;
+                shipTimeRateCapY = Infinity;
+                syncStarTime();
+                syncDvUi();
+                syncFleetUi();
         }
         // Picking a render is opening the view: the select is the entry point
         // as well as the switch, so a viewer never has to find V first.
@@ -771,9 +931,87 @@ async function boot() {
                 writeSystemReadout();
         });
         selDvShip.addEventListener('change', () => {
-                systemLayer.setShipClass(selDvShip.value);
-                syncDvUi();
+                // One hangar choice drives pilot, forecast and map route.
+                setFlightShipClass(selDvShip.value);
+                syncFlightUi();
                 writeSystemReadout();
+        });
+        // The Pilot controls are mutually exclusive: touching one
+        // switches the forward axis to it and switches the other
+        // off, so a thrust change disables the speed limit and a
+        // speed change disables the thrust control.
+        function setFlightControl(mode) {
+                if (flightControl === mode) return;
+                flightControl = mode;
+                flightSpeedGovernorBox.checked = mode === 'speed';
+        }
+        flightThrustSlider.addEventListener('input', () => {
+                flightThrust = Number(flightThrustSlider.value) / 100;
+                setFlightControl('thrust');
+                syncFlightUi();
+        });
+        flightSpeedSlider.addEventListener('input', () => {
+                flightSpeedFraction = Number(flightSpeedSlider.value) / 100;
+                setFlightControl('speed');
+                syncFlightUi();
+        });
+        flightSpeedGovernorBox.addEventListener('change', () => {
+                setFlightControl(flightSpeedGovernorBox.checked ? 'speed' : 'thrust');
+                syncFlightUi();
+        });
+        flightModeSelect.addEventListener('change', () => {
+                flightMode = Number(flightModeSelect.value);
+                syncFlightUi();
+        });
+        flightTimeLimitBox.addEventListener('input', () => {
+                const years = Number(flightTimeLimitBox.value);
+                // Let a number field be temporarily empty while it is edited;
+                // forcing the last value back on every keystroke makes a new
+                // deadline impossible to type.
+                if (!(Number.isFinite(years) && years > 0)) return;
+                flightTimeLimitYears = years;
+                syncFlightUi();
+        });
+        flightTimeLimitBox.addEventListener('change', syncFlightUi);
+        flightUseSelected.addEventListener('click', () => {
+                setFlightDestinationFromPrimary();
+                syncFlightUi();
+        });
+        flightClearDestination.addEventListener('click', () => {
+                clearFlightDestination();
+                syncFlightUi();
+        });
+        flightRefuel.addEventListener('click', () => {
+                shipLib.refuel(ship);
+                syncFlightUi();
+        });
+        flightAutoDest.addEventListener('change', () => {
+                if (flightAutoDest.checked) {
+                        if (!gameMode) {
+                                flightAutoDest.checked = false;
+                                flightStatus.textContent = 'Select a ship to enter game mode';
+                                return;
+                        }
+                        if (flightAutoTarget.checked) flightAutoTarget.checked = false;
+                        gameCommand = GAME_CMD_PLAN;
+                } else if (ship.ap.mode === shipLib.AP_APPROACH) {
+                        gameCommand = GAME_CMD_ABORT;
+                }
+                syncFlightUi();
+        });
+        flightAutoTarget.addEventListener('change', () => {
+                if (flightAutoTarget.checked) {
+                        if (!gameMode) {
+                                flightAutoTarget.checked = false;
+                                flightStatus.textContent = 'Select a ship to enter game mode';
+                                return;
+                        }
+                        if (flightAutoDest.checked) flightAutoDest.checked = false;
+                        gameCommand = GAME_CMD_TARGET;
+                } else if (ship.ap.mode === shipLib.AP_TARGET) {
+                        gameCommand = GAME_CMD_ABORT;
+                }
+                syncFlightUi();
         });
 
 	const btnRouteFly = document.getElementById('route-fly');
@@ -872,10 +1110,14 @@ async function boot() {
                 const viewOpen = systemLayer.isOpen();
 		document.body.classList.toggle('system-view', viewOpen);
 		syncDvUi(); syncRouteUi();
+                // Map-specific controls mean nothing while the view is closed.
+                // The ship and destination controls remain above them in Flight.
                 for (const row of viewRows) {
                         row.style.display = viewOpen && row.dataset.view === 'system' ? '' : 'none';
                 }
                 btnSystemView.textContent = viewOpen ? 'Close' : 'Open';
+                btnSystemView.disabled = gameMode;
+                sysViewSelect.disabled = gameMode;
         }
         btnSystemView.addEventListener('click', () => toggleSystemView());
 
@@ -1022,7 +1264,7 @@ async function boot() {
         function leftPanelInset() {
                 let width = 0;
                 if (selectionMenu.style.display !== 'none') width = Math.max(width, 280);
-                if (sysMenu.style.display !== 'none') width = Math.max(width, 268);
+                if (sysMenu.style.display !== 'none') width = Math.max(width, 292);
                 return width ? width + 24 : 0;
         }
         function syncOverlayInset() {
@@ -1035,10 +1277,12 @@ async function boot() {
         function toggleMenu() {
                 const visible = menu.style.display !== 'none'
                         || selectionMenu.style.display !== 'none'
-                        || sysMenu.style.display !== 'none';
+                        || sysMenu.style.display !== 'none'
+                        || helpPanel.style.display !== 'none';
                 menu.style.display = visible ? 'none' : 'block';
                 selectionMenu.style.display = visible ? 'none' : 'block';
                 sysMenu.style.display = visible ? 'none' : 'block';
+                helpPanel.style.display = visible ? 'none' : 'block';
                 syncOverlayInset();
                 if (visible) {
                         input.releaseAll();
@@ -1061,6 +1305,74 @@ async function boot() {
         wireCollapse(menu, menuCollapse);
         wireCollapse(selectionMenu, selectionMenuCollapse);
         wireCollapse(sysMenu, sysMenuCollapse);
+
+        // --- Controls panel (ui.6) ------------------------------------------
+        // The old help <pre> as clickable controls. Buttons and checkboxes
+        // carry a data-action and fire the same one-shot action flags the
+        // keys set, so a click and a key press run one code path and no
+        // handler logic is duplicated here. Checkboxes toggle natively
+        // (optimistic) and syncHelpControls repaints them from the live
+        // state at the overlay's 4 Hz — a toggle the app refused (j with
+        // nothing selected) visibly snaps back.
+        const helpPanel = document.getElementById('help');
+        const helpCollapse = document.getElementById('help-collapse');
+        const helpPrevStar = document.getElementById('help-prev-star');
+        const helpBoxes = new Map();
+        for (const box of helpPanel.querySelectorAll('input[data-action]')) {
+                helpBoxes.set(box.dataset.action, box);
+        }
+        // The speed-reference buttons (§7.4): target / galactic
+        // centre / home, repainted from the live reference.
+        const helpRefButtons = new Map();
+        for (const button of helpPanel.querySelectorAll('button[data-speed-ref]')) {
+                helpRefButtons.set(button.dataset.speedRef, button);
+        }
+        const helpNeedPrimary = Array.from(helpPanel.querySelectorAll('button[data-action="orbitObject"], button[data-action="flyTo"]'));
+        const helpNeedSet = Array.from(helpPanel.querySelectorAll('button[data-action="nextStar"], button[data-action="clearSet"]'));
+        // Game mode's gating (game-mode-plan §3): observer mode controls
+        // carry data-observer and die while the ship is the rig. The legacy
+        // Controls refill remains game-only; the Flight workspace is the
+        // always-visible hangar. Repainted at 4 Hz.
+        const helpNeedObserver = Array.from(helpPanel.querySelectorAll('[data-observer]'));
+        const helpRefuel = helpPanel.querySelector('[data-action="shipRefuel"]');
+        const helpFly = helpPanel.querySelector('[data-action="flyMode"]');
+        const helpFlyLabel = document.getElementById('help-fly-label');
+        wireCollapse(helpPanel, helpCollapse);
+        helpPanel.addEventListener('click', (event) => {
+                const control = event.target.closest('button[data-action], input[data-action]');
+                if (!control || !helpPanel.contains(control)) return;
+                input.state.actions[control.dataset.action] = 1;
+                releasePanelInput();
+                canvas.focus({ preventScroll: true });
+        });
+        helpPrevStar.addEventListener('click', () => {
+                // Shift+N's path: the loop's N reads the held boost key, which
+                // a click cannot set, so the previous-star button walks the
+                // set directly — same cycling, same system-view follow.
+                cyclePrimary(-1);
+                if (systemLayer.isOpen()) openSystemView(true);
+                releasePanelInput();
+                canvas.focus({ preventScroll: true });
+        });
+        function syncHelpControls(cameraState) {
+                helpBoxes.get('chaseFollow').checked = gameMode ? ship.ap.mode === shipLib.AP_FOLLOW : cameraState.chase;
+                helpBoxes.get('constellations').checked = labels.constellationsVisible();
+                helpBoxes.get('systemView').checked = systemLayer.isOpen();
+                helpBoxes.get('gameMode').checked = gameMode;
+                helpBoxes.get('freezeTime').checked = gameMode ? ship.timeFrozen : starTimeRate === 0;
+                const noPrimary = starSet.primary < 0;
+                const noSet = starSet.count === 0;
+                for (const button of helpNeedPrimary) button.disabled = noPrimary;
+                for (const button of helpNeedSet) button.disabled = noSet;
+                for (const control of helpNeedObserver) control.disabled = gameMode;
+                if (helpRefuel) helpRefuel.disabled = !gameMode;
+                helpPrevStar.disabled = noSet;
+                helpFly.disabled = gameMode && ship.ap.mode === shipLib.AP_OFF;
+                helpFlyLabel.textContent = gameMode ? 'abort autopilot' : 'fly';
+                for (const [kind, button] of helpRefButtons) {
+                        button.classList.toggle('is-active', speedRef === kind);
+                }
+        }
         syncOverlayInset();
         window.addEventListener('resize', syncOverlayInset);
 
@@ -1088,9 +1400,53 @@ async function boot() {
                 renderer.setHighlightDesat(Number(sliderHighlight.value));
                 valHighlight.textContent = renderer.state.highlightDesat.toFixed(2);
         });
+        // The star-time slider is the ship clock's other dress (game-mode-plan
+        // §4): while game mode is on, its stops are the ship-time ladder's rung
+        // indices — the system clock's pattern (SYSTIME_LADDER) — and the
+        // readout speaks y/s. The observer's Myr/s rate stays parked in
+        // starTimeRate and is restored by the dress change alone.
+        function gameTimeRateY() {
+                if (ship.timeFrozen) return 0;
+                let rate = shipLib.timeRateYPerS(ship, shipLib.speedC(ship));
+                if (rate === 0 && ship.timeIndex === 0
+                        && (ship.ap.mode !== shipLib.AP_OFF || flightThrust > 0
+                                || input.state.keys.forward || input.state.keys.back
+                                || input.state.keys.left || input.state.keys.right
+                                || input.state.keys.up || input.state.keys.down)) {
+                        rate = shipLib.SHIP_TIME_LADDER[2];
+                }
+                return rate > 0 ? Math.min(rate, shipTimeRateCapY) : rate;
+        }
+        function refreshShipTimeRateCap() {
+                const mode = ship.ap.mode;
+                shipTimeRateCapY = (mode === shipLib.AP_APPROACH || mode === shipLib.AP_TARGET)
+                        ? shipLib.timeRateCapYPerS(ship.ap.etaS, AUTOPILOT_MIN_WALL_SECONDS)
+                        : Infinity;
+        }
+        function formatShipRate(rate) {
+                return rate > 0 ? '+' + Number(rate.toPrecision(3)) + ' y/s' : '0 y/s';
+        }
         function syncStarTime() {
-                sliderStarTime.value = starTimeRate;
-                valStarTime.textContent = window.OrbitLib.formatTimeRate(starTimeRate, 0);
+                if (gameMode) {
+                        sliderStarTime.min = shipLib.SHIP_TIME_INDEX_MIN;
+                        sliderStarTime.max = shipLib.SHIP_TIME_INDEX_MAX;
+                        sliderStarTime.step = 1;
+                        sliderStarTime.value = ship.timeIndex;
+                        const requestedRate = shipLib.timeRateYPerS(ship, shipLib.speedC(ship));
+                        const effectiveRate = gameTimeRateY();
+                        const adjusted = Math.abs(effectiveRate - requestedRate) > 1e-15;
+                        valStarTime.textContent = 'ship ' + shipLib.formatClock(ship, shipLib.speedC(ship))
+                                + (adjusted ? ' · ' + formatShipRate(effectiveRate) : '');
+                        valStarTime.title = 'Ship clock: the shared rate of ship physics and star drift.'
+                                + (adjusted ? ` Effective rate ${formatShipRate(effectiveRate)}; autopilot flights are kept at least 4 wall-seconds.` : '');
+                } else {
+                        sliderStarTime.min = -1;
+                        sliderStarTime.max = 99;
+                        sliderStarTime.step = 0.5;
+                        sliderStarTime.value = starTimeRate;
+                        valStarTime.textContent = window.OrbitLib.formatTimeRate(starTimeRate, 0);
+                        valStarTime.title = '';
+                }
         }
         function pauseStarTimeForSearch() {
                 if (starTimeRate === 0) return false;
@@ -1100,8 +1456,14 @@ async function boot() {
                 return true;
         }
         sliderStarTime.addEventListener('input', () => {
-                starTimeRate = Number(sliderStarTime.value);
-                if (starTimeRate > 0) lastNonZeroTimeRate = starTimeRate;
+                if (gameMode) {
+                        ship.timeIndex = Number(sliderStarTime.value);
+                        ship.timeFrozen = false;
+                        refreshShipTimeRateCap();
+                } else {
+                        starTimeRate = Number(sliderStarTime.value);
+                        if (starTimeRate > 0) lastNonZeroTimeRate = starTimeRate;
+                }
                 syncStarTime();
         });
         syncStarTime();
@@ -1200,7 +1562,7 @@ async function boot() {
                 // working state, like the search results — Defaults keeps it.
                 systemLayer.setTimeRate(d.systime);
 		systemLayer.setBudget(d.dvbudget);
-		systemLayer.setShipClass(d.ship);
+		setFlightShipClass(d.ship);
 		systemLayer.setView(d.dvmap);
 		syncDvUi();
 		if (systemLayer.isOpen()) writeSystemReadout();
@@ -1347,7 +1709,7 @@ async function boot() {
                 if (s.dvbudget !== undefined) {
                         systemLayer.setBudget(s.dvbudget);
                 }
-		if (s.ship !== undefined) systemLayer.setShipClass(s.ship);
+		if (s.ship !== undefined) setFlightShipClass(s.ship);
                 syncDvUi();
 		if (systemLayer.isOpen()) writeSystemReadout();
                 syncSlidersFromRenderer();
@@ -1966,7 +2328,8 @@ async function boot() {
         function resolveSet() {
                 const info = renderer.starBlocks();
                 const count = starSet.count;
-                if (!info || !info.identity || !info.view || count <= 0) return;
+                const hasDestination = flightDestination.active;
+                if (!info || !info.identity || !info.view || (count <= 0 && !hasDestination)) return;
                 const identity = info.identity;
                 const view = info.view;
                 const blocks = info.blocks;
@@ -1981,6 +2344,20 @@ async function boot() {
                         resolveMember[home] = i;
                         starSet.bufferIdx[i] = -1;
                 }
+                // A Flight destination may no longer be in the mutable set.
+                // Add it to this already-keyed re-resolution pass rather than
+                // trusting the block-local slot it had when it was chosen.
+                if (hasDestination) {
+                        flightDestination.index = -1;
+                        const member = starSet.indexOfKey(flightDestination.key);
+                        if (member < 0) {
+                                const home = resolveProbe(flightDestination.key >>> 0, true);
+                                if (home < 0) return;
+                                resolveUsed[home] = 1;
+                                resolveKey[home] = flightDestination.key >>> 0;
+                                resolveMember[home] = -2; // destination-only entry
+                        }
+                }
                 for (let k = 0; k < blocks.length; k++) {
                         const block = blocks[k];
                         const n = block.count | 0;
@@ -1989,7 +2366,9 @@ async function boot() {
                         for (let slot = 0; slot < n; slot++) {
                                 const global = offset + slot;
                                 const home = resolveProbe(identity[global] >>> 0, false);
-                                if (home < 0 || starSet.bufferIdx[resolveMember[home]] >= 0) continue;
+                                if (home < 0) continue;
+                                const member = resolveMember[home];
+                                if (member >= 0 && starSet.bufferIdx[member] >= 0) continue;
                                 const byteOffset = global * window.StarRecord.RECORD_BYTES;
                                 const packed = view.getUint32(byteOffset + 12, true);
                                 if ((packed & (window.StarRecord.FLAG_VISIBLE << 16)) === 0) continue;
@@ -2004,6 +2383,20 @@ async function boot() {
                                 resolvePick.colorIndex = packed & 0xFF;
                                 resolvePick.absMag = window.StarRecord.decodeAbsMag((packed >>> 8) & 0xFF);
                                 resolvePick.approximated = 0;
+                                // Keep the locked key's live position and block
+                                // slot in sync even after the primary selection
+                                // has changed or been cleared. Its luminosity and
+                                // display name remain the locked snapshot.
+                                if (hasDestination && resolvePick.key === (flightDestination.key >>> 0)) {
+                                        flightDestination.kind = k;
+                                        flightDestination.index = slot;
+                                        flightDestination.x = resolvePick.x;
+                                        flightDestination.y = resolvePick.y;
+                                        flightDestination.z = resolvePick.z;
+                                        flightDestination.colorIndex = resolvePick.colorIndex;
+                                        flightDestination.absMag = resolvePick.absMag;
+                                }
+                                if (member < 0) continue;
                                 const inputs = selectPlanets.stellarInputs(resolvePick, {
                                         model,
                                         field: renderer.fieldBuffers(),
@@ -2230,8 +2623,25 @@ async function boot() {
         const followPos = new Float64Array(3);
         function followTarget() {
                 const m = starSet.indexOfKey(followKey);
-                if (m < 0) { followKey = -1; return; }
+                if (m < 0) { followKey = -1; followVelFresh = false; followHasPrev = false; return; }
                 if (memberDrawnPosition(m, followPos) === window.Selection.DRAWN_STALE) return;
+                // The velocity handover's feed (game-mode-plan §2): measure the
+                // target's drawn motion while it is being ridden, keyed so a
+                // swap of the followed star rebases the baseline instead of
+                // measuring one frame of teleport as motion.
+                if (followMeasureKey !== (followKey >>> 0)) {
+                        followMeasureKey = followKey >>> 0;
+                        followHasPrev = false;
+                        followVelFresh = false;
+                }
+                if (followHasPrev && framePhysSeconds > 0) {
+                        followVelPhys[0] = (followPos[0] - followPrev[0]) / framePhysSeconds;
+                        followVelPhys[1] = (followPos[1] - followPrev[1]) / framePhysSeconds;
+                        followVelPhys[2] = (followPos[2] - followPrev[2]) / framePhysSeconds;
+                        followVelFresh = true;
+                }
+                followPrev[0] = followPos[0]; followPrev[1] = followPos[1]; followPrev[2] = followPos[2];
+                followHasPrev = true;
                 camera.updateTarget(followPos[0], followPos[1], followPos[2]);
         }
         function flyToPrimary() {
@@ -2278,17 +2688,756 @@ async function boot() {
                 syncSetUi();
         }
 
-        // g (ui.4): the game-mode placeholder. Only the toggle and the notice
-        // exist; ship flight restrictions and the HUD are game-mode-plan.md.
-        let gameMode = false;
+        // --- Game mode (game-mode-plan.md G1) --------------------------------
+        // The ship is the fly rig while g is on: camera.step keeps aiming (and
+        // consuming the gated actions), the ship owns motion. The write-through
+        // is camera.getState → ship.step → camera.setState on one scratch, so
+        // camera.js has no game branch. The HUD is the §6 text block at the
+        // overlay's 4 Hz.
+        const rigState = { position: [0, 0, 0], velocity: [0, 0, 0], orientation: [0, 0, 0, 1], speedMult: 1, mode: 0 };
+        const gameDir = new Float64Array(3);
+        const gameTarget = new Float64Array(3);
+        const gameVelocityAxes = new Float64Array(3);
+        const profileOut = { speed: 0, dv: 0, timeS: 0, distanceM: 0 };
+        let gameNoticeTicks = 0;
+        let gameWheelAccum = 0;
+        let gameTargetKey = -1;
+        let gameTargetKind = 'target';   // 'target' | 'centre' | 'home'
+        let gameTargetDistKpc = 0;
+        let gameTargetPrevDistKpc = 0;
+        let gameTargetClosingKpcS = 0;   // kpc per ship-second; > 0 is closing
+        let gameTargetLum = 1;
+        let gameTargetValid = false;
+        const gameTargetVel = new Float64Array(3);   // drawn motion, kpc per ship-second
+        const gameTargetPrev = new Float64Array(3);
+        const gameRel = new Float64Array(3);
+        let gameTargetStale = false;                 // primary not resident: no drawn position
+        // The ship's commands are requested by a key and consumed in the game
+        // block, after the target feed, so they read this frame's drawn state.
+        const GAME_CMD_APPROACH = 1, GAME_CMD_FOLLOW = 2, GAME_CMD_ABORT = 3, GAME_CMD_PLAN = 4;
+        const GAME_CMD_TARGET = 5;
+        let gameCommand = 0;
+        let autoRunning = false;
+        let autoMsg = '';
+        let autoMsgTicks = 0;
+        // The speed reference (§7.4): the object the axis velocities,
+        // the HUD target line and the autopilot answer against. An
+        // explicit centre or home choice wins over the locked Flight
+        // destination, which wins over the primary selection. The
+        // galactic centre and home are frame-fixed points — always
+        // resident, never stale, at rest — so the ship can fly to the
+        // centre itself, and its speeds read in the galactic frame.
+        let speedRef = 'target';
+
+        function setSpeedRef(kind) {
+                if (speedRef === kind) return;
+                speedRef = kind;
+                gameTargetFeed(0);
+                syncFlightUi();
+        }
+
+        function gameNotice() { gameNoticeTicks = NOTICE_TICKS; }
+        function gameNoticeLine() {
+                return gameNoticeTicks > 0 ? '\nnot in game mode \u00b7 g returns to observer' : '';
+        }
+
+        // The velocity handover's feed (§2): the followed object's drawn motion
+        // measured between consecutive followTarget refreshes — time-lapse kpc
+        // per wall-second — divided by the frame's physical seconds (the shared
+        // clock's dt), so the seed is the target's *physical* velocity in kpc
+        // per ship-second and the handover is continuous in the motion the user
+        // sees. The measurement is keyed: swapping the followed star rebases it.
+        const followPrev = new Float64Array(3);
+        const followVelPhys = new Float64Array(3);
+        let followMeasureKey = -1;
+        let followHasPrev = false;
+        let followVelFresh = false;
+        let framePhysSeconds = 0;
+
+        function positionCameraAtActiveShip() {
+                const state = camera.getState(rigState);
+                state.position[0] = ship.pos[0]; state.position[1] = ship.pos[1]; state.position[2] = ship.pos[2];
+                state.velocity[0] = ship.vel[0]; state.velocity[1] = ship.vel[1]; state.velocity[2] = ship.vel[2];
+                state.orientation[0] = ship.heading[0]; state.orientation[1] = ship.heading[1];
+                state.orientation[2] = ship.heading[2]; state.orientation[3] = ship.heading[3];
+                state.mode = window.Camera.MODE_FLY;
+                camera.setState(rigState);
+        }
+
+        function enterGameMode() {
+                if (systemLayer.isOpen()) closeSystemView();
+                camera.setMode(window.Camera.MODE_FLY);
+                const state = camera.getState(rigState);
+                if (!activeFleetShip.positioned) {
+                        // A fresh hull spawns at the camera's pose —
+                        // position *and* heading, so it flies the way
+                        // the observer was looking.
+                        ship.pos[0] = state.position[0]; ship.pos[1] = state.position[1]; ship.pos[2] = state.position[2];
+                        ship.heading[0] = state.orientation[0]; ship.heading[1] = state.orientation[1];
+                        ship.heading[2] = state.orientation[2]; ship.heading[3] = state.orientation[3];
+                        activeFleetShip.positioned = true;
+                }
+                // On a fresh launch from a live follow, seed the ship with the
+                // followed object's physical velocity. An already flown hull
+                // keeps its own stored velocity when the pilot returns to it.
+                if (!activeFleetShip.entered && followKey >= 0 && followVelFresh) {
+                        ship.vel[0] = followVelPhys[0];
+                        ship.vel[1] = followVelPhys[1];
+                        ship.vel[2] = followVelPhys[2];
+                }
+                activeFleetShip.entered = true;
+                positionCameraAtActiveShip();
+                shipTimeRateCapY = Infinity;
+                // Rebase range on this hull but retain the keyed target's
+                // physical-velocity sample when the observer already warmed it.
+                gameTargetFeed(0);
+                gameTargetClosingKpcS = 0;
+                syncStarTime();
+                syncFleetUi();
+                syncViewRows();
+                syncFlightUi();
+        }
+
+        function leaveGameMode() {
+                shipLib.apAbort(ship);
+                autoRunning = false;
+                gameCommand = 0;
+                shipTimeRateCapY = Infinity;
+                syncStarTime();
+                syncFleetUi();
+                syncViewRows();
+                syncFlightUi();
+        }
+
+        function throttleBar(frac) {
+                const full = Math.round(Math.max(0, Math.min(1, frac)) * 5);
+                return '\u25ae'.repeat(full) + '\u25af'.repeat(5 - full);
+        }
+
+        function formatWall(seconds) {
+                if (!Number.isFinite(seconds)) return '\u2014';
+                if (seconds < 120) return seconds.toFixed(0) + ' s';
+                if (seconds < 7200) return Math.round(seconds / 60) + ' min';
+                if (seconds < 2 * 86400) return (seconds / 3600).toFixed(1) + ' h';
+                return (seconds / 86400).toFixed(1) + ' d';
+        }
+
+        // --- Flight workspace (G3) ------------------------------------------
+        // A destination is a compact pick-shaped snapshot, deliberately not an
+        // index into the mutable primary selection. Selection.resolveDrawn
+        // validates its key every frame, so changing selections cannot retarget
+        // an engaged flight and a residency loss is visible instead of a trip to
+        // a stale birth coordinate.
+        function setFlightDestinationFromPrimary() {
+                const i = starSet.primary;
+                if (i < 0) {
+                        noSelectionTicks = NOTICE_TICKS;
+                        return false;
+                }
+                const ref = memberRefFor(i);
+                flightDestination.active = true;
+                flightDestination.key = ref.key >>> 0;
+                flightDestination.kind = ref.kind | 0;
+                flightDestination.index = ref.index | 0;
+                flightDestination.x = ref.x; flightDestination.y = ref.y; flightDestination.z = ref.z;
+                flightDestination.colorIndex = ref.colorIndex;
+                flightDestination.absMag = ref.absMag;
+                flightDestination.lum = starSet.lum[i];
+                flightDestination.name = memberName(i);
+                // gameTargetFeed keeps the current physical-velocity sample
+                // when this is the same key, and rebases it for a new target.
+                gameTargetFeed(0);
+                gameTargetClosingKpcS = 0;
+                return true;
+        }
+
+        function clearFlightDestination() {
+                if (ship.ap.mode !== shipLib.AP_OFF) return;
+                flightDestination.active = false;
+                flightDestination.key = 0;
+                flightDestination.kind = -1;
+                flightDestination.index = -1;
+                flightDestination.name = '';
+                gameTargetKey = -1;
+                gameTargetKind = 'target';
+                gameTargetValid = false;
+                gameTargetStale = false;
+        }
+
+        function flightStandOffM() {
+                return camera.orbitStandOff(gameTargetLum) * shipLib.KPC_M;
+        }
+
+        // Mutates the one reusable plan record. It is called at UI cadence or
+        // once when Engage is pressed, never as a per-frame allocation path.
+        function updateFlightPlan() {
+                if (!flightDestination.active) return false;
+                // Refresh even with the same key: the forecast is allowed while
+                // observing, so it must read the destination where the sky draws
+                // it now rather than a previous panel tick.
+                gameTargetFeed(0);
+                if (!gameTargetValid || gameTargetStale) return false;
+                // Entering game mode adopts the current camera pose. Forecast
+                // from that pose while configuring outside game mode, not from
+                // the parked ship position from an earlier sortie.
+                const from = gameMode ? ship.pos : camera.cameraPos;
+                const dx = gameTarget[0] - from[0];
+                const dy = gameTarget[1] - from[1];
+                const dz = gameTarget[2] - from[2];
+                const distanceM = Math.sqrt(dx * dx + dy * dy + dz * dz) * shipLib.KPC_M;
+                const standOffM = flightStandOffM();
+                const remainingM = Math.max(0, distanceM - standOffM);
+                shipLib.planJourney(remainingM, ship, flightMode, flightThrust,
+                        flightSpeedFraction, flightTimeLimitYears * shipLib.SECONDS_PER_YEAR, flightPlan);
+                // This mirrors enterGameMode's velocity handover, so planning
+                // while observing a moving object does not forecast a spurious
+                // match burn that the toggle will immediately remove.
+                const forecastVel = !gameMode && followKey >= 0 && followVelFresh ? followVelPhys : ship.vel;
+                const rvx = forecastVel[0] - gameTargetVel[0];
+                const rvy = forecastVel[1] - gameTargetVel[1];
+                const rvz = forecastVel[2] - gameTargetVel[2];
+                flightPlan.standOffM = standOffM;
+                flightPlan.matchDv = Math.hypot(rvx, rvy, rvz) * shipLib.KPC_M;
+                flightPlan.totalDv = flightPlan.dv + flightPlan.matchDv;
+                flightPlan.fuelMargin = shipLib.dvRemaining(ship) - flightPlan.totalDv;
+                return true;
+        }
+
+        function flightLimitText() {
+                if (flightMode === shipLib.NAV_THRUST_LIMIT) return Math.round(flightThrust * 100) + '% thrust';
+                if (flightMode === shipLib.NAV_SPEED_LIMIT) return Math.round(flightSpeedFraction * 100) + '% speed';
+                if (flightMode === shipLib.NAV_TIME_LIMIT) return Number(flightTimeLimitYears.toPrecision(4)) + ' y limit';
+                return 'full thrust · top speed';
+        }
+
+        function flightForecastText(ready) {
+                const dvLib = window.DeltaVLib;
+                const autoActive = ship.ap.mode !== shipLib.AP_OFF;
+                // When autopilot is flying, show live progress instead of a
+                // constantly shrinking forecast — the old code recomputed the
+                // plan every 250 ms from the shrinking distance, so the <pre>
+                // was rewritten every tick (“redraw that message every frame”).
+                if (autoActive) {
+                        const ap = ship.ap;
+                        const flownPct = ap.etaTotalS > 0 ? Math.max(0, Math.min(100, 100 * (1 - ap.etaS / ap.etaTotalS))) : 100;
+                        const rateY = gameTimeRateY();
+                        const wallS = rateY > 0 ? ap.etaS / (rateY * shipLib.SECONDS_PER_YEAR) : Infinity;
+                        const distLy = formatLy(gameTargetDistKpc * LY_PER_KPC);
+                        if (ap.mode === shipLib.AP_TARGET) {
+                                return `${gameTargetName()} · ${distLy} · stop at target\n`
+                                        + `Δv spent ${shipLib.formatDv(ap.dvSpent)} / ${shipLib.formatDv(ap.dvRequired)} · relative ${shipLib.formatDv(ap.relativeMs)}\n`
+                                        + `0,0,0 when ${distLy} < 1 AU · uncheck to abort`;
+                        }
+                        return `${gameTargetName()} · ${distLy} · ${shipLib.AP_PHASE_NAMES[ap.phase]} ${Math.round(flownPct)}%\n`
+                                + `Δv ${shipLib.formatDv(ap.dvSpent)}/${shipLib.formatDv(ap.dvRequired)} · eta ${dvLib.formatDuration(ap.etaS)} ship · ${formatWall(wallS)} wall\n`
+                                + `uncheck autopilot to abort · velocity kept`;
+                }
+                if (!flightDestination.active) return '1. Select a star\n2. Use selected\n3. Choose a mode and check autopilot';
+                if (!ready) return gameTargetStale
+                        ? 'Destination is not resident\nChoose a visible star or wait for it to stream in.'
+                        : 'Resolving destination…';
+                if (!flightPlan.feasible) {
+                        let text = `Cannot plan ${flightDestination.name || 'destination'}\n${shipLib.NAV_REASON_NAMES[flightPlan.reason] || 'invalid flight limit'}`;
+                        if (flightPlan.reason === shipLib.NAV_REASON_TIME && Number.isFinite(flightPlan.fastestS)) {
+                                text += `\nFastest legal arrival: ${dvLib.formatDuration(flightPlan.fastestS)} ship`;
+                        }
+                        return text;
+                }
+                const rateY = shipLib.timeRateYPerS(ship, shipLib.speedC(ship));
+                const wallS = rateY > 0 ? flightPlan.timeS / (rateY * shipLib.SECONDS_PER_YEAR) : Infinity;
+                const distance = formatLy((flightPlan.distanceM + flightPlan.standOffM) / shipLib.KPC_M * LY_PER_KPC);
+                const match = flightPlan.matchDv > 0.5 ? ` + ${shipLib.formatDv(flightPlan.matchDv)} match` : '';
+                const margin = flightPlan.fuelMargin >= 0
+                        ? `${shipLib.formatDv(flightPlan.fuelMargin)} margin`
+                        : `${shipLib.formatDv(-flightPlan.fuelMargin)} short`;
+                return `${flightDestination.name || 'Destination'} · ${distance}\n`
+                        + `Δv predicted ${shipLib.formatDv(flightPlan.totalDv)}${match} · ${margin}\n`
+                        + `arrival ${dvLib.formatDuration(flightPlan.timeS)} ship · ${formatWall(wallS)} wall\n`
+                        + `${shipLib.NAV_MODE_NAMES[flightMode]} · ${flightLimitText()}`;
+        }
+
+        // One small display owner for the Flight panel. Values are allowed to be
+        // prepared outside game mode; Engage alone is gated, so a player can
+        // choose a ship and compare a route before taking the helm.
+        // The forecast/status texts are only written when they actually change,
+        // fixing the “redraw that message every frame” flicker.
+        let lastFlightStatus = '';
+        let lastFlightForecast = '';
+        function setTextIfChanged(el, text) {
+                if (el.textContent !== text) el.textContent = text;
+        }
+        function syncFlightUi() {
+                const autoActive = ship.ap.mode !== shipLib.AP_OFF;
+                // Freeze the forecast plan while autopilot flies: recomputing
+                // from the shrinking distance made the <pre> change every 250 ms
+                // and also clobbered the velocity baseline via gameTargetFeed(0).
+                const ready = autoActive ? (flightDestination.active && gameTargetValid && !gameTargetStale) : updateFlightPlan();
+                const capC = shipLib.cruiseCapKpcS(ship) * shipLib.KPC_M / shipLib.C;
+                shipLib.velocityComponents(ship, camera.forward, camera.right, camera.up,
+                        gameTargetValid && !gameTargetStale ? gameTargetVel : null, gameVelocityAxes);
+                velocityForward.textContent = shipLib.formatAxisSpeed(gameVelocityAxes[0]);
+                velocityRight.textContent = shipLib.formatAxisSpeed(gameVelocityAxes[1]);
+                velocityUp.textContent = shipLib.formatAxisSpeed(gameVelocityAxes[2]);
+                velocityRef.textContent = gameTargetValid ? gameTargetName() : 'no reference';
+                syncFleetUi();
+                const speedControl = flightControl === 'speed';
+                flightThrustRow.classList.toggle('is-off', speedControl);
+                flightSpeedRow.classList.toggle('is-off', !speedControl);
+                flightThrustSlider.value = Math.round(flightThrust * 100);
+                flightThrustValue.textContent = Math.round(flightThrust * 100) + (flightThrust > 0 ? '% forward' : '% · coast')
+                        + (speedControl ? ' · speed control' : ' · thrust control');
+                flightSpeedSlider.value = Math.round(flightSpeedFraction * 100);
+                flightSpeedGovernorBox.checked = speedControl;
+                flightSpeedValue.textContent = `${shipLib.formatSpeedC(capC * flightSpeedFraction)} · ${Math.round(flightSpeedFraction * 100)}% cap`
+                        + (speedControl ? ' · speed control' : ' · thrust control');
+                flightModeSelect.value = String(flightMode);
+                flightTimeLimitBox.value = Number(flightTimeLimitYears.toPrecision(8));
+                flightTimeRow.style.display = flightMode === shipLib.NAV_TIME_LIMIT ? '' : 'none';
+                flightDestinationLabel.textContent = flightDestination.active
+                        ? (flightDestination.name || 'Locked destination') : 'No destination set';
+                flightUseSelected.disabled = starSet.primary < 0 || autoActive;
+                flightClearDestination.disabled = !flightDestination.active || autoActive;
+                // Unified checkbox UI: destination autopilot and target-stop are
+                // two mutually exclusive checkboxes, no Engage/Abort buttons.
+                const destFeasible = ready && flightPlan.feasible && flightPlan.fuelMargin >= 0;
+                flightAutoDest.checked = (ship.ap.mode === shipLib.AP_APPROACH && gameCommand !== GAME_CMD_ABORT)
+                        || (gameMode && gameCommand === GAME_CMD_PLAN);
+                flightAutoDest.disabled = !gameMode
+                        || (autoActive && ship.ap.mode !== shipLib.AP_APPROACH)
+                        || !flightDestination.active
+                        || (!autoActive && !destFeasible);
+                flightAutoTarget.checked = (ship.ap.mode === shipLib.AP_TARGET && gameCommand !== GAME_CMD_ABORT)
+                        || (gameMode && gameCommand === GAME_CMD_TARGET);
+                flightAutoTarget.disabled = !gameMode
+                        || (autoActive && ship.ap.mode !== shipLib.AP_TARGET)
+                        || (starSet.primary < 0 && !flightDestination.active && !autoActive);
+                const statusText = ship.ap.mode === shipLib.AP_TARGET
+                        ? 'autopilot · matching target motion'
+                        : autoActive ? `autopilot ${shipLib.AP_PHASE_NAMES[ship.ap.phase]} · uncheck to abort, velocity kept`
+                                : gameMode ? 'manual thrust + destination planner'
+                                        : 'configure now · select a ship to pilot';
+                if (statusText !== lastFlightStatus) {
+                        flightStatus.textContent = statusText;
+                        lastFlightStatus = statusText;
+                }
+                const forecastText = flightForecastText(ready);
+                if (forecastText !== lastFlightForecast) {
+                        flightForecast.textContent = forecastText;
+                        lastFlightForecast = forecastText;
+                }
+        }
+
+        // The HUD target is the speed reference (§7.4): an explicit
+        // centre/home choice, else the locked Flight destination, else
+        // the primary selection — in drawn space (ui.2). It resolves
+        // every frame so the closing rate is frame-rate honest; the
+        // overlay only reads the numbers at its own 4 Hz.
+        // dtShipS == 0 is the UI probe: it resolves the position but must NOT
+        // clobber the velocity baseline (gameTargetPrev) that the ship loop
+        // maintains for its physical-velocity estimate. Without this guard a
+        // 4 Hz UI tick overwrites the prev that the game loop just set, making
+        // the target appear stationary and causing aim flicker / camera glitch.
+        function gameTargetFeed(dtShipS) {
+                const isProbe = !(dtShipS > 0);
+                if (speedRef !== 'target') {
+                        const p = speedRef === 'centre' ? model.centre : model.home.orbitTarget;
+                        if (gameTargetKind !== speedRef) {
+                                gameTargetKind = speedRef;
+                                gameTargetKey = -1;
+                                gameTargetValid = false;
+                        }
+                        gameTarget[0] = p.x !== undefined ? p.x : p[0];
+                        gameTarget[1] = p.y !== undefined ? p.y : p[1];
+                        gameTarget[2] = p.z !== undefined ? p.z : p[2];
+                        gameTargetLum = 0;
+                        gameTargetStale = false;
+                        if (!isProbe) gameTargetVel.fill(0);
+                } else {
+                        gameTargetKind = 'target';
+                        const locked = flightDestination.active;
+                        const i = locked ? -1 : starSet.primary;
+                        if (!locked && i < 0) {
+                                gameTargetValid = false;
+                                gameTargetKey = -1;
+                                gameTargetStale = false;
+                                return;
+                        }
+                        const key = locked ? flightDestination.key >>> 0 : starSet.keys[i] >>> 0;
+                        if (key !== gameTargetKey) {
+                                gameTargetKey = key;
+                                gameTargetValid = false;
+                        }
+                        gameTargetLum = locked ? flightDestination.lum : starSet.lum[i];
+                        gameTargetStale = locked
+                                ? selection.resolveDrawn(flightDestination, gameTarget) === window.Selection.DRAWN_STALE
+                                : memberDrawnPosition(i, gameTarget) === window.Selection.DRAWN_STALE;
+                }
+                const dx = gameTarget[0] - ship.pos[0];
+                const dy = gameTarget[1] - ship.pos[1];
+                const dz = gameTarget[2] - ship.pos[2];
+                const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (gameTargetValid && dtShipS > 0) {
+                        gameTargetClosingKpcS = (gameTargetPrevDistKpc - dist) / dtShipS;
+                        for (let k = 0; k < 3; k++) gameTargetVel[k] = (gameTarget[k] - gameTargetPrev[k]) / dtShipS;
+                } else if (!gameTargetValid) {
+                        gameTargetClosingKpcS = 0;
+                        gameTargetVel.fill(0);
+                }
+                // Only advance the baseline on real steps; a 0-dt probe must
+                // leave it alone so the next real step measures one frame of
+                // physical motion, not the UI tick.
+                if (!isProbe || !gameTargetValid) {
+                        gameTargetPrev.set(gameTarget);
+                        gameTargetPrevDistKpc = dist;
+                }
+                gameTargetDistKpc = dist;
+                gameTargetValid = true;
+        }
+
+        // The frame's ship law: the thrust blend on the camera's live basis
+        // (mouse aims, exactly the fly camera's look), the integrate-and-clamp
+        // of ship.js, and the write-through. Runs *after* camera.step so the
+        // look just applied is kept and the observer's fly integration — which
+        // ran with the same keys — is discarded before the frame draws.
+        function gameShipStep(dtShipS, dtWallS) {
+                const keys = input.state.keys;
+                const factor = keys.boost ? 4 : keys.slow ? 0.25 : 1;
+                const forwardKey = (keys.forward ? 1 : 0) - (keys.back ? 1 : 0);
+                // The Pilot controls answer "how fast" two mutually
+                // exclusive ways: thrust control commands the burn
+                // (the lever, persistent), speed control holds a
+                // limit (forward thrust cuts at the desired speed
+                // — no hidden brake, so a pilot still owns
+                // deceleration). The last control touched owns the
+                // forward axis; a direct W/S input temporarily takes
+                // it over either way, and A/D/E/Q always steer.
+                const speedControl = flightControl === 'speed';
+                let f = forwardKey !== 0 ? forwardKey : speedControl ? 0 : flightThrust;
+                const r = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+                const u = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
+                const desiredSpeed = shipLib.cruiseCapKpcS(ship) * flightSpeedFraction;
+                const currentSpeed = Math.hypot(ship.vel[0], ship.vel[1], ship.vel[2]);
+                const governorCap = speedControl && f > 0 && currentSpeed < desiredSpeed
+                        ? desiredSpeed : 0;
+                if (speedControl && f > 0 && currentSpeed >= desiredSpeed) f = 0;
+                gameDir[0] = f * camera.forward[0] + r * camera.right[0] + u * camera.up[0];
+                gameDir[1] = f * camera.forward[1] + r * camera.right[1] + u * camera.up[1];
+                gameDir[2] = f * camera.forward[2] + r * camera.right[2] + u * camera.up[2];
+                // The persistent lever does not fight an engaged autopilot. A
+                // real key press is the explicit manual override that aborts it.
+                const thrusting = forwardKey !== 0 || r !== 0 || u !== 0;
+                const flying = ship.ap.mode !== shipLib.AP_OFF;
+                if (flying && (gameTargetStale || !gameTargetValid)) {
+                        // The target left the residency: its drawn position is not a
+                        // place to fly to, so the flight ends and says why.
+                        shipLib.apAbort(ship);
+                        autoRunning = false;
+                        shipTimeRateCapY = Infinity;
+                        syncStarTime();
+                        setAutoMsg('target lost \u00b7 autopilot off');
+                } else if (flying && thrusting) {
+                        shipLib.apAbort(ship);
+                        shipTimeRateCapY = Infinity;
+                }
+                if (ship.ap.mode !== shipLib.AP_OFF) {
+                        ship.accelNow = shipLib.apStep(ship, dtShipS, dtWallS,
+                                gameTarget[0], gameTarget[1], gameTarget[2],
+                                gameTargetVel[0], gameTargetVel[1], gameTargetVel[2]);
+                } else {
+                        shipLib.step(ship, dtShipS, gameDir[0], gameDir[1], gameDir[2], factor, governorCap);
+                }
+                const s = camera.getState(rigState);
+                s.position[0] = ship.pos[0];
+                s.position[1] = ship.pos[1];
+                s.position[2] = ship.pos[2];
+                s.velocity[0] = ship.vel[0];
+                s.velocity[1] = ship.vel[1];
+                s.velocity[2] = ship.vel[2];
+                camera.setState(rigState);
+                // The ship is the camera while flying: the heading
+                // the pilot aimed is the hull's heading, stored so
+                // another hull's (and this one's, on a later entry)
+                // re-pose is exact.
+                ship.heading[0] = s.orientation[0];
+                ship.heading[1] = s.orientation[1];
+                ship.heading[2] = s.orientation[2];
+                ship.heading[3] = s.orientation[3];
+        }
+
+        function gameTargetName() {
+                if (gameTargetKind === 'centre') return 'galactic centre';
+                if (gameTargetKind === 'home') return model.home.orbitName;
+                if (flightDestination.active) return flightDestination.name || 'Destination';
+                const i = starSet.primary;
+                return i >= 0 ? memberName(i) : 'S' + gameTargetKey.toString(36).toUpperCase();
+        }
+        function gameTargetLine() {
+                const dvLib = window.DeltaVLib;
+                if (!gameTargetValid) return '\ntarget    none selected \u00b7 click a star';
+                let line = `\ntarget    ${gameTargetName()}   ${formatLy(gameTargetDistKpc * LY_PER_KPC)}`;
+                const closing = gameTargetClosingKpcS;
+                if (closing > 0) {
+                        line += ` \u00b7 closing ${shipLib.formatSpeedC(closing * shipLib.KPC_M / shipLib.C)}`;
+                        const shipS = gameTargetDistKpc / closing;
+                        const rateY = shipLib.timeRateYPerS(ship, shipLib.speedC(ship));
+                        const wallS = rateY > 0 ? shipS / (rateY * shipLib.SECONDS_PER_YEAR) : Infinity;
+                        line += ` \u00b7 coast eta ${dvLib.formatDuration(shipS)} ship \u00b7 ${formatWall(wallS)} wall`;
+                } else {
+                        line += closing < 0
+                                ? ` \u00b7 receding ${shipLib.formatSpeedC(closing * shipLib.KPC_M / shipLib.C)} \u00b7 coast eta \u2014`
+                                : ' \u00b7 closing 0 \u00b7 coast eta \u2014';
+                }
+                // The §5 profile ETA — the numbers that sell the restrictions —
+                // computed from the closed form even before G2 flies it.
+                shipLib.apProfile(gameTargetDistKpc * shipLib.KPC_M, ship, profileOut);
+                line += Number.isFinite(profileOut.timeS)
+                        ? ` \u00b7 ap eta ${dvLib.formatDuration(profileOut.timeS)}`
+                        : ' \u00b7 ap eta \u2014';
+                return line;
+        }
+
+        // --- Autopilot commands (game-mode-plan §5, G2) ----------------------
+        // Shift+F (approach), j (follow) and f (abort) are the ship's commands.
+        // The key records the request; gameApplyCommand runs it in the game
+        // block. Refusals and ends are one short message line, never a silent
+        // no-op, and nothing here runs per frame except the ease and the feed.
+        function setAutoMsg(text) {
+                autoMsg = text;
+                autoMsgTicks = NOTICE_TICKS;
+        }
+
+        // The reason codes ship.js keeps, as the sentence the HUD says.
+        function autoReasonText(reason) {
+                const ap = ship.ap;
+                switch (reason) {
+                        case shipLib.AP_REASON_FUEL:
+                                return `insufficient \u0394v: need ${shipLib.formatDv(ap.reasonDv)}, have ${shipLib.formatDv(shipLib.dvRemaining(ship))}`;
+                        case shipLib.AP_REASON_HOT:
+                                return `hot approach \u00b7 closing ${shipLib.formatSpeedC(ap.closingMs / shipLib.C)} \u00b7 null it first (Space)`;
+                        case shipLib.AP_REASON_LOCAL: return 'ship is in-system only';
+                        case shipLib.AP_REASON_CLOSE: return 'already at the stand-off';
+                        case shipLib.AP_REASON_NO_TARGET: return 'no star selected \u00b7 click a star first';
+                        case shipLib.AP_REASON_ARRIVED: return 'arrived \u00b7 target-relative velocity 0, 0, 0';
+                        case shipLib.AP_REASON_ABORTED: return 'autopilot off \u00b7 velocity kept';
+                        default: return '';
+                }
+        }
+
+        function gameTargetOffset() {
+                gameRel[0] = gameTarget[0] - ship.pos[0];
+                gameRel[1] = gameTarget[1] - ship.pos[1];
+                gameRel[2] = gameTarget[2] - ship.pos[2];
+        }
+
+        function gameTargetUsable() {
+                if (!gameTargetValid) {
+                        noSelectionTicks = NOTICE_TICKS;
+                        return false;
+                }
+                if (gameTargetStale) {
+                        setAutoMsg('target is not resident · no drawn position to fly to');
+                        return false;
+                }
+                return true;
+        }
+
+        // Shift+F remains the fast, class-limited approach. It uses the locked
+        // destination when one exists; otherwise it keeps the primary-selection
+        // G2 behaviour.
+        function gameApproach() {
+                if (!gameTargetUsable()) return;
+                gameTargetOffset();
+                const reason = shipLib.apCommitApproach(ship, gameRel[0], gameRel[1], gameRel[2],
+                        gameTargetVel[0], gameTargetVel[1], gameTargetVel[2], flightStandOffM());
+                if (reason !== shipLib.AP_REASON_NONE) setAutoMsg(autoReasonText(reason));
+        }
+
+        function gameStopAtTarget() {
+                if (!flightDestination.active && !setFlightDestinationFromPrimary()) {
+                        noSelectionTicks = NOTICE_TICKS;
+                        return;
+                }
+                if (!gameTargetUsable()) return;
+                gameTargetOffset();
+                const reason = shipLib.apCommitTarget(ship, gameRel[0], gameRel[1], gameRel[2],
+                        gameTargetVel[0], gameTargetVel[1], gameTargetVel[2]);
+                if (reason !== shipLib.AP_REASON_NONE) setAutoMsg(autoReasonText(reason));
+                else setAutoMsg('autopilot to target · zero relative speed at arrival');
+        }
+
+        // §5's follow (j): null the relative velocity, trail at the stand-off.
+        // Pressed again it aborts, like the observer's chase toggle.
+        function gameFollow() {
+                if (ship.ap.mode === shipLib.AP_FOLLOW) {
+                        shipLib.apAbort(ship);
+                        setAutoMsg('autopilot off · velocity kept');
+                        return;
+                }
+                if (!gameTargetUsable()) return;
+                gameTargetOffset();
+                shipLib.apCommitFollow(ship, gameRel[0], gameRel[1], gameRel[2],
+                        gameTargetVel[0], gameTargetVel[1], gameTargetVel[2], flightStandOffM());
+        }
+
+        // G3's explicit engage action. The checked forecast is copied into the
+        // autopilot record by ship.js, then the active controls may be adjusted
+        // for the next trip without altering this burn.
+        function gameEngageFlightPlan() {
+                if (!flightDestination.active) {
+                        setAutoMsg('set a destination first · select a star, then Use selected');
+                        return;
+                }
+                if (!gameTargetUsable()) return;
+                if (!updateFlightPlan()) return;
+                if (!flightPlan.feasible) {
+                        setAutoMsg(shipLib.NAV_REASON_NAMES[flightPlan.reason] || 'invalid flight plan');
+                        return;
+                }
+                if (flightPlan.fuelMargin < 0) {
+                        setAutoMsg(`insufficient Δv: need ${shipLib.formatDv(flightPlan.totalDv)}, have ${shipLib.formatDv(shipLib.dvRemaining(ship))}`);
+                        return;
+                }
+                gameTargetOffset();
+                const reason = shipLib.apCommitApproach(ship, gameRel[0], gameRel[1], gameRel[2],
+                        gameTargetVel[0], gameTargetVel[1], gameTargetVel[2], flightPlan.standOffM, flightPlan);
+                if (reason !== shipLib.AP_REASON_NONE) setAutoMsg(autoReasonText(reason));
+        }
+
+        function gameAbort() {
+                if (ship.ap.mode === shipLib.AP_OFF) {
+                        setAutoMsg('no autopilot running');
+                        return;
+                }
+                shipLib.apAbort(ship);
+                shipTimeRateCapY = Infinity;
+                setAutoMsg('autopilot off \u00b7 velocity kept');
+        }
+
+        // Runs before the shared-clock rate when a command is pending or a
+        // flight just ended; it clears any old cap, then consumes the request.
+        function gameApplyCommand() {
+                let clockStateChanged = false;
+                if (autoRunning && ship.ap.mode === shipLib.AP_OFF) {
+                        setAutoMsg(autoReasonText(ship.ap.reason));
+                        shipTimeRateCapY = Infinity;
+                        clockStateChanged = true;
+                }
+                const cmd = gameCommand;
+                gameCommand = 0;
+                if (cmd === GAME_CMD_APPROACH) gameApproach();
+                else if (cmd === GAME_CMD_FOLLOW) gameFollow();
+                else if (cmd === GAME_CMD_ABORT) gameAbort();
+                else if (cmd === GAME_CMD_PLAN) gameEngageFlightPlan();
+                else if (cmd === GAME_CMD_TARGET) gameStopAtTarget();
+                autoRunning = ship.ap.mode !== shipLib.AP_OFF;
+                if (cmd !== 0) {
+                        refreshShipTimeRateCap();
+                        clockStateChanged = true;
+                }
+                if (clockStateChanged) syncStarTime();
+        }
+
+        // The nose (game-mode-plan §5): the autopilot's aim is fed into the
+        // camera's own look accumulator, so the ease is the camera's one look
+        // law and a glance still wins frame by frame. Applied next frame.
+        function gameAimEase(dtWallS) {
+                const ap = ship.ap;
+                if (ap.mode === shipLib.AP_OFF || !ap.hasAim) return;
+                const k = 1 - Math.exp(-dtWallS / shipLib.AP_AIM_TAU);
+                const a = ap.aim;
+                const r = camera.right, u = camera.up, f = camera.forward;
+                const xa = a[0] * r[0] + a[1] * r[1] + a[2] * r[2];
+                const ya = a[0] * u[0] + a[1] * u[1] + a[2] * u[2];
+                const za = a[0] * f[0] + a[1] * f[1] + a[2] * f[2];
+                const sens = window.Camera.LOOK_SENSITIVITY;
+                // Positive lookDx yaws toward the right, positive lookDy pitches down.
+                input.state.lookDx += k * Math.atan2(xa, za) / sens;
+                input.state.lookDy -= k * Math.atan2(ya, za) / sens;
+        }
+
+        // The chrome's live numbers, read every game frame by the label layer.
+        function feedShipChrome() {
+                const cap = shipLib.cruiseCapKpcS(ship);
+                shipChrome.color = ship.class.color;
+                shipChrome.throttle = ship.throttleFrac;
+                shipChrome.fuel = shipLib.dvRemaining(ship) / ship.dvMax;
+                shipChrome.speed = Math.hypot(ship.vel[0], ship.vel[1], ship.vel[2]) / cap;
+                shipChrome.closing = Math.max(0, gameTargetClosingKpcS) / cap;
+                shipChrome.hasAim = ship.ap.hasAim && ship.ap.mode !== shipLib.AP_OFF;
+                shipChrome.aim = ship.ap.aim;
+                shipChrome.hasTarget = gameTargetValid && !gameTargetStale;
+                shipChrome.target = gameTarget;
+        }
+
+        // The chrome's strings, at the overlay's 4 Hz like the HUD's.
+        function updateShipChromeText() {
+                shipChrome.stripText = `accepted ${Math.round(ship.throttleFrac * 100)}% \u00b7 \u0394v ${Math.round(100 * shipLib.dvRemaining(ship) / ship.dvMax)}%`;
+                shipChrome.tagText = !gameTargetValid ? '' : `${gameTargetName()}  ${formatLy(gameTargetDistKpc * LY_PER_KPC)}`;
+        }
+
+        // The auto line (§6): the approach's phase, flown fraction, ETA in ship
+        // and wall time and the Δv it spends; the follow's relative speed and its
+        // correction. A refusal or an ended flight shows its message for a while.
+        function gameAutoLine() {
+                const ap = ship.ap;
+                const dvLib = window.DeltaVLib;
+                let text = '';
+                if (ap.mode === shipLib.AP_APPROACH || ap.mode === shipLib.AP_TARGET) {
+                        const flown = ap.etaTotalS > 0 ? Math.max(0, Math.min(1, 1 - ap.etaS / ap.etaTotalS)) : 1;
+                        const rateY = gameTimeRateY();
+                        const wallS = rateY > 0 ? ap.etaS / (rateY * shipLib.SECONDS_PER_YEAR) : Infinity;
+                        const task = ap.mode === shipLib.AP_TARGET ? 'target stop' : shipLib.AP_PHASE_NAMES[ap.phase];
+                        text = `\nauto      ${task} \u00b7 ${Math.round(100 * flown)}% \u00b7 eta ${dvLib.formatDuration(ap.etaS)} ship`
+                                + ` \u00b7 ${formatWall(wallS)} wall \u00b7 \u0394v ${shipLib.formatDv(ap.dvSpent)}/${shipLib.formatDv(ap.dvRequired)} \u00b7 f aborts`;
+                } else if (ap.mode === shipLib.AP_FOLLOW) {
+                        text = `\nauto      follow \u00b7 relative ${shipLib.formatDv(ap.relativeMs)} \u00b7 correction \u0394v ${shipLib.formatDv(ap.dvSpent)} \u00b7 j or f aborts`;
+                }
+                if (autoMsgTicks > 0) text += `\nauto      ${autoMsg}`;
+                return text;
+        }
+
         function gameModeLine() {
                 if (!gameMode) return '';
-                return `\nmode      game   ship display not implemented yet \u00b7 game-mode-plan.md \u00b7 g returns to observer`;
+                const dvLib = window.DeltaVLib;
+                const cls = ship.class;
+                const c = shipLib.speedC(ship);
+                const remain = shipLib.dvRemaining(ship);
+                const life = cls.lifeYears === Infinity ? '\u221e'
+                        : dvLib.formatDuration(Math.max(0, cls.lifeYears * dvLib.SECONDS_PER_YEAR - ship.lifeSpent));
+                const accelPart = ship.accelNow > 0 ? ` (+${ship.accelNow.toFixed(1)} m/s\u00b2)` : '';
+                const requestedRate = shipLib.timeRateYPerS(ship, c);
+                const actualRate = gameTimeRateY();
+                const rateNote = Math.abs(actualRate - requestedRate) > 1e-15 ? ` · actual ${formatShipRate(actualRate)}` : '';
+                let text = `\nmode      game \u00b7 ship clock ${shipLib.formatClock(ship, c)}${rateNote} (wheel steps \u00b7 T freezes) \u00b7 g returns to observer`;
+                const governor = flightControl === 'speed'
+                        ? ` \u00b7 speed limit ${shipLib.formatSpeedC(shipLib.cruiseCapKpcS(ship) * flightSpeedFraction * shipLib.KPC_M / shipLib.C)}`
+                        : '';
+                text += `\nship      ${cls.label} \u00b7 accepted thrust ${throttleBar(ship.throttleFrac)} ${Math.round(ship.throttleFrac * 100)}%`
+                        + ` \u00b7 burn ${dvLib.formatDuration(shipLib.burnReserveSeconds(ship))} reserve${governor}`;
+                text += `\nspeed     ${shipLib.formatSpeed(ship)}${accelPart}`
+                        + ` \u00b7 fuel ${shipLib.formatDv(remain)}/${shipLib.formatDv(ship.dvMax)} \u0394v (${Math.round(100 * remain / ship.dvMax)}%)`
+                        + ` \u00b7 life ${life}`;
+                shipLib.velocityComponents(ship, camera.forward, camera.right, camera.up,
+                        gameTargetValid && !gameTargetStale ? gameTargetVel : null, gameVelocityAxes);
+                text += `\nvelocity  relative to ${gameTargetValid ? gameTargetName() : 'the galactic frame'}`
+                        + ` · forward ${shipLib.formatAxisSpeed(gameVelocityAxes[0])}`
+                        + ` · sideways ${shipLib.formatAxisSpeed(gameVelocityAxes[1])} · vertical ${shipLib.formatAxisSpeed(gameVelocityAxes[2])}`;
+                text += gameTargetLine();
+                if (remain <= 0) text += '\nship      tank empty \u00b7 thrusters silent \u00b7 coasting';
+                if (ship.stopResidual > 0) text += `\nship      stop incomplete \u00b7 residual ${shipLib.formatSpeed(ship)}`;
+                text += gameAutoLine();
+                return text + gameNoticeLine();
         }
 
         function cameraLine(c) {
+                // The HUD's mode/speed lines own the display while the ship is
+                // the rig — the observer's ladder is off duty (game-mode-plan §6).
+                if (gameMode) return '';
                 if (c.flying) {
                         return `camera flying to ${c.targetName}   ${Math.round(c.flightProgress * 100)}%`;
+                }
+                if (c.chase) {
+                        return `camera chase ${c.targetName}   distance ${formatDistance(c.orbitDistance)}   motion ${formatSpeed(c.chaseSpeedLyPerSec)}`;
                 }
                 if (c.mode === window.Camera.MODE_FLY) {
                         return `camera ${c.modeName}   speed ${formatSpeed(c.speedLyPerSec)}  (x${c.speedMult})${formatFactor(c.speedFactor)}`;
@@ -2298,7 +3447,9 @@ async function boot() {
 
         function selectedLine(cameraState) {
                 if (selected < 0 || cameraState.mode !== window.Camera.MODE_FLY) return '';
-                return `\nselected ${landmarks.ENTRIES[selected].name}   (c orbits it \u00b7 Shift+F flies to it)`;
+                return gameMode
+                        ? `\nselected ${landmarks.ENTRIES[selected].name}   (game HUD target \u00b7 g returns to observer)`
+                        : `\nselected ${landmarks.ENTRIES[selected].name}   (c orbits it \u00b7 j follows it \u00b7 Shift+F flies to it)`;
         }
 
         // The system brief: the primary's generated system on one line — the
@@ -2390,9 +3541,9 @@ async function boot() {
                 text += systemBriefLine(i);
                 if (starSet.count > 1 || setLabel) {
                         text += `\nset       ${setLabel || `${starSet.count} stars`}` +
-                                ' \u00b7 N next \u00b7 X clear \u00b7 c orbit \u00b7 Shift+F fly to';
+                                ' \u00b7 N next \u00b7 X clear \u00b7 c orbit \u00b7 j follow \u00b7 Shift+F fly to';
                 } else {
-                        text += '   \u00b7 Shift+click adds \u00b7 c orbit \u00b7 Shift+F fly to';
+                        text += '   \u00b7 Shift+click adds \u00b7 c orbit \u00b7 j follow \u00b7 Shift+F fly to';
                 }
                 return text;
         }
@@ -2415,13 +3566,14 @@ async function boot() {
                         ` + catalog ${catKept.toLocaleString()}/${state.catalogTotalStars.toLocaleString()}\n` +
                         `cells ${state.cellsResident}/${state.catalogCells}   decoded ${(state.decodedBytes / 1024).toFixed(0)} KB` +
                         `   buffer ${(state.bufferBytes / 1048576).toFixed(1)} MB\n` +
-                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   engine ${state.engine}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)${evolveOn ? ' +evolve' : ''}   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   pattern ${window.OrbitLib.effectivePatternSpeed(model).toFixed(3)} rad/Myr (x${patternScale.toFixed(2)})   Tab menu\n` +
+                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   engine ${state.engine}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${gameMode ? 'ship ' + shipLib.formatClock(ship, shipLib.speedC(ship)) : window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)${evolveOn ? ' +evolve' : ''}   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   pattern ${window.OrbitLib.effectivePatternSpeed(model).toFixed(3)} rad/Myr (x${patternScale.toFixed(2)})   Tab menu\n` +
                         `pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
                         cameraLine(cameraState) +
                         gameModeLine() +
                         noSelectionLine() +
                         selectionLines(cameraState) +
                         selectedLine(cameraState);
+                if (helpPanel.style.display !== 'none') syncHelpControls(cameraState);
         }
 
         const loop = window.Loop.createLoop((dt, time) => {
@@ -2429,15 +3581,43 @@ async function boot() {
                 const resetting = actions.reset;
                 if (actions.freezeTime) {
                         actions.freezeTime = 0;
-                        if (starTimeRate === 0) starTimeRate = lastNonZeroTimeRate;
+                        // T freezes the shared clock in game mode — ship and sky
+                        // together (game-mode-plan §4) — the observer's axis when
+                        // out of it.
+                        if (gameMode) ship.timeFrozen = !ship.timeFrozen;
+                        else if (starTimeRate === 0) starTimeRate = lastNonZeroTimeRate;
                         else { lastNonZeroTimeRate = starTimeRate; starTimeRate = 0; }
                         syncStarTime();
                 }
+                // Promote game-mode keyboard requests before the shared-clock
+                // calculation so a command and its time cap apply immediately.
+                if (gameMode && !resetting) {
+                        if (actions.flyMode) { actions.flyMode = 0; gameCommand = GAME_CMD_ABORT; }
+                        if (actions.chaseFollow) { actions.chaseFollow = 0; gameCommand = GAME_CMD_FOLLOW; }
+                        if (actions.flyTo) { actions.flyTo = 0; gameCommand = GAME_CMD_APPROACH; }
+                }
+                if (gameMode && !resetting
+                        && (gameCommand !== 0 || (autoRunning && ship.ap.mode === shipLib.AP_OFF))) {
+                        gameTargetFeed(0);
+                        gameApplyCommand();
+                }
                 const cameraStateForTime = camera.getState(statsText);
-                const effectiveTimeRate = starTimeRate < 0
-                        ? (-starTimeRate) * window.OrbitLib.FLIGHT_TIME_GAIN * cameraStateForTime.speedLyPerSec
-                        : starTimeRate;
+                // Game mode's shared clock (game-mode-plan §4): while the ship
+                // flies, the stars' dt and the ship's dt come off one rate — the
+                // ship-time ladder in y/s. Under one clock the ship's cruise
+                // outruns stellar drift, so a selected star is met where it
+                // arrives; the observer's star rate is parked and not consulted.
+                const gameRateY = gameMode ? gameTimeRateY() : 0;
+                const effectiveTimeRate = gameMode
+                        ? gameRateY * 1e-6
+                        : (starTimeRate < 0
+                                ? (-starTimeRate) * window.OrbitLib.FLIGHT_TIME_GAIN * cameraStateForTime.speedLyPerSec
+                                : starTimeRate);
                 const dtStar = effectiveTimeRate * dt;
+                const dtShipS = gameMode ? gameRateY * shipLib.SECONDS_PER_YEAR * dt : 0;
+                // Physical seconds this frame (star-seconds under the shared
+                // clock) — the handover feed's unit bridge from drawn motion.
+                framePhysSeconds = dtStar > 0 ? dtStar * 1e6 * shipLib.SECONDS_PER_YEAR : 0;
                 starTimeMyr += dtStar;
                 if (starTimeMyr >= STAR_TIME_WRAP || starTimeMyr < 0) starTimeMyr = ((starTimeMyr % STAR_TIME_WRAP) + STAR_TIME_WRAP) % STAR_TIME_WRAP;
                 // The pattern's phase (0.6 E4) is integrated with the frame's own
@@ -2465,30 +3645,83 @@ async function boot() {
                         clearSelection();
                         renderer.resetSimpleState();
                         initSimpleLandmarks();
+                        // R is reset everything — the ship and any locked
+                        // destination included.
+                        shipLib.resetShip(ship);
+                        activeFleetShip.entered = true;
+                        autoRunning = false;
+                        gameCommand = 0;
+                        shipTimeRateCapY = Infinity;
+                        clearFlightDestination();
+                        syncStarTime();
                 }
 
                 // ui.4: the galaxy type is a menu-only control (the type select
                 // calls regenerateGalaxy directly); G is the game-mode toggle now
                 // and the orbit/fly modes are explicit keys, not a cycle.
+                // Game mode gates the observer's mode keys (game-mode-plan §3):
+                // the ship is the fly rig, and each gated key answers with a
+                // notice line instead of a silent no-op. Space and the legacy
+                // Controls refill are the ship's own commands.
+                if (actions.allStop) {
+                        actions.allStop = 0;
+                        if (gameMode) {
+                                shipLib.applyStop(ship);
+                                shipTimeRateCapY = Infinity;
+                        }
+                }
+                if (actions.shipRefuel) {
+                        actions.shipRefuel = 0;
+                        shipLib.refuel(ship);
+                        syncFlightUi();
+                }
                 if (actions.orbitCentre) {
-                        // Shift+C: orbit the galactic centre, centred.
+                        // Shift+C: orbit the galactic centre — and
+                        // select it as the speed reference, in both
+                        // rigs. In game mode only the reference is
+                        // taken: the orbit would re-pose the camera,
+                        // which a ship never does.
                         actions.orbitCentre = 0;
-                        camera.setMode(window.Camera.MODE_ORBIT_GC);
+                        setSpeedRef('centre');
+                        if (!gameMode) camera.setMode(window.Camera.MODE_ORBIT_GC);
                 }
                 if (actions.orbitObject) {
                         // c: orbit the last selected star on the spot — no flight.
                         actions.orbitObject = 0;
-                        if (!orbitPrimary()) noSelectionTicks = NOTICE_TICKS;
+                        if (gameMode) gameNotice();
+                        else if (!orbitPrimary()) noSelectionTicks = NOTICE_TICKS;
                 }
                 if (actions.flyMode) {
                         // f: the free fly camera — orbit and follow are both off.
                         actions.flyMode = 0;
-                        camera.setMode(window.Camera.MODE_FLY);
-                        followKey = -1;
+                        if (gameMode) gameCommand = GAME_CMD_ABORT;
+                        else {
+                                camera.setMode(window.Camera.MODE_FLY);
+                                followKey = -1;
+                        }
                 }
                 if (actions.gameMode) {
                         actions.gameMode = 0;
                         gameMode = !gameMode;
+                        if (gameMode) enterGameMode(); else leaveGameMode();
+                }
+                if (actions.chaseFollow) {
+                        // j (ui.6): ride behind the centred object with the
+                        // view aligned to its movement vector. Entering needs
+                        // something to orbit (a selection, or the mode already
+                        // orbiting an object); leaving keeps the exact pose.
+                        actions.chaseFollow = 0;
+                        if (gameMode) gameCommand = GAME_CMD_FOLLOW;
+                        else {
+                                const camBefore = camera.getState(statsText);
+                                if (camBefore.chase) {
+                                        camera.setChase(false);
+                                } else if (camBefore.mode === window.Camera.MODE_ORBIT_OBJECT || orbitPrimary()) {
+                                        camera.setChase(true);
+                                } else {
+                                        noSelectionTicks = NOTICE_TICKS;
+                                }
+                        }
                 }
                 // The age slider's trailing edge: applied here, in loop time, so
                 // the value the user let go of is the one that lands. Since E4 an
@@ -2508,6 +3741,11 @@ async function boot() {
                 }
                 labels.setOrbitState(model, starTimeMyr);
                 selection.setOrbitState(model, starTimeMyr);
+                // The Flight forecast includes its target-frame velocity match.
+                // Keep the same keyed feed warm while observing, using the
+                // observer clock's physical elapsed seconds; game mode resets
+                // the rate source to its shared ship clock before it can fly.
+                if (!gameMode && (speedRef !== 'target' || flightDestination.active || starSet.primary >= 0)) gameTargetFeed(framePhysSeconds);
                 // Fly-to follow (ui.2): while the camera orbits — or is still flying
                 // to — a set member, its target rides the star's drawn position, so
                 // the star stays centred instead of drifting off its birth snapshot.
@@ -2518,7 +3756,52 @@ async function boot() {
                 if (followKey >= 0 && cameraStateForTime.mode === window.Camera.MODE_ORBIT_OBJECT) {
                         followTarget();
                 }
+                shipChrome.active = gameMode;
+                if (gameMode) {
+                        // The wheel steps the ship clock's ladder (game-mode-plan
+                        // §4) — the observer speed ladder is off duty — and home
+                        // is a teleport, which a ship does not do (§3). Whole
+                        // notches out of an accumulator, like the camera's wheel.
+                        gameWheelAccum += input.state.wheelDelta;
+                        input.state.wheelDelta = 0;
+                        const notches = Math.trunc(gameWheelAccum / window.Camera.WHEEL_NOTCH_PX);
+                        if (notches !== 0) {
+                                gameWheelAccum -= notches * window.Camera.WHEEL_NOTCH_PX;
+                                ship.timeIndex = Math.max(shipLib.SHIP_TIME_INDEX_MIN,
+                                        Math.min(shipLib.SHIP_TIME_INDEX_MAX, ship.timeIndex - notches));
+                                ship.timeFrozen = false;
+                                syncStarTime();
+                        }
+                }
+                if (actions.home) {
+                        // H selects the home reference — the Sun in
+                        // the Milky Way, the generated galaxy's
+                        // centre otherwise — in both rigs. Only the
+                        // observer rig also goes there; a ship does
+                        // not teleport (§3), so game mode takes the
+                        // reference and answers with the notice.
+                        setSpeedRef('home');
+                        if (gameMode) { actions.home = 0; gameNotice(); }
+                }
                 camera.step(dt, input.state);
+                if (resetting) {
+                        const resetState = camera.getState(rigState);
+                        ship.pos[0] = resetState.position[0]; ship.pos[1] = resetState.position[1]; ship.pos[2] = resetState.position[2];
+                        ship.vel[0] = resetState.velocity[0]; ship.vel[1] = resetState.velocity[1]; ship.vel[2] = resetState.velocity[2];
+                        ship.heading[0] = resetState.orientation[0]; ship.heading[1] = resetState.orientation[1];
+                        ship.heading[2] = resetState.orientation[2]; ship.heading[3] = resetState.orientation[3];
+                        activeFleetShip.positioned = true;
+                }
+                if (gameMode) {
+                        // The ship owns motion: integrate on the shared clock,
+                        // then write position and velocity through the camera's
+                        // own state pair (the look camera.step just applied is
+                        // kept; the observer's fly integration is discarded).
+                        gameTargetFeed(dtShipS);
+                        gameShipStep(dtShipS, dt);
+                        feedShipChrome();
+                        gameAimEase(dt);
+                }
                 input.setFlyMode(camera.getState(statsText).mode === window.Camera.MODE_FLY);
                 if (actions.pick) {
                         actions.pick = 0;
@@ -2568,7 +3851,8 @@ async function boot() {
                 }
                 if (actions.flyTo) {
                         actions.flyTo = 0;
-                        if (!flyToPrimary()) noSelectionTicks = NOTICE_TICKS;
+                        if (gameMode) gameCommand = GAME_CMD_APPROACH;
+                        else if (!flyToPrimary()) noSelectionTicks = NOTICE_TICKS;
                 }
                 if (actions.nextStar) {
                         actions.nextStar = 0;
@@ -2583,7 +3867,10 @@ async function boot() {
                 }
                 if (actions.systemView) {
                         actions.systemView = 0;
-                        toggleSystemView();
+                        // V is gated in game mode: the view re-poses the camera,
+                        // which would teleport the ship (game-mode-plan §3).
+                        if (gameMode) gameNotice();
+                        else toggleSystemView();
                 }
                 if (actions.systemViewExit) {
                         actions.systemViewExit = 0;
@@ -2591,8 +3878,12 @@ async function boot() {
                 }
                 if (actions.dvMap) {
                         actions.dvMap = 0;
-                        if (systemLayer.isOpen()) cycleDvView();
+                        if (gameMode) gameNotice();
+                        else if (systemLayer.isOpen()) cycleDvView();
                 }
+                if (actions.speedRefTarget) { actions.speedRefTarget = 0; setSpeedRef('target'); }
+                if (actions.speedRefCentre) { actions.speedRefCentre = 0; setSpeedRef('centre'); }
+                if (actions.speedRefHome) { actions.speedRefHome = 0; setSpeedRef('home'); }
                 if (actions.constellations) {
                         actions.constellations = 0;
                         labels.toggleConstellations();
@@ -2624,6 +3915,9 @@ async function boot() {
                         overlayTimer = 0;
                         updateOverlay(renderer.state, camera.getState(statsText));
                         if (noSelectionTicks > 0) noSelectionTicks--;
+                        if (autoMsgTicks > 0) autoMsgTicks--;
+                        if (gameMode) updateShipChromeText();
+                        if (sysMenu.style.display !== 'none') syncFlightUi();
                         if (systemLayer.isOpen()) writeSystemReadout();
                         // Keep slider readouts in sync with keyboard shortcuts
                         // while the menu is open.
@@ -2631,6 +3925,7 @@ async function boot() {
                 }
         });
 
+        syncFlightUi();
         loop.start();
         console.log(`Galaxy fly-through ready: ${renderer.state.proceduralStars.toLocaleString()} procedural stars, ` +
                 `${renderer.state.landmarkStars} landmarks, ` +

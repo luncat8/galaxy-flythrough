@@ -1672,3 +1672,112 @@ reach: the string-literal file names in tests and sources are the edges (a new `
 is a new edge, nothing to maintain). Partial runs should not rewrite committed logs —
 preload a `fs.writeFileSync` filter with `node --require` rather than edit 30 tests.
 Parallel runs on a 2-core box fail tests with internal timing budgets; keep serial default.
+## 2026-10-16 — Eased tracking: rebase the baseline, slerp the remainder
+
+Two ways an "ease toward a measured direction" law silently becomes frame-rate
+dependent, both caught by a 30/60/144 Hz landing test:
+
+1. **A cleared baseline skips a step.** Measuring movement against "no previous
+   position yet" makes the first frame a no-op, so the effective eased time is
+   (N−1)·dt — one frame shorter at 144 Hz than at 30 Hz, and the residual angle
+   differs by θ·e^(−T/τ)·(dt/τ). Rebase the baseline to the target as it stands
+   (after an assignment, a handover, a re-snap) instead of clearing it, and the
+   ease runs every frame: N·dt for everybody.
+2. **nlerp is not composable.** normalize(lerp(a, b, k)) reduces the angle by
+   slightly less than (1−k), and the shortfall depends on the angle, so
+   different frame sizes take different paths to "converged". slerp by k reduces
+   the angle to exactly (1−k) of it, and Π(1−k_i) = e^(−Σdt/τ) — the composition
+   over equal elapsed time is exact to the bit. The near-opposite guard (dot <
+   −1+ε → snap to the target) is the vector case quaternion slerp solves with
+   sign flipping; vectors have no double cover.
+
+Corollary: a deterministic dispatch (frozen star time redraws bit-identical
+positions) means a per-frame movement test needs no noise margin — 1e-12 kpc
+against kpc-scale motion — and "no movement" is exactly zero, not jitter to
+filter.
+
+## 2026-10-16 — Panel controls that cannot drift from their keys
+
+A button that reimplements what a key's handler does will drift from it. Instead
+give every clickable control a `data-action` and have its click set the same
+one-shot action flag the keydown sets — the frame loop consumes it next frame,
+so there is one code path and the click inherits every future fix to it.
+Checkboxes toggle natively (instant feedback) and a 4 Hz repaint from the live
+state corrects the ones the app refused (a toggle that needed a selection, say)
+— the checkbox is a view of the state, never a second owner of it. The one
+exception is an action whose key handler reads a *held* modifier (Shift+N):
+a click cannot hold a key, so that one button calls the underlying function
+directly. Refocus the canvas after every panel click, or the focused control
+swallows the next keystrokes.
+
+## 2026-10-16 — A velocity dead band chatters at a stand-off on coarse clock rungs
+
+A controller that coasts inside a dead band (\"not worth a burn\") is only safe if
+the residual it leaves is smaller than what one frame does to the state. Under a
+clock that advances 10⁵–10⁶ s per frame, one frame of a 220 km/s ship is ~10¹¹ m,
+and a 1 %-of-impulse band is ~3·10⁴ m/s of velocity. The follow capture left a
+2·10⁴ m/s residual — inside the band — so it never corrected, and each frame's
+own overshoot (~6·10¹⁰ m) was re-corrected by a ±4·10⁴ m/s burn. The tank ran dry
+at the stand-off with the target moving straight. Measured in a Node loop before
+the fix; the fix was to shrink the band to f64 noise, because the deadbeat law
+converges on its own for small errors.
+
+The general rule: a dead band must be sized against the *state the controller
+can hold after a frame*, not against the command's own impulse. Test it by
+running the controller at the coarsest step the clock allows, not the finest.
+
+## 2026-10-16 — A command into a speed cap is paid for and then thrown away
+
+When the desired velocity exceeds a hard cap (the cruise limit), the commanded
+difference keeps pushing into the cap every frame. The clamp that enforces the
+cap removes the excess velocity, but the burn ledger has already charged the
+full commanded acceleration — so the autopilot spent 3·10⁷ m/s of Δv holding a
+ship at the cap that it could not accelerate further. Fix at the source: clip the
+*desired* velocity to the cap before forming the command, so a command into the
+wall is never issued.
+
+Open question, not changed here: the manual thrust law has the same ledger
+behaviour — holding forward at the cruise cap charges Δv the clamp then discards.
+The G1 invariant (`dvSpent == ∫|a|dt`) is written for thrust that is not clamped,
+so the fix belongs with a deliberate choice of what a clamped burn costs.
+
+## 2026-10-16 — Aim the controller where the target will be, then check what the clock resolves
+
+When a frame moves the ship by `v·dt` and the target moves by `v_t·dt`, the
+controller and the measurement must agree on the instant they compare. The
+order in the harness (target advanced, then the ship steps) and the order in the
+game loop (drawn position read at the new time, then the ship integrates over
+the frame) are the same, so the stand-off a sampled check reads is off by up to
+one frame of target motion. Aiming at the frame's *end* made it two frames off,
+not one: the deadbeat law already lands the ship on the start-of-frame chase
+point, and a lead term double-counts the frame. The right assertion is the
+clock's own resolution (`|dist − standOff| ≤ v_target·dt`), not a percentage.
+
+A flip display that holds for a fixed wall-clock beat can cover a whole brake
+at 60 fps. A test that waits for a phase *name* to appear will then fail for a
+reason that is in the display, not the physics; read the state the phase names
+(here, the nose against the velocity) instead.
+
+## 2026-10-16 — Cruise clamps must precede fuel accounting
+
+For a velocity-capped flight integrator, charge `|v_projected - v_before|`, not requested
+`|a|dt`: a forward burn already on the speed sphere has no physical impulse, whereas a
+sideways command or brake still changes the velocity vector and must spend Δv. A fixed
+bisection over command duration gives a deterministic fuel-limited projected step.
+
+## 2026-10-17 — Ship.step's direction argument is a world-frame vector
+
+`ship.step(ship, dt, dx, dy, dz, factor)` takes the commanded direction
+in world axes, not ship-local ones. A test of heading-following (ui.11)
+that passes a fixed axis like `(1, 0, 0)` silently tests the wrong
+thing: the burn lands on the galaxy's +X, not the camera's forward, and
+the heading-adoption assertion fails with a plausible-looking
+projection (~0.82 instead of ~1.0). Build the direction from the live
+camera basis (`camera.forward/right/up`) before stepping, and read the
+velocity back against the same basis.
+
+The same session's second trap: `main.js` mixes literal middle dots
+(`·`) and `\u00b7` escapes in otherwise identical HUD lines, so a
+python patch script matching one form misses the other — match the
+exact escaping per line, and patch dense blocks with a counted
+`assert s.count(old) == 1` heredoc rather than a fuzzy editor match.

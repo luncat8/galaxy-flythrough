@@ -254,16 +254,78 @@
 		</div>
 		<div class="menu-hint">Search pauses star time · click a result, then Fly to primary (Shift+F) · T resumes time</div>
 	</div>
-	<!-- System and ship (0.5.6): the view, its clock, the delta-v budget, the
-	     ship class and the route are one workflow, so they live in their own
-	     panel on the left instead of between the galaxy settings on the right.
-	     Rows that mean nothing while the view is closed are gated on
-	     data-view="system", the mirror of the movement passes' data-engine. -->
+	<!-- Flight (G3): manual power, destination planning and the older map route
+	     workflow share one lower-left workspace. A pilot selects a star in the
+	     scene, uses it here, checks the forecast and flies — no hidden hand-off
+	     through unrelated controls. The map remains observer-only because it
+	     intentionally re-poses the camera. -->
 	<div id="sysmenu" class="panel">
 		<div class="menu-header">
-			<span>System</span>
-			<button id="sysmenu-collapse" class="panel-collapse" title="Collapse to the header / expand (V or Esc leave the view)" aria-expanded="true">▾</button>
+			<span>Flight</span>
+			<button id="sysmenu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab hides all panels)" aria-expanded="true">▾</button>
 		</div>
+		<div class="flight-section-heading fleet-heading"><span>Ships</span><small>click a ship to pilot</small></div>
+		<div class="flight-fleet-bar">
+			<span id="fleet-count">1 ship</span>
+			<button id="ship-spawn" type="button" title="Create a stationary ship at the camera's current position.">Spawn at camera</button>
+		</div>
+		<div id="ship-list" class="flight-ship-list" role="listbox" aria-label="Ships"></div>
+		<div id="flight-console">
+			<div class="flight-section-heading"><span>Pilot</span><small id="flight-status">Configure now · enter game mode to engage</small></div>
+			<div class="flight-ship-row">
+				<label for="dv-ship">Ship</label>
+				<select id="dv-ship" title="One ship choice for manual flight, destination forecasts and local routes. Changing class re-arms the tank and re-snaps the ship clock."></select>
+				<button id="flight-refuel" type="button" title="Re-arm the Δv tank to the selected ship's full load. Docking refills arrive later; this is the hangar refill.">Refuel</button>
+			</div>
+			<div class="menu-row flight-control-row" id="flight-thrust-row">
+				<label for="flight-thrust" title="Thrust control: the persistent forward engine setting. Mouse still aims; W/S temporarily take over for a direct manoeuvre. The planner's thrust-limit mode uses this same maximum. Moving this slider switches to thrust control and disables the speed limit.">Thrust <span id="val-flight-thrust" class="menu-val">0% · coast</span></label>
+				<input type="range" id="flight-thrust" min="0" max="100" step="1" value="0">
+			</div>
+			<div class="menu-row flight-control-row" id="flight-speed-row">
+				<label for="flight-speed" title="Speed control: the desired fraction of this ship's speed cap. Forward thrust turns off when the ship reaches it; it does not brake for you. Moving this slider (or checking cut thrust) switches to speed control and disables the thrust lever.">Desired speed <span class="flight-check"><input type="checkbox" id="flight-speed-governor" checked> cut thrust</span><span id="val-flight-speed" class="menu-val">75% cap</span></label>
+				<input type="range" id="flight-speed" min="1" max="100" step="1" value="75">
+			</div>
+			<div class="flight-velocity-ref">relative to <strong id="velocity-ref">selected target</strong></div>
+			<div id="flight-velocity" class="flight-velocity" aria-live="polite">
+				<span><small>Forward</small><strong id="velocity-forward">+0.00 km/s</strong></span>
+				<span><small>Sideways</small><strong id="velocity-right">+0.00 km/s</strong></span>
+				<span><small>Vertical</small><strong id="velocity-up">+0.00 km/s</strong></span>
+			</div>
+
+			<div class="flight-section-heading"><span>Fly to destination</span><small>select star → set → check autopilot</small></div>
+			<div class="flight-destination-row">
+				<span>Destination</span><strong id="flight-destination">No destination set</strong>
+				<button id="flight-use-selected" type="button" title="Snapshot the currently selected star as the destination. It stays locked if you inspect another star.">Use selected</button>
+				<button id="flight-clear-destination" type="button" title="Clear the locked destination; this does not change the selection.">Clear</button>
+			</div>
+			<label class="flight-autopilot" title="Fly the configured destination profile. Shift+F remains the unconfigured fastest approach.">
+				<input type="checkbox" id="flight-autopilot-dest">
+				<span>Autopilot to destination</span>
+				<small>configured profile</small>
+			</label>
+			<label class="flight-autopilot" title="Fly to the selected or locked target and settle with zero velocity relative to it on all three view axes.">
+				<input type="checkbox" id="flight-autopilot-target">
+				<span>Autopilot to target</span>
+				<small>stop · 0, 0, 0 relative</small>
+			</label>
+			<div class="menu-row">
+				<label for="flight-mode">Plan mode</label>
+				<select id="flight-mode" title="Fastest uses the full ship. Thrust and speed modes use the Pilot controls above. Time limit finds the least-Δv legal profile that makes the deadline.">
+					<option value="0" selected>fastest</option>
+					<option value="1">use thrust as limit</option>
+					<option value="2">use speed as limit</option>
+					<option value="3">use time limit</option>
+				</select>
+			</div>
+			<div class="menu-row flight-time-row" id="flight-time-row">
+				<label for="flight-time-limit" title="Maximum arrival time in ship years. The forecast rejects a deadline faster than the ship can legally fly.">Arrival by</label>
+				<input id="flight-time-limit" type="number" min="0.001" step="0.1" value="20">
+				<span class="menu-val">ship y</span>
+			</div>
+			<pre id="flight-forecast" class="flight-forecast">Set a destination to see predicted Δv and arrival time.</pre>
+		</div>
+
+		<div class="flight-section-heading system-section-heading"><span>System map &amp; routes</span><small>local / transport</small></div>
 		<div class="menu-row">
 			<label for="sys-view">View <span class="kbd">V</span></label>
 			<select id="sys-view" title="What the system canvas shows of the primary selection's generated system. Picking one opens the view; B cycles the three while it is open.">
@@ -282,8 +344,6 @@
 			<label for="slider-dvbudget" title="Energy budget (log scale): 0 = minimum-energy Hohmann, 1 = ship ceiling. Sliding toward 1 spends more Δv to shorten the leg; below dv_x extra Δv buys nothing.">Budget</label>
 			<input type="range" id="slider-dvbudget" min="0" max="1" step="0.01" value="0.35">
 			<span id="val-dvbudget" class="menu-val">0.35</span>
-			<label for="dv-ship">Ship</label>
-			<select id="dv-ship" title="Ship class for the feasibility / time-at-budget readout. Filled from the one ship table."></select>
 		</div>
 		<div class="menu-row" data-view="system">
 			<label for="route-roundtrip">Round trip</label><input type="checkbox" id="route-roundtrip" title="Return after a 0.25-year layover; no refueling">
@@ -291,39 +351,51 @@
 		</div>
 		<div class="menu-row menu-actions" data-view="system">
 			<button id="route-fly" title="Starts or pauses the route using System time. At 0 the ship waits; 0.1–1 y/s is easiest to watch.">Start autopilot</button>
-				<button id="route-stars" title="Plan from the previous star to the current star; Shift+click set members are a fallback">Current + previous</button>
+			<button id="route-stars" title="Plan from the previous star to the current star; Shift-click set members are a fallback">Current + previous</button>
 		</div>
-			<div class="menu-row" data-view="system"><span id="route-hint">Choose map nodes, or route from previous star to current star.</span></div>
-			<div class="menu-hint">V opens / closes the view · B cycles schematic / map / rails · ▾ collapses · Tab toggles panels</div>
+		<div class="menu-row" data-view="system"><span id="route-hint">Choose map nodes, or route from previous star to current star.</span></div>
+		<div class="menu-hint">Pilot: select a star, Use selected, choose a mode, check autopilot · Map: V opens / B cycles · Tab hides panels</div>
 	</div>
-        <pre id="help">
-                     fly                     orbit
-mouse                click to lock / look   press + drag canvas (cursor visible)
-click (no drag)      select the star (c orbits it, Shift+F flies to it)
-WASD / arrows        forward / strafe        W/S closer / farther, A/D circle
-E / Q                local up / down         over / under
-scroll               speed x2 per notch      distance x2 per notch
-Shift / Ctrl         speed x100 / x0.1       rates x4 / x0.25
-f                    free fly (WASD): leaves any orbit and stops following
-c                    orbit the selected star, centred and followed
-C  (Shift+C)         orbit the galactic centre, centred
-F  (Shift+F)         2 s flight to the selected star, then orbit + follow it
-P                    constellation lines on / off
-N / Shift+N          next / previous star in the selection set
-X                    clear the selection set (click selects, Shift+click adds)
-V                    system view of the selected star (Esc or V closes)
-                     left panels: search/selection + system clock, ship, route
-B                    cycle system / delta-v map / delta-v rails (click two graph nodes)
-H                    home: the Sun, or a generated galaxy's centre
-g                    game mode: spaceship HUD placeholder (game-mode-plan.md)
-R                    reset everything
-Esc                  release cursor in fly mode
-Tab                  toggle panels (releases cursor); ▾ collapses one to its header
-Ctrl+V               paste a preset (over the scene, no browser prompt)
-[ / ]                exposure (how faint a star still shows)
-; / '                brightness (overall gain)
-Ctrl+W closes the tab: fly slowly with Ctrl + arrows
-  </pre>
+        <!-- Controls (ui.6): the old read-only help <pre> as a clickable panel.
+             Buttons fire the same one-shot action flags the keyboard sets (the
+             loop consumes them next frame, so a click and a key press run one
+             code path); checkboxes mirror the toggles and are repainted from
+             the live state at the overlay's 4 Hz, so an optimistic native
+             toggle self-corrects. Tooltips carry the detail the old table had. -->
+        <div id="help" class="panel">
+                <div class="menu-header">
+                        <span>Controls</span>
+                        <button id="help-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab hides all panels)" aria-expanded="true">▾</button>
+                </div>
+                <div class="help-grid">
+                        <button data-action="flyMode" title="Free fly: WASD / arrows to move, drag to look (click locks the cursor). Leaves any orbit and stops following. In game mode: abort the running autopilot (live only while one runs)"><span id="help-fly-label">fly</span> <span class="kbd">f</span></button>
+                        <button data-action="orbitObject" data-observer title="Orbit the selected star, centred and followed (click a star first)">orbit star <span class="kbd">c</span></button>
+                        <button data-action="orbitCentre" data-observer title="Orbit the galactic centre, centred — and select it as the speed reference (in game mode only the reference is taken, the ship does not re-pose)">orbit centre <span class="kbd">C</span></button>
+                        <button data-action="speedRefTarget" data-speed-ref="target" title="Speed reference: the locked Flight destination, or the selected star. The axis velocities, the HUD target line and the autopilot answer against it">target ref</button>
+                        <button data-action="speedRefCentre" data-speed-ref="centre" title="Speed reference: the galactic centre — a fixed frame point, so the axis speeds read absolute and the autopilot can fly to the centre itself">centre ref <span class="kbd">C</span></button>
+                        <button data-action="speedRefHome" data-speed-ref="home" title="Speed reference: home — the Sun in the Milky Way, a generated galaxy's centre otherwise">home ref <span class="kbd">H</span></button>
+                        <button data-action="flyTo" title="2 s flight to the selected star, then orbit + follow it. In game mode: the burn/flip autopilot approach to it (fuel checkout first)">fly to star <span class="kbd">F</span></button>
+                        <button data-action="nextStar" title="Next star in the selection set">next star <span class="kbd">N</span></button>
+                        <button id="help-prev-star" title="Previous star in the selection set">prev star <span class="kbd">Shift+N</span></button>
+                        <button data-action="home" data-observer title="Home: the Sun, or a generated galaxy's centre">home <span class="kbd">H</span></button>
+                        <button data-action="reset" title="Reset everything — the view and, in game mode, the ship (full tank, zero velocity)">reset <span class="kbd">R</span></button>
+                        <button data-action="dvMap" data-observer title="Cycle the open system view: schematic / delta-v map / delta-v rails (click two graph nodes to route)">cycle view <span class="kbd">B</span></button>
+                        <button data-action="clearSet" title="Clear the selection set (click selects, Shift+click adds)">clear set <span class="kbd">X</span></button>
+                        <button data-action="shipRefuel" title="Hangar refill: re-arm the Δv tank to the class's full load (station refills land with docking, G3)">refuel ship</button>
+                </div>
+                <div class="help-checks">
+                        <label title="The camera rides behind the centred object, the view aligned with its movement vector. Drag or A/D to glance around (it swings back), W/S and the wheel for distance. In game mode: the ship trails the object at the stand-off"><input type="checkbox" data-action="chaseFollow"> follow motion <span class="kbd">j</span></label>
+                        <label title="Constellation lines"><input type="checkbox" data-action="constellations"> constellations <span class="kbd">P</span></label>
+                        <label title="The close-system schematic of the selected star (Esc also closes)"><input type="checkbox" data-action="systemView" data-observer> system view <span class="kbd">V</span></label>
+                        <label title="Spaceship flight: the camera is the ship, WASD burns Δv, Space brakes, the wheel steps the ship clock (game-mode-plan.md). The observer's mode keys are gated while it is on"><input type="checkbox" data-action="gameMode"> game mode <span class="kbd">g</span></label>
+                        <label title="Freeze / resume the clock (a search freezes it too; T resumes). In game mode this freezes ship and sky together"><input type="checkbox" data-action="freezeTime"> pause star time <span class="kbd">T</span></label>
+                </div>
+                <div class="help-hint">fly: drag looks &#183; WASD/arrows move &#183; E/Q up/down &#183; wheel speed &#215;2 &#183; Shift &#215;100 &#183; Ctrl &#215;0.1<br>
+orbit: drag rotates &#183; W/S distance &#183; A/D circle &#183; E/Q over/under &#183; wheel distance &#215;2 &#183; Shift/Ctrl &#215;4/&#215;0.25<br>
+game (g): WASD/arrows burn &#916;v &#183; Shift &#215;4 / Ctrl &#215;0.25 &#183; Space all-stop &#183; wheel ship clock &#183; T freezes ship and sky<br>
+click a star to select it (Shift+click adds to the set) &#183; [ ] exposure &#183; ; ' brightness &#183; Tab hides the panels<br>
+Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
+        </div>
 
         <!-- Runtime modules. Classic script tags, no modules (per AGENTS.md).
              Order matters: math before render, render before stream, main last. -->
@@ -366,7 +438,11 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows
              blocks and the selection set, so it depends on nothing at load. -->
         <script src="core/search.js"></script>
 	<script src="core/route.js"></script>
-        <script src="core/loop.js"></script>
+	<!-- The game-mode ship (game-mode-plan G1): the class table through
+	     deltav.js, the leg profile through route.js — loaded after both and
+	     before the main.js that flies it. -->
+	<script src="core/ship.js"></script>
+	<script src="core/loop.js"></script>
         <script src="core/presets.js"></script>
         <!-- Data after math (landmarks bake their positions through coords.js at
              load), before the renderer that writes them into the star buffer. -->

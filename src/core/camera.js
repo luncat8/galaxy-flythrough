@@ -27,6 +27,14 @@
 //     cancels into the usual orbit re-snap; updateTarget() moves the orbited
 //     object so the camera follows it centred. The caller must update the
 //     target *before* step() each frame.
+//   * Chase follow (j, ui.6) is an orbit-object sub-mode: the camera rides
+//     *behind* the target, its forward eased onto the target's movement
+//     vector, so the view is always where the object is heading and the
+//     object stays dead-centre (position = target - distance * forward, the
+//     same law as the orbit placement — only the direction's owner changes:
+//     the movement vector instead of the user). Look and A/D/E/Q rotate the
+//     direction and the same ease pulls it back behind, so a glance around is
+//     temporary by construction; W/S and the wheel still dolly.
 //   * The wheel steps by whole notches out of a persistent accumulator.
 //     Rounding each frame's delta made trackpads (3-10 px events) inert.
 //   * The speed multiplier walks a x2 grid, so its clamps are powers of two:
@@ -73,6 +81,14 @@ const HOME_ORBIT_DISTANCE = 0.01;     // kpc, H in orbit: the Sun from 10 pc
 const FLIGHT_DURATION_S = 2.0;
 const FLIGHT_UP_POLE_COS = 0.99;      // approach this close to ±Z keeps the current up
 const QUAT_EPS = 1e-12;
+// Chase follow (j, ui.6): the swing onto the target's movement vector is an
+// exponential ease with its own time constant, and the movement itself is
+// measured between consecutive updateTarget() feeds. Frozen star time draws
+// bit-identical positions (the dispatch is deterministic), so the movement
+// test needs no noise margin — below the epsilon the direction simply keeps
+// its last value and the chase degenerates to a free orbit.
+const CHASE_DIR_TAU = 0.5;            // s, swing onto the movement vector
+const CHASE_MOVE_EPS_KPC = 1e-12;     // kpc per frame; 1e-9 pc is far below star motion
 // The default frame is the Milky Way preset's: the Sun-centred origin, the view
 // from 5 pc above it, the galactic centre as the orbit centre. setFrame() swaps
 // all of it when the user changes galaxy type, so nothing here is a second copy
@@ -336,14 +352,17 @@ function createCamera() {
 		orbitDistance = clamp(d, ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX);
 		if (d > 0) aimForwardAt(dx, dy, dz);
 		stopVelocity();
+		rebaseChaseFeed();
 		placeOnOrbit();
 	}
 
 	// The mode is chosen directly (c/C/f in input.js; ui.4 replaced the C
-	// cycle), never cycled: each key knows the mode it enters.
+	// cycle), never cycled: each key knows the mode it enters. Chase follow
+	// belongs to the object orbit alone, so leaving it turns chase off.
 	function setMode(next) {
 		if (next === mode) return;
 		flightActive = false;
+		if (next !== MODE_ORBIT_OBJECT) chaseOn = false;
 		mode = next;
 		if (mode === MODE_FLY) return;   // position and orientation continue; velocity is already zero
 		snapToOrbit();
@@ -354,6 +373,7 @@ function createCamera() {
 		objectTarget[1] = y;
 		objectTarget[2] = z;
 		objectTargetName = name;
+		rebaseChaseFeed();
 	}
 
 	// Selection hook (0.1.2 calls this on click). While the object is being
@@ -386,6 +406,16 @@ function createCamera() {
 	let flightActive = false;
 	let flightElapsed = 0;
 	let flightDistance = HOME_ORBIT_DISTANCE;
+
+	// Chase follow (j, ui.6): the eased direction the camera trails the target
+	// on, and the movement feed — the target's previous drawn position, rebased
+	// whenever the target is assigned rather than refreshed (a swap is not
+	// motion). chaseSpeed is the target's own apparent speed, read by the HUD.
+	let chaseOn = false;
+	const chaseDir = new Float64Array([1, 0, 0]);
+	const chasePrevTarget = new Float64Array(3);
+	let chaseHasPrev = false;
+	let chaseSpeedKpcPerSec = 0;
 
 	// Shortest-path quaternion slerp into `orientation` (unit inputs assumed).
 	function slerpOrientation(a, b, t) {
@@ -490,9 +520,12 @@ function createCamera() {
 		updateCameraPos();
 		if (s === 1) {
 			// Handover: exactly the pose the path reached, so arrival is
-			// continuous and the orbit controls take over from here.
+			// continuous and the orbit controls take over from here. A chase
+			// re-baselines its movement feed: the flight carried the target
+			// along for seconds, and that distance is not one frame's motion.
 			flightActive = false;
 			orbitDistance = flightDistance;
+			rebaseChaseFeed();
 			placeOnOrbit();
 		}
 	}
@@ -503,7 +536,133 @@ function createCamera() {
 	function cancelFlight() {
 		if (!flightActive) return;
 		flightActive = false;
+		rebaseChaseFeed();
 		snapToOrbit();
+	}
+
+	// --- Chase follow (j) ---------------------------------------------------
+	// The feed: rebase the movement baseline to the target as it stands right
+	// now — after a target assignment, a flight handover or a re-snap — so
+	// the next step measures one frame of real motion, never a jump, and the
+	// ease starts on the very first chase frame (a cleared baseline would
+	// skip it, making the swing one frame shorter at high refresh rates).
+	// The direction itself needs no reset: stepChase re-reads it from the
+	// camera's forward every frame.
+	function rebaseChaseFeed() {
+		chasePrevTarget[0] = objectTarget[0];
+		chasePrevTarget[1] = objectTarget[1];
+		chasePrevTarget[2] = objectTarget[2];
+		chaseHasPrev = true;
+		chaseSpeedKpcPerSec = 0;
+	}
+
+	// Chase is a sub-mode of the object orbit: leaving orbit-object (f, C,
+	// reset) turns it off, so the flag can never describe a mode it is not
+	// running in. Enabling outside the object orbit is a no-op — the caller
+	// enters that mode first (main.js's j routes through orbitPrimary).
+	function setChase(enabled) {
+		chaseOn = enabled && mode === MODE_ORBIT_OBJECT;
+		rebaseChaseFeed();
+	}
+
+	// Ease the chase direction onto the movement vector by a spherical
+	// interpolation of the remaining angle. slerp, not nlerp: slerp by the
+	// fraction k reduces the angle to (1-k) of it, and the per-frame factors
+	// are exp(-dt/tau), so the composition over equal elapsed time is exact —
+	// the swing is frame-rate independent to the bit, like the fly velocity.
+	// Returns the movement length so the caller can report the target's speed.
+	function easeChaseDirection(dt, mx, my, mz) {
+		const len = Math.sqrt(mx * mx + my * my + mz * mz);
+		if (len <= CHASE_MOVE_EPS_KPC) return 0;
+		const inv = 1 / len;
+		const tx = mx * inv, ty = my * inv, tz = mz * inv;
+		let dot = chaseDir[0] * tx + chaseDir[1] * ty + chaseDir[2] * tz;
+		dot = clamp(dot, -1, 1);
+		const k = 1 - Math.exp(-dt / CHASE_DIR_TAU);
+		if (dot > 1 - 1e-9) {
+			// Nearly aligned: below any measurable misalignment, take it.
+			chaseDir[0] = tx; chaseDir[1] = ty; chaseDir[2] = tz;
+		} else if (dot < -1 + 1e-6) {
+			// A full reversal has no unique short way round; the movement
+			// vector wins outright (reachable only through degenerate feeds —
+			// real motion rotates through perpendicular, never jumps past it).
+			chaseDir[0] = tx; chaseDir[1] = ty; chaseDir[2] = tz;
+		} else {
+			const theta = Math.acos(dot);
+			const invSin = 1 / Math.sin(theta);
+			const w0 = Math.sin((1 - k) * theta) * invSin;
+			const w1 = Math.sin(k * theta) * invSin;
+			chaseDir[0] = chaseDir[0] * w0 + tx * w1;
+			chaseDir[1] = chaseDir[1] * w0 + ty * w1;
+			chaseDir[2] = chaseDir[2] * w0 + tz * w1;
+		}
+		return len;
+	}
+
+	// Behind the target along the eased direction, looking where it heads:
+	// position = target - distance * forward is the orbit placement law with
+	// the direction owned by the movement vector, so the target stays dead
+	// centre. Up rides galactic north with the fly-to's pole chain, so a
+	// near-vertical motion keeps a valid basis.
+	function placeChase() {
+		const fx = chaseDir[0], fy = chaseDir[1], fz = chaseDir[2];
+		let ux, uy, uz;
+		if (Math.abs(fz) < FLIGHT_UP_POLE_COS) {
+			ux = 0; uy = 0; uz = 1;
+		} else if (Math.abs(upExact[0] * fx + upExact[1] * fy + upExact[2] * fz) < FLIGHT_UP_POLE_COS) {
+			ux = upExact[0]; uy = upExact[1]; uz = upExact[2];
+		} else {
+			ux = rightExact[0]; uy = rightExact[1]; uz = rightExact[2];
+		}
+		const fdot = ux * fx + uy * fy + uz * fz;
+		ux -= fdot * fx; uy -= fdot * fy; uz -= fdot * fz;
+		const ulen = Math.sqrt(ux * ux + uy * uy + uz * uz);
+		const invU = ulen > QUAT_EPS ? 1 / ulen : 0;
+		ux *= invU; uy *= invU; uz *= invU;
+		// right = forward × up (the image of the camera's local -Y axis).
+		const rx = fy * uz - fz * uy;
+		const ry = fz * ux - fx * uz;
+		const rz = fx * uy - fy * ux;
+		setOrientationFromBasis(fx, fy, fz, rx, ry, rz, ux, uy, uz);
+		position[0] = objectTarget[0] - orbitDistance * fx;
+		position[1] = objectTarget[1] - orbitDistance * fy;
+		position[2] = objectTarget[2] - orbitDistance * fz;
+		updateCameraPos();
+	}
+
+	// Turn, dolly, then re-own the direction: the turn (and any look, already
+	// applied above) rotated the camera, the chase direction *is* that
+	// forward, and the alignment ease swings it back onto the object's motion.
+	// Renormalized once per frame so |position - target| = orbitDistance
+	// holds to the last bit despite the quaternion round trip.
+	function stepChase(dt, keys, notches) {
+		const factor = keyFactor(keys, ORBIT_KEY_BOOST, 1 / ORBIT_KEY_BOOST);
+		orbitTurn(dt, keys, factor);
+		const octaves = dollyOctaves(dt, keys, notches, factor);
+		if (octaves !== 0) orbitDistance = clamp(orbitDistance * Math.pow(2, octaves), ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX);
+		chaseDir[0] = forwardExact[0];
+		chaseDir[1] = forwardExact[1];
+		chaseDir[2] = forwardExact[2];
+		let moved = 0;
+		if (chaseHasPrev) {
+			moved = easeChaseDirection(dt,
+				objectTarget[0] - chasePrevTarget[0],
+				objectTarget[1] - chasePrevTarget[1],
+				objectTarget[2] - chasePrevTarget[2]);
+			const len = Math.sqrt(chaseDir[0] * chaseDir[0] + chaseDir[1] * chaseDir[1] + chaseDir[2] * chaseDir[2]);
+			if (len > QUAT_EPS) {
+				const inv = 1 / len;
+				chaseDir[0] *= inv;
+				chaseDir[1] *= inv;
+				chaseDir[2] *= inv;
+			}
+		}
+		chaseSpeedKpcPerSec = moved > 0 ? moved / dt : 0;
+		chasePrevTarget[0] = objectTarget[0];
+		chasePrevTarget[1] = objectTarget[1];
+		chasePrevTarget[2] = objectTarget[2];
+		chaseHasPrev = true;
+		placeChase();
 	}
 
 	// Move the orbited object in place (fly-to follow): no re-snap, no rename.
@@ -562,6 +721,7 @@ function createCamera() {
 	function reset() {
 		mode = MODE_FLY;
 		flightActive = false;
+		chaseOn = false;
 		speedMult = 1.0;
 		wheelAccum = 0;
 		orbitDistance = homeOrbitDistance;
@@ -616,11 +776,12 @@ function createCamera() {
 	}
 
 	// Keys move the camera (D goes right, E goes up, W goes closer) while the
-	// mouse grabs the world; the same split Google Earth uses.
-	function stepOrbit(dt, keys, notches) {
-		const factor = keyFactor(keys, ORBIT_KEY_BOOST, 1 / ORBIT_KEY_BOOST);
+	// mouse grabs the world; the same split Google Earth uses. The turn and
+	// the dolly are helpers because chase follow (j) shares them: it is the
+	// object orbit with the direction owned by the target's motion instead
+	// of the user.
+	function orbitTurn(dt, keys, factor) {
 		const turn = ORBIT_TURN_RATE * factor * dt;
-		let octaves = notches;
 		const yawStep = (keys.right ? turn : 0) - (keys.left ? turn : 0);
 		if (yawStep !== 0) {
 			rotateOrientation(upExact[0], upExact[1], upExact[2], yawStep);
@@ -631,8 +792,19 @@ function createCamera() {
 			rotateOrientation(rightExact[0], rightExact[1], rightExact[2], pitchStep);
 			updateBasis();
 		}
+	}
+
+	function dollyOctaves(dt, keys, notches, factor) {
+		let octaves = notches;
 		if (keys.forward) octaves -= ORBIT_DOLLY_RATE * factor * dt;
 		if (keys.back) octaves += ORBIT_DOLLY_RATE * factor * dt;
+		return octaves;
+	}
+
+	function stepOrbit(dt, keys, notches) {
+		const factor = keyFactor(keys, ORBIT_KEY_BOOST, 1 / ORBIT_KEY_BOOST);
+		orbitTurn(dt, keys, factor);
+		const octaves = dollyOctaves(dt, keys, notches, factor);
 		if (octaves !== 0) orbitDistance = clamp(orbitDistance * Math.pow(2, octaves), ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX);
 		placeOnOrbit();
 	}
@@ -671,6 +843,7 @@ function createCamera() {
 		}
 
 		if (mode === MODE_FLY) stepFly(dt, input.keys, notches);
+		else if (chaseOn && mode === MODE_ORBIT_OBJECT) stepChase(dt, input.keys, notches);
 		else stepOrbit(dt, input.keys, notches);
 	}
 
@@ -730,6 +903,8 @@ function createCamera() {
 		s.mode = mode;
 		s.modeName = MODE_NAMES[mode];
 		s.targetName = mode === MODE_ORBIT_GC ? GALACTIC_CENTRE_NAME : objectTargetName;
+		s.chase = chaseOn;
+		s.chaseSpeedLyPerSec = chaseSpeedKpcPerSec / LY_TO_KPC;
 		s.flying = flightActive;
 		s.flightProgress = flightActive ? clamp(flightElapsed / FLIGHT_DURATION_S, 0, 1) : 1;
 		// Mid-flight the reported distance is the one being flown to, not the
@@ -771,6 +946,7 @@ function createCamera() {
 		goHome,
 		setFrame,
 		setMode,
+		setChase,
 		setOrbitTarget,
 		flyToStar,
 		updateTarget,
@@ -802,6 +978,7 @@ const Camera = {
 	ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX, ORBIT_TURN_RATE, ORBIT_DOLLY_RATE,
 	ORBIT_KEY_BOOST, HOME_ORBIT_DISTANCE, STAND_OFF_KPC_PER_SQRT_L, STAND_OFF_KPC_MAX,
 	FLIGHT_DURATION_S, FLIGHT_UP_POLE_COS,
+	CHASE_DIR_TAU, CHASE_MOVE_EPS_KPC,
 	START_POSITION, SUN_POSITION, GALACTIC_CENTRE_TARGET,
 };
 if (typeof module !== 'undefined') module.exports = Camera;
