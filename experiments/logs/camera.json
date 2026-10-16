@@ -1,7 +1,7 @@
 {
-  "date": "2026-10-16T04:32:56.235Z",
-  "totalChecks": 131,
-  "passed": 131,
+  "date": "2026-10-16T05:02:01.726Z",
+  "totalChecks": 133,
+  "passed": 133,
   "failed": 0,
   "checks": [
     {
@@ -1051,6 +1051,18 @@
       }
     },
     {
+      "name": "flying to a fast-moving star closes monotonically (no overshoot)",
+      "pass": true
+    },
+    {
+      "name": "flying to a fast-moving star ends at the stand-off, centred on it, camera target = the star",
+      "pass": true,
+      "detail": {
+        "dist": 0.0006000000000000773,
+        "aim": 3.2329026122823734e-9
+      }
+    },
+    {
       "name": "a look delta cancels the flight and hands control over the same frame",
       "pass": true,
       "detail": {
@@ -1063,7 +1075,7 @@
       "pass": true,
       "detail": {
         "radius": 1.0970417643967911,
-        "was": 1.0970417643967911
+        "was": 1.097041764396791
       }
     },
     {

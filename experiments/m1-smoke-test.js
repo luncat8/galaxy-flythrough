@@ -73,7 +73,7 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 	check('the page starts in galaxy-centre orbit with unlocked input',
 		/camera\.setFrame\(model\);[\s\S]*?camera\.setMode\(window\.Camera\.MODE_ORBIT_GC\);\s*const input = window\.Input\.createInput\(canvas\);\s*input\.setFlyMode\(false\);/.test(main));
 	check('input policy follows camera mode after stepping',
-		/camera\.step\(dt, input\.state\);[\s\S]*?input\.setFlyMode\(cameraStateForTime\.mode === window\.Camera\.MODE_FLY\);/.test(main));
+		/camera\.step\(dt, input\.state\);[\s\S]*?input\.setFlyMode\(camera\.getState\(statsText\)\.mode === window\.Camera\.MODE_FLY\);/.test(main));
 	// ui.4: the c/C/f/F mode keys and the g game-mode toggle. A handful of
 	// shapes must hold and not come back: the shift-cased pair in input.js, the
 	// four consumed actions in the loop, the orbit via drawn position + follow,
@@ -85,7 +85,8 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 			&& /KeyG: 'gameMode'/.test(inputSrc)
 			&& !/cameraMode|galaxyCycle/.test(inputSrc)
 			&& /actions\.orbitCentre = 0;\s*camera\.setMode\(window\.Camera\.MODE_ORBIT_GC\);/.test(main)
-			&& /actions\.orbitObject = 0;\s*orbitPrimary\(\);/.test(main)
+			&& /actions\.orbitObject = 0;\s*if \(!orbitPrimary\(\)\) noSelectionTicks = NOTICE_TICKS;/.test(main)
+			&& /actions\.flyTo = 0;\s*if \(!flyToPrimary\(\)\) noSelectionTicks = NOTICE_TICKS;/.test(main)
 			&& /actions\.flyMode = 0;\s*camera\.setMode\(window\.Camera\.MODE_FLY\);\s*followKey = -1;/.test(main)
 			&& /actions\.gameMode = 0;\s*gameMode = !gameMode;/.test(main)
 			&& /function orbitPrimary\(\) \{[\s\S]*?camera\.setOrbitTarget\(drawnPos\[0\][\s\S]*?camera\.setMode\(window\.Camera\.MODE_ORBIT_OBJECT\);\s*followKey = starSet\.keys\[i\] >>> 0;/.test(main)
@@ -135,7 +136,8 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 		&& /memberDrawnPosition\(i, drawnPos\);\s*camera\.flyToStar\(drawnPos\[0\], drawnPos\[1\], drawnPos\[2\]/.test(main)
 		&& /selection\.resolveDrawn\(hit, drawnPos\);\s*camera\.setOrbitTarget\(drawnPos\[0\]/.test(main)
 		&& /memberDrawnPosition\(p, drawnPos\);[\s\S]{0,400}?camera\.flyToStar\(drawnPos\[0\]/.test(main)
-		&& /if \(followKey >= 0 && cameraStateForTime\.mode === window\.Camera\.MODE_ORBIT_OBJECT\) \{\s*followTarget\(\);/.test(main)
+		&& /if \(followKey >= 0 && cameraStateForTime\.mode === window\.Camera\.MODE_ORBIT_OBJECT\) \{\s*followTarget\(\);\s*\}\s*camera\.step\(dt, input\.state\);/.test(main)
+		&& (main.match(/camera\.step\(/g) || []).length === 1
 		&& /const drawn = memberDrawnPosition\(i, drawnPos\);/.test(main)
 		&& !/camera\.flyToStar\(starSet\.x\[/.test(main)
 		&& !/simpleLandmarkPosition\(followPos/.test(main)

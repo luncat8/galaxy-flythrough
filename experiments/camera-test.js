@@ -717,6 +717,34 @@ function project(camera, x, y, z, aspect) {
 		chased.flying === false && Math.abs(distanceTo(chased, movedTarget) - STAND_OFF) < 1e-9,
 		{ dist: distanceTo(chased, movedTarget) });
 
+	// A fast mover (5 Myr/s of star time carries a disc star ~100 pc/s, far
+	// more than the 0.6 pc stand-off per frame). main.js updates the target
+	// *before* the step, and the flight is flown in the target's frame: the
+	// camera closes monotonically, never overshoots, and ends centred.
+	const runner = freshFlight();
+	const runnerPos = TARGET.slice();
+	const runnerVelocity = [0.08, -0.05, 0.01];      // kpc/s
+	const runnerInput = freshInput();
+	let closing = true;
+	let lastRange = Infinity;
+	for (let i = 0; i < 125; i++) {
+		runnerPos[0] += runnerVelocity[0] * DT;
+		runnerPos[1] += runnerVelocity[1] * DT;
+		runnerPos[2] += runnerVelocity[2] * DT;
+		runner.updateTarget(runnerPos[0], runnerPos[1], runnerPos[2]);
+		runner.step(DT, runnerInput);
+		const range = distanceTo(runner.getState(), runnerPos);
+		closing = closing && range <= lastRange + 1e-12;
+		lastRange = range;
+	}
+	const caught = runner.getState();
+	check('flying to a fast-moving star closes monotonically (no overshoot)', closing);
+	check('flying to a fast-moving star ends at the stand-off, centred on it, camera target = the star',
+		caught.flying === false && Math.abs(distanceTo(caught, runnerPos) - STAND_OFF) < 1e-9
+		&& aimError(runner, runnerPos) < 1e-6
+		&& distanceTo({ position: caught.orbitTarget }, runnerPos) < 1e-12,
+		{ dist: distanceTo(caught, runnerPos), aim: aimError(runner, runnerPos) });
+
 	// Cancellation: user input ends the flight at the current pose the same frame.
 	const grab = freshFlight();
 	flyFrames(grab, 30);

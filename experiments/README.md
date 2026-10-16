@@ -7,9 +7,18 @@ Every script writes a JSON result to `logs/`. Run them through the wrapper:
 
 ```sh
 python3 scripts/run.py list        # everything available
-python3 scripts/run.py all-tests   # every pass/fail test, in order
-python3 scripts/run.py camera      # one script
+python3 scripts/run.py changed     # the tests a changed file can affect (use this one)
+python3 scripts/run.py quick       # fast tier (~11 s)
+python3 scripts/run.py all-tests   # every pass/fail test, in order (~4 min)
+python3 scripts/run.py camera      # one script (several names run as one suite)
 ```
+
+`quick` and `changed` run with `no-log-writes.js` preloaded, so the logs below are
+rewritten only by `all-tests` or `--logs`. Slow tier (serial, 2-core sandbox):
+`movement-density` 117 s, `density-distribution` 25 s, `galaxy-evolution` 14 s,
+`galaxy-age` 11 s, `galaxy-types` 10 s, `search` 8 s, `star-types-evolution` 8 s,
+`object-placement` 7 s, `star-select` 6 s, `shape` 6 s — the `SLOW` table in
+`scripts/run.py` is the source.
 
 ## Tests (pass/fail, exit non-zero on failure)
 

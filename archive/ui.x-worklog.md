@@ -268,3 +268,51 @@ velocity/tank/class with the accel cap and the burn integral, the three-line HUD
 burn/ETA/no-alloc pins. The input routing (g gating c/C/F/Shift+F, Space
 all-stop) is a main.js change on top of the ui.4 action plumbing, which this
 entry kept deliberately thin for exactly that handoff.
+
+## ui.5 — fly-to lands on the star (frame order + target-frame flight), selection notice, tiered tests
+
+**Bug.** Shift+F ended with the camera off the star ("final position and camera target
+is not the object, or overshot"). Two causes, both present at the default star-time
+rate of 5 Myr/s, where a disc star drawn at ~20 km/s moves ~100 pc/s (~1.7 pc a frame,
+against a 0.6 pc stand-off):
+
+1. **Frame order.** `camera.step()` ran first and `followTarget()` (which feeds the
+   star's drawn position to `camera.updateTarget`) ran after the star-time advance, so
+   the camera was always placed around *last* frame's target while the renderer drew
+   *this* frame's stars — a permanent one-frame lag, including on the arrival frame.
+   The loop is now: advance star time → set orbit state → `followTarget()` → mode
+   actions consumed → `camera.step()` → render. The input pointer-lock policy is read
+   after the step.
+2. **Absolute path.** `stepFlight` lerped from the launch position to the live
+   arrival point, so a runaway target made the camera trail it and the lerp end at the
+   star's final place after a 2 s chase (a 200 pc detour at the default rate). The
+   flight is now flown in the target's frame: `position = target_live + startOffset·(1−e)
+   + approach·standOff·e`. A static target gives the identical path as before; a moving
+   one is closed on monotonically and the handover (`placeOnOrbit`) is exact.
+
+**Review of ui.4 (c/C/f/F/g).** The mapping and the g retirement match the brief. Found
+and changed: `c` and `Shift+F` with nothing selected were silent no-ops, so the overlay
+now says `no star selected · click a star first` for ~3 s; the game plan got the
+target-frame/ordering rule for the autopilot and a broken `**` fixed. Left as decided:
+holding Shift (boost) and tapping `f` flies to the star — the brief's mapping.
+
+**Tests.** `camera-test.js` 131 → 133: a 80 pc/s mover (updated before each step)
+is closed on monotonically and the flight ends at the stand-off, centred, with the
+camera's `orbitTarget` equal to the star (fails on the old path: it overshoots).
+`m1-smoke-test.js` pins the loop order (`followTarget` → `camera.step`, a single
+`camera.step` call) and the notice.
+
+**Test tiers.** The full suite measured 223 s serial, 117 s of it `movement-density`;
+ten tests are over 5 s, the other 21 total 11 s. `scripts/run.py` gains `quick` (the
+21), `changed` (a dependency graph built from string-literal file names in the tests
+and the sources they load — no hand-kept map — selecting the tests that can observe
+a changed file, plus the two wiring tests) and several-names-as-one-suite; `quick` and
+`changed` print only failing checks and run with `experiments/no-log-writes.js`
+preloaded so `experiments/logs/` is not dirtied by every run (`--logs` and `all-tests`
+still write). `all-tests` stays for model changes and merges; AGENTS.md carries the
+policy. A parallel run (`-j`) was measured to fail the timing budgets of `star-select`,
+`search` and `galaxy-evolution` on the 2-core box, so serial stays the default.
+
+**Next step suggestion.** Browser pass of Shift+F at star-time rates 0, 5 and the
+camera-coupled −1 (the star should sit dead-centre on arrival at all three); then G1
+of `game-mode-plan.md`.

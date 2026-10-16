@@ -6,3 +6,6 @@ galaxy-viz.png
 # Dev-only dependency of experiments/wgsl-exec-check.js (CPU WGSL interpreter).
 # Never loaded by the page — the runtime stays dependency-free and file://-safe.
 node_modules/
+
+# Python bytecode of scripts/run.py
+__pycache__/

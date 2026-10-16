@@ -19,7 +19,7 @@ document is the design. Nothing below is implemented until its milestone ships.
 - **The ship state outlives the toggle.** Entering and leaving game mode keeps
   position, velocity and the remaining tank; the observer modes just stop
   applying ship law while it is off.
-- **Restrictions are the game.* The fly camera's speed ladder, instantaneous
+- **Restrictions are the game.** The fly camera's speed ladder, instantaneous
   stops and free zoom are observer tools. The ship accelerates, coasts and runs
   out of Δv. Everything the HUD shows is a consequence of the same three
   numbers: class acceleration, class Δv, class cruise fraction.
@@ -96,6 +96,13 @@ of the observer's 2 s cinematic flight:
 - Fuel checkout before commit: required Δv = `2·√(d·a)` capped-profile variant;
   insufficient tank refuses with a HUD line (`insufficient Δv: need X, have Y`),
   it never strands the ship mid-flight.
+- Burn, flip and brake are flown **in the target's rest frame** (closing speed,
+  not ship speed, is what the profile zeroes) — the lesson of the observer's
+  fly-to, where an absolute start→arrival path chased a star that moves ~100 pc/s
+  at the default star time and overshot it. The ship's own velocity stays in the
+  galactic frame; the autopilot commands thrust against `v_ship − v_target`.
+- The target moves only if the frame loop updates it *before* the ship steps
+  (the same order rule as the camera: target, then step, then render).
 - The launch target rides the ui.2 contract: the drawn position, resolved by
   key each frame, so a star moving under star time is met where it arrives —
   the same feed `camera.updateTarget` already gets.

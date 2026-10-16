@@ -19,12 +19,14 @@
 //     rates times dt; the fly-to flight eases on elapsed/duration. A per-frame
 //     constant damping factor makes the ship faster on a 144 Hz monitor than
 //     on a 60 Hz one.
-//   * Fly-to (Shift+F, plan §18) is a 2 s flight, not a teleport: eased f64
-//     position lerp plus shortest-path quaternion slerp from the current pose
-//     to an arrival pose re-derived from the live target each frame, then the
-//     orbit handover. Any user input cancels into the usual orbit re-snap;
-//     updateTarget() moves the orbited object so the camera follows it
-//     centred.
+//   * Fly-to (Shift+F, plan §18) is a 2 s flight, not a teleport: the camera's
+//     offset from the *live* target eases from the launch offset to the
+//     stand-off (flown in the target's frame, so a star that moves under star
+//     time is closed on monotonically, never chased past), plus a
+//     shortest-path quaternion slerp, then the orbit handover. Any user input
+//     cancels into the usual orbit re-snap; updateTarget() moves the orbited
+//     object so the camera follows it centred. The caller must update the
+//     target *before* step() each frame.
 //   * The wheel steps by whole notches out of a persistent accumulator.
 //     Rounding each frame's delta made trackpads (3-10 px events) inert.
 //   * The speed multiplier walks a x2 grid, so its clamps are powers of two:
@@ -376,7 +378,7 @@ function createCamera() {
 	// flight from the current pose to the stand-off orbit. The arrival pose is
 	// re-derived from the live target every frame, so a moving object is met
 	// where it arrives; any user input cancels into the usual orbit re-snap.
-	const flightStartPos = new Float64Array(3);
+	const flightStartOffset = new Float64Array(3);  // launch position relative to the target
 	const flightStartQuat = new Float64Array(4);
 	const flightApproach = new Float64Array(3);   // unit vector, target → launch point
 	const flightUp = new Float64Array(3);         // desired arrival up
@@ -444,9 +446,9 @@ function createCamera() {
 			flightUp[0] = rightExact[0]; flightUp[1] = rightExact[1]; flightUp[2] = rightExact[2];
 		}
 		stopVelocity();
-		flightStartPos[0] = position[0];
-		flightStartPos[1] = position[1];
-		flightStartPos[2] = position[2];
+		flightStartOffset[0] = dx;
+		flightStartOffset[1] = dy;
+		flightStartOffset[2] = dz;
 		flightStartQuat[0] = orientation[0];
 		flightStartQuat[1] = orientation[1];
 		flightStartQuat[2] = orientation[2];
@@ -460,18 +462,16 @@ function createCamera() {
 		flightElapsed += dt;
 		const s = flightElapsed >= FLIGHT_DURATION_S ? 1 : flightElapsed / FLIGHT_DURATION_S;
 		const ease = s * s * (3 - 2 * s);
-		// Arrival pose from the live target: the follow feed can move it under
-		// the camera, and the flight meets it where it ends up.
-		const ex = objectTarget[0] + flightApproach[0] * flightDistance;
-		const ey = objectTarget[1] + flightApproach[1] * flightDistance;
-		const ez = objectTarget[2] + flightApproach[2] * flightDistance;
-		if (s === 1) {
-			position[0] = ex; position[1] = ey; position[2] = ez;
-		} else {
-			position[0] = flightStartPos[0] + (ex - flightStartPos[0]) * ease;
-			position[1] = flightStartPos[1] + (ey - flightStartPos[1]) * ease;
-			position[2] = flightStartPos[2] + (ez - flightStartPos[2]) * ease;
-		}
+		// The flight is flown in the target's frame: the camera's offset from the
+		// *live* target eases from the launch offset to the stand-off. A star that
+		// moves under star time carries the camera with it, so the approach is a
+		// monotonic closing and the arrival is exactly on the star — an absolute
+		// start→arrival lerp would chase a moving target and overshoot it.
+		const keep = 1 - ease;
+		const arrive = flightDistance * ease;
+		position[0] = objectTarget[0] + flightStartOffset[0] * keep + flightApproach[0] * arrive;
+		position[1] = objectTarget[1] + flightStartOffset[1] * keep + flightApproach[1] * arrive;
+		position[2] = objectTarget[2] + flightStartOffset[2] * keep + flightApproach[2] * arrive;
 		const fx = -flightApproach[0], fy = -flightApproach[1], fz = -flightApproach[2];
 		const fdot = flightUp[0] * fx + flightUp[1] * fy + flightUp[2] * fz;
 		let ux = flightUp[0] - fdot * fx;

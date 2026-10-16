@@ -1653,3 +1653,22 @@ sub-class of object. `followLandmark` (an entry index, landmarks only, one engin
 only) became `followKey` (the set member's key, resolved per frame), which is fewer lines
 and covers every block and every mask — and a member that leaves the residency stops
 moving the target instead of snapping it back to a birth record.
+
+## 2026-10-16 — Order the frame so the camera steps after the thing it follows; fly in the target's frame
+
+A camera that follows a moving object must read the object's position *this* frame before
+it steps, or it is a permanent one-frame lag (the render draws the new stars). At 5 Myr/s
+of star time a disc star moves ~1.7 pc a frame, three times the fly-to stand-off, so the
+lag alone put the star off-screen. And a flight that lerps between two absolute points
+chases a moving target and overshoots it; ease the camera's *offset from the live target*
+instead (identical for a static target). Pin both: a camera test with a fast mover updated
+before each step, and a source-shape pin on the loop order, since there is no browser here.
+
+## 2026-10-16 — Make the default test command the cheap one
+
+Every agent ran the whole suite (223 s, 117 s of it one statistical gate) after every
+edit. Time every test once, tier them, and let a dependency scan pick what a change can
+reach: the string-literal file names in tests and sources are the edges (a new `require`
+is a new edge, nothing to maintain). Partial runs should not rewrite committed logs —
+preload a `fs.writeFileSync` filter with `node --require` rather than edit 30 tests.
+Parallel runs on a 2-core box fail tests with internal timing budgets; keep serial default.

@@ -185,11 +185,20 @@ Install the optional shader-interpreter dependency:
 npm install
 ```
 
-Run the complete test suite:
+Run the tests that matter for what you changed — not the whole suite every time:
 
 ```bash
-python3 scripts/run.py all-tests
+python3 scripts/run.py changed          # only tests that read a changed file (~0-25 s)
+python3 scripts/run.py quick            # fast tier, 21 tests (~11 s)
+python3 scripts/run.py camera input     # any named tests as one suite
+python3 scripts/run.py all-tests        # everything (~4 min): before a merge, or after a model change
 ```
+
+`quick` and `changed` skip the ten slow model/statistics gates (`movement-density` alone is
+two minutes) unless `changed` finds that you touched what they measure, print only the
+failing checks, and leave `experiments/logs/` alone (`--logs` writes them; `all-tests`
+always does). `-j N` runs tests in parallel — timing budgets inside some tests can fail
+under load, so the default is serial.
 
 List individual experiments and tools:
 

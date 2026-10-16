@@ -2257,6 +2257,14 @@ async function boot() {
                 return true;
         }
 
+        // c and Shift+F need a selected star; a silent no-op reads as a dead key,
+        // so the overlay says so for a few ticks.
+        const NOTICE_TICKS = 12;       // overlay ticks (OVERLAY_INTERVAL each), ~3 s
+        let noSelectionTicks = 0;
+        function noSelectionLine() {
+                return noSelectionTicks > 0 ? '\nno star selected \u00b7 click a star first' : '';
+        }
+
         function cyclePrimary(delta) {
                 if (starSet.count === 0) return;
                 starSet.cyclePrimary(delta);
@@ -2411,6 +2419,7 @@ async function boot() {
                         `pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
                         cameraLine(cameraState) +
                         gameModeLine() +
+                        noSelectionLine() +
                         selectionLines(cameraState) +
                         selectedLine(cameraState);
         }
@@ -2418,7 +2427,6 @@ async function boot() {
         const loop = window.Loop.createLoop((dt, time) => {
                 const actions = input.state.actions;
                 const resetting = actions.reset;
-                camera.step(dt, input.state);
                 if (actions.freezeTime) {
                         actions.freezeTime = 0;
                         if (starTimeRate === 0) starTimeRate = lastNonZeroTimeRate;
@@ -2426,7 +2434,6 @@ async function boot() {
                         syncStarTime();
                 }
                 const cameraStateForTime = camera.getState(statsText);
-		input.setFlyMode(cameraStateForTime.mode === window.Camera.MODE_FLY);
                 const effectiveTimeRate = starTimeRate < 0
                         ? (-starTimeRate) * window.OrbitLib.FLIGHT_TIME_GAIN * cameraStateForTime.speedLyPerSec
                         : starTimeRate;
@@ -2471,7 +2478,7 @@ async function boot() {
                 if (actions.orbitObject) {
                         // c: orbit the last selected star on the spot — no flight.
                         actions.orbitObject = 0;
-                        orbitPrimary();
+                        if (!orbitPrimary()) noSelectionTicks = NOTICE_TICKS;
                 }
                 if (actions.flyMode) {
                         // f: the free fly camera — orbit and follow are both off.
@@ -2505,9 +2512,14 @@ async function boot() {
                 // to — a set member, its target rides the star's drawn position, so
                 // the star stays centred instead of drifting off its birth snapshot.
                 // One dispatch per frame, for every block and every engine mask.
+                // The camera steps *after* the target is fresh: a step against last
+                // frame's target would draw the star one frame's motion off-centre,
+                // metres-to-parsecs at fast star time.
                 if (followKey >= 0 && cameraStateForTime.mode === window.Camera.MODE_ORBIT_OBJECT) {
                         followTarget();
                 }
+                camera.step(dt, input.state);
+                input.setFlyMode(camera.getState(statsText).mode === window.Camera.MODE_FLY);
                 if (actions.pick) {
                         actions.pick = 0;
                         if (systemLayer.isOpen()) {
@@ -2556,7 +2568,7 @@ async function boot() {
                 }
                 if (actions.flyTo) {
                         actions.flyTo = 0;
-                        flyToPrimary();
+                        if (!flyToPrimary()) noSelectionTicks = NOTICE_TICKS;
                 }
                 if (actions.nextStar) {
                         actions.nextStar = 0;
@@ -2611,6 +2623,7 @@ async function boot() {
                 if (overlayTimer >= OVERLAY_INTERVAL) {
                         overlayTimer = 0;
                         updateOverlay(renderer.state, camera.getState(statsText));
+                        if (noSelectionTicks > 0) noSelectionTicks--;
                         if (systemLayer.isOpen()) writeSystemReadout();
                         // Keep slider readouts in sync with keyboard shortcuts
                         // while the menu is open.
