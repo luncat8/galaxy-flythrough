@@ -264,7 +264,7 @@
 	function renderLegend(ctx, mode, opts) {
 		const c = ctx.canvas;
 		const iw = c.width | 0, ih = c.height | 0;
-		const W = 210, H = 12, pad = 12;
+		const W = 260, H = 12, pad = 12;
 		const x = iw - W - pad, y = ih - H - pad - 30;
 		const ramp = opts.ramp || rampForMode(mode);
 		const strip = rampStrip(ramp);

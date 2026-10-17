@@ -28,14 +28,10 @@ const landmarks = require('../src/data/landmarks.js');
 const constellations = require('../src/data/constellations.js');
 const field = require('../src/math/view-modes-field.js');
 
-// The page's own two-step: prepare once to learn the set's range, build the log
-// scale, then prepare again with it. Kept as a helper so no check can silently
-// run on a placeholder scale (that is how "flat field" bugs hide).
-function starsFor(positions, count, camXYZ, scale) {
-	let st = field.prepareStars(positions, count, camXYZ[0], camXYZ[1], camXYZ[2], scale || null);
-	if (!scale) st = field.prepareStars(positions, count, camXYZ[0], camXYZ[1], camXYZ[2],
-		field.makeScale({}, st.dMin, st.dMax));
-	return st;
+// One place where the page's "prepare the current anchor positions" step lives,
+// so no check can silently measure a different eye than the one it built.
+function starsFor(positions, count, camXYZ) {
+	return field.prepareStars(positions, count, camXYZ[0], camXYZ[1], camXYZ[2]);
 }
 
 const checks = [];
@@ -173,6 +169,66 @@ const state = cam.getState({});
 	}
 }
 
+// --- 3b. The chart drag pins the pressed ray (planet-geotectonics law) ----
+{
+	const layout = field.createLayout({}, { kind: 'plane', w: 240, h: 120, spanDeg: 360, quat: [0.2, -0.1, 0.05, 0.96] });
+	const q0 = field.quatNormalize(new Float64Array([0.2, -0.1, 0.05, 0.96]), [0.2, -0.1, 0.05, 0.96]);
+	const e0 = new Float64Array(3), e1 = new Float64Array(3);
+	// The same pointer mapping dirAt uses, without the pan quaternion: pointer u
+	// 0.3 → map ray e0, pointer v 0.55 → map ray e1. These are *map-space* rays;
+	// feeding world rays to the arc is the bug that was shipped.
+	field.chartDirAt(e0, 0.30, 0.55, layout.spanX, layout.spanY, true);
+	field.chartDirAt(e1, 0.42, 0.48, layout.spanX, layout.spanY, true);
+	const qInv0 = field.quatInv(new Float64Array(4), q0);
+	const w0 = new Float64Array(3);
+	field.quatApply(w0, e0[0], e0[1], e0[2], qInv0);
+
+	const q = field.quatDrag(new Float64Array(4), q0, e0[0], e0[1], e0[2], e1[0], e1[1], e1[2]);
+	const qInv1 = field.quatInv(new Float64Array(4), q);
+	const w1 = new Float64Array(3);
+	field.quatApply(w1, e1[0], e1[1], e1[2], qInv1);
+	const pinDot = w0[0] * w1[0] + w0[1] * w1[1] + w0[2] * w1[2];
+	check('quatDrag keeps the pressed sky point under the pointer (rotated chart)',
+		pinDot > 0.999999999, { dot: +pinDot.toFixed(9) });
+
+	// The shipped bug: the same arc built from world rays and left-composed.
+	// It pins only while q is the identity.
+	const wi0 = new Float64Array(3), wi1 = new Float64Array(3);
+	field.quatApply(wi0, e0[0], e0[1], e0[2], qInv0);
+	field.quatApply(wi1, e1[0], e1[1], e1[2], qInv0);
+	const arc = field.quatArc(new Float64Array(4), wi0[0], wi0[1], wi0[2], wi1[0], wi1[1], wi1[2]);
+	const qOld = field.quatNormalize(new Float64Array(4), field.quatMul(new Float64Array(4), arc, q0));
+	const wOld = new Float64Array(3);
+	field.quatApply(wOld, e1[0], e1[1], e1[2], field.quatInv(new Float64Array(4), qOld));
+	const oldDot = w0[0] * wOld[0] + w0[1] * wOld[1] + w0[2] * wOld[2];
+	const oldErrDeg = Math.acos(Math.min(1, oldDot)) / field.DEG;
+	check('the old world-ray arc drifts the grabbed point by degrees (the glitch)',
+		oldErrDeg > 1, { driftDeg: +oldErrDeg.toFixed(2) });
+
+	// A drag that returns to the press pixel restores the chart exactly, and a
+	// second drag composed from the *same* press continues to pin: no
+	// accumulation error, which is what made the old pan accelerate.
+	const back = field.quatDrag(new Float64Array(4), q, e1[0], e1[1], e1[2], e0[0], e0[1], e0[2]);
+	const backDot = back[0] * q0[0] + back[1] * q0[1] + back[2] * q0[2] + back[3] * q0[3];
+	check('a chart drag that returns to the press pixel restores the chart',
+		Math.abs(backDot) > 0.999999999, { dot: +backDot.toFixed(9) });
+
+	// chartDirAt must be exactly dirAt minus the pan quaternion, or the drag
+	// solves a different pixel-to-ray map than the field samples.
+	const dir = new Float64Array(3), ray = new Float64Array(3);
+	let worst = 0;
+	for (let py = 3; py < layout.h; py += 17) {
+		for (let px = 5; px < layout.w; px += 23) {
+			field.dirAt(layout, px, py, dir);
+			field.chartDirAt(ray, (px + 0.5) / layout.w, (py + 0.5) / layout.h,
+				layout.spanX, layout.spanY, layout.mirrorLon);
+			field.quatApply(ray, ray[0], ray[1], ray[2], layout.quatInv);
+			worst = Math.max(worst, Math.abs(dir[0] - ray[0]), Math.abs(dir[1] - ray[1]), Math.abs(dir[2] - ray[2]));
+		}
+	}
+	check('chartDirAt is dirAt without the pan (the drag and the field agree)', worst < 1e-12, { worst });
+}
+
 // --- 4. The log height scale means the distance it claims --------------
 {
 	const scale = field.makeScale({}, 0.00264, 0.802);      // Sirius … Deneb
@@ -206,6 +262,51 @@ const state = cam.getState({});
 	check('a star at the eye cannot flatten the ramp (1 pc floor)',
 		field.heightOfDistance(field.makeScale({}, 0, 0.8), 0.0001) <= 1
 		&& field.makeScale({}, 0, 0.8).span >= 1);
+}
+
+// --- 4b. The display range: log, auto, manual, clamped --------------------
+{
+	const range = { lo: -2, hi: -1 };            // one decade of σ, 0.01 … 0.1 kpc
+	check('a log range puts half a decade at the middle',
+		Math.abs(field.rangeValue('spread', 0.0316227766, range) - 0.5) < 1e-9,
+		field.rangeValue('spread', 0.0316227766, range));
+	// Height's raw value is log distance, so its range's lo is the NEAR end
+	// (small log) and its hi the far one; the ramp runs 1 → 0 across it.
+	check('height is inverted: lo (near) is 1, hi (far) is 0',
+		field.rangeValue('height', -3, { lo: -3, hi: 0 }) === 1
+		&& field.rangeValue('height', 0, { lo: -3, hi: 0 }) === 0,
+		{ near: field.rangeValue('height', -3, { lo: -3, hi: 0 }), far: field.rangeValue('height', 0, { lo: -3, hi: 0 }) });
+	const clamped = new Float32Array(3);
+	field.applyRange(Float32Array.of(0.0001, 0.0316227766, 100), 3, 'spread', range, clamped);
+	check('values outside the range clamp to 0 and 1',
+		clamped[0] === 0 && Math.abs(clamped[1] - 0.5) < 1e-6 && clamped[2] === 1,
+		Array.from(clamped));
+
+	// Auto range: mode 1 reads the anchors, so moving the set 3 decades out
+	// moves the range 3 decades out (the colour keeps its meaning).
+	// prepareStars returns one shared scratch object, so the ranges must be read
+	// before the next call overwrites dMin/dMax.
+	const nearStars = field.prepareStars(Float64Array.of(0, 0, 0.01, 0, 0.02, 0), 2, 0, 0, 0);
+	const nearRangeIn = { dMin: nearStars.dMin, dMax: nearStars.dMax, rawLo: Math.log10(0.01), rawHi: Math.log10(0.02) };
+	const farStars = field.prepareStars(Float64Array.of(0, 0, 10, 0, 0.02, 20), 2, 0, 0, 0);
+	const farRangeIn = { dMin: farStars.dMin, dMax: farStars.dMax, rawLo: Math.log10(10), rawHi: Math.log10(20) };
+	const rangeNear = field.autoRange('height', nearRangeIn, {});
+	const rangeFar = field.autoRange('height', farRangeIn, {});
+	check('mode 1 auto range follows the field (3 decades out, 3 decades out)',
+		Math.abs(rangeNear.lo - Math.log10(0.01)) < 0.05
+		&& Math.abs(rangeFar.lo - Math.log10(10)) < 0.05
+		&& rangeNear.hi - rangeNear.lo >= 0.3 && rangeFar.hi - rangeFar.lo >= 0.3,
+		{ near: [rangeNear.lo, rangeNear.hi], far: [rangeFar.lo, rangeFar.hi] });
+
+	// A set whose stars all sit in a narrow band must still use the ramp: the
+	// forced-decade scale it replaced put every real star on one colour.
+	const band = field.autoRange('height', { dMin: 0.0117, dMax: 0.0117, rawLo: -1.5, rawHi: -1.2 }, {});
+	check('a narrow distance band still fills the ramp', band.hi - band.lo < 0.5, { lo: band.lo, hi: band.hi });
+	// A constant non-height field still suggests a usable decade instead of a
+	// zero-width range (which would divide by zero).
+	const flatRange = field.autoRange('spread', { autoLo: -2, autoHi: -2, rawLo: -2 }, {});
+	check('auto range never collapses to zero width', flatRange.hi - flatRange.lo >= 0.3,
+		{ lo: flatRange.lo, hi: flatRange.hi });
 }
 
 // --- 5. The field: smooth, hole-free, peaked at the stars --------------
@@ -283,24 +384,25 @@ const state = cam.getState({});
 	check('mode 1 is the IDW mean of the stars on that ray, and falls off away from them',
 		atStar > 0.4 && farVal < atStar - 0.05, { atStar: +atStar.toFixed(3), farVal: +farVal.toFixed(3) });
 
-	field.computeField(stars, layout, { mode: 'spread', sigmaDeg: 12, spreadRefKpc: 0.2 }, out, stats);
+	const spreadRange = { lo: -2, hi: 0 };      // 0.01 … 1 kpc, log
+	field.computeField(stars, layout, { mode: 'spread', sigmaDeg: 12, range: spreadRange }, out, stats);
 	const spreadAt = out[Math.round(hit.y) * layout.w + Math.round(hit.x)];
-	// σ of {0.001, 1.0, ~1.0} kpc ≈ 0.5 kpc at the pole, and the cost map maps
-	// that through dev/(dev+ref) with ref = 0.2 kpc.
-	check('mode 2 reads the depth gap in that direction (σ ≈ 0.5 kpc → cost ≈ 0.7)',
-		spreadAt > 0.6 && stats.spreadMax > 0.3 && stats.spreadMax < 0.7,
+	// σ of {0.001, 1.0, ~1.0} kpc ≈ 0.5 kpc at the pole; log10(0.5) = −0.3 on a
+	// −2…0 decade range reads 0.85.
+	check('mode 2 reads the depth gap in that direction (σ ≈ 0.5 kpc → 0.85 of a 0.01…1 kpc log range)',
+		spreadAt > 0.75 && stats.spreadMax > 0.3 && stats.spreadMax < 0.7,
 		{ spread: +spreadAt.toFixed(3), peakKpc: +stats.spreadMax.toFixed(4) });
 	// Two stars at the same distance in the same direction: no hidden depth.
 	const flat = Float64Array.of(0, 0.0004, 1, 0, -0.0004, 1);
-	const fs = field.prepareStars(flat, 2, 0, 0, 0, field.makeScale({}, 1, 1.001));
-	field.computeField(fs, layout, { mode: 'spread', sigmaDeg: 12, spreadRefKpc: 0.2 }, out, stats);
+	const fs = field.prepareStars(flat, 2, 0, 0, 0);
+	field.computeField(fs, layout, { mode: 'spread', sigmaDeg: 12, range: spreadRange }, out, stats);
 	field.texelOf(layout, 0, 0, 1, hit);
 	check('mode 2 is ~0 where the neighbours agree in depth',
 		out[Math.round(hit.y) * layout.w + Math.round(hit.x)] < 0.05, { v: out[Math.round(hit.y) * layout.w + Math.round(hit.x)] });
 
 	// Coincident stars must not divide by zero.
 	const same = Float64Array.of(0, 0, 1, 0, 0, 1, 0, 0, 1);
-	const ss = field.prepareStars(same, 3, 0, 0, 0, field.makeScale({}, 1, 1));
+	const ss = field.prepareStars(same, 3, 0, 0, 0);
 	field.computeField(ss, layout, { mode: 'height', sigmaDeg: 10 }, out, stats);
 	let ok = true;
 	for (let i = 0; i < out.length; i++) if (!Number.isFinite(out[i])) ok = false;
@@ -312,22 +414,78 @@ const state = cam.getState({});
 	const set = field.buildConstellationSet({});
 	const stars = starsFor(set.positions, set.n, model.home.position);
 	const layout = field.createLayout({}, { kind: 'plane', w: 128, h: 64, spanDeg: 360, quat: [0, 0, 0, 1] });
-	const height = new Float32Array(layout.w * layout.h);
-	const grad = new Float32Array(layout.w * layout.h);
 	const stats = {};
-	field.computeField(stars, layout, { mode: 'height', sigmaDeg: 6 }, height, stats);
-	field.computeField(stars, layout, { mode: 'gradient', sigmaDeg: 6, gradSpanDeg: 14 }, grad, stats);
-	// A flat field must give a flat gradient: build one from a single star.
-	const one = Float64Array.of(0, 0, 1);
-	const oneStars = field.prepareStars(one, 1, 0, 0, 0, field.makeScale({}, 1, 1));
-	const g2 = new Float32Array(layout.w * layout.h);
-	field.computeField(oneStars, layout, { mode: 'gradient', sigmaDeg: 20, gradSpanDeg: 14 }, g2, stats);
-	let maxG = 0;
-	for (let i = 0; i < g2.length; i++) maxG = Math.max(maxG, g2[i]);
-	check('gradient of a constant field is constant (≤ 0.2 of full scale)', maxG <= 0.2, { maxG: +maxG.toFixed(4) });
-	let anyGrad = 0;
-	for (let i = 0; i < grad.length; i++) anyGrad = Math.max(anyGrad, grad[i]);
-	check('gradient of the real height field is non-degenerate', anyGrad > 0.05, { max: +anyGrad.toFixed(4) });
+	const rawL = new Float32Array(layout.w * layout.h);
+	const grad = new Float32Array(layout.w * layout.h);
+	field.computeRaw(stars, layout, { mode: 'height', sigmaDeg: 6 }, rawL, stats);
+	field.computeRaw(stars, layout, { mode: 'gradient', sigmaDeg: 6 }, grad, stats);
+
+	// The slope is per degree of sky, so it must equal the finite difference of
+	// the L grid divided by the layout's own texel angle — the factor of DEG is
+	// exactly the unit the legend quotes, and a missing cos(lat) on a chart
+	// would make high-latitude rows read low.
+	{
+		const y = layout.h >> 1, x = layout.w >> 1;
+		const gx = (rawL[y * layout.w + x + 1] - rawL[y * layout.w + x - 1]) / (2 * layout.texelRadX);
+		const gy = (rawL[(y + 1) * layout.w + x] - rawL[(y - 1) * layout.w + x]) / (2 * layout.texelRadY);
+		const want = Math.hypot(gx, gy) * field.DEG;
+		const got = grad[y * layout.w + x];
+		check('mode 3 is |∇log₁₀ d| per degree, at the layout’s own texel angle',
+			Math.abs(want - got) < 1e-6 + want * 0.05, { want, got });
+	}
+
+	// The user's complaint: the old mode clamped |∇| at 1, so every steep ring
+	// read the same colour ("hard limited (clump)"). An auto log range must not
+	// pile the map into the top bin. (Read before anything re-prepares the shared
+	// star scratch — prepareStars returns one object, mutated in place.)
+	{
+		const paint = new Float32Array(grad.length);
+		const range = field.autoRange('gradient', stats, {});
+		field.applyRange(grad, grad.length, 'gradient', range, paint);
+		let top = 0, mid = 0;
+		for (let i = 0; i < paint.length; i++) {
+			if (paint[i] > 0.999) top++;
+			if (paint[i] > 0.2 && paint[i] < 0.8) mid++;
+		}
+		const topFrac = top / paint.length, midFrac = mid / paint.length;
+		check('mode 3 auto range does not clump: < 15% of texels at full scale, > 30% in the middle',
+			topFrac < 0.15 && midFrac > 0.3, { topFrac: +topFrac.toFixed(3), midFrac: +midFrac.toFixed(3) });
+		let anyGrad = 0;
+		for (let i = 0; i < grad.length; i++) anyGrad = Math.max(anyGrad, grad[i]);
+		check('gradient of the real height field is non-degenerate', anyGrad > 0.001, { max: +anyGrad.toFixed(5) });
+	}
+
+	// The chart seam: a gradient taken with the plain column difference at
+	// x = 0 divides by (rt − lf) = 2 − w and overstates the slope ~w/2 times.
+	// Yaw the chart 180° so the same rays land in the middle of the grid; the
+	// seam column must then read the interior value.
+	{
+		const seamStars = starsFor(set.positions, set.n, model.home.position);
+		const yaw = field.createLayout({}, { kind: 'plane', w: layout.w, h: layout.h, spanDeg: 360, quat: [0, 0, 1, 0] });
+		const rot = new Float32Array(layout.w * layout.h);
+		field.computeRaw(seamStars, yaw, { mode: 'gradient', sigmaDeg: 6 }, rot, {});
+		const mid = layout.w >> 1;
+		let worst = 0, worstAt = 0;
+		for (let y = 2; y < layout.h - 2; y += 5) {
+			const a = grad[y * layout.w], b = rot[y * layout.w + mid];
+			const rel = Math.abs(a - b) / Math.max(1e-9, b);
+			if (rel > worst) { worst = rel; worstAt = y; }
+		}
+		check('the gradient is continuous across the chart seam', worst < 0.2, { worstRel: +worst.toFixed(3), y: worstAt });
+	}
+
+	// A field whose log distance is constant has no slope. One anchor does that
+	// by construction: IDW of a single value is that value everywhere. Last,
+	// because it re-prepares the shared star scratch.
+	{
+		const one = Float64Array.of(0, 0, 1);
+		const oneStars = field.prepareStars(one, 1, 0, 0, 0);
+		const g2 = new Float32Array(layout.w * layout.h);
+		field.computeRaw(oneStars, layout, { mode: 'gradient', sigmaDeg: 20 }, g2, {});
+		let maxG = 0;
+		for (let i = 0; i < g2.length; i++) maxG = Math.max(maxG, g2[i]);
+		check('gradient of a constant field is zero', maxG < 1e-5, { maxG });
+	}
 }
 
 // --- 8. Layout wrap and the chart convention ---------------------------
@@ -404,30 +562,37 @@ const state = cam.getState({});
 		check(`every chart marker's ray comes back to its star (worst ${worst.toFixed(3)}° off ${worstName})`,
 			worst < 1.3, { worstDeg: +worst.toFixed(3), worstName });
 	}
-	// And the field has to peak there: a wide σ averages a star's own texel down
-	// toward its neighbours, which is the flat, red-free map this feature must
-	// not produce.
+	// And the field has to peak there: the default σ keeps the near stars' own
+	// texels on top of the painted ramp. (A wide σ still blends more — the raw
+	// span below halves — but the *display* range follows the data now, so the
+	// test of a wide σ is the contrast of the physical field, not of the paint.)
 	{
 		const layout = field.createLayout({}, { kind: 'plane', w: 424, h: 208, spanDeg: 360, quat: [0, 0, 0, 1], mirror: true });
-		const stars = starsFor(set.positions, set.n, cam0);
-		const near = [0, 1, 4];       // the Sun, Sirius, Arcturus: the top of the ramp
+		const near = [1, 4, 7];       // Sirius, Arcturus, Rigel: the top of the ramp
+		const spans = {};
 		for (const sigma of [field.SIGMA_DEG, 10]) {
+			const stars = starsFor(set.positions, set.n, cam0);
 			const out = new Float32Array(layout.w * layout.h);
-			field.computeField(stars, layout, { mode: 'height', sigmaDeg: sigma }, out, {});
+			const stats = {};
+			field.computeRaw(stars, layout, { mode: 'height', sigmaDeg: sigma }, out, stats);
+			spans[sigma] = stats.rawHi - stats.rawLo;
+			const range = field.autoRange('height', stats, {});
+			const paint = field.applyRange(out, out.length, 'height', range, new Float32Array(out.length));
 			let peak = 0;
 			for (const i of near) {
 				field.texelOf(layout, set.positions[i * 3] - cam0[0], set.positions[i * 3 + 1] - cam0[1],
 					set.positions[i * 3 + 2] - cam0[2], hit);
 				const x = Math.max(0, Math.min(layout.w - 1, Math.round(hit.x)));
 				const y = Math.max(0, Math.min(layout.h - 1, Math.round(hit.y)));
-				if (out[y * layout.w + x] > peak) peak = out[y * layout.w + x];
+				if (paint[y * layout.w + x] > peak) peak = paint[y * layout.w + x];
 			}
-			let vMin = 1, vMax = 0;
-			for (let k = 0; k < out.length; k++) { if (out[k] < vMin) vMin = out[k]; if (out[k] > vMax) vMax = out[k]; }
-			check(`σ ${sigma}°: the near stars' texels reach ${peak.toFixed(2)} and the ramp spans ${vMax - vMin}`,
-				sigma === field.SIGMA_DEG ? peak > 0.8 && vMax - vMin > 0.7 : peak < 0.85,
-				{ peak: +peak.toFixed(3), range: +(vMax - vMin).toFixed(3) });
+			check(`σ ${sigma}°: the near stars' texels reach ${peak.toFixed(2)} of the painted ramp`,
+				sigma === field.SIGMA_DEG ? peak > 0.8 : peak > 0.6,
+				{ peak: +peak.toFixed(3), rawSpan: +spans[sigma].toFixed(3) });
 		}
+		check('a wide σ blends: the physical (log-distance) span shrinks by half',
+			spans[10] < spans[field.SIGMA_DEG] * 0.6,
+			{ narrow: +spans[field.SIGMA_DEG].toFixed(3), wide: +spans[10].toFixed(3) });
 	}
 }
 
@@ -457,6 +622,87 @@ const state = cam.getState({});
 		all.positions[0] !== big.positions[0], { home: all.dmin.toFixed(4), off: big.dmin.toFixed(4) });
 }
 
+// --- 9b. Nearest-N is a query: exact, fast, and follows the eye ----------
+{
+	const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'data', 'tiles', 'catalog.js'), 'utf8');
+	const g = {};
+	new Function('window', src)(g);
+	const index = field.createCatalogIndex(g.__galaxy_catalog);
+	check('the decoded index holds the visible catalog records', index.n === 3829, index.n);
+	const set = field.createSet(64);
+	let worst = 0;
+	for (const c of [[0, 0, 0], [6, 0, 0], [0, 0, 0.2], [-3, 2, -1]]) {
+		field.queryNearest(index, index.positions, c[0], c[1], c[2], 64, set);
+		// Brute force, the definition the heap must reproduce.
+		const d2 = new Float64Array(index.n);
+		for (let i = 0; i < index.n; i++) {
+			const dx = index.positions[i * 3] - c[0], dy = index.positions[i * 3 + 1] - c[1], dz = index.positions[i * 3 + 2] - c[2];
+			d2[i] = dx * dx + dy * dy + dz * dz;
+		}
+		const sorted = Array.from(d2).sort((a, b) => a - b);
+		for (let k = 0; k < set.n; k++) {
+			const dx = set.positions[k * 3] - c[0], dy = set.positions[k * 3 + 1] - c[1], dz = set.positions[k * 3 + 2] - c[2];
+			worst = Math.max(worst, Math.abs(Math.hypot(dx, dy, dz) ** 2 - sorted[k]));
+		}
+	}
+	check('the heap query is the exact brute-force nearest-N', worst < 1e-9, { worst });
+
+	// A query is one linear scan: 100 × 500 anchors fits in a fifth of a second
+	// even in Node, and the page runs it once per eye move, not per frame.
+	const t0 = process.hrtime.bigint();
+	for (let i = 0; i < 100; i++) field.queryNearest(index, index.positions, i * 0.01, 0, 0, 500, set);
+	const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+	check(`100 nearest-500 queries take ${ms.toFixed(1)} ms (< 200)`, ms < 200, { ms: +ms.toFixed(2) });
+
+	// Star time: the index advanced as a whole and the query measures the drawn
+	// sky, so the winners are the stars that are near *now*.
+	const cur = new Float64Array(index.n * 3);
+	field.prepareIndexPositions(index, cur, 0, model);
+	let same = true;
+	for (let i = 0; i < index.n * 3; i++) if (cur[i] !== index.positions[i]) same = false;
+	check('indexed positions at time 0 are the birth frame', same);
+	field.prepareIndexPositions(index, cur, 10, model);
+	let moved = 0;
+	for (let i = 0; i < index.n; i++) {
+		if (Math.hypot(cur[i * 3] - index.positions[i * 3], cur[i * 3 + 1] - index.positions[i * 3 + 1],
+			cur[i * 3 + 2] - index.positions[i * 3 + 2]) > 1e-9) moved++;
+	}
+	check('10 Myr of star time moves the indexed sky', moved > index.n * 0.9, { moved });
+	field.queryNearest(index, cur, 0, 0, 0, 24, set);
+	const a = new Float64Array(set.positions.subarray(0, 24 * 3));
+	field.queryNearest(index, index.positions, 0, 0, 0, 24, set);
+	let differs = 0;
+	for (let i = 0; i < 24 * 3; i++) if (a[i] !== set.positions[i]) differs++;
+	check('a star-time query and a birth-frame query are different questions', differs > 0, { differs });
+
+	// The page then draws the set by dispatching it to the frame's star time.
+	// The set must carry *birth* records so that dispatch does not apply the
+	// motion twice — i.e. the drawn anchors must equal the advanced index at the
+	// same indices the query measured.
+	{
+		const time = 10;
+		const cur2 = new Float64Array(index.n * 3);
+		field.prepareIndexPositions(index, cur2, time, model);
+		field.queryNearest(index, cur2, 0, 0, 0, 32, set);
+		const drawn = new Float64Array(set.n * 3);
+		field.advancePositions(set, drawn, time, model);
+		let worst = 0;
+		for (let k = 0; k < set.n; k++) {
+			// Find the picked star in the advanced index and compare distances to
+			// the eye — the drawn position itself must match one index entry.
+			let best = Infinity;
+			for (let i = 0; i < index.n; i++) {
+				const dd = Math.hypot(cur2[i * 3] - drawn[k * 3], cur2[i * 3 + 1] - drawn[k * 3 + 1],
+					cur2[i * 3 + 2] - drawn[k * 3 + 2]);
+				if (dd < best) best = dd;
+			}
+			worst = Math.max(worst, best);
+		}
+		check('a star-time pick drawn through advancePositions matches the advanced sky (no double motion)',
+			worst < 1e-9, { worstKpc: worst });
+	}
+}
+
 // --- 10. Star time moves the anchors through the app's dispatch ---------
 {
 	const set = field.buildConstellationSet({});
@@ -482,12 +728,12 @@ const state = cam.getState({});
 	const a = new Float32Array(96 * 48), bb = new Float32Array(96 * 48);
 	const stats = {};
 	const h = model.home.position;
-	field.computeField(starsFor(set.positions, set.n, h), layout, { mode: 'height' }, a, stats);
 	// Same frozen range for both frames: only the anchors move, the scale does
 	// not, which is what makes the delta a motion and not a repaint.
 	const st0 = starsFor(set.positions, set.n, h);
 	const frozen = field.makeScale({}, st0.dMin, st0.dMax);
-	field.computeField(field.prepareStars(cur, set.n, h[0], h[1], h[2], frozen), layout, { mode: 'height' }, bb, stats);
+	field.computeField(starsFor(set.positions, set.n, h), layout, { mode: 'height', range: frozen }, a, stats);
+	field.computeField(field.prepareStars(cur, set.n, h[0], h[1], h[2]), layout, { mode: 'height', range: frozen }, bb, stats);
 	let diff = 0;
 	for (let i = 0; i < a.length; i++) diff = Math.max(diff, Math.abs(a[i] - bb[i]));
 	check('the heightmap updates with star time', diff > 1e-4, { maxDelta: +diff.toFixed(5) });
@@ -506,7 +752,7 @@ const state = cam.getState({});
 	const out = new Float32Array(layout.w * layout.h);
 	const stats = {};
 	const t0 = process.hrtime.bigint();
-	field.computeField(field.prepareStars(set.positions, set.n, 0, 0, 0.005, field.makeScale({}, 1e9, -1e9)), layout, { mode: 'height' }, out, stats);
+	field.computeField(field.prepareStars(set.positions, set.n, 0, 0, 0.005), layout, { mode: 'height' }, out, stats);
 	const ms = Number(process.hrtime.bigint() - t0) / 1e6;
 	const budgetMs = 60;
 	check(`500 anchors at the balanced budget (${layout.w}×${layout.h}) rebuilds in ${ms.toFixed(1)} ms (< ${budgetMs})`, ms < budgetMs,

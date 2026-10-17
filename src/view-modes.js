@@ -10,8 +10,15 @@
 // experiments/view-modes-field-test.js pins the part that used to be wrong: a
 // marker on this map lands on the pixel the app draws that star at.
 //
-// Per frame: advance star time → integrate the anchors → re-pick the set if the
-// eye moved → prepare the per-star constants → sample the field → paint.
+// Per frame: advance star time → re-pick the nearest N if the eye or the sky
+// moved → integrate the anchors → sample the raw field → apply the range → paint.
+//
+// Two pieces of state are worth knowing before reading on:
+//   * `raw` is the physical field (log distance / depth σ / slope in dex per
+//     degree) and is rebuilt every frame.
+//   * `live` is the display range the painter uses. Auto mode reads it from
+//     experiments' stats at 4 Hz and eases toward the new bounds; manual mode
+//     holds the two slider values. The legend quotes the same numbers.
 
 'use strict';
 
@@ -33,6 +40,18 @@
 	const LOOK_SENS = 0.0022;
 	const FOV_Y_DEG = 60;               // Camera.FOV_Y, the app's vertical FoV
 	const PAIRS_BUDGET = { fast: 3e5, balanced: 1.5e6, high: 6e6, full: 2.4e7 };
+	const RANGE_PERIOD = 0.25;          // seconds between auto-range reads
+	const INDEX_PERIOD = 0.25;          // seconds between whole-index star-time moves
+	const PICK_PERIOD = 0.25;           // seconds between star-time-only re-picks
+	const SAMPLE_STARS = 12000;         // the procedural galaxy's searchable sky
+
+	// Starting manual ranges, in the mode's own log10 unit (kpc / kpc / dex/°).
+	// A mode without one inherits the live auto range the first time it is used.
+	const MANUAL_DEFAULTS = {
+		height: { lo: -3, hi: 0 },
+		spread: { lo: -3, hi: -0.3 },
+		gradient: { lo: -3.5, hi: -1.5 },
+	};
 
 	const state = {
 		model: null,
@@ -56,14 +75,15 @@
 		mode: 'height',
 		sourceN: 0,
 		sigmaDeg: Field.SIGMA_DEG,
-		spreadRefPc: 200,
-		gradSpanDeg: 14,
 		budget: 'balanced',
 		resH: 0,
-		// Distance range behind the 0..1 height map.
+		// Display range. `live` is what the painter and the legend use; the
+		// manual table keeps one pair of slider values per mode.
 		autoRange: true,
+		ranges: { height: null, spread: null, gradient: null },
+		live: { lo: -3, hi: 0 },
+		liveMode: '',
 		rangeClock: 0,
-		scale: { lo: -3, hi: 0, span: 3 },
 		// Painting
 		contours: true,
 		contourLevels: 10,
@@ -77,64 +97,37 @@
 		starTimeMyr: 0,
 		starTimeRate: 0,
 		moveStepPc: 50,
-		// Data
-		set: null,
+		// Anchors. `index` is the decoded catalog (birth positions);
+		// `indexCur` is the same sky at the current star time, refreshed at
+		// INDEX_PERIOD so a nearest-N query always measures what is drawn.
+		catalog: null,
+		index: null,
+		indexCur: null,
+		indexTime: 0,
+		indexClock: 0,
+		sampleIndex: null,
+		constSet: null,
+		pickSet: null,
 		cur: null,
+		set: null,
+		pickPos: new Float64Array(3),
+		pickTime: 0,
+		pickClock: 0,
+		setDirty: true,
+		// Data
+		raw: null,
 		field: null,
 		layout: { kind: '', w: 0, h: 0 },
-		stats: { pairs: 0, vMin: 0, vMax: 0, spreadMax: 0, dMin: 0, dMax: 0, empty: true },
+		stats: { pairs: 0, rawLo: 0, rawHi: 0, autoLo: 0, autoHi: 0, spreadMax: 0, dMin: 0, dMax: 0, empty: true },
 		read: { height: 0 },
+		readPaint: { height: 0 },
 		// Input / timing
-		setDirty: true,
-		lastPick: new Float64Array(3),
 		lastFrameMs: 0, fieldMs: 0, fps: 0,
 		pointer: { u: 0.5, v: 0.5, inside: false },
 		rect: null,
-		catalog: null,
 	};
 
-	// ---- galaxy + star set ------------------------------------------------
-
-	function buildModel() {
-		// SBb with no overrides IS the Milky Way preset (galaxy.js spec.preset),
-		// and only the preset owns the landmark table and the catalog. Any other
-		// type is procedural, where the anchors fall back to sampled stars.
-		state.model = GalaxyLib.createGalaxy({ type: state.galaxyType, seed: state.seed });
-		state.setDirty = true;
-	}
-
-	function rebuildStarSet() {
-		const c = state.pos;
-		let set = null;
-		if (state.model.milkyWay) {
-			set = state.sourceN === 0
-				? Field.buildConstellationSet({})
-				: state.catalog
-					? Field.buildCatalogSet(state.catalog, state.sourceN, c)
-					: Field.buildSampledSet(state.model, state.sourceN, c);
-		} else {
-			set = Field.buildSampledSet(state.model, state.sourceN || 88, c);
-		}
-		state.set = set;
-		state.lastPick[0] = c[0]; state.lastPick[1] = c[1]; state.lastPick[2] = c[2];
-		if (!set.n) { state.cur = new Float64Array(0); refreshRange(); return; }
-		if (!state.cur || state.cur.length < set.n * 3) state.cur = new Float64Array(set.n * 3);
-		Field.advancePositions(set, state.cur, state.starTimeMyr, state.model);
-		state.setDirty = false;
-		refreshRange();
-	}
-
-	// The log height anchors. Auto mode re-reads them a few times a second — so a
-	// fly tracks the local range — but never every frame: a per-frame range makes
-	// the colour of a fixed star change as its neighbours move, which is exactly
-	// the flicker that reads as "this map is lying". Freezing the range is what
-	// lets a star-time animation be read as motion instead of as a repaint.
-	function refreshRange() {
-		if (!state.set || !state.set.n) return;
-		if (!state.autoRange && state.scale.span > 0) return;
-		const s = Field.prepareStars(state.cur, state.set.n, state.pos[0], state.pos[1], state.pos[2], null);
-		if (s.n) Field.makeScale(state.scale, s.dMin, s.dMax);
-	}
+	const autoRangeScratch = { lo: 0, hi: 0 };
 
 	function updateBasis() { Field.quatBasis(state.basis, state.pose); }
 
@@ -146,12 +139,126 @@
 		Field.quatArc(state.chartQuat, b.fx, b.fy, b.fz, 1, 0, 0);
 	}
 
+	// ---- galaxy + anchors -------------------------------------------------
+
+	function buildModel() {
+		// SBb with no overrides IS the Milky Way preset (galaxy.js spec.preset),
+		// and only the preset owns the landmark table and the catalog. Any other
+		// type is procedural, where the anchors are a sampled sky.
+		state.model = GalaxyLib.createGalaxy({ type: state.galaxyType, seed: state.seed });
+		state.constSet = null;
+		state.sampleIndex = null;
+		state.indexTime = 0;
+		state.indexClock = 0;
+		state.setDirty = true;
+	}
+
+	// Nearest-N is a query, not a set built once: the search scans the decoded
+	// index with a fixed max-heap (0.3 ms for 500 anchors) and writes the current
+	// winners into one reusable set. The eye moving 2% of the set's own radius
+	// re-picks; anything smaller is a drift the field already shows.
+	function needPick() {
+		if (state.setDirty || !state.set || !state.set.n) return true;
+		if (state.set !== state.pickSet) return false;      // the fixed landmark set
+		const e = state.pos, p = state.pickPos;
+		const moved = Math.hypot(e[0] - p[0], e[1] - p[1], e[2] - p[2]);
+		if (moved > Math.max(0.05, (state.set.dmax || 1) * 0.02)) return true;
+		if (state.starTimeMyr !== state.pickTime && state.pickClock > PICK_PERIOD) return true;
+		return false;
+	}
+
+	function pickAnchors() {
+		const eye = state.pos;
+		if (!state.model.milkyWay) {
+			if (!state.sampleIndex) state.sampleIndex = Field.createSampledIndex(state.model, SAMPLE_STARS);
+			state.set = state.pickSet;
+			Field.queryNearest(state.sampleIndex, state.sampleIndex.positions,
+				eye[0], eye[1], eye[2], state.sourceN || 88, state.pickSet);
+		} else if (state.sourceN === 0 || !state.index) {
+			if (!state.constSet) state.constSet = Field.buildConstellationSet({});
+			state.set = state.constSet;
+		} else {
+			state.set = state.pickSet;
+			// Star time moves the whole sky: measure who is nearest *now* (the
+			// advanced index), while the set keeps the birth records the orbit
+			// dispatch needs to draw them at the frame's time.
+			const src = state.indexTime !== 0 ? state.indexCur : state.index.positions;
+			Field.queryNearest(state.index, src, eye[0], eye[1], eye[2], state.sourceN, state.pickSet);
+		}
+		state.pickPos[0] = eye[0]; state.pickPos[1] = eye[1]; state.pickPos[2] = eye[2];
+		state.pickTime = state.indexTime;
+		state.pickClock = 0;
+		state.setDirty = false;
+	}
+
+	// Keep the whole index current while star time runs: one dispatch per record
+	// (~10 ms for the catalog), so it is throttled and only then re-picked.
+	function advanceIndex(dt) {
+		if (!state.index || !state.model.milkyWay || state.starTimeMyr === 0) return;
+		if (Math.abs(state.starTimeMyr - state.indexTime) < 1e-9) return;
+		state.indexClock += dt;
+		if (state.indexClock < INDEX_PERIOD) return;
+		state.indexClock = 0;
+		Field.prepareIndexPositions(state.index, state.indexCur, state.starTimeMyr, state.model);
+		state.indexTime = state.starTimeMyr;
+		state.setDirty = true;
+	}
+
+	// ---- display range ----------------------------------------------------
+
+	// The auto range is read from the stats of a finished raw pass and eased, so
+	// a moving set does not repaint the whole map in one step — but slowly
+	// enough that the result converges instead of always trailing the data by
+	// one read. A jump over 1.5 decades is a different neighbourhood, not a
+	// drift: it snaps.
+	function refreshAutoRange() {
+		const s = state.stats;
+		if (s.empty) return;
+		const a = Field.autoRange(state.mode, s, autoRangeScratch);
+		const live = state.live;
+		if (state.liveMode !== state.mode) {
+			state.liveMode = state.mode;
+			live.lo = a.lo; live.hi = a.hi;
+			return;
+		}
+		if (Math.abs(a.lo - live.lo) > 1.5 || Math.abs(a.hi - live.hi) > 1.5) {
+			live.lo = a.lo; live.hi = a.hi;
+			return;
+		}
+		live.lo += (a.lo - live.lo) * 0.15;
+		live.hi += (a.hi - live.hi) * 0.15;
+	}
+
+	function manualRange() {
+		let r = state.ranges[state.mode];
+		if (!r) {
+			const d = MANUAL_DEFAULTS[state.mode];
+			r = state.ranges[state.mode] = { lo: d.lo, hi: d.hi };
+		}
+		return r;
+	}
+
+	// Unchecking auto freezes the colours where they are: the manual range starts
+	// as the live one, and every later slider move edits it from there.
+	function freezeRange() {
+		const r = manualRange();
+		r.lo = state.live.lo;
+		r.hi = state.live.hi;
+	}
+
+	function setAutoRange(on) {
+		state.autoRange = on;
+		const cb = $('check-auto-range');
+		if (cb) cb.checked = on;
+		syncRangeUI();
+	}
+
 	// ---- main loop --------------------------------------------------------
 
 	// The frame loop must not allocate, so the option records the APIs read are
 	// filled in place. They also document, in one place, which fields matter.
 	const layoutOpts = { kind: 'view', w: 0, h: 0, fovY: 0, aspect: 1, basis: null, spanDeg: 360, quat: null, mirror: true };
-	const fieldOpts = { mode: 'height', sigmaDeg: 3, spreadRefKpc: 0.2, gradSpanDeg: 14 };
+	const fieldOpts = { mode: 'height', sigmaDeg: 3 };
 	const paintOpts = {
 		mode: 'height', rect: null, positions: null, eye: null, set: null, viewBox: null,
 		drawContours: false, contourLevels: 10, drawGrid: false, drawNames: false,
@@ -168,6 +275,7 @@
 		state.lastFrameMs = nowMs;
 		if (dt > 0) state.fps = state.fps ? state.fps * 0.9 + (1 / dt) * 0.1 : 1 / dt;
 		if (state.starTimeRate > 0 && dt > 0) state.starTimeMyr += dt * state.starTimeRate;
+		state.pickClock += dt;
 
 		// One texel must be the same angle in x and y — the gradient mode divides
 		// by the texel angle, and a stretched map is a stretched world.
@@ -182,19 +290,16 @@
 			drawReadout();
 			return;
 		}
-		if (state.setDirty || !state.set) rebuildStarSet();
+
+		advanceIndex(dt);
+		if (needPick()) pickAnchors();
 		if (!state.set || !state.set.n) { drawReadout('no anchor stars: pick another source'); return; }
-
-		if (state.starTimeMyr !== 0) Field.advancePositions(state.set, state.cur, state.starTimeMyr, state.model);
-
-		state.rangeClock += dt;
-		if (state.autoRange && state.rangeClock > 0.25) { state.rangeClock = 0; refreshRange(); }
-		const stars = Field.prepareStars(state.cur, state.set.n, state.pos[0], state.pos[1], state.pos[2], state.scale);
+		Field.advancePositions(state.set, state.cur, state.starTimeMyr, state.model);
 
 		const budget = PAIRS_BUDGET[state.budget] || PAIRS_BUDGET.balanced;
 		const aspect = iw / Math.max(1, ih);
 		let h = state.resH ? Math.max(16, Math.min(512, state.resH | 0))
-			: Field.autoResolution(budget, stars.n || 1, aspect);
+			: Field.autoResolution(budget, state.set.n || 1, aspect);
 		let w = Math.max(16, Math.min(1024, Math.round(h * aspect / 8) * 8));
 		updateChartQuat();
 		// A chart wider in latitude than the window can hold keeps its
@@ -220,15 +325,33 @@
 			lo.fovY = state.fovYDeg * Field.DEG; lo.aspect = aspect; lo.basis = state.basis;
 		}
 		Field.createLayout(state.layout, lo);
-		if (!state.field || state.field.length < w * h) state.field = new Float32Array(w * h);
+		if (!state.raw || state.raw.length < w * h) {
+			state.raw = new Float32Array(w * h);
+			state.field = new Float32Array(w * h);
+		}
+		const nTexels = w * h;
 
+		const stars = Field.prepareStars(state.cur, state.set.n, state.pos[0], state.pos[1], state.pos[2]);
+		state.rangeClock += dt;
+		// The range suggestion is only read a few times a second; the field is
+		// rebuilt every frame. Asking computeRaw for the histogram every frame
+		// would spend milliseconds on numbers nobody reads.
+		const measure = state.autoRange && (state.rangeClock >= RANGE_PERIOD || state.liveMode !== state.mode);
 		fieldOpts.mode = state.mode;
 		fieldOpts.sigmaDeg = state.sigmaDeg;
-		fieldOpts.spreadRefKpc = state.spreadRefPc / 1000;
-		fieldOpts.gradSpanDeg = state.gradSpanDeg;
+		fieldOpts.measure = measure;
 		const t0 = performance.now();
-		Field.computeField(stars, state.layout, fieldOpts, state.field, state.stats);
+		Field.computeRaw(stars, state.layout, fieldOpts, state.raw, state.stats);
 		state.fieldMs = performance.now() - t0;
+
+		if (state.autoRange) {
+			if (measure) { state.rangeClock = 0; refreshAutoRange(); }
+		} else {
+			const r = manualRange();
+			state.live.lo = r.lo; state.live.hi = r.hi;
+			state.liveMode = state.mode;
+		}
+		Field.applyRange(state.raw, nTexels, state.mode, state.live, state.field);
 
 		const po = paintOpts;
 		po.mode = state.mode;
@@ -248,6 +371,7 @@
 		Renderer.renderField(ctx, state.field, state.layout, po);
 		drawLegend();
 		drawReadout();
+		if (state.rangeClock === 0) syncRangeUI();
 	}
 
 	// The four corner rays of the app window: the dashed box that says "this is
@@ -276,30 +400,56 @@
 		return kpc.toFixed(1) + ' kpc';
 	}
 
+	function fmtSlope(dexPerDeg) {
+		if (!(dexPerDeg > 0) || !Number.isFinite(dexPerDeg)) return '—';
+		if (dexPerDeg >= 0.01) return dexPerDeg.toFixed(3) + ' dex/°';
+		return dexPerDeg.toPrecision(2) + ' dex/°';
+	}
+
+	// One formatter for both the legend and the sliders: the value is in the
+	// mode's log10 unit.
+	function fmtRangeValue(mode, logValue) {
+		const v = Math.pow(10, logValue);
+		return mode === 'gradient' ? fmtSlope(v) : fmtDist(v);
+	}
+
+	// The legend is 260 px wide at 11 px monospace (~6.5 px a glyph): every line
+	// below stays under ~38 characters so nothing is clipped at the canvas edge.
+	// The readout keeps the long version.
 	function drawLegend() {
 		const s = state.stats;
+		const live = state.live;
 		const opts = {};
+		const anchors = `${state.set.n} anchors (${state.set.source})`;
+		const how = state.autoRange ? 'auto' : 'manual';
 		if (state.mode === 'height') {
-			const near = fmtDist(Math.pow(10, state.scale.lo));
-			opts.title = `mode 1 · distance from the eye — ${state.set.n} anchors (${state.set.source})`;
-			opts.low = 'far ' + fmtDist(Math.pow(10, state.scale.hi));
-			opts.high = 'close ' + near;
-			opts.note = `Shepard IDW p=2, σ ${state.sigmaDeg}°, log ${near}…${fmtDist(Math.pow(10, state.scale.hi))}`;
-			opts.note2 = state.autoRange ? 'range auto · re-read every 0.25 s' : 'range frozen · colours comparable across frames';
+			opts.title = 'mode 1 · distance from eye';
+			// Height's range lo is the NEAR end (small log distance) and hi the
+			// far one, because the raw value is log distance and the ramp is
+			// inverted: far is the bottom colour.
+			opts.low = 'far ' + fmtDist(Math.pow(10, live.hi));
+			opts.high = 'close ' + fmtDist(Math.pow(10, live.lo));
+			opts.note = `${anchors} · IDW σ ${state.sigmaDeg}°`;
+			opts.note2 = `${how} range · log10 of the distance`;
 		} else if (state.mode === 'spread') {
-			opts.title = `mode 2 · depth spread — ${state.set.n} anchors`;
-			opts.low = '0 (flat sky)';
-			opts.high = `≥ ${fmtDist(state.spreadRefPc / 1000)}`;
-			opts.note = 'σ of |star−eye| in the same direction: a ridge is a 2-D shortcut over a 3-D detour';
-			opts.note2 = `peak ${fmtDist(s.spreadMax)} · half-cost at ${fmtDist(state.spreadRefPc / 1000)}`;
+			opts.title = 'mode 2 · depth spread';
+			opts.low = 'flat ≤ ' + fmtDist(Math.pow(10, live.lo));
+			opts.high = '≥ ' + fmtDist(Math.pow(10, live.hi));
+			opts.note = `${anchors} · peak ${fmtDist(s.spreadMax)}`;
+			opts.note2 = `${how} range · log σ of |star−eye|`;
 		} else {
-			opts.title = `mode 3 · |∇ mode 1| — ${state.set.n} anchors`;
-			opts.low = 'flat';
-			opts.high = 'full range / ' + state.gradSpanDeg + '°';
-			opts.note = 'the gradient of the height field: how fast the distance ramp climbs per degree of sky';
-			opts.note2 = `field ${s.vMin.toFixed(2)}…${s.vMax.toFixed(2)}`;
+			opts.title = 'mode 3 · slope of log distance';
+			opts.low = 'flat ≤ ' + fmtRangeValue('gradient', live.lo);
+			opts.high = '≥ ' + fmtRangeValue('gradient', live.hi);
+			opts.note = `${anchors}`;
+			opts.note2 = `${how} range · log · no hard top`;
 		}
 		Renderer.renderLegend(ctx, state.mode, opts);
+	}
+
+	function anchorSource() {
+		if (!state.model || !state.model.milkyWay) return 'sampled sky';
+		return state.sourceN === 0 ? 'constellations' : state.sourceN + ' nearest';
 	}
 
 	function drawReadout(err) {
@@ -307,24 +457,40 @@
 		const b = state.basis, p = state.pos;
 		const yaw = Math.atan2(b.fy, b.fx) / Field.DEG;
 		const pitch = Math.asin(Math.max(-1, Math.min(1, b.fz))) / Field.DEG;
+		let rangeLine;
+		if (state.mode === 'height') {
+			rangeLine = `${state.autoRange ? 'auto' : 'manual'} log · near ${fmtDist(Math.pow(10, state.live.lo))}`
+				+ ` … far ${fmtDist(Math.pow(10, state.live.hi))}`;
+		} else if (state.mode === 'spread') {
+			rangeLine = `${state.autoRange ? 'auto' : 'manual'} log · flat ${fmtDist(Math.pow(10, state.live.lo))}`
+				+ ` … deep ${fmtDist(Math.pow(10, state.live.hi))}`;
+		} else if (state.mode === 'gradient') {
+			rangeLine = `${state.autoRange ? 'auto' : 'manual'} log · flat ${fmtRangeValue('gradient', state.live.lo)}`
+				+ ` … steep ${fmtRangeValue('gradient', state.live.hi)}`;
+		} else {
+			rangeLine = 'off';
+		}
 		let cursor = '';
-		if (state.pointer.inside && state.field && state.layout.w) {
-			Field.heightAt(state.field, state.layout, state.pointer.u, state.pointer.v, state.read);
-			const v = state.read.height;
+		if (state.pointer.inside && state.raw && state.layout.w) {
+			const u = state.pointer.u, v = state.pointer.v;
+			Field.heightAt(state.raw, state.layout, u, v, state.read);
+			Field.heightAt(state.field, state.layout, u, v, state.readPaint);
+			const raw = state.read.height;
 			let what;
-			if (state.mode === 'height') what = '≈ ' + fmtDist(Field.distanceAtHeight(state.scale, v));
-			else if (state.mode === 'spread') what = 'depth σ ≈ ' + fmtDist(v * state.spreadRefPc / 1000 / Math.max(1e-3, 1 - v));
-			else what = `slope ${(v * state.gradSpanDeg).toFixed(1)}° per range`;
-			cursor = `\ncursor: h ${v.toFixed(3)}  ${what}`;
+			if (state.mode === 'height') what = `≈ ${fmtDist(Math.pow(10, raw))}`;
+			else if (state.mode === 'spread') what = `depth σ ≈ ${fmtDist(raw)}`;
+			else what = `slope ≈ ${fmtSlope(raw)}`;
+			cursor = `\ncursor: ${what}  (painted ${state.readPaint.height.toFixed(3)})`;
 		}
 		readout.textContent =
 			`projection: ${state.projection === 'plane'
 				? `plane chart · ${state.chartSpanDeg | 0}° span${state.followLook ? ' · follows look' : ''}`
 				: `view sphere · ${state.fovYDeg | 0}° vertical FoV`}\n`
-			+ `source: ${state.sourceN === 0 ? 'constellations' : state.sourceN + ' nearest'} · ${state.set ? state.set.n : 0} anchors (${state.set ? state.set.source : '—'})\n`
+			+ `source: ${anchorSource()} · ${state.set ? state.set.n : 0} anchors (${state.set ? state.set.source : '—'})\n`
 			+ `eye: (${p[0].toFixed(3)}, ${p[1].toFixed(3)}, ${p[2].toFixed(3)}) kpc · look ${yaw.toFixed(1)}° / ${pitch.toFixed(1)}°\n`
 			+ `galaxy: ${state.model.type} #${state.model.seed}${state.model.milkyWay ? ' (catalog)' : ' (procedural)'}\n`
 			+ `star time: ${state.starTimeMyr.toFixed(1)} Myr (${OrbitLib.formatTimeRate(state.starTimeRate, 0)}) · engine ${OrbitLib.engineName()}\n`
+			+ `range: ${rangeLine}\n`
 			+ `field ${state.layout.w}×${state.layout.h} · ${(state.stats.pairs / 1e6).toFixed(2)} M pairs · ${state.fieldMs.toFixed(1)} ms · ${state.fps.toFixed(0)} fps`
 			+ cursor;
 	}
@@ -332,10 +498,9 @@
 	// ---- input ------------------------------------------------------------
 
 	let drag = null;
-	const grabbed = new Float64Array(3);
-	const reached = new Float64Array(3);
-	const tmpQuat = new Float64Array(4);
-	const tmpQuat2 = new Float64Array(4);
+	const grabbedRay = new Float64Array(3);
+	const reachedRay = new Float64Array(3);
+	const dragStartQuat = new Float64Array(4);
 
 	// Pointer → the *map's* UV, so the cursor readout, the chart drag and the
 	// field agree even when a latitude-limited chart is letterboxed in the window.
@@ -355,14 +520,31 @@
 		return out;
 	}
 
+	// The pointer's ray in the chart's own frame. It must be built from the same
+	// span the layout uses, but *not* from the layout's cached quaternion: the
+	// pan writes a new chartQuat on every pointermove, and a ray read back from
+	// a one-frame-old layout is how the old drag composed the arc against the
+	// wrong rotation and accelerated.
+	function chartRayAt(u, v, out) {
+		const spanX = state.chartSpanDeg * Field.DEG;
+		const lay = state.layout;
+		const spanY = lay.w ? spanX * lay.h / lay.w : spanX * (canvas.height / Math.max(1, canvas.width));
+		return Field.chartDirAt(out, u, v, spanX, spanY, state.mirrorChart);
+	}
+
 	canvas.addEventListener('pointerdown', (ev) => {
 		canvas.setPointerCapture(ev.pointerId);
 		pointerUV(ev, state.pointer);
-		drag = { x: ev.clientX, y: ev.clientY, move: ev.shiftKey || ev.button === 1 };
-		// A chart grab pins a *ray*, not a texel: the map then rotates so that ray
-		// follows the pointer (planet-geotectonics MapView.drag).
-		if (state.projection === 'plane' && !drag.move) {
-			Field.dirAt(state.layout, state.pointer.u * state.layout.w - 0.5, state.pointer.v * state.layout.h - 0.5, grabbed);
+		const move = ev.shiftKey || ev.button === 1;
+		drag = { x: ev.clientX, y: ev.clientY, move };
+		// A chart grab pins a *ray*, not a texel (planet-geotectonics
+		// MapView.drag). The pressed map direction and the chart quaternion at
+		// press are all the pan needs; from those every move is one exact
+		// composition, so many small moves cannot drift.
+		if (state.projection === 'plane' && !move) {
+			dragStartQuat[0] = state.chartQuat[0]; dragStartQuat[1] = state.chartQuat[1];
+			dragStartQuat[2] = state.chartQuat[2]; dragStartQuat[3] = state.chartQuat[3];
+			chartRayAt(state.pointer.u, state.pointer.v, grabbedRay);
 		}
 	});
 	canvas.addEventListener('pointermove', (ev) => {
@@ -396,37 +578,25 @@
 		state.pos[0] += (b.rx * -dx + b.ux * dy) * k;
 		state.pos[1] += (b.ry * -dx + b.uy * dy) * k;
 		state.pos[2] += (b.rz * -dx + b.uz * dy) * k;
-		markMoved();
 	}
 
-	// Panning the chart: q' = q * arc(grabbed → ray now under the pointer), which
-	// is the solve for "keep the grabbed world ray pinned under the pointer"
-	// (the chart maps world→map with q, and dirAt maps map→world with q⁻¹). The
-	// grabbed ray never changes during a drag, so many small steps cannot drift.
+	// q' = arc(e₀ → e₁) · q₀, both rays in the chart frame. The pressed sky
+	// point stays under the pointer because the chart maps a world ray w to
+	// q·w, so (arc·q)⁻¹·e₁ = q⁻¹·e₀ — exact for any starting rotation, and
+	// returning to the press pixel restores the original chart.
 	function panChart() {
 		if (!state.layout.w) return;
-		Field.dirAt(state.layout, state.pointer.u * state.layout.w - 0.5,
-			state.pointer.v * state.layout.h - 0.5, reached);
-		Field.quatArc(tmpQuat, grabbed[0], grabbed[1], grabbed[2], reached[0], reached[1], reached[2]);
-		Field.quatMul(tmpQuat2, tmpQuat, state.chartQuat);
-		Field.quatNormalize(state.chartQuat, tmpQuat2);
-		setFollowLook(false);
+		chartRayAt(state.pointer.u, state.pointer.v, reachedRay);
+		Field.quatDrag(state.chartQuat, dragStartQuat,
+			grabbedRay[0], grabbedRay[1], grabbedRay[2],
+			reachedRay[0], reachedRay[1], reachedRay[2]);
+		if (state.followLook) setFollowLook(false);
 	}
 
 	function setFollowLook(on) {
 		state.followLook = on;
 		const cb = $('check-follow');
 		if (cb) cb.checked = on;
-	}
-
-	// Re-pick the nearest-N only when the eye has moved a real fraction of the
-	// set's radius: catalog decoding is cheap but not free, and a jittering
-	// selection is worse than one that lags a step.
-	function markMoved() {
-		const c = state.pos, p = state.lastPick;
-		const d = Math.hypot(c[0] - p[0], c[1] - p[1], c[2] - p[2]);
-		if (state.sourceN > 0 && d > 0.01) state.setDirty = true;
-		if (state.autoRange) refreshRange();
 	}
 
 	canvas.addEventListener('wheel', (ev) => {
@@ -436,7 +606,6 @@
 			const b = state.basis;
 			const k = state.moveStepPc / 1000 * 2 * f;
 			state.pos[0] += b.fx * k; state.pos[1] += b.fy * k; state.pos[2] += b.fz * k;
-			markMoved();
 			return;
 		}
 		if (state.projection === 'plane') {
@@ -476,8 +645,52 @@
 		});
 	}
 
+	// The two manual range sliders are log10 values; moving one takes the page
+	// out of auto so the change cannot be overwritten by the next 4 Hz read.
+	function bindRangeSlider(id, valId, which) {
+		const el = $(id), vEl = $(valId);
+		el.addEventListener('input', () => {
+			const v = parseFloat(el.value);
+			if (!Number.isFinite(v)) return;
+			if (state.autoRange) { freezeRange(); setAutoRange(false); }
+			const r = manualRange();
+			r[which] = v;
+			if (r.hi <= r.lo) {
+				if (which === 'lo') r.hi = r.lo + 0.05;
+				else r.lo = r.hi - 0.05;
+			}
+			vEl.textContent = fmtRangeValue(state.mode, r[which]);
+			syncRangeUI();
+		});
+		vEl.textContent = fmtRangeValue(state.mode, parseFloat(el.value) || 0);
+	}
+
+	function syncRangeUI() {
+		const lo = $('slider-range-lo'), hi = $('slider-range-hi');
+		if (!lo || !hi) return;
+		const near = state.mode === 'height';
+		const loLabel = $('label-range-lo'), hiLabel = $('label-range-hi');
+		if (loLabel) loLabel.textContent = near ? 'Near' : 'Range lo';
+		if (hiLabel) hiLabel.textContent = near ? 'Far' : 'Range hi';
+		const r = state.autoRange ? state.live : manualRange();
+		lo.value = r.lo.toFixed(2);
+		hi.value = r.hi.toFixed(2);
+		lo.disabled = state.autoRange;
+		hi.disabled = state.autoRange;
+		const loVal = $('val-range-lo'), hiVal = $('val-range-hi');
+		if (loVal) loVal.textContent = fmtRangeValue(state.mode, r.lo);
+		if (hiVal) hiVal.textContent = fmtRangeValue(state.mode, r.hi);
+	}
+
+	function onModeChange(mode) {
+		state.mode = mode;
+		if (!state.autoRange) manualRange();
+		state.rangeClock = RANGE_PERIOD;   // force a fresh range read next frame
+		syncRangeUI();
+	}
+
 	function bindUI() {
-		bindRadios('view-mode', (v) => { state.mode = v; });
+		bindRadios('view-mode', onModeChange);
 		bindRadios('projection', (v) => { state.projection = v; });
 		bindRadios('budget', (v) => { state.budget = v; state.resH = 0; });
 		bindSlider('slider-source', 'val-source',
@@ -488,12 +701,12 @@
 			(v) => { state.starTimeRate = v; });
 		// step 0.5, so the label must not floor the value.
 		bindSlider('slider-sigma', 'val-sigma', (v) => `${v}°`, (v) => { state.sigmaDeg = v; });
-		bindSlider('slider-spread', 'val-spread', (v) => fmtDist(v / 1000), (v) => { state.spreadRefPc = v; });
-		bindSlider('slider-grad', 'val-grad', (v) => `${v | 0}°`, (v) => { state.gradSpanDeg = v; });
 		bindSlider('slider-fov', 'val-fov', (v) => `${v | 0}°`, (v) => { state.fovYDeg = v; });
 		bindSlider('slider-span', 'val-span', (v) => `${v | 0}°`, (v) => { state.chartSpanDeg = v; });
 		bindSlider('slider-move', 'val-move', (v) => `${v | 0} pc`, (v) => { state.moveStepPc = v; });
 		bindSlider('slider-res', 'val-res', (v) => v === 0 ? 'auto' : `${v | 0} px`, (v) => { state.resH = v | 0; });
+		bindRangeSlider('slider-range-lo', 'val-range-lo', 'lo');
+		bindRangeSlider('slider-range-hi', 'val-range-hi', 'hi');
 		bindCheck('check-contours', (v) => { state.contours = v; });
 		bindCheck('check-grid', (v) => { state.grid = v; });
 		bindCheck('check-stars', (v) => { state.drawStars = v; });
@@ -501,16 +714,18 @@
 		bindCheck('check-invert', (v) => { state.invert = v; });
 		bindCheck('check-smooth', (v) => { state.smooth = v; });
 		bindCheck('check-follow', (v) => { state.followLook = v; if (v) updateChartQuat(); });
-		bindCheck('check-auto-range', (v) => { state.autoRange = v; refreshRange(); });
+		bindCheck('check-auto-range', (v) => { if (!v) freezeRange(); setAutoRange(v); });
 		bindCheck('check-mirror', (v) => { state.mirrorChart = v; });
 		$('btn-home').addEventListener('click', () => {
 			const home = state.model.home;
 			state.pos[0] = home.position[0]; state.pos[1] = home.position[1]; state.pos[2] = home.position[2];
 			state.pose[0] = 0; state.pose[1] = 0; state.pose[2] = 0; state.pose[3] = 1;
 			state.starTimeMyr = 0;
+			state.indexTime = 0;
+			state.indexClock = 0;
+			state.setDirty = true;
 			updateBasis();
 			updateChartQuat();
-			state.setDirty = true;
 		});
 		$('galaxy-apply').addEventListener('click', () => {
 			const s = parseInt($('galaxy-seed').value, 10);
@@ -518,8 +733,9 @@
 			state.galaxyType = ($('galaxy-type').value || 'SBb');
 			state.starTimeMyr = 0;
 			buildModel();
-			rebuildStarSet();
+			pickAnchors();
 		});
+		syncRangeUI();
 	}
 
 	// ---- boot -------------------------------------------------------------
@@ -542,8 +758,17 @@
 		OrbitLib.setEngine('classic');
 		buildModel();
 		updateBasis();
-		rebuildStarSet();
 		updateChartQuat();
+		// The whole catalog is decoded once at boot; every nearest-N query after
+		// this reads flat arrays. ~8 ms, and it is what makes re-picking per eye
+		// move cheap.
+		if (state.catalog) {
+			state.index = Field.createCatalogIndex(state.catalog);
+			state.indexCur = new Float64Array(state.index.n * 3);
+		}
+		state.pickSet = Field.createSet(Field.MAX_STARS);
+		state.cur = new Float64Array(Field.MAX_STARS * 3);
+		pickAnchors();
 		bindUI();
 		// The one window into the page, for experiments/view-modes-page-check.js
 		// (and the console): the harness has to know which layout the page actually

@@ -15,19 +15,23 @@
 //               view quaternion the way planet-geotectonics pans its map: no
 //               latitude clamp, longitude wraps freely.
 //
-// Heights (both modes come out of ONE pass over the stars; no diffusion, no
-// blur):
+// The field is computed as a *physical* scalar (one pass over the stars; no
+// diffusion, no blur) and a display range maps it onto the painter's 0..1:
 //
 //   * 'height'   — mode 1. Shepard (inverse-distance-weighted) mean of the
-//                  stars' own height, 0 = far, 1 = close, where a star's height
-//                  is a LOG map of |star − camera| against a distance range. Log
-//                  because the anchors span 5 pc to 800 pc: a linear ramp puts
+//                  anchors' log10 distance from the eye (kpc): smooth, and log
+//                  because the anchors span 5 pc to 800 pc — a linear ramp puts
 //                  every real star within a few percent of the same colour.
-//   * 'spread'   — mode 2. Weighted standard deviation of |star − camera| over
-//                  the same neighbourhood: the hidden depth between stars that
-//                  look adjacent. A ridge means a 2-D shortcut is a 3-D detour.
-//   * 'gradient' — |∇height| of mode 1, the literal reading of "mode 2 is the
-//                  gradient of mode 1".
+//   * 'spread'   — mode 2. Weighted standard deviation of |star − eye| (kpc)
+//                  over the same neighbourhood: the hidden depth between stars
+//                  that look adjacent. A ridge means a 2-D shortcut is a 3-D
+//                  detour.
+//   * 'gradient' — mode 3. |∇ log10 d| in dex of distance per degree of sky:
+//                  the derivative of mode 1, quoted in a real unit, so it has
+//                  no hard top to clump against.
+//
+// The range (see "display range" below) is what turns any of the three into a
+// colour; the field itself never renormalizes after smoothing.
 //
 // Weights are angular: w = 1 / (sin²δ + sin²σ), δ = the angle between the texel
 // ray and the star, σ = the softening (a star's hill half-width). Two things
@@ -131,6 +135,23 @@
 		return out;
 	}
 
+	// The drag law of planet-geotectonics' MapView: q' = arc(a → b) · q, where a
+	// and b are *chart-local* directions (chartDirAt). The chart maps a world ray
+	// w to map space as q·w, so the ray under pixel p is q⁻¹·e(p); substituting
+	// q' gives (arc·q)⁻¹·e₁ = q⁻¹·e₀ — the sky point pressed stays under the
+	// pointer exactly, without an incremental Euler step to drift.
+	//
+	// Composing the same arc from *world* rays (q⁻¹·e) instead only pins the
+	// press while q is the identity: once the chart is rotated, the arc is
+	// applied in the wrong frame and the map both lags and accelerates.
+	const dragArc = new Float64Array(4);
+	const dragTmp = new Float64Array(4);
+	function quatDrag(out, q, ax, ay, az, bx, by, bz) {
+		quatArc(dragArc, ax, ay, az, bx, by, bz);
+		quatMul(dragTmp, dragArc, q);
+		return quatNormalize(out, dragTmp);
+	}
+
 	// Bit-exact twin of core/camera.js updateBasis: the rotation matrix columns
 	// are the images of the local axes and the camera's right axis is -Y, so
 	// `right` is the negated second column. Deriving an up vector from "galactic
@@ -148,10 +169,27 @@
 		return out;
 	}
 
-	// ---- log height scale -------------------------------------------------
+	// ---- display range ----------------------------------------------------
+	//
+	// Every mode produces a raw scalar with a physical unit, and one range maps
+	// it onto the 0..1 the painter's ramp expects:
+	//
+	//   mode      raw                          lo / hi domain (log10 unless noted)
+	//   height    L = log10(d / kpc)           log10(kpc), hi is the NEAR end
+	//   spread    σ of |star − eye| in kpc     log10(kpc)
+	//   gradient  |∇L| in dex per degree       log10(dex/deg)
+	//
+	// Height is already logarithmic, so its range is a plain window on L; the
+	// other two span orders of magnitude (pc to kpc, 1e-5 to 1 dex/°) and are
+	// mapped through log10. Neither auto range nor a manual one re-stretches the
+	// field after smoothing — the bounds are declared in the legend, which is
+	// what keeps the colour a measurement rather than an adaptive paint.
 
-	// v = 1 at dMin (close), 0 at dMax (far), log10 in between. One pair of
-	// functions, so the field, the legend and the readout cannot disagree.
+	const RANGE_FLOOR = 1e-6;         // 0.001 pc / 1 µdex per degree: a log floor
+	const SIGMA_DEG = 3;              // the default hill half-width, see computeField
+
+	// 1 at dMin (close), 0 at dMax (far), log10 in between: the anchor-derived
+	// auto range of mode 1.
 	function makeScale(out, dMin, dMax) {
 		out.lo = Math.log10(Math.max(MIN_DIST_KPC, dMin));
 		out.hi = Math.max(out.lo + 1, Math.log10(Math.max(dMax, MIN_DIST_KPC)));
@@ -165,7 +203,58 @@
 		return Math.pow(10, scale.lo + (1 - clamp(v, 0, 1)) * scale.span);
 	}
 
-	const SIGMA_DEG = 3;              // the default hill half-width, see computeField
+	// One raw value → 0..1. Height is inverted (the near end is the top of the
+	// ramp); the other modes climb with the raw value.
+	function rangeValue(mode, raw, range) {
+		const span = range.hi - range.lo;
+		if (!(span > 0)) return 0;
+		if (mode === 'height') return clamp((range.hi - raw) / span, 0, 1);
+		const u = Math.log10(raw > RANGE_FLOOR ? raw : RANGE_FLOOR);
+		return clamp((u - range.lo) / span, 0, 1);
+	}
+
+	function applyRange(raw, count, mode, range, out) {
+		const span = range.hi - range.lo;
+		const inv = span > 0 ? 1 / span : 0;
+		if (mode === 'height') {
+			for (let i = 0; i < count; i++) out[i] = clamp((range.hi - raw[i]) * inv, 0, 1);
+			return out;
+		}
+		const lo = range.lo;
+		for (let i = 0; i < count; i++) {
+			const v = raw[i];
+			const u = Math.log10(v > RANGE_FLOOR ? v : RANGE_FLOOR);
+			out[i] = clamp((u - lo) * inv, 0, 1);
+		}
+		return out;
+	}
+
+	// The [lo, hi] a finished computeRaw pass suggests. Mode 1 spans the log
+	// distances the field actually takes — so the near end is 1 and the far end
+	// 0, and a set whose stars are all inside 100 pc uses the whole ramp instead
+	// of a forced decade (the "range is very big, nothing shows" look). Modes 2
+	// and 3 read the 5th/95th percentile of the log histogram, which keeps the
+	// near-zero half of a depth or slope map from eating the ramp.
+	function autoRange(mode, stats, out) {
+		let a, b;
+		if (mode === 'height') {
+			a = stats.rawLo; b = stats.rawHi;
+			if (!(b > a)) { a = Math.log10(Math.max(MIN_DIST_KPC, stats.dMin || MIN_DIST_KPC)); b = a + 0.3; }
+		} else {
+			a = stats.autoLo; b = stats.autoHi;
+			if (!(b > a)) { a = stats.rawLo; b = a + 0.3; }
+		}
+		const pad = 0.04 * (b - a) + 0.02;
+		out.lo = a - pad;
+		out.hi = b + pad;
+		if (out.hi - out.lo < 0.3) {
+			const c = (out.lo + out.hi) * 0.5;
+			out.lo = c - 0.15;
+			out.hi = c + 0.15;
+		}
+		out.span = out.hi - out.lo;
+		return out;
+	}
 
 	// ---- layout: texel <-> ray -------------------------------------------
 	//
@@ -218,21 +307,31 @@
 		return out;
 	}
 
+	// A chart pixel's ray in the chart's own frame, *before* the pan quaternion.
+	// u, v ∈ [0, 1] across the map, v down; spans in radians. dirAt composes it
+	// with quatInv; a drag takes the arc between two of these (chartDirAt +
+	// quatDrag), which is the only frame in which pinning the pressed sky point
+	// works for a rotated chart.
+	function chartDirAt(out, u, v, spanX, spanY, mirror) {
+		const lon = (mirror ? -(u - 0.5) : (u - 0.5)) * spanX;
+		// A window taller than the sky saturates at the poles instead of
+		// folding the far hemisphere back over them.
+		let lat = (0.5 - v) * spanY;
+		if (lat > HALF_PI) lat = HALF_PI; else if (lat < -HALF_PI) lat = -HALF_PI;
+		const c = Math.cos(lat);
+		out[0] = c * Math.cos(lon); out[1] = c * Math.sin(lon); out[2] = Math.sin(lat);
+		return out;
+	}
+
 	// Unit ray of texel (px, py) into `out` (Float64Array 3).
 	function dirAt(layout, px, py, out) {
+		if (layout.kind === 'plane') {
+			chartDirAt(layout.e, (px + 0.5) / layout.w, (py + 0.5) / layout.h,
+				layout.spanX, layout.spanY, layout.mirrorLon);
+			return quatApply(out, layout.e[0], layout.e[1], layout.e[2], layout.quatInv);
+		}
 		const u = (px + 0.5) / layout.w - 0.5;
 		const v = 0.5 - (py + 0.5) / layout.h;
-		if (layout.kind === 'plane') {
-			const e = layout.e;
-			const lon = (layout.mirrorLon ? -u : u) * layout.spanX;
-			// A window taller than the sky saturates at the poles instead of
-			// folding the far hemisphere back over them.
-			let lat = v * layout.spanY;
-			if (lat > HALF_PI) lat = HALF_PI; else if (lat < -HALF_PI) lat = -HALF_PI;
-			const c = Math.cos(lat);
-			e[0] = c * Math.cos(lon); e[1] = c * Math.sin(lon); e[2] = Math.sin(lat);
-			return quatApply(out, e[0], e[1], e[2], layout.quatInv);
-		}
 		// Gnomonic: the exact inverse of the app's perspective divide, so a star
 		// at NDC (a, b) lands on texel (a, b) of this field.
 		const b = layout.basis;
@@ -292,20 +391,20 @@
 	const stars = {
 		cap: 0, n: 0,
 		dirX: null, dirY: null, dirZ: null,   // unit camera -> star
-		h: null,                              // normalized height (mode 1 input)
+		l: null,                              // log10(distance / kpc) (modes 1, 3)
 		d: null, d2: null,                    // distance, squared (mode 2 input)
 		dMin: 0, dMax: 0,
 	};
 
 	// Fills the module's scratch star set and returns it. A star at the eye is
 	// dropped: its direction is undefined and its hill would cover the sky.
-	function prepareStars(positions, count, camX, camY, camZ, scale) {
+	function prepareStars(positions, count, camX, camY, camZ) {
 		const nMax = Math.min(count, MAX_STARS);
 		if (stars.cap < nMax) {
 			const cap = Math.max(nMax, 64);
 			stars.cap = cap;
 			stars.dirX = new Float64Array(cap); stars.dirY = new Float64Array(cap); stars.dirZ = new Float64Array(cap);
-			stars.h = new Float32Array(cap); stars.d = new Float32Array(cap); stars.d2 = new Float32Array(cap);
+			stars.l = new Float32Array(cap); stars.d = new Float32Array(cap); stars.d2 = new Float32Array(cap);
 		}
 		let dMin = Infinity, dMax = -Infinity, n = 0;
 		for (let i = 0; i < nMax; i++) {
@@ -317,6 +416,7 @@
 			const inv = 1 / d;
 			stars.dirX[n] = dx * inv; stars.dirY[n] = dy * inv; stars.dirZ[n] = dz * inv;
 			stars.d[n] = d; stars.d2[n] = d * d;
+			stars.l[n] = Math.log10(d > MIN_DIST_KPC ? d : MIN_DIST_KPC);
 			if (d < dMin) dMin = d;
 			if (d > dMax) dMax = d;
 			n++;
@@ -324,55 +424,89 @@
 		stars.n = n;
 		stars.dMin = n ? dMin : 0;
 		stars.dMax = n ? dMax : 0;
-		for (let i = 0; i < n; i++) stars.h[i] = scale ? heightOfDistance(scale, stars.d[i]) : 0.5;
 		return stars;
 	}
 
 	// ---- the field ---------------------------------------------------------
 	//
+	// `computeRaw` writes the physical scalar (see the range section) and fills
+	// `stats`; `applyRange` turns it into the painter's 0..1 through the range.
+	// The page keeps the two apart because its auto range follows the data at
+	// 4 Hz while the field itself follows star time every frame — applying a
+	// fresh auto range to every frame is the flicker view-modes.1 removed.
+	//
 	// opts: {
-	//   mode:        'height' | 'spread' | 'gradient'
-	//   sigmaDeg:    IDW hill half-width in degrees (default 3). The weight is
-	//                1/(sin²δ + sin²σ), so σ is the angle at which a star's hill
-	//                has halved: a wide σ means a star's own texel reads well
-	//                below its true height because its neighbours average it down
-	//                (10° left the whole map inside 0.35…0.75 and the near half of
-	//                the ramp unused), which is the flat look this feature must not
-	//                have. 3° keeps 90% of the peak while still blending figures.
-	//   spreadRefKpc: mode 2's half-cost depth (default 0.2)
-	//   gradSpanDeg: mode 3 — this angle spans the full height range (default 14)
+	//   mode:     'height' | 'spread' | 'gradient'
+	//   sigmaDeg: IDW hill half-width in degrees (default 3). The weight is
+	//             1/(sin²δ + sin²σ), so σ is the angle at which a star's hill
+	//             has halved: a wide σ means a star's own texel blends more with
+	//             its neighbours (10° halves the field's log-distance span) and
+	//             the map reads flatter. 3° keeps 94% of the nearest anchor's
+	//             peak on a chart while still joining the figures.
+	//   measure:  false skips the range suggestion (the histogram / raw min-max);
+	//             the field itself is unaffected. The page asks for it at 4 Hz.
+	//   range:    applyRange's [lo, hi] for computeField's one-shot path.
 	// }
-	// stats (mutated, never allocated): { pairs, vMin, vMax, spreadMax, dMin,
-	//                                    dMax, empty }
-	const fieldScratch = { dir: new Float64Array(3), grid: null, hit: { x: 0, y: 0, inside: false } };
+	// stats (mutated, never allocated): { pairs, rawLo, rawHi, autoLo, autoHi,
+	//   spreadMax, dMin, dMax, empty } — autoLo/Hi are this pass's suggested
+	//   log-range bounds; autoRange() owns their final padding.
+	const fieldScratch = { dir: new Float64Array(3), grid: null, raw: null, range: null };
 	let orbitScratch = null;   // the position out-vec of the orbit dispatch
+	let scaleScratch = null;
 
-	function computeField(starsIn, layout, opts, out, stats) {
-		const w = layout.w, h = layout.h;
-		if (!out || out.length < w * h) out = new Float32Array(w * h);
+	const LOG_BINS = 64;
+	const logHist = new Uint32Array(LOG_BINS);
+	let histLo = 0, histW = 1;
+
+	function fieldBuffer(which, size) {
+		const cur = fieldScratch[which];
+		if (cur && cur.length >= size) return cur;
+		const next = new Float32Array(size);
+		fieldScratch[which] = next;
+		return next;
+	}
+
+	function histPercentile(frac, total) {
+		const target = frac * total;
+		let acc = 0;
+		for (let b = 0; b < LOG_BINS; b++) {
+			const next = acc + logHist[b];
+			if (next > acc && next >= target) return histLo + (b + (target - acc) / logHist[b]) * histW;
+			acc = next;
+		}
+		return histLo + LOG_BINS * histW;
+	}
+
+	// opts.measure (default true) also builds the range suggestion (mode 1's
+	// anchor scale, modes 2–3's log histogram). The page asks for it a few times
+	// a second, not every frame: the numbers only feed the eased range.
+	function computeRaw(starsIn, layout, opts, out, stats) {
+		const w = layout.w, h = layout.h, count = w * h;
+		const measure = opts.measure !== false;
 		const mode = opts.mode || 'height';
 		const sigma = (opts.sigmaDeg === undefined ? SIGMA_DEG : opts.sigmaDeg) * DEG;
 		const eps2 = Math.sin(sigma) * Math.sin(sigma);
-		const ref = opts.spreadRefKpc || 0.2;
-		const gradK = 1 / Math.max(1e-3, (opts.gradSpanDeg || 14) * DEG);
 		const n = starsIn.n;
-		const dirX = starsIn.dirX, dirY = starsIn.dirY, dirZ = starsIn.dirZ;
-		const hv = starsIn.h, dv = starsIn.d, d2v = starsIn.d2;
 		const wantGradient = mode === 'gradient';
-		if (wantGradient && (!fieldScratch.grid || fieldScratch.grid.length < w * h)) {
-			fieldScratch.grid = new Float32Array(w * h);
-		}
-		const acc = wantGradient ? fieldScratch.grid : out;
 		const needDepth = mode === 'spread';
+		const grid = wantGradient ? fieldBuffer('grid', count) : null;
+		const acc = wantGradient ? grid : out;
+
+		stats.pairs = 0;
+		stats.spreadMax = 0;
+		stats.dMin = starsIn.dMin;
+		stats.dMax = starsIn.dMax;
+		stats.empty = n === 0;
 		if (!n) {
 			out.fill(0);
-			stats.pairs = 0; stats.vMin = 0; stats.vMax = 0; stats.spreadMax = 0; stats.empty = true;
+			stats.rawLo = 0; stats.rawHi = 0; stats.autoLo = 0; stats.autoHi = 0;
 			return out;
 		}
-		stats.empty = false;
 
 		const dir = fieldScratch.dir;
-		let pairs = 0, vMin = Infinity, vMax = -Infinity, spreadMax = 0;
+		const dirX = starsIn.dirX, dirY = starsIn.dirY, dirZ = starsIn.dirZ;
+		const lv = starsIn.l, dv = starsIn.d, d2v = starsIn.d2;
+		let pairs = 0, spreadMax = 0;
 		for (let py = 0; py < h; py++) {
 			const row = py * w;
 			for (let px = 0; px < w; px++) {
@@ -385,36 +519,37 @@
 					if (q < 0) q = 0;
 					const gw = 1 / (q + eps2);
 					sw += gw;
-					sv += gw * hv[i];
+					sv += gw * lv[i];
 					if (needDepth) { sd += gw * dv[i]; sd2 += gw * d2v[i]; }
 					pairs++;
 				}
 				const inv = sw > 1e-12 ? 1 / sw : 0;
 				let v;
 				if (needDepth) {
+					// Weighted σ of the anchor distances: the hidden depth along
+					// this ray, 0 where the neighbours agree.
 					const mean = sd * inv;
 					let varr = sd2 * inv - mean * mean;
 					if (varr < 0) varr = 0;
-					const dev = Math.sqrt(varr);
-					if (dev > spreadMax) spreadMax = dev;
-					v = dev / (dev + ref);            // 0 = flat sky, 1 = deep cliff
+					v = Math.sqrt(varr);
+					if (v > spreadMax) spreadMax = v;
 				} else {
-					v = sv * inv;                      // 0..1 by the log scale, no renorm
+					v = sv * inv;      // geometric-mean distance, as log10(kpc)
 				}
 				acc[row + px] = v;
-				if (v < vMin) vMin = v;
-				if (v > vMax) vMax = v;
 			}
 		}
 
 		if (wantGradient) {
-			// Central differences of the height grid, weighted so a texel of
-			// longitude and a texel of latitude mean the same angle. `gradK` says
-			// how steep "a full height range across gradSpanDeg" is, so the map is
-			// a slope read off in degrees, not an auto-scaled texture.
-			const g = fieldScratch.grid;
+			// Central differences of the log-distance grid, per radian of sky
+			// horizontally and vertically, then quoted per degree. The result is
+			// the physical slope of mode 1 — dex of distance per degree — so it
+			// does not change when the display range does, and it cannot clump
+			// against a hard top (the old clamp was the "gradient of 1" wall).
+			const g = grid;
 			const rx = layout.texelRadX, ry = layout.texelRadY;
-			vMin = Infinity; vMax = -Infinity;
+			const plane = layout.kind === 'plane';
+			const cosClamp = 0.05;
 			for (let py = 0; py < h; py++) {
 				// Longitude wraps on a full chart; latitude never does — a pole is a
 				// real edge of the parameterisation, and clamping there keeps the
@@ -423,24 +558,92 @@
 				const dn = (py < h - 1 ? py + 1 : py) * w;
 				const dy = ((dn - up) / w) * ry || ry;
 				const row = py * w;
+				let lonScale = 1;
+				if (plane) {
+					// A chart's longitude rows shrink with cos(lat); the derivative
+					// must be per angle of sky, not per texel of map.
+					const lat = (0.5 - (py + 0.5) / h) * layout.spanY;
+					lonScale = 1 / Math.max(Math.cos(lat), cosClamp);
+				}
 				for (let px = 0; px < w; px++) {
 					const lf = layout.wrapX ? (px - 1 + w) % w : (px > 0 ? px - 1 : 0);
 					const rt = layout.wrapX ? (px + 1) % w : (px < w - 1 ? px + 1 : w - 1);
-					const gx = (g[row + rt] - g[row + lf]) / ((rt - lf) * rx);
+					// The texel gap between lf and rt, measured the short way round
+					// on a wrapped chart: at the seam the plain difference is
+					// 2 − w and would overstate the slope ~w/2 times.
+					let gap = rt - lf;
+					if (layout.wrapX) gap = (gap + w) % w;
+					if (gap <= 0) gap = 1;
+					const gx = (g[row + rt] - g[row + lf]) / (gap * rx) * lonScale;
 					const gy = (g[dn + px] - g[up + px]) / dy;
-					const v = clamp(Math.sqrt(gx * gx + gy * gy) * gradK, 0, 1);
-					out[row + px] = v;
-					if (v < vMin) vMin = v;
-					if (v > vMax) vMax = v;
+					out[row + px] = Math.sqrt(gx * gx + gy * gy) * DEG;
 				}
 			}
 		}
 
+		// The raw distribution, and the range it suggests. Mode 1's suggestion
+		// comes from the anchors (autoRange rebuilds it from dMin/dMax); the
+		// other modes read a log histogram, so one bright spike cannot own the
+		// whole ramp.
+		if (!measure) {
+			stats.pairs = pairs;
+			stats.spreadMax = spreadMax;
+			return out;
+		}
+		if (mode === 'height') {
+			let lo = Infinity, hi = -Infinity;
+			for (let i = 0; i < count; i++) {
+				const v = out[i];
+				if (v < lo) lo = v;
+				if (v > hi) hi = v;
+			}
+			stats.rawLo = lo; stats.rawHi = hi;
+			const s = makeScale(scaleScratch || (scaleScratch = {}), stats.dMin, stats.dMax);
+			stats.autoLo = s.lo; stats.autoHi = s.hi;
+		} else {
+			let lo = Infinity, hi = -Infinity;
+			for (let i = 0; i < count; i++) {
+				const v = out[i];
+				if (!(v > RANGE_FLOOR)) continue;
+				const l = Math.log10(v);
+				if (l < lo) lo = l;
+				if (l > hi) hi = l;
+			}
+			if (!(hi > lo)) { hi = (lo === Infinity ? Math.log10(RANGE_FLOOR) : lo) + 0.3; }
+			if (!(lo < Infinity)) lo = hi - 0.3;
+			histLo = lo;
+			histW = (hi - lo) / LOG_BINS;
+			if (!(histW > 0)) histW = 1;
+			logHist.fill(0);
+			for (let i = 0; i < count; i++) {
+				const v = out[i] > RANGE_FLOOR ? out[i] : RANGE_FLOOR;
+				let b = ((Math.log10(v) - lo) / histW) | 0;
+				if (b < 0) b = 0; else if (b >= LOG_BINS) b = LOG_BINS - 1;
+				logHist[b]++;
+			}
+			stats.rawLo = Math.pow(10, lo);
+			stats.rawHi = Math.pow(10, hi);
+			stats.autoLo = histPercentile(0.05, count);
+			stats.autoHi = histPercentile(0.95, count);
+		}
 		stats.pairs = pairs;
-		stats.vMin = vMin; stats.vMax = vMax;
 		stats.spreadMax = spreadMax;
-		stats.dMin = starsIn.dMin; stats.dMax = starsIn.dMax;
 		return out;
+	}
+
+	// One-shot convenience: raw pass + a range (opts.range, or the auto one the
+	// same pass suggests). The page does the two steps itself so its auto range
+	// can lag the field; tests and any one-shot caller use this. `range` is reused
+	// module-side when opts.range is absent, so the signature stays allocation-free.
+	function computeField(starsIn, layout, opts, out, stats) {
+		const count = layout.w * layout.h;
+		const raw = fieldBuffer('raw', count);
+		if (!stats) stats = {};
+		computeRaw(starsIn, layout, opts, raw, stats);
+		const mode = opts.mode || 'height';
+		const range = opts.range || (fieldScratch.range || (fieldScratch.range = { lo: 0, hi: 1 }));
+		if (!opts.range) autoRange(mode, stats, range);
+		return applyRange(raw, count, mode, range, out);
 	}
 
 	// Bilinear read at UV (u, v in [0,1] across the map) — the entry point a
@@ -511,16 +714,37 @@
 		return seg;
 	}
 
-	// Nearest `want` catalog stars to `center`, decoded from the shipping tile
-	// bundle (the very records the renderer draws, so a marker here is a star
-	// there). `bundle` is the parsed __galaxy_catalog object: pure function.
-	function buildCatalogSet(bundle, want, center) {
+	// ---- anchors: a decoded index and a nearest-N query --------------------
+	//
+	// The catalog is decoded once (9 ms for the 3 829-star bundle) into a flat
+	// index; a nearest-N query is then one linear scan plus a fixed max-heap of
+	// `want` entries — ~0.05 ms, no allocation, no per-query sort. That is what
+	// lets the page re-pick the anchors as the eye or the stars move instead of
+	// freezing the set at boot.
+
+	function createSet(cap) {
+		const c = Math.max(1, Math.min(MAX_STARS, cap | 0));
+		return {
+			positions: new Float64Array(c * 3),
+			packed: new Uint32Array(c),
+			colorIndex: new Uint8Array(c),
+			capacity: c, n: 0,
+			names: null, landmark: false, segments: null, source: '',
+			dmin: 0, dmax: 0,
+		};
+	}
+
+	function createIndex(positions, n, packed, colorIndex, source) {
+		return { positions, n, packed, colorIndex, source };
+	}
+
+	// Decode the shipping tile bundle into one flat index. Visible records only,
+	// exactly the stars the renderer draws.
+	function createCatalogIndex(bundle) {
 		const R = resolve('StarRecord', './star-record.js');
 		const cells = bundle.cells || [];
-		const cX = center ? center[0] : 0, cY = center ? center[1] : 0, cZ = center ? center[2] : 0;
 		let total = 0;
 		for (let c = 0; c < cells.length; c++) total += cells[c].n | 0;
-		const ds = new Float64Array(total);
 		const pos = new Float64Array(total * 3);
 		const pk = new Uint32Array(total);
 		const ci = new Uint8Array(total);
@@ -538,28 +762,11 @@
 				if (!rec.visible) continue;
 				const off = at * 3;
 				pos[off] = rec.x; pos[off + 1] = rec.y; pos[off + 2] = rec.z;
-				ds[at] = Math.hypot(rec.x - cX, rec.y - cY, rec.z - cZ);
 				pk[at] = rec.packed; ci[at] = rec.colorIndex;
 				at++;
 			}
 		}
-		const order = new Int32Array(at);
-		for (let i = 0; i < at; i++) order[i] = i;
-		order.sort((a, b) => ds[a] - ds[b]);
-		const n = Math.min(want, at);
-		const outPos = new Float64Array(n * 3);
-		const outPack = new Uint32Array(n);
-		const outColor = new Uint8Array(n);
-		for (let i = 0; i < n; i++) {
-			const k = order[i], o = k * 3, t = i * 3;
-			outPos[t] = pos[o]; outPos[t + 1] = pos[o + 1]; outPos[t + 2] = pos[o + 2];
-			outPack[i] = pk[k]; outColor[i] = ci[k];
-		}
-		return {
-			positions: outPos, n, packed: outPack, colorIndex: outColor, names: null,
-			landmark: false, source: 'catalog', segments: null,
-			dmin: at ? ds[order[0]] : 0, dmax: at ? ds[order[Math.min(n, at) - 1]] : 0,
-		};
+		return createIndex(pos, at, pk, ci, 'catalog');
 	}
 
 	function decodeInto(b64, out, offset) {
@@ -573,30 +780,128 @@
 		return buf.length;
 	}
 
-	// A procedural galaxy has no catalog and no named sky: fall back to sampled
-	// field stars so the experiment still runs on every galaxy type.
-	function buildSampledSet(model, want, center) {
+	// A procedural galaxy has no catalog and no named sky: sample it once and
+	// query that sample. The sample is fixed in (model, seed), so the anchors do
+	// not change when the eye does — only which of them are nearest.
+	function createSampledIndex(model, count) {
 		const SAMPLING = resolve('SamplingLib', './sampling.js');
-		const buf = SAMPLING.sampleGalaxyStars(model, 0x7E57A1, Math.max(want * 4, 2000));
-		const cX = center ? center[0] : 0, cY = center ? center[1] : 0, cZ = center ? center[2] : 0;
-		const ds = new Float64Array(buf.count), order = new Int32Array(buf.count);
-		for (let i = 0; i < buf.count; i++) {
-			ds[i] = Math.hypot(buf.x[i] - cX, buf.y[i] - cY, buf.z[i] - cZ);
-			order[i] = i;
-		}
-		order.sort((a, b) => ds[a] - ds[b]);
-		const n = Math.min(want, buf.count);
-		const pos = new Float64Array(n * 3), packed = new Uint32Array(n), color = new Uint8Array(n);
+		const buf = SAMPLING.sampleGalaxyStars(model, 0x7E57A1, Math.max(1024, count | 0));
+		const n = buf.count;
+		const positions = new Float64Array(n * 3);
 		for (let i = 0; i < n; i++) {
-			const k = order[i];
-			pos[i * 3] = buf.x[k]; pos[i * 3 + 1] = buf.y[k]; pos[i * 3 + 2] = buf.z[k];
-			packed[i] = buf.packed ? buf.packed[k] : 0;
-			color[i] = 4;
+			positions[i * 3] = buf.x[i];
+			positions[i * 3 + 1] = buf.y[i];
+			positions[i * 3 + 2] = buf.z[i];
 		}
-		return {
-			positions: pos, n, packed, colorIndex: color, names: null,
-			landmark: false, source: 'sampled', segments: null,
-		};
+		return createIndex(positions, n, null, null, 'sampled');
+	}
+
+	// The max-heap of the scan: `want` entries, root = farthest.
+	const queryHeap = { d2: new Float64Array(MAX_STARS), idx: new Int32Array(MAX_STARS), n: 0 };
+
+	function heapPush(d2, idx) {
+		const hd = queryHeap.d2, hi = queryHeap.idx;
+		let i = queryHeap.n++;
+		while (i > 0) {
+			const p = (i - 1) >> 1;
+			if (hd[p] >= d2) break;
+			hd[i] = hd[p]; hi[i] = hi[p];
+			i = p;
+		}
+		hd[i] = d2; hi[i] = idx;
+	}
+
+	function heapSift(d2, idx, n) {
+		const hd = queryHeap.d2, hi = queryHeap.idx;
+		let i = 0;
+		for (;;) {
+			let c = i * 2 + 1;
+			if (c >= n) break;
+			if (c + 1 < n && hd[c + 1] > hd[c]) c++;
+			if (hd[c] <= d2) break;
+			hd[i] = hd[c]; hi[i] = hi[c];
+			i = c;
+		}
+		hd[i] = d2; hi[i] = idx;
+	}
+
+	// Fill `set` with the `want` nearest entries of `measure` — the drawn sky,
+	// i.e. the index's birth positions or a time-advanced copy of them — and
+	// write the winners' *birth* positions and packed words into the set. That
+	// split is what lets the page advance the set with the same orbit dispatch
+	// to any star time without applying the motion twice: the query says who is
+	// nearest now, the set carries what is needed to redraw them later.
+	// The list is written nearest-first, so a cursor can index it directly. The
+	// answer is capped by the set's own capacity (createSet), never by an
+	// allocation here.
+	function queryNearest(index, measure, cx, cy, cz, want, set) {
+		const n = Math.min(want | 0, index.n, set.capacity);
+		set.n = 0;
+		if (n <= 0) return set;
+		const heap = queryHeap;
+		const birth = index.positions;
+		heap.n = 0;
+		for (let i = 0; i < index.n; i++) {
+			const dx = measure[i * 3] - cx;
+			const dy = measure[i * 3 + 1] - cy;
+			const dz = measure[i * 3 + 2] - cz;
+			const d2 = dx * dx + dy * dy + dz * dz;
+			if (heap.n < n) heapPush(d2, i);
+			else if (d2 < heap.d2[0]) heapSift(d2, i, n);
+		}
+		const pk = index.packed, ci = index.colorIndex;
+		let dmin2 = Infinity, dmax2 = 0;
+		// Pop the max: the writes land farthest-last, so the set ends up sorted.
+		for (let k = n - 1; k >= 0; k--) {
+			const d2 = heap.d2[0], src = heap.idx[0];
+			if (d2 < dmin2) dmin2 = d2;
+			if (d2 > dmax2) dmax2 = d2;
+			set.positions[k * 3] = birth[src * 3];
+			set.positions[k * 3 + 1] = birth[src * 3 + 1];
+			set.positions[k * 3 + 2] = birth[src * 3 + 2];
+			set.packed[k] = pk ? pk[src] : 0;
+			set.colorIndex[k] = ci ? ci[src] : 4;
+			heap.n--;
+			if (heap.n > 0) heapSift(heap.d2[heap.n], heap.idx[heap.n], heap.n);
+		}
+		set.n = n;
+		set.landmark = false;
+		set.names = null;
+		set.segments = null;
+		set.source = index.source;
+		set.dmin = Math.sqrt(dmin2);
+		set.dmax = Math.sqrt(dmax2);
+		return set;
+	}
+
+	// Convenience wrapper: decode + query in one call, used by the tests and by
+	// any caller that wants a one-shot set.
+	function buildCatalogSet(bundle, want, center) {
+		const index = createCatalogIndex(bundle);
+		const set = createSet(want);
+		queryNearest(index, index.positions,
+			center ? center[0] : 0, center ? center[1] : 0, center ? center[2] : 0, want, set);
+		return set;
+	}
+
+	// The whole index advanced to `timeMyr`, into `out` — the array a nearest-N
+	// query measures when star time has moved the sky. One dispatch per record
+	// (~10 ms for the catalog), so callers throttle it; 0 copies the birth frame.
+	function prepareIndexPositions(index, out, timeMyr, model) {
+		const n = index.n, pos = index.positions;
+		if (timeMyr === 0) {
+			out.set(pos.subarray(0, n * 3));
+			return n;
+		}
+		const Orbit = resolve('OrbitLib', './orbit.js');
+		const p = orbitScratch || (orbitScratch = new Float64Array(3));
+		const pk = index.packed;
+		for (let i = 0; i < n; i++) {
+			Orbit.engineRecordPosition(p, pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2],
+				pk ? pk[i] : 0, timeMyr, model);
+			out[i * 3] = p[0]; out[i * 3 + 1] = p[1]; out[i * 3 + 2] = p[2];
+		}
+		return n;
 	}
 
 	// ---- star time ---------------------------------------------------------
@@ -635,17 +940,18 @@
 	}
 
 	const ViewModesField = {
-		DEG, TAU, MIN_DIST_KPC, MAX_STARS,
+		DEG, TAU, MIN_DIST_KPC, MAX_STARS, RANGE_FLOOR,
 		// pose
-		quatTurn, quatMul, quatArc, quatApply, quatInv, quatNormalize, quatBasis,
-		// scale
-		makeScale, heightOfDistance, distanceAtHeight, SIGMA_DEG,
+		quatTurn, quatMul, quatArc, quatApply, quatInv, quatNormalize, quatBasis, quatDrag,
+		// range
+		makeScale, heightOfDistance, distanceAtHeight, rangeValue, applyRange, autoRange, SIGMA_DEG,
 		// layout
-		createLayout, dirAt, texelOf,
+		createLayout, dirAt, chartDirAt, texelOf,
 		// field
-		prepareStars, computeField, heightAt, autoResolution, stars,
+		prepareStars, computeRaw, computeField, heightAt, autoResolution, stars,
 		// sets
-		buildConstellationSet, buildCatalogSet, buildSampledSet, constellationSegments,
+		createSet, createIndex, createCatalogIndex, createSampledIndex, queryNearest,
+		prepareIndexPositions, buildConstellationSet, buildCatalogSet, constellationSegments,
 		advancePositions, decodeInto,
 	};
 

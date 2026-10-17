@@ -1832,3 +1832,25 @@ The same session's second trap: `main.js` mixes literal middle dots
 python patch script matching one form misses the other — match the
 exact escaping per line, and patch dense blocks with a counted
 `assert s.count(old) == 1` heredoc rather than a fuzzy editor match.
+
+## 2026-10-17 — A sky-chart drag pins the ray in *map* space, from the press
+
+For a chart whose view is a quaternion q mapping world rays to the map (`map = q·world`),
+the ray under a pixel is `world = q⁻¹·e(pixel)`. The drag that keeps the pressed sky point
+under the pointer is `q' = arc(e₀ → e₁)·q`, with both rays in the chart's own frame. Building
+the same arc from *world* rays (`q⁻¹·e₀ → q⁻¹·e₁`) pins only while q is the identity; after
+one pan it slides by tens of degrees and the next move composes against the wrong rotation,
+so the map accelerates. Compose from the press (store the press quaternion and the press
+ray) rather than incrementally: return-to-press then restores the chart exactly, and no
+per-move error accumulates. `view-modes-field.js` has this as `chartDirAt` + `quatDrag`;
+planet-geotectonics' `MapView.drag` is the incremental version of the same law.
+
+## 2026-10-17 — A nearest-N query measures the drawn sky and stores the birth record
+
+When star time moves the positions, "nearest to the camera" must be decided on the *drawn*
+positions but the picked set must keep each record's birth position and packed word: the
+draw call dispatches birth → time, and storing a time-advanced position in the set applies
+the motion a second time. Split the two explicitly in the query's signature
+(`queryNearest(index, measure, …)` writes `index.positions`), and let a test compare the
+dispatched set against the advanced index. A max-heap of N entries over one linear scan is
+exact, allocation-free, ~0.3 ms for 500 of 3 829 — no sorted array or per-query copy needed.

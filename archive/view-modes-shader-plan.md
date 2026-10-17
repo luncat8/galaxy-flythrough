@@ -293,7 +293,7 @@ Each step is shippable: .0 shows points, .1 shows smooth distance map,
 
 ---
 
-## As shipped (view-modes.0 + view-modes.1, 2026-10-17)
+## As shipped (view-modes.0 … .2, 2026-10-17)
 
 What differs from the plan above, and why. The entry to read is
 [`archive/view-modes-worklog.md`](view-modes-worklog.md).
@@ -305,20 +305,38 @@ What differs from the plan above, and why. The entry to read is
   Float32 field with bilinear filtering. No diffusion iteration, no FBO ping-pong, no
   WebGL2 — the whole painter is one `putImageData` plus a vector overlay, and 500
   anchors at the balanced budget rebuild in ~10 ms.
-- **Normalization is not auto-scaled.** "0..1 = far → closest" is a log decade scale
-  fixed by the set (`lo = log10(max(1 pc, dMin))`, `hi ≥ lo + 1`), evaluated per star and
-  *never* re-stretched after smoothing. The first cut renormalized to `[vMin, vMax]` each
-  frame, which made the legend meaningless and inverted the map when a bright star
-  entered the view. The renderer is therefore allowed to show a partly-empty ramp.
+- **The field is physical; a separate display range colours it.** `computeRaw` writes
+  the mode's own scalar — mode 1 `log10(d/kpc)`, mode 2 σ of `|star−eye|` in kpc, mode 3
+  `|∇log10 d|` in dex of distance per degree of sky — and `applyRange` maps it through a
+  declared range. No pass ever renormalizes after smoothing: the first cut painted
+  `[vMin, vMax]` each frame, which made the legend meaningless and inverted the map when
+  a bright star entered the view.
+- **The range is auto by default and manual on request.** Auto reads the log
+  distances the mode-1 field actually takes (its raw min/max, plus a 4% pad and a
+  0.3-decade floor) and the 5th–95th percentile of a 64-bin log histogram for modes
+  2–3, at 4 Hz with an ease toward the new bounds (a jump over 1.5 decades snaps — a
+  new neighbourhood, not a drift). `makeScale` still maps `dMin…dMax` for callers that
+  want the anchor range; the page does not, because the nearest anchor is rarely on
+  the nearest texel. Manual holds one lo/hi per mode in
+  the mode's log10 unit; unticking auto freezes the live range so the colours do not
+  jump, and the two sliders edit it. The legend and the readout quote the same numbers
+  in kpc / dex per degree, which is what makes a colour checkable.
+- **Mode 3 has no hard top.** The earlier gradient was a difference of the *display*
+  grid scaled by "one full height range per 14°" and clamped at 1, so every ring near a
+  star saturated — the reported clump. It is now the derivative of mode 1 in a real unit
+  (dex/°), divided by `cos(lat)` on a chart (the rows shrink toward the poles), with the
+  clamping left to the display range where it means "off this scale" rather than "as
+  steep as the scale goes".
 - **σ is a visible parameter, not a constant.** It sets how much of a star's own height
   survives its neighbours' averaging; 10° left the whole sky inside 0.35..0.75 (the flat
   look the draft was written to avoid), so the default is `Field.SIGMA_DEG = 3` and the
   peak-and-ramp-usage numbers are asserted in `experiments/view-modes-field-test.js`.
-- **`.2`'s variance is an IDW-weighted σ of the raw distance**, not a second splat
-  (`spreadRefKpc` turns σ into `σ/(σ+ref)` so "flat sky" is 0 and a depth cliff is 1),
-  and `.3`'s gradient mode is the finite difference of mode 1's grid scaled to an angle —
-  the plan's "mode 2 may be the gradient of mode 1" is true in shape but the depth gap is
-  the more direct read, so both exist.
+- **`.2`'s variance is an IDW-weighted σ of the raw distance in kpc**, not a second
+  splat and not a squeezed `σ/(σ+ref)` cost: the depth itself is the datum, and the log
+  display range is what makes a cliff visible. `.3`'s gradient is the finite difference
+  of mode 1's grid divided by the texel's angular size — the plan's "mode 2 may be the
+  gradient of mode 1" is true in shape, but the depth gap is the more direct read, so
+  both exist.
 - **The projection is the app's, inverted.** The view layout is the gnomonic window of
   `core/camera.js` (`FOV_Y` 60°, the camera's own forward/right/up basis, the *window*
   aspect so the field covers exactly what the app draws); the plane layout is the
@@ -326,6 +344,20 @@ What differs from the plan above, and why. The entry to read is
   planet-geotectonics approach. `experiments/view-modes-field-test.js` puts 64 landmark
   sightings on the app's own `projectToScreen` pixel to within 0.05 texel; nothing in
   this section is allowed to be derived twice.
+- **Nearest-N is a query, not a snapshot.** `.0` decoded the bundle, computed every
+  distance, sorted and copied once per eye move of 10 pc, so a chart pan or star time
+  never re-picked. `createCatalogIndex` decodes the bundle once (7.5 ms, 3 829 records)
+  and `queryNearest` is a linear scan plus a fixed max-heap of N entries (~0.3 ms for
+  500) that measures the *drawn* sky and writes the winners' birth records for the
+  orbit dispatch, so "nearest" can mean nearest now. A procedural galaxy samples its own
+  12 000-star index and answers the same query. The page re-queries on a 2% eye move
+  (or 50 pc, whichever is larger) and at 4 Hz under star time.
+- **The chart pan is the press-composed rotation.** `chartDirAt` gives a chart pixel's
+  ray in the chart's frame and `quatDrag` composes `arc(press → now) · q_press`, so the
+  pressed sky point stays under the pointer for any starting rotation (the world-ray
+  form pins only while the chart is unrotated — the shipped glitch) and returning to the
+  press pixel restores the chart exactly. Longitude panning needs no Euler clamp;
+  latitude is a real edge of the chart and saturates at the pole.
 - **Isolation held.** Three files, loaded only by `src/view-modes.html`; math and data
   plus `data/tiles/catalog.js` (as a static data script, so `stream/tile-loader.js` is
   not needed), never `core/`, `render/star-sprites.js` or the device.
@@ -334,6 +366,7 @@ What differs from the plan above, and why. The entry to read is
   constants (`LOOK_SENSITIVITY`, `FOV_Y`) are copied into `src/view-modes.js` rather than
   imported — the rule's cost, marked at the copy.
 - **Still open**: the `.2` export for pathfinding (a `Float32Array` cost grid handed to a
-  route solver), a GPU path if a chart wants > ~1 M texel-anchor pairs, and the browser
-  pass (no browser in the sandbox; `experiments/view-modes-page-check.js --png` is what
-  stands in for eyes).
+  route solver — `heightAt` already reads the last grid), a GPU path if a chart wants
+  > ~1 M texel-anchor pairs, and the browser pass (no browser in the sandbox;
+  `experiments/view-modes-page-check.js --png` is what stands in for eyes, and it cannot
+  show the marker dots or labels because it rasterizes `drawImage` only).

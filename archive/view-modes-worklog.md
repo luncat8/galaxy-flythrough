@@ -105,3 +105,101 @@ pathfinding) are not built — the CPU field hits 500 anchors at 72×40 in 10 ms
 GPU path is a resolution question, not a latency one. `src/view-modes.js` copies
 `LOOK_SENSITIVITY` and `FOV_Y` from `core/camera.js` rather than importing them, which
 is the isolation rule's cost and is said so at the copy.
+
+---
+
+## view-modes.2 — 2026-10-17 — the chart drag law, physical modes, and a live nearest-N
+
+Three user reports, one file each.
+
+### 1. The plane-chart drag glitched (the pan accelerated and slid the sky)
+
+The pan composed `q' = arc(world ray a → world ray b) · q` from *world* rays. The
+chart maps a world ray `w` to the map as `q·w`, so the ray under pixel `p` is
+`q⁻¹·e(p)`, and the arc that pins a pressed point must be built from `e()`, not from
+`q⁻¹·e()`. As shipped it only pinned while `q` was the identity; after one drag the
+grabbed sky point slid (27° on a small drag in the reproduction), the next move
+composed against an already wrong rotation, and the harder you moved the further it
+ran away. This is exactly the case planet-geotectonics' `MapView.drag` handles by
+keeping its pointer in `viewPointer` and composing incrementally.
+
+Fixed as the source does, but *from the press* rather than incrementally:
+
+- `chartDirAt(out, u, v, spanX, spanY, mirror)` — a chart pixel's ray in the chart's
+  own frame (the body of `dirAt`'s plane branch, extracted).
+- `quatDrag(out, q, a, b)` — `q' = arc(a → b) · q`, with `a`, `b` in that frame.
+- the page stores the press ray and the press quaternion, so every move is one
+  composition from the press: `(arc·q)⁻¹·e₁ = q⁻¹·e₀` up to float error, a drag that
+  returns to the press pixel restores the chart exactly, and no per-move error
+  accumulates. The ray is built from the *current* `chartQuat` and span, not from a
+  one-frame-old layout.
+
+Pinned by `quatDrag keeps the pressed sky point under the pointer` (dot > 1−1e-9 on a
+rotated chart), `a chart drag that returns to the press pixel restores the chart`,
+`chartDirAt is dirAt without the pan`, the counter-check that the old world-ray arc
+drifts > 1°, and two page-level checks that drive real pointer events.
+
+### 2. Mode 3 was hard-limited, and every mode wanted a range
+
+The gradient was `|∇ height| · gradK` clamped to 1 against a fixed "one full height
+range per 14°" scale. Near any star the slope exceeded that and every ring saturated:
+the "gradient of 1" clump. It was also a slope of a *display* quantity, so it moved
+when the display did.
+
+The field is now physical and the range is separate:
+
+| mode | raw scalar | auto range |
+|---|---|---|
+| 1 height | `log10(d / kpc)` (IDW) | the log distances the field takes (raw min/max) |
+| 2 spread | σ of `|star − eye|`, kpc | 5th–95th percentile, log10 |
+| 3 gradient | `|∇ log10 d|`, dex of distance per degree of sky | 5th–95th percentile, log10 |
+
+- `computeRaw` writes the raw scalar and fills `stats` (including the suggested
+  `autoLo/autoHi` from a 64-bin log histogram; `measure: false` skips it on frames
+  that do not need it); `applyRange(raw, count, mode, range, out)` paints. The page
+  keeps the range from the last read for a quarter of a second and eases toward new
+  bounds, so a moving set cannot flicker the map.
+- `autoRange(mode, stats, out)` owns the padding (4% of the span, a 0.3-decade
+  floor around the centre). Mode 1's range is the field's own raw min/max, not the
+  anchors' `dMin…dMax`: the nearest catalog star is often 10 pc away with no anchor
+  on its own texel, and the forced decade this replaced spent 80% of the ramp on sky
+  nothing occupied. Manual mode holds one lo/hi per mode and freezes to the live range
+  when auto is unchecked (unchecking must not jump the colours). Two sliders, in the
+  mode's log10 unit, with the labels reading `kpc` / `dex/°`; in mode 1 they are
+  labelled near/far because the height ramp is inverted.
+- The chart gradient also divides longitude by `cos(lat)` (clamped at 0.05) before
+  quoting a per-degree slope, and measures the column gap the short way round the
+  wrapped seam (the plain difference there is `2 − w` and overstated the slope ~w/2
+  times); without the cosine a chart's high-latitude rows read low.
+
+Mode 2's raw σ in kpc also replaces the old `dev/(dev+ref)` squeeze, which had been
+hiding the whole depth structure inside 0…0.3.
+
+### 3. Nearest-N was frozen at the pick
+
+`buildCatalogSet` decoded, computed every distance, sorted and copied — once, when the
+eye moved 10 pc (`markMoved`). So a chart pan, an eye slide or star time did not
+re-pick, and the map described a neighbourhood the eye had left.
+
+- `createCatalogIndex` decodes the bundle once (7.5 ms, 3 829 records) into flat
+  arrays; `createSampledIndex` does the same for a procedural galaxy (12 000 sampled
+  stars) so every galaxy type has a searchable sky.
+- `queryNearest(index, measure, cx, cy, cz, want, set)` is a linear scan plus a fixed
+  max-heap of `want` entries: exact (pinned against brute force at four centres),
+  allocation-free, ~0.3 ms for 500 anchors. It measures the *drawn* sky (`measure`)
+  but writes the winners' *birth* records and packed words, so the page's orbit
+  dispatch can draw them at any star time without applying the motion twice (pinned).
+- The page re-queries whenever the eye moved 2% of the set's own far edge (or 50 pc,
+  whichever is larger), the star-time re-pick is throttled to 4 Hz, and the whole
+  index is advanced to the current star time at 4 Hz so "nearest" means nearest
+  *now*. The old `markMoved` (and the 0.01 kpc threshold) is gone.
+
+### Also
+
+- `experiments/view-modes-field-test.js` 44 → 65 checks; `view-modes-page-check.js`
+  21 → 37, and `--png` writes two more shots (`chart-gradient`, `chart-height-250`).
+- The galaxy `<select>` offered `Sab`/`Scd`, which `GalaxyLib` has never had
+  (`SBa`/`SBc` are the real names); applying them threw. Fixed.
+
+Next: the `--png` shots still cannot show the dots or names (the harness rasterizes
+`drawImage` only); a browser pass is the remaining check.

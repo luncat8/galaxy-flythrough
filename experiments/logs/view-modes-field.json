@@ -1,11 +1,11 @@
 {
-  "date": "2026-10-17T08:44:28.378Z",
+  "date": "2026-10-17T09:39:39.809Z",
   "anchors": {
     "landmarks": 60,
     "catalog": 3829
   },
-  "totalChecks": 44,
-  "passed": 44,
+  "totalChecks": 65,
+  "passed": 65,
   "failed": 0,
   "checks": [
     {
@@ -94,6 +94,34 @@
       }
     },
     {
+      "name": "quatDrag keeps the pressed sky point under the pointer (rotated chart)",
+      "pass": true,
+      "detail": {
+        "dot": 1
+      }
+    },
+    {
+      "name": "the old world-ray arc drifts the grabbed point by degrees (the glitch)",
+      "pass": true,
+      "detail": {
+        "driftDeg": 6.19
+      }
+    },
+    {
+      "name": "a chart drag that returns to the press pixel restores the chart",
+      "pass": true,
+      "detail": {
+        "dot": 1
+      }
+    },
+    {
+      "name": "chartDirAt is dirAt without the pan (the drag and the field agree)",
+      "pass": true,
+      "detail": {
+        "worst": 0
+      }
+    },
+    {
       "name": "height 1 at the near anchor, 0 at the far anchor",
       "pass": true,
       "detail": {
@@ -120,6 +148,58 @@
     {
       "name": "a star at the eye cannot flatten the ramp (1 pc floor)",
       "pass": true
+    },
+    {
+      "name": "a log range puts half a decade at the middle",
+      "pass": true,
+      "detail": 0.4999999999768754
+    },
+    {
+      "name": "height is inverted: lo (near) is 1, hi (far) is 0",
+      "pass": true,
+      "detail": {
+        "near": 1,
+        "far": 0
+      }
+    },
+    {
+      "name": "values outside the range clamp to 0 and 1",
+      "pass": true,
+      "detail": [
+        0,
+        0.4999999701976776,
+        1
+      ]
+    },
+    {
+      "name": "mode 1 auto range follows the field (3 decades out, 3 decades out)",
+      "pass": true,
+      "detail": {
+        "near": [
+          -2.0320411998265593,
+          -1.6669288045094595
+        ],
+        "far": [
+          0.9679588001734407,
+          1.3330711954905405
+        ]
+      }
+    },
+    {
+      "name": "a narrow distance band still fills the ramp",
+      "pass": true,
+      "detail": {
+        "lo": -1.532,
+        "hi": -1.168
+      }
+    },
+    {
+      "name": "auto range never collapses to zero width",
+      "pass": true,
+      "detail": {
+        "lo": -2.032,
+        "hi": -1.668
+      }
     },
     {
       "name": "constellation anchors are the landmark table (the Sun included)",
@@ -157,8 +237,8 @@
       "pass": true,
       "detail": {
         "bad": 0,
-        "lo": 0.361,
-        "hi": 0.61
+        "lo": 0.066,
+        "hi": 0.934
       }
     },
     {
@@ -166,30 +246,30 @@
       "pass": true,
       "detail": {
         "bad": 0,
-        "lo": 0.348,
-        "hi": 0.748
+        "lo": 0.056,
+        "hi": 0.944
       }
     },
     {
       "name": "chart has no unpainted floor (min > 0.05)",
       "pass": true,
       "detail": {
-        "lo": 0.348
+        "lo": 0.056
       }
     },
     {
       "name": "mode 1 is the IDW mean of the stars on that ray, and falls off away from them",
       "pass": true,
       "detail": {
-        "atStar": 0.49,
-        "farVal": 0.248
+        "atStar": 0.95,
+        "farVal": 0.465
       }
     },
     {
-      "name": "mode 2 reads the depth gap in that direction (σ ≈ 0.5 kpc → cost ≈ 0.7)",
+      "name": "mode 2 reads the depth gap in that direction (σ ≈ 0.5 kpc → 0.85 of a 0.01…1 kpc log range)",
       "pass": true,
       "detail": {
-        "spread": 0.714,
+        "spread": 0.849,
         "peakKpc": 0.4992
       }
     },
@@ -205,17 +285,41 @@
       "pass": true
     },
     {
-      "name": "gradient of a constant field is constant (≤ 0.2 of full scale)",
+      "name": "mode 3 is |∇log₁₀ d| per degree, at the layout’s own texel angle",
       "pass": true,
       "detail": {
-        "maxG": 0
+        "want": 0.026773817410159967,
+        "got": 0.026781724765896797
+      }
+    },
+    {
+      "name": "mode 3 auto range does not clump: < 15% of texels at full scale, > 30% in the middle",
+      "pass": true,
+      "detail": {
+        "topFrac": 0.03,
+        "midFrac": 0.727
       }
     },
     {
       "name": "gradient of the real height field is non-degenerate",
       "pass": true,
       "detail": {
-        "max": 1
+        "max": 0.04977
+      }
+    },
+    {
+      "name": "the gradient is continuous across the chart seam",
+      "pass": true,
+      "detail": {
+        "worstRel": 0,
+        "y": 0
+      }
+    },
+    {
+      "name": "gradient of a constant field is zero",
+      "pass": true,
+      "detail": {
+        "maxG": 0
       }
     },
     {
@@ -266,19 +370,27 @@
       }
     },
     {
-      "name": "σ 3°: the near stars' texels reach 0.89 and the ramp spans 0.784054696559906",
+      "name": "σ 3°: the near stars' texels reach 0.94 of the painted ramp",
       "pass": true,
       "detail": {
-        "peak": 0.893,
-        "range": 0.784
+        "peak": 0.94,
+        "rawSpan": 1.729
       }
     },
     {
-      "name": "σ 10°: the near stars' texels reach 0.75 and the ramp spans 0.40165960788726807",
+      "name": "σ 10°: the near stars' texels reach 0.89 of the painted ramp",
       "pass": true,
       "detail": {
-        "peak": 0.748,
-        "range": 0.402
+        "peak": 0.889,
+        "rawSpan": 0.886
+      }
+    },
+    {
+      "name": "a wide σ blends: the physical (log-distance) span shrinks by half",
+      "pass": true,
+      "detail": {
+        "narrow": 1.729,
+        "wide": 0.886
       }
     },
     {
@@ -314,6 +426,50 @@
       }
     },
     {
+      "name": "the decoded index holds the visible catalog records",
+      "pass": true,
+      "detail": 3829
+    },
+    {
+      "name": "the heap query is the exact brute-force nearest-N",
+      "pass": true,
+      "detail": {
+        "worst": 1.0658141036401503e-14
+      }
+    },
+    {
+      "name": "100 nearest-500 queries take 4.6 ms (< 200)",
+      "pass": true,
+      "detail": {
+        "ms": 4.59
+      }
+    },
+    {
+      "name": "indexed positions at time 0 are the birth frame",
+      "pass": true
+    },
+    {
+      "name": "10 Myr of star time moves the indexed sky",
+      "pass": true,
+      "detail": {
+        "moved": 3829
+      }
+    },
+    {
+      "name": "a star-time query and a birth-frame query are different questions",
+      "pass": true,
+      "detail": {
+        "differs": 72
+      }
+    },
+    {
+      "name": "a star-time pick drawn through advancePositions matches the advanced sky (no double motion)",
+      "pass": true,
+      "detail": {
+        "worstKpc": 0
+      }
+    },
+    {
       "name": "frozen star time copies the birth frame exactly",
       "pass": true
     },
@@ -329,14 +485,14 @@
       "name": "the heightmap updates with star time",
       "pass": true,
       "detail": {
-        "maxDelta": 0.67089
+        "maxDelta": 0.6717
       }
     },
     {
-      "name": "500 anchors at the balanced budget (72×40) rebuilds in 9.9 ms (< 60)",
+      "name": "500 anchors at the balanced budget (72×40) rebuilds in 9.6 ms (< 60)",
       "pass": true,
       "detail": {
-        "ms": 9.95,
+        "ms": 9.62,
         "pairs": 1440000
       }
     },

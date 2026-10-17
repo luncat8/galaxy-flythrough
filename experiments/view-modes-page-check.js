@@ -300,6 +300,172 @@ el('slider-source').fire('input');
 pump(2, tEnd + 300);
 check('nearest-250 re-picks from the catalog', /250 nearest · 250 anchors \(catalog\)/.test(el('readout').textContent),
 	el('readout').textContent.split('\n')[1]);
+// --- the chart drag pins the pressed sky point --------------------------
+// The old pan composed the arc from *world* rays onto the chart quaternion,
+// which only pins while the chart is unrotated: after one pan the grabbed sky
+// point slid by tens of degrees per move. The check is the pin itself, at a
+// chart rotated by an earlier drag, and the return-to-press identity.
+function uvAtPixel(x, y) {
+	const r = window.ViewModesDebug.rect;
+	return r
+		? [(x - r.x) / r.w, (y - r.y) / r.h]
+		: [x / VIEW_W, y / VIEW_H];
+}
+function worldRayAt(u, v) {
+	const F = window.ViewModesField, dbg = window.ViewModesDebug;
+	const spanX = dbg.chartSpanDeg * F.DEG;
+	const lay = dbg.layout;
+	const spanY = lay.w ? spanX * lay.h / lay.w : spanX * VIEW_H / VIEW_W;
+	const e = new Float64Array(3);
+	F.chartDirAt(e, u, v, spanX, spanY, dbg.mirrorChart);
+	const w = new Float64Array(3);
+	F.quatApply(w, e[0], e[1], e[2], F.quatInv(new Float64Array(4), dbg.chartQuat));
+	return w;
+}
+function angleBetween(a, b) {
+	return Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]))) * 180 / Math.PI;
+}
+{
+	const dbg = window.ViewModesDebug;
+	dbg.followLook = true;
+	// Rotate the chart first: identity quaternions hide the bug by construction.
+	fireOn(fieldCanvas, 'pointerdown', { clientX: 300, clientY: 220 });
+	fireOn(fieldCanvas, 'pointermove', { clientX: 380, clientY: 205 });
+	fireOn(fieldCanvas, 'pointerup', {});
+	pump(1, tEnd + 500);
+	const rotated = Math.abs(dbg.chartQuat[0]) + Math.abs(dbg.chartQuat[1]) + Math.abs(dbg.chartQuat[2]) > 1e-6;
+	check('a chart drag rotates the chart away from identity', rotated, Array.from(dbg.chartQuat));
+
+	// Grab a pixel, move far once, and require the pressed ray to still be under
+	// the pointer — that is the whole of planet-geotectonics' MapView.drag.
+	const grab = uvAtPixel(320, 200);
+	const w0 = worldRayAt(grab[0], grab[1]);
+	fireOn(fieldCanvas, 'pointerdown', { clientX: 320, clientY: 200 });
+	fireOn(fieldCanvas, 'pointermove', { clientX: 430, clientY: 160 });
+	const now = uvAtPixel(430, 160);
+	const w1 = worldRayAt(now[0], now[1]);
+	const drift = angleBetween(w0, w1);
+	check('the chart drag pins the grabbed sky point (drift < 1e-3°)', drift < 1e-3,
+		{ driftDeg: drift, quat: Array.from(dbg.chartQuat) });
+
+	// Returning to the press pixel must restore the chart it started from: no
+	// accumulation, which the old incremental composition could not promise.
+	fireOn(fieldCanvas, 'pointermove', { clientX: 320, clientY: 200 });
+	const backRay = worldRayAt(grab[0], grab[1]);
+	check('a chart drag that returns to the press pixel restores the chart',
+		angleBetween(w0, backRay) < 1e-3, { driftDeg: angleBetween(w0, backRay) });
+	fireOn(fieldCanvas, 'pointerup', {});
+	pump(1, tEnd + 600);
+	check('the chart drag still repaints after the pin', errors.length === 0, errors.slice(0, 2));
+}
+
+// --- a mode switch sets its own range; mode 3 must not clump ------------
+{
+	const dbg = window.ViewModesDebug;
+	selectRadio('view-mode', 'gradient');
+	pump(20, tEnd + 700);          // > 0.25 s of frames: the range read runs
+	const paint = dbg.field;
+	let top = 0, mid = 0;
+	for (let i = 0; i < dbg.layout.w * dbg.layout.h; i++) {
+		if (paint[i] > 0.999) top++;
+		if (paint[i] > 0.2 && paint[i] < 0.8) mid++;
+	}
+	const n = dbg.layout.w * dbg.layout.h;
+	check('mode 3 auto range does not pile the map at full scale',
+		top / n < 0.15 && mid / n > 0.3, { top: +(top / n).toFixed(3), mid: +(mid / n).toFixed(3), range: [dbg.live.lo, dbg.live.hi] });
+	check('mode 3 quotes a dex/° range in the legend and the readout',
+		/dex\/°/.test(el('readout').textContent) && (fieldCanvas.getContext()._texts || []).some((t) => /dex\/°/.test(t)),
+		el('readout').textContent.split('\n')[5]);
+}
+
+// --- manual range: the slider owns the colours --------------------------
+{
+	const dbg = window.ViewModesDebug;
+	el('check-auto-range').checked = false;
+	el('check-auto-range').fire('change');
+	el('slider-range-hi').value = '-1.5';
+	el('slider-range-hi').fire('input');
+	pump(2, tEnd + 900);
+	const r = dbg.ranges.gradient;
+	check('a manual range slider takes the page out of auto and sticks',
+		dbg.autoRange === false && Math.abs(r.hi - -1.5) < 1e-9 && Math.abs(dbg.live.hi - -1.5) < 1e-9,
+		{ auto: dbg.autoRange, r, live: dbg.live });
+	el('check-auto-range').checked = true;
+	el('check-auto-range').fire('change');
+	pump(20, tEnd + 1000);
+	check('re-enabling auto range reads the data again', dbg.autoRange === true, dbg.live);
+	selectRadio('view-mode', 'height');
+	pump(20, tEnd + 1200);
+}
+
+// --- eye movement re-picks the nearest N and updates the map ------------
+{
+	const dbg = window.ViewModesDebug;
+	const before = new Float64Array(dbg.set.positions.subarray(0, dbg.set.n * 3));
+	const beforeEye = Array.from(dbg.pos);
+	const rangeBefore = { lo: dbg.live.lo, hi: dbg.live.hi };
+	// Shift+drag slides the eye 50 pc per 100 px (the move-step default).
+	fireOn(fieldCanvas, 'pointerdown', { clientX: 300, clientY: 200, shiftKey: true });
+	fireOn(fieldCanvas, 'pointermove', { clientX: 400, clientY: 200, shiftKey: true });
+	fireOn(fieldCanvas, 'pointerup', {});
+	pump(20, tEnd + 1400);
+	const movedKpc = Math.hypot(dbg.pos[0] - beforeEye[0], dbg.pos[1] - beforeEye[1], dbg.pos[2] - beforeEye[2]);
+	let changed = 0;
+	for (let i = 0; i < Math.min(before.length, dbg.set.n * 3); i++) if (before[i] !== dbg.set.positions[i]) changed++;
+	check('moving the eye re-picks the nearest N anchors', changed > 0 && /250 nearest · 250 anchors \(catalog\)/.test(el('readout').textContent),
+		{ movedKpc: +movedKpc.toFixed(3), changed });
+	check('the eye-move also moved the auto range',
+		Math.abs(dbg.live.lo - rangeBefore.lo) + Math.abs(dbg.live.hi - rangeBefore.hi) > 1e-4,
+		{ before: rangeBefore, now: dbg.live });
+}
+
+// --- star time re-picks too, and moves the drawn anchors ----------------
+{
+	const dbg = window.ViewModesDebug;
+	el('slider-star-time').value = '50';
+	el('slider-star-time').fire('input');
+	pump(20, tEnd + 1600);
+	let moved = 0;
+	for (let i = 0; i < dbg.set.n; i++) {
+		if (dbg.cur[i * 3] !== dbg.set.positions[i * 3]) moved++;
+	}
+	check('star time moves the drawn anchors and the whole index follows',
+		dbg.starTimeMyr > 1 && dbg.indexTime > 1 && moved > 0,
+		{ myr: +dbg.starTimeMyr.toFixed(1), indexMyr: +dbg.indexTime.toFixed(1), moved });
+	check('the star-time re-pick kept the nearest-N contract',
+		/250 nearest · 250 anchors \(catalog\)/.test(el('readout').textContent), el('readout').textContent.split('\n')[1]);
+	el('slider-star-time').value = '0';
+	el('slider-star-time').fire('input');
+	el('btn-home').fire('click');
+	pump(3, tEnd + 1800);
+}
+
+// --- a procedural galaxy samples its own searchable sky ----------------
+{
+	const dbg = window.ViewModesDebug;
+	el('galaxy-type').value = 'E4';
+	el('galaxy-seed').value = '7';
+	el('galaxy-apply').fire('click');
+	pump(6, tEnd + 2000);
+	// The source slider still reads 250 nearest from the earlier checks; what
+	// matters is that the procedural galaxy answers the same query from its own
+	// sampled sky instead of the (Milky-Way-only) catalog.
+	check('a procedural galaxy draws anchors from its sampled sky',
+		dbg.model.type === 'E4' && /sampled sky · 250 anchors \(sampled\)/.test(el('readout').textContent),
+		{ type: dbg.model.type, line: el('readout').textContent.split('\n')[1] });
+	check('the procedural sky is searchable by the same query',
+		dbg.sampleIndex && dbg.sampleIndex.n >= 250 && dbg.set.n === 250, { sample: dbg.sampleIndex && dbg.sampleIndex.n });
+	el('galaxy-type').value = 'SBb';
+	el('galaxy-seed').value = '42';
+	el('galaxy-apply').fire('click');
+	pump(3, tEnd + 2200);
+	check('switching back to the Milky Way restores the catalog anchors',
+		/250 nearest · 250 anchors \(catalog\)/.test(el('readout').textContent), el('readout').textContent.split('\n')[1]);
+	el('slider-source').value = '250';
+	el('slider-source').fire('input');
+	pump(3, tEnd + 2400);
+}
+
 selectRadio('view-mode', 'off');
 pump(1, tEnd + 400);
 check('off clears the canvas', errors.length === 0, errors);
@@ -343,9 +509,11 @@ function writePng(file, w, h, rgba) {
 
 // Repaint one configuration at a time so each PNG is a readable state.
 const shots = [
-	{ name: 'view-height', mode: 'height', proj: 'view' },
-	{ name: 'chart-height', mode: 'height', proj: 'plane' },
-	{ name: 'chart-spread', mode: 'spread', proj: 'plane' },
+	{ name: 'view-height', mode: 'height', proj: 'view', source: '0' },
+	{ name: 'chart-height', mode: 'height', proj: 'plane', source: '0' },
+	{ name: 'chart-spread', mode: 'spread', proj: 'plane', source: '0' },
+	{ name: 'chart-gradient', mode: 'gradient', proj: 'plane', source: '0' },
+	{ name: 'chart-height-250', mode: 'height', proj: 'plane', source: '250' },
 ];
 const logDir = path.join(__dirname, 'logs');
 fs.mkdirSync(logDir, { recursive: true });
@@ -356,7 +524,7 @@ if (WRITE_PNG) {
 		fieldCanvas.getContext()._texts = [];
 		selectRadio('view-mode', shot.mode);
 		selectRadio('projection', shot.proj);
-		el('slider-source').value = '0';
+		el('slider-source').value = shot.source;
 		el('slider-source').fire('input');
 		selectRadio('budget', 'high');
 		pump(2, 1e6 + pngs.length * 1000);

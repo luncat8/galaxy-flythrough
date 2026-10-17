@@ -43,16 +43,6 @@
 			<span id="val-sigma" class="menu-val">3°</span>
 		</div>
 		<div class="menu-row">
-			<label for="slider-spread">Depth half-cost</label>
-			<input type="range" id="slider-spread" min="10" max="2000" step="10" value="200">
-			<span id="val-spread" class="menu-val">200 pc</span>
-		</div>
-		<div class="menu-row">
-			<label for="slider-grad">Gradient span</label>
-			<input type="range" id="slider-grad" min="2" max="90" step="1" value="14">
-			<span id="val-grad" class="menu-val">14°</span>
-		</div>
-		<div class="menu-row">
 			<label for="slider-fov">Vertical FoV</label>
 			<input type="range" id="slider-fov" min="15" max="150" step="1" value="60">
 			<span id="val-fov" class="menu-val">60°</span>
@@ -93,16 +83,27 @@
 			<label><input type="checkbox" id="check-mirror" checked> chart mirrors sky</label>
 		</div>
 		<div class="menu-row check-row">
-			<label><input type="checkbox" id="check-auto-range" checked> auto distance range</label>
+			<span class="menu-sub">range</span>
+			<label><input type="checkbox" id="check-auto-range" checked> auto range</label>
 			<button id="btn-home" title="Jump back to the app's home pose: 5 pc above the Sun, looking at the galactic centre">home</button>
+		</div>
+		<div class="menu-row">
+			<label for="slider-range-lo" id="label-range-lo">Range lo</label>
+			<input type="range" id="slider-range-lo" min="-7" max="4" step="0.05" value="-3">
+			<span id="val-range-lo" class="menu-val">—</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-range-hi" id="label-range-hi">Range hi</label>
+			<input type="range" id="slider-range-hi" min="-7" max="4" step="0.05" value="0">
+			<span id="val-range-hi" class="menu-val">—</span>
 		</div>
 
 		<div class="menu-row">
 			<label for="galaxy-type">Galaxy</label>
 			<select id="galaxy-type">
 				<option value="SBb" selected>SBb (Milky Way preset)</option>
-				<option value="Sab">Sab</option>
-				<option value="Scd">Scd</option>
+				<option value="SBa">SBa</option>
+				<option value="SBc">SBc</option>
 				<option value="E4">E4</option>
 				<option value="Irr">Irr</option>
 			</select>
@@ -112,9 +113,10 @@
 		</div>
 
 		<div class="menu-note">
-			<strong>Drag</strong> looks around (view sphere) or pans the chart ·
-			<strong>wheel</strong> zooms FoV / span · <strong>Shift+wheel</strong>
-			dollies the eye · <strong>Shift+drag</strong> slides it across the view.
+			<strong>Drag</strong> looks around (view sphere) or grabs and pans the
+			chart under the pointer · <strong>wheel</strong> zooms FoV / span ·
+			<strong>Shift+wheel</strong> dollies the eye · <strong>Shift+drag</strong>
+			slides it across the view.
 			<br>
 			One heightmap, two layouts: the field is a function of <em>direction</em>,
 			so the map and the sky cannot drift apart — the white dots are the stars
@@ -123,8 +125,17 @@
 			Shepard IDW of log distance: smooth, hole-free, no Voronoi cells, no
 			diffusion iterations.
 			<br>
-			Mode 2 feeds a game directly: <code>ViewModesField.heightAt(field, layout, u, v, out)</code>
-			is a bilinear cost lookup on a fixed grid.
+			The colour range is per mode: auto follows the field the mode produced
+			(mode 1 its own log-distance span, modes 2–3 the 5th–95th percentile),
+			log when the raw spans decades; untick <em>auto</em> and the two sliders
+			take over.
+			The gradient is a real slope (dex of distance per degree of sky) with no
+			hard top, so a steep ring keeps its shape instead of clumping at full
+			scale.
+			<br>
+			Every mode is a physical scalar, so a game can read it directly:
+			<code>ViewModesField.heightAt(field, layout, u, v, out)</code> is a
+			bilinear lookup of the last frame's grid.
 			<br>
 			<a href="index.html">← back to the fly-through</a>
 		</div>

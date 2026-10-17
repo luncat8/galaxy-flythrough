@@ -1,6 +1,6 @@
 {
-  "totalChecks": 22,
-  "passed": 22,
+  "totalChecks": 36,
+  "passed": 36,
   "failed": 0,
   "checks": [
     {
@@ -59,7 +59,7 @@
     {
       "name": "readout reports a non-empty field",
       "pass": true,
-      "detail": "field 216×120 · 1.56 M pairs · 10.2 ms · 60 fps"
+      "detail": "field 216×120 · 1.56 M pairs · 26.9 ms · 60 fps"
     },
     {
       "name": "the painter drew the field and the star overlay",
@@ -83,21 +83,21 @@
       "name": "star labels landed on the map",
       "pass": true,
       "detail": [
-        "mode 1 · distance from the eye — 60 anchors (landmarks)",
-        "far 0.80 kpc",
-        "close 5.00 pc",
-        "Shepard IDW p=2, σ 3°, log 5.00 pc…0.80 kpc",
-        "range auto · re-read every 0.25 s",
-        "mode 1 · distance from the eye — 60 anchors (landmarks)",
-        "far 0.80 kpc",
-        "close 5.00 pc"
+        "mode 1 · distance from eye",
+        "far 0.32 kpc",
+        "close 19 pc",
+        "60 anchors (landmarks) · IDW σ 3°",
+        "auto range · log10 of the distance",
+        "mode 1 · distance from eye",
+        "far 0.32 kpc",
+        "close 19 pc"
       ]
     },
     {
       "name": "dragging looks around: the map repaints",
       "pass": true,
       "detail": {
-        "changedPx": 216355
+        "changedPx": 266995
       }
     },
     {
@@ -139,14 +139,140 @@
       "detail": "source: 250 nearest · 250 anchors (catalog)"
     },
     {
-      "name": "off clears the canvas",
+      "name": "a chart drag rotates the chart away from identity",
+      "pass": true,
+      "detail": [
+        -0.028826703588769216,
+        -0.0783651495551399,
+        -0.265102965782705,
+        0.9605979086114126
+      ]
+    },
+    {
+      "name": "the chart drag pins the grabbed sky point (drift < 1e-3°)",
+      "pass": true,
+      "detail": {
+        "driftDeg": 0,
+        "quat": [
+          0.06367102318029917,
+          -0.21294485382823938,
+          -0.6616301409674664,
+          0.7161327018078523
+        ]
+      }
+    },
+    {
+      "name": "a chart drag that returns to the press pixel restores the chart",
+      "pass": true,
+      "detail": {
+        "driftDeg": 0
+      }
+    },
+    {
+      "name": "the chart drag still repaints after the pin",
       "pass": true,
       "detail": []
     },
     {
-      "name": "the screenshots are not blank",
+      "name": "mode 3 auto range does not pile the map at full scale",
       "pass": true,
-      "detail": null
+      "detail": {
+        "top": 0.027,
+        "mid": 0.709,
+        "range": [
+          -3.277856804560208,
+          -2.0132197363240945
+        ]
+      }
+    },
+    {
+      "name": "mode 3 quotes a dex/° range in the legend and the readout",
+      "pass": true,
+      "detail": "range: auto log · flat 0.00053 dex/° … steep 0.0097 dex/°"
+    },
+    {
+      "name": "a manual range slider takes the page out of auto and sticks",
+      "pass": true,
+      "detail": {
+        "auto": false,
+        "r": {
+          "lo": -3.277856804560208,
+          "hi": -1.5
+        },
+        "live": {
+          "lo": -1.4598673050865532,
+          "hi": -1.0962453785821795
+        }
+      }
+    },
+    {
+      "name": "re-enabling auto range reads the data again",
+      "pass": true,
+      "detail": {
+        "lo": -1.4598673050865532,
+        "hi": -1.0962453785821795
+      }
+    },
+    {
+      "name": "moving the eye re-picks the nearest N anchors",
+      "pass": true,
+      "detail": {
+        "movedKpc": 0.05,
+        "changed": 747
+      }
+    },
+    {
+      "name": "the eye-move also moved the auto range",
+      "pass": true,
+      "detail": {
+        "before": {
+          "lo": -1.4701401829719543,
+          "hi": -1.1701401829719544
+        },
+        "now": {
+          "lo": -1.4598673050865532,
+          "hi": -1.0962453785821795
+        }
+      }
+    },
+    {
+      "name": "star time moves the drawn anchors and the whole index follows",
+      "pass": true,
+      "detail": {
+        "myr": 15.9,
+        "indexMyr": 12.5,
+        "moved": 250
+      }
+    },
+    {
+      "name": "the star-time re-pick kept the nearest-N contract",
+      "pass": true,
+      "detail": "source: 250 nearest · 250 anchors (catalog)"
+    },
+    {
+      "name": "a procedural galaxy draws anchors from its sampled sky",
+      "pass": true,
+      "detail": {
+        "type": "E4",
+        "line": "source: sampled sky · 250 anchors (sampled)"
+      }
+    },
+    {
+      "name": "the procedural sky is searchable by the same query",
+      "pass": true,
+      "detail": {
+        "sample": 12000
+      }
+    },
+    {
+      "name": "switching back to the Milky Way restores the catalog anchors",
+      "pass": true,
+      "detail": "source: 250 nearest · 250 anchors (catalog)"
+    },
+    {
+      "name": "off clears the canvas",
+      "pass": true,
+      "detail": []
     }
   ]
 }
