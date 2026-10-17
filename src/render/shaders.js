@@ -1269,12 +1269,14 @@ const VIEW_FIELD = `
 // Compute pass: the equirectangular distance field.
 // One vec4f per star (direction.xyz unit, galaxy frame; w =
 // the normalized scalar) arrives in a uniform array; every
-// texel evaluates a truncated Lorentzian IDW over it.
+// texel evaluates a truncated Gaussian kernel mean over it.
 //
 // The kernel lives in cos-space: the angular gap is
-// 2(1−cosθ) ≈ θ², so the weight needs no acos and no exp:
-//   w = σ² / (σ² + 2(1−dot))   inside 3σ, else 0
-// which is the small-angle Lorentzian the JS twin carries.
+// 2(1−cosθ) ≈ θ², so the weight needs no acos:
+//   w = exp(−2(1−dot) / 2σ²)   inside 3σ, else 0
+// — the Gaussian the JS twin carries. A texel with no star
+// inside 3σ takes its nearest star's value, so the sphere is
+// always filled.
 
 const VIEW_FIELD_W: u32 = ${VIEW_FIELD_W}u;
 const VIEW_FIELD_H: u32 = ${VIEW_FIELD_H}u;
@@ -1302,7 +1304,7 @@ fn kernelWeight(cosTheta: f32, sigma: f32) -> f32 {
 \tlet gap2 = 2.0 * (1.0 - cosTheta);
 \tlet sigma2 = sigma * sigma;
 \tif (gap2 > VIEW_KERNEL_CUTOFF * VIEW_KERNEL_CUTOFF * sigma2) { return 0.0; }
-\treturn sigma2 / (sigma2 + gap2);
+\treturn exp(-gap2 / (2.0 * sigma2));
 }
 
 @compute @workgroup_size(8, 8)
@@ -1317,13 +1319,17 @@ fn fs_main(@builtin(global_invocation_id) gid: vec3u) {
 
 \tvar sum: f32 = 0.0;
 \tvar wsum: f32 = 0.0;
+\tvar bestDot: f32 = -2.0;
+\tvar bestValue: f32 = params.emptyValue;
 \tfor (var i: u32 = 0u; i < params.count; i++) {
-\t\tlet w = kernelWeight(dot(dir, stars[i].xyz), params.sigma);
+\t\tlet c = dot(dir, stars[i].xyz);
+\t\tif (c > bestDot) { bestDot = c; bestValue = stars[i].w; }
+\t\tlet w = kernelWeight(c, params.sigma);
 \t\tif (w == 0.0) { continue; }
 \t\tsum += w * stars[i].w;
 \t\twsum += w;
 \t}
-\tlet value = select(params.emptyValue, sum / wsum, wsum > 1e-9);
+\tlet value = select(bestValue, sum / wsum, wsum > 1e-6);
 \ttextureStore(field, vec2i(gid.xy), vec4f(value, 0.0, 0.0, 1.0));
 }
 `;

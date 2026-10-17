@@ -350,10 +350,19 @@ async function boot() {
                 }
                 const state = viewModes.active;
                 if (!state) return null;
-                // 2. Refresh triggers: a source/mode/count change, the
-                //    camera translated past a set-relative radius, or the
-                //    star clock advanced.
+                // 2. The nearest-N set is the stars near the camera, so a
+                //    camera that has travelled past the refresh radius
+                //    re-sweeps it (the sweep restarts at its completion,
+                //    never mid-walk). The landmark set is fixed.
                 const moved = Math.hypot(camX - viewModes.lastCamX, camY - viewModes.lastCamY, camZ - viewModes.lastCamZ);
+                if (moved > viewModes.refreshRadius && !viewModes.building && viewModes.source === 'nearest') {
+                        viewModes.lastCamX = camX; viewModes.lastCamY = camY; viewModes.lastCamZ = camZ;
+                        viewModesRebuild();
+                        return viewModes.active ? viewModesSource(viewModes.active) : null;
+                }
+                // 3. Refresh triggers: a source/mode change, the camera
+                //    translated past the radius (landmarks), or the star
+                //    clock advanced.
                 if (viewModes.refreshDue || moved > viewModes.refreshRadius || viewModes.lastStarTime !== starTimeMyr) {
                         const env = viewModesEnv(camX, camY, camZ);
                         field.refreshPositions(state, env);
@@ -377,9 +386,13 @@ async function boot() {
                         viewModes.refreshRadius = Math.max(0.25, 0.1 * far);
                         viewModes.readout = viewModesReadout(state);
                 }
+                return viewModesSource(state);
+        }
+
+        function viewModesSource(state) {
                 return {
                         count: state.count,
-                        sigma: field.kernelSigma(state.count, viewModes.smoothing),
+                        sigma: window.ViewModesField.kernelSigma(state.count, viewModes.smoothing),
                         starUniform: state.starUniform,
                         contours: viewModes.contours,
                 };

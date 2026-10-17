@@ -674,3 +674,29 @@ re-pose, per-frame write-back, R reset) and the heading-following burn.
 resolution and naming, reference key handling, the three buttons, and the Pilot
 control exclusivity. `python3 scripts/run.py changed` passes 7/7 mapped suites.
 The browser/WebGPU visual pass remains unverified in this sandbox.
+
+## ui.13 — view modes: fix the flat field
+
+The view-modes heightmap (ui.12) rendered as near-uniform colour at every
+distance. Diagnosed offline on a synthetic disc (CPU replica of the shader,
+σ and scalars from the shipped module): the field's standard deviation was
+0.013 on a 0..1 scale, so the turbo ramp showed one colour. Three causes:
+
+- **Kernel too wide.** σ was one mean spacing with a Lorentzian `σ²/(σ²+θ²)`
+  tail, so every distant star reached every texel and the field converged on
+  the set's mean. Now a Gaussian in θ² at σ = ½ spacing (3σ truncation kept).
+- **Outlier-owned normalization.** Min-max over the set let one near star or a
+  near-coincident adjacency pair set the whole span. Now the 2nd..98th
+  percentile window, clamped.
+- **Stale nearest-N set.** The sweep ran only on source change, so after the
+  camera flew, the set was the stars near the *old* origin and nothing near the
+  camera was in it. A camera move past the refresh radius now re-sweeps.
+
+A texel with no star inside 3σ takes its nearest star's value (no empty
+sentinel, the sphere is always filled). `view-modes-field-test.js` 17/17 (the
+range check moved to the percentile window; an outlier-flattening check added),
+`view-modes-renderer-test.js` and `wgsl-validate.js` 195/195 pass. The browser
+WebGPU visual pass is still unverified in this sandbox.
+
+Next step: a browser look at both modes at close range; if the nearest-N
+re-sweep stutters on large sets, cap the re-sweep rate, not the trigger.

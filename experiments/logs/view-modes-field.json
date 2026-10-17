@@ -1,11 +1,11 @@
 {
-  "date": "2026-10-17T07:00:44.326Z",
+  "date": "2026-10-17T07:36:19.640Z",
   "model": {
     "type": "SBb",
     "seed": 12345
   },
-  "totalChecks": 16,
-  "passed": 16,
+  "totalChecks": 17,
+  "passed": 17,
   "failed": 0,
   "checks": [
     {
@@ -54,12 +54,12 @@
       "detail": {}
     },
     {
-      "name": "distance scalars span the brute-force range",
+      "name": "distance window lies inside the brute-force range (percentile clip)",
       "pass": true,
       "detail": {
         "range": {
-          "min": 0.46904157979466904,
-          "max": 2.808993417341123
+          "min": 0.5744562745094299,
+          "max": 2.589266538619995
         },
         "brute": [
           0.46904157979466904,
@@ -68,15 +68,26 @@
       }
     },
     {
-      "name": "distance values normalize to [0, 1] with both ends hit",
+      "name": "distance values normalize to [0, 1] with the window ends hit",
       "pass": true,
       "detail": {}
+    },
+    {
+      "name": "an outlier star does not flatten the map (median stays mid-range)",
+      "pass": true,
+      "detail": {
+        "withOutlier": {
+          "min": 0.5123475193977356,
+          "max": 2.539295196533203
+        },
+        "median": 0.2608232796192169
+      }
     },
     {
       "name": "adjacency ratios are ≥ 1 (3D ≥ transverse, always)",
       "pass": true,
       "detail": {
-        "min": 1.1025315245903957
+        "min": 1.1470082998275757
       }
     },
     {
@@ -120,8 +131,8 @@
       "name": "kernel σ shrinks as the set grows (mean angular spacing)",
       "pass": true,
       "detail": {
-        "s6": 0.15853309190424045,
-        "s60": 0.45764561643188445
+        "s6": 0.07926654595212022,
+        "s60": 0.22882280821594222
       }
     }
   ]

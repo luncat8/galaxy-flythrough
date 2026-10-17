@@ -204,15 +204,25 @@ function drawnPosition(kind, index, out) {
 	const cam = [1.0, 0.2, 0.05];
 
 	const range = field.computeDistanceScalars(state, cam[0], cam[1], cam[2]);
-	check('distance scalars span the brute-force range',
-		Math.abs(range.min - bruteMin(state, cam)) < 1e-9
-		&& Math.abs(range.max - bruteMax(state, cam)) < 1e-9,
+	check('distance window lies inside the brute-force range (percentile clip)',
+		range.min >= bruteMin(state, cam) - 1e-9 && range.max <= bruteMax(state, cam) + 1e-9
+		&& range.min < range.max,
 		{ range, brute: [bruteMin(state, cam), bruteMax(state, cam)] });
-	check('distance values normalize to [0, 1] with both ends hit',
+	check('distance values normalize to [0, 1] with the window ends hit',
 		state.values.slice(0, state.count).every((v) => v >= -1e-6 && v <= 1 + 1e-6)
 		&& Math.abs(Math.min(...state.values.slice(0, state.count))) < 1e-6
 		&& Math.abs(Math.max(...state.values.slice(0, state.count)) - 1) < 1e-6,
 		{});
+	// One outlier (a star at 0.001 kpc) must not flatten the rest.
+	const near = state.positions.slice(0, 3);
+	state.positions[0] = cam[0] + 0.001; state.positions[1] = cam[1]; state.positions[2] = cam[2];
+	const withOutlier = field.computeDistanceScalars(state, cam[0], cam[1], cam[2]);
+	const sortedValues = state.values.slice(0, state.count).sort();
+	const median = sortedValues[sortedValues.length >> 1];
+	check('an outlier star does not flatten the map (median stays mid-range)',
+		withOutlier.min > 0.001 && median > 0.05 && median < 0.95,
+		{ withOutlier, median });
+	state.positions[0] = near[0]; state.positions[1] = near[1]; state.positions[2] = near[2];
 
 	const adj = field.computeAdjacencyScalars(state, cam[0], cam[1], cam[2]);
 	check('adjacency ratios are ≥ 1 (3D ≥ transverse, always)',

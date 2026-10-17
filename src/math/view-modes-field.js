@@ -6,8 +6,8 @@
 //
 // Two modes:
 //   camera distance — the height at a direction is the
-//     camera-to-star distance of the stars in that direction
-//     (closest = 1, farthest = 0 after normalization).
+//     camera-to-star distance of the stars around that direction
+//     (closest = 1, farthest = 0 after a robust normalization).
 //   adjacency — per star, the mean over its k angular-nearest
 //     neighbours of (3D separation / transverse separation): the
 //     hidden depth a 2D shortcut would fly through. Visually
@@ -45,10 +45,15 @@ const ADJACENCY_NEIGHBOURS = 6;
 // The depth ratio is clamped before normalization: coincident
 // directions give ratios that would pin the whole map to 1.
 const RATIO_CLAMP = 1e4;
-// The IDW kernel's truncation radius, in σ multiples — mirrored
-// by the WGSL view-field part (the wgsl-validate constant check
+// The kernel's truncation radius, in σ multiples — mirrored by
+// the WGSL view-field part (the wgsl-validate constant check
 // pins the two together).
 const KERNEL_CUTOFF = 3.0;
+// Normalization window: the scalars' 2nd..98th percentiles map to
+// 0..1 and the tails clamp. A min-max span is set by one outlier
+// (a star at 0.001 kpc, a near-coincident pair), which flattens
+// every other star to the same value.
+const NORM_LOW = 0.02, NORM_HIGH = 0.98;
 const KERNEL_CUTOFF2 = KERNEL_CUTOFF * KERNEL_CUTOFF;
 // A degenerate range (every scalar equal) pins the map at mid
 // height instead of dividing by zero.
@@ -74,6 +79,7 @@ function createFieldState() {
 		directions: new Float32Array(MAX_STARS * 3),
 		scalars: new Float32Array(MAX_STARS),
 		values: new Float32Array(MAX_STARS),
+		sortScratch: new Float64Array(MAX_STARS),
 		// The refresh's own min/max (kpc for mode 1, ratio for
 		// mode 2) — the readout reports them.
 		rangeMin: 0,
@@ -395,20 +401,25 @@ function computeAdjacencyScalars(state, camX, camY, camZ) {
 }
 
 // Normalize the raw scalars into state.values (0..1, degenerate
-// sets pin at 0.5) and record the range for the readout.
-function finalizeRange(state, lo, hi) {
-	if (!Number.isFinite(lo) || !Number.isFinite(hi) || state.count === 0) {
+// sets pin at 0.5) and record the window for the readout. The
+// window is the NORM_LOW..NORM_HIGH percentile span; values beyond
+// it clamp to the ends.
+function finalizeRange(state, minRaw, maxRaw) {
+	if (!Number.isFinite(minRaw) || !Number.isFinite(maxRaw) || state.count === 0) {
 		state.rangeMin = 0; state.rangeMax = 1;
 		return { min: 0, max: 1 };
 	}
+	const sorted = state.sortScratch.subarray(0, state.count);
+	for (let i = 0; i < state.count; i++) sorted[i] = state.scalars[i];
+	sorted.sort();
+	const lo = sorted[Math.floor(NORM_LOW * (state.count - 1))];
+	const hi = sorted[Math.ceil(NORM_HIGH * (state.count - 1))];
 	state.rangeMin = lo;
 	state.rangeMax = hi;
 	const span = hi - lo;
 	const invSpan = span > DEGENERATE_RANGE_EPS ? 1 / span : 0;
 	for (let i = 0; i < state.count; i++) {
-		// The clamp absorbs the f32 round trip: a value
-		// stored at an end of the range must land on the
-		// end, not one ulp outside it.
+		// The clamp absorbs the f32 round trip and the clipped tails.
 		let t = invSpan > 0 ? (state.scalars[i] - lo) * invSpan : 0.5;
 		if (t < 0) t = 0;
 		else if (t > 1) t = 1;
@@ -442,22 +453,26 @@ function packStarUniform(state, camX, camY, camZ) {
 	return out;
 }
 
-// The mean angular separation of N points on a sphere: the σ the
-// kernel auto-width derives from (spacing × multiplier).
+// The kernel width: half the mean angular separation of N points
+// on a sphere, times the smoothing multiplier. Wider than half a
+// spacing and every star's blob swallows its neighbours — the field
+// averages to one grey value (the first version's failure).
 function kernelSigma(starCount, multiplier) {
 	const n = Math.max(1, starCount);
-	return Math.sqrt(4 * Math.PI / n) * multiplier;
+	return 0.5 * Math.sqrt(4 * Math.PI / n) * multiplier;
 }
 
-// The IDW kernel's JS twin — the WGSL view-field part carries
-// the GPU form and wgsl-validate diffs the two. The weight of
-// a star at angular separation θ (supplied as cosθ): a
-// Lorentzian in θ², truncated at KERNEL_CUTOFF σ.
+// The kernel's JS twin — the WGSL view-field part carries the GPU
+// form and wgsl-validate diffs the two. A Gaussian in θ² (the
+// chord gap 2(1−cosθ) ≈ θ²), truncated at KERNEL_CUTOFF σ. A
+// Gaussian rather than a Lorentzian: the Lorentzian's heavy tail
+// lets every distant star into every texel, so the field
+// collapses to the set's mean.
 function kernelWeight(cosTheta, sigma) {
 	const gap2 = 2 * (1 - cosTheta);
-	if (gap2 > KERNEL_CUTOFF2 * sigma * sigma) return 0;
 	const s2 = sigma * sigma;
-	return s2 / (s2 + gap2);
+	if (gap2 > KERNEL_CUTOFF2 * s2) return 0;
+	return Math.exp(-gap2 / (2 * s2));
 }
 
 function nowMs() {

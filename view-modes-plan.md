@@ -80,11 +80,12 @@ Option 1/3 hybrid, on the sphere:
 
 - Pass 1 (compute, `view-field`): fill a small equirectangular
   `r32float` texture (768×384). Each texel converts its UV to a galaxy
-  direction, then evaluates a truncated Lorentzian IDW over the star
-  array: `w = σ² / (σ² + 2(1−dot(dir, starDir)))`, zero beyond 3σ.
-  No `acos`, no `exp` — the kernel lives in cos-space
-  (`2(1−cosθ) ≈ θ²`). Value = weighted mean of the per-star scalars;
-  empty texels (no star within 3σ) write −1.
+  direction, then evaluates a truncated Gaussian kernel mean over the
+  star array: `w = exp(−2(1−dot(dir, starDir)) / 2σ²)`, zero beyond 3σ.
+  No `acos` — the kernel lives in cos-space (`2(1−cosθ) ≈ θ²`). Value =
+  the weighted mean of the per-star scalars (Nadaraya–Watson). A texel
+  with no star inside 3σ takes the value of its nearest star, so the
+  whole sphere is always filled.
 - Pass 2 (fullscreen triangle, `view-shade`): each pixel's view ray is
   built from the camera basis (the same camera-relative convention the
   sprite shader uses), converted to equirect UV, and the field is
@@ -99,12 +100,18 @@ Option 1/3 hybrid, on the sphere:
 The per-star scalar is computed on the CPU (`view-modes-field.js`,
 pure, Node-testable): mode 1 is the camera distance; mode 2 is the
 adjacency ratio over the source set (O(N²) at N ≤ 500, once per
-refresh). Both are min-max normalized per refresh, so the map always
-spans its own range.
+refresh). Both are normalized per refresh onto the 2nd..98th percentile
+window of the set (values beyond it clamp to 0 or 1), so the map spans
+its own bulk and a single outlier — a star at a few parsecs, a
+near-coincident pair — cannot flatten every other star to one value.
 
-**Kernel width** is automatic: σ = spacing × multiplier, where
-spacing = √(4π/N) is the mean angular separation of the set. A
-smoothing slider scales the multiplier 0.25..4 (default 1).
+**Kernel width** is automatic: σ = ½ × spacing × multiplier, where
+spacing = √(4π/N) is the mean angular separation of the set. The half
+spacing is what keeps texture: a width of one spacing or more lets each
+star's weight reach its neighbours' centres, and the field collapses to
+the set's mean. A smoothing slider scales the multiplier 0.25..4
+(default 1). A Lorentzian kernel was tried and rejected: its heavy tail
+sums every distant star into every texel, the same collapse.
 
 **Costs** (N = 500): CPU ~0.15 ms/frame for the 500 position
 evaluations + a 8 KB uniform upload; the sweep runs sliced (~3 ms per
@@ -175,12 +182,15 @@ are +X forward, −Y right, +Z up (camera.js), so a pixel at NDC
 ny·tan(fovY/2))`, and the galaxy ray is
 `forward·x − right·y + up·z` from the camera's exposed basis.
 
-**Refresh triggers** (main.js): mode or source change, camera
-translation beyond `max(0.25 kpc, 0.1 × farthest selected star)`, or
-star time advancing at all while the rate is sub-visual; a sweep
-already running is never restarted mid-walk — the trigger queues and
-the next sweep starts at completion, so the active set is always
-complete (never half-walked).
+**Refresh triggers** (main.js): mode or source change; camera
+translation beyond `max(0.25 kpc, 0.1 × farthest selected star)`, which
+re-sweeps the nearest-N set (the set is the stars *near the camera*, so
+a fixed set is wrong after flight) and refreshes the landmark scalars
+in place; or star time advancing, which re-evaluates positions and
+scalars every frame on the current membership. A sweep already running
+is never restarted mid-walk — the trigger waits, and the next sweep
+starts at completion, so the active set is always complete (never
+half-walked).
 
 ## UI
 

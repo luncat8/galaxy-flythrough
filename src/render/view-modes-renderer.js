@@ -6,7 +6,7 @@
 //   1. view-field  — a compute pass that fills an
 //      equirectangular field texture (the "heightmap" on
 //      the view sphere) from the star set's uniform
-//      array, with the truncated Lorentzian IDW kernel.
+//      array, with the truncated Gaussian kernel mean (nearest-star fill).
 //   2. view-shade  — a fullscreen pass that rebuilds each
 //      pixel's galaxy ray from the camera basis, samples
 //      the field, and terrain-shades it (gradient →
