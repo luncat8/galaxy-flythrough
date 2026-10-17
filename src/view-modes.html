@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Galaxy Fly-Through — View Modes (Heightmap)</title>
+	<link rel="stylesheet" href="view-modes.css">
+</head>
+<body>
+	<canvas id="field"></canvas>
+	<pre id="readout"></pre>
+	<pre id="error" style="display:none"></pre>
+
+	<div id="menu" class="panel">
+		<div class="menu-header">
+			<span>View Modes</span>
+		</div>
+		<div class="menu-row radio-row">
+			<label><input type="radio" name="view-mode" value="camera-dist" checked> camera distance</label>
+			<label><input type="radio" name="view-mode" value="adjacency"> adjacency (Z variance)</label>
+			<label><input type="radio" name="view-mode" value="none"> off</label>
+		</div>
+		<div class="menu-row">
+			<label for="slider-source">Source</label>
+			<input type="range" id="slider-source" min="0" max="500" step="1" value="0">
+			<span id="val-source" class="menu-val">constellations</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-star-time">Star time</label>
+			<input type="range" id="slider-star-time" min="-1" max="99" step="0.5" value="0">
+			<span id="val-star-time" class="menu-val">frozen</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-fov">FoV (deg)</label>
+			<input type="range" id="slider-fov" min="20" max="150" step="1" value="90">
+			<span id="val-fov" class="menu-val">90°</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-resolution">Resolution</label>
+			<input type="range" id="slider-resolution" min="64" max="512" step="32" value="256">
+			<span id="val-resolution" class="menu-val">256</span>
+		</div>
+		<div class="menu-row check-row">
+			<label><input type="checkbox" id="check-contours" checked> contours</label>
+			<label><input type="checkbox" id="check-grid"> grid</label>
+			<label><input type="checkbox" id="check-stars" checked> stars</label>
+			<label><input type="checkbox" id="check-invert"> invert</label>
+		</div>
+		<div class="menu-row">
+			<label for="galaxy-seed">Seed</label>
+			<input type="number" id="galaxy-seed" step="1" min="0" value="42">
+			<button id="galaxy-apply">Apply</button>
+		</div>
+		<div class="menu-note">
+			Drag to orbit the galaxy · scroll zooms · heightmap is a smooth
+			cost-field over camera-aligned plane. Close stars (or depth-disparate
+			neighbours) show as ridges.
+			<a href="index.html">← back to main</a>
+		</div>
+	</div>
+
+	<!-- Load the same math + data tier as main, but no core/render/stream.
+	     Order follows src/index.html: math first, data after coords, then our
+	     own view-modes modules, then the boot script. -->
+	<script src="math/hash.js"></script>
+	<script src="math/density.js"></script>
+	<script src="math/galaxy.js"></script>
+	<script src="math/sampling.js"></script>
+	<script src="math/star-record.js"></script>
+	<script src="math/star-types.js"></script>
+	<script src="math/orbit.js"></script>
+	<script src="math/coords.js"></script>
+	<script src="data/landmarks.js"></script>
+	<script src="data/constellations.js"></script>
+	<script src="math/view-modes-field.js"></script>
+	<script src="render/view-modes-renderer.js"></script>
+	<script src="view-modes.js"></script>
+</body>
+</html>

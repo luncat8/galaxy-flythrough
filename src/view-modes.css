@@ -1,0 +1,132 @@
+/* src/view-modes.css — styling for the view-modes heightmap page */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	background: #000;
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+	color: #ddd;
+}
+
+#field {
+	display: block;
+	width: 100%;
+	height: 100%;
+	cursor: grab;
+	image-rendering: pixelated;
+}
+#field:active { cursor: grabbing; }
+
+#readout {
+	position: fixed;
+	top: 8px;
+	left: 8px;
+	font: 11px/1.45 ui-monospace, Menlo, Consolas, monospace;
+	color: #cde;
+	text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+	pointer-events: none;
+	white-space: pre;
+}
+
+.panel {
+	position: fixed;
+	top: 10px;
+	right: 10px;
+	background: rgba(12,14,22,0.85);
+	border: 1px solid rgba(255,255,255,0.12);
+	border-radius: 8px;
+	padding: 10px 12px;
+	min-width: 300px;
+	max-width: 340px;
+	backdrop-filter: blur(4px);
+	font-size: 12px;
+	z-index: 20;
+}
+
+.menu-header {
+	font-weight: 600;
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: #9cf;
+	margin-bottom: 8px;
+	padding-bottom: 4px;
+	border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.menu-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 6px 0;
+}
+.menu-row label {
+	flex: 0 0 88px;
+	font-size: 11px;
+	color: #bcd;
+}
+.menu-row.radio-row label {
+	flex: 1 1 auto;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 11px;
+}
+.menu-row.check-row {
+	flex-wrap: wrap;
+}
+.menu-row.check-row label {
+	flex: 1 1 45%;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+.menu-row input[type="range"] {
+	flex: 1 1 auto;
+	accent-color: #69c;
+}
+.menu-row input[type="number"] {
+	flex: 1 1 auto;
+	width: auto;
+	background: rgba(255,255,255,0.06);
+	border: 1px solid rgba(255,255,255,0.12);
+	color: #ddd;
+	padding: 3px 6px;
+	border-radius: 4px;
+	font-size: 11px;
+}
+.menu-row button {
+	background: rgba(100,160,255,0.2);
+	border: 1px solid rgba(100,160,255,0.4);
+	color: #cde;
+	padding: 3px 10px;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 11px;
+}
+.menu-row button:hover { background: rgba(100,160,255,0.35); }
+.menu-val {
+	flex: 0 0 96px;
+	text-align: right;
+	font: 11px ui-monospace, Menlo, Consolas, monospace;
+	color: #9cf;
+}
+
+.menu-note {
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid rgba(255,255,255,0.08);
+	font-size: 11px;
+	color: #89a;
+	line-height: 1.5;
+}
+.menu-note a {
+	color: #9cf;
+	display: inline-block;
+	margin-top: 4px;
+	text-decoration: none;
+}
+.menu-note a:hover { text-decoration: underline; }
