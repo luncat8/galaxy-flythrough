@@ -38,7 +38,14 @@ function walk(dir, base) {
 // --- 1. The page loads exactly the source tree, in dependency order ------
 const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
 const scripts = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map(m => m[1]);
-const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sort();
+// The view-modes heightmap is an island: three files with their own page, kept
+// out of index.html on purpose so the main app never loads them and main
+// development does not read them (archive/view-modes-shader-plan.md). Everything
+// else in src/ still has to be wired into the main page, so the exclusion is a
+// named list rather than a pattern that could swallow a real omission.
+const ISLAND = ['math/view-modes-field.js', 'render/view-modes-renderer.js', 'view-modes.js'];
+const sourceFiles = walk(SRC, '')
+	.filter(f => f !== 'data/tiles/catalog.js' && !ISLAND.includes(f)).sort();
 {
 	check('index.html loads main.js last', scripts[scripts.length - 1] === 'main.js', scripts[scripts.length - 1]);
 	check('index.html loads every source file exactly once',
@@ -48,6 +55,14 @@ const sourceFiles = walk(SRC, '').filter(f => f !== 'data/tiles/catalog.js').sor
 	check('every script index.html references exists on disk',
 		scripts.every(s => fs.existsSync(path.join(SRC, s))),
 		scripts.filter(s => !fs.existsSync(path.join(SRC, s))));
+	check('the island is loaded by its own page, in field → painter → boot order', (() => {
+		const islandHtml = fs.readFileSync(path.join(SRC, 'view-modes.html'), 'utf-8');
+		const list = [...islandHtml.matchAll(/<script\s+src="([^"]+)"/g)].map(m => m[1]);
+		return ISLAND.every(f => list.includes(f))
+			&& ISLAND.every(f => !scripts.includes(f))
+			&& list[list.length - 1] === 'view-modes.js'
+			&& /view-modes\.css/.test(islandHtml);
+	})(), { island: ISLAND.map(f => scripts.includes(f)) });
 	check('index.html has no leftover inline WGSL',
 		!/text\/x-wgsl/.test(html), 'wgsl blocks');
 	check('index.html references the stylesheet and the overlay elements',

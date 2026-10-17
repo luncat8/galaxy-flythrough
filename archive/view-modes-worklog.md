@@ -1,0 +1,107 @@
+# View-modes series worklog
+
+The heightmap island: `src/view-modes.html`, its three modules, and the tests that
+keep it honest. Deliberately outside the main app — `index.html` does not load it,
+the main renderers never import it, and `experiments/m1-smoke-test.js` is the check
+that keeps it that way. Governing plan:
+[`archive/view-modes-shader-plan.md`](view-modes-shader-plan.md).
+
+---
+
+## view-modes.0 — the island: a per-texel field, a 2D painter, one page
+
+`archive/view-modes-shader-draft.md` asked for two heightmaps over the star field —
+distance from the camera to the stars, and the depth spread between neighbours that
+look close on screen — realtime while star time moves, over the constellation stars
+or the nearest N, on a page that main development does not have to read. The draft
+proposed diffusion for the smoothing; the shipped rule is Shepard IDW with p = 2 on
+an *angular* half-width (`w = 1/(sin²δ + sin²σ)`), which is one pass over the anchors
+per texel, needs no iteration, and leaves the gradient radiating from each star the
+draft was after.
+
+Three files, in the order the page loads them (the plan's
+`View Modes Shader.4` isolation rule: math and data only, no `core/`, no WebGPU):
+
+- `src/math/view-modes-field.js` — quaternions, the `createLayout` map (texel ↔ ray
+  for both projections), `prepareStars`, `computeField` (modes `height` / `spread` /
+  `gradient`), the log height scale, `autoResolution`, the constellation/catalog/sampled
+  sets, `advancePositions` over the app's own orbit dispatch, `heightAt`.
+- `src/render/view-modes-renderer.js` — `renderField` + `renderLegend` on a 2D canvas:
+  one cached `ImageData`, bilinear upscale for the smoothing, contour lines, the grid,
+  the star dots and constellation segments, the frustum box on a chart, a cached ramp
+  strip for the legend. No per-frame allocation.
+- `src/view-modes.js` — boot and glue: the app's home pose, the star-set pick, the
+  drag-to-look / shift-drag-to-pan input, the readout, the sliders.
+
+V1's numbers were wrong in ways the tests of the time did not catch (it checked value
+*ranges*, which any field passes). See view-modes.1.
+
+---
+
+## view-modes.1 — 2026-10-17 — the projection law, and colour that means distance
+
+The user's complaint was specific: *projection or math looks wrong and does not
+correspond to stars positions*. Four causes, each now pinned by a check that fails
+without the fix:
+
+1. **The map was mirrored.** The basis was re-derived as `right = cross(worldUp,
+   forward)`, which is the app's *left*, and the camera's roll was dropped. Replaced by
+   `quatBasis(orientation)`, the same three axes `core/camera.js` publishes;
+   `experiments/view-modes-field-test.js` compares them against `cam.forward/right/up`
+   at a rolled pose and asserts `right · app.right > 0.999`.
+2. **The colours did not mean distance.** The field was normalized linearly across the
+   set's min/max and then auto-renormalized to `[vMin, vMax]` after smoothing, which
+   threw the distance away (every landmark inside 0.005…0.802 kpc landed on one colour,
+   and a set of stars all beyond the range read as *closest*). Now a fixed log decade
+   scale, `lo = log10(max(1 pc, dMin))`, `hi ≥ lo + 1`, no renormalization, with the
+   readout and legend quoting the kpc the ramp actually spans.
+3. **`texelOf` was not scale-free.** It took the star's direction and read `lat =
+   asin(v.z)` off the *unnormalized* vector, so every chart marker slid toward the
+   equator — while the `dirAt → texelOf` round trip stayed green, because a unit ray is
+   all it ever saw. It normalizes now, and the test pins both that a direction and
+   1000× it land on the same texel and that a marker's texel ray comes back to its star
+   (worst 0.000° over the 60 landmarks).
+4. **The painter asked where a star is in world coordinates.** Marker and figure
+   endpoints went to `texelOf` without subtracting the eye — invisible on a chart (the
+   eye is ~0.005 kpc from the origin), degrees off inside the view sphere, where the
+   near stars are drawn biggest. `renderField` takes `opts.eye` and subtracts.
+
+Also landed here: the view layout takes the *window* aspect (so the field covers exactly
+the frustum the app draws and a marker cannot slide off its star), texel centres use the
+`(i + 0.5)/w` convention in the mapping, the painter, the readout and the drag alike; the
+chart drops rows instead of squashing them when it cannot hold 180° of latitude and clamps
+at the pole instead of folding the far hemisphere back over it; `constellationSegments`
+misread the flat `Int16Array` of the data module as an array of pairs, which turned all 41
+figure edges into (0, 0) and printed nothing.
+
+The default hill width came down from 10° to 3° (`Field.SIGMA_DEG`): at 10° the near
+stars' own texels kept only 0.72 of their height and the whole map sat inside
+0.35…0.75 — no red, the flat look again. At 3° they keep 0.89 and the ramp uses 0.78.
+Both numbers are now asserted.
+
+### Tests
+
+- `experiments/view-modes-field-test.js` — 44 checks: the camera-basis parity, 64
+  landmark sightings landing on the app's own pixel within 0.05 texel, the round trips
+  in both layouts and both directions, the scale's meaning and its invariances,
+  coverage and finiteness, the mode-1 peak and mode-2 σ, the gradient, seam and mirror,
+  the catalog bundle decode and nearest-N, star time through the landmark dispatch, the
+  balanced-budget rebuild (10 ms for 500 anchors) and `autoResolution`.
+- `experiments/view-modes-page-check.js` — 21 checks (22 with `--png`) that boot the *page* headlessly:
+  it reads `src/view-modes.html`, evaluates its scripts in the order the page declares
+  them against a stubbed canvas, pumps frames, drags, switches projection and mode, and
+  asserts the readout, that a marker dot lands on its star's texel, and that the
+  constellation figures were stroked. `--png` writes
+  `experiments/logs/view-modes-page-{view-height,chart-height,chart-spread}.png` for the
+  eye; there is no browser in the sandbox, so this is the only visual check that exists.
+- Both are in `scripts/run.py` (`view-modes-field`, `view-modes-page`), so `quick`,
+  `changed` and `all-tests` pick them up; `m1-smoke-test.js` pins the isolation: the
+  three island files are loaded by `view-modes.html`, never by `index.html`.
+
+### Open
+
+The plan's GPU stages (`WebGL2` splat + blur, the exported Float32Array cost grid for
+pathfinding) are not built — the CPU field hits 500 anchors at 72×40 in 10 ms, so the
+GPU path is a resolution question, not a latency one. `src/view-modes.js` copies
+`LOOK_SENSITIVITY` and `FOV_Y` from `core/camera.js` rather than importing them, which
+is the isolation rule's cost and is said so at the copy.

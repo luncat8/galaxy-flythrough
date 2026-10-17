@@ -3,7 +3,7 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Galaxy Fly-Through — View Modes (Heightmap)</title>
+	<title>Galaxy Fly-Through — View Modes (star heightmap)</title>
 	<link rel="stylesheet" href="view-modes.css">
 </head>
 <body>
@@ -13,65 +13,140 @@
 
 	<div id="menu" class="panel">
 		<div class="menu-header">
-			<span>View Modes</span>
+			<span>View Modes · heightmap</span>
+		</div>
+
+		<div class="menu-row radio-row">
+			<label><input type="radio" name="view-mode" value="height" checked> 1 · distance from eye</label>
+			<label><input type="radio" name="view-mode" value="spread"> 2 · depth spread</label>
+			<label><input type="radio" name="view-mode" value="gradient"> 3 · gradient of 1</label>
+			<label><input type="radio" name="view-mode" value="off"> off</label>
 		</div>
 		<div class="menu-row radio-row">
-			<label><input type="radio" name="view-mode" value="camera-dist" checked> camera distance</label>
-			<label><input type="radio" name="view-mode" value="adjacency"> adjacency (Z variance)</label>
-			<label><input type="radio" name="view-mode" value="none"> off</label>
+			<label><input type="radio" name="projection" value="view" checked> inside view sphere</label>
+			<label><input type="radio" name="projection" value="plane"> plane chart</label>
 		</div>
+
 		<div class="menu-row">
-			<label for="slider-source">Source</label>
+			<label for="slider-source">Anchors</label>
 			<input type="range" id="slider-source" min="0" max="500" step="1" value="0">
 			<span id="val-source" class="menu-val">constellations</span>
 		</div>
 		<div class="menu-row">
 			<label for="slider-star-time">Star time</label>
-			<input type="range" id="slider-star-time" min="-1" max="99" step="0.5" value="0">
+			<input type="range" id="slider-star-time" min="0" max="99" step="0.5" value="0">
 			<span id="val-star-time" class="menu-val">frozen</span>
 		</div>
 		<div class="menu-row">
-			<label for="slider-fov">FoV (deg)</label>
-			<input type="range" id="slider-fov" min="20" max="150" step="1" value="90">
-			<span id="val-fov" class="menu-val">90°</span>
+			<label for="slider-sigma">Hill width σ</label>
+			<input type="range" id="slider-sigma" min="1" max="20" step="0.5" value="3">
+			<span id="val-sigma" class="menu-val">3°</span>
 		</div>
 		<div class="menu-row">
-			<label for="slider-resolution">Resolution</label>
-			<input type="range" id="slider-resolution" min="64" max="512" step="32" value="256">
-			<span id="val-resolution" class="menu-val">256</span>
+			<label for="slider-spread">Depth half-cost</label>
+			<input type="range" id="slider-spread" min="10" max="2000" step="10" value="200">
+			<span id="val-spread" class="menu-val">200 pc</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-grad">Gradient span</label>
+			<input type="range" id="slider-grad" min="2" max="90" step="1" value="14">
+			<span id="val-grad" class="menu-val">14°</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-fov">Vertical FoV</label>
+			<input type="range" id="slider-fov" min="15" max="150" step="1" value="60">
+			<span id="val-fov" class="menu-val">60°</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-span">Chart span</label>
+			<input type="range" id="slider-span" min="15" max="360" step="5" value="360">
+			<span id="val-span" class="menu-val">360°</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-move">Move step</label>
+			<input type="range" id="slider-move" min="1" max="2000" step="1" value="50">
+			<span id="val-move" class="menu-val">50 pc</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-res">Field height</label>
+			<input type="range" id="slider-res" min="0" max="512" step="16" value="0">
+			<span id="val-res" class="menu-val">auto</span>
+		</div>
+
+		<div class="menu-row radio-row">
+			<span class="menu-sub">budget</span>
+			<label><input type="radio" name="budget" value="fast"> fast</label>
+			<label><input type="radio" name="budget" value="balanced" checked> balanced</label>
+			<label><input type="radio" name="budget" value="high"> high</label>
+			<label><input type="radio" name="budget" value="full"> full</label>
 		</div>
 		<div class="menu-row check-row">
 			<label><input type="checkbox" id="check-contours" checked> contours</label>
-			<label><input type="checkbox" id="check-grid"> grid</label>
+			<label><input type="checkbox" id="check-grid"> graticule</label>
 			<label><input type="checkbox" id="check-stars" checked> stars</label>
+			<label><input type="checkbox" id="check-names" checked> names</label>
+		</div>
+		<div class="menu-row check-row">
+			<label><input type="checkbox" id="check-smooth" checked> smooth</label>
 			<label><input type="checkbox" id="check-invert"> invert</label>
+			<label><input type="checkbox" id="check-follow" checked> chart follows look</label>
+			<label><input type="checkbox" id="check-mirror" checked> chart mirrors sky</label>
 		</div>
+		<div class="menu-row check-row">
+			<label><input type="checkbox" id="check-auto-range" checked> auto distance range</label>
+			<button id="btn-home" title="Jump back to the app's home pose: 5 pc above the Sun, looking at the galactic centre">home</button>
+		</div>
+
 		<div class="menu-row">
-			<label for="galaxy-seed">Seed</label>
+			<label for="galaxy-type">Galaxy</label>
+			<select id="galaxy-type">
+				<option value="SBb" selected>SBb (Milky Way preset)</option>
+				<option value="Sab">Sab</option>
+				<option value="Scd">Scd</option>
+				<option value="E4">E4</option>
+				<option value="Irr">Irr</option>
+			</select>
+			<label for="galaxy-seed">seed</label>
 			<input type="number" id="galaxy-seed" step="1" min="0" value="42">
-			<button id="galaxy-apply">Apply</button>
+			<button id="galaxy-apply">apply</button>
 		</div>
+
 		<div class="menu-note">
-			Drag to orbit the galaxy · scroll zooms · heightmap is a smooth
-			cost-field over camera-aligned plane. Close stars (or depth-disparate
-			neighbours) show as ridges.
-			<a href="index.html">← back to main</a>
+			<strong>Drag</strong> looks around (view sphere) or pans the chart ·
+			<strong>wheel</strong> zooms FoV / span · <strong>Shift+wheel</strong>
+			dollies the eye · <strong>Shift+drag</strong> slides it across the view.
+			<br>
+			One heightmap, two layouts: the field is a function of <em>direction</em>,
+			so the map and the sky cannot drift apart — the white dots are the stars
+			the app draws, placed by the same mapping that sampled the field
+			(<code>experiments/view-modes-field-test.js</code> pins it). Heights are
+			Shepard IDW of log distance: smooth, hole-free, no Voronoi cells, no
+			diffusion iterations.
+			<br>
+			Mode 2 feeds a game directly: <code>ViewModesField.heightAt(field, layout, u, v, out)</code>
+			is a bilinear cost lookup on a fixed grid.
+			<br>
+			<a href="index.html">← back to the fly-through</a>
 		</div>
 	</div>
 
-	<!-- Load the same math + data tier as main, but no core/render/stream.
-	     Order follows src/index.html: math first, data after coords, then our
-	     own view-modes modules, then the boot script. -->
+	<!-- The island's load list: math/ and data/ only, never core/, stream/ or
+	     render/star-sprites.js. Same relative order as src/index.html, so the
+	     globals each file resolves are already there when it runs.
+	     data/tiles/catalog.js is loaded as a static script (the main page injects
+	     it through stream/tile-loader.js and deletes the global): here the
+	     __galaxy_catalog bundle just stays put, which is how the nearest-N
+	     anchors are the very records the renderer draws. -->
 	<script src="math/hash.js"></script>
 	<script src="math/density.js"></script>
 	<script src="math/galaxy.js"></script>
 	<script src="math/sampling.js"></script>
 	<script src="math/star-record.js"></script>
-	<script src="math/star-types.js"></script>
-	<script src="math/orbit.js"></script>
 	<script src="math/coords.js"></script>
+	<script src="math/orbit.js"></script>
 	<script src="data/landmarks.js"></script>
 	<script src="data/constellations.js"></script>
+	<script src="data/tiles/catalog.js"></script>
 	<script src="math/view-modes-field.js"></script>
 	<script src="render/view-modes-renderer.js"></script>
 	<script src="view-modes.js"></script>

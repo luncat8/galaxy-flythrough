@@ -1336,6 +1336,15 @@ Shipped, in `archive/`:
   (0.5.5 shipped; optional economy omitted). CPU-only by construction: the star buffer, the WGSL and the three render paths
   are untouched.
 
+- `archive/view-modes-shader-plan.md` — the view-modes heightmap island: the distance from
+  the camera to the stars, and the depth spread between neighbours that look close on
+  screen, as smooth per-texel fields over the constellation stars or the nearest N, moving
+  with star time. CPU IDW + a 2D canvas painter, in the app's own projection (a gnomonic
+  view sphere at the camera's FoV, plus an equirect sky chart with quaternion drag-pan).
+  Loaded only by `src/view-modes.html`, so the main app and its agents never read it.
+  *(shipped as view-modes.0/.1 — .1 corrected the projection and the distance meaning; the
+  GPU splat and the pathfinding cost-grid export stay open. Log: `archive/view-modes-worklog.md`)*
+
 - **0.5.6 — system-view review pass** (on top of the archived 0.5 plan, §6–§8):
   the system/ship controls move out of the right-hand galaxy menu into their own
   left panel (`#sysmenu`; Tab toggles both panels, the overlay/readout inset

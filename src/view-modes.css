@@ -40,7 +40,9 @@ html, body {
 	border-radius: 8px;
 	padding: 10px 12px;
 	min-width: 300px;
-	max-width: 340px;
+	max-width: 360px;
+	max-height: calc(100% - 20px);
+	overflow-y: auto;
 	backdrop-filter: blur(4px);
 	font-size: 12px;
 	z-index: 20;
@@ -87,6 +89,21 @@ html, body {
 .menu-row input[type="range"] {
 	flex: 1 1 auto;
 	accent-color: #69c;
+}
+.menu-row select {
+	flex: 1 1 auto;
+	background: rgba(255,255,255,0.06);
+	border: 1px solid rgba(255,255,255,0.12);
+	color: #ddd;
+	padding: 3px 4px;
+	border-radius: 4px;
+	font-size: 11px;
+}
+.menu-sub {
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #679;
 }
 .menu-row input[type="number"] {
 	flex: 1 1 auto;

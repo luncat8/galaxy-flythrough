@@ -2,7 +2,7 @@
 
 ## Context
 
-`archive/draft-view-modes-shader.md` asks for a separate render page that visualizes
+`archive/view-modes-shader-draft.md` asks for a separate render page that visualizes
 star fields as smooth heightmaps for game purposes: where height = travel cost,
 gradient = slow travel, usable for pathfinding or ship movement. Two modes:
 
@@ -278,6 +278,10 @@ Each step is shippable: .0 shows points, .1 shows smooth distance map,
 
 - **Color**: Height as grayscale + contour, or turbo? Turbo reads better for
   distance, grayscale for cost.
+  *Answered at landing*: turbo for all three modes, with one contour pass at 10 levels
+  on top (the lines are what make a smooth field readable as a heightmap rather than a
+  wash). The ramp is a fixed function of the value, and the value is a fixed function of
+  the distance, so the legend can quote kpc — see the normalization note below.
 
 ---
 
@@ -286,3 +290,50 @@ Each step is shippable: .0 shows points, .1 shows smooth distance map,
 - Full game mode integration (ship slowing by heightmap).
 - Volumetric nebula heightmaps.
 - Export
+
+---
+
+## As shipped (view-modes.0 + view-modes.1, 2026-10-17)
+
+What differs from the plan above, and why. The entry to read is
+[`archive/view-modes-worklog.md`](view-modes-worklog.md).
+
+- **`.1`'s splat + two-pass Gaussian blur is not used.** One IDW pass over the anchors
+  per texel replaces both: `w = 1/(sin²δ + sin²σ)` with δ the *angle* to the star, so
+  every star gets a gradient radiating from it, two stars on one ray blend to their mean
+  by construction, and the result is smooth because the canvas upscales a small
+  Float32 field with bilinear filtering. No diffusion iteration, no FBO ping-pong, no
+  WebGL2 — the whole painter is one `putImageData` plus a vector overlay, and 500
+  anchors at the balanced budget rebuild in ~10 ms.
+- **Normalization is not auto-scaled.** "0..1 = far → closest" is a log decade scale
+  fixed by the set (`lo = log10(max(1 pc, dMin))`, `hi ≥ lo + 1`), evaluated per star and
+  *never* re-stretched after smoothing. The first cut renormalized to `[vMin, vMax]` each
+  frame, which made the legend meaningless and inverted the map when a bright star
+  entered the view. The renderer is therefore allowed to show a partly-empty ramp.
+- **σ is a visible parameter, not a constant.** It sets how much of a star's own height
+  survives its neighbours' averaging; 10° left the whole sky inside 0.35..0.75 (the flat
+  look the draft was written to avoid), so the default is `Field.SIGMA_DEG = 3` and the
+  peak-and-ramp-usage numbers are asserted in `experiments/view-modes-field-test.js`.
+- **`.2`'s variance is an IDW-weighted σ of the raw distance**, not a second splat
+  (`spreadRefKpc` turns σ into `σ/(σ+ref)` so "flat sky" is 0 and a depth cliff is 1),
+  and `.3`'s gradient mode is the finite difference of mode 1's grid scaled to an angle —
+  the plan's "mode 2 may be the gradient of mode 1" is true in shape but the depth gap is
+  the more direct read, so both exist.
+- **The projection is the app's, inverted.** The view layout is the gnomonic window of
+  `core/camera.js` (`FOV_Y` 60°, the camera's own forward/right/up basis, the *window*
+  aspect so the field covers exactly what the app draws); the plane layout is the
+  equirect chart with quaternion drag-panning and a wrapped seam, from the
+  planet-geotectonics approach. `experiments/view-modes-field-test.js` puts 64 landmark
+  sightings on the app's own `projectToScreen` pixel to within 0.05 texel; nothing in
+  this section is allowed to be derived twice.
+- **Isolation held.** Three files, loaded only by `src/view-modes.html`; math and data
+  plus `data/tiles/catalog.js` (as a static data script, so `stream/tile-loader.js` is
+  not needed), never `core/`, `render/star-sprites.js` or the device.
+  `experiments/m1-smoke-test.js` asserts the three files are absent from `index.html`
+  and present in the island page, so the isolation cannot rot silently. Two camera
+  constants (`LOOK_SENSITIVITY`, `FOV_Y`) are copied into `src/view-modes.js` rather than
+  imported — the rule's cost, marked at the copy.
+- **Still open**: the `.2` export for pathfinding (a `Float32Array` cost grid handed to a
+  route solver), a GPU path if a chart wants > ~1 M texel-anchor pairs, and the browser
+  pass (no browser in the sandbox; `experiments/view-modes-page-check.js --png` is what
+  stands in for eyes).

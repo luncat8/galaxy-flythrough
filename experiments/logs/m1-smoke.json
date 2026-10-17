@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-17T02:58:38.717Z",
+  "date": "2026-10-17T08:39:54.217Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -70,8 +70,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 92,
-  "passed": 92,
+  "totalChecks": 93,
+  "passed": 93,
   "failed": 0,
   "checks": [
     {
@@ -92,6 +92,17 @@
       "name": "every script index.html references exists on disk",
       "pass": true,
       "detail": []
+    },
+    {
+      "name": "the island is loaded by its own page, in field → painter → boot order",
+      "pass": true,
+      "detail": {
+        "island": [
+          false,
+          false,
+          false
+        ]
+      }
     },
     {
       "name": "index.html has no leftover inline WGSL",

@@ -1,0 +1,352 @@
+{
+  "date": "2026-10-17T08:44:28.378Z",
+  "anchors": {
+    "landmarks": 60,
+    "catalog": 3829
+  },
+  "totalChecks": 44,
+  "passed": 44,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "quatBasis reproduces camera.forward",
+      "pass": true,
+      "detail": {
+        "mine": [
+          0.9739139159225444,
+          0.21490920036119202,
+          0.07284037323166451
+        ],
+        "app": [
+          0.9739139080047607,
+          0.21490919589996338,
+          0.0728403702378273
+        ]
+      }
+    },
+    {
+      "name": "quatBasis reproduces camera.right (the screen-right axis, not its negation)",
+      "pass": true,
+      "detail": {
+        "mine": [
+          0.22213303902879508,
+          -0.968496036921842,
+          -0.11257148590348151
+        ],
+        "app": [
+          0.22213304042816162,
+          -0.9684960246086121,
+          -0.11257148534059525
+        ]
+      }
+    },
+    {
+      "name": "quatBasis reproduces camera.up",
+      "pass": true,
+      "detail": {
+        "mine": [
+          -0.046352964783786504,
+          -0.1258151901274205,
+          0.9909702016654961
+        ],
+        "app": [
+          -0.04635296389460564,
+          -0.12581518292427063,
+          0.9909701943397522
+        ]
+      }
+    },
+    {
+      "name": "the map is not mirrored: right · app.right = +1",
+      "pass": true,
+      "detail": 0.9999999883221661
+    },
+    {
+      "name": "basis is orthonormal",
+      "pass": true
+    },
+    {
+      "name": "64 landmark sightings land on the app pixel within 0.05 texel (116 behind the eye)",
+      "pass": true,
+      "detail": {
+        "worstTexel": 0.00014,
+        "worstName": "Canopus",
+        "compared": 64,
+        "skipped": 116
+      }
+    },
+    {
+      "name": "a star off to the app-right has a larger texel x (not mirrored)",
+      "pass": true
+    },
+    {
+      "name": "view: texelOf(dirAt(texel)) returns the texel",
+      "pass": true,
+      "detail": {
+        "worstTexel": 0
+      }
+    },
+    {
+      "name": "plane: texelOf(dirAt(texel)) returns the texel",
+      "pass": true,
+      "detail": {
+        "worstTexel": 0
+      }
+    },
+    {
+      "name": "height 1 at the near anchor, 0 at the far anchor",
+      "pass": true,
+      "detail": {
+        "near": 1,
+        "far": 0
+      }
+    },
+    {
+      "name": "height decreases monotonically with distance",
+      "pass": true
+    },
+    {
+      "name": "legend and readout agree: height → kpc → height round-trips",
+      "pass": true,
+      "detail": 1.1102230246251565e-16
+    },
+    {
+      "name": "a set entirely outside the range reads as far, not rescaled to 1",
+      "pass": true,
+      "detail": {
+        "h": 0
+      }
+    },
+    {
+      "name": "a star at the eye cannot flatten the ramp (1 pc floor)",
+      "pass": true
+    },
+    {
+      "name": "constellation anchors are the landmark table (the Sun included)",
+      "pass": true,
+      "detail": {
+        "n": 60,
+        "segs": 41
+      }
+    },
+    {
+      "name": "figure edges are landmark pairs (41 of them, Orion included)",
+      "pass": true,
+      "detail": {
+        "len": 82,
+        "want": 82,
+        "inRange": true,
+        "first": [
+          10,
+          25
+        ],
+        "orion": true
+      }
+    },
+    {
+      "name": "prepareStars ignores the star the eye sits on (the Sun at 5 pc)",
+      "pass": true,
+      "detail": {
+        "n": 60,
+        "set": 60,
+        "dMin": 0.005
+      }
+    },
+    {
+      "name": "view: the whole sky is painted, every texel finite and in 0..1",
+      "pass": true,
+      "detail": {
+        "bad": 0,
+        "lo": 0.361,
+        "hi": 0.61
+      }
+    },
+    {
+      "name": "plane: the whole sky is painted, every texel finite and in 0..1",
+      "pass": true,
+      "detail": {
+        "bad": 0,
+        "lo": 0.348,
+        "hi": 0.748
+      }
+    },
+    {
+      "name": "chart has no unpainted floor (min > 0.05)",
+      "pass": true,
+      "detail": {
+        "lo": 0.348
+      }
+    },
+    {
+      "name": "mode 1 is the IDW mean of the stars on that ray, and falls off away from them",
+      "pass": true,
+      "detail": {
+        "atStar": 0.49,
+        "farVal": 0.248
+      }
+    },
+    {
+      "name": "mode 2 reads the depth gap in that direction (σ ≈ 0.5 kpc → cost ≈ 0.7)",
+      "pass": true,
+      "detail": {
+        "spread": 0.714,
+        "peakKpc": 0.4992
+      }
+    },
+    {
+      "name": "mode 2 is ~0 where the neighbours agree in depth",
+      "pass": true,
+      "detail": {
+        "v": 0
+      }
+    },
+    {
+      "name": "coincident stars: no NaN, no divide by zero",
+      "pass": true
+    },
+    {
+      "name": "gradient of a constant field is constant (≤ 0.2 of full scale)",
+      "pass": true,
+      "detail": {
+        "maxG": 0
+      }
+    },
+    {
+      "name": "gradient of the real height field is non-degenerate",
+      "pass": true,
+      "detail": {
+        "max": 1
+      }
+    },
+    {
+      "name": "chart maps longitude about its centre and puts the seam at both edges",
+      "pass": true,
+      "detail": {
+        "l1": 180.5,
+        "lm1": 178.5,
+        "l179": 358.5
+      }
+    },
+    {
+      "name": "the default chart mirrors the sky: north up, longitude grows left",
+      "pass": true,
+      "detail": {
+        "x": 178.5
+      }
+    },
+    {
+      "name": "mirrored chart still round-trips",
+      "pass": true,
+      "detail": {
+        "x": 90,
+        "y": 45,
+        "inside": true
+      }
+    },
+    {
+      "name": "plane: texelOf ignores the length of the direction it is given",
+      "pass": true,
+      "detail": {
+        "worstTexel": 2.842170943040401e-14
+      }
+    },
+    {
+      "name": "view: texelOf ignores the length of the direction it is given",
+      "pass": true,
+      "detail": {
+        "worstTexel": 9.094947017729282e-13
+      }
+    },
+    {
+      "name": "every chart marker's ray comes back to its star (worst 0.000° off Spica)",
+      "pass": true,
+      "detail": {
+        "worstDeg": 0,
+        "worstName": "Spica"
+      }
+    },
+    {
+      "name": "σ 3°: the near stars' texels reach 0.89 and the ramp spans 0.784054696559906",
+      "pass": true,
+      "detail": {
+        "peak": 0.893,
+        "range": 0.784
+      }
+    },
+    {
+      "name": "σ 10°: the near stars' texels reach 0.75 and the ramp spans 0.40165960788726807",
+      "pass": true,
+      "detail": {
+        "peak": 0.748,
+        "range": 0.402
+      }
+    },
+    {
+      "name": "catalog bundle decodes",
+      "pass": true,
+      "detail": 3829
+    },
+    {
+      "name": "nearest-N from the catalog returns N stars, sorted by distance",
+      "pass": true,
+      "detail": {
+        "n": 24
+      }
+    },
+    {
+      "name": "the nearest-N list is ordered and every star is inside 100 pc of the Sun",
+      "pass": true,
+      "detail": {
+        "farthestKpc": 0.0346
+      }
+    },
+    {
+      "name": "catalog records carry the packed word the renderer moves them with",
+      "pass": true,
+      "detail": 98306
+    },
+    {
+      "name": "re-picking follows the eye: 500 nearest from 6 kpc off are different stars",
+      "pass": true,
+      "detail": {
+        "home": "0.0145",
+        "off": "4.2393"
+      }
+    },
+    {
+      "name": "frozen star time copies the birth frame exactly",
+      "pass": true
+    },
+    {
+      "name": "1 Myr of star time displaces the landmarks through the landmark dispatch",
+      "pass": true,
+      "detail": {
+        "moved": 60,
+        "maxMoveKpc": 0.24942
+      }
+    },
+    {
+      "name": "the heightmap updates with star time",
+      "pass": true,
+      "detail": {
+        "maxDelta": 0.67089
+      }
+    },
+    {
+      "name": "500 anchors at the balanced budget (72×40) rebuilds in 9.9 ms (< 60)",
+      "pass": true,
+      "detail": {
+        "ms": 9.95,
+        "pairs": 1440000
+      }
+    },
+    {
+      "name": "autoResolution trades resolution for anchors",
+      "pass": true,
+      "detail": {
+        "n500": 40,
+        "n60": 120
+      }
+    }
+  ]
+}

@@ -4,6 +4,57 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+---
+
+## 2026-10-17 — A projection inverse needs a pixel-level parity test; a round trip through one direction hides a scale bug
+
+The heightmap island ("the map must correspond to where the stars are") failed in four
+independent ways, and each one is a testing lesson:
+
+1. **Never re-derive a camera basis in a feature module.** The first cut built screen-right
+   as `cross(worldUp, forward)`, which is the app's *left*: the whole map was mirrored and
+   the camera roll was silently dropped. A parity check that samples the identity pose
+   cannot see it. Read the pose (`core/camera.js`'s `forward/right/up`, or copy the constant
+   when isolation forbids the import), and assert the sign explicitly
+   (`right · app.right > 0.999`) at a pose that carries roll.
+2. **Forward-and-back is not a two-way test.** `texelOf(dirAt(t)) == t` passed for every
+   texel while `dirAt(texelOf(star))` pointed 70° away from the star, because `lat` is
+   `asin(v.z)` of a component — a mapping that ignores the input's length only if you
+   normalize first. Callers hand it a kpc offset (|v| ≈ 0.007), so every marker slid toward
+   the equator. Pin both directions, and pin the invariance directly: *the same texel for a
+   direction and for 1000× that direction*.
+3. **Auto-renormalizing a measured field every frame throws away the measurement.** Scaling
+   the blurred height to `[vMin, vMax]` made the legend's numbers lies: a set of stars all
+   beyond the range read as 1 = "closest", and the map inverted when a bright star entered.
+   Keep a fixed log scale with a floor (`max(1 pc, dMin)`) and no renorm, and test the
+   invariance that must hold (all-beyond-range ⇒ floor, not peak).
+4. **A `[a,b,a,b]` typed array is not an array of pairs.** `C.LINES[i].edges` is an
+   `Int16Array`; reading `e[j][0]` gave `undefined` → 0, so all 41 constellation edges became
+   (Sun, Sun) — a truthy array, an empty overlay, and one `!!set.segments` assertion happily
+   green. Assert the contents (indices in range, `a !== b`, one named edge present) and the
+   length against the data module's own `edgeCount`.
+
+Two more, from the harness rather than the feature: a canvas stub whose `drawImage` copies
+the source over the *whole* destination instead of the destination rect paints the legend
+strip across the map and reports "nothing changed"; and `projectToScreen` leaves `px` stale
+when the point is behind the camera, so an app-parity test must skip on that return value and
+must read `cam.getState()` *after* `setState` (a pre-setState copy compares two different
+cameras and passes).
+
+---
+
+## 2026-10-17 — A soft IDW peak is a design parameter: wide σ reads as a flat map
+
+"Smooth like a heightmap, not flat Voronoi cells" is satisfiable without diffusion:
+Shepard IDW with p=2 and an angular half-width, `w = 1/(sin²δ + sin²σ)`, gives a gradient
+radiating from each star and blends two stars on the same ray to their mean by construction.
+But σ sets how much of each star's own height survives: over the 60-landmark sky at
+192°×176° chart resolution, σ = 10° averaged the near stars down to 0.72 of their height and
+confined the whole map to 0.35…0.75 — no red anywhere, the "flat" complaint back again
+through the back door. σ = 3° keeps 0.89 and uses 0.78 of the ramp. The falloff must be in
+*angle*, not texels, or a chart resolution change silently restyles the map — and the peak
+plus the used ramp range belong in a test, since both are the visible promise.
+
 ## 2026-10-14 — A difference-of-sines wobble needs half the headroom, not all of it
 
 The classic vertical epicycle is `Δz = av·(sin(ψ + κt) − sin ψ)`, so its

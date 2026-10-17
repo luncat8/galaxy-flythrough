@@ -1,0 +1,152 @@
+{
+  "totalChecks": 22,
+  "passed": 22,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "view-modes.html loads the island scripts",
+      "pass": true,
+      "detail": {
+        "n": 13
+      }
+    },
+    {
+      "name": "view-modes.html loads the field, the painter and the boot last",
+      "pass": true,
+      "detail": [
+        "math/view-modes-field.js",
+        "render/view-modes-renderer.js",
+        "view-modes.js"
+      ]
+    },
+    {
+      "name": "the page loads the catalog bundle as a data script",
+      "pass": true,
+      "detail": [
+        "data/tiles/catalog.js"
+      ]
+    },
+    {
+      "name": "the island loads no core/ or stream/ module",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "every script in the page evaluates in order",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "the page found no boot error element text",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "the first frames ran clean",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "readout reports the view-sphere projection at the app FoV",
+      "pass": true,
+      "detail": "projection: view sphere · 60° vertical FoV"
+    },
+    {
+      "name": "readout reports the landmark anchors",
+      "pass": true,
+      "detail": "source: constellations · 60 anchors (landmarks)"
+    },
+    {
+      "name": "readout reports a non-empty field",
+      "pass": true,
+      "detail": "field 216×120 · 1.56 M pairs · 10.2 ms · 60 fps"
+    },
+    {
+      "name": "the painter drew the field and the star overlay",
+      "pass": true,
+      "detail": {
+        "fillRect": 3,
+        "drawImage": 6,
+        "arc": 12,
+        "fill": 12,
+        "stroke": 15,
+        "fillText": 15,
+        "putImageData": 0
+      }
+    },
+    {
+      "name": "a marker dot lands on its star's texel, not its raw position",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "star labels landed on the map",
+      "pass": true,
+      "detail": [
+        "mode 1 · distance from the eye — 60 anchors (landmarks)",
+        "far 0.80 kpc",
+        "close 5.00 pc",
+        "Shepard IDW p=2, σ 3°, log 5.00 pc…0.80 kpc",
+        "range auto · re-read every 0.25 s",
+        "mode 1 · distance from the eye — 60 anchors (landmarks)",
+        "far 0.80 kpc",
+        "close 5.00 pc"
+      ]
+    },
+    {
+      "name": "dragging looks around: the map repaints",
+      "pass": true,
+      "detail": {
+        "changedPx": 216355
+      }
+    },
+    {
+      "name": "the look survived the frame loop",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "the chart strokes the constellation figures as segments",
+      "pass": true,
+      "detail": {
+        "segs": 41,
+        "outA": 0,
+        "outB": 0,
+        "seam": 1,
+        "drawn": 40,
+        "w": 216,
+        "h": 104
+      }
+    },
+    {
+      "name": "the plane chart paints too",
+      "pass": true,
+      "detail": "projection: plane chart · 360° span · follows look"
+    },
+    {
+      "name": "the chart keeps the sky: no frame error",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "mode 2 runs without a frame error",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "nearest-250 re-picks from the catalog",
+      "pass": true,
+      "detail": "source: 250 nearest · 250 anchors (catalog)"
+    },
+    {
+      "name": "off clears the canvas",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "the screenshots are not blank",
+      "pass": true,
+      "detail": null
+    }
+  ]
+}
