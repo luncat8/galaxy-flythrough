@@ -134,8 +134,18 @@ function createMockGpu() {
                 queue: {
                         writeTexture() {},
                         writeBuffer(buffer, offset, data, dataOffset, size) {
-                                const length = size === undefined ? data.byteLength - (dataOffset || 0) : size;
-                                const copy = new Uint8Array(data, dataOffset || 0, length).slice();
+                                // The real API counts dataOffset and size in
+                                // *elements* for a typed array and in bytes
+                                // for an ArrayBuffer. The mock used to count
+                                // bytes for both, which silently truncated a
+                                // typed-array write that carried a size.
+                                const view = ArrayBuffer.isView(data);
+                                const elem = view ? data.BYTES_PER_ELEMENT : 1;
+                                const start = (dataOffset || 0) * elem;
+                                const length = size === undefined ? data.byteLength - start : size * elem;
+                                const buf = view ? data.buffer : data;
+                                const base = view ? data.byteOffset : 0;
+                                const copy = new Uint8Array(buf, base + start, length).slice();
                                 if (buffer.label === 'star-camera-uniform') gpu.uniformWrites.push(copy);
                                 else if (buffer.label === 'tonemap-uniform') gpu.tonemapUniformWrites.push(copy);
                                 else if (buffer.label === 'simple-step-uniform') gpu.simpleUniformWrites.push(copy);
@@ -185,26 +195,41 @@ console.log(`Prepared in ${prepareMs} ms: ${prepareState.proceduralStars} proced
 
 // --- Shader + pipeline wiring -------------------------------------------
 {
-        check('four shader modules are created (star-sprite + tonemap + nebula-billboard + simple-step)',
-                gpu.shaderModules.length === 4
+        // The field's two modules join the four scene modules: the distance
+        // field is a wired part of the renderer now, not a separate app.
+        check('six shader modules are created (star-sprite + tonemap + nebula-billboard + simple-step + the two field modules)',
+                gpu.shaderModules.length === 6
                 && gpu.shaderModules[0].code === window.GalaxyShaders.SHADERS['star-sprite']
                 && gpu.shaderModules[1].code === window.GalaxyShaders.SHADERS['tonemap']
                 && gpu.shaderModules[2].code === window.GalaxyShaders.SHADERS['nebula-billboard']
-                && gpu.shaderModules[3].code === window.GalaxyShaders.SHADERS['simple-step'],
+                && gpu.shaderModules[3].code === window.GalaxyShaders.SHADERS['simple-step']
+                && gpu.shaderModules[4].code === window.GalaxyShaders.SHADERS['distance-field']
+                && gpu.shaderModules[5].code === window.GalaxyShaders.SHADERS['distance-field-display'],
                 { modules: gpu.shaderModules.map(s => s.label) });
         check('all wired shaders declare their entry points',
-                gpu.shaderModules.filter(s => s.label !== 'simple-step')
+                gpu.shaderModules.filter(s => s.label !== 'simple-step' && s.label.indexOf('field') < 0)
                         .every(s => /@vertex\s+fn\s+vs_main/.test(s.code) && /@fragment\s+fn\s+fs_main/.test(s.code))
                 && /@compute/.test(gpu.shaderModules[3].code)
-                && /fn\s+main\(@builtin\(global_invocation_id\)/.test(gpu.shaderModules[3].code));
+                && /fn\s+main\(@builtin\(global_invocation_id\)/.test(gpu.shaderModules[3].code)
+                && /@compute\s+@workgroup_size\(8, 8\)\s+fn\s+cs_field/.test(gpu.shaderModules[4].code)
+                && /@compute\s+@workgroup_size\(8, 8\)\s+fn\s+cs_slope/.test(gpu.shaderModules[4].code)
+                && /@vertex\s+fn\s+vs_full/.test(gpu.shaderModules[5].code)
+                && /@fragment\s+fn\s+fs_field/.test(gpu.shaderModules[5].code));
         const spritePipeline = gpu.pipelines.find(p => p.label === 'star-sprite-pipeline');
         const tonemapPipeline = gpu.pipelines.find(p => p.label === 'tonemap-pipeline');
         const nebulaPipeline = gpu.pipelines.find(p => p.label === 'nebula-billboard-pipeline');
         const stepPipeline = gpu.pipelines.find(p => p.label === 'simple-step-pipeline');
-        check('four pipelines are created (star-sprite + tonemap + nebula-billboard + simple-step) — no hdr-direct bypass',
+        const fieldPipeline = gpu.pipelines.find(p => p.label === 'field-pipeline');
+        const fieldSlopePipeline = gpu.pipelines.find(p => p.label === 'field-slope-pipeline');
+        check('six pipelines are created (the four scene ones + the field compute and slope) — no hdr-direct bypass',
                 !!spritePipeline && !!tonemapPipeline && !!nebulaPipeline && !!stepPipeline
-                && gpu.pipelines.length === 4,
+                && !!fieldPipeline && !!fieldSlopePipeline
+                && gpu.pipelines.length === 6,
                 gpu.pipelines.map(p => p.label));
+        check('the field\'s two pipelines are compute pipelines with the field\'s entry points',
+                !!fieldPipeline && fieldPipeline.compute.entryPoint === 'cs_field'
+                && !!fieldSlopePipeline && fieldSlopePipeline.compute.entryPoint === 'cs_slope',
+                { field: fieldPipeline && fieldPipeline.compute, slope: fieldSlopePipeline && fieldSlopePipeline.compute });
         check('the simple-step pipeline is a compute pipeline with a main entry',
                 !!stepPipeline && !!stepPipeline.compute && stepPipeline.compute.entryPoint === 'main',
                 stepPipeline && stepPipeline.compute);
@@ -1242,6 +1267,91 @@ function cellManagerFrom(m, budget) {
         check('headroom clamps to [1, 8] and desat to [0, 1]',
                 engRenderer.setHeadroom(99) === 8 && engRenderer.setHeadroom(-99) === 1
                 && engRenderer.setHighlightDesat(99) === 1 && engRenderer.setHighlightDesat(-99) === 0);
+}
+
+// --- The distance field, on ----------------------------------------------
+// The field is a wired part of the renderer: with a mode and some anchors it
+// computes the field, paints it into the HDR intermediate, and the stars load
+// on top of it instead of clearing it away.
+{
+        const fieldComputeBefore = gpu.computePasses.length;
+        const fieldDisplayBefore = gpu.passes.length;
+        renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
+        const fieldComputeOff = gpu.computePasses.slice(fieldComputeBefore).filter(p => p.label === 'field-compute');
+        const fieldDisplayOff = gpu.passes.slice(fieldDisplayBefore).filter(p => p.label === 'field-display');
+        const spritePassOff = gpu.passes.filter(p => p.label === 'star-sprites').pop();
+        check('the field is off by default: no field compute, no field display, the stars still clear',
+                fieldComputeOff.length === 0 && fieldDisplayOff.length === 0
+                && spritePassOff.desc.colorAttachments[0].loadOp === 'clear',
+                { compute: fieldComputeOff.length, display: fieldDisplayOff.length });
+
+        const anchors = new Float64Array(64 * 3);
+        for (let i = 0; i < 64; i++) {
+                anchors[i * 3] = (i % 8) * 0.4 - 1.6;
+                anchors[i * 3 + 1] = Math.floor(i / 8) * 0.4 - 1.6;
+                anchors[i * 3 + 2] = 0.2 * ((i % 3) - 1);
+        }
+		renderer.setFieldAnchors(anchors, 64);
+		renderer.setFieldMode('height');
+		camera.setState({
+			position: [1.25, -0.75, 0.4], velocity: [0, 0, 0],
+			orientation: [0.2, -0.1, 0.3, 0.9],
+		});
+		const computeBefore = gpu.computePasses.length;
+        const displayBefore = gpu.passes.length;
+        renderer.render(camera, WIDTH, HEIGHT, 1 / 30, input);
+        const fieldCompute = gpu.computePasses.slice(computeBefore).filter(p => p.label === 'field-compute');
+        const fieldDisplay = gpu.passes.slice(displayBefore).filter(p => p.label === 'field-display');
+        const spritePass = gpu.passes.filter(p => p.label === 'star-sprites').pop();
+        check('the field computes a grid when it is on (one dispatch over the field\'s workgroups)',
+                fieldCompute.length === 1 && fieldCompute[0].dispatches.length === 1
+                && fieldCompute[0].dispatches[0][0] * 8 >= 320
+                && fieldCompute[0].dispatches[0][1] * 8 >= 180,
+                fieldCompute.length ? fieldCompute[0].dispatches : null);
+        check('the field paints into the HDR intermediate before the stars',
+                fieldDisplay.length === 1 && fieldDisplay[0].draws.length === 1
+                && fieldDisplay[0].draws[0].vertices === 3
+                && fieldDisplay[0].desc.colorAttachments[0].view === spritePass.desc.colorAttachments[0].view,
+                fieldDisplay.length ? fieldDisplay[0].draws[0] : null);
+        check('the star pass loads the field instead of clearing it away',
+                spritePass.desc.colorAttachments[0].loadOp === 'load');
+		check('the field\'s state reports the mode, the anchor count and the range',
+			renderer.fieldState().mode === 'height' && renderer.fieldState().anchors === 64
+			&& renderer.fieldState().hi > renderer.fieldState().lo,
+			renderer.fieldState());
+		const fieldUniformWrite = gpu.bufferWrites.filter(w => w.buffer.label === 'field-uniform').pop();
+		const fieldUniform = fieldUniformWrite
+			? new Float32Array(fieldUniformWrite.bytes.buffer, fieldUniformWrite.bytes.byteOffset, 40)
+			: new Float32Array(40);
+		const poseErr = Math.max(
+			Math.abs(fieldUniform[0] - camera.cameraPos[0]),
+			Math.abs(fieldUniform[1] - camera.cameraPos[1]),
+			Math.abs(fieldUniform[2] - camera.cameraPos[2]),
+			Math.abs(fieldUniform[3] - Math.tan(camera.fovY / 2)),
+			Math.abs(fieldUniform[4] - camera.forward[0]),
+			Math.abs(fieldUniform[5] - camera.forward[1]),
+			Math.abs(fieldUniform[6] - camera.forward[2]),
+			Math.abs(fieldUniform[7] - WIDTH / HEIGHT),
+			Math.abs(fieldUniform[8] - camera.right[0]),
+			Math.abs(fieldUniform[9] - camera.right[1]),
+			Math.abs(fieldUniform[10] - camera.right[2]),
+			Math.abs(fieldUniform[12] - camera.up[0]),
+			Math.abs(fieldUniform[13] - camera.up[1]),
+			Math.abs(fieldUniform[14] - camera.up[2]));
+		check('the uploaded field projection uses the live eye, camera basis, explicit FoV and viewport aspect',
+			!!fieldUniformWrite && poseErr < 1e-6, { poseErr, tanHalfY: fieldUniform[3], aspect: fieldUniform[7] });
+		const anchorWrite = gpu.bufferWrites.filter(w => w.buffer.label === 'field-anchors').pop();
+        check('the anchors reach the GPU as positions',
+                !!anchorWrite && anchorWrite.bytes.length === 64 * 16,
+                anchorWrite && anchorWrite.bytes.length);
+        // Off again: the field's passes stop and the stars clear.
+        renderer.setFieldMode('off');
+        const computeBefore2 = gpu.computePasses.length;
+        renderer.render(camera, WIDTH, HEIGHT, 1 / 15, input);
+        const fieldCompute2 = gpu.computePasses.slice(computeBefore2).filter(p => p.label === 'field-compute');
+        const spritePass2 = gpu.passes.filter(p => p.label === 'star-sprites').pop();
+        check('switching the field off stops its passes and restores the clear',
+                fieldCompute2.length === 0 && spritePass2.desc.colorAttachments[0].loadOp === 'clear');
 }
 
 // --- Report -------------------------------------------------------------

@@ -1,21 +1,23 @@
 {
-  "date": "2026-10-17T02:58:41.266Z",
+  "date": "2026-10-17T20:38:13.404Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 197,
-  "totalChecks": 135,
-  "passed": 135,
+  "prepareMs": 177,
+  "totalChecks": 143,
+  "passed": 143,
   "failed": 0,
   "checks": [
     {
-      "name": "four shader modules are created (star-sprite + tonemap + nebula-billboard + simple-step)",
+      "name": "six shader modules are created (star-sprite + tonemap + nebula-billboard + simple-step + the two field modules)",
       "pass": true,
       "detail": {
         "modules": [
           "star-sprite",
           "tonemap",
           "nebula-billboard",
-          "simple-step"
+          "simple-step",
+          "field-module",
+          "field-display-module"
         ]
       }
     },
@@ -24,14 +26,34 @@
       "pass": true
     },
     {
-      "name": "four pipelines are created (star-sprite + tonemap + nebula-billboard + simple-step) — no hdr-direct bypass",
+      "name": "six pipelines are created (the four scene ones + the field compute and slope) — no hdr-direct bypass",
       "pass": true,
       "detail": [
         "star-sprite-pipeline",
         "tonemap-pipeline",
         "nebula-billboard-pipeline",
-        "simple-step-pipeline"
+        "simple-step-pipeline",
+        "field-pipeline",
+        "field-slope-pipeline"
       ]
+    },
+    {
+      "name": "the field's two pipelines are compute pipelines with the field's entry points",
+      "pass": true,
+      "detail": {
+        "field": {
+          "module": {
+            "label": "field-module"
+          },
+          "entryPoint": "cs_field"
+        },
+        "slope": {
+          "module": {
+            "label": "field-module"
+          },
+          "entryPoint": "cs_slope"
+        }
+      }
     },
     {
       "name": "the simple-step pipeline is a compute pipeline with a main entry",
@@ -98,7 +120,8 @@
       "name": "the color LUT is uploaded as rgba8unorm-srgb (so palette bytes authored as sRGB get linearised)",
       "pass": true,
       "detail": [
-        "star-color-lut:rgba8unorm-srgb"
+        "star-color-lut:rgba8unorm-srgb",
+        "field-ramp:rgba8unorm"
       ]
     },
     {
@@ -893,8 +916,8 @@
       "name": "a resize creates a new HDR texture",
       "pass": true,
       "detail": {
-        "before": 2,
-        "after": 3
+        "before": 3,
+        "after": 4
       }
     },
     {
@@ -927,6 +950,7 @@
       "pass": true,
       "detail": [
         "star-color-lut:rgba8unorm-srgb",
+        "field-ramp:rgba8unorm",
         "hdr-intermediate:rgba16float"
       ]
     },
@@ -1097,6 +1121,60 @@
     },
     {
       "name": "headroom clamps to [1, 8] and desat to [0, 1]",
+      "pass": true
+    },
+    {
+      "name": "the field is off by default: no field compute, no field display, the stars still clear",
+      "pass": true,
+      "detail": {
+        "compute": 0,
+        "display": 0
+      }
+    },
+    {
+      "name": "the field computes a grid when it is on (one dispatch over the field's workgroups)",
+      "pass": true,
+      "detail": [
+        [
+          40,
+          23,
+          1
+        ]
+      ]
+    },
+    {
+      "name": "the field paints into the HDR intermediate before the stars",
+      "pass": true,
+      "detail": {
+        "vertices": 3,
+        "pipeline": {
+          "label": "field-display-pipeline"
+        },
+        "pass": "field-display"
+      }
+    },
+    {
+      "name": "the star pass loads the field instead of clearing it away",
+      "pass": true
+    },
+    {
+      "name": "the field's state reports the mode, the anchor count and the range",
+      "pass": true,
+      "detail": {
+        "mode": "height",
+        "anchors": 64,
+        "sigmaDeg": 3,
+        "lo": 1.9639090061187745,
+        "hi": 2.2639090061187743
+      }
+    },
+    {
+      "name": "the anchors reach the GPU as positions",
+      "pass": true,
+      "detail": 1024
+    },
+    {
+      "name": "switching the field off stops its passes and restores the clear",
       "pass": true
     }
   ]

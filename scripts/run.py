@@ -54,7 +54,9 @@ EXPERIMENTS = {
     'renderer':              'experiments/renderer-test.js',
     'hdr':                   'experiments/hdr-test.js',
     'landmark':              'experiments/landmark-test.js',
-    'view-modes-field':      'experiments/view-modes-field-test.js',
+    'distance-field':        'experiments/distance-field-test.js',
+    'distance-field-page':   'experiments/distance-field-page-check.js',
+    'field-anchors':         'experiments/field-anchors-test.js',
     'view-modes-page':       'experiments/view-modes-page-check.js',
     'tile-stream':           'experiments/tile-stream-test.js',
     'tile-encoder-smoke':    'experiments/tile-encoder-smoke-test.js',
@@ -96,7 +98,7 @@ EXPERIMENTS = {
 
 TYPES = {
     'test':   ['export-parity', 'm1-smoke', 'wgsl-validate', 'camera', 'input', 'ship', 'preset', 'renderer', 'hdr',
-               'landmark', 'view-modes-field', 'view-modes-page',
+               'landmark', 'distance-field', 'distance-field-page', 'field-anchors', 'view-modes-page',
                'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'shape', 'model-parity', 'sampling',
                'density-distribution',
                'star-types-evolution', 'planet-gen', 'star-select', 'selection-store', 'search', 'nebula-placement', 'object-placement',

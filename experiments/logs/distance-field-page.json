@@ -1,0 +1,265 @@
+{
+  "date": "2026-10-17T20:38:14.119Z",
+  "totalChecks": 30,
+  "passed": 30,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "the page loads the shared law, the ramps, the shaders, the renderer and the boot last",
+      "pass": true,
+      "detail": [
+        "math/hash.js",
+        "math/density.js",
+        "math/galaxy.js",
+        "math/sampling.js",
+        "math/star-record.js",
+        "math/coords.js",
+        "math/orbit.js",
+        "data/landmarks.js",
+        "data/constellations.js",
+        "data/tiles/catalog.js",
+        "math/distance-field.js",
+        "render/distance-ramps.js",
+        "render/shaders.js",
+        "render/distance-field-renderer.js",
+        "core/device.js",
+        "distance-field-page.js"
+      ]
+    },
+    {
+      "name": "the page loads the catalog bundle as a data script",
+      "pass": true,
+      "detail": [
+        "data/tiles/catalog.js"
+      ]
+    },
+    {
+      "name": "every script in the page evaluates in order",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "the page booted without a boot error",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "the page published its state",
+      "pass": true,
+      "detail": "object"
+    },
+    {
+      "name": "the first frames ran clean",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "the page reports the mode, the source and the projection",
+      "pass": true,
+      "detail": "distance field · height · nearest · view"
+    },
+    {
+      "name": "the page has anchors",
+      "pass": true,
+      "detail": 120
+    },
+    {
+      "name": "the field computed on the GPU",
+      "pass": true,
+      "detail": [
+        [
+          [
+            2,
+            2,
+            1
+          ]
+        ],
+        [
+          [
+            2,
+            2,
+            1
+          ]
+        ],
+        [
+          [
+            2,
+            2,
+            1
+          ]
+        ],
+        [
+          [
+            2,
+            2,
+            1
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "the field was displayed",
+      "pass": true,
+      "detail": [
+        "field-display",
+        "field-display",
+        "field-display",
+        "field-display"
+      ]
+    },
+    {
+      "name": "the compute pass covers the whole grid",
+      "pass": true,
+      "detail": [
+        16,
+        16
+      ]
+    },
+    {
+      "name": "the uniform carries the mode, the anchor count and the eye",
+      "pass": true,
+      "detail": {
+        "mode": 0,
+        "anchors": 120,
+        "eye": -0.005011872388422489
+      }
+    },
+    {
+      "name": "the anchors reached the GPU as n×16 bytes",
+      "pass": true,
+      "detail": {
+        "floats": 480,
+        "anchors": 120
+      }
+    },
+    {
+      "name": "the spread radio reaches the GPU",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "the readout follows the render type",
+      "pass": true,
+      "detail": "distance field · spread · nearest · view"
+    },
+    {
+      "name": "the gradient radio reaches the GPU",
+      "pass": true,
+      "detail": 2
+    },
+    {
+      "name": "the gradient mode runs the slope pass too",
+      "pass": true,
+      "detail": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "name": "the off radio stops the compute and the display",
+      "pass": true,
+      "detail": {
+        "compute": 10,
+        "passes": [
+          "field-display",
+          "field-display",
+          "field-display",
+          "field-display",
+          "field-display",
+          "field-display",
+          "field-display",
+          "field-display",
+          "field-display",
+          "field-display",
+          "field-off",
+          "field-off",
+          "field-off"
+        ]
+      }
+    },
+    {
+      "name": "the constellations source gives the named stars",
+      "pass": true,
+      "detail": 60
+    },
+    {
+      "name": "the whole-sky source gives the anchor cap",
+      "pass": true,
+      "detail": {
+        "sky": 1024,
+        "constellations": 60
+      }
+    },
+    {
+      "name": "the source slider picks the source and moves the radio with it",
+      "pass": true,
+      "detail": {
+        "source": "constellations",
+        "radio": true
+      }
+    },
+    {
+      "name": "the count slider changes the number of anchors",
+      "pass": true,
+      "detail": 25
+    },
+    {
+      "name": "the anchors uploaded match the count",
+      "pass": true,
+      "detail": 100
+    },
+    {
+      "name": "the chart radio switches the layout and doubles the grid",
+      "pass": true,
+      "detail": {
+        "layout": 1,
+        "w": 256,
+        "was": 16
+      }
+    },
+    {
+      "name": "the view radio switches back",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "the sigma slider changes the hill width",
+      "pass": true,
+      "detail": {
+        "before": 0.05235987901687622,
+        "after": 0.15707963705062866
+      }
+    },
+    {
+      "name": "a click picks a star into the selection",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "the selected source uses the picks",
+      "pass": true,
+      "detail": {
+        "anchors": 1,
+        "picked": 1
+      }
+    },
+    {
+      "name": "the clear button empties the selection",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "the page ran the whole drive without an error",
+      "pass": true,
+      "detail": []
+    }
+  ]
+}

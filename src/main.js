@@ -286,6 +286,12 @@ async function boot() {
         // The picker and the set rings read the buffers, which only exist now
         // (plan §3.1) — a setter is cheaper than reordering boot around them.
         selection.setRenderer(renderer);
+        // The distance field (distance-field-plan.md): the anchors are the
+        // app's choice of stars — the nearest N of the resident sky, the
+        // selection set, the named stars — and the renderer paints them.
+        const fieldAnchors = window.FieldAnchors.createFieldAnchors({
+                renderer, camera, landmarks, selection, starSet,
+        });
         labels.setStarSource(renderer.starBlocks());
         if (params.exposure !== null) renderer.setExposure(params.exposure);
         // The rest of the menu as boot params — the language the preset
@@ -319,6 +325,8 @@ async function boot() {
         const menuCollapse = document.getElementById('menu-collapse');
         const selectionMenu = document.getElementById('selection-menu');
         const selectionMenuCollapse = document.getElementById('selection-menu-collapse');
+        const fieldMenu = document.getElementById('field-menu');
+        const fieldMenuCollapse = document.getElementById('field-menu-collapse');
         const currentSelectionLabel = document.getElementById('selection-current-label');
         const previousSelectionLabel = document.getElementById('selection-previous-label');
         const swapSelectionButton = document.getElementById('selection-swap');
@@ -351,6 +359,13 @@ async function boot() {
         const valPattern = document.getElementById('val-pattern');
         const valEngine = document.getElementById('val-engine');
         const btnDefaults = document.getElementById('menu-defaults');
+        const fieldModeSel = document.getElementById('field-mode');
+        const fieldSourceSel = document.getElementById('field-source');
+        const sliderFieldCount = document.getElementById('slider-field-count');
+        const valFieldCount = document.getElementById('val-field-count');
+        const sliderFieldSigma = document.getElementById('slider-field-sigma');
+        const valFieldSigma = document.getElementById('val-field-sigma');
+        const valField = document.getElementById('val-field');
         const sliderSelRad = document.getElementById('slider-selrad');
         const valSelRad = document.getElementById('val-selrad');
         const btnSelectAround = document.getElementById('btn-select-around');
@@ -1277,10 +1292,12 @@ async function boot() {
         function toggleMenu() {
                 const visible = menu.style.display !== 'none'
                         || selectionMenu.style.display !== 'none'
+                        || fieldMenu.style.display !== 'none'
                         || sysMenu.style.display !== 'none'
                         || helpPanel.style.display !== 'none';
                 menu.style.display = visible ? 'none' : 'block';
                 selectionMenu.style.display = visible ? 'none' : 'block';
+                fieldMenu.style.display = visible ? 'none' : 'block';
                 sysMenu.style.display = visible ? 'none' : 'block';
                 helpPanel.style.display = visible ? 'none' : 'block';
                 syncOverlayInset();
@@ -1304,6 +1321,7 @@ async function boot() {
         }
         wireCollapse(menu, menuCollapse);
         wireCollapse(selectionMenu, selectionMenuCollapse);
+        wireCollapse(fieldMenu, fieldMenuCollapse);
         wireCollapse(sysMenu, sysMenuCollapse);
 
         // --- Controls panel (ui.6) ------------------------------------------
@@ -1472,6 +1490,32 @@ async function boot() {
                 sliderWave.value = waveDamping;
                 valWave.textContent = formatWave(waveDamping);
         }
+        // The distance field: the render type, the stars the field is
+        // computed over, and how many of them. The renderer owns the grid,
+        // the layout and the range; the app owns the choice of stars.
+        function syncField() {
+                const mode = fieldModeSel && fieldModeSel.value ? fieldModeSel.value : 'off';
+                const source = fieldSourceSel && fieldSourceSel.value ? fieldSourceSel.value : 'nearest';
+                const count = sliderFieldCount ? parseInt(sliderFieldCount.value, 10) || 1 : 120;
+                fieldAnchors.setMode(mode);
+                fieldAnchors.setSource(source);
+                fieldAnchors.setCount(count);
+                renderer.setFieldMode(mode);
+                const sigma = sliderFieldSigma ? Number(sliderFieldSigma.value) : 3;
+                renderer.setFieldSigma(sigma);
+                if (sliderFieldCount) sliderFieldCount.disabled = source === 'selected' || source === 'constellations';
+                if (valFieldCount) valFieldCount.textContent = String(count);
+                if (valFieldSigma) valFieldSigma.textContent = `${Number.isInteger(sigma) ? sigma : sigma.toFixed(1)}°`;
+                if (sliderFieldSigma) sliderFieldSigma.disabled = mode === 'off';
+                // The readout itself is the frame loop's: the anchor count is
+                // only known once the anchors have been picked.
+        }
+        if (fieldModeSel) fieldModeSel.addEventListener('change', syncField);
+        if (fieldSourceSel) fieldSourceSel.addEventListener('change', syncField);
+        if (sliderFieldCount) sliderFieldCount.addEventListener('input', syncField);
+        if (sliderFieldSigma) sliderFieldSigma.addEventListener('input', syncField);
+        syncField();
+
         sliderWave.addEventListener('input', () => {
                 waveDamping = window.OrbitLib.setWaveDamping(Number(sliderWave.value));
                 syncWave();
@@ -3894,6 +3938,21 @@ async function boot() {
                 }
 
                 resizeCanvas();
+                // The distance field's anchors: the app's stars, at the
+                // positions they are drawn. The renderer owns everything
+                // else about the field.
+                if (fieldAnchors.mode !== 'off') {
+                        fieldAnchors.update(model, starTimeMyr, dt);
+                        renderer.setFieldAnchors(fieldAnchors.positions, fieldAnchors.count);
+                }
+                // The field's readout: the mode and how many stars it is
+                // computed over. Written only when it changes - a DOM write
+                // every frame is waste, and the count changes twice a second
+                // at most.
+                const fieldText = fieldAnchors.mode === 'off'
+                        ? 'off'
+                        : `${fieldAnchors.mode} · ${fieldAnchors.count} anchors`;
+                if (valField && valField.textContent !== fieldText) valField.textContent = fieldText;
                 renderer.render(camera, canvas.width, canvas.height, starTimeMyr, input.state, dtStar);
                 labels.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
                 labels.draw(camera, canvas.clientWidth, canvas.clientHeight);

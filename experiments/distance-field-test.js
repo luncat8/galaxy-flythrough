@@ -1,5 +1,10 @@
-// experiments/view-modes-field-test.js
-// The view-modes heightmap island (archive/view-modes-shader-plan.md).
+// experiments/distance-field-test.js
+// The distance field's law (distance-field-plan.md, M1).
+//
+// This file used to be the view-modes island's own test. The law it checks
+// moved into the main tree (src/math/distance-field.js) because the GPU path
+// and the test page need it too, so the test moved with it: the island is now
+// one consumer of the law, not its owner.
 //
 // The point of this file is the word "correspondence": the map has to put a
 // star where the app draws that star, and its colours have to mean the distance
@@ -10,7 +15,7 @@
 // pinned here, in both directions: parity against the shipping camera, and
 // invariance of the colour under a change that must not change it.
 //
-// Output: experiments/logs/view-modes-field.json
+// Output: experiments/logs/distance-field.json
 
 'use strict';
 
@@ -26,7 +31,7 @@ const galaxy = require('../src/math/galaxy.js');
 const orbit = require('../src/math/orbit.js');
 const landmarks = require('../src/data/landmarks.js');
 const constellations = require('../src/data/constellations.js');
-const field = require('../src/math/view-modes-field.js');
+const field = require('../src/math/distance-field.js');
 
 // One place where the page's "prepare the current anchor positions" step lives,
 // so no check can silently measure a different eye than the one it built.
@@ -399,6 +404,21 @@ const state = cam.getState({});
 	field.texelOf(layout, 0, 0, 1, hit);
 	check('mode 2 is ~0 where the neighbours agree in depth',
 		out[Math.round(hit.y) * layout.w + Math.round(hit.x)] < 0.05, { v: out[Math.round(hit.y) * layout.w + Math.round(hit.x)] });
+
+	// Opposite directions are not the same sky location. The old sin² kernel
+	// gave both rays equal weight and painted a false antipodal copy of each star.
+	{
+		const opposed = Float64Array.of(0.01, 0, 0, -10, 0, 0);
+		const opposedStars = field.prepareStars(opposed, 2, 0, 0, 0);
+		const chart = field.createLayout({}, { kind: 'plane', w: 128, h: 64, spanDeg: 360, quat: [0, 0, 0, 1] });
+		const raw = new Float32Array(chart.w * chart.h);
+		field.computeRaw(opposedStars, chart, { mode: 'height', sigmaDeg: 3 }, raw, {});
+		const towardNear = raw[(chart.h >> 1) * chart.w + (chart.w >> 1)];
+		const towardFar = raw[(chart.h >> 1) * chart.w];
+		check('cosine angular distance separates a star from its antipode',
+			towardNear < -1.8 && towardFar > 0.8,
+			{ towardNear, towardFar });
+	}
 
 	// Coincident stars must not divide by zero.
 	const same = Float64Array.of(0, 0, 1, 0, 0, 1, 0, 0, 1);
@@ -844,7 +864,7 @@ for (const c of checks) {
 }
 console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 
-const logPath = path.join(__dirname, 'logs', 'view-modes-field.json');
+const logPath = path.join(__dirname, 'logs', 'distance-field.json');
 fs.mkdirSync(path.dirname(logPath), { recursive: true });
 fs.writeFileSync(logPath, JSON.stringify({
 	date: new Date().toISOString(),

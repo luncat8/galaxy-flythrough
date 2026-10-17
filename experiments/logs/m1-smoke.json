@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-17T08:39:54.217Z",
+  "date": "2026-10-17T20:38:11.044Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -21,6 +21,7 @@
     "core/star-set.js",
     "core/selection-store.js",
     "core/search.js",
+    "core/field-anchors.js",
     "core/route.js",
     "core/ship.js",
     "core/loop.js",
@@ -28,6 +29,9 @@
     "data/landmarks.js",
     "data/constellations.js",
     "render/shaders.js",
+    "math/distance-field.js",
+    "render/distance-ramps.js",
+    "render/distance-field-renderer.js",
     "stream/tile-loader.js",
     "stream/cell-manager.js",
     "render/star-sprites.js",
@@ -38,6 +42,7 @@
   "sourceFiles": [
     "core/camera.js",
     "core/device.js",
+    "core/field-anchors.js",
     "core/input.js",
     "core/loop.js",
     "core/presets.js",
@@ -54,6 +59,7 @@
     "math/coords.js",
     "math/deltav.js",
     "math/density.js",
+    "math/distance-field.js",
     "math/galaxy.js",
     "math/hash.js",
     "math/nebula.js",
@@ -63,6 +69,8 @@
     "math/sampling.js",
     "math/star-record.js",
     "math/star-types.js",
+    "render/distance-field-renderer.js",
+    "render/distance-ramps.js",
     "render/label-layer.js",
     "render/shaders.js",
     "render/star-sprites.js",
@@ -70,8 +78,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 93,
-  "passed": 93,
+  "totalChecks": 94,
+  "passed": 94,
   "failed": 0,
   "checks": [
     {
@@ -83,8 +91,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 33,
-        "sources": 33,
+        "scripts": 37,
+        "sources": 37,
         "missing": []
       }
     },
@@ -94,12 +102,21 @@
       "detail": []
     },
     {
-      "name": "the island is loaded by its own page, in field → painter → boot order",
+      "name": "the island is loaded by its own page, in law → ramps → painter → boot order",
       "pass": true,
       "detail": {
         "island": [
           false,
           false,
+          false
+        ]
+      }
+    },
+    {
+      "name": "the distance-field test page has its own page: radio buttons for the render type and the stars, a slider for the count",
+      "pass": true,
+      "detail": {
+        "page": [
           false
         ]
       }
@@ -304,6 +321,7 @@
         "StarSet",
         "SelectionStore",
         "Search",
+        "FieldAnchors",
         "RouteLib",
         "Ship",
         "Loop",
@@ -311,6 +329,9 @@
         "Landmarks",
         "Constellations",
         "GalaxyShaders",
+        "DistanceField",
+        "DistanceRamps",
+        "DistanceFieldRenderer",
         "TileLoader",
         "CellManager",
         "StarRenderer",

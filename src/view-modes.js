@@ -29,7 +29,7 @@
 	const readout = $('readout');
 	const errEl = $('error');
 
-	const Field = window.ViewModesField;
+	const Field = window.DistanceField;
 	const Renderer = window.ViewModesRenderer;
 	const GalaxyLib = window.GalaxyLib;
 	const OrbitLib = window.OrbitLib;

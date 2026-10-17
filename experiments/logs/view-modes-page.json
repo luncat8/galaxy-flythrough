@@ -1,20 +1,21 @@
 {
-  "totalChecks": 52,
-  "passed": 52,
+  "totalChecks": 51,
+  "passed": 51,
   "failed": 0,
   "checks": [
     {
       "name": "view-modes.html loads the island scripts",
       "pass": true,
       "detail": {
-        "n": 13
+        "n": 14
       }
     },
     {
-      "name": "view-modes.html loads the field, the painter and the boot last",
+      "name": "view-modes.html loads the law, the ramps, the painter and the boot last",
       "pass": true,
       "detail": [
-        "math/view-modes-field.js",
+        "math/distance-field.js",
+        "render/distance-ramps.js",
         "render/view-modes-renderer.js",
         "view-modes.js"
       ]
@@ -200,8 +201,8 @@
           "hi": -1.5
         },
         "live": {
-          "lo": -1.7878911622465403,
-          "hi": -0.765925315414667
+          "lo": -1.4701401829719543,
+          "hi": -1.1701401829719544
         }
       }
     },
@@ -209,8 +210,8 @@
       "name": "re-enabling auto range reads the data again",
       "pass": true,
       "detail": {
-        "lo": -1.7878911622465403,
-        "hi": -0.765925315414667
+        "lo": -1.4701401829719543,
+        "hi": -1.1701401829719544
       }
     },
     {
@@ -324,8 +325,8 @@
           "hi": -1.1701401829719544
         },
         "now": {
-          "lo": -1.7878911622465403,
-          "hi": -0.765925315414667
+          "lo": -1.4701401829719543,
+          "hi": -1.1701401829719544
         }
       }
     },
@@ -367,11 +368,6 @@
       "name": "off clears the canvas",
       "pass": true,
       "detail": []
-    },
-    {
-      "name": "the screenshots are not blank",
-      "pass": true,
-      "detail": null
     }
   ]
 }

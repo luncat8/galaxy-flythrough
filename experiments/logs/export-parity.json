@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-17T02:58:38.557Z",
+  "date": "2026-10-17T20:38:10.888Z",
   "modules": 28,
   "totalChecks": 143,
   "passed": 143,
@@ -909,7 +909,9 @@
         "star-sprite-hdr",
         "nebula-billboard",
         "tonemap",
-        "simple-step"
+        "simple-step",
+        "distance-field",
+        "distance-field-display"
       ]
     },
     {
@@ -925,7 +927,10 @@
         "nebula-billboard",
         "tonemap",
         "procedural-gen",
-        "cull"
+        "cull",
+        "field-uniform",
+        "distance-field",
+        "distance-field-display"
       ]
     },
     {

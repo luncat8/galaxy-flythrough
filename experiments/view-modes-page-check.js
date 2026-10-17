@@ -163,11 +163,12 @@ for (const m of html.matchAll(/id="(check-[^"]+)"[^>]*checked/g)) el(m[1]).check
 // --- load the page's scripts, in the order the page declares them ---------
 const scripts = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]);
 check('view-modes.html loads the island scripts', scripts.length >= 12, { n: scripts.length });
-check('view-modes.html loads the field, the painter and the boot last',
-	scripts[scripts.length - 3] === 'math/view-modes-field.js'
+check('view-modes.html loads the law, the ramps, the painter and the boot last',
+	scripts[scripts.length - 4] === 'math/distance-field.js'
+	&& scripts[scripts.length - 3] === 'render/distance-ramps.js'
 	&& scripts[scripts.length - 2] === 'render/view-modes-renderer.js'
 	&& scripts[scripts.length - 1] === 'view-modes.js',
-	scripts.slice(-3));
+	scripts.slice(-4));
 check('the page loads the catalog bundle as a data script',
 	scripts.includes('data/tiles/catalog.js'), scripts.filter(s => s.includes('catalog')));
 check('the island loads no core/ or stream/ module',
@@ -223,7 +224,7 @@ check('the painter drew the field and the star overlay',
 // the eye before asking where a star is. Absolute positions look fine on a chart
 // (the eye is ~0.005 kpc off the origin) and wrong in the view sphere.
 check('a marker dot lands on its star\'s texel, not its raw position', (() => {
-	const Field = window.ViewModesField;
+	const Field = window.DistanceField;
 	const ctx = fieldCanvas.getContext();
 	if (!ctx._dots.length) return false;
 	const dbg = window.ViewModesDebug;
@@ -278,7 +279,7 @@ selectRadio('projection', 'plane');
 pump(2, tEnd + 100);
 check('the chart strokes the constellation figures as segments',
 	fieldCanvas.getContext()._paths.length > 60, (() => {
-		const dbg = window.ViewModesDebug, F = window.ViewModesField;
+		const dbg = window.ViewModesDebug, F = window.DistanceField;
 		const set = dbg.set, pos = dbg.cur, lay = dbg.layout;
 		if (!set || !set.segments) return 'no segments on the set';
 		const hit = { x: 0, y: 0, inside: false };
@@ -318,7 +319,7 @@ function uvAtPixel(x, y) {
 		: [x / VIEW_W, y / VIEW_H];
 }
 function worldRayAt(u, v) {
-	const F = window.ViewModesField, dbg = window.ViewModesDebug;
+	const F = window.DistanceField, dbg = window.ViewModesDebug;
 	const spanX = dbg.chartSpanDeg * F.DEG;
 	const lay = dbg.layout;
 	const spanY = lay.w ? spanX * lay.h / lay.w : spanX * VIEW_H / VIEW_W;

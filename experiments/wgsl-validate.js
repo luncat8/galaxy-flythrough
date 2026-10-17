@@ -43,20 +43,22 @@ function readSource(relPath) {
 {
         const names = Object.keys(shaders.SHADER_PARTS);
         check('every expected shader part is present',
-                ['pcg-hash', 'density', 'orbit', 'simple-step', 'star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'procedural-gen', 'cull'].every(n => names.includes(n)),
+                ['pcg-hash', 'density', 'orbit', 'simple-step', 'star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'procedural-gen', 'cull', 'field-uniform', 'distance-field', 'distance-field-display'].every(n => names.includes(n)),
                 names);
         check('every shader part is a non-empty LF-only string',
                 names.every(n => typeof shaders.SHADER_PARTS[n] === 'string'
                         && shaders.SHADER_PARTS[n].length > 100
                         && !shaders.SHADER_PARTS[n].includes('\r')),
                 names.map(n => [n, shaders.SHADER_PARTS[n].length]));
-        check('five wired shaders are exposed (star-sprite, star-sprite-hdr, nebula-billboard, tonemap, simple-step)',
-                shaders.WIRED_SHADERS.length === 5
+        check('seven wired shaders are exposed (the four scene ones, the simple step, and the field\'s two)',
+                shaders.WIRED_SHADERS.length === 7
                 && shaders.WIRED_SHADERS[0] === 'star-sprite'
                 && shaders.WIRED_SHADERS[1] === 'star-sprite-hdr'
                 && shaders.WIRED_SHADERS[2] === 'nebula-billboard'
                 && shaders.WIRED_SHADERS[3] === 'tonemap'
-                && shaders.WIRED_SHADERS[4] === 'simple-step',
+                && shaders.WIRED_SHADERS[4] === 'simple-step'
+                && shaders.WIRED_SHADERS[5] === 'distance-field'
+                && shaders.WIRED_SHADERS[6] === 'distance-field-display',
                 shaders.WIRED_SHADERS);
         check('every wired shader exists in the module map',
                 shaders.WIRED_SHADERS.every(n => typeof shaders.SHADERS[n] === 'string' && shaders.SHADERS[n].length > 0),

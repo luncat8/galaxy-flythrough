@@ -1,0 +1,548 @@
+{
+  "date": "2026-10-17T20:38:13.876Z",
+  "anchors": {
+    "landmarks": 60,
+    "catalog": 3829
+  },
+  "totalChecks": 70,
+  "passed": 70,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "quatBasis reproduces camera.forward",
+      "pass": true,
+      "detail": {
+        "mine": [
+          0.9739139159225444,
+          0.21490920036119202,
+          0.07284037323166451
+        ],
+        "app": [
+          0.9739139080047607,
+          0.21490919589996338,
+          0.0728403702378273
+        ]
+      }
+    },
+    {
+      "name": "quatBasis reproduces camera.right (the screen-right axis, not its negation)",
+      "pass": true,
+      "detail": {
+        "mine": [
+          0.22213303902879508,
+          -0.968496036921842,
+          -0.11257148590348151
+        ],
+        "app": [
+          0.22213304042816162,
+          -0.9684960246086121,
+          -0.11257148534059525
+        ]
+      }
+    },
+    {
+      "name": "quatBasis reproduces camera.up",
+      "pass": true,
+      "detail": {
+        "mine": [
+          -0.046352964783786504,
+          -0.1258151901274205,
+          0.9909702016654961
+        ],
+        "app": [
+          -0.04635296389460564,
+          -0.12581518292427063,
+          0.9909701943397522
+        ]
+      }
+    },
+    {
+      "name": "the map is not mirrored: right · app.right = +1",
+      "pass": true,
+      "detail": 0.9999999883221661
+    },
+    {
+      "name": "basis is orthonormal",
+      "pass": true
+    },
+    {
+      "name": "64 landmark sightings land on the app pixel within 0.05 texel (116 behind the eye)",
+      "pass": true,
+      "detail": {
+        "worstTexel": 0.00014,
+        "worstName": "Canopus",
+        "compared": 64,
+        "skipped": 116
+      }
+    },
+    {
+      "name": "a star off to the app-right has a larger texel x (not mirrored)",
+      "pass": true
+    },
+    {
+      "name": "view: texelOf(dirAt(texel)) returns the texel",
+      "pass": true,
+      "detail": {
+        "worstTexel": 0
+      }
+    },
+    {
+      "name": "plane: texelOf(dirAt(texel)) returns the texel",
+      "pass": true,
+      "detail": {
+        "worstTexel": 0
+      }
+    },
+    {
+      "name": "quatDrag keeps the pressed sky point under the pointer (rotated chart)",
+      "pass": true,
+      "detail": {
+        "dot": 1
+      }
+    },
+    {
+      "name": "the old world-ray arc drifts the grabbed point by degrees (the glitch)",
+      "pass": true,
+      "detail": {
+        "driftDeg": 6.19
+      }
+    },
+    {
+      "name": "a chart drag that returns to the press pixel restores the chart",
+      "pass": true,
+      "detail": {
+        "dot": 1
+      }
+    },
+    {
+      "name": "chartDirAt is dirAt without the pan (the drag and the field agree)",
+      "pass": true,
+      "detail": {
+        "worst": 0
+      }
+    },
+    {
+      "name": "height 1 at the near anchor, 0 at the far anchor",
+      "pass": true,
+      "detail": {
+        "near": 1,
+        "far": 0
+      }
+    },
+    {
+      "name": "height decreases monotonically with distance",
+      "pass": true
+    },
+    {
+      "name": "legend and readout agree: height → kpc → height round-trips",
+      "pass": true,
+      "detail": 1.1102230246251565e-16
+    },
+    {
+      "name": "a set entirely outside the range reads as far, not rescaled to 1",
+      "pass": true,
+      "detail": {
+        "h": 0
+      }
+    },
+    {
+      "name": "a star at the eye cannot flatten the ramp (1 pc floor)",
+      "pass": true
+    },
+    {
+      "name": "a log range puts half a decade at the middle",
+      "pass": true,
+      "detail": 0.4999999999768754
+    },
+    {
+      "name": "height is inverted: lo (near) is 1, hi (far) is 0",
+      "pass": true,
+      "detail": {
+        "near": 1,
+        "far": 0
+      }
+    },
+    {
+      "name": "values outside the range clamp to 0 and 1",
+      "pass": true,
+      "detail": [
+        0,
+        0.4999999701976776,
+        1
+      ]
+    },
+    {
+      "name": "mode 1 auto range follows the field (3 decades out, 3 decades out)",
+      "pass": true,
+      "detail": {
+        "near": [
+          -2.0320411998265593,
+          -1.6669288045094595
+        ],
+        "far": [
+          0.9679588001734407,
+          1.3330711954905405
+        ]
+      }
+    },
+    {
+      "name": "a narrow distance band still fills the ramp",
+      "pass": true,
+      "detail": {
+        "lo": -1.532,
+        "hi": -1.168
+      }
+    },
+    {
+      "name": "auto range never collapses to zero width",
+      "pass": true,
+      "detail": {
+        "lo": -2.032,
+        "hi": -1.668
+      }
+    },
+    {
+      "name": "constellation anchors are the landmark table (the Sun included)",
+      "pass": true,
+      "detail": {
+        "n": 60,
+        "segs": 41
+      }
+    },
+    {
+      "name": "figure edges are landmark pairs (41 of them, Orion included)",
+      "pass": true,
+      "detail": {
+        "len": 82,
+        "want": 82,
+        "inRange": true,
+        "first": [
+          10,
+          25
+        ],
+        "orion": true
+      }
+    },
+    {
+      "name": "prepareStars ignores the star the eye sits on (the Sun at 5 pc)",
+      "pass": true,
+      "detail": {
+        "n": 60,
+        "set": 60,
+        "dMin": 0.005
+      }
+    },
+    {
+      "name": "view: the whole sky is painted, every texel finite and in 0..1",
+      "pass": true,
+      "detail": {
+        "bad": 0,
+        "lo": 0.066,
+        "hi": 0.934
+      }
+    },
+    {
+      "name": "plane: the whole sky is painted, every texel finite and in 0..1",
+      "pass": true,
+      "detail": {
+        "bad": 0,
+        "lo": 0.056,
+        "hi": 0.944
+      }
+    },
+    {
+      "name": "chart has no unpainted floor (min > 0.05)",
+      "pass": true,
+      "detail": {
+        "lo": 0.056
+      }
+    },
+    {
+      "name": "mode 1 is the IDW mean of the stars on that ray, and falls off away from them",
+      "pass": true,
+      "detail": {
+        "atStar": 0.95,
+        "farVal": 0.465
+      }
+    },
+    {
+      "name": "mode 2 reads the depth gap in that direction (σ ≈ 0.5 kpc → 0.85 of a 0.01…1 kpc log range)",
+      "pass": true,
+      "detail": {
+        "spread": 0.849,
+        "peakKpc": 0.4992
+      }
+    },
+    {
+      "name": "mode 2 is ~0 where the neighbours agree in depth",
+      "pass": true,
+      "detail": {
+        "v": 0
+      }
+    },
+    {
+      "name": "coincident stars: no NaN, no divide by zero",
+      "pass": true
+    },
+    {
+      "name": "mode 3 is |∇log₁₀ d| per degree, at the layout’s own texel angle",
+      "pass": true,
+      "detail": {
+        "want": 0.026773817410159967,
+        "got": 0.026781724765896797
+      }
+    },
+    {
+      "name": "mode 3 auto range does not clump: < 15% of texels at full scale, > 30% in the middle",
+      "pass": true,
+      "detail": {
+        "topFrac": 0.03,
+        "midFrac": 0.727
+      }
+    },
+    {
+      "name": "gradient of the real height field is non-degenerate",
+      "pass": true,
+      "detail": {
+        "max": 0.04977
+      }
+    },
+    {
+      "name": "the gradient is continuous across the chart seam",
+      "pass": true,
+      "detail": {
+        "worstRel": 0,
+        "y": 0
+      }
+    },
+    {
+      "name": "gradient of a constant field is zero",
+      "pass": true,
+      "detail": {
+        "maxG": 0
+      }
+    },
+    {
+      "name": "fieldSlope quotes longitude per radian of sky (the cos(lat) correction)",
+      "pass": true,
+      "detail": {
+        "got": 1.0000381469726562,
+        "want": 1.000038078385737
+      }
+    },
+    {
+      "name": "fieldSlope y follows the map (north-up field slopes negative)",
+      "pass": true,
+      "detail": {
+        "got": -1,
+        "want": -1
+      }
+    },
+    {
+      "name": "fieldSlope is continuous across the chart seam",
+      "pass": true,
+      "detail": {
+        "seam": 0.008725899271667004,
+        "interior": 0.09584315866231918
+      }
+    },
+    {
+      "name": "fieldSlope matches the analytic slope of cos(lon)",
+      "pass": true,
+      "detail": {
+        "got": 0.9999492168426514,
+        "want": 1
+      }
+    },
+    {
+      "name": "mode 3 is the magnitude of fieldSlope, per degree",
+      "pass": true,
+      "detail": {
+        "bad": 0,
+        "worst": 0
+      }
+    },
+    {
+      "name": "chart maps longitude about its centre and puts the seam at both edges",
+      "pass": true,
+      "detail": {
+        "l1": 180.5,
+        "lm1": 178.5,
+        "l179": 358.5
+      }
+    },
+    {
+      "name": "the default chart mirrors the sky: north up, longitude grows left",
+      "pass": true,
+      "detail": {
+        "x": 178.5
+      }
+    },
+    {
+      "name": "mirrored chart still round-trips",
+      "pass": true,
+      "detail": {
+        "x": 90,
+        "y": 45,
+        "inside": true
+      }
+    },
+    {
+      "name": "plane: texelOf ignores the length of the direction it is given",
+      "pass": true,
+      "detail": {
+        "worstTexel": 2.842170943040401e-14
+      }
+    },
+    {
+      "name": "view: texelOf ignores the length of the direction it is given",
+      "pass": true,
+      "detail": {
+        "worstTexel": 9.094947017729282e-13
+      }
+    },
+    {
+      "name": "every chart marker's ray comes back to its star (worst 0.000° off Spica)",
+      "pass": true,
+      "detail": {
+        "worstDeg": 0,
+        "worstName": "Spica"
+      }
+    },
+    {
+      "name": "σ 3°: the near stars' texels reach 0.94 of the painted ramp",
+      "pass": true,
+      "detail": {
+        "peak": 0.94,
+        "rawSpan": 1.729
+      }
+    },
+    {
+      "name": "σ 10°: the near stars' texels reach 0.89 of the painted ramp",
+      "pass": true,
+      "detail": {
+        "peak": 0.889,
+        "rawSpan": 0.886
+      }
+    },
+    {
+      "name": "a wide σ blends: the physical (log-distance) span shrinks by half",
+      "pass": true,
+      "detail": {
+        "narrow": 1.729,
+        "wide": 0.886
+      }
+    },
+    {
+      "name": "catalog bundle decodes",
+      "pass": true,
+      "detail": 3829
+    },
+    {
+      "name": "nearest-N from the catalog returns N stars, sorted by distance",
+      "pass": true,
+      "detail": {
+        "n": 24
+      }
+    },
+    {
+      "name": "the nearest-N list is ordered and every star is inside 100 pc of the Sun",
+      "pass": true,
+      "detail": {
+        "farthestKpc": 0.0346
+      }
+    },
+    {
+      "name": "catalog records carry the packed word the renderer moves them with",
+      "pass": true,
+      "detail": 98306
+    },
+    {
+      "name": "re-picking follows the eye: 500 nearest from 6 kpc off are different stars",
+      "pass": true,
+      "detail": {
+        "home": "0.0145",
+        "off": "4.2393"
+      }
+    },
+    {
+      "name": "the decoded index holds the visible catalog records",
+      "pass": true,
+      "detail": 3829
+    },
+    {
+      "name": "the heap query is the exact brute-force nearest-N",
+      "pass": true,
+      "detail": {
+        "worst": 1.0658141036401503e-14
+      }
+    },
+    {
+      "name": "100 nearest-500 queries take 3.8 ms (< 200)",
+      "pass": true,
+      "detail": {
+        "ms": 3.79
+      }
+    },
+    {
+      "name": "indexed positions at time 0 are the birth frame",
+      "pass": true
+    },
+    {
+      "name": "10 Myr of star time moves the indexed sky",
+      "pass": true,
+      "detail": {
+        "moved": 3829
+      }
+    },
+    {
+      "name": "a star-time query and a birth-frame query are different questions",
+      "pass": true,
+      "detail": {
+        "differs": 72
+      }
+    },
+    {
+      "name": "a star-time pick drawn through advancePositions matches the advanced sky (no double motion)",
+      "pass": true,
+      "detail": {
+        "worstKpc": 0
+      }
+    },
+    {
+      "name": "frozen star time copies the birth frame exactly",
+      "pass": true
+    },
+    {
+      "name": "1 Myr of star time displaces the landmarks through the landmark dispatch",
+      "pass": true,
+      "detail": {
+        "moved": 60,
+        "maxMoveKpc": 0.24942
+      }
+    },
+    {
+      "name": "the heightmap updates with star time",
+      "pass": true,
+      "detail": {
+        "maxDelta": 0.6717
+      }
+    },
+    {
+      "name": "500 anchors at the balanced budget (72×40) rebuilds in 7.4 ms (< 60)",
+      "pass": true,
+      "detail": {
+        "ms": 7.43,
+        "pairs": 1440000
+      }
+    },
+    {
+      "name": "autoResolution trades resolution for anchors",
+      "pass": true,
+      "detail": {
+        "n500": 40,
+        "n60": 120
+      }
+    }
+  ]
+}

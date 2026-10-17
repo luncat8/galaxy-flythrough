@@ -162,6 +162,45 @@
                 </div>
                 <div class="menu-hint">▾ collapses · Tab toggles panels · drag sliders live · C centres the galaxy</div>
         </div>
+        <!-- The distance field is its own task panel: it is a camera-space
+             diagnostic, not a display or galaxy-generation setting. -->
+        <div id="field-menu" class="panel">
+                <div class="menu-header">
+                        <span>Distance field</span>
+                        <button id="field-menu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab toggles all panels)" aria-expanded="true">▾</button>
+                </div>
+                <div class="menu-row">
+                        <label for="field-mode" title="Compute distance, depth spread, or the sky gradient from the current camera eye.">Field view</label>
+                        <select id="field-mode">
+                                <option value="off">off</option>
+                                <option value="height">distance from eye</option>
+                                <option value="spread">depth spread</option>
+                                <option value="gradient">distance gradient</option>
+                        </select>
+                        <span id="val-field" class="menu-val">off</span>
+                </div>
+                <div class="menu-row">
+                        <label for="field-source" title="Choose the rendered stars used as distance anchors.">Anchor source</label>
+                        <select id="field-source">
+                                <option value="nearest">nearest N drawn stars</option>
+                                <option value="catalog">catalog stars</option>
+                                <option value="procedural">procedural stars</option>
+                                <option value="selected">selected stars</option>
+                                <option value="constellations">constellations</option>
+                        </select>
+                </div>
+                <div class="menu-row">
+                        <label for="slider-field-count" title="Anchor count for nearest, catalog, and procedural sources.">Anchor count</label>
+                        <input type="range" id="slider-field-count" min="1" max="500" step="1" value="120">
+                        <span id="val-field-count" class="menu-val">120</span>
+                </div>
+                <div class="menu-row">
+                        <label for="slider-field-sigma" title="Angular radius of each star's influence on the field.">Influence width</label>
+                        <input type="range" id="slider-field-sigma" min="0.5" max="15" step="0.5" value="3">
+                        <span id="val-field-sigma" class="menu-val">3°</span>
+                </div>
+                <div class="field-panel-note">Projection uses the live camera position, orientation, field of view and viewport aspect. Stars and field share one camera-space mapping.</div>
+        </div>
 	<!-- Search & Selection is a separate workflow panel: typed object history,
 	     current-centred star search and the clickable result array. -->
 	<div id="selection-menu" class="panel">
@@ -438,6 +477,7 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
         <!-- Star and planet search (0.5.2): pure scan over the renderer's
              blocks and the selection set, so it depends on nothing at load. -->
         <script src="core/search.js"></script>
+        <script src="core/field-anchors.js"></script>
 	<script src="core/route.js"></script>
 	<!-- The game-mode ship (game-mode-plan G1): the class table through
 	     deltav.js, the leg profile through route.js — loaded after both and
@@ -453,6 +493,9 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
              earlier file registered. The tile stream feeds the renderer, so it loads
              before it. -->
         <script src="render/shaders.js"></script>
+        <script src="math/distance-field.js"></script>
+        <script src="render/distance-ramps.js"></script>
+        <script src="render/distance-field-renderer.js"></script>
         <script src="stream/tile-loader.js"></script>
         <script src="stream/cell-manager.js"></script>
 	<script src="render/star-sprites.js"></script>

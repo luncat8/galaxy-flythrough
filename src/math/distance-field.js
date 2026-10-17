@@ -1,5 +1,14 @@
-// src/math/view-modes-field.js
-// Pure-CPU heightmap fields for the view-modes experiment (archive/view-modes-shader-plan.md).
+// src/math/distance-field.js
+// The distance field: the law both implementations share (distance-field-plan.md).
+//
+// Promoted out of the view-modes island (archive/view-modes-shader-plan.md) and
+// into the main tree, because the law is no longer the island's private
+// business: the CPU here is the *reference* the WebGPU path in
+// render/distance-field-renderer.js is checked against, and the island page,
+// the main renderer and the standalone test page all read this one file.
+//
+// Pure functions: no DOM, no WebGL, no globals beyond the export. Testable in
+// Node.
 //
 // The field is a function of a *view direction*: every texel stands for one ray
 // leaving the camera, and its height is a smooth interpolation of the anchor
@@ -33,11 +42,13 @@
 // The range (see "display range" below) is what turns any of the three into a
 // colour; the field itself never renormalizes after smoothing.
 //
-// Weights are angular: w = 1 / (sin²δ + sin²σ), δ = the angle between the texel
-// ray and the star, σ = the softening (a star's hill half-width). Two things
-// follow, and both are the point: the field is defined over the whole sphere —
-// stars behind the camera count, so the dome is never left unpainted — and the
-// sum is smooth, so it reads as terrain rather than as Voronoi cells.
+// Weights use cosine distance on the sphere: w = 1 / ((1 − cos δ) +
+// (1 − cos σ)), where δ is the ray-to-star angle and σ is the hill half-width.
+// Unlike sin²δ, cosine distance distinguishes a star on the opposite ray from
+// one on this ray; the old sine-squared kernel made both peaks identical and
+// painted a false second copy of every star across the sky. The field still
+// covers the whole sphere, but back-facing stars contribute only their broad,
+// low-weight background instead of an antipodal hill.
 //
 // Cost is O(w·h·N) at ~10 flops per pair: the exact, splat-free option the plan
 // listed as too heavy for the CPU at full size. It fits a frame because the page
@@ -438,11 +449,10 @@
 	// opts: {
 	//   mode:     'height' | 'spread' | 'gradient'
 	//   sigmaDeg: IDW hill half-width in degrees (default 3). The weight is
-	//             1/(sin²δ + sin²σ), so σ is the angle at which a star's hill
-	//             has halved: a wide σ means a star's own texel blends more with
-	//             its neighbours (10° halves the field's log-distance span) and
-	//             the map reads flatter. 3° keeps 94% of the nearest anchor's
-	//             peak on a chart while still joining the figures.
+	//             1/((1 − cos δ) + (1 − cos σ)), so σ is the angle at which a
+	//             star's hill has halved: a wide σ means a star's own texel blends
+	//             more with its neighbours and the map reads flatter. 3° keeps
+	//             peaks distinct while still joining the figures.
 	//   measure:  false skips the range suggestion (the histogram / raw min-max);
 	//             the field itself is unaffected. The page asks for it at 4 Hz.
 	//   range:    applyRange's [lo, hi] for computeField's one-shot path.
@@ -539,7 +549,7 @@
 		const measure = opts.measure !== false;
 		const mode = opts.mode || 'height';
 		const sigma = (opts.sigmaDeg === undefined ? SIGMA_DEG : opts.sigmaDeg) * DEG;
-		const eps2 = Math.sin(sigma) * Math.sin(sigma);
+		const soft = 1 - Math.cos(sigma);
 		const n = starsIn.n;
 		const wantGradient = mode === 'gradient';
 		const needDepth = mode === 'spread';
@@ -568,10 +578,10 @@
 				const ax = dir[0], ay = dir[1], az = dir[2];
 				let sw = 0, sv = 0, sd = 0, sd2 = 0;
 				for (let i = 0; i < n; i++) {
-					const c = ax * dirX[i] + ay * dirY[i] + az * dirZ[i];
-					let q = 1 - c * c;
+					const c = clamp(ax * dirX[i] + ay * dirY[i] + az * dirZ[i], -1, 1);
+					let q = 1 - c;
 					if (q < 0) q = 0;
-					const gw = 1 / (q + eps2);
+					const gw = 1 / (q + soft);
 					sw += gw;
 					sv += gw * lv[i];
 					if (needDepth) { sd += gw * dv[i]; sd2 += gw * d2v[i]; }
@@ -968,7 +978,7 @@
 		return Math.max(16, Math.min(512, Math.round(h / 8) * 8));
 	}
 
-	const ViewModesField = {
+	const DistanceField = {
 		DEG, TAU, MIN_DIST_KPC, MAX_STARS, RANGE_FLOOR,
 		// pose
 		quatTurn, quatMul, quatArc, quatApply, quatInv, quatNormalize, quatBasis, quatDrag,
@@ -984,6 +994,6 @@
 		advancePositions, decodeInto,
 	};
 
-	if (typeof module !== 'undefined') module.exports = ViewModesField;
-	if (typeof window !== 'undefined') window.ViewModesField = ViewModesField;
+	if (typeof module !== 'undefined') module.exports = DistanceField;
+	if (typeof window !== 'undefined') window.DistanceField = DistanceField;
 })();

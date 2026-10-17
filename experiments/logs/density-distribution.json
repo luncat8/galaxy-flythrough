@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-17T02:59:24.183Z",
+  "date": "2026-10-17T20:38:50.189Z",
   "seed": 42,
   "suite": [
     "E4",
@@ -9,7 +9,7 @@
     "Sc",
     "Irr"
   ],
-  "totalSampleMs": 1434,
+  "totalSampleMs": 1087,
   "totalChecks": 51,
   "passed": 51,
   "failed": 0,

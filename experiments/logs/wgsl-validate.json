@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-17T02:58:38.798Z",
+  "date": "2026-10-17T20:38:11.111Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -40,6 +40,18 @@
     {
       "name": "cull",
       "lines": 114
+    },
+    {
+      "name": "field-uniform",
+      "lines": 51
+    },
+    {
+      "name": "distance-field",
+      "lines": 197
+    },
+    {
+      "name": "distance-field-display",
+      "lines": 167
     }
   ],
   "wired": [
@@ -47,10 +59,12 @@
     "star-sprite-hdr",
     "nebula-billboard",
     "tonemap",
-    "simple-step"
+    "simple-step",
+    "distance-field",
+    "distance-field-display"
   ],
-  "totalChecks": 186,
-  "passed": 186,
+  "totalChecks": 197,
+  "passed": 197,
   "failed": 0,
   "checks": [
     {
@@ -66,7 +80,10 @@
         "nebula-billboard",
         "tonemap",
         "procedural-gen",
-        "cull"
+        "cull",
+        "field-uniform",
+        "distance-field",
+        "distance-field-display"
       ]
     },
     {
@@ -112,18 +129,32 @@
         [
           "cull",
           3961
+        ],
+        [
+          "field-uniform",
+          2018
+        ],
+        [
+          "distance-field",
+          7467
+        ],
+        [
+          "distance-field-display",
+          6122
         ]
       ]
     },
     {
-      "name": "five wired shaders are exposed (star-sprite, star-sprite-hdr, nebula-billboard, tonemap, simple-step)",
+      "name": "seven wired shaders are exposed (the four scene ones, the simple step, and the field's two)",
       "pass": true,
       "detail": [
         "star-sprite",
         "star-sprite-hdr",
         "nebula-billboard",
         "tonemap",
-        "simple-step"
+        "simple-step",
+        "distance-field",
+        "distance-field-display"
       ]
     },
     {
@@ -136,7 +167,9 @@
         "tonemap",
         "procedural-gen",
         "cull",
-        "simple-step"
+        "simple-step",
+        "distance-field",
+        "distance-field-display"
       ]
     },
     {
@@ -320,6 +353,60 @@
       "detail": 6
     },
     {
+      "name": "field-uniform: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "field-uniform: contains no unresolved markers",
+      "pass": true,
+      "detail": "field-uniform"
+    },
+    {
+      "name": "field-uniform: declares its functions",
+      "pass": true,
+      "detail": 2
+    },
+    {
+      "name": "distance-field: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "distance-field: contains no unresolved markers",
+      "pass": true,
+      "detail": "distance-field"
+    },
+    {
+      "name": "distance-field: declares its functions",
+      "pass": true,
+      "detail": 6
+    },
+    {
+      "name": "distance-field-display: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "distance-field-display: contains no unresolved markers",
+      "pass": true,
+      "detail": "distance-field-display"
+    },
+    {
+      "name": "distance-field-display: declares its functions",
+      "pass": true,
+      "detail": 7
+    },
+    {
       "name": "star-sprite: every call target resolves in the module",
       "pass": true,
       "detail": []
@@ -351,6 +438,16 @@
     },
     {
       "name": "simple-step: every call target resolves in the module",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "distance-field: every call target resolves in the module",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "distance-field-display: every call target resolves in the module",
       "pass": true,
       "detail": []
     },

@@ -38,12 +38,21 @@ function walk(dir, base) {
 // --- 1. The page loads exactly the source tree, in dependency order ------
 const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
 const scripts = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map(m => m[1]);
-// The view-modes heightmap is an island: three files with their own page, kept
-// out of index.html on purpose so the main app never loads them and main
-// development does not read them (archive/view-modes-shader-plan.md). Everything
-// else in src/ still has to be wired into the main page, so the exclusion is a
-// named list rather than a pattern that could swallow a real omission.
-const ISLAND = ['math/view-modes-field.js', 'render/view-modes-renderer.js', 'view-modes.js'];
+// The view-modes heightmap and the distance-field test page are islands: each
+// has its own page, kept out of index.html on purpose so the main app never
+// loads them (archive/view-modes-shader-plan.md, distance-field-plan.md). The
+// island's *law* (math/distance-field.js) and the ramps are no longer the
+// island's private business - the main renderer and the GPU path read them
+// too - so they are main-tree files now, and only the pages' own boot files
+// stay island-only. Everything else in src/ still has to be wired into the
+// main page, so the exclusion is a named list rather than a pattern that could
+// swallow a real omission.
+const ISLAND = ['render/view-modes-renderer.js', 'view-modes.js', 'distance-field-page.js'];
+// The island's own files, in the order its page must load them.
+const ISLAND_PAGE = ['render/view-modes-renderer.js', 'view-modes.js'];
+// The test page's own file, and the shared law both pages load.
+const FIELD_PAGE = ['distance-field-page.js'];
+const SHARED_FIELD = ['math/distance-field.js', 'render/distance-ramps.js'];
 const sourceFiles = walk(SRC, '')
 	.filter(f => f !== 'data/tiles/catalog.js' && !ISLAND.includes(f)).sort();
 {
@@ -55,14 +64,27 @@ const sourceFiles = walk(SRC, '')
 	check('every script index.html references exists on disk',
 		scripts.every(s => fs.existsSync(path.join(SRC, s))),
 		scripts.filter(s => !fs.existsSync(path.join(SRC, s))));
-	check('the island is loaded by its own page, in field → painter → boot order', (() => {
+	check('the island is loaded by its own page, in law → ramps → painter → boot order', (() => {
 		const islandHtml = fs.readFileSync(path.join(SRC, 'view-modes.html'), 'utf-8');
 		const list = [...islandHtml.matchAll(/<script\s+src="([^"]+)"/g)].map(m => m[1]);
-		return ISLAND.every(f => list.includes(f))
+		const order = [...SHARED_FIELD, ...ISLAND_PAGE].map(f => list.indexOf(f));
+		return ISLAND_PAGE.every(f => list.includes(f))
 			&& ISLAND.every(f => !scripts.includes(f))
 			&& list[list.length - 1] === 'view-modes.js'
+			&& order.every((at, i) => at >= 0 && (i === 0 || at > order[i - 1]))
 			&& /view-modes\.css/.test(islandHtml);
 	})(), { island: ISLAND.map(f => scripts.includes(f)) });
+	check('the distance-field test page has its own page: radio buttons for the render type and the stars, a slider for the count', (() => {
+		const pageHtml = fs.readFileSync(path.join(SRC, 'distance-field.html'), 'utf-8');
+		const list = [...pageHtml.matchAll(/<script\s+src="([^"]+)"/g)].map(m => m[1]);
+		const order = [...SHARED_FIELD, 'render/shaders.js', 'render/distance-field-renderer.js', ...FIELD_PAGE]
+			.map(f => list.indexOf(f));
+		return FIELD_PAGE.every(f => list.includes(f) && !scripts.includes(f))
+			&& order.every((at, i) => at >= 0 && (i === 0 || at > order[i - 1]))
+			&& /name="field-mode"/.test(pageHtml) && /name="field-source"/.test(pageHtml)
+			&& /id="slider-count"/.test(pageHtml) && /id="slider-sigma"/.test(pageHtml)
+			&& /distance-field\.css/.test(pageHtml);
+	})(), { page: FIELD_PAGE.map(f => scripts.includes(f)) });
 	check('index.html has no leftover inline WGSL',
 		!/text\/x-wgsl/.test(html), 'wgsl blocks');
 	check('index.html references the stylesheet and the overlay elements',
@@ -72,6 +94,19 @@ const sourceFiles = walk(SRC, '')
 		&& /id="btn-fly-to"/.test(html)
 		&& /id="overlay"/.test(html) && /id="error"/.test(html),
 		{ css: /style\.css/.test(html), elements: ['canvas', 'labels', 'system', 'selection-menu', 'search-results', 'overlay', 'error'].map(id => html.includes(`id="${id}"`)) });
+	check('distance-field controls live together in a separately collapsible panel', (() => {
+		const fieldStart = html.indexOf('<div id="field-menu"');
+		const fieldEnd = html.indexOf('<!-- Search & Selection', fieldStart);
+		const displayStart = html.indexOf('<div id="menu"');
+		const displayEnd = html.indexOf('<!-- The distance field', displayStart);
+		if (fieldStart < 0 || fieldEnd < 0 || displayStart < 0 || displayEnd < 0) return false;
+		const fieldPanel = html.slice(fieldStart, fieldEnd);
+		const displayPanel = html.slice(displayStart, displayEnd);
+		return fieldPanel.includes('field-menu-collapse')
+			&& fieldPanel.includes('field-mode') && fieldPanel.includes('field-source')
+			&& fieldPanel.includes('slider-field-count')
+			&& !displayPanel.includes('field-mode') && !displayPanel.includes('field-source');
+	})(), { fieldPanel: html.includes('id="field-menu"') });
 }
 
 {

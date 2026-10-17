@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Galaxy Fly-Through — Distance field (WebGPU)</title>
+	<link rel="stylesheet" href="distance-field.css">
+</head>
+<body>
+	<canvas id="field"></canvas>
+	<pre id="readout"></pre>
+	<pre id="error" style="display:none"></pre>
+
+	<div id="menu" class="panel">
+		<div class="menu-header">
+			<span>Distance field · WebGPU</span>
+		</div>
+
+		<div class="menu-row radio-row">
+			<span class="menu-sub">render type</span>
+			<label><input type="radio" name="field-mode" value="height" checked> distance from eye</label>
+			<label><input type="radio" name="field-mode" value="spread"> depth spread</label>
+			<label><input type="radio" name="field-mode" value="gradient"> gradient of distance</label>
+			<label><input type="radio" name="field-mode" value="off"> off</label>
+		</div>
+
+		<div class="menu-row radio-row">
+			<span class="menu-sub">stars</span>
+			<label><input type="radio" name="field-source" value="nearest" checked> nearest N</label>
+			<label><input type="radio" name="field-source" value="selected"> selected</label>
+			<label><input type="radio" name="field-source" value="constellations"> constellations</label>
+			<label><input type="radio" name="field-source" value="sky"> the whole sky</label>
+		</div>
+
+		<div class="menu-row radio-row">
+			<span class="menu-sub">projection</span>
+			<label><input type="radio" name="field-projection" value="view" checked> inside view sphere</label>
+			<label><input type="radio" name="field-projection" value="plane"> plane chart</label>
+		</div>
+
+		<div class="menu-row">
+			<label for="slider-source" title="The same choice the radio buttons above make, as a slider: step through the four star sources.">Star source</label>
+			<input type="range" id="slider-source" min="0" max="3" step="1" value="0">
+			<span id="val-source" class="menu-val">nearest N</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-count">Nearest stars</label>
+			<input type="range" id="slider-count" min="1" max="500" step="1" value="120">
+			<span id="val-count" class="menu-val">120</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-sigma">Hill width σ</label>
+			<input type="range" id="slider-sigma" min="0.5" max="15" step="0.5" value="3">
+			<span id="val-sigma" class="menu-val">3°</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-res">Field width</label>
+			<input type="range" id="slider-res" min="64" max="640" step="32" value="320">
+			<span id="val-res" class="menu-val">320</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-zoom">Eye distance</label>
+			<input type="range" id="slider-zoom" min="-4" max="4" step="0.05" value="-2.3">
+			<span id="val-zoom" class="menu-val">5.0 pc</span>
+		</div>
+
+		<div class="menu-row">
+			<button id="btn-clear-selection" type="button">Clear the selection</button>
+			<span id="val-selection" class="menu-val">0 picked</span>
+		</div>
+		<div class="menu-row menu-note">
+			Click the field to pick the star under the cursor into the selection.
+		</div>
+	</div>
+
+	<script src="math/hash.js"></script>
+	<script src="math/density.js"></script>
+	<script src="math/galaxy.js"></script>
+	<script src="math/sampling.js"></script>
+	<script src="math/star-record.js"></script>
+	<script src="math/coords.js"></script>
+	<script src="math/orbit.js"></script>
+	<script src="data/landmarks.js"></script>
+	<script src="data/constellations.js"></script>
+	<script src="data/tiles/catalog.js"></script>
+	<script src="math/distance-field.js"></script>
+	<script src="render/distance-ramps.js"></script>
+	<script src="render/shaders.js"></script>
+	<script src="render/distance-field-renderer.js"></script>
+	<script src="core/device.js"></script>
+	<script src="distance-field-page.js"></script>
+</body>
+</html>
