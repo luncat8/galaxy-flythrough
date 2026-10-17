@@ -8,10 +8,12 @@ then make few view modes radio buttons:
 fill all sphere with color shat show distance to these main stars:
 0...1 far to closest
 think how better show - it should looks like heightmap, smooth. i know only diffusion algorithm may give good result, but maybe you found some faster.
+Should not be same color voronoi cells but gradient from stars.
+
 
 2. distance between adjacent stars as heightmap.
-i mean some stars visually are close but in 3d has big Z distance. i want to visualize this as similar smooth heightmap for game purpose: height gradient on this map mean slow travel, so for example we can pass 2d map to pathfinding algorithm in some specific game mode. or apply it to visual star ship movement
-
+i mean some stars visually are close but in 3d has big Z distance. i want to visualize this as similar smooth heightmap for game purpose: height gradient on this map mean slow travel, so for example *do not need to implement example) we can pass 2d map to pathfinding algorithm in some specific game mode. or apply it to visual star ship movement
+probably mode 2 is gradient of mode 1.
 
 good if this can be updated realtime while stars move (star time slider).
 
