@@ -450,7 +450,10 @@
 	// stats (mutated, never allocated): { pairs, rawLo, rawHi, autoLo, autoHi,
 	//   spreadMax, dMin, dMax, empty } — autoLo/Hi are this pass's suggested
 	//   log-range bounds; autoRange() owns their final padding.
-	const fieldScratch = { dir: new Float64Array(3), grid: null, raw: null, range: null };
+	const fieldScratch = {
+		dir: new Float64Array(3), grid: null, raw: null, range: null,
+		slopeX: null, slopeY: null,
+	};
 	let orbitScratch = null;   // the position out-vec of the orbit dispatch
 	let scaleScratch = null;
 
@@ -458,10 +461,14 @@
 	const logHist = new Uint32Array(LOG_BINS);
 	let histLo = 0, histW = 1;
 
-	function fieldBuffer(which, size) {
+	// Scratch field buffers, keyed by name, grown and never shrunk. `Ctor` is
+	// fixed per key by its one caller: the slope pair is f64 because the
+	// gradient mode quotes a physical measurement, and an f32 round-trip
+	// through the shared slope pass would move it ~25 ulps for no reason.
+	function fieldBuffer(which, size, Ctor) {
 		const cur = fieldScratch[which];
 		if (cur && cur.length >= size) return cur;
-		const next = new Float32Array(size);
+		const next = new (Ctor || Float32Array)(size);
 		fieldScratch[which] = next;
 		return next;
 	}
@@ -475,6 +482,53 @@
 			acc = next;
 		}
 		return histLo + LOG_BINS * histW;
+	}
+
+	// Central-difference slope of a field, per radian of sky, into two arrays.
+	//
+	// One implementation of "what is a texel worth in degrees", shared by the
+	// gradient mode (which takes this magnitude, quoted per degree) and the
+	// painter's shaded relief (which tilts a surface normal by it). Two copies
+	// of the seam and cos(lat) rules is how a relief would end up lit from a
+	// direction the contours disagree with.
+	//
+	// outX is d/d(longitude) and outY is d/d(−latitude): texel rows run down the
+	// map, so a field that grows toward the bottom of the canvas has a positive
+	// outY. Callers that want a sky-fixed sign convention negate it themselves.
+	function fieldSlope(src, layout, outX, outY) {
+		const w = layout.w, h = layout.h;
+		const rx = layout.texelRadX, ry = layout.texelRadY;
+		const plane = layout.kind === 'plane';
+		const cosClamp = 0.05;
+		for (let py = 0; py < h; py++) {
+			// Longitude wraps on a full chart; latitude never does — a pole is a
+			// real edge of the parameterisation, and clamping there keeps the
+			// derivative finite instead of wrapping north into south.
+			const up = (py > 0 ? py - 1 : py) * w;
+			const dn = (py < h - 1 ? py + 1 : py) * w;
+			const dy = ((dn - up) / w) * ry || ry;
+			const row = py * w;
+			let lonScale = 1;
+			if (plane) {
+				// A chart's longitude rows shrink with cos(lat); the derivative
+				// must be per angle of sky, not per texel of map.
+				const lat = (0.5 - (py + 0.5) / h) * layout.spanY;
+				lonScale = 1 / Math.max(Math.cos(lat), cosClamp);
+			}
+			for (let px = 0; px < w; px++) {
+				const lf = layout.wrapX ? (px - 1 + w) % w : (px > 0 ? px - 1 : 0);
+				const rt = layout.wrapX ? (px + 1) % w : (px < w - 1 ? px + 1 : w - 1);
+				// The texel gap between lf and rt, measured the short way round
+				// on a wrapped chart: at the seam the plain difference is
+				// 2 − w and would overstate the slope ~w/2 times.
+				let gap = rt - lf;
+				if (layout.wrapX) gap = (gap + w) % w;
+				if (gap <= 0) gap = 1;
+				outX[row + px] = (src[row + rt] - src[row + lf]) / (gap * rx) * lonScale;
+				outY[row + px] = (src[dn + px] - src[up + px]) / dy;
+			}
+		}
+		return outX;
 	}
 
 	// opts.measure (default true) also builds the range suggestion (mode 1's
@@ -541,43 +595,18 @@
 		}
 
 		if (wantGradient) {
-			// Central differences of the log-distance grid, per radian of sky
-			// horizontally and vertically, then quoted per degree. The result is
-			// the physical slope of mode 1 — dex of distance per degree — so it
+			// The physical slope of mode 1 — dex of distance per degree — so it
 			// does not change when the display range does, and it cannot clump
 			// against a hard top (the old clamp was the "gradient of 1" wall).
-			const g = grid;
-			const rx = layout.texelRadX, ry = layout.texelRadY;
-			const plane = layout.kind === 'plane';
-			const cosClamp = 0.05;
-			for (let py = 0; py < h; py++) {
-				// Longitude wraps on a full chart; latitude never does — a pole is a
-				// real edge of the parameterisation, and clamping there keeps the
-				// derivative finite instead of wrapping north into south.
-				const up = (py > 0 ? py - 1 : py) * w;
-				const dn = (py < h - 1 ? py + 1 : py) * w;
-				const dy = ((dn - up) / w) * ry || ry;
-				const row = py * w;
-				let lonScale = 1;
-				if (plane) {
-					// A chart's longitude rows shrink with cos(lat); the derivative
-					// must be per angle of sky, not per texel of map.
-					const lat = (0.5 - (py + 0.5) / h) * layout.spanY;
-					lonScale = 1 / Math.max(Math.cos(lat), cosClamp);
-				}
-				for (let px = 0; px < w; px++) {
-					const lf = layout.wrapX ? (px - 1 + w) % w : (px > 0 ? px - 1 : 0);
-					const rt = layout.wrapX ? (px + 1) % w : (px < w - 1 ? px + 1 : w - 1);
-					// The texel gap between lf and rt, measured the short way round
-					// on a wrapped chart: at the seam the plain difference is
-					// 2 − w and would overstate the slope ~w/2 times.
-					let gap = rt - lf;
-					if (layout.wrapX) gap = (gap + w) % w;
-					if (gap <= 0) gap = 1;
-					const gx = (g[row + rt] - g[row + lf]) / (gap * rx) * lonScale;
-					const gy = (g[dn + px] - g[up + px]) / dy;
-					out[row + px] = Math.sqrt(gx * gx + gy * gy) * DEG;
-				}
+			// Read off the log-distance grid, not off four extra star sweeps per
+			// texel: the slope costs one O(w·h) pass over what mode 1 already
+			// computed, never another O(w·h·N).
+			fieldSlope(grid, layout,
+				fieldBuffer('slopeX', count, Float64Array),
+				fieldBuffer('slopeY', count, Float64Array));
+			const sx = fieldScratch.slopeX, sy = fieldScratch.slopeY;
+			for (let i = 0; i < count; i++) {
+				out[i] = Math.sqrt(sx[i] * sx[i] + sy[i] * sy[i]) * DEG;
 			}
 		}
 
@@ -948,7 +977,7 @@
 		// layout
 		createLayout, dirAt, chartDirAt, texelOf,
 		// field
-		prepareStars, computeRaw, computeField, heightAt, autoResolution, stars,
+		prepareStars, computeRaw, computeField, heightAt, autoResolution, fieldSlope, stars,
 		// sets
 		createSet, createIndex, createCatalogIndex, createSampledIndex, queryNearest,
 		prepareIndexPositions, buildConstellationSet, buildCatalogSet, constellationSegments,

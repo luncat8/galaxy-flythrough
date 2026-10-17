@@ -93,6 +93,10 @@
 		names: true,
 		invert: false,
 		smooth: true,
+		// 'auto' keeps the ramp each mode was designed for; any other value is an
+		// explicit override that survives a mode switch.
+		ramp: 'auto',
+		relief: Renderer.RELIEF_DEFAULT,
 		// Star time
 		starTimeMyr: 0,
 		starTimeRate: 0,
@@ -262,7 +266,7 @@
 	const paintOpts = {
 		mode: 'height', rect: null, positions: null, eye: null, set: null, viewBox: null,
 		drawContours: false, contourLevels: 10, drawGrid: false, drawNames: false,
-		invert: false, smooth: true,
+		invert: false, smooth: true, ramp: null, relief: 0,
 	};
 	const letterbox = { x: 0, y: 0, w: 0, h: 0 };
 	const cornerDir = new Float64Array(3);
@@ -356,6 +360,10 @@
 		const po = paintOpts;
 		po.mode = state.mode;
 		po.rect = rect;
+		// Resolved once per frame and handed to the legend too, so the strip the
+		// legend draws is the strip the map was painted with.
+		po.ramp = Renderer.resolveRamp(state.mode, state.ramp);
+		po.relief = state.relief;
 		po.positions = state.drawStars ? state.cur : null;
 		// World positions in, eye-relative out — the same subtraction
 		// prepareStars makes, so a dot sits on its own peak.
@@ -419,7 +427,7 @@
 	function drawLegend() {
 		const s = state.stats;
 		const live = state.live;
-		const opts = {};
+		const opts = { ramp: Renderer.resolveRamp(state.mode, state.ramp) };
 		const anchors = `${state.set.n} anchors (${state.set.source})`;
 		const how = state.autoRange ? 'auto' : 'manual';
 		if (state.mode === 'height') {
@@ -470,6 +478,14 @@
 		} else {
 			rangeLine = 'off';
 		}
+		// What the map is painted with. 'off' reports off rather than the settings
+		// that would apply: a line claiming a ramp is on screen while the canvas is
+		// cleared is the kind of readout that cannot be trusted.
+		const rampName = Renderer.resolveRamp(state.mode, state.ramp)._name;
+		const paintLine = state.mode === 'off' ? 'off'
+			: `${rampName}${state.ramp === 'auto' ? ' (auto)' : ''}`
+			+ ` · relief ${state.relief > 0 ? `${state.relief}×` : 'off'}`
+			+ `${state.contours ? ` · contours ${state.contourLevels}` : ''}`;
 		let cursor = '';
 		if (state.pointer.inside && state.raw && state.layout.w) {
 			const u = state.pointer.u, v = state.pointer.v;
@@ -491,6 +507,7 @@
 			+ `galaxy: ${state.model.type} #${state.model.seed}${state.model.milkyWay ? ' (catalog)' : ' (procedural)'}\n`
 			+ `star time: ${state.starTimeMyr.toFixed(1)} Myr (${OrbitLib.formatTimeRate(state.starTimeRate, 0)}) · engine ${OrbitLib.engineName()}\n`
 			+ `range: ${rangeLine}\n`
+			+ `paint: ${paintLine}\n`
 			+ `field ${state.layout.w}×${state.layout.h} · ${(state.stats.pairs / 1e6).toFixed(2)} M pairs · ${state.fieldMs.toFixed(1)} ms · ${state.fps.toFixed(0)} fps`
 			+ cursor;
 	}
@@ -693,6 +710,10 @@
 		bindRadios('view-mode', onModeChange);
 		bindRadios('projection', (v) => { state.projection = v; });
 		bindRadios('budget', (v) => { state.budget = v; state.resH = 0; });
+		bindRadios('ramp', (v) => { state.ramp = v; });
+		bindSlider('slider-relief', 'val-relief',
+			(v) => v > 0 ? `${v}×` : 'off',
+			(v) => { state.relief = v; });
 		bindSlider('slider-source', 'val-source',
 			(v) => v === 0 ? 'constellations' : `${v | 0} nearest`,
 			(v) => { state.sourceN = v | 0; state.setDirty = true; });

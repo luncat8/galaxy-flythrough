@@ -1,6 +1,6 @@
 {
-  "totalChecks": 36,
-  "passed": 36,
+  "totalChecks": 52,
+  "passed": 52,
   "failed": 0,
   "checks": [
     {
@@ -59,7 +59,7 @@
     {
       "name": "readout reports a non-empty field",
       "pass": true,
-      "detail": "field 216×120 · 1.56 M pairs · 26.9 ms · 60 fps"
+      "detail": "field 216×120 · 1.56 M pairs · 10.2 ms · 60 fps"
     },
     {
       "name": "the painter drew the field and the star overlay",
@@ -97,7 +97,7 @@
       "name": "dragging looks around: the map repaints",
       "pass": true,
       "detail": {
-        "changedPx": 266995
+        "changedPx": 264309
       }
     },
     {
@@ -200,8 +200,8 @@
           "hi": -1.5
         },
         "live": {
-          "lo": -1.4598673050865532,
-          "hi": -1.0962453785821795
+          "lo": -1.7878911622465403,
+          "hi": -0.765925315414667
         }
       }
     },
@@ -209,9 +209,103 @@
       "name": "re-enabling auto range reads the data again",
       "pass": true,
       "detail": {
-        "lo": -1.4598673050865532,
-        "hi": -1.0962453785821795
+        "lo": -1.7878911622465403,
+        "hi": -0.765925315414667
       }
+    },
+    {
+      "name": "the painter exposes five ramps plus the per-mode default",
+      "pass": true,
+      "detail": [
+        "viridis",
+        "turbo",
+        "magma",
+        "terrain",
+        "grey"
+      ]
+    },
+    {
+      "name": "an unrecognised ramp name falls back to the mode default, never to undefined",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "the turbo ramp is the published polynomial to within a byte",
+      "pass": true,
+      "detail": {
+        "maxErr": 0.998
+      }
+    },
+    {
+      "name": "the ramp picker reaches the page state",
+      "pass": true,
+      "detail": "terrain"
+    },
+    {
+      "name": "the readout names the ramp on screen",
+      "pass": true,
+      "detail": "paint: terrain · relief 6× · contours 10"
+    },
+    {
+      "name": "switching the ramp back repaints a different picture",
+      "pass": true,
+      "detail": {
+        "changedPx": 255193
+      }
+    },
+    {
+      "name": "auto reports the default it resolved to",
+      "pass": true,
+      "detail": "paint: viridis (auto) · relief 6× · contours 10"
+    },
+    {
+      "name": "shaded relief reaches the page state",
+      "pass": true,
+      "detail": 12
+    },
+    {
+      "name": "relief 0 → 12 repaints the map",
+      "pass": true,
+      "detail": {
+        "changedPx": 259920
+      }
+    },
+    {
+      "name": "relief only darkens — it never multiplies past full scale",
+      "pass": true,
+      "detail": {
+        "darker": 259856,
+        "brighter": 0
+      }
+    },
+    {
+      "name": "relief darkens differentially, not by one uniform factor",
+      "pass": true,
+      "detail": {
+        "distinctShadeLevels": 43
+      }
+    },
+    {
+      "name": "relief 0 twice paints the identical flat map (no scratch left behind)",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "relief is a display effect: the measured field is unchanged",
+      "pass": true,
+      "detail": {
+        "maxDrift": 0
+      }
+    },
+    {
+      "name": "the relief readout quotes the exaggeration",
+      "pass": true,
+      "detail": "paint: viridis (auto) · relief 6× · contours 10"
+    },
+    {
+      "name": "relief 0 reports off",
+      "pass": true,
+      "detail": "paint: viridis (auto) · relief off · contours 10"
     },
     {
       "name": "moving the eye re-picks the nearest N anchors",
@@ -230,8 +324,8 @@
           "hi": -1.1701401829719544
         },
         "now": {
-          "lo": -1.4598673050865532,
-          "hi": -1.0962453785821795
+          "lo": -1.7878911622465403,
+          "hi": -0.765925315414667
         }
       }
     },
@@ -239,7 +333,7 @@
       "name": "star time moves the drawn anchors and the whole index follows",
       "pass": true,
       "detail": {
-        "myr": 15.9,
+        "myr": 16.7,
         "indexMyr": 12.5,
         "moved": 250
       }
@@ -273,6 +367,11 @@
       "name": "off clears the canvas",
       "pass": true,
       "detail": []
+    },
+    {
+      "name": "the screenshots are not blank",
+      "pass": true,
+      "detail": null
     }
   ]
 }

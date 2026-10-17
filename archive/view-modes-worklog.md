@@ -203,3 +203,77 @@ re-pick, and the map described a neighbourhood the eye had left.
 
 Next: the `--png` shots still cannot show the dots or names (the harness rasterizes
 `drawImage` only); a browser pass is the remaining check.
+
+---
+
+## view-modes.3 — a parallel implementation compared; the good shaders picked
+
+`b2c97fbf` (2026-10-17) branched from the same base as view-modes.1 (`1e06672`) and
+solved the plan again: one 1552-line `src/view-modes.html` with an inline WebGL2
+fragment shader, a 486-line css, and the three shipped modules deleted. Neither branch
+is a descendant of the other, so this was a pick, not a merge: every taken feature was
+re-implemented against main's own modules and its tests, and nothing from the alt
+branch's arithmetic was copied.
+
+### The comparison, measured
+
+| | main (this island, CPU) | `b2c97fbf` (WebGL2 fragment) |
+|---|---|---|
+| field cost | O(w·h·N), ~0.3 Mpair/ms measured | the same O(w·h·N), per canvas pixel, on the GPU |
+| N=500 at `balanced` | 72×40 texels → 1 texel per 720 screen px | full canvas resolution |
+| 1920×1080 × 500 stars | 3455 ms/frame | inside the GPU's frame budget |
+| inner loop | at the JIT's floor — interleaving the SoA made it *slower* | `pow()` per star per pixel, plus 4 extra star sweeps for the gradient and 4 more for its hillshade |
+
+So the alt branch's only real advantage is the substrate, and its math is worse. The
+GPU path stays unbuilt on purpose: per AGENTS.md it would be WGSL in
+`src/render/shaders.js` with `wgsl-exec` parity, and there is no browser in this
+sandbox to measure it against a CPU fallback. The plan's §1 recommendation is amended
+to say so (see the plan's *Status* note).
+
+### Taken
+
+- **The published Turbo polynomial** (Mikhailov 2019, degree 5) replaces the 11
+  hand-picked stops. Measured against the polynomial the stops were off by up to
+  92/255 on one channel (mean 52) — a different colour, and the joins banded. It is
+  sampled into the same 256×3 LUT at load, so the frame loop still costs one index.
+- **Magma and terrain ramps, and a ramp picker.** `ramp` radio row: `auto` keeps the
+  per-mode default (viridis / turbo / grey), anything else overrides for every mode.
+  Stops are now `[t, r, g, b]` so the hypsometric terrain ramp can put sea level at
+  0.20 instead of halfway up.
+- **Shaded relief** (`relief` slider, default 6×, 0 = off): the cartographic NW light at
+  45°, on the *displayed* field's own slope, so the shading and the contours cannot
+  disagree about which way is up. The slope is the new shared `fieldSlope` — the same
+  central differences mode 3 uses, extracted so the seam and cos(lat) rules live in one
+  place — and the exaggeration's unit is a degree of sky, so it does not change when
+  the resolution does. The shade is clamped to `[0.45, 1]`: relief darkens and never
+  brightens, because a clipped highlight would make the colour stop meaning the value
+  the legend quotes.
+- **The index link.** `index.html`'s help panel gains a `view modes ↗` chip (styled with
+  the panel's own chip rule, not the alt branch's inline blue).
+
+### Left behind, with why
+
+`fetch('data/gaia-subset.csv')` (breaks `file://`, and swallows the failure); linear
+min-max height normalization (the flat-ramp bug view-modes.1 fixed); the cone term
+`max(0, u − slope·r)` that makes the field a UI setting instead of a measurement;
+gradient-by-four-star-sweeps plus the hard clamp (the "gradient of 1" wall);
+hillshade-by-four-more; `computeAdjacencyDiscrepancy`'s O(n²) with n² `{star, ang}`
+objects per refresh; `pool.sort()` + `slice()` over all stars instead of the max-heap
+query; Euler yaw/pitch instead of the quaternion pan; a WebGL1 fallback that could never
+compile its own `#version 300 es` sources; the Dijkstra travel-corridor and the hover
+HUD (out of scope for this pick).
+
+### Tests
+
+`view-modes-field-test.js` 65 → 70: `fieldSlope`'s cos(lat) longitude unit, the map-ward
+y sign, seam continuity and the analytic slope of `cos(lon)`, and mode 3 as exactly the
+magnitude of the shared slope. `view-modes-page-check.js` 37 → 51: the ramp set and its
+fallbacks, the turbo-polyto-byte pin, the ramp reaching the page and the readout, and
+relief — repaints, darkens-only, differential shading, identical flat map at 0 twice, and
+the measured `raw` field untouched by a display effect. `--png` writes four more shots
+(`chart-height-terrain`, `chart-height-magma`, `view-height-turbo`, `chart-height-flat`).
+The harness's `pump()` now keeps its frame clock monotonic (a negative `dt` was silently
+starving the 4 Hz reads).
+
+Next: the GPU path, if a browser pass shows the 72×40 budget is the thing hurting — as
+WGSL in `shaders.js` with `wgsl-exec` parity, CPU field kept as the fallback and mirror.

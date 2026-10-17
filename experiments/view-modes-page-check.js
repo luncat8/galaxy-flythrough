@@ -188,8 +188,13 @@ check('every script in the page evaluates in order', errors.length === 0, errors
 check('the page found no boot error element text', !el('error').textContent, el('error').textContent);
 
 const FRAMES = { n: 0 };
+// The page derives dt from the rAF timestamp, so a section that hands pump a t0
+// below the last frame's clock makes dt negative and quietly starves every
+// rate-limited read (the 4 Hz auto range, the re-pick clocks) — the frame still
+// runs, so the failure surfaces somewhere else entirely. Treat t0 as a floor.
+let clock = 0;
 function pump(frames, t0) {
-	let t = t0 || 0;
+	let t = Math.max(t0 || 0, clock);
 	for (let i = 0; i < frames; i++) {
 		const q = rafQueue; rafQueue = [];
 		t += 16.7;
@@ -198,6 +203,7 @@ function pump(frames, t0) {
 			try { fn(t); } catch (e) { errors.push(`frame: ${e && e.stack ? e.stack.split('\n')[0] : e}`); }
 		}
 	}
+	clock = t;
 	return t;
 }
 const tEnd = pump(3);
@@ -398,6 +404,118 @@ function angleBetween(a, b) {
 	pump(20, tEnd + 1200);
 }
 
+// --- the picked-up painter options: ramp override and shaded relief --------
+{
+	const dbg = window.ViewModesDebug;
+	const Rend = window.ViewModesRenderer;
+
+	// The ramp is the one thing about the map a reader cannot infer from the
+	// picture, so the readout has to say which one is on screen.
+	check('the painter exposes five ramps plus the per-mode default',
+		Object.keys(Rend.ramps).length === 5
+		&& Rend.resolveRamp('height', 'auto') === Rend.ramps.viridis
+		&& Rend.resolveRamp('spread', 'auto') === Rend.ramps.turbo
+		&& Rend.resolveRamp('gradient', 'auto') === Rend.ramps.grey,
+		Object.keys(Rend.ramps));
+	check('an unrecognised ramp name falls back to the mode default, never to undefined',
+		Rend.resolveRamp('height', 'nope') === Rend.ramps.viridis
+		&& Rend.resolveRamp('height', null) === Rend.ramps.viridis, null);
+
+	// Turbo is the published polynomial, not 11 hand-joined stops. Pinning the
+	// curve here is what stops someone "tidying" it back into a coarser ramp.
+	const poly = {
+		r: [0.13572138, 4.61539260, -42.66032258, 132.13108234, -152.94239396, 59.28637943],
+		g: [0.09140261, 2.19418839, 4.84296658, -14.18503333, 4.27729857, 2.82956604],
+		b: [0.10667330, 12.64194608, -60.58204836, 110.36276771, -89.90310912, 27.34824973],
+	};
+	let turboErr = 0;
+	for (let i = 0; i < 256; i++) {
+		const x = i / 255, x2 = x * x, x3 = x2 * x, x4 = x3 * x, x5 = x4 * x;
+		[poly.r, poly.g, poly.b].forEach((p, c) => {
+			const v = Math.min(1, Math.max(0, p[0] + p[1] * x + p[2] * x2 + p[3] * x3 + p[4] * x4 + p[5] * x5)) * 255;
+			turboErr = Math.max(turboErr, Math.abs(Rend.ramps.turbo[i * 3 + c] - v));
+		});
+	}
+	check('the turbo ramp is the published polynomial to within a byte', turboErr <= 1, { maxErr: +turboErr.toFixed(3) });
+
+	// An explicit ramp reaches the page and repaints; 'auto' puts the mode's own
+	// ramp back.
+	selectRadio('ramp', 'terrain');
+	pump(2, tEnd + 1300);
+	const terrainPx = Buffer.from(fieldCanvas._pixels);
+	check('the ramp picker reaches the page state', dbg.ramp === 'terrain', dbg.ramp);
+	check('the readout names the ramp on screen',
+		/paint: terrain ·/.test(el('readout').textContent), el('readout').textContent.split('\n')[6]);
+	selectRadio('ramp', 'auto');
+	pump(2, tEnd + 1400);
+	let rampChanged = 0;
+	for (let i = 0; i < terrainPx.length; i += 4) {
+		if (terrainPx[i] !== fieldCanvas._pixels[i]) rampChanged++;
+	}
+	check('switching the ramp back repaints a different picture', rampChanged > 1000, { changedPx: rampChanged });
+	check('auto reports the default it resolved to',
+		/paint: viridis \(auto\)/.test(el('readout').textContent), el('readout').textContent.split('\n')[6]);
+
+	// Relief is a lighting term on the painted value, so it must move pixels and
+	// leave the measurement alone — otherwise the map would stop being a reading
+	// of the distance and become a picture of it. `raw` is the check, not `field`:
+	// `field` also carries the display range, which eases at 4 Hz on its own.
+	const rawBefore = Float32Array.from(dbg.raw.subarray(0, dbg.layout.w * dbg.layout.h));
+	el('slider-relief').value = '0';
+	el('slider-relief').fire('input');
+	pump(2, tEnd + 1500);
+	const offPx = Buffer.from(fieldCanvas._pixels);
+	el('slider-relief').value = '12';
+	el('slider-relief').fire('input');
+	pump(2, tEnd + 1600);
+	let shadeChanged = 0, darker = 0, brighter = 0;
+	const shadeLevels = new Set();
+	for (let i = 0; i < offPx.length; i += 4) {
+		if (offPx[i] !== fieldCanvas._pixels[i]) shadeChanged++;
+		const l0 = offPx[i] + offPx[i + 1] + offPx[i + 2];
+		const l1 = fieldCanvas._pixels[i] + fieldCanvas._pixels[i + 1] + fieldCanvas._pixels[i + 2];
+		if (l1 < l0 - 3) darker++; else if (l1 > l0 + 3) brighter++;
+		if (l0 > 30) shadeLevels.add(Math.round(l1 / l0 * 100));
+	}
+	check('shaded relief reaches the page state', dbg.relief === 12, dbg.relief);
+	check('relief 0 → 12 repaints the map', shadeChanged > 1000, { changedPx: shadeChanged });
+	// The shade is clamped to [ambient, 1] on purpose: a highlight that
+	// multiplied past full scale would clip the ramp and make the colour stop
+	// meaning the value the legend quotes. So relief darkens, and never brightens.
+	check('relief only darkens — it never multiplies past full scale',
+		brighter === 0 && darker > 200, { darker, brighter });
+	// A uniform dim would pass the check above and still not be a relief: the
+	// point is that the darkening varies with the slope.
+	check('relief darkens differentially, not by one uniform factor',
+		shadeLevels.size > 8, { distinctShadeLevels: shadeLevels.size });
+	// The slope scratch is module-side and reused, so pin that relief 0 really
+	// does put the flat map back rather than leaving the last frame's shading in
+	// the buffers.
+	el('slider-relief').value = '0';
+	el('slider-relief').fire('input');
+	pump(2, tEnd + 1650);
+	check('relief 0 twice paints the identical flat map (no scratch left behind)',
+		offPx.equals(Buffer.from(fieldCanvas._pixels)), null);
+	const rawAfter = dbg.raw.subarray(0, dbg.layout.w * dbg.layout.h);
+	let rawDrift = 0;
+	for (let i = 0; i < rawBefore.length; i++) rawDrift = Math.max(rawDrift, Math.abs(rawBefore[i] - rawAfter[i]));
+	check('relief is a display effect: the measured field is unchanged', rawDrift === 0, { maxDrift: rawDrift });
+
+	el('slider-relief').value = '6';
+	el('slider-relief').fire('input');
+	pump(2, tEnd + 1700);
+	check('the relief readout quotes the exaggeration',
+		/relief 6×/.test(el('readout').textContent), el('readout').textContent.split('\n')[6]);
+	el('slider-relief').value = '0';
+	el('slider-relief').fire('input');
+	pump(2, tEnd + 1800);
+	check('relief 0 reports off', /relief off/.test(el('readout').textContent),
+		el('readout').textContent.split('\n')[6]);
+	el('slider-relief').value = '6';
+	el('slider-relief').fire('input');
+	pump(2, tEnd + 1900);
+}
+
 // --- eye movement re-picks the nearest N and updates the map ------------
 {
 	const dbg = window.ViewModesDebug;
@@ -514,6 +632,12 @@ const shots = [
 	{ name: 'chart-spread', mode: 'spread', proj: 'plane', source: '0' },
 	{ name: 'chart-gradient', mode: 'gradient', proj: 'plane', source: '0' },
 	{ name: 'chart-height-250', mode: 'height', proj: 'plane', source: '250' },
+	// The picked-up painter options: an explicit ramp overrides the per-mode
+	// default, and relief 0 is the flat map the same ramp used to give.
+	{ name: 'chart-height-terrain', mode: 'height', proj: 'plane', source: '0', ramp: 'terrain' },
+	{ name: 'chart-height-magma', mode: 'height', proj: 'plane', source: '0', ramp: 'magma' },
+	{ name: 'view-height-turbo', mode: 'height', proj: 'view', source: '0', ramp: 'turbo' },
+	{ name: 'chart-height-flat', mode: 'height', proj: 'plane', source: '0', relief: '0' },
 ];
 const logDir = path.join(__dirname, 'logs');
 fs.mkdirSync(logDir, { recursive: true });
@@ -524,8 +648,11 @@ if (WRITE_PNG) {
 		fieldCanvas.getContext()._texts = [];
 		selectRadio('view-mode', shot.mode);
 		selectRadio('projection', shot.proj);
+		selectRadio('ramp', shot.ramp || 'auto');
 		el('slider-source').value = shot.source;
 		el('slider-source').fire('input');
+		el('slider-relief').value = shot.relief || '6';
+		el('slider-relief').fire('input');
 		selectRadio('budget', 'high');
 		pump(2, 1e6 + pngs.length * 1000);
 		const file = path.join(logDir, `view-modes-page-${shot.name}.png`);

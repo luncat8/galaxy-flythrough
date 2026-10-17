@@ -486,6 +486,79 @@ const state = cam.getState({});
 		for (let i = 0; i < g2.length; i++) maxG = Math.max(maxG, g2[i]);
 		check('gradient of a constant field is zero', maxG < 1e-5, { maxG });
 	}
+
+	// --- 7b. fieldSlope: the shared slope behind mode 3 and the relief -------
+	//
+	// The painter's shaded relief reads these two arrays, so their units and
+	// signs are a contract now, not an implementation detail. Synthetic fields
+	// make the expected answer exact where a star field only makes it approximate.
+	{
+		const w = 360, h = 180;
+		const l2 = field.createLayout({}, { kind: 'plane', w, h, spanDeg: 360, quat: [0, 0, 0, 1], mirror: false });
+		const lon = new Float64Array(w), lat = new Float64Array(h);
+		for (let px = 0; px < w; px++) lon[px] = ((px + 0.5) / w - 0.5) * field.TAU;
+		for (let py = 0; py < h; py++) lat[py] = (0.5 - (py + 0.5) / h) * l2.spanY;
+		const src = new Float32Array(w * h);
+		const sx = new Float32Array(w * h), sy = new Float32Array(w * h);
+		const y = h >> 1;
+		const mid = (f) => { for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) src[py * w + px] = f(px, py); };
+
+		// A field linear in longitude: d/dlon is 1, and per radian of *sky* that
+		// is 1/cos(lat) — the correction that stops high-latitude rows reading low.
+		mid((px) => lon[px]);
+		field.fieldSlope(src, l2, sx, sy);
+		const cosEq = Math.cos(lat[y]);
+		check('fieldSlope quotes longitude per radian of sky (the cos(lat) correction)',
+			Math.abs(sx[y * w + (w >> 1)] - 1 / cosEq) < 1e-4 && Math.abs(sy[y * w + (w >> 1)]) < 1e-6,
+			{ got: sx[y * w + (w >> 1)], want: 1 / cosEq });
+
+		// Linear in latitude: rows run down the map while latitude runs up, so a
+		// field that grows northward has a *negative* y slope. The relief builds
+		// its normal from exactly this sign.
+		mid((px, py) => lat[py]);
+		field.fieldSlope(src, l2, sx, sy);
+		check('fieldSlope y follows the map (north-up field slopes negative)',
+			Math.abs(sy[y * w + (w >> 1)] + 1) < 1e-6 && Math.abs(sx[y * w + (w >> 1)]) < 1e-6,
+			{ got: sy[y * w + (w >> 1)], want: -1 });
+
+		// Periodic in longitude, so the value is continuous across the seam: at
+		// the seam column the wrapped neighbour must be used, and a plain column
+		// difference there divides by 2 − w instead of 2.
+		mid((px) => Math.cos(lon[px]));
+		field.fieldSlope(src, l2, sx, sy);
+		const seam = sx[y * w], at90 = sx[y * w + 89];
+		check('fieldSlope is continuous across the chart seam', Math.abs(seam) < 0.02,
+			{ seam, interior: sx[y * w + 5] });
+		check('fieldSlope matches the analytic slope of cos(lon)',
+			Math.abs(at90 - -Math.sin(lon[89]) / Math.cos(lat[y])) < 1e-3,
+			{ got: at90, want: -Math.sin(lon[89]) / Math.cos(lat[y]) });
+
+		// And the gradient mode is exactly the magnitude of this, per degree: the
+		// two consumers of one slope must not drift apart.
+		{
+			const set = field.buildConstellationSet({});
+			const st = starsFor(set.positions, set.n, model.home.position);
+			const l3 = field.createLayout({}, { kind: 'view', w: 96, h: 48, fovY: 60 * field.DEG, aspect: 2, basis: { fx: 1, fy: 0, fz: 0, rx: 0, ry: -1, rz: 0, ux: 0, uy: 0, uz: 1 } });
+			const raw = new Float32Array(96 * 48), g = new Float32Array(96 * 48);
+			// f64, like the gradient path's own slope scratch: this pins the two
+			// consumers together exactly, and an f32 scratch here would only be
+			// measuring the scratch.
+			const gx64 = new Float64Array(96 * 48), gy64 = new Float64Array(96 * 48);
+			field.computeRaw(st, l3, { mode: 'height', sigmaDeg: 6, measure: false }, raw, {});
+			field.computeRaw(st, l3, { mode: 'gradient', sigmaDeg: 6, measure: false }, g, {});
+			field.fieldSlope(raw, l3, gx64, gy64);
+			// The mode writes sqrt(x²+y²)·DEG into an f32 field, so the exact
+			// statement is equality through that store — hypot would differ from
+			// the sqrt form in the last ulp and say nothing new.
+			let bad = 0, worst = 0;
+			for (let i = 0; i < g.length; i++) {
+				const want = Math.fround(Math.sqrt(gx64[i] * gx64[i] + gy64[i] * gy64[i]) * field.DEG);
+				if (g[i] !== want) bad++;
+				worst = Math.max(worst, Math.abs(g[i] - want));
+			}
+			check('mode 3 is the magnitude of fieldSlope, per degree', bad === 0, { bad, worst });
+		}
+	}
 }
 
 // --- 8. Layout wrap and the chart convention ---------------------------

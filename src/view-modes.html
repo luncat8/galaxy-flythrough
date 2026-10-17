@@ -70,6 +70,20 @@
 			<label><input type="radio" name="budget" value="high"> high</label>
 			<label><input type="radio" name="budget" value="full"> full</label>
 		</div>
+		<div class="menu-row radio-row">
+			<span class="menu-sub">ramp</span>
+			<label><input type="radio" name="ramp" value="auto" checked> auto</label>
+			<label><input type="radio" name="ramp" value="viridis"> viridis</label>
+			<label><input type="radio" name="ramp" value="turbo"> turbo</label>
+			<label><input type="radio" name="ramp" value="magma"> magma</label>
+			<label><input type="radio" name="ramp" value="terrain"> terrain</label>
+			<label><input type="radio" name="ramp" value="grey"> grey</label>
+		</div>
+		<div class="menu-row">
+			<label for="slider-relief">Relief</label>
+			<input type="range" id="slider-relief" min="0" max="30" step="0.5" value="6">
+			<span id="val-relief" class="menu-val">6×</span>
+		</div>
 		<div class="menu-row check-row">
 			<label><input type="checkbox" id="check-contours" checked> contours</label>
 			<label><input type="checkbox" id="check-grid"> graticule</label>
@@ -132,6 +146,15 @@
 			The gradient is a real slope (dex of distance per degree of sky) with no
 			hard top, so a steep ring keeps its shape instead of clumping at full
 			scale.
+			<br>
+			<em>Relief</em> lights that terrain: a north-west light at 45° shades the
+			displayed height's own slope, so a ridge reads as a ridge. It multiplies
+			the colour by at most 1 — a highlight that clipped would make the colour
+			stop meaning the value the legend quotes — and at 0 the map is the flat
+			ramp. The exaggeration is per degree of sky, so it does not change when
+			the resolution does. <em>Ramp</em> picks the colours: <em>auto</em> keeps
+			the ramp each mode was designed for, anything else overrides it for
+			every mode.
 			<br>
 			Every mode is a physical scalar, so a game can read it directly:
 			<code>ViewModesField.heightAt(field, layout, u, v, out)</code> is a

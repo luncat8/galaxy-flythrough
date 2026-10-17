@@ -6,6 +6,43 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-10-17 — Two branches solved the same plan; the GPU is the only speedup left in the heightmap, and the CPU loop has none
+
+`b2c97fbf` rebuilt the view-modes island as one inline-WebGL2 HTML file off the same
+merge base as view-modes.1. Comparing before picking (view-modes.3) produced five
+lessons:
+
+1. **Benchmark the "faster" branch before believing it.** The alt branch's speed is its
+   substrate, not its algorithm: the same O(w·h·N) IDW, evaluated per canvas pixel on
+   the GPU instead of per texel on the CPU. Measured here, the CPU does ~0.3 Mpair/ms,
+   so main's `balanced` budget paints 72×40 texels at N=500 (one texel per 720 screen
+   px) and full 1920×1080 costs 3455 ms. And the CPU inner loop has *no* headroom left:
+   interleaving the star SoA into one stride-4 Float32Array made it **slower**
+   (110 → 147 ms at 384×216×500) — the loop is bound on the reciprocal, and the JIT
+   already keeps the split arrays hot. Don't tune what measurement says is at the floor.
+2. **A frame-pumping harness must keep its clock monotonic.** `pump(n, t0)` called with a
+   `t0` below the previous section's last frame gives the page a negative `dt`; the
+   frame still runs, so nothing errors, and the failure surfaces three sections later as
+   a starved 4 Hz auto-range read. Treat `t0` as a floor, not a value.
+3. **A hot-loop refactor must be bit-exact, and an f32 scratch is not.** Extracting the
+   gradient's central differences into a shared `fieldSlope` (now also the relief's
+   slope source) moved mode 3 by ~25 ulps while the scratch pair was Float32Array. The
+   *output* is f32 anyway, so the suite's tolerances smiled; only a throwaway parity
+   script against `git show HEAD:` caught it. Run that parity before trusting green.
+4. **When picking from a buggy parallel implementation, port the idea, not the
+   arithmetic.** The alt branch's hillshade cost four extra full star sweeps *per pixel*
+   (nine with its gradient); the same relief is one O(w·h) central-difference pass over
+   the 0..1 field the page already holds. Its gradient hard-clamps to 1 — the "gradient
+   of 1" wall main removed in .2; its shade multiplies up to 1.25 and clips, which makes
+   the colour stop meaning the legend; and its mode-1 height is a linear min-max over
+   5 pc…800 pc, putting every real star on one colour — the exact bug view-modes.1 fixed.
+5. **A fitted colormap polynomial must be clamped on the way into bytes.** Turbo's
+   published degree-5 polynomial overshoots [0, 1] by a hair at both ends. `Uint8Array`
+   converts out-of-range by *modulo*, not clamp — a 1.002 channel lands as 0.5/255, a
+   dark pixel inside a yellow ramp. (`Uint8ClampedArray` would have hidden it.)
+
+---
+
 ## 2026-10-17 — A projection inverse needs a pixel-level parity test; a round trip through one direction hides a scale bug
 
 The heightmap island ("the map must correspond to where the stars are") failed in four

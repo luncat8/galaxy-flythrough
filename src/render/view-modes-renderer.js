@@ -20,38 +20,103 @@
 		? window.ViewModesField
 		: require('../math/view-modes-field.js');
 
-	// Viridis for "how far" (perceptually even), turbo for "how much hidden
-	// depth" (its red end shouts), grey for a cost map you would feed a
-	// pathfinder.
-	const VIRIDIS = buildRamp([
-		[ 68,  1, 84], [ 72, 36, 117], [ 65, 68, 135], [ 53, 95, 141],
-		[ 42,120, 142], [ 33,145, 140], [ 29,169, 131], [ 50,192, 111],
-		[ 97,212,  82], [170,229,  42], [253,231,  37],
-	]);
-	const TURBO = buildRamp([
-		[ 48, 18, 59], [ 70, 48, 126], [ 75, 98, 200], [ 39, 160, 247],
-		[ 42,210, 207], [100,238, 126], [190,251,  67], [255,222,  40],
-		[240,148,  22], [205, 66,   4], [143,  0,   0],
-	]);
-	const GREY = buildRamp([[0, 0, 0], [255, 255, 255]]);
-
+	// A ramp is a 256×3 byte LUT: whatever curve produced it, the painter's
+	// per-texel cost stays one array index, so the curve is evaluated here at
+	// load and never in the frame loop.
+	//
+	// Stops are [t, r, g, b] with t ascending across 0..1. Carrying the position
+	// is what lets a ramp whose bands are not evenly spaced say so — the
+	// hypsometric terrain one, where sea level is not halfway up a mountain.
 	function buildRamp(stops) {
 		const n = 256;
 		const ramp = new Uint8Array(n * 3);
 		const last = stops.length - 1;
+		let s = 0;
 		for (let i = 0; i < n; i++) {
-			const t = i / (n - 1) * last;
-			const i0 = Math.min(last, Math.floor(t));
-			const i1 = Math.min(last, i0 + 1);
-			const f = t - i0;
-			const c0 = stops[i0], c1 = stops[i1];
-			ramp[i * 3] = c0[0] + (c1[0] - c0[0]) * f;
-			ramp[i * 3 + 1] = c0[1] + (c1[1] - c0[1]) * f;
-			ramp[i * 3 + 2] = c0[2] + (c1[2] - c0[2]) * f;
+			const t = i / (n - 1);
+			while (s < last - 1 && stops[s + 1][0] < t) s++;
+			const c0 = stops[s], c1 = stops[s + 1];
+			const span = c1[0] - c0[0];
+			const f = span > 0 ? (t - c0[0]) / span : 0;
+			ramp[i * 3] = c0[1] + (c1[1] - c0[1]) * f;
+			ramp[i * 3 + 1] = c0[2] + (c1[2] - c0[2]) * f;
+			ramp[i * 3 + 2] = c0[3] + (c1[3] - c0[3]) * f;
 		}
-		ramp._stripped = null;
 		return ramp;
 	}
+
+	// Sample a continuous 0..1 → rgb curve into the same LUT shape. Uint8Array
+	// wraps out-of-range values instead of clamping them, and a fitted
+	// polynomial overshoots [0, 1] by a hair at its ends, so the clamp is real.
+	const curveOut = new Float64Array(3);
+	function buildRampFn(curve) {
+		const ramp = new Uint8Array(256 * 3);
+		for (let i = 0; i < 256; i++) {
+			curve(i / 255, curveOut);
+			for (let c = 0; c < 3; c++) {
+				const v = curveOut[c] * 255;
+				ramp[i * 3 + c] = v < 0 ? 0 : v > 255 ? 255 : v;
+			}
+		}
+		return ramp;
+	}
+
+	// Turbo as its published degree-5 polynomial (Mikhailov, "Turbo: An Improved
+	// Rainbow Colormap for Visualization", 2019) rather than 11 hand-picked
+	// stops joined by straight lines. The stops had the right endpoints and the
+	// wrong middle — measured against the polynomial they were off by up to
+	// 92/255 on one channel, mean 52, which is a different colour and not a
+	// rounding — and the joins between them band. Six coefficients per channel,
+	// evaluated 256 times, here, once.
+	const TURBO_POLY = {
+		r: [0.13572138, 4.61539260, -42.66032258, 132.13108234, -152.94239396, 59.28637943],
+		g: [0.09140261, 2.19418839, 4.84296658, -14.18503333, 4.27729857, 2.82956604],
+		b: [0.10667330, 12.64194608, -60.58204836, 110.36276771, -89.90310912, 27.34824973],
+	};
+	function polyCurve(k, x, out) {
+		const x2 = x * x, x3 = x2 * x, x4 = x3 * x, x5 = x4 * x;
+		for (let c = 0; c < 3; c++) {
+			const p = k[c];
+			out[c] = p[0] + p[1] * x + p[2] * x2 + p[3] * x3 + p[4] * x4 + p[5] * x5;
+		}
+		return out;
+	}
+	function turboCurve(x, out) {
+		const t = x < 0 ? 0 : x > 1 ? 1 : x;
+		return polyCurve([TURBO_POLY.r, TURBO_POLY.g, TURBO_POLY.b], t, out);
+	}
+
+	// Viridis for "how far" (perceptually even), turbo for "how much hidden
+	// depth" (its red end shouts), grey for a cost map you would feed a
+	// pathfinder.
+	const VIRIDIS = buildRamp([
+		[0.0,  68,  1, 84], [0.1,  72, 36, 117], [0.2,  65, 68, 135],
+		[0.3,  53, 95, 141], [0.4,  42, 120, 142], [0.5,  33, 145, 140],
+		[0.6,  29, 169, 131], [0.7,  50, 192, 111], [0.8,  97, 212,  82],
+		[0.9, 170, 229,  42], [1.0, 253, 231,  37],
+	]);
+	const TURBO = buildRampFn(turboCurve);
+	// Magma: viridis's warm sibling, and the better of the two for a depth
+	// spread because its dark end stays dark instead of going purple.
+	const MAGMA = buildRamp([
+		[0.000,   0,   0,   4], [0.125,  28,  16,  68], [0.250,  79,  18, 123],
+		[0.375, 129,  37, 129], [0.500, 181,  54, 122], [0.625, 229,  80, 100],
+		[0.750, 251, 135,  97], [0.875, 254, 194, 135], [1.000, 252, 253, 191],
+	]);
+	// The hypsometric ramp: deep water → shelf → lowland → highland → snow. On a
+	// distance-from-eye map it reads the way a terrain map does, which is the
+	// point of calling this a heightmap; the uneven stops are the water/land
+	// split, not a sampling accident.
+	const TERRAIN = buildRamp([
+		[0.00,  10,  31,  97], [0.20,  20, 140, 166], [0.45,  46, 179,  77],
+		[0.70, 230, 209,  56], [0.88, 199,  82,  36], [1.00, 250, 250, 255],
+	]);
+	const GREY = buildRamp([[0, 0, 0, 0], [1, 255, 255, 255]]);
+
+	const RAMPS = { viridis: VIRIDIS, turbo: TURBO, magma: MAGMA, terrain: TERRAIN, grey: GREY };
+	// So the readout can name the ramp on screen without a reverse lookup in the
+	// frame loop.
+	for (const name in RAMPS) RAMPS[name]._name = name;
 
 	function rampForMode(mode) {
 		if (mode === 'height') return VIRIDIS;
@@ -59,14 +124,37 @@
 		return GREY;
 	}
 
+	// An explicit menu choice wins; 'auto' (or anything unrecognised) keeps the
+	// per-mode default, so switching modes still switches to the ramp that mode
+	// was designed for.
+	function resolveRamp(mode, which) {
+		return (which && RAMPS[which]) || rampForMode(mode);
+	}
+
+	// Shaded relief, the cartographic convention: light from the north-west at
+	// 45° altitude, so the slope facing up-left is the lit one and a ridge reads
+	// as a ridge instead of as a colour change.
+	//
+	// The exaggeration's unit length is one *degree of sky* — the same unit the
+	// gradient mode quotes — not one texel. A per-texel gain would flatten the
+	// relief every time the resolution slider moved, shading the sampling rather
+	// than the terrain.
+	const LIGHT_X = -0.5, LIGHT_Y = -0.5, LIGHT_Z = Math.SQRT1_2;   // |L| = 1
+	const RELIEF_AMBIENT = 0.45;      // the shadow floor: relief darkens, never blacks out
+	// Vertical exaggeration, in the topographic-map sense. Measured on a 250-anchor
+	// mode-1 field the displayed height runs ~0.02 per degree at the median and
+	// ~0.06 at p95, so 1× tilts a lit slope by 3° against a 45° light and reads as
+	// nothing; 6× puts p95 at ~20°, which is a ridge you can see and not a cliff.
+	const RELIEF_DEFAULT = 6;
+
 	// Scratch, reused every frame: no per-frame ImageData, no per-frame canvas.
 	const paint = {
 		img: null, w: 0, h: 0,
 		fieldOff: null, fieldCtx: null,
-		rampOff: null, rampCtx: null,
 		dir: new Float64Array(3),
 		hit: { x: 0, y: 0, inside: false },
 		read: { height: 0 },
+		slopeX: null, slopeY: null, slopeN: 0,
 	};
 
 	function sizedCanvas(which, w, h) {
@@ -76,8 +164,18 @@
 		return o;
 	}
 
+	// f32 is enough here and would not be enough for the gradient mode: this is
+	// a lighting term on a 0..1 display value, not a quoted measurement.
+	function slopeBuffers(count) {
+		if (paint.slopeN >= count) return;
+		paint.slopeX = new Float32Array(count);
+		paint.slopeY = new Float32Array(count);
+		paint.slopeN = count;
+	}
+
 	// opts: {
 	//   mode, ramp, invert, smooth, drawContours, contourLevels, drawGrid,
+	//   relief (0 = flat, else the shaded-relief exaggeration),
 	//   positions (Float64Array n*3, WORLD coords), eye ([x,y,z] of the camera),
 	//   set ({n, names, segments}), layout,
 	//   viewBox (4 corner rays) — the frustum rectangle on a chart,
@@ -95,6 +193,18 @@
 		const levels = (opts.contourLevels | 0) || 10;
 		const contour = opts.drawContours ? 0.18 : 0;
 		const invert = !!opts.invert;
+		const relief = opts.relief > 0 ? opts.relief : 0;
+
+		// The relief shades the *displayed* height, the same 0..1 the contours
+		// are drawn on, so the two cannot disagree about which way is up. An
+		// inverted map is inverted terrain, so the gain carries the sign.
+		let gain = 0;
+		if (relief > 0) {
+			slopeBuffers(w * h);
+			Field.fieldSlope(field, layout, paint.slopeX, paint.slopeY);
+			gain = (invert ? -relief : relief) * Field.DEG;
+		}
+		const sx = paint.slopeX, sy = paint.slopeY;
 
 		if (!paint.img || paint.w !== w || paint.h !== h) {
 			paint.img = ctx.createImageData(w, h);
@@ -109,6 +219,18 @@
 				if (invert) v = 1 - v;
 				const ci = ((v * 255) | 0) * 3;
 				let r = ramp[ci], g = ramp[ci + 1], b = ramp[ci + 2];
+				if (gain !== 0) {
+					// Lambert on n = (−dz/dx, −dz/dy, 1) with an ambient floor, and
+					// never above 1: a highlight that multiplied past full scale
+					// would clip the ramp and make the colour stop meaning the
+					// value the legend quotes.
+					const nx = sx[row + x] * gain, ny = sy[row + x] * gain;
+					const inv = 1 / Math.sqrt(nx * nx + ny * ny + 1);
+					let d = (nx * LIGHT_X + ny * LIGHT_Y + LIGHT_Z) * inv;
+					if (d < 0) d = 0;
+					const sh = RELIEF_AMBIENT + (1 - RELIEF_AMBIENT) * d;
+					r *= sh; g *= sh; b *= sh;
+				}
 				if (contour > 0) {
 					// Darken where v crosses a 1/levels band edge: contour lines for
 					// free, no second pass and no marching squares.
@@ -288,11 +410,15 @@
 		if (opts.note2) ctx.fillText(opts.note2, x, y + H + 42);
 	}
 
-	// One 256×1 canvas per ramp, built on first use and never again.
+	// One 256×1 canvas per ramp, built on first use and never again. Per ramp
+	// rather than one shared canvas: the menu can switch ramps, and a shared
+	// strip would be rebuilt on every switch and need a stale-guard to stay
+	// correct.
 	function rampStrip(ramp) {
-		if (ramp._stripped && ramp._stripped._ramp === ramp) return ramp._stripped;
-		const o = sizedCanvas('rampOff', 256, 1);
-		const cx = paint.rampOffCtx;
+		if (ramp._strip) return ramp._strip;
+		const o = document.createElement('canvas');
+		o.width = 256; o.height = 1;
+		const cx = o.getContext('2d');
 		const img = cx.createImageData(256, 1);
 		for (let i = 0; i < 256; i++) {
 			img.data[i * 4] = ramp[i * 3];
@@ -301,14 +427,14 @@
 			img.data[i * 4 + 3] = 255;
 		}
 		cx.putImageData(img, 0, 0);
-		o._ramp = ramp;
-		ramp._stripped = o;
+		ramp._strip = o;
 		return o;
 	}
 
 	const ViewModesRenderer = {
-		renderField, renderLegend, rampForMode,
-		ramps: { VIRIDIS, TURBO, GREY },
+		renderField, renderLegend, rampForMode, resolveRamp,
+		ramps: RAMPS,
+		RELIEF_DEFAULT,
 	};
 
 	if (typeof module !== 'undefined') module.exports = ViewModesRenderer;

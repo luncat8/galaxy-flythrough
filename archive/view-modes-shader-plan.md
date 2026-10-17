@@ -129,6 +129,33 @@ gives smooth result but is O(W*H*iterations) and needs a grid. At 512x512 and
 - Keep CPU diffusion as reference in `view-modes-field.js` for tests, but not
   in render path.
 
+**Status (2026-10-17, amended at view-modes.3)** — shipped the CPU side instead
+(IDW in `view-modes-field.js`, in the render path, at a budgeted texel count), and
+the recommendation above stays open, with three corrections the shipping code
+settled:
+
+- A GPU pass for this island is **WGSL in `src/render/shaders.js` with a
+  WebGPU renderer**, not inline WebGL2 GLSL in the page. The island's whole
+  test story (`wgsl-validate`, `wgsl-exec`) only reaches shaders that are
+  `require()`-able, and a shader the CPU interpreter can run is the one shader
+  whose numbers can be pinned against `view-modes-field.js` without a browser.
+- The CPU field is the **mirror and the fallback**, never just a reference:
+  with no WebGPU device the page must still paint, and the parity check needs
+  both sides alive in one process.
+- The measured cost is what decides it. The CPU inner loop is at ~0.3 Mpair/ms
+  and has no headroom left (interleaving the star SoA measured *slower*), so
+  the budget buys texels: `balanced` at N=500 paints 72×40, and 1920×1080×500
+  costs 3455 ms. A GPU fragment pass is therefore a resolution win, not an
+  algorithmic one — worth building when a browser pass confirms the texel
+  budget is the visible problem, and not before.
+
+Two display features this plan did not name shipped at view-modes.3 and belong
+to the painter, not the field: a selectable ramp (viridis / the published turbo
+polynomial / magma / terrain / grey, `auto` = the per-mode default) and shaded
+relief — the field's own central-difference slope (`fieldSlope`, shared with
+mode 3) lit from the north-west at 45°, exaggerated per degree of sky and
+clamped to darken-only so a colour always means the value the legend quotes.
+
 ### Normalization
 - Compute `d_min`, `d_max` over current N stars each frame.
 - Map `t = (d - d_min)/(d_max - d_min)` → 0..1, then `height = 1 - t`

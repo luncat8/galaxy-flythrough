@@ -1,12 +1,12 @@
 {
-  "date": "2026-10-17T09:39:39.809Z",
+  "date": "2026-10-17T11:39:34.507Z",
   "anchors": {
     "landmarks": 60,
     "catalog": 3829
   },
-  "totalChecks": 65,
-  "passed": 65,
-  "failed": 0,
+  "totalChecks": 70,
+  "passed": 69,
+  "failed": 1,
   "checks": [
     {
       "name": "quatBasis reproduces camera.forward",
@@ -323,6 +323,45 @@
       }
     },
     {
+      "name": "fieldSlope quotes longitude per radian of sky (the cos(lat) correction)",
+      "pass": true,
+      "detail": {
+        "got": 1.0000381469726562,
+        "want": 1.000038078385737
+      }
+    },
+    {
+      "name": "fieldSlope y follows the map (north-up field slopes negative)",
+      "pass": true,
+      "detail": {
+        "got": -1,
+        "want": -1
+      }
+    },
+    {
+      "name": "fieldSlope is continuous across the chart seam",
+      "pass": true,
+      "detail": {
+        "seam": 0.008725899271667004,
+        "interior": 0.09584315866231918
+      }
+    },
+    {
+      "name": "fieldSlope matches the analytic slope of cos(lon)",
+      "pass": true,
+      "detail": {
+        "got": 0.9999492168426514,
+        "want": 1
+      }
+    },
+    {
+      "name": "mode 3 is the magnitude of fieldSlope, per degree",
+      "pass": false,
+      "detail": {
+        "worst": 2.0608203060712427e-9
+      }
+    },
+    {
       "name": "chart maps longitude about its centre and puts the seam at both edges",
       "pass": true,
       "detail": {
@@ -438,10 +477,10 @@
       }
     },
     {
-      "name": "100 nearest-500 queries take 4.6 ms (< 200)",
+      "name": "100 nearest-500 queries take 4.7 ms (< 200)",
       "pass": true,
       "detail": {
-        "ms": 4.59
+        "ms": 4.71
       }
     },
     {
@@ -489,10 +528,10 @@
       }
     },
     {
-      "name": "500 anchors at the balanced budget (72×40) rebuilds in 9.6 ms (< 60)",
+      "name": "500 anchors at the balanced budget (72×40) rebuilds in 16.1 ms (< 60)",
       "pass": true,
       "detail": {
-        "ms": 9.62,
+        "ms": 16.15,
         "pairs": 1440000
       }
     },

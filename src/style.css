@@ -578,7 +578,8 @@ html, body {
 	flex-wrap: wrap;
 	gap: 4px;
 }
-#help .help-grid button {
+#help .help-grid button,
+#help .help-grid a.help-link {
 	flex: 1 1 auto;
 	background: #1a331a;
 	border: 1px solid #2f5f2f;
@@ -590,7 +591,16 @@ html, body {
 	cursor: pointer;
 	white-space: nowrap;
 }
-#help .help-grid button:hover:not(:disabled) { background: #244824; }
+/* The one navigation link in a grid of buttons: same chip, centred text, no
+   underline, so it reads as a control rather than as prose. */
+#help .help-grid a.help-link {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	text-decoration: none;
+}
+#help .help-grid button:hover:not(:disabled),
+#help .help-grid a.help-link:hover { background: #244824; }
 #help .help-grid button:disabled { opacity: 0.45; cursor: default; }
 #help .help-grid button.is-active { background: #244824; border-color: #4f8f4f; }
 #help .help-checks {
