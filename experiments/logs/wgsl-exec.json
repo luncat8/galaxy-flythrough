@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-14T22:58:56.679Z",
+  "date": "2026-10-17T07:24:48.178Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 121,
-  "passed": 121,
+  "totalChecks": 123,
+  "passed": 123,
   "failed": 0,
   "checks": [
     {
@@ -37,6 +37,16 @@
     },
     {
       "name": "simple-step: the shipped source parses as WGSL",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "view-field: the shipped source parses as WGSL",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "view-shade: the shipped source parses as WGSL",
       "pass": true,
       "detail": null
     },
@@ -412,8 +422,8 @@
       "name": "on-WGSL: a spheroidal star still sweeps its centred plane (z swings, matches CPU)",
       "pass": true,
       "detail": {
-        "gpuZ": 0.9247668981552124,
-        "cpuZ": 0.9247668326455467,
+        "gpuZ": -0.2612942159175873,
+        "cpuZ": -0.26129412043907,
         "birthZ": 0.35
       }
     },

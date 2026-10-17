@@ -43,20 +43,22 @@ function readSource(relPath) {
 {
         const names = Object.keys(shaders.SHADER_PARTS);
         check('every expected shader part is present',
-                ['pcg-hash', 'density', 'orbit', 'simple-step', 'star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'procedural-gen', 'cull'].every(n => names.includes(n)),
+                ['pcg-hash', 'density', 'orbit', 'simple-step', 'star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'procedural-gen', 'cull', 'view-field', 'view-shade'].every(n => names.includes(n)),
                 names);
         check('every shader part is a non-empty LF-only string',
                 names.every(n => typeof shaders.SHADER_PARTS[n] === 'string'
                         && shaders.SHADER_PARTS[n].length > 100
                         && !shaders.SHADER_PARTS[n].includes('\r')),
                 names.map(n => [n, shaders.SHADER_PARTS[n].length]));
-        check('five wired shaders are exposed (star-sprite, star-sprite-hdr, nebula-billboard, tonemap, simple-step)',
-                shaders.WIRED_SHADERS.length === 5
+        check('seven wired shaders are exposed (star-sprite, star-sprite-hdr, nebula-billboard, tonemap, simple-step, view-field, view-shade)',
+                shaders.WIRED_SHADERS.length === 7
                 && shaders.WIRED_SHADERS[0] === 'star-sprite'
                 && shaders.WIRED_SHADERS[1] === 'star-sprite-hdr'
                 && shaders.WIRED_SHADERS[2] === 'nebula-billboard'
                 && shaders.WIRED_SHADERS[3] === 'tonemap'
-                && shaders.WIRED_SHADERS[4] === 'simple-step',
+                && shaders.WIRED_SHADERS[4] === 'simple-step'
+                && shaders.WIRED_SHADERS[5] === 'view-field'
+                && shaders.WIRED_SHADERS[6] === 'view-shade',
                 shaders.WIRED_SHADERS);
         check('every wired shader exists in the module map',
                 shaders.WIRED_SHADERS.every(n => typeof shaders.SHADERS[n] === 'string' && shaders.SHADERS[n].length > 0),
@@ -85,7 +87,7 @@ function readSource(relPath) {
                 + 'bitcast bool ceil clamp cos cosh countOneBits cross degrees determinant distance dot dpdx dpdy '
                 + 'exp exp2 extractBits f32 floor fma fract fwidth i32 insertBits inverseSqrt ldexp length log log2 '
                 + 'mat2x2f mat3x3f mat4x4f max min mix modf normalize pack2x16float pow radians reflect round saturate '
-                + 'select sign sin sinh smoothstep sqrt step storageBarrier tan tanh textureDimensions textureLoad '
+                + 'select sign sin sinh smoothstep sqrt step storageBarrier tan tanh textureDimensions textureLoad textureStore '
                 + 'textureSample textureSampleLevel transpose trunc u32 unpack2x16float vec2 vec2f vec2i vec2u vec3 '
                 + 'vec3f vec3i vec3u vec4 vec4f vec4i vec4u workgroupBarrier arrayLength').split(' '));
         const KEYWORDS = new Set(['if', 'for', 'while', 'switch', 'return', 'fn', 'loop', 'workgroup_size']);
@@ -309,6 +311,10 @@ function wgslConsts(part) {
                         // wgsl-exec-check holds the two inverses to 0.05 Gyr.
                         'sfhFormationTime', 'sampleFormationTime']],
                 ['procedural-gen', galaxySrc, ['sfhCumulative']],
+                // The view-modes IDF kernel: the Lorentzian
+                // weight and its 3σ truncation exist twice,
+                // and the field tests execute the JS twin.
+                ['view-field', readSource('src/math/view-modes-field.js'), ['kernelWeight']],
         ];
         for (const [part, jsSource, fns] of mirrors) {
                 const wgslSrc = shaders.SHADER_PARTS[part];

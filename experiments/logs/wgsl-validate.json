@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-17T02:58:38.798Z",
+  "date": "2026-10-17T07:24:40.139Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -40,6 +40,14 @@
     {
       "name": "cull",
       "lines": 114
+    },
+    {
+      "name": "view-field",
+      "lines": 62
+    },
+    {
+      "name": "view-shade",
+      "lines": 119
     }
   ],
   "wired": [
@@ -47,10 +55,12 @@
     "star-sprite-hdr",
     "nebula-billboard",
     "tonemap",
-    "simple-step"
+    "simple-step",
+    "view-field",
+    "view-shade"
   ],
-  "totalChecks": 186,
-  "passed": 186,
+  "totalChecks": 195,
+  "passed": 195,
   "failed": 0,
   "checks": [
     {
@@ -66,7 +76,9 @@
         "nebula-billboard",
         "tonemap",
         "procedural-gen",
-        "cull"
+        "cull",
+        "view-field",
+        "view-shade"
       ]
     },
     {
@@ -112,18 +124,28 @@
         [
           "cull",
           3961
+        ],
+        [
+          "view-field",
+          2018
+        ],
+        [
+          "view-shade",
+          4570
         ]
       ]
     },
     {
-      "name": "five wired shaders are exposed (star-sprite, star-sprite-hdr, nebula-billboard, tonemap, simple-step)",
+      "name": "seven wired shaders are exposed (star-sprite, star-sprite-hdr, nebula-billboard, tonemap, simple-step, view-field, view-shade)",
       "pass": true,
       "detail": [
         "star-sprite",
         "star-sprite-hdr",
         "nebula-billboard",
         "tonemap",
-        "simple-step"
+        "simple-step",
+        "view-field",
+        "view-shade"
       ]
     },
     {
@@ -136,7 +158,9 @@
         "tonemap",
         "procedural-gen",
         "cull",
-        "simple-step"
+        "simple-step",
+        "view-field",
+        "view-shade"
       ]
     },
     {
@@ -320,6 +344,42 @@
       "detail": 6
     },
     {
+      "name": "view-field: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "view-field: contains no unresolved markers",
+      "pass": true,
+      "detail": "view-field"
+    },
+    {
+      "name": "view-field: declares its functions",
+      "pass": true,
+      "detail": 2
+    },
+    {
+      "name": "view-shade: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "view-shade: contains no unresolved markers",
+      "pass": true,
+      "detail": "view-shade"
+    },
+    {
+      "name": "view-shade: declares its functions",
+      "pass": true,
+      "detail": 3
+    },
+    {
       "name": "star-sprite: every call target resolves in the module",
       "pass": true,
       "detail": []
@@ -351,6 +411,16 @@
     },
     {
       "name": "simple-step: every call target resolves in the module",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "view-field: every call target resolves in the module",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "view-shade: every call target resolves in the module",
       "pass": true,
       "detail": []
     },
@@ -914,6 +984,14 @@
     },
     {
       "name": "procedural-gen.wgsl mirrors sfhCumulative",
+      "pass": true,
+      "detail": {
+        "wgsl": true,
+        "js": true
+      }
+    },
+    {
+      "name": "view-field.wgsl mirrors kernelWeight",
       "pass": true,
       "detail": {
         "wgsl": true,

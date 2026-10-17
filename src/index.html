@@ -53,6 +53,34 @@
                         <input type="range" id="slider-highlight" min="0" max="1" step="0.05" value="1">
                         <span id="val-highlight" class="menu-val">1.00</span>
                 </div>
+                <!-- View modes (view-modes-plan.md): the star set projected
+                     onto the view sphere as a heightmap-like field. Off is
+                     the normal star render; M cycles the modes in flight. -->
+                <div class="menu-header menu-header-galaxy"><span>View modes</span></div>
+                <div class="menu-row engine-row">
+                        <label title="The star field as a heightmap on the view sphere, the galaxy itself unchanged. Camera distance: height = how far each star is from you (close is high). Adjacency: visually-close stars that are deeply separated in 3D score high — a ridge a 2D pathfinding map must not cross cheaply, so a ship slows on it.">Field <span class="kbd">M</span></label>
+                        <div class="engine-checks">
+                                <label><input type="radio" name="view-mode" id="view-mode-off" checked> off</label>
+                                <label><input type="radio" name="view-mode" id="view-mode-distance"> camera distance</label>
+                                <label><input type="radio" name="view-mode" id="view-mode-adjacency"> adjacency</label>
+                        </div>
+                        <span id="val-view-mode" class="menu-val">off</span>
+                </div>
+                <div class="menu-row" data-view-mode>
+                        <label for="slider-view-source" title="The field's sources: 0 = the constellation anchors (the real sky's landmarks, Sun included), 1–500 = the nearest that many stars to the camera, by drawn position. Applied on release.">Source</label>
+                        <input type="range" id="slider-view-source" min="0" max="500" step="1" value="0">
+                        <span id="val-view-source" class="menu-val">constellations</span>
+                </div>
+                <div class="menu-row" data-view-mode>
+                        <label for="slider-view-smoothing" title="Kernel width multiplier. The base width is the set's mean angular separation, so the field interpolates between the stars without smearing the ridges flat. Applied live.">Smoothing</label>
+                        <input type="range" id="slider-view-smoothing" min="0.25" max="4" step="0.05" value="1">
+                        <span id="val-view-smoothing" class="menu-val">×1.00</span>
+                </div>
+                <div class="menu-row" data-view-mode>
+                        <label for="view-contours" title="Height contours over the ramp, like a relief map.">Contours</label>
+                        <input type="checkbox" id="view-contours" checked>
+                        <span class="menu-val"></span>
+                </div>
                 <div class="menu-header menu-header-galaxy">
                         <span>Galaxy</span>
                 </div>
@@ -380,6 +408,7 @@
                         <button data-action="home" data-observer title="Home: the Sun, or a generated galaxy's centre">home <span class="kbd">H</span></button>
                         <button data-action="reset" title="Reset everything — the view and, in game mode, the ship (full tank, zero velocity)">reset <span class="kbd">R</span></button>
                         <button data-action="dvMap" data-observer title="Cycle the open system view: schematic / delta-v map / delta-v rails (click two graph nodes to route)">cycle view <span class="kbd">B</span></button>
+                        <button data-action="viewMode" data-observer title="Cycle the view-mode field: off / camera distance / adjacency (view-modes-plan.md). The star set as a heightmap on the view sphere — the galaxy and the camera are unchanged">view field <span class="kbd">M</span></button>
                         <button data-action="clearSet" title="Clear the selection set (click selects, Shift+click adds)">clear set <span class="kbd">X</span></button>
                         <button data-action="shipRefuel" title="Hangar refill: re-arm the Δv tank to the class's full load (station refills land with docking, G3)">refuel ship</button>
                 </div>
@@ -425,6 +454,12 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
              Loads after objects.js, whose budget apportionment it reuses. -->
         <script src="math/clusters.js"></script>
         <script src="math/coords.js"></script>
+        <!-- View modes (view-modes-plan.md): the pure CPU half —
+             constellation anchors, the nearest-N chunked sweep,
+             the two scalars and the GPU uniform packing. No
+             dependencies beyond orbit.js and the landmark
+             table, so it loads with the other math files. -->
+        <script src="math/view-modes-field.js"></script>
         <script src="core/device.js"></script>
         <script src="core/camera.js"></script>
         <script src="core/input.js"></script>
@@ -460,6 +495,10 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
 	     its own 2D canvas; loads after the label layer whose ring colour, font
 	     and halo it reuses. -->
 	<script src="render/system-layer.js"></script>
+	<!-- View modes (view-modes-plan.md): the GPU half — the field-fill
+	     compute pass, the terrain-shade fullscreen pass and the shared
+	     tonemap. Loads after shaders.js, whose parts it wires. -->
+	<script src="render/view-modes-renderer.js"></script>
 	<script src="main.js"></script>
 </body>
 </html>

@@ -17,6 +17,7 @@
 //   * selection: actions.pick + pickX/pickY, actions.constellations,
 //                actions.flyTo/nextStar/clearSet, keys.boost (Shift+click)
 //   * system   : actions.systemView (V) / systemViewExit (Esc) / dvMap (B)
+//                actions.viewMode (M) — main.js routes it
 //                — main.js routes actions.pick to the schematic while the
 //                view is open (0.5.3–0.5.4)
 //
@@ -48,7 +49,7 @@ function createInput(canvas) {
 		pickY: 0,
 	actions: { reset: 0, home: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, freezeTime: 0,
 	orbitCentre: 0, orbitObject: 0, flyMode: 0, gameMode: 0, chaseFollow: 0, allStop: 0, shipRefuel: 0,
-	flyTo: 0, nextStar: 0, clearSet: 0, systemView: 0, systemViewExit: 0, dvMap: 0,
+	flyTo: 0, nextStar: 0, clearSet: 0, systemView: 0, systemViewExit: 0, dvMap: 0, viewMode: 0,
 	speedRefTarget: 0, speedRefCentre: 0, speedRefHome: 0 },
 	};
 
@@ -83,7 +84,7 @@ function createInput(canvas) {
 	// no-op outside the view. Space is game mode's commanded all-stop
 	// (game-mode-plan.md §3): one-shot, like the other commands.
 	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyP: 'constellations', KeyG: 'gameMode', KeyT: 'freezeTime', Tab: 'menu',
-		KeyN: 'nextStar', KeyX: 'clearSet', KeyV: 'systemView', KeyB: 'dvMap', KeyJ: 'chaseFollow', Space: 'allStop', Escape: 'systemViewExit' };
+		KeyN: 'nextStar', KeyX: 'clearSet', KeyV: 'systemView', KeyB: 'dvMap', KeyJ: 'chaseFollow', KeyM: 'viewMode', Space: 'allStop', Escape: 'systemViewExit' };
 	// C and F carry a shift-cased pair each: [lowercase, Shift+uppercase].
 	const casedPressMap = { KeyC: ['orbitObject', 'orbitCentre'], KeyF: ['flyMode', 'flyTo'] };
 	const PANEL_BUTTON_SHORTCUTS = { KeyF: 1, KeyN: 1, KeyX: 1 };

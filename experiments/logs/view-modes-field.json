@@ -1,0 +1,128 @@
+{
+  "date": "2026-10-17T07:00:44.326Z",
+  "model": {
+    "type": "SBb",
+    "seed": 12345
+  },
+  "totalChecks": 16,
+  "passed": 16,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "constellation source fills the landmark table",
+      "pass": true,
+      "detail": {
+        "n": 60,
+        "table": 60
+      }
+    },
+    {
+      "name": "constellation anchors sit at their table positions at T=0",
+      "pass": true,
+      "detail": {
+        "first": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "generated galaxies report no anchors (caller falls back)",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "sweep completes and commits the target count",
+      "pass": true,
+      "detail": {
+        "count": 100,
+        "slices": 8
+      }
+    },
+    {
+      "name": "sweep keeps exactly the brute-force nearest 100",
+      "pass": true,
+      "detail": {
+        "heapOnly": [],
+        "bruteOnly": []
+      }
+    },
+    {
+      "name": "a second sweep reproduces the same set",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "distance scalars span the brute-force range",
+      "pass": true,
+      "detail": {
+        "range": {
+          "min": 0.46904157979466904,
+          "max": 2.808993417341123
+        },
+        "brute": [
+          0.46904157979466904,
+          2.808993417341123
+        ]
+      }
+    },
+    {
+      "name": "distance values normalize to [0, 1] with both ends hit",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "adjacency ratios are ≥ 1 (3D ≥ transverse, always)",
+      "pass": true,
+      "detail": {
+        "min": 1.1025315245903957
+      }
+    },
+    {
+      "name": "adjacency values normalize to [0, 1]",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "degenerate range pins at mid height, not NaN",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "co-moving neighbours score near the ratio floor of 1",
+      "pass": true,
+      "detail": {
+        "a": 1.1008814573287964,
+        "b": 1.1027462482452393
+      }
+    },
+    {
+      "name": "a radially stacked pair pushes the ridge (ratio >> 1)",
+      "pass": true,
+      "detail": {
+        "a": 290.2323913574219
+      }
+    },
+    {
+      "name": "star uniform: unit directions, values in [0, 1]",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "star uniform length is the fixed MAX_STARS stride",
+      "pass": true,
+      "detail": {
+        "length": 2000
+      }
+    },
+    {
+      "name": "kernel σ shrinks as the set grows (mean angular spacing)",
+      "pass": true,
+      "detail": {
+        "s6": 0.15853309190424045,
+        "s60": 0.45764561643188445
+      }
+    }
+  ]
+}

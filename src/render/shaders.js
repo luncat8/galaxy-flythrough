@@ -1232,6 +1232,222 @@ fn fs_main(in: VertexOut) -> @location(0) vec4f {
 }
 `;
 
+// View modes (view-modes-plan.md): the star field as a smooth
+// heightmap on the view sphere. Two passes:
+// view-field  compute — fills an equirectangular
+//               rgba16float texture (the "heightmap") from
+//               the star set. 16-bit float is the finest
+//               format that is both writable by a compute
+//               pass and filterable by the shade pass's
+//               bilinear samples; r32float is not
+//               filterable. The value rides the red lane.
+//   view-shade  fullscreen — terrain-shaded presentation of
+//               that texture through the camera's rays.
+//
+// The field texture lives in the GALAXY frame (north = +Z,
+// u = azimuth around Z), so it is stable while the camera
+// turns and only re-fills when the stars or the camera
+// translate. Both passes share one equirect convention:
+//   texel → direction: u = (i+0.5)/W, v = (j+0.5)/H,
+//   lon = (u−0.5)·2π, lat = (v−0.5)·π,
+//   dir = (cos lat·cos lon, cos lat·sin lon, sin lat)
+//   direction → UV:  u = atan2(y, x)/(2π) + 0.5,
+//   v = asin(z)/π + 0.5
+// The kernel weight is the JS twin ViewModesField.kernelWeight
+// (mirrored; wgsl-validate diffs the two).
+
+const VIEW_FIELD_W = 768;
+const VIEW_FIELD_H = 384;
+// One vec4f per star slot. The field module owns the
+// authoritative MAX_STARS; the renderer asserts the
+// two agree, and this constant keeps the WGSL array
+// (whose declared size sets the uniform's minimum
+// binding size) in step with the buffer.
+const VIEW_STAR_SLOTS = 500;
+
+const VIEW_FIELD = `
+// Compute pass: the equirectangular distance field.
+// One vec4f per star (direction.xyz unit, galaxy frame; w =
+// the normalized scalar) arrives in a uniform array; every
+// texel evaluates a truncated Lorentzian IDW over it.
+//
+// The kernel lives in cos-space: the angular gap is
+// 2(1−cosθ) ≈ θ², so the weight needs no acos and no exp:
+//   w = σ² / (σ² + 2(1−dot))   inside 3σ, else 0
+// which is the small-angle Lorentzian the JS twin carries.
+
+const VIEW_FIELD_W: u32 = ${VIEW_FIELD_W}u;
+const VIEW_FIELD_H: u32 = ${VIEW_FIELD_H}u;
+const VIEW_KERNEL_CUTOFF: f32 = 3.0;
+const VIEW_PI: f32 = 3.14159265358979;
+
+struct ViewFieldParams {
+\tcount: u32,
+\tpad0: u32,
+\tpad1: u32,
+\tpad2: u32,
+\tsigma: f32,
+\temptyValue: f32,
+\tpad3: f32,
+\tpad4: f32,
+};
+
+@group(0) @binding(0) var<uniform> params: ViewFieldParams;
+@group(0) @binding(1) var<uniform> stars: array<vec4f, ${VIEW_STAR_SLOTS}>;
+@group(0) @binding(2) var field: texture_storage_2d<rgba16float, write>;
+
+// The JS twin is ViewModesField.kernelWeight — the
+// wgsl-validate mirror check pins the two together.
+fn kernelWeight(cosTheta: f32, sigma: f32) -> f32 {
+\tlet gap2 = 2.0 * (1.0 - cosTheta);
+\tlet sigma2 = sigma * sigma;
+\tif (gap2 > VIEW_KERNEL_CUTOFF * VIEW_KERNEL_CUTOFF * sigma2) { return 0.0; }
+\treturn sigma2 / (sigma2 + gap2);
+}
+
+@compute @workgroup_size(8, 8)
+fn fs_main(@builtin(global_invocation_id) gid: vec3u) {
+\tif (gid.x >= VIEW_FIELD_W || gid.y >= VIEW_FIELD_H) { return; }
+\tlet u = (f32(gid.x) + 0.5) / f32(VIEW_FIELD_W);
+\tlet v = (f32(gid.y) + 0.5) / f32(VIEW_FIELD_H);
+\tlet lon = (u - 0.5) * 2.0 * VIEW_PI;
+\tlet lat = (v - 0.5) * VIEW_PI;
+\tlet cl = cos(lat);
+\tlet dir = vec3f(cl * cos(lon), cl * sin(lon), sin(lat));
+
+\tvar sum: f32 = 0.0;
+\tvar wsum: f32 = 0.0;
+\tfor (var i: u32 = 0u; i < params.count; i++) {
+\t\tlet w = kernelWeight(dot(dir, stars[i].xyz), params.sigma);
+\t\tif (w == 0.0) { continue; }
+\t\tsum += w * stars[i].w;
+\t\twsum += w;
+\t}
+\tlet value = select(params.emptyValue, sum / wsum, wsum > 1e-9);
+\ttextureStore(field, vec2i(gid.xy), vec4f(value, 0.0, 0.0, 1.0));
+}
+`;
+
+const VIEW_SHADE = `
+// Fullscreen pass: terrain-shaded presentation of the field
+// texture. Each pixel's galaxy ray comes from the camera
+// basis (the same camera-relative convention the sprite
+// shader uses: local +X forward, -Y right, +Z up), maps to
+// the equirect UV, and samples the field. The gradient
+// (two central differences, corrected for the equirect
+// stretch by 1/cos(lat)) becomes a surface normal, a fixed
+// galaxy-frame key light shades it, and a turbo ramp with
+// optional contour lines finishes the heightmap look.
+
+const VIEW_SHADE_PI: f32 = 3.14159265358979;
+
+struct ViewShadeUniform {
+\tright: vec4f,      // camera basis, galaxy frame (xyz)
+\tup: vec4f,
+\tforward: vec4f,
+\tviewport: vec4f,   // x width, y height, z tan(fovY/2), w tan(fovY/2)·aspect
+\tshade: vec4f,      // x relief, y contour levels (0 = off), z gain, w unused
+};
+
+@group(0) @binding(0) var<uniform> u: ViewShadeUniform;
+@group(0) @binding(1) var fieldTexture: texture_2d<f32>;
+@group(0) @binding(2) var fieldSampler: sampler;
+
+// The turbo colormap's polynomial approximation (Google's
+// published coefficients): distance reads as heat, ridges
+// pop. Clamped — the fit overshoots slightly at the ends.
+fn viewTurbo(t: f32) -> vec3f {
+\tlet t2 = t * t;
+\tlet t3 = t2 * t;
+\tlet t4 = t3 * t;
+\tlet t5 = t4 * t;
+\tlet t6 = t5 * t;
+\tlet r = 0.13572138 + 4.61539260 * t - 42.66032258 * t2
+\t\t+ 132.13108234 * t3 - 152.94239396 * t4 + 59.28637943 * t5;
+\tlet g = 0.09140261 + 2.19418839 * t + 4.84296658 * t2
+\t\t- 14.18503333 * t3 + 4.27729857 * t4 + 2.82956604 * t5;
+\tlet b = 0.10667330 + 12.64194608 * t2 - 60.58204836 * t3
+\t\t+ 110.36276771 * t4 - 89.90310912 * t5 + 27.34824973 * t6;
+\treturn clamp(vec3f(r, g, b), vec3f(0.0), vec3f(1.0));
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4f {
+\tvar p: array<vec2f, 3> = array<vec2f, 3>(
+\t\tvec2f(-1.0, -3.0),
+\t\tvec2f(-1.0,  1.0),
+\t\tvec2f( 3.0,  1.0),
+\t);
+\treturn vec4f(p[vid], 0.0, 1.0);
+}
+
+@fragment
+fn fs_main(@builtin(position) fragCoord: vec4f) -> @location(0) vec4f {
+\tlet ndc = vec2f(
+\t\tfragCoord.x * 2.0 / u.viewport.x - 1.0,
+\t\t1.0 - fragCoord.y * 2.0 / u.viewport.y);
+\t// Camera-local ray, then into the galaxy frame through
+\t// the basis: local +X forward, -Y right, +Z up.
+\tlet dirCam = normalize(vec3f(
+\t\t1.0, -ndc.x * u.viewport.w, ndc.y * u.viewport.z));
+\tlet dir = normalize(u.forward.xyz * dirCam.x
+\t\t- u.right.xyz * dirCam.y + u.up.xyz * dirCam.z);
+
+\t// The shared equirect convention.
+\tlet uu = atan2(dir.y, dir.x) / (2.0 * VIEW_SHADE_PI) + 0.5;
+\tlet vv = asin(clamp(dir.z, -1.0, 1.0)) / VIEW_SHADE_PI + 0.5;
+\tlet h = textureSample(fieldTexture, fieldSampler, vec2f(uu, vv)).r;
+\t// The compute pass writes -1 where no star is within
+\t// the kernel: the deep-space background, at the gain so
+\t// the exposure sliders still move it.
+\tif (h < 0.0) {
+\t\treturn vec4f(0.0001, 0.0002, 0.0005, 1.0) * u.shade.z;
+\t}
+
+\t// Central differences in UV space, one texel apart.
+\tlet dims = vec2f(textureDimensions(fieldTexture));
+\tlet eu = 1.0 / dims.x;
+\tlet ev = 1.0 / dims.y;
+\tlet hU1 = textureSampleLevel(fieldTexture, fieldSampler, vec2f(uu + eu, vv), 0.0).r;
+\tlet hU0 = textureSampleLevel(fieldTexture, fieldSampler, vec2f(uu - eu, vv), 0.0).r;
+\tlet hV1 = textureSampleLevel(fieldTexture, fieldSampler, vec2f(uu, vv + ev), 0.0).r;
+\tlet hV0 = textureSampleLevel(fieldTexture, fieldSampler, vec2f(uu, vv - ev), 0.0).r;
+\t// Per radian, and the longitude gradient divided by
+\t// cos(lat): an equirect stretches east-west toward the
+\t// poles, and the relief must not.
+\tlet cosLat = max(dir.z, 0.05);
+\tlet gU = (hU1 - hU0) / (2.0 * eu) / (2.0 * VIEW_SHADE_PI) / cosLat;
+\tlet gV = (hV1 - hV0) / (2.0 * ev) / VIEW_SHADE_PI;
+
+\t// The surface normal of the height field, in the local
+\t// tangent frame (east, north, radial). The poles are a
+\t// measure-zero set; the clamped gradient keeps them lit.
+\tlet north = vec3f(0.0, 0.0, 1.0);
+\tvar tU = cross(north, dir);
+\tif (dot(tU, tU) < 1e-12) { tU = vec3f(1.0, 0.0, 0.0); }
+\ttU = normalize(tU);
+\tlet tV = normalize(cross(dir, tU));
+\tlet relief = u.shade.x;
+\tlet n = normalize(dir - relief * (gU * tU + gV * tV));
+
+\t// A fixed galaxy-frame key light: the terrain look is
+\t// stable while the camera flies.
+\tlet light = normalize(vec3f(0.25, 0.18, 0.95));
+\tlet lit = 0.35 + 0.85 * max(dot(n, light), 0.0);
+
+\tvar dim = 1.0;
+\tif (u.shade.y > 0.5) {
+\t\tlet lv = h * u.shade.y;
+\t\tlet f = lv - floor(lv);
+\t\tlet line = 1.0 - smoothstep(0.0, 0.06, min(f, 1.0 - f));
+\t\tdim = 1.0 - 0.4 * line;
+\t}
+
+\tlet rgb = viewTurbo(clamp(h, 0.0, 1.0)) * lit * dim * u.shade.z;
+\treturn vec4f(rgb, 1.0);
+}
+`;
+
 const TONEMAP = `
 // Fullscreen-triangle tone-map pass. Reads the rgba16float HDR intermediate
 // (additive linear flux summed across all stars) and writes the final pixel
@@ -1913,6 +2129,8 @@ const SHADER_PARTS = {
         'tonemap': TONEMAP,
         'procedural-gen': PROCEDURAL_GEN,
         'cull': CULL,
+        'view-field': VIEW_FIELD,
+        'view-shade': VIEW_SHADE,
 };
 
 // Complete, compilable modules. WGSL has no include mechanism, so the shared
@@ -1925,12 +2143,17 @@ const SHADERS = {
         'procedural-gen': PCG_HASH + DENSITY + PROCEDURAL_GEN,
         'cull': PCG_HASH + CULL,
         'simple-step': PCG_HASH + ORBIT + SIMPLE_STEP,
+        'view-field': VIEW_FIELD,
+        'view-shade': VIEW_SHADE,
 };
 
 // Wired shaders: the renderer compiles star-sprite + nebula-billboard + tonemap
 // every frame, plus simple-step when the simple engine is selected.
 // star-sprite-hdr is kept as a reference module and is not bound.
-const WIRED_SHADERS = ['star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'simple-step'];
+// view-field + view-shade are the view-modes passes (the tonemap module
+// is shared, not re-wired).
+const WIRED_SHADERS = ['star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'simple-step',
+        'view-field', 'view-shade'];
 
 const GalaxyShaders = { SHADERS, SHADER_PARTS, WIRED_SHADERS };
 if (typeof module !== 'undefined') module.exports = GalaxyShaders;

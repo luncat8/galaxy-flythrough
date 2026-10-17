@@ -1495,6 +1495,16 @@ Shipped, in `archive/`:
   chrome + burn/flip autopilot, G3 docking/refuel. CPU-only and additive, like
   the 0.5 series.
 
+- [`view-modes-plan.md`](view-modes-plan.md) — view modes (m key): the star
+  field as a smooth heightmap on the view sphere, in the ordinary fly camera.
+  Two modes (camera distance; adjacency depth-contrast), two sources (the
+  constellation landmarks; the nearest N ≤ 500 stars by drawn position, found
+  by a chunked sweep), a compute pass that fills an equirectangular field
+  texture with a truncated Lorentzian IDW and a fullscreen pass that shades it
+  like terrain through the existing tonemap. Supersedes
+  `archive/view-modes-shader-plan.md` (the separate-page design that failed:
+  a second camera cannot show "the sky as I fly it").
+
 - [`evolution-plan.md`](evolution-plan.md) — the 0.6 series, galaxy evolution over time:
   the type table describes present-day galaxies, so `modelAtAge` gains an **epoch tier**
   that re-solves what the galaxy *is* at an earlier epoch beside what its stars are —
@@ -1555,6 +1565,15 @@ tests and extend the file layout of §11 as needed.
    clock on the system-ladder convention, the text HUD and the input gating);
    G2 chrome + burn/flip autopilot, G3 docking/refuel, G4 presets remain.
    CPU-only and pipeline-neutral.
+5. [View modes — distance-field heightmap on the view sphere](view-modes-plan.md):
+   **shipped 2026-10-17 (ui.12)** — VM.0–VM.3 all landed: `src/math/view-modes-field.js`
+   (CPU half: constellation anchors + nearest-48 fallback, chunked nearest-N
+   sweep, the two scalars, uniform packing), `src/render/view-modes-renderer.js`
+   (GPU half: `view-field` compute + `view-shade` terrain pass + shared tonemap),
+   the Display-menu View modes section, the `m` key (gated in game mode like
+   `V`), the overlay readout, and `view-modes-field-test.js` (16 checks) +
+   `view-modes-renderer-test.js` (13 checks) in the runner. Supersedes the
+   failed separate-page design in `archive/view-modes-shader-plan.md`.
 
 The [0.5 planet series](archive/0.5.0-plan-planet-generator.md) is complete:
 selection, generator, search, schematic, delta-v map and ships/routes/autopilot.

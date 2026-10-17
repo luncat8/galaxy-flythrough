@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-17T02:58:38.717Z",
+  "date": "2026-10-17T06:56:46.315Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -14,6 +14,7 @@
     "math/objects.js",
     "math/clusters.js",
     "math/coords.js",
+    "math/view-modes-field.js",
     "core/device.js",
     "core/camera.js",
     "core/input.js",
@@ -33,6 +34,7 @@
     "render/star-sprites.js",
     "render/label-layer.js",
     "render/system-layer.js",
+    "render/view-modes-renderer.js",
     "main.js"
   ],
   "sourceFiles": [
@@ -63,10 +65,12 @@
     "math/sampling.js",
     "math/star-record.js",
     "math/star-types.js",
+    "math/view-modes-field.js",
     "render/label-layer.js",
     "render/shaders.js",
     "render/star-sprites.js",
     "render/system-layer.js",
+    "render/view-modes-renderer.js",
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
@@ -83,8 +87,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 33,
-        "sources": 33,
+        "scripts": 35,
+        "sources": 35,
         "missing": []
       }
     },
@@ -286,6 +290,7 @@
         "ObjectsLib",
         "ClustersLib",
         "Coords",
+        "ViewModesField",
         "Device",
         "Camera",
         "Input",
@@ -304,7 +309,8 @@
         "CellManager",
         "StarRenderer",
         "LabelLayer",
-        "SystemLayer"
+        "SystemLayer",
+        "ViewModesRenderer"
       ]
     },
     {

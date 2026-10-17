@@ -1,0 +1,151 @@
+{
+  "date": "2026-10-17T07:00:44.380Z",
+  "totalChecks": 14,
+  "passed": 14,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "star uniform buffer sized MAX_STARS vec4",
+      "pass": true,
+      "detail": {
+        "labels": [
+          "view-stars-uniform",
+          "view-field-params-uniform",
+          "view-shade-uniform",
+          "view-tonemap-uniform"
+        ],
+        "rendererMax": 500,
+        "fieldMax": 500
+      }
+    },
+    {
+      "name": "field texture is the fixed equirect resolution",
+      "pass": true,
+      "detail": [
+        "view-field"
+      ]
+    },
+    {
+      "name": "field layout declares the texture as rgba16float storage",
+      "pass": true,
+      "detail": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "name": "field compute pipeline exists",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "shade and tonemap pipelines exist",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "field module is the wired WGSL text",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "a frame runs one compute and two render passes",
+      "pass": true,
+      "detail": {
+        "compute": 1,
+        "passes": 2
+      }
+    },
+    {
+      "name": "the compute pass fills the whole field texture",
+      "pass": true,
+      "detail": {
+        "x": 96,
+        "y": 48,
+        "z": 1,
+        "pipeline": {
+          "label": "view-field-pipeline"
+        },
+        "pass": "view-field-fill"
+      }
+    },
+    {
+      "name": "the shade and tonemap passes draw fullscreen triangles",
+      "pass": true,
+      "detail": [
+        {
+          "vertices": 3,
+          "instances": 1,
+          "pipeline": {
+            "label": "view-shade-pipeline"
+          },
+          "pass": "view-shade"
+        },
+        {
+          "vertices": 3,
+          "instances": 1,
+          "pipeline": {
+            "label": "view-tonemap-pipeline"
+          },
+          "pass": "view-tonemap"
+        }
+      ]
+    },
+    {
+      "name": "the star array uploads all MAX_STARS slots",
+      "pass": true,
+      "detail": {
+        "length": 8000
+      }
+    },
+    {
+      "name": "field params carry the live count, σ and the empty sentinel",
+      "pass": true,
+      "detail": {
+        "count": 4,
+        "sigma": 1.7724539041519165,
+        "empty": -1
+      }
+    },
+    {
+      "name": "shade uniform carries the camera basis, viewport and relief",
+      "pass": true,
+      "detail": {
+        "fwd": [
+          1,
+          0,
+          0
+        ],
+        "fwdLen": 1,
+        "viewport": [
+          1920,
+          1080
+        ]
+      }
+    },
+    {
+      "name": "tonemap lanes mirror the exposure state",
+      "pass": true,
+      "detail": {
+        "tm": [
+          1,
+          4,
+          1.399999976158142,
+          0,
+          8,
+          1,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "zero width or an empty set draws nothing",
+      "pass": true,
+      "detail": {
+        "draws": 2
+      }
+    }
+  ]
+}

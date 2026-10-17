@@ -1781,3 +1781,30 @@ The same session's second trap: `main.js` mixes literal middle dots
 python patch script matching one form misses the other — match the
 exact escaping per line, and patch dense blocks with a counted
 `assert s.count(old) == 1` heredoc rather than a fuzzy editor match.
+
+## 2026-10-17 — A bounded max-heap that replaces its root must sift against the *incoming* value
+
+The view-modes nearest-N sweep keeps a max-heap of the N best records. The
+replace path compared each child against the **stale root slot content** while
+sifting the incoming value down, so the descent stopped at the first step and
+a mid-sized value landed at the root with larger children below it — the heap
+invariant silently broke, the "worst" member was no longer the worst, and the
+sweep's answer diverged from brute force (it kept far-away field stars and
+dropped near ones, with the heap's worst distance *growing* as more records
+arrived — impossible for a correct bounded heap, and the tell). When replacing
+a heap root, carry the incoming value in a local and compare children against
+it (`best = incoming`), not against the array cell the hole just vacated.
+Fuzz the heap against a sorted reference before trusting it — the divergence
+only shows at boundary members, not in sizes.
+
+The same session's second trap: a synthetic test renderer must write records
+the way the real one does. Landmark records carry no `FLAG_EPOCH` (they are
+observed sky), and a brute-force reference that dispatches every record through
+`engineRecordPosition` disagrees with a sweep that dispatches landmarks through
+`engineLandmarkPosition` — the epoch map moves one and not the other. Mirror
+the dispatch ladder exactly, block kinds included (an empty object block keeps
+the indices aligned).
+
+And the third: `1/span` then `* span` is not identity in float32 — a value
+stored at the end of a normalization range can land one ulp outside [0, 1].
+Clamp on write, and compare with a tolerance in the test.

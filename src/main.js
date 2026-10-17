@@ -269,6 +269,142 @@ async function boot() {
                 hdr,
         });
 
+        // View modes (view-modes-plan.md): the same galaxy, the same free
+        // camera, the same star clock — with the star set projected onto
+        // the view sphere as a heightmap-like distance field. The GPU
+        // half is this renderer; the CPU half (selection and scalars)
+        // is the controller below, which feeds it a committed source
+        // each frame. Off (mode 0) the main renderer draws as before.
+        const viewModesRenderer = window.ViewModesRenderer.createViewModesRenderer(device, context, format);
+
+        // The controller. `active` is the field state the renderer draws
+        // (committed: positions refreshed, scalars computed, uniform
+        // packed); `building` is a set still being swept in. A source
+        // change never restarts a running sweep — the old set keeps
+        // drawing until the new one commits.
+        const viewModes = {
+                mode: 0,                    // 0 off, 1 camera distance, 2 adjacency
+                source: 'constellations',   // or 'nearest'
+                nearestCount: 100,
+                smoothing: 1,               // the kernel σ multiplier
+                contours: true,
+                active: null,
+                building: null,
+                refreshDue: true,
+                refreshRadius: 0.25,        // kpc
+                lastCamX: 0, lastCamY: 0, lastCamZ: 0,
+                lastStarTime: -1,
+                readout: '',
+        };
+
+        // The picker's contract for the field math: the renderer's
+        // staging blocks, the orbit dispatch, the model, the star
+        // clock, the landmark table and the camera's drawn position.
+        function viewModesEnv(camX, camY, camZ) {
+                return {
+                        blocks: renderer.starBlocks(),
+                        orbit: window.OrbitLib, model,
+                        time: starTimeMyr,
+                        landmarks,
+                        camX, camY, camZ,
+                };
+        }
+
+        function viewModesRebuild() {
+                const field = window.ViewModesField;
+                const state = field.createFieldState();
+                viewModes.building = state;
+                viewModes.refreshDue = true;
+                if (viewModes.source === 'constellations') {
+                        const n = field.fillConstellationAnchors(state, landmarks, window.OrbitLib, starTimeMyr, model);
+                        if (n > 0) {
+                                // The landmark table filled directly: no sweep.
+                                viewModes.building = null;
+                                viewModes.active = state;
+                                return;
+                        }
+                        // A generated galaxy has no landmark table: the
+                        // plan's fallback is the nearest 48.
+                        field.beginSweep(state, 48);
+                } else {
+                        field.beginSweep(state, viewModes.nearestCount);
+                }
+        }
+
+        // One frame of the controller. Returns the committed source the
+        // renderer draws (or null while the first set is still building).
+        function viewModesStep() {
+                const field = window.ViewModesField;
+                if (viewModes.mode === 0) return null;
+                const camX = camera.cameraPos[0], camY = camera.cameraPos[1], camZ = camera.cameraPos[2];
+                // 1. A pending set finishes its walk. The sweep is chunked
+                //    (the picker's pattern), so a 300k-star field costs a
+                //    couple of milliseconds a frame, never a hitch.
+                if (viewModes.building) {
+                        const done = field.stepSweep(viewModes.building, viewModesEnv(camX, camY, camZ), 200000, 2);
+                        if (done) {
+                                viewModes.active = viewModes.building;
+                                viewModes.building = null;
+                                viewModes.refreshDue = true;
+                        }
+                }
+                const state = viewModes.active;
+                if (!state) return null;
+                // 2. Refresh triggers: a source/mode/count change, the
+                //    camera translated past a set-relative radius, or the
+                //    star clock advanced.
+                const moved = Math.hypot(camX - viewModes.lastCamX, camY - viewModes.lastCamY, camZ - viewModes.lastCamZ);
+                if (viewModes.refreshDue || moved > viewModes.refreshRadius || viewModes.lastStarTime !== starTimeMyr) {
+                        const env = viewModesEnv(camX, camY, camZ);
+                        field.refreshPositions(state, env);
+                        if (viewModes.mode === 1) field.computeDistanceScalars(state, camX, camY, camZ);
+                        else field.computeAdjacencyScalars(state, camX, camY, camZ);
+                        field.packStarUniform(state, camX, camY, camZ);
+                        viewModes.lastCamX = camX; viewModes.lastCamY = camY; viewModes.lastCamZ = camZ;
+                        viewModes.lastStarTime = starTimeMyr;
+                        viewModes.refreshDue = false;
+                        // The refresh radius scales with the set: a quarter
+                        // of a kiloparsec, or a tenth of the farthest
+                        // selected star, whichever is larger.
+                        let far = 0;
+                        for (let i = 0; i < state.count; i++) {
+                                const dx = state.positions[i * 3] - camX;
+                                const dy = state.positions[i * 3 + 1] - camY;
+                                const dz = state.positions[i * 3 + 2] - camZ;
+                                const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                                if (d > far) far = d;
+                        }
+                        viewModes.refreshRadius = Math.max(0.25, 0.1 * far);
+                        viewModes.readout = viewModesReadout(state);
+                }
+                return {
+                        count: state.count,
+                        sigma: field.kernelSigma(state.count, viewModes.smoothing),
+                        starUniform: state.starUniform,
+                        contours: viewModes.contours,
+                };
+        }
+
+        function viewModesReadout(state) {
+                const field = window.ViewModesField;
+                const modeName = viewModes.mode === 1 ? 'camera distance' : 'adjacency';
+                const sourceName = viewModes.source === 'constellations'
+                        ? `${state.count} landmarks` : `nearest ${viewModes.nearestCount}`;
+                const sigmaDeg = (field.kernelSigma(state.count, viewModes.smoothing) * 180 / Math.PI).toFixed(1);
+                return `view ${modeName} · ${sourceName} · σ ${sigmaDeg}° · range ${state.rangeMin.toFixed(2)}…${state.rangeMax.toFixed(2)}`;
+        }
+
+        function setViewMode(mode) {
+                viewModes.mode = mode;
+                if (mode > 0 && !viewModes.active) viewModesRebuild();
+                if (viewModes.active) viewModes.refreshDue = true;
+                syncViewModeUi();
+        }
+
+        function cycleViewMode() {
+                setViewMode(viewModes.mode === 0 ? 1 : viewModes.mode === 1 ? 2 : 0);
+        }
+
         // Catalog is optional: without it the procedural field still renders.
         let manifest = null;
         try {
@@ -1400,6 +1536,68 @@ async function boot() {
                 renderer.setHighlightDesat(Number(sliderHighlight.value));
                 valHighlight.textContent = renderer.state.highlightDesat.toFixed(2);
         });
+        // View modes (view-modes-plan.md): the field's mode,
+        // source, smoothing and contours. The source slider's
+        // 0 stop is the constellation landmarks; 1–500 is the
+        // nearest that many stars by drawn position. Sliders
+        // apply on release (a rebuild), like the star budget.
+        const viewModeRadios = {
+                off: document.getElementById('view-mode-off'),
+                distance: document.getElementById('view-mode-distance'),
+                adjacency: document.getElementById('view-mode-adjacency'),
+        };
+        const sliderViewSource = document.getElementById('slider-view-source');
+        const valViewSource = document.getElementById('val-view-source');
+        const sliderViewSmoothing = document.getElementById('slider-view-smoothing');
+        const valViewSmoothing = document.getElementById('val-view-smoothing');
+        const viewContours = document.getElementById('view-contours');
+        const valViewMode = document.getElementById('val-view-mode');
+        // Rows a live field owns (data-view-mode in index.html).
+        // Off means the main renderer draws the sky, so the
+        // field's knobs have nothing to act on.
+        const viewModeRows = Array.from(document.querySelectorAll('#menu [data-view-mode]'));
+        function syncViewModeUi() {
+                viewModeRadios.off.checked = viewModes.mode === 0;
+                viewModeRadios.distance.checked = viewModes.mode === 1;
+                viewModeRadios.adjacency.checked = viewModes.mode === 2;
+                valViewMode.textContent = viewModes.mode === 0 ? 'off'
+                        : viewModes.mode === 1 ? 'camera distance' : 'adjacency';
+                for (const row of viewModeRows) row.style.display = viewModes.mode === 0 ? 'none' : '';
+                valViewSource.textContent = viewModes.source === 'constellations'
+                        ? 'constellations' : `${viewModes.nearestCount} stars`;
+                valViewSmoothing.textContent = '×' + viewModes.smoothing.toFixed(2);
+        }
+        for (const [name, radio] of Object.entries(viewModeRadios)) {
+                radio.addEventListener('change', () => {
+                        if (!radio.checked) return;
+                        setViewMode(name === 'off' ? 0 : name === 'distance' ? 1 : 2);
+                });
+        }
+        sliderViewSource.addEventListener('input', () => {
+                const v = Number(sliderViewSource.value);
+                valViewSource.textContent = v === 0 ? 'constellations' : `${v} stars`;
+        });
+        sliderViewSource.addEventListener('change', () => {
+                const v = Number(sliderViewSource.value);
+                if (v === 0) viewModes.source = 'constellations';
+                else {
+                        viewModes.source = 'nearest';
+                        viewModes.nearestCount = v;
+                }
+                viewModesRebuild();
+        });
+        sliderViewSmoothing.addEventListener('input', () => {
+                // σ is derived from the live count every
+                // refresh, so the slider needs no rebuild —
+                // only the readout's σ figure.
+                viewModes.smoothing = Number(sliderViewSmoothing.value);
+                viewModes.refreshDue = true;
+                valViewSmoothing.textContent = '×' + viewModes.smoothing.toFixed(2);
+        });
+        viewContours.addEventListener('change', () => {
+                viewModes.contours = viewContours.checked;
+        });
+        syncViewModeUi();
         // The star-time slider is the ship clock's other dress (game-mode-plan
         // §4): while game mode is on, its stops are the ship-time ladder's rung
         // indices — the system clock's pattern (SYSTIME_LADDER) — and the
@@ -1562,10 +1760,23 @@ async function boot() {
                 // working state, like the search results — Defaults keeps it.
                 systemLayer.setTimeRate(d.systime);
 		systemLayer.setBudget(d.dvbudget);
-		setFlightShipClass(d.ship);
+                setFlightShipClass(d.ship);
 		systemLayer.setView(d.dvmap);
 		syncDvUi();
 		if (systemLayer.isOpen()) writeSystemReadout();
+                // View modes (view-modes-plan.md): whether the
+                // field is up is working state, like the
+                // system view — Defaults keeps it — but its
+                // knobs reset with the rest of the display.
+                viewModes.source = 'constellations';
+                viewModes.nearestCount = 100;
+                viewModes.smoothing = 1;
+                viewModes.contours = true;
+                sliderViewSource.value = 0;
+                sliderViewSmoothing.value = 1;
+                viewContours.checked = true;
+                if (viewModes.mode > 0) viewModesRebuild();
+                syncViewModeUi();
                 syncApocenterSliders();
                 syncSlidersFromRenderer();
                 syncWave();
@@ -3568,6 +3779,7 @@ async function boot() {
                         `   buffer ${(state.bufferBytes / 1048576).toFixed(1)} MB\n` +
                         `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   engine ${state.engine}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${gameMode ? 'ship ' + shipLib.formatClock(ship, shipLib.speedC(ship)) : window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)${evolveOn ? ' +evolve' : ''}   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   pattern ${window.OrbitLib.effectivePatternSpeed(model).toFixed(3)} rad/Myr (x${patternScale.toFixed(2)})   Tab menu\n` +
                         `pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
+                        (viewModes.mode > 0 && viewModes.readout ? viewModes.readout + '\n' : '') +
                         cameraLine(cameraState) +
                         gameModeLine() +
                         noSelectionLine() +
@@ -3881,6 +4093,14 @@ async function boot() {
                         if (gameMode) gameNotice();
                         else if (systemLayer.isOpen()) cycleDvView();
                 }
+                if (actions.viewMode) {
+                        actions.viewMode = 0;
+                        // M is gated in game mode like V: it swaps the
+                        // whole sky presentation, which would disorient
+                        // a flying ship (game-mode-plan §3).
+                        if (gameMode) gameNotice();
+                        else cycleViewMode();
+                }
                 if (actions.speedRefTarget) { actions.speedRefTarget = 0; setSpeedRef('target'); }
                 if (actions.speedRefCentre) { actions.speedRefCentre = 0; setSpeedRef('centre'); }
                 if (actions.speedRefHome) { actions.speedRefHome = 0; setSpeedRef('home'); }
@@ -3894,7 +4114,13 @@ async function boot() {
                 }
 
                 resizeCanvas();
-                renderer.render(camera, canvas.width, canvas.height, starTimeMyr, input.state, dtStar);
+                // View modes (view-modes-plan.md): the field replaces
+                // the star render, not the camera — the same galaxy,
+                // the same free fly. A null source (off, or the first
+                // set still building) keeps the normal render.
+                const viewSource = viewModesStep();
+                if (viewSource) viewModesRenderer.render(camera, canvas.width, canvas.height, viewSource, renderer.state);
+                else renderer.render(camera, canvas.width, canvas.height, starTimeMyr, input.state, dtStar);
                 labels.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
                 labels.draw(camera, canvas.clientWidth, canvas.clientHeight);
                 // The schematic (plan §6): its own clock first, then hover and
