@@ -1,0 +1,1552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Galaxy View Modes - Spherical Distance & Gradient Heightmaps</title>
+	<link rel="stylesheet" href="view-modes.css">
+</head>
+<body>
+	<div id="canvas-container">
+		<canvas id="glcanvas"></canvas>
+		<canvas id="overlay-canvas"></canvas>
+	</div>
+
+	<!-- Top navigation bar -->
+	<div id="top-bar">
+		<div class="brand">
+			<h1>View Modes Shader</h1>
+			<span class="tag">Spherical Heightmaps</span>
+		</div>
+		<div class="nav-links">
+			<button id="btn-home-top" class="nav-link" title="Reset observer to the Sun origin (H)">Home (Sun) <span class="kbd">H</span></button>
+			<a href="index.html" class="nav-link" title="Switch to the 3D WebGPU Galaxy Fly-Through">← 3D Fly-Through</a>
+		</div>
+	</div>
+
+	<!-- Sidebar Controls -->
+	<div id="sidebar">
+		<!-- Section 1: View Modes -->
+		<div class="section">
+			<div class="section-title">
+				<span>View Mode</span>
+			</div>
+			<div class="radio-group">
+				<label class="radio-card" title="Fill celestial sphere with smooth gradient heightmap of star distance from camera (0 far to 1 closest)">
+					<input type="radio" name="view-mode" value="1" checked>
+					<div class="radio-card-desc">
+						<span class="radio-card-title">1. Star Distance Heightmap</span>
+						<span class="radio-card-sub">0...1 far to closest. Smooth spherical diffusion & radial slope.</span>
+					</div>
+				</label>
+				<label class="radio-card" title="Visualize 3D distance discrepancy between visually adjacent stars as steepness/gradient">
+					<input type="radio" name="view-mode" value="2">
+					<div class="radio-card-desc">
+						<span class="radio-card-title">2. Adjacent Star Distance / Depth Gradient</span>
+						<span class="radio-card-sub">Visually close stars with big Z distance create steep slow-travel barriers.</span>
+					</div>
+				</label>
+				<label class="radio-card" title="Render classic night sky and constellations with heightmap turned off">
+					<input type="radio" name="view-mode" value="0">
+					<div class="radio-card-desc">
+						<span class="radio-card-title">Sky / Constellations Only</span>
+						<span class="radio-card-sub">Heightmap off. Star points and constellation figures only.</span>
+					</div>
+				</label>
+			</div>
+
+			<!-- Mode 2 sub-type -->
+			<div id="mode2-options" style="margin-top: 8px; display: none;">
+				<div class="control-label" style="margin-bottom: 4px;">
+					<span>Mode 2 Algorithm:</span>
+				</div>
+				<div class="radio-pill-group">
+					<label class="radio-pill" title="Magnitude of the spatial surface gradient of Mode 1 (||∇H1||)">
+						<input type="radio" name="mode2-type" value="gradient" checked>
+						<span>∇H₁ Gradient</span>
+					</label>
+					<label class="radio-pill" title="Adjacent star graph line-of-sight depth discrepancy (ΔZ / Δθ)">
+						<input type="radio" name="mode2-type" value="discrepancy">
+						<span>ΔZ / Δθ Network</span>
+					</label>
+				</div>
+			</div>
+		</div>
+
+		<!-- Section 2: Projection -->
+		<div class="section">
+			<div class="section-title">
+				<span>Projection</span>
+			</div>
+			<div class="radio-pill-group">
+				<label class="radio-pill" title="Inside celestial view sphere with 360° pan & tilt (default)">
+					<input type="radio" name="projection" value="sphere" checked>
+					<span>3D Sphere</span>
+				</label>
+				<label class="radio-pill" title="2D Equirectangular map projection (drag to pan, wheel to zoom)">
+					<input type="radio" name="projection" value="plane">
+					<span>2D Plane</span>
+				</label>
+			</div>
+			<div class="btn-row">
+				<button id="btn-reset-view" class="btn" title="Reset camera pitch, yaw, zoom and pan">Reset View</button>
+			</div>
+		</div>
+
+		<!-- Section 3: Star Selection Source -->
+		<div class="section">
+			<div class="section-title">
+				<span>Star Selection</span>
+			</div>
+			<div class="control-row">
+				<div class="control-label">
+					<span>Source:</span>
+					<span id="val-star-source" class="control-val">0 (Constellations)</span>
+				</div>
+				<input type="range" id="slider-stars" min="0" max="500" step="1" value="0">
+				<span class="radio-card-sub" style="margin-top: 2px;">
+					0 = Constellation landmarks (~60 stars)<br>1–500 = Nearest N stars to camera (from Gaia catalog)
+				</span>
+			</div>
+		</div>
+
+		<!-- Section 4: Star Time Movement -->
+		<div class="section">
+			<div class="section-title">
+				<span>Star Time (Orbit Kinematics)</span>
+				<span id="val-star-time" class="control-val">0.0 Myr</span>
+			</div>
+			<div class="control-row">
+				<input type="range" id="slider-time" min="-500" max="500" step="1" value="0">
+			</div>
+			<div class="btn-row">
+				<button id="btn-time-play" class="btn" title="Play or pause real-time star orbital motion">▶ Play</button>
+				<button id="btn-time-speed" class="btn" title="Cycle playback speed (1x, 5x, 20x)">Speed: 5 Myr/s</button>
+				<button id="btn-time-reset" class="btn" title="Reset star time to present day (0 Myr)">0 Myr</button>
+			</div>
+		</div>
+
+		<!-- Section 5: Observer & Sun Distance -->
+		<div class="section">
+			<div class="section-title">
+				<span>Observer / Camera</span>
+			</div>
+			<div class="control-row">
+				<div class="control-label">
+					<span>Distance from Sun:</span>
+					<span id="val-sun-dist" class="control-val">0.0 pc (Home)</span>
+				</div>
+				<input type="range" id="slider-sun-dist" min="0" max="100" step="0.5" value="0">
+			</div>
+			<div class="control-row">
+				<div class="control-label">
+					<span>Field of View (3D):</span>
+					<span id="val-fov" class="control-val">80°</span>
+				</div>
+				<input type="range" id="slider-fov" min="30" max="120" step="1" value="80">
+			</div>
+			<div class="btn-row">
+				<button id="btn-home-panel" class="btn" title="Return to Sun home position [0, 0, 0]">Home (Sun) <span class="kbd">H</span></button>
+			</div>
+		</div>
+
+		<!-- Section 6: Heightmap Styling -->
+		<div class="section">
+			<div class="section-title">
+				<span>Heightmap Shader Styling</span>
+			</div>
+			<div class="control-row">
+				<div class="control-label">
+					<span>Colormap:</span>
+				</div>
+				<div class="radio-pill-group">
+					<label class="radio-pill"><input type="radio" name="colormap" value="terrain" checked><span>Terrain</span></label>
+					<label class="radio-pill"><input type="radio" name="colormap" value="magma"><span>Magma</span></label>
+					<label class="radio-pill"><input type="radio" name="colormap" value="turbo"><span>Turbo</span></label>
+					<label class="radio-pill"><input type="radio" name="colormap" value="viridis"><span>Viridis</span></label>
+					<label class="radio-pill"><input type="radio" name="colormap" value="gray"><span>Gray</span></label>
+				</div>
+			</div>
+			<div class="control-row" style="margin-top: 6px;">
+				<div class="control-label">
+					<span>Diffusion Smoothness:</span>
+					<span id="val-smoothness" class="control-val">0.08</span>
+				</div>
+				<input type="range" id="slider-smoothness" min="0.01" max="0.30" step="0.01" value="0.08">
+			</div>
+			<div class="control-row" style="margin-top: 6px;">
+				<div class="control-label">
+					<span>Gradient Radial Slope:</span>
+					<span id="val-slope" class="control-val">0.60</span>
+				</div>
+				<input type="range" id="slider-slope" min="0.0" max="1.5" step="0.05" value="0.60">
+			</div>
+			<div class="control-row" id="row-gain" style="display:none;">
+				<div class="control-label">
+					<span>Gradient Gain (Mode 2):</span>
+					<span id="val-gain" class="control-val">1.2×</span>
+				</div>
+				<input type="range" id="slider-gain" min="0.2" max="3.0" step="0.1" value="1.2">
+			</div>
+			<div class="checkbox-grid" style="margin-top: 8px;">
+				<label class="checkbox-label" title="Render elevation contour lines across the heightmap">
+					<input type="checkbox" id="chk-contour" checked> Contour Lines
+				</label>
+				<label class="checkbox-label" title="Compute 3D shaded relief lighting from terrain slopes">
+					<input type="checkbox" id="chk-hillshade" checked> Shaded Relief
+				</label>
+				<label class="checkbox-label" title="Invert height values (1 far to 0 closest)">
+					<input type="checkbox" id="chk-invert"> Invert Height
+				</label>
+			</div>
+		</div>
+
+		<!-- Section 7: Overlays -->
+		<div class="section">
+			<div class="section-title">
+				<span>Overlays & Tools</span>
+			</div>
+			<div class="checkbox-grid">
+				<label class="checkbox-label">
+					<input type="checkbox" id="chk-lines" checked> Constellations <span class="kbd">P</span>
+				</label>
+				<label class="checkbox-label">
+					<input type="checkbox" id="chk-labels" checked> Star Labels
+				</label>
+				<label class="checkbox-label">
+					<input type="checkbox" id="chk-points" checked> Star Points
+				</label>
+				<label class="checkbox-label" title="Click two stars to calculate lowest-gradient travel corridor (game pathfinding application)">
+					<input type="checkbox" id="chk-path"> Pathfinding Route
+				</label>
+			</div>
+			<div class="btn-row" style="margin-top: 8px;">
+				<button id="btn-export-map" class="btn" title="Download the current 2D heightmap for game pathfinding">Export 2D Map</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Floating Star Inspector HUD -->
+	<div id="star-hud">
+		<div class="hud-title">
+			<span id="hud-star-name">Sirius</span>
+			<span id="hud-star-const" class="hud-constellation">CMa</span>
+		</div>
+		<div class="hud-grid">
+			<span class="hud-k">Distance:</span>
+			<span id="hud-star-dist" class="hud-v">2.64 pc (8.6 ly)</span>
+			<span class="hud-k">Height Value H:</span>
+			<span id="hud-star-h" class="hud-v">0.98</span>
+			<span class="hud-k">Apparent Mag:</span>
+			<span id="hud-star-mag" class="hud-v">-1.46 (A)</span>
+			<span class="hud-k">Galactic (x,y,z):</span>
+			<span id="hud-star-coords" class="hud-v">-1.8, 1.9, -0.4 pc</span>
+			<span class="hud-k">Neighbor Max ΔZ:</span>
+			<span id="hud-star-delta-z" class="hud-v">95 pc</span>
+		</div>
+	</div>
+
+	<!-- Pathfinding Info HUD -->
+	<div id="path-hud">
+		<div style="font-weight: 700; color: #58a6ff;">Travel Corridor Pathfinding</div>
+		<div id="path-status" style="color: #8b949e;">Click any star to set departure point.</div>
+	</div>
+
+	<!-- Bottom Status Readout Bar -->
+	<div id="bottom-bar">
+		<div class="status-left">
+			<div class="status-item">Camera: <span id="stat-cam">Sun (0, 0, 0)</span></div>
+			<div class="status-item">Active Stars: <span id="stat-stars">60</span></div>
+			<div class="status-item">Distance Range: <span id="stat-range">1.3 – 802.0 pc</span></div>
+		</div>
+		<div class="status-right">
+			<div class="status-item">Projection: <span id="stat-proj">3D Sphere</span></div>
+			<div class="status-item">FPS: <span id="stat-fps">60</span></div>
+		</div>
+	</div>
+
+	<!-- Core math and data scripts from repository -->
+	<script src="math/hash.js"></script>
+	<script src="math/density.js"></script>
+	<script src="math/sampling.js"></script>
+	<script src="math/star-record.js"></script>
+	<script src="math/coords.js"></script>
+	<script src="math/galaxy.js"></script>
+	<script src="math/orbit.js"></script>
+	<script src="data/landmarks.js"></script>
+	<script src="data/constellations.js"></script>
+
+	<!-- Standalone View Modes Shader Controller -->
+	<script>
+	'use strict';
+	(function () {
+		const landmarks = window.Landmarks;
+		const constellations = window.Constellations;
+		const coords = window.Coords;
+		const orbitLib = window.OrbitLib;
+		const galaxyLib = window.GalaxyLib;
+
+		const glCanvas = document.getElementById('glcanvas');
+		const overlayCanvas = document.getElementById('overlay-canvas');
+		const overlayCtx = overlayCanvas.getContext('2d');
+
+		let gl = glCanvas.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false });
+		let isWebGL2 = true;
+		if (!gl) {
+			gl = glCanvas.getContext('webgl', { preserveDrawingBuffer: true, antialias: false }) ||
+			     glCanvas.getContext('experimental-webgl', { preserveDrawingBuffer: true, antialias: false });
+			isWebGL2 = false;
+		}
+
+		const model = galaxyLib ? galaxyLib.MILKY_WAY : null;
+		if (orbitLib && model) {
+			orbitLib.fillDynamics(model);
+		}
+
+		const state = {
+			viewMode: 1,
+			mode2Type: 0,
+			projection: 0,
+			starSourceCount: 0,
+			starTime: 0.0,
+			isPlaying: false,
+			timeSpeed: 5.0,
+			camPos: [0, 0, 0],
+			sunDistancePc: 0.0,
+			camYaw: 0.0,
+			camPitch: 0.0,
+			camFov: 80.0,
+			panOffset: [0, 0],
+			zoom: 1.0,
+			smoothness: 0.08,
+			power: 1.8,
+			slope: 0.60,
+			gradGain: 1.2,
+			colormap: 0,
+			contour: 1,
+			hillshade: 1,
+			invert: 0,
+			showLines: true,
+			showLabels: true,
+			showPoints: true,
+			pathfinding: false,
+			pathStart: null,
+			pathGoal: null,
+			currentPath: null,
+			hoveredStar: null,
+			hoverPos: null,
+			isDragging: false,
+			lastMouseX: 0,
+			lastMouseY: 0,
+			dragStartX: 0,
+			dragStartY: 0,
+			hasDragged: false,
+		};
+
+		const landmarkStars = [];
+		const catalogStars = [];
+		let allStarsLoaded = false;
+
+		if (landmarks) {
+			for (let i = 0; i < landmarks.count; i++) {
+				const e = landmarks.ENTRIES[i];
+				landmarkStars.push({
+					id: 'L_' + i,
+					name: e.name,
+					constellation: e.constellation || '',
+					bx: e.x, by: e.y, bz: e.z,
+					x: e.x, y: e.y, z: e.z,
+					distPc: e.distPc,
+					mag: e.mag,
+					colorIndex: e.colorIndex || 2,
+					isLandmark: true,
+					landmarkIndex: i,
+				});
+			}
+		}
+
+		async function loadGaiaCatalog() {
+			try {
+				const res = await fetch('data/gaia-subset.csv');
+				if (!res.ok) throw new Error('HTTP ' + res.status);
+				const text = await res.text();
+				const lines = text.trim().split('\n');
+				for (let i = 1; i < lines.length; i++) {
+					const parts = lines[i].split(',');
+					if (parts.length < 8) continue;
+					const ra = parseFloat(parts[1]);
+					const dec = parseFloat(parts[2]);
+					const plx = parseFloat(parts[3]);
+					const mag = parseFloat(parts[7]);
+					if (plx > 0) {
+						const g = coords.raDecParallaxToGalactic(ra, dec, plx);
+						catalogStars.push({
+							id: parts[0],
+							name: 'Gaia ' + parts[0].slice(0, 7),
+							constellation: '',
+							bx: g.x, by: g.y, bz: g.z,
+							x: g.x, y: g.y, z: g.z,
+							distPc: g.distKpc * 1000,
+							mag: mag,
+							colorIndex: 2,
+							isLandmark: false,
+							landmarkIndex: -1,
+						});
+					}
+				}
+				allStarsLoaded = true;
+			} catch (err) {
+				allStarsLoaded = true;
+			}
+		}
+		loadGaiaCatalog();
+
+		let activeStars = [];
+		let minDistancePc = 1.0;
+		let maxDistancePc = 1000.0;
+
+		const CLASS_COLORS = [
+			'#9bb0ff', '#bbccff', '#f8f9ff', '#ffffed', '#ffd2a1', '#ffb56c', '#ff6f69'
+		];
+
+		let shaderProgram = null;
+		let starTexture = null;
+		let quadVAO = null;
+		let uniforms = {};
+
+		const VS_SOURCE = `#version 300 es
+		precision highp float;
+		in vec2 a_position;
+		out vec2 v_uv;
+		void main() {
+			v_uv = a_position * 0.5 + 0.5;
+			gl_Position = vec4(a_position, 0.0, 1.0);
+		}`;
+
+		const FS_SOURCE = `#version 300 es
+		precision highp float;
+
+		in vec2 v_uv;
+		out vec4 fragColor;
+
+		uniform vec2 u_resolution;
+		uniform int u_projection;
+		uniform int u_viewMode;
+		uniform int u_mode2Type;
+		uniform int u_starCount;
+		uniform sampler2D u_starTex;
+
+		uniform mat3 u_camRot;
+		uniform float u_camTanFov;
+		uniform float u_aspect;
+
+		uniform vec2 u_panOffset;
+		uniform float u_zoom;
+
+		uniform float u_smoothness;
+		uniform float u_power;
+		uniform float u_slope;
+		uniform float u_gradGain;
+		uniform int u_colormap;
+		uniform int u_contour;
+		uniform int u_hillshade;
+		uniform int u_invert;
+
+		vec3 getDirection() {
+			if (u_projection == 0) {
+				vec2 p = v_uv * 2.0 - 1.0;
+				vec3 rayLocal = normalize(vec3(p.x * u_aspect * u_camTanFov, p.y * u_camTanFov, 1.0));
+				return normalize(u_camRot * rayLocal);
+			} else {
+				float PI = 3.141592653589793;
+				float TWO_PI = 6.283185307179586;
+				float lon = (v_uv.x - 0.5) * TWO_PI / u_zoom + u_panOffset.x;
+				float lat = (v_uv.y - 0.5) * PI / u_zoom + u_panOffset.y;
+				lon = mod(lon + PI, TWO_PI) - PI;
+				lat = clamp(lat, -PI * 0.4999, PI * 0.4999);
+				float cosLat = cos(lat);
+				return vec3(cosLat * cos(lon), cosLat * sin(lon), sin(lat));
+			}
+		}
+
+		float evalHeight1(vec3 v) {
+			if (u_starCount <= 0) return 0.0;
+			float sumW = 0.0;
+			float sumH = 0.0;
+			float eps2 = u_smoothness * u_smoothness;
+
+			for (int i = 0; i < 512; i++) {
+				if (i >= u_starCount) break;
+				vec4 s = texelFetch(u_starTex, ivec2(i, 0), 0);
+				vec3 sDir = s.xyz;
+				float u = s.w;
+
+				float cosA = clamp(dot(v, sDir), -1.0, 1.0);
+				float r2 = max(0.0, 2.0 * (1.0 - cosA));
+				float r = sqrt(r2);
+
+				float w = 1.0 / pow(r2 + eps2, u_power);
+				float localH = max(0.0, u - u_slope * r);
+
+				sumW += w;
+				sumH += w * localH;
+			}
+			return sumW > 1e-6 ? sumH / sumW : 0.0;
+		}
+
+		float evalDiscrepancy(vec3 v) {
+			if (u_starCount <= 0) return 0.0;
+			float sumW = 0.0;
+			float sumH = 0.0;
+			float eps2 = u_smoothness * u_smoothness;
+
+			for (int i = 0; i < 512; i++) {
+				if (i >= u_starCount) break;
+				vec4 s = texelFetch(u_starTex, ivec2(i, 0), 0);
+				vec4 sInfo = texelFetch(u_starTex, ivec2(i, 1), 0);
+				vec3 sDir = s.xyz;
+				float disc = sInfo.x;
+
+				float cosA = clamp(dot(v, sDir), -1.0, 1.0);
+				float r2 = max(0.0, 2.0 * (1.0 - cosA));
+				float r = sqrt(r2);
+
+				float w = 1.0 / pow(r2 + eps2, u_power);
+				float localH = max(0.0, disc - u_slope * r);
+
+				sumW += w;
+				sumH += w * localH;
+			}
+			return sumW > 1e-6 ? sumH / sumW : 0.0;
+		}
+
+		void computeGradMode1(vec3 v, out float gradMag, out vec2 g) {
+			vec3 t1 = abs(v.z) < 0.9 ? normalize(vec3(0.0, v.z, -v.y)) : vec3(1.0, 0.0, 0.0);
+			t1 = normalize(t1 - dot(t1, v) * v);
+			vec3 t2 = cross(v, t1);
+			float delta = 0.015;
+
+			vec3 v1p = normalize(v + delta * t1);
+			vec3 v1m = normalize(v - delta * t1);
+			vec3 v2p = normalize(v + delta * t2);
+			vec3 v2m = normalize(v - delta * t2);
+
+			float h1p = evalHeight1(v1p);
+			float h1m = evalHeight1(v1m);
+			float h2p = evalHeight1(v2p);
+			float h2m = evalHeight1(v2m);
+
+			g.x = (h1p - h1m) / (2.0 * delta);
+			g.y = (h2p - h2m) / (2.0 * delta);
+			gradMag = length(g);
+		}
+
+		vec3 colormapTerrain(float h) {
+			if (h < 0.2) {
+				float t = h / 0.2;
+				return mix(vec3(0.04, 0.12, 0.38), vec3(0.08, 0.55, 0.65), t);
+			} else if (h < 0.45) {
+				float t = (h - 0.2) / 0.25;
+				return mix(vec3(0.08, 0.55, 0.65), vec3(0.18, 0.70, 0.30), t);
+			} else if (h < 0.70) {
+				float t = (h - 0.45) / 0.25;
+				return mix(vec3(0.18, 0.70, 0.30), vec3(0.90, 0.82, 0.22), t);
+			} else if (h < 0.88) {
+				float t = (h - 0.70) / 0.18;
+				return mix(vec3(0.90, 0.82, 0.22), vec3(0.78, 0.32, 0.14), t);
+			} else {
+				float t = (h - 0.88) / 0.12;
+				return mix(vec3(0.78, 0.32, 0.14), vec3(0.98, 0.98, 1.0), t);
+			}
+		}
+
+		vec3 colormapMagma(float h) {
+			vec3 c0 = vec3(0.02, 0.01, 0.06);
+			vec3 c1 = vec3(0.31, 0.07, 0.47);
+			vec3 c2 = vec3(0.70, 0.20, 0.47);
+			vec3 c3 = vec3(0.97, 0.48, 0.36);
+			vec3 c4 = vec3(0.99, 0.90, 0.54);
+			if (h < 0.25) return mix(c0, c1, h * 4.0);
+			if (h < 0.50) return mix(c1, c2, (h - 0.25) * 4.0);
+			if (h < 0.75) return mix(c2, c3, (h - 0.50) * 4.0);
+			return mix(c3, c4, (h - 0.75) * 4.0);
+		}
+
+		vec3 colormapTurbo(float x) {
+			const vec4 kRedVec4 = vec4(0.13572138, 4.61539260, -42.66032258, 132.13108234);
+			const vec4 kGreenVec4 = vec4(0.09140261, 2.19418839, 4.84296658, -14.18503333);
+			const vec4 kBlueVec4 = vec4(0.10667330, 12.64194608, -60.58204836, 110.36276771);
+			const vec2 kRedVec2 = vec2(-152.94239396, 59.28637943);
+			const vec2 kGreenVec2 = vec2(4.27729857, 2.82956604);
+			const vec2 kBlueVec2 = vec2(-89.90310912, 27.34824973);
+			x = clamp(x, 0.0, 1.0);
+			vec4 v4 = vec4(1.0, x, x * x, x * x * x);
+			vec2 v2 = v4.zw * v4.z;
+			return clamp(vec3(
+				dot(v4, kRedVec4) + dot(v2, kRedVec2),
+				dot(v4, kGreenVec4) + dot(v2, kGreenVec2),
+				dot(v4, kBlueVec4) + dot(v2, kBlueVec2)
+			), 0.0, 1.0);
+		}
+
+		vec3 colormapViridis(float t) {
+			t = clamp(t, 0.0, 1.0);
+			vec3 c0 = vec3(0.267, 0.004, 0.329);
+			vec3 c1 = vec3(0.191, 0.407, 0.556);
+			vec3 c2 = vec3(0.208, 0.719, 0.473);
+			vec3 c3 = vec3(0.993, 0.906, 0.144);
+			if (t < 0.33) return mix(c0, c1, t * 3.03);
+			if (t < 0.66) return mix(c1, c2, (t - 0.33) * 3.03);
+			return mix(c2, c3, (t - 0.66) * 3.03);
+		}
+
+		void main() {
+			vec3 v = getDirection();
+
+			if (u_viewMode == 0) {
+				fragColor = vec4(0.02, 0.03, 0.06, 1.0);
+				return;
+			}
+
+			float h = 0.0;
+			vec2 grad = vec2(0.0);
+
+			if (u_viewMode == 1) {
+				h = evalHeight1(v);
+			} else {
+				if (u_mode2Type == 0) {
+					float gMag = 0.0;
+					computeGradMode1(v, gMag, grad);
+					h = clamp(gMag * u_gradGain, 0.0, 1.0);
+				} else {
+					h = evalDiscrepancy(v);
+				}
+			}
+
+			if (u_invert == 1) {
+				h = 1.0 - h;
+			}
+			h = clamp(h, 0.0, 1.0);
+
+			vec3 col = vec3(h);
+			if (u_colormap == 0) col = colormapTerrain(h);
+			else if (u_colormap == 1) col = colormapMagma(h);
+			else if (u_colormap == 2) col = colormapTurbo(h);
+			else if (u_colormap == 3) col = colormapViridis(h);
+
+			if (u_contour == 1) {
+				float f = abs(fract(h * 12.0 + 0.5) - 0.5);
+				float line = smoothstep(0.06, 0.0, f);
+				col = mix(col, vec3(0.0, 0.0, 0.0), line * 0.42);
+			}
+
+			if (u_hillshade == 1) {
+				vec3 t1 = abs(v.z) < 0.9 ? normalize(vec3(0.0, v.z, -v.y)) : vec3(1.0, 0.0, 0.0);
+				t1 = normalize(t1 - dot(t1, v) * v);
+				vec3 t2 = cross(v, t1);
+				float d = 0.015;
+
+				float hL = evalHeight1(normalize(v - d * t1));
+				float hR = evalHeight1(normalize(v + d * t1));
+				float hD = evalHeight1(normalize(v - d * t2));
+				float hU = evalHeight1(normalize(v + d * t2));
+				vec2 slope = vec2((hR - hL) / (2.0 * d), (hU - hD) / (2.0 * d));
+
+				vec3 norm = normalize(v - slope.x * t1 * 0.45 - slope.y * t2 * 0.45);
+				vec3 lightDir = normalize(v + t1 * 0.5 + t2 * 0.6);
+				float diffuse = clamp(dot(norm, lightDir) * 0.5 + 0.5, 0.25, 1.25);
+				col *= diffuse;
+			}
+
+			fragColor = vec4(col, 1.0);
+		}`;
+
+		function createShader(gl, type, source) {
+			const shader = gl.createShader(type);
+			gl.shaderSource(shader, source);
+			gl.compileShader(shader);
+			if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+				console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+				gl.deleteShader(shader);
+				return null;
+			}
+			return shader;
+		}
+
+		function initGL() {
+			if (!gl) return false;
+			const vs = createShader(gl, gl.VERTEX_SHADER, VS_SOURCE);
+			const fs = createShader(gl, gl.FRAGMENT_SHADER, FS_SOURCE);
+			if (!vs || !fs) return false;
+
+			shaderProgram = gl.createProgram();
+			gl.attachShader(shaderProgram, vs);
+			gl.attachShader(shaderProgram, fs);
+			gl.linkProgram(shaderProgram);
+
+			if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+				console.error('Program link error:', gl.getProgramInfoLog(shaderProgram));
+				return false;
+			}
+
+			const uniformNames = [
+				'u_resolution', 'u_projection', 'u_viewMode', 'u_mode2Type', 'u_starCount', 'u_starTex',
+				'u_camRot', 'u_camTanFov', 'u_aspect', 'u_panOffset', 'u_zoom',
+				'u_smoothness', 'u_power', 'u_slope', 'u_gradGain', 'u_colormap',
+				'u_contour', 'u_hillshade', 'u_invert'
+			];
+			for (const name of uniformNames) {
+				uniforms[name] = gl.getUniformLocation(shaderProgram, name);
+			}
+
+			const quadVertices = new Float32Array([
+				-1, -1,  1, -1, -1,  1,
+				-1,  1,  1, -1,  1,  1
+			]);
+			const quadBuffer = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
+
+			quadVAO = gl.createVertexArray ? gl.createVertexArray() : null;
+			if (quadVAO) gl.bindVertexArray(quadVAO);
+
+			const aPos = gl.getAttribLocation(shaderProgram, 'a_position');
+			gl.enableVertexAttribArray(aPos);
+			gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+			starTexture = gl.createTexture();
+			gl.bindTexture(gl.TEXTURE_2D, starTexture);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+			return true;
+		}
+
+		initGL();
+
+		const orbitScratch = new Float64Array(3);
+
+		function updateStarPositions() {
+			const t = state.starTime;
+
+			for (let i = 0; i < landmarkStars.length; i++) {
+				const s = landmarkStars[i];
+				if (orbitLib && model) {
+					orbitLib.engineLandmarkPosition(orbitScratch, s.landmarkIndex, s.bx, s.by, s.bz, s.colorIndex, t, model);
+					s.x = orbitScratch[0];
+					s.y = orbitScratch[1];
+					s.z = orbitScratch[2];
+				}
+			}
+
+			for (let i = 0; i < catalogStars.length; i++) {
+				const s = catalogStars[i];
+				if (orbitLib && model) {
+					orbitLib.engineRecordPosition(orbitScratch, s.bx, s.by, s.bz, s.colorIndex, t, model);
+					s.x = orbitScratch[0];
+					s.y = orbitScratch[1];
+					s.z = orbitScratch[2];
+				}
+			}
+		}
+
+		function refreshActiveStars() {
+			const distKpc = state.sunDistancePc * 0.001;
+			const cy = Math.cos(state.camPitch), sy = Math.sin(state.camPitch);
+			const cx = Math.cos(state.camYaw), sx = Math.sin(state.camYaw);
+			const fwd = [cy * cx, cy * sx, sy];
+			state.camPos = [fwd[0] * distKpc, fwd[1] * distKpc, fwd[2] * distKpc];
+
+			const cxKpc = state.camPos[0], cyKpc = state.camPos[1], czKpc = state.camPos[2];
+
+			if (state.starSourceCount === 0) {
+				activeStars = [];
+				for (let i = 0; i < landmarkStars.length; i++) {
+					const s = landmarkStars[i];
+					const dx = s.x - cxKpc, dy = s.y - cyKpc, dz = s.z - czKpc;
+					const d = Math.hypot(dx, dy, dz) * 1000;
+					if (d < 0.01 && s.name === 'Sun') continue;
+					s.curDistPc = d;
+					s.dir = [dx * 1000 / d, dy * 1000 / d, dz * 1000 / d];
+					activeStars.push(s);
+				}
+			} else {
+				const pool = [];
+				for (let i = 0; i < landmarkStars.length; i++) {
+					const s = landmarkStars[i];
+					const dx = s.x - cxKpc, dy = s.y - cyKpc, dz = s.z - czKpc;
+					const d = Math.hypot(dx, dy, dz) * 1000;
+					if (d < 0.01 && s.name === 'Sun') continue;
+					s.curDistPc = d;
+					s.dir = [dx * 1000 / d, dy * 1000 / d, dz * 1000 / d];
+					pool.push(s);
+				}
+				for (let i = 0; i < catalogStars.length; i++) {
+					const s = catalogStars[i];
+					const dx = s.x - cxKpc, dy = s.y - cyKpc, dz = s.z - czKpc;
+					const d = Math.hypot(dx, dy, dz) * 1000;
+					s.curDistPc = d;
+					s.dir = [dx * 1000 / d, dy * 1000 / d, dz * 1000 / d];
+					pool.push(s);
+				}
+
+				pool.sort((a, b) => a.curDistPc - b.curDistPc);
+				const count = Math.min(state.starSourceCount, pool.length);
+				activeStars = pool.slice(0, count);
+			}
+
+			if (activeStars.length === 0) return;
+
+			let minD = Infinity, maxD = -Infinity;
+			for (let i = 0; i < activeStars.length; i++) {
+				const d = activeStars[i].curDistPc;
+				if (d < minD) minD = d;
+				if (d > maxD) maxD = d;
+			}
+			minDistancePc = minD;
+			maxDistancePc = Math.max(maxD, minD + 0.001);
+
+			for (let i = 0; i < activeStars.length; i++) {
+				const s = activeStars[i];
+				s.u = 1.0 - (s.curDistPc - minDistancePc) / (maxDistancePc - minDistancePc);
+			}
+
+			computeAdjacencyDiscrepancy();
+			uploadStarTexture();
+		}
+
+		function computeAdjacencyDiscrepancy() {
+			const n = activeStars.length;
+			for (let i = 0; i < n; i++) activeStars[i].maxDeltaZ = 0;
+
+			if (state.starSourceCount === 0 && constellations) {
+				const lines = constellations.LINES;
+				for (let f = 0; f < lines.length; f++) {
+					const edges = lines[f].edges;
+					for (let j = 0; j < edges.length; j += 2) {
+						const idxA = edges[j], idxB = edges[j + 1];
+						const nameA = landmarks.ENTRIES[idxA].name;
+						const nameB = landmarks.ENTRIES[idxB].name;
+						const sA = activeStars.find(s => s.name === nameA);
+						const sB = activeStars.find(s => s.name === nameB);
+						if (sA && sB) {
+							const cosA = Math.max(-1, Math.min(1, sA.dir[0]*sB.dir[0] + sA.dir[1]*sB.dir[1] + sA.dir[2]*sB.dir[2]));
+							const ang = Math.acos(cosA);
+							const deltaZ = Math.abs(sA.curDistPc - sB.curDistPc);
+							const ratio = deltaZ / Math.max(ang, 0.05);
+							if (ratio > sA.maxDeltaZ) sA.maxDeltaZ = ratio;
+							if (ratio > sB.maxDeltaZ) sB.maxDeltaZ = ratio;
+						}
+					}
+				}
+			} else {
+				for (let i = 0; i < n; i++) {
+					const sA = activeStars[i];
+					let neighbors = [];
+					for (let j = 0; j < n; j++) {
+						if (i === j) continue;
+						const sB = activeStars[j];
+						const cosA = Math.max(-1, Math.min(1, sA.dir[0]*sB.dir[0] + sA.dir[1]*sB.dir[1] + sA.dir[2]*sB.dir[2]));
+						const ang = Math.acos(cosA);
+						neighbors.push({ star: sB, ang });
+					}
+					neighbors.sort((a, b) => a.ang - b.ang);
+					for (let k = 0; k < Math.min(3, neighbors.length); k++) {
+						const sB = neighbors[k].star;
+						const deltaZ = Math.abs(sA.curDistPc - sB.curDistPc);
+						const ratio = deltaZ / Math.max(neighbors[k].ang, 0.05);
+						if (ratio > sA.maxDeltaZ) sA.maxDeltaZ = ratio;
+					}
+				}
+			}
+
+			let maxDisc = 1.0;
+			for (let i = 0; i < n; i++) {
+				if (activeStars[i].maxDeltaZ > maxDisc) maxDisc = activeStars[i].maxDeltaZ;
+			}
+			for (let i = 0; i < n; i++) {
+				activeStars[i].discNorm = activeStars[i].maxDeltaZ / maxDisc;
+			}
+		}
+
+		const texData = new Float32Array(512 * 2 * 4);
+
+		function uploadStarTexture() {
+			if (!gl || !starTexture) return;
+			texData.fill(0);
+
+			const count = Math.min(activeStars.length, 512);
+			for (let i = 0; i < count; i++) {
+				const s = activeStars[i];
+				const off0 = i * 4;
+				texData[off0 + 0] = s.dir[0];
+				texData[off0 + 1] = s.dir[1];
+				texData[off0 + 2] = s.dir[2];
+				texData[off0 + 3] = s.u;
+
+				const off1 = (512 + i) * 4;
+				texData[off1 + 0] = s.discNorm;
+				texData[off1 + 1] = s.curDistPc;
+				texData[off1 + 2] = 0;
+				texData[off1 + 3] = 0;
+			}
+
+			gl.bindTexture(gl.TEXTURE_2D, starTexture);
+			gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 512, 2, 0, gl.RGBA, gl.FLOAT, texData);
+		}
+
+		function getCameraRotationMatrix(yaw, pitch) {
+			const cy = Math.cos(yaw), sy = Math.sin(yaw);
+			const cp = Math.cos(pitch), sp = Math.sin(pitch);
+			return new Float32Array([
+				 cy,  0, -sy,
+				-sp * sy,  cp, -sp * cy,
+				 cp * sy,  sp,  cp * cy
+			]);
+		}
+
+		function projectDirectionToScreen(dir, width, height) {
+			if (state.projection === 0) {
+				const cy = Math.cos(state.camYaw), sy = Math.sin(state.camYaw);
+				const cp = Math.cos(state.camPitch), sp = Math.sin(state.camPitch);
+
+				const r = [cy, 0, -sy];
+				const u = [-sp * sy, cp, -sp * cy];
+				const f = [cp * sy, sp, cp * cy];
+
+				const zCam = dir[0] * f[0] + dir[1] * f[1] + dir[2] * f[2];
+				if (zCam <= 0.01) return null;
+
+				const xCam = dir[0] * r[0] + dir[1] * r[1] + dir[2] * r[2];
+				const yCam = dir[0] * u[0] + dir[1] * u[1] + dir[2] * u[2];
+
+				const tanFov = Math.tan((state.camFov * Math.PI / 180) * 0.5);
+				const aspect = width / height;
+
+				const ndcX = xCam / (zCam * aspect * tanFov);
+				const ndcY = yCam / (zCam * tanFov);
+
+				if (ndcX < -1.5 || ndcX > 1.5 || ndcY < -1.5 || ndcY > 1.5) return null;
+
+				return {
+					x: (ndcX * 0.5 + 0.5) * width,
+					y: (1.0 - (ndcY * 0.5 + 0.5)) * height,
+					zCam: zCam,
+				};
+			} else {
+				const PI = Math.PI, TWO_PI = Math.PI * 2;
+				const lat = Math.asin(Math.max(-1, Math.min(1, dir[2])));
+				const lon = Math.atan2(dir[1], dir[0]);
+
+				let dLon = lon - state.panOffset[0];
+				while (dLon > PI) dLon -= TWO_PI;
+				while (dLon < -PI) dLon += TWO_PI;
+
+				const dLat = lat - state.panOffset[1];
+
+				const px = (dLon / TWO_PI * state.zoom + 0.5) * width;
+				const py = (1.0 - (dLat / PI * state.zoom + 0.5)) * height;
+
+				return { x: px, y: py, zCam: 1.0, lon, lat };
+			}
+		}
+
+		function drawOverlay() {
+			const width = overlayCanvas.width;
+			const height = overlayCanvas.height;
+			overlayCtx.clearRect(0, 0, width, height);
+
+			if (activeStars.length === 0) return;
+
+			if (state.showLines && constellations) {
+				overlayCtx.strokeStyle = 'rgba(88, 166, 255, 0.55)';
+				overlayCtx.lineWidth = 1.4;
+
+				const figures = constellations.LINES;
+				for (let f = 0; f < figures.length; f++) {
+					const edges = figures[f].edges;
+					for (let j = 0; j < edges.length; j += 2) {
+						const idxA = edges[j], idxB = edges[j + 1];
+						const starA = landmarkStars[idxA];
+						const starB = landmarkStars[idxB];
+						if (!starA || !starB) continue;
+
+						const pA = projectDirectionToScreen(starA.dir, width, height);
+						const pB = projectDirectionToScreen(starB.dir, width, height);
+						if (!pA || !pB) continue;
+
+						if (state.projection === 1) {
+							if (Math.abs(pA.x - pB.x) > width * 0.5) continue;
+						}
+
+						overlayCtx.beginPath();
+						overlayCtx.moveTo(pA.x, pA.y);
+						overlayCtx.lineTo(pB.x, pB.y);
+						overlayCtx.stroke();
+					}
+				}
+			}
+
+			if (state.pathfinding && state.currentPath && state.currentPath.length > 1) {
+				overlayCtx.strokeStyle = '#f85149';
+				overlayCtx.lineWidth = 3.0;
+				overlayCtx.setLineDash([6, 4]);
+				overlayCtx.beginPath();
+				let started = false;
+				for (let i = 0; i < state.currentPath.length; i++) {
+					const s = state.currentPath[i];
+					const p = projectDirectionToScreen(s.dir, width, height);
+					if (p) {
+						if (!started) {
+							overlayCtx.moveTo(p.x, p.y);
+							started = true;
+						} else {
+							overlayCtx.lineTo(p.x, p.y);
+						}
+					}
+				}
+				overlayCtx.stroke();
+				overlayCtx.setLineDash([]);
+			}
+
+			if (state.showPoints) {
+				for (let i = 0; i < activeStars.length; i++) {
+					const s = activeStars[i];
+					const p = projectDirectionToScreen(s.dir, width, height);
+					if (!p) continue;
+
+					const radius = Math.max(2.0, Math.min(6.5, 5.0 - s.mag * 0.5));
+					const color = CLASS_COLORS[s.colorIndex] || '#fff';
+
+					overlayCtx.fillStyle = color;
+					overlayCtx.beginPath();
+					overlayCtx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+					overlayCtx.fill();
+
+					overlayCtx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+					overlayCtx.beginPath();
+					overlayCtx.arc(p.x, p.y, radius * 1.8, 0, Math.PI * 2);
+					overlayCtx.fill();
+				}
+			}
+
+			if (state.showLabels) {
+				overlayCtx.font = '11px SFMono-Regular, Consolas, monospace';
+				overlayCtx.lineWidth = 3;
+				overlayCtx.lineJoin = 'round';
+				overlayCtx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+
+				for (let i = 0; i < activeStars.length; i++) {
+					const s = activeStars[i];
+					if (!s.isLandmark && s.mag > 2.5) continue;
+
+					const p = projectDirectionToScreen(s.dir, width, height);
+					if (!p) continue;
+
+					const lx = p.x + 8;
+					const ly = p.y - 4;
+
+					overlayCtx.strokeText(s.name, lx, ly);
+					overlayCtx.fillStyle = s === state.hoveredStar ? '#58a6ff' : '#e6edf3';
+					overlayCtx.fillText(s.name, lx, ly);
+				}
+			}
+
+			if (state.hoveredStar) {
+				const p = projectDirectionToScreen(state.hoveredStar.dir, width, height);
+				if (p) {
+					overlayCtx.strokeStyle = '#58a6ff';
+					overlayCtx.lineWidth = 1.5;
+					overlayCtx.beginPath();
+					overlayCtx.arc(p.x, p.y, 11, 0, Math.PI * 2);
+					overlayCtx.stroke();
+
+					overlayCtx.beginPath();
+					overlayCtx.moveTo(p.x - 15, p.y); overlayCtx.lineTo(p.x - 11, p.y);
+					overlayCtx.moveTo(p.x + 11, p.y); overlayCtx.lineTo(p.x + 15, p.y);
+					overlayCtx.moveTo(p.x, p.y - 15); overlayCtx.lineTo(p.x, p.y - 11);
+					overlayCtx.moveTo(p.x, p.y + 11); overlayCtx.lineTo(p.x, p.y + 15);
+					overlayCtx.stroke();
+				}
+			}
+
+			if (state.pathStart) {
+				const p = projectDirectionToScreen(state.pathStart.dir, width, height);
+				if (p) {
+					overlayCtx.strokeStyle = '#2ea043';
+					overlayCtx.lineWidth = 2.0;
+					overlayCtx.strokeRect(p.x - 8, p.y - 8, 16, 16);
+				}
+			}
+			if (state.pathGoal) {
+				const p = projectDirectionToScreen(state.pathGoal.dir, width, height);
+				if (p) {
+					overlayCtx.strokeStyle = '#f85149';
+					overlayCtx.lineWidth = 2.0;
+					overlayCtx.strokeRect(p.x - 8, p.y - 8, 16, 16);
+				}
+			}
+		}
+
+		function renderGL() {
+			if (!gl || !shaderProgram) return;
+
+			gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+			gl.useProgram(shaderProgram);
+
+			gl.uniform2f(uniforms.u_resolution, glCanvas.width, glCanvas.height);
+			gl.uniform1i(uniforms.u_projection, state.projection);
+			gl.uniform1i(uniforms.u_viewMode, state.viewMode);
+			gl.uniform1i(uniforms.u_mode2Type, state.mode2Type);
+			gl.uniform1i(uniforms.u_starCount, Math.min(activeStars.length, 512));
+
+			gl.activeTexture(gl.TEXTURE0);
+			gl.bindTexture(gl.TEXTURE_2D, starTexture);
+			gl.uniform1i(uniforms.u_starTex, 0);
+
+			const camRotMat = getCameraRotationMatrix(state.camYaw, state.camPitch);
+			gl.uniformMatrix3fv(uniforms.u_camRot, false, camRotMat);
+			gl.uniform1f(uniforms.u_camTanFov, Math.tan((state.camFov * Math.PI / 180) * 0.5));
+			gl.uniform1f(uniforms.u_aspect, glCanvas.width / glCanvas.height);
+
+			gl.uniform2f(uniforms.u_panOffset, state.panOffset[0], state.panOffset[1]);
+			gl.uniform1f(uniforms.u_zoom, state.zoom);
+
+			gl.uniform1f(uniforms.u_smoothness, state.smoothness);
+			gl.uniform1f(uniforms.u_power, state.power);
+			gl.uniform1f(uniforms.u_slope, state.slope);
+			gl.uniform1f(uniforms.u_gradGain, state.gradGain);
+			gl.uniform1i(uniforms.u_colormap, state.colormap);
+			gl.uniform1i(uniforms.u_contour, state.contour);
+			gl.uniform1i(uniforms.u_hillshade, state.hillshade);
+			gl.uniform1i(uniforms.u_invert, state.invert);
+
+			if (quadVAO) gl.bindVertexArray(quadVAO);
+			gl.drawArrays(gl.TRIANGLES, 0, 6);
+		}
+
+		function calculatePath(startStar, goalStar) {
+			const nodes = activeStars;
+			const n = nodes.length;
+			const startIdx = nodes.indexOf(startStar);
+			const goalIdx = nodes.indexOf(goalStar);
+			if (startIdx < 0 || goalIdx < 0) return null;
+
+			const dist = new Float64Array(n).fill(Infinity);
+			const prev = new Int32Array(n).fill(-1);
+			const visited = new Uint8Array(n).fill(0);
+
+			dist[startIdx] = 0;
+
+			for (let step = 0; step < n; step++) {
+				let u = -1, minDist = Infinity;
+				for (let i = 0; i < n; i++) {
+					if (!visited[i] && dist[i] < minDist) {
+						minDist = dist[i];
+						u = i;
+					}
+				}
+				if (u < 0 || u === goalIdx) break;
+				visited[u] = 1;
+
+				const sU = nodes[u];
+				for (let v = 0; v < n; v++) {
+					if (visited[v]) continue;
+					const sV = nodes[v];
+					const cosA = Math.max(-1, Math.min(1, sU.dir[0]*sV.dir[0] + sU.dir[1]*sV.dir[1] + sU.dir[2]*sV.dir[2]));
+					const ang = Math.acos(cosA);
+					if (ang > 0.8) continue;
+
+					const zDiff = Math.abs(sU.curDistPc - sV.curDistPc);
+					const gradientCost = zDiff / Math.max(ang, 0.05);
+					const edgeWeight = ang * (1.0 + gradientCost * 0.5);
+
+					const alt = dist[u] + edgeWeight;
+					if (alt < dist[v]) {
+						dist[v] = alt;
+						prev[v] = u;
+					}
+				}
+			}
+
+			if (dist[goalIdx] === Infinity) return null;
+
+			const path = [];
+			let curr = goalIdx;
+			while (curr >= 0) {
+				path.unshift(nodes[curr]);
+				curr = prev[curr];
+			}
+			return path;
+		}
+
+		function updateReadout() {
+			document.getElementById('val-star-time').textContent = state.starTime.toFixed(1) + ' Myr';
+			document.getElementById('slider-time').value = state.starTime;
+
+			const sourceTxt = state.starSourceCount === 0
+				? '0 (Constellations)'
+				: state.starSourceCount + ' Nearest Stars';
+			document.getElementById('val-star-source').textContent = sourceTxt;
+
+			document.getElementById('val-sun-dist').textContent = state.sunDistancePc.toFixed(1) + ' pc' + (state.sunDistancePc === 0 ? ' (Home)' : '');
+			document.getElementById('val-fov').textContent = state.camFov.toFixed(0) + '°';
+			document.getElementById('val-smoothness').textContent = state.smoothness.toFixed(2);
+			document.getElementById('val-slope').textContent = state.slope.toFixed(2);
+			document.getElementById('val-gain').textContent = state.gradGain.toFixed(1) + '×';
+
+			document.getElementById('stat-cam').textContent = state.sunDistancePc === 0
+				? 'Sun (0, 0, 0)'
+				: state.camPos.map(c => (c * 1000).toFixed(1)).join(', ') + ' pc';
+			document.getElementById('stat-stars').textContent = activeStars.length;
+			document.getElementById('stat-range').textContent = minDistancePc.toFixed(1) + ' – ' + maxDistancePc.toFixed(1) + ' pc';
+			document.getElementById('stat-proj').textContent = state.projection === 0 ? '3D Sphere' : '2D Plane';
+
+			document.getElementById('mode2-options').style.display = state.viewMode === 2 ? 'block' : 'none';
+			document.getElementById('row-gain').style.display = state.viewMode === 2 ? 'flex' : 'none';
+		}
+
+		function wireEvents() {
+			const viewModeRadios = document.querySelectorAll('input[name="view-mode"]');
+			viewModeRadios.forEach(r => r.addEventListener('change', (e) => {
+				state.viewMode = parseInt(e.target.value, 10);
+				updateReadout();
+			}));
+
+			const mode2Radios = document.querySelectorAll('input[name="mode2-type"]');
+			mode2Radios.forEach(r => r.addEventListener('change', (e) => {
+				state.mode2Type = e.target.value === 'gradient' ? 0 : 1;
+				updateReadout();
+			}));
+
+			const projRadios = document.querySelectorAll('input[name="projection"]');
+			projRadios.forEach(r => r.addEventListener('change', (e) => {
+				state.projection = e.target.value === 'sphere' ? 0 : 1;
+				updateReadout();
+			}));
+
+			const starSlider = document.getElementById('slider-stars');
+			starSlider.addEventListener('input', (e) => {
+				state.starSourceCount = parseInt(e.target.value, 10);
+				refreshActiveStars();
+				updateReadout();
+			});
+
+			const timeSlider = document.getElementById('slider-time');
+			timeSlider.addEventListener('input', (e) => {
+				state.starTime = parseFloat(e.target.value);
+				updateStarPositions();
+				refreshActiveStars();
+				updateReadout();
+			});
+
+			const btnPlay = document.getElementById('btn-time-play');
+			btnPlay.addEventListener('click', () => {
+				state.isPlaying = !state.isPlaying;
+				btnPlay.textContent = state.isPlaying ? '⏸ Pause' : '▶ Play';
+				btnPlay.classList.toggle('btn-active', state.isPlaying);
+			});
+
+			const btnSpeed = document.getElementById('btn-time-speed');
+			const speeds = [1, 5, 20];
+			let speedIdx = 1;
+			btnSpeed.addEventListener('click', () => {
+				speedIdx = (speedIdx + 1) % speeds.length;
+				state.timeSpeed = speeds[speedIdx];
+				btnSpeed.textContent = 'Speed: ' + state.timeSpeed + ' Myr/s';
+			});
+
+			const btnTimeReset = document.getElementById('btn-time-reset');
+			btnTimeReset.addEventListener('click', () => {
+				state.starTime = 0.0;
+				updateStarPositions();
+				refreshActiveStars();
+				updateReadout();
+			});
+
+			function goHome() {
+				state.sunDistancePc = 0.0;
+				state.camPos = [0, 0, 0];
+				state.camYaw = 0.0;
+				state.camPitch = 0.0;
+				state.panOffset = [0, 0];
+				state.zoom = 1.0;
+				document.getElementById('slider-sun-dist').value = 0;
+				refreshActiveStars();
+				updateReadout();
+			}
+			document.getElementById('btn-home-top').addEventListener('click', goHome);
+			document.getElementById('btn-home-panel').addEventListener('click', goHome);
+			document.getElementById('btn-reset-view').addEventListener('click', goHome);
+
+			const sunDistSlider = document.getElementById('slider-sun-dist');
+			sunDistSlider.addEventListener('input', (e) => {
+				state.sunDistancePc = parseFloat(e.target.value);
+				refreshActiveStars();
+				updateReadout();
+			});
+
+			const fovSlider = document.getElementById('slider-fov');
+			fovSlider.addEventListener('input', (e) => {
+				state.camFov = parseFloat(e.target.value);
+				updateReadout();
+			});
+
+			const colorRadios = document.querySelectorAll('input[name="colormap"]');
+			const colormapMap = { terrain: 0, magma: 1, turbo: 2, viridis: 3, gray: 4 };
+			colorRadios.forEach(r => r.addEventListener('change', (e) => {
+				state.colormap = colormapMap[e.target.value] || 0;
+			}));
+
+			document.getElementById('slider-smoothness').addEventListener('input', (e) => {
+				state.smoothness = parseFloat(e.target.value);
+				updateReadout();
+			});
+			document.getElementById('slider-slope').addEventListener('input', (e) => {
+				state.slope = parseFloat(e.target.value);
+				updateReadout();
+			});
+			document.getElementById('slider-gain').addEventListener('input', (e) => {
+				state.gradGain = parseFloat(e.target.value);
+				updateReadout();
+			});
+
+			document.getElementById('chk-contour').addEventListener('change', (e) => { state.contour = e.target.checked ? 1 : 0; });
+			document.getElementById('chk-hillshade').addEventListener('change', (e) => { state.hillshade = e.target.checked ? 1 : 0; });
+			document.getElementById('chk-invert').addEventListener('change', (e) => { state.invert = e.target.checked ? 1 : 0; });
+			document.getElementById('chk-lines').addEventListener('change', (e) => { state.showLines = e.target.checked; });
+			document.getElementById('chk-labels').addEventListener('change', (e) => { state.showLabels = e.target.checked; });
+			document.getElementById('chk-points').addEventListener('change', (e) => { state.showPoints = e.target.checked; });
+			
+			const chkPath = document.getElementById('chk-path');
+			const pathHud = document.getElementById('path-hud');
+			const pathStatus = document.getElementById('path-status');
+			chkPath.addEventListener('change', (e) => {
+				state.pathfinding = e.target.checked;
+				pathHud.classList.toggle('visible', state.pathfinding);
+				if (!state.pathfinding) {
+					state.pathStart = null;
+					state.pathGoal = null;
+					state.currentPath = null;
+				} else {
+					pathStatus.textContent = 'Click any star to set departure point.';
+				}
+			});
+
+			document.getElementById('btn-export-map').addEventListener('click', () => {
+				export2DHeightmap();
+			});
+
+			window.addEventListener('keydown', (e) => {
+				if (e.target.tagName === 'INPUT') return;
+				if (e.code === 'KeyH') goHome();
+				if (e.code === 'KeyP') {
+					state.showLines = !state.showLines;
+					document.getElementById('chk-lines').checked = state.showLines;
+				}
+				if (e.code === 'Space') {
+					e.preventDefault();
+					document.getElementById('btn-time-play').click();
+				}
+			});
+
+			const container = document.getElementById('canvas-container');
+
+			container.addEventListener('mousedown', (e) => {
+				state.isDragging = true;
+				state.hasDragged = false;
+				state.lastMouseX = e.clientX;
+				state.lastMouseY = e.clientY;
+				state.dragStartX = e.clientX;
+				state.dragStartY = e.clientY;
+			});
+
+			window.addEventListener('mousemove', (e) => {
+				if (state.isDragging) {
+					const dx = e.clientX - state.lastMouseX;
+					const dy = e.clientY - state.lastMouseY;
+					if (Math.abs(e.clientX - state.dragStartX) > 3 || Math.abs(e.clientY - state.dragStartY) > 3) {
+						state.hasDragged = true;
+					}
+
+					if (state.projection === 0) {
+						state.camYaw += dx * 0.004;
+						state.camPitch += dy * 0.004;
+						const pMax = Math.PI * 0.49;
+						state.camPitch = Math.max(-pMax, Math.min(pMax, state.camPitch));
+					} else {
+						const TWO_PI = Math.PI * 2, PI = Math.PI;
+						state.panOffset[0] -= (dx / glCanvas.width) * TWO_PI / state.zoom;
+						state.panOffset[1] += (dy / glCanvas.height) * PI / state.zoom;
+
+						state.panOffset[0] = (state.panOffset[0] + PI) % TWO_PI;
+						if (state.panOffset[0] < 0) state.panOffset[0] += TWO_PI;
+						state.panOffset[0] -= PI;
+
+						const latLimit = PI * 0.48;
+						state.panOffset[1] = Math.max(-latLimit, Math.min(latLimit, state.panOffset[1]));
+					}
+
+					state.lastMouseX = e.clientX;
+					state.lastMouseY = e.clientY;
+				} else {
+					checkStarHover(e.clientX, e.clientY);
+				}
+			});
+
+			window.addEventListener('mouseup', (e) => {
+				if (state.isDragging) {
+					state.isDragging = false;
+					if (!state.hasDragged) {
+						handleCanvasClick(e.clientX, e.clientY);
+					}
+				}
+			});
+
+			container.addEventListener('wheel', (e) => {
+				e.preventDefault();
+				if (state.projection === 0) {
+					state.camFov += e.deltaY * 0.05;
+					state.camFov = Math.max(30, Math.min(120, state.camFov));
+					document.getElementById('slider-fov').value = state.camFov;
+					updateReadout();
+				} else {
+					const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+					state.zoom = Math.max(0.8, Math.min(10.0, state.zoom * factor));
+				}
+			}, { passive: false });
+		}
+
+		function getCanvasPos(clientX, clientY) {
+			const rect = overlayCanvas.getBoundingClientRect();
+			return {
+				x: (clientX - rect.left) * (overlayCanvas.width / (rect.width || 1)),
+				y: (clientY - rect.top) * (overlayCanvas.height / (rect.height || 1))
+			};
+		}
+
+		function checkStarHover(clientX, clientY) {
+			const pos = getCanvasPos(clientX, clientY);
+			const mx = pos.x, my = pos.y;
+			const width = overlayCanvas.width;
+			const height = overlayCanvas.height;
+			let closest = null;
+			let closestDist = 18.0;
+
+			for (let i = 0; i < activeStars.length; i++) {
+				const s = activeStars[i];
+				const p = projectDirectionToScreen(s.dir, width, height);
+				if (!p) continue;
+				const d = Math.hypot(p.x - mx, p.y - my);
+				if (d < closestDist) {
+					closestDist = d;
+					closest = s;
+				}
+			}
+
+			state.hoveredStar = closest;
+			const hud = document.getElementById('star-hud');
+
+			if (closest) {
+				hud.classList.add('visible');
+				document.getElementById('hud-star-name').textContent = closest.name;
+				document.getElementById('hud-star-const').textContent = closest.constellation ? '(' + closest.constellation + ')' : '';
+				document.getElementById('hud-star-dist').textContent = closest.curDistPc.toFixed(2) + ' pc (' + (closest.curDistPc * 3.26156).toFixed(1) + ' ly)';
+				document.getElementById('hud-star-h').textContent = closest.u.toFixed(3);
+				document.getElementById('hud-star-mag').textContent = closest.mag.toFixed(2);
+				document.getElementById('hud-star-coords').textContent = (closest.x * 1000).toFixed(1) + ', ' + (closest.y * 1000).toFixed(1) + ', ' + (closest.z * 1000).toFixed(1) + ' pc';
+				document.getElementById('hud-star-delta-z').textContent = closest.maxDeltaZ > 0 ? closest.maxDeltaZ.toFixed(1) + ' pc/rad' : 'None';
+			} else {
+				hud.classList.remove('visible');
+			}
+		}
+
+		function handleCanvasClick(clientX, clientY) {
+			checkStarHover(clientX, clientY);
+			if (state.hoveredStar && state.pathfinding) {
+				const pathStatus = document.getElementById('path-status');
+				if (!state.pathStart) {
+					state.pathStart = state.hoveredStar;
+					state.pathGoal = null;
+					state.currentPath = null;
+					pathStatus.textContent = 'From: ' + state.pathStart.name + '. Click destination star.';
+				} else if (!state.pathGoal && state.hoveredStar !== state.pathStart) {
+					state.pathGoal = state.hoveredStar;
+					state.currentPath = calculatePath(state.pathStart, state.pathGoal);
+					if (state.currentPath) {
+						pathStatus.innerHTML = 'Route found: <b>' + state.currentPath.length + ' hops</b>.<br>' +
+							state.pathStart.name + ' → ' + state.pathGoal.name + '<br><small>Avoiding high gradient barriers.</small>';
+					} else {
+						pathStatus.textContent = 'No corridor found between ' + state.pathStart.name + ' and ' + state.pathGoal.name;
+					}
+				} else {
+					state.pathStart = state.hoveredStar;
+					state.pathGoal = null;
+					state.currentPath = null;
+					pathStatus.textContent = 'From: ' + state.pathStart.name + '. Click destination star.';
+				}
+			}
+		}
+
+		function export2DHeightmap() {
+			const link = document.createElement('a');
+			link.download = 'star-heightmap-mode' + state.viewMode + '.png';
+			link.href = glCanvas.toDataURL('image/png');
+			link.click();
+		}
+
+		function resize() {
+			const w = window.innerWidth;
+			const h = window.innerHeight;
+			if (glCanvas.width !== w || glCanvas.height !== h) {
+				glCanvas.width = w;
+				glCanvas.height = h;
+				overlayCanvas.width = w;
+				overlayCanvas.height = h;
+			}
+		}
+		window.addEventListener('resize', resize);
+		resize();
+
+		let lastTimeMs = performance.now();
+		let frameCount = 0;
+		let fpsTimer = 0;
+
+		function frame(nowMs) {
+			const dt = Math.min((nowMs - lastTimeMs) / 1000, 0.1);
+			lastTimeMs = nowMs;
+
+			frameCount++;
+			fpsTimer += dt;
+			if (fpsTimer >= 1.0) {
+				document.getElementById('stat-fps').textContent = Math.round(frameCount / fpsTimer);
+				frameCount = 0;
+				fpsTimer = 0;
+			}
+
+			if (state.isPlaying) {
+				state.starTime += state.timeSpeed * dt;
+				if (state.starTime > 500) state.starTime = -500;
+				updateStarPositions();
+				refreshActiveStars();
+				updateReadout();
+			}
+
+			renderGL();
+			drawOverlay();
+
+			requestAnimationFrame(frame);
+		}
+
+		updateStarPositions();
+		refreshActiveStars();
+		wireEvents();
+		updateReadout();
+
+		requestAnimationFrame(frame);
+	})();
+	</script>
+</body>
+</html>
