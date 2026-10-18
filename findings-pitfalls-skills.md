@@ -4,6 +4,60 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-10-18 — A bounded rate replaces the confirmation gate; a falloff must be monotone in δ
+
+Supersedes the last entry of this file ("An auto follower must trust repetition,
+not magnitude"). Its diagnosis was right — a suggestion far from the current
+value is usually *unmeasured* data, not a new neighbourhood — but its cure is
+the shape of the bug it replaced. Holding the target until consecutive 4 Hz
+reads agree works on a re-pick and fails on a pan, because a pan moves *every*
+read: agreement never arrives, the target stays frozen at the pre-pan window
+for the whole gesture, the settled field falls outside it, and the picture is
+one colour until the reads happen to line up again. Measured on a 3-decade pan
+in 2 s, that law left the display 2.90 dex off the window the field wanted
+(0.37 mean); the law below 0.85 and 0.13, monotone the whole way.
+
+Two rules, both in `src/math/view-modes-field.js`:
+
+* **Follow the newest read at a bounded rate.** `offerRange` makes the latest
+  measurement the target *immediately*; `easeRange` closes the gap through a
+  single pole whose time constant grows with the distance it has to travel —
+  `1 - exp(-dt / (RANGE_TAU_S + |gap| / RANGE_MAX_RATE))`. A correction of the
+  size a pan leaves lands in τ = 0.2 s; travel never exceeds 2.5 dex/s however
+  far the target is. A rate ceiling *is* the outlier filter, and it needs no
+  decision about which read to believe — and unlike a gate it can come back
+  *down*, which matters: a fast flick used to leave the span permanently wider
+  because only agreed (widest) offers were ever locked in. Do not add a second
+  stage: a median window, a confirmation count or a smoothed offer each add
+  their own delay to the real change and none of them remove the outlier (the
+  two-pole version measured no better and cost a state field). The follower
+  state is `{mode, lo, hi, targetLo, targetHi}` and nothing else; the field test
+  asserts exactly that, so a revived safeguard has to be noticed.
+* **Percentile the field, and never let it see what the camera cannot.** The
+  suggestion was mode 1's raw min/max — the one statistic a single anchor can
+  move by itself. p5/p95 of the same log histogram is now the estimator for all
+  three modes (the shader plan asked for percentiles from the start; min/max
+  was drift). One 8 pc star in a 61×61 window: the field's own extreme moves
+  1.08 dex, the percentile window 0.72, and 96% of the texels stay inside the
+  ramp instead of being squeezed into its top few percent. Then the fix that
+  made the symptom honest at all: the IDW weight was `1/(sin²δ + sin²σ)`, and
+  `sin²δ` is symmetric about δ = 0 *and* 180° — every star painted a
+  full-strength copy of itself at its antipode, the whole map was
+  180°-rotation-symmetric, and a close star *behind* the eye owned the screen in
+  front of it, so *no* range law could have helped. `q = 2 - 2c` (= 4 sin²(δ/2),
+  same width to first order, monotone up to 4) is one line and one multiply: the
+  same star astern now moves the window 0.02 dex instead of 0.44. `makeScale`,
+  `heightOfDistance` and `distanceAtHeight` — the anchor scale `computeRaw`
+  quoted for mode 1 — go with the min/max suggestion they served: the legend
+  labels its ends from the live range (`10^lo`), so nothing else called them.
+
+Two smaller traps on the way. A percentile window clamps *on purpose*, so
+"every extreme is painted inside 0..1" is not a property to demand of the
+display any more — the check to keep is that the clamped tail stays a tail
+(< 10% of texels) and that the raw field has no hole. And `autoRange` writes
+`out.span` into the caller's scratch object, so that literal must declare
+`span` too or the object changes shape at runtime.
+
 ---
 
 ## 2026-10-18 — A fullscreen pass on the swapchain reads the *canvas* grid, not the field's
@@ -1967,3 +2021,7 @@ measured yet"; agreement across consecutive reads can. The shipped law
 snaps, later offers must repeat within 0.08 dex three times before becoming
 the target, and the display eases per frame. Applies to any auto-exposure /
 auto-window follower over streamed or re-picked data.
+
+*Superseded the same day by the entry at the top:* the agreement gate is what
+froze the range through a pan. What survives here is the diagnosis (magnitude
+cannot be the trust signal, only time can) and the mode's-first-offer snap.

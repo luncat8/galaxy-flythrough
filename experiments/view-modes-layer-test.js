@@ -178,11 +178,16 @@ const layer = ViewModesLayer.createViewModesLayer(canvas, {
 });
 
 // --- boot defaults (view-modes.8): the map is opt-in -----------------------
-check('a fresh layer boots off, without contours, at 256 nearest anchors',
+check('a fresh layer boots off with nearest anchors and 256 stars',
 	layer.settings.mode === 'off' && layer.settings.contours === false
-	&& layer.settings.anchors === 256
-	&& ViewModesLayer.DEFAULTS.mode === 'off' && ViewModesLayer.DEFAULTS.anchors === 256,
+	&& layer.settings.source === 'nearest' && layer.settings.anchors === 256
+	&& ViewModesLayer.DEFAULTS.mode === 'off' && ViewModesLayer.DEFAULTS.source === 'nearest'
+	&& ViewModesLayer.DEFAULTS.anchors === 256,
 	{ ...layer.settings });
+const panelHtml = fs.readFileSync(path.join(__dirname, '../src/index.html'), 'utf8');
+check('the GUI checks nearest, not constellations, by default',
+	/name="vm-source" value="nearest" checked/.test(panelHtml)
+	&& !/name="vm-source" value="constellations" checked/.test(panelHtml), null);
 
 const env = {
 	starTimeMyr: 0,

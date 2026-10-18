@@ -532,16 +532,22 @@ function angleBetween(a, b) {
 	for (let i = 0; i < Math.min(before.length, dbg.set.n * 3); i++) if (before[i] !== dbg.set.positions[i]) changed++;
 	check('moving the eye re-picks the nearest N anchors', changed > 0 && /250 nearest · 250 anchors \(catalog\)/.test(el('readout').textContent),
 		{ movedKpc: +movedKpc.toFixed(3), changed });
-	// The range does not chase the first post-move read (view-modes.8): one
-	// disagreeing offer in 0.33 s is a sky still settling, so the old,
-	// settled bounds stay on screen — no snap, no flat-colour washout.
-	check('the auto range keeps the old bounds while the new reads settle',
-		dbg.live.lo === rangeBefore.lo && dbg.live.hi === rangeBefore.hi,
-		{ before: rangeBefore, lo: dbg.live.lo, hi: dbg.live.hi });
-	pump(150, tEnd + 1500);   // ~2.5 s: three agreeing reads, then the ease
-	check('once the reads hold still the auto range adopts them',
-		Math.abs(dbg.live.lo - rangeBefore.lo) + Math.abs(dbg.live.hi - rangeBefore.hi) > 1e-4,
-		{ before: rangeBefore, lo: dbg.live.lo, hi: dbg.live.hi });
+	// The re-pick is the least trustworthy read there is, so the display must not
+	// have arrived yet: 20 frames in it has begun moving and is nowhere near
+	// done, because the travel is rate-bounded. That gap is the whole protection —
+	// the alternative is the flat plate the picture used to turn into. The unit
+	// test pins the bound itself.
+	const rangeStep = Math.abs(dbg.live.lo - rangeBefore.lo) + Math.abs(dbg.live.hi - rangeBefore.hi);
+	check('the auto range begins adapting without an abrupt post-pan rewrite',
+		rangeStep > 1e-4 && rangeStep < 0.5,
+		{ before: rangeBefore, lo: dbg.live.lo, hi: dbg.live.hi, rangeStep });
+	pump(150, tEnd + 1500);   // ~2.5 s: the whole excursion has been travelled
+	check('the auto range catches up to the re-measured field',
+		Math.abs(dbg.live.lo - rangeBefore.lo) + Math.abs(dbg.live.hi - rangeBefore.hi) > rangeStep
+		&& Math.abs(dbg.live.lo - dbg.live.targetLo) < 1e-3
+		&& Math.abs(dbg.live.hi - dbg.live.targetHi) < 1e-3,
+		{ before: rangeBefore, lo: dbg.live.lo, hi: dbg.live.hi, rangeStep,
+			target: [dbg.live.targetLo, dbg.live.targetHi] });
 }
 
 // --- star time re-picks too, and moves the drawn anchors ----------------
@@ -725,7 +731,11 @@ if (WRITE_PNG) {
 		el('slider-relief').value = shot.relief || '6';
 		el('slider-relief').fire('input');
 		selectRadio('budget', 'high');
-		pump(2, 1e6 + pngs.length * 1000);
+		// The display range is eased, not snapped (that is the whole point of the
+		// follower), so a screenshot taken 2 frames after a settings change shows a
+		// window still travelling — a flat, wrongly-clipped plate that no user ever
+		// sees. Settle it first: the look being reviewed is the settled one.
+		pump(150, 1e6 + pngs.length * 1000);
 		const file = path.join(logDir, `view-modes-page-${shot.name}.png`);
 		writePng(file, VIEW_W, VIEW_H, fieldCanvas._pixels);
 		pngs.push(path.relative(ROOT, file));

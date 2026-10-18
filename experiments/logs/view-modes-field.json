@@ -1,11 +1,11 @@
 {
-  "date": "2026-10-18T11:42:52.898Z",
+  "date": "2026-10-18T21:44:11.656Z",
   "anchors": {
     "landmarks": 60,
     "catalog": 3829
   },
-  "totalChecks": 78,
-  "passed": 78,
+  "totalChecks": 81,
+  "passed": 81,
   "failed": 0,
   "checks": [
     {
@@ -122,32 +122,40 @@
       }
     },
     {
-      "name": "height 1 at the near anchor, 0 at the far anchor",
+      "name": "a decade of field is a third of the ramp, wherever the field sits",
+      "pass": true,
+      "detail": {
+        "before": [
+          0.9333333373069763,
+          0.7333333492279053,
+          0.5333333611488342,
+          0.3333333432674408
+        ],
+        "after": [
+          0.5999999642372131,
+          0.4000000059604645,
+          0.20000000298023224,
+          0
+        ]
+      }
+    },
+    {
+      "name": "a field beyond the range reads as far, not rescaled to 1",
+      "pass": true,
+      "detail": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "the range ends are the distances the legend quotes",
       "pass": true,
       "detail": {
         "near": 1,
-        "far": 0
+        "far": 0.001
       }
-    },
-    {
-      "name": "height decreases monotonically with distance",
-      "pass": true
-    },
-    {
-      "name": "legend and readout agree: height → kpc → height round-trips",
-      "pass": true,
-      "detail": 1.1102230246251565e-16
-    },
-    {
-      "name": "a set entirely outside the range reads as far, not rescaled to 1",
-      "pass": true,
-      "detail": {
-        "h": 0
-      }
-    },
-    {
-      "name": "a star at the eye cannot flatten the ramp (1 pc floor)",
-      "pass": true
     },
     {
       "name": "a log range puts half a decade at the middle",
@@ -186,6 +194,14 @@
       }
     },
     {
+      "name": "a pass without a measurement falls back on the raw field",
+      "pass": true,
+      "detail": {
+        "lo": -2.032,
+        "hi": -1.668
+      }
+    },
+    {
       "name": "a narrow distance band still fills the ramp",
       "pass": true,
       "detail": {
@@ -202,6 +218,14 @@
       }
     },
     {
+      "name": "an empty field still gets a legal window",
+      "pass": true,
+      "detail": {
+        "lo": -0.33302999566398117,
+        "hi": 0.03097000433601879
+      }
+    },
+    {
       "name": "the first offer for a mode snaps (nothing older in its unit to keep)",
       "pass": true,
       "detail": {
@@ -209,88 +233,72 @@
         "lo": -2.5,
         "hi": -0.4,
         "targetLo": -2.5,
-        "targetHi": -0.4,
-        "candLo": -2.5,
-        "candHi": -0.4,
-        "candN": 3
+        "targetHi": -0.4
       }
     },
     {
-      "name": "unstable offers never move the display range (no post-pan washout)",
+      "name": "a changed read becomes the target at once; only the display lags",
       "pass": true,
       "detail": {
         "mode": "height",
         "lo": -2.5,
         "hi": -0.4,
-        "targetLo": -2.5,
-        "targetHi": -0.4,
-        "candLo": 0.8,
-        "candHi": 2.6,
-        "candN": 1
+        "targetLo": -4.6,
+        "targetHi": -3.1
       }
     },
     {
-      "name": "a degenerate offer is ignored, not adopted",
+      "name": "an isolated outlier read is bounded per frame and unwinds by itself",
+      "pass": true,
+      "detail": {
+        "frameStep": 0.03598655526296701,
+        "lo": -2.48,
+        "hi": -0.39
+      }
+    },
+    {
+      "name": "invalid suggestions cannot corrupt the live target",
       "pass": true,
       "detail": {
         "mode": "height",
-        "lo": -2.5,
-        "hi": -0.4,
-        "targetLo": -2.5,
-        "targetHi": -0.4,
-        "candLo": 0.8,
-        "candHi": 2.6,
-        "candN": 1
+        "lo": -2.48,
+        "hi": -0.39,
+        "targetLo": -2.48,
+        "targetHi": -0.39,
+        "beforeInvalid": [
+          -2.48,
+          -0.39
+        ]
       }
     },
     {
-      "name": "two agreeing offers are not yet trusted",
+      "name": "an accepted range eases monotonically, rate-capped, and catches up",
       "pass": true,
       "detail": {
-        "mode": "height",
-        "lo": -2.5,
-        "hi": -0.4,
-        "targetLo": -2.5,
-        "targetHi": -0.4,
-        "candLo": 0.52,
-        "candHi": 2.01,
-        "candN": 2
+        "lo": 0.5495491021691975,
+        "hi": 2,
+        "worstRate": 2.135,
+        "targetLo": 0.55,
+        "targetHi": 2
       }
     },
     {
-      "name": "the third agreeing offer becomes the target — and the display eases, never snaps",
+      "name": "a continuous pan is followed, not frozen: < 1 dex off at worst",
       "pass": true,
       "detail": {
-        "mode": "height",
-        "lo": -2.4013204624508377,
-        "hi": -0.3206629631664543,
-        "targetLo": 0.51,
-        "targetHi": 2.02,
-        "candLo": 0.51,
-        "candHi": 2.02,
-        "candN": 3
+        "maxErr": 0.848,
+        "meanErr": 0.195
       }
     },
     {
-      "name": "the ease converges onto the trusted target monotonically (5 s at 60 fps)",
-      "pass": true,
-      "detail": {
-        "lo": 0.5098678262554888,
-        "hi": 2.019893734065875
-      }
-    },
-    {
-      "name": "resetRange parks display, target and candidate together (the manual freeze)",
+      "name": "resetRange parks the display and the target on one range",
       "pass": true,
       "detail": {
         "mode": "height",
         "lo": -1,
         "hi": 1,
         "targetLo": -1,
-        "targetHi": 1,
-        "candLo": -1,
-        "candHi": 1,
-        "candN": 0
+        "targetHi": 1
       }
     },
     {
@@ -301,11 +309,13 @@
         "lo": -3,
         "hi": -0.5,
         "targetLo": -3,
-        "targetHi": -0.5,
-        "candLo": -3,
-        "candHi": -0.5,
-        "candN": 3
+        "targetHi": -0.5
       }
+    },
+    {
+      "name": "the follower state is display + target and nothing more",
+      "pass": true,
+      "detail": "mode,lo,hi,targetLo,targetHi"
     },
     {
       "name": "constellation anchors are the landmark table (the Sun included)",
@@ -343,8 +353,8 @@
       "pass": true,
       "detail": {
         "bad": 0,
-        "lo": 0.066,
-        "hi": 0.934
+        "lo": 0,
+        "hi": 1
       }
     },
     {
@@ -352,23 +362,56 @@
       "pass": true,
       "detail": {
         "bad": 0,
-        "lo": 0.056,
-        "hi": 0.944
+        "lo": 0,
+        "hi": 0.955
       }
     },
     {
-      "name": "chart has no unpainted floor (min > 0.05)",
+      "name": "chart is a sky, not a plate: raw span > 0.05, clamped tail < 10%",
       "pass": true,
       "detail": {
-        "lo": 0.056
+        "raw": [
+          -1.8518120050430298,
+          -0.7343270182609558
+        ],
+        "tail": 0.034,
+        "lo": 0
+      }
+    },
+    {
+      "name": "a close star the eye cannot see does not touch the field or the range",
+      "pass": true,
+      "detail": {
+        "calm": [
+          -0.2445662647485733,
+          0.0554337352514267
+        ],
+        "behind": [
+          -0.264018425300042,
+          0.03598157469995798
+        ],
+        "raw": [
+          -0.0969100147485733,
+          -0.1195467934012413
+        ]
+      }
+    },
+    {
+      "name": "a close star in view saturates instead of squeezing the sky",
+      "pass": true,
+      "detail": {
+        "fieldShift": 1.085,
+        "windowShift": 0.72,
+        "inside": 0.958,
+        "span": 0.768
       }
     },
     {
       "name": "mode 1 is the IDW mean of the stars on that ray, and falls off away from them",
       "pass": true,
       "detail": {
-        "atStar": 0.95,
-        "farVal": 0.465
+        "atStar": 0.948,
+        "farVal": 0.063
       }
     },
     {
@@ -376,7 +419,7 @@
       "pass": true,
       "detail": {
         "spread": 0.849,
-        "peakKpc": 0.4992
+        "peakKpc": 0.4994
       }
     },
     {
@@ -394,23 +437,23 @@
       "name": "mode 3 is |∇log₁₀ d| per degree, at the layout’s own texel angle",
       "pass": true,
       "detail": {
-        "want": 0.026773817410159967,
-        "got": 0.026781724765896797
+        "want": 0.015231620685820627,
+        "got": 0.015236192382872105
       }
     },
     {
       "name": "mode 3 auto range does not clump: < 15% of texels at full scale, > 30% in the middle",
       "pass": true,
       "detail": {
-        "topFrac": 0.03,
-        "midFrac": 0.727
+        "topFrac": 0.022,
+        "midFrac": 0.682
       }
     },
     {
       "name": "gradient of the real height field is non-degenerate",
       "pass": true,
       "detail": {
-        "max": 0.04977
+        "max": 0.06364
       }
     },
     {
@@ -516,27 +559,27 @@
       }
     },
     {
-      "name": "σ 3°: the near stars' texels reach 0.94 of the painted ramp",
+      "name": "σ 3°: the near stars' texels reach 1.00 of the painted ramp",
       "pass": true,
       "detail": {
-        "peak": 0.94,
-        "rawSpan": 1.729
+        "peak": 1,
+        "rawSpan": 1.907
       }
     },
     {
-      "name": "σ 10°: the near stars' texels reach 0.89 of the painted ramp",
+      "name": "σ 10°: the near stars' texels reach 1.00 of the painted ramp",
       "pass": true,
       "detail": {
-        "peak": 0.889,
-        "rawSpan": 0.886
+        "peak": 1,
+        "rawSpan": 1.121
       }
     },
     {
       "name": "a wide σ blends: the physical (log-distance) span shrinks by half",
       "pass": true,
       "detail": {
-        "narrow": 1.729,
-        "wide": 0.886
+        "narrow": 1.907,
+        "wide": 1.121
       }
     },
     {
@@ -584,10 +627,10 @@
       }
     },
     {
-      "name": "100 nearest-500 queries take 3.0 ms (< 200)",
+      "name": "100 nearest-500 queries take 3.8 ms (< 200)",
       "pass": true,
       "detail": {
-        "ms": 3.03
+        "ms": 3.78
       }
     },
     {
@@ -631,14 +674,14 @@
       "name": "the heightmap updates with star time",
       "pass": true,
       "detail": {
-        "maxDelta": 0.6717
+        "maxDelta": 0.52241
       }
     },
     {
-      "name": "500 anchors at the balanced budget (72×40) rebuilds in 7.5 ms (< 60)",
+      "name": "500 anchors at the balanced budget (72×40) rebuilds in 10.9 ms (< 60)",
       "pass": true,
       "detail": {
-        "ms": 7.53,
+        "ms": 10.94,
         "pairs": 1440000
       }
     },

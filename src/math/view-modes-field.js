@@ -33,11 +33,13 @@
 // The range (see "display range" below) is what turns any of the three into a
 // colour; the field itself never renormalizes after smoothing.
 //
-// Weights are angular: w = 1 / (sin²δ + sin²σ), δ = the angle between the texel
-// ray and the star, σ = the softening (a star's hill half-width). Two things
-// follow, and both are the point: the field is defined over the whole sphere —
-// stars behind the camera count, so the dome is never left unpainted — and the
-// sum is smooth, so it reads as terrain rather than as Voronoi cells.
+// Weights are angular: w = 1 / (4 sin²(δ/2) + sin²σ), δ = the angle between the
+// texel ray and the star, σ = the softening (a star's hill half-width). Two
+// things follow, and both are the point: the field is defined over the whole
+// sphere — a star behind the camera still contributes, so the dome is never left
+// unpainted — and the sum is smooth, so it reads as terrain rather than as
+// Voronoi cells. The falloff must be *monotone in δ* for the first of those to
+// stay a background instead of a copy: see the `q` line in computeRaw.
 //
 // Cost is O(w·h·N) at ~10 flops per pair: the exact, splat-free option the plan
 // listed as too heavy for the CPU at full size. It fits a frame because the page
@@ -53,8 +55,8 @@
 
 	const DEG = Math.PI / 180;
 	const TAU = Math.PI * 2;
-	// The log height scale never trusts a distance below this, so one star the
-	// camera sits on (the Sun, 5 pc under the home pose) cannot flatten the ramp.
+	// prepareStars never trusts a distance below this, so one star the camera sits
+	// on (the Sun, 5 pc under the home pose) cannot flatten the ramp.
 	const MIN_DIST_KPC = 0.001;      // 1 pc
 	const MAX_STARS = 1024;          // anchor cap; the slider tops out at 500
 	const HALF_PI = Math.PI / 2;
@@ -181,27 +183,14 @@
 	//
 	// Height is already logarithmic, so its range is a plain window on L; the
 	// other two span orders of magnitude (pc to kpc, 1e-5 to 1 dex/°) and are
-	// mapped through log10. Neither auto range nor a manual one re-stretches the
-	// field after smoothing — the bounds are declared in the legend, which is
-	// what keeps the colour a measurement rather than an adaptive paint.
+	// mapped through log10. One estimator picks the auto window for all three —
+	// the 5th/95th percentile of the field's log values — so it never rides on a
+	// single texel. Neither auto range nor a manual one re-stretches the field
+	// after smoothing: the bounds are declared in the legend, which is what keeps
+	// the colour a measurement rather than an adaptive paint.
 
 	const RANGE_FLOOR = 1e-6;         // 0.001 pc / 1 µdex per degree: a log floor
 	const SIGMA_DEG = 3;              // the default hill half-width, see computeField
-
-	// 1 at dMin (close), 0 at dMax (far), log10 in between: the anchor-derived
-	// auto range of mode 1.
-	function makeScale(out, dMin, dMax) {
-		out.lo = Math.log10(Math.max(MIN_DIST_KPC, dMin));
-		out.hi = Math.max(out.lo + 1, Math.log10(Math.max(dMax, MIN_DIST_KPC)));
-		out.span = out.hi - out.lo;
-		return out;
-	}
-	function heightOfDistance(scale, dKpc) {
-		return clamp(1 - (Math.log10(Math.max(MIN_DIST_KPC, dKpc)) - scale.lo) / scale.span, 0, 1);
-	}
-	function distanceAtHeight(scale, v) {
-		return Math.pow(10, scale.lo + (1 - clamp(v, 0, 1)) * scale.span);
-	}
 
 	// One raw value → 0..1. Height is inverted (the near end is the top of the
 	// ramp); the other modes climb with the raw value.
@@ -229,21 +218,34 @@
 		return out;
 	}
 
-	// The [lo, hi] a finished computeRaw pass suggests. Mode 1 spans the log
-	// distances the field actually takes — so the near end is 1 and the far end
-	// 0, and a set whose stars are all inside 100 pc uses the whole ramp instead
-	// of a forced decade (the "range is very big, nothing shows" look). Modes 2
-	// and 3 read the 5th/95th percentile of the log histogram, which keeps the
-	// near-zero half of a depth or slope map from eating the ramp.
+	// The [lo, hi] a finished computeRaw pass suggests: the 5th/95th percentile
+	// of the field's own log values, padded. One estimator for all three modes,
+	// and never the field's extremes. Mode 1 used to take its raw min/max, which
+	// is the one statistic a single anchor can move on its own: a star a decade
+	// closer than its neighbours widened the window by that decade on sight and
+	// squeezed the rest of the sky into a few percent of the ramp — the flat
+	// plate a pan leaves behind. At a percentile it saturates as a bright dot and
+	// the map around it keeps its colour meaning.
+	//
+	// The percentile window is also what keeps mode 1 honest about the *visible*
+	// sky: a set whose stars are all inside 100 pc still spans its whole field and
+	// so uses the whole ramp, instead of a forced decade (the "range is very big,
+	// nothing shows" look). The floor below is the only forced scale.
+	//
+	// A field with nothing to take percentiles of — flat, or no anchors at all.
+	// Mode 1 keeps its raw span in the range's own unit; modes 2–3 hold a raw
+	// scalar that has to be logged. Neither exists on an empty field, so the
+	// anchors' near edge is all there is to put the window on.
+	function fallbackLo(mode, stats) {
+		const raw = stats.empty ? -Infinity
+			: mode === 'height' ? stats.rawLo : Math.log10(Math.max(RANGE_FLOOR, stats.rawLo));
+		if (Number.isFinite(raw)) return raw;
+		return Math.log10(Math.max(MIN_DIST_KPC, stats.dMin || MIN_DIST_KPC));
+	}
+
 	function autoRange(mode, stats, out) {
-		let a, b;
-		if (mode === 'height') {
-			a = stats.rawLo; b = stats.rawHi;
-			if (!(b > a)) { a = Math.log10(Math.max(MIN_DIST_KPC, stats.dMin || MIN_DIST_KPC)); b = a + 0.3; }
-		} else {
-			a = stats.autoLo; b = stats.autoHi;
-			if (!(b > a)) { a = stats.rawLo; b = a + 0.3; }
-		}
+		let a = stats.autoLo, b = stats.autoHi;
+		if (!(b > a)) { a = fallbackLo(mode, stats); b = a + 0.3; }
 		const pad = 0.04 * (b - a) + 0.02;
 		out.lo = a - pad;
 		out.hi = b + pad;
@@ -258,66 +260,66 @@
 
 	// ---- following the auto range -------------------------------------------
 	//
-	// One law for both hosts (the island page and the app layer), replacing the
-	// duplicated snap-and-ease each used to keep. A measured suggestion is
-	// *offered* at the read rate (4 Hz); the display range (`lo`/`hi`) only
-	// ever eases toward a *trusted* target, per frame, in `easeRange`:
+	// One law for both hosts, and one pole: the display range eases toward the
+	// newest measurement every frame, with a time constant that grows with the
+	// distance it still has to travel. A correction of the size a pan leaves (a
+	// few tenths of a dex) closes in RANGE_TAU_S; anything larger is followed at
+	// no more than RANGE_MAX_RATE dex per second, so a single read taken while the
+	// sky is still settling — a re-picked anchor set, half a streamed residency —
+	// nudges the colours instead of owning them, and the next read supersedes it.
 	//
-	//   * The first offer for a mode snaps. There is no older range in that
-	//     mode's unit to keep, and easing in from a default washes the map
-	//     out for seconds at boot (view-modes.7).
-	//   * A later offer becomes the target only once RANGE_STABLE_READS
-	//     consecutive offers agree within RANGE_STABLE_TOL. After a pan the
-	//     first reads come from a sky still settling — a half-streamed
-	//     residency, a re-picked anchor set — and they disagree with each
-	//     other; while they do, the candidate keeps resetting and the map
-	//     keeps painting with the old, settled range.
-	//   * Nothing after the first read ever snaps. The old >1.5-decade snap
-	//     rewrote the live range with exactly those unstable first reads, and
-	//     the settled field then fell wholly outside it: one flat colour
-	//     until the slow ease crawled back (view-modes.8).
-	const RANGE_STABLE_READS = 3;    // agreeing offers before a target is trusted
-	const RANGE_STABLE_TOL = 0.08;   // dex: offers this close to the candidate agree
-	const RANGE_TAU_S = 0.5;         // s: the display range's ease time constant
+	// This rule has failed twice already, and both shapes are worth naming:
+	//   * snap when the suggestion is far away, on the theory that distance means
+	//     a new neighbourhood — the outlier IS the far read, so the snap spent the
+	//     least trustworthy measurement available;
+	//   * hold the target until consecutive reads agree — a flick moves *every*
+	//     read, so agreement never arrives, the target freezes for the whole pan,
+	//     the settled field falls outside the frozen window, and the map is one
+	//     flat colour until the reads happen to line up again.
+	// A bounded rate needs no decision about which read to believe: it is always
+	// moving toward the latest one, monotonically, and the worst a lone bad read
+	// can buy is RATE × (the time it stays) of travel, which then unwinds.
+	// Measured on the same 3-decade pan in 2 s (experiments/view-modes-field-test.js
+	// section 4): the gate left the display 2.90 dex off the truth, 0.37 on
+	// average; this law 0.85 and 0.13. Its price is a one-read outlier of 2 dex
+	// moving the colours 0.5 dex instead of not at all — a trade the percentile
+	// window above pays for, since such a read is no longer what it suggests.
+	// A mode's first offer still snaps, because the previous mode's unit is not a
+	// value worth easing from. Nothing after that snaps.
+	const RANGE_TAU_S = 0.2;       // s: follow a correction the window almost fits
+	const RANGE_MAX_RATE = 2.5;    // dex/s: ceiling while it is far from the target
 
 	function createRangeState(lo, hi) {
 		const a = lo === undefined ? 0 : lo;
 		const b = hi === undefined ? a + 1 : hi;
-		return { mode: '', lo: a, hi: b, targetLo: a, targetHi: b, candLo: a, candHi: b, candN: 0 };
+		return { mode: '', lo: a, hi: b, targetLo: a, targetHi: b };
 	}
 
-	// Park the state on one known range — a manual slider move, a freeze. The
-	// target and candidate land on the same numbers so a later switch back to
-	// auto eases from here instead of toward a stale target.
+	// Park the state on one known range — a manual slider move, a freeze, or the
+	// first measurement in a mode.
 	function resetRange(s, mode, lo, hi) {
 		s.mode = mode;
 		s.lo = lo; s.hi = hi;
 		s.targetLo = lo; s.targetHi = hi;
-		s.candLo = lo; s.candHi = hi;
-		s.candN = 0;
 		return s;
 	}
 
+	// The newest suggestion. Nothing is *decided* here except a mode change: the
+	// trust is spent in the follow, where time — not agreement between two reads —
+	// is the only resource worth spending.
 	function offerRange(s, mode, lo, hi) {
 		if (!Number.isFinite(lo) || !Number.isFinite(hi) || !(hi > lo)) return s;
-		if (s.mode !== mode) {
-			resetRange(s, mode, lo, hi);
-			s.candN = RANGE_STABLE_READS;
-			return s;
-		}
-		if (s.candN > 0 && Math.abs(lo - s.candLo) <= RANGE_STABLE_TOL
-			&& Math.abs(hi - s.candHi) <= RANGE_STABLE_TOL) s.candN++;
-		else s.candN = 1;
-		s.candLo = lo; s.candHi = hi;
-		if (s.candN >= RANGE_STABLE_READS) { s.targetLo = lo; s.targetHi = hi; }
+		if (s.mode !== mode) return resetRange(s, mode, lo, hi);
+		s.targetLo = lo; s.targetHi = hi;
 		return s;
 	}
 
 	function easeRange(s, dt) {
 		if (!(dt > 0)) return s;
-		const k = 1 - Math.exp(-Math.min(dt, 0.25) / RANGE_TAU_S);
-		s.lo += (s.targetLo - s.lo) * k;
-		s.hi += (s.targetHi - s.hi) * k;
+		const step = dt < 0.25 ? dt : 0.25;      // a stall must not spend the whole gap
+		const gLo = s.targetLo - s.lo, gHi = s.targetHi - s.hi;
+		s.lo += gLo * (1 - Math.exp(-step / (RANGE_TAU_S + Math.abs(gLo) / RANGE_MAX_RATE)));
+		s.hi += gHi * (1 - Math.exp(-step / (RANGE_TAU_S + Math.abs(gHi) / RANGE_MAX_RATE)));
 		if (Math.abs(s.targetLo - s.lo) < 1e-4) s.lo = s.targetLo;
 		if (Math.abs(s.targetHi - s.hi) < 1e-4) s.hi = s.targetHi;
 		return s;
@@ -505,24 +507,25 @@
 	// opts: {
 	//   mode:     'height' | 'spread' | 'gradient'
 	//   sigmaDeg: IDW hill half-width in degrees (default 3). The weight is
-	//             1/(sin²δ + sin²σ), so σ is the angle at which a star's hill
-	//             has halved: a wide σ means a star's own texel blends more with
-	//             its neighbours (10° halves the field's log-distance span) and
-	//             the map reads flatter. 3° keeps 94% of the nearest anchor's
-	//             peak on a chart while still joining the figures.
+	//             1/(4 sin²(δ/2) + sin²σ), so σ is (to under half a percent) the
+	//             angle at which a star's hill has halved: a wide σ means a
+	//             star's own texel blends more with its neighbours (10° halves
+	//             the field's log-distance span) and the map reads flatter.
+	//             3° keeps 94% of the nearest anchor's peak on a chart while
+	//             still joining the figures.
 	//   measure:  false skips the range suggestion (the histogram / raw min-max);
 	//             the field itself is unaffected. The page asks for it at 4 Hz.
 	//   range:    applyRange's [lo, hi] for computeField's one-shot path.
 	// }
 	// stats (mutated, never allocated): { pairs, rawLo, rawHi, autoLo, autoHi,
-	//   spreadMax, dMin, dMax, empty } — autoLo/Hi are this pass's suggested
-	//   log-range bounds; autoRange() owns their final padding.
+	//   spreadMax, dMin, dMax, empty } — rawLo/Hi are the field's extremes in the
+	//   mode's raw unit, autoLo/Hi the percentile window suggested for the range;
+	//   autoRange() owns their padding and floor.
 	const fieldScratch = {
 		dir: new Float64Array(3), grid: null, raw: null, range: null,
 		slopeX: null, slopeY: null,
 	};
 	let orbitScratch = null;   // the position out-vec of the orbit dispatch
-	let scaleScratch = null;
 
 	const LOG_BINS = 64;
 	const logHist = new Uint32Array(LOG_BINS);
@@ -598,9 +601,10 @@
 		return outX;
 	}
 
-	// opts.measure (default true) also builds the range suggestion (mode 1's
-	// anchor scale, modes 2–3's log histogram). The page asks for it a few times
-	// a second, not every frame: the numbers only feed the eased range.
+	// opts.measure (default true) also builds the range suggestion: one log
+	// histogram of the field for every mode, whose extremes go to rawLo/rawHi and
+	// whose percentiles to autoLo/autoHi. The page asks for it a few times a
+	// second, not every frame: the numbers only feed the eased range.
 	function computeRaw(starsIn, layout, opts, out, stats) {
 		const w = layout.w, h = layout.h, count = w * h;
 		const measure = opts.measure !== false;
@@ -636,7 +640,15 @@
 				let sw = 0, sv = 0, sd = 0, sd2 = 0;
 				for (let i = 0; i < n; i++) {
 					const c = ax * dirX[i] + ay * dirY[i] + az * dirZ[i];
-					let q = 1 - c * c;
+					// Angular falloff: 2(1-cos δ) = 4 sin²(δ/2), which equals sin²δ to
+					// first order (so the hill is exactly as wide as the σ tuning
+					// assumes) and keeps growing to 4 at δ = 180°. The obvious
+					// `1 - c*c` = sin²δ is *symmetric in δ about 0 and 180*, so every
+					// star also painted a full-strength copy of itself at its
+					// antipode: the whole map was 180°-symmetric, and a close star
+					// behind the camera owned the screen in front of it — the
+					// washout this whole island exists to avoid.
+					let q = 2 - 2 * c;
 					if (q < 0) q = 0;
 					const gw = 1 / (q + eps2);
 					sw += gw;
@@ -677,51 +689,45 @@
 			}
 		}
 
-		// The raw distribution, and the range it suggests. Mode 1's suggestion
-		// comes from the anchors (autoRange rebuilds it from dMin/dMax); the
-		// other modes read a log histogram, so one bright spike cannot own the
-		// whole ramp.
+		// The raw distribution, and the range it suggests. Every mode offers the
+		// same thing: the 5th/95th percentile of a log histogram of the field, so
+		// one bright spike (mode 1: one close star) cannot own the whole ramp and
+		// the near-zero half of a depth or slope map cannot eat it either.
 		if (!measure) {
 			stats.pairs = pairs;
 			stats.spreadMax = spreadMax;
 			return out;
 		}
-		if (mode === 'height') {
-			let lo = Infinity, hi = -Infinity;
-			for (let i = 0; i < count; i++) {
-				const v = out[i];
-				if (v < lo) lo = v;
-				if (v > hi) hi = v;
-			}
-			stats.rawLo = lo; stats.rawHi = hi;
-			const s = makeScale(scaleScratch || (scaleScratch = {}), stats.dMin, stats.dMax);
-			stats.autoLo = s.lo; stats.autoHi = s.hi;
-		} else {
-			let lo = Infinity, hi = -Infinity;
-			for (let i = 0; i < count; i++) {
-				const v = out[i];
-				if (!(v > RANGE_FLOOR)) continue;
-				const l = Math.log10(v);
-				if (l < lo) lo = l;
-				if (l > hi) hi = l;
-			}
-			if (!(hi > lo)) { hi = (lo === Infinity ? Math.log10(RANGE_FLOOR) : lo) + 0.3; }
-			if (!(lo < Infinity)) lo = hi - 0.3;
-			histLo = lo;
-			histW = (hi - lo) / LOG_BINS;
-			if (!(histW > 0)) histW = 1;
-			logHist.fill(0);
-			for (let i = 0; i < count; i++) {
-				const v = out[i] > RANGE_FLOOR ? out[i] : RANGE_FLOOR;
-				let b = ((Math.log10(v) - lo) / histW) | 0;
-				if (b < 0) b = 0; else if (b >= LOG_BINS) b = LOG_BINS - 1;
-				logHist[b]++;
-			}
-			stats.rawLo = Math.pow(10, lo);
-			stats.rawHi = Math.pow(10, hi);
-			stats.autoLo = histPercentile(0.05, count);
-			stats.autoHi = histPercentile(0.95, count);
+		// Mode 1's raw value already *is* the log10 the range is declared in; the
+		// other two are logged here, and their floor-bound texels are left out of
+		// the span (a field that is mostly zero must not have its window pinned to
+		// the floor) while staying in the histogram, where they are the cut tail.
+		const logged = mode === 'height';
+		let lo = Infinity, hi = -Infinity;
+		for (let i = 0; i < count; i++) {
+			const v = out[i];
+			if (!logged && !(v > RANGE_FLOOR)) continue;
+			const l = logged ? v : Math.log10(v);
+			if (l < lo) lo = l;
+			if (l > hi) hi = l;
 		}
+		if (!(hi > lo)) { hi = (lo === Infinity ? Math.log10(RANGE_FLOOR) : lo) + 0.3; }
+		if (!(lo < Infinity)) lo = hi - 0.3;
+		histLo = lo;
+		histW = (hi - lo) / LOG_BINS;
+		if (!(histW > 0)) histW = 1;
+		logHist.fill(0);
+		for (let i = 0; i < count; i++) {
+			const v = out[i];
+			const l = logged ? v : Math.log10(v > RANGE_FLOOR ? v : RANGE_FLOOR);
+			let b = ((l - histLo) / histW) | 0;
+			if (b < 0) b = 0; else if (b >= LOG_BINS) b = LOG_BINS - 1;
+			logHist[b]++;
+		}
+		stats.rawLo = logged ? lo : Math.pow(10, lo);
+		stats.rawHi = logged ? hi : Math.pow(10, hi);
+		stats.autoLo = histPercentile(0.05, count);
+		stats.autoHi = histPercentile(0.95, count);
 		stats.pairs = pairs;
 		stats.spreadMax = spreadMax;
 		return out;
@@ -1082,9 +1088,9 @@
 		// pose
 		quatTurn, quatMul, quatArc, quatApply, quatInv, quatNormalize, quatBasis, quatDrag,
 		// range
-		makeScale, heightOfDistance, distanceAtHeight, rangeValue, applyRange, autoRange, SIGMA_DEG,
+		rangeValue, applyRange, autoRange, SIGMA_DEG,
 		createRangeState, resetRange, offerRange, easeRange,
-		RANGE_STABLE_READS, RANGE_STABLE_TOL, RANGE_TAU_S,
+		RANGE_TAU_S, RANGE_MAX_RATE,
 		// layout
 		createLayout, dirAt, chartDirAt, texelOf,
 		// field

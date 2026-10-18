@@ -59,7 +59,7 @@
     {
       "name": "readout reports a non-empty field",
       "pass": true,
-      "detail": "field 216×120 · 1.56 M pairs · 13.1 ms · 60 fps"
+      "detail": "field 216×120 · 1.56 M pairs · 11.9 ms · 60 fps"
     },
     {
       "name": "the painter drew the field and the star overlay",
@@ -84,20 +84,20 @@
       "pass": true,
       "detail": [
         "mode 1 · distance from eye",
-        "far 0.32 kpc",
-        "close 19 pc",
+        "far 0.12 kpc",
+        "close 33 pc",
         "60 anchors (landmarks) · IDW σ 3°",
         "auto range · log10 of the distance",
         "mode 1 · distance from eye",
-        "far 0.32 kpc",
-        "close 19 pc"
+        "far 0.12 kpc",
+        "close 33 pc"
       ]
     },
     {
       "name": "dragging looks around: the map repaints",
       "pass": true,
       "detail": {
-        "changedPx": 264309
+        "changedPx": 267879
       }
     },
     {
@@ -177,18 +177,18 @@
       "name": "mode 3 auto range does not pile the map at full scale",
       "pass": true,
       "detail": {
-        "top": 0.027,
-        "mid": 0.709,
+        "top": 0.033,
+        "mid": 0.729,
         "range": [
-          -3.277856804560208,
-          -2.0132197363240945
+          -3.2346289146225153,
+          -1.9370287045940766
         ]
       }
     },
     {
       "name": "mode 3 quotes a dex/° range in the legend and the readout",
       "pass": true,
-      "detail": "range: auto log · flat 0.00053 dex/° … steep 0.0097 dex/°"
+      "detail": "range: auto log · flat 0.00058 dex/° … steep 0.012 dex/°"
     },
     {
       "name": "a manual range slider takes the page out of auto and sticks",
@@ -196,18 +196,15 @@
       "detail": {
         "auto": false,
         "r": {
-          "lo": -3.277856804560208,
+          "lo": -3.2346289146225153,
           "hi": -1.5
         },
         "live": {
           "mode": "height",
-          "lo": -1.7899345624933036,
-          "hi": -1.1965899229049684,
-          "targetLo": -1.7903106451034545,
-          "targetHi": -1.1965899229049684,
-          "candLo": -1.4701401829719543,
-          "candHi": -1.1701401829719544,
-          "candN": 1
+          "lo": -0.5034420744985157,
+          "hi": -0.1304353644847082,
+          "targetLo": -1.428202909632678,
+          "targetHi": -1.1282029096326782
         }
       }
     },
@@ -216,13 +213,10 @@
       "pass": true,
       "detail": {
         "mode": "height",
-        "lo": -1.7899345624933036,
-        "hi": -1.1965899229049684,
-        "targetLo": -1.7903106451034545,
-        "targetHi": -1.1965899229049684,
-        "candLo": -1.4701401829719543,
-        "candHi": -1.1701401829719544,
-        "candN": 1
+        "lo": -0.5034420744985157,
+        "hi": -0.1304353644847082,
+        "targetLo": -1.428202909632678,
+        "targetHi": -1.1282029096326782
       }
     },
     {
@@ -262,7 +256,7 @@
       "name": "switching the ramp back repaints a different picture",
       "pass": true,
       "detail": {
-        "changedPx": 255193
+        "changedPx": 253389
       }
     },
     {
@@ -286,7 +280,7 @@
       "name": "relief only darkens — it never multiplies past full scale",
       "pass": true,
       "detail": {
-        "darker": 259856,
+        "darker": 259920,
         "brighter": 0
       }
     },
@@ -294,7 +288,7 @@
       "name": "relief darkens differentially, not by one uniform factor",
       "pass": true,
       "detail": {
-        "distinctShadeLevels": 43
+        "distinctShadeLevels": 47
       }
     },
     {
@@ -328,27 +322,29 @@
       }
     },
     {
-      "name": "the auto range keeps the old bounds while the new reads settle",
+      "name": "the auto range begins adapting without an abrupt post-pan rewrite",
       "pass": true,
       "detail": {
         "before": {
-          "lo": -1.4701401829719543,
-          "hi": -1.1701401829719544
+          "lo": -1.428202909632678,
+          "hi": -1.1282029096326782
         },
-        "lo": -1.4701401829719543,
-        "hi": -1.1701401829719544
+        "lo": -1.4451152069862752,
+        "hi": -1.1451152069862753,
+        "rangeStep": 0.03382459470719423
       }
     },
     {
-      "name": "once the reads hold still the auto range adopts them",
+      "name": "the auto range catches up to the re-measured field",
       "pass": true,
       "detail": {
         "before": {
-          "lo": -1.4701401829719543,
-          "hi": -1.1701401829719544
+          "lo": -1.428202909632678,
+          "hi": -1.1282029096326782
         },
-        "lo": -1.78628190560246,
-        "hi": -1.196257102971019
+        "lo": -1.4570347214905939,
+        "hi": -1.157034721490594,
+        "rangeStep": 0.03382459470719423
       }
     },
     {

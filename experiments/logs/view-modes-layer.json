@@ -1,10 +1,14 @@
 {
   "test": "view-modes-layer",
-  "passed": 35,
+  "passed": 36,
   "failed": 0,
   "checks": [
     {
-      "name": "a fresh layer boots off, without contours, at 256 nearest anchors",
+      "name": "a fresh layer boots off with nearest anchors and 256 stars",
+      "pass": true
+    },
+    {
+      "name": "the GUI checks nearest, not constellations, by default",
       "pass": true
     },
     {

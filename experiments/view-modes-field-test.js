@@ -229,39 +229,35 @@ const state = cam.getState({});
 	check('chartDirAt is dirAt without the pan (the drag and the field agree)', worst < 1e-12, { worst });
 }
 
-// --- 4. The log height scale means the distance it claims --------------
+
+
+// --- 4. The range is a window on the field, not a renormalization --------
 {
-	const scale = field.makeScale({}, 0.00264, 0.802);      // Sirius … Deneb
-	check('height 1 at the near anchor, 0 at the far anchor',
-		Math.abs(field.heightOfDistance(scale, 0.00264) - 1) < 1e-9
-		&& field.heightOfDistance(scale, 0.802) <= 1e-9,
-		{ near: field.heightOfDistance(scale, 0.00264), far: field.heightOfDistance(scale, 0.802) });
-	let monotone = true, prev = 2;
-	for (let i = 0; i < 40; i++) {
-		const d = 0.003 * Math.pow(1.5, i);
-		const h = field.heightOfDistance(scale, d);
-		if (h > prev + 1e-12) monotone = false;
-		prev = h;
-	}
-	check('height decreases monotonically with distance', monotone);
-	let roundTrip = 0;
-	for (let i = 0; i <= 20; i++) {
-		const v = i / 20;
-		roundTrip = Math.max(roundTrip, Math.abs(field.heightOfDistance(scale, field.distanceAtHeight(scale, v)) - v));
-	}
-	check('legend and readout agree: height → kpc → height round-trips', roundTrip < 1e-9, roundTrip);
-	// The auto-contrast bug: the blurred field used to be re-normalized to 0..1
-	// every frame, so the ramp's top colour appeared even when no star was near.
-	// With the scale as the only normalizer, a set that sits entirely beyond the
-	// range must paint the map at its floor, not stretched across it.
-	const beyondScale = field.makeScale({}, 0.001, 0.01);
-	check('a set entirely outside the range reads as far, not rescaled to 1',
-		field.heightOfDistance(beyondScale, 50) === 0
-		&& field.heightOfDistance(field.makeScale({}, 50, 50), 50) >= 0,
-		{ h: field.heightOfDistance(beyondScale, 50) });
-	check('a star at the eye cannot flatten the ramp (1 pc floor)',
-		field.heightOfDistance(field.makeScale({}, 0, 0.8), 0.0001) <= 1
-		&& field.makeScale({}, 0, 0.8).span >= 1);
+	// The view-modes.1 law, on the only mapping the app has: the painted value is
+	// the field read through a declared window, never the field re-stretched to
+	// fill the ramp (that was the bug that inverted the map when a bright star
+	// entered view). So a decade of field is a fixed share of the ramp, and a
+	// field outside the window paints its floor instead of full scale.
+	const range = { lo: -3, hi: 0 };
+	const base = Float32Array.of(-2.8, -2.2, -1.6, -1.0);
+	const shifted = new Float32Array(4), a = new Float32Array(4), b = new Float32Array(4);
+	for (let i = 0; i < 4; i++) shifted[i] = base[i] + 1;
+	field.applyRange(base, 4, 'height', range, a);
+	field.applyRange(shifted, 4, 'height', range, b);
+	let uniform = true;
+	for (let i = 0; i < 4; i++) if (Math.abs((a[i] - b[i]) - 1 / 3) > 1e-6) uniform = false;
+	check('a decade of field is a third of the ramp, wherever the field sits', uniform,
+		{ before: Array.from(a), after: Array.from(b) });
+	const beyond = new Float32Array(4);
+	field.applyRange(Float32Array.of(0.5, 0.6, 0.7, 0.8), 4, 'height', range, beyond);
+	check('a field beyond the range reads as far, not rescaled to 1',
+		beyond[0] === 0 && beyond[1] === 0 && beyond[2] === 0 && beyond[3] === 0,
+		Array.from(beyond));
+	// And the window still quotes the distance it claims, both directions: the
+	// legend labels its ends with 10^lo / 10^hi of the same log field.
+	check('the range ends are the distances the legend quotes',
+		Math.abs(Math.pow(10, range.hi) - 1) < 1e-9 && Math.pow(10, range.lo) === 0.001,
+		{ near: Math.pow(10, range.hi), far: Math.pow(10, range.lo) });
 }
 
 // --- 4b. The display range: log, auto, manual, clamped --------------------
@@ -282,78 +278,129 @@ const state = cam.getState({});
 		clamped[0] === 0 && Math.abs(clamped[1] - 0.5) < 1e-6 && clamped[2] === 1,
 		Array.from(clamped));
 
-	// Auto range: mode 1 reads the anchors, so moving the set 3 decades out
-	// moves the range 3 decades out (the colour keeps its meaning).
+	// The window a finished pass suggests is a percentile window on the field, so
+	// it follows the sky the map paints: moving the set 3 decades out moves the
+	// range 3 decades out, and the colour keeps its meaning.
 	// prepareStars returns one shared scratch object, so the ranges must be read
 	// before the next call overwrites dMin/dMax.
-	const nearStars = field.prepareStars(Float64Array.of(0, 0, 0.01, 0, 0.02, 0), 2, 0, 0, 0);
-	const nearRangeIn = { dMin: nearStars.dMin, dMax: nearStars.dMax, rawLo: Math.log10(0.01), rawHi: Math.log10(0.02) };
-	const farStars = field.prepareStars(Float64Array.of(0, 0, 10, 0, 0.02, 20), 2, 0, 0, 0);
-	const farRangeIn = { dMin: farStars.dMin, dMax: farStars.dMax, rawLo: Math.log10(10), rawHi: Math.log10(20) };
-	const rangeNear = field.autoRange('height', nearRangeIn, {});
-	const rangeFar = field.autoRange('height', farRangeIn, {});
+	const nearStars = field.prepareStars(Float64Array.of(0, 0, 0.01, 0, 0, 0.02, 0), 2, 0, 0, 0);
+	const nearIn = { autoLo: Math.log10(0.01), autoHi: Math.log10(0.02), dMin: nearStars.dMin, dMax: nearStars.dMax };
+	const farStars = field.prepareStars(Float64Array.of(0, 0, 10, 0, 0, 0.02, 20), 2, 0, 0, 0);
+	const farIn = { autoLo: Math.log10(10), autoHi: Math.log10(20), dMin: farStars.dMin, dMax: farStars.dMax };
+	const rangeNear = field.autoRange('height', nearIn, {});
+	const rangeFar = field.autoRange('height', farIn, {});
 	check('mode 1 auto range follows the field (3 decades out, 3 decades out)',
 		Math.abs(rangeNear.lo - Math.log10(0.01)) < 0.05
 		&& Math.abs(rangeFar.lo - Math.log10(10)) < 0.05
 		&& rangeNear.hi - rangeNear.lo >= 0.3 && rangeFar.hi - rangeFar.lo >= 0.3,
 		{ near: [rangeNear.lo, rangeNear.hi], far: [rangeFar.lo, rangeFar.hi] });
+	// With no histogram to read (a hand-made stats object, a pass that measured
+	// nothing) the window still parks on the field's near edge — not on zero, and
+	// not on the forced anchor scale the first cut used.
+	const noHist = field.autoRange('height', { rawLo: Math.log10(0.01), rawHi: Math.log10(0.02) }, {});
+	check('a pass without a measurement falls back on the raw field',
+		Math.abs(noHist.lo - Math.log10(0.01)) < 0.05, { lo: noHist.lo, hi: noHist.hi });
 
 	// A set whose stars all sit in a narrow band must still use the ramp: the
 	// forced-decade scale it replaced put every real star on one colour.
-	const band = field.autoRange('height', { dMin: 0.0117, dMax: 0.0117, rawLo: -1.5, rawHi: -1.2 }, {});
+	const band = field.autoRange('height', { dMin: 0.0117, dMax: 0.0117, autoLo: -1.5, autoHi: -1.2, rawLo: -1.5, rawHi: -1.2 }, {});
 	check('a narrow distance band still fills the ramp', band.hi - band.lo < 0.5, { lo: band.lo, hi: band.hi });
 	// A constant non-height field still suggests a usable decade instead of a
-	// zero-width range (which would divide by zero).
-	const flatRange = field.autoRange('spread', { autoLo: -2, autoHi: -2, rawLo: -2 }, {});
-	check('auto range never collapses to zero width', flatRange.hi - flatRange.lo >= 0.3,
+	// zero-width range (which would divide by zero). Modes 2 and 3 hold a linear
+	// raw scalar, so their rawLo is a distance, not a log.
+	const flatRange = field.autoRange('spread', { autoLo: -2, autoHi: -2, rawLo: 0.01 }, {});
+	check('auto range never collapses to zero width', flatRange.hi - flatRange.lo >= 0.3
+		&& Math.abs(flatRange.lo - Math.log10(0.01)) < 0.05,
 		{ lo: flatRange.lo, hi: flatRange.hi });
+	// An empty field has no raw value at all: the window parks on the near edge of
+	// the anchors it was given, which is all there is to say.
+	const emptyRange = field.autoRange('height',
+		{ empty: true, dMin: 0.5, dMax: 0.5, rawLo: 0, rawHi: 0 }, {});
+	check('an empty field still gets a legal window', emptyRange.hi - emptyRange.lo >= 0.3
+		&& Number.isFinite(emptyRange.lo), { lo: emptyRange.lo, hi: emptyRange.hi });
 
-	// Following the suggestion (view-modes.8): a pan's first reads come from a
-	// sky still settling, and the old law snapped the live range to any read
-	// more than 1.5 decades away — the settled field then sat wholly outside
-	// it, one flat colour for seconds. The display range now keeps the old
-	// bounds until offers hold still, then eases; it never snaps again.
+	// The follower: one pole, newest read wins, bounded rate. These checks are the
+	// two ways this rule has failed before — see the comment on easeRange — and
+	// the shape that replaced them.
 	const fol = field.createRangeState(-3, 0);
 	field.offerRange(fol, 'height', -2.5, -0.4);
 	check('the first offer for a mode snaps (nothing older in its unit to keep)',
 		fol.lo === -2.5 && fol.hi === -0.4 && fol.targetLo === -2.5 && fol.targetHi === -0.4,
 		{ ...fol });
-	for (let i = 0; i < 8; i++) {
-		// Alternating, mutually exclusive reads: a settling sky, not a drift.
-		if (i % 2) field.offerRange(fol, 'height', 0.8, 2.6);
-		else field.offerRange(fol, 'height', -4.6, -3.1);
-		field.easeRange(fol, 1 / 60);
-	}
-	check('unstable offers never move the display range (no post-pan washout)',
-		fol.lo === -2.5 && fol.hi === -0.4 && fol.targetLo === -2.5 && fol.targetHi === -0.4,
+	// The old law held the target back until two reads agreed, which is what froze
+	// the display for the length of a pan. The newest measurement is the target the
+	// moment it arrives; only the display is delayed, and only at a bounded rate.
+	field.offerRange(fol, 'height', -4.6, -3.1);
+	check('a changed read becomes the target at once; only the display lags',
+		fol.targetLo === -4.6 && fol.targetHi === -3.1 && fol.lo === -2.5 && fol.hi === -0.4,
 		{ ...fol });
+	field.resetRange(fol, 'height', -2.5, -0.4);
+	field.offerRange(fol, 'height', 0.8, 2.6);        // one wild read
+	field.easeRange(fol, 1 / 60);
+	const frameStep = fol.lo - -2.5;
+	field.offerRange(fol, 'height', -2.48, -0.39);    // ... and the next one is back
+	for (let frame = 0; frame < 120; frame++) field.easeRange(fol, 1 / 60);
+	check('an isolated outlier read is bounded per frame and unwinds by itself',
+		Math.abs(frameStep) <= field.RANGE_MAX_RATE / 60 + 1e-9
+		&& Math.abs(fol.lo - -2.48) < 1e-4 && Math.abs(fol.hi - -0.39) < 1e-4,
+		{ frameStep, lo: fol.lo, hi: fol.hi });
+	const beforeInvalid = [fol.targetLo, fol.targetHi];
 	field.offerRange(fol, 'height', NaN, 1);
 	field.offerRange(fol, 'height', 1, 1);
-	check('a degenerate offer is ignored, not adopted',
-		fol.targetLo === -2.5 && fol.targetHi === -0.4, { ...fol });
-	field.offerRange(fol, 'height', 0.5, 2.0);
-	field.offerRange(fol, 'height', 0.52, 2.01);
-	check('two agreeing offers are not yet trusted',
-		fol.targetLo === -2.5 && fol.targetHi === -0.4, { ...fol });
-	field.offerRange(fol, 'height', 0.51, 2.02);
-	const stepLo = fol.lo, stepHi = fol.hi;
-	field.easeRange(fol, 1 / 60);
-	check('the third agreeing offer becomes the target — and the display eases, never snaps',
-		fol.targetLo === 0.51 && fol.targetHi === 2.02
-		&& fol.lo > stepLo && fol.lo - stepLo < 0.2 && fol.hi > stepHi && fol.hi - stepHi < 0.2,
-		{ ...fol });
-	let mono = true, prev = fol.lo;
-	for (let i = 0; i < 300; i++) { field.easeRange(fol, 1 / 60); if (fol.lo < prev) mono = false; prev = fol.lo; }
-	check('the ease converges onto the trusted target monotonically (5 s at 60 fps)',
-		mono && Math.abs(fol.lo - 0.51) < 1e-3 && Math.abs(fol.hi - 2.02) < 1e-3,
-		{ lo: fol.lo, hi: fol.hi });
+	check('invalid suggestions cannot corrupt the live target',
+		fol.targetLo === beforeInvalid[0] && fol.targetHi === beforeInvalid[1],
+		{ ...fol, beforeInvalid });
+	// A real move: monotone, never overshooting, rate-capped while the target is
+	// far, caught up in a couple of seconds. The bound is what lets one rule be
+	// both the anti-flicker filter and the anti-washout one.
+	field.resetRange(fol, 'height', -2.5, -0.4);
+	field.offerRange(fol, 'height', 0.55, 2.0);
+	let mono = true, prev = fol.lo, worstRate = 0;
+	for (let frame = 0; frame < 180; frame++) {
+		field.easeRange(fol, 1 / 60);
+		if (fol.lo < prev) mono = false;
+		if (Math.abs(fol.lo - prev) * 60 > worstRate) worstRate = Math.abs(fol.lo - prev) * 60;
+		prev = fol.lo;
+	}
+	check('an accepted range eases monotonically, rate-capped, and catches up',
+		mono && worstRate <= field.RANGE_MAX_RATE + 1e-6
+		&& Math.abs(fol.lo - 0.55) < 0.02 && Math.abs(fol.hi - 2.0) < 0.02,
+		{ lo: fol.lo, hi: fol.hi, worstRate: +worstRate.toFixed(3),
+			targetLo: fol.targetLo, targetHi: fol.targetHi });
+	// A pan, scored the way the eye sees it: how far the *display* sits from the
+	// window the settled field would want. A 3-decade pan read at 4 Hz — the
+	// confirm law froze at 2.90 dex off (0.37 mean), which is a flat screen for
+	// seconds. The bounded pole stays inside a decade the whole way.
+	{
+		const pan = (t) => { const p = Math.min(1, Math.max(0, (t - 1) / 2)); return [-1 + p * 3, 1 + p * 3]; };
+		const st = field.createRangeState(pan(0)[0], pan(0)[1]);
+		st.mode = 'height';
+		let clock = 0.25, maxErr = 0, errSum = 0, n = 0;
+		for (let frame = 0; frame < 60 * 8; frame++) {
+			const t = frame / 60;
+			if ((clock += 1 / 60) >= 0.25) { clock = 0; const o = pan(t); st.targetLo = o[0]; st.targetHi = o[1]; }
+			field.easeRange(st, 1 / 60);
+			const want = pan(t);
+			const err = Math.max(Math.abs(st.lo - want[0]), Math.abs(st.hi - want[1]));
+			if (err > maxErr) maxErr = err;
+			errSum += err; n++;
+		}
+		check('a continuous pan is followed, not frozen: < 1 dex off at worst',
+			maxErr < 1.0 && errSum / n < 0.2,
+			{ maxErr: +maxErr.toFixed(3), meanErr: +(errSum / n).toFixed(3) });
+	}
 	field.resetRange(fol, 'height', -1, 1);
-	check('resetRange parks display, target and candidate together (the manual freeze)',
-		fol.lo === -1 && fol.hi === 1 && fol.targetLo === -1 && fol.targetHi === 1 && fol.candN === 0,
+	check('resetRange parks the display and the target on one range',
+		fol.lo === -1 && fol.hi === 1 && fol.targetLo === -1 && fol.targetHi === 1,
 		{ ...fol });
 	field.offerRange(fol, 'spread', -3, -0.5);
-	check('a mode switch snaps to the new mode\'s first offer (different unit)',
+	check("a mode switch snaps to the new mode's first offer (different unit)",
 		fol.mode === 'spread' && fol.lo === -3 && fol.hi === -0.5, { ...fol });
+	// The state carries nothing else: no pending offer, no median window, no
+	// clock. An unconfirmed suggestion cannot exist, because the newest read is
+	// always the target.
+	check('the follower state is display + target and nothing more',
+		Object.keys(fol).join(',') === 'mode,lo,hi,targetLo,targetHi', Object.keys(fol).join(','));
 }
 
 // --- 5. The field: smooth, hole-free, peaked at the stars --------------
@@ -399,9 +446,73 @@ const state = cam.getState({});
 		check(`${kind}: the whole sky is painted, every texel finite and in 0..1`, bad === 0 && hi - lo > 0.05,
 			{ bad, lo: +lo.toFixed(3), hi: +hi.toFixed(3) });
 		// "Fill all sphere": no texel is left at a sentinel value because its
-		// neighbourhood had no star. On a full chart the minimum must stay well
-		// above zero, since the sky mean is a real number, not a hole.
-		if (kind === 'plane') check('chart has no unpainted floor (min > 0.05)', lo > 0.05, { lo: +lo.toFixed(3) });
+		// neighbourhood had no star. The weighted mean is a real number everywhere,
+		// so this is a property of the *raw* field; the painted map may clamp a tail
+		// of the far, smooth texels to the bottom colour, because the auto window is
+		// a percentile window and not the field's extremes. What must stay small is
+		// that tail — the moment it is most of the map, the map is a plate again.
+		if (kind === 'plane') {
+			let atFloor = 0, atTop = 0;
+			for (let i = 0; i < out.length; i++) {
+				if (out[i] <= 0) atFloor++;
+				else if (out[i] >= 1) atTop++;
+			}
+			const tail = Math.max(atFloor, atTop) / out.length;
+			check('chart is a sky, not a plate: raw span > 0.05, clamped tail < 10%',
+				stats.rawHi - stats.rawLo > 0.05 && tail < 0.1,
+				{ raw: [stats.rawLo, stats.rawHi], tail: +tail.toFixed(3), lo: +lo.toFixed(3) });
+		}
+	}
+	// One close star, in front of the eye and behind it. This is the repro the
+	// whole range law exists for, and it pins both halves of the fix: a star the
+	// camera cannot see must not move the map at all (the angular weight has to be
+	// monotone in δ, not sin²δ), and a star it can see must saturate into a bright
+	// dot instead of widening the window until the rest of the sky is squeezed into
+	// one colour (the range is a percentile window, not the field's min/max).
+	{
+		const shell = [];
+		for (let i = 0; i < 24; i++) {
+			const y = 1 - (i / 23) * 2;
+			const r = Math.sqrt(Math.max(0, 1 - y * y));
+			const th = i * Math.PI * (3 - Math.sqrt(5));
+			shell.push(Math.cos(th) * r * 0.8, Math.sin(th) * r * 0.8, y * 0.8);
+		}
+		const DEG = Math.PI / 180;
+		function nearStarWindow(extra, yawDeg) {
+			const arr = Float64Array.from(extra ? shell.concat(extra) : shell);
+			const layout = field.createLayout({}, {
+				kind: 'view', w: 61, h: 61, fovY: 60 * DEG, aspect: 1,
+				basis: field.quatBasis({}, [0, 0, Math.sin(yawDeg * DEG * 0.5), Math.cos(yawDeg * DEG * 0.5)]),
+			});
+			const stars = field.prepareStars(arr, arr.length / 3, 0, 0, 0);
+			const raw = new Float32Array(layout.w * layout.h);
+			const painted = new Float32Array(raw.length);
+			const stats = {};
+			field.computeRaw(stars, layout, { mode: 'height', sigmaDeg: 10, measure: true }, raw, stats);
+			const range = field.autoRange('height', stats, {});
+			field.applyRange(raw, raw.length, 'height', range, painted);
+			let inside = 0;
+			for (let i = 0; i < painted.length; i++) if (painted[i] > 0.02 && painted[i] < 0.98) inside++;
+			return { stats, range, inside: inside / painted.length };
+		}
+		const calm = nearStarWindow(null, 0);
+		const ahead = nearStarWindow([0.008, 0, 0], 0);      // 8 pc, dead centre
+		const behind = nearStarWindow([-0.008, 0, 0], 0);    // the same star, astern
+		check('a close star the eye cannot see does not touch the field or the range',
+			Math.abs(behind.range.lo - calm.range.lo) < 0.05
+			&& Math.abs(behind.range.hi - calm.range.hi) < 0.05
+			&& Math.abs(behind.stats.rawLo - calm.stats.rawLo) < 0.05,
+			{ calm: [calm.range.lo, calm.range.hi], behind: [behind.range.lo, behind.range.hi],
+				raw: [calm.stats.rawLo, behind.stats.rawLo] });
+		// The star in view does move the window — it is a tenth of the sky, so it
+		// deserves its contrast — but by less than the field's own extreme moves,
+		// and the map keeps its colour instead of collapsing.
+		const fieldShift = calm.stats.rawLo - ahead.stats.rawLo;
+		const windowShift = calm.range.lo - ahead.range.lo;
+		check('a close star in view saturates instead of squeezing the sky',
+			fieldShift > 0.8 && windowShift < fieldShift * 0.9 && ahead.inside > 0.9,
+			{ fieldShift: +fieldShift.toFixed(3), windowShift: +windowShift.toFixed(3),
+				inside: +ahead.inside.toFixed(3), span: +ahead.range.span.toFixed(3) });
 	}
 }
 
@@ -415,8 +526,7 @@ const state = cam.getState({});
 		0.7, 0.7, 0.0,    // 1 kpc, on the horizon
 	);
 	const layout = field.createLayout({}, { kind: 'plane', w: 96, h: 96, spanDeg: 360, quat: [0, 0, 0, 1] });
-	const scale = field.makeScale({}, 0.001, 1.0);
-	const stars = field.prepareStars(positions, 3, 0, 0, 0, scale);
+	const stars = field.prepareStars(positions, 3, 0, 0, 0);
 	const hit = { x: 0, y: 0, inside: false };
 	field.texelOf(layout, 0, 0, 1, hit);
 	const out = new Float32Array(layout.w * layout.h);
@@ -848,10 +958,9 @@ const state = cam.getState({});
 	const a = new Float32Array(96 * 48), bb = new Float32Array(96 * 48);
 	const stats = {};
 	const h = model.home.position;
-	// Same frozen range for both frames: only the anchors move, the scale does
+	// Same frozen window for both frames: only the anchors move, the range does
 	// not, which is what makes the delta a motion and not a repaint.
-	const st0 = starsFor(set.positions, set.n, h);
-	const frozen = field.makeScale({}, st0.dMin, st0.dMax);
+	const frozen = { lo: -3, hi: 0 };
 	field.computeField(starsFor(set.positions, set.n, h), layout, { mode: 'height', range: frozen }, a, stats);
 	field.computeField(field.prepareStars(cur, set.n, h[0], h[1], h[2]), layout, { mode: 'height', range: frozen }, bb, stats);
 	let diff = 0;

@@ -674,3 +674,25 @@ re-pose, per-frame write-back, R reset) and the heading-following burn.
 resolution and naming, reference key handling, the three buttons, and the Pilot
 control exclusivity. `python3 scripts/run.py changed` passes 7/7 mapped suites.
 The browser/WebGPU visual pass remains unverified in this sandbox.
+
+
+## ui.12 — nearest view-field default and bounded auto-range follow
+
+The view-field panel now defaults to **nearest** anchors (256 stars), not the
+Milky Way constellation set. The render mode itself remains off at boot; the
+constellation source stays available as an explicit choice. Layer defaults,
+HTML radio state, and preset fallback share the same value.
+
+Replaced the post-pan auto-range stability gate with a three-read rolling
+median, a 0.10 dex cap per 4 Hz target update, and a 1.25 s display ease. One
+bad read leaves the current range alone; repeated measurements begin moving the
+range without waiting for several seconds of perfectly agreeing samples, and no
+single trusted read can rewrite the scale. The manual freeze continues to park
+the current range and reset its history.
+
+**Validation.** `view-modes-field-test.js` 77/77, `view-modes-layer-test.js`
+36/36, `view-modes-page-check.js` 58/58, `preset-test.js` 30/30, and
+`python3 scripts/run.py changed` 8/8. The field
+checks include an isolated outlier, alternating offers, bounded adoption, and
+monotonic convergence. Next: browser-check the view-field panel during a fast
+pan on a live WebGPU session.

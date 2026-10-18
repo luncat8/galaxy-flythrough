@@ -101,7 +101,7 @@ function menuDefaults() {
 		// read one set of numbers.
 		viewmode: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.mode : 'off',
 		viewproj: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.projection : 'view',
-		viewsource: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.source : 'constellations',
+		viewsource: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.source : 'nearest',
 		viewanchors: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.anchors : 256,
 		viewramp: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.ramp : 'auto',
 		viewrelief: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.relief : 6,

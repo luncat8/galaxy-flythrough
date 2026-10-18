@@ -707,3 +707,117 @@ trust repetition, not magnitude.
 Next step: if the hold + ease ever feels laggy during fast flight, trust
 *expansion* earlier than shrink — widening a range can only compress
 contrast, never flatten the field to one colour.
+
+### Follow-up — 2026-10-18 — remove the stacked autorange delay
+
+The first follow-up was still wrong in practice: it combined a rolling
+three-sample median, a small per-sample target slew, and a slow display ease.
+Those safeguards stacked, so after a real pan the old range could continue to
+clip the new field for seconds. Replace them with one confirmation step:
+keep the current display range for one changed read, confirm against the next
+nearby suggestion (0.35 dex endpoint tolerance), then ease directly toward the
+latest measured range with τ = 0.35 s. An isolated outlier cannot move the
+range, while a stable new neighbourhood begins adapting after two reads rather
+than waiting on a median window and a slew cap. The mode's first range still
+initializes immediately because there is no prior scale in that mode's units.
+
+Validation: field math 78/78, app layer 36/36, island page 58/58. The pan
+regression now checks that the bounds start moving smoothly and catch up,
+while the field test explicitly verifies one-read rejection, two-read
+confirmation, and monotone convergence.
+
+## view-modes.9 — 2026-10-18 — the range follows the newest read at a bounded rate
+
+Reported: after a pan the picture washes to a single colour for a few seconds
+until a new range is calculated, and a close star crossing the screen — worse
+right to left, worse when fast — fills the frame with one colour and then takes
+seconds to relax. The ask was explicit: keep the *old* range and adopt the new
+one slowly, instead of rewriting it with an unstable measurement. The .8 law
+did the first half of that and caused the second: it froze the target until
+consecutive reads agreed, which a pan never does.
+
+Two causes, one in the follower and one in the field itself.
+
+**The follower.** The confirmation gate (`RANGE_CONFIRM_TOL`, the
+`pendingLo`/`pendingHi` candidate) is removed, not tightened: while reads
+disagree it *stops following*, which is the washout. What replaces it is one
+pole with a distance-dependent time constant, `offerRange` taking the newest
+measurement as the target at once and `easeRange` closing the gap at no more
+than `RANGE_MAX_RATE` dex/s:
+
+```
+k = 1 - exp(-dt / (RANGE_TAU_S + |gap| / RANGE_MAX_RATE))   // 0.2 s, 2.5 dex/s
+```
+
+A correction the window almost fits arrives in τ; anything bigger travels at
+the ceiling, so the same constant that kills the flicker also bounds a wild
+read (one bad read of 2 dex moves the colours 0.5 dex and unwinds, and the
+display is monotone between). A 3-dex step is fully adopted in ~2.2 s. The
+first offer for a mode still snaps — the .7 boot lesson, kept as the
+mode-change case only — and `RANGE_CONFIRM_TOL` is gone along with the pending
+fields, so the state is `{mode, lo, hi, targetLo, targetHi}` and a test says so.
+The .8 "next step" (trust *expansion* earlier than shrink) is deliberately not
+taken: with the newest read always the target, both directions are followed at
+the same bounded rate, and the asymmetry would reintroduce exactly the
+one-way lock-in that made a flick leave the span permanently wide.
+
+**The measurement.** `autoRange` used to take mode 1's raw min/max — the one
+statistic a single anchor can move alone, and the reason a close star could
+triple the window on sight. All three modes now offer the same thing: p5/p95 of
+the log histogram `computeRaw` already builds for modes 2–3 (one branch, one
+pass, no second `makeScale` scratch — the display range does not use the anchor
+scale, so `makeScale` stays only for the distance↔height read-out). The 0.3-
+decade floor, which a calm field already sits on, means the percentile costs no
+contrast where there is nothing to reject. This is the plan's own wording
+(`archive/view-modes-shader-plan.md`: percentiles of the sampled log
+distances); min/max was the drift. `makeScale` / `heightOfDistance` /
+`distanceAtHeight` — the anchor scale `computeRaw` used to quote for mode 1 —
+leave with it: the legend labels its ends from the live range (`10^lo`,
+`10^hi`) and no other caller existed, so section 4 of the field test now pins
+the same view-modes.1 lesson (the range is a window on the field, never a
+renormalization of it) on `applyRange` itself.
+
+**And the field could see through the camera.** While measuring this it came
+out that the IDW weight was `1/(sin²δ + sin²σ)`, and `sin²δ` is symmetric about
+δ = 0 *and* 180°: every star painted a full-strength copy of itself at its
+antipode, the map was exactly 180°-rotation-symmetric, and a close star *behind*
+the eye owned the screen in front of it — which is the reported symptom almost
+verbatim, and no range law could have fixed it. `q = 2 - 2c` (= 4 sin²(δ/2),
+identical hill width to first order) makes the falloff monotone; the far
+hemisphere is now a background instead of a second copy of the near one. A star
+at 8 pc astern moves the window 0.02 dex where it used to move it 0.44.
+
+### Validation
+
+- `view-modes-field-test.js` 81/81 (was 78). The range block is rewritten on the
+  new law: newest read becomes the target at once; a lone outlier is bounded per
+  frame and unwinds by itself; monotone, rate-capped catch-up; a 3-decade pan
+  never leaves the display more than a decade off; `resetRange` parks display and
+  target; the state's key list is pinned. Two new checks measure the symptom on a
+  real field (a close star astern must not move map or range; one in view must
+  saturate rather than squeeze), and the "chart has no unpainted floor" check is
+  restated — a percentile window clamps a tail on purpose, so what is pinned is
+  that the tail stays under 10% of texels and the raw field keeps its span.
+  Both new checks fail on the old kernel *and* on the min/max estimator, and the
+  pan check fails on the gate.
+- `view-modes-layer-test.js` 36/36, `view-modes-page-check.js` 58/58. Its PNG
+  shots pumped 2 frames after each settings change — long enough for a *snapped*
+  range, not for an eased one — so they photographed the transient: with any
+  follower in place the shot is a flat, wrongly-clipped plate and looks like the
+  bug. They settle for ~2.5 s now, and only with `--png` (the checked path is
+  unchanged, so the FAST tier still runs in under 3 s). The pictures: the chart
+  gained colour (7 084 → 10 416 distinct, dominant colour 0.6% → 3.8%) and the
+  view kept its terrain, while the chart's mirror image is simply gone.
+  The page's eye-move check now reads as it should: 20 frames in, the display has begun
+  moving (< 0.5 dex travelled, bounded rate doing its job); 2.5 s in it has
+  caught up *and* sits on the target — the gap between those two is the
+  protection. `changed` 8/8; `quick` 24/25 with the pre-existing planet-gen heap
+  flake (it fails and passes alternately on a pristine HEAD too).
+
+### Lesson
+
+A follower that must survive both a flicker and a storm does not need a vote
+between measurements; it needs the newest one and a speed limit on the display.
+And any spatial kernel whose weights are read as "how near in direction" must be
+monotone over the whole sphere — an even function of the angle quietly doubles
+the sky and hands the frame to a star nobody can see.

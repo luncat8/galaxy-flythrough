@@ -78,7 +78,7 @@
 		const settings = {
 			mode: 'off',               // the map stays out of the way until asked (M)
 			projection: 'view',        // 'view' = view sphere, 'plane' = sky chart
-			source: 'constellations',  // 'nearest' | 'constellations' | 'selected'
+			source: 'nearest',         // 'nearest' | 'constellations' | 'selected'
 			anchors: 256,
 			sigmaDeg: Field.SIGMA_DEG,
 			budget: 'balanced',
@@ -109,12 +109,10 @@
 			fieldMs: 0,
 			lo: -3,
 			hi: 0,
-			// '' until the first auto-range read: the first offer for a mode
-			// snaps the window to the data (Field.offerRange); later offers
-			// must hold still before they are trusted, and never snap.
+			// '' until the first auto-range read; the first offer in a mode
+			// initializes it, later ones are followed at the shared rate.
 			mode: '',
 			targetLo: -3, targetHi: 0,
-			candLo: -3, candHi: 0, candN: 0,
 		};
 
 		// Camera basis in the layout's field names; filled per frame from the
@@ -132,7 +130,7 @@
 		const cornerDir = new Float64Array(3);
 		const viewBox = [new Float64Array(3), new Float64Array(3), new Float64Array(3), new Float64Array(3)];
 		const VIEW_SIGNS = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
-		const autoRangeScratch = { lo: 0, hi: 0 };
+		const autoRangeScratch = { lo: 0, hi: 0, span: 0 };
 		const stats = { pairs: 0, rawLo: 0, rawHi: 0, autoLo: 0, autoHi: 0, spreadMax: 0, dMin: 0, dMax: 0, empty: true };
 		const eye = new Float64Array(3);
 		const layout = { kind: '', w: 0, h: 0 };
@@ -470,11 +468,12 @@
 		}
 
 		// ---- display range ----------------------------------------------------
-		// The shared following law (Field.offerRange / easeRange): the field's
-		// suggestion is offered at 4 Hz, trusted only once it holds still, and
-		// the display range eases toward it every frame — it never snaps to a
-		// read taken while the sky is still settling after a pan. Unchecking
-		// auto freezes the colours where they are.
+		// The shared following law (Field.offerRange / easeRange): every 4 Hz
+		// offer becomes the target at once and the display eases to it, fast for a
+		// correction the window almost fits and rate-capped while it is far from
+		// one — so a lone unsettled read nudges the colours instead of flattening
+		// them, and nothing has to wait for reads to agree before the map follows
+		// a pan. Unchecking auto freezes the colours where they are.
 		function refreshAutoRange() {
 			if (stats.empty) return;
 			const a = Field.autoRange(settings.mode, stats, autoRangeScratch);
@@ -793,7 +792,7 @@
 		DEFAULTS: {
 			mode: 'off',
 			projection: 'view',
-			source: 'constellations',
+			source: 'nearest',
 			anchors: 256,
 			ramp: 'auto',
 			relief: 6,

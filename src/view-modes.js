@@ -17,10 +17,10 @@
 //   * `raw` is the physical field (log distance / depth σ / slope in dex per
 //     degree) and is rebuilt every frame.
 //   * `live` is the display range the painter uses (a Field range state).
-//     Auto mode offers it the stats' suggestion at 4 Hz; a suggestion is
-//     trusted only once it holds still, and the range eases toward it every
-//     frame — it never snaps to a read taken mid-pan. Manual mode holds the
-//     two slider values. The legend quotes the same numbers.
+//     Auto mode offers it the stats' suggestion at 4 Hz; two nearby reads
+//     confirm a change, rejecting a lone outlier, and the display eases toward
+//     the confirmed range each frame — it never snaps to one mid-pan read. Manual
+//     mode holds the two slider values. The legend quotes the same numbers.
 
 'use strict';
 
@@ -139,7 +139,7 @@
 		rect: null,
 	};
 
-	const autoRangeScratch = { lo: 0, hi: 0 };
+	const autoRangeScratch = { lo: 0, hi: 0, span: 0 };
 
 	function updateBasis() { Field.quatBasis(state.basis, state.pose); }
 
@@ -243,12 +243,11 @@
 
 	// ---- display range ----------------------------------------------------
 
-	// The shared following law (Field.offerRange / easeRange): the suggestion
-	// of a finished raw pass is offered at 4 Hz, trusted only once it holds
-	// still, and the display range eases toward it every frame. A pan's first
-	// reads come from a re-picked set and a moving window, and they disagree
-	// with each other — while they do, the map keeps the old range instead of
-	// snapping to one and washing out to a single colour.
+	// The shared following law (Field.offerRange / easeRange): every 4 Hz read
+	// becomes the target at once and the display eases to it — promptly for a
+	// correction the window almost fits, rate-capped while it is far from one.
+	// A lone unsettled read therefore nudges the colours instead of owning them,
+	// and a real pan is never left waiting for two reads to agree.
 	function refreshAutoRange() {
 		const s = state.stats;
 		if (s.empty) return;
