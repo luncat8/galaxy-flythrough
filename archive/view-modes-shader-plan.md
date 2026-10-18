@@ -397,3 +397,106 @@ What differs from the plan above, and why. The entry to read is
   > ~1 M texel-anchor pairs, and the browser pass (no browser in the sandbox;
   `experiments/view-modes-page-check.js --png` is what stands in for eyes, and it cannot
   show the marker dots or labels because it rasterizes `drawImage` only).
+
+---
+
+## View Modes Shader.5 — the main-render overlay (view-modes.4, 2026-10-17)
+
+The island proves the maths on ≤ 500 anchors in a browser-side CPU loop. The
+overlay is the same field inside the real frame, on the real star set, drawn by
+WebGPU. It is not a second renderer: it is three passes added to
+`render/star-sprites.js`, and its input is the renderer's own star buffer — the
+procedural field, the landmarks, the composite objects, the local gap-fill and
+the streamed catalog, in hybrid and game mode alike. No CPU sweep picks a
+nearest-N set, so there is no count at which the overlay stops describing the
+sky it is drawn over.
+
+### Passes and order
+
+1. `field-splat` — one instanced quad per star record, the same range the sprite
+   pass draws. The vertex stage reconstructs the *drawn* position with the
+   shared `starMovedPosition` helper (epoch map + classic/simple/apocenter
+   dispatch), projects it, and writes `l = log10(max(d, 1 pc))` at the vertex.
+   The fragment returns the moments `(w, w·l, w·l², w)` with `w = (1−r²)²`,
+   additively into an `rgba16float` field texture. `w` and the quad radius (in
+   field texels) are set so a star covers about one mean inter-star spacing;
+   the radius is clamped `2.5…40` texels so both a 50-star sky and a 300 k-star
+   field fill the map.
+2. `field-blur` — a fullscreen 3×3 binomial pass at field resolution, reading
+   the splat texture with `textureLoad` and writing a second `rgba16float`
+   texture. The moments stay aligned because all four lanes take the same
+   weights. Separating this from the composite is what keeps the composite at
+   one sample per value even in the two derivative modes.
+3. `field-composite` — a fullscreen triangle drawn **after** the tone-map
+   pass, on the swapchain with premultiplied alpha. It maps the mode's raw
+   value through the display range, samples a 256×1 `rgba8unorm-srgb` ramp LUT,
+   applies shaded relief and contour lines, and mixes over the finished frame
+   with the opacity slider. Off (mode 0) all three field passes are skipped, so
+   the overlay costs nothing when it is not in use.
+
+### Modes and units
+
+- `height` (1) — the weighted mean of `log10(d/kpc)`: the island's mode 1, with
+  near = high. The display value is `(hi − raw)/(hi − lo)`.
+- `spread` (2) — the weighted standard deviation of the same log distance, in
+  dex: the island's mode 2, computed from `b/r − (g/r)²` after the blur. Display
+  climbs with `log10(σ)`.
+- `slope` (3) — `|∇log10(d)|` in dex per degree of sky, the island's mode 3,
+  read from the same blurred mean with a one-texel central difference scaled by
+  the field's angular texel size. Display climbs with `log10(slope)`.
+
+### Display range
+
+The range is physical and declared, never a per-frame renormalisation of the
+picture. It is sampled on the CPU at 4 Hz while the overlay is on — the sample
+moves with the star clock as well as the eye, so a frozen camera still describes
+the sky it is drawn over — from at most 256 visible records taken by an even
+stride over all five blocks, resolved through `orbit.engineRecordPosition` — the picker's dispatch,
+so the sample moves with the star clock like the sprites do (the simple lane
+uses the same documented classic approximation the picker reports).
+
+- `height`: the 2nd/98th percentiles of the sampled log distances; the island's
+  padding rule (4% of the span plus 0.02, 0.3 dex floor) applies.
+- `spread`: for each sample star, the σ of the log distances of its 6 angular
+  nearest neighbours; the 5th/95th percentiles of `log10(σ)`.
+- `slope`: for each sample star and its angular nearest neighbour,
+  `|Δlog10 d| / Δangle` in dex per degree; the 5th/95th percentiles of its
+  `log10`.
+- Fewer than 3 samples falls back to fixed ranges the legend quotes
+  (`height` −2…1 dex, `spread` −1.3…0.2, `slope` −1.5…0.3).
+
+The CPU state is allocated once (`math/field-overlay.js`) and the percentiles
+sort a preallocated 256-float scratch; the refresh never allocates.
+
+### Look
+
+`math/field-ramp.js` owns the five island ramps (viridis, the published turbo
+polynomial, magma, the hypsometric terrain, grey) and their per-mode defaults;
+the island painter and the overlay read the same LUTs, so a colour cannot mean
+two things in the two views. The overlay uploads the active ramp as a
+`rgba8unorm-srgb` 256×1 texture and samples it bilinearly through
+`textureSampleLevel`. Shaded relief is the cartographic north-west light with a
+0.45 ambient floor, clamped to darken only, and contours are darkened band
+edges at the slider's level count (0 = off).
+
+### The controls
+
+Display panel, under a `View field` heading: a mode select (off / height /
+spread / slope), opacity (0…1), ramp (auto + the five), relief (0…1) and
+contour levels (0…12). `M` cycles the mode. All five are preset fields
+(`viewfield`, `viewopacity`, `viewramp`, `viewrelief`, `viewcontours`) and boot
+params, with the defaults owned here. The 2D label layer draws the compact
+legend — ramp strip, mode name, and the range in the mode's own unit — while
+the overlay is on.
+
+### Tests
+
+`experiments/field-overlay-test.js` pins the CPU half: percentile windows, the
+spread/slope estimators against hand-built star sets, the splat-radius law at
+0/50/300 000 stars, the uniform layouts and the fallback ranges.
+`experiments/renderer-test.js` pins the wiring: seven shader modules and
+pipelines, the three extra passes and their instance counts with the overlay
+on, no field passes with it off, and the composite's blend state.
+`experiments/wgsl-validate.js` extends the part/wired lists and checks the
+shared `starMovedPosition`, the field constants and the composite's bindings;
+`wgsl-exec-check.js` parses the three new modules like every other shipped one.

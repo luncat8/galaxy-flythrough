@@ -277,3 +277,76 @@ starving the 4 Hz reads).
 
 Next: the GPU path, if a browser pass shows the 72×40 budget is the thing hurting — as
 WGSL in `shaders.js` with `wgsl-exec` parity, CPU field kept as the fallback and mirror.
+
+---
+
+## view-modes.4 — 2026-10-17 — the field in the main frame (WebGPU overlay)
+
+The island proved the maths; this series puts the same picture inside the real
+frame and makes it a property of the renderer, not of a star set picked on the
+side. Three passes hang off `render/star-sprites.js` and read the renderer's own
+`StarPacked` storage buffer — procedural field, landmarks, composite objects,
+local gap-fill and streamed catalog, hybrid and Game mode alike. There is no
+nearest-N sweep, so there is no population at which the overlay stops describing
+the stars it is drawn over.
+
+**The passes.** `field-splat` is one instanced quad per record, using the same
+`starMovedPosition` header the sprite vertex stage uses (epoch map, classic →
+simple → apocenter dispatch), so the field follows star time by construction.
+The vertex projects the record and writes `log10(max(d, 1 pc))`; the fragment
+adds the moments `(w, w·l, w·l², w)` with `w = (1−r²)²` into a half-canvas
+`rgba16float` target. The footprint covers ~1.2 mean inter-star spacings, clamped
+2.5…40 px, so a 50-star sky still fills the map and a 300 k-star one does not
+overdraw. `field-blur` is the fixed 3×3 binomial kernel (4·centre, 2·edges,
+1·corners, /16) at field resolution — separate from the composite so the
+derivative modes read one blurred value, not nine texels. `field-composite`
+runs **after** the tonemap on the swapchain with premultiplied alpha: the field
+is a map over the picture, not another light source, so the exposure curve
+cannot tint the ramp. `M` or the menu cycles off → distance → depth spread →
+slope.
+
+**The display range is physical and declared.** A bounded sample of ≤ 256
+visible records, taken by an even stride over all five blocks and resolved
+through `orbit.engineRecordPosition` (the picker's CPU twin of the vertex
+dispatch), feeds the same estimators the island uses: the 2nd/98th percentile of
+`log10(d/kpc)` for distance, the 5th/95th percentile of `log10 σ` over each
+sample star's six angular neighbours for depth spread, and of `log10 |Δlog d|/Δθ`
+for slope. Padding is the island's (4% of the span + 0.02 dex, 0.3 dex floor);
+fewer than three visible records falls back to the declared windows
+(`height` −2…1, `spread` −1.3…0.2, `slope` −1.5…0.3). The sample re-runs at 4 Hz
+while the overlay is on, allocation-free: the scratch arrays are the sample's
+size, not the star set's.
+
+**Slope in dex per degree, honestly.** The field lives in screen space, so a
+texel's angular size changes across the frame. The composite reconstructs it
+per pixel from the pinhole camera (`tan(fovY/2)`, the quadratic ray-angle
+correction) instead of dividing by a constant, which would bias every number
+away from the centre.
+
+**Shared ramps.** `math/field-ramp.js` now owns viridis, the published Turbo
+polynomial, magma, the hypsometric terrain and grey, and the per-mode defaults;
+the island painter and the overlay sample the same LUTs, so a colour cannot mean
+one distance on the chart and another in the frame. The right-hand panel grew a
+`View field` section (mode, ramp, opacity, relief, contours), the label layer a
+compact card with the ramp strip and the live range, and five preset fields
+(`viewfield`, `viewopacity`, `viewramp`, `viewrelief`, `viewcontours`) carry it
+through copy/paste and the URL.
+
+**Tests.** `experiments/field-overlay-test.js` pins the CPU half (21 + 1 checks:
+mode ids, size clamp, footprint law, percentile windows, the 1 pc floor, the
+estimators, uniform layouts, legend units, the shared LUT identities).
+`experiments/renderer-test.js` pins the wiring: seven modules and seven
+pipelines, six passes per frame with the overlay on and the same three with it
+off, the splat drawing exactly `state.drawn` records, the composite after the
+tonemap on the same swapchain view, and the uniform bytes.
+`experiments/wgsl-validate.js` checks the three new modules structurally, pins
+that `field-splat` reuses the shared star-position header, and that the mode ids
+match `math/field-overlay.js`; `experiments/wgsl-exec-check.js` (124/124) parses
+every shipped module, the new ones included. `experiments/preset-test.js` covers
+the round trip and the prompt line. The full suite is green apart from
+`planet-gen`'s known heap-threshold flake under load (passes standalone).
+
+**Not done.** No browser pass: there is no GPU in the sandbox, so the blend,
+the sampler and the relief curve are pinned by description rather than by a
+screenshot. The island stays as the CPU reference and browser fallback — the
+plan's isolation rule still holds (`m1-smoke-test.js`).

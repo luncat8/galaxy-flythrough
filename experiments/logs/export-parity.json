@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-17T20:38:10.888Z",
-  "modules": 28,
-  "totalChecks": 143,
-  "passed": 143,
+  "date": "2026-10-17T19:16:56.742Z",
+  "modules": 30,
+  "totalChecks": 153,
+  "passed": 153,
   "failed": 0,
   "checks": [
     {
@@ -418,6 +418,70 @@
     },
     {
       "name": "Coords binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "FieldRamp loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "FieldRamp registers exactly one window namespace (FieldRamp)",
+      "pass": true,
+      "detail": [
+        "FieldRamp"
+      ]
+    },
+    {
+      "name": "FieldRamp exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "FieldRamp has identical key sets (7 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "FieldRamp binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "FieldOverlay loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "FieldOverlay registers exactly one window namespace (FieldOverlay)",
+      "pass": true,
+      "detail": [
+        "FieldOverlay"
+      ]
+    },
+    {
+      "name": "FieldOverlay exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "FieldOverlay has identical key sets (42 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "FieldOverlay binds every key to the same value",
       "pass": true,
       "detail": []
     },
@@ -910,8 +974,9 @@
         "nebula-billboard",
         "tonemap",
         "simple-step",
-        "distance-field",
-        "distance-field-display"
+        "field-splat",
+        "field-blur",
+        "field-composite"
       ]
     },
     {
@@ -928,9 +993,9 @@
         "tonemap",
         "procedural-gen",
         "cull",
-        "field-uniform",
-        "distance-field",
-        "distance-field-display"
+        "field-splat",
+        "field-blur",
+        "field-composite"
       ]
     },
     {

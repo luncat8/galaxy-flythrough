@@ -1345,18 +1345,6 @@ Shipped, in `archive/`:
   *(shipped as view-modes.0/.1 — .1 corrected the projection and the distance meaning; the
   GPU splat and the pathfinding cost-grid export stay open. Log: `archive/view-modes-worklog.md`)*
 
-- [`distance-field-plan.md`](distance-field-plan.md) — the distance field promoted out of the
-  view-modes island and into the **main WebGPU renderer**: one law (`src/math/distance-field.js`),
-  a WGSL twin in `src/render/shaders.js` and a renderer module
-  (`src/render/distance-field-renderer.js`), the field painted as the sky the stars are
-  drawn on, and the anchors chosen by the app — the nearest N of the resident sky, the
-  selection set, the named stars — so the field works with **any** star situation rather
-  than one island's. A separate test page (`src/distance-field.html`) drives the same GPU
-  path from radio buttons (render type, star source, projection) and sliders (count, σ,
-  grid width, eye distance). *(M1 and M2 done — the law, the GPU path, the parity fixtures,
-  the page and the main renderer's field stage. M3 (contours, relief, the legend strip) and
-  M4 (the pathfinding cost-grid export) remain. Log: `archive/distance-field-worklog.md`)*
-
 - **0.5.6 — system-view review pass** (on top of the archived 0.5 plan, §6–§8):
   the system/ship controls move out of the right-hand galaxy menu into their own
   left panel (`#sysmenu`; Tab toggles both panels, the overlay/readout inset

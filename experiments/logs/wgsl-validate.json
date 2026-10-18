@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-17T20:38:11.111Z",
+  "date": "2026-10-17T19:21:48.271Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -19,7 +19,7 @@
     },
     {
       "name": "star-sprite",
-      "lines": 553
+      "lines": 564
     },
     {
       "name": "star-sprite-hdr",
@@ -42,16 +42,16 @@
       "lines": 114
     },
     {
-      "name": "field-uniform",
-      "lines": 51
+      "name": "field-splat",
+      "lines": 517
     },
     {
-      "name": "distance-field",
-      "lines": 197
+      "name": "field-blur",
+      "lines": 42
     },
     {
-      "name": "distance-field-display",
-      "lines": 167
+      "name": "field-composite",
+      "lines": 126
     }
   ],
   "wired": [
@@ -60,11 +60,12 @@
     "nebula-billboard",
     "tonemap",
     "simple-step",
-    "distance-field",
-    "distance-field-display"
+    "field-splat",
+    "field-blur",
+    "field-composite"
   ],
-  "totalChecks": 197,
-  "passed": 197,
+  "totalChecks": 205,
+  "passed": 205,
   "failed": 0,
   "checks": [
     {
@@ -81,9 +82,9 @@
         "tonemap",
         "procedural-gen",
         "cull",
-        "field-uniform",
-        "distance-field",
-        "distance-field-display"
+        "field-splat",
+        "field-blur",
+        "field-composite"
       ]
     },
     {
@@ -108,7 +109,7 @@
         ],
         [
           "star-sprite",
-          27867
+          28235
         ],
         [
           "star-sprite-hdr",
@@ -131,21 +132,21 @@
           3961
         ],
         [
-          "field-uniform",
-          2018
+          "field-splat",
+          25778
         ],
         [
-          "distance-field",
-          7467
+          "field-blur",
+          1490
         ],
         [
-          "distance-field-display",
-          6122
+          "field-composite",
+          5521
         ]
       ]
     },
     {
-      "name": "seven wired shaders are exposed (the four scene ones, the simple step, and the field's two)",
+      "name": "eight wired shaders are exposed (sprite, hdr reference, nebula, tonemap, simple-step, three field passes)",
       "pass": true,
       "detail": [
         "star-sprite",
@@ -153,8 +154,9 @@
         "nebula-billboard",
         "tonemap",
         "simple-step",
-        "distance-field",
-        "distance-field-display"
+        "field-splat",
+        "field-blur",
+        "field-composite"
       ]
     },
     {
@@ -168,8 +170,9 @@
         "procedural-gen",
         "cull",
         "simple-step",
-        "distance-field",
-        "distance-field-display"
+        "field-splat",
+        "field-blur",
+        "field-composite"
       ]
     },
     {
@@ -260,7 +263,7 @@
     {
       "name": "star-sprite: declares its functions",
       "pass": true,
-      "detail": 19
+      "detail": 20
     },
     {
       "name": "star-sprite-hdr: braces and parentheses balance",
@@ -353,7 +356,7 @@
       "detail": 6
     },
     {
-      "name": "field-uniform: braces and parentheses balance",
+      "name": "field-splat: braces and parentheses balance",
       "pass": true,
       "detail": {
         "braces": 0,
@@ -361,17 +364,17 @@
       }
     },
     {
-      "name": "field-uniform: contains no unresolved markers",
+      "name": "field-splat: contains no unresolved markers",
       "pass": true,
-      "detail": "field-uniform"
+      "detail": "field-splat"
     },
     {
-      "name": "field-uniform: declares its functions",
+      "name": "field-splat: declares its functions",
       "pass": true,
-      "detail": 2
+      "detail": 19
     },
     {
-      "name": "distance-field: braces and parentheses balance",
+      "name": "field-blur: braces and parentheses balance",
       "pass": true,
       "detail": {
         "braces": 0,
@@ -379,17 +382,17 @@
       }
     },
     {
-      "name": "distance-field: contains no unresolved markers",
+      "name": "field-blur: contains no unresolved markers",
       "pass": true,
-      "detail": "distance-field"
+      "detail": "field-blur"
     },
     {
-      "name": "distance-field: declares its functions",
+      "name": "field-blur: declares its functions",
       "pass": true,
-      "detail": 6
+      "detail": 3
     },
     {
-      "name": "distance-field-display: braces and parentheses balance",
+      "name": "field-composite: braces and parentheses balance",
       "pass": true,
       "detail": {
         "braces": 0,
@@ -397,14 +400,14 @@
       }
     },
     {
-      "name": "distance-field-display: contains no unresolved markers",
+      "name": "field-composite: contains no unresolved markers",
       "pass": true,
-      "detail": "distance-field-display"
+      "detail": "field-composite"
     },
     {
-      "name": "distance-field-display: declares its functions",
+      "name": "field-composite: declares its functions",
       "pass": true,
-      "detail": 7
+      "detail": 8
     },
     {
       "name": "star-sprite: every call target resolves in the module",
@@ -442,12 +445,17 @@
       "detail": []
     },
     {
-      "name": "distance-field: every call target resolves in the module",
+      "name": "field-splat: every call target resolves in the module",
       "pass": true,
       "detail": []
     },
     {
-      "name": "distance-field-display: every call target resolves in the module",
+      "name": "field-blur: every call target resolves in the module",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "field-composite: every call target resolves in the module",
       "pass": true,
       "detail": []
     },
@@ -1371,6 +1379,34 @@
     },
     {
       "name": "star-cluster rigid motion mirrors clusterCentreCoord/clusterCentre and FLAG_CLUSTER across CPU and WGSL",
+      "pass": true
+    },
+    {
+      "name": "field-splat reuses the shared star-position header (epoch map + engine dispatch)",
+      "pass": true
+    },
+    {
+      "name": "field-splat writes weighted log-distance moments additively",
+      "pass": true
+    },
+    {
+      "name": "field-blur is the fixed 3×3 binomial kernel (4·centre, 2·edges, 1·corners)",
+      "pass": true
+    },
+    {
+      "name": "field-composite binds uniform + field + ramp + sampler and blends over the frame",
+      "pass": true
+    },
+    {
+      "name": "field-composite reads the three modes and the declared range (no renormalisation)",
+      "pass": true
+    },
+    {
+      "name": "field-composite reconstructs the pinhole angular texel size for the slope mode",
+      "pass": true
+    },
+    {
+      "name": "the field modes are numbered as the composite shader reads them (off 0, height 1, spread 2, slope 3)",
       "pass": true
     }
   ]

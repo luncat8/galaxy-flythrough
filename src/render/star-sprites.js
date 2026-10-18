@@ -102,19 +102,30 @@ const MAX_FRAME_DT = 0.1;
 // HDR intermediate format — always used; on HDR displays the tonemap outputs
 // to an rgba16float swapchain too (same format).
 const HDR_INTERMEDIATE_FORMAT = 'rgba16float';
-// The distance field (distance-field-plan.md): the field the renderer paints
-// under the stars. The GPU grid it works on, the coarse grid the CPU reads
-// the display range from, and how often that read happens. The range is read
-// a few times a second rather than every frame: a range that follows every
-// frame flickers, and the legend has to mean a number.
-const FIELD_GRID_H = 180;
-const FIELD_GRID_W_MIN = 64;
-const FIELD_GRID_W_MAX = 640;
-const FIELD_RANGE_H = 36;
-const FIELD_RANGE_W = 64;
-const FIELD_RANGE_PERIOD = 0.25;
-const FIELD_SIGMA_DEG = 3;
-const FIELD_ANCHOR_CAP = 1024;
+
+// --- View field overlay (view-modes.4) --------------------------------------
+// The heightmap experiments, in the main frame: three GPU passes that read the
+// same StarPacked buffer this renderer draws, so the field describes exactly
+// the population on screen — procedural field, landmarks, composite objects,
+// local gap-fill and streamed catalog, in hybrid and Game mode alike, at any
+// count. The island's CPU field (math/view-modes-field.js) stays the
+// reference and the browser fallback; math/field-overlay.js holds the shared
+// range/splat law; math/field-ramp.js holds the ramps both views read.
+const FieldOverlay = (typeof window !== 'undefined' && window.FieldOverlay)
+        ? window.FieldOverlay
+        : require('../math/field-overlay.js');
+const FieldRamp = (typeof window !== 'undefined' && window.FieldRamp)
+        ? window.FieldRamp
+        : require('../math/field-ramp.js');
+const FIELD_SPLAT_UNIFORM_FLOATS = 4;      // radiusPx, fieldW, fieldH, 1 pc floor
+const FIELD_BLUR_UNIFORM_FLOATS = 4;       // fieldW, fieldH, 0, 0
+const FIELD_COMPOSITE_UNIFORM_FLOATS = 12; // params4, range4, viewport4
+const FIELD_RAMP_SIZE = 256;
+// The display range is re-sampled at 4 Hz while the overlay is on: 256
+// records resolved through the orbit dispatch, the two derived estimators,
+// three sorts. Cheap enough to follow the star clock, slow enough to never
+// sit in the frame's critical path.
+const FIELD_SAMPLE_MS = 250;
 
 // A cell manager must exist before a catalog is attached; this keeps the
 // renderer constructible in "procedural only" runs and in Node tests.
@@ -136,13 +147,6 @@ const EMPTY_MANIFEST = {
 function createStarRenderer(device, context, format, options) {
         const opts = options || {};
         const records = window.StarRecord;
-        // The distance field: the shared law (math/distance-field.js) and the
-        // GPU renderer (render/distance-field-renderer.js). The law is the CPU
-        // reference and the range's source; the renderer paints.
-        const fieldLaw = window.DistanceField
-                || (typeof module !== 'undefined' && module.exports ? require('../math/distance-field.js') : null);
-        const fieldLib = window.DistanceFieldRenderer
-                || (typeof module !== 'undefined' && module.exports ? require('./distance-field-renderer.js') : null);
         // Renderer unit tests construct the GPU harness without loading every page
         // script; preserve the old static record path in that environment.
         const orbit = window.OrbitLib || {
@@ -427,6 +431,166 @@ function createStarRenderer(device, context, format, options) {
         });
         let simpleBindGroup = null;
 
+        // --- View field overlay pipelines (view-modes.4) ----------------------
+        // The splat pipeline reads the same star buffer as the sprite pass and
+        // writes weighted moments additively; the blur is a fixed 3×3 kernel at
+        // field resolution; the composite maps the mode's value through the
+        // ramp and alpha-blends over the finished frame.
+        const fieldSplatModule = device.createShaderModule({
+                label: 'field-splat',
+                code: window.GalaxyShaders.SHADERS['field-splat'],
+        });
+        fieldSplatModule.getCompilationInfo().then((info) => {
+                for (const message of info.messages) {
+                        if (message.type !== 'error') continue;
+                        console.error('WGSL error in field-splat:', `${message.lineNum}:${message.linePos} ${message.message}`);
+                }
+        }).catch(() => {});
+
+        const fieldBlurModule = device.createShaderModule({
+                label: 'field-blur',
+                code: window.GalaxyShaders.SHADERS['field-blur'],
+        });
+        fieldBlurModule.getCompilationInfo().then((info) => {
+                for (const message of info.messages) {
+                        if (message.type !== 'error') continue;
+                        console.error('WGSL error in field-blur:', `${message.lineNum}:${message.linePos} ${message.message}`);
+                }
+        }).catch(() => {});
+
+        const fieldCompositeModule = device.createShaderModule({
+                label: 'field-composite',
+                code: window.GalaxyShaders.SHADERS['field-composite'],
+        });
+        fieldCompositeModule.getCompilationInfo().then((info) => {
+                for (const message of info.messages) {
+                        if (message.type !== 'error') continue;
+                        console.error('WGSL error in field-composite:', `${message.lineNum}:${message.linePos} ${message.message}`);
+                }
+        }).catch(() => {});
+
+        // Splat: binding 0 camera, 1 stars, 2 theta (simple engine), 3 params.
+        const fieldSplatBindGroupLayout = device.createBindGroupLayout({
+                label: 'field-splat-layout',
+                entries: [
+                        { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+                        { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+                        { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+                        { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+                ],
+        });
+        const fieldSplatPipeline = device.createRenderPipeline({
+                label: 'field-splat-pipeline',
+                layout: device.createPipelineLayout({ bindGroupLayouts: [fieldSplatBindGroupLayout] }),
+                vertex: { module: fieldSplatModule, entryPoint: 'vs_main' },
+                fragment: {
+                        module: fieldSplatModule,
+                        entryPoint: 'fs_main',
+                        targets: [{
+                                format: HDR_INTERMEDIATE_FORMAT,
+                                // Additive: the four moment lanes sum across
+                                // overlapping star footprints, so a dense
+                                // region averages instead of the last writer
+                                // winning.
+                                blend: {
+                                        color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+                                        alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+                                },
+                        }],
+                },
+                primitive: { topology: 'triangle-strip' },
+        });
+
+        const fieldBlurBindGroupLayout = device.createBindGroupLayout({
+                label: 'field-blur-layout',
+                entries: [
+                        { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                        { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+                ],
+        });
+        const fieldBlurPipeline = device.createRenderPipeline({
+                label: 'field-blur-pipeline',
+                layout: device.createPipelineLayout({ bindGroupLayouts: [fieldBlurBindGroupLayout] }),
+                vertex: { module: fieldBlurModule, entryPoint: 'vs_main' },
+                fragment: {
+                        module: fieldBlurModule,
+                        entryPoint: 'fs_main',
+                        targets: [{ format: HDR_INTERMEDIATE_FORMAT, blend: undefined }],
+                },
+                primitive: { topology: 'triangle-list' },
+        });
+
+        const fieldCompositeBindGroupLayout = device.createBindGroupLayout({
+                label: 'field-composite-layout',
+                entries: [
+                        { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                        { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+                        { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+                        { binding: 3, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+                ],
+        });
+        const fieldCompositePipeline = device.createRenderPipeline({
+                label: 'field-composite-pipeline',
+                layout: device.createPipelineLayout({ bindGroupLayouts: [fieldCompositeBindGroupLayout] }),
+                vertex: { module: fieldCompositeModule, entryPoint: 'vs_main' },
+                fragment: {
+                        module: fieldCompositeModule,
+                        entryPoint: 'fs_main',
+                        targets: [{
+                                format,
+                                // Premultiplied alpha over the tone-mapped
+                                // frame: the map sits on the picture, it is
+                                // not another light source, so it must not be
+                                // multiplied by the exposure curve.
+                                blend: {
+                                        color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+                                        alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+                                },
+                        }],
+                },
+                primitive: { topology: 'triangle-list' },
+        });
+
+        const splatUniformBuffer = device.createBuffer({
+                label: 'field-splat-uniform',
+                size: FIELD_SPLAT_UNIFORM_FLOATS * 4,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        const splatUniformData = new ArrayBuffer(FIELD_SPLAT_UNIFORM_FLOATS * 4);
+        const splatUniform = new Float32Array(splatUniformData);
+
+        const blurUniformBuffer = device.createBuffer({
+                label: 'field-blur-uniform',
+                size: FIELD_BLUR_UNIFORM_FLOATS * 4,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        const blurUniformData = new ArrayBuffer(FIELD_BLUR_UNIFORM_FLOATS * 4);
+        const blurUniform = new Float32Array(blurUniformData);
+
+        const fieldCompositeUniformBuffer = device.createBuffer({
+                label: 'field-composite-uniform',
+                size: FIELD_COMPOSITE_UNIFORM_FLOATS * 4,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        const fieldCompositeUniformData = new ArrayBuffer(FIELD_COMPOSITE_UNIFORM_FLOATS * 4);
+        const fieldCompositeUniform = new Float32Array(fieldCompositeUniformData);
+
+        const fieldSampler = device.createSampler({
+                label: 'field-sampler',
+                magFilter: 'linear',
+                minFilter: 'linear',
+                addressModeU: 'clamp-to-edge',
+                addressModeV: 'clamp-to-edge',
+        });
+        const fieldRampTexture = device.createTexture({
+                label: 'field-ramp',
+                size: [FIELD_RAMP_SIZE, 1],
+                format: 'rgba8unorm-srgb',
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+        });
+        const fieldRampView = fieldRampTexture.createView();
+
+
         let hdrTexture = null;
         let hdrView = null;
         let hdrWidth = 0;
@@ -453,6 +617,143 @@ function createStarRenderer(device, context, format, options) {
                                 { binding: 1, resource: hdrView },
                         ],
                 });
+        }
+
+        // --- View field state (view-modes.4) ----------------------------------
+        const fieldRange = FieldOverlay.createRangeState();
+        let fieldMode = FieldOverlay.DEFAULTS.mode;
+        let fieldOpacity = FieldOverlay.DEFAULTS.opacity;
+        let fieldRelief = FieldOverlay.DEFAULTS.relief;
+        let fieldContours = FieldOverlay.DEFAULTS.contours;
+        let fieldRampName = FieldOverlay.DEFAULTS.ramp;
+        let fieldRamp = null;
+        let fieldSampleAt = -1e9;
+        let fieldWidth = 0;
+        let fieldHeight = 0;
+        let fieldSplatTexture = null;
+        let fieldSplatView = null;
+        let fieldBlurTexture = null;
+        let fieldBlurView = null;
+        let fieldSplatBindGroup = null;
+        let fieldBlurBindGroup = null;
+        let fieldCompositeBindGroup = null;
+        const fieldSizeScratch = { w: 0, h: 0 };
+
+        function uploadFieldRamp() {
+                const ramp = FieldRamp.resolveRamp(FieldOverlay.MODE_NAMES[fieldMode] || 'height', fieldRampName);
+                if (ramp === fieldRamp) return;
+                fieldRamp = ramp;
+                device.queue.writeTexture(
+                        { texture: fieldRampTexture },
+                        FieldRamp.rampRGBA(ramp),
+                        { bytesPerRow: FIELD_RAMP_SIZE * 4, rowsPerImage: 1 },
+                        [FIELD_RAMP_SIZE, 1],
+                );
+        }
+
+        // Two rgba16float targets at the field resolution (half the canvas,
+        // clamped): the splat's moments and their blur. Allocated once per
+        // canvas size; the composite samples the second one.
+        function ensureFieldTextures(width, height) {
+                const size = FieldOverlay.fieldSize(fieldSizeScratch, width, height);
+                if (fieldSplatTexture && fieldWidth === size.w && fieldHeight === size.h) return;
+                fieldWidth = size.w;
+                fieldHeight = size.h;
+                if (fieldSplatTexture) fieldSplatTexture.destroy();
+                if (fieldBlurTexture) fieldBlurTexture.destroy();
+                fieldSplatTexture = device.createTexture({
+                        label: 'field-splat-texture',
+                        size: [fieldWidth, fieldHeight],
+                        format: HDR_INTERMEDIATE_FORMAT,
+                        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+                });
+                fieldSplatView = fieldSplatTexture.createView();
+                fieldBlurTexture = device.createTexture({
+                        label: 'field-blur-texture',
+                        size: [fieldWidth, fieldHeight],
+                        format: HDR_INTERMEDIATE_FORMAT,
+                        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+                });
+                fieldBlurView = fieldBlurTexture.createView();
+                blurUniform[0] = fieldWidth;
+                blurUniform[1] = fieldHeight;
+                blurUniform[2] = 0;
+                blurUniform[3] = 0;
+                device.queue.writeBuffer(blurUniformBuffer, 0, blurUniformData);
+                fieldBlurBindGroup = device.createBindGroup({
+                        label: 'field-blur-bind-group',
+                        layout: fieldBlurBindGroupLayout,
+                        entries: [
+                                { binding: 0, resource: { buffer: blurUniformBuffer } },
+                                { binding: 1, resource: fieldSplatView },
+                        ],
+                });
+                fieldCompositeBindGroup = device.createBindGroup({
+                        label: 'field-composite-bind-group',
+                        layout: fieldCompositeBindGroupLayout,
+                        entries: [
+                                { binding: 0, resource: { buffer: fieldCompositeUniformBuffer } },
+                                { binding: 1, resource: fieldBlurView },
+                                { binding: 2, resource: fieldRampView },
+                                { binding: 3, resource: fieldSampler },
+                        ],
+                });
+                state.fieldWidth = fieldWidth;
+                state.fieldHeight = fieldHeight;
+        }
+
+        // The display range, sampled from the resident records through the
+        // CPU twin of the vertex shader's orbit dispatch: the numbers the
+        // legend quotes describe the stars this frame draws, not a second set
+        // picked on the side. Allocation-free.
+        function refreshFieldRange(camera, time) {
+                FieldOverlay.refresh(fieldRange, {
+                        blocks: blockInfo,
+                        recordBytes: records.RECORD_BYTES,
+                        orbit,
+                        model,
+                        time,
+                        camX: camera.cameraPos[0],
+                        camY: camera.cameraPos[1],
+                        camZ: camera.cameraPos[2],
+                }, fieldMode);
+                fieldSampleAt = nowMs();
+                state.viewRangeLo = fieldRange.lo;
+                state.viewRangeHi = fieldRange.hi;
+                state.viewSamples = fieldRange.samples;
+        }
+
+        // Menu/preset/URL entry point (view-modes.4). Fields are optional so a
+        // caller can change one knob without restating the rest; a mode change
+        // re-derives the range on the next frame, a ramp change uploads the LUT
+        // (a 1 KB write, not a texture rebuild — the view is stable).
+        function setViewMode(next) {
+                const s = next || {};
+                if (s.mode !== undefined) fieldMode = FieldOverlay.modeOf(s.mode);
+                if (s.opacity !== undefined) {
+                        fieldOpacity = FieldOverlay.clampOpacity(s.opacity);
+                }
+                if (s.relief !== undefined) fieldRelief = FieldOverlay.clampRelief(s.relief);
+                if (s.contours !== undefined) fieldContours = FieldOverlay.clampContours(s.contours);
+                if (s.ramp !== undefined) fieldRampName = String(s.ramp || 'auto');
+                uploadFieldRamp();
+                FieldOverlay.applyMode(fieldRange, fieldMode);
+                if (fieldMode !== 0) fieldSampleAt = -1e9;   // sample next frame
+                state.viewMode = fieldMode;
+                state.viewOpacity = fieldOpacity;
+                state.viewRelief = fieldRelief;
+                state.viewContours = fieldContours;
+                state.viewRamp = fieldRamp ? fieldRamp._name : 'viridis';
+                state.viewRampChoice = fieldRampName;
+                state.viewRangeLo = fieldRange.lo;
+                state.viewRangeHi = fieldRange.hi;
+                return {
+                        mode: FieldOverlay.MODE_NAMES[fieldMode],
+                        opacity: fieldOpacity,
+                        ramp: fieldRampName,
+                        relief: fieldRelief,
+                        contours: fieldContours,
+                };
         }
 
         // --- Storage ----------------------------------------------------------
@@ -492,42 +793,6 @@ function createStarRenderer(device, context, format, options) {
                 identity: null, view: null, blocks: BLOCK_LAYOUT, total: 0, dynamicVersion: 0,
                 member: { age: null, component: null },
         };
-        // The distance field's state. Which stars are the anchors is the
-        // caller's business (main.js decides: the nearest N of the resident
-        // sky, the selection set, the named stars). Everything else belongs
-        // to the renderer, because the renderer is what knows the camera:
-        // the grid, the layout and the display range.
-        let fieldRenderer = null;
-        let fieldMode = 'off';
-        let fieldSigma = FIELD_SIGMA_DEG;
-        const fieldAnchors = new Float64Array(FIELD_ANCHOR_CAP * 3);
-        let fieldAnchorCount = 0;
-        let fieldRange = { lo: -3, hi: 0 };
-        let fieldRangeClock = 0;
-        let fieldRangeMode = '';
-        let fieldLayout = null;
-        let fieldRangeLayout = null;
-        let fieldRangeRaw = null;
-        const fieldRangeStats = {};
-        const fieldRangeOut = { lo: 0, hi: 1, span: 1 };
-        const fieldBasis = { fx: 0, fy: 0, fz: 1, rx: 1, ry: 0, rz: 0, ux: 0, uy: 1, uz: 0 };
-        if (fieldLaw) {
-                fieldLayout = fieldLaw.createLayout({}, { kind: 'view', w: 320, h: FIELD_GRID_H, fovY: Math.PI / 3, basis: fieldBasis, aspect: 16 / 9 });
-                fieldRangeLayout = fieldLaw.createLayout({}, { kind: 'view', w: FIELD_RANGE_W, h: FIELD_RANGE_H, fovY: Math.PI / 3, basis: fieldBasis, aspect: FIELD_RANGE_W / FIELD_RANGE_H });
-                fieldRangeRaw = new Float32Array(FIELD_RANGE_W * FIELD_RANGE_H);
-        }
-        // The field's GPU renderer. It is created with the rest of the
-        // renderer's resources: a device that cannot give us the pipelines
-        // loses the field, not the frame.
-        if (fieldLib) {
-                try {
-                        fieldRenderer = fieldLib.createDistanceFieldRenderer(device, { label: 'field' });
-                } catch (err) {
-                        console.error('field renderer failed:', err);
-                        fieldRenderer = null;
-                        fieldMode = 'off';
-                }
-        }
         const fieldInfo = { x: null, y: null, z: null, R: null, distToArm: null, component: null, count: 0 };
         const planets = (typeof module !== 'undefined' && module.exports)
                 ? require('../math/planets.js')
@@ -588,6 +853,21 @@ function createStarRenderer(device, context, format, options) {
                 headroom: HEADROOM_DEFAULT,
                 highlightDesat: HIGHLIGHT_DESAT_DEFAULT,
                 engine: 'classic',
+                // View field overlay (view-modes.4): the mode id, the look knobs
+                // and the live display window the composite maps through. The
+                // legend prints these numbers, so it cannot quote a range the
+                // shader is not using.
+                viewMode: 0,
+                viewOpacity: 0.55,
+                viewRelief: 0.6,
+                viewContours: 8,
+                viewRamp: 'viridis',
+                viewRampChoice: 'auto',
+                viewRangeLo: -2,
+                viewRangeHi: 1,
+                viewSamples: 0,
+                fieldWidth: 0,
+                fieldHeight: 0,
                 hdrOutput,
                 bufferBytes: 0,
                 clampedProcedural: false,
@@ -758,6 +1038,16 @@ function createStarRenderer(device, context, format, options) {
                                 { binding: 0, resource: { buffer: simpleUniformBuffer } },
                                 { binding: 1, resource: { buffer: starBuffer } },
                                 { binding: 2, resource: { buffer: thetaBuffer } },
+                        ],
+                });
+                fieldSplatBindGroup = device.createBindGroup({
+                        label: 'field-splat-bind-group',
+                        layout: fieldSplatBindGroupLayout,
+                        entries: [
+                                { binding: 0, resource: { buffer: uniformBuffer } },
+                                { binding: 1, resource: { buffer: starBuffer } },
+                                { binding: 2, resource: { buffer: thetaBuffer } },
+                                { binding: 3, resource: { buffer: splatUniformBuffer } },
                         ],
                 });
                 if (nebulaBuffer) nebulaBuffer.destroy();
@@ -1451,40 +1741,6 @@ function createStarRenderer(device, context, format, options) {
                 return { localCount, catalogResident };
         }
 
-        // ---- the distance field ---------------------------------------------
-
-        // The render type: 'off', 'height' (the distance from the eye),
-        // 'spread' (the depth spread between neighbours that look close) or
-        // 'gradient' (the slope of the distance, in dex per degree of sky).
-        // The GPU's arithmetic does not change with the mode - only the value
-        // the display pass reads does.
-        function setFieldMode(mode) {
-                const m = (mode === 'height' || mode === 'spread' || mode === 'gradient') ? mode : 'off';
-                fieldMode = m;
-                if (fieldRenderer) fieldRenderer.setMode(m);
-        }
-
-        // The anchors: absolute kpc positions, three floats each, in the
-        // galactic frame. Which stars these are is the caller's business -
-        // the nearest N of the resident sky, the selection set, the named
-        // stars - and the field's arithmetic never asks.
-        function setFieldAnchors(positions, count) {
-                const n = Math.max(0, Math.min(count | 0, FIELD_ANCHOR_CAP));
-                for (let i = 0; i < n * 3; i++) fieldAnchors[i] = positions[i];
-                fieldAnchorCount = n;
-        }
-
-        function setFieldSigma(deg) {
-                fieldSigma = Number.isFinite(deg) ? deg : FIELD_SIGMA_DEG;
-        }
-
-        function fieldState() {
-                return {
-                        mode: fieldMode, anchors: fieldAnchorCount, sigmaDeg: fieldSigma,
-                        lo: fieldRange.lo, hi: fieldRange.hi,
-                };
-        }
-
         // --- Frame ------------------------------------------------------------
         // dtStarArg is the frame's star-time step in Myr (main.js passes it;
         // without it the renderer diffs the star clock itself). Under the
@@ -1575,6 +1831,31 @@ function createStarRenderer(device, context, format, options) {
                 const instances = state.proceduralStars + landmarkCount + objectCapacity + localProceduralCount + catalogResident;
                 state.drawn = instances;
 
+                // Field overlay (view-modes.4): size the targets, refresh the
+                // display range at 4 Hz, pack the three uniforms. All of this is
+                // skipped, not merely hidden, when the mode is off.
+                const fieldOn = fieldMode !== 0;
+                if (fieldOn) {
+                        ensureFieldTextures(width, height);
+                        if (nowMs() - fieldSampleAt >= FIELD_SAMPLE_MS) refreshFieldRange(camera, time);
+                        FieldOverlay.packSplat(
+                                splatUniform,
+                                FieldOverlay.splatRadius(instances, fieldWidth, fieldHeight),
+                                fieldWidth,
+                                fieldHeight,
+                        );
+                        device.queue.writeBuffer(splatUniformBuffer, 0, splatUniformData);
+                        FieldOverlay.packComposite(fieldCompositeUniform, fieldRange, {
+                                opacity: fieldOpacity,
+                                relief: fieldRelief,
+                                contours: fieldContours,
+                                fieldW: fieldWidth,
+                                fieldH: fieldHeight,
+                                tanHalfY: Math.tan(camera.fovY * 0.5),
+                        });
+                        device.queue.writeBuffer(fieldCompositeUniformBuffer, 0, fieldCompositeUniformData);
+                }
+
                 const encoder = device.createCommandEncoder({ label: 'star-frame' });
 
                 ensureHdrTexture(width, height);
@@ -1590,71 +1871,49 @@ function createStarRenderer(device, context, format, options) {
                         stepPass.end();
                 }
 
-                // The distance field: the anchors are the caller's, the grid
-                // and the layout are the camera's, and the range is the CPU
-                // law's (read a few times a second, never per frame - a range
-                // that follows every frame flickers).
-                let fieldOn = false;
-                if (fieldMode !== 'off' && fieldAnchorCount > 0 && fieldRenderer && fieldLaw) {
-                        fieldOn = true;
-                        const aspect = width / Math.max(1, height);
-                        const f = camera.forward, r = camera.right, u = camera.up;
-                        fieldBasis.fx = f[0]; fieldBasis.fy = f[1]; fieldBasis.fz = f[2];
-                        fieldBasis.rx = r[0]; fieldBasis.ry = r[1]; fieldBasis.rz = r[2];
-                        fieldBasis.ux = u[0]; fieldBasis.uy = u[1]; fieldBasis.uz = u[2];
-                        // viewProj is already projection * view: element [5] also
-                        // contains the camera's up-axis rotation. Reading FoV from it
-                        // makes the field distort as the camera rolls or pitches.
-                        const fovY = camera.fovY || Math.PI / 3;
-                        const gh = FIELD_GRID_H;
-                        const gw = Math.max(FIELD_GRID_W_MIN,
-                                Math.min(FIELD_GRID_W_MAX, Math.round(gh * aspect / 8) * 8));
-                        fieldLaw.createLayout(fieldLayout,
-                                { kind: 'view', w: gw, h: gh, fovY, basis: fieldBasis, aspect });
-                        fieldRangeClock += dt;
-                        if (fieldRangeClock >= FIELD_RANGE_PERIOD || fieldRangeMode !== fieldMode) {
-                                fieldRangeClock = 0;
-                                fieldRangeMode = fieldMode;
-                                fieldLaw.createLayout(fieldRangeLayout, {
-                                        kind: 'view', w: FIELD_RANGE_W, h: FIELD_RANGE_H, fovY,
-                                        basis: fieldBasis, aspect,
-                                });
-                                const stars = fieldLaw.prepareStars(fieldAnchors, fieldAnchorCount,
-                                        camera.cameraPos[0], camera.cameraPos[1], camera.cameraPos[2]);
-                                fieldLaw.computeRaw(stars, fieldRangeLayout,
-                                        { mode: fieldMode, sigmaDeg: fieldSigma, measure: true },
-                                        fieldRangeRaw, fieldRangeStats);
-                                if (!fieldRangeStats.empty) {
-                                        fieldLaw.autoRange(fieldMode, fieldRangeStats, fieldRangeOut);
-                                        fieldRange.lo = fieldRangeOut.lo;
-                                        fieldRange.hi = fieldRangeOut.hi;
-                                }
-                        }
-                        fieldRenderer.setLayout(fieldLayout);
-                        fieldRenderer.setEye(camera.cameraPos[0], camera.cameraPos[1], camera.cameraPos[2]);
-                        fieldRenderer.setMode(fieldMode);
-                        fieldRenderer.setSigma(fieldSigma);
-                        fieldRenderer.setRange(fieldRange.lo, fieldRange.hi);
-                        fieldRenderer.setCanvas(width, height);
-                        fieldRenderer.setAnchors(fieldAnchors, fieldAnchorCount);
-                        fieldRenderer.update(encoder);
-                        // The field is the sky: it is painted into the HDR
-                        // intermediate, so the stars add on top of it and the
-                        // app's own tonemap treats the picture as one scene.
-                        fieldRenderer.draw(encoder, hdrView, HDR_INTERMEDIATE_FORMAT);
+                // Field passes (view-modes.4): the splat writes additive moments
+                // at field resolution, the blur separates them; both must run
+                // before the tonemap so the composite can read the blurred
+                // texture in this command buffer.
+                if (fieldOn) {
+                        const splatPass = encoder.beginRenderPass({
+                                label: 'field-splat',
+                                colorAttachments: [{
+                                        view: fieldSplatView,
+                                        clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
+                                        loadOp: 'clear',
+                                        storeOp: 'store',
+                                }],
+                        });
+                        splatPass.setPipeline(fieldSplatPipeline);
+                        splatPass.setBindGroup(0, fieldSplatBindGroup);
+                        splatPass.draw(4, instances, 0, 0);
+                        splatPass.end();
+
+                        const blurPass = encoder.beginRenderPass({
+                                label: 'field-blur',
+                                colorAttachments: [{
+                                        view: fieldBlurView,
+                                        clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
+                                        loadOp: 'clear',
+                                        storeOp: 'store',
+                                }],
+                        });
+                        blurPass.setPipeline(fieldBlurPipeline);
+                        blurPass.setBindGroup(0, fieldBlurBindGroup);
+                        blurPass.draw(3, 1, 0, 0);
+                        blurPass.end();
                 }
 
                 // Pass 1: additive sprites into the rgba16float HDR intermediate.
                 // Linear flux sums in linear light — no per-star clamping, no
                 // per-star Reinhard. The filmic curve rolls off the sum in pass 2.
-                // With the field on, the sky under the stars is already there,
-                // so the pass loads instead of clearing.
                 const starPass = encoder.beginRenderPass({
                         label: 'star-sprites',
                         colorAttachments: [{
                                 view: hdrView,
                                 clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
-                                loadOp: fieldOn ? 'load' : 'clear',
+                                loadOp: 'clear',
                                 storeOp: 'store',
                         }],
                 });
@@ -1686,10 +1945,11 @@ function createStarRenderer(device, context, format, options) {
                 const bg = hdrOutput
                         ? { r: 0.0001, g: 0.0002, b: 0.0005, a: 1.0 }
                         : { r: 0.008, g: 0.010, b: 0.020, a: 1.0 };
+                const swapView = context.getCurrentTexture().createView();
                 const tonemapPass = encoder.beginRenderPass({
                         label: 'tonemap',
                         colorAttachments: [{
-                                view: context.getCurrentTexture().createView(),
+                                view: swapView,
                                 clearValue: bg,
                                 loadOp: 'clear',
                                 storeOp: 'store',
@@ -1699,11 +1959,29 @@ function createStarRenderer(device, context, format, options) {
                 tonemapPass.setBindGroup(0, tonemapBindGroup);
                 tonemapPass.draw(3, 1, 0, 0);
                 tonemapPass.end();
+
+                // Composite last, on the swapchain: the field is a map over the
+                // tone-mapped picture, so the exposure curve cannot tint the
+                // ramp, and the legend's colours are the shader's colours.
+                if (fieldOn) {
+                        const compositePass = encoder.beginRenderPass({
+                                label: 'field-composite',
+                                colorAttachments: [{
+                                        view: swapView,
+                                        loadOp: 'load',
+                                        storeOp: 'store',
+                                }],
+                        });
+                        compositePass.setPipeline(fieldCompositePipeline);
+                        compositePass.setBindGroup(0, fieldCompositeBindGroup);
+                        compositePass.draw(3, 1, 0, 0);
+                        compositePass.end();
+                }
+
                 device.queue.submit([encoder.finish()]);
         }
 
         function dispose() {
-                if (fieldRenderer) fieldRenderer.destroy();
                 if (starBuffer) starBuffer.destroy();
                 if (nebulaBuffer) nebulaBuffer.destroy();
                 if (thetaBuffer) thetaBuffer.destroy();
@@ -1712,7 +1990,19 @@ function createStarRenderer(device, context, format, options) {
                 tonemapUniformBuffer.destroy();
                 simpleUniformBuffer.destroy();
                 lutTexture.destroy();
+                splatUniformBuffer.destroy();
+                blurUniformBuffer.destroy();
+                fieldCompositeUniformBuffer.destroy();
+                fieldRampTexture.destroy();
+                if (fieldSplatTexture) fieldSplatTexture.destroy();
+                if (fieldBlurTexture) fieldBlurTexture.destroy();
         }
+
+        // The ramp LUT is uploaded once even with the overlay off: the texture
+        // is bound by the composite pipeline and a blank LUT would make the
+        // first frame after a mode switch sample black.
+        if (opts.viewField) setViewMode(opts.viewField);
+        else uploadFieldRamp();
 
         return {
                 prepare,
@@ -1733,12 +2023,29 @@ function createStarRenderer(device, context, format, options) {
                 setHighlightDesat,
                 setEngine,
                 resetSimpleState,
-                // The distance field (distance-field-plan.md): the render type,
-                // the anchors and the hill width. The range and the layout
-                // are the renderer's own.
-                setFieldMode, setFieldAnchors, setFieldSigma, fieldState,
                 setClusterExaggeration,
                 setProceduralStars,
+                // View field overlay (view-modes.4): mode/look controls, and a
+                // getter the menu and the legend read.
+                setViewMode,
+                // The legend's text and LUT: the mode's title, the range in
+                // that mode's own unit, and the ramp the shader is sampling
+                // right now (resolved, not 'auto').
+                viewFieldLegend: () => {
+                        const info = FieldOverlay.legend(fieldRange, state.viewRamp);
+                        info.lut = FieldRamp.RAMPS[state.viewRamp] || FieldRamp.RAMPS.viridis;
+                        return info;
+                },
+                viewMode: () => ({
+                        mode: FieldOverlay.MODE_NAMES[fieldMode],
+                        opacity: fieldOpacity,
+                        ramp: fieldRampName,
+                        relief: fieldRelief,
+                        contours: fieldContours,
+                        lo: fieldRange.lo,
+                        hi: fieldRange.hi,
+                        samples: fieldRange.samples,
+                }),
                 proceduralTarget: () => proceduralTarget,
                 dispose,
                 state,

@@ -1,0 +1,184 @@
+{
+  "date": "2026-10-17T19:17:01.365Z",
+  "totalChecks": 22,
+  "passed": 22,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "the mode vocabulary is the one the preset and the menu speak",
+      "pass": true,
+      "detail": [
+        "off",
+        "height",
+        "spread",
+        "slope"
+      ]
+    },
+    {
+      "name": "the field is half the canvas, clamped to 256..640 wide and >= 128 tall",
+      "pass": true,
+      "detail": {
+        "w": 256,
+        "h": 1024
+      }
+    },
+    {
+      "name": "a footprint covers ~1.2 mean inter-star spacings, clamped 2.5..40 px",
+      "pass": true,
+      "detail": {
+        "many": 2.5,
+        "few": 40
+      }
+    },
+    {
+      "name": "the splat uniform is radius, fieldW, fieldH, 1 pc floor",
+      "pass": true,
+      "detail": [
+        7,
+        640,
+        360,
+        0.0010000000474974513
+      ]
+    },
+    {
+      "name": "every visible record is sampled when the population is under the cap",
+      "pass": true
+    },
+    {
+      "name": "height mode reads log10 distance in kpc and brackets the sample",
+      "pass": true,
+      "detail": {
+        "lo": -0.06816480159759522,
+        "hi": 1.2722848415374757,
+        "unit": "kpc"
+      }
+    },
+    {
+      "name": "the display window is padded by 4% of the span plus 0.02 dex, with a 0.3 dex floor",
+      "pass": true,
+      "detail": {
+        "span": 1.340449643135071
+      }
+    },
+    {
+      "name": "spread mode reports a positive σ of the log distances",
+      "pass": true,
+      "detail": {
+        "lo": -0.40287520956993106,
+        "hi": -0.03887520956993104
+      }
+    },
+    {
+      "name": "slope mode reports dex per degree and stays finite on a degenerate ray",
+      "pass": true,
+      "detail": {
+        "lo": 5.192650089263916,
+        "hi": 5.882874717712403
+      }
+    },
+    {
+      "name": "a star at the camera is floored at 1 pc (log10 = -3), not -∞",
+      "pass": true,
+      "detail": {
+        "lo": -3.152041200399399,
+        "hi": 0.4530712103843689
+      }
+    },
+    {
+      "name": "the estimators survive a two-star sample",
+      "pass": true,
+      "detail": {
+        "samples": 2,
+        "lo": -1.3,
+        "hi": 0.2
+      }
+    },
+    {
+      "name": "fewer than three visible records falls back to the declared window",
+      "pass": true,
+      "detail": {
+        "lo": -1.3,
+        "hi": 0.2
+      }
+    },
+    {
+      "name": "FLAG_VISIBLE gates the range sample",
+      "pass": true,
+      "detail": 4
+    },
+    {
+      "name": "a refresh reuses the same scratch arrays (no per-frame allocation)",
+      "pass": true
+    },
+    {
+      "name": "the composite uniform is params, range, viewport (field size + tan(fovY/2))",
+      "pass": true,
+      "detail": [
+        1,
+        0.5,
+        0.25,
+        4,
+        -0.05612359941005707,
+        0.9592136144638062,
+        0,
+        0,
+        640,
+        360,
+        0.5773503184318542,
+        0
+      ]
+    },
+    {
+      "name": "look knobs clamp instead of leaking into the shader",
+      "pass": true
+    },
+    {
+      "name": "the height legend quotes the ramp ends in kpc",
+      "pass": true,
+      "detail": {
+        "active": true,
+        "title": "distance",
+        "low": "10 pc",
+        "high": "10.0 kpc",
+        "note": "near = high",
+        "ramp": "viridis"
+      }
+    },
+    {
+      "name": "the spread legend quotes σ in dex and the slope legend dex/deg",
+      "pass": true,
+      "detail": {
+        "active": true,
+        "title": "depth spread",
+        "low": "0.05 dex",
+        "high": "1.58 dex",
+        "note": "log-distance σ",
+        "ramp": "turbo"
+      }
+    },
+    {
+      "name": "the off mode has no active legend",
+      "pass": true
+    },
+    {
+      "name": "the island painter and the overlay sample the same five LUTs",
+      "pass": true,
+      "detail": [
+        "viridis",
+        "turbo",
+        "magma",
+        "terrain",
+        "grey"
+      ]
+    },
+    {
+      "name": "auto picks viridis for distance, turbo for spread, grey for anything else",
+      "pass": true
+    },
+    {
+      "name": "the GPU ramp is a 256×4 byte view of the same LUT with opaque alpha",
+      "pass": true,
+      "detail": 1024
+    }
+  ]
+}

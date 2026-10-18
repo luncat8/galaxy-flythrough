@@ -43,22 +43,24 @@ function readSource(relPath) {
 {
         const names = Object.keys(shaders.SHADER_PARTS);
         check('every expected shader part is present',
-                ['pcg-hash', 'density', 'orbit', 'simple-step', 'star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'procedural-gen', 'cull', 'field-uniform', 'distance-field', 'distance-field-display'].every(n => names.includes(n)),
+                ['pcg-hash', 'density', 'orbit', 'simple-step', 'star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'procedural-gen', 'cull',
+                        'field-splat', 'field-blur', 'field-composite'].every(n => names.includes(n)),
                 names);
         check('every shader part is a non-empty LF-only string',
                 names.every(n => typeof shaders.SHADER_PARTS[n] === 'string'
                         && shaders.SHADER_PARTS[n].length > 100
                         && !shaders.SHADER_PARTS[n].includes('\r')),
                 names.map(n => [n, shaders.SHADER_PARTS[n].length]));
-        check('seven wired shaders are exposed (the four scene ones, the simple step, and the field\'s two)',
-                shaders.WIRED_SHADERS.length === 7
+        check('eight wired shaders are exposed (sprite, hdr reference, nebula, tonemap, simple-step, three field passes)',
+                shaders.WIRED_SHADERS.length === 8
                 && shaders.WIRED_SHADERS[0] === 'star-sprite'
                 && shaders.WIRED_SHADERS[1] === 'star-sprite-hdr'
                 && shaders.WIRED_SHADERS[2] === 'nebula-billboard'
                 && shaders.WIRED_SHADERS[3] === 'tonemap'
                 && shaders.WIRED_SHADERS[4] === 'simple-step'
-                && shaders.WIRED_SHADERS[5] === 'distance-field'
-                && shaders.WIRED_SHADERS[6] === 'distance-field-display',
+                && shaders.WIRED_SHADERS[5] === 'field-splat'
+                && shaders.WIRED_SHADERS[6] === 'field-blur'
+                && shaders.WIRED_SHADERS[7] === 'field-composite',
                 shaders.WIRED_SHADERS);
         check('every wired shader exists in the module map',
                 shaders.WIRED_SHADERS.every(n => typeof shaders.SHADERS[n] === 'string' && shaders.SHADERS[n].length > 0),
@@ -443,7 +445,9 @@ function wgslConsts(part) {
 		&& /\(mask & 2u\) != 0u/.test(sprite)
 		&& /\(mask & 1u\) != 0u/.test(sprite)
 		&& /\(mask & 4u\) != 0u/.test(sprite)
-		&& /simplePosition\([^;]*theta\[starIdx\]/s.test(sprite)
+		&& /fn starMovedPosition\(star: StarPacked, thetaValue: f32\) -> vec3f/.test(sprite)
+		&& /starMovedPosition\(star, theta\[starIdx\]\)/.test(sprite)
+		&& /simplePosition\(birth, star\.packed, thetaValue/.test(sprite)
 		&& /orbitPosition\([^;]*camera\.params\.w/s.test(sprite)
 		&& /moved = birth;/.test(sprite),
 		shaders.SHADERS['star-sprite'].includes('mask & 4u'));
@@ -665,6 +669,53 @@ function wgslConsts(part) {
                 && /FLAG_CLUSTER = 128/.test(readSource('src/math/star-record.js'))
                 && /MASK_CLUSTER: u32 = 0x00800000u/.test(orbitWgsl)
                 && /clusterCentre\(/.test(simpleWgsl));
+}
+
+// --- 2b. The view field overlay (view-modes.4) --------------------------
+// The overlay's input is the renderer's own star buffer, so the splat part is
+// built on the same star-position header as the sprite: a drift in the epoch
+// map or the engine dispatch there would move the field off the stars.
+{
+        const splat = shaders.SHADERS['field-splat'];
+        const blur = shaders.SHADERS['field-blur'];
+        const composite = shaders.SHADERS['field-composite'];
+        check('field-splat reuses the shared star-position header (epoch map + engine dispatch)',
+                splat.includes(shaders.SHADERS['star-sprite'].slice(0, shaders.SHADERS['star-sprite'].indexOf('// HDR path')))
+                && /fn starMovedPosition\(/.test(splat)
+                && /epochMap\(/.test(splat)
+                && /MASK_VISIBLE/.test(splat));
+        check('field-splat writes weighted log-distance moments additively',
+                /@group\(0\)\s*@binding\(1\)\s*var<storage,\s*read>\s+stars/.test(splat)
+                && /@group\(0\)\s*@binding\(3\)\s*var<uniform>\s+splat/.test(splat)
+                && /return vec4f\(w, w \* in\.value, w \* in\.value \* in\.value, w\)/.test(splat)
+                && /let w: f32 = s \* s/.test(splat));
+        check('field-blur is the fixed 3×3 binomial kernel (4·centre, 2·edges, 1·corners)',
+                /sum: vec4f = texelAt\(p\.x, p\.y\) \* 4\.0/.test(blur)
+                && /\* 2\.0/.test(blur)
+                && /sum \* 0\.0625/.test(blur)
+                && /textureLoad\(splatTexture/.test(blur));
+        check('field-composite binds uniform + field + ramp + sampler and blends over the frame',
+                /@binding\(0\)\s*var<uniform>\s+u: FieldComposite/.test(composite)
+                && /@binding\(1\)\s*var\s+fieldTexture: texture_2d<f32>/.test(composite)
+                && /@binding\(2\)\s*var\s+rampTexture: texture_2d<f32>/.test(composite)
+                && /@binding\(3\)\s*var\s+fieldSampler: sampler/.test(composite)
+                && /if \(u\.params\.x < 0\.5\) \{ return vec4f\(0\.0\); \}/.test(composite));
+        check('field-composite reads the three modes and the declared range (no renormalisation)',
+                /u\.params\.x < 1\.5/.test(composite)
+                && /u\.params\.x < 2\.5/.test(composite)
+                && /u\.range\.y - raw\) \/ span/.test(composite)
+                && /u\.range\.y - u\.range\.x/.test(composite));
+        check('field-composite reconstructs the pinhole angular texel size for the slope mode',
+                /fn angularTexel\(uv: vec2f\) -> vec2f/.test(composite)
+                && /u\.viewport\.z/.test(composite)
+                && /tanY \* aspect/.test(composite));
+        const overlaySrc = readSource('src/math/field-overlay.js');
+        check('the field modes are numbered as the composite shader reads them (off 0, height 1, spread 2, slope 3)',
+                /MODE_NAMES = \['off', 'height', 'spread', 'slope'\]/.test(overlaySrc)
+                && /MODE_HEIGHT = 1, MODE_SPREAD = 2, MODE_SLOPE = 3/.test(overlaySrc)
+                && /u\.params\.x < 0\.5/.test(composite)
+                && /u\.params\.x < 1\.5/.test(composite)
+                && /u\.params\.x < 2\.5/.test(composite));
 }
 
 // --- Report --------------------------------------------------------------

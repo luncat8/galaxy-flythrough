@@ -29,6 +29,16 @@ const SELECT_FILL = 'rgba(255, 215, 94, 0.95)';
 const SELECT_RING = 'rgba(255, 215, 94, 0.8)';
 const LABEL_OFFSET_PX = 6;
 const SELECT_RING_PX = 7;
+// View field legend (view-modes.4): a compact card in the lower-left with the
+// active mode's ramp strip, title and live range. Rebuilt only when the
+// renderer's range or title changes (4 Hz at most), never per frame; the draw
+// is one drawImage.
+const LEGEND_FONT = '11px Menlo, Consolas, monospace';
+const LEGEND_W_PX = 196;
+const LEGEND_H_PX = 48;
+const LEGEND_MARGIN_PX = 16;
+const LEGEND_STRIP_PX = 10;
+const LEGEND_DPR = 2;
 // Set members (plan §3.5): smaller and dimmer than the primary's ring, so a
 // many-star selection still reads as one primary plus a cloud.
 const SET_RING_PX = 4;
@@ -73,6 +83,35 @@ const LADDER_RUNGS = [0.25, 0.5, 0.75];
 const chromeOffset = new Float64Array(2);
 const chromeAt = new Float64Array(3);       // x, y, pinned (1 when clamped to the edge)
 const chromeRel = new Float64Array(3);
+
+// The legend card, drawn once per change into an offscreen canvas at 2× so it
+// stays crisp under the layer's devicePixelRatio transform.
+function buildViewFieldLegendCanvas(info) {
+	if (typeof document === 'undefined' || !document.createElement) return null;
+	if (!info || !info.active || !info.lut) return null;
+	const canvas = document.createElement('canvas');
+	canvas.width = LEGEND_W_PX * LEGEND_DPR;
+	canvas.height = LEGEND_H_PX * LEGEND_DPR;
+	const c = canvas.getContext('2d');
+	if (!c) return null;
+	c.scale(LEGEND_DPR, LEGEND_DPR);
+	c.fillStyle = 'rgba(5, 8, 16, 0.62)';
+	c.fillRect(0, 0, LEGEND_W_PX, LEGEND_H_PX);
+	const x = 8, y = 8, w = LEGEND_W_PX - 16, h = LEGEND_STRIP_PX;
+	const grad = c.createLinearGradient(x, 0, x + w, 0);
+	for (let i = 0; i <= 8; i++) {
+		const k = Math.round((i / 8) * 255) * 3;
+		grad.addColorStop(i / 8, `rgb(${info.lut[k]},${info.lut[k + 1]},${info.lut[k + 2]})`);
+	}
+	c.fillStyle = grad;
+	c.fillRect(x, y, w, h);
+	c.font = LEGEND_FONT;
+	c.fillStyle = LABEL_FILL;
+	c.fillText(`${info.title}  ${info.low} → ${info.high}`, x, y + 26);
+	c.fillStyle = 'rgba(205, 220, 255, 0.55)';
+	c.fillText(info.note || '', x, y + 42);
+	return canvas;
+}
 
 function createShipChromeState() {
 	return {
@@ -293,6 +332,8 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	const orbitScratch = new Float64Array(3);
 	let chrome = createShipChromeState();
 	let chromeDrawn = false;
+	let viewFieldLegendCanvas = null;
+	let viewFieldLegendKey = '';
 	function setOrbitState(model, time) { orbitModel = model; orbitTime = time || 0; }
 
 	// --- Star-set rings (plan §3.5) ---------------------------------------
@@ -543,9 +584,10 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	// marks; with both off, a cleared canvas is left alone.
 	function draw(camera, width, height) {
 		const chromeOn = chrome.active;
-		if (!enabled && !chromeOn && !chromeDrawn) return;
+		const legendOn = !!viewFieldLegendCanvas;
+		if (!enabled && !chromeOn && !legendOn && !chromeDrawn) return;
 		ctx.clearRect(0, 0, width, height);
-		chromeDrawn = chromeOn;
+		chromeDrawn = chromeOn || legendOn;
 		if (!(width > 0) || !(height > 0)) return;
 		if (enabled) {
 			projectAll(camera, width, height);
@@ -554,7 +596,23 @@ function createLabelLayer(canvas, landmarks, constellations) {
 			drawSelectedRing();
 			drawSetRings(camera, width, height);
 		}
+		if (legendOn) {
+			ctx.drawImage(viewFieldLegendCanvas, LEGEND_MARGIN_PX,
+				height - LEGEND_H_PX - LEGEND_MARGIN_PX, LEGEND_W_PX, LEGEND_H_PX);
+		}
 		if (chromeOn) drawShipChrome(ctx, chrome, camera, width, height);
+	}
+
+	// Set from main.js when the renderer's mode/range changes. The key compare
+	// keeps a per-frame caller free: an unchanged card is not rebuilt.
+	function setViewFieldLegend(info) {
+		const active = info && info.active ? info : null;
+		const key = active
+			? `${active.title}|${active.low}|${active.high}|${active.note || ''}|${active.ramp || ''}`
+			: '';
+		if (key === viewFieldLegendKey) return;
+		viewFieldLegendKey = key;
+		viewFieldLegendCanvas = active ? buildViewFieldLegendCanvas(active) : null;
 	}
 
 	function setShipChrome(state) {
@@ -581,7 +639,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	return {
 		resize, draw, setSelected, setOrbitState, setStarSource, setSelectedKeys,
 		toggleConstellations, setConstellations, constellationsVisible, setEnabled,
-		setShipChrome,
+		setShipChrome, setViewFieldLegend,
 	};
 }
 

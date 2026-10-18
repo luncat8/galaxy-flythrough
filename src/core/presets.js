@@ -45,6 +45,14 @@ const FIELDS = [
 	{ key: 'sat', label: 'saturation', suffix: 'x' },
 	{ key: 'headroom', label: 'headroom' },
 	{ key: 'highlight', label: 'highlight desat' },
+	// View field (view-modes.4): the GPU overlay over the frame. Mode 0..3,
+	// opacity, ramp choice ('auto' keeps the per-mode default), relief and the
+	// contour count — display state, so it rides beside the other look knobs.
+	{ key: 'viewfield', label: 'view field' },
+	{ key: 'viewopacity', label: 'field opacity' },
+	{ key: 'viewramp', label: 'field ramp' },
+	{ key: 'viewrelief', label: 'field relief' },
+	{ key: 'viewcontours', label: 'field contours' },
 	{ key: 'search', label: 'search filter' },
 	{ key: 'scope', label: 'search scope' },
 	// System view (0.5.3, plan §9.4): the toggle serialized 0/1, and the view's
@@ -86,6 +94,14 @@ function menuDefaults() {
 		sat: r.SATURATION_DEFAULT,
 		headroom: r.HEADROOM_DEFAULT,
 		highlight: r.HIGHLIGHT_DESAT_DEFAULT,
+		// The view field's defaults live with its math (math/field-overlay.js),
+		// so the island, the menu, the preset and the shader's fallbacks read
+		// one set of numbers.
+		viewfield: g.FieldOverlay ? g.FieldOverlay.DEFAULTS.mode : 0,
+		viewopacity: g.FieldOverlay ? g.FieldOverlay.DEFAULTS.opacity : 0.55,
+		viewramp: g.FieldOverlay ? g.FieldOverlay.DEFAULTS.ramp : 'auto',
+		viewrelief: g.FieldOverlay ? g.FieldOverlay.DEFAULTS.relief : 0.6,
+		viewcontours: g.FieldOverlay ? g.FieldOverlay.DEFAULTS.contours : 8,
 		time: TIME_DEFAULT,
 		wave: o.WAVE_DAMPING_UI_DEFAULT,
 		pattern: o.PATTERN_SCALE_UI_DEFAULT,
@@ -102,6 +118,10 @@ function menuDefaults() {
 		clusters: g.ClustersLib ? g.ClustersLib.CLUSTER_EXAGGERATION_DEFAULT : 50,
 	};
 }
+
+// The field-ramp names math/field-ramp.js owns, plus 'auto'. A preset cannot
+// name a ramp that does not exist; a typo leaves the menu default instead.
+const RAMPS = ['auto', 'viridis', 'turbo', 'magma', 'terrain', 'grey'];
 
 // One engine name per composable pass, in mask order.
 const ENGINE_ORDER = ['classic', 'simple', 'apocenter'];
@@ -198,6 +218,12 @@ function parse(query) {
 			if (raw === 'selection' || raw === 'galaxy') out.scope = raw;
 			continue;
 		}
+		// The ramp is a name, and only a name the renderer has: a typo would
+		// otherwise reach textureSample as an undefined LUT.
+		if (field.key === 'viewramp') {
+			if (RAMPS.indexOf(raw) >= 0) out.viewramp = raw;
+			continue;
+		}
 		const value = Number(raw);
 		if (Number.isFinite(value)) out[field.key] = value;
 	}
@@ -210,6 +236,12 @@ function describeValue(field, value) {
 	if (field.key === 'engine') return serializeEngine(value).split('+').join(', ');
 	if (field.key === 'sysview') return value ? 'open' : 'closed';
 	if (field.key === 'evolve') return value ? 'running' : 'frozen';
+	if (field.key === 'viewfield') {
+		const scope = typeof window !== 'undefined' ? window : global;
+		const names = scope.FieldOverlay ? scope.FieldOverlay.MODE_NAMES : ['off', 'height', 'spread', 'slope'];
+		return names[value] || String(value);
+	}
+	if (field.key === 'viewopacity') return Math.round(value * 100) + '%';
 	if (field.key === 'dvmap') {
 		const scope = typeof window !== 'undefined' ? window : global;
 		const names = scope.SystemLayer ? scope.SystemLayer.VIEW_NAMES : null;
@@ -252,6 +284,13 @@ function buildLlmPrompt(settings) {
 	lines.push('- look: ' + ['exposure', 'brightness', 'white', 'sat', 'headroom', 'highlight']
 		.filter((key) => d[key] !== undefined)
 		.map((key) => key + ' ' + d[key]).join(', '));
+	// The view field (view-modes.4) is a display layer over the same frame, so
+	// a reader rebuilding this page should know it was on. Labels, not keys:
+	// the prompt is prose.
+	const fieldLook = ['viewfield', 'viewopacity', 'viewramp', 'viewrelief', 'viewcontours']
+		.filter((key) => d[key] !== undefined)
+		.map((key) => FIELDS.find((f) => f.key === key).label + ' ' + d[key]);
+	if (fieldLook.length) lines.push('- view field: ' + fieldLook.join(', '));
 	lines.push('- star counts: ' + ['stars', 'catalog']
 		.filter((key) => d[key] !== undefined)
 		.map((key) => d[key] + ' ' + (key === 'stars' ? 'procedural' : 'catalog budget')).join(', '));

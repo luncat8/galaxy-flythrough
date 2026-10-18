@@ -1,7 +1,7 @@
 // src/render/view-modes-renderer.js
 // 2D-canvas painter for the view-modes heightmap experiment.
 //
-// Takes the Float32Array field built by math/distance-field.js and paints it
+// Takes the Float32Array field built by math/view-modes-field.js and paints it
 // with a colour ramp plus contours, then overlays the anchor stars, the
 // constellation figures and the current view window through *the layout's own*
 // texel mapping. That is the whole design rule of this file: it never re-derives
@@ -16,16 +16,19 @@
 'use strict';
 
 (function () {
-	const Field = (typeof window !== 'undefined' && window.DistanceField)
-		? window.DistanceField
-		: require('../math/distance-field.js');
+	const Field = (typeof window !== 'undefined')
+		? window.ViewModesField
+		: require('../math/view-modes-field.js');
 
-	// The ramps live in the main tree now: the island's painter and the
-	// WebGPU display pass must paint the same colours, so there is one
-	// source (render/distance-ramps.js) and not two copies of five curves.
-	const Ramps = (typeof window !== 'undefined' && window.DistanceRamps)
-		? window.DistanceRamps
-		: require('./distance-ramps.js');
+	// The ramps are shared with the main renderer's WebGPU overlay
+	// (math/field-ramp.js): one LUT per colour means the chart and the frame
+	// cannot disagree about what a colour is worth.
+	const FieldRamp = (typeof window !== 'undefined')
+		? window.FieldRamp
+		: require('../math/field-ramp.js');
+	const RAMPS = FieldRamp.RAMPS;
+	const rampForMode = FieldRamp.rampForMode;
+	const resolveRamp = FieldRamp.resolveRamp;
 
 	// Shaded relief, the cartographic convention: light from the north-west at
 	// 45° altitude, so the slope facing up-left is the lit one and a ridge reads
@@ -85,7 +88,7 @@
 		const w = layout.w, h = layout.h;
 		const iw = ctx.canvas.width | 0, ih = ctx.canvas.height | 0;
 		FULL.x = 0; FULL.y = 0; FULL.w = iw; FULL.h = ih;
-		const ramp = opts.ramp || Ramps.rampForMode(opts.mode);
+		const ramp = opts.ramp || rampForMode(opts.mode);
 		const levels = (opts.contourLevels | 0) || 10;
 		const contour = opts.drawContours ? 0.18 : 0;
 		const invert = !!opts.invert;
@@ -284,7 +287,7 @@
 		const iw = c.width | 0, ih = c.height | 0;
 		const W = 260, H = 12, pad = 12;
 		const x = iw - W - pad, y = ih - H - pad - 30;
-		const ramp = opts.ramp || Ramps.rampForMode(mode);
+		const ramp = opts.ramp || rampForMode(mode);
 		const strip = rampStrip(ramp);
 		ctx.fillStyle = 'rgba(6,8,14,0.72)';
 		ctx.fillRect(x - 8, y - 16, W + 16, H + 62);
@@ -328,9 +331,8 @@
 	}
 
 	const ViewModesRenderer = {
-		renderField, renderLegend,
-		rampForMode: Ramps.rampForMode, resolveRamp: Ramps.resolveRamp,
-		ramps: Ramps.ramps,
+		renderField, renderLegend, rampForMode, resolveRamp,
+		ramps: RAMPS,
 		RELIEF_DEFAULT,
 	};
 

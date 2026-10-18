@@ -431,9 +431,9 @@
       "name": "the flown approach arrives on the shell inside the checkout",
       "pass": true,
       "detail": {
-        "steps": 1064,
-        "dist": 10123060498736.516,
-        "spent": 59548289.93754258,
+        "steps": 1063,
+        "dist": 10017168483053.855,
+        "spent": 59372514.07392312,
         "required": 59958491.6
       }
     },
@@ -447,14 +447,14 @@
           "flip",
           "idle"
         ],
-        "retrogradeSteps": 14
+        "retrogradeSteps": 13
       }
     },
     {
       "name": "the flight time is the closed form's own scale",
       "pass": true,
       "detail": {
-        "shipS": 318900000,
+        "shipS": 318600000,
         "etaTotal": 318240725.9489938
       }
     },
@@ -462,7 +462,7 @@
       "name": "a drifting target is met at the shell",
       "pass": true,
       "detail": {
-        "dist": 10125829832183.66,
+        "dist": 10018848953147.422,
         "reason": "arrived"
       }
     },
@@ -471,10 +471,10 @@
       "pass": true,
       "detail": {
         "reason": 0,
-        "steps": 1065,
+        "steps": 1064,
         "dist": 0,
         "rel": 0,
-        "spent": 59957736.19762493,
+        "spent": 59957713.67300128,
         "required": 60178491.6
       }
     },
@@ -520,8 +520,8 @@
       "name": "follow nulls the relative velocity and trails at the stand-off (dt=3e+4)",
       "pass": true,
       "detail": {
-        "relStraightMs": 4.356191366014215e-7,
-        "dist": 9993399999999.965,
+        "relStraightMs": 0.000026136710045411463,
+        "dist": 9993399995535.318,
         "standOff": 10000000000000,
         "resolutionM": 16600000000
       }
@@ -531,22 +531,22 @@
       "pass": true,
       "detail": {
         "straightCostMs": 0,
-        "curveCostMs": 21822969.350044183
+        "curveCostMs": 21837870.63638661
       }
     },
     {
       "name": "follow re-nulls after the target curves (dt=3e+4)",
       "pass": true,
       "detail": {
-        "relCurveMs": 4.3561176158804506e-7
+        "relCurveMs": 0.207482682075351
       }
     },
     {
       "name": "follow nulls the relative velocity and trails at the stand-off (dt=3e+5)",
       "pass": true,
       "detail": {
-        "relStraightMs": 4.357165034178277e-8,
-        "dist": 9934000000173.336,
+        "relStraightMs": 2.2933751735969667,
+        "dist": 9934000000000.31,
         "standOff": 10000000000000,
         "resolutionM": 76000000000
       }
@@ -556,22 +556,22 @@
       "pass": true,
       "detail": {
         "straightCostMs": 0,
-        "curveCostMs": 3389974.749016963
+        "curveCostMs": 3643498.7179162726
       }
     },
     {
       "name": "follow re-nulls after the target curves (dt=3e+5)",
       "pass": true,
       "detail": {
-        "relCurveMs": 2.726270859374118e-9
+        "relCurveMs": 2.953437934163958
       }
     },
     {
       "name": "follow nulls the relative velocity and trails at the stand-off (dt=1e+6)",
       "pass": true,
       "detail": {
-        "relStraightMs": 1.3047153398433277e-8,
-        "dist": 9779999999999.822,
+        "relStraightMs": 0.0007420740834623966,
+        "dist": 9779995557206.887,
         "standOff": 10000000000000,
         "resolutionM": 230000000000
       }
@@ -581,14 +581,14 @@
       "pass": true,
       "detail": {
         "straightCostMs": 0,
-        "curveCostMs": 1259842.5207619742
+        "curveCostMs": 1433418.410627462
       }
     },
     {
       "name": "follow re-nulls after the target curves (dt=1e+6)",
       "pass": true,
       "detail": {
-        "relCurveMs": 6.5235766992166386e-9
+        "relCurveMs": 9.97556684166193
       }
     },
     {

@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-17T20:38:11.044Z",
+  "date": "2026-10-17T19:16:56.903Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -14,6 +14,8 @@
     "math/objects.js",
     "math/clusters.js",
     "math/coords.js",
+    "math/field-ramp.js",
+    "math/field-overlay.js",
     "core/device.js",
     "core/camera.js",
     "core/input.js",
@@ -21,7 +23,6 @@
     "core/star-set.js",
     "core/selection-store.js",
     "core/search.js",
-    "core/field-anchors.js",
     "core/route.js",
     "core/ship.js",
     "core/loop.js",
@@ -29,9 +30,6 @@
     "data/landmarks.js",
     "data/constellations.js",
     "render/shaders.js",
-    "math/distance-field.js",
-    "render/distance-ramps.js",
-    "render/distance-field-renderer.js",
     "stream/tile-loader.js",
     "stream/cell-manager.js",
     "render/star-sprites.js",
@@ -42,7 +40,6 @@
   "sourceFiles": [
     "core/camera.js",
     "core/device.js",
-    "core/field-anchors.js",
     "core/input.js",
     "core/loop.js",
     "core/presets.js",
@@ -59,7 +56,8 @@
     "math/coords.js",
     "math/deltav.js",
     "math/density.js",
-    "math/distance-field.js",
+    "math/field-overlay.js",
+    "math/field-ramp.js",
     "math/galaxy.js",
     "math/hash.js",
     "math/nebula.js",
@@ -69,8 +67,6 @@
     "math/sampling.js",
     "math/star-record.js",
     "math/star-types.js",
-    "render/distance-field-renderer.js",
-    "render/distance-ramps.js",
     "render/label-layer.js",
     "render/shaders.js",
     "render/star-sprites.js",
@@ -78,8 +74,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 94,
-  "passed": 94,
+  "totalChecks": 93,
+  "passed": 93,
   "failed": 0,
   "checks": [
     {
@@ -91,8 +87,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 37,
-        "sources": 37,
+        "scripts": 35,
+        "sources": 35,
         "missing": []
       }
     },
@@ -102,21 +98,12 @@
       "detail": []
     },
     {
-      "name": "the island is loaded by its own page, in law → ramps → painter → boot order",
+      "name": "the island is loaded by its own page, in field → painter → boot order",
       "pass": true,
       "detail": {
         "island": [
           false,
           false,
-          false
-        ]
-      }
-    },
-    {
-      "name": "the distance-field test page has its own page: radio buttons for the render type and the stars, a slider for the count",
-      "pass": true,
-      "detail": {
-        "page": [
           false
         ]
       }
@@ -314,6 +301,8 @@
         "ObjectsLib",
         "ClustersLib",
         "Coords",
+        "FieldRamp",
+        "FieldOverlay",
         "Device",
         "Camera",
         "Input",
@@ -321,7 +310,6 @@
         "StarSet",
         "SelectionStore",
         "Search",
-        "FieldAnchors",
         "RouteLib",
         "Ship",
         "Loop",
@@ -329,9 +317,6 @@
         "Landmarks",
         "Constellations",
         "GalaxyShaders",
-        "DistanceField",
-        "DistanceRamps",
-        "DistanceFieldRenderer",
         "TileLoader",
         "CellManager",
         "StarRenderer",
@@ -617,7 +602,12 @@
         "sysview": 0,
         "dvmap": 0,
         "dvbudget": 0.35,
-        "ship": "chemical"
+        "ship": "chemical",
+        "viewfield": 0,
+        "viewopacity": 0.55,
+        "viewramp": "auto",
+        "viewrelief": 0.6,
+        "viewcontours": 8
       }
     },
     {
@@ -647,7 +637,12 @@
         "sysview": 0,
         "dvmap": 0,
         "dvbudget": 0.35,
-        "ship": "chemical"
+        "ship": "chemical",
+        "viewfield": 0,
+        "viewopacity": 0.55,
+        "viewramp": "auto",
+        "viewrelief": 0.6,
+        "viewcontours": 8
       }
     },
     {
@@ -677,7 +672,12 @@
         "sysview": 0,
         "dvmap": 0,
         "dvbudget": 0.35,
-        "ship": "chemical"
+        "ship": "chemical",
+        "viewfield": 0,
+        "viewopacity": 0.55,
+        "viewramp": "auto",
+        "viewrelief": 0.6,
+        "viewcontours": 8
       }
     },
     {

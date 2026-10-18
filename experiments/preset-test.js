@@ -15,6 +15,8 @@ const fs = require('fs');
 const path = require('path');
 
 global.window = global;
+const FieldRamp = require('../src/math/field-ramp.js');
+const FieldOverlay = require('../src/math/field-overlay.js');
 const StarRenderer = require('../src/render/star-sprites.js');
 const OrbitLib = require('../src/math/orbit.js');
 const GalaxyLib = require('../src/math/galaxy.js');
@@ -43,6 +45,7 @@ const SETTINGS = {
 	type: 'SBb', seed: 42, age: 13.5, evolve: 1, engine: ['classic', 'apocenter'],
 	time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
 	selrad: 1.69897, exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
+	viewfield: 2, viewopacity: 0.45, viewramp: 'turbo', viewrelief: 0.35, viewcontours: 3,
 	search: 'G,K|terran|220-300', scope: 'selection',
 	sysview: 0, systime: 2, dvmap: 1, dvbudget: 0.35, ship: 'fusion',
 	stars: 300000, catalog: 250000, clusters: 75,
@@ -64,6 +67,7 @@ check('serialize → parse is the identity on a non-default system', () => {
 		type: 'Irr', seed: 7, age: 2.25, evolve: 0, engine: ['simple', 'apocenter'],
 		time: -1, wave: 0, pattern: 2.5, apoShare: 1, apoForce: 0,
 		exposure: 18.5, brightness: 0.125, white: 16, sat: 0.5, headroom: 1, highlight: 0,
+		viewfield: 1, viewopacity: 0.8, viewramp: 'viridis', viewrelief: 0.9, viewcontours: 12,
 		search: 'M|barren', scope: 'galaxy',
 		stars: 50000, catalog: 0,
 	});
@@ -168,6 +172,11 @@ check('menuDefaults matches the modules that own the numbers', () => {
 	assert.deepEqual(d, {
 		selrad: 1.69897, evolve: 0,
 		exposure: 22, brightness: 1, white: 4, sat: 1.4, headroom: 8, highlight: 1,
+		viewfield: window.FieldOverlay.DEFAULTS.mode,
+		viewopacity: window.FieldOverlay.DEFAULTS.opacity,
+		viewramp: window.FieldOverlay.DEFAULTS.ramp,
+		viewrelief: window.FieldOverlay.DEFAULTS.relief,
+		viewcontours: window.FieldOverlay.DEFAULTS.contours,
 		time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
 		systime: 0, dvmap: 0, dvbudget: 0.35, ship: 'chemical',
 		clusters: ClustersLib.CLUSTER_EXAGGERATION_DEFAULT,

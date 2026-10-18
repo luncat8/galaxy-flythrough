@@ -102,6 +102,13 @@ function readParams(search) {
 		dvmap: number('dvmap', window.SystemLayer.VIEW_DEFAULT),
 		dvbudget: number('dvbudget', window.SystemLayer.BUDGET_DEFAULT),
 		ship: text('ship', 'chemical'),
+		// View field overlay (view-modes.4): mode 0..3 and the four look knobs,
+		// defaulted by the module that owns the numbers.
+		viewfield: number('viewfield', window.FieldOverlay.DEFAULTS.mode),
+		viewopacity: number('viewopacity', window.FieldOverlay.DEFAULTS.opacity),
+		viewramp: text('viewramp', window.FieldOverlay.DEFAULTS.ramp),
+		viewrelief: number('viewrelief', window.FieldOverlay.DEFAULTS.relief),
+		viewcontours: number('viewcontours', window.FieldOverlay.DEFAULTS.contours),
 	};
 }
 
@@ -286,12 +293,6 @@ async function boot() {
         // The picker and the set rings read the buffers, which only exist now
         // (plan §3.1) — a setter is cheaper than reordering boot around them.
         selection.setRenderer(renderer);
-        // The distance field (distance-field-plan.md): the anchors are the
-        // app's choice of stars — the nearest N of the resident sky, the
-        // selection set, the named stars — and the renderer paints them.
-        const fieldAnchors = window.FieldAnchors.createFieldAnchors({
-                renderer, camera, landmarks, selection, starSet,
-        });
         labels.setStarSource(renderer.starBlocks());
         if (params.exposure !== null) renderer.setExposure(params.exposure);
         // The rest of the menu as boot params — the language the preset
@@ -325,8 +326,6 @@ async function boot() {
         const menuCollapse = document.getElementById('menu-collapse');
         const selectionMenu = document.getElementById('selection-menu');
         const selectionMenuCollapse = document.getElementById('selection-menu-collapse');
-        const fieldMenu = document.getElementById('field-menu');
-        const fieldMenuCollapse = document.getElementById('field-menu-collapse');
         const currentSelectionLabel = document.getElementById('selection-current-label');
         const previousSelectionLabel = document.getElementById('selection-previous-label');
         const swapSelectionButton = document.getElementById('selection-swap');
@@ -340,6 +339,14 @@ async function boot() {
         const sliderSat = document.getElementById('slider-saturation');
         const sliderHeadroom = document.getElementById('slider-headroom');
         const sliderHighlight = document.getElementById('slider-highlight');
+        const viewFieldMode = document.getElementById('view-field-mode');
+        const viewFieldRamp = document.getElementById('view-field-ramp');
+        const sliderViewOpacity = document.getElementById('slider-view-opacity');
+        const sliderViewRelief = document.getElementById('slider-view-relief');
+        const sliderViewContours = document.getElementById('slider-view-contours');
+        const valViewOpacity = document.getElementById('val-view-opacity');
+        const valViewRelief = document.getElementById('val-view-relief');
+        const valViewContours = document.getElementById('val-view-contours');
         const sliderStarTime = document.getElementById('slider-star-time');
         const sliderWave = document.getElementById('slider-wave');
         const sliderPattern = document.getElementById('slider-pattern');
@@ -359,13 +366,6 @@ async function boot() {
         const valPattern = document.getElementById('val-pattern');
         const valEngine = document.getElementById('val-engine');
         const btnDefaults = document.getElementById('menu-defaults');
-        const fieldModeSel = document.getElementById('field-mode');
-        const fieldSourceSel = document.getElementById('field-source');
-        const sliderFieldCount = document.getElementById('slider-field-count');
-        const valFieldCount = document.getElementById('val-field-count');
-        const sliderFieldSigma = document.getElementById('slider-field-sigma');
-        const valFieldSigma = document.getElementById('val-field-sigma');
-        const valField = document.getElementById('val-field');
         const sliderSelRad = document.getElementById('slider-selrad');
         const valSelRad = document.getElementById('val-selrad');
         const btnSelectAround = document.getElementById('btn-select-around');
@@ -390,7 +390,47 @@ async function boot() {
                 sliderHighlight.value = renderer.state.highlightDesat;
                 valHighlight.textContent = renderer.state.highlightDesat.toFixed(2);
         }
+
+        // View field (view-modes.4): the renderer owns the numbers, the menu
+        // mirrors them. The legend rebuilds only when the title or the live
+        // range changes; the label layer caches its strip.
+        let viewFieldLegendKey = '';
+        function syncViewFieldLegend() {
+                const vm = renderer.viewMode();
+                const key = vm.mode + '|' + vm.ramp + '|' + vm.lo.toFixed(4) + '|' + vm.hi.toFixed(4);
+                if (key === viewFieldLegendKey) return;
+                viewFieldLegendKey = key;
+                labels.setViewFieldLegend(renderer.viewFieldLegend());
+        }
+
+        function syncViewField() {
+                const vm = renderer.viewMode();
+                viewFieldMode.value = vm.mode;
+                viewFieldRamp.value = vm.ramp;
+                sliderViewOpacity.value = vm.opacity;
+                valViewOpacity.textContent = Math.round(vm.opacity * 100) + '%';
+                sliderViewRelief.value = vm.relief;
+                valViewRelief.textContent = vm.relief.toFixed(2);
+                sliderViewContours.value = vm.contours;
+                valViewContours.textContent = String(vm.contours);
+                syncViewFieldLegend();
+        }
+
+        function applyViewField(fields) {
+                renderer.setViewMode(fields);
+                syncViewField();
+        }
+
         syncSlidersFromRenderer();
+        // Boot params, applied once the menu elements above exist; absent keys
+        // are the module's own defaults.
+        applyViewField({
+                mode: params.viewfield,
+                opacity: params.viewopacity,
+                ramp: params.viewramp,
+                relief: params.viewrelief,
+                contours: params.viewcontours,
+        });
 
         // --- Selection controls (0.5.0, plan §3.3) --------------------------
         // The slider is log10(ly): 0.1 ly … 100 000 ly, default 50 ly. Decimal
@@ -1292,12 +1332,10 @@ async function boot() {
         function toggleMenu() {
                 const visible = menu.style.display !== 'none'
                         || selectionMenu.style.display !== 'none'
-                        || fieldMenu.style.display !== 'none'
                         || sysMenu.style.display !== 'none'
                         || helpPanel.style.display !== 'none';
                 menu.style.display = visible ? 'none' : 'block';
                 selectionMenu.style.display = visible ? 'none' : 'block';
-                fieldMenu.style.display = visible ? 'none' : 'block';
                 sysMenu.style.display = visible ? 'none' : 'block';
                 helpPanel.style.display = visible ? 'none' : 'block';
                 syncOverlayInset();
@@ -1321,7 +1359,6 @@ async function boot() {
         }
         wireCollapse(menu, menuCollapse);
         wireCollapse(selectionMenu, selectionMenuCollapse);
-        wireCollapse(fieldMenu, fieldMenuCollapse);
         wireCollapse(sysMenu, sysMenuCollapse);
 
         // --- Controls panel (ui.6) ------------------------------------------
@@ -1418,6 +1455,28 @@ async function boot() {
                 renderer.setHighlightDesat(Number(sliderHighlight.value));
                 valHighlight.textContent = renderer.state.highlightDesat.toFixed(2);
         });
+        // View field (view-modes.4): each control is one setViewMode call; the
+        // 4 Hz legend sync in the loop picks up the new range or title.
+        viewFieldMode.addEventListener('change', () => {
+                renderer.setViewMode({ mode: viewFieldMode.value });
+                syncViewField();
+        });
+        viewFieldRamp.addEventListener('change', () => {
+                renderer.setViewMode({ ramp: viewFieldRamp.value });
+                syncViewField();
+        });
+        sliderViewOpacity.addEventListener('input', () => {
+                renderer.setViewMode({ opacity: Number(sliderViewOpacity.value) });
+                syncViewField();
+        });
+        sliderViewRelief.addEventListener('input', () => {
+                renderer.setViewMode({ relief: Number(sliderViewRelief.value) });
+                syncViewField();
+        });
+        sliderViewContours.addEventListener('input', () => {
+                renderer.setViewMode({ contours: Number(sliderViewContours.value) });
+                syncViewField();
+        });
         // The star-time slider is the ship clock's other dress (game-mode-plan
         // §4): while game mode is on, its stops are the ship-time ladder's rung
         // indices — the system clock's pattern (SYSTIME_LADDER) — and the
@@ -1490,32 +1549,6 @@ async function boot() {
                 sliderWave.value = waveDamping;
                 valWave.textContent = formatWave(waveDamping);
         }
-        // The distance field: the render type, the stars the field is
-        // computed over, and how many of them. The renderer owns the grid,
-        // the layout and the range; the app owns the choice of stars.
-        function syncField() {
-                const mode = fieldModeSel && fieldModeSel.value ? fieldModeSel.value : 'off';
-                const source = fieldSourceSel && fieldSourceSel.value ? fieldSourceSel.value : 'nearest';
-                const count = sliderFieldCount ? parseInt(sliderFieldCount.value, 10) || 1 : 120;
-                fieldAnchors.setMode(mode);
-                fieldAnchors.setSource(source);
-                fieldAnchors.setCount(count);
-                renderer.setFieldMode(mode);
-                const sigma = sliderFieldSigma ? Number(sliderFieldSigma.value) : 3;
-                renderer.setFieldSigma(sigma);
-                if (sliderFieldCount) sliderFieldCount.disabled = source === 'selected' || source === 'constellations';
-                if (valFieldCount) valFieldCount.textContent = String(count);
-                if (valFieldSigma) valFieldSigma.textContent = `${Number.isInteger(sigma) ? sigma : sigma.toFixed(1)}°`;
-                if (sliderFieldSigma) sliderFieldSigma.disabled = mode === 'off';
-                // The readout itself is the frame loop's: the anchor count is
-                // only known once the anchors have been picked.
-        }
-        if (fieldModeSel) fieldModeSel.addEventListener('change', syncField);
-        if (fieldSourceSel) fieldSourceSel.addEventListener('change', syncField);
-        if (sliderFieldCount) sliderFieldCount.addEventListener('input', syncField);
-        if (sliderFieldSigma) sliderFieldSigma.addEventListener('input', syncField);
-        syncField();
-
         sliderWave.addEventListener('input', () => {
                 waveDamping = window.OrbitLib.setWaveDamping(Number(sliderWave.value));
                 syncWave();
@@ -1598,6 +1631,13 @@ async function boot() {
                 renderer.setSaturation(d.sat);
                 renderer.setHeadroom(d.headroom);
                 renderer.setHighlightDesat(d.highlight);
+                applyViewField({
+                        mode: d.viewfield,
+                        opacity: d.viewopacity,
+                        ramp: d.viewramp,
+                        relief: d.viewrelief,
+                        contours: d.viewcontours,
+                });
                 window.OrbitLib.setApocenterShare(d.apoShare);
                 window.OrbitLib.setApocenterForce(d.apoForce);
                 waveDamping = window.OrbitLib.setWaveDamping(d.wave);
@@ -1650,6 +1690,11 @@ async function boot() {
                         sat: renderer.state.saturation,
                         headroom: renderer.state.headroom,
                         highlight: renderer.state.highlightDesat,
+                        viewfield: renderer.state.viewMode,
+                        viewopacity: renderer.state.viewOpacity,
+                        viewramp: renderer.state.viewRampChoice,
+                        viewrelief: renderer.state.viewRelief,
+                        viewcontours: renderer.state.viewContours,
                         search: searchLib.formatFilter(searchLib.parseFilter(tokenBox.value)),
                         scope: scopeSelect.value === 'galaxy' ? 'galaxy' : 'selection',
                         sysview: systemLayer.isOpen() ? 1 : 0,
@@ -1724,6 +1769,16 @@ async function boot() {
                 if (s.sat !== undefined) renderer.setSaturation(s.sat);
                 if (s.headroom !== undefined) renderer.setHeadroom(s.headroom);
                 if (s.highlight !== undefined) renderer.setHighlightDesat(s.highlight);
+                if (s.viewfield !== undefined || s.viewopacity !== undefined || s.viewramp !== undefined
+                        || s.viewrelief !== undefined || s.viewcontours !== undefined) {
+                        applyViewField({
+                                mode: s.viewfield !== undefined ? s.viewfield : renderer.state.viewMode,
+                                opacity: s.viewopacity !== undefined ? s.viewopacity : renderer.state.viewOpacity,
+                                ramp: s.viewramp !== undefined ? s.viewramp : renderer.state.viewRampChoice,
+                                relief: s.viewrelief !== undefined ? s.viewrelief : renderer.state.viewRelief,
+                                contours: s.viewcontours !== undefined ? s.viewcontours : renderer.state.viewContours,
+                        });
+                }
                 // The filter and scope are preset state; the results are not
                 // (plan §5.5) — a pasted query lands in the controls and the
                 // old results clear, so nothing stale survives the paste.
@@ -3928,6 +3983,11 @@ async function boot() {
                 if (actions.speedRefTarget) { actions.speedRefTarget = 0; setSpeedRef('target'); }
                 if (actions.speedRefCentre) { actions.speedRefCentre = 0; setSpeedRef('centre'); }
                 if (actions.speedRefHome) { actions.speedRefHome = 0; setSpeedRef('home'); }
+                if (actions.viewField) {
+                        actions.viewField = 0;
+                        // M cycles off → distance → depth spread → slope.
+                        applyViewField({ mode: (renderer.state.viewMode + 1) % 4 });
+                }
                 if (actions.constellations) {
                         actions.constellations = 0;
                         labels.toggleConstellations();
@@ -3938,21 +3998,6 @@ async function boot() {
                 }
 
                 resizeCanvas();
-                // The distance field's anchors: the app's stars, at the
-                // positions they are drawn. The renderer owns everything
-                // else about the field.
-                if (fieldAnchors.mode !== 'off') {
-                        fieldAnchors.update(model, starTimeMyr, dt);
-                        renderer.setFieldAnchors(fieldAnchors.positions, fieldAnchors.count);
-                }
-                // The field's readout: the mode and how many stars it is
-                // computed over. Written only when it changes - a DOM write
-                // every frame is waste, and the count changes twice a second
-                // at most.
-                const fieldText = fieldAnchors.mode === 'off'
-                        ? 'off'
-                        : `${fieldAnchors.mode} · ${fieldAnchors.count} anchors`;
-                if (valField && valField.textContent !== fieldText) valField.textContent = fieldText;
                 renderer.render(camera, canvas.width, canvas.height, starTimeMyr, input.state, dtStar);
                 labels.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
                 labels.draw(camera, canvas.clientWidth, canvas.clientHeight);

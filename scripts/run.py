@@ -18,6 +18,7 @@ Usage:
     python3 scripts/run.py model-parity
     python3 scripts/run.py nebula-placement
     python3 scripts/run.py tile-encoder-smoke
+    python3 scripts/run.py field-overlay
     python3 scripts/run.py wgsl-exec
     python3 scripts/run.py visualize-data
     python3 scripts/run.py encode-mock-tiles
@@ -54,10 +55,9 @@ EXPERIMENTS = {
     'renderer':              'experiments/renderer-test.js',
     'hdr':                   'experiments/hdr-test.js',
     'landmark':              'experiments/landmark-test.js',
-    'distance-field':        'experiments/distance-field-test.js',
-    'distance-field-page':   'experiments/distance-field-page-check.js',
-    'field-anchors':         'experiments/field-anchors-test.js',
+    'view-modes-field':      'experiments/view-modes-field-test.js',
     'view-modes-page':       'experiments/view-modes-page-check.js',
+    'field-overlay':         'experiments/field-overlay-test.js',
     'tile-stream':           'experiments/tile-stream-test.js',
     'tile-encoder-smoke':    'experiments/tile-encoder-smoke-test.js',
     'galaxy-types':          'experiments/galaxy-types-test.js',
@@ -98,7 +98,7 @@ EXPERIMENTS = {
 
 TYPES = {
     'test':   ['export-parity', 'm1-smoke', 'wgsl-validate', 'camera', 'input', 'ship', 'preset', 'renderer', 'hdr',
-               'landmark', 'distance-field', 'distance-field-page', 'field-anchors', 'view-modes-page',
+               'landmark', 'view-modes-field', 'view-modes-page', 'field-overlay',
                'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'shape', 'model-parity', 'sampling',
                'density-distribution',
                'star-types-evolution', 'planet-gen', 'star-select', 'selection-store', 'search', 'nebula-placement', 'object-placement',

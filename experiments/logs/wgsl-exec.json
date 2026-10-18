@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-17T22:32:56.448Z",
+  "date": "2026-10-17T10:23:50.084Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 129,
-  "passed": 129,
+  "totalChecks": 121,
+  "passed": 121,
   "failed": 0,
   "checks": [
     {
@@ -37,16 +37,6 @@
     },
     {
       "name": "simple-step: the shipped source parses as WGSL",
-      "pass": true,
-      "detail": null
-    },
-    {
-      "name": "distance-field: the shipped source parses as WGSL",
-      "pass": true,
-      "detail": null
-    },
-    {
-      "name": "distance-field-display: the shipped source parses as WGSL",
       "pass": true,
       "detail": null
     },
@@ -1457,64 +1447,6 @@
             "absMag": -5.101312516686727,
             "seed": 18501
           }
-        }
-      }
-    },
-    {
-      "name": "the distance-field compute kernel runs every texel to completion",
-      "pass": true
-    },
-    {
-      "name": "the WGSL height field equals the CPU law (worst < 1e-5 dex)",
-      "pass": true,
-      "detail": {
-        "worst": 1.1920928955078125e-7,
-        "at": {
-          "i": 43,
-          "gpu": 0.05275222286581993,
-          "cpu": 0.05275210365653038
-        }
-      }
-    },
-    {
-      "name": "the WGSL depth spread equals the CPU law (worst < 1e-4 kpc)",
-      "pass": true,
-      "detail": {
-        "worst": 0.0000017136335372924805,
-        "at": {
-          "i": 12,
-          "gpu": 0.15889635682106018,
-          "cpu": 0.1588946431875229
-        }
-      }
-    },
-    {
-      "name": "the distance-field slope kernel runs every texel to completion",
-      "pass": true
-    },
-    {
-      "name": "the WGSL gradient equals the CPU law (worst < 1e-6 dex/deg)",
-      "pass": true,
-      "detail": {
-        "worst": 4.307366907596588e-9,
-        "at": {
-          "i": 42,
-          "gpu": 0.0018504372565075755,
-          "cpu": 0.001850432949140668
-        }
-      }
-    },
-    {
-      "name": "the WGSL display paints the ramp colour the CPU painter would (worst < 1e-5)",
-      "pass": true,
-      "detail": {
-        "worst": 1.0008611806000545e-7,
-        "at": {
-          "gx": 3,
-          "gy": 5,
-          "c": 1,
-          "got": 0.5271152257919312,
-          "want": 0.5271151257058131
         }
       }
     }

@@ -879,7 +879,12 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 }
 `;
 
-const STAR_SPRITE = `${ORBIT}
+// The shared star-position header: the record and uniform layout, the epoch
+// map, and the one engine-mask dispatch (classic → simple → apocenter, each
+// pass replacing the position). The sprite pass and the WebGPU field overlay
+// both include this part, so the overlay's stars are the stars the frame draws
+// — same epoch, same movement law — by construction, not by a second copy.
+const STAR_POSITION = `${ORBIT}
 // Path B: additive point sprites, 4 vertices per star (triangle strip).
 // WebGPU has no gl_PointSize, so each star is an instanced quad whose corner
 // comes from vertex_index.
@@ -932,25 +937,12 @@ struct StarPacked {
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
 @group(0) @binding(1) var<storage, read> stars: array<StarPacked>;
-@group(0) @binding(2) var colorLUT: texture_2d<f32>;
-@group(0) @binding(3) var<storage, read> theta: array<f32>;   // simple-engine azimuths
 
-struct VertexOut {
-        @builtin(position) clipPos: vec4f,
-        @location(0) uv: vec2f,
-        @location(1) color: vec3f,
-        @location(2) brightness: f32,
-};
-
-const ABS_MAG_MIN: f32 = -12.0;
-const ABS_MAG_SPAN: f32 = 30.0;
 const MASK_VISIBLE: u32 = 0x00010000u;   // flags byte bit 0
 // Epoch bits (star-record FLAG_EPOCH / FLAG_EPOCH_SPHEROID) and the family
 // field (bits 3-4 of the flags byte) the map branches on.
 const MASK_EPOCH: u32 = 0x00200000u;          // flags byte bit 5
 const MASK_EPOCH_SPHEROID: u32 = 0x00400000u; // flags byte bit 6
-const LOG2_OVER_LOG10: f32 = 3.321928095;   // log2(10)
-const MAG_TO_FLUX: f32 = 1.328771238;       // 0.4 * log2(10)
 
 // The epoch map, the vertex stage's half of orbit.epochMap: a record drawn at
 // the field's base epoch is placed in the running epoch's frame. Bulge and halo
@@ -978,10 +970,6 @@ fn epochMap(p: vec3f, packed: u32, centre: vec3f, epoch: vec4f) -> vec3f {
         return centre + q;
 }
 
-fn decodeAbsMag(packed: u32) -> f32 {
-        return ABS_MAG_MIN + f32((packed >> 8u) & 0xFFu) * (ABS_MAG_SPAN / 255.0);
-}
-
 fn cornerOffset(vid: u32) -> vec2f {
         switch vid {
                 case 0u: { return vec2f(-1.0, -1.0); }
@@ -990,6 +978,64 @@ fn cornerOffset(vid: u32) -> vec2f {
                 case 3u: { return vec2f( 1.0,  1.0); }
                 default: { return vec2f(1.0, 1.0); }
         }
+}
+
+// The drawn position of one record, in absolute galactic kpc. Engine-mask
+// dispatch (movement-parity-plan): uniform control flow, no divergence. Passes
+// run in the canonical order classic → simple → apocenter, each REPLACING the
+// position — simple rebuilds from birth + the compute-integrated azimuth,
+// apocenter from birth + its Kepler solve — so no pass consumes the previous
+// pass's output and the mask selects which law owns the star. The baseline with
+// neither classic nor simple bit is the birth position itself (apocenter-only
+// leaves the unselected fraction frozen); the apocenter pass then replaces the
+// baseline for the birth-selected subset. The CPU twin is
+// orbit.engineRecordPosition (picking, labels, the overlay's range sample).
+fn starMovedPosition(star: StarPacked, thetaValue: f32) -> vec3f {
+        let mask: u32 = u32(camera.engine.x);
+        let centre = vec3f(camera.cameraPos.w, 0.0, 0.0);
+        // Birth, then the epoch map: the field is drawn once and placed by the
+        // running epoch, so the stars that survive a run are the same stars.
+        let birth = epochMap(vec3f(star.x, star.y, star.z), star.packed, centre, camera.epoch);
+        var moved: vec3f;
+        if ((mask & 2u) != 0u) {
+                moved = simplePosition(birth, star.packed, thetaValue, centre,
+                        simpleEccMax(camera.dynA, camera.dynB));
+        } else if ((mask & 1u) != 0u) {
+                moved = orbitPosition(birth, star.packed, centre, camera.params.w, camera.dynA, camera.dynB, camera.waveA, camera.waveB);
+        } else {
+                moved = birth;
+        }
+        if ((mask & 4u) != 0u) {
+                moved = apocenterPosition(moved, birth, star.packed, centre, camera.params.w,
+                        camera.dynA, camera.waveA, camera.waveB, camera.engine);
+        }
+        return moved;
+}
+`;
+
+const STAR_SPRITE_BODY = `
+// HDR path: brightness is the raw linear flux, NOT tone-mapped here. The
+// additive blend into the rgba16float intermediate accumulates linearly, so
+// dense regions (bulge, arms) sum to brighter pixels with their hue intact.
+// The ACES tone-map lives in the tonemap module and runs once per pixel.
+
+@group(0) @binding(2) var colorLUT: texture_2d<f32>;
+@group(0) @binding(3) var<storage, read> theta: array<f32>;   // simple-engine azimuths
+
+struct VertexOut {
+        @builtin(position) clipPos: vec4f,
+        @location(0) uv: vec2f,
+        @location(1) color: vec3f,
+        @location(2) brightness: f32,
+};
+
+const ABS_MAG_MIN: f32 = -12.0;
+const ABS_MAG_SPAN: f32 = 30.0;
+const LOG2_OVER_LOG10: f32 = 3.321928095;   // log2(10)
+const MAG_TO_FLUX: f32 = 1.328771238;       // 0.4 * log2(10)
+
+fn decodeAbsMag(packed: u32) -> f32 {
+        return ABS_MAG_MIN + f32((packed >> 8u) & 0xFFu) * (ABS_MAG_SPAN / 255.0);
 }
 
 // A star that must not be drawn: outside the clip volume, zero brightness.
@@ -1012,35 +1058,7 @@ fn vs_main(
                 return hidden(vid);
         }
 
-        // Engine-mask dispatch (movement-parity-plan): uniform control flow, no
-        // divergence. Passes run in the canonical order classic → simple →
-        // apocenter, each REPLACING the position — simple rebuilds from birth +
-        // the compute-integrated azimuth in binding 3, apocenter from birth + its
-        // Kepler solve — so no pass consumes the previous pass's output and the
-        // mask selects which law owns the star. The baseline with neither classic
-        // nor simple bit is the birth position itself (apocenter-only leaves the
-        // unselected fraction frozen); the apocenter pass then replaces the
-        // baseline for the birth-selected subset. The CPU twin of this dispatch is
-        // orbit.engineLandmarkPosition (labels and picking).
-        let mask: u32 = u32(camera.engine.x);
-        let centre = vec3f(camera.cameraPos.w, 0.0, 0.0);
-        // Birth, then the epoch map: the field is drawn once and placed by the
-        // running epoch, so the stars that survive a run are the same stars
-        // (0.6 E4). Identity at the epoch the field was drawn at.
-        let birth = epochMap(vec3f(star.x, star.y, star.z), star.packed, centre, camera.epoch);
-        var moved: vec3f;
-        if ((mask & 2u) != 0u) {
-                moved = simplePosition(birth, star.packed, theta[starIdx], centre,
-                        simpleEccMax(camera.dynA, camera.dynB));
-        } else if ((mask & 1u) != 0u) {
-                moved = orbitPosition(birth, star.packed, centre, camera.params.w, camera.dynA, camera.dynB, camera.waveA, camera.waveB);
-        } else {
-                moved = birth;
-        }
-        if ((mask & 4u) != 0u) {
-                moved = apocenterPosition(moved, birth, star.packed, centre, camera.params.w,
-                        camera.dynA, camera.waveA, camera.waveB, camera.engine);
-        }
+        let moved: vec3f = starMovedPosition(star, theta[starIdx]);
         let rel: vec3f = moved - camera.cameraPos.xyz;
         let clip: vec4f = camera.viewProj * vec4f(rel.x, rel.y, rel.z, 1.0);
         if (clip.w <= 0.0) {
@@ -1100,6 +1118,8 @@ fn fs_main(in: VertexOut) -> @location(0) vec4f {
         return vec4f(in.color * intensity, intensity);
 }
 `;
+
+const STAR_SPRITE = STAR_POSITION + STAR_SPRITE_BODY;
 
 // HDR direct variant of the star sprite is DEPRECATED — the same tonemap
 // pass runs on both SDR and HDR outputs; on HDR it allows values >1.0 into
@@ -1900,362 +1920,292 @@ fn fs_main(in: VertexOut) -> @location(0) vec4f {
 }
 `;
 
-// Mirror parts, kept separate so the validator can diff each one against its
-// JS counterpart in src/math/.
-const FIELD_UNIFORM = `
-// The distance field's uniform block, shared by the compute and the display
-// pass. One string, so the two modules cannot drift apart.
+// --- View field overlay (view-modes.4) --------------------------------------
+// Three passes that put the island's heightmap on the real frame, over every
+// star the sprite pass draws. The island's CPU field is the reference (and the
+// browser fallback); here the GPU builds the same moments from the record
+// buffer, so the overlay scales to 300 k stars and follows the star clock.
 //
-//   eye    xyz = the eye in kpc (galactic frame), w = tan(fovY / 2)
-//   fwd    xyz = the camera's forward,               w = the window's aspect
-//   right  xyz = the camera's right,                 w = sigma (the IDW hill
-//                                                    half-width, radians)
-//   up     xyz = the camera's up,                    w = the anchor count
-//   quat   xyzw = the chart's pan quaternion
-//   qinv   xyzw = the quaternion's inverse
-//   params x = the grid width, y = the grid height, z = the mode
-//          (0 height, 1 spread, 2 gradient), w = the layout (0 view, 1 plane)
-//   range  x = the display range's lo, y = its hi, z = the chart's x span
-//          (radians), w = its y span
-//   misc   x = one texel's x angle (radians), y = its y angle, z = the gain,
-//          w = unused
-//   flags  x = 1 when the chart wraps in longitude, y = the canvas width,
-//          z = the canvas height, w = 1 when the chart mirrors longitude
-struct FieldUniform {
-	eye: vec4f,
-	fwd: vec4f,
-	right: vec4f,
-	up: vec4f,
-	quat: vec4f,
-	qinv: vec4f,
-	params: vec4f,
-	range: vec4f,
-	misc: vec4f,
-	flags: vec4f,
+//   1. field-splat   one instanced quad per record, additive moments
+//                    (w, w·l, w·l², w), l = log10(max(d, 1 pc)) in kpc.
+//   2. field-blur    a 3×3 binomial pass at field resolution, all four lanes
+//                    weighted alike so the moments stay coherent.
+//   3. field-composite  mode → display range → ramp + relief + contours,
+//                    alpha-blended over the finished frame.
+//
+// The display range is physical and declared on the CPU
+// (math/field-overlay.js): the shader never renormalizes the picture.
+
+const FIELD_SPLAT_BODY = `
+struct SplatParams {
+        params: vec4f,   // x radius in field texels, y/z field pixels, w 1 pc floor
 };
 
-// The shared helpers, here rather than in one of the two field modules: the
-// display pass calls fieldLog10 too, and WGSL has no includes.
-const FIELD_DEG: f32 = 0.017453292519943295;
-const FIELD_MIN_DIST_KPC: f32 = 0.001;
-const FIELD_LOG10_2: f32 = 0.30102999566398120;
+@group(0) @binding(2) var<storage, read> theta: array<f32>;   // simple-engine azimuths
+@group(0) @binding(3) var<uniform> splat: SplatParams;
 
-// log10 as log2 * log10(2). WGSL has a log10 builtin, but the CPU-side
-// interpreter the parity fixture runs the shipping WGSL through does not
-// implement it, and log2 is the same function to within an ulp - which is
-// far below the f32 noise the field carries anyway.
-fn fieldLog10(x: f32) -> f32 {
-	return log2(x) * FIELD_LOG10_2;
-}
-
-fn fieldQuatApply(v: vec3f, q: vec4f) -> vec3f {
-	let t = 2.0 * cross(q.xyz, v);
-	return v + q.w * t + cross(q.xyz, t);
-}
-`;
-
-const DISTANCE_FIELD = `${FIELD_UNIFORM}
-// The distance field, computed on the GPU: the same law as
-// math/distance-field.js, one texel per invocation.
-//
-// The field is a function of a *view direction*. Every texel stands for one
-// ray leaving the eye, and its value is a smooth interpolation of the anchor
-// stars that ray points near:
-//
-//   w_i = 1 / ((1 - cos(delta)) + (1 - cos(sigma))), delta = the angle
-//          between the texel ray and the anchor, sigma = the hill half-width.
-//
-// Cosine distance is monotone from the ray to its antipode. A sin^2(delta)
-// kernel aliases opposite rays, making every star produce a false second hill.
-// Back-facing anchors still contribute a low broad background, not a peak.
-//
-// Two raw (physical) scalars come out of the same sweep, because the sweep is
-// the expensive part:
-//
-//   .x  height  = the weighted mean of log10(distance) in dex
-//   .y  spread  = the weighted standard deviation of the distance in kpc:
-//                 the hidden depth between stars that look adjacent
-//
-// The gradient mode is not a third sweep: it is the slope of the height grid,
-// read off in a second O(w*h) pass (cs_slope), in dex per degree of sky.
-//
-// The anchors are absolute kpc positions, not eye-relative: the eye is
-// subtracted here, exactly as the star sprite does, so a field and a star
-// share one position convention.
-@group(0) @binding(0) var<uniform> u: FieldUniform;
-@group(0) @binding(1) var<storage, read> anchors: array<vec4f>;
-@group(0) @binding(2) var<storage, read_write> fieldOut: array<vec4f>;
-@group(0) @binding(3) var<storage, read_write> slopeOut: array<f32>;
-
-// The ray a texel stands for. The 'view' layout is the app's own gnomonic
-// window (the exact inverse of its perspective divide); the 'plane' layout
-// is the equirect sky chart, longitude mirrored because the sky is drawn as
-// the viewer sees it, and panned by the quaternion.
-fn fieldTexelRay(px: f32, py: f32) -> vec3f {
-	let gw = u.params.x;
-	let gh = u.params.y;
-	if (u.params.w > 0.5) {
-		let cu = (px + 0.5) / gw;
-		let cv = (py + 0.5) / gh;
-		let lon = select(cu - 0.5, -(cu - 0.5), u.flags.w > 0.5) * u.range.z;
-		let lat = clamp((0.5 - cv) * u.range.w, -1.5707963267948966, 1.5707963267948966);
-		let c = cos(lat);
-		return fieldQuatApply(vec3f(c * cos(lon), c * sin(lon), sin(lat)), u.qinv);
-	}
-	let cu = (px + 0.5) / gw - 0.5;
-	let cv = 0.5 - (py + 0.5) / gh;
-	let tx = cu * 2.0 * u.eye.w * u.fwd.w;
-	let ty = cv * 2.0 * u.eye.w;
-	return normalize(vec3f(
-		u.fwd.x + u.right.x * tx + u.up.x * ty,
-		u.fwd.y + u.right.y * tx + u.up.y * ty,
-		u.fwd.z + u.right.z * tx + u.up.z * ty));
-}
-
-@compute @workgroup_size(8, 8)
-fn cs_field(@builtin(global_invocation_id) gid: vec3u) {
-	let gw = u32(u.params.x);
-	let gh = u32(u.params.y);
-	if (gid.x >= gw || gid.y >= gh) { return; }
-	let ray = fieldTexelRay(f32(gid.x), f32(gid.y));
-	let n = u32(u.up.w);
-	let soft = 1.0 - cos(u.right.w);
-	let eye = u.eye.xyz;
-	var sw = 0.0;
-	var sv = 0.0;
-	var sd = 0.0;
-	var sd2 = 0.0;
-	for (var i = 0u; i < n; i = i + 1u) {
-		let rel = anchors[i].xyz - eye;
-		let d = length(rel);
-		// A star at the eye has no direction and its hill would cover the
-		// sky: it is dropped, the same rule the CPU law uses.
-		if (d <= 1.0e-9) { continue; }
-		let c = clamp(dot(ray, rel / d), -1.0, 1.0);
-		var q = 1.0 - c;
-		if (q < 0.0) { q = 0.0; }
-		let wt = 1.0 / (q + soft);
-		sw = sw + wt;
-		sv = sv + wt * fieldLog10(max(d, FIELD_MIN_DIST_KPC));
-		sd = sd + wt * d;
-		sd2 = sd2 + wt * d * d;
-	}
-	var inv = 0.0;
-	if (sw > 1.0e-12) { inv = 1.0 / sw; }
-	let mean = sd * inv;
-	var varr = sd2 * inv - mean * mean;
-	if (varr < 0.0) { varr = 0.0; }
-	fieldOut[gid.y * gw + gid.x] = vec4f(sv * inv, sqrt(varr), 0.0, 0.0);
-}
-
-// The height of one grid texel, for the slope pass.
-fn fieldHeight(x: i32, y: i32) -> f32 {
-	return fieldOut[u32(y) * u32(u.params.x) + u32(x)].x;
-}
-
-// The central-difference slope of the height grid, per radian of sky.
-//
-// Longitude wraps on a full chart; latitude does not (a pole is a real edge
-// of the parameterisation, and clamping there keeps the derivative finite
-// instead of wrapping north into south). A chart's longitude rows shrink with
-// cos(lat), so the derivative is per angle of sky, not per texel of map.
-@compute @workgroup_size(8, 8)
-fn cs_slope(@builtin(global_invocation_id) gid: vec3u) {
-	let gw = i32(u.params.x);
-	let gh = i32(u.params.y);
-	let px = i32(gid.x);
-	let py = i32(gid.y);
-	if (px >= gw || py >= gh) { return; }
-	let rx = u.misc.x;
-	let ry = u.misc.y;
-	let plane = u.params.w > 0.5;
-	let wrapX = u.flags.x > 0.5;
-	var lf = px - 1;
-	var rt = px + 1;
-	if (wrapX) {
-		lf = (px - 1 + gw) % gw;
-		rt = (px + 1) % gw;
-	} else {
-		if (lf < 0) { lf = 0; }
-		if (rt > gw - 1) { rt = gw - 1; }
-	}
-	// The texel gap between the two, measured the short way round on a
-	// wrapped chart: at the seam the plain difference is 2 - w and would
-	// overstate the slope about w/2 times.
-	var gap = rt - lf;
-	if (wrapX) { gap = (gap + gw) % gw; }
-	if (gap <= 0) { gap = 1; }
-	var upRow = py - 1;
-	if (upRow < 0) { upRow = py; }
-	var dnRow = py + 1;
-	if (dnRow > gh - 1) { dnRow = py; }
-	var dy = f32(dnRow - upRow) * ry;
-	if (!(dy > 0.0)) { dy = ry; }
-	var lonScale = 1.0;
-	if (plane) {
-		let lat = (0.5 - (f32(py) + 0.5) / f32(gh)) * u.range.w;
-		lonScale = 1.0 / max(cos(lat), 0.05);
-	}
-	let sx = (fieldHeight(rt, py) - fieldHeight(lf, py)) / (f32(gap) * rx) * lonScale;
-	let sy = (fieldHeight(px, dnRow) - fieldHeight(px, upRow)) / dy;
-	slopeOut[u32(py) * u32(gw) + u32(px)] = sqrt(sx * sx + sy * sy) * FIELD_DEG;
-}
-`;
-
-const DISTANCE_FIELD_DISPLAY = `${FIELD_UNIFORM}
-// The field, painted: a fullscreen triangle that reads the field the compute
-// pass wrote, maps each texel's raw value through the display range, and
-// looks the colour up in the ramp.
-//
-// The four neighbours are read and the range is applied to *each* of them
-// before the bilinear mix, because the range mapping is not linear for the
-// spread and gradient modes (they go through log10): interpolating the raw
-// values and mapping afterwards would not be the CPU painter's mapping. The
-// CPU paints a 0..1 field and lets the canvas interpolate it; this does the
-// same, in the same order.
-//
-// The ramp's bytes are sRGB; the canvas (colorSpace 'srgb') encodes linear
-// values on presentation, so the bytes are decoded here and the picture that
-// reaches the screen is the ramp's colour exactly.
-@group(0) @binding(0) var<uniform> u: FieldUniform;
-@group(0) @binding(1) var<storage, read> fieldIn: array<vec4f>;
-@group(0) @binding(2) var<storage, read> slopeIn: array<f32>;
-@group(0) @binding(3) var rampTex: texture_2d<f32>;
-
-struct FieldVertexOut {
-	@builtin(position) pos: vec4f,
+struct SplatOut {
+        @builtin(position) clipPos: vec4f,
+        @location(0) uv: vec2f,
+        @location(1) value: f32,
 };
+
+fn hiddenSplat() -> SplatOut {
+        var out: SplatOut;
+        out.clipPos = vec4f(0.0, 0.0, -1.0, 1.0);
+        out.uv = vec2f(1.0, 1.0);
+        out.value = 0.0;
+        return out;
+}
 
 @vertex
-fn vs_full(@builtin(vertex_index) vid: u32) -> FieldVertexOut {
-	// One oversized triangle: no vertex buffer, no index buffer, and no seam
-	// down the diagonal.
-	var corners = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
-	var out: FieldVertexOut;
-	let xy = corners[vid];
-	out.pos = vec4f(xy, 0.0, 1.0);
-	return out;
-}
-
-fn fieldSrgbToLinear(c: f32) -> f32 {
-	if (c <= 0.04045) { return c / 12.92; }
-	return pow((c + 0.055) / 1.055, 2.4);
-}
-
-// The raw (physical) value of one grid texel, in the unit the mode quotes.
-fn fieldRaw(x: i32, y: i32) -> f32 {
-	let i = u32(y) * u32(u.params.x) + u32(x);
-	if (u.params.z > 1.5) { return slopeIn[i]; }
-	if (u.params.z > 0.5) { return fieldIn[i].y; }
-	return fieldIn[i].x;
-}
-
-// The display range: the physical scalar to 0..1. Height is inverted (the
-// near end is the top of the ramp); the other two climb with the raw value
-// through log10. The range is *declared* - it is never re-derived from the
-// field, and the field is never renormalised after smoothing.
-fn fieldDisplay(raw: f32) -> f32 {
-	let lo = u.range.x;
-	let hi = u.range.y;
-	let span = hi - lo;
-	if (!(span > 0.0)) { return 0.0; }
-	if (u.params.z < 0.5) {
-		return clamp((hi - raw) / span, 0.0, 1.0);
-	}
-	let v = fieldLog10(max(raw, 1.0e-6));
-	return clamp((v - lo) / span, 0.0, 1.0);
+fn vs_main(
+        @builtin(vertex_index) vid: u32,
+        @builtin(instance_index) starIdx: u32,
+) -> SplatOut {
+        let star: StarPacked = stars[starIdx];
+        if ((star.packed & MASK_VISIBLE) == 0u) { return hiddenSplat(); }
+        let moved: vec3f = starMovedPosition(star, theta[starIdx]);
+        let rel: vec3f = moved - camera.cameraPos.xyz;
+        let clip: vec4f = camera.viewProj * vec4f(rel.x, rel.y, rel.z, 1.0);
+        if (clip.w <= 0.0) { return hiddenSplat(); }
+        // The 1 pc floor is the same MIN_DIST_KPC the CPU range reads, so a star
+        // the camera sits on cannot own the whole ramp.
+        let distance: f32 = max(length(rel), splat.params.w);
+        let logD: f32 = log(distance) * 0.4342944819;   // log10
+        let corner: vec2f = cornerOffset(vid);
+        let offset: vec2f = corner * splat.params.x * vec2f(2.0 / splat.params.y, 2.0 / splat.params.z);
+        var out: SplatOut;
+        out.clipPos = vec4f(clip.xy + offset * clip.w, clip.zw);
+        out.uv = corner;
+        out.value = logD;
+        return out;
 }
 
 @fragment
-fn fs_field(in: FieldVertexOut) -> @location(0) vec4f {
-	let cw = max(u.flags.y, 1.0);
-	let ch = max(u.flags.z, 1.0);
-	var rw = cw;
-	var rh = ch;
-	var ox = 0.0;
-	var oy = 0.0;
-	if (u.params.w > 0.5) {
-		// The chart keeps its own aspect: a 2:1 sky in a 16:9 window is
-		// letterboxed, not stretched.
-		let ga = u.params.x / u.params.y;
-		let ca = cw / ch;
-		if (ga > ca) { rw = cw; rh = cw / ga; } else { rh = ch; rw = ch * ga; }
-		ox = (cw - rw) * 0.5;
-		oy = (ch - rh) * 0.5;
-	}
-	let px = in.pos.x - ox;
-	let py = in.pos.y - oy;
-	if (px < 0.0 || py < 0.0 || px > rw || py > rh) {
-		return vec4f(0.0056, 0.0085, 0.0184, 1.0);   // the letterbox
-	}
-	let gw = i32(u.params.x);
-	let gh = i32(u.params.y);
-	// Texel i covers [i/w, (i+1)/w] with its centre at (i+0.5)/w, the same
-	// convention the CPU painter's marker placement uses.
-	let fx = (px / rw) * f32(gw) - 0.5;
-	let fy = (py / rh) * f32(gh) - 0.5;
-	let fx0 = floor(fx);
-	let fy0 = floor(fy);
-	let x0 = clamp(i32(fx0), 0, gw - 1);
-	let y0 = clamp(i32(fy0), 0, gh - 1);
-	let x1 = min(x0 + 1, gw - 1);
-	let y1 = min(y0 + 1, gh - 1);
-	let tx = clamp(fx - fx0, 0.0, 1.0);
-	let ty = clamp(fy - fy0, 0.0, 1.0);
-	let v00 = fieldDisplay(fieldRaw(x0, y0));
-	let v01 = fieldDisplay(fieldRaw(x1, y0));
-	let v10 = fieldDisplay(fieldRaw(x0, y1));
-	let v11 = fieldDisplay(fieldRaw(x1, y1));
-	let top = mix(v00, v01, tx);
-	let bot = mix(v10, v11, tx);
-	let v = clamp(mix(top, bot, ty), 0.0, 1.0);
-	let ci = i32(v * 255.0);
-	let c = textureLoad(rampTex, vec2i(ci, 0), 0);
-	let gain = u.misc.z;
-	return vec4f(
-		fieldSrgbToLinear(c.r) * gain,
-		fieldSrgbToLinear(c.g) * gain,
-		fieldSrgbToLinear(c.b) * gain,
-		1.0);
+fn fs_main(in: SplatOut) -> @location(0) vec4f {
+        let r2: f32 = dot(in.uv, in.uv);
+        if (r2 > 1.0) { discard; }
+        let s: f32 = 1.0 - r2;
+        let w: f32 = s * s;
+        // Weighted moments: r = Σw, g = Σw·l, b = Σw·l². The composite divides
+        // them into the mean and the variance; alpha mirrors the weight so the
+        // additive target stays readable.
+        return vec4f(w, w * in.value, w * in.value * in.value, w);
 }
 `;
 
+const FIELD_SPLAT = STAR_POSITION + FIELD_SPLAT_BODY;
+
+const FIELD_BLUR = `
+// A 3×3 binomial blur on the splat target, at field resolution. Separating it
+// from the composite is what keeps the composite at one value sample even in
+// the derivative modes, and the four moment lanes share the weights so the
+// mean and variance stay consistent.
+
+struct BlurParams {
+        size: vec4f,   // x width, y height
+};
+
+@group(0) @binding(0) var<uniform> u: BlurParams;
+@group(0) @binding(1) var splatTexture: texture_2d<f32>;
+
+fn texelAt(x: i32, y: i32) -> vec4f {
+        let w: i32 = i32(u.size.x);
+        let h: i32 = i32(u.size.y);
+        let px: i32 = clamp(x, 0, w - 1);
+        let py: i32 = clamp(y, 0, h - 1);
+        return textureLoad(splatTexture, vec2i(px, py), 0);
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4f {
+        var p: array<vec2f, 3> = array<vec2f, 3>(
+                vec2f(-1.0, -3.0),
+                vec2f(-1.0,  1.0),
+                vec2f( 3.0,  1.0),
+        );
+        return vec4f(p[vid], 0.0, 1.0);
+}
+
+@fragment
+fn fs_main(@builtin(position) frag: vec4f) -> @location(0) vec4f {
+        let p = vec2i(i32(frag.x), i32(frag.y));
+        var sum: vec4f = texelAt(p.x, p.y) * 4.0;
+        sum = sum + (texelAt(p.x - 1, p.y) + texelAt(p.x + 1, p.y)
+                + texelAt(p.x, p.y - 1) + texelAt(p.x, p.y + 1)) * 2.0;
+        sum = sum + texelAt(p.x - 1, p.y - 1) + texelAt(p.x + 1, p.y - 1)
+                + texelAt(p.x - 1, p.y + 1) + texelAt(p.x + 1, p.y + 1);
+        return sum * 0.0625;
+}
+`;
+
+const FIELD_COMPOSITE = `
+// Fullscreen composite, drawn after the tonemap pass on the swapchain: the
+// field is a map over the picture, not another light source, so it must not be
+// multiplied by the exposure curve. Alpha-blends the ramp colour over the
+// finished frame; opacity 1 hides the stars, 0 leaves the frame untouched.
+
+struct FieldComposite {
+        params: vec4f,     // x mode, y opacity, z relief, w contour levels
+        range: vec4f,      // x lo, y hi (each mode's display unit)
+        // x fieldW, y fieldH, z tan(fovY/2). The angular size of a texel is
+        // reconstructed per pixel: it grows toward the corners of a pinhole
+        // frame, and the slope mode quotes dex per degree, so a constant would
+        // bias every number away from the centre.
+        viewport: vec4f,
+};
+
+@group(0) @binding(0) var<uniform> u: FieldComposite;
+@group(0) @binding(1) var fieldTexture: texture_2d<f32>;
+@group(0) @binding(2) var rampTexture: texture_2d<f32>;
+@group(0) @binding(3) var fieldSampler: sampler;
+
+const INV_LN10: f32 = 0.4342944819;
+const DEG_PER_RAD: f32 = 57.2957795131;
+
+fn blobAt(uv: vec2f) -> vec4f {
+        return textureSampleLevel(fieldTexture, fieldSampler, uv, 0.0);
+}
+
+// Weighted mean log-distance, dex of kpc. The 1e-9 floor keeps a texel with no
+// star from dividing by zero; the composite culls it before it is coloured.
+fn heightAt(uv: vec2f) -> f32 {
+        let b = blobAt(uv);
+        return b.y / max(b.x, 1e-9);
+}
+
+fn log10f(x: f32) -> f32 {
+        return log(max(x, 1e-9)) * INV_LN10;
+}
+
+fn displayT(raw: f32) -> f32 {
+        let span: f32 = max(u.range.y - u.range.x, 1e-6);
+        // Height is inverted: the near end is the top of the ramp.
+        if (u.params.x < 1.5) { return clamp((u.range.y - raw) / span, 0.0, 1.0); }
+        return clamp((raw - u.range.x) / span, 0.0, 1.0);
+}
+
+// Radians per field texel at this pixel, from the pinhole camera the field
+// was drawn with. x: across, y: down. At the centre both are
+// 2·tanHalfY/height; toward a corner the ray angle grows faster than the
+// NDC coordinate, hence the quadratic correction.
+fn angularTexel(uv: vec2f) -> vec2f {
+        let tanY: f32 = u.viewport.z;
+        let aspect: f32 = u.viewport.x / max(u.viewport.y, 1.0);
+        let nx: f32 = uv.x * 2.0 - 1.0;
+        let ny: f32 = 1.0 - uv.y * 2.0;
+        let tx: f32 = tanY * aspect * nx;
+        let ty: f32 = tanY * ny;
+        let radH: f32 = (2.0 / u.viewport.x) * (tanY * aspect) / (1.0 + tx * tx);
+        let radV: f32 = (2.0 / u.viewport.y) * tanY / (1.0 + ty * ty);
+        return vec2f(max(radH, 1e-7), max(radV, 1e-7));
+}
+
+// The mode's display scalar. 1 height (log kpc), 2 spread (log10 σ dex),
+// 3 slope (log10 dex/deg, a one-texel central difference of the height field).
+fn modeValue(uv: vec2f) -> f32 {
+        if (u.params.x < 1.5) { return heightAt(uv); }
+        let b = blobAt(uv);
+        if (u.params.x < 2.5) {
+                let inv: f32 = 1.0 / max(b.x, 1e-9);
+                let mean: f32 = b.y * inv;
+                let variance: f32 = max(b.z * inv - mean * mean, 0.0);
+                return log10f(sqrt(variance));
+        }
+        let eu: vec2f = vec2f(1.0 / u.viewport.x, 0.0);
+        let ev: vec2f = vec2f(0.0, 1.0 / u.viewport.y);
+        let texel: vec2f = angularTexel(uv);
+        let hx: f32 = (heightAt(uv + eu) - heightAt(uv - eu)) * 0.5 / texel.x;
+        let hy: f32 = (heightAt(uv + ev) - heightAt(uv - ev)) * 0.5 / texel.y;
+        return log10f(sqrt(hx * hx + hy * hy) * DEG_PER_RAD);
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4f {
+        var p: array<vec2f, 3> = array<vec2f, 3>(
+                vec2f(-1.0, -3.0),
+                vec2f(-1.0,  1.0),
+                vec2f( 3.0,  1.0),
+        );
+        return vec4f(p[vid], 0.0, 1.0);
+}
+
+@fragment
+fn fs_main(@builtin(position) frag: vec4f) -> @location(0) vec4f {
+        if (u.params.x < 0.5) { return vec4f(0.0); }
+        let uv: vec2f = vec2f(frag.x / u.viewport.x, frag.y / u.viewport.y);
+        let b: vec4f = blobAt(uv);
+        if (b.x < 1e-5) { return vec4f(0.0); }
+        let t: f32 = displayT(modeValue(uv));
+        var rgb: vec3f = textureSampleLevel(rampTexture, fieldSampler,
+                vec2f(clamp(t, 0.001, 0.999), 0.5), 0.0).rgb;
+
+        // Shaded relief from the height field itself: the terrain is the same in
+        // every mode, while the colour carries the selected scalar. Light from
+        // the north-west above; ambient 0.45, never above 1, so relief can only
+        // darken and a colour keeps meaning the value the legend quotes.
+        let eu: vec2f = vec2f(1.0 / u.viewport.x, 0.0);
+        let ev: vec2f = vec2f(0.0, 1.0 / u.viewport.y);
+        let reliefTexel: vec2f = angularTexel(uv);
+        let gx: f32 = (heightAt(uv + eu) - heightAt(uv - eu)) * 0.5 / reliefTexel.x;
+        let gy: f32 = (heightAt(uv + ev) - heightAt(uv - ev)) * 0.5 / reliefTexel.y;
+        let exag: f32 = u.params.z * 0.2;
+        let nrm: vec3f = normalize(vec3f(-gx * exag, -gy * exag, 1.0));
+        let light: vec3f = normalize(vec3f(-0.6, -0.6, 0.8));
+        rgb = rgb * (0.45 + 0.55 * max(dot(nrm, light), 0.0));
+
+        // Contours darken band edges of the display value; 0 levels is off.
+        if (u.params.w > 0.5) {
+                let f: f32 = fract(t * u.params.w);
+                let line: f32 = 1.0 - smoothstep(0.0, 0.07, min(f, 1.0 - f));
+                rgb = rgb * (1.0 - 0.35 * line);
+        }
+
+        let a: f32 = u.params.y;
+        return vec4f(rgb * a, a);
+}
+`;
+
+// Mirror parts, kept separate so the validator can diff each one against its
+// JS counterpart in src/math/.
 const SHADER_PARTS = {
-	'pcg-hash': PCG_HASH,
-	'density': DENSITY,
-	'orbit': ORBIT,
-	'simple-step': SIMPLE_STEP,
-	'star-sprite': STAR_SPRITE,
-	'star-sprite-hdr': STAR_SPRITE_HDR,
-	'nebula-billboard': NEBULA_BILLBOARD,
-	'tonemap': TONEMAP,
-	'procedural-gen': PROCEDURAL_GEN,
-	'cull': CULL,
-	'field-uniform': FIELD_UNIFORM,
-	'distance-field': DISTANCE_FIELD,
-	'distance-field-display': DISTANCE_FIELD_DISPLAY,
+        'pcg-hash': PCG_HASH,
+        'density': DENSITY,
+        'orbit': ORBIT,
+        'simple-step': SIMPLE_STEP,
+        'star-sprite': STAR_SPRITE,
+        'star-sprite-hdr': STAR_SPRITE_HDR,
+        'nebula-billboard': NEBULA_BILLBOARD,
+        'tonemap': TONEMAP,
+        'procedural-gen': PROCEDURAL_GEN,
+        'cull': CULL,
+        'field-splat': FIELD_SPLAT,
+        'field-blur': FIELD_BLUR,
+        'field-composite': FIELD_COMPOSITE,
 };
 
 // Complete, compilable modules. WGSL has no include mechanism, so the shared
 // parts are concatenated here rather than fake-included in the source.
 const SHADERS = {
-	'star-sprite': PCG_HASH + STAR_SPRITE,
-	'star-sprite-hdr': STAR_SPRITE_HDR,
-	'nebula-billboard': NEBULA_BILLBOARD,
-	'tonemap': TONEMAP,
-	'procedural-gen': PCG_HASH + DENSITY + PROCEDURAL_GEN,
-	'cull': PCG_HASH + CULL,
-	'simple-step': PCG_HASH + ORBIT + SIMPLE_STEP,
-	'distance-field': DISTANCE_FIELD,
-	'distance-field-display': DISTANCE_FIELD_DISPLAY,
+        'star-sprite': PCG_HASH + STAR_SPRITE,
+        'star-sprite-hdr': STAR_SPRITE_HDR,
+        'nebula-billboard': NEBULA_BILLBOARD,
+        'tonemap': TONEMAP,
+        'procedural-gen': PCG_HASH + DENSITY + PROCEDURAL_GEN,
+        'cull': PCG_HASH + CULL,
+        'simple-step': PCG_HASH + ORBIT + SIMPLE_STEP,
+        'field-splat': PCG_HASH + FIELD_SPLAT,
+        'field-blur': FIELD_BLUR,
+        'field-composite': FIELD_COMPOSITE,
 };
 
 // Wired shaders: the renderer compiles star-sprite + nebula-billboard + tonemap
 // every frame, plus simple-step when the simple engine is selected, plus the
-// two distance-field modules when the field is on.
-// star-sprite-hdr is kept as a reference module and is not bound.
+// three field-overlay passes (math/field-overlay.js). star-sprite-hdr is kept
+// as a reference module and is not bound.
 const WIRED_SHADERS = ['star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'simple-step',
-	'distance-field', 'distance-field-display'];
+        'field-splat', 'field-blur', 'field-composite'];
 
 const GalaxyShaders = { SHADERS, SHADER_PARTS, WIRED_SHADERS };
 if (typeof module !== 'undefined') module.exports = GalaxyShaders;
