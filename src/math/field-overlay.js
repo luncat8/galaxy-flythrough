@@ -326,10 +326,18 @@
 	}
 
 	// Composite uniform: params (mode, opacity, relief, contour levels),
-	// range (lo, hi, -, -), viewport (field width, field height, tan(fovY/2), 0).
+	// range (lo, hi, -, -), viewport (field width, field height, tan(fovY/2), 0),
+	// canvas (canvas width, canvas height, -, -).
 	// The slope mode reconstructs the angular texel size from the pinhole
 	// camera the field was drawn with, so it needs tanHalfY rather than a
 	// pre-divided radians-per-texel: the size changes across the frame.
+	// The canvas size is the composite's own frame: the pass runs on the
+	// swapchain, so its fragment position is a canvas pixel, and the field
+	// grid is a different (smaller) resolution of the same NDC. Without the
+	// canvas size the shader would divide a canvas pixel by the field's
+	// width and sample far outside the field — the map would show the edge
+	// column stretched over the picture, and no star would sit on its own
+	// colour.
 	function packComposite(out, state, opts) {
 		out[0] = state.mode;
 		out[1] = clamp(opts.opacity, MIN_OPACITY, MAX_OPACITY);
@@ -343,6 +351,10 @@
 		out[9] = opts.fieldH;
 		out[10] = opts.tanHalfY;
 		out[11] = 0;
+		out[12] = opts.canvasW;
+		out[13] = opts.canvasH;
+		out[14] = 0;
+		out[15] = 0;
 		return out;
 	}
 

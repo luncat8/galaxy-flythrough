@@ -810,19 +810,43 @@
 	}
 
 	// A procedural galaxy has no catalog and no named sky: sample it once and
-	// query that sample. The sample is fixed in (model, seed), so the anchors do
-	// not change when the eye does — only which of them are nearest.
+	// query that sample. The sample is the app's *own* field — the same
+	// sampler, the same model seed, the same stars the renderer draws — and
+	// every sampled star carries the app's record: the same family, the same
+	// epoch bits, the same jitter byte. That is what makes the map follow the
+	// app's stars instead of a frozen guess of them: the anchors move on the
+	// app's orbit law when the star clock runs, and the epoch map places them
+	// when the epoch moves.
+	//
+	// The sample is fixed in (model, seed), so the anchors do not change when
+	// the eye does — only which of them are nearest.
 	function createSampledIndex(model, count) {
 		const SAMPLING = resolve('SamplingLib', './sampling.js');
-		const buf = SAMPLING.sampleGalaxyStars(model, 0x7E57A1, Math.max(1024, count | 0));
+		const ST = resolve('StarTypesLib', './star-types.js');
+		const REC = resolve('StarRecord', './star-record.js');
+		const Orbit = resolve('OrbitLib', './orbit.js');
+		const buf = SAMPLING.sampleGalaxyStars(model, model.seed, Math.max(1024, count | 0));
 		const n = buf.count;
 		const positions = new Float64Array(n * 3);
+		const packed = new Uint32Array(n);
+		const colorIndex = new Uint8Array(n);
+		const derived = {};
 		for (let i = 0; i < n; i++) {
 			positions[i * 3] = buf.x[i];
 			positions[i * 3 + 1] = buf.y[i];
 			positions[i * 3 + 2] = buf.z[i];
+			// The app's record for this star, byte for byte: the same seed, the
+			// same derivation, the same family and epoch bits, the same jitter.
+			const key = ST.fieldStarSeed(model.seed, i);
+			ST.deriveStar(model, key, buf.component[i], buf.R[i], buf.distToArm[i], derived, buf.z[i]);
+			colorIndex[i] = derived.colorIndex;
+			packed[i] = REC.packPacked(derived.colorIndex, derived.absMag,
+				Orbit.flagsWithFamily(
+					REC.FLAG_VISIBLE | Orbit.epochFlagsFor(buf.component[i], derived.spectralClass, model.barred),
+					Orbit.familyForStar(buf.component[i], derived.spectralClass, model.barred)),
+				ST.fieldStarJitter(i));
 		}
-		return createIndex(positions, n, null, null, 'sampled');
+		return createIndex(positions, n, packed, colorIndex, 'sampled');
 	}
 
 	// The max-heap of the scan: `want` entries, root = farthest.

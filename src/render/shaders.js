@@ -2054,6 +2054,13 @@ struct FieldComposite {
         // frame, and the slope mode quotes dex per degree, so a constant would
         // bias every number away from the centre.
         viewport: vec4f,
+        // x canvasW, y canvasH. The composite is a fullscreen pass on the
+        // swapchain, so its fragment position is a *canvas* pixel, while the
+        // texture it reads is the field's own grid. Dividing one by the other
+        // is what turns a canvas pixel into the field's uv: the two grids
+        // share the camera's NDC, so the field texel under a pixel is the one
+        // the splat wrote for the star drawn at that pixel.
+        canvas: vec4f,
 };
 
 @group(0) @binding(0) var<uniform> u: FieldComposite;
@@ -2134,7 +2141,10 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4f {
 @fragment
 fn fs_main(@builtin(position) frag: vec4f) -> @location(0) vec4f {
         if (u.params.x < 0.5) { return vec4f(0.0); }
-        let uv: vec2f = vec2f(frag.x / u.viewport.x, frag.y / u.viewport.y);
+        // Canvas pixel → field uv. The field is the camera's NDC at its own
+        // (smaller) resolution, so the two grids line up: this uv is where the
+        // star drawn at this pixel splatted its distance.
+        let uv: vec2f = vec2f(frag.x / u.canvas.x, frag.y / u.canvas.y);
         let b: vec4f = blobAt(uv);
         if (b.x < 1e-5) { return vec4f(0.0); }
         let t: f32 = displayT(modeValue(uv));
@@ -2145,15 +2155,20 @@ fn fs_main(@builtin(position) frag: vec4f) -> @location(0) vec4f {
         // every mode, while the colour carries the selected scalar. Light from
         // the north-west above; ambient 0.45, never above 1, so relief can only
         // darken and a colour keeps meaning the value the legend quotes.
-        let eu: vec2f = vec2f(1.0 / u.viewport.x, 0.0);
-        let ev: vec2f = vec2f(0.0, 1.0 / u.viewport.y);
-        let reliefTexel: vec2f = angularTexel(uv);
-        let gx: f32 = (heightAt(uv + eu) - heightAt(uv - eu)) * 0.5 / reliefTexel.x;
-        let gy: f32 = (heightAt(uv + ev) - heightAt(uv - ev)) * 0.5 / reliefTexel.y;
-        let exag: f32 = u.params.z * 0.2;
-        let nrm: vec3f = normalize(vec3f(-gx * exag, -gy * exag, 1.0));
-        let light: vec3f = normalize(vec3f(-0.6, -0.6, 0.8));
-        rgb = rgb * (0.45 + 0.55 * max(dot(nrm, light), 0.0));
+        // At relief 0 there is no shading at all: the map is the flat ramp,
+        // which is the strip the legend draws. A constant 0.84 factor would
+        // have made every colour a different colour from the legend's.
+        if (u.params.z > 0.0) {
+                let eu: vec2f = vec2f(1.0 / u.viewport.x, 0.0);
+                let ev: vec2f = vec2f(0.0, 1.0 / u.viewport.y);
+                let reliefTexel: vec2f = angularTexel(uv);
+                let gx: f32 = (heightAt(uv + eu) - heightAt(uv - eu)) * 0.5 / reliefTexel.x;
+                let gy: f32 = (heightAt(uv + ev) - heightAt(uv - ev)) * 0.5 / reliefTexel.y;
+                let exag: f32 = u.params.z * 0.2;
+                let nrm: vec3f = normalize(vec3f(-gx * exag, -gy * exag, 1.0));
+                let light: vec3f = normalize(vec3f(-0.6, -0.6, 0.8));
+                rgb = rgb * (0.45 + 0.55 * max(dot(nrm, light), 0.0));
+        }
 
         // Contours darken band edges of the display value; 0 levels is off.
         if (u.params.w > 0.5) {

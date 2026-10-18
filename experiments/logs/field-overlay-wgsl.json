@@ -1,0 +1,246 @@
+{
+  "date": "2026-10-18T04:40:42.309Z",
+  "interpreter": "wgsl_reflect",
+  "totalChecks": 6,
+  "passed": 6,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "the field splat projects a star exactly where the sprite pass draws it",
+      "pass": true,
+      "detail": {
+        "worstCentre": 5.960464477539063e-8,
+        "centres": [
+          {
+            "star": "near",
+            "splat": [
+              -0.08026685565710068,
+              0.11966551095247269,
+              0.22549739480018616
+            ],
+            "sprite": [
+              -0.08026685565710068,
+              0.11966551095247269,
+              0.22549739480018616
+            ],
+            "gap": 0
+          },
+          {
+            "star": "mid",
+            "splat": [
+              0.23261821269989014,
+              -0.22679082304239273,
+              0.5344489216804504
+            ],
+            "sprite": [
+              0.23261821269989014,
+              -0.22679083049297333,
+              0.5344489216804504
+            ],
+            "gap": 7.450580596923828e-9
+          },
+          {
+            "star": "far",
+            "splat": [
+              -0.1539388969540596,
+              -0.8086631000041962,
+              1.310165524482727
+            ],
+            "sprite": [
+              -0.153938889503479,
+              -0.8086630702018738,
+              1.310165524482727
+            ],
+            "gap": 2.9802322387695312e-8
+          },
+          {
+            "star": "farthest",
+            "splat": [
+              0.42903418838977814,
+              1.4592733979225159,
+              2.419771432876587
+            ],
+            "sprite": [
+              0.42903420329093933,
+              1.4592734575271606,
+              2.419771432876587
+            ],
+            "gap": 5.960464477539063e-8
+          }
+        ]
+      }
+    },
+    {
+      "name": "the splat carries the star's own log10 distance",
+      "pass": true,
+      "detail": {
+        "worstValue": 3.55151121844699e-8
+      }
+    },
+    {
+      "name": "the declared range holds every star of the fixture",
+      "pass": true,
+      "detail": {
+        "lo": -0.6627413547039032,
+        "hi": 0.47565468311309816
+      }
+    },
+    {
+      "name": "the splat wrote a footprint for every star",
+      "pass": true,
+      "detail": {
+        "touched": 9216
+      }
+    },
+    {
+      "name": "the colour under a star is the ramp colour of that star's own distance",
+      "pass": true,
+      "detail": {
+        "worstColour": 1.0257782867562071e-7,
+        "colours": [
+          {
+            "star": "near",
+            "canvas": [
+              103,
+              42
+            ],
+            "mean": -0.6021,
+            "want": [
+              0.8218,
+              0.898,
+              0.1529
+            ],
+            "got": [
+              0.8218,
+              0.898,
+              0.1529
+            ],
+            "gap": 0
+          },
+          {
+            "star": "mid",
+            "canvas": [
+              229,
+              128
+            ],
+            "mean": -0.2218,
+            "want": [
+              0.123,
+              0.672,
+              0.5006
+            ],
+            "got": [
+              0.123,
+              0.672,
+              0.5006
+            ],
+            "gap": 0
+          },
+          {
+            "star": "far",
+            "canvas": [
+              141,
+              145
+            ],
+            "mean": 0.1461,
+            "want": [
+              0.2118,
+              0.3592,
+              0.549
+            ],
+            "got": [
+              0.2118,
+              0.3592,
+              0.549
+            ],
+            "gap": 0
+          },
+          {
+            "star": "farthest",
+            "canvas": [
+              188,
+              35
+            ],
+            "mean": 0.415,
+            "want": [
+              0.2745,
+              0.0717,
+              0.3933
+            ],
+            "got": [
+              0.2745,
+              0.0717,
+              0.3933
+            ],
+            "gap": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "the canvas/field mix-up would change the colour (the check is not blind)",
+      "pass": true,
+      "detail": {
+        "worstWrong": 0.6649372549019608,
+        "wrong": [
+          {
+            "star": "near",
+            "wrong": [
+              0.1569,
+              0.4842,
+              0.5529
+            ],
+            "got": [
+              0.8218,
+              0.898,
+              0.1529
+            ],
+            "gap": 0.6649
+          },
+          {
+            "star": "mid",
+            "wrong": [
+              0.1569,
+              0.4842,
+              0.5529
+            ],
+            "got": [
+              0.123,
+              0.672,
+              0.5006
+            ],
+            "gap": 0.1878
+          },
+          {
+            "star": "far",
+            "wrong": [
+              0.1569,
+              0.4842,
+              0.5529
+            ],
+            "got": [
+              0.2118,
+              0.3592,
+              0.549
+            ],
+            "gap": 0.125
+          },
+          {
+            "star": "farthest",
+            "wrong": [
+              0.1569,
+              0.4842,
+              0.5529
+            ],
+            "got": [
+              0.2745,
+              0.0717,
+              0.3933
+            ],
+            "gap": 0.4125
+          }
+        ]
+      }
+    }
+  ]
+}

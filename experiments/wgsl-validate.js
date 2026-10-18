@@ -709,6 +709,22 @@ function wgslConsts(part) {
                 /fn angularTexel\(uv: vec2f\) -> vec2f/.test(composite)
                 && /u\.viewport\.z/.test(composite)
                 && /tanY \* aspect/.test(composite));
+        // The composite is a fullscreen pass on the swapchain, so its fragment
+        // position is a canvas pixel; the field it reads is a smaller grid of
+        // the same NDC. Dividing the canvas pixel by the *field* width would
+        // sample three times outside the texture: the map would show the
+        // field's edge column stretched over the picture and no star would
+        // sit on its own colour.
+        check('field-composite maps a canvas pixel onto the field uv (the canvas size, not the field size)',
+                /canvas: vec4f,/.test(composite)
+                && /frag\.x \/ u\.canvas\.x/.test(composite)
+                && /frag\.y \/ u\.canvas\.y/.test(composite)
+                && !/frag\.x \/ u\.viewport\.x/.test(composite)
+                && !/frag\.y \/ u\.viewport\.y/.test(composite));
+        check('the renderer tells the composite how big the canvas is',
+                /FIELD_COMPOSITE_UNIFORM_FLOATS = 16/.test(readSource('src/render/star-sprites.js'))
+                && /canvasW: width/.test(readSource('src/render/star-sprites.js'))
+                && /canvasH: height/.test(readSource('src/render/star-sprites.js')));
         const overlaySrc = readSource('src/math/field-overlay.js');
         check('the field modes are numbered as the composite shader reads them (off 0, height 1, spread 2, slope 3)',
                 /MODE_NAMES = \['off', 'height', 'spread', 'slope'\]/.test(overlaySrc)

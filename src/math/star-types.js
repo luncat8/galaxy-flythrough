@@ -258,6 +258,15 @@
 		return seed * 31 + i + 1;
 	}
 
+	// The jitter byte a field star at index `i` carries in its packed record:
+	// four bits of orbit phase and four of amplitude. It is a function of the
+	// index alone, so a record built anywhere from the same index is the same
+	// record — the renderer and the island both call this, and the island's
+	// stars then move on the app's orbit law instead of standing still.
+	function fieldStarJitter(i) {
+		return Math.imul(i, 2654435761) & 0xFF;
+	}
+
 	// Mean luminosity (L☉) of the first `count` sampled positions, derived the
 	// way the renderer derives them. The exposure renormalisation needs "how
 	// bright is this field" as one number — at the model's age, and at the
@@ -477,7 +486,7 @@
 		classifyByTempAndState, classColor, luminosityFromMass, teffFromMass,
 		msLifetimeGyr, giantLifetimeGyr, sampleMassIMF, sampleLocalAge, metallicityFor,
 		TGIANT_FRAC, TGIANT_MIN, TGIANT_MAX, WD_COOL_TAU, WD_TEFF_FLOOR, WD_LUM_FLOOR,
-		sfhFormationTime, sampleFormationTime, fieldStarSeed, meanFieldLuminosity,
+		sfhFormationTime, sampleFormationTime, fieldStarSeed, fieldStarJitter, meanFieldLuminosity,
 		absoluteMagnitude, deriveStar, deriveStarWithAge, derivePlanetaryCentral, deriveStarProps,
 		summariseByComponent, classVsArmDistance,
 	};

@@ -164,17 +164,22 @@ function sampleOf(stars, camera, mode) {
                 [state.positions, state.dirs, state.logD, state.spread, state.slope, state.scratch]
                         .every((array, i) => array === before[i]));
 
-        const composite = new Float32Array(12);
+        const composite = new Float32Array(16);
         FieldOverlay.packComposite(composite, state, {
                 opacity: 0.5, relief: 0.25, contours: 4, fieldW: 640, fieldH: 360, tanHalfY: 0.5773503,
+                canvasW: 1920, canvasH: 1080,
         });
-        check('the composite uniform is params, range, viewport (field size + tan(fovY/2))',
-                composite.length === 12 && composite[0] === state.mode
+        check('the composite uniform is params, range, viewport (field size + tan(fovY/2)), canvas size',
+                composite.length === 16 && composite[0] === state.mode
                 && composite[1] === 0.5 && composite[2] === 0.25 && composite[3] === 4
                 && Math.abs(composite[4] - state.lo) < 1e-6 && Math.abs(composite[5] - state.hi) < 1e-6
                 && composite[8] === 640 && composite[9] === 360
-                && Math.abs(composite[10] - 0.5773503) < 1e-6,
+                && Math.abs(composite[10] - 0.5773503) < 1e-6
+                && composite[12] === 1920 && composite[13] === 1080,
                 Array.from(composite));
+        check('the canvas size is the composite\'s own frame, not the field\'s — the two grids differ',
+                composite[8] !== composite[12] && composite[9] !== composite[13],
+                { field: [composite[8], composite[9]], canvas: [composite[12], composite[13]] });
         check('look knobs clamp instead of leaking into the shader',
                 FieldOverlay.clampOpacity(2) === 1 && FieldOverlay.clampOpacity(-1) === 0
                 && FieldOverlay.clampRelief(9) === 1 && FieldOverlay.clampContours(99) === FieldOverlay.MAX_CONTOURS

@@ -573,15 +573,79 @@ function angleBetween(a, b) {
 		{ type: dbg.model.type, line: el('readout').textContent.split('\n')[1] });
 	check('the procedural sky is searchable by the same query',
 		dbg.sampleIndex && dbg.sampleIndex.n >= 250 && dbg.set.n === 250, { sample: dbg.sampleIndex && dbg.sampleIndex.n });
+
+	// The sampled anchors must be the app's own records, or they would stand
+	// still while the app's sky turns: a packed word of zero is a record with
+	// no orbit at all.
+	{
+		const idx = dbg.sampleIndex;
+		let withRecords = 0;
+		for (let i = 0; i < idx.n; i++) if (idx.packed[i] !== 0) withRecords++;
+		const visible = idx.packed.filter((p) => (p & 0x00010000) !== 0).length;
+		check('the procedural anchors carry the app\'s records, not empty ones',
+			withRecords === idx.n && visible === idx.n,
+			{ n: idx.n, withRecords, visible });
+		// The same stars the app would draw: the app samples its field with
+		// the model's own seed, so the island's sample is that field's prefix.
+		const app = window.SamplingLib.sampleGalaxyStars(dbg.model, dbg.model.seed, 4);
+		const same = app.count === 4
+			&& app.x[0] === idx.positions[0] && app.y[0] === idx.positions[1] && app.z[0] === idx.positions[2];
+		check('the sampled sky is the app\'s own field (the model seed, the same stars)',
+			same, { app: app.count, first: [app.x[0], app.y[0], app.z[0]], island: [idx.positions[0], idx.positions[1], idx.positions[2]] });
+	}
+
+	// The star clock must move those anchors, on the app's dispatch.
+	{
+		const dbg2 = window.ViewModesDebug;
+		el('slider-star-time').value = '40';
+		el('slider-star-time').fire('input');
+		pump(30, tEnd + 2100);
+		let moved = 0;
+		for (let i = 0; i < dbg2.set.n; i++) {
+			if (dbg2.cur[i * 3] !== dbg2.set.positions[i * 3]) moved++;
+		}
+		check('the procedural anchors move with the star clock',
+			dbg2.starTimeMyr > 1 && moved > 0,
+			{ myr: +dbg2.starTimeMyr.toFixed(1), moved });
+		el('slider-star-time').value = '0';
+		el('slider-star-time').fire('input');
+		pump(2, tEnd + 2300);
+	}
+
+	// The epoch base has to follow the model: a stale base would measure this
+	// galaxy against the previous one's arms and move the anchors off the
+	// app's stars.
+	check('the epoch base follows the model (the epoch map is the identity)',
+		window.OrbitLib.solveEpochParams(dbg.model).active === 0,
+		{ active: window.OrbitLib.solveEpochParams(dbg.model).active });
+
 	el('galaxy-type').value = 'SBb';
 	el('galaxy-seed').value = '42';
 	el('galaxy-apply').fire('click');
-	pump(3, tEnd + 2200);
+	pump(3, tEnd + 2400);
 	check('switching back to the Milky Way restores the catalog anchors',
 		/250 nearest · 250 anchors \(catalog\)/.test(el('readout').textContent), el('readout').textContent.split('\n')[1]);
 	el('slider-source').value = '250';
 	el('slider-source').fire('input');
 	pump(3, tEnd + 2400);
+}
+
+// --- the movement passes the app offers -----------------------------------
+{
+	const dbg = window.ViewModesDebug;
+	const before = window.OrbitLib.getEngine();
+	el('engine-apocenter').checked = true;
+	el('engine-apocenter').fire('change');
+	pump(2, tEnd + 2600);
+	check('the engine row selects the app\'s movement passes',
+		window.OrbitLib.getEngine() !== before
+		&& /engine apocenter/.test(el('readout').textContent),
+		{ before, now: window.OrbitLib.getEngine(), line: el('readout').textContent.split('\n')[4] });
+	el('engine-apocenter').checked = false;
+	el('engine-apocenter').fire('change');
+	pump(2, tEnd + 2800);
+	check('the engine row falls back to the classic law',
+		window.OrbitLib.getEngine() === window.OrbitLib.ENGINE_CLASSIC, window.OrbitLib.getEngine());
 }
 
 selectRadio('view-mode', 'off');

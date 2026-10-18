@@ -119,7 +119,7 @@ const FieldRamp = (typeof window !== 'undefined' && window.FieldRamp)
         : require('../math/field-ramp.js');
 const FIELD_SPLAT_UNIFORM_FLOATS = 4;      // radiusPx, fieldW, fieldH, 1 pc floor
 const FIELD_BLUR_UNIFORM_FLOATS = 4;       // fieldW, fieldH, 0, 0
-const FIELD_COMPOSITE_UNIFORM_FLOATS = 12; // params4, range4, viewport4
+const FIELD_COMPOSITE_UNIFORM_FLOATS = 16; // params4, range4, viewport4, canvas4
 const FIELD_RAMP_SIZE = 256;
 // The display range is re-sampled at 4 Hz while the overlay is on: 256
 // records resolved through the orbit dispatch, the two derived estimators,
@@ -1332,18 +1332,12 @@ function createStarRenderer(device, context, format, options) {
                 state.galaxyAge = model.populations.age;
         }
 
-        // The epoch bits a field record carries (0.6 E4): FLAG_EPOCH says the
-        // birth vector lives in the frame the field was drawn in, so the running
-        // epoch places it; FLAG_EPOCH_SPHEROID says the vector is a point inside
-        // the spheroid homology and scales with it. The spheroid bit follows the
-        // family the vertex stage computes from the same record (a bulge star
-        // whose colour puts it on the pattern is an arm star, not a spheroid
-        // member), because the two sides must branch identically.
+        // The epoch bits a field record carries (0.6 E4) live in math/orbit.js,
+        // beside the family law they read: the island builds the same record
+        // for the same star, and a field star with a different epoch bit than
+        // the app's would leave the epoch map.
         function epochFlagsFor(component, spectralClass) {
-                if (component < 2) return records.FLAG_EPOCH;
-                return orbit.familyForStar(component, spectralClass, model.barred) === orbit.FAMILY_PATTERN
-                        ? records.FLAG_EPOCH
-                        : (records.FLAG_EPOCH | records.FLAG_EPOCH_SPHEROID);
+                return orbit.epochFlagsFor(component, spectralClass, model.barred);
         }
 
         function writeProceduralRecords() {
@@ -1366,7 +1360,7 @@ function createStarRenderer(device, context, format, options) {
                                 derived.colorIndex, derived.absMag,
                                 orbit.flagsWithFamily(records.FLAG_VISIBLE | epochFlagsFor(fieldStars.component[i], derived.spectralClass),
                                         orbit.familyForStar(fieldStars.component[i], derived.spectralClass, model.barred)),
-                                Math.imul(i, 2654435761) & 0xFF,
+                                starTypes.fieldStarJitter(i),
                         );
                         identity[i] = key;
                 }
@@ -1852,6 +1846,12 @@ function createStarRenderer(device, context, format, options) {
                                 fieldW: fieldWidth,
                                 fieldH: fieldHeight,
                                 tanHalfY: Math.tan(camera.fovY * 0.5),
+                                // The composite is a fullscreen pass on the
+                                // swapchain: its fragment position is a canvas
+                                // pixel, and the field is a smaller grid of the
+                                // same NDC. The shader needs both sizes.
+                                canvasW: width,
+                                canvasH: height,
                         });
                         device.queue.writeBuffer(fieldCompositeUniformBuffer, 0, fieldCompositeUniformData);
                 }
@@ -2034,6 +2034,10 @@ function createStarRenderer(device, context, format, options) {
                 viewFieldLegend: () => {
                         const info = FieldOverlay.legend(fieldRange, state.viewRamp);
                         info.lut = FieldRamp.RAMPS[state.viewRamp] || FieldRamp.RAMPS.viridis;
+                        // The strip is the flat ramp; a shaded map is darker
+                        // than the strip, and the note has to say so rather
+                        // than let the two look like the same colours.
+                        if (fieldRelief > 0) info.note = `${info.note || ''} · shaded`.trim();
                         return info;
                 },
                 viewMode: () => ({

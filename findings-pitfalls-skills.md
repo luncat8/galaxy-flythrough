@@ -6,6 +6,66 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-10-18 — A fullscreen pass on the swapchain reads the *canvas* grid, not the field's
+
+The view-field overlay draws the field into its own (half-canvas) texture and then
+composites it fullscreen on the swapchain. Those are two grids, and the fragment
+position of a fullscreen pass is a **canvas** pixel. Dividing it by the *field* width
+(`frag.x / u.viewport.x`) samples three times outside the texture; the sampler clamps,
+so the picture shows the field's edge column stretched over the frame and no star sits
+on its own colour — the symptom reads as "the stars do not fit the colour map", not
+as a grid error. The uniform now carries both sizes (`viewport` for the texel maths,
+`canvas` for the lookup), and the rule to keep: *a pass that reads a texture must know
+which grid the texture lives on*.
+
+Two ways it stayed invisible: the CPU half of the feature never touched the swapchain,
+and the WGSL was only ever parsed, never executed. `experiments/field-overlay-wgsl-check.js`
+now runs the shipping splat, blur and composite through wgsl_reflect's interpreter —
+with the old mapping the colour under every star is `[0, 0, 0]`, a black map. Its
+negative control computes what the mix-up *would* produce and requires the two to
+differ, so the check cannot pass blind.
+
+Two smaller traps in the same pass:
+
+- **A relief that is off must not shade.** The cartographic rule is "at exaggeration 0
+  the map is the flat ramp", but a shading factor of the form `ambient + (1-ambient)·dot(n, light)`
+  is 0.839 on a *flat* field, so "off" was 16% darker than the legend's ramp strip and
+  the two could never match. Gate the whole shading on the exaggeration, not on the
+  slope.
+- **A sprite and the thing that describes it must project through the same matrix.**
+  The field splat reuses the sprite pass's `starMovedPosition` header and the same
+  `camera.viewProj`, which is why the overlay describes the frame's own stars. A second
+  projection — however careful — is a second camera, and the map stops being a map of
+  what is on screen. The check that pins it compares the two passes' projected centres
+  on the *shipping* shaders, with an off-origin eye and a non-square aspect.
+
+## 2026-10-18 — An island that mirrors the app must carry the app's *records*, not just its positions
+
+A standalone page that reads the same model can still describe a sky the app never
+draws, because the app's stars are records, not positions: the record's packed word
+carries the family (which orbit the star rides), the epoch bits (whether the epoch map
+places it) and the jitter byte (its epicycle phase and amplitude). A sampled sky with
+`packed = 0` is a set of points that never move — the map is frozen while the app's sky
+turns. The fix is to build the record the app builds: the same sampler and the same
+model seed (`sampling.sampleGalaxyStars(model, model.seed, n)` — the app's field is a
+prefix of any longer sample of the same seed), `starTypes.deriveStar` for the class,
+`orbit.familyForStar` + `orbit.epochFlagsFor` + `orbit.flagsWithFamily` for the flags,
+`starTypes.fieldStarJitter` for the jitter, `star-record.packPacked` for the word.
+
+Two clocks ride on top of that, and a page that keeps its own star clock but not these
+two freezes in a different way: the pattern's phase (`orbit.setPatternClock` — the arms
+the stars orbit turn with the clock) and the epoch base (`orbit.setEpochBase` — a model
+change re-bases it, or the epoch map measures the new model against the old one's arms
+and moves every anchor off the app's stars). Both are one call each, and both are easy
+to forget because the app's `main.js` does them.
+
+**Skill:** put a shared law in `math/` the moment two callers need it. `epochFlagsFor`
+and `fieldStarJitter` were in `render/star-sprites.js`, where the island could not reach
+them; moving them to `math/orbit.js` and `math/star-types.js` made the island's records
+the app's records by construction instead of by copy.
+
+---
+
 ## 2026-10-17 — Two branches solved the same plan; the GPU is the only speedup left in the heightmap, and the CPU loop has none
 
 `b2c97fbf` rebuilt the view-modes island as one inline-WebGL2 HTML file off the same

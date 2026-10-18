@@ -350,3 +350,93 @@ the round trip and the prompt line. The full suite is green apart from
 the sampler and the relief curve are pinned by description rather than by a
 screenshot. The island stays as the CPU reference and browser fallback — the
 plan's isolation rule still holds (`m1-smoke-test.js`).
+
+---
+
+## view-modes.5 — 2026-10-18 — the overlay reads its own grid, and the island follows the real stars
+
+Two reports came back on the overlay: *projection broken and it is not correspond
+to actual camera position or direction*, and *stars not fit to color map*. Both
+were true of the code as it stood, and neither had a cause a text review would
+have found.
+
+**The composite sampled the wrong grid.** The composite is a fullscreen pass on
+the swapchain, so its fragment position is a *canvas* pixel, while the texture it
+reads is the field's own (smaller) grid. The shader divided the canvas pixel by
+the *field* width (`frag.x / u.viewport.x`), so on a 1920×1080 canvas with a
+640×360 field it sampled uv ∈ [0, 3] — three times outside the texture, clamped
+to the field's edge column. The map on screen was the field's right edge
+stretched over the picture, and no star sat on its own colour: with the old
+mapping the colour under every star of the test fixture is `[0, 0, 0]`, a black
+map. The field and the canvas share the camera's NDC, so the two grids line up
+exactly; the fix is one vec4 — the composite uniform now carries the canvas size
+(`canvas: vec4f`) beside the field size, and the uv is `frag.xy / canvas.xy`.
+
+**The relief shaded the map with the relief off.** `exag = u.params.z · 0.2` is
+zero at relief 0, but the shading factor `0.45 + 0.55·max(dot(n, light), 0)` is
+0.839 on a flat field, so "relief off" was 16% darker than the ramp and the
+legend's strip — the flat ramp — never matched the picture. The island's rule is
+the one the overlay now follows: at relief 0 there is no shading at all. With the
+relief on, the legend's note says the map is shaded.
+
+**The island did not follow the app's stars.** Four causes, in
+`src/view-modes.js` and `src/math/view-modes-field.js`:
+
+1. *A procedural galaxy's anchors were frozen.* They were sampled with a private
+   seed (`0x7E57A1`) and carried **no records at all** (`packed = 0`), so the
+   orbit dispatch had nothing to move: the map stood still while the app's sky
+   turned. The sample is now the app's own field —
+   `sampling.sampleGalaxyStars(model, model.seed, n)`, the same sampler and the
+   same seed the renderer uses — and every sampled star carries the app's
+   record: `starTypes.deriveStar` + `orbit.familyForStar` +
+   `orbit.epochFlagsFor` + `orbit.flagsWithFamily` + `starTypes.fieldStarJitter`,
+   packed with `star-record.packPacked`. The island's procedural sky is now
+   literally the app's first N field stars, and the page-check asserts it.
+2. *The pattern's phase never turned.* The island advanced its own star clock
+   but not `orbit.setPatternClock`, so the arms the anchors orbit stood still
+   while the stars slid along them. The clock and the pattern now move together,
+   as in `main.js`.
+3. *The epoch base was stale.* `orbit.setEpochBase(model)` was never called, so
+   after a galaxy change the epoch map measured the new model against the
+   *previous* one's arms and moved the anchors off the app's stars. `buildModel`
+   now re-bases it, and the epoch map is the identity again.
+4. *The engine was hard-coded to `classic`.* The island now carries the app's
+   engine row (classic / simple / apocenter) and says in the readout when the
+   simple pass is on and the anchors are records: the simple friction field has a
+   CPU mirror for the landmarks, but a record's azimuth lives in the renderer's
+   compute buffer, so the record anchors ride the classic law under it. The
+   island's landmarks do follow the simple pass, through the app's own
+   `simpleLandmarksStep`.
+
+Two shared laws moved into `math/` so the app and the island cannot drift:
+`orbit.epochFlagsFor` (the epoch bits a field record carries) and
+`starTypes.fieldStarJitter` (the phase/amplitude byte). The renderer calls both.
+
+**Tests.** `experiments/field-overlay-wgsl-check.js` (new) executes the shipping
+WGSL — the splat, the blur and the composite — through wgsl_reflect's
+interpreter: a 320×180 canvas, a 64×36 field, an off-origin eye and a look that
+is not along an axis. It pins that the splat projects a star exactly where the
+sprite pass draws it (the same matrix, the same star position), that the splat
+carries the star's own log10 distance, and that the colour under a star is the
+ramp colour of that star's own distance — to the last byte. The negative control
+computes what the canvas/field mix-up would have produced and requires it to
+differ, so the check cannot pass blind. `experiments/wgsl-validate.js` gained the
+source-level gate (the composite's uv divides by the canvas size, and the
+renderer tells it how big the canvas is); `experiments/field-overlay-test.js`
+pins the uniform's new vec4; `experiments/view-modes-page-check.js` grew the
+island's checks: the procedural anchors carry the app's records (no empty ones),
+the sample *is* the app's field, the anchors move with the star clock, the epoch
+base follows the model, and the engine row selects the app's passes.
+
+**Not done.** Still no browser pass: the sandbox has no GPU, so the blend state,
+the sRGB ramp round trip and the relief curve are pinned by the WGSL interpreter
+and by description, not by a screenshot.
+
+**Next step.** The browser pass is still the open item, and it now has a
+checklist rather than a hope: with the overlay on, the colour under a bright
+star must be the ramp colour of that star's own distance (the legend's strip
+and the map must agree at relief 0), the map must move when the star clock
+runs, and the island's chart must agree with the frame's stars. A second
+open item: the display range is a percentile window over a 256-record
+sample, so a few per cent of the stars sit outside the ramp — the honest
+answer (a wider window, or a second "out of range" colour) is still open.

@@ -91,6 +91,7 @@ EXPERIMENTS = {
     # Needs one dev-only dependency: `npm install wgsl_reflect` at the repo
     # root. Executes the shipping WGSL on the CPU; not part of all-tests.
     'wgsl-exec':             'experiments/wgsl-exec-check.js',
+    'field-overlay-wgsl':    'experiments/field-overlay-wgsl-check.js',
     # Asset generation / visualisation.
     'tile-encoder':          'experiments/tile-encoder.js',
     'visualize-data':        'experiments/visualize-data.js',
@@ -106,7 +107,7 @@ TYPES = {
                'galaxy-age', 'galaxy-evolution', 'orbit', 'movement-density', 'system-layer', 'dv-map', 'route'],
     'study':  ['damping-formula', 'hash-quality', 'precision', 'packing', 'filter',
                'truncation-edge', 'young-vertical'],
-    'sim':    ['wgsl-exec'],
+    'sim':    ['wgsl-exec', 'field-overlay-wgsl'],
     'asset':  ['tile-encoder', 'visualize-data'],
 }
 

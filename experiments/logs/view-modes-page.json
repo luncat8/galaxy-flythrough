@@ -1,13 +1,13 @@
 {
-  "totalChecks": 51,
-  "passed": 51,
+  "totalChecks": 57,
+  "passed": 57,
   "failed": 0,
   "checks": [
     {
       "name": "view-modes.html loads the island scripts",
       "pass": true,
       "detail": {
-        "n": 14
+        "n": 15
       }
     },
     {
@@ -59,7 +59,7 @@
     {
       "name": "readout reports a non-empty field",
       "pass": true,
-      "detail": "field 216×120 · 1.56 M pairs · 12.0 ms · 60 fps"
+      "detail": "field 216×120 · 1.56 M pairs · 9.9 ms · 60 fps"
     },
     {
       "name": "the painter drew the field and the star overlay",
@@ -359,9 +359,64 @@
       }
     },
     {
+      "name": "the procedural anchors carry the app's records, not empty ones",
+      "pass": true,
+      "detail": {
+        "n": 12000,
+        "withRecords": 12000,
+        "visible": 12000
+      }
+    },
+    {
+      "name": "the sampled sky is the app's own field (the model seed, the same stars)",
+      "pass": true,
+      "detail": {
+        "app": 4,
+        "first": [
+          0.7152738571166992,
+          2.7531163692474365,
+          1.9015361070632935
+        ],
+        "island": [
+          0.7152738571166992,
+          2.7531163692474365,
+          1.9015361070632935
+        ]
+      }
+    },
+    {
+      "name": "the procedural anchors move with the star clock",
+      "pass": true,
+      "detail": {
+        "myr": 20,
+        "moved": 250
+      }
+    },
+    {
+      "name": "the epoch base follows the model (the epoch map is the identity)",
+      "pass": true,
+      "detail": {
+        "active": 0
+      }
+    },
+    {
       "name": "switching back to the Milky Way restores the catalog anchors",
       "pass": true,
       "detail": "source: 250 nearest · 250 anchors (catalog)"
+    },
+    {
+      "name": "the engine row selects the app's movement passes",
+      "pass": true,
+      "detail": {
+        "before": 1,
+        "now": 4,
+        "line": "star time: 0.0 Myr (frozen) · engine apocenter"
+      }
+    },
+    {
+      "name": "the engine row falls back to the classic law",
+      "pass": true,
+      "detail": 1
     },
     {
       "name": "off clears the canvas",

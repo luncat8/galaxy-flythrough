@@ -37,6 +37,12 @@
 			<input type="range" id="slider-star-time" min="0" max="99" step="0.5" value="0">
 			<span id="val-star-time" class="menu-val">frozen</span>
 		</div>
+		<div class="menu-row check-row">
+			<span class="menu-sub">engine</span>
+			<label title="The app's movement passes, composable. Classic is the closed-form base; simple adds the friction field (landmarks only here — a record's azimuth lives in the renderer's compute buffer); apocenter adds guided ellipses."><input type="checkbox" id="engine-classic" checked> classic</label>
+			<label><input type="checkbox" id="engine-simple"> simple</label>
+			<label><input type="checkbox" id="engine-apocenter"> apocenter</label>
+		</div>
 		<div class="menu-row">
 			<label for="slider-sigma">Hill width σ</label>
 			<input type="range" id="slider-sigma" min="1" max="20" step="0.5" value="3">
@@ -176,6 +182,7 @@
 	<script src="math/galaxy.js"></script>
 	<script src="math/sampling.js"></script>
 	<script src="math/star-record.js"></script>
+	<script src="math/star-types.js"></script>
 	<script src="math/coords.js"></script>
 	<script src="math/orbit.js"></script>
 	<script src="data/landmarks.js"></script>

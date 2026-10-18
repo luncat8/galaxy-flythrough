@@ -500,3 +500,52 @@ on, no field passes with it off, and the composite's blend state.
 `experiments/wgsl-validate.js` extends the part/wired lists and checks the
 shared `starMovedPosition`, the field constants and the composite's bindings;
 `wgsl-exec-check.js` parses the three new modules like every other shipped one.
+
+---
+
+## View Modes Shader.6 — the corrections (view-modes.5, 2026-10-18)
+
+The plan above is the spec; this section records where the shipped code had
+drifted from it, and the two laws that now pin it.
+
+### The two grids are not the same grid
+
+The composite is a **fullscreen pass on the swapchain**, so its fragment
+position is a *canvas* pixel. The texture it reads is the field's own grid —
+half the canvas, clamped to 256…640 wide. The two share the camera's NDC, so
+one canvas pixel maps to one field uv, but only if the shader divides by the
+*canvas* size:
+
+```wgsl
+let uv: vec2f = vec2f(frag.x / u.canvas.x, frag.y / u.canvas.y);
+```
+
+The shipped code divided by the field size (`u.viewport`), which samples three
+times outside the texture on a 16:9 canvas: the picture showed the field's edge
+column, and no star sat on its own colour. The uniform therefore carries **two**
+sizes — `viewport` (field width, field height, tan(fovY/2)) for the texel maths,
+`canvas` (canvas width, canvas height) for the lookup — and
+`experiments/field-overlay-wgsl-check.js` executes the real passes to prove the
+correspondence.
+
+### Relief off means no shading
+
+The cartographic rule is the island's: at exaggeration 0 the map is the flat
+ramp, so the legend's strip is the picture. A shading factor that is constant
+on a flat field (`0.45 + 0.55·max(dot(n, light), 0)` = 0.839) breaks that, so
+the composite now skips the shading entirely when the relief is 0 and the
+legend's note says *shaded* when it is not.
+
+### The island's anchors are the app's stars
+
+A procedural galaxy has no catalog, so the island samples one — but the sample
+must be the *app's* sample (`sampling.sampleGalaxyStars(model, model.seed, n)`)
+and every star in it must carry the *app's* record, or the anchors are a frozen
+guess: `starTypes.deriveStar` for the class, `orbit.familyForStar` and
+`orbit.epochFlagsFor` for the family and the epoch bits,
+`orbit.flagsWithFamily` for the flags word, `starTypes.fieldStarJitter` for the
+phase/amplitude byte, `star-record.packPacked` for the word. The pattern's
+phase turns with the star clock (`orbit.setPatternClock`), the epoch base is
+re-based on every model (`orbit.setEpochBase`), and the engine row is the
+app's, with the one honest limit stated on screen: the simple friction field
+has a CPU mirror for the landmarks, not for records.
