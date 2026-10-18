@@ -43,22 +43,21 @@ function readSource(relPath) {
 {
         const names = Object.keys(shaders.SHADER_PARTS);
         check('every expected shader part is present',
-                ['pcg-hash', 'density', 'orbit', 'simple-step', 'star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'procedural-gen', 'cull', 'field-uniform', 'distance-field', 'distance-field-display'].every(n => names.includes(n)),
+                ['pcg-hash', 'density', 'orbit', 'simple-step', 'star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'procedural-gen', 'cull']
+                        .every(n => names.includes(n)),
                 names);
         check('every shader part is a non-empty LF-only string',
                 names.every(n => typeof shaders.SHADER_PARTS[n] === 'string'
                         && shaders.SHADER_PARTS[n].length > 100
                         && !shaders.SHADER_PARTS[n].includes('\r')),
                 names.map(n => [n, shaders.SHADER_PARTS[n].length]));
-        check('seven wired shaders are exposed (the four scene ones, the simple step, and the field\'s two)',
-                shaders.WIRED_SHADERS.length === 7
+        check('five wired shaders are exposed (sprite, hdr reference, nebula, tonemap, simple-step)',
+                shaders.WIRED_SHADERS.length === 5
                 && shaders.WIRED_SHADERS[0] === 'star-sprite'
                 && shaders.WIRED_SHADERS[1] === 'star-sprite-hdr'
                 && shaders.WIRED_SHADERS[2] === 'nebula-billboard'
                 && shaders.WIRED_SHADERS[3] === 'tonemap'
-                && shaders.WIRED_SHADERS[4] === 'simple-step'
-                && shaders.WIRED_SHADERS[5] === 'distance-field'
-                && shaders.WIRED_SHADERS[6] === 'distance-field-display',
+                && shaders.WIRED_SHADERS[4] === 'simple-step',
                 shaders.WIRED_SHADERS);
         check('every wired shader exists in the module map',
                 shaders.WIRED_SHADERS.every(n => typeof shaders.SHADERS[n] === 'string' && shaders.SHADERS[n].length > 0),
@@ -443,7 +442,9 @@ function wgslConsts(part) {
 		&& /\(mask & 2u\) != 0u/.test(sprite)
 		&& /\(mask & 1u\) != 0u/.test(sprite)
 		&& /\(mask & 4u\) != 0u/.test(sprite)
-		&& /simplePosition\([^;]*theta\[starIdx\]/s.test(sprite)
+		&& /fn starMovedPosition\(star: StarPacked, thetaValue: f32\) -> vec3f/.test(sprite)
+		&& /starMovedPosition\(star, theta\[starIdx\]\)/.test(sprite)
+		&& /simplePosition\(birth, star\.packed, thetaValue/.test(sprite)
 		&& /orbitPosition\([^;]*camera\.params\.w/s.test(sprite)
 		&& /moved = birth;/.test(sprite),
 		shaders.SHADERS['star-sprite'].includes('mask & 4u'));

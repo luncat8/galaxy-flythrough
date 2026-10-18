@@ -1,9 +1,11 @@
 # View-modes series worklog
 
 The heightmap island: `src/view-modes.html`, its three modules, and the tests that
-keep it honest. Deliberately outside the main app — `index.html` does not load it,
-the main renderers never import it, and `experiments/m1-smoke-test.js` is the check
-that keeps it that way. Governing plan:
+keep it honest. Born outside the main app; since view-modes.6 the field math and the
+painter are shared — `index.html` loads `math/view-modes-field.js` and
+`render/view-modes-renderer.js` for its own View modes panel — and only the sandbox
+page's boot glue (`view-modes.js`) stays out of the app, with
+`experiments/m1-smoke-test.js` as the check that keeps it that way. Governing plan:
 [`archive/view-modes-shader-plan.md`](view-modes-shader-plan.md).
 
 ---
@@ -277,3 +279,364 @@ starving the 4 Hz reads).
 
 Next: the GPU path, if a browser pass shows the 72×40 budget is the thing hurting — as
 WGSL in `shaders.js` with `wgsl-exec` parity, CPU field kept as the fallback and mirror.
+
+---
+
+## view-modes.4 — 2026-10-17 — the field in the main frame (WebGPU overlay)
+
+The island proved the maths; this series puts the same picture inside the real
+frame and makes it a property of the renderer, not of a star set picked on the
+side. Three passes hang off `render/star-sprites.js` and read the renderer's own
+`StarPacked` storage buffer — procedural field, landmarks, composite objects,
+local gap-fill and streamed catalog, hybrid and Game mode alike. There is no
+nearest-N sweep, so there is no population at which the overlay stops describing
+the stars it is drawn over.
+
+**The passes.** `field-splat` is one instanced quad per record, using the same
+`starMovedPosition` header the sprite vertex stage uses (epoch map, classic →
+simple → apocenter dispatch), so the field follows star time by construction.
+The vertex projects the record and writes `log10(max(d, 1 pc))`; the fragment
+adds the moments `(w, w·l, w·l², w)` with `w = (1−r²)²` into a half-canvas
+`rgba16float` target. The footprint covers ~1.2 mean inter-star spacings, clamped
+2.5…40 px, so a 50-star sky still fills the map and a 300 k-star one does not
+overdraw. `field-blur` is the fixed 3×3 binomial kernel (4·centre, 2·edges,
+1·corners, /16) at field resolution — separate from the composite so the
+derivative modes read one blurred value, not nine texels. `field-composite`
+runs **after** the tonemap on the swapchain with premultiplied alpha: the field
+is a map over the picture, not another light source, so the exposure curve
+cannot tint the ramp. `M` or the menu cycles off → distance → depth spread →
+slope.
+
+**The display range is physical and declared.** A bounded sample of ≤ 256
+visible records, taken by an even stride over all five blocks and resolved
+through `orbit.engineRecordPosition` (the picker's CPU twin of the vertex
+dispatch), feeds the same estimators the island uses: the 2nd/98th percentile of
+`log10(d/kpc)` for distance, the 5th/95th percentile of `log10 σ` over each
+sample star's six angular neighbours for depth spread, and of `log10 |Δlog d|/Δθ`
+for slope. Padding is the island's (4% of the span + 0.02 dex, 0.3 dex floor);
+fewer than three visible records falls back to the declared windows
+(`height` −2…1, `spread` −1.3…0.2, `slope` −1.5…0.3). The sample re-runs at 4 Hz
+while the overlay is on, allocation-free: the scratch arrays are the sample's
+size, not the star set's.
+
+**Slope in dex per degree, honestly.** The field lives in screen space, so a
+texel's angular size changes across the frame. The composite reconstructs it
+per pixel from the pinhole camera (`tan(fovY/2)`, the quadratic ray-angle
+correction) instead of dividing by a constant, which would bias every number
+away from the centre.
+
+**Shared ramps.** `math/field-ramp.js` now owns viridis, the published Turbo
+polynomial, magma, the hypsometric terrain and grey, and the per-mode defaults;
+the island painter and the overlay sample the same LUTs, so a colour cannot mean
+one distance on the chart and another in the frame. The right-hand panel grew a
+`View field` section (mode, ramp, opacity, relief, contours), the label layer a
+compact card with the ramp strip and the live range, and five preset fields
+(`viewfield`, `viewopacity`, `viewramp`, `viewrelief`, `viewcontours`) carry it
+through copy/paste and the URL.
+
+**Tests.** `experiments/field-overlay-test.js` pins the CPU half (21 + 1 checks:
+mode ids, size clamp, footprint law, percentile windows, the 1 pc floor, the
+estimators, uniform layouts, legend units, the shared LUT identities).
+`experiments/renderer-test.js` pins the wiring: seven modules and seven
+pipelines, six passes per frame with the overlay on and the same three with it
+off, the splat drawing exactly `state.drawn` records, the composite after the
+tonemap on the same swapchain view, and the uniform bytes.
+`experiments/wgsl-validate.js` checks the three new modules structurally, pins
+that `field-splat` reuses the shared star-position header, and that the mode ids
+match `math/field-overlay.js`; `experiments/wgsl-exec-check.js` (124/124) parses
+every shipped module, the new ones included. `experiments/preset-test.js` covers
+the round trip and the prompt line. The full suite is green apart from
+`planet-gen`'s known heap-threshold flake under load (passes standalone).
+
+**Not done.** No browser pass: there is no GPU in the sandbox, so the blend,
+the sampler and the relief curve are pinned by description rather than by a
+screenshot. The island stays as the CPU reference and browser fallback — the
+plan's isolation rule still holds (`m1-smoke-test.js`).
+
+---
+
+## view-modes.5 — 2026-10-18 — the overlay reads its own grid, and the island follows the real stars
+
+Two reports came back on the overlay: *projection broken and it is not correspond
+to actual camera position or direction*, and *stars not fit to color map*. Both
+were true of the code as it stood, and neither had a cause a text review would
+have found.
+
+**The composite sampled the wrong grid.** The composite is a fullscreen pass on
+the swapchain, so its fragment position is a *canvas* pixel, while the texture it
+reads is the field's own (smaller) grid. The shader divided the canvas pixel by
+the *field* width (`frag.x / u.viewport.x`), so on a 1920×1080 canvas with a
+640×360 field it sampled uv ∈ [0, 3] — three times outside the texture, clamped
+to the field's edge column. The map on screen was the field's right edge
+stretched over the picture, and no star sat on its own colour: with the old
+mapping the colour under every star of the test fixture is `[0, 0, 0]`, a black
+map. The field and the canvas share the camera's NDC, so the two grids line up
+exactly; the fix is one vec4 — the composite uniform now carries the canvas size
+(`canvas: vec4f`) beside the field size, and the uv is `frag.xy / canvas.xy`.
+
+**The relief shaded the map with the relief off.** `exag = u.params.z · 0.2` is
+zero at relief 0, but the shading factor `0.45 + 0.55·max(dot(n, light), 0)` is
+0.839 on a flat field, so "relief off" was 16% darker than the ramp and the
+legend's strip — the flat ramp — never matched the picture. The island's rule is
+the one the overlay now follows: at relief 0 there is no shading at all. With the
+relief on, the legend's note says the map is shaded.
+
+**The island did not follow the app's stars.** Four causes, in
+`src/view-modes.js` and `src/math/view-modes-field.js`:
+
+1. *A procedural galaxy's anchors were frozen.* They were sampled with a private
+   seed (`0x7E57A1`) and carried **no records at all** (`packed = 0`), so the
+   orbit dispatch had nothing to move: the map stood still while the app's sky
+   turned. The sample is now the app's own field —
+   `sampling.sampleGalaxyStars(model, model.seed, n)`, the same sampler and the
+   same seed the renderer uses — and every sampled star carries the app's
+   record: `starTypes.deriveStar` + `orbit.familyForStar` +
+   `orbit.epochFlagsFor` + `orbit.flagsWithFamily` + `starTypes.fieldStarJitter`,
+   packed with `star-record.packPacked`. The island's procedural sky is now
+   literally the app's first N field stars, and the page-check asserts it.
+2. *The pattern's phase never turned.* The island advanced its own star clock
+   but not `orbit.setPatternClock`, so the arms the anchors orbit stood still
+   while the stars slid along them. The clock and the pattern now move together,
+   as in `main.js`.
+3. *The epoch base was stale.* `orbit.setEpochBase(model)` was never called, so
+   after a galaxy change the epoch map measured the new model against the
+   *previous* one's arms and moved the anchors off the app's stars. `buildModel`
+   now re-bases it, and the epoch map is the identity again.
+4. *The engine was hard-coded to `classic`.* The island now carries the app's
+   engine row (classic / simple / apocenter) and says in the readout when the
+   simple pass is on and the anchors are records: the simple friction field has a
+   CPU mirror for the landmarks, but a record's azimuth lives in the renderer's
+   compute buffer, so the record anchors ride the classic law under it. The
+   island's landmarks do follow the simple pass, through the app's own
+   `simpleLandmarksStep`.
+
+Two shared laws moved into `math/` so the app and the island cannot drift:
+`orbit.epochFlagsFor` (the epoch bits a field record carries) and
+`starTypes.fieldStarJitter` (the phase/amplitude byte). The renderer calls both.
+
+**Tests.** `experiments/field-overlay-wgsl-check.js` (new) executes the shipping
+WGSL — the splat, the blur and the composite — through wgsl_reflect's
+interpreter: a 320×180 canvas, a 64×36 field, an off-origin eye and a look that
+is not along an axis. It pins that the splat projects a star exactly where the
+sprite pass draws it (the same matrix, the same star position), that the splat
+carries the star's own log10 distance, and that the colour under a star is the
+ramp colour of that star's own distance — to the last byte. The negative control
+computes what the canvas/field mix-up would have produced and requires it to
+differ, so the check cannot pass blind. `experiments/wgsl-validate.js` gained the
+source-level gate (the composite's uv divides by the canvas size, and the
+renderer tells it how big the canvas is); `experiments/field-overlay-test.js`
+pins the uniform's new vec4; `experiments/view-modes-page-check.js` grew the
+island's checks: the procedural anchors carry the app's records (no empty ones),
+the sample *is* the app's field, the anchors move with the star clock, the epoch
+base follows the model, and the engine row selects the app's passes.
+
+**Not done.** Still no browser pass: the sandbox has no GPU, so the blend state,
+the sRGB ramp round trip and the relief curve are pinned by the WGSL interpreter
+and by description, not by a screenshot.
+
+**Next step.** The browser pass is still the open item, and it now has a
+checklist rather than a hope: with the overlay on, the colour under a bright
+star must be the ramp colour of that star's own distance (the legend's strip
+and the map must agree at relief 0), the map must move when the star clock
+runs, and the island's chart must agree with the frame's stars. A second
+open item: the display range is a percentile window over a 256-record
+sample, so a few per cent of the stars sit outside the ramp — the honest
+answer (a wider window, or a second "out of range" colour) is still open.
+
+---
+
+## view-modes.6 — the app hosts the island: real stars, and the WGSL overlay is gone
+
+The user's verdict on view-modes.4/.5: *the overlay is not what we want* — the
+Gaussian-moment splat+blur is a different algorithm from the island's Shepard
+IDW and does not look like it — while `view-modes.html` is "what we should
+implement in index.html", "but with real stars", in a separate panel with radio
+buttons for the render type and a slider for the anchor source. So the .4/.5
+overlay is removed root and branch (the three WGSL passes, `math/field-overlay.js`
+and its tests and logs, the `View field` menu, the label-layer legend card, the
+five `view*` preset keys) and the island's field and painter move *into* the app,
+anchored on the renderer's own records.
+
+**What ships.** `index.html` gains `#viewmodes` (a full-window 2D canvas above
+the WebGPU frame, under the system schematic) and `#viewmenu` — its own
+collapsible panel in the second right column: render type radios
+(distance / depth spread / slope / `off`, `M` cycles the same four), projection
+radios (3D view sphere / 2D chart), anchor source radios (constellations /
+nearest / selected) with the 1–500 slider, and the island's look controls (σ,
+chart span, field height, compute budget, ramp, relief, opacity, contours /
+graticule / stars / names / smooth / invert / chart follows look / chart mirrors
+sky, auto range plus the two log sliders). Star time, FoV and the galaxy stay
+with their own panels. A new `render/view-modes-layer.js` is the app's host: one
+API object, SystemLayer-style, that owns the anchor sets, the display range
+(the island's 4 Hz auto-range easing and freeze-on-uncheck rule), and the
+per-frame paint — through an offscreen canvas so `opacity` blends the finished
+map over the live sky in view projection (registration is exact there by
+construction), and directly at 100%.
+
+**Real stars, real updates.** The anchors are the `starBlocks()` records the
+sprite pass draws — not a re-derived sample. `nearest` runs the exact max-heap
+query over a strided sample of the resident records (bounded 8192, advanced
+through `orbit.engineRecordPosition` in 2048-entry slices per frame while star
+time runs, re-picked when the eye moves 2 % of the set's own far edge or the
+residency version changes); `selected` resolves the selection store's keys
+against `blockInfo.identity` (a stale `bufferIdx` hint is verified, then a
+linear scan; a key the sky has forgotten drops); `constellations` is the
+landmark table with its figures. Every frame the winners' *birth* records are
+redrawn at the app's live star time with the app's engine — the same dispatch
+the vertex stage mirrors.
+
+**Per-star landmark dispatch.** `view-modes-field.js` gained `landmarkIdx` on
+`createIndex`/`queryNearest`/`advancePositions`/`prepareIndexPositions`: a
+mixed set dispatches each entry through `engineLandmarkPosition` (its landmark
+table row, exact simple-engine mirror) or `engineRecordPosition` as its index
+says. That is the fix for the user's "not work with real stars update" — a
+named anchor used to be approximated by the record law and drifted from the
+sprite the sky shows. The island's own sets keep working unchanged (a whole-set
+`landmark` set is the old behaviour), and `view-modes.js` labels a procedural
+N-pick as "N nearest" instead of a blanket "sampled sky".
+
+**Presets.** The retired `viewfield`/`viewopacity`/`viewramp`/`viewrelief`/
+`viewcontours` become `viewmode` (off/height/spread/gradient), `viewproj`
+(view/plane), `viewsource` (nearest/constellations/selected), `viewanchors` (N),
+`viewramp`, `viewrelief` (0–30), `viewopacity` (0–1) — the three enum keys
+validated in `presets.js` parse like `viewramp` already was, defaults from the
+layer's `DEFAULTS`.
+
+**Tests.** `experiments/view-modes-layer-test.js` (new, 31) pins the layer's
+CPU half: the index takes the visible resident records with the right landmark
+indices and strides a 300 k sky to the bounded cap; the nearest-N pick equals a
+brute-force scan of the same records (ties unordered, nearest-first, landmark
+indices copied); a selection resolves by identity key and drops dead ones;
+`advancePositions` routes every mixed entry through the sprite law exactly;
+the view layout carries the camera's basis and FoV; a frame paints, half
+opacity blits with `globalAlpha`, `off` hides the canvas, the system schematic
+stands in the way; the auto-range freeze and the setter clamps. Removed with
+the overlay: `field-overlay-test.js`, `field-overlay-wgsl-check.js` and their
+logs. Updated: `m1-smoke-test.js` (the island list is now just `view-modes.js`;
+the three new namespaces load and register), `renderer-test.js` (four modules,
+four pipelines, three passes — no field pins left), `wgsl-validate.js` (five
+wired shaders, no section 2b), `preset-test.js`, `export-parity-test.js`,
+`view-modes-page-check.js`, `scripts/run.py` (`sim` is `wgsl-exec` alone).
+`python3 scripts/run.py quick` — 24/25, the one failure the pre-existing
+`planet-gen` heap flake (passes standalone).
+
+**Not done.** Still no browser pass of the app's map (the sandbox has no
+display): the panel wiring and the canvas paint are pinned by the harnesses and
+by the shared painter the island page check executes, not by a screenshot. The
+nearest-N pick still measures a strided sample, so "nearest" means "nearest of
+the resident sample" — exact within it, bounded across 300 k records.
+
+**Next step.** Open `index.html` and check the map under live star time: the
+named stars must hold their colour (the landmark dispatch), the selected set
+must re-pick on a new selection, and 50 % opacity in 3D view must sit exactly on
+the drawn stars. If the frame budget hurts at `full`, the field resolution
+(`autoResolution`) is the first knob to revisit.
+
+## 2026-10-18 — view-modes.7: the layer rewritten from zero over real stars
+
+The user's verdict on the .6 integration: *completely remove the viewmodes
+integration from index.html (keep the GUI), reimplement from zero*. The app
+symptoms were (a) the initial view shows no stars at all, (b) changing "N
+nearest" changes the nearest star even at the default "near" zoom, (c) the
+plane chart shows the wrong field. The old suite was green through all of it —
+it drove the layer with fake block kinds and asserted only API shapes.
+
+### What was wrong with .6's architecture
+
+`starBlocks()` hands out the *sprite* buffers: 35089 slots of which only
+~34089 are live (local 30k + catalog 3829 visible of 5000), the catalog block
+is already thinned to visible records, and `uploadDynamic` rewrites local +
+catalog wholesale. .6 copied that into an SoA every frame and kept a
+*second*, perpetual, strided-sampled nearest index over **birth** positions
+with `queryNearest`'s mid-traversal range shifts. Every one of those was a
+wrong turn:
+
+- the index rebuilt every frame (`indexTime` pinned at 0 — `info.total` was
+  the buffer capacity, never equal to `indexTotal`);
+- the index covered only the catalog block; a field star could never be
+  "nearest";
+- `INDEX_CAP`'s stride sampled ~1-in-6 records — the star *next* to the eye
+  was usually not in the index at all;
+- partial sweeps left the index at mixed times (flashing patches);
+- the measured field used `slot.cur` but picks stored birth, so the chart's
+  anchor dots painted sky directions the field had left tens of Myr earlier —
+  the flat-map failure the star-time pitfall warns about.
+
+### The new design (island's `pickAnchors`, ported exactly)
+
+The layer keeps **one compact list of the live-visible sky** — built from the
+slots in `view` order (field+landmark first, the query set) plus the whole
+local block and the whole catalog block — with each entry's current engine
+position advanced in slices under one fixed `starTimeMyr` per sweep. The
+"nearest N" set is then *the product* of an exact O(n) scan over that list:
+
+- `fillNearest`: the same max-heap the island's `pickAnchors` runs over
+  `sampleIndex` — `want = min(anchors, sky.n, MAX_STARS=1024)`, tie-broken by
+  index, winners snap-shotted (birth + packed) through the same
+  `engineRecordPosition`/`engineLandmarkPosition` dispatch the sprite pass
+  uses at their `landmarkIdx` for names;
+- `fillSelected`: the island's selected-resident rule — resolve by identity
+  (slotOfKey hint + linear fallback), drop unresident identities, fall back
+  to the nearest scan when none survive;
+- constellations: the island's cached `buildConstellationSet` over the whole
+  live sky, refreshed on `dynamicVersion`, with `drawn = advancePositions`
+  before `buildConstellationSegments` so the figures track star time exactly
+  (the documented fix, applied from the start);
+- `needPick`: the island's whole rule, including `stateSet !== pickSet →
+  false` while a constellation set is mounted and `sky.sweeping → false`;
+- `field`: `sky.view` is the birth list `prepareStars` wants, `sky.cur` is
+  the drawn positions `Field.texelOf` wants — same split the island keeps
+  (`sampleIndex` vs `cur`);
+- budget→resolution→layout→compute→range→apply in the island's frame order:
+  autoResolution from the *pair* budget (balanced 1.5e6 → 424×240 at 60
+  anchors), letterboxed plane layout from the chart span, measure ticks at
+  0.25 s, `refreshAutoRange` at 4 Hz with the island's `liveMode:''` snap
+  rule (anything else washes the map out for seconds at boot), `applyRange`
+  with opacity folded into the ramp.
+
+Old GUI contract kept whole: the `viewmode/viewproj/viewsource/viewanchors/
+viewramp/viewrelief/viewopacity` preset keys, the `live`/`statusLine` 4 Hz
+portrait, `sweeping`, `selected`, `setPatternClock`. The old `mode()`,
+`setStarTime()`, `rebuildIndex()` and the `loop` pump are gone — the app's
+frame already steps time (`setPatternClock`, `simpleLandmarksStep`); the
+layer must not.
+
+### Harnesses
+
+- `experiments/view-modes-layer-test.js` rewritten from zero: 34 checks over
+  the real catalog + two synthetic blocks — exact-nearest == brute force
+  across every kind, the birth-record dispatch-once contract (the pitfall's
+  query rule), star-time re-pick == brute force on the *drawn* sky (the
+  flat-map fix), selected-resident + dead-identity handling, M-cycles with
+  their ranges, the 2:1 letterboxed plane with the look at the chart centre,
+  auto-range freeze, in-bounds status. 34/34.
+- `/home/user/scratch/vm-debug.js`: real catalog + synthetic near/pole/epoch
+  blocks, PNG captures; scenario D sweeps 25 Myr and the re-picked set
+  matches brute force at the *new* time exactly (1.46–5.05 kpc both).
+- `/home/user/scratch/vm-parity.js`: paints the page-check's island scene
+  (720×405, home pose, constellations, height, budget high, relief 6)
+  through the new layer vs `view-modes-page-*.png`. View shot: contrast-
+  normalized correlation **0.93**. Chart shot: **0.83** after replicating the
+  page-check's drag history (a chart drag turns "chart follows look" off, so
+  the reference PNG is panned — unpinned my chart scored 0.67). The raw
+  pixel-diff numbers (~45–60 % "big") are not the verdict: the reference PNGs
+  were captured mid-range-lag, their live [lo,hi] measured on a coarser
+  field, so their extremes clip to flat plateaus at p1/p10 (106 vs 197/240
+  on the scale histogram) — judge by structure and normalized correlation.
+
+### Failures along the way worth keeping
+
+- The rewrite reproduced the app's exact "map washed out at boot" bug: with
+  `live.mode` starting at `'height'` the refresh rule saw only a 1.5-decade
+  manual→auto jump and eased 0.15 per tick from MANUAL_DEFAULTS. The island
+  seeds `liveMode:''` so the first measurement snaps. Lesson: the
+  >1.5-decade guard is a *mode-change* guard; the first read must snap.
+- `statusLine`'s source label must special-case the constellation set
+  (`source: 'constellations'`, not `SOURCE_LABELS[set.source]` — the island's
+  own readout does).
+- Truth checks must measure `advancePositions` output: `pickSet.positions`
+  holds BIRTH records by contract.
+
+Deliverables: `src/render/view-modes-layer.js` (rewritten), test suite,
+parity + debug harnesses in `/home/user/scratch/`, this entry. The app's
+index.html/main.js/presets wiring is unchanged from .5.

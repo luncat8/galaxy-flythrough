@@ -674,38 +674,3 @@ re-pose, per-frame write-back, R reset) and the heading-following burn.
 resolution and naming, reference key handling, the three buttons, and the Pilot
 control exclusivity. `python3 scripts/run.py changed` passes 7/7 mapped suites.
 The browser/WebGPU visual pass remains unverified in this sandbox.
-
-## ui.12 — Distance field camera projection and dedicated panel
-
-**Projection repair.** The distance-field renderer had read vertical FoV from
-`viewProj[5]`, but that matrix is already projection × view: the entry also
-contains the camera's up-axis rotation and collapses toward zero as the view
-rolls. The field now takes the camera's explicit `fovY`, live eye position,
-forward/right/up basis, and viewport aspect. The coarse CPU pass used to set a
-separate 16:9 aspect, so its auto-range measured a narrower view than the GPU
-actually displayed; it now uses the same canvas aspect as the field grid.
-
-**Kernel repair.** The old `sin²(delta)` weighting treated a star and its
-antipode as equal angular neighbors, drawing a false duplicate hill and
-inverting the directional meaning of the field. CPU and WGSL now use the
-monotone cosine distance `1 - cos(delta)` with `1 - cos(sigma)` softening; the
-plan records the law and the camera-projection contract. A regression test puts
-near and far anchors on opposite rays and verifies each projected peak belongs
-to the correct star.
-
-**Interface.** Moved distance mode, anchor source and count out of Display into
-a separately collapsible, cool-accented Distance field panel. Tab still toggles
-all panels, and the anchor count control disables for fixed-size selected and
-constellation sources.
-
-**Validation.** `distance-field`, `renderer`, `m1-smoke`, `wgsl-validate`, and
-`camera` pass 5/5; `wgsl-exec` passes 129/129 CPU/WGSL field parity checks;
-`python3 scripts/run.py changed` passes 11/11 mapped suites. The renderer
-regression uploads a rolled-camera pose and checks the exact eye, basis, FoV,
-and viewport aspect sent to WGSL. Real browser/WebGPU visual inspection remains
-outstanding in this sandbox.
-
-**Next step suggestion.** Run the deferred real-GPU visual check with a rolled
-camera and anchors on opposite sky directions; confirm the panel placement at
-wide and narrow viewport sizes, and check the field render against actual
-sprites while orbiting and free-flying.

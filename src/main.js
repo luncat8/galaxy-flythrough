@@ -102,6 +102,16 @@ function readParams(search) {
 		dvmap: number('dvmap', window.SystemLayer.VIEW_DEFAULT),
 		dvbudget: number('dvbudget', window.SystemLayer.BUDGET_DEFAULT),
 		ship: text('ship', 'chemical'),
+		// View modes (view-modes.6): the heightmap panel's render type,
+		// projection, anchor source and look knobs — defaulted by the module
+		// that owns the numbers.
+		viewmode: text('viewmode', window.ViewModesLayer.DEFAULTS.mode),
+		viewproj: text('viewproj', window.ViewModesLayer.DEFAULTS.projection),
+		viewsource: text('viewsource', window.ViewModesLayer.DEFAULTS.source),
+		viewanchors: number('viewanchors', window.ViewModesLayer.DEFAULTS.anchors),
+		viewramp: text('viewramp', window.ViewModesLayer.DEFAULTS.ramp),
+		viewrelief: number('viewrelief', window.ViewModesLayer.DEFAULTS.relief),
+		viewopacity: number('viewopacity', window.ViewModesLayer.DEFAULTS.opacity),
 	};
 }
 
@@ -286,12 +296,6 @@ async function boot() {
         // The picker and the set rings read the buffers, which only exist now
         // (plan §3.1) — a setter is cheaper than reordering boot around them.
         selection.setRenderer(renderer);
-        // The distance field (distance-field-plan.md): the anchors are the
-        // app's choice of stars — the nearest N of the resident sky, the
-        // selection set, the named stars — and the renderer paints them.
-        const fieldAnchors = window.FieldAnchors.createFieldAnchors({
-                renderer, camera, landmarks, selection, starSet,
-        });
         labels.setStarSource(renderer.starBlocks());
         if (params.exposure !== null) renderer.setExposure(params.exposure);
         // The rest of the menu as boot params — the language the preset
@@ -325,8 +329,6 @@ async function boot() {
         const menuCollapse = document.getElementById('menu-collapse');
         const selectionMenu = document.getElementById('selection-menu');
         const selectionMenuCollapse = document.getElementById('selection-menu-collapse');
-        const fieldMenu = document.getElementById('field-menu');
-        const fieldMenuCollapse = document.getElementById('field-menu-collapse');
         const currentSelectionLabel = document.getElementById('selection-current-label');
         const previousSelectionLabel = document.getElementById('selection-previous-label');
         const swapSelectionButton = document.getElementById('selection-swap');
@@ -340,6 +342,40 @@ async function boot() {
         const sliderSat = document.getElementById('slider-saturation');
         const sliderHeadroom = document.getElementById('slider-headroom');
         const sliderHighlight = document.getElementById('slider-highlight');
+        // View modes (view-modes.6): its own panel — render type, projection,
+        // anchor source and the island's look knobs.
+        const viewMenu = document.getElementById('viewmenu');
+        const viewMenuCollapse = document.getElementById('viewmenu-collapse');
+        const vmStatus = document.getElementById('vm-status');
+        const sliderVmAnchors = document.getElementById('slider-vm-anchors');
+        const valVmAnchors = document.getElementById('val-vm-anchors');
+        const sliderVmSigma = document.getElementById('slider-vm-sigma');
+        const valVmSigma = document.getElementById('val-vm-sigma');
+        const sliderVmSpan = document.getElementById('slider-vm-span');
+        const valVmSpan = document.getElementById('val-vm-span');
+        const sliderVmRes = document.getElementById('slider-vm-res');
+        const valVmRes = document.getElementById('val-vm-res');
+        const sliderVmRelief = document.getElementById('slider-vm-relief');
+        const valVmRelief = document.getElementById('val-vm-relief');
+        const sliderVmOpacity = document.getElementById('slider-vm-opacity');
+        const valVmOpacity = document.getElementById('val-vm-opacity');
+        const sliderVmRangeLo = document.getElementById('slider-vm-range-lo');
+        const valVmRangeLo = document.getElementById('val-vm-range-lo');
+        const labelVmRangeLo = document.getElementById('label-vm-range-lo');
+        const sliderVmRangeHi = document.getElementById('slider-vm-range-hi');
+        const valVmRangeHi = document.getElementById('val-vm-range-hi');
+        const labelVmRangeHi = document.getElementById('label-vm-range-hi');
+        const vmAutoRange = document.getElementById('vm-auto-range');
+        const vmChecks = {
+                contours: document.getElementById('vm-contours'),
+                grid: document.getElementById('vm-grid'),
+                drawStars: document.getElementById('vm-stars'),
+                names: document.getElementById('vm-names'),
+                smooth: document.getElementById('vm-smooth'),
+                invert: document.getElementById('vm-invert'),
+                followLook: document.getElementById('vm-follow'),
+                mirrorChart: document.getElementById('vm-mirror'),
+        };
         const sliderStarTime = document.getElementById('slider-star-time');
         const sliderWave = document.getElementById('slider-wave');
         const sliderPattern = document.getElementById('slider-pattern');
@@ -359,13 +395,6 @@ async function boot() {
         const valPattern = document.getElementById('val-pattern');
         const valEngine = document.getElementById('val-engine');
         const btnDefaults = document.getElementById('menu-defaults');
-        const fieldModeSel = document.getElementById('field-mode');
-        const fieldSourceSel = document.getElementById('field-source');
-        const sliderFieldCount = document.getElementById('slider-field-count');
-        const valFieldCount = document.getElementById('val-field-count');
-        const sliderFieldSigma = document.getElementById('slider-field-sigma');
-        const valFieldSigma = document.getElementById('val-field-sigma');
-        const valField = document.getElementById('val-field');
         const sliderSelRad = document.getElementById('slider-selrad');
         const valSelRad = document.getElementById('val-selrad');
         const btnSelectAround = document.getElementById('btn-select-around');
@@ -390,7 +419,88 @@ async function boot() {
                 sliderHighlight.value = renderer.state.highlightDesat;
                 valHighlight.textContent = renderer.state.highlightDesat.toFixed(2);
         }
+
+        // View modes (view-modes.6): the layer owns the numbers (the island's
+        // field, anchored on the renderer's own stars); the panel mirrors them.
+        const viewModesLayer = window.ViewModesLayer.createViewModesLayer(
+                document.getElementById('viewmodes'), {
+                        camera,
+                        model: () => model,
+                        starBlocks: () => renderer.starBlocks(),
+                        selection: () => starSet,
+                        landmarks,
+                });
+
+        const vmRadioGroups = {
+                mode: document.querySelectorAll('input[name="vm-mode"]'),
+                projection: document.querySelectorAll('input[name="vm-proj"]'),
+                source: document.querySelectorAll('input[name="vm-source"]'),
+                budget: document.querySelectorAll('input[name="vm-budget"]'),
+                ramp: document.querySelectorAll('input[name="vm-ramp"]'),
+        };
+
+        function syncRadio(name, value) {
+                const group = vmRadioGroups[name];
+                for (const radio of group) radio.checked = radio.value === value;
+        }
+
+        function syncViewModes() {
+                const s = viewModesLayer.settings;
+                syncRadio('mode', s.mode);
+                syncRadio('projection', s.projection);
+                syncRadio('source', s.source);
+                syncRadio('budget', s.budget);
+                syncRadio('ramp', s.ramp);
+                sliderVmAnchors.value = s.anchors;
+                valVmAnchors.textContent = String(s.anchors);
+                sliderVmSigma.value = s.sigmaDeg;
+                valVmSigma.textContent = `${s.sigmaDeg}°`;
+                sliderVmSpan.value = s.chartSpanDeg;
+                valVmSpan.textContent = `${s.chartSpanDeg}°`;
+                sliderVmRes.value = s.resH;
+                valVmRes.textContent = s.resH ? `${s.resH} px` : 'auto';
+                sliderVmRelief.value = s.relief;
+                valVmRelief.textContent = s.relief > 0 ? `${s.relief}×` : 'off';
+                sliderVmOpacity.value = s.opacity;
+                valVmOpacity.textContent = `${Math.round(s.opacity * 100)}%`;
+                for (const key of Object.keys(vmChecks)) vmChecks[key].checked = !!s[key];
+                vmAutoRange.checked = s.autoRange;
+                syncViewModesRange();
+        }
+
+        // The two range sliders quote the live window in the mode's own unit;
+        // with auto on they only display it and stay disabled (the island's rule).
+        function syncViewModesRange() {
+                const s = viewModesLayer.settings;
+                const l = viewModesLayer.live;
+                const near = s.mode === 'height';
+                labelVmRangeLo.textContent = near ? 'Near' : 'Range lo';
+                labelVmRangeHi.textContent = near ? 'Far' : 'Range hi';
+                sliderVmRangeLo.value = l.lo.toFixed(2);
+                sliderVmRangeHi.value = l.hi.toFixed(2);
+                sliderVmRangeLo.disabled = s.autoRange;
+                sliderVmRangeHi.disabled = s.autoRange;
+                valVmRangeLo.textContent = viewModesLayer.formatRange(l.lo);
+                valVmRangeHi.textContent = viewModesLayer.formatRange(l.hi);
+        }
+
+        function applyViewModes(fields) {
+                viewModesLayer.set(fields);
+                syncViewModes();
+        }
+
         syncSlidersFromRenderer();
+        // Boot params, applied once the panel elements above exist; absent keys
+        // are the module's own defaults.
+        applyViewModes({
+                mode: params.viewmode,
+                projection: params.viewproj,
+                source: params.viewsource,
+                anchors: params.viewanchors,
+                ramp: params.viewramp,
+                relief: params.viewrelief,
+                opacity: params.viewopacity,
+        });
 
         // --- Selection controls (0.5.0, plan §3.3) --------------------------
         // The slider is log10(ly): 0.1 ly … 100 000 ly, default 50 ly. Decimal
@@ -1282,6 +1392,12 @@ async function boot() {
                 if (sysMenu.style.display !== 'none') width = Math.max(width, 292);
                 return width ? width + 24 : 0;
         }
+        // The right column: Display at the edge, View modes in its own column
+        // beside it. The schematic fits its map between the columns.
+        function rightPanelInset() {
+                if (viewMenu.style.display !== 'none') return 556;
+                return menu.style.display === 'none' ? 0 : 284;
+        }
         function syncOverlayInset() {
                 const inset = leftPanelInset();
                 const left = window.innerWidth <= 900 || inset === 0 ? '12px' : inset + 'px';
@@ -1292,13 +1408,13 @@ async function boot() {
         function toggleMenu() {
                 const visible = menu.style.display !== 'none'
                         || selectionMenu.style.display !== 'none'
-                        || fieldMenu.style.display !== 'none'
                         || sysMenu.style.display !== 'none'
+                        || viewMenu.style.display !== 'none'
                         || helpPanel.style.display !== 'none';
                 menu.style.display = visible ? 'none' : 'block';
                 selectionMenu.style.display = visible ? 'none' : 'block';
-                fieldMenu.style.display = visible ? 'none' : 'block';
                 sysMenu.style.display = visible ? 'none' : 'block';
+                viewMenu.style.display = visible ? 'none' : 'block';
                 helpPanel.style.display = visible ? 'none' : 'block';
                 syncOverlayInset();
                 if (visible) {
@@ -1321,8 +1437,8 @@ async function boot() {
         }
         wireCollapse(menu, menuCollapse);
         wireCollapse(selectionMenu, selectionMenuCollapse);
-        wireCollapse(fieldMenu, fieldMenuCollapse);
         wireCollapse(sysMenu, sysMenuCollapse);
+        wireCollapse(viewMenu, viewMenuCollapse);
 
         // --- Controls panel (ui.6) ------------------------------------------
         // The old help <pre> as clickable controls. Buttons and checkboxes
@@ -1418,6 +1534,52 @@ async function boot() {
                 renderer.setHighlightDesat(Number(sliderHighlight.value));
                 valHighlight.textContent = renderer.state.highlightDesat.toFixed(2);
         });
+        // View modes (view-modes.6): every control is one layer.set call; the
+        // 4 Hz status sync in the loop picks up the live range and counts.
+        function bindVmRadio(name, key) {
+                vmRadioGroups[name].forEach((radio) => {
+                        radio.addEventListener('change', () => {
+                                if (!radio.checked) return;
+                                viewModesLayer.set({ [key]: radio.value });
+                                syncViewModes();
+                        });
+                });
+        }
+        bindVmRadio('mode', 'mode');
+        bindVmRadio('projection', 'projection');
+        bindVmRadio('source', 'source');
+        bindVmRadio('budget', 'budget');
+        bindVmRadio('ramp', 'ramp');
+        function bindVmSlider(slider, valEl, key, fmt) {
+                slider.addEventListener('input', () => {
+                        const v = Number(slider.value);
+                        viewModesLayer.set({ [key]: v });
+                        valEl.textContent = fmt(v);
+                });
+        }
+        bindVmSlider(sliderVmAnchors, valVmAnchors, 'anchors', (v) => String(v | 0));
+        bindVmSlider(sliderVmSigma, valVmSigma, 'sigmaDeg', (v) => `${v}°`);
+        bindVmSlider(sliderVmSpan, valVmSpan, 'chartSpanDeg', (v) => `${v | 0}°`);
+        bindVmSlider(sliderVmRes, valVmRes, 'resH', (v) => (v | 0) ? `${v | 0} px` : 'auto');
+        bindVmSlider(sliderVmRelief, valVmRelief, 'relief', (v) => v > 0 ? `${v}×` : 'off');
+        bindVmSlider(sliderVmOpacity, valVmOpacity, 'opacity', (v) => `${Math.round(v * 100)}%`);
+        for (const key of Object.keys(vmChecks)) {
+                vmChecks[key].addEventListener('change', () => {
+                        viewModesLayer.set({ [key]: vmChecks[key].checked });
+                });
+        }
+        vmAutoRange.addEventListener('change', () => {
+                viewModesLayer.setAutoRange(vmAutoRange.checked);
+                syncViewModesRange();
+        });
+        sliderVmRangeLo.addEventListener('input', () => {
+                viewModesLayer.setRange('lo', Number(sliderVmRangeLo.value));
+                syncViewModes();
+        });
+        sliderVmRangeHi.addEventListener('input', () => {
+                viewModesLayer.setRange('hi', Number(sliderVmRangeHi.value));
+                syncViewModes();
+        });
         // The star-time slider is the ship clock's other dress (game-mode-plan
         // §4): while game mode is on, its stops are the ship-time ladder's rung
         // indices — the system clock's pattern (SYSTIME_LADDER) — and the
@@ -1490,32 +1652,6 @@ async function boot() {
                 sliderWave.value = waveDamping;
                 valWave.textContent = formatWave(waveDamping);
         }
-        // The distance field: the render type, the stars the field is
-        // computed over, and how many of them. The renderer owns the grid,
-        // the layout and the range; the app owns the choice of stars.
-        function syncField() {
-                const mode = fieldModeSel && fieldModeSel.value ? fieldModeSel.value : 'off';
-                const source = fieldSourceSel && fieldSourceSel.value ? fieldSourceSel.value : 'nearest';
-                const count = sliderFieldCount ? parseInt(sliderFieldCount.value, 10) || 1 : 120;
-                fieldAnchors.setMode(mode);
-                fieldAnchors.setSource(source);
-                fieldAnchors.setCount(count);
-                renderer.setFieldMode(mode);
-                const sigma = sliderFieldSigma ? Number(sliderFieldSigma.value) : 3;
-                renderer.setFieldSigma(sigma);
-                if (sliderFieldCount) sliderFieldCount.disabled = source === 'selected' || source === 'constellations';
-                if (valFieldCount) valFieldCount.textContent = String(count);
-                if (valFieldSigma) valFieldSigma.textContent = `${Number.isInteger(sigma) ? sigma : sigma.toFixed(1)}°`;
-                if (sliderFieldSigma) sliderFieldSigma.disabled = mode === 'off';
-                // The readout itself is the frame loop's: the anchor count is
-                // only known once the anchors have been picked.
-        }
-        if (fieldModeSel) fieldModeSel.addEventListener('change', syncField);
-        if (fieldSourceSel) fieldSourceSel.addEventListener('change', syncField);
-        if (sliderFieldCount) sliderFieldCount.addEventListener('input', syncField);
-        if (sliderFieldSigma) sliderFieldSigma.addEventListener('input', syncField);
-        syncField();
-
         sliderWave.addEventListener('input', () => {
                 waveDamping = window.OrbitLib.setWaveDamping(Number(sliderWave.value));
                 syncWave();
@@ -1598,6 +1734,15 @@ async function boot() {
                 renderer.setSaturation(d.sat);
                 renderer.setHeadroom(d.headroom);
                 renderer.setHighlightDesat(d.highlight);
+                applyViewModes({
+                        mode: d.viewmode,
+                        projection: d.viewproj,
+                        source: d.viewsource,
+                        anchors: d.viewanchors,
+                        ramp: d.viewramp,
+                        relief: d.viewrelief,
+                        opacity: d.viewopacity,
+                });
                 window.OrbitLib.setApocenterShare(d.apoShare);
                 window.OrbitLib.setApocenterForce(d.apoForce);
                 waveDamping = window.OrbitLib.setWaveDamping(d.wave);
@@ -1650,6 +1795,13 @@ async function boot() {
                         sat: renderer.state.saturation,
                         headroom: renderer.state.headroom,
                         highlight: renderer.state.highlightDesat,
+                        viewmode: viewModesLayer.settings.mode,
+                        viewproj: viewModesLayer.settings.projection,
+                        viewsource: viewModesLayer.settings.source,
+                        viewanchors: viewModesLayer.settings.anchors,
+                        viewramp: viewModesLayer.settings.ramp,
+                        viewrelief: viewModesLayer.settings.relief,
+                        viewopacity: viewModesLayer.settings.opacity,
                         search: searchLib.formatFilter(searchLib.parseFilter(tokenBox.value)),
                         scope: scopeSelect.value === 'galaxy' ? 'galaxy' : 'selection',
                         sysview: systemLayer.isOpen() ? 1 : 0,
@@ -1724,6 +1876,19 @@ async function boot() {
                 if (s.sat !== undefined) renderer.setSaturation(s.sat);
                 if (s.headroom !== undefined) renderer.setHeadroom(s.headroom);
                 if (s.highlight !== undefined) renderer.setHighlightDesat(s.highlight);
+                if (s.viewmode !== undefined || s.viewproj !== undefined || s.viewsource !== undefined
+                        || s.viewanchors !== undefined || s.viewramp !== undefined
+                        || s.viewrelief !== undefined || s.viewopacity !== undefined) {
+                        applyViewModes({
+                                mode: s.viewmode,
+                                projection: s.viewproj,
+                                source: s.viewsource,
+                                anchors: s.viewanchors,
+                                ramp: s.viewramp,
+                                relief: s.viewrelief,
+                                opacity: s.viewopacity,
+                        });
+                }
                 // The filter and scope are preset state; the results are not
                 // (plan §5.5) — a pasted query lands in the controls and the
                 // old results clear, so nothing stale survives the paste.
@@ -3928,6 +4093,12 @@ async function boot() {
                 if (actions.speedRefTarget) { actions.speedRefTarget = 0; setSpeedRef('target'); }
                 if (actions.speedRefCentre) { actions.speedRefCentre = 0; setSpeedRef('centre'); }
                 if (actions.speedRefHome) { actions.speedRefHome = 0; setSpeedRef('home'); }
+                if (actions.viewField) {
+                        actions.viewField = 0;
+                        // M cycles the render type: distance → depth spread → slope → off.
+                        viewModesLayer.cycleMode();
+                        syncViewModes();
+                }
                 if (actions.constellations) {
                         actions.constellations = 0;
                         labels.toggleConstellations();
@@ -3938,22 +4109,17 @@ async function boot() {
                 }
 
                 resizeCanvas();
-                // The distance field's anchors: the app's stars, at the
-                // positions they are drawn. The renderer owns everything
-                // else about the field.
-                if (fieldAnchors.mode !== 'off') {
-                        fieldAnchors.update(model, starTimeMyr, dt);
-                        renderer.setFieldAnchors(fieldAnchors.positions, fieldAnchors.count);
-                }
-                // The field's readout: the mode and how many stars it is
-                // computed over. Written only when it changes - a DOM write
-                // every frame is waste, and the count changes twice a second
-                // at most.
-                const fieldText = fieldAnchors.mode === 'off'
-                        ? 'off'
-                        : `${fieldAnchors.mode} · ${fieldAnchors.count} anchors`;
-                if (valField && valField.textContent !== fieldText) valField.textContent = fieldText;
                 renderer.render(camera, canvas.width, canvas.height, starTimeMyr, input.state, dtStar);
+                // View modes (view-modes.6): the heightmap over the frame. The
+                // system schematic owns the screen while it is open.
+                viewModesLayer.step(dt, {
+                        camera,
+                        starTimeMyr,
+                        width: canvas.clientWidth,
+                        height: canvas.clientHeight,
+                        dpr: currentDpr(),
+                        hidden: systemLayer.isOpen(),
+                });
                 labels.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
                 labels.draw(camera, canvas.clientWidth, canvas.clientHeight);
                 // The schematic (plan §6): its own clock first, then hover and
@@ -3965,7 +4131,7 @@ async function boot() {
                         // Both panels inset themselves: the map is fitted between
                         // them, so neither covers the graph.
                         systemLayer.draw(canvas.clientWidth, canvas.clientHeight,
-                                menu.style.display === 'none' ? 0 : 284,
+                                rightPanelInset(),
                                 leftPanelInset());
                 }
 
@@ -3978,6 +4144,12 @@ async function boot() {
                         if (gameMode) updateShipChromeText();
                         if (sysMenu.style.display !== 'none') syncFlightUi();
                         if (systemLayer.isOpen()) writeSystemReadout();
+                        // View modes: the status line and the live range labels
+                        // are 4 Hz text, like the rest of the readouts.
+                        if (viewMenu.style.display !== 'none') {
+                                vmStatus.textContent = viewModesLayer.statusLine();
+                                syncViewModesRange();
+                        }
                         // Keep slider readouts in sync with keyboard shortcuts
                         // while the menu is open.
                         if (menu.style.display !== 'none') syncSlidersFromRenderer();

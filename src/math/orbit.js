@@ -147,6 +147,24 @@ function familyForStar(component, spectralClass, barred) {
 	return FAMILY_PRESSURE;
 }
 
+// The epoch bits a field record carries (0.6 E4): FLAG_EPOCH says the birth
+// vector lives in the frame the field was drawn in, so the running epoch
+// places it; FLAG_EPOCH_SPHEROID says the vector is a point inside the
+// spheroid homology and scales with it. The spheroid bit follows the family
+// the vertex stage computes from the same record (a bulge star whose colour
+// puts it on the pattern is an arm star, not a spheroid member), because the
+// two sides must branch identically.
+//
+// It lives here, beside the family law it reads, so the renderer and the
+// island build the same record for the same star: a field star that carries
+// a different epoch bit than the app's would leave the epoch map.
+function epochFlagsFor(component, spectralClass, barred) {
+	if (component < 2) return records.FLAG_EPOCH;
+	return familyForStar(component, spectralClass, barred) === FAMILY_PATTERN
+		? records.FLAG_EPOCH
+		: (records.FLAG_EPOCH | records.FLAG_EPOCH_SPHEROID);
+}
+
 // Normalised per-model orbit numbers with all defaults already applied —
 // the single place the fallbacks live, so the shader never needs any.
 // Writes into `dyn` (no allocation: callers reuse one scratch object).
@@ -1326,7 +1344,7 @@ const OrbitAPI = {
 	SIMPLE_SIGMA_BASE, SIMPLE_ECC_K, SIMPLE_ECC_MAX, SIMPLE_SUBSTEP_DTHETA, SIMPLE_SUBSTEP_MAX,
 	SIMPLE_R_MIN, SIMPLE_UNIFORM_FLOATS,
 	familyFromFlags, flagsWithFamily, encodeJitter, readOrbit,
-	familyFromColorIndex, familyForStar,
+	familyFromColorIndex, familyForStar, epochFlagsFor,
 	fillDynamics, pressureClock, omegaFor, omegaFrom, omegaStream,
 	setWaveDamping, getWaveDamping, setPatternScale, getPatternScale,
 	resetPatternPhase, setPatternClock, getPatternPhase, patternRotation,

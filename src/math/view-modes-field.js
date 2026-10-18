@@ -1,14 +1,5 @@
-// src/math/distance-field.js
-// The distance field: the law both implementations share (distance-field-plan.md).
-//
-// Promoted out of the view-modes island (archive/view-modes-shader-plan.md) and
-// into the main tree, because the law is no longer the island's private
-// business: the CPU here is the *reference* the WebGPU path in
-// render/distance-field-renderer.js is checked against, and the island page,
-// the main renderer and the standalone test page all read this one file.
-//
-// Pure functions: no DOM, no WebGL, no globals beyond the export. Testable in
-// Node.
+// src/math/view-modes-field.js
+// Pure-CPU heightmap fields for the view-modes experiment (archive/view-modes-shader-plan.md).
 //
 // The field is a function of a *view direction*: every texel stands for one ray
 // leaving the camera, and its height is a smooth interpolation of the anchor
@@ -42,13 +33,11 @@
 // The range (see "display range" below) is what turns any of the three into a
 // colour; the field itself never renormalizes after smoothing.
 //
-// Weights use cosine distance on the sphere: w = 1 / ((1 − cos δ) +
-// (1 − cos σ)), where δ is the ray-to-star angle and σ is the hill half-width.
-// Unlike sin²δ, cosine distance distinguishes a star on the opposite ray from
-// one on this ray; the old sine-squared kernel made both peaks identical and
-// painted a false second copy of every star across the sky. The field still
-// covers the whole sphere, but back-facing stars contribute only their broad,
-// low-weight background instead of an antipodal hill.
+// Weights are angular: w = 1 / (sin²δ + sin²σ), δ = the angle between the texel
+// ray and the star, σ = the softening (a star's hill half-width). Two things
+// follow, and both are the point: the field is defined over the whole sphere —
+// stars behind the camera count, so the dome is never left unpainted — and the
+// sum is smooth, so it reads as terrain rather than as Voronoi cells.
 //
 // Cost is O(w·h·N) at ~10 flops per pair: the exact, splat-free option the plan
 // listed as too heavy for the CPU at full size. It fits a frame because the page
@@ -449,10 +438,11 @@
 	// opts: {
 	//   mode:     'height' | 'spread' | 'gradient'
 	//   sigmaDeg: IDW hill half-width in degrees (default 3). The weight is
-	//             1/((1 − cos δ) + (1 − cos σ)), so σ is the angle at which a
-	//             star's hill has halved: a wide σ means a star's own texel blends
-	//             more with its neighbours and the map reads flatter. 3° keeps
-	//             peaks distinct while still joining the figures.
+	//             1/(sin²δ + sin²σ), so σ is the angle at which a star's hill
+	//             has halved: a wide σ means a star's own texel blends more with
+	//             its neighbours (10° halves the field's log-distance span) and
+	//             the map reads flatter. 3° keeps 94% of the nearest anchor's
+	//             peak on a chart while still joining the figures.
 	//   measure:  false skips the range suggestion (the histogram / raw min-max);
 	//             the field itself is unaffected. The page asks for it at 4 Hz.
 	//   range:    applyRange's [lo, hi] for computeField's one-shot path.
@@ -549,7 +539,7 @@
 		const measure = opts.measure !== false;
 		const mode = opts.mode || 'height';
 		const sigma = (opts.sigmaDeg === undefined ? SIGMA_DEG : opts.sigmaDeg) * DEG;
-		const soft = 1 - Math.cos(sigma);
+		const eps2 = Math.sin(sigma) * Math.sin(sigma);
 		const n = starsIn.n;
 		const wantGradient = mode === 'gradient';
 		const needDepth = mode === 'spread';
@@ -578,10 +568,10 @@
 				const ax = dir[0], ay = dir[1], az = dir[2];
 				let sw = 0, sv = 0, sd = 0, sd2 = 0;
 				for (let i = 0; i < n; i++) {
-					const c = clamp(ax * dirX[i] + ay * dirY[i] + az * dirZ[i], -1, 1);
-					let q = 1 - c;
+					const c = ax * dirX[i] + ay * dirY[i] + az * dirZ[i];
+					let q = 1 - c * c;
 					if (q < 0) q = 0;
-					const gw = 1 / (q + soft);
+					const gw = 1 / (q + eps2);
 					sw += gw;
 					sv += gw * lv[i];
 					if (needDepth) { sd += gw * dv[i]; sd2 += gw * d2v[i]; }
@@ -773,8 +763,12 @@
 		};
 	}
 
-	function createIndex(positions, n, packed, colorIndex, source) {
-		return { positions, n, packed, colorIndex, source };
+	// `landmarkIdx` (optional) is the app's mixed sky: one landmark-table index
+	// per entry, or −1 for a record. The dispatch below uses it so a landmark
+	// anchor rides the simple engine's CPU mirror exactly, the way the sprite
+	// pass draws it, instead of the record approximation.
+	function createIndex(positions, n, packed, colorIndex, source, landmarkIdx) {
+		return { positions, n, packed, colorIndex, source, landmarkIdx: landmarkIdx || null };
 	}
 
 	// Decode the shipping tile bundle into one flat index. Visible records only,
@@ -820,19 +814,43 @@
 	}
 
 	// A procedural galaxy has no catalog and no named sky: sample it once and
-	// query that sample. The sample is fixed in (model, seed), so the anchors do
-	// not change when the eye does — only which of them are nearest.
+	// query that sample. The sample is the app's *own* field — the same
+	// sampler, the same model seed, the same stars the renderer draws — and
+	// every sampled star carries the app's record: the same family, the same
+	// epoch bits, the same jitter byte. That is what makes the map follow the
+	// app's stars instead of a frozen guess of them: the anchors move on the
+	// app's orbit law when the star clock runs, and the epoch map places them
+	// when the epoch moves.
+	//
+	// The sample is fixed in (model, seed), so the anchors do not change when
+	// the eye does — only which of them are nearest.
 	function createSampledIndex(model, count) {
 		const SAMPLING = resolve('SamplingLib', './sampling.js');
-		const buf = SAMPLING.sampleGalaxyStars(model, 0x7E57A1, Math.max(1024, count | 0));
+		const ST = resolve('StarTypesLib', './star-types.js');
+		const REC = resolve('StarRecord', './star-record.js');
+		const Orbit = resolve('OrbitLib', './orbit.js');
+		const buf = SAMPLING.sampleGalaxyStars(model, model.seed, Math.max(1024, count | 0));
 		const n = buf.count;
 		const positions = new Float64Array(n * 3);
+		const packed = new Uint32Array(n);
+		const colorIndex = new Uint8Array(n);
+		const derived = {};
 		for (let i = 0; i < n; i++) {
 			positions[i * 3] = buf.x[i];
 			positions[i * 3 + 1] = buf.y[i];
 			positions[i * 3 + 2] = buf.z[i];
+			// The app's record for this star, byte for byte: the same seed, the
+			// same derivation, the same family and epoch bits, the same jitter.
+			const key = ST.fieldStarSeed(model.seed, i);
+			ST.deriveStar(model, key, buf.component[i], buf.R[i], buf.distToArm[i], derived, buf.z[i]);
+			colorIndex[i] = derived.colorIndex;
+			packed[i] = REC.packPacked(derived.colorIndex, derived.absMag,
+				Orbit.flagsWithFamily(
+					REC.FLAG_VISIBLE | Orbit.epochFlagsFor(buf.component[i], derived.spectralClass, model.barred),
+					Orbit.familyForStar(buf.component[i], derived.spectralClass, model.barred)),
+				ST.fieldStarJitter(i));
 		}
-		return createIndex(positions, n, null, null, 'sampled');
+		return createIndex(positions, n, packed, colorIndex, 'sampled');
 	}
 
 	// The max-heap of the scan: `want` entries, root = farthest.
@@ -888,7 +906,8 @@
 			if (heap.n < n) heapPush(d2, i);
 			else if (d2 < heap.d2[0]) heapSift(d2, i, n);
 		}
-		const pk = index.packed, ci = index.colorIndex;
+		const pk = index.packed, ci = index.colorIndex, li = index.landmarkIdx;
+		const setLi = set.landmarkIdx;
 		let dmin2 = Infinity, dmax2 = 0;
 		// Pop the max: the writes land farthest-last, so the set ends up sorted.
 		for (let k = n - 1; k >= 0; k--) {
@@ -900,12 +919,12 @@
 			set.positions[k * 3 + 2] = birth[src * 3 + 2];
 			set.packed[k] = pk ? pk[src] : 0;
 			set.colorIndex[k] = ci ? ci[src] : 4;
+			if (setLi && li) setLi[k] = li[src];
 			heap.n--;
 			if (heap.n > 0) heapSift(heap.d2[heap.n], heap.idx[heap.n], heap.n);
 		}
 		set.n = n;
 		set.landmark = false;
-		set.names = null;
 		set.segments = null;
 		set.source = index.source;
 		set.dmin = Math.sqrt(dmin2);
@@ -934,10 +953,15 @@
 		}
 		const Orbit = resolve('OrbitLib', './orbit.js');
 		const p = orbitScratch || (orbitScratch = new Float64Array(3));
-		const pk = index.packed;
+		const pk = index.packed, ci = index.colorIndex, li = index.landmarkIdx;
 		for (let i = 0; i < n; i++) {
-			Orbit.engineRecordPosition(p, pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2],
-				pk ? pk[i] : 0, timeMyr, model);
+			if (li && li[i] >= 0) {
+				Orbit.engineLandmarkPosition(p, li[i], pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2],
+					ci ? ci[i] : 4, timeMyr, model);
+			} else {
+				Orbit.engineRecordPosition(p, pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2],
+					pk ? pk[i] : 0, timeMyr, model);
+			}
 			out[i * 3] = p[0]; out[i * 3 + 1] = p[1]; out[i * 3 + 2] = p[2];
 		}
 		return n;
@@ -948,6 +972,7 @@
 	// The app's own dispatch, so the map moves the way the sky does: landmarks
 	// through engineLandmarkPosition (family from colour, no packed record),
 	// records through engineRecordPosition (packed orbit + epoch/cluster bits).
+	// A set with `landmarkIdx` is the app's mixed sky and dispatches per entry.
 	function advancePositions(set, out, timeMyr, model) {
 		const n = set.n, pos = set.positions;
 		if (timeMyr === 0) {
@@ -956,10 +981,17 @@
 		}
 		const Orbit = resolve('OrbitLib', './orbit.js');
 		const p = orbitScratch || (orbitScratch = new Float64Array(3));
-		if (set.landmark) {
+		const li = set.landmarkIdx;
+		if (li || set.landmark) {
 			for (let i = 0; i < n; i++) {
-				Orbit.engineLandmarkPosition(p, i, pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2],
-					set.colorIndex[i], timeMyr, model);
+				const idx = li ? li[i] : i;
+				if (idx >= 0) {
+					Orbit.engineLandmarkPosition(p, idx, pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2],
+						set.colorIndex[i], timeMyr, model);
+				} else {
+					Orbit.engineRecordPosition(p, pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2],
+						set.packed[i], timeMyr, model);
+				}
 				out[i * 3] = p[0]; out[i * 3 + 1] = p[1]; out[i * 3 + 2] = p[2];
 			}
 			return n;
@@ -978,7 +1010,7 @@
 		return Math.max(16, Math.min(512, Math.round(h / 8) * 8));
 	}
 
-	const DistanceField = {
+	const ViewModesField = {
 		DEG, TAU, MIN_DIST_KPC, MAX_STARS, RANGE_FLOOR,
 		// pose
 		quatTurn, quatMul, quatArc, quatApply, quatInv, quatNormalize, quatBasis, quatDrag,
@@ -994,6 +1026,6 @@
 		advancePositions, decodeInto,
 	};
 
-	if (typeof module !== 'undefined') module.exports = DistanceField;
-	if (typeof window !== 'undefined') window.DistanceField = DistanceField;
+	if (typeof module !== 'undefined') module.exports = ViewModesField;
+	if (typeof window !== 'undefined') window.ViewModesField = ViewModesField;
 })();

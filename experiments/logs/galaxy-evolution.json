@@ -2597,8 +2597,8 @@
   "runMinutes": 2.239057239057239,
   "maxJump": 0.0016500000000001513,
   "rate": 99,
-  "stepMs": 0.0146,
-  "mapMs300k": 18.5
+  "stepMs": 0.0187,
+  "mapMs300k": 22.6
  },
  "patternContinuity": {
   "worstNaiveJump": 0.07673345682851362,
@@ -2754,14 +2754,14 @@
    "name": "an epoch step costs a model re-solve and one uniform lane, not a field",
    "pass": true,
    "detail": {
-    "stepMs": 0.0146
+    "stepMs": 0.0187
    }
   },
   {
    "name": "the epoch map is a per-star constant-time placement (300k under 100 ms)",
    "pass": true,
    "detail": {
-    "mapMs": 18.5
+    "mapMs": 22.6
    }
   },
   {

@@ -102,19 +102,6 @@ const MAX_FRAME_DT = 0.1;
 // HDR intermediate format — always used; on HDR displays the tonemap outputs
 // to an rgba16float swapchain too (same format).
 const HDR_INTERMEDIATE_FORMAT = 'rgba16float';
-// The distance field (distance-field-plan.md): the field the renderer paints
-// under the stars. The GPU grid it works on, the coarse grid the CPU reads
-// the display range from, and how often that read happens. The range is read
-// a few times a second rather than every frame: a range that follows every
-// frame flickers, and the legend has to mean a number.
-const FIELD_GRID_H = 180;
-const FIELD_GRID_W_MIN = 64;
-const FIELD_GRID_W_MAX = 640;
-const FIELD_RANGE_H = 36;
-const FIELD_RANGE_W = 64;
-const FIELD_RANGE_PERIOD = 0.25;
-const FIELD_SIGMA_DEG = 3;
-const FIELD_ANCHOR_CAP = 1024;
 
 // A cell manager must exist before a catalog is attached; this keeps the
 // renderer constructible in "procedural only" runs and in Node tests.
@@ -136,13 +123,6 @@ const EMPTY_MANIFEST = {
 function createStarRenderer(device, context, format, options) {
         const opts = options || {};
         const records = window.StarRecord;
-        // The distance field: the shared law (math/distance-field.js) and the
-        // GPU renderer (render/distance-field-renderer.js). The law is the CPU
-        // reference and the range's source; the renderer paints.
-        const fieldLaw = window.DistanceField
-                || (typeof module !== 'undefined' && module.exports ? require('../math/distance-field.js') : null);
-        const fieldLib = window.DistanceFieldRenderer
-                || (typeof module !== 'undefined' && module.exports ? require('./distance-field-renderer.js') : null);
         // Renderer unit tests construct the GPU harness without loading every page
         // script; preserve the old static record path in that environment.
         const orbit = window.OrbitLib || {
@@ -492,42 +472,6 @@ function createStarRenderer(device, context, format, options) {
                 identity: null, view: null, blocks: BLOCK_LAYOUT, total: 0, dynamicVersion: 0,
                 member: { age: null, component: null },
         };
-        // The distance field's state. Which stars are the anchors is the
-        // caller's business (main.js decides: the nearest N of the resident
-        // sky, the selection set, the named stars). Everything else belongs
-        // to the renderer, because the renderer is what knows the camera:
-        // the grid, the layout and the display range.
-        let fieldRenderer = null;
-        let fieldMode = 'off';
-        let fieldSigma = FIELD_SIGMA_DEG;
-        const fieldAnchors = new Float64Array(FIELD_ANCHOR_CAP * 3);
-        let fieldAnchorCount = 0;
-        let fieldRange = { lo: -3, hi: 0 };
-        let fieldRangeClock = 0;
-        let fieldRangeMode = '';
-        let fieldLayout = null;
-        let fieldRangeLayout = null;
-        let fieldRangeRaw = null;
-        const fieldRangeStats = {};
-        const fieldRangeOut = { lo: 0, hi: 1, span: 1 };
-        const fieldBasis = { fx: 0, fy: 0, fz: 1, rx: 1, ry: 0, rz: 0, ux: 0, uy: 1, uz: 0 };
-        if (fieldLaw) {
-                fieldLayout = fieldLaw.createLayout({}, { kind: 'view', w: 320, h: FIELD_GRID_H, fovY: Math.PI / 3, basis: fieldBasis, aspect: 16 / 9 });
-                fieldRangeLayout = fieldLaw.createLayout({}, { kind: 'view', w: FIELD_RANGE_W, h: FIELD_RANGE_H, fovY: Math.PI / 3, basis: fieldBasis, aspect: FIELD_RANGE_W / FIELD_RANGE_H });
-                fieldRangeRaw = new Float32Array(FIELD_RANGE_W * FIELD_RANGE_H);
-        }
-        // The field's GPU renderer. It is created with the rest of the
-        // renderer's resources: a device that cannot give us the pipelines
-        // loses the field, not the frame.
-        if (fieldLib) {
-                try {
-                        fieldRenderer = fieldLib.createDistanceFieldRenderer(device, { label: 'field' });
-                } catch (err) {
-                        console.error('field renderer failed:', err);
-                        fieldRenderer = null;
-                        fieldMode = 'off';
-                }
-        }
         const fieldInfo = { x: null, y: null, z: null, R: null, distToArm: null, component: null, count: 0 };
         const planets = (typeof module !== 'undefined' && module.exports)
                 ? require('../math/planets.js')
@@ -1042,18 +986,12 @@ function createStarRenderer(device, context, format, options) {
                 state.galaxyAge = model.populations.age;
         }
 
-        // The epoch bits a field record carries (0.6 E4): FLAG_EPOCH says the
-        // birth vector lives in the frame the field was drawn in, so the running
-        // epoch places it; FLAG_EPOCH_SPHEROID says the vector is a point inside
-        // the spheroid homology and scales with it. The spheroid bit follows the
-        // family the vertex stage computes from the same record (a bulge star
-        // whose colour puts it on the pattern is an arm star, not a spheroid
-        // member), because the two sides must branch identically.
+        // The epoch bits a field record carries (0.6 E4) live in math/orbit.js,
+        // beside the family law they read: the island builds the same record
+        // for the same star, and a field star with a different epoch bit than
+        // the app's would leave the epoch map.
         function epochFlagsFor(component, spectralClass) {
-                if (component < 2) return records.FLAG_EPOCH;
-                return orbit.familyForStar(component, spectralClass, model.barred) === orbit.FAMILY_PATTERN
-                        ? records.FLAG_EPOCH
-                        : (records.FLAG_EPOCH | records.FLAG_EPOCH_SPHEROID);
+                return orbit.epochFlagsFor(component, spectralClass, model.barred);
         }
 
         function writeProceduralRecords() {
@@ -1076,7 +1014,7 @@ function createStarRenderer(device, context, format, options) {
                                 derived.colorIndex, derived.absMag,
                                 orbit.flagsWithFamily(records.FLAG_VISIBLE | epochFlagsFor(fieldStars.component[i], derived.spectralClass),
                                         orbit.familyForStar(fieldStars.component[i], derived.spectralClass, model.barred)),
-                                Math.imul(i, 2654435761) & 0xFF,
+                                starTypes.fieldStarJitter(i),
                         );
                         identity[i] = key;
                 }
@@ -1451,40 +1389,6 @@ function createStarRenderer(device, context, format, options) {
                 return { localCount, catalogResident };
         }
 
-        // ---- the distance field ---------------------------------------------
-
-        // The render type: 'off', 'height' (the distance from the eye),
-        // 'spread' (the depth spread between neighbours that look close) or
-        // 'gradient' (the slope of the distance, in dex per degree of sky).
-        // The GPU's arithmetic does not change with the mode - only the value
-        // the display pass reads does.
-        function setFieldMode(mode) {
-                const m = (mode === 'height' || mode === 'spread' || mode === 'gradient') ? mode : 'off';
-                fieldMode = m;
-                if (fieldRenderer) fieldRenderer.setMode(m);
-        }
-
-        // The anchors: absolute kpc positions, three floats each, in the
-        // galactic frame. Which stars these are is the caller's business -
-        // the nearest N of the resident sky, the selection set, the named
-        // stars - and the field's arithmetic never asks.
-        function setFieldAnchors(positions, count) {
-                const n = Math.max(0, Math.min(count | 0, FIELD_ANCHOR_CAP));
-                for (let i = 0; i < n * 3; i++) fieldAnchors[i] = positions[i];
-                fieldAnchorCount = n;
-        }
-
-        function setFieldSigma(deg) {
-                fieldSigma = Number.isFinite(deg) ? deg : FIELD_SIGMA_DEG;
-        }
-
-        function fieldState() {
-                return {
-                        mode: fieldMode, anchors: fieldAnchorCount, sigmaDeg: fieldSigma,
-                        lo: fieldRange.lo, hi: fieldRange.hi,
-                };
-        }
-
         // --- Frame ------------------------------------------------------------
         // dtStarArg is the frame's star-time step in Myr (main.js passes it;
         // without it the renderer diffs the star clock itself). Under the
@@ -1590,71 +1494,15 @@ function createStarRenderer(device, context, format, options) {
                         stepPass.end();
                 }
 
-                // The distance field: the anchors are the caller's, the grid
-                // and the layout are the camera's, and the range is the CPU
-                // law's (read a few times a second, never per frame - a range
-                // that follows every frame flickers).
-                let fieldOn = false;
-                if (fieldMode !== 'off' && fieldAnchorCount > 0 && fieldRenderer && fieldLaw) {
-                        fieldOn = true;
-                        const aspect = width / Math.max(1, height);
-                        const f = camera.forward, r = camera.right, u = camera.up;
-                        fieldBasis.fx = f[0]; fieldBasis.fy = f[1]; fieldBasis.fz = f[2];
-                        fieldBasis.rx = r[0]; fieldBasis.ry = r[1]; fieldBasis.rz = r[2];
-                        fieldBasis.ux = u[0]; fieldBasis.uy = u[1]; fieldBasis.uz = u[2];
-                        // viewProj is already projection * view: element [5] also
-                        // contains the camera's up-axis rotation. Reading FoV from it
-                        // makes the field distort as the camera rolls or pitches.
-                        const fovY = camera.fovY || Math.PI / 3;
-                        const gh = FIELD_GRID_H;
-                        const gw = Math.max(FIELD_GRID_W_MIN,
-                                Math.min(FIELD_GRID_W_MAX, Math.round(gh * aspect / 8) * 8));
-                        fieldLaw.createLayout(fieldLayout,
-                                { kind: 'view', w: gw, h: gh, fovY, basis: fieldBasis, aspect });
-                        fieldRangeClock += dt;
-                        if (fieldRangeClock >= FIELD_RANGE_PERIOD || fieldRangeMode !== fieldMode) {
-                                fieldRangeClock = 0;
-                                fieldRangeMode = fieldMode;
-                                fieldLaw.createLayout(fieldRangeLayout, {
-                                        kind: 'view', w: FIELD_RANGE_W, h: FIELD_RANGE_H, fovY,
-                                        basis: fieldBasis, aspect,
-                                });
-                                const stars = fieldLaw.prepareStars(fieldAnchors, fieldAnchorCount,
-                                        camera.cameraPos[0], camera.cameraPos[1], camera.cameraPos[2]);
-                                fieldLaw.computeRaw(stars, fieldRangeLayout,
-                                        { mode: fieldMode, sigmaDeg: fieldSigma, measure: true },
-                                        fieldRangeRaw, fieldRangeStats);
-                                if (!fieldRangeStats.empty) {
-                                        fieldLaw.autoRange(fieldMode, fieldRangeStats, fieldRangeOut);
-                                        fieldRange.lo = fieldRangeOut.lo;
-                                        fieldRange.hi = fieldRangeOut.hi;
-                                }
-                        }
-                        fieldRenderer.setLayout(fieldLayout);
-                        fieldRenderer.setEye(camera.cameraPos[0], camera.cameraPos[1], camera.cameraPos[2]);
-                        fieldRenderer.setMode(fieldMode);
-                        fieldRenderer.setSigma(fieldSigma);
-                        fieldRenderer.setRange(fieldRange.lo, fieldRange.hi);
-                        fieldRenderer.setCanvas(width, height);
-                        fieldRenderer.setAnchors(fieldAnchors, fieldAnchorCount);
-                        fieldRenderer.update(encoder);
-                        // The field is the sky: it is painted into the HDR
-                        // intermediate, so the stars add on top of it and the
-                        // app's own tonemap treats the picture as one scene.
-                        fieldRenderer.draw(encoder, hdrView, HDR_INTERMEDIATE_FORMAT);
-                }
-
                 // Pass 1: additive sprites into the rgba16float HDR intermediate.
                 // Linear flux sums in linear light — no per-star clamping, no
                 // per-star Reinhard. The filmic curve rolls off the sum in pass 2.
-                // With the field on, the sky under the stars is already there,
-                // so the pass loads instead of clearing.
                 const starPass = encoder.beginRenderPass({
                         label: 'star-sprites',
                         colorAttachments: [{
                                 view: hdrView,
                                 clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
-                                loadOp: fieldOn ? 'load' : 'clear',
+                                loadOp: 'clear',
                                 storeOp: 'store',
                         }],
                 });
@@ -1686,10 +1534,11 @@ function createStarRenderer(device, context, format, options) {
                 const bg = hdrOutput
                         ? { r: 0.0001, g: 0.0002, b: 0.0005, a: 1.0 }
                         : { r: 0.008, g: 0.010, b: 0.020, a: 1.0 };
+                const swapView = context.getCurrentTexture().createView();
                 const tonemapPass = encoder.beginRenderPass({
                         label: 'tonemap',
                         colorAttachments: [{
-                                view: context.getCurrentTexture().createView(),
+                                view: swapView,
                                 clearValue: bg,
                                 loadOp: 'clear',
                                 storeOp: 'store',
@@ -1699,11 +1548,11 @@ function createStarRenderer(device, context, format, options) {
                 tonemapPass.setBindGroup(0, tonemapBindGroup);
                 tonemapPass.draw(3, 1, 0, 0);
                 tonemapPass.end();
+
                 device.queue.submit([encoder.finish()]);
         }
 
         function dispose() {
-                if (fieldRenderer) fieldRenderer.destroy();
                 if (starBuffer) starBuffer.destroy();
                 if (nebulaBuffer) nebulaBuffer.destroy();
                 if (thetaBuffer) thetaBuffer.destroy();
@@ -1733,10 +1582,6 @@ function createStarRenderer(device, context, format, options) {
                 setHighlightDesat,
                 setEngine,
                 resetSimpleState,
-                // The distance field (distance-field-plan.md): the render type,
-                // the anchors and the hill width. The range and the layout
-                // are the renderer's own.
-                setFieldMode, setFieldAnchors, setFieldSigma, fieldState,
                 setClusterExaggeration,
                 setProceduralStars,
                 proceduralTarget: () => proceduralTarget,

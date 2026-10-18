@@ -397,3 +397,230 @@ What differs from the plan above, and why. The entry to read is
   > ~1 M texel-anchor pairs, and the browser pass (no browser in the sandbox;
   `experiments/view-modes-page-check.js --png` is what stands in for eyes, and it cannot
   show the marker dots or labels because it rasterizes `drawImage` only).
+
+---
+
+## View Modes Shader.5 — the main-render overlay (view-modes.4, 2026-10-17)
+
+The island proves the maths on ≤ 500 anchors in a browser-side CPU loop. The
+overlay is the same field inside the real frame, on the real star set, drawn by
+WebGPU. It is not a second renderer: it is three passes added to
+`render/star-sprites.js`, and its input is the renderer's own star buffer — the
+procedural field, the landmarks, the composite objects, the local gap-fill and
+the streamed catalog, in hybrid and game mode alike. No CPU sweep picks a
+nearest-N set, so there is no count at which the overlay stops describing the
+sky it is drawn over.
+
+### Passes and order
+
+1. `field-splat` — one instanced quad per star record, the same range the sprite
+   pass draws. The vertex stage reconstructs the *drawn* position with the
+   shared `starMovedPosition` helper (epoch map + classic/simple/apocenter
+   dispatch), projects it, and writes `l = log10(max(d, 1 pc))` at the vertex.
+   The fragment returns the moments `(w, w·l, w·l², w)` with `w = (1−r²)²`,
+   additively into an `rgba16float` field texture. `w` and the quad radius (in
+   field texels) are set so a star covers about one mean inter-star spacing;
+   the radius is clamped `2.5…40` texels so both a 50-star sky and a 300 k-star
+   field fill the map.
+2. `field-blur` — a fullscreen 3×3 binomial pass at field resolution, reading
+   the splat texture with `textureLoad` and writing a second `rgba16float`
+   texture. The moments stay aligned because all four lanes take the same
+   weights. Separating this from the composite is what keeps the composite at
+   one sample per value even in the two derivative modes.
+3. `field-composite` — a fullscreen triangle drawn **after** the tone-map
+   pass, on the swapchain with premultiplied alpha. It maps the mode's raw
+   value through the display range, samples a 256×1 `rgba8unorm-srgb` ramp LUT,
+   applies shaded relief and contour lines, and mixes over the finished frame
+   with the opacity slider. Off (mode 0) all three field passes are skipped, so
+   the overlay costs nothing when it is not in use.
+
+### Modes and units
+
+- `height` (1) — the weighted mean of `log10(d/kpc)`: the island's mode 1, with
+  near = high. The display value is `(hi − raw)/(hi − lo)`.
+- `spread` (2) — the weighted standard deviation of the same log distance, in
+  dex: the island's mode 2, computed from `b/r − (g/r)²` after the blur. Display
+  climbs with `log10(σ)`.
+- `slope` (3) — `|∇log10(d)|` in dex per degree of sky, the island's mode 3,
+  read from the same blurred mean with a one-texel central difference scaled by
+  the field's angular texel size. Display climbs with `log10(slope)`.
+
+### Display range
+
+The range is physical and declared, never a per-frame renormalisation of the
+picture. It is sampled on the CPU at 4 Hz while the overlay is on — the sample
+moves with the star clock as well as the eye, so a frozen camera still describes
+the sky it is drawn over — from at most 256 visible records taken by an even
+stride over all five blocks, resolved through `orbit.engineRecordPosition` — the picker's dispatch,
+so the sample moves with the star clock like the sprites do (the simple lane
+uses the same documented classic approximation the picker reports).
+
+- `height`: the 2nd/98th percentiles of the sampled log distances; the island's
+  padding rule (4% of the span plus 0.02, 0.3 dex floor) applies.
+- `spread`: for each sample star, the σ of the log distances of its 6 angular
+  nearest neighbours; the 5th/95th percentiles of `log10(σ)`.
+- `slope`: for each sample star and its angular nearest neighbour,
+  `|Δlog10 d| / Δangle` in dex per degree; the 5th/95th percentiles of its
+  `log10`.
+- Fewer than 3 samples falls back to fixed ranges the legend quotes
+  (`height` −2…1 dex, `spread` −1.3…0.2, `slope` −1.5…0.3).
+
+The CPU state is allocated once (`math/field-overlay.js`) and the percentiles
+sort a preallocated 256-float scratch; the refresh never allocates.
+
+### Look
+
+`math/field-ramp.js` owns the five island ramps (viridis, the published turbo
+polynomial, magma, the hypsometric terrain, grey) and their per-mode defaults;
+the island painter and the overlay read the same LUTs, so a colour cannot mean
+two things in the two views. The overlay uploads the active ramp as a
+`rgba8unorm-srgb` 256×1 texture and samples it bilinearly through
+`textureSampleLevel`. Shaded relief is the cartographic north-west light with a
+0.45 ambient floor, clamped to darken only, and contours are darkened band
+edges at the slider's level count (0 = off).
+
+### The controls
+
+Display panel, under a `View field` heading: a mode select (off / height /
+spread / slope), opacity (0…1), ramp (auto + the five), relief (0…1) and
+contour levels (0…12). `M` cycles the mode. All five are preset fields
+(`viewfield`, `viewopacity`, `viewramp`, `viewrelief`, `viewcontours`) and boot
+params, with the defaults owned here. The 2D label layer draws the compact
+legend — ramp strip, mode name, and the range in the mode's own unit — while
+the overlay is on.
+
+### Tests
+
+`experiments/field-overlay-test.js` pins the CPU half: percentile windows, the
+spread/slope estimators against hand-built star sets, the splat-radius law at
+0/50/300 000 stars, the uniform layouts and the fallback ranges.
+`experiments/renderer-test.js` pins the wiring: seven shader modules and
+pipelines, the three extra passes and their instance counts with the overlay
+on, no field passes with it off, and the composite's blend state.
+`experiments/wgsl-validate.js` extends the part/wired lists and checks the
+shared `starMovedPosition`, the field constants and the composite's bindings;
+`wgsl-exec-check.js` parses the three new modules like every other shipped one.
+
+---
+
+## View Modes Shader.6 — the corrections (view-modes.5, 2026-10-18)
+
+The plan above is the spec; this section records where the shipped code had
+drifted from it, and the two laws that now pin it.
+
+### The two grids are not the same grid
+
+The composite is a **fullscreen pass on the swapchain**, so its fragment
+position is a *canvas* pixel. The texture it reads is the field's own grid —
+half the canvas, clamped to 256…640 wide. The two share the camera's NDC, so
+one canvas pixel maps to one field uv, but only if the shader divides by the
+*canvas* size:
+
+```wgsl
+let uv: vec2f = vec2f(frag.x / u.canvas.x, frag.y / u.canvas.y);
+```
+
+The shipped code divided by the field size (`u.viewport`), which samples three
+times outside the texture on a 16:9 canvas: the picture showed the field's edge
+column, and no star sat on its own colour. The uniform therefore carries **two**
+sizes — `viewport` (field width, field height, tan(fovY/2)) for the texel maths,
+`canvas` (canvas width, canvas height) for the lookup — and
+`experiments/field-overlay-wgsl-check.js` executes the real passes to prove the
+correspondence.
+
+### Relief off means no shading
+
+The cartographic rule is the island's: at exaggeration 0 the map is the flat
+ramp, so the legend's strip is the picture. A shading factor that is constant
+on a flat field (`0.45 + 0.55·max(dot(n, light), 0)` = 0.839) breaks that, so
+the composite now skips the shading entirely when the relief is 0 and the
+legend's note says *shaded* when it is not.
+
+### The island's anchors are the app's stars
+
+A procedural galaxy has no catalog, so the island samples one — but the sample
+must be the *app's* sample (`sampling.sampleGalaxyStars(model, model.seed, n)`)
+and every star in it must carry the *app's* record, or the anchors are a frozen
+guess: `starTypes.deriveStar` for the class, `orbit.familyForStar` and
+`orbit.epochFlagsFor` for the family and the epoch bits,
+`orbit.flagsWithFamily` for the flags word, `starTypes.fieldStarJitter` for the
+phase/amplitude byte, `star-record.packPacked` for the word. The pattern's
+phase turns with the star clock (`orbit.setPatternClock`), the epoch base is
+re-based on every model (`orbit.setEpochBase`), and the engine row is the
+app's, with the one honest limit stated on screen: the simple friction field
+has a CPU mirror for the landmarks, not for records.
+
+---
+
+## View Modes Shader.6 — the heightmap in the main frame (the app hosts the island)
+
+### Why
+
+The .4/.5 WebGPU overlay is a *different* algorithm — Gaussian moment splats
+plus a blur, derived mean/σ/slope — and it does not look like the island the
+user approved. The island's picture (Shepard IDW of log distance on the view
+sphere or the sky chart, with contours, relief, dots, figures and the ramp
+legend) is the product; the overlay is removed, root and branch (the three
+WGSL passes, `math/field-overlay.js`, its menu, legend card and presets), so
+one system owns the feature.
+
+The island's own data is not: its anchors are re-derived samples that do not
+follow the app's real star updates. The main page already owns the real stars —
+the renderer's `StarPacked` staging and the CPU twin of the vertex dispatch
+(`orbit.engineRecordPosition`) — so the app hosts the field with *those* as the
+anchors.
+
+### What ships
+
+`index.html` gains a **separate View modes panel** (its own collapsible panel,
+like Search & Selection) and a full-window `#viewmodes` 2D canvas above the
+WebGPU canvas:
+
+- **Render type radios** — `distance` / `depth spread` / `slope` / `off`. Off
+  restores the plain WebGPU frame; `M` cycles the same four. The three modes are
+  the island's `height` / `spread` / `gradient` behind the app's wording.
+- **Projection radios** — `3D view` (the gnomonic view sphere, matched to the
+  camera's own basis, FoV and window aspect, so a marker lands on the pixel the
+  sprite pass draws its star at) and `2D chart` (the equirect sky chart:
+  follow-look, mirror, span, the frustum box).
+- **Anchor source radios + slider** — `constellations` (the landmark table and
+  the figure edges; Milky Way only), `nearest` (slider 1…500, exact max-heap
+  query over a strided sample of the renderer's resident records — the same
+  records the sprite pass draws, birth words kept so the orbit dispatch can
+  redraw them at any star time), `selected` (the selection store's members,
+  resolved by identity key against the resident blocks).
+- **The island's other controls** — hill width σ, chart span, field height
+  (resolution), compute budget, ramp (auto keeps the per-mode default), relief,
+  opacity, contours / graticule / stars / names / smooth / invert, follow-look
+  and mirror, auto range with the two manual log sliders. Star time, FoV, the
+  galaxy and the engine belong to the app's own panels and are not duplicated.
+
+### Real stars, real updates
+
+The anchor sets are rebuilt against the renderer's own record blocks
+(`starBlocks()`: one staging buffer, five blocks, `identity` keys). A nearest-N
+pick measures the *drawn* sky (a copy of the strided index advanced through
+`orbit.engineRecordPosition`, throttled to 4 Hz, re-picked when the eye moves
+2 % of the set's own far edge or the residency version changes) and writes the
+winners' *birth* records; every frame `advancePositions` redraws the set at the
+app's live star time with the app's engine — the same dispatch the sprite vertex
+stage mirrors. Landmark-kind entries carry their landmark-table index so the
+simple engine's CPU mirror moves them exactly, not approximately.
+
+### One field, two hosts
+
+`math/view-modes-field.js` and `render/view-modes-renderer.js` stay the only
+implementation of the maths and the picture; `view-modes.html` keeps loading
+them for the sandbox page (`m1-smoke-test.js`: the island file list is now just
+`view-modes.js`). The new `render/view-modes-layer.js` is the app's host: it
+owns the anchor sets, the strided real-star index, the display range (the
+island's auto-range easing), the per-frame paint (through an offscreen canvas
+so `opacity` can blend the map with the live WebGPU sky in view projection),
+and the panel's status line. CPU-only, allocation-free per frame, `file://`
+clean.
+
+### Presets
+
+The five `view*` keys of the retired overlay become `viewmode` (off/height/
+spread/gradient), `viewproj` (view/plane), `viewsource` (nearest/constellations/
+selected), `viewanchors` (N), `viewramp`, `viewrelief`, `viewopacity`.

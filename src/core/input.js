@@ -83,7 +83,7 @@ function createInput(canvas) {
 	// no-op outside the view. Space is game mode's commanded all-stop
 	// (game-mode-plan.md §3): one-shot, like the other commands.
 	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyP: 'constellations', KeyG: 'gameMode', KeyT: 'freezeTime', Tab: 'menu',
-		KeyN: 'nextStar', KeyX: 'clearSet', KeyV: 'systemView', KeyB: 'dvMap', KeyJ: 'chaseFollow', Space: 'allStop', Escape: 'systemViewExit' };
+		KeyN: 'nextStar', KeyX: 'clearSet', KeyV: 'systemView', KeyB: 'dvMap', KeyJ: 'chaseFollow', KeyM: 'viewField', Space: 'allStop', Escape: 'systemViewExit' };
 	// C and F carry a shift-cased pair each: [lowercase, Shift+uppercase].
 	const casedPressMap = { KeyC: ['orbitObject', 'orbitCentre'], KeyF: ['flyMode', 'flyTo'] };
 	const PANEL_BUTTON_SHORTCUTS = { KeyF: 1, KeyN: 1, KeyX: 1 };

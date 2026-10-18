@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-17T20:38:10.888Z",
-  "modules": 28,
-  "totalChecks": 143,
-  "passed": 143,
+  "date": "2026-10-18T07:02:00.520Z",
+  "modules": 32,
+  "totalChecks": 163,
+  "passed": 163,
   "failed": 0,
   "checks": [
     {
@@ -185,7 +185,7 @@
       }
     },
     {
-      "name": "StarTypesLib has identical key sets (31 keys)",
+      "name": "StarTypesLib has identical key sets (32 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -249,7 +249,7 @@
       }
     },
     {
-      "name": "OrbitLib has identical key sets (111 keys)",
+      "name": "OrbitLib has identical key sets (112 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -418,6 +418,134 @@
     },
     {
       "name": "Coords binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "FieldRamp loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "FieldRamp registers exactly one window namespace (FieldRamp)",
+      "pass": true,
+      "detail": [
+        "FieldRamp"
+      ]
+    },
+    {
+      "name": "FieldRamp exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "FieldRamp has identical key sets (7 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "FieldRamp binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "ViewModesField loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "ViewModesField registers exactly one window namespace (ViewModesField)",
+      "pass": true,
+      "detail": [
+        "ViewModesField"
+      ]
+    },
+    {
+      "name": "ViewModesField exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "ViewModesField has identical key sets (42 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "ViewModesField binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "ViewModesRenderer loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "ViewModesRenderer registers exactly one window namespace (ViewModesRenderer)",
+      "pass": true,
+      "detail": [
+        "ViewModesRenderer"
+      ]
+    },
+    {
+      "name": "ViewModesRenderer exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "ViewModesRenderer has identical key sets (9 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "ViewModesRenderer binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "ViewModesLayer loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "ViewModesLayer registers exactly one window namespace (ViewModesLayer)",
+      "pass": true,
+      "detail": [
+        "ViewModesLayer"
+      ]
+    },
+    {
+      "name": "ViewModesLayer exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "ViewModesLayer has identical key sets (6 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "ViewModesLayer binds every key to the same value",
       "pass": true,
       "detail": []
     },
@@ -909,9 +1037,7 @@
         "star-sprite-hdr",
         "nebula-billboard",
         "tonemap",
-        "simple-step",
-        "distance-field",
-        "distance-field-display"
+        "simple-step"
       ]
     },
     {
@@ -927,10 +1053,7 @@
         "nebula-billboard",
         "tonemap",
         "procedural-gen",
-        "cull",
-        "field-uniform",
-        "distance-field",
-        "distance-field-display"
+        "cull"
       ]
     },
     {

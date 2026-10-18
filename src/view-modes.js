@@ -29,7 +29,7 @@
 	const readout = $('readout');
 	const errEl = $('error');
 
-	const Field = window.DistanceField;
+	const Field = window.ViewModesField;
 	const Renderer = window.ViewModesRenderer;
 	const GalaxyLib = window.GalaxyLib;
 	const OrbitLib = window.OrbitLib;
@@ -100,6 +100,10 @@
 		// Star time
 		starTimeMyr: 0,
 		starTimeRate: 0,
+		// The movement passes the app offers. The island mirrors the ones the
+		// CPU can reproduce exactly; the simple pass is integrated for the
+		// landmarks (the app's own CPU mirror) and approximated for records.
+		engine: ['classic'],
 		moveStepPc: 50,
 		// Anchors. `index` is the decoded catalog (birth positions);
 		// `indexCur` is the same sky at the current star time, refreshed at
@@ -109,7 +113,10 @@
 		indexCur: null,
 		indexTime: 0,
 		indexClock: 0,
+		// A procedural galaxy's sky: the app's own field stars, sampled, with
+		// the app's records. `sampleCur` is that sky at the current star time.
 		sampleIndex: null,
+		sampleCur: null,
 		constSet: null,
 		pickSet: null,
 		cur: null,
@@ -150,8 +157,14 @@
 		// and only the preset owns the landmark table and the catalog. Any other
 		// type is procedural, where the anchors are a sampled sky.
 		state.model = GalaxyLib.createGalaxy({ type: state.galaxyType, seed: state.seed });
+		// The epoch base is the frame the field was drawn in. The renderer
+		// re-bases it on every regeneration; without that the epoch map would
+		// measure this model against the *previous* one's arms and move the
+		// anchors off the app's stars.
+		OrbitLib.setEpochBase(state.model);
 		state.constSet = null;
 		state.sampleIndex = null;
+		state.sampleCur = null;
 		state.indexTime = 0;
 		state.indexClock = 0;
 		state.setDirty = true;
@@ -174,9 +187,18 @@
 	function pickAnchors() {
 		const eye = state.pos;
 		if (!state.model.milkyWay) {
-			if (!state.sampleIndex) state.sampleIndex = Field.createSampledIndex(state.model, SAMPLE_STARS);
+			// A procedural galaxy's anchors are the app's own field stars: the
+			// same sample, the same records, so they move with the star clock
+			// and the engine exactly like the stars the app draws.
+			if (!state.sampleIndex) {
+				state.sampleIndex = Field.createSampledIndex(state.model, SAMPLE_STARS);
+				state.sampleCur = new Float64Array(state.sampleIndex.n * 3);
+			}
 			state.set = state.pickSet;
-			Field.queryNearest(state.sampleIndex, state.sampleIndex.positions,
+			// Measure who is nearest *now* (the advanced copy); the set keeps
+			// the birth records the orbit dispatch needs to draw them later.
+			const src = state.indexTime !== 0 ? state.sampleCur : state.sampleIndex.positions;
+			Field.queryNearest(state.sampleIndex, src,
 				eye[0], eye[1], eye[2], state.sourceN || 88, state.pickSet);
 		} else if (state.sourceN === 0 || !state.index) {
 			if (!state.constSet) state.constSet = Field.buildConstellationSet({});
@@ -197,13 +219,23 @@
 
 	// Keep the whole index current while star time runs: one dispatch per record
 	// (~10 ms for the catalog), so it is throttled and only then re-picked.
+	// The catalog and the procedural sample take turns — the Milky Way has no
+	// sample, a procedural galaxy has no catalog — and both carry records the
+	// app's dispatch understands.
 	function advanceIndex(dt) {
-		if (!state.index || !state.model.milkyWay || state.starTimeMyr === 0) return;
+		if (state.starTimeMyr === 0) return;
 		if (Math.abs(state.starTimeMyr - state.indexTime) < 1e-9) return;
 		state.indexClock += dt;
 		if (state.indexClock < INDEX_PERIOD) return;
 		state.indexClock = 0;
-		Field.prepareIndexPositions(state.index, state.indexCur, state.starTimeMyr, state.model);
+		if (state.model.milkyWay) {
+			if (!state.index) return;
+			Field.prepareIndexPositions(state.index, state.indexCur, state.starTimeMyr, state.model);
+		} else if (state.sampleIndex && state.sampleCur) {
+			Field.prepareIndexPositions(state.sampleIndex, state.sampleCur, state.starTimeMyr, state.model);
+		} else {
+			return;
+		}
 		state.indexTime = state.starTimeMyr;
 		state.setDirty = true;
 	}
@@ -278,7 +310,18 @@
 		const dt = state.lastFrameMs ? Math.min(0.1, (nowMs - state.lastFrameMs) / 1000) : 0;
 		state.lastFrameMs = nowMs;
 		if (dt > 0) state.fps = state.fps ? state.fps * 0.9 + (1 / dt) * 0.1 : 1 / dt;
-		if (state.starTimeRate > 0 && dt > 0) state.starTimeMyr += dt * state.starTimeRate;
+		if (state.starTimeRate > 0 && dt > 0) {
+			const dtStar = dt * state.starTimeRate;
+			state.starTimeMyr += dtStar;
+			// The pattern's phase is integrated with the star clock, exactly as
+			// the app does it: the arms turn with the stars that ride them, so
+			// a map whose anchors rotate around a *frozen* pattern would show
+			// a sky the app never draws.
+			OrbitLib.setPatternClock(state.starTimeMyr, state.model);
+			// The simple pass keeps a CPU mirror of the friction field for the
+			// landmarks; the app steps it with the same star-time delta.
+			if (state.engine.indexOf('simple') >= 0) OrbitLib.simpleLandmarksStep(dtStar, state.starTimeMyr);
+		}
 		state.pickClock += dt;
 
 		// One texel must be the same angle in x and y — the gradient mode divides
@@ -401,25 +444,11 @@
 
 	// ---- legend + readout -------------------------------------------------
 
-	function fmtDist(kpc) {
-		if (!(kpc > 0) || !Number.isFinite(kpc)) return '—';
-		if (kpc < 0.1) return (kpc * 1000).toFixed(kpc * 1000 < 10 ? 2 : 0) + ' pc';
-		if (kpc < 10) return kpc.toFixed(2) + ' kpc';
-		return kpc.toFixed(1) + ' kpc';
-	}
-
-	function fmtSlope(dexPerDeg) {
-		if (!(dexPerDeg > 0) || !Number.isFinite(dexPerDeg)) return '—';
-		if (dexPerDeg >= 0.01) return dexPerDeg.toFixed(3) + ' dex/°';
-		return dexPerDeg.toPrecision(2) + ' dex/°';
-	}
-
-	// One formatter for both the legend and the sliders: the value is in the
-	// mode's log10 unit.
-	function fmtRangeValue(mode, logValue) {
-		const v = Math.pow(10, logValue);
-		return mode === 'gradient' ? fmtSlope(v) : fmtDist(v);
-	}
+	// The shared formatters (render/view-modes-renderer.js): the legend, the
+	// readout and the range sliders quote the same string for the same number.
+	const fmtDist = Renderer.formatDistance;
+	const fmtSlope = Renderer.formatSlope;
+	const fmtRangeValue = Renderer.formatRangeValue;
 
 	// The legend is 260 px wide at 11 px monospace (~6.5 px a glyph): every line
 	// below stays under ~38 characters so nothing is clipped at the canvas edge.
@@ -455,9 +484,21 @@
 		Renderer.renderLegend(ctx, state.mode, opts);
 	}
 
+	// The N-anchored pick is "N nearest" for any model — of the catalog for the
+	// Milky Way, of the sampled sky for a procedural one. Only sourceN = 0
+	// leaves the whole set: the figures, or the sampled sky.
 	function anchorSource() {
-		if (!state.model || !state.model.milkyWay) return 'sampled sky';
-		return state.sourceN === 0 ? 'constellations' : state.sourceN + ' nearest';
+		if (state.sourceN > 0) return state.sourceN + ' nearest';
+		return state.model && state.model.milkyWay ? 'constellations' : 'sampled sky';
+	}
+
+	// The simple pass owns a CPU mirror for the landmarks only: a record's
+	// azimuth lives in the renderer's compute buffer, so the island's record
+	// anchors ride the classic law under it. The readout says which, instead
+	// of the map quietly disagreeing with the app.
+	function engineNote() {
+		if (state.engine.indexOf('simple') < 0) return '';
+		return state.set && state.set.landmark ? '' : ' (records ride the classic law)';
 	}
 
 	function drawReadout(err) {
@@ -505,7 +546,7 @@
 			+ `source: ${anchorSource()} · ${state.set ? state.set.n : 0} anchors (${state.set ? state.set.source : '—'})\n`
 			+ `eye: (${p[0].toFixed(3)}, ${p[1].toFixed(3)}, ${p[2].toFixed(3)}) kpc · look ${yaw.toFixed(1)}° / ${pitch.toFixed(1)}°\n`
 			+ `galaxy: ${state.model.type} #${state.model.seed}${state.model.milkyWay ? ' (catalog)' : ' (procedural)'}\n`
-			+ `star time: ${state.starTimeMyr.toFixed(1)} Myr (${OrbitLib.formatTimeRate(state.starTimeRate, 0)}) · engine ${OrbitLib.engineName()}\n`
+			+ `star time: ${state.starTimeMyr.toFixed(1)} Myr (${OrbitLib.formatTimeRate(state.starTimeRate, 0)}) · engine ${OrbitLib.engineName()}${engineNote()}\n`
 			+ `range: ${rangeLine}\n`
 			+ `paint: ${paintLine}\n`
 			+ `field ${state.layout.w}×${state.layout.h} · ${(state.stats.pairs / 1e6).toFixed(2)} M pairs · ${state.fieldMs.toFixed(1)} ms · ${state.fps.toFixed(0)} fps`
@@ -640,6 +681,21 @@
 		if (vEl) vEl.textContent = fmt(value);
 	}
 
+	// The anchor slider counts the nearest stars, but the Milky Way's default
+	// is the constellation set, so the label has to say which of the two the
+	// page is actually using — a procedural galaxy has no constellations at
+	// all.
+	function sourceLabel(n) {
+		if (n !== 0) return `${n | 0} nearest`;
+		return state.model && state.model.milkyWay ? 'constellations' : 'sampled sky';
+	}
+
+	function syncSourceLabel() {
+		const el = $('slider-source'), vEl = $('val-source');
+		if (!el || !vEl) return;
+		vEl.textContent = sourceLabel(el.value | 0);
+	}
+
 	// ---- UI wiring ---------------------------------------------------------
 
 	function bindSlider(id, valId, fmt, onChange) {
@@ -706,6 +762,32 @@
 		syncRangeUI();
 	}
 
+	// The movement passes the app offers, in the app's order. The island
+	// mirrors the ones the CPU can reproduce: the classic law and the
+	// apocenter ellipse are closed form, and the simple friction field has a
+	// CPU mirror for the landmarks (the app's own) but not for records —
+	// those live in the renderer's compute buffer. The readout says so when
+	// the simple pass is on, rather than pretending the map rides it.
+	function applyEngine() {
+		const list = [];
+		if ($('engine-classic').checked) list.push('classic');
+		if ($('engine-simple').checked) list.push('simple');
+		if ($('engine-apocenter').checked) list.push('apocenter');
+		state.engine = list.length ? list : ['classic'];
+		OrbitLib.setEngine(state.engine);
+		// The landmarks' simple mirror is bound to the model and the star
+		// clock, so a new engine or a new model re-binds it.
+		initSimpleLandmarks();
+		// The engine moves the sky, so who is nearest moves with it.
+		state.setDirty = true;
+	}
+
+	function initSimpleLandmarks() {
+		if (!state.constSet || !state.model) return;
+		OrbitLib.simpleLandmarksInit(state.constSet.positions, state.constSet.colorIndex,
+			state.constSet.n, state.model);
+	}
+
 	function bindUI() {
 		bindRadios('view-mode', onModeChange);
 		bindRadios('projection', (v) => { state.projection = v; });
@@ -715,7 +797,7 @@
 			(v) => v > 0 ? `${v}×` : 'off',
 			(v) => { state.relief = v; });
 		bindSlider('slider-source', 'val-source',
-			(v) => v === 0 ? 'constellations' : `${v | 0} nearest`,
+			(v) => sourceLabel(v),
 			(v) => { state.sourceN = v | 0; state.setDirty = true; });
 		bindSlider('slider-star-time', 'val-star-time',
 			(v) => OrbitLib.formatTimeRate(v, 0),
@@ -737,6 +819,9 @@
 		bindCheck('check-follow', (v) => { state.followLook = v; if (v) updateChartQuat(); });
 		bindCheck('check-auto-range', (v) => { if (!v) freezeRange(); setAutoRange(v); });
 		bindCheck('check-mirror', (v) => { state.mirrorChart = v; });
+		['engine-classic', 'engine-simple', 'engine-apocenter'].forEach((id) => {
+			$(id).addEventListener('change', applyEngine);
+		});
 		$('btn-home').addEventListener('click', () => {
 			const home = state.model.home;
 			state.pos[0] = home.position[0]; state.pos[1] = home.position[1]; state.pos[2] = home.position[2];
@@ -755,6 +840,10 @@
 			state.starTimeMyr = 0;
 			buildModel();
 			pickAnchors();
+			// A new model re-binds the landmarks' simple mirror and the
+			// anchor label (a procedural galaxy has no constellations).
+			initSimpleLandmarks();
+			syncSourceLabel();
 		});
 		syncRangeUI();
 	}
@@ -790,7 +879,12 @@
 		state.pickSet = Field.createSet(Field.MAX_STARS);
 		state.cur = new Float64Array(Field.MAX_STARS * 3);
 		pickAnchors();
+		// The landmarks' simple mirror is bound to the model, and the engine
+		// checkboxes are the page's own copy of the app's selection.
+		initSimpleLandmarks();
 		bindUI();
+		applyEngine();
+		syncSourceLabel();
 		// The one window into the page, for experiments/view-modes-page-check.js
 		// (and the console): the harness has to know which layout the page actually
 		// built to tell whether a painted dot landed on its star.

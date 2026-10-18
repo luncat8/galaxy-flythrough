@@ -1,0 +1,143 @@
+{
+  "test": "view-modes-layer",
+  "passed": 34,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "the setters clamp to the panel ranges (and reject an unknown budget)",
+      "pass": true
+    },
+    {
+      "name": "an unknown budget is ignored (the settings keep the old one)",
+      "pass": true
+    },
+    {
+      "name": "an unknown render type falls back to off",
+      "pass": true
+    },
+    {
+      "name": "M-cycle order is height → spread → gradient → off → height",
+      "pass": true
+    },
+    {
+      "name": "the sky list takes every visible resident record (all five blocks)",
+      "pass": true
+    },
+    {
+      "name": "the landmark block range is captured for the per-entry dispatch",
+      "pass": true
+    },
+    {
+      "name": "invisible (thinned) records never enter the list",
+      "pass": true
+    },
+    {
+      "name": "the capacity-vs-live-count difference does not rebuild the sky every frame",
+      "pass": true
+    },
+    {
+      "name": "the nearest pick covers field stars (a catalog-only pick cannot win)",
+      "pass": true
+    },
+    {
+      "name": "the nearest-N pick equals a brute-force scan of the whole resident sky (nearest-first)",
+      "pass": true
+    },
+    {
+      "name": "a far catalog star never enters a nearest set",
+      "pass": true
+    },
+    {
+      "name": "the set keeps birth records: one dispatch lands on the drawn positions (never twice)",
+      "pass": true
+    },
+    {
+      "name": "a star-time sweep dispatches the whole sky and stamps its time",
+      "pass": true
+    },
+    {
+      "name": "the re-pick at star time equals a brute-force scan of the DRAWN sky (the flat-map fix)",
+      "pass": true
+    },
+    {
+      "name": "returning to star time 0 re-picks the birth sky",
+      "pass": true
+    },
+    {
+      "name": "a selection resolves to its resident members only (a dead key drops)",
+      "pass": true
+    },
+    {
+      "name": "a landmark member keeps its table index; a star member gets −1",
+      "pass": true
+    },
+    {
+      "name": "a named selected landmark is labelled in the pick set",
+      "pass": true
+    },
+    {
+      "name": "a stale slot hint falls back to an identity scan (key still wins)",
+      "pass": true
+    },
+    {
+      "name": "constellations build the landmark table with its figures",
+      "pass": true
+    },
+    {
+      "name": "every constellation anchor rides engineLandmarkPosition at the live star time",
+      "pass": true
+    },
+    {
+      "name": "the layer copies the camera axes into the layout basis",
+      "pass": true
+    },
+    {
+      "name": "the view layout matches the window aspect and the camera's FoV",
+      "pass": true
+    },
+    {
+      "name": "the frame paints through the 2D canvas (map + legend)",
+      "pass": true
+    },
+    {
+      "name": "the status line quotes the live anchors and range",
+      "pass": true
+    },
+    {
+      "name": "half opacity blits the offscreen map with globalAlpha",
+      "pass": true
+    },
+    {
+      "name": "the render type off hides the map canvas",
+      "pass": true
+    },
+    {
+      "name": "the map stands aside for the system schematic",
+      "pass": true
+    },
+    {
+      "name": "the map returns when the schematic closes",
+      "pass": true
+    },
+    {
+      "name": "the plane layout is a chart driven by the look direction (lon 0 = look)",
+      "pass": true
+    },
+    {
+      "name": "a 360° chart letterboxes to 2:1 instead of squashing the poles",
+      "pass": true
+    },
+    {
+      "name": "the look direction lands at the chart centre",
+      "pass": true
+    },
+    {
+      "name": "unchecking auto range freezes the live window into the manual sliders",
+      "pass": true
+    },
+    {
+      "name": "a manual slider leaves auto off and keeps lo < hi",
+      "pass": true
+    }
+  ]
+}

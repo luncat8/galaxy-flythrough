@@ -45,6 +45,16 @@ const FIELDS = [
 	{ key: 'sat', label: 'saturation', suffix: 'x' },
 	{ key: 'headroom', label: 'headroom' },
 	{ key: 'highlight', label: 'highlight desat' },
+	// View modes (view-modes.6): the heightmap view — render type, projection,
+	// anchor source and size, and the look knobs. Display state, so it rides
+	// beside the other look knobs.
+	{ key: 'viewmode', label: 'view mode' },
+	{ key: 'viewproj', label: 'view projection' },
+	{ key: 'viewsource', label: 'view anchors' },
+	{ key: 'viewanchors', label: 'view anchor count' },
+	{ key: 'viewramp', label: 'view ramp' },
+	{ key: 'viewrelief', label: 'view relief' },
+	{ key: 'viewopacity', label: 'view opacity' },
 	{ key: 'search', label: 'search filter' },
 	{ key: 'scope', label: 'search scope' },
 	// System view (0.5.3, plan §9.4): the toggle serialized 0/1, and the view's
@@ -86,6 +96,16 @@ function menuDefaults() {
 		sat: r.SATURATION_DEFAULT,
 		headroom: r.HEADROOM_DEFAULT,
 		highlight: r.HIGHLIGHT_DESAT_DEFAULT,
+		// The view modes' defaults live with the layer
+		// (render/view-modes-layer.js), so the menu, the preset and the panel
+		// read one set of numbers.
+		viewmode: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.mode : 'height',
+		viewproj: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.projection : 'view',
+		viewsource: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.source : 'constellations',
+		viewanchors: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.anchors : 88,
+		viewramp: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.ramp : 'auto',
+		viewrelief: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.relief : 6,
+		viewopacity: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.opacity : 1,
 		time: TIME_DEFAULT,
 		wave: o.WAVE_DAMPING_UI_DEFAULT,
 		pattern: o.PATTERN_SCALE_UI_DEFAULT,
@@ -102,6 +122,14 @@ function menuDefaults() {
 		clusters: g.ClustersLib ? g.ClustersLib.CLUSTER_EXAGGERATION_DEFAULT : 50,
 	};
 }
+
+// The field-ramp names math/field-ramp.js owns, plus 'auto'. A preset cannot
+// name a ramp that does not exist; a typo leaves the menu default instead.
+const RAMPS = ['auto', 'viridis', 'turbo', 'magma', 'terrain', 'grey'];
+// The View modes panel's radio values (render/view-modes-layer.js MODES minus
+// the clamp quirks): a preset cannot name a mode or a source that has no radio.
+const VIEW_MODES = ['off', 'height', 'spread', 'gradient'];
+const VIEW_SOURCES = ['nearest', 'constellations', 'selected'];
 
 // One engine name per composable pass, in mask order.
 const ENGINE_ORDER = ['classic', 'simple', 'apocenter'];
@@ -198,6 +226,25 @@ function parse(query) {
 			if (raw === 'selection' || raw === 'galaxy') out.scope = raw;
 			continue;
 		}
+		// The ramp is a name, and only a name the renderer has: a typo would
+		// otherwise reach the painter as an undefined LUT. The three enum keys
+		// accept only the values their radio rows offer.
+		if (field.key === 'viewramp') {
+			if (RAMPS.indexOf(raw) >= 0) out.viewramp = raw;
+			continue;
+		}
+		if (field.key === 'viewmode') {
+			if (VIEW_MODES.indexOf(raw) >= 0) out.viewmode = raw;
+			continue;
+		}
+		if (field.key === 'viewproj') {
+			if (raw === 'view' || raw === 'plane') out.viewproj = raw;
+			continue;
+		}
+		if (field.key === 'viewsource') {
+			if (VIEW_SOURCES.indexOf(raw) >= 0) out.viewsource = raw;
+			continue;
+		}
 		const value = Number(raw);
 		if (Number.isFinite(value)) out[field.key] = value;
 	}
@@ -210,6 +257,7 @@ function describeValue(field, value) {
 	if (field.key === 'engine') return serializeEngine(value).split('+').join(', ');
 	if (field.key === 'sysview') return value ? 'open' : 'closed';
 	if (field.key === 'evolve') return value ? 'running' : 'frozen';
+	if (field.key === 'viewopacity') return Math.round(value * 100) + '%';
 	if (field.key === 'dvmap') {
 		const scope = typeof window !== 'undefined' ? window : global;
 		const names = scope.SystemLayer ? scope.SystemLayer.VIEW_NAMES : null;
@@ -252,6 +300,13 @@ function buildLlmPrompt(settings) {
 	lines.push('- look: ' + ['exposure', 'brightness', 'white', 'sat', 'headroom', 'highlight']
 		.filter((key) => d[key] !== undefined)
 		.map((key) => key + ' ' + d[key]).join(', '));
+	// The view modes (view-modes.6) are a display layer over the same sky, so
+	// a reader rebuilding this page should know which view was on. Labels, not
+	// keys: the prompt is prose.
+	const fieldLook = ['viewmode', 'viewproj', 'viewsource', 'viewanchors', 'viewramp', 'viewrelief', 'viewopacity']
+		.filter((key) => d[key] !== undefined)
+		.map((key) => FIELDS.find((f) => f.key === key).label + ' ' + d[key]);
+	if (fieldLook.length) lines.push('- view modes: ' + fieldLook.join(', '));
 	lines.push('- star counts: ' + ['stars', 'catalog']
 		.filter((key) => d[key] !== undefined)
 		.map((key) => d[key] + ' ' + (key === 'stars' ? 'procedural' : 'catalog budget')).join(', '));

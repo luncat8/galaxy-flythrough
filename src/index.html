@@ -9,6 +9,11 @@
 <body>
 	<canvas id="canvas" tabindex="0"></canvas>
 	<canvas id="labels"></canvas>
+	<!-- View modes (view-modes.6): the heightmap map over the frame — the
+	     island's field and painter, anchored on the renderer's own stars.
+	     Pointer events fall through; the camera input stays the WebGPU
+	     canvas's. Hidden when the mode is off. -->
+	<canvas id="viewmodes"></canvas>
 	<!-- Close-system schematic (0.5.3): 2D canvas above #labels, below #menu.
 	     Drawn only while the system view is open; pointer events fall through
 	     to the WebGPU canvas, which routes its clicks to the layer. -->
@@ -53,6 +58,8 @@
                         <input type="range" id="slider-highlight" min="0" max="1" step="0.05" value="1">
                         <span id="val-highlight" class="menu-val">1.00</span>
                 </div>
+                <!-- View modes (view-modes.6) live in their own panel
+                     (#viewmenu), beside this one. -->
                 <div class="menu-header menu-header-galaxy">
                         <span>Galaxy</span>
                 </div>
@@ -162,45 +169,111 @@
                 </div>
                 <div class="menu-hint">▾ collapses · Tab toggles panels · drag sliders live · C centres the galaxy</div>
         </div>
-        <!-- The distance field is its own task panel: it is a camera-space
-             diagnostic, not a display or galaxy-generation setting. -->
-        <div id="field-menu" class="panel">
-                <div class="menu-header">
-                        <span>Distance field</span>
-                        <button id="field-menu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab toggles all panels)" aria-expanded="true">▾</button>
-                </div>
-                <div class="menu-row">
-                        <label for="field-mode" title="Compute distance, depth spread, or the sky gradient from the current camera eye.">Field view</label>
-                        <select id="field-mode">
-                                <option value="off">off</option>
-                                <option value="height">distance from eye</option>
-                                <option value="spread">depth spread</option>
-                                <option value="gradient">distance gradient</option>
-                        </select>
-                        <span id="val-field" class="menu-val">off</span>
-                </div>
-                <div class="menu-row">
-                        <label for="field-source" title="Choose the rendered stars used as distance anchors.">Anchor source</label>
-                        <select id="field-source">
-                                <option value="nearest">nearest N drawn stars</option>
-                                <option value="catalog">catalog stars</option>
-                                <option value="procedural">procedural stars</option>
-                                <option value="selected">selected stars</option>
-                                <option value="constellations">constellations</option>
-                        </select>
-                </div>
-                <div class="menu-row">
-                        <label for="slider-field-count" title="Anchor count for nearest, catalog, and procedural sources.">Anchor count</label>
-                        <input type="range" id="slider-field-count" min="1" max="500" step="1" value="120">
-                        <span id="val-field-count" class="menu-val">120</span>
-                </div>
-                <div class="menu-row">
-                        <label for="slider-field-sigma" title="Angular radius of each star's influence on the field.">Influence width</label>
-                        <input type="range" id="slider-field-sigma" min="0.5" max="15" step="0.5" value="3">
-                        <span id="val-field-sigma" class="menu-val">3°</span>
-                </div>
-                <div class="field-panel-note">Projection uses the live camera position, orientation, field of view and viewport aspect. Stars and field share one camera-space mapping.</div>
-        </div>
+	<!-- View modes (view-modes.6): the heightmap map as its own panel — the
+	     render type (distance / depth spread / slope / off), the projection
+	     (3D view sphere / 2D sky chart), the anchor stars the field is built
+	     from (the renderer's own records), and the island's look controls.
+	     Star time, FoV and the galaxy stay with their own panels. -->
+	<div id="viewmenu" class="panel">
+		<div class="menu-header">
+			<span>View modes</span>
+			<button id="viewmenu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab toggles all panels)" aria-expanded="true">▾</button>
+		</div>
+		<div class="menu-row radio-row">
+			<span class="menu-sub">render type <span class="kbd">M</span></span>
+			<label><input type="radio" name="vm-mode" value="height" checked> distance</label>
+			<label><input type="radio" name="vm-mode" value="spread"> depth spread</label>
+			<label><input type="radio" name="vm-mode" value="gradient"> slope</label>
+			<label><input type="radio" name="vm-mode" value="off"> off</label>
+		</div>
+		<div class="menu-row radio-row">
+			<span class="menu-sub">projection</span>
+			<label><input type="radio" name="vm-proj" value="view" checked> 3D view</label>
+			<label><input type="radio" name="vm-proj" value="plane"> 2D chart</label>
+		</div>
+		<div class="menu-row radio-row">
+			<span class="menu-sub">anchors</span>
+			<label title="The landmark table and the constellation figures (Milky Way)"><input type="radio" name="vm-source" value="constellations" checked> constellations</label>
+			<label title="The N nearest resident stars — the records the frame draws"><input type="radio" name="vm-source" value="nearest"> nearest</label>
+			<label title="The selection set's stars, resolved against the resident sky"><input type="radio" name="vm-source" value="selected"> selected</label>
+		</div>
+		<div class="menu-row">
+			<label for="slider-vm-anchors">Nearest stars</label>
+			<input type="range" id="slider-vm-anchors" min="1" max="500" step="1" value="88">
+			<span id="val-vm-anchors" class="menu-val">88</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-vm-sigma" title="The IDW hill half-width: the angle at which one star's hill halves. Wider blends the anchors flatter.">Hill width σ</label>
+			<input type="range" id="slider-vm-sigma" min="1" max="20" step="0.5" value="3">
+			<span id="val-vm-sigma" class="menu-val">3°</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-vm-span">Chart span</label>
+			<input type="range" id="slider-vm-span" min="15" max="360" step="5" value="360">
+			<span id="val-vm-span" class="menu-val">360°</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-vm-res" title="The field grid's height in texels. Auto keeps one rebuild inside a frame.">Field height</label>
+			<input type="range" id="slider-vm-res" min="0" max="512" step="16" value="0">
+			<span id="val-vm-res" class="menu-val">auto</span>
+		</div>
+		<div class="menu-row radio-row">
+			<span class="menu-sub">budget</span>
+			<label><input type="radio" name="vm-budget" value="fast"> fast</label>
+			<label><input type="radio" name="vm-budget" value="balanced" checked> balanced</label>
+			<label><input type="radio" name="vm-budget" value="high"> high</label>
+			<label><input type="radio" name="vm-budget" value="full"> full</label>
+		</div>
+		<div class="menu-row radio-row">
+			<span class="menu-sub">ramp</span>
+			<label><input type="radio" name="vm-ramp" value="auto" checked> auto</label>
+			<label><input type="radio" name="vm-ramp" value="viridis"> viridis</label>
+			<label><input type="radio" name="vm-ramp" value="turbo"> turbo</label>
+			<label><input type="radio" name="vm-ramp" value="magma"> magma</label>
+			<label><input type="radio" name="vm-ramp" value="terrain"> terrain</label>
+			<label><input type="radio" name="vm-ramp" value="grey"> grey</label>
+		</div>
+		<div class="menu-row">
+			<label for="slider-vm-relief" title="Shaded relief on the displayed height's own slope. 0 is the flat ramp.">Relief</label>
+			<input type="range" id="slider-vm-relief" min="0" max="30" step="0.5" value="6">
+			<span id="val-vm-relief" class="menu-val">6×</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-vm-opacity" title="Blend the map over the live star frame (3D view registers exactly). 100% is the island's opaque map.">Opacity</label>
+			<input type="range" id="slider-vm-opacity" min="0" max="1" step="0.01" value="1">
+			<span id="val-vm-opacity" class="menu-val">100%</span>
+		</div>
+		<div class="menu-row check-row">
+			<label><input type="checkbox" id="vm-contours" checked> contours</label>
+			<label><input type="checkbox" id="vm-grid"> graticule</label>
+			<label><input type="checkbox" id="vm-stars" checked> stars</label>
+			<label><input type="checkbox" id="vm-names" checked> names</label>
+		</div>
+		<div class="menu-row check-row">
+			<label><input type="checkbox" id="vm-smooth" checked> smooth</label>
+			<label><input type="checkbox" id="vm-invert"> invert</label>
+			<label><input type="checkbox" id="vm-follow" checked> chart follows look</label>
+			<label><input type="checkbox" id="vm-mirror" checked> chart mirrors sky</label>
+		</div>
+		<div class="menu-row check-row">
+			<span class="menu-sub">range</span>
+			<label><input type="checkbox" id="vm-auto-range" checked> auto range</label>
+		</div>
+		<div class="menu-row">
+			<label for="slider-vm-range-lo" id="label-vm-range-lo">Near</label>
+			<input type="range" id="slider-vm-range-lo" min="-7" max="4" step="0.05" value="-3">
+			<span id="val-vm-range-lo" class="menu-val">—</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-vm-range-hi" id="label-vm-range-hi">Far</label>
+			<input type="range" id="slider-vm-range-hi" min="-7" max="4" step="0.05" value="0">
+			<span id="val-vm-range-hi" class="menu-val">—</span>
+		</div>
+		<div class="menu-row">
+			<span id="vm-status" class="menu-note">—</span>
+		</div>
+		<div class="menu-hint">The map is a function of direction: the dots are real resident stars, placed by the same projection that sampled the field. Heights are Shepard IDW of log distance.</div>
+	</div>
 	<!-- Search & Selection is a separate workflow panel: typed object history,
 	     current-centred star search and the clickable result array. -->
 	<div id="selection-menu" class="panel">
@@ -465,6 +538,9 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
              Loads after objects.js, whose budget apportionment it reuses. -->
         <script src="math/clusters.js"></script>
         <script src="math/coords.js"></script>
+        <script src="math/field-ramp.js"></script>
+        <script src="math/view-modes-field.js"></script>
+        <script src="render/view-modes-renderer.js"></script>
         <script src="core/device.js"></script>
         <script src="core/camera.js"></script>
         <script src="core/input.js"></script>
@@ -477,7 +553,6 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
         <!-- Star and planet search (0.5.2): pure scan over the renderer's
              blocks and the selection set, so it depends on nothing at load. -->
         <script src="core/search.js"></script>
-        <script src="core/field-anchors.js"></script>
 	<script src="core/route.js"></script>
 	<!-- The game-mode ship (game-mode-plan G1): the class table through
 	     deltav.js, the leg profile through route.js — loaded after both and
@@ -493,9 +568,6 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
              earlier file registered. The tile stream feeds the renderer, so it loads
              before it. -->
         <script src="render/shaders.js"></script>
-        <script src="math/distance-field.js"></script>
-        <script src="render/distance-ramps.js"></script>
-        <script src="render/distance-field-renderer.js"></script>
         <script src="stream/tile-loader.js"></script>
         <script src="stream/cell-manager.js"></script>
 	<script src="render/star-sprites.js"></script>
@@ -504,6 +576,7 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
 	     its own 2D canvas; loads after the label layer whose ring colour, font
 	     and halo it reuses. -->
 	<script src="render/system-layer.js"></script>
+	<script src="render/view-modes-layer.js"></script>
 	<script src="main.js"></script>
 </body>
 </html>

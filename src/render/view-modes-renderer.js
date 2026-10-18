@@ -1,7 +1,7 @@
 // src/render/view-modes-renderer.js
 // 2D-canvas painter for the view-modes heightmap experiment.
 //
-// Takes the Float32Array field built by math/distance-field.js and paints it
+// Takes the Float32Array field built by math/view-modes-field.js and paints it
 // with a colour ramp plus contours, then overlays the anchor stars, the
 // constellation figures and the current view window through *the layout's own*
 // texel mapping. That is the whole design rule of this file: it never re-derives
@@ -16,16 +16,19 @@
 'use strict';
 
 (function () {
-	const Field = (typeof window !== 'undefined' && window.DistanceField)
-		? window.DistanceField
-		: require('../math/distance-field.js');
+	const Field = (typeof window !== 'undefined' && window.ViewModesField)
+		? window.ViewModesField
+		: require('../math/view-modes-field.js');
 
-	// The ramps live in the main tree now: the island's painter and the
-	// WebGPU display pass must paint the same colours, so there is one
-	// source (render/distance-ramps.js) and not two copies of five curves.
-	const Ramps = (typeof window !== 'undefined' && window.DistanceRamps)
-		? window.DistanceRamps
-		: require('./distance-ramps.js');
+	// The ramps are shared with the app's map (math/field-ramp.js): one LUT per
+	// colour means the sandbox page and the app cannot disagree about what a
+	// colour is worth.
+	const FieldRamp = (typeof window !== 'undefined' && window.FieldRamp)
+		? window.FieldRamp
+		: require('../math/field-ramp.js');
+	const RAMPS = FieldRamp.RAMPS;
+	const rampForMode = FieldRamp.rampForMode;
+	const resolveRamp = FieldRamp.resolveRamp;
 
 	// Shaded relief, the cartographic convention: light from the north-west at
 	// 45° altitude, so the slope facing up-left is the lit one and a ridge reads
@@ -85,7 +88,7 @@
 		const w = layout.w, h = layout.h;
 		const iw = ctx.canvas.width | 0, ih = ctx.canvas.height | 0;
 		FULL.x = 0; FULL.y = 0; FULL.w = iw; FULL.h = ih;
-		const ramp = opts.ramp || Ramps.rampForMode(opts.mode);
+		const ramp = opts.ramp || rampForMode(opts.mode);
 		const levels = (opts.contourLevels | 0) || 10;
 		const contour = opts.drawContours ? 0.18 : 0;
 		const invert = !!opts.invert;
@@ -243,7 +246,7 @@
 			ctx.lineWidth = 1;
 			ctx.strokeStyle = 'rgba(0,0,0,0.7)';
 			ctx.stroke();
-			if (names && i > 0 && r > 3.4) {
+			if (names && names[i] && i > 0 && r > 3.4) {
 				ctx.font = '11px ui-monospace, Menlo, Consolas, monospace';
 				ctx.fillStyle = 'rgba(255,255,255,0.8)';
 				ctx.textBaseline = 'bottom';
@@ -276,6 +279,28 @@
 		ctx.restore();
 	}
 
+	// One formatter pair for the legend, the readout and the range sliders:
+	// the value is a physical distance (kpc) or a slope (dex per degree).
+	function formatDistance(kpc) {
+		if (!(kpc > 0) || !Number.isFinite(kpc)) return '—';
+		if (kpc < 0.1) return (kpc * 1000).toFixed(kpc * 1000 < 10 ? 2 : 0) + ' pc';
+		if (kpc < 10) return kpc.toFixed(2) + ' kpc';
+		return kpc.toFixed(1) + ' kpc';
+	}
+
+	function formatSlope(dexPerDeg) {
+		if (!(dexPerDeg > 0) || !Number.isFinite(dexPerDeg)) return '—';
+		if (dexPerDeg >= 0.01) return dexPerDeg.toFixed(3) + ' dex/°';
+		return dexPerDeg.toPrecision(2) + ' dex/°';
+	}
+
+	// A range slider value is in the mode's log10 unit; this is what the label
+	// quotes beside it.
+	function formatRangeValue(mode, logValue) {
+		const v = Math.pow(10, logValue);
+		return mode === 'gradient' ? formatSlope(v) : formatDistance(v);
+	}
+
 	// Legend: the ramp plus what its ends mean in the world. Quoting kpc (or
 	// degrees for the gradient) is the point — an unlabelled ramp is exactly what
 	// made the first version impossible to check.
@@ -284,7 +309,7 @@
 		const iw = c.width | 0, ih = c.height | 0;
 		const W = 260, H = 12, pad = 12;
 		const x = iw - W - pad, y = ih - H - pad - 30;
-		const ramp = opts.ramp || Ramps.rampForMode(mode);
+		const ramp = opts.ramp || rampForMode(mode);
 		const strip = rampStrip(ramp);
 		ctx.fillStyle = 'rgba(6,8,14,0.72)';
 		ctx.fillRect(x - 8, y - 16, W + 16, H + 62);
@@ -328,9 +353,9 @@
 	}
 
 	const ViewModesRenderer = {
-		renderField, renderLegend,
-		rampForMode: Ramps.rampForMode, resolveRamp: Ramps.resolveRamp,
-		ramps: Ramps.ramps,
+		renderField, renderLegend, rampForMode, resolveRamp,
+		formatDistance, formatSlope, formatRangeValue,
+		ramps: RAMPS,
 		RELIEF_DEFAULT,
 	};
 

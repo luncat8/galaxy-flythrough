@@ -1,12 +1,12 @@
 {
-  "date": "2026-10-17T11:39:34.507Z",
+  "date": "2026-10-18T06:57:02.653Z",
   "anchors": {
     "landmarks": 60,
     "catalog": 3829
   },
   "totalChecks": 70,
-  "passed": 69,
-  "failed": 1,
+  "passed": 70,
+  "failed": 0,
   "checks": [
     {
       "name": "quatBasis reproduces camera.forward",
@@ -356,9 +356,10 @@
     },
     {
       "name": "mode 3 is the magnitude of fieldSlope, per degree",
-      "pass": false,
+      "pass": true,
       "detail": {
-        "worst": 2.0608203060712427e-9
+        "bad": 0,
+        "worst": 0
       }
     },
     {
@@ -477,10 +478,10 @@
       }
     },
     {
-      "name": "100 nearest-500 queries take 4.7 ms (< 200)",
+      "name": "100 nearest-500 queries take 3.8 ms (< 200)",
       "pass": true,
       "detail": {
-        "ms": 4.71
+        "ms": 3.8
       }
     },
     {
@@ -528,10 +529,10 @@
       }
     },
     {
-      "name": "500 anchors at the balanced budget (72×40) rebuilds in 16.1 ms (< 60)",
+      "name": "500 anchors at the balanced budget (72×40) rebuilds in 17.3 ms (< 60)",
       "pass": true,
       "detail": {
-        "ms": 16.15,
+        "ms": 17.32,
         "pairs": 1440000
       }
     },

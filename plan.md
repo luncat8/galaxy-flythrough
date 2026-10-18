@@ -1336,26 +1336,18 @@ Shipped, in `archive/`:
   (0.5.5 shipped; optional economy omitted). CPU-only by construction: the star buffer, the WGSL and the three render paths
   are untouched.
 
-- `archive/view-modes-shader-plan.md` — the view-modes heightmap island: the distance from
+- `archive/view-modes-shader-plan.md` — the view-modes heightmap: the distance from
   the camera to the stars, and the depth spread between neighbours that look close on
   screen, as smooth per-texel fields over the constellation stars or the nearest N, moving
   with star time. CPU IDW + a 2D canvas painter, in the app's own projection (a gnomonic
   view sphere at the camera's FoV, plus an equirect sky chart with quaternion drag-pan).
-  Loaded only by `src/view-modes.html`, so the main app and its agents never read it.
+  Since view-modes.6 the field math and the painter are shared with the app: `index.html`
+  loads them for its View modes panel (`render/view-modes-layer.js` anchors the field on
+  the renderer's own records), and only the sandbox page's boot glue (`view-modes.js`)
+  stays out of the app.
   *(shipped as view-modes.0/.1 — .1 corrected the projection and the distance meaning; the
-  GPU splat and the pathfinding cost-grid export stay open. Log: `archive/view-modes-worklog.md`)*
-
-- [`distance-field-plan.md`](distance-field-plan.md) — the distance field promoted out of the
-  view-modes island and into the **main WebGPU renderer**: one law (`src/math/distance-field.js`),
-  a WGSL twin in `src/render/shaders.js` and a renderer module
-  (`src/render/distance-field-renderer.js`), the field painted as the sky the stars are
-  drawn on, and the anchors chosen by the app — the nearest N of the resident sky, the
-  selection set, the named stars — so the field works with **any** star situation rather
-  than one island's. A separate test page (`src/distance-field.html`) drives the same GPU
-  path from radio buttons (render type, star source, projection) and sliders (count, σ,
-  grid width, eye distance). *(M1 and M2 done — the law, the GPU path, the parity fixtures,
-  the page and the main renderer's field stage. M3 (contours, relief, the legend strip) and
-  M4 (the pathfinding cost-grid export) remain. Log: `archive/distance-field-worklog.md`)*
+  pathfinding cost-grid export stays open. view-modes.6 hosted the map in the main frame
+  and retired the .4/.5 WGSL overlay. Log: `archive/view-modes-worklog.md`)*
 
 - **0.5.6 — system-view review pass** (on top of the archived 0.5 plan, §6–§8):
   the system/ship controls move out of the right-hand galaxy menu into their own

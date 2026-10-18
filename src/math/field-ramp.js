@@ -1,28 +1,20 @@
-// src/render/distance-ramps.js
-// The distance field's colour ramps, shared by every renderer that paints one.
+// src/math/field-ramp.js
+// The heightmap ramps, in one place. The island painter (view-modes.html) and
+// the main renderer's WebGPU field overlay both read these LUTs, so a colour
+// cannot mean one distance on the chart and another in the frame.
 //
-// Promoted out of the view-modes island's painter, because the ramps are no
-// longer the painter's private business: the WebGPU display pass in
-// render/distance-field-renderer.js uploads the same bytes as a 256×1 texture,
-// and the island's 2D painter reads the same LUT. One ramp source, so the
-// island's picture and the GPU's picture are the same colours.
+// A ramp is a 256×3 byte LUT: whatever curve produced it, the painter's (and
+// the shader LUT upload's) per-texel cost stays one array index, so the curve
+// is evaluated here at load and never in a frame loop.
 //
-// A ramp is a 256×3 byte LUT: whatever curve produced it, the per-texel cost
-// stays one array index, so the curve is evaluated here at load and never in
-// the frame loop.
-//
-// Pure data: no DOM, no WebGL. Testable in Node.
+// Stops are [t, r, g, b] with t ascending across 0..1. Carrying the position
+// is what lets a ramp whose bands are not evenly spaced say so — the
+// hypsometric terrain one, where sea level is not halfway up a mountain.
 
 'use strict';
 
 (function () {
-	// A ramp is a 256×3 byte LUT: whatever curve produced it, the painter's
-	// per-texel cost stays one array index, so the curve is evaluated here at
-	// load and never in the frame loop.
-	//
-	// Stops are [t, r, g, b] with t ascending across 0..1. Carrying the position
-	// is what lets a ramp whose bands are not evenly spaced say so — the
-	// hypsometric terrain one, where sea level is not halfway up a mountain.
+	// A ramp is a 256×3 byte LUT.
 	function buildRamp(stops) {
 		const n = 256;
 		const ramp = new Uint8Array(n * 3);
@@ -110,10 +102,14 @@
 	const GREY = buildRamp([[0, 0, 0, 0], [1, 255, 255, 255]]);
 
 	const RAMPS = { viridis: VIRIDIS, turbo: TURBO, magma: MAGMA, terrain: TERRAIN, grey: GREY };
-	// So the readout can name the ramp on screen without a reverse lookup in the
+	const RAMP_NAMES = ['viridis', 'turbo', 'magma', 'terrain', 'grey'];
+	// So a readout can name the ramp on screen without a reverse lookup in the
 	// frame loop.
 	for (const name in RAMPS) RAMPS[name]._name = name;
 
+	// Height reads as distance, so the perceptually even ramp is the default;
+	// depth spread is a hazard, so turbo's red end; the slope/cost map is grey.
+	// Both the island's 'gradient' and the overlay's 'slope' land on grey.
 	function rampForMode(mode) {
 		if (mode === 'height') return VIRIDIS;
 		if (mode === 'spread') return TURBO;
@@ -127,30 +123,26 @@
 		return (which && RAMPS[which]) || rampForMode(mode);
 	}
 
-
-	// The GPU path wants the ramp as RGBA bytes it can upload as a texture:
-	// one row, 256 texels, alpha opaque. The island's painter wants the RGB
-	// LUT, so both are the same numbers in two shapes.
-	function toRgba(ramp, out) {
-		const n = ramp.length / 3;
-		const dst = out || new Uint8Array(n * 4);
-		for (let i = 0; i < n; i++) {
-			dst[i * 4] = ramp[i * 3];
-			dst[i * 4 + 1] = ramp[i * 3 + 1];
-			dst[i * 4 + 2] = ramp[i * 3 + 2];
-			dst[i * 4 + 3] = 255;
+	// The GPU reads the same LUT as an rgba8unorm-srgb texture: once per ramp,
+	// built on first use. Alpha is opaque; the composite reads rgb only.
+	const rgbaCache = new Map();
+	function rampRGBA(ramp) {
+		let out = rgbaCache.get(ramp);
+		if (out) return out;
+		out = new Uint8Array(256 * 4);
+		for (let i = 0; i < 256; i++) {
+			out[i * 4] = ramp[i * 3];
+			out[i * 4 + 1] = ramp[i * 3 + 1];
+			out[i * 4 + 2] = ramp[i * 3 + 2];
+			out[i * 4 + 3] = 255;
 		}
-		return dst;
+		rgbaCache.set(ramp, out);
+		return out;
 	}
 
-	const DistanceRamps = {
-		ramps: RAMPS,
-		rampForMode,
-		resolveRamp,
-		toRgba,
-		names: Object.keys(RAMPS),
+	const FieldRamp = {
+		RAMPS, RAMP_NAMES, rampForMode, resolveRamp, rampRGBA, buildRamp, buildRampFn,
 	};
-
-	if (typeof module !== 'undefined') module.exports = DistanceRamps;
-	if (typeof window !== 'undefined') window.DistanceRamps = DistanceRamps;
+	if (typeof module !== 'undefined') module.exports = FieldRamp;
+	if (typeof window !== 'undefined') window.FieldRamp = FieldRamp;
 })();

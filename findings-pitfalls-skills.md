@@ -3,54 +3,66 @@
 Append-only notes for LLM agents working on this project. Each entry: date, one-line summary heading, then the detail. Newest at top.
 
 ---
+
 ---
 
-## 2026-10-17 — WGSL has no includes: a helper two modules call must live in the part both include
+## 2026-10-18 — A fullscreen pass on the swapchain reads the *canvas* grid, not the field's
 
-The distance field's compute shader and its display shader are two separate modules
-(`distance-field`, `distance-field-display`), each the concatenation of a shared uniform
-part plus its own body. The display body called `fieldLog10`, which was defined in the
-*compute* body — so the display module would not have compiled in a browser, and nothing
-in the sandbox noticed: the CPU-side WGSL interpreter the parity fixture runs the
-shipping shader through only exercised the compute path.
+The view-field overlay draws the field into its own (half-canvas) texture and then
+composites it fullscreen on the swapchain. Those are two grids, and the fragment
+position of a fullscreen pass is a **canvas** pixel. Dividing it by the *field* width
+(`frag.x / u.viewport.x`) samples three times outside the texture; the sampler clamps,
+so the picture shows the field's edge column stretched over the frame and no star sits
+on its own colour — the symptom reads as "the stars do not fit the colour map", not
+as a grid error. The uniform now carries both sizes (`viewport` for the texel maths,
+`canvas` for the lookup), and the rule to keep: *a pass that reads a texture must know
+which grid the texture lives on*.
 
-The check that catches it is `experiments/wgsl-validate.js`'s *"every call target resolves
-in the module"*: it strips the comments of every complete module, collects the `fn`
-definitions and the `struct` names, and fails on any call that resolves to neither nor to
-a WGSL builtin. Keep the shared helpers (`fieldLog10`, `fieldQuatApply`, the constants)
-in the part **both** modules include, and keep that check in the suite.
+Two ways it stayed invisible: the CPU half of the feature never touched the swapchain,
+and the WGSL was only ever parsed, never executed. `experiments/field-overlay-wgsl-check.js`
+now runs the shipping splat, blur and composite through wgsl_reflect's interpreter —
+with the old mapping the colour under every star is `[0, 0, 0]`, a black map. Its
+negative control computes what the mix-up *would* produce and requires the two to
+differ, so the check cannot pass blind.
 
-The same family: WGSL has a `log10` builtin, but the CPU interpreter that runs the
-shipping WGSL does not implement it — `log2(x) * 0.30102999566398120` is the same
-function to within an ulp, far below the f32 noise the field carries.
+Two smaller traps in the same pass:
 
-## 2026-10-17 — A mock's `writeBuffer` must follow the real API's element/byte split
+- **A relief that is off must not shade.** The cartographic rule is "at exaggeration 0
+  the map is the flat ramp", but a shading factor of the form `ambient + (1-ambient)·dot(n, light)`
+  is 0.839 on a *flat* field, so "off" was 16% darker than the legend's ramp strip and
+  the two could never match. Gate the whole shading on the exaggeration, not on the
+  slope.
+- **A sprite and the thing that describes it must project through the same matrix.**
+  The field splat reuses the sprite pass's `starMovedPosition` header and the same
+  `camera.viewProj`, which is why the overlay describes the frame's own stars. A second
+  projection — however careful — is a second camera, and the map stops being a map of
+  what is on screen. The check that pins it compares the two passes' projected centres
+  on the *shipping* shaders, with an off-origin eye and a non-square aspect.
 
-`GPUQueue.writeBuffer(buffer, offset, data, dataOffset, size)` counts `dataOffset` and
-`size` in **elements** for a typed array and in **bytes** for an `ArrayBuffer`. A mock
-that treats both as bytes silently truncates a typed-array write that carries a size:
-the distance field's anchor upload (n anchors × 4 floats) was cut to a quarter of its
-length, and the truncation looked like a field that was simply too dark.
+## 2026-10-18 — An island that mirrors the app must carry the app's *records*, not just its positions
 
-When copying, remember that `data.buffer` and `data.byteOffset` exist only on a *view* —
-an `ArrayBuffer` has neither.
+A standalone page that reads the same model can still describe a sky the app never
+draws, because the app's stars are records, not positions: the record's packed word
+carries the family (which orbit the star rides), the epoch bits (whether the epoch map
+places it) and the jitter byte (its epicycle phase and amplitude). A sampled sky with
+`packed = 0` is a set of points that never move — the map is frozen while the app's sky
+turns. The fix is to build the record the app builds: the same sampler and the same
+model seed (`sampling.sampleGalaxyStars(model, model.seed, n)` — the app's field is a
+prefix of any longer sample of the same seed), `starTypes.deriveStar` for the class,
+`orbit.familyForStar` + `orbit.epochFlagsFor` + `orbit.flagsWithFamily` for the flags,
+`starTypes.fieldStarJitter` for the jitter, `star-record.packPacked` for the word.
 
-## 2026-10-17 — In a Node harness `window` is the global object, so a module lookup must test for the global
+Two clocks ride on top of that, and a page that keeps its own star clock but not these
+two freezes in a different way: the pattern's phase (`orbit.setPatternClock` — the arms
+the stars orbit turn with the clock) and the epoch base (`orbit.setEpochBase` — a model
+change re-bases it, or the epoch map measures the new model against the old one's arms
+and moves every anchor off the app's stars). Both are one call each, and both are easy
+to forget because the app's `main.js` does them.
 
-`globalThis.window = globalThis` is how the browser files load under Node. A lookup
-written as `typeof window !== 'undefined' ? window.X : require('./x.js')` therefore takes
-the *window* branch for a module that was never preloaded and yields `undefined` — and a
-`try/catch` around the construction swallows it, so the symptom is "the feature is
-silently off". Test for the global instead: `typeof window !== 'undefined' && window.X`.
-
-## 2026-10-17 — A flat xyz array's length is not a count
-
-The distance-field page stores its picks as a flat `Float64Array` of xyz triples and its
-count in a separate field. Reading `picked.length` as the number of stars turned one pick
-into three anchors, two of them `undefined` — a NaN in the anchor buffer, which the GPU
-silently renders as nothing. The same page searched its *current anchors* for the star
-under the cursor; the anchors are the nearest few stars and sit in one small patch of
-sky, so a click anywhere else found nothing. The pick has to search the whole sky.
+**Skill:** put a shared law in `math/` the moment two callers need it. `epochFlagsFor`
+and `fieldStarJitter` were in `render/star-sprites.js`, where the island could not reach
+them; moving them to `math/orbit.js` and `math/star-types.js` made the island's records
+the app's records by construction instead of by copy.
 
 ---
 

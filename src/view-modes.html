@@ -19,7 +19,7 @@
 		<div class="menu-row radio-row">
 			<label><input type="radio" name="view-mode" value="height" checked> 1 · distance from eye</label>
 			<label><input type="radio" name="view-mode" value="spread"> 2 · depth spread</label>
-			<label><input type="radio" name="view-mode" value="gradient"> 3 · gradient of 1</label>
+			<label><input type="radio" name="view-mode" value="gradient"> 3 · slope of log distance</label>
 			<label><input type="radio" name="view-mode" value="off"> off</label>
 		</div>
 		<div class="menu-row radio-row">
@@ -36,6 +36,12 @@
 			<label for="slider-star-time">Star time</label>
 			<input type="range" id="slider-star-time" min="0" max="99" step="0.5" value="0">
 			<span id="val-star-time" class="menu-val">frozen</span>
+		</div>
+		<div class="menu-row check-row">
+			<span class="menu-sub">engine</span>
+			<label title="The app's movement passes, composable. Classic is the closed-form base; simple adds the friction field (landmarks only here — a record's azimuth lives in the renderer's compute buffer); apocenter adds guided ellipses."><input type="checkbox" id="engine-classic" checked> classic</label>
+			<label><input type="checkbox" id="engine-simple"> simple</label>
+			<label><input type="checkbox" id="engine-apocenter"> apocenter</label>
 		</div>
 		<div class="menu-row">
 			<label for="slider-sigma">Hill width σ</label>
@@ -176,13 +182,14 @@
 	<script src="math/galaxy.js"></script>
 	<script src="math/sampling.js"></script>
 	<script src="math/star-record.js"></script>
+	<script src="math/star-types.js"></script>
 	<script src="math/coords.js"></script>
 	<script src="math/orbit.js"></script>
 	<script src="data/landmarks.js"></script>
 	<script src="data/constellations.js"></script>
 	<script src="data/tiles/catalog.js"></script>
-	<script src="math/distance-field.js"></script>
-	<script src="render/distance-ramps.js"></script>
+	<script src="math/field-ramp.js"></script>
+	<script src="math/view-modes-field.js"></script>
 	<script src="render/view-modes-renderer.js"></script>
 	<script src="view-modes.js"></script>
 </body>
