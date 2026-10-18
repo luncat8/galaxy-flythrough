@@ -1,8 +1,12 @@
 {
   "test": "view-modes-layer",
-  "passed": 34,
+  "passed": 35,
   "failed": 0,
   "checks": [
+    {
+      "name": "a fresh layer boots off, without contours, at 256 nearest anchors",
+      "pass": true
+    },
     {
       "name": "the setters clamp to the panel ranges (and reject an unknown budget)",
       "pass": true

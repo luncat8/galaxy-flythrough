@@ -1951,3 +1951,19 @@ the motion a second time. Split the two explicitly in the query's signature
 (`queryNearest(index, measure, …)` writes `index.positions`), and let a test compare the
 dispatched set against the advanced index. A max-heap of N entries over one linear scan is
 exact, allocation-free, ~0.3 ms for 500 of 3 829 — no sorted array or per-query copy needed.
+
+## 2026-10-18 — An auto follower must trust repetition, not magnitude
+
+The view-modes auto range eased toward each 4 Hz suggestion but *snapped*
+whenever one landed >1.5 decades from the live bounds, on the theory that a
+far suggestion means a new neighbourhood. After a pan it means the opposite:
+the first reads come from data still settling (streaming residency, a
+re-picked anchor set), so the snap rewrote the live range with the least
+trustworthy read available and the settled field fell wholly outside it —
+one flat colour for the seconds the ease needed to crawl back. Distance
+from the current value cannot distinguish "genuinely elsewhere" from "not
+measured yet"; agreement across consecutive reads can. The shipped law
+(`Field.offerRange`/`easeRange`, view-modes.8): only a mode's first offer
+snaps, later offers must repeat within 0.08 dex three times before becoming
+the target, and the display eases per frame. Applies to any auto-exposure /
+auto-window follower over streamed or re-picked data.

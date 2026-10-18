@@ -99,10 +99,10 @@ function menuDefaults() {
 		// The view modes' defaults live with the layer
 		// (render/view-modes-layer.js), so the menu, the preset and the panel
 		// read one set of numbers.
-		viewmode: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.mode : 'height',
+		viewmode: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.mode : 'off',
 		viewproj: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.projection : 'view',
 		viewsource: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.source : 'constellations',
-		viewanchors: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.anchors : 88,
+		viewanchors: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.anchors : 256,
 		viewramp: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.ramp : 'auto',
 		viewrelief: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.relief : 6,
 		viewopacity: g.ViewModesLayer ? g.ViewModesLayer.DEFAULTS.opacity : 1,

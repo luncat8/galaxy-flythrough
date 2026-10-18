@@ -341,8 +341,15 @@ What differs from the plan above, and why. The entry to read is
 - **The range is auto by default and manual on request.** Auto reads the log
   distances the mode-1 field actually takes (its raw min/max, plus a 4% pad and a
   0.3-decade floor) and the 5th–95th percentile of a 64-bin log histogram for modes
-  2–3, at 4 Hz with an ease toward the new bounds (a jump over 1.5 decades snaps — a
-  new neighbourhood, not a drift). `makeScale` still maps `dMin…dMax` for callers that
+  2–3, offered at 4 Hz to a following law (`Field.offerRange`/`easeRange`, one copy
+  for both hosts): the first offer for a mode snaps — there is no older range in that
+  mode's unit — and after that nothing snaps. An offer becomes the target only once
+  three consecutive offers agree within 0.08 dex, and the display range eases toward
+  the target every frame (τ = 0.5 s). A pan's first reads come from a sky still
+  settling (streaming residency, a re-picked set) and disagree with each other; while
+  they do, the map keeps the old bounds. The earlier >1.5-decade snap rewrote the
+  live range with exactly those reads and the settled field fell wholly outside it:
+  one flat colour for seconds (view-modes.8). `makeScale` still maps `dMin…dMax` for callers that
   want the anchor range; the page does not, because the nearest anchor is rarely on
   the nearest texel. Manual holds one lo/hi per mode in
   the mode's log10 unit; unticking auto freezes the live range so the colours do not

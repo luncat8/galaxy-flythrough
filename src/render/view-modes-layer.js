@@ -76,17 +76,17 @@
 		const ctx = canvas.getContext('2d');
 
 		const settings = {
-			mode: 'height',
+			mode: 'off',               // the map stays out of the way until asked (M)
 			projection: 'view',        // 'view' = view sphere, 'plane' = sky chart
 			source: 'constellations',  // 'nearest' | 'constellations' | 'selected'
-			anchors: 88,
+			anchors: 256,
 			sigmaDeg: Field.SIGMA_DEG,
 			budget: 'balanced',
 			resH: 0,                   // 0 = auto
 			ramp: 'auto',
 			relief: Renderer.RELIEF_DEFAULT,
 			opacity: 1,
-			contours: true,
+			contours: false,
 			grid: false,
 			drawStars: true,
 			names: true,
@@ -109,10 +109,12 @@
 			fieldMs: 0,
 			lo: -3,
 			hi: 0,
-			// '' until the first auto-range read: the island snaps the window to
-			// the data the first time it measures (an easing from the manual
-			// defaults would wash the map out for seconds at boot).
+			// '' until the first auto-range read: the first offer for a mode
+			// snaps the window to the data (Field.offerRange); later offers
+			// must hold still before they are trusted, and never snap.
 			mode: '',
+			targetLo: -3, targetHi: 0,
+			candLo: -3, candHi: 0, candN: 0,
 		};
 
 		// Camera basis in the layout's field names; filled per frame from the
@@ -123,7 +125,7 @@
 		const fieldOpts = { mode: 'height', sigmaDeg: 3, measure: false };
 		const paintOpts = {
 			mode: 'height', rect: null, positions: null, eye: null, set: null, viewBox: null,
-			drawContours: true, contourLevels: 10, drawGrid: false, drawNames: true,
+			drawContours: false, contourLevels: 10, drawGrid: false, drawNames: true,
 			invert: false, smooth: true, ramp: null, relief: Renderer.RELIEF_DEFAULT,
 		};
 		const letterbox = { x: 0, y: 0, w: 0, h: 0 };
@@ -468,22 +470,15 @@
 		}
 
 		// ---- display range ----------------------------------------------------
-		// The island's easing: auto follows the field's own suggestion at 4 Hz and
-		// drifts toward it; a jump over 1.5 decades is a different neighbourhood
-		// and snaps. Unchecking auto freezes the colours where they are.
+		// The shared following law (Field.offerRange / easeRange): the field's
+		// suggestion is offered at 4 Hz, trusted only once it holds still, and
+		// the display range eases toward it every frame — it never snaps to a
+		// read taken while the sky is still settling after a pan. Unchecking
+		// auto freezes the colours where they are.
 		function refreshAutoRange() {
+			if (stats.empty) return;
 			const a = Field.autoRange(settings.mode, stats, autoRangeScratch);
-			if (live.mode !== settings.mode) {
-				live.mode = settings.mode;
-				live.lo = a.lo; live.hi = a.hi;
-				return;
-			}
-			if (Math.abs(a.lo - live.lo) > 1.5 || Math.abs(a.hi - live.hi) > 1.5) {
-				live.lo = a.lo; live.hi = a.hi;
-				return;
-			}
-			live.lo += (a.lo - live.lo) * 0.15;
-			live.hi += (a.hi - live.hi) * 0.15;
+			Field.offerRange(live, settings.mode, a.lo, a.hi);
 		}
 
 		function manualRange() {
@@ -680,10 +675,10 @@
 
 			if (settings.autoRange) {
 				if (measure) { rangeClock = 0; refreshAutoRange(); }
+				Field.easeRange(live, dt);
 			} else {
 				const r = manualRange();
-				live.lo = r.lo; live.hi = r.hi;
-				live.mode = settings.mode;
+				Field.resetRange(live, settings.mode, r.lo, r.hi);
 			}
 			Field.applyRange(raw, nTexels, settings.mode, live, field);
 			paintFrame(iw, ih, aspect, rect);
@@ -755,8 +750,7 @@
 				if (which === 'lo') r.hi = r.lo + 0.05;
 				else r.lo = r.hi - 0.05;
 			}
-			live.lo = r.lo; live.hi = r.hi;
-			live.mode = settings.mode;
+			Field.resetRange(live, settings.mode, r.lo, r.hi);
 		}
 
 		function statusLine() {
@@ -797,10 +791,10 @@
 		PAIRS_BUDGET, MANUAL_DEFAULTS, MODES,
 		// The panel's boot defaults, read by readParams and presets.menuDefaults.
 		DEFAULTS: {
-			mode: 'height',
+			mode: 'off',
 			projection: 'view',
 			source: 'constellations',
-			anchors: 88,
+			anchors: 256,
 			ramp: 'auto',
 			relief: 6,
 			opacity: 1,

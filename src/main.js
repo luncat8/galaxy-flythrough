@@ -4095,7 +4095,7 @@ async function boot() {
                 if (actions.speedRefHome) { actions.speedRefHome = 0; setSpeedRef('home'); }
                 if (actions.viewField) {
                         actions.viewField = 0;
-                        // M cycles the render type: distance → depth spread → slope → off.
+                        // M cycles the render type: off → distance → depth spread → slope → off.
                         viewModesLayer.cycleMode();
                         syncViewModes();
                 }

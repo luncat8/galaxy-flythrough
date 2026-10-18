@@ -307,6 +307,53 @@ const state = cam.getState({});
 	const flatRange = field.autoRange('spread', { autoLo: -2, autoHi: -2, rawLo: -2 }, {});
 	check('auto range never collapses to zero width', flatRange.hi - flatRange.lo >= 0.3,
 		{ lo: flatRange.lo, hi: flatRange.hi });
+
+	// Following the suggestion (view-modes.8): a pan's first reads come from a
+	// sky still settling, and the old law snapped the live range to any read
+	// more than 1.5 decades away — the settled field then sat wholly outside
+	// it, one flat colour for seconds. The display range now keeps the old
+	// bounds until offers hold still, then eases; it never snaps again.
+	const fol = field.createRangeState(-3, 0);
+	field.offerRange(fol, 'height', -2.5, -0.4);
+	check('the first offer for a mode snaps (nothing older in its unit to keep)',
+		fol.lo === -2.5 && fol.hi === -0.4 && fol.targetLo === -2.5 && fol.targetHi === -0.4,
+		{ ...fol });
+	for (let i = 0; i < 8; i++) {
+		// Alternating, mutually exclusive reads: a settling sky, not a drift.
+		if (i % 2) field.offerRange(fol, 'height', 0.8, 2.6);
+		else field.offerRange(fol, 'height', -4.6, -3.1);
+		field.easeRange(fol, 1 / 60);
+	}
+	check('unstable offers never move the display range (no post-pan washout)',
+		fol.lo === -2.5 && fol.hi === -0.4 && fol.targetLo === -2.5 && fol.targetHi === -0.4,
+		{ ...fol });
+	field.offerRange(fol, 'height', NaN, 1);
+	field.offerRange(fol, 'height', 1, 1);
+	check('a degenerate offer is ignored, not adopted',
+		fol.targetLo === -2.5 && fol.targetHi === -0.4, { ...fol });
+	field.offerRange(fol, 'height', 0.5, 2.0);
+	field.offerRange(fol, 'height', 0.52, 2.01);
+	check('two agreeing offers are not yet trusted',
+		fol.targetLo === -2.5 && fol.targetHi === -0.4, { ...fol });
+	field.offerRange(fol, 'height', 0.51, 2.02);
+	const stepLo = fol.lo, stepHi = fol.hi;
+	field.easeRange(fol, 1 / 60);
+	check('the third agreeing offer becomes the target — and the display eases, never snaps',
+		fol.targetLo === 0.51 && fol.targetHi === 2.02
+		&& fol.lo > stepLo && fol.lo - stepLo < 0.2 && fol.hi > stepHi && fol.hi - stepHi < 0.2,
+		{ ...fol });
+	let mono = true, prev = fol.lo;
+	for (let i = 0; i < 300; i++) { field.easeRange(fol, 1 / 60); if (fol.lo < prev) mono = false; prev = fol.lo; }
+	check('the ease converges onto the trusted target monotonically (5 s at 60 fps)',
+		mono && Math.abs(fol.lo - 0.51) < 1e-3 && Math.abs(fol.hi - 2.02) < 1e-3,
+		{ lo: fol.lo, hi: fol.hi });
+	field.resetRange(fol, 'height', -1, 1);
+	check('resetRange parks display, target and candidate together (the manual freeze)',
+		fol.lo === -1 && fol.hi === 1 && fol.targetLo === -1 && fol.targetHi === 1 && fol.candN === 0,
+		{ ...fol });
+	field.offerRange(fol, 'spread', -3, -0.5);
+	check('a mode switch snaps to the new mode\'s first offer (different unit)',
+		fol.mode === 'spread' && fol.lo === -3 && fol.hi === -0.5, { ...fol });
 }
 
 // --- 5. The field: smooth, hole-free, peaked at the stars --------------

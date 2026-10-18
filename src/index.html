@@ -181,10 +181,10 @@
 		</div>
 		<div class="menu-row radio-row">
 			<span class="menu-sub">render type <span class="kbd">M</span></span>
-			<label><input type="radio" name="vm-mode" value="height" checked> distance</label>
+			<label><input type="radio" name="vm-mode" value="height"> distance</label>
 			<label><input type="radio" name="vm-mode" value="spread"> depth spread</label>
 			<label><input type="radio" name="vm-mode" value="gradient"> slope</label>
-			<label><input type="radio" name="vm-mode" value="off"> off</label>
+			<label><input type="radio" name="vm-mode" value="off" checked> off</label>
 		</div>
 		<div class="menu-row radio-row">
 			<span class="menu-sub">projection</span>
@@ -199,8 +199,8 @@
 		</div>
 		<div class="menu-row">
 			<label for="slider-vm-anchors">Nearest stars</label>
-			<input type="range" id="slider-vm-anchors" min="1" max="500" step="1" value="88">
-			<span id="val-vm-anchors" class="menu-val">88</span>
+			<input type="range" id="slider-vm-anchors" min="1" max="500" step="1" value="256">
+			<span id="val-vm-anchors" class="menu-val">256</span>
 		</div>
 		<div class="menu-row">
 			<label for="slider-vm-sigma" title="The IDW hill half-width: the angle at which one star's hill halves. Wider blends the anchors flatter.">Hill width σ</label>
@@ -244,7 +244,7 @@
 			<span id="val-vm-opacity" class="menu-val">100%</span>
 		</div>
 		<div class="menu-row check-row">
-			<label><input type="checkbox" id="vm-contours" checked> contours</label>
+			<label><input type="checkbox" id="vm-contours"> contours</label>
 			<label><input type="checkbox" id="vm-grid"> graticule</label>
 			<label><input type="checkbox" id="vm-stars" checked> stars</label>
 			<label><input type="checkbox" id="vm-names" checked> names</label>

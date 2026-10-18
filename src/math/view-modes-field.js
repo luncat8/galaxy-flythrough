@@ -256,6 +256,73 @@
 		return out;
 	}
 
+	// ---- following the auto range -------------------------------------------
+	//
+	// One law for both hosts (the island page and the app layer), replacing the
+	// duplicated snap-and-ease each used to keep. A measured suggestion is
+	// *offered* at the read rate (4 Hz); the display range (`lo`/`hi`) only
+	// ever eases toward a *trusted* target, per frame, in `easeRange`:
+	//
+	//   * The first offer for a mode snaps. There is no older range in that
+	//     mode's unit to keep, and easing in from a default washes the map
+	//     out for seconds at boot (view-modes.7).
+	//   * A later offer becomes the target only once RANGE_STABLE_READS
+	//     consecutive offers agree within RANGE_STABLE_TOL. After a pan the
+	//     first reads come from a sky still settling — a half-streamed
+	//     residency, a re-picked anchor set — and they disagree with each
+	//     other; while they do, the candidate keeps resetting and the map
+	//     keeps painting with the old, settled range.
+	//   * Nothing after the first read ever snaps. The old >1.5-decade snap
+	//     rewrote the live range with exactly those unstable first reads, and
+	//     the settled field then fell wholly outside it: one flat colour
+	//     until the slow ease crawled back (view-modes.8).
+	const RANGE_STABLE_READS = 3;    // agreeing offers before a target is trusted
+	const RANGE_STABLE_TOL = 0.08;   // dex: offers this close to the candidate agree
+	const RANGE_TAU_S = 0.5;         // s: the display range's ease time constant
+
+	function createRangeState(lo, hi) {
+		const a = lo === undefined ? 0 : lo;
+		const b = hi === undefined ? a + 1 : hi;
+		return { mode: '', lo: a, hi: b, targetLo: a, targetHi: b, candLo: a, candHi: b, candN: 0 };
+	}
+
+	// Park the state on one known range — a manual slider move, a freeze. The
+	// target and candidate land on the same numbers so a later switch back to
+	// auto eases from here instead of toward a stale target.
+	function resetRange(s, mode, lo, hi) {
+		s.mode = mode;
+		s.lo = lo; s.hi = hi;
+		s.targetLo = lo; s.targetHi = hi;
+		s.candLo = lo; s.candHi = hi;
+		s.candN = 0;
+		return s;
+	}
+
+	function offerRange(s, mode, lo, hi) {
+		if (!Number.isFinite(lo) || !Number.isFinite(hi) || !(hi > lo)) return s;
+		if (s.mode !== mode) {
+			resetRange(s, mode, lo, hi);
+			s.candN = RANGE_STABLE_READS;
+			return s;
+		}
+		if (s.candN > 0 && Math.abs(lo - s.candLo) <= RANGE_STABLE_TOL
+			&& Math.abs(hi - s.candHi) <= RANGE_STABLE_TOL) s.candN++;
+		else s.candN = 1;
+		s.candLo = lo; s.candHi = hi;
+		if (s.candN >= RANGE_STABLE_READS) { s.targetLo = lo; s.targetHi = hi; }
+		return s;
+	}
+
+	function easeRange(s, dt) {
+		if (!(dt > 0)) return s;
+		const k = 1 - Math.exp(-Math.min(dt, 0.25) / RANGE_TAU_S);
+		s.lo += (s.targetLo - s.lo) * k;
+		s.hi += (s.targetHi - s.hi) * k;
+		if (Math.abs(s.targetLo - s.lo) < 1e-4) s.lo = s.targetLo;
+		if (Math.abs(s.targetHi - s.hi) < 1e-4) s.hi = s.targetHi;
+		return s;
+	}
+
 	// ---- layout: texel <-> ray -------------------------------------------
 	//
 	// A layout owns the mapping only; it never touches the star set. `dirAt`
@@ -1016,6 +1083,8 @@
 		quatTurn, quatMul, quatArc, quatApply, quatInv, quatNormalize, quatBasis, quatDrag,
 		// range
 		makeScale, heightOfDistance, distanceAtHeight, rangeValue, applyRange, autoRange, SIGMA_DEG,
+		createRangeState, resetRange, offerRange, easeRange,
+		RANGE_STABLE_READS, RANGE_STABLE_TOL, RANGE_TAU_S,
 		// layout
 		createLayout, dirAt, chartDirAt, texelOf,
 		// field

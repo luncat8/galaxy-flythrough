@@ -532,9 +532,16 @@ function angleBetween(a, b) {
 	for (let i = 0; i < Math.min(before.length, dbg.set.n * 3); i++) if (before[i] !== dbg.set.positions[i]) changed++;
 	check('moving the eye re-picks the nearest N anchors', changed > 0 && /250 nearest · 250 anchors \(catalog\)/.test(el('readout').textContent),
 		{ movedKpc: +movedKpc.toFixed(3), changed });
-	check('the eye-move also moved the auto range',
+	// The range does not chase the first post-move read (view-modes.8): one
+	// disagreeing offer in 0.33 s is a sky still settling, so the old,
+	// settled bounds stay on screen — no snap, no flat-colour washout.
+	check('the auto range keeps the old bounds while the new reads settle',
+		dbg.live.lo === rangeBefore.lo && dbg.live.hi === rangeBefore.hi,
+		{ before: rangeBefore, lo: dbg.live.lo, hi: dbg.live.hi });
+	pump(150, tEnd + 1500);   // ~2.5 s: three agreeing reads, then the ease
+	check('once the reads hold still the auto range adopts them',
 		Math.abs(dbg.live.lo - rangeBefore.lo) + Math.abs(dbg.live.hi - rangeBefore.hi) > 1e-4,
-		{ before: rangeBefore, now: dbg.live });
+		{ before: rangeBefore, lo: dbg.live.lo, hi: dbg.live.hi });
 }
 
 // --- star time re-picks too, and moves the drawn anchors ----------------

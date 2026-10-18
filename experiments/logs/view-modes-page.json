@@ -59,7 +59,7 @@
     {
       "name": "readout reports a non-empty field",
       "pass": true,
-      "detail": "field 216×120 · 1.56 M pairs · 12.2 ms · 60 fps"
+      "detail": "field 216×120 · 1.56 M pairs · 13.1 ms · 60 fps"
     },
     {
       "name": "the painter drew the field and the star overlay",
@@ -200,8 +200,14 @@
           "hi": -1.5
         },
         "live": {
-          "lo": -1.7878911622465403,
-          "hi": -0.765925315414667
+          "mode": "height",
+          "lo": -1.7899345624933036,
+          "hi": -1.1965899229049684,
+          "targetLo": -1.7903106451034545,
+          "targetHi": -1.1965899229049684,
+          "candLo": -1.4701401829719543,
+          "candHi": -1.1701401829719544,
+          "candN": 1
         }
       }
     },
@@ -209,8 +215,14 @@
       "name": "re-enabling auto range reads the data again",
       "pass": true,
       "detail": {
-        "lo": -1.7878911622465403,
-        "hi": -0.765925315414667
+        "mode": "height",
+        "lo": -1.7899345624933036,
+        "hi": -1.1965899229049684,
+        "targetLo": -1.7903106451034545,
+        "targetHi": -1.1965899229049684,
+        "candLo": -1.4701401829719543,
+        "candHi": -1.1701401829719544,
+        "candN": 1
       }
     },
     {
@@ -316,17 +328,27 @@
       }
     },
     {
-      "name": "the eye-move also moved the auto range",
+      "name": "the auto range keeps the old bounds while the new reads settle",
       "pass": true,
       "detail": {
         "before": {
           "lo": -1.4701401829719543,
           "hi": -1.1701401829719544
         },
-        "now": {
-          "lo": -1.7878911622465403,
-          "hi": -0.765925315414667
-        }
+        "lo": -1.4701401829719543,
+        "hi": -1.1701401829719544
+      }
+    },
+    {
+      "name": "once the reads hold still the auto range adopts them",
+      "pass": true,
+      "detail": {
+        "before": {
+          "lo": -1.4701401829719543,
+          "hi": -1.1701401829719544
+        },
+        "lo": -1.78628190560246,
+        "hi": -1.196257102971019
       }
     },
     {
@@ -422,11 +444,6 @@
       "name": "off clears the canvas",
       "pass": true,
       "detail": []
-    },
-    {
-      "name": "the screenshots are not blank",
-      "pass": true,
-      "detail": null
     }
   ]
 }

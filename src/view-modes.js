@@ -16,9 +16,11 @@
 // Two pieces of state are worth knowing before reading on:
 //   * `raw` is the physical field (log distance / depth σ / slope in dex per
 //     degree) and is rebuilt every frame.
-//   * `live` is the display range the painter uses. Auto mode reads it from
-//     experiments' stats at 4 Hz and eases toward the new bounds; manual mode
-//     holds the two slider values. The legend quotes the same numbers.
+//   * `live` is the display range the painter uses (a Field range state).
+//     Auto mode offers it the stats' suggestion at 4 Hz; a suggestion is
+//     trusted only once it holds still, and the range eases toward it every
+//     frame — it never snaps to a read taken mid-pan. Manual mode holds the
+//     two slider values. The legend quotes the same numbers.
 
 'use strict';
 
@@ -81,8 +83,7 @@
 		// manual table keeps one pair of slider values per mode.
 		autoRange: true,
 		ranges: { height: null, spread: null, gradient: null },
-		live: { lo: -3, hi: 0 },
-		liveMode: '',
+		live: Field.createRangeState(-3, 0),
 		rangeClock: 0,
 		// Painting
 		contours: true,
@@ -242,27 +243,17 @@
 
 	// ---- display range ----------------------------------------------------
 
-	// The auto range is read from the stats of a finished raw pass and eased, so
-	// a moving set does not repaint the whole map in one step — but slowly
-	// enough that the result converges instead of always trailing the data by
-	// one read. A jump over 1.5 decades is a different neighbourhood, not a
-	// drift: it snaps.
+	// The shared following law (Field.offerRange / easeRange): the suggestion
+	// of a finished raw pass is offered at 4 Hz, trusted only once it holds
+	// still, and the display range eases toward it every frame. A pan's first
+	// reads come from a re-picked set and a moving window, and they disagree
+	// with each other — while they do, the map keeps the old range instead of
+	// snapping to one and washing out to a single colour.
 	function refreshAutoRange() {
 		const s = state.stats;
 		if (s.empty) return;
 		const a = Field.autoRange(state.mode, s, autoRangeScratch);
-		const live = state.live;
-		if (state.liveMode !== state.mode) {
-			state.liveMode = state.mode;
-			live.lo = a.lo; live.hi = a.hi;
-			return;
-		}
-		if (Math.abs(a.lo - live.lo) > 1.5 || Math.abs(a.hi - live.hi) > 1.5) {
-			live.lo = a.lo; live.hi = a.hi;
-			return;
-		}
-		live.lo += (a.lo - live.lo) * 0.15;
-		live.hi += (a.hi - live.hi) * 0.15;
+		Field.offerRange(state.live, state.mode, a.lo, a.hi);
 	}
 
 	function manualRange() {
@@ -383,7 +374,7 @@
 		// The range suggestion is only read a few times a second; the field is
 		// rebuilt every frame. Asking computeRaw for the histogram every frame
 		// would spend milliseconds on numbers nobody reads.
-		const measure = state.autoRange && (state.rangeClock >= RANGE_PERIOD || state.liveMode !== state.mode);
+		const measure = state.autoRange && (state.rangeClock >= RANGE_PERIOD || state.live.mode !== state.mode);
 		fieldOpts.mode = state.mode;
 		fieldOpts.sigmaDeg = state.sigmaDeg;
 		fieldOpts.measure = measure;
@@ -393,10 +384,10 @@
 
 		if (state.autoRange) {
 			if (measure) { state.rangeClock = 0; refreshAutoRange(); }
+			Field.easeRange(state.live, dt);
 		} else {
 			const r = manualRange();
-			state.live.lo = r.lo; state.live.hi = r.hi;
-			state.liveMode = state.mode;
+			Field.resetRange(state.live, state.mode, r.lo, r.hi);
 		}
 		Field.applyRange(state.raw, nTexels, state.mode, state.live, state.field);
 

@@ -640,3 +640,70 @@ layer must not.
 Deliverables: `src/render/view-modes-layer.js` (rewritten), test suite,
 parity + debug harnesses in `/home/user/scratch/`, this entry. The app's
 index.html/main.js/presets wiring is unchanged from .5.
+
+---
+
+## view-modes.8 — 2026-10-18 — quiet defaults, and an auto range that waits for the sky to settle
+
+Two user asks once the distance field worked: better boot defaults for the
+mode's GUI, and a fix for the auto range washing the picture out to one colour
+for a few seconds after a pan.
+
+### Defaults (the app's View modes panel; the island keeps its own)
+
+- render type **off** at boot — the map is opt-in (`M` now cycles
+  off → distance → depth spread → slope → off);
+- **contours off**;
+- **Nearest stars 256** (was 88).
+
+`ViewModesLayer.DEFAULTS` stays the one source: the layer's settings,
+`readParams`, `presets.menuDefaults` and the `index.html` markup all read or
+mirror it. The island is a dedicated map page, so it still boots into the
+distance field.
+
+### The washout, and the law that replaces the snap
+
+The old following rule (duplicated in the island and the layer) eased 0.15
+per 4 Hz read but **snapped** whenever a suggestion landed more than 1.5
+decades from the live bounds. After a pan the first reads are exactly the
+untrustworthy ones — residency still streaming in the app, a freshly
+re-picked anchor set, a moving chart window — so the snap rewrote the live
+range with an unsettled read, the settled field fell wholly outside it, and
+the slow ease needed seconds to crawl back: one flat colour.
+
+The law now lives once, in `math/view-modes-field.js`
+(`createRangeState` / `offerRange` / `easeRange` / `resetRange`), and both
+hosts call it:
+
+- the first offer for a mode snaps (no older range exists in that unit —
+  the .7 boot lesson, kept as the mode-change case only);
+- a later offer becomes the target only after **3 consecutive offers agree
+  within 0.08 dex**; disagreeing reads reset the candidate and the map keeps
+  painting with the old, settled bounds;
+- the display range **eases toward the trusted target every frame**
+  (τ = 0.5 s) and never snaps again; degenerate offers are ignored, and the
+  layer gained the island's `stats.empty` guard it was missing.
+
+### Validation
+
+- `view-modes-field-test.js` 78/78 — 8 new checks pin the law directly:
+  alternating mutually-exclusive offers never move the display, two agreeing
+  offers are not yet trusted, the third becomes the target and the display
+  eases (one frame moves < 0.2 dex toward a 3-decade target), monotone
+  convergence, the manual `resetRange` park, the mode-switch snap.
+- `view-modes-layer-test.js` 35/35 (new boot-defaults check),
+  `view-modes-page-check.js` 58/58 — its eye-move check is re-pinned to the
+  new law: bounds unchanged 0.33 s after the move (one disagreeing offer),
+  adopted after ~2.5 s of agreeing reads.
+- `preset-test.js` 30/30; `scripts/run.py changed` 8/8.
+
+### Lesson
+
+A snap keyed on *distance from the current value* cannot tell a new
+neighbourhood from an unsettled measurement — both are far away. Agreement
+over time can. Any auto-exposure style follower over streamed data should
+trust repetition, not magnitude.
+
+Next step: if the hold + ease ever feels laggy during fast flight, trust
+*expansion* earlier than shrink — widening a range can only compress
+contrast, never flatten the field to one colour.

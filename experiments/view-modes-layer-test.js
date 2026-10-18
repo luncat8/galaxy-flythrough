@@ -177,6 +177,13 @@ const layer = ViewModesLayer.createViewModesLayer(canvas, {
 	landmarks: Landmarks,
 });
 
+// --- boot defaults (view-modes.8): the map is opt-in -----------------------
+check('a fresh layer boots off, without contours, at 256 nearest anchors',
+	layer.settings.mode === 'off' && layer.settings.contours === false
+	&& layer.settings.anchors === 256
+	&& ViewModesLayer.DEFAULTS.mode === 'off' && ViewModesLayer.DEFAULTS.anchors === 256,
+	{ ...layer.settings });
+
 const env = {
 	starTimeMyr: 0,
 	width: 640,

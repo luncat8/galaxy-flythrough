@@ -1,11 +1,11 @@
 {
-  "date": "2026-10-18T06:57:02.653Z",
+  "date": "2026-10-18T11:42:52.898Z",
   "anchors": {
     "landmarks": 60,
     "catalog": 3829
   },
-  "totalChecks": 70,
-  "passed": 70,
+  "totalChecks": 78,
+  "passed": 78,
   "failed": 0,
   "checks": [
     {
@@ -199,6 +199,112 @@
       "detail": {
         "lo": -2.032,
         "hi": -1.668
+      }
+    },
+    {
+      "name": "the first offer for a mode snaps (nothing older in its unit to keep)",
+      "pass": true,
+      "detail": {
+        "mode": "height",
+        "lo": -2.5,
+        "hi": -0.4,
+        "targetLo": -2.5,
+        "targetHi": -0.4,
+        "candLo": -2.5,
+        "candHi": -0.4,
+        "candN": 3
+      }
+    },
+    {
+      "name": "unstable offers never move the display range (no post-pan washout)",
+      "pass": true,
+      "detail": {
+        "mode": "height",
+        "lo": -2.5,
+        "hi": -0.4,
+        "targetLo": -2.5,
+        "targetHi": -0.4,
+        "candLo": 0.8,
+        "candHi": 2.6,
+        "candN": 1
+      }
+    },
+    {
+      "name": "a degenerate offer is ignored, not adopted",
+      "pass": true,
+      "detail": {
+        "mode": "height",
+        "lo": -2.5,
+        "hi": -0.4,
+        "targetLo": -2.5,
+        "targetHi": -0.4,
+        "candLo": 0.8,
+        "candHi": 2.6,
+        "candN": 1
+      }
+    },
+    {
+      "name": "two agreeing offers are not yet trusted",
+      "pass": true,
+      "detail": {
+        "mode": "height",
+        "lo": -2.5,
+        "hi": -0.4,
+        "targetLo": -2.5,
+        "targetHi": -0.4,
+        "candLo": 0.52,
+        "candHi": 2.01,
+        "candN": 2
+      }
+    },
+    {
+      "name": "the third agreeing offer becomes the target — and the display eases, never snaps",
+      "pass": true,
+      "detail": {
+        "mode": "height",
+        "lo": -2.4013204624508377,
+        "hi": -0.3206629631664543,
+        "targetLo": 0.51,
+        "targetHi": 2.02,
+        "candLo": 0.51,
+        "candHi": 2.02,
+        "candN": 3
+      }
+    },
+    {
+      "name": "the ease converges onto the trusted target monotonically (5 s at 60 fps)",
+      "pass": true,
+      "detail": {
+        "lo": 0.5098678262554888,
+        "hi": 2.019893734065875
+      }
+    },
+    {
+      "name": "resetRange parks display, target and candidate together (the manual freeze)",
+      "pass": true,
+      "detail": {
+        "mode": "height",
+        "lo": -1,
+        "hi": 1,
+        "targetLo": -1,
+        "targetHi": 1,
+        "candLo": -1,
+        "candHi": 1,
+        "candN": 0
+      }
+    },
+    {
+      "name": "a mode switch snaps to the new mode's first offer (different unit)",
+      "pass": true,
+      "detail": {
+        "mode": "spread",
+        "lo": -3,
+        "hi": -0.5,
+        "targetLo": -3,
+        "targetHi": -0.5,
+        "candLo": -3,
+        "candHi": -0.5,
+        "candN": 3
       }
     },
     {
@@ -478,10 +584,10 @@
       }
     },
     {
-      "name": "100 nearest-500 queries take 3.8 ms (< 200)",
+      "name": "100 nearest-500 queries take 3.0 ms (< 200)",
       "pass": true,
       "detail": {
-        "ms": 3.8
+        "ms": 3.03
       }
     },
     {
@@ -529,10 +635,10 @@
       }
     },
     {
-      "name": "500 anchors at the balanced budget (72×40) rebuilds in 17.3 ms (< 60)",
+      "name": "500 anchors at the balanced budget (72×40) rebuilds in 7.5 ms (< 60)",
       "pass": true,
       "detail": {
-        "ms": 17.32,
+        "ms": 7.53,
         "pairs": 1440000
       }
     },
