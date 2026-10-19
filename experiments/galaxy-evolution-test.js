@@ -36,8 +36,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 
 const density = require('../src/math/density.js');
 const galaxy = require('../src/math/galaxy.js');
@@ -734,8 +734,7 @@ for (const c of checks) {
 console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 
 const logPath = path.join(__dirname, 'logs', 'galaxy-evolution.json');
-fs.mkdirSync(path.dirname(logPath), { recursive: true });
-fs.writeFileSync(logPath, JSON.stringify(Object.assign(log, {
+logFile.writeLog(logPath, Object.assign(log, {
 	ageRange: [galaxy.AGE_MIN, galaxy.AGE_MAX],
 	ageRef: galaxy.AGE_REF,
 	heatExp: galaxy.HEAT_EXP,
@@ -746,6 +745,5 @@ fs.writeFileSync(logPath, JSON.stringify(Object.assign(log, {
 	passed,
 	failed,
 	checks,
-}), null, 1));
-console.log(`Wrote ${logPath}`);
+}), { indent: 1 });
 if (failed > 0) process.exit(1);

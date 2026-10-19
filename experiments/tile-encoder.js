@@ -40,6 +40,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 const density = require('../src/math/density.js');
 const hash = require('../src/math/hash.js');
 const sampling = require('../src/math/sampling.js');
@@ -385,8 +386,7 @@ function main() {
 
 	if (args.log) {
 		const logPath = path.join(__dirname, 'logs', 'tile-encoder.json');
-		fs.mkdirSync(path.dirname(logPath), { recursive: true });
-		fs.writeFileSync(logPath, JSON.stringify({
+		logFile.writeLog(logPath, {
 			date: new Date().toISOString(),
 			source,
 			config: CONFIG,
@@ -394,8 +394,7 @@ function main() {
 			perBand,
 			bundleBytes: fileBytes,
 			roundTripOk: ok,
-		}, null, 2));
-		console.log(`Wrote ${logPath}`);
+		});
 	}
 
 	if (!ok) process.exit(1);

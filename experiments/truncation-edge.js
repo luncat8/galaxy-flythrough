@@ -24,8 +24,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 
 const density = require('../src/math/density.js');
 const galaxy = require('../src/math/galaxy.js');
@@ -196,6 +196,4 @@ worstOf((r) => r.halo, 'halo rMax', (e) => `r = ${e.rMax} kpc`);
 
 for (const line of lines) console.log(line);
 console.log('\nper-type detail in experiments/logs/truncation-edge.json');
-fs.mkdirSync(path.join(__dirname, 'logs'), { recursive: true });
-fs.writeFileSync(path.join(__dirname, 'logs/truncation-edge.json'),
-	JSON.stringify({ target: TARGET, summary: lines, report }, null, 2) + '\n');
+logFile.writeLog(path.join(__dirname, 'logs/truncation-edge.json'), { target: TARGET, summary: lines, report });

@@ -7,8 +7,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 const density = require('../src/math/density.js');
 const sampling = require('../src/math/sampling.js');
 const starTypes = require('../src/math/star-types.js');
@@ -143,7 +143,4 @@ const out = {
 	nebulaSummary: nebula.summariseNebulae(nebulae),
 };
 
-const logPath = path.join(__dirname, 'logs', 'galaxy-sample.json');
-fs.mkdirSync(path.dirname(logPath), { recursive: true });
-fs.writeFileSync(logPath, JSON.stringify(out));
-console.log(`Wrote ${logPath}  (${(fs.statSync(logPath).size / 1024).toFixed(0)} KB)`);
+logFile.writeLog(path.join(__dirname, 'logs', 'galaxy-sample.json'), out, { indent: 0 });

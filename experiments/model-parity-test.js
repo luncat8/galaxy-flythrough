@@ -1,8 +1,8 @@
 // Regression fixtures for model parameters that the Milky Way defaults hide.
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 const galaxy = require('../src/math/galaxy.js');
 const density = require('../src/math/density.js');
 const sampling = require('../src/math/sampling.js');
@@ -376,7 +376,7 @@ for (const [power, rMax] of [[2.5, 6], [3, 6], [3.5, 6], [4, 6], [3.5, 1]]) {
 const failed = checks.filter((c) => !c.pass).length;
 for (const c of checks) console.log(`${c.pass ? 'OK  ' : 'FAIL'} ${c.name}${c.pass ? '' : ' ' + JSON.stringify(c.detail)}`);
 const result = { date: new Date().toISOString(), totalChecks: checks.length, passed: checks.length - failed, failed, checks };
-fs.writeFileSync(path.join(__dirname, 'logs', 'model-parity.json'), JSON.stringify(result, null, 2));
+logFile.writeLog(path.join(__dirname, 'logs', 'model-parity.json'), result);
 console.log(`\n${result.passed}/${checks.length} passed, ${failed} failed`);
 console.log('\n=== VERDICT ===');
 console.log(failed ? `FAIL — ${failed} checks failed` : 'PASS — sampling and density agree beyond the preset');

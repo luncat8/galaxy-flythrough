@@ -2,8 +2,8 @@
 'use strict';
 
 const assert = require('assert/strict');
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 const { createInput } = require('../src/core/input.js');
 const Camera = require('../src/core/camera.js');
 const checks = [];
@@ -290,5 +290,5 @@ check('dispose removes all installed event listeners', () => {
 const failed = checks.filter(c => !c.pass).length;
 for (const c of checks) console.log(`${c.pass ? 'OK  ' : 'FAIL'} ${c.name}${c.detail ? ': ' + c.detail : ''}`);
 console.log(`\n${checks.length - failed}/${checks.length} passed`);
-fs.writeFileSync(path.join(__dirname, 'logs/input.json'), JSON.stringify({ checks, failed }, null, 2) + '\n');
+logFile.writeLog(path.join(__dirname, 'logs/input.json'), { checks, failed });
 process.exitCode = failed ? 1 : 0;

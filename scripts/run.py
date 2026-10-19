@@ -46,6 +46,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # engineering checks first (cheap, catch wiring mistakes), then model tests.
 EXPERIMENTS = {
     'export-parity':         'experiments/export-parity-test.js',
+    'log-file':              'experiments/log-file-test.js',
     'm1-smoke':              'experiments/m1-smoke-test.js',
     'wgsl-validate':         'experiments/wgsl-validate.js',
     'camera':                'experiments/camera-test.js',
@@ -97,7 +98,7 @@ EXPERIMENTS = {
 }
 
 TYPES = {
-    'test':   ['export-parity', 'm1-smoke', 'wgsl-validate', 'camera', 'input', 'ship', 'preset', 'renderer', 'hdr',
+    'test':   ['export-parity', 'log-file', 'm1-smoke', 'wgsl-validate', 'camera', 'input', 'ship', 'preset', 'renderer', 'hdr',
                'landmark', 'view-modes-field', 'view-modes-page', 'view-modes-layer',
                'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'shape', 'model-parity', 'sampling',
                'density-distribution',
@@ -212,7 +213,8 @@ def run(name: str) -> int:
 def run_test(name: str, write_logs: bool):
     """One test, output captured. Logs under experiments/logs are only written
     for a full run: a partial run must not dirty the tree with timestamps and
-    timings of the tests it ran."""
+    timings of the tests it ran. A full run that changes nothing but a log's
+    `date` keeps the file it already has (experiments/log-file.js)."""
     cmd = ['node']
     if not write_logs:
         cmd += ['--require', str(NO_LOG_WRITES)]
@@ -337,7 +339,8 @@ def main():
                    help='parallel tests for quick/changed/all-tests; timing budgets inside tests '
                         'can fail under load, so the default is serial')
     p.add_argument('--logs', action='store_true',
-                   help='quick/changed: also rewrite experiments/logs (all-tests always does)')
+                   help='quick/changed: also write experiments/logs (all-tests always does); '
+                        'a log that differs only in its date is kept')
     p.add_argument('-v', '--verbose', action='store_true', help='print the full output of failing tests')
     p.add_argument('--base', default=None, help='changed: also include commits since this ref (e.g. main)')
     args = p.parse_args()

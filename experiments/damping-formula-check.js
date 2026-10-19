@@ -9,8 +9,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 const orbit = require('../src/math/orbit.js');
 
 const TAU = orbit.TAU;
@@ -106,5 +106,4 @@ const report = {
 };
 console.log(JSON.stringify(report, null, 2));
 const logPath = path.join(__dirname, 'logs', 'damping-formula.json');
-fs.mkdirSync(path.dirname(logPath), { recursive: true });
-fs.writeFileSync(logPath, JSON.stringify(report, null, 2) + '\n');
+logFile.writeLog(logPath, report);

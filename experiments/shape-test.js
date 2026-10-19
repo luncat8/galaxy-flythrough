@@ -32,6 +32,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 const { execFileSync } = require('child_process');
 
 const density = require('../src/math/density.js');
@@ -425,7 +426,7 @@ for (const model of ALL) {
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
 const failed = checks.filter((c) => !c.pass);
-fs.writeFileSync(path.join(OUT_DIR, 'shape.json'), JSON.stringify({
+logFile.writeLog(path.join(OUT_DIR, 'shape.json'), {
 	experiment: 'shape',
 	date: new Date().toISOString().slice(0, 10),
 	stepBinKpc: STEP_BIN_KPC,
@@ -433,11 +434,10 @@ fs.writeFileSync(path.join(OUT_DIR, 'shape.json'), JSON.stringify({
 	checks: checks.length,
 	failed: failed.length,
 	results: checks.map((c) => ({ name: c.name, pass: c.pass, detail: c.detail })),
-}, null, 2));
+});
 
 for (const c of failed) console.log(`  FAIL ${c.name}  ->  ${JSON.stringify(c.detail)}`);
 console.log(`${checks.length - failed.length}/${checks.length} passed, ${failed.length} failed`);
-console.log(`Wrote ${path.join(OUT_DIR, 'shape.json')}`);
 
 // ---- optional pictures ---------------------------------------------------
 

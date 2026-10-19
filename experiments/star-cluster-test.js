@@ -18,8 +18,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 const clusters = require('../src/math/clusters.js');
 const objects = require('../src/math/objects.js');
 const galaxy = require('../src/math/galaxy.js');
@@ -430,8 +430,7 @@ for (const c of checks) {
 console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 
 const logPath = path.join(__dirname, 'logs', 'star-cluster.json');
-fs.mkdirSync(path.dirname(logPath), { recursive: true });
-fs.writeFileSync(logPath, JSON.stringify({
+logFile.writeLog(logPath, {
 	date: new Date().toISOString(),
 	seed: SEED,
 	summary,
@@ -440,8 +439,7 @@ fs.writeFileSync(logPath, JSON.stringify({
 	passed,
 	failed,
 	checks,
-}, null, 2));
-console.log(`Wrote ${logPath}`);
+});
 console.log('\n=== VERDICT ===');
 console.log(failed === 0 ? 'PASS — star clusters are one generalized, budget-bound, coherently moving system inside this galaxy' : `FAIL — ${failed} checks failed`);
 process.exit(failed === 0 ? 0 : 1);

@@ -10,8 +10,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 const density = require('../src/math/density.js');
 const nebula = require('../src/math/nebula.js');
 
@@ -203,8 +203,7 @@ for (const c of checks) {
 console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 
 const logPath = path.join(__dirname, 'logs', 'nebula-placement.json');
-fs.mkdirSync(path.dirname(logPath), { recursive: true });
-fs.writeFileSync(logPath, JSON.stringify({
+logFile.writeLog(logPath, {
 	date: new Date().toISOString(),
 	seed: SEED,
 	targetN: N_NEBULAE,
@@ -219,8 +218,7 @@ fs.writeFileSync(logPath, JSON.stringify({
 	passed,
 	failed,
 	checks,
-}, null, 2));
-console.log(`Wrote ${logPath}`);
+});
 console.log('\n=== VERDICT ===');
 console.log(failed === 0 ? 'PASS — nebulae are placed where their physics says' : `FAIL — ${failed} checks failed`);
 process.exit(failed === 0 ? 0 : 1);

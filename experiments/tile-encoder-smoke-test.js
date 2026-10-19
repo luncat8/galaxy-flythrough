@@ -14,6 +14,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 const os = require('os');
 
 // The bundle file assigns to window and to module.exports; give it a window.
@@ -185,8 +186,7 @@ for (const c of checks) {
 console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 
 const logPath = path.join(__dirname, 'logs', 'tile-encoder-smoke.json');
-fs.mkdirSync(path.dirname(logPath), { recursive: true });
-fs.writeFileSync(logPath, JSON.stringify({
+logFile.writeLog(logPath, {
 	date: new Date().toISOString(),
 	mockStars: MOCK_STARS,
 	seed: MOCK_SEED,
@@ -197,8 +197,7 @@ fs.writeFileSync(logPath, JSON.stringify({
 	passed,
 	failed,
 	checks,
-}, null, 2));
-console.log(`Wrote ${logPath}`);
+});
 console.log('\n=== VERDICT ===');
 console.log(failed === 0 ? 'PASS — encoder, bundle and loader agree' : `FAIL — ${failed} checks failed`);
 process.exit(failed === 0 ? 0 : 1);

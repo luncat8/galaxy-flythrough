@@ -31,6 +31,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 
 globalThis.window = globalThis;
 
@@ -841,15 +842,14 @@ for (const c of checks) {
 console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 
 const logPath = path.join(__dirname, 'logs', 'star-select.json');
-fs.writeFileSync(logPath, JSON.stringify({
+logFile.writeLog(logPath, {
 	date: new Date().toISOString(),
 	model: { type: model.type, seed: model.seed },
 	totalChecks: checks.length,
 	passed,
 	failed,
 	checks,
-}, null, 2));
-console.log(`Wrote ${logPath}`);
+});
 console.log('\n=== VERDICT ===');
 console.log(failed === 0 ? 'PASS — picking, the set, the radii and the budgets behave as the plan says' : `FAIL — ${failed} checks failed`);
 process.exit(failed === 0 ? 0 : 1);

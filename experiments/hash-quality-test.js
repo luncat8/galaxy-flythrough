@@ -9,8 +9,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 const hash = require('../src/math/hash.js');
 
 const N = 1000000;            // samples
@@ -166,8 +166,7 @@ const out = {
 };
 
 const logPath = path.join(__dirname, 'logs', 'hash-quality.json');
-fs.writeFileSync(logPath, JSON.stringify(out, null, 2));
-console.log(`\nWrote ${logPath}`);
+logFile.writeLog(logPath, out);
 
 console.log('\n=== VERDICT ===');
 console.log(`PCG: ${out.pcg.recommendation}`);

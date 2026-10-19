@@ -4,6 +4,38 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-10-19 — A log that only changed its timestamp is not a change: compare the payload, not the file
+
+Every test in `experiments/` ended with the same four lines — `mkdirSync`,
+`writeFileSync(path, JSON.stringify({ date: new Date().toISOString(), ... }))` —
+so `all-tests` rewrote all thirty-odd logs even when nothing the tests measure
+had moved, and a tree that was clean before the run was dirty after it. Timestamps
+are the one field that *always* differs; a rerun is only informative when
+something else differs too. `experiments/log-file.js` now owns the write: parse
+what is on disk, strip the top-level `date` from both sides, and keep the file
+(its old timestamp included, untouched on disk) when the JSON matches. A changed
+check, a new field, a timing or a nested `date` still writes.
+
+Two details worth keeping:
+
+* **Compare parsed JSON, not text.** Indent and trailing-newline differences are
+  not information, and the same object built by the same code stringifies in the
+  same key order — so a `JSON.stringify` comparison of the date-less objects is
+  both exact and cheap. A file that fails to parse is stale by definition and
+  gets replaced.
+* **Only the top level is the timestamp.** A log may later carry a `date` as
+  test data (a sampled epoch, an observation time); stripping keys recursively
+  would hide a real change in it. If a new log needs a second volatile key, say
+  so explicitly rather than widening the rule.
+
+`scripts/run.py quick|changed` still preloads `no-log-writes.js`; it now sets
+`GALAXY_LOG_WRITES=off` (so the writer reports `Kept ... (partial run)` instead of
+lying about writing) and keeps the `writeFileSync` stub for the few direct writes
+(PNG frames, PPM traces). `log-file-test.js` pins all of it, including that the
+file's mtime is unchanged when only the date moved.
+
+---
+
 ## 2026-10-18 — A bounded rate replaces the confirmation gate; a falloff must be monotone in δ
 
 Supersedes the last entry of this file ("An auto follower must trust repetition,

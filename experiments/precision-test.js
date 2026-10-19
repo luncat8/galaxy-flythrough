@@ -13,8 +13,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 
 // Simulate f32 precision: keep top 23 bits of mantissa.
 function toF32(x) {
@@ -142,8 +142,7 @@ const out = {
 };
 
 const logPath = path.join(__dirname, 'logs', 'precision-test.json');
-fs.writeFileSync(logPath, JSON.stringify(out, null, 2));
-console.log(`\nWrote ${logPath}`);
+logFile.writeLog(logPath, out);
 
 console.log('\n=== VERDICT ===');
 console.log(`Recommendation: ${out.recommendation.summary}`);

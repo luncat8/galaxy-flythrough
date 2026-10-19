@@ -32,8 +32,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 
 // Alias window so the src modules attach their API here, as in the browser.
 globalThis.window = globalThis;
@@ -1958,16 +1958,14 @@ for (const c of checks) {
 console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 
 const logPath = path.join(__dirname, 'logs', 'planet-gen.json');
-fs.mkdirSync(path.dirname(logPath), { recursive: true });
-fs.writeFileSync(logPath, JSON.stringify({
+logFile.writeLog(logPath, {
 	date: new Date().toISOString(),
 	model: { type: model.type, seed: model.seed },
 	totalChecks: checks.length,
 	passed,
 	failed,
 	checks,
-}, null, 2));
-console.log(`Wrote ${logPath}`);
+});
 console.log('\n=== VERDICT ===');
 console.log(failed === 0 ? 'PASS — identity keys, the inversion, every stellar-input path, the occurrence tier, the architecture tier, the insolation/temperature/band tier, the belt/moon tier and the record/summary/designation tier behave as documented' : `FAIL — ${failed} checks failed`);
 process.exit(failed === 0 ? 0 : 1);

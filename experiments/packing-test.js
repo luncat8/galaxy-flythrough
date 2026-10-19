@@ -19,8 +19,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 
 // --- Packed struct encoder/decoder ---
 // Position: 3 × f32 (12 bytes) - positionHighXYZ, sub-cell jitter packed separately.
@@ -190,8 +190,7 @@ const out = {
 };
 
 const logPath = path.join(__dirname, 'logs', 'packing-test.json');
-fs.writeFileSync(logPath, JSON.stringify(out, null, 2));
-console.log(`\nWrote ${logPath}`);
+logFile.writeLog(logPath, out);
 
 console.log('\n=== VERDICT ===');
 console.log(`Recommendation: ${out.recommendation}`);

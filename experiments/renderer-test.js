@@ -11,8 +11,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 
 // --- Browser shims -------------------------------------------------------
 // The src modules attach their API to window.* in a browser; aliasing window to
@@ -1256,8 +1256,7 @@ for (const c of checks) {
 console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 
 const logPath = path.join(__dirname, 'logs', 'renderer.json');
-fs.mkdirSync(path.dirname(logPath), { recursive: true });
-fs.writeFileSync(logPath, JSON.stringify({
+logFile.writeLog(logPath, {
         date: new Date().toISOString(),
         proceduralStars: prepareState.proceduralStars,
         catalogStars: prepareState.catalogTotalStars,
@@ -1266,8 +1265,7 @@ fs.writeFileSync(logPath, JSON.stringify({
         passed,
         failed,
         checks,
-}, null, 2));
-console.log(`Wrote ${logPath}`);
+});
 console.log('\n=== VERDICT ===');
 console.log(failed === 0 ? 'PASS — renderer streams, packs and draws as documented' : `FAIL — ${failed} checks failed`);
 process.exit(failed === 0 ? 0 : 1);

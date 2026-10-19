@@ -23,8 +23,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 
 const orbit = require('../src/math/orbit.js');
 const galaxy = require('../src/math/galaxy.js');
@@ -1495,14 +1495,12 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 	}
 	console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 	const logPath = path.join(__dirname, 'logs', 'orbit.json');
-	fs.mkdirSync(path.dirname(logPath), { recursive: true });
-	fs.writeFileSync(logPath, JSON.stringify({
+	logFile.writeLog(logPath, {
 		date: new Date().toISOString(),
 		totalChecks: checks.length,
 		passed,
 		failed,
 		checks,
-	}, null, 2));
-	console.log(`Wrote ${logPath}`);
+	});
 	if (failed > 0) process.exit(1);
 }

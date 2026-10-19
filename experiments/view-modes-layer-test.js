@@ -19,6 +19,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 
 const checks = [];
 function check(name, pass, detail) {
@@ -516,11 +517,9 @@ for (const c of checks) {
 }
 console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 
-const outDir = path.join(__dirname, 'logs');
-if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-fs.writeFileSync(path.join(outDir, 'view-modes-layer.json'), JSON.stringify({
+logFile.writeLog(path.join(__dirname, 'logs', 'view-modes-layer.json'), {
 	test: 'view-modes-layer',
 	passed, failed, checks,
-}, null, 2));
+});
 
 process.exit(failed ? 1 : 0);

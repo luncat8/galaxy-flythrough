@@ -12,6 +12,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 const shipModule = require('../src/core/ship.js');
 const cameraModule = require('../src/core/camera.js');
 const routeModule = require('../src/core/route.js');
@@ -965,15 +966,13 @@ for (const dtShipS of [3e4, 3e5, 1e6]) {
 		else console.error('FAIL ' + c.name + (c.detail !== null && c.detail !== undefined ? '  -> ' + JSON.stringify(c.detail) : ''));
 	}
 	const summary = { total: checks.length, passed, failed: checks.length - passed, checks };
-	fs.mkdirSync(path.join(__dirname, 'logs'), { recursive: true });
-	fs.writeFileSync(path.join(__dirname, 'logs', 'ship.json'), JSON.stringify(summary, null, 2));
+	logFile.writeLog(path.join(__dirname, 'logs', 'ship.json'), summary);
 	console.log(`ship: ${passed}/${checks.length} passed`);
 	if (passed !== checks.length) {
 		console.log('\n=== VERDICT ===');
 		console.log(`FAIL — ${checks.length - passed} checks failed`);
 		process.exit(1);
 	}
-	console.log('Wrote experiments/logs/ship.json');
 	console.log('\n=== VERDICT ===');
 	console.log('PASS');
 }

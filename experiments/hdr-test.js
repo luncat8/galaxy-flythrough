@@ -14,8 +14,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 
 const shaders = require('../src/render/shaders.js');
 const renderer = require('../src/render/star-sprites.js');
@@ -160,16 +160,14 @@ for (const c of checks) {
 console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 
 const logPath = path.join(__dirname, 'logs', 'hdr.json');
-fs.mkdirSync(path.dirname(logPath), { recursive: true });
-fs.writeFileSync(logPath, JSON.stringify({
+logFile.writeLog(logPath, {
 	date: new Date().toISOString(),
 	consts,
 	totalChecks: checks.length,
 	passed,
 	failed,
 	checks,
-}, null, 2));
-console.log(`Wrote ${logPath}`);
+});
 console.log('\n=== VERDICT ===');
 console.log(failed === 0 ? 'PASS — Hable filmic tone curve is sound and bounded' : `FAIL — ${failed} checks failed`);
 process.exit(failed === 0 ? 0 : 1);

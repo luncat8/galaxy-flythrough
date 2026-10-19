@@ -11,8 +11,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 const hash = require('../src/math/hash.js');
 
 const N = 100000;
@@ -224,8 +224,7 @@ const out = {
 };
 
 const logPath = path.join(__dirname, 'logs', 'filter-test.json');
-fs.writeFileSync(logPath, JSON.stringify(out, null, 2));
-console.log(`\nWrote ${logPath}`);
+logFile.writeLog(logPath, out);
 
 console.log('\n=== VERDICT ===');
 console.log(out.verdict);

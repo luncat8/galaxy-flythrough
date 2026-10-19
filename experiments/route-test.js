@@ -1,6 +1,8 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
+const path = require('path');
+const logFile = require('./log-file.js');
 const dv = require('../src/math/deltav.js');
 const route = require('../src/core/route.js');
 const planets = require('../src/math/planets.js');
@@ -442,6 +444,6 @@ test('panels collapse to their header (never closed for good) and the route hint
 	assert.ok(css.includes('.panel.collapsed > :not(:first-child)'));
 	assert.ok(!main.includes('V to fly it'));
 });
-fs.writeFileSync('experiments/logs/route.json', JSON.stringify({ checks, passed: checks.filter(c => c.pass).length, failed: checks.filter(c => !c.pass).length }, null, '\t') + '\n');
+logFile.writeLog(path.join(__dirname, 'logs', 'route.json'), { checks, passed: checks.filter(c => c.pass).length, failed: checks.filter(c => !c.pass).length }, { indent: '\t' });
 console.log(`\n${checks.filter(c => c.pass).length}/${checks.length} passed`);
 if (checks.some(c => !c.pass)) process.exitCode = 1;

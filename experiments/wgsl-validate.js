@@ -20,6 +20,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 
 const shaders = require('../src/render/shaders.js');
 const density = require('../src/math/density.js');
@@ -678,8 +679,7 @@ for (const c of checks) {
 console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 
 const logPath = path.join(__dirname, 'logs', 'wgsl-validate.json');
-fs.mkdirSync(path.dirname(logPath), { recursive: true });
-fs.writeFileSync(logPath, JSON.stringify({
+logFile.writeLog(logPath, {
         date: new Date().toISOString(),
         parts: Object.keys(shaders.SHADER_PARTS).map(n => ({ name: n, lines: shaders.SHADER_PARTS[n].split('\n').length })),
         modules: shaders.SHADER_MODULES,
@@ -687,8 +687,7 @@ fs.writeFileSync(logPath, JSON.stringify({
         passed,
         failed,
         checks,
-}, null, 2));
-console.log(`Wrote ${logPath}`);
+});
 console.log('\n=== VERDICT ===');
 console.log(failed === 0 ? 'PASS — WGSL mirrors the JS model' : `FAIL — ${failed} checks failed`);
 process.exit(failed === 0 ? 0 : 1);

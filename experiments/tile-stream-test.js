@@ -19,6 +19,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 const loader = require('../src/stream/tile-loader.js');
 const cellManager = require('../src/stream/cell-manager.js');
 const records = require('../src/math/star-record.js');
@@ -277,8 +278,7 @@ for (const c of checks) {
 console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 
 const logPath = path.join(__dirname, 'logs', 'tile-stream.json');
-fs.mkdirSync(path.dirname(logPath), { recursive: true });
-fs.writeFileSync(logPath, JSON.stringify({
+logFile.writeLog(logPath, {
 	date: new Date().toISOString(),
 	bundle: {
 		path: path.relative(path.join(__dirname, '..'), bundlePath),
@@ -292,8 +292,7 @@ fs.writeFileSync(logPath, JSON.stringify({
 	passed,
 	failed,
 	checks,
-}, null, 2));
-console.log(`Wrote ${logPath}`);
+});
 console.log('\n=== VERDICT ===');
 console.log(failed === 0 ? 'PASS — catalog streaming pipeline is consistent' : `FAIL — ${failed} checks failed`);
 process.exit(failed === 0 ? 0 : 1);

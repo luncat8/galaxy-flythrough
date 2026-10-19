@@ -20,8 +20,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 const density = require('../src/math/density.js');
 const galaxy = require('../src/math/galaxy.js');
 
@@ -178,5 +178,4 @@ const report = {
 };
 
 console.log(JSON.stringify(report, null, 2));
-fs.mkdirSync(path.join(__dirname, 'logs'), { recursive: true });
-fs.writeFileSync(path.join(__dirname, 'logs/preset-bar-fit.json'), JSON.stringify(report, null, 2) + '\n');
+logFile.writeLog(path.join(__dirname, 'logs/preset-bar-fit.json'), report);

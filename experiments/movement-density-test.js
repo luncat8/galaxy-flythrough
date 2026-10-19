@@ -45,8 +45,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 
 const galaxy = require('../src/math/galaxy.js');
 const sampling = require('../src/math/sampling.js');
@@ -712,8 +712,7 @@ console.log(`\n${passed}/${checks.length} passed, ${checks.length - passed} fail
 }
 
 const logPath = path.join(__dirname, 'logs', 'movement-density.json');
-fs.mkdirSync(path.dirname(logPath), { recursive: true });
-fs.writeFileSync(logPath, JSON.stringify({
+logFile.writeLog(logPath, {
 	experiment: 'movement-density',
 	date: new Date().toISOString().slice(0, 10),
 	setup: { types: TYPE_LIST, stars: N, spanMyr: SPAN, snapMyr: SNAP, dtMyr: DT, seed: SEED, shareUI: SHARE_UI, forceUI: FORCE_UI, waveUI: WAVE_UI },
@@ -721,7 +720,6 @@ fs.writeFileSync(logPath, JSON.stringify({
 	gates: { radialBudget: RADIAL_BUDGET, vertBudget: VERT_BUDGET, armFloor: ARM_FLOOR, armFloorGuided: ARM_FLOOR_GUIDED, meanR: [MEANR_LOW, MEANR_HIGH], meanZ: [VERT_MEAN_LOW, VERT_MEAN_HIGH], meanZExactLanes: VERT_MEAN_EXACT_HIGH },
 	results,
 	checks,
-}, null, 2));
-console.log(`Wrote ${logPath}`);
+});
 console.log('=== VERDICT === ' + (checks.length === passed ? 'PASS' : 'FAIL'));
 if (checks.length !== passed) process.exit(1);

@@ -16,9 +16,9 @@
 
 const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 const vm = require('vm');
 const zlib = require('zlib');
-
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'src');
 const WRITE_PNG = process.argv.includes('--png');
@@ -758,9 +758,9 @@ console.log(`\n${passed}/${checks.length} passed, ${failed} failed`);
 if (pngs.length) console.log('wrote: ' + pngs.join(', '));
 console.log('readout:\n' + String(el('readout').textContent).replace(/^/gm, '    '));
 
-fs.writeFileSync(path.join(logDir, 'view-modes-page.json'), JSON.stringify({
+logFile.writeLog(path.join(logDir, 'view-modes-page.json'), {
 	totalChecks: checks.length, passed, failed, checks,
-}, null, 2));
+});
 console.log('frames pumped:', FRAMES.n, 'queued:', rafQueue.length);
 console.log('=== VERDICT ===');
 console.log(failed === 0 ? 'PASS — the island page boots, wires and paints' : `FAIL — ${failed} checks failed`);

@@ -22,8 +22,8 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
+const logFile = require('./log-file.js');
 
 const density = require('../src/math/density.js');
 const galaxy = require('../src/math/galaxy.js');
@@ -105,6 +105,4 @@ for (const [name, row] of Object.entries(report)) {
 	}
 }
 
-fs.mkdirSync(path.join(__dirname, 'logs'), { recursive: true });
-fs.writeFileSync(path.join(__dirname, 'logs/young-vertical.json'),
-	JSON.stringify({ stars: N, youngClasses: YOUNG_CLASSES, report }, null, 2) + '\n');
+logFile.writeLog(path.join(__dirname, 'logs/young-vertical.json'), { stars: N, youngClasses: YOUNG_CLASSES, report });
