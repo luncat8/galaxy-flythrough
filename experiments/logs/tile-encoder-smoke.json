@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-19T05:33:03.949Z",
+  "date": "2026-10-19T07:24:40.564Z",
   "mockStars": 32000,
   "seed": 20240919,
   "summary": {
@@ -13,8 +13,8 @@
   },
   "bundleBytes": 2810,
   "encodeMs": 2,
-  "totalChecks": 31,
-  "passed": 31,
+  "totalChecks": 33,
+  "passed": 33,
   "failed": 0,
   "checks": [
     {
@@ -157,6 +157,15 @@
       "name": "the written bundle is a plausible size",
       "pass": true,
       "detail": 2810
+    },
+    {
+      "name": "a generated-date-only rerun keeps the bundle byte for byte",
+      "pass": true
+    },
+    {
+      "name": "the date-only rerun preserves the committed generated date",
+      "pass": true,
+      "detail": "2026-10-19"
     },
     {
       "name": "the bundle file hands back the same object",

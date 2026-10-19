@@ -129,6 +129,13 @@ const tmpPath = path.join(os.tmpdir(), `galaxy-bundle-smoke-${process.pid}.js`);
 const tmpBytes = encoder.writeBundle(bundle, tmpPath);
 check('the written bundle is a plausible size',
 	tmpBytes > summary.kept * records.RECORD_BYTES && tmpBytes < summary.kept * 100, tmpBytes);
+const firstBundleText = fs.readFileSync(tmpPath, 'utf8');
+const rerunBytes = encoder.writeBundle({ ...bundle, generated: '2099-12-31' }, tmpPath);
+const rerunText = fs.readFileSync(tmpPath, 'utf8');
+check('a generated-date-only rerun keeps the bundle byte for byte',
+	rerunBytes === tmpBytes && rerunText === firstBundleText);
+check('the date-only rerun preserves the committed generated date',
+	rerunText.includes(`\"generated\":\"${bundle.generated}\"`), bundle.generated);
 
 // --- 5. Loader round-trip ------------------------------------------------
 const loaded = require(tmpPath);

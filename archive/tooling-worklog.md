@@ -42,6 +42,23 @@ logs that carry measured timings changed and every deterministic log (camera,
 hdr, m1-smoke, route, shape, orbit, …) untouched — the point of the change;
 those timing logs were reverted rather than committed.
 
-Next: the same rule for `experiments/tile-encoder.js`'s generated
-`src/data/tiles/catalog.js`, whose header carries a `generated` date and which
-would otherwise rewrite an identical bundle whenever it is regenerated.
+## tooling.2 — generated catalogs stop rewriting themselves for a new date
+
+**Decision.** `experiments/tile-encoder.js` now renders the catalog once, then
+compares an existing `catalog.js` with the new text after replacing only the
+bundle's top-level `generated` string. If the cells, payloads, metadata and
+wrapper are unchanged, `writeBundle` keeps the existing file byte for byte —
+including its committed date — rather than rewriting the asset. Any actual
+bundle change still writes normally. The comparison is text-based so it also
+preserves the exact existing wrapper and formatting, and a missing or malformed
+asset falls through to the normal write.
+
+**Validation.** `tile-encoder-smoke-test.js` is now 33/33: a rerun with a
+future generated date keeps the temporary bundle byte for byte and retains the
+prior date. Running the real encoder against the committed Gaia subset reports
+`Kept .../src/data/tiles/catalog.js (unchanged except generated date)`; the
+bundle remains at 3,829 stars in 2,045 cells and its committed generated date
+is not refreshed.
+
+Next: apply this stable-write pattern to any future generated asset that carries
+provenance metadata which changes independently of its content.
