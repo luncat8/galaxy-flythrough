@@ -881,9 +881,9 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 
 // The shared star-position header: the record and uniform layout, the epoch
 // map, and the one engine-mask dispatch (classic → simple → apocenter, each
-// pass replacing the position). The sprite pass and the WebGPU field overlay
-// both include this part, so the overlay's stars are the stars the frame draws
-// — same epoch, same movement law — by construction, not by a second copy.
+// pass replacing the position). It is its own part rather than inlined into
+// the sprite body, so any pass that draws these records places them by this
+// one law — same epoch, same movement law — instead of a second copy.
 const STAR_POSITION = `${ORBIT}
 // Path B: additive point sprites, 4 vertices per star (triangle strip).
 // WebGPU has no gl_PointSize, so each star is an instanced quad whose corner
@@ -989,7 +989,7 @@ fn cornerOffset(vid: u32) -> vec2f {
 // neither classic nor simple bit is the birth position itself (apocenter-only
 // leaves the unselected fraction frozen); the apocenter pass then replaces the
 // baseline for the birth-selected subset. The CPU twin is
-// orbit.engineRecordPosition (picking, labels, the overlay's range sample).
+// orbit.engineRecordPosition (picking and labels).
 fn starMovedPosition(star: StarPacked, thetaValue: f32) -> vec3f {
         let mask: u32 = u32(camera.engine.x);
         let centre = vec3f(camera.cameraPos.w, 0.0, 0.0);
@@ -1121,17 +1121,17 @@ fn fs_main(in: VertexOut) -> @location(0) vec4f {
 
 const STAR_SPRITE = STAR_POSITION + STAR_SPRITE_BODY;
 
-// HDR direct variant of the star sprite is DEPRECATED — the same tonemap
-// pass runs on both SDR and HDR outputs; on HDR it allows values >1.0 into
-// the rgba16float extended swapchain so highlights reach the monitor's
-// headroom. Keeping this module around as a reference for the eventual
-// path where we bypass the intermediate on ultra-low-end hardware, but it
-// is not wired.
-// shape, but reads an extra linearExposure uniform in the fragment stage and
-// multiplies the output by it. Used when the swapchain itself is rgba16float
-// with toneMapping:'extended' — there is no tonemap pass, so the user's
-// `;` / `'` exposure knob has to live in the sprite shader. The output is
-// not clamped to 1.0; the HDR canvas + display handle the rest.
+// HDR direct variant of the star sprite: DEPRECATED and never bound. The one
+// tonemap pass already runs on both SDR and HDR outputs — on HDR it lets values
+// >1.0 into the rgba16float extended swapchain, so highlights reach the
+// monitor's headroom — and this module predates that. It is kept as a reference
+// for the path that skips the intermediate on ultra-low-end hardware: it reads
+// an extra linearExposure uniform in the fragment stage and multiplies the
+// output by it, so the `;` / `'` exposure knob would live in the sprite shader
+// itself and nothing would clamp the result to 1.0. It does not orbit. Its
+// binding(3) is that exposure uniform, where the live sprite binds the simple
+// engine's theta storage, so it cannot reuse the sprite's bind-group layout:
+// rebinding is part of wiring it up.
 const STAR_SPRITE_HDR = `
 struct CameraUniform {
         viewProj: mat4x4<f32>,
@@ -1945,11 +1945,13 @@ const SHADERS = {
         'simple-step': PCG_HASH + ORBIT + SIMPLE_STEP,
 };
 
-// Wired shaders: the renderer compiles star-sprite + nebula-billboard + tonemap
-// every frame, plus simple-step when the simple engine is selected.
-// star-sprite-hdr is kept as a reference module and is not bound.
-const WIRED_SHADERS = ['star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'simple-step'];
+// The shader modules the project ships, by the names every consumer looks them
+// up with: the renderer compiles star-sprite + nebula-billboard + tonemap every
+// frame, plus simple-step when the simple engine is selected. star-sprite-hdr
+// is the one module nobody binds — it is listed so the validator keeps covering
+// the reference variant, not because a pass uses it.
+const SHADER_MODULES = ['star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'simple-step'];
 
-const GalaxyShaders = { SHADERS, SHADER_PARTS, WIRED_SHADERS };
+const GalaxyShaders = { SHADERS, SHADER_PARTS, SHADER_MODULES };
 if (typeof module !== 'undefined') module.exports = GalaxyShaders;
 if (typeof window !== 'undefined') window.GalaxyShaders = GalaxyShaders;

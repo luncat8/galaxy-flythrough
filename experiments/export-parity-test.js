@@ -95,17 +95,17 @@ for (const { file, global: name } of MODULES) {
 	check(`${name} binds every key to the same value`, mismatched.length === 0, mismatched);
 }
 
-// The renderer must find its wired shader through the same lookup the
-// validator uses; a rename in one place used to be invisible.
+// The renderer must find its shader through the same lookup the validator
+// uses; a rename in one place used to be invisible.
 {
 	const shaders = require('../src/render/shaders.js');
-	check('every wired shader resolves in the SHADERS map',
-		shaders.WIRED_SHADERS.every(n => typeof shaders.SHADERS[n] === 'string' && shaders.SHADERS[n].length > 0),
-		shaders.WIRED_SHADERS);
+	check('every shader module resolves in the SHADERS map',
+		shaders.SHADER_MODULES.every(n => typeof shaders.SHADERS[n] === 'string' && shaders.SHADERS[n].length > 0),
+		shaders.SHADER_MODULES);
 	check('every SHADER_PART is a non-empty string',
 		Object.entries(shaders.SHADER_PARTS).every(([, v]) => typeof v === 'string' && v.length > 0),
 		Object.keys(shaders.SHADER_PARTS));
-	check('the renderer and the shader map agree on the wired module',
+	check('the renderer and the shader map agree on the sprite module',
 		global.window.GalaxyShaders.SHADERS['star-sprite'] === shaders.SHADERS['star-sprite']);
 }
 

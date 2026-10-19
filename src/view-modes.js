@@ -17,10 +17,11 @@
 //   * `raw` is the physical field (log distance / depth σ / slope in dex per
 //     degree) and is rebuilt every frame.
 //   * `live` is the display range the painter uses (a Field range state).
-//     Auto mode offers it the stats' suggestion at 4 Hz; two nearby reads
-//     confirm a change, rejecting a lone outlier, and the display eases toward
-//     the confirmed range each frame — it never snaps to one mid-pan read. Manual
-//     mode holds the two slider values. The legend quotes the same numbers.
+//     Auto mode re-offers it the stats' suggestion at 4 Hz; the display eases
+//     toward the newest offer every frame at a bounded rate and snaps only on a
+//     mode change, so one mid-pan read can bend the colours but never set them.
+//     Manual mode holds the two slider values. The legend quotes the same
+//     numbers.
 
 'use strict';
 

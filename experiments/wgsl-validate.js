@@ -51,16 +51,16 @@ function readSource(relPath) {
                         && shaders.SHADER_PARTS[n].length > 100
                         && !shaders.SHADER_PARTS[n].includes('\r')),
                 names.map(n => [n, shaders.SHADER_PARTS[n].length]));
-        check('five wired shaders are exposed (sprite, hdr reference, nebula, tonemap, simple-step)',
-                shaders.WIRED_SHADERS.length === 5
-                && shaders.WIRED_SHADERS[0] === 'star-sprite'
-                && shaders.WIRED_SHADERS[1] === 'star-sprite-hdr'
-                && shaders.WIRED_SHADERS[2] === 'nebula-billboard'
-                && shaders.WIRED_SHADERS[3] === 'tonemap'
-                && shaders.WIRED_SHADERS[4] === 'simple-step',
-                shaders.WIRED_SHADERS);
-        check('every wired shader exists in the module map',
-                shaders.WIRED_SHADERS.every(n => typeof shaders.SHADERS[n] === 'string' && shaders.SHADERS[n].length > 0),
+        check('five shader modules are exposed (sprite, hdr reference, nebula, tonemap, simple-step)',
+                shaders.SHADER_MODULES.length === 5
+                && shaders.SHADER_MODULES[0] === 'star-sprite'
+                && shaders.SHADER_MODULES[1] === 'star-sprite-hdr'
+                && shaders.SHADER_MODULES[2] === 'nebula-billboard'
+                && shaders.SHADER_MODULES[3] === 'tonemap'
+                && shaders.SHADER_MODULES[4] === 'simple-step',
+                shaders.SHADER_MODULES);
+        check('every shader module exists in the module map',
+                shaders.SHADER_MODULES.every(n => typeof shaders.SHADERS[n] === 'string' && shaders.SHADERS[n].length > 0),
                 Object.keys(shaders.SHADERS));
 
         for (const name of names) {
@@ -682,7 +682,7 @@ fs.mkdirSync(path.dirname(logPath), { recursive: true });
 fs.writeFileSync(logPath, JSON.stringify({
         date: new Date().toISOString(),
         parts: Object.keys(shaders.SHADER_PARTS).map(n => ({ name: n, lines: shaders.SHADER_PARTS[n].split('\n').length })),
-        wired: shaders.WIRED_SHADERS,
+        modules: shaders.SHADER_MODULES,
         totalChecks: checks.length,
         passed,
         failed,

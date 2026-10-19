@@ -505,7 +505,7 @@ function createStarRenderer(device, context, format, options) {
                 model,
         });
 
-        // Everything the overlay and the tests read, mutated in place.
+        // Everything the HUD and the tests read, mutated in place.
         const state = {
                 proceduralStars: 0,
                 landmarkStars: 0,

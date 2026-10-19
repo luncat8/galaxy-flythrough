@@ -1646,6 +1646,29 @@ async function boot() {
                 }
                 syncStarTime();
         });
+        // A press that leaves the value alone is the one gesture the slider has
+        // that is not "set a rate": a click on the track jumps the thumb and
+        // fires `input` first, while pressing the handle without dragging fires
+        // only `click`. That silent press stops the shared clock — the 0 stop is
+        // otherwise a half-step between -1 and 0.5 on a 100-wide track. T
+        // restores the parked observer rate; in game mode the press steps onto
+        // the ship ladder's own frozen rung, so the ship and the sky stop
+        // together.
+        let starTimeMoved = false;
+        sliderStarTime.addEventListener('pointerdown', () => { starTimeMoved = false; });
+        sliderStarTime.addEventListener('input', () => { starTimeMoved = true; });
+        sliderStarTime.addEventListener('click', () => {
+                if (starTimeMoved) return;
+                if (gameMode) {
+                        ship.timeIndex = 1;      // SHIP_TIME_LADDER[1] is the frozen stop
+                        ship.timeFrozen = false;
+                        refreshShipTimeRateCap();
+                } else if (starTimeRate !== 0) {
+                        lastNonZeroTimeRate = starTimeRate;
+                        starTimeRate = 0;
+                }
+                syncStarTime();
+        });
         syncStarTime();
         function formatWave(value) { return value === 0 ? 'off' : value.toFixed(2); }
         function syncWave() {

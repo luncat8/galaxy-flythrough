@@ -65,7 +65,11 @@
                 </div>
                 <div class="menu-row">
                         <label for="slider-star-time">Star time <span class="kbd">T</span></label>
-                        <input type="range" id="slider-star-time" min="-1" max="99" step="0.5" value="5">
+                        <input type="range" id="slider-star-time" min="-1" max="99" step="0.5" value="5"
+                               title="Click the handle without dragging to stop the clock; drag to set the rate. T freezes and restores.">
+                        <!-- A click that does not move the slider stops the clock (main.js,
+                             the click guard on this input): the 0 stop is otherwise a half-step
+                             between -1 and 0.5 on a 100-wide track. T still parks/restores. -->
                         <span id="val-star-time" class="menu-val">5 Myr/s</span>
                 </div>
                 <!-- The epoch's live clock (0.6 E2): while it runs, the star clock

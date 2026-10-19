@@ -536,7 +536,7 @@ comment saying why. When caching anything keyed on "same inputs", enumerate the 
 the consumer reads; a name-level comparison is a guess about that list.
 ## 2026-09-21 — `shaders.js` inventory splice must cut at the first `// Mirror parts`
 
-`SHADER_PARTS` / `SHADERS` / `WIRED_SHADERS` live at the *end* of `src/render/shaders.js`. A mid-file search-replace that only updates those names can leave the original export intact and append a second copy after leftover WGSL. The file then `require()`s the first export (missing `NEBULA_BILLBOARD`) while a grep of the source still finds the new names. Cut from the first `// Mirror parts` comment through EOF and rewrite a single ending; then `node -e "console.log(Object.keys(require('./src/render/shaders.js').SHADER_PARTS))"` before trusting tests.
+`SHADER_PARTS` / `SHADERS` / `SHADER_MODULES` live at the *end* of `src/render/shaders.js`. A mid-file search-replace that only updates those names can leave the original export intact and append a second copy after leftover WGSL. The file then `require()`s the first export (missing `NEBULA_BILLBOARD`) while a grep of the source still finds the new names. Cut from the first `// Mirror parts` comment through EOF and rewrite a single ending; then `node -e "console.log(Object.keys(require('./src/render/shaders.js').SHADER_PARTS))"` before trusting tests.
 
 The mock GPU does not execute WGSL, so a vertex-shader size cull cannot change `draw()` instance counts. Pin the floor in JS (`billboardVisible` / `billboardScreenPx`) and the WGSL constants in `wgsl-validate.js`; the renderer-test only sees the packed gas count.
 
@@ -754,7 +754,7 @@ Rule: decide *one* truncation per component, put it inside the density functions
 
 WGSL cannot be compiled here, so the only defence against the mirror drifting is a test that diffs it against the JS model. That test can only run if the shader text is reachable from Node. Two earlier arrangements failed: `.wgsl` files plus a copy inlined in `index.html` (two copies, both hand-maintained, and they had already diverged — the validator could only marker-check one of them), and `document.getElementById(...).textContent` at boot (unreachable from Node, and one more thing to get wrong in the page).
 
-Now `src/render/shaders.js` holds the shader parts as template strings, concatenated into complete modules, and `wgsl-validate.js` compares constants, function names and structural markers against `src/math/*.js`. Wired and unwired shaders are both validated; only `WIRED_SHADERS` is compiled by the renderer.
+Now `src/render/shaders.js` holds the shader parts as template strings, concatenated into complete modules, and `wgsl-validate.js` compares constants, function names and structural markers against `src/math/*.js`. Every module is validated, wired or not; `SHADER_MODULES` names the five the project ships, and the renderer compiles four of them.
 
 ## 2026-09-19 — One bundle file beats one file per cell, even with base64
 
