@@ -63,6 +63,7 @@ const selectionCoords = (typeof module !== 'undefined' && module.exports)
 const selectionOrbitFallback = {
 	engineLandmarkPosition: (out, i, bx, by, bz) => { out[0] = bx; out[1] = by; out[2] = bz; return out; },
 	engineRecordPosition: (out, bx, by, bz) => { out[0] = bx; out[1] = by; out[2] = bz; return false; },
+	engineRecordVelocity: (out) => { out[0] = 0; out[1] = 0; out[2] = 0; return false; },
 };
 function selectionOrbit() {
 	return (typeof window !== 'undefined' && window.OrbitLib) || selectionOrbitFallback;
@@ -129,38 +130,84 @@ function createSelection(camera, landmarks) {
 	// The slot is validated by key exactly as resolveSet and the label layer's
 	// ring map validate theirs, so a stale index can never resolve to the star
 	// that happens to sit in it now.
-	function resolveDrawn(ref, out) {
-		if (!ref) return DRAWN_STALE;
-		out[0] = ref.x; out[1] = ref.y; out[2] = ref.z;
-		if (!renderer) return DRAWN_STALE;
+	// The resident record a ref names, or false. Shared by the position and
+	// velocity twins so the slot/key validation has one source. Fill-then-read
+	// scratch, like orbitScratch: no per-frame allocation.
+	const drawnIn = { bx: 0, by: 0, bz: 0, packed: 0, index: 0, landmark: false };
+	function readDrawnInputs(ref) {
+		if (!ref || !renderer) return false;
 		const records = selectionRecords();
 		const info = renderer.starBlocks();
-		if (!records || !info || !info.view || !info.identity || !info.blocks) return DRAWN_STALE;
+		if (!records || !info || !info.view || !info.identity || !info.blocks) return false;
 		const kind = ref.kind | 0;
 		const block = info.blocks[kind];
 		const index = ref.index | 0;
-		if (!block || index < 0 || index >= (block.count | 0)) return DRAWN_STALE;
+		if (!block || index < 0 || index >= (block.count | 0)) return false;
 		const slot = (block.offset | 0) + index;
-		if ((info.identity[slot] >>> 0) !== (ref.key >>> 0)) return DRAWN_STALE;
+		if ((info.identity[slot] >>> 0) !== (ref.key >>> 0)) return false;
 		const byteOffset = slot * records.RECORD_BYTES;
 		const packed = info.view.getUint32(byteOffset + 12, true);
-		if ((packed & (records.FLAG_VISIBLE << 16)) === 0) return DRAWN_STALE;
-		const bx = info.view.getFloat32(byteOffset, true);
-		const by = info.view.getFloat32(byteOffset + 4, true);
-		const bz = info.view.getFloat32(byteOffset + 8, true);
+		if ((packed & (records.FLAG_VISIBLE << 16)) === 0) return false;
+		drawnIn.bx = info.view.getFloat32(byteOffset, true);
+		drawnIn.by = info.view.getFloat32(byteOffset + 4, true);
+		drawnIn.bz = info.view.getFloat32(byteOffset + 8, true);
+		drawnIn.packed = packed;
+		drawnIn.index = index;
+		drawnIn.landmark = block.kind === 'landmark';
+		return true;
+	}
+
+	function resolveDrawn(ref, out) {
+		if (!ref) return DRAWN_STALE;
+		out[0] = ref.x; out[1] = ref.y; out[2] = ref.z;
+		if (!readDrawnInputs(ref)) return DRAWN_STALE;
 		if (!orbitModel) {
-			out[0] = bx; out[1] = by; out[2] = bz;
+			out[0] = drawnIn.bx; out[1] = drawnIn.by; out[2] = drawnIn.bz;
 			return DRAWN_EXACT;
 		}
-		if (block.kind === 'landmark') {
-			selectionOrbit().engineLandmarkPosition(orbitScratch, index, bx, by, bz,
-				packed & 0xFF, orbitTime, orbitModel);
+		if (drawnIn.landmark) {
+			selectionOrbit().engineLandmarkPosition(orbitScratch, drawnIn.index,
+				drawnIn.bx, drawnIn.by, drawnIn.bz, drawnIn.packed & 0xFF,
+				orbitTime, orbitModel);
 			out[0] = orbitScratch[0]; out[1] = orbitScratch[1]; out[2] = orbitScratch[2];
 			return DRAWN_EXACT;
 		}
 		const approximated = selectionOrbit().engineRecordPosition(orbitScratch,
-			bx, by, bz, packed, orbitTime, orbitModel) === true;
+			drawnIn.bx, drawnIn.by, drawnIn.bz, drawnIn.packed, orbitTime, orbitModel) === true;
 		out[0] = orbitScratch[0]; out[1] = orbitScratch[1]; out[2] = orbitScratch[2];
+		return approximated ? DRAWN_APPROX : DRAWN_EXACT;
+	}
+
+	// --- Drawn velocity (ui.15) ------------------------------------------
+	// The target's own drawn motion, in kpc per ship-second — the quantity §5's
+	// autopilot builds its desired velocity (and so its nose) from. It is the
+	// same engine dispatch as resolveDrawn, differenced across a fixed
+	// *model-time* baseline either side of `orbitTime` (orbit.js's
+	// engineRecordVelocity), so it does not depend on the ship clock at all.
+	//
+	// A consecutive-frame difference cannot serve at the fine rungs: the drawn
+	// position is a f64 near 8-20 kpc, so its own ULP is ~55 km on a
+	// solar-circle coordinate, while one frame of a 42 km/s star at the
+	// real-time rung is 0.7 km. The frame difference is then 0 for dozens of
+	// frames and one ULP — a coordinate-axis spike of thousands of km/s — on the
+	// next, and the autopilot's nose followed those spikes (the reported ui.15
+	// bug).
+	//
+	// Returns the same three answers as resolveDrawn. Without an orbit model the
+	// record draws where it was born, so the answer is EXACT and the velocity
+	// zero. Under the simple mask the dispatch reports the documented CPU gap
+	// (APPROX): the classic bit still gives the classic derivative, the mask's
+	// own static record gives zero.
+	function resolveDrawnVelocity(ref, out) {
+		out[0] = 0; out[1] = 0; out[2] = 0;
+		if (!readDrawnInputs(ref)) return DRAWN_STALE;
+		if (!orbitModel) return DRAWN_EXACT;
+		// The simple engine's landmark mirror is stepped by the frame loop, not a
+		// closed form of time, so the CPU has no drawn velocity for a landmark.
+		// Report the gap rather than invent one (no ship target is a landmark).
+		if (drawnIn.landmark) return DRAWN_APPROX;
+		const approximated = selectionOrbit().engineRecordVelocity(out, drawnIn.bx,
+			drawnIn.by, drawnIn.bz, drawnIn.packed, orbitTime, orbitModel) === true;
 		return approximated ? DRAWN_APPROX : DRAWN_EXACT;
 	}
 
@@ -566,6 +613,7 @@ function createSelection(camera, landmarks) {
 	return {
 		pick, pickAny, beginPick, pickStep, pickResult,
 		selectAround, beginSelectAround, selectAroundStep, around, resolveDrawn,
+		resolveDrawnVelocity,
 		setOrbitState, setRenderer,
 	};
 }

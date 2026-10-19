@@ -2103,3 +2103,44 @@ frame covers a fraction of what is left and the approach converges
 geometrically: 1 ly in 10.6 wall-seconds, 40 ly in 25. The lesson generalizes:
 any auto-warp layered on a controller whose last law is "fraction of remaining
 per frame" must inherit that same shape, or the two feedback laws fight.
+
+## 2026-10-19 — A per-frame position difference is not a velocity at small dt
+
+The game's autopilot built its desired velocity from the target's velocity, and
+that velocity was a consecutive-frame difference of the *drawn* position. At
+the fine ship-clock rungs the nose flicked direction every frame. The
+arithmetic: the drawn position is a f64 near 8 kpc, so its own ULP is
+1.78e-15 kpc ≈ **55 km** on that coordinate; a 42 km/s star moves **0.7 km**
+in one real-time frame. The difference is therefore 0 for ~79 frames and then
+exactly one ULP, and 55 km / (1/60 s) reads as a **3300 km/s** spike along that
+axis. The star's other components step on different frames, so the *direction*
+of the measured velocity changes wildly even when the magnitude looks
+plausible — a 0/25.7/51.4/77.1/102.8 km/s staircase that is not the star's
+motion at all.
+
+Why it showed up in the nose: the aim is the normalized velocity command
+`v_des = v_target + v_closing·dir` minus the ship's velocity, so any error in
+`v_target` tilts the aim directly. Measured with the real `apStep` on a
+velocity-matched arrival at 60 fps: the aim changed by up to 109° in one frame
+at the real-time stop, 2° at 1e-6 y/s, 0.2° at 1e-5, 0.03° at 1e-4 and 0.004°
+at 1e-3 — i.e. worse the *finer* the rung, which is exactly how the bug was
+reported ("some, typically small, star times"). A frame difference's noise is
+`ULP/dt`, so it explodes as dt shrinks; a *coarse* clock hides is completely.
+
+The fix is not smoothing or a dead band: it is to differentiate in the model's
+own time over a fixed baseline (±10⁴ yr here), independent of the frame rate.
+10⁴ yr is far below every model timescale (epicyclic/pattern periods are tens
+to hundreds of Myr) but 10¹¹ ULPs of the solar-circle coordinate, so the same
+central difference is accurate to 7e-6 relative (4e-5 across the families) at
+*every* rung. Because the position and the velocity go through the same engine
+dispatch (`engineRecordPosition` / `engineRecordVelocity`, with the mask
+ladder, cluster offsets and epoch map), the derivative belongs to exactly the
+position the sky draws — a separate analytic velocity would drift from the
+rendered law. The same trap applies to every other consumer of "velocity from
+consecutive samples": the follow handover's `ship.vel` seed and the docked
+ride both took these spikes as real motion.
+
+Skill: when a derived quantity jitters only at small dt, compute its noise
+scaling first — if it is `ULP/dt` (or `1/dt` of anything quantized), the dt is
+the problem, not the law. Widen the baseline in a clock that is *not* the one
+being varied.

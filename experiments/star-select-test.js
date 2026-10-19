@@ -467,6 +467,65 @@ function bruteAround(centreKind, centreIndex, radiusKpc, time, dispatched) {
 	check('resolveDrawn refuses a slot its key does not name, and keeps the snapshot',
 		staleOk, { staleOk, movedState });
 
+	// resolveDrawnVelocity (ui.15): the same slot validation, the shipped engine
+	// dispatch differenced across orbit.js's model-time baseline. The expected
+	// value is built here from drawRecord itself, so this pins the *wiring*
+	// (record read -> twin -> kpc per ship-second), not the law's constants.
+	{
+		const SEC_MYR = 3.15576e13;
+		const h = orbit.DRAWN_VELOCITY_BASELINE_MYR;
+		const inv = 1 / (2 * h * SEC_MYR);
+		const vel = new Float64Array(3);
+		const va = new Float64Array(3), vb = new Float64Array(3);
+		let velWorst = 0, velChecked = 0, velStateOk = true;
+		for (const mask of [1, 5]) {
+			orbit.setEngine(mask);
+			for (let k = 0; k < blocks.length; k++) {
+				if (blocks[k].kind === 'landmark') continue;
+				for (let i = 0; i < blocks[k].count; i += Math.max(1, blocks[k].count >> 3)) {
+					const slot = blocks[k].offset + i;
+					const rec = records.readRecord(view, slot * records.RECORD_BYTES);
+					if (!rec.visible) continue;
+					const ref = { kind: k, index: i, key: identity[slot] >>> 0, x: rec.x, y: rec.y, z: rec.z };
+					const state = sel.resolveDrawnVelocity(ref, vel);
+					if (state !== selectionLib.DRAWN_EXACT) velStateOk = false;
+					drawRecord(k, i, rec, AROUND_TIME - h, va);
+					drawRecord(k, i, rec, AROUND_TIME + h, vb);
+					let dw = 0, ww = 0;
+					for (let c = 0; c < 3; c++) {
+						const want = (vb[c] - va[c]) * inv;
+						dw += (vel[c] - want) ** 2;
+						ww += want * want;
+					}
+					const err = ww > 0 ? Math.sqrt(dw / ww) : Math.sqrt(dw);
+					if (err > velWorst) velWorst = err;
+					velChecked++;
+				}
+			}
+		}
+		// The simple mask draws a record where it was born, so its drawn
+		// velocity is zero and the answer is reported as the documented gap.
+		orbit.setEngine(2);
+		const simpleRec = records.readRecord(view, offsets[0] * records.RECORD_BYTES);
+		const simpleState = sel.resolveDrawnVelocity({ kind: 0, index: 0, key: identity[offsets[0]] >>> 0,
+			x: simpleRec.x, y: simpleRec.y, z: simpleRec.z }, vel);
+		const simpleZero = simpleState === selectionLib.DRAWN_APPROX
+			&& vel[0] === 0 && vel[1] === 0 && vel[2] === 0;
+		// A landmark is the honest gap (the CPU mirror has no closed form in
+		// time), and a stale key is no record at all — both answer with zero.
+		orbit.setEngine(1);
+		const landState = sel.resolveDrawnVelocity({ kind: 1, index: 0,
+			key: identity[offsets[1]] >>> 0, x: 0, y: 0, z: 0 }, vel);
+		const staleVel = sel.resolveDrawnVelocity(movedRef, vel) === selectionLib.DRAWN_STALE
+			&& vel[0] === 0 && vel[1] === 0 && vel[2] === 0;
+		orbit.setEngine(1);
+		check('resolveDrawnVelocity is the drawn law differenced in model time, for masks 1/5',
+			velWorst < 1e-12 && velChecked > 20 && velStateOk, { velWorst, velChecked, velStateOk });
+		check('resolveDrawnVelocity reports the gaps: a static simple record, a landmark, a stale key',
+			simpleZero && landState === selectionLib.DRAWN_APPROX && staleVel,
+			{ simpleState, landState, staleVel });
+	}
+
 	// The fly-to contract end to end: click where a star is drawn, and the
 	// position the camera would be flown to is that same drawn position — not the
 	// birth record the pick carries (the ui.2 bug: 3.09 kpc apart at 100 Myr).

@@ -1,11 +1,11 @@
 {
-  "date": "2026-10-19T05:33:53.987Z",
+  "date": "2026-10-19T09:44:49.603Z",
   "model": {
     "type": "SBb",
     "seed": 12345
   },
-  "totalChecks": 45,
-  "passed": 45,
+  "totalChecks": 47,
+  "passed": 47,
   "failed": 0,
   "checks": [
     {
@@ -193,6 +193,24 @@
       }
     },
     {
+      "name": "resolveDrawnVelocity is the drawn law differenced in model time, for masks 1/5",
+      "pass": true,
+      "detail": {
+        "velWorst": 0,
+        "velChecked": 64,
+        "velStateOk": true
+      }
+    },
+    {
+      "name": "resolveDrawnVelocity reports the gaps: a static simple record, a landmark, a stale key",
+      "pass": true,
+      "detail": {
+        "simpleState": 1,
+        "landState": 1,
+        "staleVel": true
+      }
+    },
+    {
       "name": "a picked star resolves to where it was clicked, not to its birth record",
       "pass": true,
       "detail": {
@@ -294,26 +312,26 @@
       "name": "a pick slice stays inside the loop's 8 ms budget (+clock overhead) for every mask",
       "pass": true,
       "detail": {
-        "worstSlice": 3.8345299999996314,
+        "worstSlice": 5.010081000000355,
         "worstMask": 5,
         "measured": {
           "1": {
-            "total": 56.67,
-            "slice": 0.92,
+            "total": 75.71,
+            "slice": 1.28,
             "slices": 10,
-            "perRecordNs": 189
+            "perRecordNs": 252
           },
           "2": {
-            "total": 12.15,
-            "slice": 0.2,
+            "total": 26.61,
+            "slice": 0.25,
             "slices": 10,
-            "perRecordNs": 40
+            "perRecordNs": 89
           },
           "5": {
-            "total": 240.07,
-            "slice": 3.83,
+            "total": 299.37,
+            "slice": 5.01,
             "slices": 10,
-            "perRecordNs": 800
+            "perRecordNs": 998
           }
         }
       }
@@ -333,25 +351,25 @@
       "name": "the cheap mask finishes a whole 300k pick in a handful of frames",
       "pass": true,
       "detail": {
-        "simpleTotal": 12.14702699999998,
+        "simpleTotal": 26.60988899999984,
         "measured": {
           "1": {
-            "total": 56.67,
-            "slice": 0.92,
+            "total": 75.71,
+            "slice": 1.28,
             "slices": 10,
-            "perRecordNs": 189
+            "perRecordNs": 252
           },
           "2": {
-            "total": 12.15,
-            "slice": 0.2,
+            "total": 26.61,
+            "slice": 0.25,
             "slices": 10,
-            "perRecordNs": 40
+            "perRecordNs": 89
           },
           "5": {
-            "total": 240.07,
-            "slice": 3.83,
+            "total": 299.37,
+            "slice": 5.01,
             "slices": 10,
-            "perRecordNs": 800
+            "perRecordNs": 998
           }
         }
       }
@@ -361,22 +379,22 @@
       "pass": true,
       "detail": {
         "1": {
-          "total": 56.67,
-          "slice": 0.92,
+          "total": 75.71,
+          "slice": 1.28,
           "slices": 10,
-          "perRecordNs": 189
+          "perRecordNs": 252
         },
         "2": {
-          "total": 12.15,
-          "slice": 0.2,
+          "total": 26.61,
+          "slice": 0.25,
           "slices": 10,
-          "perRecordNs": 40
+          "perRecordNs": 89
         },
         "5": {
-          "total": 240.07,
-          "slice": 3.83,
+          "total": 299.37,
+          "slice": 5.01,
           "slices": 10,
-          "perRecordNs": 800
+          "perRecordNs": 998
         }
       }
     },
@@ -384,16 +402,16 @@
       "name": "a radius-scan slice stays inside the loop's 8 ms budget for every mask",
       "pass": true,
       "detail": {
-        "worstAroundSlice": 4.176064999999653,
+        "worstAroundSlice": 5.340232000000469,
         "aroundMeasured": {
           "1": {
-            "slice": 1.3,
+            "slice": 1.55,
             "slices": 10,
             "kept": 256,
             "truncated": 75925
           },
           "5": {
-            "slice": 4.18,
+            "slice": 5.34,
             "slices": 10,
             "kept": 256,
             "truncated": 79656

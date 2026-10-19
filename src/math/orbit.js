@@ -902,6 +902,45 @@ function engineRecordPosition(out, x, y, z, packed, time, model) {
 	return (engine & ENGINE_SIMPLE) !== 0;
 }
 
+// --- Drawn velocity (ui.15) ------------------------------------------------
+// The velocity twin of engineRecordPosition: the same mask dispatch, sampled
+// `DRAWN_VELOCITY_BASELINE_MYR` either side of `time` and differenced, in kpc
+// per *second* (the ship's units, so §5's autopilot needs no unit bridge).
+//
+// It exists because a frame is not a usable baseline at the fine clock rungs.
+// The drawn position is a f64 near 8–20 kpc, so its own ULP is ~55 km on a
+// solar-circle coordinate; at the real-time rung a 42 km/s star moves 0.7 km
+// per frame, well inside one ULP. A consecutive-frame difference is therefore
+// 0 for dozens of frames, then one ULP — which reads as thousands of km/s in
+// a coordinate axis. That staircase is not the star's motion, and the
+// autopilot forms its nose from the desired velocity, so the spikes were the
+// reported "nose changes direction every frame at small star times".
+//
+// The baseline is model time, not frame time, so the estimate does not depend
+// on the ship clock at all. 10⁴ yr is far below the model's own timescales
+// (epicyclic and pattern periods are tens to hundreds of Myr) but 4·10⁻⁴ kpc
+// of solar-circle motion — 10¹¹ of the position's own ULP — so the difference
+// is the law's derivative, not its rounding: measured within 7·10⁻⁶ of a
+// 10 yr baseline at the solar circle and 4·10⁻⁵ across the disc, bar,
+// pressure and pattern families.
+const DRAWN_VELOCITY_BASELINE_MYR = 0.01;
+const SECONDS_PER_MYR = 3.15576e13;      // 365.25 d × 86400 s × 10⁶
+// Fill-then-read inside one call, like orbitScratch: no per-frame allocation.
+const velocityA = new Float64Array(3);
+const velocityB = new Float64Array(3);
+
+function engineRecordVelocity(out, x, y, z, packed, time, model) {
+	const approximatedA = engineRecordPosition(velocityA, x, y, z, packed,
+		time - DRAWN_VELOCITY_BASELINE_MYR, model);
+	const approximatedB = engineRecordPosition(velocityB, x, y, z, packed,
+		time + DRAWN_VELOCITY_BASELINE_MYR, model);
+	const inv = 1 / (2 * DRAWN_VELOCITY_BASELINE_MYR * SECONDS_PER_MYR);
+	out[0] = (velocityB[0] - velocityA[0]) * inv;
+	out[1] = (velocityB[1] - velocityA[1]) * inv;
+	out[2] = (velocityB[2] - velocityA[2]) * inv;
+	return approximatedA || approximatedB;
+}
+
 // The four vec4s the star shader reads as camera.dynA / dynB / waveA / waveB.
 // Nebulae share the buffer and ignore the wave pair (gas stays on the pattern).
 // Layout contract shared with SHADER_PARTS['orbit'] and CameraUniform:
@@ -1354,6 +1393,7 @@ const OrbitAPI = {
 	setEngine, getEngine, engineName,
 	setApocenterShare, setApocenterForce, getApocenterShare, getApocenterForce,
 	apocenterSelector, apocenterSelected, engineLandmarkPosition, engineRecordPosition,
+	DRAWN_VELOCITY_BASELINE_MYR, engineRecordVelocity,
 	simpleArmed, simpleSigma, simpleEccMax, simpleOmega, simpleEccOf, simplePeriOf,
 	simpleDerived, simpleOmegaMax, simpleSubsteps, wrapAngle, simplePatternPhase,
 	simpleStepTheta, simplePositionFromTheta,

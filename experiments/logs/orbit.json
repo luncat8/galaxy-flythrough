@@ -1,7 +1,7 @@
 {
-  "date": "2026-10-19T05:34:30.965Z",
-  "totalChecks": 123,
-  "passed": 123,
+  "date": "2026-10-19T09:35:37.917Z",
+  "totalChecks": 126,
+  "passed": 126,
   "failed": 0,
   "checks": [
     {
@@ -955,6 +955,35 @@
       "pass": true,
       "detail": {
         "composed": true
+      }
+    },
+    {
+      "name": "record velocity: the twin is the drawn law's derivative in kpc per ship-second",
+      "pass": true,
+      "detail": {
+        "speedKms": 42.393377595416794,
+        "relErr": 0.000007002849632534784
+      }
+    },
+    {
+      "name": "record velocity: at the real-time rung the twin is stable where the frame difference spikes",
+      "pass": true,
+      "detail": {
+        "frameSpikes": 5,
+        "maxFrameKms": 3289.6618461776407,
+        "maxStepDeg": 0.0000014787793334710982
+      }
+    },
+    {
+      "name": "record velocity: the simple mask reports the gap and does not invent motion",
+      "pass": true,
+      "detail": {
+        "approx": true,
+        "v": [
+          0,
+          0,
+          0
+        ]
       }
     }
   ]

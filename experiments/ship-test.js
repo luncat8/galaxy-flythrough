@@ -730,6 +730,119 @@ for (const dtShipS of [3e4, 3e5, 1e6]) {
 		{ keys: Object.keys(stable).length });
 }
 
+// --- 8b. ui.15: the nose at the fine clock rungs ---------------------------
+// The reported bug: at small ship-time rates the autopilot's nose did not hold
+// the target but flicked direction every frame. The cause was upstream of the
+// aim law: the game fed the target's velocity as a one-frame difference of two
+// drawn positions, and at the fine rungs a frame is below the drawn position's
+// own f64 ULP (55 km on a solar-circle coordinate, versus 0.7 km of motion at
+// the real-time rung). The desired velocity therefore carried a 0 / one-ULP
+// staircase, and the aim — the normalized command — followed it: 111° in one
+// frame in this fixture. The fix is the drawn-velocity twin
+// (orbit.engineRecordVelocity through selection.resolveDrawnVelocity): the
+// same dispatch, sampled a fixed *model-time* baseline apart, so the estimate
+// does not depend on the ship clock at all.
+//
+// This block flies the real apStep on the same fixture for every fine rung
+// with both feeds. The drawn-velocity feed must hold the nose on the line of
+// sight everywhere; the frame difference is the negative control, so the
+// passing half cannot pass vacuously.
+{
+	const orbitModule = require('../src/math/orbit.js');
+	const galaxyModule = require('../src/math/galaxy.js');
+	const recordModule = require('../src/math/star-record.js');
+	const MW = galaxyModule.MILKY_WAY;
+	const SEC_MYR = 3.15576e13;
+	const AU = 1.495978707e11;
+	const T0 = 5;                                   // Myr: the orbit law is under way
+	const STAND_KPC = 0.0006;                       // 0.6 pc shell
+	const REM_AU = 1.2;                             // just outside the 1 AU arrival
+	const bx = 8, by = 0, bz = 0.1;
+	const packed = ((orbitModule.flagsWithFamily(recordModule.FLAG_VISIBLE, orbitModule.FAMILY_DISC) << 16)
+		| (orbitModule.encodeJitter(3, 7) << 24)) >>> 0;
+	const savedEngine = orbitModule.getEngine();
+	orbitModule.setEngine(orbitModule.ENGINE_CLASSIC);
+	const tvModel = new Float64Array(3);
+	orbitModule.engineRecordVelocity(tvModel, bx, by, bz, packed, T0, MW);
+	const drift = Math.hypot(tvModel[0], tvModel[1]);
+	// Approach perpendicular to the star's own drift: the generic geometry, and
+	// the one where a sideways velocity error tilts the nose most.
+	const losX = -tvModel[1] / drift, losY = tvModel[0] / drift;
+	const distKpc = STAND_KPC + REM_AU * AU / shipModule.KPC_M;
+	const RATES = [1 / shipModule.SECONDS_PER_YEAR, 1e-6, 1e-5, 1e-4, 1e-3];
+
+	function fly(rate, frameDiff) {
+		const ship = shipModule.createShip('stardrive');
+		const start = new Float64Array(3);
+		orbitModule.engineRecordPosition(start, bx, by, bz, packed, T0, MW);
+		ship.pos[0] = start[0] - losX * distKpc;
+		ship.pos[1] = start[1] - losY * distKpc;
+		ship.pos[2] = start[2];
+		ship.vel[0] = tvModel[0]; ship.vel[1] = tvModel[1]; ship.vel[2] = tvModel[2];
+		const reason = shipModule.apCommitApproach(ship,
+			start[0] - ship.pos[0], start[1] - ship.pos[1], start[2] - ship.pos[2],
+			tvModel[0], tvModel[1], tvModel[2], STAND_KPC * shipModule.KPC_M);
+		const dtShip = rate * shipModule.SECONDS_PER_YEAR / 60;   // 60 fps
+		const dtMyr = dtShip / SEC_MYR;
+		const prevPos = new Float64Array(3), pos = new Float64Array(3), tv = new Float64Array(3);
+		prevPos.set(start);
+		let t = T0, prevAx = 0, prevAy = 0, prevAz = 0, havePrev = false;
+		let maxStep = 0, maxLos = 0, bigSteps = 0;
+		for (let f = 0; f < 1200 && ship.ap.mode !== shipModule.AP_OFF; f++) {
+			t += dtMyr;
+			orbitModule.engineRecordPosition(pos, bx, by, bz, packed, t, MW);
+			if (frameDiff) {
+				// The shipped ui.14 feed, exactly: one frame of drawn position.
+				tv[0] = (pos[0] - prevPos[0]) / dtShip;
+				tv[1] = (pos[1] - prevPos[1]) / dtShip;
+				tv[2] = (pos[2] - prevPos[2]) / dtShip;
+			} else {
+				orbitModule.engineRecordVelocity(tv, bx, by, bz, packed, t, MW);
+			}
+			prevPos.set(pos);
+			shipModule.apStep(ship, dtShip, AP_DT_WALL, pos[0], pos[1], pos[2], tv[0], tv[1], tv[2]);
+			const ax = ship.ap.aim[0], ay = ship.ap.aim[1], az = ship.ap.aim[2];
+			const rx = pos[0] - ship.pos[0], ry = pos[1] - ship.pos[1], rz = pos[2] - ship.pos[2];
+			const rl = Math.hypot(rx, ry, rz);
+			const los = Math.acos(Math.max(-1, Math.min(1,
+				(ax * rx + ay * ry + az * rz) / rl))) * 180 / Math.PI;
+			if (los > maxLos) maxLos = los;
+			if (havePrev) {
+				const step = Math.acos(Math.max(-1, Math.min(1, ax * prevAx + ay * prevAy + az * prevAz))) * 180 / Math.PI;
+				if (step > maxStep) maxStep = step;
+				if (step > 30) bigSteps++;
+			}
+			prevAx = ax; prevAy = ay; prevAz = az; havePrev = true;
+		}
+		return { reason, maxStep, maxLos, bigSteps };
+	}
+
+	const rows = [];
+	let fixedOk = true;
+	for (const rate of RATES) {
+		const fixed = fly(rate, false);
+		const shipped = fly(rate, true);
+		rows.push({ rate, fixed, shipped });
+		if (!(fixed.reason === shipModule.AP_REASON_NONE && fixed.maxStep < 0.01
+			&& fixed.maxLos < 0.1 && fixed.bigSteps === 0)) fixedOk = false;
+	}
+	// The player-visible shape of the report: the shipped feed is worst at the
+	// finest rung and improves monotonically as a frame grows past the drawn
+	// position's ULP. (At the real-time rung the star's 8 kpc x-coordinate
+	// advances one 55 km ULP every ~76 frames; divided by 1/60 s that reads as
+	// a 3289 km/s spike — 109° of aim against a 1900 km/s closing speed.)
+	const steps = rows.map((r) => r.shipped.maxStep);
+	const monotone = steps[0] > 30 && steps[0] > steps[1] && steps[1] > steps[2]
+		&& steps[2] > steps[3] && steps[3] > steps[4];
+	check('at every fine rung the drawn-velocity feed holds the nose on the target',
+		fixedOk, { rows });
+	check('the frame-difference feed is worse the finer the rung (negative control)',
+		monotone && rows[0].shipped.bigSteps > 10 && rows[0].shipped.maxLos > 30,
+		{ steps, real: rows[0].shipped });
+
+	orbitModule.setEngine(savedEngine);
+}
+
 // --- 9. G5: the SIM/ARCADE clock presets and the coast warp ----------------
 // SIM is the ladder's real stop; ARCADE is the class's default rung plus warp
 // while a destination autopilot coasts. The warp is the same four-wall-second

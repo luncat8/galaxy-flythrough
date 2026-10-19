@@ -1,6 +1,6 @@
 {
-  "total": 121,
-  "passed": 121,
+  "total": 123,
+  "passed": 123,
   "failed": 0,
   "checks": [
     {
@@ -621,6 +621,108 @@
       "pass": true,
       "detail": {
         "keys": 23
+      }
+    },
+    {
+      "name": "at every fine rung the drawn-velocity feed holds the nose on the target",
+      "pass": true,
+      "detail": {
+        "rows": [
+          {
+            "rate": 3.168808781402895e-8,
+            "fixed": {
+              "reason": 0,
+              "maxStep": 0.0000012074182697257333,
+              "maxLos": 0.0000014787793334710982,
+              "bigSteps": 0
+            },
+            "shipped": {
+              "reason": 0,
+              "maxStep": 109.41729007973103,
+              "maxLos": 109.302447091433,
+              "bigSteps": 30
+            }
+          },
+          {
+            "rate": 0.000001,
+            "fixed": {
+              "reason": 0,
+              "maxStep": 0.0000012074182697257333,
+              "maxLos": 0.0000014787793334710982,
+              "bigSteps": 0
+            },
+            "shipped": {
+              "reason": 0,
+              "maxStep": 2.049266696733256,
+              "maxLos": 1.5623553675053152,
+              "bigSteps": 0
+            }
+          },
+          {
+            "rate": 0.00001,
+            "fixed": {
+              "reason": 0,
+              "maxStep": 0.0000012074182697257333,
+              "maxLos": 0.0000014787793334710982,
+              "bigSteps": 0
+            },
+            "shipped": {
+              "reason": 0,
+              "maxStep": 0.2106315020730034,
+              "maxLos": 0.11646051041416303,
+              "bigSteps": 0
+            }
+          },
+          {
+            "rate": 0.0001,
+            "fixed": {
+              "reason": 0,
+              "maxStep": 0.0000012074182697257333,
+              "maxLos": 0.0000014787793334710982,
+              "bigSteps": 0
+            },
+            "shipped": {
+              "reason": 0,
+              "maxStep": 0.03305322362453536,
+              "maxLos": 0.020479459200646276,
+              "bigSteps": 0
+            }
+          },
+          {
+            "rate": 0.001,
+            "fixed": {
+              "reason": 0,
+              "maxStep": 0.0000012074182697257333,
+              "maxLos": 0.0000012074182697257333,
+              "bigSteps": 0
+            },
+            "shipped": {
+              "reason": 0,
+              "maxStep": 0.0038435257647151055,
+              "maxLos": 0.00290787909158005,
+              "bigSteps": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "the frame-difference feed is worse the finer the rung (negative control)",
+      "pass": true,
+      "detail": {
+        "steps": [
+          109.41729007973103,
+          2.049266696733256,
+          0.2106315020730034,
+          0.03305322362453536,
+          0.0038435257647151055
+        ],
+        "real": {
+          "reason": 0,
+          "maxStep": 109.41729007973103,
+          "maxLos": 109.302447091433,
+          "bigSteps": 30
+        }
       }
     },
     {

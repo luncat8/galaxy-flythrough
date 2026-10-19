@@ -100,10 +100,10 @@ camera to the selected row. The live-follow velocity handover applies only to a
 fresh, unentered hull:
 
 - **First entry with a live follow** seeds `ship.velocity` with the followed
-  object's **physical** velocity: the feed measures drawn kpc per *wall*
-  second at the current star rate — time-lapse motion — so the seed is
-  `Δdrawn / (physical seconds that frame)` (§4's clock conversion), never the
-  raw wall delta. Under the shared clock the star keeps drifting at that same
+  object's **physical** velocity: the drawn law's derivative in kpc per
+  ship-second (§5.1) — the same model-time central difference the autopilot's
+  target feed uses, so the seed is clock-independent and is exactly the motion
+  the sky draws. Under the shared clock the star keeps drifting at that same
   physical rate and the ship rides with it — continuous in the motion the user
   sees, not only in pose.
 - **First entry with no follow** adopts the camera position and starts at rest.
@@ -336,11 +336,10 @@ speed. The HUD's ETAs are marked **ship** (the pilot's clock) and **wall**
   (the same order rule as the camera: target, then step, then render).
 - The launch target rides the ui.2 contract: the drawn position, resolved by
   key each frame, so a star moving under the shared clock is met where it
-  arrives — the same feed `camera.updateTarget` already gets, and the same
-  consecutive drawn positions the chase follow (ui.6) reads as the movement
-  vector (and G1's handover reads as physical velocity). The target's
-  *physical* velocity is that feed divided by the frame's ship-seconds, so the
-  whole autopilot is in the same units as the ship's own.
+  arrives — the same feed `camera.updateTarget` already gets. The target's
+  *physical* velocity is the derivative of that same drawn law, in kpc per
+  ship-second (§5.1), so the whole autopilot is in the same units as the
+  ship's own and the estimate never depends on the clock rung.
 - Abort: any thrust key, `Space`, `f`, the class swap or the `g` toggle
   (returns to manual at the current velocity); the HUD shows phase and the
   ship-time ETA, and the ETA counts down as the flight closes. A target that
@@ -359,6 +358,37 @@ speed. The HUD's ETAs are marked **ship** (the pilot's clock) and **wall**
   The stand-off is held to within one frame of the target's own motion: the
   clock cannot resolve less (at the top rung a frame is 2·10¹¹ m of drift
   against a 10¹³ m stand-off), and a deadbeat frame lands the ship there.
+
+### 5.1 The target's velocity is a model-time derivative (ui.15)
+
+The velocity the autopilot builds its desired velocity from is the drawn
+position's **central difference over ±10⁴ yr of model time**, in kpc per
+ship-second — never a consecutive-frame difference. It is the same engine
+dispatch as the drawn position (mask ladder, cluster offsets, epoch map), so
+it differentiates exactly the position the sky draws, and it is sampled a
+fixed model-time baseline either side of the clock, so it cannot depend on
+the ship clock at all.
+
+A frame is not a usable baseline at the fine rungs: the drawn position is a
+f64 near 8–20 kpc, so its own ULP is ~55 km on a solar-circle coordinate,
+while one frame of a 42 km/s star at the real-time stop is 0.7 km. The frame
+difference is then 0 for dozens of frames and one ULP on the next, and that
+step divided by 1/60 s reads as thousands of km/s in a coordinate axis. The
+desired velocity carries it, the aim is the normalized command, and the nose
+follows — measured at 109° in a single frame at the real-time stop, worse the
+finer the rung, which is the reported "nose does not head the target, it
+glitches every frame". 10⁴ yr is far below every model timescale but 10¹¹ of
+the position's ULP, so the difference *is* the law's derivative: within
+7·10⁻⁶ of a 10 yr baseline at the solar circle and 4·10⁻⁵ across the disc,
+bar, pressure and pattern families.
+
+The same estimate feeds the first-entry handover (§2), the docked ride
+(§10.2) and the target-relative readouts, so all of them are the drawn
+motion the pilot sees. Where the CPU's drawn position is an approximation
+(the simple engine's static record) its derivative is zero and the gap is
+reported; a landmark mirror has no closed form in time and answers zero
+rather than inventing motion. Two module scratches hold the samples — no
+per-frame allocation.
 
 Implementation reuses `route.js`'s leg math (0.5.5 cruise legs) rather than
 re-deriving it; `deltav.js` stays the single source of class numbers. The
@@ -674,6 +704,20 @@ existing Shift+F stand-off flight and configured Engage workflow are unchanged.
   `coast warp` note. No renderer, WGSL or catalog change. The browser
   visual pass on real hardware remains deferred
   (deferred-browser-visual-plan.md's lane).
+- **ui.15 — the target velocity is a model-time derivative (shipped
+  2026-10-19)**: the autopilot's target velocity — and with it the follow
+  handover, the docked ride and the target-relative readouts — comes from the
+  drawn law's own central difference over ±10⁴ yr (§5.1), not from a
+  consecutive-frame difference. At the fine clock rungs a frame is below the
+  drawn position's ULP, so the frame difference was a 0/one-ULP staircase
+  reading as thousands of km/s in a coordinate axis, and the nose (the
+  normalized velocity command) followed it: 109° in one frame at the
+  real-time stop, worsening the finer the rung. The baseline is model time —
+  exact at every rung. Tests: the twin against a finer baseline plus the
+  frame difference's measured staircase (`orbit-test`), the slot/key
+  validation and the simple/landmark gaps (`star-select-test`), and the flown
+  nose over the whole fine-rung ladder (`ship-test`, with the frame
+  difference as the negative control).
 
 Ship display itself: G1 is honest text; G2 is the chrome above. ui.10 gives
 fleet hulls session-local ids and names; a later G4 can connect them to ui.1's
@@ -690,6 +734,11 @@ typed asset history when docking and transport need persistent asset identity.
   (`SHIP_TIME_REAL`, the `setClockPreset` SIM/ARCADE pair, the
   `arcadeWarpYPerS` coast law), display
   formatters). One API object for page and Node.
+- `src/core/selection.js` + `src/math/orbit.js` — the drawn-velocity twin
+  (§5.1): `resolveDrawnVelocity` validates the slot/key exactly as
+  `resolveDrawn` does and returns the same `DRAWN_*` answers, and
+  `engineRecordVelocity` differences the engine dispatch over a fixed
+  model-time baseline. One API object per file, no per-frame allocation.
 - `src/main.js` — the g toggle (handover, clock takeover/restore), per-hull
   fleet switching and spawn, the game frame step and `getState`/`setState`
   write-through, the key-resolved destination feed (drawn position *and*
@@ -760,6 +809,19 @@ frozen), plus the flown composition at 60 fps (1 ly arrives in 10.6 wall-s,
 commit-time rate overshoots a 40 ly target and never recovers. `m1-smoke-test.js` pins the Controls-panel buttons and their
 `data-game` gate, the press-before-the-clock ordering, the live `is-active`
 lights, the HUD's `coast warp` note and the follow-fallback index.
+
+Tests (`experiments/ship-test.js`, G5/ui.15): the drawn-velocity twin against
+a much finer central difference (7·10⁻⁶ at the solar circle, the value and the
+kpc-per-ship-second unit), its stability at the real-time rung where the
+frame difference spikes (5 spikes over 400 frames, 3289 km/s maximum, against
+1.5·10⁻⁶ ° of direction step), the simple mask's reported zero and the
+landmark/stale gaps (`orbit-test` 14b), the slot/key validation and the
+`DRAWN_*` answers (`star-select-test`), and the flown nose at 60 fps on every
+fine rung — the drawn-velocity feed under 0.01° of one-frame aim change and
+0.1° of line-of-sight error everywhere, while the frame difference measures
+109° / 2° / 0.2° / 0.03° / 0.004° at real time, 10⁻⁶, 10⁻⁵, 10⁻⁴ and 10⁻³ y/s
+(the negative control pins both the magnitude and that monotone rung
+dependence).
 
 Tests (`experiments/ship-test.js`, G3): planner profiles for all four modes
 (fastest, thrust cap, speed cap and a feasible/impossible deadline), copied

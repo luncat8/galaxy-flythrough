@@ -804,3 +804,73 @@ which is the terminal rule's own shape.
 lights, the HUD note and the fallback index.
 `python3 scripts/run.py changed` passes 9/9. The browser/WebGPU visual
 pass remains unverified in this sandbox.
+
+## ui.15 — the target velocity is a model-time derivative (the nose-glitch fix)
+
+**Decision.** The autopilot's target velocity — and the same number the follow
+handover, the docked ride and the target-relative readouts use — is the drawn
+law's own central difference over ±10⁴ yr of **model** time
+(`orbit.engineRecordVelocity` behind `selection.resolveDrawnVelocity`), never a
+consecutive-frame difference. No renderer, WGSL, catalog or preset change; two
+new names per file, one new `DRAWN_*`-returning method on the selection API.
+
+**The bug.** At the fine clock rungs one frame is below the drawn position's
+own f64 ULP. The position is a f64 near 8–20 kpc, so its ULP is ~55 km on a
+solar-circle coordinate, while a 42 km/s star moves 0.7 km in one real-time
+frame. The ui.14 feed differenced consecutive drawn positions, so the measured
+velocity was 0 for dozens of frames and then one ULP: a spike of 55 km /
+(1/60 s) = **3300 km/s** in that coordinate axis. §5's desired velocity carries
+the target's velocity, the aim is the normalized command, and `gameAimEase`
+eases onto the aim, so the nose followed the staircase: measured at 109° of
+one-frame aim change at the real-time stop (30 frames over 30° in 20 s), 2° at
+1e-6 y/s, 0.2° at 1e-5, 0.03° at 1e-4 and 0.004° at 1e-3 — worse the finer the
+rung, which is the reported "small star time: the nose does not head the
+target, it changes direction every frame". The same noise seeded the follow
+handover's `ship.vel` and the docked ride, so both could jolt by km/s.
+
+**The fix.** `engineRecordVelocity(out, x, y, z, packed, time, model)` runs the
+*existing* record dispatch (mask ladder, cluster offsets, epoch map) at
+`time ± 0.01` Myr and divides by `2h·SECONDS_PER_MYR`, giving kpc per
+ship-second — the ship's own units. The baseline is far below every model
+timescale (epicyclic and pattern periods are tens to hundreds of Myr) and
+10¹¹ of the position's ULP, so the difference is the law's derivative: measured
+within 7·10⁻⁶ of a 10 yr baseline at the solar circle and 4·10⁻⁵ across the
+disc, bar, pressure and pattern families, with a direction error of 2·10⁻³ °
+worst case. It returns the dispatch's `approximated` flag (OR of both samples);
+`resolveDrawnVelocity` maps that to `DRAWN_APPROX`, no model to `DRAWN_EXACT`
+with zero velocity (a frame-fixed record is still), a resident-record miss to
+`DRAWN_STALE`, and a landmark to `DRAWN_APPROX` with zero — the simple
+landmark mirror is stepped by the frame loop and has no closed form in time, so
+the CPU says so rather than inventing motion. One `drawnIn` scratch now serves
+both twins' slot/key validation; the samples live in two module scratches, so
+the per-frame allocation pin still holds.
+
+**Wiring.** `main.js`'s target feed resolves the velocity every feed (including
+the 4 Hz probe, because the dispatch is a function of the model clock, not
+`dtShipS`), keyed off the same ref the position resolved: station, primary,
+locked destination or the frame-fixed centre/home (zero). `gameTargetPrev` is
+gone; only the distance baseline `gameTargetPrevDistKpc` remains, for the
+closing rate. `followTarget` now calls `memberDrawnVelocity`, so the handover
+seed is the drawn law's derivative; the `followPrev`/`followHasPrev`/
+`followMeasureKey` rebase machinery is deleted with the frame difference it
+protected.
+
+**Validation.** `orbit-test` 126/126 with §14b: the twin's value/unit against a
+10 yr central difference (`speedKms 42.393`, `relErr 7.0e-6`), 400 frames at
+the real-time rung where the shipped frame difference spikes 5 times to
+3289 km/s while the twin's own direction steps 1.5·10⁻⁶ °, and the simple mask
+answering `true` with an exact zero. `star-select-test` 47/47 with the
+`resolveDrawnVelocity` wiring (masks 1/5, worst relative error 0 against
+`drawRecord` sampled at ±h) and the three gap states. `ship-test` 123/123 with
+§8b: the real `apStep` flown at 60 fps on the fine-rung ladder
+(real/1e-6/1e-5/1e-4/1e-3 y/s) for both feeds — the drawn-velocity feed holds
+0.01° of one-frame aim change and 0.1° of LOS error everywhere, the frame
+difference is 109°/2°/0.2°/0.03°/0.004° (and pins that monotone shape).
+`m1-smoke` 109/109 with the handover pin rewritten to the dispatch. `quick`
+26/26 and `changed` 23/23. The browser/WebGPU visual pass remains unverified in
+this sandbox.
+
+**Next.** A browser pass at the real-time stop flying at a star from 1 AU out:
+the nose should sit on the target and the burn marker should not flicker. The
+simple engine still has no CPU record velocity (it is the documented gap); if
+the game ever needs it, the GPU-side θ readback is the only honest source.

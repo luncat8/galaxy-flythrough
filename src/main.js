@@ -253,6 +253,12 @@ async function boot() {
         function memberDrawnPosition(i, out) {
                 return selection.resolveDrawn(memberRefFor(i), out);
         }
+        // The member's drawn *motion*, kpc per ship-second (ui.15) — the same
+        // dispatch sampled a fixed model-time baseline, so it stays exact at the
+        // fine clock rungs where a frame is below the drawn position's own ULP.
+        function memberDrawnVelocity(i, out) {
+                return selection.resolveDrawnVelocity(memberRefFor(i), out);
+        }
         // Both buffer sweeps — the click pick (plan §3.1) and the radius scan
         // (§3.3) — are spread over frames. A slice is bounded by time as well as
         // by records, because the per-record dispatch cost depends on the engine
@@ -2891,25 +2897,16 @@ async function boot() {
         const followPos = new Float64Array(3);
         function followTarget() {
                 const m = starSet.indexOfKey(followKey);
-                if (m < 0) { followKey = -1; followVelFresh = false; followHasPrev = false; return; }
+                if (m < 0) { followKey = -1; followVelFresh = false; return; }
                 if (memberDrawnPosition(m, followPos) === window.Selection.DRAWN_STALE) return;
-                // The velocity handover's feed (game-mode-plan §2): measure the
-                // target's drawn motion while it is being ridden, keyed so a
-                // swap of the followed star rebases the baseline instead of
-                // measuring one frame of teleport as motion.
-                if (followMeasureKey !== (followKey >>> 0)) {
-                        followMeasureKey = followKey >>> 0;
-                        followHasPrev = false;
-                        followVelFresh = false;
-                }
-                if (followHasPrev && framePhysSeconds > 0) {
-                        followVelPhys[0] = (followPos[0] - followPrev[0]) / framePhysSeconds;
-                        followVelPhys[1] = (followPos[1] - followPrev[1]) / framePhysSeconds;
-                        followVelPhys[2] = (followPos[2] - followPrev[2]) / framePhysSeconds;
-                        followVelFresh = true;
-                }
-                followPrev[0] = followPos[0]; followPrev[1] = followPos[1]; followPrev[2] = followPos[2];
-                followHasPrev = true;
+                // The velocity handover's feed (game-mode-plan §2): the ridden
+                // object's drawn motion, kpc per ship-second, from the same
+                // dispatch every other drawn feed uses — a fixed model-time
+                // baseline, not a frame difference (ui.15: at the fine clock
+                // rungs one frame is below the drawn position's own ULP, so a
+                // frame difference seeds the handover with a 0/spike velocity).
+                followVelFresh = memberDrawnVelocity(m, followVelPhys)
+                        !== window.Selection.DRAWN_STALE;
                 camera.updateTarget(followPos[0], followPos[1], followPos[2]);
         }
         function flyToPrimary() {
@@ -2977,7 +2974,9 @@ async function boot() {
         let gameTargetLum = 1;
         let gameTargetValid = false;
         const gameTargetVel = new Float64Array(3);   // drawn motion, kpc per ship-second
-        const gameTargetPrev = new Float64Array(3);
+        // The ref the feed resolved this frame, so the velocity twin reads the
+        // same record (null for a frame-fixed reference, which does not move).
+        let gameTargetDrawnRef = null;
         const gameRel = new Float64Array(3);
         let gameTargetStale = false;                 // primary not resident: no drawn position
         // G4: the docked station and the home port. The station is the
@@ -3031,15 +3030,10 @@ async function boot() {
         }
 
         // The velocity handover's feed (§2): the followed object's drawn motion
-        // measured between consecutive followTarget refreshes — time-lapse kpc
-        // per wall-second — divided by the frame's physical seconds (the shared
-        // clock's dt), so the seed is the target's *physical* velocity in kpc
-        // per ship-second and the handover is continuous in the motion the user
-        // sees. The measurement is keyed: swapping the followed star rebases it.
-        const followPrev = new Float64Array(3);
+        // as `memberDrawnVelocity` resolves it — kpc per ship-second, the same
+        // units as the ship's own and independent of the clock rung, so the
+        // handover is continuous in the motion the user sees.
         const followVelPhys = new Float64Array(3);
-        let followMeasureKey = -1;
-        let followHasPrev = false;
         let followVelFresh = false;
         let framePhysSeconds = 0;
 
@@ -3333,12 +3327,20 @@ async function boot() {
         // every frame so the closing rate is frame-rate honest; the
         // overlay only reads the numbers at its own 4 Hz.
         // dtShipS == 0 is the UI probe: it resolves the position but must NOT
-        // clobber the velocity baseline (gameTargetPrev) that the ship loop
-        // maintains for its physical-velocity estimate. Without this guard a
-        // 4 Hz UI tick overwrites the prev that the game loop just set, making
-        // the target appear stationary and causing aim flicker / camera glitch.
+        // clobber the distance baseline (gameTargetPrevDistKpc) that the ship
+        // loop maintains for its closing rate. Without this guard a 4 Hz UI
+        // tick overwrites the prev that the game loop just set, making the
+        // target appear stationary.
+        //
+        // The target's *velocity* is not a frame difference (ui.15): it comes
+        // from the drawn-velocity dispatch in selection.js, which samples the
+        // model a fixed model-time baseline apart. A one-frame difference of the
+        // drawn position is below its own f64 ULP at the fine clock rungs, so it
+        // reads 0 or a coordinate-axis spike — and the autopilot's nose is built
+        // from it, which was the reported per-frame direction glitch.
         function gameTargetFeed(dtShipS) {
                 const isProbe = !(dtShipS > 0);
+                gameTargetDrawnRef = null;
                 if (ship.docked) {
                         // G4: the docked ride feeds the station itself,
                         // whatever the speed reference says — the ship
@@ -3350,6 +3352,7 @@ async function boot() {
                                 gameTargetLum = stationDest.lum;
                                 gameTargetStale = selection.resolveDrawn(stationDest, gameTarget)
                                         === window.Selection.DRAWN_STALE;
+                                gameTargetDrawnRef = stationDest;
                         } else {
                                 const m = starSet.indexOfKey(stationKey);
                                 if (m < 0) gameTargetStale = true;
@@ -3357,6 +3360,7 @@ async function boot() {
                                         gameTargetStale = memberDrawnPosition(m, gameTarget)
                                                 === window.Selection.DRAWN_STALE;
                                         if (!gameTargetStale) gameTargetLum = starSet.lum[m];
+                                        gameTargetDrawnRef = memberRefFor(m);
                                 }
                         }
                 } else if (speedRef !== 'target') {
@@ -3371,7 +3375,6 @@ async function boot() {
                         gameTarget[2] = p.z !== undefined ? p.z : p[2];
                         gameTargetLum = 0;
                         gameTargetStale = false;
-                        if (!isProbe) gameTargetVel.fill(0);
                 } else {
                         gameTargetKind = 'target';
                         const locked = flightDestination.active;
@@ -3391,23 +3394,29 @@ async function boot() {
                         gameTargetStale = locked
                                 ? selection.resolveDrawn(flightDestination, gameTarget) === window.Selection.DRAWN_STALE
                                 : memberDrawnPosition(i, gameTarget) === window.Selection.DRAWN_STALE;
+                        gameTargetDrawnRef = locked ? flightDestination : memberRefFor(i);
                 }
                 const dx = gameTarget[0] - ship.pos[0];
                 const dy = gameTarget[1] - ship.pos[1];
                 const dz = gameTarget[2] - ship.pos[2];
                 const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                if (gameTargetValid && dtShipS > 0) {
-                        gameTargetClosingKpcS = (gameTargetPrevDistKpc - dist) / dtShipS;
-                        for (let k = 0; k < 3; k++) gameTargetVel[k] = (gameTarget[k] - gameTargetPrev[k]) / dtShipS;
-                } else if (!gameTargetValid) {
-                        gameTargetClosingKpcS = 0;
+                // The target's own drawn motion, every feed: the dispatch is a
+                // function of the model clock, so a probe can refresh it too and
+                // a frame-fixed reference is exactly still.
+                if (gameTargetDrawnRef && !gameTargetStale) {
+                        selection.resolveDrawnVelocity(gameTargetDrawnRef, gameTargetVel);
+                } else {
                         gameTargetVel.fill(0);
                 }
-                // Only advance the baseline on real steps; a 0-dt probe must
-                // leave it alone so the next real step measures one frame of
-                // physical motion, not the UI tick.
+                if (gameTargetValid && dtShipS > 0) {
+                        gameTargetClosingKpcS = (gameTargetPrevDistKpc - dist) / dtShipS;
+                } else if (!gameTargetValid) {
+                        gameTargetClosingKpcS = 0;
+                }
+                // Only advance the distance baseline on real steps; a 0-dt probe
+                // must leave it alone so the next real step measures one frame of
+                // closing, not the UI tick.
                 if (!isProbe || !gameTargetValid) {
-                        gameTargetPrev.set(gameTarget);
                         gameTargetPrevDistKpc = dist;
                 }
                 gameTargetDistKpc = dist;

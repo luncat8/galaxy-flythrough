@@ -1486,6 +1486,96 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 	orbit.setApocenterForce(savedForce);
 }
 
+// --- 14b. The drawn-velocity twin (engineRecordVelocity, ui.15) ------------
+// §5's autopilot builds the nose from the target's velocity, and the game used
+// to read that velocity as a one-frame difference of two drawn positions. At
+// the fine clock rungs a frame is not a usable baseline: the drawn position is
+// a f64 near 8 kpc, so its own ULP is ~55 km on that coordinate, while one
+// real-time frame of a 42 km/s star is 0.7 km. The frame difference is then a
+// 0 / one-ULP staircase whose steps read as thousands of km/s in a coordinate
+// axis — the reported "nose changes direction every frame at small star times".
+// The twin samples the same engine dispatch a fixed model-time baseline apart,
+// so it is the drawn law's own derivative and independent of the ship clock.
+// This block pins (a) the value against an independent fine-baseline central
+// difference, (b) frame-to-frame stability at the real-time rung, and (c) the
+// shipped frame difference's staircase as a negative control — without (c) the
+// stability check would pass vacuously on a star that happened to sit still.
+{
+	const model = galaxy.MILKY_WAY;
+	const savedEngine = orbit.getEngine();
+	const savedShare = orbit.getApocenterShare();
+	const savedForce = orbit.getApocenterForce();
+	const SEC_MYR = 3.15576e13;
+	const KPC_M = 3.085677581491367e19;
+	const T = 5;                                   // Myr: the orbit law is under way
+	const bx = 8, by = 0, bz = 0.1;                // solar circle: the coarse-ULP coordinate
+	const packed = ((orbit.flagsWithFamily(records.FLAG_VISIBLE, orbit.FAMILY_DISC) << 16)
+		| (orbit.encodeJitter(3, 7) << 24)) >>> 0;
+	const v = new Float64Array(3), fineA = new Float64Array(3), fineB = new Float64Array(3);
+	const pos = new Float64Array(3), next = new Float64Array(3), prevV = new Float64Array(3);
+
+	orbit.setEngine(orbit.ENGINE_CLASSIC);
+	orbit.setApocenterShare(savedShare);
+	orbit.engineRecordVelocity(v, bx, by, bz, packed, T, model);
+	const speedKms = Math.hypot(v[0], v[1], v[2]) * KPC_M / 1000;
+	// An independent, much finer central difference (h = 10⁴ yr): the two differ
+	// only by the 0.01 Myr baseline's own curvature, measured at 7·10⁻⁶ relative.
+	const h = 1e-5;
+	orbit.engineRecordPosition(fineA, bx, by, bz, packed, T - h, model);
+	orbit.engineRecordPosition(fineB, bx, by, bz, packed, T + h, model);
+	const invFine = 1 / (2 * h * SEC_MYR);
+	const reference = [
+		(fineB[0] - fineA[0]) * invFine,
+		(fineB[1] - fineA[1]) * invFine,
+		(fineB[2] - fineA[2]) * invFine,
+	];
+	const relErr = Math.hypot(v[0] - reference[0], v[1] - reference[1], v[2] - reference[2])
+		/ Math.hypot(reference[0], reference[1], reference[2]);
+	check('record velocity: the twin is the drawn law\'s derivative in kpc per ship-second',
+		Math.abs(speedKms - 42.4) < 1 && relErr < 1e-4,
+		{ speedKms, relErr });
+
+	// The frame-by-frame test at the real-time rung (1 s/s at 60 fps). The
+	// shipped measurement is the consecutive-position difference the game feed
+	// used; the twin must not inherit its staircase.
+	const dtShip = 1 / 60;
+	const dtMyr = dtShip / SEC_MYR;
+	orbit.engineRecordPosition(pos, bx, by, bz, packed, T, model);
+	orbit.engineRecordVelocity(prevV, bx, by, bz, packed, T, model);
+	let t = T, maxFrameKms = 0, frameSpikes = 0, maxStepDeg = 0;
+	for (let f = 0; f < 400; f++) {
+		t += dtMyr;
+		orbit.engineRecordPosition(next, bx, by, bz, packed, t, model);
+		const dx = (next[0] - pos[0]) / dtShip;
+		const dy = (next[1] - pos[1]) / dtShip;
+		const dz = (next[2] - pos[2]) / dtShip;
+		const frameKms = Math.hypot(dx, dy, dz) * KPC_M / 1000;
+		if (frameKms > maxFrameKms) maxFrameKms = frameKms;
+		if (frameKms > 500) frameSpikes++;
+		pos[0] = next[0]; pos[1] = next[1]; pos[2] = next[2];
+		orbit.engineRecordVelocity(v, bx, by, bz, packed, t, model);
+		const dot = (prevV[0] * v[0] + prevV[1] * v[1] + prevV[2] * v[2])
+			/ (Math.hypot(prevV[0], prevV[1], prevV[2]) * Math.hypot(v[0], v[1], v[2]));
+		const stepDeg = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+		if (stepDeg > maxStepDeg) maxStepDeg = stepDeg;
+		prevV[0] = v[0]; prevV[1] = v[1]; prevV[2] = v[2];
+	}
+	check('record velocity: at the real-time rung the twin is stable where the frame difference spikes',
+		frameSpikes > 0 && maxFrameKms > 1000 && maxStepDeg < 1e-3,
+		{ frameSpikes, maxFrameKms, maxStepDeg });
+
+	// The simple mask draws the record where it was born (the documented CPU
+	// gap), so its drawn velocity is exactly zero and the twin says approximated.
+	orbit.setEngine(orbit.ENGINE_SIMPLE);
+	const approx = orbit.engineRecordVelocity(v, bx, by, bz, packed, T, model);
+	check('record velocity: the simple mask reports the gap and does not invent motion',
+		approx === true && v[0] === 0 && v[1] === 0 && v[2] === 0, { approx, v: Array.from(v) });
+
+	orbit.setEngine(savedEngine);
+	orbit.setApocenterShare(savedShare);
+	orbit.setApocenterForce(savedForce);
+}
+
 // --- Report --------------------------------------------------------------
 {
 	let passed = 0, failed = 0;

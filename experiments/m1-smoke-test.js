@@ -157,8 +157,8 @@ const sourceFiles = walk(SRC, '')
 			&& /Space: 'allStop'/.test(inputSrc)
 			&& /allStop: 0, shipRefuel: 0/.test(inputSrc)
 			&& /if \(gameMode\) enterGameMode\(\); else leaveGameMode\(\);/.test(main));
-		check('the velocity handover seeds from the follow feed in physical units',
-			/followVelPhys\[0\] = \(followPos\[0\] - followPrev\[0\]\) \/ framePhysSeconds;/.test(main)
+		check('the velocity handover seeds from the drawn-velocity dispatch in physical units',
+			/followVelFresh = memberDrawnVelocity\(m, followVelPhys\)/.test(main)
 			&& /framePhysSeconds = dtStar > 0 \? dtStar \* 1e6 \* shipLib\.SECONDS_PER_YEAR : 0;/.test(main)
 			&& /if \(!activeFleetShip\.entered && followKey >= 0 && followVelFresh\) \{[\s\S]*?ship\.vel\[0\] = followVelPhys\[0\];/.test(main));
 		check('the HUD carries the §6 lines and the ladder rides the star-time slider',
