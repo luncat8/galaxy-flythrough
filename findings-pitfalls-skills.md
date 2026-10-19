@@ -2072,3 +2072,34 @@ around UI strings, anchor on the plain-ASCII span beside them, or script the
 replacement with Python reading the file as UTF-8. When adding new strings,
 follow the file's local convention (check the neighbouring lines) so the file
 stays internally consistent.
+
+## 2026-10-19 — A sentinel-ordered ladder is addressed by meaning, not by index
+
+The ship clock's ladder starts with two sentinels (`−1` follow, `0` frozen)
+before its rate rungs, and one call site read the "first timed rung" as the
+literal `SHIP_TIME_LADDER[2]`. Inserting G5's real-time stop (`1/31557600`
+y/s, a value — not an index) between the sentinels and the 1e-5 band would
+have silently changed that fallback from 1e-5 y/s to real time, a 316×
+behaviour change no test named. It was caught only because the insertion
+made someone read the index. The fix is the general one: export named index
+constants (`SHIP_TIME_REAL_INDEX`, `SHIP_TIME_FIRST_TIMED_INDEX`), start
+every "from the first rate" scan at the named one (the home-rung search had
+the same literal `2`), and add a monotonicity check over the positive span so
+a future insertion cannot leave the ladder unordered. A comment that says
+"index 0 = follow, 1 = frozen" is documentation; a constant is a contract.
+
+## 2026-10-19 — A time-warp must track the remaining distance, not the committed ETA
+
+The ARCADE clock warp wanted "the flight's four-second floor" as a lower bound
+instead of an upper one. The obvious form — `timeRateCapYPerS(ap.etaTotalS, 4)`,
+the commit's own estimate — is wrong at scale: the controller's terminal rule
+caps the closing speed at half the remaining distance *per frame*, and a fixed
+rate at that size steps some 0.17 ly per frame at 60 fps. A 40 ly approach
+sailed the target by ~4 ly in the frames around arrival, then reversed and
+sailed back; the log showed a stable limit cycle receding at ~1 ly/s with
+`phase: coast` and no arrival in ten minutes of wall time. Reusing the live
+`ap.etaS` instead makes the rate proportional to the remaining distance, so a
+frame covers a fraction of what is left and the approach converges
+geometrically: 1 ly in 10.6 wall-seconds, 40 ly in 25. The lesson generalizes:
+any auto-warp layered on a controller whose last law is "fraction of remaining
+per frame" must inherit that same shape, or the two feedback laws fight.

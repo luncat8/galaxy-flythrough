@@ -751,3 +751,56 @@ asset write, the docked ride and its residency break, the home feed's
 key rebase, the dock refusals, the HUD/chrome lines, the Port rows and
 the game-mode gating. `python3 scripts/run.py changed` passes 12/12.
 The browser/WebGPU visual pass remains unverified in this sandbox.
+
+## ui.14 — the SIM and ARCADE clock presets (game-mode-plan G5)
+
+**Decision.** The last game-mode milestone lands as two Controls-panel
+buttons on the §4 ship-time ladder, both live only in game mode
+(`data-game`, the reverse of ui.7's `data-observer` gate) and lit from the
+live clock (`is-active`). No renderer, WGSL, catalog or preset-language
+change.
+
+**SIM** selects the ladder's new real-time stop,
+`SHIP_TIME_REAL = 1/SECONDS_PER_YEAR` (3.17e-8 y/s), inserted between the
+frozen sentinel and the 1e-5 manual band so `SHIP_TIME_LADDER` stays
+monotone in y/s and the slider's index mapping needs no special case. The
+rung readout and the HUD print `real ×1`. The home-rung search starts at
+`SHIP_TIME_FIRST_TIMED_INDEX`, and the follow rung's zero-speed fallback
+(the old literal index 2) follows it, so neither can land on real time by
+accident. SIM clears the arcade flag and unfreezes the clock.
+
+**ARCADE** snaps to the class's home rung (`homeTimeIndex`) and arms
+`ship.arcade`, the coast warp: while an AP_APPROACH / AP_TARGET autopilot
+is in its coast phase, `arcadeWarpYPerS` returns
+`timeRateCapYPerS(ap.etaS, AUTOPILOT_MIN_WALL_SECONDS)` — the autopilot's
+own four-wall-second floor, the same number the existing cap applies as an
+upper bound. `gameTimeRateY` takes it as a lower bound (`max(base, warp)`
+before `min(rate, cap)`), so the years-long unpowered leg of a stardrive
+flight plays out in seconds, the rate follows the decaying remaining ETA,
+and the approach eases back onto the pilot's rung for the brake. A frozen
+clock reads 0 from both laws (so the HUD's `coast warp` note cannot print
+a frozen warp), a follow never warps, and a class swap re-snaps the base
+rung while keeping the armed mode.
+
+**State and display.** `arcade` is per-hull ship state like `timeIndex`
+(created off, never cleared by reset), so a hull switch restores its own
+clock mode; `formatClock` prefixes `arcade ` and prints `real ×1` for the
+new stop. The HUD rate note says `coast warp +X y/s` when the warp is
+armed and running (`actual` otherwise), and the preset press is consumed
+before the shared clock is read, so it applies on its own frame.
+
+**Validation.** `experiments/ship-test.js` is 121/121 — the real stop's
+arithmetic and ladder order, the preset pair (unfreeze, SIM clears and
+warps off, ARCADE homes and arms, a class swap re-snaps), the coast
+warp's law (off by default, zero in the burn and on a follow, exactly the
+four-second floor in the coast, above the base rung, zero frozen), and the
+flown composition (1 ly in 10.6 s and 40 ly in 25 s of wall time, both
+arriving). The last pair pins the warp's *decaying* remaining-ETA form:
+a constant commit-time rate was measured to overshoot a 40 ly target by
+~4 ly per frame and never recover — the rate must fall with the distance,
+which is the terminal rule's own shape.
+`m1-smoke-test.js` is 109/109 with ui.14 pins for the buttons, the
+`data-game` gate, the press-before-clock ordering, the live `is-active`
+lights, the HUD note and the fallback index.
+`python3 scripts/run.py changed` passes 9/9. The browser/WebGPU visual
+pass remains unverified in this sandbox.

@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-19T05:32:55.232Z",
+  "date": "2026-10-19T07:52:09.394Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -78,8 +78,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 105,
-  "passed": 105,
+  "totalChecks": 109,
+  "passed": 109,
   "failed": 0,
   "checks": [
     {
@@ -265,6 +265,22 @@
     },
     {
       "name": "Space leaves the port and the port actions are game-gated",
+      "pass": true
+    },
+    {
+      "name": "the Controls panel carries the SIM and ARCADE presets, game-gated",
+      "pass": true
+    },
+    {
+      "name": "the presets land before the shared clock is read and light from the live clock",
+      "pass": true
+    },
+    {
+      "name": "the arcade warp is the autopilot wall-time floor as a lower bound and the HUD names it",
+      "pass": true
+    },
+    {
+      "name": "the ladder grows the real-time stop and the follow fallback stays the first timed rung",
       "pass": true
     },
     {
@@ -466,7 +482,7 @@
       "name": "Ship loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 107
+        "keys": 112
       }
     },
     {

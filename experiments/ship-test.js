@@ -223,6 +223,24 @@ const SEC_YEAR = dvModule.SECONDS_PER_YEAR;
 	check('follow rung couples to the ship speed (R = gain·v/c)',
 		close(shipModule.timeRateYPerS(star, 0.1), shipModule.SHIP_FOLLOW_GAIN * 0.1, 1e-12),
 		shipModule.timeRateYPerS(star, 0.1));
+
+	// G5's SIM stop: real time, below the whole manual band. One wall-second
+	// is one ship-second, which is the honest discovery the mode exists for.
+	const sim = shipModule.createShip('chemical');
+	sim.timeIndex = shipModule.SHIP_TIME_REAL_INDEX;
+	check('the SIM stop is one ship-second per wall-second',
+		shipModule.SHIP_TIME_LADDER[shipModule.SHIP_TIME_REAL_INDEX] === shipModule.SHIP_TIME_REAL
+		&& close(shipModule.timeRateYPerS(sim, 0) * SEC_YEAR, 1, 1e-15)
+		&& shipModule.formatClock(sim, 0) === 'real ×1',
+		{ rate: shipModule.SHIP_TIME_REAL, perWall: shipModule.timeRateYPerS(sim, 0) * SEC_YEAR });
+	const homed = ['chemical', 'stardrive', 'fusion'].map((id) => shipModule.createShip(id));
+	check('the real stop is below every home rung and no class homes on it',
+		homed.every((s) => s.timeIndex > shipModule.SHIP_TIME_REAL_INDEX
+			&& shipModule.SHIP_TIME_LADDER[s.timeIndex] >= shipModule.HOME_RATE_MIN),
+		homed.map((s) => shipModule.SHIP_TIME_LADDER[s.timeIndex]));
+	check('the ladder stays ordered from the real stop to the top',
+		shipModule.SHIP_TIME_LADDER.slice(shipModule.SHIP_TIME_REAL_INDEX)
+			.every((rung, i, rungs) => i === 0 || rung > rungs[i - 1]));
 }
 
 // --- 7. The toggle: pose write-through and velocity handover ---------------
@@ -710,6 +728,104 @@ for (const dtShipS of [3e4, 3e5, 1e6]) {
 		stable.pos === refs.pos && stable.vel === refs.vel && stable.ap === refs.ap
 		&& stable.ap.dir === refs.dir && stable.ap.aim === refs.aim && Object.keys(stable).length === refs.keys,
 		{ keys: Object.keys(stable).length });
+}
+
+// --- 9. G5: the SIM/ARCADE clock presets and the coast warp ----------------
+// SIM is the ladder's real stop; ARCADE is the class's default rung plus warp
+// while a destination autopilot coasts. The warp is the same four-wall-second
+// floor the autopilot cap already applies, as a lower bound here instead.
+{
+	const still = new Float64Array(3);
+	const ship = shipModule.createShip('stardrive');
+	const target = new Float64Array([1 * LY_KPC, 0, 0]);
+	check('the arcade warp is off by default',
+		ship.arcade === false && shipModule.arcadeWarpYPerS(ship, 4) === 0);
+	shipModule.apCommitApproach(ship, target[0], 0, 0, 0, 0, 0, STAND_OFF_M);
+	ship.arcade = true;
+	check('the warp does not touch the burn phase',
+		ship.ap.phase === shipModule.AP_PHASE_BURN && shipModule.arcadeWarpYPerS(ship, 4) === 0);
+
+	// Fly to the coast: the burn to 0.1 c is a fraction of a year, while the
+	// unpowered leg to a 1 ly shell is the years-long stretch the warp exists
+	// for. The step dt is the test's own; the law reads ap.etaS.
+	let coastSteps = 0;
+	while (coastSteps < 20000 && ship.ap.mode !== shipModule.AP_OFF
+		&& ship.ap.phase !== shipModule.AP_PHASE_COAST) {
+		shipModule.apStep(ship, 3e5, AP_DT_WALL, target[0], 0, 0, 0, 0, 0);
+		coastSteps++;
+	}
+	const warp = shipModule.arcadeWarpYPerS(ship, 4);
+	check('the coast warp is the flight\'s four-wall-second rate',
+		ship.ap.phase === shipModule.AP_PHASE_COAST && warp > 0
+			&& warp === shipModule.timeRateCapYPerS(ship.ap.etaS, 4)
+			&& warp > shipModule.SHIP_TIME_LADDER[ship.timeIndex],
+		{ warp, etaS: ship.ap.etaS, base: shipModule.SHIP_TIME_LADDER[ship.timeIndex] });
+	check('the clock readout names the arcade base rung',
+		shipModule.formatClock(ship, shipModule.speedC(ship)).startsWith('arcade +'));
+	ship.timeFrozen = true;
+	check('a frozen clock reads zero at both the base law and the warp',
+		shipModule.timeRateYPerS(ship, 0) === 0 && shipModule.arcadeWarpYPerS(ship, 4) === 0);
+	ship.timeFrozen = false;
+
+	// A follow is station-keeping, not a destination flight: no warp.
+	shipModule.apAbort(ship);
+	shipModule.apCommitFollow(ship, target[0], 0, 0, 0, 0, 0, STAND_OFF_M);
+	check('a follow keeps the pilot\'s rung (no destination coast warp)',
+		shipModule.arcadeWarpYPerS(ship, 4) === 0);
+}
+
+{
+	// The composition the page runs: the base rung + the warp, capped by the
+	// four-second floor, stepped at 60 fps. The warp follows the *remaining*
+	// ETA, so the rate falls with the distance — the terminal rule's own
+	// shape. That is what keeps a long leg from becoming an overshoot cycle:
+	// a constant commit-time rate (measured) sails a 40 ly target by ~4 ly in
+	// a frame and never recovers; the decaying rate arrives in tens of
+	// seconds. A far leg is bounded by the exponential tail, not by distance.
+	function arcadeWall(ly) {
+		const flight = shipModule.createShip('stardrive');
+		const target = new Float64Array([ly * LY_KPC, 0, 0]);
+		shipModule.setClockPreset(flight, 'arcade');
+		const reason = shipModule.apCommitApproach(flight, target[0], 0, 0, 0, 0, 0, STAND_OFF_M);
+		if (reason !== shipModule.AP_REASON_NONE) return { reason };
+		const capY = shipModule.timeRateCapYPerS(flight.ap.etaS, 4);
+		let wall = 0;
+		while (wall < 60 && flight.ap.mode !== shipModule.AP_OFF) {
+			let rate = shipModule.timeRateYPerS(flight, shipModule.speedC(flight));
+			const warp = shipModule.arcadeWarpYPerS(flight, 4);
+			if (warp > rate) rate = warp;
+			if (rate > 0) rate = Math.min(rate, capY);
+			shipModule.apStep(flight, rate * SEC_YEAR * AP_DT_WALL, AP_DT_WALL, target[0], 0, 0, 0, 0, 0);
+			wall += AP_DT_WALL;
+		}
+		const dist = Math.hypot(target[0] - flight.pos[0], target[1] - flight.pos[1],
+			target[2] - flight.pos[2]) * shipModule.KPC_M;
+		return { wall, dist, arrived: flight.ap.reason === shipModule.AP_REASON_ARRIVED };
+	}
+	for (const ly of [1, 40]) {
+		const r = arcadeWall(ly);
+		check(`the arcade warp converges on a ${ly} ly target, not an overshoot cycle`,
+			r.arrived && r.wall < 40, r);
+	}
+}
+
+{
+	// The presets themselves: SIM clears the warp and selects the real stop;
+	// ARCADE snaps to the class's home rung and arms it. Both unfreeze.
+	const ship = shipModule.createShip('stardrive');
+	ship.timeFrozen = true;
+	shipModule.setClockPreset(ship, 'sim');
+	check('the SIM preset is the real stop, unfrozen, warp off',
+		ship.timeIndex === shipModule.SHIP_TIME_REAL_INDEX && !ship.arcade && !ship.timeFrozen
+			&& shipModule.formatClock(ship, 0) === 'real ×1');
+	shipModule.setClockPreset(ship, 'arcade');
+	check('the ARCADE preset snaps to the class home rung and arms the warp',
+		ship.arcade && !ship.timeFrozen && ship.timeIndex === shipModule.homeTimeIndex(ship.class)
+			&& shipModule.formatClock(ship, 0).startsWith('arcade +'));
+	shipModule.setClass(ship, 'chemical');
+	check('a class swap re-snaps the arcade clock to the new class home rung',
+		ship.arcade && ship.timeIndex === shipModule.homeTimeIndex(ship.class),
+		{ index: ship.timeIndex, home: shipModule.homeTimeIndex(ship.class) });
 }
 
 // --- 8. G2 chrome: the label layer's ship pass --------------------------------

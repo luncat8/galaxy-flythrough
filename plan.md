@@ -1509,8 +1509,9 @@ Shipped, in `archive/`:
   station refill and life support (§10: `O` docks settled inside a station's
   stand-off shell, the docked ship rides the station's drawn motion, the port
   of registry becomes the return-home marker's target when life support
-  expires, and the hold loads/unloads at the dock). CPU-only and additive,
-  like the 0.5 series.
+  expires, and the hold loads/unloads at the dock), and G5 the SIM/ARCADE
+  clock presets (§4: the ladder's real-time `R = 1` stop and the autopilot
+  coast auto-warp). CPU-only and additive, like the 0.5 series.
 
 - [`evolution-plan.md`](evolution-plan.md) — the 0.6 series, galaxy evolution over time:
   the type table describes present-day galaxies, so `modelAtAge` gains an **epoch tier**
@@ -1573,9 +1574,10 @@ tests and extend the file layout of §11 as needed.
    G2 shipped (ui.8: the §6 chrome and the §5 burn/flip approach with the
    fuel checkout); G3 shipped (ui.9: the single Flight workspace, the four
    plan modes and accepted-impulse accounting); G4 shipped (ui.13: docking,
-   the station refill and life support — game-mode-plan §10). G5 polish
-   (SIM/ARCADE presets, the browser visual pass) remains. CPU-only and
-   pipeline-neutral.
+   the station refill and life support — game-mode-plan §10); G5 shipped
+   (ui.14: the SIM/ARCADE clock presets — the ladder's real-time stop and the
+   autopilot coast auto-warp). The browser visual pass remains deferred.
+   CPU-only and pipeline-neutral.
 
 The [0.5 planet series](archive/0.5.0-plan-planet-generator.md) is complete:
 selection, generator, search, schematic, delta-v map and ships/routes/autopilot.

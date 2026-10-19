@@ -374,6 +374,35 @@ const sourceFiles = walk(SRC, '')
 			&& /if \(actions\.cargoLoad\) \{\s*actions\.cargoLoad = 0;\s*if \(gameMode\) gameCargoLoad\(\);\s*else gameNotice\(\);/.test(main)
 			&& /if \(actions\.cargoUnload\) \{\s*actions\.cargoUnload = 0;\s*if \(gameMode\) gameCargoUnload\(\);\s*else gameNotice\(\);/.test(main));
 	}
+	// G5 of game-mode-plan.md (§4/§8): the SIM and ARCADE clock presets are
+	// Controls-panel buttons on the ship-time ladder — SIM the real-time stop,
+	// ARCADE the class home rung plus the autopilot coast warp — gated to game
+	// mode and lit from the live clock. ship-test.js pins the numbers.
+	{
+		const inputSrc = fs.readFileSync(path.join(SRC, 'core', 'input.js'), 'utf-8');
+		const shipSrc = fs.readFileSync(path.join(SRC, 'core', 'ship.js'), 'utf-8');
+		check('the Controls panel carries the SIM and ARCADE presets, game-gated',
+			/data-action="clockSim" data-game/.test(html)
+			&& /data-action="clockArcade" data-game/.test(html)
+			&& /helpNeedGame = Array\.from\(helpPanel\.querySelectorAll\('\[data-game\]'\)\)/.test(main)
+			&& /for \(const control of helpNeedGame\) control\.disabled = !gameMode;/.test(main)
+			&& /clockSim: 0, clockArcade: 0/.test(inputSrc));
+		check('the presets land before the shared clock is read and light from the live clock',
+			/if \(actions\.clockSim\) \{ actions\.clockSim = 0; setShipClockPreset\('sim'\); \}/.test(main)
+			&& /if \(actions\.clockArcade\) \{ actions\.clockArcade = 0; setShipClockPreset\('arcade'\); \}/.test(main)
+			&& /function setShipClockPreset\(preset\) \{\s*shipLib\.setClockPreset\(ship, preset\);/.test(main)
+			&& /helpClockSim\.classList\.toggle\('is-active', gameMode && !ship\.arcade\s*&& ship\.timeIndex === shipLib\.SHIP_TIME_REAL_INDEX\);/.test(main)
+			&& /helpClockArcade\.classList\.toggle\('is-active', gameMode && ship\.arcade\);/.test(main));
+		check('the arcade warp is the autopilot wall-time floor as a lower bound and the HUD names it',
+			/shipLib\.arcadeWarpYPerS\(ship, AUTOPILOT_MIN_WALL_SECONDS\)/.test(main)
+			&& /coast warp \$\{formatShipRate\(actualRate\)\}/.test(main)
+			&& /function arcadeWarpYPerS\(ship, minWallSeconds\) \{\s*if \(!ship\.arcade \|\| ship\.timeFrozen\) return 0;/.test(shipSrc)
+			&& /if \(ap\.phase !== AP_PHASE_COAST\) return 0;/.test(shipSrc));
+		check('the ladder grows the real-time stop and the follow fallback stays the first timed rung',
+			/const SHIP_TIME_LADDER = \[-1, 0, SHIP_TIME_REAL,/.test(shipSrc)
+			&& /const SHIP_TIME_REAL = 1 \/ SECONDS_PER_YEAR;/.test(shipSrc)
+			&& /rate = shipLib\.SHIP_TIME_LADDER\[shipLib\.SHIP_TIME_FIRST_TIMED_INDEX\];/.test(main));
+	}
 	check('every element main.js looks up exists in index.html',
 		(function () {
 			const ids = new Set([...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]));

@@ -1,4 +1,4 @@
-# Game Mode — Spaceship Flight, Restrictions and Display (G1–G4, ui.10 and ui.11 shipped; G5 planned)
+# Game Mode — Spaceship Flight, Restrictions and Display (G1–G5, ui.10, ui.11 and ui.14 shipped)
 
 The viewer is an observer: a free fly camera, two orbit modes and a cinematic
 fly-to. Game mode is the same pipeline flown as a **spaceship** — the camera is
@@ -7,13 +7,15 @@ three questions a pilot always has: **how fast, how much fuel, how far to the
 selected object.** Toggle with `g`.
 
 Status: **G1–G3 shipped (2026-10-16); ui.10 fleet/axis/target-stop shipped
-(2026-10-17); G4 shipped (2026-10-19, ui.13)** — G1 is `src/core/ship.js`,
+(2026-10-17); G4 shipped (2026-10-19, ui.13); G5 shipped (2026-10-19,
+ui.14)** — the browser visual pass is the one G5 item still deferred. G1 is
+`src/core/ship.js`,
 the flight law, the shared ship clock (§4), the text HUD, the input gating and
 the hangar refill; G2 is the §6 canvas chrome and the §5 burn/flip approach with
 the fuel checkout, the rest-frame commit and the `j` follow command; G3 is the
 single Flight workspace, keyed destination planning, four configured profiles
-and accepted-impulse accounting (§7). Docking and polish follow it. Two pieces
-G1 builds on existed before it: the
+and accepted-impulse accounting (§7); G5 is the SIM/ARCADE clock presets and
+their ladder (§4). Two pieces G1 builds on existed before it: the
 **chase follow** (`j`, ui.6 — the camera rides behind the centred object with
 its forward eased onto the object's drawn movement vector, `camera.js`'s
 `stepChase`), whose movement feed is the velocity handover §2 and the attitude
@@ -234,9 +236,27 @@ SHIP_TIME_LADDER = [follow, frozen, 1e-5, 2e-5, 5e-5, … 1-2-5 …, 1e6]  (y/s)
   restored on exit. `evolve`, the pattern clock and the label/pick dispatch
   all read the same `dtStar` — under the ship's clock the galaxy ages and
   drifts at the pilot's pace, which is the point of the coupling.
-- Decoupling is the sim mode: the bottom rungs (and `×1` via the G4 SIM
+- Decoupling is the sim mode: the bottom rungs (and `×1` via the G5 SIM
   preset, `R = 1` ship-s per wall-s) give real seconds, real distances, and
   the honest discovery of why nothing reachable by eye is close.
+- **The two presets (G5).** The Controls panel carries `sim clock` and
+  `arcade clock`, both live only in game mode. SIM selects the ladder's
+  real-time stop (`SHIP_TIME_REAL = 1/SECONDS_PER_YEAR`, below the 1e-5
+  manual band) and turns the warp off; the readout says `ship real ×1`.
+  ARCADE re-snaps to the class's home rung — the default rung — and arms the
+  **coast warp**: while a destination autopilot is in its unpowered coast
+  phase, the shared clock rises to the rate the flight's four-wall-second
+  floor implies (`arcadeWarpYPerS` = `timeRateCapYPerS(ap.etaS, 4)`), so the
+  years-long leg plays out in seconds. Burn and brake keep the pilot's rung —
+  that is where the clock has to stay slow enough to fly — and the existing
+  autopilot cap keeps the same floor as an *upper* bound, so the warp can
+  never outrun the flight. The warp follows the decaying remaining ETA, so
+  the approach eases back onto the base rung instead of snapping. Freezing
+  (`T`) still wins: the warp reads 0 on a frozen clock. The presets are
+  per-hull clock state (`ship.arcade`, `ship.timeIndex`), so a class swap
+  re-snaps the base rung and a hull switch restores its own mode; the wheel
+  still steps the base rung under an armed warp. The HUD names the mode
+  (`ship clock arcade +0.5 y/s · coast warp +2.5 y/s`).
 
 Time compression is what makes the cruise cap playable; it is not a fake
 speed. The HUD's ETAs are marked **ship** (the pilot's clock) and **wall**
@@ -646,9 +666,13 @@ existing Shift+F stand-off flight and configured Engage workflow are unchanged.
   the cargo-container hook, prices and economy omitted (matching
   0.5). Dock-port assets land in ui.1's typed asset history on
   every dock.
-- **G5 — polish**: SIM/ARCADE presets as Controls-panel buttons on the §4
-  ladder (SIM = `R = 1` real seconds; ARCADE = the default rung plus autopilot
-  coast auto-warp) and the browser visual pass on real hardware
+- **G5 — clock presets and polish (shipped 2026-10-19, ui.14)**: the
+  `sim clock` and `arcade clock` Controls-panel buttons on the §4 ladder
+  (SIM = `R = 1` real seconds, the ladder's new real-time stop; ARCADE =
+  the class's default rung plus the autopilot coast auto-warp), the
+  `data-game` gate and the live `is-active` lights, and the HUD's
+  `coast warp` note. No renderer, WGSL or catalog change. The browser
+  visual pass on real hardware remains deferred
   (deferred-browser-visual-plan.md's lane).
 
 Ship display itself: G1 is honest text; G2 is the chrome above. ui.10 gives
@@ -662,7 +686,9 @@ typed asset history when docking and transport need persistent asset identity.
   one shared `advance()` that the manual law, all-stop and autopilot all pay,
   the §5 profile plus the configurable §7 planner, the autopilot record with
   its commit / step / abort and target settlement, camera-axis velocity and
-  ship-clock-cap helpers, `SHIP_TIME_LADDER` and its rung helpers, display
+  ship-clock-cap helpers, `SHIP_TIME_LADDER` and its rung helpers
+  (`SHIP_TIME_REAL`, the `setClockPreset` SIM/ARCADE pair, the
+  `arcadeWarpYPerS` coast law), display
   formatters). One API object for page and Node.
 - `src/main.js` — the g toggle (handover, clock takeover/restore), per-hull
   fleet switching and spawn, the game frame step and `getState`/`setState`
@@ -671,9 +697,10 @@ typed asset history when docking and transport need persistent asset identity.
   camera's own look axis, the four-second rate cap, camera-axis velocity
   readouts, Flight panel/forecast/target checkbox, input gating, Controls panel
   repaint (ui.6), and the chrome state the label layer draws.
-- `src/core/input.js` — `Space` (`actions.allStop`) and `actions.shipRefuel`
-  in the shared action table; everything else is main.js routing (G2 adds no
-  action: the approach, the abort and the follow ride `flyTo`, `flyMode` and
+- `src/core/input.js` — `Space` (`actions.allStop`), `actions.shipRefuel`
+  and G5's button-only `actions.clockSim` / `clockArcade` in the shared
+  action table; everything else is main.js routing (G2 adds no action: the
+  approach, the abort and the follow ride `flyTo`, `flyMode` and
   `chaseFollow`, which game mode now reads as its own commands).
 - `src/core/camera.js` — no changes: the write-through is the existing
   `getState`/`setState` pair; the chase follow (ui.6) already carries the
@@ -720,6 +747,19 @@ and pinned upward dead astern, a target behind the camera pinned to the edge
 on the side to turn toward, the tape's fill and over-cap stub, the strip, and
 the pass drawing with the observer labels off. The no-reallocation loop weaves
 the approach, the follow and the abort through the active hull's one ship record.
+
+Tests (`experiments/ship-test.js`, G5): the real stop's arithmetic
+(`SHIP_TIME_REAL · SECONDS_PER_YEAR == 1`, the readout `real ×1`, below every
+home rung and inside the ordered ladder), the preset pair (`setClockPreset`
+unfreezes, SIM clears the warp and selects the real stop, ARCADE snaps to the
+class home rung and arms it, a class swap re-snaps the base), and the coast
+warp (off by default and for a follow, zero in the burn, equal to
+`timeRateCapYPerS(ap.etaS, 4)` in the coast and above the base rung, zero when
+frozen), plus the flown composition at 60 fps (1 ly arrives in 10.6 wall-s,
+40 ly in 25 wall-s) — which pins the warp's *remaining*-ETA form: a constant
+commit-time rate overshoots a 40 ly target and never recovers. `m1-smoke-test.js` pins the Controls-panel buttons and their
+`data-game` gate, the press-before-the-clock ordering, the live `is-active`
+lights, the HUD's `coast warp` note and the follow-fallback index.
 
 Tests (`experiments/ship-test.js`, G3): planner profiles for all four modes
 (fastest, thrust cap, speed cap and a feasible/impossible deadline), copied

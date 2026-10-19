@@ -1478,6 +1478,11 @@ async function boot() {
         // Controls refill remains game-only; the Flight workspace is the
         // always-visible hangar. Repainted at 4 Hz.
         const helpNeedObserver = Array.from(helpPanel.querySelectorAll('[data-observer]'));
+        // G5's clock presets are the reverse gate: the ship clock exists only
+        // on game mode's shared axis, so they are dead while observing.
+        const helpNeedGame = Array.from(helpPanel.querySelectorAll('[data-game]'));
+        const helpClockSim = helpPanel.querySelector('[data-action="clockSim"]');
+        const helpClockArcade = helpPanel.querySelector('[data-action="clockArcade"]');
         const helpRefuel = helpPanel.querySelector('[data-action="shipRefuel"]');
         const helpFly = helpPanel.querySelector('[data-action="flyMode"]');
         const helpFlyLabel = document.getElementById('help-fly-label');
@@ -1509,6 +1514,7 @@ async function boot() {
                 for (const button of helpNeedPrimary) button.disabled = noPrimary;
                 for (const button of helpNeedSet) button.disabled = noSet;
                 for (const control of helpNeedObserver) control.disabled = gameMode;
+                for (const control of helpNeedGame) control.disabled = !gameMode;
                 if (helpRefuel) helpRefuel.disabled = !gameMode;
                 helpPrevStar.disabled = noSet;
                 helpFly.disabled = gameMode && ship.ap.mode === shipLib.AP_OFF;
@@ -1516,6 +1522,9 @@ async function boot() {
                 for (const [kind, button] of helpRefButtons) {
                         button.classList.toggle('is-active', speedRef === kind);
                 }
+                helpClockSim.classList.toggle('is-active', gameMode && !ship.arcade
+                        && ship.timeIndex === shipLib.SHIP_TIME_REAL_INDEX);
+                helpClockArcade.classList.toggle('is-active', gameMode && ship.arcade);
         }
         syncOverlayInset();
         window.addEventListener('resize', syncOverlayInset);
@@ -1598,12 +1607,19 @@ async function boot() {
         function gameTimeRateY() {
                 if (ship.timeFrozen) return 0;
                 let rate = shipLib.timeRateYPerS(ship, shipLib.speedC(ship));
+                if (ship.arcade) {
+                        // The coast warp raises the clock to the wall-time rate
+                        // the flight's four-second floor implies; the cap below
+                        // keeps the same floor an upper bound.
+                        const warp = shipLib.arcadeWarpYPerS(ship, AUTOPILOT_MIN_WALL_SECONDS);
+                        if (warp > rate) rate = warp;
+                }
                 if (rate === 0 && ship.timeIndex === 0
                         && (ship.ap.mode !== shipLib.AP_OFF || flightThrust > 0
                                 || input.state.keys.forward || input.state.keys.back
                                 || input.state.keys.left || input.state.keys.right
                                 || input.state.keys.up || input.state.keys.down)) {
-                        rate = shipLib.SHIP_TIME_LADDER[2];
+                        rate = shipLib.SHIP_TIME_LADDER[shipLib.SHIP_TIME_FIRST_TIMED_INDEX];
                 }
                 return rate > 0 ? Math.min(rate, shipTimeRateCapY) : rate;
         }
@@ -1615,6 +1631,16 @@ async function boot() {
         }
         function formatShipRate(rate) {
                 return rate > 0 ? '+' + Number(rate.toPrecision(3)) + ' y/s' : '0 y/s';
+        }
+        // G5's Controls-panel clock presets (§4): SIM is the ladder's real-time
+        // stop; ARCADE snaps to the class's default rung and turns on the
+        // autopilot coast warp. Both unfreeze the clock — a preset that
+        // selected a paused clock would look broken.
+        function setShipClockPreset(preset) {
+                shipLib.setClockPreset(ship, preset);
+                setAutoMsg(preset === 'sim' ? 'sim clock · real time' : 'arcade clock · coast warp on');
+                refreshShipTimeRateCap();
+                syncStarTime();
         }
         function syncStarTime() {
                 if (gameMode) {
@@ -3911,7 +3937,10 @@ async function boot() {
                 const accelPart = ship.accelNow > 0 ? ` (+${ship.accelNow.toFixed(1)} m/s\u00b2)` : '';
                 const requestedRate = shipLib.timeRateYPerS(ship, c);
                 const actualRate = gameTimeRateY();
-                const rateNote = Math.abs(actualRate - requestedRate) > 1e-15 ? ` · actual ${formatShipRate(actualRate)}` : '';
+                const coastWarp = shipLib.arcadeWarpYPerS(ship, AUTOPILOT_MIN_WALL_SECONDS);
+                const rateNote = coastWarp > 0
+                        ? ` · coast warp ${formatShipRate(actualRate)}`
+                        : Math.abs(actualRate - requestedRate) > 1e-15 ? ` · actual ${formatShipRate(actualRate)}` : '';
                 let text = `\nmode      game \u00b7 ship clock ${shipLib.formatClock(ship, c)}${rateNote} (wheel steps \u00b7 T freezes) \u00b7 g returns to observer`;
                 const governor = flightControl === 'speed'
                         ? ` \u00b7 speed limit ${shipLib.formatSpeedC(shipLib.cruiseCapKpcS(ship) * flightSpeedFraction * shipLib.KPC_M / shipLib.C)}`
@@ -4120,6 +4149,13 @@ async function boot() {
                         if (actions.flyMode) { actions.flyMode = 0; gameCommand = GAME_CMD_ABORT; }
                         if (actions.chaseFollow) { actions.chaseFollow = 0; gameCommand = GAME_CMD_FOLLOW; }
                         if (actions.flyTo) { actions.flyTo = 0; gameCommand = GAME_CMD_APPROACH; }
+                        // G5's clock presets land before the shared clock is
+                        // read, so the press is the frame it changes.
+                        if (actions.clockSim) { actions.clockSim = 0; setShipClockPreset('sim'); }
+                        if (actions.clockArcade) { actions.clockArcade = 0; setShipClockPreset('arcade'); }
+                } else {
+                        actions.clockSim = 0;
+                        actions.clockArcade = 0;
                 }
                 if (gameMode && !resetting
                         && (gameCommand !== 0 || (autoRunning && ship.ap.mode === shipLib.AP_OFF))) {

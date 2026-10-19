@@ -42,19 +42,26 @@ const SHIP_ACCEL_WORLD = 1 / KPC_M;
 const IN_SYSTEM_CRUISE_C = 0.005;
 
 // --- Ship time (§4): a geometric y/s ladder, the system view's convention ---
-// [−1] follow: R = SHIP_FOLLOW_GAIN · v/c (time scales with the ship's speed
-//      and slows into a docking approach on its own).
-// [0]  frozen: the shared clock pauses — ship and sky together.
-// The 1-2-5 rungs span docking resolution (a chemical frame-tap lands in the
-// tens of m/s at the bottom) to galaxy-crossing (the 100 kpc disc at 0.1 c in
-// minutes at the top). A ship's useful rates span many decades; that is the
-// lesson of the system clock's own ladder history.
-const SHIP_TIME_LADDER = [-1, 0,
+// The ladder values are y/s; the first two are the sentinels:
+//   −1  follow: R = SHIP_FOLLOW_GAIN · v/c (time scales with the ship's speed
+//       and slows into a docking approach on its own).
+//    0  frozen: the shared clock pauses — ship and sky together.
+// Then 1/SECONDS_PER_YEAR (the SIM stop, G5): one ship-second per wall-second,
+// below the manual band because honest travel is measured in years — that is
+// the discovery SIM exists for. The 1-2-5 rungs span docking resolution (a
+// chemical frame-tap lands in the tens of m/s at the bottom) to
+// galaxy-crossing (the 100 kpc disc at 0.1 c in minutes at the top). A ship's
+// useful rates span many decades; that is the lesson of the system clock's own
+// ladder history.
+const SHIP_TIME_REAL = 1 / SECONDS_PER_YEAR;   // ≈ 3.17e-8 y/s
+const SHIP_TIME_LADDER = [-1, 0, SHIP_TIME_REAL,
 	1e-5, 2e-5, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3,
 	0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100,
 	200, 500, 1e3, 2e3, 5e3, 1e4, 2e4, 5e4, 1e5, 2e5, 5e5, 1e6];
 const SHIP_TIME_INDEX_MIN = 0;
 const SHIP_TIME_INDEX_MAX = SHIP_TIME_LADDER.length - 1;
+const SHIP_TIME_REAL_INDEX = 2;             // the SIM stop
+const SHIP_TIME_FIRST_TIMED_INDEX = 3;      // the first 1-2-5 rung (home-rung band)
 const SHIP_FOLLOW_GAIN = 20;      // y/s at c — the follow rung's gain
 
 // The class's home rung: the ladder stop where a full-thrust frame-tap
@@ -148,9 +155,11 @@ function homeTimeIndex(cls) {
 	const burnSeconds = cls.dvMax / cls.accel;
 	const rate = burnSeconds * HOME_FPS * HOME_TAP_FRACTION / SECONDS_PER_YEAR;
 	const wanted = clamp(rate, HOME_RATE_MIN, HOME_RATE_MAX);
-	let best = 2;    // the first timed rung (index 0 = follow, 1 = frozen)
+	// Skip follow, frozen and the real stop: home is a manual-flight rung in
+	// the tapped band, and the clamp above keeps `wanted` inside it.
+	let best = SHIP_TIME_FIRST_TIMED_INDEX;
 	let bestErr = Infinity;
-	for (let i = 2; i <= SHIP_TIME_INDEX_MAX; i++) {
+	for (let i = SHIP_TIME_FIRST_TIMED_INDEX; i <= SHIP_TIME_INDEX_MAX; i++) {
 		const err = Math.abs(Math.log(SHIP_TIME_LADDER[i] / wanted));
 		if (err < bestErr) { bestErr = err; best = i; }
 	}
@@ -226,6 +235,9 @@ function createShip(classId) {
 		cargo: 0,                    // tons, 0..class.cargo
 		timeIndex: homeTimeIndex(cls),
 		timeFrozen: false,
+		// G5's ARCADE clock: the base rung above, plus the autopilot coast
+		// warp below. Off is the honest ladder; the preset lights it.
+		arcade: false,
 		ap: createAutopilot(),
 	};
 }
@@ -547,6 +559,39 @@ function timeRateYPerS(ship, speedCNow) {
 	const rung = SHIP_TIME_LADDER[ship.timeIndex];
 	if (rung < 0) return SHIP_FOLLOW_GAIN * (speedCNow || 0);
 	return rung;
+}
+
+// G5's clock presets (§4): SIM is the ladder's real-time stop with the arcade
+// warp off; ARCADE is the class's default rung with the coast warp on. Both
+// unfreeze the clock. The page wraps this with the message and the UI sync.
+function setClockPreset(ship, preset) {
+	ship.timeFrozen = false;
+	if (preset === 'sim') {
+		ship.arcade = false;
+		ship.timeIndex = SHIP_TIME_REAL_INDEX;
+		return;
+	}
+	ship.arcade = true;
+	ship.timeIndex = homeTimeIndex(ship.class);
+}
+
+// G5's ARCADE coast warp (§4): while a destination autopilot coasts, the
+// shared clock may run at the wall-time rate the flight's four-second floor
+// implies, so the long unpowered leg plays out in seconds instead of at the
+// class's tapping rung. The burn and the brake keep the pilot's rung — that is
+// where the clock has to stay slow enough to fly. The caller keeps its own cap
+// (the same floor as an upper bound), so the warp can never outrun the flight.
+// It reads the *live* remaining ETA, never the commit's total: a fixed
+// commit-time rate overshoots a 40 ly target by ~4 ly per frame at 60 fps and
+// never recovers (measured), because the terminal rule's own shape is
+// rate ∝ remaining distance — which is what lets the warp decay.
+function arcadeWarpYPerS(ship, minWallSeconds) {
+	if (!ship.arcade || ship.timeFrozen) return 0;
+	const ap = ship.ap;
+	if (ap.mode !== AP_APPROACH && ap.mode !== AP_TARGET) return 0;
+	if (ap.phase !== AP_PHASE_COAST) return 0;
+	const rate = timeRateCapYPerS(ap.etaS, minWallSeconds);
+	return Number.isFinite(rate) && rate > 0 ? rate : 0;
 }
 
 // One frame of a world-frame acceleration (axK..azK, kpc/s²) for dtShipS ship
@@ -1084,7 +1129,8 @@ function formatClock(ship, speedCNow) {
 	if (ship.timeFrozen) return 'frozen';
 	const rung = SHIP_TIME_LADDER[ship.timeIndex];
 	if (rung < 0) return 'follow ×' + SHIP_FOLLOW_GAIN;
-	return '+' + trim3(rung) + ' y/s';
+	const base = ship.timeIndex === SHIP_TIME_REAL_INDEX ? 'real ×1' : '+' + trim3(rung) + ' y/s';
+	return ship.arcade ? 'arcade ' + base : base;
 }
 
 // The hold, in tons with separators (the cargo line's law).
@@ -1096,6 +1142,7 @@ const Ship = {
 	C, KPC_M, SECONDS_PER_YEAR,
 	SHIP_ACCEL_WORLD, IN_SYSTEM_CRUISE_C,
 	SHIP_TIME_LADDER, SHIP_TIME_INDEX_MIN, SHIP_TIME_INDEX_MAX, SHIP_FOLLOW_GAIN,
+	SHIP_TIME_REAL, SHIP_TIME_REAL_INDEX, SHIP_TIME_FIRST_TIMED_INDEX,
 	HOME_TAP_FRACTION, HOME_FPS, HOME_RATE_MIN, HOME_RATE_MAX,
 	AP_OFF, AP_APPROACH, AP_FOLLOW, AP_TARGET,
 	AP_PHASE_IDLE, AP_PHASE_BURN, AP_PHASE_FLIP, AP_PHASE_COAST, AP_PHASE_BRAKE, AP_PHASE_NAMES,
@@ -1110,7 +1157,7 @@ const Ship = {
 	createShip, setClass, resetShip, refuel, applyStop, step, advance,
 	dockReason, dock, undock, dockStep, loadCargo, unloadCargo,
 	lifeRemainingY, lifeWarnY, lifeState,
-	homeTimeIndex, dvRemaining, cruiseCapKpcS, speedC, timeRateYPerS,
+	homeTimeIndex, dvRemaining, cruiseCapKpcS, speedC, timeRateYPerS, arcadeWarpYPerS, setClockPreset,
 	createFlightPlan, profileForLimits, planJourney, projectedImpulseDv,
 	burnReserveSeconds, apProfile,
 	apEnd, apAbort, apCommitApproach, apCommitTarget, apCommitFollow, apStep, closeSpeedM, easeDirection,

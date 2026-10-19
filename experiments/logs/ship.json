@@ -1,6 +1,6 @@
 {
-  "total": 107,
-  "passed": 107,
+  "total": 121,
+  "passed": 121,
   "failed": 0,
   "checks": [
     {
@@ -196,6 +196,27 @@
       "detail": 2
     },
     {
+      "name": "the SIM stop is one ship-second per wall-second",
+      "pass": true,
+      "detail": {
+        "rate": 3.168808781402895e-8,
+        "perWall": 0.9999999999999999
+      }
+    },
+    {
+      "name": "the real stop is below every home rung and no class homes on it",
+      "pass": true,
+      "detail": [
+        0.0001,
+        0.5,
+        1
+      ]
+    },
+    {
+      "name": "the ladder stays ordered from the real stop to the top",
+      "pass": true
+    },
+    {
       "name": "the write-through keeps the pose bit-exact and writes the velocity",
       "pass": true,
       "detail": {
@@ -275,7 +296,7 @@
       "name": "no buffers are reallocated across 600 mixed frames",
       "pass": true,
       "detail": {
-        "keys": 22
+        "keys": 23
       }
     },
     {
@@ -599,7 +620,70 @@
       "name": "no buffers are reallocated across the approach, the follow and the abort",
       "pass": true,
       "detail": {
-        "keys": 22
+        "keys": 23
+      }
+    },
+    {
+      "name": "the arcade warp is off by default",
+      "pass": true
+    },
+    {
+      "name": "the warp does not touch the burn phase",
+      "pass": true
+    },
+    {
+      "name": "the coast warp is the flight's four-wall-second rate",
+      "pass": true,
+      "detail": {
+        "warp": 2.5080312774374587,
+        "etaS": 316589791.3634414,
+        "base": 0.5
+      }
+    },
+    {
+      "name": "the clock readout names the arcade base rung",
+      "pass": true
+    },
+    {
+      "name": "a frozen clock reads zero at both the base law and the warp",
+      "pass": true
+    },
+    {
+      "name": "a follow keeps the pilot's rung (no destination coast warp)",
+      "pass": true
+    },
+    {
+      "name": "the arcade warp converges on a 1 ly target, not an overshoot cycle",
+      "pass": true,
+      "detail": {
+        "wall": 10.583333333333439,
+        "dist": 10123732588714.129,
+        "arrived": true
+      }
+    },
+    {
+      "name": "the arcade warp converges on a 40 ly target, not an overshoot cycle",
+      "pass": true,
+      "detail": {
+        "wall": 25.249999999999847,
+        "dist": 10077040832528.66,
+        "arrived": true
+      }
+    },
+    {
+      "name": "the SIM preset is the real stop, unfrozen, warp off",
+      "pass": true
+    },
+    {
+      "name": "the ARCADE preset snaps to the class home rung and arms the warp",
+      "pass": true
+    },
+    {
+      "name": "a class swap re-snaps the arcade clock to the new class home rung",
+      "pass": true,
+      "detail": {
+        "index": 6,
+        "home": 6
       }
     },
     {

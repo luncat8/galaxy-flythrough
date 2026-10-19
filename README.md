@@ -110,6 +110,9 @@ Other controls:
   [Game mode](#game-mode-g) below; galaxy type changes live on the panel dropdown)
 - `P` — toggle constellation lines
 - `T` — pause/resume star time (also works after clicking a result button)
+- **sim clock** / **arcade clock** (Controls panel, game mode) — the two ship-clock
+  presets: real time (`R = 1` ship-s per wall-s) and the default rung plus the
+  autopilot coast warp (see [Game mode](#game-mode-g) below)
 - the **Evolve with star time** checkbox — the galaxy's age runs with star time from 0.2 Gyr to
   present day; the Age slider is the seek, and the epoch readout next to it shows the field's epoch.
   The bar and arms keep their orientation across steps; each step re-draws the field, so lower
@@ -129,7 +132,7 @@ The settings panel opens at startup and exposes galaxy type, seed, age, the live
 
 ## Game mode (g)
 
-Game mode ([game-mode-plan.md](game-mode-plan.md), G1–G4 + ui.10 and ui.11) is
+Game mode ([game-mode-plan.md](game-mode-plan.md), G1–G5 + ui.10, ui.11 and ui.14) is
 the same pipeline flown as a **spaceship**: the camera *is* the active hull,
 its motion obeys the ship class instead of the observer's instant-response
 rig, and a HUD answers how fast, how much fuel and how far to the speed
@@ -150,13 +153,22 @@ needed.
   not kill.
 - **One clock.** While flying, the ship's physics and the stars' drift advance
   at the same rate — the ship-time ladder on the star-time slider (`1-2-5`
-  rungs from 1e-5 y/s to 1e6 y/s, wheel-stepped, `T` freezes ship and sky
+  rungs from 1e-5 y/s to 1e6 y/s, plus the `sim` real-time stop below them,
+  wheel-stepped, `T` freezes ship and sky
   together, a `follow` rung couples the pace to the ship's speed). One clock is
   what makes a selected star reachable: at the shared rate the ship's cruise
   outruns stellar drift by ~100×, so the star is met where it arrives. The
   observer's Myr/s star time is parked while piloting and restored on exit.
   Destination approach and target-stop autopilots cap the shared rate so travel
   takes at least four wall-clock seconds; `T`'s freeze remains an override.
+  Two Controls-panel presets (game mode only) sit on that ladder: **sim clock**
+  is real time — one ship-second per wall-second (`R = 1`), the honest rate at
+  which interstellar travel is measured in years — and **arcade clock** snaps
+  to the class's default rung and arms the **autopilot coast warp**, which
+  raises the shared clock to the flight's four-second floor while a
+  destination autopilot coasts, so the long unpowered leg plays out in seconds
+  (burn and brake keep the pilot's rung). The HUD names the mode and an armed
+  warp (`ship clock arcade +0.5 y/s · coast warp +2.5 y/s`).
 - **The Flight workspace.** The lower-left **Flight** panel lists the session's
   ships and has **Spawn at camera** for a stationary hull. Clicking a row pilots
   that hull. The panel then keeps the normal task in one place: the two

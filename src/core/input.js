@@ -14,7 +14,9 @@
 //                actions.allStop (Space: the ship's commanded brake),
 //                actions.shipRefuel (the hangar refill button) and
 //                actions.dock / cargoLoad / cargoUnload (game mode's
-//                port: O docks, L loads, Shift+L unloads)
+//                port: O docks, L loads, Shift+L unloads) and
+//                actions.clockSim / clockArcade (G5's Controls-panel
+//                clock presets, buttons only — the ladder owns the keys)
 //   * renderer : actions.exposure
 //   * selection: actions.pick + pickX/pickY, actions.constellations,
 //                actions.flyTo/nextStar/clearSet, keys.boost (Shift+click)
@@ -50,8 +52,9 @@ function createInput(canvas) {
 		pickY: 0,
 	actions: { reset: 0, home: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, freezeTime: 0,
 	orbitCentre: 0, orbitObject: 0, flyMode: 0, gameMode: 0, chaseFollow: 0, allStop: 0, shipRefuel: 0,
-	flyTo: 0, nextStar: 0, clearSet: 0, systemView: 0, systemViewExit: 0, dvMap: 0,
-	speedRefTarget: 0, speedRefCentre: 0, speedRefHome: 0, dock: 0, cargoLoad: 0, cargoUnload: 0 },
+flyTo: 0, nextStar: 0, clearSet: 0, systemView: 0, systemViewExit: 0, dvMap: 0,
+speedRefTarget: 0, speedRefCentre: 0, speedRefHome: 0, dock: 0, cargoLoad: 0, cargoUnload: 0,
+clockSim: 0, clockArcade: 0 },
 	};
 
 	// Held keys: true while down. Ctrl is the brief's slow modifier; Ctrl+W
