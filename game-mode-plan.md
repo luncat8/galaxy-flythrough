@@ -1,4 +1,4 @@
-# Game Mode — Spaceship Flight, Restrictions and Display (G1–G3, ui.10 and ui.11 shipped; G4 planned)
+# Game Mode — Spaceship Flight, Restrictions and Display (G1–G4, ui.10 and ui.11 shipped; G5 planned)
 
 The viewer is an observer: a free fly camera, two orbit modes and a cinematic
 fly-to. Game mode is the same pipeline flown as a **spaceship** — the camera is
@@ -7,7 +7,7 @@ three questions a pilot always has: **how fast, how much fuel, how far to the
 selected object.** Toggle with `g`.
 
 Status: **G1–G3 shipped (2026-10-16); ui.10 fleet/axis/target-stop shipped
-(2026-10-17); G4 planned** — G1 is `src/core/ship.js`,
+(2026-10-17); G4 shipped (2026-10-19, ui.13)** — G1 is `src/core/ship.js`,
 the flight law, the shared ship clock (§4), the text HUD, the input gating and
 the hangar refill; G2 is the §6 canvas chrome and the §5 burn/flip approach with
 the fuel checkout, the rest-frame commit and the `j` follow command; G3 is the
@@ -79,11 +79,15 @@ place, and parked records do not move or consume fuel.
   **accepted** velocity-vector impulse after projection onto the cruise ball
   (SI m/s). Thus the invariant is `dvSpent == Σ|v_after − v_before|`, not the
   requested `|a|·dt` when the cap discards part of a command. Tank empty →
-  thrusters zero, the ship keeps coasting. Refuel (the hangar refill, G1)
-  zeroes `dvSpent`; station refills land with docking (G4).
+  thrusters zero, the ship keeps coasting. Two refills exist: the hangar
+  refill (G1, free, anywhere, zeroes `dvSpent`) and the **station refill**
+  (G4 — docking re-arms the tank *and* restores life support, §10).
 - **Life support**: `lifeYears` of ship-time from the class, decremented by
-  ship time (`lifeSpent += dt_ship`); G1 displays the remainder, G3 gives it
-  teeth (a warning and a hard return-home marker when it runs out).
+  ship time (`lifeSpent += dt_ship`); G1 displays the remainder. G4 gives it
+  teeth (§10): a critical warning inside the class's warn band, and — when
+  it runs out — a hard return-home marker to the port of registry that
+  stays until the ship docks again. While docked the port sustains the
+  crew, so the countdown pauses.
 
 ### First-entry handover and fleet restore (G1, ui.10)
 
@@ -164,6 +168,8 @@ dresses:
 | `Shift+C` | select the galactic centre as the speed reference (§7.4) — no re-pose |
 | `H` | select the home reference (the Sun in the Milky Way, a generated galaxy's centre otherwise) — no teleport |
 | `R` | reset the active hull to camera home (full tank, zero v) and clear the locked destination; parked hulls stay put |
+| `O` | dock at / undock from the target station (§10) — the port refill and life-support restore land here |
+| `L` / `Shift+L` | load / unload the cargo hold at the docked station (§10) — the container hook, free (no economy) |
 | click / `N` `X` / search / Tab | unchanged — selection is how the HUD gets its target |
 
 `V` is gated because the system view re-poses the camera (its enter path
@@ -349,11 +355,22 @@ overlay `<pre>` — no render-path changes.
 
 ```
 mode      game · ship clock +0.5 y/s (wheel steps · T freezes) · g returns to observer
-ship      stardrive · accepted thrust ▮▮▮▯▯ 82% · burn 2.1 kyr reserve
+ship      stardrive · accepted thrust ▮▮▮▯▯ 82% · burn 2.1 kyr reserve · docked at Sirius port
 speed     0.043c (+8.2 m/s²) · fuel 146,200/200,000 m/s Δv (73%) · life 197 y
+cargo     12,000/20,000 t
+home      Sirius port · 8.61 ly · closing 0.030c
+life      support expired · return to Sirius port
 → Sirius B   8.61 ly · closing 0.030c · coast eta 287 y ship · 57 s wall · ap eta 158 y
 auto      burn · 38% · eta 158 y ship · 12 s wall · Δv 4,100/24,600 m/s · f aborts
 ```
+
+G4 adds the last three state lines between `speed` and the target
+arrow: `cargo` (while docked or the hold is nonzero), `home` (while
+life support is critical or expired — the port of registry's drawn
+distance and closing rate) and the persistent `life` line while
+support is expired. The `ship` line gains `· docked at <port>` while
+docked, and the `life` figure on the `speed` line gains `· critical`
+inside the warn band (§10).
 
 - **mode**: the clock rung and the escape key; the placeholder line is gone.
 - **accepted thrust**: the accepted burn over the current cap (the blend,
@@ -417,6 +434,13 @@ chrome is the ship).
 - **Throttle / fuel strip** — bottom centre: the applied burn over the current
   ceiling on top, the remaining Δv over `dvMax` under it, with the two
   readouts main.js preformatted.
+- **Return-home marker** (G4) — an amber frame and tag at the home
+  port's drawn position, drawn by the same projection/clamp/flip law
+  as the target frame, while life support is expired. It is *hard*:
+  no toggle dismisses it, only a dock (which restores life) clears
+  it. A star home that leaves the residency takes the marker with
+  it — its birth record is not a place to return to; the frame-fixed
+  home cannot leave.
 
 The ordinary ship controls live in the Flight workspace, rather than appearing
 only after game mode is entered: class/refuel, forward thrust, the speed
@@ -612,9 +636,16 @@ existing Shift+F stand-off flight and configured Engage workflow are unchanged.
   mutually exclusive thrust/speed Pilot controls (§7.1), the hull heading
   state and its adoption/write-back (§2), and the selectable speed reference
   with the centre/home frame-fixed points (§7.4).
-- **G4 — docking, refuel and life support**: dock-port/base assets from ui.1
-  become the refuel stations; life-support timers bite; the cargo containers
-  hook (prices/economy stay omitted, matching 0.5).
+- **G4 — docking, refuel and life support (shipped 2026-10-19,
+  ui.13; the design is §10)**: any natural-object flight target is a
+  station; `O` docks inside its shell when settled, the station
+  refill re-arms the tank *and* restores life support, the docked
+  ship rides the station's drawn motion, the port of registry
+  becomes the return-home marker's target when life support
+  expires, and the hold loads/unloads at the dock (`L`/`Shift+L`) —
+  the cargo-container hook, prices and economy omitted (matching
+  0.5). Dock-port assets land in ui.1's typed asset history on
+  every dock.
 - **G5 — polish**: SIM/ARCADE presets as Controls-panel buttons on the §4
   ladder (SIM = `R = 1` real seconds; ARCADE = the default rung plus autopilot
   coast auto-warp) and the browser visual pass on real hardware
@@ -701,3 +732,144 @@ the HUD reads accepted throttle.
 
 Budgets: ship step ≤ 0.05 ms/frame at 300k stars, zero frame-loop allocations
 (pinned), and no renderer, WGSL or catalog changes anywhere in G1–G4.
+
+## 10. Docking, refuel and life support (G4)
+
+The last leg of the game loop: a flight ends at a *station*, the ship
+is serviced there, and the clock that outlives the crew has consequences.
+Everything stays CPU-only and additive — no new object family, no star
+buffer, no WGSL.
+
+### 10.1 The station
+
+Any **natural-object flight target** is a station: the locked Flight
+destination, else the primary selection — the same target the §5
+autopilot answers against (`gameTargetFeed` with kind `target`). The
+frame-fixed references (galactic centre, home) are coordinates, not
+ports — `O` there is refused. A port is a facility of the star, not a
+body in the generated system, so no new record family exists and the
+picker, the feed and the autopilot keep their exact contracts.
+
+Dockable when all four hold:
+
+1. game mode is on (`O` is gated outside it, the §3 notice pattern),
+2. the target is natural and resident (a valid drawn position),
+3. **inside the port's shell** — `distanceM ≤ standOffM + DOCK_SHELL_M`,
+   the stand-off the approach arrives on plus one arrival shell of
+   tolerance (a target-stopped ship at the star itself is inside too),
+4. **settled** — `relativeMs ≤ DOCK_REL_MS` (1 m/s: the §7.4 target-stop
+   autopilot lands exactly there; Ctrl docking finesse hovers).
+
+The dock commit (`Ship.dock(ship, key, name)`): ends any autopilot (a
+dock is a manual command, like every other manual input), sets
+`docked`, records the station's identity `{ key, name }` and the
+**ride offset** — the ship's vector from the station's *drawn* position
+at the dock, in kpc — re-arms the tank (`dvSpent = 0`, the station
+refill), restores life support (`lifeSpent = 0`, the port sustains the
+crew) and makes the station the **port of registry** (`ship.home`).
+main.js mirrors the port into the selection store's asset history as a
+`dock-port` asset (`<star> port`, the star's key) — the ui.1 typed-asset
+connection §8 promised.
+
+### 10.2 The docked ride
+
+While docked the frame loop calls `Ship.dockStep(ship, tx…tvz)` with the
+station feed's drawn position and physical velocity: the ship sits at
+`station + rideOffset` and moves with the station, so the shared clock
+ages the galaxy around a parked ship and the camera write-through rides
+along. No thrust, no autopilot, no fuel burn, **no life-support accrual**
+— the port sustains the crew. Any thrust key, Space, `O`, the class
+swap, `R` and a hull switch undock first: manual input owns the ship.
+`Ship.undock` leaves the ship at rest relative to the port (it keeps
+the station's velocity), and a station that leaves the residency breaks
+the dock with a notice — the same honest no-stale-position rule the
+autopilot's target-lost follows.
+
+### 10.3 Life support
+
+`lifeRemainingY = lifeYears − lifeSpent / SECONDS_PER_YEAR`
+(Infinity stays Infinity — a generation ship cannot outlive its hull).
+Three states:
+
+- **ok** — nothing shows;
+- **critical** — `remaining ≤ max(LIFE_WARN_MIN_Y, LIFE_WARN_FRACTION ·
+  lifeYears)` (10 %, floored at 0.1 y, so a 2-y chemical hull warns at
+  0.2 y): the `speed` line's life figure gains `· critical`, and one
+  notice fires on the crossing;
+- **expired** — `remaining ≤ 0`: the HUD prints a persistent
+  `life support expired · return to <port>` line and the chrome draws
+  the **return-home marker**.
+
+The teeth are the warning and the marker, exactly as §2 promised. The
+autopilot is *not* locked out — the pilot may choose to limp on — but
+the marker is **hard**: no toggle dismisses it, only a dock (any port,
+which resets `lifeSpent`) clears it.
+
+### 10.4 The home port and the return-home marker
+
+`ship.home` is `{ kind: 'fixed' }` until the first dock — the galaxy's
+home point, ui.11's `H` reference (the Milky Way's Sun, a generated
+galaxy's centre; frame-fixed, always resident, at rest) — and
+`{ kind: 'star', key, name }` after: the last port of registry, resolved
+by key each frame like every other drawn-space target. main.js keeps the
+pick-shaped snapshot the resolution needs (`homeRef`, exactly the
+destination's pattern) and feeds the home marker's drawn position,
+closing rate and staleness at game cadence. A star home that leaves the
+residency hides the chrome marker and the HUD line says `not resident`;
+the fixed home cannot. The HUD `home` line shows at critical *or*
+expired (a pilot inside the warn band deserves the heading too); the
+chrome marker draws at expired only.
+
+### 10.5 The cargo hook
+
+`ship.cargo` (tons, 0 … `class.cargo`; 0 at launch, emptied by a class
+swap — the new hull's hold is its own). While docked, `L` loads to full
+capacity and `Shift+L` unloads to zero — free, no prices (the economy
+stays omitted, matching 0.5's omission). The HUD shows the hold on a
+`cargo` line while docked or nonzero. The containers are session assets
+like the hulls: the port's manifest is the ship's hold, and ui.1's
+`cargo-container` asset type stays available for the transport work a
+later interface series can hang on it.
+
+### 10.6 Refusals and notices
+
+Every refusal is one short message line at the overlay's cadence (the
+`setAutoMsg` pattern, ~3 s), never a silent no-op: no game mode (gated
+key), no resident target (`no station in range`), a frame-fixed target
+(`no port at a fixed point`), outside the shell (`outside the docking
+shell`), unsettled (`not settled · relative <speed>`), cargo while not
+docked (`cargo moves only at a dock`), an autopilot engage while docked
+(`undock first`).
+
+### 10.7 Files and tests
+
+- `src/core/ship.js` — the `DOCK_*`/`LIFE_*` constants, the
+  `docked`/`station`/`dockOffset`/`home`/`cargo` state, `dockReason`
+  (the pure dockable check), `dock`/`undock`/`dockStep`, `loadCargo`/
+  `unloadCargo`, `lifeRemainingY`/`lifeState`; `resetShip` and
+  `setClass` clear the docked state and the hold (the registry home
+  persists — it is session state like the fleet).
+- `src/core/input.js` — `dock`/`cargoLoad`/`cargoUnload` one-shot
+  actions (`O`, `L`, `Shift+L`), in the shared table and the
+  panel-button passthrough.
+- `src/main.js` — the dock command (conditions, refusals, the asset
+  write), the station feed while docked, the docked branch of the
+  frame step, the home feed, the life-state transition notices, the
+  §6 lines, the chrome home feed, and the Flight panel's Port rows.
+- `src/render/label-layer.js` — `hasHome`/`home`/`homeTagText` in the
+  ship-chrome state and the amber marker in the chrome pass (the
+  target frame's projection, clamp and flip law, factored so both
+  frames share it).
+- `src/index.html` — the Flight workspace's Port section (dock button,
+  load/unload, port state line) and the Controls gating attributes.
+- `README.md` — the controls rows and the game-mode section's docking
+  paragraph.
+- Tests: `experiments/ship-test.js` pins the dockable check's matrix,
+  the commit's service effects, the ride (offset preserved, velocity
+  copied, life frozen), the undock's rest-relative exit, the cargo
+  law, the reset/class-swap clears and the life-state ladder;
+  `m1-smoke-test.js` pins the wiring (actions, the docked frame
+  branch, the asset write, the HUD/chrome feeds).
+
+Budgets as in G1–G3: the docked branch is O(1) per frame, zero
+allocations in the loop, and no renderer, WGSL or catalog change.

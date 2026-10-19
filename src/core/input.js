@@ -11,8 +11,10 @@
 //   * main.js  : actions.orbitCentre/orbitObject/flyMode (the mode switches —
 //                the object target lives in its selection store), actions.gameMode,
 //                actions.chaseFollow (j: the follow-behind object orbit),
-//                actions.allStop (Space: the ship's commanded brake) and
-//                actions.shipRefuel (the hangar refill button)
+//                actions.allStop (Space: the ship's commanded brake),
+//                actions.shipRefuel (the hangar refill button) and
+//                actions.dock / cargoLoad / cargoUnload (game mode's
+//                port: O docks, L loads, Shift+L unloads)
 //   * renderer : actions.exposure
 //   * selection: actions.pick + pickX/pickY, actions.constellations,
 //                actions.flyTo/nextStar/clearSet, keys.boost (Shift+click)
@@ -49,7 +51,7 @@ function createInput(canvas) {
 	actions: { reset: 0, home: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, freezeTime: 0,
 	orbitCentre: 0, orbitObject: 0, flyMode: 0, gameMode: 0, chaseFollow: 0, allStop: 0, shipRefuel: 0,
 	flyTo: 0, nextStar: 0, clearSet: 0, systemView: 0, systemViewExit: 0, dvMap: 0,
-	speedRefTarget: 0, speedRefCentre: 0, speedRefHome: 0 },
+	speedRefTarget: 0, speedRefCentre: 0, speedRefHome: 0, dock: 0, cargoLoad: 0, cargoUnload: 0 },
 	};
 
 	// Held keys: true while down. Ctrl is the brief's slow modifier; Ctrl+W
@@ -81,12 +83,14 @@ function createInput(canvas) {
 	// the lock and no keydown arrives — which is fine, because the system
 	// view runs in orbit mode, where Esc does arrive and the action is a
 	// no-op outside the view. Space is game mode's commanded all-stop
-	// (game-mode-plan.md §3): one-shot, like the other commands.
+	// (game-mode-plan.md §3): one-shot, like the other commands. O docks
+	// at the target station and L/Shift+L load/unload the hold (§10).
 	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyP: 'constellations', KeyG: 'gameMode', KeyT: 'freezeTime', Tab: 'menu',
-		KeyN: 'nextStar', KeyX: 'clearSet', KeyV: 'systemView', KeyB: 'dvMap', KeyJ: 'chaseFollow', KeyM: 'viewField', Space: 'allStop', Escape: 'systemViewExit' };
-	// C and F carry a shift-cased pair each: [lowercase, Shift+uppercase].
-	const casedPressMap = { KeyC: ['orbitObject', 'orbitCentre'], KeyF: ['flyMode', 'flyTo'] };
-	const PANEL_BUTTON_SHORTCUTS = { KeyF: 1, KeyN: 1, KeyX: 1 };
+		KeyN: 'nextStar', KeyX: 'clearSet', KeyV: 'systemView', KeyB: 'dvMap', KeyJ: 'chaseFollow', KeyM: 'viewField', Space: 'allStop', Escape: 'systemViewExit',
+		KeyO: 'dock' };
+	// C, F and L carry a shift-cased pair each: [lowercase, Shift+uppercase].
+	const casedPressMap = { KeyC: ['orbitObject', 'orbitCentre'], KeyF: ['flyMode', 'flyTo'], KeyL: ['cargoLoad', 'cargoUnload'] };
+	const PANEL_BUTTON_SHORTCUTS = { KeyF: 1, KeyN: 1, KeyX: 1, KeyO: 1, KeyL: 1 };
 	// Exposure accumulates, so key repeat is one more step per repeat.
 	const exposureMap = { BracketLeft: -1, Minus: -1, BracketRight: 1, Equal: 1 };
 	// Linear exposure (ACES pre-multiplier) in half-stop steps. ; darker, ' brighter.

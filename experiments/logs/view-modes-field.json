@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-18T21:44:11.656Z",
+  "date": "2026-10-19T05:32:57.959Z",
   "anchors": {
     "landmarks": 60,
     "catalog": 3829
@@ -630,7 +630,7 @@
       "name": "100 nearest-500 queries take 3.8 ms (< 200)",
       "pass": true,
       "detail": {
-        "ms": 3.78
+        "ms": 3.85
       }
     },
     {
@@ -678,10 +678,10 @@
       }
     },
     {
-      "name": "500 anchors at the balanced budget (72×40) rebuilds in 10.9 ms (< 60)",
+      "name": "500 anchors at the balanced budget (72×40) rebuilds in 8.5 ms (< 60)",
       "pass": true,
       "detail": {
-        "ms": 10.94,
+        "ms": 8.55,
         "pairs": 1440000
       }
     },

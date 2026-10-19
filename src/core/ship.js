@@ -111,6 +111,24 @@ const AP_AIM_TAU = 1.0;
 // stellar drift and far above the f64 noise of a drawn position difference).
 const AP_MOVE_EPS_MPS = 0.1;
 
+// --- G4: docking, the station refill and life support ---------------------
+// The port's shell: the arrival shell's tolerance around the stand-off
+// (a target-stopped ship at the star itself is inside the port's space
+// too). A dock needs the ship settled — the target-stop autopilot lands
+// exactly at rest, and Ctrl docking finesse hovers there.
+const DOCK_SHELL_M = AP_ARRIVE_M;
+const DOCK_REL_MS = 1;
+// Life support's warn band: a fraction of the class's life, floored so
+// a short chemical hull still warns with weeks to go.
+const LIFE_WARN_FRACTION = 0.1;
+const LIFE_WARN_MIN_Y = 0.1;
+const LIFE_OK = 0, LIFE_CRITICAL = 1, LIFE_EXPIRED = 2;
+const LIFE_STATE_NAMES = ['ok', 'critical', 'expired'];
+// The dockable check's refusals, as reason codes the HUD names.
+const DOCK_OK = 0, DOCK_FIXED_POINT = 1, DOCK_OUTSIDE = 2, DOCK_UNSETTLED = 3;
+const DOCK_REASON_NAMES = ['', 'no port at a fixed point',
+	'outside the docking shell', 'not settled'];
+
 const apProfileOut = {
 	speed: 0, dv: 0, timeS: 0, distanceM: 0,
 	accelLimit: 0, speedLimit: 0, peakSpeed: 0,
@@ -195,6 +213,17 @@ function createShip(classId) {
 		stopResidual: 0,               // kpc/ship-s left when a stop ran dry
 		throttleFrac: 0,               // applied burn / current ceiling, for the bar
 		accelNow: 0,                   // m/s² applied this step
+		// G4: the docked ride and the hold. `station` is the port's
+		// identity (a key names it, like every other record);
+		// `dockOffset` is the ship's vector from the station's drawn
+		// position at the dock — the ride is that offset, carried.
+		// `home` is the port of registry: the fixed galaxy home
+		// until the first dock, a star key after.
+		docked: false,
+		station: null,
+		dockOffset: new Float64Array(3),   // kpc
+		home: { kind: 'fixed' },
+		cargo: 0,                    // tons, 0..class.cargo
 		timeIndex: homeTimeIndex(cls),
 		timeFrozen: false,
 		ap: createAutopilot(),
@@ -216,6 +245,11 @@ function setClass(ship, classId) {
 	ship.dvSpent = 0;
 	ship.stopping = false;
 	ship.stopResidual = 0;
+	// The hangar swaps the hull under you: the new hull is not
+	// docked, and its hold is its own.
+	ship.docked = false;
+	ship.station = null;
+	ship.cargo = 0;
 	ship.timeIndex = homeTimeIndex(cls);
 	const cap = cruiseCapKpcS(ship);
 	const speed = Math.hypot(ship.vel[0], ship.vel[1], ship.vel[2]);
@@ -235,11 +269,106 @@ function resetShip(ship) {
 	ship.stopResidual = 0;
 	ship.throttleFrac = 0;
 	ship.accelNow = 0;
+	ship.docked = false;
+	ship.station = null;
+	ship.cargo = 0;
 }
 
 function refuel(ship) {
 	ship.dvSpent = 0;
 	ship.stopResidual = 0;
+}
+
+// --- G4: docking, the station refill and life support -------------------
+
+// The pure dockable check. `natural` is false for the frame-fixed
+// references (centre/home) — coordinates are not ports. The no-target
+// case is the caller's: a feed that cannot resolve a drawn position
+// never reaches this law.
+function dockReason(distM, standOffM, relMs, natural) {
+	if (!natural) return DOCK_FIXED_POINT;
+	if (distM > standOffM + DOCK_SHELL_M) return DOCK_OUTSIDE;
+	if (relMs > DOCK_REL_MS) return DOCK_UNSETTLED;
+	return DOCK_OK;
+}
+
+// The dock commit. The station's identity is its key (a name for
+// the display); the ride offset is the ship's vector from the
+// station's drawn position at this instant, so the docked ride
+// starts exactly where the ship settled. A dock is a manual
+// command: it ends any autopilot, re-arms the tank (the station
+// refill), restores life support (the port sustains the crew)
+// and registers the port of registry.
+function dock(ship, key, name, ox, oy, oz) {
+	apEnd(ship, AP_REASON_ABORTED);
+	ship.docked = true;
+	ship.station = { key: key >>> 0, name: String(name || '') };
+	ship.dockOffset[0] = ox; ship.dockOffset[1] = oy; ship.dockOffset[2] = oz;
+	ship.dvSpent = 0;
+	ship.lifeSpent = 0;
+	ship.stopping = false;
+	ship.stopResidual = 0;
+	ship.throttleFrac = 0;
+	ship.accelNow = 0;
+	ship.home = { kind: 'star', key: key >>> 0, name: String(name || '') };
+	return true;
+}
+
+// Undock leaves the ship at rest relative to the port: it keeps
+// the station's velocity, which is what the ride was carrying.
+function undock(ship) {
+	ship.docked = false;
+	ship.station = null;
+	ship.stopping = false;
+	ship.stopResidual = 0;
+	return true;
+}
+
+// The docked ride: the ship sits at its offset from the station's
+// drawn position and moves with the station's physical velocity.
+// No thrust, no burn, and no life-support accrual — the port
+// sustains the crew while the shared clock ages the galaxy.
+function dockStep(ship, tx, ty, tz, tvx, tvy, tvz) {
+	ship.pos[0] = tx + ship.dockOffset[0];
+	ship.pos[1] = ty + ship.dockOffset[1];
+	ship.pos[2] = tz + ship.dockOffset[2];
+	ship.vel[0] = tvx; ship.vel[1] = tvy; ship.vel[2] = tvz;
+	ship.throttleFrac = 0;
+	ship.accelNow = 0;
+}
+
+// The cargo hook: the hold fills at the docked port and empties
+// there too. Free — prices and economy stay omitted (0.5's own
+// omission). Returns false when not docked; the hold is untouched.
+function loadCargo(ship) {
+	if (!ship.docked) return false;
+	ship.cargo = ship.class.cargo;
+	return true;
+}
+
+function unloadCargo(ship) {
+	if (!ship.docked) return false;
+	ship.cargo = 0;
+	return true;
+}
+
+// Life support: the countdown's remainder in years, its state,
+// and the warn band the critical state reads. Infinity (a
+// generation ship) never leaves ok.
+function lifeRemainingY(ship) {
+	if (!Number.isFinite(ship.lifeYears)) return Infinity;
+	return Math.max(0, ship.lifeYears - ship.lifeSpent / SECONDS_PER_YEAR);
+}
+
+function lifeWarnY(ship) {
+	return Math.max(LIFE_WARN_MIN_Y, LIFE_WARN_FRACTION * ship.lifeYears);
+}
+
+function lifeState(ship) {
+	if (!Number.isFinite(ship.lifeYears)) return LIFE_OK;
+	const remaining = lifeRemainingY(ship);
+	if (remaining <= 0) return LIFE_EXPIRED;
+	return remaining <= lifeWarnY(ship) ? LIFE_CRITICAL : LIFE_OK;
 }
 
 // Space's commanded brake. It is a manual command like thrust, so it ends any
@@ -958,6 +1087,11 @@ function formatClock(ship, speedCNow) {
 	return '+' + trim3(rung) + ' y/s';
 }
 
+// The hold, in tons with separators (the cargo line's law).
+function formatCargo(tons) {
+	return Math.round(tons).toLocaleString('en-US') + ' t';
+}
+
 const Ship = {
 	C, KPC_M, SECONDS_PER_YEAR,
 	SHIP_ACCEL_WORLD, IN_SYSTEM_CRUISE_C,
@@ -971,13 +1105,17 @@ const Ship = {
 	AP_ALIGN_TAU, AP_AIM_TAU, AP_MOVE_EPS_MPS,
 	NAV_FASTEST, NAV_THRUST_LIMIT, NAV_SPEED_LIMIT, NAV_TIME_LIMIT, NAV_MODE_NAMES,
 	NAV_REASON_NONE, NAV_REASON_DISTANCE, NAV_REASON_THRUST, NAV_REASON_SPEED, NAV_REASON_TIME, NAV_REASON_LOCAL, NAV_REASON_NAMES,
+	DOCK_SHELL_M, DOCK_REL_MS, DOCK_OK, DOCK_FIXED_POINT, DOCK_OUTSIDE, DOCK_UNSETTLED, DOCK_REASON_NAMES,
+	LIFE_WARN_FRACTION, LIFE_WARN_MIN_Y, LIFE_OK, LIFE_CRITICAL, LIFE_EXPIRED, LIFE_STATE_NAMES,
 	createShip, setClass, resetShip, refuel, applyStop, step, advance,
+	dockReason, dock, undock, dockStep, loadCargo, unloadCargo,
+	lifeRemainingY, lifeWarnY, lifeState,
 	homeTimeIndex, dvRemaining, cruiseCapKpcS, speedC, timeRateYPerS,
 	createFlightPlan, profileForLimits, planJourney, projectedImpulseDv,
 	burnReserveSeconds, apProfile,
 	apEnd, apAbort, apCommitApproach, apCommitTarget, apCommitFollow, apStep, closeSpeedM, easeDirection,
 	velocityComponents, formatAxisSpeed, timeRateCapYPerS,
-	formatSpeed, formatSpeedC, formatDv, formatClock,
+	formatSpeed, formatSpeedC, formatDv, formatClock, formatCargo,
 };
 if (typeof module !== 'undefined') module.exports = Ship;
 if (typeof window !== 'undefined') window.Ship = Ship;

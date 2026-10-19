@@ -89,6 +89,8 @@ This is a visual galaxy model, not an N-body gravity simulation. The analytical 
 | Space | — | — | All-stop: burn counter-vector to rest (can run dry) |
 | f / c / Shift+C | Free fly · orbit the selected star (follows it) · orbit the galactic centre **and select it as the speed reference** | same (orbit only) | `f` aborts the autopilot · `c` gated — the ship is the fly rig · Shift+C selects the reference only (no re-pose) |
 | j | Chase the centred star from behind: the view aligns with its movement vector and swings back after a glance | — | the ship trails the selected star at its stand-off; press again to abort |
+| O | — | — | dock at / undock from the target station (inside its shell, settled) |
+| L / Shift+L | — | — | load / unload the cargo hold at the docked station |
 | H | Return home **and select the home reference** | same (travel only) | selects the home reference only — ships do not teleport |
 
 **Speed reference** (game mode) — the object the axis velocities, the HUD target
@@ -127,14 +129,15 @@ The settings panel opens at startup and exposes galaxy type, seed, age, the live
 
 ## Game mode (g)
 
-Game mode ([game-mode-plan.md](game-mode-plan.md), G1–G3 + ui.10) is the same
-pipeline flown as a **spaceship**: the camera *is* the active hull, its motion
-obeys the ship class instead of the observer's instant-response rig, and a HUD
-answers how fast, how much fuel and how far to the speed reference. `g` enters
-and leaves; each fleet hull keeps its own position, velocity, heading, class,
-tank and clock. First entry adopts the camera pose — position **and heading**;
-later entries restore the hull's saved state. Clicking a ship in the Flight
-list switches to it and enters game mode if needed.
+Game mode ([game-mode-plan.md](game-mode-plan.md), G1–G4 + ui.10 and ui.11) is
+the same pipeline flown as a **spaceship**: the camera *is* the active hull,
+its motion obeys the ship class instead of the observer's instant-response
+rig, and a HUD answers how fast, how much fuel and how far to the speed
+reference. `g` enters and leaves; each fleet hull keeps its own position,
+velocity, heading, class, tank and clock. First entry adopts the camera pose —
+position **and heading**; later entries restore the hull's saved state.
+Clicking a ship in the Flight list switches to it and enters game mode if
+needed.
 
 - **Restrictions are the game.** WASD/arrows burn real Δv along the ship's axes
   (mouse aims); the ship accelerates, coasts on straight lines and runs out of
@@ -170,15 +173,32 @@ list switches to it and enters game mode if needed.
 - **The hangar.** The Flight panel's **Ship** selector changes the active
   hull's class (0.5.4's classes: accel, Δv, cruise, life support); the swap
   re-arms that hull's tank and re-snaps its clock to the class's home rung.
-  **Refuel** there (and **refuel ship** in Controls) is the hangar refill until
-  docking (G4) brings station service.
+  **Refuel** there (and **refuel ship** in Controls) is the hangar refill —
+  free anywhere; the *station* refill lands with docking.
+- **Docking and life support (G4).** Any star you fly to is a station:
+  settled (≤ 1 m/s relative) inside its stand-off shell, `O` docks — the
+  port re-arms the tank, restores life support, records the star as the
+  hull's **port of registry** and lands a `dock-port` asset in the
+  selection panel's asset history. Docked, the ship rides the station's
+  drawn motion (life support pauses at the port); any thrust key, Space,
+  `O`, a class swap, `R` or a hull switch leaves it. Life support counts
+  down on ship time: the HUD warns inside the class's critical band
+  (10 %, floored at 0.1 y), and when it runs out a **hard return-home
+  marker** — an amber chrome frame on the port of registry plus a
+  persistent HUD line — insists on the way back until the next dock.
+  The Flight panel's **Port** rows carry the dock button and the cargo
+  hook: `L` loads the hold to the class's capacity and `Shift+L` empties
+  it, at the dock only, free (prices and economy stay omitted, matching
+  0.5).
 - **The HUD** (the overlay, at its 4 Hz cadence) shows **accepted thrust** and
   burn reserve, speed in c (km/s below 0.01c) and the live acceleration, the Δv
   tank and life support, signed forward/sideways/vertical velocity components
   on the camera axes (relative to the speed reference — its name is printed
   above them), and the target line: drawn distance, closing rate, coast
   ETA in ship *and* wall time, and autopilot ETA. It does not present forward
-  thrust discarded by the cruise clamp as a burn. On first entry, a live follow
+  thrust discarded by the cruise clamp as a burn. Game mode adds the
+  Port state, the cargo hold, the home-port heading while life support
+  runs critical, and the persistent expired line. On first entry, a live follow
   (`c`, `j` or a completed Shift+F) seeds the new hull's physical velocity;
   spawned hulls remain stationary and previously flown hulls restore their own
   saved velocity.
@@ -198,11 +218,14 @@ list switches to it and enters game mode if needed.
   time, and Δv spent against the checkout. The ship's nose follows the burn
   through the camera's own look, so a glance still wins. Thrust keys, Space, a
   class swap, target loss and `g` end a flight at the current velocity.
+  While docked, thrust keys, Space and `O` undock instead, and no flight
+  command engages from the port.
 - **The chrome.** A crosshair at the nose, a burn marker where the commanded
   direction crosses the view, a velocity tape left of centre (over-cap speed
   bleeds above it), a target frame on the speed reference (the locked
-  destination, selected star, galactic centre or home)
-  and an accepted-thrust/fuel strip in the class colour.
+  destination, selected star, galactic centre or home), an amber
+  **return-home frame** on the port of registry while life support is
+  expired, and an accepted-thrust/fuel strip in the class colour.
 
 ## Ships, routes and autopilot (0.5.5, reviewed in 0.5.6)
 

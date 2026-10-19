@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-18T06:54:57.680Z",
+  "date": "2026-10-19T05:32:55.232Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -78,8 +78,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 96,
-  "passed": 96,
+  "totalChecks": 105,
+  "passed": 105,
   "failed": 0,
   "checks": [
     {
@@ -229,6 +229,42 @@
     },
     {
       "name": "the Pilot controls are mutually exclusive: touching one takes the forward axis",
+      "pass": true
+    },
+    {
+      "name": "the port commands are one-shot actions with their keys",
+      "pass": true
+    },
+    {
+      "name": "the dock command commits the service and the asset history",
+      "pass": true
+    },
+    {
+      "name": "the docked ride feeds the station, breaks on a lost residency, and yields to thrust",
+      "pass": true
+    },
+    {
+      "name": "the home feed resolves the port of registry by key or the fixed home",
+      "pass": true
+    },
+    {
+      "name": "flight commands refuse while docked",
+      "pass": true
+    },
+    {
+      "name": "the HUD carries the docked, cargo, home and expired lines",
+      "pass": true
+    },
+    {
+      "name": "the chrome draws the amber return-home marker",
+      "pass": true
+    },
+    {
+      "name": "the Flight panel carries the Port rows and the life crossings announce",
+      "pass": true
+    },
+    {
+      "name": "Space leaves the port and the port actions are game-gated",
       "pass": true
     },
     {
@@ -430,7 +466,7 @@
       "name": "Ship loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 84
+        "keys": 107
       }
     },
     {
@@ -521,7 +557,7 @@
       "name": "ViewModesField loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 42
+        "keys": 45
       }
     },
     {
@@ -535,7 +571,7 @@
       "name": "ViewModesLayer loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 6
+        "keys": 5
       }
     },
     {
@@ -628,10 +664,10 @@
         "dvmap": 0,
         "dvbudget": 0.35,
         "ship": "chemical",
-        "viewmode": "height",
+        "viewmode": "off",
         "viewproj": "view",
-        "viewsource": "constellations",
-        "viewanchors": 88,
+        "viewsource": "nearest",
+        "viewanchors": 256,
         "viewramp": "auto",
         "viewrelief": 6,
         "viewopacity": 1
@@ -665,10 +701,10 @@
         "dvmap": 0,
         "dvbudget": 0.35,
         "ship": "chemical",
-        "viewmode": "height",
+        "viewmode": "off",
         "viewproj": "view",
-        "viewsource": "constellations",
-        "viewanchors": 88,
+        "viewsource": "nearest",
+        "viewanchors": 256,
         "viewramp": "auto",
         "viewrelief": 6,
         "viewopacity": 1
@@ -702,10 +738,10 @@
         "dvmap": 0,
         "dvbudget": 0.35,
         "ship": "chemical",
-        "viewmode": "height",
+        "viewmode": "off",
         "viewproj": "view",
-        "viewsource": "constellations",
-        "viewanchors": 88,
+        "viewsource": "nearest",
+        "viewanchors": 256,
         "viewramp": "auto",
         "viewrelief": 6,
         "viewopacity": 1

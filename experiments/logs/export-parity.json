@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-18T07:02:00.520Z",
+  "date": "2026-10-19T05:32:55.069Z",
   "modules": 32,
   "totalChecks": 163,
   "passed": 163,
@@ -473,7 +473,7 @@
       }
     },
     {
-      "name": "ViewModesField has identical key sets (42 keys)",
+      "name": "ViewModesField has identical key sets (45 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -537,7 +537,7 @@
       }
     },
     {
-      "name": "ViewModesLayer has identical key sets (6 keys)",
+      "name": "ViewModesLayer has identical key sets (5 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -1030,7 +1030,7 @@
       "detail": []
     },
     {
-      "name": "every wired shader resolves in the SHADERS map",
+      "name": "every shader module resolves in the SHADERS map",
       "pass": true,
       "detail": [
         "star-sprite",
@@ -1057,7 +1057,7 @@
       ]
     },
     {
-      "name": "the renderer and the shader map agree on the wired module",
+      "name": "the renderer and the shader map agree on the sprite module",
       "pass": true
     }
   ]

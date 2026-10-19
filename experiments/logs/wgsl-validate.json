@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-18T06:56:00.184Z",
+  "date": "2026-10-19T05:32:55.300Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -42,7 +42,7 @@
       "lines": 114
     }
   ],
-  "wired": [
+  "modules": [
     "star-sprite",
     "star-sprite-hdr",
     "nebula-billboard",
@@ -91,7 +91,7 @@
         ],
         [
           "star-sprite",
-          28235
+          28210
         ],
         [
           "star-sprite-hdr",
@@ -116,7 +116,7 @@
       ]
     },
     {
-      "name": "five wired shaders are exposed (sprite, hdr reference, nebula, tonemap, simple-step)",
+      "name": "five shader modules are exposed (sprite, hdr reference, nebula, tonemap, simple-step)",
       "pass": true,
       "detail": [
         "star-sprite",
@@ -127,7 +127,7 @@
       ]
     },
     {
-      "name": "every wired shader exists in the module map",
+      "name": "every shader module exists in the module map",
       "pass": true,
       "detail": [
         "star-sprite",

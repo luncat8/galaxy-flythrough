@@ -1505,8 +1505,12 @@ Shipped, in `archive/`:
   pipeline as a spaceship, restricted by the class table the delta-v map already
   ships (accel cap, Δv tank, cruise fraction), with a HUD for speed, fuel and
   the distance to the selected object; stages G1 ship state + text HUD, G2
-  chrome + burn/flip autopilot, G3 docking/refuel. CPU-only and additive, like
-  the 0.5 series.
+  chrome + burn/flip autopilot, G3 the Flight workspace, G4 docking, the
+  station refill and life support (§10: `O` docks settled inside a station's
+  stand-off shell, the docked ship rides the station's drawn motion, the port
+  of registry becomes the return-home marker's target when life support
+  expires, and the hold loads/unloads at the dock). CPU-only and additive,
+  like the 0.5 series.
 
 - [`evolution-plan.md`](evolution-plan.md) — the 0.6 series, galaxy evolution over time:
   the type table describes present-day galaxies, so `modelAtAge` gains an **epoch tier**
@@ -1566,8 +1570,12 @@ tests and extend the file layout of §11 as needed.
 4. [Game mode — spaceship flight, restrictions and display](game-mode-plan.md):
    G1 shipped (ui.7: `src/core/ship.js`, the class restrictions, the shared ship
    clock on the system-ladder convention, the text HUD and the input gating);
-   G2 chrome + burn/flip autopilot, G3 docking/refuel, G4 presets remain.
-   CPU-only and pipeline-neutral.
+   G2 shipped (ui.8: the §6 chrome and the §5 burn/flip approach with the
+   fuel checkout); G3 shipped (ui.9: the single Flight workspace, the four
+   plan modes and accepted-impulse accounting); G4 shipped (ui.13: docking,
+   the station refill and life support — game-mode-plan §10). G5 polish
+   (SIM/ARCADE presets, the browser visual pass) remains. CPU-only and
+   pipeline-neutral.
 
 The [0.5 planet series](archive/0.5.0-plan-planet-generator.md) is complete:
 selection, generator, search, schematic, delta-v map and ships/routes/autopilot.

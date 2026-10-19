@@ -1,6 +1,6 @@
 {
-  "total": 87,
-  "passed": 87,
+  "total": 107,
+  "passed": 107,
   "failed": 0,
   "checks": [
     {
@@ -275,7 +275,7 @@
       "name": "no buffers are reallocated across 600 mixed frames",
       "pass": true,
       "detail": {
-        "keys": 17
+        "keys": 22
       }
     },
     {
@@ -431,9 +431,9 @@
       "name": "the flown approach arrives on the shell inside the checkout",
       "pass": true,
       "detail": {
-        "steps": 1063,
-        "dist": 10017168483053.855,
-        "spent": 59372514.07392312,
+        "steps": 1064,
+        "dist": 10123060498736.516,
+        "spent": 59548289.93754258,
         "required": 59958491.6
       }
     },
@@ -447,14 +447,14 @@
           "flip",
           "idle"
         ],
-        "retrogradeSteps": 13
+        "retrogradeSteps": 14
       }
     },
     {
       "name": "the flight time is the closed form's own scale",
       "pass": true,
       "detail": {
-        "shipS": 318600000,
+        "shipS": 318900000,
         "etaTotal": 318240725.9489938
       }
     },
@@ -462,7 +462,7 @@
       "name": "a drifting target is met at the shell",
       "pass": true,
       "detail": {
-        "dist": 10018848953147.422,
+        "dist": 10125829832183.66,
         "reason": "arrived"
       }
     },
@@ -471,10 +471,10 @@
       "pass": true,
       "detail": {
         "reason": 0,
-        "steps": 1064,
+        "steps": 1065,
         "dist": 0,
         "rel": 0,
-        "spent": 59957713.67300128,
+        "spent": 59957736.19762493,
         "required": 60178491.6
       }
     },
@@ -520,8 +520,8 @@
       "name": "follow nulls the relative velocity and trails at the stand-off (dt=3e+4)",
       "pass": true,
       "detail": {
-        "relStraightMs": 0.000026136710045411463,
-        "dist": 9993399995535.318,
+        "relStraightMs": 4.356191366014215e-7,
+        "dist": 9993399999999.965,
         "standOff": 10000000000000,
         "resolutionM": 16600000000
       }
@@ -531,22 +531,22 @@
       "pass": true,
       "detail": {
         "straightCostMs": 0,
-        "curveCostMs": 21837870.63638661
+        "curveCostMs": 21822969.350044183
       }
     },
     {
       "name": "follow re-nulls after the target curves (dt=3e+4)",
       "pass": true,
       "detail": {
-        "relCurveMs": 0.207482682075351
+        "relCurveMs": 4.3561176158804506e-7
       }
     },
     {
       "name": "follow nulls the relative velocity and trails at the stand-off (dt=3e+5)",
       "pass": true,
       "detail": {
-        "relStraightMs": 2.2933751735969667,
-        "dist": 9934000000000.31,
+        "relStraightMs": 4.357165034178277e-8,
+        "dist": 9934000000173.336,
         "standOff": 10000000000000,
         "resolutionM": 76000000000
       }
@@ -556,22 +556,22 @@
       "pass": true,
       "detail": {
         "straightCostMs": 0,
-        "curveCostMs": 3643498.7179162726
+        "curveCostMs": 3389974.749016963
       }
     },
     {
       "name": "follow re-nulls after the target curves (dt=3e+5)",
       "pass": true,
       "detail": {
-        "relCurveMs": 2.953437934163958
+        "relCurveMs": 2.726270859374118e-9
       }
     },
     {
       "name": "follow nulls the relative velocity and trails at the stand-off (dt=1e+6)",
       "pass": true,
       "detail": {
-        "relStraightMs": 0.0007420740834623966,
-        "dist": 9779995557206.887,
+        "relStraightMs": 1.3047153398433277e-8,
+        "dist": 9779999999999.822,
         "standOff": 10000000000000,
         "resolutionM": 230000000000
       }
@@ -581,14 +581,14 @@
       "pass": true,
       "detail": {
         "straightCostMs": 0,
-        "curveCostMs": 1433418.410627462
+        "curveCostMs": 1259842.5207619742
       }
     },
     {
       "name": "follow re-nulls after the target curves (dt=1e+6)",
       "pass": true,
       "detail": {
-        "relCurveMs": 9.97556684166193
+        "relCurveMs": 6.5235766992166386e-9
       }
     },
     {
@@ -599,7 +599,7 @@
       "name": "no buffers are reallocated across the approach, the follow and the abort",
       "pass": true,
       "detail": {
-        "keys": 17
+        "keys": 22
       }
     },
     {
@@ -666,6 +666,115 @@
         "drawn": 1,
         "after": 1
       }
+    },
+    {
+      "name": "the frame-fixed references are coordinates, not ports",
+      "pass": true
+    },
+    {
+      "name": "a settled ship inside the shell docks",
+      "pass": true
+    },
+    {
+      "name": "the shell band extends one arrival shell past the stand-off",
+      "pass": true,
+      "detail": {
+        "shell": 149597870700
+      }
+    },
+    {
+      "name": "a moving ship does not dock",
+      "pass": true
+    },
+    {
+      "name": "the dock commits the service and the registry",
+      "pass": true,
+      "detail": {
+        "docked": true,
+        "dvSpent": 0,
+        "lifeSpent": 0,
+        "home": {
+          "kind": "star",
+          "key": 12345,
+          "name": "Sirius"
+        }
+      }
+    },
+    {
+      "name": "the ride copies the station pose and freezes life support",
+      "pass": true,
+      "detail": {
+        "pos": [
+          1000010,
+          2000020,
+          -2999970
+        ],
+        "vel": [
+          0.001,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "the ride carries the offset as the station drifts",
+      "pass": true,
+      "detail": 1000010.5
+    },
+    {
+      "name": "undock clears the dock and keeps the station velocity",
+      "pass": true,
+      "detail": 0.002
+    },
+    {
+      "name": "the hold starts empty and the class caps it",
+      "pass": true,
+      "detail": 20000
+    },
+    {
+      "name": "cargo refuses to move undocked",
+      "pass": true
+    },
+    {
+      "name": "load fills to the class capacity, unload empties",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "R clears the dock and the hold",
+      "pass": true
+    },
+    {
+      "name": "the hangar swap clears the dock and empties the new hull",
+      "pass": true
+    },
+    {
+      "name": "life support reads exact and starts ok",
+      "pass": true
+    },
+    {
+      "name": "the warn band is 10% of the class life, inclusive",
+      "pass": true
+    },
+    {
+      "name": "inside the band still reads critical",
+      "pass": true
+    },
+    {
+      "name": "life support expires at zero",
+      "pass": true
+    },
+    {
+      "name": "a generation ship never expires",
+      "pass": true
+    },
+    {
+      "name": "the station refill re-arms the tank and restores life",
+      "pass": true
+    },
+    {
+      "name": "the hangar refill does not restore life support",
+      "pass": true
     }
   ]
 }

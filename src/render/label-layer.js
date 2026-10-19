@@ -56,6 +56,9 @@ const CHROME_CORNER_PX = 24;
 const CHROME_CORNER_TICK_PX = 5;
 const CHROME_TRACK = 'rgba(205, 220, 255, 0.18)';
 const CHROME_CAP = 'rgba(255, 255, 255, 0.9)';
+// G4's return-home marker: amber, so it cannot read as the class
+// color's target frame.
+const CHROME_HOME = 'rgba(255, 190, 90, 0.95)';
 const LADDER_X_PX = 160;
 const LADDER_H_PX = 220;
 const LADDER_RUNG_TICK_PX = 6;
@@ -84,11 +87,16 @@ function createShipChromeState() {
 		closing: 0,                  // closing rate over the cruise cap (may exceed 1)
 		hasAim: false,
 		aim: new Float64Array(3),    // unit commanded nose direction, world frame
-		hasTarget: false,
-		target: new Float64Array(3), // drawn position of the primary, kpc
-		tagText: '',
-		stripText: '',
-	};
+	hasTarget: false,
+	target: new Float64Array(3), // drawn position of the primary, kpc
+	tagText: '',
+	// G4: the return-home marker — the port of registry, drawn
+	// while life support is expired.
+	hasHome: false,
+	home: new Float64Array(3),   // drawn position of the home port, kpc
+	homeTagText: '',
+	stripText: '',
+};
 }
 
 // Camera-space offset of a point from the view centre, in CSS pixels. In front
@@ -201,20 +209,17 @@ function chromeLadder(ctx, chrome, cx, cy) {
 	}
 }
 
-function chromeTarget(ctx, chrome, camera, cx, cy, focalPx, halfW, halfH) {
-	const t = chrome.target, cam = camera.cameraPos;
-	const rx = t[0] - cam[0], ry = t[1] - cam[1], rz = t[2] - cam[2];
-	chromeRel[0] = rx; chromeRel[1] = ry; chromeRel[2] = rz;
-	chromeOffsetOf(chromeDot(chromeRel, camera.right), chromeDot(chromeRel, camera.up),
-		chromeDot(chromeRel, camera.forward), focalPx);
-	chromeClampToView(cx, cy, halfW, halfH);
-	const x = chromeAt[0], y = chromeAt[1], B = TARGET_BOX_PX;
+// The frame-and-tag law both markers share: project the world
+// point, clamp it to the view, draw the box and the flipped tag.
+// `color` is the class color for the target, amber for home.
+function chromeFrame(ctx, x, y, cx, tagText, color) {
+	const B = TARGET_BOX_PX;
 	ctx.lineWidth = 1.5;
-	ctx.strokeStyle = chrome.color;
+	ctx.strokeStyle = color;
 	ctx.beginPath();
 	ctx.rect(x - B, y - B, 2 * B, 2 * B);
 	ctx.stroke();
-	if (chrome.tagText === '') return;
+	if (tagText === '') return;
 	// The tag flips to the left of the box on the right half, so it stays on screen.
 	const left = x > cx;
 	const tx = left ? x - TAG_OFFSET_PX : x + TAG_OFFSET_PX;
@@ -222,10 +227,34 @@ function chromeTarget(ctx, chrome, camera, cx, cy, focalPx, halfW, halfH) {
 	ctx.textAlign = left ? 'right' : 'left';
 	ctx.lineWidth = 3;
 	ctx.strokeStyle = LABEL_HALO;
-	ctx.strokeText(chrome.tagText, tx, ty);
-	ctx.fillStyle = chrome.color;
-	ctx.fillText(chrome.tagText, tx, ty);
+	ctx.strokeText(tagText, tx, ty);
+	ctx.fillStyle = color;
+	ctx.fillText(tagText, tx, ty);
 	ctx.textAlign = 'left';
+}
+
+function chromeProjectPoint(point, camera, focalPx) {
+	const cam = camera.cameraPos;
+	chromeRel[0] = point[0] - cam[0];
+	chromeRel[1] = point[1] - cam[1];
+	chromeRel[2] = point[2] - cam[2];
+	chromeOffsetOf(chromeDot(chromeRel, camera.right), chromeDot(chromeRel, camera.up),
+		chromeDot(chromeRel, camera.forward), focalPx);
+}
+
+function chromeTarget(ctx, chrome, camera, cx, cy, focalPx, halfW, halfH) {
+	chromeProjectPoint(chrome.target, camera, focalPx);
+	chromeClampToView(cx, cy, halfW, halfH);
+	chromeFrame(ctx, chromeAt[0], chromeAt[1], cx, chrome.tagText, chrome.color);
+}
+
+// G4's return-home marker: the port of registry, amber, drawn
+// while life support is expired (the hard marker — only a dock
+// clears it).
+function chromeHome(ctx, chrome, camera, cx, cy, focalPx, halfW, halfH) {
+	chromeProjectPoint(chrome.home, camera, focalPx);
+	chromeClampToView(cx, cy, halfW, halfH);
+	chromeFrame(ctx, chromeAt[0], chromeAt[1], cx, chrome.homeTagText, CHROME_HOME);
 }
 
 function chromeStrip(ctx, chrome, width, height) {
@@ -266,6 +295,7 @@ function drawShipChrome(ctx, chrome, camera, width, height) {
 	if (chrome.hasAim) chromeBurnMarker(ctx, chrome, camera, cx, cy, focalPx, halfW, halfH);
 	chromeLadder(ctx, chrome, cx, cy);
 	if (chrome.hasTarget) chromeTarget(ctx, chrome, camera, cx, cy, focalPx, halfW, halfH);
+	if (chrome.hasHome) chromeHome(ctx, chrome, camera, cx, cy, focalPx, halfW, halfH);
 	chromeStrip(ctx, chrome, width, height);
 }
 

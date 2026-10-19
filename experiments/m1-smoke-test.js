@@ -100,7 +100,7 @@ const sourceFiles = walk(SRC, '')
 	{
 		const inputSrc = fs.readFileSync(path.join(SRC, 'core', 'input.js'), 'utf-8');
 		check('the c/C/f/F key map is shift-cased and game-gated in the loop, g toggles game mode',
-			/const casedPressMap = \{ KeyC: \['orbitObject', 'orbitCentre'\], KeyF: \['flyMode', 'flyTo'\] \};/.test(inputSrc)
+			/const casedPressMap = \{ KeyC: \['orbitObject', 'orbitCentre'\], KeyF: \['flyMode', 'flyTo'\], KeyL: \['cargoLoad', 'cargoUnload'\] \};/.test(inputSrc)
 			&& /KeyG: 'gameMode'/.test(inputSrc)
 			&& !/cameraMode|galaxyCycle/.test(inputSrc)
 			&& /actions\.orbitCentre = 0;\s*setSpeedRef\('centre'\);\s*if \(!gameMode\) camera\.setMode\(window\.Camera\.MODE_ORBIT_GC\);/.test(main)
@@ -192,7 +192,7 @@ const sourceFiles = walk(SRC, '')
 			&& /gameCommand = GAME_CMD_FOLLOW;/.test(main)
 			&& /Promote game-mode keyboard requests[\s\S]*?if \(actions\.flyMode\).*GAME_CMD_ABORT[\s\S]*?if \(actions\.chaseFollow\).*GAME_CMD_FOLLOW[\s\S]*?if \(actions\.flyTo\).*GAME_CMD_APPROACH/.test(main)
 			&& /if \(gameMode && !resetting\s*&& \(gameCommand !== 0 \|\| \(autoRunning && ship\.ap\.mode === shipLib\.AP_OFF\)\)\) \{\s*gameTargetFeed\(0\);\s*gameApplyCommand\(\);/.test(main)
-			&& /gameTargetFeed\(dtShipS\);\s*gameShipStep\(dtShipS, dt\);/.test(main)
+			&& /gameTargetFeed\(dtShipS\);\s*gameHomeFeed\(dtShipS\);\s*gameShipStep\(dtShipS, dt\);/.test(main)
 			&& /shipLib\.apCommitApproach\(ship,/.test(main)
 			&& /shipLib\.apCommitFollow\(ship,/.test(main)
 			&& /shipLib\.apStep\(ship, dtShipS, dtWallS,/.test(main)
@@ -313,6 +313,65 @@ const sourceFiles = walk(SRC, '')
 			&& /flightSpeedRow\.classList\.toggle\('is-off', !speedControl\);/.test(main)
 			&& /id="flight-thrust-row"/.test(html) && /id="flight-speed-row"/.test(html)
 			&& /id="velocity-ref"/.test(html));
+	}
+	// G4 of game-mode-plan.md (§10): docking, the port
+	// service and life support. The dock command consumes
+	// the O action, the ride feeds the station, the port
+	// lands in the asset history, the home feed resolves
+	// the port of registry, and the HUD and chrome carry
+	// the service state.
+	{
+		const inputSrc = fs.readFileSync(path.join(SRC, 'core', 'input.js'), 'utf-8');
+		const labelSrc = fs.readFileSync(path.join(SRC, 'render', 'label-layer.js'), 'utf-8');
+		check('the port commands are one-shot actions with their keys',
+			/dock: 0, cargoLoad: 0, cargoUnload: 0/.test(inputSrc)
+			&& /KeyO: 'dock'/.test(inputSrc)
+			&& /KeyL: \['cargoLoad', 'cargoUnload'\]/.test(inputSrc)
+			&& /PANEL_BUTTON_SHORTCUTS = \{ KeyF: 1, KeyN: 1, KeyX: 1, KeyO: 1, KeyL: 1 \}/.test(inputSrc));
+		check('the dock command commits the service and the asset history',
+			/function gameDock\(\) \{[\s\S]*?shipLib\.dock\(ship, key, name,/.test(main)
+			&& /selectionStore\.selectCurrent\(window\.SelectionStore\.GROUP_ASSET,[\s\S]*?type: 'dock-port',/.test(main)
+			&& /const fixed = ship\.home\.kind === 'fixed';/.test(main));
+		check('the docked ride feeds the station, breaks on a lost residency, and yields to thrust',
+			/if \(ship\.docked && thrusting\) gameUndock\(\);/.test(main)
+			&& /if \(ship\.docked\) \{[\s\S]*?shipLib\.dockStep\(ship,/.test(main)
+			&& /setAutoMsg\('station left the residency'\);/.test(main)
+			&& /const flying = !ship\.docked && ship\.ap\.mode !== shipLib\.AP_OFF;/.test(main));
+		check('the home feed resolves the port of registry by key or the fixed home',
+			/function gameHomeFeed\(dtShipS\) \{[\s\S]*?starSet\.indexOfKey\(ship\.home\.key\)/.test(main)
+			&& /const p = model\.home\.orbitTarget;/.test(main)
+			&& /function homeNameOf\(\) \{/.test(main));
+		check('flight commands refuse while docked',
+			/function gameUndockRequired\(\) \{/.test(main)
+			&& /function gameApproach\(\) \{\s*if \(gameUndockRequired\(\)\) return;/.test(main)
+			&& /function gameFollow\(\) \{\s*if \(gameUndockRequired\(\)\) return;/.test(main)
+			&& /function gameStopAtTarget\(\) \{\s*if \(gameUndockRequired\(\)\) return;/.test(main)
+			&& /function gameEngageFlightPlan\(\) \{\s*if \(gameUndockRequired\(\)\) return;/.test(main));
+		check('the HUD carries the docked, cargo, home and expired lines',
+			/\+ \(ship\.docked \? ` \\u00b7 docked at \$\{ship\.station\.name\}` : ''\);/.test(main)
+			&& /\\ncargo     \$\{shipLib\.formatCargo\(ship\.cargo\)\}/.test(main)
+			&& /\\nhome      \$\{homeLine\}/.test(main)
+			&& /support expired \\u00b7 return to \$\{homeNameOf\(\)\}/.test(main)
+			&& /LIFE_CRITICAL \? ' \\u00b7 critical' : ''\);/.test(main));
+		check('the chrome draws the amber return-home marker',
+			/shipChrome\.hasHome = shipLib\.lifeState\(ship\) === shipLib\.LIFE_EXPIRED/.test(main)
+			&& /flightAutoDest\.disabled = !gameMode[\s\S]*?\|\| ship\.docked;/.test(main)
+			&& /flightAutoTarget\.disabled = !gameMode[\s\S]*?\|\| ship\.docked;/.test(main)
+			&& /shipChrome\.homeTagText = `\$\{homeNameOf\(\)\}  \$\{formatLy\(homeDistKpc \* LY_PER_KPC\)\}`;/.test(main)
+			&& /if \(chrome\.hasHome\) chromeHome\(ctx, chrome, camera, cx, cy, focalPx, halfW, halfH\);/.test(labelSrc)
+			&& /hasHome: false,/.test(labelSrc));
+		check('the Flight panel carries the Port rows and the life crossings announce',
+			/id="flight-dock"/.test(html) && /id="flight-cargo-load"/.test(html)
+			&& /id="flight-cargo-unload"/.test(html) && /id="flight-port-state"/.test(html)
+			&& /flightDock\.addEventListener\('click', \(\) => \{ actions\.dock = 1; \}\);/.test(main)
+			&& /flightDock\.disabled = !gameMode;/.test(main)
+			&& /lifeNow !== lastLifeState/.test(main)
+			&& /setAutoMsg\('life support expired · return home'\);/.test(main));
+		check('Space leaves the port and the port actions are game-gated',
+			/if \(ship\.docked\) gameUndock\(\);\s*else \{/.test(main)
+			&& /if \(actions\.dock\) \{\s*actions\.dock = 0;\s*if \(gameMode\) gameDock\(\);\s*else gameNotice\(\);/.test(main)
+			&& /if \(actions\.cargoLoad\) \{\s*actions\.cargoLoad = 0;\s*if \(gameMode\) gameCargoLoad\(\);\s*else gameNotice\(\);/.test(main)
+			&& /if \(actions\.cargoUnload\) \{\s*actions\.cargoUnload = 0;\s*if \(gameMode\) gameCargoUnload\(\);\s*else gameNotice\(\);/.test(main));
 	}
 	check('every element main.js looks up exists in index.html',
 		(function () {

@@ -411,6 +411,32 @@ html, body {
 }
 #sysmenu .flight-ship-row button { background: #16283a; cursor: pointer; }
 #sysmenu .flight-ship-row button:hover:not(:disabled) { background: #1f3a52; }
+/* The Port rows (G4): the dock toggle and the hold's
+   load/unload, beside the Pilot controls they serve. */
+.flight-port-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	gap: 5px;
+	align-items: center;
+	margin-bottom: 4px;
+}
+#sysmenu .flight-port-row button {
+	min-width: 0;
+	padding: 4px 5px;
+	font: inherit;
+	font-size: 11px;
+	color: #cdeccd;
+	background: #16283a;
+	border: 1px solid #2f4f6f;
+	border-radius: 3px;
+	cursor: pointer;
+}
+#sysmenu .flight-port-row button:hover:not(:disabled) { background: #1f3a52; }
+.flight-port-state {
+	color: #7fa3bd;
+	font-size: 10px;
+	margin-bottom: 7px;
+}
 .flight-control-row { margin-bottom: 7px; }
 .flight-control-row label { gap: 6px; }
 /* The Pilot controls are mutually exclusive: the row whose

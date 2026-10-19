@@ -2025,3 +2025,18 @@ auto-window follower over streamed or re-picked data.
 *Superseded the same day by the entry at the top:* the agreement gate is what
 froze the range through a pan. What survives here is the diagnosis (magnitude
 cannot be the trust signal, only time can) and the mode's-first-offer snap.
+
+## 2026-10-19 — Anchor edits on plain ASCII: this tree writes UI strings as escapes
+
+`src/main.js` (and much of the older runtime) writes its HUD strings with
+source-level escapes — `` ` \u00b7 ` `` rather than a literal `·`, `\u0394`
+rather than `Δ` — while newer code (e.g. the game-mode block) mixes in literal
+characters. Any edit-tool anchor that includes a string with a non-ASCII glyph
+will silently fail to match (or match the wrong twin), because the tool matches
+the raw file bytes, not the rendered glyph. Two symptoms: "context not found"
+on text that visibly exists, and pins in `m1-smoke-test.js` (which regex the
+source) needing `\\u00b7` to match one backslash. When editing or pinning
+around UI strings, anchor on the plain-ASCII span beside them, or script the
+replacement with Python reading the file as UTF-8. When adding new strings,
+follow the file's local convention (check the neighbouring lines) so the file
+stays internally consistent.

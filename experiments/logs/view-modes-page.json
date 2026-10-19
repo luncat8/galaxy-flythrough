@@ -59,7 +59,7 @@
     {
       "name": "readout reports a non-empty field",
       "pass": true,
-      "detail": "field 216×120 · 1.56 M pairs · 11.9 ms · 60 fps"
+      "detail": "field 216×120 · 1.56 M pairs · 9.8 ms · 60 fps"
     },
     {
       "name": "the painter drew the field and the star overlay",
@@ -344,7 +344,11 @@
         },
         "lo": -1.4570347214905939,
         "hi": -1.157034721490594,
-        "rangeStep": 0.03382459470719423
+        "rangeStep": 0.03382459470719423,
+        "target": [
+          -1.4570347214905939,
+          -1.157034721490594
+        ]
       }
     },
     {

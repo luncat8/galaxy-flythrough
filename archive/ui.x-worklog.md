@@ -696,3 +696,58 @@ the current range and reset its history.
 checks include an isolated outlier, alternating offers, bounded adoption, and
 monotonic convergence. Next: browser-check the view-field panel during a fast
 pan on a live WebGPU session.
+
+## ui.13 — docking, the station refill and life support (game-mode G4)
+
+**Decision.** The last leg of the game loop (game-mode-plan §10, designed
+and landed whole): any natural-object flight target is a station. `O`
+docks when the ship is settled (≤ 1 m/s relative) inside the target's
+stand-off shell plus one arrival shell; the commit re-arms the tank
+(the *station* refill, beside the hangar's), restores life support,
+records the star as the hull's **port of registry** and lands a
+`dock-port` asset in the selection store's typed asset history (ui.1's
+asset group, birth space like every record). Docked, the ship rides the
+station — the feed resolves the station by key (destination snapshot or
+star-set member) whatever the speed reference says, `dockStep` copies
+its drawn position plus ride offset and its physical velocity, and life
+support pauses at the port. Thrust keys, Space, `O`, the class swap, `R`
+and a hull switch all undock first; a station that leaves the residency
+breaks the dock with a notice. Undock leaves the ship at rest relative
+to the port. Flight commands refuse while docked (`undock first`), and
+the Flight panel's autopilot checkboxes disable.
+
+**Life support gets its teeth** (§2's promise, deferred from G3): the
+countdown reads exact years, warns inside the class's critical band
+(10 % of `lifeYears`, floored at 0.1 y — a 2-y chemical hull warns at
+0.2 y), and expires at zero. Critical turns the HUD life figure amber
+(`· critical`) and fires one notice on the crossing; expired prints a
+persistent `life support expired · return to <port>` line and draws the
+**hard return-home marker** — an amber chrome frame and tag at the port
+of registry, dismissed by nothing but the next dock. The port of
+registry is the last docked station, else the frame-fixed galaxy home
+(ui.11's `H` point — the Milky Way's Sun, a generated galaxy's centre),
+resolved by key each frame with the follow feed's rebase rule so a port
+change never reads as motion. The autopilot is *not* locked out — the
+pilot may limp on; the marker is the insistence, exactly the plan's
+"warning and hard return-home marker".
+
+**The cargo hook** (prices/economy omitted, matching 0.5): `ship.cargo`
+in tons against the class's capacity, `L` loads to full and `Shift+L`
+empties at the dock only (refused with `cargo moves only at a dock`),
+free. The HUD carries the hold on a `cargo` line while docked or
+nonzero; the Flight panel's new **Port** rows hold the dock toggle,
+load/unload and the port state line.
+
+**Validation.** `experiments/ship-test.js` is 107/107 — the dockable
+matrix (frame-fixed refusal, shell band inclusive at the boundary,
+settle threshold), the commit's service effects, the ride (offset
+carried as the station drifts, station velocity copied, life frozen),
+the undock's rest-relative exit, the cargo law, the reset and
+class-swap clears with the registry home persisting, the life ladder
+(warn band inclusive, expiry, the generation ship that never expires)
+and the hangar refill's honesty (tank only). `m1-smoke-test.js` is
+104/104 with ui.13 pins for the O/L action table, the dock commit and
+asset write, the docked ride and its residency break, the home feed's
+key rebase, the dock refusals, the HUD/chrome lines, the Port rows and
+the game-mode gating. `python3 scripts/run.py changed` passes 12/12.
+The browser/WebGPU visual pass remains unverified in this sandbox.

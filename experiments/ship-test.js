@@ -836,6 +836,127 @@ for (const dtShipS of [3e4, 3e5, 1e6]) {
 	}
 }
 
+// --- 9. G4: docking, the port service and life support ----------------
+// The dockable check's matrix, the commit's service effects, the
+// ride (offset carried, station velocity copied, life frozen),
+// the undock's rest-relative exit, the cargo law, the reset and
+// class-swap clears, and the life-state ladder.
+{
+	// The dockable check: the frame-fixed refusal first,
+	// then the shell band around the stand-off and the
+	// settle threshold — both inclusive at the boundary.
+	const shell = shipModule.DOCK_SHELL_M;
+	check('the frame-fixed references are coordinates, not ports',
+		shipModule.dockReason(0, 1e9, 0, false) === shipModule.DOCK_FIXED_POINT);
+	check('a settled ship inside the shell docks',
+		shipModule.dockReason(5e9, 5e9, 0, true) === shipModule.DOCK_OK);
+	check('the shell band extends one arrival shell past the stand-off',
+		shipModule.dockReason(5e9 + shell, 5e9, 0, true) === shipModule.DOCK_OK
+		&& shipModule.dockReason(5e9 + shell * 1.0001, 5e9, 0, true) === shipModule.DOCK_OUTSIDE,
+		{ shell });
+	check('a moving ship does not dock',
+		shipModule.dockReason(5e9, 5e9, shipModule.DOCK_REL_MS, true) === shipModule.DOCK_OK
+		&& shipModule.dockReason(5e9, 5e9, shipModule.DOCK_REL_MS * 1.0001, true) === shipModule.DOCK_UNSETTLED);
+
+	// The commit: the service, the registry and the ride offset.
+	const s = shipModule.createShip('fusion');
+	s.dvSpent = 1e6;
+	s.lifeSpent = 10 * shipModule.SECONDS_PER_YEAR;
+	s.ap.mode = shipModule.AP_APPROACH;   // a dock ends any flight
+	const offset = [1e6, 2e6, -3e6];
+	check('the dock commits the service and the registry',
+		shipModule.dock(s, 12345, 'Sirius', offset[0], offset[1], offset[2])
+		&& s.docked && s.dvSpent === 0 && s.lifeSpent === 0
+		&& s.station.key === 12345 && s.station.name === 'Sirius'
+		&& s.home.kind === 'star' && s.home.key === 12345
+		&& s.ap.mode === shipModule.AP_OFF
+		&& s.dockOffset[0] === offset[0] && s.dockOffset[1] === offset[1]
+		&& s.dockOffset[2] === offset[2],
+		{ docked: s.docked, dvSpent: s.dvSpent, lifeSpent: s.lifeSpent, home: s.home });
+
+	// The ride: the station's drawn position and physical
+	// velocity, copied; life does not accrue at the port.
+	shipModule.dockStep(s, 10, 20, 30, 0.001, 0, 0);
+	check('the ride copies the station pose and freezes life support',
+		s.pos[0] === 10 + offset[0] && s.pos[1] === 20 + offset[1]
+		&& s.pos[2] === 30 + offset[2]
+		&& s.vel[0] === 0.001 && s.vel[1] === 0 && s.vel[2] === 0
+		&& s.lifeSpent === 0,
+		{ pos: [s.pos[0], s.pos[1], s.pos[2]], vel: [s.vel[0], s.vel[1], s.vel[2]] });
+	shipModule.dockStep(s, 10.5, 20, 30, 0.002, 0, 0);
+	check('the ride carries the offset as the station drifts',
+		s.pos[0] === 10.5 + offset[0] && s.vel[0] === 0.002, s.pos[0]);
+
+	// Undock leaves the ship at rest relative to the port.
+	shipModule.undock(s);
+	check('undock clears the dock and keeps the station velocity',
+		!s.docked && s.station === null && s.vel[0] === 0.002, s.vel[0]);
+
+	// The cargo law: the hold fills and empties at the dock only.
+	const c = shipModule.createShip('stardrive');
+	check('the hold starts empty and the class caps it',
+		c.cargo === 0 && c.class.cargo === 20000, c.class.cargo);
+	check('cargo refuses to move undocked',
+		!shipModule.loadCargo(c) && !shipModule.unloadCargo(c) && c.cargo === 0);
+	shipModule.dock(c, 1, 'port', 0, 0, 0);
+	check('load fills to the class capacity, unload empties',
+		shipModule.loadCargo(c) && c.cargo === c.class.cargo
+		&& shipModule.unloadCargo(c) && c.cargo === 0, c.cargo);
+
+	// Reset and the class swap clear the docked state and the
+	// hold; the registry home persists (session state, like
+	// the fleet).
+	shipModule.loadCargo(c);
+	shipModule.resetShip(c);
+	check('R clears the dock and the hold',
+		!c.docked && c.station === null && c.cargo === 0);
+	shipModule.dock(c, 7, 'vega', 1, 1, 1);
+	shipModule.setClass(c, 'chemical');
+	check('the hangar swap clears the dock and empties the new hull',
+		!c.docked && c.cargo === 0 && c.home.kind === 'star' && c.home.key === 7);
+
+	// The life ladder: the warn band, expiry, and the
+	// generation ship that cannot expire.
+	const l = shipModule.createShip('chemical');   // 2 y
+	check('life support reads exact and starts ok',
+		shipModule.lifeState(l) === shipModule.LIFE_OK
+		&& shipModule.lifeRemainingY(l) === 2);
+	l.lifeSpent = 1.8 * shipModule.SECONDS_PER_YEAR;   // 0.2 y left: the band edge
+	check('the warn band is 10% of the class life, inclusive',
+		shipModule.lifeWarnY(l) === 0.2
+		&& shipModule.lifeState(l) === shipModule.LIFE_CRITICAL);
+	l.lifeSpent = 1.99 * shipModule.SECONDS_PER_YEAR;
+	check('inside the band still reads critical',
+		Math.abs(shipModule.lifeRemainingY(l) - 0.01) < 1e-9
+		&& shipModule.lifeState(l) === shipModule.LIFE_CRITICAL);
+	l.lifeSpent = 2 * shipModule.SECONDS_PER_YEAR;
+	check('life support expires at zero',
+		shipModule.lifeRemainingY(l) === 0
+		&& shipModule.lifeState(l) === shipModule.LIFE_EXPIRED);
+	const g = shipModule.createShip('generation');
+	g.lifeSpent = 1e12;
+	check('a generation ship never expires',
+		shipModule.lifeRemainingY(g) === Infinity
+		&& shipModule.lifeState(g) === shipModule.LIFE_OK);
+
+	// The dock restores both clocks — the station refill
+	// and the life-support service are one commit.
+	l.lifeSpent = 2 * shipModule.SECONDS_PER_YEAR;
+	l.dvSpent = l.dvMax;
+	shipModule.dock(l, 9, 'sirius', 0, 0, 0);
+	check('the station refill re-arms the tank and restores life',
+		l.dvSpent === 0 && l.lifeSpent === 0
+		&& shipModule.lifeState(l) === shipModule.LIFE_OK);
+
+	// The hangar refill (G1) is not the station refill:
+	// it re-arms the tank only, wherever the ship is.
+	const h = shipModule.createShip('chemical');
+	h.lifeSpent = 2 * shipModule.SECONDS_PER_YEAR;
+	shipModule.refuel(h);
+	check('the hangar refill does not restore life support',
+		h.dvSpent === 0 && shipModule.lifeState(h) === shipModule.LIFE_EXPIRED);
+}
+
 // --- Report ----------------------------------------------------------------
 {
 	let passed = 0;

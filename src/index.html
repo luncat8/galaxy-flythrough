@@ -408,6 +408,14 @@
 				<span><small>Vertical</small><strong id="velocity-up">+0.00 km/s</strong></span>
 			</div>
 
+			<div class="flight-section-heading"><span>Port</span><small>dock · service · cargo</small></div>
+			<div class="flight-port-row">
+				<button id="flight-dock" type="button" disabled title="Dock at the target station (O) when inside its shell and settled — the target-stop autopilot lands exactly there. Docking re-arms the tank, restores life support and registers the port of registry. Press again to undock.">Dock</button>
+				<button id="flight-cargo-load" type="button" disabled title="Load the hold to the class's capacity (L). Free — prices and economy are omitted. Only while docked.">Load cargo</button>
+				<button id="flight-cargo-unload" type="button" disabled title="Empty the hold (Shift+L). Only while docked.">Unload</button>
+			</div>
+			<div id="flight-port-state" class="flight-port-state">not docked · O docks at a settled station</div>
+
 			<div class="flight-section-heading"><span>Fly to destination</span><small>select star → set → check autopilot</small></div>
 			<div class="flight-destination-row">
 				<span>Destination</span><strong id="flight-destination">No destination set</strong>

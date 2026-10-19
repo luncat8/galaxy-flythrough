@@ -916,6 +916,11 @@ async function boot() {
         const flightTimeLimitBox = document.getElementById('flight-time-limit');
         const flightForecast = document.getElementById('flight-forecast');
         const flightRefuel = document.getElementById('flight-refuel');
+        // G4: the Port rows — the dock toggle and the hold.
+        const flightDock = document.getElementById('flight-dock');
+        const flightCargoLoad = document.getElementById('flight-cargo-load');
+        const flightCargoUnload = document.getElementById('flight-cargo-unload');
+        const flightPortState = document.getElementById('flight-port-state');
         const shipList = document.getElementById('ship-list');
         const fleetCount = document.getElementById('fleet-count');
         const shipSpawn = document.getElementById('ship-spawn');
@@ -1110,6 +1115,11 @@ async function boot() {
                 shipLib.refuel(ship);
                 syncFlightUi();
         });
+        // G4's Port rows fire the same one-shot action
+        // flags their keys set (the ui.6 panel pattern).
+        flightDock.addEventListener('click', () => { actions.dock = 1; });
+        flightCargoLoad.addEventListener('click', () => { actions.cargoLoad = 1; });
+        flightCargoUnload.addEventListener('click', () => { actions.cargoUnload = 1; });
         flightAutoDest.addEventListener('change', () => {
                 if (flightAutoDest.checked) {
                         if (!gameMode) {
@@ -2944,6 +2954,27 @@ async function boot() {
         const gameTargetPrev = new Float64Array(3);
         const gameRel = new Float64Array(3);
         let gameTargetStale = false;                 // primary not resident: no drawn position
+        // G4: the docked station and the home port. The station is the
+        // target the ship docked at — destination or primary — remembered
+        // as a pick-shaped snapshot so the ride feeds it by key, exactly
+        // like the destination's own resolution. The home port is the
+        // port of registry: the fixed galaxy home until the first dock,
+        // the station's key after (§10.4).
+        const stationDest = { kind: -1, index: -1, key: 0, x: 0, y: 0, z: 0 };
+        let stationKey = -1;
+        let stationIsDest = false;
+        // The home port's feed state. The registry itself
+        // lives on the ship record (per hull, like the
+        // tank); these are this frame's resolution.
+        const homePos = new Float64Array(3);
+        let homeFeedKey = 0;
+        let homeDistKpc = 0;
+        let homePrevDistKpc = 0;
+        let homeClosingKpcS = 0;   // kpc per ship-second; > 0 is closing
+        let homeValid = false;
+        let homePrevValid = false;
+        let homeStale = false;
+        let lastLifeState = 0;
         // The ship's commands are requested by a key and consumed in the game
         // block, after the target feed, so they read this frame's drawn state.
         const GAME_CMD_APPROACH = 1, GAME_CMD_FOLLOW = 2, GAME_CMD_ABORT = 3, GAME_CMD_PLAN = 4;
@@ -3227,6 +3258,15 @@ async function boot() {
                 flightTimeRow.style.display = flightMode === shipLib.NAV_TIME_LIMIT ? '' : 'none';
                 flightDestinationLabel.textContent = flightDestination.active
                         ? (flightDestination.name || 'Locked destination') : 'No destination set';
+                // G4: the Port rows. Dock is a game-mode
+                // command; the hold moves only at a docked
+                // station (§10).
+                flightDock.textContent = ship.docked ? 'Undock' : 'Dock';
+                flightDock.disabled = !gameMode;
+                flightCargoLoad.disabled = flightCargoUnload.disabled = !ship.docked;
+                setTextIfChanged(flightPortState, ship.docked
+                        ? `docked at ${ship.station.name} port · cargo ${shipLib.formatCargo(ship.cargo)}/${shipLib.formatCargo(ship.class.cargo)} · tank and life restored`
+                        : 'not docked · O docks at a settled station');
                 flightUseSelected.disabled = starSet.primary < 0 || autoActive;
                 flightClearDestination.disabled = !flightDestination.active || autoActive;
                 // Unified checkbox UI: destination autopilot and target-stop are
@@ -3237,12 +3277,14 @@ async function boot() {
                 flightAutoDest.disabled = !gameMode
                         || (autoActive && ship.ap.mode !== shipLib.AP_APPROACH)
                         || !flightDestination.active
-                        || (!autoActive && !destFeasible);
+                        || (!autoActive && !destFeasible)
+                        || ship.docked;
                 flightAutoTarget.checked = (ship.ap.mode === shipLib.AP_TARGET && gameCommand !== GAME_CMD_ABORT)
                         || (gameMode && gameCommand === GAME_CMD_TARGET);
                 flightAutoTarget.disabled = !gameMode
                         || (autoActive && ship.ap.mode !== shipLib.AP_TARGET)
-                        || (starSet.primary < 0 && !flightDestination.active && !autoActive);
+                        || (starSet.primary < 0 && !flightDestination.active && !autoActive)
+                        || ship.docked;
                 const statusText = ship.ap.mode === shipLib.AP_TARGET
                         ? 'autopilot · matching target motion'
                         : autoActive ? `autopilot ${shipLib.AP_PHASE_NAMES[ship.ap.phase]} · uncheck to abort, velocity kept`
@@ -3271,7 +3313,27 @@ async function boot() {
         // the target appear stationary and causing aim flicker / camera glitch.
         function gameTargetFeed(dtShipS) {
                 const isProbe = !(dtShipS > 0);
-                if (speedRef !== 'target') {
+                if (ship.docked) {
+                        // G4: the docked ride feeds the station itself,
+                        // whatever the speed reference says — the ship
+                        // rides it, so the feed must not wander to a
+                        // frame-fixed point or another star.
+                        gameTargetKind = 'station';
+                        gameTargetStale = false;
+                        if (stationIsDest) {
+                                gameTargetLum = stationDest.lum;
+                                gameTargetStale = selection.resolveDrawn(stationDest, gameTarget)
+                                        === window.Selection.DRAWN_STALE;
+                        } else {
+                                const m = starSet.indexOfKey(stationKey);
+                                if (m < 0) gameTargetStale = true;
+                                else {
+                                        gameTargetStale = memberDrawnPosition(m, gameTarget)
+                                                === window.Selection.DRAWN_STALE;
+                                        if (!gameTargetStale) gameTargetLum = starSet.lum[m];
+                                }
+                        }
+                } else if (speedRef !== 'target') {
                         const p = speedRef === 'centre' ? model.centre : model.home.orbitTarget;
                         if (gameTargetKind !== speedRef) {
                                 gameTargetKind = speedRef;
@@ -3326,6 +3388,62 @@ async function boot() {
                 gameTargetValid = true;
         }
 
+        // G4's home feed (§10.4): the port of registry — the fixed
+        // galaxy home until the first dock, the station's key after —
+        // resolved each frame like every other drawn-space target, so
+        // the return-home marker and the HUD line read where the sky
+        // draws the port. A star home that leaves the residency is
+        // reported, never flown to from a stale birth coordinate.
+        function gameHomeFeed(dtShipS) {
+                // The registry rides the ship record: the
+                // fixed galaxy home until the first dock,
+                // the station's key after. A changed port
+                // rebases the distance baseline, so the
+                // closing rate never reads one frame of
+                // teleport as motion (the follow feed's
+                // own rebase rule).
+                const fixed = ship.home.kind === 'fixed';
+                const key = fixed ? 0 : ship.home.key;
+                let valid = false;
+                if (fixed) {
+                        const p = model.home.orbitTarget;
+                        homePos[0] = p.x !== undefined ? p.x : p[0];
+                        homePos[1] = p.y !== undefined ? p.y : p[1];
+                        homePos[2] = p.z !== undefined ? p.z : p[2];
+                        valid = true;
+                } else {
+                        const m = starSet.indexOfKey(ship.home.key);
+                        if (m >= 0 && memberDrawnPosition(m, homePos) !== window.Selection.DRAWN_STALE) valid = true;
+                }
+                if (valid) {
+                        const dx = homePos[0] - ship.pos[0];
+                        const dy = homePos[1] - ship.pos[1];
+                        const dz = homePos[2] - ship.pos[2];
+                        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                        // Only a real step between two valid
+                        // frames on the same port measures
+                        // the closing rate; a probe or a
+                        // freshly valid port must leave the
+                        // baseline alone, exactly like the
+                        // target feed's.
+                        if (dtShipS > 0 && homePrevValid && key === homeFeedKey) {
+                                homeClosingKpcS = (homePrevDistKpc - dist) / dtShipS;
+                        }
+                        homeFeedKey = key;
+                        homePrevDistKpc = dist;
+                        homeDistKpc = dist;
+                } else {
+                        homeClosingKpcS = 0;
+                }
+                homePrevValid = valid;
+                homeValid = valid;
+                homeStale = !fixed && !valid;
+        }
+
+        function homeNameOf() {
+                return ship.home.kind === 'fixed' ? model.home.orbitName : ship.home.name;
+        }
+
         // The frame's ship law: the thrust blend on the camera's live basis
         // (mouse aims, exactly the fly camera's look), the integrate-and-clamp
         // of ship.js, and the write-through. Runs *after* camera.step so the
@@ -3358,7 +3476,11 @@ async function boot() {
                 // The persistent lever does not fight an engaged autopilot. A
                 // real key press is the explicit manual override that aborts it.
                 const thrusting = forwardKey !== 0 || r !== 0 || u !== 0;
-                const flying = ship.ap.mode !== shipLib.AP_OFF;
+                // G4: any thrust input takes the ship out of the
+                // port — the pilot owns the ship the moment they
+                // command it (§10.2).
+                if (ship.docked && thrusting) gameUndock();
+                const flying = !ship.docked && ship.ap.mode !== shipLib.AP_OFF;
                 if (flying && (gameTargetStale || !gameTargetValid)) {
                         // The target left the residency: its drawn position is not a
                         // place to fly to, so the flight ends and says why.
@@ -3371,7 +3493,21 @@ async function boot() {
                         shipLib.apAbort(ship);
                         shipTimeRateCapY = Infinity;
                 }
-                if (ship.ap.mode !== shipLib.AP_OFF) {
+                if (ship.docked) {
+                        // The docked ride: the station's drawn
+                        // position and physical velocity, copied
+                        // each frame. A station that left the
+                        // residency breaks the dock — its drawn
+                        // position is not a place to be.
+                        if (gameTargetStale || !gameTargetValid) {
+                                gameUndock();
+                                setAutoMsg('station left the residency');
+                        } else {
+                                shipLib.dockStep(ship,
+                                        gameTarget[0], gameTarget[1], gameTarget[2],
+                                        gameTargetVel[0], gameTargetVel[1], gameTargetVel[2]);
+                        }
+                } else if (ship.ap.mode !== shipLib.AP_OFF) {
                         ship.accelNow = shipLib.apStep(ship, dtShipS, dtWallS,
                                 gameTarget[0], gameTarget[1], gameTarget[2],
                                 gameTargetVel[0], gameTargetVel[1], gameTargetVel[2]);
@@ -3397,6 +3533,7 @@ async function boot() {
         }
 
         function gameTargetName() {
+                if (ship.docked) return ship.station.name;
                 if (gameTargetKind === 'centre') return 'galactic centre';
                 if (gameTargetKind === 'home') return model.home.orbitName;
                 if (flightDestination.active) return flightDestination.name || 'Destination';
@@ -3473,10 +3610,21 @@ async function boot() {
                 return true;
         }
 
+        // G4: a docked ship is the port's until the pilot
+        // leaves it — no flight command engages from the dock.
+        function gameUndockRequired() {
+                if (ship.docked) {
+                        setAutoMsg('undock first');
+                        return true;
+                }
+                return false;
+        }
+
         // Shift+F remains the fast, class-limited approach. It uses the locked
         // destination when one exists; otherwise it keeps the primary-selection
         // G2 behaviour.
         function gameApproach() {
+                if (gameUndockRequired()) return;
                 if (!gameTargetUsable()) return;
                 gameTargetOffset();
                 const reason = shipLib.apCommitApproach(ship, gameRel[0], gameRel[1], gameRel[2],
@@ -3485,6 +3633,7 @@ async function boot() {
         }
 
         function gameStopAtTarget() {
+                if (gameUndockRequired()) return;
                 if (!flightDestination.active && !setFlightDestinationFromPrimary()) {
                         noSelectionTicks = NOTICE_TICKS;
                         return;
@@ -3500,6 +3649,7 @@ async function boot() {
         // §5's follow (j): null the relative velocity, trail at the stand-off.
         // Pressed again it aborts, like the observer's chase toggle.
         function gameFollow() {
+                if (gameUndockRequired()) return;
                 if (ship.ap.mode === shipLib.AP_FOLLOW) {
                         shipLib.apAbort(ship);
                         setAutoMsg('autopilot off · velocity kept');
@@ -3515,6 +3665,7 @@ async function boot() {
         // autopilot record by ship.js, then the active controls may be adjusted
         // for the next trip without altering this burn.
         function gameEngageFlightPlan() {
+                if (gameUndockRequired()) return;
                 if (!flightDestination.active) {
                         setAutoMsg('set a destination first · select a star, then Use selected');
                         return;
@@ -3543,6 +3694,116 @@ async function boot() {
                 shipLib.apAbort(ship);
                 shipTimeRateCapY = Infinity;
                 setAutoMsg('autopilot off \u00b7 velocity kept');
+        }
+
+        // --- G4: docking, the port service and the cargo hook (§10) ----
+        // O is the dock toggle. The station is the current flight
+        // target when it is a natural, resident star: the locked
+        // destination, else the primary selection — the same target
+        // the autopilot answers against. The frame-fixed references
+        // are coordinates, not ports.
+        function gameDock() {
+                if (ship.docked) { gameUndock(); return; }
+                if (gameTargetKind !== 'target') {
+                        setAutoMsg('no port at a fixed point');
+                        return;
+                }
+                if (!gameTargetValid || gameTargetStale) {
+                        setAutoMsg('no station in range');
+                        return;
+                }
+                gameTargetOffset();
+                const distM = Math.sqrt(gameRel[0] * gameRel[0]
+                        + gameRel[1] * gameRel[1] + gameRel[2] * gameRel[2]) * shipLib.KPC_M;
+                const rvx = ship.vel[0] - gameTargetVel[0];
+                const rvy = ship.vel[1] - gameTargetVel[1];
+                const rvz = ship.vel[2] - gameTargetVel[2];
+                const relMs = Math.sqrt(rvx * rvx + rvy * rvy + rvz * rvz) * shipLib.KPC_M;
+                const reason = shipLib.dockReason(distM, flightStandOffM(), relMs, true);
+                if (reason !== shipLib.DOCK_OK) {
+                        let msg = shipLib.DOCK_REASON_NAMES[reason];
+                        if (reason === shipLib.DOCK_OUTSIDE) {
+                                msg += ' · ' + formatLy(distM / shipLib.KPC_M * LY_PER_KPC);
+                        }
+                        if (reason === shipLib.DOCK_UNSETTLED) {
+                                msg += ' · relative ' + shipLib.formatDv(relMs);
+                        }
+                        setAutoMsg(msg);
+                        return;
+                }
+                // Commit: the station's identity, the ride offset,
+                // the service. The destination snapshot is copied
+                // (the ride feeds it by key); a primary selection is
+                // remembered by key and re-resolved through the star
+                // set, so a changed selection cannot move the port.
+                const locked = flightDestination.active;
+                const i = locked ? -1 : starSet.primary;
+                const key = locked ? flightDestination.key >>> 0 : starSet.keys[i] >>> 0;
+                const name = gameTargetName();
+                shipLib.dock(ship, key, name,
+                        ship.pos[0] - gameTarget[0],
+                        ship.pos[1] - gameTarget[1],
+                        ship.pos[2] - gameTarget[2]);
+                stationIsDest = locked;
+                if (locked) {
+                        stationDest.kind = flightDestination.kind;
+                        stationDest.index = flightDestination.index;
+                        stationDest.key = flightDestination.key >>> 0;
+                        stationDest.x = flightDestination.x;
+                        stationDest.y = flightDestination.y;
+                        stationDest.z = flightDestination.z;
+                        stationDest.lum = flightDestination.lum;
+                        stationDest.name = flightDestination.name;
+                } else {
+                        stationKey = key;
+                }
+                // The port of registry is the ship record's
+                // own (§10.4, per hull like the tank); the
+                // asset history gets the dock-port: a typed
+                // ui.1 asset in birth space, like every
+                // other record.
+                const ref = locked ? flightDestination : memberRefFor(i);
+                selectionStore.selectCurrent(window.SelectionStore.GROUP_ASSET,
+                        {
+                                group: window.SelectionStore.GROUP_ASSET,
+                                type: 'dock-port',
+                                id: 'port-' + key.toString(36),
+                                name: name + ' port',
+                                key: key,
+                                kind: ref.kind,
+                                index: ref.index,
+                                x: ref.x, y: ref.y, z: ref.z,
+                        });
+                syncSelectionPanel();
+                setAutoMsg('docked at ' + name + ' port · tank and life support restored');
+                syncFlightUi();
+        }
+
+        function gameUndock() {
+                if (!ship.docked) return;
+                shipLib.undock(ship);
+                stationIsDest = false;
+                stationKey = -1;
+                setAutoMsg('undocked · coasting with the station');
+                syncFlightUi();
+        }
+
+        function gameCargoLoad() {
+                if (!shipLib.loadCargo(ship)) {
+                        setAutoMsg('cargo moves only at a dock');
+                        return;
+                }
+                setAutoMsg('hold loaded · ' + shipLib.formatCargo(ship.cargo));
+                syncFlightUi();
+        }
+
+        function gameCargoUnload() {
+                if (!shipLib.unloadCargo(ship)) {
+                        setAutoMsg('cargo moves only at a dock');
+                        return;
+                }
+                setAutoMsg('hold emptied');
+                syncFlightUi();
         }
 
         // Runs before the shared-clock rate when a command is pending or a
@@ -3599,12 +3860,21 @@ async function boot() {
                 shipChrome.aim = ship.ap.aim;
                 shipChrome.hasTarget = gameTargetValid && !gameTargetStale;
                 shipChrome.target = gameTarget;
+                // G4: the return-home marker — hard while
+                // life support is expired (§10.3), drawn
+                // from the home feed's drawn position.
+                shipChrome.hasHome = shipLib.lifeState(ship) === shipLib.LIFE_EXPIRED
+                        && homeValid && !homeStale;
+                shipChrome.home[0] = homePos[0];
+                shipChrome.home[1] = homePos[1];
+                shipChrome.home[2] = homePos[2];
         }
 
         // The chrome's strings, at the overlay's 4 Hz like the HUD's.
         function updateShipChromeText() {
                 shipChrome.stripText = `accepted ${Math.round(ship.throttleFrac * 100)}% \u00b7 \u0394v ${Math.round(100 * shipLib.dvRemaining(ship) / ship.dvMax)}%`;
                 shipChrome.tagText = !gameTargetValid ? '' : `${gameTargetName()}  ${formatLy(gameTargetDistKpc * LY_PER_KPC)}`;
+                shipChrome.homeTagText = `${homeNameOf()}  ${formatLy(homeDistKpc * LY_PER_KPC)}`;
         }
 
         // The auto line (§6): the approach's phase, flown fraction, ETA in ship
@@ -3634,8 +3904,10 @@ async function boot() {
                 const cls = ship.class;
                 const c = shipLib.speedC(ship);
                 const remain = shipLib.dvRemaining(ship);
+                const lifeState = shipLib.lifeState(ship);
                 const life = cls.lifeYears === Infinity ? '\u221e'
-                        : dvLib.formatDuration(Math.max(0, cls.lifeYears * dvLib.SECONDS_PER_YEAR - ship.lifeSpent));
+                        : dvLib.formatDuration(Math.max(0, cls.lifeYears * dvLib.SECONDS_PER_YEAR - ship.lifeSpent))
+                        + (lifeState === shipLib.LIFE_CRITICAL ? ' \u00b7 critical' : '');
                 const accelPart = ship.accelNow > 0 ? ` (+${ship.accelNow.toFixed(1)} m/s\u00b2)` : '';
                 const requestedRate = shipLib.timeRateYPerS(ship, c);
                 const actualRate = gameTimeRateY();
@@ -3645,7 +3917,8 @@ async function boot() {
                         ? ` \u00b7 speed limit ${shipLib.formatSpeedC(shipLib.cruiseCapKpcS(ship) * flightSpeedFraction * shipLib.KPC_M / shipLib.C)}`
                         : '';
                 text += `\nship      ${cls.label} \u00b7 accepted thrust ${throttleBar(ship.throttleFrac)} ${Math.round(ship.throttleFrac * 100)}%`
-                        + ` \u00b7 burn ${dvLib.formatDuration(shipLib.burnReserveSeconds(ship))} reserve${governor}`;
+                        + ` \u00b7 burn ${dvLib.formatDuration(shipLib.burnReserveSeconds(ship))} reserve${governor}`
+                        + (ship.docked ? ` \u00b7 docked at ${ship.station.name}` : '');
                 text += `\nspeed     ${shipLib.formatSpeed(ship)}${accelPart}`
                         + ` \u00b7 fuel ${shipLib.formatDv(remain)}/${shipLib.formatDv(ship.dvMax)} \u0394v (${Math.round(100 * remain / ship.dvMax)}%)`
                         + ` \u00b7 life ${life}`;
@@ -3654,6 +3927,26 @@ async function boot() {
                 text += `\nvelocity  relative to ${gameTargetValid ? gameTargetName() : 'the galactic frame'}`
                         + ` · forward ${shipLib.formatAxisSpeed(gameVelocityAxes[0])}`
                         + ` · sideways ${shipLib.formatAxisSpeed(gameVelocityAxes[1])} · vertical ${shipLib.formatAxisSpeed(gameVelocityAxes[2])}`;
+                if (ship.docked || ship.cargo > 0) {
+                        text += `\ncargo     ${shipLib.formatCargo(ship.cargo)}/${shipLib.formatCargo(ship.class.cargo)}`;
+                }
+                if (lifeState >= shipLib.LIFE_CRITICAL) {
+                        // The return-home heading shows inside the
+                        // warn band too; the chrome marker is the
+                        // expired state's alone (§10.3).
+                        const homeLine = homeValid
+                                ? `${homeNameOf()}   ${formatLy(homeDistKpc * LY_PER_KPC)}`
+                                        + (homeClosingKpcS > 0
+                                                ? ` \u00b7 closing ${shipLib.formatSpeedC(homeClosingKpcS * shipLib.KPC_M / shipLib.C)}`
+                                                : homeClosingKpcS < 0
+                                                        ? ` \u00b7 receding ${shipLib.formatSpeedC(-homeClosingKpcS * shipLib.KPC_M / shipLib.C)}`
+                                                        : ' \u00b7 closing 0')
+                                : `${homeNameOf()} \u00b7 not resident`;
+                        text += `\nhome      ${homeLine}`;
+                }
+                if (lifeState === shipLib.LIFE_EXPIRED) {
+                        text += `\nlife      support expired \u00b7 return to ${homeNameOf()}`;
+                }
                 text += gameTargetLine();
                 if (remain <= 0) text += '\nship      tank empty \u00b7 thrusters silent \u00b7 coasting';
                 if (ship.stopResidual > 0) text += `\nship      stop incomplete \u00b7 residual ${shipLib.formatSpeed(ship)}`;
@@ -3898,14 +4191,41 @@ async function boot() {
                 if (actions.allStop) {
                         actions.allStop = 0;
                         if (gameMode) {
-                                shipLib.applyStop(ship);
-                                shipTimeRateCapY = Infinity;
+                                // G4: Space at the port leaves
+                                // it — the brake is a manual
+                                // command, and the ride owns
+                                // the velocity while docked.
+                                if (ship.docked) gameUndock();
+                                else {
+                                        shipLib.applyStop(ship);
+                                        shipTimeRateCapY = Infinity;
+                                }
                         }
                 }
                 if (actions.shipRefuel) {
                         actions.shipRefuel = 0;
                         shipLib.refuel(ship);
                         syncFlightUi();
+                }
+                // G4's port commands (§10): the keys and the
+                // Flight panel's Port buttons fire the same
+                // one-shot flags. Outside game mode they answer
+                // with the gated notice, like the other ship
+                // commands.
+                if (actions.dock) {
+                        actions.dock = 0;
+                        if (gameMode) gameDock();
+                        else gameNotice();
+                }
+                if (actions.cargoLoad) {
+                        actions.cargoLoad = 0;
+                        if (gameMode) gameCargoLoad();
+                        else gameNotice();
+                }
+                if (actions.cargoUnload) {
+                        actions.cargoUnload = 0;
+                        if (gameMode) gameCargoUnload();
+                        else gameNotice();
                 }
                 if (actions.orbitCentre) {
                         // Shift+C: orbit the galactic centre — and
@@ -4030,9 +4350,26 @@ async function boot() {
                         // own state pair (the look camera.step just applied is
                         // kept; the observer's fly integration is discarded).
                         gameTargetFeed(dtShipS);
+                        gameHomeFeed(dtShipS);
                         gameShipStep(dtShipS, dt);
                         feedShipChrome();
                         gameAimEase(dt);
+                        // G4: the life-support ladder's crossings
+                        // announce themselves once, the notice
+                        // pattern — the countdown itself is the
+                        // HUD line's business.
+                        const lifeNow = shipLib.lifeState(ship);
+                        if (lifeNow !== lastLifeState) {
+                                if (lifeNow === shipLib.LIFE_CRITICAL) {
+                                        setAutoMsg('life support critical · '
+                                                + window.DeltaVLib.formatDuration(
+                                                        shipLib.lifeRemainingY(ship) * shipLib.SECONDS_PER_YEAR)
+                                                + ' left');
+                                } else if (lifeNow === shipLib.LIFE_EXPIRED) {
+                                        setAutoMsg('life support expired · return home');
+                                }
+                                lastLifeState = lifeNow;
+                        }
                 }
                 input.setFlyMode(camera.getState(statsText).mode === window.Camera.MODE_FLY);
                 if (actions.pick) {
