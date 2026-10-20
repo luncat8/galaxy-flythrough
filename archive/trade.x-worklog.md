@@ -68,3 +68,41 @@ No WGSL, star buffer, renderer pipeline or model equations changed. No browser/
 WebGPU visual verdict claimed. The open limits and follow-up scope remain listed
 in trade-plan.md; this is a correctness continuation, not completion of all
 possible colony gameplay.
+
+## trade.2 — 2026-10-20 — Separate Trade panel and big-colony colonisation
+
+Visual trade was already correct (label-layer ports/routes/hulls in drawn
+space, Y toggle). Extracted its controls from Flight into its own panel so
+piloting and economy have separate workspaces: trade-rate slider, draw-routes
+checkbox, port/ship counters, six-largest-colonies list and a new
+Colonisation section now live in #trade-menu (bottom-right, second column
+beside Help, teal-tinged). Tab toggles all six panels; each collapses to its
+header. Flight keeps its Port dock/cargo rows.
+
+Colonisation: big colonies now drive expansion. Fixed pickCandidate's
+inverted distance law (0.6+ly/250 preferred distant frontiers; now
+habitat/(1+ly/80) prefers nearby good worlds), added habitat scoring via
+siteHabitatScore (HABITAT + 1.6x terran / 1.25x HZ) with a 0.12 floor, and a
+isBigColony gate (pop 5M, coverage 0.30, 8% of capacity) so only
+thriving worlds with surplus people/robots launch. bestExpedition now
+weights pop fraction and coverage, checks every eligible port (not just the
+largest), and remains capped at one launch per 200 y. Added
+colonisationPreview for the panel and expandFrontierFromField, called
+every 25 trade years from the main loop with the live field: big colonies
+scan field stars within 300 ly (0.092 kpc), generate their system, keep its
+best habitable world as a new candidate and mark the star discovered, so the
+frontier expands beyond the initial 400 seeded systems without requiring
+player inspection.
+
+Validation:
+
+- node experiments/trade-test.js: 78/78 (jump-equals-steps, live-event
+  invariant, overlapping reservations and failed-founding recovery hold; counts
+  shift slightly due to stricter but still permissive big-colony gate).
+- python3 scripts/run.py changed: 8/8.
+- node experiments/m1-smoke-test.js: 112/112 (TradeLib export count 44->51).
+- node --check src/main.js src/core/trade.js: passed.
+
+No renderer/WGSL changes; overlay geometry unchanged. Next: planet-specific
+docking visuals and physically calibrated interstellar freight remain deferred
+per trade-plan.md.

@@ -899,7 +899,7 @@ body.system-view #sysread {
 @media (max-width: 700px) {
 	#selection-menu, #sysmenu { width: calc(60vw - 24px); }
 	#menu { width: max(140px, calc(40vw - 24px)); }
-	#help { width: max(140px, calc(40vw - 24px)); max-height: calc(40vh - 12px); }
+	#help, #trade-menu { width: max(140px, calc(40vw - 24px)); max-height: calc(40vh - 12px); }
 	#selection-menu { max-height: calc(56vh - 12px); }
 	#sysmenu { max-height: calc(42vh - 12px); }
 }
@@ -913,6 +913,51 @@ body.system-view #sysread {
 .menu-header .panel-collapse { font-size: 12px; min-width: 26px; }
 .menu-note { font-size: 10px; color: #c9b27a; line-height: 1.35; }
 .menu-note[hidden] { display: none; }
+
+/* Trade panel (trade.2): the economy's own workspace, extracted from Flight.
+   Bottom-right's second column beside Help, same footprint so the two share
+   the right-side bottom row. Teal-tinged like the trade routes it controls. */
+#trade-menu {
+	position: fixed;
+	bottom: 12px;
+	right: 284px;
+	width: 260px;
+	max-height: calc(52vh - 12px);
+	overflow-y: auto;
+	font-family: 'Menlo', 'Consolas', monospace;
+	font-size: 12px;
+	color: #c8ece0;
+	background: rgba(10, 22, 18, 0.92);
+	border: 1px solid #2a5a4a;
+	border-radius: 4px;
+	padding: 10px 12px;
+	z-index: 20;
+}
+#trade-menu .menu-header {
+	color: #6fd8b5;
+	border-bottom-color: #2a5a4a;
+}
+#trade-menu .menu-header button { border-color: #2a5a4a; }
+#trade-menu .menu-header button:hover { background: #143328; }
+#trade-menu .menu-val { color: #8fd8bf; }
+#trade-menu .menu-hint { color: #6fae9f; }
+#trade-menu input[type=range],
+#trade-menu input[type=checkbox] { accent-color: #6fd8b5; }
+#trade-menu .flight-port-state {
+	color: #7fcab0;
+}
+#trade-menu .flight-forecast {
+	border-color: #2a5a4a;
+	background: rgba(6, 18, 14, 0.55);
+	color: #a8dcc8;
+}
+#trade-menu .flight-section-heading {
+	color: #7fd8b5;
+	border-bottom-color: #1f3a2f;
+}
+#trade-menu .flight-section-heading small {
+	color: #6fae9f;
+}
 
 /* --- View modes (view-modes.6) ------------------------------------------ */
 

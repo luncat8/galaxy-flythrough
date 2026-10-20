@@ -349,6 +349,8 @@ async function boot() {
         const menuCollapse = document.getElementById('menu-collapse');
         const selectionMenu = document.getElementById('selection-menu');
         const selectionMenuCollapse = document.getElementById('selection-menu-collapse');
+        const tradeMenu = document.getElementById('trade-menu');
+        const tradeMenuCollapse = document.getElementById('trade-menu-collapse');
         const currentSelectionLabel = document.getElementById('selection-current-label');
         const previousSelectionLabel = document.getElementById('selection-previous-label');
         const swapSelectionButton = document.getElementById('selection-swap');
@@ -942,12 +944,15 @@ async function boot() {
         const flightCargoUnload = document.getElementById('flight-cargo-unload');
         const flightPortState = document.getElementById('flight-port-state');
         // The Trade rows: the network clock, the overlay toggle and the port
-        // list. The counters and the list are 4 Hz text like the rest.
+        // list. The counters and the list are 4 Hz text like the rest. Now
+        // in its own panel (trade.2), so piloting and economy are separate.
         const tradeRateSlider = document.getElementById('trade-rate');
         const tradeRateValue = document.getElementById('val-trade-rate');
         const tradeRoutesBox = document.getElementById('trade-routes');
         const tradeState = document.getElementById('trade-state');
         const tradeList = document.getElementById('trade-list');
+        const colonisationState = document.getElementById('colonisation-state');
+        const colonisationList = document.getElementById('colonisation-list');
         const shipList = document.getElementById('ship-list');
         const fleetCount = document.getElementById('fleet-count');
         const shipSpawn = document.getElementById('ship-spawn');
@@ -1458,12 +1463,14 @@ async function boot() {
                         || selectionMenu.style.display !== 'none'
                         || sysMenu.style.display !== 'none'
                         || viewMenu.style.display !== 'none'
-                        || helpPanel.style.display !== 'none';
+                        || helpPanel.style.display !== 'none'
+                        || tradeMenu.style.display !== 'none';
                 menu.style.display = visible ? 'none' : 'block';
                 selectionMenu.style.display = visible ? 'none' : 'block';
                 sysMenu.style.display = visible ? 'none' : 'block';
                 viewMenu.style.display = visible ? 'none' : 'block';
                 helpPanel.style.display = visible ? 'none' : 'block';
+                tradeMenu.style.display = visible ? 'none' : 'block';
                 syncOverlayInset();
                 if (visible) {
                         input.releaseAll();
@@ -1487,6 +1494,7 @@ async function boot() {
         wireCollapse(selectionMenu, selectionMenuCollapse);
         wireCollapse(sysMenu, sysMenuCollapse);
         wireCollapse(viewMenu, viewMenuCollapse);
+        wireCollapse(tradeMenu, tradeMenuCollapse);
 
         // --- Controls panel (ui.6) ------------------------------------------
         // The old help <pre> as clickable controls. Buttons and checkboxes
@@ -4042,8 +4050,8 @@ async function boot() {
                 return text;
         }
 
-        // The Flight panel's Trade section: counters, the six largest colonies
-        // and the ships in flight. Rebuilt at 4 Hz only.
+        // The Trade panel: counters, the six largest colonies and the ships in
+        // flight, plus the colonisation frontier (trade.2). Rebuilt at 4 Hz.
         function syncTradeUi() {
                 tradeRateSlider.value = String(tradeRateIndex);
                 tradeRateValue.textContent = tradeRateYears() === 0 ? 'paused' : tradeRateYears() + ' y/s';
@@ -4051,6 +4059,8 @@ async function boot() {
                 if (!tradeNet) {
                         tradeState.textContent = 'no network';
                         tradeList.textContent = 'No trade network yet.';
+                        if (colonisationState) colonisationState.textContent = 'no network';
+                        if (colonisationList) colonisationList.textContent = 'No expeditions yet.';
                         return;
                 }
                 tradeState.textContent = `${tradeNet.portCount} ports \u00b7 ${tradeNet.shipCount} ships`
@@ -4104,6 +4114,49 @@ async function boot() {
                         inFlight += 1;
                 }
                 tradeList.textContent = lines || 'No colonies yet.';
+                // Colonisation frontier: big colonies + their nearest good worlds,
+                // and expeditions in flight.
+                if (colonisationState && colonisationList) {
+                        let bigCount = 0;
+                        for (let i = 0; i < tradeNet.portCount; i++) {
+                                if (tradeLib.isBigColony(tradeNet.ports[i].colony)) bigCount++;
+                        }
+                        const founding = (() => {
+                                let c = 0;
+                                for (let i = 0; i < tradeNet.shipCount; i++) if (tradeNet.ships[i].state === tradeLib.SHIP_FOUNDING) c++;
+                                return c;
+                        })();
+                        const candidates = tradeNet.candidateCount;
+                        const freeCandidates = (() => {
+                                let c = 0;
+                                for (let i = 0; i < tradeNet.candidateCount; i++) if (!tradeNet.candidates[i].used && tradeNet.candidates[i].reserved < 0) c++;
+                                return c;
+                        })();
+                        const nextIn = Math.max(0, tradeLib.EXPEDITION_INTERVAL - (tradeNet.time - tradeNet.lastExpedition));
+                        colonisationState.textContent = `${bigCount} big colonies \u00b7 ${candidates} candidates (${freeCandidates} free) \u00b7 ${founding} expeditions \u00b7 next in ${Math.round(nextIn)} y`;
+                        let preview = '';
+                        // Expeditions in flight: origin → target with ETA.
+                        for (let i = 0; i < tradeNet.shipCount; i++) {
+                                const s = tradeNet.ships[i];
+                                if (s.state !== tradeLib.SHIP_FOUNDING) continue;
+                                const from = s.from >= 0 ? tradeNet.ports[s.from].name.slice(0, 10) : '?';
+                                const target = s.candidate >= 0 ? tradeNet.candidates[s.candidate].site.name.slice(0, 14) : '?';
+                                const eta = Math.max(0, s.arrive - tradeNet.time);
+                                preview += `${from} \u2192 ${target}  ${Math.round(eta)} y \\u00b7 ${s.amount} colonists\n`;
+                        }
+                        // Top 3 big-colony opportunities: source → nearest good world.
+                        try {
+                                const opportunities = tradeLib.colonisationPreview(tradeNet, tradeNet.time);
+                                for (let k = 0; k < Math.min(3, opportunities.length); k++) {
+                                        const o = opportunities[k];
+                                        const src = tradeNet.ports[o.port].name.slice(0, 10);
+                                        const terranMark = (o.flags & window.PlanetsLib.FLAG_TERRAN) ? ' \u2295' : (o.flags & window.PlanetsLib.FLAG_IN_HZ ? ' \\u25ce' : '');
+                                        preview += `${src} \u2192 ${o.name.slice(0, 14)}${terranMark}  ${Math.round(o.ly)} ly  hab ${o.habitat.toFixed(2)}\n`;
+                                }
+                        } catch (e) { /* preview is best effort */ }
+                        if (!preview) preview = founding > 0 ? '' : 'No big colonies ready · grow coverage and population';
+                        colonisationList.textContent = preview || 'No expeditions in flight';
+                }
         }
 
         // The overlay's one line.
@@ -4495,9 +4548,22 @@ async function boot() {
                 // The trade clock (trade-plan §1) is wall-time, not star-time:
                 // the colonies keep their own years. A hidden tab must not
                 // fast-forward the network by minutes, so the frame's share is
-                // capped at a quarter second.
+                // capped at a quarter second. Big colonies also scan the live
+                // field for nearby good worlds every ~25 trade years (trade.2):
+                // the frontier expands without player inspection.
                 if (tradeNet && tradeRateIndex > 0) {
-                        tradeLib.step(tradeNet, tradeRateYears() * Math.min(dt, 0.25));
+                        const dtTrade = tradeRateYears() * Math.min(dt, 0.25);
+                        tradeLib.step(tradeNet, dtTrade);
+                        if (tradeLib.expandFrontierFromField && dtTrade > 0) {
+                                // Throttle scan to once per 25 trade years to avoid per-frame cost.
+                                if (tradeNet.time - (tradeNet._lastFrontierScan || -1e9) >= 25) {
+                                        tradeNet._lastFrontierScan = tradeNet.time;
+                                        const field = renderer.fieldBuffers();
+                                        if (field && field.count > 0) {
+                                                try { tradeLib.expandFrontierFromField(tradeNet, field, model); } catch (e) {}
+                                        }
+                                }
+                        }
                 }
                 // The pattern's phase (0.6 E4) is integrated with the frame's own
                 // star time *before* anything places a star, so the bar and the

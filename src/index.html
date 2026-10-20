@@ -416,19 +416,6 @@
 			</div>
 			<div id="flight-port-state" class="flight-port-state">not docked · O docks at a settled station</div>
 
-			<div class="flight-section-heading"><span>Trade</span><small>colonies · routes · cargo</small></div>
-			<div class="menu-row">
-				<label for="trade-rate" title="The trade clock, in years per wall second, independent of the star and ship clocks. 0 pauses the network; arrow keys step the ladder.">Trade clock <span id="val-trade-rate" class="menu-val">100 y/s</span></label>
-				<input type="range" id="trade-rate" min="0" max="11" step="1" value="7">
-			</div>
-			<label class="flight-autopilot" title="Draw the trade network over the galaxy: a ring at every colony and a dot for every freighter, with its route (Y).">
-				<input type="checkbox" id="trade-routes" checked>
-				<span>Draw trade routes</span>
-				<small>Y</small>
-			</label>
-			<div id="trade-state" class="flight-port-state">no network</div>
-			<pre id="trade-list" class="flight-forecast">No trade network yet.</pre>
-
 			<div class="flight-section-heading"><span>Fly to destination</span><small>select star → set → check autopilot</small></div>
 			<div class="flight-destination-row">
 				<span>Destination</span><strong id="flight-destination">No destination set</strong>
@@ -492,6 +479,29 @@
 		</div>
 		<div class="menu-row" data-view="system"><span id="route-hint">Choose map nodes, or route from previous star to current star.</span></div>
 		<div class="menu-hint">Pilot: select a star, Use selected, choose a mode, check autopilot · Map: V opens / B cycles · Tab hides panels</div>
+	</div>
+	<!-- Trade (trade.2): its own panel — the network clock, the overlay toggle
+	     and the autonomous frontier. Extracted from Flight so piloting and
+	     economy have separate workspaces. -->
+	<div id="trade-menu" class="panel">
+		<div class="menu-header">
+			<span>Trade</span>
+			<button id="trade-menu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab toggles all panels)" aria-expanded="true">▾</button>
+		</div>
+		<div class="menu-row">
+			<label for="trade-rate" title="The trade clock, in years per wall second, independent of the star and ship clocks. 0 pauses the network; arrow keys step the ladder.">Trade clock <span id="val-trade-rate" class="menu-val">100 y/s</span></label>
+			<input type="range" id="trade-rate" min="0" max="11" step="1" value="7">
+		</div>
+		<label class="flight-autopilot" title="Draw the trade network over the galaxy: a ring at every colony and a dot for every freighter, with its route (Y).">
+			<input type="checkbox" id="trade-routes" checked>
+			<span>Draw trade routes</span>
+			<small>Y</small>
+		</label>
+		<div id="trade-state" class="flight-port-state">no network</div>
+		<pre id="trade-list" class="flight-forecast">No trade network yet.</pre>
+		<div class="flight-section-heading"><span>Colonisation</span><small>big colonies → good worlds</small></div>
+		<div id="colonisation-state" class="flight-port-state">frontier idle</div>
+		<pre id="colonisation-list" class="flight-forecast">No expeditions yet.</pre>
 	</div>
         <!-- Controls (ui.6): the old read-only help <pre> as a clickable panel.
              Buttons fire the same one-shot action flags the keyboard sets (the

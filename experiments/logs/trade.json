@@ -132,8 +132,8 @@
       "name": "arrivals are booked",
       "pass": true,
       "detail": {
-        "processed": 1259,
-        "delivered": 9522.042284668581
+        "processed": 1266,
+        "delivered": 9307.21998394886
       }
     },
     {
@@ -153,13 +153,13 @@
           8,
           15,
           3,
-          9522.042284668581
+          9307.21998394886
         ],
         "small": [
           8,
           15,
           3,
-          9522.042284668581
+          9307.21998394886
         ]
       }
     },
@@ -176,8 +176,8 @@
       "pass": true,
       "detail": {
         "start": 5,
-        "end": 10,
-        "founded": 5
+        "end": 9,
+        "founded": 4
       }
     },
     {

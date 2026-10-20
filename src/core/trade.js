@@ -519,6 +519,30 @@
 		out.robots = robots;
 	}
 
+	// Colonisation thresholds: only established, populous worlds send
+	// expeditions. A port that has just been founded or is barely
+	// holding on does not have surplus to colonise with. Thresholds are
+	// deliberately low so even a sparse test fixture can colonise, while
+	// still distinguishing a thriving big colony from a starving outpost.
+	const MIN_EXPEDITION_POP_M = 5;
+	const MIN_EXPEDITION_COVERAGE = 0.30;
+	const MIN_CANDIDATE_HABITAT = 0.12;
+
+	function siteHabitatScore(site) {
+		let base = site.isBelt ? economy.HABITAT_BELT : economy.HABITAT[site.type];
+		if (site.flags & planets.FLAG_TERRAN) base *= 1.6;
+		else if (site.flags & planets.FLAG_IN_HZ) base *= 1.25;
+		return base;
+	}
+
+	function isBigColony(colony) {
+		if (colony.abandoned) return false;
+		if (colony.pop < MIN_EXPEDITION_POP_M) return false;
+		if (colony.coverage < MIN_EXPEDITION_COVERAGE) return false;
+		if (colony.pop < colony.capacity * 0.08) return false;
+		return true;
+	}
+
 	function pickCandidate(net, from) {
 		const port = net.ports[from];
 		let best = -1, bestScore = 0;
@@ -530,10 +554,12 @@
 			const dx = site.x - port.x, dy = site.y - port.y, dz = site.z - port.z;
 			const ly = Math.sqrt(dx * dx + dy * dy + dz * dz) * LY_PER_KPC;
 			if (ly > MAX_FOUND_LY) continue;
-			const habitat = site.flags & planets.FLAG_TERRAN ? 1
-				: (site.flags & planets.FLAG_IN_HZ ? 0.7 : 0.35);
-			// Prefer a habitable frontier within the expedition's range.
-			const score = habitat * (0.6 + ly / 250);
+			const habitat = siteHabitatScore(site);
+			if (habitat < MIN_CANDIDATE_HABITAT) continue;
+			// Prefer a good, close world: habitat quality over distance.
+			// Near stars are cheaper to reach and keep the network connected.
+			const distanceFactor = 1 + ly / 80;
+			const score = habitat / distanceFactor;
 			if (score > bestScore) { bestScore = score; best = i; }
 		}
 		EXPEDITION_SCRATCH.score = bestScore;
@@ -542,14 +568,16 @@
 
 	// The best (source, candidate) pair a tick can launch: surplus people and
 	// factory cores at the source, an unsettled site in range, and a score that
-	// rewards a big population and a habitable, far-away world. Trying every
-	// port matters — the largest colony is not always the one with a frontier.
+	// rewards a big population and a habitable, nearby world. Trying every
+	// port matters — the largest colony is not always the one with a frontier,
+	// and big colonies are the ones with the surplus to send.
 	function bestExpedition(net, time) {
 		let bestPort = -1, bestCandidate = -1, bestScore = 0;
 		for (let i = 0; i < net.portCount; i++) {
 			const colony = net.ports[i].colony;
 			economy.settleColony(colony, time);
 			if (colony.abandoned) continue;
+			if (!isBigColony(colony)) continue;
 			expeditionCost(colony, EXPEDITION_COST);
 			const people = economy.exportableOf(colony, economy.R_PEOPLE);
 			if (people < EXPEDITION_COST.people) continue;
@@ -557,12 +585,126 @@
 			const spare = people / EXPEDITION_COST.people;
 			const candidate = pickCandidate(net, i);
 			if (candidate < 0) continue;
-			const score = (spare > 3 ? 3 : spare) * EXPEDITION_SCRATCH.score;
+			const popFactor = Math.min(3, 0.6 + colony.pop / 120);
+			const coverageBonus = 0.7 + Math.min(0.6, colony.coverage);
+			const score = popFactor * coverageBonus * (spare > 3 ? 3 : spare) * EXPEDITION_SCRATCH.score;
 			if (score > bestScore) { bestScore = score; bestPort = i; bestCandidate = candidate; }
 		}
 		EXPEDITION_SCRATCH.port = bestPort;
 		EXPEDITION_SCRATCH.candidate = bestCandidate;
+		EXPEDITION_SCRATCH.bestScore = bestScore;
 		return EXPEDITION_SCRATCH;
+	}
+
+	// Preview for the Trade panel: every big colony that could launch,
+	// ranked by the same score as bestExpedition. Returns a scratch array
+	// reused by the caller — copy if kept beyond the next call.
+	const COLONISATION_PREVIEW = [];
+	function colonisationPreview(net, time, out) {
+		out = out || COLONISATION_PREVIEW;
+		out.length = 0;
+		for (let i = 0; i < net.portCount; i++) {
+			const colony = net.ports[i].colony;
+			economy.settleColony(colony, time);
+			if (!isBigColony(colony)) continue;
+			expeditionCost(colony, EXPEDITION_COST);
+			if (economy.exportableOf(colony, economy.R_PEOPLE) < EXPEDITION_COST.people) continue;
+			if (economy.exportableOf(colony, economy.R_ROBOTS) < EXPEDITION_COST.robots) continue;
+			const candidate = pickCandidate(net, i);
+			if (candidate < 0) continue;
+			const site = net.candidates[candidate].site;
+			const dx = site.x - net.ports[i].x, dy = site.y - net.ports[i].y, dz = site.z - net.ports[i].z;
+			const ly = Math.sqrt(dx * dx + dy * dy + dz * dz) * LY_PER_KPC;
+			const habitat = siteHabitatScore(site);
+			out.push({
+				port: i,
+				candidate,
+				habitat,
+				ly,
+				score: EXPEDITION_SCRATCH.score,
+				name: site.name,
+				flags: site.flags,
+				type: site.type,
+			});
+		}
+		out.sort((a, b) => b.score - a.score);
+		return out;
+	}
+
+	// Frontier expansion: big colonies scan nearby field stars for good
+	// unclaimed worlds and add them as candidates. Called from the app's
+	// trade step with its live field; no-op when field is absent or frontier
+	// is full. Cheap enough for the 25-year tick but not for per-frame.
+	const FRONTIER_FIELD_REF = { kind: 0, index: 0, key: 0, x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0 };
+	// Reuse one system record and one site for the scan to avoid per-star alloc.
+	const FRONTIER_SCAN_RECORD = planets.createSystemRecord();
+	const FRONTIER_SCAN_SITE = economy.createSite();
+	const FRONTIER_SCAN_CTX = { model: null, field: null, member: null, name: '' };
+	const MAX_FOUND_KPC = MAX_FOUND_LY / LY_PER_KPC;
+	// Field-star key is the canonical starTypes seed: seed*31 + index +1.
+	function frontierFieldKey(seed, index) {
+		return ((seed * 31 + index + 1) | 0) >>> 0;
+	}
+	function expandFrontierFromField(net, field, model) {
+		if (!field || !model || field.count <= 0) return 0;
+		if (net.candidateCount >= MAX_CANDIDATES) return 0;
+		let added = 0;
+		const maxScan = Math.min(field.count, 20000);
+		// Collect big-colony positions into scratch to avoid repeated lookups.
+		const bigPorts = [];
+		for (let i = 0; i < net.portCount; i++) {
+			if (isBigColony(net.ports[i].colony)) bigPorts.push(i);
+		}
+		if (bigPorts.length === 0) return 0;
+		for (let fi = 0; fi < maxScan && net.candidateCount < MAX_CANDIDATES; fi++) {
+			const fx = field.x[fi], fy = field.y[fi], fz = field.z[fi];
+			const key = frontierFieldKey(model.seed, fi);
+			if (net.discovered.has(key)) continue;
+			// Is this star near any big colony?
+			let near = false;
+			for (let b = 0; b < bigPorts.length; b++) {
+				const port = net.ports[bigPorts[b]];
+				const dx = fx - port.x, dy = fy - port.y, dz = fz - port.z;
+				if (dx * dx + dy * dy + dz * dz <= MAX_FOUND_KPC * MAX_FOUND_KPC) { near = true; break; }
+			}
+			if (!near) continue;
+			// Generate system and evaluate its worlds.
+			FRONTIER_FIELD_REF.kind = planets.BLOCK_FIELD;
+			FRONTIER_FIELD_REF.index = fi;
+			FRONTIER_FIELD_REF.key = key;
+			FRONTIER_FIELD_REF.x = fx; FRONTIER_FIELD_REF.y = fy; FRONTIER_FIELD_REF.z = fz;
+			FRONTIER_FIELD_REF.colorIndex = 0; FRONTIER_FIELD_REF.absMag = 0;
+			FRONTIER_SCAN_CTX.model = model;
+			FRONTIER_SCAN_CTX.field = field;
+			FRONTIER_SCAN_CTX.member = null;
+			FRONTIER_SCAN_CTX.name = '';
+			try { planets.generateSystem(FRONTIER_FIELD_REF, FRONTIER_SCAN_CTX, FRONTIER_SCAN_RECORD); } catch (e) { continue; }
+			const planetCount = FRONTIER_SCAN_RECORD.counts.planets | 0;
+			const beltCount = FRONTIER_SCAN_RECORD.belts.count | 0;
+			let bestSite = null, bestHab = -1;
+			for (let p = 0; p < planetCount; p++) {
+				economy.fillPlanetSite(FRONTIER_SCAN_SITE, FRONTIER_FIELD_REF, FRONTIER_SCAN_RECORD, p, economy.siteSeed(key, net.modelSeed, FRONTIER_FIELD_REF.kind));
+				FRONTIER_SCAN_SITE.x = fx; FRONTIER_SCAN_SITE.y = fy; FRONTIER_SCAN_SITE.z = fz;
+				FRONTIER_SCAN_SITE.ref = FRONTIER_FIELD_REF;
+				FRONTIER_SCAN_SITE.name = economy.siteName('', key, 0, p);
+				const h = siteHabitatScore(FRONTIER_SCAN_SITE);
+				if (h > bestHab) { bestHab = h; bestSite = economy.copySite(economy.createSite(), FRONTIER_SCAN_SITE); }
+			}
+			for (let b = 0; b < beltCount; b++) {
+				economy.fillBeltSite(FRONTIER_SCAN_SITE, FRONTIER_FIELD_REF, FRONTIER_SCAN_RECORD, b, economy.siteSeed(key, net.modelSeed, FRONTIER_FIELD_REF.kind));
+				FRONTIER_SCAN_SITE.x = fx; FRONTIER_SCAN_SITE.y = fy; FRONTIER_SCAN_SITE.z = fz;
+				FRONTIER_SCAN_SITE.ref = FRONTIER_FIELD_REF;
+				FRONTIER_SCAN_SITE.name = economy.siteName('', key, 1, b);
+				const h = siteHabitatScore(FRONTIER_SCAN_SITE);
+				if (h > bestHab) { bestHab = h; bestSite = economy.copySite(economy.createSite(), FRONTIER_SCAN_SITE); }
+			}
+			if (!bestSite || bestHab < MIN_CANDIDATE_HABITAT) continue;
+			// Claim the star as discovered so we don't rescan it, then add
+			// its best world as the frontier candidate.
+			net.discovered.add(key);
+			if (addCandidate(net, bestSite) >= 0) added++;
+		}
+		return added;
 	}
 
 	// The global tick: grow the fleet toward the port count and launch one
@@ -822,9 +964,12 @@
 		HULLS, DOCK_YEARS, WAIT_YEARS, TICK_YEARS,
 		POP_PER_COLONIST_UNIT, EXPEDITION_INTERVAL,
 		MAX_FOUND_LY, MAX_LEG_LY, LY_PER_KPC, NO_RESOURCE,
+		MIN_EXPEDITION_POP_M, MIN_EXPEDITION_COVERAGE,
 		createNetwork, discoverSystem, settleSystem, finalize, step,
 		portIndexOf, candidateIndexOf, bestPortOfStar, distanceLy, legYears,
 		shipPosition, shipProgress, shipStateName, playerPort, playerLoad, playerUnload,
+		siteHabitatScore, isBigColony, colonisationPreview, pickCandidate, bestExpedition,
+		expandFrontierFromField,
 	};
 	if (typeof module !== 'undefined') module.exports = TradeLib;
 	if (typeof window !== 'undefined') window.TradeLib = TradeLib;
