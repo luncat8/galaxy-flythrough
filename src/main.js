@@ -3932,9 +3932,14 @@ async function boot() {
                 const field = renderer.fieldBuffers();
                 if (field && field.count > 0) {
                         tradeCtx.field = field;
+                        const home = model.home.orbitTarget;
+                        const hx = home.x !== undefined ? home.x : home[0];
+                        const hy = home.y !== undefined ? home.y : home[1];
+                        const hz = home.z !== undefined ? home.z : home[2];
                         for (let i = 0, used = 0; i < field.count && used < 400; i++) {
                                 const px = field.x[i], py = field.y[i], pz = field.z[i];
-                                if (px * px + py * py + pz * pz > TRADE_FIELD_RADIUS_KPC * TRADE_FIELD_RADIUS_KPC) continue;
+                                const dx = px - hx, dy = py - hy, dz = pz - hz;
+                                if (dx * dx + dy * dy + dz * dz > TRADE_FIELD_RADIUS_KPC * TRADE_FIELD_RADIUS_KPC) continue;
                                 used += 1;
                                 tradeRef.kind = window.PlanetsLib.BLOCK_FIELD;
                                 tradeRef.index = i;

@@ -113,11 +113,6 @@
 		[0.00, 0.00, 0.05, 0.80, 0.00, 0.30, 0.00, 0.00, 0.00, 0.00, 0.00], // art
 	];
 
-	// Site presence chance by display type, and for a belt. A terran world is
-	// always settled — the one obvious world the brief should not miss.
-	const SITE_CHANCE = new Float64Array([0.22, 0.50, 0.55, 1.00, 0.45, 0.80, 0.30, 0.35, 0.30, 0.20]);
-	const SITE_CHANCE_BELT = 0.30;
-
 	// Carrying capacity: base millions × habitat weight × size × stability.
 	const POP_CAP_BASE = 900;
 	const HABITAT = new Float64Array([0.04, 0.16, 0.35, 1.00, 0.18, 0.70, 0.12, 0.20, 0.12, 0.03]);
@@ -137,13 +132,11 @@
 	const FOUND_POP_BASE = 0.25, FOUND_POP_CAP_FRAC = 0.01;
 	const FOUND_STOCK_FRAC = 0.60;
 
-	// Hash channels: the yield stream is per (planet slot, resource), the site
-	// stream per slot, the founding age per slot. 512+ keeps them clear of the
-	// planet generator's own channels (0…~400).
+	// Hash channels: the yield stream is per (planet slot, resource), the
+	// founding-age stream per slot. 464+ keeps them clear of the planet
+	// generator's own channels (0…~400).
 	const EC_CH_YIELD = 512;
-	const EC_CH_SITE = 480;
 	const EC_CH_FOUND = 464;
-	const EC_CH_JITTER = 496;
 
 
 	// --- Record shapes ------------------------------------------------------
@@ -209,11 +202,6 @@
 	// keys still map different worlds.
 	function siteSeed(key, modelSeed, blockKind) {
 		return planets.systemSeed(key, modelSeed, blockKind | 0);
-	}
-
-	function siteChance(type, isBelt, flags) {
-		if (flags & planets.FLAG_TERRAN) return 1;
-		return isBelt ? SITE_CHANCE_BELT : SITE_CHANCE[type];
 	}
 
 	// One planet's site record from a generated system. `out.name` is written
@@ -315,7 +303,7 @@
 			coverage: 0, growth: 0,
 			produced: 0, consumed: 0,
 			seed: 0,
-			ref: null,
+			ref: createStarRef(),
 		};
 	}
 
@@ -573,13 +561,13 @@
 
 	const EconomyLib = {
 		RESOURCE_COUNT, RESOURCES, PROD, NEED, NEED_WEIGHT, INPUT, PLANET,
-		SITE_CHANCE, SITE_CHANCE_BELT, SITE_BELT,
+		SITE_BELT,
 		R_ORE, R_VOLATILE, R_RARE, R_CHEM, R_AMAT, R_FOOD, R_BIO, R_PEOPLE,
 		R_ROBOTS, R_COMPUTE, R_SOFT, R_DATA, R_ART,
 		POP_CAP_BASE, G_MAX, DECLINE, NEED_BUFFER_Y, STOCK_BASE, STOCK_YEARS,
-		EXPORT_RESERVE_FRAC, POP_MIN, YIELD_MAX,
-		EC_CH_YIELD, EC_CH_SITE, EC_CH_FOUND, EC_CH_JITTER, siteSlot,
-		createSite, copySite, siteSeed, siteChance, fillPlanetSite, fillBeltSite,
+		EXPORT_RESERVE_FRAC, POP_MIN, POP_GROWTH_CAP_FRAC, YIELD_MAX,
+		EC_CH_YIELD, EC_CH_FOUND, siteSlot,
+		createSite, copySite, siteSeed, fillPlanetSite, fillBeltSite,
 		createColony, setupColony, settleColony, coverageOf, inputRateOf, HABITAT, HABITAT_BELT,
 		demandOf, exportableOf, takeFromColony, giveToColony,
 		unitsForTons, tonsForUnits, yieldDots, formatPop, formatUnits, siteName,

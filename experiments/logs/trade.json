@@ -1,0 +1,277 @@
+{
+  "total": 50,
+  "passed": 50,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "thirteen uniquely named resources, all worth hauling",
+      "pass": true
+    },
+    {
+      "name": "every resource has a production rate and at least one world type that makes it",
+      "pass": true
+    },
+    {
+      "name": "every resource has a positive worth and unit mass",
+      "pass": true
+    },
+    {
+      "name": "the yield table columns are the display types they claim to be",
+      "pass": true
+    },
+    {
+      "name": "the industrial bill of materials is finite and non-negative",
+      "pass": true
+    },
+    {
+      "name": "the trade clock ladder is strictly increasing from a real pause",
+      "pass": true
+    },
+    {
+      "name": "the default trade rate is a stop on the ladder",
+      "pass": true
+    },
+    {
+      "name": "the same site hash yields the same world",
+      "pass": true
+    },
+    {
+      "name": "a different site hash changes the resource map",
+      "pass": true
+    },
+    {
+      "name": "site slots are unique within a star (planet, next planet, belt)",
+      "pass": true
+    },
+    {
+      "name": "every generated site has finite yields inside [0, YIELD_MAX] and a positive capacity",
+      "pass": true
+    },
+    {
+      "name": "one 500-year settle tracks a hundred 5-year settles (free colony)",
+      "pass": true,
+      "detail": {
+        "one": 17.835136791621217,
+        "many": 16.272797709612142
+      }
+    },
+    {
+      "name": "the exactness fixture really is fully supplied",
+      "pass": true
+    },
+    {
+      "name": "one 500-year settle equals a hundred 5-year settles (population)",
+      "pass": true,
+      "detail": {
+        "one": 17.896355718240958,
+        "many": 17.89635571824096
+      }
+    },
+    {
+      "name": "one 500-year settle equals a hundred 5-year settles (every stock)",
+      "pass": true
+    },
+    {
+      "name": "stocks stay finite inside their warehouses",
+      "pass": true
+    },
+    {
+      "name": "population stays inside [0, 1.5 × capacity]",
+      "pass": true
+    },
+    {
+      "name": "coverage is a ratio and growth a finite rate",
+      "pass": true
+    },
+    {
+      "name": "filling the warehouses raises coverage",
+      "pass": true,
+      "detail": {
+        "before": 1,
+        "filled": 1
+      }
+    },
+    {
+      "name": "a full port wants nothing",
+      "pass": true
+    },
+    {
+      "name": "an empty port wants its needs and its industry",
+      "pass": true
+    },
+    {
+      "name": "a seeded network makes ports and ships",
+      "pass": true,
+      "detail": {
+        "ports": 5,
+        "ships": 2
+      }
+    },
+    {
+      "name": "every ship stays in a known state with a finite cargo",
+      "pass": true
+    },
+    {
+      "name": "the network clock lands exactly on the requested year",
+      "pass": true
+    },
+    {
+      "name": "ports do not vanish and ships stay capped",
+      "pass": true,
+      "detail": {
+        "ports": 8,
+        "ships": 15
+      }
+    },
+    {
+      "name": "the queue stays bounded by one live event per ship plus a tick",
+      "pass": true,
+      "detail": 16
+    },
+    {
+      "name": "arrivals are booked",
+      "pass": true,
+      "detail": {
+        "processed": 1254,
+        "delivered": 9501.304245602067
+      }
+    },
+    {
+      "name": "no ship ever leaves a stale event behind",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "the fleet keeps sailing",
+      "pass": true
+    },
+    {
+      "name": "one 600-year jump equals a hundred and twenty 5-year steps",
+      "pass": true,
+      "detail": {
+        "jump": [
+          8,
+          15,
+          3,
+          9501.304245602067
+        ],
+        "small": [
+          8,
+          15,
+          3,
+          9501.304245602067
+        ]
+      }
+    },
+    {
+      "name": "the same seed rebuilds the same network",
+      "pass": true
+    },
+    {
+      "name": "re-inspecting a system adds no ports and no candidates",
+      "pass": true
+    },
+    {
+      "name": "colonisation grows the network over two and a half millennia",
+      "pass": true,
+      "detail": {
+        "start": 5,
+        "end": 10,
+        "founded": 5
+      }
+    },
+    {
+      "name": "no colony exceeds the port cap",
+      "pass": true
+    },
+    {
+      "name": "a founded colony starts with a population and a warehouse",
+      "pass": true
+    },
+    {
+      "name": "the fixture has a port with a spare export",
+      "pass": true
+    },
+    {
+      "name": "a docked ship finds its port by star key",
+      "pass": true
+    },
+    {
+      "name": "loading buys a named resource into the hold",
+      "pass": true,
+      "detail": {
+        "ok": 1,
+        "resource": 4,
+        "units": 40,
+        "tons": 20
+      }
+    },
+    {
+      "name": "a second load either adds the same resource or explains why",
+      "pass": true
+    },
+    {
+      "name": "selling back empties the hold and returns the units",
+      "pass": true,
+      "detail": {
+        "ok": 1,
+        "units": 40
+      }
+    },
+    {
+      "name": "an empty hold refuses to sell",
+      "pass": true
+    },
+    {
+      "name": "a hold with no cargo cannot sell",
+      "pass": true
+    },
+    {
+      "name": "loading at no port explains itself",
+      "pass": true
+    },
+    {
+      "name": "sailing hulls have a finite draw position",
+      "pass": true
+    },
+    {
+      "name": "ship state names cover every state",
+      "pass": true
+    },
+    {
+      "name": "a min-heap drains in time order, not push order",
+      "pass": true,
+      "detail": [
+        [
+          10,
+          2
+        ],
+        [
+          20,
+          3
+        ]
+      ]
+    },
+    {
+      "name": "a partly drained queue reports its next event time",
+      "pass": true
+    },
+    {
+      "name": "an empty queue stays empty and reports Infinity",
+      "pass": true
+    },
+    {
+      "name": "a push inside a drain runs in the same drain when due, and the target itself is due",
+      "pass": true,
+      "detail": [
+        10,
+        15,
+        20
+      ]
+    },
+    {
+      "name": "growth past capacity keeps 2,000 events in time order",
+      "pass": true
+    }
+  ]
+}

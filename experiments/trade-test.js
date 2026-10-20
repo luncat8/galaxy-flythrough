@@ -92,6 +92,21 @@ function stepSmall(net, total, chunk) {
 		positive && producible);
 	check('every resource has a positive worth and unit mass', sized);
 
+	// The PLANET/HABITAT columns are planets.js display types by position:
+	// pin the semantics by name so a reordered DISPLAY_TYPES fails here
+	// instead of silently making ice worlds into farms.
+	const display = planets.DISPLAY_INDEX;
+	let foodBest = 0;
+	for (let t = 0; t < economy.PLANET[economy.R_FOOD].length; t++) {
+		foodBest = Math.max(foodBest, economy.PLANET[economy.R_FOOD][t]);
+	}
+	check('the yield table columns are the display types they claim to be',
+		economy.PLANET[economy.R_FOOD][display.TERRAN] === foodBest
+		&& economy.PLANET[economy.R_VOLATILE][display.ICE] > economy.PLANET[economy.R_VOLATILE][display.TERRAN]
+		&& economy.PLANET[economy.R_ORE][economy.SITE_BELT] > economy.PLANET[economy.R_ORE][display.TERRAN]
+		&& economy.HABITAT[display.TERRAN] === 1
+		&& economy.HABITAT[display.LAVA] < economy.HABITAT[display.SUPER_EARTH]);
+
 	let orbits = true;
 	for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
 		for (let g = 0; g < economy.RESOURCE_COUNT; g++) {
@@ -129,8 +144,14 @@ function stepSmall(net, total, chunk) {
 	}
 	check('the same site hash yields the same world', same);
 	check('a different site hash changes the resource map', differs);
-	check('site slots are unique within a star',
-		economy.siteSlot(site) !== economy.siteSlot(economy.createSite()) || site.index !== 0);
+	const slotProbe = economy.createSite();
+	slotProbe.index = 1;
+	const beltProbe = economy.createSite();
+	beltProbe.isBelt = 1;
+	check('site slots are unique within a star (planet, next planet, belt)',
+		economy.siteSlot(site) !== economy.siteSlot(slotProbe)
+		&& economy.siteSlot(beltProbe) !== economy.siteSlot(site)
+		&& economy.siteSlot(beltProbe) !== economy.siteSlot(slotProbe));
 
 	let bounded = true, habitats = true;
 	for (let i = 0; i < 8 && i < landmarks.count; i++) {
@@ -168,11 +189,39 @@ function stepSmall(net, total, chunk) {
 	economy.settleColony(many, 100);
 	economy.settleColony(one, 600);
 	for (let t = 100; t < 600; t += 5) economy.settleColony(many, t + 5);
+	// A supply-limited colony's coverage drifts as its stocks drain, and a
+	// settle freezes coverage at the interval's start — the one documented
+	// approximation (trade-plan §2.2). In the network this never compounds,
+	// because ships settle their ports at event times; here the jump must
+	// still track its stepped twin.
+	check('one 500-year settle tracks a hundred 5-year settles (free colony)',
+		near(one.pop, many.pop, 0.25), { one: one.pop, many: many.pop });
+
+	// The exact law: at constant coverage the logistic is a closed form and
+	// splitting is exact. Yield 2 on every resource makes a colony
+	// self-sufficient in every need, so coverage is pinned at 1 whatever its
+	// stocks do and no boundary can be crossed inside the interval.
+	const exactOne = economy.createColony();
+	economy.setupColony(exactOne, site, 0, 0x51);
+	const exactMany = economy.createColony();
+	economy.setupColony(exactMany, site, 0, 0x51);
+	for (const colony of [exactOne, exactMany]) {
+		for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+			colony.yield[r] = 2;
+			colony.outBase[r] = economy.PROD[r] * 2;
+			colony.stock[r] = colony.stockCap[r] * 0.5;
+		}
+		colony.pop = colony.capacity * 0.25;
+		colony.last = 0;
+	}
+	economy.settleColony(exactOne, 500);
+	for (let t = 0; t < 500; t += 5) economy.settleColony(exactMany, t + 5);
+	check('the exactness fixture really is fully supplied', exactOne.coverage === 1);
 	check('one 500-year settle equals a hundred 5-year settles (population)',
-		near(one.pop, many.pop, 1e-6), { one: one.pop, many: many.pop });
+		near(exactOne.pop, exactMany.pop, 1e-9), { one: exactOne.pop, many: exactMany.pop });
 	let stocks = true;
 	for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
-		if (!near(one.stock[r], many.stock[r], 1e-6)) stocks = false;
+		if (!near(exactOne.stock[r], exactMany.stock[r], 1e-9)) stocks = false;
 	}
 	check('one 500-year settle equals a hundred 5-year settles (every stock)', stocks);
 
@@ -203,7 +252,8 @@ function stepSmall(net, total, chunk) {
 	let demand = 0;
 	for (let r = 0; r < economy.RESOURCE_COUNT; r++) if (economy.demandOf(c, r) > 0) demand += 1;
 	check('a full port wants nothing', demand === 0);
-	for (let r = 0; r < economy.RESOURCE_COUNT; r++) economy.takeFromColony(c, r, c.stockCap[r]);
+	// takeFromColony respects the export reserve; an empty port is empty.
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) c.stock[r] = 0;
 	let hungry = 0;
 	for (let r = 0; r < economy.RESOURCE_COUNT; r++) if (economy.demandOf(c, r) > 0) hungry += 1;
 	check('an empty port wants its needs and its industry', hungry >= 6);
@@ -232,6 +282,7 @@ function stepSmall(net, total, chunk) {
 		net.queue.size <= net.shipCount + 4, net.queue.size);
 	check('arrivals are booked', net.processed > 0 && net.delivered >= 0,
 		{ processed: net.processed, delivered: net.delivered });
+	check('no ship ever leaves a stale event behind', net.stale === 0, net.stale);
 	check('the fleet keeps sailing', (() => {
 		let sailing = 0;
 		for (let i = 0; i < net.shipCount; i++) if (net.ships[i].state === trade.SHIP_SAILING) sailing += 1;
@@ -281,7 +332,8 @@ function stepSmall(net, total, chunk) {
 	const start = grown.portCount;
 	trade.step(grown, 2500);
 	check('colonisation grows the network over two and a half millennia',
-		grown.portCount >= start && grown.portCount <= trade.MAX_PORTS,
+		grown.founded > 0 && grown.portCount === start + grown.founded
+		&& grown.portCount <= trade.MAX_PORTS,
 		{ start, end: grown.portCount, founded: grown.founded });
 	check('no colony exceeds the port cap', grown.portCount <= trade.MAX_PORTS);
 	check('a founded colony starts with a population and a warehouse',
@@ -350,7 +402,8 @@ function stepSmall(net, total, chunk) {
 	}
 	check('sailing hulls have a finite draw position', placed > 0 && finitePositions);
 	check('ship state names cover every state', trade.SHIP_STATE_NAMES.length === 4
-		&& trade.shipStateName(trade.SHIP_SAILING).length > 0);
+		&& trade.SHIP_STATE_NAMES.every(name => name.length > 0)
+		&& trade.shipStateName(net.ships[0]).length > 0);
 }
 
 // --- 7. The queue itself --------------------------------------------------
@@ -363,10 +416,33 @@ function stepSmall(net, total, chunk) {
 	queueLib.drainUntil(queue, 25, (time, kind, ref) => seen.push([time, ref]));
 	check('a min-heap drains in time order, not push order',
 		JSON.stringify(seen) === JSON.stringify([[10, 2], [20, 3]]), seen);
-	check('a drained queue reports Infinity as its next time', queueLib.peekTime(queue) === 30);
+	check('a partly drained queue reports its next event time', queueLib.peekTime(queue) === 30);
 	queueLib.drainUntil(queue, 1e9, () => {});
 	check('an empty queue stays empty and reports Infinity',
 		queue.size === 0 && queueLib.peekTime(queue) === Infinity);
+
+	const edge = queueLib.createExecQueue(2);
+	const edgeSeen = [];
+	queueLib.push(edge, 20, 9, 3, 0);
+	queueLib.push(edge, 10, 7, 1, 0);
+	queueLib.drainUntil(edge, 20, (time, kind) => {
+		edgeSeen.push(time);
+		if (kind === 7) queueLib.push(edge, 15, 8, 2, 0);
+		if (kind === 8) queueLib.push(edge, 25, 9, 4, 0);
+	});
+	check('a push inside a drain runs in the same drain when due, and the target itself is due',
+		JSON.stringify(edgeSeen) === JSON.stringify([10, 15, 20])
+		&& edge.size === 1 && queueLib.peekTime(edge) === 25, edgeSeen);
+
+	const big = queueLib.createExecQueue(4);
+	const times = [];
+	for (let i = 0; i < 2000; i++) times.push((((i * 2654435761) >>> 0) % 100003) / 16);
+	for (let i = 0; i < times.length; i++) queueLib.push(big, times[i], 0, i, 0);
+	const drained = [];
+	queueLib.drainUntil(big, Infinity, (time) => drained.push(time));
+	const sorted = [...times].sort((a, b) => a - b);
+	check('growth past capacity keeps 2,000 events in time order',
+		JSON.stringify(drained) === JSON.stringify(sorted));
 }
 
 // --- Summary --------------------------------------------------------------

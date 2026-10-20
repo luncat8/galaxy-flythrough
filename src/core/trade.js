@@ -19,21 +19,12 @@
 	const queueLib = (typeof module !== 'undefined' && module.exports)
 		? require('./exec-queue.js')
 		: window.ExecQueueLib;
-	const route = (typeof module !== 'undefined' && module.exports)
-		? require('./route.js')
-		: window.RouteLib;
 	const planets = (typeof module !== 'undefined' && module.exports)
 		? require('../math/planets.js')
 		: window.PlanetsLib;
 	const hash = (typeof module !== 'undefined' && module.exports)
 		? require('../math/hash.js')
 		: window.HashLib;
-	const dv = (typeof module !== 'undefined' && module.exports)
-		? require('../math/deltav.js')
-		: window.DeltaVLib;
-
-	const KPC_M = route.KPC_M;
-	const SECONDS_PER_YEAR = dv.SECONDS_PER_YEAR;
 	const LY_PER_KPC = 3261.563673;
 
 	const PORT_CHANCE = 0.35;           // stars the galaxy has settled at all
@@ -343,7 +334,6 @@
 		ship.hold = hull.hold;
 		ship.cargo = NO_RESOURCE;
 		ship.amount = 0;
-		ship.hold = HULLS[ship.hull].hold;
 		ship.state = SHIP_DOCKED;
 		ship.port = portIndex;
 		ship.from = portIndex;
@@ -719,14 +709,19 @@
 	}
 
 	// The best export a player can buy, ignoring whether an NPC freighter wants
-	// it: the port's spare stock, ranked by value.
-	function playerExport(net, portIndex) {
+	// it: the port's spare stock, ranked by the value that actually fits the
+	// hold. Scoring the whole pile would offer a 20 t chemical hull a good
+	// whose single unit masses 30 t and report the empty hold as full.
+	function playerExport(net, portIndex, freeTons) {
 		const colony = net.ports[portIndex].colony;
 		let best = -1, bestScore = 0;
 		for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
 			const spare = economy.exportableOf(colony, r);
 			if (spare <= 0) continue;
-			const score = spare * economy.RESOURCES[r].worth;
+			const fits = economy.unitsForTons(r, freeTons);
+			if (fits <= 0) continue;
+			const loadable = spare < fits ? spare : fits;
+			const score = loadable * economy.RESOURCES[r].worth;
 			if (score > bestScore) { bestScore = score; best = r; }
 		}
 		return best;
@@ -745,13 +740,16 @@
 		const port = net.ports[portIndex];
 		economy.settleColony(port.colony, net.time);
 		const carried = ship.cargoResource === undefined ? -1 : ship.cargoResource;
-		const resource = playerExport(net, portIndex);
-		if (resource < 0) { PLAYER_RESULT.reason = 'nothing to buy'; return PLAYER_RESULT; }
+		const freeTons = ship.class.cargo - ship.cargo;
+		const resource = playerExport(net, portIndex, freeTons);
+		if (resource < 0) {
+			PLAYER_RESULT.reason = freeTons <= 0 ? 'hold full' : 'nothing to buy that fits the hold';
+			return PLAYER_RESULT;
+		}
 		if (ship.cargo > 0 && carried >= 0 && carried !== resource) {
 			PLAYER_RESULT.reason = 'hold carries ' + economy.RESOURCES[carried].name;
 			return PLAYER_RESULT;
 		}
-		const freeTons = ship.class.cargo - ship.cargo;
 		const fits = economy.unitsForTons(resource, freeTons);
 		if (fits <= 0) { PLAYER_RESULT.reason = 'hold full'; return PLAYER_RESULT; }
 		const units = economy.takeFromColony(port.colony, resource, fits);
