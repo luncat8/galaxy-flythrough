@@ -1,6 +1,6 @@
 {
   "target": {
-    "plummerBulgeMass": 15.0796,
+    "plummerBulgeMass": 15.0795,
     "scaleKpc": [
       0.7,
       0.44,
@@ -36,7 +36,7 @@
   },
   "measured": {
     "bulgeMass": 15.0796,
-    "massDriftPct": -0.001,
+    "massDriftPct": 0.001,
     "hmdY": 0.305,
     "hmdZ": 0.1248,
     "hmdTargetY": 0.305,
@@ -48,10 +48,10 @@
     "halfMassXikpc": 1.77,
     "ridgeDensityAtTip": 0.228,
     "loopRatioBA": 0.1762,
-    "omegaPatternOld": 0.043934,
+    "omegaPatternOld": 0.028653,
     "omegaPatternNew": 0.028653,
     "truncationBulge": 1,
-    "truncationBulgeOld": 0.95973,
+    "truncationBulgeOld": 1,
     "componentMasses": {
       "thin": 50.9692,
       "thick": 16.6253,
@@ -62,11 +62,11 @@
     "componentMassesOld": {
       "thin": 50.9692,
       "thick": 16.6253,
-      "bulge": 15.0796,
+      "bulge": 15.0795,
       "halo": 0.0214,
-      "total": 82.6956
+      "total": 82.6954
     },
-    "bulgeShareOld": 0.1824,
+    "bulgeShareOld": 0.1823,
     "bulgeShareNew": 0.1824
   }
 }

@@ -1594,8 +1594,12 @@ tests and extend the file layout of §11 as needed.
    CPU-only and pipeline-neutral.
 5. [The colony economy](colony-economy-plan.md): stage 1 shipped (ui.16 —
    the resource map, the advance law, the market, the manifest hold and
-   trade at colony ports); stage 2 (the event queue and commissioned trade
-   routes, §6) is the plan's open item, additive and CPU-only like the rest.
+   trade at colony ports); stage 2 shipped (ui.17 — the event ledger with
+   milestone/famine emission, the commissioned routes in `src/core/trade.js`,
+   the two transit laws: fast scheduled freight and generation ships homing
+   on the live drawn sky under the star-time sync, the events GUI, and the
+   star-time slider's fine/full tracks). Additive and CPU-only like the
+   rest; §7 stays recorded, not promised.
 
 The [0.5 planet series](archive/0.5.0-plan-planet-generator.md) is complete:
 selection, generator, search, schematic, delta-v map and ships/routes/autopilot.

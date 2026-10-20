@@ -84,10 +84,15 @@ const sourceFiles = walk(SRC, '')
 	const exposureDefault = require('../src/render/star-sprites.js').EXPOSURE_DEFAULT;
 	check('startup exposure is 22 and the slider agrees',
 		exposureDefault === 22 && /id="slider-exposure"[^>]+value="22"/.test(html));
-	check('startup stellar rate is 5 Myr/s and freeze resumes that rate',
-		/let starTimeRate = 5;/.test(main)
+	// ui.17: the observer's default is 1 Myr/s on the fine 0-2 track (step
+	// 0.01); the full -1-99 track is the toggle button beside the value.
+	check('startup stellar rate is 1 Myr/s on the fine track and freeze resumes that rate',
+		/let starTimeRate = 1;/.test(main)
 		&& /let lastNonZeroTimeRate = starTimeRate;/.test(main)
-		&& /id="slider-star-time"[^>]+value="5"/.test(html));
+		&& /let starTimeTrack = 'fine';/.test(main)
+		&& /id="slider-star-time"[^>]+value="1"/.test(html)
+		&& /id="star-time-scale"/.test(html)
+		&& /core\/trade\.js/.test(html));
 	check('the page starts in galaxy-centre orbit with unlocked input',
 		/camera\.setFrame\(model\);[\s\S]*?camera\.setMode\(window\.Camera\.MODE_ORBIT_GC\);\s*const input = window\.Input\.createInput\(canvas\);\s*input\.setFlyMode\(false\);/.test(main));
 	check('input policy follows camera mode after stepping',

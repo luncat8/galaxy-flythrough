@@ -50,7 +50,8 @@
     },
     {
       "name": "menuDefaults matches the modules that own the numbers",
-      "pass": true
+      "pass": false,
+      "detail": "Expected values to be strictly deep-equal:\n+ actual - expected\n... Skipped lines\n\n  {\n    apoForce: 0.22,\n    apoShare: 0.35,\n    brightness: 1,\n    clusters: 50,\n...\n    systime: 0,\n+   time: 1,\n-   time: 5,\n    viewanchors: 256,\n    viewmode: 'off',\n    viewopacity: 1,\n    viewproj: 'view',\n    viewramp: 'auto',\n"
     },
     {
       "name": "the default system round-trips and the model it names exists",
@@ -121,5 +122,5 @@
       "pass": true
     }
   ],
-  "failed": 0
+  "failed": 1
 }

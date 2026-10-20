@@ -38,6 +38,82 @@ const BASE_DT = 0.25;             // y; the integration chunk while span allows
 const JITTER = 0.12;              // the draft's "a bit of random", ±0.06
 const COLONY_SEED_SALT = 0x43f6c0;
 
+// --- §6 the event ledger (ui.17) -------------------------------------------
+// Preallocated, insertion-sorted by `atY`: `schedule` keeps the order
+// (binary search + shift), `dueEvents` drains the head while it is due,
+// `cancel` drops matching events. Drained at event boundaries only, never
+// per frame — the per-frame cost is the peek `count > 0 && at[0] <= toY`.
+// Payloads: ROUTE_DEPART (a route idx), ROUTE_ARRIVE (a route idx,
+// b resource kind, c tons), MILESTONE (a colony idx, c the pop threshold),
+// FAMINE (a colony idx, b 1 entered / 0 lifted).
+const EV_ROUTE_DEPART = 0, EV_ROUTE_ARRIVE = 1, EV_MILESTONE = 2, EV_FAMINE = 3;
+const LEDGER_CAP = 64;
+// Population milestones (k persons). The crossing years are events, so the
+// GUI can narrate the colony without polling it; 40k is the carrying band's
+// ceiling, a mature colony's last crossing.
+const POP_MILESTONES = [0.5, 1, 2, 5, 10, 20, 40];
+
+function createEventLedger() {
+	return {
+		at: new Float64Array(LEDGER_CAP),
+		kind: new Int32Array(LEDGER_CAP),
+		a: new Int32Array(LEDGER_CAP),
+		b: new Int32Array(LEDGER_CAP),
+		c: new Float64Array(LEDGER_CAP),
+		count: 0,
+	};
+}
+
+// Returns false when the ledger is full: the latest event is dropped, the
+// head — what is due soonest — always survives.
+function schedule(ledger, atY, kind, a, b, c) {
+	if (ledger.count >= LEDGER_CAP) return false;
+	let lo = 0, hi = ledger.count;
+	while (lo < hi) {
+		const mid = (lo + hi) >> 1;
+		if (ledger.at[mid] <= atY) lo = mid + 1; else hi = mid;
+	}
+	for (let i = ledger.count; i > lo; i--) {
+		ledger.at[i] = ledger.at[i - 1]; ledger.kind[i] = ledger.kind[i - 1];
+		ledger.a[i] = ledger.a[i - 1]; ledger.b[i] = ledger.b[i - 1]; ledger.c[i] = ledger.c[i - 1];
+	}
+	ledger.at[lo] = atY; ledger.kind[lo] = kind;
+	ledger.a[lo] = a | 0; ledger.b[lo] = b | 0; ledger.c[lo] = c;
+	ledger.count++;
+	return true;
+}
+
+// Drains every event at or before toY, in order, into
+// visit(kind, a, b, c, atY). Returns the number drained.
+function dueEvents(ledger, toY, visit) {
+	let drained = 0;
+	while (ledger.count > 0 && ledger.at[0] <= toY) {
+		visit(ledger.kind[0], ledger.a[0], ledger.b[0], ledger.c[0], ledger.at[0]);
+		for (let i = 1; i < ledger.count; i++) {
+			ledger.at[i - 1] = ledger.at[i]; ledger.kind[i - 1] = ledger.kind[i];
+			ledger.a[i - 1] = ledger.a[i]; ledger.b[i - 1] = ledger.b[i]; ledger.c[i - 1] = ledger.c[i];
+		}
+		ledger.count--;
+		drained++;
+	}
+	return drained;
+}
+
+function cancel(ledger, kind, a) {
+	let removed = 0;
+	for (let i = 0; i < ledger.count; i++) {
+		if (ledger.kind[i] !== kind || ledger.a[i] !== (a | 0)) continue;
+		for (let j = i + 1; j < ledger.count; j++) {
+			ledger.at[j - 1] = ledger.at[j]; ledger.kind[j - 1] = ledger.kind[j];
+			ledger.a[j - 1] = ledger.a[j]; ledger.b[j - 1] = ledger.b[j]; ledger.c[j - 1] = ledger.c[j];
+		}
+		ledger.count--;
+		removed++;
+		i--;
+	}
+	return removed;
+}
+
 // --- §2 the resource map --------------------------------------------------
 
 function clamp01(v) {
@@ -97,19 +173,30 @@ function resourceMapFor(record, seed, out) {
 
 // --- §3 colony state and the advance law ----------------------------------
 
-function createColony(starKey, name, foundedY, map) {
+// `bx/by/bz` (kpc) is the founding snapshot — the route math's fallback
+// when the star is out of the selection set. `idx` is the colonies-array
+// slot the ledger's events carry; `popIdx`/`starving` carry the advance's
+// event state across advances (§6).
+function createColony(starKey, name, foundedY, map, bx, by, bz) {
+	const pop = 1 + 9 * map.score;   // thousands of persons
+	let popIdx = 0;
+	while (popIdx < POP_MILESTONES.length && POP_MILESTONES[popIdx] <= pop) popIdx++;
 	return {
 		starKey: starKey >>> 0,
 		name: String(name || ''),
 		map,
 		foundedY: foundedY,
 		lastY: foundedY,
-		pop: 1 + 9 * map.score,        // thousands of persons
+		pop,
 		capital: 1 + 5 * map.score,    // industrial points
 		stock: new Float64Array(N),    // tons
 		comfort: 1,
 		coarse: false,
 		advances: 0,
+		idx: -1,
+		popIdx,
+		starving: false,
+		bx: bx || 0, by: by || 0, bz: bz || 0,
 	};
 }
 
@@ -120,8 +207,10 @@ const WANT = new Float64Array(N);
 
 // The factories. Fixed-step integration at BASE_DT while the span allows;
 // a span over MAX_STEPS·BASE_DT coarsens and flags itself (§3). Same
-// (state, map, span) → same result, chunking included.
-function advanceColony(colony, toY) {
+// (state, map, span) → same result, chunking included. The optional ledger
+// (§6, ui.17) receives the step's crossings as scheduled events; without
+// one the advance is silent, exactly the stage-1 law.
+function advanceColony(colony, toY, ledger) {
 	const span = toY - colony.lastY;
 	if (!(span > 0)) return colony;
 	const map = colony.map;
@@ -134,6 +223,7 @@ function advanceColony(colony, toY) {
 	let pop = colony.pop;
 	let capital = colony.capital;
 	let comfort = 1;
+	let stepY = colony.lastY;
 
 	for (let s = 0; s < steps; s++) {
 		let shortfallSum = 0, wantSum = 0, surplusSum = 0;
@@ -173,6 +263,22 @@ function advanceColony(colony, toY) {
 		let dCap = 0.02 * comfort * surplusSum * dt - 0.01 * capital * dt;
 		capital += dCap;
 		if (capital < 0.1) capital = 0.1;
+
+		// The ledger's crossings (§6, ui.17): famine on the comfort
+		// band, population on the milestone ladder. Timestamped at
+		// the step's own year so the log reads as the timeline.
+		if (ledger) {
+			stepY = Math.min(stepY + dt, toY);
+			const starvingNow = comfort < 0.4;
+			if (starvingNow !== colony.starving) {
+				colony.starving = starvingNow;
+				schedule(ledger, stepY, EV_FAMINE, colony.idx, starvingNow ? 1 : 0, 0);
+			}
+			while (colony.popIdx < POP_MILESTONES.length && pop >= POP_MILESTONES[colony.popIdx]) {
+				schedule(ledger, stepY, EV_MILESTONE, colony.idx, 0, POP_MILESTONES[colony.popIdx]);
+				colony.popIdx++;
+			}
+		}
 	}
 
 	colony.pop = pop;
@@ -283,6 +389,9 @@ const ColonyLib = {
 	createTradeOut, buyAtPort, sellAtPort,
 	formatPop, easeBar, marketLine, TAG_NAMES,
 	clamp01,
+	EV_ROUTE_DEPART, EV_ROUTE_ARRIVE, EV_MILESTONE, EV_FAMINE,
+	POP_MILESTONES, LEDGER_CAP,
+	createEventLedger, schedule, dueEvents, cancel,
 };
 if (typeof module !== 'undefined') module.exports = ColonyLib;
 if (typeof window !== 'undefined') window.ColonyLib = ColonyLib;

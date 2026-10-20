@@ -928,7 +928,41 @@ still grew at the first bound. `ship-test` 121/121 after the manifest rewrite;
 `quick` 27/27 (including the new `colony`); `changed` 8/9 → m1-smoke caught
 the page-scope collision (see findings) and passes after the rename.
 
-**Next.** Stage 2 (§6): the event queue and commissioned trade routes — a
-standing convoy a colony pair runs between its ports, departures and arrivals
-scheduled on the shared clock. Then the §7 list (mixed holds, tourism,
-colonist flows) stays recorded, not promised.
+**ui.17 — the colony economy, stage 2: events, GUI, star time.** The
+priority order came from the user: events first, then the GUI, then the
+integration with star time. The ledger stayed in colony.js (§6's original
+home): a preallocated insertion-sorted array, schedule/dueEvents/cancel,
+cap 64 dropping the latest — the head survives. advanceColony grew an
+optional third argument; with it the step loop emits famine-band and
+pop-ladder crossings ([0.5, 1, 2, 5, 10, 20, 40]k) timestamped at the
+step's own year; without it the advance is the silent stage-1 law
+(colony-test proves the physics identical either way). trade.js owns the
+routes and convoys: commissioning resolves the destination through the
+locked Flight destination or the primary selection, the first departure
+one PERIOD out, the period re-arming whether or not a departure carries;
+the cargo guard is two years of the export's own need with a 50 t cap —
+the guard reads NEED as shipped (index-ordered: rare 20, food 0.2; the §3
+prose mismatch is in findings). The two transit laws are the user's
+gameplay dial: fast freight (0.2 ly/y, arrivals scheduled at depart +
+distance/speed, drift ignored by declaration, economy on the game clock
+only) and generation ships (1 ly per 10 ky, star time 0.1 Myr/s, econY
+synced to the star clock in observer mode so colonies age while the stars
+drift on screen; the convoys home on the destination's live drawn position
+each step because over these flights the stars move further than the
+trip — the arrival is discovered, not scheduled; etaYears' fixed point
+reports converged/diverged, a diverging destination logs "ETA ∞ — the
+star outruns the ship; it chases"). The GUI: the events pre (clock line,
+route/convoy counts, the log tail), the Commission route button, the
+Generation ships checkbox, and the slider's two tracks — fine 0–2 Myr/s
+in 0.01 steps defaulting to 1 Myr/s (0.1 Myr/s was 0.1 % of the old
+100-wide track), the full −1–99 toggle beside the value, fitRateToTrack's
+snap rules (follow parks at 0.1 onto fine, off-grid rates snap up to 0.5
+onto full, never to 0), formatTimeRate's three decimals under 1 Myr/s,
+TIME_DEFAULT 1. Tests: colony 34/34, trade 19/19, m1-smoke and preset
+updated to the new defaults; quick 27/28 — planet-gen's heap check read
+2.3–3.1 MB under parallel load and passed standalone twice (a GC-timing
+flake on a file this stage never touched; noted in findings).
+
+**Next.** The §7 list (mixed holds, tourism, colonist flows) stays
+recorded, not promised. The deferred browser visual pass (game mode, the
+colony panel) remains open in its plan.

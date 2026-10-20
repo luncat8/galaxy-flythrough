@@ -140,12 +140,21 @@ async function boot() {
         // 0.4 global stellar clock. It is f64 on the CPU and exported as one
         // f32 uniform only after the documented epoch wrap.
         let starTimeMyr = 0;
-	let starTimeRate = 5;
-	let lastNonZeroTimeRate = starTimeRate;
+        // ui.17: the observer's default is the fine track (0-2 Myr/s, step 0.01);
+        // 1 Myr/s sits mid-track at half the old 5 — star time visibly moves
+        // without running away from the camera. The full -1..99 track is the
+        // toggle button beside the value.
+        let starTimeRate = 1;
+        let lastNonZeroTimeRate = starTimeRate;
+        // 'fine' | 'full': which track the observer's slider dresses in.
+        let starTimeTrack = 'fine';
         // ?time= / ?wave= speak the same language as the preset strings
         // (Presets), and their defaults are the startup values above.
         starTimeRate = params.time;
         if (starTimeRate > 0) lastNonZeroTimeRate = starTimeRate;
+        // ui.17: a saved rate above the fine track's ceiling (or a follow
+        // rate) boots on the full track; small rates fit the fine one.
+        if (starTimeRate > 2 || starTimeRate < 0) starTimeTrack = 'full';
         // Game mode (game-mode-plan.md G1): the ship record and the toggle.
         // Declared beside the time axis it takes over while flying (§4 — the
         // ship clock and the stars' drift are one rate), and early enough that
@@ -155,6 +164,7 @@ async function boot() {
         // starTimeRate and is simply not consulted while the ship's clock runs.
         const shipLib = window.Ship;
         const colonyLib = window.ColonyLib;
+        const tradeLib = window.TradeLib;
         let gameMode = false;
         const AUTOPILOT_MIN_WALL_SECONDS = 4;
         let shipTimeRateCapY = Infinity;
@@ -930,6 +940,10 @@ async function boot() {
         const flightPortState = document.getElementById('flight-port-state');
         const flightFoundColony = document.getElementById('flight-found-colony');
         const flightMarket = document.getElementById('flight-market');
+        const flightRoute = document.getElementById('flight-route');
+        const flightSyncTrade = document.getElementById('flight-sync-trade');
+        const flightEvents = document.getElementById('flight-events');
+        const starTimeScaleBtn = document.getElementById('star-time-scale');
         const shipList = document.getElementById('ship-list');
         const fleetCount = document.getElementById('fleet-count');
         const shipSpawn = document.getElementById('ship-spawn');
@@ -1130,6 +1144,32 @@ async function boot() {
         flightCargoLoad.addEventListener('click', () => { actions.cargoLoad = 1; });
         flightCargoUnload.addEventListener('click', () => { actions.cargoUnload = 1; });
         flightFoundColony.addEventListener('click', () => { if (gameMode) gameFoundColony(); });
+        flightRoute.addEventListener('click', gameCommissionRoute);
+        flightSyncTrade.addEventListener('change', () => {
+                tradeSync = flightSyncTrade.checked;
+                if (tradeSync) {
+                        // The preset: star time 0.1 Myr/s. In observer mode that is
+                        // the rate itself (the fine track); in game mode it is the
+                        // shared clock's 1e5 y/s rung — the same 0.1 Myr/s.
+                        if (gameMode) {
+                                const rung = shipLib.SHIP_TIME_LADDER.indexOf(1e5);
+                                if (rung > 0) {
+                                        ship.timeIndex = rung;
+                                        ship.timeFrozen = false;
+                                }
+                        } else {
+                                starTimeRate = 0.1;
+                                lastNonZeroTimeRate = 0.1;
+                                starTimeTrack = 'fine';
+                        }
+                        setAutoMsg('generation ships · 1 ly per 10 ky · star time 0.1 Myr/s');
+                } else {
+                        setAutoMsg('fast freight · 0.2 ly/y · drift over the transit ignored');
+                }
+                syncStarTime();
+                syncStarTimeScale();
+                syncFlightUi();
+        });
         flightAutoDest.addEventListener('change', () => {
                 if (flightAutoDest.checked) {
                         if (!gameMode) {
@@ -1687,9 +1727,24 @@ async function boot() {
                         valStarTime.title = 'Ship clock: the shared rate of ship physics and star drift.'
                                 + (adjusted ? ` Effective rate ${formatShipRate(effectiveRate)}; autopilot flights are kept at least 4 wall-seconds.` : '');
                 } else {
-                        sliderStarTime.min = -1;
-                        sliderStarTime.max = 99;
-                        sliderStarTime.step = 0.5;
+                        // ui.17: two tracks. fine 0-2 Myr/s in 0.01 steps (0.1 is 5%
+                        // of the track — generation-ship time), full -1-99 in 0.5
+                        // steps (the old track; follow at the left end). An off-track
+                        // rate is fitted, so the thumb and the readout never disagree.
+                        const fitted = fitRateToTrack(starTimeRate, starTimeTrack);
+                        if (fitted !== starTimeRate) {
+                                starTimeRate = fitted;
+                                if (fitted > 0) lastNonZeroTimeRate = fitted;
+                        }
+                        if (starTimeTrack === 'fine') {
+                                sliderStarTime.min = 0;
+                                sliderStarTime.max = 2;
+                                sliderStarTime.step = 0.01;
+                        } else {
+                                sliderStarTime.min = -1;
+                                sliderStarTime.max = 99;
+                                sliderStarTime.step = 0.5;
+                        }
                         sliderStarTime.value = starTimeRate;
                         valStarTime.textContent = window.OrbitLib.formatTimeRate(starTimeRate, 0);
                         valStarTime.title = '';
@@ -1702,6 +1757,48 @@ async function boot() {
                 syncStarTime();
                 return true;
         }
+
+        // ui.17: fit an observer rate to the track it must sit on. fine:
+        // follow parks at 0.1 (a camera-derived rate has no room on a
+        // 0-2 track), anything above 2 clamps, the 0.01 grid rounds. full:
+        // follow stays; anything off the 0.5 grid (stepping from -1) snaps
+        // UP to the next grid point, floor 0.5 — 0 is frozen and never a
+        // snap target.
+        function fitRateToTrack(rate, track) {
+                if (track === 'fine') {
+                        if (rate < 0) return 0.1;
+                        if (rate > 2) return 2;
+                        return Math.round(rate * 100) / 100;
+                }
+                if (rate < 0) return rate;
+                if (rate > 99) return 99;
+                let grid = -1 + 0.5 * Math.ceil((rate + 1) / 0.5);
+                if (grid < 0.5) grid = 0.5;
+                return grid;
+        }
+        // The track toggle: the button's label is the track's max, the
+        // title says what the click does.
+        function syncStarTimeScale() {
+                if (starTimeTrack === 'fine') {
+                        starTimeScaleBtn.textContent = '2';
+                        starTimeScaleBtn.title = 'Track 0-2 Myr/s in 0.01 steps — the small rates generation-ship time needs. Click for the full -1-99 Myr/s track.';
+                } else {
+                        starTimeScaleBtn.textContent = '99';
+                        starTimeScaleBtn.title = 'Track -1-99 Myr/s in 0.5 steps; the left end is follow. Click for the fine 0-2 Myr/s track.';
+                }
+        }
+        starTimeScaleBtn.addEventListener('click', () => {
+                starTimeTrack = starTimeTrack === 'fine' ? 'full' : 'fine';
+                const fitted = fitRateToTrack(starTimeRate, starTimeTrack);
+                if (fitted !== starTimeRate) {
+                        starTimeRate = fitted;
+                        if (fitted > 0) lastNonZeroTimeRate = fitted;
+                        setAutoMsg('star time ' + window.OrbitLib.formatTimeRate(starTimeRate, 0)
+                                + ' · fitted to the ' + (starTimeTrack === 'fine' ? '0-2' : '-1-99') + ' track');
+                }
+                syncStarTime();
+                syncStarTimeScale();
+        });
         sliderStarTime.addEventListener('input', () => {
                 if (gameMode) {
                         ship.timeIndex = Number(sliderStarTime.value);
@@ -3310,6 +3407,7 @@ async function boot() {
                 flightDock.disabled = !gameMode;
                 flightCargoLoad.disabled = flightCargoUnload.disabled = !ship.docked;
                 flightFoundColony.disabled = !gameMode || !ship.docked || !!colonyAt(ship.station.key);
+                flightRoute.disabled = !gameMode || !ship.docked || !colonyAt(ship.station.key);
                 const portColony = ship.docked ? colonyAt(ship.station.key) : null;
                 setTextIfChanged(flightPortState, ship.docked
                         ? (portColony
@@ -3317,6 +3415,7 @@ async function boot() {
                                 : `docked at ${ship.station.name} port · no colony · no market here · ${Math.round(ship.credits)} cr`)
                         : 'not docked · O docks at a settled station');
                 syncFlightMarket();
+                syncFlightEvents();
                 flightUseSelected.disabled = starSet.primary < 0 || autoActive;
                 flightClearDestination.disabled = !flightDestination.active || autoActive;
                 // Unified checkbox UI: destination autopilot and target-stop are
@@ -3764,13 +3863,25 @@ async function boot() {
         // --- The colony economy (colony-economy-plan.md) -----------------
         // Session state like the fleet. The map is derived once at founding
         // from the port star's generated system; the colony owns it from
-        // then on (§2). `gameClockY` is the shared clock's cumulative years
-        // — the one timeline the arrive/inspect advances read. It only
-        // moves in game mode, so an inspect out of it shows the colony
-        // frozen at its last event (§5): factories run on events, never
+        // then on (§2). `econY` is the economy timeline's cumulative
+        // years — the one the arrive/inspect advances read. In game mode
+        // it is the shared ship clock; in observer mode, with the sync
+        // checkbox on, the star clock (ui.17) — colonies age while the
+        // player watches the stars drift. Without the sync the
+        // observer's rate never lands: factories run on events, never
         // per frame.
-        let gameClockY = 0;
+        let econY = 0;
+        let tradeSync = false;
         const colonies = [];
+        const econLedger = colonyLib.createEventLedger();
+        const tradeRoutes = tradeLib.createRoutes();
+        const tradeConvoys = tradeLib.createConvoys();
+        const tradeCargoOut = tradeLib.createCargoOut();
+        const econPosA = new Float64Array(3);
+        const econPosB = new Float64Array(3);
+        const econVel = new Float64Array(3);
+        const econLog = [];
+        const ECON_LOG_MAX = 48;
         const colonyRecord = selectPlanets.createSystemRecord();
         const colonyCtx = {};
         const colonyMapOut = colonyLib.createResourceMap();
@@ -3788,7 +3899,8 @@ async function boot() {
         function colonyArrive(key) {
                 const colony = colonyAt(key);
                 if (!colony) return null;
-                colonyLib.advanceColony(colony, gameClockY);
+                colonyLib.advanceColony(colony, econY, econLedger);
+                drainEconEvents();
                 return colony;
         }
 
@@ -3797,11 +3909,135 @@ async function boot() {
         function colonyInspect(key) {
                 const colony = colonyAt(key);
                 if (!colony) return null;
-                colonyLib.advanceColony(colony, gameClockY);
+                colonyLib.advanceColony(colony, econY, econLedger);
+                drainEconEvents();
                 return colony;
         }
 
         // Founding (§5): the docked station's system, generated like the
+
+        // The economy readout's year format: ky and Myr once the timeline is
+        // long enough — a synced observer at 0.1 Myr/s crosses a Myr in ten
+        // wall-seconds.
+        function fmtEconY(y) {
+                if (y >= 1e6) return (y / 1e6).toFixed(2) + ' Myr';
+                if (y >= 1e4) return (y / 1e3).toFixed(1) + ' ky';
+                return y.toFixed(1) + ' y';
+        }
+
+        // The GUI log (§6): what the ledger's events did, newest last,
+        // capped. The ledger is the schedule; this is the narrative.
+        function econLogLine(text) {
+                econLog.push({ y: econY, text });
+                if (econLog.length > ECON_LOG_MAX) econLog.shift();
+                syncFlightEvents();
+        }
+
+        // The colony's star for route math: the live drawn position while
+        // the star is resident in the selection set, else the founding
+        // snapshot. Stars leave the set by eviction or a rebuild; the
+        // fallback keeps the routes honest and the convoy homing on the
+        // last known place.
+        function colonyPosOf(idx, out) {
+                const colony = colonies[idx];
+                const i = starSet.indexOfKey(colony.starKey);
+                if (i >= 0) {
+                        memberDrawnPosition(i, out);
+                        return true;
+                }
+                out[0] = colony.bx; out[1] = colony.by; out[2] = colony.bz;
+                return false;
+        }
+
+        // The drain (§6): one visit per due event, in timeline order.
+        // Departures re-arm the period; arrivals land the cargo; milestones
+        // and famine crossings go to the log.
+        function drainEconEvents() {
+                if (econLedger.count === 0) return;
+                colonyLib.dueEvents(econLedger, econY, (kind, a, b, c, atY) => {
+                        if (kind === colonyLib.EV_ROUTE_DEPART) econRouteDepart(a, atY);
+                        else if (kind === colonyLib.EV_ROUTE_ARRIVE) econRouteArrive(a, b, c, atY);
+                        else if (kind === colonyLib.EV_MILESTONE) econMilestone(a, c, atY);
+                        else if (kind === colonyLib.EV_FAMINE) econFamine(a, b, atY);
+                });
+        }
+
+        function econRouteDepart(routeIdx, atY) {
+                const route = tradeRoutes.list[routeIdx];
+                if (!route) return;
+                const origin = colonies[route.origin];
+                const dest = colonies[route.dest];
+                // The period re-arms whether or not this departure carries.
+                route.nextDepartY = atY + tradeLib.PERIOD_Y;
+                colonyLib.schedule(econLedger, route.nextDepartY, colonyLib.EV_ROUTE_DEPART, routeIdx, 0, 0);
+                const cargo = tradeLib.departureCargo(origin, tradeCargoOut);
+                if (cargo.tons <= 0) return;   // below its own guard; retry next period
+                origin.stock[cargo.kind] -= cargo.tons;
+                colonyPosOf(route.origin, econPosA);
+                const live = colonyPosOf(route.dest, econPosB);
+                const label = colonyLib.RESOURCES[cargo.kind].label;
+                if (tradeSync) {
+                        // Generation law: spawn a homing convoy. The ETA is a
+                        // first-order intercept off the destination's drawn
+                        // velocity when it is resident.
+                        let vx = 0, vy = 0, vz = 0;
+                        if (live) {
+                                const di = starSet.indexOfKey(dest.starKey);
+                                if (di >= 0 && memberDrawnVelocity(di, econVel)
+                                                !== window.Selection.DRAWN_STALE) {
+                                        vx = econVel[0] * shipLib.SECONDS_PER_YEAR;
+                                        vy = econVel[1] * shipLib.SECONDS_PER_YEAR;
+                                        vz = econVel[2] * shipLib.SECONDS_PER_YEAR;
+                                }
+                        }
+                        const eta = tradeLib.etaYears(econPosA[0], econPosA[1], econPosA[2],
+                                econPosB[0], econPosB[1], econPosB[2], vx, vy, vz,
+                                tradeLib.GENERATION_LY_Y);
+                        tradeLib.spawnConvoy(tradeConvoys, routeIdx, route.dest, cargo.kind,
+                                cargo.tons, econPosA[0], econPosA[1], econPosA[2], atY, eta.years);
+                        econLogLine('convoy departed ' + origin.name + ' → ' + dest.name
+                                + ' · ' + label + ' ' + cargo.tons.toFixed(0) + ' t'
+                                + ' · ETA ' + fmtEconY(eta.years)
+                                + (eta.diverged ? ' — the star outruns the ship; it chases' : ''));
+                } else {
+                        // Fast law: the transit ignores stellar drift by
+                        // declaration — a 50-500 y hop over which a star
+                        // moves ~1e-4 kpc.
+                        const arriveY = atY + tradeLib.fastTransitY(tradeLib.distLy(
+                                econPosA[0], econPosA[1], econPosA[2],
+                                econPosB[0], econPosB[1], econPosB[2]));
+                        colonyLib.schedule(econLedger, arriveY, colonyLib.EV_ROUTE_ARRIVE,
+                                routeIdx, cargo.kind, cargo.tons);
+                        econLogLine('freight departed ' + origin.name + ' → ' + dest.name
+                                + ' · ' + label + ' ' + cargo.tons.toFixed(0) + ' t'
+                                + ' · arrives ' + fmtEconY(arriveY));
+                }
+        }
+
+        function econRouteArrive(routeIdx, kind, tons, atY) {
+                const route = tradeRoutes.list[routeIdx];
+                if (!route) return;
+                const dest = colonies[route.dest];
+                dest.stock[kind] += tons;
+                econLogLine('freight arrived ' + dest.name + ' · +'
+                        + tons.toFixed(0) + ' t ' + colonyLib.RESOURCES[kind].label
+                        + ' · stock ' + Math.round(dest.stock[kind]) + ' t');
+        }
+
+        function econMilestone(idx, popK, atY) {
+                const colony = colonies[idx];
+                if (!colony) return;
+                econLogLine(colony.name + ' reached ' + colonyLib.formatPop(popK)
+                        + ' persons · comfort ' + Math.round(colony.comfort * 100) + '%');
+        }
+
+        function econFamine(idx, entered, atY) {
+                const colony = colonies[idx];
+                if (!colony) return;
+                econLogLine(entered
+                        ? colony.name + ' is starving — comfort ' + Math.round(colony.comfort * 100) + '%'
+                        : colony.name + ' recovered — comfort ' + Math.round(colony.comfort * 100) + '%');
+        }
         // brief's record, mapped once. A port keeps at most one colony;
         // founding is free — the player is the catalyst, not the owner.
         function gameFoundColony() {
@@ -3824,8 +4060,9 @@ async function boot() {
                 map.ease.set(colonyMapOut.ease);
                 map.score = colonyMapOut.score;
                 const colony = colonyLib.createColony(ship.station.key, name + ' colony',
-                        gameClockY, map);
+                        econY, map, ref.x, ref.y, ref.z);
                 colonies.push(colony);
+                colony.idx = colonies.length - 1;
                 // The ui.1 typed asset history lands the colony the way
                 // docking lands the dock-port.
                 selectionStore.selectCurrent(window.SelectionStore.GROUP_ASSET, {
@@ -3845,14 +4082,63 @@ async function boot() {
         }
 
         // The market block for the Flight panel (§5): all six rows while
+
+        // Commissioning (§6): a standing convoy between the docked port's
+        // colony and a second colony — the locked destination's star, or
+        // the primary selection's, when it owns one. The route re-arms
+        // itself every PERIOD; the ledger carries the first departure.
+        function gameCommissionRoute() {
+                if (!gameMode) { gameNotice(); return; }
+                if (!ship.docked) { setAutoMsg('commission from a docked port'); return; }
+                const origin = colonyAt(ship.station.key);
+                if (!origin) { setAutoMsg('no colony at this port — found one first'); return; }
+                const locked = flightDestination.active;
+                const i = locked ? -1 : starSet.primary;
+                let destKey = -1;
+                if (locked) destKey = flightDestination.key >>> 0;
+                else if (i >= 0) destKey = starSet.keys[i] >>> 0;
+                const dest = destKey >= 0 ? colonyAt(destKey) : null;
+                if (!dest) { setAutoMsg('the destination needs a colony — select or lock its star'); return; }
+                if (dest === origin) { setAutoMsg('a route needs two different colonies'); return; }
+                const route = tradeLib.commissionRoute(tradeRoutes, origin.idx, dest.idx, econY);
+                colonyLib.schedule(econLedger, route.nextDepartY, colonyLib.EV_ROUTE_DEPART,
+                        tradeRoutes.count - 1, 0, 0);
+                econLogLine('route commissioned ' + origin.name + ' → ' + dest.name
+                        + ' · departs every ' + tradeLib.PERIOD_Y + ' y · first '
+                        + fmtEconY(route.nextDepartY));
+                setAutoMsg('route ' + origin.name + ' → ' + dest.name + ' commissioned');
+                syncFlightUi();
+        }
+
+        // The events readout (§6): the economy clock line, then the log's
+        // tail. Cached like the market block — event cadence, never per
+        // frame.
+        let lastFlightEvents = '';
+        function syncFlightEvents() {
+                const lines = ['economy ' + fmtEconY(econY)
+                        + ' · ' + tradeRoutes.count + (tradeRoutes.count === 1 ? ' route' : ' routes')
+                        + ' · ' + tradeConvoys.count + ' in flight'
+                        + ' · ' + (tradeSync ? 'generation ships · synced' : 'fast freight')];
+                if (econLog.length === 0) lines.push('no events yet — found a colony, commission a route');
+                else {
+                        for (let i = Math.max(0, econLog.length - 18); i < econLog.length; i++) {
+                                lines.push(fmtEconY(econLog[i].y) + ' · ' + econLog[i].text);
+                        }
+                }
+                const text = lines.join('\n');
+                if (text !== lastFlightEvents) {
+                        lastFlightEvents = text;
+                        flightEvents.textContent = text;
+                }
+        }
         // docked at a colony port; empty otherwise.
         let lastFlightMarket = '';
         function syncFlightMarket() {
                 const colony = ship.docked ? colonyAt(ship.station.key) : null;
                 let text = '';
                 if (colony) {
-                        text = colony.name + ' · founded ' + (colony.foundedY).toFixed(1)
-                                + ' y · pop ' + colonyLib.formatPop(colony.pop)
+                        text = colony.name + ' · founded ' + fmtEconY(colony.foundedY)
+                                + ' · pop ' + colonyLib.formatPop(colony.pop)
                                 + ' · comfort ' + Math.round(colony.comfort * 100) + '%'
                                 + (colony.coarse ? ' · coarse' : '')
                                 + '\n';
@@ -4347,9 +4633,28 @@ async function boot() {
                                 : starTimeRate);
                 const dtStar = effectiveTimeRate * dt;
                 const dtShipS = gameMode ? gameRateY * shipLib.SECONDS_PER_YEAR * dt : 0;
-                // The colony timeline (§5): the same shared clock, in years.
-                // Frozen reads zero here; the observer's rate never lands.
-                gameClockY += dtShipS / shipLib.SECONDS_PER_YEAR;
+                // The economy timeline (§5, ui.17): the shared ship clock in
+                // game mode; in observer mode, with the sync checkbox on, the
+                // star clock — the same Myr the sky drifts by. Frozen reads
+                // zero here; without the sync the observer never lands.
+                const dtEconY = gameMode
+                        ? dtShipS / shipLib.SECONDS_PER_YEAR
+                        : (tradeSync ? dtStar * 1e6 : 0);
+                econY += dtEconY;
+                // The convoys home on the live drawn sky while their
+                // transit runs (generation law only — fast freight is
+                // ledger math).
+                if (dtEconY > 0 && tradeConvoys.count > 0) {
+                        tradeLib.advanceConvoys(tradeConvoys, dtEconY, econY, colonyPosOf, (c) => {
+                                const dest = colonies[c.dest];
+                                dest.stock[c.kind] += c.tons;
+                                econLogLine('convoy arrived ' + dest.name + ' · +'
+                                        + c.tons.toFixed(0) + ' t '
+                                        + colonyLib.RESOURCES[c.kind].label
+                                        + ' · stock ' + Math.round(dest.stock[c.kind]) + ' t');
+                        });
+                }
+                drainEconEvents();
                 // Physical seconds this frame (star-seconds under the shared
                 // clock) — the handover feed's unit bridge from drawn motion.
                 framePhysSeconds = dtStar > 0 ? dtStar * 1e6 * shipLib.SECONDS_PER_YEAR : 0;

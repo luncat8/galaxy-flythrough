@@ -977,7 +977,14 @@ function sliderValueToRate(value, speedLyPerSec) {
 	if (value < 0) return (-value) * FLIGHT_TIME_GAIN * speedLyPerSec;
 	return value;
 }
-function formatTimeRate(value, speed) { return value < 0 ? `follow ×${(-value).toFixed(1)}` : value === 0 ? 'frozen' : `+${value.toFixed(1)} Myr/s`; }
+// ui.17: rates under 1 Myr/s carry three decimals — the fine track sets
+// 0.005-0.99 and one decimal would round them all away.
+function formatTimeRate(value, speed) {
+	if (value < 0) return `follow ×${(-value).toFixed(1)}`;
+	if (value === 0) return 'frozen';
+	if (value < 1) return `+${Number(value.toFixed(3))} Myr/s`;
+	return `+${value.toFixed(1)} Myr/s`;
+}
 
 // ---- 0.4.5 simple (friction-field) engine ----------------------------------
 //

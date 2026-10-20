@@ -173,18 +173,66 @@ block when the opened star owns one: population with growth arc, capital,
 comfort, the six market rows (ease bar, stock, price, tag), and the founding
 year against the shared clock.
 
-## §6 The event ledger (stage 2 — commissioned routes)
+## §6 The event ledger and the commissioned routes (stage 2, ui.17)
 
-The draft's "time event queue" lands with trade routes: a standing convoy a
-founded colony pair can run between its ports. A route is commissioned at a
-docked port (origin colony) for a destination colony and a resource: every
-`PERIOD = 2 y` of shared clock, the origin's stock gives up `CAP = 50 t` (never
-below its own two-year need) and the destination's stock gains it, the event
-queue carrying the departure and the arrival as scheduled events on the same
-timeline the arrive/inspect advances read. The queue is a preallocated
-insertion-sorted array in `src/core/colony.js` — `schedule`, `dueEvents`,
-`cancel` — drained at event boundaries only, never per frame. This stage is
-the follow-up if the core lands first; the plan above is complete without it.
+The stage's priority order was set with the user: events first, then the
+GUI, then the integration with star time. All three shipped.
+
+**The ledger** lives where §6 originally put it, `src/core/colony.js`: a
+preallocated insertion-sorted array — `schedule`, `dueEvents`, `cancel`,
+cap 64 (a full ledger drops the latest; the head, what is due soonest,
+survives). Payloads: `ROUTE_DEPART` (route idx), `ROUTE_ARRIVE` (route
+idx, resource kind, tons), `MILESTONE` (colony idx, the pop threshold),
+`FAMINE` (colony idx, 1 entered / 0 lifted). `advanceColony` takes an
+optional third argument — the ledger — and emits the step's crossings
+(famine on the 0.4-comfort band, population on the [0.5, 1, 2, 5, 10, 20,
+40]k ladder) timestamped at the step's own year; without it the advance
+is silent, exactly the stage-1 law (colony-test proves the physics
+identical either way). Drains happen at event boundaries only: after each
+arrive/inspect advance and once per frame (the per-frame cost is the peek).
+
+**Commissioned routes** (`src/core/trade.js`): a standing convoy a colony
+pair runs between its ports. Commissioned at a docked port (origin colony)
+for the locked-destination or primary-selection colony; the first
+departure is one `PERIOD = 2 y` out and the period re-arms whether or not
+a departure carries. Each departure takes the origin's best export,
+capped at `CAP = 50 t`, never below the origin's own two-year need
+(`GUARD_Y · pop · NEED[kind]`, the shipped index-ordered NEED — see
+findings for the §3 prose mismatch): below the guard the departure is
+held (no event, no stock move). The origin's stock gives the tons up at
+departure; the destination's stock gains them at arrival.
+
+**The two transit laws** — trade time as a gameplay dial, set by the
+Flight panel's **Generation ships** checkbox:
+
+- **Off (fast freight)**, `FAST_LY_Y = 0.2` ly/y: the transit is a plain
+  scheduled arrival at `depart + distance/speed`; stellar drift over the
+  50–500 y hop is ignored by declaration — no star position is consulted
+  after the departure snapshot. The economy clock runs on the game clock
+  only (the stage-1 law).
+- **On (generation ships, the sync)**, `GENERATION_LY_Y = 1e-4` (1 ly per
+  10 ky), star time set to 0.1 Myr/s — in observer mode the rate itself,
+  in game mode the shared clock's 1e5 y/s rung. The economy clock (`econY`,
+  the stage-1 `gameClockY` renamed) becomes the star clock in observer
+  mode, so colonies age and convoys fly while the stars drift on screen.
+  Over these flights the stars move further than the trip, so the convoys
+  home on the destination's live drawn position every step — the better
+  route calculation the synced clock needs — and the arrival is
+  discovered, not scheduled. `etaYears`' first-order intercept (the drawn
+  velocity's fixed point) carries the departure log's ETA; a destination
+  that outruns the ship is reported as diverging (`ETA ∞`) and the convoy
+  chases it in its own time.
+
+**The GUI**: the events readout under the port market (the economy clock
+line, route/convoy counts, the log's tail — cached, event cadence), the
+**Commission route** button on the Port rows, the **Generation ships**
+checkbox, and the star-time slider's two tracks: the fine 0–2 Myr/s
+default in 0.01 steps (0.1 Myr/s is 5 % of that track instead of 0.1 % of
+the old 100-wide one), the full −1–99 toggle button beside the value, and
+the readout's three decimals under 1 Myr/s. The observer default rate is
+1 Myr/s; `fitRateToTrack` snaps off-grid rates (follow parks at 0.1 onto
+the fine track, off-grid values step up to the 0.5 grid onto the full
+track, never to 0).
 
 ## §7 Out of scope (recorded, not promised)
 
@@ -211,3 +259,13 @@ the follow-up if the core lands first; the plan above is complete without it.
   buy-and-sell-at-the-same-port, which loses nothing but gains nothing).
 - Founding: score → pop/capital initial values; a star keeps at most one
   colony; the asset history lands the typed colony.
+- The ledger (§6, ui.17): insertion order, FIFO ties, cancel, the 64 cap;
+  milestones ascend inside the span and never repeat; famine enters and
+  lifts in order; the ledger argument leaves the advance's physics
+  identical.
+- `trade-test.js` (ui.17): the units (KPC_LY, the generation speed in
+  kpc/y), the cargo guard (cap 50, the two-year floor, held departures),
+  the fast transit years, the ETA fixed point (static, receding,
+  perpendicular, outrunning), and the homing law (static arrival within
+  the flight time, the drifting chase, no false arrival when the star
+  outruns the ship, swap-last removal).

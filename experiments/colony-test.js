@@ -276,6 +276,116 @@ const map = colony.createResourceMap();
 		{ a: colony.formatPop(5.2), b: colony.formatPop(250), c: colony.formatPop(1500) });
 }
 
+
+// --- 7. the event ledger (ui.17) -------------------------------------------
+{
+	// schedule inserts sorted; dueEvents drains in order and only what is
+	// due; ties keep insertion order; cancel drops matching events.
+	const led = colony.createEventLedger();
+	colony.schedule(led, 5, colony.EV_MILESTONE, 7, 0, 5);
+	colony.schedule(led, 2, colony.EV_FAMINE, 7, 1, 0);
+	colony.schedule(led, 5, colony.EV_ROUTE_DEPART, 1, 0, 0);
+	colony.schedule(led, 9, colony.EV_ROUTE_ARRIVE, 1, 3, 12.5);
+	const got = [];
+	colony.dueEvents(led, 4.5, (k, a, b, c, at) => got.push([k, a, b, at]));
+	check('dueEvents drains only what is due, in order',
+		got.length === 1 && got[0][0] === colony.EV_FAMINE && got[0][1] === 7 && got[0][3] === 2
+			&& led.count === 3,
+		{ got });
+	const got2 = [];
+	colony.dueEvents(led, 5, (k, a, b, c, at) => got2.push([k, a, at]));
+	check('equal timestamps keep insertion order (FIFO)',
+		got2.length === 2 && got2[0][0] === colony.EV_MILESTONE
+			&& got2[1][0] === colony.EV_ROUTE_DEPART && led.count === 1,
+		{ got2 });
+	check('cancel removes only the matching kind and payload',
+		colony.cancel(led, colony.EV_ROUTE_ARRIVE, 1) === 1 && led.count === 0
+			&& colony.cancel(led, colony.EV_ROUTE_ARRIVE, 1) === 0,
+		{ count: led.count });
+	const cap = colony.createEventLedger();
+	let ok = 0;
+	for (let i = 0; i < 70; i++) if (colony.schedule(cap, i, colony.EV_MILESTONE, i, 0, i)) ok++;
+	check('the ledger caps at 64 and drops the latest, not the head',
+		ok === colony.LEDGER_CAP && cap.count === colony.LEDGER_CAP && cap.at[0] === 0,
+		{ ok, count: cap.count });
+}
+
+{
+	// Milestones: the growth colony narrates its ladder. The crossings are
+	// inside the advance's span, ascend, and never repeat on a re-advance.
+	const good = synthRecord({ key: 311, metal: 0.025, lum: 1.2, bulk: [0, 3, 4], belts: 1 });
+	good.planets.flags = [4 | 8, 0, 0];
+	good.counts.terranCount = 1;
+	const goodMap = colony.resourceMapFor(good, SEED, colony.createResourceMap());
+	const c1 = colony.createColony(311, 'Milestone', 0, goodMap, 1, 0, 0);
+	c1.idx = 0;
+	const led = colony.createEventLedger();
+	colony.advanceColony(c1, 100, led);
+	const ms = [];
+	colony.dueEvents(led, 100, (k, a, b, c) => { if (k === colony.EV_MILESTONE) ms.push(c); });
+	let ascending = ms.length >= 2;
+	for (let i = 1; i < ms.length; i++) if (ms[i] <= ms[i - 1]) ascending = false;
+	const lastIdx = c1.popIdx - 1;
+	check('a growing colony narrates ascending pop milestones inside the span',
+		ascending && ms.length > 0 && ms[ms.length - 1] === colony.POP_MILESTONES[lastIdx]
+			&& (c1.popIdx >= colony.POP_MILESTONES.length
+				|| c1.pop < colony.POP_MILESTONES[c1.popIdx] + 1e-12),
+		{ ms, popIdx: c1.popIdx, pop: +c1.pop.toFixed(2) });
+	colony.advanceColony(c1, 101, led);
+	const again = [];
+	colony.dueEvents(led, 101, (k, a, b, c) => { if (k === colony.EV_MILESTONE) again.push(c); });
+	const allMs = ms.concat(again);
+	const seen = new Set();
+	let noDups = true;
+	for (const t of allMs) {
+		if (seen.has(t)) noDups = false;
+		seen.add(t);
+	}
+	check('a re-advance emits only newly crossed thresholds, never duplicates',
+		noDups && (again.length === 0 || again[0] > ms[ms.length - 1])
+			&& (again.length === 0
+				|| colony.POP_MILESTONES.indexOf(again[again.length - 1]) === c1.popIdx - 1),
+		{ ms, again, popIdx: c1.popIdx });
+}
+
+{
+	// Famine: the starving colony enters the band, an injected food stock
+	// lifts it out. Both crossings land on the ledger, in order.
+	const bad = synthRecord({ key: 312, metal: 0.004, lum: 0.05, bulk: [0, 6], belts: 0 });
+	const badMap = colony.resourceMapFor(bad, SEED, colony.createResourceMap());
+	const c2 = colony.createColony(312, 'Famine', 0, badMap);
+	c2.idx = 1;
+	const led = colony.createEventLedger();
+	colony.advanceColony(c2, 10, led);
+	c2.stock[3] += 5000;   // the relief convoy the test plays
+	colony.advanceColony(c2, 15, led);
+	const fam = [];
+	colony.dueEvents(led, 15, (k, a, b) => { if (k === colony.EV_FAMINE) fam.push(b); });
+	check('famine enters and lifts, in order',
+		fam.length === 2 && fam[0] === 1 && fam[1] === 0 && c2.starving === false,
+		{ fam, comfort: +c2.comfort.toFixed(3) });
+
+	// The ledger does not perturb the physics: with and without produce the
+	// same state. Two fresh colonies off the same deterministic map law.
+	const physRec = synthRecord({ key: 313, metal: 0.025, lum: 1.2, bulk: [0, 3, 4], belts: 1 });
+	physRec.planets.flags = [4 | 8, 0, 0];
+	physRec.counts.terranCount = 1;
+	const c5 = colony.createColony(313, 'Ledgerless', 0,
+		colony.resourceMapFor(physRec, SEED, colony.createResourceMap()));
+	const c6 = colony.createColony(313, 'Ledgered', 0,
+		colony.resourceMapFor(physRec, SEED, colony.createResourceMap()));
+	c5.idx = 5; c6.idx = 6;
+	const led2 = colony.createEventLedger();
+	colony.advanceColony(c5, 100);
+	colony.advanceColony(c6, 100, led2);
+	let sameState = c5.pop === c6.pop && c5.capital === c6.capital
+		&& c5.comfort === c6.comfort && c5.starving === c6.starving;
+	for (let r = 0; r < 6; r++) if (c5.stock[r] !== c6.stock[r]) sameState = false;
+	check('the ledger argument does not change the advance',
+		sameState,
+		{ pop: +c5.pop.toFixed(6), popLedgered: +c6.pop.toFixed(6) });
+}
+
 // --- report ----------------------------------------------------------------
 const failed = checks.filter((c) => !c.pass);
 console.log(`colony: ${checks.length - failed.length}/${checks.length} checks pass`);

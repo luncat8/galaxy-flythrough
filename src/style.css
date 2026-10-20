@@ -452,6 +452,22 @@ html, body {
 	overflow: hidden;
 }
 .flight-market:not(:empty) { display: block; }
+/* ui.17: the star-time track toggle — the value line and a mini button
+   showing the track's max (2 or 99 Myr/s). */
+.star-time-val { display: inline-flex; align-items: center; gap: 5px; }
+.star-time-val > span { min-width: 0; }
+#star-time-scale {
+	font: 10px/1 'Menlo', 'Consolas', monospace;
+	color: #8fbf8f;
+	background: #0c1a20;
+	border: 1px solid #32616d;
+	border-radius: 3px;
+	padding: 2px 7px;
+	margin: 0;
+	cursor: pointer;
+}
+#star-time-scale:hover { background: #16283a; color: #c9e9c9; }
+
 .flight-control-row { margin-bottom: 7px; }
 .flight-control-row label { gap: 6px; }
 /* The Pilot controls are mutually exclusive: the row whose

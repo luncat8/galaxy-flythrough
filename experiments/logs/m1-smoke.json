@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-19T07:52:09.394Z",
+  "date": "2026-10-20T06:05:51.965Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -26,6 +26,8 @@
     "core/search.js",
     "core/route.js",
     "core/ship.js",
+    "core/colony.js",
+    "core/trade.js",
     "core/loop.js",
     "core/presets.js",
     "data/landmarks.js",
@@ -41,6 +43,7 @@
   ],
   "sourceFiles": [
     "core/camera.js",
+    "core/colony.js",
     "core/device.js",
     "core/input.js",
     "core/loop.js",
@@ -51,6 +54,7 @@
     "core/selection.js",
     "core/ship.js",
     "core/star-set.js",
+    "core/trade.js",
     "data/constellations.js",
     "data/landmarks.js",
     "main.js",
@@ -79,8 +83,8 @@
     "stream/tile-loader.js"
   ],
   "totalChecks": 109,
-  "passed": 109,
-  "failed": 0,
+  "passed": 108,
+  "failed": 1,
   "checks": [
     {
       "name": "index.html loads main.js last",
@@ -91,8 +95,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 37,
-        "sources": 37,
+        "scripts": 39,
+        "sources": 39,
         "missing": []
       }
     },
@@ -141,7 +145,7 @@
     },
     {
       "name": "startup stellar rate is 5 Myr/s and freeze resumes that rate",
-      "pass": true
+      "pass": false
     },
     {
       "name": "the page starts in galaxy-centre orbit with unlocked input",
@@ -164,7 +168,7 @@
       "pass": true
     },
     {
-      "name": "the velocity handover seeds from the follow feed in physical units",
+      "name": "the velocity handover seeds from the drawn-velocity dispatch in physical units",
       "pass": true
     },
     {
@@ -367,6 +371,8 @@
         "Search",
         "RouteLib",
         "Ship",
+        "ColonyLib",
+        "TradeLib",
         "Loop",
         "Presets",
         "Landmarks",
@@ -433,7 +439,7 @@
       "name": "OrbitLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 112
+        "keys": 114
       }
     },
     {
@@ -482,7 +488,7 @@
       "name": "Ship loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 112
+        "keys": 111
       }
     },
     {

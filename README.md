@@ -69,7 +69,10 @@ No framework, bundler, module loader, or runtime network connection is required.
   grows on met needs (famine below 40 % comfort), factories advance on
   arrive/inspect events — never per frame — and the hold trades the
   port markets' best exports across the ease differential
-  ([colony-economy-plan.md](colony-economy-plan.md))
+  ([colony-economy-plan.md](colony-economy-plan.md)). Commissioned convoy
+  routes then run themselves on the economy clock — fast freight at
+  0.2 ly/y, or generation ships at 1 ly per 10 ky synced to star time —
+  narrated by an events ledger (milestones, famine, departures, arrivals)
 - Close-system schematic view: `V` opens a log-polar map of the primary selection — HZ
   annulus, orbit ellipses, stippled belts, star and planet icons — with its own
   system-time clock and a full-figures readout
@@ -119,6 +122,16 @@ Other controls:
 - **sim clock** / **arcade clock** (Controls panel, game mode) — the two ship-clock
   presets: real time (`R = 1` ship-s per wall-s) and the default rung plus the
   autopilot coast warp (see [Game mode](#game-mode-g) below)
+- the star-time slider's track toggle (the mini button right of the value) —
+  swap between the fine 0–2 Myr/s track (0.01 steps, where generation-ship
+  time lives; 0.1 Myr/s is 5 % of the track) and the full −1–99 Myr/s
+  (0.5 steps, follow at the left end); the readout carries three decimals
+  under 1 Myr/s, and the observer default is 1 Myr/s
+- the **Generation ships** checkbox (game mode, Flight panel Port section) —
+  sync the economy with star time: the convoys fly at 1 ly per 10 ky with
+  star time at 0.1 Myr/s (in game mode: the shared clock's 1e5 y/s rung),
+  homing on the moving destination; off — fast freight at 0.2 ly/y with the
+  drift over the transit ignored, the economy on the game clock only
 - the **Evolve with star time** checkbox — the galaxy's age runs with star time from 0.2 Gyr to
   present day; the Age slider is the seek, and the epoch readout next to it shows the field's epoch.
   The bar and arms keep their orientation across steps; each step re-draws the field, so lower
@@ -216,7 +229,20 @@ needed.
   export into the hold at the port's price (whole tons, within the free
   hold and the hull's credits) and `Shift+L` sells the whole hold there —
   one price both ways, so the margin is the ease differential between
-  systems. A port without a colony has no market.
+  systems. A port without a colony has no market. **Commission route**
+  stands a convoy between the port's colony and a second colony (the
+  locked destination's star, or the primary selection's, when it owns
+  one): every 2 y of economy time a departure carries up to 50 t of the
+  origin's best export — never below its own two-year need — and lands
+  it at the destination. The **Generation ships** checkbox sets the
+  transit law: on, the convoys fly at 1 ly per 10 ky with star time at
+  0.1 Myr/s and the economy clock synced to the star clock (colonies age
+  while the stars drift; the ships home on the moving destination, the
+  ETA a first-order intercept — a star that outruns the ship is reported
+  as a chase); off, fast freight at 0.2 ly/y with the drift over the
+  transit ignored and the economy on the game clock only. The events
+  readout under the market narrates it all on the economy clock's
+  timeline.
 - **The HUD** (the overlay, at its 4 Hz cadence) shows **accepted thrust** and
   burn reserve, speed in c (km/s below 0.01c) and the live acceleration, the Δv
   tank and life support, signed forward/sideways/vertical velocity components
@@ -387,9 +413,10 @@ See [`plan.md`](plan.md) for the complete design, the versioned plans for model 
 
 ## Next priorities
 
-The colony economy's stage 2 — commissioned trade routes on the event queue
-(colony-economy-plan.md §6) — is the open item of [that plan](colony-economy-plan.md);
-stage 1 (maps, colonies, markets, trade) shipped as ui.16.
+The colony economy's stages 1–2 shipped (ui.16 — maps, colonies, markets,
+trade; ui.17 — the event ledger, commissioned routes with the two transit
+laws, the star-time sync and the events GUI). The §7 list (mixed holds,
+tourism, colonist flows) stays recorded, not promised.
 
 [Movement CPU/WGSL parity](movement-parity-plan.md) takes priority over visual tuning.
 The outstanding real-browser engine/preset checks and non-critical bar polish are

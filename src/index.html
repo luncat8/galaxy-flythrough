@@ -65,12 +65,14 @@
                 </div>
                 <div class="menu-row">
                         <label for="slider-star-time">Star time <span class="kbd">T</span></label>
-                        <input type="range" id="slider-star-time" min="-1" max="99" step="0.5" value="5"
-                               title="Click the handle without dragging to stop the clock; drag to set the rate. T freezes and restores.">
-                        <!-- A click that does not move the slider stops the clock (main.js,
-                             the click guard on this input): the 0 stop is otherwise a half-step
-                             between -1 and 0.5 on a 100-wide track. T still parks/restores. -->
-                        <span id="val-star-time" class="menu-val">5 Myr/s</span>
+                        <input type="range" id="slider-star-time" min="0" max="2" step="0.01" value="1"
+                               title="Click the handle without dragging to stop the clock; drag to set the rate. T freezes and restores. The button right of the value toggles the track: this fine 0-2 Myr/s one, or the full -1-99 with follow at the left end.">
+                        <!-- ui.17: two tracks. The fine 0-2 Myr/s one (0.01 steps) is the
+                             default — small rates were impossible to set on the old 100-wide
+                             track (0.1 Myr/s sat at 0.1% of it). The button swaps to the full
+                             -1-99 track; a click that does not move the slider still stops the
+                             clock (main.js, the click guard). T still parks/restores. -->
+                        <span class="menu-val star-time-val"><span id="val-star-time">+1.0 Myr/s</span><button type="button" id="star-time-scale" title="Track 0-2 Myr/s in 0.01 steps — the small rates generation-ship time needs. Click for the full -1-99 Myr/s track.">2</button></span>
                 </div>
                 <!-- The epoch's live clock (0.6 E2): while it runs, the star clock
                      drives the galaxy's own clock — one 0.1 Gyr step per 100 Myr of
@@ -417,8 +419,17 @@
 			<div class="flight-port-row">
 				<button id="flight-found-colony" type="button" disabled title="Found a colony at the docked port's star (colony-economy-plan §5). Free — the player is the catalyst, not the owner. A port keeps at most one colony; its factories advance when you dock there (arrive) or open its system view (inspect).">Found colony</button>
 			</div>
+			<div class="flight-port-row">
+				<button id="flight-route" type="button" disabled title="Commission a standing convoy between this port's colony and a second colony (colony-economy-plan §6). Every 2 y of economy time a departure carries up to 50 t of the origin's best export — never below its own two-year need — and lands it at the destination. The destination is the locked destination star or the primary selection; it must own a colony.">Commission route</button>
+			</div>
+			<label class="flight-autopilot" for="flight-sync-trade" title="Sync the economy with the star clock and fly the convoys as generation ships: 1 ly per 10 ky, star time 0.1 Myr/s — the stars move while the ships chase them (ui.17). Off: fast freight at 0.2 ly/y, drift over the transit ignored, the economy runs on the game clock only.">
+				<input type="checkbox" id="flight-sync-trade">
+				<span>Generation ships</span>
+				<small>sync with star time · 1 ly / 10 ky · 0.1 Myr/s</small>
+			</label>
 			<div id="flight-port-state" class="flight-port-state">not docked · O docks at a settled station</div>
 			<pre id="flight-market" class="flight-market"></pre>
+			<pre id="flight-events" class="flight-market"></pre>
 
 			<div class="flight-section-heading"><span>Fly to destination</span><small>select star → set → check autopilot</small></div>
 			<div class="flight-destination-row">
@@ -577,6 +588,7 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
 	     before the main.js that flies it. -->
 	<script src="core/ship.js"></script>
 	<script src="core/colony.js"></script>
+	<script src="core/trade.js"></script>
 	<script src="core/loop.js"></script>
         <script src="core/presets.js"></script>
         <!-- Data after math (landmarks bake their positions through coords.js at

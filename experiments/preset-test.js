@@ -182,7 +182,8 @@ check('menuDefaults matches the modules that own the numbers', () => {
 		viewramp: window.ViewModesLayer.DEFAULTS.ramp,
 		viewrelief: window.ViewModesLayer.DEFAULTS.relief,
 		viewopacity: window.ViewModesLayer.DEFAULTS.opacity,
-		time: 5, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
+		// ui.17: 1 Myr/s — the fine track's default.
+		time: 1, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
 		systime: 0, dvmap: 0, dvbudget: 0.35, ship: 'chemical',
 		clusters: ClustersLib.CLUSTER_EXAGGERATION_DEFAULT,
 	});

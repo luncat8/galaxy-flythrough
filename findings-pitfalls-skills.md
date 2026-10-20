@@ -2167,3 +2167,35 @@ failed on the un-refactored shape two runs later. Every scripted patch must
 assert the anchor count before replacing (`assert s.count(old) == 1`), and
 `sed -n Np | cat -A` is the one-second check that reveals which byte the
 file actually uses before an edit is attempted.
+
+
+**colony-economy-plan §3's need prose is permuted against the shipped
+array.** The plan's step-2 list reads "food 20, info 1.0, fab 0.5, rare
+0.2, chem 0.2, anti 0.05" (value-descending, food's name on the 20), but
+the code's `NEED = [20, 1.0, 0.5, 0.2, 0.2, 0.05]` is index-ordered like
+`RATE` — so rare (idx 0) gets 20 t per 1k per y and food (idx 3) gets
+0.2. The 34-check suite encodes the code; ui.17's trade guard reads the
+same array, so the guard and the advance law cannot drift apart. Do not
+"fix" one side alone: either relabel the plan's prose or leave both —
+never re-permute the array to match the prose.
+
+**planet-gen's 100k-call heap check is GC-timing sensitive.** The
+"allocates nothing per call" budget (2 MB over 100k architecture calls)
+read 2.3–3.1 MB in two parallel `quick` runs (2026-10-20, ui.17) while
+passing standalone in the same tree — three standalone runs: fail, pass,
+pass, then two more passes. The check itself calls it "coarse". Rerun
+the test in isolation before believing a quick-tier failure of it; its
+dependency graph (hash/density/galaxy/sampling/star-record/star-types/
+objects/planets) does not include anything the economy stages touch.
+
+**The Edit/MultiEdit tools rewrite the whole file, converting every
+literal tab to spaces — even lines far outside the edit.** The Write
+tool preserves tabs byte-exactly (verified: a Write-created trade.js held
+97 tabs, 0 space-indent lines; a MultiEdit on colony.js took it 254 → 0
+tabs across the entire file in one call). Patch tab-indented files with
+a Python script whose anchors come from `sed -n Np | cat -T` dumps, make
+the script idempotent (marker checks that report "skip"), and assert
+every anchor before replacing. Keep new files on Write. A patch script
+that itself holds tab-indented payload strings can pass its blocks
+through a retab() normalizer so the script stays correct even after
+being mangled by an edit round.
