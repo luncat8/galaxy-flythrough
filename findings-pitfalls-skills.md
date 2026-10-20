@@ -2274,3 +2274,34 @@ the first expedition targets, not just the colony count.
 Skill: when a simulation's first state depends on the order a catalogue
 happens to be stored in, the start looks random and the growth looks broken.
 Print the distances from the origin before tuning any rate.
+
+## 2026-10-20 — A moving-sky leg is measured in the field's frame, never the inertial one
+
+The trade network's routes are timed by "distance / hull speed", and the
+distance is between two stars that move. The first intercept solver measured
+the hull's chord from its *departure point* to where the destination would be on
+arrival — the obvious inertial formulation — and it refused every route in the
+galaxy within a Myr of star time, including routes between stars that never
+separate. The clocks are why: at the synced rate one trade year is 10⁻³ Myr of
+sky, and the disc turns ~765 ly per star Myr at the Sun's radius, so the target
+recedes at ~7.6 ly per trade year from a hull that flies 2–4.5. The shear the
+network is *supposed* to feel is one to two orders of magnitude smaller.
+
+Measuring the **separation between the two endpoints at the arrival instant**
+fixes it: a rigid rotation cancels between two stars that share it, and what is
+left is exactly the differential drift that tears routes apart. Predict both
+endpoints at the same star time — not one at arrival and one now.
+
+The same class of mistake hides in the hull's position on its chord. A fraction
+of elapsed time is only the fraction of distance while the chord is constant;
+under shear the chord grows, and a hull that is "97 % of the way" by the clock
+is nowhere near by distance, so it never triggers the out-of-range give-up.
+Use flown distance over the *current* chord, and make the give-up a margin
+(1.6× the cap) rather than the cap itself, or a legitimately booked leg that
+drifts by a percent starts turning around.
+
+Skill: whenever a value is a distance or a time "under motion", ask which frame
+the speed is quoted in and whether the common mode cancels. A test that only
+checks `years = ly / speed` on a frozen sky cannot see this at all; the check
+that finds it is the *self-consistency* one — re-evaluate the law at the
+booked arrival and assert the numbers still agree.

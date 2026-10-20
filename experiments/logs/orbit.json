@@ -1,7 +1,7 @@
 {
-  "date": "2026-10-19T09:35:37.917Z",
-  "totalChecks": 126,
-  "passed": 126,
+  "date": "2026-10-20T22:57:22.032Z",
+  "totalChecks": 134,
+  "passed": 134,
   "failed": 0,
   "checks": [
     {
@@ -984,6 +984,68 @@
           0,
           0
         ]
+      }
+    },
+    {
+      "name": "the theta ladder with no theta is the plain dispatch, for every mask and both reports",
+      "pass": true,
+      "detail": {
+        "ladderWorst": 0,
+        "ladderReport": 0
+      }
+    },
+    {
+      "name": "a supplied theta moves the simple lane to the vertex stage's own reconstruction",
+      "pass": true,
+      "detail": {
+        "dist": 0
+      }
+    },
+    {
+      "name": "the tracked mirror steps with the frame exactly as the shipping law does (f64 lockstep)",
+      "pass": true,
+      "detail": {
+        "lockstep": 1.2e-14,
+        "count": 1
+      }
+    },
+    {
+      "name": "a tracked prediction is the integrator run ahead (sub-ly at 8 kpc over 2 Myr)",
+      "pass": true,
+      "detail": {
+        "predicted": 0.928369,
+        "reference": 0.928349
+      }
+    },
+    {
+      "name": "a horizon past the mirror's bound is refused, not coarsened",
+      "pass": true,
+      "detail": {
+        "far": -1
+      }
+    },
+    {
+      "name": "a late-tracked record catches up from the seed instant inside the measured bound",
+      "pass": true,
+      "detail": {
+        "dTheta": 0.000124,
+        "ly": 2.6
+      }
+    },
+    {
+      "name": "an epoch rebind keeps the azimuths and a reset drops them",
+      "pass": true,
+      "detail": {
+        "kept": true,
+        "count": 0
+      }
+    },
+    {
+      "name": "the landmark mirror has a time, predicts from it, and refuses a horizon past its bound",
+      "pass": true,
+      "detail": {
+        "time": 20,
+        "d": 1.5e-7
       }
     }
   ]

@@ -571,13 +571,18 @@ function wgslConsts(part) {
 		{ gain: c.SIMPLE_ECC_GAIN, cap: c.SIMPLE_ECC_CAP });
 	// Movement parity decision 4: labels and picking share the one CPU
 	// dispatch, which runs the same pass order as the vertex stage.
+	// The ladder lives in the theta-taking twin (trade-plan §9.5): the plain
+	// entry point forwards to it with `theta = -1`, so every older caller still
+	// runs one dispatch and the tracked mirror's azimuth uses the same one.
 	check('labels and picking share orbit.engineLandmarkPosition, the CPU twin of the vertex dispatch',
 		/function engineLandmarkPosition\(/.test(orbitSrc)
+		&& /engineLandmarkPositionTheta\(out, i, bx, by, bz, colorIndex, time, model, -1\)/
+			.test(extractFunction(orbitSrc, 'engineLandmarkPosition'))
 		&& /engineLandmarkPosition/.test(readSource('src/render/label-layer.js'))
 		&& /engineLandmarkPosition/.test(readSource('src/core/selection.js'))
-		&& /engine & ENGINE_SIMPLE/.test(extractFunction(orbitSrc, 'engineLandmarkPosition'))
-		&& /engine & ENGINE_CLASSIC/.test(extractFunction(orbitSrc, 'engineLandmarkPosition'))
-		&& /engine & ENGINE_APOCENTER/.test(extractFunction(orbitSrc, 'engineLandmarkPosition')));
+		&& /engine & ENGINE_SIMPLE/.test(extractFunction(orbitSrc, 'engineLandmarkPositionTheta'))
+		&& /engine & ENGINE_CLASSIC/.test(extractFunction(orbitSrc, 'engineLandmarkPositionTheta'))
+		&& /engine & ENGINE_APOCENTER/.test(extractFunction(orbitSrc, 'engineLandmarkPositionTheta')));
 	// 0.5.0's picker walks records through `engineRecordPosition`, so the
 	// record dispatch must be the vertex stage's twin wherever a twin can
 	// exist: the same packed-word unpack (readOrbit ↔ the shader's
@@ -587,13 +592,15 @@ function wgslConsts(part) {
 	// instead of silently misdispatching.
 	check('the record dispatch mirrors the vertex mask ladder and reports the simple gap (engineRecordPosition)',
 		/function engineRecordPosition\(/.test(orbitSrc)
+		&& /engineRecordPositionTheta\(out, x, y, z, packed, time, model, -1\)/
+			.test(extractFunction(orbitSrc, 'engineRecordPosition'))
 		&& /engineRecordPosition/.test(readSource('src/core/selection.js'))
 		&& /engineRecordPosition/.test(readSource('src/render/label-layer.js'))
-		&& /readOrbit\(packed\)/.test(extractFunction(orbitSrc, 'engineRecordPosition'))
-		&& /engine & ENGINE_CLASSIC/.test(extractFunction(orbitSrc, 'engineRecordPosition'))
-		&& /engine & ENGINE_APOCENTER/.test(extractFunction(orbitSrc, 'engineRecordPosition'))
-		&& /time !== 0 && apocenterSelected/.test(extractFunction(orbitSrc, 'engineRecordPosition'))
-		&& /return \(engine & ENGINE_SIMPLE\) !== 0/.test(extractFunction(orbitSrc, 'engineRecordPosition'))
+		&& /readOrbit\(packed\)/.test(extractFunction(orbitSrc, 'engineRecordPositionTheta'))
+		&& /engine & ENGINE_CLASSIC/.test(extractFunction(orbitSrc, 'engineRecordPositionTheta'))
+		&& /engine & ENGINE_APOCENTER/.test(extractFunction(orbitSrc, 'engineRecordPositionTheta'))
+		&& /time !== 0 && apocenterSelected/.test(extractFunction(orbitSrc, 'engineRecordPositionTheta'))
+		&& /return \(engine & ENGINE_SIMPLE\) !== 0/.test(extractFunction(orbitSrc, 'engineRecordPositionTheta'))
 		&& /flags = \(packed >>> 16\) & 255/.test(extractFunction(orbitSrc, 'readOrbit'))
 		&& /\(packed >> 16u\) & 0xFFu/.test(orbitWgsl)
 		&& /\(packed >> 24u\) & 15u/.test(orbitWgsl)
@@ -617,7 +624,7 @@ function wgslConsts(part) {
                 && /epochMap\(vec3f\(star\.x, star\.y, star\.z\), star\.packed, centre, camera\.epoch\)/.test(shaders.SHADERS['star-sprite'])
                 // The CPU twin must exist and must be what the picker uses.
                 && /function epochMap\(out, x, y, z, family, flags, model\)/.test(orbitSrc)
-                && /epochMap\(epochMapScratch/.test(extractFunction(orbitSrc, 'engineRecordPosition')));
+                && /epochMap\(epochMapScratch/.test(extractFunction(orbitSrc, 'engineRecordPositionTheta')));
         // 0.4.5: the inertial form now EXISTS — as the simple engine. The ban
         // scopes to the classic law (which keeps pattern-frame capture) while
         // the simple pair must carry the slowdown on both sides.

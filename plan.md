@@ -1174,7 +1174,10 @@ stand-off law (`0.0006·√(L/L☉)` clamped to `[0.0001, 0.01]` kpc) is unchang
   not lose it. The narrower ui.0 feed (landmarks only, `simple` only, through
   `OrbitLib.simpleLandmarkPosition`) is superseded; what remains of the honest
   gap is the mask's own report — under a `simple` bit a field star's θ lives in
-  the GPU buffer, so the dispatch approximates and the readout says so.
+  the GPU buffer, so the dispatch approximates and the readout says so. (The
+  trade network's own dispatch carries a *tracked* mirror of the same law for its
+  ≤ 512 endpoints, trade-plan §9.5; that is a per-network selection, not a
+  general-purpose CPU copy of the field.)
 * **Handover and cancel.** At `s = 1` the flight ends with
   `orbitDistance = d` and `placeOnOrbit()` — the pose the path already
   reached, so arrival is continuous. Any user input cancels: a look delta, a

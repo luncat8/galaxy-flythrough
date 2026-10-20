@@ -73,6 +73,10 @@
 		{ id: 'clipper', name: 'clipper', lyPerYear: 4.5, hold: 8000 },
 	];
 
+	// A founding voyage always flies the clipper: the one hull that can carry a
+	// party far enough, and the one whose intercept the launch plan solves for.
+	const EXPEDITION_HULL = 2;
+
 	const DOCK_YEARS = 0.5;             // unload → load
 	const WAIT_YEARS = 2;               // retry a port with no cargo
 	// A hull with nothing to carry polls. At a fast clock a 2-year poll is a
@@ -193,10 +197,15 @@
 
 	function createShip() {
 		return {
-		index: 0, hull: 0, hold: 0, cargo: NO_RESOURCE, amount: 0,
-		state: SHIP_DOCKED, port: -1, from: -1, to: -1, candidate: -1,
-		depart: 0, arrive: 0, leg: 0, revision: 0, trips: 0, delivered: 0, founded: 0, waits: 0,
-	};
+			index: 0, hull: 0, hold: 0, cargo: NO_RESOURCE, amount: 0,
+			state: SHIP_DOCKED, port: -1, from: -1, to: -1, candidate: -1,
+			depart: 0, arrive: 0, leg: 0, revision: 0, trips: 0, delivered: 0, founded: 0, waits: 0,
+			// The chord the overlay draws the hull on: `from`'s live position at
+			// fraction 0, `to`'s at 1. An ordinary voyage runs 0 → 1; a diverted
+			// one runs from where the hull turned back to 0 (§9.4), which is what
+			// keeps the dot from teleporting to the far end of its own route.
+			legFrom: 0, legTo: 1, returning: 0,
+		};
 	}
 
 	function createCandidate() {
@@ -241,6 +250,14 @@
 			// Ring cursor of the frontier scan (a field index), so repeated
 			// ticks walk the whole field instead of re-testing its head.
 			frontierCursor: 0,
+			// Voyages turned around by the sky (§9.4): the count the panel shows
+			// when the network's routes are being torn faster than they are flown.
+			diverted: 0,
+			// The live-geometry cache (§9.1) and the two resolvers the app wires:
+			// where an endpoint is drawn now, and where it will be drawn at a
+			// star time the booking asks about. Without them the network measures
+			// the birth sky, exactly as it did before this pass.
+			geom: createGeometry(),
 			handler: null,
 		};
 		for (let i = 0; i < MAX_PORTS; i++) net.ports.push(createPort());
@@ -249,6 +266,7 @@
 		// The drain's callback: one closure per network, never per event.
 		net.handler = (time, kind, ref, revision) => handleEvent(net, time, kind, ref, revision);
 		net.livePosition = options && options.livePosition ? options.livePosition : null;
+		net.predictPosition = options && options.predictPosition ? options.predictPosition : null;
 		return net;
 	}
 
@@ -293,8 +311,10 @@
 		return Math.sqrt(dx * dx + dy * dy + dz * dz);
 	}
 
+	// The distance the network acts on between two ports: the drawn one while
+	// the sky moves, the birth one otherwise (which is then the drawn one).
 	function distanceLy(net, a, b) {
-		return portDistanceKpc(net.ports[a], net.ports[b]) * LY_PER_KPC;
+		return endpointDistanceLy(net, END_PORT, a, END_PORT, b);
 	}
 
 	// A port's drawn position: the star's live drawn position when a live
@@ -307,7 +327,148 @@
 		return out;
 	}
 
-	const LEG_A = [0, 0, 0], LEG_B = [0, 0, 0];
+	// --- Live geometry (trade-plan §9) --------------------------------------
+	//
+	// Every decision the network makes is a distance, and while the star clock
+	// runs the stars those distances were measured between are not where they
+	// were born: differential rotation stretches a 1 000 ly pair to 6 000 ly in
+	// a minute at the default 1 Myr/s (§9's table). One cache, refreshed on the
+	// maintenance pass the network already runs, holds the drawn position of
+	// every port and candidate and the rate each is moving at. Scoring reads the
+	// cache and never the resolver — a load decision scores 64 ports against 13
+	// resources, which is 800 dispatches it must not make. A frozen sky skips
+	// the layer entirely, so the birth frame costs nothing and behaves exactly
+	// as the network §1–§8 measured.
+	const GEOM_BIRTH = 0, GEOM_LIVE = 1;
+	const END_PORT = 0, END_CANDIDATE = 1;
+
+	function createGeometry() {
+		return {
+			// The sky moves, and a resolver is wired to see it.
+			moving: 0,
+			// Star Myr per trade year: the exchange rate a prediction horizon is
+			// bought with (§9.2). Zero when either clock is stopped or the app
+			// cannot say — which leaves the booking a straight aim and §9.4's
+			// pursuit the rest of the voyage.
+			myrPerYear: 0,
+			starTime: 0,
+			version: 0,
+			// Ports the resolver could not place (not resident, not tracked).
+			blind: 0,
+			hasRate: 0,
+			portPos: new Float64Array(MAX_PORTS * 3),
+			portVel: new Float64Array(MAX_PORTS * 3),
+			portQ: new Uint8Array(MAX_PORTS),
+			candPos: new Float64Array(MAX_CANDIDATES * 3),
+			candVel: new Float64Array(MAX_CANDIDATES * 3),
+			candQ: new Uint8Array(MAX_CANDIDATES),
+		};
+	}
+
+	const GEOM_POS = [0, 0, 0];
+
+	// One endpoint of the cache. `live` is the resolver's answer; a blind entry
+	// keeps its birth coordinates and *no rate* — a position that flickers
+	// between drawn and birth would otherwise read as a velocity of thousands
+	// of ly per year and make every partner look unreachable.
+	function fillEndpoint(net, pos, vel, quality, i, ref, bx, by, bz, invDt) {
+		const o = i * 3;
+		const wasLive = quality[i] === GEOM_LIVE;
+		const ox = pos[o], oy = pos[o + 1], oz = pos[o + 2];
+		const live = net.livePosition(ref, GEOM_POS) ? 1 : 0;
+		quality[i] = live ? GEOM_LIVE : GEOM_BIRTH;
+		if (live) {
+			pos[o] = GEOM_POS[0]; pos[o + 1] = GEOM_POS[1]; pos[o + 2] = GEOM_POS[2];
+		} else {
+			pos[o] = bx; pos[o + 1] = by; pos[o + 2] = bz;
+		}
+		if (invDt !== 0 && live && wasLive) {
+			vel[o] = (pos[o] - ox) * invDt;
+			vel[o + 1] = (pos[o + 1] - oy) * invDt;
+			vel[o + 2] = (pos[o + 2] - oz) * invDt;
+		} else {
+			vel[o] = 0; vel[o + 1] = 0; vel[o + 2] = 0;
+		}
+		return live;
+	}
+
+	// The maintenance pass's geometry refresh. `moving` is the app's answer to
+	// "does the sky move", `myrPerYear` its exchange rate between the two
+	// clocks; both are the app's to know, not the network's (§9.2).
+	function refreshGeometry(net, starTimeMyr, moving, myrPerYear) {
+		const geom = net.geom;
+		const time = starTimeMyr > 0 ? starTimeMyr : 0;
+		geom.moving = moving && net.livePosition ? 1 : 0;
+		geom.myrPerYear = myrPerYear > 0 ? myrPerYear : 0;
+		geom.version += 1;
+		if (!geom.moving) {
+			geom.starTime = time;
+			geom.hasRate = 0;
+			geom.blind = 0;
+			return geom.version;
+		}
+		const dt = time - geom.starTime;
+		// A backwards jump (a preset epoch, a seek) has no honest rate: drop the
+		// velocities and let the next refresh re-derive them.
+		const invDt = dt > 1e-9 ? 1 / dt : 0;
+		// The clock the resolvers read is this refresh's, not the last one's.
+		geom.starTime = time;
+		let blind = 0;
+		for (let i = 0; i < net.portCount; i++) {
+			const port = net.ports[i];
+			if (!fillEndpoint(net, geom.portPos, geom.portVel, geom.portQ, i,
+				port.ref, port.x, port.y, port.z, invDt)) blind += 1;
+		}
+		for (let i = 0; i < net.candidateCount; i++) {
+			const site = net.candidates[i].site;
+			fillEndpoint(net, geom.candPos, geom.candVel, geom.candQ, i,
+				site.ref, site.x, site.y, site.z, invDt);
+		}
+		geom.blind = blind;
+		geom.hasRate = invDt !== 0 ? 1 : 0;
+		return geom.version;
+	}
+
+	function endpointRef(net, kind, index) {
+		return kind === END_PORT ? net.ports[index].ref : net.candidates[index].site.ref;
+	}
+
+	// The position every distance in the network is measured from.
+	const END_A = [0, 0, 0], END_B = [0, 0, 0];
+	function endpointPos(net, kind, index, out) {
+		const geom = net.geom;
+		if (!geom.moving) {
+			const site = kind === END_PORT ? net.ports[index] : net.candidates[index].site;
+			out[0] = site.x; out[1] = site.y; out[2] = site.z;
+			return out;
+		}
+		const pos = kind === END_PORT ? geom.portPos : geom.candPos;
+		const o = index * 3;
+		out[0] = pos[o]; out[1] = pos[o + 1]; out[2] = pos[o + 2];
+		return out;
+	}
+	function endpointIsLive(net, kind, index) {
+		if (!net.geom.moving) return 1;
+		const q = kind === END_PORT ? net.geom.portQ : net.geom.candQ;
+		return q[index] === GEOM_LIVE ? 1 : 0;
+	}
+
+	function separationLy(ax, ay, az, bx, by, bz) {
+		const dx = (ax - bx) * LY_PER_KPC, dy = (ay - by) * LY_PER_KPC, dz = (az - bz) * LY_PER_KPC;
+		return Math.sqrt(dx * dx + dy * dy + dz * dz);
+	}
+
+	function endpointDistanceLy(net, kindA, indexA, kindB, indexB) {
+		endpointPos(net, kindA, indexA, END_A);
+		endpointPos(net, kindB, indexB, END_B);
+		return separationLy(END_A[0], END_A[1], END_A[2], END_B[0], END_B[1], END_B[2]);
+	}
+
+	// The hull's speed in ly per trade year: the authored table, or the
+	// generation crawl while the special mode is on.
+	function hullSpeed(hullIndex) {
+		return generationMode ? GENERATION_LY_PER_YEAR : HULLS[hullIndex].lyPerYear;
+	}
 
 	// THE trade-clock law: a leg's length in trade years. Speed is the hull's
 	// authored `lyPerYear`, or the generation-ship pace (1 ly per 33 y)
@@ -315,9 +476,10 @@
 	// coordinate from making a zero-length voyage (a zero-length event would
 	// let a ship cycle forever inside one step), and keeps a short hop visible.
 	function legYears(distanceKpc, hullIndex) {
-		const ly = distanceKpc * LY_PER_KPC;
-		const speed = generationMode ? GENERATION_LY_PER_YEAR : HULLS[hullIndex].lyPerYear;
-		const years = ly / speed;
+		return legYearsLy(distanceKpc * LY_PER_KPC, hullIndex);
+	}
+	function legYearsLy(distanceLy, hullIndex) {
+		const years = distanceLy / hullSpeed(hullIndex);
 		return years > MIN_LEG_YEARS ? years : MIN_LEG_YEARS;
 	}
 
@@ -329,6 +491,149 @@
 		const years = synced ? starRateMyrPerS * SYNC_YEARS_PER_MYR : ladderYears;
 		if (!(years > 0)) return 0;
 		return years < RATE_MAX ? years : RATE_MAX;
+	}
+
+	// --- The leg a hull actually flies (trade-plan §9.3) ---------------------
+	//
+	// Two laws, one after the other. The *plan* is the linear intercept: where a
+	// uniformly moving endpoint is when the hull gets there, from the cached
+	// positions and the cached rates. It is exact for uniform relative motion,
+	// which half a second of sky is, and it costs no resolver call — so scoring
+	// can ask it about every partner at once and a partner that recedes faster
+	// than the hull flies is refused before it is ever booked. The *booking*
+	// then re-solves the winner against the real law, by fixed-point iteration
+	// on the predictor the app wires for closed-form masks and for the friction
+	// field's tracked mirror; with no predictor the plan is the answer and §9.4's
+	// pursuit owns the voyage.
+	const INTERCEPT_ITERS = 6;
+	const INTERCEPT_TOL_LY = 0.5;
+	// A voyage in flight is turned around when the sky has stretched it this far
+	// past the cap it was booked under (§9.4). The margin is the hysteresis
+	// between "the destination drifted" and "the route is gone".
+	const DIVERT_FACTOR = 1.6;
+	const PLAN_A = [0, 0, 0], PLAN_B = [0, 0, 0];
+
+	function createLegPlan() {
+		return { years: 0, ly: 0, reachable: 0, predicted: 0, outrun: 0 };
+	}
+	const LEG_PLAN = createLegPlan();
+
+	// The radial rate at which two endpoints separate, in ly per trade year:
+	// their cached velocities (kpc per star Myr) projected on the line between
+	// them, through the app's exchange rate. Zero for a blind endpoint, a frozen
+	// sky, or decoupled clocks — all three of which leave the plan the plain
+	// separation, which is what the network measured before this pass.
+	function endpointRecession(net, kindA, indexA, kindB, indexB, a, b, ly) {
+		const geom = net.geom;
+		if (!geom.moving || !(geom.myrPerYear > 0) || !geom.hasRate || !(ly > 1e-9)) return 0;
+		const va = kindA === END_PORT ? geom.portVel : geom.candVel;
+		const vb = kindB === END_PORT ? geom.portVel : geom.candVel;
+		const oa = indexA * 3, ob = indexB * 3;
+		const inv = LY_PER_KPC / ly;
+		const ux = (b[0] - a[0]) * inv, uy = (b[1] - a[1]) * inv, uz = (b[2] - a[2]) * inv;
+		const rdot = (vb[ob] - va[oa]) * ux + (vb[ob + 1] - va[oa + 1]) * uy
+			+ (vb[ob + 2] - va[oa + 2]) * uz;
+		return rdot * LY_PER_KPC * geom.myrPerYear;
+	}
+
+	// The linear intercept plan for one leg, against `capLy` (MAX_LEG_LY for
+	// freight, MAX_FOUND_LY for a founding). Fills and returns `out`.
+	function planLeg(net, kindA, indexA, kindB, indexB, hullIndex, capLy, out) {
+		const plan = out || LEG_PLAN;
+		endpointPos(net, kindA, indexA, PLAN_A);
+		endpointPos(net, kindB, indexB, PLAN_B);
+		const ly = separationLy(PLAN_A[0], PLAN_A[1], PLAN_A[2], PLAN_B[0], PLAN_B[1], PLAN_B[2]);
+		const speed = hullSpeed(hullIndex);
+		plan.predicted = 0;
+		plan.outrun = 0;
+		plan.ly = ly;
+		plan.years = legYearsLy(ly, hullIndex);
+		plan.reachable = ly <= capLy ? 1 : 0;
+		if (!plan.reachable || !net.geom.moving) return plan;
+		const rdot = endpointRecession(net, kindA, indexA, kindB, indexB, PLAN_A, PLAN_B, ly);
+		const closing = speed - rdot;
+		// The endpoint outruns the hull: there is no meeting point, however long
+		// the voyage is booked for. Refusing it is the honest reading of a sky
+		// that shears faster than the fleet flies. `outrun` is the one refusal a
+		// voyage in flight cannot argue with — distance past the cap is a
+		// booking rule with a margin, this one is geometry.
+		if (!(closing > 1e-9)) { plan.reachable = 0; plan.outrun = 1; return plan; }
+		const years = ly / closing;
+		plan.years = years > MIN_LEG_YEARS ? years : MIN_LEG_YEARS;
+		// What the hull has to cross is where the endpoint is at *arrival*, not
+		// the separation at departure: that is the number the cap means.
+		plan.ly = ly + rdot * plan.years;
+		plan.reachable = plan.ly <= capLy ? 1 : 0;
+		return plan;
+	}
+
+	// The booking solve: the intercept re-measured against the law instead of its
+	// linearisation. The measurement is the *separation between the two endpoints
+	// at the arrival instant* — not the hull's inertial chord — because the trade
+	// clock is not the sky's: a hull at 2–4.5 ly per trade year cannot keep up
+	// with a disc rotating at ~750, and reading the leg in the inertial frame
+	// would make every route in the galaxy unreachable within a Myr, including
+	// between two stars that never move apart. In the field's own frame a rigid
+	// rotation changes nothing (a route between co-rotating stars is the distance
+	// between them) and the only thing that stretches a leg is the differential
+	// drift, which is exactly what tears routes apart.
+	//
+	// `remainingFrac` is the part of the chord still ahead of the hull: 1 at
+	// departure, `|legTo − u|` when a voyage is re-aimed in flight (§9.4), so the
+	// same solve books a leg, re-aims it, and measures the way home after a
+	// divert. Both endpoints are predicted at the *same* star time, which is what
+	// cancels the common motion.
+	const SOLVE_A = [0, 0, 0], SOLVE_B = [0, 0, 0];
+	// Bookings pay for the full solve; a re-aim, which runs twice a second and is
+	// corrected again on the next pass, pays for two iterations. On the friction
+	// field one prediction is ~2.7 µs (a derive plus a few substeps), so the
+	// difference is 128 hulls' worth of frame time.
+	const RETIME_ITERS = 2;
+	function solveRemaining(net, kindA, indexA, kindB, indexB, remainingFrac, hullIndex, capLy, out, iters) {
+		const plan = out || LEG_PLAN;
+		endpointPos(net, kindA, indexA, SOLVE_A);
+		endpointPos(net, kindB, indexB, SOLVE_B);
+		let sep = separationLy(SOLVE_A[0], SOLVE_A[1], SOLVE_A[2], SOLVE_B[0], SOLVE_B[1], SOLVE_B[2]);
+		let ly = sep * remainingFrac;
+		let years = legYearsLy(ly, hullIndex);
+		plan.predicted = 0;
+		plan.outrun = 0;
+		const predictor = net.predictPosition;
+		const geom = net.geom;
+		if (predictor && geom.moving && geom.myrPerYear > 0
+			&& endpointIsLive(net, kindA, indexA) && endpointIsLive(net, kindB, indexB)) {
+			const refA = endpointRef(net, kindA, indexA);
+			const refB = endpointRef(net, kindB, indexB);
+			let previous = ly;
+			const rounds = iters === undefined ? INTERCEPT_ITERS : iters;
+			for (let k = 0; k < rounds; k++) {
+				const at = geom.starTime + years * geom.myrPerYear;
+				// A refused horizon (the friction field's bound) leaves the straight
+				// aim standing: pursuit re-aims it twice a second anyway.
+				if (!predictor(refA, at, SOLVE_A) || !predictor(refB, at, SOLVE_B)) break;
+				plan.predicted = 1;
+				sep = separationLy(SOLVE_A[0], SOLVE_A[1], SOLVE_A[2], SOLVE_B[0], SOLVE_B[1], SOLVE_B[2]);
+				const next = sep * remainingFrac;
+				// A leg that grows while the hull closes on it is a target the hull
+				// cannot catch: the iteration runs away instead of settling.
+				if (k > 0 && next > previous && next > capLy) plan.outrun = 1;
+				previous = next;
+				const settled = Math.abs(next - ly) <= INTERCEPT_TOL_LY;
+				ly = next;
+				years = legYearsLy(ly, hullIndex);
+				if (settled) break;
+			}
+		}
+		plan.ly = ly;
+		plan.years = years;
+		plan.reachable = plan.outrun ? 0 : (ly <= capLy ? 1 : 0);
+		return plan;
+	}
+
+	function bookLeg(net, kindA, indexA, kindB, indexB, hullIndex, capLy, out) {
+		const plan = planLeg(net, kindA, indexA, kindB, indexB, hullIndex, capLy, out);
+		if (!plan.reachable) return plan;
+		return solveRemaining(net, kindA, indexA, kindB, indexB, 1, hullIndex, capLy, plan);
 	}
 
 	// --- Ports and candidates ----------------------------------------------
@@ -596,7 +901,13 @@
 		}
 	}
 
-	function pickDestination(net, from, resource) {
+	// The best destination for one resource, measured on the *plan* (§9.3): the
+	// drawn separation and the intercept the hull would fly. A partner the sky
+	// has pulled past MAX_LEG_LY, or one receding faster than the hull flies, is
+	// not a destination — scoring it on its birth distance is exactly what sent
+	// hulls across the arm while their own flight plan said 3 000 ly.
+	const SCORE_PLAN = createLegPlan();
+	function pickDestination(net, from, resource, hullIndex) {
 		const worth = economy.RESOURCES[resource].worth;
 		let best = -1, bestScore = 0;
 		for (let i = 0; i < net.portCount; i++) {
@@ -608,11 +919,11 @@
 			// visitor left it.
 			const demand = economy.demandOf(port.colony, resource);
 			if (demand <= 0) continue;
-			const ly = distanceLy(net, from, i);
+			const plan = planLeg(net, END_PORT, from, END_PORT, i, hullIndex, MAX_LEG_LY, SCORE_PLAN);
 			// Routes are interstellar: two colonies of the same star would be a
 			// zero-year hop that outbids every real voyage.
-			if (ly > MAX_LEG_LY || ly < 1) continue;
-			const score = demand * worth / (1 + ly / 100);
+			if (!plan.reachable || plan.ly < 1) continue;
+			const score = demand * worth / (1 + plan.ly / 100);
 			if (score > bestScore) { bestScore = score; best = i; }
 		}
 		return best;
@@ -622,13 +933,13 @@
 	// score is the shipment's value over the distance it must fly, so a rich
 	// ore field next door beats a rare-element trickle across the arm — and a
 	// port with nothing anyone wants waits.
-	function pickExport(net, from, hold) {
+	function pickExport(net, from, hold, hullIndex) {
 		let bestResource = -1, bestDest = -1, bestAmount = 0, bestScore = 0;
 		for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
 			if (r === economy.R_PEOPLE) continue;
 			const spare = economy.exportableOf(net.ports[from].colony, r);
 			if (spare <= 0) continue;
-			const dest = pickDestination(net, from, r);
+			const dest = pickDestination(net, from, r, hullIndex);
 			if (dest < 0) continue;
 			// Never sail with more than the destination can store: the overflow
 			// would ride the hull to the next port and make every later choice
@@ -641,8 +952,9 @@
 			if (amount > room) amount = room;
 			if (amount > want) amount = want;
 			if (amount < 1) continue;
-			const ly = distanceLy(net, from, dest);
-			const score = amount * economy.RESOURCES[r].worth / (1 + ly / 200);
+			const plan = planLeg(net, END_PORT, from, END_PORT, dest, hullIndex, MAX_LEG_LY, SCORE_PLAN);
+			if (!plan.reachable) continue;
+			const score = amount * economy.RESOURCES[r].worth / (1 + plan.ly / 200);
 			if (score > bestScore) {
 				bestScore = score;
 				bestResource = r;
@@ -657,27 +969,40 @@
 	}
 
 	const exportTriple = { resource: -1, dest: -1, amount: 0 };
+	const SAIL_PLAN = createLegPlan();
 
 	function sailTo(net, ship, destPort, time) {
-		const port = net.ports[ship.port];
-		const dest = net.ports[destPort];
+		// The booking (§9.3): the winner of the scoring pass is re-solved against
+		// the real law, and a leg the law refuses is not sailed. The caller has
+		// already booked it once (before the cargo left the warehouse) — the
+		// second solve is the same answer at the same instant, and it is what
+		// keeps sailTo's own contract honest for its other caller.
+		const plan = bookLeg(net, END_PORT, ship.port, END_PORT, destPort, ship.hull, MAX_LEG_LY, SAIL_PLAN);
+		if (!plan.reachable) return 0;
 		ship.from = ship.port;
 		ship.to = destPort;
 		ship.state = SHIP_SAILING;
+		ship.returning = 0;
+		ship.legFrom = 0;
+		ship.legTo = 1;
 		// A hull that found work stops backing off.
 		ship.waits = 0;
 		ship.depart = time;
-		ship.arrive = time + liveLegYears(net, port, dest, ship.hull);
+		ship.arrive = time + plan.years;
 		ship.leg = ship.arrive - ship.depart;          // booked journey; speed is constant, so time fraction == distance fraction
 		ship.port = -1;
 		scheduleShip(net, ship, ship.arrive, EV_ARRIVE);
+		return 1;
 	}
 
 	// The arrival: settle the destination (the brief's "factory works per ship
 	// arrive"), deposit what the port can take, and book the loading event.
-	// The leftover stays aboard and is offered to the next port.
+	// The leftover stays aboard and is offered to the next port. A diverted hull
+	// (§9.4) arrives back at the port it turned around from instead.
 	function arrive(net, ship, time) {
-		const port = net.ports[ship.to];
+		const at = ship.returning ? ship.from : ship.to;
+		const port = net.ports[at];
+		ship.returning = 0;
 		economy.settleColony(port.colony, time);
 		if (ship.amount > 0 && ship.cargo !== NO_RESOURCE) {
 			const given = economy.giveToColony(port.colony, ship.cargo, ship.amount);
@@ -691,7 +1016,7 @@
 			}
 		}
 		port.arrivals += 1;
-		ship.port = ship.to;
+		ship.port = at;
 		ship.to = -1;
 		ship.state = SHIP_DOCKED;
 		ship.trips += 1;
@@ -715,22 +1040,33 @@
 		if (ship.cargo !== NO_RESOURCE && ship.amount > 0) {
 			// A leftover cargo the previous port could not take: try the next
 			// destination for the same good before loading anything new.
-			const dest = pickDestination(net, portIndex, ship.cargo);
-			if (dest >= 0) { sailTo(net, ship, dest, time); return; }
-			// Nobody has room for it. Jettison rather than deadlock the hull with
-			// a cargo that every port is already full of; the next load starts
-			// clean.
+			const dest = pickDestination(net, portIndex, ship.cargo, ship.hull);
+			if (dest >= 0) {
+				const plan = bookLeg(net, END_PORT, portIndex, END_PORT, dest, ship.hull, MAX_LEG_LY, LOAD_PLAN);
+				if (plan.reachable && sailTo(net, ship, dest, time)) return;
+			}
+			// Nobody has room for it, or nobody the hull can still meet. Jettison
+			// rather than deadlock the hull with a cargo that every port is already
+			// full of; the next load starts clean.
 			ship.cargo = NO_RESOURCE;
 			ship.amount = 0;
 		}
-		const pick = pickExport(net, portIndex, ship.hold);
+		const pick = pickExport(net, portIndex, ship.hold, ship.hull);
 		if (pick.resource < 0) { waitAtPort(net, ship, time); return; }
+		// The booking comes before the cargo leaves the warehouse: a leg the sky
+		// has made unreachable must not strand a loaded hull on the pad.
+		if (!bookLeg(net, END_PORT, portIndex, END_PORT, pick.dest, ship.hull, MAX_LEG_LY, LOAD_PLAN).reachable) {
+			waitAtPort(net, ship, time);
+			return;
+		}
 		const taken = economy.takeFromColony(port.colony, pick.resource, pick.amount);
 		if (taken <= 0) { waitAtPort(net, ship, time); return; }
 		ship.cargo = pick.resource;
 		ship.amount = taken;
 		sailTo(net, ship, pick.dest, time);
 	}
+
+	const LOAD_PLAN = createLegPlan();
 
 	// --- Colonisation -------------------------------------------------------
 
@@ -782,16 +1118,17 @@
 	}
 
 	function pickCandidate(net, from) {
-		const port = net.ports[from];
 		let best = -1, bestScore = 0;
 		for (let i = 0; i < net.candidateCount; i++) {
 			const c = net.candidates[i];
 			if (c.used || c.reserved >= 0) continue;
 			if (portOfStar(net, c.site.key) >= 0) continue;
 			const site = c.site;
-			const dx = site.x - port.x, dy = site.y - port.y, dz = site.z - port.z;
-			const ly = Math.sqrt(dx * dx + dy * dy + dz * dz) * LY_PER_KPC;
-			if (ly > MAX_FOUND_LY) continue;
+			// The drawn separation and the intercept (§9.3), not the birth one:
+			// an expedition is a 600 ly promise in the sky the viewer is watching.
+			const plan = planLeg(net, END_PORT, from, END_CANDIDATE, i, EXPEDITION_HULL, MAX_FOUND_LY, SCORE_PLAN);
+			if (!plan.reachable) continue;
+			const ly = plan.ly;
 			const habitat = siteHabitatScore(site);
 			if (habitat < MIN_CANDIDATE_HABITAT) continue;
 			// Prefer a good, close world: habitat quality over distance.
@@ -886,8 +1223,8 @@
 			const candidate = pickCandidate(net, i);
 			if (candidate < 0) continue;
 			const site = net.candidates[candidate].site;
-			const dx = site.x - port.x, dy = site.y - port.y, dz = site.z - port.z;
-			const ly = Math.sqrt(dx * dx + dy * dy + dz * dz) * LY_PER_KPC;
+			const plan = planLeg(net, END_PORT, i, END_CANDIDATE, candidate, EXPEDITION_HULL, MAX_FOUND_LY, SCORE_PLAN);
+			const ly = plan.ly;
 			out.push({
 				port: i,
 				candidate,
@@ -949,6 +1286,49 @@
 		return siteHabitatScore(site);
 	}
 
+	// The shear the birth frame has accumulated since the field was drawn: a pair
+	// `gapKpc` apart at galactocentric radius r separates at about (vFlat/r)·gap
+	// (differential rotation), plus the epicyclic spread the classic law gives two
+	// stars of different phase and rank — 2√2·σ·r/vFlat, which is ~3 kpc at the
+	// Sun's radius and does not shrink with a shorter clock (it is motion the
+	// stars have whether or not the clock has run). Capped at
+	// FRONTIER_STRETCH_MAX× the gap: past that the pre-gate is no filter at all
+	// and the scan should stay as cheap as it is.
+	//
+	// The exact gate behind it is bounded too: FRONTIER_LIVE_PER_SCAN resolves
+	// per call (the ring cursor keeps the place), because a stretched ball around
+	// 64 ports covers most of the disc and 4 000 resolves would be a 5 ms hitch
+	// twice a second. The frontier then grows a little slower under a moving sky,
+	// which is the right trade for a frame budget.
+	const FRONTIER_STRETCH_MAX = 8;
+	const FRONTIER_LIVE_PER_SCAN = 800;
+	function frontierStretchKpc(net, model, radiusKpc) {
+		const geom = net.geom;
+		if (!geom.moving || !(geom.starTime > 0)) return 0;
+		const dyn = (model && model.dynamics) || {};
+		const vFlat = dyn.vFlat > 0 ? dyn.vFlat : 0;
+		if (!(vFlat > 0) || !(radiusKpc > 1e-6)) return 0;
+		const r = radiusKpc > dyn.rCore ? radiusKpc : dyn.rCore;
+		const shear = vFlat / r * MAX_FOUND_KPC * geom.starTime;
+		const epicyclic = 2 * Math.SQRT2 * (dyn.sigmaThin || 0) * r / vFlat;
+		let stretch = shear + epicyclic;
+		const cap = MAX_FOUND_KPC * (FRONTIER_STRETCH_MAX - 1);
+		return stretch > cap ? cap : stretch;
+	}
+
+	// The exact gate: the field star's drawn position against the big ports'
+	// drawn positions. One resolver call per star that passed the coarse gate.
+	function frontierLiveNear(net, bigCount) {
+		if (!net.livePosition(FRONTIER_FIELD_REF, GEOM_POS)) return 0;
+		const nearSq = MAX_FOUND_KPC * MAX_FOUND_KPC;
+		for (let b = 0; b < bigCount; b++) {
+			endpointPos(net, END_PORT, FRONTIER_BIG[b], END_B);
+			const dx = GEOM_POS[0] - END_B[0], dy = GEOM_POS[1] - END_B[1], dz = GEOM_POS[2] - END_B[2];
+			if (dx * dx + dy * dy + dz * dz <= nearSq) return 1;
+		}
+		return 0;
+	}
+
 	function expandFrontierFromField(net, field, model) {
 		if (!field || !model || field.count <= 0) return 0;
 		if (net.candidateCount >= MAX_CANDIDATES) return 0;
@@ -962,9 +1342,27 @@
 		// result stays deterministic (the cursor is part of the network's state).
 		// Four new worlds per scan is the pacing: the frontier grows in steps a
 		// viewer can watch, and one scan stays cheap next to the event drain.
+		//
+		// Two gates, and only the second one decides (§9.6). The coarse gate is
+		// birth-frame because the field buffer is, stretched by the shear the
+		// star clock has applied since birth, and capped: past the cap the scan
+		// proposes from a neighbourhood the sky has already left, which slows the
+		// frontier instead of filling it with worlds no hull can reach. The exact
+		// gate is the *drawn* distance, applied before the expensive system
+		// generation, so a birth-frame artefact never becomes a candidate.
 		let added = 0;
 		let fi = net.frontierCursor | 0;
-		const nearSq = MAX_FOUND_KPC * MAX_FOUND_KPC;
+		const centre = (model && model.centre) || { x: 0, y: 0, z: 0 };
+		let rMin = Infinity;
+		for (let b = 0; b < bigCount; b++) {
+			const port = net.ports[FRONTIER_BIG[b]];
+			const r = Math.hypot(port.x - centre.x, port.y - centre.y);
+			if (r < rMin) rMin = r;
+		}
+		const reach = MAX_FOUND_KPC + frontierStretchKpc(net, model, rMin);
+		const nearSq = reach * reach;
+		const liveGate = net.geom.moving && net.livePosition ? 1 : 0;
+		let liveUsed = 0;
 		for (let n = 0; n < FRONTIER_SCAN && net.candidateCount < MAX_CANDIDATES; n++) {
 			fi += 1;
 			if (fi >= field.count) fi = 0;
@@ -983,6 +1381,11 @@
 			FRONTIER_FIELD_REF.key = key;
 			FRONTIER_FIELD_REF.x = fx; FRONTIER_FIELD_REF.y = fy; FRONTIER_FIELD_REF.z = fz;
 			FRONTIER_FIELD_REF.colorIndex = 0; FRONTIER_FIELD_REF.absMag = 0;
+			if (liveGate) {
+				if (liveUsed >= FRONTIER_LIVE_PER_SCAN) break;
+				liveUsed += 1;
+				if (!frontierLiveNear(net, bigCount)) continue;
+			}
 			FRONTIER_SCAN_CTX.model = model;
 			FRONTIER_SCAN_CTX.field = field;
 			FRONTIER_SCAN_CTX.member = null;
@@ -1046,14 +1449,39 @@
 		queueLib.push(net.queue, time + TICK_YEARS, EV_TICK, 0, 0);
 	}
 
+	const LAUNCH_FAIL = { reason: '' };
 	function launchExpedition(net, source, candidateIndex, time, rush) {
 		const sourcePort = net.ports[source];
-		if (!rush && time - sourcePort.lastExpedition < EXPEDITION_COOLDOWN) return -1;
+		LAUNCH_FAIL.reason = '';
+		if (!rush && time - sourcePort.lastExpedition < EXPEDITION_COOLDOWN) {
+			LAUNCH_FAIL.reason = 'the port is still resting';
+			return -1;
+		}
 		expeditionCost(sourcePort.colony, EXPEDITION_COST);
-		if (!(EXPEDITION_COST.peopleM > 0)) return -1;
-		if (sourcePort.colony.pop - EXPEDITION_COST.peopleM < MIN_FOUNDERS_REMAIN_M) return -1;
+		if (!(EXPEDITION_COST.peopleM > 0)) {
+			LAUNCH_FAIL.reason = 'no volunteers to spare';
+			return -1;
+		}
+		if (sourcePort.colony.pop - EXPEDITION_COST.peopleM < MIN_FOUNDERS_REMAIN_M) {
+			LAUNCH_FAIL.reason = 'the port must keep a working population';
+			return -1;
+		}
+		// The founding leg is booked before a single volunteer leaves the
+		// population: a world the sky has made unreachable must refuse the wave,
+		// not strand it (§9.3).
+		const plan = bookLeg(net, END_PORT, source, END_CANDIDATE, candidateIndex,
+			EXPEDITION_HULL, MAX_FOUND_LY, FOUND_PLAN);
+		if (!plan.reachable) {
+			// The sky, not the map: the world is inside 600 ly now but the hull
+			// cannot meet it before it is not (§9.3).
+			LAUNCH_FAIL.reason = 'the world is receding faster than the hull';
+			return -1;
+		}
 		const shipIndex = freeShip(net);
-		if (shipIndex < 0) return -1;
+		if (shipIndex < 0) {
+			LAUNCH_FAIL.reason = 'no hull free';
+			return -1;
+		}
 		const colonists = EXPEDITION_COST.people;
 		sourcePort.colony.pop -= EXPEDITION_COST.peopleM;
 		sourcePort.lastExpedition = time;
@@ -1063,7 +1491,7 @@
 			if (net.candidates[i].site.key === site.key) net.candidates[i].reserved = shipIndex;
 		}
 		ship.index = shipIndex;
-		ship.hull = 2;
+		ship.hull = EXPEDITION_HULL;
 		ship.hold = colonists;
 		ship.amount = colonists;
 		ship.cargo = economy.R_PEOPLE;
@@ -1072,8 +1500,11 @@
 		ship.from = source;
 		ship.to = -1;
 		ship.candidate = candidateIndex;
+		ship.returning = 0;
+		ship.legFrom = 0;
+		ship.legTo = 1;
 		ship.depart = time;
-		ship.arrive = time + liveLegYears(net, sourcePort, site, ship.hull);
+		ship.arrive = time + plan.years;
 		ship.leg = ship.arrive - ship.depart;
 		ship.revision = 0;
 		ship.trips = 0;
@@ -1083,16 +1514,9 @@
 		return shipIndex;
 	}
 
-	// A voyage booked from where its endpoints are drawn now: while the star
-	// clock runs the route endpoints are the stars' live positions, so the leg
-	// is measured from where the ports are when the hull leaves. `b` is a port
-	// or a candidate site (both carry a ref and birth coordinates).
-	function liveLegYears(net, a, b, hullIndex) {
-		positionOf(net, a.ref, a.x, a.y, a.z, LEG_A);
-		positionOf(net, b.ref, b.x, b.y, b.z, LEG_B);
-		const dx = LEG_A[0] - LEG_B[0], dy = LEG_A[1] - LEG_B[1], dz = LEG_A[2] - LEG_B[2];
-		return legYears(Math.sqrt(dx * dx + dy * dy + dz * dz), hullIndex);
-	}
+	const FOUND_PLAN = createLegPlan();
+	const RETIME_PLAN = createLegPlan();
+	const DIVERT_PLAN = createLegPlan();
 
 	// The panel's Send-expedition button: the tick's own choice, launched now
 	// instead of waiting for the next 25-year tick. Same cost, same fleet
@@ -1115,74 +1539,170 @@
 		if (founding >= MAX_FOUNDING_IN_FLIGHT) { LAUNCH_RESULT.reason = 'too many expeditions in flight'; return LAUNCH_RESULT; }
 		if (pick.port < 0) return LAUNCH_RESULT;
 		const ship = launchExpedition(net, pick.port, pick.candidate, time, 1);
-		if (ship < 0) { LAUNCH_RESULT.reason = 'no hull free'; return LAUNCH_RESULT; }
+		if (ship < 0) { LAUNCH_RESULT.reason = LAUNCH_FAIL.reason || 'no hull free'; return LAUNCH_RESULT; }
 		LAUNCH_RESULT.ok = 1;
 		LAUNCH_RESULT.ship = ship;
 		LAUNCH_RESULT.reason = '';
 		return LAUNCH_RESULT;
 	}
 
-	// Re-time in-flight voyages while the stars move: the booked leg length is
-	// the departure-time distance, but the drawn route endpoints are the stars'
-	// live positions. Re-measure the remaining journey and reschedule the arrival
-	// when it moves by more than a year; an endpoint that is not resident falls
-	// back to its birth coordinates.
-	// Retiming is a per-frame pass while the sky moves, so its scratch is
-	// module-owned: no literals in the loop.
+	// --- Pursuit and the give-up (trade-plan §9.4) --------------------------
+	//
+	// A hull is a steering agent: twice a second it re-aims at where its
+	// destination is drawn *now*, re-times the remaining journey against the
+	// predictor when the app wired one, and turns around when the leg has grown
+	// past its cap. The old pass only re-timed — and a re-timed leg under shear
+	// grows without bound, because the same motion that made the booking wrong
+	// keeps stretching it, so the hull chased a star it could never reach.
+	//
+	// The aim point is the hull's own drawn position, not its departure port:
+	// the remaining journey is from where it is. `legFrom`/`legTo` on the ship
+	// are the chord fractions the overlay interpolates, so a divert reverses
+	// them and the dot keeps moving instead of jumping to the far end.
 	const RETIME_A = [0, 0, 0], RETIME_B = [0, 0, 0];
+
+	// The chord fraction a hull is drawn at. Not the elapsed time over the
+	// booked one: both endpoints move, so the chord under the hull changes, and
+	// a hull that has flown its `speed × elapsed` light-years sits that distance
+	// along the *current* chord. A chord that grows therefore holds the hull
+	// back — a receding destination is a longer chase, not a leg that completes
+	// itself — and a static sky makes this exactly the time fraction it was.
+	function shipFraction(net, ship, time, chordLy) {
+		const span = ship.legTo - ship.legFrom;
+		const length = chordLy * (span < 0 ? -span : span);
+		if (!(length > 0)) return 1;
+		const flown = hullSpeed(ship.hull) * (time - ship.depart);
+		let f = flown / length;
+		if (!(f > 0)) return 0;
+		return f > 1 ? 1 : f;
+	}
+
+	// Where a hull is drawn at `time`, from the cached endpoints and the chord
+	// fractions. The one geometry the overlay, the readout and the re-aim share.
+	function shipAim(out, net, ship, time, ax, ay, az, bx, by, bz) {
+		const chordLy = separationLy(ax, ay, az, bx, by, bz);
+		const f = shipFraction(net, ship, time, chordLy);
+		const u = ship.legFrom + (ship.legTo - ship.legFrom) * f;
+		out[0] = ax + (bx - ax) * u;
+		out[1] = ay + (by - ay) * u;
+		out[2] = az + (bz - az) * u;
+		return out;
+	}
+
+	// The give-up. A hull whose voyage the sky has torn past its cap flies home
+	// instead — the chord it is drawn on does not change (the overlay keeps both
+	// ends), only the end it is heading for, and `legTo` flips to 0 so the dot
+	// turns around where it is rather than jumping to the far end of its route.
+	// `u` is the hull's chord fraction at the moment it turns.
+	function divertShip(net, ship, time, u, chordKind, chordIndex) {
+		net.diverted += 1;
+		if (ship.state === SHIP_FOUNDING) {
+			// A founding hull goes home with its party: the reservation is
+			// released now (the world is free for a hull that can still reach it)
+			// and the volunteers are refunded when the hull docks, on the same
+			// path a taken world uses.
+			releaseReservation(net, ship.index);
+		}
+		// The way home, in the same co-moving measurement: the chord from the
+		// origin to the end the hull gave up on, with `u` of it still to fly back.
+		ship.returning = 1;
+		ship.legFrom = u;
+		ship.legTo = 0;
+		// The way home is the part of the chord the hull has already flown.
+		const plan = solveRemaining(net, END_PORT, ship.from, chordKind, chordIndex,
+			u, ship.hull, MAX_LEG_LY, DIVERT_PLAN);
+		ship.depart = time;
+		ship.arrive = time + plan.years;
+		ship.leg = ship.arrive - ship.depart;
+		scheduleShip(net, ship, ship.arrive, ship.state === SHIP_FOUNDING ? EV_FOUND : EV_ARRIVE);
+	}
+
 	function retimeRoutes(net) {
 		for (let i = 0; i < net.shipCount; i++) {
 			const ship = net.ships[i];
 			if (ship.state !== SHIP_SAILING && ship.state !== SHIP_FOUNDING) continue;
 			if (!(ship.arrive > ship.depart)) continue;
-			const a = ship.from >= 0 ? net.ports[ship.from] : null;
-			const b = ship.state === SHIP_FOUNDING
-				? (ship.candidate >= 0 ? net.candidates[ship.candidate].site : null)
-				: (ship.to >= 0 ? net.ports[ship.to] : null);
-			if (!a || !b) continue;
-			if (!positionOf(net, a.ref, a.x, a.y, a.z, RETIME_A)) continue;
-			if (!positionOf(net, b.ref, b.x, b.y, b.z, RETIME_B)) continue;
-			const dx = RETIME_A[0] - RETIME_B[0], dy = RETIME_A[1] - RETIME_B[1], dz = RETIME_A[2] - RETIME_B[2];
-			const total = legYears(Math.sqrt(dx * dx + dy * dy + dz * dz), ship.hull);
-			// The booked journey: speed is constant, so the time fraction equals the
-			// distance fraction even after a previous re-time changed ship.arrive.
-			let f = ship.leg > 0 ? (net.time - ship.depart) / ship.leg : 0;
-			if (f < 0) f = 0;
-			if (f > 1) f = 1;
-			const arrive = net.time + (1 - f) * total;
+			const founding = ship.state === SHIP_FOUNDING;
+			if (founding ? ship.candidate < 0 : ship.to < 0) continue;
+			if (ship.from < 0) continue;
+			// The chord the overlay draws the hull on, and the fraction of it the
+			// hull is at and still has to fly.
+			const chordKind = founding ? END_CANDIDATE : END_PORT;
+			const chordIndex = founding ? ship.candidate : ship.to;
+			endpointPos(net, END_PORT, ship.from, RETIME_A);
+			endpointPos(net, chordKind, chordIndex, RETIME_B);
+			const chordLy = separationLy(RETIME_A[0], RETIME_A[1], RETIME_A[2],
+				RETIME_B[0], RETIME_B[1], RETIME_B[2]);
+			const f = shipFraction(net, ship, net.time, chordLy);
+			const u = ship.legFrom + (ship.legTo - ship.legFrom) * f;
+			const remainingFrac = ship.legTo > u ? ship.legTo - u : u - ship.legTo;
+			const capLy = founding ? MAX_FOUND_LY : MAX_LEG_LY;
+			// The remaining journey, measured the way the booking measures it: the
+			// endpoints' separation at arrival, times the part of the chord still
+			// ahead. With no predictor this is the plain separation, which is what
+			// pursuit reduces to when there is no horizon to buy.
+			const plan = solveRemaining(net, END_PORT, ship.from, chordKind, chordIndex,
+				remainingFrac, ship.hull, capLy, RETIME_PLAN, RETIME_ITERS);
+			// The give-up has a margin: a leg the sky has pushed a little past its
+			// cap is still flown (the hull is nearly there), one it has torn well
+			// past it — or one the target outruns outright — is not.
+			if (!ship.returning && (plan.outrun || plan.ly > capLy * DIVERT_FACTOR)) {
+				divertShip(net, ship, net.time, u, chordKind, chordIndex);
+				continue;
+			}
+			const arrive = net.time + plan.years;
 			if (!(arrive > ship.depart)) continue;
 			if (Math.abs(arrive - ship.arrive) <= 1.0) continue;
 			ship.arrive = arrive;
+			ship.leg = ship.arrive - ship.depart;
 			ship.revision = (ship.revision + 1) >>> 0;
-			scheduleShip(net, ship, arrive, ship.state === SHIP_FOUNDING ? EV_FOUND : EV_ARRIVE);
+			scheduleShip(net, ship, arrive, founding ? EV_FOUND : EV_ARRIVE);
+		}
+	}
+	const AIM_POS = [0, 0, 0];
+
+	// The whole target star, not just the settled site: every reservation a hull
+	// holds is released when its voyage ends, whichever way it ends.
+	function releaseReservation(net, shipIndex) {
+		for (let i = 0; i < net.candidateCount; i++) {
+			if (net.candidates[i].reserved === shipIndex) net.candidates[i].reserved = -1;
 		}
 	}
 
+	// A founding hull that has to give up — its world was taken while it flew,
+	// or the sky pulled the world past the reach of the hull (§9.4) — puts the
+	// volunteers back into the population they were drawn from, and docks at its
+	// source for a normal load. A failed voyage must not delete people from the
+	// ledger, and must never leave a ship eventless.
+	function returnFounder(net, ship, time) {
+		if (ship.from >= 0 && ship.cargo === economy.R_PEOPLE) {
+			const home = net.ports[ship.from].colony;
+			const returning = ship.amount * POP_PER_COLONIST_UNIT;
+			home.pop = Math.min(home.capacity, home.pop + returning);
+		}
+		ship.returning = 0;
+		ship.legFrom = 0;
+		ship.legTo = 1;
+		ship.amount = 0;
+		ship.cargo = NO_RESOURCE;
+		ship.port = ship.from;
+		ship.to = -1;
+		ship.candidate = -1;
+		ship.hold = HULLS[ship.hull].hold;
+		ship.state = SHIP_DOCKED;
+		scheduleShip(net, ship, time + DOCK_YEARS, EV_LOAD);
+	}
+
 	function foundAtCandidate(net, ship, time) {
+		releaseReservation(net, ship.index);
+		// Turned around mid-flight: home with the party, no colony founded.
+		if (ship.returning) { returnFounder(net, ship, time); return; }
 		const c = net.candidates[ship.candidate];
 		const available = c && !c.used && portOfStar(net, c.site.key) < 0;
 		const portIndex = available ? addPort(net, c.site, time) : -1;
-		for (let i = 0; i < net.candidateCount; i++) {
-			if (net.candidates[i].reserved === ship.index) net.candidates[i].reserved = -1;
-		}
 		if (portIndex < 0) {
-			// The star was taken while the party was in flight. Put the
-			// volunteers back into the source's population — they were drawn
-			// from it, and a failed voyage must not delete people from the
-			// ledger — then send the empty hull home for a normal load.
-			if (ship.from >= 0 && ship.cargo === economy.R_PEOPLE) {
-				const home = net.ports[ship.from].colony;
-				const returning = ship.amount * POP_PER_COLONIST_UNIT;
-				home.pop = Math.min(home.capacity, home.pop + returning);
-			}
-			ship.amount = 0;
-			ship.cargo = NO_RESOURCE;
-			ship.port = ship.from;
-			ship.to = -1;
-			ship.candidate = -1;
-			ship.hold = HULLS[ship.hull].hold;
-			scheduleShip(net, ship, time + DOCK_YEARS, EV_LOAD);
-			ship.state = SHIP_DOCKED;
+			// The star was taken while the party was in flight.
+			returnFounder(net, ship, time);
 			return;
 		}
 		c.used = 1;
@@ -1210,6 +1730,7 @@
 		ship.port = portIndex;
 		ship.to = -1;
 		ship.candidate = -1;
+		ship.returning = 0;
 		scheduleShip(net, ship, time + DOCK_YEARS, EV_LOAD);
 	}
 
@@ -1266,30 +1787,27 @@
 
 	// --- Draw state and the player -----------------------------------------
 
-	// A ship's position in the birth frame between its endpoints, for the
-	// galaxy overlay. `time` is the drawn clock; the caller may interpolate at
-	// a readout's instant instead.
+	// A ship's drawn position between its endpoints, for the galaxy overlay and
+	// the readout. `time` is the drawn clock; the caller may interpolate at a
+	// readout's instant instead. The endpoints are the cached live positions
+	// while the sky moves — a hull rides the stars it flies between — and the
+	// chord fractions carry a diverted hull back along the line it came out on
+	// (§9.4), so a dot never jumps.
 	function shipPosition(net, index, time, out) {
 		const ship = net.ships[index];
-		const a = ship.from >= 0 ? net.ports[ship.from] : null;
-		const target = ship.state === SHIP_FOUNDING
-			? (ship.candidate >= 0 ? net.candidates[ship.candidate].site : null)
-			: (ship.to >= 0 ? net.ports[ship.to] : null);
-		if (!a || !target || ship.arrive <= ship.depart) {
-			const at = ship.port >= 0 ? net.ports[ship.port] : (a || target);
-			out[0] = at ? at.x : 0;
-			out[1] = at ? at.y : 0;
-			out[2] = at ? at.z : 0;
+		if (ship.from < 0 || (ship.state === SHIP_FOUNDING ? ship.candidate < 0 : ship.to < 0) || ship.arrive <= ship.depart) {
+			if (ship.port >= 0) return endpointPos(net, END_PORT, ship.port, out);
+			if (ship.from >= 0) return endpointPos(net, END_PORT, ship.from, out);
+			out[0] = 0; out[1] = 0; out[2] = 0;
 			return out;
 		}
-		let f = (time - ship.depart) / (ship.arrive - ship.depart);
-		if (f < 0) f = 0;
-		if (f > 1) f = 1;
-		out[0] = a.x + (target.x - a.x) * f;
-		out[1] = a.y + (target.y - a.y) * f;
-		out[2] = a.z + (target.z - a.z) * f;
-		return out;
+		const kindB = ship.state === SHIP_FOUNDING ? END_CANDIDATE : END_PORT;
+		const indexB = ship.state === SHIP_FOUNDING ? ship.candidate : ship.to;
+		endpointPos(net, END_PORT, ship.from, SHP_A);
+		endpointPos(net, kindB, indexB, SHP_B);
+		return shipAim(out, net, ship, time, SHP_A[0], SHP_A[1], SHP_A[2], SHP_B[0], SHP_B[1], SHP_B[2]);
 	}
+	const SHP_A = [0, 0, 0], SHP_B = [0, 0, 0];
 
 	function shipProgress(net, index) {
 		const ship = net.ships[index];
@@ -1411,6 +1929,8 @@
 		siteHabitatScore, isBigColony, colonisationPreview, pickCandidate, bestExpedition,
 		launchBest, launchExpedition, retimeRoutes, colonisationStatus,
 		expandFrontierFromField, setGenerationMode, generationMode: setGenerationMode,
+		refreshGeometry, endpointPos, endpointDistanceLy, planLeg, bookLeg, shipFraction,
+		createLegPlan, frontierStretchKpc, DIVERT_FACTOR, END_PORT, END_CANDIDATE,
 	};
 
 	if (typeof module !== 'undefined') module.exports = TradeLib;

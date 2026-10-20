@@ -266,10 +266,17 @@ counters and six largest non-abandoned ports plus sailing ships, refreshed at
 
 - `src/core/exec-queue.js`: typed-array heap, push/pop/drain/peek/clear.
 - `src/core/economy.js`: tables, sites, colony setup/settle and transfer helpers.
-- `src/core/trade.js`: discovery, fleet, queue handlers, founding, player transfers.
+- `src/core/trade.js`: discovery, fleet, queue handlers, founding, player transfers,
+  and §9's live-geometry cache and leg laws (the linear plan, the intercept solve,
+  pursuit, the divert).
 - `src/core/ship.js`, `presets.js`, `input.js`: cargo state, settings and Y action.
-- `src/main.js`, `src/index.html`: seeding/clocks, inspection, HUD/panel/wiring.
-- `src/render/label-layer.js`: resident drawn-position trade pass.
+- `src/main.js`, `src/index.html`: seeding/clocks, inspection, HUD/panel/wiring,
+  the geometry refresh and the exchange rate (§9.1/§9.2), the per-frame mirror step.
+- `src/render/label-layer.js`: resident drawn-position trade pass, and the same
+  record at a future star time — the predictor a booking solves against (§9.3).
+- `src/math/orbit.js`: the θ-taking twins of the record and landmark dispatch and
+  the friction field's tracked mirror (§9.5); the shader and the parity contract
+  are unchanged.
 - `experiments/trade-test.js`: deterministic maps, stable-coverage split exactness,
   long-time growth/decline, caps, demand/export laws, idempotent discovery,
   multi-millennial network and exact live-event counts, full-state jump invariance,
@@ -277,9 +284,11 @@ counters and six largest non-abandoned ports plus sailing ships, refreshed at
   (including the population-scaled ring and the frontier mark), the clock laws of
   §6 (sync exchange rate, ceiling, generation-ship pacing, budgeted drain
   monotonicity and backlog), the colonisation law (one candidate per star,
-  volunteers, per-port cooldown, the resting readout and the manual rush) and the
+  volunteers, per-port cooldown, the resting readout and the manual rush), the
   §8 start scenario (the growth curve, the capital's first seconds, the full
-  network by 90 s, and the forced capital).
+  network by 90 s, and the forced capital) and §17's live geometry (the frozen
+  identity, the cache, the intercept, the refusals, the divert and its refund,
+  the frontier stretch, and 120 s of shearing sky).
 - `experiments/exec-queue-test.js`: 50,000-event sorted-reference comparison,
   growth, equal timestamps, due follow-ups, boundary, clear/empty and stale handling.
 
@@ -290,7 +299,9 @@ one event per ship plus one tick in normal operation.
 
 Deferred: prices/contracts, constrained recipes, inspection-independent variable
 coverage, port-slot recycling, buildings/terraforming/piracy, planet-specific
-docking, physically calibrated interstellar freight. Real-browser/WebGPU visual
+docking, physically calibrated interstellar freight, and a drawn *pursuit curve*
+for a re-aimed hull (the overlay draws the chord between the two live endpoints;
+the aim is live, the drawn path between the last two re-aims is not). Real-browser/WebGPU visual
 validation remains separate; canvas-stub geometry tests are not a visual verdict.
 
 ## 6. Star-time-coupled trade controls
@@ -528,3 +539,293 @@ is the next step.
 - Re-check the frontier scan's 4 000-star ring per 0.5 s call now that the
   network reaches 64 ports inside a minute; it is the remaining per-frame cost
   that scales with the field, and a wider sample (500k) has not been measured.
+
+## 9. Live geometry: the network in a moving sky
+
+§6 gave *booking* and *re-timing* the stars' drawn positions. Every decision
+that **chooses** a partner still measured the birth sky — `pickDestination` and
+`pickExport` through `distanceLy(net, a, b)` (which reads `port.x/y/z`),
+`pickCandidate` and `bestExpedition` through `site.x − port.x`, the frontier
+scan's gate through the birth-frame field buffer, and the panel's `ly` the same
+way. Birth coordinates are the settled instant's, and the star clock shears them
+apart by differential rotation, so at star time > 0 the network traded with
+stars that stopped being neighbours long ago: the score said a 30 ly hop,
+`liveLegYears` booked the 3 000 ly the drawn sky actually showed, the overlay
+drew a line across an arm, and neither `MAX_LEG_LY` nor `MAX_FOUND_LY` — both
+checked against birth — ever fired.
+
+Measured through the shipping dispatch (`orbit.engineRecordPosition`, classic
+mask, the page's 300k-style field sample), for field stars inside 250 pc of
+home — the network's actual neighbourhood — against the first star's birth
+separation:
+
+| star time | 1 Myr | 10 Myr | 60 Myr (one minute at the default 1 Myr/s) | 200 Myr |
+|---|---|---|---|---|
+| 798 ly | 799 | 827 | 1 492 | 5 520 |
+| 348 ly | 367 | 937 | 1 246 | 6 417 |
+| 838 ly | 848 | 1 139 | 3 436 | 3 911 |
+| 1 007 ly | 989 | 1 517 | 6 213 | 18 984 |
+
+and over the 60-star landmark sky, the mean stretch of each star's
+birth-nearest pair is 1.2× at 1 Myr, 4.4× at 10 Myr, 19× at 50 Myr and 37× at
+100 Myr (worst pair 583×: Sirius–Procyon, 5 ly at birth, 3 061 ly at 100 Myr,
+past `MAX_LEG_LY` with 16 of the 60 pairs). The apocenter pass is milder — 1.8×
+at 100 Myr — and not exempt.
+
+**The rule.** Every distance the network acts on is a *live* distance, taken
+from one cache, and the cache says how much it knows:
+
+| tier | when | what the CPU knows | what the network may do |
+|---|---|---|---|
+| frozen | the star clock is stopped, or T = 0 | nothing moves; birth *is* live | the whole layer is skipped — zero cost, and the birth-frame behaviour §1–§8 measured |
+| closed form | any mask without `simple` (classic, apocenter) | any star at any star time | score live, book the intercept |
+| mirrored | the friction field, for tracked stars | θ integrated in lockstep with the GPU | score live, book the intercept over a bounded horizon |
+| blind | not resident, not tracked | the birth position only | score on birth, never *predict*, and §9.4's pursuit owns the voyage |
+
+### 9.1 One cache, refreshed on the maintenance pass
+
+`refreshGeometry(net, starTimeMyr, moving, myrPerYear)` fills two preallocated
+`Float64Array`s — `MAX_PORTS` and `MAX_CANDIDATES` positions, plus the rate each
+endpoint is moving at — and bumps `net.geom.version`. It runs on the maintenance
+pass the network already has (twice a second, §6), never per frame and never per
+event: ≤ 320 dispatches (0.85 µs on a closed-form mask, 3 µs on the friction
+field's mirror, measured) is 0.3–0.9 ms per call, and the first frame after a
+paused trade clock refreshes before it drains rather than half a second into the
+sky it is trading in. A no-op when the sky is frozen or
+no resolver is wired, so a network with no live geometry — every fixture in
+`trade-test.js` that predates §9, and every frame of a frozen sky — behaves
+exactly as the birth-frame one did.
+
+The rates are the refresh difference, in kpc per star Myr, and they exist so
+that *reachability* is a scoring question: a partner that recedes faster than
+the hull flies can be refused for every port in a loop with no resolver call at
+all. A blind entry keeps its birth coordinates and **no rate** — an endpoint
+that flickers between drawn and birth would otherwise read as a velocity of
+thousands of ly per year and make every partner look unreachable.
+
+No scoring loop calls the resolver. `pickDestination` runs 64 ports × 13
+resources per load decision; at the synced top rate that is thousands of
+dispatches a frame. It reads the cache, which is at most half a second old — and
+half a second is 0.5 Myr of sky at the default pace: 0.12 kpc of a star's own
+travel, which is common motion and cancels in every distance measured between
+two endpoints, and ~7 ly of differential drift, which is the only part a leg
+feels. The *booking* is the exception (§9.3): it resolves, because it is one
+hull making one decision.
+
+### 9.2 The exchange rate
+
+Prediction needs one number the network cannot derive itself: how much *star*
+time passes per *trade* year. The app passes it with the refresh:
+
+```
+myrPerYear = starRateMyrPerS / tradeRateYearsPerS      (0 when either clock is stopped)
+```
+
+Under the §6 sync this is exactly `1 / SYNC_YEARS_PER_MYR` = 10⁻³ Myr per trade
+year, so a 500-year voyage predicts 0.5 Myr ahead. Decoupled, it is the
+instantaneous ratio of the two ladders and an approximation by construction: the
+viewer can move either slider mid-voyage. That is §9.4's job, not this one's —
+the horizon is re-derived on every re-aim.
+
+### 9.3 The intercept, measured in the field's frame
+
+A leg booked on the current separation arrives where the destination *was*.
+With a predictor the booking solves the intercept — but the measurement is the
+**separation between the two endpoints at the arrival instant**, not the hull's
+chord from its departure point:
+
+```
+Δ₀   = |p_B(t₀) − p_A(t₀)| / speed
+Δₖ₊₁ = |p_B(t₀ + Δₖ·κ) − p_A(t₀ + Δₖ·κ)| / speed          κ = myrPerYear
+```
+
+The choice is forced by the clocks, and it is the one correction the first
+implementation needed. A trade year is 10⁻³ Myr of sky at the synced rate, and
+the disc turns at ~0.235 kpc/Myr at the Sun's radius — 765 ly per star Myr. At
+that exchange rate the *inertial* frame asks a 2–4.5 ly/trade-year hull to
+intercept a target moving at 7.6 ly per trade year, so every route in the galaxy
+becomes unreachable inside a Myr, including between two stars that never move
+apart. Measured on the first version of this solver: the founding waves of the
+start map were all refused at 0.5 Myr of star time. In the field's own frame a
+rigid rotation changes nothing — a route between co-rotating stars is the
+distance between them — and the only thing that stretches a leg is the
+differential drift, which is exactly what tears routes apart.
+
+Both endpoints are predicted at the same star time, which is what cancels the
+common motion. `SOLVE` runs `INTERCEPT_ITERS = 6` fixed-point iterations from
+the current separation and stops at `INTERCEPT_TOL_LY = 0.5`; the map is a
+contraction when the separation's rate (the cached-velocity projection, §9.1)
+times κ is below the hull speed, which the freighters satisfy by two orders of
+magnitude (2 000–4 500 ly/Myr of star time at the synced rate against ~15 ly/Myr
+of drift at 60 Myr). A generation hull flies 30 ly/Myr and does *not* always
+satisfy it: at a fast star clock the shear outruns it, the iteration runs away
+instead of settling, and the plan is marked `outrun` — the partner is
+**unreachable** whatever the distance, and is refused at scoring and at launch.
+The ordinary case — a pair the sky has simply pulled past `MAX_LEG_LY` /
+`MAX_FOUND_LY` — is refused by the same law with the cap applied to the
+intercept distance, so the cap and the flown leg are finally the same number.
+
+### 9.4 Pursuit: the hull as a steering agent
+
+Prediction is a refinement of *booking*; pursuit is the behaviour that survives
+not having it, and it is what the blind and mirrored tiers run on. Twice a
+second every sailing hull re-aims at its endpoints' current live positions —
+the same intercept solve from the part of the chord still ahead of it when a
+predictor exists, the plain separation otherwise — and re-times its arrival.
+
+The hull's position on the chord is its **flown distance over the current
+chord**, not the elapsed time over the booked one:
+
+```
+u  = legFrom + (legTo − legFrom) · clamp(speed·(t − depart) / (chord · |legTo − legFrom|))
+```
+
+Both endpoints move, so the chord under the hull changes; a hull that has flown
+`speed × elapsed` light-years sits that distance along the chord as it is now.
+A chord that grows therefore holds the hull back — a receding destination is a
+longer chase, not a leg that completes itself — and a static sky makes this
+exactly the time fraction the overlay always drew. (With the time fraction, the
+first version of this pass let a voyage whose chord had grown to 12 000 years
+still read as 97 % flown, so the hull was never in danger and never turned
+back.)
+
+The give-up is a **margin**, `DIVERT_FACTOR = 1.6` of the cap the voyage was
+booked under, plus the `outrun` flag which needs no margin. A hull past it is
+**diverted**: a freighter flies home to the port it came from with its cargo
+(the ordinary `EV_ARRIVE` path then offers it there), a founder takes the
+failed-founding path, which returns the volunteers to the source's population.
+`legFrom`/`legTo` carry the turn: the chord keeps both ends, `legTo` becomes 0
+and `legFrom` the hull's fraction, so the dot keeps moving instead of jumping to
+the far end of its route. `net.diverted` counts them and the panel says so,
+because a network whose routes are being torn by the sky should show it rather
+than silently accumulate thousand-year voyages.
+
+Pursuit needs no horizon — only where the endpoints are now — so it is the
+honest answer for the friction field and for decoupled clocks: aim, re-aim twice
+a second, give up when the target is out of range. Its cost, measured: a
+maintenance pass over a full 128-hull fleet is 512 predictions — 0.4 ms on the
+closed-form masks, 1.4 ms on the friction field's mirror — twice a second, and
+zero when the sky is frozen, which is why it is a maintenance pass and not a
+frame pass.
+
+### 9.5 The friction field's tracked mirror
+
+Under a `simple` mask a field record's azimuth θ lives in the GPU compute buffer
+and the CPU never reads it back (`movement-parity-plan` decision 4), so
+`engineRecordPosition` returns the classic law or the birth position and reports
+the approximation. For trade that is not good enough to be an approximation:
+measured against the friction field's own integration, the classic law diverges
+from it by 0.3–19 kpc of *position* within 50 Myr (a disc star at 13 kpc:
+24 500 ly at 50 Myr, 50 600 ly at 100 Myr), because the two are different orbits
+— an epicyclic family against a jammed circular one — not one law and its error
+term. So under the friction field a position is either mirrored or blind; there
+is no cheap stand-in.
+
+`orbit.js` therefore carries a **tracked mirror** beside the landmark one: the
+same law (`simpleOmega`, `simpleSubsteps`, `simplePositionFromTheta`), a θ per
+tracked record, ≤ 512 of them, which is the network's ports plus its candidate
+pool. It is seeded from the placed birth azimuth at the instant the renderer
+seeds its θ buffer (`setEngine`, R, a field rebuild — main.js's
+`initSimpleLandmarks` is that instant for the CPU), stepped once per frame with
+the frame's own `dtStar` and substep rule, and reconstructed from the record's
+raw birth the same way the vertex stage does. Cost, measured: 43 µs per frame
+for all 512 entries at the rates that matter (one substep per frame at
+1 Myr/s), against a compute dispatch over the whole field; a prediction is 3 µs
+(a derive plus a few substeps), which is what the booking and the re-aim are
+budgeted in (`INTERCEPT_ITERS` for a booking, `RETIME_ITERS = 2` for a re-aim).
+
+A star first tracked *after* the seed instant — a frontier candidate found at
+T = 50 Myr — catches up by integrating from it in substep-bounded chunks rather
+than in the frame-sized ones the GPU used. Measured against per-frame stepping
+over 10–1 000 Myr at 20 and 60 fps: 10⁻⁴–2·10⁻³ rad for the disc and pattern
+families (3–19 ly at 8–13 kpc), worst 2.6·10⁻² rad (85 ly) for an inner bar
+star, exact for the pressure family. Below a trade leg's own scale, and zero for
+anything tracked from the seed. A catch-up that would cost more than
+`TRACK_CATCHUP_SUBSTEPS` is refused rather than coarsened — the record stays
+blind and pursuit owns the voyage.
+
+Prediction under the mirror is the same integrator run forward on scratch state,
+bounded at `SIMPLE_PREDICT_SUBSTEPS = 96` substeps (~32 Myr of horizon on the
+Milky Way's own rate table, far past any leg the network books); past the bound
+`simpleTrackThetaAt` returns −1 and §9.4 owns the voyage. The landmark mirror
+gets the same forward integration, because the start map's local sky *is*
+landmarks.
+
+The mask ladder stays in one place: `engineRecordPositionTheta` /
+`engineLandmarkPositionTheta` take an external θ (−1 = "none, behave as today"),
+so the parity contract of `movement-parity-plan` is untouched for every existing
+caller and the tracked path adds no second dispatch.
+
+### 9.6 The frontier scan
+
+The scan gates a birth-frame field buffer against birth-frame ports. Under
+movement it stretches the coarse gate by the shear the clock has applied — a
+pair `R` apart at radius `r` drifts by ≈ (vFlat/r)·R·T — **plus the epicyclic
+spread the classic law gives two stars of different phase and rank**,
+2√2·σ·r/vFlat. On the Milky Way's own numbers that floor is 3.2 kpc, so the
+pre-gate is at its cap (`FRONTIER_STRETCH_MAX = 8` × the 600 ly gap = 1.29 kpc)
+from the first Myr: the epicyclic motion is there whether or not the clock has
+run, and the gate is the honest width of "the birth neighbourhood" rather than a
+clock-grown one. What it buys is a proposal net wide enough that the *exact*
+gate behind it — the drawn distance, applied before the expensive
+`generateSystem` — is what decides. The stretch can only widen the net; it can
+never admit a birth-frame artefact as a candidate, and the launch decision reads
+§9.1's cache in any case.
+
+The exact gate is bounded too: `FRONTIER_LIVE_PER_SCAN = 800` resolves per call
+(the ring cursor keeps the place), because a stretched ball around 64 ports
+covers most of the disc and 4 000 resolves would be a 5 ms hitch twice a second.
+The frontier then grows a little slower under a moving sky, which is the right
+trade for a frame budget.
+
+### 9.7 What a moving sky does to the network
+
+Measured on the 24-landmark fixture §17 uses (seed 4242, its own start map, no
+frontier scan — so 12 ports is the fixture's ceiling, not the scenario's), at
+the page's default rates: 1 Myr/s of sky, 100 y/s of trade, κ = 10⁻² Myr per
+trade year, refreshed and re-aimed twice a second.
+
+| run | ports | sailing at 120 s | units hauled at 120 s | diverted |
+|---|---|---|---|---|
+| frozen sky | 12 (by 20 s) | 21 | 550 800 | 0 |
+| 120 s of sky (120 Myr) | 12 (by 20 s) | 14 | 356 800 | 0 |
+
+The network keeps trading and keeps growing through the first twenty seconds of
+shear and then holds: the four seed ports' six pairwise distances run 47–862 ly
+at birth and 113–3 194 ly at 100 Myr — shear closes one pair and opens another
+past the cap — so the 3 000 ly freight cap becomes the binding constraint and
+the fleet works the shorter pairs it still has. Growth of *new*
+colonies slows for the same reason — a 600 ly founding promise in a sky that has
+stretched four times is a 2 400 ly promise — which is the honest reading of a
+galaxy being wound up, not a stale map. A *jumped* sky (the test's 900 Myr in one
+refresh) turns the hulls in flight around, which is §9.4 doing what it exists
+for; so does a star clock ten times faster than the sync, where the shear
+outruns even a generation ship. Pausing the star clock hands the network its
+birth geography back at the next refresh — that is what the two separate clocks
+are for (§1).
+
+### 9.8 Checked
+
+`experiments/trade-test.js` §17 drives the shipping dispatch as the sky (a
+resolver over the network's own records) through every tier: the frozen tier is
+bit-identical to the birth-frame network (ports, populations, deliveries); the
+cache holds the drawn positions and the refresh difference rates; a booking is
+the endpoints' separation at arrival, and a frozen refresh falls back to the
+birth leg; a partner past `MAX_LEG_LY` is refused, and a generation hull refuses
+a receding partner inside the cap for the `outrun` reason; a voyage the shear
+tears past the cap turns around, is booked home over the part of the chord it
+has flown, and docks at its origin, and a diverted founding wave is refunded to
+the population it was drawn from (measured across the arrival event); the
+frontier pre-gate opens with the moving sky, never past its cap, and its shear
+term grows with the clock on a cold disc; the hull's chord fraction is its flown
+distance (and a divert reverses it); the friction field's resolver reads the
+tracked mirror rather than the birth sky; and 120 s of shearing sky leaves no
+hull on a leg past the give-up margin while the network still trades and still
+grows.
+`experiments/orbit-test.js` §13 pins the θ ladder (with no θ it *is* the plain
+dispatch, for every mask and both reports), the reconstruction against
+`simplePositionFromTheta`, the mirror's lockstep against the shipping law, the
+prediction against per-frame stepping, the refusal past the horizon bound, the
+late-tracked catch-up bound, and the reset/rebind semantics.
+`experiments/wgsl-validate.js` follows the ladder into the θ twin, so the
+movement-parity contract is still pinned by source shape.

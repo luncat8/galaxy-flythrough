@@ -62,6 +62,10 @@ const TRADE_FOUND_ROUTE = 'rgba(250, 205, 130, 0.30)';
 const TRADE_SHIP = 'rgba(180, 245, 230, 0.85)';
 const TRADE_FOUND_SHIP = 'rgba(255, 215, 130, 0.95)';
 const TRADE_SHIP_PX = 2.2;
+// The kpc→ly bridge the hull's chord rule needs (trade.js's LY_PER_KPC): a hull
+// sits at its flown distance along the chord, and the overlay must place the dot
+// with the same number the network booked the voyage with.
+const TRADE_LY_PER_KPC = 3261.563673;
 // Cargo colours, in economy.js's resource order (ore … art): earthy bulk, then
 // a colder hue for information and a warm one for art. The last entry is
 // "empty" — a hull between loads.
@@ -347,6 +351,20 @@ function labelRecords() {
 	return (typeof window !== 'undefined' && window.StarRecord) || null;
 }
 
+function labelTradeLib() {
+	const lib = (typeof window !== 'undefined' && window.TradeLib) ? window.TradeLib : null;
+	return lib && lib.shipFraction ? lib : null;
+}
+
+// A hull's chord fraction, from the network's own rule (§9.4). A harness that
+// does not load TradeLib (a canvas stub) gets the time fraction, which is the
+// same number while the chord holds — the two only differ when the sky moves.
+function tradeShipFraction(net, ship, time, chordLy) {
+	const lib = labelTradeLib();
+	if (lib) return lib.shipFraction(net, ship, time, chordLy);
+	let f = ship.arrive > ship.depart ? (time - ship.depart) / (ship.arrive - ship.depart) : 1;
+	return f < 0 ? 0 : (f > 1 ? 1 : f);
+}
 function labelOrbit() {
 	return (typeof window !== 'undefined' && window.OrbitLib) || null;
 }
@@ -645,6 +663,18 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	// birth position. Used by the trade overlay and by main.js's route
 	// re-timing, which resolves ports the same way the shader does.
 	function tradeRecordPosition(kind, index, key, out) {
+		return tradeRecordPositionAt(kind, index, key, orbitTime, out);
+	}
+
+	// The same record at an arbitrary star time — a booking that asks where the
+	// destination *will* be (trade-plan §9.3), not only where it is. Under a
+	// friction-field mask the azimuth is the tracked mirror's (§9.5): the record
+	// is registered on first sight, stepped by main.js with the frame, and
+	// integrated forward here when the caller is predicting. A record the mirror
+	// refuses (a horizon past its bound, a catch-up too long) falls through to
+	// the mask dispatch's own approximation — the birth or classic position the
+	// picker and the labels see for that star.
+	function tradeRecordPositionAt(kind, index, key, starTimeMyr, out) {
 		const info = starSource;
 		if (!info || !info.identity || !info.view || !info.blocks) return false;
 		const block = info.blocks[kind | 0];
@@ -662,16 +692,41 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		let pz = view.getFloat32(byteOffset + 8, true);
 		const orbit = labelOrbit();
 		if (orbit && orbitModel) {
-			if ((kind | 0) === 1) {
+			// A friction-field mask has no CPU azimuth for a record unless the
+			// tracked mirror carries one; with no θ the dispatch runs exactly as
+			// it did before the mirror existed (§9.5's "blind" tier).
+			let theta = -1;
+			if (orbit.engineRecordPositionTheta && orbit.getEngine
+				&& (orbit.getEngine() & orbit.ENGINE_SIMPLE) !== 0) {
+				theta = (kind | 0) === 1
+					? orbit.simpleLandmarkThetaAt(index | 0, starTimeMyr)
+					: orbit.simpleTrackThetaAt(tradeTrackSlot(orbit, key, px, py, pz, packed), starTimeMyr);
+			}
+			if (theta >= 0 && (kind | 0) === 1) {
+				orbit.engineLandmarkPositionTheta(out, index | 0, px, py, pz,
+					packed & 0xFF, starTimeMyr, orbitModel, theta);
+			} else if (theta >= 0) {
+				orbit.engineRecordPositionTheta(out, px, py, pz, packed, starTimeMyr, orbitModel, theta);
+			} else if ((kind | 0) === 1) {
 				orbit.engineLandmarkPosition(out, index | 0, px, py, pz,
-					packed & 0xFF, orbitTime, orbitModel);
+					packed & 0xFF, starTimeMyr, orbitModel);
 			} else {
-				orbit.engineRecordPosition(out, px, py, pz, packed, orbitTime, orbitModel);
+				orbit.engineRecordPosition(out, px, py, pz, packed, starTimeMyr, orbitModel);
 			}
 			px = out[0]; py = out[1]; pz = out[2];
 		}
 		out[0] = px; out[1] = py; out[2] = pz;
 		return true;
+	}
+
+	// The tracked-mirror slot for a record, registering it on first sight. The
+	// registration is what the mirror's catch-up pays for; an already-tracked
+	// record costs a probe.
+	function tradeTrackSlot(orbit, key, x, y, z, packed) {
+		if (!orbit.simpleTrackReady || !orbit.simpleTrackReady()) return -1;
+		const slot = orbit.simpleTrackSlotOf(key >>> 0);
+		if (slot >= 0) return slot;
+		return orbit.simpleTrackStar(key >>> 0, x, y, z, packed, orbitModel, orbitTime);
 	}
 
 	function drawTrade(camera, width, height) {
@@ -780,9 +835,12 @@ function createLabelLayer(canvas, landmarks, constellations) {
 			ctx.arc(scratch[0], scratch[1], TRADE_PORT_CORE_PX, 0, Math.PI * 2);
 		}
 		ctx.fill();
-		// The hulls, interpolated between the two ends on the trade clock and
-		// coloured by what they carry — except a founder, which is amber and
-		// hollow: it is the one voyage that changes the map.
+		// The hulls, placed by the network's own chord rule and coloured by what
+		// they carry — except a founder, which is amber and hollow: it is the one
+		// voyage that changes the map. The rule is trade.js's, not a second copy
+		// here: a hull sits at its flown distance along the *current* chord, so a
+		// route the sky is stretching holds the dot back instead of dragging it
+		// forward, and a diverted hull runs its chord backwards (§9.4).
 		for (let i = 0; i < tradeNet.shipCount; i++) {
 			const ship = tradeNet.ships[i];
 			const founding = ship.state === TRADE_SHIP_FOUNDING;
@@ -794,13 +852,14 @@ function createLabelLayer(canvas, landmarks, constellations) {
 			if (!from || !to) continue;
 			if (!tradeRecordPosition(from.ref.kind | 0, from.ref.index | 0, from.key, tradeA)) continue;
 			if (!tradeRecordPosition(to.ref.kind | 0, to.ref.index | 0, to.key, tradeB)) continue;
-			let f = ship.arrive > ship.depart ? (tradeTime - ship.depart) / (ship.arrive - ship.depart) : 1;
-			if (f < 0) f = 0;
-			if (f > 1) f = 1;
+			const chordLy = Math.sqrt((tradeA[0] - tradeB[0]) ** 2 + (tradeA[1] - tradeB[1]) ** 2
+				+ (tradeA[2] - tradeB[2]) ** 2) * TRADE_LY_PER_KPC;
+			const f = tradeShipFraction(tradeNet, ship, tradeTime, chordLy);
+			const u = ship.legFrom + (ship.legTo - ship.legFrom) * f;
 			if (!labelCoords.projectToScreen(viewProj,
-				tradeA[0] + (tradeB[0] - tradeA[0]) * f,
-				tradeA[1] + (tradeB[1] - tradeA[1]) * f,
-				tradeA[2] + (tradeB[2] - tradeA[2]) * f,
+				tradeA[0] + (tradeB[0] - tradeA[0]) * u,
+				tradeA[1] + (tradeB[1] - tradeA[1]) * u,
+				tradeA[2] + (tradeB[2] - tradeA[2]) * u,
 				cam[0], cam[1], cam[2], width, height, scratch)) continue;
 			ctx.beginPath();
 			ctx.arc(scratch[0], scratch[1], founding ? TRADE_SHIP_PX + 1 : TRADE_SHIP_PX, 0, Math.PI * 2);
@@ -859,7 +918,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		return {
 		resize, draw, setSelected, setOrbitState, setStarSource, setSelectedKeys,
 		toggleConstellations, setConstellations, constellationsVisible, setEnabled,
-		setShipChrome, setTradeOverlay, tradeRecordPosition,
+		setShipChrome, setTradeOverlay, tradeRecordPosition, tradeRecordPositionAt,
 	};
 }
 

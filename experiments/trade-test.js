@@ -637,8 +637,10 @@ function exactLiveEvents(net) {
 	const ports = [0, 1].map(i => ({ key: info.identity[i], ref: { kind: 0, index: i },
 		colony: { abandoned: 0, pop: i === 0 ? 900 : 0, capacity: 900, growth: i === 0 ? 0.01 : -0.01 } }));
 	const net = { portCount: 2, shipCount: 1, candidateCount: 0, ports, candidates: [],
-		ships: [{ state: trade.SHIP_SAILING, from: 0, to: 1, depart: 0, arrive: 100, cargo: 0 }] };
+		ships: [{ state: trade.SHIP_SAILING, from: 0, to: 1, depart: 0, arrive: 100, cargo: 0,
+			hull: 0, legFrom: 0, legTo: 1, returning: 0 }] };
 	const matrix = new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+	const refOut3 = [0, 0, 0];
 	const camera = { cameraPos: [0, 0, 0], buildViewProj: () => matrix };
 	layer.setTradeOverlay(net, 25, true);
 	layer.draw(camera, 100, 100);
@@ -647,6 +649,62 @@ function exactLiveEvents(net) {
 	const hull = arcs.find(a => a[2] === 2.2);
 	check('the trade hull interpolates between drawn endpoints, not at the destination',
 		hull && near(hull[0], 42.5) && near(hull[1], 50));
+	// trade.8 (§9.4): the place on the chord is the flown distance over the
+	// *current* chord, and a diverted hull runs the chord backwards.
+	const ruleShip = { hull: 0, depart: 0, arrive: 100, legFrom: 0, legTo: 1, returning: 0 };
+	const fracHalf = trade.shipFraction(null, ruleShip, 25, 50);
+	const fracGrown = trade.shipFraction(null, ruleShip, 25, 100);
+	const fracBack = trade.shipFraction(null, { hull: 0, depart: 0, arrive: 100, legFrom: 1, legTo: 0 }, 25, 100);
+	check('a hull sits at its flown distance on the current chord, and a divert reverses it',
+		near(fracHalf, 1) && near(fracGrown, 0.5) && near(fracBack, 0.5),
+		{ fracHalf, fracGrown, fracBack });
+
+	// trade.8 (§9.5): under the friction field a field record's drawn azimuth is
+	// the tracked mirror's — the same law the compute pass steps — not the birth
+	// position the plain dispatch has to fall back to.
+	{
+		const orbitReal = require('../src/math/orbit.js');
+		const savedEngine = orbitReal.getEngine();
+		orbitReal.setEngine('simple');
+		orbitReal.simpleTrackReset(galaxy.MILKY_WAY, 0);
+		const realWindow = global.window;
+		global.window = { StarRecord: records, OrbitLib: orbitReal };
+		const layerReal = layerLib.createLabelLayer(canvas, { count: 0 }, { LINES: [] });
+		layerReal.setEnabled(false);
+		layerReal.resize(100, 100, 1);
+		const viewReal = new DataView(new ArrayBuffer(records.RECORD_BYTES));
+		viewReal.setFloat32(0, 8.0, true);       // a field star at the Sun's radius
+		viewReal.setFloat32(4, 0.3, true);
+		viewReal.setFloat32(8, 0, true);
+		const packedReal = (5 | (128 << 8) | 128 << 16 | (0x53 << 24)) >>> 0;
+		viewReal.setUint32(12, packedReal, true);
+		const infoReal = { view: viewReal, identity: new Uint32Array([99]), total: 1, blocks: [{ offset: 0 }] };
+		layerReal.setStarSource(infoReal);
+		layerReal.setOrbitState(galaxy.MILKY_WAY, 0);
+		const at0 = [0, 0, 0], at40 = [0, 0, 0], birth = [8.0, 0.3, 0];
+		const ok0 = layerReal.tradeRecordPosition(0, 0, 99, at0);
+		// Forty Myr of the friction field, in frame-sized steps, exactly as the
+		// page's loop dispatches them.
+		for (let f = 0; f < 400; f++) orbitReal.simpleTrackStep(0.1, (f + 1) * 0.1);
+		layerReal.setOrbitState(galaxy.MILKY_WAY, 40);
+		const ok40 = layerReal.tradeRecordPosition(0, 0, 99, at40);
+		const slot = orbitReal.simpleTrackSlotOf(99);
+		const theta = slot >= 0 ? orbitReal.simpleTrackThetaAt(slot, 40) : -1;
+		// The layer reads the record's birth bytes, which are f32: the reference
+		// must take the same values or the comparison is measuring the float
+		// rounding, not the mirror.
+		orbitReal.engineRecordPositionTheta(refOut3, viewReal.getFloat32(0, true), viewReal.getFloat32(4, true),
+			viewReal.getFloat32(8, true), packedReal, 40, galaxy.MILKY_WAY, theta);
+		const mirrored = slot >= 0 && near(at40[0], refOut3[0]) && near(at40[1], refOut3[1]) && near(at40[2], refOut3[2]);
+		const moved = Math.hypot(at40[0] - birth[0], at40[1] - birth[1], at40[2] - birth[2]) > 0.05;
+		check('under the friction field the trade resolver reads the tracked mirror, not the birth sky',
+			ok0 && ok40 && slot >= 0 && mirrored && moved,
+			{ slot, moved: +moved, d: +Math.hypot(at40[0] - birth[0], at40[1] - birth[1], at40[2] - birth[2]).toFixed(3),
+				at: at40.map(v => +v.toFixed(6)), ref: refOut3.map(v => +v.toFixed(6)), theta });
+		layerReal.setEnabled(false);
+		global.window = realWindow;
+		orbitReal.setEngine(savedEngine);
+	}
 	// trade.3: a port's ring is its population, coloured by its growth sign, so
 	// the overlay shows a colony growing instead of N identical rings; a free
 	// candidate world is a small cross, so the frontier is visible as one.
@@ -1092,6 +1150,377 @@ function exactLiveEvents(net) {
 	check('the youngest colony fills visibly instead of standing still',
 		youngPort >= 0 && youngNow > youngFrac + 0.05, { youngFrac: +youngFrac.toFixed(2), youngNow: +youngNow.toFixed(2) });
 	check('the freighters are on the routes while the network grows', sailingAt20 >= 1, { sailingAt20 });
+}
+
+// --- 17. Live geometry: the network in a moving sky (trade-plan §9) --------
+//
+// The fixture is the shipping dispatch, not a hand-rolled rotation: landmarks
+// ride engineLandmarkPosition and field records engineRecordPosition, exactly
+// as the page's label layer resolves them, so the numbers a booking reads here
+// are the numbers it reads on screen. `skyTime` is the star time the resolvers
+// answer at; the test moves it and calls refreshGeometry the way main.js does.
+{
+	const orbit = require('../src/math/orbit.js');
+	const starRecord = require('../src/math/star-record.js');
+	const savedEngine = orbit.getEngine();
+	orbit.setEngine('classic');
+	const LY = trade.LY_PER_KPC;
+
+	// The moving sky: birth data in, drawn positions out.
+	const birthOf = new Map();
+	function register(kind, index, key, x, y, z, packed, colorIndex) {
+		birthOf.set(key >>> 0, { kind, index, x, y, z, packed, colorIndex });
+	}
+	let skyTime = 0;
+	function skyAt(ref, t, out) {
+		const b = birthOf.get(ref.key >>> 0);
+		if (!b) return false;
+		if (b.kind === planets.BLOCK_LANDMARK) {
+			orbit.engineLandmarkPosition(out, b.index, b.x, b.y, b.z, b.colorIndex, t, model);
+		} else {
+			orbit.engineRecordPosition(out, b.x, b.y, b.z, b.packed, t, model);
+		}
+		return true;
+	}
+	function skyLive(ref, out) { return skyAt(ref, skyTime, out); }
+	function skyPredict(ref, t, out) { return skyAt(ref, t, out); }
+
+	// A network over the named sky with the moving resolvers wired. The birth
+	// table is filled from the network itself, which is what the page's star
+	// buffer holds: a port's record, at its birth position.
+	function seedMoving(count) {
+		skyTime = 0;
+		birthOf.clear();
+		const net = trade.createNetwork({ seed: 4242, modelSeed: galaxy.DEFAULT_SEED,
+			livePosition: skyLive, predictPosition: skyPredict });
+		for (let i = 0; i < count; i++) {
+			landmarkRef(i, scratchRef);
+			register(planets.BLOCK_LANDMARK, i, scratchRef.key, scratchRef.x, scratchRef.y, scratchRef.z, 0, scratchRef.colorIndex);
+			ctx.name = landmarks.ENTRIES[i].name;
+			planets.generateSystem(scratchRef, ctx, record);
+			trade.discoverSystem(net, scratchRef, ctx.name, record, net.time);
+		}
+		trade.finalize(net);
+		for (let i = 0; i < net.portCount; i++) {
+			const p = net.ports[i];
+			register(p.ref.kind, p.ref.index, p.key, p.x, p.y, p.z, 0, p.ref.colorIndex | 0);
+		}
+		for (let i = 0; i < net.candidateCount; i++) {
+			const site = net.candidates[i].site;
+			const fam = orbit.familyFromColorIndex(site.ref.colorIndex | 0);
+			const packed = (5 | (128 << 8) | (((fam << 3) | starRecord.FLAG_VISIBLE) << 16) | ((i * 37 & 255) << 24)) >>> 0;
+			register(planets.BLOCK_FIELD, site.ref.index, site.key, site.x, site.y, site.z, packed, 0);
+		}
+		return net;
+	}
+	const p1 = [0, 0, 0], p2 = [0, 0, 0];
+
+	// 17.1 The frozen tier: a resolver that is never asked changes nothing.
+	{
+		const withSky = seedMoving(24);
+		const plain = seedNetwork(24);
+		trade.refreshGeometry(withSky, 0, 0, 0);
+		for (let f = 0; f < 600; f++) {
+			trade.step(withSky, 100 / 60, 256);
+			trade.step(plain, 100 / 60, 256);
+		}
+		let samePop = true;
+		for (let i = 0; i < withSky.portCount && samePop; i++) {
+			if (Math.abs(withSky.ports[i].colony.pop - plain.ports[i].colony.pop) > 1e-9) samePop = false;
+		}
+		check('a frozen sky is skipped: the network is bit-identical to the birth-frame one',
+			samePop && withSky.portCount === plain.portCount && withSky.founded === plain.founded
+			&& withSky.shipCount === plain.shipCount
+			&& Math.abs(withSky.delivered - plain.delivered) < 1e-9
+			&& withSky.diverted === 0 && withSky.geom.moving === 0,
+			{ ports: withSky.portCount, founded: withSky.founded, delivered: +withSky.delivered.toFixed(1), samePop });
+	}
+
+	// 17.2 The cache holds the drawn positions, and the rates say how fast.
+	{
+		const net = seedMoving(24);
+		trade.refreshGeometry(net, 0, 1, 1e-3);
+		skyTime = 60;
+		trade.refreshGeometry(net, 60, 1, 1e-3);
+		let worstLive = 0, worstBirth = 0, moved = 0;
+		for (let i = 0; i < net.portCount; i++) {
+			for (let j = i + 1; j < net.portCount; j++) {
+				const live = trade.endpointDistanceLy(net, trade.END_PORT, i, trade.END_PORT, j);
+				skyAt(net.ports[i].ref, skyTime, p1);
+				skyAt(net.ports[j].ref, skyTime, p2);
+				const expect = Math.hypot((p1[0] - p2[0]) * LY, (p1[1] - p2[1]) * LY, (p1[2] - p2[2]) * LY);
+				worstLive = Math.max(worstLive, Math.abs(live - expect));
+				const birth = Math.hypot((net.ports[i].x - net.ports[j].x) * LY,
+					(net.ports[i].y - net.ports[j].y) * LY, (net.ports[i].z - net.ports[j].z) * LY);
+				worstBirth = Math.max(worstBirth, Math.abs(live - birth));
+				if (Math.abs(live - birth) > 5) moved += 1;
+			}
+		}
+		check('the geometry cache is the drawn sky, not the birth one', worstLive < 1e-6 && moved > 0,
+			{ worstLive: +worstLive.toExponential(1), moved });
+		check('and it has moved measurably by 60 Myr of star time', worstBirth > 50, { worstBirth: +worstBirth.toFixed(0) });
+		let rated = 0;
+		for (let i = 0; i < net.portCount * 3; i++) if (net.geom.portVel[i] !== 0) rated += 1;
+		check('the cached rates are the refresh difference, so a reachability test needs no resolver call',
+			net.geom.hasRate === 1 && rated > 0 && net.geom.blind === 0, { hasRate: net.geom.hasRate, rated });
+	}
+
+	// 17.3 The booking is the intercept, measured between the two endpoints at
+	// arrival: a rigidly rotating sky does not stretch a leg, shear does.
+	{
+		const net = seedMoving(24);
+		trade.refreshGeometry(net, 0, 1, 1e-3);
+		skyTime = 60;
+		trade.refreshGeometry(net, 60, 1, 1e-3);
+		let checked = 0, worstSelf = 0, worstPlan = 0;
+		for (let i = 0; i < net.portCount && checked < 6; i++) {
+			for (let j = 0; j < net.portCount && checked < 6; j++) {
+				if (i === j) continue;
+				const book = trade.bookLeg(net, trade.END_PORT, i, trade.END_PORT, j, 0,
+					trade.MAX_LEG_LY, trade.createLegPlan());
+				if (!book.reachable) continue;
+				const plan = trade.planLeg(net, trade.END_PORT, i, trade.END_PORT, j, 0,
+					trade.MAX_LEG_LY, trade.createLegPlan());
+				// Both endpoints at the arrival instant: the distance the hull's
+				// leg is measured as.
+				skyAt(net.ports[i].ref, skyTime + book.years * net.geom.myrPerYear, p1);
+				skyAt(net.ports[j].ref, skyTime + book.years * net.geom.myrPerYear, p2);
+				const sep = Math.hypot((p1[0] - p2[0]) * LY, (p1[1] - p2[1]) * LY, (p1[2] - p2[2]) * LY);
+				worstSelf = Math.max(worstSelf, Math.abs(sep - book.ly));
+				worstPlan = Math.max(worstPlan, Math.abs(plan.ly - book.ly));
+				checked += 1;
+			}
+		}
+		check('a booked leg is the intercept: the endpoints\' separation at arrival is the flown distance',
+			checked >= 4 && worstSelf < 2.0, { checked, worstSelf: +worstSelf.toFixed(2) });
+		check('the exact solve and the linear plan agree where the sky is locally linear',
+			worstPlan < 200, { worstPlan: +worstPlan.toFixed(1) });
+		// The page's default 1 Myr/s star clock, and a leg that leaves now.
+		const legNow = trade.bookLeg(net, trade.END_PORT, 0, trade.END_PORT, 1, 0,
+			trade.MAX_LEG_LY, trade.createLegPlan());
+		check('the booking used the predictor while the sky moves', legNow.predicted === 1, { predicted: legNow.predicted });
+		trade.refreshGeometry(net, 60, 0, 0);
+		const planFrozen = trade.planLeg(net, trade.END_PORT, 0, trade.END_PORT, 1, 0,
+			trade.MAX_LEG_LY, trade.createLegPlan());
+		const birth0 = Math.hypot((net.ports[0].x - net.ports[1].x) * LY,
+			(net.ports[0].y - net.ports[1].y) * LY, (net.ports[0].z - net.ports[1].z) * LY);
+		check('a frozen refresh falls back to the birth leg — the numbers the old network used',
+			Math.abs(planFrozen.ly - birth0) < 1e-6 && planFrozen.predicted === 0, { birth: +birth0.toFixed(0) });
+	}
+
+	// 17.4 Refusals: past the cap, and receding faster than the hull flies.
+	{
+		const net = seedMoving(24);
+		trade.refreshGeometry(net, 0, 1, 1e-3);
+		skyTime = 400;
+		trade.refreshGeometry(net, 400, 1, 1e-3);
+		let far = 0, reachableFar = 0;
+		for (let i = 0; i < net.portCount; i++) {
+			for (let j = 0; j < net.portCount; j++) {
+				if (i === j) continue;
+				if (trade.endpointDistanceLy(net, trade.END_PORT, i, trade.END_PORT, j) <= trade.MAX_LEG_LY) continue;
+				far += 1;
+				if (trade.planLeg(net, trade.END_PORT, i, trade.END_PORT, j, 0,
+					trade.MAX_LEG_LY, trade.createLegPlan()).reachable) reachableFar += 1;
+			}
+		}
+		check('a partner the sky has pulled past MAX_LEG_LY is refused, not booked',
+			far > 0 && reachableFar === 0, { far, reachableFar });
+		// The generation hull flies 30 ly per star-Myr at the synced pace: slower
+		// than some of the shear, so a receding pair has no meeting point at all.
+		// Inside the cap, on a sky that has moved but not torn everything apart,
+		// and with the star clock ten times faster than the synced default: the
+		// shear then outruns the generation hull, which is the case this refusal
+		// exists for (at the synced rate the 60 Myr shear is ~15 ly per star-Myr
+		// and the 30 ly per star-Myr hull still catches it).
+		skyTime = 50;
+		trade.refreshGeometry(net, 50, 1, 1e-2);
+		skyTime = 60;
+		trade.refreshGeometry(net, 60, 1, 1e-2);
+		trade.setGenerationMode(1, net);
+		let outrun = 0, insideCapRefused = 0;
+		for (let i = 0; i < net.portCount; i++) {
+			for (let j = 0; j < net.portCount; j++) {
+				if (i === j) continue;
+				const plan = trade.planLeg(net, trade.END_PORT, i, trade.END_PORT, j, 2,
+					trade.MAX_LEG_LY, trade.createLegPlan());
+				if (!plan.outrun) continue;
+				outrun += 1;
+				if (trade.endpointDistanceLy(net, trade.END_PORT, i, trade.END_PORT, j) <= trade.MAX_LEG_LY
+					&& !plan.reachable) insideCapRefused += 1;
+			}
+		}
+		trade.setGenerationMode(0, net);
+		check('a partner the hull cannot outrun is refused for that reason, inside the cap',
+			outrun > 0 && insideCapRefused > 0, { outrun, insideCapRefused });
+	}
+
+	// 17.5 A voyage the shear tears past the cap turns around (§9.4), and a
+	// founding hull brings its volunteers home.
+	{
+		const net = seedMoving(24);
+		let maint = 0;
+		const fps = 60, rateY = 100, myrPerYear = 0.01;
+		skyTime = 0;
+		trade.refreshGeometry(net, 0, 1, myrPerYear);
+		// Fly the network until it has grown and some hull is under way.
+		for (let f = 0; f < 60 * fps; f++) {
+			skyTime += 1 / fps;
+			trade.step(net, rateY / fps, 256);
+			maint += 1 / fps;
+			if (maint >= 0.5) {
+				maint = 0;
+				trade.refreshGeometry(net, skyTime, 1, myrPerYear);
+				trade.retimeRoutes(net);
+			}
+		}
+		const before = net.diverted;
+		// Jump the sky 900 Myr: whatever is in flight is now on a torn route.
+		skyTime = 900;
+		trade.refreshGeometry(net, skyTime, 1, myrPerYear);
+		trade.retimeRoutes(net);
+		// The most-flown hull that turned: the interesting case is one that had
+		// already covered part of its chord, not one that turned in its own port.
+		let turned = -1, turnedMost = -1;
+		for (let i = 0; i < net.shipCount; i++) {
+			const sh = net.ships[i];
+			if (!sh.returning || (sh.state !== trade.SHIP_SAILING && sh.state !== trade.SHIP_FOUNDING)) continue;
+			if (sh.legFrom > turnedMost) { turnedMost = sh.legFrom; turned = i; }
+		}
+		const ship = turned >= 0 ? net.ships[turned] : null;
+		check('a leg torn past its cap is turned around, not chased',
+			net.diverted > before && ship !== null && ship.legTo === 0,
+			{ diverted: net.diverted - before, turned });
+		// The way home is the part of the chord already flown, not the part that
+		// was still ahead: a hull turned at 30 % is a 30 % flight back.
+		let homeOk = false, homeDetail = null;
+		if (ship) {
+			const kindB = ship.state === trade.SHIP_FOUNDING ? trade.END_CANDIDATE : trade.END_PORT;
+			const indexB = ship.state === trade.SHIP_FOUNDING ? ship.candidate : ship.to;
+			const chordNow = trade.endpointDistanceLy(net, trade.END_PORT, ship.from, kindB, indexB);
+			const expect = Math.max(trade.MIN_LEG_YEARS, ship.legFrom * chordNow / trade.HULLS[ship.hull].lyPerYear);
+			const booked = ship.arrive - ship.depart;
+			homeOk = Math.abs(booked - expect) <= Math.max(2, expect * 0.05);
+			homeDetail = { u: +ship.legFrom.toFixed(3), chord: +chordNow.toFixed(0), expect: +expect.toFixed(0), booked: +booked.toFixed(0) };
+		}
+		check('the diverted hull is booked home over the part of the chord it has flown', homeOk, homeDetail);
+		// It docks at its origin: the port's arrival counter takes it, and a hull
+		// that immediately loads again inside a 20-year step still counts.
+		const homeArrivals = ship ? net.ports[ship.from].arrivals : 0;
+		let landed = 0;
+		for (let f = 0; f < 200000 && ship && !landed; f++) {
+			trade.step(net, 20, 256);
+			if (net.ports[ship.from].arrivals > homeArrivals) landed = 1;
+		}
+		check('the diverted hull docks at the port it turned back to',
+			ship !== null && landed === 1,
+			{ landed, from: ship ? ship.from : -1, arrivals: ship ? net.ports[ship.from].arrivals : -1 });
+
+		// A founding hull: the same shear, and the party is refunded at home.
+		const net2 = seedMoving(24);
+		skyTime = 0;
+		trade.refreshGeometry(net2, 0, 1, 1e-3);
+		const launch = trade.launchBest(net2, 0);
+		const founder = launch.ok ? net2.ships[launch.ship] : null;
+		const people = founder ? founder.amount * trade.POP_PER_COLONIST_UNIT : 0;
+		skyTime = 900;
+		trade.refreshGeometry(net2, skyTime, 1, 1e-3);
+		trade.retimeRoutes(net2);
+		const wasTurned = founder ? founder.returning : -1;
+		let popBefore = 0, popAfter = 0, stateAfter = -1, amountAfter = -1;
+		if (founder && wasTurned === 1) {
+			const arriveAt = founder.arrive;
+			trade.step(net2, Math.max(0, arriveAt - net2.time - 1e-6), 4096);
+			// Settle the source to the instant *before* the arrival: the jump
+			// across the event is then the refund alone, not the thirty thousand
+			// years of growth the arrival's own settle would add on top of it.
+			const home = net2.ports[launch.source].colony;
+			economy.settleColony(home, arriveAt - 1e-6);
+			popBefore = home.pop;
+			// Just past the arrival, before the load event half a year later.
+			trade.step(net2, 1e-3, 4096);
+			popAfter = home.pop;
+			stateAfter = founder.state;
+			amountAfter = founder.amount;
+		}
+		check('a diverted founding wave is refunded to the population it was drawn from',
+			launch.ok === 1 && wasTurned === 1 && net2.founded === 0
+			&& stateAfter === trade.SHIP_DOCKED && amountAfter === 0
+			&& Math.abs(popAfter - popBefore - people) < people * 0.02,
+			{ launch: launch.ok, wasTurned, founded: net2.founded, people: +people.toFixed(2),
+				jump: +(popAfter - popBefore).toFixed(2), stateAfter, amountAfter });
+	}
+
+	// 17.6 The frontier scan widens its coarse gate with the shear, and caps it.
+	{
+		const net = seedMoving(24);
+		const cap = trade.MAX_FOUND_LY / trade.LY_PER_KPC * 7;
+		trade.refreshGeometry(net, 0, 0, 0);
+		const frozen = trade.frontierStretchKpc(net, model, 8);
+		trade.refreshGeometry(net, 10, 1, 1e-3);
+		const at10 = trade.frontierStretchKpc(net, model, 8);
+		trade.refreshGeometry(net, 60, 1, 1e-3);
+		const at60 = trade.frontierStretchKpc(net, model, 8);
+		trade.refreshGeometry(net, 100000, 1, 1e-3);
+		const capped = trade.frontierStretchKpc(net, model, 8);
+		check('the frontier pre-gate opens with the moving sky, never past its cap',
+			frozen === 0 && at10 > 0 && at60 >= at10 && capped <= cap + 1e-9,
+			{ frozen, at10: +at10.toFixed(2), at60: +at60.toFixed(2), capped: +capped.toFixed(2) });
+		// The epicyclic spread of this model is kpc-scale and does not need the
+		// clock at all; a cold disc isolates the shear term, which must grow.
+		const cold = galaxy.createGalaxy({ type: model.type, seed: 1 });
+		cold.dynamics.sigmaThin = 0.002;
+		trade.refreshGeometry(net, 5, 1, 1e-3);
+		const cold5 = trade.frontierStretchKpc(net, cold, 8);
+		trade.refreshGeometry(net, 50, 1, 1e-3);
+		const cold50 = trade.frontierStretchKpc(net, cold, 8);
+		check('with a cold disc the growth between the two clocks is the shear term',
+			cold5 > 0 && cold50 - cold5 > 0.15, { cold5: +cold5.toFixed(3), cold50: +cold50.toFixed(3) });
+	}
+
+	// 17.7 A long run in a moving sky: the fleet stays honest and the network
+	// keeps trading.
+	{
+		const net = seedMoving(24);
+		const rateY = 100, myrPerYear = 0.01;   // 1 Myr/s of sky, 100 y/s of trade
+		skyTime = 0;
+		trade.refreshGeometry(net, 0, 1, myrPerYear);
+		let maint = 0;
+		const fps = 60, seconds = 120;
+		let deliveredAt60 = 0;
+		for (let f = 0; f < seconds * fps; f++) {
+			skyTime += 1 / fps;
+			trade.step(net, rateY / fps, 256);
+			maint += 1 / fps;
+			if (maint >= 0.5) {
+				maint = 0;
+				trade.refreshGeometry(net, skyTime, 1, myrPerYear);
+				trade.retimeRoutes(net);
+			}
+			if (f === 60 * fps) deliveredAt60 = net.delivered;
+		}
+		// Every hull in flight is inside the give-up margin of its cap.
+		let worst = 0, over = 0, sailing = 0;
+		for (let i = 0; i < net.shipCount; i++) {
+			const sh = net.ships[i];
+			if (sh.state !== trade.SHIP_SAILING && sh.state !== trade.SHIP_FOUNDING) continue;
+			if (sh.from < 0) continue;
+			sailing += 1;
+			const kindB = sh.state === trade.SHIP_FOUNDING ? trade.END_CANDIDATE : trade.END_PORT;
+			const indexB = sh.state === trade.SHIP_FOUNDING ? sh.candidate : sh.to;
+			if (indexB < 0) continue;
+			const ly = trade.endpointDistanceLy(net, trade.END_PORT, sh.from, kindB, indexB);
+			const cap = sh.state === trade.SHIP_FOUNDING ? trade.MAX_FOUND_LY : trade.MAX_LEG_LY;
+			if (ly > cap * trade.DIVERT_FACTOR * 1.05) over += 1;
+			if (ly > worst) worst = ly;
+		}
+		check('120 s of shearing sky: no hull is left on a leg past the give-up margin',
+			over === 0 && sailing > 0, { sailing, over, worstLy: +worst.toFixed(0) });
+		check('the network still trades and still grows while the sky moves',
+			net.delivered > 0 && net.delivered > deliveredAt60 && net.portCount > 4 && net.founded > 0,
+			{ delivered: Math.round(net.delivered), at60: Math.round(deliveredAt60), ports: net.portCount, founded: net.founded });
+	}
+	orbit.setEngine(savedEngine);
 }
 
 // --- Summary --------------------------------------------------------------

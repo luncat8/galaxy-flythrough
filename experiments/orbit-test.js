@@ -1576,6 +1576,146 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 	orbit.setApocenterForce(savedForce);
 }
 
+// --- 13. The tracked mirror and the theta ladder (trade-plan §9.5) ---------
+//
+// The friction field's azimuth for a *record* lives in the GPU compute buffer and
+// the CPU never reads it back, so the trade network carries its own small mirror
+// of the same integrator. These pins are the contract: the theta-taking dispatch
+// is the plain dispatch when no theta is supplied, the mirror is the shipping law
+// stepped in lockstep, a late-tracked record catches up inside a measured bound,
+// and a horizon nobody can pay for is refused rather than coarsened.
+{
+	const records = require('../src/math/star-record.js');
+	const M = galaxy.MILKY_WAY;
+	const savedEngine = orbit.getEngine();
+	const fr = Math.fround;
+	const c = M.centre;
+	// One disc record at the Sun's radius, epoch-flagged like a drawn field star.
+	const bx = c.x + 8.0, by = c.y + 0.3, bz = c.z + 0.05;
+	const jitter = orbit.encodeJitter(5, 8);
+	const packed = (5 | (128 << 8) | (((orbit.FAMILY_DISC << 3) | records.FLAG_VISIBLE) << 24 >>> 8) | (jitter << 24)) >>> 0;
+	const out = new Float64Array(3), ref = new Float64Array(3);
+
+	// The plain ladder is unchanged by the theta-taking twin: same positions for
+	// every mask, and the truthy "approximated" report under a simple bit.
+	orbit.setApocenterShare(0.5);
+	orbit.setApocenterForce(orbit.APOCENTER_ECC_MAX);
+	let ladderWorst = 0, ladderReport = 0;
+	for (let mask = 1; mask <= 7; mask++) {
+		orbit.setEngine(mask);
+		for (const t of [0, 40]) {
+			const approximated = orbit.engineRecordPosition(out, bx, by, bz, packed, t, M);
+			orbit.engineRecordPositionTheta(ref, bx, by, bz, packed, t, M, -1);
+			ladderWorst = Math.max(ladderWorst, dist3(out, ref));
+			if ((mask & orbit.ENGINE_SIMPLE) && approximated !== true) ladderReport += 1;
+			if (!(mask & orbit.ENGINE_SIMPLE) && approximated !== false) ladderReport += 1;
+		}
+	}
+	check('the theta ladder with no theta is the plain dispatch, for every mask and both reports',
+		ladderWorst === 0 && ladderReport === 0, { ladderWorst, ladderReport });
+
+	// A supplied theta *is* the reconstruction the vertex stage runs.
+	orbit.setEngine('simple');
+	const theta = 1.234;
+	orbit.engineRecordPositionTheta(out, bx, by, bz, packed, 40, M, theta);
+	orbit.simplePositionFromTheta(ref, theta, bx, by, bz, jitter, orbit.FAMILY_DISC, orbit.simpleEccMax(M), M);
+	check('a supplied theta moves the simple lane to the vertex stage\'s own reconstruction',
+		dist3(out, ref) < 1e-12 && orbit.engineRecordPositionTheta(out, bx, by, bz, packed, 40, M, theta) === false,
+		{ dist: dist3(out, ref) });
+
+	// Lockstep: the mirror is the shipping law on the frame's own dt.
+	orbit.simpleTrackReset(M, 0);
+	const slot = orbit.simpleTrackStar(4242, bx, by, bz, packed, M, 0);
+	const P = orbit.simpleDerived(M, {});
+	const eccU = orbit.simpleEccOf(jitter), peri = orbit.simplePeriOf(jitter);
+	const r0 = Math.hypot(bx - c.x, by - c.y);
+	let th = Math.atan2(by - c.y, bx - c.x), tNow = 0;
+	const dtFrame = 1 / 60;
+	for (let f = 0; f < 60 * 30; f++) {
+		th = orbit.simpleStepTheta(th, r0, eccU, peri, orbit.FAMILY_DISC, P,
+			orbit.simplePatternPhase(M, tNow), dtFrame, bz);
+		tNow += dtFrame;
+		orbit.simpleTrackStep(dtFrame, tNow);
+	}
+	const lockstep = Math.abs(orbit.simpleTrackTheta(slot) - orbit.wrapAngle(th));
+	check('the tracked mirror steps with the frame exactly as the shipping law does (f64 lockstep)',
+		slot === 0 && orbit.simpleTrackSlotOf(4242) === 0 && orbit.simpleTrackSlotOf(7) === -1
+		&& orbit.simpleTrackCount() === 1 && lockstep < 1e-9,
+		{ lockstep: +lockstep.toExponential(1), count: orbit.simpleTrackCount() });
+
+	// Prediction: the same integrator run ahead, and a refusal past the bound.
+	const predicted = orbit.simpleTrackThetaAt(slot, tNow + 2);
+	let thRef = orbit.simpleTrackTheta(slot), tRef = tNow;
+	for (let f = 0; f < 120; f++) {
+		thRef = orbit.simpleStepTheta(thRef, r0, eccU, peri, orbit.FAMILY_DISC, P,
+			orbit.simplePatternPhase(M, tRef), dtFrame, bz);
+		tRef += dtFrame;
+	}
+	check('a tracked prediction is the integrator run ahead (sub-ly at 8 kpc over 2 Myr)',
+		predicted >= 0 && Math.abs(predicted - orbit.wrapAngle(thRef)) < 5e-4,
+		{ predicted: +predicted.toFixed(6), reference: +orbit.wrapAngle(thRef).toFixed(6) });
+	const far = orbit.simpleTrackThetaAt(slot, tNow + 1e6);
+	check('a horizon past the mirror\'s bound is refused, not coarsened', far === -1, { far });
+
+	// A record tracked late catches up from the seed instant in bounded chunks.
+	orbit.simpleTrackReset(M, 0);
+	const first = orbit.simpleTrackStar(11, bx, by, bz, packed, M, 0);
+	let t2 = 0;
+	while (t2 < 60 - 1e-9) { orbit.simpleTrackStep(dtFrame, Math.min(60, t2 + dtFrame)); t2 += dtFrame; }
+	const lateX = c.x - 5, lateY = c.y + 4, lateZ = c.z - 0.1;
+	const latePacked = (7 | (100 << 8) | (((orbit.FAMILY_PATTERN << 3) | records.FLAG_VISIBLE | records.FLAG_EPOCH) << 16) | (0x2a << 24)) >>> 0;
+	const late = orbit.simpleTrackStar(77, lateX, lateY, lateZ, latePacked, M, 60);
+	const lateR0 = Math.hypot(lateX - c.x, lateY - c.y);
+	let thLate = Math.atan2(lateY - c.y, lateX - c.x), t3 = 0;
+	while (t3 < 60 - 1e-9) {
+		const h = Math.min(dtFrame, 60 - t3);
+		thLate = orbit.simpleStepTheta(thLate, lateR0, orbit.simpleEccOf(0x2a), orbit.simplePeriOf(0x2a),
+			orbit.FAMILY_PATTERN, P, orbit.simplePatternPhase(M, t3), h, lateZ);
+		t3 += h;
+	}
+	const catchUp = Math.abs(orbit.simpleTrackTheta(late) - orbit.wrapAngle(thLate));
+	check('a late-tracked record catches up from the seed instant inside the measured bound',
+		first === 0 && late === 1 && catchUp < 2e-3,
+		{ dTheta: +catchUp.toExponential(2), ly: +(catchUp * lateR0 * 3261.563673).toFixed(1) });
+
+	// Reset drops the azimuths; a rebind keeps them (an epoch change is not a
+	// re-seed).
+	const thetaBeforeRebind = orbit.simpleTrackTheta(late);
+	orbit.simpleTrackRebind(M);
+	const kept = orbit.simpleTrackTheta(late) === thetaBeforeRebind && orbit.simpleTrackCount() === 2;
+	orbit.simpleTrackReset(M, 90);
+	check('an epoch rebind keeps the azimuths and a reset drops them',
+		kept && orbit.simpleTrackCount() === 0 && orbit.simpleTrackSlotOf(11) === -1
+		&& orbit.simpleTrackTime() === 90, { kept, count: orbit.simpleTrackCount() });
+
+	// The landmark mirror predicts the same way, and refuses the same bound.
+	const lmBirth = Float64Array.of(c.x + 8.178, 0, 0.1, c.x + 3.5, 2.2, -0.15);
+	const lmColor = Uint8Array.of(5, 1);
+	orbit.simpleLandmarksInit(lmBirth, lmColor, 2, M, 0);
+	const lmR0 = Math.hypot(lmBirth[0] - c.x, lmBirth[1] - c.y);
+	let tLm = 0;
+	while (tLm < 20 - 1e-12) {
+		const h = Math.min(dtFrame, 20 - tLm);
+		orbit.simpleLandmarksStep(h, tLm + h);
+		tLm += h;
+	}
+	const lmNow = orbit.simpleLandmarkTheta(0);
+	const lmNext = orbit.simpleLandmarkThetaAt(0, 20.5);
+	let thNext = lmNow, tNext = 20;
+	while (tNext < 20.5 - 1e-12) {
+		const h = Math.min(dtFrame, 20.5 - tNext);
+		thNext = orbit.simpleStepTheta(thNext, lmR0, orbit.simpleEccOf(0), orbit.simplePeriOf(0),
+			orbit.familyFromColorIndex(lmColor[0]), P, orbit.simplePatternPhase(M, tNext), h, lmBirth[2]);
+		tNext += h;
+	}
+	check('the landmark mirror has a time, predicts from it, and refuses a horizon past its bound',
+		Math.abs(orbit.simpleLandmarkTime() - 20) < 1e-9
+		&& lmNext >= 0 && Math.abs(lmNext - orbit.wrapAngle(thNext)) < 1e-6
+		&& orbit.simpleLandmarkThetaAt(0, 1e6) === -1,
+		{ time: +orbit.simpleLandmarkTime().toFixed(4), d: +Math.abs(lmNext - orbit.wrapAngle(thNext)).toExponential(1) });
+	orbit.setEngine(savedEngine);
+}
+
 // --- Report --------------------------------------------------------------
 {
 	let passed = 0, failed = 0;

@@ -846,8 +846,19 @@ function apocenterPosition(out, x, y, z, family, phase, amplitude, time, model) 
 // (bx, by, bz) is the birth position, whose f32 bits the apocenter selection
 // hashes exactly as the GPU hashes the record's f32 position.
 function engineLandmarkPosition(out, i, bx, by, bz, colorIndex, time, model) {
+	return engineLandmarkPositionTheta(out, i, bx, by, bz, colorIndex, time, model, -1);
+}
+
+// The same ladder with an externally supplied friction-field azimuth: `theta >= 0`
+// replaces the landmark mirror's own number, which is how a caller asks for the
+// position at a *predicted* star time (trade-plan §9.5) instead of the mirror's
+// current one. `theta < 0` is the ladder above, unchanged — the parity contract
+// of movement-parity-plan lives here and in one place only.
+function engineLandmarkPositionTheta(out, i, bx, by, bz, colorIndex, time, model, theta) {
 	const family = familyFromColorIndex(colorIndex);
-	if ((engine & ENGINE_SIMPLE) && simpleLandmarksReady()) simpleLandmarkPosition(out, i);
+	if ((engine & ENGINE_SIMPLE) && theta >= 0) {
+		simplePositionFromTheta(out, theta, bx, by, bz, 0, family, simpleEccMax(model), model);
+	} else if ((engine & ENGINE_SIMPLE) && simpleLandmarksReady()) simpleLandmarkPosition(out, i);
 	else if (engine & ENGINE_CLASSIC) orbitPosition(out, bx, by, bz, family, 0, 0, time, model);
 	else {
 		out[0] = bx; out[1] = by; out[2] = bz;
@@ -872,6 +883,15 @@ function engineLandmarkPosition(out, i, bx, by, bz, colorIndex, time, model) {
 // The readout line uses the report instead of inferring from the engine name.
 // Returns true when the position was approximated.
 function engineRecordPosition(out, x, y, z, packed, time, model) {
+	return engineRecordPositionTheta(out, x, y, z, packed, time, model, -1);
+}
+
+// The record twin with an externally supplied friction-field azimuth: the tracked
+// mirror's θ (trade-plan §9.5) or its forward-integrated prediction. `theta >= 0`
+// makes the simple lane exact for that record — the reconstruction is the vertex
+// stage's own `simplePositionFromTheta` — and the returned report says so.
+// `theta < 0` is the dispatch above, approximation and all.
+function engineRecordPositionTheta(out, x, y, z, packed, time, model, theta) {
 	const orbit = readOrbit(packed);
 	// The epoch map comes first, on the birth vector, exactly as in the vertex
 	// stage: a record drawn at the field's base epoch is placed in the running
@@ -889,7 +909,13 @@ function engineRecordPosition(out, x, y, z, packed, time, model) {
 		epochMap(epochMapScratch, x, y, z, orbit.family, flags, model);
 		x = epochMapScratch[0]; y = epochMapScratch[1]; z = epochMapScratch[2];
 	}
-	if (engine & ENGINE_CLASSIC) orbitPosition(out, x, y, z, orbit.family, orbit.phase, orbit.amplitude, time, model);
+	if ((engine & ENGINE_SIMPLE) && theta >= 0) {
+		// The cluster split already happened above, so the reconstruction gets
+		// the family without its cluster bit and the offset is added back at the
+		// end — the same structure the other lanes run in.
+		simplePositionFromTheta(out, theta, x, y, z, (packed >>> 24) & 255,
+			orbit.family, simpleEccMax(model), model);
+	} else if (engine & ENGINE_CLASSIC) orbitPosition(out, x, y, z, orbit.family, orbit.phase, orbit.amplitude, time, model);
 	else {
 		out[0] = x; out[1] = y; out[2] = z;
 	}
@@ -899,7 +925,7 @@ function engineRecordPosition(out, x, y, z, packed, time, model) {
 		apocenterPosition(out, x, y, z, orbit.family, orbit.phase, orbit.amplitude, time, model);
 	}
 	out[0] += offX; out[1] += offY; out[2] += offZ;
-	return (engine & ENGINE_SIMPLE) !== 0;
+	return (engine & ENGINE_SIMPLE) !== 0 && theta < 0;
 }
 
 // --- Drawn velocity (ui.15) ------------------------------------------------
@@ -1244,7 +1270,11 @@ let simpleLMFam = null;
 let simpleLMCount = 0;
 let simpleLMModel = null;
 let simpleLMEcc = 0;
-function simpleLandmarksInit(positions, colorIndices, count, model) {
+// The star time the mirror's azimuths are valid at. The GPU seeds its θ buffer
+// at the same instant main.js re-initialises this mirror, so the pair share one
+// clock; a prediction (§9.5) integrates forward from it.
+let simpleLMTime = 0;
+function simpleLandmarksInit(positions, colorIndices, count, model, starTimeMyr) {
 	if (!simpleLMTheta || simpleLMTheta.length < count) {
 		simpleLMTheta = new Float64Array(count);
 		simpleLMR0 = new Float64Array(count);
@@ -1268,6 +1298,7 @@ function simpleLandmarksInit(positions, colorIndices, count, model) {
 	simpleLMCount = count;
 	simpleLMModel = model || null;
 	simpleLMEcc = simpleEccMax(model);
+	simpleLMTime = Number(starTimeMyr) > 0 ? Number(starTimeMyr) : 0;
 	return count;
 }
 // An age rebuild of the same galaxy keeps the landmark azimuths: the named
@@ -1294,8 +1325,58 @@ function simpleLandmarksStep(dtStar, starTimeMyr) {
 		for (let s = 0; s < sub.n; s++) th += simpleOmega(th, r0, eccU, peri, fam, P, patternPhase, simpleLMZ[i]) * sub.h;
 		simpleLMTheta[i] = wrapAngle(th);
 	}
+	simpleLMTime = starTimeMyr;
 	return simpleLMCount;
 }
+
+// --- The friction field, integrated forward (trade-plan §9.5) ----------------
+//
+// Both CPU mirrors of the friction field answer "where is this star *now*".
+// A route booking has to ask "where will it be when the hull gets there", and
+// the field is an ODE, so the answer is the same integrator run ahead on
+// scratch state: one chunk per simulated frame, the pattern phase held inside
+// the chunk exactly as the GPU dispatch holds it, and every chunk split by the
+// shipping substep rule. A horizon that costs more than `substepsMax` is
+// refused (-1) rather than coarsened — a caller with no prediction falls back
+// to pursuit (§9.4), which needs no horizon at all.
+const SIMPLE_PREDICT_SUBSTEPS = 96;
+const predictChunkScratch = { n: 0, h: 0 };
+
+// The substeps a horizon costs, under the chunking the integrator uses.
+function simpleHorizonCost(fromTime, toTime, model) {
+	const omegaMax = simpleOmegaMax(simpleDerived(model, simpleScratch));
+	return (toTime - fromTime) * omegaMax / SIMPLE_SUBSTEP_DTHETA;
+}
+
+function simpleIntegrateTo(theta, r0, eccU, peri, family, z, model, fromTime, toTime, substepsMax) {
+	if (!(toTime > fromTime)) return theta;
+	// One derive per call: it is the cost of a short prediction, and the caller
+	// pays it per endpoint per iteration.
+	const P = simpleDerived(model, simpleScratch);
+	const omegaMax = simpleOmegaMax(P);
+	if ((toTime - fromTime) * omegaMax / SIMPLE_SUBSTEP_DTHETA > substepsMax) return -1;
+	const chunk = SIMPLE_SUBSTEP_DTHETA * SIMPLE_SUBSTEP_MAX / omegaMax;
+	let t = fromTime, th = theta;
+	while (t < toTime - 1e-12) {
+		const h = toTime - t < chunk ? toTime - t : chunk;
+		const sub = simpleSubsteps(h, omegaMax, predictChunkScratch);
+		const phase = simplePatternPhase(model, t);
+		for (let s = 0; s < sub.n; s++) th += simpleOmega(th, r0, eccU, peri, family, P, phase, z) * sub.h;
+		t += h;
+	}
+	return wrapAngle(th);
+}
+
+// The landmark mirror's azimuth at a future star time, or -1 when the horizon
+// exceeds the bound above (or lies in the past — the mirror does not run back).
+function simpleLandmarkThetaAt(i, starTimeMyr) {
+	if (!simpleLandmarksReady() || i >= simpleLMCount) return -1;
+	if (!(starTimeMyr > simpleLMTime)) return starTimeMyr === simpleLMTime ? simpleLMTheta[i] : -1;
+	return simpleIntegrateTo(simpleLMTheta[i], simpleLMR0[i], simpleEccOf(0), simplePeriOf(0),
+		simpleLMFam[i], simpleLMZ[i], simpleLMModel, simpleLMTime, starTimeMyr, SIMPLE_PREDICT_SUBSTEPS);
+}
+function simpleLandmarkTime() { return simpleLMTime; }
+
 function simpleLandmarkPosition(out, i) {
 	const c = simpleLMModel.centre;
 	const th = simpleLMTheta[i];
@@ -1313,6 +1394,187 @@ function simpleLandmarkPosition(out, i) {
 	out[1] = c.y + rho * (pl.e0y * ct + pl.e1y * st);
 	out[2] = c.z + rho * (pl.e0z * ct + pl.e1z * st) + pl.carry;
 	return out;
+}
+
+// --- The tracked mirror (trade-plan §9.5) -----------------------------------
+//
+// The landmark mirror above covers the named sky; a field record's azimuth
+// lives only in the GPU's θ buffer and the CPU never reads it back, so under a
+// friction-field mask `engineRecordPosition` has no position for it at all.
+// The trade network needs one — it measures distances between ports, and most
+// ports are field stars — so it carries a second, small mirror: one θ per
+// *tracked* record, bounded at the network's own endpoint count (64 ports plus
+// a 256-slot candidate pool).
+//
+// It is the same law and the same clock as the compute dispatch: seeded from
+// the placed birth azimuth at the instant the renderer seeds its θ buffer
+// (`simpleTrackReset`, called wherever main.js re-seeds the CPU simple state),
+// stepped once per frame with that frame's own `dtStar` and the shipping
+// substep rule, and reconstructed through the vertex stage's own
+// `simplePositionFromTheta`. A record first tracked *after* the seed instant —
+// a frontier candidate found at T = 50 Myr — catches up by integrating from it
+// in substep-bounded chunks instead of the frame-sized ones the GPU used; the
+// measured bound of that difference is trade-plan §9.5.
+const SIMPLE_TRACK_MAX = 512;
+const TRACK_MAP_SIZE = 1024;
+const TRACK_MAP_MASK = TRACK_MAP_SIZE - 1;
+// A catch-up or a prediction is refused rather than coarsened: an azimuth the
+// integrator cannot reach within this many substeps is no azimuth at all, and
+// the caller falls back to the honest "blind" tier. 8 192 substeps is ~2 700 Myr
+// of horizon on the Milky Way's own rate table, far past any leg the network
+// books, and bounded so a late-tracked star cannot stall a frame.
+const TRACK_CATCHUP_SUBSTEPS = 8192;
+let trkTheta = null, trkR0 = null, trkZ = null;
+let trkKey = null, trkJit = null, trkFam = null;
+let trkMapKey = null, trkMapSlot = null, trkMapUsed = null;
+let trkCount = 0;
+let trkModel = null;
+let trkSeedTime = 0;
+let trkTime = 0;
+
+function simpleTrackAlloc() {
+	if (trkTheta) return;
+	trkTheta = new Float64Array(SIMPLE_TRACK_MAX);
+	trkR0 = new Float64Array(SIMPLE_TRACK_MAX);
+	trkZ = new Float64Array(SIMPLE_TRACK_MAX);
+	trkKey = new Uint32Array(SIMPLE_TRACK_MAX);
+	trkJit = new Uint8Array(SIMPLE_TRACK_MAX);
+	trkFam = new Uint8Array(SIMPLE_TRACK_MAX);
+	trkMapKey = new Uint32Array(TRACK_MAP_SIZE);
+	trkMapSlot = new Int32Array(TRACK_MAP_SIZE);
+	trkMapUsed = new Uint8Array(TRACK_MAP_SIZE);
+}
+
+// The renderer's θ buffer was just seeded from the birth field: drop every
+// tracked azimuth and take this instant as the one a catch-up integrates from.
+function simpleTrackReset(model, starTimeMyr) {
+	simpleTrackAlloc();
+	trkCount = 0;
+	trkMapUsed.fill(0);
+	trkModel = model || null;
+	trkSeedTime = Number(starTimeMyr) > 0 ? Number(starTimeMyr) : 0;
+	trkTime = trkSeedTime;
+	return trkCount;
+}
+
+// An epoch change of the *same* field re-derives the law but keeps the
+// azimuths, exactly as the θ buffer does (the landmark mirror's rebind).
+function simpleTrackRebind(model) {
+	if (!trkModel || !model) return 0;
+	trkModel = model;
+	return trkCount;
+}
+function simpleTrackReady() { return trkModel !== null; }
+function simpleTrackCount() { return trkCount; }
+function simpleTrackTime() { return trkTime; }
+
+function trackMapHash(key) { return (Math.imul(key, 0x9e3779b1) >>> 0) & TRACK_MAP_MASK; }
+function trackMapProbe(key, forInsert) {
+	let slot = trackMapHash(key);
+	let guard = 0;
+	while (trkMapUsed[slot] && trkMapKey[slot] !== key) {
+		if (++guard > TRACK_MAP_SIZE) return -1;
+		slot = (slot + 1) & TRACK_MAP_MASK;
+	}
+	if (trkMapUsed[slot]) return trkMapSlot[slot];
+	if (!forInsert) return -1;
+	trkMapUsed[slot] = 1;
+	trkMapKey[slot] = key;
+	return -2 - slot;                 // the empty home, tagged so it is not a slot
+}
+function simpleTrackSlotOf(key) {
+	if (!trkCount) return -1;
+	const home = trackMapProbe(key >>> 0, false);
+	return home >= 0 ? home : -1;
+}
+
+// One tracked azimuth integrated forward: the shared integrator with the
+// entry's own step inputs, which are the compute kernel's.
+function trackIntegrateFrom(theta, slot, fromTime, toTime, substepsMax) {
+	const jit = trkJit[slot];
+	return simpleIntegrateTo(theta, trkR0[slot], simpleEccOf(jit), simplePeriOf(jit),
+		trkFam[slot], trkZ[slot], trkModel, fromTime, toTime, substepsMax);
+}
+
+// Track one record: its raw birth position and packed word, exactly what the
+// compute kernel reads. Returns the slot, or -1 when the mirror is full or the
+// catch-up from the seed instant would cost more than TRACK_CATCHUP_SUBSTEPS —
+// a caller with no slot has no friction-field position and says so, and the
+// network falls back to pursuit on the birth coordinates (§9.4).
+function simpleTrackStar(key, x, y, z, packed, model, starTimeMyr) {
+	if (!trkModel) simpleTrackReset(model, starTimeMyr);
+	const k = key >>> 0;
+	const home = trackMapProbe(k, true);
+	if (home >= 0) return home;
+	if (home === -1 || trkCount >= SIMPLE_TRACK_MAX) return -1;
+	if (trkTime > trkSeedTime
+		&& simpleHorizonCost(trkSeedTime, trkTime, model) > TRACK_CATCHUP_SUBSTEPS) return -1;
+	const slot = trkCount++;
+	trkMapSlot[-2 - home] = slot;
+	trkKey[slot] = k;
+	const flags = (packed >>> 16) & 255;
+	trkJit[slot] = (packed >>> 24) & 255;
+	trkFam[slot] = familyFromFlags(flags);
+	// The kernel steps on the raw record position (cluster-centred, *not*
+	// epoch-mapped) and the vertex stage reconstructs from the placed one, so
+	// the mirror keeps the kernel's inputs and the caller keeps the birth bytes.
+	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
+	let px = x, py = y, pz = z;
+	if ((flags & records.FLAG_CLUSTER) !== 0) {
+		px = clusterCentreCoord(x); py = clusterCentreCoord(y); pz = clusterCentreCoord(z);
+	}
+	trkR0[slot] = Math.hypot(px - c.x, py - c.y);
+	trkZ[slot] = pz;
+	// Seeded from the *placed* birth azimuth, as the renderer's seedThetaRange
+	// is, then caught up to the mirror's own clock.
+	let sx = px, sy = py;
+	if ((flags & records.FLAG_EPOCH) !== 0 && solveEpochParams(model).active) {
+		epochMap(epochMapScratch, px, py, pz, trkFam[slot], flags, model);
+		sx = epochMapScratch[0]; sy = epochMapScratch[1];
+	}
+	const theta0 = wrapAngle(Math.atan2(sy - c.y, sx - c.x));
+	trkTheta[slot] = trkTime > trkSeedTime
+		? trackIntegrateFrom(theta0, slot, trkSeedTime, trkTime, TRACK_CATCHUP_SUBSTEPS)
+		: theta0;
+	return slot;
+}
+
+// Advance every tracked azimuth by the frame's own dt, with the dispatch's own
+// substep rule: a per-frame call is lockstep with the GPU, so the difference is
+// its f32 against this f64. Idempotent in the time — a resolver that already
+// pulled the mirror to this instant leaves the step nothing to do.
+function simpleTrackStep(dtStar, starTimeMyr) {
+	if (!simpleTrackReady() || trkCount === 0) return 0;
+	if (!(dtStar > 0) || !(starTimeMyr > trkTime)) return 0;
+	// The frame's own delta in lockstep; a step the mirror missed is taken as
+	// the gap it left, so the mirror is never behind the clock it answers for.
+	const dt = starTimeMyr - trkTime;
+	const P = simpleDerived(trkModel, simpleScratch);
+	const patternPhase = simplePatternPhase(trkModel, starTimeMyr);
+	const sub = simpleSubsteps(dt, simpleOmegaMax(P), simpleStepScratch);
+	for (let i = 0; i < trkCount; i++) {
+		const jit = trkJit[i], eccU = simpleEccOf(jit), peri = simplePeriOf(jit);
+		let th = trkTheta[i];
+		for (let s = 0; s < sub.n; s++) {
+			th += simpleOmega(th, trkR0[i], eccU, peri, trkFam[i], P, patternPhase, trkZ[i]) * sub.h;
+		}
+		trkTheta[i] = wrapAngle(th);
+	}
+	trkTime = starTimeMyr;
+	return trkCount;
+}
+
+function simpleTrackTheta(slot) { return trkTheta[slot]; }
+
+// The tracked azimuth at a star time at or ahead of the mirror's own: the
+// current one when they agree, the forward integral when the caller is
+// predicting, and -1 when the horizon is past SIMPLE_PREDICT_SUBSTEPS of work
+// or lies behind the mirror (which does not run backwards).
+function simpleTrackThetaAt(slot, starTimeMyr) {
+	if (slot < 0 || slot >= trkCount) return -1;
+	if (starTimeMyr === trkTime) return trkTheta[slot];
+	if (!(starTimeMyr > trkTime)) return -1;
+	return trackIntegrateFrom(trkTheta[slot], slot, trkTime, starTimeMyr, SIMPLE_PREDICT_SUBSTEPS);
 }
 
 // Compute uniform, 20 floats, packed per frame while the simple engine runs:
@@ -1393,11 +1655,16 @@ const OrbitAPI = {
 	setEngine, getEngine, engineName,
 	setApocenterShare, setApocenterForce, getApocenterShare, getApocenterForce,
 	apocenterSelector, apocenterSelected, engineLandmarkPosition, engineRecordPosition,
+	engineLandmarkPositionTheta, engineRecordPositionTheta,
 	DRAWN_VELOCITY_BASELINE_MYR, engineRecordVelocity,
 	simpleArmed, simpleSigma, simpleEccMax, simpleOmega, simpleEccOf, simplePeriOf,
 	simpleDerived, simpleOmegaMax, simpleSubsteps, wrapAngle, simplePatternPhase,
 	simpleStepTheta, simplePositionFromTheta,
 	simpleLandmarksInit, simpleLandmarksRebind, simpleLandmarkTheta, simpleLandmarksReady, simpleLandmarksStep, simpleLandmarkPosition,
+	SIMPLE_PREDICT_SUBSTEPS, simpleLandmarkThetaAt, simpleLandmarkTime,
+	SIMPLE_TRACK_MAX, TRACK_CATCHUP_SUBSTEPS,
+	simpleTrackReset, simpleTrackRebind, simpleTrackReady, simpleTrackCount, simpleTrackTime,
+	simpleTrackSlotOf, simpleTrackStar, simpleTrackStep, simpleTrackTheta, simpleTrackThetaAt,
 	packSimpleParams, packEngineVec,
 	setEpochBase, getEpochBase, solveEpochParams, epochMap, packEpochParams, EPOCH_FLOATS,
 };

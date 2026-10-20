@@ -1,6 +1,6 @@
 {
-  "total": 114,
-  "passed": 114,
+  "total": 134,
+  "passed": 134,
   "failed": 0,
   "checks": [
     {
@@ -359,6 +359,35 @@
       "pass": true
     },
     {
+      "name": "a hull sits at its flown distance on the current chord, and a divert reverses it",
+      "pass": true,
+      "detail": {
+        "fracHalf": 1,
+        "fracGrown": 0.5,
+        "fracBack": 0.5
+      }
+    },
+    {
+      "name": "under the friction field the trade resolver reads the tracked mirror, not the birth sky",
+      "pass": true,
+      "detail": {
+        "slot": 0,
+        "moved": 1,
+        "d": 0.211,
+        "at": [
+          7.926025,
+          0.497123,
+          0
+        ],
+        "ref": [
+          7.926025,
+          0.497123,
+          0
+        ],
+        "theta": 3.1034208367657024
+      }
+    },
+    {
       "name": "a port ring scales with its colony and a frontier world is marked",
       "pass": true,
       "detail": {
@@ -649,6 +678,161 @@
       "pass": true,
       "detail": {
         "sailingAt20": 40
+      }
+    },
+    {
+      "name": "a frozen sky is skipped: the network is bit-identical to the birth-frame one",
+      "pass": true,
+      "detail": {
+        "ports": 9,
+        "founded": 5,
+        "delivered": 26029.7,
+        "samePop": true
+      }
+    },
+    {
+      "name": "the geometry cache is the drawn sky, not the birth one",
+      "pass": true,
+      "detail": {
+        "worstLive": 5.7e-14,
+        "moved": 6
+      }
+    },
+    {
+      "name": "and it has moved measurably by 60 Myr of star time",
+      "pass": true,
+      "detail": {
+        "worstBirth": 1225
+      }
+    },
+    {
+      "name": "the cached rates are the refresh difference, so a reachability test needs no resolver call",
+      "pass": true,
+      "detail": {
+        "hasRate": 1,
+        "rated": 11
+      }
+    },
+    {
+      "name": "a booked leg is the intercept: the endpoints' separation at arrival is the flown distance",
+      "pass": true,
+      "detail": {
+        "checked": 6,
+        "worstSelf": 0.01
+      }
+    },
+    {
+      "name": "the exact solve and the linear plan agree where the sky is locally linear",
+      "pass": true,
+      "detail": {
+        "worstPlan": 10.4
+      }
+    },
+    {
+      "name": "the booking used the predictor while the sky moves",
+      "pass": true,
+      "detail": {
+        "predicted": 1
+      }
+    },
+    {
+      "name": "a frozen refresh falls back to the birth leg — the numbers the old network used",
+      "pass": true,
+      "detail": {
+        "birth": 308
+      }
+    },
+    {
+      "name": "a partner the sky has pulled past MAX_LEG_LY is refused, not booked",
+      "pass": true,
+      "detail": {
+        "far": 6,
+        "reachableFar": 0
+      }
+    },
+    {
+      "name": "a partner the hull cannot outrun is refused for that reason, inside the cap",
+      "pass": true,
+      "detail": {
+        "outrun": 6,
+        "insideCapRefused": 6
+      }
+    },
+    {
+      "name": "a leg torn past its cap is turned around, not chased",
+      "pass": true,
+      "detail": {
+        "diverted": 12,
+        "turned": 15
+      }
+    },
+    {
+      "name": "the diverted hull is booked home over the part of the chord it has flown",
+      "pass": true,
+      "detail": {
+        "u": 0.173,
+        "chord": 13634,
+        "expect": 525,
+        "booked": 526
+      }
+    },
+    {
+      "name": "the diverted hull docks at the port it turned back to",
+      "pass": true,
+      "detail": {
+        "landed": 1,
+        "from": 5,
+        "arrivals": 113
+      }
+    },
+    {
+      "name": "a diverted founding wave is refunded to the population it was drawn from",
+      "pass": true,
+      "detail": {
+        "launch": 1,
+        "wasTurned": 1,
+        "founded": 0,
+        "people": 0.91,
+        "jump": 0.91,
+        "stateAfter": 0,
+        "amountAfter": 0
+      }
+    },
+    {
+      "name": "the frontier pre-gate opens with the moving sky, never past its cap",
+      "pass": true,
+      "detail": {
+        "frozen": 0,
+        "at10": 1.29,
+        "at60": 1.29,
+        "capped": 1.29
+      }
+    },
+    {
+      "name": "with a cold disc the growth between the two clocks is the shear term",
+      "pass": true,
+      "detail": {
+        "cold5": 0.227,
+        "cold50": 0.46
+      }
+    },
+    {
+      "name": "120 s of shearing sky: no hull is left on a leg past the give-up margin",
+      "pass": true,
+      "detail": {
+        "sailing": 14,
+        "over": 0,
+        "worstLy": 2593
+      }
+    },
+    {
+      "name": "the network still trades and still grows while the sky moves",
+      "pass": true,
+      "detail": {
+        "delivered": 352443,
+        "at60": 181002,
+        "ports": 12,
+        "founded": 8
       }
     }
   ]

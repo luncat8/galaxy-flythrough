@@ -351,7 +351,12 @@ async function boot() {
                 landmarkColors[i] = landmarks.ENTRIES[i].colorIndex;
         }
         function initSimpleLandmarks() {
-                window.OrbitLib.simpleLandmarksInit(landmarkPos, landmarkColors, landmarks.count, model);
+                window.OrbitLib.simpleLandmarksInit(landmarkPos, landmarkColors, landmarks.count, model, starTimeMyr);
+                // The friction field's tracked mirror (trade-plan §9.5) is seeded at
+                // the same instant the renderer seeds its theta buffer: this is that
+                // instant for the CPU, so every caller of this function is also a
+                // mirror reset and there is no second list to keep in step.
+                window.OrbitLib.simpleTrackReset(model, starTimeMyr);
         }
         renderer.setEngine(window.Presets.parseEngineList(params.engine));
         initSimpleLandmarks();
@@ -2404,6 +2409,11 @@ async function boot() {
                 model = next;
                 renderer.regenerate(model);
                 if (!window.OrbitLib.simpleLandmarksRebind(model)) initSimpleLandmarks();
+                // A re-drawn field re-seeds the theta buffer from the new birth
+                // positions, so the trade mirror's azimuths are stale by exactly
+                // that re-draw (the landmark rebind above only survives because a
+                // landmark's birth data never changes).
+                window.OrbitLib.simpleTrackReset(model, starTimeMyr);
                 briefModel = null;   // the brief re-reads the star from the new draw
                 // The set survives per key (plan §3.2) but not per slot: every
                 // member is resolved against the field that was just drawn.
@@ -4019,6 +4029,9 @@ async function boot() {
         // free of 96 route projections.
         const TRADE_MAINT_SECONDS = 0.5;
         let tradeMaintWall = 0;
+        // Set while the trade clock is paused, so the first frame after it
+        // resumes refreshes the geometry before the drain reads it (§9.1).
+        let tradeWasPaused = 0;
 
         function tradeRateIndexFor(years) {
                 let best = 0, bestDist = Infinity;
@@ -4059,6 +4072,24 @@ async function boot() {
                 return labels.tradeRecordPosition(ref.kind | 0, ref.index | 0, ref.key >>> 0, out);
         }
 
+        // ...and the same record at a *future* star time: the booking solve's
+        // predictor (trade-plan §9.3). Closed-form masks answer exactly; the
+        // friction field answers from its tracked mirror while the horizon is
+        // inside the mirror's bound, and refuses (leaving the hull in pursuit)
+        // beyond it. Never a fabricated number.
+        function tradePredictPosition(ref, starTimeMyr, out) {
+                return labels.tradeRecordPositionAt(ref.kind | 0, ref.index | 0, ref.key >>> 0, starTimeMyr, out);
+        }
+
+        // The exchange rate between the two clocks, in star Myr per trade year
+        // (trade-plan §9.2): the horizon a booking may predict across. Zero when
+        // either clock is stopped, which is the app's way of saying "there is no
+        // horizon to buy" — the hull then flies pursuit and re-aims.
+        function tradeMyrPerYear(starRateMyrPerS) {
+                const tradeRate = tradeClockRate();
+                return starRateMyrPerS > 0 && tradeRate > 0 ? starRateMyrPerS / tradeRate : 0;
+        }
+
         // The start map (trade-plan §8): the named sky and the rendered field
         // nearest home, discovered nearest first, so the four seed colonies
         // and the candidate pool are the local sky. Discovery is deterministic:
@@ -4073,6 +4104,7 @@ async function boot() {
                         homeY: home.y !== undefined ? home.y : home[1],
                         homeZ: home.z !== undefined ? home.z : home[2],
                         livePosition: tradeLivePosition,
+                        predictPosition: tradePredictPosition,
                 });
                 tradeCtx.model = model;
                 tradeCtx.field = renderer.fieldBuffers();
@@ -4247,10 +4279,21 @@ async function boot() {
                 }
                 tradeLib.settleAllPorts(tradeNet, tradeNet.time);
                 const capital = homeColonyPort();
+                // The live geometry (trade-plan §9): with the sky moving, every
+                // distance in the network is a drawn one, and a route the shear has
+                // torn past its cap is turned around rather than chased. Both facts
+                // are worth a word — a silent network under a moving sky reads as a
+                // broken one.
+                const geom = tradeNet.geom;
+                const geomNote = geom.moving
+                        ? ' \u00b7 live routes' + (geom.blind > 0 ? ` (${geom.blind} blind)` : '')
+                                + (tradeNet.diverted > 0 ? ` \u00b7 ${tradeNet.diverted} turned back` : '')
+                        : '';
                 tradeState.textContent = `${tradeNet.portCount} ports \u00b7 ${tradeNet.shipCount} ships`
                         + ` \u00b7 ${tradeNet.founded} founded \u00b7 ${Math.round(tradeNet.delivered).toLocaleString()} units hauled`
                         + ` \u00b7 ${Math.round(tradeNet.time).toLocaleString()} y`
                         + tradeSyncNote()
+                        + geomNote
                         + (rateY >= 500 ? ' \u00b7 time-lapse: growth is a blink at this rate' : '');
                 let n = 0;
                 // The youngest colony is the one growth line the six largest
@@ -4770,23 +4813,42 @@ async function boot() {
                         // so) instead of dropping frames.
                         const rateY = tradeClockRate();
                         if (rateY > 0) {
+                                // A pause can last minutes of sky: the cache the first
+                                // drain after it reads has to be the sky it drains in,
+                                // not the one the pause began under (§9.1).
+                                if (tradeWasPaused) {
+                                        tradeWasPaused = 0;
+                                        tradeLib.refreshGeometry(tradeNet, starTimeMyr,
+                                                effectiveTimeRate !== 0, tradeMyrPerYear(effectiveTimeRate));
+                                }
                                 const dtTrade = rateY * Math.min(dt, 0.25);
                                 tradeLib.step(tradeNet, dtTrade, TRADE_EVENT_BUDGET);
                                 tradeMaintWall += dt;
                                 if (tradeMaintWall >= TRADE_MAINT_SECONDS) {
                                         tradeMaintWall = 0;
-                                        // In-flight voyages re-measured against the
-                                        // stars' live drawn positions: only worth
-                                        // doing while the sky actually moves.
-                                        if (dtStar > 0) tradeLib.retimeRoutes(tradeNet);
+                                        // The live-geometry cache (trade-plan §9.1): the
+                                        // drawn position and rate of every port and
+                                        // candidate, refreshed at the same 2 Hz as the
+                                        // pass that uses it. Frozen sky → a no-op, and
+                                        // the network measures its birth frame exactly
+                                        // as it did before this pass.
+                                        tradeLib.refreshGeometry(tradeNet, starTimeMyr,
+                                                effectiveTimeRate !== 0, tradeMyrPerYear(effectiveTimeRate));
+                                        // In-flight voyages re-aimed at the stars' live
+                                        // drawn positions (§9.4), and turned around when
+                                        // the sky has torn the leg past its cap: only
+                                        // worth doing while the sky actually moves.
+                                        if (dtStar !== 0) tradeLib.retimeRoutes(tradeNet);
                                         // Big colonies scan the live field for nearby
                                         // good worlds: the frontier expands without the
                                         // player inspecting anything.
-                                        const field = renderer.fieldBuffers();
+                                                const field = renderer.fieldBuffers();
                                         if (field && field.count > 0) {
                                                 tradeLib.expandFrontierFromField(tradeNet, field, model);
                                         }
                                 }
+                        } else {
+                                tradeWasPaused = 1;
                         }
                 }
                 // The pattern's phase (0.6 E4) is integrated with the frame's own
@@ -4804,6 +4866,10 @@ async function boot() {
                 // what the sprites draw. Classic ignores both.
                 if (renderer.state.engine.includes('simple') && dtStar > 0) {
                         window.OrbitLib.simpleLandmarksStep(dtStar, starTimeMyr);
+                        // ...and the trade network's tracked records with it, or the
+                        // overlay and every booking would sit where the stars were
+                        // when the engine was selected (trade-plan §9.5).
+                        window.OrbitLib.simpleTrackStep(dtStar, starTimeMyr);
                 }
                 // R puts the orbit target back on the Sun, so a stale selection would
                 // contradict it the next time the user cycles into orbit-object mode.
