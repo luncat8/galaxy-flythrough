@@ -75,6 +75,11 @@
 
 	const DOCK_YEARS = 0.5;             // unload → load
 	const WAIT_YEARS = 2;               // retry a port with no cargo
+	// A hull with nothing to carry polls. At a fast clock a 2-year poll is a
+	// thousand events a second per idle ship, and a saturated network has many
+	// idle ships: the retry interval doubles up to this ceiling and a load
+	// resets it, so a quiet network is quiet and a busy one is responsive.
+	const WAIT_YEARS_MAX = 500;
 	const TICK_YEARS = 25;              // colonisation check
 	const FIRST_LOAD_YEARS = 0.5;
 	const MAX_FOUND_LY = 300;           // colonisation range: a few centuries of flight
@@ -84,8 +89,45 @@
 	const INITIAL_SHIPS = 12;
 	const SHIPS_PER_PORT = 1.5;
 	const MAX_LEG_LY = 3000;
-	// Special trade mode: generation ships — 1 light-year per 10 000 years.
-	const GENERATION_LY_PER_YEAR = 1e-4;
+	// The capital's reach: a habitable world this close to the viewer's home is
+	// in sight from the starting orbit, so the first thing the overlay shows is
+	// a colony rather than an empty patch of sky.
+	const HOME_COLONY_LY = 20;
+	const HOME_COLONY_KPC = HOME_COLONY_LY / LY_PER_KPC;
+
+	// --- Clocks (trade-plan §6) --------------------------------------------
+	// The trade clock may ride the star clock, but the two cannot share a
+	// *year*: the network's authored cadence is tens of years per event (a
+	// 25-year tick, 150-year warehouses, an 80-year population e-folding),
+	// while the star clock runs at millions of years per second. At a 1:1
+	// exchange a 2 Myr/s sky asks the queue for 2·10⁶ years of voyages per
+	// wall second — measured at 313 ms of CPU per frame (~18 s per wall
+	// second, 51 000 events a frame), i.e. a frozen page. So the sync is a
+	// *rate*, not an identity: one trade year per
+	// 1 000 star years. The star slider's fine range then lands on the trade
+	// ladder the network is tuned against — 0.1 Myr/s is the 100 y/s default
+	// pace, 2 Myr/s is the 2 000 y/s top — and the coupling is exact over
+	// the whole fine range.
+	const SYNC_YEARS_PER_MYR = 1000;
+	// The hard ceiling on the effective clock, whatever the coupling asks
+	// for. The rate is the workload (one drained event per arrive/load), and
+	// above the ladder's top the queue costs more than a frame. The wide
+	// star range (up to 99 Myr/s) exceeds it, and the readout says so.
+	const RATE_MAX = 2000;
+	// The special mode's generation ship: 1 light-year per 1 000 years
+	// (0.1 % c). Calibrated against the synced clock's top: at 2 Myr/s the
+	// trade clock runs 2 000 y/s, so a typical 5 ly hop is 5 000 y ≈ 2.5 wall
+	// seconds. The ordinary freighter is 2 000–4 500× faster, which under a
+	// synced sky is a millisecond per hop — that is exactly the blur this
+	// mode exists to replace.
+	const GENERATION_LY_PER_YEAR = 1e-3;
+	// ...and a fleet that slow needs a matching warehouse. The colony economy
+	// is authored in years of its own throughput (a 150-year reserve, a 20-year
+	// supply buffer); with 5 000-year voyages a port would starve between two
+	// arrivals, growth would stall below the big-colony gate and the special
+	// mode would show a dying network instead of a slow one. The horizon moves
+	// to the crossing time, and nothing else about the warehouse law changes.
+	const GENERATION_RESERVE_YEARS = 5000;
 	let generationMode = 0;
 
 	// A shipment is sized to the destination's draw, not to the hold: a hold
@@ -110,7 +152,7 @@
 		return {
 		index: 0, hull: 0, hold: 0, cargo: NO_RESOURCE, amount: 0,
 		state: SHIP_DOCKED, port: -1, from: -1, to: -1, candidate: -1,
-		depart: 0, arrive: 0, leg: 0, revision: 0, trips: 0, delivered: 0, founded: 0,
+		depart: 0, arrive: 0, leg: 0, revision: 0, trips: 0, delivered: 0, founded: 0, waits: 0,
 	};
 	}
 
@@ -124,7 +166,20 @@
 		const net = {
 			seed,
 			modelSeed: options && options.modelSeed !== undefined ? options.modelSeed | 0 : seed,
+			// The viewer's home position, and the port that became the network's
+			// capital: the first habitable world found near it. Arriving at a
+			// colony with its freighters in sight is the difference between a
+			// live economy and an empty sky (trade-plan §3), and it gives H a
+			// destination that is not the Sun's empty system.
+			homeX: options && options.homeX ? +options.homeX : 0,
+			homeY: options && options.homeY ? +options.homeY : 0,
+			homeZ: options && options.homeZ ? +options.homeZ : 0,
+			capital: -1,
 			time,
+			// Trade years the clock is behind the rate it was asked for: a
+			// budget-limited drain leaves the queue due, and this is what the
+			// panel reports instead of pretending the clock kept up.
+			lag: 0,
 			queue: queueLib.createExecQueue(256),
 			portCount: 0,
 			seedPorts: SEED_PORTS,
@@ -141,6 +196,9 @@
 			lastEvent: 0,
 			lastExpedition: -1e9,
 			tickScheduled: 0,
+			// Ring cursor of the frontier scan (a field index), so repeated
+			// ticks walk the whole field instead of re-testing its head.
+			frontierCursor: 0,
 			handler: null,
 		};
 		for (let i = 0; i < MAX_PORTS; i++) net.ports.push(createPort());
@@ -207,8 +265,10 @@
 		return out;
 	}
 
+	const LEG_A = [0, 0, 0], LEG_B = [0, 0, 0];
+
 	// THE trade-clock law: a leg's length in trade years. Speed is the hull's
-	// authored `lyPerYear`, or the generation-ship crawl (1 ly per 10 kyr)
+	// authored `lyPerYear`, or the generation-ship crawl (1 ly per 1 000 y)
 	// while the special trade mode is on. Half a year is the floor so two
 	// ports at the same coordinate never produce a zero-length voyage (a
 	// zero-length event would let a ship cycle forever inside one step).
@@ -217,6 +277,16 @@
 		const speed = generationMode ? GENERATION_LY_PER_YEAR : HULLS[hullIndex].lyPerYear;
 		const years = ly / speed;
 		return years > 0.5 ? years : 0.5;
+	}
+
+	// Years of trade time per wall second, for the two ways the clock can be
+	// driven: the panel's own ladder, or the star clock through the sync rate.
+	// Zero is a real pause (and a negative star rate — the observer's fly
+	// coupling — never runs the network backwards).
+	function clockRate(ladderYears, starRateMyrPerS, synced) {
+		const years = synced ? starRateMyrPerS * SYNC_YEARS_PER_MYR : ladderYears;
+		if (!(years > 0)) return 0;
+		return years < RATE_MAX ? years : RATE_MAX;
 	}
 
 	// --- Ports and candidates ----------------------------------------------
@@ -284,8 +354,15 @@
 		// The settled fraction is a seed-map property, but the seed map is
 		// bounded: once `seedPorts` stars are settled the rest of the galaxy
 		// stays a frontier, and only expeditions found new colonies.
+		// The capital overrides the settled-fraction roll once: the first star
+		// with a real world inside HOME_COLONY_KPC of the viewer's home becomes
+		// a port whatever the hash says. Everything else is the seed map.
+		const nearHome = net.capital < 0
+			&& (ref.x - net.homeX) * (ref.x - net.homeX)
+				+ (ref.y - net.homeY) * (ref.y - net.homeY)
+				+ (ref.z - net.homeZ) * (ref.z - net.homeZ) <= HOME_COLONY_KPC * HOME_COLONY_KPC;
 		const maySettle = net.portCount < net.seedPorts
-			&& hash.hash01At(seed, TR_CH_PORT) < PORT_CHANCE;
+			&& (nearHome || hash.hash01At(seed, TR_CH_PORT) < PORT_CHANCE);
 		if (maySettle) {
 			let bestScore = -1, bestIndex = -1, bestBelt = 0;
 			for (let i = 0; i < planetCount; i++) {
@@ -301,7 +378,11 @@
 				site.x = ref.x; site.y = ref.y; site.z = ref.z;
 				site.ref = ref;
 				site.name = economy.siteName(starName || '', key, bestBelt, bestIndex);
-				if (addPort(net, site, nowYears) >= 0) added++;
+				const portIndex = addPort(net, site, nowYears);
+				if (portIndex >= 0) {
+					added++;
+					if (nearHome && net.capital < 0) net.capital = portIndex;
+				}
 			}
 			return added;
 		}
@@ -386,17 +467,28 @@
 		return net;
 	}
 
-	function pickDestination(net, from, resource, time) {
+	// Every colony settled to one instant, once. A load decision reads all
+	// ports against the same clock, so settling inside the resource loop would
+	// repeat the same exact work thirteen times; this pass is the one settle
+	// per port per decision that makes a clock jump equal many small steps.
+	function settleAllPorts(net, time) {
+		for (let i = 0; i < net.portCount; i++) {
+			const colony = net.ports[i].colony;
+			if (colony.abandoned) continue;
+			economy.settleColony(colony, time);
+		}
+	}
+
+	function pickDestination(net, from, resource) {
 		const worth = economy.RESOURCES[resource].worth;
 		let best = -1, bestScore = 0;
 		for (let i = 0; i < net.portCount; i++) {
 			if (i === from) continue;
 			const port = net.ports[i];
 			if (port.colony.abandoned) continue;
-			// The decision reads the world as it is at the event's own clock, not
-			// as its last visitor left it — the lazy settle is cheap and exact,
-			// and it is what makes a clock jump equal many small steps.
-			economy.settleColony(port.colony, time);
+			// The caller settled every port to `time` (settleAllPorts), so this
+			// reads the world as it is at the event's own clock, not as its last
+			// visitor left it.
 			const demand = economy.demandOf(port.colony, resource);
 			if (demand <= 0) continue;
 			const ly = distanceLy(net, from, i);
@@ -413,13 +505,13 @@
 	// score is the shipment's value over the distance it must fly, so a rich
 	// ore field next door beats a rare-element trickle across the arm — and a
 	// port with nothing anyone wants waits.
-	function pickExport(net, from, hold, time) {
+	function pickExport(net, from, hold) {
 		let bestResource = -1, bestDest = -1, bestAmount = 0, bestScore = 0;
 		for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
 			if (r === economy.R_PEOPLE) continue;
 			const spare = economy.exportableOf(net.ports[from].colony, r);
 			if (spare <= 0) continue;
-			const dest = pickDestination(net, from, r, time);
+			const dest = pickDestination(net, from, r);
 			if (dest < 0) continue;
 			// Never sail with more than the destination can store: the overflow
 			// would ride the hull to the next port and make every later choice
@@ -455,15 +547,10 @@
 		ship.from = ship.port;
 		ship.to = destPort;
 		ship.state = SHIP_SAILING;
+		// A hull that found work stops backing off.
+		ship.waits = 0;
 		ship.depart = time;
-		// Book the leg against the endpoints' live positions: while the star clock
-		// runs the drawn route endpoints are the stars' moved positions, so the
-		// voyage length is measured from where they are when the ship leaves.
-		const pa = [0, 0, 0], pb = [0, 0, 0];
-		positionOf(net, port.ref, port.x, port.y, port.z, pa);
-		positionOf(net, dest.ref, dest.x, dest.y, dest.z, pb);
-		const dx = pa[0] - pb[0], dy = pa[1] - pb[1], dz = pa[2] - pb[2];
-		ship.arrive = time + legYears(Math.sqrt(dx * dx + dy * dy + dz * dz), ship.hull);
+		ship.arrive = time + liveLegYears(net, port, dest, ship.hull);
 		ship.leg = ship.arrive - ship.depart;          // booked journey; speed is constant, so time fraction == distance fraction
 		ship.port = -1;
 		scheduleShip(net, ship, ship.arrive, EV_ARRIVE);
@@ -496,18 +583,22 @@
 
 	function waitAtPort(net, ship, time) {
 		ship.state = SHIP_WAITING;
-		scheduleShip(net, ship, time + WAIT_YEARS, EV_WAIT);
+		ship.waits = ship.waits ? ship.waits + 1 : 1;
+		const retries = ship.waits > 8 ? 8 : ship.waits;
+		let delay = WAIT_YEARS * (1 << retries);
+		if (delay > WAIT_YEARS_MAX) delay = WAIT_YEARS_MAX;
+		scheduleShip(net, ship, time + delay, EV_WAIT);
 	}
 
 	function loadAtPort(net, ship, time) {
 		const portIndex = ship.port;
 		if (portIndex < 0) return;
 		const port = net.ports[portIndex];
-		economy.settleColony(port.colony, time);
+		settleAllPorts(net, time);
 		if (ship.cargo !== NO_RESOURCE && ship.amount > 0) {
 			// A leftover cargo the previous port could not take: try the next
 			// destination for the same good before loading anything new.
-			const dest = pickDestination(net, portIndex, ship.cargo, time);
+			const dest = pickDestination(net, portIndex, ship.cargo);
 			if (dest >= 0) { sailTo(net, ship, dest, time); return; }
 			// Nobody has room for it. Jettison rather than deadlock the hull with
 			// a cargo that every port is already full of; the next load starts
@@ -515,7 +606,7 @@
 			ship.cargo = NO_RESOURCE;
 			ship.amount = 0;
 		}
-		const pick = pickExport(net, portIndex, ship.hold, time);
+		const pick = pickExport(net, portIndex, ship.hold);
 		if (pick.resource < 0) { waitAtPort(net, ship, time); return; }
 		const taken = economy.takeFromColony(port.colony, pick.resource, pick.amount);
 		if (taken <= 0) { waitAtPort(net, ship, time); return; }
@@ -596,16 +687,21 @@
 	// port matters — the largest colony is not always the one with a frontier,
 	// and big colonies are the ones with the surplus to send.
 	function bestExpedition(net, time) {
+		settleAllPorts(net, time);
 		let bestPort = -1, bestCandidate = -1, bestScore = 0;
+		// How far the best attempt got, so the panel can say *why* nothing
+		// launched instead of the old catch-all "no big colonies ready".
+		let big = 0, stocked = 0;
 		for (let i = 0; i < net.portCount; i++) {
 			const colony = net.ports[i].colony;
-			economy.settleColony(colony, time);
 			if (colony.abandoned) continue;
 			if (!isBigColony(colony)) continue;
+			big += 1;
 			expeditionCost(colony, EXPEDITION_COST);
 			const people = economy.exportableOf(colony, economy.R_PEOPLE);
 			if (people < EXPEDITION_COST.people) continue;
 			if (economy.exportableOf(colony, economy.R_ROBOTS) < EXPEDITION_COST.robots) continue;
+			stocked += 1;
 			const spare = people / EXPEDITION_COST.people;
 			const candidate = pickCandidate(net, i);
 			if (candidate < 0) continue;
@@ -617,33 +713,47 @@
 		EXPEDITION_SCRATCH.port = bestPort;
 		EXPEDITION_SCRATCH.candidate = bestCandidate;
 		EXPEDITION_SCRATCH.bestScore = bestScore;
+		EXPEDITION_SCRATCH.big = big;
+		EXPEDITION_SCRATCH.stocked = stocked;
+		EXPEDITION_SCRATCH.reason = bestPort >= 0 ? ''
+			: big === 0 ? 'no big colony yet'
+			: stocked === 0 ? 'no colonists or factory cores spare'
+			: 'no free world within ' + MAX_FOUND_LY + ' ly';
 		return EXPEDITION_SCRATCH;
 	}
 
-	// Preview for the Trade panel: every big colony that could launch,
-	// ranked by the same score as bestExpedition. Returns a scratch array
-	// reused by the caller — copy if kept beyond the next call.
+	// The Trade panel's colonisation block, in one pass at the readout's 4 Hz:
+	// every big colony that could launch (ranked by bestExpedition's score) and
+	// the counts that explain an empty list. The reason is the whole point — the
+	// panel used to say "no big colonies ready" whenever *anything* was missing.
 	const COLONISATION_PREVIEW = [];
+	const COLONISATION_STATUS = { big: 0, stocked: 0, candidates: 0, free: 0, founding: 0, reason: '' };
+	function colonisationStatus() {
+		return COLONISATION_STATUS;
+	}
 	function colonisationPreview(net, time, out) {
 		out = out || COLONISATION_PREVIEW;
 		out.length = 0;
+		settleAllPorts(net, time);
+		let big = 0, stocked = 0, founding = 0;
+		for (let i = 0; i < net.shipCount; i++) if (net.ships[i].state === SHIP_FOUNDING) founding += 1;
 		for (let i = 0; i < net.portCount; i++) {
 			const colony = net.ports[i].colony;
-			economy.settleColony(colony, time);
 			if (!isBigColony(colony)) continue;
+			big += 1;
 			expeditionCost(colony, EXPEDITION_COST);
 			if (economy.exportableOf(colony, economy.R_PEOPLE) < EXPEDITION_COST.people) continue;
 			if (economy.exportableOf(colony, economy.R_ROBOTS) < EXPEDITION_COST.robots) continue;
+			stocked += 1;
 			const candidate = pickCandidate(net, i);
 			if (candidate < 0) continue;
 			const site = net.candidates[candidate].site;
 			const dx = site.x - net.ports[i].x, dy = site.y - net.ports[i].y, dz = site.z - net.ports[i].z;
 			const ly = Math.sqrt(dx * dx + dy * dy + dz * dz) * LY_PER_KPC;
-			const habitat = siteHabitatScore(site);
 			out.push({
 				port: i,
 				candidate,
-				habitat,
+				habitat: siteHabitatScore(site),
 				ly,
 				score: EXPEDITION_SCRATCH.score,
 				name: site.name,
@@ -652,6 +762,21 @@
 			});
 		}
 		out.sort((a, b) => b.score - a.score);
+		let free = 0;
+		for (let i = 0; i < net.candidateCount; i++) {
+			const c = net.candidates[i];
+			if (!c.used && c.reserved < 0) free += 1;
+		}
+		COLONISATION_STATUS.big = big;
+		COLONISATION_STATUS.stocked = stocked;
+		COLONISATION_STATUS.candidates = net.candidateCount;
+		COLONISATION_STATUS.free = free;
+		COLONISATION_STATUS.founding = founding;
+		COLONISATION_STATUS.reason = out.length > 0 ? ''
+			: big === 0 ? 'no big colony yet'
+			: stocked === 0 ? 'no colonists or factory cores spare'
+			: free === 0 ? 'no free world in range'
+			: 'every big colony is waiting for the next launch window';
 		return out;
 	}
 
@@ -665,34 +790,53 @@
 	const FRONTIER_SCAN_SITE = economy.createSite();
 	const FRONTIER_SCAN_CTX = { model: null, field: null, member: null, name: '' };
 	const MAX_FOUND_KPC = MAX_FOUND_LY / LY_PER_KPC;
+	// Stars tested per frontier scan, and worlds added per scan. A ring cursor
+	// walks the field, so the pair bounds both the cost of one scan and the
+	// size of one visible step of frontier growth.
+	const FRONTIER_SCAN = 4000, FRONTIER_PER_SCAN = 4;
 	// Field-star key is the canonical starTypes seed: seed*31 + index +1.
 	function frontierFieldKey(seed, index) {
 		return ((seed * 31 + index + 1) | 0) >>> 0;
 	}
+	// Frontier scan scratch: reused per star, so a scan allocates nothing.
+	const FRONTIER_BIG = new Int32Array(MAX_PORTS);
+	const FRONTIER_BEST = economy.createSite();
+	function frontierHabitat(site, x, y, z, kind, index) {
+		site.x = x; site.y = y; site.z = z;
+		site.ref = FRONTIER_FIELD_REF;
+		site.name = economy.siteName('', site.key, kind, index);
+		return siteHabitatScore(site);
+	}
+
 	function expandFrontierFromField(net, field, model) {
 		if (!field || !model || field.count <= 0) return 0;
 		if (net.candidateCount >= MAX_CANDIDATES) return 0;
-		let added = 0;
-		const maxScan = Math.min(field.count, 20000);
-		// Collect big-colony positions into scratch to avoid repeated lookups.
-		const bigPorts = [];
+		let bigCount = 0;
 		for (let i = 0; i < net.portCount; i++) {
-			if (isBigColony(net.ports[i].colony)) bigPorts.push(i);
+			if (isBigColony(net.ports[i].colony)) FRONTIER_BIG[bigCount++] = i;
 		}
-		if (bigPorts.length === 0) return 0;
-		for (let fi = 0; fi < maxScan && net.candidateCount < MAX_CANDIDATES; fi++) {
-			const fx = field.x[fi], fy = field.y[fi], fz = field.z[fi];
+		if (bigCount === 0) return 0;
+		// A ring scan: the next scan resumes where this one stopped, so repeated
+		// ticks walk the whole field instead of re-testing the same head, and the
+		// result stays deterministic (the cursor is part of the network's state).
+		// Four new worlds per scan is the pacing: the frontier grows in steps a
+		// viewer can watch, and one scan stays cheap next to the event drain.
+		let added = 0;
+		let fi = net.frontierCursor | 0;
+		const nearSq = MAX_FOUND_KPC * MAX_FOUND_KPC;
+		for (let n = 0; n < FRONTIER_SCAN && net.candidateCount < MAX_CANDIDATES; n++) {
+			fi += 1;
+			if (fi >= field.count) fi = 0;
 			const key = frontierFieldKey(model.seed, fi);
 			if (net.discovered.has(key)) continue;
-			// Is this star near any big colony?
+			const fx = field.x[fi], fy = field.y[fi], fz = field.z[fi];
 			let near = false;
-			for (let b = 0; b < bigPorts.length; b++) {
-				const port = net.ports[bigPorts[b]];
+			for (let b = 0; b < bigCount; b++) {
+				const port = net.ports[FRONTIER_BIG[b]];
 				const dx = fx - port.x, dy = fy - port.y, dz = fz - port.z;
-				if (dx * dx + dy * dy + dz * dz <= MAX_FOUND_KPC * MAX_FOUND_KPC) { near = true; break; }
+				if (dx * dx + dy * dy + dz * dz <= nearSq) { near = true; break; }
 			}
 			if (!near) continue;
-			// Generate system and evaluate its worlds.
 			FRONTIER_FIELD_REF.kind = planets.BLOCK_FIELD;
 			FRONTIER_FIELD_REF.index = fi;
 			FRONTIER_FIELD_REF.key = key;
@@ -703,31 +847,30 @@
 			FRONTIER_SCAN_CTX.member = null;
 			FRONTIER_SCAN_CTX.name = '';
 			try { planets.generateSystem(FRONTIER_FIELD_REF, FRONTIER_SCAN_CTX, FRONTIER_SCAN_RECORD); } catch (e) { continue; }
+			const seed = economy.siteSeed(key, net.modelSeed, FRONTIER_FIELD_REF.kind);
 			const planetCount = FRONTIER_SCAN_RECORD.counts.planets | 0;
 			const beltCount = FRONTIER_SCAN_RECORD.belts.count | 0;
-			let bestSite = null, bestHab = -1;
+			// One scratch site is filled for every world; only the best one is
+			// copied out, and only when it beats the best so far. The scan used to
+			// allocate a fresh site per improvement — a per-scan garbage storm.
+			let bestHab = -1;
 			for (let p = 0; p < planetCount; p++) {
-				economy.fillPlanetSite(FRONTIER_SCAN_SITE, FRONTIER_FIELD_REF, FRONTIER_SCAN_RECORD, p, economy.siteSeed(key, net.modelSeed, FRONTIER_FIELD_REF.kind));
-				FRONTIER_SCAN_SITE.x = fx; FRONTIER_SCAN_SITE.y = fy; FRONTIER_SCAN_SITE.z = fz;
-				FRONTIER_SCAN_SITE.ref = FRONTIER_FIELD_REF;
-				FRONTIER_SCAN_SITE.name = economy.siteName('', key, 0, p);
-				const h = siteHabitatScore(FRONTIER_SCAN_SITE);
-				if (h > bestHab) { bestHab = h; bestSite = economy.copySite(economy.createSite(), FRONTIER_SCAN_SITE); }
+				economy.fillPlanetSite(FRONTIER_SCAN_SITE, FRONTIER_FIELD_REF, FRONTIER_SCAN_RECORD, p, seed);
+				const h = frontierHabitat(FRONTIER_SCAN_SITE, fx, fy, fz, 0, p);
+				if (h > bestHab) { bestHab = h; economy.copySite(FRONTIER_BEST, FRONTIER_SCAN_SITE); }
 			}
 			for (let b = 0; b < beltCount; b++) {
-				economy.fillBeltSite(FRONTIER_SCAN_SITE, FRONTIER_FIELD_REF, FRONTIER_SCAN_RECORD, b, economy.siteSeed(key, net.modelSeed, FRONTIER_FIELD_REF.kind));
-				FRONTIER_SCAN_SITE.x = fx; FRONTIER_SCAN_SITE.y = fy; FRONTIER_SCAN_SITE.z = fz;
-				FRONTIER_SCAN_SITE.ref = FRONTIER_FIELD_REF;
-				FRONTIER_SCAN_SITE.name = economy.siteName('', key, 1, b);
-				const h = siteHabitatScore(FRONTIER_SCAN_SITE);
-				if (h > bestHab) { bestHab = h; bestSite = economy.copySite(economy.createSite(), FRONTIER_SCAN_SITE); }
+				economy.fillBeltSite(FRONTIER_SCAN_SITE, FRONTIER_FIELD_REF, FRONTIER_SCAN_RECORD, b, seed);
+				const h = frontierHabitat(FRONTIER_SCAN_SITE, fx, fy, fz, 1, b);
+				if (h > bestHab) { bestHab = h; economy.copySite(FRONTIER_BEST, FRONTIER_SCAN_SITE); }
 			}
-			if (!bestSite || bestHab < MIN_CANDIDATE_HABITAT) continue;
-			// Claim the star as discovered so we don't rescan it, then add
-			// its best world as the frontier candidate.
+			if (bestHab < MIN_CANDIDATE_HABITAT) continue;
+			// Claim the star as discovered so it is never rescanned, then add its
+			// best world as the frontier candidate.
 			net.discovered.add(key);
-			if (addCandidate(net, bestSite) >= 0) added++;
+			if (addCandidate(net, FRONTIER_BEST) >= 0 && ++added >= FRONTIER_PER_SCAN) { net.frontierCursor = fi; return added; }
 		}
+		net.frontierCursor = fi;
 		return added;
 	}
 
@@ -769,26 +912,20 @@
 		for (let i = 0; i < net.candidateCount; i++) {
 			if (net.candidates[i].site.key === site.key) net.candidates[i].reserved = shipIndex;
 		}
-	ship.index = shipIndex;
-	ship.hull = 2;
-	ship.hold = colonists;
-	ship.amount = colonists;
-	ship.cargo = economy.R_PEOPLE;
-	ship.state = SHIP_FOUNDING;
-	ship.port = -1;
-	ship.from = source;
-	ship.to = -1;
-	ship.candidate = candidateIndex;
-	ship.depart = time;
-	// The candidate's world sits on its star: measure from the star's live
-	// drawn position while the clock runs, else its birth coordinates.
-	const pa = [0, 0, 0], pb = [0, 0, 0];
-	positionOf(net, sourcePort.ref, sourcePort.x, sourcePort.y, sourcePort.z, pa);
-	positionOf(net, site.ref, site.x, site.y, site.z, pb);
-	const dx = pa[0] - pb[0], dy = pa[1] - pb[1], dz = pa[2] - pb[2];
-	ship.arrive = time + legYears(Math.sqrt(dx * dx + dy * dy + dz * dz), ship.hull);
-	ship.leg = ship.arrive - ship.depart;
-	ship.revision = 0;
+		ship.index = shipIndex;
+		ship.hull = 2;
+		ship.hold = colonists;
+		ship.amount = colonists;
+		ship.cargo = economy.R_PEOPLE;
+		ship.state = SHIP_FOUNDING;
+		ship.port = -1;
+		ship.from = source;
+		ship.to = -1;
+		ship.candidate = candidateIndex;
+		ship.depart = time;
+		ship.arrive = time + liveLegYears(net, sourcePort, site, ship.hull);
+		ship.leg = ship.arrive - ship.depart;
+		ship.revision = 0;
 		ship.trips = 0;
 		ship.delivered = 0;
 		ship.founded = 0;
@@ -796,11 +933,49 @@
 		return shipIndex;
 	}
 
+	// A voyage booked from where its endpoints are drawn now: while the star
+	// clock runs the route endpoints are the stars' live positions, so the leg
+	// is measured from where the ports are when the hull leaves. `b` is a port
+	// or a candidate site (both carry a ref and birth coordinates).
+	function liveLegYears(net, a, b, hullIndex) {
+		positionOf(net, a.ref, a.x, a.y, a.z, LEG_A);
+		positionOf(net, b.ref, b.x, b.y, b.z, LEG_B);
+		const dx = LEG_A[0] - LEG_B[0], dy = LEG_A[1] - LEG_B[1], dz = LEG_A[2] - LEG_B[2];
+		return legYears(Math.sqrt(dx * dx + dy * dy + dz * dz), hullIndex);
+	}
+
+	// The panel's Send-expedition button: the tick's own choice, launched now
+	// instead of at the next 200-year gate. Same costs, same fleet limit, same
+	// reservation — only the interval is bypassed.
+	const LAUNCH_RESULT = { ok: 0, ship: -1, source: -1, candidate: -1, reason: '' };
+	function launchBest(net, time) {
+		const pick = bestExpedition(net, time);
+		LAUNCH_RESULT.ok = 0;
+		LAUNCH_RESULT.ship = -1;
+		LAUNCH_RESULT.source = pick.port;
+		LAUNCH_RESULT.candidate = pick.candidate;
+		LAUNCH_RESULT.reason = pick.reason;
+		let founding = 0;
+		for (let i = 0; i < net.shipCount; i++) if (net.ships[i].state === SHIP_FOUNDING) founding += 1;
+		if (net.portCount + founding >= MAX_PORTS) { LAUNCH_RESULT.reason = 'network is full'; return LAUNCH_RESULT; }
+		if (pick.port < 0) return LAUNCH_RESULT;
+		const ship = launchExpedition(net, pick.port, pick.candidate, time);
+		if (ship < 0) { LAUNCH_RESULT.reason = 'no hull free'; return LAUNCH_RESULT; }
+		net.lastExpedition = time;
+		LAUNCH_RESULT.ok = 1;
+		LAUNCH_RESULT.ship = ship;
+		LAUNCH_RESULT.reason = '';
+		return LAUNCH_RESULT;
+	}
+
 	// Re-time in-flight voyages while the stars move: the booked leg length is
 	// the departure-time distance, but the drawn route endpoints are the stars'
 	// live positions. Re-measure the remaining journey and reschedule the arrival
 	// when it moves by more than a year; an endpoint that is not resident falls
 	// back to its birth coordinates.
+	// Retiming is a per-frame pass while the sky moves, so its scratch is
+	// module-owned: no literals in the loop.
+	const RETIME_A = [0, 0, 0], RETIME_B = [0, 0, 0];
 	function retimeRoutes(net) {
 		for (let i = 0; i < net.shipCount; i++) {
 			const ship = net.ships[i];
@@ -811,10 +986,9 @@
 				? (ship.candidate >= 0 ? net.candidates[ship.candidate].site : null)
 				: (ship.to >= 0 ? net.ports[ship.to] : null);
 			if (!a || !b) continue;
-			const pa = [0, 0, 0], pb = [0, 0, 0];
-			if (!positionOf(net, a.ref, a.x, a.y, a.z, pa)) continue;
-			if (!positionOf(net, b.ref, b.x, b.y, b.z, pb)) continue;
-			const dx = pa[0] - pb[0], dy = pa[1] - pb[1], dz = pa[2] - pb[2];
+			if (!positionOf(net, a.ref, a.x, a.y, a.z, RETIME_A)) continue;
+			if (!positionOf(net, b.ref, b.x, b.y, b.z, RETIME_B)) continue;
+			const dx = RETIME_A[0] - RETIME_B[0], dy = RETIME_A[1] - RETIME_B[1], dz = RETIME_A[2] - RETIME_B[2];
 			const total = legYears(Math.sqrt(dx * dx + dy * dy + dz * dz), ship.hull);
 			// The booked journey: speed is constant, so the time fraction equals the
 			// distance fraction even after a previous re-time changed ship.arrive.
@@ -836,7 +1010,7 @@
 		const portIndex = available ? addPort(net, c.site, time) : -1;
 		for (let i = 0; i < net.candidateCount; i++) {
 			if (net.candidates[i].reserved === ship.index) net.candidates[i].reserved = -1;
-			}
+		}
 		if (portIndex < 0) {
 			ship.port = ship.from;
 			ship.to = -1;
@@ -883,20 +1057,42 @@
 		else loadAtPort(net, ship, time);       // EV_LOAD / EV_WAIT
 	}
 
-	function step(net, years) {
+	// One drain to `net.time + years`, with an optional event budget. A budget
+	// that runs out stops the clock at the next due event instead of skipping
+	// it: an event may never fire at a time earlier than the network's clock,
+	// or the colonies it settles would be asked to run backwards. The clock is
+	// therefore monotonic, and a budget-limited frame leaves the rest of the
+	// due work (and the lag it represents) to the next one.
+	function step(net, years, budget) {
 		if (!(years > 0)) return 0;
 		const before = net.processed;
-		const target = net.time + years;
-		queueLib.drainUntil(net.queue, target, net.handler);
-		net.time = target;
+		const start = net.time;
+		const target = start + years;
+		queueLib.drainUntil(net.queue, target, net.handler, budget);
+		const next = queueLib.peekTime(net.queue);
+		net.time = next < target ? (next > start ? next : start) : target;
+		// The debt is cumulative: the clock never runs faster than the drain can
+		// follow, so a frame that cannot keep up adds to the backlog for good
+		// (the panel reports it instead of pretending the clock kept up).
+		net.lag += target - net.time;
 		return net.processed - before;
 	}
 
 	// Special trade mode: every hull flies the generation-ship crawl, 1 ly per
-	// 10 000 years. Meant to be read with the trade clock synced to the star
-	// clock at 0.1 Myr/s — a 1 ly hop is then ≈10 kyr of star time.
-	function setGenerationMode(on) {
-		generationMode = on > 0 ? 1 : 0;
+	// 1 000 years, and the ports' reserves stretch to the fleet's crossing time
+	// (see GENERATION_RESERVE_YEARS). Live colonies are re-scaled in place, so
+	// switching modes does not strand a network mid-voyage with a 150-year
+	// larder and a 5 000-year supply line.
+	function setGenerationMode(on, net) {
+		const next = on > 0 ? 1 : 0;
+		const scale = next ? GENERATION_RESERVE_YEARS / economy.STOCK_YEARS : 1;
+		const factor = scale / economy.getReserveScale();
+		economy.setReserveScale(scale);
+		generationMode = next;
+		if (net && factor !== 1) {
+			for (let i = 0; i < net.portCount; i++) economy.rescaleColonyReserves(net.ports[i].colony, factor);
+		}
+		return generationMode;
 	}
 
 	// --- Draw state and the player -----------------------------------------
@@ -1031,18 +1227,21 @@
 	const TradeLib = {
 		MAX_PORTS, MAX_SHIPS, MAX_FREIGHTERS, MAX_CANDIDATES, TRADE_RATES, TRADE_RATE_DEFAULT,
 		TRADE_RATE_DEFAULT_INDEX, TRADE_ROUTES_DEFAULT,
+		SYNC_YEARS_PER_MYR, RATE_MAX, GENERATION_LY_PER_YEAR, GENERATION_RESERVE_YEARS, clockRate,
 		EV_ARRIVE, EV_LOAD, EV_WAIT, EV_FOUND, EV_TICK,
 		SHIP_DOCKED, SHIP_SAILING, SHIP_WAITING, SHIP_FOUNDING, SHIP_STATE_NAMES,
 		HULLS, DOCK_YEARS, WAIT_YEARS, TICK_YEARS,
 		POP_PER_COLONIST_UNIT, EXPEDITION_INTERVAL,
 		MAX_FOUND_LY, MAX_LEG_LY, LY_PER_KPC, NO_RESOURCE,
 		MIN_EXPEDITION_POP_M, MIN_EXPEDITION_COVERAGE,
-		createNetwork, discoverSystem, settleSystem, finalize, step,
+		createNetwork, discoverSystem, settleSystem, finalize, step, settleAllPorts,
 		portIndexOf, candidateIndexOf, bestPortOfStar, distanceLy, legYears,
 		shipPosition, shipProgress, shipStateName, playerPort, playerLoad, playerUnload,
-	siteHabitatScore, isBigColony, colonisationPreview, pickCandidate, bestExpedition,
-	expandFrontierFromField, generationMode: setGenerationMode, retimeRoutes,
-};
+		siteHabitatScore, isBigColony, colonisationPreview, pickCandidate, bestExpedition,
+		launchBest, launchExpedition, retimeRoutes, colonisationStatus,
+		expandFrontierFromField, setGenerationMode, generationMode: setGenerationMode,
+	};
+
 	if (typeof module !== 'undefined') module.exports = TradeLib;
 	if (typeof window !== 'undefined') window.TradeLib = TradeLib;
 })();

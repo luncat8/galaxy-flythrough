@@ -37,10 +37,30 @@ const SET_RING = 'rgba(255, 215, 94, 0.45)';
 // at every colony, a faint line for every voyage in flight and a dot for the
 // hull. Dimmer than the set rings, because it is the economy's own picture and
 // must never compete with the selection. Drawn in the same 2D pass, no WGSL.
-const TRADE_PORT_RING_PX = 3.5;
-const TRADE_PORT = 'rgba(120, 220, 200, 0.35)';
+// A port's ring is its colony's *size*: the radius grows with the square root
+// of population over capacity, and the colour is the growth sign. Without that
+// the overlay is N identical rings and an economy that visibly never changes —
+// which is exactly how it read before trade.3.
+const TRADE_PORT_RING_MIN = 2;
+const TRADE_PORT_RING_SPAN = 5.5;
+const TRADE_PORT_GROW = 'rgba(130, 235, 200, 0.55)';
+const TRADE_PORT_PEAK = 'rgba(245, 215, 140, 0.55)';
+const TRADE_PORT_FADE = 'rgba(240, 135, 125, 0.6)';
+const TRADE_PORT_FILL = 'rgba(130, 235, 200, 0.30)';
+const TRADE_PORT_CORE_PX = 1.6;
+const TRADE_PORT_GROWTH_EPS = 0.0005;
+const TRADE_CANDIDATE = 'rgba(120, 195, 255, 0.22)';
+const TRADE_CANDIDATE_PX = 1.6;
+// A colony younger than this still wears a second, wider ring. Growth is the
+// point of the overlay: at a hundred years a second a young world is otherwise
+// indistinguishable from the oldest one until it has grown.
+const TRADE_PORT_YOUNG = 'rgba(255, 255, 255, 0.30)';
+const TRADE_YOUNG_YEARS = 150;
+const TRADE_PORT_YOUNG_GAP = 2;
 const TRADE_ROUTE = 'rgba(120, 220, 200, 0.12)';
+const TRADE_FOUND_ROUTE = 'rgba(250, 205, 130, 0.30)';
 const TRADE_SHIP = 'rgba(180, 245, 230, 0.85)';
+const TRADE_FOUND_SHIP = 'rgba(255, 215, 130, 0.95)';
 const TRADE_SHIP_PX = 2.2;
 // Cargo colours, in economy.js's resource order (ore … art): earthy bulk, then
 // a colder hue for information and a warm one for art. The last entry is
@@ -353,12 +373,17 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	let tradeNet = null;
 	let tradeTime = 0;
 	let tradeOn = false;
+	// Route lines are the one part the "draw trade routes" checkbox owns: the
+	// ports, the hulls and the frontier marks stay, because a network whose
+	// colonies are invisible cannot be watched growing.
+	let tradeRoutes = true;
 	let tradeWasDrawn = false;
 	function setOrbitState(model, time) { orbitModel = model; orbitTime = time || 0; }
-	function setTradeOverlay(net, time, show) {
+	function setTradeOverlay(net, time, show, routes) {
 		tradeNet = net || null;
 		tradeTime = time || 0;
 		tradeOn = !!show && !!tradeNet;
+		tradeRoutes = routes === undefined ? true : !!routes;
 	}
 
 	// --- Star-set rings (plan §3.5) ---------------------------------------
@@ -654,47 +679,116 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		const viewProj = camera.buildViewProj(width / height);
 		const cam = camera.cameraPos;
 		// The routes first, so the rings and hulls stay legible on top of them.
-		ctx.strokeStyle = TRADE_ROUTE;
-		ctx.lineWidth = 1;
+		// Two paths: a freighter's haul is the network's background hum, a
+		// founding voyage is the thing to watch, so they do not share a colour.
+		for (let pass = 0; tradeRoutes && pass < 2; pass++) {
+			ctx.strokeStyle = pass ? TRADE_FOUND_ROUTE : TRADE_ROUTE;
+			ctx.lineWidth = 1;
+			ctx.beginPath();
+			for (let i = 0; i < tradeNet.shipCount; i++) {
+				const ship = tradeNet.ships[i];
+				const founding = ship.state === TRADE_SHIP_FOUNDING;
+				if (founding !== (pass === 1)) continue;
+				if (ship.state === TRADE_SHIP_DOCKED || ship.state === TRADE_SHIP_WAITING) continue;
+				const from = ship.from >= 0 ? tradeNet.ports[ship.from] : null;
+				const to = founding
+					? (ship.candidate >= 0 ? tradeNet.candidates[ship.candidate].site : null)
+					: (ship.to >= 0 ? tradeNet.ports[ship.to] : null);
+				if (!from || !to) continue;
+				if (!tradeRecordPosition(from.ref.kind | 0, from.ref.index | 0, from.key, tradeA)) continue;
+				if (!tradeRecordPosition(to.ref.kind | 0, to.ref.index | 0, to.key, tradeB)) continue;
+				if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],
+					cam[0], cam[1], cam[2], width, height, scratch)) continue;
+				ctx.moveTo(scratch[0], scratch[1]);
+				if (!labelCoords.projectToScreen(viewProj, tradeB[0], tradeB[1], tradeB[2],
+					cam[0], cam[1], cam[2], width, height, scratch)) continue;
+				ctx.lineTo(scratch[0], scratch[1]);
+			}
+			ctx.stroke();
+		}
+		// The frontier: every free candidate world, a small cross. This is what
+		// makes the expansion visible — the ports grow out of the mark cloud.
+		ctx.strokeStyle = TRADE_CANDIDATE;
 		ctx.beginPath();
-		for (let i = 0; i < tradeNet.shipCount; i++) {
-			const ship = tradeNet.ships[i];
-			if (ship.state === TRADE_SHIP_DOCKED || ship.state === TRADE_SHIP_WAITING) continue;
-			const from = ship.from >= 0 ? tradeNet.ports[ship.from] : null;
-			const to = ship.state === TRADE_SHIP_FOUNDING
-				? (ship.candidate >= 0 ? tradeNet.candidates[ship.candidate].site : null)
-				: (ship.to >= 0 ? tradeNet.ports[ship.to] : null);
-			if (!from || !to) continue;
-			if (!tradeRecordPosition(from.ref.kind | 0, from.ref.index | 0, from.key, tradeA)) continue;
-			if (!tradeRecordPosition(to.ref.kind | 0, to.ref.index | 0, to.key, tradeB)) continue;
+		for (let i = 0; i < tradeNet.candidateCount; i++) {
+			const candidate = tradeNet.candidates[i];
+			if (candidate.used || candidate.reserved >= 0) continue;
+			const site = candidate.site;
+			if (!tradeRecordPosition(site.ref.kind | 0, site.ref.index | 0, site.key, tradeA)) continue;
 			if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],
 				cam[0], cam[1], cam[2], width, height, scratch)) continue;
-			ctx.moveTo(scratch[0], scratch[1]);
-			if (!labelCoords.projectToScreen(viewProj, tradeB[0], tradeB[1], tradeB[2],
-				cam[0], cam[1], cam[2], width, height, scratch)) continue;
-			ctx.lineTo(scratch[0], scratch[1]);
+			const x = scratch[0], y = scratch[1], r = TRADE_CANDIDATE_PX;
+			ctx.moveTo(x - r, y); ctx.lineTo(x + r, y);
+			ctx.moveTo(x, y - r); ctx.lineTo(x, y + r);
 		}
 		ctx.stroke();
-		// The ports: a small ring at every settled star.
-		ctx.strokeStyle = TRADE_PORT;
+		// The ports, sized by population and coloured by growth sign. Three
+		// passes so a pass is one colour and one stroke, not one per colony.
+		for (let pass = 0; pass < 3; pass++) {
+			ctx.strokeStyle = pass === 0 ? TRADE_PORT_GROW : pass === 1 ? TRADE_PORT_PEAK : TRADE_PORT_FADE;
+			ctx.beginPath();
+			for (let i = 0; i < tradeNet.portCount; i++) {
+				const port = tradeNet.ports[i];
+				const colony = port.colony;
+				if (colony.abandoned) continue;
+				const growth = colony.growth || 0;
+				const kind = growth > TRADE_PORT_GROWTH_EPS ? 0 : growth < -TRADE_PORT_GROWTH_EPS ? 2 : 1;
+				if (kind !== pass) continue;
+				if (!tradeRecordPosition(port.ref.kind | 0, port.ref.index | 0, port.key, tradeA)) continue;
+				if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],
+					cam[0], cam[1], cam[2], width, height, scratch)) continue;
+				const frac = colony.capacity > 0 ? colony.pop / colony.capacity : 0;
+				const r = TRADE_PORT_RING_MIN + TRADE_PORT_RING_SPAN * Math.sqrt(frac < 0 ? 0 : frac > 1 ? 1 : frac);
+				ctx.moveTo(scratch[0] + r, scratch[1]);
+				ctx.arc(scratch[0], scratch[1], r, 0, Math.PI * 2);
+			}
+			ctx.stroke();
+		}
+		// A young colony: the same ring, wider and paler, for its first century
+		// and a half. This is the growing edge made visible — a founding that
+		// landed two seconds ago is not one more dot in the field.
+		ctx.strokeStyle = TRADE_PORT_YOUNG;
 		ctx.beginPath();
 		for (let i = 0; i < tradeNet.portCount; i++) {
 			const port = tradeNet.ports[i];
-			if (port.colony.abandoned) continue;
+			const colony = port.colony;
+			if (colony.abandoned) continue;
+			const age = tradeTime - colony.founded;
+			if (!(age >= 0 && age < TRADE_YOUNG_YEARS)) continue;
 			if (!tradeRecordPosition(port.ref.kind | 0, port.ref.index | 0, port.key, tradeA)) continue;
 			if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],
 				cam[0], cam[1], cam[2], width, height, scratch)) continue;
-			ctx.moveTo(scratch[0] + TRADE_PORT_RING_PX, scratch[1]);
-			ctx.arc(scratch[0], scratch[1], TRADE_PORT_RING_PX, 0, Math.PI * 2);
+			const frac = colony.capacity > 0 ? colony.pop / colony.capacity : 0;
+			const r = TRADE_PORT_RING_MIN + TRADE_PORT_RING_SPAN * Math.sqrt(frac < 0 ? 0 : frac > 1 ? 1 : frac)
+				+ TRADE_PORT_YOUNG_GAP;
+			ctx.moveTo(scratch[0] + r, scratch[1]);
+			ctx.arc(scratch[0], scratch[1], r, 0, Math.PI * 2);
 		}
 		ctx.stroke();
+		// A saturated capital is a disc, not a ring: the biggest colonies have to
+		// read at a glance through the star field.
+		ctx.fillStyle = TRADE_PORT_FILL;
+		ctx.beginPath();
+		for (let i = 0; i < tradeNet.portCount; i++) {
+			const port = tradeNet.ports[i];
+			const colony = port.colony;
+			if (colony.abandoned || !(colony.capacity > 0) || colony.pop < colony.capacity * 0.6) continue;
+			if (!tradeRecordPosition(port.ref.kind | 0, port.ref.index | 0, port.key, tradeA)) continue;
+			if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],
+				cam[0], cam[1], cam[2], width, height, scratch)) continue;
+			ctx.moveTo(scratch[0] + TRADE_PORT_CORE_PX, scratch[1]);
+			ctx.arc(scratch[0], scratch[1], TRADE_PORT_CORE_PX, 0, Math.PI * 2);
+		}
+		ctx.fill();
 		// The hulls, interpolated between the two ends on the trade clock and
-		// coloured by what they carry.
+		// coloured by what they carry — except a founder, which is amber and
+		// hollow: it is the one voyage that changes the map.
 		for (let i = 0; i < tradeNet.shipCount; i++) {
 			const ship = tradeNet.ships[i];
+			const founding = ship.state === TRADE_SHIP_FOUNDING;
 			if (ship.state === TRADE_SHIP_DOCKED || ship.state === TRADE_SHIP_WAITING) continue;
 			const from = ship.from >= 0 ? tradeNet.ports[ship.from] : null;
-			const to = ship.state === TRADE_SHIP_FOUNDING
+			const to = founding
 				? (ship.candidate >= 0 ? tradeNet.candidates[ship.candidate].site : null)
 				: (ship.to >= 0 ? tradeNet.ports[ship.to] : null);
 			if (!from || !to) continue;
@@ -708,10 +802,16 @@ function createLabelLayer(canvas, landmarks, constellations) {
 				tradeA[1] + (tradeB[1] - tradeA[1]) * f,
 				tradeA[2] + (tradeB[2] - tradeA[2]) * f,
 				cam[0], cam[1], cam[2], width, height, scratch)) continue;
-			ctx.fillStyle = ship.cargo < TRADE_CARGO.length - 1 ? TRADE_CARGO[ship.cargo] : TRADE_CARGO[TRADE_CARGO.length - 1];
 			ctx.beginPath();
-			ctx.arc(scratch[0], scratch[1], TRADE_SHIP_PX, 0, Math.PI * 2);
-			ctx.fill();
+			ctx.arc(scratch[0], scratch[1], founding ? TRADE_SHIP_PX + 1 : TRADE_SHIP_PX, 0, Math.PI * 2);
+			if (founding) {
+				ctx.strokeStyle = TRADE_FOUND_SHIP;
+				ctx.lineWidth = 1.2;
+				ctx.stroke();
+			} else {
+				ctx.fillStyle = ship.cargo < TRADE_CARGO.length - 1 ? TRADE_CARGO[ship.cargo] : TRADE_CARGO[TRADE_CARGO.length - 1];
+				ctx.fill();
+			}
 		}
 	}
 

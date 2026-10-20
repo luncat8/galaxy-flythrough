@@ -169,3 +169,143 @@ Validation:
 No renderer/WGSL changes; overlay geometry unchanged. Next: planet-specific
 docking visuals and physically calibrated interstellar freight remain deferred
 per trade-plan.md.
+
+## trade.4 — 2026-10-20 — The two clocks, visible growth, a stable start
+
+The report was that colonies never visibly grow, the network sometimes
+restarts, and that sync time plus the generation-ship mode make ships
+teleport while the page drops to zero fps. All three traced to the clock
+coupling, and the cure is a rate rather than an identity.
+
+Measured (Node, the 24-landmark fixture, 20 s of wall time):
+
+- 100 y/s (the ladder default): 153 events/s, 8.5 ms CPU per wall second,
+  top colony 56 M → 1 045 M in 20 s. Growth *is* visible here.
+- 2 000 y/s (the ladder top): 3 124 events/s, 24 ms per wall second.
+- 10 000 y/s: 15 676 events/s, 97 ms per wall second — cost is linear in
+  the rate, which is the whole problem.
+- The old identity sync (star Myr/s · 10⁶ y/s, i.e. 2·10⁶ y/s at 2 Myr/s):
+  313 ms of CPU **per frame**, 51 000 events a frame, and in 3.13 s of CPU
+  the clock advanced 333 000 y of the 6 000 000 asked for. That is the
+  frozen page and the teleporting hulls in one measurement.
+
+Changes:
+
+- Clock law in `trade.js`: `SYNC_YEARS_PER_MYR = 1000` (one trade year per
+  1 000 star years), `RATE_MAX = 2000` y/s, one `clockRate(ladderYears,
+  starRateMyrPerS, synced)` used by the frame loop and both readouts. The
+  star slider's fine range now lands on the trade ladder it was authored
+  for: 0.1 Myr/s ↔ 100 y/s, 2 Myr/s ↔ 2 000 y/s.
+- `step(net, years, budget)` + `exec-queue.drainUntil(…, budget)`: a tired
+  frame stops at the next due event instead of skipping it (the clock stays
+  monotonic and no colony settles backwards) and the unserved span
+  accumulates in `net.lag`, which the panel reports in star Myr.
+  Main's budget is 256 events a frame; the maintenance passes (route
+  re-timing, frontier scan) moved onto a 0.5 s wall timer instead of every
+  frame, and the frontier scan lost its per-improvement `createSite()`
+  allocation storm, gained a ring cursor (8 000 stars, 4 new worlds per
+  scan) and a preallocated best-site record.
+- Generation ships: 1 ly per 1 000 years (0.1 % c) instead of 1 ly per
+  10 000 years, and the checkbox sets the calibrated pair (sync on, star
+  clock 2 Myr/s). A 5 ly hop is 5 000 y ≈ 2.5 wall seconds at the top rate;
+  the old constants put it at 0.025 s, which is why the mode read as
+  "ships teleport".
+- Growth is now a picture, not six rows of near-identical numbers: a port
+  ring's radius is `2 + 5.5·√(pop/capacity)`, its colour is the growth sign,
+  a colony past 60 % of capacity gets a filled core, free candidate worlds
+  are crosses (the frontier), founding voyages and hulls are amber and the
+  founding hull is hollow. The panel's colony rows gained a size bar and
+  `↑ 1.25 %/y`, and the state line says `time-lapse` at rates ≥ 500 y/s.
+- Colonisation: `colonisationStatus()` names the shut gate instead of "no
+  big colonies ready" (`no big colony yet`, `no colonists or factory cores
+  spare`, `no free world in range`, `waiting for the next launch window`),
+  and the panel's **Send expedition** button launches the tick's own choice
+  now (`launchBest`, same costs and reservations, only the 200-year window
+  bypassed).
+- The start is stable and has a subject: the seed map forces a **capital**
+  — the first star with a world inside 20 ly of the viewer's home — whatever
+  the settled-fraction roll says. With the default seed that is Rigil
+  Kentaurus at 4.4 ly (the Sun has no planets in the generator, so it can
+  never be the port). H selects the capital, flies the observer there and
+  rides it; in game mode it becomes the Flight destination. H's action flag
+  is now consumed every frame (it used to stay set in observer mode).
+- 4 Hz readouts settle all ports once (`settleAllPorts`) before ranking
+  them, so the panel and the big-colony count read the current state;
+  `pickDestination` no longer settles every port thirteen times per load
+  (one pass per decision instead), and `sailTo`, the founding booking and
+  the re-time pass share one live-position helper with module scratch.
+- Trade panel markup: the two checkboxes now carry the real numbers in
+  their tooltips, the launch button is new, and the Controls panel's home
+  button is "home colony (H)".
+
+Files: `src/core/trade.js`, `src/core/exec-queue.js`, `src/main.js`,
+`src/render/label-layer.js`, `src/index.html`, `trade-plan.md` (§1, §3.1,
+§5, new §6/§7/§8), `experiments/trade-test.js` (§11 plus the growth-ring
+and frontier-mark geometry checks), `experiments/m1-smoke-test.js` (the H
+wiring shape).
+
+Validation:
+
+- `node experiments/trade-test.js`: 90/90 (adds 7 clock/launch/capital
+  checks and 1 overlay check).
+- `python3 scripts/run.py changed`: 13/13 (m1-smoke updated for the new H
+  contract; the earlier failures were pinned text shapes, not behaviour).
+- `node --check` on every edited source: passed.
+- Standalone probes: clock mapping (0.1 → 100, 2 → 2 000, 99 → 2 000 cap),
+  generation leg (5 ly → 5 000 y → 2.5 s), budgeted vs unbudgeted drains,
+  and the identity-sync cost above.
+
+Next: the frontier still only scans field stars, so a catalog-dominated
+galaxy grows slowly; a `deferred-browser-visual-plan.md` pass should confirm
+the ring scaling and the frontier marks read well against the star field,
+and the capital choice is worth showing as a label on first arrival.
+
+## trade.5 — 2026-10-20 — Growth on screen, a network that survives, a quiet fleet
+
+The report after trade.4 was specific: colonies still did not *visibly* grow, the
+network rebuilt itself at start, and the synced generation-ship mode was fast and
+freezing at once. Each had a different cause.
+
+1. **The overlay was gated by the routes checkbox.** `setTradeOverlay(net, time,
+   tradeRoutesOn && !systemView)` meant unticking "draw trade routes" removed the
+   ports, the hulls and the frontier with it — and the default `traderoutes=0`
+   path (a preset) had no network on screen at all. The checkbox now owns only
+   the route lines (`setTradeOverlay(net, time, show, routes)`); ports, hulls and
+   candidate marks draw whenever a network exists.
+2. **Nothing on screen said "this colony is new".** Rings already scale with
+   population, but a two-second-old world is a small ring among small rings. A
+   colony younger than `TRADE_YOUNG_YEARS = 150` now wears a second, wider ring,
+   and the panel gained a `newest <name> <pop> <age> y old` row — the six largest
+   colonies can never show an expansion.
+3. **`regenerateGalaxy` re-seeded on every call**, including the epoch presets
+   that only change the age. The network's clock and colonies restarted at year
+   zero — the "rebuild at start" flash. Main now remembers the model the network
+   belongs to (`type:seed`) and re-seeds only when that changes.
+4. **A saturated network spent its frame budget on idle polling.** A hull with
+   nothing to carry re-polled its port every `WAIT_YEARS = 2`; at 2 000 y/s that
+   is a thousand events a second per idle hull. The retry interval doubles per
+   failed poll (`WAIT_YEARS_MAX = 500`) and a load resets it. Measured over 20 s
+   at the synced top rate, 24 landmarks plus a 120k-star field: 3 791 ms → 389 ms
+   of CPU, backlog 7 531 y → 0, max frame 18.3 ms → 6.9 ms.
+5. **The generation-ship mode starved its own network.** With 5 000-year voyages
+   and a 150-year warehouse, coverage fell under the big-colony gate within a few
+   thousand years and the mode froze: no growth, no expeditions, red rings. The
+   mode now stretches the reserve horizon to the crossing time
+   (`GENERATION_RESERVE_YEARS = 5 000`, ×33.3), live colonies included. Measured
+   on the landmark fixture: 20 000 years at the synced top rate keeps all 20 big
+   colonies (median coverage 0.48) instead of falling below the gate; on the app
+   fixture the same mode now reaches 35 ports with 3 foundings and no backlog.
+
+Also: the frontier scan moved to 4 000 stars per call (peak cost 23 ms → 12 ms),
+keeping its ring cursor and 4-new-worlds-per-scan pacing.
+
+Validation:
+
+- `node experiments/trade-test.js`: 101/101. New: a live-field frontier scan
+  (canonical field keys, distinct refs, within a big colony's reach, cursor
+  walk, no-op without a field or a big colony), the overlay's growth cues
+  (young ring appears and expires, routes off keeps colonies), idle-hull backoff,
+  and the mode's warehouse stretching and restoration.
+- `python3 scripts/run.py changed`: 13/13.
+- Measured on the app fixture: 100 y/s 144 ms CPU / 20 s; 2 000 y/s 530 ms;
+  2 000 y/s generation ships 389 ms with 35 ports and 3 foundings.

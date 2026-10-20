@@ -110,18 +110,26 @@ function pop(queue) {
 	revisions[i] = revision;
 }
 
-// Pop every event due at or before `target`. The columns are re-read through
+// Pop every event due at or before `target`, up to `budget` events when a
+// budget is given (0 or omitted = no limit). The columns are re-read through
 // the queue object on every iteration because a handler's push may grow (and
-// therefore reallocate) the arrays.
-function drainUntil(queue, target, handler) {
+// therefore reallocate) the arrays. A budget that runs out leaves the rest of
+// the due events in the queue, still in order — the caller owns the clock and
+// knows that it stopped short.
+function drainUntil(queue, target, handler, budget) {
+	const limit = budget > 0 ? budget : 0;
+	let processed = 0;
 	while (queue.size > 0 && queue.time[0] <= target) {
+		if (limit > 0 && processed >= limit) break;
 		const time = queue.time[0];
 		const kind = queue.kind[0];
 		const ref = queue.ref[0];
 		const revision = queue.revision[0];
 		pop(queue);
 		handler(time, kind, ref, revision);
+		processed += 1;
 	}
+	return processed;
 }
 
 function peekTime(queue) {

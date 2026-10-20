@@ -1,6 +1,6 @@
 {
-  "total": 78,
-  "passed": 78,
+  "total": 101,
+  "passed": 101,
   "failed": 0,
   "checks": [
     {
@@ -103,8 +103,8 @@
       "name": "a seeded network makes ports and ships",
       "pass": true,
       "detail": {
-        "ports": 5,
-        "ships": 2
+        "ports": 6,
+        "ships": 3
       }
     },
     {
@@ -119,21 +119,21 @@
       "name": "ports do not vanish and ships stay capped",
       "pass": true,
       "detail": {
-        "ports": 8,
-        "ships": 15
+        "ports": 9,
+        "ships": 16
       }
     },
     {
       "name": "the queue stays bounded by one live event per ship plus a tick",
       "pass": true,
-      "detail": 16
+      "detail": 17
     },
     {
       "name": "arrivals are booked",
       "pass": true,
       "detail": {
-        "processed": 1266,
-        "delivered": 9307.21998394886
+        "processed": 241,
+        "delivered": 12973.997438582093
       }
     },
     {
@@ -150,16 +150,16 @@
       "pass": true,
       "detail": {
         "jump": [
-          8,
-          15,
+          9,
+          16,
           3,
-          9307.21998394886
+          12973.997438582093
         ],
         "small": [
-          8,
-          15,
+          9,
+          16,
           3,
-          9307.21998394886
+          12973.997438582093
         ]
       }
     },
@@ -175,9 +175,9 @@
       "name": "colonisation grows the network over two and a half millennia",
       "pass": true,
       "detail": {
-        "start": 5,
+        "start": 6,
         "end": 9,
-        "founded": 4
+        "founded": 3
       }
     },
     {
@@ -351,6 +351,14 @@
       "pass": true
     },
     {
+      "name": "a port ring scales with its colony and a frontier world is marked",
+      "pass": true,
+      "detail": {
+        "arcs": 4,
+        "lines": 3
+      }
+    },
+    {
       "name": "a nonresident endpoint hides its route and hull",
       "pass": true
     },
@@ -384,6 +392,159 @@
     },
     {
       "name": "application cargo transfer still requires docking",
+      "pass": true
+    },
+    {
+      "name": "the synced clock maps the star slider onto the trade ladder",
+      "pass": true,
+      "detail": {
+        "slow": 100,
+        "fast": 2000
+      }
+    },
+    {
+      "name": "the synced clock never exceeds the drain ceiling",
+      "pass": true,
+      "detail": 2000
+    },
+    {
+      "name": "an unsynced clock is the ladder, and both pause at zero or below",
+      "pass": true
+    },
+    {
+      "name": "a generation-ship hop lasts seconds at the synced top rate",
+      "pass": true,
+      "detail": {
+        "legYears": 5000,
+        "wallS": 2.5
+      }
+    },
+    {
+      "name": "the freighter cruise is untouched by the special mode",
+      "pass": true
+    },
+    {
+      "name": "a budgeted drain keeps the clock monotone and never passes the next event",
+      "pass": true,
+      "detail": {
+        "time": 6208,
+        "lag": 2192
+      }
+    },
+    {
+      "name": "a budgeted clock that cannot keep up reports its backlog",
+      "pass": true,
+      "detail": 2192
+    },
+    {
+      "name": "at the synced top rate an unbudgeted clock stays exact",
+      "pass": true,
+      "detail": 8000
+    },
+    {
+      "name": "a capital colony is forced beside the viewer home",
+      "pass": true,
+      "detail": {
+        "capital": "Shaula b",
+        "ly": 4
+      }
+    },
+    {
+      "name": "the colonisation readout names the gate that is shut",
+      "pass": true,
+      "detail": {
+        "opportunities": 0,
+        "reason": "no colonists or factory cores spare",
+        "big": 2
+      }
+    },
+    {
+      "name": "the manual launch sends exactly one expedition or says why not",
+      "pass": true,
+      "detail": {
+        "ok": 0,
+        "reason": "no colonists or factory cores spare",
+        "founding": 0
+      }
+    },
+    {
+      "name": "a live field grows the frontier around the big colonies",
+      "pass": true,
+      "detail": {
+        "big": 9,
+        "added": 2,
+        "candidates": "10->12"
+      }
+    },
+    {
+      "name": "frontier worlds are canonical, distinct and within a big colony’s reach",
+      "pass": true,
+      "detail": {
+        "fieldCandidates": 2,
+        "withinReach": true,
+        "canonical": true,
+        "aliased": false
+      }
+    },
+    {
+      "name": "the scan walks a ring cursor instead of rescanning the head",
+      "pass": true,
+      "detail": {
+        "cursorBefore": 0,
+        "cursor": 40000
+      }
+    },
+    {
+      "name": "no big colony and no field both leave the frontier alone",
+      "pass": true
+    },
+    {
+      "name": "a colony founded within the century wears its growth ring",
+      "pass": true,
+      "detail": {
+        "arcs": 5
+      }
+    },
+    {
+      "name": "hiding routes keeps the colonies and hulls on screen",
+      "pass": true,
+      "detail": {
+        "lines": 0,
+        "arcs": 5
+      }
+    },
+    {
+      "name": "a colony leaves its growth ring behind once it is old",
+      "pass": true
+    },
+    {
+      "name": "an idle hull backs off instead of polling every two years",
+      "pass": true,
+      "detail": {
+        "events": 392,
+        "waiting": 12,
+        "backedOff": 12
+      }
+    },
+    {
+      "name": "the special mode sizes the warehouses to the fleet’s crossing time",
+      "pass": true,
+      "detail": {
+        "ratio": 33.33,
+        "expected": 33.33
+      }
+    },
+    {
+      "name": "a generation-ship network keeps its colonies instead of starving",
+      "pass": true,
+      "detail": {
+        "bigFree": 9,
+        "bigGen": 9,
+        "median": 0.47
+      }
+    },
+    {
+      "name": "leaving the special mode restores the authored warehouses",
       "pass": true
     }
   ]

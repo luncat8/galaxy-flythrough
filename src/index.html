@@ -490,23 +490,26 @@
 			<button id="trade-menu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab toggles all panels)" aria-expanded="true">▾</button>
 		</div>
 		<div class="menu-row">
-			<label for="trade-rate" title="The trade clock, in years per wall second, independent of the star and ship clocks. 0 pauses the network; arrow keys step the ladder.">Trade clock <span id="val-trade-rate" class="menu-val">100 y/s</span></label>
+			<label for="trade-rate" title="The trade network's own clock, in years per wall second. 0 pauses it; arrow keys step the ladder. Disabled while the clock is synced to star time.">Trade clock <span id="val-trade-rate" class="menu-val">100 y/s</span></label>
 			<input type="range" id="trade-rate" min="0" max="11" step="1" value="7">
 		</div>
-		<label class="flight-autopilot" title="Draw the trade network over the galaxy: a ring at every colony and a dot for every freighter, with its route (Y).">
+		<label class="flight-autopilot" title="Draw the freight lines between ports (Y). The network itself — a ring at every colony scaled by its population and coloured by its growth, a wider ring on a colony founded this century, a dot for every hull and a cross on every free frontier world — is always drawn while a network exists, because colonies nobody can see cannot be watched growing.">
 			<input type="checkbox" id="trade-routes" checked>
-			<span>Draw trade routes</span>
+			<span>Draw route lines</span>
 			<small>Y</small>
 		</label>
-		<label class="flight-autopilot" title="Run the trade clock on the star clock instead of wall seconds: while the star clock runs, trade years pass as star years pass, so with generation ships a 1 ly hop at 0.1 Myr/s takes about a tenth of a second of sky time. Only while observing; in game mode the trade clock keeps its own wall-time ladder.">
+		<label class="flight-autopilot" title="Run the trade clock on the star clock: one trade year per 1 000 star years, capped at 2 000 y/s. 0.1 Myr/s of sky is the default 100 y/s pace, 2 Myr/s is the top rate — the pairing the network is tuned for. Only while observing; in game mode the trade clock keeps its own ladder.">
 			<input type="checkbox" id="trade-sync-time">
 			<span>Sync trade clock to star time</span>
 		</label>
-		<label class="flight-autopilot" title="Special trade mode: generation ships at 1 light-year per 10 000 years. This also sets the star clock to 0.1 Myr/s; combine it with sync time so the trade clock rides the star clock.">
+		<label class="flight-autopilot" title="Special trade mode: generation ships at 1 light-year per 1 000 years. Sets sync time on and the star clock to 2 Myr/s, so a 5 ly hop takes about 2.5 wall seconds; the ordinary freighters would cross it in a millisecond.">
 			<input type="checkbox" id="trade-generation-ships">
-			<span>Generation ships &middot; 1 ly per 10 kyr</span>
+			<span>Generation ships &middot; 1 ly per 1 kyr</span>
 		</label>
-		<div id="trade-state" class="flight-port-state">no network</div>
+		<div class="menu-row menu-actions">
+			<button id="trade-launch" type="button" disabled title="Send the best available colonisation expedition now instead of waiting for the 200-year launch window. It costs the source colony's colonists and factory cores, exactly as the automatic launch does.">Send expedition</button>
+			<span id="trade-state" class="flight-port-state">no network</span>
+		</div>
 		<pre id="trade-list" class="flight-forecast">No trade network yet.</pre>
 		<div class="flight-section-heading"><span>Colonisation</span><small>big colonies → good worlds</small></div>
 		<div id="colonisation-state" class="flight-port-state">frontier idle</div>
@@ -529,11 +532,11 @@
                         <button data-action="orbitCentre" data-observer title="Orbit the galactic centre, centred — and select it as the speed reference (in game mode only the reference is taken, the ship does not re-pose)">orbit centre <span class="kbd">C</span></button>
                         <button data-action="speedRefTarget" data-speed-ref="target" title="Speed reference: the locked Flight destination, or the selected star. The axis velocities, the HUD target line and the autopilot answer against it">target ref</button>
                         <button data-action="speedRefCentre" data-speed-ref="centre" title="Speed reference: the galactic centre — a fixed frame point, so the axis speeds read absolute and the autopilot can fly to the centre itself">centre ref <span class="kbd">C</span></button>
-                        <button data-action="speedRefHome" data-speed-ref="home" title="Speed reference: home — the Sun in the Milky Way, a generated galaxy's centre otherwise">home ref <span class="kbd">H</span></button>
+                        <button data-action="speedRefHome" data-speed-ref="home" title="Speed reference: home — the Sun in the Milky Way, a generated galaxy's centre otherwise">home ref</button>
                         <button data-action="flyTo" title="2 s flight to the selected star, then orbit + follow it. In game mode: the burn/flip autopilot approach to it (fuel checkout first)">fly to star <span class="kbd">F</span></button>
                         <button data-action="nextStar" title="Next star in the selection set">next star <span class="kbd">N</span></button>
                         <button id="help-prev-star" title="Previous star in the selection set">prev star <span class="kbd">Shift+N</span></button>
-                        <button data-action="home" data-observer title="Home: the Sun, or a generated galaxy's centre">home <span class="kbd">H</span></button>
+                        <button data-action="home" data-observer title="Home colony (H): select the colony nearest home, fly there and ride it while the sky moves. In game mode the colony becomes the Flight destination and the autopilot approaches it — a ship never teleports. With no colony the key falls back to the frame point">home colony <span class="kbd">H</span></button>
                         <button data-action="reset" title="Reset everything — the view and, in game mode, the ship (full tank, zero velocity)">reset <span class="kbd">R</span></button>
                         <button data-action="dvMap" data-observer title="Cycle the open system view: schematic / delta-v map / delta-v rails (click two graph nodes to route)">cycle view <span class="kbd">B</span></button>
                         <button data-action="clearSet" title="Clear the selection set (click selects, Shift+click adds)">clear set <span class="kbd">X</span></button>

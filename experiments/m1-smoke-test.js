@@ -153,7 +153,7 @@ const sourceFiles = walk(SRC, '')
 			&& /const dtShipS = gameMode \? gameRateY \* shipLib\.SECONDS_PER_YEAR \* dt : 0;/.test(main)
 			&& /gameDir\[0\] = f \* camera\.forward\[0\] \+ r \* camera\.right\[0\] \+ u \* camera\.up\[0\];/.test(main)
 			&& /gameDir\[2\] = f \* camera\.forward\[2\] \+ r \* camera\.right\[2\] \+ u \* camera\.up\[2\];/.test(main)
-			&& /if \(actions\.home\) \{[\s\S]*?setSpeedRef\('home'\);[\s\S]*?if \(gameMode\) \{ actions\.home = 0; gameNotice\(\); \}/.test(main)
+			&& /if \(actions\.home\) \{\s*actions\.home = 0;\s*if \(!goToHomeColony\(\)\) \{\s*setSpeedRef\('home'\);\s*if \(gameMode\) gameNotice\(\);/.test(main)
 			&& /Space: 'allStop'/.test(inputSrc)
 			&& /allStop: 0, shipRefuel: 0/.test(inputSrc)
 			&& /if \(gameMode\) enterGameMode\(\); else leaveGameMode\(\);/.test(main));

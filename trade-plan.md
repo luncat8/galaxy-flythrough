@@ -7,11 +7,13 @@ series: no star-buffer or WGSL changes. Its log is `archive/trade.x-worklog.md`.
 
 ## 1. Clocks and scope
 
-Star time (Myr/s), player flight time and trade time are independent. Trade time
-starts at zero, in years, on the ladder
+Star time (Myr/s), player flight time and trade time are separate clocks. Trade
+time starts at zero, in years, on the ladder
 `[0, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000]` years/wall-second,
 default 100; zero pauses. A frame drains through `time + rate·min(dt, 0.25)` then
-sets the clock to that target. The wall-delta clamp avoids unbounded background-tab
+sets the clock to that target, as far as the event budget allows (§6). The clock
+can instead ride the star clock through the fixed rate of §6 — the one supported
+way to make colony time and galactic time move together. The wall-delta clamp avoids unbounded background-tab
 catch-up; explicit simulation jumps use the same queue without the clamp.
 
 This pass uses **abstract trade travel**, not the player's relativistic flight
@@ -140,6 +142,7 @@ A network without ports has only its global tick, no orphan hulls.
 | bulk | 30,000 | 2 |
 | hauler | 15,000 | 3 |
 | clipper | 8,000 | 4.5 |
+| generation (§6, mode switch) | 30,000 | 0.001 |
 
 A leg takes `max(0.5, distanceLy/speed)` years; freight routes are 1–3000 ly.
 Each ship owns exactly one live revision-checked event. The one global tick is
@@ -215,7 +218,10 @@ counters and six largest non-abandoned ports plus sailing ships, refreshed at
 - `experiments/trade-test.js`: deterministic maps, stable-coverage split exactness,
   long-time growth/decline, caps, demand/export laws, idempotent discovery,
   multi-millennial network and exact live-event counts, full-state jump invariance,
-  expeditions/reservations/capacity, player mass conservation and overlay geometry.
+  expeditions/reservations/capacity, player mass conservation, overlay geometry
+  (including the population-scaled ring and the frontier mark), the clock laws of
+  §6 (sync exchange rate, ceiling, generation-ship pacing, budgeted drain
+  monotonicity and backlog) and the forced capital.
 - `experiments/exec-queue-test.js`: 50,000-event sorted-reference comparison,
   growth, equal timestamps, due follow-ups, boundary, clear/empty and stale handling.
 
@@ -231,8 +237,122 @@ validation remains separate; canvas-stub geometry tests are not a visual verdict
 
 ## 6. Star-time-coupled trade controls
 
-- Sync time: a Trade-panel checkbox couples the trade clock to the star clock. While on (and outside game mode) the network advances `starTimeRate · 10⁶` trade years per wall second instead of the ladder's years per wall second; the trade slider is disabled and the readout shows the effective star-derived rate.
-- Generation ships: a second checkbox switches every hull to 1 light-year per 10 000 years (`GENERATION_LY_PER_YEAR = 1e-4` ly/y in `legYears`) and sets the star clock to 0.1 Myr/s. With sync time on a 1 ly hop takes ≈10 kyr of star time — about a tenth of a second at 0.1 Myr/s.
-- Route re-timing: while the stars move (`dtStar > 0`) and the trade clock runs, in-flight voyages are re-measured against the stars' live drawn positions (`orbit.engineRecordPosition` at the current star time, resolved resident-by-resident through the label layer) and their arrivals re-timed when the remaining journey changes by more than a year. The overlay's route geometry is already drawn at live drawn positions; this keeps the schedule on the moving line. Booking uses live positions too, so a voyage's length is measured from where its endpoints are when it starts.
-- Star-time slider: default range −1…2 Myr/s in 0.1 steps so small rates (0.1 Myr/s) are settable; a toggle button widens it to −1…99 Myr/s in 0.5 steps.
-- Presets: `tradesync` and `tradegen` (0/1) ride beside `trade`/`traderoutes`.
+The trade clock and the star clock are **different calendars by construction**.
+The network is authored in colony years: a 25-year tick, a 150-year warehouse, an
+80-year population e-folding, voyages of tens of years. The star clock is authored
+in galactic years: 0.1–2 Myr per wall second (99 Myr/s in the wide range). At a
+1:1 exchange a 2 Myr/s sky asks the queue for 2·10⁶ trade years per second —
+measured at ≈20 s of CPU per wall second, i.e. a frozen page — and every voyage
+completes inside one frame, so hulls teleport.
+
+So the sync is a **rate**, not an identity (`trade.js`):
+
+- `SYNC_YEARS_PER_MYR = 1000` — one trade year per 1 000 star years. The star
+  slider's fine range then lands on the trade ladder the network is tuned
+  against: 0.1 Myr/s ↔ 100 y/s (the default pace), 2 Myr/s ↔ 2 000 y/s (the
+  ladder's top). The coupling is exact over the whole fine range.
+- `RATE_MAX = 2000` y/s — a hard ceiling on whichever clock drives the network.
+  The wide star range exceeds it; the panel reports the backlog rather than
+  pretending (`net.lag`, accumulated in trade years).
+- `clockRate(ladderYears, starRateMyrPerS, synced)` owns both rules, so the
+  slider, the readout and the frame loop cannot disagree. Zero (or a negative
+  star rate — the observer's fly coupling) is a real pause.
+
+`step(net, years, budget)` drains at most `budget` events (`drainUntil`'s own
+budgeted variant). A budget that runs out stops the clock at the next due event
+instead of skipping it, so the clock stays monotonic and no colony is ever asked
+to settle backwards. Main passes 256 events per frame: the synced top rate needs
+~50, and the budget only bites when the machine cannot follow — which the panel
+says out loud ("… Myr behind").
+
+Generation ships: the special mode flies every hull at 1 light-year per 1 000
+years (0.1 % c, `GENERATION_LY_PER_YEAR = 1e-3`) and sets the synced pair — star
+clock 2 Myr/s, sync on. At the synced top a 5 ly hop is 5 000 y ≈ 2.5 wall
+seconds; the ordinary freighter (2–4.5 ly/y) would cross it in a millisecond,
+which is exactly the blur the mode replaces. At 0.1 Myr/s the same hop takes ~50 s,
+because the mode is calibrated at the top of the fine range, not in the middle.
+
+A fleet that slow needs a matching larder: the colony economy is authored in
+years of its own throughput (a 150-year warehouse, a 20-year supply buffer), and
+with 5 000-year voyages a port would starve between two arrivals — coverage,
+growth and the big-colony gate would all fall, and the mode would show a *dying*
+network rather than a slow one. So the mode stretches the reserve horizon to
+`GENERATION_RESERVE_YEARS = 5 000` (×33.3 of the authored `STOCK_YEARS`) on every
+port, live colonies included (`economy.setReserveScale` +
+`rescaleColonyReserves`, driven from `setGenerationMode(on, net)`). The warehouse
+law, the supply buffer and the growth rates are untouched: only the horizon
+moves. Leaving the mode restores the authored values.
+
+Idle hulls back off: a hull with nothing to carry used to re-poll every
+`WAIT_YEARS = 2`, which at a 2 000 y/s clock is a thousand events a second per
+idle ship — a saturated network spends its whole frame budget on retries. The
+interval now doubles per failed poll up to `WAIT_YEARS_MAX = 500` and a
+successful load resets it. Measured over 20 s at the synced top rate on the
+24-landmark fixture: 3 791 ms → 389 ms of CPU, the backlog from 7 531 y to 0, and
+the special mode founds colonies again instead of standing still.
+
+Route re-timing: while the stars move (`dtStar > 0`) and the clock runs,
+in-flight voyages are re-measured against the stars' live drawn positions
+(`orbit.engineRecordPosition` through the label layer's resolver) and their
+arrivals re-timed when they move by more than a year. Booking uses live positions
+too, so a voyage's length is measured from where its endpoints are when it starts.
+The pass is maintenance, not clock work: twice a second (`TRADE_MAINT_SECONDS`),
+shared with the frontier scan, which walks 4 000 field stars per call through a
+ring cursor and keeps its best-world record in module scratch.
+
+Star-time slider: fine range −1…2 Myr/s in 0.1 steps by default (small rates are
+settable); the button beside it widens the range to −1…99 Myr/s in 0.5 steps.
+
+Presets: `tradesync` and `tradegen` (0/1) ride beside `trade`/`traderoutes`. A
+preset with `tradegen` on implies sync; its own `time` wins when it names one.
+
+## 7. Display: seeing the economy
+
+The overlay (`label-layer.js`) is the network's picture, and it has to show
+*growth*, not just existence:
+
+- a port ring's radius is `2 + 5.5·√(pop / capacity)`, so a grown colony is
+  visibly larger than a young one;
+- its colour is the growth sign (teal growing, amber at capacity, red declining);
+- a colony founded within the last 150 years wears a second, wider ring — a
+  founding that landed two seconds ago is not one more dot in the star field;
+- a colony past 60 % of capacity gets a filled core;
+- every free candidate world is a small cross — the frontier the ports grow into;
+- freighter routes are a faint teal, founding voyages amber, and a founding hull
+  is a hollow amber ring rather than a cargo-coloured dot.
+
+The "draw route lines" checkbox owns **only the lines**: the ports, the hulls and
+the frontier marks stay on screen whenever a network exists. A network that
+appears only when a "routes" box is ticked is a network nobody watches grow.
+
+The Trade panel's colony rows carry the same information as text: a three-cell
+bar, the population, and `↑ 1.25 %/y`. A `newest` row names the most recently
+founded world with its age, because the six largest colonies can never show an
+expansion — a new world starts small. The colonisation block names the gate that
+is shut (`no big colony yet`, `no colonists or factory cores spare`, `no free
+world in range`) instead of the old catch-all "no big colonies ready", and its
+**Send expedition** button launches the same choice the tick would make, now,
+through the same cost and reservation path.
+
+At the top of the rate range the panel adds `time-lapse: growth is a blink at
+this rate` — that is the honest answer to "why is growth hard to see at the
+fastest setting": 2 000 y/s is 25 colony lifetimes per second.
+
+## 8. The starting scenario
+
+The network survives a rebuild of its own sky: `regenerateGalaxy` re-seeds only
+when the model identity (type and seed) actually changed, so an epoch preset or
+any path that regenerates without a new galaxy keeps the clock and every colony.
+That is the "network rebuilt itself at start" flash, gone.
+
+The seed map forces a **capital**: the first star with a real world inside
+`HOME_COLONY_LY = 20` of the viewer's home becomes a port regardless of the
+settled-fraction roll (`net.capital`, the first such port). The Milky Way's Sun
+has no planets in the generator, so the capital is the nearest landmark that
+does — Rigil Kentaurus at 4.4 ly with the default seed — and the arrival has a
+colony in sight, freighters on the overlay, and a destination for **H**. With no
+capital (a galaxy whose home is a bare centre) H falls back to the frame point.
+
+H selects the capital, flies the observer there and rides it while the sky moves.
+In game mode the ship does not teleport: the capital becomes the Flight
+destination and the autopilot approaches it.

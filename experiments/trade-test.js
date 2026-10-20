@@ -607,8 +607,9 @@ function exactLiveEvents(net) {
 	const info = { view, identity: new Uint32Array([10, 20]), total: 2, blocks: [{ offset: 0 }] };
 	layer.setStarSource(info);
 	layer.setOrbitState({}, 1);
-	const ports = [0, 1].map(i => ({ key: info.identity[i], colony: { abandoned: 0 }, ref: { kind: 0, index: i } }));
-	const net = { portCount: 2, shipCount: 1, ports,
+	const ports = [0, 1].map(i => ({ key: info.identity[i], ref: { kind: 0, index: i },
+		colony: { abandoned: 0, pop: i === 0 ? 900 : 0, capacity: 900, growth: i === 0 ? 0.01 : -0.01 } }));
+	const net = { portCount: 2, shipCount: 1, candidateCount: 0, ports, candidates: [],
 		ships: [{ state: trade.SHIP_SAILING, from: 0, to: 1, depart: 0, arrive: 100, cargo: 0 }] };
 	const matrix = new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 	const camera = { cameraPos: [0, 0, 0], buildViewProj: () => matrix };
@@ -619,6 +620,20 @@ function exactLiveEvents(net) {
 	const hull = arcs.find(a => a[2] === 2.2);
 	check('the trade hull interpolates between drawn endpoints, not at the destination',
 		hull && near(hull[0], 42.5) && near(hull[1], 50));
+	// trade.3: a port's ring is its population, coloured by its growth sign, so
+	// the overlay shows a colony growing instead of N identical rings; a free
+	// candidate world is a small cross, so the frontier is visible as one.
+	net.candidateCount = 1;
+	net.candidates.push({ used: 0, reserved: -1, site: { key: info.identity[0], ref: { kind: 0, index: 0 } } });
+	lines.length = 0;
+	arcs.length = 0;
+	layer.draw(camera, 100, 100);
+	const bigRing = arcs.find(a => near(a[2], 2 + 5.5));
+	const smallRing = arcs.find(a => near(a[2], 2));
+	check('a port ring scales with its colony and a frontier world is marked',
+		!!bigRing && !!smallRing && lines.length === 3, { arcs: arcs.length, lines: lines.length });
+	net.candidateCount = 0;
+	net.candidates.length = 0;
 	info.identity[1] = 99;
 	lines.length = 0;
 	arcs.length = 0;
@@ -687,6 +702,271 @@ function exactLiveEvents(net) {
 	ship.docked = 0;
 	vm.runInNewContext(transfer + '\ngameCargoTransfer(false);', context);
 	check('application cargo transfer still requires docking', ship.cargo === 7 && message.includes('only at a dock'));
+}
+
+// --- 11. The clock laws (trade-plan §6) -----------------------------------
+{
+	// The sync is a rate, not an identity: a synced sky must land on the trade
+	// ladder the network is tuned for, exactly, across the fine star range.
+	check('the synced clock maps the star slider onto the trade ladder',
+		trade.clockRate(100, 0.1, true) === 100 && trade.clockRate(100, 2, true) === 2000,
+		{ slow: trade.clockRate(100, 0.1, true), fast: trade.clockRate(100, 2, true) });
+	check('the synced clock never exceeds the drain ceiling',
+		trade.clockRate(100, 99, true) === trade.RATE_MAX && trade.RATE_MAX <= 4000,
+		trade.clockRate(100, 99, true));
+	check('an unsynced clock is the ladder, and both pause at zero or below',
+		trade.clockRate(200, 5, false) === 200 && trade.clockRate(200, 0, true) === 0
+		&& trade.clockRate(200, -1, true) === 0 && trade.clockRate(0, 0, false) === 0);
+
+	// Generation ships: slow at the top of the fine star range, which is the
+	// calibration the mode is authored against.
+	trade.setGenerationMode(1);
+	const genYears = trade.legYears(5 / trade.LY_PER_KPC, 2);   // a typical 5 ly hop
+	trade.setGenerationMode(0);
+	const genSeconds = genYears / trade.clockRate(100, 2, true);
+	check('a generation-ship hop lasts seconds at the synced top rate',
+		genSeconds > 1 && genSeconds < 6, { legYears: Math.round(genYears), wallS: +genSeconds.toFixed(2) });
+	check('the freighter cruise is untouched by the special mode',
+		Math.abs(trade.legYears(5 / trade.LY_PER_KPC, 2) - 5 / trade.HULLS[2].lyPerYear) < 1e-9);
+
+	// The budget: a bounded frame stops the clock at the next due event, so the
+	// clock never skips over an event (a colony asked to settle backwards
+	// freezes), and the backlog is reported instead of hidden.
+	const net = seedNetwork(24, 0);
+	trade.step(net, 400);
+	let monotone = true, ahead = false, budgetHits = 0;
+	let last = net.time;
+	for (let f = 0; f < 240; f++) {
+		trade.step(net, 2000 / 60, 8);
+		if (net.time < last) monotone = false;
+		if (net.time > net.time) ahead = true;
+		last = net.time;
+		if (net.lag > 0) budgetHits += 1;
+	}
+	const head = net.queue.size > 0 ? net.queue.time[0] : Infinity;
+	check('a budgeted drain keeps the clock monotone and never passes the next event',
+		monotone && !(head < net.time), { time: Math.round(net.time), lag: Math.round(net.lag) });
+	check('a budgeted clock that cannot keep up reports its backlog',
+		budgetHits > 0 && net.lag > 0, Math.round(net.lag));
+
+	// The same rate without a budget keeps up exactly: the guard is a ceiling,
+	// not a change of law at the authored top.
+	const full = seedNetwork(24, 0);
+	for (let f = 0; f < 240; f++) trade.step(full, 2000 / 60, 0);
+	check('at the synced top rate an unbudgeted clock stays exact',
+		Math.abs(full.time - 240 * 2000 / 60) < 1e-6 && full.lag === 0, Math.round(full.time));
+
+	// The capital: the first world inside the home reach becomes a port even
+	// when the settled-fraction roll says no, so the arrival has a colony and H
+	// has a destination.
+	const home = trade.createNetwork({ seed: 4242, modelSeed: model.seed, homeX: 0, homeY: 0, homeZ: 0 });
+	for (let i = 0; i < 24; i++) {
+		landmarkRef(i, scratchRef);
+		planets.generateSystem(scratchRef, ctx, record);
+		trade.discoverSystem(home, scratchRef, ctx.name, record, 0);
+	}
+	trade.finalize(home);
+	let capitalLy = Infinity;
+	if (home.capital >= 0) {
+		const p = home.ports[home.capital];
+		capitalLy = Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z) * trade.LY_PER_KPC;
+	}
+	check('a capital colony is forced beside the viewer home',
+		home.capital >= 0 && capitalLy <= 20, { capital: home.ports[home.capital] ? home.ports[home.capital].name : 'none', ly: Math.round(capitalLy) });
+
+	// The colonisation readout explains an empty frontier instead of blaming
+	// big colonies, which is the bug the panel used to show.
+	const fresh = seedNetwork(24, 0);
+	fresh.lastExpedition = fresh.time;
+	const opportunities = trade.colonisationPreview(fresh, fresh.time);
+	const status = trade.colonisationStatus();
+	check('the colonisation readout names the gate that is shut',
+		(opportunities.length > 0) === (status.reason === '')
+		&& (opportunities.length > 0 || status.reason.length > 0),
+		{ opportunities: opportunities.length, reason: status.reason, big: status.big });
+
+	// The manual launch goes through the same cost and reservation path.
+	const launch = seedNetwork(24, 0);
+	const before = launch.portCount;
+	const result = trade.launchBest(launch, launch.time);
+	let founding = 0;
+	for (let i = 0; i < launch.shipCount; i++) if (launch.ships[i].state === trade.SHIP_FOUNDING) founding += 1;
+	check('the manual launch sends exactly one expedition or says why not',
+		result.ok ? (founding === 1 && launch.portCount === before) : (founding === 0 && result.reason.length > 0),
+		{ ok: result.ok, reason: result.reason, founding });
+}
+
+// --- 12. The frontier scan, on a live field -------------------------------
+// The app calls expandFrontierFromField with renderer.fieldBuffers() every half
+// second. The fixture here is the real sampled field, so the path that the
+// browser takes — field star index, its canonical key, a generated system, a
+// candidate with a ref that resolves — is the one under test.
+{
+	const sampling = require('../src/math/sampling.js');
+	const starTypes = require('../src/math/star-types.js');
+	const net = seedNetwork(24, 0);
+	trade.step(net, 4000);
+	let big = 0;
+	for (let i = 0; i < net.portCount; i++) if (trade.isBigColony(net.ports[i].colony)) big += 1;
+	const field = sampling.sampleGalaxyStars(model, model.seed | 0, 120000);
+	const before = net.candidateCount;
+	const cursorBefore = net.frontierCursor;
+	// The scan is a ring: one pass covers FRONTIER_SCAN stars, so a 120k field
+	// needs a full sweep before the slice that holds the colonies comes round.
+	let added = 0;
+	for (let i = 0; i < 40; i++) added += trade.expandFrontierFromField(net, field, model);
+	check('a live field grows the frontier around the big colonies',
+		big > 0 && added > 0 && net.candidateCount > before,
+		{ big, added, candidates: before + '->' + net.candidateCount });
+	// Every added world is a real field star within reach of a big colony, and
+	// its ref is the canonical identity — the key the label layer resolves
+	// against the drawn record and the picker returns.
+	let fieldCandidates = 0, withinReach = true, canonical = true, aliased = false;
+	const seen = new Set();
+	for (let i = 0; i < net.candidateCount; i++) {
+		const site = net.candidates[i].site;
+		if (site.ref.kind !== planets.BLOCK_FIELD) continue;
+		fieldCandidates += 1;
+		if (site.key >>> 0 !== starTypes.fieldStarSeed(model.seed, site.ref.index) >>> 0) canonical = false;
+		if (seen.has(site.ref.index)) aliased = true;
+		seen.add(site.ref.index);
+		let near = false;
+		for (let p = 0; p < net.portCount; p++) {
+			if (!trade.isBigColony(net.ports[p].colony)) continue;
+			const dx = site.ref.x - net.ports[p].x, dy = site.ref.y - net.ports[p].y, dz = site.ref.z - net.ports[p].z;
+			if (Math.sqrt(dx * dx + dy * dy + dz * dz) * trade.LY_PER_KPC <= trade.MAX_FOUND_LY + 1e-6) { near = true; break; }
+		}
+		if (!near) withinReach = false;
+	}
+	check('frontier worlds are canonical, distinct and within a big colony’s reach',
+		fieldCandidates > 0 && withinReach && canonical && !aliased,
+		{ fieldCandidates, withinReach, canonical, aliased });
+	check('the scan walks a ring cursor instead of rescanning the head',
+		net.frontierCursor !== cursorBefore || added < 8 * 4,
+		{ cursorBefore, cursor: net.frontierCursor });
+	// A network with no big colony has no frontier to expand, and an absent
+	// field is a no-op — the app calls this before the field is sampled.
+	const fresh = seedNetwork(24, 0);
+	const freshBefore = fresh.candidateCount;
+	check('no big colony and no field both leave the frontier alone',
+		trade.expandFrontierFromField(fresh, field, model) === 0
+		&& trade.expandFrontierFromField(fresh, null, model) === 0
+		&& fresh.candidateCount === freshBefore);
+}
+
+// --- 13. The overlay's growth cues ---------------------------------------
+{
+	const previousWindow = global.window;
+	const records = require('../src/math/star-record.js');
+	const layerLib = require('../src/render/label-layer.js');
+	const lines = [], arcs = [];
+	const context = {
+		setTransform() {}, clearRect() {}, beginPath() {}, stroke() {}, fill() {},
+		moveTo() {}, lineTo(x, y) { lines.push([x, y]); }, arc(x, y, radius) { arcs.push([x, y, radius]); },
+	};
+	const canvas = { width: 0, height: 0, getContext: () => context };
+	const orbit = { engineRecordPosition(out, x, y, z) { out[0] = x; out[1] = y; out[2] = z; } };
+	global.window = { StarRecord: records, OrbitLib: orbit };
+	const layer = layerLib.createLabelLayer(canvas, { count: 0 }, { LINES: [] });
+	layer.setEnabled(false);
+	layer.resize(100, 100, 1);
+	const view = new DataView(new ArrayBuffer(2 * records.RECORD_BYTES));
+	view.setFloat32(0, -0.5, true);
+	view.setFloat32(records.RECORD_BYTES, 0.5, true);
+	const info = { view, identity: new Uint32Array([10, 20]), total: 2, blocks: [{ offset: 0 }] };
+	layer.setStarSource(info);
+	layer.setOrbitState({}, 1);
+	const ports = [
+		{ key: 10, ref: { kind: 0, index: 0 }, colony: { abandoned: 0, pop: 900, capacity: 900, growth: 0.01, founded: -400 } },
+		{ key: 20, ref: { kind: 0, index: 1 }, colony: { abandoned: 0, pop: 100, capacity: 900, growth: 0.01, founded: 20 } },
+	];
+	const net = { portCount: 2, shipCount: 1, candidateCount: 0, ports, candidates: [],
+		ships: [{ state: trade.SHIP_SAILING, from: 0, to: 1, depart: 0, arrive: 100, cargo: 0 }] };
+	const matrix = new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+	const camera = { cameraPos: [0, 0, 0], buildViewProj: () => matrix };
+	const ringOf = frac => 2 + 5.5 * Math.sqrt(frac);
+	// The young port is 5 years old at t = 25: it wears the extra ring.
+	layer.setTradeOverlay(net, 25, true);
+	layer.draw(camera, 100, 100);
+	check('a colony founded within the century wears its growth ring',
+		arcs.some(a => near(a[2], ringOf(100 / 900) + 2))
+		&& !arcs.some(a => near(a[2], ringOf(1) + 2)),
+		{ arcs: arcs.length });
+	// Route lines are the checkbox's business; the colonies are not.
+	lines.length = 0;
+	arcs.length = 0;
+	layer.setTradeOverlay(net, 25, true, false);
+	layer.draw(camera, 100, 100);
+	check('hiding routes keeps the colonies and hulls on screen',
+		lines.length === 0 && arcs.length >= 3, { lines: lines.length, arcs: arcs.length });
+	// The clock moves on: the same port stops being new.
+	arcs.length = 0;
+	layer.setTradeOverlay(net, 400, true, false);
+	layer.draw(camera, 100, 100);
+	check('a colony leaves its growth ring behind once it is old',
+		!arcs.some(a => near(a[2], ringOf(100 / 900) + 2)));
+	global.window = previousWindow;
+}
+
+// --- 14. A quiet network is quiet: idle hulls back off --------------------
+// A hull with nothing to carry polls its port. A two-year poll at a 2 000 y/s
+// clock is a thousand events a second per idle hull, which is how a saturated
+// network turns into a frame budget with no work to show for it.
+{
+	const dead = seedNetwork(24, 0);
+	for (let i = 0; i < dead.portCount; i++) {
+		const colony = dead.ports[i].colony;
+		colony.stock.fill(0);
+		colony.stockCap.fill(0);
+		colony.outBase.fill(0);
+		colony.pop = 0.5;
+	}
+	const events = trade.step(dead, 5000);
+	let waiting = 0, backedOff = 0;
+	for (let i = 0; i < dead.shipCount; i++) {
+		const ship = dead.ships[i];
+		if (ship.state !== trade.SHIP_WAITING) continue;
+		waiting += 1;
+		if (ship.waits >= 6) backedOff += 1;
+	}
+	check('an idle hull backs off instead of polling every two years',
+		waiting > 0 && backedOff === waiting && events < 1500,
+		{ events, waiting, backedOff });
+}
+
+// --- 15. The generation-ship mode keeps its network alive -----------------
+// Ships at 1 ly per 1 000 years take millennia per voyage, so a port with the
+// authored 150-year warehouse would starve between two arrivals: coverage,
+// growth and the big-colony gate would all fall and the mode would show a
+// dying network. The reserve horizon moves with the fleet instead.
+{
+	const net = seedNetwork(24, 0);
+	trade.step(net, 4000);
+	const capFree = net.ports[0].colony.stockCap[5];
+	let bigFree = 0;
+	for (let i = 0; i < net.portCount; i++) if (trade.isBigColony(net.ports[i].colony)) bigFree += 1;
+	trade.setGenerationMode(1, net);
+	const capGen = net.ports[0].colony.stockCap[5];
+	const expected = trade.GENERATION_RESERVE_YEARS / economy.STOCK_YEARS;
+	check('the special mode sizes the warehouses to the fleet’s crossing time',
+		near(capGen / capFree, expected) && near(economy.getReserveScale(), expected),
+		{ ratio: +(capGen / capFree).toFixed(2), expected: +expected.toFixed(2) });
+	const rate = trade.clockRate(100, 2, true);
+	for (let f = 0; f < 60 * 10; f++) trade.step(net, rate / 60, 256);
+	const coverage = [];
+	let bigGen = 0;
+	for (let i = 0; i < net.portCount; i++) {
+		const colony = net.ports[i].colony;
+		coverage.push(colony.coverage);
+		if (trade.isBigColony(colony)) bigGen += 1;
+	}
+	coverage.sort((a, b) => a - b);
+	const median = coverage[coverage.length >> 1];
+	trade.setGenerationMode(0, net);
+	check('a generation-ship network keeps its colonies instead of starving',
+		bigGen >= bigFree - 1 && median > 0.3, { bigFree, bigGen, median: +median.toFixed(2) });
+	check('leaving the special mode restores the authored warehouses',
+		near(economy.getReserveScale(), 1) && near(net.ports[0].colony.stockCap[5], capFree));
 }
 
 // --- Summary --------------------------------------------------------------

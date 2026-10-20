@@ -1,5 +1,46 @@
 # Findings, Pitfalls & Skills
 
+## 2026-10-20 — Idle polling is a hidden O(clock rate) cost
+
+Every system that "tries again in a few years" multiplies its event rate by the
+clock: a 2-year retry on 19 idle hulls is 19 events per 2 years at 1 y/s and
+9 500 per second at a 2 000 y/s clock. A saturated trade network is *all* idle
+hulls, so the frame budget went to retries and the simulation fell behind
+(measured: 3.8 s of CPU per 20 s, 7 500 years of backlog). Geometric backoff
+(2 y doubling to a 500-year ceiling, reset on success) cut it 10x with no
+visible behaviour change: 389 ms, zero backlog.
+
+The same shape applies to the colony economy's reserves: a fleet slowed 2 000x
+must not be served by a 150-year warehouse, or the network starves between two
+arrivals and the "slow mode" reads as a dying one. When a mode changes a
+timescale, find every other timescale it is coupled to (retry intervals, stock
+horizons, tick periods) and move them together; the test for it is not "does it
+run" but "does the network still have the same big-colony count after 20 000
+years".
+
+Skill: price an idle entity per second of clock, not per event. `events/s =
+entities / interval × clock rate` — the clock is the multiplier that turns a
+harmless retry into the frame budget.
+
+## 2026-10-20 — A simulation clock cannot share a year with the star clock
+
+The trade network is authored in colony years (25-year ticks, 150-year
+warehouses, 80-year population e-folding); the star clock is authored in
+galactic years (0.1–99 Myr/s). Coupling them 1:1 at 2 Myr/s asks the event
+queue for 2·10⁶ years of voyages per wall second: measured 313 ms of CPU per
+frame, 51 000 events a frame, and 5 % of the requested clock actually
+advanced. Any "sync these two clocks" feature has to be a *rate* with a
+ceiling, and the frame that cannot drain to its target must stop at the next
+due event (never past it, or the next colony settle runs backwards) and
+report the backlog. `experiments/trade-test.js` §11 pins both halves.
+
+Second lesson from the same pass: "the colony does not grow" was a *rendering*
+complaint, not a simulation one — the simulation grew 56 M → 1 045 M in 20 s,
+but the overlay drew every port as the same 3.5 px ring. Encoding a quantity
+(population) into radius and its sign (growth) into colour turned the same
+numbers into a picture; check what the screen shows before suspecting the
+model.
+
 Append-only notes for LLM agents working on this project. Each entry: date, one-line summary heading, then the detail. Newest at top.
 
 ---
