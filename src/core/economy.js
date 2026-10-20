@@ -125,7 +125,7 @@
 	const STOCK_YEARS = 150;           // warehouse size in years of throughput
 	const EXPORT_RESERVE_FRAC = 0.25;  // stock a port keeps before it sells
 	const POP_MIN = 0.02;              // millions; below this a colony is abandoned
-	const POP_GROWTH_CAP_FRAC = 1.5;   // the logistic is never seeded above 1.5 K
+	const POP_GROWTH_CAP_FRAC = 1;     // keep the logistic inside its carrying capacity
 	const YIELD_MAX = 2.5;
 	const JITTER_LO = 0.70, JITTER_SPAN = 0.60;
 	const FOUND_AGE_MIN = 10, FOUND_AGE_SPAN = 240;
@@ -354,43 +354,26 @@
 
 	// --- The closed-form settle (trade-plan.md §2.2) ------------------------
 
-	// Logistic population and its integral over `dt` under a constant growth
-	// rate `g`. The integral is written in the form
-	//   K·t + (K/g)·[ln(1 + A·e^(−g·t)) − ln(1 + A)]
-	// which is exact and stable for both signs of g while the population is
-	// inside its capacity. The large-|g·t| branch keeps a dead or saturated
-	// colony from overflowing exp.
+	// Evaluate with non-positive exponentials; expm1/log1p preserve short
+	// intervals while the large positive-growth branch avoids overflow.
 	function logisticIntegral(p0, k, g, dt, out) {
 		if (!(dt > 0)) { out.pop = p0; out.integral = 0; return out; }
-		if (Math.abs(g) < 1e-9) {
+		if (g === 0 || p0 === k) {
 			out.pop = p0;
 			out.integral = p0 * dt;
 			return out;
 		}
-		let a = (k - p0) / p0;
-		const x = -g * dt;
-		if (x > 700) {
-			// Saturated: P → K, ∫P → K·dt − (K/g)·ln(1+A) + tiny tail.
-			out.pop = k;
-			out.integral = k * dt;
+		const q = p0 / k;
+		const x = g * dt;
+		if (x > 1) {
+			const denom = q + (1 - q) * Math.exp(-x);
+			out.pop = p0 / denom;
+			out.integral = (k / g) * (x + Math.log(denom));
 			return out;
 		}
-		if (x < -700) {
-			// Died out long before the interval ended: P → 0 and the integral
-			// is the finite area under the decay, (K/g)·ln(1+A).
-			out.pop = 0;
-			out.integral = a > 0 ? (k / g) * Math.log(1 + a) : 0;
-			return out;
-		}
-		const e = Math.exp(x);
-		const denom = 1 + a * e;
-		if (!(denom > 0) || a < -0.98) {
-			// A population seeded above its capacity (never produced by
-			// setupColony, guarded for a hand-built test record).
-			a = -0.98;
-		}
-		out.pop = k / (1 + a * e);
-		out.integral = k * dt + (k / g) * (Math.log(1 + a * e) - Math.log(1 + a));
+		const change = q * Math.expm1(x);
+		out.pop = p0 * Math.exp(x) / (1 + change);
+		out.integral = (k / g) * Math.log1p(change);
 		return out;
 	}
 
@@ -510,7 +493,7 @@
 	// Units of a resource that fit in a hold with `tons` free.
 	function unitsForTons(r, tons) {
 		const mass = RESOURCES[r].unitMassT;
-		return mass > 0 ? Math.floor(tons / mass) : 0;
+		return mass > 0 ? tons / mass : 0;
 	}
 
 	function tonsForUnits(r, units) {

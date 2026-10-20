@@ -84,6 +84,18 @@ record camera pose/view separately because the settings line does not serialize 
 Start with V1–V4 in one short session; broaden coverage only if those find a defect.
 V5–V6 can remain deferred indefinitely while the appearance is acceptable.
 
+## Trade overlay and cargo follow-up (V13)
+
+Deferred, not validated by the CPU/canvas-stub suite: with a seeded Milky Way
+network, watch distinct route endpoints and moving cargo dots with star time
+running under each engine mask. Turn labels off, then toggle Y off/on: no frozen
+routes should remain. Open V: trade routes hide and colony yields/population
+appear; exit: routes return. In Flight, pause trade independently of star/ship
+time, round-trip `trade`/`traderoutes` through a preset, dock at a colony and use
+L/Shift+L. Verify resource names, population/export text, partial-unload remainder,
+and refusal at a colony-free dock. Check panel overflow at 1280×800 and a generated
+galaxy reset's deterministic re-seeding. Record browser/GPU and preset as below.
+
 ## Result template and escalation
 
 Record: task ID; date; browser/version; OS/GPU; file/localhost/preview context;

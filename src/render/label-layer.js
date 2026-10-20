@@ -33,7 +33,7 @@ const SELECT_RING_PX = 7;
 // many-star selection still reads as one primary plus a cloud.
 const SET_RING_PX = 4;
 const SET_RING = 'rgba(255, 215, 94, 0.45)';
-// The trade overlay (trade series): a schematic in birth coordinates — a ring
+// The trade overlay (trade series): a schematic at drawn star positions — a ring
 // at every colony, a faint line for every voyage in flight and a dot for the
 // hull. Dimmer than the set rings, because it is the economy's own picture and
 // must never compete with the selection. Drawn in the same 2D pass, no WGSL.
@@ -353,8 +353,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	let tradeNet = null;
 	let tradeTime = 0;
 	let tradeOn = false;
-	const tradeFrom = new Float32Array(2);
-	const tradeTo = new Float32Array(2);
+	let tradeWasDrawn = false;
 	function setOrbitState(model, time) { orbitModel = model; orbitTime = time || 0; }
 	function setTradeOverlay(net, time, show) {
 		tradeNet = net || null;
@@ -635,12 +634,12 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		let pz = view.getFloat32(byteOffset + 8, true);
 		if (orbit && orbitModel) {
 			if ((port.ref.kind | 0) === 1) {
-				orbit.engineLandmarkPosition(tradeA, port.ref.index | 0, px, py, pz,
+				orbit.engineLandmarkPosition(out, port.ref.index | 0, px, py, pz,
 					packed & 0xFF, orbitTime, orbitModel);
 			} else {
-				orbit.engineRecordPosition(tradeA, px, py, pz, packed, orbitTime, orbitModel);
+				orbit.engineRecordPosition(out, px, py, pz, packed, orbitTime, orbitModel);
 			}
-			px = tradeA[0]; py = tradeA[1]; pz = tradeA[2];
+			px = out[0]; py = out[1]; pz = out[2];
 		}
 		out[0] = px; out[1] = py; out[2] = pz;
 	}
@@ -726,9 +725,10 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	function draw(camera, width, height) {
 		const chromeOn = chrome.active;
 		const tradeDrawn = tradeOn && tradeNet && tradeNet.portCount > 0;
-		if (!enabled && !chromeOn && !chromeDrawn && !tradeDrawn) return;
+		if (!enabled && !chromeOn && !chromeDrawn && !tradeDrawn && !tradeWasDrawn) return;
 		ctx.clearRect(0, 0, width, height);
 		chromeDrawn = chromeOn;
+		tradeWasDrawn = !!tradeDrawn;
 		if (!(width > 0) || !(height > 0)) return;
 		if (enabled) {
 			projectAll(camera, width, height);

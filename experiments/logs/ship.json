@@ -296,7 +296,7 @@
       "name": "no buffers are reallocated across 600 mixed frames",
       "pass": true,
       "detail": {
-        "keys": 23
+        "keys": 24
       }
     },
     {
@@ -620,7 +620,7 @@
       "name": "no buffers are reallocated across the approach, the follow and the abort",
       "pass": true,
       "detail": {
-        "keys": 23
+        "keys": 24
       }
     },
     {

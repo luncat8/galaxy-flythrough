@@ -80,6 +80,7 @@ function push(queue, time, kind, ref, revision) {
 // Sift-down pop. The last entry moves into the root's hole and walks down to
 // the first position whose children are not earlier than it.
 function pop(queue) {
+	if (queue.size === 0) return;
 	const n = --queue.size;
 	if (n === 0) return;
 	const times = queue.time;

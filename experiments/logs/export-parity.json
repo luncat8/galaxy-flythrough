@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-19T05:32:55.069Z",
-  "modules": 32,
-  "totalChecks": 163,
-  "passed": 163,
+  "date": "2026-10-20T03:36:11.720Z",
+  "modules": 35,
+  "totalChecks": 178,
+  "passed": 178,
   "failed": 0,
   "checks": [
     {
@@ -249,7 +249,7 @@
       }
     },
     {
-      "name": "OrbitLib has identical key sets (112 keys)",
+      "name": "OrbitLib has identical key sets (114 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -578,6 +578,102 @@
     },
     {
       "name": "RouteLib binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "ExecQueueLib loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "ExecQueueLib registers exactly one window namespace (ExecQueueLib)",
+      "pass": true,
+      "detail": [
+        "ExecQueueLib"
+      ]
+    },
+    {
+      "name": "ExecQueueLib exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "ExecQueueLib has identical key sets (7 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "ExecQueueLib binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "EconomyLib loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "EconomyLib registers exactly one window namespace (EconomyLib)",
+      "pass": true,
+      "detail": [
+        "EconomyLib"
+      ]
+    },
+    {
+      "name": "EconomyLib exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "EconomyLib has identical key sets (56 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "EconomyLib binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "TradeLib loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "TradeLib registers exactly one window namespace (TradeLib)",
+      "pass": true,
+      "detail": [
+        "TradeLib"
+      ]
+    },
+    {
+      "name": "TradeLib exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "TradeLib has identical key sets (44 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "TradeLib binds every key to the same value",
       "pass": true,
       "detail": []
     },

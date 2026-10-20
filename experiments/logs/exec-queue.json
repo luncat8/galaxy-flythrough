@@ -1,0 +1,27 @@
+{
+  "total": 5,
+  "passed": 5,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "empty pop, drain, clear and peek are harmless",
+      "pass": true
+    },
+    {
+      "name": "50,000 grown entries preserve every column against a sorted reference",
+      "pass": true
+    },
+    {
+      "name": "a due handler can grow the heap and enqueue same-drain follow-ups",
+      "pass": true
+    },
+    {
+      "name": "consumer revisions skip stale entries without losing current events",
+      "pass": true
+    },
+    {
+      "name": "steady-capacity push/pop cycles reuse all typed-array storage",
+      "pass": true
+    }
+  ]
+}

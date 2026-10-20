@@ -78,8 +78,6 @@
 	const TICK_YEARS = 25;              // colonisation check
 	const FIRST_LOAD_YEARS = 0.5;
 	const MAX_FOUND_LY = 300;           // colonisation range: a few centuries of flight
-	const COLONISTS_PER_EXPEDITION = 150;
-	const ROBOTS_PER_EXPEDITION = 25;
 	const POP_PER_COLONIST_UNIT = 0.004; // 150 units → 0.6 M people
 	const EXPEDITION_INTERVAL = 200;     // years between launches
 	const FOUND_STOCK_FRAC = 0.45;
@@ -93,7 +91,7 @@
 	const SHIPMENT_YEARS = 150;
 
 	// Hash streams beyond the economy's own.
-	const TR_CH_ROUTE = 700, TR_CH_SHIP = 740, TR_CH_PORT = 760;
+	const TR_CH_SHIP = 740, TR_CH_PORT = 760;
 
 	function createPort() {
 		return {
@@ -114,7 +112,7 @@
 	}
 
 	function createCandidate() {
-		return { site: economy.createSite(), used: 0 };
+		return { site: economy.createSite(), used: 0, reserved: -1 };
 	}
 
 	function createNetwork(options) {
@@ -122,13 +120,14 @@
 		const time = (options && options.timeYears) || 0;
 		const net = {
 			seed,
-			modelSeed: (options && options.modelSeed) || seed,
+			modelSeed: options && options.modelSeed !== undefined ? options.modelSeed | 0 : seed,
 			time,
 			queue: queueLib.createExecQueue(256),
 			portCount: 0,
 			seedPorts: SEED_PORTS,
 			shipCount: 0,
 			candidateCount: 0,
+			discovered: new Set(),
 			ports: [],
 			ships: [],
 			candidates: [],
@@ -179,7 +178,7 @@
 		let best = -1, bestPop = -1;
 		for (let i = 0; i < net.portCount; i++) {
 			const port = net.ports[i];
-			if (port.key !== key) continue;
+			if (port.key !== key || port.colony.abandoned) continue;
 			if (port.colony.pop > bestPop) { bestPop = port.colony.pop; best = i; }
 		}
 		return best;
@@ -247,9 +246,14 @@
 
 	// Discover every site of one generated system. `ref` is the pick-shaped
 	// star record; `system` is a planets SystemRecord. Idempotent: a second
-	// inspection adds nothing, it only returns the colony indices.
+	// inspection only settles the existing colony.
 	function discoverSystem(net, ref, starName, system, nowYears) {
 		const key = system.star.key >>> 0;
+		if (net.discovered.has(key)) {
+			settleSystem(net, key, nowYears);
+			return 0;
+		}
+		net.discovered.add(key);
 		const seed = economy.siteSeed(key, net.modelSeed, ref.kind);
 		const site = DISCOVER_SITE;
 		let added = 0;
@@ -259,7 +263,7 @@
 		// fraction; a settled star puts its colony on the best site it has,
 		// and the rest of its worlds stay unsettled (no candidates).
 		if (portOfStar(net, key) >= 0) return 0;
-		const planets = system.counts.planets;
+		const planetCount = system.counts.planets;
 		const belts = system.belts;
 		// The settled fraction is a seed-map property, but the seed map is
 		// bounded: once `seedPorts` stars are settled the rest of the galaxy
@@ -268,7 +272,7 @@
 			&& hash.hash01At(seed, TR_CH_PORT) < PORT_CHANCE;
 		if (maySettle) {
 			let bestScore = -1, bestIndex = -1, bestBelt = 0;
-			for (let i = 0; i < planets; i++) {
+			for (let i = 0; i < planetCount; i++) {
 				economy.fillPlanetSite(site, ref, system, i, seed);
 				const habitat = economy.HABITAT[site.type];
 				const score = (site.flags & planets.FLAG_TERRAN) ? habitat * 1.5 : habitat;
@@ -285,7 +289,7 @@
 			}
 			return added;
 		}
-		for (let i = 0; i < planets; i++) {
+		for (let i = 0; i < planetCount; i++) {
 			economy.fillPlanetSite(site, ref, system, i, seed);
 			site.x = ref.x; site.y = ref.y; site.z = ref.z;
 			site.ref = ref;
@@ -468,7 +472,7 @@
 
 	function waitAtPort(net, ship, time) {
 		ship.state = SHIP_WAITING;
-		scheduleShip(net, ship, time + WAIT_YEARS, EV_LOAD);
+		scheduleShip(net, ship, time + WAIT_YEARS, EV_WAIT);
 	}
 
 	function loadAtPort(net, ship, time) {
@@ -520,7 +524,7 @@
 		let best = -1, bestScore = 0;
 		for (let i = 0; i < net.candidateCount; i++) {
 			const c = net.candidates[i];
-			if (c.used) continue;
+			if (c.used || c.reserved >= 0) continue;
 			if (portOfStar(net, c.site.key) >= 0) continue;
 			const site = c.site;
 			const dx = site.x - port.x, dy = site.y - port.y, dz = site.z - port.z;
@@ -528,8 +532,7 @@
 			if (ly > MAX_FOUND_LY) continue;
 			const habitat = site.flags & planets.FLAG_TERRAN ? 1
 				: (site.flags & planets.FLAG_IN_HZ ? 0.7 : 0.35);
-			// Far worlds are the point of an expedition, but a second colony in
-			// the same system is still a colony: near sites score low, not zero.
+			// Prefer a habitable frontier within the expedition's range.
 			const score = habitat * (0.6 + ly / 250);
 			if (score > bestScore) { bestScore = score; best = i; }
 		}
@@ -541,10 +544,11 @@
 	// factory cores at the source, an unsettled site in range, and a score that
 	// rewards a big population and a habitable, far-away world. Trying every
 	// port matters — the largest colony is not always the one with a frontier.
-	function bestExpedition(net) {
+	function bestExpedition(net, time) {
 		let bestPort = -1, bestCandidate = -1, bestScore = 0;
 		for (let i = 0; i < net.portCount; i++) {
 			const colony = net.ports[i].colony;
+			economy.settleColony(colony, time);
 			if (colony.abandoned) continue;
 			expeditionCost(colony, EXPEDITION_COST);
 			const people = economy.exportableOf(colony, economy.R_PEOPLE);
@@ -575,8 +579,10 @@
 			if (spawnShip(net, port, hull, time) < 0) break;
 			freighters += 1;
 		}
-		if (time - net.lastExpedition >= EXPEDITION_INTERVAL) {
-			const pick = bestExpedition(net);
+		let founding = 0;
+		for (let i = 0; i < net.shipCount; i++) if (net.ships[i].state === SHIP_FOUNDING) founding++;
+		if (net.portCount + founding < MAX_PORTS && time - net.lastExpedition >= EXPEDITION_INTERVAL) {
+			const pick = bestExpedition(net, time);
 			if (pick.port >= 0 && launchExpedition(net, pick.port, pick.candidate, time) >= 0) net.lastExpedition = time;
 		}
 		net.tickScheduled = 1;
@@ -584,15 +590,19 @@
 	}
 
 	function launchExpedition(net, source, candidateIndex, time) {
-		const shipIndex = freeShip(net);
-		if (shipIndex < 0) return -1;
 		const sourcePort = net.ports[source];
 		expeditionCost(sourcePort.colony, EXPEDITION_COST);
+		if (economy.exportableOf(sourcePort.colony, economy.R_PEOPLE) < EXPEDITION_COST.people
+			|| economy.exportableOf(sourcePort.colony, economy.R_ROBOTS) < EXPEDITION_COST.robots) return -1;
+		const shipIndex = freeShip(net);
+		if (shipIndex < 0) return -1;
 		const colonists = economy.takeFromColony(sourcePort.colony, economy.R_PEOPLE, EXPEDITION_COST.people);
-		if (colonists < EXPEDITION_COST.people) return -1;
 		economy.takeFromColony(sourcePort.colony, economy.R_ROBOTS, EXPEDITION_COST.robots);
 		const ship = net.ships[shipIndex];
 		const site = net.candidates[candidateIndex].site;
+		for (let i = 0; i < net.candidateCount; i++) {
+			if (net.candidates[i].site.key === site.key) net.candidates[i].reserved = shipIndex;
+		}
 		ship.index = shipIndex;
 		ship.hull = 2;
 		ship.hold = colonists;
@@ -615,16 +625,27 @@
 
 	function foundAtCandidate(net, ship, time) {
 		const c = net.candidates[ship.candidate];
-		if (!c || c.used) { ship.state = SHIP_WAITING; return; }
-		const portIndex = addPort(net, c.site, time);
-		if (portIndex < 0) { ship.state = SHIP_WAITING; return; }
+		const available = c && !c.used && portOfStar(net, c.site.key) < 0;
+		const portIndex = available ? addPort(net, c.site, time) : -1;
+		for (let i = 0; i < net.candidateCount; i++) {
+			if (net.candidates[i].reserved === ship.index) net.candidates[i].reserved = -1;
+		}
+		if (portIndex < 0) {
+			ship.port = ship.from;
+			ship.to = -1;
+			ship.candidate = -1;
+			ship.hold = HULLS[ship.hull].hold;
+			scheduleShip(net, ship, time + DOCK_YEARS, EV_LOAD);
+			ship.state = SHIP_DOCKED;
+			return;
+		}
 		c.used = 1;
 		const colony = net.ports[portIndex].colony;
 		// The expedition's people are the founding population; the stores it
 		// carried become the first stock. No settle: the colony is founded now.
 		colony.founded = time;
 		colony.last = time;
-		colony.pop = ship.amount * POP_PER_COLONIST_UNIT;
+		colony.pop = Math.min(colony.capacity, ship.amount * POP_PER_COLONIST_UNIT);
 		for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
 			colony.stock[r] = FOUND_STOCK_FRAC * colony.stockCap[r];
 		}
@@ -709,9 +730,8 @@
 	}
 
 	// The best export a player can buy, ignoring whether an NPC freighter wants
-	// it: the port's spare stock, ranked by the value that actually fits the
-	// hold. Scoring the whole pile would offer a 20 t chemical hull a good
-	// whose single unit masses 30 t and report the empty hold as full.
+	// it: the port's spare stock, ranked by the value that fits the hold.
+	// Stocks are divisible, so this preserves fractional units too.
 	function playerExport(net, portIndex, freeTons) {
 		const colony = net.ports[portIndex].colony;
 		let best = -1, bestScore = 0;
@@ -741,13 +761,9 @@
 		economy.settleColony(port.colony, net.time);
 		const carried = ship.cargoResource === undefined ? -1 : ship.cargoResource;
 		const freeTons = ship.class.cargo - ship.cargo;
-		const resource = playerExport(net, portIndex, freeTons);
+		const resource = ship.cargo > 0 && carried >= 0 ? carried : playerExport(net, portIndex, freeTons);
 		if (resource < 0) {
 			PLAYER_RESULT.reason = freeTons <= 0 ? 'hold full' : 'nothing to buy that fits the hold';
-			return PLAYER_RESULT;
-		}
-		if (ship.cargo > 0 && carried >= 0 && carried !== resource) {
-			PLAYER_RESULT.reason = 'hold carries ' + economy.RESOURCES[carried].name;
 			return PLAYER_RESULT;
 		}
 		const fits = economy.unitsForTons(resource, freeTons);
@@ -782,7 +798,7 @@
 		const given = economy.giveToColony(port.colony, r, units);
 		const tons = economy.tonsForUnits(r, given);
 		ship.cargo -= tons;
-		if (ship.cargo < economy.RESOURCES[r].unitMassT) {
+		if (given === units) {
 			ship.cargo = 0;
 			ship.cargoResource = -1;
 		}
@@ -804,7 +820,7 @@
 		EV_ARRIVE, EV_LOAD, EV_WAIT, EV_FOUND, EV_TICK,
 		SHIP_DOCKED, SHIP_SAILING, SHIP_WAITING, SHIP_FOUNDING, SHIP_STATE_NAMES,
 		HULLS, DOCK_YEARS, WAIT_YEARS, TICK_YEARS,
-		COLONISTS_PER_EXPEDITION, ROBOTS_PER_EXPEDITION, POP_PER_COLONIST_UNIT, EXPEDITION_INTERVAL,
+		POP_PER_COLONIST_UNIT, EXPEDITION_INTERVAL,
 		MAX_FOUND_LY, MAX_LEG_LY, LY_PER_KPC, NO_RESOURCE,
 		createNetwork, discoverSystem, settleSystem, finalize, step,
 		portIndexOf, candidateIndexOf, bestPortOfStar, distanceLy, legYears,

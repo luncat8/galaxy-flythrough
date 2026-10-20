@@ -1513,6 +1513,14 @@ Shipped, in `archive/`:
   clock presets (§4: the ladder's real-time `R = 1` stop and the autopilot
   coast auto-warp). CPU-only and additive, like the 0.5 series.
 
+- [`trade-plan.md`](trade-plan.md) — unversioned CPU-only colony economy and
+  event-driven freight: independent trade clock, deterministic site yields,
+  lazy population/stock accounting, autonomous routes and founding expeditions,
+  real-stock player cargo and the label-canvas overlay. Validation includes
+  full-state 5,000-year jump equivalence and exact live-event counts. Abstract
+  travel, potential-output factories and inspection-sensitive coverage are
+  explicit limits, not physical-model claims. Log: `archive/trade.x-worklog.md`.
+
 - [`evolution-plan.md`](evolution-plan.md) — the 0.6 series, galaxy evolution over time:
   the type table describes present-day galaxies, so `modelAtAge` gains an **epoch tier**
   that re-solves what the galaxy *is* at an earlier epoch beside what its stars are —

@@ -1,6 +1,6 @@
 {
-  "total": 50,
-  "passed": 50,
+  "total": 78,
+  "passed": 78,
   "failed": 0,
   "checks": [
     {
@@ -51,8 +51,8 @@
       "name": "one 500-year settle tracks a hundred 5-year settles (free colony)",
       "pass": true,
       "detail": {
-        "one": 17.835136791621217,
-        "many": 16.272797709612142
+        "one": 17.835136791621213,
+        "many": 16.272797709612163
       }
     },
     {
@@ -64,7 +64,7 @@
       "pass": true,
       "detail": {
         "one": 17.896355718240958,
-        "many": 17.89635571824096
+        "many": 17.896355718240994
       }
     },
     {
@@ -132,8 +132,8 @@
       "name": "arrivals are booked",
       "pass": true,
       "detail": {
-        "processed": 1254,
-        "delivered": 9501.304245602067
+        "processed": 1259,
+        "delivered": 9522.042284668581
       }
     },
     {
@@ -153,13 +153,13 @@
           8,
           15,
           3,
-          9501.304245602067
+          9522.042284668581
         ],
         "small": [
           8,
           15,
           3,
-          9501.304245602067
+          9522.042284668581
         ]
       }
     },
@@ -271,6 +271,119 @@
     },
     {
       "name": "growth past capacity keeps 2,000 events in time order",
+      "pass": true
+    },
+    {
+      "name": "a million years of supplied growth tends to K, not zero",
+      "pass": true
+    },
+    {
+      "name": "long starvation tends to zero with a finite positive consumption integral",
+      "pass": true
+    },
+    {
+      "name": "population at carrying capacity is an exact finite equilibrium",
+      "pass": true
+    },
+    {
+      "name": "very short settles retain the logistic increment",
+      "pass": true
+    },
+    {
+      "name": "fractional stock units fit a tonnage hold without wasting room",
+      "pass": true
+    },
+    {
+      "name": "a partial unload preserves the fractional cargo left aboard",
+      "pass": true
+    },
+    {
+      "name": "a full warehouse refuses without discarding the remaining cargo",
+      "pass": true
+    },
+    {
+      "name": "the final fractional unload conserves all nine tonnes",
+      "pass": true
+    },
+    {
+      "name": "a nonempty hold tops up its resource even when another export ranks higher",
+      "pass": true
+    },
+    {
+      "name": "an abandoned colony is not offered as a player port",
+      "pass": true
+    },
+    {
+      "name": "a portless network keeps only its global tick and no orphan ships",
+      "pass": true
+    },
+    {
+      "name": "a 5,000-year jump matches the entire stepped network, including stocks, fleet and heap",
+      "pass": true
+    },
+    {
+      "name": "every hull has exactly one current event after five millennia",
+      "pass": true
+    },
+    {
+      "name": "the long tournament completes real deliveries and foundings",
+      "pass": true
+    },
+    {
+      "name": "overlapping expeditions reserve distinct whole systems",
+      "pass": true,
+      "detail": 5
+    },
+    {
+      "name": "in-flight founding capacity and live-event invariants hold",
+      "pass": true
+    },
+    {
+      "name": "failed founding releases reservations and schedules a source-port load",
+      "pass": true
+    },
+    {
+      "name": "trade routes preserve both independently resolved drawn endpoints",
+      "pass": true
+    },
+    {
+      "name": "the trade hull interpolates between drawn endpoints, not at the destination",
+      "pass": true
+    },
+    {
+      "name": "a nonresident endpoint hides its route and hull",
+      "pass": true
+    },
+    {
+      "name": "turning trade off clears its last frame even with labels and chrome disabled",
+      "pass": true
+    },
+    {
+      "name": "a hidden trade overlay does not keep clearing every frame",
+      "pass": true
+    },
+    {
+      "name": "a discovered frontier cannot be rerolled into a seed port",
+      "pass": true
+    },
+    {
+      "name": "reinspection settles a known port without changing its identity",
+      "pass": true
+    },
+    {
+      "name": "one remaining port slot permits exactly one outstanding founding",
+      "pass": true
+    },
+    {
+      "name": "application loading at a colony-free dock cannot create free containers",
+      "pass": true
+    },
+    {
+      "name": "application unloading at a colony-free dock preserves the hold",
+      "pass": true
+    },
+    {
+      "name": "application cargo transfer still requires docking",
       "pass": true
     }
   ]

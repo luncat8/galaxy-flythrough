@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-19T07:52:09.394Z",
+  "date": "2026-10-20T03:37:36.510Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -26,6 +26,9 @@
     "core/search.js",
     "core/route.js",
     "core/ship.js",
+    "core/exec-queue.js",
+    "core/economy.js",
+    "core/trade.js",
     "core/loop.js",
     "core/presets.js",
     "data/landmarks.js",
@@ -42,6 +45,8 @@
   "sourceFiles": [
     "core/camera.js",
     "core/device.js",
+    "core/economy.js",
+    "core/exec-queue.js",
     "core/input.js",
     "core/loop.js",
     "core/presets.js",
@@ -51,6 +56,7 @@
     "core/selection.js",
     "core/ship.js",
     "core/star-set.js",
+    "core/trade.js",
     "data/constellations.js",
     "data/landmarks.js",
     "main.js",
@@ -78,8 +84,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 109,
-  "passed": 109,
+  "totalChecks": 112,
+  "passed": 112,
   "failed": 0,
   "checks": [
     {
@@ -91,8 +97,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 37,
-        "sources": 37,
+        "scripts": 40,
+        "sources": 40,
         "missing": []
       }
     },
@@ -164,7 +170,7 @@
       "pass": true
     },
     {
-      "name": "the velocity handover seeds from the follow feed in physical units",
+      "name": "the velocity handover seeds from the drawn-velocity dispatch in physical units",
       "pass": true
     },
     {
@@ -367,6 +373,9 @@
         "Search",
         "RouteLib",
         "Ship",
+        "ExecQueueLib",
+        "EconomyLib",
+        "TradeLib",
         "Loop",
         "Presets",
         "Landmarks",
@@ -433,7 +442,7 @@
       "name": "OrbitLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 112
+        "keys": 114
       }
     },
     {
@@ -483,6 +492,27 @@
       "pass": true,
       "detail": {
         "keys": 112
+      }
+    },
+    {
+      "name": "ExecQueueLib loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 7
+      }
+    },
+    {
+      "name": "EconomyLib loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 56
+      }
+    },
+    {
+      "name": "TradeLib loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 44
       }
     },
     {
@@ -679,6 +709,8 @@
         "sysview": 0,
         "dvmap": 0,
         "dvbudget": 0.35,
+        "trade": 100,
+        "traderoutes": 1,
         "ship": "chemical",
         "viewmode": "off",
         "viewproj": "view",
@@ -716,6 +748,8 @@
         "sysview": 0,
         "dvmap": 0,
         "dvbudget": 0.35,
+        "trade": 100,
+        "traderoutes": 1,
         "ship": "chemical",
         "viewmode": "off",
         "viewproj": "view",
@@ -753,6 +787,8 @@
         "sysview": 0,
         "dvmap": 0,
         "dvbudget": 0.35,
+        "trade": 100,
+        "traderoutes": 1,
         "ship": "chemical",
         "viewmode": "off",
         "viewproj": "view",

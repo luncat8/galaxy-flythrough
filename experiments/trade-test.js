@@ -191,9 +191,8 @@ function stepSmall(net, total, chunk) {
 	for (let t = 100; t < 600; t += 5) economy.settleColony(many, t + 5);
 	// A supply-limited colony's coverage drifts as its stocks drain, and a
 	// settle freezes coverage at the interval's start — the one documented
-	// approximation (trade-plan §2.2). In the network this never compounds,
-	// because ships settle their ports at event times; here the jump must
-	// still track its stepped twin.
+	// approximation (trade-plan §2.1). Identical network events reproduce
+	// identical approximations; different inspection schedules need not.
 	check('one 500-year settle tracks a hundred 5-year settles (free colony)',
 		near(one.pop, many.pop, 0.25), { one: one.pop, many: many.pop });
 
@@ -443,6 +442,251 @@ function stepSmall(net, total, chunk) {
 	const sorted = [...times].sort((a, b) => a - b);
 	check('growth past capacity keeps 2,000 events in time order',
 		JSON.stringify(drained) === JSON.stringify(sorted));
+}
+
+// --- 8. Long intervals, lifecycle and conservation regressions ------------
+{
+	function controlledColony(supplied) {
+		const c = economy.createColony();
+		c.capacity = 100;
+		c.pop = 25;
+		c.last = 0;
+		for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+			c.outBase[r] = supplied ? economy.NEED[r] * 2 : 0;
+			c.stockCap[r] = 1e12;
+		}
+		return c;
+	}
+	const growing = controlledColony(true);
+	economy.settleColony(growing, 1e6);
+	check('a million years of supplied growth tends to K, not zero',
+		near(growing.pop, growing.capacity) && finite(growing.produced) && growing.produced > 0);
+	const declining = controlledColony(false);
+	economy.settleColony(declining, 1e6);
+	const decayArea = -declining.capacity / economy.DECLINE * Math.log1p(-0.25);
+	let netNeed = 0;
+	for (const rate of economy.NEED) netNeed += rate;
+	check('long starvation tends to zero with a finite positive consumption integral',
+		declining.pop === 0 && declining.abandoned === 1
+		&& near(declining.consumed, decayArea * netNeed));
+	const equilibrium = controlledColony(true);
+	equilibrium.pop = equilibrium.capacity;
+	economy.settleColony(equilibrium, 1e6);
+	check('population at carrying capacity is an exact finite equilibrium',
+		equilibrium.pop === equilibrium.capacity && finite(equilibrium.consumed));
+	const tiny = controlledColony(true);
+	economy.settleColony(tiny, 1e-10);
+	const initialSlope = economy.G_MAX * 25 * 0.75;
+	check('very short settles retain the logistic increment', near((tiny.pop - 25) / 1e-10, initialSlope, 1e-3));
+
+	const net = seedNetwork(24, 0);
+	const c = net.ports[0].colony;
+	c.stock.fill(0);
+	c.stock[economy.R_FOOD] = c.stockCap[economy.R_FOOD];
+	const ship = { class: { cargo: 9 }, cargo: 0, cargoResource: -1 };
+	const before = c.stock[economy.R_FOOD];
+	const loaded = trade.playerLoad(net, ship, 0).units;
+	check('fractional stock units fit a tonnage hold without wasting room',
+		near(ship.cargo, 9) && near(loaded, 9 / 8) && near(before - c.stock[economy.R_FOOD], loaded));
+	c.stock[economy.R_FOOD] = c.stockCap[economy.R_FOOD] - 0.5;
+	const given = trade.playerUnload(net, ship, 0).tons;
+	check('a partial unload preserves the fractional cargo left aboard',
+		near(given, 4) && near(ship.cargo, 5) && ship.cargoResource === economy.R_FOOD);
+	const blockedCargo = ship.cargo;
+	check('a full warehouse refuses without discarding the remaining cargo',
+		trade.playerUnload(net, ship, 0).ok === 0 && ship.cargo === blockedCargo);
+	c.stock[economy.R_FOOD] = 0;
+	const finalGiven = trade.playerUnload(net, ship, 0).tons;
+	check('the final fractional unload conserves all nine tonnes',
+		near(given + finalGiven, 9) && ship.cargo === 0 && ship.cargoResource === -1);
+	ship.cargo = 1;
+	ship.cargoResource = economy.R_FOOD;
+	c.stock[economy.R_FOOD] = c.stockCap[economy.R_FOOD];
+	c.stock[economy.R_RARE] = c.stockCap[economy.R_RARE];
+	check('a nonempty hold tops up its resource even when another export ranks higher',
+		trade.playerLoad(net, ship, 0).ok === 1 && ship.cargoResource === economy.R_FOOD);
+	c.abandoned = 1;
+	check('an abandoned colony is not offered as a player port', trade.playerPort(net, net.ports[0].key) === -1);
+}
+
+function exactLiveEvents(net) {
+	const live = new Uint32Array(net.shipCount);
+	let ticks = 0;
+	for (let i = 0; i < net.queue.size; i++) {
+		if (net.queue.kind[i] === trade.EV_TICK) { ticks++; continue; }
+		const index = net.queue.ref[i];
+		if (index < net.shipCount && net.queue.revision[i] === net.ships[index].revision) live[index]++;
+	}
+	return ticks === 1 && live.every(n => n === 1);
+}
+{
+	const empty = trade.finalize(trade.createNetwork({ seed: 4242 }));
+	trade.step(empty, 5000);
+	check('a portless network keeps only its global tick and no orphan ships',
+		empty.portCount === 0 && empty.shipCount === 0 && empty.queue.size === 1 && exactLiveEvents(empty));
+
+	const jump = seedNetwork(60, 0), small = seedNetwork(60, 0);
+	trade.step(jump, 5000);
+	stepSmall(small, 5000, 5);
+	check('a 5,000-year jump matches the entire stepped network, including stocks, fleet and heap',
+		JSON.stringify(jump) === JSON.stringify(small));
+	check('every hull has exactly one current event after five millennia', exactLiveEvents(jump));
+	check('the long tournament completes real deliveries and foundings', jump.delivered > 0 && jump.founded > 0);
+
+	// Force long overlapping expeditions so the reservation invariant is
+	// tested independently of the currently faster-than-launch-interval hulls.
+	const speed = trade.HULLS[2].lyPerYear;
+	trade.HULLS[2].lyPerYear = 0.01;
+	const overlapping = seedNetwork(60, 0);
+	for (let i = 0; i < overlapping.portCount; i++) {
+		const c = overlapping.ports[i].colony;
+		c.stock.set(c.stockCap);
+	}
+	trade.step(overlapping, 1000);
+	trade.HULLS[2].lyPerYear = speed;
+	const targets = new Set();
+	let founders = 0, uniqueTargets = true;
+	for (let i = 0; i < overlapping.shipCount; i++) {
+		const ship = overlapping.ships[i];
+		if (ship.state !== trade.SHIP_FOUNDING) continue;
+		const candidate = overlapping.candidates[ship.candidate];
+		if (targets.has(candidate.site.key)) uniqueTargets = false;
+		targets.add(candidate.site.key);
+		founders++;
+		for (let j = 0; j < overlapping.candidateCount; j++) {
+			const c = overlapping.candidates[j];
+			if (c.site.key === candidate.site.key && c.reserved !== i) uniqueTargets = false;
+		}
+	}
+	check('overlapping expeditions reserve distinct whole systems', founders >= 2 && uniqueTargets, founders);
+	check('in-flight founding capacity and live-event invariants hold',
+		overlapping.portCount + founders <= trade.MAX_PORTS && exactLiveEvents(overlapping));
+	// An externally invalidated candidate must not strand its arriving hull.
+	let broken = -1;
+	for (let i = 0; i < overlapping.shipCount; i++) {
+		const ship = overlapping.ships[i];
+		if (ship.state !== trade.SHIP_FOUNDING) continue;
+		broken = i;
+		overlapping.candidates[ship.candidate].used = 1;
+		queueLib.push(overlapping.queue, overlapping.time + 1, trade.EV_FOUND, i, ++ship.revision);
+		break;
+	}
+	trade.step(overlapping, 1);
+	check('failed founding releases reservations and schedules a source-port load',
+		broken >= 0 && overlapping.ships[broken].state === trade.SHIP_DOCKED
+		&& overlapping.ships[broken].port === overlapping.ships[broken].from
+		&& overlapping.candidates.every(c => c.reserved !== broken) && exactLiveEvents(overlapping));
+}
+
+// --- 9. The overlay must not alias the two drawn endpoints ---------------
+{
+	const previousWindow = global.window;
+	const records = require('../src/math/star-record.js');
+	const layerLib = require('../src/render/label-layer.js');
+	const lines = [], arcs = [];
+	let clears = 0;
+	let penX = 0, penY = 0;
+	const context = {
+		setTransform() {}, clearRect() { clears++; }, beginPath() {}, stroke() {}, fill() {},
+		moveTo(x, y) { penX = x; penY = y; },
+		lineTo(x, y) { lines.push([penX, penY, x, y]); },
+		arc(x, y, radius) { arcs.push([x, y, radius]); },
+	};
+	const canvas = { width: 0, height: 0, getContext: () => context };
+	// A nonzero displacement exercises the motion path, not just raw records.
+	const orbit = {
+		engineRecordPosition(out, x, y, z) { out[0] = x + 0.1; out[1] = y; out[2] = z; },
+	};
+	global.window = { StarRecord: records, OrbitLib: orbit };
+	const layer = layerLib.createLabelLayer(canvas, { count: 0 }, { LINES: [] });
+	layer.setEnabled(false);
+	layer.resize(100, 100, 1);
+	const view = new DataView(new ArrayBuffer(2 * records.RECORD_BYTES));
+	view.setFloat32(0, -0.5, true);
+	view.setFloat32(records.RECORD_BYTES, 0.5, true);
+	const info = { view, identity: new Uint32Array([10, 20]), total: 2, blocks: [{ offset: 0 }] };
+	layer.setStarSource(info);
+	layer.setOrbitState({}, 1);
+	const ports = [0, 1].map(i => ({ key: info.identity[i], colony: { abandoned: 0 }, ref: { kind: 0, index: i } }));
+	const net = { portCount: 2, shipCount: 1, ports,
+		ships: [{ state: trade.SHIP_SAILING, from: 0, to: 1, depart: 0, arrive: 100, cargo: 0 }] };
+	const matrix = new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+	const camera = { cameraPos: [0, 0, 0], buildViewProj: () => matrix };
+	layer.setTradeOverlay(net, 25, true);
+	layer.draw(camera, 100, 100);
+	check('trade routes preserve both independently resolved drawn endpoints',
+		lines.length === 1 && near(lines[0][0], 30) && near(lines[0][2], 80));
+	const hull = arcs.find(a => a[2] === 2.2);
+	check('the trade hull interpolates between drawn endpoints, not at the destination',
+		hull && near(hull[0], 42.5) && near(hull[1], 50));
+	info.identity[1] = 99;
+	lines.length = 0;
+	arcs.length = 0;
+	layer.draw(camera, 100, 100);
+	check('a nonresident endpoint hides its route and hull', lines.length === 0 && !arcs.some(a => a[2] === 2.2));
+	const beforeClear = clears;
+	layer.setTradeOverlay(net, 25, false);
+	layer.draw(camera, 100, 100);
+	check('turning trade off clears its last frame even with labels and chrome disabled', clears === beforeClear + 1);
+	layer.draw(camera, 100, 100);
+	check('a hidden trade overlay does not keep clearing every frame', clears === beforeClear + 1);
+	global.window = previousWindow;
+}
+
+// --- 10. Discovery bounds and application cargo gating --------------------
+{
+	const net = trade.createNetwork({ seed: 4242, modelSeed: model.seed });
+	net.seedPorts = 0;
+	landmarkRef(3, scratchRef);
+	planets.generateSystem(scratchRef, ctx, record);
+	trade.discoverSystem(net, scratchRef, 'frontier', record, 0);
+	const candidates = net.candidateCount;
+	net.seedPorts = 32;
+	trade.discoverSystem(net, scratchRef, 'frontier', record, 100);
+	check('a discovered frontier cannot be rerolled into a seed port', net.portCount === 0 && net.candidateCount === candidates);
+	const seeded = seedNetwork(24, 0);
+	const port = seeded.ports[0];
+	landmarkRef(port.ref.index, scratchRef);
+	planets.generateSystem(scratchRef, ctx, record);
+	trade.discoverSystem(seeded, scratchRef, port.name, record, 50);
+	check('reinspection settles a known port without changing its identity', port.colony.last === 50 && port.key === scratchRef.key);
+
+	// Build a dense synthetic catalog through the public generator/discovery
+	// APIs; leave one port slot and several nearby candidate stars.
+	const capped = trade.createNetwork({ seed: 4242, modelSeed: model.seed });
+	capped.seedPorts = trade.MAX_PORTS - 1;
+	const ref = { kind: planets.BLOCK_CATALOG, index: 0, key: 0, x: 0, y: 0, z: 0, colorIndex: 4, absMag: 4 };
+	for (let i = 1; i < 2000 && capped.portCount < capped.seedPorts; i++) {
+		ref.key = i;
+		ref.index = i;
+		ref.x = i * 1e-5;
+		planets.generateSystem(ref, ctx, record);
+		trade.discoverSystem(capped, ref, '', record, 0);
+	}
+	for (let i = 0; i < capped.portCount; i++) capped.ports[i].colony.stock.set(capped.ports[i].colony.stockCap);
+	const speed = trade.HULLS[2].lyPerYear;
+	trade.HULLS[2].lyPerYear = 0.00001;
+	trade.finalize(capped);
+	trade.step(capped, 1000);
+	trade.HULLS[2].lyPerYear = speed;
+	let founding = 0;
+	for (let i = 0; i < capped.shipCount; i++) if (capped.ships[i].state === trade.SHIP_FOUNDING) founding++;
+	check('one remaining port slot permits exactly one outstanding founding',
+		capped.portCount === trade.MAX_PORTS - 1 && founding === 1 && exactLiveEvents(capped));
+
+	const fs = require('fs'), vm = require('vm');
+	const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
+	const transfer = main.match(/function gameCargoTransfer\(unload\) \{[\s\S]*?\n\t\}/)[0];
+	let message = '';
+	const ship = { docked: 1, cargo: 7, cargoResource: economy.R_FOOD };
+	const context = { ship, gameTradePort: () => -1, setAutoMsg: text => { message = text; } };
+	vm.runInNewContext(transfer + '\ngameCargoTransfer(false);', context);
+	check('application loading at a colony-free dock cannot create free containers', ship.cargo === 7 && message.includes('no colony'));
+	vm.runInNewContext(transfer + '\ngameCargoTransfer(true);', context);
+	check('application unloading at a colony-free dock preserves the hold', ship.cargo === 7 && ship.cargoResource === economy.R_FOOD);
+	ship.docked = 0;
+	vm.runInNewContext(transfer + '\ngameCargoTransfer(false);', context);
+	check('application cargo transfer still requires docking', ship.cargo === 7 && message.includes('only at a dock'));
 }
 
 // --- Summary --------------------------------------------------------------

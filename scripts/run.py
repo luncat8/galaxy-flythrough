@@ -82,6 +82,7 @@ EXPERIMENTS = {
     'dv-map':                'experiments/dv-map-test.js',
     'route':                 'experiments/route-test.js',
     'trade':                 'experiments/trade-test.js',
+    'exec-queue':            'experiments/exec-queue-test.js',
     # Studies: they print a recommendation rather than pass/fail.
     'damping-formula':     'experiments/damping-formula-check.js',
     'hash-quality':          'experiments/hash-quality-test.js',
@@ -105,7 +106,7 @@ TYPES = {
                'density-distribution',
                'star-types-evolution', 'planet-gen', 'star-select', 'selection-store', 'search', 'nebula-placement', 'object-placement',
                'star-cluster',
-               'galaxy-age', 'galaxy-evolution', 'orbit', 'movement-density', 'system-layer', 'dv-map', 'route', 'trade'],
+               'galaxy-age', 'galaxy-evolution', 'orbit', 'movement-density', 'system-layer', 'dv-map', 'route', 'trade', 'exec-queue'],
     'study':  ['damping-formula', 'hash-quality', 'precision', 'packing', 'filter',
                'truncation-edge', 'young-vertical'],
     'sim':    ['wgsl-exec'],

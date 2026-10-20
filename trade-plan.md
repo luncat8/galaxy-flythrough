@@ -1,323 +1,230 @@
 # Trade — colonies, resources and the event queue
 
-The brief is `archive/draft-colony-resources-trade-fab.md`: a colonisation and
-trade-route event system on top of the procedural planet generator, with a
-stable-hash resource map per world, population that grows when its needs are
-met, and factories that work **per ship-arrival event or on inspection** —
-never per frame. The time-ordered queue follows the reference implementation
-[`luncat8/exec_queue`](https://github.com/luncat8/exec_queue): a binary min-heap
-over parallel typed arrays, one current event per ship, revision-checked stale
-entries, and scheduling from the event's own time so a clock jump produces the
-same state as many small steps.
+The brief is `archive/draft-colony-resources-trade-fab.md`: deterministic resource
+maps, population needs, colonisation and trade routes, with factories evaluated
+**on events or inspection, never per frame**. This is a CPU-only, pipeline-neutral
+series: no star-buffer or WGSL changes. Its log is `archive/trade.x-worklog.md`.
 
-This series is **CPU-only and pipeline-neutral**. The star buffer, the WGSL and
-the three render paths are untouched; colonies exist in kpc at the scale of the
-galaxy, and the trade overlay is a 2D pass on the existing label canvas.
+## 1. Clocks and scope
 
-It is unversioned like the `ui.x` and `tooling` series (it can land beside or
-between model releases) and its log is `archive/trade.x-worklog.md`.
+Star time (Myr/s), player flight time and trade time are independent. Trade time
+starts at zero, in years, on the ladder
+`[0, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000]` years/wall-second,
+default 100; zero pauses. A frame drains through `time + rate·min(dt, 0.25)` then
+sets the clock to that target. The wall-delta clamp avoids unbounded background-tab
+catch-up; explicit simulation jumps use the same queue without the clamp.
 
----
+This pass uses **abstract trade travel**, not the player's relativistic flight
+law. Hulls travel at 2, 3 and 4.5 ly/trade-year; this is intentionally faster than
+light so the sparse rendered star sample can sustain routes on colony timescales.
+It must not be presented as a fraction of c or a `route.interstellarLeg` result.
+Changing to physical travel requires retuning the network density, warehouses and
+population together, not just replacing one speed constant.
 
-## 1. Time
+No prices, credits or contracts. Resource worth is a routing weight, not money.
+The G4 container hook is replaced by transfers of actual port stocks.
 
-There are two time axes, and they are deliberately not the same one.
+## 2. Resources and the stable site map
 
-- **Star time** is Myr/s: the galaxy turns, the arms shear, the bar rotates.
-- **Trade time** is years/s. Colonies live for decades and centuries; a voyage
-  at 0.2 c between neighbouring stars is tens of years. On the star clock a
-  single frame is 10⁴–10⁵ years, which would collapse every voyage of the
-  network into one frame and make the event queue decorative.
+Thirteen resources, six families (raw, synth, life, goods, data, culture):
 
-So the trade clock is its own geometric ladder in years per wall second
-(`TRADE_RATES = [0, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000]`,
-default **100 y/s**, `0` pauses it). It runs with wall time and is independent
-of the star clock, the ship clock and the system view's clock. The rationale is
-the same one that gave the system view its own ladder (§6.4 of the 0.5 plan):
-no single axis can show both a 0.5-year docking dwell and a 10⁴-year voyage,
-and pretending otherwise would couple the galaxy's age to the colonists' lunch.
+| id | name | unit mass (t) | routing worth |
+|---|---|---|---|
+| ore | ore | 40 | 0.25 |
+| volatile | volatiles | 30 | 0.30 |
+| rare | rare elements | 60 | 6 |
+| chem | synth chemicals | 12 | 1.2 |
+| amat | antimatter | 0.5 | 12 |
+| food | food & seed | 8 | 0.8 |
+| bio | biotech samples | 4 | 4 |
+| people | colonists | 2 | 3 |
+| robots | factory cores | 25 | 2.5 |
+| compute | computers | 6 | 3.5 |
+| soft | software & AI | 0.2 | 5 |
+| data | world data | 0.2 | 4 |
+| art | unique items | 1 | 8 |
 
-`trade.time` is the network's own clock in years, starting at 0. A step is
-`drainUntil(time + rate·dt)` followed by `time += rate·dt`.
+`economy.js` owns the authored tables: `PLANET` (13 rows × ten display types
+plus a belt), `HABITAT`, `PROD`, `NEED`, `NEED_WEIGHT` and `INPUT` (the industrial
+bill of materials). Their columns follow `planets.DISPLAY_INDEX`, pinned by tests.
+Ore/volatiles are bulk feedstock; the other eleven cover the brief's specialist
+exports. All thirteen have some productive world type.
 
-## 2. Resources
-
-Thirteen resources in four families. The eleven named by the brief are the
-tradable ones; `ore` and `volatiles` are the cheap bulk feedstock every colony
-also needs and produces.
-
-| id | name | family | unit mass (t) | trade worth |
-|---|---|---|---|---|
-| `ore` | ore | raw | 40 | 0.25 |
-| `volatile` | volatiles | raw | 30 | 0.30 |
-| `rare` | rare elements | raw | 60 | 6 |
-| `chem` | synth chemicals | synth | 12 | 1.2 |
-| `amat` | antimatter | synth | 0.5 | 12 |
-| `food` | food & seed | life | 8 | 0.8 |
-| `bio` | biotech samples | life | 4 | 4 |
-| `people` | colonists | life | 2 | 3 |
-| `robots` | factory cores | goods | 25 | 2.5 |
-| `compute` | computers | goods | 6 | 3.5 |
-| `soft` | software & AI | data | 0.2 | 5 |
-| `data` | world data | data | 0.2 | 4 |
-| `art` | unique items | culture | 1 | 8 |
-
-`unit mass` converts the player's hold (tons) into stock units; `trade worth`
-is only a routing weight — the economy has no money and no prices, matching
-0.5's omission and the draft, which never mentions credits.
-
-### 2.1 The site map (the "stable hash" of the brief)
-
-A colony's yields are a pure function of `(key, planet slot, model seed)` — no
-PRNG state, the same star always has the same resources:
+A site is `(star key, planet-or-belt kind, index)` plus the generated physical
+properties and an **owned copy** of the star's pick reference. Planet slots and
+belt slots occupy distinct hash channels. With
+`seed = planets.systemSeed(key, model.seed, starBlockKind)`, yields are
 
 ```
-seed   = planets.systemSeed(key, model.seed, blockKind)
-yield_r = clamp( PLANET[r][type] · STAR_r(star, planet) · (0.7 + 0.6·u) , 0, 2.5 )
-u      = hash01At(seed, EC_CH_YIELD + slot·16 + r)
+yield[r] = clamp(PLANET[r][type] * starFactor(r, site)
+                 * (0.7 + 0.6 * hash01At(seed, 512 + slot*16 + r)), 0, 2.5)
 ```
 
-- `PLANET` is the authored 13 × 11 table: rows are resources, columns the ten
-  display types plus the belt. A lava world is rich in rare elements and poor
-  in food; an ice world is rich in volatiles; a terran world feeds people.
-- `STAR_r` uses what the star and the planet already carry: metallicity (ore,
-  rare, robots), insolation (antimatter, food, biotech), stellar age (rare
-  elements deplete), surface temperature (life), and the generator's own
-  `FLAG_TERRAN`/`FLAG_IN_HZ` flags.
-- The hash jitter is the brief's "a bit of random": ±30 %, never enough to
-  make an ice world a farm.
+Star factors use metallicity, age, insolation and surface temperature. Terran
+flags boost food, biotech and volunteers by 1.3; the habitable-zone flag boosts
+food/biotech by 1.15. No PRNG state and no reroll on inspection.
 
-A **site** exists when `hash01At(seed, EC_CH_SITE + slot) < SITE_CHANCE[type]`
-(terran 1.0, super-earth 0.8, desert 0.55, ice 0.45, barren 0.5, gas 0.35,
-ice-giant 0.3, mini-Neptune 0.3, lava 0.22, dwarf 0.2; a belt 0.3). Terran is
-always settled — the brief's colonisation should not miss the one obvious
-world. The rule is deterministic, so opening the same system twice never
-changes its map.
+### 2.1 Population and lazy factories
 
-### 2.2 Population, needs and the settle
+Population `P` and carrying capacity `K` are millions. `K = max(1, 900 * habitat
+* clamp(mass^0.3, 0.5, 2.5) * stability)`; giant/white-dwarf stability factors
+are 0.7/0.6. A belt uses habitat 0.10. Population stays in `[0, K]`.
 
-A colony is a record: population `P` in millions, capacity `K`, 13 yields, 13
-stocks and 13 stock caps. `K` comes from the display type's habitat weight,
-the planet's mass and the star's stability (a terran world is ~900 M, an
-outpost a few million).
+Per million-year, `out[r] = PROD[r] * yield[r]` and
+`input[r] = NEED[r] + sum(out[g] * INPUT[g,r])`. This is a **potential-output
+model**, not a stock-conserving recipe solver: missing factory feedstock creates
+import demand but does not switch individual factories off. A future constrained
+factory model must specify those switches explicitly.
 
-Production and need are per million per year:
+Warehouses hold `30 + 150 * max(out[r], input[r]) * K` units. Seed colonies
+start at 60% storage, population `0.25 + 0.01*K` (capped at K), and a stable
+hash age of 10–250 years; setup settles that age to the discovery time.
+
+Growth coverage weights household needs, not industrial inputs:
 
 ```
-out_r = PROD_r · yield_r           (units per million-year)
-need_r = NEED_r                     (units per million-year; seven needs)
+coverage = sum(w[r] * min(1, (out[r]*P + stock[r]/20)/(NEED[r]*P))) / sum(w)
+g = coverage/80 - (1-coverage)/120
+P(t) = K / (1 + (K/P0 - 1)*exp(-g*t))
+stock[r] += (out[r] - input[r]) * integral(P dt)   // clamped to [0, cap]
 ```
 
-`PROD` peaks at food 0.50 and ore 0.55 and is 0.002 for unique items; `NEED`
-peaks at food 0.40 and volatiles 0.30 and includes a small demand for every
-advanced good (so a port that makes nothing still imports). Growth weights
-(food and volatiles heavy, luxuries light) turn need coverage into one scalar:
+Use cancellation/overflow-safe logistic evaluation (`expm1`, `log1p`), including
+zero growth, equilibrium at K, and very long positive/negative intervals. Below
+0.02 M a colony is abandoned: helpers refuse transfers/routing to it. Port slots
+remain stable tombstones so in-flight references never change; no slot compaction
+or revival in this pass. Public player-port lookup excludes abandoned colonies.
 
-```
-coverage = Σ w_r · min(1, (out_r·P + stock_r/NEED_BUFFER_Y) / (need_r·P)) / Σ w_r
-g        = G_MAX · coverage − DECLINE · (1 − coverage)
-```
+**Approximation contract:** coverage is frozen at the start of each settle.
+Constant-coverage intervals compose exactly (up to floating point); supply-limited
+intervals generally do not. Inspection can therefore change subsequent population
+history. There is no automatic stock-boundary event or claimed exact solution for
+changing coverage. Network jump invariance means identical *external actions and
+event times* give identical state, not that arbitrary inspection schedules agree.
 
-`NEED_BUFFER_Y = 8` years of stock counts as supply; `G_MAX = 1/80 y⁻¹`,
-`DECLINE = 1/120 y⁻¹` (the break-even is coverage ≈ 0.39). Population follows
-the logistic ODE `dP/dt = g·P·(1 − P/K)`, whose closed form is
+Settle on arrival, dispatch, destination scoring, the 25-year expedition check,
+and the opened system's 4 Hz readout. Never settle all colonies per frame.
 
-```
-P(t) = K / (1 + A·e^(−g·t)),     A = (K − P₀)/P₀
-∫P dt = K·t + (K/g)·[ln(1 + A·e^(−g·t)) − ln(1 + A)]
-```
+## 3. Discovery and the network
 
-and the stock update is `Δstock_r = (out_r − need_r) · ∫P dt`, clamped to
-`[0, stockCap_r]`. This is the "factories work per event, not per frame" law:
+One colony per star avoids zero-distance intra-system freight winning all route
+scores. Up to 32 seed ports grow toward 64 total port slots; 256 candidate sites.
+For a newly discovered star, a stable hash roll below 0.35 selects a seed colony
+while seed slots remain. It occupies the highest-habitat planet (terran flag gets
+1.5× preference), or the first belt if there is no planet. Otherwise every world
+and belt becomes a candidate up to the cap. Terran worlds are preferred, **not
+automatically settled**. Remember discovered keys even when candidate storage is
+full: revisiting only settles, never changes the map or seeds a second colony.
 
-- **One settle is exact.** A colony inspected after 300 years is the same
-  state, to floating point, as one settled each year *while its coverage does
-  not change* — the logistic is a closed form, not a step loop.
-- **Splitting is exact for a stable colony.** With coverage 1 (or any constant
-  coverage) `P(2T) = P(T) ∘ P(T)` and the stock integrals add exactly; the test
-  pins this to 1e−9. A colony whose needs cross a boundary inside the interval
-  is settled at the boundary by its next event (documented, and the only
-  approximation in the model).
-- **A jump is not a special case.** Events schedule from their own time, so a
-  500-year clock jump runs exactly the arrivals that would have run
-  one-at-a-time.
+On model reset seed named Milky Way landmarks first, then up to 400 procedural
+field systems inside 1.2 kpc of home (both generated and Milky Way models). Stop
+when seed ports and nearly all candidate slots are filled. Opening another system
+with V discovers it. A reset builds a fresh deterministic network at time zero.
 
-`stockCap_r = 30 + 8 · max(out_r, need_r) · K` units — a warehouse stores a few
-years of a mature colony, which is what makes imports worth shipping and
-exports finite. A colony below `POP_MIN = 0.02 M` is **abandoned** (a port
-leaves the network, its stock is lost).
+### 3.1 Queue and freighters
 
-### 2.3 Inspection
+`exec-queue.js` follows the min-heap approach of `luncat8/exec_queue`: parallel
+typed arrays for time, kind, owner and revision; doubling growth; pop before
+handler invocation so due follow-ups run in the same drain. Equal-time order is
+unspecified but deterministic for the same push stream. Empty pop is harmless.
+Stale revisions are consumed without effects. No steady-state queue allocations.
 
-`economy.settleColony(colony, trade.time)` is the only entry point. The system
-view calls it at its 4 Hz readout cadence for the opened system, so the panel
-shows live numbers; every ship arrival calls it for the destination (and the
-source at dispatch). No colony is ever stepped per frame.
+The fleet has 96 preallocated ship slots, including expeditions. Seed up to 12
+freighters (roughly half the initial ports); every 25 years grow toward
+`min(74, max(12, floor(3 + 1.5*portCount)))`. Successful expedition hulls become
+freighters; the target is not a retirement policy or a hard post-founding limit.
+A network without ports has only its global tick, no orphan hulls.
 
-## 3. The network
-
-### 3.1 Ports
-
-A port is a colony plus the star identity it lives at:
-`{ colony, key, planetIndex, name, ref, x, y, z }`, where `ref` is the
-pick-shaped record `{ kind, index, key, x, y, z, colorIndex, absMag }` used by
-`selection.resolveDrawn` (ui.2). Ports are capped at 64; discovery is
-deterministic and one-shot per key.
-
-Seeding happens once per model:
-
-- **Milky Way** — every landmark system is generated (`planets.generateSystem`
-  with the landmark's own colour/magnitude, ~0.03 ms each) and its sites
-  discovered. That gives a small, widely spread network across the real named
-  stars, plus the rich candidate list of their unsettled worlds.
-- **Generated galaxies** — the field is sampled evenly, systems within 3 kpc of
-  the model's home are summarised until 20 usable systems are found, and those
-  are generated and discovered. Same rule, no landmark table.
-
-Opening any other system (`V`) discovers its sites on the spot and adds them
-to the network — the brief's inspection path doubles as exploration. A system
-already known is only settled, never re-rolled.
-
-### 3.2 Ships and the queue
-
-Up to 18 freighters from three authored hulls (bulk 1500 units at 0.05 c,
-hauler 800 at 0.12 c, clipper 400 at 0.2 c; travel time is
-`route.interstellarLeg`'s closed form, `d/v + v/a`). Each ship has **exactly
-one current event**:
-
-| kind | meaning | scheduled from |
+| hull | hold (stock units) | ly/trade-year |
 |---|---|---|
-| `EV_ARRIVE` | reach the destination port | the load event's time |
-| `EV_LOAD` | unload, choose a new cargo and destination, or wait | the arrival time + 0.5 y |
-| `EV_WAIT` | retry a port with nothing to load | the load event + 2 y |
-| `EV_FOUND` | a colonisation expedition reaches its candidate | departure + leg time |
-| `EV_TICK` | check every port for an expedition | itself + 25 y |
+| bulk | 30,000 | 2 |
+| hauler | 15,000 | 3 |
+| clipper | 8,000 | 4.5 |
 
-Every ship event carries `(shipRevision)`; a rerouted or retired ship bumps its
-revision, so the stale heap entry is drained and skipped without effects. The
-queue holds every event of the fleet plus one global tick — tens of entries,
-not thousands, because forests of per-colony timers do not exist in this design.
+A leg takes `max(0.5, distanceLy/speed)` years; freight routes are 1–3000 ly.
+Each ship owns exactly one live revision-checked event. The one global tick is
+rescheduled from its own time, as are all follow-ups:
 
-On `EV_ARRIVE`:
+- `EV_ARRIVE`: settle, deposit up to storage room, keep overflow aboard, then
+  `EV_LOAD` after 0.5 years.
+- `EV_LOAD`: choose cargo/destination, or `EV_WAIT` after 2 years.
+- `EV_WAIT`: retry the load decision.
+- `EV_FOUND`: found the reserved site, convert to freighter, load after 0.5 years.
+- `EV_TICK`: fleet/expedition check after 25 years.
 
-1. settle the destination colony to the event time (this is the brief's
-   "factories work per ship arrive"),
-2. deposit the hold up to the stock cap (leftover stays aboard),
-3. on the next tick, choose the port's best export — the resource with the
-   highest `(stock − 0.25·stockCap) · tradeWorth` — take at most the hull's
-   hold, and choose the destination with
-   `score = demand(port, r) · tradeWorth_r / (1 + ly/100)`,
-   preferring a port that is short of that resource and near enough to matter,
-4. schedule the arrival from the load event's own time.
+An export keeps 25% of warehouse capacity. NPCs reserve people for expeditions;
+for each other surplus resource choose demand-weighted destination score
+`demand * worth / (1 + ly/100)`. Ship at most the hold, exportable stock, destination
+room and 150 years of destination demand; rank load value by `1 + ly/200`.
+Demand is positive `input*P - out*P - stock/20`. Ties use stable iteration order.
+Overflow seeks another destination; if none wants it, NPCs jettison it rather
+than deadlock the hull. No cargo is silently discarded by the player's interface.
 
-A port with nothing worth carrying gets `EV_WAIT` and is retried in two years.
-Routing is deterministic: tie-breaks come from `hash4(ship id, resource, time
-bucket)`, not from `Math.random`.
+### 3.2 Colonisation as an event
 
-### 3.3 Colonisation
+Every 25 years settle source ports and look for an expedition, at most one launch
+per 200 years. Cost scales with source capacity:
+`people = clamp(0.15*K, 40, 400)`, `robots = clamp(0.03*K, 10, 100)` units.
+Both costs must be exportable **before** allocating a ship or deducting either.
+Search free candidate systems within 300 ly; rank habitat flags and distance,
+then source surplus. Check all eligible ports, not just the largest.
 
-Every 25 years the tick looks for a port with
+Reserve the **whole target star** during flight, not only its selected planet,
+and count every in-flight expedition against remaining port capacity. This
+prevents duplicate launches and guarantees a port slot on arrival. A reservation
+is separate from `used` (successful settlement). Seed discovery must not occupy
+a reserved target. An unexpected failed founding releases its reservation and
+returns the hull to a scheduled source-port load; never leave a ship eventless.
 
-- a stock of `people ≥ 500` units (colonist volunteers) and `robots ≥ 100`
-  (the factory cores that build the first hab), and
-- a free candidate: an unsettled planet of a system already discovered.
+On arrival the carried people become `P = amount * 0.004` million, capped at K;
+start warehouses at 45%, set founded/last to the event time, and join the same
+routing loop. Startup warehouses are an abstract founding grant, not a manifest
+of goods subtracted from the parent. Failed missions keep their people aboard.
 
-It deducts the cost, launches an expedition ship (a fourth state, not a
-freighter with cargo), and schedules `EV_FOUND` at the candidate's travel
-time. On arrival the candidate's stored site profile becomes a colony with
-`P = carried colonists · POP_PER_UNIT` (500 units → 2 M people) and a small
-seed stock of robots and food. **Colonisation is an event**, not a special
-case, and the new port joins the same routing loop immediately. Candidates are
-capped at 256 and consumed once.
+## 4. Player and display
 
-### 3.4 Draw positions
+At a docked trade port L loads the best spare export that fits, Shift+L unloads
+up to available room. No colony means no free cargo. The player's hold is tonnes;
+`unitMassT` is the bridge to stock units. Resource units are **divisible** (factory
+stocks are continuous); preserve fractional units on partial unload and round
+only in text. A nonempty hold tops up only its existing resource. Full unload,
+class change and ship reset clear `cargoResource`. The HUD names the resource;
+the Flight panel names the port and its available exports.
 
-Ports are anchored at their star's **drawn** position (ui.2's dispatch through
-`selection.resolveDrawn`), so the network rides the rotating galaxy at any
-star time. A star that has left the residency (or a re-drawn field) falls back
-to its birth position and is drawn as a muted route; the economy itself only
-ever uses birth distances, so the simulation never depends on what is on
-screen.
+Y/the routes checkbox controls the label-canvas overlay, default on and hidden
+in system view: faint active voyage lines, cargo-coloured interpolated ship dots,
+small port rings. Resolve birth refs through the same orbit dispatch as labels;
+only resident identity-matched stars are drawn. Missing endpoints hide a route,
+never draw it at a stale birth position. Compute each endpoint into independent
+scratch storage (the second resolution must not overwrite the first).
 
-## 4. The player
+The system readout shows population/capacity, age, coverage/growth, all thirteen
+yields, exports and imports. The Flight Trade section has clock and route controls,
+counters and six largest non-abandoned ports plus sailing ships, refreshed at
+4 Hz. The overlay has a one-line rate/ports/ships/queue summary. Preset fields
+`trade` and `traderoutes` share defaults owned by `trade.js`.
 
-The game mode's cargo hook becomes the economy's port interface (G4's §10.5,
-economy no longer omitted):
+## 5. Files, validation and remaining scope
 
-- `L` at a docked **trade port** loads the port's best export into the hold,
-  limited by the hold's tonnage and the port's export reserve; the hold records
-  its `cargoResource`. `Shift+L` unloads into the port up to its stock cap.
-- The HUD's `cargo` line names the resource (`12,000 t · food & seed`), and the
-  Flight panel's Port row reports the port's colony, population and what it
-  will sell.
-- Docking at a star with no colony keeps the old container hook's refusal
-  message — no cargo appears from nowhere.
-- The player's holds are tonnage (`ship.class.cargo`); stock is units, and
-  `unitMassT` is the one bridge. `ship.cargoResource` is new state cleared by
-  `setClass`, `resetShip` and a full unload.
+- `src/core/exec-queue.js`: typed-array heap, push/pop/drain/peek/clear.
+- `src/core/economy.js`: tables, sites, colony setup/settle and transfer helpers.
+- `src/core/trade.js`: discovery, fleet, queue handlers, founding, player transfers.
+- `src/core/ship.js`, `presets.js`, `input.js`: cargo state, settings and Y action.
+- `src/main.js`, `src/index.html`: seeding/clocks, inspection, HUD/panel/wiring.
+- `src/render/label-layer.js`: resident drawn-position trade pass.
+- `experiments/trade-test.js`: deterministic maps, stable-coverage split exactness,
+  long-time growth/decline, caps, demand/export laws, idempotent discovery,
+  multi-millennial network and exact live-event counts, full-state jump invariance,
+  expeditions/reservations/capacity, player mass conservation and overlay geometry.
+- `experiments/exec-queue-test.js`: 50,000-event sorted-reference comparison,
+  growth, equal timestamps, due follow-ups, boundary, clear/empty and stale handling.
 
-## 5. The display
+No per-frame object literals/closures for simulation or drawing; setup preallocates
+ports, candidates, ships and scratch arrays. New discovery may allocate records of
+known keys and display text is built at 4 Hz. `step` is one drain; the queue has
+one event per ship plus one tick in normal operation.
 
-- **Galaxy view** — a label-canvas trade pass: faint lines between port pairs
-  that a ship is sailing (or has just sailed), a dot at each ship's
-  interpolated drawn position coloured by cargo, and a small ring at each port.
-  Toggled with `Y` / the Controls panel, on by default; hidden in the system
-  view, where the schematic owns the canvas. No new render path, no WGSL.
-- **Readout (`#sysread`)** — the open system gains a `trade` block after the
-  §6.6 readout: each colony's planet letter, population against capacity,
-  growth, the three largest stocks, exports and imports; the selected planet's
-  colony expands to its 13-resource yield map (`ore ▮▮▮▯▯` …) and its needs.
-- **Flight panel** — a Trade section: the trade-clock ladder (a 12-stop slider,
-  `0` paused), a routes checkbox, the port/fleet/queue counters, and a
-  `<pre>` with the five largest ports and the ships in flight.
-- **Overlay** — one line: `trade 100 y/s · 14 ports · 9 ships · queue 11`.
-- **Presets** — `trade` (the rate, y/s) and `traderoutes` (0/1) join the
-  settings line; defaults are owned by `trade.js`
-  (`TRADE_RATE_DEFAULT = 100`, `TRADE_ROUTES_DEFAULT = 1`).
-- **R / a new galaxy** — the network is re-seeded (same seed, same ports,
-  because the map is a pure function of the model seed and the star keys).
-
-## 6. Files and tests
-
-- `src/core/exec-queue.js` — the min-heap (`push`, `pop`, `drainUntil`,
-  `peekTime`, `clear`), typed arrays only, growth by doubling, handler-driven
-  pushes during a drain.
-- `src/core/economy.js` — the resource table, yields, site discovery, the
-  colony record, the closed-form settle, demand/export helpers and formatting.
-- `src/core/trade.js` — the network (ports, candidates, ships, clock), the
-  event handlers, routing, colonisation, the player's load/unload and the
-  per-frame draw-position feed.
-- `src/core/ship.js` — `cargoResource` state (cleared with the hold).
-- `src/main.js` — seeding, the trade clock, inspection on `V`, the readout
-  block, the panel, the HUD line, the overlay feed and the preset fields.
-- `src/render/label-layer.js` — `setTradeOverlay` + the faint routes/ships pass.
-- `src/index.html` — the three script tags and the Trade section.
-- `src/core/presets.js` — the two preset fields.
-- `experiments/exec-queue-test.js` — ordering, boundary (`≤ target`), growth,
-  pushes inside a drain, revision/stale handling, 50 000-event stress and a
-  sorted-array comparison, zero steady-state allocations.
-- `experiments/economy-test.js` — resource-map determinism (same key → same
-  yields; different key → different map), the site rule, the settle's closed
-  form and split exactness, growth/decline break-even, stock caps, demand and
-  export laws, port discovery idempotence, a network tournament over 5 000
-  simulated years (every ship has exactly one live event; queue never grows
-  unboundedly; at least one route cycle; a colony is founded), jump invariance
-  of the event stream (one 500-year step equals a hundred 5-year steps for the
-  same event times), ship-position interpolation, the player's load/unload,
-  and zero allocations in `step`.
-
-Budgets: `drainUntil` allocates nothing once the capacity is reached; a frame
-advance is one `drainUntil`, and the fleet's event count is `O(ships)`; the
-readout text is built at 4 Hz only; the overlay pass is O(ports + ships) with
-preallocated arrays. No per-frame object literals in `main.js`.
-
-## 7. Not in this pass
-
-- Prices, credits, contracts and freight payment (the brief has no money; the
-  `ui.1` `cargo-container` asset type remains the hook for a later interface
-  series).
-- Per-frame factory accounting (explicitly forbidden by the brief).
-- Colony buildings/upgrades, terraforming, piracy and blockades.
-- Docking at a **planet** rather than the star: the G4 station shell is a star
-  shell; the economy port is the system's colony, and the readout names which
-  planet the ship is trading with.
+Deferred: prices/contracts, constrained recipes, inspection-independent variable
+coverage, port-slot recycling, buildings/terraforming/piracy, planet-specific
+docking, physically calibrated interstellar freight. Real-browser/WebGPU visual
+validation remains separate; canvas-stub geometry tests are not a visual verdict.

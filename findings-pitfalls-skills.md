@@ -4,6 +4,29 @@ Append-only notes for LLM agents working on this project. Each entry: date, one-
 
 ---
 
+## 2026-10-20 — Test both endpoints, event ownership and fractional conservation
+
+A trade overlay resolved its first endpoint into `tradeA`, then used that same
+array as the orbit dispatch scratch for its second endpoint. Both projections
+therefore read the destination: finite-position tests passed while routes had
+zero length. Resolve directly into the caller's `out` and test a nonzero-length
+route plus a hull at a known fraction with motion enabled. Also test turning a
+canvas-only overlay off while all other passes are disabled: the last painted
+frame needs one final clear before early-returning.
+
+An event-count upper bound cannot prove one live event per ship: eventless
+owners make the queue *smaller*. Count revision-matching entries for each owner
+and require exactly one (plus the global tick). Reserve whole candidate systems
+and outstanding port slots before launching expeditions, and keep failure paths
+scheduled. Stress overlapping expeditions independently of today's tuned speeds.
+
+Factory stock is continuous. Flooring stock-to-tonnage conversion and then
+clearing cargo below one unit silently destroys partial deliveries. Preserve
+fractional units end-to-end and round only the UI. Test partial warehouse room,
+a blocked unload, and a later complete unload for mass conservation.
+
+---
+
 ## 2026-10-19 — A log that only changed its timestamp is not a change: compare the payload, not the file
 
 Every test in `experiments/` ended with the same four lines — `mkdirSync`,

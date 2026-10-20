@@ -90,7 +90,7 @@ This is a visual galaxy model, not an N-body gravity simulation. The analytical 
 | f / c / Shift+C | Free fly · orbit the selected star (follows it) · orbit the galactic centre **and select it as the speed reference** | same (orbit only) | `f` aborts the autopilot · `c` gated — the ship is the fly rig · Shift+C selects the reference only (no re-pose) |
 | j | Chase the centred star from behind: the view aligns with its movement vector and swings back after a glance | — | the ship trails the selected star at its stand-off; press again to abort |
 | O | — | — | dock at / undock from the target station (inside its shell, settled) |
-| L / Shift+L | — | — | load / unload the cargo hold at the docked station |
+| L / Shift+L | — | — | load / unload actual colony stocks at a docked trade port |
 | H | Return home **and select the home reference** | same (travel only) | selects the home reference only — ships do not teleport |
 
 **Speed reference** (game mode) — the object the axis velocities, the HUD target
@@ -199,9 +199,9 @@ needed.
   marker** — an amber chrome frame on the port of registry plus a
   persistent HUD line — insists on the way back until the next dock.
   The Flight panel's **Port** rows carry the dock button and the cargo
-  hook: `L` loads the hold to the class's capacity and `Shift+L` empties
-  it, at the dock only, free (prices and economy stay omitted, matching
-  0.5).
+  controls: `L` loads actual colony exports within the hold's capacity;
+  `Shift+L` unloads up to available storage. No credits are involved; see
+  [Colonies and trade](#colonies-and-trade).
 - **The HUD** (the overlay, at its 4 Hz cadence) shows **accepted thrust** and
   burn reserve, speed in c (km/s below 0.01c) and the live acceleration, the Δv
   tank and life support, signed forward/sideways/vertical velocity components
@@ -274,7 +274,26 @@ then the System map and route tools below it (`Tab` toggles all panels, the
 
 Fuel, acceleration and life support decide feasibility; impossible plans cannot
 launch. Routes are transient. Ship class, map toggle and budget survive presets.
-The optional trade-price/economy milestone is intentionally omitted.
+Prices and credits remain omitted. Colonies, resources and autonomous freight are
+implemented separately by the [trade plan](trade-plan.md).
+
+## Colonies and trade
+
+The Flight panel's **Trade clock** runs independently of star and ship time:
+100 years/wall-second by default; zero pauses. **Y** or **Draw trade routes**
+toggles port rings, active routes and cargo-coloured freighters. Open a system
+with **V** to discover its sites and inspect colony population, yields and needs.
+Expeditions found new colonies on the same event queue as freight arrivals.
+
+At a docked trade colony **L** loads a spare resource into the tonnage-limited
+hold; **Shift+L** unloads only as much as the warehouse can take. A station with
+no colony cannot manufacture free cargo. The Port row reports the colony,
+population, export and current hold resource. No money changes hands.
+
+The economy is intentionally abstract: NPC travel uses authored trade speeds,
+not the player's physical flight model. Factories settle on events/inspection,
+never every frame; supply-limited growth is approximate and inspections can
+change its subsequent history. See the trade plan for these limits.
 
 ## URL parameters
 
@@ -306,6 +325,7 @@ Useful parameters include:
 | `systime` | Schematic clock rate in years/s (`-1` follows the camera fly speed, `0` freezes) |
 | `dvmap`, `dvbudget` | System render (`0` schematic, `1` delta-v classic, `2` delta-v rails) and energy budget (`0`–`1`) |
 | `ship` | `chemical`, `nuclear`, `fusion`, `stardrive`, or `generation` |
+| `trade`, `traderoutes` | Independent trade rate in years/s (`0` pauses) and route overlay (`0`/`1`) |
 
 The Preset section in the UI serializes the complete active configuration in this same format.
 

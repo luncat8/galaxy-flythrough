@@ -3323,17 +3323,30 @@ async function boot() {
                 flightTimeRow.style.display = flightMode === shipLib.NAV_TIME_LIMIT ? '' : 'none';
                 flightDestinationLabel.textContent = flightDestination.active
                         ? (flightDestination.name || 'Locked destination') : 'No destination set';
-                // G4: the Port rows. Dock is a game-mode
-                // command; the hold moves only at a docked
-                // station (§10).
-                flightDock.textContent = ship.docked ? 'Undock' : 'Dock';
-                flightDock.disabled = !gameMode;
-                flightCargoLoad.disabled = flightCargoUnload.disabled = !ship.docked;
-                const holdTag = ship.cargoResource >= 0 && ship.cargoResource < economyLib.RESOURCE_COUNT
-                        ? ' · ' + economyLib.RESOURCES[ship.cargoResource].name : '';
-                setTextIfChanged(flightPortState, ship.docked
-                        ? `docked at ${ship.station.name} port · cargo ${shipLib.formatCargo(ship.cargo)}/${shipLib.formatCargo(ship.class.cargo)}${holdTag} · tank and life restored`
-                        : 'not docked · O docks at a settled station');
+		flightDock.textContent = ship.docked ? 'Undock' : 'Dock';
+		flightDock.disabled = !gameMode;
+		const portIndex = gameTradePort();
+		flightCargoLoad.disabled = flightCargoUnload.disabled = !gameMode || portIndex < 0;
+		const holdTag = ship.cargoResource >= 0 && ship.cargoResource < economyLib.RESOURCE_COUNT
+			? ' · ' + economyLib.RESOURCES[ship.cargoResource].name : '';
+		let portText = 'not docked · O docks at a settled station';
+		if (ship.docked) {
+			portText = `docked at ${ship.station.name} · tank and life restored`;
+			if (portIndex < 0) portText += ' · no trade colony';
+			else {
+				const port = tradeNet.ports[portIndex];
+				economyLib.settleColony(port.colony, tradeNet.time);
+				let best = -1, score = 0;
+				for (let r = 0; r < economyLib.RESOURCE_COUNT; r++) {
+					const value = economyLib.exportableOf(port.colony, r) * economyLib.RESOURCES[r].worth;
+					if (value > score) { score = value; best = r; }
+				}
+				portText += ` · ${port.name} · ${economyLib.formatPop(port.colony.pop)}`
+					+ ' · exports ' + (best < 0 ? 'nothing spare' : economyLib.RESOURCES[best].name);
+			}
+			portText += ` · cargo ${shipLib.formatCargo(ship.cargo)}/${shipLib.formatCargo(ship.class.cargo)}${holdTag}`;
+		}
+		setTextIfChanged(flightPortState, portText);
                 flightUseSelected.disabled = starSet.primary < 0 || autoActive;
                 flightClearDestination.disabled = !flightDestination.active || autoActive;
                 // Unified checkbox UI: destination autopilot and target-stop are
@@ -4101,50 +4114,31 @@ async function boot() {
                         + ` \u00b7 ${tradeNet.shipCount} ships \u00b7 queue ${tradeNet.queue.size}`;
         }
 
-        function gameCargoLoad() {
-                // A docked trade port sells its best export; a station with no
-                // colony keeps the free hook's fill (G4 §10.5). The hold is
-                // tonnage, the port's stock is units — unitMassT is the bridge.
-                const portIndex = gameTradePort();
-                if (portIndex >= 0) {
-                        const result = tradeLib.playerLoad(tradeNet, ship, portIndex);
-                        if (!result.ok) {
-                                setAutoMsg(result.reason || 'nothing to load');
-                                syncFlightUi();
-                                return;
-                        }
-                        setAutoMsg('loaded ' + Math.round(result.units) + ' '
-                                + economyLib.RESOURCES[result.resource].name
-                                + ' · ' + shipLib.formatCargo(result.tons));
-                        syncFlightUi();
-                        return;
-                }
-                if (!shipLib.loadCargo(ship)) {
-                        setAutoMsg('cargo moves only at a dock');
-                        return;
-                }
-                setAutoMsg('hold loaded · ' + shipLib.formatCargo(ship.cargo));
-                syncFlightUi();
-        }
+	function gameCargoTransfer(unload) {
+		if (!ship.docked) {
+			setAutoMsg('cargo moves only at a dock');
+			return;
+		}
+		const portIndex = gameTradePort();
+		if (portIndex < 0) {
+			setAutoMsg('no trade port here · no colony');
+			return;
+		}
+		const result = unload ? tradeLib.playerUnload(tradeNet, ship, portIndex)
+			: tradeLib.playerLoad(tradeNet, ship, portIndex);
+		if (!result.ok) setAutoMsg(result.reason);
+		else setAutoMsg((unload ? 'unloaded ' : 'loaded ') + economyLib.formatUnits(result.units) + ' '
+			+ economyLib.RESOURCES[result.resource].name + ' · ' + shipLib.formatCargo(result.tons));
+		syncFlightUi();
+	}
 
-        function gameCargoUnload() {
-                const portIndex = gameTradePort();
-                if (portIndex >= 0) {
-                        const result = tradeLib.playerUnload(tradeNet, ship, portIndex);
-                        if (!result.ok && result.reason) setAutoMsg(result.reason);
-                        else setAutoMsg('sold ' + Math.round(result.units) + ' '
-                                + economyLib.RESOURCES[result.resource].name
-                                + ' · ' + shipLib.formatCargo(result.tons) + ' into the port');
-                        syncFlightUi();
-                        return;
-                }
-                if (!shipLib.unloadCargo(ship)) {
-                        setAutoMsg('cargo moves only at a dock');
-                        return;
-                }
-                setAutoMsg('hold emptied');
-                syncFlightUi();
-        }
+	function gameCargoLoad() {
+		gameCargoTransfer(false);
+	}
+
+	function gameCargoUnload() {
+		gameCargoTransfer(true);
+	}
 
         // Runs before the shared-clock rate when a command is pending or a
         // flight just ended; it clears any old cap, then consumes the request.

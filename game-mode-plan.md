@@ -924,6 +924,13 @@ chrome marker draws at expired only.
 
 ### 10.5 The cargo hook
 
+The [trade series](trade-plan.md) supersedes the free-container behavior below
+in the application: L/Shift+L now transfer actual colony stocks, with a resource
+tag and mass conversion. A colony-free dock refuses both actions; partial
+unloads preserve the remainder. The original G4 ship-state primitives and tests
+remain independent of that economy interface.
+
+
 `ship.cargo` (tons, 0 … `class.cargo`; 0 at launch, emptied by a class
 swap — the new hull's hold is its own). While docked, `L` loads to full
 capacity and `Shift+L` unloads to zero — free, no prices (the economy
