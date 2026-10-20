@@ -52,7 +52,7 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 - `plan.md` — the development plan. Clean artifact, no implementation log. §19 indexes the per-release plans; shipped ones live in `archive/`, the completed 0.5 series is also archived below.
 - `archive/0.5.0-plan-planet-generator.md` — the 0.5 plan: star selection and multi-select (0.5.0), the lazy deterministic planet-system generator (0.5.1), star and planet search (0.5.2), the close-system schematic view (0.5.3), the delta-v map (0.5.4), routes and autopilot (0.5.5). CPU-only: no star-buffer or WGSL growth.
 - `findings-pitfalls-skills.md` — notes and pitfalls for LLM agents. Write here when you find a good way to do something, a non-obvious gotcha, or a useful technique. Append-only.
-- `colony-economy-plan.md` — the colony economy (ui.16–ui.18): the per-system
+- `colony-economy-plan.md` — the colony economy (ui.16–ui.19): the per-system
   resource map, the event-driven advance law (arrive/inspect), the port
   market, the hold/credits trade, the stage-2 event ledger with
   commissioned trade routes in the two transit laws (fast freight,

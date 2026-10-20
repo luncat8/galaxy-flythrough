@@ -3070,6 +3070,25 @@ async function boot() {
                 return noSelectionTicks > 0 ? '\nno star selected \u00b7 click a star first' : '';
         }
 
+        // The economy on the HUD (ui.19): one line, always present, so the
+        // scenario is visible even with every panel Tab-hidden — the state
+        // the user reported as "no colonies and no ships" gave no sign the
+        // economy existed at all.
+        function economyLine() {
+                if (colonies.length === 0) {
+                        return '\ncolonies none yet \u00b7 Home seeding at H \u00b7 Colonies & routes panel (top right)';
+                }
+                const routes = tradeLib.activeRouteCount(tradeRoutes);
+                // Generation founders are convoy records; fast-law founders
+                // are expedition records only — count each ship once.
+                let ships = tradeConvoys.count;
+                for (let i = 0; i < expeditions.length; i++) {
+                        if (!expeditions[i].arrived && !expeditions[i].homing) ships++;
+                }
+                return '\ncolonies ' + colonies.length + ' \u00b7 routes ' + routes
+                        + ' \u00b7 ships ' + ships + ' \u00b7 H centres Home';
+        }
+
         function cyclePrimary(delta) {
                 if (starSet.count === 0) return;
                 starSet.cyclePrimary(delta);
@@ -3882,7 +3901,17 @@ async function boot() {
         // observer's rate never lands: factories run on events, never
         // per frame.
         let econY = 0;
-        let tradeSync = false;
+        // ui.19: generation ships (the star-clock sync) are ON by default, so
+        // the colony scenario visibly runs in observer mode too — with the
+        // sync off and no ship clock, the observer's economy never advanced
+        // and there were no colonies or ships to see. The boot preset mirrors
+        // the checkbox's own: star time 0.1 Myr/s, unless the URL pinned one.
+        let tradeSync = true;
+        if (!new URLSearchParams(window.location.search).has('time') && !gameMode) {
+                starTimeRate = 0.1;
+                lastNonZeroTimeRate = 0.1;
+                starTimeTrack = 'fine';
+        }
         const colonies = [];
         const econLedger = colonyLib.createEventLedger();
         const tradeRoutes = tradeLib.createRoutes();
@@ -4187,10 +4216,21 @@ async function boot() {
         const ECON_SCAN_SEED = 1, ECON_SCAN_EXPAND = 2;
         const ECON_NET_MAX_COLONIES = 32, ECON_NET_MAX_SHIPS = 64, ECON_NET_MAX_EDGES = 64;
 
-        let expansionOn = false;
+        // ui.19: the expansion is armed by default — the scenario the user
+        // asked to watch (founders out, colonies founded, routes meshing)
+        // now starts itself instead of waiting for a checkbox in a panel
+        // they may never find. The panel checkbox still stands it down.
+        let expansionOn = true;
         let expansionCursor = 0;
         let routesVersion = 0;                  // bumps when the drawn net's edges change
         let homeColonyIdx = -1;
+        // ui.19: Home seeds itself — at boot, not only on the first game
+        // entry — and the seed drive in expansionStep retries until the
+        // streamed sky around the anchor is populated. H pressed before
+        // any colony exists sets homeCentrePending, so the seed it queues
+        // lands centred instead of just founded.
+        let homeSeedWanted = true;
+        let homeCentrePending = false;
         const expeditions = [];                 // one record per dispatched founder ship
         const econScan = { active: false, mode: 0, sourceIdx: -1, px: 0, py: 0, pz: 0, r2: 0, auto: false };
 
@@ -4476,6 +4516,11 @@ async function boot() {
                 starSet.setPrimary(insertStarFromPick(econPick));
                 const colony = foundColonyFromPick(econPick, 'Home', econY);
                 homeColonyIdx = colony.idx;
+                homeSeedWanted = false;
+                if (homeCentrePending) {
+                        homeCentrePending = false;
+                        centreOnHomeColony();
+                }
                 // The scenario's stage is where the sky draws Home now. The
                 // birth frame's fixed pose — where the camera and a fresh hull
                 // spawn — is kiloparsecs behind it once the star clock has run
@@ -4605,6 +4650,14 @@ async function boot() {
                         econScanDone();
                         return;
                 }
+                // ui.19: the scenario seeds itself. Until the first colony
+                // exists the drive (re)queues the home seed whenever no scan
+                // is running — the streamed sky fills the anchor's radius
+                // within seconds of boot, in either rig.
+                if (homeSeedWanted && colonies.length === 0 && !aroundPending) {
+                        queueHomeSeed(true);
+                        return;
+                }
                 if (!expansionOn || colonies.length === 0 || aroundPending) return;
                 if (colonies.length >= EXPANSION_MAX_COLONIES) return;
                 if (expeditionFlightCount() >= EXPANSION_MAX_FLIGHT) return;
@@ -4635,7 +4688,14 @@ async function boot() {
                 }
                 if (econScan.mode === ECON_SCAN_SEED) {
                         if (around.count === 0) {
-                                setAutoMsg('no stars near home — the scenario needs the sky populated');
+                                // The automatic seed (ui.19) stays wanted and
+                                // retries as the sky streams in — a parked
+                                // camera outside the residency is measured in
+                                // seconds, not a dead end. A manual click on
+                                // the panel button still reports at once.
+                                if (!econScan.auto) {
+                                        setAutoMsg('no stars near home — the scenario needs the sky populated');
+                                }
                                 return;
                         }
                         seedFromAroundRow(0);
@@ -4756,6 +4816,28 @@ async function boot() {
                         tradeNet.shipPos[s * 3 + 2] = econPos[2] + c.z;
                         tradeNet.shipFounder[s] = c.route < 0 ? 1 : 0;
                 }
+                // Fast-law founder ships have no convoy record (ledger math,
+                // §9) — the net interpolates them from the expedition's own
+                // departure/arrival years, so a founder is a visible ship
+                // under either transit law (ui.19). Drawing only: the ledger
+                // still owns the arrival. Generation founders are convoy
+                // records above (homing) and are not drawn twice.
+                let s = tradeNet.shipCount;
+                for (let i = 0; i < expeditions.length && s < ECON_NET_MAX_SHIPS; i++) {
+                        const exp = expeditions[i];
+                        if (exp.arrived || exp.homing || !Number.isFinite(exp.arriveY)) continue;
+                        const span = exp.arriveY - exp.departY;
+                        if (!(span > 0)) continue;
+                        let f = (econY - exp.departY) / span;
+                        if (f < 0) f = 0; else if (f > 1) f = 1;
+                        colonyPosOf(exp.originIdx, econPos);
+                        tradeNet.shipPos[s * 3] = econPos[0] + (exp.bx - econPos[0]) * f;
+                        tradeNet.shipPos[s * 3 + 1] = econPos[1] + (exp.by - econPos[1]) * f;
+                        tradeNet.shipPos[s * 3 + 2] = econPos[2] + (exp.bz - econPos[2]) * f;
+                        tradeNet.shipFounder[s] = 1;
+                        s++;
+                }
+                tradeNet.shipCount = s;
         }
 
         // --- The panel -------------------------------------------------------
@@ -4794,6 +4876,47 @@ async function boot() {
                         + ' · comfort ' + Math.round(colony.comfort * 100) + '%');
         }
 
+        // H's colony (ui.19): the first colony founded — Home, while the
+        // scenario runs as designed. homeColonyIdx names it directly; the
+        // colonies[0] fallback covers a player-founded first colony.
+        function firstColony() {
+                if (homeColonyIdx >= 0 && colonies[homeColonyIdx]) return colonies[homeColonyIdx];
+                return colonies.length > 0 ? colonies[0] : null;
+        }
+
+        // Centre the view on the first colony's star (ui.19 — what H means
+        // now). The star is selected, then the observer rig centres and
+        // follows it the way c/F do, so it stays centred while the sky
+        // drifts. The ship does not teleport (§3): in game mode the colony
+        // becomes the target the HUD and the autopilot answer against.
+        // Returns false when there is no colony, or its star is not
+        // resident (selectColonyStar already said so) — H then falls back.
+        function centreOnHomeColony() {
+                const colony = firstColony();
+                if (!colony) return false;
+                selectColonyStar(colony);
+                const i = starSet.primary;
+                if (i < 0 || (starSet.keys[i] >>> 0) !== (colony.starKey >>> 0)) return false;
+                if (gameMode) {
+                        setSpeedRef('target');
+                        setAutoMsg('home colony ' + colony.name + ' targeted · F flies the ship there');
+                        return true;
+                }
+                setSpeedRef('home');
+                if (camera.getState(rigState).mode === window.Camera.MODE_FLY) flyToPrimary();
+                else orbitPrimary();
+                return true;
+        }
+
+        // H (or the panel button) before any colony exists: make sure the
+        // seed is queued, and remember to centre when it lands.
+        function queueHomeCentre() {
+                homeSeedWanted = true;
+                homeCentrePending = true;
+                if (!econScan.active && !aroundPending) queueHomeSeed(true);
+                setAutoMsg('seeding the Home colony — H centres on it when it lands');
+        }
+
         let econListSignature = '';
         let lastRouteSelectSig = '';
         // Rebuild the rows when the shape changes (a founding, a commission, a
@@ -4807,7 +4930,10 @@ async function boot() {
                 econRouteCount.textContent = activeRoutes === 0 ? 'none yet'
                         : activeRoutes + (activeRoutes === 1 ? ' route' : ' routes')
                                 + (founders > 0 ? ' · ' + founders + ' in flight' : '');
-                econSeedHome.disabled = colonies.length > 0;
+                // ui.19: never disabled — with a colony it centres (H's
+                // panel face), without one it seeds.
+                econSeedHome.disabled = false;
+                econSeedHome.textContent = colonies.length > 0 ? 'Centre on Home colony' : 'Seed home colony';
                 econExpansionBox.checked = expansionOn;
                 const sig = colonies.length + ':' + tradeRoutes.list.length + ':' + routesVersion;
                 if (sig !== econListSignature) {
@@ -4914,8 +5040,11 @@ async function boot() {
                 if (origin) selectColonyStar(origin);
         });
         econSeedHome.addEventListener('click', () => {
-                if (colonies.length > 0) { setAutoMsg('the scenario already has its first colony'); return; }
+                // Once a colony exists the button is H's other face (ui.19):
+                // centre on the first colony instead of refusing.
+                if (colonies.length > 0) { centreOnHomeColony(); return; }
                 if (aroundPending) { setAutoMsg('a radius scan is running — try again in a moment'); return; }
+                homeCentrePending = true;
                 queueHomeSeed();
         });
         econExpansionBox.addEventListener('change', () => {
@@ -4951,7 +5080,11 @@ async function boot() {
                 econLog.length = 0;
                 econY = 0;
                 homeColonyIdx = -1;
-                expansionOn = false;
+                // ui.19: a new galaxy restarts the scenario as it boots —
+                // expansion re-armed to its default, Home wanted again.
+                expansionOn = true;
+                homeSeedWanted = true;
+                homeCentrePending = false;
                 econScan.active = false;
                 routesVersion++;
                 econListSignature = '';
@@ -5403,6 +5536,7 @@ async function boot() {
                         `pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
                         cameraLine(cameraState) +
                         gameModeLine() +
+                        economyLine() +
                         noSelectionLine() +
                         selectionLines(cameraState) +
                         selectedLine(cameraState);
@@ -5670,14 +5804,27 @@ async function boot() {
                         }
                 }
                 if (actions.home) {
-                        // H selects the home reference — the Sun in
-                        // the Milky Way, the generated galaxy's
-                        // centre otherwise — in both rigs. Only the
-                        // observer rig also goes there; a ship does
-                        // not teleport (§3), so game mode takes the
-                        // reference and answers with the notice.
-                        setSpeedRef('home');
-                        if (gameMode) { actions.home = 0; gameNotice(); }
+                        // H centres on the star with the first colony
+                        // (ui.19): selected, centred and followed in the
+                        // observer rig; in game mode the colony becomes
+                        // the target — a ship does not teleport (§3).
+                        // The home reference still comes with it. With
+                        // no colony yet, H queues the seed and centres
+                        // when it lands; the observer rig meanwhile falls
+                        // back to camera.step's home view (the Sun, or a
+                        // generated galaxy's centre) and game mode takes
+                        // the reference with the usual notice.
+                        if (centreOnHomeColony()) {
+                                actions.home = 0;
+                        } else if (gameMode) {
+                                actions.home = 0;
+                                setSpeedRef('home');
+                                gameNotice();
+                                queueHomeCentre();
+                        } else {
+                                setSpeedRef('home');
+                                queueHomeCentre();
+                        }
                 }
                 camera.step(dt, input.state);
                 if (resetting) {

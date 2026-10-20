@@ -359,3 +359,24 @@ two colonies without docking first. The HUD gains an economy line while
 colonies exist. The Flight panel keeps the dock-context Found colony and
 Commission route buttons — they are the pilot's quick actions — and the
 port market readout.
+
+**Amendment (ui.19 — the scenario is visible by default).** As shipped,
+ui.18 only *could* be seen: the panel was the third individually fixed
+panel in the right column (Display up to 100vh + Colonies 38vh at
+`bottom: 52vh` + Controls 52vh — more than a viewport, so Colonies was
+buried), Home seeded only on the first game-mode entry, Expansion started
+unarmed, and with the generation sync off the observer's economy clock
+never advanced at all — no colonies, no ships, nothing. ui.19 keeps every
+law and changes the defaults and the furniture: the right column is one
+flex stack capped at the viewport (`#right-column`), Home seeds itself at
+boot (the seed drive retries until the streamed sky populates the anchor
+radius), Expansion and the Generation ships sync start on (the boot
+preset takes star time 0.1 Myr/s unless the URL pinned one), fast-law
+founder expeditions draw as interpolated ship dots (drawing only — the
+ledger still owns arrival), the HUD economy line is always present, and
+**H centres on the star with the first colony** (`centreOnHomeColony`:
+select + fly-to/orbit + follow in the observer rig; the colony becomes
+the target in game mode — the ship still never teleports — and with no
+colony yet, H queues the seed and centres when it lands, falling back to
+the old home view meanwhile). The panel's seed button is H's other face:
+once a colony exists it centres instead of refusing.

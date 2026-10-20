@@ -23,6 +23,11 @@
         <!-- Search results (0.5.2) and, from 0.5.3, the system-view readout:
              one <pre> styled like #overlay, hidden while empty. -->
         <pre id="sysread"></pre>
+	<!-- The right column (ui.19): Display, Colonies & routes and Controls
+	     share one flex stack capped at the viewport height, so no panel
+	     can bury another the way the old individually-fixed stack did
+	     (Display up to 100vh + Colonies 38vh + Controls 52vh > 100vh). -->
+	<div id="right-column">
         <div id="menu" class="panel">
                 <div class="menu-header">
                         <span>Display</span>
@@ -503,14 +508,14 @@
 		</div>
 		<div class="flight-section-heading"><span>Scenario</span><small>home · expansion</small></div>
 		<div class="econ-scenario-row">
-			<button id="econ-seed-home" type="button" title="Found the Home colony at the star nearest the home location (H) — the Sun in the Milky Way preset, the model centre otherwise. The first game-mode entry seeds it automatically. Free, like every founding: the player is the catalyst, not the owner.">Seed home colony</button>
-			<label class="flight-autopilot" for="econ-expansion" title="Arm the expansion (ui.18 §9): every colony sponsors one expedition at a time to the nearest unclaimed star in its neighbourhood. Arrival founds a colony, commissions the route home and — when a neighbour is near — a second route, so the net meshes as it grows. Runs on the economy clock: the shared ship clock in game mode, the star clock with Generation ships on.">
-				<input type="checkbox" id="econ-expansion">
+			<button id="econ-seed-home" type="button" title="Found the Home colony at the star nearest the home location (H) — the Sun in the Milky Way preset, the model centre otherwise. It seeds itself at boot (ui.19); once a colony exists this button centres the camera on the first colony instead. Free, like every founding: the player is the catalyst, not the owner.">Seed home colony</button>
+			<label class="flight-autopilot" for="econ-expansion" title="Arm the expansion (ui.18 §9): every colony sponsors one expedition at a time to the nearest unclaimed star in its neighbourhood. Arrival founds a colony, commissions the route home and — when a neighbour is near — a second route, so the net meshes as it grows. On by default (ui.19). Runs on the economy clock: the shared ship clock in game mode, the star clock with Generation ships on.">
+				<input type="checkbox" id="econ-expansion" checked>
 				<span>Expansion</span>
 			</label>
 		</div>
-		<label class="flight-autopilot" for="econ-generation" title="Sync the economy with the star clock and fly the convoys as generation ships: 1 ly per 10 ky, star time 0.1 Myr/s — the stars move while the ships chase them (ui.17). Off: fast freight at 0.2 ly/y, drift over the transit ignored, the economy runs on the game clock only.">
-			<input type="checkbox" id="econ-generation">
+		<label class="flight-autopilot" for="econ-generation" title="Sync the economy with the star clock and fly the convoys as generation ships: 1 ly per 10 ky, star time 0.1 Myr/s — the stars move while the ships chase them (ui.17). On by default (ui.19), so colonies and ships are visible in observer mode too. Off: fast freight at 0.2 ly/y, drift over the transit ignored, the economy runs on the game clock only.">
+			<input type="checkbox" id="econ-generation" checked>
 			<span>Generation ships</span>
 			<small>sync with star time · 1 ly / 10 ky · 0.1 Myr/s</small>
 		</label>
@@ -548,7 +553,7 @@
                         <button data-action="flyTo" title="2 s flight to the selected star, then orbit + follow it. In game mode: the burn/flip autopilot approach to it (fuel checkout first)">fly to star <span class="kbd">F</span></button>
                         <button data-action="nextStar" title="Next star in the selection set">next star <span class="kbd">N</span></button>
                         <button id="help-prev-star" title="Previous star in the selection set">prev star <span class="kbd">Shift+N</span></button>
-                        <button data-action="home" data-observer title="Home: the Sun, or a generated galaxy's centre">home <span class="kbd">H</span></button>
+                        <button data-action="home" data-observer title="Centre on the star with the first colony (Home) and follow it — H seeds Home first if no colony exists yet (ui.19). In game mode H makes that colony the target instead of teleporting the ship. With no colony at all it falls back to the old home view: the Sun, or a generated galaxy's centre">home colony <span class="kbd">H</span></button>
                         <button data-action="reset" title="Reset everything — the view and, in game mode, the ship (full tank, zero velocity)">reset <span class="kbd">R</span></button>
                         <button data-action="dvMap" data-observer title="Cycle the open system view: schematic / delta-v map / delta-v rails (click two graph nodes to route)">cycle view <span class="kbd">B</span></button>
                         <button data-action="clearSet" title="Clear the selection set (click selects, Shift+click adds)">clear set <span class="kbd">X</span></button>
@@ -570,6 +575,7 @@ game (g): WASD/arrows burn &#916;v &#183; Shift &#215;4 / Ctrl &#215;0.25 &#183;
 click a star to select it (Shift+click adds to the set) &#183; [ ] exposure &#183; ; ' brightness &#183; Tab hides the panels<br>
 Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
         </div>
+	</div><!-- #right-column -->
 
         <!-- Runtime modules. Classic script tags, no modules (per AGENTS.md).
              Order matters: math before render, render before stream, main last. -->

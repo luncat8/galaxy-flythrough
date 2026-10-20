@@ -1089,3 +1089,36 @@ body.system-view #sysread {
 #economenu .econ-route-arrow { color: #6f9f87; }
 #economenu .flight-market { margin-top: 8px; }
 
+/* The right column as one stack (ui.19): Display, Colonies & routes and
+   Controls used to be three individually fixed panels in the same 260 px
+   column — Display allowed 100vh, Colonies 38vh parked at bottom:52vh and
+   Controls 52vh, more than the viewport between them, so Colonies was
+   buried under Display on ordinary window heights and users never found
+   it. Now one flex column capped at the viewport stacks them; each panel
+   keeps its own scroll and shrinks instead of overlapping. */
+#right-column {
+	position: fixed;
+	top: 12px;
+	right: 12px;
+	width: 260px;
+	max-height: calc(100vh - 24px);
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	z-index: 20;
+	pointer-events: none;
+}
+#right-column > #menu,
+#right-column > #economenu,
+#right-column > #help {
+	position: static;
+	width: auto;
+	max-height: none;
+	flex: 0 1 auto;
+	min-height: 0;
+	pointer-events: auto;
+}
+@media (max-width: 700px) {
+	#right-column { width: max(140px, calc(40vw - 24px)); }
+}
+

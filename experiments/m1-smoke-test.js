@@ -159,7 +159,8 @@ const sourceFiles = walk(SRC, '')
 			&& /const dtShipS = gameMode \? gameRateY \* shipLib\.SECONDS_PER_YEAR \* dt : 0;/.test(main)
 			&& /gameDir\[0\] = f \* camera\.forward\[0\] \+ r \* camera\.right\[0\] \+ u \* camera\.up\[0\];/.test(main)
 			&& /gameDir\[2\] = f \* camera\.forward\[2\] \+ r \* camera\.right\[2\] \+ u \* camera\.up\[2\];/.test(main)
-			&& /if \(actions\.home\) \{[\s\S]*?setSpeedRef\('home'\);[\s\S]*?if \(gameMode\) \{ actions\.home = 0; gameNotice\(\); \}/.test(main)
+			&& /if \(actions\.home\) \{[\s\S]*?centreOnHomeColony\(\)[\s\S]*?queueHomeCentre\(\)/.test(main)
+			&& /function centreOnHomeColony\(\) \{[\s\S]*?setSpeedRef\('target'\);[\s\S]*?flyToPrimary\(\)[\s\S]*?orbitPrimary\(\)/.test(main)
 			&& /Space: 'allStop'/.test(inputSrc)
 			&& /allStop: 0, shipRefuel: 0/.test(inputSrc)
 			&& /if \(gameMode\) enterGameMode\(\); else leaveGameMode\(\);/.test(main));
@@ -454,7 +455,7 @@ const sourceFiles = walk(SRC, '')
 		&& /memberDrawnPosition\(p, drawnPos\);[\s\S]{0,400}?camera\.flyToStar\(drawnPos\[0\]/.test(main)
 		// The camera steps after the target is fresh (game mode's ship step
 		// rides between them; the order rule is what this pins).
-		&& /if \(followKey >= 0 && cameraStateForTime\.mode === window\.Camera\.MODE_ORBIT_OBJECT\) \{\s*followTarget\(\);\s*\}[\s\S]{0,1800}?camera\.step\(dt, input\.state\);/.test(main)
+		&& /if \(followKey >= 0 && cameraStateForTime\.mode === window\.Camera\.MODE_ORBIT_OBJECT\) \{\s*followTarget\(\);\s*\}[\s\S]{0,3200}?camera\.step\(dt, input\.state\);/.test(main)
 		&& (main.match(/camera\.step\(/g) || []).length === 1
 		&& /const drawn = memberDrawnPosition\(i, drawnPos\);/.test(main)
 		&& !/camera\.flyToStar\(starSet\.x\[/.test(main)
@@ -562,6 +563,21 @@ const sourceFiles = walk(SRC, '')
 		/function removeRoute\(routes, idx\) \{/.test(tradeSrc)
 		&& /function activeRouteCount\(routes\) \{/.test(tradeSrc)
 		&& /EV_EXPEDITION_ARRIVE = 4/.test(fs.readFileSync(path.join(SRC, 'core', 'colony.js'), 'utf-8')));
+	// ui.19: the scenario is visible by default — the right column is one
+	// stack (no panel buries another), Home seeds itself at boot, the
+	// expansion and the generation sync start armed, fast-law founders
+	// draw as ships, the HUD carries the economy line, and H centres on
+	// the first colony's star.
+	check('ui.19: the colony scenario is visible by default and H centres on the first colony',
+		/id="right-column"/.test(html) && /#right-column/.test(css)
+		&& /id="econ-expansion" checked/.test(html) && /id="econ-generation" checked/.test(html)
+		&& /let expansionOn = true;/.test(main) && /let tradeSync = true;/.test(main)
+		&& /let homeSeedWanted = true;/.test(main)
+		&& /if \(homeSeedWanted && colonies\.length === 0 && !aroundPending\) \{\s*queueHomeSeed\(true\);/.test(main)
+		&& /function economyLine\(\) \{/.test(main) && /economyLine\(\) \+/.test(main)
+		&& /exp\.arrived \|\| exp\.homing/.test(main)
+		&& /function firstColony\(\) \{/.test(main)
+		&& /home colony <span class="kbd">H<\/span>/.test(html));
 }
 
 // --- 2. No global is read before it is defined --------------------------

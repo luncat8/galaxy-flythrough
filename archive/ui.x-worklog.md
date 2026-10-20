@@ -1043,3 +1043,52 @@ colony 37/37, m1-smoke 116/116, quick 28/28.
 **Next.** The §7 list stays recorded, not promised. The deferred browser
 visual pass remains open in its plan.
 
+**ui.19 — colony trade made visible: the panel, the scenario defaults, H.**
+The user reported the shipped ui.18 as broken: no Colonies & routes panel
+to be found, no colonies or ships on the sky, and H not centring. All
+three were real. (1) The panel was the third individually fixed panel in
+the 260 px right column — Display allowed `max-height: 100vh`, Colonies
+38vh parked at `bottom: calc(52vh + 24px)`, Controls 52vh: more than a
+viewport between them, so Colonies sat buried under Display on ordinary
+window heights. The three now live in one flex stack (`#right-column`,
+viewport-capped, each panel keeps its own scroll and shrinks instead of
+overlapping); Tab/collapse/insets behave as before. (2) The scenario
+never started itself in the default rig: Home seeded only on the first
+game-mode entry, Expansion started unarmed, and with the Generation
+ships sync off the observer economy clock (`dtEconY`) never advanced —
+a default observer page showed an empty panel and a frozen sky forever.
+Now Home seeds at boot (the `expansionStep` seed drive retries until the
+streamed sky populates the anchor radius; a zero-star scan stays wanted
+instead of reporting), Expansion and the sync start on (boot takes the
+checkbox's own preset, star time 0.1 Myr/s, unless `?time=` pinned one),
+and `resetEconomy` restores the same defaults for a new galaxy. Fast-law
+founders had no convoy record and drew nothing: `tradeNetTick` now
+interpolates their dots from the expedition's depart/arrive years
+(drawing only — the ledger still owns arrival), so ships are visible
+under either transit law. The HUD economy line is now always present,
+not only while colonies exist. (3) H only selected the home *reference*
+(and, in the observer rig, teleported to the birth-frame home pose —
+kiloparsecs from the drawn Sun once the clock ran). H now centres on
+the star with the first colony (`centreOnHomeColony` → `firstColony`):
+selected, flown/orbited to and followed so it stays centred; in game
+mode the colony becomes the target instead (no teleport, §3); with no
+colony yet H queues the seed and centres when it lands
+(`homeCentrePending`), keeping the old home view as the observer
+fallback. The panel's seed button is the same action's other face —
+once a colony exists it centres rather than refusing — and the Controls
+panel's button is relabelled "home colony". One own-goal caught in
+review: the boot preset first called `params.has('time')`, which does
+not exist on readParams' return (the `.has` lives on the URLSearchParams
+inside it) — that would have crashed boot; it reads the query directly.
+Tests: m1-smoke 117/117 (ui.19 wiring pinned, the H gate check re-pinned
+to the new law, one follow→step proximity window widened for the longer
+H handler), trade 24/24, colony 37/37, camera/input/ship green,
+`changed` 7/7, `quick` 27/28 with planet-gen the known GC-timing flake
+(it passes standalone, before and after). No browser is installable in
+this sandbox (Playwright's CDN is blocked), so the end-to-end pass is
+the serving check plus these tiers — the live preview is the user's.
+
+**Next.** The §7 list stays recorded, not promised. The deferred browser
+visual pass remains open in its plan — worth one look at the right
+column stack at 700 px width when a browser is next available.
+

@@ -2255,3 +2255,28 @@ worth keeping: launch the Playwright Chromium directly with
   verification session with a fresh `--disk-cache-dir`, and prove the
   *running* code has your change (a version marker or a debug handle set
   inside the suspect function) before believing a negative result.
+
+## 2026-10-20 — Three fixed panels in one column will bury the middle one; a default-off clock reads as "broken feature"
+
+ui.18 shipped a correct Colonies & routes panel that users could not
+find, an economy that never started, and an H key that went to a fixed
+birth-frame pose instead of the colony. Three lessons, all measured from
+the user's "agent told it should work but not" report:
+
+* **Panel stacks are arithmetic.** Display (`max-height: 100vh`) +
+  Colonies (38vh at `bottom: 52vh`) + Controls (52vh) in one 260 px
+  column sums past any viewport; the middle panel is not "below the
+  fold", it is *under* another panel. Give a column one container capped
+  at the viewport and let panels shrink/scroll inside it — never trust
+  three independent `position: fixed` budgets to add up.
+* **A feature whose clock defaults to off is indistinguishable from a
+  bug.** The observer economy only advanced with the Generation ships
+  sync on; off, `dtEconY` was 0 forever, so the correct code presented
+  as "no colonies and no ships". If a scenario is the point of a
+  release, its seed, its automation and its clock must default to
+  running — opt-out, not opt-in.
+* **`readParams` returns a plain object; the `.has` lives inside it.**
+  `params.has('time')` type-checks by eye (the URLSearchParams inside
+  `readParams` really has one) and crashes boot at runtime. Wiring-regex
+  tests cannot catch a wrong receiver — grep the return shape before
+  calling a method on a params-style object.

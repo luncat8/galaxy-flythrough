@@ -103,7 +103,7 @@ This is a visual galaxy model, not an N-body gravity simulation. The analytical 
 | j | Chase the centred star from behind: the view aligns with its movement vector and swings back after a glance | — | the ship trails the selected star at its stand-off; press again to abort |
 | O | — | — | dock at / undock from the target station (inside its shell, settled) |
 | L / Shift+L | — | — | buy the port's best export into the hold / sell the whole hold, at a docked colony port |
-| H | Return home **and select the home reference** | same (travel only) | selects the home reference only — ships do not teleport |
+| H | Centre on the star with the first colony (Home) and follow it, **and select the home reference** — seeds Home first if no colony exists | same (selection only) | makes Home the target — ships do not teleport |
 
 **Speed reference** (game mode) — the object the axis velocities, the HUD target
 line and the autopilot answer against: the locked Flight destination, else the
@@ -130,19 +130,22 @@ Other controls:
   time lives; 0.1 Myr/s is 5 % of the track) and the full −1–99 Myr/s
   (0.5 steps, follow at the left end); the readout carries three decimals
   under 1 Myr/s, and the observer default is 1 Myr/s
-- the **Colonies & routes** panel (right column) — the economy's own
+- the **Colonies & routes** panel (right column, stacked with Display and
+  Controls in one viewport-capped column) — the economy's own
   workspace: **Seed home colony** founds Home at the star nearest the
-  home H location (automatic on the first game entry), **Expansion**
+  home H location (automatic at boot; once a colony exists the button
+  centres on the first colony, like H), **Expansion** — on by default —
   arms the scenario (each colony sponsors founder expeditions to the
   nearest unclaimed stars; arrival founds a colony, commissions the route
   home and cross-links a neighbour, so the net of routes expands on its
   own — visible on the sky as dashed lanes, green colony rings, the
-  amber Home ring and in-flight ship dots), the colony list (click
+  amber Home ring and in-flight ship dots under either transit law), the colony list (click
   selects the star), the route list (click selects the origin, ✕
   cancels), a commission row for any two colonies without docking, and
   the economy events log ([colony-economy-plan.md §9](colony-economy-plan.md))
-- the **Generation ships** checkbox (Colonies & routes panel) —
-  sync the economy with star time: the convoys fly at 1 ly per 10 ky with
+- the **Generation ships** checkbox (Colonies & routes panel) — on by
+  default: sync the economy with star time, so the scenario runs in
+  observer mode too: the convoys fly at 1 ly per 10 ky with
   star time at 0.1 Myr/s (in game mode: the shared clock's 1e5 y/s rung),
   homing on the moving destination; off — fast freight at 0.2 ly/y with the
   drift over the transit ignored, the economy on the game clock only
