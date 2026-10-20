@@ -522,7 +522,8 @@ const sourceFiles = walk(SRC, '')
 	const NAMESPACES = ['Device', 'Camera', 'Input', 'Loop', 'Selection', 'StarSet', 'SelectionStore', 'Presets', 'StarRenderer', 'LabelLayer', 'SystemLayer',
 		'TileLoader', 'CellManager', 'Ship', 'GalaxyShaders', 'HashLib', 'DensityLib', 'GalaxyLib', 'SamplingLib',
 		'StarRecord', 'StarTypesLib', 'PlanetsLib', 'NebulaLib', 'ObjectsLib', 'Coords', 'Landmarks', 'Constellations',
-		'ViewModesField', 'ViewModesRenderer', 'ViewModesLayer'];
+		'ViewModesField', 'ViewModesRenderer', 'ViewModesLayer',
+		'ExecQueueLib', 'EconomyLib', 'TradeLib'];
 	for (const file of scripts) {
 		const text = fs.readFileSync(path.join(SRC, file), 'utf-8');
 		// Registers its own namespace before anything else can read it.
@@ -553,6 +554,8 @@ const sourceFiles = walk(SRC, '')
 		['../src/math/objects.js', 'ObjectsLib'], ['../src/math/clusters.js', 'ClustersLib'],
 		['../src/math/coords.js', 'Coords'],
 		['../src/core/camera.js', 'Camera'], ['../src/core/input.js', 'Input'], ['../src/core/ship.js', 'Ship'],
+		['../src/core/exec-queue.js', 'ExecQueueLib'], ['../src/core/economy.js', 'EconomyLib'],
+		['../src/core/trade.js', 'TradeLib'],
 		['../src/core/selection.js', 'Selection'], ['../src/core/star-set.js', 'StarSet'],
 		['../src/core/selection-store.js', 'SelectionStore'], ['../src/core/loop.js', 'Loop'],
 		['../src/core/presets.js', 'Presets'],
@@ -585,6 +588,9 @@ const sourceFiles = walk(SRC, '')
 		&& typeof global.window.Camera.createCamera === 'function'
 		&& typeof global.window.Input.createInput === 'function'
 		&& typeof global.window.Ship.createShip === 'function'
+		&& typeof global.window.TradeLib.createNetwork === 'function'
+		&& typeof global.window.EconomyLib.setupColony === 'function'
+		&& typeof global.window.ExecQueueLib.createExecQueue === 'function'
 		&& typeof global.window.Loop.createLoop === 'function'
 		&& typeof global.window.StarRenderer.createStarRenderer === 'function'
 		&& typeof global.window.TileLoader.loadCatalog === 'function'

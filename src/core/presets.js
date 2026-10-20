@@ -67,6 +67,11 @@ const FIELDS = [
 	// old preset lands on the render it was copied from.
 	{ key: 'dvmap', label: 'system render' },
 	{ key: 'dvbudget', label: 'energy budget' },
+	// The trade clock (trade series): years per wall second on the economy's
+	// own axis, and the galaxy overlay's route pass 0/1. Both are display
+	// state — the colonies themselves are a pure function of the seed.
+	{ key: 'trade', label: 'trade clock', unit: ' y/s' },
+	{ key: 'traderoutes', label: 'trade routes' },
 	{ key: 'ship', label: 'ship class' },
 	{ key: 'stars', label: 'procedural stars' },
 	{ key: 'catalog', label: 'catalog budget' },
@@ -116,7 +121,10 @@ function menuDefaults() {
 		// like the search results — the Defaults button does not close it.
 		systime: g.SystemLayer ? g.SystemLayer.SYSTIME_DEFAULT : 0,
 		dvmap: g.SystemLayer ? g.SystemLayer.VIEW_DEFAULT : 0,
-		dvbudget: g.SystemLayer ? g.SystemLayer.BUDGET_DEFAULT : 0.35, ship: 'chemical',
+		dvbudget: g.SystemLayer ? g.SystemLayer.BUDGET_DEFAULT : 0.35,
+		trade: g.TradeLib ? g.TradeLib.TRADE_RATE_DEFAULT : 100,
+		traderoutes: g.TradeLib ? g.TradeLib.TRADE_ROUTES_DEFAULT : 1,
+		ship: 'chemical',
 		// Owned by clusters.js, like the orbit numbers above are owned by
 		// orbit.js: the exaggeration the cluster budget is rendered at.
 		clusters: g.ClustersLib ? g.ClustersLib.CLUSTER_EXAGGERATION_DEFAULT : 50,
@@ -256,6 +264,7 @@ function describeValue(field, value) {
 	if (field.key === 'apoShare') return Math.round(value * 100) + '%';
 	if (field.key === 'engine') return serializeEngine(value).split('+').join(', ');
 	if (field.key === 'sysview') return value ? 'open' : 'closed';
+	if (field.key === 'traderoutes') return value ? 'drawn' : 'hidden';
 	if (field.key === 'evolve') return value ? 'running' : 'frozen';
 	if (field.key === 'viewopacity') return Math.round(value * 100) + '%';
 	if (field.key === 'dvmap') {
@@ -293,7 +302,7 @@ function buildLlmPrompt(settings) {
 	lines.push('- star system: ' + ['type ' + (d.type || 'SBb'), 'seed ' + (d.seed || '42'),
 		'age ' + (d.age || '13.5 Gyr')].join(', '));
 	lines.push('- star movement stability engine: ' + (d.engine || 'classic'));
-	for (const key of ['time', 'evolve', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad', 'sysview', 'systime', 'dvmap', 'dvbudget', 'ship']) {
+	for (const key of ['time', 'evolve', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad', 'sysview', 'systime', 'dvmap', 'dvbudget', 'trade', 'traderoutes', 'ship']) {
 		const field = FIELDS.find((f) => f.key === key);
 		if (d[key] !== undefined) lines.push('- ' + field.label + ': ' + d[key]);
 	}

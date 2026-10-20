@@ -33,6 +33,30 @@ const SELECT_RING_PX = 7;
 // many-star selection still reads as one primary plus a cloud.
 const SET_RING_PX = 4;
 const SET_RING = 'rgba(255, 215, 94, 0.45)';
+// The trade overlay (trade series): a schematic in birth coordinates — a ring
+// at every colony, a faint line for every voyage in flight and a dot for the
+// hull. Dimmer than the set rings, because it is the economy's own picture and
+// must never compete with the selection. Drawn in the same 2D pass, no WGSL.
+const TRADE_PORT_RING_PX = 3.5;
+const TRADE_PORT = 'rgba(120, 220, 200, 0.35)';
+const TRADE_ROUTE = 'rgba(120, 220, 200, 0.12)';
+const TRADE_SHIP = 'rgba(180, 245, 230, 0.85)';
+const TRADE_SHIP_PX = 2.2;
+// Cargo colours, in economy.js's resource order (ore … art): earthy bulk, then
+// a colder hue for information and a warm one for art. The last entry is
+// "empty" — a hull between loads.
+const TRADE_CARGO = [
+	'rgba(180, 150, 110, 0.9)', 'rgba(120, 200, 255, 0.9)', 'rgba(255, 120, 160, 0.9)',
+	'rgba(160, 230, 140, 0.9)', 'rgba(235, 120, 255, 0.9)', 'rgba(150, 230, 120, 0.9)',
+	'rgba(110, 235, 190, 0.9)', 'rgba(240, 225, 150, 0.9)', 'rgba(190, 190, 210, 0.9)',
+	'rgba(120, 170, 255, 0.9)', 'rgba(150, 150, 255, 0.9)', 'rgba(200, 160, 255, 0.9)',
+	'rgba(255, 200, 120, 0.9)', 'rgba(220, 235, 255, 0.75)',
+];
+// The two ship states this pass distinguishes, mirrored from trade.js's
+// SHIP_STATE_NAMES (which the layer cannot require without dragging the whole
+// economy into the label test): docked/waiting draw no hull, founding reads
+// its candidate site instead of a destination port.
+const TRADE_SHIP_DOCKED = 0, TRADE_SHIP_WAITING = 2, TRADE_SHIP_FOUNDING = 3;
 // Key→slot map: MAP_SIZE slots, linear probing. The key is stored next to the
 // slot and a separate `used` byte marks occupancy — a 32-bit key can be zero or
 // negative, so neither the key nor the slot can double as the empty marker.
@@ -323,7 +347,20 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	const orbitScratch = new Float64Array(3);
 	let chrome = createShipChromeState();
 	let chromeDrawn = false;
+	// The trade network's draw state (trade series). Borrowed, never owned:
+	// main.js owns the network and its clock. `tradeOn` is false in the system
+	// view, where the schematic owns the canvas.
+	let tradeNet = null;
+	let tradeTime = 0;
+	let tradeOn = false;
+	const tradeFrom = new Float32Array(2);
+	const tradeTo = new Float32Array(2);
 	function setOrbitState(model, time) { orbitModel = model; orbitTime = time || 0; }
+	function setTradeOverlay(net, time, show) {
+		tradeNet = net || null;
+		tradeTime = time || 0;
+		tradeOn = !!show && !!tradeNet;
+	}
 
 	// --- Star-set rings (plan §3.5) ---------------------------------------
 	// The renderer's identity array, the set's keys, and the key→slot map that
@@ -482,6 +519,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		ctx.arc(scratch[0], scratch[1], SET_RING_PX, 0, Math.PI * 2);
 	}
 
+
 	function resize(widthCss, heightCss, dpr) {
 		const w = Math.max(1, Math.round(widthCss * dpr));
 		const h = Math.max(1, Math.round(heightCss * dpr));
@@ -560,6 +598,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		ctx.stroke();
 	}
 
+
 	function setEnabled(next) {
 		if (next === enabled) return;
 		enabled = next;
@@ -568,12 +607,126 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		if (!enabled) ctx.clearRect(0, 0, canvas.width, canvas.height);
 	}
 
-	// The ship chrome (G2) is its own pass and outlives the observer's labels:
-	// with labels off and the ship flying, the canvas still carries the HUD
-	// marks; with both off, a cleared canvas is left alone.
+	// Ports and ships are record keys, not coordinates: the galaxy is drawn
+	// through the orbit mask, so a port must be projected at its star's *drawn*
+	// position — the same record read and the same dispatch `ringAtSlot` uses.
+	// A port whose star is not resident draws nothing, exactly like its sprite.
+	const tradeA = new Float64Array(3);
+	const tradeB = new Float64Array(3);
+
+	function tradeSlot(port) {
+		const info = starSource;
+		if (!info || !info.identity || !info.view || !info.blocks) return -1;
+		const block = info.blocks[port.ref.kind | 0];
+		if (!block) return -1;
+		const slot = (block.offset | 0) + (port.ref.index | 0);
+		if (slot >= (info.total | 0)) return -1;
+		if ((info.identity[slot] >>> 0) !== (port.key >>> 0)) return -1;
+		return slot;
+	}
+
+	// The drawn position of one record slot, into `out` (x, y, z in kpc).
+	function tradeDrawnPosition(port, slot, records, info, orbit, out) {
+		const view = info.view;
+		const byteOffset = slot * records.RECORD_BYTES;
+		const packed = view.getUint32(byteOffset + 12, true);
+		let px = view.getFloat32(byteOffset, true);
+		let py = view.getFloat32(byteOffset + 4, true);
+		let pz = view.getFloat32(byteOffset + 8, true);
+		if (orbit && orbitModel) {
+			if ((port.ref.kind | 0) === 1) {
+				orbit.engineLandmarkPosition(tradeA, port.ref.index | 0, px, py, pz,
+					packed & 0xFF, orbitTime, orbitModel);
+			} else {
+				orbit.engineRecordPosition(tradeA, px, py, pz, packed, orbitTime, orbitModel);
+			}
+			px = tradeA[0]; py = tradeA[1]; pz = tradeA[2];
+		}
+		out[0] = px; out[1] = py; out[2] = pz;
+	}
+
+	function drawTrade(camera, width, height) {
+		if (!tradeOn) return;
+		const info = starSource;
+		const records = labelRecords();
+		if (!info || !records || !info.identity || !info.view) return;
+		const orbit = labelOrbit();
+		const viewProj = camera.buildViewProj(width / height);
+		const cam = camera.cameraPos;
+		// The routes first, so the rings and hulls stay legible on top of them.
+		ctx.strokeStyle = TRADE_ROUTE;
+		ctx.lineWidth = 1;
+		ctx.beginPath();
+		for (let i = 0; i < tradeNet.shipCount; i++) {
+			const ship = tradeNet.ships[i];
+			if (ship.state === TRADE_SHIP_DOCKED || ship.state === TRADE_SHIP_WAITING) continue;
+			const from = ship.from >= 0 ? tradeNet.ports[ship.from] : null;
+			const to = ship.state === TRADE_SHIP_FOUNDING
+				? (ship.candidate >= 0 ? tradeNet.candidates[ship.candidate].site : null)
+				: (ship.to >= 0 ? tradeNet.ports[ship.to] : null);
+			if (!from || !to) continue;
+			const a = tradeSlot(from);
+			const b = tradeSlot(to);
+			if (a < 0 || b < 0) continue;
+			tradeDrawnPosition(from, a, records, info, orbit, tradeA);
+			tradeDrawnPosition(to, b, records, info, orbit, tradeB);
+			if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],
+				cam[0], cam[1], cam[2], width, height, scratch)) continue;
+			ctx.moveTo(scratch[0], scratch[1]);
+			if (!labelCoords.projectToScreen(viewProj, tradeB[0], tradeB[1], tradeB[2],
+				cam[0], cam[1], cam[2], width, height, scratch)) continue;
+			ctx.lineTo(scratch[0], scratch[1]);
+		}
+		ctx.stroke();
+		// The ports: a small ring at every settled star.
+		ctx.strokeStyle = TRADE_PORT;
+		ctx.beginPath();
+		for (let i = 0; i < tradeNet.portCount; i++) {
+			const port = tradeNet.ports[i];
+			if (port.colony.abandoned) continue;
+			const slot = tradeSlot(port);
+			if (slot < 0) continue;
+			tradeDrawnPosition(port, slot, records, info, orbit, tradeA);
+			if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],
+				cam[0], cam[1], cam[2], width, height, scratch)) continue;
+			ctx.moveTo(scratch[0] + TRADE_PORT_RING_PX, scratch[1]);
+			ctx.arc(scratch[0], scratch[1], TRADE_PORT_RING_PX, 0, Math.PI * 2);
+		}
+		ctx.stroke();
+		// The hulls, interpolated between the two ends on the trade clock and
+		// coloured by what they carry.
+		for (let i = 0; i < tradeNet.shipCount; i++) {
+			const ship = tradeNet.ships[i];
+			if (ship.state === TRADE_SHIP_DOCKED || ship.state === TRADE_SHIP_WAITING) continue;
+			const from = ship.from >= 0 ? tradeNet.ports[ship.from] : null;
+			const to = ship.state === TRADE_SHIP_FOUNDING
+				? (ship.candidate >= 0 ? tradeNet.candidates[ship.candidate].site : null)
+				: (ship.to >= 0 ? tradeNet.ports[ship.to] : null);
+			if (!from || !to) continue;
+			const a = tradeSlot(from);
+			const b = tradeSlot(to);
+			if (a < 0 || b < 0) continue;
+			tradeDrawnPosition(from, a, records, info, orbit, tradeA);
+			tradeDrawnPosition(to, b, records, info, orbit, tradeB);
+			let f = ship.arrive > ship.depart ? (tradeTime - ship.depart) / (ship.arrive - ship.depart) : 1;
+			if (f < 0) f = 0;
+			if (f > 1) f = 1;
+			if (!labelCoords.projectToScreen(viewProj,
+				tradeA[0] + (tradeB[0] - tradeA[0]) * f,
+				tradeA[1] + (tradeB[1] - tradeA[1]) * f,
+				tradeA[2] + (tradeB[2] - tradeA[2]) * f,
+				cam[0], cam[1], cam[2], width, height, scratch)) continue;
+			ctx.fillStyle = ship.cargo < TRADE_CARGO.length - 1 ? TRADE_CARGO[ship.cargo] : TRADE_CARGO[TRADE_CARGO.length - 1];
+			ctx.beginPath();
+			ctx.arc(scratch[0], scratch[1], TRADE_SHIP_PX, 0, Math.PI * 2);
+			ctx.fill();
+		}
+	}
+
 	function draw(camera, width, height) {
 		const chromeOn = chrome.active;
-		if (!enabled && !chromeOn && !chromeDrawn) return;
+		const tradeDrawn = tradeOn && tradeNet && tradeNet.portCount > 0;
+		if (!enabled && !chromeOn && !chromeDrawn && !tradeDrawn) return;
 		ctx.clearRect(0, 0, width, height);
 		chromeDrawn = chromeOn;
 		if (!(width > 0) || !(height > 0)) return;
@@ -584,6 +737,8 @@ function createLabelLayer(canvas, landmarks, constellations) {
 			drawSelectedRing();
 			drawSetRings(camera, width, height);
 		}
+		// The trade pass runs with labels off too: it is a mode of its own.
+		if (tradeDrawn) drawTrade(camera, width, height);
 		if (chromeOn) drawShipChrome(ctx, chrome, camera, width, height);
 	}
 
@@ -611,7 +766,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	return {
 		resize, draw, setSelected, setOrbitState, setStarSource, setSelectedKeys,
 		toggleConstellations, setConstellations, constellationsVisible, setEnabled,
-		setShipChrome,
+		setShipChrome, setTradeOverlay,
 	};
 }
 

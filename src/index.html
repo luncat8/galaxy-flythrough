@@ -416,6 +416,19 @@
 			</div>
 			<div id="flight-port-state" class="flight-port-state">not docked · O docks at a settled station</div>
 
+			<div class="flight-section-heading"><span>Trade</span><small>colonies · routes · cargo</small></div>
+			<div class="menu-row">
+				<label for="trade-rate" title="The trade clock, in years per wall second, independent of the star and ship clocks. 0 pauses the network; arrow keys step the ladder.">Trade clock <span id="val-trade-rate" class="menu-val">100 y/s</span></label>
+				<input type="range" id="trade-rate" min="0" max="11" step="1" value="7">
+			</div>
+			<label class="flight-autopilot" title="Draw the trade network over the galaxy: a ring at every colony and a dot for every freighter, with its route (Y).">
+				<input type="checkbox" id="trade-routes" checked>
+				<span>Draw trade routes</span>
+				<small>Y</small>
+			</label>
+			<div id="trade-state" class="flight-port-state">no network</div>
+			<pre id="trade-list" class="flight-forecast">No trade network yet.</pre>
+
 			<div class="flight-section-heading"><span>Fly to destination</span><small>select star → set → check autopilot</small></div>
 			<div class="flight-destination-row">
 				<span>Destination</span><strong id="flight-destination">No destination set</strong>
@@ -572,6 +585,13 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
 	     deltav.js, the leg profile through route.js — loaded after both and
 	     before the main.js that flies it. -->
 	<script src="core/ship.js"></script>
+	<!-- The colony economy (trade series): the event queue, the resource map and
+	     the network. The queue is standalone; the economy reads planets.js and
+	     hash.js; the network reads both plus route.js and deltav.js. All three
+	     load before main.js, which owns the clock and the panel. -->
+	<script src="core/exec-queue.js"></script>
+	<script src="core/economy.js"></script>
+	<script src="core/trade.js"></script>
 	<script src="core/loop.js"></script>
         <script src="core/presets.js"></script>
         <!-- Data after math (landmarks bake their positions through coords.js at

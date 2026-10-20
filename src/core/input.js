@@ -54,6 +54,7 @@ function createInput(canvas) {
 	orbitCentre: 0, orbitObject: 0, flyMode: 0, gameMode: 0, chaseFollow: 0, allStop: 0, shipRefuel: 0,
 flyTo: 0, nextStar: 0, clearSet: 0, systemView: 0, systemViewExit: 0, dvMap: 0,
 speedRefTarget: 0, speedRefCentre: 0, speedRefHome: 0, dock: 0, cargoLoad: 0, cargoUnload: 0,
+tradeRoutes: 0,
 clockSim: 0, clockArcade: 0 },
 	};
 
@@ -90,7 +91,7 @@ clockSim: 0, clockArcade: 0 },
 	// at the target station and L/Shift+L load/unload the hold (§10).
 	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyP: 'constellations', KeyG: 'gameMode', KeyT: 'freezeTime', Tab: 'menu',
 		KeyN: 'nextStar', KeyX: 'clearSet', KeyV: 'systemView', KeyB: 'dvMap', KeyJ: 'chaseFollow', KeyM: 'viewField', Space: 'allStop', Escape: 'systemViewExit',
-		KeyO: 'dock' };
+		KeyO: 'dock', KeyY: 'tradeRoutes' };
 	// C, F and L carry a shift-cased pair each: [lowercase, Shift+uppercase].
 	const casedPressMap = { KeyC: ['orbitObject', 'orbitCentre'], KeyF: ['flyMode', 'flyTo'], KeyL: ['cargoLoad', 'cargoUnload'] };
 	const PANEL_BUTTON_SHORTCUTS = { KeyF: 1, KeyN: 1, KeyX: 1, KeyO: 1, KeyL: 1 };

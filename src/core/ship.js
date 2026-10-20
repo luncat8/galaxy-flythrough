@@ -233,6 +233,9 @@ function createShip(classId) {
 		dockOffset: new Float64Array(3),   // kpc
 		home: { kind: 'fixed' },
 		cargo: 0,                    // tons, 0..class.cargo
+		// The economy's cargo tag (trade.js): an index into the resource
+		// table, or -1 for an empty or untagged hold (the free hook's fill).
+		cargoResource: -1,
 		timeIndex: homeTimeIndex(cls),
 		timeFrozen: false,
 		// G5's ARCADE clock: the base rung above, plus the autopilot coast
@@ -262,6 +265,7 @@ function setClass(ship, classId) {
 	ship.docked = false;
 	ship.station = null;
 	ship.cargo = 0;
+	ship.cargoResource = -1;
 	ship.timeIndex = homeTimeIndex(cls);
 	const cap = cruiseCapKpcS(ship);
 	const speed = Math.hypot(ship.vel[0], ship.vel[1], ship.vel[2]);
@@ -284,6 +288,7 @@ function resetShip(ship) {
 	ship.docked = false;
 	ship.station = null;
 	ship.cargo = 0;
+	ship.cargoResource = -1;
 }
 
 function refuel(ship) {
@@ -355,12 +360,14 @@ function dockStep(ship, tx, ty, tz, tvx, tvy, tvz) {
 function loadCargo(ship) {
 	if (!ship.docked) return false;
 	ship.cargo = ship.class.cargo;
+	ship.cargoResource = -1;
 	return true;
 }
 
 function unloadCargo(ship) {
 	if (!ship.docked) return false;
 	ship.cargo = 0;
+	ship.cargoResource = -1;
 	return true;
 }
 

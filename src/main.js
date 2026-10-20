@@ -101,6 +101,8 @@ function readParams(search) {
 		// the 0.5.4 `dvmap=1` still means the map it was copied from.
 		dvmap: number('dvmap', window.SystemLayer.VIEW_DEFAULT),
 		dvbudget: number('dvbudget', window.SystemLayer.BUDGET_DEFAULT),
+		trade: number('trade', window.TradeLib.TRADE_RATE_DEFAULT),
+		traderoutes: number('traderoutes', window.TradeLib.TRADE_ROUTES_DEFAULT),
 		ship: text('ship', 'chemical'),
 		// View modes (view-modes.6): the heightmap panel's render type,
 		// projection, anchor source and look knobs — defaulted by the module
@@ -154,6 +156,18 @@ async function boot() {
         // outlives the toggle; the observer's Myr/s rate stays parked in
         // starTimeRate and is simply not consulted while the ship's clock runs.
         const shipLib = window.Ship;
+        // The colony economy (trade series): its own clock, its own records,
+        // and one network per galaxy. Seeded in tradeSeedNetwork() once the
+        // renderer exists; the clock is a geometric ladder in years per wall
+        // second, independent of the star and ship clocks.
+        const tradeLib = window.TradeLib;
+        const economyLib = window.EconomyLib;
+        let tradeNet = null;
+        // The preset/query value is years per second, not a slider stop: the
+        // ladder is owned by trade.js, so the boot maps it back to the nearest
+        // stop (a query may name a rate between stops and still mean it).
+        let tradeRateIndex = tradeRateIndexFor(params.trade);
+        let tradeRoutesOn = params.traderoutes > 0 ? 1 : 0;
         let gameMode = false;
         const AUTOPILOT_MIN_WALL_SECONDS = 4;
         let shipTimeRateCapY = Infinity;
@@ -927,6 +941,13 @@ async function boot() {
         const flightCargoLoad = document.getElementById('flight-cargo-load');
         const flightCargoUnload = document.getElementById('flight-cargo-unload');
         const flightPortState = document.getElementById('flight-port-state');
+        // The Trade rows: the network clock, the overlay toggle and the port
+        // list. The counters and the list are 4 Hz text like the rest.
+        const tradeRateSlider = document.getElementById('trade-rate');
+        const tradeRateValue = document.getElementById('val-trade-rate');
+        const tradeRoutesBox = document.getElementById('trade-routes');
+        const tradeState = document.getElementById('trade-state');
+        const tradeList = document.getElementById('trade-list');
         const shipList = document.getElementById('ship-list');
         const fleetCount = document.getElementById('fleet-count');
         const shipSpawn = document.getElementById('ship-spawn');
@@ -1126,6 +1147,14 @@ async function boot() {
         flightDock.addEventListener('click', () => { actions.dock = 1; });
         flightCargoLoad.addEventListener('click', () => { actions.cargoLoad = 1; });
         flightCargoUnload.addEventListener('click', () => { actions.cargoUnload = 1; });
+        tradeRateSlider.addEventListener('input', () => {
+                tradeRateIndex = Math.min(tradeLib.TRADE_RATES.length - 1,
+                        Math.max(0, Number(tradeRateSlider.value) | 0));
+                syncTradeUi();
+        });
+        tradeRoutesBox.addEventListener('change', () => {
+                tradeRoutesOn = tradeRoutesBox.checked ? 1 : 0;
+        });
         flightAutoDest.addEventListener('change', () => {
                 if (flightAutoDest.checked) {
                         if (!gameMode) {
@@ -1283,6 +1312,9 @@ async function boot() {
                 systemCtx.member = renderer.starBlocks().member;
                 systemCtx.name = landmarkNameFor(p);
                 systemLayer.enter(ref, systemCtx);
+                // Inspection is discovery: the opened system's sites join the
+                // network on first sight, and an old system is only settled.
+                tradeInspectSystem(ref, systemCtx.name);
                 if (moveCamera !== false) {
                         const cam = camera.cameraPos;
                         memberDrawnPosition(p, drawnPos);
@@ -1371,7 +1403,7 @@ async function boot() {
         // an immediate refresh on enter and on a schematic click, so the
         // ◀ marker never lags the ring.
         function writeSystemReadout() {
-                sysread.textContent = systemLayer.readoutText();
+                sysread.textContent = systemLayer.readoutText() + tradeReadoutText();
 		syncRouteUi();
         }
 
@@ -1873,6 +1905,8 @@ async function boot() {
                         systime: systemLayer.getTimeRate(),
                         dvmap: systemLayer.getView(),
                         dvbudget: systemLayer.getBudget(),
+                        trade: tradeRateYears(),
+                        traderoutes: tradeRoutesOn,
 			ship: systemLayer.getShipClass(),
                         stars: params.stars,
                         catalog: params.catalogStars,
@@ -1984,6 +2018,14 @@ async function boot() {
                         systemLayer.setBudget(s.dvbudget);
                 }
 		if (s.ship !== undefined) setFlightShipClass(s.ship);
+		if (s.trade !== undefined) {
+			tradeRateIndex = tradeRateIndexFor(s.trade);
+			syncTradeUi();
+		}
+		if (s.traderoutes !== undefined) {
+			tradeRoutesOn = s.traderoutes > 0 ? 1 : 0;
+			syncTradeUi();
+		}
                 syncDvUi();
 		if (systemLayer.isOpen()) writeSystemReadout();
                 syncSlidersFromRenderer();
@@ -2214,6 +2256,9 @@ async function boot() {
                 // Another galaxy is another set of stars: the snapshots are dropped,
                 // not re-derived (their keys belong to a different model, §3.2).
                 clearSelection();
+                // Another model is another network: same seed, same ports (the
+                // map is a pure function of the model seed and the star keys).
+                tradeSeedNetwork();
                 syncGalaxyControls();
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
@@ -3284,8 +3329,10 @@ async function boot() {
                 flightDock.textContent = ship.docked ? 'Undock' : 'Dock';
                 flightDock.disabled = !gameMode;
                 flightCargoLoad.disabled = flightCargoUnload.disabled = !ship.docked;
+                const holdTag = ship.cargoResource >= 0 && ship.cargoResource < economyLib.RESOURCE_COUNT
+                        ? ' · ' + economyLib.RESOURCES[ship.cargoResource].name : '';
                 setTextIfChanged(flightPortState, ship.docked
-                        ? `docked at ${ship.station.name} port · cargo ${shipLib.formatCargo(ship.cargo)}/${shipLib.formatCargo(ship.class.cargo)} · tank and life restored`
+                        ? `docked at ${ship.station.name} port · cargo ${shipLib.formatCargo(ship.cargo)}/${shipLib.formatCargo(ship.class.cargo)}${holdTag} · tank and life restored`
                         : 'not docked · O docks at a settled station');
                 flightUseSelected.disabled = starSet.primary < 0 || autoActive;
                 flightClearDestination.disabled = !flightDestination.active || autoActive;
@@ -3823,7 +3870,250 @@ async function boot() {
                 syncFlightUi();
         }
 
+        // --- The trade network (trade series) -----------------------------
+        // One network per galaxy: the landmark systems of the Milky Way, or a
+        // local sample of a generated field. Discovery is deterministic, so
+        // the same seed always settles the same stars (trade-plan.md §3.1).
+        // Everything below is birth-frame data; the drawn galaxy rotates under
+        // it, which is why the overlay's routes are faint by design.
+        const tradeRef = { kind: 0, index: 0, key: 0, x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0 };
+        const TRADE_FIELD_RADIUS_KPC = 1.2;
+        const tradeRecord = window.PlanetsLib.createSystemRecord();
+        const tradeCtx = { model: null, field: null, member: null, name: '' };
+        const tradeTop = new Int32Array(6);
+        const tradePos = [0, 0, 0];
+
+        function tradeRateIndexFor(years) {
+                let best = 0, bestDist = Infinity;
+                for (let i = 0; i < tradeLib.TRADE_RATES.length; i++) {
+                        const d = Math.abs(tradeLib.TRADE_RATES[i] - years);
+                        if (d < bestDist) { bestDist = d; best = i; }
+                }
+                return best;
+        }
+
+        function tradeRateYears() {
+                return tradeLib.TRADE_RATES[tradeRateIndex];
+        }
+
+        function tradeSeedNetwork() {
+                tradeNet = tradeLib.createNetwork({
+                        seed: model.seed | 0,
+                        modelSeed: model.seed | 0,
+                        timeYears: 0,
+                });
+                tradeCtx.model = model;
+                tradeCtx.field = null;
+                tradeCtx.member = null;
+                tradeCtx.name = '';
+                // The named stars first: they are the sky the player reads, so
+                // they are the ports the overlay should name. Then the field
+                // within 1.2 kpc of the model's home — dense enough that a
+                // voyage is a century, not a millennium, and sparse enough that
+                // the galaxy still looks like a galaxy. `SEED_PORTS` bounds the
+                // settled fraction; everything else discovered becomes a
+                // colonisation candidate.
+                if (model.milkyWay) {
+                        for (let i = 0; i < landmarks.count; i++) {
+                                const entry = landmarks.ENTRIES[i];
+                                tradeRef.kind = window.PlanetsLib.BLOCK_LANDMARK;
+                                tradeRef.index = i;
+                                tradeRef.key = window.PlanetsLib.landmarkKey(i) >>> 0;
+                                tradeRef.x = entry.x; tradeRef.y = entry.y; tradeRef.z = entry.z;
+                                tradeRef.colorIndex = entry.colorIndex; tradeRef.absMag = entry.absMag;
+                                tradeCtx.name = entry.name;
+                                window.PlanetsLib.generateSystem(tradeRef, tradeCtx, tradeRecord);
+                                tradeLib.discoverSystem(tradeNet, tradeRef, entry.name, tradeRecord, 0);
+                        }
+                }
+                // 400 systems × ~30 µs is a boot cost, not a frame cost; the
+                // distance test is squared and in kpc, so no square root and no
+                // allocation per star.
+                const field = renderer.fieldBuffers();
+                if (field && field.count > 0) {
+                        tradeCtx.field = field;
+                        for (let i = 0, used = 0; i < field.count && used < 400; i++) {
+                                const px = field.x[i], py = field.y[i], pz = field.z[i];
+                                if (px * px + py * py + pz * pz > TRADE_FIELD_RADIUS_KPC * TRADE_FIELD_RADIUS_KPC) continue;
+                                used += 1;
+                                tradeRef.kind = window.PlanetsLib.BLOCK_FIELD;
+                                tradeRef.index = i;
+                                tradeRef.key = window.StarTypesLib.fieldStarSeed(model.seed, i) >>> 0;
+                                tradeRef.x = px; tradeRef.y = py; tradeRef.z = pz;
+                                tradeRef.colorIndex = 0; tradeRef.absMag = 0;
+                                tradeCtx.name = '';
+                                window.PlanetsLib.generateSystem(tradeRef, tradeCtx, tradeRecord);
+                                tradeLib.discoverSystem(tradeNet, tradeRef, '', tradeRecord, 0);
+                                if (tradeNet.portCount >= tradeNet.seedPorts
+                                        && tradeNet.candidateCount >= tradeLib.MAX_CANDIDATES - 32) break;
+                        }
+                }
+                tradeLib.finalize(tradeNet);
+                syncTradeUi();
+        }
+
+        // Inspect: the open system's sites join the network on first sight.
+        // `discoverSystem` is idempotent, so opening the same system twice only
+        // settles it — and the 4 Hz readout settles it again without changing
+        // the map.
+        function tradeInspectSystem(ref, name) {
+                if (!tradeNet || !ref) return;
+                tradeCtx.model = model;
+                tradeCtx.field = renderer.fieldBuffers();
+                tradeCtx.member = renderer.starBlocks().member;
+                tradeCtx.name = name || '';
+                window.PlanetsLib.generateSystem(ref, tradeCtx, tradeRecord);
+                tradeLib.discoverSystem(tradeNet, ref, name || '', tradeRecord, tradeNet.time);
+        }
+
+        // The port the player's ship is docked at, or -1. The station key is
+        // the star key the colony was discovered under.
+        function gameTradePort() {
+                if (!tradeNet || !ship.docked || !ship.station) return -1;
+                return tradeLib.playerPort(tradeNet, ship.station.key);
+        }
+
+        function tradeResourceShort(r) {
+                return economyLib.RESOURCES[r].id.slice(0, 4);
+        }
+
+        function tradeYieldRow(colony, from, to) {
+                let row = '';
+                for (let r = from; r < to; r++) {
+                        row += (r > from ? '  ' : '') + tradeResourceShort(r).padEnd(4) + ' ' + tradeBar(colony.yield[r]);
+                }
+                return row;
+        }
+
+        function tradeBar(value) {
+                const dots = economyLib.yieldDots(value);
+                let text = '';
+                for (let i = 0; i < 5; i++) text += i < dots ? '\u25ae' : '\u25af';
+                return text;
+        }
+
+        // The readout's trade block: population, coverage, the 13-yield map and
+        // the port's exports and needs. This is the brief's inspection path —
+        // the colony is settled to the network's clock here, never per frame.
+        function tradeReadoutText() {
+                if (!tradeNet) return '';
+                const p = starSet.primary;
+                if (p < 0) return '';
+                const portIndex = tradeLib.bestPortOfStar(tradeNet, starSet.keys[p] >>> 0);
+                if (portIndex < 0) return '\ntrade     no colony here \u00b7 V discovers its sites';
+                const port = tradeNet.ports[portIndex];
+                const colony = port.colony;
+                economyLib.settleColony(colony, tradeNet.time);
+                const age = tradeNet.time - colony.founded;
+                let text = `\ntrade     ${port.name} \u00b7 pop ${economyLib.formatPop(colony.pop)} / ${economyLib.formatPop(colony.capacity)}`
+                        + ` \u00b7 coverage ${colony.coverage.toFixed(2)} \u00b7 growth ${(colony.growth * 100).toFixed(2)}%/y`
+                        + ` \u00b7 ${age < 1 ? 'founded now' : Math.round(age) + ' y old'}`;
+                text += '\nyields    ' + tradeYieldRow(colony, 0, 5);
+                text += '\n          ' + tradeYieldRow(colony, 5, 10);
+                text += '\n          ' + tradeYieldRow(colony, 10, economyLib.RESOURCE_COUNT);
+                let sells = '', needs = '';
+                for (let r = 0; r < economyLib.RESOURCE_COUNT; r++) {
+                        if (economyLib.exportableOf(colony, r) > 0 && sells.length < 24) {
+                                sells += (sells ? ', ' : '') + economyLib.RESOURCES[r].name;
+                        }
+                        if (economyLib.demandOf(colony, r) > 0 && needs.length < 24) {
+                                needs += (needs ? ', ' : '') + economyLib.RESOURCES[r].name;
+                        }
+                }
+                text += `\nsells     ${sells || 'nothing spare'} \u00b7 needs ${needs || 'nothing \u2014 self-sufficient'}`;
+                return text;
+        }
+
+        // The Flight panel's Trade section: counters, the six largest colonies
+        // and the ships in flight. Rebuilt at 4 Hz only.
+        function syncTradeUi() {
+                tradeRateSlider.value = String(tradeRateIndex);
+                tradeRateValue.textContent = tradeRateYears() === 0 ? 'paused' : tradeRateYears() + ' y/s';
+                tradeRoutesBox.checked = tradeRoutesOn !== 0;
+                if (!tradeNet) {
+                        tradeState.textContent = 'no network';
+                        tradeList.textContent = 'No trade network yet.';
+                        return;
+                }
+                tradeState.textContent = `${tradeNet.portCount} ports \u00b7 ${tradeNet.shipCount} ships`
+                        + ` \u00b7 ${tradeNet.founded} founded \u00b7 ${Math.round(tradeNet.delivered).toLocaleString()} units hauled`
+                        + ` \u00b7 ${Math.round(tradeNet.time).toLocaleString()} y`;
+                let n = 0;
+                for (let i = 0; i < tradeNet.portCount; i++) {
+                        const colony = tradeNet.ports[i].colony;
+                        if (colony.abandoned) continue;
+                        if (n < tradeTop.length) {
+                                tradeTop[n++] = i;
+                        } else {
+                                // Replace the smallest of the six: the panel is a
+                                // fixed six-row selection, no per-frame sort.
+                                let smallest = 0;
+                                for (let k = 1; k < tradeTop.length; k++) {
+                                        if (tradeNet.ports[tradeTop[k]].colony.pop < tradeNet.ports[tradeTop[smallest]].colony.pop) smallest = k;
+                                }
+                                if (colony.pop > tradeNet.ports[tradeTop[smallest]].colony.pop) tradeTop[smallest] = i;
+                        }
+                }
+                // Six indices sort in place with one insertion pass.
+                for (let a = 1; a < n; a++) {
+                        const held = tradeTop[a];
+                        let b = a - 1;
+                        while (b >= 0 && tradeNet.ports[tradeTop[b]].colony.pop < tradeNet.ports[held].colony.pop) {
+                                tradeTop[b + 1] = tradeTop[b];
+                                b -= 1;
+                        }
+                        tradeTop[b + 1] = held;
+                }
+                let lines = '';
+                for (let k = 0; k < n; k++) {
+                        const port = tradeNet.ports[tradeTop[k]];
+                        const colony = port.colony;
+                        economyLib.settleColony(colony, tradeNet.time);
+                        lines += port.name.padEnd(18).slice(0, 18)
+                                + economyLib.formatPop(colony.pop).padStart(8)
+                                + '  cov ' + colony.coverage.toFixed(2)
+                                + (colony.abandoned ? '  abandoned' : '') + '\n';
+                }
+                let inFlight = 0;
+                for (let i = 0; i < tradeNet.shipCount && inFlight < 3; i++) {
+                        const s = tradeNet.ships[i];
+                        if (s.state !== tradeLib.SHIP_SAILING || s.to < 0 || s.from < 0) continue;
+                        const cargo = s.cargo >= 0 && s.cargo < economyLib.RESOURCE_COUNT
+                                ? economyLib.RESOURCES[s.cargo].name : 'empty';
+                        lines += tradeLib.HULLS[s.hull].name.padEnd(18).slice(0, 18)
+                                + tradeNet.ports[s.from].name.slice(0, 10) + ' \u2192 ' + tradeNet.ports[s.to].name.slice(0, 10)
+                                + '  ' + cargo + '\n';
+                        inFlight += 1;
+                }
+                tradeList.textContent = lines || 'No colonies yet.';
+        }
+
+        // The overlay's one line.
+        function tradeOverlayLine() {
+                if (!tradeNet) return '';
+                const rate = tradeRateYears();
+                return `\ntrade     ${rate === 0 ? 'paused' : rate + ' y/s'} \u00b7 ${tradeNet.portCount} ports`
+                        + ` \u00b7 ${tradeNet.shipCount} ships \u00b7 queue ${tradeNet.queue.size}`;
+        }
+
         function gameCargoLoad() {
+                // A docked trade port sells its best export; a station with no
+                // colony keeps the free hook's fill (G4 §10.5). The hold is
+                // tonnage, the port's stock is units — unitMassT is the bridge.
+                const portIndex = gameTradePort();
+                if (portIndex >= 0) {
+                        const result = tradeLib.playerLoad(tradeNet, ship, portIndex);
+                        if (!result.ok) {
+                                setAutoMsg(result.reason || 'nothing to load');
+                                syncFlightUi();
+                                return;
+                        }
+                        setAutoMsg('loaded ' + Math.round(result.units) + ' '
+                                + economyLib.RESOURCES[result.resource].name
+                                + ' · ' + shipLib.formatCargo(result.tons));
+                        syncFlightUi();
+                        return;
+                }
                 if (!shipLib.loadCargo(ship)) {
                         setAutoMsg('cargo moves only at a dock');
                         return;
@@ -3833,6 +4123,16 @@ async function boot() {
         }
 
         function gameCargoUnload() {
+                const portIndex = gameTradePort();
+                if (portIndex >= 0) {
+                        const result = tradeLib.playerUnload(tradeNet, ship, portIndex);
+                        if (!result.ok && result.reason) setAutoMsg(result.reason);
+                        else setAutoMsg('sold ' + Math.round(result.units) + ' '
+                                + economyLib.RESOURCES[result.resource].name
+                                + ' · ' + shipLib.formatCargo(result.tons) + ' into the port');
+                        syncFlightUi();
+                        return;
+                }
                 if (!shipLib.unloadCargo(ship)) {
                         setAutoMsg('cargo moves only at a dock');
                         return;
@@ -3966,7 +4266,9 @@ async function boot() {
                         + ` · forward ${shipLib.formatAxisSpeed(gameVelocityAxes[0])}`
                         + ` · sideways ${shipLib.formatAxisSpeed(gameVelocityAxes[1])} · vertical ${shipLib.formatAxisSpeed(gameVelocityAxes[2])}`;
                 if (ship.docked || ship.cargo > 0) {
-                        text += `\ncargo     ${shipLib.formatCargo(ship.cargo)}/${shipLib.formatCargo(ship.class.cargo)}`;
+                        const tag = ship.cargoResource >= 0 && ship.cargoResource < economyLib.RESOURCE_COUNT
+                                ? ' \u00b7 ' + economyLib.RESOURCES[ship.cargoResource].name : '';
+                        text += `\ncargo     ${shipLib.formatCargo(ship.cargo)}/${shipLib.formatCargo(ship.class.cargo)}${tag}`;
                 }
                 if (lifeState >= shipLib.LIFE_CRITICAL) {
                         // The return-home heading shows inside the
@@ -4135,7 +4437,8 @@ async function boot() {
                         gameModeLine() +
                         noSelectionLine() +
                         selectionLines(cameraState) +
-                        selectedLine(cameraState);
+                        selectedLine(cameraState) +
+                        tradeOverlayLine();
                 if (helpPanel.style.display !== 'none') syncHelpControls(cameraState);
         }
 
@@ -4190,6 +4493,13 @@ async function boot() {
                 framePhysSeconds = dtStar > 0 ? dtStar * 1e6 * shipLib.SECONDS_PER_YEAR : 0;
                 starTimeMyr += dtStar;
                 if (starTimeMyr >= STAR_TIME_WRAP || starTimeMyr < 0) starTimeMyr = ((starTimeMyr % STAR_TIME_WRAP) + STAR_TIME_WRAP) % STAR_TIME_WRAP;
+                // The trade clock (trade-plan §1) is wall-time, not star-time:
+                // the colonies keep their own years. A hidden tab must not
+                // fast-forward the network by minutes, so the frame's share is
+                // capped at a quarter second.
+                if (tradeNet && tradeRateIndex > 0) {
+                        tradeLib.step(tradeNet, tradeRateYears() * Math.min(dt, 0.25));
+                }
                 // The pattern's phase (0.6 E4) is integrated with the frame's own
                 // star time *before* anything places a star, so the bar and the
                 // arms cannot be a frame behind the clock — and a rate change
@@ -4261,6 +4571,11 @@ async function boot() {
                         actions.dock = 0;
                         if (gameMode) gameDock();
                         else gameNotice();
+                }
+                if (actions.tradeRoutes) {
+                        actions.tradeRoutes = 0;
+                        tradeRoutesOn = tradeRoutesOn ? 0 : 1;
+                        syncTradeUi();
                 }
                 if (actions.cargoLoad) {
                         actions.cargoLoad = 0;
@@ -4337,6 +4652,8 @@ async function boot() {
                         if (evolved !== model.populations.age) setEpoch(evolved);
                 }
                 labels.setOrbitState(model, starTimeMyr);
+                labels.setTradeOverlay(tradeNet, tradeNet ? tradeNet.time : 0,
+                        tradeRoutesOn !== 0 && !systemLayer.isOpen());
                 selection.setOrbitState(model, starTimeMyr);
                 // The Flight forecast includes its target-frame velocity match.
                 // Keep the same keyed feed warm while observing, using the
@@ -4547,7 +4864,7 @@ async function boot() {
                         if (noSelectionTicks > 0) noSelectionTicks--;
                         if (autoMsgTicks > 0) autoMsgTicks--;
                         if (gameMode) updateShipChromeText();
-                        if (sysMenu.style.display !== 'none') syncFlightUi();
+                        if (sysMenu.style.display !== 'none') { syncFlightUi(); syncTradeUi(); }
                         if (systemLayer.isOpen()) writeSystemReadout();
                         // View modes: the status line and the live range labels
                         // are 4 Hz text, like the rest of the readouts.
@@ -4561,6 +4878,8 @@ async function boot() {
                 }
         });
 
+        tradeSeedNetwork();
+        syncTradeUi();
         syncFlightUi();
         loop.start();
         console.log(`Galaxy fly-through ready: ${renderer.state.proceduralStars.toLocaleString()} procedural stars, ` +
