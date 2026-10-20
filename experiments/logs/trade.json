@@ -1,6 +1,6 @@
 {
-  "total": 101,
-  "passed": 101,
+  "total": 107,
+  "passed": 107,
   "failed": 0,
   "checks": [
     {
@@ -103,8 +103,8 @@
       "name": "a seeded network makes ports and ships",
       "pass": true,
       "detail": {
-        "ports": 6,
-        "ships": 3
+        "ports": 4,
+        "ships": 2
       }
     },
     {
@@ -119,21 +119,21 @@
       "name": "ports do not vanish and ships stay capped",
       "pass": true,
       "detail": {
-        "ports": 9,
-        "ships": 16
+        "ports": 4,
+        "ships": 12
       }
     },
     {
       "name": "the queue stays bounded by one live event per ship plus a tick",
       "pass": true,
-      "detail": 17
+      "detail": 13
     },
     {
       "name": "arrivals are booked",
       "pass": true,
       "detail": {
-        "processed": 241,
-        "delivered": 12973.997438582093
+        "processed": 149,
+        "delivered": 2992.852611962654
       }
     },
     {
@@ -150,16 +150,16 @@
       "pass": true,
       "detail": {
         "jump": [
-          9,
-          16,
-          3,
-          12973.997438582093
+          4,
+          12,
+          0,
+          2992.852611962654
         ],
         "small": [
-          9,
-          16,
-          3,
-          12973.997438582093
+          4,
+          12,
+          0,
+          2992.852611962654
         ]
       }
     },
@@ -175,9 +175,9 @@
       "name": "colonisation grows the network over two and a half millennia",
       "pass": true,
       "detail": {
-        "start": 6,
-        "end": 9,
-        "founded": 3
+        "start": 4,
+        "end": 14,
+        "founded": 10
       }
     },
     {
@@ -332,7 +332,7 @@
     {
       "name": "overlapping expeditions reserve distinct whole systems",
       "pass": true,
-      "detail": 5
+      "detail": 4
     },
     {
       "name": "in-flight founding capacity and live-event invariants hold",
@@ -412,29 +412,29 @@
       "pass": true
     },
     {
-      "name": "a generation-ship hop lasts seconds at the synced top rate",
+      "name": "a generation-ship hop lasts seconds at the default synced pace",
       "pass": true,
       "detail": {
-        "legYears": 5000,
-        "wallS": 2.5
+        "legYears": 2000,
+        "wallS": 2
       }
     },
     {
-      "name": "the freighter cruise is untouched by the special mode",
+      "name": "the freighter cruise is untouched by the special mode above the legibility floor",
       "pass": true
     },
     {
       "name": "a budgeted drain keeps the clock monotone and never passes the next event",
       "pass": true,
       "detail": {
-        "time": 6208,
-        "lag": 2192
+        "time": 8268,
+        "lag": 132
       }
     },
     {
       "name": "a budgeted clock that cannot keep up reports its backlog",
       "pass": true,
-      "detail": 2192
+      "detail": 132
     },
     {
       "name": "at the synced top rate an unbudgeted clock stays exact",
@@ -455,7 +455,7 @@
       "detail": {
         "opportunities": 0,
         "reason": "no colonists or factory cores spare",
-        "big": 2
+        "big": 1
       }
     },
     {
@@ -471,9 +471,9 @@
       "name": "a live field grows the frontier around the big colonies",
       "pass": true,
       "detail": {
-        "big": 9,
+        "big": 4,
         "added": 2,
-        "candidates": "10->12"
+        "candidates": "13->15"
       }
     },
     {
@@ -538,14 +538,58 @@
       "name": "a generation-ship network keeps its colonies instead of starving",
       "pass": true,
       "detail": {
-        "bigFree": 9,
-        "bigGen": 9,
+        "bigFree": 14,
+        "bigGen": 14,
         "median": 0.47
       }
     },
     {
       "name": "leaving the special mode restores the authored warehouses",
       "pass": true
+    },
+    {
+      "name": "the scenario starts with exactly four colonies",
+      "pass": true,
+      "detail": {
+        "ports": 4
+      }
+    },
+    {
+      "name": "the capital is the colony beside home, and the nearest port to it",
+      "pass": true,
+      "detail": {
+        "capital": 0,
+        "nearest": 0,
+        "capitalLy": 4.4
+      }
+    },
+    {
+      "name": "the start colonies sit within 100 ly of home, not across the sky (Rigil, Fomalhaut, Capella, Regulus)",
+      "pass": true,
+      "detail": {
+        "farthestLy": 79.3
+      }
+    },
+    {
+      "name": "at the default clock the network holds 5–15 colonies after 10 s",
+      "pass": true,
+      "detail": {
+        "at10": 8
+      }
+    },
+    {
+      "name": "and still 5–15 colonies after 20 s, growing from the start",
+      "pass": true,
+      "detail": {
+        "at20": 12
+      }
+    },
+    {
+      "name": "the freighters are on the routes while the network grows",
+      "pass": true,
+      "detail": {
+        "sailingAt20": 7
+      }
     }
   ]
 }

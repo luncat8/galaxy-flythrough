@@ -63,6 +63,17 @@ function seedNetwork(count, timeYears) {
 	return trade.finalize(net);
 }
 
+// The app's start map (trade-plan §8): the named sky nearest home first, through
+// the same startSystems/discoverNearest the page calls. Expansion checks use
+// this, because a catalogue-order fixture seeds colonies hundreds of light-years
+// out, where nothing is in expedition range and the mechanics go untested.
+function seedStart(timeYears) {
+	const net = trade.createNetwork({ seed: 4242, modelSeed: galaxy.DEFAULT_SEED, timeYears: timeYears || 0 });
+	const systems = trade.startSystems(net, ctx.model, null, landmarks, []);
+	trade.discoverNearest(net, systems, ctx, record);
+	return trade.finalize(net);
+}
+
 function stepSmall(net, total, chunk) {
 	let left = total;
 	while (left > 0) {
@@ -327,7 +338,7 @@ function stepSmall(net, total, chunk) {
 	check('re-inspecting a system adds no ports and no candidates',
 		net.portCount === before && net.candidateCount === candidates);
 
-	const grown = seedNetwork(24, 0);
+	const grown = seedStart(0);
 	const start = grown.portCount;
 	trade.step(grown, 2500);
 	check('colonisation grows the network over two and a half millennia',
@@ -525,7 +536,7 @@ function exactLiveEvents(net) {
 	check('a portless network keeps only its global tick and no orphan ships',
 		empty.portCount === 0 && empty.shipCount === 0 && empty.queue.size === 1 && exactLiveEvents(empty));
 
-	const jump = seedNetwork(60, 0), small = seedNetwork(60, 0);
+	const jump = seedStart(0), small = seedStart(0);
 	trade.step(jump, 5000);
 	stepSmall(small, 5000, 5);
 	check('a 5,000-year jump matches the entire stepped network, including stocks, fleet and heap',
@@ -537,7 +548,7 @@ function exactLiveEvents(net) {
 	// tested independently of the currently faster-than-launch-interval hulls.
 	const speed = trade.HULLS[2].lyPerYear;
 	trade.HULLS[2].lyPerYear = 0.01;
-	const overlapping = seedNetwork(60, 0);
+	const overlapping = seedStart(0);
 	for (let i = 0; i < overlapping.portCount; i++) {
 		const c = overlapping.ports[i].colony;
 		c.stock.set(c.stockCap);
@@ -721,13 +732,15 @@ function exactLiveEvents(net) {
 	// Generation ships: slow at the top of the fine star range, which is the
 	// calibration the mode is authored against.
 	trade.setGenerationMode(1);
-	const genYears = trade.legYears(5 / trade.LY_PER_KPC, 2);   // a typical 5 ly hop
+	const genYears = trade.legYears(5 / trade.LY_PER_KPC, 2);   // a 5 ly hop
 	trade.setGenerationMode(0);
-	const genSeconds = genYears / trade.clockRate(100, 2, true);
-	check('a generation-ship hop lasts seconds at the synced top rate',
-		genSeconds > 1 && genSeconds < 6, { legYears: Math.round(genYears), wallS: +genSeconds.toFixed(2) });
-	check('the freighter cruise is untouched by the special mode',
-		Math.abs(trade.legYears(5 / trade.LY_PER_KPC, 2) - 5 / trade.HULLS[2].lyPerYear) < 1e-9);
+	const genSeconds = genYears / trade.clockRate(100, trade.GENERATION_STAR_MYR, true);
+	check('a generation-ship hop lasts seconds at the default synced pace',
+		genSeconds > 1 && genSeconds < 6 && near(genSeconds, 5 / trade.GENERATION_LY_PER_YEAR / trade.clockRate(100, trade.GENERATION_STAR_MYR, true), 1e-9),
+		{ legYears: Math.round(genYears), wallS: +genSeconds.toFixed(2) });
+	check('the freighter cruise is untouched by the special mode above the legibility floor',
+		Math.abs(trade.legYears(300 / trade.LY_PER_KPC, 2) - 300 / trade.HULLS[2].lyPerYear) < 1e-9
+		&& trade.legYears(0, 2) === trade.MIN_LEG_YEARS);
 
 	// The budget: a bounded frame stops the clock at the next due event, so the
 	// clock never skips over an event (a colony asked to settle backwards
@@ -940,7 +953,7 @@ function exactLiveEvents(net) {
 // growth and the big-colony gate would all fall and the mode would show a
 // dying network. The reserve horizon moves with the fleet instead.
 {
-	const net = seedNetwork(24, 0);
+	const net = seedStart(0);
 	trade.step(net, 4000);
 	const capFree = net.ports[0].colony.stockCap[5];
 	let bigFree = 0;
@@ -951,7 +964,7 @@ function exactLiveEvents(net) {
 	check('the special mode sizes the warehouses to the fleet’s crossing time',
 		near(capGen / capFree, expected) && near(economy.getReserveScale(), expected),
 		{ ratio: +(capGen / capFree).toFixed(2), expected: +expected.toFixed(2) });
-	const rate = trade.clockRate(100, 2, true);
+	const rate = trade.clockRate(100, trade.GENERATION_STAR_MYR, true);
 	for (let f = 0; f < 60 * 10; f++) trade.step(net, rate / 60, 256);
 	const coverage = [];
 	let bigGen = 0;
@@ -967,6 +980,39 @@ function exactLiveEvents(net) {
 		bigGen >= bigFree - 1 && median > 0.3, { bigFree, bigGen, median: +median.toFixed(2) });
 	check('leaving the special mode restores the authored warehouses',
 		near(economy.getReserveScale(), 1) && near(net.ports[0].colony.stockCap[5], capFree));
+}
+
+// --- 16. The start scenario (trade-plan §8) ------------------------------
+// Four colonies beside home, the capital nearest it, and a network that grows
+// to 5–15 colonies in 10–20 s of wall time at the default trade clock (100 y/s),
+// stepped as the page steps it: 60 frames a second, the budget of 256 events.
+{
+	const net = seedStart(0);
+	check('the scenario starts with exactly four colonies', net.portCount === 4 && trade.SEED_PORTS === 4,
+		{ ports: net.portCount });
+	const ly = (p) => Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z) * trade.LY_PER_KPC;
+	let nearest = 0;
+	for (let i = 1; i < net.portCount; i++) if (ly(net.ports[i]) < ly(net.ports[nearest])) nearest = i;
+	const far = Math.max(...net.ports.slice(0, net.portCount).map(ly));
+	check('the capital is the colony beside home, and the nearest port to it',
+		net.capital === nearest && ly(net.ports[net.capital]) <= trade.HOME_COLONY_LY,
+		{ capital: net.capital, nearest, capitalLy: +ly(net.ports[net.capital]).toFixed(1) });
+	check('the start colonies sit within 100 ly of home, not across the sky (Rigil, Fomalhaut, Capella, Regulus)',
+		far <= 100, { farthestLy: +far.toFixed(1) });
+
+	const frames = 60 * 20, dt = 1 / 60;
+	let at10 = -1, at20 = -1, sailingAt20 = 0;
+	for (let f = 1; f <= frames; f++) {
+		trade.step(net, trade.TRADE_RATE_DEFAULT * dt, trade.MAX_PORTS * 4);
+		if (f === 60 * 10) at10 = net.portCount;
+		if (f === frames) at20 = net.portCount;
+	}
+	for (let i = 0; i < net.shipCount; i++) if (net.ships[i].state === trade.SHIP_SAILING) sailingAt20 += 1;
+	check('at the default clock the network holds 5–15 colonies after 10 s',
+		at10 >= 5 && at10 <= 15, { at10 });
+	check('and still 5–15 colonies after 20 s, growing from the start',
+		at20 >= 5 && at20 <= 15 && at20 > 4, { at20 });
+	check('the freighters are on the routes while the network grows', sailingAt20 >= 1, { sailingAt20 });
 }
 
 // --- Summary --------------------------------------------------------------

@@ -19,6 +19,9 @@ catch-up; explicit simulation jumps use the same queue without the clamp.
 This pass uses **abstract trade travel**, not the player's relativistic flight
 law. Hulls travel at 2, 3 and 4.5 ly/trade-year; this is intentionally faster than
 light so the sparse rendered star sample can sustain routes on colony timescales.
+Every voyage takes at least `MIN_LEG_YEARS = 50` trade years (§8): a 10 ly freighter
+hop is otherwise 2–5 years, a few frames at the 100 y/s default, and reads as a
+teleport. Half a wall second per hop keeps the hulls visibly in flight.
 It must not be presented as a fraction of c or a `route.interstellarLeg` result.
 Changing to physical travel requires retuning the network density, warehouses and
 population together, not just replacing one speed constant.
@@ -110,7 +113,8 @@ and the opened system's 4 Hz readout. Never settle all colonies per frame.
 ## 3. Discovery and the network
 
 One colony per star avoids zero-distance intra-system freight winning all route
-scores. Up to 32 seed ports grow toward 64 total port slots; 256 candidate sites.
+scores. Four seed ports (`SEED_PORTS = 4`, §8) grow toward 64 total port slots;
+256 candidate sites.
 For a newly discovered star, a stable hash roll below 0.35 selects a seed colony
 while seed slots remain. It occupies the highest-habitat planet (terran flag gets
 1.5× preference), or the first belt if there is no planet. Otherwise every world
@@ -118,10 +122,14 @@ and belt becomes a candidate up to the cap. Terran worlds are preferred, **not
 automatically settled**. Remember discovered keys even when candidate storage is
 full: revisiting only settles, never changes the map or seeds a second colony.
 
-On model reset seed named Milky Way landmarks first, then up to 400 procedural
-field systems inside 1.2 kpc of home (both generated and Milky Way models). Stop
-when seed ports and nearly all candidate slots are filled. Opening another system
-with V discovers it. A reset builds a fresh deterministic network at time zero.
+On model reset the start map is built and discovered **nearest home first**
+(`trade.startSystems` + `trade.discoverNearest`): the named landmarks (Milky Way
+models) and up to 400 procedural field systems inside 1.2 kpc of home, ordered by
+distance from home, not by catalogue or sample order. Stop when seed ports and
+nearly all candidate slots are filled. Opening another system with V discovers
+it. A reset builds a fresh deterministic network at time zero. The order is the
+design: catalogue order seeded colonies 300–860 ly away with nothing in expedition
+range, and the rendered field has no star within 300 ly of the Sun at all (§8).
 
 ### 3.1 Queue and freighters
 
@@ -166,7 +174,7 @@ than deadlock the hull. No cargo is silently discarded by the player's interface
 ### 3.2 Colonisation as an event
 
 Every 25 years settle source ports and look for an expedition, at most one launch
-per 200 years. Cost scales with source capacity:
+per `EXPEDITION_INTERVAL = 250` years (§8 measures why not 200). Cost scales with source capacity:
 `people = clamp(0.15*K, 40, 400)`, `robots = clamp(0.03*K, 10, 100)` units.
 Both costs must be exportable **before** allocating a ship or deducting either.
 Search free candidate systems within 300 ly; rank habitat flags and distance,
@@ -265,20 +273,30 @@ to settle backwards. Main passes 256 events per frame: the synced top rate needs
 ~50, and the budget only bites when the machine cannot follow — which the panel
 says out loud ("… Myr behind").
 
-Generation ships: the special mode flies every hull at 1 light-year per 1 000
-years (0.1 % c, `GENERATION_LY_PER_YEAR = 1e-3`) and sets the synced pair — star
-clock 2 Myr/s, sync on. At the synced top a 5 ly hop is 5 000 y ≈ 2.5 wall
-seconds; the ordinary freighter (2–4.5 ly/y) would cross it in a millisecond,
-which is exactly the blur the mode replaces. At 0.1 Myr/s the same hop takes ~50 s,
-because the mode is calibrated at the top of the fine range, not in the middle.
+Generation ships: the special mode flies every hull at 1 light-year per 400
+trade years (`GENERATION_LY_PER_YEAR = 2.5e-3`) and sets the synced pair — star
+clock at the default 1 Myr/s (`GENERATION_STAR_MYR = 1`), sync on. At that pace
+the clock runs 1 000 trade y/s, so the ship covers 2.5 ly per wall second: the
+start map's nearest hop (Rigil Kentaurus to Fomalhaut, ~25 ly) takes ~10 s, the
+median seed hop ~30 s, and the scenario's expeditions are watchable instead of
+blurred.
+The first calibration, 1 ly per 1 000 years, put that hop at 25 s and the median
+at 76 s, so ten expeditions sat in flight at once with nothing to see. The
+ordinary freighter (2–4.5 ly/y) crosses the same hop in a fraction of a wall
+second, which is exactly the blur the mode replaces. The number is a pace for
+this scenario, not a fraction of c.
 
 A fleet that slow needs a matching larder: the colony economy is authored in
 years of its own throughput (a 150-year warehouse, a 20-year supply buffer), and
-with 5 000-year voyages a port would starve between two arrivals — coverage,
-growth and the big-colony gate would all fall, and the mode would show a *dying*
-network rather than a slow one. So the mode stretches the reserve horizon to
-`GENERATION_RESERVE_YEARS = 5 000` (×33.3 of the authored `STOCK_YEARS`) on every
-port, live colonies included (`economy.setReserveScale` +
+with 10 000-year voyages (the start map's nearest hop) a port would starve between
+two arrivals — coverage, growth and the big-colony gate would all fall, and the
+mode would show a *dying* network rather than a slow one. So the mode stretches
+the reserve horizon to `GENERATION_RESERVE_YEARS = 5 000` (×33.3 of the authored
+`STOCK_YEARS`) on every port, live colonies included. Measured on the start map
+at the default synced pace over 60 s: median coverage holds at 0.47, the minimum
+at 0.45, and all 14 colonies stay big — the horizon is about half the nearest hop,
+which is enough because the warehouse only has to bridge the gap between
+arrivals, not the whole voyage (`economy.setReserveScale` +
 `rescaleColonyReserves`, driven from `setGenerationMode(on, net)`). The warehouse
 law, the supply buffer and the growth rates are untouched: only the horizon
 moves. Leaving the mode restores the authored values.
@@ -340,19 +358,77 @@ fastest setting": 2 000 y/s is 25 colony lifetimes per second.
 
 ## 8. The starting scenario
 
-The network survives a rebuild of its own sky: `regenerateGalaxy` re-seeds only
-when the model identity (type and seed) actually changed, so an epoch preset or
-any path that regenerates without a new galaxy keeps the clock and every colony.
-That is the "network rebuilt itself at start" flash, gone.
+The page opens on a small colony network around home, centred on the colony
+beside it, and the network visibly expands. The acceptance numbers are the ones
+§8's tests pin (`trade-test.js` §16).
 
-The seed map forces a **capital**: the first star with a real world inside
-`HOME_COLONY_LY = 20` of the viewer's home becomes a port regardless of the
-settled-fraction roll (`net.capital`, the first such port). The Milky Way's Sun
-has no planets in the generator, so the capital is the nearest landmark that
-does — Rigil Kentaurus at 4.4 ly with the default seed — and the arrival has a
-colony in sight, freighters on the overlay, and a destination for **H**. With no
-capital (a galaxy whose home is a bare centre) H falls back to the frame point.
+**Start.** Four seed colonies (`SEED_PORTS = 4`), not a full map. The start map
+(§3) is discovered nearest home first, so the seeds are the local sky: the
+capital, then the three settled-roll stars that follow it in distance order. With
+the default seed (42) they are Rigil Kentaurus (4.4 ly, the capital), Fomalhaut
+(25 ly), Capella (43 ly) and Regulus (79 ly). The capital is the first star with a
+real world inside `HOME_COLONY_LY = 20` of home, found in the same nearest-first
+order, and it is `net.capital`. With no capital (a galaxy whose home is a bare
+centre) the view falls back to the frame point.
 
-H selects the capital, flies the observer there and rides it while the sky moves.
-In game mode the ship does not teleport: the capital becomes the Flight
-destination and the autopilot approaches it.
+**Why nearest first.** The rendered field sample has no star within 300 ly of the
+Sun (the nearest is at 307 ly), so the local sky is the named landmarks. Seeding
+in catalogue order put the colonies at Canopus (310 ly), Capella and Rigel (861 ly),
+where no candidate is in expedition range, and the network sat at four colonies
+for twenty seconds. Discovering nearest first keeps the seeds, the candidate pool
+and the first expeditions within a few tens of light-years of home. The field
+still contributes its 400 nearest systems within 1.2 kpc, which are the far
+frontier once the landmarks are settled.
+
+**Arrival.** The page boots in galaxy-centre orbit and, once the loop starts,
+`goToHomeColony()` runs: the same H path, a 2-second eased flight to the capital
+and a ride on it while the sky moves. The observer is not teleported, and game
+mode makes the capital the Flight destination as H does.
+
+**Clocks.** The star clock starts at 1 Myr/s (was 5), from `Presets.TIME_DEFAULT`,
+so the slider, the readout, the URL and the Defaults button agree. The trade clock
+starts at 100 y/s unsynced (§1, unchanged): with sync on, 1 Myr/s would be 1 000
+y/s, and the network reaches its 14-colony plateau in about 5 s (8 colonies at
+1 s), before the 10–20 s window the scenario is read in. Generation ships (§6) sync to 1 Myr/s when enabled.
+
+**Pace.** Expeditions launch at most once per `EXPEDITION_INTERVAL = 250` years
+(was 200). Measured at the default 100 y/s, 60 frames a second, the budget of 256
+events:
+
+| seed | 10 s | 15 s | 20 s |
+|------|------|------|------|
+| 42   | 8    | 10   | 12   |
+| 7    | 8    | 10   | 12   |
+| 1234 | 8    | 10   | 11   |
+
+At 200 years the same seed reached 9 and 14 colonies at 10 s and 20 s: inside the
+band, but at its ceiling. The expedition gates are unchanged (a big colony with
+40 spare people and 10 robots).
+
+**Plateau.** The default seed levels at 14 colonies from about 30 s and stays
+there to 60 s. The landmarks within 300 ly are all settled or reserved, and the
+field is beyond that range. Growth past 14 needs the frontier to reach beyond the
+named sky, which is a next step (§8 Next), not a tuning change.
+
+**Legibility.** Every voyage takes at least `MIN_LEG_YEARS = 50` trade years (§1).
+At the default pace a freighter's 10 ly hop used to take 2–5 years, a few frames,
+which reads as a teleport. Now it is at least half a second.
+
+**Generation ships.** Enabling the mode syncs to 1 Myr/s and flies at 2.5 ly per
+wall second (§6): the start map's nearest hop takes about 10 s, the median about
+30 s. Warehouses hold (median coverage 0.47 over 60 s, all colonies big).
+
+**Checked.** `node experiments/trade-test.js` §16: four colonies at start; the
+capital is the nearest port and inside 20 ly; the four are within 100 ly of home;
+5–15 colonies after 10 s and after 20 s of 60-fps steps at 100 y/s; freighters on
+the routes. Glitch scan (Node, 20 s default and 40 s generation): no ship moves
+faster than its hull allows between frames, and no position is non-finite. The
+browser was not available in this environment, so the boot flight, the overlay and
+the route lines are unverified on screen; a visual pass is the next step.
+
+**Next.**
+- Widen the frontier past the landmark sky so the plateau at 14 becomes growth:
+  either sample the field nearer home, or let big colonies scan the catalogue
+  within reach. Measure the 10–20 s band again after.
+- A visual pass in a browser: the boot flight, the four seeds in the overlay, and
+  whether the 50-year legs read as motion at 100 y/s.

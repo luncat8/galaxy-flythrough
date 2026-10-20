@@ -280,7 +280,9 @@ implemented separately by the [trade plan](trade-plan.md).
 ## Colonies and trade
 
 The Flight panel's **Trade clock** runs independently of star and ship time:
-100 years/wall-second by default; zero pauses. **Y** or **Draw trade routes**
+100 years/wall-second by default; zero pauses. The page opens on the capital
+colony beside home, with four colonies that found more as expeditions reach the
+nearby sky. **Y** or **Draw trade routes**
 toggles port rings, active routes and cargo-coloured freighters. Open a system
 with **V** to discover its sites and inspect colony population, yields and needs.
 Expeditions found new colonies on the same event queue as freight arrivals.

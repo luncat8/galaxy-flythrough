@@ -84,10 +84,16 @@ const sourceFiles = walk(SRC, '')
 	const exposureDefault = require('../src/render/star-sprites.js').EXPOSURE_DEFAULT;
 	check('startup exposure is 22 and the slider agrees',
 		exposureDefault === 22 && /id="slider-exposure"[^>]+value="22"/.test(html));
-	check('startup stellar rate is 5 Myr/s and freeze resumes that rate',
-		/let starTimeRate = 5;/.test(main)
+	check('startup stellar rate is 1 Myr/s and freeze resumes that rate',
+		/let starTimeRate = window\.Presets\.TIME_DEFAULT;/.test(main)
+		&& require('../src/core/presets.js').TIME_DEFAULT === 1
 		&& /let lastNonZeroTimeRate = starTimeRate;/.test(main)
-		&& /id="slider-star-time"[^>]+value="5"/.test(html));
+		&& /id="slider-star-time"[^>]+value="1"/.test(html)
+		&& /id="val-star-time"[^>]*>1 Myr\/s</.test(html));
+	check('the scenario opens on the home colony and seeds nearest home first',
+		/loop\.start\(\);[\s\S]*?goToHomeColony\(\);/.test(main)
+		&& /tradeLib\.startSystems\(/.test(main) && /tradeLib\.discoverNearest\(/.test(main)
+		&& /GENERATION_STAR_MYR/.test(main));
 	check('the page starts in galaxy-centre orbit with unlocked input',
 		/camera\.setFrame\(model\);[\s\S]*?camera\.setMode\(window\.Camera\.MODE_ORBIT_GC\);\s*const input = window\.Input\.createInput\(canvas\);\s*input\.setFlyMode\(false\);/.test(main));
 	check('input policy follows camera mode after stepping',

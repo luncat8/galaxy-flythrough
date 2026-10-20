@@ -1096,8 +1096,9 @@ orbiting. Per-frame cost is unchanged: no allocation, the same preallocated `vie
 
 #### Startup and pointer interaction
 
-The page starts with exposure 22, star-time rate 5 Myr/s, and galaxy-centre
-orbit mode (from the model home position). Explicit URL exposure overrides still
+The page starts with exposure 22, star-time rate 1 Myr/s, and galaxy-centre
+orbit mode (from the model home position), then flies to the home colony beside
+the Sun and rides it, the trade scenario's opening (trade-plan §8). Explicit URL exposure overrides still
 apply. The camera library's fly/reset semantics are unchanged. The settings menu
 is open at boot (`#menu` has no inline `display:none`, so it renders in the
 default block state the toggle writes back); Tab closes it.
@@ -1399,8 +1400,8 @@ Shipped, in `archive/`:
   to where the picked star was born, and Select-around collected the birth
   neighbourhood of that birth position. Under any movement mask with the star
   clock running those frames of reference separate by kiloparsecs — measured on a
-  120k field at 100 Myr of star time (the default 5 Myr/s reaches that in 20 s of
-  watching): the primary's birth record sat **3.09 kpc (10 094 ly)** from its
+  120k field at 100 Myr of star time (the default 1 Myr/s reaches that in 100 s of
+  watching; 5 Myr/s did it in 20 s): the primary's birth record sat **3.09 kpc (10 094 ly)** from its
   drawn position, and a 50 ly select-around kept three stars of which **two were
   drawn outside the radius, the worst 3 172 ly away — 60× the radius** — while the
   drawn neighbourhood held a different star. The rule:

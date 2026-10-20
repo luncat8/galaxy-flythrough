@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-20T11:10:16.802Z",
+  "date": "2026-10-20T12:54:09.772Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -84,8 +84,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 112,
-  "passed": 112,
+  "totalChecks": 113,
+  "passed": 113,
   "failed": 0,
   "checks": [
     {
@@ -146,7 +146,11 @@
       "pass": true
     },
     {
-      "name": "startup stellar rate is 5 Myr/s and freeze resumes that rate",
+      "name": "startup stellar rate is 1 Myr/s and freeze resumes that rate",
+      "pass": true
+    },
+    {
+      "name": "the scenario opens on the home colony and seeds nearest home first",
       "pass": true
     },
     {
@@ -512,7 +516,7 @@
       "name": "TradeLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 64
+        "keys": 72
       }
     },
     {
@@ -696,7 +700,7 @@
         "evolve": 1,
         "engine": "apocenter",
         "pattern": 1,
-        "time": 5,
+        "time": 1,
         "wave": 0.6,
         "apoShare": 0.35,
         "apoForce": 0.22,
@@ -735,7 +739,7 @@
         "evolve": 0,
         "engine": "classic",
         "pattern": 1,
-        "time": 5,
+        "time": 1,
         "wave": 0.6,
         "apoShare": 0.35,
         "apoForce": 0.22,
@@ -774,7 +778,7 @@
         "evolve": 0,
         "engine": "classic",
         "pattern": 1,
-        "time": 5,
+        "time": 1,
         "wave": 0.6,
         "apoShare": 0.35,
         "apoForce": 0.22,

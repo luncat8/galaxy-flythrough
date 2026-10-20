@@ -86,7 +86,7 @@ const FIELDS = [
 // The numbers are owned by the modules that clamp them; `time` is main.js's
 // startup stellar rate. Resolved lazily: this file loads before the modules
 // it reads from are guaranteed to be present in a Node test.
-const TIME_DEFAULT = 5;
+const TIME_DEFAULT = 1;
 function menuDefaults() {
 	const g = typeof window !== 'undefined' ? window : global;
 	const r = g.StarRenderer;

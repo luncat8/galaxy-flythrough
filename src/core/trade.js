@@ -28,11 +28,11 @@
 	const LY_PER_KPC = 3261.563673;
 
 	const PORT_CHANCE = 0.35;           // stars the galaxy has settled at all
-	// The map starts smaller than it ends: the first `SEED_PORTS` settled
-	// stars are the galaxy the player arrives into, and expeditions grow the
-	// network toward MAX_PORTS. A map that starts full has no frontier, and
-	// the brief's colonisation has nothing to do.
-	const SEED_PORTS = 32;
+	// The start is four colonies: the capital beside home and three more from
+	// the nearest settled-roll stars. Expeditions grow the network toward
+	// MAX_PORTS, so the viewer watches the net expand instead of arriving into
+	// a finished one.
+	const SEED_PORTS = 4;
 	const MAX_PORTS = 64;
 	// The hard cap counts every ship, including an expedition in flight; the
 	// freighter fleet keeps its own smaller target so a founder always has a
@@ -84,7 +84,7 @@
 	const FIRST_LOAD_YEARS = 0.5;
 	const MAX_FOUND_LY = 300;           // colonisation range: a few centuries of flight
 	const POP_PER_COLONIST_UNIT = 0.004; // 150 units → 0.6 M people
-	const EXPEDITION_INTERVAL = 200;     // years between launches
+	const EXPEDITION_INTERVAL = 250;     // years between launches
 	const FOUND_STOCK_FRAC = 0.45;
 	const INITIAL_SHIPS = 12;
 	const SHIPS_PER_PORT = 1.5;
@@ -94,6 +94,11 @@
 	// a colony rather than an empty patch of sky.
 	const HOME_COLONY_LY = 20;
 	const HOME_COLONY_KPC = HOME_COLONY_LY / LY_PER_KPC;
+	// The start map's reach: the named sky plus the rendered field this close
+	// to home (trade-plan §8). The field sample has no star nearer than ~300 ly,
+	// so the nearest colonies are landmarks and the field is the far frontier.
+	const START_RADIUS_KPC = 1.2;
+	const START_FIELD = 400;
 
 	// --- Clocks (trade-plan §6) --------------------------------------------
 	// The trade clock may ride the star clock, but the two cannot share a
@@ -114,19 +119,25 @@
 	// above the ladder's top the queue costs more than a frame. The wide
 	// star range (up to 99 Myr/s) exceeds it, and the readout says so.
 	const RATE_MAX = 2000;
-	// The special mode's generation ship: 1 light-year per 1 000 years
-	// (0.1 % c). Calibrated against the synced clock's top: at 2 Myr/s the
-	// trade clock runs 2 000 y/s, so a typical 5 ly hop is 5 000 y ≈ 2.5 wall
-	// seconds. The ordinary freighter is 2 000–4 500× faster, which under a
-	// synced sky is a millisecond per hop — that is exactly the blur this
-	// mode exists to replace.
-	const GENERATION_LY_PER_YEAR = 1e-3;
+	// The special mode's generation ship: 1 light-year per 400 trade years,
+	// read at the default pace. The mode syncs to the default star rate, so
+	// 1 000 trade years pass per wall second and the ship covers 2.5 ly per
+	// wall second: the start map's nearest hop (~25 ly) takes ~10 s. A pace for
+	// this scenario, not a fraction of c; the freighter is 2 000× faster.
+	const GENERATION_LY_PER_YEAR = 2.5e-3;
+	// The star-clock rung the generation mode syncs to (Myr/s): the default.
+	const GENERATION_STAR_MYR = 1;
+	// The legibility floor on any voyage. A 10 ly freighter hop is 2–5 trade
+	// years, which at the 100 y/s default is a few frames — it reads as a
+	// teleport. Half a wall second per hop keeps the hulls visibly in flight.
+	const MIN_LEG_YEARS = 50;
 	// ...and a fleet that slow needs a matching warehouse. The colony economy
 	// is authored in years of its own throughput (a 150-year reserve, a 20-year
-	// supply buffer); with 5 000-year voyages a port would starve between two
+	// supply buffer); with 10 000-year voyages a port would starve between two
 	// arrivals, growth would stall below the big-colony gate and the special
 	// mode would show a dying network instead of a slow one. The horizon moves
-	// to the crossing time, and nothing else about the warehouse law changes.
+	// to 5 000 years, half the nearest hop: measured on the start map, coverage
+	// holds at 0.47 over a minute. Nothing else about the warehouse law changes.
 	const GENERATION_RESERVE_YEARS = 5000;
 	let generationMode = 0;
 
@@ -268,15 +279,15 @@
 	const LEG_A = [0, 0, 0], LEG_B = [0, 0, 0];
 
 	// THE trade-clock law: a leg's length in trade years. Speed is the hull's
-	// authored `lyPerYear`, or the generation-ship crawl (1 ly per 1 000 y)
-	// while the special trade mode is on. Half a year is the floor so two
-	// ports at the same coordinate never produce a zero-length voyage (a
-	// zero-length event would let a ship cycle forever inside one step).
+	// authored `lyPerYear`, or the generation-ship pace (1 ly per 400 y)
+	// while the special trade mode is on. The floor keeps two ports at one
+	// coordinate from making a zero-length voyage (a zero-length event would
+	// let a ship cycle forever inside one step), and keeps a short hop visible.
 	function legYears(distanceKpc, hullIndex) {
 		const ly = distanceKpc * LY_PER_KPC;
 		const speed = generationMode ? GENERATION_LY_PER_YEAR : HULLS[hullIndex].lyPerYear;
 		const years = ly / speed;
-		return years > 0.5 ? years : 0.5;
+		return years > MIN_LEG_YEARS ? years : MIN_LEG_YEARS;
 	}
 
 	// Years of trade time per wall second, for the two ways the clock can be
@@ -399,6 +410,65 @@
 			site.ref = ref;
 			site.name = economy.siteName(starName || '', key, 1, k);
 			addCandidate(net, site);
+		}
+		return added;
+	}
+
+	// --- The start map (trade-plan §8) --------------------------------------
+	// Every system the boot may discover, as a ref with its name and squared
+	// distance from home. The named sky is all in; the rendered field is the
+	// sample within START_RADIUS_KPC, nearest first, capped at START_FIELD.
+	// Built once per galaxy at boot, so the allocations are not per frame.
+	function byHomeDistance(a, b) { return a.d2 - b.d2; }
+
+	function pushStart(out, net, kind, index, key, x, y, z, colorIndex, absMag, name) {
+		const dx = x - net.homeX, dy = y - net.homeY, dz = z - net.homeZ;
+		const ref = { kind, index, key: key >>> 0, x, y, z, colorIndex, absMag };
+		out.push({ ref, name, d2: dx * dx + dy * dy + dz * dz });
+	}
+
+	function startSystems(net, model, field, landmarks, out) {
+		out.length = 0;
+		if (model.milkyWay && landmarks) {
+			for (let i = 0; i < landmarks.count; i++) {
+				const e = landmarks.ENTRIES[i];
+				pushStart(out, net, planets.BLOCK_LANDMARK, i, planets.landmarkKey(i),
+					e.x, e.y, e.z, e.colorIndex, e.absMag, e.name);
+			}
+		}
+		if (field && field.count > 0) {
+			const starTypes = (typeof module !== 'undefined' && module.exports)
+				? require('../math/star-types.js')
+				: window.StarTypesLib;
+			const near = [];
+			const r2 = START_RADIUS_KPC * START_RADIUS_KPC;
+			for (let i = 0; i < field.count; i++) {
+				const dx = field.x[i] - net.homeX, dy = field.y[i] - net.homeY, dz = field.z[i] - net.homeZ;
+				if (dx * dx + dy * dy + dz * dz > r2) continue;
+				pushStart(near, net, planets.BLOCK_FIELD, i, starTypes.fieldStarSeed(model.seed, i),
+					field.x[i], field.y[i], field.z[i], 0, 0, '');
+			}
+			near.sort(byHomeDistance);
+			const take = near.length < START_FIELD ? near.length : START_FIELD;
+			for (let i = 0; i < take; i++) out.push(near[i]);
+		}
+		out.sort(byHomeDistance);
+		return out;
+	}
+
+	// Discover the start map nearest home first. The settled roll and the
+	// capital then fall on the stars the viewer can reach, and the candidate
+	// pool fills with the local sky — not with whatever the catalogue order
+	// handed over, which put seeds 300–860 ly away with nothing in range.
+	// Stops once the pool is full with the seeds placed.
+	function discoverNearest(net, systems, ctx, record) {
+		let added = 0;
+		for (let i = 0; i < systems.length; i++) {
+			if (net.portCount >= net.seedPorts && net.candidateCount >= MAX_CANDIDATES - 32) break;
+			const s = systems[i];
+			ctx.name = s.name;
+			planets.generateSystem(s.ref, ctx, record);
+			added += discoverSystem(net, s.ref, s.name, record, 0);
 		}
 		return added;
 	}
@@ -1079,7 +1149,7 @@
 	}
 
 	// Special trade mode: every hull flies the generation-ship crawl, 1 ly per
-	// 1 000 years, and the ports' reserves stretch to the fleet's crossing time
+	// 400 trade years, and the ports' reserves stretch to the fleet's crossing time
 	// (see GENERATION_RESERVE_YEARS). Live colonies are re-scaled in place, so
 	// switching modes does not strand a network mid-voyage with a 150-year
 	// larder and a 5 000-year supply line.
@@ -1227,14 +1297,15 @@
 	const TradeLib = {
 		MAX_PORTS, MAX_SHIPS, MAX_FREIGHTERS, MAX_CANDIDATES, TRADE_RATES, TRADE_RATE_DEFAULT,
 		TRADE_RATE_DEFAULT_INDEX, TRADE_ROUTES_DEFAULT,
-		SYNC_YEARS_PER_MYR, RATE_MAX, GENERATION_LY_PER_YEAR, GENERATION_RESERVE_YEARS, clockRate,
+		SYNC_YEARS_PER_MYR, RATE_MAX, GENERATION_LY_PER_YEAR, GENERATION_RESERVE_YEARS, GENERATION_STAR_MYR,
+		MIN_LEG_YEARS, SEED_PORTS, START_RADIUS_KPC, START_FIELD, clockRate,
 		EV_ARRIVE, EV_LOAD, EV_WAIT, EV_FOUND, EV_TICK,
 		SHIP_DOCKED, SHIP_SAILING, SHIP_WAITING, SHIP_FOUNDING, SHIP_STATE_NAMES,
 		HULLS, DOCK_YEARS, WAIT_YEARS, TICK_YEARS,
 		POP_PER_COLONIST_UNIT, EXPEDITION_INTERVAL,
-		MAX_FOUND_LY, MAX_LEG_LY, LY_PER_KPC, NO_RESOURCE,
+		MAX_FOUND_LY, MAX_LEG_LY, LY_PER_KPC, HOME_COLONY_LY, NO_RESOURCE,
 		MIN_EXPEDITION_POP_M, MIN_EXPEDITION_COVERAGE,
-		createNetwork, discoverSystem, settleSystem, finalize, step, settleAllPorts,
+		createNetwork, discoverSystem, discoverNearest, startSystems, settleSystem, finalize, step, settleAllPorts,
 		portIndexOf, candidateIndexOf, bestPortOfStar, distanceLy, legYears,
 		shipPosition, shipProgress, shipStateName, playerPort, playerLoad, playerUnload,
 		siteHabitatScore, isBigColony, colonisationPreview, pickCandidate, bestExpedition,

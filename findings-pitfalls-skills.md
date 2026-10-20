@@ -2208,3 +2208,27 @@ Skill: when a derived quantity jitters only at small dt, compute its noise
 scaling first — if it is `ULP/dt` (or `1/dt` of anything quantized), the dt is
 the problem, not the law. Widen the baseline in a clock that is *not* the one
 being varied.
+
+## 2026-10-20 — A start map built in catalogue order seeds colonies nobody can reach
+
+The trade network's seed colonies were the first settled stars in catalogue
+order, with the 400 field systems discovered after them. The landmark catalogue
+is not ordered by distance from home, so four colonies landed at 310, 42 and
+861 ly, and the expedition search (300 ly) found nothing: the network sat at four
+colonies for twenty seconds, one expedition in two thousand years.
+
+The rendered field makes it worse. A 300 000-star sample of the Milky Way has no
+star within 300 ly of the Sun (the nearest is 307 ly), so the local sky is the
+named landmarks alone. Any "nearby" feature that draws on the field needs the
+landmarks, or it has nothing near home to show.
+
+The fix is an ordering, not a bigger radius: build the start map as landmarks
+plus field stars inside the radius, sort by distance from home, then discover
+nearest first and stop when the candidate pool is full. The seeds, the capital
+and the candidate pool then fall within a few tens of light-years of home.
+Verify a seeding change by printing the distances from home of the seeds and of
+the first expedition targets, not just the colony count.
+
+Skill: when a simulation's first state depends on the order a catalogue
+happens to be stored in, the start looks random and the growth looks broken.
+Print the distances from the origin before tuning any rate.

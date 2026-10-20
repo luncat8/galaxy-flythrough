@@ -309,3 +309,79 @@ Validation:
 - `python3 scripts/run.py changed`: 13/13.
 - Measured on the app fixture: 100 y/s 144 ms CPU / 20 s; 2 000 y/s 530 ms;
   2 000 y/s generation ships 389 ms with 35 ports and 3 foundings.
+
+## trade.6 — 2026-10-20 — The four-colony start, centred on the capital
+
+The brief: open on a colony at home H, with four colonies that send ships to
+found more, reaching 5–15 colonies after 10–20 s at the default parameters, the
+default star clock at 1 Myr/s, a sensible generation-ship speed, and any glitch
+found along the way fixed.
+
+Measured first, on the Node replay of the app's boot and frame loop: 32 seed
+colonies (not four), 37–44 colonies at 10–25 s, and at four seeds only one
+expedition in 2 000 years. Cause: the seeds were the first settled stars in
+catalogue order, at 310, 42 and 861 ly, and the expedition search reaches 300 ly
+(`findings-pitfalls-skills.md`, 2026-10-20).
+
+1. **The start map is built and discovered nearest home first.** `trade.startSystems`
+   collects the named sky and the field stars within 1.2 kpc (nearest 400) with
+   their distances from home; `trade.discoverNearest` discovers them in that order
+   and stops once the seeds and the candidate pool (224) are full. Main's
+   `tradeSeedNetwork` is now four calls, and the test fixture uses the same two
+   functions, so the tests exercise the scenario, not a catalogue-order one.
+2. **Four seed colonies** (`SEED_PORTS = 4`). With seed 42: Rigil Kentaurus (4.4
+   ly, the capital), Fomalhaut (25 ly), Capella (43 ly), Regulus (79 ly).
+3. **Expedition interval 250 years** (was 200). At 200 the default seed reached 9
+   and 14 colonies at 10 and 20 s, at the ceiling; at 250 it reaches 8 and 12. Seeds
+   7 and 1234 give 8/12 and 8/11.
+4. **The page opens on the capital.** `goToHomeColony()` runs after the loop
+   starts: H's path, a 2-second eased flight from galaxy-centre orbit and a ride on
+   Rigil Kentaurus. Galaxies with no capital (the Sb type measured) stay in the
+   galaxy-centre view.
+5. **Star clock default 1 Myr/s** (was 5). From `Presets.TIME_DEFAULT`, so the
+   slider, readout, URL and Defaults button agree. The trade clock stays at 100 y/s
+   unsynced: synced at 1 Myr/s the network reaches its plateau in about 5 s.
+6. **Generation ships at 2.5 ly per wall second** (`GENERATION_LY_PER_YEAR = 2.5e-3`,
+   was 1e-3), synced at the default 1 Myr/s (`GENERATION_STAR_MYR = 1`, was 2).
+   At 1e-3 the nearest seed hop took 25 s and the median 76 s, and ten expeditions
+   sat in flight with nothing visible. Now ~10 s and ~30 s. Warehouses hold: median
+   coverage 0.47 over 60 s with the 5 000-year horizon, all colonies big.
+7. **Legibility floor: 50 trade years per voyage** (`MIN_LEG_YEARS`, was 0.5).
+   A 10 ly freighter hop was 2–5 years, a few frames at 100 y/s: it read as a
+   teleport. Now at least half a wall second.
+8. **Glitch scan.** Node scan of every ship's position each frame, 20 s at the
+   default pace and 40 s in generation mode: no ship moved faster than its hull
+   allows, no position was non-finite. The one real glitch was the short-leg blink
+   (7), and the far-flung seeds (1).
+
+Not moved: no catalogue star was moved. The far seeds were the glitch; nearest-first
+removes them, and the real positions of the named stars are data.
+
+Tests and docs:
+
+- `experiments/trade-test.js`: 107/107. The mechanics checks (grown, jump,
+  overlapping, failed founding, generation mode) run on the start map, not on a
+  catalogue-order fixture. New §16 pins the scenario: four colonies, the capital
+  nearest home and inside 20 ly, all four within 100 ly, 5–15 colonies after 10 s
+  and after 20 s at 60 fps with the default clock, freighters on routes. The
+  generation hop and freighter floor checks follow the new calibration.
+- `experiments/m1-smoke-test.js`: 113/113 (startup rate 1 Myr/s, the boot centres
+  on the home colony, the start map nearest-first).
+- `experiments/preset-test.js`: the defaults table now says time 1.
+- `python3 scripts/run.py changed`: 8/8. `quick`: 28/28.
+- `trade-plan.md` §1, §3, §3.2, §6, §8 updated; `plan.md` startup line and the
+  5 Myr/s timing note; README trade paragraph; the generation checkbox tooltip.
+
+Not verified: the browser. There is no browser in this environment, so the boot
+flight, the four seeds in the overlay and the 50-year legs at 100 y/s are checked
+only in Node, not on screen.
+
+Plateau: the default seed levels at 14 colonies from about 30 s. The landmarks
+within 300 ly are settled or reserved, and the field is beyond that range.
+
+Next:
+- Widen the frontier past the named sky so the plateau at 14 becomes growth,
+  either by sampling the field nearer home or by letting big colonies scan the
+  catalogue within reach; measure the 10–20 s band again after.
+- A browser pass: the boot flight, the four seeds in the overlay, and whether the
+  50-year legs read as motion at 100 y/s.

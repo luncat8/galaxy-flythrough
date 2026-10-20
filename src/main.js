@@ -83,7 +83,7 @@ function readParams(search) {
                 // The rest of the settings menu, so a preset string and the URL
                 // speak one language. Absent = the startup default, applied by
                 // boot below.
-                time: number('time', 5),
+                time: number('time', window.Presets.TIME_DEFAULT),
                 wave: number('wave', window.OrbitLib.WAVE_DAMPING_UI_DEFAULT),
                 apoShare: number('apoShare', window.OrbitLib.APOCENTER_SHARE_UI_DEFAULT),
                 apoForce: number('apoForce', window.OrbitLib.APOCENTER_FORCE_UI_DEFAULT),
@@ -142,7 +142,7 @@ async function boot() {
         // 0.4 global stellar clock. It is f64 on the CPU and exported as one
         // f32 uniform only after the documented epoch wrap.
         let starTimeMyr = 0;
-	let starTimeRate = 5;
+	let starTimeRate = window.Presets.TIME_DEFAULT;
 	let lastNonZeroTimeRate = starTimeRate;
         // ?time= / ?wave= speak the same language as the preset strings
         // (Presets), and their defaults are the startup values above.
@@ -1209,12 +1209,11 @@ async function boot() {
         tradeGenBox.addEventListener('change', () => {
                 tradeGenOn = tradeGenBox.checked ? 1 : 0;
                 tradeLib.setGenerationMode(tradeGenOn, tradeNet);
-                // The crawl is calibrated at the top of the fine star range
-                // (trade-plan §6): synced 2 Myr/s is 2 000 trade y/s, so a 5 ly
-                // hop is 5 000 y ≈ 2.5 wall seconds. Enabling the mode sets
-                // exactly that pair — a generation-ship mode on a parked sky,
-                // or on the freighter-sized 5 Myr/s rung, would look broken in
-                // opposite directions.
+                // The crawl is calibrated at the default star rate (trade-plan
+                // §6): synced 1 Myr/s is 1 000 trade y/s, so the ship covers
+                // 2.5 ly per wall second. Enabling the mode sets exactly that
+                // pair — a generation-ship mode on a parked sky would look broken,
+                // and so would one on a faster rung than the scenario is read at.
                 if (tradeGenOn) {
                         tradeSyncOn = 1;
                         tradeSyncBox.checked = true;
@@ -4003,9 +4002,8 @@ async function boot() {
         // the same seed always settles the same stars (trade-plan.md §3.1).
         // Everything below is birth-frame data; the drawn galaxy rotates under
         // it, which is why the overlay's routes are faint by design.
-        const tradeRef = { kind: 0, index: 0, key: 0, x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0 };
-        const TRADE_FIELD_RADIUS_KPC = 1.2;
         const tradeRecord = window.PlanetsLib.createSystemRecord();
+        const tradeStart = [];
         const tradeCtx = { model: null, field: null, member: null, name: '' };
         const tradeTop = new Int32Array(6);
         const tradePos = [0, 0, 0];
@@ -4015,7 +4013,7 @@ async function boot() {
         // star range) — and then the readout's lag line says so.
         const TRADE_EVENT_BUDGET = 256;
         // The star-clock rung the generation-ship cruise is calibrated at.
-        const TRADE_GEN_MYR = 2;
+        const TRADE_GEN_MYR = tradeLib.GENERATION_STAR_MYR;
         // The route re-time and the frontier scan are maintenance, not clock
         // work: twice a second is invisible to the user and keeps the frame
         // free of 96 route projections.
@@ -4061,6 +4059,10 @@ async function boot() {
                 return labels.tradeRecordPosition(ref.kind | 0, ref.index | 0, ref.key >>> 0, out);
         }
 
+        // The start map (trade-plan §8): the named sky and the rendered field
+        // nearest home, discovered nearest first, so the four seed colonies
+        // and the candidate pool are the local sky. Discovery is deterministic:
+        // the same seed always settles the same stars.
         function tradeSeedNetwork() {
                 const home = model.home.orbitTarget;
                 tradeNet = tradeLib.createNetwork({
@@ -4073,56 +4075,12 @@ async function boot() {
                         livePosition: tradeLivePosition,
                 });
                 tradeCtx.model = model;
-                tradeCtx.field = null;
+                tradeCtx.field = renderer.fieldBuffers();
                 tradeCtx.member = null;
                 tradeCtx.name = '';
-                // The named stars first: they are the sky the player reads, so
-                // they are the ports the overlay should name. Then the field
-                // within 1.2 kpc of the model's home — dense enough that a
-                // voyage is a century, not a millennium, and sparse enough that
-                // the galaxy still looks like a galaxy. `SEED_PORTS` bounds the
-                // settled fraction; everything else discovered becomes a
-                // colonisation candidate.
-                if (model.milkyWay) {
-                        for (let i = 0; i < landmarks.count; i++) {
-                                const entry = landmarks.ENTRIES[i];
-                                tradeRef.kind = window.PlanetsLib.BLOCK_LANDMARK;
-                                tradeRef.index = i;
-                                tradeRef.key = window.PlanetsLib.landmarkKey(i) >>> 0;
-                                tradeRef.x = entry.x; tradeRef.y = entry.y; tradeRef.z = entry.z;
-                                tradeRef.colorIndex = entry.colorIndex; tradeRef.absMag = entry.absMag;
-                                tradeCtx.name = entry.name;
-                                window.PlanetsLib.generateSystem(tradeRef, tradeCtx, tradeRecord);
-                                tradeLib.discoverSystem(tradeNet, tradeRef, entry.name, tradeRecord, 0);
-                        }
-                }
-                // 400 systems × ~30 µs is a boot cost, not a frame cost; the
-                // distance test is squared and in kpc, so no square root and no
-                // allocation per star.
-                const field = renderer.fieldBuffers();
-                if (field && field.count > 0) {
-                        tradeCtx.field = field;
-                        const home = model.home.orbitTarget;
-                        const hx = home.x !== undefined ? home.x : home[0];
-                        const hy = home.y !== undefined ? home.y : home[1];
-                        const hz = home.z !== undefined ? home.z : home[2];
-                        for (let i = 0, used = 0; i < field.count && used < 400; i++) {
-                                const px = field.x[i], py = field.y[i], pz = field.z[i];
-                                const dx = px - hx, dy = py - hy, dz = pz - hz;
-                                if (dx * dx + dy * dy + dz * dz > TRADE_FIELD_RADIUS_KPC * TRADE_FIELD_RADIUS_KPC) continue;
-                                used += 1;
-                                tradeRef.kind = window.PlanetsLib.BLOCK_FIELD;
-                                tradeRef.index = i;
-                                tradeRef.key = window.StarTypesLib.fieldStarSeed(model.seed, i) >>> 0;
-                                tradeRef.x = px; tradeRef.y = py; tradeRef.z = pz;
-                                tradeRef.colorIndex = 0; tradeRef.absMag = 0;
-                                tradeCtx.name = '';
-                                window.PlanetsLib.generateSystem(tradeRef, tradeCtx, tradeRecord);
-                                tradeLib.discoverSystem(tradeNet, tradeRef, '', tradeRecord, 0);
-                                if (tradeNet.portCount >= tradeNet.seedPorts
-                                        && tradeNet.candidateCount >= tradeLib.MAX_CANDIDATES - 32) break;
-                        }
-                }
+                const systems = tradeLib.startSystems(tradeNet, model, tradeCtx.field,
+                        model.milkyWay ? landmarks : null, tradeStart);
+                tradeLib.discoverNearest(tradeNet, systems, tradeCtx, tradeRecord);
                 tradeLib.finalize(tradeNet);
                 tradeModelKey = (model.type || '') + ':' + (model.seed | 0);
                 syncTradeUi();
@@ -5209,6 +5167,9 @@ async function boot() {
         syncTradeUi();
         syncFlightUi();
         loop.start();
+        // The scenario opens where the expansion starts: the colony beside
+        // home, selected and ridden exactly as H does (trade-plan §8).
+        goToHomeColony();
         console.log(`Galaxy fly-through ready: ${renderer.state.proceduralStars.toLocaleString()} procedural stars, ` +
                 `${renderer.state.landmarkStars} landmarks, ` +
                 `${renderer.state.catalogTotalStars.toLocaleString()} catalog stars in ${renderer.state.catalogCells} cells.`);

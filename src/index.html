@@ -65,13 +65,13 @@
                 </div>
                 <div class="menu-row">
                         <label for="slider-star-time">Star time <span class="kbd">T</span></label>
-                        <input type="range" id="slider-star-time" min="-1" max="99" step="0.5" value="5"
+                        <input type="range" id="slider-star-time" min="-1" max="99" step="0.5" value="1"
                                title="Click the handle without dragging to stop the clock; drag to set the rate. T freezes and restores.">
                         <!-- A click that does not move the slider stops the clock (main.js,
                              the click guard on this input): the 0 stop is otherwise a half-step
                              between -1 and 0.5 on a 100-wide track. T still parks/restores. -->
                         <button id="star-time-range" type="button" title="Star-time range is fine: −1…2 Myr/s in 0.1 steps. Click to widen to −1…99 Myr/s in 0.5 steps.">fine range</button>
-                        <span id="val-star-time" class="menu-val">5 Myr/s</span>
+                        <span id="val-star-time" class="menu-val">1 Myr/s</span>
                 </div>
                 <!-- The epoch's live clock (0.6 E2): while it runs, the star clock
                      drives the galaxy's own clock — one 0.1 Gyr step per 100 Myr of
@@ -502,7 +502,7 @@
 			<input type="checkbox" id="trade-sync-time">
 			<span>Sync trade clock to star time</span>
 		</label>
-		<label class="flight-autopilot" title="Special trade mode: generation ships at 1 light-year per 1 000 years. Sets sync time on and the star clock to 2 Myr/s, so a 5 ly hop takes about 2.5 wall seconds; the ordinary freighters would cross it in a millisecond.">
+		<label class="flight-autopilot" title="Special trade mode: generation ships at 1 light-year per 400 trade years. Sets sync time on and the star clock to 1 Myr/s, so the ship covers 2.5 ly per wall second — the nearest seed hop (~25 ly) takes about 10 seconds. The ordinary freighters would cross it in a blink.">
 			<input type="checkbox" id="trade-generation-ships">
 			<span>Generation ships &middot; 1 ly per 1 kyr</span>
 		</label>
