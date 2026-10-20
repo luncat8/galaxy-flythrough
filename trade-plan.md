@@ -89,10 +89,16 @@ Growth coverage weights household needs, not industrial inputs:
 
 ```
 coverage = sum(w[r] * min(1, (out[r]*P + stock[r]/20)/(NEED[r]*P))) / sum(w)
-g = coverage/80 - (1-coverage)/120
+g = coverage/40 - (1-coverage)/120
 P(t) = K / (1 + (K/P0 - 1)*exp(-g*t))
 stock[r] += (out[r] - input[r]) * integral(P dt)   // clamped to [0, cap]
 ```
+
+`G_MAX = 1/40` (an 80-year e-folding became 40). The network is read at 100
+trade years per wall second: at the old rate a new world's ring barely moved
+for ten seconds and the expansion it was supposed to feed never started. At
+the authored coverage (~0.47) the rate is ≈0.7 %/y, a doubling in about a
+century (one wall second).
 
 Use cancellation/overflow-safe logistic evaluation (`expm1`, `log1p`), including
 zero growth, equilibrium at K, and very long positive/negative intervals. Below
@@ -116,11 +122,16 @@ One colony per star avoids zero-distance intra-system freight winning all route
 scores. Four seed ports (`SEED_PORTS = 4`, §8) grow toward 64 total port slots;
 256 candidate sites.
 For a newly discovered star, a stable hash roll below 0.35 selects a seed colony
-while seed slots remain. It occupies the highest-habitat planet (terran flag gets
-1.5× preference), or the first belt if there is no planet. Otherwise every world
-and belt becomes a candidate up to the cap. Terran worlds are preferred, **not
-automatically settled**. Remember discovered keys even when candidate storage is
-full: revisiting only settles, never changes the map or seeds a second colony.
+while seed slots remain. It occupies the best-habitat site of the system (terran
+1.6×, HZ 1.25×; a belt counts at 0.10). Otherwise the star contributes **one**
+candidate: its best world. One colony per star is the rule, so a second candidate
+from the same star is a place no expedition can ever take; adding every world
+filled the 224-slot start pool with sibling worlds and belts and left the
+reachable frontier dry at 14 colonies. A star whose best world is below
+`MIN_CANDIDATE_HABITAT = 0.10` contributes nothing. Terran worlds are preferred,
+**not automatically settled**. Remember discovered keys even when candidate
+storage is full: revisiting only settles, never changes the map or seeds a
+second colony.
 
 On model reset the start map is built and discovered **nearest home first**
 (`trade.startSystems` + `trade.discoverNearest`): the named landmarks (Milky Way
@@ -139,18 +150,20 @@ handler invocation so due follow-ups run in the same drain. Equal-time order is
 unspecified but deterministic for the same push stream. Empty pop is harmless.
 Stale revisions are consumed without effects. No steady-state queue allocations.
 
-The fleet has 96 preallocated ship slots, including expeditions. Seed up to 12
-freighters (roughly half the initial ports); every 25 years grow toward
-`min(74, max(12, floor(3 + 1.5*portCount)))`. Successful expedition hulls become
-freighters; the target is not a retirement policy or a hard post-founding limit.
-A network without ports has only its global tick, no orphan hulls.
+The fleet has 128 preallocated ship slots, including expeditions: 74 freighters
+and up to `MAX_FOUNDING_IN_FLIGHT = 24` founding voyages can coexist with the
+seed fleet. Seed up to 12 freighters (roughly half the initial ports); every 25
+years grow toward `min(74, max(12, floor(3 + 1.5*portCount)))`. Successful
+expedition hulls become freighters; the target is not a retirement policy or a
+hard post-founding limit. A network without ports has only its global tick, no
+orphan hulls.
 
 | hull | hold (stock units) | ly/trade-year |
 |---|---|---|
 | bulk | 30,000 | 2 |
 | hauler | 15,000 | 3 |
 | clipper | 8,000 | 4.5 |
-| generation (§6, mode switch) | 30,000 | 0.001 |
+| generation (§6, mode switch) | 30,000 | 0.03 |
 
 A leg takes `max(0.5, distanceLy/speed)` years; freight routes are 1–3000 ly.
 Each ship owns exactly one live revision-checked event. The one global tick is
@@ -173,12 +186,43 @@ than deadlock the hull. No cargo is silently discarded by the player's interface
 
 ### 3.2 Colonisation as an event
 
-Every 25 years settle source ports and look for an expedition, at most one launch
-per `EXPEDITION_INTERVAL = 250` years (§8 measures why not 200). Cost scales with source capacity:
-`people = clamp(0.15*K, 40, 400)`, `robots = clamp(0.03*K, 10, 100)` units.
-Both costs must be exportable **before** allocating a ship or deducting either.
-Search free candidate systems within 300 ly; rank habitat flags and distance,
-then source surplus. Check all eligible ports, not just the largest.
+A founding wave costs **people, not warehouse stock**. Every 25 years the tick
+settles the ports and launches from every port that is ready, up to
+`MAX_FOUNDING_IN_FLIGHT = 24` voyages. A port is ready when its colony is big
+(population ≥ 5 M, coverage ≥ 0.30, ≥ 8 % of capacity), at least
+`EXPEDITION_COOLDOWN = 900` years have passed since it last sponsored a wave,
+and it can spare a party:
+
+```
+people = clamp(0.02 * P, 0.5 M, 4 M)      // drawn from the population
+source keeps at least 2 M people
+```
+
+The party is deducted from the source's population on launch and becomes the new
+colony's population on arrival (`P = people`, capped at K). The authored
+"colonists" and "factory cores" stocks remain trade goods; they are **not** a
+founding gate. That gate was the old plateau: on the start map only one world in
+fourteen produced a people surplus and none of the marginal gas/ice giants could
+hold a factory-core surplus, so the other thirteen never launched regardless of
+population. Factory cores are built by the port's own industry; coverage is the
+readiness check that the industry runs.
+
+Search free candidate stars within `MAX_FOUND_LY = 600` and rank the best site of
+each star by habitat (terran 1.6×, HZ 1.25×) over distance
+(`habitat / (1 + ly/80)`). The 300 ly range was the second half of the plateau:
+the sampled field has a 300 ly hole around home and its first shell sits at
+307–600 ly, so a port at the end of the named sky had nothing in reach. 600 ly is
+1.3–3 s for a freighter, and it lets the frontier chain through the sampled
+field.
+
+`port.lastExpedition` holds the cooldown; `foundAtCandidate` sets it to the
+founding time, so a new colony sponsors its first wave one cooldown after its
+own founding. Each port's clock is independent, so the network grows in a
+staggered stream rather than one network-wide window: it roughly doubles every
+wave (4 → 8 → 16 → 32 → 64 ports) and fills in about a minute at the default
+pace. The panel's **Send expedition** button is
+the player's hand: it may rush a port that is still resting, and that port's
+900-year clock restarts from the launch.
 
 Reserve the **whole target star** during flight, not only its selected planet,
 and count every in-flight expedition against remaining port capacity. This
@@ -187,10 +231,13 @@ is separate from `used` (successful settlement). Seed discovery must not occupy
 a reserved target. An unexpected failed founding releases its reservation and
 returns the hull to a scheduled source-port load; never leave a ship eventless.
 
-On arrival the carried people become `P = amount * 0.004` million, capped at K;
-start warehouses at 45%, set founded/last to the event time, and join the same
-routing loop. Startup warehouses are an abstract founding grant, not a manifest
-of goods subtracted from the parent. Failed missions keep their people aboard.
+On arrival the carried people become `P = amount * 0.004` million (the party is
+carried as stock units so the ship manifest and the founding law share one
+number), capped at K; start warehouses at 45%, set founded/last to the event
+time, and join the same routing loop. Startup warehouses are an abstract founding
+grant, not a manifest of goods subtracted from the parent. A failed founding
+returns the volunteers to the source's population (they were drawn from it) and
+sends the empty hull home for a normal load; never leave a ship eventless.
 
 ## 4. Player and display
 
@@ -229,7 +276,10 @@ counters and six largest non-abandoned ports plus sailing ships, refreshed at
   expeditions/reservations/capacity, player mass conservation, overlay geometry
   (including the population-scaled ring and the frontier mark), the clock laws of
   §6 (sync exchange rate, ceiling, generation-ship pacing, budgeted drain
-  monotonicity and backlog) and the forced capital.
+  monotonicity and backlog), the colonisation law (one candidate per star,
+  volunteers, per-port cooldown, the resting readout and the manual rush) and the
+  §8 start scenario (the growth curve, the capital's first seconds, the full
+  network by 90 s, and the forced capital).
 - `experiments/exec-queue-test.js`: 50,000-event sorted-reference comparison,
   growth, equal timestamps, due follow-ups, boundary, clear/empty and stale handling.
 
@@ -247,7 +297,7 @@ validation remains separate; canvas-stub geometry tests are not a visual verdict
 
 The trade clock and the star clock are **different calendars by construction**.
 The network is authored in colony years: a 25-year tick, a 150-year warehouse, an
-80-year population e-folding, voyages of tens of years. The star clock is authored
+40-year population e-folding, voyages of tens of years. The star clock is authored
 in galactic years: 0.1–2 Myr per wall second (99 Myr/s in the wide range). At a
 1:1 exchange a 2 Myr/s sky asks the queue for 2·10⁶ trade years per second —
 measured at ≈20 s of CPU per wall second, i.e. a frozen page — and every voyage
@@ -273,33 +323,37 @@ to settle backwards. Main passes 256 events per frame: the synced top rate needs
 ~50, and the budget only bites when the machine cannot follow — which the panel
 says out loud ("… Myr behind").
 
-Generation ships: the special mode flies every hull at 1 light-year per 400
-trade years (`GENERATION_LY_PER_YEAR = 2.5e-3`) and sets the synced pair — star
+Generation ships: the special mode flies every hull at 1 light-year per 33
+trade years (`GENERATION_LY_PER_YEAR = 3e-2`) and sets the synced pair — star
 clock at the default 1 Myr/s (`GENERATION_STAR_MYR = 1`), sync on. At that pace
-the clock runs 1 000 trade y/s, so the ship covers 2.5 ly per wall second: the
-start map's nearest hop (Rigil Kentaurus to Fomalhaut, ~25 ly) takes ~10 s, the
-median seed hop ~30 s, and the scenario's expeditions are watchable instead of
-blurred.
-The first calibration, 1 ly per 1 000 years, put that hop at 25 s and the median
-at 76 s, so ten expeditions sat in flight at once with nothing to see. The
-ordinary freighter (2–4.5 ly/y) crosses the same hop in a fraction of a wall
-second, which is exactly the blur the mode replaces. The number is a pace for
-this scenario, not a fraction of c.
+the clock runs 1 000 trade y/s, so the ship covers 30 ly per wall second: the
+start map's nearest hop (Rigil Kentaurus to Fomalhaut, ~25 ly) is under a
+second, a 300 ly frontier hop 10 s and the 600 ly maximum 20 s, so the voyages
+are watchable and the network still advances in a session. The first calibration,
+1 ly per 1 000 years, put that hop at 25 s and the median at 76 s, so ten
+expeditions sat in flight with nothing to see; the second, 1 ly per 400 years,
+brought them to 10 s and 30 s but still took four minutes to cross the sampled
+field's 600 ly shell. The ordinary
+freighter (2–4.5 ly/y) crosses the same hop in a fraction of a wall second, which
+is exactly the blur the mode replaces. The number is a pace for this scenario,
+not a fraction of c.
 
 A fleet that slow needs a matching larder: the colony economy is authored in
 years of its own throughput (a 150-year warehouse, a 20-year supply buffer), and
-with 10 000-year voyages (the start map's nearest hop) a port would starve between
-two arrivals — coverage, growth and the big-colony gate would all fall, and the
-mode would show a *dying* network rather than a slow one. So the mode stretches
-the reserve horizon to `GENERATION_RESERVE_YEARS = 5 000` (×33.3 of the authored
-`STOCK_YEARS`) on every port, live colonies included. Measured on the start map
-at the default synced pace over 60 s: median coverage holds at 0.47, the minimum
-at 0.45, and all 14 colonies stay big — the horizon is about half the nearest hop,
-which is enough because the warehouse only has to bridge the gap between
-arrivals, not the whole voyage (`economy.setReserveScale` +
-`rescaleColonyReserves`, driven from `setGenerationMode(on, net)`). The warehouse
-law, the supply buffer and the growth rates are untouched: only the horizon
-moves. Leaving the mode restores the authored values.
+with 20 000-year voyages (the farthest 600 ly sampled-field hop) a port would starve
+between two arrivals — coverage, growth and the big-colony gate would all fall,
+and the mode would show a *dying* network rather than a slow one. So the mode
+stretches the reserve horizon to `GENERATION_RESERVE_YEARS = 5 000` (×33.3 of
+the authored `STOCK_YEARS`) on every port, live colonies included. Measured on
+the start map at the default synced pace: median coverage holds at 0.47, the
+minimum at 0.31, zero colonies are abandoned, and the network reaches all 64
+ports by 60 000 trade years (60 s of wall time at 1 000 y/s) — the horizon is
+a quarter of the farthest hop, which is enough because the warehouse only
+has to bridge the gap between arrivals, not the whole voyage
+(`economy.setReserveScale` + `rescaleColonyReserves`, driven from
+`setGenerationMode(on, net)`). The warehouse law, the supply buffer and the
+growth rates are untouched: only the horizon moves. Leaving the mode restores
+the authored values.
 
 Idle hulls back off: a hull with nothing to carry used to re-poll every
 `WAIT_YEARS = 2`, which at a 2 000 y/s clock is a thousand events a second per
@@ -347,10 +401,12 @@ The Trade panel's colony rows carry the same information as text: a three-cell
 bar, the population, and `↑ 1.25 %/y`. A `newest` row names the most recently
 founded world with its age, because the six largest colonies can never show an
 expansion — a new world starts small. The colonisation block names the gate that
-is shut (`no big colony yet`, `no colonists or factory cores spare`, `no free
-world in range`) instead of the old catch-all "no big colonies ready", and its
-**Send expedition** button launches the same choice the tick would make, now,
-through the same cost and reservation path.
+is shut (`no big colony yet`, `every big colony is resting between expeditions`,
+`no free world within 600 ly`) and counts the resting ports and the next launch
+in years, instead of the old catch-all "no big colonies ready". Its **Send
+expedition** button launches the same choice the tick would make, now, through
+the same cost and reservation path; it may also rush a resting port, restarting
+that port's 900-year clock.
 
 At the top of the rate range the panel adds `time-lapse: growth is a blink at
 this rate` — that is the honest answer to "why is growth hard to see at the
@@ -380,6 +436,11 @@ and the first expeditions within a few tens of light-years of home. The field
 still contributes its 400 nearest systems within 1.2 kpc, which are the far
 frontier once the landmarks are settled.
 
+The seed systems are generated with the page's live field attached
+(`ctx.field`), because a generated star depends on whether the generator was
+looking at the field sample. Without it the fixture's start map is a different
+sky from the page's, and its growth curve is not the scenario's.
+
 **Arrival.** The page boots in galaxy-centre orbit and, once the loop starts,
 `goToHomeColony()` runs: the same H path, a 2-second eased flight to the capital
 and a ride on it while the sky moves. The observer is not teleported, and game
@@ -388,47 +449,82 @@ mode makes the capital the Flight destination as H does.
 **Clocks.** The star clock starts at 1 Myr/s (was 5), from `Presets.TIME_DEFAULT`,
 so the slider, the readout, the URL and the Defaults button agree. The trade clock
 starts at 100 y/s unsynced (§1, unchanged): with sync on, 1 Myr/s would be 1 000
-y/s, and the network reaches its 14-colony plateau in about 5 s (8 colonies at
-1 s), before the 10–20 s window the scenario is read in. Generation ships (§6) sync to 1 Myr/s when enabled.
+y/s, and the network grows too fast to watch. Generation ships (§6) sync to
+1 Myr/s when enabled.
 
-**Pace.** Expeditions launch at most once per `EXPEDITION_INTERVAL = 250` years
-(was 200). Measured at the default 100 y/s, 60 frames a second, the budget of 256
-events:
+**Pace.** Each port sponsors at most one expedition per
+`EXPEDITION_COOLDOWN = 900` years, and a tick launches from every port whose
+cooldown is over. There is no network-wide launch window: the old single launch
+per 250 years (the old `EXPEDITION_INTERVAL`) was the first half of the plateau,
+because a big port then waited its turn while its people piled up. Measured at
+the default 100 y/s, 60 frames a second, the 256-event budget and the 0.5 s
+frontier scan (seed 42, the page's 300k field):
 
-| seed | 10 s | 15 s | 20 s |
-|------|------|------|------|
-| 42   | 8    | 10   | 12   |
-| 7    | 8    | 10   | 12   |
-| 1234 | 8    | 10   | 11   |
+| wall s  | 0 | 5 | 10 | 15 | 20 | 25 | 30 | 35 | 40 | 45 | 50 |
+|---------|---|----|----|----|----|----|----|----|----|----|----|
+| ports   | 4 | 8 | 11 | 16 | 27 | 32 | 44 | 50 | 56 | 63 | 64 |
+| big     | 3 | 8 | 8  | 16 | 25 | 32 | 42 | 50 | 56 | 63 | 64 |
+| founded | 0 | 4 | 7  | 12 | 23 | 28 | 40 | 46 | 52 | 59 | 60 |
 
-At 200 years the same seed reached 9 and 14 colonies at 10 s and 20 s: inside the
-band, but at its ceiling. The expedition gates are unchanged (a big colony with
-40 spare people and 10 robots).
+The same curve holds across galaxy seeds (300k field, same frame loop):
 
-**Plateau.** The default seed levels at 14 colonies from about 30 s and stays
-there to 60 s. The landmarks within 300 ly are all settled or reserved, and the
-field is beyond that range. Growth past 14 needs the frontier to reach beyond the
-named sky, which is a next step (§8 Next), not a tuning change.
+| seed | 10 s | 20 s | 40 s | full network |
+|------|------|------|------|--------------|
+| 42   | 11   | 27   | 56   | 48 s |
+| 7    | 12   | 29   | 58   | 49 s |
+| 1234 | 12   | 28   | 46   | 50 s |
+| 4242 | 12   | 30   | 54   | 49 s |
+
+The seed ports alone become eight inside five seconds (a wave every 900 trade
+years per port, i.e. nine wall seconds at this pace). The first wave leaves on
+the first tick — three of the four seeds are big at t = 0; the small belt joins
+as it grows. The network then reaches `MAX_PORTS = 64` by 50 s and stays there;
+at 64 the port array is full, which is a cap, not a plateau. Coverage holds at a
+median 0.47, the minimum at 0.31; no colony is abandoned, the population sum
+grows 0.1 B → 11.2 B over the run, and the fleet hauls 4.5 M units by 90 s.
+
+**Colony growth.** `G_MAX = 1/40` and the authored coverage of ~0.47 give
+`g ≈ 0.7 %/y`, so a world founded at 45 % of capacity is visibly growing within
+a couple of wall seconds at the default pace. A world founded at 45 % reaches
+90 % in ~330 trade years (3.3 s). That is the point: the ring the overlay draws
+from `√(pop/capacity)` has to move while the network expands around it.
 
 **Legibility.** Every voyage takes at least `MIN_LEG_YEARS = 50` trade years (§1).
 At the default pace a freighter's 10 ly hop used to take 2–5 years, a few frames,
 which reads as a teleport. Now it is at least half a second.
 
-**Generation ships.** Enabling the mode syncs to 1 Myr/s and flies at 2.5 ly per
-wall second (§6): the start map's nearest hop takes about 10 s, the median about
-30 s. Warehouses hold (median coverage 0.47 over 60 s, all colonies big).
+**Generation ships.** Enabling the mode syncs to 1 Myr/s and flies at 30 ly per
+wall second (§6): the start map's nearest hop is under a second, a 300 ly
+frontier hop 10 s, and the 600 ly maximum 20 s. Measured over 60 s (60 000 trade
+years) at 1 000 y/s, with the same field and frontier scan:
+
+| wall s | 10 | 20 | 30 | 40 | 50 | 60 |
+|--------|----|----|----|----|----|----|
+| ports  | 22 | 33 | 41 | 53 | 61 | 64 |
+
+All 64 are big by 60 s, median coverage 0.47, minimum 0.31, zero abandoned, and
+1.66 M units delivered by 120 s. The mode still reads as slow ships (30 ly/s is
+1/70–1/150 of a freighter's wall-second speed), but it no longer reads as a
+stalled network.
 
 **Checked.** `node experiments/trade-test.js` §16: four colonies at start; the
 capital is the nearest port and inside 20 ly; the four are within 100 ly of home;
-5–15 colonies after 10 s and after 20 s of 60-fps steps at 100 y/s; freighters on
-the routes. Glitch scan (Node, 20 s default and 40 s generation): no ship moves
-faster than its hull allows between frames, and no position is non-finite. The
-browser was not available in this environment, so the boot flight, the overlay and
-the route lines are unverified on screen; a visual pass is the next step.
+the capital grows from its founding share (~0.19) to a full ring (> 0.85 of
+capacity) inside two wall seconds; 5–20 colonies after 10 s, 18–40 after 20 s,
+≥ 45 after 40 s and 64 at 90 s of 60-fps steps at 100 y/s; the youngest colony
+grows visibly after 20 s; freighters on the routes. The readout is checked in
+its common state (a tick has just spent every ready port, so the panel must show
+the resting count and the next launch), and the manual button is checked as a
+rush. A separate §15 case proves the generation mode keeps founding through the
+slow fleet. Glitch scan (Node, 20 s default and 40 s generation): no
+ship moves faster than its hull allows between frames, and no position is
+non-finite. The browser was not available in this environment, so the boot
+flight, the overlay and the route lines are unverified on screen; a visual pass
+is the next step.
 
 **Next.**
-- Widen the frontier past the landmark sky so the plateau at 14 becomes growth:
-  either sample the field nearer home, or let big colonies scan the catalogue
-  within reach. Measure the 10–20 s band again after.
-- A visual pass in a browser: the boot flight, the four seeds in the overlay, and
-  whether the 50-year legs read as motion at 100 y/s.
+- A visual pass in a browser: the boot flight, the four seeds in the overlay, the
+  ring growth of a young colony, and whether 30 ly/s voyages read as motion.
+- Re-check the frontier scan's 4 000-star ring per 0.5 s call now that the
+  network reaches 64 ports inside a minute; it is the remaining per-frame cost
+  that scales with the field, and a wider sample (500k) has not been measured.

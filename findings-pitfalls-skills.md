@@ -1,5 +1,47 @@
 # Findings, Pitfalls & Skills
 
+## 2026-10-20 — A growth plateau is usually several gates stacked
+
+The trade network sat at 14 colonies for minutes, and every explanation found
+one gate: landmarks exhausted, too few candidates, warehouse stock, the launch
+interval. Each was real, and fixing any one alone changed nothing because the
+others still held. The decisive measurement was not a rate but a counter: the
+status line reported `stocked: 1` of 14 big colonies — thirteen were large, fed
+and *unable* to pay the `people + factory cores` expedition cost, because only
+one world in fourteen produced a people surplus and none of the marginal giants
+held a factory-core surplus. The search loop then skipped them before it ever
+looked at distance.
+
+When a network stops growing, instrument every conjunct of the launch condition
+and print the count that reaches each stage (`big`, `ready`, `resting`, free
+candidates, distance). The gate with the smallest count is the one to remove
+first; a domain cost (population) that every healthy node can pay is a better
+founding currency than a warehouse good only some world types produce. And when
+the fix is a *rate* (a 40-year e-folding) plus a *range* (600 ly) plus a *law*
+(one candidate per star), measure the whole curve — 4 → 64 ports — not the one
+number the old test pinned.
+
+Skill: a plateau is a conjunction, not a single cause. Count the stages, fix the
+smallest set, then re-measure the growth curve against the real start map.
+
+## 2026-10-20 — A fixture that omits a live input measures a different scenario
+
+The start-scenario test built its field with `sampleGalaxyStars` and passed it to
+`startSystems`, but left `ctx.field = null`. The page sets `ctx.field` to the
+live field before generating systems, and the generator's output depends on it:
+the field stars of the start map came out different, so the fixture's network
+grew 44 → 51 ports where the page's grew 56 → 64. Two rounds of band tuning were
+spent on a curve the app never produced.
+
+A scenario fixture must reproduce the app's *environment*, not just the same
+seed and the same functions. Diff the fixture's boot values against the page's
+(the port names, the first candidates, the first 10 s of the curve) before
+writing acceptance bands, and re-measure the bands from the fixture, never from a
+probe that took a different path.
+
+Skill: when tests and probes disagree, the difference is an input, not noise.
+Find the input the fixture omits before you change the numbers.
+
 ## 2026-10-20 — Idle polling is a hidden O(clock rate) cost
 
 Every system that "tries again in a few years" multiplies its event rate by the

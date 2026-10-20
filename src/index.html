@@ -502,12 +502,12 @@
 			<input type="checkbox" id="trade-sync-time">
 			<span>Sync trade clock to star time</span>
 		</label>
-		<label class="flight-autopilot" title="Special trade mode: generation ships at 1 light-year per 400 trade years. Sets sync time on and the star clock to 1 Myr/s, so the ship covers 2.5 ly per wall second — the nearest seed hop (~25 ly) takes about 10 seconds. The ordinary freighters would cross it in a blink.">
+		<label class="flight-autopilot" title="Special trade mode: generation ships at 1 light-year per 33 trade years. Sets sync time on and the star clock to 1 Myr/s, so the ship covers 30 ly per wall second — the nearest seed hop (~25 ly) is under a second, a 300 ly frontier hop about 10 seconds. The ordinary freighters would cross it in a blink.">
 			<input type="checkbox" id="trade-generation-ships">
-			<span>Generation ships &middot; 1 ly per 1 kyr</span>
+			<span>Generation ships &middot; 30 ly/s</span>
 		</label>
 		<div class="menu-row menu-actions">
-			<button id="trade-launch" type="button" disabled title="Send the best available colonisation expedition now instead of waiting for the 200-year launch window. It costs the source colony's colonists and factory cores, exactly as the automatic launch does.">Send expedition</button>
+			<button id="trade-launch" type="button" disabled title="Send the best available colonisation expedition now instead of waiting for the next tick. It takes volunteers from the source colony's population, exactly as the automatic launch does; the port then rests for 900 trade years.">Send expedition</button>
 			<span id="trade-state" class="flight-port-state">no network</span>
 		</div>
 		<pre id="trade-list" class="flight-forecast">No trade network yet.</pre>

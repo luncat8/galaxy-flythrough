@@ -63,14 +63,21 @@ function seedNetwork(count, timeYears) {
 	return trade.finalize(net);
 }
 
-// The app's start map (trade-plan §8): the named sky nearest home first, through
-// the same startSystems/discoverNearest the page calls. Expansion checks use
-// this, because a catalogue-order fixture seeds colonies hundreds of light-years
-// out, where nothing is in expedition range and the mechanics go untested.
+// The app's start map (trade-plan §8): the named sky plus the rendered field
+// nearest home first, through the same startSystems/discoverNearest the page
+// calls. The field is the page's default 300k sample, and the scenario's seed
+// is the model's, so the fixture measures the scenario the viewer boots into.
+const scenarioField = require('../src/math/sampling.js').sampleGalaxyStars(model, model.seed | 0, 300000);
 function seedStart(timeYears) {
-	const net = trade.createNetwork({ seed: 4242, modelSeed: galaxy.DEFAULT_SEED, timeYears: timeYears || 0 });
-	const systems = trade.startSystems(net, ctx.model, null, landmarks, []);
+	const net = trade.createNetwork({ seed: model.seed | 0, modelSeed: galaxy.DEFAULT_SEED, timeYears: timeYears || 0 });
+	// The page wires its live field into the system generator before the start
+	// map is discovered; a null field would generate the field stars from a
+	// different path and the fixture would not be the scenario.
+	const previousField = ctx.field;
+	ctx.field = scenarioField;
+	const systems = trade.startSystems(net, ctx.model, scenarioField, landmarks, []);
 	trade.discoverNearest(net, systems, ctx, record);
+	ctx.field = previousField;
 	return trade.finalize(net);
 }
 
@@ -573,11 +580,13 @@ function exactLiveEvents(net) {
 	check('in-flight founding capacity and live-event invariants hold',
 		overlapping.portCount + founders <= trade.MAX_PORTS && exactLiveEvents(overlapping));
 	// An externally invalidated candidate must not strand its arriving hull.
-	let broken = -1;
+	let broken = -1, sourcePop = 0, returning = 0;
 	for (let i = 0; i < overlapping.shipCount; i++) {
 		const ship = overlapping.ships[i];
 		if (ship.state !== trade.SHIP_FOUNDING) continue;
 		broken = i;
+		sourcePop = overlapping.ports[ship.from].colony.pop;
+		returning = ship.amount * trade.POP_PER_COLONIST_UNIT;
 		overlapping.candidates[ship.candidate].used = 1;
 		queueLib.push(overlapping.queue, overlapping.time + 1, trade.EV_FOUND, i, ++ship.revision);
 		break;
@@ -587,6 +596,13 @@ function exactLiveEvents(net) {
 		broken >= 0 && overlapping.ships[broken].state === trade.SHIP_DOCKED
 		&& overlapping.ships[broken].port === overlapping.ships[broken].from
 		&& overlapping.candidates.every(c => c.reserved !== broken) && exactLiveEvents(overlapping));
+	// The party was drawn from the population, so a failed voyage brings it
+	// back instead of deleting people the source can never recover.
+	const source = broken >= 0 ? overlapping.ports[overlapping.ships[broken].from].colony : null;
+	const gained = source ? source.pop - sourcePop : 0;
+	check('a failed founding returns the volunteers to the source population',
+		broken >= 0 && returning > 0 && gained >= returning * 0.9 && gained <= returning + source.capacity * 0.05,
+		{ returning: +returning.toFixed(2), gained: +gained.toFixed(2) });
 }
 
 // --- 9. The overlay must not alias the two drawn endpoints ---------------
@@ -729,14 +745,16 @@ function exactLiveEvents(net) {
 		trade.clockRate(200, 5, false) === 200 && trade.clockRate(200, 0, true) === 0
 		&& trade.clockRate(200, -1, true) === 0 && trade.clockRate(0, 0, false) === 0);
 
-	// Generation ships: slow at the top of the fine star range, which is the
-	// calibration the mode is authored against.
+	// Generation ships: a frontier hop is watchable at the top of the fine star
+	// range, which is the calibration the mode is authored against. 100 ly is
+	// the scale of the sampled field's first shell; the 600 ly maximum is
+	// twenty seconds, not a stall.
 	trade.setGenerationMode(1);
-	const genYears = trade.legYears(5 / trade.LY_PER_KPC, 2);   // a 5 ly hop
+	const genYears = trade.legYears(100 / trade.LY_PER_KPC, 2);   // a 100 ly hop
 	trade.setGenerationMode(0);
 	const genSeconds = genYears / trade.clockRate(100, trade.GENERATION_STAR_MYR, true);
-	check('a generation-ship hop lasts seconds at the default synced pace',
-		genSeconds > 1 && genSeconds < 6 && near(genSeconds, 5 / trade.GENERATION_LY_PER_YEAR / trade.clockRate(100, trade.GENERATION_STAR_MYR, true), 1e-9),
+	check('a generation-ship frontier hop lasts seconds at the default synced pace',
+		genSeconds > 1 && genSeconds < 6 && near(genSeconds, 100 / trade.GENERATION_LY_PER_YEAR / trade.clockRate(100, trade.GENERATION_STAR_MYR, true), 1e-9),
 		{ legYears: Math.round(genYears), wallS: +genSeconds.toFixed(2) });
 	check('the freighter cruise is untouched by the special mode above the legibility floor',
 		Math.abs(trade.legYears(300 / trade.LY_PER_KPC, 2) - 300 / trade.HULLS[2].lyPerYear) < 1e-9
@@ -790,13 +808,24 @@ function exactLiveEvents(net) {
 	// The colonisation readout explains an empty frontier instead of blaming
 	// big colonies, which is the bug the panel used to show.
 	const fresh = seedNetwork(24, 0);
-	fresh.lastExpedition = fresh.time;
 	const opportunities = trade.colonisationPreview(fresh, fresh.time);
 	const status = trade.colonisationStatus();
 	check('the colonisation readout names the gate that is shut',
 		(opportunities.length > 0) === (status.reason === '')
 		&& (opportunities.length > 0 || status.reason.length > 0),
 		{ opportunities: opportunities.length, reason: status.reason, big: status.big });
+
+	// The resting state is the panel's common case: the tick has just spent
+	// every ready port. A preview that only worked on a fresh network would
+	// crash (or lie) exactly when the player looks at it.
+	const restingNet = seedStart(0);
+	trade.step(restingNet, 1000);
+	const restingList = trade.colonisationPreview(restingNet, restingNet.time);
+	const restingStatus = trade.colonisationStatus();
+	check('the colonisation readout works while every big port is resting',
+		restingStatus.resting > 0 && restingList.length === 0
+		&& restingStatus.reason.length > 0 && finite(restingStatus.nextIn) && restingStatus.nextIn > 0,
+		{ resting: restingStatus.resting, nextIn: Math.round(restingStatus.nextIn), reason: restingStatus.reason });
 
 	// The manual launch goes through the same cost and reservation path.
 	const launch = seedNetwork(24, 0);
@@ -807,6 +836,19 @@ function exactLiveEvents(net) {
 	check('the manual launch sends exactly one expedition or says why not',
 		result.ok ? (founding === 1 && launch.portCount === before) : (founding === 0 && result.reason.length > 0),
 		{ ok: result.ok, reason: result.reason, founding });
+
+	// The button is the player's hand: it may sponsor a port that is still
+	// resting between automatic waves, and that port's cooldown restarts.
+	const rushNet = seedStart(0);
+	trade.step(rushNet, 1000);
+	let restingPorts = 0;
+	for (let i = 0; i < rushNet.portCount; i++) {
+		if (rushNet.time - rushNet.ports[i].lastExpedition < trade.EXPEDITION_COOLDOWN) restingPorts += 1;
+	}
+	const rush = trade.launchBest(rushNet, rushNet.time);
+	check('the Send-expedition button can rush a resting port and restarts its cooldown',
+		restingPorts > 0 && rush.ok === 1 && rushNet.ports[rush.source].lastExpedition === rushNet.time,
+		{ restingPorts, ok: rush.ok, reason: rush.reason });
 }
 
 // --- 12. The frontier scan, on a live field -------------------------------
@@ -948,10 +990,11 @@ function exactLiveEvents(net) {
 }
 
 // --- 15. The generation-ship mode keeps its network alive -----------------
-// Ships at 1 ly per 1 000 years take millennia per voyage, so a port with the
-// authored 150-year warehouse would starve between two arrivals: coverage,
-// growth and the big-colony gate would all fall and the mode would show a
-// dying network. The reserve horizon moves with the fleet instead.
+// Generation-ship hulls fly 1 ly per 33 trade years (30 ly per wall second at
+// the synced clock), so even the nearest hops take centuries per voyage and a
+// port with the authored 150-year warehouse would starve between two arrivals:
+// coverage, growth and the big-colony gate would all fall and the mode would
+// show a dying network. The reserve horizon moves with the fleet instead.
 {
 	const net = seedStart(0);
 	trade.step(net, 4000);
@@ -965,6 +1008,7 @@ function exactLiveEvents(net) {
 		near(capGen / capFree, expected) && near(economy.getReserveScale(), expected),
 		{ ratio: +(capGen / capFree).toFixed(2), expected: +expected.toFixed(2) });
 	const rate = trade.clockRate(100, trade.GENERATION_STAR_MYR, true);
+	const portsBefore = net.portCount;
 	for (let f = 0; f < 60 * 10; f++) trade.step(net, rate / 60, 256);
 	const coverage = [];
 	let bigGen = 0;
@@ -978,14 +1022,19 @@ function exactLiveEvents(net) {
 	trade.setGenerationMode(0, net);
 	check('a generation-ship network keeps its colonies instead of starving',
 		bigGen >= bigFree - 1 && median > 0.3, { bigFree, bigGen, median: +median.toFixed(2) });
+	check('and keeps founding through the slow fleet instead of standing still',
+		net.portCount > portsBefore && net.founded > 0,
+		{ portsBefore, ports: net.portCount, founded: net.founded });
 	check('leaving the special mode restores the authored warehouses',
 		near(economy.getReserveScale(), 1) && near(net.ports[0].colony.stockCap[5], capFree));
 }
 
 // --- 16. The start scenario (trade-plan §8) ------------------------------
-// Four colonies beside home, the capital nearest it, and a network that grows
-// to 5–15 colonies in 10–20 s of wall time at the default trade clock (100 y/s),
-// stepped as the page steps it: 60 frames a second, the budget of 256 events.
+// Four colonies beside home, the capital nearest it, and a network that keeps
+// expanding: 5–20 colonies after 10 s, 18–40 after 20 s, at least 45 after 40 s
+// and the full 64-port network by 90 s. The old band (5–15 at 10 and 20 s) was
+// a plateau at 14; these numbers are the trade.7 growth curve, measured on the
+// fixture itself with the page's field attached.
 {
 	const net = seedStart(0);
 	check('the scenario starts with exactly four colonies', net.portCount === 4 && trade.SEED_PORTS === 4,
@@ -1000,18 +1049,48 @@ function exactLiveEvents(net) {
 	check('the start colonies sit within 100 ly of home, not across the sky (Rigil, Fomalhaut, Capella, Regulus)',
 		far <= 100, { farthestLy: +far.toFixed(1) });
 
-	const frames = 60 * 20, dt = 1 / 60;
-	let at10 = -1, at20 = -1, sailingAt20 = 0;
+	const frames = 60 * 90, dt = 1 / 60;
+	let at10 = -1, at20 = -1, at40 = -1, at90 = -1, sailingAt20 = 0;
+	let youngPort = -1, youngFrac = 0, maint = 0;
+	// The user-facing half of the growth change: at the default 100 y/s the
+	// capital is founded at ~19 % of capacity and must be a visibly grown ring
+	// within a couple of wall seconds, not a still one.
+	const capitalStart = net.ports[net.capital].colony.pop / net.ports[net.capital].colony.capacity;
+	let capitalAt2 = -1;
 	for (let f = 1; f <= frames; f++) {
 		trade.step(net, trade.TRADE_RATE_DEFAULT * dt, trade.MAX_PORTS * 4);
+		// The page runs the frontier scan twice a second while the clock runs.
+		maint += dt;
+		if (maint >= 0.5) { maint = 0; trade.expandFrontierFromField(net, scenarioField, model); }
+		if (f === 60 * 2) capitalAt2 = net.ports[net.capital].colony.pop / net.ports[net.capital].colony.capacity;
 		if (f === 60 * 10) at10 = net.portCount;
-		if (f === frames) at20 = net.portCount;
+		if (f === 60 * 20) {
+			at20 = net.portCount;
+			for (let i = 0; i < net.shipCount; i++) if (net.ships[i].state === trade.SHIP_SAILING) sailingAt20 += 1;
+			for (let i = 0; i < net.portCount; i++) {
+				const colony = net.ports[i].colony;
+				if (youngPort < 0 || colony.founded > net.ports[youngPort].colony.founded) {
+					youngPort = i;
+					youngFrac = colony.capacity > 0 ? colony.pop / colony.capacity : 0;
+				}
+			}
+		}
+		if (f === 60 * 40) at40 = net.portCount;
+		if (f === frames) at90 = net.portCount;
 	}
-	for (let i = 0; i < net.shipCount; i++) if (net.ships[i].state === trade.SHIP_SAILING) sailingAt20 += 1;
-	check('at the default clock the network holds 5–15 colonies after 10 s',
-		at10 >= 5 && at10 <= 15, { at10 });
-	check('and still 5–15 colonies after 20 s, growing from the start',
-		at20 >= 5 && at20 <= 15 && at20 > 4, { at20 });
+	check('the capital grows from its founding share to a full ring in two seconds',
+		capitalStart < 0.3 && capitalAt2 > 0.85,
+		{ start: +capitalStart.toFixed(2), at2: +capitalAt2.toFixed(2) });
+	check('at the default clock the network holds 5–20 colonies after 10 s',
+		at10 >= 5 && at10 <= 20, { at10 });
+	check('and 18–40 after 20 s: the expansion continues past the old 14-port plateau',
+		at20 >= 18 && at20 <= 40 && at20 > at10, { at10, at20 });
+	check('the frontier keeps growing: at least 45 colonies at 40 s and a full 64-port network at 90 s',
+		at40 >= 45 && at90 === trade.MAX_PORTS, { at40, at90 });
+	const youngNow = youngPort >= 0 && net.ports[youngPort].colony.capacity > 0
+		? net.ports[youngPort].colony.pop / net.ports[youngPort].colony.capacity : 0;
+	check('the youngest colony fills visibly instead of standing still',
+		youngPort >= 0 && youngNow > youngFrac + 0.05, { youngFrac: +youngFrac.toFixed(2), youngNow: +youngNow.toFixed(2) });
 	check('the freighters are on the routes while the network grows', sailingAt20 >= 1, { sailingAt20 });
 }
 

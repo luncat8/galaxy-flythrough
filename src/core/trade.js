@@ -39,7 +39,7 @@
 	// slot to come home to. A port is served by ~1.5 hulls: at 64 ports and
 	// 2–4 ly/year, that is a visit every century or two, which is what the
 	// 150-year warehouses are sized for.
-	const MAX_SHIPS = 96;
+	const MAX_SHIPS = 128;
 	const MAX_FREIGHTERS = 74;
 	const MAX_CANDIDATES = 256;
 
@@ -82,9 +82,35 @@
 	const WAIT_YEARS_MAX = 500;
 	const TICK_YEARS = 25;              // colonisation check
 	const FIRST_LOAD_YEARS = 0.5;
-	const MAX_FOUND_LY = 300;           // colonisation range: a few centuries of flight
-	const POP_PER_COLONIST_UNIT = 0.004; // 150 units → 0.6 M people
-	const EXPEDITION_INTERVAL = 250;     // years between launches
+	// A colony can send a wave a few centuries of flight away. 300 ly was the
+	// designed range, but the local sky is a sparse sample: the landmark shell
+	// ends around 120 ly and the next worlds sit at 300–600 ly, so a 300 ly
+	// range left every port without a reachable candidate at 14–17 colonies.
+	// 600 ly is a 1.5–3 s voyage for a freighter, and it lets the frontier
+	// chain through the sampled field instead of stopping at the named sky.
+	const MAX_FOUND_LY = 600;
+	const POP_PER_COLONIST_UNIT = 0.004; // 1 unit → 4 000 people
+	// A founding expedition is a share of the source's *population*, not a
+	// warehouse good. The authored colony economy made "colonists" a produced
+	// resource and "factory cores" a consumed one, so on the start map only
+	// one colony in fourteen had both spare: the network reached 14 ports and
+	// stood there for minutes (trade-plan §3.2). People are the one cost every
+	// thriving world can pay; the factory cores are its own industry's product,
+	// not a stock gate.
+	const VOLUNTEER_FRAC = 0.02;         // of the source's population
+	const FOUNDERS_MIN_M = 0.5;          // million people in a wave
+	const FOUNDERS_MAX_M = 4.0;
+	const MIN_FOUNDERS_REMAIN_M = 2.0;   // the source keeps a working population
+	// One port sponsors at most one expedition per cooldown. At the default
+	// 100 y/s this is the expansion's period: a network's ports double their
+	// number roughly every 1 000–1 200 years, which is a wave every ~10 s and
+	// a full 64-port scenario inside a minute, instead of a plateau at 14.
+	const EXPEDITION_COOLDOWN = 900;    // years per port
+	// Foundings in flight are capped so a large network does not spend its
+	// whole hull budget on expeditions and starve the freight routes. The cap
+	// is well above a seed wave (three big ports at t = 0) and far below the
+	// 128-hull budget, so a doubling never locks the routes out of ships.
+	const MAX_FOUNDING_IN_FLIGHT = 24;
 	const FOUND_STOCK_FRAC = 0.45;
 	const INITIAL_SHIPS = 12;
 	const SHIPS_PER_PORT = 1.5;
@@ -103,7 +129,7 @@
 	// --- Clocks (trade-plan §6) --------------------------------------------
 	// The trade clock may ride the star clock, but the two cannot share a
 	// *year*: the network's authored cadence is tens of years per event (a
-	// 25-year tick, 150-year warehouses, an 80-year population e-folding),
+	// 25-year tick, 150-year warehouses, a 40-year population e-folding),
 	// while the star clock runs at millions of years per second. At a 1:1
 	// exchange a 2 Myr/s sky asks the queue for 2·10⁶ years of voyages per
 	// wall second — measured at 313 ms of CPU per frame (~18 s per wall
@@ -119,12 +145,15 @@
 	// above the ladder's top the queue costs more than a frame. The wide
 	// star range (up to 99 Myr/s) exceeds it, and the readout says so.
 	const RATE_MAX = 2000;
-	// The special mode's generation ship: 1 light-year per 400 trade years,
+	// The special mode's generation ship: 1 light-year per 33 trade years,
 	// read at the default pace. The mode syncs to the default star rate, so
-	// 1 000 trade years pass per wall second and the ship covers 2.5 ly per
-	// wall second: the start map's nearest hop (~25 ly) takes ~10 s. A pace for
-	// this scenario, not a fraction of c; the freighter is 2 000× faster.
-	const GENERATION_LY_PER_YEAR = 2.5e-3;
+	// 1 000 trade years pass per wall second and the ship covers 30 ly per
+	// wall second: the start map's nearest hop (~25 ly) takes under a second,
+	// a 300 ly frontier hop 10 s, and the 600 ly maximum 20 s. A pace for this
+	// scenario, not a fraction of c; the freighter is still 70–150× faster.
+	// The first calibration (1 ly per 400 years) took 10 s for the nearest hop
+	// and 76 s for the median, and made the mode look stalled.
+	const GENERATION_LY_PER_YEAR = 3e-2;
 	// The star-clock rung the generation mode syncs to (Myr/s): the default.
 	const GENERATION_STAR_MYR = 1;
 	// The legibility floor on any voyage. A 10 ly freighter hop is 2–5 trade
@@ -154,6 +183,9 @@
 			colony: economy.createColony(),
 			key: 0, name: '', kind: 0, index: 0,
 			arrivals: 0, received: 0,
+			// Trade years of the last sponsored expedition; `-INF` marks a seed
+			// port, ready as soon as its colony passes the big gate.
+			lastExpedition: -1e9,
 			x: 0, y: 0, z: 0,
 			ref: { kind: 0, index: 0, key: 0, x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0 },
 		};
@@ -205,7 +237,6 @@
 			founded: 0,
 			delivered: 0,
 			lastEvent: 0,
-			lastExpedition: -1e9,
 			tickScheduled: 0,
 			// Ring cursor of the frontier scan (a field index), so repeated
 			// ticks walk the whole field instead of re-testing its head.
@@ -279,7 +310,7 @@
 	const LEG_A = [0, 0, 0], LEG_B = [0, 0, 0];
 
 	// THE trade-clock law: a leg's length in trade years. Speed is the hull's
-	// authored `lyPerYear`, or the generation-ship pace (1 ly per 400 y)
+	// authored `lyPerYear`, or the generation-ship pace (1 ly per 33 y)
 	// while the special trade mode is on. The floor keeps two ports at one
 	// coordinate from making a zero-length voyage (a zero-length event would
 	// let a ship cycle forever inside one step), and keeps a short hop visible.
@@ -341,9 +372,42 @@
 		return index;
 	}
 
-	// Discover every site of one generated system. `ref` is the pick-shaped
-	// star record; `system` is a planets SystemRecord. Idempotent: a second
-	// inspection only settles the existing colony.
+	// The best world of a system by habitat, with the terran/HZ preference the
+	// seed map and the frontier scan share. One candidate per star: the pool is
+	// a list of places to settle, not a gazetteer of every rock.
+	const DISCOVER_PICK = { index: -1, belt: 0, score: 0 };
+	function pickBestSite(site, ref, system, seed) {
+		let bestScore = -1, bestIndex = -1, bestBelt = 0;
+		const count = system.counts.planets | 0;
+		for (let i = 0; i < count; i++) {
+			economy.fillPlanetSite(site, ref, system, i, seed);
+			const score = siteHabitatScore(site);
+			if (score > bestScore) { bestScore = score; bestIndex = i; bestBelt = 0; }
+		}
+		const belts = system.belts.count | 0;
+		for (let k = 0; k < belts; k++) {
+			economy.fillBeltSite(site, ref, system, k, seed);
+			const score = siteHabitatScore(site);
+			if (score > bestScore) { bestScore = score; bestIndex = k; bestBelt = 1; }
+		}
+		DISCOVER_PICK.index = bestIndex;
+		DISCOVER_PICK.belt = bestBelt;
+		DISCOVER_PICK.score = bestScore;
+		return DISCOVER_PICK;
+	}
+
+	function fillPickedSite(site, ref, system, seed, pick) {
+		if (pick.belt) economy.fillBeltSite(site, ref, system, pick.index, seed);
+		else economy.fillPlanetSite(site, ref, system, pick.index, seed);
+		site.x = ref.x; site.y = ref.y; site.z = ref.z;
+		site.ref = ref;
+		return site;
+	}
+
+	// Discover one generated system: settle its best site if the star is a
+	// seed, otherwise add that site as its one frontier candidate. `ref` is the
+	// pick-shaped star record; `system` is a planets SystemRecord. Idempotent:
+	// a second inspection only settles the existing colony.
 	function discoverSystem(net, ref, starName, system, nowYears) {
 		const key = system.star.key >>> 0;
 		if (net.discovered.has(key)) {
@@ -360,8 +424,6 @@
 		// fraction; a settled star puts its colony on the best site it has,
 		// and the rest of its worlds stay unsettled (no candidates).
 		if (portOfStar(net, key) >= 0) return 0;
-		const planetCount = system.counts.planets;
-		const belts = system.belts;
 		// The settled fraction is a seed-map property, but the seed map is
 		// bounded: once `seedPorts` stars are settled the rest of the galaxy
 		// stays a frontier, and only expeditions found new colonies.
@@ -375,42 +437,27 @@
 		const maySettle = net.portCount < net.seedPorts
 			&& (nearHome || hash.hash01At(seed, TR_CH_PORT) < PORT_CHANCE);
 		if (maySettle) {
-			let bestScore = -1, bestIndex = -1, bestBelt = 0;
-			for (let i = 0; i < planetCount; i++) {
-				economy.fillPlanetSite(site, ref, system, i, seed);
-				const habitat = economy.HABITAT[site.type];
-				const score = (site.flags & planets.FLAG_TERRAN) ? habitat * 1.5 : habitat;
-				if (score > bestScore) { bestScore = score; bestIndex = i; bestBelt = 0; }
-			}
-			if (bestIndex < 0 && belts.count > 0) { bestIndex = 0; bestBelt = 1; }
-			if (bestIndex >= 0) {
-				if (bestBelt) economy.fillBeltSite(site, ref, system, bestIndex, seed);
-				else economy.fillPlanetSite(site, ref, system, bestIndex, seed);
-				site.x = ref.x; site.y = ref.y; site.z = ref.z;
-				site.ref = ref;
-				site.name = economy.siteName(starName || '', key, bestBelt, bestIndex);
-				const portIndex = addPort(net, site, nowYears);
-				if (portIndex >= 0) {
-					added++;
-					if (nearHome && net.capital < 0) net.capital = portIndex;
-				}
+			const pick = pickBestSite(site, ref, system, seed);
+			if (pick.index < 0 || pick.score < MIN_CANDIDATE_HABITAT) return added;
+			fillPickedSite(site, ref, system, seed, pick);
+			site.name = economy.siteName(starName || '', key, pick.belt, pick.index);
+			const portIndex = addPort(net, site, nowYears);
+			if (portIndex >= 0) {
+				added++;
+				if (nearHome && net.capital < 0) net.capital = portIndex;
 			}
 			return added;
 		}
-		for (let i = 0; i < planetCount; i++) {
-			economy.fillPlanetSite(site, ref, system, i, seed);
-			site.x = ref.x; site.y = ref.y; site.z = ref.z;
-			site.ref = ref;
-			site.name = economy.siteName(starName || '', key, 0, i);
-			addCandidate(net, site);
-		}
-		for (let k = 0; k < belts.count; k++) {
-			economy.fillBeltSite(site, ref, system, k, seed);
-			site.x = ref.x; site.y = ref.y; site.z = ref.z;
-			site.ref = ref;
-			site.name = economy.siteName(starName || '', key, 1, k);
-			addCandidate(net, site);
-		}
+		// A candidate is one star's best world, not every world it has: one
+		// colony per star is the rule, so the sibling slots are places no
+		// expedition could ever take. Adding them anyway filled the 224-slot
+		// pool with dead belts and secondary worlds, and the frontier the
+		// ports could actually reach ran dry at 14 colonies (trade-plan §8).
+		const pick = pickBestSite(site, ref, system, seed);
+		if (pick.index < 0 || pick.score < MIN_CANDIDATE_HABITAT) return added;
+		fillPickedSite(site, ref, system, seed, pick);
+		site.name = economy.siteName(starName || '', key, pick.belt, pick.index);
+		addCandidate(net, site);
 		return added;
 	}
 
@@ -688,20 +735,24 @@
 	// --- Colonisation -------------------------------------------------------
 
 	const EXPEDITION_SCRATCH = { port: -1, candidate: -1, score: 0 };
-	const EXPEDITION_COST = { people: 0, robots: 0 };
+	const EXPEDITION_COST = { peopleM: 0, people: 0 };
 
-	// A colony sends a share of itself, not a fixed 500 units: a belt outpost
-	// of 45 M can seed a neighbour with 40 volunteers, a terran world of 900 M
-	// with a few hundred. Floors keep a tiny port from launching on nothing.
+	// A founding wave is a share of the source's population (2 %, 0.5–4 M),
+	// not a warehouse transfer: the "colonists" stock is a cargo good and the
+	// "factory cores" stock is consumed by the colony's own households, so a
+	// gate on either one made expansion depend on the rare world with a people
+	// yield and a robots surplus. People are the cost every thriving colony can
+	// pay, and the source always keeps a working population behind.
 	function expeditionCost(colony, out) {
-		let people = colony.capacity * 0.15;
-		if (people < 40) people = 40;
-		if (people > 400) people = 400;
-		let robots = colony.capacity * 0.03;
-		if (robots < 10) robots = 10;
-		if (robots > 100) robots = 100;
-		out.people = people;
-		out.robots = robots;
+		let peopleM = colony.pop * VOLUNTEER_FRAC;
+		if (peopleM < FOUNDERS_MIN_M) peopleM = FOUNDERS_MIN_M;
+		if (peopleM > FOUNDERS_MAX_M) peopleM = FOUNDERS_MAX_M;
+		const affordable = colony.pop - MIN_FOUNDERS_REMAIN_M;
+		if (peopleM > affordable) peopleM = affordable;
+		if (!(peopleM > 0)) peopleM = 0;
+		out.peopleM = peopleM;
+		out.people = peopleM / POP_PER_COLONIST_UNIT;
+		return out;
 	}
 
 	// Colonisation thresholds: only established, populous worlds send
@@ -711,7 +762,9 @@
 	// still distinguishing a thriving big colony from a starving outpost.
 	const MIN_EXPEDITION_POP_M = 5;
 	const MIN_EXPEDITION_COVERAGE = 0.30;
-	const MIN_CANDIDATE_HABITAT = 0.12;
+	// Belts are 0.10 on the habitat scale: a belt outpost is a real colony
+	// (the capital itself can be a belt), so the founding gate must admit it.
+	const MIN_CANDIDATE_HABITAT = 0.10;
 
 	function siteHabitatScore(site) {
 		let base = site.isBelt ? economy.HABITAT_BELT : economy.HABITAT[site.type];
@@ -751,53 +804,61 @@
 		return best;
 	}
 
-	// The best (source, candidate) pair a tick can launch: surplus people and
-	// factory cores at the source, an unsettled site in range, and a score that
-	// rewards a big population and a habitable, nearby world. Trying every
-	// port matters — the largest colony is not always the one with a frontier,
-	// and big colonies are the ones with the surplus to send.
-	function bestExpedition(net, time) {
+	// The best (source, candidate) pair a tick can launch: a big port past its
+	// cooldown, an unsettled site in range, and a score that rewards a big
+	// population and a habitable, nearby world. Trying every port matters —
+	// the largest colony is not always the one with a frontier.
+	function bestExpedition(net, time, rush) {
 		settleAllPorts(net, time);
 		let bestPort = -1, bestCandidate = -1, bestScore = 0;
 		// How far the best attempt got, so the panel can say *why* nothing
 		// launched instead of the old catch-all "no big colonies ready".
-		let big = 0, stocked = 0;
+		let big = 0, ready = 0, resting = 0;
+		let nextIn = Infinity;
 		for (let i = 0; i < net.portCount; i++) {
-			const colony = net.ports[i].colony;
+			const port = net.ports[i];
+			const colony = port.colony;
 			if (colony.abandoned) continue;
 			if (!isBigColony(colony)) continue;
 			big += 1;
+			const wait = port.lastExpedition + EXPEDITION_COOLDOWN - time;
+			if (wait > 0 && !rush) {
+				resting += 1;
+				if (wait < nextIn) nextIn = wait;
+				continue;
+			}
 			expeditionCost(colony, EXPEDITION_COST);
-			const people = economy.exportableOf(colony, economy.R_PEOPLE);
-			if (people < EXPEDITION_COST.people) continue;
-			if (economy.exportableOf(colony, economy.R_ROBOTS) < EXPEDITION_COST.robots) continue;
-			stocked += 1;
-			const spare = people / EXPEDITION_COST.people;
+			if (!(EXPEDITION_COST.peopleM > 0)) continue;
+			ready += 1;
 			const candidate = pickCandidate(net, i);
 			if (candidate < 0) continue;
 			const popFactor = Math.min(3, 0.6 + colony.pop / 120);
 			const coverageBonus = 0.7 + Math.min(0.6, colony.coverage);
-			const score = popFactor * coverageBonus * (spare > 3 ? 3 : spare) * EXPEDITION_SCRATCH.score;
+			const score = popFactor * coverageBonus * EXPEDITION_SCRATCH.score;
 			if (score > bestScore) { bestScore = score; bestPort = i; bestCandidate = candidate; }
 		}
 		EXPEDITION_SCRATCH.port = bestPort;
 		EXPEDITION_SCRATCH.candidate = bestCandidate;
 		EXPEDITION_SCRATCH.bestScore = bestScore;
 		EXPEDITION_SCRATCH.big = big;
-		EXPEDITION_SCRATCH.stocked = stocked;
+		EXPEDITION_SCRATCH.ready = ready;
+		EXPEDITION_SCRATCH.resting = resting;
+		EXPEDITION_SCRATCH.nextIn = nextIn === Infinity ? 0 : nextIn;
 		EXPEDITION_SCRATCH.reason = bestPort >= 0 ? ''
 			: big === 0 ? 'no big colony yet'
-			: stocked === 0 ? 'no colonists or factory cores spare'
+			: ready === 0 ? 'every big colony is resting between expeditions'
 			: 'no free world within ' + MAX_FOUND_LY + ' ly';
 		return EXPEDITION_SCRATCH;
 	}
 
 	// The Trade panel's colonisation block, in one pass at the readout's 4 Hz:
-	// every big colony that could launch (ranked by bestExpedition's score) and
+	// every port that could launch now (ranked by bestExpedition's score) and
 	// the counts that explain an empty list. The reason is the whole point — the
 	// panel used to say "no big colonies ready" whenever *anything* was missing.
 	const COLONISATION_PREVIEW = [];
-	const COLONISATION_STATUS = { big: 0, stocked: 0, candidates: 0, free: 0, founding: 0, reason: '' };
+	const COLONISATION_STATUS = {
+		big: 0, ready: 0, resting: 0, candidates: 0, free: 0, founding: 0, nextIn: 0, reason: '',
+	};
 	function colonisationStatus() {
 		return COLONISATION_STATUS;
 	}
@@ -805,20 +866,27 @@
 		out = out || COLONISATION_PREVIEW;
 		out.length = 0;
 		settleAllPorts(net, time);
-		let big = 0, stocked = 0, founding = 0;
+		let big = 0, ready = 0, resting = 0, founding = 0;
+		let nextIn = Infinity;
 		for (let i = 0; i < net.shipCount; i++) if (net.ships[i].state === SHIP_FOUNDING) founding += 1;
 		for (let i = 0; i < net.portCount; i++) {
-			const colony = net.ports[i].colony;
+			const port = net.ports[i];
+			const colony = port.colony;
 			if (!isBigColony(colony)) continue;
 			big += 1;
+			const wait = port.lastExpedition + EXPEDITION_COOLDOWN - time;
+			if (wait > 0) {
+				resting += 1;
+				if (wait < nextIn) nextIn = wait;
+				continue;
+			}
 			expeditionCost(colony, EXPEDITION_COST);
-			if (economy.exportableOf(colony, economy.R_PEOPLE) < EXPEDITION_COST.people) continue;
-			if (economy.exportableOf(colony, economy.R_ROBOTS) < EXPEDITION_COST.robots) continue;
-			stocked += 1;
+			if (!(EXPEDITION_COST.peopleM > 0)) continue;
+			ready += 1;
 			const candidate = pickCandidate(net, i);
 			if (candidate < 0) continue;
 			const site = net.candidates[candidate].site;
-			const dx = site.x - net.ports[i].x, dy = site.y - net.ports[i].y, dz = site.z - net.ports[i].z;
+			const dx = site.x - port.x, dy = site.y - port.y, dz = site.z - port.z;
 			const ly = Math.sqrt(dx * dx + dy * dy + dz * dz) * LY_PER_KPC;
 			out.push({
 				port: i,
@@ -829,6 +897,7 @@
 				name: site.name,
 				flags: site.flags,
 				type: site.type,
+				peopleM: EXPEDITION_COST.peopleM,
 			});
 		}
 		out.sort((a, b) => b.score - a.score);
@@ -838,15 +907,17 @@
 			if (!c.used && c.reserved < 0) free += 1;
 		}
 		COLONISATION_STATUS.big = big;
-		COLONISATION_STATUS.stocked = stocked;
+		COLONISATION_STATUS.ready = ready;
+		COLONISATION_STATUS.resting = resting;
 		COLONISATION_STATUS.candidates = net.candidateCount;
 		COLONISATION_STATUS.free = free;
 		COLONISATION_STATUS.founding = founding;
+		COLONISATION_STATUS.nextIn = nextIn === Infinity ? 0 : nextIn;
 		COLONISATION_STATUS.reason = out.length > 0 ? ''
 			: big === 0 ? 'no big colony yet'
-			: stocked === 0 ? 'no colonists or factory cores spare'
+			: ready === 0 ? 'every big colony is resting between expeditions'
 			: free === 0 ? 'no free world in range'
-			: 'every big colony is waiting for the next launch window';
+			: 'no free world within ' + MAX_FOUND_LY + ' ly';
 		return out;
 	}
 
@@ -944,10 +1015,12 @@
 		return added;
 	}
 
-	// The global tick: grow the fleet toward the port count and launch one
-	// colonisation expedition if a port can afford it and a candidate is in
-	// range. One expedition per tick keeps the event stream calm; the tick
-	// itself is rescheduled from its own time.
+	// The global tick: grow the fleet toward the port count, then launch every
+	// port that is ready — up to the founding-in-flight cap. One expedition per
+	// network per 250 years was the plateau at 14 colonies: a big port could
+	// wait decades (seconds of wall time) for its turn while its people piled
+	// up. The per-port cooldown is the new pace, and a tick spends it on as many
+	// ports as are ready.
 	function tick(net, time) {
 		const wanted = Math.min(MAX_FREIGHTERS, Math.max(INITIAL_SHIPS, Math.floor(3 + net.portCount * SHIPS_PER_PORT)));
 		let freighters = 0;
@@ -959,24 +1032,31 @@
 			freighters += 1;
 		}
 		let founding = 0;
-		for (let i = 0; i < net.shipCount; i++) if (net.ships[i].state === SHIP_FOUNDING) founding++;
-		if (net.portCount + founding < MAX_PORTS && time - net.lastExpedition >= EXPEDITION_INTERVAL) {
+		for (let i = 0; i < net.shipCount; i++) if (net.ships[i].state === SHIP_FOUNDING) founding += 1;
+		let room = MAX_FOUNDING_IN_FLIGHT - founding;
+		while (room > 0 && net.portCount + founding < MAX_PORTS) {
 			const pick = bestExpedition(net, time);
-			if (pick.port >= 0 && launchExpedition(net, pick.port, pick.candidate, time) >= 0) net.lastExpedition = time;
+			if (pick.port < 0) break;
+			const ship = launchExpedition(net, pick.port, pick.candidate, time);
+			if (ship < 0) break;
+			founding += 1;
+			room -= 1;
 		}
 		net.tickScheduled = 1;
 		queueLib.push(net.queue, time + TICK_YEARS, EV_TICK, 0, 0);
 	}
 
-	function launchExpedition(net, source, candidateIndex, time) {
+	function launchExpedition(net, source, candidateIndex, time, rush) {
 		const sourcePort = net.ports[source];
+		if (!rush && time - sourcePort.lastExpedition < EXPEDITION_COOLDOWN) return -1;
 		expeditionCost(sourcePort.colony, EXPEDITION_COST);
-		if (economy.exportableOf(sourcePort.colony, economy.R_PEOPLE) < EXPEDITION_COST.people
-			|| economy.exportableOf(sourcePort.colony, economy.R_ROBOTS) < EXPEDITION_COST.robots) return -1;
+		if (!(EXPEDITION_COST.peopleM > 0)) return -1;
+		if (sourcePort.colony.pop - EXPEDITION_COST.peopleM < MIN_FOUNDERS_REMAIN_M) return -1;
 		const shipIndex = freeShip(net);
 		if (shipIndex < 0) return -1;
-		const colonists = economy.takeFromColony(sourcePort.colony, economy.R_PEOPLE, EXPEDITION_COST.people);
-		economy.takeFromColony(sourcePort.colony, economy.R_ROBOTS, EXPEDITION_COST.robots);
+		const colonists = EXPEDITION_COST.people;
+		sourcePort.colony.pop -= EXPEDITION_COST.peopleM;
+		sourcePort.lastExpedition = time;
 		const ship = net.ships[shipIndex];
 		const site = net.candidates[candidateIndex].site;
 		for (let i = 0; i < net.candidateCount; i++) {
@@ -1015,11 +1095,15 @@
 	}
 
 	// The panel's Send-expedition button: the tick's own choice, launched now
-	// instead of at the next 200-year gate. Same costs, same fleet limit, same
-	// reservation — only the interval is bypassed.
+	// instead of waiting for the next 25-year tick. Same cost, same fleet
+	// limit, same reservation; a port still resting from its last wave can be
+	// rushed, and its 900-year clock restarts from this launch.
 	const LAUNCH_RESULT = { ok: 0, ship: -1, source: -1, candidate: -1, reason: '' };
 	function launchBest(net, time) {
-		const pick = bestExpedition(net, time);
+		// The button is the player's hand: it may sponsor a port that is still
+		// resting, and that port's cooldown restarts from now. The automatic
+		// tick always waits its turn.
+		const pick = bestExpedition(net, time, 1);
 		LAUNCH_RESULT.ok = 0;
 		LAUNCH_RESULT.ship = -1;
 		LAUNCH_RESULT.source = pick.port;
@@ -1028,10 +1112,10 @@
 		let founding = 0;
 		for (let i = 0; i < net.shipCount; i++) if (net.ships[i].state === SHIP_FOUNDING) founding += 1;
 		if (net.portCount + founding >= MAX_PORTS) { LAUNCH_RESULT.reason = 'network is full'; return LAUNCH_RESULT; }
+		if (founding >= MAX_FOUNDING_IN_FLIGHT) { LAUNCH_RESULT.reason = 'too many expeditions in flight'; return LAUNCH_RESULT; }
 		if (pick.port < 0) return LAUNCH_RESULT;
-		const ship = launchExpedition(net, pick.port, pick.candidate, time);
+		const ship = launchExpedition(net, pick.port, pick.candidate, time, 1);
 		if (ship < 0) { LAUNCH_RESULT.reason = 'no hull free'; return LAUNCH_RESULT; }
-		net.lastExpedition = time;
 		LAUNCH_RESULT.ok = 1;
 		LAUNCH_RESULT.ship = ship;
 		LAUNCH_RESULT.reason = '';
@@ -1082,6 +1166,17 @@
 			if (net.candidates[i].reserved === ship.index) net.candidates[i].reserved = -1;
 		}
 		if (portIndex < 0) {
+			// The star was taken while the party was in flight. Put the
+			// volunteers back into the source's population — they were drawn
+			// from it, and a failed voyage must not delete people from the
+			// ledger — then send the empty hull home for a normal load.
+			if (ship.from >= 0 && ship.cargo === economy.R_PEOPLE) {
+				const home = net.ports[ship.from].colony;
+				const returning = ship.amount * POP_PER_COLONIST_UNIT;
+				home.pop = Math.min(home.capacity, home.pop + returning);
+			}
+			ship.amount = 0;
+			ship.cargo = NO_RESOURCE;
 			ship.port = ship.from;
 			ship.to = -1;
 			ship.candidate = -1;
@@ -1094,8 +1189,12 @@
 		const colony = net.ports[portIndex].colony;
 		// The expedition's people are the founding population; the stores it
 		// carried become the first stock. No settle: the colony is founded now.
+		// Its first sponsored wave waits a full cooldown from this instant — a
+		// network doubles by founding from colonies that have had a life of
+		// their own, not by a chain reaction inside one tick.
 		colony.founded = time;
 		colony.last = time;
+		net.ports[portIndex].lastExpedition = time;
 		colony.pop = Math.min(colony.capacity, ship.amount * POP_PER_COLONIST_UNIT);
 		for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
 			colony.stock[r] = FOUND_STOCK_FRAC * colony.stockCap[r];
@@ -1149,7 +1248,7 @@
 	}
 
 	// Special trade mode: every hull flies the generation-ship crawl, 1 ly per
-	// 400 trade years, and the ports' reserves stretch to the fleet's crossing time
+	// 33 trade years, and the ports' reserves stretch to the fleet's crossing time
 	// (see GENERATION_RESERVE_YEARS). Live colonies are re-scaled in place, so
 	// switching modes does not strand a network mid-voyage with a 150-year
 	// larder and a 5 000-year supply line.
@@ -1302,7 +1401,8 @@
 		EV_ARRIVE, EV_LOAD, EV_WAIT, EV_FOUND, EV_TICK,
 		SHIP_DOCKED, SHIP_SAILING, SHIP_WAITING, SHIP_FOUNDING, SHIP_STATE_NAMES,
 		HULLS, DOCK_YEARS, WAIT_YEARS, TICK_YEARS,
-		POP_PER_COLONIST_UNIT, EXPEDITION_INTERVAL,
+		POP_PER_COLONIST_UNIT, EXPEDITION_COOLDOWN, MAX_FOUNDING_IN_FLIGHT,
+		VOLUNTEER_FRAC, FOUNDERS_MIN_M, FOUNDERS_MAX_M, MIN_FOUNDERS_REMAIN_M,
 		MAX_FOUND_LY, MAX_LEG_LY, LY_PER_KPC, HOME_COLONY_LY, NO_RESOURCE,
 		MIN_EXPEDITION_POP_M, MIN_EXPEDITION_COVERAGE,
 		createNetwork, discoverSystem, discoverNearest, startSystems, settleSystem, finalize, step, settleAllPorts,

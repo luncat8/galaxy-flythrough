@@ -177,7 +177,7 @@ async function boot() {
 		let tradeRateIndex = tradeRateIndexFor(params.trade);
 		let tradeRoutesOn = params.traderoutes > 0 ? 1 : 0;
 		// The trade clock can be coupled to the star clock (sync time), and the
-		// special trade mode flies generation ships at 1 ly per 10 kyr.
+		// special trade mode flies generation ships at a generation pace.
 		let tradeSyncOn = 0;
 		let tradeGenOn = 0;
 		let gameMode = false;
@@ -1211,7 +1211,7 @@ async function boot() {
                 tradeLib.setGenerationMode(tradeGenOn, tradeNet);
                 // The crawl is calibrated at the default star rate (trade-plan
                 // §6): synced 1 Myr/s is 1 000 trade y/s, so the ship covers
-                // 2.5 ly per wall second. Enabling the mode sets exactly that
+                // 30 ly per wall second. Enabling the mode sets exactly that
                 // pair — a generation-ship mode on a parked sky would look broken,
                 // and so would one on a faster rung than the scenario is read at.
                 if (tradeGenOn) {
@@ -4317,9 +4317,19 @@ async function boot() {
                 if (colonisationState && colonisationList) {
                         const opportunities = tradeLib.colonisationPreview(tradeNet, tradeNet.time);
                         const status = tradeLib.colonisationStatus();
-                        const nextIn = Math.max(0, tradeLib.EXPEDITION_INTERVAL - (tradeNet.time - tradeNet.lastExpedition));
-                        colonisationState.textContent = `${status.big} big colonies \u00b7 ${status.candidates} candidates (${status.free} free)`
-                                + ` \u00b7 ${status.founding} expeditions \u00b7 next in ${Math.round(nextIn)} y`;
+                        const full = tradeNet.portCount + status.founding >= tradeLib.MAX_PORTS;
+                        // The wave's state in one line: a port is ready now, or
+                        // the whole network is resting until the first cooldown
+                        // ends. The old line counted down to a network-wide gate
+                        // that no longer exists.
+                        const wave = full ? 'network full'
+                                : opportunities.length > 0 ? 'launch window open'
+                                : status.big === 0 ? 'waiting for the first big colony'
+                                : status.resting > 0 ? `next in ${Math.round(status.nextIn)} y`
+                                : 'frontier empty';
+                        colonisationState.textContent = `${status.big} big colonies \u00b7 ${status.ready} ready`
+                                + ` \u00b7 ${status.candidates} candidates (${status.free} free)`
+                                + ` \u00b7 ${status.founding} expeditions \u00b7 ${wave}`;
                         let preview = '';
                         if (tradeLaunchTicks > 0) {
                                 tradeLaunchTicks -= 1;
@@ -4331,18 +4341,22 @@ async function boot() {
                                 const from = s.from >= 0 ? tradeNet.ports[s.from].name.slice(0, 10) : '?';
                                 const target = s.candidate >= 0 ? tradeNet.candidates[s.candidate].site.name.slice(0, 14) : '?';
                                 const eta = Math.max(0, s.arrive - tradeNet.time);
-                                preview += `${from} \u2192 ${target}  ${Math.round(eta)} y \u00b7 ${Math.round(s.amount)} colonists\n`;
+                                preview += `${from} \u2192 ${target}  ${Math.round(eta)} y \u00b7 ${economyLib.formatPop(s.amount * tradeLib.POP_PER_COLONIST_UNIT)} volunteers\n`;
                         }
                         for (let k = 0; k < Math.min(3, opportunities.length); k++) {
                                 const o = opportunities[k];
                                 const src = tradeNet.ports[o.port].name.slice(0, 10);
                                 const marks = (o.flags & window.PlanetsLib.FLAG_TERRAN) ? ' \u2295'
                                         : (o.flags & window.PlanetsLib.FLAG_IN_HZ ? ' \u25ce' : '');
-                                preview += `${src} \u2192 ${o.name.slice(0, 14)}${marks}  ${Math.round(o.ly)} ly  hab ${o.habitat.toFixed(2)}\n`;
+                                preview += `${src} \u2192 ${o.name.slice(0, 14)}${marks}  ${Math.round(o.ly)} ly`
+                                        + `  hab ${o.habitat.toFixed(2)}  ${economyLib.formatPop(o.peopleM)} people\n`;
                         }
                         if (!preview) preview = status.reason || 'no expedition ready';
                         colonisationList.textContent = preview;
-                        if (tradeLaunch) tradeLaunch.disabled = opportunities.length === 0;
+                        // The manual button is a rush: it may sponsor a port
+                        // that is still resting, so it stays available whenever
+                        // a big colony with a free target exists.
+                        if (tradeLaunch) tradeLaunch.disabled = full || status.big === 0;
                 }
         }
 

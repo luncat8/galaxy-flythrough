@@ -1,6 +1,6 @@
 {
-  "total": 107,
-  "passed": 107,
+  "total": 114,
+  "passed": 114,
   "failed": 0,
   "checks": [
     {
@@ -51,8 +51,8 @@
       "name": "one 500-year settle tracks a hundred 5-year settles (free colony)",
       "pass": true,
       "detail": {
-        "one": 17.835136791621213,
-        "many": 16.272797709612163
+        "one": 17.99996235884887,
+        "many": 17.98688869253365
       }
     },
     {
@@ -63,8 +63,8 @@
       "name": "one 500-year settle equals a hundred 5-year settles (population)",
       "pass": true,
       "detail": {
-        "one": 17.896355718240958,
-        "many": 17.896355718240994
+        "one": 17.999798762978532,
+        "many": 17.99979876297853
       }
     },
     {
@@ -119,21 +119,21 @@
       "name": "ports do not vanish and ships stay capped",
       "pass": true,
       "detail": {
-        "ports": 4,
-        "ships": 12
+        "ports": 7,
+        "ships": 15
       }
     },
     {
       "name": "the queue stays bounded by one live event per ship plus a tick",
       "pass": true,
-      "detail": 13
+      "detail": 16
     },
     {
       "name": "arrivals are booked",
       "pass": true,
       "detail": {
-        "processed": 149,
-        "delivered": 2992.852611962654
+        "processed": 238,
+        "delivered": 15315.14565773418
       }
     },
     {
@@ -150,16 +150,16 @@
       "pass": true,
       "detail": {
         "jump": [
-          4,
-          12,
-          0,
-          2992.852611962654
+          7,
+          15,
+          3,
+          15315.14565773418
         ],
         "small": [
-          4,
-          12,
-          0,
-          2992.852611962654
+          7,
+          15,
+          3,
+          15315.14565773418
         ]
       }
     },
@@ -176,8 +176,8 @@
       "pass": true,
       "detail": {
         "start": 4,
-        "end": 14,
-        "founded": 10
+        "end": 32,
+        "founded": 28
       }
     },
     {
@@ -332,7 +332,7 @@
     {
       "name": "overlapping expeditions reserve distinct whole systems",
       "pass": true,
-      "detail": 4
+      "detail": 8
     },
     {
       "name": "in-flight founding capacity and live-event invariants hold",
@@ -341,6 +341,14 @@
     {
       "name": "failed founding releases reservations and schedules a source-port load",
       "pass": true
+    },
+    {
+      "name": "a failed founding returns the volunteers to the source population",
+      "pass": true,
+      "detail": {
+        "returning": 1.46,
+        "gained": 1.46
+      }
     },
     {
       "name": "trade routes preserve both independently resolved drawn endpoints",
@@ -412,11 +420,11 @@
       "pass": true
     },
     {
-      "name": "a generation-ship hop lasts seconds at the default synced pace",
+      "name": "a generation-ship frontier hop lasts seconds at the default synced pace",
       "pass": true,
       "detail": {
-        "legYears": 2000,
-        "wallS": 2
+        "legYears": 3333,
+        "wallS": 3.33
       }
     },
     {
@@ -427,14 +435,14 @@
       "name": "a budgeted drain keeps the clock monotone and never passes the next event",
       "pass": true,
       "detail": {
-        "time": 8268,
-        "lag": 132
+        "time": 4550,
+        "lag": 3850
       }
     },
     {
       "name": "a budgeted clock that cannot keep up reports its backlog",
       "pass": true,
-      "detail": 132
+      "detail": 3850
     },
     {
       "name": "at the synced top rate an unbudgeted clock stays exact",
@@ -453,34 +461,52 @@
       "name": "the colonisation readout names the gate that is shut",
       "pass": true,
       "detail": {
-        "opportunities": 0,
-        "reason": "no colonists or factory cores spare",
-        "big": 1
+        "opportunities": 2,
+        "reason": "",
+        "big": 3
+      }
+    },
+    {
+      "name": "the colonisation readout works while every big port is resting",
+      "pass": true,
+      "detail": {
+        "resting": 8,
+        "nextIn": 20,
+        "reason": "every big colony is resting between expeditions"
       }
     },
     {
       "name": "the manual launch sends exactly one expedition or says why not",
       "pass": true,
       "detail": {
-        "ok": 0,
-        "reason": "no colonists or factory cores spare",
-        "founding": 0
+        "ok": 1,
+        "reason": "",
+        "founding": 1
+      }
+    },
+    {
+      "name": "the Send-expedition button can rush a resting port and restarts its cooldown",
+      "pass": true,
+      "detail": {
+        "restingPorts": 12,
+        "ok": 1,
+        "reason": ""
       }
     },
     {
       "name": "a live field grows the frontier around the big colonies",
       "pass": true,
       "detail": {
-        "big": 4,
-        "added": 2,
-        "candidates": "13->15"
+        "big": 12,
+        "added": 9,
+        "candidates": "8->17"
       }
     },
     {
       "name": "frontier worlds are canonical, distinct and within a big colony’s reach",
       "pass": true,
       "detail": {
-        "fieldCandidates": 2,
+        "fieldCandidates": 9,
         "withinReach": true,
         "canonical": true,
         "aliased": false
@@ -538,9 +564,18 @@
       "name": "a generation-ship network keeps its colonies instead of starving",
       "pass": true,
       "detail": {
-        "bigFree": 14,
-        "bigGen": 14,
+        "bigFree": 56,
+        "bigGen": 62,
         "median": 0.47
+      }
+    },
+    {
+      "name": "and keeps founding through the slow fleet instead of standing still",
+      "pass": true,
+      "detail": {
+        "portsBefore": 56,
+        "ports": 62,
+        "founded": 58
       }
     },
     {
@@ -571,24 +606,49 @@
       }
     },
     {
-      "name": "at the default clock the network holds 5–15 colonies after 10 s",
+      "name": "the capital grows from its founding share to a full ring in two seconds",
       "pass": true,
       "detail": {
-        "at10": 8
+        "start": 0.19,
+        "at2": 0.94
       }
     },
     {
-      "name": "and still 5–15 colonies after 20 s, growing from the start",
+      "name": "at the default clock the network holds 5–20 colonies after 10 s",
       "pass": true,
       "detail": {
-        "at20": 12
+        "at10": 11
+      }
+    },
+    {
+      "name": "and 18–40 after 20 s: the expansion continues past the old 14-port plateau",
+      "pass": true,
+      "detail": {
+        "at10": 11,
+        "at20": 27
+      }
+    },
+    {
+      "name": "the frontier keeps growing: at least 45 colonies at 40 s and a full 64-port network at 90 s",
+      "pass": true,
+      "detail": {
+        "at40": 56,
+        "at90": 64
+      }
+    },
+    {
+      "name": "the youngest colony fills visibly instead of standing still",
+      "pass": true,
+      "detail": {
+        "youngFrac": 0,
+        "youngNow": 1
       }
     },
     {
       "name": "the freighters are on the routes while the network grows",
       "pass": true,
       "detail": {
-        "sailingAt20": 7
+        "sailingAt20": 40
       }
     }
   ]

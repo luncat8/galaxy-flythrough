@@ -385,3 +385,132 @@ Next:
   catalogue within reach; measure the 10–20 s band again after.
 - A browser pass: the boot flight, the four seeds in the overlay, and whether the
   50-year legs read as motion at 100 y/s.
+
+## trade.7 — 2026-10-20 — Growth that shows, a frontier that opens, a visible fleet
+
+The brief: colonies grow too slowly to see, generation ships are slow, and the
+expansion stagnates. Measured first, on the Node replay of the app's boot and
+frame loop with the page's own start map: 4 colonies, 6 at 5 s, 14 at 25 s, and
+then flat to 120 s. The plateau was real and it had three causes, not one.
+
+1. **The launch gate was warehouse stock, and almost nobody could pay.** The old
+   colonisation cost `people = clamp(0.15*K, 40, 400)` plus
+   `robots = clamp(0.03*K, 10, 100)` units, both taken from the port's
+   warehouses. Measured at the plateau: `colonisationStatus()` reported
+   `stocked: 1` of 14 big colonies, and 13 of 14 ports had zero exportable
+   factory cores. Only one world in fourteen produced a people surplus at all.
+   The other thirteen were large, fed and *unable to launch* by construction.
+2. **One network-wide launch window.** A single 250-year `EXPEDITION_INTERVAL`
+   plus one expedition per tick meant a big port waited decades of trade years —
+   seconds of wall time — for its turn while its surplus piled up.
+3. **The frontier was out of range.** The 300 ly expedition radius is shorter
+   than the 300–600 ly hole in the sampled field around home; the named sky is
+   inside ~120 ly and the next sampled shell is at 307 ly. Candidates existed
+   (224 in the pool, 22 free within 300 ly of a port), but most were siblings of
+   already-settled stars or worlds no expedition could ever take, because the
+   one-colony-per-star rule means only each star's best site is a real place.
+
+Changes:
+
+1. **`G_MAX = 1/80 → 1/40`** in `economy.js`. At the authored coverage of 0.47
+   the growth rate is now ≈0.7 %/y instead of ≈0.15 %/y: a world founded at 45 %
+   of capacity reaches 90 % in ~330 trade years, 3.3 wall seconds at 100 y/s.
+   The 40-year e-folding is still a colony lifetime, so the top of the ladder
+   does not become a blink.
+2. **Founding costs people, not stock.** `expeditionCost()` now draws
+   `clamp(0.02*P, 0.5 M, 4 M)` people from the source's population and keeps at
+   least 2 M behind. Nothing is taken from a warehouse; "colonists" and "factory
+   cores" remain ordinary trade goods. The carried party is still a ship
+   manifest in stock units (`peopleM / POP_PER_COLONIST_UNIT`), and on arrival it
+   becomes the colony's population. This deleted the people/robots gate
+   entirely — the gate was the plateau.
+3. **Per-port cooldown.** `EXPEDITION_COOLDOWN = 900` years replaces the global
+   `EXPEDITION_INTERVAL`; `tick` launches every ready port up to
+   `MAX_FOUNDING_IN_FLIGHT = 24`. A tick is still 25 years, so no extra event
+   pressure. A new colony's `lastExpedition` is set at founding, so it sponsors
+   its first wave one cooldown after it exists. `MAX_SHIPS` 96 → 128 keeps a hull
+   free for every founding voyage and the freighter target (74) intact.
+4. **One candidate per star, its best site.** `discoverSystem` now settles the
+   best site (`DISCOVER_PICK`) when the seed roll fires, or adds exactly that one
+   best site as a candidate otherwise; a star whose best world is below
+   `MIN_CANDIDATE_HABITAT` contributes nothing. The habitat gate moved 0.12 →
+   0.10, because a belt is 0.10 on the habitat scale and the capital itself can
+   be a belt. The pool is 224 places a port can actually take instead of 224
+   slots of which most were unreachable siblings.
+5. **`MAX_FOUND_LY = 300 → 600`.** The sampled field's first shell sits at
+   307–600 ly, so 300 ly left the whole named sky with nothing in reach once its
+   stars were settled. 600 ly is 1.3–3 s for a freighter.
+6. **Generation ships `GENERATION_LY_PER_YEAR = 2.5e-3 → 3e-2`.** At the synced
+   1 Myr/s (1 000 trade y/s) that is 30 ly per wall second: the nearest seed hop
+   is under a second, a 300 ly frontier hop 10 s, the 600 ly maximum 20 s. The
+   mode still reads as slow ships — 1/70–1/150 of a freighter's wall-second
+   speed — but the fleet visibly moves and the network keeps founding.
+
+Measured at the default 100 y/s, 60 fps, 256-event budget, 0.5 s frontier scan,
+seed 42 and the page's 300k field:
+
+| wall s  | 0 | 5 | 10 | 15 | 20 | 25 | 30 | 35 | 40 | 45 | 50 |
+|---------|---|----|----|----|----|----|----|----|----|----|----|
+| ports   | 4 | 8 | 11 | 16 | 27 | 32 | 44 | 50 | 56 | 63 | 64 |
+| big     | 3 | 8 | 8  | 16 | 25 | 32 | 42 | 50 | 56 | 63 | 64 |
+| founded | 0 | 4 | 7  | 12 | 23 | 28 | 40 | 46 | 52 | 59 | 60 |
+
+64 ports by 50 s (5 000 trade years), population sum 0.1 B → 11.2 B, coverage
+median 0.47, minimum 0.31, zero abandoned, 4.5 M units hauled by 90 s, 90 ships
+of which 88–90 sailing while the network grows. The curve is not seed-specific:
+seeds 42, 7, 1234 and 4242 reach 11–12 ports at 10 s, 27–30 at 20 s, 46–58 at
+40 s and all 64 at 48–50 s. Generation mode at the synced
+1 000 y/s: 22 ports at 10 s, 33 at 20 s, 41 at 30 s, 53 at 40 s, 61 at 50 s, 64
+at 60 s; all 64 big, median coverage 0.47, minimum 0.31, zero abandoned, 1.66 M
+units delivered by 120 s.
+
+Panel and page:
+
+- `src/main.js` colonisation block: reads `status.ready` / `status.resting` /
+  `status.nextIn` (the removed `EXPEDITION_INTERVAL` field was producing `NaN`),
+  formats volunteers through `economyLib.formatPop(s.amount *
+  tradeLib.POP_PER_COLONIST_UNIT)`, and shows each candidate's `peopleM`. The
+  reason line now distinguishes "resting" (with the next launch in years) from
+  "no free world within 600 ly".
+- `src/index.html`: the generation checkbox reads "Generation ships · 30 ly/s"
+  with a matching tooltip; the `Send expedition` tooltip says 900 years of rest
+  for the sponsoring port.
+- The `Send expedition` button is now a rush: it may sponsor a port that is
+  still resting between automatic waves, and that port's cooldown restarts from
+  the manual launch. Without it the button was disabled almost always, because
+  the 25-year tick spends every ready port immediately.
+
+Tests and docs:
+
+- `experiments/trade-test.js`: 114/114. §16 re-banded to the measured curve
+  (5–20 at 10 s, 18–40 at 20 s, ≥ 45 at 40 s, 64 at 90 s). Two growth checks
+  replaced the invalid "founding share < 0.25" one: the capital must reach
+  > 0.85 of its capacity within two wall seconds from ~0.19, and the colony
+  founded last before 20 s must gain at least 5 % of its capacity by 90 s. The
+  failed-founding fixture now also checks that the volunteer party goes back
+  into the source's population instead of vanishing from the ledger; the
+  manual-launch fixture proves the button can rush a resting port; and the
+  readout is checked in its common state — every big port resting — where a
+  stale `rush` reference in the preview crashed before the fix. The scenario
+  fixture now attaches `ctx.field` before `startSystems`, as the page does — with
+  a null field the generated field stars differ and the fixture measured a
+  different sky (that mismatch was the 44/51 that the old bands were written
+  against). §15's generation-mode case already checks that founding continues
+  through the slow fleet.
+- `experiments/m1-smoke-test.js`: 113/113 (module load list and index.html
+  wiring unchanged).
+- `node --check` on `trade.js`, `main.js` and the test.
+- `python3 scripts/run.py changed`: 8/8.
+- `trade-plan.md` §2 (G_MAX law), §3 (one candidate per star), §3.1 (128 hulls,
+  24 founding voyages), §3.2 (volunteer cost, 900-year cooldown, 600 ly),
+  §6 (30 ly/s, measured generation curve), §7 (new panel text), §8 (start,
+  pace table, growth, generation table, checked bands).
+
+Not verified: the browser. The overlay's ring growth, the new label text and the
+30 ly/s hulls are checked in Node only; there is no browser in this environment.
+
+Next:
+- A browser pass: the boot flight, the four seeds, a young colony's ring moving,
+  and whether 30 ly/s voyages read as motion.
+- Measure the frontier scan's 4 000-star ring per 0.5 s call with 64 ports and a
+  500k field; it is the remaining per-frame cost that scales with the sample.

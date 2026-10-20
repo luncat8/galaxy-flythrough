@@ -118,7 +118,13 @@
 	const HABITAT = new Float64Array([0.04, 0.16, 0.35, 1.00, 0.18, 0.70, 0.12, 0.20, 0.12, 0.03]);
 	const HABITAT_BELT = 0.10;
 
-	const G_MAX = 1 / 80;              // per year, fully supplied
+	// A colony is read on the trade clock, which runs at 100 years a wall
+	// second by default: an 80-year e-folding put a new world's ring nearly
+	// still for ten seconds, and the expansion it should feed never started.
+	// Half that keeps the logistic visibly alive (about 0.7 %/y at the
+	// authored coverage) without turning the six largest colonies into a
+	// blink at the top of the ladder.
+	const G_MAX = 1 / 40;              // per year, fully supplied
 	const DECLINE = 1 / 120;           // per year, fully starved
 	const NEED_BUFFER_Y = 20;          // years of stock that count as supply
 	const STOCK_BASE = 30;
