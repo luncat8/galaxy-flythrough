@@ -1005,3 +1005,87 @@ body.system-view #sysread {
 	letter-spacing: 0.06em;
 	color: #679;
 }
+
+/* Colonies & routes (ui.18, colony-economy-plan §9): the economy's own panel,
+   right column, stacked above Controls (#help parks at bottom: 52vh max) —
+   colonies, routes and their controls live together, out of the pilot's
+   Flight workspace. Green tint: the trade net's own color family. */
+#economenu {
+	position: fixed;
+	right: 12px;
+	bottom: calc(52vh + 24px);
+	width: 260px;
+	max-height: 38vh;
+	overflow-y: auto;
+	font-family: 'Menlo', 'Consolas', monospace;
+	font-size: 12px;
+	color: #cdeccd;
+	background: rgba(10, 14, 22, 0.88);
+	border: 1px solid #2f6f5f;
+	border-radius: 4px;
+	padding: 10px 12px;
+	z-index: 20;
+}
+#economenu .menu-header {
+	color: #7fd0a8;
+	border-bottom-color: #2f6f5f;
+}
+#economenu .menu-header button { border-color: #2f6f5f; }
+#economenu .menu-header button:hover { background: #1a3a2a; }
+#economenu .flight-section-heading { margin-top: 10px; border-top: 1px solid #234a3a; }
+#economenu input[type=range],
+#economenu input[type=checkbox] { accent-color: #7fd0a8; }
+#economenu button,
+#economenu select {
+	font: inherit;
+	color: #cdeccd;
+	background: #14281e;
+	border: 1px solid #2f6f5f;
+	border-radius: 3px;
+	padding: 4px 7px;
+	cursor: pointer;
+	min-width: 0;
+}
+#economenu button:hover:not(:disabled) { background: #1f4a33; }
+#economenu button:disabled { opacity: 0.45; cursor: default; }
+#economenu select { cursor: pointer; }
+#economenu select option { background: #0c1a12; }
+#economenu .econ-scenario-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: 6px;
+	align-items: center;
+	margin: 6px 0 8px;
+}
+#economenu .econ-list {
+	display: grid;
+	gap: 4px;
+	margin: 6px 0;
+	max-height: 132px;
+	overflow-y: auto;
+}
+#economenu .econ-list:empty { display: none; }
+#economenu .econ-colony-row,
+#economenu .econ-route-info {
+	text-align: left;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+#economenu .econ-route-item {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 4px;
+	align-items: center;
+}
+#economenu .econ-route-cancel { padding: 4px 7px; }
+#economenu .econ-route-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+	gap: 4px;
+	align-items: center;
+	margin: 6px 0;
+}
+#economenu .econ-route-arrow { color: #6f9f87; }
+#economenu .flight-market { margin-top: 8px; }
+

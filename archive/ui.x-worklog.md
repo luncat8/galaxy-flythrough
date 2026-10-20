@@ -963,6 +963,83 @@ updated to the new defaults; quick 27/28 — planet-gen's heap check read
 2.3–3.1 MB under parallel load and passed standalone twice (a GC-timing
 flake on a file this stage never touched; noted in findings).
 
-**Next.** The §7 list (mixed holds, tourism, colonist flows) stays
-recorded, not promised. The deferred browser visual pass (game mode, the
-colony panel) remains open in its plan.
+**ui.18 — the colony economy, stage 3: the expansion scenario.** The
+user's ask: a colony at the home H location, ships sent out to found
+colonies and trade, an expanding net of routes to watch — and a separate
+panel for the colony/route controls. The scenario state lives beside the
+§5/§6 economy in main.js: `expeditions` (one record per dispatched
+founder ship — star key, name, origin, the resource map generated at
+departure because arrival may be a Myr later when the pick's slot names
+another star, birth snapshot, arrival bookkeeping), the budgeted
+`econScan` state machine (seed or dispatch), and per-colony `nextExpandY`
+sponsoring cadence. colony.js gained `EV_EXPEDITION_ARRIVE` (kind 4,
+payload a = expedition idx); trade.js gained `removeRoute`/`activeRouteCount`
+— cancellation flags a route inactive, never splices, because the ledger's
+events and the convoy records carry array indices — and
+`advanceConvoys`' oracle now receives the convoy record itself.
+
+**The home seed.** `homeSeedAnchor` reads the Sun landmark's drawn
+position (the other galaxy types anchor on the model centre). The first
+lesson of the stage: the model is Sun-centred *at birth*, and the orbit
+law carries the Sun around the galactic centre with everything else,
+while the camera's home pose stays a fixed birth-frame point — a seed
+scan anchored there measured zero stars within 65 ly after the clock ran.
+The automatic game-entry seed also carries the freshly boarded ship to
+the colony it just made (the birth-frame spawn is kiloparsecs behind the
+drawn Sun); a button seed mid-flight never moves the player. The Home
+star becomes the selection primary, so F flies to it.
+
+**The lane's frame is its origin.** The second lesson: a disc star orbits
+at ~220 km/s, seven times a generation ship's own speed, and the first
+dispatch's absolute-space intercept measured a 125 Myr ETA for a 36 ly
+hop. But a lane's endpoints co-move — what the ship flies is the
+residual separation. Convoy records carry positions relative to their
+origin colony's live drawn position; the oracle decodes the origin from
+the record (route ≥ 0 names a commissioned route, route < 0 names
+-(expIdx+1), a founder expedition); the ETAs intercept the relative drift
+(the shared orbital motion cancels); the net's drawn dots map back to
+absolute through the same origin decode. Measured after: the same hop's
+ETA read 265 ky and landed on schedule. A target on a genuinely different
+orbit family still shows an honest diverged ETA and chase.
+
+**The expansion.** The checkbox arms it: each colony sponsors one
+expedition at a time (starving colonies — comfort < 0.4 — keep their
+people), dispatched when `econY` reaches `nextExpandY` under the caps
+(24 colonies, 8 in flight). The dispatch scan is budgeted (2 ms slices
+via `selectAroundStep`, the click pick's own pattern) and
+ownership-checked against `aroundSweepParams()` — a user's radius scan
+restarts the shared sweep without asking, so a mismatched parameter set
+abandons the expansion's scan quietly and the source retries later.
+Candidates are the nearest uncolonised, untargeted stars; the chosen star
+is inserted into the selection set (ring + live drawn position). Transit
+follows the freight law pair: fast freight schedules
+`EV_EXPEDITION_ARRIVE`; generation ships spawn a founder convoy.
+`expeditionArrive` founds from the carried map, lands the typed asset,
+re-binds the star by key if the residency dropped it, commissions the
+route home and — when a neighbour sits within twice the generation
+radius — a cross-link, so the net meshes instead of chaining.
+
+**The panel and the net.** `#economenu` (right column, above Controls,
+green-tinted, collapsible, Tab-toggled like the rest): Seed home colony,
+Expansion, the Generation ships checkbox and the events log (both moved
+out of the Flight panel, which keeps the dock-context Found colony /
+Commission route quick actions and the port market), the colony list
+(click selects the star through a fresh `pickByKey` re-bind), the route
+list (click selects the origin, ✕ cancels — the ledger drops the
+route's events and in-flight convoys finish), and a commission row for
+any two colonies without docking. The label layer gained a `setTradeNet`
+pass: dashed lanes between the colonies' live drawn positions, small
+green colony rings, the larger amber Home ring, and ship dots (freight
+cyan, founders amber) — drawn every frame from a main.js-owned record
+`tradeNetTick` refreshes, independent of the labels toggle, because it is
+game state, not chrome. A galaxy change resets the economy with the
+field (`resetEconomy`). The HUD gains an economy line while colonies
+exist. Browser-verified end to end with a headless SwiftShader WebGPU
+session: Home seeded at the drawn Sun, the ship carried there, 16
+colonies and 29 routes grown in a minute of generation time, the net
+drawn and meshing, all panel controls exercised. Tests: trade 24/24,
+colony 37/37, m1-smoke 116/116, quick 28/28.
+
+**Next.** The §7 list stays recorded, not promised. The deferred browser
+visual pass remains open in its plan.
+

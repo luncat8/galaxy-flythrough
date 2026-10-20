@@ -386,6 +386,31 @@ const map = colony.createResourceMap();
 		{ pop: +c5.pop.toFixed(6), popLedgered: +c6.pop.toFixed(6) });
 }
 
+	// The expedition arrival (§9, ui.18): schedules like any ledger event,
+	// drains in timeline order with its payload index, cancels by kind.
+	{
+		const ledger = colony.createEventLedger();
+		check('EV_EXPEDITION_ARRIVE is kind 4 beside the others',
+				colony.EV_ROUTE_DEPART === 0 && colony.EV_ROUTE_ARRIVE === 1
+						&& colony.EV_MILESTONE === 2 && colony.EV_FAMINE === 3
+						&& colony.EV_EXPEDITION_ARRIVE === 4,
+				{ kind: colony.EV_EXPEDITION_ARRIVE });
+		colony.schedule(ledger, 500, colony.EV_EXPEDITION_ARRIVE, 7, 0, 0);
+		colony.schedule(ledger, 400, colony.EV_MILESTONE, 2, 0, 5);
+		const drained = [];
+		colony.dueEvents(ledger, 600, (kind, a, b, c, atY) => drained.push([kind, a, atY]));
+		check('the expedition arrival drains in timeline order with its index',
+				drained.length === 2 && drained[0][0] === colony.EV_MILESTONE
+						&& drained[1][0] === colony.EV_EXPEDITION_ARRIVE
+						&& drained[1][1] === 7 && drained[1][2] === 500,
+				{ drained });
+		check('cancel drops the expedition arrival by kind and payload',
+				colony.schedule(ledger, 700, colony.EV_EXPEDITION_ARRIVE, 7, 0, 0) === true
+						&& colony.cancel(ledger, colony.EV_EXPEDITION_ARRIVE, 7) === 1
+						&& ledger.count === 0,
+				{ count: ledger.count });
+	}
+
 // --- report ----------------------------------------------------------------
 const failed = checks.filter((c) => !c.pass);
 console.log(`colony: ${checks.length - failed.length}/${checks.length} checks pass`);

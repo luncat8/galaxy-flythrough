@@ -135,7 +135,7 @@ function flatColony(pop, stockFood) {
 	// Static target 1 kpc away: arrival after 1/v years, exactly. destPosOf
 	// must fill the target — the live-drawn contract main.js honours.
 	const totalY = 1 / vKpcY;
-	const staticPos = (idx, out) => { out[0] = 1; out[1] = 0; out[2] = 0; return true; };
+	const staticPos = (convoy, out) => { out[0] = 1; out[1] = 0; out[2] = 0; return true; };
 	trade.spawnConvoy(convoys, 0, 0, 3, 40, 0, 0, 0, 0, totalY);
 	let arrived = [];
 	for (let i = 0; i < 100 && convoys.count > 0; i++) {
@@ -155,7 +155,7 @@ function flatColony(pop, stockFood) {
 	const convoys = trade.createConvoys();
 	const vKpcY = trade.GENERATION_LY_Y / trade.KPC_LY;
 	const pos = { x: 1, y: 0 };
-	const destPosOf = (idx, out) => { out[0] = pos.x; out[1] = pos.y; out[2] = 0; return true; };
+	const destPosOf = (convoy, out) => { out[0] = pos.x; out[1] = pos.y; out[2] = 0; return true; };
 	trade.spawnConvoy(convoys, 0, 0, 3, 40, 0, 0, 0, 0, 1e4);
 	const dt = 500;
 	let steps = 0;
@@ -177,7 +177,7 @@ function flatColony(pop, stockFood) {
 	const convoys = trade.createConvoys();
 	const vKpcY = trade.GENERATION_LY_Y / trade.KPC_LY;
 	const pos = { x: 1, y: 0 };
-	const destPosOf = (idx, out) => { out[0] = pos.x; out[1] = pos.y; out[2] = 0; return true; };
+	const destPosOf = (convoy, out) => { out[0] = pos.x; out[1] = pos.y; out[2] = 0; return true; };
 	trade.spawnConvoy(convoys, 0, 0, 3, 40, 0, 0, 0, 0, 1e4);
 	const dt = 500;
 	const budget = Math.ceil((4 / vKpcY) / dt);
@@ -199,13 +199,62 @@ function flatColony(pop, stockFood) {
 	trade.spawnConvoy(convoys, 0, 1, 1, 20, 0, 0, 0, 0, 0);   // 8.66 kpc out
 	trade.spawnConvoy(convoys, 0, 2, 2, 30, 0, 0, 0, 0, 0);   // 15.6 kpc out
 	const targets = { 0: [1, 0, 0], 1: [5, 5, 5], 2: [9, 9, 9] };
-	const destPosOf = (idx, out) => { const t = targets[idx]; out[0] = t[0]; out[1] = t[1]; out[2] = t[2]; return true; };
+	const destPosOf = (convoy, out) => { const t = targets[convoy.dest]; out[0] = t[0]; out[1] = t[1]; out[2] = t[2]; return true; };
 	let got = [];
 	trade.advanceConvoys(convoys, 2 / (trade.GENERATION_LY_Y / trade.KPC_LY), 0, destPosOf, (c) => got.push(c.kind));
 	check('only the convoy whose gap the step covers arrives; the rest fly on',
 		got.length === 1 && got[0] === 0 && convoys.count === 2
 			&& convoys.list[0].kind !== 0 && convoys.list[1].kind !== 0,
 		{ got, count: convoys.count });
+}
+
+// --- 7. route cancellation (§9, ui.18) --------------------------------------
+{
+		const routes = trade.createRoutes();
+		const r1 = trade.commissionRoute(routes, 0, 1, 100);
+		const r2 = trade.commissionRoute(routes, 1, 2, 100);
+		const r3 = trade.commissionRoute(routes, 2, 0, 100);
+		check('a fresh commission is active',
+				r1.active === true && r2.active === true && r3.active === true
+						&& trade.activeRouteCount(routes) === 3,
+				{ active: trade.activeRouteCount(routes) });
+		check('cancel flags the route, never splices it',
+				trade.removeRoute(routes, 1) === true
+						&& routes.list.length === 3 && routes.list[1] === r2,
+				{ length: routes.list.length });
+		check('the cancelled route stops counting and stays cancelled',
+				trade.activeRouteCount(routes) === 2 && r2.active === false
+						&& trade.removeRoute(routes, 1) === false,
+				{ active: trade.activeRouteCount(routes) });
+		// The indices the ledger's events and the convoy records carry keep
+		// naming the same routes after a cancellation — that is why cancel
+		// flags instead of splicing (§9).
+		check('surviving routes keep their array slots',
+				routes.list[0] === r1 && routes.list[2] === r3 && r3.id === 3,
+				{ r1: r1.id, r3: r3.id });
+}
+
+// --- 8. founder convoys ride the same homing law (§9, ui.18) ----------------
+{
+		// A founder convoy's dest and route carry -(expIdx+1); the shared
+		// destPosOf oracle decodes the sign, and the homing law is unchanged.
+		const convoys = trade.createConvoys();
+		const vKpcY = trade.GENERATION_LY_Y / trade.KPC_LY;
+		const ly = 1 / trade.KPC_LY;
+		const totalY = 1 / vKpcY;    // one ly at generation speed = 10 ky
+		const destPosOf = (convoy, out) => {
+				if (convoy.dest >= 0) { out[0] = 5; out[1] = 0; out[2] = 0; return true; }   // a colony
+				out[0] = ly; out[1] = 0; out[2] = 0;                                     // expedition 0's star
+				return true;
+		};
+		trade.spawnConvoy(convoys, -1, -1, 0, 0, 0, 0, 0, 0, totalY);
+		let founder = null;
+		for (let i = 0; i < 200 && convoys.count > 0; i++) {
+				trade.advanceConvoys(convoys, totalY / 200, 0, destPosOf, (c) => { founder = c; });
+		}
+		check('a founder convoy (negative dest) homes and arrives like freight',
+				!!founder && founder.route === -1 && Math.abs(founder.x - ly) < 1e-12,
+				{ route: founder && founder.route, x: founder && founder.x });
 }
 
 // --- report ----------------------------------------------------------------

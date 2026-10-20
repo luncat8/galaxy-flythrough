@@ -38,6 +38,7 @@ function walk(dir, base) {
 
 // --- 1. The page loads exactly the source tree, in dependency order ------
 const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
+const css = fs.readFileSync(path.join(SRC, 'style.css'), 'utf-8');
 const scripts = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map(m => m[1]);
 // The sandbox page's boot glue is the one file index.html never loads: the
 // field math and the painter are shared now ("View Modes Shader.6" — the app's
@@ -510,6 +511,57 @@ const sourceFiles = walk(SRC, '')
 	check('opening a panel releases pointer lock',
 		/function releasePanelInput\(\) \{[\s\S]*?document\.exitPointerLock\(\);[\s\S]*?\}/.test(main)
 		&& /\} else \{\s*releasePanelInput\(\);/.test(main));
+}
+
+// --- 1b. The expansion scenario (colony-economy-plan §9, ui.18) ----------
+{
+	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
+	const layerSrc = fs.readFileSync(path.join(SRC, 'render', 'label-layer.js'), 'utf-8');
+	const tradeSrc = fs.readFileSync(path.join(SRC, 'core', 'trade.js'), 'utf-8');
+	check('the economy panel exists with its controls and the moved elements left Flight',
+		/id="economenu"/.test(html) && /id="economenu-collapse"/.test(html)
+		&& /id="econ-seed-home"/.test(html) && /id="econ-expansion"/.test(html)
+		&& /id="econ-generation"/.test(html) && /id="econ-events"/.test(html)
+		&& /id="econ-colonies"/.test(html) && /id="econ-routes"/.test(html)
+		&& /id="econ-route-origin"/.test(html) && /id="econ-route-dest"/.test(html)
+		&& /id="econ-route-commission"/.test(html)
+		&& !/flight-sync-trade/.test(html) && !/id="flight-events"/.test(html)
+		&& /#economenu/.test(css) && /econ-list/.test(css));
+	check('the scenario seeds Home at H on the first game entry and the button can do it too',
+		/if \(colonies\.length === 0\) queueHomeSeed\(true\);/.test(main)
+		&& /function queueHomeSeed\(auto\) \{[\s\S]*?beginSelectAround[\s\S]*?HOME_SEED_RADIUS_KPC/.test(main)
+		&& /foundColonyFromPick\(econPick, 'Home', econY\)/.test(main)
+		&& /econSeedHome\.addEventListener\('click'/.test(main)
+		&& /homeSeedAnchor[\s\S]*?model\.home\.orbitTarget/.test(main));
+	check('the expansion arms, scans under a budget and dispatches under both transit laws',
+		/econExpansionBox\.addEventListener\('change'/.test(main)
+		&& /function expansionStep\(\) \{[\s\S]*?aroundSweepParams\(\)[\s\S]*?selectAroundStep\(SWEEP_SLICE_RECORDS, ECON_SCAN_MS\)/.test(main)
+		&& /EV_EXPEDITION_ARRIVE,/.test(main)
+		&& /tradeLib\.spawnConvoy\(tradeConvoys, -\(expIdx \+ 1\), -\(expIdx \+ 1\)/.test(main)
+		&& /if \(colony\.comfort < 0\.4\) continue;/.test(main)
+		&& /expeditionArrive\(a, atY\);/.test(main)
+		&& /if \(c\.route < 0\) \{ expeditionArrive\(-1 - c\.route, econY\); return; \}/.test(main));
+	check('arrival founds from the carried map and wires the route home plus a cross-link',
+		/function expeditionArrive\(expIdx, atY\) \{[\s\S]*?colonyLib\.createColony\(exp\.starKey[\s\S]*?exp\.map[\s\S]*?commissionBetween\(source, colony\)/.test(main)
+		&& /function crossLinkColony\(colony, skip\)/.test(main)
+		&& /function routeBetween\(aIdx, bIdx\)/.test(main));
+	check('the trade net is drawn from a main-owned record on the label layer',
+		/labels\.setTradeNet\(tradeNet\);/.test(main)
+		&& /function tradeNetTick\(\) \{/.test(main)
+		&& /function drawTradeNet\(camera, width, height\)/.test(layerSrc)
+		&& /const netOn = tradeNetOn\(\);/.test(layerSrc)
+		&& /setTradeNet,/.test(layerSrc));
+	check('routes cancel by flag, the ledger drops their events and the panel wires both sides',
+		/function cancelRouteAt\(routeIdx\) \{[\s\S]*?removeRoute[\s\S]*?cancel\(econLedger, colonyLib\.EV_ROUTE_DEPART, routeIdx\)/.test(main)
+		&& /commissionBetween\(origin, dest\);[\s\S]*?syncFlightUi\(\);/.test(main)
+		&& /econRouteCommission\.addEventListener\('click'/.test(main)
+		&& /function syncEconomyPanel\(\)/.test(main)
+		&& /function resetEconomy\(\) \{[\s\S]*?colonies\.length = 0;/.test(main)
+		&& /resetEconomy\(\);/.test(main));
+	check('the core laws export the cancellation and the expedition arrival',
+		/function removeRoute\(routes, idx\) \{/.test(tradeSrc)
+		&& /function activeRouteCount\(routes\) \{/.test(tradeSrc)
+		&& /EV_EXPEDITION_ARRIVE = 4/.test(fs.readFileSync(path.join(SRC, 'core', 'colony.js'), 'utf-8')));
 }
 
 // --- 2. No global is read before it is defined --------------------------

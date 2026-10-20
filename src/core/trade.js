@@ -52,10 +52,29 @@ function createRoutes() {
 // The first departure is one period out: the origin needs the time to
 // produce something worth carrying.
 function commissionRoute(routes, origin, dest, atY) {
-	const route = { id: routes.count + 1, origin, dest, nextDepartY: atY + PERIOD_Y };
+	const route = { id: routes.count + 1, origin, dest, nextDepartY: atY + PERIOD_Y, active: true };
 	routes.list.push(route);
 	routes.count++;
 	return route;
+}
+
+// ui.18 §9: a cancelled route is flagged, never spliced — the ledger's
+// events and the in-flight convoy records carry the array index, so the
+// slot must keep naming the same route forever. `count` stays the
+// commissioned total; activeRouteCount is what the GUI reads.
+function removeRoute(routes, idx) {
+	const route = routes.list[idx];
+	if (!route || !route.active) return false;
+	route.active = false;
+	return true;
+}
+
+function activeRouteCount(routes) {
+	let n = 0;
+	for (let i = 0; i < routes.list.length; i++) {
+		if (routes.list[i].active) n++;
+	}
+	return n;
 }
 
 // --- the departure cargo (§6's guard, pure) ---------------------------------
@@ -134,8 +153,11 @@ const TARGET = new Float64Array(3);
 
 // One homing step per convoy over dtY of economy time: aim at the
 // destination's current position, advance v*dtY, arrive when the step
-// covers the remaining gap. destPosOf(idx, out) always fills out (live
-// drawn position or the founding fallback) — that contract is main.js's.
+// covers the remaining gap. destPosOf(convoy, out) always fills out —
+// the live drawn position in whatever frame the caller's convoys live
+// in (ui.18 §9: main.js flies them in the lane's origin frame, both
+// endpoints co-moving around the galaxy). The convoy record, not its
+// dest alone, is the argument: the frame needs the origin too.
 // Arrivals are handed to onArrive(convoy, econY); removal is swap-last.
 function advanceConvoys(convoys, dtY, econY, destPosOf, onArrive) {
 	if (!(dtY > 0) || convoys.count === 0) return 0;
@@ -143,7 +165,7 @@ function advanceConvoys(convoys, dtY, econY, destPosOf, onArrive) {
 	let arrived = 0;
 	for (let i = convoys.count - 1; i >= 0; i--) {
 		const c = convoys.list[i];
-		destPosOf(c.dest, TARGET);
+		destPosOf(c, TARGET);
 		const dx = TARGET[0] - c.x, dy = TARGET[1] - c.y, dz = TARGET[2] - c.z;
 		const rem = Math.sqrt(dx * dx + dy * dy + dz * dz);
 		const step = v * dtY;
@@ -164,7 +186,7 @@ function advanceConvoys(convoys, dtY, econY, destPosOf, onArrive) {
 
 const TradeLib = {
 	KPC_LY, GENERATION_LY_Y, FAST_LY_Y, PERIOD_Y, CAP_T, GUARD_Y,
-	distLy, createRoutes, commissionRoute,
+	distLy, createRoutes, commissionRoute, removeRoute, activeRouteCount,
 	createCargoOut, departureCargo, fastTransitY, etaYears,
 	createConvoys, spawnConvoy, advanceConvoys,
 };

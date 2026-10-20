@@ -346,6 +346,8 @@ async function boot() {
         const menuCollapse = document.getElementById('menu-collapse');
         const selectionMenu = document.getElementById('selection-menu');
         const selectionMenuCollapse = document.getElementById('selection-menu-collapse');
+        const economyMenu = document.getElementById('economenu');
+        const economyMenuCollapse = document.getElementById('economenu-collapse');
         const currentSelectionLabel = document.getElementById('selection-current-label');
         const previousSelectionLabel = document.getElementById('selection-previous-label');
         const swapSelectionButton = document.getElementById('selection-swap');
@@ -941,8 +943,8 @@ async function boot() {
         const flightFoundColony = document.getElementById('flight-found-colony');
         const flightMarket = document.getElementById('flight-market');
         const flightRoute = document.getElementById('flight-route');
-        const flightSyncTrade = document.getElementById('flight-sync-trade');
-        const flightEvents = document.getElementById('flight-events');
+        const tradeGeneration = document.getElementById('econ-generation');
+        const econEvents = document.getElementById('econ-events');
         const starTimeScaleBtn = document.getElementById('star-time-scale');
         const shipList = document.getElementById('ship-list');
         const fleetCount = document.getElementById('fleet-count');
@@ -1145,8 +1147,8 @@ async function boot() {
         flightCargoUnload.addEventListener('click', () => { actions.cargoUnload = 1; });
         flightFoundColony.addEventListener('click', () => { if (gameMode) gameFoundColony(); });
         flightRoute.addEventListener('click', gameCommissionRoute);
-        flightSyncTrade.addEventListener('change', () => {
-                tradeSync = flightSyncTrade.checked;
+        tradeGeneration.addEventListener('change', () => {
+                tradeSync = tradeGeneration.checked;
                 if (tradeSync) {
                         // The preset: star time 0.1 Myr/s. In observer mode that is
                         // the rate itself (the fine track); in game mode it is the
@@ -1491,11 +1493,13 @@ async function boot() {
                         || selectionMenu.style.display !== 'none'
                         || sysMenu.style.display !== 'none'
                         || viewMenu.style.display !== 'none'
+                        || economyMenu.style.display !== 'none'
                         || helpPanel.style.display !== 'none';
                 menu.style.display = visible ? 'none' : 'block';
                 selectionMenu.style.display = visible ? 'none' : 'block';
                 sysMenu.style.display = visible ? 'none' : 'block';
                 viewMenu.style.display = visible ? 'none' : 'block';
+                economyMenu.style.display = visible ? 'none' : 'block';
                 helpPanel.style.display = visible ? 'none' : 'block';
                 syncOverlayInset();
                 if (visible) {
@@ -1520,6 +1524,7 @@ async function boot() {
         wireCollapse(selectionMenu, selectionMenuCollapse);
         wireCollapse(sysMenu, sysMenuCollapse);
         wireCollapse(viewMenu, viewMenuCollapse);
+        wireCollapse(economyMenu, economyMenuCollapse);
 
         // --- Controls panel (ui.6) ------------------------------------------
         // The old help <pre> as clickable controls. Buttons and checkboxes
@@ -2336,6 +2341,9 @@ async function boot() {
                 // Another galaxy is another set of stars: the snapshots are dropped,
                 // not re-derived (their keys belong to a different model, §3.2).
                 clearSelection();
+                // ui.18 §9: the economy's keys, maps and routes belong to
+                // the old field too — the scenario resets with it.
+                resetEconomy();
                 syncGalaxyControls();
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
@@ -3201,6 +3209,9 @@ async function boot() {
                 syncFleetUi();
                 syncViewRows();
                 syncFlightUi();
+                // ui.18 §9: the scenario begins the moment the player
+                // takes the helm — Home seeds at H if nothing is founded.
+                if (colonies.length === 0) queueHomeSeed(true);
         }
 
         function leaveGameMode() {
@@ -3880,6 +3891,7 @@ async function boot() {
         const econPosA = new Float64Array(3);
         const econPosB = new Float64Array(3);
         const econVel = new Float64Array(3);
+        const econVelB = new Float64Array(3);   // the origin's, for the relative drift (ui.18 §9)
         const econLog = [];
         const ECON_LOG_MAX = 48;
         const colonyRecord = selectPlanets.createSystemRecord();
@@ -3931,6 +3943,7 @@ async function boot() {
                 econLog.push({ y: econY, text });
                 if (econLog.length > ECON_LOG_MAX) econLog.shift();
                 syncFlightEvents();
+                syncEconomyPanel();
         }
 
         // The colony's star for route math: the live drawn position while
@@ -3959,12 +3972,13 @@ async function boot() {
                         else if (kind === colonyLib.EV_ROUTE_ARRIVE) econRouteArrive(a, b, c, atY);
                         else if (kind === colonyLib.EV_MILESTONE) econMilestone(a, c, atY);
                         else if (kind === colonyLib.EV_FAMINE) econFamine(a, b, atY);
+                        else if (kind === colonyLib.EV_EXPEDITION_ARRIVE) expeditionArrive(a, atY);
                 });
         }
 
         function econRouteDepart(routeIdx, atY) {
                 const route = tradeRoutes.list[routeIdx];
-                if (!route) return;
+                if (!route || !route.active) return;   // ui.18: cancelled routes never re-arm
                 const origin = colonies[route.origin];
                 const dest = colonies[route.dest];
                 // The period re-arms whether or not this departure carries.
@@ -3977,24 +3991,28 @@ async function boot() {
                 const live = colonyPosOf(route.dest, econPosB);
                 const label = colonyLib.RESOURCES[cargo.kind].label;
                 if (tradeSync) {
-                        // Generation law: spawn a homing convoy. The ETA is a
-                        // first-order intercept off the destination's drawn
-                        // velocity when it is resident.
+                        // Generation law: a homing convoy in the lane's frame
+                        // (§9). Both endpoints co-move around the galaxy — a
+                        // 220 km/s orbit is ~7x the ship's own speed — so the
+                        // ship flies the residual separation, and the ETA is a
+                        // first-order intercept on the relative drift, which the
+                        // shared motion cancels.
                         let vx = 0, vy = 0, vz = 0;
-                        if (live) {
-                                const di = starSet.indexOfKey(dest.starKey);
-                                if (di >= 0 && memberDrawnVelocity(di, econVel)
-                                                !== window.Selection.DRAWN_STALE) {
-                                        vx = econVel[0] * shipLib.SECONDS_PER_YEAR;
-                                        vy = econVel[1] * shipLib.SECONDS_PER_YEAR;
-                                        vz = econVel[2] * shipLib.SECONDS_PER_YEAR;
-                                }
+                        const oi = starSet.indexOfKey(origin.starKey);
+                        const di = live ? starSet.indexOfKey(dest.starKey) : -1;
+                        if (di >= 0 && memberDrawnVelocity(di, econVel) !== window.Selection.DRAWN_STALE
+                                        && oi >= 0 && memberDrawnVelocity(oi, econVelB)
+                                                        !== window.Selection.DRAWN_STALE) {
+                                vx = (econVel[0] - econVelB[0]) * shipLib.SECONDS_PER_YEAR;
+                                vy = (econVel[1] - econVelB[1]) * shipLib.SECONDS_PER_YEAR;
+                                vz = (econVel[2] - econVelB[2]) * shipLib.SECONDS_PER_YEAR;
                         }
-                        const eta = tradeLib.etaYears(econPosA[0], econPosA[1], econPosA[2],
-                                econPosB[0], econPosB[1], econPosB[2], vx, vy, vz,
+                        const eta = tradeLib.etaYears(0, 0, 0,
+                                econPosB[0] - econPosA[0], econPosB[1] - econPosA[1],
+                                econPosB[2] - econPosA[2], vx, vy, vz,
                                 tradeLib.GENERATION_LY_Y);
                         tradeLib.spawnConvoy(tradeConvoys, routeIdx, route.dest, cargo.kind,
-                                cargo.tons, econPosA[0], econPosA[1], econPosA[2], atY, eta.years);
+                                cargo.tons, 0, 0, 0, atY, eta.years);
                         econLogLine('convoy departed ' + origin.name + ' → ' + dest.name
                                 + ' · ' + label + ' ' + cargo.tons.toFixed(0) + ' t'
                                 + ' · ETA ' + fmtEconY(eta.years)
@@ -4063,6 +4081,7 @@ async function boot() {
                         econY, map, ref.x, ref.y, ref.z);
                 colonies.push(colony);
                 colony.idx = colonies.length - 1;
+                colony.nextExpandY = econY + EXPANSION_GAP_FAST_Y;
                 // The ui.1 typed asset history lands the colony the way
                 // docking lands the dock-port.
                 selectionStore.selectCurrent(window.SelectionStore.GROUP_ASSET, {
@@ -4079,6 +4098,7 @@ async function boot() {
                         + colonyLib.formatPop(colony.pop) + ' · score '
                         + map.score.toFixed(2));
                 syncFlightUi();
+                syncEconomyPanel();
         }
 
         // The market block for the Flight panel (§5): all six rows while
@@ -4100,13 +4120,7 @@ async function boot() {
                 const dest = destKey >= 0 ? colonyAt(destKey) : null;
                 if (!dest) { setAutoMsg('the destination needs a colony — select or lock its star'); return; }
                 if (dest === origin) { setAutoMsg('a route needs two different colonies'); return; }
-                const route = tradeLib.commissionRoute(tradeRoutes, origin.idx, dest.idx, econY);
-                colonyLib.schedule(econLedger, route.nextDepartY, colonyLib.EV_ROUTE_DEPART,
-                        tradeRoutes.count - 1, 0, 0);
-                econLogLine('route commissioned ' + origin.name + ' → ' + dest.name
-                        + ' · departs every ' + tradeLib.PERIOD_Y + ' y · first '
-                        + fmtEconY(route.nextDepartY));
-                setAutoMsg('route ' + origin.name + ' → ' + dest.name + ' commissioned');
+                commissionBetween(origin, dest);
                 syncFlightUi();
         }
 
@@ -4115,11 +4129,14 @@ async function boot() {
         // frame.
         let lastFlightEvents = '';
         function syncFlightEvents() {
+                const activeRoutes = tradeLib.activeRouteCount(tradeRoutes);
+                const founders = expeditionFlightCount();
                 const lines = ['economy ' + fmtEconY(econY)
-                        + ' · ' + tradeRoutes.count + (tradeRoutes.count === 1 ? ' route' : ' routes')
-                        + ' · ' + tradeConvoys.count + ' in flight'
+                        + ' · ' + activeRoutes + (activeRoutes === 1 ? ' route' : ' routes')
+                        + ' · ' + tradeConvoys.count + ' freight'
+                        + (founders > 0 ? ' · ' + founders + ' founders in flight' : '')
                         + ' · ' + (tradeSync ? 'generation ships · synced' : 'fast freight')];
-                if (econLog.length === 0) lines.push('no events yet — found a colony, commission a route');
+                if (econLog.length === 0) lines.push('no events yet — seed Home, arm the expansion');
                 else {
                         for (let i = Math.max(0, econLog.length - 18); i < econLog.length; i++) {
                                 lines.push(fmtEconY(econLog[i].y) + ' · ' + econLog[i].text);
@@ -4128,7 +4145,7 @@ async function boot() {
                 const text = lines.join('\n');
                 if (text !== lastFlightEvents) {
                         lastFlightEvents = text;
-                        flightEvents.textContent = text;
+                        econEvents.textContent = text;
                 }
         }
         // docked at a colony port; empty otherwise.
@@ -4151,6 +4168,801 @@ async function boot() {
                         flightMarket.textContent = text;
                 }
         }
+
+
+        // --- The expansion scenario (colony-economy-plan §9, ui.18) ---------
+        // A colony at the home H location, ships sent out to found colonies
+        // and trade, an expanding net of routes the player can watch — and a
+        // panel of its own for all of it (#economenu). The port trade and the
+        // ledger live above (§5/§6); this block owns the scenario itself.
+
+        const EXPANSION_MAX_COLONIES = 24;
+        const EXPANSION_MAX_FLIGHT = 8;
+        const EXPANSION_GAP_FAST_Y = 8;         // y; a source paces its fast-law dispatches
+        const EXPANSION_RETRY_Y = 500;          // y; an exhausted or hijacked source retries
+        const EXPANSION_RADIUS_GEN_KPC = 0.03;      // ~98 ly — a generation-ship hop
+        const EXPANSION_RADIUS_FAST_KPC = 0.012;    // ~39 ly — fast freight keeps transits short
+        const HOME_SEED_RADIUS_KPC = 0.05;      // ~163 ly around H's anchor
+        const ECON_SCAN_MS = 2;                 // the budgeted scan's per-frame slice
+        const ECON_SCAN_SEED = 1, ECON_SCAN_EXPAND = 2;
+        const ECON_NET_MAX_COLONIES = 32, ECON_NET_MAX_SHIPS = 64, ECON_NET_MAX_EDGES = 64;
+
+        let expansionOn = false;
+        let expansionCursor = 0;
+        let routesVersion = 0;                  // bumps when the drawn net's edges change
+        let homeColonyIdx = -1;
+        const expeditions = [];                 // one record per dispatched founder ship
+        const econScan = { active: false, mode: 0, sourceIdx: -1, px: 0, py: 0, pz: 0, r2: 0, auto: false };
+
+        // The economy panel's own element set. The outer panel and its collapse
+        // button are wired with the other panels; the Flight panel keeps the
+        // pilot's dock-context quick actions (§9).
+        const econSeedHome = document.getElementById('econ-seed-home');
+        const econExpansionBox = document.getElementById('econ-expansion');
+        const econColonyList = document.getElementById('econ-colonies');
+        const econColonyCount = document.getElementById('econ-colony-count');
+        const econRouteList = document.getElementById('econ-routes');
+        const econRouteCount = document.getElementById('econ-route-count');
+        const econRouteOrigin = document.getElementById('econ-route-origin');
+        const econRouteDest = document.getElementById('econ-route-dest');
+        const econRouteCommission = document.getElementById('econ-route-commission');
+
+        // The trade net the label layer draws (§9): main.js refreshes the
+        // positions every frame — they ride the live drawn sky, so the net
+        // bends with the star time — and the layer only projects and paints.
+        const tradeNet = {
+                show: false,
+                colonyCount: 0,
+                colonyPos: new Float64Array(ECON_NET_MAX_COLONIES * 3),
+                homeIdx: -1,
+                edgeCount: 0,
+                edges: new Int32Array(ECON_NET_MAX_EDGES * 2),
+                shipCount: 0,
+                shipPos: new Float64Array(ECON_NET_MAX_SHIPS * 3),
+                shipFounder: new Uint8Array(ECON_NET_MAX_SHIPS),
+        };
+        labels.setTradeNet(tradeNet);
+
+        const econPick = { key: 0, kind: 0, index: 0, x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0, approximated: 0 };
+        const econPickInputs = { mass: 0, lum: 0, teff: 0, age: 0, metal: 0 };
+        const econPos = new Float64Array(3);
+
+        function econNameForPick(pick) {
+                if (pick.kind === selectPlanets.BLOCK_LANDMARK) {
+                        const entry = landmarks.ENTRIES[pick.index];
+                        if (entry) return entry.name;
+                }
+                return 'S' + (pick.key >>> 0).toString(36).toUpperCase();
+        }
+
+        // Insert a picked star into the selection set: the ring, the live drawn
+        // position the convoy homing and the net's edges read, and the user's
+        // own click affordances — a colony's star is a first-class member.
+        function insertStarFromPick(pick) {
+                selectPlanets.stellarInputs(pick, {
+                        model,
+                        field: renderer.fieldBuffers(),
+                        member: renderer.starBlocks().member,
+                }, econPickInputs);
+                const cam = camera.cameraPos;
+                const i = starSet.insert(pick, econPickInputs, cam[0], cam[1], cam[2], pick.index);
+                syncSetUi();
+                return i;
+        }
+
+        // A fresh pick for a key: one walk over the live blocks (click-priced,
+        // event cadence). The panel's colony rows and the expedition arrival
+        // both re-bind a star the user or the residency may have moved.
+        function pickByKey(key, out) {
+                const info = renderer.starBlocks();
+                if (!info || !info.identity || !info.view) return false;
+                const identity = info.identity;
+                const view = info.view;
+                const blocks = info.blocks;
+                const k = key >>> 0;
+                for (let b = 0; b < blocks.length; b++) {
+                        const block = blocks[b];
+                        const n = block.count | 0;
+                        const offset = block.offset | 0;
+                        for (let slot = 0; slot < n; slot++) {
+                                if ((identity[offset + slot] >>> 0) !== k) continue;
+                                const byteOffset = (offset + slot) * window.StarRecord.RECORD_BYTES;
+                                const packed = view.getUint32(byteOffset + 12, true);
+                                if ((packed & (window.StarRecord.FLAG_VISIBLE << 16)) === 0) continue;
+                                out.key = k;
+                                out.kind = b;
+                                out.index = slot;
+                                out.x = view.getFloat32(byteOffset, true);
+                                out.y = view.getFloat32(byteOffset + 4, true);
+                                out.z = view.getFloat32(byteOffset + 8, true);
+                                out.colorIndex = packed & 0xFF;
+                                out.absMag = window.StarRecord.decodeAbsMag((packed >>> 8) & 0xFF);
+                                out.approximated = 0;
+                                return true;
+                        }
+                }
+                return false;
+        }
+
+        // Founding from a pick (§9): the star's system is generated now and the
+        // map copied into the colony's own record — the same law gameFoundColony
+        // runs from a docked port, minus the port.
+        function foundColonyFromPick(pick, name, foundedY) {
+                colonyCtx.model = model;
+                colonyCtx.field = renderer.fieldBuffers();
+                colonyCtx.member = renderer.starBlocks().member;
+                colonyCtx.name = name;
+                const rec = selectPlanets.generateSystem(pick, colonyCtx, colonyRecord);
+                colonyLib.resourceMapFor(rec, model.seed, colonyMapOut);
+                const map = colonyLib.createResourceMap();
+                map.ease.set(colonyMapOut.ease);
+                map.score = colonyMapOut.score;
+                const colony = colonyLib.createColony(pick.key >>> 0, name, foundedY, map,
+                        pick.x, pick.y, pick.z);
+                colonies.push(colony);
+                colony.idx = colonies.length - 1;
+                colony.nextExpandY = foundedY;
+                selectionStore.selectCurrent(window.SelectionStore.GROUP_ASSET, {
+                        group: window.SelectionStore.GROUP_ASSET,
+                        type: 'colony',
+                        id: 'colony-' + (pick.key >>> 0).toString(36),
+                        name,
+                        key: pick.key >>> 0,
+                        kind: pick.kind, index: pick.index,
+                        x: pick.x, y: pick.y, z: pick.z,
+                });
+                syncSelectionPanel();
+                return colony;
+        }
+
+        // The shared commission (§6 + §9): the dock-context button and the
+        // panel's row both land here. A pair keeps at most one standing route.
+        function routeBetween(aIdx, bIdx) {
+                for (let i = 0; i < tradeRoutes.list.length; i++) {
+                        const r = tradeRoutes.list[i];
+                        if (!r.active) continue;
+                        if ((r.origin === aIdx && r.dest === bIdx)
+                                        || (r.origin === bIdx && r.dest === aIdx)) return r;
+                }
+                return null;
+        }
+
+        function commissionBetween(origin, dest) {
+                if (origin === dest) { setAutoMsg('a route needs two different colonies'); return null; }
+                if (routeBetween(origin.idx, dest.idx)) {
+                        setAutoMsg(origin.name + ' and ' + dest.name + ' already trade');
+                        return null;
+                }
+                const route = tradeLib.commissionRoute(tradeRoutes, origin.idx, dest.idx, econY);
+                colonyLib.schedule(econLedger, route.nextDepartY, colonyLib.EV_ROUTE_DEPART,
+                        tradeRoutes.count - 1, 0, 0);
+                routesVersion++;
+                econLogLine('route commissioned ' + origin.name + ' → ' + dest.name
+                        + ' · departs every ' + tradeLib.PERIOD_Y + ' y · first '
+                        + fmtEconY(route.nextDepartY));
+                setAutoMsg('route ' + origin.name + ' → ' + dest.name + ' commissioned');
+                syncEconomyPanel();
+                return route;
+        }
+
+        function cancelRouteAt(routeIdx) {
+                const route = tradeRoutes.list[routeIdx];
+                if (!route || !route.active) return;
+                tradeLib.removeRoute(tradeRoutes, routeIdx);
+                // The standing departure and any scheduled arrival die with it;
+                // convoys already in flight fly on and land — their cargo is
+                // bought and gone, the ledger just stops re-arming.
+                colonyLib.cancel(econLedger, colonyLib.EV_ROUTE_DEPART, routeIdx);
+                colonyLib.cancel(econLedger, colonyLib.EV_ROUTE_ARRIVE, routeIdx);
+                routesVersion++;
+                econLogLine('route ' + colonies[route.origin].name + ' → '
+                        + colonies[route.dest].name + ' cancelled — in-flight convoys finish');
+                syncEconomyPanel();
+        }
+
+        function expeditionForKey(key) {
+                const k = key >>> 0;
+                for (let i = 0; i < expeditions.length; i++) {
+                        if (!expeditions[i].arrived && expeditions[i].starKey === k) return i;
+                }
+                return -1;
+        }
+
+        function expeditionFlightCount() {
+                let n = 0;
+                for (let i = 0; i < expeditions.length; i++) {
+                        if (!expeditions[i].arrived) n++;
+                }
+                return n;
+        }
+
+        // The expedition's target: the live drawn position while the star is
+        // resident, else the departure snapshot — the same fallback the
+        // colonies' own route math runs on.
+        function expeditionPosOf(exp, out) {
+                const i = starSet.indexOfKey(exp.starKey);
+                if (i >= 0) {
+                        memberDrawnPosition(i, out);
+                        return true;
+                }
+                out[0] = exp.bx; out[1] = exp.by; out[2] = exp.bz;
+                return false;
+        }
+
+        // advanceConvoys' one position oracle (§9): the shipping lane's
+        // frame is its origin. The convoy records live in that frame —
+        // x/y/z relative to the origin colony's live drawn position — and
+        // the oracle returns the target's position in the same frame. The
+        // origin decodes from the record: route >= 0 names a commissioned
+        // route (its origin colony), route < 0 names -(expIdx+1), a founder
+        // expedition (its source colony).
+        const convoyOriginPos = new Float64Array(3);
+        function convoyOrigin(c, out) {
+                if (c.route >= 0) {
+                        const route = tradeRoutes.list[c.route];
+                        if (route) return colonyPosOf(route.origin, out);
+                } else if (expeditions[-1 - c.route]) {
+                        return colonyPosOf(expeditions[-1 - c.route].originIdx, out);
+                }
+                out[0] = 0; out[1] = 0; out[2] = 0;
+                return false;
+        }
+        function convoyDestPos(c, out) {
+                let ok;
+                if (c.route < 0) {
+                        const exp = expeditions[-1 - c.route];
+                        if (exp) ok = expeditionPosOf(exp, out);
+                        else { out[0] = 0; out[1] = 0; out[2] = 0; ok = false; }
+                } else ok = colonyPosOf(c.dest, out);
+                convoyOrigin(c, convoyOriginPos);
+                out[0] -= convoyOriginPos[0];
+                out[1] -= convoyOriginPos[1];
+                out[2] -= convoyOriginPos[2];
+                return ok;
+        }
+
+        // --- The home seed ------------------------------------------------
+        // H's anchor is the model's home orbit target — the Sun in the Milky
+        // Way, the centre otherwise. The seed takes the nearest resident star
+        // a radius scan finds; the scan is budgeted, never a hitch.
+        function homeSeedAnchor(out) {
+                // The Milky Way's own anchor is H's star where the sky draws
+                // it now: the model is Sun-centred at birth, but the orbit law
+                // carries the Sun around the centre with everything else, so
+                // the birth origin is a fixed camera pose, not a place the sky
+                // still populates (§9 — the scan that taught us measured 0
+                // stars within 65 ly of it after the clock ran). The other
+                // types have no Sun; their home is the model's own centre.
+                const i = model.milkyWay ? landmarks.indexOf('Sun') : -1;
+                if (i >= 0 && window.OrbitLib && window.OrbitLib.engineLandmarkPosition) {
+                        window.OrbitLib.engineLandmarkPosition(out, i,
+                                landmarks.positions[i * 3], landmarks.positions[i * 3 + 1],
+                                landmarks.positions[i * 3 + 2],
+                                landmarks.ENTRIES[i].colorIndex, starTimeMyr, model);
+                        return;
+                }
+                const p = model.home.orbitTarget;
+                out[0] = p[0] !== undefined ? p[0] : p.x;
+                out[1] = p[1] !== undefined ? p[1] : p.y;
+                out[2] = p[2] !== undefined ? p[2] : p.z;
+        }
+
+        function queueHomeSeed(auto) {
+                if (colonies.length > 0 || econScan.active || aroundPending) return false;
+                homeSeedAnchor(econPos);
+                if (!selection.beginSelectAround(econPos[0], econPos[1], econPos[2],
+                                HOME_SEED_RADIUS_KPC, 4)) return false;
+                econScan.active = true;
+                econScan.auto = !!auto;
+                econScan.mode = ECON_SCAN_SEED;
+                econScan.sourceIdx = -1;
+                econScan.px = econPos[0]; econScan.py = econPos[1]; econScan.pz = econPos[2];
+                econScan.r2 = HOME_SEED_RADIUS_KPC * HOME_SEED_RADIUS_KPC;
+                return true;
+        }
+
+        function seedFromAroundRow(row) {
+                const around = selection.around;
+                econPick.key = around.keys[row] >>> 0;
+                econPick.kind = around.kind[row];
+                econPick.index = around.index[row];
+                econPick.x = around.x[row];
+                econPick.y = around.y[row];
+                econPick.z = around.z[row];
+                econPick.colorIndex = around.colorIndex[row];
+                econPick.absMag = around.absMag[row];
+                econPick.approximated = around.approximated[row];
+                const starName = econNameForPick(econPick);
+                starSet.setPrimary(insertStarFromPick(econPick));
+                const colony = foundColonyFromPick(econPick, 'Home', econY);
+                homeColonyIdx = colony.idx;
+                // The scenario's stage is where the sky draws Home now. The
+                // birth frame's fixed pose — where the camera and a fresh hull
+                // spawn — is kiloparsecs behind it once the star clock has run
+                // (§9), so the automatic game-entry seed carries the freshly
+                // boarded ship to the colony it just made. A button seed
+                // mid-flight never moves the player.
+                if (econScan.auto && gameMode && !ship.docked) {
+                        // colonyPosOf reads the live drawn position — the pick's
+                        // own x/y/z are the birth frame's, kiloparsecs stale.
+                        colonyPosOf(colony.idx, econPos);
+                        ship.pos[0] = econPos[0];
+                        ship.pos[1] = econPos[1];
+                        ship.pos[2] = econPos[2] + 0.01;   // 10 pc stand-off, the home pose's own
+                        ship.vel[0] = 0; ship.vel[1] = 0; ship.vel[2] = 0;
+                        positionCameraAtActiveShip();
+                }
+                econLogLine('Home colony seeded at ' + starName
+                        + ' · pop ' + colonyLib.formatPop(colony.pop)
+                        + ' · score ' + colony.map.score.toFixed(2)
+                        + ' — the scenario grows from here');
+                setAutoMsg('Home colony seeded at ' + starName);
+                syncEconomyPanel();
+        }
+
+        // --- The expansion dispatch ----------------------------------------
+        function retrySource(idx) {
+                const colony = colonies[idx];
+                if (colony) colony.nextExpandY = econY + EXPANSION_RETRY_Y;
+        }
+
+        function dispatchExpedition(sourceIdx, row) {
+                const around = selection.around;
+                const source = colonies[sourceIdx];
+                econPick.key = around.keys[row] >>> 0;
+                econPick.kind = around.kind[row];
+                econPick.index = around.index[row];
+                econPick.x = around.x[row];
+                econPick.y = around.y[row];
+                econPick.z = around.z[row];
+                econPick.colorIndex = around.colorIndex[row];
+                econPick.absMag = around.absMag[row];
+                econPick.approximated = around.approximated[row];
+                // The system and its resource map are generated now, at
+                // departure: arrival may be a Myr out, when the slot this pick
+                // names holds another star. The map rides with the ship (§9).
+                colonyCtx.model = model;
+                colonyCtx.field = renderer.fieldBuffers();
+                colonyCtx.member = renderer.starBlocks().member;
+                colonyCtx.name = econNameForPick(econPick);
+                const rec = selectPlanets.generateSystem(econPick, colonyCtx, colonyRecord);
+                colonyLib.resourceMapFor(rec, model.seed, colonyMapOut);
+                const map = colonyLib.createResourceMap();
+                map.ease.set(colonyMapOut.ease);
+                map.score = colonyMapOut.score;
+                insertStarFromPick(econPick);
+                const exp = {
+                        starKey: econPick.key >>> 0,
+                        name: econNameForPick(econPick),
+                        originIdx: sourceIdx,
+                        map,
+                        bx: econPick.x, by: econPick.y, bz: econPick.z,
+                        departY: econY,
+                        arriveY: Infinity,
+                        homing: false,
+                        arrived: false,
+                };
+                expeditions.push(exp);
+                const expIdx = expeditions.length - 1;
+                colonyPosOf(sourceIdx, econPosA);
+                const dLy = Math.sqrt(around.dist2[row]) * tradeLib.KPC_LY;
+                if (tradeSync) {
+                        // Generation law: a homing founder convoy in the source
+                        // colony's frame (§9) — the two stars co-move, the
+                        // founders fly the residual, and the ETA intercepts the
+                        // relative drift only.
+                        let vx = 0, vy = 0, vz = 0;
+                        const ti = starSet.indexOfKey(exp.starKey);
+                        const si = starSet.indexOfKey(source.starKey);
+                        if (ti >= 0 && memberDrawnVelocity(ti, econVel) !== window.Selection.DRAWN_STALE
+                                        && si >= 0 && memberDrawnVelocity(si, econVelB)
+                                                        !== window.Selection.DRAWN_STALE) {
+                                vx = (econVel[0] - econVelB[0]) * shipLib.SECONDS_PER_YEAR;
+                                vy = (econVel[1] - econVelB[1]) * shipLib.SECONDS_PER_YEAR;
+                                vz = (econVel[2] - econVelB[2]) * shipLib.SECONDS_PER_YEAR;
+                        }
+                        if (ti >= 0) memberDrawnPosition(ti, econPosB);
+                        else { econPosB[0] = econPick.x; econPosB[1] = econPick.y; econPosB[2] = econPick.z; }
+                        const eta = tradeLib.etaYears(0, 0, 0,
+                                econPosB[0] - econPosA[0], econPosB[1] - econPosA[1],
+                                econPosB[2] - econPosA[2], vx, vy, vz,
+                                tradeLib.GENERATION_LY_Y);
+                        exp.homing = true;
+                        tradeLib.spawnConvoy(tradeConvoys, -(expIdx + 1), -(expIdx + 1), 0, 0,
+                                0, 0, 0, econY, eta.years);
+                        source.nextExpandY = econY + Math.max(tradeLib.PERIOD_Y, eta.years);
+                        econLogLine('founders departed ' + source.name + ' → ' + exp.name
+                                + ' · ' + formatLy(dLy) + ' · ETA ' + fmtEconY(eta.years)
+                                + (eta.diverged ? ' — the star outruns the ship; it chases' : ''));
+                } else {
+                        // Fast law: the transit ignores drift by declaration.
+                        exp.arriveY = econY + tradeLib.fastTransitY(dLy);
+                        colonyLib.schedule(econLedger, exp.arriveY, colonyLib.EV_EXPEDITION_ARRIVE,
+                                expIdx, 0, 0);
+                        source.nextExpandY = econY + EXPANSION_GAP_FAST_Y;
+                        econLogLine('founders departed ' + source.name + ' → ' + exp.name
+                                + ' · ' + formatLy(dLy) + ' · arrives ' + fmtEconY(exp.arriveY));
+                }
+                syncEconomyPanel();
+        }
+
+        // Per frame (§9): step the running scan under its slice budget, and —
+        // when the clock and the caps allow — arm the next dispatch. One scan
+        // at a time, and never over a user's pending radius scan.
+        function expansionStep() {
+                if (econScan.active) {
+                        const params = selection.aroundSweepParams();
+                        // A user's radius scan restarted the shared sweep:
+                        // abandon ours quietly and let the source retry.
+                        if (!params || params.px !== econScan.px || params.py !== econScan.py
+                                        || params.pz !== econScan.pz || params.r2 !== econScan.r2) {
+                                econScan.active = false;
+                                if (econScan.sourceIdx >= 0) retrySource(econScan.sourceIdx);
+                                return;
+                        }
+                        if (!selection.selectAroundStep(SWEEP_SLICE_RECORDS, ECON_SCAN_MS)) return;
+                        econScan.active = false;
+                        econScanDone();
+                        return;
+                }
+                if (!expansionOn || colonies.length === 0 || aroundPending) return;
+                if (colonies.length >= EXPANSION_MAX_COLONIES) return;
+                if (expeditionFlightCount() >= EXPANSION_MAX_FLIGHT) return;
+                for (let n = 0; n < colonies.length; n++) {
+                        const idx = (expansionCursor + n) % colonies.length;
+                        const colony = colonies[idx];
+                        if (!(econY >= colony.nextExpandY)) continue;
+                        if (colony.comfort < 0.4) continue;   // a starving colony keeps its people
+                        colonyPosOf(idx, econPos);
+                        const radius = tradeSync ? EXPANSION_RADIUS_GEN_KPC : EXPANSION_RADIUS_FAST_KPC;
+                        if (!selection.beginSelectAround(econPos[0], econPos[1], econPos[2],
+                                        radius, 12)) continue;
+                        econScan.active = true;
+                        econScan.mode = ECON_SCAN_EXPAND;
+                        econScan.sourceIdx = idx;
+                        econScan.px = econPos[0]; econScan.py = econPos[1]; econScan.pz = econPos[2];
+                        econScan.r2 = radius * radius;
+                        expansionCursor = (idx + 1) % colonies.length;
+                        return;
+                }
+        }
+
+        function econScanDone() {
+                const around = selection.around;
+                if (around.aborted) {
+                        if (econScan.sourceIdx >= 0) retrySource(econScan.sourceIdx);
+                        return;
+                }
+                if (econScan.mode === ECON_SCAN_SEED) {
+                        if (around.count === 0) {
+                                setAutoMsg('no stars near home — the scenario needs the sky populated');
+                                return;
+                        }
+                        seedFromAroundRow(0);
+                        return;
+                }
+                // Expansion: the nearest candidate that is neither colonised
+                // nor already the target of a living expedition.
+                for (let i = 0; i < around.count; i++) {
+                        const key = around.keys[i] >>> 0;
+                        if (colonyAt(key)) continue;
+                        if (expeditionForKey(key) >= 0) continue;
+                        dispatchExpedition(econScan.sourceIdx, i);
+                        return;
+                }
+                retrySource(econScan.sourceIdx);
+        }
+
+        // --- The arrival ----------------------------------------------------
+        function expeditionArrive(expIdx, atY) {
+                const exp = expeditions[expIdx];
+                if (!exp || exp.arrived) return;
+                exp.arrived = true;
+                const source = colonies[exp.originIdx];
+                if (colonyAt(exp.starKey)) {
+                        // The player (or another expedition) won the star
+                        // meanwhile; the founders are guests, not founders.
+                        econLogLine('founders reached ' + exp.name + ' — a colony is already there');
+                        syncEconomyPanel();
+                        return;
+                }
+                const colony = colonyLib.createColony(exp.starKey, exp.name + ' colony', atY, exp.map,
+                        exp.bx, exp.by, exp.bz);
+                colonies.push(colony);
+                colony.idx = colonies.length - 1;
+                colony.nextExpandY = atY + EXPANSION_GAP_FAST_Y;
+                // Re-bind the star: the residency may have dropped it over the
+                // flight. A fresh pick keeps the inputs honest; a star that is
+                // not resident keeps its snapshot until it comes back.
+                if (starSet.indexOfKey(exp.starKey) < 0 && pickByKey(exp.starKey, econPick)) {
+                        insertStarFromPick(econPick);
+                }
+                selectionStore.selectCurrent(window.SelectionStore.GROUP_ASSET, {
+                        group: window.SelectionStore.GROUP_ASSET,
+                        type: 'colony',
+                        id: 'colony-' + exp.starKey.toString(36),
+                        name: exp.name + ' colony',
+                        key: exp.starKey,
+                        kind: -1, index: -1,
+                        x: exp.bx, y: exp.by, z: exp.bz,
+                });
+                syncSelectionPanel();
+                econLogLine('colony founded at ' + exp.name + ' by the founders from '
+                        + (source ? source.name : 'home') + ' · pop '
+                        + colonyLib.formatPop(colony.pop) + ' · score '
+                        + colony.map.score.toFixed(2));
+                // The net wires itself: the route home, plus the nearest other
+                // neighbour within twice the generation radius when one exists,
+                // so the map meshes instead of chaining (§9).
+                if (source && source.idx !== colony.idx) commissionBetween(source, colony);
+                crossLinkColony(colony, source);
+                syncEconomyPanel();
+        }
+
+        function crossLinkColony(colony, skip) {
+                colonyPosOf(colony.idx, econPosA);
+                let best = null, bestD2 = 0;
+                for (let i = 0; i < colonies.length; i++) {
+                        const other = colonies[i];
+                        if (other === colony || other === skip) continue;
+                        colonyPosOf(i, econPosB);
+                        const dx = econPosB[0] - econPosA[0];
+                        const dy = econPosB[1] - econPosA[1];
+                        const dz = econPosB[2] - econPosA[2];
+                        const d2 = dx * dx + dy * dy + dz * dz;
+                        if (!best || d2 < bestD2) { best = other; bestD2 = d2; }
+                }
+                const maxR2 = 4 * EXPANSION_RADIUS_GEN_KPC * EXPANSION_RADIUS_GEN_KPC;
+                if (best && bestD2 <= maxR2) commissionBetween(colony, best);
+        }
+
+        // --- The trade net refresh (per frame, but only the copies) ---------
+        let tradeNetEdgesVersion = -1;
+        function tradeNetTick() {
+                const n = Math.min(colonies.length, ECON_NET_MAX_COLONIES);
+                tradeNet.show = n > 0 || tradeConvoys.count > 0;
+                if (!tradeNet.show) { tradeNet.colonyCount = 0; tradeNet.shipCount = 0; return; }
+                tradeNet.colonyCount = n;
+                tradeNet.homeIdx = homeColonyIdx < n ? homeColonyIdx : -1;
+                for (let i = 0; i < n; i++) {
+                        colonyPosOf(i, econPos);
+                        tradeNet.colonyPos[i * 3] = econPos[0];
+                        tradeNet.colonyPos[i * 3 + 1] = econPos[1];
+                        tradeNet.colonyPos[i * 3 + 2] = econPos[2];
+                }
+                if (tradeNetEdgesVersion !== routesVersion) {
+                        tradeNetEdgesVersion = routesVersion;
+                        let e = 0;
+                        for (let i = 0; i < tradeRoutes.list.length && e < ECON_NET_MAX_EDGES; i++) {
+                                const route = tradeRoutes.list[i];
+                                if (!route.active) continue;
+                                if (route.origin >= ECON_NET_MAX_COLONIES || route.dest >= ECON_NET_MAX_COLONIES) continue;
+                                tradeNet.edges[e * 2] = route.origin;
+                                tradeNet.edges[e * 2 + 1] = route.dest;
+                                e++;
+                        }
+                        tradeNet.edgeCount = e;
+                }
+                const m = Math.min(tradeConvoys.count, ECON_NET_MAX_SHIPS);
+                tradeNet.shipCount = m;
+                for (let s = 0; s < m; s++) {
+                        const c = tradeConvoys.list[s];
+                        // The convoy record is in its lane's frame (§9); the
+                        // net draws absolute positions, so the origin's live
+                        // position maps the dot back onto the sky.
+                        convoyOrigin(c, econPos);
+                        tradeNet.shipPos[s * 3] = econPos[0] + c.x;
+                        tradeNet.shipPos[s * 3 + 1] = econPos[1] + c.y;
+                        tradeNet.shipPos[s * 3 + 2] = econPos[2] + c.z;
+                        tradeNet.shipFounder[s] = c.route < 0 ? 1 : 0;
+                }
+        }
+
+        // --- The panel -------------------------------------------------------
+        // Selecting a colony's star from the panel: a fresh pick (the star may
+        // have left the set), the primary moves to it, the typed history lands
+        // the star the way a click does.
+        function selectColonyStar(colony) {
+                let i = starSet.indexOfKey(colony.starKey);
+                if (i < 0) {
+                        if (!pickByKey(colony.starKey, econPick)) {
+                                setAutoMsg(colony.name + "'s star is not in view — fly closer");
+                                return;
+                        }
+                        i = insertStarFromPick(econPick);
+                } else {
+                        econPick.key = starSet.keys[i] >>> 0;
+                        econPick.kind = starSet.blockKind[i];
+                        econPick.index = starSet.bufferIdx[i];
+                        econPick.x = starSet.x[i];
+                        econPick.y = starSet.y[i];
+                        econPick.z = starSet.z[i];
+                        econPick.colorIndex = starSet.colorIndex[i];
+                        econPick.absMag = starSet.absMag[i];
+                        econPick.approximated = starSet.approximated[i] ? 1 : 0;
+                        econPickInputs.mass = starSet.mass[i];
+                        econPickInputs.lum = starSet.lum[i];
+                        econPickInputs.teff = starSet.teff[i];
+                        econPickInputs.age = starSet.age[i];
+                        econPickInputs.metal = starSet.metal[i];
+                }
+                starSet.setPrimary(i);
+                selectionStore.selectCurrent(window.SelectionStore.GROUP_SPACE,
+                        selectionFromPick(econPick, econPickInputs));
+                syncSetUi();
+                setAutoMsg(colony.name + ' · pop ' + colonyLib.formatPop(colony.pop)
+                        + ' · comfort ' + Math.round(colony.comfort * 100) + '%');
+        }
+
+        let econListSignature = '';
+        let lastRouteSelectSig = '';
+        // Rebuild the rows when the shape changes (a founding, a commission, a
+        // cancel) and only update their text otherwise — event cadence, never
+        // per frame, and no button churn under the cursor.
+        function syncEconomyPanel() {
+                const activeRoutes = tradeLib.activeRouteCount(tradeRoutes);
+                const founders = expeditionFlightCount();
+                econColonyCount.textContent = colonies.length === 0 ? 'none yet'
+                        : colonies.length + (colonies.length === 1 ? ' colony' : ' colonies');
+                econRouteCount.textContent = activeRoutes === 0 ? 'none yet'
+                        : activeRoutes + (activeRoutes === 1 ? ' route' : ' routes')
+                                + (founders > 0 ? ' · ' + founders + ' in flight' : '');
+                econSeedHome.disabled = colonies.length > 0;
+                econExpansionBox.checked = expansionOn;
+                const sig = colonies.length + ':' + tradeRoutes.list.length + ':' + routesVersion;
+                if (sig !== econListSignature) {
+                        econListSignature = sig;
+                        rebuildEconomyLists();
+                } else {
+                        refreshEconomyListText();
+                }
+                syncRouteSelects();
+        }
+
+        function rebuildEconomyLists() {
+                econColonyList.textContent = '';
+                for (let i = 0; i < colonies.length; i++) {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'econ-colony-row';
+                        button.dataset.colonyIdx = String(i);
+                        econColonyList.appendChild(button);
+                }
+                econRouteList.textContent = '';
+                for (let i = 0; i < tradeRoutes.list.length; i++) {
+                        if (!tradeRoutes.list[i].active) continue;
+                        const item = document.createElement('div');
+                        item.className = 'econ-route-item';
+                        const info = document.createElement('button');
+                        info.type = 'button';
+                        info.className = 'econ-route-info';
+                        info.dataset.routeIdx = String(i);
+                        const cancel = document.createElement('button');
+                        cancel.type = 'button';
+                        cancel.className = 'econ-route-cancel';
+                        cancel.dataset.routeIdx = String(i);
+                        cancel.title = 'Cancel this route — the ledger stops re-arming; convoys already in flight finish.';
+                        cancel.textContent = '\u2715';
+                        item.appendChild(info);
+                        item.appendChild(cancel);
+                        econRouteList.appendChild(item);
+                }
+                refreshEconomyListText();
+        }
+
+        function refreshEconomyListText() {
+                for (const button of econColonyList.querySelectorAll('button[data-colony-idx]')) {
+                        const colony = colonies[Number(button.dataset.colonyIdx)];
+                        if (!colony) continue;
+                        button.textContent = colony.name
+                                + ' · pop ' + colonyLib.formatPop(colony.pop)
+                                + ' · ' + Math.round(colony.comfort * 100) + '%'
+                                + (colony.starving ? ' · starving' : '');
+                        button.title = 'founded ' + fmtEconY(colony.foundedY)
+                                + ' · capital ' + colony.capital.toFixed(1)
+                                + ' · best export ' + colonyLib.RESOURCES[colonyLib.bestExport(colony)].label
+                                + ' — click to select the star';
+                }
+                for (const info of econRouteList.querySelectorAll('button.econ-route-info')) {
+                        const route = tradeRoutes.list[Number(info.dataset.routeIdx)];
+                        if (!route || !route.active) continue;
+                        info.textContent = colonies[route.origin].name + ' \u2192 '
+                                + colonies[route.dest].name + ' · next ' + fmtEconY(route.nextDepartY);
+                        info.title = 'Standing convoy: ' + colonies[route.origin].name
+                                + "'s best export to " + colonies[route.dest].name
+                                + ', every ' + tradeLib.PERIOD_Y
+                                + ' y — click to select the origin star';
+                }
+        }
+
+        function syncRouteSelects() {
+                const sig = colonies.map((c) => c.name).join('|');
+                if (sig !== lastRouteSelectSig) {
+                        lastRouteSelectSig = sig;
+                        econRouteOrigin.textContent = '';
+                        econRouteDest.textContent = '';
+                        for (let i = 0; i < colonies.length; i++) {
+                                const option = document.createElement('option');
+                                option.value = String(i);
+                                option.textContent = colonies[i].name;
+                                econRouteOrigin.appendChild(option);
+                                const option2 = document.createElement('option');
+                                option2.value = String(i);
+                                option2.textContent = colonies[i].name;
+                                econRouteDest.appendChild(option2);
+                        }
+                        if (colonies.length > 1) econRouteDest.selectedIndex = 1;
+                }
+                econRouteCommission.disabled = colonies.length < 2;
+        }
+
+        // One delegated listener per list: rows rebuild often, listeners do not.
+        econColonyList.addEventListener('click', (event) => {
+                const button = event.target.closest('button[data-colony-idx]');
+                if (!button || !econColonyList.contains(button)) return;
+                const colony = colonies[Number(button.dataset.colonyIdx)];
+                if (colony) selectColonyStar(colony);
+        });
+        econRouteList.addEventListener('click', (event) => {
+                const button = event.target.closest('button[data-route-idx]');
+                if (!button || !econRouteList.contains(button)) return;
+                const routeIdx = Number(button.dataset.routeIdx);
+                const route = tradeRoutes.list[routeIdx];
+                if (!route || !route.active) return;
+                if (event.target.closest('.econ-route-cancel')) { cancelRouteAt(routeIdx); return; }
+                const origin = colonies[route.origin];
+                if (origin) selectColonyStar(origin);
+        });
+        econSeedHome.addEventListener('click', () => {
+                if (colonies.length > 0) { setAutoMsg('the scenario already has its first colony'); return; }
+                if (aroundPending) { setAutoMsg('a radius scan is running — try again in a moment'); return; }
+                queueHomeSeed();
+        });
+        econExpansionBox.addEventListener('change', () => {
+                expansionOn = econExpansionBox.checked;
+                econLogLine(expansionOn
+                        ? 'expansion armed — colonies sponsor founders to the nearest unclaimed stars'
+                        : 'expansion stood down');
+                setAutoMsg(expansionOn ? 'expansion armed' : 'expansion off');
+                syncEconomyPanel();
+        });
+        econRouteCommission.addEventListener('click', () => {
+                const origin = colonies[Number(econRouteOrigin.value)];
+                const dest = colonies[Number(econRouteDest.value)];
+                if (!origin || !dest || origin === dest) {
+                        setAutoMsg('a route needs two different colonies');
+                        return;
+                }
+                commissionBetween(origin, dest);
+                syncFlightUi();
+        });
+
+        // --- The reset -------------------------------------------------------
+        // A galaxy change is a new field of stars: the economy's keys, maps,
+        // convoys and routes belong to the old one (§9). Colonies are session
+        // state — there is no save to keep them against.
+        function resetEconomy() {
+                colonies.length = 0;
+                expeditions.length = 0;
+                tradeRoutes.list.length = 0;
+                tradeRoutes.count = 0;
+                tradeConvoys.count = 0;
+                econLedger.count = 0;
+                econLog.length = 0;
+                econY = 0;
+                homeColonyIdx = -1;
+                expansionOn = false;
+                econScan.active = false;
+                routesVersion++;
+                econListSignature = '';
+                lastRouteSelectSig = '';
+                syncFlightEvents();
+                syncEconomyPanel();
+                tradeNetTick();
+        }
+
+        // The panel's first paint and the net's first (empty) state.
+        syncEconomyPanel();
 
         // --- G4: docking, the port service and the cargo hook (§10) ----
         // O is the dock toggle. The station is the current flight
@@ -4416,6 +5228,16 @@ async function boot() {
                                 ? ' ' + colonyLib.RESOURCES[ship.cargoKind].label : '';
                         text += `\ncargo     ${shipLib.formatCargo(ship.cargo)}/${shipLib.formatCargo(ship.class.cargo)}${kind} · ${Math.round(ship.credits)} cr`;
                 }
+                if (colonies.length > 0) {
+                        const activeRoutes = tradeLib.activeRouteCount(tradeRoutes);
+                        const founders = expeditionFlightCount();
+                        text += `\neconomy   ${fmtEconY(econY)} · ${colonies.length} `
+                                + (colonies.length === 1 ? 'colony' : 'colonies')
+                                + ` · ${activeRoutes} ` + (activeRoutes === 1 ? 'route' : 'routes')
+                                + ` · ${tradeConvoys.count} freight · ${founders} `
+                                + (founders === 1 ? 'founder' : 'founders') + ' in flight'
+                                + (expansionOn ? ' · expanding' : '');
+                }
                 if (lifeState >= shipLib.LIFE_CRITICAL) {
                         // The return-home heading shows inside the
                         // warn band too; the chrome marker is the
@@ -4645,7 +5467,10 @@ async function boot() {
                 // transit runs (generation law only — fast freight is
                 // ledger math).
                 if (dtEconY > 0 && tradeConvoys.count > 0) {
-                        tradeLib.advanceConvoys(tradeConvoys, dtEconY, econY, colonyPosOf, (c) => {
+                        tradeLib.advanceConvoys(tradeConvoys, dtEconY, econY, convoyDestPos, (c) => {
+                                // A founder convoy (route < 0) founds on arrival;
+                                // freight lands its tons in the destination stock.
+                                if (c.route < 0) { expeditionArrive(-1 - c.route, econY); return; }
                                 const dest = colonies[c.dest];
                                 dest.stock[c.kind] += c.tons;
                                 econLogLine('convoy arrived ' + dest.name + ' · +'
@@ -4655,6 +5480,10 @@ async function boot() {
                         });
                 }
                 drainEconEvents();
+                // ui.18 §9: the expansion dispatches under its own budgeted
+                // scan, and the trade net's positions ride the drawn sky.
+                expansionStep();
+                tradeNetTick();
                 // Physical seconds this frame (star-seconds under the shared
                 // clock) — the handover feed's unit bridge from drawn motion.
                 framePhysSeconds = dtStar > 0 ? dtStar * 1e6 * shipLib.SECONDS_PER_YEAR : 0;

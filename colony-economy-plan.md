@@ -221,7 +221,9 @@ Flight panel's **Generation ships** checkbox:
   discovered, not scheduled. `etaYears`' first-order intercept (the drawn
   velocity's fixed point) carries the departure log's ETA; a destination
   that outruns the ship is reported as diverging (`ETA ∞`) and the convoy
-  chases it in its own time.
+  chases it in its own time. (ui.18 §9 refines this: the homing and the
+  ETA run in the lane's origin frame — both endpoints co-move, and the
+  residual separation is the flight.)
 
 **The GUI**: the events readout under the port market (the economy clock
 line, route/convoy counts, the log's tail — cached, event cadence), the
@@ -268,4 +270,92 @@ track, never to 0).
   the fast transit years, the ETA fixed point (static, receding,
   perpendicular, outrunning), and the homing law (static arrival within
   the flight time, the drifting chase, no false arrival when the star
-  outruns the ship, swap-last removal).
+  outruns the ship, swap-last removal). ui.18 adds: cancellation flags a
+  route without splicing (slots stay stable, the count stops), and a
+  founder convoy — negative dest — rides the same homing law through the
+  convoy-record oracle.
+
+## §9 The expansion scenario (stage 3, ui.18)
+
+The user's scenario ask: *a colony at the home H location, ships sent out to
+found colonies and trade, an expanding net of routes the player can watch* —
+plus a dedicated panel so colony and route controls stop squatting in the
+Flight workspace.
+
+**The home seed.** `seedHomeColony()` anchors on `model.home.orbitTarget`
+(the Sun for the Milky Way preset, the model centre for the other types —
+the same place H homes to) and takes the nearest resident star a radius scan
+finds. The seed runs automatically the first time game mode is entered with
+no colonies, and from the panel's **Seed home colony** button (enabled until
+one exists). The colony is named `Home`; its star is inserted into the
+selection set so it carries a ring and a live drawn position from the first
+frame. A seed that finds no star in radius reports and retries on the next
+game entry — a camera parked outside the residency is the one honest failure.
+
+**The expansion.** The panel's **Expansion** checkbox arms the automation:
+each colony sponsors one expedition at a time (`nextExpandY` on the colony
+record), dispatched when the economy clock reaches it, the colony is not
+starving (comfort ≥ 0.4), the colony count is under 24 and fewer than 8
+expeditions are in flight. A dispatch scans (budgeted, never a hitch — the
+same slice stepping the click pick uses) the source colony's neighbourhood
+for the nearest star with no colony and no expedition already bound for it,
+inserts that star into the set, generates its resource map at departure (the
+map rides with the expedition — arrival may be a Myr later, when the slot
+the ref named is another star), and flies the expedition under the same two
+transit laws as freight: fast freight schedules an `EV_EXPEDITION_ARRIVE`
+ledger event; generation ships spawn a homing founder convoy whose `dest`
+and `route` carry `-(expIdx+1)`. The cadence gap re-arms at one transit
+estimate (generation) or 8 y (fast), so a source paces itself to its own
+ships.
+
+**The lane's frame is its origin.** A generation ship does 1 ly per 10 ky
+while a disc star orbits at ~220 km/s — seven times the ship's speed — so an
+absolute-space chase needs a good fraction of a galactic orbit to land (the
+first dispatch measured a 125 Myr ETA for a 36 ly hop). But the two
+endpoints of a lane *co-move*: what the ship actually flies is the residual
+separation. Convoy records therefore carry positions **relative to their
+origin colony's live drawn position**, `advanceConvoys`' oracle receives the
+whole convoy record (dest alone cannot name the frame), the ETA intercepts
+the *relative* drift — which the shared orbital motion cancels — and the
+net's drawn dots map back to absolute through the same origin decode. The
+same fix applies to freight convoys and their departure log. A target on a
+genuinely different orbit family (a spheroid star crossing the disc) still
+shows a diverged ETA and an honest chase.
+
+**The home anchor follows the drift.** The model is Sun-centred *at birth*:
+the orbit law carries the Sun and its neighbourhood around the galactic
+centre, while the camera's home pose stays a fixed point in the birth frame.
+A seed anchored there measured zero stars within 65 ly after the clock ran.
+`homeSeedAnchor` therefore reads the Sun landmark's **drawn** position (the
+other types anchor on the model's centre, which does not drift), and the
+automatic game-entry seed carries the freshly boarded ship to the colony it
+just made — the scenario's stage is where the sky draws Home now, not where
+the birth frame parked the camera.
+
+**Arrival founds and wires the net.** `expeditionArrive` creates the colony
+from the carried map at the arrival year, lands the typed `colony` asset,
+commissions the route back to the origin colony, and — when another colony
+sits within twice the expansion radius — a second route to that nearest
+neighbour, so the map grows a mesh, not a chain. A star that won a player
+colony meanwhile keeps it; the expedition logs and retires.
+
+**The trade net on the sky.** The label layer gains a pass (`setTradeNet`
++ `drawTradeNet`) drawn every frame from a main.js-owned state record:
+active routes as segments between the colonies' live drawn positions,
+colonies as small green rings (the home colony amber and larger), convoys
+and founder expeditions as dots (freight cyan, founders amber). The pass
+runs whenever a colony exists, in either mode, independent of the landmark
+labels toggle — it is game state, not chrome.
+
+**The panel** (`#economenu`, right column, above Controls): the seed button
+and Expansion checkbox, the **Generation ships** checkbox (moved from the
+Flight panel — the trade law is economy business), the events log (moved
+from `#flight-events` to `#econ-events`), the colony list (name · pop ·
+comfort, click selects the star), the route list (origin → dest, next
+departure, ✕ cancels — a cancelled route stays in the array flagged
+inactive so ledger payloads and convoy records keep their indices), and a
+commission row (two selects + button) so a route can be wired between any
+two colonies without docking first. The HUD gains an economy line while
+colonies exist. The Flight panel keeps the dock-context Found colony and
+Commission route buttons — they are the pilot's quick actions — and the
+port market readout.

@@ -52,9 +52,9 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 - `plan.md` — the development plan. Clean artifact, no implementation log. §19 indexes the per-release plans; shipped ones live in `archive/`, the completed 0.5 series is also archived below.
 - `archive/0.5.0-plan-planet-generator.md` — the 0.5 plan: star selection and multi-select (0.5.0), the lazy deterministic planet-system generator (0.5.1), star and planet search (0.5.2), the close-system schematic view (0.5.3), the delta-v map (0.5.4), routes and autopilot (0.5.5). CPU-only: no star-buffer or WGSL growth.
 - `findings-pitfalls-skills.md` — notes and pitfalls for LLM agents. Write here when you find a good way to do something, a non-obvious gotcha, or a useful technique. Append-only.
-- `colony-economy-plan.md` — the colony economy (ui.16–ui.17): the per-system
+- `colony-economy-plan.md` — the colony economy (ui.16–ui.18): the per-system
   resource map, the event-driven advance law (arrive/inspect), the port
-  market, the hold/credits trade, and the stage-2 event ledger with
+  market, the hold/credits trade, the stage-2 event ledger with
   commissioned trade routes in the two transit laws (fast freight,
   generation ships synced to star time). Both stages shipped; §7 (mixed
   holds, tourism, colonist flows) stays recorded, not promised.
@@ -94,10 +94,14 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
   `cancel`, cap 64). main.js owns the events: `econY` (the economy clock —
   the shared ship clock in game mode, the star clock in synced observer
   mode), arrive at the dock commit, inspect on the system view's open.
-- `src/core/trade.js` — the commissioned trade routes (ui.17): the standing
-  convoy's records and laws — the departure cargo guard (§6's cap and the
-  two-year need), the fast scheduled transit, the generation ships' homing
-  advance and the ETA fixed point. Pure laws; main.js owns when they run.
+- `src/core/trade.js` — the commissioned trade routes (ui.17, ui.18): the
+  standing convoy's records and laws — the departure cargo guard (§6's cap
+  and the two-year need), the fast scheduled transit, the generation
+  ships' homing advance and the ETA fixed point (ui.18: the oracle takes
+  the convoy record so main.js can fly the lane's origin-relative frame,
+  and cancellation flags a route without splicing — ledger payloads and
+  convoy records keep their indices). Pure laws; main.js owns when they
+  run.
 - `src/core/route.js` — CPU-only fixed-cap itineraries, shared ship table, cumulative fuel/life support, signed launch windows, interstellar cruise, closed-form autopilot positions. The system layer draws local routes; main.js wires node picking, round trips, selected-star endpoints and start/pause/resume.
 - `src/core/presets.js` — the settings-preset format: the whole menu as one URL-language text line (serialize/parse, menu defaults) plus the LLM prompt builder of `archive/copy-paste-preset-prompt.md`, and the built-in named presets (the Milky Way arrival: frozen sky, fly home beside the Sun, constellation lines; and `Evolve`: the same type from `AGE_MIN` with the star clock at its top rate). main.js owns the DOM glue (copy/paste/save/load/apply, the prompt-free Ctrl+V paste event, and the builtin buttons); `presetQueryOf` is the gate a clipboard or file must pass before it reaches the box — text with no preset key is reported, never printed there. Built-ins carry no star counts (the viewer's budget, not the look); a pasted `stars` re-draws the field at that budget. A field tagged with the movement pass that owns it (`engine: 'apocenter'`) is part of the preset only while that pass is selected, and the menu hides the same rows through their `data-engine` attribute.
 

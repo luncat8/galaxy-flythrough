@@ -422,14 +422,11 @@
 			<div class="flight-port-row">
 				<button id="flight-route" type="button" disabled title="Commission a standing convoy between this port's colony and a second colony (colony-economy-plan §6). Every 2 y of economy time a departure carries up to 50 t of the origin's best export — never below its own two-year need — and lands it at the destination. The destination is the locked destination star or the primary selection; it must own a colony.">Commission route</button>
 			</div>
-			<label class="flight-autopilot" for="flight-sync-trade" title="Sync the economy with the star clock and fly the convoys as generation ships: 1 ly per 10 ky, star time 0.1 Myr/s — the stars move while the ships chase them (ui.17). Off: fast freight at 0.2 ly/y, drift over the transit ignored, the economy runs on the game clock only.">
-				<input type="checkbox" id="flight-sync-trade">
-				<span>Generation ships</span>
-				<small>sync with star time · 1 ly / 10 ky · 0.1 Myr/s</small>
-			</label>
+			<!-- ui.18: the Generation ships checkbox and the events log moved to
+			     the Colonies &amp; routes panel (§9) — the trade law is economy
+			     business, not pilot business. The market stays: it is the port's. -->
 			<div id="flight-port-state" class="flight-port-state">not docked · O docks at a settled station</div>
 			<pre id="flight-market" class="flight-market"></pre>
-			<pre id="flight-events" class="flight-market"></pre>
 
 			<div class="flight-section-heading"><span>Fly to destination</span><small>select star → set → check autopilot</small></div>
 			<div class="flight-destination-row">
@@ -495,6 +492,41 @@
 		<div class="menu-row" data-view="system"><span id="route-hint">Choose map nodes, or route from previous star to current star.</span></div>
 		<div class="menu-hint">Pilot: select a star, Use selected, choose a mode, check autopilot · Map: V opens / B cycles · Tab hides panels</div>
 	</div>
+	<!-- Colonies &amp; routes (ui.18, colony-economy-plan §9): the economy's own
+	     workspace — the scenario seed and expansion, the colony and route lists
+	     with their controls, and the events log (moved here from the Flight
+	     panel, which keeps the pilot's dock-context quick actions). -->
+	<div id="economenu" class="panel">
+		<div class="menu-header">
+			<span>Colonies &amp; routes</span>
+			<button id="economenu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab hides all panels)" aria-expanded="true">▾</button>
+		</div>
+		<div class="flight-section-heading"><span>Scenario</span><small>home · expansion</small></div>
+		<div class="econ-scenario-row">
+			<button id="econ-seed-home" type="button" title="Found the Home colony at the star nearest the home location (H) — the Sun in the Milky Way preset, the model centre otherwise. The first game-mode entry seeds it automatically. Free, like every founding: the player is the catalyst, not the owner.">Seed home colony</button>
+			<label class="flight-autopilot" for="econ-expansion" title="Arm the expansion (ui.18 §9): every colony sponsors one expedition at a time to the nearest unclaimed star in its neighbourhood. Arrival founds a colony, commissions the route home and — when a neighbour is near — a second route, so the net meshes as it grows. Runs on the economy clock: the shared ship clock in game mode, the star clock with Generation ships on.">
+				<input type="checkbox" id="econ-expansion">
+				<span>Expansion</span>
+			</label>
+		</div>
+		<label class="flight-autopilot" for="econ-generation" title="Sync the economy with the star clock and fly the convoys as generation ships: 1 ly per 10 ky, star time 0.1 Myr/s — the stars move while the ships chase them (ui.17). Off: fast freight at 0.2 ly/y, drift over the transit ignored, the economy runs on the game clock only.">
+			<input type="checkbox" id="econ-generation">
+			<span>Generation ships</span>
+			<small>sync with star time · 1 ly / 10 ky · 0.1 Myr/s</small>
+		</label>
+		<div class="flight-section-heading"><span>Colonies</span><small id="econ-colony-count">none yet</small></div>
+		<div id="econ-colonies" class="econ-list" title="Click a colony to select its star."></div>
+		<div class="flight-section-heading"><span>Routes</span><small id="econ-route-count">none yet</small></div>
+		<div id="econ-routes" class="econ-list" title="Click a route to select the origin's star; the ✕ cancels it."></div>
+		<div class="econ-route-row">
+			<select id="econ-route-origin" title="The route's origin colony — its best export departs from here every 2 y of economy time."></select>
+			<span class="econ-route-arrow">&#8594;</span>
+			<select id="econ-route-dest" title="The route's destination colony — the freight lands in its stock."></select>
+			<button id="econ-route-commission" type="button" title="Commission the standing route between the two chosen colonies — no docking required (ui.18 §9).">Commission</button>
+		</div>
+		<pre id="econ-events" class="flight-market"></pre>
+	</div>
+
         <!-- Controls (ui.6): the old read-only help <pre> as a clickable panel.
              Buttons fire the same one-shot action flags the keyboard sets (the
              loop consumes them next frame, so a click and a key press run one

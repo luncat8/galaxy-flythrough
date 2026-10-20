@@ -421,6 +421,18 @@ function createSelection(camera, landmarks) {
 		return around.count;
 	}
 
+	// ui.18 (colony-economy-plan §9): a second budgeted consumer (the
+	// expansion's dispatch scan) shares this one sweep state with the
+	// user's radius scan, and beginSelectAround restarts it without
+	// asking. The stepper's owner compares the parameters it began with
+	// against these and abandons quietly on a mismatch, so a result is
+	// never consumed by the wrong side.
+	function aroundSweepParams() {
+		if (!aroundSweep.active) return null;
+		return { px: aroundSweep.px, py: aroundSweep.py, pz: aroundSweep.pz,
+			r2: aroundSweep.r2, cap: aroundSweep.cap };
+	}
+
 	// Plan §3.1. `out` is caller-owned and filled in place:
 	//   { key, kind, index, x, y, z, packed, colorIndex, absMag, dist2, approximated }
 	// `kind` is the block's index, which equals `PlanetsLib.BLOCK_*`
@@ -612,7 +624,7 @@ function createSelection(camera, landmarks) {
 
 	return {
 		pick, pickAny, beginPick, pickStep, pickResult,
-		selectAround, beginSelectAround, selectAroundStep, around, resolveDrawn,
+		selectAround, beginSelectAround, selectAroundStep, aroundSweepParams, around, resolveDrawn,
 		resolveDrawnVelocity,
 		setOrbitState, setRenderer,
 	};

@@ -1598,8 +1598,15 @@ tests and extend the file layout of §11 as needed.
    milestone/famine emission, the commissioned routes in `src/core/trade.js`,
    the two transit laws: fast scheduled freight and generation ships homing
    on the live drawn sky under the star-time sync, the events GUI, and the
-   star-time slider's fine/full tracks). Additive and CPU-only like the
-   rest; §7 stays recorded, not promised.
+   star-time slider's fine/full tracks); stage 3 shipped (ui.18 — the
+   expansion scenario: the Home colony seeded at the drawn Sun on the first
+   game entry, founder expeditions dispatched under both transit laws that
+   found colonies and wire the route home plus a cross-link, convoys flying
+   the lane's origin-relative frame (the co-moving residual, not the
+   absolute chase), the trade net drawn on the sky by the label layer, and
+   the dedicated Colonies & routes panel with seed/expansion controls, the
+   colony and route lists, panel commissioning and route cancellation).
+   Additive and CPU-only like the rest; §7 stays recorded, not promised.
 
 The [0.5 planet series](archive/0.5.0-plan-planet-generator.md) is complete:
 selection, generator, search, schematic, delta-v map and ships/routes/autopilot.

@@ -72,7 +72,10 @@ No framework, bundler, module loader, or runtime network connection is required.
   ([colony-economy-plan.md](colony-economy-plan.md)). Commissioned convoy
   routes then run themselves on the economy clock — fast freight at
   0.2 ly/y, or generation ships at 1 ly per 10 ky synced to star time —
-  narrated by an events ledger (milestones, famine, departures, arrivals)
+  narrated by an events ledger (milestones, famine, departures, arrivals).
+  The expansion scenario grows the network on its own: Home seeds at the
+  home star, founder expeditions claim neighbours and wire the routes,
+  and the whole net draws on the sky (§9)
 - Close-system schematic view: `V` opens a log-polar map of the primary selection — HZ
   annulus, orbit ellipses, stippled belts, star and planet icons — with its own
   system-time clock and a full-figures readout
@@ -127,7 +130,18 @@ Other controls:
   time lives; 0.1 Myr/s is 5 % of the track) and the full −1–99 Myr/s
   (0.5 steps, follow at the left end); the readout carries three decimals
   under 1 Myr/s, and the observer default is 1 Myr/s
-- the **Generation ships** checkbox (game mode, Flight panel Port section) —
+- the **Colonies & routes** panel (right column) — the economy's own
+  workspace: **Seed home colony** founds Home at the star nearest the
+  home H location (automatic on the first game entry), **Expansion**
+  arms the scenario (each colony sponsors founder expeditions to the
+  nearest unclaimed stars; arrival founds a colony, commissions the route
+  home and cross-links a neighbour, so the net of routes expands on its
+  own — visible on the sky as dashed lanes, green colony rings, the
+  amber Home ring and in-flight ship dots), the colony list (click
+  selects the star), the route list (click selects the origin, ✕
+  cancels), a commission row for any two colonies without docking, and
+  the economy events log ([colony-economy-plan.md §9](colony-economy-plan.md))
+- the **Generation ships** checkbox (Colonies & routes panel) —
   sync the economy with star time: the convoys fly at 1 ly per 10 ky with
   star time at 0.1 Myr/s (in game mode: the shared clock's 1e5 y/s rung),
   homing on the moving destination; off — fast freight at 0.2 ly/y with the
@@ -234,7 +248,8 @@ needed.
   locked destination's star, or the primary selection's, when it owns
   one): every 2 y of economy time a departure carries up to 50 t of the
   origin's best export — never below its own two-year need — and lands
-  it at the destination. The **Generation ships** checkbox sets the
+  it at the destination. The **Generation ships** checkbox (in the
+  Colonies & routes panel since ui.18) sets the
   transit law: on, the convoys fly at 1 ly per 10 ky with star time at
   0.1 Myr/s and the economy clock synced to the star clock (colonies age
   while the stars drift; the ships home on the moving destination, the
@@ -413,10 +428,12 @@ See [`plan.md`](plan.md) for the complete design, the versioned plans for model 
 
 ## Next priorities
 
-The colony economy's stages 1–2 shipped (ui.16 — maps, colonies, markets,
+The colony economy's stages 1–3 shipped (ui.16 — maps, colonies, markets,
 trade; ui.17 — the event ledger, commissioned routes with the two transit
-laws, the star-time sync and the events GUI). The §7 list (mixed holds,
-tourism, colonist flows) stays recorded, not promised.
+laws, the star-time sync and the events GUI; ui.18 — the expansion
+scenario with the Home seed, founder expeditions, the origin-frame convoys,
+the drawn trade net and the Colonies & routes panel). The §7 list (mixed
+holds, tourism, colonist flows) stays recorded, not promised.
 
 [Movement CPU/WGSL parity](movement-parity-plan.md) takes priority over visual tuning.
 The outstanding real-browser engine/preset checks and non-critical bar polish are

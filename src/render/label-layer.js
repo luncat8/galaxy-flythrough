@@ -33,6 +33,24 @@ const SELECT_RING_PX = 7;
 // many-star selection still reads as one primary plus a cloud.
 const SET_RING_PX = 4;
 const SET_RING = 'rgba(255, 215, 94, 0.45)';
+// The trade net (ui.18 colony-economy-plan §9): commissioned routes as
+// dashed segments between the colonies' live drawn positions, colonies as
+// small green rings (the home colony amber and larger), convoys and founder
+// expeditions as dots. Game state, not chrome — drawn whenever a colony
+// exists, independent of the landmark labels toggle.
+const NET_LINE = 'rgba(120, 235, 175, 0.6)';
+const NET_LINE_DASH = [4, 4];
+const NET_COLONY = 'rgba(130, 240, 180, 0.95)';
+const NET_HOME = 'rgba(255, 195, 95, 0.95)';
+const NET_SHIP = 'rgba(150, 240, 255, 0.95)';
+const NET_FOUNDER = 'rgba(255, 195, 95, 0.95)';
+const NET_COLONY_RING_PX = 6;
+const NET_HOME_RING_PX = 10;
+const NET_SHIP_PX = 2.5;
+const NET_MAX_COLONIES = 32;
+const NET_MAX_SHIPS = 64;
+const netScreen = new Float32Array(NET_MAX_COLONIES * 2);
+const netFront = new Uint8Array(NET_MAX_COLONIES);
 // Key→slot map: MAP_SIZE slots, linear probing. The key is stored next to the
 // slot and a separate `used` byte marks occupancy — a 32-bit key can be zero or
 // negative, so neither the key nor the slot can double as the empty marker.
@@ -482,6 +500,77 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		ctx.arc(scratch[0], scratch[1], SET_RING_PX, 0, Math.PI * 2);
 	}
 
+	// --- The trade net (ui.18 §9) ---------------------------------------
+	// main.js owns the record (positions refreshed every frame from the
+	// live drawn sky); the layer owns only the projection and the paint.
+	let tradeNet = null;
+	let netDrawn = false;
+	function setTradeNet(net) { tradeNet = net || null; }
+	function tradeNetOn() {
+		return !!(tradeNet && tradeNet.show
+			&& (tradeNet.colonyCount > 0 || tradeNet.shipCount > 0));
+	}
+	function drawTradeNet(camera, width, height) {
+		const net = tradeNet;
+		if (!net) return;
+		const viewProj = camera.buildViewProj(width / height);
+		const cam = camera.cameraPos;
+		const n = Math.min(net.colonyCount, NET_MAX_COLONIES);
+		for (let i = 0; i < n; i++) {
+			netFront[i] = labelCoords.projectToScreen(viewProj,
+				net.colonyPos[i * 3], net.colonyPos[i * 3 + 1], net.colonyPos[i * 3 + 2],
+				cam[0], cam[1], cam[2], width, height, scratch) ? 1 : 0;
+			if (netFront[i]) {
+				netScreen[i * 2] = scratch[0];
+				netScreen[i * 2 + 1] = scratch[1];
+			}
+		}
+		// Routes first, under the markers: dashed segments, both ends on
+		// screen (a segment with one end behind the camera is the same
+		// figure the constellations skip).
+		ctx.strokeStyle = NET_LINE;
+		ctx.lineWidth = 1.5;
+		ctx.setLineDash(NET_LINE_DASH);
+		ctx.beginPath();
+		const e = Math.min(net.edgeCount, (net.edges.length >> 1));
+		for (let k = 0; k < e; k++) {
+			const a = net.edges[k * 2], b = net.edges[k * 2 + 1];
+			if (a >= n || b >= n || !netFront[a] || !netFront[b]) continue;
+			ctx.moveTo(netScreen[a * 2], netScreen[a * 2 + 1]);
+			ctx.lineTo(netScreen[b * 2], netScreen[b * 2 + 1]);
+		}
+		ctx.stroke();
+		ctx.setLineDash([]);
+		// Colonies: small green rings, the home colony amber and larger.
+		ctx.lineWidth = 2;
+		ctx.strokeStyle = NET_COLONY;
+		ctx.beginPath();
+		for (let i = 0; i < n; i++) {
+			if (!netFront[i] || i === net.homeIdx) continue;
+			ctx.moveTo(netScreen[i * 2] + NET_COLONY_RING_PX, netScreen[i * 2 + 1]);
+			ctx.arc(netScreen[i * 2], netScreen[i * 2 + 1], NET_COLONY_RING_PX, 0, Math.PI * 2);
+		}
+		ctx.stroke();
+		if (net.homeIdx >= 0 && net.homeIdx < n && netFront[net.homeIdx]) {
+			const hx = netScreen[net.homeIdx * 2], hy = netScreen[net.homeIdx * 2 + 1];
+			ctx.strokeStyle = NET_HOME;
+			ctx.beginPath();
+			ctx.moveTo(hx + NET_HOME_RING_PX, hy);
+			ctx.arc(hx, hy, NET_HOME_RING_PX, 0, Math.PI * 2);
+			ctx.stroke();
+		}
+		// Ships in flight: freight cyan, founder expeditions amber.
+		const m = Math.min(net.shipCount, NET_MAX_SHIPS);
+		for (let s = 0; s < m; s++) {
+			if (!labelCoords.projectToScreen(viewProj,
+				net.shipPos[s * 3], net.shipPos[s * 3 + 1], net.shipPos[s * 3 + 2],
+				cam[0], cam[1], cam[2], width, height, scratch)) continue;
+			ctx.fillStyle = net.shipFounder[s] ? NET_FOUNDER : NET_SHIP;
+			ctx.beginPath();
+			ctx.arc(scratch[0], scratch[1], NET_SHIP_PX, 0, Math.PI * 2);
+			ctx.fill();
+		}
+	}
 	function resize(widthCss, heightCss, dpr) {
 		const w = Math.max(1, Math.round(widthCss * dpr));
 		const h = Math.max(1, Math.round(heightCss * dpr));
@@ -573,10 +662,13 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	// marks; with both off, a cleared canvas is left alone.
 	function draw(camera, width, height) {
 		const chromeOn = chrome.active;
-		if (!enabled && !chromeOn && !chromeDrawn) return;
+		const netOn = tradeNetOn();
+		if (!enabled && !chromeOn && !chromeDrawn && !netOn && !netDrawn) return;
 		ctx.clearRect(0, 0, width, height);
 		chromeDrawn = chromeOn;
+		netDrawn = netOn;
 		if (!(width > 0) || !(height > 0)) return;
+		if (netOn) drawTradeNet(camera, width, height);
 		if (enabled) {
 			projectAll(camera, width, height);
 			if (showLines) drawLines();
@@ -611,7 +703,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	return {
 		resize, draw, setSelected, setOrbitState, setStarSource, setSelectedKeys,
 		toggleConstellations, setConstellations, constellationsVisible, setEnabled,
-		setShipChrome,
+		setShipChrome, setTradeNet,
 	};
 }
 

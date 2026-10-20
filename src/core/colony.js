@@ -45,8 +45,10 @@ const COLONY_SEED_SALT = 0x43f6c0;
 // per frame — the per-frame cost is the peek `count > 0 && at[0] <= toY`.
 // Payloads: ROUTE_DEPART (a route idx), ROUTE_ARRIVE (a route idx,
 // b resource kind, c tons), MILESTONE (a colony idx, c the pop threshold),
-// FAMINE (a colony idx, b 1 entered / 0 lifted).
-const EV_ROUTE_DEPART = 0, EV_ROUTE_ARRIVE = 1, EV_MILESTONE = 2, EV_FAMINE = 3;
+// FAMINE (a colony idx, b 1 entered / 0 lifted), EXPEDITION_ARRIVE
+// (a expedition idx, ui.18 §9 — the fast-law founder landing).
+const EV_ROUTE_DEPART = 0, EV_ROUTE_ARRIVE = 1, EV_MILESTONE = 2, EV_FAMINE = 3,
+	EV_EXPEDITION_ARRIVE = 4;
 const LEDGER_CAP = 64;
 // Population milestones (k persons). The crossing years are events, so the
 // GUI can narrate the colony without polling it; 40k is the carrying band's
@@ -389,7 +391,7 @@ const ColonyLib = {
 	createTradeOut, buyAtPort, sellAtPort,
 	formatPop, easeBar, marketLine, TAG_NAMES,
 	clamp01,
-	EV_ROUTE_DEPART, EV_ROUTE_ARRIVE, EV_MILESTONE, EV_FAMINE,
+	EV_ROUTE_DEPART, EV_ROUTE_ARRIVE, EV_MILESTONE, EV_FAMINE, EV_EXPEDITION_ARRIVE, EV_EXPEDITION_ARRIVE,
 	POP_MILESTONES, LEDGER_CAP,
 	createEventLedger, schedule, dueEvents, cancel,
 };

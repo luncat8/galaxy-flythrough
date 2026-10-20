@@ -2199,3 +2199,59 @@ every anchor before replacing. Keep new files on Write. A patch script
 that itself holds tab-indented payload strings can pass its blocks
 through a retab() normalizer so the script stays correct even after
 being mangled by an edit round.
+
+---
+
+## 2026-10-20 — Three frames of "where": birth, drawn, and the lane's origin (ui.18's measured lessons)
+
+The expansion scenario needed three position answers the codebase already
+distinguished pairwise, but never all at once, and each mismatch was found
+by measurement rather than by reading:
+
+* **The birth frame is where records live; the drawn frame is where the sky
+  is.** A radius scan compares *drawn* positions, so a scan centred on the
+  birth home coordinate `[0, 0, 0]` honestly returned zero stars within
+  65 ly once the star clock had run: the model is Sun-centred at birth and
+  the orbit law carries the Sun (and its neighbourhood) around the
+  galactic centre, while the home camera pose stays a fixed birth-frame
+  point. Any "find the home star" anchor must go through
+  `engineLandmarkPosition` at the current `starTimeMyr`. The same trap
+  caught the ship's spawn: posing it at the pick's birth `x/y/z` left it
+  kiloparsecs from the colony; `colonyPosOf` (the drawn resolution) is the
+  one to use.
+* **A lane's endpoints co-move; the ship flies the residual.** A disc star
+  orbits at ~220 km/s — seven times a generation ship's 1 ly/10 ky — so
+  an absolute-space intercept reported a 125 Myr ETA for a 36 ly hop, and
+  the honest chase would have taken a good fraction of a galactic orbit.
+  Both endpoints share the orbital motion; subtracting the origin's
+  velocity and position (convoy records in the lane's origin frame, ETA on
+  the relative drift) turned the same hop into a 265 ky flight that
+  arrived on schedule. When a mechanic looks impossibly slow, check whose
+  frame the velocities are measured in before tuning any numbers.
+* **A shared sweep needs an ownership check.** `beginSelectAround` restarts
+  the one sweep state without asking, so a second budgeted consumer (the
+  expansion's dispatch scan) can be silently hijacked by a user's radius
+  scan mid-walk. `aroundSweepParams()` exposes the sweep's own parameters
+  and the stepper compares them every frame — a mismatch abandons the
+  scan instead of consuming another caller's result.
+
+## 2026-10-20 — Headless WebGPU verification: SwiftShader works, but the browser cache lies
+
+The deferred browser pass can actually run headless, and the recipe is
+worth keeping: launch the Playwright Chromium directly with
+`--headless=new --enable-unsafe-webgpu --use-angle=swiftshader --use-gl=angle
+--remote-debugging-port=9222` and drive it through `agent-browser --cdp
+9222` (plain `agent-browser open` has no GPU adapter and the app dies at
+`initDevice`). Two gotchas measured along the way:
+
+* **`GPU device lost (destroyed)` can be cosmetic.** The error box showed
+  it after a reload while rendering, the economy and the HUD all kept
+  living — judge health by the overlay's FPS line and the scenario's
+  events, not the banner alone.
+* **Chrome serves cached JS across reloads from `python3 -m http.server`
+  with no revalidation** (heuristic caching; `transferSize: 0` in
+  `performance.getEntriesByType('resource')` is the tell). Two "the code
+  doesn't work" sessions were stale-file false negatives. Start each
+  verification session with a fresh `--disk-cache-dir`, and prove the
+  *running* code has your change (a version marker or a debug handle set
+  inside the suspect function) before believing a negative result.

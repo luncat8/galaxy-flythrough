@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-20T06:05:51.965Z",
+  "date": "2026-10-20T12:51:09.994Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -82,9 +82,9 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 109,
-  "passed": 108,
-  "failed": 1,
+  "totalChecks": 116,
+  "passed": 116,
+  "failed": 0,
   "checks": [
     {
       "name": "index.html loads main.js last",
@@ -144,8 +144,8 @@
       "pass": true
     },
     {
-      "name": "startup stellar rate is 5 Myr/s and freeze resumes that rate",
-      "pass": false
+      "name": "startup stellar rate is 1 Myr/s on the fine track and freeze resumes that rate",
+      "pass": true
     },
     {
       "name": "the page starts in galaxy-centre orbit with unlocked input",
@@ -335,6 +335,34 @@
     },
     {
       "name": "opening a panel releases pointer lock",
+      "pass": true
+    },
+    {
+      "name": "the economy panel exists with its controls and the moved elements left Flight",
+      "pass": true
+    },
+    {
+      "name": "the scenario seeds Home at H on the first game entry and the button can do it too",
+      "pass": true
+    },
+    {
+      "name": "the expansion arms, scans under a budget and dispatches under both transit laws",
+      "pass": true
+    },
+    {
+      "name": "arrival founds from the carried map and wires the route home plus a cross-link",
+      "pass": true
+    },
+    {
+      "name": "the trade net is drawn from a main-owned record on the label layer",
+      "pass": true
+    },
+    {
+      "name": "routes cancel by flag, the ledger drops their events and the panel wires both sides",
+      "pass": true
+    },
+    {
+      "name": "the core laws export the cancellation and the expedition arrival",
       "pass": true
     },
     {
