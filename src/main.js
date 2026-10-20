@@ -154,6 +154,7 @@ async function boot() {
         // outlives the toggle; the observer's Myr/s rate stays parked in
         // starTimeRate and is simply not consulted while the ship's clock runs.
         const shipLib = window.Ship;
+        const colonyLib = window.ColonyLib;
         let gameMode = false;
         const AUTOPILOT_MIN_WALL_SECONDS = 4;
         let shipTimeRateCapY = Infinity;
@@ -927,6 +928,8 @@ async function boot() {
         const flightCargoLoad = document.getElementById('flight-cargo-load');
         const flightCargoUnload = document.getElementById('flight-cargo-unload');
         const flightPortState = document.getElementById('flight-port-state');
+        const flightFoundColony = document.getElementById('flight-found-colony');
+        const flightMarket = document.getElementById('flight-market');
         const shipList = document.getElementById('ship-list');
         const fleetCount = document.getElementById('fleet-count');
         const shipSpawn = document.getElementById('ship-spawn');
@@ -1126,6 +1129,7 @@ async function boot() {
         flightDock.addEventListener('click', () => { actions.dock = 1; });
         flightCargoLoad.addEventListener('click', () => { actions.cargoLoad = 1; });
         flightCargoUnload.addEventListener('click', () => { actions.cargoUnload = 1; });
+        flightFoundColony.addEventListener('click', () => { if (gameMode) gameFoundColony(); });
         flightAutoDest.addEventListener('change', () => {
                 if (flightAutoDest.checked) {
                         if (!gameMode) {
@@ -1295,6 +1299,9 @@ async function boot() {
                         followKey = starSet.keys[p] >>> 0;
                 }
                 syncViewRows();
+                // Inspect (§5): opening the view advances the colony to the
+                // shared clock before the readout reads it.
+                colonyInspect(starSet.keys[p] >>> 0);
                 writeSystemReadout();
                 return true;
         }
@@ -1371,8 +1378,26 @@ async function boot() {
         // an immediate refresh on enter and on a schematic click, so the
         // ◀ marker never lags the ring.
         function writeSystemReadout() {
-                sysread.textContent = systemLayer.readoutText();
-		syncRouteUi();
+                // The colony block (§5) appends to the schematic's own
+                // readout when the opened star owns a colony — the market
+                // rows read the advanced state.
+                const p = starSet.primary;
+                const colony = (p >= 0 && systemLayer.isOpen()) ? colonyAt(starSet.keys[p] >>> 0) : null;
+                let block = '';
+                if (colony) {
+                        block = '\ncolony    ' + colony.name
+                                + ' · founded ' + colony.foundedY.toFixed(1)
+                                + ' y · last event ' + colony.lastY.toFixed(1) + ' y'
+                                + '\n          pop ' + colonyLib.formatPop(colony.pop)
+                                + ' · capital ' + colony.capital.toFixed(1)
+                                + ' · comfort ' + Math.round(colony.comfort * 100) + '%'
+                                + (colony.coarse ? ' · coarse' : '');
+                        for (let r = 0; r < colonyLib.RESOURCES.length; r++) {
+                                block += '\n          ' + colonyLib.marketLine(r, colony);
+                        }
+                }
+                sysread.textContent = systemLayer.readoutText() + block;
+                syncRouteUi();
         }
 
         // The cursor over the schematic. The canvas spans the viewport at
@@ -3284,9 +3309,14 @@ async function boot() {
                 flightDock.textContent = ship.docked ? 'Undock' : 'Dock';
                 flightDock.disabled = !gameMode;
                 flightCargoLoad.disabled = flightCargoUnload.disabled = !ship.docked;
+                flightFoundColony.disabled = !gameMode || !ship.docked || !!colonyAt(ship.station.key);
+                const portColony = ship.docked ? colonyAt(ship.station.key) : null;
                 setTextIfChanged(flightPortState, ship.docked
-                        ? `docked at ${ship.station.name} port · cargo ${shipLib.formatCargo(ship.cargo)}/${shipLib.formatCargo(ship.class.cargo)} · tank and life restored`
+                        ? (portColony
+                                ? `docked at ${ship.station.name} port · colony pop ${colonyLib.formatPop(portColony.pop)} · comfort ${Math.round(portColony.comfort * 100)}% · best export ${colonyLib.RESOURCES[colonyLib.bestExport(portColony)].label} · ${Math.round(ship.credits)} cr`
+                                : `docked at ${ship.station.name} port · no colony · no market here · ${Math.round(ship.credits)} cr`)
                         : 'not docked · O docks at a settled station');
+                syncFlightMarket();
                 flightUseSelected.disabled = starSet.primary < 0 || autoActive;
                 flightClearDestination.disabled = !flightDestination.active || autoActive;
                 // Unified checkbox UI: destination autopilot and target-stop are
@@ -3731,6 +3761,111 @@ async function boot() {
                 setAutoMsg('autopilot off \u00b7 velocity kept');
         }
 
+        // --- The colony economy (colony-economy-plan.md) -----------------
+        // Session state like the fleet. The map is derived once at founding
+        // from the port star's generated system; the colony owns it from
+        // then on (§2). `gameClockY` is the shared clock's cumulative years
+        // — the one timeline the arrive/inspect advances read. It only
+        // moves in game mode, so an inspect out of it shows the colony
+        // frozen at its last event (§5): factories run on events, never
+        // per frame.
+        let gameClockY = 0;
+        const colonies = [];
+        const colonyRecord = selectPlanets.createSystemRecord();
+        const colonyCtx = {};
+        const colonyMapOut = colonyLib.createResourceMap();
+        const tradeOut = colonyLib.createTradeOut();
+
+        function colonyAt(key) {
+                for (let i = 0; i < colonies.length; i++) {
+                        if (colonies[i].starKey === (key >>> 0)) return colonies[i];
+                }
+                return null;
+        }
+
+        // Arrive (§5): docking at a colony's port advances it to the
+        // shared clock before the market reads.
+        function colonyArrive(key) {
+                const colony = colonyAt(key);
+                if (!colony) return null;
+                colonyLib.advanceColony(colony, gameClockY);
+                return colony;
+        }
+
+        // Inspect (§5): opening the system view of a star that owns a
+        // colony advances it the same way.
+        function colonyInspect(key) {
+                const colony = colonyAt(key);
+                if (!colony) return null;
+                colonyLib.advanceColony(colony, gameClockY);
+                return colony;
+        }
+
+        // Founding (§5): the docked station's system, generated like the
+        // brief's record, mapped once. A port keeps at most one colony;
+        // founding is free — the player is the catalyst, not the owner.
+        function gameFoundColony() {
+                if (!ship.docked) { setAutoMsg('found colonies while docked at their ports'); return; }
+                if (colonyAt(ship.station.key)) { setAutoMsg('this port already has a colony'); return; }
+                const locked = flightDestination.active;
+                const i = locked ? -1 : starSet.primary;
+                if (!locked && i < 0) { setAutoMsg('no port reference to found from'); return; }
+                const ref = locked ? flightDestination : memberRefFor(i);
+                const name = gameTargetName();
+                colonyCtx.model = model;
+                colonyCtx.field = renderer.fieldBuffers();
+                colonyCtx.member = renderer.starBlocks().member;
+                colonyCtx.name = name;
+                const rec = selectPlanets.generateSystem(ref, colonyCtx, colonyRecord);
+                colonyLib.resourceMapFor(rec, model.seed, colonyMapOut);
+                // The map is copied into the colony's own record (the
+                // scratch is reused by the next founding).
+                const map = colonyLib.createResourceMap();
+                map.ease.set(colonyMapOut.ease);
+                map.score = colonyMapOut.score;
+                const colony = colonyLib.createColony(ship.station.key, name + ' colony',
+                        gameClockY, map);
+                colonies.push(colony);
+                // The ui.1 typed asset history lands the colony the way
+                // docking lands the dock-port.
+                selectionStore.selectCurrent(window.SelectionStore.GROUP_ASSET, {
+                        group: window.SelectionStore.GROUP_ASSET,
+                        type: 'colony',
+                        id: 'colony-' + (ship.station.key >>> 0).toString(36),
+                        name: name + ' colony',
+                        key: ship.station.key >>> 0,
+                        kind: ref.kind, index: ref.index,
+                        x: ref.x, y: ref.y, z: ref.z,
+                });
+                syncSelectionPanel();
+                setAutoMsg('colony founded at ' + name + ' · pop '
+                        + colonyLib.formatPop(colony.pop) + ' · score '
+                        + map.score.toFixed(2));
+                syncFlightUi();
+        }
+
+        // The market block for the Flight panel (§5): all six rows while
+        // docked at a colony port; empty otherwise.
+        let lastFlightMarket = '';
+        function syncFlightMarket() {
+                const colony = ship.docked ? colonyAt(ship.station.key) : null;
+                let text = '';
+                if (colony) {
+                        text = colony.name + ' · founded ' + (colony.foundedY).toFixed(1)
+                                + ' y · pop ' + colonyLib.formatPop(colony.pop)
+                                + ' · comfort ' + Math.round(colony.comfort * 100) + '%'
+                                + (colony.coarse ? ' · coarse' : '')
+                                + '\n';
+                        for (let r = 0; r < colonyLib.RESOURCES.length; r++) {
+                                text += colonyLib.marketLine(r, colony) + '\n';
+                        }
+                }
+                if (text !== lastFlightMarket) {
+                        lastFlightMarket = text;
+                        flightMarket.textContent = text;
+                }
+        }
+
         // --- G4: docking, the port service and the cargo hook (§10) ----
         // O is the dock toggle. The station is the current flight
         // target when it is a natural, resident star: the locked
@@ -3810,6 +3945,9 @@ async function boot() {
                                 x: ref.x, y: ref.y, z: ref.z,
                         });
                 syncSelectionPanel();
+                // Arrive (§5): the port's factories advance to the shared
+                // clock the moment the ship settles at it.
+                colonyArrive(ship.station.key);
                 setAutoMsg('docked at ' + name + ' port · tank and life support restored');
                 syncFlightUi();
         }
@@ -3823,21 +3961,43 @@ async function boot() {
                 syncFlightUi();
         }
 
+        // Trade at the port market (§5): L buys the port's best export
+        // into an empty (or same-kind) hold, Shift+L sells the whole hold.
+        // A port without a colony has no market.
         function gameCargoLoad() {
-                if (!shipLib.loadCargo(ship)) {
-                        setAutoMsg('cargo moves only at a dock');
+                if (!ship.docked) { setAutoMsg('cargo moves only at a dock'); return; }
+                const colony = colonyAt(ship.station.key);
+                if (!colony) { setAutoMsg('no market — no colony at this port'); return; }
+                const best = colonyLib.bestExport(colony);
+                if (ship.cargo > 0 && ship.cargoKind !== best) {
+                        setAutoMsg('the hold carries ' + colonyLib.RESOURCES[ship.cargoKind].label
+                                + ' · sell it here first or where it is dear');
                         return;
                 }
-                setAutoMsg('hold loaded · ' + shipLib.formatCargo(ship.cargo));
+                const holdFree = ship.class.cargo - ship.cargo;
+                colonyLib.buyAtPort(colony, holdFree, ship.credits, tradeOut);
+                if (tradeOut.tons <= 0) { setAutoMsg('cannot afford a ton here'); return; }
+                ship.cargo += tradeOut.tons;
+                ship.cargoKind = tradeOut.kind;
+                ship.credits -= tradeOut.cost;
+                setAutoMsg('bought ' + shipLib.formatCargo(tradeOut.tons) + ' of '
+                        + colonyLib.RESOURCES[tradeOut.kind].label + ' · '
+                        + tradeOut.cost.toFixed(1) + ' cr');
                 syncFlightUi();
         }
 
         function gameCargoUnload() {
-                if (!shipLib.unloadCargo(ship)) {
-                        setAutoMsg('cargo moves only at a dock');
-                        return;
-                }
-                setAutoMsg('hold emptied');
+                if (!ship.docked) { setAutoMsg('cargo moves only at a dock'); return; }
+                const colony = colonyAt(ship.station.key);
+                if (!colony) { setAutoMsg('no market — no colony at this port'); return; }
+                if (ship.cargo <= 0 || ship.cargoKind < 0) { setAutoMsg('the hold is empty'); return; }
+                const revenue = colonyLib.sellAtPort(colony, ship.cargoKind, ship.cargo);
+                ship.credits += revenue;
+                setAutoMsg('sold ' + shipLib.formatCargo(ship.cargo) + ' of '
+                        + colonyLib.RESOURCES[ship.cargoKind].label + ' · '
+                        + revenue.toFixed(1) + ' cr');
+                ship.cargo = 0;
+                ship.cargoKind = -1;
                 syncFlightUi();
         }
 
@@ -3966,7 +4126,9 @@ async function boot() {
                         + ` · forward ${shipLib.formatAxisSpeed(gameVelocityAxes[0])}`
                         + ` · sideways ${shipLib.formatAxisSpeed(gameVelocityAxes[1])} · vertical ${shipLib.formatAxisSpeed(gameVelocityAxes[2])}`;
                 if (ship.docked || ship.cargo > 0) {
-                        text += `\ncargo     ${shipLib.formatCargo(ship.cargo)}/${shipLib.formatCargo(ship.class.cargo)}`;
+                        const kind = ship.cargo > 0 && ship.cargoKind >= 0
+                                ? ' ' + colonyLib.RESOURCES[ship.cargoKind].label : '';
+                        text += `\ncargo     ${shipLib.formatCargo(ship.cargo)}/${shipLib.formatCargo(ship.class.cargo)}${kind} · ${Math.round(ship.credits)} cr`;
                 }
                 if (lifeState >= shipLib.LIFE_CRITICAL) {
                         // The return-home heading shows inside the
@@ -4185,6 +4347,9 @@ async function boot() {
                                 : starTimeRate);
                 const dtStar = effectiveTimeRate * dt;
                 const dtShipS = gameMode ? gameRateY * shipLib.SECONDS_PER_YEAR * dt : 0;
+                // The colony timeline (§5): the same shared clock, in years.
+                // Frozen reads zero here; the observer's rate never lands.
+                gameClockY += dtShipS / shipLib.SECONDS_PER_YEAR;
                 // Physical seconds this frame (star-seconds under the shared
                 // clock) — the handover feed's unit bridge from drawn motion.
                 framePhysSeconds = dtStar > 0 ? dtStar * 1e6 * shipLib.SECONDS_PER_YEAR : 0;

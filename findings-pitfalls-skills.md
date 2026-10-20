@@ -2144,3 +2144,26 @@ Skill: when a derived quantity jitters only at small dt, compute its noise
 scaling first — if it is `ULP/dt` (or `1/dt` of anything quantized), the dt is
 the problem, not the law. Widen the baseline in a clock that is *not* the one
 being varied.
+
+## 2026-10-20 — two wiring traps in a new src/ file (ui.16)
+
+**One shared global scope, so top-level names collide across files.** The page
+loads every `src/**/*.js` as a classic script in one scope, and `m1-smoke`
+evaluates them together exactly like the page does. A new file's module-level
+`const hash = ...` (the obvious name for `require('../math/hash.js')`) blew up
+as "Identifier 'hash' has already been declared" — planets.js has owned that
+name since 0.5. The convention the older files follow without saying so:
+short dependency aliases must be unique page-wide (`dv`, `route`, `hash`,
+`orbit` are taken). Name a new one after the module (`hashColony`) or check
+the collision with `m1-smoke` before writing anything else in the file.
+
+**The tree mixes tabs and 8-space files, and some functions mix both.** Write
+tools (Edit, sed-based patches, python `.replace`) match bytes, not intent:
+`src/core/ship.js` and `planets.js` are tab-indented, `main.js` is 8-space
+with a few tab-indented functions inside (one function had spaces on three
+lines and tabs on the fourth). A python `.replace()` that finds nothing is a
+silent no-op — it printed "refactored" while changing nothing, and the test
+failed on the un-refactored shape two runs later. Every scripted patch must
+assert the anchor count before replacing (`assert s.count(old) == 1`), and
+`sed -n Np | cat -A` is the one-second check that reveals which byte the
+file actually uses before an edit is attempted.

@@ -411,10 +411,14 @@
 			<div class="flight-section-heading"><span>Port</span><small>dock · service · cargo</small></div>
 			<div class="flight-port-row">
 				<button id="flight-dock" type="button" disabled title="Dock at the target station (O) when inside its shell and settled — the target-stop autopilot lands exactly there. Docking re-arms the tank, restores life support and registers the port of registry. Press again to undock.">Dock</button>
-				<button id="flight-cargo-load" type="button" disabled title="Load the hold to the class's capacity (L). Free — prices and economy are omitted. Only while docked.">Load cargo</button>
-				<button id="flight-cargo-unload" type="button" disabled title="Empty the hold (Shift+L). Only while docked.">Unload</button>
+				<button id="flight-cargo-load" type="button" disabled title="Buy the port's best export into the hold at the port's price (L). Whole tons within the free hold and the hull's credits; the hold is one bulk commodity. Only at a docked port with a colony.">Load cargo</button>
+				<button id="flight-cargo-unload" type="button" disabled title="Sell the whole hold at this port's price for the held kind (Shift+L). Only at a docked port with a colony.">Unload</button>
+			</div>
+			<div class="flight-port-row">
+				<button id="flight-found-colony" type="button" disabled title="Found a colony at the docked port's star (colony-economy-plan §5). Free — the player is the catalyst, not the owner. A port keeps at most one colony; its factories advance when you dock there (arrive) or open its system view (inspect).">Found colony</button>
 			</div>
 			<div id="flight-port-state" class="flight-port-state">not docked · O docks at a settled station</div>
+			<pre id="flight-market" class="flight-market"></pre>
 
 			<div class="flight-section-heading"><span>Fly to destination</span><small>select star → set → check autopilot</small></div>
 			<div class="flight-destination-row">
@@ -572,6 +576,7 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
 	     deltav.js, the leg profile through route.js — loaded after both and
 	     before the main.js that flies it. -->
 	<script src="core/ship.js"></script>
+	<script src="core/colony.js"></script>
 	<script src="core/loop.js"></script>
         <script src="core/presets.js"></script>
         <!-- Data after math (landmarks bake their positions through coords.js at

@@ -437,6 +437,21 @@ html, body {
 	font-size: 10px;
 	margin-bottom: 7px;
 }
+/* The port market (colony-economy-plan §5): the six resource rows while
+   docked at a colony port; empty and hidden otherwise. */
+.flight-market {
+	display: none;
+	margin: 0 0 7px;
+	padding: 6px 7px;
+	border: 1px solid #29465e;
+	border-radius: 3px;
+	background: rgba(4, 10, 16, 0.55);
+	color: #a8c8db;
+	font: 10px/1.45 'Menlo', 'Consolas', monospace;
+	white-space: pre;
+	overflow: hidden;
+}
+.flight-market:not(:empty) { display: block; }
 .flight-control-row { margin-bottom: 7px; }
 .flight-control-row label { gap: 6px; }
 /* The Pilot controls are mutually exclusive: the row whose

@@ -1122,28 +1122,25 @@ for (const dtShipS of [3e4, 3e5, 1e6]) {
 	check('undock clears the dock and keeps the station velocity',
 		!s.docked && s.station === null && s.vel[0] === 0.002, s.vel[0]);
 
-	// The cargo law: the hold fills and empties at the dock only.
+	// The hold law (colony-economy-plan §5): a manifest, not a
+	// tonnage — one bulk commodity, moved by the port market in
+	// main.js. ship.js owns only the fields; the free loads are
+	// gone with the placeholder they were.
 	const c = shipModule.createShip('stardrive');
-	check('the hold starts empty and the class caps it',
-		c.cargo === 0 && c.class.cargo === 20000, c.class.cargo);
-	check('cargo refuses to move undocked',
-		!shipModule.loadCargo(c) && !shipModule.unloadCargo(c) && c.cargo === 0);
-	shipModule.dock(c, 1, 'port', 0, 0, 0);
-	check('load fills to the class capacity, unload empties',
-		shipModule.loadCargo(c) && c.cargo === c.class.cargo
-		&& shipModule.unloadCargo(c) && c.cargo === 0, c.cargo);
-
-	// Reset and the class swap clear the docked state and the
-	// hold; the registry home persists (session state, like
-	// the fleet).
-	shipModule.loadCargo(c);
+	check('the hold starts empty with an account, and the class caps it',
+		c.cargo === 0 && c.cargoKind === -1 && c.credits === shipModule.START_CREDITS
+		&& c.class.cargo === 20000, c.class.cargo);
+	c.cargo = 1500; c.cargoKind = 0;
 	shipModule.resetShip(c);
-	check('R clears the dock and the hold',
-		!c.docked && c.station === null && c.cargo === 0);
+	check('R empties the hold and keeps the account',
+		c.cargo === 0 && c.cargoKind === -1 && c.credits === shipModule.START_CREDITS,
+		{ cargo: c.cargo, kind: c.cargoKind, credits: c.credits });
 	shipModule.dock(c, 7, 'vega', 1, 1, 1);
+	c.cargo = 10; c.cargoKind = 3;
 	shipModule.setClass(c, 'chemical');
-	check('the hangar swap clears the dock and empties the new hull',
-		!c.docked && c.cargo === 0 && c.home.kind === 'star' && c.home.key === 7);
+	check('the hangar swap clears the dock and empties the hold',
+		!c.docked && c.cargo === 0 && c.cargoKind === -1 && c.credits === shipModule.START_CREDITS
+		&& c.home.kind === 'star' && c.home.key === 7);
 
 	// The life ladder: the warn band, expiry, and the
 	// generation ship that cannot expire.

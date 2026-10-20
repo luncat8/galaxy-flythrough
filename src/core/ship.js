@@ -129,6 +129,9 @@ const DOCK_REL_MS = 1;
 // a short chemical hull still warns with weeks to go.
 const LIFE_WARN_FRACTION = 0.1;
 const LIFE_WARN_MIN_Y = 0.1;
+// The colony-economy account's starting stake (colony-economy-plan §5):
+// a per-hull scalar like the tank, surviving resets and class swaps.
+const START_CREDITS = 400;
 const LIFE_OK = 0, LIFE_CRITICAL = 1, LIFE_EXPIRED = 2;
 const LIFE_STATE_NAMES = ['ok', 'critical', 'expired'];
 // The dockable check's refusals, as reason codes the HUD names.
@@ -232,7 +235,13 @@ function createShip(classId) {
 		station: null,
 		dockOffset: new Float64Array(3),   // kpc
 		home: { kind: 'fixed' },
+		// The colony-economy hold (colony-economy-plan §5): a manifest,
+		// not a tonnage — one bulk commodity at a time, bought and
+		// sold at port markets. `credits` is the hull's account, a
+		// per-hull scalar like the tank.
 		cargo: 0,                    // tons, 0..class.cargo
+		cargoKind: -1,               // colony-economy resource idx, -1 empty
+		credits: START_CREDITS,
 		timeIndex: homeTimeIndex(cls),
 		timeFrozen: false,
 		// G5's ARCADE clock: the base rung above, plus the autopilot coast
@@ -258,10 +267,12 @@ function setClass(ship, classId) {
 	ship.stopping = false;
 	ship.stopResidual = 0;
 	// The hangar swaps the hull under you: the new hull is not
-	// docked, and its hold is its own.
+	// docked, and its hold and account are its own — a class swap
+	// re-arms the tank but does not buy or sell goods.
 	ship.docked = false;
 	ship.station = null;
 	ship.cargo = 0;
+	ship.cargoKind = -1;
 	ship.timeIndex = homeTimeIndex(cls);
 	const cap = cruiseCapKpcS(ship);
 	const speed = Math.hypot(ship.vel[0], ship.vel[1], ship.vel[2]);
@@ -283,7 +294,10 @@ function resetShip(ship) {
 	ship.accelNow = 0;
 	ship.docked = false;
 	ship.station = null;
+	// R is a full reset of the hull's motion: the hold empties
+	// with it, the account survives (the crew's, not the tank's).
 	ship.cargo = 0;
+	ship.cargoKind = -1;
 }
 
 function refuel(ship) {
@@ -349,20 +363,10 @@ function dockStep(ship, tx, ty, tz, tvx, tvy, tvz) {
 	ship.accelNow = 0;
 }
 
-// The cargo hook: the hold fills at the docked port and empties
-// there too. Free — prices and economy stay omitted (0.5's own
-// omission). Returns false when not docked; the hold is untouched.
-function loadCargo(ship) {
-	if (!ship.docked) return false;
-	ship.cargo = ship.class.cargo;
-	return true;
-}
-
-function unloadCargo(ship) {
-	if (!ship.docked) return false;
-	ship.cargo = 0;
-	return true;
-}
+// The cargo hook is the port market's now (colony-economy-plan §5):
+// buying and selling live in colony.js's trade math, applied by the
+// caller — ship.js only owns the hold's fields. The hold is one bulk
+// commodity at a time (§5), so a manifest is one idx and one tonnage.
 
 // Life support: the countdown's remainder in years, its state,
 // and the warn band the critical state reads. Infinity (a
@@ -1155,7 +1159,7 @@ const Ship = {
 	DOCK_SHELL_M, DOCK_REL_MS, DOCK_OK, DOCK_FIXED_POINT, DOCK_OUTSIDE, DOCK_UNSETTLED, DOCK_REASON_NAMES,
 	LIFE_WARN_FRACTION, LIFE_WARN_MIN_Y, LIFE_OK, LIFE_CRITICAL, LIFE_EXPIRED, LIFE_STATE_NAMES,
 	createShip, setClass, resetShip, refuel, applyStop, step, advance,
-	dockReason, dock, undock, dockStep, loadCargo, unloadCargo,
+	dockReason, dock, undock, dockStep, START_CREDITS,
 	lifeRemainingY, lifeWarnY, lifeState,
 	homeTimeIndex, dvRemaining, cruiseCapKpcS, speedC, timeRateYPerS, arcadeWarpYPerS, setClockPreset,
 	createFlightPlan, profileForLimits, planJourney, projectedImpulseDv,

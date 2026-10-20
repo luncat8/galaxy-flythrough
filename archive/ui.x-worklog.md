@@ -874,3 +874,61 @@ this sandbox.
 the nose should sit on the target and the burn marker should not flicker. The
 simple engine still has no CPU record velocity (it is the documented gap); if
 the game ever needs it, the GPU-side θ readback is the only honest source.
+
+## ui.16 — the colony economy (colony-economy-plan.md, stage 1)
+
+**Decision.** The draft at the branch tip (`archive/draft-colony-resources-trade-fab.md`)
+becomes a plan and an implementation: a deterministic resource map per system
+(what is easy to produce there — the draft's "low metal, low light" penalties),
+population that grows while its needs are met, and factories that work on
+events, never per frame. Everything is CPU-only and additive like the game
+series; the hold/credits live on the hull records the way the tank does. The
+free placeholder loads of G4 ("prices and economy stay omitted") die with the
+economy they stood in for.
+
+**The plan** (`colony-economy-plan.md`, a clean artifact) fixes: six resources
+(rare elements, special chemicals, antimatter, food & biotech, factory cores &
+robots, software & world data — the draft's longer lists fold: computers join
+`fab`, unique items are `info`'s tail, colonists are the founding population);
+`resourceMapFor` as a pure function of the generated system record plus the
+model seed, with the ±0.06 jitter hashed off the star's identity key
+(`hash4(star.key, seed, 0x43f6c0, 1)`) so it is as reproducible as the planets;
+`advanceColony` at fixed 0.25 y steps with a 2048-step coarse ceiling; the
+market `0.4·BASE … 1.6·BASE` off ease and a two-year-need stock norm; and the
+two events — arrive (the dock commit) and inspect (the system view's open) —
+reading `gameClockY`, the shared clock's cumulative years.
+
+**The implementation.** `src/core/colony.js` (one API object, no per-event
+allocations beyond the founding); `src/core/ship.js` gains `cargoKind` and
+`credits` (400 cr per hull, surviving resets and class swaps — R empties the
+hold, the account survives "the crew's, not the tank's") and loses
+`loadCargo`/`unloadCargo`; `main.js` wires `gameClockY` off the loop's
+`dtShipS`, the arrive at the dock commit, the inspect at the open, founding
+(Flight panel's **Found colony**, free, one per port, landing the typed
+`colony` asset in ui.1's history exactly as the dock lands a `dock-port`),
+the `L`/`Shift+L` market trade (buy the best export within the free hold and
+credits, whole tons, one commodity — a hold of another kind must sell first;
+sell the whole hold at the port's price), the Flight-panel market panel
+(`#flight-market`), the HUD cargo/account line, and the system-view readout's
+colony block (population, capital, comfort, the six market rows). The map is
+generated once at founding over the same `generateSystem` record the schematic
+reads, and the colony owns it after that.
+
+**Validation.** `colony-test.js` 26/26: map determinism (same star → same
+ease; different stars differ), the ease laws (metal-poor → no rare, dim → no
+antimatter, terran+HZ → food, flat info), the advance law (terran-rich growth,
+the chunking equality — one 10 y advance equals forty 0.25 y advances to
+1e-9, the coarse flag over 700 y, no-op spans), price bounds and the
+supply response, the trade math (whole tons within credits, the cross-port
+margin beats the same-port wash), real generated systems over the sampler
+(40 stars, in-range, no NaN), and `formatPop`. The one law the measurement
+moved: the famine bound, 0.25 → 0.4 comfort — the canonical food-poor
+founding (0.004 Z, 0.05 L☉, rock+dwarf) measures 0.29 comfort, misery that
+still grew at the first bound. `ship-test` 121/121 after the manifest rewrite;
+`quick` 27/27 (including the new `colony`); `changed` 8/9 → m1-smoke caught
+the page-scope collision (see findings) and passes after the rename.
+
+**Next.** Stage 2 (§6): the event queue and commissioned trade routes — a
+standing convoy a colony pair runs between its ports, departures and arrivals
+scheduled on the shared clock. Then the §7 list (mixed holds, tourism,
+colonist flows) stays recorded, not promised.

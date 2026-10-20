@@ -64,6 +64,12 @@ No framework, bundler, module loader, or runtime network connection is required.
   and a **Fly to primary** action (`Shift+F`) for the selected result.
   The typed asset history accepts ship/base/colony/dock-port/cargo-container references and
   can capture its current entry in either slot of the two-entry asset pair.
+- A colony economy over the same selection: founding at a docked port
+  derives a stable resource map from the star's system, the population
+  grows on met needs (famine below 40 % comfort), factories advance on
+  arrive/inspect events — never per frame — and the hold trades the
+  port markets' best exports across the ease differential
+  ([colony-economy-plan.md](colony-economy-plan.md))
 - Close-system schematic view: `V` opens a log-polar map of the primary selection — HZ
   annulus, orbit ellipses, stippled belts, star and planet icons — with its own
   system-time clock and a full-figures readout
@@ -90,7 +96,7 @@ This is a visual galaxy model, not an N-body gravity simulation. The analytical 
 | f / c / Shift+C | Free fly · orbit the selected star (follows it) · orbit the galactic centre **and select it as the speed reference** | same (orbit only) | `f` aborts the autopilot · `c` gated — the ship is the fly rig · Shift+C selects the reference only (no re-pose) |
 | j | Chase the centred star from behind: the view aligns with its movement vector and swings back after a glance | — | the ship trails the selected star at its stand-off; press again to abort |
 | O | — | — | dock at / undock from the target station (inside its shell, settled) |
-| L / Shift+L | — | — | load / unload the cargo hold at the docked station |
+| L / Shift+L | — | — | buy the port's best export into the hold / sell the whole hold, at a docked colony port |
 | H | Return home **and select the home reference** | same (travel only) | selects the home reference only — ships do not teleport |
 
 **Speed reference** (game mode) — the object the axis velocities, the HUD target
@@ -198,10 +204,19 @@ needed.
   (10 %, floored at 0.1 y), and when it runs out a **hard return-home
   marker** — an amber chrome frame on the port of registry plus a
   persistent HUD line — insists on the way back until the next dock.
-  The Flight panel's **Port** rows carry the dock button and the cargo
-  hook: `L` loads the hold to the class's capacity and `Shift+L` empties
-  it, at the dock only, free (prices and economy stay omitted, matching
-  0.5).
+  The Flight panel's **Port** rows carry the dock button, the **Found
+  colony** button and the cargo hook: **Found colony** settles a colony at
+  the docked port's star ([colony-economy-plan.md](colony-economy-plan.md)),
+  a deterministic resource map of what that system can produce (the star's
+  metal and light, its planets, a small stable-hash jitter) driving a
+  population that grows while its needs are met and starves below 40 %
+  comfort. The colony's factories advance on events, never per frame:
+  docking at its port (arrive) or opening its system view (inspect)
+  advances it to the shared ship clock. `L` then buys the port's best
+  export into the hold at the port's price (whole tons, within the free
+  hold and the hull's credits) and `Shift+L` sells the whole hold there —
+  one price both ways, so the margin is the ease differential between
+  systems. A port without a colony has no market.
 - **The HUD** (the overlay, at its 4 Hz cadence) shows **accepted thrust** and
   burn reserve, speed in c (km/s below 0.01c) and the live acceleration, the Δv
   tank and life support, signed forward/sideways/vertical velocity components
@@ -274,7 +289,8 @@ then the System map and route tools below it (`Tab` toggles all panels, the
 
 Fuel, acceleration and life support decide feasibility; impossible plans cannot
 launch. Routes are transient. Ship class, map toggle and budget survive presets.
-The optional trade-price/economy milestone is intentionally omitted.
+The trade-price/economy milestone the 0.5 plan omitted shipped with the colony
+economy (ui.16, [colony-economy-plan.md](colony-economy-plan.md)).
 
 ## URL parameters
 
@@ -370,6 +386,10 @@ The CPU keeps world positions in `f64`. GPU rendering uses camera-relative `f32`
 See [`plan.md`](plan.md) for the complete design, the versioned plans for model details, and [`worklog.md`](worklog.md) for implementation history.
 
 ## Next priorities
+
+The colony economy's stage 2 — commissioned trade routes on the event queue
+(colony-economy-plan.md §6) — is the open item of [that plan](colony-economy-plan.md);
+stage 1 (maps, colonies, markets, trade) shipped as ui.16.
 
 [Movement CPU/WGSL parity](movement-parity-plan.md) takes priority over visual tuning.
 The outstanding real-browser engine/preset checks and non-critical bar polish are

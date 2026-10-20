@@ -1536,6 +1536,20 @@ Shipped, in `archive/`:
   `experiments/galaxy-evolution-test.js` (38 checks) plus the re-stated age pins in
   `galaxy-age`, `renderer`, `galaxy-types`, `preset` and `m1-smoke`.
 
+- [`colony-economy-plan.md`](colony-economy-plan.md) — the colony economy, from the
+  draft that sat at the branch tip: a deterministic per-system resource map (star
+  metal and light, planet bulks and flags, belts, terran/HZ, the ±0.06
+  stable-hash jitter off the star's identity key), event-driven factory advances
+  (arrive at a dock, inspect on the system view's open — never per frame), the
+  port market (0.4·BASE … 1.6·BASE off ease and the two-year-need stock norm),
+  and hold/credits trade at colony ports. **Stage 1 shipped as ui.16**:
+  `src/core/colony.js`, the manifest hold (`cargoKind`, per-hull `credits`),
+  founding at a docked port, the Flight-panel market panel, the HUD
+  cargo/account line and the system-view readout's colony block, with
+  `experiments/colony-test.js`. **Stage 2 (§6) is open**: the event queue and
+  commissioned trade routes. The 0.5 plan's "economy omitted" note is
+  superseded by this series.
+
 Implement from those files plus this one; the per-release plans reference their own
 tests and extend the file layout of §11 as needed.
 
@@ -1578,6 +1592,10 @@ tests and extend the file layout of §11 as needed.
    (ui.14: the SIM/ARCADE clock presets — the ladder's real-time stop and the
    autopilot coast auto-warp). The browser visual pass remains deferred.
    CPU-only and pipeline-neutral.
+5. [The colony economy](colony-economy-plan.md): stage 1 shipped (ui.16 —
+   the resource map, the advance law, the market, the manifest hold and
+   trade at colony ports); stage 2 (the event queue and commissioned trade
+   routes, §6) is the plan's open item, additive and CPU-only like the rest.
 
 The [0.5 planet series](archive/0.5.0-plan-planet-generator.md) is complete:
 selection, generator, search, schematic, delta-v map and ships/routes/autopilot.

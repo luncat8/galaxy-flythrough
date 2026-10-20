@@ -1,0 +1,213 @@
+# Colony Economy — Resources, Population and Trade
+
+Consumes `archive/draft-colony-resources-trade-fab.md` (the seed draft at the branch
+tip). The draft's three asks, restated as the spec this plan implements:
+
+1. **A stable resource map per system** — what is easy and what is difficult to
+   produce there, derived from star type, planet types and a small stable-hash
+   jitter ("low metal, low light" make things difficult).
+2. **Population that grows when its needs are met** — "population - needs - all
+   resources are cheap and available enough - pop growth - more resources
+   produced and needed".
+3. **Factories that work on events, never per frame** — "factories work not per
+   frame but per ship arrive event or user inspect with click on star or planet
+   in system panel view". A colony's economy advances only when the player docks
+   at its port (arrive) or opens its system view (inspect).
+
+Everything here is CPU-only and additive, like the 0.5 series and game mode:
+no star-buffer, WGSL or render-path changes. The hold/credits live on the hull
+records the way the tank and life support already do.
+
+## §1 Resources
+
+Six fixed resources. One unit = one ton of hold cargo; prices in credits (cr).
+
+| idx | id    | label                  | base cr/t | category | production driver        |
+|-----|-------|------------------------|-----------|----------|--------------------------|
+| 0   | rare  | rare elements          | 8         | material | capital, metals          |
+| 1   | chem  | special chemicals      | 5         | material | capital, giants + belts  |
+| 2   | anti  | antimatter             | 40        | material | capital squared, energy  |
+| 3   | food  | food & biotech         | 3         | life     | labour, terran + light   |
+| 4   | fab   | factory cores & robots | 10        | industry | capital, metals + energy |
+| 5   | info  | software & world data  | 6         | culture  | labour (flat ease)       |
+
+The draft's longer lists fold here: "computers" joins `fab` (one industrial
+row); "information and world data" and "unique items" are the one `info` row
+(art, religion, history are the high-value tail of the same good); colonists
+and tourists stay unmodelled in this stage — founding population covers the
+draft's "colonists" role, and tourism is a §7 follow-up.
+
+## §2 The resource map (deterministic, per system)
+
+`resourceMapFor(record, model)` is a pure function of the generated system
+record (the same `generateSystem` output the schematic view reads) and the
+model seed. Same star → same map, on every call, in every session.
+
+Derived scalars, all clamped to [0, 1]:
+
+- `metalRich = star.metal / 0.030` — solar Z 0.020 → 0.667; a metal-poor halo
+  star lands near 0. The draft's "low metal" penalty.
+- `lumNorm = sqrt(star.lum)` — a dim M dwarf (0.01 L☉) → 0.1, the Sun → 1.
+  The draft's "low light" penalty, and the energy supply behind antimatter.
+- `rockyFrac` — rock/super/dwarf planets plus twice the belt count, over
+  planets plus twice the belt count plus 2 (the +2 keeps a bare system at a
+  mid-low value instead of dividing by zero).
+- `giantFrac` — gas/icegiant/mini planets over planets + 2.
+- `beltFrac = belts.count / 2`, `terranFrac = terranCount / 2`,
+  `hzFrac = in-HZ count / 2` (all clamped).
+
+Ease, before jitter (each clamped to [0, 1]):
+
+| id   | ease                                                              | why |
+|------|-------------------------------------------------------------------|-----|
+| rare | `0.15 + 0.85·metalRich·(0.35 + 0.65·rockyFrac)`                    | needs a metal-rich star *and* rock to mine |
+| chem | `0.10 + 0.55·giantFrac + 0.20·beltFrac + 0.15·lumNorm`             | feedstock is volatiles from giants and belts |
+| anti | `0.05 + 0.95·lumNorm`                                              | pure energy; the capital square in §3 keeps it late-game |
+| food | `0.05 + 0.55·terranFrac + 0.20·hzFrac + 0.20·lumNorm`              | terran worlds, habitable light |
+| fab  | `0.20 + 0.50·ease.rare + 0.30·lumNorm`                             | industry is metals plus power |
+| info | `0.30`                                                             | flat: culture is population, not geography — stocks and pop carry the variation |
+
+Jitter, the draft's "a bit of random":
+`ease[i] += (hash01At(colonySeed, 0x50 + i) - 0.5) · 0.12`, clamped.
+`colonySeed = hash4(star.key, model.seed, 0x43f6c0, ref.kind | 0)` — same
+identity domain the planet generator keys systems by, so the jitter is as
+stable as the planets.
+
+Founding score (sizes the first settlement):
+`score = clamp01(0.45·ease.food + 0.25·ease.rare + 0.15·ease.fab + 0.15·lumNorm)`.
+
+## §3 Colony state and the advance law
+
+`createColony(starKey, name, foundedY, map)`:
+
+- `pop = 1 + 9·score` (thousands of persons), `capital = 1 + 5·score`
+  (industrial points), `stock[6] = 0` (tons), `lastY = foundedY`.
+- Session state, like a hull: colonies are founded by the player and mutate
+  only inside `advanceColony`.
+
+`advanceColony(colony, map, toY)` — the factories. Integration is fixed-step:
+`dt = 0.25 y` while the span allows, capped at `MAX_STEPS = 2048` steps (a
+longer span coarsens `dt = span/2048` and the readout flags `coarse`). Same
+`(state, map, span)` → same result, chunking included.
+
+Per step (all six resources in one pass, then the two scalars):
+
+1. **Produce** `prod[r] = ease[r] · RATE[r] · driver[r] · dt` with
+   `RATE` (t/y at ease 1, driver 1): rare 800, chem 800, anti 400, food 2000,
+   fab 600, info 600; and drivers
+   `fab/rare/chem: capital/25` (clamped), `anti: (capital/25)²`,
+   `food: pop/50`, `info: pop/100` (clamped). Food and info are labour: they
+   scale with people. Antimatter is the only capital-squared good — a young
+   colony barely makes any, a mature one exports it.
+2. **Consume** `need[r] = pop · NEED[r] · dt` with `NEED` (t per 1k persons
+   per y): food 20, info 1.0, fab 0.5, rare 0.2, chem 0.2, anti 0.05.
+   `take = min(stock + prod, need)`; `stock += prod - take`; `shortfall =
+   need - take`. Food dominates the need side, per the draft.
+3. **Comfort** `= 1 - Σ shortfall / Σ need` (0 when there are no needs) — the
+   fraction of demand the colony met this step.
+4. **Population** (logistic in the carrying capacity):
+   `K = 40 · (0.4 + 0.6·ease.food) · (1 + capital/25)` (k persons);
+   `dPop = 0.06 · comfort · (1 - pop/K) · pop · dt`, and a famine term:
+   when `comfort < 0.4`, `dPop -= 0.04 · pop · dt` (4 %/y die — a colony
+   meeting under 40 % of its demand is starving; the canonical food-poor
+   founding measures 0.29, which the first draft's 0.25 bound let grow).
+   `pop` floors
+   at 0.05 k — a colony never reaches exact zero (the port still reads).
+5. **Capital** `dCap = 0.02 · comfort · surplusSum · dt - 0.01 · capital · dt`,
+   where `surplusSum = Σ max(0, prod - need)` (t/y). Reinvestment of the
+   surplus, 1 %/y decay. Floors at 0.1.
+
+The colony records `lastComfort` (the final step's comfort) and `coarse` for
+the readout.
+
+## §4 The market
+
+`marketPrice(r, colony, map)`:
+
+- `supply = clamp01(0.6·ease[r] + 0.4·stockNorm)` where
+  `stockNorm = clamp01(stock[r] / (2 years of need + 50 t))` — two years of
+  consumption held in stock counts as saturated.
+- `price = BASE[r] · (1.6 - 1.2·supply)` — the range is `0.4·BASE` (saturated
+  surplus) to `1.6·BASE` (nothing made, nothing stored). One price both ways:
+  the colony is a market, not a shop with a spread; the player's margin comes
+  from buying where the good is surplus and selling where it is scarce.
+
+Tags for the readout: `SURPLUS` at price ≤ 0.7·BASE, `SCARCE` at ≥ 1.3·BASE,
+else `fair`.
+
+## §5 Trade at a port (game mode)
+
+The hold becomes a manifest: `ship.cargoKind` (-1 empty, else a resource idx)
+beside the existing `ship.cargo` tons, and `ship.credits` (starts 400 cr per
+hull, like the tank a per-hull scalar). The free placeholder loads of G4
+("prices and economy are omitted") are removed with this stage — the draft
+supersedes them.
+
+- **Found colony** — a button on the Flight panel's Port rows, enabled while
+  docked at a port whose star has no colony. Founding is free (the player is
+  the catalyst, not the owner; ownership stays out of scope). It creates the
+  colony, lands a `colony` typed asset in the ui.1 asset history (the way
+  docking lands a `dock-port`), and selects it.
+- **`L` / Load** — only at a docked port with a colony. Buys the port's best
+  export: the resource with the lowest price per ton among those the port can
+  supply (any non-scarce tag first, else the cheapest), quantity
+  `min(hold free, credits / price)`, floored at 0. The hold carries one bulk
+  commodity at a time — a mixed hold is a §7 follow-up.
+- **`Shift+L` / Unload** — sells the whole hold at the port's price for the
+  held kind. At a port without a colony both refuse with a notice; there is
+  no market to move goods through.
+- The Port state line shows the port's market summary; the HUD gains credits
+  and the hold kind.
+
+**Arrive advances the economy**: docking at a port with a colony advances it
+to the shared clock (`advanceColony(..., gameClockY)`) before the market
+reads. **Inspect advances it too**: opening the system view (V, a history
+restore, or the view select) of a star that owns a colony advances it the
+same way. `gameClockY` accumulates only in game mode, on the shared ship
+clock — in observer mode it is parked, so an inspect shows the colony frozen
+at its last event. Factories never run per frame: the loop only accumulates
+the clock; the expensive recompute happens inside the two event handlers.
+
+The system view readout (appended to `#sysread` by main.js) gains a colony
+block when the opened star owns one: population with growth arc, capital,
+comfort, the six market rows (ease bar, stock, price, tag), and the founding
+year against the shared clock.
+
+## §6 The event ledger (stage 2 — commissioned routes)
+
+The draft's "time event queue" lands with trade routes: a standing convoy a
+founded colony pair can run between its ports. A route is commissioned at a
+docked port (origin colony) for a destination colony and a resource: every
+`PERIOD = 2 y` of shared clock, the origin's stock gives up `CAP = 50 t` (never
+below its own two-year need) and the destination's stock gains it, the event
+queue carrying the departure and the arrival as scheduled events on the same
+timeline the arrive/inspect advances read. The queue is a preallocated
+insertion-sorted array in `src/core/colony.js` — `schedule`, `dueEvents`,
+`cancel` — drained at event boundaries only, never per frame. This stage is
+the follow-up if the core lands first; the plan above is complete without it.
+
+## §7 Out of scope (recorded, not promised)
+
+- Mixed holds (more than one commodity), shop spreads, NPC freighters the
+  player does not commission, colonist/tourist flows, tourism income.
+- Prices for anything the player does not trade; no galaxy-wide equilibrium —
+  each market reads only its own colony.
+
+## §8 Tests (`experiments/colony-test.js`)
+
+- Map determinism: same record + seed → identical ease; different stars
+  diverge; the jitter stays inside ±0.06 and never leaves [0, 1].
+- The ease laws: a metal-poor star cannot make rare; a dim star cannot make
+  antimatter or food; terran systems grow food; info is flat.
+- Advance: a founding colony on a terran-rich system grows (pop, capital);
+  a low-food founding star starves (comfort < 0.4 → famine term bites);
+  a span over 512 y coarsens and says so; determinism of the chunking (one
+  10 y advance === forty 0.25 y advances).
+- Market: price bounds 0.4·BASE … 1.6·BASE; supply grows → price falls; the
+  stock term saturates at two years of need.
+- Trade: buy fills the hold within credits and capacity; sell empties it and
+  pays; no market at a colony-less port; the round trip is profitable only
+  across a real ease differential (buy-at-surplus, sell-at-scarce beats
+  buy-and-sell-at-the-same-port, which loses nothing but gains nothing).
+- Founding: score → pop/capital initial values; a star keeps at most one
+  colony; the asset history lands the typed colony.

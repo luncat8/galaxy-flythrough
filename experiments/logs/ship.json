@@ -1,6 +1,6 @@
 {
-  "total": 123,
-  "passed": 123,
+  "total": 121,
+  "passed": 121,
   "failed": 0,
   "checks": [
     {
@@ -296,7 +296,7 @@
       "name": "no buffers are reallocated across 600 mixed frames",
       "pass": true,
       "detail": {
-        "keys": 23
+        "keys": 25
       }
     },
     {
@@ -620,7 +620,7 @@
       "name": "no buffers are reallocated across the approach, the follow and the abort",
       "pass": true,
       "detail": {
-        "keys": 23
+        "keys": 25
       }
     },
     {
@@ -913,25 +913,21 @@
       "detail": 0.002
     },
     {
-      "name": "the hold starts empty and the class caps it",
+      "name": "the hold starts empty with an account, and the class caps it",
       "pass": true,
       "detail": 20000
     },
     {
-      "name": "cargo refuses to move undocked",
-      "pass": true
-    },
-    {
-      "name": "load fills to the class capacity, unload empties",
+      "name": "R empties the hold and keeps the account",
       "pass": true,
-      "detail": 0
+      "detail": {
+        "cargo": 0,
+        "kind": -1,
+        "credits": 400
+      }
     },
     {
-      "name": "R clears the dock and the hold",
-      "pass": true
-    },
-    {
-      "name": "the hangar swap clears the dock and empties the new hull",
+      "name": "the hangar swap clears the dock and empties the hold",
       "pass": true
     },
     {
