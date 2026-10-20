@@ -228,3 +228,11 @@ Deferred: prices/contracts, constrained recipes, inspection-independent variable
 coverage, port-slot recycling, buildings/terraforming/piracy, planet-specific
 docking, physically calibrated interstellar freight. Real-browser/WebGPU visual
 validation remains separate; canvas-stub geometry tests are not a visual verdict.
+
+## 6. Star-time-coupled trade controls
+
+- Sync time: a Trade-panel checkbox couples the trade clock to the star clock. While on (and outside game mode) the network advances `starTimeRate · 10⁶` trade years per wall second instead of the ladder's years per wall second; the trade slider is disabled and the readout shows the effective star-derived rate.
+- Generation ships: a second checkbox switches every hull to 1 light-year per 10 000 years (`GENERATION_LY_PER_YEAR = 1e-4` ly/y in `legYears`) and sets the star clock to 0.1 Myr/s. With sync time on a 1 ly hop takes ≈10 kyr of star time — about a tenth of a second at 0.1 Myr/s.
+- Route re-timing: while the stars move (`dtStar > 0`) and the trade clock runs, in-flight voyages are re-measured against the stars' live drawn positions (`orbit.engineRecordPosition` at the current star time, resolved resident-by-resident through the label layer) and their arrivals re-timed when the remaining journey changes by more than a year. The overlay's route geometry is already drawn at live drawn positions; this keeps the schedule on the moving line. Booking uses live positions too, so a voyage's length is measured from where its endpoints are when it starts.
+- Star-time slider: default range −1…2 Myr/s in 0.1 steps so small rates (0.1 Myr/s) are settable; a toggle button widens it to −1…99 Myr/s in 0.5 steps.
+- Presets: `tradesync` and `tradegen` (0/1) ride beside `trade`/`traderoutes`.

@@ -148,6 +148,10 @@ async function boot() {
         // (Presets), and their defaults are the startup values above.
         starTimeRate = params.time;
         if (starTimeRate > 0) lastNonZeroTimeRate = starTimeRate;
+        // Star-time slider range: fine (−1…2 Myr/s, 0.1 steps) by default so
+        // small rates such as 0.1 Myr/s are settable; the range toggle widens
+        // to −1…99 Myr/s in 0.5 steps.
+        let starTimeWide = false;
         // Game mode (game-mode-plan.md G1): the ship record and the toggle.
         // Declared beside the time axis it takes over while flying (§4 — the
         // ship clock and the stars' drift are one rate), and early enough that
@@ -166,9 +170,13 @@ async function boot() {
         // The preset/query value is years per second, not a slider stop: the
         // ladder is owned by trade.js, so the boot maps it back to the nearest
         // stop (a query may name a rate between stops and still mean it).
-        let tradeRateIndex = tradeRateIndexFor(params.trade);
-        let tradeRoutesOn = params.traderoutes > 0 ? 1 : 0;
-        let gameMode = false;
+		let tradeRateIndex = tradeRateIndexFor(params.trade);
+		let tradeRoutesOn = params.traderoutes > 0 ? 1 : 0;
+		// The trade clock can be coupled to the star clock (sync time), and the
+		// special trade mode flies generation ships at 1 ly per 10 kyr.
+		let tradeSyncOn = 0;
+		let tradeGenOn = 0;
+		let gameMode = false;
         const AUTOPILOT_MIN_WALL_SECONDS = 4;
         let shipTimeRateCapY = Infinity;
         let ship = shipLib.createShip(params.ship);
@@ -949,6 +957,9 @@ async function boot() {
         const tradeRateSlider = document.getElementById('trade-rate');
         const tradeRateValue = document.getElementById('val-trade-rate');
         const tradeRoutesBox = document.getElementById('trade-routes');
+        const tradeSyncBox = document.getElementById('trade-sync-time');
+        const tradeGenBox = document.getElementById('trade-generation-ships');
+        const starTimeRangeBtn = document.getElementById('star-time-range');
         const tradeState = document.getElementById('trade-state');
         const tradeList = document.getElementById('trade-list');
         const colonisationState = document.getElementById('colonisation-state');
@@ -1159,6 +1170,30 @@ async function boot() {
         });
         tradeRoutesBox.addEventListener('change', () => {
                 tradeRoutesOn = tradeRoutesBox.checked ? 1 : 0;
+        });
+        tradeSyncBox.addEventListener('change', () => {
+                tradeSyncOn = tradeSyncBox.checked ? 1 : 0;
+                syncTradeUi();
+        });
+        tradeGenBox.addEventListener('change', () => {
+                tradeGenOn = tradeGenBox.checked ? 1 : 0;
+                tradeLib.generationMode(tradeGenOn);
+                // The generation-ship crawl needs the star clock to make the
+                // hops visible: 0.1 Myr/s makes a 1 ly hop last a tenth of a
+                // second of sky time; pair it with sync time so the trade
+                // clock rides that same clock.
+                if (tradeGenOn && !gameMode) {
+                        starTimeRate = 0.1;
+                        syncStarTime();
+                }
+                syncTradeUi();
+        });
+        // The star-time slider's fine range (−1…2 Myr/s in 0.1 steps) makes
+        // small rates settable; the button widens to −1…99 Myr/s in 0.5 steps.
+        starTimeRangeBtn.addEventListener('click', () => {
+                starTimeWide = !starTimeWide;
+                if (starTimeRate > Number(sliderStarTime.max)) starTimeRate = Number(sliderStarTime.max);
+                syncStarTime();
         });
         flightAutoDest.addEventListener('change', () => {
                 if (flightAutoDest.checked) {
@@ -1703,12 +1738,16 @@ async function boot() {
                                 + (adjusted ? ` Effective rate ${formatShipRate(effectiveRate)}; autopilot flights are kept at least 4 wall-seconds.` : '');
                 } else {
                         sliderStarTime.min = -1;
-                        sliderStarTime.max = 99;
-                        sliderStarTime.step = 0.5;
+                        sliderStarTime.max = starTimeWide ? 99 : 2;
+                        sliderStarTime.step = starTimeWide ? 0.5 : 0.1;
+                        if (starTimeRate > sliderStarTime.max) starTimeRate = Number(sliderStarTime.max);
+                        else if (starTimeRate < sliderStarTime.min) starTimeRate = Number(sliderStarTime.min);
                         sliderStarTime.value = starTimeRate;
                         valStarTime.textContent = window.OrbitLib.formatTimeRate(starTimeRate, 0);
                         valStarTime.title = '';
                 }
+                starTimeRangeBtn.textContent = starTimeWide ? 'wide range' : 'fine range';
+                starTimeRangeBtn.disabled = gameMode;
         }
         function pauseStarTimeForSearch() {
                 if (starTimeRate === 0) return false;
@@ -1915,6 +1954,8 @@ async function boot() {
                         dvbudget: systemLayer.getBudget(),
                         trade: tradeRateYears(),
                         traderoutes: tradeRoutesOn,
+                        tradesync: tradeSyncOn,
+                        tradegen: tradeGenOn,
 			ship: systemLayer.getShipClass(),
                         stars: params.stars,
                         catalog: params.catalogStars,
@@ -2032,6 +2073,17 @@ async function boot() {
 		}
 		if (s.traderoutes !== undefined) {
 			tradeRoutesOn = s.traderoutes > 0 ? 1 : 0;
+			syncTradeUi();
+		}
+		if (s.tradesync !== undefined) {
+			tradeSyncOn = s.tradesync > 0 ? 1 : 0;
+			tradeSyncBox.checked = tradeSyncOn !== 0;
+			syncTradeUi();
+		}
+		if (s.tradegen !== undefined) {
+			tradeGenOn = s.tradegen > 0 ? 1 : 0;
+			tradeGenBox.checked = tradeGenOn !== 0;
+			tradeLib.generationMode(tradeGenOn);
 			syncTradeUi();
 		}
                 syncDvUi();
@@ -3917,11 +3969,20 @@ async function boot() {
                 return tradeLib.TRADE_RATES[tradeRateIndex];
         }
 
+        // Resolve a trade port's star to its live drawn position at the current
+        // star time, through the label layer's same record dispatch the
+        // overlay draws with. A star that is not resident resolves to nothing
+        // and the port keeps its birth coordinates.
+        function tradeLivePosition(ref, out) {
+                return labels.tradeRecordPosition(ref.kind | 0, ref.index | 0, ref.key >>> 0, out);
+        }
+
         function tradeSeedNetwork() {
                 tradeNet = tradeLib.createNetwork({
                         seed: model.seed | 0,
                         modelSeed: model.seed | 0,
                         timeYears: 0,
+                        livePosition: tradeLivePosition,
                 });
                 tradeCtx.model = model;
                 tradeCtx.field = null;
@@ -4054,8 +4115,18 @@ async function boot() {
         // flight, plus the colonisation frontier (trade.2). Rebuilt at 4 Hz.
         function syncTradeUi() {
                 tradeRateSlider.value = String(tradeRateIndex);
-                tradeRateValue.textContent = tradeRateYears() === 0 ? 'paused' : tradeRateYears() + ' y/s';
+                tradeRateSlider.disabled = tradeSyncOn !== 0 && !gameMode;
+                if (tradeSyncOn !== 0 && !gameMode) {
+                        const synced = starTimeRate * 1e6;   // Myr/s → trade y/s
+                        tradeRateValue.textContent = synced === 0
+                                ? 'paused · synced to star time'
+                                : Number(synced.toFixed(0)).toLocaleString('en-US') + ' y/s · synced to star time';
+                } else {
+                        tradeRateValue.textContent = tradeRateYears() === 0 ? 'paused' : tradeRateYears() + ' y/s';
+                }
                 tradeRoutesBox.checked = tradeRoutesOn !== 0;
+                tradeSyncBox.checked = tradeSyncOn !== 0;
+                tradeGenBox.checked = tradeGenOn !== 0;
                 if (!tradeNet) {
                         tradeState.textContent = 'no network';
                         tradeList.textContent = 'No trade network yet.';
@@ -4162,8 +4233,10 @@ async function boot() {
         // The overlay's one line.
         function tradeOverlayLine() {
                 if (!tradeNet) return '';
-                const rate = tradeRateYears();
-                return `\ntrade     ${rate === 0 ? 'paused' : rate + ' y/s'} \u00b7 ${tradeNet.portCount} ports`
+                let rate = tradeRateYears();
+                let tag = '';
+                if (tradeSyncOn && !gameMode) { rate = starTimeRate * 1e6; tag = ' \u00b7 synced'; }
+                return `\ntrade     ${rate === 0 ? 'paused' : Number(rate.toFixed(0)).toLocaleString('en-US') + ' y/s'}${tag} \u00b7 ${tradeNet.portCount} ports`
                         + ` \u00b7 ${tradeNet.shipCount} ships \u00b7 queue ${tradeNet.queue.size}`;
         }
 
@@ -4546,14 +4619,25 @@ async function boot() {
                 starTimeMyr += dtStar;
                 if (starTimeMyr >= STAR_TIME_WRAP || starTimeMyr < 0) starTimeMyr = ((starTimeMyr % STAR_TIME_WRAP) + STAR_TIME_WRAP) % STAR_TIME_WRAP;
                 // The trade clock (trade-plan §1) is wall-time, not star-time:
-                // the colonies keep their own years. A hidden tab must not
-                // fast-forward the network by minutes, so the frame's share is
-                // capped at a quarter second. Big colonies also scan the live
-                // field for nearby good worlds every ~25 trade years (trade.2):
-                // the frontier expands without player inspection.
+                // the colonies keep their own years. With sync time on it rides
+                // the star clock instead (starTimeRate · 10⁶ trade years per
+                // second), which is what makes generation-ship hops visible.
+                // A hidden tab must not fast-forward the network by minutes, so
+                // the frame's share is capped at a quarter second. While the
+                // stars move, in-flight voyages are re-measured against the
+                // endpoints' live drawn positions so their arrivals track the
+                // moving route. Big colonies also scan the live field for
+                // nearby good worlds every ~25 trade years (trade.2): the
+                // frontier expands without player inspection.
                 if (tradeNet && tradeRateIndex > 0) {
-                        const dtTrade = tradeRateYears() * Math.min(dt, 0.25);
+                        let dtTrade;
+                        if (tradeSyncOn && !gameMode) {
+                                dtTrade = starTimeRate > 0 ? starTimeRate * 1e6 * Math.min(dt, 0.25) : 0;
+                        } else {
+                                dtTrade = tradeRateYears() * Math.min(dt, 0.25);
+                        }
                         tradeLib.step(tradeNet, dtTrade);
+                        if (dtTrade > 0 && dtStar > 0) tradeLib.retimeRoutes(tradeNet);
                         if (tradeLib.expandFrontierFromField && dtTrade > 0) {
                                 // Throttle scan to once per 25 trade years to avoid per-frame cost.
                                 if (tradeNet.time - (tradeNet._lastFrontierScan || -1e9) >= 25) {
@@ -4928,9 +5012,13 @@ async function boot() {
                         updateOverlay(renderer.state, camera.getState(statsText));
                         if (noSelectionTicks > 0) noSelectionTicks--;
                         if (autoMsgTicks > 0) autoMsgTicks--;
-                        if (gameMode) updateShipChromeText();
-                        if (sysMenu.style.display !== 'none') { syncFlightUi(); syncTradeUi(); }
-                        if (systemLayer.isOpen()) writeSystemReadout();
+                if (gameMode) updateShipChromeText();
+                if (sysMenu.style.display !== 'none') syncFlightUi();
+                // The Trade panel stays live even while no menu is open: the
+                // colonisation readout ("no big colonies ready") must reflect
+                // the running network, not the moment the menu was opened.
+                syncTradeUi();
+                if (systemLayer.isOpen()) writeSystemReadout();
                         // View modes: the status line and the live range labels
                         // are 4 Hz text, like the rest of the readouts.
                         if (viewMenu.style.display !== 'none') {

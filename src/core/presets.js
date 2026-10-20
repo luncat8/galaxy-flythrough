@@ -72,6 +72,8 @@ const FIELDS = [
 	// state — the colonies themselves are a pure function of the seed.
 	{ key: 'trade', label: 'trade clock', unit: ' y/s' },
 	{ key: 'traderoutes', label: 'trade routes' },
+	{ key: 'tradesync', label: 'trade clock synced to star time' },
+	{ key: 'tradegen', label: 'generation ships' },
 	{ key: 'ship', label: 'ship class' },
 	{ key: 'stars', label: 'procedural stars' },
 	{ key: 'catalog', label: 'catalog budget' },
@@ -124,6 +126,8 @@ function menuDefaults() {
 		dvbudget: g.SystemLayer ? g.SystemLayer.BUDGET_DEFAULT : 0.35,
 		trade: g.TradeLib ? g.TradeLib.TRADE_RATE_DEFAULT : 100,
 		traderoutes: g.TradeLib ? g.TradeLib.TRADE_ROUTES_DEFAULT : 1,
+		tradesync: 0,
+		tradegen: 0,
 		ship: 'chemical',
 		// Owned by clusters.js, like the orbit numbers above are owned by
 		// orbit.js: the exaggeration the cluster budget is rendered at.
@@ -302,7 +306,7 @@ function buildLlmPrompt(settings) {
 	lines.push('- star system: ' + ['type ' + (d.type || 'SBb'), 'seed ' + (d.seed || '42'),
 		'age ' + (d.age || '13.5 Gyr')].join(', '));
 	lines.push('- star movement stability engine: ' + (d.engine || 'classic'));
-	for (const key of ['time', 'evolve', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad', 'sysview', 'systime', 'dvmap', 'dvbudget', 'trade', 'traderoutes', 'ship']) {
+	for (const key of ['time', 'evolve', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad', 'sysview', 'systime', 'dvmap', 'dvbudget', 'trade', 'traderoutes', 'tradesync', 'tradegen', 'ship']) {
 		const field = FIELDS.find((f) => f.key === key);
 		if (d[key] !== undefined) lines.push('- ' + field.label + ': ' + d[key]);
 	}

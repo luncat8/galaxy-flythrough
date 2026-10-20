@@ -70,6 +70,7 @@
                         <!-- A click that does not move the slider stops the clock (main.js,
                              the click guard on this input): the 0 stop is otherwise a half-step
                              between -1 and 0.5 on a 100-wide track. T still parks/restores. -->
+                        <button id="star-time-range" type="button" title="Star-time range is fine: −1…2 Myr/s in 0.1 steps. Click to widen to −1…99 Myr/s in 0.5 steps.">fine range</button>
                         <span id="val-star-time" class="menu-val">5 Myr/s</span>
                 </div>
                 <!-- The epoch's live clock (0.6 E2): while it runs, the star clock
@@ -496,6 +497,14 @@
 			<input type="checkbox" id="trade-routes" checked>
 			<span>Draw trade routes</span>
 			<small>Y</small>
+		</label>
+		<label class="flight-autopilot" title="Run the trade clock on the star clock instead of wall seconds: while the star clock runs, trade years pass as star years pass, so with generation ships a 1 ly hop at 0.1 Myr/s takes about a tenth of a second of sky time. Only while observing; in game mode the trade clock keeps its own wall-time ladder.">
+			<input type="checkbox" id="trade-sync-time">
+			<span>Sync trade clock to star time</span>
+		</label>
+		<label class="flight-autopilot" title="Special trade mode: generation ships at 1 light-year per 10 000 years. This also sets the star clock to 0.1 Myr/s; combine it with sync time so the trade clock rides the star clock.">
+			<input type="checkbox" id="trade-generation-ships">
+			<span>Generation ships &middot; 1 ly per 10 kyr</span>
 		</label>
 		<div id="trade-state" class="flight-port-state">no network</div>
 		<pre id="trade-list" class="flight-forecast">No trade network yet.</pre>

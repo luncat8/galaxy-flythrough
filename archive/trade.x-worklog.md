@@ -103,6 +103,69 @@ Validation:
 - node experiments/m1-smoke-test.js: 112/112 (TradeLib export count 44->51).
 - node --check src/main.js src/core/trade.js: passed.
 
+## trade.3 — 2026-10-20 — Star-time-coupled trade controls
+
+User-reported issues:
+
+- The Trade panel readout could sit on stale text ("no big colonies ready")
+  while the network ran, because syncTradeUi only painted while the Systems
+  menu was open. Colonisation itself was verified by simulation: seed ports
+  cross the big-colony gate (pop ≥ 5 M, coverage ≥ 0.30, pop ≥ 8% of
+  capacity), the 25-year tick launches one expedition per 200 years from
+  every eligible port, and the frontier scan adds good worlds near big
+  colonies, so the network grows at the fastest trade rate.
+
+New features:
+
+- Sync time (Trade panel checkbox): the trade clock rides the star clock
+  (starTimeRate · 10⁶ trade years per second, capped at 0.25 s of wall time
+  per frame) instead of the wall-time ladder; outside game mode only. The
+  trade slider is disabled and the readout shows the effective rate with a
+  "synced" tag.
+- Generation ships (Trade panel checkbox): every hull flies 1 light-year per
+  10 000 years (GENERATION_LY_PER_YEAR = 1e-4 in legYears) and the star
+  clock is set to 0.1 Myr/s, so with sync time on a 1 ly hop takes ≈10 kyr
+  of star time — a tenth of a second of sky time at 0.1 Myr/s.
+- Route re-timing: while the stars move (dtStar > 0) and the trade clock
+  runs, in-flight voyages are re-measured against the endpoints' live drawn
+  positions (label layer's record dispatch at the current star time) and the
+  arrival is rescheduled when the remaining journey moves by more than a
+  year. Booking also uses live positions. Non-resident endpoints fall back to
+  birth coordinates. label-layer's tradeDrawnPosition is replaced by
+  tradeRecordPosition(kind, index, key, out), shared by the overlay pass and
+  main.js's resolver.
+- Star-time slider: default fine range −1…2 Myr/s in 0.1 steps so small
+  rates such as 0.1 Myr/s are settable; a "wide range / fine range" toggle
+  button widens to −1…99 Myr/s in 0.5 steps.
+- Presets: tradesync and tradegen (0/1) ride beside trade/traderoutes.
+
+Files:
+
+- src/core/trade.js: generation mode, live-position booking (sailTo,
+  launchExpedition), retimeRoutes, ship.leg, TradeLib exports
+  generationMode/retimeRoutes.
+- src/render/label-layer.js: tradeRecordPosition replaces tradeDrawnPosition
+  plus the now-unused tradeSlot; overlay draws endpoints at live positions.
+- src/main.js: sync-time dt, retimeRoutes call in the loop, live-position
+  resolver wired through the label layer, the two checkboxes, the range
+  toggle, slider min/max/step clamping, live unconditional 4 Hz syncTradeUi,
+  preset collect/apply for tradesync/tradegen.
+- src/index.html: trade-sync-time, trade-generation-ships checkboxes and the
+  star-time-range button.
+- src/core/presets.js: tradesync/tradegen fields and defaults, LLM prompt key
+  list.
+- trade-plan.md: §6 documents the controls.
+
+Validation:
+
+- node experiments/trade-test.js: passes.
+- python3 scripts/run.py changed: 12/12 passed.
+- python3 scripts/run.py m1-smoke preset: passed (TradeLib export count 51->53).
+- node --check on all edited sources: passed.
+- Standalone Node check of generation legs, live-position booking, re-timing
+  (moved endpoint, mid-voyage, birth-coordinate fallback) and sync-time dt:
+  all pass.
+
 No renderer/WGSL changes; overlay geometry unchanged. Next: planet-specific
 docking visuals and physically calibrated interstellar freight remain deferred
 per trade-plan.md.

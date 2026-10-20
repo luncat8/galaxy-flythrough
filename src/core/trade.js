@@ -84,6 +84,9 @@
 	const INITIAL_SHIPS = 12;
 	const SHIPS_PER_PORT = 1.5;
 	const MAX_LEG_LY = 3000;
+	// Special trade mode: generation ships — 1 light-year per 10 000 years.
+	const GENERATION_LY_PER_YEAR = 1e-4;
+	let generationMode = 0;
 
 	// A shipment is sized to the destination's draw, not to the hold: a hold
 	// that arrives full at a port which can take a tenth of it parks the rest
@@ -105,10 +108,10 @@
 
 	function createShip() {
 		return {
-			index: 0, hull: 0, hold: 0, cargo: NO_RESOURCE, amount: 0,
-			state: SHIP_DOCKED, port: -1, from: -1, to: -1, candidate: -1,
-			depart: 0, arrive: 0, revision: 0, trips: 0, delivered: 0, founded: 0,
-		};
+		index: 0, hull: 0, hold: 0, cargo: NO_RESOURCE, amount: 0,
+		state: SHIP_DOCKED, port: -1, from: -1, to: -1, candidate: -1,
+		depart: 0, arrive: 0, leg: 0, revision: 0, trips: 0, delivered: 0, founded: 0,
+	};
 	}
 
 	function createCandidate() {
@@ -145,6 +148,7 @@
 		for (let i = 0; i < MAX_CANDIDATES; i++) net.candidates.push(createCandidate());
 		// The drain's callback: one closure per network, never per event.
 		net.handler = (time, kind, ref, revision) => handleEvent(net, time, kind, ref, revision);
+		net.livePosition = options && options.livePosition ? options.livePosition : null;
 		return net;
 	}
 
@@ -193,13 +197,25 @@
 		return portDistanceKpc(net.ports[a], net.ports[b]) * LY_PER_KPC;
 	}
 
+	// A port's drawn position: the star's live drawn position when a live
+	// position resolver is wired (the stars move with star time), else the
+	// birth position the port was settled at. `ref` is the port's identity;
+	// the fallbacks are the cached birth coordinates.
+	function positionOf(net, ref, fx, fy, fz, out) {
+		if (net.livePosition && net.livePosition(ref, out)) return out;
+		out[0] = fx; out[1] = fy; out[2] = fz;
+		return out;
+	}
+
 	// THE trade-clock law: a leg's length in trade years. Speed is the hull's
-	// authored `lyPerYear`; half a year is the floor so two ports at the same
-	// coordinate never produce a zero-length voyage (a zero-length event would
-	// let a ship cycle forever inside one step).
+	// authored `lyPerYear`, or the generation-ship crawl (1 ly per 10 kyr)
+	// while the special trade mode is on. Half a year is the floor so two
+	// ports at the same coordinate never produce a zero-length voyage (a
+	// zero-length event would let a ship cycle forever inside one step).
 	function legYears(distanceKpc, hullIndex) {
 		const ly = distanceKpc * LY_PER_KPC;
-		const years = ly / HULLS[hullIndex].lyPerYear;
+		const speed = generationMode ? GENERATION_LY_PER_YEAR : HULLS[hullIndex].lyPerYear;
+		const years = ly / speed;
 		return years > 0.5 ? years : 0.5;
 	}
 
@@ -440,7 +456,15 @@
 		ship.to = destPort;
 		ship.state = SHIP_SAILING;
 		ship.depart = time;
-		ship.arrive = time + legYears(portDistanceKpc(port, dest), ship.hull);
+		// Book the leg against the endpoints' live positions: while the star clock
+		// runs the drawn route endpoints are the stars' moved positions, so the
+		// voyage length is measured from where they are when the ship leaves.
+		const pa = [0, 0, 0], pb = [0, 0, 0];
+		positionOf(net, port.ref, port.x, port.y, port.z, pa);
+		positionOf(net, dest.ref, dest.x, dest.y, dest.z, pb);
+		const dx = pa[0] - pb[0], dy = pa[1] - pb[1], dz = pa[2] - pb[2];
+		ship.arrive = time + legYears(Math.sqrt(dx * dx + dy * dy + dz * dz), ship.hull);
+		ship.leg = ship.arrive - ship.depart;          // booked journey; speed is constant, so time fraction == distance fraction
 		ship.port = -1;
 		scheduleShip(net, ship, ship.arrive, EV_ARRIVE);
 	}
@@ -745,24 +769,65 @@
 		for (let i = 0; i < net.candidateCount; i++) {
 			if (net.candidates[i].site.key === site.key) net.candidates[i].reserved = shipIndex;
 		}
-		ship.index = shipIndex;
-		ship.hull = 2;
-		ship.hold = colonists;
-		ship.amount = colonists;
-		ship.cargo = economy.R_PEOPLE;
-		ship.state = SHIP_FOUNDING;
-		ship.port = -1;
-		ship.from = source;
-		ship.to = -1;
-		ship.candidate = candidateIndex;
-		ship.depart = time;
-		ship.arrive = time + legYears(portDistanceKpc(sourcePort, site), ship.hull);
-		ship.revision = 0;
+	ship.index = shipIndex;
+	ship.hull = 2;
+	ship.hold = colonists;
+	ship.amount = colonists;
+	ship.cargo = economy.R_PEOPLE;
+	ship.state = SHIP_FOUNDING;
+	ship.port = -1;
+	ship.from = source;
+	ship.to = -1;
+	ship.candidate = candidateIndex;
+	ship.depart = time;
+	// The candidate's world sits on its star: measure from the star's live
+	// drawn position while the clock runs, else its birth coordinates.
+	const pa = [0, 0, 0], pb = [0, 0, 0];
+	positionOf(net, sourcePort.ref, sourcePort.x, sourcePort.y, sourcePort.z, pa);
+	positionOf(net, site.ref, site.x, site.y, site.z, pb);
+	const dx = pa[0] - pb[0], dy = pa[1] - pb[1], dz = pa[2] - pb[2];
+	ship.arrive = time + legYears(Math.sqrt(dx * dx + dy * dy + dz * dz), ship.hull);
+	ship.leg = ship.arrive - ship.depart;
+	ship.revision = 0;
 		ship.trips = 0;
 		ship.delivered = 0;
 		ship.founded = 0;
 		scheduleShip(net, ship, ship.arrive, EV_FOUND);
 		return shipIndex;
+	}
+
+	// Re-time in-flight voyages while the stars move: the booked leg length is
+	// the departure-time distance, but the drawn route endpoints are the stars'
+	// live positions. Re-measure the remaining journey and reschedule the arrival
+	// when it moves by more than a year; an endpoint that is not resident falls
+	// back to its birth coordinates.
+	function retimeRoutes(net) {
+		for (let i = 0; i < net.shipCount; i++) {
+			const ship = net.ships[i];
+			if (ship.state !== SHIP_SAILING && ship.state !== SHIP_FOUNDING) continue;
+			if (!(ship.arrive > ship.depart)) continue;
+			const a = ship.from >= 0 ? net.ports[ship.from] : null;
+			const b = ship.state === SHIP_FOUNDING
+				? (ship.candidate >= 0 ? net.candidates[ship.candidate].site : null)
+				: (ship.to >= 0 ? net.ports[ship.to] : null);
+			if (!a || !b) continue;
+			const pa = [0, 0, 0], pb = [0, 0, 0];
+			if (!positionOf(net, a.ref, a.x, a.y, a.z, pa)) continue;
+			if (!positionOf(net, b.ref, b.x, b.y, b.z, pb)) continue;
+			const dx = pa[0] - pb[0], dy = pa[1] - pb[1], dz = pa[2] - pb[2];
+			const total = legYears(Math.sqrt(dx * dx + dy * dy + dz * dz), ship.hull);
+			// The booked journey: speed is constant, so the time fraction equals the
+			// distance fraction even after a previous re-time changed ship.arrive.
+			let f = ship.leg > 0 ? (net.time - ship.depart) / ship.leg : 0;
+			if (f < 0) f = 0;
+			if (f > 1) f = 1;
+			const arrive = net.time + (1 - f) * total;
+			if (!(arrive > ship.depart)) continue;
+			if (Math.abs(arrive - ship.arrive) <= 1.0) continue;
+			ship.arrive = arrive;
+			ship.revision = (ship.revision + 1) >>> 0;
+			scheduleShip(net, ship, arrive, ship.state === SHIP_FOUNDING ? EV_FOUND : EV_ARRIVE);
+		}
 	}
 
 	function foundAtCandidate(net, ship, time) {
@@ -771,7 +836,7 @@
 		const portIndex = available ? addPort(net, c.site, time) : -1;
 		for (let i = 0; i < net.candidateCount; i++) {
 			if (net.candidates[i].reserved === ship.index) net.candidates[i].reserved = -1;
-		}
+			}
 		if (portIndex < 0) {
 			ship.port = ship.from;
 			ship.to = -1;
@@ -825,6 +890,13 @@
 		queueLib.drainUntil(net.queue, target, net.handler);
 		net.time = target;
 		return net.processed - before;
+	}
+
+	// Special trade mode: every hull flies the generation-ship crawl, 1 ly per
+	// 10 000 years. Meant to be read with the trade clock synced to the star
+	// clock at 0.1 Myr/s — a 1 ly hop is then ≈10 kyr of star time.
+	function setGenerationMode(on) {
+		generationMode = on > 0 ? 1 : 0;
 	}
 
 	// --- Draw state and the player -----------------------------------------
@@ -968,9 +1040,9 @@
 		createNetwork, discoverSystem, settleSystem, finalize, step,
 		portIndexOf, candidateIndexOf, bestPortOfStar, distanceLy, legYears,
 		shipPosition, shipProgress, shipStateName, playerPort, playerLoad, playerUnload,
-		siteHabitatScore, isBigColony, colonisationPreview, pickCandidate, bestExpedition,
-		expandFrontierFromField,
-	};
+	siteHabitatScore, isBigColony, colonisationPreview, pickCandidate, bestExpedition,
+	expandFrontierFromField, generationMode: setGenerationMode, retimeRoutes,
+};
 	if (typeof module !== 'undefined') module.exports = TradeLib;
 	if (typeof window !== 'undefined') window.TradeLib = TradeLib;
 })();

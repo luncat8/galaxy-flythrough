@@ -613,28 +613,32 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	const tradeA = new Float64Array(3);
 	const tradeB = new Float64Array(3);
 
-	function tradeSlot(port) {
+	// The drawn position of one resident record, into `out` (x, y, z in kpc),
+	// at the current star time: birth position plus the orbit law. Returns
+	// false when the slot is not resident or its identity no longer matches
+	// `key`, so a route endpoint that left the field is not drawn at a stale
+	// birth position. Used by the trade overlay and by main.js's route
+	// re-timing, which resolves ports the same way the shader does.
+	function tradeRecordPosition(kind, index, key, out) {
 		const info = starSource;
-		if (!info || !info.identity || !info.view || !info.blocks) return -1;
-		const block = info.blocks[port.ref.kind | 0];
-		if (!block) return -1;
-		const slot = (block.offset | 0) + (port.ref.index | 0);
-		if (slot >= (info.total | 0)) return -1;
-		if ((info.identity[slot] >>> 0) !== (port.key >>> 0)) return -1;
-		return slot;
-	}
-
-	// The drawn position of one record slot, into `out` (x, y, z in kpc).
-	function tradeDrawnPosition(port, slot, records, info, orbit, out) {
+		if (!info || !info.identity || !info.view || !info.blocks) return false;
+		const block = info.blocks[kind | 0];
+		if (!block) return false;
+		const slot = (block.offset | 0) + (index | 0);
+		if (slot >= (info.total | 0)) return false;
+		if ((info.identity[slot] >>> 0) !== (key >>> 0)) return false;
+		const records = labelRecords();
+		if (!records) return false;
 		const view = info.view;
 		const byteOffset = slot * records.RECORD_BYTES;
 		const packed = view.getUint32(byteOffset + 12, true);
 		let px = view.getFloat32(byteOffset, true);
 		let py = view.getFloat32(byteOffset + 4, true);
 		let pz = view.getFloat32(byteOffset + 8, true);
+		const orbit = labelOrbit();
 		if (orbit && orbitModel) {
-			if ((port.ref.kind | 0) === 1) {
-				orbit.engineLandmarkPosition(out, port.ref.index | 0, px, py, pz,
+			if ((kind | 0) === 1) {
+				orbit.engineLandmarkPosition(out, index | 0, px, py, pz,
 					packed & 0xFF, orbitTime, orbitModel);
 			} else {
 				orbit.engineRecordPosition(out, px, py, pz, packed, orbitTime, orbitModel);
@@ -642,14 +646,11 @@ function createLabelLayer(canvas, landmarks, constellations) {
 			px = out[0]; py = out[1]; pz = out[2];
 		}
 		out[0] = px; out[1] = py; out[2] = pz;
+		return true;
 	}
 
 	function drawTrade(camera, width, height) {
 		if (!tradeOn) return;
-		const info = starSource;
-		const records = labelRecords();
-		if (!info || !records || !info.identity || !info.view) return;
-		const orbit = labelOrbit();
 		const viewProj = camera.buildViewProj(width / height);
 		const cam = camera.cameraPos;
 		// The routes first, so the rings and hulls stay legible on top of them.
@@ -664,11 +665,8 @@ function createLabelLayer(canvas, landmarks, constellations) {
 				? (ship.candidate >= 0 ? tradeNet.candidates[ship.candidate].site : null)
 				: (ship.to >= 0 ? tradeNet.ports[ship.to] : null);
 			if (!from || !to) continue;
-			const a = tradeSlot(from);
-			const b = tradeSlot(to);
-			if (a < 0 || b < 0) continue;
-			tradeDrawnPosition(from, a, records, info, orbit, tradeA);
-			tradeDrawnPosition(to, b, records, info, orbit, tradeB);
+			if (!tradeRecordPosition(from.ref.kind | 0, from.ref.index | 0, from.key, tradeA)) continue;
+			if (!tradeRecordPosition(to.ref.kind | 0, to.ref.index | 0, to.key, tradeB)) continue;
 			if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],
 				cam[0], cam[1], cam[2], width, height, scratch)) continue;
 			ctx.moveTo(scratch[0], scratch[1]);
@@ -683,9 +681,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		for (let i = 0; i < tradeNet.portCount; i++) {
 			const port = tradeNet.ports[i];
 			if (port.colony.abandoned) continue;
-			const slot = tradeSlot(port);
-			if (slot < 0) continue;
-			tradeDrawnPosition(port, slot, records, info, orbit, tradeA);
+			if (!tradeRecordPosition(port.ref.kind | 0, port.ref.index | 0, port.key, tradeA)) continue;
 			if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],
 				cam[0], cam[1], cam[2], width, height, scratch)) continue;
 			ctx.moveTo(scratch[0] + TRADE_PORT_RING_PX, scratch[1]);
@@ -702,11 +698,8 @@ function createLabelLayer(canvas, landmarks, constellations) {
 				? (ship.candidate >= 0 ? tradeNet.candidates[ship.candidate].site : null)
 				: (ship.to >= 0 ? tradeNet.ports[ship.to] : null);
 			if (!from || !to) continue;
-			const a = tradeSlot(from);
-			const b = tradeSlot(to);
-			if (a < 0 || b < 0) continue;
-			tradeDrawnPosition(from, a, records, info, orbit, tradeA);
-			tradeDrawnPosition(to, b, records, info, orbit, tradeB);
+			if (!tradeRecordPosition(from.ref.kind | 0, from.ref.index | 0, from.key, tradeA)) continue;
+			if (!tradeRecordPosition(to.ref.kind | 0, to.ref.index | 0, to.key, tradeB)) continue;
 			let f = ship.arrive > ship.depart ? (tradeTime - ship.depart) / (ship.arrive - ship.depart) : 1;
 			if (f < 0) f = 0;
 			if (f > 1) f = 1;
@@ -763,10 +756,10 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		return showLines;
 	}
 
-	return {
+		return {
 		resize, draw, setSelected, setOrbitState, setStarSource, setSelectedKeys,
 		toggleConstellations, setConstellations, constellationsVisible, setEnabled,
-		setShipChrome, setTradeOverlay,
+		setShipChrome, setTradeOverlay, tradeRecordPosition,
 	};
 }
 
