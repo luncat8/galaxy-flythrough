@@ -7,23 +7,355 @@
         <link rel="stylesheet" href="style.css">
 </head>
 <body>
-	<canvas id="canvas" tabindex="0"></canvas>
-	<canvas id="labels"></canvas>
-	<!-- View modes (view-modes.6): the heightmap map over the frame — the
-	     island's field and painter, anchored on the renderer's own stars.
-	     Pointer events fall through; the camera input stays the WebGPU
-	     canvas's. Hidden when the mode is off. -->
-	<canvas id="viewmodes"></canvas>
-	<!-- Close-system schematic (0.5.3): 2D canvas above #labels, below #menu.
-	     Drawn only while the system view is open; pointer events fall through
-	     to the WebGPU canvas, which routes its clicks to the layer. -->
-	<canvas id="system"></canvas>
-	<pre id="overlay"></pre>
-        <pre id="error" style="display:none"></pre>
-        <!-- Search results (0.5.2) and, from 0.5.3, the system-view readout:
-             one <pre> styled like #overlay, hidden while empty. -->
-        <pre id="sysread"></pre>
-        <div id="menu" class="panel">
+<div class="panel-column panel-column-left">
+<div id="selection-menu" class="panel">
+		<div class="menu-header">
+			<span>Search &amp; Selection</span>
+			<button id="selection-menu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab toggles all panels)" aria-expanded="true">▾</button>
+		</div>
+		<div class="menu-header selection-section-heading"><span>Natural objects</span><small>star · planet · other</small></div>
+		<div class="selection-history" aria-live="polite">
+			<div class="selection-history-slot"><span>Current</span><strong id="selection-current-label">No object selected</strong></div>
+			<div class="selection-history-slot"><span>Previous</span><strong id="selection-previous-label">—</strong></div>
+			<button id="selection-swap" class="selection-swap" type="button" disabled title="Swap the current and previous natural-object selections">Swap current ↔ previous</button>
+		</div>
+		<div class="menu-row selection-radius-row">
+			<label for="slider-selrad" title="Select-around radius, log scale, measured from the current star.">Select-set radius</label>
+			<input type="range" id="slider-selrad" min="-1" max="5" step="0.00001" value="1.69897">
+			<span id="val-selrad" class="menu-val">50 ly</span>
+		</div>
+		<div class="menu-row menu-actions selection-actions">
+			<button id="btn-select-around" title="Add every star within the radius of the current star (Shift+F flies to it, N cycles, X clears)">Select around</button>
+			<button id="btn-fly-to" type="button" disabled title="Fly to the selected primary and orbit at its luminosity stand-off (Shift+F)">Fly to primary (Shift+F)</button>
+			<button id="btn-clear-set" title="Clear selection history and the selected-star set (X)">Clear selection</button>
+		</div>
+
+		<div class="menu-header selection-section-heading"><span>Search stars</span><small>group 1a</small></div>
+		<div class="menu-row search-row">
+			<label for="search-center">Center</label>
+			<select id="search-center" title="Search from the current star's drawn position, or from the camera">
+				<option value="current" selected>current star</option>
+				<option value="camera">camera</option>
+			</select>
+			<label for="search-radius-pc">Radius</label>
+			<input type="number" id="search-radius-pc" value="10" min="0" step="0.1" title="Search radius in parsecs; the token filter stores this distance in light-years">
+			<span class="search-unit">pc</span>
+		</div>
+		<div class="menu-row search-row">
+			<label for="search-scope">Scope</label>
+			<select id="search-scope" title="Galaxy scans all stars; selection set scans only the current set">
+				<option value="galaxy" selected>galaxy</option>
+				<option value="selection">selection set</option>
+			</select>
+			<label for="search-class">Class</label>
+			<select id="search-class" title="Spectral class (single; the token box can hold several)"></select>
+			<label for="search-ptype">Planet</label>
+			<select id="search-ptype" title="Planet display type (single; the token box can hold several)"></select>
+		</div>
+		<div class="menu-row search-row">
+			<label for="search-tsurf-min" title="Surface-temperature range in kelvin; empty ends stay open">Tsurf</label>
+			<input type="number" id="search-tsurf-min" placeholder="180" min="0" step="1">
+			<span class="search-dash">–</span>
+			<input type="number" id="search-tsurf-max" placeholder="320" min="0" step="1">
+			<span class="search-unit">K</span>
+			<label class="search-check" title="Only systems with a terran world"><input type="checkbox" id="search-terran"> terran</label>
+			<label class="search-check" title="Only systems with a debris belt"><input type="checkbox" id="search-belt"> belt</label>
+			<label class="search-check" title="Only systems with no planets"><input type="checkbox" id="search-barren"> no planets</label>
+		</div>
+		<div class="menu-row search-row">
+			<label for="search-token" title="The whole filter as a compact token (plan §5.5): classes, flags and ranges separated by |. Distances in the token are light-years.">Filter</label>
+			<input type="text" id="search-token" spellcheck="false" placeholder="G,K|terran|220-300">
+		</div>
+		<div class="menu-row menu-actions selection-actions">
+			<button id="btn-search" title="Freeze star time and run one search against the currently drawn positions; it stays paused so you can inspect and select results">Search</button>
+			<button id="btn-search-add" title="Add kept results to the selected-star set, nearest-first">Add results to set</button>
+			<button id="btn-search-clear" title="Drop the result list">Clear results</button>
+		</div>
+		<div class="menu-row search-row"><span id="val-search" class="menu-val search-report">no search yet</span></div>
+		<div id="search-results" class="search-results" role="listbox" aria-label="Star search results"></div>
+
+		<div class="menu-header selection-section-heading"><span>Ships &amp; settlements</span><small>group 2</small></div>
+		<div class="selection-asset-types">ship · base · colony · dock port · cargo container</div>
+		<div class="selection-asset-editor">
+			<label for="asset-type">Type</label>
+			<select id="asset-type">
+				<option value="ship">ship</option><option value="base">base</option>
+				<option value="colony">colony</option><option value="dock-port">dock port</option>
+				<option value="cargo-container">cargo container</option><option value="other">other</option>
+			</select>
+			<input id="asset-id" type="text" placeholder="asset ID" aria-label="Asset identifier">
+			<input id="asset-name" type="text" placeholder="display name (optional)" aria-label="Asset display name">
+			<button id="asset-select" type="button">Set current</button>
+		</div>
+		<div class="selection-asset-history">
+			<div><span>Current</span><strong id="asset-current-label">—</strong></div>
+			<div><span>Previous</span><strong id="asset-previous-label">—</strong></div>
+		</div>
+		<button id="asset-clear" class="selection-swap" type="button">Clear asset history</button>
+		<div class="selection-asset-pair" aria-label="Two-slot asset pair">
+			<span>Pair 1 <strong id="asset-pair-first">—</strong><button id="asset-pair-first-set" type="button" disabled>Use current</button></span>
+			<span>Pair 2 <strong id="asset-pair-second">—</strong><button id="asset-pair-second-set" type="button" disabled>Use current</button></span>
+		</div>
+		<div class="menu-hint">Search pauses star time · click a result, then Fly to primary (Shift+F) · T resumes time</div>
+	</div>
+<div id="sysmenu" class="panel">
+		<div class="menu-header">
+			<span>Flight</span>
+			<button id="sysmenu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab hides all panels)" aria-expanded="true">▾</button>
+		</div>
+		<div class="flight-section-heading fleet-heading"><span>Ships</span><small>click a ship to pilot</small></div>
+		<div class="flight-fleet-bar">
+			<span id="fleet-count">1 ship</span>
+			<button id="ship-spawn" type="button" title="Create a stationary ship at the camera's current position.">Spawn at camera</button>
+		</div>
+		<div id="ship-list" class="flight-ship-list" role="listbox" aria-label="Ships"></div>
+		<div id="flight-console">
+			<div class="flight-section-heading"><span>Pilot</span><small id="flight-status">Configure now · enter game mode to engage</small></div>
+			<div class="flight-ship-row">
+				<label for="dv-ship">Ship</label>
+				<select id="dv-ship" title="One ship choice for manual flight, destination forecasts and local routes. Changing class re-arms the tank and re-snaps the ship clock."></select>
+				<button id="flight-refuel" type="button" title="Re-arm the Δv tank to the selected ship's full load. Docking refills arrive later; this is the hangar refill.">Refuel</button>
+			</div>
+			<div class="menu-row flight-control-row" id="flight-thrust-row">
+				<label for="flight-thrust" title="Thrust control: the persistent forward engine setting. Mouse still aims; W/S temporarily take over for a direct manoeuvre. The planner's thrust-limit mode uses this same maximum. Moving this slider switches to thrust control and disables the speed limit.">Thrust <span id="val-flight-thrust" class="menu-val">0% · coast</span></label>
+				<input type="range" id="flight-thrust" min="0" max="100" step="1" value="0">
+			</div>
+			<div class="menu-row flight-control-row" id="flight-speed-row">
+				<label for="flight-speed" title="Speed control: the desired fraction of this ship's speed cap. Forward thrust turns off when the ship reaches it; it does not brake for you. Moving this slider (or checking cut thrust) switches to speed control and disables the thrust lever.">Desired speed <span class="flight-check"><input type="checkbox" id="flight-speed-governor" checked> cut thrust</span><span id="val-flight-speed" class="menu-val">75% cap</span></label>
+				<input type="range" id="flight-speed" min="1" max="100" step="1" value="75">
+			</div>
+			<div class="flight-velocity-ref">relative to <strong id="velocity-ref">selected target</strong></div>
+			<div id="flight-velocity" class="flight-velocity" aria-live="polite">
+				<span><small>Forward</small><strong id="velocity-forward">+0.00 km/s</strong></span>
+				<span><small>Sideways</small><strong id="velocity-right">+0.00 km/s</strong></span>
+				<span><small>Vertical</small><strong id="velocity-up">+0.00 km/s</strong></span>
+			</div>
+
+			<div class="flight-section-heading"><span>Port</span><small>dock · service · cargo</small></div>
+			<div class="flight-port-row">
+				<button id="flight-dock" type="button" disabled title="Dock at the target station (O) when inside its shell and settled — the target-stop autopilot lands exactly there. Docking re-arms the tank, restores life support and registers the port of registry. Press again to undock.">Dock</button>
+				<button id="flight-cargo-load" type="button" disabled title="Load a colony's spare export (L), limited by actual stock and hold tonnage. Only while docked at a trade port; no credits.">Load cargo</button>
+				<button id="flight-cargo-unload" type="button" disabled title="Unload into colony storage (Shift+L). A full warehouse leaves the remainder aboard. Only while docked at a trade port.">Unload</button>
+				<button id="flight-found" type="button" disabled title="Found a colony on the best world of the docked star — free, the player is the catalyst. Works even when the network's expansion authority is stood down. Refused if the star already has a live colony or an outpost, if an expedition is bound for it, if the network is full, or if no world here is worth settling.">Found colony</button>
+			</div>
+			<div id="flight-port-state" class="flight-port-state">not docked · O docks at a settled station</div>
+
+			<div class="flight-section-heading"><span>Fly to destination</span><small>select star → set → check autopilot</small></div>
+			<div class="flight-destination-row">
+				<span>Destination</span><strong id="flight-destination">No destination set</strong>
+				<button id="flight-use-selected" type="button" title="Snapshot the currently selected star as the destination. It stays locked if you inspect another star.">Use selected</button>
+				<button id="flight-clear-destination" type="button" title="Clear the locked destination; this does not change the selection.">Clear</button>
+			</div>
+			<label class="flight-autopilot" title="Fly the configured destination profile. Shift+F remains the unconfigured fastest approach.">
+				<input type="checkbox" id="flight-autopilot-dest">
+				<span>Autopilot to destination</span>
+				<small>configured profile</small>
+			</label>
+			<label class="flight-autopilot" title="Fly to the selected or locked target and settle with zero velocity relative to it on all three view axes.">
+				<input type="checkbox" id="flight-autopilot-target">
+				<span>Autopilot to target</span>
+				<small>stop · 0, 0, 0 relative</small>
+			</label>
+			<div class="menu-row">
+				<label for="flight-mode">Plan mode</label>
+				<select id="flight-mode" title="Fastest uses the full ship. Thrust and speed modes use the Pilot controls above. Time limit finds the least-Δv legal profile that makes the deadline.">
+					<option value="0" selected>fastest</option>
+					<option value="1">use thrust as limit</option>
+					<option value="2">use speed as limit</option>
+					<option value="3">use time limit</option>
+				</select>
+			</div>
+			<div class="menu-row flight-time-row" id="flight-time-row">
+				<label for="flight-time-limit" title="Maximum arrival time in ship years. The forecast rejects a deadline faster than the ship can legally fly.">Arrival by</label>
+				<input id="flight-time-limit" type="number" min="0.001" step="0.1" value="20">
+				<span class="menu-val">ship y</span>
+			</div>
+			<pre id="flight-forecast" class="flight-forecast">Set a destination to see predicted Δv and arrival time.</pre>
+		</div>
+
+		<div class="flight-section-heading system-section-heading"><span>System map &amp; routes</span><small>local / transport</small></div>
+		<div class="menu-row">
+			<label for="sys-view">View <span class="kbd">V</span></label>
+			<select id="sys-view" title="What the system canvas shows of the primary selection's generated system. Picking one opens the view; B cycles the three while it is open.">
+				<option value="0" selected>system schematic</option>
+				<option value="1">delta-v map</option>
+				<option value="2">delta-v rails</option>
+			</select>
+			<button id="btn-system-view" title="Open or close the view (V; Esc also closes)">Open</button>
+		</div>
+		<div class="menu-row" data-view="system">
+			<label for="slider-systime" title="The view's own clock, independent of galaxy star time. -1 follows camera speed; 0 freezes. Try 0.1–1 y/s for a visible route flight; higher rates fast-forward and may finish between frames. Arrow keys step the ladder.">System time</label>
+			<input type="range" id="slider-systime" min="0" max="20" step="1" value="1">
+			<span id="val-systime" class="menu-val">0 y/s</span>
+		</div>
+		<div class="menu-row" data-view="system">
+			<label for="slider-dvbudget" title="Energy budget (log scale): 0 = minimum-energy Hohmann, 1 = ship ceiling. Sliding toward 1 spends more Δv to shorten the leg; below dv_x extra Δv buys nothing.">Budget</label>
+			<input type="range" id="slider-dvbudget" min="0" max="1" step="0.01" value="0.35">
+			<span id="val-dvbudget" class="menu-val">0.35</span>
+		</div>
+		<div class="menu-row" data-view="system">
+			<label for="route-roundtrip">Round trip</label><input type="checkbox" id="route-roundtrip" title="Return after a 0.25-year layover; no refueling">
+			<button id="route-clear">Clear route</button>
+		</div>
+		<div class="menu-row menu-actions" data-view="system">
+			<button id="route-fly" title="Starts or pauses the route using System time. At 0 the ship waits; 0.1–1 y/s is easiest to watch.">Start autopilot</button>
+			<button id="route-stars" title="Plan from the previous star to the current star; Shift-click set members are a fallback">Current + previous</button>
+		</div>
+		<div class="menu-row" data-view="system"><span id="route-hint">Choose map nodes, or route from previous star to current star.</span></div>
+		<div class="menu-hint">Pilot: select a star, Use selected, choose a mode, check autopilot · Map: V opens / B cycles · Tab hides panels</div>
+	</div>
+</div>
+<div class="panel-column panel-column-inner">
+<div id="viewmenu" class="panel">
+		<div class="menu-header">
+			<span>View modes</span>
+			<button id="viewmenu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab toggles all panels)" aria-expanded="true">▾</button>
+		</div>
+		<div class="menu-row radio-row">
+			<span class="menu-sub">render type <span class="kbd">M</span></span>
+			<label><input type="radio" name="vm-mode" value="height"> distance</label>
+			<label><input type="radio" name="vm-mode" value="spread"> depth spread</label>
+			<label><input type="radio" name="vm-mode" value="gradient"> slope</label>
+			<label><input type="radio" name="vm-mode" value="off" checked> off</label>
+		</div>
+		<div class="menu-row radio-row">
+			<span class="menu-sub">projection</span>
+			<label><input type="radio" name="vm-proj" value="view" checked> 3D view</label>
+			<label><input type="radio" name="vm-proj" value="plane"> 2D chart</label>
+		</div>
+		<div class="menu-row radio-row">
+			<span class="menu-sub">anchors</span>
+			<label title="The N nearest resident stars — the records the frame draws"><input type="radio" name="vm-source" value="nearest" checked> nearest</label>
+			<label title="The landmark table and the constellation figures (Milky Way)"><input type="radio" name="vm-source" value="constellations"> constellations</label>
+			<label title="The selection set's stars, resolved against the resident sky"><input type="radio" name="vm-source" value="selected"> selected</label>
+		</div>
+		<div class="menu-row">
+			<label for="slider-vm-anchors">Nearest stars</label>
+			<input type="range" id="slider-vm-anchors" min="1" max="500" step="1" value="256">
+			<span id="val-vm-anchors" class="menu-val">256</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-vm-sigma" title="The IDW hill half-width: the angle at which one star's hill halves. Wider blends the anchors flatter.">Hill width σ</label>
+			<input type="range" id="slider-vm-sigma" min="1" max="20" step="0.5" value="3">
+			<span id="val-vm-sigma" class="menu-val">3°</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-vm-span">Chart span</label>
+			<input type="range" id="slider-vm-span" min="15" max="360" step="5" value="360">
+			<span id="val-vm-span" class="menu-val">360°</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-vm-res" title="The field grid's height in texels. Auto keeps one rebuild inside a frame.">Field height</label>
+			<input type="range" id="slider-vm-res" min="0" max="512" step="16" value="0">
+			<span id="val-vm-res" class="menu-val">auto</span>
+		</div>
+		<div class="menu-row radio-row">
+			<span class="menu-sub">budget</span>
+			<label><input type="radio" name="vm-budget" value="fast"> fast</label>
+			<label><input type="radio" name="vm-budget" value="balanced" checked> balanced</label>
+			<label><input type="radio" name="vm-budget" value="high"> high</label>
+			<label><input type="radio" name="vm-budget" value="full"> full</label>
+		</div>
+		<div class="menu-row radio-row">
+			<span class="menu-sub">ramp</span>
+			<label><input type="radio" name="vm-ramp" value="auto" checked> auto</label>
+			<label><input type="radio" name="vm-ramp" value="viridis"> viridis</label>
+			<label><input type="radio" name="vm-ramp" value="turbo"> turbo</label>
+			<label><input type="radio" name="vm-ramp" value="magma"> magma</label>
+			<label><input type="radio" name="vm-ramp" value="terrain"> terrain</label>
+			<label><input type="radio" name="vm-ramp" value="grey"> grey</label>
+		</div>
+		<div class="menu-row">
+			<label for="slider-vm-relief" title="Shaded relief on the displayed height's own slope. 0 is the flat ramp.">Relief</label>
+			<input type="range" id="slider-vm-relief" min="0" max="30" step="0.5" value="6">
+			<span id="val-vm-relief" class="menu-val">6×</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-vm-opacity" title="Blend the map over the live star frame (3D view registers exactly). 100% is the island's opaque map.">Opacity</label>
+			<input type="range" id="slider-vm-opacity" min="0" max="1" step="0.01" value="1">
+			<span id="val-vm-opacity" class="menu-val">100%</span>
+		</div>
+		<div class="menu-row check-row">
+			<label><input type="checkbox" id="vm-contours"> contours</label>
+			<label><input type="checkbox" id="vm-grid"> graticule</label>
+			<label><input type="checkbox" id="vm-stars" checked> stars</label>
+			<label><input type="checkbox" id="vm-names" checked> names</label>
+		</div>
+		<div class="menu-row check-row">
+			<label><input type="checkbox" id="vm-smooth" checked> smooth</label>
+			<label><input type="checkbox" id="vm-invert"> invert</label>
+			<label><input type="checkbox" id="vm-follow" checked> chart follows look</label>
+			<label><input type="checkbox" id="vm-mirror" checked> chart mirrors sky</label>
+		</div>
+		<div class="menu-row check-row">
+			<span class="menu-sub">range</span>
+			<label><input type="checkbox" id="vm-auto-range" checked> auto range</label>
+		</div>
+		<div class="menu-row">
+			<label for="slider-vm-range-lo" id="label-vm-range-lo">Near</label>
+			<input type="range" id="slider-vm-range-lo" min="-7" max="4" step="0.05" value="-3">
+			<span id="val-vm-range-lo" class="menu-val">—</span>
+		</div>
+		<div class="menu-row">
+			<label for="slider-vm-range-hi" id="label-vm-range-hi">Far</label>
+			<input type="range" id="slider-vm-range-hi" min="-7" max="4" step="0.05" value="0">
+			<span id="val-vm-range-hi" class="menu-val">—</span>
+		</div>
+		<div class="menu-row">
+			<span id="vm-status" class="menu-note">—</span>
+		</div>
+		<div class="menu-hint">The map is a function of direction: the dots are real resident stars, placed by the same projection that sampled the field. Heights are Shepard IDW of log distance.</div>
+	</div>
+<div id="trade-menu" class="panel">
+		<div class="menu-header">
+			<span>Trade</span>
+			<button id="trade-menu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab toggles all panels)" aria-expanded="true">▾</button>
+		</div>
+		<div class="menu-row">
+			<label for="trade-rate" title="The trade network's own clock, in years per wall second. 0 pauses it; arrow keys step the ladder. Disabled while the clock is synced to star time.">Trade clock <span id="val-trade-rate" class="menu-val">100 y/s</span></label>
+			<input type="range" id="trade-rate" min="0" max="11" step="1" value="7">
+		</div>
+		<label class="flight-autopilot" title="Draw the freight lines between ports (Y). The network itself — a ring at every colony scaled by its population and coloured by its growth, a wider ring on a colony founded this century, a dot for every hull and a cross on every free frontier world — is always drawn while a network exists, because colonies nobody can see cannot be watched growing.">
+			<input type="checkbox" id="trade-routes" checked>
+			<span>Draw route lines</span>
+			<small>Y</small>
+		</label>
+		<label class="flight-autopilot" title="Run the trade clock on the star clock: one trade year per 1 000 star years, capped at 2 000 y/s. 0.1 Myr/s of sky is the default 100 y/s pace, 2 Myr/s is the top rate — the pairing the network is tuned for. Only while observing; in game mode the trade clock keeps its own ladder.">
+			<input type="checkbox" id="trade-sync-time">
+			<span>Sync trade clock to star time</span>
+		</label>
+		<label class="flight-autopilot" title="Arm or stand down the colonisation authority: while off, the freight fleet keeps flying and deliveries keep arriving, but no new colony is founded — the automatic tick, the Send button and a panel row all refuse. On by default.">
+			<input type="checkbox" id="trade-expansion" checked>
+			<span>Expansion armed</span>
+		</label>
+		<label class="flight-autopilot" title="Special trade mode: generation ships at 1 light-year per 33 trade years. Sets sync time on and the star clock to 1 Myr/s, so the ship covers 30 ly per wall second — the nearest seed hop (~25 ly) is under a second, a 300 ly frontier hop about 10 seconds. The ordinary freighters would cross it in a blink.">
+			<input type="checkbox" id="trade-generation-ships">
+			<span>Generation ships &middot; 30 ly/s</span>
+		</label>
+		<div class="menu-row menu-actions">
+			<button id="trade-launch" type="button" disabled title="Send the best available colonisation expedition now instead of waiting for the next tick. It takes volunteers from the source colony's population, exactly as the automatic launch does; the port then rests for 900 trade years.">Send expedition</button>
+			<span id="trade-state" class="flight-port-state">no network</span>
+		</div>
+		<div id="trade-list" class="trade-rows">No trade network yet.</div>
+		<div class="flight-section-heading"><span>Colonisation</span><small>big colonies → good worlds</small></div>
+		<div id="colonisation-state" class="flight-port-state">frontier idle</div>
+		<div id="colonisation-list" class="trade-rows">No expeditions yet.</div>
+		<div class="flight-section-heading"><span>Routes</span><small>a preferred pair</small></div>
+		<div class="menu-row routes-row">
+			<select id="route-origin" title="The port a standing route ships from."></select>
+			<span class="route-arrow">→</span>
+			<select id="route-dest" title="The port a standing route ships to."></select>
+			<button id="route-commission" type="button" title="Prefer this pair: a hull loading here takes a routed destination first when that port wants the good, and falls back to the global pick when it does not. Nothing is scheduled — a route is a preference, not a contract.">Commission</button>
+		</div>
+		<div id="route-list" class="trade-rows">No routes commissioned.</div>
+		<div class="flight-section-heading"><span>Forward</span><small>what fires next</small></div>
+		<pre id="trade-calendar" class="flight-forecast">Nothing scheduled.</pre>
+		<div class="flight-section-heading"><span>Events</span><small>the network narrates</small></div>
+		<pre id="trade-log" class="flight-forecast">No events yet.</pre>
+	</div>
+</div>
+<div class="panel-column panel-column-right">
+<div id="menu" class="panel">
                 <div class="menu-header">
                         <span>Display</span>
                         <button id="menu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab hides both panels)" aria-expanded="true">▾</button>
@@ -174,371 +506,7 @@
                 </div>
                 <div class="menu-hint">▾ collapses · Tab toggles panels · drag sliders live · C centres the galaxy</div>
         </div>
-	<!-- View modes (view-modes.6): the heightmap map as its own panel — the
-	     render type (distance / depth spread / slope / off), the projection
-	     (3D view sphere / 2D sky chart), the anchor stars the field is built
-	     from (the renderer's own records), and the island's look controls.
-	     Star time, FoV and the galaxy stay with their own panels. -->
-	<div id="viewmenu" class="panel">
-		<div class="menu-header">
-			<span>View modes</span>
-			<button id="viewmenu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab toggles all panels)" aria-expanded="true">▾</button>
-		</div>
-		<div class="menu-row radio-row">
-			<span class="menu-sub">render type <span class="kbd">M</span></span>
-			<label><input type="radio" name="vm-mode" value="height"> distance</label>
-			<label><input type="radio" name="vm-mode" value="spread"> depth spread</label>
-			<label><input type="radio" name="vm-mode" value="gradient"> slope</label>
-			<label><input type="radio" name="vm-mode" value="off" checked> off</label>
-		</div>
-		<div class="menu-row radio-row">
-			<span class="menu-sub">projection</span>
-			<label><input type="radio" name="vm-proj" value="view" checked> 3D view</label>
-			<label><input type="radio" name="vm-proj" value="plane"> 2D chart</label>
-		</div>
-		<div class="menu-row radio-row">
-			<span class="menu-sub">anchors</span>
-			<label title="The N nearest resident stars — the records the frame draws"><input type="radio" name="vm-source" value="nearest" checked> nearest</label>
-			<label title="The landmark table and the constellation figures (Milky Way)"><input type="radio" name="vm-source" value="constellations"> constellations</label>
-			<label title="The selection set's stars, resolved against the resident sky"><input type="radio" name="vm-source" value="selected"> selected</label>
-		</div>
-		<div class="menu-row">
-			<label for="slider-vm-anchors">Nearest stars</label>
-			<input type="range" id="slider-vm-anchors" min="1" max="500" step="1" value="256">
-			<span id="val-vm-anchors" class="menu-val">256</span>
-		</div>
-		<div class="menu-row">
-			<label for="slider-vm-sigma" title="The IDW hill half-width: the angle at which one star's hill halves. Wider blends the anchors flatter.">Hill width σ</label>
-			<input type="range" id="slider-vm-sigma" min="1" max="20" step="0.5" value="3">
-			<span id="val-vm-sigma" class="menu-val">3°</span>
-		</div>
-		<div class="menu-row">
-			<label for="slider-vm-span">Chart span</label>
-			<input type="range" id="slider-vm-span" min="15" max="360" step="5" value="360">
-			<span id="val-vm-span" class="menu-val">360°</span>
-		</div>
-		<div class="menu-row">
-			<label for="slider-vm-res" title="The field grid's height in texels. Auto keeps one rebuild inside a frame.">Field height</label>
-			<input type="range" id="slider-vm-res" min="0" max="512" step="16" value="0">
-			<span id="val-vm-res" class="menu-val">auto</span>
-		</div>
-		<div class="menu-row radio-row">
-			<span class="menu-sub">budget</span>
-			<label><input type="radio" name="vm-budget" value="fast"> fast</label>
-			<label><input type="radio" name="vm-budget" value="balanced" checked> balanced</label>
-			<label><input type="radio" name="vm-budget" value="high"> high</label>
-			<label><input type="radio" name="vm-budget" value="full"> full</label>
-		</div>
-		<div class="menu-row radio-row">
-			<span class="menu-sub">ramp</span>
-			<label><input type="radio" name="vm-ramp" value="auto" checked> auto</label>
-			<label><input type="radio" name="vm-ramp" value="viridis"> viridis</label>
-			<label><input type="radio" name="vm-ramp" value="turbo"> turbo</label>
-			<label><input type="radio" name="vm-ramp" value="magma"> magma</label>
-			<label><input type="radio" name="vm-ramp" value="terrain"> terrain</label>
-			<label><input type="radio" name="vm-ramp" value="grey"> grey</label>
-		</div>
-		<div class="menu-row">
-			<label for="slider-vm-relief" title="Shaded relief on the displayed height's own slope. 0 is the flat ramp.">Relief</label>
-			<input type="range" id="slider-vm-relief" min="0" max="30" step="0.5" value="6">
-			<span id="val-vm-relief" class="menu-val">6×</span>
-		</div>
-		<div class="menu-row">
-			<label for="slider-vm-opacity" title="Blend the map over the live star frame (3D view registers exactly). 100% is the island's opaque map.">Opacity</label>
-			<input type="range" id="slider-vm-opacity" min="0" max="1" step="0.01" value="1">
-			<span id="val-vm-opacity" class="menu-val">100%</span>
-		</div>
-		<div class="menu-row check-row">
-			<label><input type="checkbox" id="vm-contours"> contours</label>
-			<label><input type="checkbox" id="vm-grid"> graticule</label>
-			<label><input type="checkbox" id="vm-stars" checked> stars</label>
-			<label><input type="checkbox" id="vm-names" checked> names</label>
-		</div>
-		<div class="menu-row check-row">
-			<label><input type="checkbox" id="vm-smooth" checked> smooth</label>
-			<label><input type="checkbox" id="vm-invert"> invert</label>
-			<label><input type="checkbox" id="vm-follow" checked> chart follows look</label>
-			<label><input type="checkbox" id="vm-mirror" checked> chart mirrors sky</label>
-		</div>
-		<div class="menu-row check-row">
-			<span class="menu-sub">range</span>
-			<label><input type="checkbox" id="vm-auto-range" checked> auto range</label>
-		</div>
-		<div class="menu-row">
-			<label for="slider-vm-range-lo" id="label-vm-range-lo">Near</label>
-			<input type="range" id="slider-vm-range-lo" min="-7" max="4" step="0.05" value="-3">
-			<span id="val-vm-range-lo" class="menu-val">—</span>
-		</div>
-		<div class="menu-row">
-			<label for="slider-vm-range-hi" id="label-vm-range-hi">Far</label>
-			<input type="range" id="slider-vm-range-hi" min="-7" max="4" step="0.05" value="0">
-			<span id="val-vm-range-hi" class="menu-val">—</span>
-		</div>
-		<div class="menu-row">
-			<span id="vm-status" class="menu-note">—</span>
-		</div>
-		<div class="menu-hint">The map is a function of direction: the dots are real resident stars, placed by the same projection that sampled the field. Heights are Shepard IDW of log distance.</div>
-	</div>
-	<!-- Search & Selection is a separate workflow panel: typed object history,
-	     current-centred star search and the clickable result array. -->
-	<div id="selection-menu" class="panel">
-		<div class="menu-header">
-			<span>Search &amp; Selection</span>
-			<button id="selection-menu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab toggles all panels)" aria-expanded="true">▾</button>
-		</div>
-		<div class="menu-header selection-section-heading"><span>Natural objects</span><small>star · planet · other</small></div>
-		<div class="selection-history" aria-live="polite">
-			<div class="selection-history-slot"><span>Current</span><strong id="selection-current-label">No object selected</strong></div>
-			<div class="selection-history-slot"><span>Previous</span><strong id="selection-previous-label">—</strong></div>
-			<button id="selection-swap" class="selection-swap" type="button" disabled title="Swap the current and previous natural-object selections">Swap current ↔ previous</button>
-		</div>
-		<div class="menu-row selection-radius-row">
-			<label for="slider-selrad" title="Select-around radius, log scale, measured from the current star.">Select-set radius</label>
-			<input type="range" id="slider-selrad" min="-1" max="5" step="0.00001" value="1.69897">
-			<span id="val-selrad" class="menu-val">50 ly</span>
-		</div>
-		<div class="menu-row menu-actions selection-actions">
-			<button id="btn-select-around" title="Add every star within the radius of the current star (Shift+F flies to it, N cycles, X clears)">Select around</button>
-			<button id="btn-fly-to" type="button" disabled title="Fly to the selected primary and orbit at its luminosity stand-off (Shift+F)">Fly to primary (Shift+F)</button>
-			<button id="btn-clear-set" title="Clear selection history and the selected-star set (X)">Clear selection</button>
-		</div>
-
-		<div class="menu-header selection-section-heading"><span>Search stars</span><small>group 1a</small></div>
-		<div class="menu-row search-row">
-			<label for="search-center">Center</label>
-			<select id="search-center" title="Search from the current star's drawn position, or from the camera">
-				<option value="current" selected>current star</option>
-				<option value="camera">camera</option>
-			</select>
-			<label for="search-radius-pc">Radius</label>
-			<input type="number" id="search-radius-pc" value="10" min="0" step="0.1" title="Search radius in parsecs; the token filter stores this distance in light-years">
-			<span class="search-unit">pc</span>
-		</div>
-		<div class="menu-row search-row">
-			<label for="search-scope">Scope</label>
-			<select id="search-scope" title="Galaxy scans all stars; selection set scans only the current set">
-				<option value="galaxy" selected>galaxy</option>
-				<option value="selection">selection set</option>
-			</select>
-			<label for="search-class">Class</label>
-			<select id="search-class" title="Spectral class (single; the token box can hold several)"></select>
-			<label for="search-ptype">Planet</label>
-			<select id="search-ptype" title="Planet display type (single; the token box can hold several)"></select>
-		</div>
-		<div class="menu-row search-row">
-			<label for="search-tsurf-min" title="Surface-temperature range in kelvin; empty ends stay open">Tsurf</label>
-			<input type="number" id="search-tsurf-min" placeholder="180" min="0" step="1">
-			<span class="search-dash">–</span>
-			<input type="number" id="search-tsurf-max" placeholder="320" min="0" step="1">
-			<span class="search-unit">K</span>
-			<label class="search-check" title="Only systems with a terran world"><input type="checkbox" id="search-terran"> terran</label>
-			<label class="search-check" title="Only systems with a debris belt"><input type="checkbox" id="search-belt"> belt</label>
-			<label class="search-check" title="Only systems with no planets"><input type="checkbox" id="search-barren"> no planets</label>
-		</div>
-		<div class="menu-row search-row">
-			<label for="search-token" title="The whole filter as a compact token (plan §5.5): classes, flags and ranges separated by |. Distances in the token are light-years.">Filter</label>
-			<input type="text" id="search-token" spellcheck="false" placeholder="G,K|terran|220-300">
-		</div>
-		<div class="menu-row menu-actions selection-actions">
-			<button id="btn-search" title="Freeze star time and run one search against the currently drawn positions; it stays paused so you can inspect and select results">Search</button>
-			<button id="btn-search-add" title="Add kept results to the selected-star set, nearest-first">Add results to set</button>
-			<button id="btn-search-clear" title="Drop the result list">Clear results</button>
-		</div>
-		<div class="menu-row search-row"><span id="val-search" class="menu-val search-report">no search yet</span></div>
-		<div id="search-results" class="search-results" role="listbox" aria-label="Star search results"></div>
-
-		<div class="menu-header selection-section-heading"><span>Ships &amp; settlements</span><small>group 2</small></div>
-		<div class="selection-asset-types">ship · base · colony · dock port · cargo container</div>
-		<div class="selection-asset-editor">
-			<label for="asset-type">Type</label>
-			<select id="asset-type">
-				<option value="ship">ship</option><option value="base">base</option>
-				<option value="colony">colony</option><option value="dock-port">dock port</option>
-				<option value="cargo-container">cargo container</option><option value="other">other</option>
-			</select>
-			<input id="asset-id" type="text" placeholder="asset ID" aria-label="Asset identifier">
-			<input id="asset-name" type="text" placeholder="display name (optional)" aria-label="Asset display name">
-			<button id="asset-select" type="button">Set current</button>
-		</div>
-		<div class="selection-asset-history">
-			<div><span>Current</span><strong id="asset-current-label">—</strong></div>
-			<div><span>Previous</span><strong id="asset-previous-label">—</strong></div>
-		</div>
-		<button id="asset-clear" class="selection-swap" type="button">Clear asset history</button>
-		<div class="selection-asset-pair" aria-label="Two-slot asset pair">
-			<span>Pair 1 <strong id="asset-pair-first">—</strong><button id="asset-pair-first-set" type="button" disabled>Use current</button></span>
-			<span>Pair 2 <strong id="asset-pair-second">—</strong><button id="asset-pair-second-set" type="button" disabled>Use current</button></span>
-		</div>
-		<div class="menu-hint">Search pauses star time · click a result, then Fly to primary (Shift+F) · T resumes time</div>
-	</div>
-	<!-- Flight (G3): manual power, destination planning and the older map route
-	     workflow share one lower-left workspace. A pilot selects a star in the
-	     scene, uses it here, checks the forecast and flies — no hidden hand-off
-	     through unrelated controls. The map remains observer-only because it
-	     intentionally re-poses the camera. -->
-	<div id="sysmenu" class="panel">
-		<div class="menu-header">
-			<span>Flight</span>
-			<button id="sysmenu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab hides all panels)" aria-expanded="true">▾</button>
-		</div>
-		<div class="flight-section-heading fleet-heading"><span>Ships</span><small>click a ship to pilot</small></div>
-		<div class="flight-fleet-bar">
-			<span id="fleet-count">1 ship</span>
-			<button id="ship-spawn" type="button" title="Create a stationary ship at the camera's current position.">Spawn at camera</button>
-		</div>
-		<div id="ship-list" class="flight-ship-list" role="listbox" aria-label="Ships"></div>
-		<div id="flight-console">
-			<div class="flight-section-heading"><span>Pilot</span><small id="flight-status">Configure now · enter game mode to engage</small></div>
-			<div class="flight-ship-row">
-				<label for="dv-ship">Ship</label>
-				<select id="dv-ship" title="One ship choice for manual flight, destination forecasts and local routes. Changing class re-arms the tank and re-snaps the ship clock."></select>
-				<button id="flight-refuel" type="button" title="Re-arm the Δv tank to the selected ship's full load. Docking refills arrive later; this is the hangar refill.">Refuel</button>
-			</div>
-			<div class="menu-row flight-control-row" id="flight-thrust-row">
-				<label for="flight-thrust" title="Thrust control: the persistent forward engine setting. Mouse still aims; W/S temporarily take over for a direct manoeuvre. The planner's thrust-limit mode uses this same maximum. Moving this slider switches to thrust control and disables the speed limit.">Thrust <span id="val-flight-thrust" class="menu-val">0% · coast</span></label>
-				<input type="range" id="flight-thrust" min="0" max="100" step="1" value="0">
-			</div>
-			<div class="menu-row flight-control-row" id="flight-speed-row">
-				<label for="flight-speed" title="Speed control: the desired fraction of this ship's speed cap. Forward thrust turns off when the ship reaches it; it does not brake for you. Moving this slider (or checking cut thrust) switches to speed control and disables the thrust lever.">Desired speed <span class="flight-check"><input type="checkbox" id="flight-speed-governor" checked> cut thrust</span><span id="val-flight-speed" class="menu-val">75% cap</span></label>
-				<input type="range" id="flight-speed" min="1" max="100" step="1" value="75">
-			</div>
-			<div class="flight-velocity-ref">relative to <strong id="velocity-ref">selected target</strong></div>
-			<div id="flight-velocity" class="flight-velocity" aria-live="polite">
-				<span><small>Forward</small><strong id="velocity-forward">+0.00 km/s</strong></span>
-				<span><small>Sideways</small><strong id="velocity-right">+0.00 km/s</strong></span>
-				<span><small>Vertical</small><strong id="velocity-up">+0.00 km/s</strong></span>
-			</div>
-
-			<div class="flight-section-heading"><span>Port</span><small>dock · service · cargo</small></div>
-			<div class="flight-port-row">
-				<button id="flight-dock" type="button" disabled title="Dock at the target station (O) when inside its shell and settled — the target-stop autopilot lands exactly there. Docking re-arms the tank, restores life support and registers the port of registry. Press again to undock.">Dock</button>
-				<button id="flight-cargo-load" type="button" disabled title="Load a colony's spare export (L), limited by actual stock and hold tonnage. Only while docked at a trade port; no credits.">Load cargo</button>
-				<button id="flight-cargo-unload" type="button" disabled title="Unload into colony storage (Shift+L). A full warehouse leaves the remainder aboard. Only while docked at a trade port.">Unload</button>
-				<button id="flight-found" type="button" disabled title="Found a colony on the best world of the docked star — free, the player is the catalyst. Works even when the network's expansion authority is stood down. Refused if the star already has a live colony or an outpost, if an expedition is bound for it, if the network is full, or if no world here is worth settling.">Found colony</button>
-			</div>
-			<div id="flight-port-state" class="flight-port-state">not docked · O docks at a settled station</div>
-
-			<div class="flight-section-heading"><span>Fly to destination</span><small>select star → set → check autopilot</small></div>
-			<div class="flight-destination-row">
-				<span>Destination</span><strong id="flight-destination">No destination set</strong>
-				<button id="flight-use-selected" type="button" title="Snapshot the currently selected star as the destination. It stays locked if you inspect another star.">Use selected</button>
-				<button id="flight-clear-destination" type="button" title="Clear the locked destination; this does not change the selection.">Clear</button>
-			</div>
-			<label class="flight-autopilot" title="Fly the configured destination profile. Shift+F remains the unconfigured fastest approach.">
-				<input type="checkbox" id="flight-autopilot-dest">
-				<span>Autopilot to destination</span>
-				<small>configured profile</small>
-			</label>
-			<label class="flight-autopilot" title="Fly to the selected or locked target and settle with zero velocity relative to it on all three view axes.">
-				<input type="checkbox" id="flight-autopilot-target">
-				<span>Autopilot to target</span>
-				<small>stop · 0, 0, 0 relative</small>
-			</label>
-			<div class="menu-row">
-				<label for="flight-mode">Plan mode</label>
-				<select id="flight-mode" title="Fastest uses the full ship. Thrust and speed modes use the Pilot controls above. Time limit finds the least-Δv legal profile that makes the deadline.">
-					<option value="0" selected>fastest</option>
-					<option value="1">use thrust as limit</option>
-					<option value="2">use speed as limit</option>
-					<option value="3">use time limit</option>
-				</select>
-			</div>
-			<div class="menu-row flight-time-row" id="flight-time-row">
-				<label for="flight-time-limit" title="Maximum arrival time in ship years. The forecast rejects a deadline faster than the ship can legally fly.">Arrival by</label>
-				<input id="flight-time-limit" type="number" min="0.001" step="0.1" value="20">
-				<span class="menu-val">ship y</span>
-			</div>
-			<pre id="flight-forecast" class="flight-forecast">Set a destination to see predicted Δv and arrival time.</pre>
-		</div>
-
-		<div class="flight-section-heading system-section-heading"><span>System map &amp; routes</span><small>local / transport</small></div>
-		<div class="menu-row">
-			<label for="sys-view">View <span class="kbd">V</span></label>
-			<select id="sys-view" title="What the system canvas shows of the primary selection's generated system. Picking one opens the view; B cycles the three while it is open.">
-				<option value="0" selected>system schematic</option>
-				<option value="1">delta-v map</option>
-				<option value="2">delta-v rails</option>
-			</select>
-			<button id="btn-system-view" title="Open or close the view (V; Esc also closes)">Open</button>
-		</div>
-		<div class="menu-row" data-view="system">
-			<label for="slider-systime" title="The view's own clock, independent of galaxy star time. -1 follows camera speed; 0 freezes. Try 0.1–1 y/s for a visible route flight; higher rates fast-forward and may finish between frames. Arrow keys step the ladder.">System time</label>
-			<input type="range" id="slider-systime" min="0" max="20" step="1" value="1">
-			<span id="val-systime" class="menu-val">0 y/s</span>
-		</div>
-		<div class="menu-row" data-view="system">
-			<label for="slider-dvbudget" title="Energy budget (log scale): 0 = minimum-energy Hohmann, 1 = ship ceiling. Sliding toward 1 spends more Δv to shorten the leg; below dv_x extra Δv buys nothing.">Budget</label>
-			<input type="range" id="slider-dvbudget" min="0" max="1" step="0.01" value="0.35">
-			<span id="val-dvbudget" class="menu-val">0.35</span>
-		</div>
-		<div class="menu-row" data-view="system">
-			<label for="route-roundtrip">Round trip</label><input type="checkbox" id="route-roundtrip" title="Return after a 0.25-year layover; no refueling">
-			<button id="route-clear">Clear route</button>
-		</div>
-		<div class="menu-row menu-actions" data-view="system">
-			<button id="route-fly" title="Starts or pauses the route using System time. At 0 the ship waits; 0.1–1 y/s is easiest to watch.">Start autopilot</button>
-			<button id="route-stars" title="Plan from the previous star to the current star; Shift-click set members are a fallback">Current + previous</button>
-		</div>
-		<div class="menu-row" data-view="system"><span id="route-hint">Choose map nodes, or route from previous star to current star.</span></div>
-		<div class="menu-hint">Pilot: select a star, Use selected, choose a mode, check autopilot · Map: V opens / B cycles · Tab hides panels</div>
-	</div>
-	<!-- Trade (trade.2): its own panel — the network clock, the overlay toggle
-	     and the autonomous frontier. Extracted from Flight so piloting and
-	     economy have separate workspaces. -->
-	<div id="trade-menu" class="panel">
-		<div class="menu-header">
-			<span>Trade</span>
-			<button id="trade-menu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab toggles all panels)" aria-expanded="true">▾</button>
-		</div>
-		<div class="menu-row">
-			<label for="trade-rate" title="The trade network's own clock, in years per wall second. 0 pauses it; arrow keys step the ladder. Disabled while the clock is synced to star time.">Trade clock <span id="val-trade-rate" class="menu-val">100 y/s</span></label>
-			<input type="range" id="trade-rate" min="0" max="11" step="1" value="7">
-		</div>
-		<label class="flight-autopilot" title="Draw the freight lines between ports (Y). The network itself — a ring at every colony scaled by its population and coloured by its growth, a wider ring on a colony founded this century, a dot for every hull and a cross on every free frontier world — is always drawn while a network exists, because colonies nobody can see cannot be watched growing.">
-			<input type="checkbox" id="trade-routes" checked>
-			<span>Draw route lines</span>
-			<small>Y</small>
-		</label>
-		<label class="flight-autopilot" title="Run the trade clock on the star clock: one trade year per 1 000 star years, capped at 2 000 y/s. 0.1 Myr/s of sky is the default 100 y/s pace, 2 Myr/s is the top rate — the pairing the network is tuned for. Only while observing; in game mode the trade clock keeps its own ladder.">
-			<input type="checkbox" id="trade-sync-time">
-			<span>Sync trade clock to star time</span>
-		</label>
-		<label class="flight-autopilot" title="Arm or stand down the colonisation authority: while off, the freight fleet keeps flying and deliveries keep arriving, but no new colony is founded — the automatic tick, the Send button and a panel row all refuse. On by default.">
-			<input type="checkbox" id="trade-expansion" checked>
-			<span>Expansion armed</span>
-		</label>
-		<label class="flight-autopilot" title="Special trade mode: generation ships at 1 light-year per 33 trade years. Sets sync time on and the star clock to 1 Myr/s, so the ship covers 30 ly per wall second — the nearest seed hop (~25 ly) is under a second, a 300 ly frontier hop about 10 seconds. The ordinary freighters would cross it in a blink.">
-			<input type="checkbox" id="trade-generation-ships">
-			<span>Generation ships &middot; 30 ly/s</span>
-		</label>
-		<div class="menu-row menu-actions">
-			<button id="trade-launch" type="button" disabled title="Send the best available colonisation expedition now instead of waiting for the next tick. It takes volunteers from the source colony's population, exactly as the automatic launch does; the port then rests for 900 trade years.">Send expedition</button>
-			<span id="trade-state" class="flight-port-state">no network</span>
-		</div>
-		<div id="trade-list" class="trade-rows">No trade network yet.</div>
-		<div class="flight-section-heading"><span>Colonisation</span><small>big colonies → good worlds</small></div>
-		<div id="colonisation-state" class="flight-port-state">frontier idle</div>
-		<div id="colonisation-list" class="trade-rows">No expeditions yet.</div>
-		<div class="flight-section-heading"><span>Routes</span><small>a preferred pair</small></div>
-		<div class="menu-row routes-row">
-			<select id="route-origin" title="The port a standing route ships from."></select>
-			<span class="route-arrow">→</span>
-			<select id="route-dest" title="The port a standing route ships to."></select>
-			<button id="route-commission" type="button" title="Prefer this pair: a hull loading here takes a routed destination first when that port wants the good, and falls back to the global pick when it does not. Nothing is scheduled — a route is a preference, not a contract.">Commission</button>
-		</div>
-		<div id="route-list" class="trade-rows">No routes commissioned.</div>
-		<div class="flight-section-heading"><span>Forward</span><small>what fires next</small></div>
-		<pre id="trade-calendar" class="flight-forecast">Nothing scheduled.</pre>
-		<div class="flight-section-heading"><span>Events</span><small>the network narrates</small></div>
-		<pre id="trade-log" class="flight-forecast">No events yet.</pre>
-	</div>
-        <!-- Controls (ui.6): the old read-only help <pre> as a clickable panel.
-             Buttons fire the same one-shot action flags the keyboard sets (the
-             loop consumes them next frame, so a click and a key press run one
-             code path); checkboxes mirror the toggles and are repainted from
-             the live state at the overlay's 4 Hz, so an optimistic native
-             toggle self-corrects. Tooltips carry the detail the old table had. -->
-        <div id="help" class="panel">
+<div id="help" class="panel">
                 <div class="menu-header">
                         <span>Controls</span>
                         <button id="help-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab hides all panels)" aria-expanded="true">▾</button>
@@ -575,6 +543,51 @@ game (g): WASD/arrows burn &#916;v &#183; Shift &#215;4 / Ctrl &#215;0.25 &#183;
 click a star to select it (Shift+click adds to the set) &#183; [ ] exposure &#183; ; ' brightness &#183; Tab hides the panels<br>
 Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
         </div>
+</div>
+
+	<canvas id="canvas" tabindex="0"></canvas>
+	<canvas id="labels"></canvas>
+	<!-- View modes (view-modes.6): the heightmap map over the frame — the
+	     island's field and painter, anchored on the renderer's own stars.
+	     Pointer events fall through; the camera input stays the WebGPU
+	     canvas's. Hidden when the mode is off. -->
+	<canvas id="viewmodes"></canvas>
+	<!-- Close-system schematic (0.5.3): 2D canvas above #labels, below #menu.
+	     Drawn only while the system view is open; pointer events fall through
+	     to the WebGPU canvas, which routes its clicks to the layer. -->
+	<canvas id="system"></canvas>
+	<pre id="overlay"></pre>
+        <pre id="error" style="display:none"></pre>
+        <!-- Search results (0.5.2) and, from 0.5.3, the system-view readout:
+             one <pre> styled like #overlay, hidden while empty. -->
+        <pre id="sysread"></pre>
+
+	<!-- View modes (view-modes.6): the heightmap map as its own panel — the
+	     render type (distance / depth spread / slope / off), the projection
+	     (3D view sphere / 2D sky chart), the anchor stars the field is built
+	     from (the renderer's own records), and the island's look controls.
+	     Star time, FoV and the galaxy stay with their own panels. -->
+
+	<!-- Search & Selection is a separate workflow panel: typed object history,
+	     current-centred star search and the clickable result array. -->
+
+	<!-- Flight (G3): manual power, destination planning and the older map route
+	     workflow share one lower-left workspace. A pilot selects a star in the
+	     scene, uses it here, checks the forecast and flies — no hidden hand-off
+	     through unrelated controls. The map remains observer-only because it
+	     intentionally re-poses the camera. -->
+
+	<!-- Trade (trade.2): its own panel — the network clock, the overlay toggle
+	     and the autonomous frontier. Extracted from Flight so piloting and
+	     economy have separate workspaces. -->
+
+        <!-- Controls (ui.6): the old read-only help <pre> as a clickable panel.
+             Buttons fire the same one-shot action flags the keyboard sets (the
+             loop consumes them next frame, so a click and a key press run one
+             code path); checkboxes mirror the toggles and are repainted from
+             the live state at the overlay's 4 Hz, so an optimistic native
+             toggle self-corrects. Tooltips carry the detail the old table had. -->
+
 
         <!-- Runtime modules. Classic script tags, no modules (per AGENTS.md).
              Order matters: math before render, render before stream, main last. -->

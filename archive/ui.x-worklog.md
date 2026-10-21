@@ -874,3 +874,15 @@ this sandbox.
 the nose should sit on the target and the burn marker should not flicker. The
 simple engine still has no CPU record velocity (it is the documented gap); if
 the game ever needs it, the GPU-side θ readback is the only honest source.
+
+### Panel flow and remembered collapse (2026-10-21)
+
+- Planned in `plan.md`: three top-anchored, viewport-scrollable columns;
+  normal-flow panels push following panels when expanded/collapsed.
+- All six headers restore/persist their collapsed flag independently in
+  localStorage; denied storage leaves the controls working. Tab stays temporary.
+- Trade ports/expeditions/routes reserve 96px each, calendar/history 112px each,
+  with internal scrolling rather than update-dependent panel height.
+- Validation: `node experiments/panel-test.js` 11 checks passed;
+  `node experiments/route-test.js` 41/41; main.js syntax check passed.
+  Real-browser scroll/reflow validation remains outstanding. T2 is unchanged.

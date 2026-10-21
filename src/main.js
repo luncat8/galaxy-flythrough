@@ -1603,10 +1603,16 @@ async function boot() {
                 const collapsed = panel.classList.toggle('collapsed');
                 button.textContent = collapsed ? '\u25b8' : '\u25be';
                 button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                try { localStorage.setItem('galaxy.panel.' + panel.id + '.collapsed', String(collapsed)); } catch {}
                 releasePanelInput();
                 canvas.focus({ preventScroll: true });
         }
         function wireCollapse(panel, button) {
+		let collapsed = false;
+		try { collapsed = localStorage.getItem('galaxy.panel.' + panel.id + '.collapsed') === 'true'; } catch {}
+		panel.classList.toggle('collapsed', collapsed);
+		button.textContent = collapsed ? '\u25b8' : '\u25be';
+		button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
                 button.addEventListener('click', () => toggleCollapse(panel, button));
                 panel.querySelector('.menu-header > span').addEventListener('click', () => toggleCollapse(panel, button));
         }

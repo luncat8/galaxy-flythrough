@@ -1077,3 +1077,40 @@ body.system-view #sysread {
 	letter-spacing: 0.06em;
 	color: #679;
 }
+
+/* Normal flow makes collapsed headers pull the following panel up. */
+.panel-column {
+	position: fixed;
+	top: 12px;
+	max-height: calc(100vh - 24px);
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	overflow-y: auto;
+	scrollbar-width: thin;
+	z-index: 20;
+	pointer-events: none;
+}
+.panel-column-left { left: 12px; width: 292px; }
+.panel-column-inner { right: 284px; width: 260px; }
+.panel-column-right { right: 12px; width: 260px; }
+.panel-column > :is(#selection-menu, #sysmenu, #viewmenu, #trade-menu, #menu, #help) {
+	position: static;
+	flex: none;
+	max-height: none;
+	width: 100%;
+	pointer-events: auto;
+}
+#trade-list, #colonisation-list, #route-list {
+	height: 96px;
+	overflow-y: auto;
+	flex-shrink: 0;
+	scrollbar-gutter: stable;
+}
+#trade-list > *, #colonisation-list > *, #route-list > * { flex-shrink: 0; }
+#trade-calendar, #trade-log {
+	height: 112px;
+	max-height: none;
+	overflow-y: auto;
+	scrollbar-gutter: stable;
+}

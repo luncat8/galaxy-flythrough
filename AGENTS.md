@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Project rules for the galaxy fly-through engine. Read before writing any code.
+ These are not strict rules. Feel free in improve plans or suggest any global changes if found something better. If user's idea is not clear for you - do not guess but ask.
 
 ## Style
 
@@ -11,7 +11,7 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 - No new `{}`, `[]`, object literals, closures, or string concat inside the frame loop.
 - Reuse preallocated buffers / typed arrays / scratch objects.
 - Allocate once at setup, mutate in place per frame.
-- These are not strict rules — use best judgement. A 1-byte allocation in a 60 Hz loop is fine; a 4 KB closure capture is not.
+- but use best judgement. A 1-byte allocation in a 60 Hz loop is fine; a 4 KB closure capture is not.
 - `plan*.md` is NOT the implementation log. If you need to revise the plan, edit it in place and keep it as a clean artifact. Someone forking the repo should be able to reimplement from the plan alone, without referring to chat history or implementation notes.
 - Only essential, concise comments in code — explain *why* and the decision, not *what*. Prefer descriptive naming over comments.
 - No legacy support, no old versions, no outdated browsers, no leftovers, no over-protecting from unreal edge cases. Clean architecture only.
@@ -44,7 +44,7 @@ Project rules for the galaxy fly-through engine. Read before writing any code.
 - **Three render paths.** Path A: bright/nearby billboard sprites. Path B: distant point sprites. Path C: unresolved density cells (additive screen-space quads). One frame may use all three.
 - **Indirect draw, no readback.** Compute shader produces visible-star indices and `drawIndirect` args in storage buffers. CPU never reads the visible-star list per frame.
 - **Stable hash, no PRNG state.** Every procedural star is `(seed, cellId, slot)` hashed to its properties. PCG hash is the default. The galaxy is fully reproducible across runs and machines.
-- **Plan first, implement second.** If a design decision is not in `plan.md`, add it there before coding. Do not leave architectural choices implicit in code. Feel free in improve plans or suggest any global changes if found something better.
+- **Plan first, implement second.** If a significant design decision is not in `plan.md`, add it there before coding. Do not leave architectural choices implicit in code.
 
 ## Files
 

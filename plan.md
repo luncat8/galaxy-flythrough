@@ -1610,3 +1610,23 @@ tests and extend the file layout of §11 as needed.
 The [0.5 planet series](archive/0.5.0-plan-planet-generator.md) is complete:
 selection, generator, search, schematic, delta-v map and ships/routes/autopilot.
 The picker still shares the engine-mask position contract above.
+
+### Panel layout and persistence
+
+- Keep three top-anchored columns: Search/Selection then Flight on the left,
+  View modes then Trade in the inner right column, Display then Controls at
+  the right edge. Panels use normal vertical flow with a 12px gap: expanding
+  or collapsing a panel pushes/pulls the next panel, never overlaps it.
+- Each column scrolls within the viewport when its contents exceed available
+  height; panels do not shrink to fit. Empty columns must not intercept the
+  canvas. Preserve existing overlay/map horizontal insets and Tab visibility.
+- Store each panel's collapsed boolean under `galaxy.panel.<id>.collapsed` in
+  localStorage, restoring it at wiring time along with its arrow and
+  `aria-expanded`. Missing/invalid values mean expanded. Storage denial must
+  not disable controls. Tab's temporary visibility is not persisted.
+- Trade's ports, expeditions and routes each reserve 96px; forward events and
+  history each reserve 112px, including empty states. Overflow scrolls inside
+  each list; wrapped messages cannot change panel geometry between updates.
+- Validate restore/toggle/denied storage, header-only collapse and column/list
+  layout contracts in Node; actual scroll/reflow on WebGPU hardware remains a
+  browser visual check. This UI work does not change T2/T3's economic contract.
