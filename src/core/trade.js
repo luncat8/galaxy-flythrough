@@ -115,7 +115,6 @@
 	// is well above a seed wave (three big ports at t = 0) and far below the
 	// 128-hull budget, so a doubling never locks the routes out of ships.
 	const MAX_FOUNDING_IN_FLIGHT = 24;
-	const FOUND_STOCK_FRAC = 0.45;
 	const INITIAL_SHIPS = 12;
 	const SHIPS_PER_PORT = 1.5;
 	const MAX_LEG_LY = 3000;
@@ -173,6 +172,10 @@
 	// holds at 0.47 over a minute. Nothing else about the warehouse law changes.
 	const GENERATION_RESERVE_YEARS = 5000;
 	let generationMode = 0;
+	// Expansion authority (W6): armed by default, so the scenario behaves as
+	// before. Disarmed, the freight fleet keeps flying and the arrivals keep
+	// coming — only new colonies stop. One flag beside generationMode.
+	let expansionOn = 1;
 
 	// A shipment is sized to the destination's draw, not to the hold: a hold
 	// that arrives full at a port which can take a tenth of it parks the rest
@@ -182,6 +185,57 @@
 	// Hash streams beyond the economy's own.
 	const TR_CH_SHIP = 740, TR_CH_PORT = 760;
 
+	// --- The network's log (W2) --------------------------------------------
+	// One bounded ring, written at settle boundaries and event handlers only.
+	// Entries carry indices and years, never strings: the panel turns them into
+	// text at 4 Hz, which is the one place allowed to allocate.
+	const LOG_CAP = 64;
+	const LOG_FOUND = 0, LOG_MILESTONE = 1, LOG_FAMINE = 2, LOG_FAMINE_END = 3,
+		LOG_OUTPOST = 4, LOG_ROUTE = 5, LOG_EXPEDITION = 6;
+
+	function createLog() {
+		return {
+			time: new Float64Array(LOG_CAP),
+			kind: new Uint8Array(LOG_CAP),
+			a: new Int32Array(LOG_CAP),
+			b: new Int32Array(LOG_CAP),
+			c: new Int32Array(LOG_CAP),
+			head: 0,
+			count: 0,
+		};
+	}
+
+	function pushLog(net, kind, a, b, c) {
+		const log = net.log;
+		const i = log.head;
+		log.time[i] = net.time;
+		log.kind[i] = kind;
+		log.a[i] = a;
+		log.b[i] = b;
+		log.c[i] = c === undefined ? 0 : c;
+		log.head = (i + 1) % LOG_CAP;
+		if (log.count < LOG_CAP) log.count += 1;
+	}
+
+	function logLength(net) {
+		return net.log.count;
+	}
+
+	// One entry by age, 0 = oldest. The record is the module scratch.
+	const LOG_ENTRY = { time: 0, kind: 0, a: 0, b: 0, c: 0 };
+	function logAt(net, age) {
+		const log = net.log;
+		const n = log.count;
+		if (!(age >= 0 && age < n)) return null;
+		const i = (log.head - n + age + LOG_CAP * 2) % LOG_CAP;
+		LOG_ENTRY.time = log.time[i];
+		LOG_ENTRY.kind = log.kind[i];
+		LOG_ENTRY.a = log.a[i];
+		LOG_ENTRY.b = log.b[i];
+		LOG_ENTRY.c = log.c[i];
+		return LOG_ENTRY;
+	}
+
 	function createPort() {
 		return {
 			colony: economy.createColony(),
@@ -190,6 +244,9 @@
 			// Trade years of the last sponsored expedition; `-INF` marks a seed
 			// port, ready as soon as its colony passes the big gate.
 			lastExpedition: -1e9,
+			// Set once when its colony fails: a port slot is identity, so the
+			// demoted port keeps its key and place and is only counted once.
+			demoted: 0,
 			x: 0, y: 0, z: 0,
 			ref: { kind: 0, index: 0, key: 0, x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0 },
 		};
@@ -234,9 +291,14 @@
 			lag: 0,
 			queue: queueLib.createExecQueue(256),
 			portCount: 0,
+			// Failed colonies still own their slots; this is how many of the
+			// ports are outposts (W1). `livePortCount` is the panel's number.
+			outposts: 0,
 			seedPorts: SEED_PORTS,
 			shipCount: 0,
 			candidateCount: 0,
+			log: createLog(),
+			routes: createRoutes(),
 			discovered: new Set(),
 			ports: [],
 			ships: [],
@@ -272,10 +334,27 @@
 
 	// --- Lookups ------------------------------------------------------------
 
+	// A slot exists for this star, live or outpost. This is the "can this star
+	// be settled" test: a dead colony still owns its star, so no expedition or
+	// player ever lands a second one on it.
 	function portOfStar(net, key) {
 		const k = key >>> 0;
 		for (let i = 0; i < net.portCount; i++) if (net.ports[i].key === k) return i;
 		return -1;
+	}
+
+	// A live colony (not an outpost) at this star. The trade-facing lookup.
+	function portOfStarLive(net, key) {
+		const k = key >>> 0;
+		for (let i = 0; i < net.portCount; i++) {
+			const port = net.ports[i];
+			if (port.key === k && !port.colony.outpost) return i;
+		}
+		return -1;
+	}
+
+	function livePortCount(net) {
+		return net.portCount - net.outposts;
 	}
 
 	function portIndexOf(net, key, kind, index) {
@@ -296,11 +375,14 @@
 		return -1;
 	}
 
+	// The player's port at a star, outposts included: "no port here" is a lie
+	// about a star that has a dead colony on it. The transfer helpers refuse an
+	// outpost with their own reason (W1), so the port still resolves.
 	function bestPortOfStar(net, key) {
 		let best = -1, bestPop = -1;
 		for (let i = 0; i < net.portCount; i++) {
 			const port = net.ports[i];
-			if (port.key !== key || port.colony.abandoned) continue;
+			if (port.key !== key) continue;
 			if (port.colony.pop > bestPop) { bestPop = port.colony.pop; best = i; }
 		}
 		return best;
@@ -638,13 +720,23 @@
 
 	// --- Ports and candidates ----------------------------------------------
 
-	function addPort(net, site, nowYears) {
-		const existing = portOfStar(net, site.key);
-		if (existing >= 0) return existing;   // one colony per star
+	// Two founding modes: ROLLED_FOUND is a galaxy-rolled world (the hash
+	// invents its age and the settle carries it forward), FRESH_FOUND is a
+	// colony that exists from `nowYears` (the player's, or a party that just
+	// landed). Same fill law, different grant.
+	const ROLLED_FOUND = 0, FRESH_FOUND = 1;
+
+	function addPort(net, site, nowYears, mode) {
+		// One live colony per star; a star whose colony failed keeps its slot and
+		// refuses every future founding (that is what "never recolonised" means).
+		const existing = portOfStarLive(net, site.key);
+		if (existing >= 0) return existing;
+		if (portOfStar(net, site.key) >= 0) return -1;
 		if (net.portCount >= MAX_PORTS) return -1;
 		const index = net.portCount++;
 		const port = net.ports[index];
-		economy.setupColony(port.colony, site, nowYears, site.seed >>> 0);
+		if (mode === FRESH_FOUND) economy.foundColony(port.colony, site, nowYears, site.seed >>> 0, 0);
+		else economy.setupColony(port.colony, site, nowYears, site.seed >>> 0);
 		port.key = site.key >>> 0;
 		port.kind = site.kind;
 		port.index = site.index;
@@ -829,9 +921,43 @@
 	// new — the 4 Hz readout's cheap path.
 	function settleSystem(net, key, nowYears) {
 		for (let i = 0; i < net.portCount; i++) {
-			const port = net.ports[i];
-			if (port.key === key) economy.settleColony(port.colony, nowYears);
+			if (net.ports[i].key === key) settlePort(net, i, nowYears);
 		}
+	}
+
+	// One port's settle, the only path that may demote it. A colony that fails
+	// inside the closed form is noticed here, once, and the network is told
+	// (`net.outposts`, candidates closed); the second call is a no-op.
+	function settlePort(net, index, time) {
+		const colony = net.ports[index].colony;
+		if (colony.outpost) return 0;
+		const level = colony.popLevel;
+		const starving = colony.starving;
+		const delta = economy.settleColony(colony, time);
+		if (colony.popLevel !== level) pushLog(net, LOG_MILESTONE, index, colony.popLevel, level);
+		if (colony.starving !== starving) {
+			pushLog(net, colony.starving ? LOG_FAMINE : LOG_FAMINE_END, index,
+				Math.round(colony.coverage * 100), 0);
+		}
+		if (colony.outpost) demotePort(net, index);
+		return delta;
+	}
+
+	function demotePort(net, index) {
+		const port = net.ports[index];
+		if (port.demoted) return 0;
+		port.demoted = 1;
+		net.outposts += 1;
+		pushLog(net, LOG_OUTPOST, index, Math.round(port.colony.outpostY), 0);
+		// Its worlds are closed to colonisation, and a founder already in flight
+		// refunds its party on arrival through the taken-world path.
+		for (let i = 0; i < net.candidateCount; i++) {
+			const c = net.candidates[i];
+			if (c.site.key !== port.key) continue;
+			c.used = 1;
+			c.reserved = -1;
+		}
+		return 1;
 	}
 
 	// --- Ships and events ---------------------------------------------------
@@ -894,11 +1020,7 @@
 	// repeat the same exact work thirteen times; this pass is the one settle
 	// per port per decision that makes a clock jump equal many small steps.
 	function settleAllPorts(net, time) {
-		for (let i = 0; i < net.portCount; i++) {
-			const colony = net.ports[i].colony;
-			if (colony.abandoned) continue;
-			economy.settleColony(colony, time);
-		}
+		for (let i = 0; i < net.portCount; i++) settlePort(net, i, time);
 	}
 
 	// The best destination for one resource, measured on the *plan* (§9.3): the
@@ -907,13 +1029,133 @@
 	// not a destination — scoring it on its birth distance is exactly what sent
 	// hulls across the arm while their own flight plan said 3 000 ly.
 	const SCORE_PLAN = createLegPlan();
-	function pickDestination(net, from, resource, hullIndex) {
+	// --- Standing routes (W10) ----------------------------------------------
+	//
+	// A route is data a load decision reads. It is not an event source and not a
+	// contract: nothing is scheduled for it, no hull is tied to it, and a route
+	// whose destination wants nothing is simply ignored. The list lives on the
+	// network so the overlay can read it without wiring.
+	const MAX_ROUTES = 32;
+
+	function createRoutes() {
+		const list = [];
+		for (let i = 0; i < MAX_ROUTES; i++) {
+			list.push({ origin: -1, dest: -1, active: 0, lastDepartY: 0, nextDepartY: 0 });
+		}
+		return { list, count: 0 };
+	}
+
+	function routeIndexOf(net, a, b) {
+		const routes = net.routes;
+		if (!routes) return -1;
+		for (let i = 0; i < routes.count; i++) {
+			const r = routes.list[i];
+			if (!r.active) continue;
+			if ((r.origin === a && r.dest === b) || (r.origin === b && r.dest === a)) return i;
+		}
+		return -1;
+	}
+
+	// The panel's estimate for a pair: the leg at the bulk hull's pace, in trade
+	// years. Bookkeeping only — the real voyage is booked when a hull loads.
+	const ROUTE_PLAN = createLegPlan();
+	function routeLegYears(net, origin, dest) {
+		const plan = planLeg(net, END_PORT, origin, END_PORT, dest, 0, MAX_LEG_LY, ROUTE_PLAN);
+		return plan.reachable ? plan.years : 0;
+	}
+
+	const ROUTE_RESULT = { ok: 0, index: -1, reason: '' };
+	function commissionRoute(net, origin, dest, now, out) {
+		const r = out || ROUTE_RESULT;
+		r.ok = 0;
+		r.index = -1;
+		r.reason = '';
+		if (!(origin >= 0 && origin < net.portCount)) { r.reason = 'no such origin'; return r; }
+		if (!(dest >= 0 && dest < net.portCount)) { r.reason = 'no such destination'; return r; }
+		if (origin === dest) { r.reason = 'a route needs two ports'; return r; }
+		if (net.ports[origin].colony.outpost) { r.reason = 'an outpost ships nothing'; return r; }
+		if (net.ports[dest].colony.outpost) { r.reason = 'an outpost takes nothing'; return r; }
+		if (routeIndexOf(net, origin, dest) >= 0) { r.reason = 'already commissioned'; return r; }
+		// A cancelled route keeps its slot and is revived, so the overlay's and
+		// the panel's row identities never move under a click. The same pair
+		// coming back gets its own slot; a different pair takes a free one, so
+		// the list is only renumbered when it has to grow.
+		let index = -1;
+		for (let i = 0; i < net.routes.count; i++) {
+			const slot = net.routes.list[i];
+			if (!slot.active && slot.origin === origin && slot.dest === dest) { index = i; break; }
+		}
+		if (index < 0) {
+			for (let i = 0; i < net.routes.count; i++) {
+				if (!net.routes.list[i].active) { index = i; break; }
+			}
+		}
+		if (index < 0 && net.routes.count < MAX_ROUTES) index = net.routes.count;
+		if (index < 0) { r.reason = 'too many routes'; return r; }
+		const route = net.routes.list[index];
+		if (index === net.routes.count) net.routes.count += 1;
+		route.origin = origin;
+		route.dest = dest;
+		route.active = 1;
+		route.lastDepartY = now;
+		route.nextDepartY = now + routeLegYears(net, origin, dest);
+		pushLog(net, LOG_ROUTE, origin, dest, 1);
+		r.ok = 1;
+		r.index = index;
+		return r;
+	}
+
+	function removeRoute(net, index) {
+		const routes = net.routes;
+		if (!routes || !(index >= 0 && index < routes.count)) return 0;
+		const route = routes.list[index];
+		if (!route.active) return 0;
+		route.active = 0;
+		pushLog(net, LOG_ROUTE, route.origin, route.dest, 0);
+		return 1;
+	}
+
+	function activeRouteCount(net) {
+		const routes = net.routes;
+		if (!routes) return 0;
+		let n = 0;
+		for (let i = 0; i < routes.count; i++) if (routes.list[i].active) n += 1;
+		return n;
+	}
+
+	// The panel's bookkeeping, not a schedule: a hull that loaded for this pair
+	// refreshes the row's last departure and the leg time the next one would take.
+	function noteRouteDeparture(net, origin, dest, time) {
+		const index = routeIndexOf(net, origin, dest);
+		if (index < 0) return;
+		const route = net.routes.list[index];
+		route.lastDepartY = time;
+		route.nextDepartY = time + routeLegYears(net, origin, dest);
+	}
+
+	function pickDestination(net, from, resource, hullIndex, preferFrom) {
 		const worth = economy.RESOURCES[resource].worth;
+		// The commissioned pair is tried first and wins only if it actually
+		// wants the good and the hull can meet it; otherwise the global pick
+		// runs exactly as before. A route is a preference, never a mandate.
+		if (preferFrom && net.routes) {
+			for (let k = 0; k < net.routes.count; k++) {
+				const route = net.routes.list[k];
+				if (!route.active || route.origin !== from) continue;
+				const dest = route.dest;
+				if (!(dest >= 0 && dest < net.portCount) || dest === from) continue;
+				const port = net.ports[dest];
+				if (port.colony.outpost) continue;
+				if (economy.demandOf(port.colony, resource) <= 0) continue;
+				const plan = planLeg(net, END_PORT, from, END_PORT, dest, hullIndex, MAX_LEG_LY, SCORE_PLAN);
+				if (plan.reachable && plan.ly >= 1) return dest;
+			}
+		}
 		let best = -1, bestScore = 0;
 		for (let i = 0; i < net.portCount; i++) {
 			if (i === from) continue;
 			const port = net.ports[i];
-			if (port.colony.abandoned) continue;
+			if (port.colony.outpost) continue;
 			// The caller settled every port to `time` (settleAllPorts), so this
 			// reads the world as it is at the event's own clock, not as its last
 			// visitor left it.
@@ -936,10 +1178,14 @@
 	function pickExport(net, from, hold, hullIndex) {
 		let bestResource = -1, bestDest = -1, bestAmount = 0, bestScore = 0;
 		for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
-			if (r === economy.R_PEOPLE) continue;
+			// T1: an inter-star hull loads only a shipping family. The bulk
+			// feedstock (ore, volatiles) keeps its worth and its exportability
+			// for the intra tier and the player's readout — the filter is here,
+			// on the loader, not on the resource table.
+			if (economy.RESOURCES[r].interFamily < 0) continue;
 			const spare = economy.exportableOf(net.ports[from].colony, r);
 			if (spare <= 0) continue;
-			const dest = pickDestination(net, from, r, hullIndex);
+			const dest = pickDestination(net, from, r, hullIndex, 1);
 			if (dest < 0) continue;
 			// Never sail with more than the destination can store: the overflow
 			// would ride the hull to the next port and make every later choice
@@ -1003,7 +1249,7 @@
 		const at = ship.returning ? ship.from : ship.to;
 		const port = net.ports[at];
 		ship.returning = 0;
-		economy.settleColony(port.colony, time);
+		settlePort(net, at, time);
 		if (ship.amount > 0 && ship.cargo !== NO_RESOURCE) {
 			const given = economy.giveToColony(port.colony, ship.cargo, ship.amount);
 			ship.amount -= given;
@@ -1063,6 +1309,7 @@
 		if (taken <= 0) { waitAtPort(net, ship, time); return; }
 		ship.cargo = pick.resource;
 		ship.amount = taken;
+		noteRouteDeparture(net, portIndex, pick.dest, time);
 		sailTo(net, ship, pick.dest, time);
 	}
 
@@ -1110,7 +1357,7 @@
 	}
 
 	function isBigColony(colony) {
-		if (colony.abandoned) return false;
+		if (colony.outpost) return false;
 		if (colony.pop < MIN_EXPEDITION_POP_M) return false;
 		if (colony.coverage < MIN_EXPEDITION_COVERAGE) return false;
 		if (colony.pop < colony.capacity * 0.08) return false;
@@ -1155,7 +1402,7 @@
 		for (let i = 0; i < net.portCount; i++) {
 			const port = net.ports[i];
 			const colony = port.colony;
-			if (colony.abandoned) continue;
+			if (colony.outpost) continue;
 			if (!isBigColony(colony)) continue;
 			big += 1;
 			const wait = port.lastExpedition + EXPEDITION_COOLDOWN - time;
@@ -1436,7 +1683,7 @@
 		}
 		let founding = 0;
 		for (let i = 0; i < net.shipCount; i++) if (net.ships[i].state === SHIP_FOUNDING) founding += 1;
-		let room = MAX_FOUNDING_IN_FLIGHT - founding;
+		let room = expansionOn ? MAX_FOUNDING_IN_FLIGHT - founding : 0;
 		while (room > 0 && net.portCount + founding < MAX_PORTS) {
 			const pick = bestExpedition(net, time);
 			if (pick.port < 0) break;
@@ -1510,8 +1757,64 @@
 		ship.trips = 0;
 		ship.delivered = 0;
 		ship.founded = 0;
+		pushLog(net, LOG_EXPEDITION, source, candidateIndex, 0);
 		scheduleShip(net, ship, ship.arrive, EV_FOUND);
 		return shipIndex;
+	}
+
+	// --- Player founding (W3) -----------------------------------------------
+
+	const FOUND_RESULT = { ok: 0, port: -1, site: null, reason: '' };
+
+	function createFoundResult() {
+		FOUND_RESULT.ok = 0;
+		FOUND_RESULT.port = -1;
+		FOUND_RESULT.site = null;
+		FOUND_RESULT.reason = '';
+		return FOUND_RESULT;
+	}
+
+	// The player's one lever: put a colony on the best world of a star the
+	// network never rolled. Free — the player is the catalyst, not an owner.
+	// `system` is a generated SystemRecord for `ref`; the refusals are the five
+	// reasons the panel can show, each with its own word.
+	const FOUND_SITE = economy.createSite();
+	function playerFound(net, ref, starName, system, nowYears, out) {
+		const r = out || createFoundResult();
+		r.ok = 0;
+		r.port = -1;
+		r.site = null;
+		r.reason = '';
+		const key = system.star.key >>> 0;
+		if (portOfStarLive(net, key) >= 0) { r.reason = 'already a colony here'; return r; }
+		if (portOfStar(net, key) >= 0) { r.reason = 'this star is an outpost'; return r; }
+		for (let i = 0; i < net.candidateCount; i++) {
+			const c = net.candidates[i];
+			if (c.site.key === key && c.reserved >= 0) {
+				r.reason = 'an expedition is already bound for it';
+				return r;
+			}
+		}
+		if (net.portCount >= MAX_PORTS) { r.reason = 'network is full'; return r; }
+		const seed = economy.siteSeed(key, net.modelSeed, ref.kind);
+		const pick = pickBestSite(FOUND_SITE, ref, system, seed);
+		if (pick.index < 0 || pick.score < MIN_CANDIDATE_HABITAT) {
+			r.reason = 'no world worth settling';
+			return r;
+		}
+		fillPickedSite(FOUND_SITE, ref, system, seed, pick);
+		FOUND_SITE.name = economy.siteName(starName || '', key, pick.belt, pick.index);
+		const portIndex = addPort(net, FOUND_SITE, nowYears, FRESH_FOUND);
+		if (portIndex < 0) { r.reason = 'network is full'; return r; }
+		for (let i = 0; i < net.candidateCount; i++) {
+			if (net.candidates[i].site.key === key) net.candidates[i].used = 1;
+		}
+		net.founded += 1;
+		pushLog(net, LOG_FOUND, portIndex, -1, 0);
+		r.ok = 1;
+		r.port = portIndex;
+		r.site = FOUND_SITE;
+		return r;
 	}
 
 	const FOUND_PLAN = createLegPlan();
@@ -1523,10 +1826,57 @@
 	// limit, same reservation; a port still resting from its last wave can be
 	// rushed, and its 900-year clock restarts from this launch.
 	const LAUNCH_RESULT = { ok: 0, ship: -1, source: -1, candidate: -1, reason: '' };
+
+	function setExpansion(on) {
+		expansionOn = on > 0 ? 1 : 0;
+		return expansionOn;
+	}
+
+	function expansionArmed() {
+		return expansionOn;
+	}
+
+	// Why a port can (or cannot) sponsor a wave, as one record. It answers the
+	// panel's per-port question and the simulation's bulk one with the same law.
+	const READINESS = { state: 'live', why: '', nextIn: 0 };
+	function portReadiness(net, index, time, out) {
+		const r = out || READINESS;
+		const colony = net.ports[index].colony;
+		r.nextIn = 0;
+		if (colony.outpost) { r.state = 'outpost'; r.why = 'outpost \u2014 growth stopped'; return r; }
+		if (colony.pop < MIN_EXPEDITION_POP_M || colony.pop < colony.capacity * 0.08) {
+			r.state = 'small';
+			r.why = 'population too small to sponsor a wave';
+			return r;
+		}
+		if (colony.coverage < MIN_EXPEDITION_COVERAGE) {
+			r.state = 'starving';
+			r.why = 'coverage below the expedition gate';
+			return r;
+		}
+		const wait = net.ports[index].lastExpedition + EXPEDITION_COOLDOWN - time;
+		if (wait > 0) {
+			r.state = 'resting';
+			r.nextIn = wait;
+			r.why = 'resting ' + Math.round(wait) + ' y';
+			return r;
+		}
+		r.state = 'live';
+		r.why = '';
+		return r;
+	}
 	function launchBest(net, time) {
 		// The button is the player's hand: it may sponsor a port that is still
 		// resting, and that port's cooldown restarts from now. The automatic
 		// tick always waits its turn.
+		if (!expansionOn) {
+			LAUNCH_RESULT.ok = 0;
+			LAUNCH_RESULT.ship = -1;
+			LAUNCH_RESULT.source = -1;
+			LAUNCH_RESULT.candidate = -1;
+			LAUNCH_RESULT.reason = 'expansion is off';
+			return LAUNCH_RESULT;
+		}
 		const pick = bestExpedition(net, time, 1);
 		LAUNCH_RESULT.ok = 0;
 		LAUNCH_RESULT.ship = -1;
@@ -1544,6 +1894,44 @@
 		LAUNCH_RESULT.ship = ship;
 		LAUNCH_RESULT.reason = '';
 		return LAUNCH_RESULT;
+	}
+
+	// The per-port Send button (W7): the same launch as `launchBest`, but for
+	// the port and candidate the row names. The row is a snapshot from the last
+	// panel refresh, so every index is re-checked here — a stale row is ignored,
+	// never thrown on. `rush` may sponsor a resting port, exactly like the
+	// single button; a stale row launches nothing.
+	const CHOSEN_RESULT = { ok: 0, ship: -1, source: -1, candidate: -1, reason: '' };
+	function launchChosen(net, port, candidate, time, rush) {
+		const r = CHOSEN_RESULT;
+		r.ok = 0;
+		r.ship = -1;
+		r.source = port;
+		r.candidate = candidate;
+		r.reason = '';
+		if (!expansionOn) { r.reason = 'expansion is off'; return r; }
+		if (!(port >= 0 && port < net.portCount)) { r.reason = 'that port is gone'; return r; }
+		if (!(candidate >= 0 && candidate < net.candidateCount)) { r.reason = 'that world is gone'; return r; }
+		const source = net.ports[port];
+		const c = net.candidates[candidate];
+		if (c.used) { r.reason = 'that world is already settled'; return r; }
+		if (c.reserved >= 0) { r.reason = 'an expedition is already bound for it'; return r; }
+		if (portOfStar(net, c.site.key) >= 0) { r.reason = 'that star already has a colony'; return r; }
+		if (source.colony.outpost) { r.reason = 'an outpost sponsors nothing'; return r; }
+		const ready = portReadiness(net, port, time);
+		if (ready.state !== 'live' && !(rush && ready.state === 'resting')) {
+			r.reason = ready.why || 'this port cannot sponsor a wave';
+			return r;
+		}
+		let founding = 0;
+		for (let i = 0; i < net.shipCount; i++) if (net.ships[i].state === SHIP_FOUNDING) founding += 1;
+		if (net.portCount + founding >= MAX_PORTS) { r.reason = 'network is full'; return r; }
+		if (founding >= MAX_FOUNDING_IN_FLIGHT) { r.reason = 'too many expeditions in flight'; return r; }
+		const ship = launchExpedition(net, port, candidate, time, rush ? 1 : 0);
+		if (ship < 0) { r.reason = LAUNCH_FAIL.reason || 'no hull free'; return r; }
+		r.ok = 1;
+		r.ship = ship;
+		return r;
 	}
 
 	// --- Pursuit and the give-up (trade-plan §9.4) --------------------------
@@ -1675,6 +2063,7 @@
 	// source for a normal load. A failed voyage must not delete people from the
 	// ledger, and must never leave a ship eventless.
 	function returnFounder(net, ship, time) {
+		pushLog(net, LOG_EXPEDITION, ship.from >= 0 ? ship.from : -1, -1, 1);
 		if (ship.from >= 0 && ship.cargo === economy.R_PEOPLE) {
 			const home = net.ports[ship.from].colony;
 			const returning = ship.amount * POP_PER_COLONIST_UNIT;
@@ -1699,7 +2088,7 @@
 		if (ship.returning) { returnFounder(net, ship, time); return; }
 		const c = net.candidates[ship.candidate];
 		const available = c && !c.used && portOfStar(net, c.site.key) < 0;
-		const portIndex = available ? addPort(net, c.site, time) : -1;
+		const portIndex = available ? addPort(net, c.site, time, FRESH_FOUND) : -1;
 		if (portIndex < 0) {
 			// The star was taken while the party was in flight.
 			returnFounder(net, ship, time);
@@ -1707,22 +2096,16 @@
 		}
 		c.used = 1;
 		const colony = net.ports[portIndex].colony;
-		// The expedition's people are the founding population; the stores it
-		// carried become the first stock. No settle: the colony is founded now.
-		// Its first sponsored wave waits a full cooldown from this instant — a
-		// network doubles by founding from colonies that have had a life of
-		// their own, not by a chain reaction inside one tick.
-		colony.founded = time;
-		colony.last = time;
+		// The expedition's people are the founding population; foundColony gave
+		// the record its founding stores and its age. No settle: the colony is
+		// founded now. Its first sponsored wave waits a full cooldown from this
+		// instant — a network doubles by founding from colonies that have had a
+		// life of their own, not by a chain reaction inside one tick.
 		net.ports[portIndex].lastExpedition = time;
 		colony.pop = Math.min(colony.capacity, ship.amount * POP_PER_COLONIST_UNIT);
-		for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
-			colony.stock[r] = FOUND_STOCK_FRAC * colony.stockCap[r];
-		}
-		colony.coverage = 0;
-		colony.growth = 0;
 		net.founded += 1;
 		ship.founded += 1;
+		pushLog(net, LOG_FOUND, portIndex, ship.from, 0);
 		ship.cargo = NO_RESOURCE;
 		ship.amount = 0;
 		ship.hold = HULLS[ship.hull].hold;
@@ -1732,6 +2115,47 @@
 		ship.candidate = -1;
 		ship.returning = 0;
 		scheduleShip(net, ship, time + DOCK_YEARS, EV_LOAD);
+	}
+
+	// --- The forward calendar (W8) ------------------------------------------
+	//
+	// The queue can answer what happens next without popping anything. Each
+	// row is resolved against the ship it names and dropped when the ship's
+	// revision no longer matches — a re-timed or turned-around voyage must not
+	// appear twice, and a row that would describe a stale booking must not
+	// appear at all. The rows are module scratch, refilled in place.
+	const NEXT_TIME = new Float64Array(8);
+	const NEXT_KIND = new Uint8Array(8);
+	const NEXT_REF = new Uint32Array(8);
+	const NEXT_REVISION = new Uint32Array(8);
+	const NEXT_ROWS = [];
+	for (let i = 0; i < 8; i++) NEXT_ROWS.push({ time: 0, kind: -1, port: -1, ship: -1 });
+
+	function nextEvents(net, time, out, count) {
+		const k = Math.max(1, Math.min(8, count | 0 || 4));
+		const found = queueLib.peekNext(net.queue, NEXT_TIME, NEXT_KIND, NEXT_REF, NEXT_REVISION, k);
+		const rows = out || NEXT_ROWS;
+		let n = 0;
+		for (let i = 0; i < found; i++) {
+			const kind = NEXT_KIND[i];
+			const row = rows[n];
+			if (kind === EV_TICK) {
+				row.time = NEXT_TIME[i];
+				row.kind = kind;
+				row.port = -1;
+				row.ship = -1;
+				n += 1;
+				continue;
+			}
+			const ship = net.ships[NEXT_REF[i]];
+			if (!ship || ship.revision !== NEXT_REVISION[i]) continue;
+			row.time = NEXT_TIME[i];
+			row.kind = kind;
+			row.ship = NEXT_REF[i];
+			row.port = kind === EV_ARRIVE ? ship.to : kind === EV_FOUND ? -1 : ship.port;
+			n += 1;
+		}
+		return n;
 	}
 
 	// --- The step -----------------------------------------------------------
@@ -1833,6 +2257,7 @@
 		const colony = net.ports[portIndex].colony;
 		let best = -1, bestScore = 0;
 		for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+			if (economy.RESOURCES[r].interFamily < 0) continue;
 			const spare = economy.exportableOf(colony, r);
 			if (spare <= 0) continue;
 			const fits = economy.unitsForTons(r, freeTons);
@@ -1855,7 +2280,11 @@
 		PLAYER_RESULT.reason = '';
 		if (portIndex < 0) { PLAYER_RESULT.reason = 'no trade port here'; return PLAYER_RESULT; }
 		const port = net.ports[portIndex];
-		economy.settleColony(port.colony, net.time);
+		if (port.colony.outpost) {
+			PLAYER_RESULT.reason = 'outpost \u2014 no trade here';
+			return PLAYER_RESULT;
+		}
+		settlePort(net, portIndex, net.time);
 		const carried = ship.cargoResource === undefined ? -1 : ship.cargoResource;
 		const freeTons = ship.class.cargo - ship.cargo;
 		const resource = ship.cargo > 0 && carried >= 0 ? carried : playerExport(net, portIndex, freeTons);
@@ -1890,7 +2319,11 @@
 		}
 		const r = ship.cargoResource;
 		const port = net.ports[portIndex];
-		economy.settleColony(port.colony, net.time);
+		if (port.colony.outpost) {
+			PLAYER_RESULT.reason = 'outpost \u2014 no trade here';
+			return PLAYER_RESULT;
+		}
+		settlePort(net, portIndex, net.time);
 		const units = economy.unitsForTons(r, ship.cargo);
 		const given = economy.giveToColony(port.colony, r, units);
 		const tons = economy.tonsForUnits(r, given);
@@ -1916,18 +2349,26 @@
 		TRADE_RATE_DEFAULT_INDEX, TRADE_ROUTES_DEFAULT,
 		SYNC_YEARS_PER_MYR, RATE_MAX, GENERATION_LY_PER_YEAR, GENERATION_RESERVE_YEARS, GENERATION_STAR_MYR,
 		MIN_LEG_YEARS, SEED_PORTS, START_RADIUS_KPC, START_FIELD, clockRate,
-		EV_ARRIVE, EV_LOAD, EV_WAIT, EV_FOUND, EV_TICK,
+		EV_ARRIVE, EV_LOAD, EV_WAIT, EV_FOUND, EV_TICK, nextEvents,
+		MAX_ROUTES, createRoutes, routeIndexOf, commissionRoute, removeRoute,
+		activeRouteCount, noteRouteDeparture, routeLegYears, ROUTE_RESULT,
 		SHIP_DOCKED, SHIP_SAILING, SHIP_WAITING, SHIP_FOUNDING, SHIP_STATE_NAMES,
+		LOG_CAP, LOG_FOUND, LOG_MILESTONE, LOG_FAMINE, LOG_FAMINE_END, LOG_OUTPOST,
+		LOG_ROUTE, LOG_EXPEDITION, createLog, pushLog, logLength, logAt,
 		HULLS, DOCK_YEARS, WAIT_YEARS, TICK_YEARS,
 		POP_PER_COLONIST_UNIT, EXPEDITION_COOLDOWN, MAX_FOUNDING_IN_FLIGHT,
 		VOLUNTEER_FRAC, FOUNDERS_MIN_M, FOUNDERS_MAX_M, MIN_FOUNDERS_REMAIN_M,
 		MAX_FOUND_LY, MAX_LEG_LY, LY_PER_KPC, HOME_COLONY_LY, NO_RESOURCE,
+		MIN_CANDIDATE_HABITAT,
 		MIN_EXPEDITION_POP_M, MIN_EXPEDITION_COVERAGE,
-		createNetwork, discoverSystem, discoverNearest, startSystems, settleSystem, finalize, step, settleAllPorts,
-		portIndexOf, candidateIndexOf, bestPortOfStar, distanceLy, legYears,
+		setExpansion, expansionArmed, portReadiness, launchChosen, CHOSEN_RESULT,
+		ROLLED_FOUND, FRESH_FOUND, createFoundResult, playerFound,
+		createNetwork, addPort, discoverSystem, discoverNearest, startSystems, settleSystem, finalize, step, settleAllPorts,
+		portOfStar, portOfStarLive, livePortCount, demotePort,
+		portIndexOf, candidateIndexOf, bestPortOfStar, distanceLy, legYears, pickDestination, pickExport,
 		shipPosition, shipProgress, shipStateName, playerPort, playerLoad, playerUnload,
 		siteHabitatScore, isBigColony, colonisationPreview, pickCandidate, bestExpedition,
-		launchBest, launchExpedition, retimeRoutes, colonisationStatus,
+		launchBest, launchExpedition, returnFounder, retimeRoutes, colonisationStatus,
 		expandFrontierFromField, setGenerationMode, generationMode: setGenerationMode,
 		refreshGeometry, endpointPos, endpointDistanceLy, planLeg, bookLeg, shipFraction,
 		createLegPlan, frontierStretchKpc, DIVERT_FACTOR, END_PORT, END_CANDIDATE,

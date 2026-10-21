@@ -140,8 +140,55 @@ function clear(queue) {
 	queue.size = 0;
 }
 
+// The `count` earliest entries, in time order, without touching the heap.
+//
+// A heap's k smallest values cannot sit deeper than level k-1, so the first
+// min(size, 2^k - 1) entries are a complete candidate set: at the cap of 8
+// that is 255 entries, and a fixed 64 would miss an 8th event at index 64+.
+// The candidates are copied to module scratch and partial-selected: O(n·k),
+// a few hundred comparisons at the panel's 4 Hz, and no allocation after the
+// first call. A tie in time is broken by position, so equal-time entries keep
+// the heap's own (unordered but repeatable) order.
+const PEEK_TIME = new Float64Array(256);
+const PEEK_KIND = new Uint8Array(256);
+const PEEK_REF = new Uint32Array(256);
+const PEEK_REVISION = new Uint32Array(256);
+const PEEK_TAKEN = new Uint8Array(256);
+
+function peekNext(queue, outTime, outKind, outRef, outRevision, count) {
+	const k = Math.max(1, Math.min(8, count | 0 || 1));
+	const bound = Math.min(queue.size, (1 << k) - 1);
+	const times = queue.time;
+	const kinds = queue.kind;
+	const refs = queue.ref;
+	const revisions = queue.revision;
+	for (let i = 0; i < bound; i++) {
+		PEEK_TIME[i] = times[i];
+		PEEK_KIND[i] = kinds[i];
+		PEEK_REF[i] = refs[i];
+		PEEK_REVISION[i] = revisions[i];
+		PEEK_TAKEN[i] = 0;
+	}
+	let n = 0;
+	while (n < k) {
+		let best = -1;
+		for (let i = 0; i < bound; i++) {
+			if (PEEK_TAKEN[i]) continue;
+			if (best < 0 || PEEK_TIME[i] < PEEK_TIME[best]) best = i;
+		}
+		if (best < 0) break;
+		PEEK_TAKEN[best] = 1;
+		outTime[n] = PEEK_TIME[best];
+		outKind[n] = PEEK_KIND[best];
+		outRef[n] = PEEK_REF[best];
+		outRevision[n] = PEEK_REVISION[best];
+		n += 1;
+	}
+	return n;
+}
+
 const ExecQueueLib = {
-	createExecQueue, push, pop, drainUntil, peekTime, clear,
+	createExecQueue, push, pop, drainUntil, peekTime, peekNext, clear,
 	DEFAULT_CAPACITY,
 };
 if (typeof module !== 'undefined') module.exports = ExecQueueLib;

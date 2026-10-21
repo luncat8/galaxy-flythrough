@@ -958,6 +958,64 @@ body.system-view #sysread {
 #trade-menu .flight-section-heading small {
 	color: #6fae9f;
 }
+/* W7: the port rows are buttons — the list is a set of places to look at, not
+   a read-only table. One row, one line: name, bar, population, and either the
+   growth mark or the readiness reason. */
+.trade-rows {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: 2px 0 7px;
+	font: 10px/1.45 'Menlo', 'Consolas', monospace;
+}
+.trade-row {
+	display: block;
+	width: 100%;
+	padding: 2px 4px;
+	border: 1px solid transparent;
+	border-radius: 3px;
+	background: transparent;
+	color: #a8dcc8;
+	font: inherit;
+	text-align: left;
+	white-space: pre;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	cursor: pointer;
+}
+.trade-row:hover {
+	border-color: #2a5a4a;
+	background: rgba(60, 160, 130, 0.14);
+}
+.trade-row:focus-visible { outline: 1px solid #6fd8b5; }
+.trade-row.send {
+	display: flex;
+	justify-content: space-between;
+	gap: 6px;
+}
+.trade-row .send-mark { color: #6fd8b5; }
+.trade-row:disabled { opacity: 0.45; cursor: default; background: transparent; border-color: transparent; }
+.routes-row {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+.routes-row select {
+	min-width: 0;
+	flex: 1;
+	font: inherit;
+	background: #0a1a15;
+	color: #a8dcc8;
+	border: 1px solid #2a5a4a;
+	border-radius: 3px;
+}
+.routes-row .route-arrow { color: #6fae9f; }
+.routes-row button { flex: 0 0 auto; }
+.trade-note {
+	padding: 2px 4px;
+	color: #8fd8bf;
+	white-space: pre-wrap;
+}
 
 /* --- View modes (view-modes.6) ------------------------------------------ */
 

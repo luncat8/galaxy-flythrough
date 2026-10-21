@@ -1,6 +1,6 @@
 {
-  "total": 134,
-  "passed": 134,
+  "total": 228,
+  "passed": 228,
   "failed": 0,
   "checks": [
     {
@@ -52,7 +52,7 @@
       "pass": true,
       "detail": {
         "one": 17.99996235884887,
-        "many": 17.98688869253365
+        "many": 17.984250832928627
       }
     },
     {
@@ -132,8 +132,8 @@
       "name": "arrivals are booked",
       "pass": true,
       "detail": {
-        "processed": 238,
-        "delivered": 15315.14565773418
+        "processed": 226,
+        "delivered": 6591.804768246175
       }
     },
     {
@@ -153,13 +153,13 @@
           7,
           15,
           3,
-          15315.14565773418
+          6591.804768246175
         ],
         "small": [
           7,
           15,
           3,
-          15315.14565773418
+          6591.804768246175
         ]
       }
     },
@@ -310,7 +310,11 @@
       "pass": true
     },
     {
-      "name": "an abandoned colony is not offered as a player port",
+      "name": "an outpost is still offered as a player port",
+      "pass": true
+    },
+    {
+      "name": "and the transfer, not the lookup, refuses with its own reason",
       "pass": true
     },
     {
@@ -464,14 +468,14 @@
       "name": "a budgeted drain keeps the clock monotone and never passes the next event",
       "pass": true,
       "detail": {
-        "time": 4550,
-        "lag": 3850
+        "time": 4475,
+        "lag": 3925
       }
     },
     {
       "name": "a budgeted clock that cannot keep up reports its backlog",
       "pass": true,
-      "detail": 3850
+      "detail": 3925
     },
     {
       "name": "at the synced top rate an unbudgeted clock stays exact",
@@ -595,7 +599,7 @@
       "detail": {
         "bigFree": 56,
         "bigGen": 62,
-        "median": 0.47
+        "median": 0.5
       }
     },
     {
@@ -639,7 +643,7 @@
       "pass": true,
       "detail": {
         "start": 0.19,
-        "at2": 0.94
+        "at2": 0.93
       }
     },
     {
@@ -686,7 +690,7 @@
       "detail": {
         "ports": 9,
         "founded": 5,
-        "delivered": 26029.7,
+        "delivered": 12758.7,
         "samePop": true
       }
     },
@@ -762,18 +766,18 @@
       "name": "a leg torn past its cap is turned around, not chased",
       "pass": true,
       "detail": {
-        "diverted": 12,
-        "turned": 15
+        "diverted": 15,
+        "turned": 8
       }
     },
     {
       "name": "the diverted hull is booked home over the part of the chord it has flown",
       "pass": true,
       "detail": {
-        "u": 0.173,
-        "chord": 13634,
-        "expect": 525,
-        "booked": 526
+        "u": 0.159,
+        "chord": 12847,
+        "expect": 680,
+        "booked": 681
       }
     },
     {
@@ -781,8 +785,8 @@
       "pass": true,
       "detail": {
         "landed": 1,
-        "from": 5,
-        "arrivals": 113
+        "from": 11,
+        "arrivals": 48
       }
     },
     {
@@ -820,7 +824,7 @@
       "name": "120 s of shearing sky: no hull is left on a leg past the give-up margin",
       "pass": true,
       "detail": {
-        "sailing": 14,
+        "sailing": 10,
         "over": 0,
         "worstLy": 2593
       }
@@ -829,11 +833,479 @@
       "name": "the network still trades and still grows while the sky moves",
       "pass": true,
       "detail": {
-        "delivered": 352443,
-        "at60": 181002,
+        "delivered": 139353,
+        "at60": 71272,
         "ports": 12,
         "founded": 8
       }
+    },
+    {
+      "name": "a colony settled below the outpost threshold stops with growth at zero",
+      "pass": true
+    },
+    {
+      "name": "a colony just above the threshold stays live",
+      "pass": true
+    },
+    {
+      "name": "the network marks the failed port once and counts it",
+      "pass": true
+    },
+    {
+      "name": "an outpost keeps its slot, its star key and its name",
+      "pass": true
+    },
+    {
+      "name": "a second settle changes nothing on an outpost",
+      "pass": true
+    },
+    {
+      "name": "an outpost neither exports nor imports",
+      "pass": true
+    },
+    {
+      "name": "the outpost is still the player’s port at its star",
+      "pass": true
+    },
+    {
+      "name": "every candidate of the dead star is closed and released",
+      "pass": true
+    },
+    {
+      "name": "no founding can land on a star whose colony failed",
+      "pass": true
+    },
+    {
+      "name": "a docked hull at an outpost waits instead of loading",
+      "pass": true
+    },
+    {
+      "name": "a founder bound for a dead star comes home with its party",
+      "pass": true,
+      "detail": {
+        "closed": true,
+        "state": 0,
+        "amount": 0
+      }
+    },
+    {
+      "name": "a returned founder puts exactly its party back into the sponsor",
+      "pass": true
+    },
+    {
+      "name": "a long settle credits every rung it crossed in one entry",
+      "pass": true
+    },
+    {
+      "name": "the milestone entry says how many rungs were crossed",
+      "pass": true
+    },
+    {
+      "name": "settling again does not re-emit a rung already credited",
+      "pass": true
+    },
+    {
+      "name": "starvation enters once with the coverage that caused it",
+      "pass": true
+    },
+    {
+      "name": "staying starved does not repeat the alarm",
+      "pass": true
+    },
+    {
+      "name": "recovery is its own event, once",
+      "pass": true
+    },
+    {
+      "name": "the ring keeps LOG_CAP entries, oldest first, and never reallocates",
+      "pass": true
+    },
+    {
+      "name": "an outpost logs once, not once per settle",
+      "pass": true
+    },
+    {
+      "name": "a network with no ports still has a valid, empty log",
+      "pass": true
+    },
+    {
+      "name": "a stocked port is never scarce and marks its spare goods surplus",
+      "pass": true
+    },
+    {
+      "name": "an empty port is scarce on food and volatiles",
+      "pass": true
+    },
+    {
+      "name": "a resource with no draw and no stock is fair, not a crisis",
+      "pass": true
+    },
+    {
+      "name": "scarcity stays in [0, 1] and falls as stock rises",
+      "pass": true
+    },
+    {
+      "name": "a fully stocked port still names the right tags by name",
+      "pass": true
+    },
+    {
+      "name": "a disarmed expansion founds nothing while the freight still moves",
+      "pass": true,
+      "detail": {
+        "ports": 4,
+        "delivered": 7607,
+        "founded": 0
+      }
+    },
+    {
+      "name": "the Send button refuses while expansion is off",
+      "pass": true
+    },
+    {
+      "name": "arming resumes at the next tick",
+      "pass": true
+    },
+    {
+      "name": "readiness names small, starving, resting, live and outpost",
+      "pass": true,
+      "detail": {
+        "small": "small",
+        "starving": "starving",
+        "resting": "resting:900",
+        "liveState": "live",
+        "outpostState": "outpost"
+      }
+    },
+    {
+      "name": "the fixture finds an unclaimed landmark worth founding on",
+      "pass": true,
+      "detail": 25
+    },
+    {
+      "name": "a fresh founding succeeds, adds one port and carries a real grant",
+      "pass": true
+    },
+    {
+      "name": "the founding stores are the 45 % grant, with no invented age",
+      "pass": true
+    },
+    {
+      "name": "the founding is narrated",
+      "pass": true
+    },
+    {
+      "name": "a second call on the same star refuses without changing the network",
+      "pass": true
+    },
+    {
+      "name": "an outpost star refuses and is not revived",
+      "pass": true
+    },
+    {
+      "name": "a star an expedition is already bound for refuses",
+      "pass": true
+    },
+    {
+      "name": "a full network refuses",
+      "pass": true
+    },
+    {
+      "name": "a star with no world worth settling refuses",
+      "pass": true
+    },
+    {
+      "name": "playerFound and the expedition path produce one record shape and one grant",
+      "pass": true,
+      "detail": {
+        "sameFields": true,
+        "sameGrant": true,
+        "founded": 67.62232754628667,
+        "last": 67.62232754628667,
+        "level": 0,
+        "expeditionPort": 4
+      }
+    },
+    {
+      "name": "port keys are unique, so a row id is a stable star",
+      "pass": true
+    },
+    {
+      "name": "the fixture has a port with a free candidate",
+      "pass": true,
+      "detail": {
+        "port": 0,
+        "candidate": 1
+      }
+    },
+    {
+      "name": "a port that sponsored a wave is resting",
+      "pass": true
+    },
+    {
+      "name": "launchChosen without a rush refuses a resting port",
+      "pass": true
+    },
+    {
+      "name": "launchChosen with a rush launches and restarts the cooldown",
+      "pass": true
+    },
+    {
+      "name": "stale rows are refused instead of throwing",
+      "pass": true,
+      "detail": {
+        "p": "that port is gone",
+        "s": "that world is gone"
+      }
+    },
+    {
+      "name": "a reserved world cannot be launched at twice",
+      "pass": true,
+      "detail": "an expedition is already bound for it"
+    },
+    {
+      "name": "a settled world is refused",
+      "pass": true,
+      "detail": "that world is already settled"
+    },
+    {
+      "name": "an outpost refuses to sponsor a wave",
+      "pass": true
+    },
+    {
+      "name": "a stood-down authority refuses the row too",
+      "pass": true,
+      "detail": "expansion is off"
+    },
+    {
+      "name": "the calendar returns rows without popping the queue",
+      "pass": true
+    },
+    {
+      "name": "the calendar order equals a drain’s order",
+      "pass": true,
+      "detail": {
+        "n": 3,
+        "drained": 3
+      }
+    },
+    {
+      "name": "the calendar is time-ordered",
+      "pass": true
+    },
+    {
+      "name": "every ship row resolves to a live voyage",
+      "pass": true
+    },
+    {
+      "name": "a re-timed voyage is filtered out of the calendar",
+      "pass": true
+    },
+    {
+      "name": "the calendar caps its rows",
+      "pass": true,
+      "detail": 3
+    },
+    {
+      "name": "an empty queue returns no rows",
+      "pass": true
+    },
+    {
+      "name": "the composition counts the system the generator made",
+      "pass": true,
+      "detail": {
+        "rocky": 0,
+        "giants": 0,
+        "belts": 0,
+        "terran": 0,
+        "hz": 0
+      }
+    },
+    {
+      "name": "a filled site carries the system’s composition",
+      "pass": true
+    },
+    {
+      "name": "copySite carries it, so a candidate keeps its system",
+      "pass": true
+    },
+    {
+      "name": "the same site yields the same numbers twice",
+      "pass": true
+    },
+    {
+      "name": "six rocky worlds out-mine one, and the cap stops sixty from being ten times more",
+      "pass": true,
+      "detail": {
+        "one": 0.875,
+        "six": 1.25
+      }
+    },
+    {
+      "name": "a terran system moves the grown family only",
+      "pass": true
+    },
+    {
+      "name": "giants favour the gathered family above rocks",
+      "pass": true
+    },
+    {
+      "name": "the fixture has a system with a belt and a planet",
+      "pass": true
+    },
+    {
+      "name": "a belt is the easiest mine, but not by more than 1.5×",
+      "pass": true,
+      "detail": {
+        "beltOre": 1.6,
+        "bestPlanetOre": 1.2
+      }
+    },
+    {
+      "name": "a rock world out-makes a gas giant on robots",
+      "pass": true,
+      "detail": {
+        "lava": 0.4,
+        "super": 0.6,
+        "mini": 0.15,
+        "gas": 0.1,
+        "ice": 0.1
+      }
+    },
+    {
+      "name": "and the giant still out-makes a rock on volatiles and chemicals",
+      "pass": true
+    },
+    {
+      "name": "every resource still has a world type that makes it",
+      "pass": true
+    },
+    {
+      "name": "every yield stays inside [0, YIELD_MAX] over a sweep of generated sites",
+      "pass": true,
+      "detail": {
+        "maxYield": 1.92
+      }
+    },
+    {
+      "name": "a fresh network has a route list and no commissions",
+      "pass": true
+    },
+    {
+      "name": "a commission is accepted, logged and changes no event",
+      "pass": true
+    },
+    {
+      "name": "the calendar is unchanged by a commission",
+      "pass": true
+    },
+    {
+      "name": "the commission is narrated",
+      "pass": true
+    },
+    {
+      "name": "a duplicate (either direction), a self-route and a bad index are refused",
+      "pass": true
+    },
+    {
+      "name": "a route is found from either end",
+      "pass": true
+    },
+    {
+      "name": "the fixture has a source and two destinations that want a good",
+      "pass": true,
+      "detail": {
+        "source": 2,
+        "first": 0,
+        "second": 1,
+        "good": 0
+      }
+    },
+    {
+      "name": "a commissioned pair is preferred over the global pick",
+      "pass": true,
+      "detail": {
+        "globalPick": 1,
+        "second": 1,
+        "routedPick": 1
+      }
+    },
+    {
+      "name": "a route whose destination wants nothing falls back to the global pick",
+      "pass": true,
+      "detail": {
+        "fallback": 5
+      }
+    },
+    {
+      "name": "cancelling stops the preference and keeps the slot",
+      "pass": true
+    },
+    {
+      "name": "a cancelled route can be commissioned again in its own slot",
+      "pass": true
+    },
+    {
+      "name": "a route to or from an outpost is refused",
+      "pass": true
+    },
+    {
+      "name": "a route carries an estimated leg, not a scheduled event",
+      "pass": true
+    },
+    {
+      "name": "a departure on the pair refreshes the estimate, whichever end loaded",
+      "pass": true
+    },
+    {
+      "name": "a route never invents cargo: a port with nothing spare has nothing to prefer",
+      "pass": true
+    },
+    {
+      "name": "bulk keeps its authored worth and is never an inter-star family",
+      "pass": true,
+      "detail": {
+        "ore": 0.25,
+        "volatile": 0.3
+      }
+    },
+    {
+      "name": "the seven shipping families each have a member, and every id is valid",
+      "pass": true,
+      "detail": {
+        "families": 7
+      }
+    },
+    {
+      "name": "the three intra families are all used",
+      "pass": true
+    },
+    {
+      "name": "the fixture has a port whose only spare stock is bulk",
+      "pass": true
+    },
+    {
+      "name": "a bulk-only port offers no inter-star cargo",
+      "pass": true,
+      "detail": {
+        "resource": -1,
+        "dest": -1
+      }
+    },
+    {
+      "name": "a hull factory exists for the unload check",
+      "pass": true
+    },
+    {
+      "name": "ore already aboard still unloads at a star port",
+      "pass": true,
+      "detail": {
+        "units": 0.000006672000381513499,
+        "reason": ""
+      }
+    },
+    {
+      "name": "0/0 is fair, not scarce",
+      "pass": true
     }
   ]
 }

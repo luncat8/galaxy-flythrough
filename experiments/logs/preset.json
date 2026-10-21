@@ -50,8 +50,7 @@
     },
     {
       "name": "menuDefaults matches the modules that own the numbers",
-      "pass": false,
-      "detail": "Expected values to be strictly deep-equal:\n+ actual - expected\n... Skipped lines\n\n  {\n    apoForce: 0.22,\n    apoShare: 0.35,\n    brightness: 1,\n    clusters: 50,\n...\n    systime: 0,\n+   time: 1,\n-   time: 5,\n    trade: 100,\n    tradegen: 0,\n    traderoutes: 1,\n    tradesync: 0,\n    viewanchors: 256,\n"
+      "pass": true
     },
     {
       "name": "the default system round-trips and the model it names exists",
@@ -122,5 +121,5 @@
       "pass": true
     }
   ],
-  "failed": 1
+  "failed": 0
 }

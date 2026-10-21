@@ -61,13 +61,42 @@ belt slots occupy distinct hash channels. With
 `seed = planets.systemSeed(key, model.seed, starBlockKind)`, yields are
 
 ```
-yield[r] = clamp(PLANET[r][type] * starFactor(r, site)
+yield[r] = clamp(PLANET[r][type] * starFactor(r, site) * supplyFactor(r, site)
                  * (0.7 + 0.6 * hash01At(seed, 512 + slot*16 + r)), 0, 2.5)
 ```
 
-Star factors use metallicity, age, insolation and surface temperature. Terran
-flags boost food, biotech and volunteers by 1.3; the habitable-zone flag boosts
-food/biotech by 1.15. No PRNG state and no reroll on inspection.
+`starFactor` is the *situation*: metallicity, age, insolation, surface
+temperature. `supplyFactor` is the *system's supply*: what a prospector would
+count, normalised against a cap so a system with twelve rocky worlds is not
+twelve times a system with one.
+
+```
+rockyF = min(sysRocky, 6)/6   giantF = min(sysGiants, 4)/4   beltF = min(sysBelts, 3)/3
+terranF = min(sysTerran, 2)/2 hzF = min(sysHz, 4)/4
+
+mined    (ore, rare, robots, compute) × (0.80 + 0.45·rockyF + 0.55·beltF + 0.15·giantF)
+gathered (volatile, chem)             × (0.85 + 0.40·giantF + 0.30·beltF + 0.10·rockyF)
+grown    (food, bio, people)          × (0.85 + 0.35·terranF + 0.25·hzF + 0.10·rockyF)
+made     (amat, soft, data, art)      × (0.90 + 0.20·rockyF + 0.10·beltF)
+```
+
+The five counts are computed once per system (`systemComposition`, one pass over
+`counts.planets` — rocky means rock or super, not ice) and stored on the site, so
+a candidate and a colony keep the composition of the system they were drawn
+from; discovery and inspection pay for it, a settle never does.
+
+Belts are the easiest mine: the belt column is 1.60 for ore (1.33× the richest
+planet's 1.20, under the 1.5× ceiling that keeps planetary mining worth
+building), 1.10 for rare, 0.80 for robots and 0.10 for compute — a belt occupies
+one slot however many belts the system has, and a belt system earns `beltF` on
+top. Heavy planets are places to live, not to mine: mini-Neptunes make 0.15
+robots and gas/ice giants 0.10, where a rock world makes 0.40–0.70, while their
+volatile and chemical strengths are unchanged. Rock-family columns and every
+habitat value are untouched, so the trade is explicit: a giant is where people
+live, a belt is where ore comes from.
+
+Terran flags boost food, biotech and volunteers by 1.3; the habitable-zone flag
+boosts food/biotech by 1.15. No PRNG state and no reroll on inspection.
 
 ### 2.1 Population and lazy factories
 
@@ -479,20 +508,19 @@ frontier scan (seed 42, the page's 300k field):
 
 The same curve holds across galaxy seeds (300k field, same frame loop):
 
-| seed | 10 s | 20 s | 40 s | full network |
-|------|------|------|------|--------------|
-| 42   | 11   | 27   | 56   | 48 s |
-| 7    | 12   | 29   | 58   | 49 s |
-| 1234 | 12   | 28   | 46   | 50 s |
-| 4242 | 12   | 30   | 54   | 49 s |
+The four network seeds 42, 7, 1234 and 4242 give the same port count at every
+sample (11 / 27 / 56 at 10 / 20 / 40 s, full at 50 s): the start map and the
+field are fixed by the model seed and the frontier takes the nearest systems
+rather than a random draw. What the network seed does change is the freight —
+4.2–5.3 M units hauled by 90 s across the four.
 
 The seed ports alone become eight inside five seconds (a wave every 900 trade
 years per port, i.e. nine wall seconds at this pace). The first wave leaves on
 the first tick — three of the four seeds are big at t = 0; the small belt joins
 as it grows. The network then reaches `MAX_PORTS = 64` by 50 s and stays there;
 at 64 the port array is full, which is a cap, not a plateau. Coverage holds at a
-median 0.47, the minimum at 0.31; no colony is abandoned, the population sum
-grows 0.1 B → 11.2 B over the run, and the fleet hauls 4.5 M units by 90 s.
+median 0.49, the minimum at 0.31; no colony is abandoned, the population sum
+grows 0.1 B → 11.2 B over the run, and the fleet hauls 4.2–5.3 M units by 90 s.
 
 **Colony growth.** `G_MAX = 1/40` and the authored coverage of ~0.47 give
 `g ≈ 0.7 %/y`, so a world founded at 45 % of capacity is visibly growing within
@@ -513,8 +541,8 @@ years) at 1 000 y/s, with the same field and frontier scan:
 |--------|----|----|----|----|----|----|
 | ports  | 22 | 33 | 41 | 53 | 61 | 64 |
 
-All 64 are big by 60 s, median coverage 0.47, minimum 0.31, zero abandoned, and
-1.66 M units delivered by 120 s. The mode still reads as slow ships (30 ly/s is
+All 64 are big by 60 s, median coverage 0.48, minimum 0.31, zero abandoned, and
+0.80 M units delivered by 60 s. The mode still reads as slow ships (30 ly/s is
 1/70–1/150 of a freighter's wall-second speed), but it no longer reads as a
 stalled network.
 

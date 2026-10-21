@@ -98,6 +98,66 @@ check('steady-capacity push/pop cycles reuse all typed-array storage', () => {
 	assert.equal(q.revision, revision);
 });
 
+check('peekNext returns the first events in the order a drain would pop them', () => {
+	const q = queueLib.createExecQueue(8);
+	const twin = queueLib.createExecQueue(8);
+	for (let i = 0; i < 300; i++) {
+		const time = ((Math.imul(i + 7, 2654435761) >>> 0) % 100000) / 64;
+		queueLib.push(q, time, i % 5, i, i);
+		queueLib.push(twin, time, i % 5, i, i);
+	}
+	const outTime = new Float64Array(8);
+	const outKind = new Uint8Array(8);
+	const outRef = new Uint32Array(8);
+	const outRevision = new Uint32Array(8);
+	const n = queueLib.peekNext(q, outTime, outKind, outRef, outRevision, 8);
+	assert.equal(n, 8);
+	const drained = [];
+	queueLib.drainUntil(twin, Infinity, (time, kind, ref, revision) => {
+		if (drained.length < 8) drained.push([time, kind, ref, revision]);
+	});
+	for (let i = 0; i < n; i++) {
+		assert.deepEqual([outTime[i], outKind[i], outRef[i], outRevision[i]], drained[i]);
+		assert.ok(i === 0 || outTime[i] >= outTime[i - 1]);
+	}
+});
+
+check('peekNext leaves the heap untouched and never allocates after the first call', () => {
+	const q = queueLib.createExecQueue(8);
+	for (let i = 0; i < 500; i++) queueLib.push(q, ((i * 37) % 101) / 3, i % 4, i, i);
+	const size = q.size;
+	const root = [q.time[0], q.kind[0], q.ref[0], q.revision[0]];
+	const columns = [q.time, q.kind, q.ref, q.revision];
+	const outTime = new Float64Array(8);
+	const outKind = new Uint8Array(8);
+	const outRef = new Uint32Array(8);
+	const outRevision = new Uint32Array(8);
+	let first = 0;
+	for (let round = 0; round < 10000; round++) {
+		const n = queueLib.peekNext(q, outTime, outKind, outRef, outRevision, 1 + (round % 8));
+		if (round === 0) first = n;
+		assert.ok(n >= 1 && n <= 8);
+	}
+	assert.equal(q.size, size);
+	assert.deepEqual([q.time[0], q.kind[0], q.ref[0], q.revision[0]], root);
+	for (let i = 0; i < columns.length; i++) assert.equal([q.time, q.kind, q.ref, q.revision][i], columns[i]);
+	assert.ok(first >= 1);
+});
+
+check('peekNext clamps its count and stops at an empty queue', () => {
+	const q = queueLib.createExecQueue(8);
+	const outTime = new Float64Array(8);
+	const outKind = new Uint8Array(8);
+	const outRef = new Uint32Array(8);
+	const outRevision = new Uint32Array(8);
+	assert.equal(queueLib.peekNext(q, outTime, outKind, outRef, outRevision, 5), 0);
+	queueLib.push(q, 4, 0, 1, 0);
+	queueLib.push(q, 9, 0, 2, 0);
+	assert.equal(queueLib.peekNext(q, outTime, outKind, outRef, outRevision, 99), 2);
+	assert.deepEqual([outTime[0], outTime[1]], [4, 9]);
+	assert.equal(queueLib.peekNext(q, outTime, outKind, outRef, outRevision, 0), 1);
+});
+
 logFile.writeLog(path.join(__dirname, 'logs', 'exec-queue.json'), {
 	total: checks.length, passed: checks.length, failed: 0, checks,
 });

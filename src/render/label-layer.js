@@ -55,10 +55,22 @@ const TRADE_CANDIDATE_PX = 1.6;
 // point of the overlay: at a hundred years a second a young world is otherwise
 // indistinguishable from the oldest one until it has grown.
 const TRADE_PORT_YOUNG = 'rgba(255, 255, 255, 0.30)';
+// A failed colony: a hollow grey ring that stays on the map. The alarm ring is
+// drawn just outside a live colony in the starvation band (economy's
+// `starving` byte, written by the settle), amber and dashed by alternating arcs
+// — the test canvas has no setLineDash.
+const TRADE_OUTPOST = 'rgba(150, 150, 150, 0.55)';
+const TRADE_ALARM = 'rgba(245, 175, 90, 0.65)';
+const TRADE_ALARM_GAP = 4;
+const TRADE_ALARM_SEGMENTS = 12;
 const TRADE_YOUNG_YEARS = 150;
 const TRADE_PORT_YOUNG_GAP = 2;
 const TRADE_ROUTE = 'rgba(120, 220, 200, 0.12)';
 const TRADE_FOUND_ROUTE = 'rgba(250, 205, 130, 0.30)';
+// A commissioned route (W10): the same edge in a dimmer, steadier teal, drawn
+// behind the per-hull chords so the standing network and the voyages read as
+// two layers rather than one.
+const TRADE_STANDING_ROUTE = 'rgba(80, 170, 155, 0.28)';
 const TRADE_SHIP = 'rgba(180, 245, 230, 0.85)';
 const TRADE_FOUND_SHIP = 'rgba(255, 215, 130, 0.95)';
 const TRADE_SHIP_PX = 2.2;
@@ -733,7 +745,31 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		if (!tradeOn) return;
 		const viewProj = camera.buildViewProj(width / height);
 		const cam = camera.cameraPos;
-		// The routes first, so the rings and hulls stay legible on top of them.
+		// A commissioned pair first, one pass, dimmer than any hull's chord: the
+		// standing network is the background the voyages run over. `net.routes`
+		// is the module's own list, so nothing had to be wired here.
+		if (tradeNet.routes && tradeNet.routes.count > 0) {
+			ctx.strokeStyle = TRADE_STANDING_ROUTE;
+			ctx.lineWidth = 1;
+			ctx.beginPath();
+			for (let i = 0; i < tradeNet.routes.count; i++) {
+				const route = tradeNet.routes.list[i];
+				if (!route.active) continue;
+				const a = route.origin >= 0 ? tradeNet.ports[route.origin] : null;
+				const b = route.dest >= 0 ? tradeNet.ports[route.dest] : null;
+				if (!a || !b) continue;
+				if (!tradeRecordPosition(a.ref.kind | 0, a.ref.index | 0, a.key, tradeA)) continue;
+				if (!tradeRecordPosition(b.ref.kind | 0, b.ref.index | 0, b.key, tradeB)) continue;
+				if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],
+					cam[0], cam[1], cam[2], width, height, scratch)) continue;
+				ctx.moveTo(scratch[0], scratch[1]);
+				if (!labelCoords.projectToScreen(viewProj, tradeB[0], tradeB[1], tradeB[2],
+					cam[0], cam[1], cam[2], width, height, scratch)) continue;
+				ctx.lineTo(scratch[0], scratch[1]);
+			}
+			ctx.stroke();
+		}
+		// The routes next, so the rings and hulls stay legible on top of them.
 		// Two paths: a freighter's haul is the network's background hum, a
 		// founding voyage is the thing to watch, so they do not share a colour.
 		for (let pass = 0; tradeRoutes && pass < 2; pass++) {
@@ -785,7 +821,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 			for (let i = 0; i < tradeNet.portCount; i++) {
 				const port = tradeNet.ports[i];
 				const colony = port.colony;
-				if (colony.abandoned) continue;
+				if (colony.outpost) continue;
 				const growth = colony.growth || 0;
 				const kind = growth > TRADE_PORT_GROWTH_EPS ? 0 : growth < -TRADE_PORT_GROWTH_EPS ? 2 : 1;
 				if (kind !== pass) continue;
@@ -807,7 +843,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		for (let i = 0; i < tradeNet.portCount; i++) {
 			const port = tradeNet.ports[i];
 			const colony = port.colony;
-			if (colony.abandoned) continue;
+			if (colony.outpost) continue;
 			const age = tradeTime - colony.founded;
 			if (!(age >= 0 && age < TRADE_YOUNG_YEARS)) continue;
 			if (!tradeRecordPosition(port.ref.kind | 0, port.ref.index | 0, port.key, tradeA)) continue;
@@ -827,7 +863,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		for (let i = 0; i < tradeNet.portCount; i++) {
 			const port = tradeNet.ports[i];
 			const colony = port.colony;
-			if (colony.abandoned || !(colony.capacity > 0) || colony.pop < colony.capacity * 0.6) continue;
+			if (colony.outpost || !(colony.capacity > 0) || colony.pop < colony.capacity * 0.6) continue;
 			if (!tradeRecordPosition(port.ref.kind | 0, port.ref.index | 0, port.key, tradeA)) continue;
 			if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],
 				cam[0], cam[1], cam[2], width, height, scratch)) continue;
@@ -835,6 +871,44 @@ function createLabelLayer(canvas, landmarks, constellations) {
 			ctx.arc(scratch[0], scratch[1], TRADE_PORT_CORE_PX, 0, Math.PI * 2);
 		}
 		ctx.fill();
+		// Outposts last: a hollow grey ring on the frozen population, drawn over
+		// the live passes so it reads as a remnant, not as a growing world.
+		ctx.strokeStyle = TRADE_OUTPOST;
+		ctx.beginPath();
+		for (let i = 0; i < tradeNet.portCount; i++) {
+			const port = tradeNet.ports[i];
+			const colony = port.colony;
+			if (!colony.outpost) continue;
+			if (!tradeRecordPosition(port.ref.kind | 0, port.ref.index | 0, port.key, tradeA)) continue;
+			if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],
+				cam[0], cam[1], cam[2], width, height, scratch)) continue;
+			const frac = colony.capacity > 0 ? colony.pop / colony.capacity : 0;
+			const r = TRADE_PORT_RING_MIN + TRADE_PORT_RING_SPAN * Math.sqrt(frac < 0 ? 0 : frac > 1 ? 1 : frac);
+			ctx.moveTo(scratch[0] + r, scratch[1]);
+			ctx.arc(scratch[0], scratch[1], r, 0, Math.PI * 2);
+		}
+		ctx.stroke();
+		// The alarm: a live colony sliding toward that state gets a dashed amber
+		// ring outside its own. Alternating arcs, one path, no per-colony work.
+		ctx.strokeStyle = TRADE_ALARM;
+		ctx.beginPath();
+		const seg = Math.PI * 2 / TRADE_ALARM_SEGMENTS;
+		for (let i = 0; i < tradeNet.portCount; i++) {
+			const port = tradeNet.ports[i];
+			const colony = port.colony;
+			if (colony.outpost || !colony.starving) continue;
+			if (!tradeRecordPosition(port.ref.kind | 0, port.ref.index | 0, port.key, tradeA)) continue;
+			if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],
+				cam[0], cam[1], cam[2], width, height, scratch)) continue;
+			const frac = colony.capacity > 0 ? colony.pop / colony.capacity : 0;
+			const r = TRADE_PORT_RING_MIN + TRADE_PORT_RING_SPAN * Math.sqrt(frac < 0 ? 0 : frac > 1 ? 1 : frac)
+				+ TRADE_ALARM_GAP;
+			for (let k = 0; k < TRADE_ALARM_SEGMENTS; k += 2) {
+				ctx.moveTo(scratch[0] + Math.cos(k * seg) * r, scratch[1] + Math.sin(k * seg) * r);
+				ctx.arc(scratch[0], scratch[1], r, k * seg, (k + 1) * seg);
+			}
+		}
+		ctx.stroke();
 		// The hulls, placed by the network's own chord rule and coloured by what
 		// they carry — except a founder, which is amber and hollow: it is the one
 		// voyage that changes the map. The rule is trade.js's, not a second copy

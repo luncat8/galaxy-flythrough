@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-20T12:54:09.772Z",
+  "date": "2026-10-21T08:59:58.738Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -325,7 +325,7 @@
     {
       "name": "an age change places the field through setEpoch: no re-draw, no rebase, no carry",
       "pass": true,
-      "detail": 880
+      "detail": 1253
     },
     {
       "name": "nothing rebases the pattern phase: the loop advances it and a draw never turns the field",
@@ -446,7 +446,7 @@
       "name": "OrbitLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 114
+        "keys": 131
       }
     },
     {
@@ -502,21 +502,21 @@
       "name": "ExecQueueLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 7
+        "keys": 8
       }
     },
     {
       "name": "EconomyLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 59
+        "keys": 88
       }
     },
     {
       "name": "TradeLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 72
+        "keys": 128
       }
     },
     {
@@ -715,6 +715,7 @@
         "dvbudget": 0.35,
         "trade": 100,
         "traderoutes": 1,
+        "tradeexpand": 1,
         "ship": "chemical",
         "viewmode": "off",
         "viewproj": "view",
@@ -754,6 +755,7 @@
         "dvbudget": 0.35,
         "trade": 100,
         "traderoutes": 1,
+        "tradeexpand": 1,
         "ship": "chemical",
         "viewmode": "off",
         "viewproj": "view",
@@ -793,6 +795,7 @@
         "dvbudget": 0.35,
         "trade": 100,
         "traderoutes": 1,
+        "tradeexpand": 1,
         "ship": "chemical",
         "viewmode": "off",
         "viewproj": "view",

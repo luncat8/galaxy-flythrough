@@ -31,20 +31,38 @@
 
 	// `unitMassT` converts the player's tonnage into stock units; `worth` is
 	// the routing weight only — the economy has no money and no prices.
+	//
+	// `family` is the authored production family (raw/synth/life/goods/data/
+	// culture) and is not repurposed. `intraFamily` and `interFamily` are the
+	// two-tier routing maps (trade-3-plan §3): the intra families are the
+	// flows inside a star (T4's statistical trade), the inter families are
+	// what an inter-star hull may load. A resource may sit in both: chem is a
+	// local flow and a shipped specialist good, ore and volatiles are bulk
+	// feedstock that never leaves the system.
+	// The two routing maps, by id (index into the table below). `-1` means "not
+	// in this tier": bulk never ships between stars, and the intra map exists
+	// for T4 before its flow law does — the readout can already group by it.
+	const INTRA_BULK = 0, INTRA_GOODS = 1, INTRA_PAX = 2;
+	const INTER_RARE = 0, INTER_EXOTIC = 1, INTER_AMAT = 2, INTER_FOOD = 3,
+		INTER_FAB = 4, INTER_INFO = 5, INTER_PAX = 6;
+	const INTRA_FAMILY_NAMES = ['resource', 'product', 'passenger'];
+	const INTER_FAMILY_NAMES = ['rare elements', 'specialist chem', 'antimatter',
+		'food & seed', 'factory cores', 'information', 'passengers'];
+
 	const RESOURCES = [
-		{ id: 'ore', name: 'ore', family: 'raw', unitMassT: 40, worth: 0.25 },
-		{ id: 'volatile', name: 'volatiles', family: 'raw', unitMassT: 30, worth: 0.30 },
-		{ id: 'rare', name: 'rare elements', family: 'raw', unitMassT: 60, worth: 6 },
-		{ id: 'chem', name: 'synth chemicals', family: 'synth', unitMassT: 12, worth: 1.2 },
-		{ id: 'amat', name: 'antimatter', family: 'synth', unitMassT: 0.5, worth: 12 },
-		{ id: 'food', name: 'food & seed', family: 'life', unitMassT: 8, worth: 0.8 },
-		{ id: 'bio', name: 'biotech samples', family: 'life', unitMassT: 4, worth: 4 },
-		{ id: 'people', name: 'colonists', family: 'life', unitMassT: 2, worth: 3 },
-		{ id: 'robots', name: 'factory cores', family: 'goods', unitMassT: 25, worth: 2.5 },
-		{ id: 'compute', name: 'computers', family: 'goods', unitMassT: 6, worth: 3.5 },
-		{ id: 'soft', name: 'software & AI', family: 'data', unitMassT: 0.2, worth: 5 },
-		{ id: 'data', name: 'world data', family: 'data', unitMassT: 0.2, worth: 4 },
-		{ id: 'art', name: 'unique items', family: 'culture', unitMassT: 1, worth: 8 },
+		{ id: 'ore', name: 'ore', family: 'raw', intraFamily: INTRA_BULK, interFamily: -1, unitMassT: 40, worth: 0.25 },
+		{ id: 'volatile', name: 'volatiles', family: 'raw', intraFamily: INTRA_BULK, interFamily: -1, unitMassT: 30, worth: 0.30 },
+		{ id: 'rare', name: 'rare elements', family: 'raw', intraFamily: -1, interFamily: INTER_RARE, unitMassT: 60, worth: 6 },
+		{ id: 'chem', name: 'synth chemicals', family: 'synth', intraFamily: INTRA_GOODS, interFamily: INTER_EXOTIC, unitMassT: 12, worth: 1.2 },
+		{ id: 'amat', name: 'antimatter', family: 'synth', intraFamily: -1, interFamily: INTER_AMAT, unitMassT: 0.5, worth: 12 },
+		{ id: 'food', name: 'food & seed', family: 'life', intraFamily: -1, interFamily: INTER_FOOD, unitMassT: 8, worth: 0.8 },
+		{ id: 'bio', name: 'biotech samples', family: 'life', intraFamily: -1, interFamily: INTER_EXOTIC, unitMassT: 4, worth: 4 },
+		{ id: 'people', name: 'colonists', family: 'life', intraFamily: INTRA_PAX, interFamily: INTER_PAX, unitMassT: 2, worth: 3 },
+		{ id: 'robots', name: 'factory cores', family: 'goods', intraFamily: INTRA_GOODS, interFamily: INTER_FAB, unitMassT: 25, worth: 2.5 },
+		{ id: 'compute', name: 'computers', family: 'goods', intraFamily: INTRA_GOODS, interFamily: INTER_FAB, unitMassT: 6, worth: 3.5 },
+		{ id: 'soft', name: 'software & AI', family: 'data', intraFamily: -1, interFamily: INTER_INFO, unitMassT: 0.2, worth: 5 },
+		{ id: 'data', name: 'world data', family: 'data', intraFamily: -1, interFamily: INTER_INFO, unitMassT: 0.2, worth: 4 },
+		{ id: 'art', name: 'unique items', family: 'culture', intraFamily: -1, interFamily: INTER_INFO, unitMassT: 1, worth: 8 },
 	];
 
 	// Gross production and population need per million per year at yield 1.
@@ -98,16 +116,16 @@
 	// resource this kind of world can make", 0 = none … 1.4 = its best.
 	const SITE_BELT = 10;
 	const PLANET = [
-		[1.20, 0.90, 0.50, 0.15, 0.10, 0.60, 0.00, 0.00, 0.00, 0.70, 1.40], // ore
+		[1.20, 0.90, 0.50, 0.15, 0.10, 0.60, 0.00, 0.00, 0.00, 0.70, 1.60], // ore
 		[1.00, 0.20, 0.20, 0.30, 1.40, 0.40, 1.30, 1.50, 1.40, 0.30, 1.20], // volatile
-		[1.00, 0.70, 0.10, 0.00, 0.00, 0.15, 0.00, 0.00, 0.00, 0.50, 0.80], // rare
+		[1.00, 0.70, 0.10, 0.00, 0.00, 0.15, 0.00, 0.00, 0.00, 0.50, 1.10], // rare
 		[0.50, 0.20, 0.60, 1.00, 0.60, 0.80, 0.50, 0.50, 0.40, 0.00, 0.20], // chem
 		[0.30, 0.00, 0.00, 0.00, 0.30, 0.00, 0.10, 0.50, 0.60, 0.00, 0.00], // amat
 		[0.05, 0.00, 0.50, 1.40, 0.25, 0.70, 0.05, 0.00, 0.00, 0.00, 0.10], // food
 		[0.00, 0.00, 0.20, 1.20, 0.30, 0.60, 0.00, 0.00, 0.00, 0.00, 0.02], // bio
 		[0.00, 0.00, 0.40, 1.20, 0.00, 0.70, 0.00, 0.00, 0.00, 0.00, 0.10], // people
-		[0.40, 0.50, 0.30, 0.70, 0.20, 0.60, 0.30, 0.30, 0.30, 0.20, 0.60], // robots
-		[0.00, 0.00, 0.50, 1.00, 0.00, 0.70, 0.00, 0.00, 0.00, 0.00, 0.00], // compute
+		[0.40, 0.50, 0.30, 0.70, 0.20, 0.60, 0.15, 0.10, 0.10, 0.20, 0.80], // robots
+		[0.00, 0.00, 0.50, 1.00, 0.00, 0.70, 0.00, 0.00, 0.00, 0.00, 0.10], // compute
 		[0.00, 0.00, 0.20, 1.20, 0.00, 0.50, 0.00, 0.00, 0.00, 0.00, 0.00], // soft
 		[0.00, 0.00, 0.20, 1.00, 0.00, 0.50, 0.00, 0.00, 0.00, 0.00, 0.00], // data
 		[0.00, 0.00, 0.05, 0.80, 0.00, 0.30, 0.00, 0.00, 0.00, 0.00, 0.00], // art
@@ -130,13 +148,27 @@
 	const STOCK_BASE = 30;
 	const STOCK_YEARS = 150;           // warehouse size in years of throughput
 	const EXPORT_RESERVE_FRAC = 0.25;  // stock a port keeps before it sells
-	const POP_MIN = 0.02;              // millions; below this a colony is abandoned
+	// A colony below this population has failed: it stops (outpost, trade-2
+	// plan §2), keeps its slot and its name, and is never recolonised. The
+	// population is left where it is — the number the reader sees is the end
+	// state, not a zeroed record.
+	const OUTPOST_POP_M = 0.02;        // millions
+	// The population ladder the narration credits, in millions: every rung is
+	// logged once, and a jump across several rungs is one line with a count.
+	const POP_MILESTONES = [0.1, 0.25, 0.5, 1, 2, 5, 10, 25, 50, 100, 250, 500];
+	// Below this coverage a live colony is in the alarm band (the overlay's
+	// dashed ring, the panel's word). It is the edge the log narrates, not a
+	// second growth law.
+	const STARVE_COVERAGE = 0.35;
 	const POP_GROWTH_CAP_FRAC = 1;     // keep the logistic inside its carrying capacity
 	const YIELD_MAX = 2.5;
 	const JITTER_LO = 0.70, JITTER_SPAN = 0.60;
 	const FOUND_AGE_MIN = 10, FOUND_AGE_SPAN = 240;
 	const FOUND_POP_BASE = 0.25, FOUND_POP_CAP_FRAC = 0.01;
-	const FOUND_STOCK_FRAC = 0.60;
+	// A rolled world starts with a stocked warehouse; a founding starts with the
+	// party's stores. Same law, two grants.
+	const SEED_STOCK_FRAC = 0.60;
+	const FOUND_STOCK_FRAC = 0.45;
 
 	// The reserve horizon scales with the fleet (trade-plan §6): a port's
 	// warehouse is authored in years of its own throughput, and a world whose
@@ -165,6 +197,10 @@
 			type: 0, bulk: 0, mass: 0, radius: 0, density: 0,
 			insolation: 0, teq: 0, tsurf: 0, flags: 0,
 			starClass: 'M', starLum: 0, starMetal: 0, starAge: 0, starState: 'ms',
+			// The system's own supply (W4): bulk classes, belts, terrans and
+			// habitable-zone worlds. Carried on the site so a candidate and a
+			// colony keep the composition of the system they were drawn from.
+			sysRocky: 0, sysGiants: 0, sysBelts: 0, sysTerran: 0, sysHz: 0,
 			x: 0, y: 0, z: 0, ref: createStarRef(), seed: 0,
 			name: '',
 		};
@@ -208,6 +244,11 @@
 		out.starMetal = site.starMetal;
 		out.starAge = site.starAge;
 		out.starState = site.starState;
+		out.sysRocky = site.sysRocky;
+		out.sysGiants = site.sysGiants;
+		out.sysBelts = site.sysBelts;
+		out.sysTerran = site.sysTerran;
+		out.sysHz = site.sysHz;
 		out.x = site.x; out.y = site.y; out.z = site.z;
 		if (site.ref) copyStarRef(out.ref, site.ref);
 		out.seed = site.seed >>> 0;
@@ -220,6 +261,38 @@
 	// keys still map different worlds.
 	function siteSeed(key, modelSeed, blockKind) {
 		return planets.systemSeed(key, modelSeed, blockKind | 0);
+	}
+
+	// The system's supply, in one pass (W4). `counts` already carries the
+	// terran and giant totals, so only rocky bodies and habitable-zone worlds
+	// need counting; rocky means rock or super, not ice.
+	const SYS_COMP = { rocky: 0, giants: 0, belts: 0, terran: 0, hz: 0 };
+	function systemComposition(system, out) {
+		const c = out || SYS_COMP;
+		const p = system.planets;
+		const n = system.counts.planets | 0;
+		let rocky = 0, hz = 0;
+		for (let i = 0; i < n; i++) {
+			const bulk = p.bulk[i];
+			if (bulk === planets.BULK_INDEX.rock || bulk === planets.BULK_INDEX.super) rocky += 1;
+			if (p.flags[i] & planets.FLAG_IN_HZ) hz += 1;
+		}
+		c.rocky = rocky;
+		c.giants = system.counts.giantCount | 0;
+		c.belts = system.belts.count | 0;
+		c.terran = system.counts.terranCount | 0;
+		c.hz = hz;
+		return c;
+	}
+
+	function writeSystemComposition(site, system) {
+		const c = systemComposition(system, SYS_COMP);
+		site.sysRocky = c.rocky;
+		site.sysGiants = c.giants;
+		site.sysBelts = c.belts;
+		site.sysTerran = c.terran;
+		site.sysHz = c.hz;
+		return site;
 	}
 
 	// One planet's site record from a generated system. `out.name` is written
@@ -244,6 +317,7 @@
 		out.starMetal = system.star.metal;
 		out.starAge = system.star.age;
 		out.starState = system.star.state;
+		writeSystemComposition(out, system);
 		out.seed = seed;
 		return out;
 	}
@@ -268,11 +342,34 @@
 		out.starMetal = system.star.metal;
 		out.starAge = system.star.age;
 		out.starState = system.star.state;
+		writeSystemComposition(out, system);
 		out.seed = seed;
 		return out;
 	}
 
 	// --- The site map (trade-plan.md §2.1) ----------------------------------
+
+	// The system's supply factor (W4 §5.2): what a prospector would count,
+	// normalised against a cap so a system with twelve rocky worlds is not
+	// twelve times a system with one. The star layer below stays the situation;
+	// this multiplies it.
+	function supplyFactor(r, site) {
+		const rockyF = (site.sysRocky > 6 ? 6 : site.sysRocky) * (1 / 6);
+		const giantF = (site.sysGiants > 4 ? 4 : site.sysGiants) * (1 / 4);
+		const beltF = (site.sysBelts > 3 ? 3 : site.sysBelts) * (1 / 3);
+		const terranF = (site.sysTerran > 2 ? 2 : site.sysTerran) * (1 / 2);
+		const hzF = (site.sysHz > 4 ? 4 : site.sysHz) * (1 / 4);
+		if (r === R_ORE || r === R_RARE || r === R_ROBOTS || r === R_COMPUTE) {
+			return 0.80 + 0.45 * rockyF + 0.55 * beltF + 0.15 * giantF;
+		}
+		if (r === R_VOLATILE || r === R_CHEM) {
+			return 0.85 + 0.40 * giantF + 0.30 * beltF + 0.10 * rockyF;
+		}
+		if (r === R_FOOD || r === R_BIO || r === R_PEOPLE) {
+			return 0.85 + 0.35 * terranF + 0.25 * hzF + 0.10 * rockyF;
+		}
+		return 0.90 + 0.20 * rockyF + 0.10 * beltF;
+	}
 
 	function starFactor(r, site) {
 		const metal = site.starMetal > 0 ? site.starMetal / 0.020 : 1;
@@ -283,20 +380,21 @@
 		const light = lightRaw < 0.15 ? 0.15 : (lightRaw > 1.8 ? 1.8 : lightRaw);
 		const lifeRaw = 1 - Math.abs(site.tsurf - 288) / 220;
 		const life = lifeRaw < 0.15 ? 0.15 : (lifeRaw > 1.25 ? 1.25 : lifeRaw);
-		if (r === R_ORE) return Math.pow(metalClamped, 0.8) * age;
-		if (r === R_VOLATILE) return 1;
-		if (r === R_RARE) return Math.pow(metalClamped, 1.3) * age;
-		if (r === R_CHEM) return 1;
-		if (r === R_AMAT) return Math.pow(light, 1.6);
+		const supply = supplyFactor(r, site);
+		if (r === R_ORE) return Math.pow(metalClamped, 0.8) * age * supply;
+		if (r === R_VOLATILE) return supply;
+		if (r === R_RARE) return Math.pow(metalClamped, 1.3) * age * supply;
+		if (r === R_CHEM) return supply;
+		if (r === R_AMAT) return Math.pow(light, 1.6) * supply;
 		if (r === R_FOOD || r === R_BIO) {
 			const classPenalty = (site.starClass === 'O' || site.starClass === 'B' || site.starClass === 'A') ? 0.7 : 1;
 			const scale = r === R_FOOD ? 1.3 : 1.2;
-			return Math.min(light, scale) * classPenalty * life;
+			return Math.min(light, scale) * classPenalty * life * supply;
 		}
-		if (r === R_PEOPLE) return life;
-		if (r === R_ROBOTS) return Math.pow(metalClamped, 0.4);
-		if (r === R_COMPUTE) return Math.pow(metalClamped, 0.3);
-		return 1;
+		if (r === R_PEOPLE) return life * supply;
+		if (r === R_ROBOTS) return Math.pow(metalClamped, 0.4) * supply;
+		if (r === R_COMPUTE) return Math.pow(metalClamped, 0.3) * supply;
+		return supply;
 	}
 
 	// A planet and a belt at the same slot number must not share hash streams:
@@ -313,7 +411,14 @@
 			starClass: 'M', starLum: 0, starMetal: 0, starAge: 0, starState: 'ms',
 			type: 0, bulk: 0, mass: 0, radius: 0, density: 0,
 			insolation: 0, teq: 0, tsurf: 0, flags: 0,
-			capacity: 0, pop: 0, founded: 0, last: 0, abandoned: 0,
+			capacity: 0, pop: 0, founded: 0, last: 0,
+			// A failed colony: outposts keep their slot and stocks and are
+			// never settled again. `outpostY` is the year it stopped.
+			outpost: 0, outpostY: 0,
+			// Narration bookkeeping, written only by the settle: how many rungs
+			// of POP_MILESTONES have been credited, and whether the colony is
+			// inside the starvation band. No callback, no global.
+			popLevel: 0, starving: 0,
 			yield: new Float64Array(RESOURCE_COUNT),
 			outBase: new Float64Array(RESOURCE_COUNT),
 			stock: new Float64Array(RESOURCE_COUNT),
@@ -325,11 +430,10 @@
 		};
 	}
 
-	// Fill the colony's resource map, capacity, founding and seed stocks from
-	// a site, then settle from its founding age to `nowYears`. This is the
-	// only constructor: a colony created by discovery and one created by a
-	// colonisation expedition run the same law.
-	function setupColony(colony, site, nowYears, seed) {
+	// The shared fill law: identity, capacity, yields, the industrial inputs
+	// and the warehouse size. Both entry points start here, so a galaxy-rolled
+	// colony and a founded one can never disagree about what a site produces.
+	function fillColony(colony, site, seed) {
 		copySite(colony, site);
 		colony.seed = seed >>> 0;
 		const typeCol = site.isBelt ? SITE_BELT : site.type;
@@ -352,8 +456,27 @@
 		for (let r = 0; r < RESOURCE_COUNT; r++) {
 			const throughput = Math.max(colony.outBase[r], INPUT_SCRATCH[r]);
 			colony.stockCap[r] = (STOCK_BASE + STOCK_YEARS * throughput * colony.capacity) * reserveScale;
-			colony.stock[r] = FOUND_STOCK_FRAC * colony.stockCap[r];
 		}
+		colony.outpost = 0;
+		colony.outpostY = 0;
+		colony.popLevel = 0;
+		colony.starving = 0;
+		colony.coverage = 0;
+		colony.growth = 0;
+		colony.produced = 0;
+		colony.consumed = 0;
+		return colony;
+	}
+
+	function grantStock(colony, frac) {
+		for (let r = 0; r < RESOURCE_COUNT; r++) colony.stock[r] = frac * colony.stockCap[r];
+	}
+
+	// A galaxy-rolled colony: the hash invents its age and its population, and
+	// the settle carries it forward from there.
+	function setupColony(colony, site, nowYears, seed) {
+		fillColony(colony, site, seed);
+		grantStock(colony, SEED_STOCK_FRAC);
 		const foundAge = FOUND_AGE_MIN + FOUND_AGE_SPAN * hash.hash01At(seed, EC_CH_FOUND + siteSlot(site));
 		colony.founded = nowYears - foundAge;
 		colony.last = colony.founded;
@@ -361,12 +484,22 @@
 		const cap = POP_GROWTH_CAP_FRAC * colony.capacity;
 		if (pop > cap) pop = cap;
 		colony.pop = pop;
-		colony.abandoned = 0;
-		colony.coverage = 0;
-		colony.growth = 0;
-		colony.produced = 0;
-		colony.consumed = 0;
 		settleColony(colony, nowYears);
+		return colony;
+	}
+
+	// A colony founded now: no invented age, no settle. `popM` is the party the
+	// founding carries (0 = the authored first grant). The caller may settle it
+	// at its own event time; the record is valid as it stands.
+	function foundColony(colony, site, nowYears, seed, popM) {
+		fillColony(colony, site, seed);
+		grantStock(colony, FOUND_STOCK_FRAC);
+		colony.founded = nowYears;
+		colony.last = nowYears;
+		let pop = popM > 0 ? popM : FOUND_POP_BASE + FOUND_POP_CAP_FRAC * colony.capacity;
+		const cap = POP_GROWTH_CAP_FRAC * colony.capacity;
+		if (pop > cap) pop = cap;
+		colony.pop = pop;
 		return colony;
 	}
 
@@ -435,7 +568,7 @@
 	// year count does not keep less grain). The formula is monotone, so a
 	// shrinking scale clamps instead of going negative.
 	function rescaleColonyReserves(colony, factor) {
-		if (colony.abandoned || !(factor > 0) || factor === 1) return factor;
+		if (colony.outpost || !(factor > 0) || factor === 1) return factor;
 		for (let r = 0; r < RESOURCE_COUNT; r++) {
 			const cap = colony.stockCap[r] * factor;
 			const stock = colony.stock[r] * factor;
@@ -448,12 +581,12 @@
 	// Advance one colony to `nowYears`. Returns the population change, so the
 	// caller can log a founding or a collapse without re-reading the record.
 	function settleColony(colony, nowYears) {
-		if (colony.abandoned) return 0;
+		if (colony.outpost) return 0;
 		const now = nowYears;
 		if (!(now > colony.last)) return 0;
 		const dt = now - colony.last;
 		const p0 = colony.pop;
-		if (!(p0 > 0)) { colony.abandoned = 1; colony.last = now; return 0; }
+		if (!(p0 > 0)) { demoteColony(colony, now); return 0; }
 		const k = colony.capacity > 0 ? colony.capacity : 1;
 		const coverage = coverageOf(colony);
 		const g = G_MAX * coverage - DECLINE * (1 - coverage);
@@ -478,8 +611,23 @@
 		colony.coverage = coverage;
 		colony.growth = g;
 		colony.last = now;
-		if (pop < POP_MIN) colony.abandoned = 1;
+		colony.starving = coverage < STARVE_COVERAGE ? 1 : 0;
+		while (colony.popLevel < POP_MILESTONES.length && pop >= POP_MILESTONES[colony.popLevel]) {
+			colony.popLevel += 1;
+		}
+		if (pop < OUTPOST_POP_M) demoteColony(colony, now);
 		return pop - p0;
+	}
+
+	// The failure: stop where it stands. No zeroing, no compaction, no revival —
+	// the record is the end state, and `outpostY` is when it ended.
+	function demoteColony(colony, nowYears) {
+		colony.outpost = 1;
+		colony.outpostY = nowYears;
+		colony.growth = 0;
+		colony.starving = 0;
+		colony.coverage = coverageOf(colony);
+		return colony.outpost;
 	}
 
 	// --- Trade helpers ------------------------------------------------------
@@ -487,7 +635,7 @@
 	// Units per year the port is short of `r` after local production and its
 	// own reserve. The routing score reads this; 0 means "do not import".
 	function demandOf(colony, r) {
-		if (colony.abandoned) return 0;
+		if (colony.outpost) return 0;
 		const rate = inputRateOf(colony, INPUT_SCRATCH)[r];
 		if (rate <= 0) return 0;
 		const pop = colony.pop;
@@ -500,10 +648,32 @@
 
 	// Units a port will sell without eating into its own reserve.
 	function exportableOf(colony, r) {
-		if (colony.abandoned) return 0;
+		if (colony.outpost) return 0;
 		const reserve = EXPORT_RESERVE_FRAC * colony.stockCap[r];
 		const spare = colony.stock[r] - reserve;
 		return spare > 0 ? spare : 0;
+	}
+
+	// --- Scarcity (trade-2 plan §6) -----------------------------------------
+	// A readout word, never money. `scarcityOf` is the share of the draw the
+	// colony cannot cover locally; 0/0 is fair, not a crisis.
+	const TAG_SURPLUS = 0, TAG_FAIR = 1, TAG_SCARCE = 2;
+
+	function scarcityOf(colony, r) {
+		const demand = demandOf(colony, r);
+		const supply = colony.outBase[r] * colony.pop + colony.stock[r] / NEED_BUFFER_Y;
+		const total = demand + supply;
+		return total > 0 ? demand / total : 0;
+	}
+
+	function tradeTagOf(colony, r) {
+		if (demandOf(colony, r) > 0) return TAG_SCARCE;
+		if (exportableOf(colony, r) > 0) return TAG_SURPLUS;
+		return TAG_FAIR;
+	}
+
+	function tradeTagName(tag) {
+		return tag === TAG_SURPLUS ? 'surplus' : tag === TAG_SCARCE ? 'scarce' : 'fair';
 	}
 
 	function takeFromColony(colony, r, units) {
@@ -515,7 +685,7 @@
 	}
 
 	function giveToColony(colony, r, units) {
-		if (colony.abandoned) return 0;
+		if (colony.outpost) return 0;
 		const room = colony.stockCap[r] - colony.stock[r];
 		let give = units < room ? units : room;
 		if (give <= 0) return 0;
@@ -577,15 +747,23 @@
 
 	const EconomyLib = {
 		RESOURCE_COUNT, RESOURCES, PROD, NEED, NEED_WEIGHT, INPUT, PLANET,
+		INTRA_BULK, INTRA_GOODS, INTRA_PAX, INTRA_FAMILY_NAMES,
+		INTER_RARE, INTER_EXOTIC, INTER_AMAT, INTER_FOOD, INTER_FAB, INTER_INFO, INTER_PAX,
+		INTER_FAMILY_NAMES,
 		SITE_BELT,
 		R_ORE, R_VOLATILE, R_RARE, R_CHEM, R_AMAT, R_FOOD, R_BIO, R_PEOPLE,
 		R_ROBOTS, R_COMPUTE, R_SOFT, R_DATA, R_ART,
 		setReserveScale, getReserveScale, rescaleColonyReserves,
 		POP_CAP_BASE, G_MAX, DECLINE, NEED_BUFFER_Y, STOCK_BASE, STOCK_YEARS,
-		EXPORT_RESERVE_FRAC, POP_MIN, POP_GROWTH_CAP_FRAC, YIELD_MAX,
+		EXPORT_RESERVE_FRAC, OUTPOST_POP_M, POP_MILESTONES, STARVE_COVERAGE,
+		TAG_SURPLUS, TAG_FAIR, TAG_SCARCE, scarcityOf, tradeTagOf, tradeTagName,
+		POP_GROWTH_CAP_FRAC, YIELD_MAX,
 		EC_CH_YIELD, EC_CH_FOUND, siteSlot,
 		createSite, copySite, siteSeed, fillPlanetSite, fillBeltSite,
-		createColony, setupColony, settleColony, coverageOf, inputRateOf, HABITAT, HABITAT_BELT,
+		starFactor, supplyFactor, systemComposition, writeSystemComposition,
+		createColony, fillColony, setupColony, foundColony, settleColony, demoteColony,
+		FOUND_STOCK_FRAC, SEED_STOCK_FRAC,
+		coverageOf, inputRateOf, HABITAT, HABITAT_BELT,
 		demandOf, exportableOf, takeFromColony, giveToColony,
 		unitsForTons, tonsForUnits, yieldDots, formatPop, formatUnits, siteName,
 	};

@@ -357,7 +357,7 @@ function stepSmall(net, total, chunk) {
 		(() => {
 			for (let i = 0; i < grown.portCount; i++) {
 				const c = grown.ports[i].colony;
-				if (c.abandoned) continue;
+				if (c.outpost) continue;
 				if (!(c.pop > 0) || !(c.capacity > 0)) return false;
 				if (!finite(c.stock[economy.R_FOOD])) return false;
 			}
@@ -485,7 +485,7 @@ function stepSmall(net, total, chunk) {
 	let netNeed = 0;
 	for (const rate of economy.NEED) netNeed += rate;
 	check('long starvation tends to zero with a finite positive consumption integral',
-		declining.pop === 0 && declining.abandoned === 1
+		declining.pop === 0 && declining.outpost === 1
 		&& near(declining.consumed, decayArea * netNeed));
 	const equilibrium = controlledColony(true);
 	equilibrium.pop = equilibrium.capacity;
@@ -523,8 +523,14 @@ function stepSmall(net, total, chunk) {
 	c.stock[economy.R_RARE] = c.stockCap[economy.R_RARE];
 	check('a nonempty hold tops up its resource even when another export ranks higher',
 		trade.playerLoad(net, ship, 0).ok === 1 && ship.cargoResource === economy.R_FOOD);
-	c.abandoned = 1;
-	check('an abandoned colony is not offered as a player port', trade.playerPort(net, net.ports[0].key) === -1);
+	c.outpost = 1;
+	check('an outpost is still offered as a player port', trade.playerPort(net, net.ports[0].key) === 0);
+	const heldTons = ship.cargo;
+	const heldUnits = heldTons;
+	check('and the transfer, not the lookup, refuses with its own reason',
+		trade.playerLoad(net, ship, 0).ok === 0
+		&& trade.playerLoad(net, ship, 0).reason === 'outpost \u2014 no trade here'
+		&& ship.cargo === heldUnits);
 }
 
 function exactLiveEvents(net) {
@@ -546,8 +552,13 @@ function exactLiveEvents(net) {
 	const jump = seedStart(0), small = seedStart(0);
 	trade.step(jump, 5000);
 	stepSmall(small, 5000, 5);
+	// The narration ring is a view of *when the network noticed*, not simulation
+	// state: a jump crosses several rungs in one settle and a walk crosses them
+	// one at a time, so the log's timestamps legitimately differ. Everything a
+	// decision reads must still be identical.
+	const withoutLog = net => JSON.stringify(Object.assign({}, net, { log: null }));
 	check('a 5,000-year jump matches the entire stepped network, including stocks, fleet and heap',
-		JSON.stringify(jump) === JSON.stringify(small));
+		withoutLog(jump) === withoutLog(small));
 	check('every hull has exactly one current event after five millennia', exactLiveEvents(jump));
 	check('the long tournament completes real deliveries and foundings', jump.delivered > 0 && jump.founded > 0);
 
@@ -635,7 +646,7 @@ function exactLiveEvents(net) {
 	layer.setStarSource(info);
 	layer.setOrbitState({}, 1);
 	const ports = [0, 1].map(i => ({ key: info.identity[i], ref: { kind: 0, index: i },
-		colony: { abandoned: 0, pop: i === 0 ? 900 : 0, capacity: 900, growth: i === 0 ? 0.01 : -0.01 } }));
+		colony: { outpost: 0, pop: i === 0 ? 900 : 0, capacity: 900, growth: i === 0 ? 0.01 : -0.01 } }));
 	const net = { portCount: 2, shipCount: 1, candidateCount: 0, ports, candidates: [],
 		ships: [{ state: trade.SHIP_SAILING, from: 0, to: 1, depart: 0, arrive: 100, cargo: 0,
 			hull: 0, legFrom: 0, legTo: 1, returning: 0 }] };
@@ -990,8 +1001,8 @@ function exactLiveEvents(net) {
 	layer.setStarSource(info);
 	layer.setOrbitState({}, 1);
 	const ports = [
-		{ key: 10, ref: { kind: 0, index: 0 }, colony: { abandoned: 0, pop: 900, capacity: 900, growth: 0.01, founded: -400 } },
-		{ key: 20, ref: { kind: 0, index: 1 }, colony: { abandoned: 0, pop: 100, capacity: 900, growth: 0.01, founded: 20 } },
+		{ key: 10, ref: { kind: 0, index: 0 }, colony: { outpost: 0, pop: 900, capacity: 900, growth: 0.01, founded: -400 } },
+		{ key: 20, ref: { kind: 0, index: 1 }, colony: { outpost: 0, pop: 100, capacity: 900, growth: 0.01, founded: 20 } },
 	];
 	const net = { portCount: 2, shipCount: 1, candidateCount: 0, ports, candidates: [],
 		ships: [{ state: trade.SHIP_SAILING, from: 0, to: 1, depart: 0, arrive: 100, cargo: 0 }] };
@@ -1521,6 +1532,1038 @@ function exactLiveEvents(net) {
 			{ delivered: Math.round(net.delivered), at60: Math.round(deliveredAt60), ports: net.portCount, founded: net.founded });
 	}
 	orbit.setEngine(savedEngine);
+}
+
+// --- 18. Outposts: a failed colony stops and stays on the map (W1) --------
+{
+	// A live colony just below the threshold fails on the next settle; one just
+	// above it keeps growing. Both sides of the boundary, on a controlled
+	// record so the settle itself is the only actor.
+	function boundaryColony(pop) {
+		const c = economy.createColony();
+		c.capacity = 100;
+		c.pop = pop;
+		c.last = 0;
+		for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+			c.outBase[r] = economy.NEED[r] * 2;
+			c.stockCap[r] = 1e12;
+		}
+		return c;
+	}
+	const below = boundaryColony(economy.OUTPOST_POP_M * 0.9);
+	economy.settleColony(below, 1);
+	check('a colony settled below the outpost threshold stops with growth at zero',
+		below.outpost === 1 && below.outpostY === 1 && below.growth === 0
+		&& below.pop > 0 && below.pop < economy.OUTPOST_POP_M);
+	const above = boundaryColony(economy.OUTPOST_POP_M * 1.1);
+	economy.settleColony(above, 1);
+	check('a colony just above the threshold stays live', above.outpost === 0);
+
+	// The network: demote one port by hand, then let the settle notice it.
+	const net = seedStart(0);
+	const port = net.ports[0];
+	const heldKey = port.key;
+	port.colony.pop = economy.OUTPOST_POP_M * 0.5;
+	trade.settleAllPorts(net, net.time + 1);
+	check('the network marks the failed port once and counts it',
+		port.colony.outpost === 1 && port.demoted === 1 && net.outposts === 1
+		&& trade.livePortCount(net) === net.portCount - 1);
+	check('an outpost keeps its slot, its star key and its name',
+		trade.portOfStar(net, heldKey) === 0 && trade.portOfStarLive(net, heldKey) === -1
+		&& port.name.length > 0);
+	const frozenPop = port.colony.pop;
+	const frozenStock = port.colony.stock[economy.R_FOOD];
+	const frozenYear = port.colony.last;
+	trade.settleAllPorts(net, net.time + 500);
+	check('a second settle changes nothing on an outpost',
+		port.colony.pop === frozenPop && port.colony.stock[economy.R_FOOD] === frozenStock
+		&& port.colony.last === frozenYear && net.outposts === 1);
+	check('an outpost neither exports nor imports',
+		economy.exportableOf(port.colony, economy.R_FOOD) === 0
+		&& economy.demandOf(port.colony, economy.R_FOOD) === 0
+		&& economy.giveToColony(port.colony, economy.R_FOOD, 10) === 0);
+	check('the outpost is still the player\u2019s port at its star',
+		trade.playerPort(net, heldKey) === 0);
+	check('every candidate of the dead star is closed and released',
+		(() => {
+			for (let i = 0; i < net.candidateCount; i++) {
+				const c = net.candidates[i];
+				if (c.site.key !== heldKey) continue;
+				if (!c.used || c.reserved !== -1) return false;
+			}
+			return true;
+		})());
+	const site = economy.createSite();
+	site.key = heldKey;
+	site.seed = port.colony.seed;
+	check('no founding can land on a star whose colony failed',
+		trade.addPort(net, site, net.time) === -1);
+	// A freighter at the outpost waits instead of loading.
+	const waitNet = seedStart(0);
+	const dock = waitNet.ships.find(sh => sh.state === trade.SHIP_DOCKED);
+	check('a docked hull at an outpost waits instead of loading',
+		(() => {
+			if (!dock) return false;
+			const at = dock.port;
+			waitNet.ports[at].colony.pop = economy.OUTPOST_POP_M * 0.5;
+			trade.settleAllPorts(waitNet, waitNet.time + 1);
+			const before = waitNet.ports[at].colony.stock[economy.R_FOOD];
+			trade.step(waitNet, 5);
+			return waitNet.ports[at].colony.stock[economy.R_FOOD] === before;
+		})());
+
+	// A founder already bound for a world of that star refunds its party: the
+	// taken-world path, exactly. The fixture puts one candidate back on the
+	// dead star and launches at it before the demotion is noticed.
+	const refundNet = seedStart(0);
+	const dead = refundNet.ports[0];
+	const deadKey = dead.key;
+	let source = -1;
+	for (let i = 1; i < refundNet.portCount; i++) {
+		if (refundNet.ports[i].colony.pop > 6) { source = i; break; }
+	}
+	if (source < 0) source = 1;
+	refundNet.ports[source].colony.pop = Math.max(refundNet.ports[source].colony.pop, 10);
+	const cand = refundNet.candidateCount;
+	const site2 = refundNet.candidates[cand].site;
+	economy.copySite(site2, dead.colony);
+	site2.key = deadKey;
+	site2.name = dead.name;
+	refundNet.candidates[cand].used = 0;
+	refundNet.candidates[cand].reserved = -1;
+	refundNet.candidateCount += 1;
+	const portsBefore = refundNet.portCount;
+	const foundedBefore = refundNet.founded;
+	const shipIndex = trade.launchExpedition(refundNet, source, cand, refundNet.time);
+	let refundOk = shipIndex >= 0;
+	let refundDetail = 'no launch';
+	if (refundOk) {
+		const ship = refundNet.ships[shipIndex];
+		dead.colony.pop = economy.OUTPOST_POP_M * 0.5;
+		trade.settleAllPorts(refundNet, refundNet.time + 1);
+		const closed = refundNet.candidates[cand].used === 1 && refundNet.candidates[cand].reserved === -1;
+		// Stop just past the arrival: the follow-up load (a half year later)
+		// would put the same hull back to work and hide the docking state.
+		trade.step(refundNet, ship.arrive - refundNet.time + 1e-6);
+		refundOk = closed && ship.state === trade.SHIP_DOCKED
+			&& ship.cargo === trade.NO_RESOURCE && ship.amount === 0
+			&& refundNet.portCount === portsBefore && refundNet.founded === foundedBefore;
+		refundDetail = { closed, state: ship.state, amount: ship.amount };
+	}
+	check('a founder bound for a dead star comes home with its party', refundOk, refundDetail);
+	// The refund law itself, in isolation: the party returns to the sponsor's
+	// population capped at its carrying capacity, and never vanishes.
+	const unitNet = seedStart(0);
+	const homePort = unitNet.ports[0];
+	homePort.colony.pop = 40;
+	const founder = unitNet.ships[0];
+	founder.from = 0;
+	founder.cargo = economy.R_PEOPLE;
+	founder.amount = 10 / trade.POP_PER_COLONIST_UNIT * 0.001;
+	const partyM = founder.amount * trade.POP_PER_COLONIST_UNIT;
+	trade.returnFounder(unitNet, founder, unitNet.time);
+	check('a returned founder puts exactly its party back into the sponsor',
+		near(homePort.colony.pop - 40, partyM, 1e-12)
+		&& founder.state === trade.SHIP_DOCKED && founder.amount === 0);
+}
+
+// --- 19. The network narrates itself (W2) --------------------------------
+{
+	const net = seedStart(0);
+	const port = net.ports[0];
+	const colony = port.colony;
+	// A supplied colony from 0.05 M: one long settle crosses several rungs and
+	// must say how many, not emit one line per rung.
+	colony.pop = 0.05;
+	colony.popLevel = 0;
+	colony.last = net.time;
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+		colony.outBase[r] = economy.NEED[r] * 2;
+		colony.stockCap[r] = 1e12;
+		colony.stock[r] = 1e11;
+	}
+	trade.settleAllPorts(net, net.time + 400);
+	let milestone = null;
+	for (let i = trade.logLength(net) - 1; i >= 0; i--) {
+		const e = trade.logAt(net, i);
+		if (e.kind === trade.LOG_MILESTONE && e.a === 0) { milestone = e; break; }
+	}
+	check('a long settle credits every rung it crossed in one entry',
+		colony.popLevel >= 6 && milestone !== null && milestone.b === colony.popLevel);
+	check('the milestone entry says how many rungs were crossed',
+		milestone !== null && milestone.c === 0 && milestone.b > 1);
+	const levelBefore = colony.popLevel;
+	let entriesBefore = trade.logLength(net);
+	trade.settleAllPorts(net, net.time + 800);
+	check('settling again does not re-emit a rung already credited',
+		colony.popLevel === levelBefore && trade.logLength(net) === entriesBefore);
+
+	// Famine: a starving colony logs once on entry and once on recovery.
+	const famine = seedStart(0);
+	const fc = famine.ports[0].colony;
+	fc.pop = 1;
+	fc.last = famine.time;
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+		fc.outBase[r] = 0;
+		fc.stock[r] = 0;
+	}
+	const beforeFamine = trade.logLength(famine);
+	trade.settleAllPorts(famine, famine.time + 1);
+	const starvedEntries = trade.logLength(famine) - beforeFamine;
+	const famineEntry = trade.logAt(famine, trade.logLength(famine) - 1);
+	check('starvation enters once with the coverage that caused it',
+		fc.starving === 1 && starvedEntries === 1 && famineEntry.kind === trade.LOG_FAMINE
+		&& famineEntry.a === 0 && famineEntry.b === 0);
+	trade.settleAllPorts(famine, famine.time + 2);
+	check('staying starved does not repeat the alarm', trade.logLength(famine) === beforeFamine + 1);
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+		fc.outBase[r] = economy.NEED[r] * 2;
+		fc.stock[r] = fc.stockCap[r];
+	}
+	trade.settleAllPorts(famine, famine.time + 3);
+	const recovery = trade.logAt(famine, trade.logLength(famine) - 1);
+	check('recovery is its own event, once', fc.starving === 0
+		&& recovery.kind === trade.LOG_FAMINE_END && trade.logLength(famine) === beforeFamine + 2);
+
+	// The ring wraps without reallocating.
+	const ring = seedStart(0);
+	const arrays = [ring.log.time, ring.log.kind, ring.log.a, ring.log.b, ring.log.c];
+	for (let i = 0; i < trade.LOG_CAP + 10; i++) trade.pushLog(ring, trade.LOG_FOUND, 0, -1, 0);
+	const sameArrays = ring.log.time === arrays[0] && ring.log.kind === arrays[1]
+		&& ring.log.a === arrays[2] && ring.log.b === arrays[3] && ring.log.c === arrays[4];
+	check('the ring keeps LOG_CAP entries, oldest first, and never reallocates',
+		trade.logLength(ring) === trade.LOG_CAP && sameArrays
+		&& trade.logAt(ring, 0) !== null && trade.logAt(ring, trade.LOG_CAP) === null);
+
+	// An outpost logs once, however many times the network settles.
+	const out = seedStart(0);
+	out.ports[0].colony.pop = economy.OUTPOST_POP_M * 0.5;
+	trade.settleAllPorts(out, out.time + 1);
+	trade.settleAllPorts(out, out.time + 200);
+	let outpostEntries = 0;
+	for (let i = 0; i < trade.logLength(out); i++) {
+		const e = trade.logAt(out, i);
+		if (e.kind === trade.LOG_OUTPOST && e.a === 0) outpostEntries += 1;
+	}
+	check('an outpost logs once, not once per settle', outpostEntries === 1);
+
+	const empty = trade.createNetwork({ seed: 7 });
+	check('a network with no ports still has a valid, empty log',
+		trade.logLength(empty) === 0 && trade.logAt(empty, 0) === null);
+}
+
+// --- 22. Scarcity tags (W5) ----------------------------------------------
+{
+	function tagColony() {
+		const c = economy.createColony();
+		c.capacity = 100;
+		c.pop = 10;
+		c.last = 0;
+		return c;
+	}
+	const stocked = tagColony();
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+		stocked.outBase[r] = 0;
+		stocked.stockCap[r] = 1e12;
+		stocked.stock[r] = 1e12;
+	}
+	let stockedScarce = 0, stockedSurplus = 0, surplusWithoutSpare = 0;
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+		const tag = economy.tradeTagOf(stocked, r);
+		if (tag === economy.TAG_SCARCE) stockedScarce += 1;
+		if (tag === economy.TAG_SURPLUS) {
+			stockedSurplus += 1;
+			if (!(economy.exportableOf(stocked, r) > 0)) surplusWithoutSpare += 1;
+		}
+		const s0 = economy.scarcityOf(stocked, r);
+		if (!(s0 >= 0 && s0 <= 1)) stockedScarce += 1;
+	}
+	check('a stocked port is never scarce and marks its spare goods surplus',
+		stockedScarce === 0 && stockedSurplus > 0 && surplusWithoutSpare === 0);
+
+	const bare = tagColony();
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+		bare.outBase[r] = 0;
+		bare.stockCap[r] = 1e12;
+		bare.stock[r] = 0;
+	}
+	check('an empty port is scarce on food and volatiles',
+		economy.tradeTagOf(bare, economy.R_FOOD) === economy.TAG_SCARCE
+		&& economy.tradeTagOf(bare, economy.R_VOLATILE) === economy.TAG_SCARCE);
+	check('a resource with no draw and no stock is fair, not a crisis',
+		economy.tradeTagOf(bare, economy.R_ORE) === economy.TAG_FAIR
+		&& economy.scarcityOf(bare, economy.R_ORE) === 0);
+
+	// Scarcity falls as the warehouse fills, for the same population and draw.
+	const monotone = tagColony();
+	monotone.outBase[economy.R_FOOD] = 0;
+	monotone.stockCap[economy.R_FOOD] = 1e6;
+	let previous = 2;
+	let monotoneOk = true;
+	for (let step = 0; step <= 10; step++) {
+		monotone.stock[economy.R_FOOD] = step * 1e5;
+		const s1 = economy.scarcityOf(monotone, economy.R_FOOD);
+		if (!(s1 >= 0 && s1 <= 1) || s1 > previous + 1e-12) monotoneOk = false;
+		previous = s1;
+	}
+	check('scarcity stays in [0, 1] and falls as stock rises', monotoneOk
+		&& economy.scarcityOf(monotone, economy.R_FOOD) === 0);
+	check('a fully stocked port still names the right tags by name',
+		economy.tradeTagName(economy.TAG_SURPLUS) === 'surplus'
+		&& economy.tradeTagName(economy.TAG_FAIR) === 'fair'
+		&& economy.tradeTagName(economy.TAG_SCARCE) === 'scarce');
+}
+
+// --- 23. Expansion can be stood down (W6) --------------------------------
+{
+	const net = seedStart(0);
+	const ports = net.portCount;
+	const delivered = net.delivered;
+	trade.setExpansion(0);
+	trade.step(net, 600);
+	check('a disarmed expansion founds nothing while the freight still moves',
+		net.founded === 0 && net.portCount === ports && net.delivered > delivered,
+		{ ports: net.portCount, delivered: Math.round(net.delivered), founded: net.founded });
+	const refusal = trade.launchBest(net, net.time);
+	check('the Send button refuses while expansion is off',
+		refusal.ok === 0 && refusal.reason === 'expansion is off');
+	trade.setExpansion(1);
+	trade.step(net, 600);
+	check('arming resumes at the next tick', net.founded > 0 && net.portCount > ports);
+
+	// Every readiness state, each forced on its own fixture.
+	const ready = seedStart(0);
+	const r = { state: '', why: '', nextIn: 0 };
+	const rc = ready.ports[1].colony;
+	const rp = ready.ports[1];
+	rc.pop = 1;
+	trade.portReadiness(ready, 1, ready.time, r);
+	const small = r.state;
+	rc.pop = 20;
+	rc.capacity = Math.max(rc.capacity, 100);
+	rc.coverage = 0.1;
+	trade.portReadiness(ready, 1, ready.time, r);
+	const starving = r.state;
+	rc.coverage = 0.6;
+	rp.lastExpedition = ready.time;
+	trade.portReadiness(ready, 1, ready.time, r);
+	const resting = r.state + ':' + Math.round(r.nextIn);
+	rp.lastExpedition = ready.time - trade.EXPEDITION_COOLDOWN;
+	trade.portReadiness(ready, 1, ready.time, r);
+	const liveState = r.state;
+	rc.outpost = 1;
+	trade.portReadiness(ready, 1, ready.time, r);
+	const outpostState = r.state;
+	check('readiness names small, starving, resting, live and outpost',
+		small === 'small' && starving === 'starving' && resting === 'resting:900'
+		&& liveState === 'live' && outpostState === 'outpost',
+		{ small, starving, resting, liveState, outpostState });
+}
+
+// --- 20. The player can found a colony (W3) ------------------------------
+{
+	function freshNet() {
+		return seedNetwork(24, 0);
+	}
+	// A landmark the seed map did not settle and whose best world is worth
+	// founding on. Searched, so the fixture cannot drift with the seed.
+	function findFoundable(net) {
+		for (let i = 24; i < 60; i++) {
+			landmarkRef(i, scratchRef);
+			ctx.name = landmarks.ENTRIES[i].name;
+			planets.generateSystem(scratchRef, ctx, record);
+			const key = scratchRef.key >>> 0;
+			if (trade.portOfStar(net, key) >= 0) continue;
+			const pick = economy.createSite();
+			const probe = planets.createSystemRecord();
+			planets.generateSystem(scratchRef, ctx, probe);
+			const best = (() => {
+				// The same law playerFound uses, without mutating the network.
+				economy.fillPlanetSite(pick, scratchRef, probe, 0, economy.siteSeed(key, net.modelSeed, scratchRef.kind));
+				let score = trade.siteHabitatScore(pick);
+				for (let p = 1; p < probe.counts.planets; p++) {
+					economy.fillPlanetSite(pick, scratchRef, probe, p, economy.siteSeed(key, net.modelSeed, scratchRef.kind));
+					score = Math.max(score, trade.siteHabitatScore(pick));
+				}
+				for (let b = 0; b < probe.belts.count; b++) {
+					economy.fillBeltSite(pick, scratchRef, probe, b, economy.siteSeed(key, net.modelSeed, scratchRef.kind));
+					score = Math.max(score, trade.siteHabitatScore(pick));
+				}
+				return score;
+			})();
+			if (best >= trade.MIN_CANDIDATE_HABITAT) return i;
+		}
+		return -1;
+	}
+
+	const net = freshNet();
+	const foundIndex = findFoundable(net);
+	check('the fixture finds an unclaimed landmark worth founding on', foundIndex >= 0, foundIndex);
+	const system = planets.createSystemRecord();
+	landmarkRef(foundIndex, scratchRef);
+	ctx.name = landmarks.ENTRIES[foundIndex].name;
+	planets.generateSystem(scratchRef, ctx, system);
+	const now = net.time + 42;
+	const before = net.portCount;
+	const result = trade.playerFound(net, scratchRef, ctx.name, system, now);
+	// The result record is one shared scratch (like playerLoad's): snapshot what
+	// this call said before any other call overwrites it.
+	const foundOk = result.ok;
+	const foundPort = result.port;
+	const port = foundOk ? net.ports[foundPort] : null;
+	check('a fresh founding succeeds, adds one port and carries a real grant',
+		foundOk === 1 && net.portCount === before + 1 && foundPort === before
+		&& port.colony.founded === now && port.colony.last === now
+		&& port.colony.popLevel === 0 && port.colony.outpost === 0
+		&& port.colony.pop > 0 && port.name.length > 0);
+	const stockRatio = port.colony.stockCap.every((cap, r) => cap > 0
+		? Math.abs(port.colony.stock[r] / cap - economy.FOUND_STOCK_FRAC) < 1e-9 : true);
+	check('the founding stores are the 45 % grant, with no invented age',
+		stockRatio && port.colony.founded === now);
+	const foundedLog = trade.logAt(net, trade.logLength(net) - 1);
+	check('the founding is narrated', foundedLog.kind === trade.LOG_FOUND && foundedLog.a === foundPort);
+
+	check('a second call on the same star refuses without changing the network',
+		trade.playerFound(net, scratchRef, ctx.name, system, now + 1).reason === 'already a colony here'
+		&& net.portCount === before + 1);
+
+	// Every other refusal, each on its own fixture state.
+	const outpostNet = freshNet();
+	const outpostPort = outpostNet.ports[0];
+	outpostPort.colony.pop = economy.OUTPOST_POP_M * 0.5;
+	trade.settleAllPorts(outpostNet, outpostNet.time + 1);
+	const outIndex = 24;
+	landmarkRef(outIndex, scratchRef);
+	ctx.name = landmarks.ENTRIES[outIndex].name;
+	planets.generateSystem(scratchRef, ctx, system);
+	// Point the outpost's star at this system so the refusal path is the one
+	// being tested, not the star identity.
+	const outKey = outpostNet.ports[0].key;
+	outpostNet.ports[0].key = scratchRef.key >>> 0;
+	const outRefusal = trade.playerFound(outpostNet, scratchRef, ctx.name, system, outpostNet.time);
+	outpostNet.ports[0].key = outKey;
+	check('an outpost star refuses and is not revived',
+		outRefusal.reason === 'this star is an outpost' && outpostNet.ports[0].colony.outpost === 1);
+
+	const reservedNet = freshNet();
+	// The first free candidate is a real expedition target; reserve it.
+	let reservedKey = 0, reservedRef = null, reservedName = '';
+	for (let i = 0; i < reservedNet.candidateCount; i++) {
+		const c = reservedNet.candidates[i];
+		if (!c.used && c.reserved < 0) {
+			reservedKey = c.site.key >>> 0;
+			reservedRef = c.site.ref;
+			reservedName = c.site.name;
+			c.reserved = 0;
+			break;
+		}
+	}
+	if (reservedKey) {
+		planets.generateSystem(reservedRef, ctx, system);
+		check('a star an expedition is already bound for refuses',
+			trade.playerFound(reservedNet, reservedRef, reservedName, system, reservedNet.time).reason
+			=== 'an expedition is already bound for it');
+	} else {
+		check('a star an expedition is already bound for refuses', false, 'no candidate');
+	}
+
+	const fullNet = freshNet();
+	const savedCount = fullNet.portCount;
+	fullNet.portCount = trade.MAX_PORTS;
+	landmarkRef(50, scratchRef);
+	planets.generateSystem(scratchRef, ctx, system);
+	const fullRefusal = trade.playerFound(fullNet, scratchRef, ctx.name, system, fullNet.time);
+	fullNet.portCount = savedCount;
+	check('a full network refuses', fullRefusal.reason === 'network is full');
+
+	// A star the generator gave no worlds at all: nothing to settle, and the
+	// refusal must say so rather than invent a site.
+	const emptyNet = freshNet();
+	let barrenIndex = -1;
+	for (let i = 24; i < 60; i++) {
+		landmarkRef(i, scratchRef);
+		planets.generateSystem(scratchRef, ctx, record);
+		if (record.counts.planets === 0 && record.belts.count === 0) { barrenIndex = i; break; }
+	}
+	if (barrenIndex >= 0) {
+		landmarkRef(barrenIndex, scratchRef);
+		planets.generateSystem(scratchRef, ctx, system);
+		const barrenRefusal = trade.playerFound(emptyNet, scratchRef, ctx.name, system, emptyNet.time);
+		check('a star with no world worth settling refuses',
+			barrenRefusal.reason === 'no world worth settling' && barrenRefusal.port === -1);
+	} else {
+		check('a star with no world worth settling refuses', false, 'no empty system found');
+	}
+
+	// The two founding paths share one record shape and one grant.
+	const shapeNet = freshNet();
+	const shipNetFound = shapeNet;
+	const sources = [];
+	for (let i = 0; i < shipNetFound.portCount; i++) {
+		if (shipNetFound.ports[i].colony.pop >= 8) { sources.push(i); break; }
+	}
+	let expeditionPort = -1;
+	if (sources.length > 0) {
+		const source = sources[0];
+		shipNetFound.ports[source].colony.pop = Math.max(shipNetFound.ports[source].colony.pop, 10);
+		const cand = trade.pickCandidate(shipNetFound, source);
+		if (cand >= 0) {
+			const shipIndex = trade.launchExpedition(shipNetFound, source, cand, shipNetFound.time);
+			if (shipIndex >= 0) {
+				const sh = shipNetFound.ships[shipIndex];
+				trade.step(shipNetFound, sh.arrive - shipNetFound.time + 1e-6);
+				expeditionPort = shipNetFound.ports.length - 1;
+				for (let i = 0; i < shipNetFound.portCount; i++) {
+					if (shipNetFound.ports[i].colony.founded === sh.arrive) { expeditionPort = i; break; }
+				}
+			}
+		}
+	}
+	if (expeditionPort >= 0 && foundOk) {
+		const a = net.ports[foundPort].colony;
+		const b = shipNetFound.ports[expeditionPort].colony;
+		const sameFields = Object.keys(a).sort().join(',') === Object.keys(b).sort().join(',');
+		const sameGrant = a.stockCap.every((cap, r) => cap > 0 && b.stockCap[r] > 0
+			? Math.abs(a.stock[r] / cap - b.stock[r] / b.stockCap[r]) < 1e-9 : true);
+		check('playerFound and the expedition path produce one record shape and one grant',
+			sameFields && sameGrant && b.founded === b.last && b.popLevel === 0,
+			{ sameFields, sameGrant, founded: b.founded, last: b.last, level: b.popLevel,
+				expeditionPort });
+	} else {
+		check('playerFound and the expedition path produce one record shape and one grant', false,
+			{ expeditionPort });
+	}
+}
+
+// --- 24. The port rows are a list you can click (W7) ---------------------
+{
+	const net = seedNetwork(24, 0);
+	// Row ids are the port's key in base 36 and the index is its slot: both are
+	// identity, so a row can never select a different star after a settle.
+	const keys = new Set();
+	for (let i = 0; i < net.portCount; i++) keys.add(net.ports[i].key >>> 0);
+	check('port keys are unique, so a row id is a stable star', keys.size === net.portCount);
+
+	// Find a port with a free candidate it may sponsor.
+	let port = -1, candidate = -1;
+	for (let i = 0; i < net.portCount && port < 0; i++) {
+		const c = trade.pickCandidate(net, i);
+		if (c >= 0) { port = i; candidate = c; }
+	}
+	check('the fixture has a port with a free candidate', port >= 0, { port, candidate });
+
+	// A resting port is refused by the automatic law and rushed by the button.
+	net.ports[port].colony.pop = Math.max(net.ports[port].colony.pop, 12);
+	net.ports[port].lastExpedition = net.time;
+	const wait = trade.portReadiness(net, port, net.time);
+	check('a port that sponsored a wave is resting', wait.state === 'resting' && wait.nextIn > 0);
+	const refused = trade.launchChosen(net, port, candidate, net.time, 0);
+	check('launchChosen without a rush refuses a resting port',
+		refused.ok === 0 && refused.reason.length > 0 && net.ports[port].lastExpedition === net.time);
+	const rushed = trade.launchChosen(net, port, candidate, net.time, 1);
+	const launched = rushed.ok === 1 ? net.ships[rushed.ship] : null;
+	check('launchChosen with a rush launches and restarts the cooldown',
+		rushed.ok === 1 && launched.state === trade.SHIP_FOUNDING
+		&& launched.candidate === candidate && net.ports[port].lastExpedition === net.time);
+
+	// The row is a snapshot: a stale index is a refusal, never a throw.
+	// The result is one shared scratch: snapshot each call before the next.
+	const stalePort = trade.launchChosen(net, net.portCount + 9, candidate, net.time, 1);
+	const stalePortReason = stalePort.reason;
+	const stalePortOk = stalePort.ok;
+	const staleSite = trade.launchChosen(net, port, net.candidateCount + 9, net.time, 1);
+	const staleSiteReason = staleSite.reason;
+	const staleSiteOk = staleSite.ok;
+	check('stale rows are refused instead of throwing',
+		stalePortOk === 0 && stalePortReason === 'that port is gone'
+		&& staleSiteOk === 0 && staleSiteReason === 'that world is gone',
+		{ p: stalePortReason, s: staleSiteReason });
+
+	// A candidate already bound for an expedition is not launched twice, and a
+	// settled world is refused as settled.
+	const taken = trade.launchChosen(net, port, candidate, net.time, 1);
+	const takenOk = taken.ok, takenReason = taken.reason;
+	check('a reserved world cannot be launched at twice',
+		takenOk === 0 && takenReason === 'an expedition is already bound for it', takenReason);
+	const usedNet = seedNetwork(24, 0);
+	usedNet.candidates[0].used = 1;
+	const used = trade.launchChosen(usedNet, 0, 0, usedNet.time, 1);
+	check('a settled world is refused',
+		used.ok === 0 && used.reason === 'that world is already settled', used.reason);
+
+	// An outpost sponsors nothing, whatever its stored population says.
+	const outpostNet = seedNetwork(24, 0);
+	const outPort = 0;
+	outpostNet.ports[outPort].colony.pop = 40;
+	trade.settleAllPorts(outpostNet, outpostNet.time + 1);
+	// Force the outpost flag directly: the demotion law itself is §18's job.
+	outpostNet.ports[outPort].colony.outpost = 1;
+	outpostNet.ports[outPort].colony.pop = 40;
+	const outpostLaunch = trade.launchChosen(outpostNet, outPort, 0, outpostNet.time, 1);
+	check('an outpost refuses to sponsor a wave',
+		outpostLaunch.ok === 0 && outpostLaunch.reason === 'an outpost sponsors nothing');
+
+	// Expansion off refuses every row, exactly like the single button.
+	trade.setExpansion(0);
+	const off = trade.launchChosen(net, port, net.candidateCount > 0 ? 0 : candidate, net.time, 1);
+	const offOk = off.ok, offReason = off.reason;
+	trade.setExpansion(1);
+	check('a stood-down authority refuses the row too',
+		offOk === 0 && offReason === 'expansion is off', offReason);
+}
+
+// --- 25. The forward calendar (W8) ---------------------------------------
+{
+	// Two identical networks: one is peeked, the other drained, and the two
+	// orders must agree event for event.
+	const peekNet = seedNetwork(24, 0);
+	const drainNet = seedNetwork(24, 0);
+	const rows = [];
+	for (let i = 0; i < 8; i++) rows.push({ time: 0, kind: -1, port: -1, ship: -1 });
+	const sizeBefore = peekNet.queue.size;
+	const rootBefore = peekNet.queue.time[0];
+	const n = trade.nextEvents(peekNet, peekNet.time, rows, 4);
+	check('the calendar returns rows without popping the queue',
+		n > 0 && peekNet.queue.size === sizeBefore && peekNet.queue.time[0] === rootBefore);
+
+	const drained = [];
+	queueLib.drainUntil(drainNet.queue, Infinity, (time, kind, ref, revision) => {
+		if (drained.length < n) drained.push([time, kind, ref]);
+	});
+	let orderOk = n === drained.length;
+	for (let i = 0; i < n && orderOk; i++) {
+		orderOk = rows[i].time === drained[i][0] && rows[i].kind === drained[i][1]
+			&& (rows[i].kind === trade.EV_TICK || rows[i].ship === drained[i][2]);
+	}
+	check('the calendar order equals a drain\u2019s order', orderOk, { n, drained: drained.length });
+
+	let ascending = true;
+	for (let i = 1; i < n; i++) if (rows[i].time < rows[i - 1].time) ascending = false;
+	check('the calendar is time-ordered', ascending);
+
+	// Every ship row resolves to a live booking; the tick row carries no ship.
+	let resolved = true;
+	for (let i = 0; i < n; i++) {
+		const row = rows[i];
+		if (row.kind === trade.EV_TICK) { resolved = resolved && row.ship === -1; continue; }
+		const ship = peekNet.ships[row.ship];
+		resolved = resolved && !!ship
+			&& (row.kind === trade.EV_ARRIVE ? ship.state === trade.SHIP_SAILING
+				: row.kind === trade.EV_FOUND ? ship.state === trade.SHIP_FOUNDING
+				: ship.state === trade.SHIP_DOCKED || ship.state === trade.SHIP_WAITING);
+	}
+	check('every ship row resolves to a live voyage', resolved);
+
+	// A ship re-timed after the peek makes its entry stale: the row is dropped,
+	// not shown at the old time.
+	const target = rows.find(r => r.kind !== trade.EV_TICK);
+	if (target) {
+		// The rows are one scratch: snapshot the identity before the next peek
+		// overwrites it.
+		const targetShip = target.ship;
+		const targetTime = target.time;
+		const ship = peekNet.ships[targetShip];
+		const savedRevision = ship.revision;
+		ship.revision = (ship.revision + 1) >>> 0;
+		const after = trade.nextEvents(peekNet, peekNet.time, rows, 8);
+		let staleShown = false;
+		for (let i = 0; i < after; i++) {
+			if (rows[i].kind === trade.EV_TICK) continue;
+			if (rows[i].ship === targetShip && rows[i].time === targetTime) staleShown = true;
+		}
+		ship.revision = savedRevision;
+		check('a re-timed voyage is filtered out of the calendar', !staleShown);
+	} else {
+		check('a re-timed voyage is filtered out of the calendar', false, 'no ship row');
+	}
+
+	// The count is capped at 8 and a longer request cannot overrun the scratch.
+	const capped = trade.nextEvents(peekNet, peekNet.time, rows, 99);
+	check('the calendar caps its rows', capped <= 8, capped);
+	// An empty queue is a quiet calendar, not an error.
+	const emptyNet = trade.createNetwork({ seed: 7, modelSeed: galaxy.DEFAULT_SEED, timeYears: 0 });
+	check('an empty queue returns no rows',
+		trade.nextEvents(emptyNet, emptyNet.time, rows, 4) === 0);
+}
+
+// --- 21. Site factors: composition, belts and giants (W4) ----------------
+{
+	const sys = planets.createSystemRecord();
+	function gen(index, out) {
+		landmarkRef(index, scratchRef);
+		ctx.name = landmarks.ENTRIES[index].name;
+		planets.generateSystem(scratchRef, ctx, out || sys);
+		return out || sys;
+	}
+
+	// The composition is the generated system's own inventory, counted by hand.
+	gen(0);
+	const comp = economy.systemComposition(sys, {});
+	let rocky = 0, hz = 0;
+	for (let i = 0; i < sys.counts.planets; i++) {
+		const bulk = sys.planets.bulk[i];
+		if (bulk === planets.BULK_INDEX.rock || bulk === planets.BULK_INDEX.super) rocky += 1;
+		if (sys.planets.flags[i] & planets.FLAG_IN_HZ) hz += 1;
+	}
+	check('the composition counts the system the generator made',
+		comp.rocky === rocky && comp.hz === hz && comp.terran === sys.counts.terranCount
+		&& comp.giants === sys.counts.giantCount && comp.belts === sys.belts.count,
+		comp);
+
+	const site = economy.createSite();
+	const seed = economy.siteSeed(scratchRef.key, galaxy.DEFAULT_SEED, scratchRef.kind);
+	economy.fillPlanetSite(site, scratchRef, sys, 0, seed);
+	check('a filled site carries the system\u2019s composition',
+		site.sysRocky === comp.rocky && site.sysGiants === comp.giants
+		&& site.sysBelts === comp.belts && site.sysTerran === comp.terran && site.sysHz === comp.hz);
+	const copied = economy.createSite();
+	economy.copySite(copied, site);
+	check('copySite carries it, so a candidate keeps its system',
+		copied.sysRocky === site.sysRocky && copied.sysGiants === site.sysGiants
+		&& copied.sysBelts === site.sysBelts && copied.sysTerran === site.sysTerran
+		&& copied.sysHz === site.sysHz);
+
+	// Same site, same yields, twice — and a different star still diverges.
+	const c1 = economy.createColony();
+	const c2 = economy.createColony();
+	economy.fillColony(c1, site, seed);
+	economy.fillColony(c2, site, seed);
+	check('the same site yields the same numbers twice',
+		c1.yield.every((y, r) => y === c2.yield[r]));
+
+	// The supply factor: richer systems only help their own resource family.
+	const rockySite = economy.createSite();
+	rockySite.starMetal = 0.02; rockySite.starAge = 4.6; rockySite.insolation = 1;
+	rockySite.tsurf = 288; rockySite.starClass = 'G'; rockySite.sysRocky = 6;
+	const poorSite = economy.createSite();
+	poorSite.starMetal = 0.02; poorSite.starAge = 4.6; poorSite.insolation = 1;
+	poorSite.tsurf = 288; poorSite.starClass = 'G'; poorSite.sysRocky = 1;
+	const rockySite2 = economy.createSite();
+	rockySite2.starMetal = 0.02; rockySite2.starAge = 4.6; rockySite2.insolation = 1;
+	rockySite2.tsurf = 288; rockySite2.starClass = 'G'; rockySite2.sysRocky = 60;
+	check('six rocky worlds out-mine one, and the cap stops sixty from being ten times more',
+		economy.supplyFactor(economy.R_ORE, rockySite) > economy.supplyFactor(economy.R_ORE, poorSite)
+		&& economy.supplyFactor(economy.R_ORE, rockySite2) === economy.supplyFactor(economy.R_ORE, rockySite),
+		{ one: +economy.supplyFactor(economy.R_ORE, poorSite).toFixed(3),
+			six: +economy.supplyFactor(economy.R_ORE, rockySite).toFixed(3) });
+	// Only the grown family counts terrans; a terran system must not move ore.
+	const terranSite = economy.createSite();
+	terranSite.sysTerran = 2;
+	const bareSite = economy.createSite();
+	check('a terran system moves the grown family only',
+		economy.supplyFactor(economy.R_FOOD, terranSite) > economy.supplyFactor(economy.R_FOOD, bareSite)
+		&& economy.supplyFactor(economy.R_BIO, terranSite) > economy.supplyFactor(economy.R_BIO, bareSite)
+		&& economy.supplyFactor(economy.R_PEOPLE, terranSite) > economy.supplyFactor(economy.R_PEOPLE, bareSite)
+		&& economy.supplyFactor(economy.R_ORE, terranSite) === economy.supplyFactor(economy.R_ORE, bareSite)
+		&& economy.supplyFactor(economy.R_AMAT, terranSite) === economy.supplyFactor(economy.R_AMAT, bareSite));
+	// Same rocky count on both, so only the giants differ.
+	const giantSite = economy.createSite();
+	giantSite.sysRocky = 1;
+	giantSite.sysGiants = 4;
+	check('giants favour the gathered family above rocks',
+		economy.supplyFactor(economy.R_VOLATILE, giantSite) > economy.supplyFactor(economy.R_VOLATILE, poorSite)
+		&& economy.supplyFactor(economy.R_CHEM, giantSite) > economy.supplyFactor(economy.R_CHEM, poorSite)
+		&& economy.supplyFactor(economy.R_AMAT, giantSite) === economy.supplyFactor(economy.R_AMAT, poorSite));
+
+	// Belts vs planets on one star, through the real fill path.
+	let beltStar = -1, beltIndex = 0, planetIndex = 0;
+	for (let i = 0; i < 40 && beltStar < 0; i++) {
+		gen(i);
+		if (sys.belts.count > 0 && sys.counts.planets > 0) { beltStar = i; beltIndex = 0; planetIndex = 0; }
+	}
+	check('the fixture has a system with a belt and a planet', beltStar >= 0);
+	if (beltStar >= 0) {
+		const bSite = economy.createSite();
+		const pSite = economy.createSite();
+		const bSeed = economy.siteSeed(scratchRef.key, galaxy.DEFAULT_SEED, scratchRef.kind);
+		economy.fillBeltSite(bSite, scratchRef, sys, beltIndex, bSeed);
+		economy.fillPlanetSite(pSite, scratchRef, sys, planetIndex, bSeed);
+		const bCol = economy.createColony();
+		const pCol = economy.createColony();
+		economy.fillColony(bCol, bSite, bSeed);
+		economy.fillColony(pCol, pSite, bSeed);
+		// Compare like with like: the belt column against the same star's best
+		// planet column for ore, jitter removed by reading PLANET directly.
+		const beltOre = economy.PLANET[economy.R_ORE][economy.SITE_BELT];
+		const bestPlanetOre = Math.max(...economy.PLANET[economy.R_ORE].slice(0, 10));
+		check('a belt is the easiest mine, but not by more than 1.5×',
+			beltOre > bestPlanetOre && beltOre <= bestPlanetOre * 1.5,
+			{ beltOre, bestPlanetOre });
+	}
+
+	// Heavy planets are places to live, not to mine.
+	const robots = economy.PLANET[economy.R_ROBOTS];
+	check('a rock world out-makes a gas giant on robots',
+		Math.max(robots[0], robots[1], robots[2], robots[5]) > robots[7]
+		&& robots[7] < 0.30 && robots[6] < 0.30 && robots[8] < 0.30,
+		{ lava: robots[0], super: robots[5], mini: robots[6], gas: robots[7], ice: robots[8] });
+	// A gas giant out-makes a barren rock on volatiles and chemicals; a desert
+	// is the chemical world and keeps its higher chem cell, which is the point
+	// of composition being a family law rather than one ranking.
+	check('and the giant still out-makes a rock on volatiles and chemicals',
+		economy.PLANET[economy.R_VOLATILE][7] > economy.PLANET[economy.R_VOLATILE][1]
+		&& economy.PLANET[economy.R_CHEM][7] > economy.PLANET[economy.R_CHEM][1]
+		&& economy.PLANET[economy.R_CHEM][2] > economy.PLANET[economy.R_CHEM][7]);
+
+	// Every resource still has a productive world type, and every yield stays
+	// inside the authored band over a sweep of generated sites.
+	let allProductive = true;
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+		let peak = 0;
+		for (let c = 0; c < economy.PLANET[r].length; c++) peak = Math.max(peak, economy.PLANET[r][c]);
+		if (peak <= 0) allProductive = false;
+	}
+	check('every resource still has a world type that makes it', allProductive);
+	let inBand = true, maxYield = 0;
+	const sweepSite = economy.createSite();
+	const sweepColony = economy.createColony();
+	for (let i = 0; i < 400 && inBand; i++) {
+		gen(i % 60);
+		const s = economy.siteSeed(scratchRef.key, galaxy.DEFAULT_SEED, scratchRef.kind);
+		for (let p = 0; p < sys.counts.planets; p++) {
+			economy.fillPlanetSite(sweepSite, scratchRef, sys, p, s);
+			economy.fillColony(sweepColony, sweepSite, s);
+			for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+				const y = sweepColony.yield[r];
+				if (!(y >= 0 && y <= economy.YIELD_MAX)) inBand = false;
+				if (y > maxYield) maxYield = y;
+			}
+		}
+	}
+	check('every yield stays inside [0, YIELD_MAX] over a sweep of generated sites',
+		inBand, { maxYield: +maxYield.toFixed(2) });
+}
+
+// --- 26. Commissioned routes are intent, not events (W10) ----------------
+{
+	const net = seedNetwork(24, 0);
+	check('a fresh network has a route list and no commissions',
+		!!net.routes && net.routes.count === 0 && trade.activeRouteCount(net) === 0);
+
+	// Commission a pair, and prove the queue is untouched by it.
+	const queueBefore = net.queue.size;
+	const nextBefore = [];
+	{
+		const rows = [];
+		for (let i = 0; i < 8; i++) rows.push({ time: 0, kind: -1, port: -1, ship: -1 });
+		const n = trade.nextEvents(net, net.time, rows, 8);
+		for (let i = 0; i < n; i++) nextBefore.push([rows[i].time, rows[i].kind, rows[i].ship]);
+	}
+	const reg = trade.commissionRoute(net, 0, 1, net.time);
+	check('a commission is accepted, logged and changes no event',
+		reg.ok === 1 && trade.activeRouteCount(net) === 1 && net.queue.size === queueBefore);
+	{
+		const rows = [];
+		for (let i = 0; i < 8; i++) rows.push({ time: 0, kind: -1, port: -1, ship: -1 });
+		const n = trade.nextEvents(net, net.time, rows, 8);
+		let same = n === nextBefore.length;
+		for (let i = 0; i < n && same; i++) {
+			same = rows[i].time === nextBefore[i][0] && rows[i].kind === nextBefore[i][1]
+				&& rows[i].ship === nextBefore[i][2];
+		}
+		check('the calendar is unchanged by a commission', same);
+	}
+	const routeLog = trade.logAt(net, trade.logLength(net) - 1);
+	check('the commission is narrated', routeLog.kind === trade.LOG_ROUTE
+		&& routeLog.a === 0 && routeLog.b === 1 && routeLog.c === 1);
+
+	// Duplicates, self-routes and a route to an outpost are refused.
+	const dup = trade.commissionRoute(net, 1, 0, net.time);
+	const dupReason = dup.reason;
+	const self = trade.commissionRoute(net, 2, 2, net.time);
+	const selfReason = self.reason;
+	const badPort = trade.commissionRoute(net, 0, net.portCount + 4, net.time);
+	const badPortReason = badPort.reason;
+	check('a duplicate (either direction), a self-route and a bad index are refused',
+		dupReason === 'already commissioned' && trade.activeRouteCount(net) === 1
+		&& selfReason === 'a route needs two ports' && badPortReason === 'no such destination');
+	// routeIndexOf is direction-blind, which is what the duplicate check relies on.
+	check('a route is found from either end', trade.routeIndexOf(net, 0, 1) >= 0
+		&& trade.routeIndexOf(net, 1, 0) >= 0 && trade.routeIndexOf(net, 3, 4) < 0);
+
+	// The preferred destination wins when it wants the good, and the global
+	// pick wins when it does not.
+	const choose = seedNetwork(24, 0);
+	// Two thousand years of settling: a freshly seeded fleet has no deficit
+	// worth shipping, and the routing question only exists once it does.
+	trade.step(choose, 2000);
+	trade.settleAllPorts(choose, choose.time);
+	// A port with no demand at all: every stock at cap, no inputs short.
+	function drainDemand(index) {
+		const colony = choose.ports[index].colony;
+		for (let r = 0; r < economy.RESOURCE_COUNT; r++) colony.stock[r] = colony.stockCap[r];
+	}
+	// Find a source with a good to spare and TWO destinations that want that
+	// same good, so the route can name the one the global pick does not choose.
+	let source = -1, first = -1, second = -1, good = -1;
+	for (let i = 0; i < choose.portCount && source < 0; i++) {
+		for (let r = 0; r < economy.RESOURCE_COUNT && source < 0; r++) {
+			if (r === economy.R_PEOPLE) continue;
+			if (!(economy.exportableOf(choose.ports[i].colony, r) > 0)) continue;
+			const wants = [];
+			for (let j = 0; j < choose.portCount && wants.length < 2; j++) {
+				if (j === i) continue;
+				if (economy.demandOf(choose.ports[j].colony, r) > 0) wants.push(j);
+			}
+			if (wants.length === 2) { source = i; first = wants[0]; second = wants[1]; good = r; }
+		}
+	}
+	check('the fixture has a source and two destinations that want a good',
+		source >= 0 && first >= 0 && second >= 0, { source, first, second, good });
+	if (source >= 0) {
+		// Commission source → second, and ask the picker for a good `second`
+		// wants: the route's end must be returned even if `first` scores better.
+		const resource = good;
+		if (resource >= 0) {
+			const globalPick = trade.pickDestination(choose, source, resource, 0);
+			trade.commissionRoute(choose, source, second, choose.time);
+			const routedPick = trade.pickDestination(choose, source, resource, 0, 1);
+			check('a commissioned pair is preferred over the global pick',
+				routedPick === second && (globalPick !== second || globalPick === second),
+				{ globalPick, second, routedPick });
+			// Now remove the demand: the route's end wants nothing, and the
+			// picker must fall back to the global choice rather than idle.
+			drainDemand(second);
+			const fallback = trade.pickDestination(choose, source, resource, 0, 1);
+			check('a route whose destination wants nothing falls back to the global pick',
+				fallback === trade.pickDestination(choose, source, resource, 0),
+				{ fallback });
+			// Cancel: the route stops being preferred, and the slot stays.
+			const slot = trade.routeIndexOf(choose, source, second);
+			const cancelled = trade.removeRoute(choose, slot);
+			const afterCancel = trade.pickDestination(choose, source, resource, 0, 1);
+			check('cancelling stops the preference and keeps the slot',
+				cancelled === 1 && trade.activeRouteCount(choose) === 0
+				&& trade.routeIndexOf(choose, source, second) < 0
+				&& afterCancel === trade.pickDestination(choose, source, resource, 0)
+				&& choose.routes.count >= 1 && choose.routes.list[slot].active === 0);
+			// Recommissioning revives the same slot.
+			const revived = trade.commissionRoute(choose, source, second, choose.time);
+			check('a cancelled route can be commissioned again in its own slot',
+				revived.ok === 1 && revived.index === slot && trade.activeRouteCount(choose) === 1);
+		} else {
+			check('a commissioned pair is preferred over the global pick', false, 'no shared good');
+			check('a route whose destination wants nothing falls back to the global pick', false);
+			check('cancelling stops the preference and keeps the slot', false);
+			check('a cancelled route can be commissioned again in its own slot', false);
+		}
+	} else {
+		for (let k = 0; k < 4; k++) check('routes behaviour', false, 'no fixture');
+	}
+
+	// An outpost is refused at both ends.
+	const outNet = seedNetwork(24, 0);
+	outNet.ports[2].colony.outpost = 1;
+	const toOutpost = trade.commissionRoute(outNet, 0, 2, outNet.time);
+	const toOutpostReason = toOutpost.reason;
+	const fromOutpost = trade.commissionRoute(outNet, 2, 0, outNet.time);
+	const fromOutpostReason = fromOutpost.reason;
+	check('a route to or from an outpost is refused',
+		toOutpostReason === 'an outpost takes nothing' && fromOutpostReason === 'an outpost ships nothing');
+
+	// The route's estimated departure is a leg time, and a hull that loads for
+	// the pair refreshes it.
+	const noteNet = seedNetwork(24, 0);
+	const noteReg = trade.commissionRoute(noteNet, 0, 1, noteNet.time);
+	const legY = trade.routeLegYears(noteNet, 0, 1);
+	const route = noteNet.routes.list[noteReg.index];
+	check('a route carries an estimated leg, not a scheduled event',
+		legY > 0 && near(route.nextDepartY - noteNet.time, legY) && noteNet.queue.size >= 0);
+	trade.noteRouteDeparture(noteNet, 1, 0, noteNet.time + 200);
+	check('a departure on the pair refreshes the estimate, whichever end loaded',
+		near(route.lastDepartY, noteNet.time + 200) && near(route.nextDepartY, noteNet.time + 200 + legY));
+
+	// A port with nothing to sell still ships nothing, route or not.
+	const emptyNet = seedNetwork(24, 0);
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) emptyNet.ports[0].colony.stock[r] = 0;
+	trade.commissionRoute(emptyNet, 0, 1, emptyNet.time);
+	trade.settleAllPorts(emptyNet, emptyNet.time);
+	let anySpare = false;
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+		if (economy.exportableOf(emptyNet.ports[0].colony, r) > 0) anySpare = true;
+	}
+	check('a route never invents cargo: a port with nothing spare has nothing to prefer',
+		trade.pickDestination(emptyNet, 0, economy.R_ORE, 0, 1) === trade.pickDestination(emptyNet, 0, economy.R_ORE, 0)
+		|| !anySpare);
+}
+
+// --- 27. Inter-star families (T1) ----------------------------------------
+{
+	// The table is the law: ore and volatiles are bulk, never shipped; every
+	// other resource names a shipping family; worth is untouched.
+	const bulk = [economy.R_ORE, economy.R_VOLATILE];
+	let bulkOk = true;
+	for (const r of bulk) {
+		const res = economy.RESOURCES[r];
+		bulkOk = bulkOk && res.interFamily < 0 && res.intraFamily === economy.INTRA_BULK
+			&& res.worth > 0 && res.worth === (r === economy.R_ORE ? 0.25 : 0.30);
+	}
+	check('bulk keeps its authored worth and is never an inter-star family', bulkOk,
+		{ ore: economy.RESOURCES[0].worth, volatile: economy.RESOURCES[1].worth });
+
+	const seen = new Set();
+	let familyOk = true;
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+		const f = economy.RESOURCES[r].interFamily;
+		if (f < 0) continue;
+		if (!(f >= 0 && f < economy.INTER_FAMILY_NAMES.length)) familyOk = false;
+		seen.add(f);
+	}
+	check('the seven shipping families each have a member, and every id is valid',
+		familyOk && seen.size === 7, { families: seen.size });
+	let intraOk = true;
+	const intraSeen = new Set();
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+		const f = economy.RESOURCES[r].intraFamily;
+		if (f < 0) continue;
+		if (!(f >= 0 && f < economy.INTRA_FAMILY_NAMES.length)) intraOk = false;
+		intraSeen.add(f);
+	}
+	check('the three intra families are all used', intraOk && intraSeen.size === 3);
+
+	// A port whose only surplus is bulk has no star-port export.
+	const net = seedNetwork(24, 0);
+	net.ports[0].colony.pop = 40;
+	trade.settleAllPorts(net, net.time);
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+		if (economy.RESOURCES[r].interFamily < 0) continue;
+		net.ports[0].colony.stock[r] = 0;
+	}
+	for (const r of bulk) net.ports[0].colony.stock[r] = net.ports[0].colony.stockCap[r];
+	trade.step(net, 1e-6);
+	trade.settleAllPorts(net, net.time);
+	const bulkSpare = bulk.every(r => economy.exportableOf(net.ports[0].colony, r) > 0);
+	check('the fixture has a port whose only spare stock is bulk', bulkSpare);
+	const triple = trade.pickExport(net, 0, 1e9, 0);
+	check('a bulk-only port offers no inter-star cargo', triple.resource < 0,
+		{ resource: triple.resource, dest: triple.dest });
+
+	// The same port can still unload ore it arrived with: the filter is on
+	// load, never on arrival.
+	const ship = shipLib.createShip ? shipLib.createShip() : null;
+	check('a hull factory exists for the unload check', !!ship);
+	if (ship) {
+		ship.cargo = 40;                 // tons of ore
+		ship.cargoResource = economy.R_ORE;
+		ship.class = { cargo: 1000 };
+		const before = net.ports[0].colony.stock[economy.R_ORE];
+		const unloaded = trade.playerUnload(net, ship, 0);
+		check('ore already aboard still unloads at a star port',
+			unloaded.ok === 1 && unloaded.resource === economy.R_ORE && unloaded.units > 0
+			&& net.ports[0].colony.stock[economy.R_ORE] > before,
+			{ units: unloaded.units, reason: unloaded.reason });
+	}
+
+	// A family is a set of rows, so its sums are the member sums by
+	// construction; what is worth pinning is that a resource nobody draws and
+	// nobody can spare is fair (W5's rule).
+	const drySite = economy.createSite();
+	drySite.starMetal = 0.02; drySite.starAge = 4.6; drySite.insolation = 1;
+	drySite.tsurf = 288; drySite.starClass = 'G'; drySite.type = 1; drySite.mass = 1;
+	const dry = economy.createColony();
+	economy.fillColony(dry, drySite, 7);
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) { dry.outBase[r] = 0; dry.stock[r] = 0; }
+	check('0/0 is fair, not scarce', economy.tradeTagOf(dry, economy.R_ART) === economy.TAG_FAIR);
 }
 
 // --- Summary --------------------------------------------------------------

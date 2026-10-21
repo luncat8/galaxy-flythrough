@@ -14,6 +14,16 @@ clock and a second queue.
 `trade-2-plan.md` W1–W10 ships first. This series re-pins growth the way W4
 does, so it must not be in flight while those tables are being measured.
 
+### 0.1 Review corrections (2026-10-21)
+
+- **The bulk filter is a family, not a price.** §3.2 originally zeroed ore and
+  volatiles' worth; that number is also the player's load score and T4's intra
+  routing score. §3.2/§3.3 now say what the law needs: `interFamily = -1` is
+  the loader's filter, the authored worth is untouched, and `exportableOf`
+  keeps its one meaning.
+- **Commit ids move behind the shipped worklog.** trade.9–trade.18 are the W
+  series (trade-2 plan §12); this series starts at trade.19.
+
 ## 0. Decisions
 
 | # | Item | State |
@@ -132,26 +142,42 @@ readout aggregations**, not a second yield table.
 
 A resource may sit in both columns (chem, robots, compute, people). Intra
 uses it as a local flow; inter-star may still load the surplus the fold
-cannot use. Ore and volatiles have **inter-star worth 0** and
-`exportableOf` returns 0 to a star-port loader.
+cannot use. Ore and volatiles are **not offered to a star-port loader**: the
+filter is the family map, not a mutated worth. `worth` stays the authored
+routing weight (ore 0.25, volatiles 0.30) because the player's own load pick
+and T4's intra scoring read it, and a zero there would quietly delete the
+bulk trade that the `INPUT` matrix exists to create. `exportableOf` keeps its
+one meaning ("what the warehouse can spare") for every caller; the load law
+filters.
 
 `RESOURCES[].family` today is `raw/synth/life/goods/data/culture`. Do not
-repurpose it. Add `intraFamily` and `interFamily`.
+repurpose it. Add `intraFamily` and `interFamily` (`-1` = none).
 
 ### 3.3 Load law
 
 `pickExport` and `playerLoad` skip any resource whose `interFamily` is none.
 Scoring is unchanged (`amount · worth / (1 + ly / 200)`), still one resource
 id in the hold. The family is the *filter* and the *readout group*.
+Unloading is never filtered: a hold that arrived with ore (loaded before T1
+existed, or in-system) still empties.
 
 ### 3.4 Tests (new §27)
 
 - Ore and volatiles never appear as a star-port export, including when they
   are the only surplus.
 - Each of the seven families has at least one member with `worth > 0`.
+- Ore and volatiles keep their authored `worth` (0.25 / 0.30) and their
+  `exportableOf` on the fold; only the star-port loader refuses them.
 - A hull that arrived with ore still unloads it — the filter is on load,
   not on arrival.
 - Family sums equal the member sums; 0/0 is `fair` (W5).
+
+T1 status: **shipped as `trade.19`**. The two maps live on `RESOURCES`
+(`intraFamily`, `interFamily`, `-1` = not in that tier), `pickExport` and
+`playerExport` skip a resource with no shipping family, and unloading is
+untouched. The readout's `sells` line names the shipping families a hull could
+load and `best export` is a shipping good; `needs` stays by resource. Tests are
+`trade-test` §27.
 
 ## 4. T2 — One inter-star port per star
 
@@ -454,10 +480,10 @@ design.
 
 | Order | Item | Depends on | Size | Commit |
 |---|---|---|---|---|
-| 1 | T1 inter-star families | W5 tags (readout) | S | `trade.13: inter-star hulls carry seven goods; bulk stays home` |
-| 2 | T3 world pool + T2 fold | W1 outposts, W3 founding, W4 composition | M | `trade.14: a star is many worlds and one port` |
-| 3 | T4 graph + couple + rates + lift | T3, `deltav.js` | M | `trade.15: intra flow is a delta-v statistic; cheap wells develop, deep ones do not` |
-| 4 | T5 system-view picture | T4, W9 overlay language | S–M | `trade.16: the opened system shows its worlds, its flows and its km/s` |
+| 1 | T1 inter-star families | W5 tags (readout) | S | `trade.19: inter-star hulls carry seven goods; bulk stays home` |
+| 2 | T3 world pool + T2 fold | W1 outposts, W3 founding, W4 composition | M | `trade.20: a star is many worlds and one port` |
+| 3 | T4 graph + couple + rates + lift | T3, `deltav.js` | M | `trade.21: intra flow is a delta-v statistic; cheap wells develop, deep ones do not` |
+| 4 | T5 system-view picture | T4, W9 overlay language | S–M | `trade.22: the opened system shows its worlds, its flows and its km/s` |
 
 T1 can land without T3: a one-world network already stops shipping ore.
 T4 without two worlds still lifts the capital's exports.

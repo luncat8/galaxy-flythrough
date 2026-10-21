@@ -49,6 +49,28 @@ them:
   is the following series, not a W-item: it re-pins growth the way W4 does and needs
   W1/W3/W4/W5 already on the tree. Spec: `trade-3-plan.md`.
 
+### 0.1 Review corrections (2026-10-21)
+
+Three decisions were tightened before coding, and the rest of this file already
+carries them:
+
+- **One state, not two.** A colony that has stopped is `colony.outpost`, and the
+  old `abandoned` flag is deleted rather than left beside it. Two flags meaning
+  "not live" drift the first time one path sets one and not the other (the
+  retired `abandoned` name also read as "the slot is gone", which W1 exists to
+  deny). The law below is written on `outpost` only.
+- **One founding grant.** `setupColony` (a galaxy-rolled colony, seed stocks at
+  `SEED_STOCK_FRAC = 0.60`) and `foundColony` (a founding, `FOUND_STOCK_FRAC =
+  0.45`) share one fill law and differ only in the age and the population
+  grant — two 40-line copies of the yield/capacity/warehouse pass would be a
+  drift waiting to happen, and `trade.js` today carries its own `0.45` copy of
+  a constant `economy.js` already owns.
+- **The calendar's peek is exact.** A min-heap's `k` smallest entries live
+  within its first `2^k − 1` slots (depth ≤ `k − 1`, because every ancestor is
+  ≤ its descendant); the earlier "copy the first 64" would silently miss the
+  8th event when it sits deeper than index 63. W8 scans `min(size, 2^count − 1)`
+  instead, 255 slots at the panel's 8, and pins the bound against a full drain.
+
 ## 1. Baseline — the seams this plan touches
 
 | File | What it owns today | Anchors |
@@ -81,8 +103,8 @@ simulated either: it stops, is labelled, and the network is done with it.
 OUTPOST_POP_M = 0.02        // millions; was POP_MIN
 ```
 
-`createColony()` gains `outpost: 0`, `outpostY: 0` (the year it stopped), and drops
-nothing else. `settleColony(colony, nowYears)`:
+`createColony()` carries `outpost: 0`, `outpostY: 0` (the year it stopped), and the
+retired `abandoned` flag is gone. `settleColony(colony, nowYears)`:
 
 1. `if (colony.outpost) return 0;` — first line, before `now > last`. An outpost has no
    factories, no consumption, no growth, and its stocks are frozen.
@@ -90,6 +112,8 @@ nothing else. `settleColony(colony, nowYears)`:
    `outpost = 1; outpostY = now; growth = 0; coverage = coverageOf(colony)` and return
    the population delta. The population is left at its last value (the outpost's staff),
    not zeroed and not floored — the number the player reads is the real end state.
+   A colony settled at zero population takes the same path (`outpostY = now`), so a
+   dead record is never left live with `pop === 0`.
 
 Helpers keep their shape and gain the guard: `demandOf`, `exportableOf`, `giveToColony`
 return 0 for an outpost (so nothing is imported, nothing is exported, nothing unloads);
@@ -256,7 +280,9 @@ Law, in order, each with its own `reason`:
 
 Success: the best site is filled and named (`economy.siteName`), `addPort` runs in
 **fresh** mode, candidates of the star are marked `used`, `net.founded += 1`, `LOG_FOUND`.
-`out` carries the port index, the site and `ok = 1`.
+`out` carries the port index, the site and `ok = 1`. The grant is the party's people
+when `playerFound` is called from a docked hull (the expedition path passes its own
+count), else `FOUND_POP_BASE + FOUND_POP_CAP_FRAC · capacity`.
 
 ### Fresh founding
 
@@ -316,6 +342,11 @@ systemComposition(system, out)   // one pass: bulk classes, FLAG_TERRAN, FLAG_IN
 filled by `fillPlanetSite`/`fillBeltSite` (both already receive `system`, and discovery is
 the only caller), copied by `copySite`. Cost: ≤ 14 planets per system, at discovery and
 inspection only — never in the frame loop and never in a settle.
+
+`fillPlanetSite`/`fillBeltSite` compute the system's composition once per call
+through a module scratch (`SYS_COMP`), so a 14-world system costs 14 short passes at
+discovery, never a settle; `copySite` carries the five counts so a candidate keeps the
+composition of the system it was drawn from.
 
 ### 5.2 The factor law
 
@@ -438,9 +469,11 @@ tradeTagOf(colony, r)  -> tag     // SCARCE if demand > 0, SURPLUS if exportable
 tradeTagName(tag)      -> 'surplus' | 'fair' | 'scarce'
 ```
 
-Readout (`tradeReadoutText`): each yield row gains ` · <tag>`; the port line gains
-`best export <resource> · worst import <resource>`. Panel rows stay as they are — the
-readout is where a pilot looks.
+Readout (`tradeReadoutText`): each resource cell gains a one-character mark — `+`
+surplus, `!` scarce, blank fair — with the legend on the yields block's first row (a
+word per cell would triple the block's width); the port line gains
+`best export <resource> · worst import <resource>`, both weighted by routing worth.
+Panel rows stay as they are — the readout is where a pilot looks.
 
 This is also F4's prerequisite: a price would be `base × (1.6 − 1.2 · (1 − scarcityOf))`.
 
@@ -485,8 +518,12 @@ the next tick; the preset round-trips `tradeexpand`.
 - Click → select that star through the existing selection path (the one H uses): set
   primary, ring it, and in observer mode centre the camera on it; in game mode make it
   the Flight destination. Never move the ship.
-- Assets: W3's founding and every expedition founding land the typed `colony` asset, so
-  the history reads `… · colony <name> · colony <name>` the way docking lands ports.
+- Assets: the player's own founding (W3) lands the typed `colony` asset, so the history
+  reads `… · colony <name>` the way docking lands ports. A simulated founding does **not**:
+  the asset history is two slots, so a network that founds every few seconds at time-lapse
+  rates would overwrite whatever the player was looking at, while at ordinary rates the
+  entry would be stale before it could be read. Simulated foundings are the log's job
+  (W2) and the row set's — the colony appears in `#trade-list` immediately.
 - `#colonisation-list` rows become the top three ready expeditions with a *Send* button
   each (the same `launchBest` law, per port), which is the per-port version of the
   existing single button. `colonisationPreview` already returns `port`/`candidate`, so
@@ -503,12 +540,17 @@ with a resting port rushes it and restarts its cooldown; a stale row (port index
 `exec-queue.js` gains one read-only query, and it is the only new thing about the queue:
 
 ```
-peekNext(queue, outTime, outKind, outRef, count) -> n
+peekNext(queue, outTime, outKind, outRef, outRevision, count) -> n
 ```
 
-Fills the `count` earliest live entries (≤ 8) in time order. Implementation: copy the
-first `min(size, 64)` triples into preallocated module scratch and partial-select; the
-heap is untouched, so there is no allocation after the first call and no invariant to keep.
+Fills the `count` earliest live entries (≤ 8) in time order, revision included: the
+consumer drops stale bookings by comparing it with the ship's, and without the column a
+peeked event could not be told from a re-timed one. Implementation: copy the
+first `min(size, 2^count − 1)` quadruples (255 at the cap of 8) into preallocated module
+scratch and partial-select; a heap's `k` smallest values cannot sit deeper than level
+`k − 1`, so the bound is exact, while a fixed 64 would miss an 8th event at index 64+.
+The heap is untouched, so there is no allocation after the first call and no invariant to
+keep.
 
 `trade.js`:
 
@@ -579,30 +621,41 @@ Nothing is scheduled. `nextDepartY` is panel bookkeeping: `lastDepartY + legYear
 refreshed when a hull actually loads for that pair. The queue stays one event per hull plus
 the tick, so the old branch's 64-slot-ledger failure mode cannot exist here.
 
-UI: a `Routes` block in the Trade panel — `origin → dest · next` rows with `✕`, the two
-selects and *Commission* (the old panel's shape); a route is preferred, which the row's
-title says out loud. Overlay edges from W9.
+UI: a `Routes` block in the Trade panel — two selects, *Commission*, and `origin → dest ·
+next +N y` rows with `✕`; a route is preferred, which the button's title says out loud.
+The estimate is `routeLegYears` (the bulk hull's leg, refreshed when a hull loads for the
+pair) — bookkeeping, never a scheduled event. Overlay edges from W9.
+
+Slot law, settled while implementing: a cancelled route keeps its slot *and its pair*, so
+re-commissioning the same pair revives it (the row identity never moves under a click); a
+different pair takes the first inactive slot, and the list only grows when every slot is
+taken.
 
 Tests (new §26): the preferred destination wins when it has demand; the global pick wins
 when the route's destination has none; cancel stops preference and leaves in-flight hulls
-alone; the queue size is unchanged by commissioning (same `peekNext` before/after);
-duplicate commissions are refused; a route to an outpost is refused; cancelled routes keep
-their slot.
+alone; the queue and the forward calendar are byte-identical before and after a commission;
+duplicate commissions are refused; a route to or from an outpost is refused; cancelled
+routes keep their slot and revive in it; `noteRouteDeparture` refreshes the estimate from
+either end.
 
 ## 12. Order, dependencies, size
 
 | Order | Item | Depends on | Size | Commit |
 |---|---|---|---|---|
-| 1 | W1 outposts | — | S–M | `trade.3: outposts — a failed colony stops, is marked, and is never recolonised` |
-| 2 | W2 narrated events | W1 (outpost line) | S–M | `trade.4: the network narrates itself` |
-| 3 | W5 scarcity tags | — | S | `trade.5: scarcity tags in the readout` |
-| 4 | W6 expansion authority | W2 (log lines) | S | `trade.6: expansion can be stood down` |
-| 5 | W3 player founding | W1, W7's asset path | M | `trade.7: the player can found a colony` |
-| 6 | W7 clickable rows + assets | W6 (readiness text) | M | `trade.8: the colonial panel is a list you can click` |
-| 7 | W8 forward calendar | — | M | `trade.9: the queue's next events are on the panel` |
-| 8 | W4 site factors | — (but touches every number) | M | `trade.10: belts are the easiest mine, giants the worst — a system's composition reaches its worlds` |
-| 9 | W9 overlay | W1, W10 | S | `trade.11: outposts, alarms and commissioned routes on the sky` |
-| 10 | W10 standing routes | W9 edges | L | `trade.12: commissioned routes as player intent` |
+| 1 | W1 outposts | — | S–M | `trade.9: outposts — a failed colony stops, is marked, and is never recolonised` |
+| 2 | W2 narrated events | W1 (outpost line) | S–M | `trade.10: the network narrates itself` |
+| 3 | W5 scarcity tags | — | S | `trade.11: scarcity tags in the readout` |
+| 4 | W6 expansion authority | W2 (log lines) | S | `trade.12: expansion can be stood down` |
+| 5 | W3 player founding | W1, W7's asset path | M | `trade.13: the player can found a colony` |
+| 6 | W7 clickable rows + assets | W6 (readiness text) | M | `trade.14: the colonial panel is a list you can click` |
+| 7 | W8 forward calendar | — | M | `trade.15: the queue's next events are on the panel` |
+| 8 | W4 site factors | — (but touches every number) | M | `trade.16: belts are the easiest mine, giants the worst — a system's composition reaches its worlds` |
+| 9 | W9 overlay | W1, W10 | S | `trade.17: outposts, alarms and commissioned routes on the sky` |
+| 10 | W10 standing routes | W9 edges | L | `trade.18: commissioned routes as player intent` |
+
+Status: W9's drawing is already in the tree (the outpost pass, the dashed alarm, and now
+the standing-route pass), so the pair lands as one commit: W10 ships as `trade.17` and W9
+rides with it rather than as a separate empty step.
 
 W4 sits late on purpose: it re-pins the growth tables and should not be in flight while
 another item is being measured against them. W10 is last because it touches the load
@@ -613,9 +666,9 @@ decision, the hottest path in the system.
 Every commit:
 
 ```
-node experiments/trade-test.js          # 134 → ~175 checks
-node experiments/exec-queue-test.js     # 27 checks (W8 adds the peek cases)
-node experiments/m1-smoke-test.js       # 117 checks, must stay 117/117
+node experiments/trade-test.js          # 220 checks
+node experiments/exec-queue-test.js     # 8 checks (W8 added the three peek cases)
+node experiments/m1-smoke-test.js       # wiring smoke, must stay PASS
 python3 scripts/run.py changed
 ```
 

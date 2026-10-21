@@ -96,6 +96,38 @@ L/Shift+L. Verify resource names, population/export text, partial-unload remaind
 and refusal at a colony-free dock. Check panel overflow at 1280×800 and a generated
 galaxy reset's deterministic re-seeding. Record browser/GPU and preset as below.
 
+### Trade panel, rows and overlay (trade-2 series, V13b)
+
+Unseen in a browser: the whole trade-2 panel rework and its two overlay passes.
+With a seeded Milky Way network, at 1280×800:
+
+- **Rows.** `#trade-list` is six colony buttons plus the youngest. Click one:
+  the camera centres on that colony (observer mode) or it becomes the Flight
+  destination (game mode) and the ship does not move. The text must not jitter
+  between refreshes; an outpost row must read its readiness word, not a growth
+  arrow.
+- **Frontier rows.** Each ready pair has its own **Send**; pressing it while
+  resting must rush (the row's clock restarts at 900 years) and the message line
+  must say what was launched. When expansion is stood down every Send is
+  disabled.
+- **Events and Forward.** The log shows eight lines and ticks new ones in; the
+  calendar's four rows count down and change kind as events fire. Check they do
+  not scroll the panel at 1280×800 (the panel has `max-height` and its own
+  scroll).
+- **Routes.** Commission a pair: a row appears with `next +N y`, a dim teal edge
+  appears behind the hull chords, and a hull loading at the origin takes that
+  destination when it wants the good. Cancel: the edge goes, the row goes, and a
+  hull already at sea keeps flying. Commissioning must not add anything to the
+  queue (watch the overlay's `queue N`).
+- **Site factors.** Open a colony with V or click it: the readout's `system`
+  line must print the same counts the system panel shows (rocky / giants /
+  belts / terrans / HZ), and a belt world must read a higher ore bar than a
+  rock world of the same star.
+- **Outposts and alarms.** Let a colony starve (a fresh network with expansion
+  off and a slow clock is the easy path) until it becomes an outpost: a hollow
+  grey ring must remain where the live ring was, and a starving live colony must
+  wear the dashed amber ring at `r + 4 px`.
+
 ## Result template and escalation
 
 Record: task ID; date; browser/version; OS/GPU; file/localhost/preview context;

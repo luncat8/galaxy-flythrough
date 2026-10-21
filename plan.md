@@ -1527,15 +1527,19 @@ Shipped, in `archive/`:
 - [`trade-2-plan.md`](trade-2-plan.md) — the next trade series on that spec:
   outposts, narrated events, player founding, site composition, scarcity tags,
   expansion authority, clickable rows, the forward calendar, overlay marks and
-  standing routes as player intent. Credits (F4) and capital-in-the-settle (F6)
-  stay deferred.
+  standing routes as player intent. **Status:** W1–W8, W10 and W9's drawing are
+  shipped (`trade.9`–`trade.17`); the browser pass over the panel, the marks and
+  the calendar is the open item (`deferred-browser-visual-plan.md`). Credits (F4)
+  and capital-in-the-settle (F6) stay deferred.
 - [`trade-3-plan.md`](trade-3-plan.md) — two-tier trade after trade-2: 3 goods
   inside a star (resource / product / passenger) as closed-form rates taxed by
   the 0.5.4 delta-v graph, 7 goods between stars, many worlds under one
   inter-star port. Intra is a statistic that develops the system (cheap wells
   feed, deep ones do not). A real inter-planet fleet with its own clock and
   queue, capital, and auto-fill of extra worlds are deferred; the 13-row site
-  map and the closed-form settle are refused replacements.
+  map and the closed-form settle are refused replacements. **Status:** T1
+  shipped (`trade.19`) — bulk stays in-system, the seven specialist families
+  ship; T2 is next.
 
 - [`evolution-plan.md`](evolution-plan.md) — the 0.6 series, galaxy evolution over time:
   the type table describes present-day galaxies, so `modelAtAge` gains an **epoch tier**

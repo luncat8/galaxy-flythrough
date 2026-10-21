@@ -2305,3 +2305,60 @@ the speed is quoted in and whether the common mode cancels. A test that only
 checks `years = ly / speed` on a frozen sky cannot see this at all; the check
 that finds it is the *self-consistency* one — re-evaluate the law at the
 booked arrival and assert the numbers still agree.
+
+## 2026-10-21 — Narration belongs at settle boundaries, not in the settle
+
+The trade log was added because the panel could say what the network *is* and
+never what had happened. The tempting shape — have `settleColony` report every
+change it notices — breaks the closed form in two ways: the settle is called on
+inspection as well as on events, so it has no single "when"; and a jump to year
+10 000 must produce the same history as ten thousand single-year steps, which a
+per-call observer cannot.
+
+What worked: the *event* that changes a colony's life (a founding, a milestone
+rung crossed, entering or leaving the starvation band, a demotion) writes one
+number-only entry into a fixed ring, from the code that already owned that
+decision. The strings live in the panel, at 4 Hz. A jump and a stepped run then
+differ only in `log.time`, which is the truth.
+
+Skill: ask "is this an event or an observation?" A settle can be called by any
+inspector at any time; narration must hang off the transition, and the
+transition must already exist as a decision the simulation makes.
+
+## 2026-10-21 — A route is intent, never an event source
+
+An earlier branch scheduled a departure event per commission, with a 64-slot
+ledger, and it drifted out of sync with the hulls it was supposed to describe.
+The rule that replaced it: a route is **data a load decision reads**. Nothing is
+queued for it, no hull is tied to it, and cancelling one only flags the slot —
+hulls already at sea keep their voyage. The queue stays one event per hull plus
+the one global tick, so there is exactly one scheduler to reason about.
+
+The preference is a *preference*: the routed destination wins only if it wants
+the good and the hull can meet it, otherwise the global scoring runs unchanged.
+A route that idles a hull is worse than no route.
+
+Skill: before adding a second producer of events, ask whether the consumer can
+just read the intent at decision time. A list read by one decision point is
+cheaper and cannot desynchronise; a scheduled event is a promise about the
+future that a moving world keeps breaking.
+
+## 2026-10-21 — A system-level factor belongs on the site record, filled at discovery
+
+`supplyFactor` (W4) multiplies every yield by what a system's composition says —
+rocky worlds, giants, belts, terrans, habitable-zone worlds. The tempting place
+to compute it is inside `fillColony`, which already walks the site. That would
+mean the settle path walking a generated system, and the settle must never do
+more than the site record says: it is the one function guaranteed to stay
+closed-form and cheap.
+
+The working shape: `systemComposition` runs once per system at discovery (one
+pass over ≤ 14 planets), the five counts are copied onto the site, `copySite`
+carries them to candidates and colonies, and the factor is a pure function of
+those five ints and the resource id. A candidate therefore keeps the composition
+of the system it was drawn from, and no settle ever touches a system record.
+
+Skill: when a factor describes the *container* but is consumed per *item*,
+compute it at the boundary and copy the summary. The test that catches a
+regression is the cheap one: fill the same site twice, and compare the yields
+to a hand-computed product.

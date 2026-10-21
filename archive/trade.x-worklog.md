@@ -619,3 +619,286 @@ on whether the page should default the star clock to a slower rung while the
 trade network is live — at the current default the network's geography is
 stretched 4× inside a minute, which is honest but reads as a network winding
 down.
+
+## trade.9 — 2026-10-20 — Outposts: a failed colony stops, is marked, is never recolonised
+
+A colony that fell below `OUTPOST_POP_M` used to vanish from the lists and stay
+in the port array as a tombstone with no name — the network's history had a hole
+exactly where its failure should be. W1 gives the failure a state.
+
+`economy.demoteColony` freezes the record (`outpost`, `outpostY`, growth 0,
+starving 0) and keeps its population where it is; `trade.settlePort` calls it
+once, pushes one `LOG_OUTPOST` line and never settles the port again, so the
+demotion is a single event rather than a per-tick observation. `portReadiness`
+reports `outpost`, `livePortCount` counts only live ports, `net.outposts` is the
+tombstone count, and the overlay draws a hollow grey ring from the frozen
+population under the live rings (`TRADE_OUTPOST`). The panel line says `N ports ·
+M outposts` and the log says `<name> is an outpost — growth stopped`.
+
+Validated: `trade-test` §18 (outpost detection, one log entry per demotion, the
+port stays resident and is never settled back to life, `livePortCount`, the
+refusals that follow: no expedition, no player load). `m1-smoke` and
+`export-parity` green.
+
+## trade.10 — 2026-10-20 — The network narrates itself
+
+The Trade panel could say what the network *is* (ports, ships, units) and never
+what had *happened*. W2 adds a fixed 64-entry ring in `trade.js` — numbers only
+(`time, kind, a, b, c`), written by the same code that changes the state, so no
+second observer can disagree with the simulation — and a `<pre id="trade-log">`
+that renders the last eight lines at the panel's 4 Hz.
+
+Kinds: founded (with the source port, when there was one), milestone (level and
+the rungs crossed in one settle), famine / famine-end (the coverage the line is
+about), outpost, expedition (out, and founders returned). A jump and a stepped
+run differ in `log.time` by construction, which is correct: the event happened
+when it happened.
+
+The ring wraps in place and is never reallocated; `logAt(net, i)` is
+age-from-oldest, `null` past the end. The strings live in `main.js`
+(`tradeLogEntryText`) because the module stays allocation-free and the panel is
+the only reader.
+
+Validated: `trade-test` §19 (milestone scanned by kind and port rather than by
+position, exactly one outpost entry per demotion, jump-vs-stepped narration
+equality with the log's times nulled). Two fixture mistakes were the test's, not
+the code's: the milestone is not the oldest entry, and `logAt` counts from the
+oldest, not the newest.
+
+## trade.11 — 2026-10-20 — Scarcity tags in the readout
+
+W5, readout only — no prices, no credits (F4 stays deferred). Each resource in
+the yields block now carries one mark: `!` scarce (`demandOf > 0`), `+` surplus
+(`exportableOf > 0` and no demand), `' '` fair, with a `+ surplus · ! scarce`
+legend on the row. The port line gained `best export <r> · worst import <r>`,
+both weighted by `RESOURCES[r].worth`, so the one-glance market and the routing
+score agree about what matters.
+
+Validated: `trade-test` §22 — a stocked port is never scarce, a surplus only
+appears with actual spare stock, an empty port is scarce on food and volatiles,
+a resource with no draw is fair, and scarcity is monotone in stock and clamped to
+[0, 1].
+
+## trade.12 — 2026-10-20 — Expansion can be stood down
+
+The network had one pace and no switch. W6 adds `expansionOn` to the trade
+module: `setExpansion`, `expansionArmed`, and `portReadiness(net, index, time)`
+returning `small` / `starving` / `resting` (with `nextIn`) / `live` / `outpost`
+plus a `why` word. The tick's `room` is 0 while disarmed — freight still flies,
+deliveries still arrive, ports still grow — so standing down colonisation no
+longer means stopping the economy. `launchBest` refuses with `expansion is off`,
+and the panel's Send button disables.
+
+The panel gains `Expansion armed` (`trade-expand`, default on, preset field
+`tradeexpand`), and the colonisation state string's nested ternaries became
+`colonisationWave(full, readyNow, status)` — one named function instead of an
+expression that had already been mis-parenthesised once.
+
+Validated: `trade-test` §23 (disarmed: no founding, deliveries still rise; the
+reason string; re-arming founds on the next tick; the five readiness states) and
+`preset-test` 30/30. Adding a preset field means editing the SETTINGS fixture and
+the defaults fixture in `preset-test` or four checks fail — that is the tax.
+
+## trade.13 — 2026-10-20 — The player can found a colony
+
+W3. `playerFound(net, ref, starName, system, now, out)` puts a colony on the best
+world of the star the ship is docked at, through the same `pickBestSite` /
+`fillPickedSite` / `addPort` path the network uses. It is free: the player is the
+catalyst, not an owner. Its five refusals are the panel's vocabulary — already a
+colony, an outpost (which is never revived), an expedition already bound for it,
+network full, no world worth settling.
+
+`addPort` now takes a mode (`ROLLED_FOUND` / `FRESH_FOUND`): a galaxy-rolled world
+invents an age and a population, a founded one starts at its grant. The
+expedition's founding lost its own stock loop and pop assignment to
+`economy.foundColony`, so both paths share one record shape and one grant; the
+settle then carries the new world forward without a discontinuity.
+
+Flight panel: `Found colony`, enabled only while docked on a star with no live
+colony. The founding lands a typed `colony` asset in the asset history, exactly
+as docking lands a `dock-port`.
+
+Validated: `trade-test` §20 — a real founding (45 % stock, `popLevel 0`, founded
+= last = now), the log line, every refusal on its own fixture, and a
+field-by-field comparison of the player's colony and an expedition's (identical
+keys and identical stock fractions; the first version compared `stock/cap` with
+one cap for both sites and failed, which is the test's bug, not the law's).
+
+## trade.14 — 2026-10-20 — The colonial panel is a list you can click
+
+W7. `#trade-list` and `#colonisation-list` became `div.trade-rows` of real
+buttons. A colony row selects its star through the same `handleStarPick` +
+`orbitPrimary` / `setFlightDestinationFromPrimary` path H uses — the ship never
+moves — and carries `data-port` (the index), not a reference. The row set is
+rebuilt only when its identity changes (`count:portKey…`), the text refreshes at
+the panel's 4 Hz, and non-live rows show the W6 readiness word where the growth
+mark would be. The sailing hulls are one footnote under the rows, not a pseudo
+colony.
+
+The frontier rows carry an explicit Send (`launchChosen(net, port, candidate,
+time, rush)`), the per-port version of the single button: it re-checks every
+index a stale row could hold — gone port, gone world, settled world, reserved
+world, outpost, readiness, the two caps, the disarmed authority — and then runs
+`launchExpedition` with the same cost and cooldown.
+
+One plan correction: the asset history is two slots, so a simulated founding
+does **not** land a `colony` asset. At the top of the clock the network founds
+every few hundred milliseconds and would overwrite whatever the player was
+looking at; at ordinary rates the entry would be stale before it could be read.
+Simulated foundings are the log's and the row set's job. `trade-2-plan.md` §8 now
+says so.
+
+Validated: `trade-test` §24 — unique port keys, a resting port refused without a
+rush and launched with one, stale port/candidate indices refused instead of
+throwing, a reserved world and a settled world refused, an outpost refused, and
+the disarmed authority refusing the row.
+
+## trade.15 — 2026-10-20 — The queue's next events are on the panel
+
+W8. `exec-queue.peekNext(queue, outTime, outKind, outRef, outRevision, count)`
+answers "what fires next" without popping: the k smallest entries of a heap
+cannot sit deeper than level k − 1, so copying the first `2^k − 1` quadruples
+(255 at the cap of 8) and partial-selecting them is exact. The heap is untouched,
+nothing allocates after the first call, and the revision column travels with the
+row — `trade.nextEvents` drops a booking whose ship has been re-timed since, so a
+turned-around voyage cannot appear twice.
+
+`#trade-calendar` shows four rows (`+12 y arrive Vega · clipper · ore`,
+`+40 y load Fomalhaut · clipper`, `+25 y tick colonisation check`), built at
+4 Hz. Two test bugs worth remembering: the `drainUntil` fixture takes the queue
+object, not the network, and `nextEvents` reuses one row scratch — a test must
+snapshot what a call said before calling again.
+
+Validated: `exec-queue-test` 8/8 (three new checks: order equals a drain's order
+on 300 entries, 10 000 peeks leave the root and the arrays untouched, the count
+is clamped and an empty queue returns nothing); `trade-test` §25.
+
+## trade.16 — 2026-10-21 — Belts are the easiest mine, giants the worst
+
+W4, the item that touches every number downstream of the yield table.
+
+`economy.systemComposition(system, out)` counts the system in one pass — rocky
+(rock or super, not ice), giants (the generator's own `giantCount`), belts,
+terrans, habitable-zone worlds — and `fillPlanetSite` / `fillBeltSite` write the
+five counts onto the site. `copySite` carries them, so a candidate and a colony
+keep the composition of the system they were drawn from, and the cost is paid at
+discovery and inspection (one short pass over ≤ 14 planets), never in a settle.
+
+`supplyFactor(r, site)` turns the counts into four family multipliers (mined,
+gathered, grown, made) over the unchanged star situation, capped per count so a
+system with twelve rocky worlds is not twelve times one with a single world. The
+table edits are the plan's: belts 1.60 ore / 1.10 rare / 0.80 robots / 0.10
+compute, heavy planets 0.10–0.15 robots. Rock columns and habitat values are
+untouched — a belt must win on merit.
+
+The readout gained one line: `system 4 rocky · 2 giants · 1 belt · 1 terran ·
+2 HZ`, so the player can see why a world makes what it makes.
+
+Re-measured (the fixture of §16, 60 s of frames at 100 y/s, the page's 300k
+field): 8 / 11 / 16 / 27 / 32 / 44 / 50 / 56 / 63 / 64 ports at 5…50 s — the
+same curve as before within a port, so the acceptance windows hold unchanged.
+Median coverage 0.49 (was 0.47), minimum 0.31, zero outposts, population 0.1 →
+11.2 B, 4.2–5.3 M units hauled by 90 s across seeds 42 / 7 / 1234 / 4242 (the
+four now agree at every sample: the start map and the field are fixed by the
+model seed and the frontier takes the nearest systems rather than a random
+draw). Generation mode 22 / 33 / 41 / 53 / 61 / 64. `trade-plan.md` §2, §2.1 and
+§8 updated with the measured tables.
+
+Validated: `trade-test` §21 — composition matches a hand count of the generated
+system, the site and its copy carry it, a terran system moves the grown family
+only, six rocky worlds out-mine one and sixty do not beat six, giants favour the
+gathered family, a belt beats the best planet column by ≤ 1.5×, a rock world
+out-makes a giant on robots while the giant out-makes it on volatiles and
+chemicals, every resource still has a productive world type, and every yield over
+a 400-system sweep stays inside [0, 2.5].
+
+History note (2026-10-21): this commit carries the *content* of trade.9–trade.15
+as well. The sandbox's Git state was reset between turns, so those commits and
+their messages are not in this branch's log; the working tree was intact, so the
+code and the tests are the shipped ones and the entries above remain accurate
+about the work. A reader looking for `trade.9`…`trade.15` will find their diffs
+inside `trade.16`'s tree, not as separate commits.
+
+Next: W9 (the overlay's outpost pass is in; the dashed starvation alarm and the
+route layer are not) and W10 (standing routes, the last trade-2 item, which
+touches the load decision). Then the trade-3 series (T1–T5, `trade-3-plan.md`),
+which re-pins growth the way W4 did. The browser pass over the new panel rows,
+the calendar and the composition line is still open — `deferred-browser-visual-plan.md`.
+
+## trade.17 — 2026-10-21 — Commissioned routes as player intent, and W9's last pass
+
+W10 (and with it W9). The old branch's one real player lever is back, re-expressed
+so it cannot corrupt routing: **a route is data a load decision reads, never an
+event source**.
+
+`net.routes` (created with the network) holds up to `MAX_ROUTES = 32` slots of
+`{ origin, dest, active, lastDepartY, nextDepartY }`. `commissionRoute` validates
+both ends (a real port, not the same port, neither an outpost), refuses a
+duplicate in either direction, and does **not** splice: a cancelled route keeps
+its slot and its pair, so re-commissioning revives it and the panel's row identity
+never moves under a click; a different pair takes the first free slot. Cancelling
+is a flag, and a hull already at sea keeps its voyage.
+
+`pickDestination` grew one optional `preferFrom` argument (the plan's design): the
+commissioned destination is returned first *only if* it has demand for the good
+and the hull can meet it, otherwise the global scoring runs unchanged. `pickExport`
+passes `1`. `loadAtPort` calls `noteRouteDeparture`, which refreshes the row's
+`lastDepartY`/`nextDepartY` — bookkeeping, not a schedule; `routeLegYears` is the
+estimate, at the bulk hull's pace, and nothing is ever pushed to the queue for a
+route.
+
+UI: two selects and **Commission** under **Routes**, one row per active pair with
+`next +N y` and a `✕`, refusals shown as the row list's note. The overlay draws a
+dimmer, steadier teal edge for each active pair, behind the per-hull chords, so
+the standing network and the voyages read as two layers.
+
+One plan correction: the slot law. The first implementation only searched for a
+never-used slot, so a cancelled pair could not be revived in place. The rule is
+now "same pair → its own slot; else first inactive; else grow", and
+`trade-2-plan.md` §11 says so.
+
+Validated: `trade-test` §26 (a commission changes neither the queue size nor the
+forward calendar; the log line; duplicate/either-direction, self, bad index and
+outpost refusals; the preferred destination winning and falling back; cancel and
+revive in the same slot; the estimate refreshed from either end; a port with
+nothing spare cannot be preferred into shipping). `exec-queue-test` 8/8,
+`m1-smoke`, `export-parity`, `preset` 30/30, `scripts/run.py changed` 12/12.
+
+Next: the trade-2 series is complete except the browser pass. Trade-3 (`T1`,
+`trade-3-plan.md`) is the following series, and it needs W1/W3/W4/W5 — all
+shipped. Before starting it, the panel is worth one visual pass: three new blocks
+(rows, calendar, routes) and two overlay passes have never been seen in a browser.
+
+## trade.19 — 2026-10-21 — Bulk stays home, specialists ship
+
+T1, the first item of `trade-3-plan.md`, and the cheapest one in the series: it
+changes what an inter-star hull may *load*, not what a world produces.
+
+`RESOURCES` gained the two routing maps the plan asks for — `intraFamily`
+(resource / product / passenger, the flows T4 will simulate) and `interFamily`
+(rare elements, specialist chem, antimatter, food & seed, factory cores,
+information, passengers), both `-1` for "not in this tier". Ore and volatiles are
+intra bulk and nothing else. The authored `family` column is untouched, as §0.1
+required: it is the production family, not a routing decision.
+
+The filter lives on the two loaders — `pickExport` (fleet) and `playerExport`
+(the player's hold pick) — and nowhere else. That is the whole point of the
+review correction that pre-dated this commit: `worth` still reads 0.25/0.30,
+`exportableOf` still means "spare stock", and the intra tier the same numbers
+feed is not silently zeroed. Unloading has no filter at all, so a hold loaded
+before this law (or in-system) still empties.
+
+The readout follows the law: `best export` is a shipping good, and `sells` names
+the shipping *families* with something to load (a hull chooses a good, the panel
+reads a family) while `needs` stays by resource, because an import is a specific
+good.
+
+Validated: `trade-test` §27 — bulk keeps its worth and is never a shipping
+family, all seven inter families and all three intra families have members, a
+port whose only surplus is bulk offers no star-port cargo, a hull that arrived
+with ore still unloads it, and a resource nobody draws is `fair`, not scarce.
+`m1-smoke`, `export-parity`, `scripts/run.py changed` 8/8.
+
+Next: T2 (the fold — one inter-star port whose market is the sum of its worlds),
+which is the structural item; T3 depends on it, and T4/T5 after that. The
+browser pass over the trade-2 panel is still the open non-code item.

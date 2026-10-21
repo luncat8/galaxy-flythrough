@@ -286,6 +286,26 @@ nearby sky. **Y** or **Draw trade routes**
 toggles port rings, active routes and cargo-coloured freighters. Open a system
 with **V** to discover its sites and inspect colony population, yields and needs.
 Expeditions found new colonies on the same event queue as freight arrivals.
+While docked at an unsettled star, **Found colony** puts one there by the
+player's own hand — free, refused if the star already has a colony, an outpost, an
+expedition bound for it, or if no world here is worth settling.
+
+The Trade panel lists the largest colonies, the youngest one, and every ready
+expedition as clickable rows: a colony row selects its star (the ship never
+moves), a frontier row carries its own **Send**. **Expansion armed** stands the
+colonisation authority down while the freight fleet keeps flying. Each resource
+in the selected colony's readout is tagged `+` surplus, `!` scarce or fair, and
+one line reports the system's own supply — rocky worlds, giants, belts, terrans
+and habitable-zone worlds — because that is what the world's yields are made
+from. The **Forward** block shows the queue's next events and **Events** the
+last eight things that happened, including failures: an abandoned colony becomes
+an outpost, keeps its slot, and is never resettled.
+
+Two ports can be linked with **Commission** under **Routes**: a hull loading at
+the origin takes that destination first when it wants the good, and falls back to
+the best voyage when it does not. A route is a preference, never a schedule —
+nothing is queued for it, and cancelling one leaves every hull already at sea
+alone.
 
 At a docked trade colony **L** loads a spare resource into the tonnage-limited
 hold; **Shift+L** unloads only as much as the warehouse can take. A station with
@@ -328,6 +348,9 @@ Useful parameters include:
 | `dvmap`, `dvbudget` | System render (`0` schematic, `1` delta-v classic, `2` delta-v rails) and energy budget (`0`–`1`) |
 | `ship` | `chemical`, `nuclear`, `fusion`, `stardrive`, or `generation` |
 | `trade`, `traderoutes` | Independent trade rate in years/s (`0` pauses) and route overlay (`0`/`1`) |
+| `tradesync` | `1` runs the trade clock on star time (1 trade year per 1 000 star years) |
+| `tradegen` | `1` generation-ship mode: 1 ly per 33 trade years, synced to 1 Myr/s |
+| `tradeexpand` | `0` stands the colonisation authority down; freight and deliveries continue |
 
 The Preset section in the UI serializes the complete active configuration in this same format.
 

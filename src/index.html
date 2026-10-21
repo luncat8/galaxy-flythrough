@@ -414,6 +414,7 @@
 				<button id="flight-dock" type="button" disabled title="Dock at the target station (O) when inside its shell and settled — the target-stop autopilot lands exactly there. Docking re-arms the tank, restores life support and registers the port of registry. Press again to undock.">Dock</button>
 				<button id="flight-cargo-load" type="button" disabled title="Load a colony's spare export (L), limited by actual stock and hold tonnage. Only while docked at a trade port; no credits.">Load cargo</button>
 				<button id="flight-cargo-unload" type="button" disabled title="Unload into colony storage (Shift+L). A full warehouse leaves the remainder aboard. Only while docked at a trade port.">Unload</button>
+				<button id="flight-found" type="button" disabled title="Found a colony on the best world of the docked star — free, the player is the catalyst. Works even when the network's expansion authority is stood down. Refused if the star already has a live colony or an outpost, if an expedition is bound for it, if the network is full, or if no world here is worth settling.">Found colony</button>
 			</div>
 			<div id="flight-port-state" class="flight-port-state">not docked · O docks at a settled station</div>
 
@@ -502,6 +503,10 @@
 			<input type="checkbox" id="trade-sync-time">
 			<span>Sync trade clock to star time</span>
 		</label>
+		<label class="flight-autopilot" title="Arm or stand down the colonisation authority: while off, the freight fleet keeps flying and deliveries keep arriving, but no new colony is founded — the automatic tick, the Send button and a panel row all refuse. On by default.">
+			<input type="checkbox" id="trade-expansion" checked>
+			<span>Expansion armed</span>
+		</label>
 		<label class="flight-autopilot" title="Special trade mode: generation ships at 1 light-year per 33 trade years. Sets sync time on and the star clock to 1 Myr/s, so the ship covers 30 ly per wall second — the nearest seed hop (~25 ly) is under a second, a 300 ly frontier hop about 10 seconds. The ordinary freighters would cross it in a blink.">
 			<input type="checkbox" id="trade-generation-ships">
 			<span>Generation ships &middot; 30 ly/s</span>
@@ -510,10 +515,22 @@
 			<button id="trade-launch" type="button" disabled title="Send the best available colonisation expedition now instead of waiting for the next tick. It takes volunteers from the source colony's population, exactly as the automatic launch does; the port then rests for 900 trade years.">Send expedition</button>
 			<span id="trade-state" class="flight-port-state">no network</span>
 		</div>
-		<pre id="trade-list" class="flight-forecast">No trade network yet.</pre>
+		<div id="trade-list" class="trade-rows">No trade network yet.</div>
 		<div class="flight-section-heading"><span>Colonisation</span><small>big colonies → good worlds</small></div>
 		<div id="colonisation-state" class="flight-port-state">frontier idle</div>
-		<pre id="colonisation-list" class="flight-forecast">No expeditions yet.</pre>
+		<div id="colonisation-list" class="trade-rows">No expeditions yet.</div>
+		<div class="flight-section-heading"><span>Routes</span><small>a preferred pair</small></div>
+		<div class="menu-row routes-row">
+			<select id="route-origin" title="The port a standing route ships from."></select>
+			<span class="route-arrow">→</span>
+			<select id="route-dest" title="The port a standing route ships to."></select>
+			<button id="route-commission" type="button" title="Prefer this pair: a hull loading here takes a routed destination first when that port wants the good, and falls back to the global pick when it does not. Nothing is scheduled — a route is a preference, not a contract.">Commission</button>
+		</div>
+		<div id="route-list" class="trade-rows">No routes commissioned.</div>
+		<div class="flight-section-heading"><span>Forward</span><small>what fires next</small></div>
+		<pre id="trade-calendar" class="flight-forecast">Nothing scheduled.</pre>
+		<div class="flight-section-heading"><span>Events</span><small>the network narrates</small></div>
+		<pre id="trade-log" class="flight-forecast">No events yet.</pre>
 	</div>
         <!-- Controls (ui.6): the old read-only help <pre> as a clickable panel.
              Buttons fire the same one-shot action flags the keyboard sets (the

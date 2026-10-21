@@ -103,6 +103,7 @@ function readParams(search) {
 		dvbudget: number('dvbudget', window.SystemLayer.BUDGET_DEFAULT),
 		trade: number('trade', window.TradeLib.TRADE_RATE_DEFAULT),
 		traderoutes: number('traderoutes', window.TradeLib.TRADE_ROUTES_DEFAULT),
+		tradeexpand: number('tradeexpand', 1),
 		ship: text('ship', 'chemical'),
 		// View modes (view-modes.6): the heightmap panel's render type,
 		// projection, anchor source and look knobs — defaulted by the module
@@ -180,6 +181,7 @@ async function boot() {
 		// special trade mode flies generation ships at a generation pace.
 		let tradeSyncOn = 0;
 		let tradeGenOn = 0;
+		let tradeExpansionOn = params.tradeexpand > 0 ? 1 : 0;
 		let gameMode = false;
         const AUTOPILOT_MIN_WALL_SECONDS = 4;
         let shipTimeRateCapY = Infinity;
@@ -960,6 +962,7 @@ async function boot() {
         const flightCargoLoad = document.getElementById('flight-cargo-load');
         const flightCargoUnload = document.getElementById('flight-cargo-unload');
         const flightPortState = document.getElementById('flight-port-state');
+        const flightFound = document.getElementById('flight-found');
         // The Trade rows: the network clock, the overlay toggle and the port
         // list. The counters and the list are 4 Hz text like the rest. Now
         // in its own panel (trade.2), so piloting and economy are separate.
@@ -968,10 +971,17 @@ async function boot() {
         const tradeRoutesBox = document.getElementById('trade-routes');
         const tradeSyncBox = document.getElementById('trade-sync-time');
         const tradeGenBox = document.getElementById('trade-generation-ships');
+        const tradeExpandBox = document.getElementById('trade-expansion');
         const starTimeRangeBtn = document.getElementById('star-time-range');
         const tradeState = document.getElementById('trade-state');
         const tradeList = document.getElementById('trade-list');
         const tradeLaunch = document.getElementById('trade-launch');
+        const tradeLog = document.getElementById('trade-log');
+        const tradeCalendar = document.getElementById('trade-calendar');
+        const routeOrigin = document.getElementById('route-origin');
+        const routeDest = document.getElementById('route-dest');
+        const routeCommission = document.getElementById('route-commission');
+        const routeList = document.getElementById('route-list');
         const colonisationState = document.getElementById('colonisation-state');
         const colonisationList = document.getElementById('colonisation-list');
         const shipList = document.getElementById('ship-list');
@@ -1172,6 +1182,7 @@ async function boot() {
         // flags their keys set (the ui.6 panel pattern).
         flightDock.addEventListener('click', () => { actions.dock = 1; });
         flightCargoLoad.addEventListener('click', () => { actions.cargoLoad = 1; });
+        flightFound.addEventListener('click', () => gameFoundColony());
         flightCargoUnload.addEventListener('click', () => { actions.cargoUnload = 1; });
         tradeRateSlider.addEventListener('input', () => {
                 tradeRateIndex = Math.min(tradeLib.TRADE_RATES.length - 1,
@@ -1197,6 +1208,34 @@ async function boot() {
                 tradeLaunchTicks = 8;
                 syncTradeUi();
         });
+        // W7: the rows are the panel's own selection path — a click selects the
+        // colony's star (or makes it the Flight destination) and never moves
+        // the ship; a Send carries the two indices the row was built from.
+        // W10: the pair the player commissions. Two selects and one button;
+        // the module owns the law and every refusal is shown in the row list.
+        routeCommission.addEventListener('click', () => {
+                if (!tradeNet) return;
+                const result = tradeLib.commissionRoute(tradeNet,
+                        Number(routeOrigin.value), Number(routeDest.value), tradeNet.time);
+                setRouteMsg(result.ok ? '' : result.reason);
+                syncTradeUi();
+        });
+        routeList.addEventListener('click', (event) => {
+                const button = event.target.closest('button[data-route]');
+                if (!button || !routeList.contains(button)) return;
+                if (tradeNet) tradeLib.removeRoute(tradeNet, Number(button.dataset.route));
+                syncTradeUi();
+        });
+        tradeList.addEventListener('click', (event) => {
+                const button = event.target.closest('button[data-port]');
+                if (!button || !tradeList.contains(button)) return;
+                tradeSelectPort(Number(button.dataset.port));
+        });
+        colonisationList.addEventListener('click', (event) => {
+                const button = event.target.closest('button[data-candidate]');
+                if (!button || !colonisationList.contains(button)) return;
+                tradeLaunchChosen(Number(button.dataset.port), Number(button.dataset.candidate));
+        });
         tradeSyncBox.addEventListener('change', () => {
                 tradeSyncOn = tradeSyncBox.checked ? 1 : 0;
                 // A synced clock with the sky parked is a network that never
@@ -1209,6 +1248,10 @@ async function boot() {
                         if (starTimeRate > Number(sliderStarTime.max)) starTimeRate = Number(sliderStarTime.max);
                         syncStarTime();
                 }
+                syncTradeUi();
+        });
+        tradeExpandBox.addEventListener('change', () => {
+                tradeExpansionOn = tradeLib.setExpansion(tradeExpandBox.checked ? 1 : 0);
                 syncTradeUi();
         });
         tradeGenBox.addEventListener('change', () => {
@@ -1998,6 +2041,7 @@ async function boot() {
                         traderoutes: tradeRoutesOn,
                         tradesync: tradeSyncOn,
                         tradegen: tradeGenOn,
+                        tradeexpand: tradeExpansionOn,
 			ship: systemLayer.getShipClass(),
                         stars: params.stars,
                         catalog: params.catalogStars,
@@ -2121,6 +2165,9 @@ async function boot() {
 			tradeSyncOn = s.tradesync > 0 ? 1 : 0;
 			tradeSyncBox.checked = tradeSyncOn !== 0;
 			syncTradeUi();
+		}
+		if (s.tradeexpand !== undefined) {
+			tradeExpansionOn = tradeLib.setExpansion(s.tradeexpand > 0 ? 1 : 0);
 		}
 		if (s.tradegen !== undefined) {
 			tradeGenOn = s.tradegen > 0 ? 1 : 0;
@@ -3450,6 +3497,9 @@ async function boot() {
 		flightDock.disabled = !gameMode;
 		const portIndex = gameTradePort();
 		flightCargoLoad.disabled = flightCargoUnload.disabled = !gameMode || portIndex < 0;
+		const stationRef = gameMode ? stationStarRef() : null;
+		flightFound.disabled = !gameMode || stationRef === null || !tradeNet
+			|| (stationRef.key !== undefined && tradeLib.portOfStarLive(tradeNet, stationRef.key >>> 0) >= 0);
 		const holdTag = ship.cargoResource >= 0 && ship.cargoResource < economyLib.RESOURCE_COUNT
 			? ' · ' + economyLib.RESOURCES[ship.cargoResource].name : '';
 		let portText = 'not docked · O docks at a settled station';
@@ -4177,6 +4227,56 @@ async function boot() {
 
         // The port the player's ship is docked at, or -1. The station key is
         // the star key the colony was discovered under.
+        // The docked station's star as a pick: the snapshot taken at dock time,
+        // or the selection-set member that still holds the key. A station that
+        // resolved to neither cannot be founded on (the star is not resident).
+        function stationStarRef() {
+                if (!ship.docked || !ship.station) return null;
+                const key = ship.station.key >>> 0;
+                if (stationIsDest && (stationDest.key >>> 0) === key) return stationDest;
+                const m = starSet.indexOfKey(key);
+                return m >= 0 ? memberRefFor(m) : null;
+        }
+
+        // W3: the found action. Free; refused by the network's own law, whose
+        // reason is what the HUD says. The colony lands in the typed asset
+        // history exactly like a dock-port.
+        function gameFoundColony() {
+                if (!gameMode || !ship.docked || !tradeNet) return;
+                const ref = stationStarRef();
+                if (!ref) {
+                        setAutoMsg('no star to found on \u00b7 not resident');
+                        return;
+                }
+                tradeCtx.model = model;
+                tradeCtx.field = renderer.fieldBuffers();
+                tradeCtx.member = renderer.starBlocks().member;
+                tradeCtx.name = ship.station.name;
+                window.PlanetsLib.generateSystem(ref, tradeCtx, tradeRecord);
+                const result = tradeLib.playerFound(tradeNet, ref, ship.station.name,
+                        tradeRecord, tradeNet.time);
+                if (!result.ok) {
+                        setAutoMsg(result.reason);
+                        return;
+                }
+                const port = tradeNet.ports[result.port];
+                selectionStore.selectCurrent(window.SelectionStore.GROUP_ASSET, {
+                        group: window.SelectionStore.GROUP_ASSET,
+                        type: 'colony',
+                        id: 'colony-' + port.key.toString(36),
+                        name: port.name,
+                        key: port.key,
+                        kind: port.ref.kind,
+                        index: port.ref.index,
+                        x: port.x, y: port.y, z: port.z,
+                });
+                syncSelectionPanel();
+                syncTradeUi();
+                syncFlightUi();
+                setAutoMsg('colony founded at ' + port.name + ' \u00b7 '
+                        + economyLib.formatPop(port.colony.pop));
+        }
+
         function gameTradePort() {
                 if (!tradeNet || !ship.docked || !ship.station) return -1;
                 return tradeLib.playerPort(tradeNet, ship.station.key);
@@ -4186,10 +4286,19 @@ async function boot() {
                 return economyLib.RESOURCES[r].id.slice(0, 4);
         }
 
+        // The scarcity mark rides every resource cell: '+' spare, '!' short,
+        // blank fair. A word per cell would triple the block's width; the
+        // legend on the yields block says what the marks mean.
+        function tradeTagMark(colony, r) {
+                const tag = economyLib.tradeTagOf(colony, r);
+                return tag === economyLib.TAG_SCARCE ? '!' : tag === economyLib.TAG_SURPLUS ? '+' : ' ';
+        }
+
         function tradeYieldRow(colony, from, to) {
                 let row = '';
                 for (let r = from; r < to; r++) {
-                        row += (r > from ? '  ' : '') + tradeResourceShort(r).padEnd(4) + ' ' + tradeBar(colony.yield[r]);
+                        row += (r > from ? '  ' : '') + tradeResourceShort(r).padEnd(4) + tradeTagMark(colony, r)
+                                + tradeBar(colony.yield[r]);
                 }
                 return row;
         }
@@ -4212,19 +4321,54 @@ async function boot() {
                 if (portIndex < 0) return '\ntrade     no colony here \u00b7 V discovers its sites';
                 const port = tradeNet.ports[portIndex];
                 const colony = port.colony;
-                economyLib.settleColony(colony, tradeNet.time);
+                if (!colony.outpost) economyLib.settleColony(colony, tradeNet.time);
                 const age = tradeNet.time - colony.founded;
+                if (colony.outpost) {
+                        return `\ntrade     ${port.name} \u00b7 outpost since ${Math.round(colony.outpostY).toLocaleString('en-US')} y`
+                                + ` \u00b7 no trade \u00b7 pop ${economyLib.formatPop(colony.pop)} frozen`;
+                }
+                // The one-glance market: the best thing to buy here and the
+                // worst thing to run out of, both weighted by routing worth.
+                let bestExport = -1, bestExportScore = 0, worstImport = -1, worstImportScore = 0;
+                for (let r = 0; r < economyLib.RESOURCE_COUNT; r++) {
+                        const worth = economyLib.RESOURCES[r].worth;
+                        // T1: only a shipping family can leave the star, so the
+                        // best export is a shipping good; the worst import is
+                        // whatever the colony actually draws.
+                        const spare = economyLib.RESOURCES[r].interFamily >= 0
+                                ? economyLib.exportableOf(colony, r) * worth : 0;
+                        if (spare > bestExportScore) { bestExportScore = spare; bestExport = r; }
+                        const want = economyLib.demandOf(colony, r) * worth;
+                        if (want > worstImportScore) { worstImportScore = want; worstImport = r; }
+                }
                 let text = `\ntrade     ${port.name} \u00b7 pop ${economyLib.formatPop(colony.pop)} / ${economyLib.formatPop(colony.capacity)}`
                         + ` \u00b7 coverage ${colony.coverage.toFixed(2)} \u00b7 growth ${(colony.growth * 100).toFixed(2)}%/y`
-                        + ` \u00b7 ${age < 1 ? 'founded now' : Math.round(age) + ' y old'}`;
-                text += '\nyields    ' + tradeYieldRow(colony, 0, 5);
+                        + ` \u00b7 ${age < 1 ? 'founded now' : Math.round(age) + ' y old'}`
+                        + (colony.starving ? ' \u00b7 starving' : '')
+                        + (bestExport >= 0 ? ` \u00b7 best export ${economyLib.RESOURCES[bestExport].name}` : '')
+                        + (worstImport >= 0 ? ` \u00b7 worst import ${economyLib.RESOURCES[worstImport].name}` : '');
+                // W4: the system's own supply, the layer that decides what a
+                // world can be built from. One line, counted by the generator.
+                text += `\nsystem    ${colony.sysRocky} rocky \u00b7 ${colony.sysGiants} giants`
+                        + ` \u00b7 ${colony.sysBelts} belt${colony.sysBelts === 1 ? '' : 's'}`
+                        + ` \u00b7 ${colony.sysTerran} terran \u00b7 ${colony.sysHz} HZ`;
+                text += '\nyields    ' + tradeYieldRow(colony, 0, 5) + '   + surplus \u00b7 ! scarce';
                 text += '\n          ' + tradeYieldRow(colony, 5, 10);
                 text += '\n          ' + tradeYieldRow(colony, 10, economyLib.RESOURCE_COUNT);
+                // T1: the sells line names the shipping families a hull could
+                // actually load, not every stocked resource. `needs` stays by
+                // resource — an import is a specific good, whatever family it
+                // belongs to.
                 let sells = '', needs = '';
-                for (let r = 0; r < economyLib.RESOURCE_COUNT; r++) {
-                        if (economyLib.exportableOf(colony, r) > 0 && sells.length < 24) {
-                                sells += (sells ? ', ' : '') + economyLib.RESOURCES[r].name;
+                for (let f = 0; f < economyLib.INTER_FAMILY_NAMES.length; f++) {
+                        let any = false;
+                        for (let r = 0; r < economyLib.RESOURCE_COUNT && !any; r++) {
+                                if (economyLib.RESOURCES[r].interFamily === f
+                                        && economyLib.exportableOf(colony, r) > 0) any = true;
                         }
+                        if (any) sells += (sells ? ', ' : '') + economyLib.INTER_FAMILY_NAMES[f];
+                }
+                for (let r = 0; r < economyLib.RESOURCE_COUNT; r++) {
                         if (economyLib.demandOf(colony, r) > 0 && needs.length < 24) {
                                 needs += (needs ? ', ' : '') + economyLib.RESOURCES[r].name;
                         }
@@ -4253,6 +4397,256 @@ async function boot() {
         }
         let tradeLaunchMsg = '', tradeLaunchTicks = 0;
 
+        // The network's log, from indices to text — the one place the narration
+        // is allowed to make strings (4 Hz, never the frame loop).
+        function tradeLogEntryText(e) {
+                const ports = tradeNet.ports;
+                const name = i => i >= 0 && i < tradeNet.portCount ? ports[i].name.slice(0, 15) : '?';
+                if (e.kind === tradeLib.LOG_FOUND) {
+                        return `founded    ${name(e.a)}` + (e.b >= 0 ? ` from ${name(e.b)}` : '');
+                }
+                if (e.kind === tradeLib.LOG_MILESTONE) {
+                        const rung = economyLib.POP_MILESTONES[e.b - 1];
+                        const rungs = e.b - e.c;
+                        return `${name(e.a)} reached ${economyLib.formatPop(rung)}`
+                                + (rungs > 1 ? ` \u00b7 ${rungs} rungs` : '');
+                }
+                if (e.kind === tradeLib.LOG_FAMINE) {
+                        return `${name(e.a)} is starving \u2014 coverage ${(e.b / 100).toFixed(2)}`;
+                }
+                if (e.kind === tradeLib.LOG_FAMINE_END) {
+                        return `${name(e.a)} recovered \u2014 coverage ${(e.b / 100).toFixed(2)}`;
+                }
+                if (e.kind === tradeLib.LOG_OUTPOST) {
+                        return `${name(e.a)} is an outpost \u2014 growth stopped`;
+                }
+                if (e.kind === tradeLib.LOG_ROUTE) {
+                        return (e.c ? 'route set  ' : 'route cut  ') + name(e.a) + ' \u2192 ' + name(e.b);
+                }
+                if (e.kind === tradeLib.LOG_EXPEDITION) {
+                        if (e.b < 0) return `founders returned to ${name(e.a)}`;
+                        const site = tradeNet.candidates[e.b].site;
+                        return `founders left ${name(e.a)} \u2192 ${site.name.slice(0, 14)}`;
+                }
+                return '';
+        }
+
+        function tradeLogText(maxLines) {
+                if (!tradeNet) return 'No events yet.';
+                const n = tradeLib.logLength(tradeNet);
+                if (n === 0) return 'Quiet \u2014 no events yet.';
+                const first = n > maxLines ? n - maxLines : 0;
+                let text = '';
+                for (let i = first; i < n; i++) {
+                        const e = tradeLib.logAt(tradeNet, i);
+                        const line = tradeLogEntryText(e);
+                        if (!line) continue;
+                        text += ('+' + Math.round(e.time).toLocaleString('en-US')).padStart(9)
+                                + ' y  ' + line + '\n';
+                }
+                return text || 'Quiet \u2014 no events yet.';
+        }
+
+        // The forward calendar (W8): the queue's next few events, resolved.
+        // Rows are reusable records; the text is built here at 4 Hz, never in
+        // the queue or the frame loop.
+        const tradeCalendarRows = [];
+        for (let i = 0; i < 8; i++) tradeCalendarRows.push({ time: 0, kind: -1, port: -1, ship: -1 });
+
+        function tradeEventText(e) {
+                if (e.kind === tradeLib.EV_TICK) return 'tick    colonisation check';
+                const ship = tradeNet.ships[e.ship];
+                if (!ship) return '';
+                const hull = tradeLib.HULLS[ship.hull].name.slice(0, 8);
+                if (e.kind === tradeLib.EV_FOUND) {
+                        const site = ship.candidate >= 0 ? tradeNet.candidates[ship.candidate].site.name : '?';
+                        return 'found   ' + site.slice(0, 15) + ' \u00b7 ' + hull;
+                }
+                if (e.kind === tradeLib.EV_ARRIVE) {
+                        const name = e.port >= 0 ? tradeNet.ports[e.port].name : '?';
+                        const cargo = ship.cargo >= 0 && ship.cargo < economyLib.RESOURCE_COUNT
+                                ? economyLib.RESOURCES[ship.cargo].name : 'empty';
+                        return 'arrive  ' + name.slice(0, 15) + ' \u00b7 ' + hull + ' \u00b7 ' + cargo;
+                }
+                const name = e.port >= 0 ? tradeNet.ports[e.port].name : '?';
+                return (e.kind === tradeLib.EV_WAIT ? 'wait    ' : 'load    ')
+                        + name.slice(0, 15) + ' \u00b7 ' + hull;
+        }
+
+        function tradeCalendarText(maxLines) {
+                if (!tradeNet) return 'Nothing scheduled.';
+                const n = tradeLib.nextEvents(tradeNet, tradeNet.time, tradeCalendarRows, maxLines);
+                let text = '';
+                for (let i = 0; i < n; i++) {
+                        const e = tradeCalendarRows[i];
+                        const line = tradeEventText(e);
+                        if (!line) continue;
+                        const when = Math.max(0, Math.round(e.time - tradeNet.time));
+                        text += ('+' + when.toLocaleString('en-US')).padStart(9) + ' y  ' + line + '\n';
+                }
+                return text || 'Nothing scheduled.';
+        }
+
+        // --- The routes block (W10) ------------------------------------------
+        // The selects are rewritten only when the port set changes; the row
+        // list carries the commissions and their next estimated departure.
+        let routeOptionSig = '';
+        let routeMsg = '';
+        let routeListSig = '';
+        const routeRows = [];
+        function setRouteMsg(text) { routeMsg = text || ''; }
+
+        function tradeSyncRouteSelects() {
+                const count = tradeNet ? tradeNet.portCount : 0;
+                let sig = String(count);
+                for (let i = 0; i < count; i++) sig += ':' + (tradeNet.ports[i].key >>> 0).toString(36);
+                if (sig === routeOptionSig) return;
+                routeOptionSig = sig;
+                const keepOrigin = routeOrigin.value;
+                const keepDest = routeDest.value;
+                routeOrigin.replaceChildren();
+                routeDest.replaceChildren();
+                for (let i = 0; i < count; i++) {
+                        const port = tradeNet.ports[i];
+                        const option = document.createElement('option');
+                        option.value = String(i);
+                        option.textContent = port.name.slice(0, 14);
+                        if (port.colony.outpost) option.disabled = true;
+                        routeOrigin.appendChild(option);
+                        routeDest.appendChild(option.cloneNode(true));
+                }
+                if (keepOrigin !== '' && Number(keepOrigin) < count) routeOrigin.value = keepOrigin;
+                if (keepDest !== '' && Number(keepDest) < count) routeDest.value = keepDest;
+                routeCommission.disabled = count < 2;
+        }
+
+        function tradeSyncRoutes() {
+                tradeSyncRouteSelects();
+                let sig = (routeMsg ? 'm' + routeMsg + '|' : '|') + (tradeNet ? String(tradeNet.routes.count) : '0');
+                for (let i = 0; i < (tradeNet ? tradeNet.routes.count : 0); i++) {
+                        const r = tradeNet.routes.list[i];
+                        sig += ':' + i + (r.active ? 'a' : 'c') + r.origin + '-' + r.dest;
+                }
+                if (sig !== routeListSig) {
+                        routeListSig = sig;
+                        routeRows.length = 0;
+                        const fragment = document.createDocumentFragment();
+                        if (routeMsg) {
+                                const note = document.createElement('div');
+                                note.className = 'trade-note';
+                                note.textContent = routeMsg;
+                                fragment.appendChild(note);
+                        }
+                        for (let i = 0; i < (tradeNet ? tradeNet.routes.count : 0); i++) {
+                                const route = tradeNet.routes.list[i];
+                                if (!route.active) continue;
+                                const row = document.createElement('div');
+                                row.className = 'trade-row send';
+                                const label = document.createElement('span');
+                                label.textContent = `${tradeNet.ports[route.origin].name.slice(0, 10)} \u2192 `
+                                        + tradeNet.ports[route.dest].name.slice(0, 10);
+                                const cancel = document.createElement('button');
+                                cancel.type = 'button';
+                                cancel.className = 'send-mark';
+                                cancel.dataset.route = String(i);
+                                cancel.textContent = '\u2715';
+                                cancel.title = 'Cancel this route. Hulls already at sea keep their voyage.';
+                                row.appendChild(label);
+                                row.appendChild(cancel);
+                                fragment.appendChild(row);
+                                routeRows.push({ el: row, route });
+                        }
+                        if (routeRows.length === 0) {
+                                const note = document.createElement('div');
+                                note.className = 'trade-note';
+                                note.textContent = 'No routes commissioned.';
+                                fragment.appendChild(note);
+                        }
+                        routeList.replaceChildren(fragment);
+                }
+                // The next-departure estimate moves with the clock and the sky,
+                // so it is refreshed on every pass, not only when the set does.
+                for (const row of routeRows) {
+                        const eta = row.route.nextDepartY - tradeNet.time;
+                        const suffix = eta > 0 ? `  next +${Math.round(eta).toLocaleString('en-US')} y`
+                                : '  next due';
+                        row.el.firstChild.textContent = `${tradeNet.ports[row.route.origin].name.slice(0, 10)} \u2192 `
+                                + tradeNet.ports[row.route.dest].name.slice(0, 10) + suffix;
+                }
+        }
+
+        function colonisationWave(full, readyNow, status) {
+                if (full) return 'network full';
+                if (!tradeLib.expansionArmed()) return 'expansion off';
+                if (readyNow) return 'launch window open';
+                if (status.big === 0) return 'waiting for the first big colony';
+                if (status.resting > 0) return `next in ${Math.round(status.nextIn)} y`;
+                return 'frontier empty';
+        }
+
+        // --- The port list as rows (W7) ------------------------------------
+        // The six largest colonies (plus the youngest) are buttons, rebuilt
+        // only when the row set changes; the text is refreshed at the panel's
+        // 4 Hz. A row carries an index, never a reference: the click re-reads
+        // the port and the trade layer re-checks every index, so a stale row
+        // launches nothing instead of throwing.
+        const tradeRows = new Int32Array(7);
+        const tradeRowButtons = [];
+        let tradeRowSig = '';
+        // The sailing hulls are not places: they are one footnote under the
+        // rows, rebuilt only when the text changes.
+        const tradeNoteEl = document.createElement('div');
+        tradeNoteEl.className = 'trade-note';
+        tradeNoteEl.hidden = true;
+        let tradeNoteSig = '';
+
+        function tradeRowText(index, youngest) {
+                const port = tradeNet.ports[index];
+                const colony = port.colony;
+                const ready = tradeLib.portReadiness(tradeNet, index, tradeNet.time);
+                let text = port.name.slice(0, 15).padEnd(15)
+                        + colonyBar(colony.pop, colony.capacity).padEnd(4)
+                        + economyLib.formatPop(colony.pop).padStart(8) + '  ';
+                if (ready.state === 'live') {
+                        text += growthMark(colony.growth) + (colony.growth * 100).toFixed(1) + '%/y';
+                } else {
+                        text += ready.why;
+                }
+                if (index === homeColonyPort()) text += '  capital';
+                if (index === youngest) {
+                        const age = Math.max(0, tradeNet.time - colony.founded);
+                        text += '  \u00b7 ' + Math.round(age).toLocaleString('en-US') + ' y old';
+                }
+                return text;
+        }
+
+        function tradeSyncPortRows(count, youngest) {
+                let sig = String(count);
+                for (let k = 0; k < count; k++) sig += ':' + (tradeNet.ports[tradeRows[k]].key >>> 0).toString(36);
+                if (sig !== tradeRowSig) {
+                        tradeRowSig = sig;
+                        tradeRowButtons.length = 0;
+                        const fragment = document.createDocumentFragment();
+                        for (let k = 0; k < count; k++) {
+                                const button = document.createElement('button');
+                                button.type = 'button';
+                                button.className = 'trade-row';
+                                button.title = 'Select this colony\u2019s star. In game mode it becomes '
+                                        + 'the Flight destination; the ship does not move.';
+                                fragment.appendChild(button);
+                                tradeRowButtons.push(button);
+                        }
+                        fragment.appendChild(tradeNoteEl);
+                        tradeList.replaceChildren(fragment);
+                }
+                for (let k = 0; k < count; k++) {
+                        const index = tradeRows[k];
+                        const button = tradeRowButtons[k];
+                        button.dataset.port = String(index);
+                        button.textContent = tradeRowText(index, youngest);
+                }
+        }
+
         function syncTradeUi() {
                 tradeRateSlider.value = String(tradeRateIndex);
                 const synced = tradeSyncOn !== 0 && !gameMode;
@@ -4269,16 +4663,30 @@ async function boot() {
                 tradeRoutesBox.checked = tradeRoutesOn !== 0;
                 tradeSyncBox.checked = tradeSyncOn !== 0;
                 tradeGenBox.checked = tradeGenOn !== 0;
+                tradeExpandBox.checked = tradeLib.expansionArmed() !== 0;
                 if (!tradeNet) {
                         tradeState.textContent = 'no network';
-                        tradeList.textContent = 'No trade network yet.';
+                        tradeRowSig = '';
+                        tradeRowButtons.length = 0;
+                        tradeNoteSig = '';
+                        tradeNoteEl.textContent = '';
+                        tradeNoteEl.hidden = true;
+                        tradeList.replaceChildren(document.createTextNode('No trade network yet.'), tradeNoteEl);
                         if (colonisationState) colonisationState.textContent = 'no network';
+                        colonisationSig = '';
+                        colonisationRows.length = 0;
                         if (colonisationList) colonisationList.textContent = 'No expeditions yet.';
                         if (tradeLaunch) tradeLaunch.disabled = true;
+                        if (tradeLog) tradeLog.textContent = 'No events yet.';
+                        if (tradeCalendar) tradeCalendar.textContent = 'Nothing scheduled.';
+                        routeOptionSig = '';
+                        routeListSig = '';
+                        routeRows.length = 0;
+                        routeCommission.disabled = true;
+                        if (routeList) routeList.textContent = 'No routes commissioned.';
                         return;
                 }
                 tradeLib.settleAllPorts(tradeNet, tradeNet.time);
-                const capital = homeColonyPort();
                 // The live geometry (trade-plan §9): with the sky moving, every
                 // distance in the network is a drawn one, and a route the shear has
                 // torn past its cap is turned around rather than chased. Both facts
@@ -4289,7 +4697,8 @@ async function boot() {
                         ? ' \u00b7 live routes' + (geom.blind > 0 ? ` (${geom.blind} blind)` : '')
                                 + (tradeNet.diverted > 0 ? ` \u00b7 ${tradeNet.diverted} turned back` : '')
                         : '';
-                tradeState.textContent = `${tradeNet.portCount} ports \u00b7 ${tradeNet.shipCount} ships`
+                const outpostNote = tradeNet.outposts > 0 ? ` \u00b7 ${tradeNet.outposts} outposts` : '';
+                tradeState.textContent = `${tradeLib.livePortCount(tradeNet)} ports${outpostNote} \u00b7 ${tradeNet.shipCount} ships`
                         + ` \u00b7 ${tradeNet.founded} founded \u00b7 ${Math.round(tradeNet.delivered).toLocaleString()} units hauled`
                         + ` \u00b7 ${Math.round(tradeNet.time).toLocaleString()} y`
                         + tradeSyncNote()
@@ -4302,7 +4711,7 @@ async function boot() {
                 let youngest = -1;
                 for (let i = 0; i < tradeNet.portCount; i++) {
                         const colony = tradeNet.ports[i].colony;
-                        if (colony.abandoned) continue;
+                        if (colony.outpost) continue;
                         if (youngest < 0 || colony.founded > tradeNet.ports[youngest].colony.founded) youngest = i;
                         if (n < tradeTop.length) {
                                 tradeTop[n++] = i;
@@ -4326,35 +4735,37 @@ async function boot() {
                         }
                         tradeTop[b + 1] = held;
                 }
-                let lines = '';
-                for (let k = 0; k < n; k++) {
-                        const port = tradeNet.ports[tradeTop[k]];
-                        const colony = port.colony;
-                        lines += port.name.slice(0, 15).padEnd(15)
-                                + colonyBar(colony.pop, colony.capacity).padEnd(4)
-                                + economyLib.formatPop(colony.pop).padStart(8)
-                                + '  ' + growthMark(colony.growth) + (colony.growth * 100).toFixed(1) + '%/y'
-                                + (tradeTop[k] === capital ? '  capital' : '') + '\n';
-                }
-                if (youngest >= 0) {
-                        const colony = tradeNet.ports[youngest].colony;
-                        const age = Math.max(0, tradeNet.time - colony.founded);
-                        lines += 'newest'.padEnd(8) + tradeNet.ports[youngest].name.slice(0, 13).padEnd(13)
-                                + economyLib.formatPop(colony.pop).padStart(8)
-                                + '  ' + Math.round(age).toLocaleString('en-US') + ' y old\n';
+                let rowTotal = 0;
+                for (let k = 0; k < n; k++) tradeRows[rowTotal++] = tradeTop[k];
+                // The youngest colony is the one growth line the six largest
+                // can never show: a new world starts small and would need
+                // centuries to reach the list.
+                let youngestListed = false;
+                for (let k = 0; k < rowTotal; k++) if (tradeRows[k] === youngest) youngestListed = true;
+                if (youngest >= 0 && !youngestListed) tradeRows[rowTotal++] = youngest;
+                if (rowTotal > 0) tradeSyncPortRows(rowTotal, youngest);
+                else {
+                        tradeRowSig = '';
+                        tradeRowButtons.length = 0;
+                        tradeList.replaceChildren(document.createTextNode('No colonies yet.'), tradeNoteEl);
                 }
                 let inFlight = 0;
+                let notes = '';
                 for (let i = 0; i < tradeNet.shipCount && inFlight < 3; i++) {
                         const s = tradeNet.ships[i];
                         if (s.state !== tradeLib.SHIP_SAILING || s.to < 0 || s.from < 0) continue;
                         const cargo = s.cargo >= 0 && s.cargo < economyLib.RESOURCE_COUNT
                                 ? economyLib.RESOURCES[s.cargo].name : 'empty';
-                        lines += tradeLib.HULLS[s.hull].name.slice(0, 15).padEnd(15)
+                        notes += tradeLib.HULLS[s.hull].name.slice(0, 15).padEnd(15)
                                 + tradeNet.ports[s.from].name.slice(0, 9) + ' \u2192 ' + tradeNet.ports[s.to].name.slice(0, 9)
                                 + '  ' + cargo + '\n';
                         inFlight += 1;
                 }
-                tradeList.textContent = lines || 'No colonies yet.';
+                if (notes !== tradeNoteSig) {
+                        tradeNoteSig = notes;
+                        tradeNoteEl.textContent = notes;
+                        tradeNoteEl.hidden = notes === '';
+                }
                 // The colonisation frontier: what could launch, what is in
                 // flight, and — when nothing can — which gate is shut.
                 if (colonisationState && colonisationList) {
@@ -4365,42 +4776,134 @@ async function boot() {
                         // the whole network is resting until the first cooldown
                         // ends. The old line counted down to a network-wide gate
                         // that no longer exists.
-                        const wave = full ? 'network full'
-                                : opportunities.length > 0 ? 'launch window open'
-                                : status.big === 0 ? 'waiting for the first big colony'
-                                : status.resting > 0 ? `next in ${Math.round(status.nextIn)} y`
-                                : 'frontier empty';
+                        const wave = colonisationWave(full, opportunities.length > 0, status);
                         colonisationState.textContent = `${status.big} big colonies \u00b7 ${status.ready} ready`
                                 + ` \u00b7 ${status.candidates} candidates (${status.free} free)`
                                 + ` \u00b7 ${status.founding} expeditions \u00b7 ${wave}`;
-                        let preview = '';
+                        tradeSyncColonisation(opportunities, status, full);
+                        // The manual button is a rush: it may sponsor a port
+                        // that is still resting, so it stays available whenever
+                        // a big colony with a free target exists.
+                        if (tradeLaunch) tradeLaunch.disabled = full || status.big === 0
+                                || tradeLib.expansionArmed() === 0;
+                }
+                tradeSyncRoutes();
+                if (tradeCalendar) tradeCalendar.textContent = tradeCalendarText(4);
+                if (tradeLog) tradeLog.textContent = tradeLogText(8);
+        }
+
+        // --- The colonisation list as rows (W7) ------------------------------
+        // Two kinds of line: a voyage in flight (a note, its ETA refreshed at
+        // 4 Hz) and a ready pair with its own Send button. Rebuilt when the
+        // set changes — the ETA is the only text that moves every tick.
+        const colonisationRows = [];
+        let colonisationSig = '';
+
+        function tradeSyncColonisation(opportunities, status, full) {
+                const shown = Math.min(3, opportunities.length);
+                let sig = (tradeLaunchTicks > 0 ? 'm' + tradeLaunchMsg : '') + '|';
+                for (let i = 0; i < tradeNet.shipCount; i++) {
+                        if (tradeNet.ships[i].state === tradeLib.SHIP_FOUNDING) sig += 'f' + i + ';';
+                }
+                for (let k = 0; k < shown; k++) sig += 'o' + opportunities[k].port + ',' + opportunities[k].candidate + ';';
+                if (sig !== colonisationSig) {
+                        colonisationSig = sig;
+                        colonisationRows.length = 0;
+                        const fragment = document.createDocumentFragment();
                         if (tradeLaunchTicks > 0) {
-                                tradeLaunchTicks -= 1;
-                                preview += tradeLaunchMsg + '\n';
+                                const note = document.createElement('div');
+                                note.className = 'trade-note';
+                                note.textContent = tradeLaunchMsg;
+                                fragment.appendChild(note);
                         }
                         for (let i = 0; i < tradeNet.shipCount; i++) {
                                 const s = tradeNet.ships[i];
                                 if (s.state !== tradeLib.SHIP_FOUNDING) continue;
-                                const from = s.from >= 0 ? tradeNet.ports[s.from].name.slice(0, 10) : '?';
-                                const target = s.candidate >= 0 ? tradeNet.candidates[s.candidate].site.name.slice(0, 14) : '?';
-                                const eta = Math.max(0, s.arrive - tradeNet.time);
-                                preview += `${from} \u2192 ${target}  ${Math.round(eta)} y \u00b7 ${economyLib.formatPop(s.amount * tradeLib.POP_PER_COLONIST_UNIT)} volunteers\n`;
+                                const row = document.createElement('div');
+                                row.className = 'trade-note';
+                                fragment.appendChild(row);
+                                colonisationRows.push({ kind: 'ship', ship: s, el: row });
                         }
-                        for (let k = 0; k < Math.min(3, opportunities.length); k++) {
+                        for (let k = 0; k < shown; k++) {
                                 const o = opportunities[k];
-                                const src = tradeNet.ports[o.port].name.slice(0, 10);
-                                const marks = (o.flags & window.PlanetsLib.FLAG_TERRAN) ? ' \u2295'
-                                        : (o.flags & window.PlanetsLib.FLAG_IN_HZ ? ' \u25ce' : '');
-                                preview += `${src} \u2192 ${o.name.slice(0, 14)}${marks}  ${Math.round(o.ly)} ly`
-                                        + `  hab ${o.habitat.toFixed(2)}  ${economyLib.formatPop(o.peopleM)} people\n`;
+                                const button = document.createElement('button');
+                                button.type = 'button';
+                                button.className = 'trade-row send';
+                                button.dataset.port = String(o.port);
+                                button.dataset.candidate = String(o.candidate);
+                                button.title = 'Send this expedition now (it may rush a resting port, '
+                                        + 'restarting its 900-year clock). Same volunteers and same law as the tick.';
+                                const label = document.createElement('span');
+                                label.textContent = tradeOpportunityText(o);
+                                const mark = document.createElement('span');
+                                mark.className = 'send-mark';
+                                mark.textContent = 'Send';
+                                button.appendChild(label);
+                                button.appendChild(mark);
+                                fragment.appendChild(button);
+                                colonisationRows.push({ kind: 'send', button });
                         }
-                        if (!preview) preview = status.reason || 'no expedition ready';
-                        colonisationList.textContent = preview;
-                        // The manual button is a rush: it may sponsor a port
-                        // that is still resting, so it stays available whenever
-                        // a big colony with a free target exists.
-                        if (tradeLaunch) tradeLaunch.disabled = full || status.big === 0;
+                        if (colonisationRows.length === 0) {
+                                const note = document.createElement('div');
+                                note.className = 'trade-note';
+                                note.textContent = status.reason || 'no expedition ready';
+                                fragment.appendChild(note);
+                        }
+                        colonisationList.replaceChildren(fragment);
                 }
+                for (const row of colonisationRows) {
+                        if (row.kind === 'ship') {
+                                const s = row.ship;
+                                const from = s.from >= 0 ? tradeNet.ports[s.from].name.slice(0, 10) : '?';
+                                const target = s.candidate >= 0
+                                        ? tradeNet.candidates[s.candidate].site.name.slice(0, 14) : '?';
+                                const eta = Math.max(0, s.arrive - tradeNet.time);
+                                row.el.textContent = `${from} \u2192 ${target}  ${Math.round(eta)} y \u00b7 `
+                                        + economyLib.formatPop(s.amount * tradeLib.POP_PER_COLONIST_UNIT) + ' volunteers';
+                        } else {
+                                row.button.disabled = !tradeLib.expansionArmed() || full;
+                        }
+                }
+                if (tradeLaunchTicks > 0) tradeLaunchTicks -= 1;
+        }
+
+        function tradeOpportunityText(o) {
+                const src = tradeNet.ports[o.port].name.slice(0, 10);
+                const marks = (o.flags & window.PlanetsLib.FLAG_TERRAN) ? ' \u2295'
+                        : (o.flags & window.PlanetsLib.FLAG_IN_HZ ? ' \u25ce' : '');
+                return `${src} \u2192 ${o.name.slice(0, 14)}${marks}  ${Math.round(o.ly)} ly`
+                        + `  hab ${o.habitat.toFixed(2)}  ${economyLib.formatPop(o.peopleM)} people`;
+        }
+
+        // A row click selects the colony's star and nothing else: in observer
+        // mode the camera centres on it, in game mode it becomes the Flight
+        // destination. The ship is never moved.
+        function tradeSelectPort(index) {
+                if (!tradeNet || !(index >= 0 && index < tradeNet.portCount)) return;
+                const port = tradeNet.ports[index];
+                handleStarPick(colonyPick(port), false);
+                setSpeedRef('target');
+                if (gameMode) {
+                        if (setFlightDestinationFromPrimary()) setAutoMsg('destination ' + port.name);
+                        return;
+                }
+                orbitPrimary();
+        }
+
+        // The per-row Send: the port/candidate pair the row named, through the
+        // same refusal law as the single button.
+        function tradeLaunchChosen(port, candidate) {
+                if (!tradeNet) return;
+                const result = tradeLib.launchChosen(tradeNet, port, candidate, tradeNet.time, 1);
+                if (result.ok) {
+                        const source = tradeNet.ports[result.source];
+                        const site = tradeNet.candidates[result.candidate].site;
+                        tradeLaunchMsg = `launched  ${source.name.slice(0, 12)} \u2192 ${site.name.slice(0, 14)}`;
+                } else {
+                        tradeLaunchMsg = result.reason || 'no expedition ready';
+                }
+                tradeLaunchTicks = 8;
+                syncTradeUi();
         }
 
         // The overlay's one line.
@@ -4409,7 +4912,9 @@ async function boot() {
                 const rate = tradeClockRate();
                 const tag = tradeSyncOn && !gameMode ? ' synced' : '';
                 return `\ntrade     ${rate === 0 ? 'paused' : Number(rate.toPrecision(4)).toLocaleString('en-US') + ' y/s'}${tag}`
-                        + ` \u00b7 ${tradeNet.portCount} ports \u00b7 ${tradeNet.shipCount} ships`
+                        + ` \u00b7 ${tradeLib.livePortCount(tradeNet)} ports`
+                        + (tradeNet.outposts > 0 ? ` \u00b7 ${tradeNet.outposts} outposts` : '')
+                        + ` \u00b7 ${tradeNet.shipCount} ships`
                         + ` \u00b7 queue ${tradeNet.queue.size}` + tradeSyncNote();
         }
 

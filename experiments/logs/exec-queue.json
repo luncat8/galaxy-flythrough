@@ -1,6 +1,6 @@
 {
-  "total": 5,
-  "passed": 5,
+  "total": 8,
+  "passed": 8,
   "failed": 0,
   "checks": [
     {
@@ -21,6 +21,18 @@
     },
     {
       "name": "steady-capacity push/pop cycles reuse all typed-array storage",
+      "pass": true
+    },
+    {
+      "name": "peekNext returns the first events in the order a drain would pop them",
+      "pass": true
+    },
+    {
+      "name": "peekNext leaves the heap untouched and never allocates after the first call",
+      "pass": true
+    },
+    {
+      "name": "peekNext clamps its count and stops at an empty queue",
       "pass": true
     }
   ]
