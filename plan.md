@@ -1524,6 +1524,18 @@ Shipped, in `archive/`:
   full-state 5,000-year jump equivalence and exact live-event counts. Abstract
   travel, potential-output factories and inspection-sensitive coverage are
   explicit limits, not physical-model claims. Log: `archive/trade.x-worklog.md`.
+- [`trade-2-plan.md`](trade-2-plan.md) — the next trade series on that spec:
+  outposts, narrated events, player founding, site composition, scarcity tags,
+  expansion authority, clickable rows, the forward calendar, overlay marks and
+  standing routes as player intent. Credits (F4) and capital-in-the-settle (F6)
+  stay deferred.
+- [`trade-3-plan.md`](trade-3-plan.md) — two-tier trade after trade-2: 3 goods
+  inside a star (resource / product / passenger) as closed-form rates taxed by
+  the 0.5.4 delta-v graph, 7 goods between stars, many worlds under one
+  inter-star port. Intra is a statistic that develops the system (cheap wells
+  feed, deep ones do not). A real inter-planet fleet with its own clock and
+  queue, capital, and auto-fill of extra worlds are deferred; the 13-row site
+  map and the closed-form settle are refused replacements.
 
 - [`evolution-plan.md`](evolution-plan.md) — the 0.6 series, galaxy evolution over time:
   the type table describes present-day galaxies, so `modelAtAge` gains an **epoch tier**
