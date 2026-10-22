@@ -548,7 +548,6 @@ function createStarRenderer(device, context, format, options) {
                 galaxyAge: model.populations.age,
                 magOffset: 0,
                 epochSweepAt: 0,
-                objectsEpochAge: NaN,
                 fieldSamples: 0,
         };
         configureMode(model);
@@ -828,13 +827,16 @@ function createStarRenderer(device, context, format, options) {
         // slice is re-uploaded, so the look follows continuously and nothing
         // ever blocks the frame. A sweep always reads the *current* model, so a
         // clock that outruns it cannot make it lag: it just keeps sweeping.
-        // The composite objects are the one block the field's map does not place:
-        // their seats are read from the *current* model (the arms at this epoch,
-        // the gas at this age), so they are re-placed instead — a few thousand
-        // records, rationed by age so a continuous clock cannot make it a
-        // per-frame cost.
-        const OBJECT_REFRESH_AGE = 0.02;
-        let objectsEpochAge = NaN;
+        // The composite objects are the one block the field's map does not place,
+        // and they are drawn once for the same reason the field is: a placement
+        // reads the age-dependent acceptance rates, so re-running it at every
+        // epoch re-rolls the seats and re-seeds every member. Their members are
+        // stars in this same buffer, so that re-roll replaced a slice of the
+        // visible sky up to five times a second at the top star rate — the
+        // reported jump. Their look is epoch-independent by construction (a
+        // member's age is the object's own, imposed by deriveStarWithAge, and the
+        // metallicity follows the component), so the block needs no refresh at
+        // all: it is drawn with the field and carried.
         let epochCalibrationStars = 0;
         let epochCalibrationRef = 0;
         const epochSweep = { at: 0, stale: false };
@@ -946,28 +948,7 @@ function createStarRenderer(device, context, format, options) {
                 state.galaxyAge = model.populations.age;
                 state.galaxyLabel = window.GalaxyLib.galaxyLabel(nextModel);
                 epochSweep.stale = true;
-                refreshObjects();
                 return state;
-        }
-
-        // The epoch's other half, for the block that is placed rather than
-        // carried: re-place the composite objects at the new epoch and upload
-        // just their range. The stamp is the age they were placed at, so this is
-        // a bounded cost — at the top clock rate one re-place per ~0.2 s of run —
-        // and a re-draw (which places them anyway) leaves it current.
-        function refreshObjects() {
-                if (objectCapacity === 0) return 0;
-                const age = model.populations.age;
-                if (Number.isFinite(objectsEpochAge) && Math.abs(age - objectsEpochAge) < OBJECT_REFRESH_AGE) return 0;
-                const written = generateObjects();
-                if (device.queue && device.queue.writeBuffer) {
-                        device.queue.writeBuffer(starBuffer, objectByteOffset, staging, objectByteOffset,
-                                objectCapacity * records.RECORD_BYTES);
-                        if (nebulaCount > 0 && nebulaStaging) {
-                                device.queue.writeBuffer(nebulaBuffer, 0, nebulaStaging, 0, nebulaCount * billboardBytes);
-                        }
-                }
-                return written;
         }
 
         // The offset, in magnitudes, between this field and the same field at the
@@ -1081,8 +1062,6 @@ function createStarRenderer(device, context, format, options) {
                         nebulaCount = 0;
                         return 0;
                 }
-                objectsEpochAge = model.populations.age;
-                state.objectsEpochAge = objectsEpochAge;
                 const placedClusters = clustersLib.placeStarClusters(model, (seed | 0) ^ 0xC1057E5,
                         clusterCountOpt === null ? clustersLib.clusterCountFor(model) : clusterCountOpt, null);
                 const placed = objectsLib.placeObjects(model, (seed | 0) ^ 0x0B5E55, objectCount, null);
@@ -1566,7 +1545,7 @@ function createStarRenderer(device, context, format, options) {
         return {
                 prepare,
                 regenerate,
-                setEpoch, stepEpoch, epochSweepState, epochParams, refreshObjects,
+                setEpoch, stepEpoch, epochSweepState, epochParams,
                 render,
                 // Read-only views of what is resident, for the picker, the label
                 // layer and the search (0.5.0). Both objects are allocated once and

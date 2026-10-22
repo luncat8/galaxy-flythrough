@@ -797,24 +797,40 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                         settled: [coarse.settled, fine.settled],
                 });
 
-        // The objects are the block the map cannot place: their seats read the
-        // *current* arms and the current gas, so an epoch change re-places them
-        // rather than carrying them — rationed by age, so a continuous clock is
-        // a bounded cost and not a per-frame one.
+        // The object block is drawn with the field and carried (0.7.0). Its
+        // members are stars in the same buffer, so an epoch change that re-placed
+        // the block re-seeded a slice of the visible sky — five times a second at
+        // the top star rate. Nothing about a member's look depends on the running
+        // epoch (the age is the object's own, imposed by deriveStarWithAge), so
+        // the contract is now: an epoch change leaves the block byte-identical.
+        const objectBlockKey = () => {
+                const info = renderer.starBlocks();
+                const block = info.blocks[2];
+                let hash = 0;
+                for (let i = 0; i < block.count; i++) {
+                        const off = (block.offset + i) * records.RECORD_BYTES;
+                        hash = (Math.imul(hash ^ info.view.getUint32(off, true), 16777619)
+                                ^ Math.imul(info.view.getUint32(off + 4, true), 31)
+                                ^ Math.imul(info.view.getUint32(off + 8, true), 131)
+                                ^ Math.imul(info.view.getUint32(off + 12, true), 8191)) | 0;
+                }
+                return { hash, count: block.count, stars: renderer.state.objectStars };
+        };
+        const objectBefore = objectBlockKey();
         renderer.setEpoch(galaxy.modelAtAge(model, 0.5));
-        const placedAt = renderer.state.objectsEpochAge;
-        const placedAgain = renderer.refreshObjects();
-        const stillAt = renderer.state.objectsEpochAge;
+        const objectAtHalf = objectBlockKey();
         renderer.setEpoch(galaxy.modelAtAge(model, 0.6));
+        const objectLater = objectBlockKey();
         const walkedAge = renderer.state.galaxyAge;
-        renderer.refreshObjects();
-        const movedTo = renderer.state.objectsEpochAge;
         renderer.setEpoch(model);
-        renderer.refreshObjects();
-        check('an epoch change re-places the objects, rationed by age',
-                placedAt === 0.5 && placedAgain === 0 && stillAt === placedAt
-                && movedTo === 0.6 && walkedAge === 0.6,
-                { placedAt, placedAgain, stillAt, movedTo, age: walkedAge });
+        const objectBack = objectBlockKey();
+        check('an epoch change carries the object block: same seats, same bytes',
+                walkedAge === 0.6 && objectBefore.count > 0
+                && objectAtHalf.hash === objectBefore.hash && objectAtHalf.count === objectBefore.count
+                && objectLater.hash === objectBefore.hash && objectBack.hash === objectBefore.hash
+                && objectAtHalf.stars === objectBefore.stars,
+                { objects: objectBefore.count, stars: objectBefore.stars,
+                  hashes: [objectBefore.hash, objectAtHalf.hash, objectLater.hash, objectBack.hash] });
 
         // The reuse path is a property of the packed geometry, not a shortcut
         // taken whenever the model object changes: a model that differs only in
