@@ -2393,3 +2393,50 @@ problem by enabling every system-map route in game mode.
 Skill: for a feature with no automatic producer, trace one real user action
 from input to state change. A direct API test can pass while the shipped
 scenario can never reach the feature.
+
+## 2026-10-22 — A raw `heapUsed` difference is not an allocation measurement
+
+`process.memoryUsage().heapUsed` moves with the collector's schedule: the same
+100k-call loop read +1.3 MB, −1.1 MB, +0.8 MB and −0.8 MB at four call counts,
+i.e. the delta was noise around zero, not a per-call cost. Asserting a 2 MB
+bound on it made the suite flaky rather than strict. Force a collection at both
+ends (`v8.setFlagsFromString('--expose-gc')`, then `vm.runInNewContext('gc')`)
+and assert retained bytes — and tighten the bound, since the young-generation
+slack is gone. Keep a per-call time budget beside it as the churn signal.
+
+## 2026-10-22 — A clock must never re-roll what is already on screen
+
+`renderer.refreshObjects` re-places the whole composite block (`generateObjects`
+→ `placeObjects` against the *current* model, members re-seeded from the new
+list) every `OBJECT_REFRESH_AGE = 0.02` Gyr of galaxy age. Cluster and HII
+members are stars in the same `StarPacked` buffer, so at the top star rate
+(99 Myr/s) the sky is replaced about five times a second — the reported "stars
+jump in some modes". E4 removed this class of defect for the field (draw once,
+*place* by the epoch map) and the object block was left behind because its
+placement reads the age-dependent acceptance rates.
+
+Rule: an epoch change may re-solve a model, change a uniform, or gate a scalar.
+It may not call a placement function. If a block's *look* depends on the epoch,
+re-derive the look bytes for the seats that already exist; if its *existence*
+does, gate it per record with a birth time. Anything else shows up as a jump at
+whatever rate the clock runs.
+
+Corollary: the fix is also the feature. Once a record carries a birth time, the
+same gate that stops the re-roll produces the formation history for free.
+
+## 2026-10-22 — Calibrate the gas against the drawn census, not the SFH
+
+The obvious formation gate is `birth = AGE_REF − age` from the existing age draw
+(no new channel, exact at the reference epoch). Measured over 20k stars it piles
+2.6–4.2 % of the census at `birth === 0` (the `min(p.age, …)` clamp) and drifts
+up to 17 % off `sfhProgress` at intermediate epochs, because the arm gate and the
+heating floor are look laws, not time laws. Drawing the birth from the
+component window's inverse CDF removes the pile and tracks the SFH to a few
+percent, but never *equals* it: the census's component mix is a density fact
+while `sfhProgress` is a mass fact.
+
+So do not chase the SFH. Fill a birth histogram once per field draw and define
+`gas(T) = 1 − formed(T)·(1 − gasFraction)` over it: exact at both ends, monotone,
+one subtraction, and — the point — the gas and the stars on screen are then
+complementary by construction, which is the only comparison an eye can make. The
+SFH stays the law that says where birth times come from, not what the gas is.

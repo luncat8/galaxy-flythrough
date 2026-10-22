@@ -96,3 +96,29 @@ non-`index.html` pages (`view-modes.html`) while leaving `index.html` to
 Next: keep adding new `experiments/*-test.js` files to the matching domain suite
 in `scripts/run.py` (enforced by the coverage assertion at import time).
 
+## tooling.4 — the heap probes are GC-normalised, not collector-timed
+
+**Defect.** `planet-gen-test.js`'s three allocation probes read
+`process.memoryUsage().heapUsed` before and after a loop and asserted the
+difference stayed under 2 MB. On Node 22 that reading tracks the collector's
+schedule, not the callee: the same `architecture` loop measured +1.3 MB,
+−1.1 MB, +0.8 MB and −0.8 MB at 10k / 50k / 100k / 400k calls (probe re-run),
+so the suite failed one run in three (`quick` 28/29 at 2.47 MB and 3.28 MB) and
+passed on a re-run of the identical tree. A red suite that reruns green
+teaches nothing about the code.
+
+**Fix.** The probes now force a real collection at both ends of the window
+through the `v8.setFlagsFromString('--expose-gc')` + `vm.runInNewContext('gc')`
+trick `system-layer-test.js` has used since 0.5.3 — same helper shape, no
+`--expose-gc` requirement on the command line — and assert *retained* bytes.
+The probes were renamed to say what they measure (`retains nothing`), and the
+bound tightened 8× from 2 MB to 256 KB, because a post-GC reading no longer
+carries young-generation slack. The throughput budgets beside them (0.27 µs
+per `architecture`, 20 µs per `generateSystem`) remain the churn signal.
+
+**Validation.** `planet-gen-test` 108/108 on five consecutive runs; retained
+deltas 10–100 KB (was 1.1–3.3 MB of noise). `quick` 29/29. Log
+`experiments/logs/planet-gen.json` re-written with the renamed checks.
+
+Next: use the same helper for any new heap probe; a raw `heapUsed` difference
+is not an allocation measurement on a generational collector.

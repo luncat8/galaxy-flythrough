@@ -54,6 +54,28 @@ function check(name, pass, detail) {
 	return !!pass;
 }
 
+// The heap probes below want *retained* bytes. A raw `heapUsed` difference on
+// Node 22 measures the collector's schedule, not the callee: the same 100k-call
+// loop reads anywhere in ±1.5 MB run to run whether or not it allocates. The
+// suite runs plain `node`, so the flag trick hands us a real collector run at
+// both ends of the window (the technique `system-layer-test.js` uses).
+const gcRunner = (function () {
+	try {
+		const v8 = require('v8');
+		const vm = require('vm');
+		v8.setFlagsFromString('--expose-gc');
+		const gc = vm.runInNewContext('gc');
+		v8.setFlagsFromString('--no-expose-gc');
+		return gc;
+	} catch (e) {
+		return null;
+	}
+})();
+function forceGc() {
+	if (gcRunner) { gcRunner(); gcRunner(); }
+	else if (global.gc) { global.gc(); global.gc(); }
+}
+
 const model = galaxy.createGalaxy({ type: 'SBb', seed: 12345, age: 13.5 });
 
 // --- 1. Identity keys (plan §2.2/§2.3) ---------------------------------------
@@ -835,13 +857,15 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 	// object churn would be megabytes) and the per-call time against the §4.9
 	// generateSystem budget of 20 µs — architecture is most of its draws.
 	for (let s = 0; s < 1000; s++) planets.architecture(hash.pcgHash(s), makeStar(s), arch);
+	forceGc();
 	const heapBefore = process.memoryUsage().heapUsed;
 	const t0 = performance.now();
 	for (let s = 0; s < 100000; s++) planets.architecture(hash.pcgHash(s), sunStar, arch);
 	const usPerCall = (performance.now() - t0) * 1000 / 100000;
+	forceGc();
 	const heapDelta = process.memoryUsage().heapUsed - heapBefore;
-	check('architecture allocates nothing per call (coarse heap delta < 2 MB over 100k calls)',
-		heapDelta < 2 * 1024 * 1024, { heapDelta });
+	check('architecture retains nothing per call (GC-normalised heap delta < 256 KB over 100k calls)',
+		heapDelta < 256 * 1024, { heapDelta });
 	check('architecture is far inside the 20 µs generateSystem budget', usPerCall < 20,
 		{ usPerCall: +usPerCall.toFixed(3) });
 }
@@ -1539,6 +1563,7 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 		planets.architecture(hash.pcgHash(s), sunBelt, beltArch);
 		planets.belts(hash.pcgHash(s), sunBelt, beltArch, beltOut);
 	}
+	forceGc();
 	const beltHeapBefore = process.memoryUsage().heapUsed;
 	const beltT0 = performance.now();
 	for (let s = 0; s < 200000; s++) {
@@ -1546,6 +1571,7 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 		planets.belts(hash.pcgHash(s), sunBelt, beltArch, beltOut);
 	}
 	const beltUs = (performance.now() - beltT0) * 1000 / 200000;
+	forceGc();
 	const beltHeapDelta = process.memoryUsage().heapUsed - beltHeapBefore;
 	planets.belts(0x1234, sunBelt, beltArch, beltOut);
 	const stippleSeed = beltOut.count > 0 ? beltOut.stippleSeed[0] : seedA;
@@ -1554,8 +1580,8 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 		planets.fillStipple(stippleSeed, 2.0, 0.2, stAngles, stRadii);
 	}
 	const stippleUs = (performance.now() - stippleT0) * 1000 / 20000;
-	check('belts allocate nothing per call (coarse heap delta < 2 MB over 200k passes)',
-		beltHeapDelta < 2 * 1024 * 1024, { beltHeapDelta });
+	check('belts retain nothing per call (GC-normalised heap delta < 256 KB over 200k passes)',
+		beltHeapDelta < 256 * 1024, { beltHeapDelta });
 	check('architecture + belts stay inside the 20 µs per-system budget; one stipple fill is a frame-safe one-off',
 		beltUs < 20 && stippleUs < 200,
 		{ usPerSystem: +beltUs.toFixed(3), usPerStippleFill: +stippleUs.toFixed(3) });
@@ -1885,6 +1911,7 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 		planets.generateSystem(budgetRef, { model, field }, record);
 		planets.systemSummary(budgetRef, { model, field }, summary);
 	}
+	forceGc();
 	const heapBefore = process.memoryUsage().heapUsed;
 	const fullUs = budgetLoop(10000, (s) => {
 		stepRef(s);
@@ -1898,12 +1925,13 @@ const field = sampling.sampleGalaxyStars(model, model.seed | 0, fieldCount, null
 		stepRef(s);
 		planets.generateSystem(budgetRef, { model, field }, record);
 	}
+	forceGc();
 	const heapDelta = process.memoryUsage().heapUsed - heapBefore;
 	check('generateSystem stays inside the 20 µs budget and the summary inside 6 µs',
 		fullUs < 20 && summaryUs < 6,
 		{ usPerSystem: +fullUs.toFixed(3), usPerSummary: +summaryUs.toFixed(3) });
-	check('generateSystem allocates no objects (coarse heap delta < 2 MB over 100k calls)',
-		heapDelta < 2 * 1024 * 1024, { heapDelta });
+	check('generateSystem retains no objects (GC-normalised heap delta < 256 KB over 100k calls)',
+		heapDelta < 256 * 1024, { heapDelta });
 }
 
 // --- 11. Designations (plan §4.11, 0.5.1-7) ---------------------------------

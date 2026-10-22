@@ -63,7 +63,19 @@
   *placed* at the running epoch — the pattern's phase is an accumulator
   (`orbit.setPatternClock`), the epoch map rides a uniform lane (`camera.epoch`,
   `orbit.epochMap`), the look follows in per-frame slices (`renderer.stepEpoch`), and
-  an epoch change is never a re-sample), E5 events, E6 chemical evolution (optional).
+  an epoch change is never a re-sample), E5 events (**deferred** 2026-10-22, behind
+  0.7's record time axis), E6 chemical evolution (optional).
+- `formation-plan.md` — the 0.7 series, formation from gas: an epoch becomes a
+  census rather than a tint. A per-star birth time (the component's
+  `FORMATION_WINDOW` read against the reference span) fills one `f32` storage
+  buffer; the vertex stage's `smoothstep(birth, birth + 0.05 Gyr, age)` gates it;
+  the look follows the star's own elapsed time through `deriveStarWithAge`. The
+  gas is accounted against the *drawn* census (a 128-bin birth histogram, exact at
+  0 and at `AGE_REF`), and drawn from a 64×96×4 ping-pong grid with no atomics.
+  The contract that opens the series is smoothness: nothing already on screen may
+  be re-rolled because the clock moved — which is the `refreshObjects` defect
+  (the composite block, whose members are stars, is re-placed every 0.02 Gyr).
+  `AGE_MIN` 0.2 → 0. Planned, not started.
 - `deferred-browser-visual-plan.md` — non-blocking browser checks, preset actions, bar polish and GPU profiling; separate from analytical model contracts.
 - `game-mode-plan.md` — the game mode (g key): the ship as the camera rig with class restrictions (accel cap, Δv tank, cruise fraction from the 0.5.4 ship table), the shared ship clock on the system-ladder convention (§4), the HUD (speed, fuel, distance to the selected object), the burn/flip autopilot and the Flight workspace. G1 shipped (ui.7): `src/core/ship.js`, the flight law, the clock, the text HUD and the input gating; G2 shipped (ui.8): the §5 approach, follow and abort commands and the §6 chrome pass in `label-layer.js`; G3 shipped (ui.9): the single-panel manual-thrust / desired-speed / destination-plan task (fastest, thrust, speed and time limits) with accepted-impulse fuel accounting; G4 shipped (ui.13): docking at any natural flight target (`O`, settled inside its stand-off shell), the station refill (tank + life support), the docked ride on the station's drawn motion, the port of registry with life support's critical band and its hard return-home marker, and the free cargo hook (`L`/`Shift+L`); G5 shipped (ui.14): the Controls-panel `sim clock`/`arcade clock` presets — the ladder's new real-time stop and the autopilot coast auto-warp — with the deferred browser visual pass the series' only open item.
 - `worklog.md` — index of the implementation logs, by release series, by the unversioned `ui.x` interface series and by the unversioned `tooling` series (the runner, the log writer, the generators).

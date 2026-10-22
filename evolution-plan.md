@@ -537,12 +537,20 @@ pin the accumulator's algebra and the camera-member order; `wgsl-exec-check.js`
 
 ## Later milestones
 
-* **E5 — events.** Minor mergers, tidal streams and a starburst episode. These need a
-  new object family (the composite-object layer is the host) and a re-sampling path,
-  so they are a release of their own.
+* **E5 — events.** Minor mergers, tidal streams and a starburst episode. **Deferred**
+  (2026-10-22): they need a new object family (the composite-object layer is the host)
+  *and* a re-sampling path, and the formation series (`formation-plan.md`, 0.7) claims
+  the record's time axis first — its rule is that a clock never re-rolls what is
+  already on screen, which is precisely the mechanism an event would have to use.
+  E5 closes after 0.7, against the same rule: carried, never re-rolled.
 * **E6 — chemical evolution (optional).** Metallicity as a function of the epoch
   rather than one authored gradient. The observables (`gasNow`, `progress`) already
   exist; the population tier's colour law would need the measurement first.
+
+The 0.6 series also stopped being the galaxy's only clock: **0.7 (formation,
+`formation-plan.md`) makes the epoch a formation history** — a star carries a birth
+time, the gate shows the stars born so far, and the gas is what is left. Read 0.6 as
+"the structure follows the clock"; 0.7 as "the census does".
 
 ## Non-goals
 
