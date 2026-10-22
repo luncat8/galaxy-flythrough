@@ -31,7 +31,10 @@ The G4 container hook is replaced by transfers of actual port stocks.
 
 ## 2. Resources and the stable site map
 
-Thirteen resources, six families (raw, synth, life, goods, data, culture):
+Thirteen resources, six authored production families (raw, synth, life, goods,
+data, culture). Two independent routing maps, `intraFamily` and `interFamily`,
+decide where a resource may move; they do not replace the production family or
+its routing worth:
 
 | id | name | unit mass (t) | routing worth |
 |---|---|---|---|
@@ -52,8 +55,10 @@ Thirteen resources, six families (raw, synth, life, goods, data, culture):
 `economy.js` owns the authored tables: `PLANET` (13 rows × ten display types
 plus a belt), `HABITAT`, `PROD`, `NEED`, `NEED_WEIGHT` and `INPUT` (the industrial
 bill of materials). Their columns follow `planets.DISPLAY_INDEX`, pinned by tests.
-Ore/volatiles are bulk feedstock; the other eleven cover the brief's specialist
-exports. All thirteen have some productive world type.
+Ore/volatiles are bulk feedstock and never load onto an inter-star hull; the
+other eleven resources cover seven shipping families. All thirteen have some
+productive world type, and bulk keeps its authored worth for local routing and
+the player's load scoring. Arrival/unload is never family-filtered.
 
 A site is `(star key, planet-or-belt kind, index)` plus the generated physical
 properties and an **owned copy** of the star's pick reference. Planet slots and
@@ -145,22 +150,105 @@ event times* give identical state, not that arbitrary inspection schedules agree
 Settle on arrival, dispatch, destination scoring, the 25-year expedition check,
 and the opened system's 4 Hz readout. Never settle all colonies per frame.
 
+### 2.2 Routing tiers and statistical intra-system closure
+
+The two routing maps aggregate the same thirteen resources; they are not a new
+yield table. `pickExport` and the player's load pick refuse `interFamily = -1`,
+while arrival and unloading accept every resource.
+
+| tier | family | members |
+|---|---|---|
+| intra | `bulk` | ore, volatiles |
+| intra | `goods` | chem, robots, compute |
+| intra | `pax` | migration drawn from population, not `stock[people]` |
+| inter | `rare` | rare |
+| inter | `exotic` | chem, bio |
+| inter | `amat` | amat |
+| inter | `food` | food |
+| inter | `fab` | robots, compute |
+| inter | `info` | soft, data, art |
+| inter | `pax` | people stock |
+
+Chem, robots and compute can move in either tier. Ore and volatiles keep their
+worth and `exportableOf` meaning even though star-port loaders skip them.
+
+At world founding, `trade.fillIntraGraph` reuses `deltav.buildBodyNodes` and
+`buildInterEdges` for the generated system. With `DV_REF = 10 km/s`, the nuclear
+Hohmann leg and aerocapture/landing credit, each world slot stores:
+
+```
+well[s]       surface→LO, or 0 for a body with no surface
+land[s]       LO→surface with aero credit, or 0 with no surface
+dv[s,t]       well[s] + legLoToLo(s,t).dvLoToLo + land[t]   (m/s)
+tH[s,t]       the leg's Hohmann seconds (readout only)
+couple[s,t]   1 / (1 + (dv[s,t] / DV_REF)²)
+lift[s]       1 / (1 + well[s] / DV_REF)
+access[s]     mean couple to other live worlds; 1 with no live neighbour
+```
+
+The diagonal has `dv = 0`, `couple = 1`. The graph is not rebuilt in a settle.
+Outposts stay in it but leave live access means. Adding a world recomputes its
+row and column from the same functions the delta-v map uses; there is no tank-
+feasibility cliff at 40 km/s.
+
+Once per port settle, freeze every live world's family exportable/demand and
+coverage before the local integration. For goods, those are sums over member
+resources. A healthy world (`coverage ≥ 0.6`) can offer
+`P·0.02·years` passengers while `P < 0.8K`; habitat-weighted capacity room is
+its receiver demand. A world below 0.6 neither sends nor receives passengers.
+For each source and family, an off-world receiver's offered slice is
+
+```
+offer[s,t,f] = export[s,f] · demand[t,f] · couple[s,t]
+               / Σu(demand[u,f] · couple[s,u])
+```
+
+The self share stays local. Transfers divide a family offer across demanded
+member resources, cap by the source's remaining exportable and the receiver's
+warehouse room (or `K − P` for passengers), and record `intraFlow[s,t,f]`.
+Then settle each world once with the closed form and apply all deliveries and
+exports simultaneously; post-integration availability and room are final caps.
+No delivery can be re-exported in the same interval. Stock and population are
+conserved by the transfer itself, while local production/consumption remains
+the §2.1 approximation. A repeated settle at the same clock applies nothing
+and preserves the last flows: freeze → local settle → one transfer → access →
+fold is the non-circular fixed point, not an iteration.
+
+Inter-star collection weights each world's exportable by `lift`; a belt is a
+cheap pier and a deep surface well is not. Access is reported and folded, never
+multiplied into coverage or the logistic. Hohmann time does not throttle these
+decades-to-millennia transfers. Worlds settle whether V is open or closed, and
+this operator adds no ships or events to the galaxy queue.
+
 ## 3. Discovery and the network
 
-One colony per star avoids zero-distance intra-system freight winning all route
-scores. Four seed ports (`SEED_PORTS = 4`, §8) grow toward 64 total port slots;
-256 candidate sites.
-For a newly discovered star, a stable hash roll below 0.35 selects a seed colony
-while seed slots remain. It occupies the best-habitat site of the system (terran
-1.6×, HZ 1.25×; a belt counts at 0.10). Otherwise the star contributes **one**
-candidate: its best world. One colony per star is the rule, so a second candidate
-from the same star is a place no expedition can ever take; adding every world
-filled the 224-slot start pool with sibling worlds and belts and left the
-reachable frontier dry at 14 colonies. A star whose best world is below
-`MIN_CANDIDATE_HABITAT = 0.10` contributes nothing. Terran worlds are preferred,
-**not automatically settled**. Remember discovered keys even when candidate
-storage is full: revisiting only settles, never changes the map or seeds a
-second colony.
+One inter-star port per star keeps the galaxy routing graph unambiguous; the
+port can aggregate up to six world-colonies (`MAX_WORLDS_PER_STAR = 6`, 384
+preallocated world records). The first founding takes the best site. AI-founded
+stars stay at one world in this series; while docked with V open, the player can
+found a named sibling planet or belt without taking another port slot. Duplicate
+sites, outposts, the six-world cap and physically unreachable candidates are
+refused.
+
+A one-world port is that world by reference. A multi-world fold sums live
+population, capacity, stock and stock caps; pop-weights `outBase`, coverage,
+growth and access; and production-weights yields. Inter-star transfers then
+water-fill back down to worlds by demand or lift-taxed exportable, preserving
+resource mass and warehouse floors. The fleet, overlay and player hold still
+see only the one fold.
+
+Four seed ports (`SEED_PORTS = 4`, §8) grow toward 64 total port slots; 256
+candidate sites. For a newly discovered star, a stable hash roll below 0.35
+selects a seed colony while seed slots remain. It occupies the best-habitat site
+of the system (terran 1.6×, HZ 1.25×; a belt counts at 0.10). Otherwise the star
+contributes **one** candidate: its best world. One candidate per star is the
+rule, so a second candidate from the same star is a place no expedition can ever
+take; adding every world filled the 224-slot start pool with sibling worlds and
+belts and left the reachable frontier dry at 14 colonies. A star whose best
+world is below `MIN_CANDIDATE_HABITAT = 0.10` contributes nothing. Terran worlds
+are preferred, **not automatically settled**. Remember discovered keys even when
+candidate storage is full: revisiting only settles, never changes the map or
+seeds a second port.
 
 On model reset the start map is built and discovered **nearest home first**
 (`trade.startSystems` + `trade.discoverNearest`): the named landmarks (Milky Way
@@ -205,11 +293,14 @@ rescheduled from its own time, as are all follow-ups:
 - `EV_FOUND`: found the reserved site, convert to freighter, load after 0.5 years.
 - `EV_TICK`: fleet/expedition check after 25 years.
 
-An export keeps 25% of warehouse capacity. NPCs reserve people for expeditions;
-for each other surplus resource choose demand-weighted destination score
-`demand * worth / (1 + ly/100)`. Ship at most the hold, exportable stock, destination
-room and 150 years of destination demand; rank load value by `1 + ly/200`.
-Demand is positive `input*P - out*P - stock/20`. Ties use stable iteration order.
+An export keeps 25% of warehouse capacity and may load only a resource with an
+inter-star family; collection from a multi-world fold is capped by each world's
+`exportable · lift`. NPCs reserve people for expeditions; for each other surplus
+resource choose demand-weighted destination score
+`demand * worth / (1 + ly/100)`. Ship at most the hold, lift-taxed exportable
+stock, destination room and 150 years of destination demand; rank load value by
+`1 + ly/200`. Demand is positive `input*P - out*P - stock/20`. Ties use stable
+iteration order.
 Overflow seeks another destination; if none wants it, NPCs jettison it rather
 than deadlock the hull. No cargo is silently discarded by the player's interface.
 
@@ -288,19 +379,38 @@ scratch storage (the second resolution must not overwrite the first).
 When the system view is closed, the readout shows the port summary (`pop / K`,
 `coverage`, `access`), W4's system composition, and W5 scarcity tags across the
 seven inter-star shipping families. Opening V expands the settled `worlds` list
-(up to 6 worlds backing the star's single port fold) alongside all thirteen
-yields, exports and imports. The Trade panel has clock and route controls,
-counters and six largest non-abandoned ports plus sailing ships, refreshed at
-4 Hz. The overlay has a one-line rate/ports/ships/queue summary. Preset fields
-`trade` and `traderoutes` share defaults owned by `trade.js`.
+(up to 6 worlds backing the star's single port fold), the three largest intra
+flows with their family, direction, km/s, couple and Hohmann time, each world's
+lift, the inter-family market, and all thirteen yields/exports/imports.
+
+The system canvas draws a population/growth marker on every settled planet or
+belt, grey for an outpost and dashed amber for starvation. The three largest
+last-settle `intraFlow` entries are dim cargo-coloured dashes between the drawn
+body positions. They are ambient statistics, not interpolated hulls and not a
+second queue; closing V drops only the drawing. A docked pilot may open the
+station's schematic without camera motion to select and found a sibling world;
+undocking closes it. The real delta-v map and the intra card read the same
+`dv[s,t]`, so their km/s cannot drift apart.
+
+The Trade panel has clock and route controls, counters and six largest
+non-abandoned ports plus sailing ships, refreshed at 4 Hz. The overlay has a
+one-line rate/ports/ships/queue summary. Preset fields `trade` and `traderoutes`
+share defaults owned by `trade.js`.
 
 ## 5. Files, validation and remaining scope
 
 - `src/core/exec-queue.js`: typed-array heap, push/pop/drain/peek/clear.
-- `src/core/economy.js`: tables, sites, colony setup/settle and transfer helpers.
+- `src/core/economy.js`: tables, sites, colony setup/settle, fold and bounded
+  world-transfer helpers.
 - `src/core/trade.js`: discovery, fleet, queue handlers, founding, player transfers,
-  and §9's live-geometry cache and leg laws (the linear plan, the intercept solve,
-  pursuit, the divert).
+  the founding-time intra graph and fixed-point family closure, and §9's
+  live-geometry cache and leg laws (the linear plan, intercept solve, pursuit,
+  divert).
+- `src/math/deltav.js`: the shared well/landing/Hohmann physics, including the
+  surface-to-surface helper used by the Solar pin. The trade settle does not
+  rebuild this graph.
+- `src/render/system-layer.js`: the opened system's world markers and ambient
+  intra-flow dashes, reading references supplied by `main.js`.
 - `src/core/ship.js`, `presets.js`, `input.js`: cargo state, settings and Y action.
 - `src/main.js`, `src/index.html`: seeding/clocks, inspection, HUD/panel/wiring,
   the geometry refresh and the exchange rate (§9.1/§9.2), the per-frame mirror step.
@@ -320,18 +430,28 @@ counters and six largest non-abandoned ports plus sailing ships, refreshed at
   §8 start scenario (the growth curve, the capital's first seconds, the full
   network by 90 s, and the forced capital) and §17's live geometry (the frozen
   identity, the cache, the intercept, the refusals, the divert and its refund,
-  the frontier stretch, and 120 s of shearing sky).
+  the frontier stretch, and 120 s of shearing sky). Sections 27–29 add the two
+  routing maps, world/fold conservation, bit-exact DeltaV graph, Earth→Mars pin,
+  near/far couple flows, positive bulk/goods/passenger closure, starvation and
+  one-world limits, lift-taxed exports, founding score and the same-clock fixed
+  point.
+- `experiments/dv-map-test.js`: the published Solar edges plus the direct
+  Earth→Mars surface-to-surface aerocapture pin.
+- `experiments/system-layer-test.js`: matching-star trade-data gating, world /
+  outpost / starvation markers, three-flow drawing and allocation-free frames.
 - `experiments/exec-queue-test.js`: 50,000-event sorted-reference comparison,
   growth, equal timestamps, due follow-ups, boundary, clear/empty and stale handling.
 
 No per-frame object literals/closures for simulation or drawing; setup preallocates
-ports, candidates, ships and scratch arrays. New discovery may allocate records of
-known keys and display text is built at 4 Hz. `step` is one drain; the queue has
-one event per ship plus one tick in normal operation.
+ports, worlds, candidates, ships, intra matrices and scratch arrays. New discovery
+may allocate records of known keys and display text is built at 4 Hz. `step` is
+one drain; the queue has one event per ship plus one tick in normal operation.
 
 Deferred: prices/contracts, constrained recipes, inspection-independent variable
 coverage, port-slot recycling, buildings/terraforming/piracy, planet-specific
-docking, physically calibrated interstellar freight, and a drawn *pursuit curve*
+docking, physically calibrated interstellar freight, a real intra-system fleet
+with its own system clock and queue (T6), capital reinvestment (T7/F6),
+passenger-founded extra worlds (T8), and a drawn *pursuit curve*
 for a re-aimed hull (the overlay draws the chord between the two live endpoints;
 the aim is live, the drawn path between the last two re-aims is not). Real-browser/WebGPU visual
 validation remains separate; canvas-stub geometry tests are not a visual verdict.

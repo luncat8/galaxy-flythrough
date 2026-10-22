@@ -25,6 +25,9 @@
 	const hash = (typeof module !== 'undefined' && module.exports)
 		? require('../math/hash.js')
 		: window.HashLib;
+	const deltav = (typeof module !== 'undefined' && module.exports)
+		? require('../math/deltav.js')
+		: window.DeltaVLib;
 	const LY_PER_KPC = 3261.563673;
 
 	const PORT_CHANCE = 0.35;           // stars the galaxy has settled at all
@@ -36,6 +39,9 @@
 	const MAX_PORTS = 64;
 	const MAX_WORLDS_PER_STAR = 6;
 	const MAX_WORLDS = MAX_PORTS * MAX_WORLDS_PER_STAR;
+	const INTRA_FAMILY_COUNT = economy.INTRA_FAMILY_NAMES.length;
+	const INTRA_FLOW_COUNT = MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR * INTRA_FAMILY_COUNT;
+	const DV_REF = 10e3;
 	const MIN_FOUND_COUPLE = 0.08;
 	// The hard cap counts every ship, including an expedition in flight; the
 	// freighter fleet keeps its own smaller target so a founder always has a
@@ -45,6 +51,40 @@
 	const MAX_SHIPS = 128;
 	const MAX_FREIGHTERS = 74;
 	const MAX_CANDIDATES = 256;
+
+	// T4's graph and fixed-point scratch are module-owned. Systems have at most
+	// MAX_BODIES bodies and a port at most six worlds, so graph builds and every
+	// settle reuse these records without allocating per body, pair, or interval.
+	const INTRA_BODY_PARAMS = new Array(deltav.MAX_BODIES);
+	const INTRA_NODES = new Array(deltav.MAX_BODIES);
+	const INTRA_ONE_EDGES = new Array(deltav.MAX_BODIES);
+	const INTRA_INTER_EDGES = new Array(deltav.MAX_BODIES * (deltav.MAX_BODIES - 1));
+	for (let i = 0; i < deltav.MAX_BODIES; i++) {
+		INTRA_BODY_PARAMS[i] = deltav.createBodyParam();
+		INTRA_NODES[i] = deltav.createNodeSet();
+		INTRA_ONE_EDGES[i] = deltav.createOneBodyEdges();
+	}
+	for (let i = 0; i < INTRA_INTER_EDGES.length; i++) INTRA_INTER_EDGES[i] = deltav.createInterEdge();
+	const INTRA_RESOURCE_SLOTS = MAX_WORLDS_PER_STAR * economy.RESOURCE_COUNT;
+	const INTRA_FAMILY_SLOTS = MAX_WORLDS_PER_STAR * INTRA_FAMILY_COUNT;
+	const INTRA_EXPORT = new Float64Array(INTRA_RESOURCE_SLOTS);
+	const INTRA_DEMAND = new Float64Array(INTRA_RESOURCE_SLOTS);
+	const INTRA_REMAIN = new Float64Array(INTRA_RESOURCE_SLOTS);
+	const INTRA_ROOM = new Float64Array(INTRA_RESOURCE_SLOTS);
+	const INTRA_SENT = new Float64Array(INTRA_RESOURCE_SLOTS);
+	const INTRA_RECEIVED = new Float64Array(INTRA_RESOURCE_SLOTS);
+	const INTRA_FAMILY_EXPORT = new Float64Array(INTRA_FAMILY_SLOTS);
+	const INTRA_FAMILY_DEMAND = new Float64Array(INTRA_FAMILY_SLOTS);
+	const INTRA_PAX_OUT = new Float64Array(MAX_WORLDS_PER_STAR);
+	const INTRA_PAX_IN = new Float64Array(MAX_WORLDS_PER_STAR);
+	const INTRA_PAX_REMAIN = new Float64Array(MAX_WORLDS_PER_STAR);
+	const INTRA_PAX_ROOM = new Float64Array(MAX_WORLDS_PER_STAR);
+	const INTRA_PAX_SENT = new Float64Array(MAX_WORLDS_PER_STAR);
+	const INTRA_PAX_RECEIVED = new Float64Array(MAX_WORLDS_PER_STAR);
+	const INTRA_READOUT_FLOW = new Float64Array(3);
+	const INTRA_READOUT_FROM = new Int8Array(3);
+	const INTRA_READOUT_TO = new Int8Array(3);
+	const INTRA_READOUT_FAMILY = new Int8Array(3);
 
 	// The clock ladder in years per wall second. 100 y/s is the default: a
 	// neighbouring-star voyage (tens of years) is under a second, a 2000-year
@@ -268,6 +308,7 @@
 			dv: new Float64Array(MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR),
 			tH: new Float64Array(MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR),
 			couple,
+			intraFlow: new Float64Array(INTRA_FLOW_COUNT),
 			key: 0, name: '', kind: 0, index: 0,
 			arrivals: 0, received: 0,
 			// Trade years of the last sponsored expedition; `-INF` marks a seed
@@ -295,7 +336,7 @@
 	}
 
 	function createCandidate() {
-		return { site: economy.createSite(), used: 0, reserved: -1 };
+		return { site: economy.createSite(), used: 0, reserved: -1, well: 0, land: 0 };
 	}
 
 	function createNetwork(options) {
@@ -407,6 +448,258 @@
 		return port.colony;
 	}
 
+	function intraBodyIndex(system, kind, index) {
+		return kind === 1 ? (system.counts.planets | 0) + (index | 0) : index | 0;
+	}
+
+	function buildIntraBodyTable(system) {
+		if (!system || !system.star || !system.planets || !system.counts || !system.belts) return 0;
+		return deltav.buildBodyNodes(system, INTRA_BODY_PARAMS, INTRA_NODES, INTRA_ONE_EDGES);
+	}
+
+	function buildIntraGraphTable(system) {
+		const nBodies = buildIntraBodyTable(system);
+		if (nBodies > 1) {
+			const muStar = deltav.G_SI * system.star.mass * deltav.M_SUN_KG;
+			deltav.buildInterEdges(muStar, INTRA_BODY_PARAMS, nBodies, INTRA_INTER_EDGES);
+		}
+		return nBodies;
+	}
+
+	function refreshPortAccess(net, portIndex) {
+		const port = net.ports[portIndex];
+		for (let s = 0; s < port.worldCount; s++) {
+			const world = net.worlds[port.worldIdx[s]];
+			let sum = 0, count = 0;
+			if (!world.outpost) {
+				for (let u = 0; u < port.worldCount; u++) {
+					if (u === s) continue;
+					const other = net.worlds[port.worldIdx[u]];
+					if (other.outpost) continue;
+					sum += port.couple[s * MAX_WORLDS_PER_STAR + u];
+					count += 1;
+				}
+			}
+			const access = count > 0 ? sum / count : 1;
+			port.access[s] = access;
+			world.access = access;
+		}
+	}
+
+	// The graph is built on discovery/founding, never in settle. Direction is
+	// meaningful: lift at the source, the same aerocapture Hohmann leg as the
+	// delta-v map, then landing at the destination. Outposts remain nodes, but
+	// refreshPortAccess excludes them from live-world means.
+	function fillIntraGraph(net, portIndex, system) {
+		if (!(portIndex >= 0 && portIndex < net.portCount)) return 0;
+		const port = net.ports[portIndex];
+		const nBodies = buildIntraGraphTable(system);
+		if (!(nBodies > 0)) return 0;
+		const muStar = deltav.G_SI * system.star.mass * deltav.M_SUN_KG;
+		for (let s = 0; s < port.worldCount; s++) {
+			const world = net.worlds[port.worldIdx[s]];
+			const bi = intraBodyIndex(system, world.kind, world.index);
+			const body = bi >= 0 && bi < nBodies ? INTRA_BODY_PARAMS[bi] : null;
+			const one = bi >= 0 && bi < nBodies ? INTRA_ONE_EDGES[bi] : null;
+			const well = body && body.hasSurface ? one.dvSurfaceToLo : 0;
+			const land = body && body.hasSurface ? one.dvLoToSurface : 0;
+			port.well[s] = well;
+			port.land[s] = land;
+			port.lift[s] = 1 / (1 + well / DV_REF);
+		}
+		for (let s = 0; s < port.worldCount; s++) {
+			const source = net.worlds[port.worldIdx[s]];
+			const sourceBody = intraBodyIndex(system, source.kind, source.index);
+			for (let t = 0; t < port.worldCount; t++) {
+				const matrixIndex = s * MAX_WORLDS_PER_STAR + t;
+				if (s === t) {
+					port.dv[matrixIndex] = 0;
+					port.tH[matrixIndex] = 0;
+					port.couple[matrixIndex] = 1;
+					continue;
+				}
+				const target = net.worlds[port.worldIdx[t]];
+				const targetBody = intraBodyIndex(system, target.kind, target.index);
+				if (sourceBody < 0 || sourceBody >= nBodies || targetBody < 0 || targetBody >= nBodies) {
+					port.dv[matrixIndex] = 0;
+					port.tH[matrixIndex] = 0;
+					port.couple[matrixIndex] = 1;
+					continue;
+				}
+				const edge = INTRA_INTER_EDGES[deltav.interEdgeIndex(nBodies, sourceBody, targetBody)];
+				const dv = port.well[s] + edge.dvLoToLo + port.land[t];
+				port.dv[matrixIndex] = dv;
+				port.tH[matrixIndex] = edge.tH;
+				const ratio = dv / DV_REF;
+				port.couple[matrixIndex] = 1 / (1 + ratio * ratio);
+			}
+		}
+		refreshPortAccess(net, portIndex);
+		return nBodies;
+	}
+
+	function fillSiteWellLand(system, kind, index, out) {
+		const nBodies = buildIntraBodyTable(system);
+		const bi = intraBodyIndex(system, kind, index);
+		if (bi < 0 || bi >= nBodies) { out.well = 0; out.land = 0; return 0; }
+		const body = INTRA_BODY_PARAMS[bi];
+		const one = INTRA_ONE_EDGES[bi];
+		out.well = body.hasSurface ? one.dvSurfaceToLo : 0;
+		out.land = body.hasSurface ? one.dvLoToSurface : 0;
+		return 1;
+	}
+
+	function intraFlowIndex(sourceSlot, targetSlot, family) {
+		return (sourceSlot * MAX_WORLDS_PER_STAR + targetSlot) * INTRA_FAMILY_COUNT + family;
+	}
+
+	// Snapshot every live world's family supply, family demand and coverage
+	// before any local settle. The same Δt is then integrated locally first;
+	// transfers are applied once afterward, without feeding them back into the
+	// ODE that produced the interval.
+	function captureIntraInputs(net, port, time) {
+		INTRA_EXPORT.fill(0); INTRA_DEMAND.fill(0);
+		INTRA_FAMILY_EXPORT.fill(0); INTRA_FAMILY_DEMAND.fill(0);
+		INTRA_PAX_OUT.fill(0); INTRA_PAX_IN.fill(0);
+		let elapsed = 0;
+		for (let s = 0; s < port.worldCount; s++) {
+			const world = net.worlds[port.worldIdx[s]];
+			if (world.outpost) continue;
+			const years = time - world.last;
+			if (!(years > 0)) continue;
+			elapsed = 1;
+			const resourceBase = s * economy.RESOURCE_COUNT;
+			const familyBase = s * INTRA_FAMILY_COUNT;
+			for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+				const family = economy.RESOURCES[r].intraFamily;
+				if (family < economy.INTRA_BULK || family >= economy.INTRA_PAX) continue;
+				const supply = economy.exportableOf(world, r);
+				const demand = economy.demandOf(world, r);
+				INTRA_EXPORT[resourceBase + r] = supply;
+				INTRA_DEMAND[resourceBase + r] = demand;
+				INTRA_FAMILY_EXPORT[familyBase + family] += supply;
+				INTRA_FAMILY_DEMAND[familyBase + family] += demand;
+			}
+			if (world.coverage >= 0.6) {
+				if (world.pop < 0.8 * world.capacity) {
+					const out = world.pop * 0.02 * years;
+					INTRA_PAX_OUT[s] = out < world.pop ? out : world.pop;
+				}
+				const room = world.capacity - world.pop;
+				const habitat = world.isBelt ? economy.HABITAT_BELT : economy.HABITAT[world.type];
+				if (room > 0 && habitat > 0) INTRA_PAX_IN[s] = room * habitat;
+			}
+			INTRA_FAMILY_EXPORT[familyBase + economy.INTRA_PAX] = INTRA_PAX_OUT[s];
+			INTRA_FAMILY_DEMAND[familyBase + economy.INTRA_PAX] = INTRA_PAX_IN[s];
+		}
+		return elapsed;
+	}
+
+	function applyIntraFlows(net, port) {
+		INTRA_REMAIN.fill(0); INTRA_ROOM.fill(0);
+		INTRA_SENT.fill(0); INTRA_RECEIVED.fill(0);
+		INTRA_PAX_REMAIN.fill(0); INTRA_PAX_ROOM.fill(0);
+		INTRA_PAX_SENT.fill(0); INTRA_PAX_RECEIVED.fill(0);
+		port.intraFlow.fill(0);
+		for (let s = 0; s < port.worldCount; s++) {
+			const world = net.worlds[port.worldIdx[s]];
+			if (world.outpost) continue;
+			const resourceBase = s * economy.RESOURCE_COUNT;
+			for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+				const i = resourceBase + r;
+				const currentExport = economy.exportableOf(world, r);
+				INTRA_REMAIN[i] = currentExport < INTRA_EXPORT[i] ? currentExport : INTRA_EXPORT[i];
+				const room = world.stockCap[r] - world.stock[r];
+				INTRA_ROOM[i] = room > 0 ? room : 0;
+			}
+			INTRA_PAX_REMAIN[s] = INTRA_PAX_OUT[s] < world.pop ? INTRA_PAX_OUT[s] : world.pop;
+			const paxRoom = world.capacity - world.pop;
+			INTRA_PAX_ROOM[s] = paxRoom > 0 ? paxRoom : 0;
+		}
+		for (let s = 0; s < port.worldCount; s++) {
+			const source = net.worlds[port.worldIdx[s]];
+			if (source.outpost) continue;
+			const sourceFamilyBase = s * INTRA_FAMILY_COUNT;
+			for (let f = 0; f < INTRA_FAMILY_COUNT; f++) {
+				const supply = INTRA_FAMILY_EXPORT[sourceFamilyBase + f];
+				if (!(supply > 0)) continue;
+				let denominator = 0;
+				for (let u = 0; u < port.worldCount; u++) {
+					const receiver = net.worlds[port.worldIdx[u]];
+					if (receiver.outpost) continue;
+					const demand = INTRA_FAMILY_DEMAND[u * INTRA_FAMILY_COUNT + f];
+					if (demand > 0) denominator += demand * port.couple[s * MAX_WORLDS_PER_STAR + u];
+				}
+				if (!(denominator > 0)) continue;
+				for (let t = 0; t < port.worldCount; t++) {
+					if (t === s) continue; // self's denominator share stays local
+					const target = net.worlds[port.worldIdx[t]];
+					if (target.outpost) continue;
+					const targetFamilyBase = t * INTRA_FAMILY_COUNT;
+					const targetDemand = INTRA_FAMILY_DEMAND[targetFamilyBase + f];
+					if (!(targetDemand > 0)) continue;
+					const couple = port.couple[s * MAX_WORLDS_PER_STAR + t];
+					if (!(couple > 0)) continue;
+					const offer = supply * targetDemand * couple / denominator;
+					if (!(offer > 0)) continue;
+					let moved = 0;
+					if (f === economy.INTRA_PAX) {
+						let amount = offer;
+						if (amount > INTRA_PAX_REMAIN[s]) amount = INTRA_PAX_REMAIN[s];
+						if (amount > INTRA_PAX_ROOM[t]) amount = INTRA_PAX_ROOM[t];
+						if (amount > 0) {
+							INTRA_PAX_REMAIN[s] -= amount;
+							INTRA_PAX_ROOM[t] -= amount;
+							INTRA_PAX_SENT[s] += amount;
+							INTRA_PAX_RECEIVED[t] += amount;
+							moved = amount;
+						}
+					} else {
+						const sourceBase = s * economy.RESOURCE_COUNT;
+						const targetBase = t * economy.RESOURCE_COUNT;
+						for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+							if (economy.RESOURCES[r].intraFamily !== f) continue;
+							const demand = INTRA_DEMAND[targetBase + r];
+							if (!(demand > 0)) continue;
+							let amount = offer * demand / targetDemand;
+							if (amount > INTRA_REMAIN[sourceBase + r]) amount = INTRA_REMAIN[sourceBase + r];
+							if (amount > INTRA_ROOM[targetBase + r]) amount = INTRA_ROOM[targetBase + r];
+							if (!(amount > 0)) continue;
+							INTRA_REMAIN[sourceBase + r] -= amount;
+							INTRA_ROOM[targetBase + r] -= amount;
+							INTRA_SENT[sourceBase + r] += amount;
+							INTRA_RECEIVED[targetBase + r] += amount;
+							moved += amount;
+						}
+					}
+					if (moved > 0) port.intraFlow[intraFlowIndex(s, t, f)] += moved;
+				}
+			}
+		}
+		// Commit all goods and people simultaneously. A recipient cannot export
+		// a delivery from the same settle, and stocks stay inside their caps.
+		for (let s = 0; s < port.worldCount; s++) {
+			const world = net.worlds[port.worldIdx[s]];
+			if (world.outpost) continue;
+			const resourceBase = s * economy.RESOURCE_COUNT;
+			for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+				const change = INTRA_RECEIVED[resourceBase + r] - INTRA_SENT[resourceBase + r];
+				if (change === 0) continue;
+				let stock = world.stock[r] + change;
+				if (stock < 0) stock = 0;
+				if (stock > world.stockCap[r]) stock = world.stockCap[r];
+				world.stock[r] = stock;
+			}
+			const popChange = INTRA_PAX_RECEIVED[s] - INTRA_PAX_SENT[s];
+			if (popChange !== 0) {
+				let pop = world.pop + popChange;
+				if (pop < 0) pop = 0;
+				if (pop > world.capacity) pop = world.capacity;
+				world.pop = pop;
+			}
+		}
+	}
+
 	function distributePortInbound(net, index, r, units) {
 		const port = net.ports[index];
 		const n = fillPortWorlds(net, port);
@@ -417,6 +710,56 @@
 		const port = net.ports[index];
 		const n = fillPortWorlds(net, port);
 		return economy.collectOutbound(port.colony, PORT_WORLDS, n, r, units, port.lift);
+	}
+
+	function intraReadoutText(net, index) {
+		if (!(index >= 0 && index < net.portCount)) return '';
+		const port = net.ports[index];
+		INTRA_READOUT_FLOW.fill(0);
+		INTRA_READOUT_FROM.fill(-1); INTRA_READOUT_TO.fill(-1); INTRA_READOUT_FAMILY.fill(-1);
+		for (let s = 0; s < port.worldCount; s++) {
+			for (let t = 0; t < port.worldCount; t++) {
+				if (s === t) continue;
+				for (let f = 0; f < INTRA_FAMILY_COUNT; f++) {
+					const amount = port.intraFlow[intraFlowIndex(s, t, f)];
+					if (!(amount > 0)) continue;
+					let pos = 0;
+					while (pos < 3 && amount <= INTRA_READOUT_FLOW[pos]) pos++;
+					if (pos >= 3) continue;
+					for (let k = 2; k > pos; k--) {
+						INTRA_READOUT_FLOW[k] = INTRA_READOUT_FLOW[k - 1];
+						INTRA_READOUT_FROM[k] = INTRA_READOUT_FROM[k - 1];
+						INTRA_READOUT_TO[k] = INTRA_READOUT_TO[k - 1];
+						INTRA_READOUT_FAMILY[k] = INTRA_READOUT_FAMILY[k - 1];
+					}
+					INTRA_READOUT_FLOW[pos] = amount;
+					INTRA_READOUT_FROM[pos] = s;
+					INTRA_READOUT_TO[pos] = t;
+					INTRA_READOUT_FAMILY[pos] = f;
+				}
+			}
+		}
+		let text = '\nintra     flow · km/s';
+		let count = 0;
+		for (let k = 0; k < 3 && INTRA_READOUT_FROM[k] >= 0; k++) {
+			const fromSlot = INTRA_READOUT_FROM[k], toSlot = INTRA_READOUT_TO[k];
+			const from = net.worlds[port.worldIdx[fromSlot]];
+			const to = net.worlds[port.worldIdx[toSlot]];
+			const pair = fromSlot * MAX_WORLDS_PER_STAR + toSlot;
+			const family = INTRA_READOUT_FAMILY[k];
+			text += '\n          ' + economy.INTRA_FAMILY_SHORT[family] + ' ' + to.name + ' ← ' + from.name
+				+ ' · ' + (port.dv[pair] / 1000).toFixed(1) + ' km/s'
+				+ ' · couple ' + port.couple[pair].toFixed(2)
+				+ ' · Hohmann ' + deltav.formatDuration(port.tH[pair]);
+			count += 1;
+		}
+		if (count === 0) text += '\n          no current transfer';
+		text += '\nlift      ';
+		for (let s = 0; s < port.worldCount; s++) {
+			const world = net.worlds[port.worldIdx[s]];
+			text += (s > 0 ? ' · ' : '') + world.name + ' ' + port.lift[s].toFixed(2);
+		}
+		return text;
 	}
 
 	function takePortPopulation(net, index, peopleM) {
@@ -878,7 +1221,7 @@
 	// landed). Same fill law, different grant.
 	const ROLLED_FOUND = 0, FRESH_FOUND = 1;
 
-	function addWorld(net, portIndex, site, nowYears, mode) {
+	function addWorld(net, portIndex, site, nowYears, mode, system) {
 		if (!(portIndex >= 0 && portIndex < net.portCount)) return -1;
 		const port = net.ports[portIndex];
 		if (port.worldCount > 0 && port.colony.outpost) return -1;
@@ -897,11 +1240,32 @@
 		world.access = port.access[slot];
 		const c = candidateIndexOf(net, site.key, site.kind, site.index);
 		if (c >= 0) net.candidates[c].used = 1;
+		if (!system || fillIntraGraph(net, portIndex, system) === 0) {
+			// A frontier candidate retains just its own well/landing scalars, not
+			// a full SystemRecord. Until its system opens, new off-diagonal edges
+			// keep the identity coupling used by legacy/manual fixtures.
+			if (c >= 0) {
+				port.well[slot] = net.candidates[c].well;
+				port.land[slot] = net.candidates[c].land;
+			} else {
+				port.well[slot] = 0;
+				port.land[slot] = 0;
+			}
+			port.lift[slot] = 1 / (1 + port.well[slot] / DV_REF);
+			for (let t = 0; t < port.worldCount; t++) {
+				const st = slot * MAX_WORLDS_PER_STAR + t;
+				const ts = t * MAX_WORLDS_PER_STAR + slot;
+				port.dv[st] = 0; port.dv[ts] = 0;
+				port.tH[st] = 0; port.tH[ts] = 0;
+				port.couple[st] = 1; port.couple[ts] = 1;
+			}
+			refreshPortAccess(net, portIndex);
+		}
 		foldPort(net, portIndex);
 		return worldIndex;
 	}
 
-	function addPort(net, site, nowYears, mode) {
+	function addPort(net, site, nowYears, mode, system) {
 		// One inter-star port per star; a star whose colony failed keeps its slot
 		// and refuses every future founding (that is what "never recolonised" means).
 		const existing = portOfStarLive(net, site.key);
@@ -927,11 +1291,11 @@
 			port.ref.x = ref.x; port.ref.y = ref.y; port.ref.z = ref.z;
 			port.ref.colorIndex = ref.colorIndex; port.ref.absMag = ref.absMag;
 		}
-		addWorld(net, index, site, nowYears, mode);
+		addWorld(net, index, site, nowYears, mode, system);
 		return index;
 	}
 
-	function addCandidate(net, site) {
+	function addCandidate(net, site, system) {
 		if (net.candidateCount >= MAX_CANDIDATES) return -1;
 		if (candidateIndexOf(net, site.key, site.kind, site.index) >= 0) return -1;
 		if (portIndexOf(net, site.key, site.kind, site.index) >= 0) return -1;
@@ -939,6 +1303,8 @@
 		const c = net.candidates[index];
 		economy.copySite(c.site, site);
 		c.used = 0;
+		c.well = 0; c.land = 0;
+		if (system) fillSiteWellLand(system, site.kind, site.index, c);
 		return index;
 	}
 
@@ -1011,7 +1377,7 @@
 			if (pick.index < 0 || pick.score < MIN_CANDIDATE_HABITAT) return added;
 			fillPickedSite(site, ref, system, seed, pick);
 			site.name = economy.siteName(starName || '', key, pick.belt, pick.index);
-			const portIndex = addPort(net, site, nowYears);
+			const portIndex = addPort(net, site, nowYears, undefined, system);
 			if (portIndex >= 0) {
 				added++;
 				if (nearHome && net.capital < 0) net.capital = portIndex;
@@ -1027,7 +1393,7 @@
 		if (pick.index < 0 || pick.score < MIN_CANDIDATE_HABITAT) return added;
 		fillPickedSite(site, ref, system, seed, pick);
 		site.name = economy.siteName(starName || '', key, pick.belt, pick.index);
-		addCandidate(net, site);
+		addCandidate(net, site, system);
 		return added;
 	}
 
@@ -1098,20 +1464,26 @@
 		}
 	}
 
-	// One port's settle, the only path that may demote it. Settles every live
-	// world of the port, folds them into `port.colony`, and demotes the port iff
-	// every world on the star has failed. Single-world ports skip the fold loop.
+	// One port's settle, the only path that may demote it. The interval is a
+	// deliberate non-circular fixed point: freeze every world's local supply,
+	// demand and coverage once; settle all worlds to the same time; apply the
+	// one simultaneous statistical transfer; then fold. Never re-settle after
+	// a transfer (it would feed stocks back into the same interval). A repeated
+	// call at `time` has no interval, so it cannot apply the flow twice.
 	function settlePort(net, index, time) {
 		const port = net.ports[index];
 		if (port.colony.outpost) return 0;
 		const level = port.colony.popLevel;
 		const starving = port.colony.starving;
+		const hasInterval = captureIntraInputs(net, port, time);
 		let delta = 0;
 		for (let s = 0; s < port.worldCount; s++) {
 			const world = net.worlds[port.worldIdx[s]];
 			if (world.outpost) continue;
 			delta += economy.settleColony(world, time);
 		}
+		if (hasInterval) applyIntraFlows(net, port);
+		refreshPortAccess(net, index);
 		const colony = foldPort(net, index);
 		if (colony.popLevel !== level) pushLog(net, LOG_MILESTONE, index, colony.popLevel, level);
 		if (colony.starving !== starving) {
@@ -1535,6 +1907,31 @@
 		return base;
 	}
 
+	// A second world must be both habitable and cheap to lift/reach from the
+	// capital. Candidate geometry is measured from this system's same DeltaVLib
+	// body/edge tables; its score is habitat · couple(candidate, world0) divided
+	// by the candidate's own well penalty (trade-3 plan §6.3).
+	function worldFoundingScore(net, portIndex, site, system) {
+		if (!(portIndex >= 0 && portIndex < net.portCount)) return 0;
+		const port = net.ports[portIndex];
+		if (!(port.worldCount > 0)) return 0;
+		const nBodies = buildIntraGraphTable(system);
+		const candidateBody = intraBodyIndex(system, site.kind, site.index);
+		const capital = net.worlds[port.worldIdx[0]];
+		const capitalBody = intraBodyIndex(system, capital.kind, capital.index);
+		if (candidateBody < 0 || candidateBody >= nBodies
+			|| capitalBody < 0 || capitalBody >= nBodies || candidateBody === capitalBody) return 0;
+		const oneCandidate = INTRA_ONE_EDGES[candidateBody];
+		const oneCapital = INTRA_ONE_EDGES[capitalBody];
+		const candidateWell = INTRA_BODY_PARAMS[candidateBody].hasSurface ? oneCandidate.dvSurfaceToLo : 0;
+		const capitalLand = INTRA_BODY_PARAMS[capitalBody].hasSurface ? oneCapital.dvLoToSurface : 0;
+		const leg = INTRA_INTER_EDGES[deltav.interEdgeIndex(nBodies, candidateBody, capitalBody)];
+		const dv = candidateWell + leg.dvLoToLo + capitalLand;
+		const ratio = dv / DV_REF;
+		const couple = 1 / (1 + ratio * ratio);
+		return siteHabitatScore(site) * couple / (1 + candidateWell / DV_REF);
+	}
+
 	function isBigColony(colony) {
 		if (colony.outpost) return false;
 		if (colony.pop < MIN_EXPEDITION_POP_M) return false;
@@ -1838,7 +2235,7 @@
 			// Claim the star as discovered so it is never rescanned, then add its
 			// best world as the frontier candidate.
 			net.discovered.add(key);
-			if (addCandidate(net, FRONTIER_BEST) >= 0 && ++added >= FRONTIER_PER_SCAN) { net.frontierCursor = fi; return added; }
+			if (addCandidate(net, FRONTIER_BEST, FRONTIER_SCAN_RECORD) >= 0 && ++added >= FRONTIER_PER_SCAN) { net.frontierCursor = fi; return added; }
 		}
 		net.frontierCursor = fi;
 		return added;
@@ -1983,7 +2380,7 @@
 		}
 		fillPickedSite(FOUND_SITE, ref, system, seed, pick);
 		FOUND_SITE.name = economy.siteName(starName || '', key, pick.belt, pick.index);
-		const portIndex = addPort(net, FOUND_SITE, nowYears, FRESH_FOUND);
+		const portIndex = addPort(net, FOUND_SITE, nowYears, FRESH_FOUND, system);
 		if (portIndex < 0) { r.reason = 'network is full'; return r; }
 		for (let i = 0; i < net.candidateCount; i++) {
 			if (net.candidates[i].site.key === key) net.candidates[i].used = 1;
@@ -2061,7 +2458,7 @@
 		}
 		FOUND_SITE.name = economy.siteName(starName || '', key, belt, bodyIndex | 0);
 		if (existingPort < 0) {
-			const portIndex = addPort(net, FOUND_SITE, nowYears, FRESH_FOUND);
+			const portIndex = addPort(net, FOUND_SITE, nowYears, FRESH_FOUND, system);
 			if (portIndex < 0) { r.reason = 'network is full'; return r; }
 			for (let i = 0; i < net.candidateCount; i++) {
 				if (net.candidates[i].site.key === key) net.candidates[i].used = 1;
@@ -2076,12 +2473,11 @@
 			return r;
 		}
 		const port = net.ports[existingPort];
-		const slot = port.worldCount;
-		if (port.couple[slot * MAX_WORLDS_PER_STAR] < MIN_FOUND_COUPLE) {
+		if (worldFoundingScore(net, existingPort, FOUND_SITE, system) < MIN_FOUND_COUPLE) {
 			r.reason = 'too expensive to reach';
 			return r;
 		}
-		const worldIndex = addWorld(net, existingPort, FOUND_SITE, nowYears, FRESH_FOUND);
+		const worldIndex = addWorld(net, existingPort, FOUND_SITE, nowYears, FRESH_FOUND, system);
 		if (worldIndex < 0) {
 			r.reason = port.colony.outpost ? 'star is an outpost' : 'worlds full';
 			return r;
@@ -2628,7 +3024,8 @@
 	const DISCOVER_SITE = economy.createSite();
 
 	const TradeLib = {
-		MAX_PORTS, MAX_WORLDS_PER_STAR, MAX_WORLDS, MIN_FOUND_COUPLE,
+		MAX_PORTS, MAX_WORLDS_PER_STAR, MAX_WORLDS, DV_REF,
+		INTRA_FAMILY_COUNT, INTRA_FLOW_COUNT, intraFlowIndex, MIN_FOUND_COUPLE,
 		MAX_SHIPS, MAX_FREIGHTERS, MAX_CANDIDATES, TRADE_RATES, TRADE_RATE_DEFAULT,
 		TRADE_RATE_DEFAULT_INDEX, TRADE_ROUTES_DEFAULT,
 		SYNC_YEARS_PER_MYR, RATE_MAX, GENERATION_LY_PER_YEAR, GENERATION_RESERVE_YEARS, GENERATION_STAR_MYR,
@@ -2648,13 +3045,14 @@
 		setExpansion, expansionArmed, portReadiness, launchChosen, CHOSEN_RESULT,
 		ROLLED_FOUND, FRESH_FOUND, createFoundResult, playerFound,
 		createWorldFoundResult, playerFoundWorld,
-		createNetwork, addPort, addWorld, worldOfPort, worldOfSite, foldPort,
+		createNetwork, addPort, addWorld, worldOfPort, worldOfSite, foldPort, fillIntraGraph,
 		distributePortInbound, collectPortOutbound,
 		discoverSystem, discoverNearest, startSystems, settleSystem, settlePort, finalize, step, settleAllPorts,
 		portOfStar, portOfStarLive, livePortCount, demotePort,
 		portIndexOf, candidateIndexOf, bestPortOfStar, distanceLy, legYears, pickDestination, pickExport,
 		shipPosition, shipProgress, shipStateName, playerPort, playerLoad, playerUnload,
-		siteHabitatScore, isBigColony, colonisationPreview, pickCandidate, bestExpedition,
+		siteHabitatScore, worldFoundingScore, intraReadoutText,
+		isBigColony, colonisationPreview, pickCandidate, bestExpedition,
 		launchBest, launchExpedition, returnFounder, retimeRoutes, colonisationStatus,
 		expandFrontierFromField, setGenerationMode, generationMode: setGenerationMode,
 		refreshGeometry, endpointPos, endpointDistanceLy, planLeg, bookLeg, shipFraction,

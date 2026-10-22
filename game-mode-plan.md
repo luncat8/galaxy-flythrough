@@ -166,7 +166,8 @@ dresses:
 | wheel | steps the ship-time ladder (§4) — the observer speed ladder is off duty |
 | `g` | leave to the observer at the same pose (ship state stored, autopilot aborted) |
 | `T` | freeze/resume the shared clock (frozen = ship *and* sky) |
-| `c` `V` `B` | gated: HUD notice; controls disabled |
+| `c` `B` | gated: HUD notice; controls disabled |
+| `V` | gated while flying; while docked, opens/closes the station's schematic without camera motion for sibling-world founding |
 | `Shift+C` | select the galactic centre as the speed reference (§7.4) — no re-pose |
 | `H` | select the home reference (the Sun in the Milky Way, a generated galaxy's centre otherwise) — no teleport |
 | `R` | reset the active hull to camera home (full tank, zero v) and clear the locked destination; parked hulls stay put |
@@ -174,9 +175,14 @@ dresses:
 | `L` / `Shift+L` | load / unload the cargo hold at the docked station (§10) — the container hook, free (no economy) |
 | click / `N` `X` / search / Tab | unchanged — selection is how the HUD gets its target |
 
-`V` is gated because the system view re-poses the camera (its enter path
-snaps to an orbit), which would teleport the ship; the HUD's target line is
-the in-game readout of the same selection. `C` and `H` are the reference
+`V` is gated in flight because the ordinary system-view enter path re-poses
+the camera, which would teleport the ship. The docked exception enters the
+station's own schematic with `moveCamera = false`, forces the schematic rather
+than either delta-v render, disables its route controls, and closes on undock
+or a hull switch. It uses the station key for discovery, the trade card and
+body picks, so a locked destination need not remain the galaxy primary. This
+is the UI path for trade-3's player-founded sibling worlds; it is not a second
+flight mode. `C` and `H` are the reference
 selectors: in the observer rig they keep their legacy motion (`Shift+C`
 orbits the centre, `H` travels home) **and** select the reference; in game
 mode they only select it, because a ship never re-poses and never

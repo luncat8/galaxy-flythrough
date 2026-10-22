@@ -1537,9 +1537,11 @@ Shipped, in `archive/`:
   inter-star port. Intra is a statistic that develops the system (cheap wells
   feed, deep ones do not). A real inter-planet fleet with its own clock and
   queue, capital, and auto-fill of extra worlds are deferred; the 13-row site
-  map and the closed-form settle are refused replacements. **Status:** T1
-  shipped (`trade.19`) — bulk stays in-system, the seven specialist families
-  ship; T2 is next.
+  map and the closed-form settle are refused replacements. **Status:** T1–T5
+  shipped (`trade.19`–`trade.22`): seven shipping families, the world pool and
+  port fold, delta-v-coupled intra closure, and the system markers/flows/card.
+  The browser pass over the new system picture is the open validation item;
+  T6–T8 remain deferred as specified.
 
 - [`evolution-plan.md`](evolution-plan.md) — the 0.6 series, galaxy evolution over time:
   the type table describes present-day galaxies, so `modelAtAge` gains an **epoch tier**

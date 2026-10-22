@@ -6,16 +6,19 @@
 //   §3  the event network: ports, ships, arrivals, colonisation, the queue's
 //       bounds and the jump-equals-steps invariant on the whole network,
 //   §4  the player's tonnage/units bridge (load, carry, sell back),
-//   §5  the draw state the galaxy overlay reads.
+//   §5  the draw state the galaxy overlay reads,
+//   §§27–29 T1–T4 families, world folds, DeltaV graph, statistical flows and T5 readout.
 //
-// The fixtures are real landmark systems through planets.generateSystem, so a
-// broken generator is a red test here too. Output: experiments/logs/trade.json
+// The legacy fixtures use real landmark systems through planets.generateSystem;
+// the T4 pins use a recorded Solar fixture to isolate the physical graph law.
+// Output: experiments/logs/trade.json
 
 'use strict';
 
 const path = require('path');
 const logFile = require('./log-file.js');
 const planets = require('../src/math/planets.js');
+const deltav = require('../src/math/deltav.js');
 const galaxy = require('../src/math/galaxy.js');
 const economy = require('../src/core/economy.js');
 const trade = require('../src/core/trade.js');
@@ -33,6 +36,87 @@ function near(a, b, rel) {
 	return Math.abs(a - b) <= tol * Math.max(1, Math.abs(a), Math.abs(b));
 }
 function finite(x) { return typeof x === 'number' && Number.isFinite(x); }
+
+function syntheticIntraSystem(options) {
+	const opts = options || {};
+	const system = planets.createSystemRecord();
+	const star = system.star;
+	star.key = (opts.key === undefined ? 0x544534 : opts.key) >>> 0;
+	star.mass = opts.starMass === undefined ? 1 : opts.starMass;
+	star.lum = 1; star.teff = 5772; star.rStar = 1; star.age = 4.6; star.metal = 0.02;
+	star.state = 'ms'; star.spectralClass = 'G';
+	star.aHzIn = planets.hzInnerAU(1); star.aHzOut = planets.hzOuterAU(1);
+	star.aSnow = planets.snowLineAU(1); star.aOut = planets.outerEdgeAU(1, 'ms');
+	const defs = opts.planets || [
+		{ a: 1, mass: 1, radius: 1, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ },
+		{ a: 1.524, mass: 0.107, radius: 0.532, type: 2, flags: 0 },
+	];
+	system.counts.planets = defs.length;
+	system.counts.terranCount = 0;
+	system.counts.giantCount = 0;
+	for (let i = 0; i < defs.length; i++) {
+		const def = defs[i];
+		const p = system.planets;
+		const type = def.type === undefined ? 3 : def.type;
+		const a = def.a;
+		const mass = def.mass === undefined ? 1 : def.mass;
+		const radius = def.radius === undefined ? 1 : def.radius;
+		p.a[i] = a; p.mass[i] = mass; p.radius[i] = radius;
+		p.density[i] = def.density === undefined ? 5.51 : def.density;
+		p.e[i] = 0; p.inc[i] = 0; p.peri[i] = 0; p.phase[i] = 0;
+		p.period[i] = Math.sqrt(a * a * a / star.mass);
+		p.teq[i] = 288 / Math.sqrt(Math.sqrt(a * a));
+		p.tsurf[i] = def.tsurf === undefined ? (type === 3 ? 288 : 220) : def.tsurf;
+		p.insolation[i] = planets.insolation(star.lum, a);
+		p.rHill[i] = a * Math.pow(mass / 333000, 1 / 3);
+		p.rotHours[i] = def.rotHours === undefined ? 24 : def.rotHours;
+		p.moons[i] = 0;
+		p.displayType[i] = type;
+		p.bulk[i] = planets.BULK_INDEX[planets.DISPLAY_TYPES[type].bulk];
+		p.flags[i] = def.flags === undefined ? (type === 3 ? planets.FLAG_TERRAN | planets.FLAG_IN_HZ : 0) : def.flags;
+		if (type === 3) system.counts.terranCount += 1;
+		if (type === 7 || type === 8) system.counts.giantCount += 1;
+	}
+	const beltA = opts.beltA;
+	system.belts.count = beltA === undefined || beltA === null ? 0 : 1;
+	if (system.belts.count) {
+		system.belts.kind[0] = 0;
+		system.belts.a[0] = beltA;
+		system.belts.dlnA[0] = 0.12;
+		system.belts.mass[0] = 0.02;
+		system.belts.stippleSeed[0] = 424242;
+	}
+	return system;
+}
+
+function syntheticSite(system, ref, isBelt, index, name) {
+	const site = economy.createSite();
+	const seed = economy.siteSeed(ref.key >>> 0, model.seed, ref.kind);
+	if (isBelt) economy.fillBeltSite(site, ref, system, index, seed);
+	else economy.fillPlanetSite(site, ref, system, index, seed);
+	site.name = name || economy.siteName('T4', ref.key >>> 0, isBelt ? 1 : 0, index);
+	site.x = ref.x; site.y = ref.y; site.z = ref.z;
+	site.ref = ref;
+	return site;
+}
+
+function syntheticTradePort(system, firstKind, firstIndex, secondKind, secondIndex, firstName, secondName) {
+	const ref = {
+		kind: planets.BLOCK_LANDMARK, index: 0, key: system.star.key >>> 0,
+		x: 0, y: 0, z: 0, colorIndex: 4, absMag: 4.83,
+	};
+	const net = trade.createNetwork({ seed: 1701, modelSeed: model.seed, timeYears: 0 });
+	const firstSite = syntheticSite(system, ref, firstKind, firstIndex, firstName);
+	const portIndex = trade.addPort(net, firstSite, 0, trade.FRESH_FOUND, system);
+	if (secondKind !== undefined) {
+		const secondSite = syntheticSite(system, ref, secondKind, secondIndex, secondName);
+		trade.addWorld(net, portIndex, secondSite, 0, trade.FRESH_FOUND, system);
+	}
+	const port = net.ports[portIndex];
+	const worlds = new Array(port.worldCount);
+	for (let s = 0; s < port.worldCount; s++) worlds[s] = trade.worldOfPort(net, portIndex, s);
+	return { net, portIndex, port, worlds, ref };
+}
 
 const model = galaxy.MILKY_WAY;
 const ctx = { model, field: null, member: null, name: '' };
@@ -2601,53 +2685,68 @@ function exactLiveEvents(net) {
 	}
 	check('one-world fold is bit-exact with its world', exact1);
 
-	// Find a landmark system with at least two settleable bodies (score >= MIN_CANDIDATE_HABITAT).
-	const multiSys = planets.createSystemRecord();
+	// A deterministic two-world fixture keeps this T3 pool/fold test separate
+	// from T4's new physical reachability gate.
+	const multiSys = syntheticIntraSystem({ key: 0x4d554c54, beltA: 1.12,
+		planets: [
+			{ a: 1, mass: 1, radius: 1, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ },
+			{ a: 1.01, mass: 1, radius: 1, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ },
+			{ a: 5, mass: 1, radius: 1, type: 0, flags: 0 },
+		] });
 	const probeSite = economy.createSite();
-	let multiLandmark = -1;
+	scratchRef.kind = planets.BLOCK_LANDMARK; scratchRef.index = 0;
+	scratchRef.key = multiSys.star.key >>> 0;
+	scratchRef.x = 0; scratchRef.y = 0; scratchRef.z = 0;
+	scratchRef.colorIndex = 4; scratchRef.absMag = 4.83;
+	const starName = 'T4 multi-world fixture';
 	const goodSites = [];
 	let poorPlanet = -1;
-	for (let li = 0; li < landmarks.count; li++) {
-		landmarkRef(li, scratchRef);
-		ctx.name = landmarks.ENTRIES[li].name;
-		planets.generateSystem(scratchRef, ctx, multiSys);
-		const seed = economy.siteSeed(scratchRef.key >>> 0, model.seed, scratchRef.kind);
-		goodSites.length = 0;
-		poorPlanet = -1;
-		for (let p = 0; p < (multiSys.counts.planets | 0); p++) {
-			economy.fillPlanetSite(probeSite, scratchRef, multiSys, p, seed);
-			const sc = trade.siteHabitatScore(probeSite);
-			if (sc >= trade.MIN_CANDIDATE_HABITAT) goodSites.push({ belt: 0, index: p, score: sc });
-			else if (poorPlanet < 0) poorPlanet = p;
-		}
-		for (let b = 0; b < (multiSys.belts.count | 0); b++) {
-			economy.fillBeltSite(probeSite, scratchRef, multiSys, b, seed);
-			const sc = trade.siteHabitatScore(probeSite);
-			if (sc >= trade.MIN_CANDIDATE_HABITAT) goodSites.push({ belt: 1, index: b, score: sc });
-		}
-		if (goodSites.length >= 2) { multiLandmark = li; break; }
+	const seed = economy.siteSeed(scratchRef.key >>> 0, model.seed, scratchRef.kind);
+	for (let p = 0; p < multiSys.counts.planets; p++) {
+		economy.fillPlanetSite(probeSite, scratchRef, multiSys, p, seed);
+		const score = trade.siteHabitatScore(probeSite);
+		if (score >= trade.MIN_CANDIDATE_HABITAT) goodSites.push({ belt: 0, index: p, score });
+		else if (poorPlanet < 0) poorPlanet = p;
 	}
-	check('fixture finds a multi-world landmark system', multiLandmark >= 0,
-		{ multiLandmark, goodCount: goodSites.length });
+	for (let b = 0; b < multiSys.belts.count; b++) {
+		economy.fillBeltSite(probeSite, scratchRef, multiSys, b, seed);
+		const score = trade.siteHabitatScore(probeSite);
+		if (score >= trade.MIN_CANDIDATE_HABITAT) goodSites.push({ belt: 1, index: b, score });
+	}
+	check('fixture contains multiple settleable sites and a barren planet',
+		goodSites.length >= 2 && poorPlanet >= 0, { goodCount: goodSites.length, poorPlanet });
 
-	// Build a clean network where that multi-world star has one port on goodSites[0],
-	// then found a second world on goodSites[1].
+	// Build a clean network where the star has one port on goodSites[0],
+	// then found a second physically reachable world without taking a port slot.
 	const mNet = trade.createNetwork({ seed: 42, modelSeed: model.seed, timeYears: 0 });
-	landmarkRef(multiLandmark, scratchRef);
-	const starName = landmarks.ENTRIES[multiLandmark].name;
-	ctx.name = starName;
-	planets.generateSystem(scratchRef, ctx, multiSys);
 	const f0 = trade.playerFoundWorld(mNet, scratchRef, starName, multiSys,
 		goodSites[0].belt, goodSites[0].index, 10);
 	const pIdx = f0.port;
 	const portsBefore = mNet.portCount;
 	const worldsBefore = mNet.worldCount;
+	let secondWorldSite = null, secondWorldScore = -1;
+	for (let i = 0; i < goodSites.length; i++) {
+		const candidate = goodSites[i];
+		if (candidate.belt === goodSites[0].belt && candidate.index === goodSites[0].index) continue;
+		if (candidate.belt) economy.fillBeltSite(probeSite, scratchRef, multiSys, candidate.index,
+			economy.siteSeed(scratchRef.key >>> 0, model.seed, scratchRef.kind));
+		else economy.fillPlanetSite(probeSite, scratchRef, multiSys, candidate.index,
+			economy.siteSeed(scratchRef.key >>> 0, model.seed, scratchRef.kind));
+		probeSite.ref = scratchRef;
+		const score = trade.worldFoundingScore(mNet, pIdx, probeSite, multiSys);
+		if (score > secondWorldScore) { secondWorldScore = score; secondWorldSite = candidate; }
+	}
+	if (secondWorldSite) {
+		if (secondWorldSite.belt) economy.fillBeltSite(probeSite, scratchRef, multiSys,
+			secondWorldSite.index, economy.siteSeed(scratchRef.key >>> 0, model.seed, scratchRef.kind));
+		else economy.fillPlanetSite(probeSite, scratchRef, multiSys,
+			secondWorldSite.index, economy.siteSeed(scratchRef.key >>> 0, model.seed, scratchRef.kind));
+		probeSite.ref = scratchRef;
+		secondWorldScore = trade.worldFoundingScore(mNet, pIdx, probeSite, multiSys);
+	}
 
 	// addPort on a star that already has a live port returns existing port, never bumps portCount;
 	// playerFound refuses 'already a colony here'.
-	economy.fillPlanetSite(probeSite, scratchRef, multiSys, goodSites[1].index,
-		economy.siteSeed(scratchRef.key >>> 0, model.seed, scratchRef.kind));
-	probeSite.ref = scratchRef;
 	check('addPort does not add a second port on an already-settled star',
 		trade.addPort(mNet, probeSite, 10, trade.FRESH_FOUND) === pIdx
 		&& mNet.portCount === portsBefore
@@ -2668,17 +2767,25 @@ function exactLiveEvents(net) {
 	}
 	check('playerFoundWorld refuses invalid or barren sites', lowHabOk);
 
-	// Couple below MIN_FOUND_COUPLE refuses 'too expensive to reach'.
-	mNet.ports[pIdx].couple[1 * trade.MAX_WORLDS_PER_STAR] = trade.MIN_FOUND_COUPLE * 0.5;
+	// A physically deep well, rather than a manually patched matrix cell, must
+	// fall below the founding score threshold. Restore it before the success case.
+	let expensiveSite = secondWorldSite;
+	for (let i = 0; i < goodSites.length; i++) {
+		if (!goodSites[i].belt && !(goodSites[i].belt === goodSites[0].belt
+			&& goodSites[i].index === goodSites[0].index)) { expensiveSite = goodSites[i]; break; }
+	}
+	const expensiveOldMass = multiSys.planets.mass[expensiveSite.index];
+	multiSys.planets.mass[expensiveSite.index] = 1e6;
 	const expensiveReason = trade.playerFoundWorld(mNet, scratchRef, starName, multiSys,
-		goodSites[1].belt, goodSites[1].index, 12).reason;
-	mNet.ports[pIdx].couple[1 * trade.MAX_WORLDS_PER_STAR] = 1;
+		0, expensiveSite.index, 12).reason;
+	multiSys.planets.mass[expensiveSite.index] = expensiveOldMass;
 	check('playerFoundWorld refuses sites below MIN_FOUND_COUPLE',
 		expensiveReason === 'too expensive to reach');
 
 	// Founding the second world succeeds and keeps portCount unchanged.
 	const f1 = trade.playerFoundWorld(mNet, scratchRef, starName, multiSys,
-		goodSites[1].belt, goodSites[1].index, 20);
+		secondWorldSite.belt, secondWorldSite.index, 20);
+	if (f1.ok !== 1) throw new Error('second-world fixture unexpectedly refused: ' + f1.reason);
 	check('a second world on a settled star succeeds without adding a port',
 		f1.ok === 1 && f1.port === pIdx && f1.slot === 1
 		&& mNet.portCount === portsBefore
@@ -2860,6 +2967,284 @@ function exactLiveEvents(net) {
 		tagsOk = economy.interFamilyTagOf(dry, f) === economy.TAG_FAIR;
 	}
 	check('interFamilyTagOf covers all seven shipping families and treats 0/0 as fair', tagsOk);
+}
+
+// --- 29. Intra-system delta-v graph, statistical flow and T5 readout ---------
+{
+	check('intra family ids are the canonical bulk/goods/pax labels',
+		economy.INTRA_FAMILY_NAMES.join('|') === 'bulk|goods|pax'
+		&& economy.INTRA_FAMILY_SHORT.join('|') === 'bulk|goods|pax');
+	const solar = syntheticIntraSystem({
+		key: 0x534f4c,
+		planets: [
+			{ a: 1, mass: 1, radius: 1, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ },
+			{ a: 1.524, mass: 0.107, radius: 0.532, type: 2, flags: 0 },
+		],
+	});
+	const graphA = syntheticTradePort(solar, 0, 0, 0, 1, 'Earth', 'Mars');
+	const graphB = syntheticTradePort(solar, 0, 0, 0, 1, 'Earth', 'Mars');
+	const portA = graphA.port, portB = graphB.port;
+	let graphExact = true;
+	for (let i = 0; i < portA.well.length && graphExact; i++) {
+		graphExact = Object.is(portA.well[i], portB.well[i])
+			&& Object.is(portA.land[i], portB.land[i])
+			&& Object.is(portA.lift[i], portB.lift[i])
+			&& Object.is(portA.access[i], portB.access[i]);
+	}
+	for (let i = 0; i < portA.dv.length && graphExact; i++) {
+		graphExact = Object.is(portA.dv[i], portB.dv[i])
+			&& Object.is(portA.tH[i], portB.tH[i])
+			&& Object.is(portA.couple[i], portB.couple[i]);
+	}
+	const bodyParams = [], nodeSets = [], oneEdges = [];
+	for (let i = 0; i < deltav.MAX_BODIES; i++) {
+		bodyParams.push(deltav.createBodyParam());
+		nodeSets.push(deltav.createNodeSet());
+		oneEdges.push(deltav.createOneBodyEdges());
+	}
+	const nBodies = deltav.buildBodyNodes(solar, bodyParams, nodeSets, oneEdges);
+	const muStar = deltav.G_SI * solar.star.mass * deltav.M_SUN_KG;
+	const direct = {};
+	deltav.dvSurfaceToSurface(muStar, bodyParams[0], bodyParams[1], false, direct);
+	const directLeg = deltav.createInterEdge();
+	deltav.legLoToLo(muStar, bodyParams[0], bodyParams[1], false, directLeg);
+	check('T4 graph is bit-exact across repeated builds (dv, Hohmann, couple, lift)', graphExact);
+	check('Earth–Mars graph edge matches the direct DeltaVLib surface→surface aero pin',
+		nBodies === 2 && Math.abs(portA.dv[1] - 16020) <= 2
+		&& near(portA.dv[1], direct.dv, 1e-12)
+		&& near(portA.tH[1], directLeg.tH, 1e-12)
+		&& near(portA.well[0], direct.well, 1e-12)
+		&& near(portA.land[1], direct.land, 1e-12)
+		&& near(portA.access[0], portA.couple[1], 1e-12)
+		&& near(portA.access[1], portA.couple[6], 1e-12)
+		&& portA.couple[1] > 0.2 && portA.couple[1] < 0.8,
+		{ dv: portA.dv[1], direct: direct.dv, couple: portA.couple[1] });
+
+	function seedOreFlow(beltA, key, tHOverride) {
+		const system = syntheticIntraSystem({
+			key,
+			planets: [{ a: 1, mass: 1, radius: 1, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ }],
+			beltA,
+		});
+		const active = syntheticTradePort(system, 0, 0, 1, 0, 'Terran', 'belt');
+		const closed = syntheticTradePort(system, 0, 0, 1, 0, 'Terran', 'belt');
+		if (tHOverride !== undefined) active.port.tH.fill(tHOverride);
+		for (const fixture of [active, closed]) {
+			for (const world of fixture.worlds) {
+				world.last = 0; world.pop = 10; world.capacity = 100;
+				world.coverage = 0.5; world.outpost = 0;
+				world.outBase.fill(0); world.stock.fill(0); world.stockCap.fill(1000);
+			}
+			const belt = fixture.worlds[1], terran = fixture.worlds[0];
+			belt.stockCap[economy.R_ORE] = 100;
+			belt.stock[economy.R_ORE] = 100;
+			terran.outBase[economy.R_ROBOTS] = 1;
+		}
+		closed.port.couple[1 * trade.MAX_WORLDS_PER_STAR] = 0;
+		closed.port.couple[0 * trade.MAX_WORLDS_PER_STAR + 1] = 0;
+		trade.settlePort(active.net, active.portIndex, 20);
+		trade.settlePort(closed.net, closed.portIndex, 20);
+		let conserved = true;
+		for (let r = 0; r < economy.RESOURCE_COUNT && conserved; r++) {
+			const activeTotal = active.worlds[0].stock[r] + active.worlds[1].stock[r];
+			const closedTotal = closed.worlds[0].stock[r] + closed.worlds[1].stock[r];
+			conserved = near(activeTotal, closedTotal, 1e-9);
+		}
+		return {
+			active, closed, conserved,
+			oreMoved: active.port.intraFlow[trade.intraFlowIndex(1, 0, economy.INTRA_BULK)],
+			targetOre: active.worlds[0].stock[economy.R_ORE],
+		};
+	}
+	const nearBelt = seedOreFlow(1.1, 0x10101);
+	const farBelt = seedOreFlow(11, 0x10102);
+	const timeOnly = seedOreFlow(1.1, 0x10103, 1e50);
+	check('a close belt feeds more ore in 20 years than the same belt at 10× orbital radius',
+		nearBelt.oreMoved > farBelt.oreMoved
+		&& nearBelt.active.port.dv[trade.MAX_WORLDS_PER_STAR] < farBelt.active.port.dv[trade.MAX_WORLDS_PER_STAR]
+		&& nearBelt.active.port.tH[trade.MAX_WORLDS_PER_STAR] < farBelt.active.port.tH[trade.MAX_WORLDS_PER_STAR]
+		&& nearBelt.active.port.couple[trade.MAX_WORLDS_PER_STAR] > farBelt.active.port.couple[trade.MAX_WORLDS_PER_STAR],
+		{ nearOre: nearBelt.oreMoved, farOre: farBelt.oreMoved,
+			nearDv: nearBelt.active.port.dv[6], farDv: farBelt.active.port.dv[6],
+			nearTH: nearBelt.active.port.tH[6], farTH: farBelt.active.port.tH[6],
+			nearCouple: nearBelt.active.port.couple[6], farCouple: farBelt.active.port.couple[6] });
+	check('Hohmann time is readout-only: replacing tH does not alter statistical flow',
+		near(timeOnly.oreMoved, nearBelt.oreMoved, 1e-12)
+		&& near(timeOnly.targetOre, nearBelt.targetOre, 1e-12));
+	check('couple-weighted intra transfers conserve every stock family against local-only settlement',
+		nearBelt.conserved && farBelt.conserved,
+		{ near: nearBelt.conserved, far: farBelt.conserved });
+	const settledStocks = nearBelt.active.worlds.map((world) => world.stock.slice());
+	const settledPops = nearBelt.active.worlds.map((world) => world.pop);
+	const settledFlows = nearBelt.active.port.intraFlow.slice();
+	trade.settlePort(nearBelt.active.net, nearBelt.active.portIndex, 20);
+	let fixedPoint = true;
+	for (let s = 0; s < nearBelt.active.port.worldCount && fixedPoint; s++) {
+		const world = nearBelt.active.worlds[s];
+		fixedPoint = Object.is(world.pop, settledPops[s]) && world.last === 20;
+		for (let r = 0; r < economy.RESOURCE_COUNT && fixedPoint; r++) {
+			fixedPoint = Object.is(world.stock[r], settledStocks[s][r]);
+		}
+	}
+	for (let i = 0; i < settledFlows.length && fixedPoint; i++) {
+		fixedPoint = Object.is(nearBelt.active.port.intraFlow[i], settledFlows[i]);
+	}
+	const fixedFold = nearBelt.active.port.colony;
+	fixedPoint = fixedPoint && near(fixedFold.pop,
+		nearBelt.active.worlds[0].pop + nearBelt.active.worlds[1].pop, 1e-12);
+	for (let r = 0; r < economy.RESOURCE_COUNT && fixedPoint; r++) {
+		fixedPoint = near(fixedFold.stock[r],
+			nearBelt.active.worlds[0].stock[r] + nearBelt.active.worlds[1].stock[r], 1e-12);
+	}
+	check('settlePort reaches a non-circular same-clock fixed point: frozen flows apply once, fold and readout stay stable', fixedPoint);
+	const t5Text = trade.intraReadoutText(nearBelt.active.net, nearBelt.active.portIndex);
+	check('T5 readout names the largest local flow, its dv/couple/Hohmann and each lift',
+		t5Text.includes('flow · km/s') && t5Text.includes('bulk Terran ← belt')
+		&& t5Text.includes('couple ') && t5Text.includes('Hohmann ')
+		&& t5Text.includes('lift') && t5Text.includes('Terran') && t5Text.includes('belt'), t5Text);
+
+	const goodsSystem = syntheticIntraSystem({ key: 0x474f4f44, beltA: 1.1,
+		planets: [{ a: 1, mass: 1, radius: 1, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ }] });
+	const goods = syntheticTradePort(goodsSystem, 0, 0, 1, 0, 'factory', 'belt');
+	for (const world of goods.worlds) {
+		world.last = 0; world.pop = 10; world.capacity = 100; world.coverage = 0.5;
+		world.outpost = 0; world.outBase.fill(0); world.stock.fill(0); world.stockCap.fill(1000);
+	}
+	const factory = goods.worlds[0];
+	factory.stockCap[economy.R_ROBOTS] = 100;
+	factory.stock[economy.R_ROBOTS] = 100;
+	// Cover the other two manufactured needs without creating a surplus, so
+	// this pin isolates the robots slice inside the aggregated goods family.
+	factory.stock[economy.R_CHEM] = 12;
+	factory.stock[economy.R_COMPUTE] = 2.4;
+	trade.settlePort(goods.net, goods.portIndex, 20);
+	const goodsMoved = goods.port.intraFlow[trade.intraFlowIndex(0, 1, economy.INTRA_GOODS)];
+	check('the goods family closes member demand with member supply, not only bulk',
+		goodsMoved > 0 && goods.worlds[1].stock[economy.R_ROBOTS] > 0
+		&& near(goodsMoved, goods.worlds[1].stock[economy.R_ROBOTS], 1e-12),
+		{ flow: goodsMoved, robots: goods.worlds[1].stock[economy.R_ROBOTS] });
+
+	const paxSystem = syntheticIntraSystem({ key: 0x504158, planets: [
+		{ a: 1, mass: 1, radius: 1, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ },
+		{ a: 1.1, mass: 1, radius: 1, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ },
+	] });
+	const pax = syntheticTradePort(paxSystem, 0, 0, 0, 1, 'source', 'receiver');
+	const paxClosed = syntheticTradePort(paxSystem, 0, 0, 0, 1, 'source', 'receiver');
+	for (const fixture of [pax, paxClosed]) {
+		for (let s = 0; s < fixture.worlds.length; s++) {
+			const world = fixture.worlds[s];
+			world.last = 0; world.pop = s === 0 ? 10 : 90; world.capacity = 100;
+			world.coverage = 0.8; world.outpost = 0;
+			world.outBase.fill(0); world.stock.fill(0); world.stockCap.fill(1000);
+		}
+	}
+	paxClosed.port.couple[1] = 0;
+	paxClosed.port.couple[trade.MAX_WORLDS_PER_STAR] = 0;
+	trade.settlePort(pax.net, pax.portIndex, 20);
+	trade.settlePort(paxClosed.net, paxClosed.portIndex, 20);
+	const paxMoved = pax.port.intraFlow[trade.intraFlowIndex(0, 1, economy.INTRA_PAX)];
+	const paxTotal = pax.worlds[0].pop + pax.worlds[1].pop;
+	const paxClosedTotal = paxClosed.worlds[0].pop + paxClosed.worlds[1].pop;
+	check('healthy worlds move passengers as conserved population, never as warehouse colonists',
+		paxMoved > 0 && pax.worlds[0].pop < paxClosed.worlds[0].pop
+		&& pax.worlds[1].pop > paxClosed.worlds[1].pop
+		&& near(paxTotal, paxClosedTotal, 1e-12)
+		&& pax.worlds[0].stock[economy.R_PEOPLE] === 0
+		&& pax.worlds[1].stock[economy.R_PEOPLE] === 0,
+		{ flow: paxMoved, total: paxTotal, closedTotal: paxClosedTotal });
+
+	const starvingSystem = syntheticIntraSystem({ key: 0x53544152, beltA: 1.1,
+		planets: [{ a: 1, mass: 1, radius: 1, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ }] });
+	const starving = syntheticTradePort(starvingSystem, 0, 0, 1, 0, 'low', 'belt');
+	for (const world of starving.worlds) {
+		world.last = 0; world.pop = 10; world.capacity = 100; world.coverage = 0.59;
+		world.outpost = 0; world.outBase.fill(0); world.stock.fill(0); world.stockCap.fill(1000);
+	}
+	trade.settlePort(starving.net, starving.portIndex, 20);
+	let paxZero = true;
+	for (let s = 0; s < starving.port.worldCount; s++) {
+		for (let t = 0; t < starving.port.worldCount; t++) {
+			paxZero = paxZero
+				&& starving.port.intraFlow[trade.intraFlowIndex(s, t, economy.INTRA_PAX)] === 0;
+		}
+	}
+	check('a starving world below 0.6 coverage neither sends nor receives passengers', paxZero);
+
+	const earthOnly = syntheticTradePort(solar, 0, 0, undefined, -1, 'Earth');
+	const earthWorld = earthOnly.worlds[0];
+	trade.settlePort(earthOnly.net, earthOnly.portIndex, 20);
+	const earthFlowZero = earthOnly.port.intraFlow.every((x) => x === 0);
+	const robots = economy.R_ROBOTS;
+	earthWorld.stockCap[robots] = 1000; earthWorld.stock[robots] = 1000;
+	const deepExportable = economy.exportableOf(earthWorld, robots);
+	const deepTaken = trade.collectPortOutbound(earthOnly.net, earthOnly.portIndex, robots, deepExportable);
+	const gasSystem = syntheticIntraSystem({ key: 0x474153,
+		planets: [{ a: 5, mass: 300, radius: 11, type: 7, flags: 0 }] });
+	const gasOnly = syntheticTradePort(gasSystem, 0, 0, undefined, -1, 'giant');
+	trade.settlePort(gasOnly.net, gasOnly.portIndex, 20);
+	check('one-world ports keep zero intra flow; lift is below 1 exactly when a surface well is positive',
+		earthFlowZero && earthOnly.port.well[0] > 0 && earthOnly.port.lift[0] < 1
+		&& gasOnly.port.well[0] === 0 && gasOnly.port.lift[0] === 1
+		&& gasOnly.port.intraFlow.every((x) => x === 0));
+	check('deep-well exports of ore-derived factory cores are lift-taxed below exportable stock',
+		deepExportable > 0 && deepTaken > 0 && deepTaken < deepExportable,
+		{ exportable: deepExportable, taken: deepTaken, lift: earthOnly.port.lift[0] });
+	const lavaBeltSystem = syntheticIntraSystem({ key: 0x4c415641, beltA: 2.5,
+		planets: [{ a: 0.1, mass: 1, radius: 1, type: 0, flags: 0 }] });
+	const lavaBelt = syntheticTradePort(lavaBeltSystem, 0, 0, 1, 0, 'lava', 'belt');
+	check('a belt is a cheaper star-port lift than a lava world on the same star',
+		lavaBelt.port.lift[1] > lavaBelt.port.lift[0]
+		&& (1 - lavaBelt.port.lift[1]) < (1 - lavaBelt.port.lift[0]),
+		{ lava: lavaBelt.port.lift[0], belt: lavaBelt.port.lift[1] });
+
+	const foundingSystem = syntheticIntraSystem({ key: 0x464f554e,
+		planets: [
+			{ a: 1, mass: 1, radius: 1, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ },
+			{ a: 1.1, mass: 1, radius: 1, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ },
+			{ a: 10, mass: 1, radius: 1, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ },
+		] });
+	const founder = syntheticTradePort(foundingSystem, 0, 0, undefined, -1, 'capital');
+	const nearSite = syntheticSite(foundingSystem, founder.ref, 0, 1, 'near camp');
+	const farSite = syntheticSite(foundingSystem, founder.ref, 0, 2, 'far camp');
+	const nearScore = trade.worldFoundingScore(founder.net, founder.portIndex, nearSite, foundingSystem);
+	const farScore = trade.worldFoundingScore(founder.net, founder.portIndex, farSite, foundingSystem);
+	const equalHabitat = near(trade.siteHabitatScore(nearSite), trade.siteHabitatScore(farSite), 1e-12);
+	const farMass = foundingSystem.planets.mass[2];
+	foundingSystem.planets.mass[2] = 1e6;
+	const farCandidate = syntheticSite(foundingSystem, founder.ref, 0, 2, 'far camp');
+	const farWellScore = trade.worldFoundingScore(founder.net, founder.portIndex, farCandidate, foundingSystem);
+	const tooFar = trade.playerFoundWorld(founder.net, founder.ref, 'T4', foundingSystem, 0, 2, 10);
+	foundingSystem.planets.mass[2] = farMass;
+	check('second-world founding scores prefer the closer of two equal-habitat sites',
+		equalHabitat && nearScore > farScore && nearScore > trade.MIN_FOUND_COUPLE,
+		{ nearScore, farScore, habitat: trade.siteHabitatScore(nearSite) });
+	check('the same habitat loses the too-expensive founding gate when its surface well is too deep',
+		tooFar.reason === 'too expensive to reach' && farWellScore < trade.MIN_FOUND_COUPLE,
+		{ reason: tooFar.reason, score: farWellScore });
+
+	const queueFixture = syntheticTradePort(solar, 0, 0, undefined, -1, 'queue world');
+	trade.finalize(queueFixture.net);
+	const eventTimesA = new Float64Array(16), eventKindsA = new Uint8Array(16);
+	const eventRefsA = new Uint32Array(16), eventRevisionsA = new Uint32Array(16);
+	const eventTimesB = new Float64Array(16), eventKindsB = new Uint8Array(16);
+	const eventRefsB = new Uint32Array(16), eventRevisionsB = new Uint32Array(16);
+	const queueSize = queueFixture.net.queue.size, ships = queueFixture.net.shipCount;
+	const peekCountA = queueLib.peekNext(queueFixture.net.queue, eventTimesA, eventKindsA,
+		eventRefsA, eventRevisionsA, 4);
+	trade.settleAllPorts(queueFixture.net, 600);
+	const peekCountB = queueLib.peekNext(queueFixture.net.queue, eventTimesB, eventKindsB,
+		eventRefsB, eventRevisionsB, 4);
+	let samePeek = peekCountA === peekCountB && queueFixture.net.queue.size === queueSize
+		&& queueFixture.net.shipCount === ships;
+	for (let i = 0; i < peekCountA && samePeek; i++) {
+		samePeek = Object.is(eventTimesA[i], eventTimesB[i])
+			&& eventKindsA[i] === eventKindsB[i]
+			&& eventRefsA[i] === eventRefsB[i]
+			&& eventRevisionsA[i] === eventRevisionsB[i];
+	}
+	check('a closed one-world system settles through 600 years without changing hulls or queue events',
+		samePeek && queueFixture.worlds[0].last === 600,
+		{ queueSize, after: queueFixture.net.queue.size, ships });
 }
 
 // --- Summary --------------------------------------------------------------

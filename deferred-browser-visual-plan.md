@@ -128,6 +128,33 @@ With a seeded Milky Way network, at 1280×800:
   grey ring must remain where the live ring was, and a starving live colony must
   wear the dashed amber ring at `r + 4 px`.
 
+### Two-tier system picture (trade-3 T4/T5, V13c)
+
+Unseen in a browser: the world-scale trade picture and its docked founding path.
+At 1280×800, with trade running:
+
+- **Worlds and markers.** Open a settled system with V. Every founded planet or
+  belt has a population-scaled growth ring; an outpost is hollow grey and a
+  starving world adds the dashed amber ring. The `worlds` and `lift` lines name
+  the same bodies and stay inside the readout at its 4 Hz refresh.
+- **Flows and physics.** At a port with at least two worlds, wait for a settle
+  with local surplus/demand. At most three dim cargo-coloured dashes connect
+  the drawn body positions. They do not interpolate like hulls and closing V
+  removes them without pausing the economy. Pick one listed `intra` row and
+  compare its km/s with the same directed pair on the delta-v map (source well
+  + LO→LO + destination landing); the couple and Hohmann text must match too.
+- **Docked sibling founding.** Dock at a settled star, then press V. The ship
+  and camera must not jump, only the schematic (not a delta-v render) opens,
+  and its route controls stay disabled. Select an unsettled reachable planet
+  or belt and use **Found colony**: the new marker and `worlds` row appear,
+  `portCount` does not increase, and subsequent settles can produce local
+  flows. Repeat with a locked destination that is not the galaxy primary: the
+  card must still describe the docked station. Undocking closes the picture.
+- **Limits.** A deep-well or distant candidate reports `too expensive to reach`;
+  a sixth sibling beyond the cap reports `worlds full`. No intra hull or new
+  galaxy-queue event appears. Check the expanded `#sysread` and System/Flight
+  panels for overflow.
+
 ## Result template and escalation
 
 Record: task ID; date; browser/version; OS/GPU; file/localhost/preview context;

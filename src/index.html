@@ -136,7 +136,7 @@
 				<button id="flight-dock" type="button" disabled title="Dock at the target station (O) when inside its shell and settled — the target-stop autopilot lands exactly there. Docking re-arms the tank, restores life support and registers the port of registry. Press again to undock.">Dock</button>
 				<button id="flight-cargo-load" type="button" disabled title="Load a colony's spare export (L), limited by actual stock and hold tonnage. Only while docked at a trade port; no credits.">Load cargo</button>
 				<button id="flight-cargo-unload" type="button" disabled title="Unload into colony storage (Shift+L). A full warehouse leaves the remainder aboard. Only while docked at a trade port.">Unload</button>
-				<button id="flight-found" type="button" disabled title="Found a colony on the best world of the docked star — free, the player is the catalyst. Works even when the network's expansion authority is stood down. Refused if the star already has a live colony or an outpost, if an expedition is bound for it, if the network is full, or if no world here is worth settling.">Found colony</button>
+				<button id="flight-found" type="button" disabled title="Found a colony on the best world of an unsettled docked star, free. At an existing port, open V while docked, select a planet or belt, then use this button to add a reachable sibling world without creating a second port. Outposts, reservations, capacity and poor habitat/reachability refuse the founding.">Found colony</button>
 			</div>
 			<div id="flight-port-state" class="flight-port-state">not docked · O docks at a settled station</div>
 
@@ -181,7 +181,7 @@
 				<option value="1">delta-v map</option>
 				<option value="2">delta-v rails</option>
 			</select>
-			<button id="btn-system-view" title="Open or close the view (V; Esc also closes)">Open</button>
+			<button id="btn-system-view" title="Open or close the view (V; Esc also closes). While docked in game mode, opens the station schematic without moving the camera so a sibling world can be selected and founded.">Open</button>
 		</div>
 		<div class="menu-row" data-view="system">
 			<label for="slider-systime" title="The view's own clock, independent of galaxy star time. -1 follows camera speed; 0 freezes. Try 0.1–1 y/s for a visible route flight; higher rates fast-forward and may finish between frames. Arrow keys step the ladder.">System time</label>
@@ -574,8 +574,9 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
 	<!-- Flight (G3): manual power, destination planning and the older map route
 	     workflow share one lower-left workspace. A pilot selects a star in the
 	     scene, uses it here, checks the forecast and flies — no hidden hand-off
-	     through unrelated controls. The map remains observer-only because it
-	     intentionally re-poses the camera. -->
+	     through unrelated controls. The map remains observer-only in flight
+	     because it can re-pose the camera; the docked station schematic is the
+	     no-camera-motion exception used to found sibling worlds. -->
 
 	<!-- Trade (trade.2): its own panel — the network clock, the overlay toggle
 	     and the autonomous frontier. Extracted from Flight so piloting and

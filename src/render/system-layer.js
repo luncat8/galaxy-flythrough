@@ -57,6 +57,17 @@ const layerLabels = (typeof module !== 'undefined' && module.exports)
 	? require('./label-layer.js')
 	: ((typeof window !== 'undefined') ? window.LabelLayer : null);
 
+const TRADE_MARKER_STYLE = layerLabels.TRADE_MARKER_STYLE;
+const TRADE_INTRA_DASH = [3, 6];
+const TRADE_SOLID_DASH = [];
+const TRADE_INTRA_STROKES = [
+	'rgba(180, 150, 110, 0.30)', // bulk
+	'rgba(110, 235, 190, 0.30)', // goods
+	'rgba(240, 225, 150, 0.30)', // passengers
+];
+const TRADE_WORLD_SLOTS = 6;
+const TRADE_FLOW_FAMILIES = 3;
+
 const TAU = Math.PI * 2;
 const HALF_PI = Math.PI / 2;
 const DEG = Math.PI / 180;
@@ -255,6 +266,13 @@ function createSystemLayer(canvas) {
 	const record = planets.createSystemRecord();
 
 	let open = false;
+	let tradePort = null, tradeWorlds = null;
+	const tradeTopFlow = new Float64Array(3);
+	const tradeTopFrom = new Int8Array(3);
+	const tradeTopTo = new Int8Array(3);
+	const tradeTopFamily = new Int8Array(3);
+	const tradeFromXY = new Float64Array(2);
+	const tradeToXY = new Float64Array(2);
 
 	// --- Layout scalars, written by prepare() -------------------------------
 	let lnIn = 0;
@@ -484,6 +502,7 @@ function createSystemLayer(canvas) {
 		hoverIndex = -1;
 		hoverLabel = '';
 		open = true;
+		tradePort = null; tradeWorlds = null;
 		// Delta-v tables are rebuilt on prepare; they depend on the record, so
 		// every open refreshes them regardless of the dirty flag.
 		buildDv();
@@ -540,6 +559,7 @@ function createSystemLayer(canvas) {
 	function exit() {
 		if (!open) return;
 		open = false;
+		tradePort = null; tradeWorlds = null;
 		clearRoute();
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 		selectedKind = BODY_NONE;
@@ -550,6 +570,17 @@ function createSystemLayer(canvas) {
 	}
 
 	function isOpen() { return open; }
+
+	function setTradeData(port, worlds) {
+		if (!open || !port || !worlds || !port.intraFlow
+			|| (port.key >>> 0) !== (record.star.key >>> 0)) {
+			tradePort = null; tradeWorlds = null;
+			return false;
+		}
+		tradePort = port;
+		tradeWorlds = worlds;
+		return true;
+	}
 
 	// --- The view's clock (plan §6.4) ----------------------------------------
 	function setTimeRate(rate) {
@@ -615,8 +646,104 @@ function createSystemLayer(canvas) {
 		drawBelts();
 		drawStar();
 		drawPlanets();
+		drawIntraRoutes();
+		drawTradeWorlds();
 		drawBodyMarks();
 		drawRoute();
+	}
+
+	function tradeWorldPosition(slot, out) {
+		if (!tradePort || !tradeWorlds || !(slot >= 0 && slot < tradePort.worldCount)) return false;
+		const world = tradeWorlds[tradePort.worldIdx[slot]];
+		if (!world) return false;
+		if (world.kind === 0) {
+			if (!(world.index >= 0 && world.index < record.counts.planets)) return false;
+			out[0] = planetScreenXY[world.index * 2];
+			out[1] = planetScreenXY[world.index * 2 + 1];
+			return true;
+		}
+		if (!(world.index >= 0 && world.index < record.belts.count)) return false;
+		const offset = world.index * planets.STIPPLE_N * 2;
+		out[0] = beltStippleXY[offset];
+		out[1] = beltStippleXY[offset + 1];
+		return true;
+	}
+
+	function drawIntraRoutes() {
+		if (!tradePort || !tradeWorlds || tradePort.key !== (record.star.key >>> 0)
+			|| tradePort.worldCount < 2) return;
+		tradeTopFlow.fill(0);
+		tradeTopFrom.fill(-1); tradeTopTo.fill(-1); tradeTopFamily.fill(-1);
+		for (let s = 0; s < tradePort.worldCount; s++) {
+			for (let t = 0; t < tradePort.worldCount; t++) {
+				if (s === t) continue;
+				for (let f = 0; f < TRADE_FLOW_FAMILIES; f++) {
+					const index = (s * TRADE_WORLD_SLOTS + t) * TRADE_FLOW_FAMILIES + f;
+					const amount = tradePort.intraFlow[index];
+					if (!(amount > 0)) continue;
+					let pos = 0;
+					while (pos < 3 && amount <= tradeTopFlow[pos]) pos++;
+					if (pos >= 3) continue;
+					for (let k = 2; k > pos; k--) {
+						tradeTopFlow[k] = tradeTopFlow[k - 1];
+						tradeTopFrom[k] = tradeTopFrom[k - 1];
+						tradeTopTo[k] = tradeTopTo[k - 1];
+						tradeTopFamily[k] = tradeTopFamily[k - 1];
+					}
+					tradeTopFlow[pos] = amount;
+					tradeTopFrom[pos] = s;
+					tradeTopTo[pos] = t;
+					tradeTopFamily[pos] = f;
+				}
+			}
+		}
+		ctx.lineWidth = 1.1;
+		ctx.lineCap = 'round';
+		ctx.setLineDash(TRADE_INTRA_DASH);
+		for (let k = 0; k < 3 && tradeTopFrom[k] >= 0; k++) {
+			const fromSlot = tradeTopFrom[k], toSlot = tradeTopTo[k];
+			const from = tradeWorlds[tradePort.worldIdx[fromSlot]];
+			const to = tradeWorlds[tradePort.worldIdx[toSlot]];
+			if (!from || !to || from.outpost || to.outpost) continue;
+			if (!tradeWorldPosition(fromSlot, tradeFromXY) || !tradeWorldPosition(toSlot, tradeToXY)) continue;
+			ctx.strokeStyle = TRADE_INTRA_STROKES[tradeTopFamily[k]];
+			ctx.beginPath();
+			ctx.moveTo(tradeFromXY[0], tradeFromXY[1]);
+			ctx.lineTo(tradeToXY[0], tradeToXY[1]);
+			ctx.stroke();
+		}
+		ctx.setLineDash(TRADE_SOLID_DASH);
+		ctx.lineWidth = 1;
+		ctx.lineCap = 'butt';
+	}
+
+	function drawTradeWorlds() {
+		if (!tradePort || !tradeWorlds || tradePort.key !== (record.star.key >>> 0)) return;
+		ctx.lineWidth = 1.2;
+		for (let s = 0; s < tradePort.worldCount; s++) {
+			const world = tradeWorlds[tradePort.worldIdx[s]];
+			if (!world || !tradeWorldPosition(s, tradeFromXY)) continue;
+			let frac = world.capacity > 0 ? world.pop / world.capacity : 0;
+			if (frac < 0) frac = 0;
+			if (frac > 1) frac = 1;
+			const radius = TRADE_MARKER_STYLE.ringMin + TRADE_MARKER_STYLE.ringSpan * Math.sqrt(frac);
+			ctx.strokeStyle = world.outpost ? TRADE_MARKER_STYLE.outpost
+				: Math.abs(world.growth) <= TRADE_MARKER_STYLE.growthEps ? TRADE_MARKER_STYLE.peak
+					: world.growth > 0 ? TRADE_MARKER_STYLE.grow : TRADE_MARKER_STYLE.fade;
+			ctx.setLineDash(TRADE_SOLID_DASH);
+			ctx.beginPath();
+			ctx.arc(tradeFromXY[0], tradeFromXY[1], radius, 0, TAU);
+			ctx.stroke();
+			if (world.starving && !world.outpost) {
+				ctx.strokeStyle = TRADE_MARKER_STYLE.alarm;
+				ctx.setLineDash(TRADE_INTRA_DASH);
+				ctx.beginPath();
+				ctx.arc(tradeFromXY[0], tradeFromXY[1], radius + TRADE_MARKER_STYLE.alarmGap, 0, TAU);
+				ctx.stroke();
+			}
+		}
+		ctx.setLineDash(TRADE_SOLID_DASH);
+		ctx.lineWidth = 1;
 	}
 
 	// 1. The habitable annulus, clamped into the view: a giant's HZ can reach
@@ -1463,7 +1590,7 @@ function createSystemLayer(canvas) {
 	}
 
 	return {
-		resize, draw, enter, prepare, exit, isOpen,
+		resize, draw, enter, prepare, exit, isOpen, setTradeData,
 		stepTime, setTimeRate, getTimeRate, sysTime,
 		pick, setSelected, clearBodySelection, selectedKindOf, selectedIndexOf,
 		updateHover, hoverKindOf, hoverIndexOf, designationOf,

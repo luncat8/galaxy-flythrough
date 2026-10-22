@@ -287,17 +287,36 @@
       "pass": true
     },
     {
+      "name": "T5 opens only the matching port and draws its three largest dim flow dashes",
+      "pass": true,
+      "detail": {
+        "lines": 3,
+        "dashes": 7
+      }
+    },
+    {
+      "name": "T5 marks every live/outpost world and adds the dashed amber starvation ring",
+      "pass": true,
+      "detail": {
+        "arcs": 14
+      }
+    },
+    {
+      "name": "T5 refuses stale trade data from another opened star",
+      "pass": true
+    },
+    {
       "name": "1 000 draw calls allocate nothing (heap delta inside the 2 MB coarse bound)",
       "pass": true,
       "detail": {
-        "heapDelta": -50928
+        "heapDelta": 100536
       }
     },
     {
       "name": "the per-frame op count stays inside the plan's ~800-op budget (one belt)",
       "pass": true,
       "detail": {
-        "opsPerFrame": 426
+        "opsPerFrame": 457
       }
     },
     {

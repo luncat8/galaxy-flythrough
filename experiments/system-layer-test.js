@@ -74,7 +74,7 @@ function forceGc() {
 
 // --- The stub context: counts ops, stores style props, draws nothing ---------
 function createStubContext() {
-	const ops = { total: 0, fillRect: 0, arc: 0, ellipse: 0, fill: 0, stroke: 0, clearRect: 0, text: 0 };
+	const ops = { total: 0, fillRect: 0, arc: 0, ellipse: 0, fill: 0, stroke: 0, clearRect: 0, text: 0, lineTo: 0, setLineDash: 0 };
 	const texts = [];
 	const ctx = {
 		ops, texts,
@@ -87,13 +87,13 @@ function createStubContext() {
 		fill() { ops.fill++; ops.total++; },
 		stroke() { ops.stroke++; ops.total++; },
 		setTransform() { ops.total++; },
-		setLineDash() { ops.total++; },
+		setLineDash() { ops.setLineDash++; ops.total++; },
 		translate() { ops.total++; },
 		scale() { ops.total++; },
 		save() { ops.total++; },
 		restore() { ops.total++; },
 		moveTo() { ops.total++; },
-		lineTo() { ops.total++; },
+		lineTo() { ops.lineTo++; ops.total++; },
 		closePath() { ops.total++; },
 		// The text log is capped: section 12's heap check would otherwise measure
 		// this array growing rather than the layer.
@@ -182,6 +182,26 @@ function pickingFixture() {
 	layer.resize(W, H, 1);
 	layer.draw(W, H);
 	return { canvas, layer };
+}
+
+function tradeFixture(layer) {
+	const port = {
+		key: layer.record.star.key >>> 0,
+		worldCount: 3,
+		worldIdx: new Int32Array(6),
+		intraFlow: new Float64Array(6 * 6 * 3),
+	};
+	port.worldIdx.fill(-1);
+	port.worldIdx[0] = 0; port.worldIdx[1] = 1; port.worldIdx[2] = 2;
+	port.intraFlow[(0 * 6 + 1) * 3 + 0] = 9;
+	port.intraFlow[(1 * 6 + 0) * 3 + 1] = 6;
+	port.intraFlow[(0 * 6 + 1) * 3 + 2] = 3;
+	const worlds = [
+		{ kind: 0, index: 1, name: 'Terran', pop: 50, capacity: 100, growth: 0.01, starving: 1, outpost: 0 },
+		{ kind: 1, index: 0, name: 'belt', pop: 2, capacity: 10, growth: 0, starving: 0, outpost: 0 },
+		{ kind: 0, index: 2, name: 'remnant', pop: 1, capacity: 100, growth: 0, starving: 0, outpost: 1 },
+	];
+	return { port, worlds };
 }
 
 // --- 1. Pure helpers ----------------------------------------------------------
@@ -697,10 +717,36 @@ check('the icon constants are still the plan\'s and the star icon keeps its radi
 		canvas.ctx.ops.total === ops);
 }
 
-// --- 11. No allocation across 1 000 draws, and the op budget --------------------
+// --- 11. T5 trade schematic: markers, last-settle dashes, and closure -------
+{
+	const { canvas, layer } = pickingFixture();
+	layer.setTradeData(null, null);
+	layer.draw(W, H);
+	const arcs0 = canvas.ctx.ops.arc;
+	const lines0 = canvas.ctx.ops.lineTo;
+	const dashes0 = canvas.ctx.ops.setLineDash;
+	const fixture = tradeFixture(layer);
+	const accepted = layer.setTradeData(fixture.port, fixture.worlds);
+	layer.draw(W, H);
+	check('T5 opens only the matching port and draws its three largest dim flow dashes',
+		accepted && canvas.ctx.ops.lineTo === lines0 + 3
+		&& canvas.ctx.ops.setLineDash > dashes0,
+		{ lines: canvas.ctx.ops.lineTo - lines0, dashes: canvas.ctx.ops.setLineDash - dashes0 });
+	check('T5 marks every live/outpost world and adds the dashed amber starvation ring',
+		canvas.ctx.ops.arc >= arcs0 + 4, { arcs: canvas.ctx.ops.arc - arcs0 });
+	const wrongStar = { key: fixture.port.key + 1, worldCount: fixture.port.worldCount,
+		worldIdx: fixture.port.worldIdx, intraFlow: fixture.port.intraFlow };
+	check('T5 refuses stale trade data from another opened star',
+		!layer.setTradeData(wrongStar, fixture.worlds));
+	layer.setTradeData(fixture.port, fixture.worlds);
+}
+
+// --- 12. No allocation across 1 000 draws, and the op budget --------------------
 {
 	const { canvas, layer } = pickingFixture();
 	layer.setTimeRate(5);
+	const fixture = tradeFixture(layer);
+	layer.setTradeData(fixture.port, fixture.worlds);
 	const N = 1000;
 	const op0 = canvas.ctx.ops.total;
 	forceGc();
@@ -724,7 +770,7 @@ check('the icon constants are still the plan\'s and the star icon keeps its radi
 		+ `heap delta ${(heap1 - heap0)} B`);
 }
 
-// --- 12. The delta-v map: views, the rail render, and the ship on the graph ---
+// --- 13. The delta-v map: views, the rail render, and the ship on the graph ---
 {
 	const dv = require('../src/math/deltav.js');
 	const { canvas, layer } = pickingFixture();

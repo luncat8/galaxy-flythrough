@@ -1044,6 +1044,8 @@ async function boot() {
                         gameMode = true;
                         enterGameMode();
                 }
+                if (systemLayer.isOpen() && gameMode && (!dockedSystemAvailable()
+                        || (systemLayer.record.star.key >>> 0) !== (ship.station.key >>> 0))) closeSystemView();
                 syncDvUi();
                 syncFleetUi();
                 syncStarTime();
@@ -1311,18 +1313,21 @@ async function boot() {
 
 	const btnRouteFly = document.getElementById('route-fly');
 	const routeStarsButton = document.getElementById('route-stars');
+	const routeClearButton = document.getElementById('route-clear');
 	const routeHint = document.getElementById('route-hint');
 	const routeRoundtrip = document.getElementById('route-roundtrip');
 	const dvPick = { body: -1, node: -1 };
 	function syncRouteUi() {
 		const r = systemLayer.routeState();
 		const state = systemLayer.autopilotState();
-		routeStarsButton.disabled = !hasTwoStarEndpoints();
+		routeStarsButton.disabled = gameMode || !hasTwoStarEndpoints();
 		const rate = systemLayer.getTimeRate();
 		btnRouteFly.textContent = state === 'running' ? 'Pause autopilot'
 			: state === 'paused' ? 'Resume autopilot'
 			: state === 'complete' ? 'Restart autopilot' : 'Start autopilot';
-		btnRouteFly.disabled = !r.feasible;
+		btnRouteFly.disabled = gameMode || !r.feasible;
+		routeRoundtrip.disabled = gameMode;
+		routeClearButton.disabled = gameMode;
 		if (!r.start) { routeHint.textContent = hasTwoStarEndpoints()
 			? 'Choose map nodes, or plan from previous star to current star.'
 			: 'Choose map nodes, or select two stars to plan an interstellar route.'; return; }
@@ -1345,7 +1350,7 @@ async function boot() {
 	routeRoundtrip.addEventListener('change', () => {
 		systemLayer.setRoundTrip(routeRoundtrip.checked); writeSystemReadout();
 	});
-	document.getElementById('route-clear').addEventListener('click', () => {
+	routeClearButton.addEventListener('click', () => {
 		systemLayer.clearRoute(); writeSystemReadout();
 	});
 	btnRouteFly.addEventListener('click', () => {
@@ -1401,8 +1406,15 @@ async function boot() {
 		writeSystemReadout();
 	});
 
+        function dockedSystemAvailable() {
+                return gameMode && ship.docked && !!ship.station;
+        }
+
         function syncViewRows() {
                 const viewOpen = systemLayer.isOpen();
+                if (gameMode && viewOpen && systemLayer.isMapOpen()) {
+                        systemLayer.setView(window.SystemLayer.VIEW_SYSTEM);
+                }
 		document.body.classList.toggle('system-view', viewOpen);
 		syncDvUi(); syncRouteUi();
                 // Map-specific controls mean nothing while the view is closed.
@@ -1411,7 +1423,10 @@ async function boot() {
                         row.style.display = viewOpen && row.dataset.view === 'system' ? '' : 'none';
                 }
                 btnSystemView.textContent = viewOpen ? 'Close' : 'Open';
-                btnSystemView.disabled = gameMode;
+                btnSystemView.disabled = !viewOpen && gameMode && !dockedSystemAvailable();
+                // A docked pilot may inspect the schematic to found sibling
+                // worlds, but the delta-v renders and their camera routes stay
+                // observer-only. Closing is always available.
                 sysViewSelect.disabled = gameMode;
         }
         btnSystemView.addEventListener('click', () => toggleSystemView());
@@ -1424,18 +1439,35 @@ async function boot() {
                 return null;
         }
 
-        // Enter (plan §6.5): requires the primary; the layer generates the
-        // record and hashes the belt stipples, then the camera comes onto the
-        // star — flyToStar at the luminosity stand-off when farther than 1 pc,
-        // otherwise just the orbit-object switch, current distance kept.
+        // Enter (plan §6.5): observer mode uses the primary and may move the
+        // camera. A docked pilot instead gets the station's schematic in place;
+        // that is T3's sibling-founding path and must never re-pose the ship.
         function openSystemView(moveCamera) {
                 const p = starSet.primary;
-                if (p < 0) return false;
-                const ref = memberRefFor(p);
+                let ref, name;
+                if (gameMode) {
+                        if (!dockedSystemAvailable()) {
+                                if (systemLayer.isOpen()) closeSystemView();
+                                gameNotice();
+                                return false;
+                        }
+                        ref = stationStarRef();
+                        if (!ref) {
+                                setAutoMsg('no star to inspect · not resident');
+                                return false;
+                        }
+                        if (!systemLayer.isOpen()) systemLayer.setView(window.SystemLayer.VIEW_SYSTEM);
+                        moveCamera = false;
+                        name = ship.station.name;
+                } else {
+                        if (p < 0) return false;
+                        ref = memberRefFor(p);
+                        name = landmarkNameFor(p);
+                }
                 systemCtx.model = model;
                 systemCtx.field = renderer.fieldBuffers();
                 systemCtx.member = renderer.starBlocks().member;
-                systemCtx.name = landmarkNameFor(p);
+                systemCtx.name = name;
                 systemLayer.enter(ref, systemCtx);
                 // Inspection is discovery: the opened system's sites join the
                 // network on first sight, and an old system is only settled.
@@ -1528,6 +1560,12 @@ async function boot() {
         // an immediate refresh on enter and on a schematic click, so the
         // ◀ marker never lags the ring.
         function writeSystemReadout() {
+                let portIndex = -1;
+                if (systemLayer.isOpen() && tradeNet) {
+                        portIndex = tradeLib.bestPortOfStar(tradeNet, systemLayer.record.star.key >>> 0);
+                }
+                if (portIndex >= 0) systemLayer.setTradeData(tradeNet.ports[portIndex], tradeNet.worlds);
+                else systemLayer.setTradeData(null, null);
                 sysread.textContent = systemLayer.readoutText() + tradeReadoutText();
 		syncRouteUi();
         }
@@ -4058,6 +4096,7 @@ async function boot() {
                                 x: ref.x, y: ref.y, z: ref.z,
                         });
                 syncSelectionPanel();
+                syncViewRows();
                 setAutoMsg('docked at ' + name + ' port · tank and life support restored');
                 syncFlightUi();
         }
@@ -4067,6 +4106,10 @@ async function boot() {
                 shipLib.undock(ship);
                 stationIsDest = false;
                 stationKey = -1;
+                // The docked schematic was a camera-safe inspection, not a
+                // second flight mode. Leaving the port restores the galaxy.
+                if (systemLayer.isOpen()) closeSystemView();
+                else syncViewRows();
                 setAutoMsg('undocked · coasting with the station');
                 syncFlightUi();
         }
@@ -4296,6 +4339,7 @@ async function boot() {
                 syncSelectionPanel();
                 syncTradeUi();
                 syncFlightUi();
+                if (systemLayer.isOpen()) writeSystemReadout();
                 setAutoMsg('colony founded at ' + label + ' \u00b7 '
                         + economyLib.formatPop(world.pop));
         }
@@ -4361,15 +4405,23 @@ async function boot() {
         function tradeReadoutText() {
                 if (!tradeNet) return '';
                 const p = starSet.primary;
-                if (p < 0) return '';
-                const portIndex = tradeLib.bestPortOfStar(tradeNet, starSet.keys[p] >>> 0);
+                // The opened record, not the galaxy primary, owns this card.
+                // A docked pilot may inspect a locked destination that is no
+                // longer the primary without seeing that other star's market.
+                const key = systemLayer.isOpen() ? systemLayer.record.star.key >>> 0
+                        : p >= 0 ? starSet.keys[p] >>> 0 : 0;
+                if (!systemLayer.isOpen() && p < 0) return '';
+                const portIndex = tradeLib.bestPortOfStar(tradeNet, key);
                 if (portIndex < 0) return '\ntrade     no colony here \u00b7 V discovers its sites';
                 const port = tradeNet.ports[portIndex];
                 tradeLib.settlePort(tradeNet, portIndex, tradeNet.time);
                 const colony = port.colony;
                 if (colony.outpost) {
                         return `\ntrade     ${port.name} \u00b7 outpost since ${Math.round(colony.outpostY).toLocaleString('en-US')} y`
-                                + ` \u00b7 no trade \u00b7 pop ${economyLib.formatPop(colony.pop)} frozen`;
+                                + ` \u00b7 no trade \u00b7 pop ${economyLib.formatPop(colony.pop)} frozen`
+                                + '\nworlds    ' + tradeWorldsLine(portIndex)
+                                + tradeLib.intraReadoutText(tradeNet, portIndex)
+                                + '\ninter     no trade';
                 }
                 const systemLine = `\nsystem    ${colony.sysRocky} rocky \u00b7 ${colony.sysGiants} giants`
                         + ` \u00b7 ${colony.sysBelts} belt${colony.sysBelts === 1 ? '' : 's'}`
@@ -4399,6 +4451,8 @@ async function boot() {
                         + (bestExport >= 0 ? ` \u00b7 best export ${economyLib.RESOURCES[bestExport].name}` : '')
                         + (worstImport >= 0 ? ` \u00b7 worst import ${economyLib.RESOURCES[worstImport].name}` : '');
                 text += '\nworlds    ' + tradeWorldsLine(portIndex);
+                text += tradeLib.intraReadoutText(tradeNet, portIndex);
+                text += '\ninter     ' + tradeMarketLine(colony);
                 text += systemLine;
                 text += '\nyields    ' + tradeYieldRow(colony, 0, 5) + '   + surplus \u00b7 ! scarce';
                 text += '\n          ' + tradeYieldRow(colony, 5, 10);
@@ -5655,10 +5709,15 @@ async function boot() {
 						if (systemLayer.pickDvNode(input.state.pickX, input.state.pickY, dvPick)) systemLayer.chooseRouteNode(dvPick.body, dvPick.node);
 					} else {
 						systemLayer.pick(input.state.pickX, input.state.pickY, bodyPick);
-						if (bodyPick.kind === window.SystemLayer.BODY_NONE) systemLayer.clearBodySelection();
-						else {
+						if (bodyPick.kind === window.SystemLayer.BODY_NONE) {
+							systemLayer.clearBodySelection();
+							if (gameMode) syncFlightUi();
+						} else {
 							systemLayer.setSelected(bodyPick.kind, bodyPick.index);
-							recordSystemBodySelection(bodyPick);
+							// The docked schematic can name a station outside the
+							// primary set; do not file its bodies under that other star.
+							if (gameMode) syncFlightUi();
+							else recordSystemBodySelection(bodyPick);
 						}
 					}
                                 writeSystemReadout();
@@ -5708,10 +5767,11 @@ async function boot() {
                 }
                 if (actions.systemView) {
                         actions.systemView = 0;
-                        // V is gated in game mode: the view re-poses the camera,
-                        // which would teleport the ship (game-mode-plan §3).
-                        if (gameMode) gameNotice();
-                        else toggleSystemView();
+                        // Normally V is observer-only because entering re-poses
+                        // the camera. toggleSystemView admits the one exception:
+                        // the docked star's schematic, entered without camera
+                        // motion so a pilot can select and found another world.
+                        toggleSystemView();
                 }
                 if (actions.systemViewExit) {
                         actions.systemViewExit = 0;

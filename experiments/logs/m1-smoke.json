@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-21T20:59:01.352Z",
+  "date": "2026-10-22T11:03:14.978Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -84,8 +84,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 113,
-  "passed": 113,
+  "totalChecks": 114,
+  "passed": 114,
   "failed": 0,
   "checks": [
     {
@@ -247,6 +247,10 @@
     },
     {
       "name": "the dock command commits the service and the asset history",
+      "pass": true
+    },
+    {
+      "name": "the docked schematic founds sibling worlds without moving the camera",
       "pass": true
     },
     {
@@ -509,14 +513,14 @@
       "name": "EconomyLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 94
+        "keys": 95
       }
     },
     {
       "name": "TradeLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 140
+        "keys": 147
       }
     },
     {
@@ -593,7 +597,7 @@
       "name": "LabelLayer loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 14
+        "keys": 15
       }
     },
     {

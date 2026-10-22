@@ -271,8 +271,13 @@ OK('Earth surface → Mars surface, aerocapture arrival', () => {
 	const leg = {}; dv.legLoToLo(MU_SUN, earth, mars, false, leg);
 	const land = {}; dv.dvLoToSurface(mars, land);
 	const total = launch.dv + leg.dvDepLo + leg.dvCapB + land.dv;
-	// The published range is 15–18 km/s.
+	const direct = {};
+	dv.dvSurfaceToSurface(MU_SUN, earth, mars, false, direct);
+	// The published range is 15–18 km/s. The graph helper must be the same
+	// lift + low-orbit leg + aero landing chain, not a second approximation.
 	approxEq(total / 1000, 16.02, 2);
+	approxEq(direct.dv, total, 1e-6);
+	approxEq(direct.dv / 1000, 16.02, 2);
 });
 
 // --- Structural invariants ---------------------------------------------------

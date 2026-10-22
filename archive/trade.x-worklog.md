@@ -956,3 +956,70 @@ physics on `port.dv`/`port.couple`, intra demand/supply closure, `world.access`,
 and the non-circular `settlePort` fixed point) followed by T5 (intra routes on
 the `#system` schematic and the intra section on `#sysread`).
 
+## trade.21 — 2026-10-22 — Intra flow is a delta-v statistic
+
+T4 (`trade-3-plan.md` §6). The port's preallocated 6/6×6 buffers now carry
+physical geometry rather than identity placeholders. `fillIntraGraph` builds
+the same DeltaV body and directed Hohmann edge tables as the map at founding,
+stores surface `well` / aerocredited `land`, `dv`, `tH`, `couple` and `lift`,
+and derives live-world access. Giants/cloud habitats have no surface climb;
+the diagonal alone is zero-distance. `deltav.dvSurfaceToSurface` is the thin
+shared chain used by the Earth→Mars pin (16.02 km/s with aerocapture), not a
+second physics implementation.
+
+`settlePort` is deliberately non-circular: capture each live world's family
+supply, demand and start-of-interval coverage; run every local closed-form
+settle once; apply one simultaneous couple-weighted transfer capped by remaining
+exportable, warehouse room and population room; refresh access; fold. Bulk and
+manufactured goods move by member resource, while passengers move population,
+never the colonists warehouse stock. A same-clock call preserves stocks,
+population and the last flow exactly. Star-port collection applies `lift` to
+each world's exportable, and second-world founding ranks habitat by physical
+couple and well cost. No intra event enters the inter-star queue, and closed
+systems settle exactly like opened ones.
+
+Validated: `trade-test` §29, now **262/262** for the whole suite — bit-exact
+repeat graphs and direct DeltaV equality, the Solar surface pin, near/far belt
+flow and mass conservation, Hohmann-time independence, same-clock fixed point,
+positive bulk/goods/passenger closure, passenger starvation refusal, one-world
+zero flow, deep-well versus belt lift, founding score/refusal and an unchanged
+queue calendar. `dv-map-test` **38/38**, `exec-queue-test` **8/8**. Review also
+added the missing positive goods and passenger pins; both passed without
+weakening a tolerance.
+
+Next: T5's schematic markers/dashes and `#sysread` card, plus a real input path
+for founding the second world that makes those flows visible.
+
+## trade.22 — 2026-10-22 — The opened system shows its worlds, flows and km/s
+
+T5 (`trade-3-plan.md` §7). `system-layer.setTradeData` binds only the opened
+star's port and world pool. The schematic draws the shared population/growth
+markers for every world, grey outposts and dashed amber starvation alarms, then
+at most three dim cargo-coloured dashes for the largest last-settle flows.
+Ranking and scratch are preallocated; closed-view draw remains a single return.
+`main.js` feeds the references at readout cadence, and `#sysread` adds worlds,
+intra direction/family/km/s/couple/Hohmann, per-world lift and the inter market.
+These are ambient statistics, not a second fleet.
+
+Review caught an integration hole left by T3: sibling founding existed only as
+an API because Found requires docking while V was game-gated, so real play had
+no way to create a multi-world port. The docked exception now opens only the
+station's schematic with no camera movement, disables its route controls and
+closes on undock or an incompatible hull switch. Discovery, body selection and
+the trade card use the opened station key rather than assuming it is still the
+galaxy primary; a successful founding refreshes the picture immediately. The
+ordinary flying/observer camera contract remains unchanged.
+
+Validated: `system-layer-test` **60/60**, including matching-star gating,
+marker/alarm counts, three-flow drawing and 1,000 allocation-free frames;
+`m1-smoke-test` **114/114** with a static wiring pin for the docked no-camera
+path; `input-test` **21/21**, `ship-test` **123/123**, `panel-test` **11/11**,
+and the T4 suites above. `scripts/run.py changed` passed **8/8** and the
+combined world/view domains passed **26/26**. `node --check` and
+`git diff --check` pass. No real-browser visual verdict is claimed; V13c
+records the marker/dash/card, matching-km/s and docked-founding checks.
+
+Next: run V13c in a browser on real hardware. T6 (a real intra fleet) stays
+deferred and, if scheduled, must bring its own system clock and queue rather
+than reusing the galaxy heap.
+

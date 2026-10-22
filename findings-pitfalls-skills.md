@@ -2362,3 +2362,34 @@ Skill: when a factor describes the *container* but is consumed per *item*,
 compute it at the boundary and copy the summary. The test that catches a
 regression is the cheap one: fill the same site twice, and compare the yields
 to a hand-computed product.
+
+## 2026-10-22 — Intra movement is a delta-v statistic, never a hull on the galaxy queue
+
+The local trade closure needed the existing DeltaV graph, not another travel
+model. Build the body/edge tables at founding into preallocated port matrices,
+then couple flow by `1 / (1 + (dv / DV_REF)²)` and tax star-port exports by the
+source well. Hohmann time is readout-only on a colony calendar. A repeated
+same-time settle must be an exact no-op: freeze inputs, integrate each world
+once, apply one simultaneous transfer, then fold. Re-settling after delivery
+makes the interval circular and applies its own output twice.
+
+Skill: when two calendars have different units and workloads, do not share a
+heap. Statistical intra has no events; if real intra hulls return, their system
+clock and queue stay separate from the galaxy's one-event-per-hull scheduler.
+
+## 2026-10-22 — Do not gate factories, or their only UI path, on the system view
+
+Worlds settle whether V is open or closed; opening a picture cannot create the
+economy's past. The inverse wiring matters too: an API for founding sibling
+worlds was tested but unreachable because Found required a docked ship while V
+was observer-only. With only AI-founded one-world ports, the entire local-flow
+layer would have stayed invisible in real play.
+
+The narrow fix preserves the camera contract: a docked pilot can open only the
+station's schematic with camera movement disabled, the station key owns body
+picks and the trade card, and undocking closes it. Do not solve a camera-gating
+problem by enabling every system-map route in game mode.
+
+Skill: for a feature with no automatic producer, trace one real user action
+from input to state change. A direct API test can pass while the shipped
+scenario can never reach the feature.

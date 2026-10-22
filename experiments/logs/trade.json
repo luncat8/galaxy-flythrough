@@ -1,6 +1,6 @@
 {
-  "total": 245,
-  "passed": 245,
+  "total": 262,
+  "passed": 262,
   "failed": 0,
   "checks": [
     {
@@ -132,8 +132,8 @@
       "name": "arrivals are booked",
       "pass": true,
       "detail": {
-        "processed": 226,
-        "delivered": 6591.804768246175
+        "processed": 231,
+        "delivered": 4669.455559562637
       }
     },
     {
@@ -153,13 +153,13 @@
           7,
           15,
           3,
-          6591.804768246175
+          4669.455559562637
         ],
         "small": [
           7,
           15,
           3,
-          6591.804768246175
+          4669.455559562637
         ]
       }
     },
@@ -468,14 +468,14 @@
       "name": "a budgeted drain keeps the clock monotone and never passes the next event",
       "pass": true,
       "detail": {
-        "time": 4475,
-        "lag": 3925
+        "time": 4887,
+        "lag": 3513
       }
     },
     {
       "name": "a budgeted clock that cannot keep up reports its backlog",
       "pass": true,
-      "detail": 3925
+      "detail": 3513
     },
     {
       "name": "at the synced top rate an unbudgeted clock stays exact",
@@ -599,7 +599,7 @@
       "detail": {
         "bigFree": 56,
         "bigGen": 62,
-        "median": 0.5
+        "median": 0.49
       }
     },
     {
@@ -681,7 +681,7 @@
       "name": "the freighters are on the routes while the network grows",
       "pass": true,
       "detail": {
-        "sailingAt20": 40
+        "sailingAt20": 34
       }
     },
     {
@@ -690,7 +690,7 @@
       "detail": {
         "ports": 9,
         "founded": 5,
-        "delivered": 12758.7,
+        "delivered": 9723.1,
         "samePop": true
       }
     },
@@ -766,18 +766,18 @@
       "name": "a leg torn past its cap is turned around, not chased",
       "pass": true,
       "detail": {
-        "diverted": 15,
-        "turned": 8
+        "diverted": 12,
+        "turned": 1
       }
     },
     {
       "name": "the diverted hull is booked home over the part of the chord it has flown",
       "pass": true,
       "detail": {
-        "u": 0.159,
-        "chord": 12847,
-        "expect": 680,
-        "booked": 681
+        "u": 0.173,
+        "chord": 13614,
+        "expect": 525,
+        "booked": 526
       }
     },
     {
@@ -785,8 +785,8 @@
       "pass": true,
       "detail": {
         "landed": 1,
-        "from": 11,
-        "arrivals": 48
+        "from": 8,
+        "arrivals": 34
       }
     },
     {
@@ -824,7 +824,7 @@
       "name": "120 s of shearing sky: no hull is left on a leg past the give-up margin",
       "pass": true,
       "detail": {
-        "sailing": 10,
+        "sailing": 15,
         "over": 0,
         "worstLy": 2593
       }
@@ -833,8 +833,8 @@
       "name": "the network still trades and still grows while the sky moves",
       "pass": true,
       "detail": {
-        "delivered": 139353,
-        "at60": 71272,
+        "delivered": 128689,
+        "at60": 66430,
         "ports": 12,
         "founded": 8
       }
@@ -953,7 +953,7 @@
       "pass": true,
       "detail": {
         "ports": 4,
-        "delivered": 7607,
+        "delivered": 4742,
         "founded": 0
       }
     },
@@ -1214,19 +1214,19 @@
       "name": "the fixture has a source and two destinations that want a good",
       "pass": true,
       "detail": {
-        "source": 2,
-        "first": 0,
-        "second": 1,
-        "good": 0
+        "source": 0,
+        "first": 1,
+        "second": 3,
+        "good": 4
       }
     },
     {
       "name": "a commissioned pair is preferred over the global pick",
       "pass": true,
       "detail": {
-        "globalPick": 1,
-        "second": 1,
-        "routedPick": 1
+        "globalPick": 5,
+        "second": 3,
+        "routedPick": 3
       }
     },
     {
@@ -1316,11 +1316,11 @@
       "pass": true
     },
     {
-      "name": "fixture finds a multi-world landmark system",
+      "name": "fixture contains multiple settleable sites and a barren planet",
       "pass": true,
       "detail": {
-        "multiLandmark": 3,
-        "goodCount": 2
+        "goodCount": 3,
+        "poorPlanet": 2
       }
     },
     {
@@ -1378,6 +1378,126 @@
     {
       "name": "interFamilyTagOf covers all seven shipping families and treats 0/0 as fair",
       "pass": true
+    },
+    {
+      "name": "intra family ids are the canonical bulk/goods/pax labels",
+      "pass": true
+    },
+    {
+      "name": "T4 graph is bit-exact across repeated builds (dv, Hohmann, couple, lift)",
+      "pass": true
+    },
+    {
+      "name": "Earth–Mars graph edge matches the direct DeltaVLib surface→surface aero pin",
+      "pass": true,
+      "detail": {
+        "dv": 16019.963962419402,
+        "direct": 16019.963962419402,
+        "couple": 0.2803953891833698
+      }
+    },
+    {
+      "name": "a close belt feeds more ore in 20 years than the same belt at 10× orbital radius",
+      "pass": true,
+      "detail": {
+        "nearOre": 40.703320369235925,
+        "farOre": 38.348370623982284,
+        "nearDv": 2358.1586617874236,
+        "farDv": 8570.456510059052,
+        "nearTH": 16975406.41706361,
+        "farTH": 231879901.7686066,
+        "nearCouple": 0.9473203465718425,
+        "farCouple": 0.5765259676410469
+      }
+    },
+    {
+      "name": "Hohmann time is readout-only: replacing tH does not alter statistical flow",
+      "pass": true
+    },
+    {
+      "name": "couple-weighted intra transfers conserve every stock family against local-only settlement",
+      "pass": true,
+      "detail": {
+        "near": true,
+        "far": true
+      }
+    },
+    {
+      "name": "settlePort reaches a non-circular same-clock fixed point: frozen flows apply once, fold and readout stay stable",
+      "pass": true
+    },
+    {
+      "name": "T5 readout names the largest local flow, its dv/couple/Hohmann and each lift",
+      "pass": true,
+      "detail": "\nintra     flow · km/s\n          bulk Terran ← belt · 2.4 km/s · couple 0.95 · Hohmann 0.5 y\nlift      Terran 0.51 · belt 0.96"
+    },
+    {
+      "name": "the goods family closes member demand with member supply, not only bulk",
+      "pass": true,
+      "detail": {
+        "flow": 16.304347826086953,
+        "robots": 16.304347826086953
+      }
+    },
+    {
+      "name": "healthy worlds move passengers as conserved population, never as warehouse colonists",
+      "pass": true,
+      "detail": {
+        "flow": 0.13982079177402112,
+        "total": 96.99362515944591,
+        "closedTotal": 96.9936251594459
+      }
+    },
+    {
+      "name": "a starving world below 0.6 coverage neither sends nor receives passengers",
+      "pass": true
+    },
+    {
+      "name": "one-world ports keep zero intra flow; lift is below 1 exactly when a surface well is positive",
+      "pass": true
+    },
+    {
+      "name": "deep-well exports of ore-derived factory cores are lift-taxed below exportable stock",
+      "pass": true,
+      "detail": {
+        "exportable": 750,
+        "taken": 381.5387565650576,
+        "lift": 0.5087183420867435
+      }
+    },
+    {
+      "name": "a belt is a cheaper star-port lift than a lava world on the same star",
+      "pass": true,
+      "detail": {
+        "lava": 0.5179403434351697,
+        "belt": 0.9645807419462024
+      }
+    },
+    {
+      "name": "second-world founding scores prefer the closer of two equal-habitat sites",
+      "pass": true,
+      "detail": {
+        "nearScore": 0.26535642032312684,
+        "farScore": 0.2045698094855191,
+        "habitat": 1.6
+      }
+    },
+    {
+      "name": "the same habitat loses the too-expensive founding gate when its surface well is too deep",
+      "pass": true,
+      "detail": {
+        "reason": "too expensive to reach",
+        "score": 1.0948959382508266e-9
+      }
+    },
+    {
+      "name": "a closed one-world system settles through 600 years without changing hulls or queue events",
+      "pass": true,
+      "detail": {
+        "queueSize": 2,
+        "after": 2,
+        "ships": 1
+      }
     }
   ]
 }

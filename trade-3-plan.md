@@ -422,6 +422,17 @@ is W4's intended direction.
 - Inter-star hull counts and queue size are unchanged by T4 (same
   `peekNext` before/after a 600-year run on a one-world network).
 
+T4 status: **shipped as `trade.21`**. `fillIntraGraph` reuses the DeltaV body
+and edge tables at founding and fills `well` / `land` / `lift`, directed `dv` /
+`tH` / `couple`, and live-world `access`; `deltav.dvSurfaceToSurface` pins the
+same surface-to-surface chain against the Solar fixture. `settlePort` freezes
+all family supply, demand and coverage, settles every world once, applies one
+simultaneous capped transfer, refreshes access and folds. Repeating it at the
+same clock is an exact no-op, so transferred stock cannot feed back into the
+interval that produced it. Inter-star outbound collection is lift-taxed;
+second-world founding uses the physical reachability score. Tests are
+`trade-test` §29 and the Earth→Mars surface pin in `dv-map-test`.
+
 ## 7. T5 — System-view picture
 
 `system-layer.js`, only while a port exists for the opened star. The galaxy
@@ -448,6 +459,20 @@ is a lie we accept until T6.
 
 Browser items go on `deferred-browser-visual-plan.md`: world markers, a
 dash, the card.
+
+T5 status: **shipped as `trade.22`**. `system-layer.setTradeData` accepts only
+the opened star's port; the schematic draws every world with the shared
+growth/outpost/starvation marker language and the three largest last-settle
+flows as dim, state-free dashes. `main.js` wires the live port/world references
+at the existing 4 Hz readout cadence, and `#sysread` adds the world list,
+intra flow / km/s / couple / Hohmann lines, per-world lift and inter-family
+market. The previously unreachable sibling-founding path is wired too: while
+docked, V opens only the station's schematic without moving the camera, body
+picks and the trade card use the station rather than the galaxy primary, and
+undocking closes it. Closing V drops the drawing, never the statistical
+operator. Canvas stubs pin matching-star gating, marker/flow counts and
+allocation-free draws;
+the real-browser appearance check remains deferred.
 
 ## 8. T6 — deferred: inter-planet trade, own time, own queue
 

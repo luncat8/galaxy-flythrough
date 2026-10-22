@@ -185,7 +185,7 @@ const sourceFiles = walk(SRC, '')
 			&& /data-observer/.test(html)
 			&& /function setFlightShipClass\(classId\) \{[\s\S]*?shipLib\.setClass\(ship, classId\);/.test(main)
 			&& /for \(const control of helpNeedObserver\) control\.disabled = gameMode;/.test(main)
-			&& /btnSystemView\.disabled = gameMode;/.test(main));
+			&& /btnSystemView\.disabled = !viewOpen && gameMode && !dockedSystemAvailable\(\);/.test(main));
 	}
 	// G2 of game-mode-plan.md: the §5 approach, follow and abort ride the same
 	// ship law (the commands are requests consumed in the game block), the nose
@@ -339,6 +339,13 @@ const sourceFiles = walk(SRC, '')
 			/function gameDock\(\) \{[\s\S]*?shipLib\.dock\(ship, key, name,/.test(main)
 			&& /selectionStore\.selectCurrent\(window\.SelectionStore\.GROUP_ASSET,[\s\S]*?type: 'dock-port',/.test(main)
 			&& /const fixed = ship\.home\.kind === 'fixed';/.test(main));
+		check('the docked schematic founds sibling worlds without moving the camera',
+			/function dockedSystemAvailable\(\) \{\s*return gameMode && ship\.docked && !!ship\.station;/.test(main)
+			&& /function openSystemView\(moveCamera\) \{[\s\S]*?ref = stationStarRef\(\);[\s\S]*?moveCamera = false;[\s\S]*?systemLayer\.enter\(ref, systemCtx\);/.test(main)
+			&& /function gameUndock\(\) \{[\s\S]*?if \(systemLayer\.isOpen\(\)\) closeSystemView\(\);/.test(main)
+			&& /routeClearButton\.disabled = gameMode;/.test(main)
+			&& /function gameFoundColony\(\) \{[\s\S]*?playerFoundWorld[\s\S]*?if \(systemLayer\.isOpen\(\)\) writeSystemReadout\(\);/.test(main)
+			&& /const key = systemLayer\.isOpen\(\) \? systemLayer\.record\.star\.key >>> 0/.test(main));
 		check('the docked ride feeds the station, breaks on a lost residency, and yields to thrust',
 			/if \(ship\.docked && thrusting\) gameUndock\(\);/.test(main)
 			&& /if \(ship\.docked\) \{[\s\S]*?shipLib\.dockStep\(ship,/.test(main)

@@ -40,12 +40,13 @@
 	// local flow and a shipped specialist good, ore and volatiles are bulk
 	// feedstock that never leaves the system.
 	// The two routing maps, by id (index into the table below). `-1` means "not
-	// in this tier": bulk never ships between stars, and the intra map exists
-	// for T4 before its flow law does — the readout can already group by it.
+	// in this tier": bulk never ships between stars, while the three intra
+	// families are statistical flows inside one star (T4), never queue events.
 	const INTRA_BULK = 0, INTRA_GOODS = 1, INTRA_PAX = 2;
 	const INTER_RARE = 0, INTER_EXOTIC = 1, INTER_AMAT = 2, INTER_FOOD = 3,
 		INTER_FAB = 4, INTER_INFO = 5, INTER_PAX = 6;
-	const INTRA_FAMILY_NAMES = ['resource', 'product', 'passenger'];
+	const INTRA_FAMILY_NAMES = ['bulk', 'goods', 'pax'];
+	const INTRA_FAMILY_SHORT = ['bulk', 'goods', 'pax'];
 	const INTER_FAMILY_NAMES = ['rare elements', 'specialist chem', 'antimatter',
 		'food & seed', 'factory cores', 'information', 'passengers'];
 	const INTER_FAMILY_SHORT = ['rare', 'exotic', 'amat', 'food', 'fab', 'info', 'pax'];
@@ -989,7 +990,7 @@
 
 	const EconomyLib = {
 		RESOURCE_COUNT, RESOURCES, PROD, NEED, NEED_WEIGHT, INPUT, PLANET,
-		INTRA_BULK, INTRA_GOODS, INTRA_PAX, INTRA_FAMILY_NAMES,
+		INTRA_BULK, INTRA_GOODS, INTRA_PAX, INTRA_FAMILY_NAMES, INTRA_FAMILY_SHORT,
 		INTER_RARE, INTER_EXOTIC, INTER_AMAT, INTER_FOOD, INTER_FAB, INTER_INFO, INTER_PAX,
 		INTER_FAMILY_NAMES, INTER_FAMILY_SHORT,
 		SITE_BELT,

@@ -294,6 +294,28 @@ function legLoToLo(muStar, bodyA, bodyB, propulsive, out) {
 	return out;
 }
 
+// The same surface→surface chain the intra-system graph prices: lift at A,
+// the low-orbit Hohmann leg, then landing at B. Scratch is shared so callers
+// that fill a whole graph do not allocate a result object per edge.
+const SURFACE_LAUNCH_SCRATCH = {};
+const SURFACE_LEG_SCRATCH = {};
+const SURFACE_LAND_SCRATCH = {};
+function dvSurfaceToSurface(muStar, bodyA, bodyB, propulsive, out) {
+	dvSurfaceToLo(bodyA, SURFACE_LAUNCH_SCRATCH);
+	legLoToLo(muStar, bodyA, bodyB, propulsive, SURFACE_LEG_SCRATCH);
+	dvLoToSurface(bodyB, SURFACE_LAND_SCRATCH);
+	const dv = SURFACE_LAUNCH_SCRATCH.dv + SURFACE_LEG_SCRATCH.dvLoToLo
+		+ SURFACE_LAND_SCRATCH.dv;
+	if (out) {
+		out.dv = dv;
+		out.well = SURFACE_LAUNCH_SCRATCH.dv;
+		out.leg = SURFACE_LEG_SCRATCH.dvLoToLo;
+		out.land = SURFACE_LAND_SCRATCH.dv;
+		out.tH = SURFACE_LEG_SCRATCH.tH;
+	}
+	return dv;
+}
+
 // --- Travel time at an energy budget (§7.4) ---------------------------------
 // ship is { accel: m/s², dvMax: m/s } — accel ceiling from the class table,
 // dvMax is the tank (remaining for this leg, but 0.5.4 does not track routes
@@ -346,6 +368,17 @@ function legTimes(leg, ship, budget, out) {
 // descriptor of which nodes exist for that body; `edges[i]` is the one-body
 // edge set (surface↔lo, lo↔geo, lo↔escape, lo↔L5).
 const MAX_BODIES = planets.MAX_PLANETS + planets.MAX_BELTS;
+const BUILD_PLANET_LETTERS = new Array(planets.MAX_PLANETS);
+for (let i = 0; i < BUILD_PLANET_LETTERS.length; i++) BUILD_PLANET_LETTERS[i] = String.fromCharCode(98 + i);
+const BUILD_BELT_LETTERS = new Array(planets.MAX_BELTS);
+const BUILD_BELT_LABELS = new Array(planets.MAX_BELTS);
+for (let i = 0; i < BUILD_BELT_LETTERS.length; i++) {
+	BUILD_BELT_LETTERS[i] = 'belt' + (i + 1);
+	BUILD_BELT_LABELS[i] = 'belt ' + (i + 1);
+}
+const BUILD_GEO_SCRATCH = {};
+const BUILD_ESCAPE_SCRATCH = {};
+const BUILD_L5_SCRATCH = {};
 
 function createBodyParam() {
 	return {
@@ -400,7 +433,7 @@ function buildBodyNodes(record, bodies, nodes, edges) {
 		paramOfBody(record, i, muStar, body);
 		const ns = nodes[total];
 		ns.kind = 0; ns.index = i;
-		ns.letter = String.fromCharCode(98 + i);
+		ns.letter = BUILD_PLANET_LETTERS[i];
 		const dType = planets.DISPLAY_TYPES[record.planets.displayType[i]];
 		ns.label = dType.name;
 		ns.hasSurface = body.hasSurface;
@@ -410,20 +443,26 @@ function buildBodyNodes(record, bodies, nodes, edges) {
 		ns.hasL5 = body.hasL5;
 		// one-body edges
 		const ed = edges[total];
-		const surfUp = {}; dvSurfaceToLo(body, surfUp);
-		ed.dvSurfaceToLo = surfUp.dv; ed.surfaceLoss = surfUp.loss; ed.surfaceDrag = surfUp.drag;
-		const surfDown = {}; dvLoToSurface(body, surfDown);
-		ed.dvLoToSurface = surfDown.dv; ed.landCredit = surfDown.credit; ed.landLaunch = surfDown.launch;
+		dvSurfaceToLo(body, SURFACE_LAUNCH_SCRATCH);
+		ed.dvSurfaceToLo = SURFACE_LAUNCH_SCRATCH.dv;
+		ed.surfaceLoss = SURFACE_LAUNCH_SCRATCH.loss;
+		ed.surfaceDrag = SURFACE_LAUNCH_SCRATCH.drag;
+		dvLoToSurface(body, SURFACE_LAND_SCRATCH);
+		ed.dvLoToSurface = SURFACE_LAND_SCRATCH.dv;
+		ed.landCredit = SURFACE_LAND_SCRATCH.credit;
+		ed.landLaunch = SURFACE_LAND_SCRATCH.launch;
 		if (body.hasGeo) {
-			const geo = {}; dvLoToGeo(body, geo);
-			ed.dvLoToGeo = geo.dv; ed.geoDv1 = geo.dv1; ed.geoDv2 = geo.dv2;
+			dvLoToGeo(body, BUILD_GEO_SCRATCH);
+			ed.dvLoToGeo = BUILD_GEO_SCRATCH.dv;
+			ed.geoDv1 = BUILD_GEO_SCRATCH.dv1;
+			ed.geoDv2 = BUILD_GEO_SCRATCH.dv2;
 		} else { ed.dvLoToGeo = 0; ed.geoDv1 = 0; ed.geoDv2 = 0; }
-		const esc = {}; dvLoToEscape(body, esc);
-		ed.dvLoToEscape = esc.dv;
-		const l5 = {}; dvLoToL5(body, l5);
-		ed.dvLoToL5 = body.hasL5 ? l5.dv : 0;
-		ed.tL5S = body.hasL5 ? l5.timeS : 0;
-		ed.l5Escape = l5.escape; ed.l5Phase = l5.phase;
+		dvLoToEscape(body, BUILD_ESCAPE_SCRATCH);
+		ed.dvLoToEscape = BUILD_ESCAPE_SCRATCH.dv;
+		dvLoToL5(body, BUILD_L5_SCRATCH);
+		ed.dvLoToL5 = body.hasL5 ? BUILD_L5_SCRATCH.dv : 0;
+		ed.tL5S = body.hasL5 ? BUILD_L5_SCRATCH.timeS : 0;
+		ed.l5Escape = BUILD_L5_SCRATCH.escape; ed.l5Phase = BUILD_L5_SCRATCH.phase;
 		total++;
 	}
 	for (let k = 0; k < nBelts; k++) {
@@ -431,21 +470,25 @@ function buildBodyNodes(record, bodies, nodes, edges) {
 		paramOfBelt(record, k, muStar, body);
 		const ns = nodes[total];
 		ns.kind = 1; ns.index = k;
-		ns.letter = 'belt' + (k + 1);
-		ns.label = 'belt ' + (k + 1);
+		ns.letter = BUILD_BELT_LETTERS[k];
+		ns.label = BUILD_BELT_LABELS[k];
 		ns.hasSurface = true;          // Ceres-analog: solid body
 		ns.hasLo = true;
 		ns.hasGeo = false;
 		ns.hasEscape = true;
 		ns.hasL5 = false;              // a belt body is not a primary neighbour
 		const ed = edges[total];
-		const surfUp = {}; dvSurfaceToLo(body, surfUp);
-		ed.dvSurfaceToLo = surfUp.dv; ed.surfaceLoss = surfUp.loss; ed.surfaceDrag = surfUp.drag;
-		const surfDown = {}; dvLoToSurface(body, surfDown);
-		ed.dvLoToSurface = surfDown.dv; ed.landCredit = surfDown.credit; ed.landLaunch = surfDown.launch;
+		dvSurfaceToLo(body, SURFACE_LAUNCH_SCRATCH);
+		ed.dvSurfaceToLo = SURFACE_LAUNCH_SCRATCH.dv;
+		ed.surfaceLoss = SURFACE_LAUNCH_SCRATCH.loss;
+		ed.surfaceDrag = SURFACE_LAUNCH_SCRATCH.drag;
+		dvLoToSurface(body, SURFACE_LAND_SCRATCH);
+		ed.dvLoToSurface = SURFACE_LAND_SCRATCH.dv;
+		ed.landCredit = SURFACE_LAND_SCRATCH.credit;
+		ed.landLaunch = SURFACE_LAND_SCRATCH.launch;
 		ed.dvLoToGeo = 0; ed.geoDv1 = 0; ed.geoDv2 = 0;
-		const esc = {}; dvLoToEscape(body, esc);
-		ed.dvLoToEscape = esc.dv;
+		dvLoToEscape(body, BUILD_ESCAPE_SCRATCH);
+		ed.dvLoToEscape = BUILD_ESCAPE_SCRATCH.dv;
 		ed.dvLoToL5 = 0; ed.tL5S = 0; ed.l5Escape = 0; ed.l5Phase = 0;
 		total++;
 	}
@@ -523,7 +566,7 @@ const DeltaVLib = {
 	lowOrbitRadiusM, vCirc, vEsc, muOfMass,
 	paramOfBody, paramOfBelt,
 	dvSurfaceToLo, dvLoToSurface, dvLoToGeo, dvLoToEscape, dvLoToL5,
-	hohmannStarFrame, departureBurnLo, captureBurn, legLoToLo, legTimes,
+	hohmannStarFrame, departureBurnLo, captureBurn, legLoToLo, dvSurfaceToSurface, legTimes,
 	createBodyParam, createNodeSet, createOneBodyEdges, createInterEdge,
 	buildBodyNodes, buildInterEdges, interEdgeIndex,
 	MAX_BODIES,

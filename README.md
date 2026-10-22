@@ -117,7 +117,7 @@ Other controls:
   present day; the Age slider is the seek, and the epoch readout next to it shows the field's epoch.
   The bar and arms keep their orientation across steps; each step re-draws the field, so lower
   **Stars** (30k–500k, applied on release) for a smaller hitch per step
-- `V` — open/close the close-system schematic of the selected star
+- `V` — open/close the close-system schematic of the selected star; while docked in game mode, inspect the station without camera motion
 - `B` — cycle the system view: schematic → delta-v map → delta-v rails
 - `[` / `]` — exposure
 - `;` / `'` — overall brightness
@@ -279,16 +279,30 @@ implemented separately by the [trade plan](trade-plan.md).
 
 ## Colonies and trade
 
-The Flight panel's **Trade clock** runs independently of star and ship time:
-100 years/wall-second by default; zero pauses. The page opens on the capital
-colony beside home, with four colonies that found more as expeditions reach the
-nearby sky. **Y** or **Draw trade routes**
-toggles port rings, active routes and cargo-coloured freighters. Open a system
-with **V** to discover its sites and inspect colony population, yields and needs.
-Expeditions found new colonies on the same event queue as freight arrivals.
+The Trade panel's clock runs independently of star and ship time: 100
+years/wall-second by default; zero pauses. The page opens on the capital colony
+beside home, with four colonies that found more as expeditions reach the nearby
+sky. **Y** or **Draw trade routes** toggles port rings, active routes and
+cargo-coloured freighters. Open a system with **V** to discover its sites and
+inspect population, yields, needs, local flows and delta-v costs. Expeditions
+found new colonies on the same event queue as freight arrivals.
+
 While docked at an unsettled star, **Found colony** puts one there by the
-player's own hand — free, refused if the star already has a colony, an outpost, an
-expedition bound for it, or if no world here is worth settling.
+player's own hand — free, with the usual outpost/reservation/habitat refusals.
+To develop an existing port, stay docked and press **V**: this one game-mode
+exception opens the station's schematic without moving the camera. Select a
+planet or belt and use **Found colony** again to add a sibling world (up to six
+per star), provided its habitat and surface-to-surface reachability pass.
+Undocking closes the schematic; no second inter-star port is created.
+
+Each star still has one inter-star market, folded from its worlds. Hulls load
+seven shipping families; ore and volatiles stay in-system. Local bulk,
+manufactured goods and passengers move as closed-form statistical flows,
+weighted by the same surface/orbit/landing delta-v graph as the map. Cheap
+edges feed neighbours, and a world's gravity well taxes what its port can lift.
+The opened schematic marks each world and draws the three largest recent flows
+as dim dashes; `#sysread` names their goods, direction, km/s, couple, Hohmann
+time and per-world lift. These dashes are not extra ships or queue events.
 
 The Trade panel lists the largest colonies, the youngest one, and every ready
 expedition as clickable rows: a colony row selects its star (the ship never

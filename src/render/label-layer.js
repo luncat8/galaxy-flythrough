@@ -65,6 +65,19 @@ const TRADE_ALARM_GAP = 4;
 const TRADE_ALARM_SEGMENTS = 12;
 const TRADE_YOUNG_YEARS = 150;
 const TRADE_PORT_YOUNG_GAP = 2;
+// Shared by the system schematic: one growth/outpost/alarm vocabulary across
+// both scales, with the ring dimensions also matching the galaxy overlay.
+const TRADE_MARKER_STYLE = Object.freeze({
+	ringMin: TRADE_PORT_RING_MIN,
+	ringSpan: TRADE_PORT_RING_SPAN,
+	grow: TRADE_PORT_GROW,
+	peak: TRADE_PORT_PEAK,
+	fade: TRADE_PORT_FADE,
+	growthEps: TRADE_PORT_GROWTH_EPS,
+	outpost: TRADE_OUTPOST,
+	alarm: TRADE_ALARM,
+	alarmGap: TRADE_ALARM_GAP,
+});
 const TRADE_ROUTE = 'rgba(120, 220, 200, 0.12)';
 const TRADE_FOUND_ROUTE = 'rgba(250, 205, 130, 0.30)';
 // A commissioned route (W10): the same edge in a dimmer, steadier teal, drawn
@@ -1000,6 +1013,7 @@ const LabelLayer = {
 	createLabelLayer, createShipChromeState, drawShipChrome,
 	LABEL_FONT, LABEL_FILL, LABEL_HALO, LINE_STROKE, SELECT_FILL, SELECT_RING,
 	LABEL_OFFSET_PX, SELECT_RING_PX, SET_RING_PX, SET_RING, MAP_SIZE,
+	TRADE_MARKER_STYLE,
 };
 if (typeof module !== 'undefined') module.exports = LabelLayer;
 if (typeof window !== 'undefined') window.LabelLayer = LabelLayer;
