@@ -48,6 +48,7 @@
 	const INTRA_FAMILY_NAMES = ['resource', 'product', 'passenger'];
 	const INTER_FAMILY_NAMES = ['rare elements', 'specialist chem', 'antimatter',
 		'food & seed', 'factory cores', 'information', 'passengers'];
+	const INTER_FAMILY_SHORT = ['rare', 'exotic', 'amat', 'food', 'fab', 'info', 'pax'];
 
 	const RESOURCES = [
 		{ id: 'ore', name: 'ore', family: 'raw', intraFamily: INTRA_BULK, interFamily: -1, unitMassT: 40, worth: 0.25 },
@@ -423,11 +424,34 @@
 			outBase: new Float64Array(RESOURCE_COUNT),
 			stock: new Float64Array(RESOURCE_COUNT),
 			stockCap: new Float64Array(RESOURCE_COUNT),
-			coverage: 0, growth: 0,
+			coverage: 0, growth: 0, access: 1,
 			produced: 0, consumed: 0,
 			seed: 0,
 			ref: createStarRef(),
 		};
+	}
+
+	function copyColony(out, src) {
+		copySite(out, src);
+		out.capacity = src.capacity;
+		out.pop = src.pop;
+		out.founded = src.founded;
+		out.last = src.last;
+		out.outpost = src.outpost;
+		out.outpostY = src.outpostY;
+		out.popLevel = src.popLevel;
+		out.starving = src.starving;
+		out.yield.set(src.yield);
+		out.outBase.set(src.outBase);
+		out.stock.set(src.stock);
+		out.stockCap.set(src.stockCap);
+		out.coverage = src.coverage;
+		out.growth = src.growth;
+		out.access = src.access;
+		out.produced = src.produced;
+		out.consumed = src.consumed;
+		out.seed = src.seed >>> 0;
+		return out;
 	}
 
 	// The shared fill law: identity, capacity, yields, the industrial inputs
@@ -463,6 +487,7 @@
 		colony.starving = 0;
 		colony.coverage = 0;
 		colony.growth = 0;
+		colony.access = 1;
 		colony.produced = 0;
 		colony.consumed = 0;
 		return colony;
@@ -672,6 +697,16 @@
 		return TAG_FAIR;
 	}
 
+	function interFamilyTagOf(colony, familyId) {
+		let surplus = 0;
+		for (let r = 0; r < RESOURCE_COUNT; r++) {
+			if (RESOURCES[r].interFamily !== familyId) continue;
+			if (demandOf(colony, r) > 0) return TAG_SCARCE;
+			if (exportableOf(colony, r) > 0) surplus = 1;
+		}
+		return surplus ? TAG_SURPLUS : TAG_FAIR;
+	}
+
 	function tradeTagName(tag) {
 		return tag === TAG_SURPLUS ? 'surplus' : tag === TAG_SCARCE ? 'scarce' : 'fair';
 	}
@@ -691,6 +726,213 @@
 		if (give <= 0) return 0;
 		colony.stock[r] += give;
 		return give;
+	}
+
+	// --- Fold and world transfers (trade-3 plan §4) ------------------------
+
+	const FOLD_SCRATCH_MAX = 8;
+	const XFER_WEIGHT = new Float64Array(FOLD_SCRATCH_MAX);
+	const XFER_CAP = new Float64Array(FOLD_SCRATCH_MAX);
+	const XFER_SHARE = new Float64Array(FOLD_SCRATCH_MAX);
+
+	function foldColonies(fold, worlds, count) {
+		if (!(count > 0)) return fold;
+		if (count === 1) return copyColony(fold, worlds[0]);
+		const prevLevel = fold.popLevel | 0;
+		copySite(fold, worlds[0]);
+		fold.seed = worlds[0].seed >>> 0;
+		let liveCount = 0;
+		let produced = 0, consumed = 0;
+		for (let i = 0; i < count; i++) {
+			const w = worlds[i];
+			produced += w.produced;
+			consumed += w.consumed;
+			if (!w.outpost) liveCount += 1;
+		}
+		fold.produced = produced;
+		fold.consumed = consumed;
+		const allOutpost = liveCount === 0 ? 1 : 0;
+		const nUsed = allOutpost ? count : liveCount;
+		let pop = 0, capacity = 0, covSum = 0, growSum = 0, accSum = 0;
+		let founded = Infinity, last = -Infinity, outpostY = 0;
+		for (let r = 0; r < RESOURCE_COUNT; r++) {
+			fold.stock[r] = 0;
+			fold.stockCap[r] = 0;
+			fold.outBase[r] = 0;
+			fold.yield[r] = 0;
+		}
+		for (let i = 0; i < count; i++) {
+			const w = worlds[i];
+			if (!allOutpost && w.outpost) continue;
+			pop += w.pop;
+			capacity += w.capacity;
+			covSum += w.pop * w.coverage;
+			growSum += w.pop * w.growth;
+			accSum += w.pop * w.access;
+			if (w.founded < founded) founded = w.founded;
+			if (w.last > last) last = w.last;
+			if (w.outpostY > outpostY) outpostY = w.outpostY;
+			for (let r = 0; r < RESOURCE_COUNT; r++) {
+				fold.stock[r] += w.stock[r];
+				fold.stockCap[r] += w.stockCap[r];
+			}
+		}
+		const invPop = pop > 0 ? 1 / pop : 0;
+		for (let r = 0; r < RESOURCE_COUNT; r++) {
+			let baseSum = 0, prodSum = 0, yieldSum = 0;
+			for (let i = 0; i < count; i++) {
+				const w = worlds[i];
+				if (!allOutpost && w.outpost) continue;
+				baseSum += pop > 0 ? w.pop * w.outBase[r] : w.outBase[r];
+				const q = w.pop * w.outBase[r];
+				prodSum += q;
+				yieldSum += q * w.yield[r];
+			}
+			fold.outBase[r] = pop > 0 ? baseSum * invPop : baseSum / nUsed;
+			fold.yield[r] = prodSum > 0 ? yieldSum / prodSum : 0;
+		}
+		fold.pop = pop;
+		fold.capacity = capacity;
+		fold.founded = founded === Infinity ? 0 : founded;
+		fold.last = last === -Infinity ? 0 : last;
+		let level = prevLevel;
+		while (level < POP_MILESTONES.length && pop >= POP_MILESTONES[level]) level += 1;
+		fold.popLevel = level;
+		if (allOutpost) {
+			fold.outpost = 1;
+			fold.outpostY = outpostY;
+			fold.growth = 0;
+			fold.starving = 0;
+			fold.access = 0;
+			fold.coverage = coverageOf(fold);
+			return fold;
+		}
+		fold.outpost = 0;
+		fold.outpostY = 0;
+		fold.coverage = pop > 0 ? covSum * invPop : 0;
+		fold.growth = pop > 0 ? growSum * invPop : 0;
+		fold.access = pop > 0 ? accSum * invPop : 1;
+		fold.starving = fold.coverage < STARVE_COVERAGE ? 1 : 0;
+		return fold;
+	}
+
+	// Bounded water-fill across <= FOLD_SCRATCH_MAX worlds: preserves exact
+	// proportionality while unread caps hold, saturates capped slots cleanly,
+	// falls back to remaining capacity when active weights sum to zero, and
+	// conserves total mass to machine precision.
+	function allocateBounded(count, weights, caps, total, out) {
+		for (let i = 0; i < count; i++) out[i] = 0;
+		let rem = total;
+		for (let pass = 0; pass < count && rem > 1e-12; pass++) {
+			let wSum = 0, cSum = 0, lastActive = -1;
+			for (let i = 0; i < count; i++) {
+				if (!(caps[i] > 0)) continue;
+				cSum += caps[i];
+				wSum += weights[i];
+				lastActive = i;
+			}
+			if (!(cSum > 0) || lastActive < 0) break;
+			if (rem >= cSum) {
+				for (let i = 0; i < count; i++) {
+					if (caps[i] > 0) { out[i] += caps[i]; caps[i] = 0; }
+				}
+				rem = 0;
+				break;
+			}
+			let saturated = 0;
+			for (let i = 0; i < count; i++) {
+				if (!(caps[i] > 0)) continue;
+				const share = wSum > 0 ? rem * (weights[i] / wSum) : rem * (caps[i] / cSum);
+				if (share >= caps[i]) {
+					out[i] += caps[i];
+					rem -= caps[i];
+					caps[i] = 0;
+					saturated = 1;
+				}
+			}
+			if (saturated) continue;
+			let assigned = 0;
+			for (let i = 0; i < count; i++) {
+				if (!(caps[i] > 0)) continue;
+				if (i === lastActive) {
+					out[i] += rem - assigned;
+				} else {
+					const share = wSum > 0 ? rem * (weights[i] / wSum) : rem * (caps[i] / cSum);
+					out[i] += share;
+					assigned += share;
+				}
+				caps[i] = 0;
+			}
+			rem = 0;
+			break;
+		}
+		let sum = 0;
+		for (let i = 0; i < count; i++) sum += out[i];
+		return sum;
+	}
+
+	function syncFoldResource(fold, worlds, count, r) {
+		let sum = 0;
+		for (let i = 0; i < count; i++) {
+			if (!worlds[i].outpost) sum += worlds[i].stock[r];
+		}
+		fold.stock[r] = sum;
+	}
+
+	function distributeInbound(fold, worlds, count, r, units) {
+		if (fold.outpost || !(count > 0) || !(units > 0)) return 0;
+		if (count === 1) {
+			const given = giveToColony(worlds[0], r, units);
+			fold.stock[r] = worlds[0].stock[r];
+			return given;
+		}
+		for (let i = 0; i < count; i++) {
+			const w = worlds[i];
+			if (w.outpost) { XFER_WEIGHT[i] = 0; XFER_CAP[i] = 0; continue; }
+			const room = w.stockCap[r] - w.stock[r];
+			XFER_CAP[i] = room > 0 ? room : 0;
+			XFER_WEIGHT[i] = demandOf(w, r);
+		}
+		const given = allocateBounded(count, XFER_WEIGHT, XFER_CAP, units, XFER_SHARE);
+		if (!(given > 0)) return 0;
+		for (let i = 0; i < count; i++) {
+			const w = worlds[i];
+			if (w.outpost || !(XFER_SHARE[i] > 0)) continue;
+			const next = w.stock[r] + XFER_SHARE[i];
+			w.stock[r] = next > w.stockCap[r] ? w.stockCap[r] : next;
+		}
+		syncFoldResource(fold, worlds, count, r);
+		return given;
+	}
+
+	function collectOutbound(fold, worlds, count, r, units, lifts) {
+		if (fold.outpost || !(count > 0) || !(units > 0)) return 0;
+		const limit = exportableOf(fold, r);
+		const want = units < limit ? units : limit;
+		if (!(want > 0)) return 0;
+		if (count === 1 && (!lifts || lifts[0] === 1)) {
+			const taken = takeFromColony(worlds[0], r, want);
+			fold.stock[r] = worlds[0].stock[r];
+			return taken;
+		}
+		for (let i = 0; i < count; i++) {
+			const w = worlds[i];
+			if (w.outpost) { XFER_WEIGHT[i] = 0; XFER_CAP[i] = 0; continue; }
+			const lift = lifts ? lifts[i] : 1;
+			const avail = exportableOf(w, r) * (lift > 0 ? lift : 0);
+			XFER_CAP[i] = avail > 0 ? avail : 0;
+			XFER_WEIGHT[i] = XFER_CAP[i];
+		}
+		const taken = allocateBounded(count, XFER_WEIGHT, XFER_CAP, want, XFER_SHARE);
+		if (!(taken > 0)) return 0;
+		for (let i = 0; i < count; i++) {
+			const w = worlds[i];
+			if (w.outpost || !(XFER_SHARE[i] > 0)) continue;
+			const next = w.stock[r] - XFER_SHARE[i];
+			w.stock[r] = next > 0 ? next : 0;
+		}
+		syncFoldResource(fold, worlds, count, r);
+		return taken;
 	}
 
 	// Units of a resource that fit in a hold with `tons` free.
@@ -749,19 +991,20 @@
 		RESOURCE_COUNT, RESOURCES, PROD, NEED, NEED_WEIGHT, INPUT, PLANET,
 		INTRA_BULK, INTRA_GOODS, INTRA_PAX, INTRA_FAMILY_NAMES,
 		INTER_RARE, INTER_EXOTIC, INTER_AMAT, INTER_FOOD, INTER_FAB, INTER_INFO, INTER_PAX,
-		INTER_FAMILY_NAMES,
+		INTER_FAMILY_NAMES, INTER_FAMILY_SHORT,
 		SITE_BELT,
 		R_ORE, R_VOLATILE, R_RARE, R_CHEM, R_AMAT, R_FOOD, R_BIO, R_PEOPLE,
 		R_ROBOTS, R_COMPUTE, R_SOFT, R_DATA, R_ART,
 		setReserveScale, getReserveScale, rescaleColonyReserves,
 		POP_CAP_BASE, G_MAX, DECLINE, NEED_BUFFER_Y, STOCK_BASE, STOCK_YEARS,
 		EXPORT_RESERVE_FRAC, OUTPOST_POP_M, POP_MILESTONES, STARVE_COVERAGE,
-		TAG_SURPLUS, TAG_FAIR, TAG_SCARCE, scarcityOf, tradeTagOf, tradeTagName,
+		TAG_SURPLUS, TAG_FAIR, TAG_SCARCE, scarcityOf, tradeTagOf, interFamilyTagOf, tradeTagName,
 		POP_GROWTH_CAP_FRAC, YIELD_MAX,
 		EC_CH_YIELD, EC_CH_FOUND, siteSlot,
 		createSite, copySite, siteSeed, fillPlanetSite, fillBeltSite,
 		starFactor, supplyFactor, systemComposition, writeSystemComposition,
-		createColony, fillColony, setupColony, foundColony, settleColony, demoteColony,
+		createColony, copyColony, fillColony, setupColony, foundColony, settleColony, demoteColony,
+		foldColonies, distributeInbound, collectOutbound,
 		FOUND_STOCK_FRAC, SEED_STOCK_FRAC,
 		coverageOf, inputRateOf, HABITAT, HABITAT_BELT,
 		demandOf, exportableOf, takeFromColony, giveToColony,

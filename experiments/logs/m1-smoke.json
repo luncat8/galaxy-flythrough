@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-21T08:59:58.738Z",
+  "date": "2026-10-21T20:59:01.352Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -509,14 +509,14 @@
       "name": "EconomyLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 88
+        "keys": 94
       }
     },
     {
       "name": "TradeLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 128
+        "keys": 140
       }
     },
     {

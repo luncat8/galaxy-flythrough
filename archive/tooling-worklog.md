@@ -62,3 +62,37 @@ is not refreshed.
 
 Next: apply this stable-write pattern to any future generated asset that carries
 provenance metadata which changes independently of its content.
+
+## tooling.3 — three domain suites along the dependency DAG, HTML edges, and panel-test
+
+**Decision.** Every module and test in the repository sits on a strict one-way
+DAG rooted in the math/star layer (`field ──► view` and `field ──► world`, with
+zero edges from `field` back into `view` or `world`). Rather than carving
+arbitrary alphabetical shards, `scripts/run.py` now splits `TYPES['test']`
+along those three domain subtrees — each carrying `ALWAYS = ('export-parity',
+'m1-smoke')`:
+
+- `field-tests` (15 tests, ~147 s, 88% of full-suite wall time): density,
+  morphology, evolution, sampling, orbit kinematics, and movement-density.
+- `view-tests` (16 tests, ~8 s): WGSL validation, star sprites, HDR, landmarks,
+  tile streaming/encoding, camera, input, presets, view-modes, panels, log-file.
+- `world-tests` (14 tests, ~12 s): planets, selection, search, system layer,
+  delta-v, routes, ship flight, trade/colonisation, exec-queue, presets, panels.
+
+Multiple CLI targets combine and deduplicate cleanly (`python3 scripts/run.py
+view-tests world-tests` runs all 26 non-field tests in ~20 s; touching
+`orbit.js` or `density.js` walks forward across `field + view + world` via
+`changed` or `all-tests`). Two pre-existing runner gaps were closed alongside
+the split: `experiments/panel-test.js` is now registered in `EXPERIMENTS` and
+`TYPES['test']`, and `dependency_index()` parses `<script src="...">` edges on
+non-`index.html` pages (`view-modes.html`) while leaving `index.html` to
+`ALWAYS` instead of returning empty edges on `.html` touches.
+
+**Validation.** Module-import assertions check that `SUITES` covers 100% of
+`TYPES['test']`. `view-tests` 16/16 (7.6 s), `world-tests` 14/14 (12.0 s),
+`view-tests + world-tests` 26/26 (20.8 s), `changed` on `src/core/economy.js` +
+`src/core/trade.js` + `src/main.js` 6/6 (2.1 s).
+
+Next: keep adding new `experiments/*-test.js` files to the matching domain suite
+in `scripts/run.py` (enforced by the coverage assertion at import time).
+

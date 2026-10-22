@@ -34,6 +34,9 @@
 	// a finished one.
 	const SEED_PORTS = 4;
 	const MAX_PORTS = 64;
+	const MAX_WORLDS_PER_STAR = 6;
+	const MAX_WORLDS = MAX_PORTS * MAX_WORLDS_PER_STAR;
+	const MIN_FOUND_COUPLE = 0.08;
 	// The hard cap counts every ship, including an expedition in flight; the
 	// freighter fleet keeps its own smaller target so a founder always has a
 	// slot to come home to. A port is served by ~1.5 hulls: at 64 ports and
@@ -236,9 +239,35 @@
 		return LOG_ENTRY;
 	}
 
+	function createWorld() {
+		const world = economy.createColony();
+		world.port = -1;
+		world.slot = -1;
+		return world;
+	}
+
 	function createPort() {
+		const fold = economy.createColony();
+		const worldIdx = new Int32Array(MAX_WORLDS_PER_STAR);
+		worldIdx.fill(-1);
+		const lift = new Float64Array(MAX_WORLDS_PER_STAR);
+		lift.fill(1);
+		const access = new Float64Array(MAX_WORLDS_PER_STAR);
+		access.fill(1);
+		const couple = new Float64Array(MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR);
+		couple.fill(1);
 		return {
-			colony: economy.createColony(),
+			fold,
+			colony: fold,
+			worldIdx,
+			worldCount: 0,
+			well: new Float64Array(MAX_WORLDS_PER_STAR),
+			land: new Float64Array(MAX_WORLDS_PER_STAR),
+			lift,
+			access,
+			dv: new Float64Array(MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR),
+			tH: new Float64Array(MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR),
+			couple,
 			key: 0, name: '', kind: 0, index: 0,
 			arrivals: 0, received: 0,
 			// Trade years of the last sponsored expedition; `-INF` marks a seed
@@ -291,6 +320,7 @@
 			lag: 0,
 			queue: queueLib.createExecQueue(256),
 			portCount: 0,
+			worldCount: 0,
 			// Failed colonies still own their slots; this is how many of the
 			// ports are outposts (W1). `livePortCount` is the panel's number.
 			outposts: 0,
@@ -301,6 +331,7 @@
 			routes: createRoutes(),
 			discovered: new Set(),
 			ports: [],
+			worlds: [],
 			ships: [],
 			candidates: [],
 			processed: 0,
@@ -323,6 +354,7 @@
 			handler: null,
 		};
 		for (let i = 0; i < MAX_PORTS; i++) net.ports.push(createPort());
+		for (let i = 0; i < MAX_WORLDS; i++) net.worlds.push(createWorld());
 		for (let i = 0; i < MAX_SHIPS; i++) net.ships.push(createShip());
 		for (let i = 0; i < MAX_CANDIDATES; i++) net.candidates.push(createCandidate());
 		// The drain's callback: one closure per network, never per event.
@@ -330,6 +362,125 @@
 		net.livePosition = options && options.livePosition ? options.livePosition : null;
 		net.predictPosition = options && options.predictPosition ? options.predictPosition : null;
 		return net;
+	}
+
+	// --- Worlds and the port fold (T2, T3) ----------------------------------
+
+	const PORT_WORLDS = new Array(MAX_WORLDS_PER_STAR);
+	const POP_WEIGHT = new Float64Array(MAX_WORLDS_PER_STAR);
+	const POP_CAP = new Float64Array(MAX_WORLDS_PER_STAR);
+
+	function fillPortWorlds(net, port) {
+		const n = port.worldCount;
+		for (let s = 0; s < n; s++) PORT_WORLDS[s] = net.worlds[port.worldIdx[s]];
+		return n;
+	}
+
+	function worldOfPort(net, portIndex, slot) {
+		if (!(portIndex >= 0 && portIndex < net.portCount)) return null;
+		const port = net.ports[portIndex];
+		if (!(slot >= 0 && slot < port.worldCount)) return null;
+		return net.worlds[port.worldIdx[slot]];
+	}
+
+	function worldOfSite(net, portIndex, kind, index) {
+		if (!(portIndex >= 0 && portIndex < net.portCount)) return -1;
+		const port = net.ports[portIndex];
+		for (let s = 0; s < port.worldCount; s++) {
+			const w = net.worlds[port.worldIdx[s]];
+			if (w.kind === kind && w.index === index) return s;
+		}
+		return -1;
+	}
+
+	function foldPort(net, index) {
+		const port = net.ports[index];
+		const n = port.worldCount;
+		if (n === 0) return port.colony;
+		// A one-world port IS that world (identity, bit-exact, zero fold cost).
+		if (n === 1) {
+			port.colony = net.worlds[port.worldIdx[0]];
+			return port.colony;
+		}
+		fillPortWorlds(net, port);
+		port.colony = economy.foldColonies(port.fold, PORT_WORLDS, n);
+		return port.colony;
+	}
+
+	function distributePortInbound(net, index, r, units) {
+		const port = net.ports[index];
+		const n = fillPortWorlds(net, port);
+		return economy.distributeInbound(port.colony, PORT_WORLDS, n, r, units);
+	}
+
+	function collectPortOutbound(net, index, r, units) {
+		const port = net.ports[index];
+		const n = fillPortWorlds(net, port);
+		return economy.collectOutbound(port.colony, PORT_WORLDS, n, r, units, port.lift);
+	}
+
+	function takePortPopulation(net, index, peopleM) {
+		if (!(peopleM > 0)) return 0;
+		const port = net.ports[index];
+		const n = port.worldCount;
+		if (n === 0) return 0;
+		if (n === 1) {
+			const w0 = net.worlds[port.worldIdx[0]];
+			w0.pop -= peopleM;
+			return peopleM;
+		}
+		let popSum = 0, lastLive = -1;
+		for (let s = 0; s < n; s++) {
+			const w = net.worlds[port.worldIdx[s]];
+			if (w.outpost || !(w.pop > 0)) continue;
+			popSum += w.pop;
+			lastLive = s;
+		}
+		if (!(popSum > 0) || lastLive < 0) return 0;
+		const take = peopleM < popSum ? peopleM : popSum;
+		let assigned = 0;
+		for (let s = 0; s < n; s++) {
+			const w = net.worlds[port.worldIdx[s]];
+			if (w.outpost || !(w.pop > 0)) continue;
+			const part = s === lastLive ? take - assigned : take * (w.pop / popSum);
+			w.pop = w.pop > part ? w.pop - part : 0;
+			assigned += part;
+		}
+		foldPort(net, index);
+		return take;
+	}
+
+	function givePortPopulation(net, index, peopleM) {
+		if (!(peopleM > 0)) return 0;
+		const port = net.ports[index];
+		const n = port.worldCount;
+		if (n === 0) return 0;
+		if (n === 1) {
+			const w0 = net.worlds[port.worldIdx[0]];
+			const before = w0.pop;
+			w0.pop = Math.min(w0.capacity, w0.pop + peopleM);
+			return w0.pop - before;
+		}
+		let roomSum = 0, lastLive = -1;
+		for (let s = 0; s < n; s++) {
+			const w = net.worlds[port.worldIdx[s]];
+			if (w.outpost) { POP_CAP[s] = 0; continue; }
+			const room = w.capacity - w.pop;
+			POP_CAP[s] = room > 0 ? room : 0;
+			if (POP_CAP[s] > 0) { roomSum += POP_CAP[s]; lastLive = s; }
+		}
+		if (!(roomSum > 0) || lastLive < 0) return 0;
+		const give = peopleM < roomSum ? peopleM : roomSum;
+		let assigned = 0;
+		for (let s = 0; s < n; s++) {
+			if (!(POP_CAP[s] > 0)) continue;
+			const w = net.worlds[port.worldIdx[s]];
+			const part = s === lastLive ? give - assigned : give * (POP_CAP[s] / roomSum);
+			w.pop = Math.min(w.capacity, w.pop + part);
+			assigned += part;
+		}
+		foldPort(net, index);
+		return give;
 	}
 
 	// --- Lookups ------------------------------------------------------------
@@ -361,7 +512,8 @@
 		const n = net.portCount;
 		for (let i = 0; i < n; i++) {
 			const p = net.ports[i];
-			if (p.key === key && p.kind === kind && p.index === index) return i;
+			if (p.key !== key) continue;
+			if (worldOfSite(net, i, kind, index) >= 0) return i;
 		}
 		return -1;
 	}
@@ -726,17 +878,40 @@
 	// landed). Same fill law, different grant.
 	const ROLLED_FOUND = 0, FRESH_FOUND = 1;
 
+	function addWorld(net, portIndex, site, nowYears, mode) {
+		if (!(portIndex >= 0 && portIndex < net.portCount)) return -1;
+		const port = net.ports[portIndex];
+		if (port.worldCount > 0 && port.colony.outpost) return -1;
+		if (worldOfSite(net, portIndex, site.kind, site.index) >= 0) return -1;
+		if (port.worldCount >= MAX_WORLDS_PER_STAR || net.worldCount >= MAX_WORLDS) return -1;
+		if (port.worldCount > 0) settlePort(net, portIndex, nowYears);
+		if (port.worldCount > 0 && port.colony.outpost) return -1;
+		const worldIndex = net.worldCount++;
+		const slot = port.worldCount++;
+		const world = net.worlds[worldIndex];
+		port.worldIdx[slot] = worldIndex;
+		if (mode === FRESH_FOUND) economy.foundColony(world, site, nowYears, site.seed >>> 0, 0);
+		else economy.setupColony(world, site, nowYears, site.seed >>> 0);
+		world.port = portIndex;
+		world.slot = slot;
+		world.access = port.access[slot];
+		const c = candidateIndexOf(net, site.key, site.kind, site.index);
+		if (c >= 0) net.candidates[c].used = 1;
+		foldPort(net, portIndex);
+		return worldIndex;
+	}
+
 	function addPort(net, site, nowYears, mode) {
-		// One live colony per star; a star whose colony failed keeps its slot and
-		// refuses every future founding (that is what "never recolonised" means).
+		// One inter-star port per star; a star whose colony failed keeps its slot
+		// and refuses every future founding (that is what "never recolonised" means).
 		const existing = portOfStarLive(net, site.key);
 		if (existing >= 0) return existing;
 		if (portOfStar(net, site.key) >= 0) return -1;
-		if (net.portCount >= MAX_PORTS) return -1;
+		if (net.portCount >= MAX_PORTS || net.worldCount >= MAX_WORLDS) return -1;
 		const index = net.portCount++;
 		const port = net.ports[index];
-		if (mode === FRESH_FOUND) economy.foundColony(port.colony, site, nowYears, site.seed >>> 0, 0);
-		else economy.setupColony(port.colony, site, nowYears, site.seed >>> 0);
+		port.worldCount = 0;
+		port.worldIdx.fill(-1);
 		port.key = site.key >>> 0;
 		port.kind = site.kind;
 		port.index = site.index;
@@ -752,9 +927,7 @@
 			port.ref.x = ref.x; port.ref.y = ref.y; port.ref.z = ref.z;
 			port.ref.colorIndex = ref.colorIndex; port.ref.absMag = ref.absMag;
 		}
-		// A settled site is no longer a colonisation candidate.
-		const c = candidateIndexOf(net, site.key, site.kind, site.index);
-		if (c >= 0) net.candidates[c].used = 1;
+		addWorld(net, index, site, nowYears, mode);
 		return index;
 	}
 
@@ -925,15 +1098,21 @@
 		}
 	}
 
-	// One port's settle, the only path that may demote it. A colony that fails
-	// inside the closed form is noticed here, once, and the network is told
-	// (`net.outposts`, candidates closed); the second call is a no-op.
+	// One port's settle, the only path that may demote it. Settles every live
+	// world of the port, folds them into `port.colony`, and demotes the port iff
+	// every world on the star has failed. Single-world ports skip the fold loop.
 	function settlePort(net, index, time) {
-		const colony = net.ports[index].colony;
-		if (colony.outpost) return 0;
-		const level = colony.popLevel;
-		const starving = colony.starving;
-		const delta = economy.settleColony(colony, time);
+		const port = net.ports[index];
+		if (port.colony.outpost) return 0;
+		const level = port.colony.popLevel;
+		const starving = port.colony.starving;
+		let delta = 0;
+		for (let s = 0; s < port.worldCount; s++) {
+			const world = net.worlds[port.worldIdx[s]];
+			if (world.outpost) continue;
+			delta += economy.settleColony(world, time);
+		}
+		const colony = foldPort(net, index);
 		if (colony.popLevel !== level) pushLog(net, LOG_MILESTONE, index, colony.popLevel, level);
 		if (colony.starving !== starving) {
 			pushLog(net, colony.starving ? LOG_FAMINE : LOG_FAMINE_END, index,
@@ -1251,7 +1430,7 @@
 		ship.returning = 0;
 		settlePort(net, at, time);
 		if (ship.amount > 0 && ship.cargo !== NO_RESOURCE) {
-			const given = economy.giveToColony(port.colony, ship.cargo, ship.amount);
+			const given = distributePortInbound(net, at, ship.cargo, ship.amount);
 			ship.amount -= given;
 			net.delivered += given;
 			ship.delivered += given;
@@ -1305,7 +1484,7 @@
 			waitAtPort(net, ship, time);
 			return;
 		}
-		const taken = economy.takeFromColony(port.colony, pick.resource, pick.amount);
+		const taken = collectPortOutbound(net, portIndex, pick.resource, pick.amount);
 		if (taken <= 0) { waitAtPort(net, ship, time); return; }
 		ship.cargo = pick.resource;
 		ship.amount = taken;
@@ -1730,7 +1909,7 @@
 			return -1;
 		}
 		const colonists = EXPEDITION_COST.people;
-		sourcePort.colony.pop -= EXPEDITION_COST.peopleM;
+		takePortPopulation(net, source, EXPEDITION_COST.peopleM);
 		sourcePort.lastExpedition = time;
 		const ship = net.ships[shipIndex];
 		const site = net.candidates[candidateIndex].site;
@@ -1813,6 +1992,106 @@
 		pushLog(net, LOG_FOUND, portIndex, -1, 0);
 		r.ok = 1;
 		r.port = portIndex;
+		r.site = FOUND_SITE;
+		return r;
+	}
+
+	const WORLD_RESULT = { ok: 0, port: -1, world: -1, slot: -1, site: null, reason: '' };
+
+	function createWorldFoundResult() {
+		WORLD_RESULT.ok = 0;
+		WORLD_RESULT.port = -1;
+		WORLD_RESULT.world = -1;
+		WORLD_RESULT.slot = -1;
+		WORLD_RESULT.site = null;
+		WORLD_RESULT.reason = '';
+		return WORLD_RESULT;
+	}
+
+	// W3 extended (trade-3 plan §5.2): found a colony on a named planet or belt
+	// in system view without taking a second port slot. If the star has no port
+	// yet, this opens its port on that site; otherwise it appends to `worldIdx`.
+	function playerFoundWorld(net, ref, starName, system, isBelt, bodyIndex, nowYears, out) {
+		const r = out || createWorldFoundResult();
+		r.ok = 0;
+		r.port = -1;
+		r.world = -1;
+		r.slot = -1;
+		r.site = null;
+		r.reason = '';
+		const key = system.star.key >>> 0;
+		const belt = isBelt ? 1 : 0;
+		const bodyCount = belt ? (system.belts.count | 0) : (system.counts.planets | 0);
+		const seed = economy.siteSeed(key, net.modelSeed, ref.kind);
+		const existingPort = portOfStar(net, key);
+		if (existingPort >= 0 && net.ports[existingPort].colony.outpost) {
+			r.reason = 'star is an outpost';
+			return r;
+		}
+		if (!(bodyIndex >= 0 && bodyIndex < bodyCount)) {
+			r.reason = 'no site worth settling';
+			return r;
+		}
+		if (existingPort >= 0 && worldOfSite(net, existingPort, belt, bodyIndex) >= 0) {
+			r.reason = 'already a world here';
+			return r;
+		}
+		if (existingPort >= 0 && (net.ports[existingPort].worldCount >= MAX_WORLDS_PER_STAR || net.worldCount >= MAX_WORLDS)) {
+			r.reason = 'worlds full';
+			return r;
+		}
+		if (existingPort < 0) {
+			for (let i = 0; i < net.candidateCount; i++) {
+				const c = net.candidates[i];
+				if (c.site.key === key && c.reserved >= 0) {
+					r.reason = 'an expedition is already bound for it';
+					return r;
+				}
+			}
+			if (net.portCount >= MAX_PORTS || net.worldCount >= MAX_WORLDS) {
+				r.reason = 'network is full';
+				return r;
+			}
+		}
+		const pick = { index: bodyIndex | 0, belt };
+		fillPickedSite(FOUND_SITE, ref, system, seed, pick);
+		if (siteHabitatScore(FOUND_SITE) < MIN_CANDIDATE_HABITAT) {
+			r.reason = 'no site worth settling';
+			return r;
+		}
+		FOUND_SITE.name = economy.siteName(starName || '', key, belt, bodyIndex | 0);
+		if (existingPort < 0) {
+			const portIndex = addPort(net, FOUND_SITE, nowYears, FRESH_FOUND);
+			if (portIndex < 0) { r.reason = 'network is full'; return r; }
+			for (let i = 0; i < net.candidateCount; i++) {
+				if (net.candidates[i].site.key === key) net.candidates[i].used = 1;
+			}
+			net.founded += 1;
+			pushLog(net, LOG_FOUND, portIndex, -1, 0);
+			r.ok = 1;
+			r.port = portIndex;
+			r.world = net.ports[portIndex].worldIdx[0];
+			r.slot = 0;
+			r.site = FOUND_SITE;
+			return r;
+		}
+		const port = net.ports[existingPort];
+		const slot = port.worldCount;
+		if (port.couple[slot * MAX_WORLDS_PER_STAR] < MIN_FOUND_COUPLE) {
+			r.reason = 'too expensive to reach';
+			return r;
+		}
+		const worldIndex = addWorld(net, existingPort, FOUND_SITE, nowYears, FRESH_FOUND);
+		if (worldIndex < 0) {
+			r.reason = port.colony.outpost ? 'star is an outpost' : 'worlds full';
+			return r;
+		}
+		net.founded += 1;
+		pushLog(net, LOG_FOUND, existingPort, -1, 0);
+		r.ok = 1;
+		r.port = existingPort;
+		r.world = worldIndex;
+		r.slot = net.worlds[worldIndex].slot;
 		r.site = FOUND_SITE;
 		return r;
 	}
@@ -2065,9 +2344,7 @@
 	function returnFounder(net, ship, time) {
 		pushLog(net, LOG_EXPEDITION, ship.from >= 0 ? ship.from : -1, -1, 1);
 		if (ship.from >= 0 && ship.cargo === economy.R_PEOPLE) {
-			const home = net.ports[ship.from].colony;
-			const returning = ship.amount * POP_PER_COLONIST_UNIT;
-			home.pop = Math.min(home.capacity, home.pop + returning);
+			givePortPopulation(net, ship.from, ship.amount * POP_PER_COLONIST_UNIT);
 		}
 		ship.returning = 0;
 		ship.legFrom = 0;
@@ -2204,7 +2481,13 @@
 		economy.setReserveScale(scale);
 		generationMode = next;
 		if (net && factor !== 1) {
-			for (let i = 0; i < net.portCount; i++) economy.rescaleColonyReserves(net.ports[i].colony, factor);
+			for (let i = 0; i < net.portCount; i++) {
+				const port = net.ports[i];
+				for (let s = 0; s < port.worldCount; s++) {
+					economy.rescaleColonyReserves(net.worlds[port.worldIdx[s]], factor);
+				}
+				foldPort(net, i);
+			}
 		}
 		return generationMode;
 	}
@@ -2294,7 +2577,7 @@
 		}
 		const fits = economy.unitsForTons(resource, freeTons);
 		if (fits <= 0) { PLAYER_RESULT.reason = 'hold full'; return PLAYER_RESULT; }
-		const units = economy.takeFromColony(port.colony, resource, fits);
+		const units = collectPortOutbound(net, portIndex, resource, fits);
 		if (units <= 0) { PLAYER_RESULT.reason = 'nothing to buy'; return PLAYER_RESULT; }
 		const tons = economy.tonsForUnits(resource, units);
 		ship.cargo += tons;
@@ -2325,7 +2608,7 @@
 		}
 		settlePort(net, portIndex, net.time);
 		const units = economy.unitsForTons(r, ship.cargo);
-		const given = economy.giveToColony(port.colony, r, units);
+		const given = distributePortInbound(net, portIndex, r, units);
 		const tons = economy.tonsForUnits(r, given);
 		ship.cargo -= tons;
 		if (given === units) {
@@ -2345,7 +2628,8 @@
 	const DISCOVER_SITE = economy.createSite();
 
 	const TradeLib = {
-		MAX_PORTS, MAX_SHIPS, MAX_FREIGHTERS, MAX_CANDIDATES, TRADE_RATES, TRADE_RATE_DEFAULT,
+		MAX_PORTS, MAX_WORLDS_PER_STAR, MAX_WORLDS, MIN_FOUND_COUPLE,
+		MAX_SHIPS, MAX_FREIGHTERS, MAX_CANDIDATES, TRADE_RATES, TRADE_RATE_DEFAULT,
 		TRADE_RATE_DEFAULT_INDEX, TRADE_ROUTES_DEFAULT,
 		SYNC_YEARS_PER_MYR, RATE_MAX, GENERATION_LY_PER_YEAR, GENERATION_RESERVE_YEARS, GENERATION_STAR_MYR,
 		MIN_LEG_YEARS, SEED_PORTS, START_RADIUS_KPC, START_FIELD, clockRate,
@@ -2363,7 +2647,10 @@
 		MIN_EXPEDITION_POP_M, MIN_EXPEDITION_COVERAGE,
 		setExpansion, expansionArmed, portReadiness, launchChosen, CHOSEN_RESULT,
 		ROLLED_FOUND, FRESH_FOUND, createFoundResult, playerFound,
-		createNetwork, addPort, discoverSystem, discoverNearest, startSystems, settleSystem, finalize, step, settleAllPorts,
+		createWorldFoundResult, playerFoundWorld,
+		createNetwork, addPort, addWorld, worldOfPort, worldOfSite, foldPort,
+		distributePortInbound, collectPortOutbound,
+		discoverSystem, discoverNearest, startSystems, settleSystem, settlePort, finalize, step, settleAllPorts,
 		portOfStar, portOfStarLive, livePortCount, demotePort,
 		portIndexOf, candidateIndexOf, bestPortOfStar, distanceLy, legYears, pickDestination, pickExport,
 		shipPosition, shipProgress, shipStateName, playerPort, playerLoad, playerUnload,

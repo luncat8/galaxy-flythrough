@@ -3504,8 +3504,16 @@ async function boot() {
 		const portIndex = gameTradePort();
 		flightCargoLoad.disabled = flightCargoUnload.disabled = !gameMode || portIndex < 0;
 		const stationRef = gameMode ? stationStarRef() : null;
+		const sysLib = window.SystemLayer;
+		const selKind = systemLayer.isOpen() ? systemLayer.selectedKindOf() : sysLib.BODY_NONE;
+		const bodyPicked = selKind === sysLib.BODY_PLANET || selKind === sysLib.BODY_BELT;
+		const existingPort = stationRef && tradeNet && stationRef.key !== undefined
+			? tradeLib.portOfStar(tradeNet, stationRef.key >>> 0) : -1;
 		flightFound.disabled = !gameMode || stationRef === null || !tradeNet
-			|| (stationRef.key !== undefined && tradeLib.portOfStarLive(tradeNet, stationRef.key >>> 0) >= 0);
+			|| (existingPort >= 0 && tradeNet.ports[existingPort].colony.outpost)
+			|| (existingPort >= 0 && (bodyPicked
+				? tradeNet.ports[existingPort].worldCount >= tradeLib.MAX_WORLDS_PER_STAR
+				: !tradeNet.ports[existingPort].colony.outpost));
 		const holdTag = ship.cargoResource >= 0 && ship.cargoResource < economyLib.RESOURCE_COUNT
 			? ' · ' + economyLib.RESOURCES[ship.cargoResource].name : '';
 		let portText = 'not docked · O docks at a settled station';
@@ -3514,9 +3522,10 @@ async function boot() {
 			if (portIndex < 0) portText += ' · no trade colony';
 			else {
 				const port = tradeNet.ports[portIndex];
-				economyLib.settleColony(port.colony, tradeNet.time);
+				tradeLib.settlePort(tradeNet, portIndex, tradeNet.time);
 				let best = -1, score = 0;
 				for (let r = 0; r < economyLib.RESOURCE_COUNT; r++) {
+					if (economyLib.RESOURCES[r].interFamily < 0) continue;
 					const value = economyLib.exportableOf(port.colony, r) * economyLib.RESOURCES[r].worth;
 					if (value > score) { score = value; best = r; }
 				}
@@ -4259,13 +4268,21 @@ async function boot() {
                 tradeCtx.member = renderer.starBlocks().member;
                 tradeCtx.name = ship.station.name;
                 window.PlanetsLib.generateSystem(ref, tradeCtx, tradeRecord);
-                const result = tradeLib.playerFound(tradeNet, ref, ship.station.name,
-                        tradeRecord, tradeNet.time);
+                const sysLib = window.SystemLayer;
+                const selKind = systemLayer.isOpen() ? systemLayer.selectedKindOf() : sysLib.BODY_NONE;
+                const bodyPicked = selKind === sysLib.BODY_PLANET || selKind === sysLib.BODY_BELT;
+                const result = bodyPicked
+                        ? tradeLib.playerFoundWorld(tradeNet, ref, ship.station.name, tradeRecord,
+                                selKind === sysLib.BODY_BELT ? 1 : 0, systemLayer.selectedIndexOf(), tradeNet.time)
+                        : tradeLib.playerFound(tradeNet, ref, ship.station.name, tradeRecord, tradeNet.time);
                 if (!result.ok) {
                         setAutoMsg(result.reason);
                         return;
                 }
                 const port = tradeNet.ports[result.port];
+                const world = result.world !== undefined && result.world >= 0
+                        ? tradeNet.worlds[result.world] : port.colony;
+                const label = result.site && result.site.name ? result.site.name : port.name;
                 selectionStore.selectCurrent(window.SelectionStore.GROUP_ASSET, {
                         group: window.SelectionStore.GROUP_ASSET,
                         type: 'colony',
@@ -4279,8 +4296,8 @@ async function boot() {
                 syncSelectionPanel();
                 syncTradeUi();
                 syncFlightUi();
-                setAutoMsg('colony founded at ' + port.name + ' \u00b7 '
-                        + economyLib.formatPop(port.colony.pop));
+                setAutoMsg('colony founded at ' + label + ' \u00b7 '
+                        + economyLib.formatPop(world.pop));
         }
 
         function gameTradePort() {
@@ -4316,9 +4333,31 @@ async function boot() {
                 return text;
         }
 
-        // The readout's trade block: population, coverage, the 13-yield map and
-        // the port's exports and needs. This is the brief's inspection path —
-        // the colony is settled to the network's clock here, never per frame.
+        function tradeMarketLine(colony) {
+                let line = '';
+                for (let f = 0; f < economyLib.INTER_FAMILY_SHORT.length; f++) {
+                        const tag = economyLib.interFamilyTagOf(colony, f);
+                        line += (f > 0 ? ' \u00b7 ' : '') + economyLib.INTER_FAMILY_SHORT[f] + ' '
+                                + economyLib.tradeTagName(tag);
+                }
+                return line;
+        }
+
+        function tradeWorldsLine(portIndex) {
+                const port = tradeNet.ports[portIndex];
+                let line = String(port.worldCount);
+                for (let s = 0; s < port.worldCount; s++) {
+                        const w = tradeNet.worlds[port.worldIdx[s]];
+                        line += ' \u00b7 ' + w.name + ' '
+                                + (w.outpost ? 'outpost' : economyLib.formatPop(w.pop));
+                }
+                return line;
+        }
+
+        // The readout's trade block (trade-3 plan §4): when the system view is
+        // closed, one summary line, W4's composition, and W5 tags on the seven
+        // inter-star families. Opening V expands the settled world list and the
+        // full 13-resource yield table. Inspection settles worlds once to clock.
         function tradeReadoutText() {
                 if (!tradeNet) return '';
                 const p = starSet.primary;
@@ -4326,21 +4365,26 @@ async function boot() {
                 const portIndex = tradeLib.bestPortOfStar(tradeNet, starSet.keys[p] >>> 0);
                 if (portIndex < 0) return '\ntrade     no colony here \u00b7 V discovers its sites';
                 const port = tradeNet.ports[portIndex];
+                tradeLib.settlePort(tradeNet, portIndex, tradeNet.time);
                 const colony = port.colony;
-                if (!colony.outpost) economyLib.settleColony(colony, tradeNet.time);
-                const age = tradeNet.time - colony.founded;
                 if (colony.outpost) {
                         return `\ntrade     ${port.name} \u00b7 outpost since ${Math.round(colony.outpostY).toLocaleString('en-US')} y`
                                 + ` \u00b7 no trade \u00b7 pop ${economyLib.formatPop(colony.pop)} frozen`;
                 }
-                // The one-glance market: the best thing to buy here and the
-                // worst thing to run out of, both weighted by routing worth.
+                const systemLine = `\nsystem    ${colony.sysRocky} rocky \u00b7 ${colony.sysGiants} giants`
+                        + ` \u00b7 ${colony.sysBelts} belt${colony.sysBelts === 1 ? '' : 's'}`
+                        + ` \u00b7 ${colony.sysTerran} terran \u00b7 ${colony.sysHz} HZ`;
+                if (!systemLayer.isOpen()) {
+                        return `\ntrade     ${port.name} \u00b7 ${economyLib.formatPop(colony.pop)} / ${economyLib.formatPop(colony.capacity)}`
+                                + ` \u00b7 coverage ${colony.coverage.toFixed(2)} \u00b7 access ${colony.access.toFixed(2)}`
+                                + (colony.starving ? ' \u00b7 starving' : '')
+                                + systemLine
+                                + '\nmarket    ' + tradeMarketLine(colony);
+                }
+                const age = tradeNet.time - colony.founded;
                 let bestExport = -1, bestExportScore = 0, worstImport = -1, worstImportScore = 0;
                 for (let r = 0; r < economyLib.RESOURCE_COUNT; r++) {
                         const worth = economyLib.RESOURCES[r].worth;
-                        // T1: only a shipping family can leave the star, so the
-                        // best export is a shipping good; the worst import is
-                        // whatever the colony actually draws.
                         const spare = economyLib.RESOURCES[r].interFamily >= 0
                                 ? economyLib.exportableOf(colony, r) * worth : 0;
                         if (spare > bestExportScore) { bestExportScore = spare; bestExport = r; }
@@ -4348,23 +4392,17 @@ async function boot() {
                         if (want > worstImportScore) { worstImportScore = want; worstImport = r; }
                 }
                 let text = `\ntrade     ${port.name} \u00b7 pop ${economyLib.formatPop(colony.pop)} / ${economyLib.formatPop(colony.capacity)}`
-                        + ` \u00b7 coverage ${colony.coverage.toFixed(2)} \u00b7 growth ${(colony.growth * 100).toFixed(2)}%/y`
+                        + ` \u00b7 coverage ${colony.coverage.toFixed(2)} \u00b7 access ${colony.access.toFixed(2)}`
+                        + ` \u00b7 growth ${(colony.growth * 100).toFixed(2)}%/y`
                         + ` \u00b7 ${age < 1 ? 'founded now' : Math.round(age) + ' y old'}`
                         + (colony.starving ? ' \u00b7 starving' : '')
                         + (bestExport >= 0 ? ` \u00b7 best export ${economyLib.RESOURCES[bestExport].name}` : '')
                         + (worstImport >= 0 ? ` \u00b7 worst import ${economyLib.RESOURCES[worstImport].name}` : '');
-                // W4: the system's own supply, the layer that decides what a
-                // world can be built from. One line, counted by the generator.
-                text += `\nsystem    ${colony.sysRocky} rocky \u00b7 ${colony.sysGiants} giants`
-                        + ` \u00b7 ${colony.sysBelts} belt${colony.sysBelts === 1 ? '' : 's'}`
-                        + ` \u00b7 ${colony.sysTerran} terran \u00b7 ${colony.sysHz} HZ`;
+                text += '\nworlds    ' + tradeWorldsLine(portIndex);
+                text += systemLine;
                 text += '\nyields    ' + tradeYieldRow(colony, 0, 5) + '   + surplus \u00b7 ! scarce';
                 text += '\n          ' + tradeYieldRow(colony, 5, 10);
                 text += '\n          ' + tradeYieldRow(colony, 10, economyLib.RESOURCE_COUNT);
-                // T1: the sells line names the shipping families a hull could
-                // actually load, not every stocked resource. `needs` stays by
-                // resource — an import is a specific good, whatever family it
-                // belongs to.
                 let sells = '', needs = '';
                 for (let f = 0; f < economyLib.INTER_FAMILY_NAMES.length; f++) {
                         let any = false;

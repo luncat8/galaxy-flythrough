@@ -23,8 +23,11 @@ Usage:
     python3 scripts/run.py visualize-data
     python3 scripts/run.py encode-mock-tiles
     python3 scripts/run.py quick          # fast tier, ~15 s: the default check
+    python3 scripts/run.py field-tests    # galaxy/density/movement model (~147 s)
+    python3 scripts/run.py view-tests     # shaders/render/streaming/camera/view-modes (~9 s)
+    python3 scripts/run.py world-tests    # planets/selection/search/flight/trade (~13 s)
     python3 scripts/run.py changed        # only the tests the working tree can affect
-    python3 scripts/run.py all-tests      # everything, ~4 min: before a merge or a model change
+    python3 scripts/run.py all-tests      # everything: before a merge or a model change
     python3 scripts/run.py serve
     python3 scripts/run.py zip
     python3 scripts/run.py list
@@ -48,6 +51,7 @@ EXPERIMENTS = {
     'export-parity':         'experiments/export-parity-test.js',
     'log-file':              'experiments/log-file-test.js',
     'm1-smoke':              'experiments/m1-smoke-test.js',
+    'panel':                 'experiments/panel-test.js',
     'wgsl-validate':         'experiments/wgsl-validate.js',
     'camera':                'experiments/camera-test.js',
     'input':                 'experiments/input-test.js',
@@ -100,7 +104,7 @@ EXPERIMENTS = {
 }
 
 TYPES = {
-    'test':   ['export-parity', 'log-file', 'm1-smoke', 'wgsl-validate', 'camera', 'input', 'ship', 'preset', 'renderer', 'hdr',
+    'test':   ['export-parity', 'log-file', 'm1-smoke', 'panel', 'wgsl-validate', 'camera', 'input', 'ship', 'preset', 'renderer', 'hdr',
                'landmark', 'view-modes-field', 'view-modes-page', 'view-modes-layer',
                'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'shape', 'model-parity', 'sampling',
                'density-distribution',
@@ -118,15 +122,42 @@ TYPES = {
 # slow ones are model/statistics gates: they only say something new when the
 # model they measure changed, which `changed` detects from the dependency graph.
 SLOW = {
-    'movement-density': 117, 'density-distribution': 25, 'galaxy-evolution': 14,
-    'galaxy-age': 11, 'galaxy-types': 10, 'search': 8, 'star-types-evolution': 8,
-    'object-placement': 7, 'star-select': 6, 'shape': 6,
+    'movement-density': 83, 'density-distribution': 16, 'galaxy-evolution': 11,
+    'galaxy-age': 9, 'galaxy-types': 8, 'search': 6, 'star-types-evolution': 6,
+    'object-placement': 6, 'star-select': 5, 'shape': 5,
 }
 FAST = [k for k in TYPES['test'] if k not in SLOW]
 # Wiring tests that cost nothing and catch the most common mistakes; `changed`
 # always includes them.
 ALWAYS = ['export-parity', 'm1-smoke']
 NO_LOG_WRITES = ROOT / 'experiments' / 'no-log-writes.js'
+
+# Domain split along the one-way dependency DAG:
+#   field  ──► view
+#   field  ──► world
+# `field-tests` holds ~88% of `all-tests` wall time and has zero dependency on
+# `view` or `world`. Editing `world` (colonisation, trade, planets, flight) or
+# `view` (shaders, streaming, view-modes, panels) needs only that tier (~9–13 s);
+# editing `field` (`density`, `galaxy`, `sampling`, `orbit` / star movement)
+# affects downstream consumers, where adding `view-tests + world-tests` on top
+# of `field-tests` costs only ~20 s (`all-tests` or `changed`).
+SUITES = {
+    'field-tests': ALWAYS + [
+        'galaxy-types', 'shape', 'model-parity', 'sampling', 'density-distribution',
+        'star-types-evolution', 'nebula-placement', 'object-placement', 'star-cluster',
+        'galaxy-age', 'galaxy-evolution', 'orbit', 'movement-density',
+    ],
+    'view-tests': ALWAYS + [
+        'log-file', 'panel', 'wgsl-validate', 'camera', 'input', 'preset',
+        'renderer', 'hdr', 'landmark', 'view-modes-field', 'view-modes-page',
+        'view-modes-layer', 'tile-stream', 'tile-encoder-smoke',
+    ],
+    'world-tests': ALWAYS + [
+        'panel', 'preset', 'planet-gen', 'star-select', 'selection-store',
+        'search', 'system-layer', 'dv-map', 'route', 'ship', 'trade', 'exec-queue',
+    ],
+}
+assert set().union(*SUITES.values()) == set(TYPES['test']), 'SUITES must cover TYPES["test"]'
 
 # Compound commands (Python script or shell sequence)
 COMPOUND = {
@@ -136,7 +167,19 @@ COMPOUND = {
     },
     'all-tests': {
         'desc': 'Run all validation + model tests in sequence',
-        'cmd':  None,  # special: iterate EXPERIMENTS except visualize-data
+        'cmd':  None,
+    },
+    'field-tests': {
+        'desc': 'Galaxy density, morphology, evolution and star movement tests',
+        'cmd':  None,
+    },
+    'view-tests': {
+        'desc': 'Shaders, renderer, streaming, camera, view-modes and panel tests',
+        'cmd':  None,
+    },
+    'world-tests': {
+        'desc': 'Planets, selection, search, delta-v, flight, colonisation and trade tests',
+        'cmd':  None,
     },
     'quick': {
         'desc': 'Fast tier only (skips the slow model/statistics gates)',
@@ -181,11 +224,15 @@ def run(name: str) -> int:
         for k in TYPES['asset'] + ['encode-mock-tiles', 'viz-png']:
             print(f'  {k}')
         print()
+        print('Domain suites (3-way DAG split of all-tests):')
+        for k, members in SUITES.items():
+            print(f'  {k:<14} ({len(members)} tests)')
+        print()
         print('Slow tier (skipped by quick, run by all-tests and by changed when affected):')
         print('  ' + ', '.join(f'{k} ({SLOW[k]}s)' for k in SLOW))
         print()
         print('Other:')
-        for k in ['quick', 'changed', 'all-tests', 'serve', 'zip']:
+        for k in ['quick', 'field-tests', 'view-tests', 'world-tests', 'changed', 'all-tests', 'serve', 'zip']:
             print(f'  {k}')
         return 0
 
@@ -267,6 +314,9 @@ SOURCE_SUFFIXES = ('.js', '.html', '.css', '.csv')
 STRING_FILE = re.compile(r"""['"`][^'"`\n]*?([\w-]+\.(?:js|html|css|csv))['"`]""")
 
 
+HTML_SCRIPT = re.compile(r"""<script\b[^>]*\bsrc=['"]([^'"]*?[\w-]+\.js)['"]""", re.I)
+
+
 def strip_comments(text: str) -> str:
     text = re.sub(r'/\*.*?\*/', '', text, flags=re.S)
     return re.sub(r'^\s*//.*$', '', text, flags=re.M)
@@ -276,8 +326,9 @@ def dependency_index():
     """{test name: set of repo files it can observe}. A file is a dependency
     when its basename appears in a string literal (require paths, readFileSync
     targets), followed transitively through src/ and the experiment helpers.
-    No hand-kept map to drift: a new require is a new edge. The scan errs on the
-    side of more tests, never fewer."""
+    HTML pages only forward <script src> tags (and `index.html` is already
+    booted unconditionally by `m1-smoke` in ALWAYS, so DOM-markup readers of
+    `index.html` do not inherit every script in the app)."""
     tests = {ROOT / EXPERIMENTS[k] for k in TYPES['test']}
     by_name = {}
     for top in ('src', 'experiments'):
@@ -289,8 +340,12 @@ def dependency_index():
 
     def direct(path):
         if path not in edges:
-            text = strip_comments(path.read_text(errors='ignore'))
-            edges[path] = {q for n in STRING_FILE.findall(text) for q in by_name.get(n, []) if q != path}
+            text = path.read_text(errors='ignore')
+            if path.suffix == '.html':
+                names = [] if path.name == 'index.html' else [Path(s).name for s in HTML_SCRIPT.findall(text)]
+            else:
+                names = STRING_FILE.findall(strip_comments(text))
+            edges[path] = {q for n in names for q in by_name.get(n, []) if q != path}
         return edges[path]
 
     index = {}
@@ -330,40 +385,52 @@ def affected_tests(base):
     return names, uncovered
 
 
+def expand_targets(targets):
+    """Expand test names and suite names (`field-tests`, `view-tests`,
+    `world-tests`, `quick`) into a deduplicated test list."""
+    out, seen = [], set()
+    for target in targets:
+        members = SUITES.get(target) or (FAST if target == 'quick' else [target])
+        for m in members:
+            if m not in seen:
+                seen.add(m)
+                out.append(m)
+    return out
+
+
 def main():
     p = argparse.ArgumentParser(
         description='Convenience wrapper for galaxy fly-through project scripts.',
         usage='python3 scripts/run.py <command>',
     )
     p.add_argument('command', nargs='+',
-                   help='Command to run (use "list" to see all), or several test names to run as one suite')
+                   help='Command to run (use "list" to see all), or test/suite names to run together')
     p.add_argument('-j', '--jobs', type=int, default=1,
-                   help='parallel tests for quick/changed/all-tests; timing budgets inside tests '
-                        'can fail under load, so the default is serial')
+                   help='parallel tests for suites/quick/changed/all-tests; timing budgets inside '
+                        'tests can fail under load, so the default is serial')
     p.add_argument('--logs', action='store_true',
-                   help='quick/changed: also write experiments/logs (all-tests always does); '
+                   help='suites/quick/changed: also write experiments/logs (all-tests always does); '
                         'a log that differs only in its date is kept')
     p.add_argument('-v', '--verbose', action='store_true', help='print the full output of failing tests')
     p.add_argument('--base', default=None, help='changed: also include commits since this ref (e.g. main)')
     args = p.parse_args()
 
     names = args.command
-    if len(names) > 1 or (names[0] in TYPES['test'] and names[0] not in COMPOUND):
-        unknown = [n for n in names if n not in TYPES['test']]
-        if unknown:
-            print(f'Not a pass/fail test: {", ".join(unknown)} (run "list")', file=sys.stderr)
-            sys.exit(1)
-        sys.exit(run_suite(names, args.jobs, args.logs, 'tests', args.verbose))
-    args.command = names[0]
-    if args.command == 'quick':
-        sys.exit(run_suite(FAST, args.jobs, args.logs, 'quick', args.verbose))
-    if args.command == 'changed':
-        names, uncovered = affected_tests(args.base)
+    selectable = set(TYPES['test']) | set(SUITES) | {'quick'}
+    if len(names) == 1 and names[0] == 'changed':
+        picked, uncovered = affected_tests(args.base)
         for path in uncovered:
             print(f'note: {path} is not read by any test')
-        sys.exit(run_suite(names, args.jobs, args.logs, 'changed', args.verbose))
-    if args.command == 'all-tests':
+        sys.exit(run_suite(picked, args.jobs, args.logs, 'changed', args.verbose))
+    if len(names) == 1 and names[0] == 'all-tests':
         sys.exit(run_suite(TYPES['test'], args.jobs, True, 'all-tests', args.verbose))
+    if len(names) > 1 or names[0] in selectable:
+        unknown = [n for n in names if n not in selectable]
+        if unknown:
+            print(f'Not a pass/fail test or suite: {", ".join(unknown)} (run "list")', file=sys.stderr)
+            sys.exit(1)
+        label = names[0] if len(names) == 1 else '+'.join(names)
+        sys.exit(run_suite(expand_targets(names), args.jobs, args.logs, label, args.verbose))
     sys.exit(run(args.command))
 
 

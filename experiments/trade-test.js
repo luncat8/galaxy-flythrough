@@ -2566,6 +2566,302 @@ function exactLiveEvents(net) {
 	check('0/0 is fair, not scarce', economy.tradeTagOf(dry, economy.R_ART) === economy.TAG_FAIR);
 }
 
+// --- 28. Worlds and the fold (T2, T3) ------------------------------------
+{
+	const net = seedNetwork(24, 0);
+	check('world pool and intra matrices are preallocated at network creation',
+		trade.MAX_WORLDS_PER_STAR === 6
+		&& trade.MAX_WORLDS === trade.MAX_PORTS * trade.MAX_WORLDS_PER_STAR
+		&& net.worlds.length === trade.MAX_WORLDS
+		&& net.worldCount === net.portCount
+		&& net.ports[0].worldIdx.length === 6
+		&& net.ports[0].dv.length === 36
+		&& net.ports[0].couple.length === 36
+		&& net.ports[0].lift.length === 6);
+
+	// 1. One-world fold is bit-exact with the world (both port identity and
+	//    explicit foldColonies into an independent record).
+	const w0 = trade.worldOfPort(net, 0, 0);
+	const folded1 = economy.createColony();
+	economy.foldColonies(folded1, [w0], 1);
+	let exact1 = net.ports[0].colony === w0
+		&& w0.port === 0 && w0.slot === 0
+		&& Object.is(folded1.pop, w0.pop)
+		&& Object.is(folded1.capacity, w0.capacity)
+		&& Object.is(folded1.coverage, w0.coverage)
+		&& Object.is(folded1.growth, w0.growth)
+		&& Object.is(folded1.access, w0.access)
+		&& Object.is(folded1.founded, w0.founded)
+		&& Object.is(folded1.last, w0.last);
+	for (let r = 0; r < economy.RESOURCE_COUNT && exact1; r++) {
+		exact1 = Object.is(folded1.yield[r], w0.yield[r])
+			&& Object.is(folded1.outBase[r], w0.outBase[r])
+			&& Object.is(folded1.stock[r], w0.stock[r])
+			&& Object.is(folded1.stockCap[r], w0.stockCap[r]);
+	}
+	check('one-world fold is bit-exact with its world', exact1);
+
+	// Find a landmark system with at least two settleable bodies (score >= MIN_CANDIDATE_HABITAT).
+	const multiSys = planets.createSystemRecord();
+	const probeSite = economy.createSite();
+	let multiLandmark = -1;
+	const goodSites = [];
+	let poorPlanet = -1;
+	for (let li = 0; li < landmarks.count; li++) {
+		landmarkRef(li, scratchRef);
+		ctx.name = landmarks.ENTRIES[li].name;
+		planets.generateSystem(scratchRef, ctx, multiSys);
+		const seed = economy.siteSeed(scratchRef.key >>> 0, model.seed, scratchRef.kind);
+		goodSites.length = 0;
+		poorPlanet = -1;
+		for (let p = 0; p < (multiSys.counts.planets | 0); p++) {
+			economy.fillPlanetSite(probeSite, scratchRef, multiSys, p, seed);
+			const sc = trade.siteHabitatScore(probeSite);
+			if (sc >= trade.MIN_CANDIDATE_HABITAT) goodSites.push({ belt: 0, index: p, score: sc });
+			else if (poorPlanet < 0) poorPlanet = p;
+		}
+		for (let b = 0; b < (multiSys.belts.count | 0); b++) {
+			economy.fillBeltSite(probeSite, scratchRef, multiSys, b, seed);
+			const sc = trade.siteHabitatScore(probeSite);
+			if (sc >= trade.MIN_CANDIDATE_HABITAT) goodSites.push({ belt: 1, index: b, score: sc });
+		}
+		if (goodSites.length >= 2) { multiLandmark = li; break; }
+	}
+	check('fixture finds a multi-world landmark system', multiLandmark >= 0,
+		{ multiLandmark, goodCount: goodSites.length });
+
+	// Build a clean network where that multi-world star has one port on goodSites[0],
+	// then found a second world on goodSites[1].
+	const mNet = trade.createNetwork({ seed: 42, modelSeed: model.seed, timeYears: 0 });
+	landmarkRef(multiLandmark, scratchRef);
+	const starName = landmarks.ENTRIES[multiLandmark].name;
+	ctx.name = starName;
+	planets.generateSystem(scratchRef, ctx, multiSys);
+	const f0 = trade.playerFoundWorld(mNet, scratchRef, starName, multiSys,
+		goodSites[0].belt, goodSites[0].index, 10);
+	const pIdx = f0.port;
+	const portsBefore = mNet.portCount;
+	const worldsBefore = mNet.worldCount;
+
+	// addPort on a star that already has a live port returns existing port, never bumps portCount;
+	// playerFound refuses 'already a colony here'.
+	economy.fillPlanetSite(probeSite, scratchRef, multiSys, goodSites[1].index,
+		economy.siteSeed(scratchRef.key >>> 0, model.seed, scratchRef.kind));
+	probeSite.ref = scratchRef;
+	check('addPort does not add a second port on an already-settled star',
+		trade.addPort(mNet, probeSite, 10, trade.FRESH_FOUND) === pIdx
+		&& mNet.portCount === portsBefore
+		&& trade.playerFound(mNet, scratchRef, starName, multiSys, 10).reason === 'already a colony here');
+
+	// Founding the already-settled body refuses 'already a world here'.
+	check('playerFoundWorld refuses a site that already has a world',
+		trade.playerFoundWorld(mNet, scratchRef, starName, multiSys,
+			goodSites[0].belt, goodSites[0].index, 12).reason === 'already a world here');
+
+	// Out-of-range or barren site refuses 'no site worth settling'.
+	const badIdxReason = trade.playerFoundWorld(mNet, scratchRef, starName, multiSys,
+		0, 99, 12).reason;
+	let lowHabOk = badIdxReason === 'no site worth settling';
+	if (poorPlanet >= 0) {
+		lowHabOk = lowHabOk && trade.playerFoundWorld(mNet, scratchRef, starName, multiSys,
+			0, poorPlanet, 12).reason === 'no site worth settling';
+	}
+	check('playerFoundWorld refuses invalid or barren sites', lowHabOk);
+
+	// Couple below MIN_FOUND_COUPLE refuses 'too expensive to reach'.
+	mNet.ports[pIdx].couple[1 * trade.MAX_WORLDS_PER_STAR] = trade.MIN_FOUND_COUPLE * 0.5;
+	const expensiveReason = trade.playerFoundWorld(mNet, scratchRef, starName, multiSys,
+		goodSites[1].belt, goodSites[1].index, 12).reason;
+	mNet.ports[pIdx].couple[1 * trade.MAX_WORLDS_PER_STAR] = 1;
+	check('playerFoundWorld refuses sites below MIN_FOUND_COUPLE',
+		expensiveReason === 'too expensive to reach');
+
+	// Founding the second world succeeds and keeps portCount unchanged.
+	const f1 = trade.playerFoundWorld(mNet, scratchRef, starName, multiSys,
+		goodSites[1].belt, goodSites[1].index, 20);
+	check('a second world on a settled star succeeds without adding a port',
+		f1.ok === 1 && f1.port === pIdx && f1.slot === 1
+		&& mNet.portCount === portsBefore
+		&& mNet.worldCount === worldsBefore + 1
+		&& mNet.ports[pIdx].worldCount === 2
+		&& mNet.ports[pIdx].colony === mNet.ports[pIdx].fold);
+
+	// Fold arithmetic pin: pop, capacity, stock, stockCap summed; outBase, coverage,
+	// growth, access pop-weighted; yield production-weighted.
+	const wa = trade.worldOfPort(mNet, pIdx, 0);
+	const wb = trade.worldOfPort(mNet, pIdx, 1);
+	wa.pop = 30; wb.pop = 10;
+	wa.access = 0.8; wb.access = 0.4;
+	wa.yield[economy.R_RARE] = 0; wa.outBase[economy.R_RARE] = 0;
+	wb.yield[economy.R_RARE] = 1.4; wb.outBase[economy.R_RARE] = economy.PROD[economy.R_RARE] * 1.4;
+	trade.settlePort(mNet, pIdx, 30);
+	const fold = mNet.ports[pIdx].colony;
+	let foldFormulaOk = near(fold.pop, wa.pop + wb.pop, 1e-9)
+		&& near(fold.capacity, wa.capacity + wb.capacity, 1e-9)
+		&& near(fold.coverage, (wa.pop * wa.coverage + wb.pop * wb.coverage) / fold.pop, 1e-9)
+		&& near(fold.growth, (wa.pop * wa.growth + wb.pop * wb.growth) / fold.pop, 1e-9)
+		&& near(fold.access, (wa.pop * wa.access + wb.pop * wb.access) / fold.pop, 1e-9)
+		&& near(fold.yield[economy.R_RARE], 1.4, 1e-9);
+	for (let r = 0; r < economy.RESOURCE_COUNT && foldFormulaOk; r++) {
+		foldFormulaOk = near(fold.stock[r], wa.stock[r] + wb.stock[r], 1e-9)
+			&& near(fold.stockCap[r], wa.stockCap[r] + wb.stockCap[r], 1e-9)
+			&& near(fold.outBase[r], (wa.pop * wa.outBase[r] + wb.pop * wb.outBase[r]) / fold.pop, 1e-9);
+	}
+	check('two-world fold sums stocks/pop and weights rates by pop and yields by output', foldFormulaOk);
+
+	// Inbound transfer: demand-proportional when unconstrained, water-fills warehouse caps,
+	// falls back cleanly when demand is zero, and conserves mass.
+	wa.stock[economy.R_FOOD] = 0;
+	wb.stock[economy.R_FOOD] = 0;
+	wa.outBase[economy.R_FOOD] = 0;
+	wb.outBase[economy.R_FOOD] = 0;
+	trade.foldPort(mNet, pIdx);
+	const demA = economy.demandOf(wa, economy.R_FOOD);
+	const demB = economy.demandOf(wb, economy.R_FOOD);
+	const givenFood = trade.distributePortInbound(mNet, pIdx, economy.R_FOOD, 20);
+	check('distributeInbound splits inbound cargo in proportion to world demand and conserves mass',
+		near(givenFood, 20, 1e-9)
+		&& near(wa.stock[economy.R_FOOD], 20 * demA / (demA + demB), 1e-9)
+		&& near(wb.stock[economy.R_FOOD], 20 * demB / (demA + demB), 1e-9)
+		&& near(fold.stock[economy.R_FOOD], wa.stock[economy.R_FOOD] + wb.stock[economy.R_FOOD], 1e-9));
+
+	// Cap overflow check on inbound: both worlds demand food (3:1), wa only has 3 units
+	// of warehouse room, so wa caps at 3 and wb absorbs the remaining 12.
+	const savedFoodCapA = wa.stockCap[economy.R_FOOD];
+	wa.stock[economy.R_FOOD] = 0;
+	wb.stock[economy.R_FOOD] = 0;
+	wa.stockCap[economy.R_FOOD] = 3;
+	trade.foldPort(mNet, pIdx);
+	const givenCapped = trade.distributePortInbound(mNet, pIdx, economy.R_FOOD, 15);
+	const waAfterCap = wa.stock[economy.R_FOOD];
+	const wbAfterCap = wb.stock[economy.R_FOOD];
+	const foldAfterCap = fold.stock[economy.R_FOOD];
+	wa.stockCap[economy.R_FOOD] = savedFoodCapA;
+	// Zero-demand unload check: neither world demands art when stocked near cap, so
+	// inbound cargo splits cleanly by free warehouse room (3 vs 9 -> 1:3) without NaN.
+	wa.stock[economy.R_ART] = wa.stockCap[economy.R_ART] - 3;
+	wb.stock[economy.R_ART] = wb.stockCap[economy.R_ART] - 9;
+	trade.foldPort(mNet, pIdx);
+	const givenArt = trade.distributePortInbound(mNet, pIdx, economy.R_ART, 8);
+	check('distributeInbound water-fills warehouse caps and zero-demand goods without mass loss',
+		near(givenCapped, 15, 1e-9)
+		&& near(waAfterCap, 3, 1e-9)
+		&& near(wbAfterCap, 12, 1e-9)
+		&& near(foldAfterCap, 15, 1e-9)
+		&& near(givenArt, 8, 1e-9)
+		&& near(wa.stock[economy.R_ART], wa.stockCap[economy.R_ART] - 1, 1e-9)
+		&& near(wb.stock[economy.R_ART], wb.stockCap[economy.R_ART] - 3, 1e-9)
+		&& near(fold.stock[economy.R_ART], wa.stock[economy.R_ART] + wb.stock[economy.R_ART], 1e-9));
+
+	// Outbound transfer: lift-weighted, never raids a deficit world below 25% reserve, conserves mass.
+	wa.stock[economy.R_RARE] = wa.stockCap[economy.R_RARE] * 0.85;
+	wb.stock[economy.R_RARE] = wb.stockCap[economy.R_RARE] * 0.10; // below 25% reserve
+	mNet.ports[pIdx].lift[0] = 0.5;
+	mNet.ports[pIdx].lift[1] = 1.0;
+	trade.foldPort(mNet, pIdx);
+	const wbRareBefore = wb.stock[economy.R_RARE];
+	const waExpBefore = economy.exportableOf(wa, economy.R_RARE);
+	const takenRare = trade.collectPortOutbound(mNet, pIdx, economy.R_RARE, 1e9);
+	mNet.ports[pIdx].lift[0] = 1.0;
+	check('collectOutbound taxes by lift, protects deficit worlds and conserves mass',
+		takenRare > 0
+		&& near(takenRare, Math.min(economy.exportableOf(fold, economy.R_RARE) + takenRare, waExpBefore * 0.5), 1e-9)
+		&& wb.stock[economy.R_RARE] === wbRareBefore
+		&& near(fold.stock[economy.R_RARE], wa.stock[economy.R_RARE] + wb.stock[economy.R_RARE], 1e-9));
+
+	// Worlds cap refusal ('worlds full') when all 6 slots are occupied.
+	const fullWorldNet = trade.createNetwork({ seed: 7, modelSeed: model.seed, timeYears: 0 });
+	economy.fillPlanetSite(probeSite, scratchRef, multiSys, goodSites[0].index,
+		economy.siteSeed(scratchRef.key >>> 0, model.seed, scratchRef.kind));
+	probeSite.ref = scratchRef;
+	const fp = trade.addPort(fullWorldNet, probeSite, 0, trade.FRESH_FOUND);
+	for (let s = 1; s < trade.MAX_WORLDS_PER_STAR; s++) {
+		probeSite.kind = 1;
+		probeSite.index = 10 + s;
+		trade.addWorld(fullWorldNet, fp, probeSite, 0, trade.FRESH_FOUND);
+	}
+	check('a port refuses a seventh world with worlds full',
+		fullWorldNet.ports[fp].worldCount === 6
+		&& trade.playerFoundWorld(fullWorldNet, scratchRef, starName, multiSys,
+			goodSites[1].belt, goodSites[1].index, 5).reason === 'worlds full');
+
+	// Outpost behavior: one failed world leaves a two-world port live; failing all
+	// worlds demotes the port and refuses further worlds with 'star is an outpost'.
+	fullWorldNet.worlds[fullWorldNet.ports[fp].worldIdx[1]].pop = economy.OUTPOST_POP_M * 0.25;
+	trade.settlePort(fullWorldNet, fp, 10);
+	const aliveWithOneDead = fullWorldNet.ports[fp].colony.outpost === 0 && fullWorldNet.ports[fp].demoted === 0;
+	for (let s = 0; s < fullWorldNet.ports[fp].worldCount; s++) {
+		fullWorldNet.worlds[fullWorldNet.ports[fp].worldIdx[s]].pop = economy.OUTPOST_POP_M * 0.25;
+	}
+	trade.settlePort(fullWorldNet, fp, 20);
+	check('a port stays live while one world lives, demotes when all worlds fail, and refuses new worlds',
+		aliveWithOneDead
+		&& fullWorldNet.ports[fp].colony.outpost === 1
+		&& fullWorldNet.ports[fp].demoted === 1
+		&& trade.playerFoundWorld(fullWorldNet, scratchRef, starName, multiSys,
+			goodSites[1].belt, goodSites[1].index, 25).reason === 'star is an outpost');
+
+	// 600-year jump conservation across a live multi-world trading network.
+	const liveNet = seedNetwork(16, 0);
+	// Attach a second world onto port 0 so freighter loads, arrivals and expeditions
+	// exercise a multi-world port across 600 years.
+	probeSite.key = liveNet.ports[0].key;
+	probeSite.kind = 1;
+	probeSite.index = 3;
+	probeSite.isBelt = 1;
+	probeSite.type = economy.SITE_BELT;
+	probeSite.mass = 0.0002;
+	probeSite.starClass = 'G';
+	probeSite.starLum = 1;
+	probeSite.starMetal = 0.02;
+	probeSite.starAge = 4.6;
+	probeSite.starState = 'ms';
+	probeSite.tsurf = 150;
+	probeSite.insolation = 0.3;
+	probeSite.seed = liveNet.ports[0].colony.seed;
+	probeSite.ref = liveNet.ports[0].ref;
+	probeSite.name = liveNet.ports[0].name + ' belt';
+	const secondWorld = trade.addWorld(liveNet, 0, probeSite, liveNet.time, trade.FRESH_FOUND);
+	trade.step(liveNet, 600);
+	trade.settleAllPorts(liveNet, liveNet.time);
+	const p0 = liveNet.ports[0];
+	const wA = trade.worldOfPort(liveNet, 0, 0);
+	const wB = trade.worldOfPort(liveNet, 0, 1);
+	let conserved600 = secondWorld >= 0 && p0.worldCount === 2
+		&& near(p0.colony.pop, (wA.outpost ? 0 : wA.pop) + (wB.outpost ? 0 : wB.pop), 1e-9);
+	for (let r = 0; r < economy.RESOURCE_COUNT && conserved600; r++) {
+		const sumStock = (wA.outpost ? 0 : wA.stock[r]) + (wB.outpost ? 0 : wB.stock[r]);
+		conserved600 = near(p0.colony.stock[r], sumStock, 1e-9)
+			&& wA.stock[r] >= -1e-12 && wA.stock[r] <= wA.stockCap[r] + 1e-9
+			&& wB.stock[r] >= -1e-12 && wB.stock[r] <= wB.stockCap[r] + 1e-9;
+	}
+	check('two-world fold conserves mass and population across a 600-year jump', conserved600);
+
+	// Inspection contract: re-discovering / re-settling at the same clock does not
+	// advance worlds again or mutate population/stocks.
+	const snapPop = p0.colony.pop;
+	const snapFood = p0.colony.stock[economy.R_FOOD];
+	planets.generateSystem(p0.ref, ctx, multiSys);
+	trade.discoverSystem(liveNet, p0.ref, p0.name, multiSys, liveNet.time);
+	trade.settlePort(liveNet, 0, liveNet.time);
+	check('re-inspecting a multi-world star at the same clock is idempotent',
+		Object.is(p0.colony.pop, snapPop) && Object.is(p0.colony.stock[economy.R_FOOD], snapFood));
+
+	// Market family tags: 7 inter families all return valid W5 tags and 0/0 is fair.
+	const drySite = economy.createSite();
+	drySite.starMetal = 0.02; drySite.starAge = 4.6; drySite.insolation = 1;
+	drySite.tsurf = 288; drySite.starClass = 'G'; drySite.type = 1; drySite.mass = 1;
+	const dry = economy.createColony();
+	economy.fillColony(dry, drySite, 9);
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) { dry.outBase[r] = 0; dry.stock[r] = 0; }
+	dry.pop = 0;
+	let tagsOk = economy.INTER_FAMILY_SHORT.length === 7;
+	for (let f = 0; f < 7 && tagsOk; f++) {
+		tagsOk = economy.interFamilyTagOf(dry, f) === economy.TAG_FAIR;
+	}
+	check('interFamilyTagOf covers all seven shipping families and treats 0/0 as fair', tagsOk);
+}
+
 // --- Summary --------------------------------------------------------------
 {
 	const passed = checks.filter(c => c.pass).length;

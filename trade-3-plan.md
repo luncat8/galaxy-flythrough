@@ -272,6 +272,18 @@ nothing per frame. Single-world ports cost what they cost now.
 - Opening and closing the system view does not call settle extra times
   beyond the existing inspection contract.
 
+T2 + T3 status: **shipped as `trade.20`**. `net.worlds` preallocates 384 world
+records (`MAX_WORLDS_PER_STAR = 6`), and each port preallocates its 6-slot index
+and 6×6 intra buffers (`well`, `land`, `lift`, `access`, `dv`, `tH`, `couple`).
+A one-world port keeps direct reference identity (`port.colony === world0`,
+bit-exact, zero fold cost); multi-world ports fold live worlds into `port.fold`
+via `economy.foldColonies` and push transfers down via water-filling
+`distributeInbound` / `collectOutbound` (plus population-proportional volunteer
+draws/returns). `playerFoundWorld` extends W3 to settle named planets/belts in
+system view without consuming a second port slot; closed-system readouts show
+the 3-line summary + composition + 7-family market tags, while opened systems
+add `worlds` above the 13 resource rows. Validated in `trade-test` §28.
+
 ## 6. T4 — Statistical intra, counted in delta-v
 
 Intra-system distance is **not** zero. We already have the calculator

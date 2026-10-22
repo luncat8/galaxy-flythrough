@@ -285,8 +285,11 @@ only resident identity-matched stars are drawn. Missing endpoints hide a route,
 never draw it at a stale birth position. Compute each endpoint into independent
 scratch storage (the second resolution must not overwrite the first).
 
-The system readout shows population/capacity, age, coverage/growth, all thirteen
-yields, exports and imports. The Flight Trade section has clock and route controls,
+When the system view is closed, the readout shows the port summary (`pop / K`,
+`coverage`, `access`), W4's system composition, and W5 scarcity tags across the
+seven inter-star shipping families. Opening V expands the settled `worlds` list
+(up to 6 worlds backing the star's single port fold) alongside all thirteen
+yields, exports and imports. The Trade panel has clock and route controls,
 counters and six largest non-abandoned ports plus sailing ships, refreshed at
 4 Hz. The overlay has a one-line rate/ports/ships/queue summary. Preset fields
 `trade` and `traderoutes` share defaults owned by `trade.js`.

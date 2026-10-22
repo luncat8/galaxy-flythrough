@@ -1,6 +1,6 @@
 {
-  "total": 228,
-  "passed": 228,
+  "total": 245,
+  "passed": 245,
   "failed": 0,
   "checks": [
     {
@@ -1305,6 +1305,78 @@
     },
     {
       "name": "0/0 is fair, not scarce",
+      "pass": true
+    },
+    {
+      "name": "world pool and intra matrices are preallocated at network creation",
+      "pass": true
+    },
+    {
+      "name": "one-world fold is bit-exact with its world",
+      "pass": true
+    },
+    {
+      "name": "fixture finds a multi-world landmark system",
+      "pass": true,
+      "detail": {
+        "multiLandmark": 3,
+        "goodCount": 2
+      }
+    },
+    {
+      "name": "addPort does not add a second port on an already-settled star",
+      "pass": true
+    },
+    {
+      "name": "playerFoundWorld refuses a site that already has a world",
+      "pass": true
+    },
+    {
+      "name": "playerFoundWorld refuses invalid or barren sites",
+      "pass": true
+    },
+    {
+      "name": "playerFoundWorld refuses sites below MIN_FOUND_COUPLE",
+      "pass": true
+    },
+    {
+      "name": "a second world on a settled star succeeds without adding a port",
+      "pass": true
+    },
+    {
+      "name": "two-world fold sums stocks/pop and weights rates by pop and yields by output",
+      "pass": true
+    },
+    {
+      "name": "distributeInbound splits inbound cargo in proportion to world demand and conserves mass",
+      "pass": true
+    },
+    {
+      "name": "distributeInbound water-fills warehouse caps and zero-demand goods without mass loss",
+      "pass": true
+    },
+    {
+      "name": "collectOutbound taxes by lift, protects deficit worlds and conserves mass",
+      "pass": true
+    },
+    {
+      "name": "a port refuses a seventh world with worlds full",
+      "pass": true
+    },
+    {
+      "name": "a port stays live while one world lives, demotes when all worlds fail, and refuses new worlds",
+      "pass": true
+    },
+    {
+      "name": "two-world fold conserves mass and population across a 600-year jump",
+      "pass": true
+    },
+    {
+      "name": "re-inspecting a multi-world star at the same clock is idempotent",
+      "pass": true
+    },
+    {
+      "name": "interFamilyTagOf covers all seven shipping families and treats 0/0 as fair",
       "pass": true
     }
   ]

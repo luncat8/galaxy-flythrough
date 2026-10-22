@@ -902,3 +902,57 @@ with ore still unloads it, and a resource nobody draws is `fair`, not scarce.
 Next: T2 (the fold — one inter-star port whose market is the sum of its worlds),
 which is the structural item; T3 depends on it, and T4/T5 after that. The
 browser pass over the trade-2 panel is still the open non-code item.
+
+## trade.20 — 2026-10-21 — A star is many worlds and one port
+
+T2 + T3 (`trade-3-plan.md` §4 & §5): every settled body is now a world in a
+preallocated pool (`net.worlds`, length `MAX_WORLDS = 384`, up to
+`MAX_WORLDS_PER_STAR = 6` per star), and each star exposes a single inter-star
+port whose `port.colony` is the aggregate of its live worlds.
+
+**Economy layer (`src/core/economy.js`).** Colony records carry `access`
+(default `1`, ready for T4's `lift · intraCoverage`), `INTER_FAMILY_SHORT` adds
+the seven short market labels, `interFamilyTagOf(colony, interFamily)` extends
+W5's four-band ratio over inter-star shipping families (`0/0` is `fair`), and
+`foldColonies(out, worlds, count)` aggregates up to 6 worlds without allocating:
+single-world ports copy bit-for-bit (`count === 1`), while multi-world folds sum
+`pop`, `capacity`, `stock`, `stockCap`, pop-weight `outBase`, `coverage`,
+`growth`, `access`, and production-weight `yield` so a rare mine on a small belt
+is never hidden by a fertile sibling's population. `distributeInbound` and
+`collectOutbound` water-fill world warehouse caps and `25%` export floors in at
+most `count` passes with zero heap allocation, conserving mass across capped
+warehouses, zero-demand unloads, and `lift`-taxed exports while never raiding a
+deficit world's reserve.
+
+**Trade & UI layers (`src/core/trade.js`, `src/main.js`).** Each port carries
+its preallocated `fold` colony, `worldIdx[6]`, `worldCount`, and 6×6 intra
+matrices (`well`, `land`, `lift`, `access`, `dv`, `tH`, `couple` — identity
+until T4 fills real system geometry). When `worldCount === 1`,
+`port.colony === net.worlds[port.worldIdx[0]]`, keeping single-world ports
+bit-identical (`Object.is`) with zero fold cost; adding a 2nd–6th world binds
+`port.colony = port.fold` and folds on settle and after transfers. `settlePort`
+advances all non-outpost worlds to `now`, keeps the port live while at least one
+world lives, and demotes the port once all its worlds fail. Freighter loads/arrivals,
+player loads/unloads, expedition volunteer draws/returns, and generation-mode
+reserve scaling all route through world-level helpers and refresh the fold.
+`playerFoundWorld` extends W3 in system view so selecting a planet or belt and
+clicking Found adds a world to the star's port (or opens the port on that body
+if unsettled), enforcing `MIN_FOUND_COUPLE` and all §5.2 refusal reasons without
+ever taking a second port slot. When system view is closed, `#sysread` shows the
+compact 3-line summary (`trade ... · access ...`, `system ...`, `market ...`);
+opening `V` expands `worlds` above the 13 yield rows. Also fixed `syncFlightUi`'s
+docked export hint to respect T1's `interFamily >= 0` filter.
+
+**Validated.** `trade-test` §28 (`245/245`): one-world `Object.is` identity,
+`addPort` non-duplication, all five `playerFoundWorld` refusals, two-world fold
+weights, inbound/outbound mass conservation (including warehouse cap overflow,
+zero-demand fallback, and deficit-world reserve protection), partial vs total
+collapse demotion, 600-year live-fleet jump conservation, inspection idempotency,
+and 7-family tags. `changed --logs` 6/6 (`2.0 s`), `view-tests + world-tests`
+26/26 (`20.8 s`).
+
+Next: T4 (`trade-3-plan.md` §6 — the intra-system layer: well/landing/lift
+physics on `port.dv`/`port.couple`, intra demand/supply closure, `world.access`,
+and the non-circular `settlePort` fixed point) followed by T5 (intra routes on
+the `#system` schematic and the intra section on `#sysread`).
+
