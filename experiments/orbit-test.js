@@ -48,6 +48,23 @@ function dist3(a, b) {
 	return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
+// --- Formation gate: CPU mirror of the sprite's WGSL smoothstep ----------
+{
+	let monotone = true;
+	let previous = -1;
+	for (let i = 0; i <= 100; i++) {
+		const gate = orbit.gateAt(2, 2 + orbit.BIRTH_FADE_GYR * i / 100);
+		if (gate < previous) monotone = false;
+		previous = gate;
+	}
+	check('the formation gate is exactly 0/1 at its boundaries and continuous inside',
+		orbit.gateAt(2, 2) === 0
+		&& orbit.gateAt(2, 2 + orbit.BIRTH_FADE_GYR) === 1
+		&& Math.abs(orbit.gateAt(2, 2 + orbit.BIRTH_FADE_GYR * 0.5) - 0.5) < 1e-14
+		&& monotone,
+		{ fade: orbit.BIRTH_FADE_GYR, midpoint: orbit.gateAt(2, 2 + orbit.BIRTH_FADE_GYR * 0.5) });
+}
+
 // --- 1. T = 0 identity ---------------------------------------------------
 {
 	const fixtures = [

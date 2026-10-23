@@ -536,7 +536,7 @@ function wgslConsts(part) {
         // The engine lane (mask, force, barTilt, share) and then the 0.6 E4
         // epoch lane ride last (armRotation, spheroidScale, heatScale,
         // fieldMagOffset); nebulae pad both and ignore them.
-        const expected = ['viewProj', 'cameraPos', 'viewport', 'params', 'dynA', 'dynB', 'waveA', 'waveB', 'engine', 'epoch'];
+        const expected = ['viewProj', 'cameraPos', 'viewport', 'params', 'dynA', 'dynB', 'waveA', 'waveB', 'engine', 'epoch', 'formation'];
         const spriteFields = fields(shaders.SHADERS['star-sprite']);
         const nebulaFields = fields(shaders.SHADERS['nebula-billboard']);
         check('CameraUniform carries dynA/dynB after the camera block, star and nebula alike',
@@ -611,7 +611,12 @@ function wgslConsts(part) {
                 /packOrbitDynamics\(model,\s*uniform,\s*28\)/.test(readSource('src/render/star-sprites.js'))
                 && /packEngineVec\(model,\s*uniform,\s*44\)/.test(readSource('src/render/star-sprites.js'))
                 && /packEpochParams\(model,\s*uniform,\s*48/.test(readSource('src/render/star-sprites.js'))
-                && /UNIFORM_FLOATS = 52/.test(readSource('src/render/star-sprites.js'))
+                && /UNIFORM_FLOATS = 56/.test(readSource('src/render/star-sprites.js'))
+                && /BIRTH_FADE_GYR/.test(orbitSrc)
+                && /function gateAt\(birth, age\)/.test(orbitSrc)
+                && /smoothstep\(birth, birth \+ camera\.formation\.y, camera\.formation\.x\)/.test(shaders.SHADERS['star-sprite'])
+                && /binding\(4\).*birthTimes: array<f32>/.test(shaders.SHADERS['star-sprite'])
+                && /uniform\[52\] = model\.populations\.age/.test(readSource('src/render/star-sprites.js'))
                 // The epoch lane the vertex stage reads and the packer writes must
                 // stay one contract: four floats, and the shader must branch on the
                 // same two flag bits the records are written with.

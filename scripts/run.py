@@ -432,7 +432,7 @@ def main():
             sys.exit(1)
         label = names[0] if len(names) == 1 else '+'.join(names)
         sys.exit(run_suite(expand_targets(names), args.jobs, args.logs, label, args.verbose))
-    sys.exit(run(args.command))
+    sys.exit(run(names[0]))
 
 
 if __name__ == '__main__':

@@ -70,6 +70,15 @@ const records = (typeof module !== 'undefined' && module.exports)
 	: window.StarRecord;
 
 const FAMILY_PATTERN = 0, FAMILY_DISC = 1, FAMILY_BAR = 2, FAMILY_PRESSURE = 3;
+const BIRTH_FADE_GYR = 0.05;
+
+// CPU twin of the vertex-stage formation gate. Keep the same cubic Hermite
+// smoothstep so picks and labels disappear on the same frame as the sprite.
+function gateAt(birth, age) {
+	const t = Math.max(0, Math.min(1, (age - birth) / BIRTH_FADE_GYR));
+	return t * t * (3 - 2 * t);
+}
+
 const FAMILY_NAMES = ['pattern', 'disc', 'bar', 'pressure'];
 const FAMILY_SHIFT = 3, FAMILY_MASK = 3 << FAMILY_SHIFT;
 const TAU = Math.PI * 2;
@@ -1645,7 +1654,7 @@ const OrbitAPI = {
 	SIMPLE_SIGMA_BASE, SIMPLE_ECC_K, SIMPLE_ECC_MAX, SIMPLE_SUBSTEP_DTHETA, SIMPLE_SUBSTEP_MAX,
 	SIMPLE_R_MIN, SIMPLE_UNIFORM_FLOATS,
 	familyFromFlags, flagsWithFamily, encodeJitter, readOrbit,
-	familyFromColorIndex, familyForStar, epochFlagsFor,
+	familyFromColorIndex, familyForStar, epochFlagsFor, BIRTH_FADE_GYR, gateAt,
 	fillDynamics, pressureClock, omegaFor, omegaFrom, omegaStream,
 	setWaveDamping, getWaveDamping, setPatternScale, getPatternScale,
 	resetPatternPhase, setPatternClock, getPatternPhase, patternRotation,

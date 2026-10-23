@@ -208,6 +208,28 @@
 		return sfhFormationTime(model, formQ[i] + (formQ[i + 1] - formQ[i]) * u);
 	}
 
+	// A field draw belongs to one census, so its birth law is anchored to the
+	// reference span even when the viewer starts at another epoch. The lookup
+	// table is shared with the existing local-age inverse; only its cache key
+	// changes, never the underlying SFH. Channel 6 is reserved for birth time.
+	function sampleFormationTimeAtReference(model, componentIndex, u) {
+		const p = model.populations;
+		const spanRef = galaxy.sfhSpanAt(galaxy.AGE_REF, p.quenchTime);
+		if (!(spanRef > 0)) return 0;
+		const xEnd = spanRef / p.tauSfh;
+		const norm = galaxy.sfhCumulative(xEnd);
+		if (!(norm > 0)) return 0;
+		const w0 = galaxy.FORMATION_WINDOW[componentIndex * 2];
+		const w1 = galaxy.FORMATION_WINDOW[componentIndex * 2 + 1];
+		const q0 = galaxy.sfhCumulative(w0 * xEnd) / norm;
+		const q1 = galaxy.sfhCumulative(w1 * xEnd) / norm;
+		ensureSfhTable(p.tauSfh, spanRef);
+		const q = q0 + (q1 - q0) * Math.max(0, Math.min(1, u));
+		const pos = q * SFH_TABLE_STEPS;
+		const i = pos < SFH_TABLE_STEPS ? pos | 0 : SFH_TABLE_STEPS - 1;
+		return sfhTable[i] + (sfhTable[i + 1] - sfhTable[i]) * (pos - i);
+	}
+
 	// Age in Gyr for a population. u1, u2 are independent uniforms. `zOverH` is
 	// |z| / H(R) of the thin disc (signed is fine — the gate squares it). Omit
 	// it, or pass 0, for the midplane, where the vertical gate is fully open and
@@ -231,25 +253,47 @@
 	// one gas-lane above the midplane is at least as old as the oldest newborn;
 	// without the floor the SFH's young tail plants O/B stars at every height
 	// and the arm gate cannot thin the layer. The floor uses no new constant.
-	function sampleLocalAge(model, componentIndex, distToArm, R, u1, u2, zOverH) {
-	const p = model.populations;
-	if (componentIndex === density.COMPONENT_THIN && p.gasRich) {
+	function sampleArmAge(model, componentIndex, distToArm, R, u1, u2, zOverH) {
+		const p = model.populations;
+		if (componentIndex !== density.COMPONENT_THIN || !p.gasRich) return -1;
 		const armWidth = density.armRidgeWidth(model, R);
 		const pArm = Math.exp(-0.5 * (distToArm * distToArm) / (armWidth * armWidth));
 		const lane = p.youngScaleHeight > 1e-3 ? p.youngScaleHeight : 1e-3;
 		const zh = zOverH || 0;
 		const z2 = zh * zh;
-		const lane2 = lane * lane;
-		const pZ = Math.exp(-0.5 * z2 / lane2);
-		if (u2 < pArm * pZ && R > model.arms.Rs && R < p.youngOuterR) {
-			return Math.min(p.age, Math.pow(u1, 3.0) * YOUNG_ARM_MAX_GYR);
-		}
+		const pZ = Math.exp(-0.5 * z2 / (lane * lane));
+		if (!(u2 < pArm * pZ && R > model.arms.Rs && R < p.youngOuterR)) return -1;
+		return Math.min(p.age, Math.pow(u1, 3.0) * YOUNG_ARM_MAX_GYR);
+	}
+
+	function sampleLocalAge(model, componentIndex, distToArm, R, u1, u2, zOverH) {
+		const p = model.populations;
+		const armAge = sampleArmAge(model, componentIndex, distToArm, R, u1, u2, zOverH);
+		if (armAge >= 0) return armAge;
 		const age = p.age - sampleFormationTime(model, componentIndex, u1);
-		const floor = YOUNG_ARM_MAX_GYR * z2 / lane2;
+		if (componentIndex !== density.COMPONENT_THIN || !p.gasRich) return age;
+		const lane = p.youngScaleHeight > 1e-3 ? p.youngScaleHeight : 1e-3;
+		const zh = zOverH || 0;
+		const floor = YOUNG_ARM_MAX_GYR * zh * zh / (lane * lane);
 		return Math.min(p.age, Math.max(age, floor));
 	}
-	return p.age - sampleFormationTime(model, componentIndex, u1);
-}
+
+	function sampleFieldBirth(model, seed, componentIndex, R, distToArm, z) {
+		// The arm/lane gate is a spatially selected, very recent population, not
+		// part of the thin disc's broad SFH window. Carry that established channel
+		// forward explicitly; otherwise the inverse-CDF draw erases the OB ridge.
+		if (componentIndex === density.COMPONENT_THIN) {
+			let zOverH = 0;
+			if (model.thin && model.thin.H > 0) {
+				const H = density.discHeightAt(model.thin, R);
+				if (H > 0) zOverH = (z - model.centre.z) / H;
+			}
+			const armAge = sampleArmAge(model, componentIndex, distToArm, R,
+				hash.hash01(seed * 31 + 2), hash.hash01(seed * 31 + 3), zOverH);
+			if (armAge >= 0) return galaxy.AGE_REF - armAge;
+		}
+		return sampleFormationTimeAtReference(model, componentIndex, hash.hash01(seed * 31 + 6));
+	}
 
 	// The seed a field star at index `i` is derived with — the renderer's
 	// convention, named so the exposure calibration derives exactly the stars the
@@ -274,16 +318,31 @@
 	// (model, field) rather than a second sampler with its own drift. One scratch
 	// record, no per-star allocation.
 	const calibrationRecord = {};
-	function meanFieldLuminosity(model, stars, count) {
+	function meanFieldLuminosity(model, stars, count, births, epochAge) {
 		const n = Math.min(count, stars.count);
 		if (!(n > 0)) return 0;
 		let sum = 0;
+		let weight = 0;
+		const gateAt = births
+			? ((typeof module !== 'undefined' && module.exports)
+				? require('./orbit.js').gateAt : window.OrbitLib.gateAt)
+			: null;
 		for (let i = 0; i < n; i++) {
-			deriveStar(model, fieldStarSeed(model.seed, i), stars.component[i], stars.R[i],
-				stars.distToArm[i], calibrationRecord, stars.z[i]);
-			sum += calibrationRecord.luminosity;
+			let presence = 1;
+			if (births) {
+				const birth = births[i];
+				const age = Math.max(0, epochAge - birth);
+				presence = gateAt(birth, epochAge);
+				deriveStarWithAge(model, fieldStarSeed(model.seed, i), stars.component[i], stars.R[i],
+					stars.distToArm[i], age, calibrationRecord);
+			} else {
+				deriveStar(model, fieldStarSeed(model.seed, i), stars.component[i], stars.R[i],
+					stars.distToArm[i], calibrationRecord, stars.z[i]);
+			}
+			sum += calibrationRecord.luminosity * presence;
+			weight += presence;
 		}
-		return sum / n;
+		return weight > 0 ? sum / weight : 0;
 	}
 
 	function metallicityFor(componentIndex) {
@@ -484,9 +543,9 @@
 	const StarTypesLib = {
 		MASS_TEFF_TABLE, CLASS_TEMP_BOUNDS, YOUNG_ARM_MAX_GYR, SFH_TABLE_STEPS, SFH_SOLVE_STEPS,
 		classifyByTempAndState, classColor, luminosityFromMass, teffFromMass,
-		msLifetimeGyr, giantLifetimeGyr, sampleMassIMF, sampleLocalAge, metallicityFor,
+		msLifetimeGyr, giantLifetimeGyr, sampleMassIMF, sampleArmAge, sampleLocalAge, metallicityFor,
 		TGIANT_FRAC, TGIANT_MIN, TGIANT_MAX, WD_COOL_TAU, WD_TEFF_FLOOR, WD_LUM_FLOOR,
-		sfhFormationTime, sampleFormationTime, fieldStarSeed, fieldStarJitter, meanFieldLuminosity,
+		sfhFormationTime, sampleFormationTime, sampleFormationTimeAtReference, sampleFieldBirth, fieldStarSeed, fieldStarJitter, meanFieldLuminosity,
 		absoluteMagnitude, deriveStar, deriveStarWithAge, derivePlanetaryCentral, deriveStarProps,
 		summariseByComponent, classVsArmDistance,
 	};

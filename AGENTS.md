@@ -66,16 +66,15 @@
   an epoch change is never a re-sample), E5 events (**deferred** 2026-10-22, behind
   0.7's record time axis), E6 chemical evolution (optional).
 - `formation-plan.md` — the 0.7 series, formation from gas: an epoch becomes a
-  census rather than a tint. A per-star birth time (the component's
-  `FORMATION_WINDOW` read against the reference span) fills one `f32` storage
-  buffer; the vertex stage's `smoothstep(birth, birth + 0.05 Gyr, age)` gates it;
-  the look follows the star's own elapsed time through `deriveStarWithAge`. The
-  gas is accounted against the *drawn* census (a 128-bin birth histogram, exact at
-  0 and at `AGE_REF`), and drawn from a 64×96×4 ping-pong grid with no atomics.
-  The contract that opens the series is smoothness: nothing already on screen may
-  be re-rolled because the clock moved — which is the `refreshObjects` defect
-  (the composite block, whose members are stars, is re-placed every 0.02 Gyr).
-  `AGE_MIN` 0.2 → 0. Planned, not started.
+  census rather than a tint. **0.7.0 shipped:** the composite object block is
+  carried, not re-placed as the clock moves. **0.7.1 shipped:** the global field
+  gets one deterministic `f32` birth per star from the reference-span SFH table,
+  with a conditional arm/lane birth to preserve the established spatial OB
+  population; the vertex `smoothstep(birth, birth + 0.05 Gyr, age)` gates it and
+  the look follows elapsed time through `deriveStarWithAge`. CPU picks, rings,
+  search and planetary stellar inputs read the same birth law. Remaining: the
+  drawn-census gas account, 64×96×4 gas grid, deep-time `AGE_MIN=0`, and local
+  nebula rates.
 - `deferred-browser-visual-plan.md` — non-blocking browser checks, preset actions, bar polish and GPU profiling; separate from analytical model contracts.
 - `game-mode-plan.md` — the game mode (g key): the ship as the camera rig with class restrictions (accel cap, Δv tank, cruise fraction from the 0.5.4 ship table), the shared ship clock on the system-ladder convention (§4), the HUD (speed, fuel, distance to the selected object), the burn/flip autopilot and the Flight workspace. G1 shipped (ui.7): `src/core/ship.js`, the flight law, the clock, the text HUD and the input gating; G2 shipped (ui.8): the §5 approach, follow and abort commands and the §6 chrome pass in `label-layer.js`; G3 shipped (ui.9): the single-panel manual-thrust / desired-speed / destination-plan task (fastest, thrust, speed and time limits) with accepted-impulse fuel accounting; G4 shipped (ui.13): docking at any natural flight target (`O`, settled inside its stand-off shell), the station refill (tank + life support), the docked ride on the station's drawn motion, the port of registry with life support's critical band and its hard return-home marker, and the free cargo hook (`L`/`Shift+L`); G5 shipped (ui.14): the Controls-panel `sim clock`/`arcade clock` presets — the ladder's new real-time stop and the autopilot coast auto-warp — with the deferred browser visual pass the series' only open item.
 - `workspace-plan.md` — the three workspaces: `observe` (free camera + galaxy control, the look and the map), `fly` (a hull, including a freighter requisitioned off the colony network's routes) and `command` (the colony observer: expeditions, routes, expansion, founding). One `workspace` state replaces the `gameMode` boolean, one panel table `src/core/workspace.js` decides each job's panels (the Flight panel splits into `#sysmenu` and `#routemenu`), the Controls panel reprints itself per workspace, the wheel steps the owning clock, and a switch never rebuilds the field, re-seeds the network or moves a ship. **Shipped (`ui.20`, W0–W6):** `src/core/workspace.js` (the pure table + transitions), the `#mode-bar`, the `#routemenu` split, the mode-scoped Controls panel, the `mode=` preset field, command's authority + Found entrance, and the W5 requisition/release law (`DeltaVLib.FREIGHTER_CLASSES`, `Ship.adoptHull`, `TradeLib.requisition`/`release`).

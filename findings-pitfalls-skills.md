@@ -2474,3 +2474,24 @@ later. The fix is an explicit readiness latch (`panelsWired`) flipped right
 after the block that builds them, with the first real apply kept at the end
 of boot. When a hoisted function gains a new dependency, check the earliest
 *call*, not the earliest declaration.
+
+## 2026-10-23 — Reserve star channels by the derivation's actual hash convention
+
+A deterministic channel is only independent if it uses the same hash convention
+as the rest of that record. `deriveStar` rolls channels as `hash01(seed * 31 + n)`;
+`hash01At(seed, n)` is a different stream and does not reproduce those channels.
+For the formation birth added in 0.7.1, channel 6 is unused (IMF 1, age 2–3,
+evolution 4–5), so `hash01(seed * 31 + 6)` is the right new draw. Also measure
+conditional populations before replacing a marginal: an inverse-CDF over the
+thin-disc formation window alone erases the existing spatially accepted OB
+arm/lane component. Preserve that conditional as an explicit birth branch, then
+let its stars age normally.
+
+## 2026-10-23 — A smooth birth gate changes the gas-accounting statistic
+
+A prefix count of `birth <= T` is not the same as the visible census when each
+star fades in over a finite interval: births in the final 0.05 Gyr have
+fractional gate weight. The gas account must integrate the same smoothstep
+presence as the shader and normalize by the reference-epoch sum. That keeps both
+endpoints exact while making the between-epoch gas estimate a measured histogram
+approximation rather than falsely calling a hard CDF exact.

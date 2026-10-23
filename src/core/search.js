@@ -534,6 +534,7 @@ function createSearch() {
 		genCtx.field = field && field.count > 0 ? field : null;
 		genCtx.member = info.member || null;
 		st.blocks = info.blocks;
+		st.formation = info.formation || null;
 
 		chunkCount = 0;
 		st.segStart = now();
@@ -578,11 +579,13 @@ function createSearch() {
 				const packed = view.getUint32(byteOffset + 12, true);
 				stats.scanned++;
 				if ((packed & visibleBit) === 0) continue;
+				const index = slot - base;
+				if (k === P.BLOCK_FIELD && st.formation && st.formation.births
+					&& st.orbit.gateAt(st.formation.births[index], st.formation.age) <= 0) continue;
 				const x = view.getFloat32(byteOffset, true);
 				const y = view.getFloat32(byteOffset + 4, true);
 				const z = view.getFloat32(byteOffset + 8, true);
 				const color = packed & 0xFF;
-				const index = slot - base;
 				const approximated = resolveDrawnPosition(st, k, index,
 					x, y, z, packed, drawnPosition);
 				const dx = drawnPosition[0] - st.centerX;
@@ -687,6 +690,8 @@ function createSearch() {
 						effKind = KIND_UNRESOLVED;
 						blockIndex = 0;
 					} else {
+						if (kind === P.BLOCK_FIELD && info.formation && info.formation.births
+							&& st.orbit.gateAt(info.formation.births[blockIndex], info.formation.age) <= 0) continue;
 						const bx = info.view.getFloat32(byteOffset, true);
 						const by = info.view.getFloat32(byteOffset + 4, true);
 						const bz = info.view.getFloat32(byteOffset + 8, true);

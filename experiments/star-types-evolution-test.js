@@ -274,6 +274,56 @@ const armStats = starTypes.classVsArmDistance(stars, model);
 		{ obAt1: census[1].thin.obPct, obAt13_5: census[galaxy.AGE_REF].thin.obPct });
 }
 
+// --- Formation census: reference-window births plus the arm/lane exception ---
+{
+	const reference = galaxy.modelAtAge(model, galaxy.AGE_REF);
+	const spanRef = galaxy.sfhSpanAt(galaxy.AGE_REF, reference.populations.quenchTime);
+	let badRange = 0, zeroBirth = 0, armSelected = 0, wrongArmBirth = 0, wrongWindow = 0;
+	let monotone = true;
+	for (let c = 0; c < density.COMPONENT_NAMES.length; c++) {
+		let previous = -1;
+		for (let j = 0; j <= 100; j++) {
+			const birth = starTypes.sampleFormationTimeAtReference(reference, c, j / 100);
+			if (birth < previous) monotone = false;
+			previous = birth;
+		}
+	}
+	for (let i = 0; i < 20000; i++) {
+		const key = starTypes.fieldStarSeed(SEED, i);
+		const c = buf.component[i];
+		let zOverH = 0;
+		if (reference.thin.H > 0) {
+			const H = density.discHeightAt(reference.thin, buf.R[i]);
+			if (H > 0) zOverH = (buf.z[i] - reference.centre.z) / H;
+		}
+		const armAge = starTypes.sampleArmAge(reference, c, buf.distToArm[i], buf.R[i],
+			hash.hash01(key * 31 + 2), hash.hash01(key * 31 + 3), zOverH);
+		const birth = starTypes.sampleFieldBirth(reference, key, c, buf.R[i], buf.distToArm[i], buf.z[i]);
+		const repeated = starTypes.sampleFieldBirth(reference, key, c, buf.R[i], buf.distToArm[i], buf.z[i]);
+		if (birth !== repeated) badRange++;
+		if (birth < 0 || birth > galaxy.AGE_REF) badRange++;
+		if (birth === 0) zeroBirth++;
+		if (armAge >= 0) {
+			armSelected++;
+			if (birth !== galaxy.AGE_REF - armAge) wrongArmBirth++;
+		} else {
+			const w0 = galaxy.FORMATION_WINDOW[c * 2] * spanRef;
+			const w1 = galaxy.FORMATION_WINDOW[c * 2 + 1] * spanRef;
+			if (birth < w0 - 1e-5 || birth > w1 + 1e-5) wrongWindow++;
+		}
+	}
+	check('the field birth channel is deterministic, bounded, and has no beginning-time pile',
+		badRange === 0 && zeroBirth === 0,
+		{ badRange, zeroBirth });
+	check('the reference-window inverse CDF is monotone in its independent draw',
+		monotone, { monotone });
+	check('the accepted thin-disc arm/lane subset keeps its conditional recent birth law',
+		armSelected > 100 && wrongArmBirth === 0,
+		{ armSelected, wrongArmBirth });
+	check('every other component-window birth stays inside its reference slice',
+		wrongWindow === 0, { wrongWindow });
+}
+
 // --- Radial metallicity gradient ----------------------------------------
 {
 	const sc = galaxy.createGalaxy({ type: 'Sc', seed: 7 });

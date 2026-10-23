@@ -26,7 +26,7 @@
 // contiguous: `draw(4, global + landmarks + objects + local + thinnedCatalog)`.
 // No hidden slots, no per-cell GPU allocation, no compaction pass.
 //
-// Frame cost: one 192-byte uniform write, one catalog buffer write (only when
+// Frame cost: one 224-byte uniform write, one catalog buffer write (only when
 // the resident set changed), an optional compute pass that steps the simple
 // engine's azimuths (0.4.5), two additive passes into the HDR intermediate
 // (stars, then nebula billboards) and one tonemap pass. No depth attachment —
@@ -34,7 +34,7 @@
 
 'use strict';
 
-const UNIFORM_FLOATS = 52;              // 208 bytes: camera block 28 + orbit dynA/dynB/waveA/waveB 16 + engine 4 + epoch 4
+const UNIFORM_FLOATS = 56;              // 224 bytes: camera block + orbit/engine/epoch + formation gate
 // Tonemap uniform: x=exposure, y=whitePoint, z=saturation, w=outputMode (0=SDR, 1=HDR),
 // then headroom, highlightDesat, 0, 0.
 const TONEMAP_UNIFORM_FLOATS = 8;
@@ -251,6 +251,7 @@ function createStarRenderer(device, context, format, options) {
                         // 0.4.5: the simple engine's per-slot azimuths, read by
                         // the vertex branch. Classic mode binds it and ignores it.
                         { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+                        { binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
                 ],
         });
         const pipeline = device.createRenderPipeline({
@@ -437,6 +438,8 @@ function createStarRenderer(device, context, format, options) {
 
         // --- Storage ----------------------------------------------------------
         let starBuffer = null;
+        let birthBuffer = null;
+        let birthStaging = null;
         let bindGroup = null;
         let staging = null;            // ArrayBuffer: [procedural][landmarks][objects][local][catalog]
         let landmarkByteOffset = 0;
@@ -471,8 +474,9 @@ function createStarRenderer(device, context, format, options) {
         const blockInfo = {
                 identity: null, view: null, blocks: BLOCK_LAYOUT, total: 0, dynamicVersion: 0,
                 member: { age: null, component: null },
+                formation: { births: null, age: model.populations.age, count: 0, gateAt: orbit.gateAt },
         };
-        const fieldInfo = { x: null, y: null, z: null, R: null, distToArm: null, component: null, count: 0 };
+        const fieldInfo = { x: null, y: null, z: null, R: null, distToArm: null, component: null, birth: null, count: 0 };
         const planets = (typeof module !== 'undefined' && module.exports)
                 ? require('../math/planets.js')
                 : window.PlanetsLib;
@@ -675,6 +679,15 @@ function createStarRenderer(device, context, format, options) {
                         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
                 });
                 if (thetaBuffer) thetaBuffer.destroy();
+                if (birthBuffer) birthBuffer.destroy();
+                birthStaging = new Float32Array(Math.max(1, proceduralCount));
+                birthBuffer = device.createBuffer({
+                        label: 'star-birth-times',
+                        size: Math.max(4, proceduralCount * 4),
+                        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                });
+                blockInfo.formation.births = birthStaging;
+                blockInfo.formation.count = proceduralCount;
                 totalRecordCount = totalRecords;
                 const thetaBytes = Math.max(16, totalRecords * 4);
                 thetaData = new ArrayBuffer(thetaBytes);
@@ -692,6 +705,7 @@ function createStarRenderer(device, context, format, options) {
                                 { binding: 1, resource: { buffer: starBuffer } },
                                 { binding: 2, resource: lutTexture.createView() },
                                 { binding: 3, resource: { buffer: thetaBuffer } },
+                                { binding: 4, resource: { buffer: birthBuffer } },
                         ],
                 });
                 simpleBindGroup = device.createBindGroup({
@@ -719,7 +733,7 @@ function createStarRenderer(device, context, format, options) {
                                 { binding: 1, resource: { buffer: nebulaBuffer } },
                         ],
                 });
-                state.bufferBytes = totalBytes + nebulaBytes + thetaBytes;
+                state.bufferBytes = totalBytes + nebulaBytes + thetaBytes + Math.max(4, proceduralCount * 4);
         }
 
         // Seed the simple-engine azimuths from the birth positions in staging.
@@ -785,6 +799,26 @@ function createStarRenderer(device, context, format, options) {
                 return n;
         }
 
+        // Birth times are a second deterministic channel of the same census.
+        // They change only when a model's formation law changes, never as its
+        // live epoch advances.
+        function writeFieldBirths() {
+                const starTypes = window.StarTypesLib;
+                const galaxyLib = window.GalaxyLib;
+                const reference = galaxyLib.modelAtAge(model, galaxyLib.AGE_REF);
+                const count = fieldStars ? Math.min(proceduralCount, fieldStars.count) : 0;
+                for (let i = 0; i < count; i++) {
+                        birthStaging[i] = starTypes.sampleFieldBirth(reference,
+                                starTypes.fieldStarSeed(seed, i), fieldStars.component[i],
+                                fieldStars.R[i], fieldStars.distToArm[i], fieldStars.z[i]);
+                }
+                blockInfo.formation.births = birthStaging;
+                blockInfo.formation.age = model.populations.age;
+                blockInfo.formation.count = count;
+                if (count > 0) device.queue.writeBuffer(birthBuffer, 0, birthStaging.buffer, 0, count * 4);
+                return count;
+        }
+
         // Draw the field's positions and the exposure reference that goes with
         // them. Both are properties of the geometry: the same model at another
         // age lands on the same stars, which is why the age slider can skip this.
@@ -792,6 +826,8 @@ function createStarRenderer(device, context, format, options) {
                 if (proceduralCount === 0) {
                         fieldStars = null;
                         fieldInfo.count = 0;
+                        fieldInfo.birth = null;
+                        blockInfo.formation.count = 0;
                         referenceLuminosity = 0;
                         return;
                 }
@@ -809,9 +845,15 @@ function createStarRenderer(device, context, format, options) {
                 fieldInfo.distToArm = fieldStars ? fieldStars.distToArm : null;
                 fieldInfo.component = fieldStars ? fieldStars.component : null;
                 fieldInfo.count = fieldStars ? fieldStars.count : 0;
+                fieldInfo.birth = birthStaging;
+                blockInfo.formation.births = birthStaging;
+                blockInfo.formation.age = model.populations.age;
+                blockInfo.formation.count = fieldInfo.count;
+                writeFieldBirths();
                 state.fieldSamples++;
                 referenceLuminosity = starTypes.meanFieldLuminosity(
-                        galaxyLib.modelAtAge(model, galaxyLib.AGE_REF), fieldStars, CALIBRATION_STARS);
+                        galaxyLib.modelAtAge(model, galaxyLib.AGE_REF), fieldStars, CALIBRATION_STARS,
+                        birthStaging, galaxyLib.AGE_REF);
         }
 
         // ---- 0.6 E4: the running epoch ------------------------------------
@@ -846,7 +888,8 @@ function createStarRenderer(device, context, format, options) {
         // calibration and without the two halves of the ratio disagreeing.
         function sweepExposure() {
                 if (!fieldStars || epochCalibrationStars <= 0 || !(epochCalibrationRef > 0)) return magOffset;
-                const now = window.StarTypesLib.meanFieldLuminosity(model, fieldStars, epochCalibrationStars);
+                const now = window.StarTypesLib.meanFieldLuminosity(model, fieldStars, epochCalibrationStars,
+                        birthStaging, model.populations.age);
                 return now > 0 ? 2.5 * Math.log10(now / epochCalibrationRef) : magOffset;
         }
 
@@ -894,8 +937,9 @@ function createStarRenderer(device, context, format, options) {
                                 : ((family === orbit.FAMILY_DISC || family === orbit.FAMILY_PATTERN) ? params.heatScale : 1);
                         const R = fieldStars.R[i] * scale;
                         const distToArm = fieldStars.distToArm[i] * scale;
-                        starTypes.deriveStar(modelNow, starTypes.fieldStarSeed(seed, i),
-                                fieldStars.component[i], R, distToArm, derived, fieldStars.z[i] * scale);
+                        starTypes.deriveStarWithAge(modelNow, starTypes.fieldStarSeed(seed, i),
+                                fieldStars.component[i], R, distToArm,
+                                Math.max(0, modelNow.populations.age - birthStaging[i]), derived);
                         records.writeRecord(
                                 view, off, fieldStars.x[i], fieldStars.y[i], fieldStars.z[i],
                                 derived.colorIndex, derived.absMag,
@@ -946,6 +990,7 @@ function createStarRenderer(device, context, format, options) {
         function setEpoch(nextModel) {
                 model = nextModel;
                 state.galaxyAge = model.populations.age;
+                blockInfo.formation.age = model.populations.age;
                 state.galaxyLabel = window.GalaxyLib.galaxyLabel(nextModel);
                 epochSweep.stale = true;
                 return state;
@@ -958,7 +1003,8 @@ function createStarRenderer(device, context, format, options) {
         function calibrateExposure() {
                 const starTypes = window.StarTypesLib;
                 const now = fieldStars
-                        ? starTypes.meanFieldLuminosity(model, fieldStars, CALIBRATION_STARS)
+                        ? starTypes.meanFieldLuminosity(model, fieldStars, CALIBRATION_STARS,
+                                birthStaging, model.populations.age)
                         : 0;
                 magOffset = (now > 0 && referenceLuminosity > 0)
                         ? 2.5 * Math.log10(now / referenceLuminosity)
@@ -982,9 +1028,9 @@ function createStarRenderer(device, context, format, options) {
                 const derived = {};
                 for (let i = 0; i < proceduralCount; i++) {
                         const key = starTypes.fieldStarSeed(seed, i);
-                        starTypes.deriveStar(model, key,
-                                fieldStars.component[i], fieldStars.R[i], fieldStars.distToArm[i], derived,
-                                fieldStars.z[i]);
+                        starTypes.deriveStarWithAge(model, key,
+                                fieldStars.component[i], fieldStars.R[i], fieldStars.distToArm[i],
+                                Math.max(0, model.populations.age - birthStaging[i]), derived);
                         records.writeRecord(
                                 view, i * records.RECORD_BYTES,
                                 fieldStars.x[i], fieldStars.y[i], fieldStars.z[i],
@@ -1007,7 +1053,8 @@ function createStarRenderer(device, context, format, options) {
                 epochCalibrationStars = Math.min(proceduralCount, EPOCH_CALIBRATION_STARS);
                 epochCalibrationRef = epochCalibrationStars > 0
                         ? window.StarTypesLib.meanFieldLuminosity(
-                                window.GalaxyLib.modelAtAge(model, window.GalaxyLib.AGE_REF), fieldStars, epochCalibrationStars)
+                                window.GalaxyLib.modelAtAge(model, window.GalaxyLib.AGE_REF), fieldStars,
+                                epochCalibrationStars, birthStaging, window.GalaxyLib.AGE_REF)
                         : 0;
                 // This draw is already at the epoch it was drawn into: nothing
                 // for the sweep to catch up on until the epoch moves.
@@ -1230,6 +1277,7 @@ function createStarRenderer(device, context, format, options) {
                         && window.GalaxyLib.sameGeometry(previous, nextModel);
                 configureMode(nextModel);
                 if (populationOnly) {
+                        writeFieldBirths();
                         rebuildPopulation();
                         uploadDynamic();
                         return state;
@@ -1277,8 +1325,8 @@ function createStarRenderer(device, context, format, options) {
                                 const component = window.DensityLib.sampleComponentIndex(decomposed, localHash.hash01At(slotSeed, 3));
                                 const R = decomposed.R;
                                 const distToArm = decomposed.distToArm;
-                                const deriveSeed = Math.imul(slotSeed, 31) + 5;
-                                localStarTypes.deriveStar(model, deriveSeed, component, R, distToArm, localDerived, sz);
+                                localStarTypes.deriveStar(model, Math.imul(slotSeed, 31) + 5,
+                                        component, R, distToArm, localDerived, sz);
                                 const jitter = localHash.pcgHash(slotSeed ^ 0xFACE) & 0xFF;
                                 records.writeRecord(
                                         view, byteOffset + slot * bytesPerRecord,
@@ -1436,6 +1484,10 @@ function createStarRenderer(device, context, format, options) {
                 // offset. Solved from the same model the lanes came from, so the
                 // shader and the CPU twins (orbit.epochMap) cannot disagree.
                 if (orbit.packEpochParams) orbit.packEpochParams(model, uniform, 48, state.magOffset || 0);
+                uniform[52] = model.populations.age;
+                uniform[53] = orbit.BIRTH_FADE_GYR || 0.05;
+                uniform[54] = proceduralCount;
+                uniform[55] = 0;
                 device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
                 tonemapUniform[0] = linearExposure;
@@ -1533,6 +1585,7 @@ function createStarRenderer(device, context, format, options) {
 
         function dispose() {
                 if (starBuffer) starBuffer.destroy();
+                if (birthBuffer) birthBuffer.destroy();
                 if (nebulaBuffer) nebulaBuffer.destroy();
                 if (thetaBuffer) thetaBuffer.destroy();
                 if (hdrTexture) hdrTexture.destroy();

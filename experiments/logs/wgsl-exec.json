@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-17T10:23:50.084Z",
+  "date": "2026-10-23T05:56:41.519Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 121,
-  "passed": 121,
+  "totalChecks": 122,
+  "passed": 122,
   "failed": 0,
   "checks": [
     {
@@ -103,6 +103,16 @@
           0
         ],
         "brightness": 0
+      }
+    },
+    {
+      "name": "WGSL birth gate is hidden, half-lit and fully present at the three fade boundaries",
+      "pass": true,
+      "detail": {
+        "before": 0,
+        "during": 3.7115988731384277,
+        "after": 7.423144817352295,
+        "cpuMid": 0.49999856948852806
       }
     },
     {

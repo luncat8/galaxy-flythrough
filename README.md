@@ -37,8 +37,9 @@ No framework, bundler, module loader, or runtime network connection is required.
 - Epoch-dependent structure: the bulge/bar assembles, the arms follow the gas that is left and the
   disc heats with the age of its stars — exactly the type table's present-day galaxy at the
   reference epoch, and a younger, thinner, more gas-rich one before it
-- A live epoch clock: the galaxy ages with star time (one 0.1 Gyr step per 100 Myr of star time,
-  rebuilt at the field's own sampling cadence), with the epoch readout beside the Myr/s control
+- A live epoch clock: the galaxy ages with star time, and its global procedural census now forms
+  from deterministic birth times; stars fade in, age by elapsed time, and the reference-model arm
+  population keeps its spatial correlation. Epoch steps do not re-roll the field.
 - Three selectable movement models:
   - **classic** — closed-form bounded kinematic orbits; currently the most balanced default
   - **simple** — responsive friction-field integration

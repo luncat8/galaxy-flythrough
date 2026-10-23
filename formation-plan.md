@@ -24,10 +24,10 @@ path, and it would fight this series for the same records. See §11.
 
 | # | Item | State |
 |---|---|---|
-| F1 | **The epoch is a formation history.** Each star carries a *birth time*, drawn once at the field draw; the running epoch shows the stars born so far. | do |
-| F2 | **The gate is per-star and GPU-side.** One `f32` birth per star in a storage buffer, one `smoothstep` in the vertex stage, one uniform. No per-frame CPU pass, no record rewrite. | do |
-| F3 | **The look follows the star's own age** (`T − birth`), not a re-draw of the age distribution at each epoch. `deriveStarWithAge` already exists and is the whole entry point. | do |
-| F4 | **The gas account reads the drawn census, not the SFH.** One 128-bin birth histogram per draw; `gas(T) = 1 − formed(T)·(1 − gasFraction)`. Exact by construction between the two drawn layers. | do |
+| F1 | **The epoch is a formation history.** Each global-field star carries a *birth time*, drawn once at the field draw; the running epoch shows the stars born so far. | shipped 0.7.1 |
+| F2 | **The gate is per-star and GPU-side.** One `f32` birth per global-field star in a storage buffer, one `smoothstep` in the vertex stage, one uniform lane. No per-frame CPU pass, no record rewrite. | shipped 0.7.1 |
+| F3 | **The look follows the star's own age** (`T − birth`), not a re-draw of the age distribution at each epoch. `deriveStarWithAge` already exists and is the whole entry point. | shipped 0.7.1 |
+| F4 | **The gas account reads the drawn census, including the smooth gate.** One 1024-bin birth histogram per draw; integrate the binned `smoothstep` presence and normalize by its value at `AGE_REF`, then `gas(T) = 1 − formed(T)·(1 − gasFraction)`. Exact at both ends, with a measured histogram error bound between them. | do |
 | F5 | **The gas picture is a coarse grid** (64 r × 96 φ × 4 z = 24 576 cells), integrated by a compute pass, ping-pong buffers, **no atomics**. Races allowed where a scatter would need them; the drift is bounded and measured. | do |
 | F6 | **The smoothness contract comes first** (§6). No epoch may re-sample, re-roll or re-place anything that was already on screen. The object block's 0.02 Gyr re-roll is the one confirmed jump and is fixed by this series. | do |
 | F7 | **Deep time is a real epoch.** `AGE_MIN` 0.2 → 0, with the zero-factor traps in §7 resolved rather than clamped away. | do |
@@ -71,8 +71,13 @@ time      birth       NEW: when this star formed, in Gyr
 the same per-star seed every other draw uses:
 
 ```
-u     = hash01(fieldStarSeed(seed, i) * 31 + 5)
-birth = formationTime(model, component[i], u)          // absolute Gyr, [0, spanRef]
+u     = hash01(fieldStarSeed(seed, i) * 31 + 6)       // channel 6; channels 1–5 remain the IMF/look
+birth = formationTimeAtReference(modelRef, component[i], u) // absolute Gyr, [0, spanRef]
+
+// One existing spatial subpopulation is kept as an explicit conditional draw:
+// if the reference-model thin-disc arm + gas-lane gate accepts this star using
+// its existing channels 2 and 3, birth = AGE_REF − armAge (armAge ≤ 0.3 Gyr).
+// Otherwise the component-window inverse-CDF above applies.
 ```
 
 with the window table read against the **reference** span, exactly as
@@ -85,18 +90,22 @@ q0 = F(w0·xEnd), q1 = F(w1·xEnd)      F(x) = 1 − e^−x(1 + x)   (galaxy.sfh
 birth = tauSfh · F⁻¹(q0 + (q1 − q0)·u)
 ```
 
-`FORMATION_WINDOW[2c], [2c+1]` is the component's own slice, so the assembly
-order is automatic: halo `[0, 0.25]`, spheroid `[0, 0.45]`, thick `[0.10, 0.65]`,
-thin `[0.25, 1.00]`. `F⁻¹` is a bisection over 40 steps (`F` is monotone and
-bounded by 1) — 40 multiplies per star, once per draw, against a re-sample the
-series is *removing*. The `AGE_REF` clamp guarantees `birth ≤ AGE_REF`.
+For the general field population, `FORMATION_WINDOW[2c], [2c+1]` is the
+component's own slice, so the assembly order is automatic: halo `[0, 0.25]`,
+spheroid `[0, 0.45]`, thick `[0.10, 0.65]`, thin `[0.25, 1.00]`. The CPU
+reuses `star-types.js`'s existing 1025-entry inverse-CDF table, keyed by the
+reference span; it does not run a second per-star bisection. The arm/lane
+conditional is required because the present-day OB population is explicitly a
+spatially accepted subpopulation outside the broad thin-disc window. Both paths
+guarantee `birth ≤ AGE_REF`; the arm path also avoids the old `age = 0` pile.
 
 ### 2.2 Why not reuse the drawn age (measured, and rejected)
 
 The obvious cheap form is `birth = AGE_REF − age` from the existing
 `sampleLocalAge`. It needs no new draw and is exact at `AGE_REF` by construction.
-It is wrong for two reasons, both measured on 20 000 stars per type
-(`experiments/formation-test.js` will own these tables):
+It is wrong for two reasons, both measured on 20 000 stars per type in the
+formation investigation; `star-types-evolution-test.js` now owns the regression
+checks for the two branches:
 
 | type | stars with `birth === 0` | census at T=2 vs `sfhProgress` | T=8 |
 |---|---|---|---|
@@ -115,13 +124,16 @@ are not time laws.)
 | SBb | 0.045 | 0.207 | 0.703 | 0 % |
 | SBc | 0.017 | 0.114 | 0.558 | 0 % |
 
-(*Variant B*: the window inverse-CDF of §2.1, no new look law.) It removes the
-pile entirely and tracks the SFH to within a few percent. It **undershoots**
-early because the census's component mix is a *density* fact while `sfhProgress`
-is a *mass* fact — and that is the resolution, not a defect: see F4. The gas
-account is derived from the census the viewer is looking at, so the two layers
-agree exactly and the SFH is only the law that says where the birth times come
-from.
+(*Variant B*: applying the component-window inverse-CDF to every thin-disc
+star.) It removes the pile entirely and tracks the SFH to within a few percent,
+but it **erases the spatially gated arm-young channel**: the 0.3.1 population is
+not a generic draw from the broad thin-disc window. The implementation is the
+minimal hybrid of that measured law and the existing spatial prior: the accepted
+arm/lane subset carries `AGE_REF − armAge`, while all other stars use Variant B.
+This preserves the established OB ridge without shifting that population into
+the wrong formation window. The census still need not equal `sfhProgress`,
+because component mix is a *density* fact and `sfhProgress` is a *mass* fact;
+F4 calibrates gas against the drawn census, not against that mass curve.
 
 Rejected alternative, recorded so it is not re-tried: *use the drawn age and
 shift the arm-gate population forward in time* — the arm's OB stars are young at
@@ -146,12 +158,12 @@ objects already use. Three consequences worth stating:
   (`min(p.age, u³·0.3)`) never ages at all. Under `T − birth` every star has one
   lifetime and the whole population ages together, which is what makes a run
   read as evolution rather than as a sequence of unrelated samples.
-- **The arm gate becomes a look law.** `sampleLocalAge`'s arm/height test is
-  evaluated against `age(T)`: a thin-disc star whose birth falls inside the last
-  `YOUNG_ARM_MAX_GYR` of the running epoch is arm-gated and reads young, so OB
-  stars still trace the ridge at every epoch — they are simply *different stars*
-  at 2 Gyr than at 13.5, which is the physical statement the uniform look was
-  faking.
+- **The arm gate remains a birth-selection law, then ages normally.** The
+  reference model's existing arm/height acceptance selects the spatially
+  correlated young subset once. Its birth is `AGE_REF − armAge`; all accepted
+  stars then age by `T − birth`, so the ridge population fades and evolves rather
+  than being re-sampled or made perpetually newborn. A pure component-window
+  draw would lose this observed correlation (measured in the first trial).
 - **`AGE_REF` is statistically, not bit-exactly, preserved.** At `T = AGE_REF`
   every gate is 1 but the *draw* of ages moves from `sampleLocalAge` to
   `deriveStarWithAge(AGE_REF − birth)`. Class histograms, mean luminosity and the
@@ -163,11 +175,19 @@ objects already use. Three consequences worth stating:
 
 ## 3. The gate (F2)
 
-Per-star `f32` birth in a storage buffer, uploaded once per field draw:
+Per-global-field-star `f32` birth in a storage buffer, uploaded once per field
+draw:
 
 ```
 BIRTH_BYTES = 4 · proceduralCount          // 1.2 MB at 300k, one upload per draw
 ```
+
+This first slice gates the global procedural census only. Gaia/catalog and named
+landmarks remain observed data; composite-object members keep their own event
+ages. The separate streaming local gap-fill remains outside this buffer in 0.7.1
+because its residency lifetime is camera-driven, not the global census. Do not
+claim a fully empty *hybrid/local* frame until that dynamic block gains carried
+births and an epoch look sweep.
 
 The vertex stage reads it and computes the presence:
 
@@ -181,9 +201,10 @@ the gate is smooth even when the clock is sampled. A faded star keeps its
 position — it does not slide in from anywhere — so the fade is the only visual
 event, and it is invisible at any sane rate.
 
-The gate multiplies into the existing sprite/point brightness term (path A and
-path B), and a fully-gated star is skipped before it reaches the indirect draw,
-so a 0.01 Gyr galaxy does not pay for 300k invisible sprites.
+The gate multiplies into the existing sprite brightness (path B); a fully
+gated star returns the existing off-clip vertex before rasterization, so it
+costs only its vertex invocation. There is no indirect draw in this renderer to
+claim as an optimization.
 
 **Test-side mirror.** `orbit.epochMap` gains nothing; the gate is a separate
 scalar read, and the CPU mirror (`gateAt(birth, age)`) is one function used by
@@ -192,23 +213,29 @@ lanes already follow.
 
 ## 4. The gas account (F4)
 
-At the field draw, one pass over the census fills a 128-bin birth histogram over
-`[0, spanRef]`:
+At the field draw, one pass over the census fills a 1024-bin birth histogram
+over `[0, spanRef]`. A hard prefix count is not sufficient: the GPU renders a
+smooth 0.05 Gyr gate, so stars in the fade contribute fractional presence even
+before they are fully formed. The view census is therefore the sum of the same
+gate the vertex stage uses, normalized to the drawn reference census:
 
 ```
-bin(birth)  ···  formedCount[k]            // monotone in k, k = 0…127
-formed(T)   = (prefix sum up to T) / proceduralCount
-gas(T)      = 1 − formed(T) · (1 − gasFraction)
+bin(birth)       → count[k]                         // k = 0…1023
+presence(T)      = Σ count[k] · smoothstep(binCentre[k], binCentre[k] + FADE, T)
+presenceRef      = presence(AGE_REF)
+formed(T)        = presence(T) / presenceRef
+gas(T)           = 1 − formed(T) · (1 − gasFraction)
 ```
 
-`gas(0) = 1` exactly (no star is born before the first bin), `gas(AGE_REF) =
-gasFraction` exactly (every star is in the histogram), and it is monotone for the
-same reason `sfhProgress` is. It costs O(N) once per draw — the same order as the
-loop that already fills the records — and nothing per frame. `gas(T)` replaces
-`populations.gasNow` as the number the gas layers read, so **the visible gas and
-the visible stars are complementary by construction**: whatever is not on screen
-is gas. That is the whole conservation contract, and it is exact in IEEE
-arithmetic because it is one subtraction of a ratio over the same census.
+The bin approximation must be measured against the exact O(N) gate sum at draw
+time; the acceptance bound is **0.25 % absolute** over 0…`AGE_REF`, and the
+histogram is refined if it misses. This is a small fixed O(1024) evaluation per
+frame, not an O(N) pass. Both endpoints are exact by construction: every gate
+is 0 at `T = 0`, so `gas(0) = 1`; at `AGE_REF`, `presence/presenceRef` is the
+same stored sum divided by itself, so `gas(AGE_REF) = gasFraction`. It is
+monotone because every `smoothstep` is monotone. `gas(T)` replaces
+`populations.gasNow` only for the field's gas picture; it is calibrated to the
+visible (fractionally gated) census, not claimed to be the model's SFH mass.
 
 `model.populations.gasNow` (the SFH form) stays: it is the *model's* gas, the
 number the type table and the evolution pins describe, and the one a headless
@@ -261,8 +288,9 @@ is accepted, with a measured budget:
   against `gas(T)` from §4),
 - it is bounded by `EVENTS_PER_FRAME / cells` and stays under **1 % per Gyr** in
   the measurement §10 pins,
-- it never gates anything: the star gate is the CPU's exact histogram, so a lost
-  gram of gas can never make a star appear early or late.
+- it never gates anything: each field star's birth and GPU gate are exact,
+independent of the gas histogram/grid, so a lost gram of gas can never make a
+star appear early or late.
 
 The physics argument is the brief's, and the plan adopts it explicitly: the
 model already has dark matter, unmodelled feedback and an unmodelled IMF cut, so
@@ -291,7 +319,7 @@ clock moved.** Stated as rules, each with its pin:
 |---|---|---|
 | R1 | An epoch change is a model re-solve and a uniform. No `regenerate`, no re-draw, ever. | `renderer-test` counts draws across 200 epoch steps |
 | R2 | The gate is a scalar read; a star's position, key and birth never change after the draw. | buffer diff across a run |
-| R3 | **Composite objects are carried, not re-rolled.** `generateObjects` runs once per draw; `refreshObjects` re-derives only the *look* of the members already placed (same seed, same seat) and re-uploads only changed bytes. Placement depends on the *base* epoch, never the running one. | object seats byte-identical across a 1 Gyr run |
+| R3 | **Composite objects are carried, not re-rolled.** `generateObjects` runs once per draw; the object block is carried unchanged because member looks use their own fixed object age. No epoch refresh or re-placement. Placement depends on the base epoch, never the running one. | object seats byte-identical across a 1 Gyr run |
 | R4 | An engine switch maps the current θ into the new engine's frame instead of re-seeding from birth positions. | max per-frame delta across a switch ≤ the orbit law's own |
 | R5 | A new star budget is a new draw (a different N is a different census) — the one honest re-sample, and it is a user action, not a clock event. | — |
 | R6 | Every epoch-varying quantity is continuous in `T`: the map's three terms, the gate, the look sweep, the gas grid. Discontinuities are bugs, not taste. | continuity sweep at ΔT = 1e-3 |
@@ -322,16 +350,20 @@ by *meaning*, not by a clamp:
 
 - `model.populations.formQ` — unchanged (the compressed windows the population
   tier reads).
-- `model.formation` — new, solved in `solvePopulationClock` beside the epoch:
-  `{ spanRef, xEnd, windows: [w0, w1] × 4, quantiles: F(w·xEnd) × 8 }`, so the
-  per-star birth is a table lookup and a bisection with no re-derivation.
-- `view.formation` — new, written by the field draw: `{ births: Float32Array,
-  hist: Uint32Array(128), cells: 128, count, gasAt(age) }` where `gasAt` is §4's
-  one subtraction. No allocation after the draw.
+- `model.populations.formQ` remains the live-epoch window table. Birth sampling
+  resolves the reference span once per field draw, reuses the existing SFH
+  inverse table, and applies the arm/lane conditional only to accepted thin-disc
+  stars.
+- `renderer.starBlocks().formation` — `{ births: Float32Array, age, count,
+  gateAt }`, stable storage beside the carried field. `fieldBuffers().birth`
+  exposes the same typed array to CPU consumers. Epoch changes update `age` only;
+  a new field or changed formation parameters rewrite births.
 - `orbit.gateAt(birth, age)` — the one CPU mirror of the vertex stage's
-  `smoothstep`.
-- `renderer.setEpoch` unchanged; `renderer.setFormationGas(grid)` gains the
-  compute pass and its two buffers.
+  `smoothstep`; picking, selection rings and search ignore a fully absent field
+  star just as the vertex stage does.
+- The shader reads one storage buffer and the fourth vec4 uniform lane after the
+  existing epoch lane. `renderer.setEpoch` still updates uniforms only; the gas
+  account/grid remain later slices.
 
 Preset field: none. Formation is not a setting — it is what an epoch *is*; the
 existing `age`, `evolve` and `stars` fields already place a run.
@@ -351,19 +383,23 @@ existing `age`, `evolve` and `stars` fields already place a run.
 
 ## 10. Validation
 
-New: `experiments/formation-test.js` (§F1–§F5 below), registered in
-`scripts/run.py` under `field-tests` (it reads `galaxy`/`star-types`/
-`sampling` only), log `experiments/logs/formation.json`.
+Birth-law regression checks extend `experiments/star-types-evolution-test.js`
+(already registered in `field-tests`); GPU buffer, uniform and smoothness checks
+extend `experiments/renderer-test.js` and `experiments/wgsl-validate.js`. The
+later gas-account and grid slices will add their own focused experiments.
 
-- **Birth law.** Monotone in `u`, inside the component's own window, `≤ AGE_REF`
-  for every star, mean birth ordering halo < spheroid < thick < thin on 20k draws,
-  and the two census tables of §2.2 recorded verbatim.
-- **Gas account.** `gas(0) = 1` and `gas(AGE_REF) = gasFraction` exactly
-  (`Object.is`), monotone in `T`, `gas + formed = 1` inside 1e-12, and the whole
-  histogram pass inside 1 ms at 300k stars.
-- **Gate.** `gateAt` is 0 at `birth`, 1 at `birth + FADE`, continuous at
-  ΔT = 1e-3 (max step < 1e-3), and the shader's `smoothstep` byte-equal to the
-  CPU mirror over 10k (birth, age) pairs — the `wgsl-exec` pattern.
+- **Birth law.** General stars are monotone in channel 6 and inside the
+  component's reference window; arm-selected thin stars are within the final
+  0.3 Gyr. Every birth is finite and `≤ AGE_REF`, the channel-6 draw is
+  deterministic and independent of channels 1–5, and the two census tables of
+  §2.2 remain the measured alternatives rather than claims about the hybrid.
+- **Gas account.** Endpoints are exact (`gas(0) = 1`, `gas(AGE_REF) =
+  gasFraction`), monotone in `T`, `gas + formed = 1` inside 1e-12, the 1024-bin
+  gate-weighted histogram is within 0.25 % absolute of the exact O(N) reference
+  over the full age range, and its per-frame evaluation stays under 1 ms.
+- **Gate.** `gateAt` is 0 at `birth`, 1 at `birth + FADE`, monotone and
+  continuous through the fade. `wgsl-exec` compares the WGSL `smoothstep` to a
+  single-precision CPU replay within f32 tolerance over 10k (birth, age) pairs.
 - **Smoothness (R1–R4, R7).** 200 epoch steps with no `regenerate`; object seats
   byte-identical over 1 Gyr; the max per-frame positional delta of both blocks
   inside the orbit law's own bound; a θ-map engine switch inside the same bound;
@@ -371,9 +407,9 @@ New: `experiments/formation-test.js` (§F1–§F5 below), registered in
 - **Deep time.** Every row of §7 checked at `T = 0` for all types: no `NaN`,
   no division by zero, a 0-size spheroid mapped as absent, `heat` at its floor.
 - **Downstream.** `star-types-evolution` (look tolerances re-pinned where §2.3
-  moves them), `galaxy-evolution` (fields untouched), `planet-gen` (records
-  untouched), `renderer`, `m1-smoke` (the new wiring), plus `all-tests` before the
-  series closes.
+  moves them), `galaxy-evolution` (fields untouched), `planet-gen` (generator
+  tables untouched; field-star inputs now use the carried birth time), `renderer`,
+  `m1-smoke` (the new wiring), plus `all-tests` before the series closes.
 
 No visual verdict is claimed. The browser rows (a pure-gas frame, a fade, a run
 through 1 Gyr with no jump, the gas picture at 1280×800) go on

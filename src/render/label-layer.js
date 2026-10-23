@@ -574,6 +574,9 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	function ringAtSlot(view, info, records, slot, kind, orbit, viewProj, cam, width, height) {
 		const byteOffset = slot * records.RECORD_BYTES;
 		const packed = view.getUint32(byteOffset + 12, true);
+		const birthIndex = kind === 0 ? slot - info.blocks[0].offset : -1;
+		if (birthIndex >= 0 && info.formation && info.formation.births && orbit
+			&& orbit.gateAt(info.formation.births[birthIndex], info.formation.age) <= 0) return;
 		let px = view.getFloat32(byteOffset, true);
 		let py = view.getFloat32(byteOffset + 4, true);
 		let pz = view.getFloat32(byteOffset + 8, true);

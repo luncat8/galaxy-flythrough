@@ -488,7 +488,12 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 && uniform[26] === Math.fround(rendererModule.MAX_SIZE_PX),
                 { exposure: uniform[24], base: uniform[25], max: uniform[26] });
         check('uniform carries the star time in params.w', uniform[27] === Math.fround(1 / 60), uniform[27]);
-        check('uniform is exactly 208 bytes (camera block + orbit dynamics + wave + engine + epoch)', gpu.uniformWrites[gpu.uniformWrites.length - 1].length === 208);
+        check('uniform is exactly 224 bytes (camera block + orbit dynamics + epoch + formation gate)', gpu.uniformWrites[gpu.uniformWrites.length - 1].length === 224);
+        check('formation lane carries epoch, fade width and procedural count',
+                uniform[52] === Math.fround(model.populations.age)
+                && uniform[53] === Math.fround(window.OrbitLib.BIRTH_FADE_GYR)
+                && uniform[54] === PROCEDURAL,
+                { formation: Array.from(uniform.slice(52, 56)) });
         // Orbit dynamics ride in dynA/dynB — the per-model numbers the shader
         // must never hard-code (packed by orbit.packOrbitDynamics).
         const fr = Math.fround;
@@ -645,13 +650,15 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         // still the reference draw (the staging buffer is the same bytes; the
         // harness copies every write, so these views are stable).
         const baseView = asView(fullWrites().pop());
+        const birthWritesBeforeEpoch = gpu.bufferWrites.filter(w => w.buffer.label === 'star-birth-times').length;
         const youngModel = galaxy.modelAtAge(model, 0.5);
         const lane = new Float32Array(4);
         renderer.epochParams(youngModel, lane);
         const aged = renderer.setEpoch(youngModel);
         check('an age change places the field instead of re-drawing it',
                 fullWrites().length === writesBefore && aged.fieldSamples === refSamples
-                && aged.proceduralStars === PROCEDURAL && aged.galaxyAge === 0.5,
+                && aged.proceduralStars === PROCEDURAL && aged.galaxyAge === 0.5
+                && gpu.bufferWrites.filter(w => w.buffer.label === 'star-birth-times').length === birthWritesBeforeEpoch,
                 { fullWrites: fullWrites().length - writesBefore, fieldSamples: aged.fieldSamples, age: aged.galaxyAge });
         check('the epoch lane carries the two scale laws and the arm re-anchoring',
                 lane[0] !== 0 && lane[1] < 1 && lane[1] > 0 && lane[2] < 1 && lane[2] > 0
@@ -675,6 +682,21 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         check('the identity keys and the birth vectors survive an epoch step: the same stars',
                 keyBreak < 0 && movedPosition === 0 && epochFlagged === 500,
                 { firstBreak: keyBreak, movedPosition, epochFlagged });
+        const formation = renderer.starBlocks().formation;
+        let badBirth = 0;
+        for (let i = 0; i < PROCEDURAL; i++) {
+                if (!Number.isFinite(formation.births[i]) || formation.births[i] < 0
+                        || formation.births[i] > galaxy.AGE_REF) badBirth++;
+        }
+        check('one deterministic reference birth time is stored for every field star',
+                formation.births === renderer.fieldBuffers().birth && formation.count === PROCEDURAL && badBirth === 0,
+                { count: formation.count, badBirth, first: Array.from(formation.births.slice(0, 4)) });
+        check('the CPU gate matches its exact endpoints and increases continuously through the fade',
+                window.OrbitLib.gateAt(2, 2) === 0
+                && window.OrbitLib.gateAt(2, 2 + window.OrbitLib.BIRTH_FADE_GYR) === 1
+                && window.OrbitLib.gateAt(2, 2.025) > 0.4
+                && window.OrbitLib.gateAt(2, 2.025) < 0.6,
+                [window.OrbitLib.gateAt(2, 2), window.OrbitLib.gateAt(2, 2.025), window.OrbitLib.gateAt(2, 2.05)]);
 
         // The look is what follows the clock. One full sweep (a slice with a
         // budget no frame would use) re-derives every record at the new age and
@@ -721,9 +743,12 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         // sweep, but the field's held-back brightness cannot be per-record or a
         // half-swept field would show a seam. So the check is the offset itself,
         // against the mean-luminosity ratio it is defined as.
-        const youngMeanLum = window.StarTypesLib.meanFieldLuminosity(youngModel, renderer.fieldBuffers(), 4096);
+        const fieldForLook = renderer.fieldBuffers();
+        const youngMeanLum = window.StarTypesLib.meanFieldLuminosity(youngModel, fieldForLook, 4096,
+                fieldForLook.birth, youngModel.populations.age);
         const refMeanLum = window.StarTypesLib.meanFieldLuminosity(
-                galaxy.modelAtAge(youngModel, galaxy.AGE_REF), renderer.fieldBuffers(), 4096);
+                galaxy.modelAtAge(youngModel, galaxy.AGE_REF), fieldForLook, 4096,
+                fieldForLook.birth, galaxy.AGE_REF);
         const wantOffset = 2.5 * Math.log10(youngMeanLum / refMeanLum);
         check('a young galaxy is a dimmer one, so the uniform\'s offset brightens it back',
                 renderer.state.magOffset < -0.5
@@ -731,6 +756,9 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 {
                         offset: +renderer.state.magOffset.toFixed(3),
                         want: +wantOffset.toFixed(3),
+                        youngLum: youngMeanLum,
+                        refLum: refMeanLum,
+                        impliedRefLum: youngMeanLum / Math.pow(10, renderer.state.magOffset / 2.5),
                         meanMagYoung: +meanMag(youngView, 2000).toFixed(3),
                         meanMagRef: +refMean.toFixed(3),
                 });
@@ -1167,8 +1195,9 @@ function cellManagerFrom(m, budget) {
         check('the classic engine is the default and allocates one theta f32 per slot',
                 engRenderer.state.engine === 'classic' && totalSlots === starBuf.size / 16,
                 { engine: engRenderer.state.engine, slots: totalSlots });
-        check('state.bufferBytes counts the star, nebula and theta buffers',
-                engRenderer.state.bufferBytes === starBuf.size + nebBuf.size + thetaBuf.size,
+        const birthBuf = engGpu.buffers.find(b => b.label === 'star-birth-times');
+        check('state.bufferBytes counts the star, nebula, theta and birth buffers',
+                engRenderer.state.bufferBytes === starBuf.size + nebBuf.size + thetaBuf.size + birthBuf.size,
                 { bufferBytes: engRenderer.state.bufferBytes });
         const fixedSlots = 1000 + window.Landmarks.count + 100;
         const fixedTheta = engGpu.thetaWrites.find(w => w.offset === 0);

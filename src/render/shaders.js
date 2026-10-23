@@ -926,6 +926,9 @@ struct CameraUniform {
         // placed by this lane; one without it is the observed sky (catalog stars,
         // landmarks) and the model's clock must not move it.
         epoch: vec4f,
+        // The field's own time axis and the formation gate, independent of the
+        // orbital clock: age in Gyr, fade width, field count, unused.
+        formation: vec4f,
 };
 
 struct StarPacked {
@@ -937,6 +940,7 @@ struct StarPacked {
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
 @group(0) @binding(1) var<storage, read> stars: array<StarPacked>;
+@group(0) @binding(4) var<storage, read> birthTimes: array<f32>;
 
 const MASK_VISIBLE: u32 = 0x00010000u;   // flags byte bit 0
 // Epoch bits (star-record FLAG_EPOCH / FLAG_EPOCH_SPHEROID) and the family
@@ -1057,6 +1061,12 @@ fn vs_main(
         if ((star.packed & MASK_VISIBLE) == 0u) {
                 return hidden(vid);
         }
+        var formationGate: f32 = 1.0;
+        if (starIdx < u32(camera.formation.z)) {
+                let birth: f32 = birthTimes[starIdx];
+                formationGate = smoothstep(birth, birth + camera.formation.y, camera.formation.x);
+                if (formationGate <= 0.0) { return hidden(vid); }
+        }
 
         let moved: vec3f = starMovedPosition(star, theta[starIdx]);
         let rel: vec3f = moved - camera.cameraPos.xyz;
@@ -1100,7 +1110,7 @@ fn vs_main(
         out.clipPos = vec4f(clip.xy + offset * clip.w, clip.zw);
         out.uv = corner;
         out.color = color;
-        out.brightness = flux * onePxAlpha;
+        out.brightness = flux * onePxAlpha * formationGate;
         return out;
 }
 
@@ -1141,6 +1151,7 @@ struct CameraUniform {
         // The buffer is shared with the orbiting sprite shader, whose lane this
         // one only needs the exposure offset (w) of: this variant does not orbit.
         epoch: vec4f,
+        formation: vec4f,
 };
 
 struct StarPacked {
@@ -1818,7 +1829,8 @@ struct CameraUniform {
         waveA: vec4f,       // shared layout with the star shader; nebulae ignore it
         waveB: vec4f,
         engine: vec4f,      // engine select lane; nebulae ignore it (gas rides the pattern)
-        epoch: vec4f,       // 0.6 E4 epoch lane; nebulae ignore it (layout parity)
+        epoch: vec4f,
+        formation: vec4f,       // 0.6 E4 epoch lane; nebulae ignore it (layout parity)
 };
 
 struct NebulaPacked {

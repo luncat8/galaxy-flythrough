@@ -412,8 +412,13 @@
 			// back to the formula keeps a caller that has no key working.
 			const key = (ref.key === undefined || ref.key === null)
 				? starTypes.fieldStarSeed(model.seed, i) : (ref.key | 0);
-			starTypes.deriveStar(model, key,
-				field.component[i], field.R[i], field.distToArm[i], out, field.z[i]);
+			if (field.birth) {
+				starTypes.deriveStarWithAge(model, key, field.component[i], field.R[i], field.distToArm[i],
+					Math.max(0, model.populations.age - field.birth[i]), out);
+			} else {
+				starTypes.deriveStar(model, key,
+					field.component[i], field.R[i], field.distToArm[i], out, field.z[i]);
+			}
 			return finishInputs(out, true);
 		}
 

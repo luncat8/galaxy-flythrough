@@ -83,6 +83,11 @@ function createSelection(camera, landmarks) {
 	let renderer = null;
 	function setOrbitState(model, time) { orbitModel = model; orbitTime = time || 0; }
 	function setRenderer(next) { renderer = next; }
+	function formationVisible(info, kind, index, age) {
+		const f = info && info.formation;
+		if (kind !== 0 || !f || !f.births || index >= f.count) return true;
+		return selectionOrbit().gateAt(f.births[index], age === undefined ? f.age : age) > 0;
+	}
 
 	function pick(x, y, width, height) {
 		if (!landmarks || landmarks.count === 0 || !(width > 0) || !(height > 0)) return -1;
@@ -147,7 +152,7 @@ function createSelection(camera, landmarks) {
 		if ((info.identity[slot] >>> 0) !== (ref.key >>> 0)) return false;
 		const byteOffset = slot * records.RECORD_BYTES;
 		const packed = info.view.getUint32(byteOffset + 12, true);
-		if ((packed & (records.FLAG_VISIBLE << 16)) === 0) return false;
+		if ((packed & (records.FLAG_VISIBLE << 16)) === 0 || !formationVisible(info, kind, index)) return false;
 		drawnIn.bx = info.view.getFloat32(byteOffset, true);
 		drawnIn.by = info.view.getFloat32(byteOffset + 4, true);
 		drawnIn.bz = info.view.getFloat32(byteOffset + 8, true);
@@ -257,6 +262,7 @@ function createSelection(camera, landmarks) {
 		active: false, done: true,
 		k: 0, i: 0, n: 0, cap: 0, r2: 0,
 		px: 0, py: 0, pz: 0,
+		formationAge: 0,
 		version: -1,
 	};
 
@@ -281,6 +287,7 @@ function createSelection(camera, landmarks) {
 		aroundSweep.cap = cap;
 		aroundSweep.k = 0;
 		aroundSweep.i = 0;
+		aroundSweep.formationAge = info.formation ? info.formation.age : 0;
 		aroundSweep.version = info.dynamicVersion;
 		aroundSweep.active = true;
 		aroundSweep.done = false;
@@ -356,7 +363,7 @@ function createSelection(camera, landmarks) {
 				const slot = base + i;
 				const byteOffset = slot * records.RECORD_BYTES;
 				const packed = view.getUint32(byteOffset + 12, true);
-				if ((packed & visibleBit) === 0) continue;
+				if ((packed & visibleBit) === 0 || !formationVisible(info, aroundSweep.k, i, aroundSweep.formationAge)) continue;
 				const bx = view.getFloat32(byteOffset, true);
 				const by = view.getFloat32(byteOffset + 4, true);
 				const bz = view.getFloat32(byteOffset + 8, true);
@@ -452,6 +459,7 @@ function createSelection(camera, landmarks) {
 		x: 0, y: 0, width: 0, height: 0,
 		k: 0, i: 0,
 		bestD: 0, minD: 0, bestMag: 0, best: null,
+		formationAge: 0,
 		version: -1,
 	};
 	const sweepCam = new Float64Array(3);
@@ -477,6 +485,7 @@ function createSelection(camera, landmarks) {
 		sweep.y = y;
 		sweep.width = width;
 		sweep.height = height;
+		sweep.formationAge = info.formation ? info.formation.age : 0;
 		sweep.version = info.dynamicVersion;
 		sweep.active = true;
 		sweep.done = false;
@@ -534,7 +543,7 @@ function createSelection(camera, landmarks) {
 				const slot = base + i;
 				const byteOffset = slot * records.RECORD_BYTES;
 				const packed = view.getUint32(byteOffset + 12, true);
-				if ((packed & visibleBit) === 0) continue;
+				if ((packed & visibleBit) === 0 || !formationVisible(info, sweep.k, i, sweep.formationAge)) continue;
 				const bx = view.getFloat32(byteOffset, true);
 				const by = view.getFloat32(byteOffset + 4, true);
 				const bz = view.getFloat32(byteOffset + 8, true);
