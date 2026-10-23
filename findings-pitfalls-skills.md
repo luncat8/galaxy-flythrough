@@ -2495,3 +2495,38 @@ fractional gate weight. The gas account must integrate the same smoothstep
 presence as the shader and normalize by the reference-epoch sum. That keeps both
 endpoints exact while making the between-epoch gas estimate a measured histogram
 approximation rather than falsely calling a hard CDF exact.
+
+## 2026-10-23 — A carried census must be drawn in the reference frame
+
+When a field is drawn once and *placed* at later epochs (E4), the draw's
+component mix is the census for the whole run. Sampling it from the epoch that
+happens to be on the clock makes the run's content depend on where it started:
+at `T = 0` the spheroid is 0-size and the disc sits on the heat floor, so
+`deliveredMasses` integrates almost nothing and 99.7 % of the draw came back as
+halo — a galaxy that could never grow a disc, arms or a bar. Sampling
+`modelAtAge(model, AGE_REF)` and measuring the epoch map from that same
+reference fixes it, is exact at the reference epoch (where reference ≡ model),
+and makes the map continuous by construction (the draw *is* the base). Rule: if
+a structure is drawn once and reused at many times, draw it at the one time the
+model's constants describe; the clock reaches it only through the placement map.
+
+Skill: diff the component shares of a draw taken at each epoch's extremes. A
+share that changes by 100× with the epoch is a draw-order bug, not a model
+result.
+
+## 2026-10-23 — Test the page's entry point, not a local re-implementation
+
+The 0.7.3 gas account was inert in the page: `buildBirthHistogram` computed its
+reference presence *before* setting the flag `evaluatePresence` guards on, so
+the normaliser stayed 0 and `censusGasAt` returned `undefined` forever — while
+the test suite passed, because the test built its own histogram and its own
+presence loop instead of calling the renderer. Anything that ships behind a
+fallback (`?? prior`, `if (x !== undefined)`) can return its fallback silently
+for years. Call the shipped function from the harness with the shipped inputs,
+and assert that it returns a *value* before asserting what the value is. The
+same rule caught the draw-frame bug above only after the account was alive
+enough to be printed.
+
+Skill: a feature tested through a re-implementation is tested as prose. Reach
+into the module (`renderer.censusFormedAt`) from the harness, and pin the
+endpoints with strict equality — the fallback-free path is where the bug lives.

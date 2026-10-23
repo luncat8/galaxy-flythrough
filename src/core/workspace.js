@@ -8,12 +8,14 @@
 const OBSERVE = 0, FLY = 1, COMMAND = 2;
 const NAMES = ['observe', 'fly', 'command'];
 
-// Panels as bits. The order is the load order in index.html, nothing else.
-const SEARCH = 0, FLIGHT = 1, ROUTES = 2, VIEWMODES = 3, DISPLAY = 4, TRADE = 5, CONTROLS = 6;
-const PANEL_COUNT = 7;
+// Panels as bits. The bit order is append-only: a workspace's override is a
+// mask in localStorage, so a new panel takes the next bit and never renumbers
+// one already on a user's disk. The DOM order is the columns' business.
+const SEARCH = 0, FLIGHT = 1, ROUTES = 2, VIEWMODES = 3, DISPLAY = 4, TRADE = 5, CONTROLS = 6, SCENARIO = 7;
+const PANEL_COUNT = 8;
 const PANEL_MASK_ALL = (1 << PANEL_COUNT) - 1;
-const PANEL_IDS = ['selection-menu', 'sysmenu', 'routemenu', 'viewmenu', 'menu', 'trade-menu', 'help'];
-const PANEL_LABELS = ['Search & Selection', 'Flight', 'System & routes', 'View modes', 'Display', 'Trade', 'Controls'];
+const PANEL_IDS = ['selection-menu', 'sysmenu', 'routemenu', 'viewmenu', 'menu', 'trade-menu', 'help', 'scenario-menu'];
+const PANEL_LABELS = ['Search & Selection', 'Flight', 'System & routes', 'View modes', 'Display', 'Trade', 'Controls', 'Formation checks'];
 
 function panelBit(panel) {
 	return panel >= 0 && panel < PANEL_COUNT ? 1 << panel : 0;
@@ -21,7 +23,7 @@ function panelBit(panel) {
 
 // Each workspace's default panel set (workspace-plan.md §5.1).
 const MODE_PANELS = [
-	panelBit(SEARCH) | panelBit(ROUTES) | panelBit(VIEWMODES) | panelBit(DISPLAY) | panelBit(CONTROLS),
+	panelBit(SEARCH) | panelBit(ROUTES) | panelBit(VIEWMODES) | panelBit(DISPLAY) | panelBit(CONTROLS) | panelBit(SCENARIO),
 	panelBit(FLIGHT) | panelBit(CONTROLS),
 	panelBit(SEARCH) | panelBit(ROUTES) | panelBit(TRADE) | panelBit(CONTROLS),
 ];
@@ -63,7 +65,7 @@ function toggleFly(current, last) {
 
 const Workspace = {
 	OBSERVE, FLY, COMMAND, NAMES,
-	SEARCH, FLIGHT, ROUTES, VIEWMODES, DISPLAY, TRADE, CONTROLS,
+	SEARCH, FLIGHT, ROUTES, VIEWMODES, DISPLAY, TRADE, CONTROLS, SCENARIO,
 	PANEL_COUNT, PANEL_MASK_ALL, PANEL_IDS, PANEL_LABELS, MODE_PANELS,
 	panelBit, modeFromName, modeName, panelsFor, sanitiseMask,
 	applyOverride, visibleMask, toggleFly,

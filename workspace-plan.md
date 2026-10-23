@@ -165,6 +165,7 @@ Controls).
 | `menu` — Display (galaxy, look, presets) | the sky itself | **on** | off | off |
 | `trade-menu` — Trade | govern the network | off | off | **on** |
 | `help` — Controls | this workspace's keys | **on** | **on** | **on** |
+| `scenario-menu` — Formation checks (ui.21) | press a formation state, read its account | **on** | off | off |
 
 ¹ auto-shown while the system view is open (§5.3) — the docked schematic in `fly`
 needs its own clock and budget controls, which today live in the same panel two
@@ -173,10 +174,16 @@ columns away from the map.
 `MODE_PANELS` therefore is:
 
 ```
-observe: SEARCH | ROUTES | VIEWMODES | DISPLAY | CONTROLS
+observe: SEARCH | ROUTES | VIEWMODES | DISPLAY | CONTROLS | SCENARIO
 fly:     FLIGHT | CONTROLS
 command: SEARCH | ROUTES | TRADE | CONTROLS
 ```
+
+The panel bits are **append-only** (`core/workspace.js`): a workspace's override
+is a mask in `localStorage`, so a new panel takes the next bit and never
+renumbers one already on a user's disk. The DOM order is the columns' business;
+`ui.21` put the eighth panel (`SCENARIO`, bit 7) at the top of the right column
+without moving the seven that came before it.
 
 ### 5.2 The split of `#sysmenu`
 

@@ -509,6 +509,14 @@ function createStarRenderer(device, context, format, options) {
         // what the stars are, not where they are, so the positions survive it and
         // only the records are rewritten (see regenerate).
         let fieldStars = null;
+        // The model the field was *drawn* in: the type at galaxy.AGE_REF, never
+        // the running epoch. The census is one draw — its component mix, its
+        // births and its epoch base are the reference's — and the running epoch
+        // places it. Drawing at the live epoch would bake that epoch's
+        // degeneracies into the whole run: at T = 0 the spheroid is 0-size and
+        // the disc collapses to the heat floor, so a draw there hands the run a
+        // halo-only census that no later epoch can undo (measured: 99.7 % halo).
+        let drawReference = null;
         // Mean luminosity (L☉) of the first CALIBRATION_STARS sampled stars at
         // galaxy.AGE_REF — the denominator of the exposure offset. A property of
         // the geometry, so it is recomputed with the field and not with the age.
@@ -817,7 +825,11 @@ function createStarRenderer(device, context, format, options) {
         function writeFieldBirths() {
                 const starTypes = window.StarTypesLib;
                 const galaxyLib = window.GalaxyLib;
-                const reference = galaxyLib.modelAtAge(model, galaxyLib.AGE_REF);
+                // One reference model per draw, shared with the sampler and the
+                // epoch base: the birth law, the census mix and the frame the map
+                // is measured against cannot disagree about what "AGE_REF" is.
+                if (!drawReference) drawReference = galaxyLib.modelAtAge(model, galaxyLib.AGE_REF);
+                const reference = drawReference;
                 const count = fieldStars ? Math.min(proceduralCount, fieldStars.count) : 0;
                 for (let i = 0; i < count; i++) {
                         birthStaging[i] = starTypes.sampleFieldBirth(reference,
@@ -838,11 +850,13 @@ function createStarRenderer(device, context, format, options) {
         function buildBirthHistogram(count, referenceModel) {
                 birthHist.fill(0);
                 birthHistValid = false;
-                if (count <= 0) { birthHistSpanRef = 0; birthHistPresenceRef = 0; return; }
+                birthHistSpanRef = 0;
+                birthHistPresenceRef = 0;
+                if (count <= 0) return;
                 const p = referenceModel.populations;
                 const spanRef = window.GalaxyLib.sfhSpanAt(window.GalaxyLib.AGE_REF, p.quenchTime);
+                if (!(spanRef > 0)) return;
                 birthHistSpanRef = spanRef;
-                if (!(spanRef > 0)) { birthHistPresenceRef = 0; return; }
                 const scale = GAS_HIST_BINS / spanRef;
                 for (let i = 0; i < count; i++) {
                         const b = birthStaging[i];
@@ -852,9 +866,13 @@ function createStarRenderer(device, context, format, options) {
                         birthHist[k]++;
                 }
                 // Precompute the reference-epoch presence so formed(T) is one
-                // ratio, not two evaluations per frame.
-                birthHistPresenceRef = evaluatePresence(window.GalaxyLib.AGE_REF);
+                // ratio, not two evaluations per frame. The histogram is valid
+                // before that evaluation — `evaluatePresence` reads the flag, and
+                // setting it afterwards left the reference sum at 0, which made
+                // every account call below return "no account" (0.7.3a).
                 birthHistValid = true;
+                birthHistPresenceRef = evaluatePresence(window.GalaxyLib.AGE_REF);
+                if (!(birthHistPresenceRef > 0)) birthHistValid = false;
         }
 
         // The smoothstep presence sum: the census fraction visible at epoch T,
@@ -876,15 +894,28 @@ function createStarRenderer(device, context, format, options) {
                 return sum;
         }
 
+        // The formed fraction at epoch T: the census fraction the gate has let
+        // through, relative to the reference epoch. Undefined until a field has
+        // been drawn (no histogram), so callers can keep the SFH prior.
+        function censusFormedAt(age) {
+                if (!birthHistValid || birthHistPresenceRef <= 0) return undefined;
+                return evaluatePresence(age) / birthHistPresenceRef;
+        }
+
         // The view gas at epoch T: the census-calibrated gas fraction, exact at
         // both endpoints (gas(0) = 1, gas(AGE_REF) = gasFraction). Replaces the
-        // SFH gasNow only for the field's arm contrast.
+        // SFH gasNow only for the field's arm contrast. The endpoints are
+        // returned by name rather than by the interpolation: `1 - (1 - f)` is
+        // not `f` in IEEE, and the reference epoch's exactness contract is that
+        // the arm contrast there is exactly 1, which needs the fraction to be
+        // the model's own number bit for bit.
         function censusGasAt(age) {
-                if (!birthHistValid || birthHistPresenceRef <= 0) return undefined;
-                const p = model.populations;
-                const presence = evaluatePresence(age);
-                const formed = presence / birthHistPresenceRef;
-                return 1 - formed * (1 - p.gasFraction);
+                const formed = censusFormedAt(age);
+                if (formed === undefined) return undefined;
+                const gasFraction = model.populations.gasFraction;
+                if (formed >= 1) return gasFraction;
+                if (formed <= 0) return 1;
+                return 1 - formed * (1 - gasFraction);
         }
 
         // Draw the field's positions and the exposure reference that goes with
@@ -897,12 +928,19 @@ function createStarRenderer(device, context, format, options) {
                         fieldInfo.birth = null;
                         blockInfo.formation.count = 0;
                         referenceLuminosity = 0;
+                        drawReference = null;
                         return;
                 }
                 const sampling = window.SamplingLib;
                 const starTypes = window.StarTypesLib;
                 const galaxyLib = window.GalaxyLib;
-                fieldStars = sampling.sampleGalaxyStars(model, seed, proceduralCount, fieldStars);
+                // The census is drawn in the reference frame, not in the epoch it
+                // happens to be drawn at: component shares, truncation and the
+                // birth law are all the present-day galaxy's, and the running
+                // epoch reaches them only through the epoch map. A deep-time draw
+                // is the case that makes this visible — see drawReference.
+                drawReference = galaxyLib.modelAtAge(model, galaxyLib.AGE_REF);
+                fieldStars = sampling.sampleGalaxyStars(drawReference, seed, proceduralCount, fieldStars);
                 // The sampler's own arrays are the field block's inputs: the planet
                 // module re-derives a picked field star from exactly these values
                 // (component/R/distToArm/z), which is what makes that path bit-exact.
@@ -920,7 +958,7 @@ function createStarRenderer(device, context, format, options) {
                 writeFieldBirths();
                 state.fieldSamples++;
                 referenceLuminosity = starTypes.meanFieldLuminosity(
-                        galaxyLib.modelAtAge(model, galaxyLib.AGE_REF), fieldStars, CALIBRATION_STARS,
+                        drawReference, fieldStars, CALIBRATION_STARS,
                         birthStaging, galaxyLib.AGE_REF);
         }
 
@@ -1116,12 +1154,16 @@ function createStarRenderer(device, context, format, options) {
                 BLOCK_LAYOUT[0].count = proceduralCount;
                 state.proceduralStars = proceduralCount;
                 // This draw *is* the epoch frame: every mapped number is measured
-                // against it, and the map is the exact identity here.
-                orbit.setEpochBase(model);
+                // against it, and the map is the exact identity here. The frame is
+                // the reference the field was sampled in, not the epoch on the
+                // clock — otherwise a draw taken at deep time would measure the
+                // map against a degenerate galaxy (a 0-size spheroid, a floored
+                // disc height) and the run could never leave it.
+                orbit.setEpochBase(drawReference || model);
                 epochCalibrationStars = Math.min(proceduralCount, EPOCH_CALIBRATION_STARS);
                 epochCalibrationRef = epochCalibrationStars > 0
                         ? window.StarTypesLib.meanFieldLuminosity(
-                                window.GalaxyLib.modelAtAge(model, window.GalaxyLib.AGE_REF), fieldStars,
+                                drawReference || window.GalaxyLib.modelAtAge(model, window.GalaxyLib.AGE_REF), fieldStars,
                                 epochCalibrationStars, birthStaging, window.GalaxyLib.AGE_REF)
                         : 0;
                 // This draw is already at the epoch it was drawn into: nothing
@@ -1690,6 +1732,7 @@ function createStarRenderer(device, context, format, options) {
                 stats: () => state,
                 shaderError: () => shaderError,
                 censusGasAt,
+                censusFormedAt,
         };
 }
 

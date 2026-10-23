@@ -438,6 +438,40 @@ check('built-in presets leave the star budget alone', () => {
 	}
 });
 
+check('a preset says what it costs: an epoch of the same field is not a draw', () => {
+	// The rule that keeps a scenario press instant (ui.21 follow-up): type or
+	// seed re-samples the field, a budget/coefficient change re-draws the same
+	// galaxy, and an epoch alone is a placement (E4 + 0.7.3a's reference frame).
+	assert.equal(Presets.applyPlan({ type: 'Sc' }), 'rebuild');
+	assert.equal(Presets.applyPlan({ seed: 7 }), 'rebuild');
+	assert.equal(Presets.applyPlan({ type: 'Sc', age: 1 }), 'rebuild');
+	assert.equal(Presets.applyPlan({ stars: 50000 }, { budget: true }), 'redraw');
+	assert.equal(Presets.applyPlan({ clusters: 2 }, { clusters: true }), 'redraw');
+	assert.equal(Presets.applyPlan({ stars: 50000 }), 'none', 'an unchanged budget costs nothing');
+	assert.equal(Presets.applyPlan({ age: 0 }), 'epoch');
+	assert.equal(Presets.applyPlan({ age: 0, evolve: 1, time: 20 }), 'epoch');
+	assert.equal(Presets.applyPlan({ age: 0, evolve: 1, stars: 300000 }, { budget: false }), 'epoch');
+	assert.equal(Presets.applyPlan({ evolve: 1, time: 20 }), 'none');
+	assert.equal(Presets.applyPlan({ mode: 'observe' }), 'none');
+	assert.equal(Presets.applyPlan(null), 'none');
+	// The panel's rows reach the instant path: every scenario that names an age
+	// and no galaxy names it with no other draw-costing field.
+	for (const row of require('../src/core/scenarios.js').SCENARIOS.concat([require('../src/core/scenarios.js').PRESENT_DAY])) {
+		const settings = Presets.parse(require('../src/core/scenarios.js').queryOf(row));
+		assert.equal(Presets.applyPlan(settings), 'epoch', row.id);
+	}
+});
+
+check('main.js applies the plan instead of guessing at the draw', () => {
+	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
+	assert.ok(main.includes('window.Presets.applyPlan(s,'), 'the plan table decides');
+	const block = main.slice(main.indexOf("const plan = window.Presets.applyPlan"), main.indexOf("if (s.evolve !== undefined)"));
+	assert.ok(block.includes('regenerateGalaxy('), 'rebuild path');
+	assert.ok(block.includes('redrawField(model)'), 'redraw path');
+	assert.ok(block.includes('setEpoch(s.age)'), 'epoch path');
+	assert.ok(block.indexOf('regenerateGalaxy(') < block.indexOf('setEpoch(s.age)'), 'rebuild first');
+});
+
 check('main.js routes paste, load and the star budget through the preset line', () => {
 	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
 	const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');

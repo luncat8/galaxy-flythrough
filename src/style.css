@@ -664,6 +664,72 @@ html, body {
 	margin-top: 8px;
 }
 
+/* Formation checks (ui.21): the top-right panel of the observe workspace. Its
+   own warm tint, because it is the only panel that writes the clock (star time,
+   Evolve, the epoch) rather than a look or a mode. */
+#scenario-menu {
+	position: fixed;
+	top: 12px;
+	right: 12px;
+	width: 260px;
+	max-height: calc(100vh - 24px);
+	overflow-y: auto;
+	font-family: 'Menlo', 'Consolas', monospace;
+	font-size: 12px;
+	color: #e8dcc0;
+	background: rgba(18, 15, 9, 0.9);
+	border: 1px solid #6b5730;
+	border-radius: 4px;
+	padding: 9px 11px;
+	z-index: 20;
+}
+#scenario-menu .menu-header {
+	color: #d6b56a;
+	border-bottom-color: #6b5730;
+}
+#scenario-menu .menu-header button { border-color: #6b5730; }
+#scenario-menu .menu-header button:hover { background: #332a18; }
+#scenario-menu .menu-val { color: #e5c98f; }
+#scenario-menu .menu-hint { color: #9c8a63; }
+#scenario-menu .menu-actions button {
+	flex: 1 1 auto;
+	background: #2a2313;
+	border: 1px solid #6b5730;
+	color: #e8dcc0;
+	font: inherit;
+	font-size: 11px;
+	padding: 3px 6px;
+	border-radius: 3px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+#scenario-menu .menu-actions button:hover { background: #3a3119; }
+#scenario-menu select {
+	background: #2a2313;
+	border: 1px solid #6b5730;
+	color: #e8dcc0;
+	font: inherit;
+	font-size: 11px;
+	padding: 2px 4px;
+	border-radius: 3px;
+	flex: 1 1 auto;
+	min-width: 0;
+	cursor: pointer;
+}
+/* What to look at, then what proves it: the second block is the check, so it
+   keeps a touch more contrast than a plain hint. */
+#scenario-what { margin: 4px 0 3px; color: #cfc0a0; }
+.scenario-watch { color: #c9b27a; }
+.scenario-live {
+	margin-top: 6px;
+	padding-top: 5px;
+	border-top: 1px dotted #4a3d22;
+	color: #f0d9a0;
+	line-height: 1.45;
+	white-space: pre-line;
+}
+#scenario-menu .menu-actions { border-top-color: #4a3d22; }
+
 /* Settings menu — top-right panel with sliders for the HDR knobs. */
 #menu {
 	position: fixed;
@@ -1100,7 +1166,7 @@ body.system-view #sysread {
 .panel-column-left { left: 12px; width: 292px; }
 .panel-column-inner { right: 284px; width: 260px; }
 .panel-column-right { right: 12px; width: 260px; }
-.panel-column > :is(#selection-menu, :is(#sysmenu, #routemenu), #viewmenu, #trade-menu, #menu, #help) {
+.panel-column > :is(#selection-menu, :is(#sysmenu, #routemenu), #viewmenu, #trade-menu, #scenario-menu, #menu, #help) {
 	position: static;
 	flex: none;
 	max-height: none;

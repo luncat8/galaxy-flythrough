@@ -40,6 +40,11 @@ No framework, bundler, module loader, or runtime network connection is required.
 - A live epoch clock: the galaxy ages with star time, and its global procedural census now forms
   from deterministic birth times; stars fade in, age by elapsed time, and the reference-model arm
   population keeps its spatial correlation. Epoch steps do not re-roll the field.
+- **Formation from gas**: the clock starts at the galaxy's first light (`Age` 0). At `T = 0` the
+  procedural census is all gas and nothing has formed; as the epoch runs, the stars born so far
+  appear through a 0.05 Gyr fade. The gas the arms are drawn with is read back from that same drawn
+  census (a 1024-bin birth histogram), not from the smooth star-formation prior, so a young frame's
+  arm contrast is the picture of the stars that are actually there.
 - Three selectable movement models:
   - **classic** — closed-form bounded kinematic orbits; currently the most balanced default
   - **simple** — responsive friction-field integration
@@ -83,7 +88,7 @@ Controls deck:
 
 - **observe** (`1`) — the sky: free camera, star time, selection, the map and
   the look. Panels: Search & selection, System & routes, View modes, Display,
-  Controls.
+  Controls, Formation checks.
 - **fly** (`2`) — a ship: the camera is the active hull, the ship clock owns
   the time axis, the trade overlay thins to ports and hulls. Panels: Flight,
   Controls.
@@ -149,10 +154,16 @@ Other controls:
 - **sim clock** / **arcade clock** (Controls panel, fly workspace) — the two ship-clock
   presets: real time (`R = 1` ship-s per wall-s) and the default rung plus the
   autopilot coast warp (see [Game mode](#game-mode-g) below)
-- the **Evolve with star time** checkbox — the galaxy's age runs with star time from 0.2 Gyr to
-  present day; the Age slider is the seek, and the epoch readout next to it shows the field's epoch.
-  The bar and arms keep their orientation across steps; each step re-draws the field, so lower
-  **Stars** (30k–500k, applied on release) for a smaller hitch per step
+- the **Evolve with star time** checkbox — the galaxy's age runs with star time from 0.0 to
+  13.5 Gyr, one 0.1 Gyr step per 100 Myr of star time; the Age slider is the seek, and the epoch
+  readout next to it shows the built epoch. The field is drawn once and *placed* at each epoch
+  (positions, look and the birth gate are re-solved, never re-sampled), so a step costs no re-draw
+  and the bar and arms keep their orientation
+- **Formation checks** (top right) — a scenario select plus **Run**, **Present day** and
+  **− / + 0.1 Gyr** steps. Each row sets star time, Evolve, the epoch and the camera for one 0.7
+  claim — first light, condensation, the full walk, gas-rich arms, bulge assembly — prints what to
+  look at and what proves it, and reports the live account: formed %, view gas, arm contrast, bulge
+  size and the field draws since the row started
 - `V` — open/close the close-system schematic of the selected star; while docked in game mode, inspect the station without camera motion
 - `B` — cycle the system view: schematic → delta-v map → delta-v rails
 - `[` / `]` — exposure
@@ -165,6 +176,32 @@ Other controls:
   paste prompt; text that is not a preset is ignored rather than printed into the box
 
 The settings panel opens at startup and exposes galaxy type, seed, age, the live epoch clock, star time, movement engine, pattern controls, tone mapping, and presets.
+
+### Formation checks
+
+The top-right **Formation checks** panel is the browser instrument for the formation
+series: pick a scenario, press **Run**, and read the live line under it. The rows keep the
+galaxy, the seed, the star budget and the look; they change only the clock and the camera.
+
+| Scenario | Clock | What it is for |
+|---|---|---|
+| First light — T = 0 | frozen at 0.0 Gyr | the procedural field is gated off: formed 0 %, gas 1.00. Catalog stars and landmarks are not gated and still draw from the Sun view |
+| Condensation — 0 → 1 Gyr | Evolve, 20 Myr/s | one 0.1 Gyr step every five seconds: stars arrive through the fade, and the field draws stay at 0 |
+| Full walk — 0 → 13.5 Gyr | Evolve, 99 Myr/s | the whole history, still one draw: the bulge assembles in size and the arms lose contrast as the gas falls |
+| Gas-rich arms — 1.0 Gyr | frozen | the young census is mostly gas, so the arms saturate; **Present day** is the same stars at the type's own fraction |
+| Bulge assembly — 2.0 Gyr | frozen | the compact bulge keeps its central brightness while the bar is shorter |
+
+**Present day** is the comparison frame at the reference epoch from the same camera — it is the
+last entry in the select as well as a button — and the two step buttons move the epoch by its own
+0.1 Gyr quantum with the clock held, the cheapest way to see the census grow without waiting. The
+live line reads the *built* epoch, the drawn census, the gas the arms used and the renderer's
+field-draw counter, so a run that re-sampled or fell back to the smooth gas prior reads wrong on
+screen; if the galaxy's type or seed changes under a running scenario the state line says
+*different galaxy*, because a comparison is only a comparison at one field. The state line appends
+the mode the run landed in, and **Copy line** hands back the whole settings line through the
+preset box, so a frame worth reporting is one press from being recorded. A row that changes only
+the epoch is a *placement*: since every draw is reference-framed (0.7.3b) the press re-solves the
+epoch and re-uploads a uniform, with no re-sample, no hitch and no lost selection.
 
 ## Game mode (g)
 
@@ -382,7 +419,7 @@ Useful parameters include:
 | `type` | Galaxy type, such as `E4`, `Sc`, `SBb`, or `Irr` |
 | `seed` | Deterministic generation seed |
 | `age` | Frozen galaxy age in Gyr |
-| `evolve` | `1` runs the epoch with star time (from `0.2` Gyr, holding at present day); `0` freezes it |
+| `evolve` | `1` runs the epoch with star time (from `0.0` Gyr — the galaxy's first light — holding at present day); `0` freezes it |
 | `stars` | Procedural star budget (also the **Stars** slider; a pasted preset re-draws with it) |
 | `catalog` | Catalog star budget; `0` selects procedural-only rendering |
 | `engine` | `classic`, `simple`, `apocenter`, or a `+`-joined combination |

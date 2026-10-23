@@ -24,10 +24,10 @@ path, and it would fight this series for the same records. See §11.
 
 | # | Item | State |
 |---|---|---|
-| F1 | **The epoch is a formation history.** Each global-field star carries a *birth time*, drawn once at the field draw; the running epoch shows the stars born so far. | shipped 0.7.1 |
+| F1 | **The epoch is a formation history.** Each global-field star carries a *birth time*, drawn once at the field draw; the running epoch shows the stars born so far. The draw itself is the *reference* census (its component shares, truncation and birth law are `AGE_REF`'s), placed at the running epoch by the map — a draw taken at deep time must not bake that epoch's degeneracy into the run (0.7.3a). | shipped 0.7.1, corrected 0.7.3a |
 | F2 | **The gate is per-star and GPU-side.** One `f32` birth per global-field star in a storage buffer, one `smoothstep` in the vertex stage, one uniform lane. No per-frame CPU pass, no record rewrite. | shipped 0.7.1 |
 | F3 | **The look follows the star's own age** (`T − birth`), not a re-draw of the age distribution at each epoch. `deriveStarWithAge` already exists and is the whole entry point. | shipped 0.7.1 |
-| F4 | **The gas account reads the drawn census, including the smooth gate.** One 1024-bin birth histogram per draw; integrate the binned `smoothstep` presence and normalize by its value at `AGE_REF`, then `gas(T) = 1 − formed(T)·(1 − gasFraction)`. Exact at both ends, with a measured histogram error bound between them. | shipped 0.7.3 |
+| F4 | **The gas account reads the drawn census, including the smooth gate.** One 1024-bin birth histogram per draw; integrate the binned `smoothstep` presence and normalize by its value at `AGE_REF`, then `gas(T) = 1 − formed(T)·(1 − gasFraction)`, with both endpoints returned by name so `gas(AGE_REF)` is the type's own fraction bit for bit. Exact at both ends, with a measured histogram error bound between them. Every epoch landing (drag, live tick, re-draw, boot) goes through one solve, so no path keeps the SFH prior while another uses the account (0.7.3a). | shipped 0.7.3, corrected 0.7.3a |
 | F5 | **The gas picture is a coarse grid** (64 r × 96 φ × 4 z = 24 576 cells), integrated by a compute pass, ping-pong buffers, **no atomics**. Races allowed where a scatter would need them; the drift is bounded and measured. | do |
 | F6 | **The smoothness contract comes first** (§6). No epoch may re-sample, re-roll or re-place anything that was already on screen. The object block's 0.02 Gyr re-roll is the one confirmed jump and is fixed by this series. | do |
 | F7 | **Deep time is a real epoch.** `AGE_MIN` 0.2 → 0, with the zero-factor traps in §7 resolved rather than clamped away. | shipped 0.7.2 |
@@ -413,7 +413,21 @@ later gas-account and grid slices will add their own focused experiments.
 
 No visual verdict is claimed. The browser rows (a pure-gas frame, a fade, a run
 through 1 Gyr with no jump, the gas picture at 1280×800) go on
-`deferred-browser-visual-plan.md` as V14.
+`deferred-browser-visual-plan.md` as V14, and they are driven from the
+**Formation checks** panel (`ui.21`, `src/core/scenarios.js`): one press per row
+sets the clock, the epoch and the camera, and the panel's live line reports the
+built epoch, the formed share, the view gas, the arm contrast, the bulge size and
+the field draws since the row started — so a run that re-sampled or fell back to
+the SFH prior reads wrong on screen instead of only in a test.
+
+Two renderer wiring defects found while building that panel are fixed in
+`0.7.3a` (`archive/0.7.x-worklog.md`): the field was sampled in the running
+epoch's frame (a `T = 0` draw carried a 99.7 % halo census for the whole run),
+and the gas account's reference sum was computed before its histogram was
+marked valid, so `censusGasAt` always returned `undefined` and the F4 view gas
+never reached `solveEpoch`. Tests now draw a second renderer at `AGE_MIN` and
+pin the reference mix, the identity map back at `AGE_REF` and the account's
+exact endpoints.
 
 ## 11. E5 stays deferred
 

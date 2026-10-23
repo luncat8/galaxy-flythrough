@@ -958,3 +958,107 @@ or `data-observer`/`data-game` survives). `world-tests` 15/15,
 `view-tests` 16/16, `changed` 15/15. The browser/WebGPU visual pass remains
 unverified in this sandbox (entry added to
 `deferred-browser-visual-plan.md`).
+
+## ui.21 — the Formation checks panel: a scenario you can press and a live account
+
+The 0.7 series changed what an epoch *is* — a census with a birth time per star,
+a gas account read from that census, a start at the first light instead of at
+0.2 Gyr — and then deferred every visual verdict to one browser row (V14). That
+row was hard to act on: the epoch follows star time only while **Evolve with
+star time** is ticked, the interesting frames sit at the ends of the Age range,
+and the difference between "the SFH says the gas is gone" and "the drawn census
+says it is gone" is a number in a tooltip. Asking a reader to guess which clock
+owns the picture, then to remember five separate things to look for, is not a
+check.
+
+**The panel.** A new `#scenario-menu` — *Formation checks* — at the top of the
+right column of the observe workspace (it is the eighth workspace panel, bit 7;
+the bit order stays append-only because a workspace override is a mask in
+`localStorage`, so the seven earlier panels keep their numbers). Four controls
+and two readouts:
+
+- a **scenario** select, a **Run** button and a **Present day** button — the
+  comparison frame every young scenario needs, at the model's own `AGE_REF`;
+- **− 0.1 Gyr** / **+ 0.1 Gyr** — the model's own quantum, applied with the
+  clock held. One press is the cheapest way to see the census grow and to see
+  that nothing is re-drawn (a step is a model re-solve plus a uniform);
+- *what you should see* and *what proves it*, reprinted from the scenario row;
+- a live line, painted at the overlay's 4 Hz: workspace, epoch and step, star
+  rate, whether Evolve is on, the formed share, the view gas, the arm contrast,
+  the bulge size, and the field draws since the scenario started.
+
+**The table.** `src/core/scenarios.js` is pure data: `{ id, label, query, view,
+wide, what, watch }`. `query` is the preset language, so a scenario is a preset
+and nothing else — `Run` goes through the page's own `applyPreset`, the settings
+line it lands is written into the preset box for the record, and a browser pass
+can paste the row back into another session. `view: 'galaxy'` puts the camera on
+the galactic-centre orbit so the whole census is in frame and two presses
+compare the epoch rather than the camera. `wide` widens the star-time range
+before the rate lands (the fine range stops at 2 Myr/s), so a 20 Myr/s scenario
+is not silently clamped to 2.
+
+The five rows, each one a 0.7 claim that a picture can settle:
+
+| id | state | what it settles |
+|---|---|---|
+| `firstlight` | `age=0`, frozen | F7: at T = 0 the field is gated off — formed 0 %, gas 1.00. Catalog stars and landmarks are not gated (0.7.1's scope) and still draw. |
+| `condense` | `age=0`, Evolve, 20 Myr/s | F1/F2/F3: one 0.1 Gyr step every 5 s, stars brightening through the 0.05 Gyr fade, `draws` staying at 0. |
+| `walk` | `age=0`, Evolve, 99 Myr/s | F6/E4: the whole history, no re-sample — `draws` must stay at 0 to 13.5 Gyr. |
+| `youngarms` | `age=1`, frozen | F4: the young census is mostly gas, so the arms saturate; Present day returns the same stars at the type's own fraction. |
+| `bulge` | `age=2`, frozen | E3 as it reads at a young epoch: the bulge is compact while its centre keeps the reference density; the bar is shorter and the ridge leaves its tip. |
+
+**Why it is also a verification instrument.** The live line is the *built*
+epoch (`model.populations.age`), the drawn census (`censusFormedAt`), the gas
+the arms actually used (`viewGasNow`) and the renderer's own `fieldSamples`
+counter — so a run that silently fell back to the SFH prior, or re-drew the
+field on a clock tick, would read wrong on screen instead of looking plausible.
+The panel is what caught the two wiring defects fixed in `0.7.3a`
+(`archive/0.7.x-worklog.md`): a deep-time draw that baked a halo-only census
+into the run, and a gas account that returned `undefined` because its reference
+sum was computed before the histogram was marked valid.
+
+**Follow-up, same day — the readout is now the module's.** Reading the panel
+back for a browser pass showed three things worth fixing before it was used:
+
+- the live line was formatted inline in `main.js`, so the one piece of text a
+  reader actually reads was the one piece no test could reach. It is now
+  `ScenarioLib.liveLine(state)`, pure, and `main.js` only collects the state.
+  The formatter owns the "not built yet" contract: a number the page has not
+  built prints as an em dash, never `undefined` or `NaN` — the same fallback
+  that let the `0.7.3` gas account stay inert. The step is derived from the
+  model's own `AGE_MIN`/`AGE_MAX`/`AGE_STEP` when the caller does not pass it,
+  so the epoch always prints in quanta.
+- **pressing Present day blanked the picker.** The comparison frame had a
+  button but no `<option>`, so `select.value = 'today'` fell back to `''` and
+  the panel read as "no state" immediately after a state was applied — the
+  exact doubt the panel exists to remove. The picker now lists
+  `SCENARIOS ++ [PRESENT_DAY]`; the table itself is unchanged, so
+  `PRESENT_DAY` is still the comparison rather than one of the checks.
+- **a run could be compared against a different galaxy.** Type and seed are not
+  part of a scenario's line (deliberately — a check is about the clock), so
+  switching type after a run silently changed what the next press compared.
+  Each run now snapshots `type/seed` and the state line appends
+  *— different galaxy* when they no longer match.
+- **Copy line.** The run already writes its whole settings line into the preset
+  box; the panel now has the button, so recording a frame for the worklog does
+  not mean finding another panel.
+- on a fresh page the notes belong to the pre-selected row instead of an empty
+  box, and the hint states the mode the Run button puts you in (Observe,
+  orbiting the galactic centre, at the row's epoch and rate) — the two things
+  a reader had to guess.
+
+**Validation.** `scenario` 70/70 (the table is a valid preset fragment, the
+epochs are inside the model's range, every row that asks for a rate above the
+fine range widens it, the comparison frame sits at `AGE_REF`, no two rows land
+the same clock, the readout prints the mode/quanta/rate/account it is handed,
+never `undefined`, and every option the picker lists resolves back to its row);
+`workspace` 54 checks (eight panels, the appended bit, the observe set);
+`panel` 16 (the right-column order and the column rule); `m1-smoke` 120 (the
+markup, the load order after `presets.js`, and the row running through
+`applyPreset`); `view-tests` 16/16, `world-tests` 16/16, `all-tests` 41/41 in
+208.7 s, `changed` 14/14. No browser verdict is claimed — the panel is the
+instrument for V14, not its result.
+
+Next: the V14 rows as they are now pressable (`deferred-browser-visual-plan.md`),
+and the 0.7.4 gas grid so the panel's gas line has a spatial picture to grow
+into.

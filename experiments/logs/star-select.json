@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-23T07:05:09.005Z",
+  "date": "2026-10-23T07:52:54.555Z",
   "model": {
     "type": "SBb",
     "seed": 12345
@@ -312,26 +312,26 @@
       "name": "a pick slice stays inside the loop's 8 ms budget (+clock overhead) for every mask",
       "pass": true,
       "detail": {
-        "worstSlice": 4.017957999999908,
+        "worstSlice": 3.9792499999998654,
         "worstMask": 5,
         "measured": {
           "1": {
-            "total": 57.04,
-            "slice": 0.93,
+            "total": 58.05,
+            "slice": 0.92,
             "slices": 10,
-            "perRecordNs": 190
+            "perRecordNs": 193
           },
           "2": {
-            "total": 12.93,
+            "total": 13.87,
             "slice": 0.22,
             "slices": 10,
-            "perRecordNs": 43
+            "perRecordNs": 46
           },
           "5": {
-            "total": 252.92,
-            "slice": 4.02,
+            "total": 241.14,
+            "slice": 3.98,
             "slices": 10,
-            "perRecordNs": 843
+            "perRecordNs": 804
           }
         }
       }
@@ -351,25 +351,25 @@
       "name": "the cheap mask finishes a whole 300k pick in a handful of frames",
       "pass": true,
       "detail": {
-        "simpleTotal": 12.926704999999856,
+        "simpleTotal": 13.874476999999843,
         "measured": {
           "1": {
-            "total": 57.04,
-            "slice": 0.93,
+            "total": 58.05,
+            "slice": 0.92,
             "slices": 10,
-            "perRecordNs": 190
+            "perRecordNs": 193
           },
           "2": {
-            "total": 12.93,
+            "total": 13.87,
             "slice": 0.22,
             "slices": 10,
-            "perRecordNs": 43
+            "perRecordNs": 46
           },
           "5": {
-            "total": 252.92,
-            "slice": 4.02,
+            "total": 241.14,
+            "slice": 3.98,
             "slices": 10,
-            "perRecordNs": 843
+            "perRecordNs": 804
           }
         }
       }
@@ -379,22 +379,22 @@
       "pass": true,
       "detail": {
         "1": {
-          "total": 57.04,
-          "slice": 0.93,
+          "total": 58.05,
+          "slice": 0.92,
           "slices": 10,
-          "perRecordNs": 190
+          "perRecordNs": 193
         },
         "2": {
-          "total": 12.93,
+          "total": 13.87,
           "slice": 0.22,
           "slices": 10,
-          "perRecordNs": 43
+          "perRecordNs": 46
         },
         "5": {
-          "total": 252.92,
-          "slice": 4.02,
+          "total": 241.14,
+          "slice": 3.98,
           "slices": 10,
-          "perRecordNs": 843
+          "perRecordNs": 804
         }
       }
     },
@@ -402,16 +402,16 @@
       "name": "a radius-scan slice stays inside the loop's 8 ms budget for every mask",
       "pass": true,
       "detail": {
-        "worstAroundSlice": 4.312904000000344,
+        "worstAroundSlice": 4.221784999999727,
         "aroundMeasured": {
           "1": {
-            "slice": 1.22,
+            "slice": 1.21,
             "slices": 10,
             "kept": 256,
             "truncated": 75925
           },
           "5": {
-            "slice": 4.31,
+            "slice": 4.22,
             "slices": 10,
             "kept": 256,
             "truncated": 79656

@@ -431,6 +431,17 @@ const sourceFiles = walk(SRC, '')
 	check('workspace.js is loaded exactly once, before presets.js',
 		scripts.filter((f) => f === 'core/workspace.js').length === 1
 		&& scripts.indexOf('core/workspace.js') < scripts.indexOf('core/presets.js'));
+	// ui.21: the formation checks. The table is data (scenarios.js), the panel is
+	// markup in the observe workspace, and the page applies a row through the
+	// preset path rather than through a second settings writer.
+	check('the formation-checks panel is markup, its table loads after the preset language, and it runs through applyPreset',
+		/id="scenario-menu"/.test(html) && /id="scenario-pick"/.test(html)
+		&& /id="scenario-run"/.test(html) && /id="scenario-today"/.test(html)
+		&& /id="scenario-step-fwd"/.test(html) && /id="scenario-live"/.test(html)
+		&& scripts.filter((f) => f === 'core/scenarios.js').length === 1
+		&& scripts.indexOf('core/scenarios.js') > scripts.indexOf('core/presets.js')
+		&& /ScenarioLib\.queryOf\(row\)/.test(main)
+		&& /window\.Presets\.serialize\(collectSettings\(\)\)/.test(main));
 	check('the mode bar carries the three chips, the clock and the panels menu',
 		/id="mode-bar"/.test(html)
 		&& /data-action="modeObserve"/.test(html)
@@ -509,13 +520,19 @@ const sourceFiles = walk(SRC, '')
 	// theta shift across a draw any more — a run of the clock adds a rate over an
 	// interval instead of multiplying the current rate by the whole elapsed
 	// clock, which is what the "return back in time every Evolve step" was.
+	// 0.7.3a funnels every epoch landing through solveEpochAt (model re-solve +
+	// the census view gas + a uniform), so the check follows that delegation.
 	// Checked as text here because there is no browser to run it in.
 	const epochFn = main.match(/function setEpoch\(age\) \{[\s\S]*?\n        \}/);
+	const solveFn = main.match(/function solveEpochAt\(age\) \{[\s\S]*?\n        \}/);
 	const drawFn = main.match(/function redrawField\(next\) \{[\s\S]*?\n        \}/);
-	check('an age change places the field through setEpoch: no re-draw, no rebase, no carry',
-		!!epochFn && /galaxy\.modelAtAge\(model, /.test(epochFn[0])
-		&& /renderer\.setEpoch\(model\);/.test(epochFn[0])
-		&& !/regenerateAge|redrawField/.test(epochFn[0])
+	check('an age change places the field through setEpoch → solveEpochAt: no re-draw, no rebase, no carry',
+		!!epochFn && /solveEpochAt\(next\);/.test(epochFn[0])
+		&& !/regenerateAge|redrawField|renderer\.regenerate/.test(epochFn[0])
+		&& !!solveFn && /galaxy\.modelAtAge\(model, /.test(solveFn[0])
+		&& /renderer\.setEpoch\(model\);/.test(solveFn[0])
+		&& /renderer\.censusGasAt\(next\)/.test(solveFn[0])
+		&& !/redrawField|renderer\.regenerate/.test(solveFn[0])
 		&& !!drawFn && /renderer\.regenerate\(model\);/.test(drawFn[0])
 		&& /simpleLandmarksRebind\(model\)\) initSimpleLandmarks\(\);/.test(drawFn[0])
 		&& /resolveSet\(\);/.test(drawFn[0]),

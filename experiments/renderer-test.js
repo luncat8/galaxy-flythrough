@@ -1291,6 +1291,81 @@ function cellManagerFrom(m, budget) {
                 && engRenderer.setHighlightDesat(99) === 1 && engRenderer.setHighlightDesat(-99) === 0);
 }
 
+// --- Deep time: the census is drawn in the reference frame (0.7.3a) -------
+// 0.7.2 sent the Evolve preset to T = 0. A field drawn *there* used to be
+// sampled from that epoch's own geometry: a 0-size spheroid and a disc at the
+// heat floor deliver almost no disc mass, so the draw handed the whole run a
+// halo-only census that no later epoch could undo (99.7 % halo, measured). The
+// fix draws the census in the reference frame and measures the epoch map from
+// that same frame, so a deep-time draw is the present-day census gated by
+// birth — and placing it back at AGE_REF is the identity map.
+{
+        const orbitLib = window.OrbitLib;
+        const deepGpu = createMockGpu();
+        const deepModel = galaxy.createGalaxy({ seed: 7, age: galaxy.AGE_MIN });
+        const deep = rendererModule.createStarRenderer(deepGpu.device, deepGpu.context, deepGpu.format, {
+                proceduralStars: PROCEDURAL,
+                catalogBudgetStars: 0,
+                objectMembers: OBJECT_MEMBERS,
+                objectCount: OBJECT_COUNT,
+                model: deepModel,
+        });
+        deep.prepare(null);
+        const reference = galaxy.modelAtAge(deepModel, galaxy.AGE_REF);
+        const field = deep.fieldBuffers();
+        const shares = (components) => {
+                const count = [0, 0, 0, 0];
+                for (let i = 0; i < field.count; i++) count[components[i]]++;
+                return count.map((n) => n / field.count);
+        };
+        const referenceField = window.SamplingLib.sampleGalaxyStars(reference, 7, PROCEDURAL);
+        const drawnShares = shares(field.component);
+        const wantedShares = shares(referenceField.component);
+        const worstShare = Math.max(...drawnShares.map((v, i) => Math.abs(v - wantedShares[i])));
+        check('a deep-time draw is the reference census: every component share matches',
+                field.count === PROCEDURAL && worstShare < 1e-3,
+                { drawn: drawnShares.map((v) => +v.toFixed(3)), reference: wantedShares.map((v) => +v.toFixed(3)) });
+        const base = orbitLib.getEpochBase();
+        check('the epoch map is measured from the reference draw, not from the degenerate epoch',
+                Math.abs(base.spheroidA - reference.spheroid.a) < 1e-9
+                && base.spheroidA > 0 && base.heat === 1,
+                { baseA: base.spheroidA, referenceA: reference.spheroid.a, baseHeat: base.heat });
+        const identity = new Float32Array(4);
+        deep.epochParams(reference, identity);
+        check('placing the deep-time draw back at AGE_REF is the identity map',
+                Math.abs(identity[0]) < 1e-9 && identity[1] === 1 && identity[2] === 1,
+                { armRotation: identity[0], spheroidScale: identity[1], heatScale: identity[2] });
+        const formedNow = deep.censusFormedAt(deepModel.populations.age);
+        const gasNowCensus = deep.censusGasAt(deepModel.populations.age);
+        check('at T = 0 nothing has formed and all of the census is gas',
+                formedNow === 0 && gasNowCensus === 1,
+                { formed: formedNow, gas: gasNowCensus });
+        check('at AGE_REF the same histogram is fully formed and lands on the type gas fraction exactly',
+                deep.censusFormedAt(galaxy.AGE_REF) === 1
+                && deep.censusGasAt(galaxy.AGE_REF) === deepModel.populations.gasFraction,
+                { formed: deep.censusFormedAt(galaxy.AGE_REF), gas: deep.censusGasAt(galaxy.AGE_REF) });
+        // The endpoint exactness the E3 size law and the AGE_REF bit-for-bit
+        // contract rely on: main.js writes the account onto the model and
+        // re-solves, so the sequence is replayed here. The reference epoch must
+        // come back with an arm contrast of exactly 1, not 0.9999999999999999.
+        const withCensus = galaxy.modelAtAge(reference, galaxy.AGE_REF);
+        withCensus.populations.viewGasNow = deep.censusGasAt(galaxy.AGE_REF);
+        const solved = galaxy.modelAtAge(withCensus, galaxy.AGE_REF);
+        check('the reference epoch comes back through the census account with an arm contrast of exactly 1',
+                solved.epoch.armContrast === 1 && solved.epoch.gasRatio === 1,
+                { armContrast: solved.epoch.armContrast, gasRatio: solved.epoch.gasRatio });
+        // The census is what the gas account reads: in between, the formed
+        // fraction rises and the view gas falls, both strictly.
+        let monotone = true;
+        let previous = -1;
+        for (let age = 0; age <= galaxy.AGE_REF + 1e-9; age += 0.25) {
+                const formed = deep.censusFormedAt(age);
+                if (!(formed >= previous)) monotone = false;
+                previous = formed;
+        }
+        check('the drawn census grows monotonically through the run', monotone);
+}
+
 // --- Report -------------------------------------------------------------
 let passed = 0;
 let failed = 0;

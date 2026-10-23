@@ -1,10 +1,10 @@
 {
-  "date": "2026-10-23T07:04:09.832Z",
+  "date": "2026-10-23T07:51:58.173Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 190,
-  "totalChecks": 138,
-  "passed": 138,
+  "prepareMs": 171,
+  "totalChecks": 145,
+  "passed": 145,
   "failed": 0,
   "checks": [
     {
@@ -1138,6 +1138,70 @@
     },
     {
       "name": "headroom clamps to [1, 8] and desat to [0, 1]",
+      "pass": true
+    },
+    {
+      "name": "a deep-time draw is the reference census: every component share matches",
+      "pass": true,
+      "detail": {
+        "drawn": [
+          0.62,
+          0.2,
+          0.179,
+          0
+        ],
+        "reference": [
+          0.62,
+          0.2,
+          0.179,
+          0
+        ]
+      }
+    },
+    {
+      "name": "the epoch map is measured from the reference draw, not from the degenerate epoch",
+      "pass": true,
+      "detail": {
+        "baseA": 2.3,
+        "referenceA": 2.3,
+        "baseHeat": 1
+      }
+    },
+    {
+      "name": "placing the deep-time draw back at AGE_REF is the identity map",
+      "pass": true,
+      "detail": {
+        "armRotation": 0,
+        "spheroidScale": 1,
+        "heatScale": 1
+      }
+    },
+    {
+      "name": "at T = 0 nothing has formed and all of the census is gas",
+      "pass": true,
+      "detail": {
+        "formed": 0,
+        "gas": 1
+      }
+    },
+    {
+      "name": "at AGE_REF the same histogram is fully formed and lands on the type gas fraction exactly",
+      "pass": true,
+      "detail": {
+        "formed": 1,
+        "gas": 0.15
+      }
+    },
+    {
+      "name": "the reference epoch comes back through the census account with an arm contrast of exactly 1",
+      "pass": true,
+      "detail": {
+        "armContrast": 1,
+        "gasRatio": 1
+      }
+    },
+    {
+      "name": "the drawn census grows monotonically through the run",
       "pass": true
     }
   ]

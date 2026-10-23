@@ -20,10 +20,16 @@ ok(W.modeFromName('junk') === -1 && W.modeFromName('') === -1 && W.modeFromName(
 ok(W.modeName(-1) === '' && W.modeName(3) === '', 'out-of-range mode names are empty');
 
 // --- The panel table (§5.1) ----------------------------------------------
-ok(W.PANEL_COUNT === 7 && W.PANEL_IDS.length === 7 && W.PANEL_LABELS.length === 7, 'seven panels');
+ok(W.PANEL_COUNT === 8 && W.PANEL_IDS.length === 8 && W.PANEL_LABELS.length === 8, 'eight panels');
+// The bit order is append-only (persisted overrides are masks), so the newest
+// panel is the last bit and the six that shipped before it keep their numbers.
+ok(W.SCENARIO === 7 && W.PANEL_IDS[7] === 'scenario-menu' && W.PANEL_LABELS[7] === 'Formation checks',
+	'an appended panel takes the next bit');
+ok(W.PANEL_IDS.slice(0, 7).join(',') === 'selection-menu,sysmenu,routemenu,viewmenu,menu,trade-menu,help',
+	'the earlier panels keep their bit order');
 const bit = W.panelBit;
 assert.strictEqual(W.panelsFor(W.OBSERVE),
-	bit(W.SEARCH) | bit(W.ROUTES) | bit(W.VIEWMODES) | bit(W.DISPLAY) | bit(W.CONTROLS));
+	bit(W.SEARCH) | bit(W.ROUTES) | bit(W.VIEWMODES) | bit(W.DISPLAY) | bit(W.CONTROLS) | bit(W.SCENARIO));
 assert.strictEqual(W.panelsFor(W.FLY), bit(W.FLIGHT) | bit(W.CONTROLS));
 assert.strictEqual(W.panelsFor(W.COMMAND),
 	bit(W.SEARCH) | bit(W.ROUTES) | bit(W.TRADE) | bit(W.CONTROLS));

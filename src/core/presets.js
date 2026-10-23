@@ -435,11 +435,34 @@ function builtinQuery(id) {
 	return settings ? serialize(settings) : '';
 }
 
+// What a preset costs before it is applied. Since 0.7.3a every field draw is
+// taken in the reference frame, so an epoch of the same field is exactly a
+// placement (E4) — re-drawing for `age=` would produce the same census at the
+// price of a full re-upload, a pattern-phase reset and a lost selection. The
+// table is here, not in main.js, so the rule a press follows is testable
+// without a browser:
+//
+//   'rebuild' — another galaxy (type or seed named): sample the field again
+//   'redraw'  — same galaxy, another star budget or cluster coefficient
+//   'epoch'   — same field, another epoch: a re-solve and a uniform, no draw
+//   'none'    — nothing here costs a draw (a look, a rate, a workspace)
+//
+// `changed` is the caller's own comparison against the live renderer: the table
+// cannot know whether a budget or coefficient it is handed is a new one.
+function applyPlan(settings, changed) {
+	const s = settings || {};
+	const c = changed || {};
+	if (s.type !== undefined || s.seed !== undefined) return 'rebuild';
+	if (c.budget || c.clusters) return 'redraw';
+	if (s.age !== undefined) return 'epoch';
+	return 'none';
+}
+
 const Presets = {
 	FIELDS, PROJECT_URL, ENGINE_ORDER, ENGINE_DESCRIPTIONS, TIME_DEFAULT,
 	BUILTIN, builtinById, builtinSettings, builtinQuery,
 	menuDefaults, parseEngineList, serializeEngine, engineListOf, fieldActive, activeFields,
-	serialize, parse, presetQueryOf, describe, buildLlmPrompt,
+	serialize, parse, presetQueryOf, describe, buildLlmPrompt, applyPlan,
 };
 if (typeof module !== 'undefined') module.exports = Presets;
 if (typeof window !== 'undefined') window.Presets = Presets;

@@ -344,6 +344,12 @@ async function boot() {
                 showError('Renderer setup failed: ' + err.message);
                 return;
         }
+        // The boot draw built the birth histogram, so a URL that starts at a
+        // young epoch (?age=, an Evolve preset) lands on the census account from
+        // its first frame instead of on the SFH prior (0.7.3a).
+        if (renderer.censusGasAt(model.populations.age) !== undefined) {
+                model = solveEpochAt(model.populations.age);
+        }
         // The picker and the set rings read the buffers, which only exist now
         // (plan §3.1) — a setter is cheaper than reordering boot around them.
         selection.setRenderer(renderer);
@@ -387,6 +393,10 @@ async function boot() {
         const selectionMenuCollapse = document.getElementById('selection-menu-collapse');
         const tradeMenu = document.getElementById('trade-menu');
         const tradeMenuCollapse = document.getElementById('trade-menu-collapse');
+        // The formation-checks panel is wired further down (ui.21); the HUD's
+        // 4 Hz pass reaches it through this flag so a click during boot's awaits
+        // cannot touch its state before it exists.
+        let scenariosWired = false;
         const currentSelectionLabel = document.getElementById('selection-current-label');
         const previousSelectionLabel = document.getElementById('selection-previous-label');
         const swapSelectionButton = document.getElementById('selection-swap');
@@ -1461,12 +1471,16 @@ async function boot() {
                 syncTradeUi();
         });
         // The star-time slider's fine range (−1…2 Myr/s in 0.1 steps) makes
-        // small rates settable; the button widens to −1…99 Myr/s in 0.5 steps.
-        starTimeRangeBtn.addEventListener('click', () => {
-                starTimeWide = !starTimeWide;
-                if (starTimeRate > Number(sliderStarTime.max)) starTimeRate = Number(sliderStarTime.max);
+        // small rates settable; the wide range is −1…99 Myr/s in 0.5 steps. The
+        // button toggles it; a scenario that needs a mid rate widens it first
+        // (the scenario table says which), so a press never lands on a clamp.
+        function setStarTimeRange(wide) {
+                starTimeWide = !!wide;
+                const max = starTimeWide ? 99 : 2;
+                if (starTimeRate > max) starTimeRate = max;
                 syncStarTime();
-        });
+        }
+        starTimeRangeBtn.addEventListener('click', () => setStarTimeRange(!starTimeWide));
         flightAutoDest.addEventListener('change', () => {
                 if (flightAutoDest.checked) {
                         if (!isFlying()) {
@@ -1797,7 +1811,7 @@ async function boot() {
         // the right one, so anything visible there needs both widths cleared.
         function rightPanelInset() {
                 if (!viewMenu.hidden || !tradeMenu.hidden) return 556;
-                return menu.hidden && helpPanel.hidden ? 0 : 284;
+                return menu.hidden && helpPanel.hidden && panelEls[Workspace.SCENARIO].hidden ? 0 : 284;
         }
         function syncOverlayInset() {
                 const inset = leftPanelInset();
@@ -2473,13 +2487,22 @@ async function boot() {
                         params.clusters = renderer.state.clusterExaggeration;
                         syncClusters();
                 }
-                if (s.type !== undefined || s.seed !== undefined || s.age !== undefined) {
+                // What this preset costs, decided by the table the tests read
+                // (Presets.applyPlan). An epoch of the same field is a placement,
+                // not a draw: every draw is reference-framed (0.7.3a), so a
+                // re-sample for `age=` would rebuild the identical census and
+                // charge a re-upload, a phase reset and a lost selection for it.
+                const plan = window.Presets.applyPlan(s, { budget: budgetChanged, clusters: clusterChanged });
+                if (plan === 'rebuild') {
                         regenerateGalaxy(
                                 s.type !== undefined ? s.type : model.type,
                                 s.seed !== undefined ? s.seed : model.seed,
                                 s.age !== undefined ? s.age : model.populations.age);
-                } else if (budgetChanged || clusterChanged) {
+                } else if (plan === 'redraw') {
                         redrawField(model);
+                        if (s.age !== undefined) setEpoch(s.age);
+                } else if (plan === 'epoch') {
+                        setEpoch(s.age);
                 }
                 // The epoch's live clock (E2), landed after the age above so a preset
                 // that carries both reaches its own epoch first and the replay rule
@@ -2750,6 +2773,152 @@ async function boot() {
                 });
         });
 
+        // --- Formation checks (ui.21, the 0.7 browser verdict V14) -----------
+        // A scenario is a state, a view and the one thing to look at in it. The
+        // 0.7 work moved what an epoch *is* — a census with a birth per star, a
+        // gas account read from that census, a start at the first light — and
+        // none of it is visible in a menu of sliders: the epoch follows star
+        // time only while Evolve is on, and the interesting frames sit at the
+        // ends of the range. A scenario writes star time, Evolve and the epoch
+        // through the preset path (so it is exactly a preset), points the camera
+        // at the whole galaxy, and leaves Type, Seed, Stars and the look alone.
+        // The live line is the built epoch and the drawn census, painted at the
+        // overlay's 4 Hz — the numbers a browser pass records.
+        const scenarioMenu = document.getElementById('scenario-menu');
+        const scenarioCollapse = document.getElementById('scenario-menu-collapse');
+        const scenarioPick = document.getElementById('scenario-pick');
+        const scenarioRun = document.getElementById('scenario-run');
+        const scenarioToday = document.getElementById('scenario-today');
+        const scenarioBack = document.getElementById('scenario-step-back');
+        const scenarioForward = document.getElementById('scenario-step-fwd');
+        const scenarioState = document.getElementById('scenario-state');
+        const scenarioWhat = document.getElementById('scenario-what');
+        const scenarioWatch = document.getElementById('scenario-watch');
+        const scenarioLive = document.getElementById('scenario-live');
+        const scenarioCopy = document.getElementById('scenario-copy');
+        let scenarioRow = null;
+        let scenarioDraws = -1;         // renderer.state.fieldSamples when it ran
+        let scenarioGalaxy = '';        // type/seed the run was taken in
+        let scenarioLine = '';          // the settings line the run applied
+        wireCollapse(scenarioMenu, scenarioCollapse);
+        // The rows are the checks; Present day is the comparison every one of
+        // them is read against, so it is selectable too (otherwise pressing its
+        // button left the picker blank, which is exactly the "which state am I
+        // in" doubt this panel exists to remove).
+        for (const row of window.ScenarioLib.SCENARIOS.concat([window.ScenarioLib.PRESENT_DAY])) {
+                const option = document.createElement('option');
+                option.value = row.id;
+                option.textContent = row.label;
+                option.title = row.what;
+                scenarioPick.appendChild(option);
+        }
+        // The whole-galaxy vantage every scenario shares: orbit the centre from
+        // wherever the camera is. The comparison frames have to be taken from
+        // one camera or they compare the camera, not the epoch.
+        function applyScenarioView(view) {
+                if (view === 'galaxy') camera.setMode(window.Camera.MODE_ORBIT_GC);
+        }
+        function runScenario(row) {
+                if (!row) return;
+                // The row is recorded before the preset lands, so the HUD pass
+                // that runs inside applyPreset paints the scenario it is
+                // entering rather than the one it is leaving.
+                scenarioRow = row;
+                scenarioPick.value = row.id;
+                scenarioState.textContent = row.label;
+                scenarioWhat.textContent = row.what;
+                scenarioWatch.textContent = row.watch;
+                // A mid rate needs the wide star-time range, or the preset's own
+                // clamp would land it on 2 Myr/s.
+                if (row.wide && !starTimeWide) setStarTimeRange(true);
+                applyPreset(window.ScenarioLib.queryOf(row));
+                applyScenarioView(row.view);
+                // A replay is only comparable at one galaxy: type and seed are
+                // not part of a scenario's line, so a later change has to be
+                // visible rather than silently comparing two fields.
+                scenarioGalaxy = model.type + '/' + model.seed;
+                // Counted after the scenario's own draw: what the run must not
+                // do is draw *again* while the epoch moves.
+                scenarioDraws = renderer.state.fieldSamples;
+                // The settings line is what a browser pass pastes back, so it
+                // is the whole state, not only the scenario's override.
+                scenarioLine = window.Presets.serialize(collectSettings());
+                presetText.value = scenarioLine;
+                presetSay('scenario applied — Copy in this panel hands back the same line');
+                syncScenario();
+        }
+        // One step of the model's own quantum, frozen: the strongest way to see
+        // the census grow without waiting for the clock. An epoch change is a
+        // re-solve and a uniform, so a step costs no draw.
+        function stepScenarioEpoch(direction) {
+                setEvolve(false);
+                const steps = Math.round(model.populations.age / galaxy.AGE_STEP) + direction;
+                const next = Math.min(galaxy.AGE_MAX,
+                        Math.max(galaxy.AGE_MIN, Number((steps * galaxy.AGE_STEP).toFixed(3))));
+                setEpoch(next);
+                syncGalaxyControls();
+                syncScenario();
+        }
+        function syncScenario() {
+                if (!scenarioRow) {
+                        scenarioState.textContent = 'no scenario run';
+                        scenarioLive.textContent = '';
+                        return;
+                }
+                const age = model.populations.age;
+                const draws = scenarioDraws >= 0 ? renderer.state.fieldSamples - scenarioDraws : 0;
+                const galaxyNow = model.type + '/' + model.seed;
+                scenarioState.textContent = scenarioRow.label
+                        + (scenarioGalaxy && galaxyNow !== scenarioGalaxy ? ' \u2014 different galaxy' : '');
+                scenarioLive.textContent = window.ScenarioLib.liveLine({
+                        mode: Workspace.modeName(workspace),
+                        age,
+                        ageMin: galaxy.AGE_MIN,
+                        ageMax: galaxy.AGE_MAX,
+                        ageStep: galaxy.AGE_STEP,
+                        rate: window.OrbitLib.formatTimeRate(starTimeRate, 0),
+                        evolve: evolveOn,
+                        formed: renderer.censusFormedAt(age),
+                        gas: model.populations.viewGasNow,
+                        arms: model.epoch.armContrast,
+                        bulge: model.epoch.spheroidSize,
+                        draws,
+                });
+        }
+        scenarioRun.addEventListener('click', () => {
+                runScenario(window.ScenarioLib.byId(scenarioPick.value));
+        });
+        scenarioPick.addEventListener('change', () => {
+                // Picking is not running: the note previews what that state shows
+                // while the scene stays where it is.
+                const row = window.ScenarioLib.byId(scenarioPick.value);
+                if (!row) return;
+                scenarioWhat.textContent = row.what;
+                scenarioWatch.textContent = row.watch;
+        });
+        scenarioCopy.addEventListener('click', () => {
+                if (!scenarioLine) {
+                        presetSay('run a scenario first — Copy hands back the line it applied');
+                        return;
+                }
+                copyText(scenarioLine);
+                presetSay('scenario line copied');
+        });
+        scenarioToday.addEventListener('click', () => runScenario(window.ScenarioLib.PRESENT_DAY));
+        scenarioBack.addEventListener('click', () => stepScenarioEpoch(-1));
+        scenarioForward.addEventListener('click', () => stepScenarioEpoch(1));
+        // A fresh page has a scenario selected before it has been run: show the
+        // notes that belong to that selection, so the panel is never a blank
+        // box asking the reader to guess what the drop-down means.
+        {
+                const first = window.ScenarioLib.byId(scenarioPick.value);
+                if (first) {
+                        scenarioWhat.textContent = first.what;
+                        scenarioWatch.textContent = first.watch;
+                }
+        }
+        scenariosWired = true;
+
         const galaxyType = document.getElementById('galaxy-type');
         const galaxySeed = document.getElementById('galaxy-seed');
         const galaxyAge = document.getElementById('galaxy-age');
@@ -2836,6 +3005,13 @@ async function boot() {
                 // the "network rebuilt itself" flash.
                 const modelKey = (model.type || '') + ':' + (model.seed | 0);
                 if (!tradeNet || tradeModelKey !== modelKey) tradeSeedNetwork();
+                // The new draw built a birth histogram, so the epoch's arm
+                // contrast can read the census account instead of the SFH prior
+                // from the first frame (0.7.3a). A draw at a young age used to
+                // keep the prior until the next epoch change.
+                if (renderer.censusGasAt(model.populations.age) !== undefined) {
+                        model = solveEpochAt(model.populations.age);
+                }
                 syncGalaxyControls();
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
@@ -2847,17 +3023,25 @@ async function boot() {
         // The look follows in the renderer's background sweep, a slice a frame,
         // so the clock can run continuously with no step to pay for. An open
         // schematic follows on the same clock.
+        // One epoch solve, with the census account attached (F4, 0.7.3a). The
+        // view gas comes from the histogram the last draw built; before the
+        // first draw there is none and the SFH gas stands. Every path that
+        // lands an epoch — a drag, a live-clock step, a re-draw, the boot —
+        // funnels through here, so no path can keep the prior while another
+        // uses the account.
+        function solveEpochAt(age) {
+                const next = Math.min(galaxy.AGE_MAX, Math.max(galaxy.AGE_MIN, Number(age)));
+                const viewGas = renderer.censusGasAt(next);
+                if (viewGas !== undefined) model.populations.viewGasNow = viewGas;
+                model = galaxy.modelAtAge(model, next);
+                renderer.setEpoch(model);
+                return model;
+        }
+
         function setEpoch(age) {
                 const next = Number(age);
                 if (!Number.isFinite(next) || next === model.populations.age) return;
-                // F4: the view gas, calibrated to the drawn census, feeds the
-                // field's arm contrast. The renderer evaluates it from the
-                // birth histogram; if no histogram exists yet (before the first
-                // field draw), the SFH gas is used unchanged.
-                const viewGas = renderer.censusGasAt(next);
-                if (viewGas !== undefined) model.populations.viewGasNow = viewGas;
-                model = galaxy.modelAtAge(model, Math.min(galaxy.AGE_MAX, Math.max(galaxy.AGE_MIN, next)));
-                renderer.setEpoch(model);
+                solveEpochAt(next);
                 if (systemLayer.isOpen()) openSystemView(false);
                 syncGalaxyControls();
         }
@@ -2876,11 +3060,8 @@ async function boot() {
                 // F4: the field draw built the birth histogram; re-solve the
                 // epoch with the census-calibrated view gas so the arm contrast
                 // reflects the visible census, not the SFH prior.
-                const viewGas = renderer.censusGasAt(model.populations.age);
-                if (viewGas !== undefined) {
-                        model.populations.viewGasNow = viewGas;
-                        model = galaxy.modelAtAge(model, model.populations.age);
-                        renderer.setEpoch(model);
+                if (renderer.censusGasAt(model.populations.age) !== undefined) {
+                        model = solveEpochAt(model.populations.age);
                 }
                 if (!window.OrbitLib.simpleLandmarksRebind(model)) initSimpleLandmarks();
                 // A re-drawn field re-seeds the theta buffer from the new birth
@@ -5793,6 +5974,7 @@ async function boot() {
                         selectedLine(cameraState) +
                         tradeOverlayLine();
                 if (!helpPanel.hidden) syncHelpControls(cameraState);
+                if (scenariosWired) syncScenario();
         }
 
         const loop = window.Loop.createLoop((dt, time) => {

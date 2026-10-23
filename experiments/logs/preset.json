@@ -117,6 +117,14 @@
       "pass": true
     },
     {
+      "name": "a preset says what it costs: an epoch of the same field is not a draw",
+      "pass": true
+    },
+    {
+      "name": "main.js applies the plan instead of guessing at the draw",
+      "pass": true
+    },
+    {
       "name": "main.js routes paste, load and the star budget through the preset line",
       "pass": true
     }

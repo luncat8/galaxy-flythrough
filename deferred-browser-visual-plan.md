@@ -65,6 +65,36 @@ browser can show whether the coast warp reads as playable rather than as a stutt
 | V12 | The clock presets (G5) | Game mode, a stardrive hull, a star selected 1 ly out. **arcade clock**: the button lights, the HUD reads `ship clock arcade +0.5 y/s`, and on an autopilot approach the coast's rate note turns into `coast warp +X y/s` — record whether the coast visibly compresses into a few wall-seconds, whether the burn/flip/brake still read at the base rung, and whether the arrival is smooth (the warp follows the decaying ETA). Then the wheel: it must reshape the base rung while the warp stays armed. **sim clock**: the readout is `ship real ×1`, one wall-second is one ship-second (a thrust tap is a real second's burn, life support counts real years), and the warp is off. Freeze with `T` during a coast: the clock reads `frozen`, no `coast warp` note, and unfreezing resumes. Both buttons are disabled while observing and lights follow the live hull. |
 | V13 | The three workspaces (ui.20) | Milky Way preset. `1/2/3` and the mode-bar chips: each switch swaps the panel set (observe: Search/System & routes/View modes/Display/Controls; fly: Flight/Controls; command: Search/System & routes/Trade/Controls) with no panel pixel-shift inside a column, the Controls deck reprints (no greyed foreign controls), the HUD leads with `mode <name>`, and the mode-bar clock names the owner (star / ship / trade). `g` enters fly and returns to the workspace it came from; `Tab` hides everything and a chip re-click restores. The panels menu: checking a hidden panel shows it (persists per workspace across reload), *freeze* pins the set so opening `V` does not auto-show System & routes. In fly the trade overlay draws ports and hull dots only (no route lines, no frontier crosses). Command: Send/Commission/expansion are live, a port-row click flies the camera over, **Found at selected** founds on the selected star or explains its refusal. Requisition a sailing hull from Flight's *Network hulls* list: the camera lands on a loaded freighter mid-chord aimed along its route, the network dot disappears, the fleet shows the crewed row; dock at a settled port and **Release to network** delivers the hold and the hull's dot returns. Record any panel flicker on switch, a stale inset (overlay text under a visible panel), or a workspace switch that moves the camera. |
 
+### 0.7 section (added 2026-10-23) — formation, and the panel that makes it checkable
+
+The formation series (`formation-plan.md`) is the one part of the model whose
+verdict is *entirely* visual: whether an epoch reads as a history rather than a
+tint, whether a star arrives or pops, whether the gas the arms show is the gas
+the census holds. V14 is that pass. It is driven from the **Formation checks**
+panel (`ui.21`), not from the sliders: every row sets star time, Evolve, the
+epoch and the camera in one press, prints what to look at and what proves it,
+and reports the live account (formed %, view gas, arm contrast, bulge size and
+the field draws since the row started).
+
+Record the row's own settings line with **Copy line** (the panel also writes it
+into the preset box) — it is a preset, so the frame reproduces. Start each row
+from the same galaxy, type and star budget; the rows keep Type, Seed, Stars and
+the look, and change only the clock and the camera. Two guards make the notes
+honest: the state line says *different galaxy* when Type or Seed changed under a
+running row (a comparison is only a comparison at one field), and Present day is
+in the select as well as on its own button, so "the same camera at 13.5 Gyr" is
+one press rather than a slider hunt.
+
+| ID | Task | Acceptance / evidence |
+|---|---|---|
+| V14a | **First light (T = 0)** (`firstlight`) | The procedural field is *absent*, not dim: no field stars anywhere in the frame, formed 0 %, gas 1.00, epoch 0.0 Gyr, bulge ×0.00. Milky Way catalog stars, landmarks and the local gap-fill are not gated (0.7.1's scope) — record what still draws from the Sun view and confirm it is those blocks, not the field. Switch Type to SBb and repeat: the sky must be empty. No NaN, no vanishing UI, no crash at the boundary. |
+| V14b | **Condensation 0 → 1 Gyr** (`condense`) | The epoch steps once per five wall-seconds. Record: (a) stars appear and brighten through the fade instead of popping as a block, at the default budget and at `?stars=50000`; (b) nothing already on screen jumps to a new position — the same star stays where it was and only gains brightness; (c) `draws` stays at 0 through the whole run; (d) formed % climbs monotonically and the gas falls. |
+| V14c | **Full walk 0 → 13.5 Gyr** (`walk`) | The whole history at ~1 s per epoch. Record: (a) `draws` is 0 at the end (a clock tick never re-samples); (b) the bulge assembles in extent while its centre keeps its brightness, and the arms lose contrast as the gas falls; (c) the bar and arms never turn backwards between steps (E4's phase accumulator); (d) the run holds at 13.5 Gyr with the readout at 135/135; (e) frame time before/after at the default budget. |
+| V14d | **Gas-rich arms, 1.0 Gyr vs today** (`youngarms`, then Present day) | Read the arm × and the gas off the live line at 1 Gyr, then press **Present day** without moving the camera. Record: (a) the same stars, re-placed (a model re-solve and a uniform — since 0.7.3b the press takes the epoch path, so there is no re-draw, no hitch and no lost selection); (b) the view gas is near 1.00 and the arms are at their ceiling young, and the present frame is the type's own fraction with the arms at ×1; (c) the difference reads as "gas left", not as a brightness grade — i.e. the ridge contrast changes while the disc's mean brightness does not. |
+| V14e | **Bulge assembly, 2.0 Gyr vs today** (`bulge`) | Compare with Present day from the same camera. Record: (a) the bulge body is smaller and its centre is not dimmer; (b) the bar is shorter and the arm ridge leaves its tip with no seam, kink or hub-and-spoke gap; (c) the epoch tooltip's ×size agrees with the bar length you just looked at; (d) an Sb/Sa type at the same age behaves the same (the coupling is the table's, not the preset's). |
+| V14f | **The step buttons** | With any row run, press **+ 0.1 Gyr** along 0 → 1 Gyr and back. Record: (a) each press is a model re-solve, not a hitch or a re-draw (`draws` unchanged); (b) the live line's step counter, the Age slider and the epoch readout always agree; (c) stepping back restores the earlier frame's look (the same stars, the same gate). |
+| V14g | **The account against the SFH** (cross-check) | While Condensation runs, compare the view gas on the live line with the SFH gas the nebula/cluster layers use (the epoch tooltip's `gas ×` is the *ratio*; the HUD's object counts are the SFH's). They must differ at young ages — that is the 0.7.3 point — and agree at both endpoints. If the live line ever reads `gas —`, the histogram is missing and the field fell back to the prior: record it as a defect, not as an aesthetic note. |
+
 ### First user pass (2026-10-14) — findings and what they changed
 
 A partial real-browser pass by the user, recorded here as evidence; no row is passed

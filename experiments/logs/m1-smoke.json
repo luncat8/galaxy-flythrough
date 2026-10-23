@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-23T07:04:07.263Z",
+  "date": "2026-10-23T07:51:55.791Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -32,6 +32,7 @@
     "core/loop.js",
     "core/workspace.js",
     "core/presets.js",
+    "core/scenarios.js",
     "data/landmarks.js",
     "data/constellations.js",
     "render/shaders.js",
@@ -52,6 +53,7 @@
     "core/loop.js",
     "core/presets.js",
     "core/route.js",
+    "core/scenarios.js",
     "core/search.js",
     "core/selection-store.js",
     "core/selection.js",
@@ -86,8 +88,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 119,
-  "passed": 119,
+  "totalChecks": 120,
+  "passed": 120,
   "failed": 0,
   "checks": [
     {
@@ -99,8 +101,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 41,
-        "sources": 41,
+        "scripts": 42,
+        "sources": 42,
         "missing": []
       }
     },
@@ -313,6 +315,10 @@
       "pass": true
     },
     {
+      "name": "the formation-checks panel is markup, its table loads after the preset language, and it runs through applyPreset",
+      "pass": true
+    },
+    {
       "name": "the mode bar carries the three chips, the clock and the panels menu",
       "pass": true
     },
@@ -345,9 +351,9 @@
       "pass": true
     },
     {
-      "name": "an age change places the field through setEpoch: no re-draw, no rebase, no carry",
+      "name": "an age change places the field through setEpoch → solveEpochAt: no re-draw, no rebase, no carry",
       "pass": true,
-      "detail": 1814
+      "detail": 1647
     },
     {
       "name": "nothing rebases the pattern phase: the loop advances it and a draw never turns the field",
@@ -405,6 +411,7 @@
         "Loop",
         "Workspace",
         "Presets",
+        "ScenarioLib",
         "Landmarks",
         "Constellations",
         "GalaxyShaders",
@@ -574,14 +581,14 @@
       "name": "Workspace loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 24
+        "keys": 25
       }
     },
     {
       "name": "Presets loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 20
+        "keys": 21
       }
     },
     {

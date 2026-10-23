@@ -380,6 +380,37 @@
 	</div>
 </div>
 <div class="panel-column panel-column-right">
+<!-- Formation checks (ui.21, the 0.7 browser verdict V14): a scenario is a
+     state, a view and the one thing to look at in it, so the formation work can
+     be checked by pressing a button instead of guessing which clock owns the
+     epoch. Every scenario is a preset line under the hood, so what it set is
+     also what Copy hands to another session. -->
+<div id="scenario-menu" class="panel">
+	<div class="menu-header">
+		<span>Formation checks</span>
+		<button id="scenario-menu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab toggles all panels)" aria-expanded="true">▾</button>
+	</div>
+	<div class="menu-row">
+		<label for="scenario-pick">Scenario</label>
+		<select id="scenario-pick" title="A formation state and what to look at in it. Running one sets star time, Evolve, the epoch and the view — nothing else."></select>
+	</div>
+	<div class="menu-row menu-actions">
+		<button id="scenario-run" title="Apply the scenario: its clock rate, its epoch and its view (the galactic-centre orbit, so the whole census is in frame).">Run</button>
+		<button id="scenario-today" title="The comparison frame: this galaxy frozen at the reference epoch, from the same view.">Present day</button>
+	</div>
+	<div class="menu-row menu-actions">
+		<button id="scenario-step-back" title="Step the epoch back one 0.1 Gyr quantum and hold the clock. A step is a model re-solve and a uniform — nothing is re-drawn.">− 0.1 Gyr</button>
+		<button id="scenario-step-fwd" title="Step the epoch forward one 0.1 Gyr quantum and hold the clock. Watch the formed share climb and draws stay put.">+ 0.1 Gyr</button>
+	</div>
+	<div class="menu-row menu-actions">
+		<button id="scenario-copy" title="Copy the settings line this scenario applied, so the frame you are looking at is the frame you can report.">Copy line</button>
+	</div>
+	<div class="menu-row"><span id="scenario-state" class="menu-val">no scenario run</span></div>
+	<div id="scenario-what" class="menu-note"></div>
+	<div id="scenario-watch" class="menu-note scenario-watch"></div>
+	<div id="scenario-live" class="menu-note scenario-live"></div>
+	<div class="menu-hint">Run lands in Observe, orbiting the galactic centre, at the epoch and star rate the row names — so two rows are read from one camera. Star time moves the stars; Age picks the epoch; Evolve ties them. The live line is the built epoch, never the clock's wish.</div>
+</div>
 <div id="menu" class="panel">
                 <div class="menu-header">
                         <span>Display</span>
@@ -430,13 +461,14 @@
                         <button id="star-time-range" type="button" title="Star-time range is fine: −1…2 Myr/s in 0.1 steps. Click to widen to −1…99 Myr/s in 0.5 steps.">fine range</button>
                         <span id="val-star-time" class="menu-val">1 Myr/s</span>
                 </div>
-                <!-- The epoch's live clock (0.6 E2): while it runs, the star clock
+                <!-- The epoch's live clock (0.6 E2/E4): while it runs, the star clock
                      drives the galaxy's own clock — one 0.1 Gyr step per 100 Myr of
-                     star time, rebuilt no faster than the field samples (~0.7 s per
-                     step at 300k stars). The readout is the epoch the field was built
-                     at; a run ticked on at present day replays from 0.2 Gyr. -->
+                     star time. The field is drawn once and placed at each epoch, so a
+                     step is a model re-solve and a uniform, not a re-draw. The readout
+                     is the epoch the field was built at; a run ticked on at present day
+                     replays from 0.0 Gyr, the first light (0.7.2). -->
                 <div class="menu-row">
-                        <label for="galaxy-evolve" title="The galaxy ages with the star clock: one 0.1 Gyr step per 100 Myr of star time, rebuilt no faster than the field samples (~0.7 s per step at 300k stars). Ticked on at present day it replays from 0.2 Gyr; the Age slider below is the seek. Lower Stars below for a smaller hitch per step. The bar and arms keep their orientation across steps.">Evolve with star time</label>
+                        <label for="galaxy-evolve" title="The galaxy ages with the star clock: one 0.1 Gyr step per 100 Myr of star time. The field is drawn once and placed at each epoch, so a step re-solves the model and updates a uniform — no re-draw, no hitch. Ticked on at present day it replays from 0.0 Gyr, the first light; the Age slider below is the seek. Stars arrive as their birth time passes, fading in over 0.05 Gyr.">Evolve with star time</label>
                         <input type="checkbox" id="galaxy-evolve">
                         <span id="val-epoch" class="menu-val">13.5 Gyr</span>
                 </div>
@@ -491,10 +523,10 @@
                         <span id="val-galaxy-age" class="menu-val">13.5 Gyr</span>
                 </div>
                 <!-- The procedural star budget (0.6): a ladder of stops, applied on
-                     release by a full re-draw. Every rebuild (an Age drag, a live
-                     epoch step) costs time proportional to it. -->
+                     release by a full re-draw. Only a re-draw costs time
+                     proportional to it (E4 made an epoch change a placement). -->
                 <div class="menu-row">
-                        <label for="slider-stars" title="Procedural field stars. Applied when the slider is released (one re-draw). Each Age change or Evolve step re-draws the field, so a smaller budget makes Evolve smoother: ~1 ms per 1k stars.">Stars</label>
+                        <label for="slider-stars" title="Procedural field stars. Applied when the slider is released (one re-draw, ~1 ms per 1k stars). An Age change or an Evolve step does not re-draw; changing the budget, type or seed does.">Stars</label>
                         <input type="range" id="slider-stars" min="0" max="8" step="1" value="6">
                         <span id="val-stars" class="menu-val">300k</span>
                 </div>
@@ -679,11 +711,14 @@ Send expedition &#183; Commission route &#183; Found at the selected star &#183;
 	<script src="core/economy.js"></script>
 	<script src="core/trade.js"></script>
 	<script src="core/loop.js"></script>
-	<!-- The three workspaces (workspace-plan.md §3): the names, the panel
-	     table and the pure transitions. Loads immediately before presets.js,
-	     its only reader besides main.js. -->
-	<script src="core/workspace.js"></script>
+        <!-- The three workspaces (workspace-plan.md §3): the names, the panel
+             table and the pure transitions. Loads immediately before presets.js,
+             its only reader besides main.js. -->
+        <script src="core/workspace.js"></script>
         <script src="core/presets.js"></script>
+        <!-- The formation checks (ui.21): a scenario is a preset line plus what
+             to look at. Loaded after presets.js, whose language its rows speak. -->
+        <script src="core/scenarios.js"></script>
         <!-- Data after math (landmarks bake their positions through coords.js at
              load), before the renderer that writes them into the star buffer. -->
         <script src="data/landmarks.js"></script>
