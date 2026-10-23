@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-23T06:44:59.132Z",
+  "date": "2026-10-23T07:04:07.263Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -347,7 +347,7 @@
     {
       "name": "an age change places the field through setEpoch: no re-draw, no rebase, no carry",
       "pass": true,
-      "detail": 1253
+      "detail": 1814
     },
     {
       "name": "nothing rebases the pattern phase: the loop advances it and a draw never turns the field",

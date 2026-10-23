@@ -2850,6 +2850,12 @@ async function boot() {
         function setEpoch(age) {
                 const next = Number(age);
                 if (!Number.isFinite(next) || next === model.populations.age) return;
+                // F4: the view gas, calibrated to the drawn census, feeds the
+                // field's arm contrast. The renderer evaluates it from the
+                // birth histogram; if no histogram exists yet (before the first
+                // field draw), the SFH gas is used unchanged.
+                const viewGas = renderer.censusGasAt(next);
+                if (viewGas !== undefined) model.populations.viewGasNow = viewGas;
                 model = galaxy.modelAtAge(model, Math.min(galaxy.AGE_MAX, Math.max(galaxy.AGE_MIN, next)));
                 renderer.setEpoch(model);
                 if (systemLayer.isOpen()) openSystemView(false);
@@ -2867,6 +2873,15 @@ async function boot() {
         function redrawField(next) {
                 model = next;
                 renderer.regenerate(model);
+                // F4: the field draw built the birth histogram; re-solve the
+                // epoch with the census-calibrated view gas so the arm contrast
+                // reflects the visible census, not the SFH prior.
+                const viewGas = renderer.censusGasAt(model.populations.age);
+                if (viewGas !== undefined) {
+                        model.populations.viewGasNow = viewGas;
+                        model = galaxy.modelAtAge(model, model.populations.age);
+                        renderer.setEpoch(model);
+                }
                 if (!window.OrbitLib.simpleLandmarksRebind(model)) initSimpleLandmarks();
                 // A re-drawn field re-seeds the theta buffer from the new birth
                 // positions, so the trade mirror's azimuths are stale by exactly

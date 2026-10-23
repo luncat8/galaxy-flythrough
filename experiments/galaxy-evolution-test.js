@@ -42,6 +42,8 @@ const logFile = require('./log-file.js');
 const density = require('../src/math/density.js');
 const galaxy = require('../src/math/galaxy.js');
 const sampling = require('../src/math/sampling.js');
+const starTypes = require('../src/math/star-types.js');
+const orbit = require('../src/math/orbit.js');
 
 const TYPES = galaxy.GALAXY_TYPES;
 const checks = [];
@@ -788,6 +790,132 @@ function sameFloats(a, b) {
 		deepBreak === null, deepBreak);
 }
 
+
+// --- 10. Gas account (F4): the census-calibrated view gas ------------------
+// The renderer's 1024-bin birth histogram replaces the SFH gasNow for the
+// field's arm contrast. This section tests the histogram logic and the view
+// gas it delivers, without WebGPU: the same CPU math the renderer uses,
+// driven by the model's own birth draws.
+{
+	const BINS = 1024;
+	const fade = orbit.BIRTH_FADE_GYR;
+
+	// Build the histogram from the field's births (same logic as the renderer).
+	function buildHist(births, count, spanRef) {
+		const hist = new Uint32Array(BINS);
+		if (count <= 0 || !(spanRef > 0)) return { hist, spanRef, total: 0 };
+		const scale = BINS / spanRef;
+		for (let i = 0; i < count; i++) {
+			let k = (births[i] * scale) | 0;
+			if (k < 0) k = 0;
+			else if (k >= BINS) k = BINS - 1;
+			hist[k]++;
+		}
+		let total = 0;
+		for (let k = 0; k < BINS; k++) total += hist[k];
+		return { hist, spanRef, total };
+	}
+
+	function evaluatePresence(hist, spanRef, T) {
+		if (!(spanRef > 0)) return 0;
+		const binWidth = spanRef / BINS;
+		let sum = 0;
+		for (let k = 0; k < BINS; k++) {
+			if (hist[k] === 0) continue;
+			const centre = (k + 0.5) * binWidth;
+			let t = (T - centre) / fade;
+			if (t < 0) t = 0; else if (t > 1) t = 1;
+			sum += hist[k] * (t * t * (3 - 2 * t));
+		}
+		return sum;
+	}
+
+	// The exact O(N) presence for comparison.
+	function exactPresence(births, count, T) {
+		let sum = 0;
+		for (let i = 0; i < count; i++) {
+			let t = (T - births[i]) / fade;
+			if (t < 0) t = 0; else if (t > 1) t = 1;
+			sum += t * t * (3 - 2 * t);
+		}
+		return sum;
+	}
+
+	const N = 50000;
+	const buf = sampling.createBuffers(N);
+	let histBreak = null;
+	let endpointBreak = null;
+	let monotoneBreak = null;
+	let approxBreak = null;
+	log.gasAccount = {};
+
+	for (const type of TYPES) {
+		const fresh = galaxy.createGalaxy({ type, seed: 11 });
+		const reference = galaxy.modelAtAge(fresh, galaxy.AGE_REF);
+		const spanRef = galaxy.sfhSpanAt(galaxy.AGE_REF, reference.populations.quenchTime);
+		const births = new Float64Array(N);
+		const f = sampling.sampleGalaxyStars(reference, 11, N, buf);
+		const count = Math.min(f.count, N);
+		for (let i = 0; i < count; i++) {
+			births[i] = starTypes.sampleFieldBirth(reference,
+				starTypes.fieldStarSeed(reference.seed, i), f.component[i],
+				f.R[i], f.distToArm[i], f.z[i]);
+		}
+
+		const { hist, total } = buildHist(births, count, spanRef);
+
+		// The histogram's total equals the census count.
+		if (total !== count) histBreak = histBreak || { type, total, count };
+
+		const prefRef = evaluatePresence(hist, spanRef, galaxy.AGE_REF);
+		const pres0 = evaluatePresence(hist, spanRef, galaxy.AGE_MIN);
+
+		// At AGE_REF every gate is 1, so formed = 1 and viewGas = gasFraction.
+		const formedRef = prefRef > 0 ? evaluatePresence(hist, spanRef, galaxy.AGE_REF) / prefRef : 1;
+		const viewGasRef = 1 - formedRef * (1 - reference.populations.gasFraction);
+		// At T = 0 every gate is 0, so viewGas = 1.
+		const formed0 = prefRef > 0 ? pres0 / prefRef : 0;
+		const viewGas0 = 1 - formed0 * (1 - reference.populations.gasFraction);
+
+		if (Math.abs(viewGasRef - reference.populations.gasFraction) > 0.01
+			|| Math.abs(viewGas0 - 1) > 0.01) {
+			endpointBreak = endpointBreak || { type, viewGasRef, gasFraction: reference.populations.gasFraction, viewGas0 };
+		}
+
+		// Monotone: view gas decreases with age.
+		let prevGas = 1;
+		for (const age of [0, 0.5, 1, 2, 5, 8, galaxy.AGE_REF]) {
+			const pres = evaluatePresence(hist, spanRef, age);
+			const formed = prefRef > 0 ? pres / prefRef : 0;
+			const viewGas = 1 - formed * (1 - reference.populations.gasFraction);
+			if (viewGas > prevGas + 1e-9) {
+				monotoneBreak = monotoneBreak || { type, age, viewGas, prevGas };
+			}
+			prevGas = viewGas;
+		}
+
+		// Histogram approximation vs exact O(N) sum at several epochs.
+		let maxErr = 0;
+		for (const age of [0, 0.5, 1, 2, 5, 8, galaxy.AGE_REF]) {
+			const histPres = evaluatePresence(hist, spanRef, age);
+			const exactPres = exactPresence(births, count, age);
+			const err = count > 0 ? Math.abs(histPres - exactPres) / count : 0;
+			if (err > maxErr) maxErr = err;
+		}
+		if (maxErr > 0.0025) approxBreak = approxBreak || { type, maxErr };
+		log.gasAccount[type] = { count, spanRef: +spanRef.toFixed(2),
+			viewGasRef: +viewGasRef.toFixed(4), viewGas0: +viewGas0.toFixed(4), maxErr: +maxErr.toFixed(6) };
+	}
+
+	check('the birth histogram total equals the census count, every type',
+		histBreak === null, histBreak);
+	check('view gas is exact at both endpoints: gas(AGE_REF) ≈ gasFraction, gas(0) ≈ 1',
+		endpointBreak === null, endpointBreak);
+	check('view gas is monotonically decreasing with age, every type',
+		monotoneBreak === null, monotoneBreak);
+	check('the 1024-bin histogram matches the exact O(N) sum within 0.25% absolute',
+		approxBreak === null, approxBreak);
+}
 
 // --- Report -------------------------------------------------------------
 let passed = 0;

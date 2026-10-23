@@ -309,7 +309,7 @@
       "name": "1 000 draw calls allocate nothing (heap delta inside the 2 MB coarse bound)",
       "pass": true,
       "detail": {
-        "heapDelta": 119728
+        "heapDelta": 15592
       }
     },
     {

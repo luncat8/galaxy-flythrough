@@ -2597,8 +2597,8 @@
   "runMinutes": 2.272727272727273,
   "maxJump": 0.0016500000000001513,
   "rate": 99,
-  "stepMs": 0.0163,
-  "mapMs300k": 23.6
+  "stepMs": 0.0154,
+  "mapMs300k": 22.6
  },
  "patternContinuity": {
   "worstNaiveJump": 0.2174732149689885,
@@ -2607,6 +2607,141 @@
   "barWorst": 0.000011910154517597027,
   "finalT": 13500.299999998086,
   "phi": 534.1605502474896
+ },
+ "gasAccount": {
+  "E0": {
+   "count": 50000,
+   "spanRef": 0.6,
+   "viewGasRef": 0,
+   "viewGas0": 1,
+   "maxErr": 0
+  },
+  "E1": {
+   "count": 50000,
+   "spanRef": 0.6,
+   "viewGasRef": 0,
+   "viewGas0": 1,
+   "maxErr": 0
+  },
+  "E2": {
+   "count": 50000,
+   "spanRef": 0.6,
+   "viewGasRef": 0,
+   "viewGas0": 1,
+   "maxErr": 0
+  },
+  "E3": {
+   "count": 50000,
+   "spanRef": 0.6,
+   "viewGasRef": 0,
+   "viewGas0": 1,
+   "maxErr": 0
+  },
+  "E4": {
+   "count": 50000,
+   "spanRef": 0.6,
+   "viewGasRef": 0,
+   "viewGas0": 1,
+   "maxErr": 0
+  },
+  "E5": {
+   "count": 50000,
+   "spanRef": 0.6,
+   "viewGasRef": 0,
+   "viewGas0": 1,
+   "maxErr": 0
+  },
+  "E6": {
+   "count": 50000,
+   "spanRef": 0.6,
+   "viewGasRef": 0,
+   "viewGas0": 1,
+   "maxErr": 0
+  },
+  "E7": {
+   "count": 50000,
+   "spanRef": 0.6,
+   "viewGasRef": 0,
+   "viewGas0": 1,
+   "maxErr": 0
+  },
+  "S0": {
+   "count": 50000,
+   "spanRef": 1.5,
+   "viewGasRef": 0.02,
+   "viewGas0": 1,
+   "maxErr": 0.000005
+  },
+  "Sa": {
+   "count": 50000,
+   "spanRef": 13.5,
+   "viewGasRef": 0.08,
+   "viewGas0": 1,
+   "maxErr": 0.000227
+  },
+  "Sb": {
+   "count": 50000,
+   "spanRef": 13.5,
+   "viewGasRef": 0.15,
+   "viewGas0": 1,
+   "maxErr": 0.000348
+  },
+  "Sc": {
+   "count": 50000,
+   "spanRef": 13.5,
+   "viewGasRef": 0.3,
+   "viewGas0": 1,
+   "maxErr": 0.000438
+  },
+  "Sd": {
+   "count": 50000,
+   "spanRef": 13.5,
+   "viewGasRef": 0.45,
+   "viewGas0": 1,
+   "maxErr": 0.000535
+  },
+  "SB0": {
+   "count": 50000,
+   "spanRef": 1.5,
+   "viewGasRef": 0.02,
+   "viewGas0": 1,
+   "maxErr": 0.000003
+  },
+  "SBa": {
+   "count": 50000,
+   "spanRef": 13.5,
+   "viewGasRef": 0.08,
+   "viewGas0": 1,
+   "maxErr": 0.000221
+  },
+  "SBb": {
+   "count": 50000,
+   "spanRef": 13.5,
+   "viewGasRef": 0.15,
+   "viewGas0": 1,
+   "maxErr": 0.000253
+  },
+  "SBc": {
+   "count": 50000,
+   "spanRef": 13.5,
+   "viewGasRef": 0.3,
+   "viewGas0": 1,
+   "maxErr": 0.000438
+  },
+  "SBd": {
+   "count": 50000,
+   "spanRef": 13.5,
+   "viewGasRef": 0.45,
+   "viewGas0": 1,
+   "maxErr": 0.000535
+  },
+  "Irr": {
+   "count": 50000,
+   "spanRef": 13.5,
+   "viewGasRef": 0.5,
+   "viewGas0": 1,
+   "maxErr": 0.000452
+  }
  },
  "ageRange": [
   0,
@@ -2626,8 +2761,8 @@
   0.25
  ],
  "types": 19,
- "totalChecks": 39,
- "passed": 39,
+ "totalChecks": 43,
+ "passed": 43,
  "failed": 0,
  "checks": [
   {
@@ -2754,14 +2889,14 @@
    "name": "an epoch step costs a model re-solve and one uniform lane, not a field",
    "pass": true,
    "detail": {
-    "stepMs": 0.0163
+    "stepMs": 0.0154
    }
   },
   {
    "name": "the epoch map is a per-star constant-time placement (300k under 100 ms)",
    "pass": true,
    "detail": {
-    "mapMs": 23.6
+    "mapMs": 22.6
    }
   },
   {
@@ -2849,6 +2984,26 @@
   },
   {
    "name": "at T = 0 every factor is the deep-time limit: no gas left, no spheroid, heat floored, pattern off",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "the birth histogram total equals the census count, every type",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "view gas is exact at both endpoints: gas(AGE_REF) ≈ gasFraction, gas(0) ≈ 1",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "view gas is monotonically decreasing with age, every type",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "name": "the 1024-bin histogram matches the exact O(N) sum within 0.25% absolute",
    "pass": true,
    "detail": null
   }

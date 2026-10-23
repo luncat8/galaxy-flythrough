@@ -628,7 +628,12 @@
 		const heatRaw = meanAgeRef > 0 ? Math.pow(meanAge / meanAgeRef, HEAT_EXP) : 1;
 		const heat = heatRaw > HEAT_FLOOR ? heatRaw : HEAT_FLOOR;
 		const gasNow = gasFractionAt(p.tauSfh, p.quenchTime, p.gasFraction, p.age);
-		const gasRatio = p.gasFraction > 0 ? gasNow / p.gasFraction : 1;
+		// F4: the view gas, if the renderer has supplied one, replaces the SFH
+		// gasNow only for the field's arm contrast. The SFH gas stays on the
+		// populations record for every other consumer (nebulae, clusters, the
+		// gasRich gate): it is the model's gas, not the view's.
+		const gasForArms = (p.viewGasNow !== undefined && p.viewGasNow !== null) ? p.viewGasNow : gasNow;
+		const gasRatio = p.gasFraction > 0 ? gasForArms / p.gasFraction : 1;
 		const root = Math.sqrt(gasRatio);
 		const armContrast = root < ARM_CONTRAST_MAX ? root : ARM_CONTRAST_MAX;
 		return {

@@ -47,6 +47,12 @@ const EPOCH_SLICE_MS = 3;
 // recompute once per sweep, and the same stars on both sides of the ratio.
 const EPOCH_CALIBRATION_STARS = 4096;
 const PROCEDURAL_STARS_DEFAULT = 300000;
+// Gas account (F4): a 1024-bin histogram of birth times over [0, spanRef] is
+// built once per field draw. Evaluating presence(T) from it is O(1024) per
+// frame — one smoothstep per bin — and the view gas it delivers replaces the
+// SFH gasNow only for the field's arm contrast. The bin count is a power of two
+// so the bin index is a shift.
+const GAS_HIST_BINS = 1024;
 const TWO_PI = 2 * Math.PI;
 const CATALOG_BUDGET_DEFAULT = 250000;
 const LOCAL_PROCEDURAL_DEFAULT = 20000; // gap-fill for density parity near the camera
@@ -440,6 +446,12 @@ function createStarRenderer(device, context, format, options) {
         let starBuffer = null;
         let birthBuffer = null;
         let birthStaging = null;
+        // Gas account (F4): the histogram of field births and its reference-span
+        // extent. Built once per field draw, evaluated per epoch at O(1024).
+        const birthHist = new Uint32Array(GAS_HIST_BINS);
+        let birthHistSpanRef = 0;
+        let birthHistPresenceRef = 0;
+        let birthHistValid = false;
         let bindGroup = null;
         let staging = null;            // ArrayBuffer: [procedural][landmarks][objects][local][catalog]
         let landmarkByteOffset = 0;
@@ -816,7 +828,63 @@ function createStarRenderer(device, context, format, options) {
                 blockInfo.formation.age = model.populations.age;
                 blockInfo.formation.count = count;
                 if (count > 0) device.queue.writeBuffer(birthBuffer, 0, birthStaging.buffer, 0, count * 4);
+                buildBirthHistogram(count, reference);
                 return count;
+        }
+
+        // Gas account (F4): a 1024-bin histogram of the field's birth times,
+        // built over the reference span. One pass over the census at field draw
+        // time; the resulting presence sum at any epoch is O(1024), not O(N).
+        function buildBirthHistogram(count, referenceModel) {
+                birthHist.fill(0);
+                birthHistValid = false;
+                if (count <= 0) { birthHistSpanRef = 0; birthHistPresenceRef = 0; return; }
+                const p = referenceModel.populations;
+                const spanRef = window.GalaxyLib.sfhSpanAt(window.GalaxyLib.AGE_REF, p.quenchTime);
+                birthHistSpanRef = spanRef;
+                if (!(spanRef > 0)) { birthHistPresenceRef = 0; return; }
+                const scale = GAS_HIST_BINS / spanRef;
+                for (let i = 0; i < count; i++) {
+                        const b = birthStaging[i];
+                        let k = (b * scale) | 0;
+                        if (k < 0) k = 0;
+                        else if (k >= GAS_HIST_BINS) k = GAS_HIST_BINS - 1;
+                        birthHist[k]++;
+                }
+                // Precompute the reference-epoch presence so formed(T) is one
+                // ratio, not two evaluations per frame.
+                birthHistPresenceRef = evaluatePresence(window.GalaxyLib.AGE_REF);
+                birthHistValid = true;
+        }
+
+        // The smoothstep presence sum: the census fraction visible at epoch T,
+        // using the same gate the vertex stage applies. O(1024) per call.
+        function evaluatePresence(T) {
+                if (!birthHistValid || birthHistSpanRef <= 0) return 0;
+                const fade = orbit.BIRTH_FADE_GYR;
+                const binWidth = birthHistSpanRef / GAS_HIST_BINS;
+                let sum = 0;
+                for (let k = 0; k < GAS_HIST_BINS; k++) {
+                        if (birthHist[k] === 0) continue;
+                        const centre = (k + 0.5) * binWidth;
+                        const lo = centre;
+                        const hi = centre + fade;
+                        let t = (T - lo) / (hi - lo);
+                        if (t < 0) t = 0; else if (t > 1) t = 1;
+                        sum += birthHist[k] * (t * t * (3 - 2 * t));
+                }
+                return sum;
+        }
+
+        // The view gas at epoch T: the census-calibrated gas fraction, exact at
+        // both endpoints (gas(0) = 1, gas(AGE_REF) = gasFraction). Replaces the
+        // SFH gasNow only for the field's arm contrast.
+        function censusGasAt(age) {
+                if (!birthHistValid || birthHistPresenceRef <= 0) return undefined;
+                const p = model.populations;
+                const presence = evaluatePresence(age);
+                const formed = presence / birthHistPresenceRef;
+                return 1 - formed * (1 - p.gasFraction);
         }
 
         // Draw the field's positions and the exposure reference that goes with
@@ -1621,6 +1689,7 @@ function createStarRenderer(device, context, format, options) {
                 state,
                 stats: () => state,
                 shaderError: () => shaderError,
+                censusGasAt,
         };
 }
 

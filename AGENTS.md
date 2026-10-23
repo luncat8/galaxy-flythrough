@@ -76,8 +76,15 @@
   `AGE_MIN` 0.2 → 0, with the deep-time degeneracies resolved by meaning: the
   heat floor keeps `discHeightAt` finite for the picker, the spheroid axes
   collapse to 0 with a `spheroidA > 0` guard, `barPatternSpeed` returns 0 on a
-  0-size spheroid, and the additive phase0 guard skips `Math.log(0)`. Remaining:
-  the drawn-census gas account, 64×96×4 gas grid, and local nebula rates.
+  0-size spheroid, and the additive phase0 guard skips `Math.log(0)`. **0.7.3
+  shipped:** the renderer builds a 1024-bin birth histogram once per field
+  draw; `censusGasAt(age)` evaluates the smoothstep presence at O(1024) per
+  frame, and the resulting view gas replaces the SFH `gasNow` only for the
+  field's arm contrast. Both endpoints are exact by construction
+  (`gas(0) = 1`, `gas(AGE_REF) = gasFraction`); the histogram matches the
+  exact O(N) sum within 0.25 % absolute. The SFH gas stays on `populations`
+  for every other consumer (nebulae, clusters, the gasRich gate). Remaining:
+  the 64×96×4 gas grid (F5) and local nebula rates.
 - `deferred-browser-visual-plan.md` — non-blocking browser checks, preset actions, bar polish and GPU profiling; separate from analytical model contracts.
 - `game-mode-plan.md` — the game mode (g key): the ship as the camera rig with class restrictions (accel cap, Δv tank, cruise fraction from the 0.5.4 ship table), the shared ship clock on the system-ladder convention (§4), the HUD (speed, fuel, distance to the selected object), the burn/flip autopilot and the Flight workspace. G1 shipped (ui.7): `src/core/ship.js`, the flight law, the clock, the text HUD and the input gating; G2 shipped (ui.8): the §5 approach, follow and abort commands and the §6 chrome pass in `label-layer.js`; G3 shipped (ui.9): the single-panel manual-thrust / desired-speed / destination-plan task (fastest, thrust, speed and time limits) with accepted-impulse fuel accounting; G4 shipped (ui.13): docking at any natural flight target (`O`, settled inside its stand-off shell), the station refill (tank + life support), the docked ride on the station's drawn motion, the port of registry with life support's critical band and its hard return-home marker, and the free cargo hook (`L`/`Shift+L`); G5 shipped (ui.14): the Controls-panel `sim clock`/`arcade clock` presets — the ladder's new real-time stop and the autopilot coast auto-warp — with the deferred browser visual pass the series' only open item.
 - `workspace-plan.md` — the three workspaces: `observe` (free camera + galaxy control, the look and the map), `fly` (a hull, including a freighter requisitioned off the colony network's routes) and `command` (the colony observer: expeditions, routes, expansion, founding). One `workspace` state replaces the `gameMode` boolean, one panel table `src/core/workspace.js` decides each job's panels (the Flight panel splits into `#sysmenu` and `#routemenu`), the Controls panel reprints itself per workspace, the wheel steps the owning clock, and a switch never rebuilds the field, re-seeds the network or moves a ship. **Shipped (`ui.20`, W0–W6):** `src/core/workspace.js` (the pure table + transitions), the `#mode-bar`, the `#routemenu` split, the mode-scoped Controls panel, the `mode=` preset field, command's authority + Found entrance, and the W5 requisition/release law (`DeltaVLib.FREIGHTER_CLASSES`, `Ship.adoptHull`, `TradeLib.requisition`/`release`).
