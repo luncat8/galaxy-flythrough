@@ -1517,6 +1517,19 @@ Shipped, in `archive/`:
   clock presets (§4: the ladder's real-time `R = 1` stop and the autopilot
   coast auto-warp). CPU-only and additive, like the 0.5 series.
 
+- [`workspace-plan.md`](workspace-plan.md) — the three workspaces: `observe`
+  (free camera + galaxy control), `fly` (a hull, including a freighter taken off
+  the colony network's routes) and `command` (the colony observer: expeditions,
+  standing routes, expansion, founding). One `workspace` state replaces the
+  `gameMode` boolean, one panel table decides what each job shows (seven panels,
+  a `#routemenu` split out of Flight, per-workspace overrides and a mode-scoped
+  Controls panel), the wheel steps the owning clock, and a switch changes chrome,
+  authority and clock ownership only — never the field, the network or a ship's
+  position. Stage W1 is the rename-only conversion; W4 adds the command
+  authority and W5 the requisition/release law for network hulls (three
+  `requisitionOnly` freighter classes, because the network's 2–4.5 ly/trade-year
+  pace is bookkeeping, not a physical speed). *(plan; not implemented)*
+
 - [`trade-plan.md`](trade-plan.md) — unversioned CPU-only colony economy and
   event-driven freight: independent trade clock, deterministic site yields,
   lazy population/stock accounting, autonomous routes and founding expeditions,
