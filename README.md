@@ -194,14 +194,18 @@ galaxy, the seed, the star budget and the look; they change only the clock and t
 **Present day** is the comparison frame at the reference epoch from the same camera — it is the
 last entry in the select as well as a button — and the two step buttons move the epoch by its own
 0.1 Gyr quantum with the clock held, the cheapest way to see the census grow without waiting. The
-live line reads the *built* epoch, the drawn census, the gas the arms used and the renderer's
-field-draw counter, so a run that re-sampled or fell back to the smooth gas prior reads wrong on
-screen; if the galaxy's type or seed changes under a running scenario the state line says
-*different galaxy*, because a comparison is only a comparison at one field. The state line appends
-the mode the run landed in, and **Copy line** hands back the whole settings line through the
-preset box, so a frame worth reporting is one press from being recorded. A row that changes only
-the epoch is a *placement*: since every draw is reference-framed (0.7.3b) the press re-solves the
-epoch and re-uploads a uniform, with no re-sample, no hitch and no lost selection.
+live line names the workspace the run landed in (Observe, which is also where this panel lives),
+the built epoch in model quanta, the star rate, whether Evolve is on, and the four numbers:
+the formed share from the drawn census, the view gas the arms used, the arm contrast and the
+bulge size. A run that fell back to the smooth gas prior reads as `gas —` instead of a
+plausible number, and a clock tick that re-sampled the field shows up in `draws`. If Type or Seed
+changes under a running scenario the state line says *different galaxy*, because a comparison is
+only a comparison at one field.
+
+**Copy line** hands back the whole settings line through the preset box, so a frame worth
+reporting is one press from being recorded. A row that changes only the epoch is a *placement*:
+every draw is reference-framed (0.7.3b), so the press re-solves the epoch and re-uploads a
+uniform — no re-sample, no hitch, and the selection survives the comparison.
 
 ## Game mode (g)
 
