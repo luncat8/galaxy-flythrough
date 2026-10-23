@@ -1,9 +1,17 @@
 {
-  "date": "2026-10-20T22:57:22.032Z",
-  "totalChecks": 134,
-  "passed": 134,
+  "date": "2026-10-23T06:42:45.042Z",
+  "totalChecks": 135,
+  "passed": 135,
   "failed": 0,
   "checks": [
+    {
+      "name": "the formation gate is exactly 0/1 at its boundaries and continuous inside",
+      "pass": true,
+      "detail": {
+        "fade": 0.05,
+        "midpoint": 0.49999999999999734
+      }
+    },
     {
       "name": "T = 0 is the identity for every family (|Δ| < 1e-9 kpc)",
       "pass": true,

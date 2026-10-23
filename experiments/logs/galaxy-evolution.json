@@ -3,12 +3,12 @@
  "laws": {
   "E0": [
    {
-    "age": 0.2,
-    "heat": 0.272375,
+    "age": 0,
+    "heat": 0.001,
     "armContrast": 1,
-    "spheroidProgress": 0.612953,
-    "spheroidSize": 0.849459,
-    "assembly": 0.204001
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -77,12 +77,12 @@
   ],
   "E1": [
    {
-    "age": 0.2,
-    "heat": 0.272375,
+    "age": 0,
+    "heat": 0.001,
     "armContrast": 1,
-    "spheroidProgress": 0.612953,
-    "spheroidSize": 0.849459,
-    "assembly": 0.204001
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -151,12 +151,12 @@
   ],
   "E2": [
    {
-    "age": 0.2,
-    "heat": 0.272375,
+    "age": 0,
+    "heat": 0.001,
     "armContrast": 1,
-    "spheroidProgress": 0.612953,
-    "spheroidSize": 0.849459,
-    "assembly": 0.204001
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -225,12 +225,12 @@
   ],
   "E3": [
    {
-    "age": 0.2,
-    "heat": 0.272375,
+    "age": 0,
+    "heat": 0.001,
     "armContrast": 1,
-    "spheroidProgress": 0.612953,
-    "spheroidSize": 0.849459,
-    "assembly": 0.204001
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -299,12 +299,12 @@
   ],
   "E4": [
    {
-    "age": 0.2,
-    "heat": 0.272375,
+    "age": 0,
+    "heat": 0.001,
     "armContrast": 1,
-    "spheroidProgress": 0.612953,
-    "spheroidSize": 0.849459,
-    "assembly": 0.204001
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -373,12 +373,12 @@
   ],
   "E5": [
    {
-    "age": 0.2,
-    "heat": 0.272375,
+    "age": 0,
+    "heat": 0.001,
     "armContrast": 1,
-    "spheroidProgress": 0.612953,
-    "spheroidSize": 0.849459,
-    "assembly": 0.204001
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -447,12 +447,12 @@
   ],
   "E6": [
    {
-    "age": 0.2,
-    "heat": 0.272375,
+    "age": 0,
+    "heat": 0.001,
     "armContrast": 1,
-    "spheroidProgress": 0.612953,
-    "spheroidSize": 0.849459,
-    "assembly": 0.204001
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -521,12 +521,12 @@
   ],
   "E7": [
    {
-    "age": 0.2,
-    "heat": 0.272375,
+    "age": 0,
+    "heat": 0.001,
     "armContrast": 1,
-    "spheroidProgress": 0.612953,
-    "spheroidSize": 0.849459,
-    "assembly": 0.204001
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -595,12 +595,12 @@
   ],
   "S0": [
    {
-    "age": 0.2,
-    "heat": 0.27176,
+    "age": 0,
+    "heat": 0.001,
     "armContrast": 2,
-    "spheroidProgress": 0.119073,
-    "spheroidSize": 0.491969,
-    "assembly": 0.039629
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -669,12 +669,12 @@
   ],
   "Sa": [
    {
-    "age": 0.2,
-    "heat": 0.30094,
+    "age": 0,
+    "heat": 0.001,
     "armContrast": 2,
-    "spheroidProgress": 0.003539,
-    "spheroidSize": 0.15239,
-    "assembly": 0.002264
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -743,12 +743,12 @@
   ],
   "Sb": [
    {
-    "age": 0.2,
-    "heat": 0.315652,
+    "age": 0,
+    "heat": 0.001,
     "armContrast": 2,
-    "spheroidProgress": 0.002272,
-    "spheroidSize": 0.131472,
-    "assembly": 0.001037
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -817,12 +817,12 @@
   ],
   "Sc": [
    {
-    "age": 0.2,
-    "heat": 0.326648,
-    "armContrast": 1.825351,
-    "spheroidProgress": 0.001739,
-    "spheroidSize": 0.120265,
-    "assembly": 0.000611
+    "age": 0,
+    "heat": 0.001,
+    "armContrast": 1.825742,
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -891,12 +891,12 @@
   ],
   "Sd": [
    {
-    "age": 0.2,
-    "heat": 0.333572,
-    "armContrast": 1.49053,
-    "spheroidProgress": 0.001491,
-    "spheroidSize": 0.114249,
-    "assembly": 0.000443
+    "age": 0,
+    "heat": 0.001,
+    "armContrast": 1.490712,
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -965,12 +965,12 @@
   ],
   "SB0": [
    {
-    "age": 0.2,
-    "heat": 0.27176,
+    "age": 0,
+    "heat": 0.001,
     "armContrast": 2,
-    "spheroidProgress": 0.119073,
-    "spheroidSize": 0.491969,
-    "assembly": 0.039629
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -1039,12 +1039,12 @@
   ],
   "SBa": [
    {
-    "age": 0.2,
-    "heat": 0.30094,
+    "age": 0,
+    "heat": 0.001,
     "armContrast": 2,
-    "spheroidProgress": 0.003539,
-    "spheroidSize": 0.15239,
-    "assembly": 0.002264
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -1113,12 +1113,12 @@
   ],
   "SBb": [
    {
-    "age": 0.2,
-    "heat": 0.315652,
+    "age": 0,
+    "heat": 0.001,
     "armContrast": 2,
-    "spheroidProgress": 0.002272,
-    "spheroidSize": 0.131472,
-    "assembly": 0.001037
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -1187,12 +1187,12 @@
   ],
   "SBc": [
    {
-    "age": 0.2,
-    "heat": 0.326648,
-    "armContrast": 1.825351,
-    "spheroidProgress": 0.001739,
-    "spheroidSize": 0.120265,
-    "assembly": 0.000611
+    "age": 0,
+    "heat": 0.001,
+    "armContrast": 1.825742,
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -1261,12 +1261,12 @@
   ],
   "SBd": [
    {
-    "age": 0.2,
-    "heat": 0.333572,
-    "armContrast": 1.49053,
-    "spheroidProgress": 0.001491,
-    "spheroidSize": 0.114249,
-    "assembly": 0.000443
+    "age": 0,
+    "heat": 0.001,
+    "armContrast": 1.490712,
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -1335,12 +1335,12 @@
   ],
   "Irr": [
    {
-    "age": 0.2,
-    "heat": 0.336489,
-    "armContrast": 1.414077,
-    "spheroidProgress": 0.001401,
-    "spheroidSize": 0.111888,
-    "assembly": 0.000387
+    "age": 0,
+    "heat": 0.001,
+    "armContrast": 1.414214,
+    "spheroidProgress": 0,
+    "spheroidSize": 0,
+    "assembly": 0
    },
    {
     "age": 0.5,
@@ -1458,9 +1458,9 @@
  "e3": {
   "E0": [
    {
-    "age": 0.2,
-    "size": 0.8495,
-    "a": 1.2742,
+    "age": 0,
+    "size": 0,
+    "a": 0,
     "minRadius": 0.75,
     "phase0": 0,
     "omegaPattern": 0
@@ -1516,9 +1516,9 @@
   ],
   "E1": [
    {
-    "age": 0.2,
-    "size": 0.8495,
-    "a": 1.2742,
+    "age": 0,
+    "size": 0,
+    "a": 0,
     "minRadius": 0.75,
     "phase0": 0,
     "omegaPattern": 0
@@ -1574,9 +1574,9 @@
   ],
   "E2": [
    {
-    "age": 0.2,
-    "size": 0.8495,
-    "a": 1.2742,
+    "age": 0,
+    "size": 0,
+    "a": 0,
     "minRadius": 0.75,
     "phase0": 0,
     "omegaPattern": 0
@@ -1632,9 +1632,9 @@
   ],
   "E3": [
    {
-    "age": 0.2,
-    "size": 0.8495,
-    "a": 1.2742,
+    "age": 0,
+    "size": 0,
+    "a": 0,
     "minRadius": 0.75,
     "phase0": 0,
     "omegaPattern": 0
@@ -1690,9 +1690,9 @@
   ],
   "E4": [
    {
-    "age": 0.2,
-    "size": 0.8495,
-    "a": 1.2742,
+    "age": 0,
+    "size": 0,
+    "a": 0,
     "minRadius": 0.75,
     "phase0": 0,
     "omegaPattern": 0
@@ -1748,9 +1748,9 @@
   ],
   "E5": [
    {
-    "age": 0.2,
-    "size": 0.8495,
-    "a": 1.2742,
+    "age": 0,
+    "size": 0,
+    "a": 0,
     "minRadius": 0.75,
     "phase0": 0,
     "omegaPattern": 0
@@ -1806,9 +1806,9 @@
   ],
   "E6": [
    {
-    "age": 0.2,
-    "size": 0.8495,
-    "a": 1.2742,
+    "age": 0,
+    "size": 0,
+    "a": 0,
     "minRadius": 0.75,
     "phase0": 0,
     "omegaPattern": 0
@@ -1864,9 +1864,9 @@
   ],
   "E7": [
    {
-    "age": 0.2,
-    "size": 0.8495,
-    "a": 1.2742,
+    "age": 0,
+    "size": 0,
+    "a": 0,
     "minRadius": 0.75,
     "phase0": 0,
     "omegaPattern": 0
@@ -1922,9 +1922,9 @@
   ],
   "S0": [
    {
-    "age": 0.2,
-    "size": 0.492,
-    "a": 0.4428,
+    "age": 0,
+    "size": 0,
+    "a": 0,
     "minRadius": 0.5,
     "phase0": 0,
     "omegaPattern": 0
@@ -1980,9 +1980,9 @@
   ],
   "Sa": [
    {
-    "age": 0.2,
-    "size": 0.1524,
-    "a": 0.1524,
+    "age": 0,
+    "size": 0,
+    "a": 0,
     "minRadius": 0.5,
     "phase0": 0,
     "omegaPattern": 0.020509
@@ -2038,9 +2038,9 @@
   ],
   "Sb": [
    {
-    "age": 0.2,
-    "size": 0.1315,
-    "a": 0.1118,
+    "age": 0,
+    "size": 0,
+    "a": 0,
     "minRadius": 0.5,
     "phase0": 0,
     "omegaPattern": 0.019669
@@ -2096,9 +2096,9 @@
   ],
   "Sc": [
    {
-    "age": 0.2,
-    "size": 0.1203,
-    "a": 0.101,
+    "age": 0,
+    "size": 0,
+    "a": 0,
     "minRadius": 0.7,
     "phase0": 0,
     "omegaPattern": 0.013435
@@ -2154,9 +2154,9 @@
   ],
   "Sd": [
    {
-    "age": 0.2,
-    "size": 0.1142,
-    "a": 0.0685,
+    "age": 0,
+    "size": 0,
+    "a": 0,
     "minRadius": 0.75,
     "phase0": 0,
     "omegaPattern": 0.01135
@@ -2212,12 +2212,12 @@
   ],
   "SB0": [
    {
-    "age": 0.2,
-    "size": 0.492,
-    "a": 0.797,
-    "minRadius": 0.797,
+    "age": 0,
+    "size": 0,
+    "a": 0,
+    "minRadius": 0,
     "phase0": 0,
-    "omegaPattern": 0.067365
+    "omegaPattern": 0
    },
    {
     "age": 0.5,
@@ -2270,12 +2270,12 @@
   ],
   "SBa": [
    {
-    "age": 0.2,
-    "size": 0.1524,
-    "a": 0.2743,
-    "minRadius": 0.2743,
-    "phase0": 4.075,
-    "omegaPattern": 0.117157
+    "age": 0,
+    "size": 0,
+    "a": 0,
+    "minRadius": 0,
+    "phase0": 3.3032,
+    "omegaPattern": 0
    },
    {
     "age": 0.5,
@@ -2328,12 +2328,12 @@
   ],
   "SBb": [
    {
-    "age": 0.2,
-    "size": 0.1315,
-    "a": 0.3024,
-    "minRadius": 0.3024,
-    "phase0": 2.5992,
-    "omegaPattern": 0.131802
+    "age": 0,
+    "size": 0,
+    "a": 0,
+    "minRadius": 0,
+    "phase0": 2.8406,
+    "omegaPattern": 0
    },
    {
     "age": 0.5,
@@ -2386,12 +2386,12 @@
   ],
   "SBc": [
    {
-    "age": 0.2,
-    "size": 0.1203,
-    "a": 0.1818,
-    "minRadius": 0.1818,
-    "phase0": 1.1328,
-    "omegaPattern": 0.117157
+    "age": 0,
+    "size": 0,
+    "a": 0,
+    "minRadius": 0,
+    "phase0": 5.9973,
+    "omegaPattern": 0
    },
    {
     "age": 0.5,
@@ -2444,12 +2444,12 @@
   ],
   "SBd": [
    {
-    "age": 0.2,
-    "size": 0.1142,
-    "a": 0.1234,
-    "minRadius": 0.1234,
-    "phase0": 0.2077,
-    "omegaPattern": 0.117157
+    "age": 0,
+    "size": 0,
+    "a": 0,
+    "minRadius": 0,
+    "phase0": 2.8357,
+    "omegaPattern": 0
    },
    {
     "age": 0.5,
@@ -2502,9 +2502,9 @@
   ],
   "Irr": [
    {
-    "age": 0.2,
-    "size": 0.1119,
-    "a": 0.0448,
+    "age": 0,
+    "size": 0,
+    "a": 0,
     "minRadius": 0.4,
     "phase0": 0,
     "omegaPattern": 0.005416
@@ -2592,24 +2592,24 @@
  "evolve": {
   "stepGyr": 0.1,
   "gyrPerMyr": 0.001,
-  "steps": 8061,
-  "starMyr": 13300.64999999813,
-  "runMinutes": 2.239057239057239,
+  "steps": 8182,
+  "starMyr": 13500.299999998086,
+  "runMinutes": 2.272727272727273,
   "maxJump": 0.0016500000000001513,
   "rate": 99,
-  "stepMs": 0.0155,
-  "mapMs300k": 18.7
+  "stepMs": 0.0163,
+  "mapMs300k": 23.6
  },
  "patternContinuity": {
-  "worstNaiveJump": 0.07673345682851362,
-  "naiveDrift": -1.2657726293527105,
-  "worstAccumulated": 1.2538581284360362e-14,
-  "barWorst": 0.0000011191859796699788,
-  "finalT": 13300.64999999813,
-  "phi": 508.0276496131118
+  "worstNaiveJump": 0.2174732149689885,
+  "naiveDrift": -2.828626252791338,
+  "worstAccumulated": 1.2836953722228372e-14,
+  "barWorst": 0.000011910154517597027,
+  "finalT": 13500.299999998086,
+  "phi": 534.1605502474896
  },
  "ageRange": [
-  0.2,
+  0,
   13.5
  ],
  "ageRef": 13.5,
@@ -2626,8 +2626,8 @@
   0.25
  ],
  "types": 19,
- "totalChecks": 38,
- "passed": 38,
+ "totalChecks": 39,
+ "passed": 39,
  "failed": 0,
  "checks": [
   {
@@ -2656,7 +2656,7 @@
    "detail": null
   },
   {
-   "name": "heat ≤ 1, 1 ≤ armContrast ≤ ARM_CONTRAST_MAX, 0 < spheroidProgress ≤ 1, size = progress^⅓ ∈ (0, 1]",
+   "name": "heat ≤ 1, 1 ≤ armContrast ≤ ARM_CONTRAST_MAX, 0 ≤ spheroidProgress ≤ 1, size = progress^⅓ ∈ [0, 1]",
    "pass": true,
    "detail": null
   },
@@ -2737,7 +2737,7 @@
    "pass": true,
    "detail": {
     "age": 13.5,
-    "steps": 8061,
+    "steps": 8182,
     "maxJump": 0.0016500000000001513,
     "frameStep": 0.00165
    }
@@ -2754,22 +2754,22 @@
    "name": "an epoch step costs a model re-solve and one uniform lane, not a field",
    "pass": true,
    "detail": {
-    "stepMs": 0.0155
+    "stepMs": 0.0163
    }
   },
   {
    "name": "the epoch map is a per-star constant-time placement (300k under 100 ms)",
    "pass": true,
    "detail": {
-    "mapMs": 18.7
+    "mapMs": 23.6
    }
   },
   {
    "name": "every frame of a whole run is a real step, in bounded star time",
    "pass": true,
    "detail": {
-    "runSteps": 8061,
-    "starMyr": 13300.64999999813
+    "runSteps": 8182,
+    "starMyr": 13500.299999998086
    }
   },
   {
@@ -2821,31 +2821,36 @@
    "name": "the naive rate-times-clock law drifts radians over a run (the defect is real)",
    "pass": true,
    "detail": {
-    "naiveDrift": -1.2657726293527105,
-    "naiveJump": 0.07673345682851362
+    "naiveDrift": -2.828626252791338,
+    "naiveJump": 0.2174732149689885
    }
   },
   {
    "name": "the accumulator adds exactly the frame's own rate over the frame's own time",
    "pass": true,
    "detail": {
-    "worstAccumulated": 1.2538581284360362e-14
+    "worstAccumulated": 1.2836953722228372e-14
    }
   },
   {
    "name": "a bar-family star keeps its azimuth across every epoch step (to its x1 loop)",
    "pass": true,
    "detail": {
-    "barWorst": 0.0000011191859796699788
+    "barWorst": 0.000011910154517597027
    }
   },
   {
    "name": "the lane rate times the clock is the accumulated phase",
    "pass": true,
    "detail": {
-    "product": 5.372825038649148,
-    "phase": 5.372825038649148
+    "product": 0.08979913715674531,
+    "phase": 0.08979913715674531
    }
+  },
+  {
+   "name": "at T = 0 every factor is the deep-time limit: no gas left, no spheroid, heat floored, pattern off",
+   "pass": true,
+   "detail": null
   }
  ]
 }

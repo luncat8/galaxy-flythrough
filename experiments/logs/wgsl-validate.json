@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-20T22:59:55.680Z",
+  "date": "2026-10-23T06:44:59.244Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -19,15 +19,15 @@
     },
     {
       "name": "star-sprite",
-      "lines": 564
+      "lines": 574
     },
     {
       "name": "star-sprite-hdr",
-      "lines": 119
+      "lines": 120
     },
     {
       "name": "nebula-billboard",
-      "lines": 122
+      "lines": 123
     },
     {
       "name": "tonemap",
@@ -91,15 +91,15 @@
         ],
         [
           "star-sprite",
-          28210
+          28784
         ],
         [
           "star-sprite-hdr",
-          4116
+          4142
         ],
         [
           "nebula-billboard",
-          4218
+          4244
         ],
         [
           "tonemap",
@@ -1189,7 +1189,8 @@
           "waveA",
           "waveB",
           "engine",
-          "epoch"
+          "epoch",
+          "formation"
         ],
         "nebula": [
           "viewProj",
@@ -1201,7 +1202,8 @@
           "waveA",
           "waveB",
           "engine",
-          "epoch"
+          "epoch",
+          "formation"
         ]
       }
     },

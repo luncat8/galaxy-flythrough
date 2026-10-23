@@ -1,6 +1,6 @@
 {
-  "total": 262,
-  "passed": 262,
+  "total": 275,
+  "passed": 275,
   "failed": 0,
   "checks": [
     {
@@ -1498,6 +1498,71 @@
         "after": 2,
         "ships": 1
       }
+    },
+    {
+      "name": "the fixture has a sailing hull to requisition",
+      "pass": true,
+      "detail": {
+        "sailing": 0,
+        "ships": 15
+      }
+    },
+    {
+      "name": "a docked hull refuses requisition with its reason",
+      "pass": true
+    },
+    {
+      "name": "an idle hull refuses requisition",
+      "pass": true
+    },
+    {
+      "name": "requisition converts a sailing hull",
+      "pass": true,
+      "detail": {
+        "ok": 1,
+        "reason": ""
+      }
+    },
+    {
+      "name": "the seed pose is the drawn chord position and a unit direction",
+      "pass": true
+    },
+    {
+      "name": "the hold crosses over: hull, resource and tons match the network record",
+      "pass": true
+    },
+    {
+      "name": "the record stays in place and the effective fleet is one smaller",
+      "pass": true
+    },
+    {
+      "name": "a second requisition refuses while a hull is crewed",
+      "pass": true
+    },
+    {
+      "name": "a crewed hull processes no events over a 5000-year drain",
+      "pass": true
+    },
+    {
+      "name": "release refuses a hull that is not crewed",
+      "pass": true
+    },
+    {
+      "name": "release delivers the hold and re-docks the hull at the port",
+      "pass": true,
+      "detail": {
+        "ok": 1,
+        "reason": "",
+        "units": 8.333333333333334
+      }
+    },
+    {
+      "name": "the fleet count returns to where it was",
+      "pass": true
+    },
+    {
+      "name": "the released hull is back in service",
+      "pass": true
     }
   ]
 }

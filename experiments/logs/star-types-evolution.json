@@ -1,9 +1,9 @@
 {
-  "date": "2026-10-19T05:33:47.918Z",
+  "date": "2026-10-23T06:45:59.056Z",
   "seed": 7,
   "sampleSize": 200000,
-  "sampleMs": 224,
-  "deriveMs": 442,
+  "sampleMs": 259,
+  "deriveMs": 415,
   "byClass": {
     "M": 174519,
     "K": 17671,
@@ -187,8 +187,8 @@
       }
     }
   },
-  "totalChecks": 54,
-  "passed": 54,
+  "totalChecks": 58,
+  "passed": 58,
   "failed": 0,
   "checks": [
     {
@@ -465,6 +465,36 @@
       "detail": {
         "obAt1": 0.667,
         "obAt13_5": 0.179
+      }
+    },
+    {
+      "name": "the field birth channel is deterministic, bounded, and has no beginning-time pile",
+      "pass": true,
+      "detail": {
+        "badRange": 0,
+        "zeroBirth": 0
+      }
+    },
+    {
+      "name": "the reference-window inverse CDF is monotone in its independent draw",
+      "pass": true,
+      "detail": {
+        "monotone": true
+      }
+    },
+    {
+      "name": "the accepted thin-disc arm/lane subset keeps its conditional recent birth law",
+      "pass": true,
+      "detail": {
+        "armSelected": 694,
+        "wrongArmBirth": 0
+      }
+    },
+    {
+      "name": "every other component-window birth stays inside its reference slice",
+      "pass": true,
+      "detail": {
+        "wrongWindow": 0
       }
     },
     {

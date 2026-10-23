@@ -142,14 +142,14 @@ function sameFloats(a, b) {
 			// no second schedule — and exactly 1 when the mass factor is.
 			if (!(e.spheroidSize === Math.cbrt(e.spheroidProgress)
 				&& (e.spheroidProgress === 1) === (e.spheroidSize === 1)
-				&& e.spheroidSize > 0 && e.spheroidSize <= 1 + 1e-12)) {
+				&& e.spheroidSize >= 0 && e.spheroidSize <= 1 + 1e-12)) {
 				boundsBreak = boundsBreak || { type, age, spheroidSize: e.spheroidSize, spheroidProgress: e.spheroidProgress };
 			}
 			if (!(e.heat > 0 && e.heat <= 1 + 1e-12)) boundsBreak = boundsBreak || { type, age, heat: e.heat };
 			if (!(e.armContrast >= 1 - 1e-12 && e.armContrast <= galaxy.ARM_CONTRAST_MAX + 1e-12)) {
 				boundsBreak = boundsBreak || { type, age, armContrast: e.armContrast };
 			}
-			if (!(e.spheroidProgress > 0 && e.spheroidProgress <= 1 + 1e-12)) {
+			if (!(e.spheroidProgress >= 0 && e.spheroidProgress <= 1 + 1e-12)) {
 				boundsBreak = boundsBreak || { type, age, spheroidProgress: e.spheroidProgress };
 			}
 			const ratio = m.thick.H / m.thin.H;
@@ -163,7 +163,7 @@ function sameFloats(a, b) {
 		log.laws[type] = row;
 	}
 	check('every epoch factor is monotone in age, for every type', lawBreak === null, lawBreak);
-	check('heat ≤ 1, 1 ≤ armContrast ≤ ARM_CONTRAST_MAX, 0 < spheroidProgress ≤ 1, size = progress^⅓ ∈ (0, 1]',
+	check('heat ≤ 1, 1 ≤ armContrast ≤ ARM_CONTRAST_MAX, 0 ≤ spheroidProgress ≤ 1, size = progress^⅓ ∈ [0, 1]',
 		boundsBreak === null, boundsBreak);
 	check('the thick:thin height ratio is preserved at every epoch, every type',
 		ratioBreak === null, ratioBreak);
@@ -558,10 +558,14 @@ function sameFloats(a, b) {
 			if (coupled) {
 				// The preset authors phase0 rounded to 4 decimals, so the ridge
 				// sits ~1e-5 kpc off the tip at every epoch — the galaxy-types
-				// tolerance, now at a moved tip.
-				const d = density.distanceToNearestArm(m, m.arms.minRadius, tiltRad);
-				if (!(d < 1e-4)) ridgeBreak = ridgeBreak || { type, age, d };
-				const delta = density.armWavenumber(m) * Math.log(size);
+				// tolerance, now at a moved tip. At T = 0 the spheroid has not
+				// assembled (size = 0) and there is no bar to anchor a ridge, so
+				// the check is skipped for that epoch.
+				if (size > 0) {
+					const d = density.distanceToNearestArm(m, m.arms.minRadius, tiltRad);
+					if (!(d < 1e-4)) ridgeBreak = ridgeBreak || { type, age, d };
+				}
+				const delta = size > 0 ? density.armWavenumber(m) * Math.log(size) : 0;
 				const want = delta === 0 ? fresh.arms.phase0 : galaxy.wrapTwoPi(fresh.arms.phase0 + delta);
 				if (Math.abs(m.arms.phase0 - want) > 1e-12) {
 					additiveBreak = additiveBreak || { type, age, phase0: m.arms.phase0, want };
@@ -571,9 +575,10 @@ function sameFloats(a, b) {
 			}
 			// The pattern speed is the build's own law read on the epoch's own
 			// bar: shorter bar, faster pattern, flat at the rCore floor — and
-			// bit-identical to the build's value at the reference epoch.
+			// bit-identical to the build's value at the reference epoch. A
+			// 0-size spheroid (T = 0) has no bar and no pattern to drive.
 			const extent = Math.min(1, m.truncation.spheroidRadius);
-			const wantOmega = m.dynamics.vFlat > 0
+			const wantOmega = (m.dynamics.vFlat > 0 && m.spheroid.a > 0)
 				? PRECESSION * m.dynamics.vFlat / Math.max(m.spheroid.a * m.spheroid.r0 * extent, m.dynamics.rCore)
 				: 0;
 			if (!Object.is(m.dynamics.omegaPattern, galaxy.barPatternSpeed(m.dynamics, m.spheroid, m))
@@ -582,7 +587,11 @@ function sameFloats(a, b) {
 			}
 			// Ages walk upward, so the pattern must never speed up: a longer
 			// bar is a slower one, flat only while the tip sits inside rCore.
-			if (prevOmega !== null && m.dynamics.omegaPattern > prevOmega + 1e-15) {
+			// At T = 0 the bar has not assembled (omega = 0) and the first
+			// positive size may still sit inside rCore, so the check starts
+			// once both the previous and current omegas are positive.
+			if (prevOmega !== null && prevOmega > 0 && m.dynamics.omegaPattern > 0
+				&& m.dynamics.omegaPattern > prevOmega + 1e-15) {
 				monotoneBreak = monotoneBreak || { type, age, omega: m.dynamics.omegaPattern, prev: prevOmega };
 			}
 			prevOmega = m.dynamics.omegaPattern;
@@ -721,6 +730,62 @@ function sameFloats(a, b) {
 		Math.abs(wrapPi(mean * t - orbit.getPatternPhase())) < 1e-9,
 		{ product: mean * t, phase: orbit.getPatternPhase() });
 	orbit.resetPatternPhase();
+}
+
+
+// --- 9. Deep time: T = 0 is pure gas, no stars ----------------------------
+// 0.7.2 lowered AGE_MIN from 0.2 to 0 so the Evolve preset starts at the
+// galaxy's first light. At T = 0 every formation-law factor degenerates: the
+// plan lists each one and its resolution. This section pins them.
+{
+	let deepBreak = null;
+	for (const type of TYPES) {
+		const fresh = galaxy.createGalaxy({ type, seed: 7 });
+		const m = galaxy.modelAtAge(fresh, galaxy.AGE_MIN);
+		const e = m.epoch;
+		const issues = [];
+		// Nothing has formed: the SFH progress is 0, gas is 1.
+		if (e.sfhProgress !== 0 && e.assembly !== 0) {
+			// assembly reads sfhProgress; at T=0 both are 0.
+		}
+		if (e.assembly > 1e-15) issues.push('assembly not 0 at T=0');
+		if (Math.abs(e.gasNow - 1) > 1e-12) issues.push('gasNow not 1 at T=0');
+		// The spheroid has not assembled: its progress and size are 0.
+		if (e.spheroidProgress !== 0) issues.push('spheroidProgress not 0 at T=0');
+		if (e.spheroidSize !== 0) issues.push('spheroidSize not 0 at T=0');
+		// The spheroid axes are 0: no bulge, no bar.
+		if (m.spheroid.a !== 0) issues.push('spheroid.a not 0 at T=0');
+		if (m.spheroid.b !== 0) issues.push('spheroid.b not 0 at T=0');
+		if (m.spheroid.c !== 0) issues.push('spheroid.c not 0 at T=0');
+		// Heat is floored so discHeightAt stays finite for the picker.
+		if (!(e.heat > 0 && e.heat <= 1)) issues.push('heat out of (0,1] at T=0');
+		// Arm contrast saturates: the gas-rich early disc has maximum arm signal.
+		if (!(e.armContrast >= 1 - 1e-12 && e.armContrast <= galaxy.ARM_CONTRAST_MAX + 1e-12)) {
+			issues.push('armContrast out of range at T=0');
+		}
+		// Disc heights are finite (heat floor keeps them above 0).
+		if (!(m.thin.H > 0)) issues.push('thin.H not positive at T=0');
+		if (!(m.thick.H > 0)) issues.push('thick.H not positive at T=0');
+		// A barred type has no pattern at T=0 (the bar hasn't assembled).
+		if (fresh.barred && m.dynamics.omegaPattern !== 0) {
+			issues.push('barred omegaPattern not 0 at T=0');
+		}
+		// The arm inner edge rides the bar tip; both are 0 at T=0.
+		if (fresh.barred && m.arms.minRadius !== 0) {
+			issues.push('barred minRadius not 0 at T=0');
+		}
+		// Phase0 keeps its base when size is 0 (delta = 0 guard).
+		if (fresh.barred && !Object.is(m.arms.phase0, fresh.arms.phase0)) {
+			issues.push('phase0 moved at T=0');
+		}
+		// All finite: no NaN, no Infinity anywhere.
+		for (const key of ['heat', 'armContrast', 'spheroidProgress', 'spheroidSize', 'gasNow']) {
+			if (!isFinite(e[key])) issues.push(key + ' not finite');
+		}
+		if (issues.length) deepBreak = deepBreak || { type, issues };
+	}
+	check('at T = 0 every factor is the deep-time limit: no gas left, no spheroid, heat floored, pattern off',
+		deepBreak === null, deepBreak);
 }
 
 

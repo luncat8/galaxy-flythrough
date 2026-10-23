@@ -30,7 +30,7 @@ path, and it would fight this series for the same records. See §11.
 | F4 | **The gas account reads the drawn census, including the smooth gate.** One 1024-bin birth histogram per draw; integrate the binned `smoothstep` presence and normalize by its value at `AGE_REF`, then `gas(T) = 1 − formed(T)·(1 − gasFraction)`. Exact at both ends, with a measured histogram error bound between them. | do |
 | F5 | **The gas picture is a coarse grid** (64 r × 96 φ × 4 z = 24 576 cells), integrated by a compute pass, ping-pong buffers, **no atomics**. Races allowed where a scatter would need them; the drift is bounded and measured. | do |
 | F6 | **The smoothness contract comes first** (§6). No epoch may re-sample, re-roll or re-place anything that was already on screen. The object block's 0.02 Gyr re-roll is the one confirmed jump and is fixed by this series. | do |
-| F7 | **Deep time is a real epoch.** `AGE_MIN` 0.2 → 0, with the zero-factor traps in §7 resolved rather than clamped away. | do |
+| F7 | **Deep time is a real epoch.** `AGE_MIN` 0.2 → 0, with the zero-factor traps in §7 resolved rather than clamped away. | shipped 0.7.2 |
 | F8 | Per-star gas particles; a second star population spawned by the gas; N-body; a re-sample per epoch; money | **refused** (§9) |
 
 ## 1. What is wrong today

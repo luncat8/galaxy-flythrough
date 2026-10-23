@@ -1,10 +1,10 @@
 {
-  "date": "2026-10-22T21:43:22.023Z",
+  "date": "2026-10-23T06:45:01.787Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 184,
-  "totalChecks": 135,
-  "passed": 135,
+  "prepareMs": 193,
+  "totalChecks": 138,
+  "passed": 138,
   "failed": 0,
   "checks": [
     {
@@ -399,8 +399,20 @@
       "detail": 0.01666666753590107
     },
     {
-      "name": "uniform is exactly 208 bytes (camera block + orbit dynamics + wave + engine + epoch)",
+      "name": "uniform is exactly 224 bytes (camera block + orbit dynamics + epoch + formation gate)",
       "pass": true
+    },
+    {
+      "name": "formation lane carries epoch, fade width and procedural count",
+      "pass": true,
+      "detail": {
+        "formation": [
+          13.5,
+          0.05000000074505806,
+          20000,
+          0
+        ]
+      }
     },
     {
       "name": "uniform dynA = (vFlat, rCore, omegaPattern, spinLambda) of the live model",
@@ -522,8 +534,8 @@
       "name": "a parked camera does not re-upload the catalog",
       "pass": true,
       "detail": {
-        "before": 3,
-        "after": 3
+        "before": 4,
+        "after": 4
       }
     },
     {
@@ -635,11 +647,34 @@
       }
     },
     {
+      "name": "one deterministic reference birth time is stored for every field star",
+      "pass": true,
+      "detail": {
+        "count": 20000,
+        "badBirth": 0,
+        "first": [
+          4.008938789367676,
+          13.481390953063965,
+          4.603399276733398,
+          3.5866780281066895
+        ]
+      }
+    },
+    {
+      "name": "the CPU gate matches its exact endpoints and increases continuously through the fade",
+      "pass": true,
+      "detail": [
+        0,
+        0.49999999999999734,
+        1
+      ]
+    },
+    {
       "name": "the look sweep rewrites the look of a slice and never its birth vector",
       "pass": true,
       "detail": {
         "sweptMoved": 0,
-        "sweptLook": 25,
+        "sweptLook": 22,
         "sweptBytes": 320000,
         "records": 320000
       }
@@ -656,10 +691,13 @@
       "name": "a young galaxy is a dimmer one, so the uniform's offset brightens it back",
       "pass": true,
       "detail": {
-        "offset": -2.926,
-        "want": -2.926,
-        "meanMagYoung": 9.324,
-        "meanMagRef": 9.477
+        "offset": -6.034,
+        "want": -6.034,
+        "youngLum": 0.017207174301897242,
+        "refLum": 4.459502707542611,
+        "impliedRefLum": 4.45950270754261,
+        "meanMagYoung": 9.255,
+        "meanMagRef": 9.471
       }
     },
     {
@@ -670,7 +708,7 @@
           0,
           1,
           1,
-          -2.926142454147339
+          -6.033942222595215
         ]
       }
     },
@@ -841,8 +879,8 @@
       "name": "crossing a cell boundary re-uploads the dynamic region",
       "pass": true,
       "detail": {
-        "before": 18,
-        "after": 19
+        "before": 24,
+        "after": 25
       }
     },
     {
@@ -993,10 +1031,10 @@
       }
     },
     {
-      "name": "state.bufferBytes counts the star, nebula and theta buffers",
+      "name": "state.bufferBytes counts the star, nebula, theta and birth buffers",
       "pass": true,
       "detail": {
-        "bufferBytes": 33360
+        "bufferBytes": 37360
       }
     },
     {

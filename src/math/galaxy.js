@@ -256,7 +256,7 @@
 	// 0.3.0–0.3.2 pinned. It is also the slider's ceiling (nothing here can be
 	// older than the universe) and the default age.
 	const AGE_REF = 13.5;
-	const AGE_MIN = 0.2;
+	const AGE_MIN = 0;
 	const AGE_MAX = AGE_REF;
 	const AGE_DEFAULT = AGE_REF;
 	// Quenching: the stages with T ≤ 0 (the E sequence and S0) stop forming
@@ -557,6 +557,11 @@
 	// height follows dispersion squared. One exponent, two outcomes, no per-type
 	// constant: a young disc is thin *because* it is cold.
 	const HEAT_EXP = 0.25;
+	// Heat floor: at T = 0 the mean stellar age is 0 and the raw heat is 0, which
+	// collapses discHeightAt to a zero scale height and the geometry tier's picker
+	// and label layer divide by it. The birth gate hides every star regardless, so
+	// the floor only keeps the *geometry* finite — no consumer reads it visually.
+	const HEAT_FLOOR = 1e-3;
 	// Arm contrast ceiling. The wave's response to gas is sub-linear (the square
 	// root of the gas ratio below), and beyond twice the reference contrast the
 	// linear density-wave picture is not believable — the field would read as two
@@ -620,7 +625,8 @@
 		};
 		const meanAge = meanAgeAt(p.age);
 		const meanAgeRef = meanAgeAt(AGE_REF);
-		const heat = meanAgeRef > 0 ? Math.pow(meanAge / meanAgeRef, HEAT_EXP) : 1;
+		const heatRaw = meanAgeRef > 0 ? Math.pow(meanAge / meanAgeRef, HEAT_EXP) : 1;
+		const heat = heatRaw > HEAT_FLOOR ? heatRaw : HEAT_FLOOR;
 		const gasNow = gasFractionAt(p.tauSfh, p.quenchTime, p.gasFraction, p.age);
 		const gasRatio = p.gasFraction > 0 ? gasNow / p.gasFraction : 1;
 		const root = Math.sqrt(gasRatio);
@@ -687,7 +693,9 @@
 			// An uncoupled bar (SB0: pitch 0) has no ridge to re-anchor, and its
 			// K = m/tan(0) would be infinite — the same gate the table solves
 			// phase0 under.
-			const delta = (model.arms.m > 0 && model.arms.pitchDeg > 0)
+			// A 0-size spheroid means no bar has assembled; there is nothing to
+			// re-anchor and Math.log(0) is −∞, so the ridge keeps its base phase0.
+			const delta = (model.arms.m > 0 && model.arms.pitchDeg > 0 && size > 0)
 				? density.armWavenumber(model) * Math.log(size)
 				: 0;
 			model.arms.phase0 = delta === 0 ? base.armsPhase0 : wrapTwoPi(base.armsPhase0 + delta);
@@ -820,6 +828,8 @@
 	// (at the reference epoch the two paths are bit-identical by construction).
 	function barPatternSpeed(dynamics, spheroid, model) {
 		if (!(dynamics.vFlat > 0)) return 0;
+		// A 0-size spheroid means no bar has assembled — no pattern to drive.
+		if (!(spheroid.a > 0)) return 0;
 		// A bar ends at |xi| = barTipRadius (density.js); any other barred
 		// bulge profile ends at its own a.
 		const extent = spheroid.profile === 'bar' ? density.barTipRadius(model) : 1;
@@ -1169,7 +1179,7 @@
 		DISC_L_KPC, THICK_L_RATIO, THICK_H_RATIO, HALO_AMP_UNIT, YOUNG_OUTER_R_KPC, GAS_RICH_MIN,
 		GAS_NORMAL, AGE_REF, AGE_MIN, AGE_MAX, AGE_DEFAULT, AGE_STEP, EVOLVE_GYR_PER_MYR,
 		FORMATION_WINDOW,
-		QUENCH_STAGE_MAX, QUENCH_TAU_MULT, TAU_SFH_MIN, HEAT_EXP, ARM_CONTRAST_MAX,
+		QUENCH_STAGE_MAX, QUENCH_TAU_MULT, TAU_SFH_MIN, HEAT_EXP, HEAT_FLOOR, ARM_CONTRAST_MAX,
 		CLUMP_COUNT, CLUMP_BOOST, CLUMP_KFBM, CLUMP_SPAN_R, CLUMP_Z_RATIO, CLUMP_R_OVER_K,
 		interpAnchors, createGalaxy, createMilkyWay, modelAtAge, cycleGalaxyType, galaxyLabel, homeFor,
 		sfhCumulative, sfhSpanAt, sfhProgress, gasFractionAt, solvePopulationClock,

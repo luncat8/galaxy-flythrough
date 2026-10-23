@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-22T11:03:14.978Z",
+  "date": "2026-10-23T06:44:59.132Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -30,6 +30,7 @@
     "core/economy.js",
     "core/trade.js",
     "core/loop.js",
+    "core/workspace.js",
     "core/presets.js",
     "data/landmarks.js",
     "data/constellations.js",
@@ -57,6 +58,7 @@
     "core/ship.js",
     "core/star-set.js",
     "core/trade.js",
+    "core/workspace.js",
     "data/constellations.js",
     "data/landmarks.js",
     "main.js",
@@ -84,8 +86,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 114,
-  "passed": 114,
+  "totalChecks": 119,
+  "passed": 119,
   "failed": 0,
   "checks": [
     {
@@ -97,8 +99,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 40,
-        "sources": 40,
+        "scripts": 41,
+        "sources": 41,
         "missing": []
       }
     },
@@ -282,7 +284,7 @@
       "pass": true
     },
     {
-      "name": "the Controls panel carries the SIM and ARCADE presets, game-gated",
+      "name": "the Controls panel carries the SIM and ARCADE presets, fly-scoped",
       "pass": true
     },
     {
@@ -303,7 +305,23 @@
       "detail": "missing ids"
     },
     {
-      "name": "the sysmenu selector main.js queries is an id in the page",
+      "name": "the routemenu selector main.js queries is an id in the page",
+      "pass": true
+    },
+    {
+      "name": "workspace.js is loaded exactly once, before presets.js",
+      "pass": true
+    },
+    {
+      "name": "the mode bar carries the three chips, the clock and the panels menu",
+      "pass": true
+    },
+    {
+      "name": "the Controls panel carries one hint block per workspace",
+      "pass": true
+    },
+    {
+      "name": "applyPanels writes hidden and is the one panel-visibility writer",
       "pass": true
     },
     {
@@ -385,6 +403,7 @@
         "EconomyLib",
         "TradeLib",
         "Loop",
+        "Workspace",
         "Presets",
         "Landmarks",
         "Constellations",
@@ -415,7 +434,7 @@
       "name": "GalaxyLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 63
+        "keys": 64
       }
     },
     {
@@ -436,7 +455,7 @@
       "name": "StarTypesLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 32
+        "keys": 35
       }
     },
     {
@@ -450,7 +469,7 @@
       "name": "OrbitLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 131
+        "keys": 133
       }
     },
     {
@@ -499,7 +518,7 @@
       "name": "Ship loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 112
+        "keys": 113
       }
     },
     {
@@ -520,7 +539,7 @@
       "name": "TradeLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 147
+        "keys": 152
       }
     },
     {
@@ -549,6 +568,13 @@
       "pass": true,
       "detail": {
         "keys": 3
+      }
+    },
+    {
+      "name": "Workspace loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 24
       }
     },
     {
@@ -721,6 +747,7 @@
         "traderoutes": 1,
         "tradeexpand": 1,
         "ship": "chemical",
+        "mode": "observe",
         "viewmode": "off",
         "viewproj": "view",
         "viewsource": "nearest",
@@ -761,6 +788,7 @@
         "traderoutes": 1,
         "tradeexpand": 1,
         "ship": "chemical",
+        "mode": "observe",
         "viewmode": "off",
         "viewproj": "view",
         "viewsource": "nearest",
@@ -801,6 +829,7 @@
         "traderoutes": 1,
         "tradeexpand": 1,
         "ship": "chemical",
+        "mode": "observe",
         "viewmode": "off",
         "viewproj": "view",
         "viewsource": "nearest",

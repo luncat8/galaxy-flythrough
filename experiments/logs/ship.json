@@ -1,6 +1,6 @@
 {
-  "total": 123,
-  "passed": 123,
+  "total": 132,
+  "passed": 132,
   "failed": 0,
   "checks": [
     {
@@ -960,6 +960,42 @@
     },
     {
       "name": "the hangar refill does not restore life support",
+      "pass": true
+    },
+    {
+      "name": "three freighter rows with the authored numbers",
+      "pass": true
+    },
+    {
+      "name": "the pilot catalogue is untouched and disjoint from the freighters",
+      "pass": true
+    },
+    {
+      "name": "every freighter is a hauler, never a racer",
+      "pass": true
+    },
+    {
+      "name": "classById reaches both tables and falls back like shipById",
+      "pass": true
+    },
+    {
+      "name": "createShip can be a freighter",
+      "pass": true
+    },
+    {
+      "name": "adoptHull re-arms the tank, undocks and sets the class",
+      "pass": true
+    },
+    {
+      "name": "the adopted hold is the cargo, capped by the class",
+      "pass": true
+    },
+    {
+      "name": "the adopted velocity clamps to the class cruise",
+      "pass": true
+    },
+    {
+      "name": "an empty takeover carries no cargo tag",
       "pass": true
     }
   ]

@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-21T20:59:01.192Z",
+  "date": "2026-10-23T06:44:58.871Z",
   "modules": 35,
   "totalChecks": 178,
   "passed": 178,
@@ -89,7 +89,7 @@
       }
     },
     {
-      "name": "GalaxyLib has identical key sets (63 keys)",
+      "name": "GalaxyLib has identical key sets (64 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -185,7 +185,7 @@
       }
     },
     {
-      "name": "StarTypesLib has identical key sets (32 keys)",
+      "name": "StarTypesLib has identical key sets (35 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -249,7 +249,7 @@
       }
     },
     {
-      "name": "OrbitLib has identical key sets (131 keys)",
+      "name": "OrbitLib has identical key sets (133 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -313,7 +313,7 @@
       }
     },
     {
-      "name": "DeltaVLib has identical key sets (46 keys)",
+      "name": "DeltaVLib has identical key sets (49 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -633,7 +633,7 @@
       }
     },
     {
-      "name": "EconomyLib has identical key sets (94 keys)",
+      "name": "EconomyLib has identical key sets (95 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -665,7 +665,7 @@
       }
     },
     {
-      "name": "TradeLib has identical key sets (140 keys)",
+      "name": "TradeLib has identical key sets (152 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -1017,7 +1017,7 @@
       }
     },
     {
-      "name": "LabelLayer has identical key sets (14 keys)",
+      "name": "LabelLayer has identical key sets (15 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
