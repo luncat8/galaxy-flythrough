@@ -105,6 +105,9 @@ function readParams(search) {
 		traderoutes: number('traderoutes', window.TradeLib.TRADE_ROUTES_DEFAULT),
 		tradeexpand: number('tradeexpand', 1),
 		ship: text('ship', 'chemical'),
+		// The workspace (workspace-plan.md §12), by name; unknown names fall
+		// back to observe through Workspace.modeFromName at boot.
+		mode: text('mode', 'observe'),
 		// View modes (view-modes.6): the heightmap panel's render type,
 		// projection, anchor source and look knobs — defaulted by the module
 		// that owns the numbers.
@@ -182,7 +185,21 @@ async function boot() {
 		let tradeSyncOn = 0;
 		let tradeGenOn = 0;
 		let tradeExpansionOn = params.tradeexpand > 0 ? 1 : 0;
-		let gameMode = false;
+		// The workspace (workspace-plan.md §3): one state, three names —
+		// observe (the sky), fly (a ship), command (the colony network).
+		// `isFlying()` is the one predicate the old isFlying() boolean becomes:
+		// the camera is the ship, the observer's keys are dead, the trade
+		// sync is off. `lastWorkspace` is where g returns to; the overrides
+		// are the user's per-workspace panel sets (0 = none unless frozen).
+		const Workspace = window.Workspace;
+		let workspace = Workspace.OBSERVE;
+		let lastWorkspace = Workspace.OBSERVE;
+		let panelsHidden = false;
+		const panelOverrides = new Uint8Array(3);
+		const panelFrozen = new Uint8Array(3);
+		let panelsWired = false;    // applyPanels is a no-op until the mode-bar block has built its DOM
+		function isFlying() { return workspace === Workspace.FLY; }
+		function isCommanding() { return workspace === Workspace.COMMAND; }
         const AUTOPILOT_MIN_WALL_SECONDS = 4;
         let shipTimeRateCapY = Infinity;
         let ship = shipLib.createShip(params.ship);
@@ -898,6 +915,8 @@ async function boot() {
         const systemLayer = window.SystemLayer.createSystemLayer(document.getElementById('system'));
         const sysMenu = document.getElementById('sysmenu');
         const sysMenuCollapse = document.getElementById('sysmenu-collapse');
+        const routeMenu = document.getElementById('routemenu');
+        const routeMenuCollapse = document.getElementById('routemenu-collapse');
         const btnSystemView = document.getElementById('btn-system-view');
         const sysViewSelect = document.getElementById('sys-view');
         const sliderSysTime = document.getElementById('slider-systime');
@@ -905,7 +924,7 @@ async function boot() {
         // Rows that mean nothing outside the map are hidden rather than
         // disabled — the data-view mirror of the movement-pass controls. G3's
         // ship and planner stay visible above them in the same Flight workspace.
-        const viewRows = Array.from(document.querySelectorAll('#sysmenu [data-view]'));
+        const viewRows = Array.from(document.querySelectorAll('#routemenu [data-view]'));
         const bodyPick = { kind: -1, index: -1 };
         const systemCtx = {};
         let hoverX = -1e9, hoverY = -1e9;
@@ -963,6 +982,7 @@ async function boot() {
         const flightCargoUnload = document.getElementById('flight-cargo-unload');
         const flightPortState = document.getElementById('flight-port-state');
         const flightFound = document.getElementById('flight-found');
+        const flightRelease = document.getElementById('flight-release');
         // The Trade rows: the network clock, the overlay toggle and the port
         // list. The counters and the list are 4 Hz text like the rest. Now
         // in its own panel (trade.2), so piloting and economy are separate.
@@ -976,6 +996,7 @@ async function boot() {
         const tradeState = document.getElementById('trade-state');
         const tradeList = document.getElementById('trade-list');
         const tradeLaunch = document.getElementById('trade-launch');
+        const tradeFound = document.getElementById('trade-found');
         const tradeLog = document.getElementById('trade-log');
         const tradeCalendar = document.getElementById('trade-calendar');
         const routeOrigin = document.getElementById('route-origin');
@@ -1016,7 +1037,7 @@ async function boot() {
                 for (const entry of fleet) {
                         if (!entry.button) addFleetRow(entry);
                         const active = entry === activeFleetShip;
-                        entry.button.textContent = `${entry.name} · ${entry.ship.class.label}${active && gameMode ? ' · piloting' : ''}`;
+                        entry.button.textContent = `${entry.name} · ${entry.ship.class.label}${active && isFlying() ? ' · piloting' : ''}`;
                         entry.button.title = `${entry.name} · ${entry.ship.class.label}${active ? ' · active ship' : ' · click to pilot'}`;
                         entry.button.classList.toggle('is-active', active);
                         entry.button.setAttribute('aria-selected', active ? 'true' : 'false');
@@ -1036,15 +1057,14 @@ async function boot() {
                 gameCommand = 0;
                 shipTimeRateCapY = Infinity;
                 systemLayer.setShipClass(ship.class.id);
-                if (gameMode) {
+                if (isFlying()) {
                         positionCameraAtActiveShip();
                         gameTargetFeed(0);
                         gameTargetClosingKpcS = 0;
                 } else {
-                        gameMode = true;
-                        enterGameMode();
+                        setWorkspace(Workspace.FLY);
                 }
-                if (systemLayer.isOpen() && gameMode && (!dockedSystemAvailable()
+                if (systemLayer.isOpen() && isFlying() && (!dockedSystemAvailable()
                         || (systemLayer.record.star.key >>> 0) !== (ship.station.key >>> 0))) closeSystemView();
                 syncDvUi();
                 syncFleetUi();
@@ -1088,6 +1108,165 @@ async function boot() {
         });
         shipSpawn.addEventListener('click', () => {
                 spawnFleetShip();
+                releasePanelInput();
+                canvas.focus({ preventScroll: true });
+        });
+        // --- Requisition (workspace-plan.md §10) ---------------------------
+        // The fleet list grows a second group: the network's own freighters
+        // under way, each row a takeover. The group is 4 Hz text like the
+        // rest of the panel; six rows is a window, not a census.
+        const NET_HULL_ROWS_MAX = 6;
+        const netHullRows = [];
+        let netHullSig = '';
+        const netHullHeader = document.createElement('div');
+        netHullHeader.className = 'flight-section-heading';
+        netHullHeader.hidden = true;
+        {
+                const label = document.createElement('span');
+                label.textContent = 'Network hulls';
+                const small = document.createElement('small');
+                small.textContent = 'click to requisition';
+                netHullHeader.appendChild(label);
+                netHullHeader.appendChild(small);
+        }
+        shipList.after(netHullHeader);
+        const netHullList = document.createElement('div');
+        netHullList.id = 'net-hull-list';
+        netHullList.className = 'flight-ship-list';
+        netHullList.hidden = true;
+        netHullHeader.after(netHullList);
+        function syncNetworkHulls() {
+                let sig = '';
+                let shown = 0;
+                if (tradeNet && !isFlying()) {
+                        for (let i = 0; i < tradeNet.shipCount && shown < NET_HULL_ROWS_MAX; i++) {
+                                if (tradeNet.ships[i].state !== tradeLib.SHIP_SAILING) continue;
+                                sig += i + ':' + tradeNet.ships[i].revision + ';';
+                                shown++;
+                        }
+                }
+                if (sig === netHullSig) return;
+                netHullSig = sig;
+                netHullHeader.hidden = netHullList.hidden = sig === '';
+                netHullRows.length = 0;
+                const fragment = document.createDocumentFragment();
+                shown = 0;
+                if (sig !== '') {
+                        for (let i = 0; i < tradeNet.shipCount && shown < NET_HULL_ROWS_MAX; i++) {
+                                const s = tradeNet.ships[i];
+                                if (s.state !== tradeLib.SHIP_SAILING) continue;
+                                const button = document.createElement('button');
+                                button.type = 'button';
+                                button.dataset.netShip = String(i);
+                                const from = s.from >= 0 ? tradeNet.ports[s.from].name.slice(0, 10) : '?';
+                                const to = s.to >= 0 ? tradeNet.ports[s.to].name.slice(0, 10) : '?';
+                                button.textContent = `${tradeLib.HULLS[s.hull].name} \u00b7 ${from} \u2192 ${to}`;
+                                button.title = 'Requisition this freighter mid-voyage: the hull becomes your '
+                                        + 'physical ship at its drawn position, cargo and all. One crewed hull '
+                                        + 'at a time; Release to network at a port returns it.';
+                                fragment.appendChild(button);
+                                netHullRows.push(button);
+                                shown++;
+                        }
+                }
+                netHullList.replaceChildren(fragment);
+        }
+        // The heading quaternion for a hull adopted mid-voyage: local +X is
+        // forward (ship.js), so rotate +X onto the chord direction.
+        function headingFromForward(dx, dy, dz, heading) {
+                let ay = -dz, az = dy;                   // (1,0,0) × d
+                const s = Math.sqrt(ay * ay + az * az);  // sin, |cross|
+                if (s < 1e-9) {
+                        // Parallel: identity; anti-parallel: half-turn about up.
+                        heading[0] = 0; heading[1] = 0;
+                        heading[2] = dx > 0 ? 0 : 1; heading[3] = dx > 0 ? 1 : 0;
+                        return;
+                }
+                const angle = Math.atan2(s, dx);
+                const sh = Math.sin(angle / 2);
+                heading[0] = 0; heading[1] = (ay / s) * sh; heading[2] = (az / s) * sh;
+                heading[3] = Math.cos(angle / 2);
+        }
+        function requisitionNetShip(index) {
+                if (!tradeNet) return;
+                const origin = tradeNet.ships[index] && tradeNet.ships[index].from >= 0
+                        ? tradeNet.ports[tradeNet.ships[index].from].name : '';
+                const r = tradeLib.requisition(tradeNet, index);
+                if (!r.ok) {
+                        setAutoMsg(r.reason);
+                        return;
+                }
+                const classId = tradeLib.HULLS[r.hull].id;
+                const newShip = shipLib.createShip(classId);
+                shipLib.adoptHull(newShip, classId, r.tons, r.resource);
+                newShip.pos[0] = r.x; newShip.pos[1] = r.y; newShip.pos[2] = r.z;
+                const cruise = shipLib.cruiseCapKpcS(newShip);
+                newShip.vel[0] = r.dx * cruise; newShip.vel[1] = r.dy * cruise; newShip.vel[2] = r.dz * cruise;
+                headingFromForward(r.dx, r.dy, r.dz, newShip.heading);
+                const id = nextFleetId++;
+                const entry = {
+                        id, name: r.name,
+                        ship: newShip, positioned: true, entered: true, button: null,
+                        netIndex: index, originName: origin,
+                };
+                fleet.push(entry);
+                addFleetRow(entry);
+                syncNetworkHulls();
+                syncTradeUi();
+                selectFleetShip(id);
+                setAutoMsg(`requisitioned ${r.name}` + (origin ? ' out of ' + origin : '')
+                        + (r.tons > 0 && r.resource >= 0
+                                ? ` \u00b7 ${shipLib.formatCargo(newShip.cargo)} ${economyLib.RESOURCES[r.resource].name} aboard` : ''));
+        }
+        netHullList.addEventListener('click', (event) => {
+                const button = event.target.closest('button[data-net-ship]');
+                if (!button || !netHullList.contains(button)) return;
+                requisitionNetShip(Number(button.dataset.netShip));
+                releasePanelInput();
+                canvas.focus({ preventScroll: true });
+        });
+        // The one way back (workspace-plan.md §10): docked at a settled port,
+        // the hold is delivered and the hull re-enters statistical service.
+        // The fleet entry dies with the release — a hull exists in exactly
+        // one fleet at a time — so the pilot must keep one ship of their own.
+        function gameReleaseShip() {
+                if (!isFlying() || !tradeNet) return;
+                const entry = activeFleetShip;
+                if (entry.netIndex === undefined) {
+                        setAutoMsg('not a network hull \u00b7 nothing to release');
+                        return;
+                }
+                if (!ship.docked) {
+                        setAutoMsg('release needs a dock \u00b7 O docks at a settled station');
+                        return;
+                }
+                if (fleet.length <= 1) {
+                        setAutoMsg('the fleet would be empty \u00b7 spawn another ship first');
+                        return;
+                }
+                const portIndex = gameTradePort();
+                if (portIndex < 0) {
+                        setAutoMsg('no trade port here \u00b7 no colony');
+                        return;
+                }
+                const res = tradeLib.release(tradeNet, portIndex, entry.netIndex,
+                        ship.cargo, ship.cargoResource, tradeNet.time);
+                if (!res.ok) {
+                        setAutoMsg(res.reason);
+                        return;
+                }
+                const portName = tradeNet.ports[portIndex].name;
+                fleet.splice(fleet.indexOf(entry), 1);
+                if (entry.button) entry.button.remove();
+                setAutoMsg(`released to ${portName}`
+                        + (res.units > 0 ? ' \u00b7 delivered ' + economyLib.formatUnits(res.units) + ' '
+                                + economyLib.RESOURCES[ship.cargoResource].name : ''));
+                selectFleetShip(fleet[0].id);
+                syncNetworkHulls();
+                syncTradeUi();
+        }
+        flightRelease.addEventListener('click', () => {
+                gameReleaseShip();
                 releasePanelInput();
                 canvas.focus({ preventScroll: true });
         });
@@ -1185,6 +1364,7 @@ async function boot() {
         flightDock.addEventListener('click', () => { actions.dock = 1; });
         flightCargoLoad.addEventListener('click', () => { actions.cargoLoad = 1; });
         flightFound.addEventListener('click', () => gameFoundColony());
+        tradeFound.addEventListener('click', () => commandFoundColony());
         flightCargoUnload.addEventListener('click', () => { actions.cargoUnload = 1; });
         tradeRateSlider.addEventListener('input', () => {
                 tradeRateIndex = Math.min(tradeLib.TRADE_RATES.length - 1,
@@ -1225,6 +1405,7 @@ async function boot() {
         routeList.addEventListener('click', (event) => {
                 const button = event.target.closest('button[data-route]');
                 if (!button || !routeList.contains(button)) return;
+                if (!isCommanding()) return;
                 if (tradeNet) tradeLib.removeRoute(tradeNet, Number(button.dataset.route));
                 syncTradeUi();
         });
@@ -1245,7 +1426,7 @@ async function boot() {
                 // resumes the star clock rather than leaving an economy that
                 // looks broken. A negative star rate (the observer's fly
                 // coupling) is not a running clock for this purpose.
-                if (tradeSyncOn && !gameMode && !(starTimeRate > 0)) {
+                if (tradeSyncOn && !isFlying() && !(starTimeRate > 0)) {
                         starTimeRate = lastNonZeroTimeRate > 0 ? lastNonZeroTimeRate : TRADE_GEN_MYR;
                         if (starTimeRate > Number(sliderStarTime.max)) starTimeRate = Number(sliderStarTime.max);
                         syncStarTime();
@@ -1253,6 +1434,10 @@ async function boot() {
                 syncTradeUi();
         });
         tradeExpandBox.addEventListener('change', () => {
+                if (!isCommanding()) {
+                        tradeExpandBox.checked = tradeLib.expansionArmed() !== 0;
+                        return;
+                }
                 tradeExpansionOn = tradeLib.setExpansion(tradeExpandBox.checked ? 1 : 0);
                 syncTradeUi();
         });
@@ -1267,7 +1452,7 @@ async function boot() {
                 if (tradeGenOn) {
                         tradeSyncOn = 1;
                         tradeSyncBox.checked = true;
-                        if (!gameMode) {
+                        if (!isFlying()) {
                                 starTimeRate = TRADE_GEN_MYR;
                                 lastNonZeroTimeRate = starTimeRate;
                                 syncStarTime();
@@ -1284,7 +1469,7 @@ async function boot() {
         });
         flightAutoDest.addEventListener('change', () => {
                 if (flightAutoDest.checked) {
-                        if (!gameMode) {
+                        if (!isFlying()) {
                                 flightAutoDest.checked = false;
                                 flightStatus.textContent = 'Select a ship to enter game mode';
                                 return;
@@ -1298,7 +1483,7 @@ async function boot() {
         });
         flightAutoTarget.addEventListener('change', () => {
                 if (flightAutoTarget.checked) {
-                        if (!gameMode) {
+                        if (!isFlying()) {
                                 flightAutoTarget.checked = false;
                                 flightStatus.textContent = 'Select a ship to enter game mode';
                                 return;
@@ -1320,14 +1505,14 @@ async function boot() {
 	function syncRouteUi() {
 		const r = systemLayer.routeState();
 		const state = systemLayer.autopilotState();
-		routeStarsButton.disabled = gameMode || !hasTwoStarEndpoints();
+		routeStarsButton.disabled = isFlying() || !hasTwoStarEndpoints();
 		const rate = systemLayer.getTimeRate();
 		btnRouteFly.textContent = state === 'running' ? 'Pause autopilot'
 			: state === 'paused' ? 'Resume autopilot'
 			: state === 'complete' ? 'Restart autopilot' : 'Start autopilot';
-		btnRouteFly.disabled = gameMode || !r.feasible;
-		routeRoundtrip.disabled = gameMode;
-		routeClearButton.disabled = gameMode;
+		btnRouteFly.disabled = isFlying() || !r.feasible;
+		routeRoundtrip.disabled = isFlying();
+		routeClearButton.disabled = isFlying();
 		if (!r.start) { routeHint.textContent = hasTwoStarEndpoints()
 			? 'Choose map nodes, or plan from previous star to current star.'
 			: 'Choose map nodes, or select two stars to plan an interstellar route.'; return; }
@@ -1407,15 +1592,18 @@ async function boot() {
 	});
 
         function dockedSystemAvailable() {
-                return gameMode && ship.docked && !!ship.station;
+                return isFlying() && ship.docked && !!ship.station;
         }
 
         function syncViewRows() {
                 const viewOpen = systemLayer.isOpen();
-                if (gameMode && viewOpen && systemLayer.isMapOpen()) {
+                if (isFlying() && viewOpen && systemLayer.isMapOpen()) {
                         systemLayer.setView(window.SystemLayer.VIEW_SYSTEM);
                 }
 		document.body.classList.toggle('system-view', viewOpen);
+		// The open map auto-shows System & routes (workspace-plan.md §5.3):
+		// the one panel whose job follows the view, in every workspace.
+		applyPanels();
 		syncDvUi(); syncRouteUi();
                 // Map-specific controls mean nothing while the view is closed.
                 // The ship and destination controls remain above them in Flight.
@@ -1423,11 +1611,11 @@ async function boot() {
                         row.style.display = viewOpen && row.dataset.view === 'system' ? '' : 'none';
                 }
                 btnSystemView.textContent = viewOpen ? 'Close' : 'Open';
-                btnSystemView.disabled = !viewOpen && gameMode && !dockedSystemAvailable();
+                btnSystemView.disabled = !viewOpen && isFlying() && !dockedSystemAvailable();
                 // A docked pilot may inspect the schematic to found sibling
                 // worlds, but the delta-v renders and their camera routes stay
                 // observer-only. Closing is always available.
-                sysViewSelect.disabled = gameMode;
+                sysViewSelect.disabled = isFlying();
         }
         btnSystemView.addEventListener('click', () => toggleSystemView());
 
@@ -1445,7 +1633,7 @@ async function boot() {
         function openSystemView(moveCamera) {
                 const p = starSet.primary;
                 let ref, name;
-                if (gameMode) {
+                if (isFlying()) {
                         if (!dockedSystemAvailable()) {
                                 if (systemLayer.isOpen()) closeSystemView();
                                 gameNotice();
@@ -1595,19 +1783,21 @@ async function boot() {
                 input.releaseAll();
                 if (document.pointerLockElement === canvas) document.exitPointerLock();
         }
-        // The overlay and the readout start where the left panel ends; when
-        // the panel is hidden they take the column back.
+        // The overlay and the readout start where the widest visible left
+        // panel ends; insets sum the visible set (workspace-plan.md §5.3), so
+        // a workspace switch gives the text the columns its panels released.
         function leftPanelInset() {
                 let width = 0;
-                if (selectionMenu.style.display !== 'none') width = Math.max(width, 280);
-                if (sysMenu.style.display !== 'none') width = Math.max(width, 292);
+                if (!selectionMenu.hidden) width = Math.max(width, 280);
+                if (!sysMenu.hidden) width = Math.max(width, 292);
+                if (!routeMenu.hidden) width = Math.max(width, 292);
                 return width ? width + 24 : 0;
         }
-        // The right column: Display at the edge, View modes in its own column
-        // beside it. The schematic fits its map between the columns.
+        // The right side: the inner column (View modes / Trade) sits beside
+        // the right one, so anything visible there needs both widths cleared.
         function rightPanelInset() {
-                if (viewMenu.style.display !== 'none') return 556;
-                return menu.style.display === 'none' ? 0 : 284;
+                if (!viewMenu.hidden || !tradeMenu.hidden) return 556;
+                return menu.hidden && helpPanel.hidden ? 0 : 284;
         }
         function syncOverlayInset() {
                 const inset = leftPanelInset();
@@ -1616,27 +1806,195 @@ async function boot() {
                 sysread.style.left = left;
                 return inset;
         }
-        function toggleMenu() {
-                const visible = menu.style.display !== 'none'
-                        || selectionMenu.style.display !== 'none'
-                        || sysMenu.style.display !== 'none'
-                        || viewMenu.style.display !== 'none'
-                        || helpPanel.style.display !== 'none'
-                        || tradeMenu.style.display !== 'none';
-                menu.style.display = visible ? 'none' : 'block';
-                selectionMenu.style.display = visible ? 'none' : 'block';
-                sysMenu.style.display = visible ? 'none' : 'block';
-                viewMenu.style.display = visible ? 'none' : 'block';
-                helpPanel.style.display = visible ? 'none' : 'block';
-                tradeMenu.style.display = visible ? 'none' : 'block';
+        // The seven panels in bit order (core/workspace.js PANEL_IDS); the
+        // `hidden` attribute written here is the only panel-visibility writer.
+        const panelEls = Workspace.PANEL_IDS.map((id) => document.getElementById(id));
+        function workspaceAutoShow() {
+                // The one auto-shown panel: the open system view needs its own
+                // clock and budget controls beside it, in fly's dock too.
+                return systemLayer.isOpen() ? Workspace.panelBit(Workspace.ROUTES) : 0;
+        }
+        function applyPanels() {
+                // Boot order: syncViewRows runs before the mode-bar block
+                // below declares panelEls/panelBoxes; the real first apply
+                // is the explicit call after loadPanelOverrides at the end.
+                if (!panelsWired) return;
+                const mask = panelsHidden ? 0 : Workspace.visibleMask(workspace,
+                        panelFrozen[workspace], panelOverrides[workspace], workspaceAutoShow());
+                for (let p = 0; p < Workspace.PANEL_COUNT; p++) {
+                        panelEls[p].hidden = !((mask >> p) & 1);
+                }
+                syncPanelsMenu();
                 syncOverlayInset();
-                if (visible) {
+        }
+        // Tab keeps today's screenshot lever and nothing else: hide all,
+        // restore the visible set. Transient, global, cleared by a switch.
+        function toggleMenu() {
+                panelsHidden = !panelsHidden;
+                applyPanels();
+                if (panelsHidden) {
                         input.releaseAll();
                         canvas.focus({ preventScroll: true });
                 } else {
                         releasePanelInput();
                 }
         }
+        // ------------------------------------------------------------------
+        // The workspace switch (workspace-plan.md §3–§5): one writer. The
+        // fly entrance/exit keep their names — enterGameMode seeds the hull
+        // at the camera, leaveGameMode kills the autopilot and the Δv cap —
+        // because the machinery is the helm's, whatever the state is called.
+        function setWorkspace(next) {
+                if (next === workspace) {
+                        // Re-asserting the current workspace is the escape
+                        // hatch from a Tab-hidden or fully overridden screen.
+                        panelsHidden = false;
+                        applyPanels();
+                        syncModeBar();
+                        return;
+                }
+                const wasFly = isFlying();
+                if (next === Workspace.FLY) {
+                        lastWorkspace = workspace;
+                        workspace = next;
+                        enterGameMode();
+                } else {
+                        workspace = next;
+                        if (wasFly) leaveGameMode();
+                }
+                panelsHidden = false;
+                applyPanels();
+                syncModeBar();
+                syncControls();
+                syncFlightUi();
+                syncTradeUi();
+                syncRouteUi();
+                input.releaseAll();
+                canvas.focus({ preventScroll: true });
+        }
+        // The mode bar: three chips, the named clock, the panels override
+        // menu. The chips mirror the state; the clock line is repainted at
+        // the overlay's 4 Hz because the rates move without a switch.
+        const modeBar = document.getElementById('mode-bar');
+        const modeChips = Array.from(modeBar.querySelectorAll('.mode-chip'));
+        const modeClock = document.getElementById('mode-clock');
+        const modePanelsBtn = document.getElementById('mode-panels-btn');
+        const modePanelsMenu = document.getElementById('mode-panels-menu');
+        const MODE_CHIP_ACTIONS = { modeObserve: Workspace.OBSERVE, modeFly: Workspace.FLY, modeCommand: Workspace.COMMAND };
+        modeBar.addEventListener('click', (event) => {
+                const chip = event.target.closest('.mode-chip');
+                if (!chip) return;
+                setWorkspace(MODE_CHIP_ACTIONS[chip.dataset.action]);
+        });
+        function syncModeBar() {
+                for (let i = 0; i < modeChips.length; i++) {
+                        modeChips[i].classList.toggle('is-active',
+                                MODE_CHIP_ACTIONS[modeChips[i].dataset.action] === workspace);
+                }
+                syncModeClock();
+        }
+        function syncModeClock() {
+                // The named clock (workspace-plan.md §7.2): each workspace
+                // reads the axis it owns, so the bar says whose time it is.
+                if (isFlying()) {
+                        modeClock.textContent = 'ship ' + shipLib.formatClock(ship, shipLib.speedC(ship));
+                } else if (isCommanding()) {
+                        const rate = tradeClockRate();
+                        modeClock.textContent = tradeNet
+                                ? 'trade ' + Math.round(tradeNet.time).toLocaleString('en-US') + ' y'
+                                        + (rate === 0 ? ' · paused' : ' · ' + formatTradeRate(rate) + ' y/s')
+                                : 'trade off';
+                } else {
+                        modeClock.textContent = 'star ' + window.OrbitLib.formatTimeRate(starTimeRate, 0) + ' · T';
+                }
+        }
+        // The panels menu: the current workspace's seven checkboxes plus the
+        // freeze pin. An override is per workspace and persists; freezing
+        // keeps even the system view's auto-shown Routes out.
+        const panelBoxes = [];
+        for (let p = 0; p < Workspace.PANEL_COUNT; p++) {
+                const label = document.createElement('label');
+                const box = document.createElement('input');
+                box.type = 'checkbox';
+                box.dataset.panel = String(p);
+                label.appendChild(box);
+                label.appendChild(document.createTextNode(' ' + Workspace.PANEL_LABELS[p]));
+                modePanelsMenu.appendChild(label);
+                panelBoxes.push(box);
+        }
+        const panelFreezeBox = document.createElement('input');
+        {
+                const label = document.createElement('label');
+                label.className = 'mode-panels-freeze';
+                label.title = 'Freeze this set: the override becomes the whole truth — even the system view\'s auto-shown System & routes panel stays out.';
+                panelFreezeBox.type = 'checkbox';
+                label.appendChild(panelFreezeBox);
+                label.appendChild(document.createTextNode(' freeze this set'));
+                modePanelsMenu.appendChild(label);
+        }
+        function panelStorageKey(suffix) {
+                return 'galaxy.workspace.' + Workspace.modeName(workspace) + '.' + suffix;
+        }
+        function savePanelOverride() {
+                try {
+                        window.localStorage.setItem(panelStorageKey('panels'), String(panelOverrides[workspace]));
+                        window.localStorage.setItem(panelStorageKey('frozen'), panelFrozen[workspace] ? '1' : '0');
+                } catch (err) { /* private mode: the override lives for the session */ }
+        }
+        function loadPanelOverrides() {
+                for (let w = 0; w < 3; w++) {
+                        try {
+                                const name = Workspace.modeName(w);
+                                const raw = window.localStorage.getItem('galaxy.workspace.' + name + '.panels');
+                                if (raw !== null) panelOverrides[w] = Workspace.sanitiseMask(Number(raw));
+                                panelFrozen[w] = window.localStorage.getItem('galaxy.workspace.' + name + '.frozen') === '1' ? 1 : 0;
+                        } catch (err) { break; }
+                }
+        }
+        function syncPanelsMenu() {
+                for (let p = 0; p < Workspace.PANEL_COUNT; p++) {
+                        panelBoxes[p].checked = !panelEls[p].hidden;
+                }
+                panelFreezeBox.checked = !!panelFrozen[workspace];
+        }
+        modePanelsBtn.addEventListener('click', () => {
+                modePanelsMenu.hidden = !modePanelsMenu.hidden;
+                if (!modePanelsMenu.hidden) syncPanelsMenu();
+        });
+        function visiblePanelMask() {
+                let mask = 0;
+                for (let p = 0; p < Workspace.PANEL_COUNT; p++) {
+                        if (!panelEls[p].hidden) mask |= 1 << p;
+                }
+                return mask;
+        }
+        modePanelsMenu.addEventListener('change', (event) => {
+                const box = event.target;
+                if (box === panelFreezeBox) {
+                        // Pinning freezes what is on screen now; unpinning
+                        // hands the set back to the workspace table.
+                        panelFrozen[workspace] = box.checked ? 1 : 0;
+                        if (box.checked) panelOverrides[workspace] = visiblePanelMask();
+                } else if (box.dataset.panel !== undefined) {
+                        // Touching a panel box makes the override the truth
+                        // (visibleMask consults it only while frozen), seeded
+                        // from the screen so one click changes one panel.
+                        if (!panelFrozen[workspace]) {
+                                panelOverrides[workspace] = visiblePanelMask();
+                                panelFrozen[workspace] = 1;
+                        }
+                        panelOverrides[workspace] = Workspace.applyOverride(workspace,
+                                panelOverrides[workspace], Number(box.dataset.panel), box.checked);
+                }
+                savePanelOverride();
+                applyPanels();
+        });
+        document.addEventListener('click', (event) => {
+                if (!modePanelsMenu.hidden && !event.target.closest('#mode-panels')) {
+                        modePanelsMenu.hidden = true;
+                }
+        });
+        panelsWired = true;
         function toggleCollapse(panel, button) {
                 const collapsed = panel.classList.toggle('collapsed');
                 button.textContent = collapsed ? '\u25b8' : '\u25be';
@@ -1657,6 +2015,7 @@ async function boot() {
         wireCollapse(menu, menuCollapse);
         wireCollapse(selectionMenu, selectionMenuCollapse);
         wireCollapse(sysMenu, sysMenuCollapse);
+        wireCollapse(routeMenu, routeMenuCollapse);
         wireCollapse(viewMenu, viewMenuCollapse);
         wireCollapse(tradeMenu, tradeMenuCollapse);
 
@@ -1683,14 +2042,19 @@ async function boot() {
         }
         const helpNeedPrimary = Array.from(helpPanel.querySelectorAll('button[data-action="orbitObject"], button[data-action="flyTo"]'));
         const helpNeedSet = Array.from(helpPanel.querySelectorAll('button[data-action="nextStar"], button[data-action="clearSet"]'));
-        // Game mode's gating (game-mode-plan §3): observer mode controls
-        // carry data-observer and die while the ship is the rig. The legacy
-        // Controls refill remains game-only; the Flight workspace is the
-        // always-visible hangar. Repainted at 4 Hz.
-        const helpNeedObserver = Array.from(helpPanel.querySelectorAll('[data-observer]'));
-        // G5's clock presets are the reverse gate: the ship clock exists only
-        // on game mode's shared axis, so they are dead while observing.
-        const helpNeedGame = Array.from(helpPanel.querySelectorAll('[data-game]'));
+        // The Controls panel is mode-scoped (workspace-plan.md §5.2): every
+        // control carries data-mode with the workspace names it serves, and
+        // a switch hides the rest instead of greying them — three thin decks
+        // from one panel. Applied on switch, not at 4 Hz.
+        const helpModeControls = Array.from(helpPanel.querySelectorAll('[data-mode]'));
+        const helpTitle = document.getElementById('help-title');
+        function syncControls() {
+                const name = Workspace.modeName(workspace);
+                for (const control of helpModeControls) {
+                        control.hidden = control.dataset.mode.indexOf(name) < 0;
+                }
+                helpTitle.textContent = 'Controls — ' + name;
+        }
         const helpClockSim = helpPanel.querySelector('[data-action="clockSim"]');
         const helpClockArcade = helpPanel.querySelector('[data-action="clockArcade"]');
         const helpRefuel = helpPanel.querySelector('[data-action="shipRefuel"]');
@@ -1714,27 +2078,24 @@ async function boot() {
                 canvas.focus({ preventScroll: true });
         });
         function syncHelpControls(cameraState) {
-                helpBoxes.get('chaseFollow').checked = gameMode ? ship.ap.mode === shipLib.AP_FOLLOW : cameraState.chase;
+                helpBoxes.get('chaseFollow').checked = isFlying() ? ship.ap.mode === shipLib.AP_FOLLOW : cameraState.chase;
                 helpBoxes.get('constellations').checked = labels.constellationsVisible();
                 helpBoxes.get('systemView').checked = systemLayer.isOpen();
-                helpBoxes.get('gameMode').checked = gameMode;
-                helpBoxes.get('freezeTime').checked = gameMode ? ship.timeFrozen : starTimeRate === 0;
+                helpBoxes.get('freezeTime').checked = isFlying() ? ship.timeFrozen : starTimeRate === 0;
                 const noPrimary = starSet.primary < 0;
                 const noSet = starSet.count === 0;
                 for (const button of helpNeedPrimary) button.disabled = noPrimary;
                 for (const button of helpNeedSet) button.disabled = noSet;
-                for (const control of helpNeedObserver) control.disabled = gameMode;
-                for (const control of helpNeedGame) control.disabled = !gameMode;
-                if (helpRefuel) helpRefuel.disabled = !gameMode;
+                if (helpRefuel) helpRefuel.disabled = !isFlying();
                 helpPrevStar.disabled = noSet;
-                helpFly.disabled = gameMode && ship.ap.mode === shipLib.AP_OFF;
-                helpFlyLabel.textContent = gameMode ? 'abort autopilot' : 'fly';
+                helpFly.disabled = isFlying() && ship.ap.mode === shipLib.AP_OFF;
+                helpFlyLabel.textContent = isFlying() ? 'abort autopilot' : 'fly';
                 for (const [kind, button] of helpRefButtons) {
                         button.classList.toggle('is-active', speedRef === kind);
                 }
-                helpClockSim.classList.toggle('is-active', gameMode && !ship.arcade
+                helpClockSim.classList.toggle('is-active', isFlying() && !ship.arcade
                         && ship.timeIndex === shipLib.SHIP_TIME_REAL_INDEX);
-                helpClockArcade.classList.toggle('is-active', gameMode && ship.arcade);
+                helpClockArcade.classList.toggle('is-active', isFlying() && ship.arcade);
         }
         syncOverlayInset();
         window.addEventListener('resize', syncOverlayInset);
@@ -1853,7 +2214,7 @@ async function boot() {
                 syncStarTime();
         }
         function syncStarTime() {
-                if (gameMode) {
+                if (isFlying()) {
                         sliderStarTime.min = shipLib.SHIP_TIME_INDEX_MIN;
                         sliderStarTime.max = shipLib.SHIP_TIME_INDEX_MAX;
                         sliderStarTime.step = 1;
@@ -1876,7 +2237,7 @@ async function boot() {
                         valStarTime.title = '';
                 }
                 starTimeRangeBtn.textContent = starTimeWide ? 'wide range' : 'fine range';
-                starTimeRangeBtn.disabled = gameMode;
+                starTimeRangeBtn.disabled = isFlying();
         }
         function pauseStarTimeForSearch() {
                 if (starTimeRate === 0) return false;
@@ -1886,7 +2247,7 @@ async function boot() {
                 return true;
         }
         sliderStarTime.addEventListener('input', () => {
-                if (gameMode) {
+                if (isFlying()) {
                         ship.timeIndex = Number(sliderStarTime.value);
                         ship.timeFrozen = false;
                         refreshShipTimeRateCap();
@@ -1909,7 +2270,7 @@ async function boot() {
         sliderStarTime.addEventListener('input', () => { starTimeMoved = true; });
         sliderStarTime.addEventListener('click', () => {
                 if (starTimeMoved) return;
-                if (gameMode) {
+                if (isFlying()) {
                         ship.timeIndex = 1;      // SHIP_TIME_LADDER[1] is the frozen stop
                         ship.timeFrozen = false;
                         refreshShipTimeRateCap();
@@ -2087,6 +2448,7 @@ async function boot() {
                         tradegen: tradeGenOn,
                         tradeexpand: tradeExpansionOn,
 			ship: systemLayer.getShipClass(),
+			mode: Workspace.modeName(workspace),
                         stars: params.stars,
                         catalog: params.catalogStars,
                         clusters: renderer.state.clusterExaggeration,
@@ -2197,6 +2559,12 @@ async function boot() {
                         systemLayer.setBudget(s.dvbudget);
                 }
 		if (s.ship !== undefined) setFlightShipClass(s.ship);
+		// The workspace lands last among the instant fields: a preset that
+		// says mode=fly seeds the hull exactly as the g key would.
+		if (s.mode !== undefined) {
+			const m = Workspace.modeFromName(s.mode);
+			if (m >= 0) setWorkspace(m);
+		}
 		if (s.trade !== undefined) {
 			tradeRateIndex = tradeRateIndexFor(s.trade);
 			syncTradeUi();
@@ -3422,7 +3790,7 @@ async function boot() {
                 // Entering game mode adopts the current camera pose. Forecast
                 // from that pose while configuring outside game mode, not from
                 // the parked ship position from an earlier sortie.
-                const from = gameMode ? ship.pos : camera.cameraPos;
+                const from = isFlying() ? ship.pos : camera.cameraPos;
                 const dx = gameTarget[0] - from[0];
                 const dy = gameTarget[1] - from[1];
                 const dz = gameTarget[2] - from[2];
@@ -3434,7 +3802,7 @@ async function boot() {
                 // This mirrors enterGameMode's velocity handover, so planning
                 // while observing a moving object does not forecast a spurious
                 // match burn that the toggle will immediately remove.
-                const forecastVel = !gameMode && followKey >= 0 && followVelFresh ? followVelPhys : ship.vel;
+                const forecastVel = !isFlying() && followKey >= 0 && followVelFresh ? followVelPhys : ship.vel;
                 const rvx = forecastVel[0] - gameTargetVel[0];
                 const rvy = forecastVel[1] - gameTargetVel[1];
                 const rvz = forecastVel[2] - gameTargetVel[2];
@@ -3538,16 +3906,16 @@ async function boot() {
                 flightDestinationLabel.textContent = flightDestination.active
                         ? (flightDestination.name || 'Locked destination') : 'No destination set';
 		flightDock.textContent = ship.docked ? 'Undock' : 'Dock';
-		flightDock.disabled = !gameMode;
+		flightDock.disabled = !isFlying();
 		const portIndex = gameTradePort();
-		flightCargoLoad.disabled = flightCargoUnload.disabled = !gameMode || portIndex < 0;
-		const stationRef = gameMode ? stationStarRef() : null;
+		flightCargoLoad.disabled = flightCargoUnload.disabled = !isFlying() || portIndex < 0;
+		const stationRef = isFlying() ? stationStarRef() : null;
 		const sysLib = window.SystemLayer;
 		const selKind = systemLayer.isOpen() ? systemLayer.selectedKindOf() : sysLib.BODY_NONE;
 		const bodyPicked = selKind === sysLib.BODY_PLANET || selKind === sysLib.BODY_BELT;
 		const existingPort = stationRef && tradeNet && stationRef.key !== undefined
 			? tradeLib.portOfStar(tradeNet, stationRef.key >>> 0) : -1;
-		flightFound.disabled = !gameMode || stationRef === null || !tradeNet
+		flightFound.disabled = !isFlying() || stationRef === null || !tradeNet
 			|| (existingPort >= 0 && tradeNet.ports[existingPort].colony.outpost)
 			|| (existingPort >= 0 && (bodyPicked
 				? tradeNet.ports[existingPort].worldCount >= tradeLib.MAX_WORLDS_PER_STAR
@@ -3572,6 +3940,13 @@ async function boot() {
 			}
 			portText += ` · cargo ${shipLib.formatCargo(ship.cargo)}/${shipLib.formatCargo(ship.class.cargo)}${holdTag}`;
 		}
+		// A requisitioned hull says whose it is, and the release button is
+		// live exactly when the one way back is open: docked, at a port.
+		if (activeFleetShip.netIndex !== undefined) {
+			portText += ' · crewed' + (activeFleetShip.originName ? ' from ' + activeFleetShip.originName : '');
+		}
+		flightRelease.disabled = !isFlying() || activeFleetShip.netIndex === undefined
+			|| !ship.docked || portIndex < 0 || fleet.length <= 1;
 		setTextIfChanged(flightPortState, portText);
                 flightUseSelected.disabled = starSet.primary < 0 || autoActive;
                 flightClearDestination.disabled = !flightDestination.active || autoActive;
@@ -3579,22 +3954,22 @@ async function boot() {
                 // two mutually exclusive checkboxes, no Engage/Abort buttons.
                 const destFeasible = ready && flightPlan.feasible && flightPlan.fuelMargin >= 0;
                 flightAutoDest.checked = (ship.ap.mode === shipLib.AP_APPROACH && gameCommand !== GAME_CMD_ABORT)
-                        || (gameMode && gameCommand === GAME_CMD_PLAN);
-                flightAutoDest.disabled = !gameMode
+                        || (isFlying() && gameCommand === GAME_CMD_PLAN);
+                flightAutoDest.disabled = !isFlying()
                         || (autoActive && ship.ap.mode !== shipLib.AP_APPROACH)
                         || !flightDestination.active
                         || (!autoActive && !destFeasible)
                         || ship.docked;
                 flightAutoTarget.checked = (ship.ap.mode === shipLib.AP_TARGET && gameCommand !== GAME_CMD_ABORT)
-                        || (gameMode && gameCommand === GAME_CMD_TARGET);
-                flightAutoTarget.disabled = !gameMode
+                        || (isFlying() && gameCommand === GAME_CMD_TARGET);
+                flightAutoTarget.disabled = !isFlying()
                         || (autoActive && ship.ap.mode !== shipLib.AP_TARGET)
                         || (starSet.primary < 0 && !flightDestination.active && !autoActive)
                         || ship.docked;
                 const statusText = ship.ap.mode === shipLib.AP_TARGET
                         ? 'autopilot · matching target motion'
                         : autoActive ? `autopilot ${shipLib.AP_PHASE_NAMES[ship.ap.phase]} · uncheck to abort, velocity kept`
-                                : gameMode ? 'manual thrust + destination planner'
+                                : isFlying() ? 'manual thrust + destination planner'
                                         : 'configure now · select a ship to pilot';
                 if (statusText !== lastFlightStatus) {
                         flightStatus.textContent = statusText;
@@ -4159,13 +4534,13 @@ async function boot() {
         // owns both the exchange rate and the ceiling, so the panel and the
         // frame loop can never disagree about the number on screen.
         function tradeClockRate() {
-                return tradeLib.clockRate(tradeRateYears(), starTimeRate, tradeSyncOn !== 0 && !gameMode);
+                return tradeLib.clockRate(tradeRateYears(), starTimeRate, tradeSyncOn !== 0 && !isFlying());
         }
 
         // Years of star time the synced trade clock is behind: the drain's
         // budget, not the clock's law, decides whether the network keeps up.
         function tradeSyncNote() {
-                if (!(tradeSyncOn && !gameMode) || !tradeNet || !(tradeNet.lag > 1)) return '';
+                if (!(tradeSyncOn && !isFlying()) || !tradeNet || !(tradeNet.lag > 1)) return '';
                 // The backlog is trade years; the sky's own calendar is what the
                 // reader compares it to (1 trade year = 1 000 star years).
                 const starMyr = tradeNet.lag * tradeLib.SYNC_YEARS_PER_MYR / 1e6;
@@ -4275,7 +4650,7 @@ async function boot() {
                 if (portIndex < 0) return false;
                 handleStarPick(colonyPick(tradeNet.ports[portIndex]), false);
                 setSpeedRef('target');
-                if (gameMode) {
+                if (isFlying()) {
                         if (!setFlightDestinationFromPrimary()) return false;
                         gameCommand = GAME_CMD_APPROACH;
                         return true;
@@ -4300,24 +4675,49 @@ async function boot() {
         // reason is what the HUD says. The colony lands in the typed asset
         // history exactly like a dock-port.
         function gameFoundColony() {
-                if (!gameMode || !ship.docked || !tradeNet) return;
+                if (!isFlying() || !ship.docked || !tradeNet) return;
                 const ref = stationStarRef();
                 if (!ref) {
                         setAutoMsg('no star to found on \u00b7 not resident');
                         return;
                 }
+                foundColonyAt(ref, ship.station.name);
+        }
+
+        // Command's founding entrance (workspace-plan.md §9): the selected
+        // star instead of the docked station, through foundColonyAt below —
+        // two doors, one law, so every refusal reads the same.
+        function commandFoundColony() {
+                if (!isCommanding() || !tradeNet) return;
+                const p = starSet.primary;
+                if (p < 0) {
+                        setAutoMsg('select a star to found on');
+                        return;
+                }
+                const ref = memberRefFor(p);
+                if (!ref) {
+                        setAutoMsg('no star to found on \u00b7 not resident');
+                        return;
+                }
+                foundColonyAt(ref, landmarkNameFor(p));
+        }
+
+        // The shared second half of both founding doors: the same free
+        // playerFound law, the same typed asset-history record, the same
+        // refusal line.
+        function foundColonyAt(ref, name) {
                 tradeCtx.model = model;
                 tradeCtx.field = renderer.fieldBuffers();
                 tradeCtx.member = renderer.starBlocks().member;
-                tradeCtx.name = ship.station.name;
+                tradeCtx.name = name;
                 window.PlanetsLib.generateSystem(ref, tradeCtx, tradeRecord);
                 const sysLib = window.SystemLayer;
                 const selKind = systemLayer.isOpen() ? systemLayer.selectedKindOf() : sysLib.BODY_NONE;
                 const bodyPicked = selKind === sysLib.BODY_PLANET || selKind === sysLib.BODY_BELT;
                 const result = bodyPicked
-                        ? tradeLib.playerFoundWorld(tradeNet, ref, ship.station.name, tradeRecord,
+                        ? tradeLib.playerFoundWorld(tradeNet, ref, name, tradeRecord,
                                 selKind === sysLib.BODY_BELT ? 1 : 0, systemLayer.selectedIndexOf(), tradeNet.time)
-                        : tradeLib.playerFound(tradeNet, ref, ship.station.name, tradeRecord, tradeNet.time);
+                        : tradeLib.playerFound(tradeNet, ref, name, tradeRecord, tradeNet.time);
                 if (!result.ok) {
                         setAutoMsg(result.reason);
                         return;
@@ -4615,7 +5015,7 @@ async function boot() {
                 }
                 if (keepOrigin !== '' && Number(keepOrigin) < count) routeOrigin.value = keepOrigin;
                 if (keepDest !== '' && Number(keepDest) < count) routeDest.value = keepDest;
-                routeCommission.disabled = count < 2;
+                routeCommission.disabled = count < 2 || !isCommanding();
         }
 
         function tradeSyncRoutes() {
@@ -4665,6 +5065,7 @@ async function boot() {
                 // The next-departure estimate moves with the clock and the sky,
                 // so it is refreshed on every pass, not only when the set does.
                 for (const row of routeRows) {
+                        row.el.lastChild.disabled = !isCommanding();
                         const eta = row.route.nextDepartY - tradeNet.time;
                         const suffix = eta > 0 ? `  next +${Math.round(eta).toLocaleString('en-US')} y`
                                 : '  next due';
@@ -4747,7 +5148,7 @@ async function boot() {
 
         function syncTradeUi() {
                 tradeRateSlider.value = String(tradeRateIndex);
-                const synced = tradeSyncOn !== 0 && !gameMode;
+                const synced = tradeSyncOn !== 0 && !isFlying();
                 const rateY = tradeClockRate();
                 tradeRateSlider.disabled = synced;
                 tradeRateValue.textContent = synced
@@ -4762,6 +5163,7 @@ async function boot() {
                 tradeSyncBox.checked = tradeSyncOn !== 0;
                 tradeGenBox.checked = tradeGenOn !== 0;
                 tradeExpandBox.checked = tradeLib.expansionArmed() !== 0;
+                tradeExpandBox.disabled = !isCommanding();
                 if (!tradeNet) {
                         tradeState.textContent = 'no network';
                         tradeRowSig = '';
@@ -4775,6 +5177,7 @@ async function boot() {
                         colonisationRows.length = 0;
                         if (colonisationList) colonisationList.textContent = 'No expeditions yet.';
                         if (tradeLaunch) tradeLaunch.disabled = true;
+                        if (tradeFound) tradeFound.disabled = true;
                         if (tradeLog) tradeLog.textContent = 'No events yet.';
                         if (tradeCalendar) tradeCalendar.textContent = 'Nothing scheduled.';
                         routeOptionSig = '';
@@ -4882,8 +5285,11 @@ async function boot() {
                         // The manual button is a rush: it may sponsor a port
                         // that is still resting, so it stays available whenever
                         // a big colony with a free target exists.
-                        if (tradeLaunch) tradeLaunch.disabled = full || status.big === 0
+                        if (tradeLaunch) tradeLaunch.disabled = !isCommanding() || full || status.big === 0
                                 || tradeLib.expansionArmed() === 0;
+                        // Found at selected: command's own door; the network
+                        // law (caps, habitat, reservations) refuses inside.
+                        if (tradeFound) tradeFound.disabled = !isCommanding() || starSet.primary < 0;
                 }
                 tradeSyncRoutes();
                 if (tradeCalendar) tradeCalendar.textContent = tradeCalendarText(4);
@@ -4959,7 +5365,9 @@ async function boot() {
                                 row.el.textContent = `${from} \u2192 ${target}  ${Math.round(eta)} y \u00b7 `
                                         + economyLib.formatPop(s.amount * tradeLib.POP_PER_COLONIST_UNIT) + ' volunteers';
                         } else {
-                                row.button.disabled = !tradeLib.expansionArmed() || full;
+                                // Command authority (workspace-plan.md §9):
+                                // other workspaces may watch, not launch.
+                                row.button.disabled = !isCommanding() || !tradeLib.expansionArmed() || full;
                         }
                 }
                 if (tradeLaunchTicks > 0) tradeLaunchTicks -= 1;
@@ -4981,8 +5389,14 @@ async function boot() {
                 const port = tradeNet.ports[index];
                 handleStarPick(colonyPick(port), false);
                 setSpeedRef('target');
-                if (gameMode) {
+                if (isFlying()) {
                         if (setFlightDestinationFromPrimary()) setAutoMsg('destination ' + port.name);
+                        return;
+                }
+                // Command visits: the short camera flight, so a click reads
+                // as travel across the map; observe snaps to orbit as before.
+                if (isCommanding()) {
+                        flyToPrimary();
                         return;
                 }
                 orbitPrimary();
@@ -5005,10 +5419,32 @@ async function boot() {
         }
 
         // The overlay's one line.
+        // The HUD names the workspace (workspace-plan.md §7.3): observe gets
+        // one orientation line, command gets the network's own summary line
+        // (which replaces the observer's trade line), fly's helm block below
+        // already names itself.
+        function modeHudLine() {
+                if (isFlying()) return '';
+                if (isCommanding()) {
+                        if (!tradeNet) return '\nmode      command \u00b7 no network';
+                        const rate = tradeClockRate();
+                        const crewed = tradeLib.crewedCount(tradeNet);
+                        return `\nmode      command \u00b7 ${tradeLib.livePortCount(tradeNet)} ports`
+                                + (tradeNet.outposts > 0 ? ` \u00b7 ${tradeNet.outposts} outposts` : '')
+                                + ` \u00b7 ${tradeNet.shipCount} hulls`
+                                + (crewed > 0 ? ` \u00b7 ${crewed} crewed` : '')
+                                + ` \u00b7 clock ${rate === 0 ? 'paused' : Number(rate.toPrecision(4)).toLocaleString('en-US') + ' y/s'}`
+                                + ` \u00b7 queue ${tradeNet.queue.size}` + tradeSyncNote();
+                }
+                return '\nmode      observe \u00b7 1/2/3 switches workspace \u00b7 g takes the helm';
+        }
         function tradeOverlayLine() {
+                // Fly reads the helm, command reads modeHudLine's summary —
+                // the observer's trade line belongs to observe alone (§7.3).
+                if (workspace !== Workspace.OBSERVE) return '';
                 if (!tradeNet) return '';
                 const rate = tradeClockRate();
-                const tag = tradeSyncOn && !gameMode ? ' synced' : '';
+                const tag = tradeSyncOn && !isFlying() ? ' synced' : '';
                 return `\ntrade     ${rate === 0 ? 'paused' : Number(rate.toPrecision(4)).toLocaleString('en-US') + ' y/s'}${tag}`
                         + ` \u00b7 ${tradeLib.livePortCount(tradeNet)} ports`
                         + (tradeNet.outposts > 0 ? ` \u00b7 ${tradeNet.outposts} outposts` : '')
@@ -5134,8 +5570,8 @@ async function boot() {
                 return text;
         }
 
-        function gameModeLine() {
-                if (!gameMode) return '';
+        function flyModeLine() {
+                if (!isFlying()) return '';
                 const dvLib = window.DeltaVLib;
                 const cls = ship.class;
                 const c = shipLib.speedC(ship);
@@ -5151,7 +5587,7 @@ async function boot() {
                 const rateNote = coastWarp > 0
                         ? ` · coast warp ${formatShipRate(actualRate)}`
                         : Math.abs(actualRate - requestedRate) > 1e-15 ? ` · actual ${formatShipRate(actualRate)}` : '';
-                let text = `\nmode      game \u00b7 ship clock ${shipLib.formatClock(ship, c)}${rateNote} (wheel steps \u00b7 T freezes) \u00b7 g returns to observer`;
+                let text = `\nmode      fly \u00b7 ship clock ${shipLib.formatClock(ship, c)}${rateNote} (wheel steps \u00b7 T freezes) \u00b7 g returns to ${Workspace.modeName(lastWorkspace)}`;
                 const governor = flightControl === 'speed'
                         ? ` \u00b7 speed limit ${shipLib.formatSpeedC(shipLib.cruiseCapKpcS(ship) * flightSpeedFraction * shipLib.KPC_M / shipLib.C)}`
                         : '';
@@ -5198,7 +5634,7 @@ async function boot() {
         function cameraLine(c) {
                 // The HUD's mode/speed lines own the display while the ship is
                 // the rig — the observer's ladder is off duty (game-mode-plan §6).
-                if (gameMode) return '';
+                if (isFlying()) return '';
                 if (c.flying) {
                         return `camera flying to ${c.targetName}   ${Math.round(c.flightProgress * 100)}%`;
                 }
@@ -5213,7 +5649,7 @@ async function boot() {
 
         function selectedLine(cameraState) {
                 if (selected < 0 || cameraState.mode !== window.Camera.MODE_FLY) return '';
-                return gameMode
+                return isFlying()
                         ? `\nselected ${landmarks.ENTRIES[selected].name}   (game HUD target \u00b7 g returns to observer)`
                         : `\nselected ${landmarks.ENTRIES[selected].name}   (c orbits it \u00b7 j follows it \u00b7 Shift+F flies to it)`;
         }
@@ -5332,15 +5768,16 @@ async function boot() {
                         ` + catalog ${catKept.toLocaleString()}/${state.catalogTotalStars.toLocaleString()}\n` +
                         `cells ${state.cellsResident}/${state.catalogCells}   decoded ${(state.decodedBytes / 1024).toFixed(0)} KB` +
                         `   buffer ${(state.bufferBytes / 1048576).toFixed(1)} MB\n` +
-                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   engine ${state.engine}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${gameMode ? 'ship ' + shipLib.formatClock(ship, shipLib.speedC(ship)) : window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)${evolveOn ? ' +evolve' : ''}   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   pattern ${window.OrbitLib.effectivePatternSpeed(model).toFixed(3)} rad/Myr (x${patternScale.toFixed(2)})   Tab menu\n` +
+                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   engine ${state.engine}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${isFlying() ? 'ship ' + shipLib.formatClock(ship, shipLib.speedC(ship)) : window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)${evolveOn ? ' +evolve' : ''}   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   pattern ${window.OrbitLib.effectivePatternSpeed(model).toFixed(3)} rad/Myr (x${patternScale.toFixed(2)})   Tab menu\n` +
                         `pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
                         cameraLine(cameraState) +
-                        gameModeLine() +
+                        modeHudLine() +
+                        flyModeLine() +
                         noSelectionLine() +
                         selectionLines(cameraState) +
                         selectedLine(cameraState) +
                         tradeOverlayLine();
-                if (helpPanel.style.display !== 'none') syncHelpControls(cameraState);
+                if (!helpPanel.hidden) syncHelpControls(cameraState);
         }
 
         const loop = window.Loop.createLoop((dt, time) => {
@@ -5351,14 +5788,14 @@ async function boot() {
                         // T freezes the shared clock in game mode — ship and sky
                         // together (game-mode-plan §4) — the observer's axis when
                         // out of it.
-                        if (gameMode) ship.timeFrozen = !ship.timeFrozen;
+                        if (isFlying()) ship.timeFrozen = !ship.timeFrozen;
                         else if (starTimeRate === 0) starTimeRate = lastNonZeroTimeRate;
                         else { lastNonZeroTimeRate = starTimeRate; starTimeRate = 0; }
                         syncStarTime();
                 }
                 // Promote game-mode keyboard requests before the shared-clock
                 // calculation so a command and its time cap apply immediately.
-                if (gameMode && !resetting) {
+                if (isFlying() && !resetting) {
                         if (actions.flyMode) { actions.flyMode = 0; gameCommand = GAME_CMD_ABORT; }
                         if (actions.chaseFollow) { actions.chaseFollow = 0; gameCommand = GAME_CMD_FOLLOW; }
                         if (actions.flyTo) { actions.flyTo = 0; gameCommand = GAME_CMD_APPROACH; }
@@ -5370,7 +5807,7 @@ async function boot() {
                         actions.clockSim = 0;
                         actions.clockArcade = 0;
                 }
-                if (gameMode && !resetting
+                if (isFlying() && !resetting
                         && (gameCommand !== 0 || (autoRunning && ship.ap.mode === shipLib.AP_OFF))) {
                         gameTargetFeed(0);
                         gameApplyCommand();
@@ -5381,14 +5818,14 @@ async function boot() {
                 // ship-time ladder in y/s. Under one clock the ship's cruise
                 // outruns stellar drift, so a selected star is met where it
                 // arrives; the observer's star rate is parked and not consulted.
-                const gameRateY = gameMode ? gameTimeRateY() : 0;
-                const effectiveTimeRate = gameMode
+                const gameRateY = isFlying() ? gameTimeRateY() : 0;
+                const effectiveTimeRate = isFlying()
                         ? gameRateY * 1e-6
                         : (starTimeRate < 0
                                 ? (-starTimeRate) * window.OrbitLib.FLIGHT_TIME_GAIN * cameraStateForTime.speedLyPerSec
                                 : starTimeRate);
                 const dtStar = effectiveTimeRate * dt;
-                const dtShipS = gameMode ? gameRateY * shipLib.SECONDS_PER_YEAR * dt : 0;
+                const dtShipS = isFlying() ? gameRateY * shipLib.SECONDS_PER_YEAR * dt : 0;
                 // Physical seconds this frame (star-seconds under the shared
                 // clock) — the handover feed's unit bridge from drawn motion.
                 framePhysSeconds = dtStar > 0 ? dtStar * 1e6 * shipLib.SECONDS_PER_YEAR : 0;
@@ -5503,7 +5940,7 @@ async function boot() {
                 // Controls refill are the ship's own commands.
                 if (actions.allStop) {
                         actions.allStop = 0;
-                        if (gameMode) {
+                        if (isFlying()) {
                                 // G4: Space at the port leaves
                                 // it — the brake is a manual
                                 // command, and the ride owns
@@ -5527,7 +5964,7 @@ async function boot() {
                 // commands.
                 if (actions.dock) {
                         actions.dock = 0;
-                        if (gameMode) gameDock();
+                        if (isFlying()) gameDock();
                         else gameNotice();
                 }
                 if (actions.tradeRoutes) {
@@ -5537,12 +5974,12 @@ async function boot() {
                 }
                 if (actions.cargoLoad) {
                         actions.cargoLoad = 0;
-                        if (gameMode) gameCargoLoad();
+                        if (isFlying()) gameCargoLoad();
                         else gameNotice();
                 }
                 if (actions.cargoUnload) {
                         actions.cargoUnload = 0;
-                        if (gameMode) gameCargoUnload();
+                        if (isFlying()) gameCargoUnload();
                         else gameNotice();
                 }
                 if (actions.orbitCentre) {
@@ -5553,27 +5990,36 @@ async function boot() {
                         // which a ship never does.
                         actions.orbitCentre = 0;
                         setSpeedRef('centre');
-                        if (!gameMode) camera.setMode(window.Camera.MODE_ORBIT_GC);
+                        if (!isFlying()) camera.setMode(window.Camera.MODE_ORBIT_GC);
                 }
                 if (actions.orbitObject) {
                         // c: orbit the last selected star on the spot — no flight.
                         actions.orbitObject = 0;
-                        if (gameMode) gameNotice();
+                        if (isFlying()) gameNotice();
                         else if (!orbitPrimary()) noSelectionTicks = NOTICE_TICKS;
                 }
                 if (actions.flyMode) {
                         // f: the free fly camera — orbit and follow are both off.
                         actions.flyMode = 0;
-                        if (gameMode) gameCommand = GAME_CMD_ABORT;
+                        if (isFlying()) gameCommand = GAME_CMD_ABORT;
                         else {
                                 camera.setMode(window.Camera.MODE_FLY);
                                 followKey = -1;
                         }
                 }
-                if (actions.gameMode) {
-                        actions.gameMode = 0;
-                        gameMode = !gameMode;
-                        if (gameMode) enterGameMode(); else leaveGameMode();
+                // The workspace keys (workspace-plan.md §7.1): 1/2/3 name the
+                // state, g toggles the helm back to where it was entered from.
+                if (actions.modeObserve) {
+                        actions.modeObserve = 0;
+                        setWorkspace(Workspace.OBSERVE);
+                }
+                if (actions.modeFly) {
+                        actions.modeFly = 0;
+                        setWorkspace(Workspace.toggleFly(workspace, lastWorkspace));
+                }
+                if (actions.modeCommand) {
+                        actions.modeCommand = 0;
+                        setWorkspace(Workspace.COMMAND);
                 }
                 if (actions.chaseFollow) {
                         // j (ui.6): ride behind the centred object with the
@@ -5581,7 +6027,7 @@ async function boot() {
                         // something to orbit (a selection, or the mode already
                         // orbiting an object); leaving keeps the exact pose.
                         actions.chaseFollow = 0;
-                        if (gameMode) gameCommand = GAME_CMD_FOLLOW;
+                        if (isFlying()) gameCommand = GAME_CMD_FOLLOW;
                         else {
                                 const camBefore = camera.getState(statsText);
                                 if (camBefore.chase) {
@@ -5614,13 +6060,14 @@ async function boot() {
                 // owns only the route lines): colonies that appear only when a
                 // "routes" box is ticked are colonies nobody watches grow.
                 labels.setTradeOverlay(tradeNet, tradeNet ? tradeNet.time : 0,
-                        !!tradeNet && !systemLayer.isOpen(), tradeRoutesOn !== 0);
+                        !!tradeNet && !systemLayer.isOpen(), tradeRoutesOn !== 0,
+                        isFlying() ? 1 : 2);
                 selection.setOrbitState(model, starTimeMyr);
                 // The Flight forecast includes its target-frame velocity match.
                 // Keep the same keyed feed warm while observing, using the
                 // observer clock's physical elapsed seconds; game mode resets
                 // the rate source to its shared ship clock before it can fly.
-                if (!gameMode && (speedRef !== 'target' || flightDestination.active || starSet.primary >= 0)) gameTargetFeed(framePhysSeconds);
+                if (!isFlying() && (speedRef !== 'target' || flightDestination.active || starSet.primary >= 0)) gameTargetFeed(framePhysSeconds);
                 // Fly-to follow (ui.2): while the camera orbits — or is still flying
                 // to — a set member, its target rides the star's drawn position, so
                 // the star stays centred instead of drifting off its birth snapshot.
@@ -5637,15 +6084,15 @@ async function boot() {
                         actions.home = 0;
                         if (!goToHomeColony()) {
                                 setSpeedRef('home');
-                                if (gameMode) gameNotice();
+                                if (isFlying()) gameNotice();
                                 else camera.goHome();
                         }
                 }
                 if (followKey >= 0 && cameraStateForTime.mode === window.Camera.MODE_ORBIT_OBJECT) {
                         followTarget();
                 }
-                shipChrome.active = gameMode;
-                if (gameMode) {
+                shipChrome.active = isFlying();
+                if (isFlying()) {
                         // The wheel steps the ship clock's ladder (game-mode-plan
                         // §4) — the observer speed ladder is off duty — and home
                         // is a teleport, which a ship does not do (§3). Whole
@@ -5670,7 +6117,7 @@ async function boot() {
                         ship.heading[2] = resetState.orientation[2]; ship.heading[3] = resetState.orientation[3];
                         activeFleetShip.positioned = true;
                 }
-                if (gameMode) {
+                if (isFlying()) {
                         // The ship owns motion: integrate on the shared clock,
                         // then write position and velocity through the camera's
                         // own state pair (the look camera.step just applied is
@@ -5711,12 +6158,12 @@ async function boot() {
 						systemLayer.pick(input.state.pickX, input.state.pickY, bodyPick);
 						if (bodyPick.kind === window.SystemLayer.BODY_NONE) {
 							systemLayer.clearBodySelection();
-							if (gameMode) syncFlightUi();
+							if (isFlying()) syncFlightUi();
 						} else {
 							systemLayer.setSelected(bodyPick.kind, bodyPick.index);
 							// The docked schematic can name a station outside the
 							// primary set; do not file its bodies under that other star.
-							if (gameMode) syncFlightUi();
+							if (isFlying()) syncFlightUi();
 							else recordSystemBodySelection(bodyPick);
 						}
 					}
@@ -5751,7 +6198,7 @@ async function boot() {
                 }
                 if (actions.flyTo) {
                         actions.flyTo = 0;
-                        if (gameMode) gameCommand = GAME_CMD_APPROACH;
+                        if (isFlying()) gameCommand = GAME_CMD_APPROACH;
                         else if (!flyToPrimary()) noSelectionTicks = NOTICE_TICKS;
                 }
                 if (actions.nextStar) {
@@ -5779,7 +6226,7 @@ async function boot() {
                 }
                 if (actions.dvMap) {
                         actions.dvMap = 0;
-                        if (gameMode) gameNotice();
+                        if (isFlying()) gameNotice();
                         else if (systemLayer.isOpen()) cycleDvView();
                 }
                 if (actions.speedRefTarget) { actions.speedRefTarget = 0; setSpeedRef('target'); }
@@ -5831,10 +6278,11 @@ async function boot() {
                 if (overlayTimer >= OVERLAY_INTERVAL) {
                         overlayTimer = 0;
                         updateOverlay(renderer.state, camera.getState(statsText));
+                        syncModeClock();
                         if (noSelectionTicks > 0) noSelectionTicks--;
                         if (autoMsgTicks > 0) autoMsgTicks--;
-                if (gameMode) updateShipChromeText();
-                if (sysMenu.style.display !== 'none') syncFlightUi();
+                if (isFlying()) updateShipChromeText();
+                if (!sysMenu.hidden || !routeMenu.hidden) { syncFlightUi(); syncNetworkHulls(); }
                 // The Trade panel stays live even while no menu is open: the
                 // colonisation readout ("no big colonies ready") must reflect
                 // the running network, not the moment the menu was opened.
@@ -5842,19 +6290,31 @@ async function boot() {
                 if (systemLayer.isOpen()) writeSystemReadout();
                         // View modes: the status line and the live range labels
                         // are 4 Hz text, like the rest of the readouts.
-                        if (viewMenu.style.display !== 'none') {
+                        if (!viewMenu.hidden) {
                                 vmStatus.textContent = viewModesLayer.statusLine();
                                 syncViewModesRange();
                         }
                         // Keep slider readouts in sync with keyboard shortcuts
                         // while the menu is open.
-                        if (menu.style.display !== 'none') syncSlidersFromRenderer();
+                        if (!menu.hidden) syncSlidersFromRenderer();
                 }
         });
 
         tradeSeedNetwork();
         syncTradeUi();
         syncFlightUi();
+        // The workspace boots here (workspace-plan.md §12): the overrides
+        // come back from localStorage, the panels and the Controls deck take
+        // observe's shape, and a mode= boot parameter switches through the
+        // same one writer every key uses — fly seeds the hull like g would.
+        loadPanelOverrides();
+        applyPanels();
+        syncModeBar();
+        syncControls();
+        {
+                const bootMode = Workspace.modeFromName(params.mode);
+                if (bootMode > Workspace.OBSERVE) setWorkspace(bootMode);
+        }
         loop.start();
         // The scenario opens where the expansion starts: the colony beside
         // home, selected and ridden exactly as H does (trade-plan §8).

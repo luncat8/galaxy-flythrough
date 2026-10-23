@@ -105,7 +105,7 @@ const TRADE_CARGO = [
 // SHIP_STATE_NAMES (which the layer cannot require without dragging the whole
 // economy into the label test): docked/waiting draw no hull, founding reads
 // its candidate site instead of a destination port.
-const TRADE_SHIP_DOCKED = 0, TRADE_SHIP_WAITING = 2, TRADE_SHIP_FOUNDING = 3;
+const TRADE_SHIP_DOCKED = 0, TRADE_SHIP_WAITING = 2, TRADE_SHIP_FOUNDING = 3, TRADE_SHIP_CREWED = 4;
 // Key→slot map: MAP_SIZE slots, linear probing. The key is stored next to the
 // slot and a separate `used` byte marks occupancy — a 32-bit key can be zero or
 // negative, so neither the key nor the slot can double as the empty marker.
@@ -420,13 +420,19 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	// ports, the hulls and the frontier marks stay, because a network whose
 	// colonies are invisible cannot be watched growing.
 	let tradeRoutes = true;
+	// The fly workspace's thin overlay (workspace-plan.md §8): detail 1 keeps
+	// the ports and the hull dots — the landmarks a pilot navigates by — and
+	// drops the standing routes, the voyage chords and the frontier crosses.
+	// Detail 2 is the full picture observe and command read.
+	let tradeDetail = 2;
 	let tradeWasDrawn = false;
 	function setOrbitState(model, time) { orbitModel = model; orbitTime = time || 0; }
-	function setTradeOverlay(net, time, show, routes) {
+	function setTradeOverlay(net, time, show, routes, detail) {
 		tradeNet = net || null;
 		tradeTime = time || 0;
 		tradeOn = !!show && !!tradeNet;
 		tradeRoutes = routes === undefined ? true : !!routes;
+		tradeDetail = detail === undefined ? 2 : detail | 0;
 	}
 
 	// --- Star-set rings (plan §3.5) ---------------------------------------
@@ -761,7 +767,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		// A commissioned pair first, one pass, dimmer than any hull's chord: the
 		// standing network is the background the voyages run over. `net.routes`
 		// is the module's own list, so nothing had to be wired here.
-		if (tradeNet.routes && tradeNet.routes.count > 0) {
+		if (tradeDetail >= 2 && tradeNet.routes && tradeNet.routes.count > 0) {
 			ctx.strokeStyle = TRADE_STANDING_ROUTE;
 			ctx.lineWidth = 1;
 			ctx.beginPath();
@@ -785,7 +791,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		// The routes next, so the rings and hulls stay legible on top of them.
 		// Two paths: a freighter's haul is the network's background hum, a
 		// founding voyage is the thing to watch, so they do not share a colour.
-		for (let pass = 0; tradeRoutes && pass < 2; pass++) {
+		for (let pass = 0; tradeDetail >= 2 && tradeRoutes && pass < 2; pass++) {
 			ctx.strokeStyle = pass ? TRADE_FOUND_ROUTE : TRADE_ROUTE;
 			ctx.lineWidth = 1;
 			ctx.beginPath();
@@ -793,7 +799,8 @@ function createLabelLayer(canvas, landmarks, constellations) {
 				const ship = tradeNet.ships[i];
 				const founding = ship.state === TRADE_SHIP_FOUNDING;
 				if (founding !== (pass === 1)) continue;
-				if (ship.state === TRADE_SHIP_DOCKED || ship.state === TRADE_SHIP_WAITING) continue;
+				if (ship.state === TRADE_SHIP_DOCKED || ship.state === TRADE_SHIP_WAITING
+					|| ship.state === TRADE_SHIP_CREWED) continue;
 				const from = ship.from >= 0 ? tradeNet.ports[ship.from] : null;
 				const to = founding
 					? (ship.candidate >= 0 ? tradeNet.candidates[ship.candidate].site : null)
@@ -812,9 +819,10 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		}
 		// The frontier: every free candidate world, a small cross. This is what
 		// makes the expansion visible — the ports grow out of the mark cloud.
+		// Fly's thin overlay (detail 1) drops the cloud with the chords.
 		ctx.strokeStyle = TRADE_CANDIDATE;
 		ctx.beginPath();
-		for (let i = 0; i < tradeNet.candidateCount; i++) {
+		for (let i = 0; tradeDetail >= 2 && i < tradeNet.candidateCount; i++) {
 			const candidate = tradeNet.candidates[i];
 			if (candidate.used || candidate.reserved >= 0) continue;
 			const site = candidate.site;
@@ -931,7 +939,10 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		for (let i = 0; i < tradeNet.shipCount; i++) {
 			const ship = tradeNet.ships[i];
 			const founding = ship.state === TRADE_SHIP_FOUNDING;
-			if (ship.state === TRADE_SHIP_DOCKED || ship.state === TRADE_SHIP_WAITING) continue;
+			// A crewed hull is the player's physical ship: the pilot's own
+			// chrome draws it, so the statistical dot would be a ghost twin.
+			if (ship.state === TRADE_SHIP_DOCKED || ship.state === TRADE_SHIP_WAITING
+				|| ship.state === TRADE_SHIP_CREWED) continue;
 			const from = ship.from >= 0 ? tradeNet.ports[ship.from] : null;
 			const to = founding
 				? (ship.candidate >= 0 ? tradeNet.candidates[ship.candidate].site : null)

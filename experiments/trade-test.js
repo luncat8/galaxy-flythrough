@@ -502,7 +502,7 @@ function stepSmall(net, total, chunk) {
 		placed += 1;
 	}
 	check('sailing hulls have a finite draw position', placed > 0 && finitePositions);
-	check('ship state names cover every state', trade.SHIP_STATE_NAMES.length === 4
+	check('ship state names cover every state', trade.SHIP_STATE_NAMES.length === 5
 		&& trade.SHIP_STATE_NAMES.every(name => name.length > 0)
 		&& trade.shipStateName(net.ships[0]).length > 0);
 }
@@ -3245,6 +3245,96 @@ function exactLiveEvents(net) {
 	check('a closed one-world system settles through 600 years without changing hulls or queue events',
 		samePeek && queueFixture.worlds[0].last === 600,
 		{ queueSize, after: queueFixture.net.queue.size, ships });
+}
+
+// --- ui.20: requisition and release (workspace-plan.md §9.3) ---------------
+// The eight invariants of the takeover law: sailing hulls only, one at a
+// time, the fleet count honest while the hull is out and whole again after
+// release, no statistical event moving a crewed hull, and the pose drawn
+// from the voyage's own chord.
+{
+	const net = seedNetwork(12, 0);
+	trade.step(net, 600);
+	let sailing = -1, docked = -1, waiting = -1, foundingIdx = -1;
+	for (let i = 0; i < net.shipCount; i++) {
+		const s = net.ships[i];
+		if (s.state === trade.SHIP_SAILING && sailing < 0) sailing = i;
+		if (s.state === trade.SHIP_DOCKED && docked < 0) docked = i;
+		if (s.state === trade.SHIP_WAITING && waiting < 0) waiting = i;
+		if (s.state === trade.SHIP_FOUNDING && foundingIdx < 0) foundingIdx = i;
+	}
+	check('the fixture has a sailing hull to requisition', sailing >= 0, { sailing, ships: net.shipCount });
+	if (docked >= 0) check('a docked hull refuses requisition with its reason',
+		trade.requisition(net, docked).ok === 0 && trade.requisition(net, docked).reason.includes('already in port'));
+	if (waiting >= 0) check('an idle hull refuses requisition',
+		trade.requisition(net, waiting).ok === 0 && trade.requisition(net, waiting).reason.includes('idle'));
+	if (foundingIdx >= 0) check('a founding voyage cannot be diverted',
+		trade.requisition(net, foundingIdx).ok === 0
+		&& trade.requisition(net, foundingIdx).reason === 'a founding voyage cannot be diverted');
+	const shipsBefore = net.shipCount;
+	const freeBefore = trade.freeFreighters(net);
+	const hullBefore = net.ships[sailing].hull;
+	const cargoBefore = net.ships[sailing].cargo;
+	const amountBefore = net.ships[sailing].amount;
+	const pose = [0, 0, 0];
+	trade.shipPosition(net, sailing, net.time, pose);
+	const r = trade.requisition(net, sailing);
+	check('requisition converts a sailing hull', r.ok === 1 && net.ships[sailing].state === trade.SHIP_CREWED,
+		{ ok: r.ok, reason: r.reason });
+	check('the seed pose is the drawn chord position and a unit direction',
+		finite(r.x) && finite(r.y) && finite(r.z)
+		&& Math.abs(r.x - pose[0]) < 1e-9 && Math.abs(r.y - pose[1]) < 1e-9 && Math.abs(r.z - pose[2]) < 1e-9
+		&& Math.abs(Math.sqrt(r.dx * r.dx + r.dy * r.dy + r.dz * r.dz) - 1) < 1e-9);
+	check('the hold crosses over: hull, resource and tons match the network record',
+		r.hull === hullBefore
+		&& (cargoBefore === trade.NO_RESOURCE
+			? r.resource === -1 && r.tons === 0
+			: r.resource === cargoBefore && Math.abs(r.tons - economy.tonsForUnits(cargoBefore, amountBefore)) < 1e-9)
+		&& net.ships[sailing].amount === 0);
+	check('the record stays in place and the effective fleet is one smaller',
+		net.shipCount === shipsBefore && trade.crewedCount(net) === 1
+		&& trade.freeFreighters(net) === freeBefore - 1);
+	check('a second requisition refuses while a hull is crewed', (() => {
+		for (let i = 0; i < net.shipCount; i++) {
+			if (i !== sailing && net.ships[i].state === trade.SHIP_SAILING) {
+				const second = trade.requisition(net, i);
+				return second.ok === 0 && second.reason.includes('already crewed');
+			}
+		}
+		return true;        // no second sailing hull to try — vacuously held
+	})());
+	// Invariant 4: a long drain moves the whole network but never the crewed
+	// hull — no event survives the conversion and the guard holds.
+	const processedBefore = net.processed;
+	trade.step(net, 5000);
+	const crewedShip = net.ships[sailing];
+	check('a crewed hull processes no events over a 5000-year drain',
+		net.processed > processedBefore && crewedShip.state === trade.SHIP_CREWED
+		&& crewedShip.port === -1 && crewedShip.to === -1 && crewedShip.amount === 0);
+	// Release: deliver a hold at a live, settled, non-outpost port.
+	let port = -1;
+	for (let i = 0; i < net.portCount; i++) {
+		if (!net.ports[i].colony.outpost && net.ports[i].colony.pop > 0) { port = i; break; }
+	}
+	let resource = -1;
+	for (let rr = 0; rr < economy.RESOURCE_COUNT; rr++) {
+		if (economy.RESOURCES[rr].interFamily >= 0) { resource = rr; break; }
+	}
+	check('release refuses a hull that is not crewed', sailing !== 0
+		? trade.release(net, port, sailing === 0 ? 1 : 0, 0, -1, net.time).ok === 0 : true);
+	const res = trade.release(net, port, sailing, 500, resource, net.time);
+	check('release delivers the hold and re-docks the hull at the port',
+		res.ok === 1 && res.units > 0
+		&& crewedShip.state === trade.SHIP_DOCKED && crewedShip.port === port && crewedShip.from === port
+		&& crewedShip.cargo === trade.NO_RESOURCE && crewedShip.hold === trade.HULLS[crewedShip.hull].hold,
+		{ ok: res.ok, reason: res.reason, units: res.units });
+	check('the fleet count returns to where it was',
+		trade.crewedCount(net) === 0 && trade.freeFreighters(net) === freeBefore
+		&& net.shipCount === shipsBefore);
+	// The released hull re-enters statistical service on the port's own
+	// schedule (the EV_LOAD spawnShip also issues).
+	trade.step(net, 50);
+	check('the released hull is back in service', net.ships[sailing].state !== trade.SHIP_CREWED);
 }
 
 // --- Summary --------------------------------------------------------------

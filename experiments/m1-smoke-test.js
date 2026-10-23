@@ -108,13 +108,13 @@ const sourceFiles = walk(SRC, '')
 		const inputSrc = fs.readFileSync(path.join(SRC, 'core', 'input.js'), 'utf-8');
 		check('the c/C/f/F key map is shift-cased and game-gated in the loop, g toggles game mode',
 			/const casedPressMap = \{ KeyC: \['orbitObject', 'orbitCentre'\], KeyF: \['flyMode', 'flyTo'\], KeyL: \['cargoLoad', 'cargoUnload'\] \};/.test(inputSrc)
-			&& /KeyG: 'gameMode'/.test(inputSrc)
+			&& /KeyG: 'modeFly'/.test(inputSrc)
 			&& !/cameraMode|galaxyCycle/.test(inputSrc)
-			&& /actions\.orbitCentre = 0;\s*setSpeedRef\('centre'\);\s*if \(!gameMode\) camera\.setMode\(window\.Camera\.MODE_ORBIT_GC\);/.test(main)
-			&& /actions\.orbitObject = 0;\s*if \(gameMode\) gameNotice\(\);\s*else if \(!orbitPrimary\(\)\) noSelectionTicks = NOTICE_TICKS;/.test(main)
-			&& /actions\.flyTo = 0;\s*if \(gameMode\) gameCommand = GAME_CMD_APPROACH;\s*else if \(!flyToPrimary\(\)\) noSelectionTicks = NOTICE_TICKS;/.test(main)
-			&& /actions\.flyMode = 0;\s*if \(gameMode\) gameCommand = GAME_CMD_ABORT;\s*else \{\s*camera\.setMode\(window\.Camera\.MODE_FLY\);\s*followKey = -1;\s*\}/.test(main)
-			&& /actions\.gameMode = 0;\s*gameMode = !gameMode;/.test(main)
+			&& /actions\.orbitCentre = 0;\s*setSpeedRef\('centre'\);\s*if \(!isFlying\(\)\) camera\.setMode\(window\.Camera\.MODE_ORBIT_GC\);/.test(main)
+			&& /actions\.orbitObject = 0;\s*if \(isFlying\(\)\) gameNotice\(\);\s*else if \(!orbitPrimary\(\)\) noSelectionTicks = NOTICE_TICKS;/.test(main)
+			&& /actions\.flyTo = 0;\s*if \(isFlying\(\)\) gameCommand = GAME_CMD_APPROACH;\s*else if \(!flyToPrimary\(\)\) noSelectionTicks = NOTICE_TICKS;/.test(main)
+			&& /actions\.flyMode = 0;\s*if \(isFlying\(\)\) gameCommand = GAME_CMD_ABORT;\s*else \{\s*camera\.setMode\(window\.Camera\.MODE_FLY\);\s*followKey = -1;\s*\}/.test(main)
+			&& /actions\.modeFly = 0;\s*setWorkspace\(Workspace\.toggleFly\(workspace, lastWorkspace\)\);/.test(main)
 			&& /function orbitPrimary\(\) \{[\s\S]*?camera\.setOrbitTarget\(drawnPos\[0\][\s\S]*?camera\.setMode\(window\.Camera\.MODE_ORBIT_OBJECT\);\s*followKey = starSet\.keys\[i\] >>> 0;/.test(main)
 			&& !/actions\.galaxyCycle/.test(main)
 			&& !/toggleMode/.test(main));
@@ -135,8 +135,8 @@ const sourceFiles = walk(SRC, '')
 			&& /camera\.setChase\(true\);/.test(main)
 			&& /input\.state\.actions\[control\.dataset\.action\] = 1;/.test(main)
 			&& /function syncHelpControls\(cameraState\) \{/.test(main)
-			&& /helpBoxes\.get\('chaseFollow'\)\.checked = gameMode \? ship\.ap\.mode === shipLib\.AP_FOLLOW : cameraState\.chase;/.test(main)
-			&& /helpPanel\.style\.display = visible \? 'none' : 'block';/.test(main)
+			&& /helpBoxes\.get\('chaseFollow'\)\.checked = isFlying\(\) \? ship\.ap\.mode === shipLib\.AP_FOLLOW : cameraState\.chase;/.test(main)
+			&& /panelsHidden = !panelsHidden;\s*applyPanels\(\);/.test(main)
 			&& /id="help" class="panel"/.test(html)
 			&& /id="help-collapse"/.test(html)
 			&& /id="help-prev-star"/.test(html)
@@ -156,13 +156,13 @@ const sourceFiles = walk(SRC, '')
 			/shipLib\.step\(ship, dtShipS, gameDir\[0\], gameDir\[1\], gameDir\[2\], factor, governorCap\)/.test(main)
 			&& /camera\.getState\(rigState\)/.test(main)
 			&& /camera\.setState\(rigState\)/.test(main)
-			&& /const dtShipS = gameMode \? gameRateY \* shipLib\.SECONDS_PER_YEAR \* dt : 0;/.test(main)
+			&& /const dtShipS = isFlying\(\) \? gameRateY \* shipLib\.SECONDS_PER_YEAR \* dt : 0;/.test(main)
 			&& /gameDir\[0\] = f \* camera\.forward\[0\] \+ r \* camera\.right\[0\] \+ u \* camera\.up\[0\];/.test(main)
 			&& /gameDir\[2\] = f \* camera\.forward\[2\] \+ r \* camera\.right\[2\] \+ u \* camera\.up\[2\];/.test(main)
-			&& /if \(actions\.home\) \{\s*actions\.home = 0;\s*if \(!goToHomeColony\(\)\) \{\s*setSpeedRef\('home'\);\s*if \(gameMode\) gameNotice\(\);/.test(main)
+			&& /if \(actions\.home\) \{\s*actions\.home = 0;\s*if \(!goToHomeColony\(\)\) \{\s*setSpeedRef\('home'\);\s*if \(isFlying\(\)\) gameNotice\(\);/.test(main)
 			&& /Space: 'allStop'/.test(inputSrc)
 			&& /allStop: 0, shipRefuel: 0/.test(inputSrc)
-			&& /if \(gameMode\) enterGameMode\(\); else leaveGameMode\(\);/.test(main));
+			&& /if \(next === Workspace\.FLY\) \{\s*lastWorkspace = workspace;\s*workspace = next;\s*enterGameMode\(\);\s*\} else \{\s*workspace = next;\s*if \(wasFly\) leaveGameMode\(\);/.test(main));
 		check('the velocity handover seeds from the drawn-velocity dispatch in physical units',
 			/followVelFresh = memberDrawnVelocity\(m, followVelPhys\)/.test(main)
 			&& /framePhysSeconds = dtStar > 0 \? dtStar \* 1e6 \* shipLib\.SECONDS_PER_YEAR : 0;/.test(main)
@@ -182,10 +182,10 @@ const sourceFiles = walk(SRC, '')
 			&& /id="dv-ship"/.test(html)
 			&& /id="flight-refuel"/.test(html)
 			&& /data-action="shipRefuel"/.test(html)
-			&& /data-observer/.test(html)
+			&& /data-mode="observe fly command"/.test(html)
 			&& /function setFlightShipClass\(classId\) \{[\s\S]*?shipLib\.setClass\(ship, classId\);/.test(main)
-			&& /for \(const control of helpNeedObserver\) control\.disabled = gameMode;/.test(main)
-			&& /btnSystemView\.disabled = !viewOpen && gameMode && !dockedSystemAvailable\(\);/.test(main));
+			&& /control\.hidden = control\.dataset\.mode\.indexOf\(name\) < 0;/.test(main)
+			&& /btnSystemView\.disabled = !viewOpen && isFlying\(\) && !dockedSystemAvailable\(\);/.test(main));
 	}
 	// G2 of game-mode-plan.md: the §5 approach, follow and abort ride the same
 	// ship law (the commands are requests consumed in the game block), the nose
@@ -198,7 +198,7 @@ const sourceFiles = walk(SRC, '')
 			&& /gameCommand = GAME_CMD_ABORT;/.test(main)
 			&& /gameCommand = GAME_CMD_FOLLOW;/.test(main)
 			&& /Promote game-mode keyboard requests[\s\S]*?if \(actions\.flyMode\).*GAME_CMD_ABORT[\s\S]*?if \(actions\.chaseFollow\).*GAME_CMD_FOLLOW[\s\S]*?if \(actions\.flyTo\).*GAME_CMD_APPROACH/.test(main)
-			&& /if \(gameMode && !resetting\s*&& \(gameCommand !== 0 \|\| \(autoRunning && ship\.ap\.mode === shipLib\.AP_OFF\)\)\) \{\s*gameTargetFeed\(0\);\s*gameApplyCommand\(\);/.test(main)
+			&& /if \(isFlying\(\) && !resetting\s*&& \(gameCommand !== 0 \|\| \(autoRunning && ship\.ap\.mode === shipLib\.AP_OFF\)\)\) \{\s*gameTargetFeed\(0\);\s*gameApplyCommand\(\);/.test(main)
 			&& /gameTargetFeed\(dtShipS\);\s*gameHomeFeed\(dtShipS\);\s*gameShipStep\(dtShipS, dt\);/.test(main)
 			&& /shipLib\.apCommitApproach\(ship,/.test(main)
 			&& /shipLib\.apCommitFollow\(ship,/.test(main)
@@ -210,12 +210,12 @@ const sourceFiles = walk(SRC, '')
 			&& /input\.state\.lookDy -= k \* Math\.atan2\(ya, za\) \/ sens;/.test(main)
 			&& /gameAimEase\(dt\);/.test(main)
 			&& /feedShipChrome\(\);/.test(main)
-			&& /shipChrome\.active = gameMode;/.test(main)
+			&& /shipChrome\.active = isFlying\(\);/.test(main)
 			&& /labels\.setShipChrome\(shipChrome\);/.test(main));
 		check('the HUD carries the auto line and the chrome strings refresh at the overlay cadence',
 			/function gameAutoLine\(\)/.test(main)
 			&& /text \+= gameAutoLine\(\);/.test(main)
-			&& /if \(gameMode\) updateShipChromeText\(\);/.test(main)
+			&& /if \(isFlying\(\)\) updateShipChromeText\(\);/.test(main)
 			&& /if \(autoRunning && ship\.ap\.mode === shipLib\.AP_OFF\) \{\s*setAutoMsg\(autoReasonText\(ship\.ap\.reason\)\);\s*shipTimeRateCapY = Infinity;/.test(main));
 		check('the fleet, camera-axis speeds, target stop, and four-second time cap are wired',
 			/id="ship-list"/.test(html) && /id="ship-spawn"/.test(html)
@@ -235,7 +235,7 @@ const sourceFiles = walk(SRC, '')
 			&& /shipSpawn\.addEventListener\('click'/.test(main)
 			&& /ship: newShip, positioned: true, entered: true, button: null/.test(main)
 			&& /function selectFleetShip\(id\)/.test(main)
-			&& /if \(gameMode\) \{\s*positionCameraAtActiveShip\(\);[\s\S]*?gameTargetClosingKpcS = 0;\s*\} else \{\s*gameMode = true;\s*enterGameMode\(\);/.test(main)
+			&& /if \(isFlying\(\)\) \{\s*positionCameraAtActiveShip\(\);[\s\S]*?gameTargetClosingKpcS = 0;\s*\} else \{\s*setWorkspace\(Workspace\.FLY\);/.test(main)
 			&& /else if \(flying && thrusting\) \{\s*shipLib\.apAbort\(ship\);\s*shipTimeRateCapY = Infinity;/.test(main));
 		check('the ship chrome is one label-layer pass, drawn with or without the observer labels',
 			/function drawShipChrome\(ctx, chrome, camera, width, height\)/.test(labelSrc)
@@ -243,10 +243,10 @@ const sourceFiles = walk(SRC, '')
 			&& /if \(enabled\) \{\s*projectAll\(camera, width, height\);/.test(labelSrc));
 		check('the Controls panel: fly is the abort in game mode and the commands are not observer-gated',
 			/id="help-fly-label"/.test(html)
-			&& /helpFly\.disabled = gameMode && ship\.ap\.mode === shipLib\.AP_OFF;/.test(main)
-			&& !/data-action="flyTo" data-observer/.test(html)
-			&& !/data-action="flyMode" data-observer/.test(html)
-			&& !/data-action="chaseFollow" data-observer/.test(html));
+			&& /helpFly\.disabled = isFlying\(\) && ship\.ap\.mode === shipLib\.AP_OFF;/.test(main)
+			&& !/data-observer/.test(html)
+			&& !/data-game/.test(html)
+			&& !/\bgameMode\b/.test(main));
 	}
 	// G3: the Flight panel is one task workspace, its destination is a
 	// key-resolved snapshot, its four forecast modes feed the configured
@@ -270,8 +270,8 @@ const sourceFiles = walk(SRC, '')
 			&& /else if \(cmd === GAME_CMD_PLAN\) gameEngageFlightPlan\(\);/.test(main)
 			&& /shipLib\.apCommitApproach\(ship,[\s\S]*?flightPlan\.standOffM, flightPlan\)/.test(main)
 			&& /shipLib\.planJourney\(remainingM, ship, flightMode, flightThrust,/.test(main)
-			&& /const from = gameMode \? ship\.pos : camera\.cameraPos;/.test(main)
-			&& /if \(!gameMode && \(speedRef !== 'target' \|\| flightDestination\.active \|\| starSet\.primary >= 0\)\) gameTargetFeed\(framePhysSeconds\);/.test(main));
+			&& /const from = isFlying\(\) \? ship\.pos : camera\.cameraPos;/.test(main)
+			&& /if \(!isFlying\(\) && \(speedRef !== 'target' \|\| flightDestination\.active \|\| starSet\.primary >= 0\)\) gameTargetFeed\(framePhysSeconds\);/.test(main));
 		check('the speed limit cuts only positive forward thrust and applied impulse powers the HUD',
 			/if \(speedControl && f > 0 && currentSpeed >= desiredSpeed\) f = 0;/.test(main)
 			&& /const governorCap = speedControl && f > 0 && currentSpeed < desiredSpeed/.test(main)
@@ -340,10 +340,10 @@ const sourceFiles = walk(SRC, '')
 			&& /selectionStore\.selectCurrent\(window\.SelectionStore\.GROUP_ASSET,[\s\S]*?type: 'dock-port',/.test(main)
 			&& /const fixed = ship\.home\.kind === 'fixed';/.test(main));
 		check('the docked schematic founds sibling worlds without moving the camera',
-			/function dockedSystemAvailable\(\) \{\s*return gameMode && ship\.docked && !!ship\.station;/.test(main)
+			/function dockedSystemAvailable\(\) \{\s*return isFlying\(\) && ship\.docked && !!ship\.station;/.test(main)
 			&& /function openSystemView\(moveCamera\) \{[\s\S]*?ref = stationStarRef\(\);[\s\S]*?moveCamera = false;[\s\S]*?systemLayer\.enter\(ref, systemCtx\);/.test(main)
 			&& /function gameUndock\(\) \{[\s\S]*?if \(systemLayer\.isOpen\(\)\) closeSystemView\(\);/.test(main)
-			&& /routeClearButton\.disabled = gameMode;/.test(main)
+			&& /routeClearButton\.disabled = isFlying\(\);/.test(main)
 			&& /function gameFoundColony\(\) \{[\s\S]*?playerFoundWorld[\s\S]*?if \(systemLayer\.isOpen\(\)\) writeSystemReadout\(\);/.test(main)
 			&& /const key = systemLayer\.isOpen\(\) \? systemLayer\.record\.star\.key >>> 0/.test(main));
 		check('the docked ride feeds the station, breaks on a lost residency, and yields to thrust',
@@ -369,8 +369,8 @@ const sourceFiles = walk(SRC, '')
 			&& /LIFE_CRITICAL \? ' \\u00b7 critical' : ''\);/.test(main));
 		check('the chrome draws the amber return-home marker',
 			/shipChrome\.hasHome = shipLib\.lifeState\(ship\) === shipLib\.LIFE_EXPIRED/.test(main)
-			&& /flightAutoDest\.disabled = !gameMode[\s\S]*?\|\| ship\.docked;/.test(main)
-			&& /flightAutoTarget\.disabled = !gameMode[\s\S]*?\|\| ship\.docked;/.test(main)
+			&& /flightAutoDest\.disabled = !isFlying\(\)[\s\S]*?\|\| ship\.docked;/.test(main)
+			&& /flightAutoTarget\.disabled = !isFlying\(\)[\s\S]*?\|\| ship\.docked;/.test(main)
 			&& /shipChrome\.homeTagText = `\$\{homeNameOf\(\)\}  \$\{formatLy\(homeDistKpc \* LY_PER_KPC\)\}`;/.test(main)
 			&& /if \(chrome\.hasHome\) chromeHome\(ctx, chrome, camera, cx, cy, focalPx, halfW, halfH\);/.test(labelSrc)
 			&& /hasHome: false,/.test(labelSrc));
@@ -378,14 +378,14 @@ const sourceFiles = walk(SRC, '')
 			/id="flight-dock"/.test(html) && /id="flight-cargo-load"/.test(html)
 			&& /id="flight-cargo-unload"/.test(html) && /id="flight-port-state"/.test(html)
 			&& /flightDock\.addEventListener\('click', \(\) => \{ actions\.dock = 1; \}\);/.test(main)
-			&& /flightDock\.disabled = !gameMode;/.test(main)
+			&& /flightDock\.disabled = !isFlying\(\);/.test(main)
 			&& /lifeNow !== lastLifeState/.test(main)
 			&& /setAutoMsg\('life support expired · return home'\);/.test(main));
 		check('Space leaves the port and the port actions are game-gated',
 			/if \(ship\.docked\) gameUndock\(\);\s*else \{/.test(main)
-			&& /if \(actions\.dock\) \{\s*actions\.dock = 0;\s*if \(gameMode\) gameDock\(\);\s*else gameNotice\(\);/.test(main)
-			&& /if \(actions\.cargoLoad\) \{\s*actions\.cargoLoad = 0;\s*if \(gameMode\) gameCargoLoad\(\);\s*else gameNotice\(\);/.test(main)
-			&& /if \(actions\.cargoUnload\) \{\s*actions\.cargoUnload = 0;\s*if \(gameMode\) gameCargoUnload\(\);\s*else gameNotice\(\);/.test(main));
+			&& /if \(actions\.dock\) \{\s*actions\.dock = 0;\s*if \(isFlying\(\)\) gameDock\(\);\s*else gameNotice\(\);/.test(main)
+			&& /if \(actions\.cargoLoad\) \{\s*actions\.cargoLoad = 0;\s*if \(isFlying\(\)\) gameCargoLoad\(\);\s*else gameNotice\(\);/.test(main)
+			&& /if \(actions\.cargoUnload\) \{\s*actions\.cargoUnload = 0;\s*if \(isFlying\(\)\) gameCargoUnload\(\);\s*else gameNotice\(\);/.test(main));
 	}
 	// G5 of game-mode-plan.md (§4/§8): the SIM and ARCADE clock presets are
 	// Controls-panel buttons on the ship-time ladder — SIM the real-time stop,
@@ -394,18 +394,18 @@ const sourceFiles = walk(SRC, '')
 	{
 		const inputSrc = fs.readFileSync(path.join(SRC, 'core', 'input.js'), 'utf-8');
 		const shipSrc = fs.readFileSync(path.join(SRC, 'core', 'ship.js'), 'utf-8');
-		check('the Controls panel carries the SIM and ARCADE presets, game-gated',
-			/data-action="clockSim" data-game/.test(html)
-			&& /data-action="clockArcade" data-game/.test(html)
-			&& /helpNeedGame = Array\.from\(helpPanel\.querySelectorAll\('\[data-game\]'\)\)/.test(main)
-			&& /for \(const control of helpNeedGame\) control\.disabled = !gameMode;/.test(main)
+		check('the Controls panel carries the SIM and ARCADE presets, fly-scoped',
+			/data-action="clockSim" data-mode="fly"/.test(html)
+			&& /data-action="clockArcade" data-mode="fly"/.test(html)
+			&& /helpModeControls = Array\.from\(helpPanel\.querySelectorAll\('\[data-mode\]'\)\)/.test(main)
+			&& /control\.hidden = control\.dataset\.mode\.indexOf\(name\) < 0;/.test(main)
 			&& /clockSim: 0, clockArcade: 0/.test(inputSrc));
 		check('the presets land before the shared clock is read and light from the live clock',
 			/if \(actions\.clockSim\) \{ actions\.clockSim = 0; setShipClockPreset\('sim'\); \}/.test(main)
 			&& /if \(actions\.clockArcade\) \{ actions\.clockArcade = 0; setShipClockPreset\('arcade'\); \}/.test(main)
 			&& /function setShipClockPreset\(preset\) \{\s*shipLib\.setClockPreset\(ship, preset\);/.test(main)
-			&& /helpClockSim\.classList\.toggle\('is-active', gameMode && !ship\.arcade\s*&& ship\.timeIndex === shipLib\.SHIP_TIME_REAL_INDEX\);/.test(main)
-			&& /helpClockArcade\.classList\.toggle\('is-active', gameMode && ship\.arcade\);/.test(main));
+			&& /helpClockSim\.classList\.toggle\('is-active', isFlying\(\) && !ship\.arcade\s*&& ship\.timeIndex === shipLib\.SHIP_TIME_REAL_INDEX\);/.test(main)
+			&& /helpClockArcade\.classList\.toggle\('is-active', isFlying\(\) && ship\.arcade\);/.test(main));
 		check('the arcade warp is the autopilot wall-time floor as a lower bound and the HUD names it',
 			/shipLib\.arcadeWarpYPerS\(ship, AUTOPILOT_MIN_WALL_SECONDS\)/.test(main)
 			&& /coast warp \$\{formatShipRate\(actualRate\)\}/.test(main)
@@ -423,8 +423,33 @@ const sourceFiles = walk(SRC, '')
 			const missing = used.filter((id) => !ids.has(id));
 			return missing.length === 0;
 		})(), 'missing ids');
-	check('the sysmenu selector main.js queries is an id in the page',
-		/#sysmenu \[data-view\]/.test(main) && /id="sysmenu"/.test(html));
+	check('the routemenu selector main.js queries is an id in the page',
+		/#routemenu \[data-view\]/.test(main) && /id="routemenu"/.test(html) && /id="sysmenu"/.test(html));
+	// ui.20: the three workspaces — workspace.js loaded once before presets.js,
+	// the mode bar in the page, the three mode-scoped hint blocks, and the one
+	// panel-visibility writer (`hidden`, through applyPanels).
+	check('workspace.js is loaded exactly once, before presets.js',
+		scripts.filter((f) => f === 'core/workspace.js').length === 1
+		&& scripts.indexOf('core/workspace.js') < scripts.indexOf('core/presets.js'));
+	check('the mode bar carries the three chips, the clock and the panels menu',
+		/id="mode-bar"/.test(html)
+		&& /data-action="modeObserve"/.test(html)
+		&& /data-action="modeFly"/.test(html)
+		&& /data-action="modeCommand"/.test(html)
+		&& /id="mode-clock"/.test(html)
+		&& /id="mode-panels-btn"/.test(html)
+		&& /id="mode-panels-menu"/.test(html));
+	check('the Controls panel carries one hint block per workspace',
+		(html.match(/class="help-hint" data-mode="/g) || []).length === 3
+		&& /class="help-hint" data-mode="observe"/.test(html)
+		&& /class="help-hint" data-mode="fly"/.test(html)
+		&& /class="help-hint" data-mode="command"/.test(html));
+	check('applyPanels writes hidden and is the one panel-visibility writer',
+		/panelEls\[p\]\.hidden = !\(\(mask >> p\) & 1\);/.test(main)
+		&& /const panelEls = Workspace\.PANEL_IDS\.map\(\(id\) => document\.getElementById\(id\)\);/.test(main)
+		&& !/sysMenu\.style\.display =/.test(main)
+		&& !/helpPanel\.style\.display =/.test(main)
+		&& !/tradeMenu\.style\.display =/.test(main));
 	check('selection state, nearby-centred search, result picking and prior-to-current routing are wired',
 		/SelectionStore\.createSelectionStore\(\)/.test(main)
 		&& /selectionStore\.selectCurrent\(window\.SelectionStore\.GROUP_SPACE/.test(main)
@@ -571,6 +596,7 @@ const sourceFiles = walk(SRC, '')
 		['../src/core/trade.js', 'TradeLib'],
 		['../src/core/selection.js', 'Selection'], ['../src/core/star-set.js', 'StarSet'],
 		['../src/core/selection-store.js', 'SelectionStore'], ['../src/core/loop.js', 'Loop'],
+		['../src/core/workspace.js', 'Workspace'],
 		['../src/core/presets.js', 'Presets'],
 		['../src/core/device.js', 'Device'],
 		['../src/data/landmarks.js', 'Landmarks'], ['../src/data/constellations.js', 'Constellations'],

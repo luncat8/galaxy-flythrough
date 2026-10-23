@@ -539,6 +539,28 @@ function shipById(id) {
 	return SHIP_CLASSES[0];
 }
 
+// The network's freighters as pilotable hulls (workspace-plan.md §10): the
+// ids match trade.js's HULLS table, so a requisitioned statistical ship
+// becomes a physical one of the same name. A separate table — SHIP_CLASSES
+// is pinned positionally by route-test and dv-map-test, and these hulls are
+// working ships, not the player hangar's spread of eras.
+const FREIGHTER_CLASSES = [
+	{ id: 'bulk',    accel: 0.02, dvMax: 3.0e6,  vCruise: 0.010, domain: 'interstellar', label: 'bulk freighter',  cargo: 30000, crew: 20, lifeYears: 400, color: '#c8b08a' },
+	{ id: 'hauler',  accel: 0.05, dvMax: 6.0e6,  vCruise: 0.020, domain: 'interstellar', label: 'hauler',          cargo: 15000, crew: 14, lifeYears: 120, color: '#b8c98e' },
+	{ id: 'clipper', accel: 0.15, dvMax: 20e6,   vCruise: 0.040, domain: 'interstellar', label: 'clipper',         cargo: 8000,  crew: 8,  lifeYears: 40,  color: '#9fd4c8' },
+];
+// One lookup over both tables; the hangar's chemical row stays the fallback,
+// exactly like shipById, so a bad id can never return undefined.
+function classById(id) {
+	for (let i = 0; i < SHIP_CLASSES.length; i++) {
+		if (SHIP_CLASSES[i].id === id) return SHIP_CLASSES[i];
+	}
+	for (let i = 0; i < FREIGHTER_CLASSES.length; i++) {
+		if (FREIGHTER_CLASSES[i].id === id) return FREIGHTER_CLASSES[i];
+	}
+	return SHIP_CLASSES[0];
+}
+
 // Format seconds into human readable: 'd' days, fractional days are kept
 // for small values, years for > 365 d.  This is not the route.js formatter
 // (0.5.5), just the readout.
@@ -571,6 +593,7 @@ const DeltaVLib = {
 	buildBodyNodes, buildInterEdges, interEdgeIndex,
 	MAX_BODIES,
 	SHIP_CLASSES, shipById,
+	FREIGHTER_CLASSES, classById,
 	formatDuration, formatKms,
 };
 if (typeof module !== 'undefined') module.exports = DeltaVLib;

@@ -886,3 +886,75 @@ the game ever needs it, the GPU-side θ readback is the only honest source.
 - Validation: `node experiments/panel-test.js` 11 checks passed;
   `node experiments/route-test.js` 41/41; main.js syntax check passed.
   Real-browser scroll/reflow validation remains outstanding. T2 is unchanged.
+
+## ui.20 — three workspaces: observe, fly, command (workspace-plan W0–W6)
+
+**Decision.** The page's jobs become one state with three names
+([workspace-plan.md](../workspace-plan.md)): `observe` (the sky), `fly` (a
+ship), `command` (the colony network). The `gameMode` boolean (75 read
+sites) became `isFlying()` over `workspace`; `enterGameMode`/`leaveGameMode`
+keep their names as the helm's entrance/exit, called only by the one writer
+`setWorkspace`. The §18 recommendations shipped as written: founding stays
+free, the freighters get their own table, one crewed hull at a time, observe
+keeps the View modes panel, Tab stays global and transient.
+
+**W0 — the pure module.** `src/core/workspace.js`: the 7-panel × 3-mode
+table as bit masks (`PANEL_IDS` in index.html load order), name round-trips,
+`sanitiseMask` (stale storage can never invent a panel), `applyOverride`,
+`visibleMask` (frozen → the override is the whole truth; otherwise the mode
+set plus the system view's auto-shown Routes bit), and `toggleFly` (g enters
+fly or returns to `lastWorkspace`). `experiments/workspace-test.js` pins all
+of it plus the preset `mode` field's position (after `ship`) and round-trip.
+
+**W1/W2 — state and panels.** main.js holds `workspace`/`lastWorkspace`,
+per-workspace `panelOverrides`/`panelFrozen` (Uint8Array, persisted as
+`galaxy.workspace.<name>.panels`/`.frozen`), and `panelsHidden` (Tab, never
+persisted). `applyPanels` writes only `el.hidden` (`.panel[hidden]` wins by
+`!important`; the old `style.display` writers are gone), the insets sum the
+*visible* left/right panels, and `#sysmenu` split: piloting stays Flight,
+the system-view select/clock/Δv budget/route tools moved to the new
+`#routemenu` ("System & routes" — the one panel the open map auto-shows in
+every workspace). The mode bar carries the three chips, the owning clock
+(star / ship / trade, 4 Hz) and the panels-override menu; `1/2/3` and `g`
+land in input.js as one-shot actions (`gameMode` action retired).
+
+**W3 — chrome.** Every Controls-panel control carries `data-mode` (hidden,
+not greyed, applied on switch — `data-observer`/`data-game` retired), with
+one hint block per workspace and the header naming the deck. The HUD leads
+with the workspace: observe keeps today's text plus an orientation line,
+fly's helm block names where g returns to, command's line is the network
+summary (its trade line replaces observe's). `setTradeOverlay` gained
+`detail`: fly draws 1 — ports and hull dots, no standing routes, no voyage
+chords, no frontier crosses.
+
+**W4 — authority.** Send/Commission/Remove/expansion arming and the manual
+launch are live only in command (disabled elsewhere; the network always
+runs). A port-row click is per-mode: destination in fly, `flyToPrimary` in
+command, orbit in observe. Founding's second door, **Found at selected**,
+goes through the shared `foundColonyAt` → the same free `playerFound` law
+and the same asset-history record as the docked Port entrance.
+
+**W5 — requisition/release.** `DeltaVLib.FREIGHTER_CLASSES` (bulk/hauler/
+clipper, ids = trade `HULLS`, every row slower than fusion and 0.10 c —
+a hauler, never a racer) beside the positionally-pinned `SHIP_CLASSES`;
+`classById` spans both and `Ship.adoptHull` swaps the class with a loaded,
+class-capped hold. `TradeLib`: `SHIP_CREWED`, `requisition` (sailing hulls
+only, one at a time, pose from the drawn chord + unit direction, revision
+bump kills every queued event and `handleEvent` guards besides),
+`release` (deliver through `distributePortInbound`, re-dock and reschedule
+like `spawnShip`), `crewedCount`/`freeFreighters`. The tick's freighter
+census still counts the crewed hull, so the network never spawns a
+replacement — requisition borrows. Flight gets the 4 Hz *Network hulls*
+rows (click to take over), the `crewed from <port>` tag and **Release to
+network**; the last fleet hull refuses to go.
+
+**Validation.** `workspace` 1/1 (34 checks), `trade` 274/274 with the §9.3
+invariants (refusal wordings, drawn-chord pose, 5 000-year crewed drain,
+delivery + fleet-count restoration), `ship` 131/131 with the freighter rows
+and `adoptHull`, `input`/`preset`/`panel`/`m1-smoke` updated and green
+(m1-smoke pins the workspace.js load order, the mode bar, the three hint
+blocks, `applyPanels` as the one visibility writer, and that no `gameMode`
+or `data-observer`/`data-game` survives). `world-tests` 15/15,
+`view-tests` 16/16, `changed` 15/15. The browser/WebGPU visual pass remains
+unverified in this sandbox (entry added to
+`deferred-browser-visual-plan.md`).

@@ -2440,3 +2440,37 @@ So do not chase the SFH. Fill a birth histogram once per field draw and define
 one subtraction, and — the point — the gas and the stars on screen are then
 complementary by construction, which is the only comparison an eye can make. The
 SFH stays the law that says where birth times come from, not what the gas is.
+
+## A rename behind a predicate, and panels that hide by attribute (ui.20)
+
+Replacing a widely-read boolean (`gameMode`, 75 read sites) is safe as one
+regex pass **only** because reads and writes were separated first: convert
+the handful of assignment sites by hand into the new state machine
+(`setWorkspace`), then `\bgameMode\b → isFlying()` everywhere else. The word
+boundary keeps `gameModeLine` and `helpBoxes.get('gameMode')` out of the
+blast radius — but those string keys are exactly the sites the regex *would*
+corrupt if converted blind, so list them before running the pass.
+
+Panels that toggle with `style.display` writers scattered across a file
+cannot grow a second owner. Moving visibility to the `hidden` attribute with
+one writer (`applyPanels`) needs one CSS line to work at all —
+`.panel[hidden] { display: none !important; }` — because any rule that sets
+`display` on the element (`.panel { display: block }`) silently defeats the
+attribute. The smoke test now pins "no `style.display =` on a panel" so the
+second owner cannot creep back.
+
+A table other tests pin *positionally* (route-test's five-element
+`SHIP_CLASSES` walk) must never be appended to. A sibling table plus a
+spanning lookup (`FREIGHTER_CLASSES` + `classById`, `shipById` untouched)
+adds the rows without perturbing a single existing index.
+
+And the one failure mode the Node suites cannot see: `main.js` runs inside
+one long `boot()`, so a function that is *hoisted* (callable anywhere) can
+still throw when its body reads a `const` declared further down the boot
+sequence — temporal dead zone, at page load, with every test green because
+no test executes `boot()`. `syncViewRows()` (an early boot statement) calls
+`applyPanels()`, whose `panelEls`/`panelBoxes` are built a hundred lines
+later. The fix is an explicit readiness latch (`panelsWired`) flipped right
+after the block that builds them, with the first real apply kept at the end
+of boot. When a hoisted function gains a new dependency, check the earliest
+*call*, not the earliest declaration.

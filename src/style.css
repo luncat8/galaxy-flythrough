@@ -280,7 +280,7 @@ html, body {
 /* Flight (G3) is the lower-left workspace: manual power and a destination
    forecast sit above the existing system-map/route task, so a pilot does not
    need to hunt across panels. View-only map rows still use data-view="system". */
-#sysmenu {
+:is(#sysmenu, #routemenu) {
 	position: fixed;
 	bottom: 12px;
 	left: 12px;
@@ -296,24 +296,24 @@ html, body {
 	padding: 10px 12px;
 	z-index: 20;
 }
-#sysmenu .menu-header {
+:is(#sysmenu, #routemenu) .menu-header {
 	color: #7fb0d0;
 	border-bottom-color: #2f4f6f;
 }
-#sysmenu .menu-header button { border-color: #2f4f6f; }
-#sysmenu .menu-header button:hover { background: #1a2a3a; }
-#sysmenu .menu-row button { background: #16283a; border-color: #2f4f6f; }
-#sysmenu .menu-row button:hover { background: #1f3a52; }
-#sysmenu .menu-row select,
-#sysmenu .menu-row input[type=number] { background: #0c1620; border-color: #2f4f6f; }
-#sysmenu .menu-row select option { background: #0c1620; }
-#sysmenu .menu-actions { border-top-color: #1f3448; }
-#sysmenu .menu-actions button { background: #16283a; border-color: #2f4f6f; }
-#sysmenu .menu-actions button:hover { background: #1f3a52; }
-#sysmenu input[type=range] { accent-color: #7fb0d0; }
-#sysmenu input[type=checkbox] { accent-color: #7fb0d0; }
-#sysmenu #route-hint { color: #9cbea8; line-height: 1.4; grid-column: 1 / -1; }
-#sysmenu .menu-row #slider-dvbudget { grid-column: 1; }
+:is(#sysmenu, #routemenu) .menu-header button { border-color: #2f4f6f; }
+:is(#sysmenu, #routemenu) .menu-header button:hover { background: #1a2a3a; }
+:is(#sysmenu, #routemenu) .menu-row button { background: #16283a; border-color: #2f4f6f; }
+:is(#sysmenu, #routemenu) .menu-row button:hover { background: #1f3a52; }
+:is(#sysmenu, #routemenu) .menu-row select,
+:is(#sysmenu, #routemenu) .menu-row input[type=number] { background: #0c1620; border-color: #2f4f6f; }
+:is(#sysmenu, #routemenu) .menu-row select option { background: #0c1620; }
+:is(#sysmenu, #routemenu) .menu-actions { border-top-color: #1f3448; }
+:is(#sysmenu, #routemenu) .menu-actions button { background: #16283a; border-color: #2f4f6f; }
+:is(#sysmenu, #routemenu) .menu-actions button:hover { background: #1f3a52; }
+:is(#sysmenu, #routemenu) input[type=range] { accent-color: #7fb0d0; }
+:is(#sysmenu, #routemenu) input[type=checkbox] { accent-color: #7fb0d0; }
+:is(#sysmenu, #routemenu) #route-hint { color: #9cbea8; line-height: 1.4; grid-column: 1 / -1; }
+:is(#sysmenu, #routemenu) .menu-row #slider-dvbudget { grid-column: 1; }
 #flight-console { margin-bottom: 10px; }
 .flight-section-heading {
 	display: flex;
@@ -346,7 +346,7 @@ html, body {
 	font-size: 9px;
 	color: #7897ad;
 }
-#sysmenu .flight-fleet-bar button {
+:is(#sysmenu, #routemenu) .flight-fleet-bar button {
 	padding: 4px 7px;
 	font: inherit;
 	font-size: 10px;
@@ -356,7 +356,7 @@ html, body {
 	border-radius: 3px;
 	cursor: pointer;
 }
-#sysmenu .flight-fleet-bar button:hover { background: #1f3a52; }
+:is(#sysmenu, #routemenu) .flight-fleet-bar button:hover { background: #1f3a52; }
 .flight-ship-list {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
@@ -365,7 +365,7 @@ html, body {
 	overflow-y: auto;
 	margin-bottom: 8px;
 }
-#sysmenu .flight-ship-list button {
+:is(#sysmenu, #routemenu) .flight-ship-list button {
 	min-width: 0;
 	overflow: hidden;
 	padding: 5px 6px;
@@ -379,13 +379,13 @@ html, body {
 	text-align: left;
 	cursor: pointer;
 }
-#sysmenu .flight-ship-list button:hover { background: #1f3a52; }
-#sysmenu .flight-ship-list button.is-active {
+:is(#sysmenu, #routemenu) .flight-ship-list button:hover { background: #1f3a52; }
+:is(#sysmenu, #routemenu) .flight-ship-list button.is-active {
 	border-color: #75bddb;
 	background: rgba(37, 89, 118, 0.45);
 	color: #e0f4ff;
 }
-#sysmenu .flight-ship-list button[aria-pressed="true"]::before {
+:is(#sysmenu, #routemenu) .flight-ship-list button[aria-pressed="true"]::before {
 	content: "● ";
 	color: #79d9ff;
 }
@@ -398,8 +398,8 @@ html, body {
 	font-size: 11px;
 }
 .flight-ship-row label { color: #a7c6d8; }
-#sysmenu .flight-ship-row select,
-#sysmenu .flight-ship-row button {
+:is(#sysmenu, #routemenu) .flight-ship-row select,
+:is(#sysmenu, #routemenu) .flight-ship-row button {
 	min-width: 0;
 	padding: 4px 5px;
 	font: inherit;
@@ -409,8 +409,8 @@ html, body {
 	border: 1px solid #2f4f6f;
 	border-radius: 3px;
 }
-#sysmenu .flight-ship-row button { background: #16283a; cursor: pointer; }
-#sysmenu .flight-ship-row button:hover:not(:disabled) { background: #1f3a52; }
+:is(#sysmenu, #routemenu) .flight-ship-row button { background: #16283a; cursor: pointer; }
+:is(#sysmenu, #routemenu) .flight-ship-row button:hover:not(:disabled) { background: #1f3a52; }
 /* The Port rows (G4): the dock toggle and the hold's
    load/unload, beside the Pilot controls they serve. */
 .flight-port-row {
@@ -420,7 +420,7 @@ html, body {
 	align-items: center;
 	margin-bottom: 4px;
 }
-#sysmenu .flight-port-row button {
+:is(#sysmenu, #routemenu) .flight-port-row button {
 	min-width: 0;
 	padding: 4px 5px;
 	font: inherit;
@@ -431,7 +431,7 @@ html, body {
 	border-radius: 3px;
 	cursor: pointer;
 }
-#sysmenu .flight-port-row button:hover:not(:disabled) { background: #1f3a52; }
+:is(#sysmenu, #routemenu) .flight-port-row button:hover:not(:disabled) { background: #1f3a52; }
 .flight-port-state {
 	color: #7fa3bd;
 	font-size: 10px;
@@ -527,8 +527,8 @@ html, body {
 	font-weight: normal;
 	color: #e0eff8;
 }
-#sysmenu .flight-destination-row button,
-#sysmenu .flight-actions button {
+:is(#sysmenu, #routemenu) .flight-destination-row button,
+:is(#sysmenu, #routemenu) .flight-actions button {
 	grid-column: auto;
 	padding: 4px 6px;
 	font: inherit;
@@ -539,8 +539,8 @@ html, body {
 	border-radius: 3px;
 	cursor: pointer;
 }
-#sysmenu .flight-destination-row button:hover:not(:disabled),
-#sysmenu .flight-actions button:hover:not(:disabled) { background: #1f3a52; }
+:is(#sysmenu, #routemenu) .flight-destination-row button:hover:not(:disabled),
+:is(#sysmenu, #routemenu) .flight-actions button:hover:not(:disabled) { background: #1f3a52; }
 .flight-forecast {
 	min-height: 54px;
 	margin: 2px 0 7px;
@@ -558,9 +558,9 @@ html, body {
 	gap: 5px;
 	margin-bottom: 8px;
 }
-#sysmenu button:disabled,
-#sysmenu select:disabled,
-#sysmenu input:disabled { opacity: 0.45; cursor: default; }
+:is(#sysmenu, #routemenu) button:disabled,
+:is(#sysmenu, #routemenu) select:disabled,
+:is(#sysmenu, #routemenu) input:disabled { opacity: 0.45; cursor: default; }
 .system-section-heading { margin-top: 10px; }
 
 #error {
@@ -897,16 +897,22 @@ body.system-view #sysread {
 	body.system-view #sysread { max-width: calc(100vw - 24px); bottom: 12px; }
 }
 @media (max-width: 700px) {
-	#selection-menu, #sysmenu { width: calc(60vw - 24px); }
+	#selection-menu, :is(#sysmenu, #routemenu) { width: calc(60vw - 24px); }
 	#menu { width: max(140px, calc(40vw - 24px)); }
 	#help, #trade-menu { width: max(140px, calc(40vw - 24px)); max-height: calc(40vh - 12px); }
 	#selection-menu { max-height: calc(56vh - 12px); }
-	#sysmenu { max-height: calc(42vh - 12px); }
+	:is(#sysmenu, #routemenu) { max-height: calc(42vh - 12px); }
 }
 
 /* Collapsible panels: the header stays as the handle, so a panel is never
    lost (Tab still hides all panels outright). !important beats the inline
    display the data-engine / data-view row gating writes. */
+/* A panel outside its workspace's set (workspace-plan.md §5): applyPanels
+   writes the hidden attribute and nothing else writes panel visibility. */
+.panel[hidden] { display: none !important; }
+/* A control whose job is absent from this workspace is hidden, not greyed
+   (§6); disabled stays the "cannot act right now" state. */
+#help [hidden] { display: none !important; }
 .panel.collapsed > :not(:first-child) { display: none !important; }
 .panel.collapsed > .menu-header { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
 .panel > .menu-header:first-child > span { cursor: pointer; user-select: none; flex: 1; }
@@ -1094,7 +1100,7 @@ body.system-view #sysread {
 .panel-column-left { left: 12px; width: 292px; }
 .panel-column-inner { right: 284px; width: 260px; }
 .panel-column-right { right: 12px; width: 260px; }
-.panel-column > :is(#selection-menu, #sysmenu, #viewmenu, #trade-menu, #menu, #help) {
+.panel-column > :is(#selection-menu, :is(#sysmenu, #routemenu), #viewmenu, #trade-menu, #menu, #help) {
 	position: static;
 	flex: none;
 	max-height: none;
@@ -1114,3 +1120,62 @@ body.system-view #sysread {
 	overflow-y: auto;
 	scrollbar-gutter: stable;
 }
+
+/* The mode bar (workspace-plan.md §7.1): top centre, always visible — the one
+   place the workspace, its owning clock and the panels menu are legible. */
+#mode-bar {
+	position: fixed;
+	top: 12px;
+	left: 50%;
+	transform: translateX(-50%);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 10px;
+	font-family: 'Menlo', 'Consolas', monospace;
+	font-size: 12px;
+	color: #9fb4c8;
+	background: rgba(10, 14, 22, 0.88);
+	border: 1px solid #2f4f6f;
+	border-radius: 4px;
+	z-index: 30;
+}
+#mode-bar .mode-chip {
+	background: #10202e;
+	border: 1px solid #2f4f6f;
+	border-radius: 3px;
+	color: #9fb4c8;
+	font: inherit;
+	padding: 2px 8px;
+	cursor: pointer;
+}
+#mode-bar .mode-chip:hover { background: #1a2a3a; }
+#mode-bar .mode-chip.is-active { background: #1f3a52; color: #d7ecff; border-color: #7fb0d0; }
+#mode-bar .mode-chip .kbd { color: #6f8aa0; font-size: 10px; }
+#mode-clock { white-space: nowrap; color: #c9d8e4; }
+#mode-panels { position: relative; }
+#mode-panels-btn {
+	background: #10202e;
+	border: 1px solid #2f4f6f;
+	border-radius: 3px;
+	color: #9fb4c8;
+	font: inherit;
+	padding: 2px 8px;
+	cursor: pointer;
+}
+#mode-panels-btn:hover { background: #1a2a3a; }
+#mode-panels-menu {
+	position: absolute;
+	top: calc(100% + 6px);
+	right: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 8px 10px;
+	background: rgba(10, 14, 22, 0.95);
+	border: 1px solid #2f4f6f;
+	border-radius: 4px;
+	white-space: nowrap;
+}
+#mode-panels-menu[hidden] { display: none; }
+#mode-panels-menu label { display: flex; gap: 6px; align-items: center; cursor: pointer; }

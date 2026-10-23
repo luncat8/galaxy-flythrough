@@ -1528,7 +1528,8 @@ Shipped, in `archive/`:
   position. Stage W1 is the rename-only conversion; W4 adds the command
   authority and W5 the requisition/release law for network hulls (three
   `requisitionOnly` freighter classes, because the network's 2–4.5 ly/trade-year
-  pace is bookkeeping, not a physical speed). *(plan; not implemented)*
+  pace is bookkeeping, not a physical speed). *(shipped — ui.20; see
+  `archive/ui.x-worklog.md`)*
 
 - [`trade-plan.md`](trade-plan.md) — unversioned CPU-only colony economy and
   event-driven freight: independent trade clock, deterministic site yields,

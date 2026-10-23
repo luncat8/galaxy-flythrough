@@ -99,8 +99,8 @@
 	// for colonisation opportunities.
 	const EV_ARRIVE = 0, EV_LOAD = 1, EV_WAIT = 2, EV_FOUND = 3, EV_TICK = 4;
 
-	const SHIP_DOCKED = 0, SHIP_SAILING = 1, SHIP_WAITING = 2, SHIP_FOUNDING = 3;
-	const SHIP_STATE_NAMES = ['docked', 'sailing', 'waiting', 'founding'];
+	const SHIP_DOCKED = 0, SHIP_SAILING = 1, SHIP_WAITING = 2, SHIP_FOUNDING = 3, SHIP_CREWED = 4;
+	const SHIP_STATE_NAMES = ['docked', 'sailing', 'waiting', 'founding', 'crewed'];
 	const NO_RESOURCE = 255;
 
 	// Freighters, authored like the game-mode hulls. `lyPerYear` is the trade
@@ -2838,6 +2838,10 @@
 		if (kind === EV_TICK) { tick(net, time); return; }
 		const ship = net.ships[ref];
 		if (!ship || ship.revision !== revision) { net.stale += 1; return; }
+		// A crewed hull belongs to the pilot (workspace-plan.md §10): the
+		// requisition bumped the revision, so this guard is belt on braces —
+		// no statistical event may ever move a hull a human is flying.
+		if (ship.state === SHIP_CREWED) return;
 		net.lastEvent = time;
 		if (kind === EV_ARRIVE) arrive(net, ship, time);
 		else if (kind === EV_FOUND) foundAtCandidate(net, ship, time);
@@ -3021,6 +3025,91 @@
 
 	const PLAYER_RESULT = { ok: 0, resource: -1, units: 0, tons: 0, reason: '' };
 
+	// --- Requisition and release (workspace-plan.md §10) -------------------
+	// A sailing freighter can be taken over mid-voyage: the hull leaves the
+	// statistical fleet (state SHIP_CREWED, every queued event dead) and the
+	// caller gets the pose to seed a physical ship from. One crewed hull at
+	// a time — a fleet of one captain. The tick's freighter count still sees
+	// the hull (state !== SHIP_FOUNDING), so the network never spawns a
+	// replacement: requisition borrows, it does not print ships.
+	function crewedCount(net) {
+		let crewed = 0;
+		for (let i = 0; i < net.shipCount; i++) if (net.ships[i].state === SHIP_CREWED) crewed += 1;
+		return crewed;
+	}
+	function freeFreighters(net) {
+		return net.shipCount - crewedCount(net);
+	}
+	function requisition(net, index) {
+		const out = REQUISITION_RESULT;
+		out.ok = 0; out.reason = ''; out.hull = 0; out.resource = -1; out.tons = 0;
+		out.x = 0; out.y = 0; out.z = 0; out.dx = 1; out.dy = 0; out.dz = 0; out.name = '';
+		if (!(index >= 0 && index < net.shipCount)) { out.reason = 'no such hull'; return out; }
+		if (crewedCount(net) > 0) { out.reason = 'a hull is already crewed \u00b7 release it at a port first'; return out; }
+		const ship = net.ships[index];
+		if (ship.state === SHIP_DOCKED) { out.reason = 'this hull is already in port \u00b7 dock and take it over there'; return out; }
+		if (ship.state === SHIP_WAITING) { out.reason = 'this hull is idle at a port'; return out; }
+		if (ship.state === SHIP_FOUNDING) { out.reason = 'a founding voyage cannot be diverted'; return out; }
+		if (ship.state !== SHIP_SAILING) { out.reason = 'not under way'; return out; }
+		// The pose first, while the voyage is still live: position on the
+		// drawn chord, direction toward the end the hull is making for.
+		shipPosition(net, index, net.time, RQ_POS);
+		endpointPos(net, END_PORT, ship.from, RQ_A);
+		endpointPos(net, END_PORT, ship.to, RQ_B);
+		const tx = ship.returning ? RQ_A[0] : RQ_B[0];
+		const ty = ship.returning ? RQ_A[1] : RQ_B[1];
+		const tz = ship.returning ? RQ_A[2] : RQ_B[2];
+		let dx = tx - RQ_POS[0], dy = ty - RQ_POS[1], dz = tz - RQ_POS[2];
+		const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+		if (len > 1e-12) { dx /= len; dy /= len; dz /= len; } else { dx = 1; dy = 0; dz = 0; }
+		out.x = RQ_POS[0]; out.y = RQ_POS[1]; out.z = RQ_POS[2];
+		out.dx = dx; out.dy = dy; out.dz = dz;
+		out.hull = ship.hull;
+		out.resource = ship.cargo === NO_RESOURCE ? -1 : ship.cargo;
+		out.tons = out.resource >= 0 ? economy.tonsForUnits(out.resource, ship.amount) : 0;
+		out.name = HULLS[ship.hull].name;
+		// The takeover: the revision bump kills every queued event, the
+		// state keeps the statistical fleet's count honest.
+		ship.state = SHIP_CREWED;
+		ship.revision = (ship.revision + 1) >>> 0;
+		ship.port = -1; ship.to = -1; ship.candidate = -1;
+		ship.cargo = NO_RESOURCE; ship.amount = 0;
+		out.ok = 1;
+		return out;
+	}
+	const REQUISITION_RESULT = { ok: 0, reason: '', hull: 0, resource: -1, tons: 0,
+		x: 0, y: 0, z: 0, dx: 1, dy: 0, dz: 0, name: '' };
+	const RQ_POS = [0, 0, 0], RQ_A = [0, 0, 0], RQ_B = [0, 0, 0];
+
+	// The one way back: docked at a settled port, the hold is delivered
+	// through the same inbound law every freighter uses, and the hull
+	// re-enters statistical service on the port's own schedule.
+	function release(net, portIndex, shipIndex, tons, resource, time) {
+		const out = RELEASE_RESULT;
+		out.ok = 0; out.reason = ''; out.units = 0; out.port = portIndex | 0;
+		if (!(shipIndex >= 0 && shipIndex < net.shipCount)) { out.reason = 'no such hull'; return out; }
+		const ship = net.ships[shipIndex];
+		if (ship.state !== SHIP_CREWED) { out.reason = 'not a requisitioned hull'; return out; }
+		if (!(portIndex >= 0 && portIndex < net.portCount)) { out.reason = 'no trade port here'; return out; }
+		if (net.ports[portIndex].colony.outpost) { out.reason = 'an outpost ships nothing'; return out; }
+		settlePort(net, portIndex, net.time);
+		if (tons > 0 && resource >= 0) {
+			const units = economy.unitsForTons(resource, tons);
+			const given = distributePortInbound(net, portIndex, resource, units);
+			net.delivered += given;
+			out.units = given;
+		}
+		ship.state = SHIP_DOCKED;
+		ship.port = portIndex; ship.from = portIndex; ship.to = -1; ship.candidate = -1;
+		ship.cargo = NO_RESOURCE; ship.amount = 0;
+		ship.hold = HULLS[ship.hull].hold;
+		ship.legFrom = 0; ship.legTo = 1; ship.returning = 0; ship.waits = 0;
+		scheduleShip(net, ship, time + DOCK_YEARS, EV_LOAD);
+		out.ok = 1;
+		return out;
+	}
+	const RELEASE_RESULT = { ok: 0, reason: '', units: 0, port: -1 };
+
 	const DISCOVER_SITE = economy.createSite();
 
 	const TradeLib = {
@@ -3033,7 +3122,8 @@
 		EV_ARRIVE, EV_LOAD, EV_WAIT, EV_FOUND, EV_TICK, nextEvents,
 		MAX_ROUTES, createRoutes, routeIndexOf, commissionRoute, removeRoute,
 		activeRouteCount, noteRouteDeparture, routeLegYears, ROUTE_RESULT,
-		SHIP_DOCKED, SHIP_SAILING, SHIP_WAITING, SHIP_FOUNDING, SHIP_STATE_NAMES,
+		SHIP_DOCKED, SHIP_SAILING, SHIP_WAITING, SHIP_FOUNDING, SHIP_CREWED, SHIP_STATE_NAMES,
+		requisition, release, crewedCount, freeFreighters,
 		LOG_CAP, LOG_FOUND, LOG_MILESTONE, LOG_FAMINE, LOG_FAMINE_END, LOG_OUTPOST,
 		LOG_ROUTE, LOG_EXPEDITION, createLog, pushLog, logLength, logAt,
 		HULLS, DOCK_YEARS, WAIT_YEARS, TICK_YEARS,

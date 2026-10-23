@@ -8,8 +8,9 @@
 //
 // Consumers take what they own and leave the rest:
 //   * camera   : keys, lookDx/lookDy, wheelDelta, actions.reset/home
-//   * main.js  : actions.orbitCentre/orbitObject/flyMode (the mode switches —
-//                the object target lives in its selection store), actions.gameMode,
+//   * main.js  : actions.orbitCentre/orbitObject/flyMode (the camera switches —
+//                the object target lives in its selection store), the workspace
+//                actions modeObserve/modeFly/modeCommand (1/2/3; g is modeFly),
 //                actions.chaseFollow (j: the follow-behind object orbit),
 //                actions.allStop (Space: the ship's commanded brake),
 //                actions.shipRefuel (the hangar refill button) and
@@ -51,7 +52,7 @@ function createInput(canvas) {
 		pickX: 0,
 		pickY: 0,
 	actions: { reset: 0, home: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, freezeTime: 0,
-	orbitCentre: 0, orbitObject: 0, flyMode: 0, gameMode: 0, chaseFollow: 0, allStop: 0, shipRefuel: 0,
+	orbitCentre: 0, orbitObject: 0, flyMode: 0, modeObserve: 0, modeFly: 0, modeCommand: 0, chaseFollow: 0, allStop: 0, shipRefuel: 0,
 flyTo: 0, nextStar: 0, clearSet: 0, systemView: 0, systemViewExit: 0, dvMap: 0,
 speedRefTarget: 0, speedRefCentre: 0, speedRefHome: 0, dock: 0, cargoLoad: 0, cargoUnload: 0,
 tradeRoutes: 0,
@@ -76,9 +77,9 @@ clockSim: 0, clockArcade: 0 },
 	// ui.4 replaces the C key's fly → orbit-centre → orbit-object cycle with
 	// explicit, lowercase/uppercase pairs: c orbits the selected star, Shift+C
 	// the galactic centre, f takes the free fly camera, Shift+F flies to the
-	// selected star. G switches game mode (game-mode-plan.md); the galaxy type
-	// it used to cycle is a menu-only control now. J (ui.6) toggles the chase
-	// follow of the centred object.
+	// selected star. G toggles the fly workspace (workspace-plan.md); the
+	// galaxy type it used to cycle is a menu-only control now. J (ui.6)
+	// toggles the chase follow of the centred object.
 	// 0.5.0's other selection keys: N cycles the primary through the set
 	// (Shift+N, read as the held `boost` key, walks backwards), X clears the
 	// set. One-shots like the rest: a held N must not cycle the primary at the
@@ -89,7 +90,11 @@ clockSim: 0, clockArcade: 0 },
 	// no-op outside the view. Space is game mode's commanded all-stop
 	// (game-mode-plan.md §3): one-shot, like the other commands. O docks
 	// at the target station and L/Shift+L load/unload the hold (§10).
-	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyP: 'constellations', KeyG: 'gameMode', KeyT: 'freezeTime', Tab: 'menu',
+	// 1/2/3 are the workspaces by name (workspace-plan.md §7.1); g is the
+	// helm toggle — the same modeFly action, so one key users know keeps
+	// working and no second code path exists.
+	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyP: 'constellations', KeyG: 'modeFly', KeyT: 'freezeTime', Tab: 'menu',
+		Digit1: 'modeObserve', Digit2: 'modeFly', Digit3: 'modeCommand',
 		KeyN: 'nextStar', KeyX: 'clearSet', KeyV: 'systemView', KeyB: 'dvMap', KeyJ: 'chaseFollow', KeyM: 'viewField', Space: 'allStop', Escape: 'systemViewExit',
 		KeyO: 'dock', KeyY: 'tradeRoutes' };
 	// C, F and L carry a shift-cased pair each: [lowercase, Shift+uppercase].

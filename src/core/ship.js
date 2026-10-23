@@ -148,7 +148,9 @@ function clamp(value, lo, hi) {
 }
 
 function classRow(classId) {
-	return dv.shipById(classId);
+	// classById spans the hangar table and the network's freighter table
+	// (workspace-plan.md §10): a requisitioned hull is a ship like any other.
+	return dv.classById(classId);
 }
 
 function homeTimeIndex(cls) {
@@ -266,6 +268,38 @@ function setClass(ship, classId) {
 	ship.station = null;
 	ship.cargo = 0;
 	ship.cargoResource = -1;
+	ship.timeIndex = homeTimeIndex(cls);
+	const cap = cruiseCapKpcS(ship);
+	const speed = Math.hypot(ship.vel[0], ship.vel[1], ship.vel[2]);
+	if (speed > cap && speed > 0) {
+		const k = cap / speed;
+		ship.vel[0] *= k; ship.vel[1] *= k; ship.vel[2] *= k;
+	}
+}
+
+// Requisition's entrance (workspace-plan.md §10): the pilot takes over a
+// network freighter mid-voyage. Like setClass it swaps the hull under the
+// pose — full tank, not docked, autopilot dead — but the hold arrives
+// loaded with the freighter's cargo, capped by the class, and the caller
+// then writes pos/vel/heading from the voyage's own chord.
+function adoptHull(ship, classId, cargoTons, resource) {
+	const cls = classRow(classId);
+	apEnd(ship, AP_REASON_ABORTED);
+	ship.class = cls;
+	ship.accel = cls.accel;
+	ship.vCruise = cls.vCruise;
+	ship.dvMax = cls.dvMax;
+	ship.lifeYears = cls.lifeYears;
+	ship.dvSpent = 0;
+	ship.lifeSpent = 0;
+	ship.stopping = false;
+	ship.stopResidual = 0;
+	ship.throttleFrac = 0;
+	ship.accelNow = 0;
+	ship.docked = false;
+	ship.station = null;
+	ship.cargo = Math.min(Math.max(0, cargoTons || 0), cls.cargo);
+	ship.cargoResource = ship.cargo > 0 && resource >= 0 ? resource : -1;
 	ship.timeIndex = homeTimeIndex(cls);
 	const cap = cruiseCapKpcS(ship);
 	const speed = Math.hypot(ship.vel[0], ship.vel[1], ship.vel[2]);
@@ -1161,7 +1195,7 @@ const Ship = {
 	NAV_REASON_NONE, NAV_REASON_DISTANCE, NAV_REASON_THRUST, NAV_REASON_SPEED, NAV_REASON_TIME, NAV_REASON_LOCAL, NAV_REASON_NAMES,
 	DOCK_SHELL_M, DOCK_REL_MS, DOCK_OK, DOCK_FIXED_POINT, DOCK_OUTSIDE, DOCK_UNSETTLED, DOCK_REASON_NAMES,
 	LIFE_WARN_FRACTION, LIFE_WARN_MIN_Y, LIFE_OK, LIFE_CRITICAL, LIFE_EXPIRED, LIFE_STATE_NAMES,
-	createShip, setClass, resetShip, refuel, applyStop, step, advance,
+	createShip, setClass, adoptHull, resetShip, refuel, applyStop, step, advance,
 	dockReason, dock, undock, dockStep, loadCargo, unloadCargo,
 	lifeRemainingY, lifeWarnY, lifeState,
 	homeTimeIndex, dvRemaining, cruiseCapKpcS, speedC, timeRateYPerS, arcadeWarpYPerS, setClockPreset,

@@ -52,7 +52,7 @@ const SETTINGS = {
 	viewmode: 'spread', viewproj: 'plane', viewsource: 'nearest', viewanchors: 220,
 	viewramp: 'turbo', viewrelief: 12.5, viewopacity: 0.45,
 	search: 'G,K|terran|220-300', scope: 'selection',
-	sysview: 0, systime: 2, dvmap: 1, dvbudget: 0.35, ship: 'fusion',
+	sysview: 0, systime: 2, dvmap: 1, dvbudget: 0.35, ship: 'fusion', mode: 'command',
 	trade: 200, traderoutes: 0, tradesync: 1, tradegen: 0, tradeexpand: 0,
 	stars: 300000, catalog: 250000, clusters: 75,
 };
@@ -187,7 +187,7 @@ check('menuDefaults matches the modules that own the numbers', () => {
 		viewrelief: window.ViewModesLayer.DEFAULTS.relief,
 		viewopacity: window.ViewModesLayer.DEFAULTS.opacity,
 		time: 1, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
-		systime: 0, dvmap: 0, dvbudget: 0.35, ship: 'chemical',
+		systime: 0, dvmap: 0, dvbudget: 0.35, ship: 'chemical', mode: 'observe',
 		trade: TradeLib.TRADE_RATE_DEFAULT, traderoutes: TradeLib.TRADE_ROUTES_DEFAULT,
 		tradesync: 0, tradegen: 0, tradeexpand: 1,
 		clusters: ClustersLib.CLUSTER_EXAGGERATION_DEFAULT,
@@ -298,7 +298,7 @@ check('the system view is wired: canvas, button, clock slider, view-gated rows',
 	const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf-8');
 	for (const snippet of [
 		'window.SystemLayer', 'createSystemLayer(', 'openSystemView(', 'closeSystemView(',
-		'toggleSystemView(', 'writeSystemReadout(', '#sysmenu [data-view]',
+		'toggleSystemView(', 'writeSystemReadout(', '#routemenu [data-view]',
 		'SYSTIME_INDEX_MIN', 'SYSTIME_INDEX_MAX', 'sysTimeRateAt', 's.sysview',
 	]) {
 		assert.ok(main.includes(snippet), snippet);

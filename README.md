@@ -74,9 +74,43 @@ This is a visual galaxy model, not an N-body gravity simulation. The analytical 
 
 
 
+## Workspaces (1 / 2 / 3, g)
+
+The page has three named workspaces ([workspace-plan.md](workspace-plan.md),
+ui.20) — one state, three jobs, each with its own panel set, HUD block and
+Controls deck:
+
+- **observe** (`1`) — the sky: free camera, star time, selection, the map and
+  the look. Panels: Search & selection, System & routes, View modes, Display,
+  Controls.
+- **fly** (`2`) — a ship: the camera is the active hull, the ship clock owns
+  the time axis, the trade overlay thins to ports and hulls. Panels: Flight,
+  Controls.
+- **command** (`3`) — the colony network: expeditions, standing routes,
+  expansion arming and founding live here (elsewhere they are read-only), and
+  a port-row click flies the camera over. Panels: Search & selection,
+  System & routes, Trade, Controls.
+
+`g` is the **helm toggle**: it enters `fly` from anywhere and returns to the
+workspace it was entered from. The mode bar (top left) shows the three chips,
+the owner of the current clock, and a **panels** menu whose checkboxes
+override the workspace's panel set (per workspace, persisted; *freeze* pins
+the override as the whole truth). `Tab` still hides everything at once. The
+boot/preset parameter `mode=observe|fly|command` opens the page in a
+workspace.
+
+While commanding, a sailing network freighter can be **requisitioned** from
+the Flight panel's *Network hulls* list: the hull becomes the pilot's
+physical ship at its drawn chord position, cargo and all (one crewed hull at
+a time; the network stays one freighter short meanwhile). Docking at a
+settled port offers **Release to network** — the hold is delivered and the
+hull re-enters statistical service. `command` also gets a second founding
+entrance, **Found at selected**, through the same free law as the docked
+Port entrance.
+
 ## Controls
 
-| Input | Fly camera | Orbit camera | Game mode (`g`) |
+| Input | Fly camera | Orbit camera | Fly workspace (`g`/`2`) |
 |---|---|---|---|
 | Mouse | Click to lock, then look | Press and drag the canvas | Aim (the thrust runs on the ship's axes) |
 | Click without dragging | Select a star (Shift adds to the set) | Select a star (Shift adds to the set) | same — Flight can lock it as the destination; otherwise the HUD uses the primary |
@@ -106,11 +140,12 @@ Other controls:
 - **Controls panel** (bottom right) — the shortcut keys as clickable buttons and
   checkboxes, each tooltip carrying the detail; `▾` collapses it to the header
 - `Tab` — hide/show all panels; a panel's own `▾` (or a click on its title) collapses it to its header
-- `G`/`g` — game mode: fly the same pipeline as a spaceship (see
-  [Game mode](#game-mode-g) below; galaxy type changes live on the panel dropdown)
+- `1` / `2` / `3` — switch workspace (observe / fly / command); `G`/`g` — the helm
+  toggle: enter the fly workspace as a spaceship, or return to the workspace it
+  was entered from (see [Game mode](#game-mode-g) below)
 - `P` — toggle constellation lines
 - `T` — pause/resume star time (also works after clicking a result button)
-- **sim clock** / **arcade clock** (Controls panel, game mode) — the two ship-clock
+- **sim clock** / **arcade clock** (Controls panel, fly workspace) — the two ship-clock
   presets: real time (`R = 1` ship-s per wall-s) and the default rung plus the
   autopilot coast warp (see [Game mode](#game-mode-g) below)
 - the **Evolve with star time** checkbox — the galaxy's age runs with star time from 0.2 Gyr to

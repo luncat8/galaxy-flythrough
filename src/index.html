@@ -7,6 +7,20 @@
         <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<!-- The mode bar (workspace-plan.md §7.1): the single place the state is
+     legible — three workspace chips, the owning clock, and the panels menu
+     that writes this workspace's override. The chips fire the same one-shot
+     actions the 1/2/3 keys set. -->
+<div id="mode-bar">
+	<button type="button" class="mode-chip" data-action="modeObserve" title="Observe — the sky: free camera, star time, selection, the map and the look. The wheel steps camera speed.">observe <span class="kbd">1</span></button>
+	<button type="button" class="mode-chip" data-action="modeFly" title="Fly — a ship: the camera is the active hull and the ship clock owns the time axis. The wheel steps the ship clock. g toggles back to where you came from.">fly <span class="kbd">2</span></button>
+	<button type="button" class="mode-chip" data-action="modeCommand" title="Command — the colony network: expeditions, standing routes, expansion and founding. The trade clock is the named clock; the camera flies free.">command <span class="kbd">3</span></button>
+	<span id="mode-clock">star 1 Myr/s · T</span>
+	<div id="mode-panels">
+		<button id="mode-panels-btn" type="button" title="This workspace's panels: checking a hidden panel is the one way to see another job's panel without switching jobs. The override is yours, per workspace, and persists.">panels ▾</button>
+		<div id="mode-panels-menu" hidden></div>
+	</div>
+</div>
 <div class="panel-column panel-column-left">
 <div id="selection-menu" class="panel">
 		<div class="menu-header">
@@ -137,6 +151,7 @@
 				<button id="flight-cargo-load" type="button" disabled title="Load a colony's spare export (L), limited by actual stock and hold tonnage. Only while docked at a trade port; no credits.">Load cargo</button>
 				<button id="flight-cargo-unload" type="button" disabled title="Unload into colony storage (Shift+L). A full warehouse leaves the remainder aboard. Only while docked at a trade port.">Unload</button>
 				<button id="flight-found" type="button" disabled title="Found a colony on the best world of an unsettled docked star, free. At an existing port, open V while docked, select a planet or belt, then use this button to add a reachable sibling world without creating a second port. Outposts, reservations, capacity and poor habitat/reachability refuse the founding.">Found colony</button>
+				<button id="flight-release" type="button" disabled title="Release this requisitioned freighter back to the colony network at the settled port you are docked at. The hold is delivered to the port, the hull re-enters statistical service, and the fleet count returns to where it was. The only way a physical hull returns to the network.">Release to network</button>
 			</div>
 			<div id="flight-port-state" class="flight-port-state">not docked · O docks at a settled station</div>
 
@@ -173,6 +188,13 @@
 			<pre id="flight-forecast" class="flight-forecast">Set a destination to see predicted Δv and arrival time.</pre>
 		</div>
 
+		<div class="menu-hint">Pilot: select a star, Use selected, choose a mode, check autopilot · g returns to the sky</div>
+	</div>
+<div id="routemenu" class="panel">
+		<div class="menu-header">
+			<span>System &amp; routes</span>
+			<button id="routemenu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab hides all panels)" aria-expanded="true">▾</button>
+		</div>
 		<div class="flight-section-heading system-section-heading"><span>System map &amp; routes</span><small>local / transport</small></div>
 		<div class="menu-row">
 			<label for="sys-view">View <span class="kbd">V</span></label>
@@ -202,7 +224,7 @@
 			<button id="route-stars" title="Plan from the previous star to the current star; Shift-click set members are a fallback">Current + previous</button>
 		</div>
 		<div class="menu-row" data-view="system"><span id="route-hint">Choose map nodes, or route from previous star to current star.</span></div>
-		<div class="menu-hint">Pilot: select a star, Use selected, choose a mode, check autopilot · Map: V opens / B cycles · Tab hides panels</div>
+		<div class="menu-hint">Map: V opens / B cycles · its clock and budget live here · Tab hides panels</div>
 	</div>
 </div>
 <div class="panel-column panel-column-inner">
@@ -338,6 +360,9 @@
 		</div>
 		<div id="trade-list" class="trade-rows">No trade network yet.</div>
 		<div class="flight-section-heading"><span>Colonisation</span><small>big colonies → good worlds</small></div>
+		<div class="menu-row menu-actions">
+			<button id="trade-found" type="button" disabled title="Found a colony on the best world of the currently selected star — the same free law and the same refusals as the docked Port entrance. Two doors, one law: no charge, no second port, no cap bypass.">Found at selected</button>
+		</div>
 		<div id="colonisation-state" class="flight-port-state">frontier idle</div>
 		<div id="colonisation-list" class="trade-rows">No expeditions yet.</div>
 		<div class="flight-section-heading"><span>Routes</span><small>a preferred pair</small></div>
@@ -508,40 +533,48 @@
         </div>
 <div id="help" class="panel">
                 <div class="menu-header">
-                        <span>Controls</span>
+                        <span id="help-title">Controls</span>
                         <button id="help-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab hides all panels)" aria-expanded="true">▾</button>
                 </div>
+                <!-- Every control carries data-mode: the workspaces in which it
+                     exists at all. A control outside the current workspace is
+                     hidden, not greyed (workspace-plan.md §6); disabled remains
+                     the "cannot act right now" state. -->
                 <div class="help-grid">
-                        <button data-action="flyMode" title="Free fly: WASD / arrows to move, drag to look (click locks the cursor). Leaves any orbit and stops following. In game mode: abort the running autopilot (live only while one runs)"><span id="help-fly-label">fly</span> <span class="kbd">f</span></button>
-                        <button data-action="orbitObject" data-observer title="Orbit the selected star, centred and followed (click a star first)">orbit star <span class="kbd">c</span></button>
-                        <button data-action="orbitCentre" data-observer title="Orbit the galactic centre, centred — and select it as the speed reference (in game mode only the reference is taken, the ship does not re-pose)">orbit centre <span class="kbd">C</span></button>
-                        <button data-action="speedRefTarget" data-speed-ref="target" title="Speed reference: the locked Flight destination, or the selected star. The axis velocities, the HUD target line and the autopilot answer against it">target ref</button>
-                        <button data-action="speedRefCentre" data-speed-ref="centre" title="Speed reference: the galactic centre — a fixed frame point, so the axis speeds read absolute and the autopilot can fly to the centre itself">centre ref <span class="kbd">C</span></button>
-                        <button data-action="speedRefHome" data-speed-ref="home" title="Speed reference: home — the Sun in the Milky Way, a generated galaxy's centre otherwise">home ref</button>
-                        <button data-action="flyTo" title="2 s flight to the selected star, then orbit + follow it. In game mode: the burn/flip autopilot approach to it (fuel checkout first)">fly to star <span class="kbd">F</span></button>
-                        <button data-action="nextStar" title="Next star in the selection set">next star <span class="kbd">N</span></button>
-                        <button id="help-prev-star" title="Previous star in the selection set">prev star <span class="kbd">Shift+N</span></button>
-                        <button data-action="home" data-observer title="Home colony (H): select the colony nearest home, fly there and ride it while the sky moves. In game mode the colony becomes the Flight destination and the autopilot approaches it — a ship never teleports. With no colony the key falls back to the frame point">home colony <span class="kbd">H</span></button>
-                        <button data-action="reset" title="Reset everything — the view and, in game mode, the ship (full tank, zero velocity)">reset <span class="kbd">R</span></button>
-                        <button data-action="dvMap" data-observer title="Cycle the open system view: schematic / delta-v map / delta-v rails (click two graph nodes to route)">cycle view <span class="kbd">B</span></button>
-                        <button data-action="clearSet" title="Clear the selection set (click selects, Shift+click adds)">clear set <span class="kbd">X</span></button>
-                        <button data-action="shipRefuel" title="Hangar refill: re-arm the Δv tank to the class's full load (station refills land with docking, G3)">refuel ship</button>
-                        <button data-action="clockSim" data-game title="SIM clock (game mode): real time — one ship-second per wall-second (R = 1). Honest burns take the years they take; docking taps land at human speed. Turns the arcade coast warp off.">sim clock</button>
-                        <button data-action="clockArcade" data-game title="ARCADE clock (game mode): snaps to the class's default rung and turns on the autopilot coast warp — a long unpowered leg plays out in seconds while burn and brake keep the pilot's rung. The wheel still reshapes the base rung; SIM turns the warp off.">arcade clock</button>
-                        <a class="help-link" href="view-modes.html" title="The view-modes island: the star field as a heightmap — distance from the eye, depth spread and slope of log distance, on the view sphere or a sky chart, with shaded relief">view modes ↗</a>
+                        <button data-action="flyMode" data-mode="observe fly command" title="Free fly: WASD / arrows to move, drag to look (click locks the cursor). Leaves any orbit and stops following. In the fly workspace: abort the running autopilot (live only while one runs)"><span id="help-fly-label">fly</span> <span class="kbd">f</span></button>
+                        <button data-action="orbitObject" data-mode="observe command" title="Orbit the selected star, centred and followed (click a star first)">orbit star <span class="kbd">c</span></button>
+                        <button data-action="orbitCentre" data-mode="observe command" title="Orbit the galactic centre, centred — and select it as the speed reference">orbit centre <span class="kbd">C</span></button>
+                        <button data-action="speedRefTarget" data-speed-ref="target" data-mode="observe fly" title="Speed reference: the locked Flight destination, or the selected star. The axis velocities, the HUD target line and the autopilot answer against it">target ref</button>
+                        <button data-action="speedRefCentre" data-speed-ref="centre" data-mode="observe fly" title="Speed reference: the galactic centre — a fixed frame point, so the axis speeds read absolute and the autopilot can fly to the centre itself">centre ref <span class="kbd">C</span></button>
+                        <button data-action="speedRefHome" data-speed-ref="home" data-mode="observe fly" title="Speed reference: home — the Sun in the Milky Way, a generated galaxy's centre otherwise">home ref</button>
+                        <button data-action="flyTo" data-mode="observe fly command" title="2 s flight to the selected star, then orbit + follow it. In the fly workspace: the burn/flip autopilot approach to it (fuel checkout first)">fly to star <span class="kbd">F</span></button>
+                        <button data-action="nextStar" data-mode="observe fly command" title="Next star in the selection set">next star <span class="kbd">N</span></button>
+                        <button id="help-prev-star" data-mode="observe fly command" title="Previous star in the selection set">prev star <span class="kbd">Shift+N</span></button>
+                        <button data-action="home" data-mode="observe fly command" title="Home colony (H): select the colony nearest home, fly there and ride it while the sky moves. In the fly workspace the colony becomes the Flight destination and the autopilot approaches it — a ship never teleports. With no colony the key falls back to the frame point">home colony <span class="kbd">H</span></button>
+                        <button data-action="reset" data-mode="observe fly command" title="Reset everything — the view and, while flying, the ship (full tank, zero velocity)">reset <span class="kbd">R</span></button>
+                        <button data-action="dvMap" data-mode="observe command" title="Cycle the open system view: schematic / delta-v map / delta-v rails (click two graph nodes to route)">cycle view <span class="kbd">B</span></button>
+                        <button data-action="clearSet" data-mode="observe fly command" title="Clear the selection set (click selects, Shift+click adds)">clear set <span class="kbd">X</span></button>
+                        <button data-action="shipRefuel" data-mode="fly" title="Hangar refill: re-arm the Δv tank to the class's full load (station refills land with docking, G3)">refuel ship</button>
+                        <button data-action="clockSim" data-mode="fly" title="SIM clock: real time — one ship-second per wall-second (R = 1). Honest burns take the years they take; docking taps land at human speed. Turns the arcade coast warp off.">sim clock</button>
+                        <button data-action="clockArcade" data-mode="fly" title="ARCADE clock: snaps to the class's default rung and turns on the autopilot coast warp — a long unpowered leg plays out in seconds while burn and brake keep the pilot's rung. The wheel still reshapes the base rung; SIM turns the warp off.">arcade clock</button>
+                        <a class="help-link" href="view-modes.html" data-mode="observe" title="The view-modes island: the star field as a heightmap — distance from the eye, depth spread and slope of log distance, on the view sphere or a sky chart, with shaded relief">view modes ↗</a>
                 </div>
                 <div class="help-checks">
-                        <label title="The camera rides behind the centred object, the view aligned with its movement vector. Drag or A/D to glance around (it swings back), W/S and the wheel for distance. In game mode: the ship trails the object at the stand-off"><input type="checkbox" data-action="chaseFollow"> follow motion <span class="kbd">j</span></label>
-                        <label title="Constellation lines"><input type="checkbox" data-action="constellations"> constellations <span class="kbd">P</span></label>
-                        <label title="The close-system schematic of the selected star (Esc also closes)"><input type="checkbox" data-action="systemView" data-observer> system view <span class="kbd">V</span></label>
-                        <label title="Spaceship flight: the camera is the ship, WASD burns Δv, Space brakes, the wheel steps the ship clock (game-mode-plan.md). The observer's mode keys are gated while it is on"><input type="checkbox" data-action="gameMode"> game mode <span class="kbd">g</span></label>
-                        <label title="Freeze / resume the clock (a search freezes it too; T resumes). In game mode this freezes ship and sky together"><input type="checkbox" data-action="freezeTime"> pause star time <span class="kbd">T</span></label>
+                        <label data-mode="observe fly command" title="The camera rides behind the centred object, the view aligned with its movement vector. Drag or A/D to glance around (it swings back), W/S and the wheel for distance. While flying: the ship trails the object at the stand-off"><input type="checkbox" data-action="chaseFollow"> follow motion <span class="kbd">j</span></label>
+                        <label data-mode="observe fly command" title="Constellation lines"><input type="checkbox" data-action="constellations"> constellations <span class="kbd">P</span></label>
+                        <label data-mode="observe command" title="The close-system schematic of the selected star (Esc also closes). A docked pilot opens the station schematic from the Flight panel instead"><input type="checkbox" data-action="systemView"> system view <span class="kbd">V</span></label>
+                        <label data-mode="observe fly command" title="Freeze / resume the clock (a search freezes it too; T resumes). While flying this freezes ship and sky together"><input type="checkbox" data-action="freezeTime"> pause star time <span class="kbd">T</span></label>
                 </div>
-                <div class="help-hint">fly: drag looks &#183; WASD/arrows move &#183; E/Q up/down &#183; wheel speed &#215;2 &#183; Shift &#215;100 &#183; Ctrl &#215;0.1<br>
+                <div class="help-hint" data-mode="observe">fly: drag looks &#183; WASD/arrows move &#183; E/Q up/down &#183; wheel speed &#215;2 &#183; Shift &#215;100 &#183; Ctrl &#215;0.1<br>
 orbit: drag rotates &#183; W/S distance &#183; A/D circle &#183; E/Q over/under &#183; wheel distance &#215;2 &#183; Shift/Ctrl &#215;4/&#215;0.25<br>
-game (g): WASD/arrows burn &#916;v &#183; Shift &#215;4 / Ctrl &#215;0.25 &#183; Space all-stop &#183; wheel ship clock &#183; T freezes ship and sky<br>
 click a star to select it (Shift+click adds to the set) &#183; [ ] exposure &#183; ; ' brightness &#183; Tab hides the panels<br>
-Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
+1/2/3 switch workspace &#183; g takes the helm &#183; Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
+                <div class="help-hint" data-mode="fly">WASD/arrows burn &#916;v &#183; Shift &#215;4 / Ctrl &#215;0.25 &#183; Space all-stop &#183; wheel ship clock &#183; T freezes ship and sky<br>
+O docks at a settled station &#183; L loads &#183; Shift+L unloads &#183; drag aims the nose<br>
+g returns to the workspace you came from &#183; Esc never leaves the helm</div>
+                <div class="help-hint" data-mode="command">wheel camera speed &#183; trade clock slider/arrows &#183; H home colony &#183; click a colony to visit<br>
+Send expedition &#183; Commission route &#183; Found at the selected star &#183; the network runs in every workspace<br>
+1/2/3 switch workspace &#183; g takes the helm</div>
         </div>
 </div>
 
@@ -646,6 +679,10 @@ Ctrl+W closes the tab: fly slowly with Ctrl + arrows</div>
 	<script src="core/economy.js"></script>
 	<script src="core/trade.js"></script>
 	<script src="core/loop.js"></script>
+	<!-- The three workspaces (workspace-plan.md §3): the names, the panel
+	     table and the pure transitions. Loads immediately before presets.js,
+	     its only reader besides main.js. -->
+	<script src="core/workspace.js"></script>
         <script src="core/presets.js"></script>
         <!-- Data after math (landmarks bake their positions through coords.js at
              load), before the renderer that writes them into the star buffer. -->

@@ -1187,6 +1187,51 @@ for (const dtShipS of [3e4, 3e5, 1e6]) {
 		h.dvSpent === 0 && shipModule.lifeState(h) === shipModule.LIFE_EXPIRED);
 }
 
+// --- ui.20: the freighter classes and adoptHull (workspace-plan.md §9.2) ----
+// The network's three hulls as pilotable classes: a separate table (the
+// pilot catalogue is pinned positionally elsewhere), authored slower than
+// fusion and stardrive so a requisition is a hauler, never a racer, and the
+// takeover entrance that seeds a loaded hold.
+{
+	const F = dvModule.FREIGHTER_CLASSES;
+	check('three freighter rows with the authored numbers',
+		F.length === 3
+		&& F[0].id === 'bulk' && F[0].accel === 0.02 && F[0].dvMax === 3.0e6 && F[0].vCruise === 0.010
+			&& F[0].cargo === 30000 && F[0].lifeYears === 400
+		&& F[1].id === 'hauler' && F[1].accel === 0.05 && F[1].dvMax === 6.0e6 && F[1].vCruise === 0.020
+			&& F[1].cargo === 15000 && F[1].lifeYears === 120
+		&& F[2].id === 'clipper' && F[2].accel === 0.15 && F[2].dvMax === 20e6 && F[2].vCruise === 0.040
+			&& F[2].cargo === 8000 && F[2].lifeYears === 40);
+	check('the pilot catalogue is untouched and disjoint from the freighters',
+		dvModule.SHIP_CLASSES.length === 5
+		&& F.every((f) => !dvModule.SHIP_CLASSES.some((s) => s.id === f.id)));
+	check('every freighter is a hauler, never a racer',
+		F.every((f) => f.accel < 0.3 && f.vCruise < 0.10 && f.cargo >= 4 * 2000));
+	check('classById reaches both tables and falls back like shipById',
+		dvModule.classById('stardrive') === dvModule.shipById('stardrive')
+		&& dvModule.classById('hauler') === F[1]
+		&& dvModule.classById('no-such-hull') === dvModule.SHIP_CLASSES[0]);
+	check('createShip can be a freighter', shipModule.createShip('bulk').class === F[0]);
+	// adoptHull: the takeover swap — full tank, not docked, the hold loaded
+	// and capped, the velocity clamped to the new class's cruise.
+	const h = shipModule.createShip('chemical');
+	h.dvSpent = 5000;
+	h.docked = true;
+	h.station = { key: 1, name: 'x' };
+	h.vel[0] = 1;                         // far over any cruise cap, in kpc/s
+	shipModule.adoptHull(h, 'hauler', 99999, 3);
+	check('adoptHull re-arms the tank, undocks and sets the class',
+		h.class === F[1] && h.dvSpent === 0 && !h.docked && h.station === null
+		&& h.accel === F[1].accel && h.vCruise === F[1].vCruise);
+	check('the adopted hold is the cargo, capped by the class',
+		h.cargo === F[1].cargo && h.cargoResource === 3);
+	check('the adopted velocity clamps to the class cruise',
+		Math.hypot(h.vel[0], h.vel[1], h.vel[2]) <= shipModule.cruiseCapKpcS(h) + 1e-18);
+	const empty = shipModule.createShip('chemical');
+	shipModule.adoptHull(empty, 'clipper', 0, -1);
+	check('an empty takeover carries no cargo tag', empty.cargo === 0 && empty.cargoResource === -1);
+}
+
 // --- Report ----------------------------------------------------------------
 {
 	let passed = 0;

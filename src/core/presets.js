@@ -76,6 +76,10 @@ const FIELDS = [
 	{ key: 'tradegen', label: 'generation ships' },
 	{ key: 'tradeexpand', label: 'expansion armed' },
 	{ key: 'ship', label: 'ship class' },
+	// The workspace (workspace-plan.md §12): the page's job — observe, fly or
+	// command — by name, like `type` and `engine`. Panel overrides and the
+	// Tab-hidden flag are transient and deliberately not preset state.
+	{ key: 'mode', label: 'workspace' },
 	{ key: 'stars', label: 'procedural stars' },
 	{ key: 'catalog', label: 'catalog budget' },
 	// Star clusters (plan §10): the visual-exaggeration coefficient of the
@@ -131,6 +135,7 @@ function menuDefaults() {
 		tradegen: 0,
 		tradeexpand: 1,
 		ship: 'chemical',
+		mode: 'observe',
 		// Owned by clusters.js, like the orbit numbers above are owned by
 		// orbit.js: the exaggeration the cluster budget is rendered at.
 		clusters: g.ClustersLib ? g.ClustersLib.CLUSTER_EXAGGERATION_DEFAULT : 50,
@@ -143,6 +148,9 @@ const RAMPS = ['auto', 'viridis', 'turbo', 'magma', 'terrain', 'grey'];
 // The View modes panel's radio values (render/view-modes-layer.js MODES minus
 // the clamp quirks): a preset cannot name a mode or a source that has no radio.
 const VIEW_MODES = ['off', 'height', 'spread', 'gradient'];
+// The workspace names (core/workspace.js NAMES): presets must parse in Node
+// without the page's load order, so the enum rides here like VIEW_MODES.
+const WORKSPACES = ['observe', 'fly', 'command'];
 const VIEW_SOURCES = ['nearest', 'constellations', 'selected'];
 
 // One engine name per composable pass, in mask order.
@@ -230,6 +238,12 @@ function parse(query) {
 			if (['chemical', 'nuclear', 'fusion', 'stardrive', 'generation'].includes(raw)) out.ship = raw;
 			continue;
 		}
+		// Only the three workspaces survive; an unknown name leaves the
+		// default, so a typo can never strand the page in no mode.
+		if (field.key === 'mode') {
+			if (WORKSPACES.includes(raw)) out.mode = raw;
+			continue;
+		}
 		if (field.key === 'type' || field.key === 'search') {
 			out[field.key] = raw;
 			continue;
@@ -308,7 +322,7 @@ function buildLlmPrompt(settings) {
 	lines.push('- star system: ' + ['type ' + (d.type || 'SBb'), 'seed ' + (d.seed || '42'),
 		'age ' + (d.age || '13.5 Gyr')].join(', '));
 	lines.push('- star movement stability engine: ' + (d.engine || 'classic'));
-	for (const key of ['time', 'evolve', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad', 'sysview', 'systime', 'dvmap', 'dvbudget', 'trade', 'traderoutes', 'tradesync', 'tradegen', 'tradeexpand', 'ship']) {
+	for (const key of ['time', 'evolve', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad', 'sysview', 'systime', 'dvmap', 'dvbudget', 'trade', 'traderoutes', 'tradesync', 'tradegen', 'tradeexpand', 'ship', 'mode']) {
 		const field = FIELDS.find((f) => f.key === key);
 		if (d[key] !== undefined) lines.push('- ' + field.label + ': ' + d[key]);
 	}

@@ -33,11 +33,16 @@ for (const initial of [null, 'false', 'true', 'invalid', 'denied']) {
 	checks++;
 }
 const html = fs.readFileSync('src/index.html', 'utf8');
-for (const [column, first, second] of [['left', 'selection-menu', 'sysmenu'], ['inner', 'viewmenu', 'trade-menu'], ['right', 'menu', 'help']]) {
+for (const [column, first, second] of [['left', 'selection-menu', 'sysmenu'], ['left', 'sysmenu', 'routemenu'], ['inner', 'viewmenu', 'trade-menu'], ['right', 'menu', 'help']]) {
 	const start = html.indexOf('panel-column-' + column);
 	assert.ok(start >= 0 && html.indexOf('id="' + first + '"', start) < html.indexOf('id="' + second + '"', start));
 	checks++;
 }
+// ui.20: the panels hide through `hidden` (workspace.js's applyPanels is the
+// one writer), so the stylesheet must make `hidden` win over `.panel`'s
+// display and the columns must know all seven panels.
+assert.ok(/\.panel\[hidden\]\s*\{\s*display:\s*none\s*!important;/.test(fs.readFileSync('src/style.css', 'utf8')));
+checks++;
 const css = fs.readFileSync('src/style.css', 'utf8');
 assert.ok(css.includes('position: static;') && css.includes('flex: none;'));
 assert.ok(css.includes('#trade-calendar, #trade-log {\n\theight: 112px;'));

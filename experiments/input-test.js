@@ -132,25 +132,29 @@ check('menu controls own keyboard input except Tab', () => {
 	state.actions.menu = 0;
 });
 
-check('c/C/f/F carry the ui.4 camera modes and g the game mode, one-shots all', () => {
-	for (const action of ['orbitObject', 'orbitCentre', 'flyMode', 'flyTo', 'gameMode']) state.actions[action] = 0;
+check('c/C/f/F carry the ui.4 camera modes and g/1/2/3 the workspaces, one-shots all', () => {
+	for (const action of ['orbitObject', 'orbitCentre', 'flyMode', 'flyTo', 'modeObserve', 'modeFly', 'modeCommand']) state.actions[action] = 0;
 	assert.equal(canvas.emit('keydown', { code: 'KeyC' }).defaultPrevented, true);
 	assert.equal(canvas.emit('keydown', { code: 'KeyC', shiftKey: true }).defaultPrevented, true);
 	assert.equal(canvas.emit('keydown', { code: 'KeyF' }).defaultPrevented, true);
 	assert.equal(canvas.emit('keydown', { code: 'KeyF', shiftKey: true }).defaultPrevented, true);
 	assert.equal(canvas.emit('keydown', { code: 'KeyG' }).defaultPrevented, true);
+	assert.equal(canvas.emit('keydown', { code: 'Digit1' }).defaultPrevented, true);
+	assert.equal(canvas.emit('keydown', { code: 'Digit3' }).defaultPrevented, true);
 	assert.equal(state.actions.orbitObject, 1);
 	assert.equal(state.actions.orbitCentre, 1);
 	assert.equal(state.actions.flyMode, 1);
 	assert.equal(state.actions.flyTo, 1);
-	assert.equal(state.actions.gameMode, 1);
+	assert.equal(state.actions.modeFly, 1, 'g is the helm toggle');
+	assert.equal(state.actions.modeObserve, 1);
+	assert.equal(state.actions.modeCommand, 1);
 	state.actions.orbitObject = 0;
 	canvas.emit('keydown', { code: 'KeyC', repeat: true });
 	assert.equal(state.actions.orbitObject, 0, 'a held c must not re-orbit at the repeat rate');
-	state.actions.gameMode = 0;
+	state.actions.modeFly = 0;
 	canvas.emit('keydown', { code: 'KeyG', repeat: true });
-	assert.equal(state.actions.gameMode, 0, 'a held g must not flip game mode at the repeat rate');
-	for (const action of ['orbitObject', 'orbitCentre', 'flyMode', 'flyTo', 'gameMode']) state.actions[action] = 0;
+	assert.equal(state.actions.modeFly, 0, 'a held g must not flip the helm at the repeat rate');
+	for (const action of ['orbitObject', 'orbitCentre', 'flyMode', 'flyTo', 'modeObserve', 'modeFly', 'modeCommand']) state.actions[action] = 0;
 });
 check('j toggles the chase follow (ui.6), one-shot like the mode keys', () => {
 	assert.equal(canvas.emit('keydown', { code: 'KeyJ' }).defaultPrevented, true);
