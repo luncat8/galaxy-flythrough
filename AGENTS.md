@@ -104,6 +104,17 @@
   projection pins the haze gain at 1 800. Billboards carry their own birth gate;
   HII and its members ride the cell's epoch map, and all billboards subtract the
   camera before projection/culling. Stellar remnants do not read cold-gas rates.
+  **0.7.6 shipped:** the gas is drawn as a *reconstruction* of its grid — each
+  cell is one quad spanning one cell step either side of its centre (corners
+  projected one by one) with a tent fragment that reaches zero exactly at that
+  step, so neighbouring quads sum to one and the 64 × 96 grid reads as one
+  smooth field instead of a dot per cell (the moiré the browser frame showed).
+  A sub-2 px cell is widened and its peak divided by the area it gained, so the
+  cell's light is spread, never multiplied; a flat grid draws flat to 3.2 %
+  spread (a peaked kernel keeps 7.6–7.9 %). The browser smoke rig's continuity
+  dip test now reads the exposure (luma) and holds the thresholded lit-pixel
+  count to its own shot noise — a star-only frame at 3.4–3.6 Gyr has ~10 lit
+  pixels, where a ±1 px step was being read as an oscillation.
   Remaining: V14 visual/profiling evidence and the F6 engine-switch audit.
 - `deferred-browser-visual-plan.md` — non-blocking browser checks, preset actions, bar polish and GPU profiling; separate from analytical model contracts.
 - `deferred-catalog-evolution-plan.md` — **deferred, non-critical, Milky Way only**: streamed catalog + local gap-fill stars keep a fixed reference-epoch look at every epoch (including First light). Contract and assumption-based prehistoric-track design for making them evolve; the WebGPU smoke suites currently run with `catalogBudgetStars: 0` and cannot detect it. Keep the passing baseline; plan here, implement later.

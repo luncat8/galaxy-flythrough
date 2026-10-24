@@ -2616,3 +2616,35 @@ exponential law with the census CDF; it is not the small histogram approximation
 error. Matching two endpoints cannot imply small disagreement between them
 (the measured SBb example differs by 0.217 at 5 Gyr). State the two laws and
 report their difference rather than calling it GPU drift.
+
+## 2026-10-24 — A coarse grid drawn with a dot per cell is a moiré; draw the reconstruction
+
+The gas frame the first cut produced was a lattice: one radial dot per cell, at
+about one pixel, over the whole disc. Two separate mistakes, both visible only in
+a browser frame:
+
+1. A *bounded* kernel sized to the cell keeps a light per cell, but its support
+   stops at the footprint's edge, so neighbouring cells never meet — the image is
+   a dot pattern sampled by the pixel grid, i.e. a moiré whose period has nothing
+   to do with the gas. Draw the **reconstruction** instead: the quad spans one
+   cell step either side of the centre (±ΔR, ±Δφ) and the fragment is a tent
+   (1 at the centre, 0 on every edge). The edge of one cell is the centre of the
+   next, where that neighbour's tent is also zero, so the hats sum to one
+   everywhere and a 64 × 96 grid reads as one smooth field. Pin it with a flat
+   grid: spread over the disc is 3.2 % for the tent and 7.6–7.9 % for the peaked
+   kernel, and those two numbers make the regression a test rather than an
+   opinion. Widening a sub-pixel cell must divide its peak by the area gained —
+   spreading light, never multiplying it.
+2. The quad's corners were offset from the *centre's projected* clip position by
+   a pixel size. Under the perspective camera that puts the shared edges of two
+   neighbours at slightly different screen positions and breaks the tiling exactly
+   where the cells are largest. Project each corner from its own local position
+   (`R ± ΔR`, `φ ± Δφ`) and let the perspective divide do the work.
+
+Related: a threshold count is not an exposure measurement. The smoke rig's
+continuity dip test compared `litPixels` (luma > 4) between epochs with a strict
+2 % tolerance. That passes while the gas is visible (226–228 px) and fails the
+same code path once 0.7.5 isolates a star-only frame, where 8–10 pixels are above
+the threshold and ±1 px is just quantization. Read the smooth integral (luma) for
+the dip and hold a count of N pixels to its own shot noise, `3·√N + 2`; keep a
+"did not collapse to zero" clause so the test still catches the real failure.

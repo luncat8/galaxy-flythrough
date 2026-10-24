@@ -1565,9 +1565,9 @@ Shipped, in `archive/`:
   cell rate without re-placing objects, spawning stars, scatter writes or GPU
   readback. `gas Δ` reports the difference between the grid and census laws, not
   a race or a bound on their interior agreement. `AGE_MIN` is 0, with the
-  deep-time degeneracies resolved by meaning. **Status:** 0.7.0–0.7.5 implemented;
-  V14 visual/GPU profiling checks and the remaining F6 engine-switch audit stay
-  open. E5 (events) remains deferred behind the formation contract.
+  deep-time degeneracies resolved by meaning. **Status:** 0.7.0–0.7.6 implemented (0.7.6 draws the gas as the
+  reconstruction of its grid rather than a dot per cell); V14 visual/GPU
+  profiling checks and the remaining F6 engine-switch audit stay open. E5 (events) remains deferred behind the formation contract.
 
 - [`evolution-plan.md`](evolution-plan.md) — the 0.6 series, galaxy evolution over time:
   the type table describes present-day galaxies, so `modelAtAge` gains an **epoch tier**

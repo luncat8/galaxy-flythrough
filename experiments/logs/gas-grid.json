@@ -1,7 +1,7 @@
 {
-  "date": "2026-10-24T09:13:13.454Z",
-  "totalChecks": 108,
-  "passed": 108,
+  "date": "2026-10-24T09:57:10.019Z",
+  "totalChecks": 112,
+  "passed": 112,
   "failed": 0,
   "lookMeasurement": {
     "width": 640,
@@ -9,17 +9,29 @@
     "distance": 45,
     "gain": 1800,
     "first": {
-      "lit": 121544,
-      "total": 23410.78163496788,
-      "median": 0.06818827986717224,
-      "p90": 0.6464300155639648
+      "lit": 122968,
+      "total": 21865.36896253104,
+      "median": 0.0666643165186117,
+      "p90": 0.5871461490484247
     },
     "present": {
-      "lit": 123968,
-      "total": 3511.6794592970923,
-      "median": 0.008697246201336384,
-      "p90": 0.08552952110767365
-    }
+      "lit": 125508,
+      "total": 3279.9353828425456,
+      "median": 0.00874197884961788,
+      "p90": 0.0776493797958717
+    },
+    "flat": [
+      {
+        "distance": 16,
+        "tentSpread": 0.03175166085278361,
+        "peakSpread": 0.07615202900240368
+      },
+      {
+        "distance": 45,
+        "tentSpread": 0.03193488285291194,
+        "peakSpread": 0.07865781849493024
+      }
+    ]
   },
   "checks": [
     {
@@ -287,7 +299,7 @@
       "pass": true
     },
     {
-      "name": "at T = 0 the median gas pixel is ~0.068 linear, p90 ~0.65 (the whole picture)",
+      "name": "at T = 0 the median gas pixel is ~0.067 linear, p90 ~0.59 (the whole picture)",
       "pass": true
     },
     {
@@ -296,6 +308,22 @@
     },
     {
       "name": "the present-day haze is a small fraction of the First-light picture",
+      "pass": true
+    },
+    {
+      "name": "a flat gas grid draws flat under the tent at 16 kpc (< 5 % spread)",
+      "pass": true
+    },
+    {
+      "name": "a peaked footprint kernel keeps the grid pattern at 16 kpc (> 2x the tent spread)",
+      "pass": true
+    },
+    {
+      "name": "a flat gas grid draws flat under the tent at 45 kpc (< 5 % spread)",
+      "pass": true
+    },
+    {
+      "name": "a peaked footprint kernel keeps the grid pattern at 45 kpc (> 2x the tent spread)",
       "pass": true
     },
     {

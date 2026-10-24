@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-24T09:13:05.194Z",
+  "date": "2026-10-24T09:57:01.336Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -51,7 +51,7 @@
     },
     {
       "name": "gas-cell",
-      "lines": 140
+      "lines": 156
     }
   ],
   "modules": [
@@ -63,8 +63,8 @@
     "gas-step",
     "gas-cell"
   ],
-  "totalChecks": 211,
-  "passed": 211,
+  "totalChecks": 212,
+  "passed": 212,
   "failed": 0,
   "checks": [
     {
@@ -140,7 +140,7 @@
         ],
         [
           "gas-cell",
-          5539
+          6729
         ]
       ]
     },
@@ -1422,6 +1422,10 @@
     },
     {
       "name": "the gas draw binds the camera lane first and the cells second",
+      "pass": true
+    },
+    {
+      "name": "the gas quad spans one cell step either side and the fragment is a tent",
       "pass": true
     },
     {

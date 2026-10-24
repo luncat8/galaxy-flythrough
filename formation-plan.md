@@ -265,9 +265,10 @@ The ring range stops at the field's truncation radius (`discRadius`) rather than
 the 1.4× the first draft used: beyond it the sampler draws no stars, so gas there
 would be a picture of nothing. Initial cell masses integrate the radial marginal over the ring's **width**
 (`discRadialWeight(R)·ΔR`); a log grid cannot give every sample equal `dR`.
-Slabs outside `discHeight` are empty. The width of a cell is its own footprint — the
-larger of the radial step and `R·Δφ` — which is also the splat size, so the gas
-disc keeps the grid's geometry at any camera.
+Slabs outside `discHeight` are empty. A cell's footprint is the radial step
+between its ring edges by the azimuthal step `R·Δφ` between its spokes; the drawn
+quad is that footprint, so the gas disc keeps the grid's geometry at any camera
+(§5.4).
 
 ### 5.2 The law
 
@@ -335,18 +336,35 @@ that is already known analytically.
 
 The grid draws as additive screen-space quads into the same `rgba16float`
 intermediate as the stars and the nebulae: one instanced draw over all cells,
-each a wide soft splat tinted cold (`GAS_COLOR`), sized by the cell's footprint
-and floored at 2 px so a distant galaxy stays a haze rather than a moiré. The
-flux is the cell's mass times a look gain (`GAS_GAIN_DEFAULT`), modulated by its
-turbulence weight; a cell below the flux floor returns the hidden vertex, so a
-burned-out cell costs only its four vertex invocations. The gain was picked from
-a CPU projection at 640 × 400, face-on from 45 kpc, using the shipping camera
-matrix, Euclidean distance for the splat size and the epoch heat scale. With
-**1 800**, the median covered pixel is **0.0682 linear at `T = 0`** (p90 0.646)
-and **0.00870 at `AGE_REF`** (p90 0.0855). These are scalar pre-colour radiances,
-not display luminances. The measurement and the gain are pinned in `gas-grid`.
-It is a look constant like `MIN_ALPHA`, not a model number; V14 owns the visual
-verdict. The original 15 000 calibration omitted the log-ring width and used
+tinted cold (`GAS_COLOR`). The flux is the cell's mass times a look gain
+(`GAS_GAIN_DEFAULT`), modulated by its turbulence weight; a cell below the flux
+floor returns the hidden vertex, so a burned-out cell costs only its four vertex
+invocations.
+
+**The quad is a reconstruction, not a scatter plot.** It spans one cell step
+either side of the centre — ±ΔR in radius, ±Δφ in azimuth — and its fragment is
+a *tent*: 1 at the centre, zero on all four edges. The edge of one cell is the
+centre of the next, where that neighbour's tent is also zero, so the two hats sum
+to one everywhere and the frame is the bilinear reconstruction of the grid: a
+64 × 96 grid draws as one smooth field. A peaked kernel sized to the footprint
+instead (the shape the first cut used) puts a bounded dot at every cell centre;
+where those dots beat against the pixel grid the gas reads as a moiré, and where
+the footprint is about a pixel it reads as a visible raster. Corners are placed
+by projecting each one, not by offsetting the centre's clip position, because
+only a corner-by-corner projection keeps the shared edges shared under a
+perspective camera. A cell narrower than `GAS_MIN_CELL_PX` (2 px — a distant
+galaxy) is widened about its centre, since a sub-pixel quad aliases, and its peak
+is divided by the area it gained: the cell's light is spread, never multiplied.
+
+The gain was picked from a CPU projection at 640 × 400, face-on from 45 kpc,
+using the shipping camera matrix and the epoch heat scale. With **1 800**, the
+median covered pixel is **0.0667 linear at `T = 0`** (p90 0.587) and **0.00874 at
+`AGE_REF`** (p90 0.0776). These are scalar pre-colour radiances, not display
+luminances. It is a look constant like `MIN_ALPHA`, not a model number; V14 owns
+the visual verdict. The reconstruction is pinned the same way: a *flat* grid must
+draw flat, and it does to a **3.2 % spread** over the disc at both 16 kpc and
+45 kpc, while the peaked kernel it replaced keeps **7.6 %** and **7.9 %** — the
+grid's own dot pattern, which is the moiré. The original 15 000 calibration omitted the log-ring width and used
 twice the camera's positional focal scale; those assumptions do not apply.
 
 The composite billboards keep their own layer. HII emission reads the local
@@ -374,7 +392,8 @@ a race or a failed endpoint calibration.
   gasTotal/gasDrift` for the HUD.
 - `src/render/shaders.js`: `gas-common` (the struct, the cell geometry and the
   arm law), `gas-step` (compute, 64 invocations per workgroup, `ceil(cells/64)`
-  workgroups) and `gas-cell` (the splats). The camera lane is one shared
+  workgroups) and `gas-cell` (the quads, one tent per cell). The camera lane is
+  one shared
   `CAMERA_UNIFORM` part, concatenated into the nebula and gas modules.
 - Preset field: none. Turning the gas on or off is a look, and a preset that
   rebuilt the field for it would break R1.
@@ -405,7 +424,7 @@ SNR keep weight 1 and their own birth gate. With the grid disabled, all types
 keep weight 1, but the birth gate and placement remain the same.
 
 The nebula pass binds whichever ping-pong buffer the current step **wrote**.
-Hiding the gas splats does not stop the step or disconnect HII emission; it is a
+Hiding the gas quads does not stop the step or disconnect HII emission; it is a
 look toggle only. No GPU readback or per-frame object upload is needed. A
 16-byte empty storage binding is sufficient when the grid is disabled.
 
@@ -515,14 +534,20 @@ gas-account, grid and local-emission slices have their own focused checks.
   the step wrote, a rewind re-filling instead of burning backwards, the uniform
   lanes, `setGasVisible`, and `dispose`. `wgsl-exec` executes the shipping
   `gas-step` and `gas-cell` against the same model (mass within 2e-4 relative,
-  the splat at the geometry the CPU draws, an empty cell hidden).
+  the quad over the cell step either side of its centre, an empty cell hidden).
+  The **look** is pinned with numbers (§5.4): the median/p90 covered radiance at
+  both endpoints with the gain fixed, and a flat grid that must draw flat — 3.2 %
+  spread for the tent against 7.6–7.9 % for a peaked footprint kernel. The
+  browser smoke rig's 3.4–3.6 Gyr dip test reads the luma integral and holds the
+  lit-pixel count to its own shot noise, because a star-only frame there is a
+  ten-pixel threshold count.
 - **Local rates (0.7.5).** `fillGrid(T)` and one/many `step` calls agree on
   **both** mass and rate (< 2e-5 relative over 500 steps); zero/tiny dt,
   `rate = 1/tau`, underflowed mass and a paused boot are explicit cases. Ring
   mass CDFs match independent radial quadrature; every cell centre round-trips
   through the inverse, out-of-grid seats have no source, and the 48-byte writer
   carries birth/type/cell metadata correctly. The renderer binds the just-written
-  grid for HII through both swaps and a rewind, keeps stepping when splats are
+  grid for HII through both swaps and a rewind, keeps stepping when the quads are
   hidden, and never uploads object records on an epoch change. The no-grid
   binding, reallocation, population-only recalibration and disposal are pinned.
   `wgsl-exec` executes the actual billboard: local rate, empty source, unaffected

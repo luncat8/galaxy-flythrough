@@ -47,8 +47,9 @@ No framework, bundler, module loader, or runtime network connection is required.
   arm contrast is the picture of the stars that are actually there. The gas is also **drawn**: a
   64 × 96 × 4 cell grid (`src/math/gas-grid.js`) stepped on the GPU by an exact exponential of the
   epoch delta, calibrated once per draw so its total is 1 at first light and the type's own
-  present-day fraction at the reference epoch, and splatted additively as cold haze under the
-  stars. Its mass against that account is printed as `gas Δ` in the Formation checks line and in
+  present-day fraction at the reference epoch, and drawn additively as cold haze under the
+  stars, one tent-shaped quad per cell so the quads reconstruct the grid instead of
+  leaving a dot at each cell centre. Its mass against that account is printed as `gas Δ` in the Formation checks line and in
   the stats overlay. HII nebulae take their brightness from the **local cell's formation rate**,
   with a time-based response that gives the same rate after a jump, rewind or running clock.
   Their seats and members are carried, not re-rolled; planetary nebulae and supernova remnants

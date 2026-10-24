@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-24T09:07:40.209Z",
+  "date": "2026-10-24T09:56:58.349Z",
   "interpreter": "wgsl_reflect",
   "totalChecks": 143,
   "passed": 143,
@@ -496,24 +496,28 @@
       }
     },
     {
-      "name": "on-WGSL: a live cell splats at the geometry the CPU model draws",
+      "name": "on-WGSL: a live cell covers the cell step either side of its centre, as the CPU look model draws it",
       "pass": true,
       "detail": {
         "wgsl": [
-          8.713844299316406,
-          0.43486419320106506,
+          8.712057113647461,
+          0.3826994001865387,
           0.15000000596046448,
           1
         ],
         "expected": [
-          8.718954335699042,
-          0.4439497501150108,
+          8.71205635148947,
+          0.3826993694013729,
           0.15
+        ],
+        "grow": [
+          1,
+          1
         ]
       }
     },
     {
-      "name": "on-WGSL: that cell carries the flux its mass implies",
+      "name": "on-WGSL: that cell carries the tent peak its mass implies",
       "pass": true,
       "detail": {
         "wgsl": 0.026528488844633102,

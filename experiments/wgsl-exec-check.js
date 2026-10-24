@@ -922,8 +922,9 @@ async function main() {
 		check('on-WGSL: the display slot matches the exact response (< 1e-9 absolute)',
 			gasWorstSlot < 1e-9, { worst: gasWorstSlot });
 
-		// The splat: an empty cell is hidden, a live one sits at the geometry the
-		// CPU draws and carries the flux the model predicts.
+		// The quad: an empty cell is hidden, a live one spans exactly its own
+		// footprint (the ring step by the spoke step, unexpanded at this size) and
+		// carries the flux its mass implies, scaled by the tent's 4/peak.
 		const gasCamBytes = new ArrayBuffer(56 * 4);
 		const gasCam = new Float32Array(gasCamBytes);
 		gasCam.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], 0);   // identity viewProj
@@ -945,17 +946,23 @@ async function main() {
 		const worldZ = gasGeo.centreZ + gasLib.cellHeight(gasGeo, slab);
 		const dist = Math.hypot(worldX, worldY, worldZ);
 		const dr = gasLib.ringEdge(gasGeo, ring + 1) - gasLib.ringEdge(gasGeo, ring);
-		const arc = R * Math.PI * 2 / gasGeo.spokes;
-		const sizePx = Math.max(Math.max(arc, dr) / dist * 900 / Math.tan(1.047197551 * 0.5), 2);
+		const dPhi = Math.PI * 2 / gasGeo.spokes;
+		const focal = 900 / Math.tan(1.047197551 * 0.5);
+		const growR = Math.max(1, 2 / Math.max(dr / dist * focal, 1e-6));
+		const growA = Math.max(1, 2 / Math.max(R * dPhi / dist * focal, 1e-6));
+		const cornerR = R - growR * dr;
+		const cornerPhi = phi - growA * dPhi;
+		const cornerX = gasGeo.centreX + cornerR * Math.cos(cornerPhi);
+		const cornerY = cornerR * Math.sin(cornerPhi);
 		const m = gasGrid[cellIndex * 4];
 		const w = gasGrid[cellIndex * 4 + 2];
-		const flux = m * 1400 * (0.7 + 0.6 * Math.min(1, Math.max(0, w)));
-		check('on-WGSL: a live cell splats at the geometry the CPU model draws',
-			Math.abs(liveCell.clipPos[0] - (worldX - sizePx * 0.5 * 2 / 1600)) < 1e-3
-			&& Math.abs(liveCell.clipPos[1] - (worldY - sizePx * 0.5 * 2 / 900)) < 1e-3
+		const flux = m * 1400 * (0.7 + 0.6 * Math.min(1, Math.max(0, w))) / (growR * growA);
+		check('on-WGSL: a live cell covers the cell step either side of its centre, as the CPU look model draws it',
+			Math.abs(liveCell.clipPos[0] - cornerX) < 1e-3
+			&& Math.abs(liveCell.clipPos[1] - cornerY) < 1e-3
 			&& Math.abs(liveCell.clipPos[3] - 1) < 1e-5,
-			{ wgsl: liveCell.clipPos, expected: [worldX, worldY, worldZ] });
-		check('on-WGSL: that cell carries the flux its mass implies',
+			{ wgsl: liveCell.clipPos, expected: [cornerX, cornerY, worldZ], grow: [growR, growA] });
+		check('on-WGSL: that cell carries the tent peak its mass implies',
 			Math.abs(liveCell.flux - flux) / flux < 1e-3, { wgsl: liveCell.flux, model: flux });
 
 		// A burned-out cell must cost no pixels: zero one cell's mass in a copy of

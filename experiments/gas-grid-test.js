@@ -294,69 +294,139 @@ for (const type of TYPES) {
 		gasLib.rateAfter(0, smoothed, a, h) === smoothed * Math.exp(-a * h));
 }
 
-// --- 4. The look gain ------------------------------------------------------
-// `gas-cell` turns a cell's mass into linear radiance: flux = m·gain·(0.7 +
-// 0.6·w), one quad of the cell's own footprint (floored at 2 px) with a
-// (1 − r²)² profile, added into the HDR intermediate. Projecting that law at
-// 640 × 400 is how GAS_GAIN_DEFAULT was picked, so the choice is pinned here
-// with numbers instead of a sentence: T = 0 is the whole picture, AGE_REF is a
-// faint haze, and the ratio between them is the type's gas fraction.
+// --- 4. The look gain and the reconstruction -------------------------------
+// `gas-cell` turns a cell's mass into linear radiance and draws it as one quad
+// over the cell's own footprint, with a tent profile — zero on every edge, so
+// the quads of two neighbouring cells meet at zero and the drawn gas is the
+// bilinear reconstruction of the grid. Projecting that law at 640 × 400 is how
+// GAS_GAIN_DEFAULT was picked, so the choice is pinned here with numbers
+// instead of a sentence: T = 0 is the whole picture, AGE_REF is a faint haze,
+// and the ratio between them is the type's gas fraction.
+//
+// The second measurement is the one the tent exists for: a *uniform* grid must
+// draw flat. A peaked kernel sized to the footprint draws a dot per cell, and
+// where those dots beat against the pixel grid the gas reads as a moiré rather
+// than as gas. That pair of numbers is the regression pin for the kernel.
 {
 	const W = 640;
 	const H = 400;
-	const FOV_Y = Camera.FOV_Y;
-	const CAM_DIST = 45;
-	const FOCAL = H / Math.tan(FOV_Y * 0.5);
+	const FOCAL = H / Math.tan(Camera.FOV_Y * 0.5);
+	const QUAD_UV = [-1, -1, 1, -1, -1, 1, 1, 1];   // vertex_index → the tent's uv
+	const QUAD_TRIS = [[0, 1, 2], [1, 3, 2]];       // the strip's two triangles
 	const FLUX_MIN = 0.00002;
-	const camera = Camera.createCamera();
-	camera.forward.set([0, 0, -1]); camera.right.set([1, 0, 0]); camera.up.set([0, 1, 0]);
-	const vp = camera.buildViewProj(W / H);
-	const model = galaxy.createGalaxy({ type: 'SBb', seed: 7 });
-	const ref = galaxy.modelAtAge(model, galaxy.AGE_REF);
-	const account = gasLib.initialize(ref, 0, model.seed);
-	const geo = account.geometry;
-	const grid = new Float32Array(gasLib.GAS_FLOATS);
-	gasLib.fillGrid(account, 0, model.seed, grid);
-	// A cell's screen footprint and radiance, exactly as gas-cell computes them;
-	// the pattern rotation is 0 at the epoch the projection is taken at.
-	const project = (age) => {
-		const image = new Float32Array(W * H);
+	const GAIN = rendererModule.GAS_GAIN_DEFAULT;
+
+	// The cell's screen quad, exactly as `gas-cell` builds it: the ring step and
+	// the spoke step, each widened to GAS_MIN_CELL_PX and the peak divided back
+	// out, then projected corner by corner through the shipping camera matrix.
+	const projectLook = (opts) => {
+		const width = opts.width;
+		const height = opts.height;
+		const dist = opts.distance;
+		const kernel = opts.kernel || 'tent';
+		const model = galaxy.createGalaxy({ type: 'SBb', seed: 7 });
+		const ref = galaxy.modelAtAge(model, galaxy.AGE_REF);
+		const account = gasLib.initialize(ref, 0, model.seed);
+		const geo = account.geometry;
+		const age = opts.age || 0;
+		const grid = opts.grid;
+		const camera = Camera.createCamera();
+		camera.forward.set([0, 0, -1]); camera.right.set([1, 0, 0]); camera.up.set([0, 1, 0]);
+		camera.cameraPos[0] = geo.centreX;
+		camera.cameraPos[1] = 0;
+		camera.cameraPos[2] = dist;
+		const vp = camera.buildViewProj(width / height);
+		const focal = height / Math.tan(Camera.FOV_Y * 0.5);
+		const image = new Float64Array(width * height);
+		const toScreen = (out, x, y, z) => {
+			const ex = x - camera.cameraPos[0];
+			const ey = y - camera.cameraPos[1];
+			const ez = z - camera.cameraPos[2];
+			const cw = vp[3] * ex + vp[7] * ey + vp[11] * ez + vp[15];
+			out.x = width * 0.5 * (1 + (vp[0] * ex + vp[4] * ey + vp[8] * ez + vp[12]) / cw);
+			out.y = height * 0.5 * (1 - (vp[1] * ex + vp[5] * ey + vp[9] * ez + vp[13]) / cw);
+			out.w = cw;
+			return out;
+		};
+		const quad = [{ x: 0, y: 0, w: 1 }, { x: 0, y: 0, w: 1 }, { x: 0, y: 0, w: 1 }, { x: 0, y: 0, w: 1 }];
+		const centrePoint = { x: 0, y: 0, w: 1 };
 		const heat = Math.pow(galaxy.modelAtAge(model, age).epoch.heat / ref.epoch.heat, 2);
+		const dPhi = 2 * Math.PI / geo.spokes;
 		for (let i = 0; i < gasLib.GAS_CELLS; i++) {
-			const m = grid[i * 4] * Math.exp(-account.burnC * account.rate[i] * age);
-			const flux = m * rendererModule.GAS_GAIN_DEFAULT
-				* (0.7 + 0.6 * Math.min(1, Math.max(0, grid[i * 4 + 2])));
-			if (!(flux >= FLUX_MIN)) continue;
+			const mass = grid[i * 4] * Math.exp(-account.burnC * account.rate[i] * age);
+			const flux = mass * (opts.uniform ? 1 : GAIN)
+				* (opts.uniform ? 1 : 0.7 + 0.6 * Math.min(1, Math.max(0, grid[i * 4 + 2])));
+			if (!(flux >= FLUX_MIN) && !opts.uniform) continue;
 			const ring = gasLib.ringOfCell(i);
 			const R = gasLib.cellRadius(geo, ring);
 			const phi = gasLib.cellAzimuth(geo, gasLib.spokeOfCell(i));
-			const world = [geo.centreX + R * Math.cos(phi), R * Math.sin(phi), geo.centreZ + gasLib.cellHeight(geo, gasLib.slabOfCell(i)) * heat];
-			const eyeZ = CAM_DIST - world[2];
-			if (eyeZ <= 0) continue;
-			const dist = Math.hypot(world[0] - geo.centreX, world[1], eyeZ);
-			const ex = world[0] - geo.centreX, ey = world[1], ez = -eyeZ;
-			const cw = vp[3] * ex + vp[7] * ey + vp[11] * ez + vp[15];
-			const sx = W * 0.5 * (1 + (vp[0] * ex + vp[4] * ey + vp[8] * ez + vp[12]) / cw);
-			const sy = H * 0.5 * (1 - (vp[1] * ex + vp[5] * ey + vp[9] * ez + vp[13]) / cw);
+			const z = geo.centreZ + gasLib.cellHeight(geo, gasLib.slabOfCell(i)) * heat;
+			const centre = toScreen(centrePoint, geo.centreX + R * Math.cos(phi), R * Math.sin(phi), z);
 			const dr = gasLib.ringEdge(geo, ring + 1) - gasLib.ringEdge(geo, ring);
-			const arc = R * 2 * Math.PI / geo.spokes;
-			const size = Math.max(Math.max(arc, dr) / dist * FOCAL, 2);
-			const half = size * 0.5;
-			const x0 = Math.max(0, Math.floor(sx - half));
-			const x1 = Math.min(W, Math.ceil(sx + half));
-			const y0 = Math.max(0, Math.floor(sy - half));
-			const y1 = Math.min(H, Math.ceil(sy + half));
-			for (let py = y0; py < y1; py++) {
-				const dy = (py + 0.5 - sy) / half;
-				for (let px = x0; px < x1; px++) {
-					const dx = (px + 0.5 - sx) / half;
-					const r2 = dx * dx + dy * dy;
-					if (r2 > 1) continue;
-					const s = 1 - r2;
-					image[py * W + px] += flux * s * s;
+			const arc = R * dPhi;
+			const distToCell = Math.hypot(R, z - camera.cameraPos[2]);
+			if (kernel === 'peak') {
+				const size = Math.max(Math.max(arc, dr) / distToCell * focal, 2);
+				const half = size * 0.5;
+				const x0 = Math.max(0, Math.floor(centre.x - half));
+				const x1 = Math.min(width, Math.ceil(centre.x + half));
+				const y0 = Math.max(0, Math.floor(centre.y - half));
+				const y1 = Math.min(height, Math.ceil(centre.y + half));
+				for (let py = y0; py < y1; py++) {
+					const dy = (py + 0.5 - centre.y) / half;
+					for (let px = x0; px < x1; px++) {
+						const dx = (px + 0.5 - centre.x) / half;
+						const r2 = dx * dx + dy * dy;
+						if (r2 > 1) continue;
+						const s = 1 - r2;
+						image[py * width + px] += flux * s * s;
+					}
+				}
+				continue;
+			}
+			const growR = Math.max(1, 1 / Math.max(dr / distToCell * focal, 1e-6));
+			const growA = Math.max(1, 1 / Math.max(arc / distToCell * focal, 1e-6));
+			const peak = flux / (growR * growA);
+			for (let c = 0; c < 4; c++) {
+				const cu = QUAD_UV[c * 2];
+				const cv = QUAD_UV[c * 2 + 1];
+				const Rc = R + cu * growR * dr;
+				const pc = phi + cv * growA * dPhi;
+				toScreen(quad[c], geo.centreX + Rc * Math.cos(pc), Rc * Math.sin(pc), z);
+			}
+			for (const tri of QUAD_TRIS) {
+				const A = quad[tri[0]];
+				const B = quad[tri[1]];
+				const C = quad[tri[2]];
+				const area = (B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y);
+				if (area === 0) continue;
+				const ua0 = QUAD_UV[tri[0] * 2], ua1 = QUAD_UV[tri[0] * 2 + 1];
+				const ub0 = QUAD_UV[tri[1] * 2], ub1 = QUAD_UV[tri[1] * 2 + 1];
+				const uc0 = QUAD_UV[tri[2] * 2], uc1 = QUAD_UV[tri[2] * 2 + 1];
+				const x0 = Math.max(0, Math.floor(Math.min(A.x, B.x, C.x)));
+				const x1 = Math.min(width, Math.ceil(Math.max(A.x, B.x, C.x)));
+				const y0 = Math.max(0, Math.floor(Math.min(A.y, B.y, C.y)));
+				const y1 = Math.min(height, Math.ceil(Math.max(A.y, B.y, C.y)));
+				for (let py = y0; py < y1; py++) {
+					for (let px = x0; px < x1; px++) {
+						const X = px + 0.5;
+						const Y = py + 0.5;
+						const w0 = ((B.x - X) * (C.y - Y) - (C.x - X) * (B.y - Y)) / area;
+						const w1 = ((C.x - X) * (A.y - Y) - (A.x - X) * (C.y - Y)) / area;
+						const w2 = 1 - w0 - w1;
+						if (w0 < 0 || w1 < 0 || w2 < 0) continue;
+						// perspective-correct: the weights are linear in 1/w
+						const ia = w0 / A.w, ib = w1 / B.w, ic = w2 / C.w;
+						const den = ia + ib + ic;
+						const u = (ia * ua0 + ib * ub0 + ic * uc0) / den;
+						const v = (ia * ua1 + ib * ub1 + ic * uc1) / den;
+						image[py * width + px] += peak * Math.max(0, 1 - Math.abs(u)) * Math.max(0, 1 - Math.abs(v));
+					}
 				}
 			}
 		}
+		// Statistics over the drawn frame, and over the annulus the gas actually
+		// occupies (the flatness measurement needs the disc, not the sky).
 		const lit = [];
 		let total = 0;
 		for (let i = 0; i < image.length; i++) {
@@ -365,19 +435,82 @@ for (const type of TYPES) {
 			total += image[i];
 		}
 		lit.sort((a, b) => a - b);
-		return { lit: lit.length, total, median: lit[Math.floor(lit.length / 2)] || 0, p90: lit[Math.floor(lit.length * 0.9)] || 0 };
+		const stats = {
+			lit: lit.length,
+			total,
+			median: lit[Math.floor(lit.length / 2)] || 0,
+			p90: lit[Math.floor(lit.length * 0.9)] || 0,
+		};
+		if (!opts.uniform) return stats;
+		// Uniform grid, uniform flux: any variation left is the kernel's own. The
+		// band is the disc that fits inside this frame with a margin, so the disc's
+		// own edge is not counted as variation.
+		let n = 0, sum = 0;
+		const inner = geo.rMin * 4;
+		const outer = Math.min(geo.rMax * 0.9, 0.4 * height * dist / focal);
+		for (let py = 0; py < height; py++) {
+			for (let px = 0; px < width; px++) {
+				const dx = px + 0.5 - width * 0.5;
+				const dy = py + 0.5 - height * 0.5;
+				const R = Math.hypot(dx, dy) * dist / focal;
+				if (R < inner || R > outer) continue;
+				n++;
+				sum += image[py * width + px];
+			}
+		}
+		const mean = sum / n;
+		let sq = 0;
+		for (let py = 0; py < height; py++) {
+			for (let px = 0; px < width; px++) {
+				const dx = px + 0.5 - width * 0.5;
+				const dy = py + 0.5 - height * 0.5;
+				const R = Math.hypot(dx, dy) * dist / focal;
+				if (R < inner || R > outer) continue;
+				const d = image[py * width + px] - mean;
+				sq += d * d;
+			}
+		}
+		return { mean, spread: Math.sqrt(sq / n) / mean, px: n };
 	};
-	const first = project(0);
-	const present = project(galaxy.AGE_REF);
-	lookMeasurement = { width: W, height: H, distance: CAM_DIST, gain: rendererModule.GAS_GAIN_DEFAULT, first, present };
-	check('at First light the gas covers the frame where the disc is', first.lit > Math.PI * Math.pow(geo.rMax / CAM_DIST * FOCAL * 0.5, 2) * 0.8, first);
-	check('at T = 0 the median gas pixel is ~0.068 linear, p90 ~0.65 (the whole picture)',
-		first.median > 0.06 && first.median < 0.075 && first.p90 > 0.58 && first.p90 < 0.72, first);
+
+	const model = galaxy.createGalaxy({ type: 'SBb', seed: 7 });
+	const ref = galaxy.modelAtAge(model, galaxy.AGE_REF);
+	const account = gasLib.initialize(ref, 0, model.seed);
+	const geo = account.geometry;
+	const grid = new Float32Array(gasLib.GAS_FLOATS);
+	gasLib.fillGrid(account, 0, model.seed, grid);
+	const first = projectLook({ width: W, height: H, distance: 45, age: 0, grid });
+	const present = projectLook({ width: W, height: H, distance: 45, age: galaxy.AGE_REF, grid });
+	lookMeasurement = { width: W, height: H, distance: 45, gain: GAIN, first, present };
+	check('at First light the gas covers the frame where the disc is',
+		first.lit > Math.PI * Math.pow(geo.rMax / 45 * FOCAL * 0.5, 2) * 0.8, first);
+	check('at T = 0 the median gas pixel is ~0.067 linear, p90 ~0.59 (the whole picture)',
+		first.median > 0.062 && first.median < 0.072 && first.p90 > 0.54 && first.p90 < 0.64, first);
 	check('at AGE_REF the median gas pixel is a faint haze, ~0.0087',
-		present.median > 0.0075 && present.median < 0.010 && present.p90 > 0.07 && present.p90 < 0.10, present);
+		present.median > 0.0081 && present.median < 0.0094 && present.p90 > 0.072 && present.p90 < 0.084, present);
 	check('the present-day haze is a small fraction of the First-light picture',
 		present.total < 0.25 * first.total && first.median > 4 * present.median,
 		{ firstTotal: first.total, presentTotal: present.total });
+
+	// The reason the kernel is a tent: a flat grid must draw flat. The spread is
+	// the standard deviation over the disc's own pixels, so a picture that is the
+	// reconstruction of the grid is flat by construction, while a dot per cell —
+	// the kernel this replaced — leaves the grid's own pattern in the image.
+	const uniform = new Float32Array(gasLib.GAS_FLOATS);
+	for (let i = 0; i < gasLib.GAS_CELLS; i++) {
+		uniform[i * 4] = 1 / gasLib.GAS_CELLS;
+		uniform[i * 4 + 2] = 0.5;
+	}
+	lookMeasurement.flat = [];
+	for (const distance of [16, 45]) {
+		const flatTent = projectLook({ width: W, height: H, distance, grid: uniform, uniform: true, kernel: 'tent' });
+		const flatPeak = projectLook({ width: W, height: H, distance, grid: uniform, uniform: true, kernel: 'peak' });
+		lookMeasurement.flat.push({ distance, tentSpread: flatTent.spread, peakSpread: flatPeak.spread });
+		check('a flat gas grid draws flat under the tent at ' + distance + ' kpc (< 5 % spread)',
+			flatTent.spread < 0.05, flatTent);
+		check('a peaked footprint kernel keeps the grid pattern at ' + distance + ' kpc (> 2x the tent spread)',
+			flatPeak.spread > 2 * flatTent.spread, { tent: flatTent.spread, peak: flatPeak.spread });
+	}
 }
 
 // --- 5. The renderer: buffers, dispatch, draw ------------------------------

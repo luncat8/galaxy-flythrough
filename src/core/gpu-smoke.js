@@ -797,10 +797,20 @@
 				const s34 = bandSamples.find((s) => Math.abs(s.age - 3.4) < 1e-6);
 				const s35 = bandSamples.find((s) => Math.abs(s.age - 3.5) < 1e-6);
 				const s36 = bandSamples.find((s) => Math.abs(s.age - 3.6) < 1e-6);
+				// A dip is an exposure dip: the luma integral has no threshold, so a
+				// few-percent step in it is real. The lit-pixel count is a threshold
+				// count over a star-only frame, where a hundredth-magnitude step
+				// moves it by a pixel or two — so it is held to its own shot noise
+				// (σ ≈ √N) and to "did not collapse", not to a fixed percentage.
+				const counts = [s34.px.litPixels, s35.px.litPixels, s36.px.litPixels];
+				const peakCount = Math.max.apply(null, counts);
+				const countSpread = peakCount - Math.min.apply(null, counts);
+				const shotNoise = 3 * Math.sqrt(peakCount) + 2;
 				const noDip35 = s34 && s35 && s36
-					&& s35.px.litPixels >= s34.px.litPixels * 0.98
-					&& s36.px.litPixels >= s35.px.litPixels * 0.98
-					&& s35.px.totalLuma >= s34.px.totalLuma * 0.95;
+					&& s35.px.totalLuma >= s34.px.totalLuma * 0.95
+					&& s36.px.totalLuma >= s35.px.totalLuma * 0.95
+					&& countSpread <= shotNoise
+					&& Math.min.apply(null, counts) > 0;
 
 				check('continuity', 'magOffset is smooth and non-oscillating across 3.0–4.0 Gyr (worst step < 0.025 mag / 0.1 Gyr)',
 					magNoOscillation && worstMagStepPer01Gyr < 0.025,
@@ -808,7 +818,7 @@
 					+ ' 3.5=' + s35.magOffset.toFixed(4)
 					+ ' 3.6=' + s36.magOffset.toFixed(4)
 					+ ' maxStepPer0.1Gyr=' + worstMagStepPer01Gyr.toFixed(5));
-				check('continuity', 'no 3.5 Gyr dim/low-star-count oscillation between 3.4, 3.5 and 3.6 Gyr',
+				check('continuity', 'no 3.5 Gyr exposure dip between 3.4, 3.5 and 3.6 Gyr (luma within 5 %, lit count within its shot noise)',
 					noDip35,
 					'litPx 3.4=' + s34.px.litPixels + ' -> 3.5=' + s35.px.litPixels + ' -> 3.6=' + s36.px.litPixels
 					+ ' | luma 3.4=' + s34.px.totalLuma.toFixed(0) + ' -> 3.5=' + s35.px.totalLuma.toFixed(0) + ' -> 3.6=' + s36.px.totalLuma.toFixed(0));

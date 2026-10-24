@@ -2054,19 +2054,30 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 `;
 
 const GAS_CELL = `${GAS_COMMON}
-// Additive screen-space splats, one instanced draw over the whole grid. A cell
-// is placed where its mass is — the pattern family, rigid with the arms and the
+// Additive screen-space quads, one instanced draw over the whole grid. A cell is
+// placed where its mass is — the pattern family, rigid with the arms and the
 // nebula layer (camera.dynA.z·starTime + waveB.w) and riding the epoch's own
-// ridge re-anchor (camera.epoch.x) and heat scale (camera.epoch.z). Its splat
-// is the cell's own footprint (the larger of the radial and azimuthal extents),
-// so the gas disc keeps the grid's true geometry at any camera.
+// ridge re-anchor (camera.epoch.x) and heat scale (camera.epoch.z).
+//
+// The quad spans one cell step either side of the centre — ±ΔR for the ring
+// and ±Δφ for the spoke — and the fragment is a **tent** over it: 1 at the
+// centre, zero on all four edges. The edge is therefore the neighbouring
+// centre, where that neighbour's tent is also zero, and the two hats sum to one
+// everywhere: the drawn gas is the bilinear reconstruction of the grid, so a
+// 64 × 96 grid is drawn as one smooth field. A peaked kernel sized to the
+// footprint instead leaves a dot per cell, and where the dots beat against the
+// pixel grid the gas reads as a moiré rather than as gas.
+//
+// A cell narrower than GAS_MIN_CELL_PX (a distant galaxy) is widened about its
+// centre — a sub-pixel quad would alias — and its peak is divided by the area
+// it gained, so the cell's light is spread, never multiplied.
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
 @group(0) @binding(1) var<storage, read> gasCells: array<vec4f>;
 @group(0) @binding(2) var<uniform> gasParams: GasUniform;
 
 const GAS_FOV_Y: f32 = 1.047197551;
-const GAS_MIN_PX: f32 = 2.0;
+const GAS_MIN_CELL_PX: f32 = 2.0;
 const GAS_MAX_DIST: f32 = 90.0;
 const GAS_FLUX_MIN: f32 = 0.00002;
 const GAS_COLOR: vec3f = vec3f(0.34, 0.55, 0.95);
@@ -2115,42 +2126,47 @@ fn vs_main(
         let R: f32 = gasRingRadius(ring);
         let phi: f32 = GAS_TAU * (f32(spoke) + 0.5) / f32(GAS_SPOKES);
         let heat: f32 = select(1.0, camera.epoch.z, camera.epoch.z > 0.0);
-        let local: vec3f = vec3f(R * cos(phi), R * sin(phi), gasSlabHeight(slab) * heat);
+        let z: f32 = gasSlabHeight(slab) * heat;
 
         let theta: f32 = GAS_TAU * fract((camera.dynA.z * camera.params.w + camera.waveB.w) * GAS_INV_TAU)
                 + camera.epoch.x;
         let ct: f32 = cos(theta);
         let st: f32 = sin(theta);
         let centre: vec3f = vec3f(gasParams.stepC.w, 0.0, gasParams.stepD.x);
-        let world: vec3f = centre + vec3f(local.x * ct - local.y * st, local.x * st + local.y * ct, local.z);
-
-        let eye: vec3f = world - camera.cameraPos.xyz;
-        let dist: f32 = length(eye);
+        let dist: f32 = length(centre + vec3f(R * cos(phi), R * sin(phi), z) - camera.cameraPos.xyz);
         if (dist > GAS_MAX_DIST) { return gasHidden(vid); }
-        let clip: vec4f = camera.viewProj * vec4f(eye, 1.0);
+
+        // The cell's two widths, in pixels at the camera: the radial step between
+        // its ring edges and R·Δφ between its spokes. These are the boundaries
+        // the neighbouring cells end on, which is what lets the tents tile.
+        let dr: f32 = gasRingEdge(ring + 1u) - gasRingEdge(ring);
+        let focal: f32 = camera.viewport.y / tan(GAS_FOV_Y * 0.5);
+        let drPx: f32 = max(dr / dist * focal, 1.0e-6);
+        let arcPx: f32 = max(R * GAS_TAU / f32(GAS_SPOKES) / dist * focal, 1.0e-6);
+        let growR: f32 = max(1.0, GAS_MIN_CELL_PX / drPx);
+        let growA: f32 = max(1.0, GAS_MIN_CELL_PX / arcPx);
+
+        let corner: vec2f = gasCorner(vid);
+        let Rc: f32 = R + corner.x * growR * dr;
+        let phic: f32 = phi + corner.y * growA * GAS_TAU / f32(GAS_SPOKES);
+        let local: vec3f = vec3f(Rc * cos(phic), Rc * sin(phic), z);
+        let world: vec3f = centre + vec3f(local.x * ct - local.y * st, local.x * st + local.y * ct, local.z);
+        let clip: vec4f = camera.viewProj * vec4f(world - camera.cameraPos.xyz, 1.0);
         if (clip.w <= 0.0) { return gasHidden(vid); }
 
-        let dr: f32 = gasRingEdge(ring + 1u) - gasRingEdge(ring);
-        let arc: f32 = R * GAS_TAU / f32(GAS_SPOKES);
-        let sizePx: f32 = max(max(arc, dr) / max(dist, 1e-6)
-                * camera.viewport.y / tan(GAS_FOV_Y * 0.5), GAS_MIN_PX);
-        let corner: vec2f = gasCorner(vid);
-        let offset: vec2f = corner * (sizePx * 0.5) * camera.viewport.zw;
-
         var out: GasVertexOut;
-        out.clipPos = vec4f(clip.xy + offset * clip.w, clip.zw);
+        out.clipPos = clip;
         out.uv = corner;
         out.colour = GAS_COLOR;
-        out.flux = flux;
+        // A widened (sub-pixel) cell keeps its light and loses peak.
+        out.flux = flux / (growR * growA);
         return out;
 }
 
 @fragment
 fn fs_main(in: GasVertexOut) -> @location(0) vec4f {
-        let r2: f32 = dot(in.uv, in.uv);
-        if (r2 > 1.0) { discard; }
-        let s: f32 = 1.0 - r2;
-        let intensity: f32 = in.flux * s * s;
+        let s: f32 = max(0.0, 1.0 - abs(in.uv.x)) * max(0.0, 1.0 - abs(in.uv.y));
+        let intensity: f32 = in.flux * s;
         return vec4f(in.colour * intensity, intensity);
 }
 `;

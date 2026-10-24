@@ -734,6 +734,14 @@ function wgslConsts(part) {
                 /@binding\(0\) var<uniform> camera: CameraUniform/.test(cellSrc)
                 && /@binding\(1\) var<storage, read> gasCells: array<vec4f>/.test(cellSrc)
                 && /@binding\(2\) var<uniform> gasParams: GasUniform/.test(cellSrc));
+        // The gas picture is the reconstruction of the grid, not a dot per cell:
+        // the quad spans one cell step each way and the fragment is a tent that
+        // reaches zero exactly at that step, so neighbouring tents sum to one.
+        check('the gas quad spans one cell step either side and the fragment is a tent',
+                /R \+ corner\.x \* growR \* dr/.test(cellSrc)
+                && /phi \+ corner\.y \* growA \* GAS_TAU/.test(cellSrc)
+                && /max\(0\.0, 1\.0 - abs\(in\.uv\.x\)\) \* max\(0\.0, 1\.0 - abs\(in\.uv\.y\)\)/.test(cellSrc)
+                && /out\.flux = flux \/ \(growR \* growA\)/.test(cellSrc));
         check('the gas draw rides the same rigid pattern rotation as the nebula layer',
                 /camera\.dynA\.z \* camera\.params\.w \+ camera\.waveB\.w/.test(cellSrc)
                 && /camera\.epoch\.x/.test(cellSrc) && /camera\.epoch\.z/.test(cellSrc));
