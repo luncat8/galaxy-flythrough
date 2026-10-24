@@ -195,8 +195,8 @@ COMPOUND = {
         'cmd':  None,
     },
     'serve': {
-        'desc': 'Start a local HTTP server for src/ (open http://localhost:8080)',
-        'cmd':  ['python3', '-m', 'http.server', '8080', '--directory', 'src'],
+        'desc': 'Start the evidence server for src/ + smoke-log capture (http://localhost:8080)',
+        'cmd':  ['node', 'scripts/evidence-server.js'],
     },
     'viz-png': {
         'desc': 'Render the galaxy visualization PNG (requires galaxy-sample.json)',

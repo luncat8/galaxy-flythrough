@@ -273,13 +273,13 @@ run supplies the pixel and visual evidence; a fallback run cannot close it.
 |---|---|---|
 | C1 | **Done** | `observedTrack` is shared and deterministic; `star-types-evolution-test` passes **64/64**, including synthetic MS/RG/RGe/WD state and finite-birth checks. |
 | C2 | **CPU done; GPU row in C9** | `renderer-test` passes **155/155**: exact packed reference restoration, fixed xyz/keys, gate 1 and camera-restored records. Zero-diff pixel parity still requires real WebGPU readback. |
-| C3 | **Done (CPU/mock)** | Full-capacity birth storage and gate limit are asserted; the catalog smoke suite passes **4/4** with nonzero local/catalog populations, zero streamed stars at First light and persistent landmarks. |
+| C3 | **Done (CPU/mock)** | Full-capacity birth storage and gate limit are asserted; the catalog smoke suite passes **5/5** with nonzero local/catalog populations, zero streamed stars at First light, persistent landmarks and the monotone 0 → 2 Gyr active-count ladder. |
 | C4 | **Done (CPU/mock)** | Earlier epochs change both streamed populations; the bundled 3,829-star probe found deterministic finite tracks and no sampled luminosity reversal. Synthetic evolved-state fixtures cover RG/RGe/WD. |
 | C5 | **Done** | Selection/resolve, search (both scopes) and rings match the global-slot gate at 0, 0.5, 1, 2, 3.5 and 13.5 Gyr; `star-select-test` **51/51**, `search-test` **39/39**. |
 | C6 | **Done (CPU/mock)** | Renderer restreaming checks shared keys, births, positions and reference looks, and verifies dynamic sweep reset; `dynamicVersion` remains the invalidation signal. |
 | C7 | **Done** | Epoch walks keep `fieldSamples` unchanged; continuity and the full **43/43** suite pass. |
 | C8 | **Done** | First light guidance now says catalog/local stars are gated and curated landmarks remain visible, with a pointer to this plan. |
-| C9 | **Open** | Re-run V14a on the Milky Way at 0 / 0.5 / 1 / 2 / 13.5 Gyr with `catalogBudgetStars > 0`; record real-GPU pixel parity and whether the local sky reads as evolving. No browser executable is available in this sandbox. |
+| C9 | **Open — evidence path shipped (0.7.8)** | Re-run V14a on the Milky Way at 0 / 0.5 / 1 / 2 / 13.5 Gyr with `catalogBudgetStars > 0`; record real-GPU pixel parity and whether the local sky reads as evolving. The catalog suite now walks the 0 → 0.5 → 1 → 2 Gyr ladder with a thumbnail per rung and a monotone active-count pin, and restores the 13.5 Gyr reference. `python3 scripts/run.py serve` starts the evidence server (`scripts/evidence-server.js`); open `/webgpu-smoke.html?run=all` and `?run=catalog` on a real WebGPU adapter and press **Send log** — the session persists straight into `experiments/logs/webgpu-smoke-<stamp>.log`. No browser executable exists in the sandbox, so the real-GPU run remains the human step. |
 
 ## 9. Stop rule and non-goals
 

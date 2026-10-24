@@ -1,10 +1,10 @@
 {
-  "date": "2026-10-24T11:20:08.527Z",
+  "date": "2026-10-24T14:05:19.165Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 235,
-  "totalChecks": 155,
-  "passed": 155,
+  "prepareMs": 190,
+  "totalChecks": 156,
+  "passed": 156,
   "failed": 0,
   "checks": [
     {
@@ -1203,7 +1203,7 @@
       }
     },
     {
-      "name": "setEngine(simple) switches the state and re-seeds the epoch",
+      "name": "setEngine(simple) switches the state and carries the T = 0 sky (the birth seed there)",
       "pass": true,
       "detail": {
         "engine": "simple"
@@ -1276,6 +1276,14 @@
       "detail": {
         "mask": 6,
         "barTilt": 0.471238911151886
+      }
+    },
+    {
+      "name": "a carried switch at T > 0 leaves the birth seed by the swept arc",
+      "pass": true,
+      "detail": {
+        "sweptSlots": 1660,
+        "totalSlots": 1660
       }
     },
     {

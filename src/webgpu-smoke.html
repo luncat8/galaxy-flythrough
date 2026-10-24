@@ -156,6 +156,7 @@ code {
 	<button id="run-engines" type="button">Run engines &amp; determinism</button>
 	<button id="copy" class="sec" type="button">Copy log</button>
 	<button id="save" class="sec" type="button">Save log</button>
+	<button id="send" class="sec" type="button" hidden>Send log</button>
 	<a class="btn sec" href="index.html">← Back to Galaxy Fly-Through</a>
 </div>
 <div id="status"></div>
@@ -374,6 +375,33 @@ code {
 	document.getElementById('save').addEventListener('click', function () {
 		window.GpuSmoke.saveLog(LOG.join('\n'), 'webgpu-smoke');
 	});
+
+	// The evidence server (scripts/evidence-server.js, `run.py serve`) persists
+	// the session log straight into experiments/logs/ — reachable only when the
+	// page is served over http(s); under file:// the button stays hidden and
+	// Save/Copy remain the record path.
+	var sendButton = document.getElementById('send');
+	if (window.GpuSmoke.canSendLog()) {
+		sendButton.hidden = false;
+		sendButton.addEventListener('click', function () {
+			sendButton.disabled = true;
+			sendButton.textContent = 'Sending…';
+			var restore = function (label) {
+				sendButton.textContent = label;
+				setTimeout(function () {
+					sendButton.textContent = 'Send log';
+					sendButton.disabled = false;
+				}, window.GpuSmoke.ACK_MS);
+			};
+			window.GpuSmoke.sendLog(LOG.join('\n'), 'webgpu-smoke').then(function (res) {
+				say('[log] evidence saved: ' + (res.file || 'experiments/logs/'));
+				restore('Saved ✓');
+			}).catch(function (err) {
+				say('[log] send failed: ' + (err && err.message ? err.message : err));
+				restore('Send failed');
+			});
+		});
+	}
 
 	window.__ready = true;
 	say(window.GpuSmoke.envLine() + ' — ready. Choose a suite above, or use ?run=all|firstlight|continuity|morphology|catalog|engines');

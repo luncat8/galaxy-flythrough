@@ -1,7 +1,7 @@
 {
-  "date": "2026-10-23T06:42:45.042Z",
-  "totalChecks": 135,
-  "passed": 135,
+  "date": "2026-10-24T14:06:52.218Z",
+  "totalChecks": 141,
+  "passed": 141,
   "failed": 0,
   "checks": [
     {
@@ -1046,6 +1046,54 @@
       "detail": {
         "kept": true,
         "count": 0
+      }
+    },
+    {
+      "name": "engineMaskOf is the pure mask setEngine commits (arrays, names, numbers, the 0 clamp)",
+      "pass": true,
+      "detail": {
+        "zero": 1,
+        "over": 1
+      }
+    },
+    {
+      "name": "the masked dispatch is the ladder at theta = −1, for every mask and clock",
+      "pass": true,
+      "detail": {
+        "parWorst": 0
+      }
+    },
+    {
+      "name": "simpleCarryTheta carries the drawn azimuth on horizontal planes and the drawn in-plane angle on tilted ones",
+      "pass": true,
+      "detail": {
+        "horizontal": 2.2e-16,
+        "tilted": 0,
+        "wobbleLeak": 0
+      }
+    },
+    {
+      "name": "simpleLandmarksCarryFrom carries the drawn azimuths on the birth anchors and stamps the seed clock",
+      "pass": true,
+      "detail": {
+        "carried": 2,
+        "drift": 0
+      }
+    },
+    {
+      "name": "a carry-seeded track starts on the renderer's own carried theta (cluster centres quantised once)",
+      "pass": true,
+      "detail": {
+        "plain": 0,
+        "cluster": 0
+      }
+    },
+    {
+      "name": "the carry seed degenerates to the birth seed at T = 0 and is refused while the simple bit stays set",
+      "pass": true,
+      "detail": {
+        "zero": 0,
+        "refused": 0
       }
     },
     {

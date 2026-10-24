@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-19T05:34:08.049Z",
+  "date": "2026-10-24T14:06:27.893Z",
   "seed": 12345,
   "summary": {
     "total": 160,
@@ -36,6 +36,7 @@
         "scale",
         "concentration",
         "tidal",
+        "formedAt",
         "ageGyr",
         "weight",
         "component",

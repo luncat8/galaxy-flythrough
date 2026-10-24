@@ -192,6 +192,8 @@ async function main() {
 		&& typeof GpuSmoke.writeText === 'function'
 		&& typeof GpuSmoke.bindCopy === 'function'
 		&& typeof GpuSmoke.saveLog === 'function'
+		&& typeof GpuSmoke.sendLog === 'function'
+		&& typeof GpuSmoke.canSendLog === 'function'
 		&& typeof GpuSmoke.createOffscreenTarget === 'function'
 		&& typeof GpuSmoke.analyzePixels === 'function'
 		&& typeof GpuSmoke.diffPixels === 'function'
@@ -279,6 +281,38 @@ async function main() {
 	await btnHandler();
 	check('bindCopy copies text and flips button label to "Copied ✓"',
 		execCopied === 'bound-report-payload' && mockBtn.textContent === 'Copied ✓');
+
+	// The evidence channel (C9): Send log POSTs the session text to the
+	// evidence server on a relative URL (proxy-safe), and it only exists on
+	// http(s) with fetch — under file:// the page hides the button.
+	const savedFetch = global.fetch, savedLocation = global.location;
+	global.location = { protocol: 'file:' };
+	global.fetch = savedFetch;
+	const noHttp = GpuSmoke.canSendLog();
+	global.location = { protocol: 'http:' };
+	delete global.fetch;
+	const noFetch = GpuSmoke.canSendLog();
+	let sentUrl = null, sentInit = null;
+	global.fetch = async (url, init) => {
+		sentUrl = url; sentInit = init;
+		return { ok: true, status: 200, json: async () => ({ ok: true, file: 'experiments/logs/webgpu-smoke-x.log' }) };
+	};
+	const httpOk = GpuSmoke.canSendLog();
+	const sent = await GpuSmoke.sendLog('evidence-payload', 'webgpu-smoke');
+	const sentBody = JSON.parse(sentInit.body);
+	global.fetch = async () => ({ ok: false, status: 500, json: async () => ({ ok: false, error: 'disk full' }) });
+	let sendErr = null;
+	try { await GpuSmoke.sendLog('x'); } catch (err) { sendErr = err; }
+	if (savedFetch === undefined) delete global.fetch; else global.fetch = savedFetch;
+	if (savedLocation === undefined) delete global.location; else global.location = savedLocation;
+	check('sendLog POSTs {name, text} to the relative ./__evidence URL and surfaces server errors',
+		sentUrl === './__evidence' && sentInit.method === 'POST'
+		&& sentBody.name === 'webgpu-smoke' && sentBody.text === 'evidence-payload'
+		&& sent.ok === true && sent.file === 'experiments/logs/webgpu-smoke-x.log'
+		&& sendErr instanceof Error && /disk full/.test(sendErr.message),
+		'url=' + sentUrl);
+	check('canSendLog gates on the protocol and fetch (hidden under file://)',
+		noHttp === false && noFetch === false && httpOk === true);
 
 	// 3. Offscreen target + pixel analysis.
 	console.log('\n--- 3. Offscreen WebGPU target & pixel analysis ---');
@@ -372,10 +406,27 @@ async function main() {
 	const styleCss = fs.readFileSync(styleCssPath, 'utf8');
 	const scenariosJs = fs.readFileSync(scenariosJsPath, 'utf8');
 
-	for (const id of ['status', 'out', 'filmstrip', 'run-all', 'run-firstlight', 'run-continuity', 'run-morphology', 'run-catalog', 'run-engines', 'copy', 'save']) {
+	for (const id of ['status', 'out', 'filmstrip', 'run-all', 'run-firstlight', 'run-continuity', 'run-morphology', 'run-catalog', 'run-engines', 'copy', 'save', 'send']) {
 		check('webgpu-smoke.html has #' + id,
 			smokeHtml.includes('id="' + id + '"'));
 	}
+
+	// The Send log button starts hidden and is revealed only through
+	// canSendLog, and the evidence server it talks to is a real file that
+	// binds 0.0.0.0, sanitises the log name and caps the body.
+	const evidenceServer = fs.readFileSync(path.join(ROOT, 'scripts/evidence-server.js'), 'utf8');
+	const runPy = fs.readFileSync(path.join(ROOT, 'scripts/run.py'), 'utf8');
+	check('the page reveals #send only via canSendLog, and run.py serve runs the evidence server',
+		/id="send"[^>]*hidden/.test(smokeHtml)
+		&& smokeHtml.includes('if (window.GpuSmoke.canSendLog())')
+		&& smokeHtml.includes('sendButton.hidden = false')
+		&& runPy.includes("['node', 'scripts/evidence-server.js']"));
+	check('the evidence server binds 0.0.0.0, sanitises names, caps the body and writes experiments/logs',
+		evidenceServer.includes("server.listen(PORT, '0.0.0.0'")
+		&& /replace\(\/\[\^A-Za-z0-9._-\]\/g/.test(evidenceServer)
+		&& evidenceServer.includes('MAX_BODY')
+		&& evidenceServer.includes("path.join(ROOT, 'experiments', 'logs')")
+		&& evidenceServer.includes('/__evidence'));
 
 	const scriptSrcs = [...smokeHtml.matchAll(/<script\s+src="([^"]+)"/g)].map(m => m[1]);
 	check('webgpu-smoke.html loads classic <script> tags ending with core/gpu-smoke.js',

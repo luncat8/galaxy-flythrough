@@ -1,0 +1,313 @@
+{
+  "date": "2026-10-24T14:06:53.132Z",
+  "model": {
+    "type": "SBb",
+    "seed": 7,
+    "age": 13.5,
+    "eccMax": 0.20666666666666667
+  },
+  "topRateMyrPerS": 99,
+  "dtFrameMyr": 1.65,
+  "ladder": [
+    {
+      "T": 0,
+      "slots": 7254,
+      "maxLawFrameDeltaKpc": 0.8968,
+      "landingMaxErrRad": 2.381e-7,
+      "boundViolations": 0,
+      "boundWorstSlackKpc": 0.0035,
+      "shippedIsCarryAzMaxErrRad": 2.381e-7,
+      "shippedIsReseedMaxErrRad": 2.381e-7,
+      "jumpShippedKpc": {
+        "max": 4.8007,
+        "p99": 2.0105,
+        "median": 0.1426
+      },
+      "jumpReseedKpc": {
+        "max": 4.8007,
+        "p99": 2.0105,
+        "median": 0.1426
+      }
+    },
+    {
+      "T": 100,
+      "slots": 7254,
+      "maxLawFrameDeltaKpc": 0.8968,
+      "landingMaxErrRad": 2.383e-7,
+      "boundViolations": 0,
+      "boundWorstSlackKpc": 0.0049,
+      "shippedIsCarryAzMaxErrRad": 3.055,
+      "shippedIsReseedMaxErrRad": 3.14,
+      "jumpShippedKpc": {
+        "max": 8.2951,
+        "p99": 4.1828,
+        "median": 0.2166
+      },
+      "jumpReseedKpc": {
+        "max": 40.4122,
+        "p99": 24.2468,
+        "median": 4.7719
+      }
+    },
+    {
+      "T": 500,
+      "slots": 7254,
+      "maxLawFrameDeltaKpc": 0.8968,
+      "landingMaxErrRad": 2.384e-7,
+      "boundViolations": 0,
+      "boundWorstSlackKpc": 0.0048,
+      "shippedIsCarryAzMaxErrRad": 3.11,
+      "shippedIsReseedMaxErrRad": 3.141,
+      "jumpShippedKpc": {
+        "max": 8.137,
+        "p99": 3.5768,
+        "median": 0.2063
+      },
+      "jumpReseedKpc": {
+        "max": 37.0367,
+        "p99": 27.4194,
+        "median": 4.3054
+      }
+    },
+    {
+      "T": 1000,
+      "slots": 7254,
+      "maxLawFrameDeltaKpc": 0.8968,
+      "landingMaxErrRad": 2.384e-7,
+      "boundViolations": 0,
+      "boundWorstSlackKpc": 0.0053,
+      "shippedIsCarryAzMaxErrRad": 3.1,
+      "shippedIsReseedMaxErrRad": 3.141,
+      "jumpShippedKpc": {
+        "max": 7.6186,
+        "p99": 3.2522,
+        "median": 0.2025
+      },
+      "jumpReseedKpc": {
+        "max": 53.1783,
+        "p99": 34.9918,
+        "median": 4.6159
+      }
+    },
+    {
+      "T": 5000,
+      "slots": 7254,
+      "maxLawFrameDeltaKpc": 0.8968,
+      "landingMaxErrRad": 2.384e-7,
+      "boundViolations": 0,
+      "boundWorstSlackKpc": 0.0096,
+      "shippedIsCarryAzMaxErrRad": 3.133,
+      "shippedIsReseedMaxErrRad": 3.141,
+      "jumpShippedKpc": {
+        "max": 9.6867,
+        "p99": 3.4001,
+        "median": 0.206
+      },
+      "jumpReseedKpc": {
+        "max": 55.2548,
+        "p99": 28.1039,
+        "median": 4.033
+      }
+    }
+  ],
+  "divergence": [
+    {
+      "T": 100,
+      "maxKpc": 4.338,
+      "medianKpc": 0.305,
+      "tracked": 200
+    },
+    {
+      "T": 500,
+      "maxKpc": 4.38,
+      "medianKpc": 0.312,
+      "tracked": 200
+    },
+    {
+      "T": 1000,
+      "maxKpc": 4.813,
+      "medianKpc": 0.255,
+      "tracked": 200
+    },
+    {
+      "T": 5000,
+      "maxKpc": 6.046,
+      "medianKpc": 0.331,
+      "tracked": 200
+    }
+  ],
+  "landmarks": {
+    "T": 1000,
+    "jumpOldKpc": {
+      "max": 17.0446,
+      "median": 15.944
+    },
+    "jumpCarryKpc": {
+      "max": 0.0528,
+      "median": 0.049
+    },
+    "gpuThetaMaxErrRad": 2.492e-7
+  },
+  "totalChecks": 14,
+  "passed": 14,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "the audit model is at the reference epoch (epoch map inactive, placed == birth)",
+      "pass": true,
+      "detail": {
+        "age": 13.5,
+        "active": false
+      }
+    },
+    {
+      "name": "the audited field covers all three fixed blocks",
+      "pass": true,
+      "detail": {
+        "field": 6000,
+        "landmarks": 60,
+        "objects": 1194
+      }
+    },
+    {
+      "name": "R4: switching into simple lands every drawn in-plane angle (theta map, not birth re-seed)",
+      "pass": true,
+      "detail": {
+        "worstErrRad": 2.384e-7,
+        "ladder": [
+          {
+            "T": 0,
+            "err": 2.381e-7
+          },
+          {
+            "T": 100,
+            "err": 2.383e-7
+          },
+          {
+            "T": 500,
+            "err": 2.384e-7
+          },
+          {
+            "T": 1000,
+            "err": 2.384e-7
+          },
+          {
+            "T": 5000,
+            "err": 2.384e-7
+          }
+        ]
+      }
+    },
+    {
+      "name": "R4: the carried switch lands every star inside its own two-lane excursion bound (no teleport)",
+      "pass": true,
+      "detail": {
+        "violations": 0,
+        "worstSlackKpc": 0.0035,
+        "eccMax": 0.2067
+      }
+    },
+    {
+      "name": "R4: at T > 0 the carry beats the birth re-seed by more than 3x on the worst star",
+      "pass": true,
+      "detail": {
+        "improvements": [
+          {
+            "T": 100,
+            "factor": 0.2053
+          },
+          {
+            "T": 500,
+            "factor": 0.2197
+          },
+          {
+            "T": 1000,
+            "factor": 0.1433
+          },
+          {
+            "T": 5000,
+            "factor": 0.1753
+          }
+        ],
+        "lawFrameKpc": [
+          0.8968,
+          0.8968,
+          0.8968,
+          0.8968,
+          0.8968
+        ]
+      }
+    },
+    {
+      "name": "at T = 0 the carried seed and the birth seed agree (no boot-behaviour change)",
+      "pass": true,
+      "detail": {
+        "carryErr": 2.381e-7,
+        "reseedErr": 2.381e-7
+      }
+    },
+    {
+      "name": "R4: a switch that keeps or leaves simple never re-writes the theta buffer",
+      "pass": true,
+      "detail": {
+        "writesAfterGrow": 0,
+        "keptOnLeave": true
+      }
+    },
+    {
+      "name": "R4: orbit.simpleLandmarksCarryFrom exists (the mirror carries drawn azimuths on birth anchors)",
+      "pass": true
+    },
+    {
+      "name": "R4: the carried landmark mirror lands inside the two-lane radial bound and keeps the GPU theta",
+      "pass": true,
+      "detail": {
+        "jumpOldKpc": {
+          "max": 17.045,
+          "median": 15.944
+        },
+        "jumpCarryKpc": {
+          "max": 0.053,
+          "median": 0.049
+        },
+        "gpuThetaMaxErrRad": 2.492e-7
+      }
+    },
+    {
+      "name": "the carried mirror reconstructs identically to the vertex stage on the birth anchor (no drift)",
+      "pass": true
+    },
+    {
+      "name": "R4: tracks seeded after a carried switch start on the carried azimuth (== the GPU theta)",
+      "pass": true,
+      "detail": {
+        "tracked": 300,
+        "maxErrRad": 2.384e-7
+      }
+    },
+    {
+      "name": "R4: a record tracked one frame late catches up to the stepped mirror (chunked == lockstep)",
+      "pass": true,
+      "detail": {
+        "pairs": 60,
+        "maxErrRad": 0
+      }
+    },
+    {
+      "name": "the streaming audit has nonzero local and catalog blocks resident",
+      "pass": true,
+      "detail": {
+        "local": 2518,
+        "catalog": 1078
+      }
+    },
+    {
+      "name": "R4: local and catalog slots carry their drawn azimuths on the switch too",
+      "pass": true,
+      "detail": {
+        "slots": 3596,
+        "maxErrRad": 2.382e-7
+      }
+    }
+  ]
+}

@@ -176,6 +176,31 @@
 		return name;
 	}
 
+	// Persist the session log straight into experiments/logs/ through the
+	// evidence server (scripts/evidence-server.js) — no clipboard or download
+	// round trip for the C9 real-GPU runs. The URL is relative so it works
+	// behind any proxy prefix; http/https only, since under file:// there is
+	// no server (the page hides the button instead of calling this).
+	function sendLog(text, name) {
+		if (typeof fetch !== 'function') return Promise.reject(new Error('no fetch'));
+		return fetch('./__evidence', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name: name || 'webgpu-smoke', text: String(text || '') }),
+		}).then(function (res) {
+			return res.json().then(function (j) {
+				if (!res.ok || !j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
+				return j;
+			});
+		});
+	}
+
+	function canSendLog() {
+		return typeof location !== 'undefined' && location
+			&& /^https?:$/.test(String(location.protocol || ''))
+			&& typeof fetch === 'function';
+	}
+
 	// Sky clear colour in star-sprites.js is (0.004, 0.005, 0.010) linear ->
 	// sRGB/unorm bytes ~(1, 1, 3). Any pixel with luma > 4 is star/nebula light.
 	function analyzePixels(rgba, width, height) {
@@ -987,11 +1012,34 @@
 							catalog: zeroSample.cpu.catalogActive + '/' + zeroSample.cpu.catalogTotal,
 							landmarks: zeroSample.cpu.landmarkActive + '/' + zeroSample.cpu.landmarkTotal });
 
-					const youngModel = deps.galaxy.modelAtAge(refModel, 2.0);
-					renderer.setEpoch(youngModel);
-					renderer.stepEpoch(youngModel, 1e9);
-					const youngSample = await renderEpochSample(renderer, target, cam, youngModel, 0, 0);
-					thumbnails.push({ label: 'Catalog T = 2 Gyr', sample: youngSample });
+					// The C9 ladder (deferred-catalog-evolution-plan §8): walk
+					// 0.5 → 1 → 2 Gyr with a thumbnail at every rung, and pin
+					// the active counts monotone — gateAt is a smoothstep in
+					// the epoch age over fixed births, so a count that ever
+					// falls is a gating regression, not astrophysics.
+					const ladder = [{ age: 0, local: zeroSample.cpu.localActive, catalog: zeroSample.cpu.catalogActive }];
+					let youngSample = null;
+					for (const age of [0.5, 1.0, 2.0]) {
+						const ageModel = deps.galaxy.modelAtAge(refModel, age);
+						renderer.setEpoch(ageModel);
+						renderer.stepEpoch(ageModel, 1e9);
+						const smp = await renderEpochSample(renderer, target, cam, ageModel, 0, 0);
+						thumbnails.push({ label: 'Catalog T = ' + age.toFixed(1) + ' Gyr', sample: smp });
+						ladder.push({ age, local: smp.cpu.localActive, catalog: smp.cpu.catalogActive });
+						youngSample = smp;
+					}
+					let monotone = true;
+					for (let i = 1; i < ladder.length; i++) {
+						if (ladder[i].local < ladder[i - 1].local || ladder[i].catalog < ladder[i - 1].catalog) monotone = false;
+					}
+					// The bundled catalog's births start at ~3.4 Gyr, so its
+					// active count is legitimately still 0 at the ladder's top
+					// rung — the reference-epoch checks below pin its far end.
+					// The local sky must have started forming by 2 Gyr, or the
+					// ladder measured nothing at all.
+					check('catalog', 'active streaming counts rise monotonically along the 0 → 2 Gyr ladder',
+						monotone && ladder[ladder.length - 1].local > 0,
+						{ ladder });
 					let changed = 0;
 					let moved = 0;
 					for (const kind of [3, 4]) {
@@ -1116,6 +1164,8 @@
 		labelAck,
 		bindCopy,
 		saveLog,
+		sendLog,
+		canSendLog,
 		analyzePixels,
 		diffPixels,
 		createOffscreenTarget,

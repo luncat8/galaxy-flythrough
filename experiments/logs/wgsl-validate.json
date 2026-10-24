@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-24T09:57:01.336Z",
+  "date": "2026-10-24T14:05:16.725Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -19,7 +19,7 @@
     },
     {
       "name": "star-sprite",
-      "lines": 575
+      "lines": 576
     },
     {
       "name": "star-sprite-hdr",
@@ -108,7 +108,7 @@
         ],
         [
           "star-sprite",
-          28849
+          28942
         ],
         [
           "star-sprite-hdr",
