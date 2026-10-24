@@ -359,9 +359,14 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 {
         const localOffset = (prepareState.proceduralStars + prepareState.landmarkStars + OBJECT_MEMBERS) * records.RECORD_BYTES;
         const dynamicWrites = gpu.bufferWrites.filter(w => w.buffer.label === 'star-storage' && w.offset >= localOffset);
-        check('the first frame writes the dynamic region (local gap-fill + catalog) starting at localProc offset',
-                dynamicWrites.length === 1 && dynamicWrites[0].offset === localOffset,
-                { writes: dynamicWrites.length, offset: dynamicWrites[0] && dynamicWrites[0].offset, localOffset });
+        const blocksNow = renderer.starBlocks().blocks;
+        const catalogOffset = blocksNow[4].offset * records.RECORD_BYTES;
+        check('the first frame uploads local and catalog ranges at their distinct packed offsets',
+                dynamicWrites.length === 2
+                && dynamicWrites[0].offset === localOffset && dynamicWrites[1].offset === catalogOffset
+                && dynamicWrites[0].bytes.byteLength === renderer.state.localProceduralStars * records.RECORD_BYTES
+                && dynamicWrites[1].bytes.byteLength === renderer.state.catalogResidentStars * records.RECORD_BYTES,
+                { writes: dynamicWrites.length, offsets: dynamicWrites.map(w => w.offset), localOffset, catalogOffset });
 
         // Three passes per frame: star-sprite, nebula billboards, tonemap.
         const spritePass = gpu.passes.find(p => p.label === 'star-sprites');
@@ -370,13 +375,18 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         check('three render passes are submitted per frame (stars, nebulae, tonemap)',
                 spritePass && nebulaPass && tonemapPass && spritePass !== nebulaPass && nebulaPass !== tonemapPass,
                 gpu.passes.map(p => p.label));
+        const drawnInstances = spritePass.draws.reduce((sum, draw) => sum + draw.instances, 0);
         check('the star-sprite pass draws exactly the resident stars (global + landmarks + objects + local + catalog)',
-                spritePass.draws.length === 1 && spritePass.draws[0].instances === renderer.state.drawn
+                drawnInstances === renderer.state.drawn
                 && renderer.state.drawn === prepareState.proceduralStars + renderer.state.landmarkStars + OBJECT_MEMBERS
                         + renderer.state.localProceduralStars + renderer.state.catalogResidentStars,
-                spritePass.draws[0]);
-        check('the star-sprite draw uses four vertices per star (triangle strip quad)',
-                spritePass.draws[0].vertices === 4 && spritePass.draws[0].firstVertex === 0 && spritePass.draws[0].firstInstance === 0);
+                spritePass.draws);
+        check('the star-sprite draws use four vertices per star and preserve catalog global slots',
+                spritePass.draws.every(draw => draw.vertices === 4 && draw.firstVertex === 0)
+                && spritePass.draws[0].firstInstance === 0
+                && (spritePass.draws.length === 1
+                        || (spritePass.draws.length === 2 && spritePass.draws[1].firstInstance === catalogOffset / records.RECORD_BYTES)),
+                spritePass.draws);
         check('the nebula pass draws four vertices per billboard over the packed gas objects',
                 nebulaPass.draws.length === 1 && nebulaPass.draws[0].vertices === 4
                 && nebulaPass.draws[0].instances === renderer.state.nebulaBillboards
@@ -716,8 +726,13 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         renderer.stepEpoch(youngModel, 1e9);
         const swept = fixedWrites().slice(sweepsBefore);
         let sweptBytes = 0;
-        for (const w of swept) sweptBytes += w.bytes.byteLength;
-        const youngView = asView(fixedWrites()[fixedWrites().length - 1]);
+        for (const w of swept) {
+                if (w.offset === 0 && w.bytes.byteLength === PROCEDURAL * records.RECORD_BYTES) sweptBytes += w.bytes.byteLength;
+        }
+        // Streaming looks have their own contiguous uploads; select the field
+        // slice explicitly instead of assuming it is the last write.
+        const youngView = asView(fixedWrites().filter(w => w.offset === 0
+                && w.bytes.byteLength === PROCEDURAL * records.RECORD_BYTES).pop());
         let sweptMoved = 0, sweptLook = 0, sweptEpochBits = 0;
         for (let i = 0; i < 500; i++) {
                 const a = records.readRecord(refView, i * records.RECORD_BYTES);
@@ -903,6 +918,144 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
 }
 
 
+// --- Streaming catalog/local evolution (0.7.7) ----------------------------
+// This is deliberately a catalog-enabled renderer. A zero-catalog smoke run
+// cannot see either the birth gate or the reference-look round trip.
+{
+        const evoGpu = createMockGpu();
+        const evo = rendererModule.createStarRenderer(evoGpu.device, evoGpu.context, evoGpu.format, {
+                proceduralStars: 2000, catalogBudgetStars: CATALOG_BUDGET,
+                objectMembers: 200, objectCount: 8, gasGrid: false, model,
+        });
+        evo.prepare(manifest);
+        evo.render(camera, WIDTH, HEIGHT, 6 / 60, input);
+        const info = evo.starBlocks();
+        const reference = new Map();
+        let dynamicTotal = 0;
+        for (const kind of [3, 4]) {
+                const block = info.blocks[kind];
+                for (let i = 0; i < block.count; i++) {
+                        const slot = block.offset + i;
+                        const rec = records.readRecord(info.view, slot * records.RECORD_BYTES);
+                        reference.set(info.identity[slot] >>> 0, {
+                                kind, slot, x: rec.x, y: rec.y, z: rec.z, packed: rec.packed,
+                                birth: info.formation.births[slot],
+                        });
+                        dynamicTotal++;
+                }
+        }
+        check('catalog-enabled streaming has both local gap-fill and catalog tracks',
+                info.blocks[3].count > 0 && info.blocks[4].count > 0 && dynamicTotal > 0,
+                { local: info.blocks[3].count, catalog: info.blocks[4].count });
+        let finiteBirths = true;
+        let referenceGates = true;
+        for (const row of reference.values()) {
+                if (!Number.isFinite(row.birth) || row.birth < 0 || row.birth > galaxy.AGE_REF) finiteBirths = false;
+                if (window.OrbitLib.gateAt(row.birth, galaxy.AGE_REF) !== 1) referenceGates = false;
+        }
+        const landmarkBlock = info.blocks[1];
+        let landmarkGate = true;
+        for (let i = 0; i < landmarkBlock.count; i++) {
+                if (window.OrbitLib.gateAt(info.formation.births[landmarkBlock.offset + i], 0) !== 1) landmarkGate = false;
+        }
+        check('streamed births are finite and fully formed at AGE_REF; landmarks survive First light',
+                finiteBirths && referenceGates && landmarkGate,
+                { finiteBirths, referenceGates, landmarkGate });
+        const lastUniform = evoGpu.uniformWrites[evoGpu.uniformWrites.length - 1];
+        const formationLane = new Float32Array(lastUniform.buffer, lastUniform.byteOffset, lastUniform.byteLength / 4);
+        check('the GPU formation gate covers the full star/birth slot layout',
+                formationLane[55] === info.total && info.formation.births.length === info.total,
+                { gateLimit: formationLane[55], slots: info.total, births: info.formation.births.length });
+
+        const samplesBefore = evo.state.fieldSamples;
+        const zero = galaxy.modelAtAge(model, 0);
+        evo.setEpoch(zero);
+        evo.stepEpoch(zero, 1e9);
+        let zeroLocal = 0, zeroCatalog = 0;
+        for (const kind of [3, 4]) {
+                const block = info.blocks[kind];
+                for (let i = 0; i < block.count; i++) {
+                        const active = window.OrbitLib.gateAt(info.formation.births[block.offset + i], 0) > 0;
+                        if (kind === 3 && active) zeroLocal++;
+                        if (kind === 4 && active) zeroCatalog++;
+                }
+        }
+        check('First light gates every local and catalog star off',
+                zeroLocal === 0 && zeroCatalog === 0 && evo.state.fieldSamples === samplesBefore,
+                { zeroLocal, zeroCatalog, fieldSamples: evo.state.fieldSamples - samplesBefore });
+
+        const young = galaxy.modelAtAge(model, 2.0);
+        evo.setEpoch(young);
+        evo.stepEpoch(young, 1e9);
+        let changedCatalog = 0, changedLocal = 0, moved = 0, keyed = 0, positionalEpochFlags = 0;
+        for (const kind of [3, 4]) {
+                const block = info.blocks[kind];
+                for (let i = 0; i < block.count; i++) {
+                        const slot = block.offset + i;
+                        const key = info.identity[slot] >>> 0;
+                        const before = reference.get(key);
+                        if (!before) continue;
+                        keyed++;
+                        const rec = records.readRecord(info.view, slot * records.RECORD_BYTES);
+                        if (rec.x !== before.x || rec.y !== before.y || rec.z !== before.z) moved++;
+                        if (rec.flags & (records.FLAG_EPOCH | records.FLAG_EPOCH_SPHEROID)) positionalEpochFlags++;
+                        if (rec.packed !== before.packed) {
+                                if (kind === 4) changedCatalog++; else changedLocal++;
+                        }
+                }
+        }
+        check('earlier epochs evolve streaming looks without moving observed positions or keys',
+                keyed === dynamicTotal && moved === 0 && positionalEpochFlags === 0
+                && changedCatalog > 0 && changedLocal > 0,
+                { keyed, moved, positionalEpochFlags, changedCatalog, changedLocal });
+
+        evo.setEpoch(model);
+        evo.stepEpoch(model, 1e9);
+        let restored = 0, restoredGates = 0, restoredPositions = 0;
+        for (const kind of [3, 4]) {
+                const block = info.blocks[kind];
+                for (let i = 0; i < block.count; i++) {
+                        const slot = block.offset + i;
+                        const before = reference.get(info.identity[slot] >>> 0);
+                        if (!before) continue;
+                        const rec = records.readRecord(info.view, slot * records.RECORD_BYTES);
+                        if (rec.packed === before.packed) restored++;
+                        if (rec.x === before.x && rec.y === before.y && rec.z === before.z) restoredPositions++;
+                        if (window.OrbitLib.gateAt(info.formation.births[slot], galaxy.AGE_REF) === 1) restoredGates++;
+                }
+        }
+        check('AGE_REF restores every streaming packed look and position exactly, with gate 1',
+                restored === dynamicTotal && restoredPositions === dynamicTotal
+                && restoredGates === dynamicTotal && evo.epochSweepState().stale === false,
+                { restored, restoredPositions, restoredGates, dynamicTotal });
+
+        const savedCamera = Array.from(camera.cameraPos);
+        const versionBefore = info.dynamicVersion;
+        camera.cameraPos[0] = 0.6;
+        camera.cameraPos[1] = 0.2;
+        evo.render(camera, WIDTH, HEIGHT, 6.2 / 60, input);
+        let shared = 0, stable = 0;
+        for (const kind of [3, 4]) {
+                const block = info.blocks[kind];
+                for (let i = 0; i < block.count; i++) {
+                        const slot = block.offset + i;
+                        const before = reference.get(info.identity[slot] >>> 0);
+                        if (!before) continue;
+                        shared++;
+                        const rec = records.readRecord(info.view, slot * records.RECORD_BYTES);
+                        if (rec.packed === before.packed && rec.x === before.x && rec.y === before.y && rec.z === before.z
+                                && info.formation.births[slot] === before.birth) stable++;
+                }
+        }
+        check('camera restreaming preserves shared keys, births, positions and reference looks',
+                info.dynamicVersion > versionBefore && shared > 0 && stable === shared
+                && evo.epochSweepState().dynamicAt === 0 && !evo.epochSweepState().dynamicStale,
+                { shared, stable, version: info.dynamicVersion - versionBefore });
+        camera.cameraPos.set(savedCamera);
+        evo.dispose();
+}
+
+
 // --- The star budget and the simple lane across a re-draw (0.6) -----------
 // The menu's Stars control re-draws the same galaxy with another budget, so a
 // budget change must take the allocating path even when the model object is
@@ -1067,13 +1220,15 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         renderer.render(camera, WIDTH, HEIGHT, 4 / 60, input);
         check('crossing a cell boundary re-uploads the dynamic region',
                 gpu.bufferWrites.length > writesBefore, { before: writesBefore, after: gpu.bufferWrites.length });
-        // The most recent star-sprites pass draw reflects the new residency.
-        const lastSpriteDraw = gpu.passes.filter(p => p.label === 'star-sprites').pop().draws[0];
+        // The most recent star-sprites pass reflects the new residency, including
+        // a second draw when the catalog follows a partially filled local block.
+        const lastSpritePass = gpu.passes.filter(p => p.label === 'star-sprites').pop();
+        const lastSpriteInstances = lastSpritePass.draws.reduce((sum, draw) => sum + draw.instances, 0);
         check('the drawn instance count follows the new residency (global + landmarks + objects + local + catalog)',
-                lastSpriteDraw.instances === renderer.state.drawn
+                lastSpriteInstances === renderer.state.drawn
                 && renderer.state.drawn === renderer.state.proceduralStars + renderer.state.landmarkStars + OBJECT_MEMBERS
                         + renderer.state.localProceduralStars + renderer.state.catalogResidentStars,
-                renderer.state.drawn);
+                { drawn: renderer.state.drawn, draws: lastSpritePass.draws });
 }
 
 // --- Leaving the catalog volume -----------------------------------------

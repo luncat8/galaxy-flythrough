@@ -2,22 +2,22 @@
 
 ## Decision and status
 
-**Deferred, non-critical.** The app is stable: the seven relevant regression suites
-pass (`renderer-test` 147/147, `star-types-evolution-test` 58/58,
-`star-select-test` 47/47, `search-test` 37/37, `scenario-test` 70/70,
-`galaxy-evolution-test` 43/43, `gpu-smoke-test` 27/27), and the committed browser
-run `experiments/logs/webgpu-smoke-2026-10-24-04-20.log` is **19/19 PASS** on a
-real NVIDIA/WebGPU adapter. The one visible defect the user reports is that the
-**streamed catalog stars do not participate in the epoch** — they keep a fixed
-present-day look at every age, including at First light (`T = 0`).
+**0.7.7 implemented; C9 real-browser evidence remains open.** The deterministic
+Tier A/B/C track, streamed birth gates, reference-look restoration, CPU visibility
+parity and nonzero-catalog smoke suite are implemented. The full repository suite
+passes **43/43**, and the catalog smoke suite passes **4/4** under the CPU fallback.
+The earlier committed browser run
+`experiments/logs/webgpu-smoke-2026-10-24-04-20.log` is **19/19 PASS** on a real
+NVIDIA/WebGPU adapter, but it predates this implementation and is not evidence for
+C9. No new real-browser/GPU verdict is claimed here.
 
 The catalog is **Milky Way only** (`configureMode` sets `catalogBudget = 0` unless
-`model.milkyWay`), so the defect never appears on any procedural/table galaxy. It
-is an aesthetic/history-consistency gap, not a correctness or performance bug. We
-are therefore **planning it, not implementing it now**: this file is the memory of
-the issue and the contract a future change must satisfy. Preserve the passing
-baseline; do not retune the density field, birth law, exposure calibration, or
-default engine while closing this.
+`model.milkyWay`), so the defect never appears on any procedural/table galaxy. The
+0.7.7 scope is the deterministic Tier A/B/C track below, birth gating for catalog
+and local gap-fill, CPU visibility parity, and catalog-enabled smoke coverage.
+Preserve the passing baseline; do not retune the density field, field birth law,
+exposure calibration, or default engine while closing this. A real-browser V14a
+pass remains separate evidence (C9), not something a CPU fallback run can claim.
 
 Relation to other documents: this is a *deferred* companion to
 `deferred-browser-visual-plan.md` (V14a already notes catalog stars are not gated)
@@ -83,13 +83,13 @@ Curated named landmarks are a *separate* block and are intentionally left visibl
 
 ## 3. Test blind spot (why the green log did not catch this)
 
-Every formation configuration in `src/core/gpu-smoke.js` constructs its renderer
-with `catalogBudgetStars: 0` (five sites: firstlight ×2, continuity, morphology,
-engines). With no catalog attached, the local/catalog blocks are empty, so
-`gateLimit` covers all remaining instances and the First light sky is genuinely
-empty. **The suite cannot see the defect by construction.** Any future
-implementation must add catalog-enabled coverage (§7); a run with
-`catalogBudgetStars: 0` is not evidence that the catalog evolves.
+The original formation configurations in `src/core/gpu-smoke.js` construct their
+renderers with `catalogBudgetStars: 0` (five sites: firstlight ×2, continuity,
+morphology, engines). With no catalog attached, the local/catalog blocks are empty,
+so `gateLimit` covers all remaining instances and the First light sky is genuinely
+empty. **Those controls cannot see the defect by construction.** The dedicated
+nonzero-budget catalog suite (§7) is required; a run with `catalogBudgetStars: 0`
+is not evidence that the catalog evolves.
 
 ## 4. Guiding principle
 
@@ -184,27 +184,58 @@ draws at every epoch. Fix the stale `src/math/star-record.js` header comment tha
 says catalog/gap-fill records are "never epoch-mapped" — they will be epoch-*look*
 derived while still not epoch-*position* mapped.
 
-## 6. Design questions to answer before implementing
+## 6. Pinned 0.7.7 design decisions
 
-These are the decisions a fork must be able to read off this plan; resolve them and
-record the answers here (and in `findings-pitfalls-skills.md`) before coding.
-
-1. Which track tier (A/B/C) and which reference-age rule per spectral state?
-2. What prior for unconstrained (long-lived MS) catalog ages, and what tolerance
-   on the resulting birth distribution?
-3. Should **catalog stars gate off at `T = 0`** (fully consistent with the field)
-   or remain as a faint "observed anchor" sky? The user's report favors gating;
-   landmarks stay exempt. Decide and pin.
-4. Does the local procedural gap-fill evolve too (recommended: yes, stable
-   reference-epoch births), or is only the catalog in scope?
-5. Present-day parity metric: byte-exact packed color/mag, or a rendered-pixel
-   tolerance? Short-lived massive catalog stars can land inside the 50 Myr
-   formation fade — the metric must catch restored-but-still-fading cases.
+1. **Track: Tier A + B + C, all deterministic.** `observedTrack` infers `ms` /
+   `giant` / `wd` from the reference LUT class. An MS initial mass comes from the
+   shared class-bracketed luminosity inverse. A giant has a stable 1–3 M☉ initial-
+   mass prior (its observed giant luminosity does not constrain that mass in the
+   core law); a WD has a stable 1–8 M☉ progenitor prior. Giants sit at a keyed
+   fraction strictly inside their giant interval; WDs sit strictly inside the
+   post-giant cooling interval available at `AGE_REF`. Thus the reference state is
+   consistent by construction, not by clamping the rendered class afterwards.
+2. **Unconstrained ages: conditional reference SFH, not a clamp pile.** An MS star
+   samples the thin-disc reference SFH between the later of its component-window
+   start / `AGE_REF − 1.1·tMS` and `AGE_REF`, using key channel 16. Long-lived stars
+   therefore cover the whole thin-disc window; massive blue stars are conditionally
+   young. For a long-lived MS star the expected formation time is exactly the
+   existing inverse-CDF result for that channel (1e-6 Gyr comparison tolerance in
+   the unit test); no independent histogram fit or extra tolerance is introduced.
+   Evolved-state priors are tested by their finite state intervals instead.
+3. **Catalog and local both gate off at `T = 0`.** There is no observed-anchor
+   exception. Curated landmarks alone carry a `-BIRTH_FADE_GYR` sentinel and remain
+   fully visible. Local gap-fill uses its known procedural mass/component and a
+   `sampleFieldBirth` reference birth rather than inferring a track from its own
+   output; its reference record is the record restored at present day.
+4. **Look extrapolation and the 50 Myr endpoint.** The catalog follows `evolveStar`
+   at its inferred mass. A smooth correction anchors the derived reference magnitude
+   to the observed quantized magnitude, and an observed MS has a small 0.85→1.00
+   birth-to-reference luminosity ramp (about 0.18 mag), so long-lived MS stars are
+   nearly stationary but not a frozen overlay. RG/RGe/WD reference classes are held
+   only while the core is in that same observed state. `formedAt` and the GPU gate
+   birth are separate only where necessary: gate birth is
+   `min(formedAt, AGE_REF − BIRTH_FADE_GYR)`, so even an O star younger than the
+   50 Myr fade is fully present at the reference epoch. Its look still uses the
+   inferred physical `formedAt`; the early part of its formation fade shows age 0.
+5. **Present-day parity is byte-exact and gate-aware.** At `AGE_REF`, packed catalog
+   color/mag bytes must equal the source bytes exactly, local reference bytes must
+   round-trip exactly, positions/flags/jitter must not change, and every dynamic
+   gate must be 1 (not merely the record restored while still fading). A GPU run
+   also compares a reference frame before/after an epoch round trip with **zero
+   differing pixels** in the isolated catalog configuration. CPU-only evidence
+   covers records and gates; it does not claim the GPU pixel row.
+6. **Streaming is metadata, not identity.** Track inputs are the stable catalog key
+   and the source quantized look. Dynamic slots may be rewritten, but a key always
+   reconstructs the same track. A streaming upload derives the current look
+   immediately and resets an in-progress dynamic sweep to the dynamic block start;
+   it never restarts or resamples the procedural field.
 
 ## 7. Validation plan (catalog-enabled)
 
-Add a **new** smoke configuration with `catalogBudgetStars > 0` on the Milky Way
-preset; a run with budget 0 (§3) is not evidence. New checks:
+The smoke rig now has a dedicated **catalog** suite with `catalogBudgetStars > 0`
+on the Milky Way preset; a run with budget 0 (§3) is not evidence. It loads the
+real bundle through `TileLoader` (`loadCatalog` in the browser, `prepareBundle` in
+Node). The checks are:
 
 1. At `T = 0`, **0 catalog and 0 local** stars are visible (SBb still 0 lit pixels).
 2. Catalog births are finite, deterministic, and within the assumed range.
@@ -233,21 +264,22 @@ node experiments/gpu-smoke-test.js
 node experiments/wgsl-validate.js
 ```
 
-## 8. Deferred checklist
+## 8. Acceptance checklist
 
-All rows **deferred / not implemented**. Acceptance is evidence, not intent.
+C1–C8 have CPU/mock-renderer evidence. C9 remains open until a real browser/GPU
+run supplies the pixel and visual evidence; a fallback run cannot close it.
 
-| ID | Task | Acceptance / evidence |
+| ID | Status | Acceptance / evidence |
 |---|---|---|
-| C1 | Pin the track model | §6 questions answered and recorded; a pure `observedTrack(key, colorIndex, absMag) -> {birth, mass, state}` helper exists in `star-types.js` and is unit-tested for determinism and finite births. |
-| C2 | Reference-epoch parity | At `AGE_REF`, packed color/mag restored exactly and rendered brightness within the §6.5 tolerance; the present-day Milky Way frame is unchanged (pixel parity). |
-| C3 | Birth gate for streamed blocks | `birthStaging`/`birthBuffer` cover full capacity; `formation.w` reaches catalog; at `T = 0` catalog + local visible count is 0, landmarks still visible. |
-| C4 | Look evolution | Earlier epochs change catalog looks monotonically (no 3.4–3.6-style oscillation); inferred giants/WDs revert plausibly. |
-| C5 | CPU parity | Picks, searches and rings match GPU visibility across the epoch ladder; `star-record.js` comment corrected. |
-| C6 | Streaming stability | Keys, births, positions stable across camera-driven thinning/residency; in-progress look sweep resets safely on `dynamicVersion` change. |
-| C7 | Zero-redraw & continuity | `draws = 0` through an epoch walk; 3.4–3.6 Gyr continuity suite still passes. |
-| C8 | Scenario text | First light `watch` in `scenarios.js` updated to say catalog stars are gated while curated landmarks remain visible; point at this plan. |
-| C9 | Browser pass | V14a re-run on the Milky Way at 0 / 0.5 / 1 / 2 / 13.5 Gyr with catalogBudgetStars > 0; record whether the local sky now reads as *evolving* rather than a fixed overlay. |
+| C1 | **Done** | `observedTrack` is shared and deterministic; `star-types-evolution-test` passes **64/64**, including synthetic MS/RG/RGe/WD state and finite-birth checks. |
+| C2 | **CPU done; GPU row in C9** | `renderer-test` passes **155/155**: exact packed reference restoration, fixed xyz/keys, gate 1 and camera-restored records. Zero-diff pixel parity still requires real WebGPU readback. |
+| C3 | **Done (CPU/mock)** | Full-capacity birth storage and gate limit are asserted; the catalog smoke suite passes **4/4** with nonzero local/catalog populations, zero streamed stars at First light and persistent landmarks. |
+| C4 | **Done (CPU/mock)** | Earlier epochs change both streamed populations; the bundled 3,829-star probe found deterministic finite tracks and no sampled luminosity reversal. Synthetic evolved-state fixtures cover RG/RGe/WD. |
+| C5 | **Done** | Selection/resolve, search (both scopes) and rings match the global-slot gate at 0, 0.5, 1, 2, 3.5 and 13.5 Gyr; `star-select-test` **51/51**, `search-test` **39/39**. |
+| C6 | **Done (CPU/mock)** | Renderer restreaming checks shared keys, births, positions and reference looks, and verifies dynamic sweep reset; `dynamicVersion` remains the invalidation signal. |
+| C7 | **Done** | Epoch walks keep `fieldSamples` unchanged; continuity and the full **43/43** suite pass. |
+| C8 | **Done** | First light guidance now says catalog/local stars are gated and curated landmarks remain visible, with a pointer to this plan. |
+| C9 | **Open** | Re-run V14a on the Milky Way at 0 / 0.5 / 1 / 2 / 13.5 Gyr with `catalogBudgetStars > 0`; record real-GPU pixel parity and whether the local sky reads as evolving. No browser executable is available in this sandbox. |
 
 ## 9. Stop rule and non-goals
 

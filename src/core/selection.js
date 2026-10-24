@@ -86,12 +86,12 @@ function createSelection(camera, landmarks) {
 	function formationVisible(info, kind, index, age) {
 		const f = info && info.formation;
 		if (!f || !f.births) return true;
-		if (kind === 0) {
-			if (index >= f.count) return true;
-			return selectionOrbit().gateAt(f.births[index], age === undefined ? f.age : age) > 0;
-		}
-		if (kind === 2 && info.blocks && info.blocks[2]) {
-			const slot = (info.blocks[2].offset | 0) + index;
+		// Landmarks are curated and intentionally exempt. Every other block
+		// resolves its global slot in the same birth array the vertex stage reads.
+		if (kind === 1) return true;
+		if ((kind === 0 || kind === 2 || kind === 3 || kind === 4) && info.blocks && info.blocks[kind]) {
+			if (kind === 0 && index >= f.count) return true;
+			const slot = (info.blocks[kind].offset | 0) + index;
 			if (slot >= 0 && slot < f.births.length) {
 				return selectionOrbit().gateAt(f.births[slot], age === undefined ? f.age : age) > 0;
 			}

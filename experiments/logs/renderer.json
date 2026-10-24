@@ -1,10 +1,10 @@
 {
-  "date": "2026-10-24T09:13:08.972Z",
+  "date": "2026-10-24T11:20:08.527Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 322,
-  "totalChecks": 148,
-  "passed": 148,
+  "prepareMs": 235,
+  "totalChecks": 155,
+  "passed": 155,
   "failed": 0,
   "checks": [
     {
@@ -195,12 +195,16 @@
       "detail": 9
     },
     {
-      "name": "the first frame writes the dynamic region (local gap-fill + catalog) starting at localProc offset",
+      "name": "the first frame uploads local and catalog ranges at their distinct packed offsets",
       "pass": true,
       "detail": {
-        "writes": 1,
-        "offset": 352960,
-        "localOffset": 352960
+        "writes": 2,
+        "offsets": [
+          352960,
+          672960
+        ],
+        "localOffset": 352960,
+        "catalogOffset": 672960
       }
     },
     {
@@ -216,20 +220,54 @@
     {
       "name": "the star-sprite pass draws exactly the resident stars (global + landmarks + objects + local + catalog)",
       "pass": true,
-      "detail": {
-        "vertices": 4,
-        "instances": 25656,
-        "firstVertex": 0,
-        "firstInstance": 0,
-        "pipeline": {
-          "label": "star-sprite-pipeline"
+      "detail": [
+        {
+          "vertices": 4,
+          "instances": 24578,
+          "firstVertex": 0,
+          "firstInstance": 0,
+          "pipeline": {
+            "label": "star-sprite-pipeline"
+          },
+          "pass": "star-sprites"
         },
-        "pass": "star-sprites"
-      }
+        {
+          "vertices": 4,
+          "instances": 1078,
+          "firstVertex": 0,
+          "firstInstance": 42060,
+          "pipeline": {
+            "label": "star-sprite-pipeline"
+          },
+          "pass": "star-sprites"
+        }
+      ]
     },
     {
-      "name": "the star-sprite draw uses four vertices per star (triangle strip quad)",
-      "pass": true
+      "name": "the star-sprite draws use four vertices per star and preserve catalog global slots",
+      "pass": true,
+      "detail": [
+        {
+          "vertices": 4,
+          "instances": 24578,
+          "firstVertex": 0,
+          "firstInstance": 0,
+          "pipeline": {
+            "label": "star-sprite-pipeline"
+          },
+          "pass": "star-sprites"
+        },
+        {
+          "vertices": 4,
+          "instances": 1078,
+          "firstVertex": 0,
+          "firstInstance": 42060,
+          "pipeline": {
+            "label": "star-sprite-pipeline"
+          },
+          "pass": "star-sprites"
+        }
+      ]
     },
     {
       "name": "the nebula pass draws four vertices per billboard over the packed gas objects",
@@ -423,7 +461,7 @@
           13.5,
           0.05000000074505806,
           20000,
-          22060
+          45889
         ]
       }
     },
@@ -547,8 +585,8 @@
       "name": "a parked camera does not re-upload the catalog",
       "pass": true,
       "detail": {
-        "before": 7,
-        "after": 7
+        "before": 10,
+        "after": 10
       }
     },
     {
@@ -794,6 +832,71 @@
       }
     },
     {
+      "name": "catalog-enabled streaming has both local gap-fill and catalog tracks",
+      "pass": true,
+      "detail": {
+        "local": 2518,
+        "catalog": 1078
+      }
+    },
+    {
+      "name": "streamed births are finite and fully formed at AGE_REF; landmarks survive First light",
+      "pass": true,
+      "detail": {
+        "finiteBirths": true,
+        "referenceGates": true,
+        "landmarkGate": true
+      }
+    },
+    {
+      "name": "the GPU formation gate covers the full star/birth slot layout",
+      "pass": true,
+      "detail": {
+        "gateLimit": 26089,
+        "slots": 26089,
+        "births": 26089
+      }
+    },
+    {
+      "name": "First light gates every local and catalog star off",
+      "pass": true,
+      "detail": {
+        "zeroLocal": 0,
+        "zeroCatalog": 0,
+        "fieldSamples": 0
+      }
+    },
+    {
+      "name": "earlier epochs evolve streaming looks without moving observed positions or keys",
+      "pass": true,
+      "detail": {
+        "keyed": 3596,
+        "moved": 0,
+        "positionalEpochFlags": 0,
+        "changedCatalog": 1078,
+        "changedLocal": 286
+      }
+    },
+    {
+      "name": "AGE_REF restores every streaming packed look and position exactly, with gate 1",
+      "pass": true,
+      "detail": {
+        "restored": 3596,
+        "restoredPositions": 3596,
+        "restoredGates": 3596,
+        "dynamicTotal": 3596
+      }
+    },
+    {
+      "name": "camera restreaming preserves shared keys, births, positions and reference looks",
+      "pass": true,
+      "detail": {
+        "shared": 3596,
+        "stable": 3596,
+        "version": 1
+      }
+    },
+    {
       "name": "an unchanged budget keeps the population-only path",
       "pass": true,
       "detail": {
@@ -900,14 +1003,38 @@
       "name": "crossing a cell boundary re-uploads the dynamic region",
       "pass": true,
       "detail": {
-        "before": 42,
-        "after": 43
+        "before": 61,
+        "after": 64
       }
     },
     {
       "name": "the drawn instance count follows the new residency (global + landmarks + objects + local + catalog)",
       "pass": true,
-      "detail": 25798
+      "detail": {
+        "drawn": 25798,
+        "draws": [
+          {
+            "vertices": 4,
+            "instances": 24708,
+            "firstVertex": 0,
+            "firstInstance": 0,
+            "pipeline": {
+              "label": "star-sprite-pipeline"
+            },
+            "pass": "star-sprites"
+          },
+          {
+            "vertices": 4,
+            "instances": 1090,
+            "firstVertex": 0,
+            "firstInstance": 42060,
+            "pipeline": {
+              "label": "star-sprite-pipeline"
+            },
+            "pass": "star-sprites"
+          }
+        ]
+      }
     },
     {
       "name": "a camera outside the catalog volume drops every catalog star",
@@ -1057,7 +1184,7 @@
       "name": "state.bufferBytes counts the star, nebula, theta, birth and two gas-grid buffers",
       "pass": true,
       "detail": {
-        "bufferBytes": 824512
+        "bufferBytes": 826512
       }
     },
     {

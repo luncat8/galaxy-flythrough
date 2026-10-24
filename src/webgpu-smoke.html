@@ -152,6 +152,7 @@ code {
 	<button id="run-firstlight" type="button">Run First Light &amp; clusters</button>
 	<button id="run-continuity" type="button">Run 3.4–3.6 Gyr continuity</button>
 	<button id="run-morphology" type="button">Run V14 visual suite</button>
+	<button id="run-catalog" type="button">Run catalog evolution</button>
 	<button id="run-engines" type="button">Run engines &amp; determinism</button>
 	<button id="copy" class="sec" type="button">Copy log</button>
 	<button id="save" class="sec" type="button">Save log</button>
@@ -190,7 +191,7 @@ code {
 	var STATUS = document.getElementById('status');
 	var BANNER = document.getElementById('summary-banner');
 	var FILMSTRIP = document.getElementById('filmstrip');
-	var RUN_IDS = ['run-all', 'run-firstlight', 'run-continuity', 'run-morphology', 'run-engines'];
+	var RUN_IDS = ['run-all', 'run-firstlight', 'run-continuity', 'run-morphology', 'run-catalog', 'run-engines'];
 	var LOG = [];
 	var pageErrors = [];
 	var inFlight = false;
@@ -363,6 +364,7 @@ code {
 	document.getElementById('run-firstlight').addEventListener('click', function () { runAndLog('firstlight'); });
 	document.getElementById('run-continuity').addEventListener('click', function () { runAndLog('continuity'); });
 	document.getElementById('run-morphology').addEventListener('click', function () { runAndLog('morphology'); });
+	document.getElementById('run-catalog').addEventListener('click', function () { runAndLog('catalog'); });
 	document.getElementById('run-engines').addEventListener('click', function () { runAndLog('engines'); });
 
 	window.GpuSmoke.bindCopy(document.getElementById('copy'), function () {
@@ -374,7 +376,7 @@ code {
 	});
 
 	window.__ready = true;
-	say(window.GpuSmoke.envLine() + ' — ready. Choose a suite above, or use ?run=all|firstlight|continuity|morphology|engines');
+	say(window.GpuSmoke.envLine() + ' — ready. Choose a suite above, or use ?run=all|firstlight|continuity|morphology|catalog|engines');
 
 	try {
 		var q = new URLSearchParams(location.search);

@@ -30,6 +30,7 @@
 		{ id: 'firstlight', label: 'Run First Light & clusters', desc: 'T = 0 star-only gate, separate gas-only picture, and 0 → 13.5 Gyr cluster assembly' },
 		{ id: 'continuity', label: 'Run 3.4–3.6 Gyr continuity', desc: 'Epoch brightness, magOffset & visible star-count continuity across 3.0–4.0 Gyr and 2 Myr/s fine steps' },
 		{ id: 'morphology', label: 'Run V14 visual suite', desc: 'Formation scenarios (First light, Condensation, 1 Gyr gas-rich arms, 2 Gyr bulge assembly, Present day) with 0 redraws' },
+		{ id: 'catalog', label: 'Run catalog evolution', desc: 'Nonzero-budget Milky Way catalog/local birth gates, evolving looks and exact reference restoration' },
 		{ id: 'engines', label: 'Run engines & determinism', desc: 'All shipping WGSL shader modules, classic/simple/apocenter orbit engines and two-run bit-identical GPU readback' },
 	];
 
@@ -347,6 +348,8 @@
 			rendererLib: (custom && custom.rendererLib) || g.StarRenderer || (req && req('../render/star-sprites.js')),
 			cameraLib: (custom && custom.cameraLib) || g.Camera || (req && req('./camera.js')),
 			scenarios: (custom && custom.scenarios) || g.ScenarioLib || (req && req('./scenarios.js')),
+			tileLoader: (custom && custom.tileLoader) || g.TileLoader || (req && req('../stream/tile-loader.js')),
+			catalogBundle: (custom && custom.catalogBundle) || (req && req('../data/tiles/catalog.js')),
 		};
 	}
 
@@ -426,6 +429,9 @@
 				clusterStarsTotal: 0, clusterStarsActive: 0,
 				gasStarsTotal: 0, gasStarsActive: 0,
 				objectStarsTotal: 0, objectStarsActive: 0,
+				landmarkTotal: 0, landmarkActive: 0,
+				localTotal: 0, localActive: 0,
+				catalogTotal: 0, catalogActive: 0,
 				formedFraction: 0, gasFraction: 1,
 			};
 		}
@@ -444,12 +450,31 @@
 				else gasStarsActive++;
 			}
 		}
+		function blockFormation(blockIndex) {
+			const block = info.blocks && info.blocks[blockIndex];
+			const total = block ? (block.count | 0) : 0;
+			const base = block ? (block.offset | 0) : 0;
+			let active = 0;
+			for (let i = 0; i < total; i++) {
+				if (gateAt(f.births[base + i], targetAge) > 0) active++;
+			}
+			return { total, active };
+		}
+		const landmarks = blockFormation(1);
+		const local = blockFormation(3);
+		const catalog = blockFormation(4);
 		const formed = renderer.censusFormedAt(targetAge);
 		const gasNow = renderer.censusGasAt(targetAge);
 		return {
 			age: targetAge,
 			fieldTotal: f.count,
 			fieldActive,
+			landmarkTotal: landmarks.total,
+			landmarkActive: landmarks.active,
+			localTotal: local.total,
+			localActive: local.active,
+			catalogTotal: catalog.total,
+			catalogActive: catalog.active,
 			clusterStarsTotal: cluCnt,
 			clusterStarsActive,
 			gasStarsTotal: Math.max(0, objCnt - cluCnt),
@@ -572,6 +597,7 @@
 		const runFirstLight = mode === 'all' || mode === 'firstlight';
 		const runContinuity = mode === 'all' || mode === 'continuity';
 		const runMorphology = mode === 'all' || mode === 'morphology';
+		const runCatalog = mode === 'all' || mode === 'catalog';
 		const runEngines = mode === 'all' || mode === 'engines';
 
 		note('boot', envLine());
@@ -603,15 +629,27 @@
 			note('boot', captureLine(adapter, usedFallback) + ' \u00b7 format ' + format);
 		}
 
-		// Known gap, kept in the log so a green run cannot be mistaken for full
-		// coverage: every formation renderer below is built with
-		// catalogBudgetStars: 0, so these suites cannot exercise the Milky Way
-		// catalog / local gap-fill, which still draw a fixed reference-epoch look
-		// at every epoch (including T = 0). Deferred, non-critical, Milky Way
-		// only — see deferred-catalog-evolution-plan.md. This is a note, not a
-		// check: it must not move the pass count.
-		if (runFirstLight || runContinuity || runMorphology) {
-			note('deferred', 'Milky Way catalog stars are out of evolution (static reference-epoch look at every epoch); these suites use catalogBudgetStars=0 and cannot detect it — see deferred-catalog-evolution-plan.md');
+		let catalogManifest = cfg.catalogManifest || null;
+		let catalogLoadError = null;
+		if (runCatalog && !catalogManifest) {
+			try {
+				if (deps.catalogBundle && deps.tileLoader) {
+					catalogManifest = deps.tileLoader.prepareBundle(deps.catalogBundle);
+				} else if (deps.tileLoader && typeof document !== 'undefined') {
+					// Script injection keeps this valid from file:// as well as HTTP.
+					catalogManifest = await deps.tileLoader.loadCatalog(cfg.catalogUrl || 'data/tiles/catalog.js');
+				}
+			} catch (err) {
+				catalogLoadError = err;
+			}
+			if (!catalogManifest && !catalogLoadError) catalogLoadError = new Error('no catalog bundle or TileLoader');
+		}
+
+		// The zero-budget suites remain regression controls. Catalog evolution is
+		// checked by the explicit nonzero-budget suite below, never inferred from
+		// a First light run that has no streaming records.
+		if ((runFirstLight || runContinuity || runMorphology) && !runCatalog) {
+			note('coverage', 'these formation controls use catalogBudgetStars=0; run the catalog suite for streaming evolution coverage');
 		}
 
 		// 1. WGSL shader compilation smoke
@@ -892,7 +930,119 @@
 				renderer.dispose();
 			}
 
-			// 5. Orbit Engines & Two-Run Bit Determinism
+			// 5. Milky Way catalog/local evolution (nonzero streaming budget)
+			if (runCatalog) {
+				if (onProgress) onProgress('Milky Way catalog & local evolution');
+				if (!catalogManifest) {
+					check('catalog', 'the Milky Way catalog bundle loads for the nonzero-budget suite', false,
+						catalogLoadError ? String(catalogLoadError.message || catalogLoadError) : 'missing manifest');
+				} else {
+					const refModel = deps.galaxy.createGalaxy({ type: 'SBb', seed, age: deps.galaxy.AGE_REF });
+					const renderer = deps.rendererLib.createStarRenderer(device, target.context, format, {
+						proceduralStars: Math.min(proceduralStars, 4000),
+						catalogBudgetStars: Math.max(1, cfg.catalogBudgetStars || 250000),
+						objectMembers: 0,
+						objectCount: 0,
+						gasGrid: false,
+						model: refModel,
+					});
+					renderer.prepare(catalogManifest);
+					const cam = deps.cameraLib.createCamera();
+					cam.setFrame(refModel);
+					// The bundled catalog is Sun-centred; do not use the galaxy
+					// overview camera, which is intentionally outside its cells.
+					cam.cameraPos[0] = 0; cam.cameraPos[1] = 0; cam.cameraPos[2] = 0;
+					const refSample = await renderEpochSample(renderer, target, cam, refModel, 0, 0);
+					thumbnails.push({ label: 'Catalog reference epoch', sample: refSample });
+					const info = renderer.starBlocks();
+					const rows = new Map();
+					for (const kind of [3, 4]) {
+						const block = info.blocks[kind];
+						for (let i = 0; i < block.count; i++) {
+							const slot = block.offset + i;
+							const off = slot * deps.records.RECORD_BYTES;
+							const rec = deps.records.readRecord(info.view, off);
+							rows.set(info.identity[slot] >>> 0, {
+								kind, x: rec.x, y: rec.y, z: rec.z, packed: rec.packed,
+								birth: info.formation.births[slot],
+							});
+						}
+					}
+					check('catalog', 'nonzero catalog and local blocks are resident with finite births',
+						info.blocks[3].count > 0 && info.blocks[4].count > 0 && rows.size > 0
+						&& Array.from(rows.values()).every((r) => Number.isFinite(r.birth)),
+						{ local: info.blocks[3].count, catalog: info.blocks[4].count, rows: rows.size });
+
+					const samplesBefore = renderer.state.fieldSamples;
+					const zeroModel = deps.galaxy.modelAtAge(refModel, 0);
+					renderer.setEpoch(zeroModel);
+					renderer.stepEpoch(zeroModel, 1e9);
+					const zeroSample = await renderEpochSample(renderer, target, cam, zeroModel, 0, 0);
+					thumbnails.push({ label: 'Catalog First light', sample: zeroSample });
+					check('catalog', 'T = 0 gates local/catalog stars off while curated landmarks remain',
+						zeroSample.cpu.localActive === 0 && zeroSample.cpu.catalogActive === 0
+						&& zeroSample.cpu.localTotal > 0 && zeroSample.cpu.catalogTotal > 0
+						&& zeroSample.cpu.landmarkActive === zeroSample.cpu.landmarkTotal,
+						{ local: zeroSample.cpu.localActive + '/' + zeroSample.cpu.localTotal,
+							catalog: zeroSample.cpu.catalogActive + '/' + zeroSample.cpu.catalogTotal,
+							landmarks: zeroSample.cpu.landmarkActive + '/' + zeroSample.cpu.landmarkTotal });
+
+					const youngModel = deps.galaxy.modelAtAge(refModel, 2.0);
+					renderer.setEpoch(youngModel);
+					renderer.stepEpoch(youngModel, 1e9);
+					const youngSample = await renderEpochSample(renderer, target, cam, youngModel, 0, 0);
+					thumbnails.push({ label: 'Catalog T = 2 Gyr', sample: youngSample });
+					let changed = 0;
+					let moved = 0;
+					for (const kind of [3, 4]) {
+						const block = info.blocks[kind];
+						for (let i = 0; i < block.count; i++) {
+							const slot = block.offset + i;
+							const before = rows.get(info.identity[slot] >>> 0);
+							if (!before) continue;
+							const rec = deps.records.readRecord(info.view, slot * deps.records.RECORD_BYTES);
+							if (rec.packed !== before.packed) changed++;
+							if (rec.x !== before.x || rec.y !== before.y || rec.z !== before.z) moved++;
+						}
+					}
+					check('catalog', 'early epochs change streaming looks without changing positions or field draws',
+						changed > 0 && moved === 0 && renderer.state.fieldSamples === samplesBefore,
+						{ changed, moved, fieldDraws: renderer.state.fieldSamples - samplesBefore });
+
+					renderer.setEpoch(refModel);
+					renderer.stepEpoch(refModel, 1e9);
+					const backSample = await renderEpochSample(renderer, target, cam, refModel, 0, 0);
+					thumbnails.push({ label: 'Catalog reference restored', sample: backSample });
+					let restored = 0;
+					let gates = 0;
+					let positions = 0;
+					for (const kind of [3, 4]) {
+						const block = info.blocks[kind];
+						for (let i = 0; i < block.count; i++) {
+							const slot = block.offset + i;
+							const before = rows.get(info.identity[slot] >>> 0);
+							if (!before) continue;
+							const rec = deps.records.readRecord(info.view, slot * deps.records.RECORD_BYTES);
+							if (rec.packed === before.packed) restored++;
+							if (rec.x === before.x && rec.y === before.y && rec.z === before.z) positions++;
+							if (deps.orbit.gateAt(info.formation.births[slot], deps.galaxy.AGE_REF) === 1) gates++;
+						}
+					}
+					check('catalog', 'AGE_REF restores every packed streaming look, position and gate exactly',
+						restored === rows.size && positions === rows.size && gates === rows.size,
+						{ restored, positions, gates, total: rows.size });
+					if (refSample.hasGpuPixels && backSample.hasGpuPixels) {
+						check('catalog', 'reference GPU frame round trip has zero differing pixels',
+							diffPixels(refSample.rgba, backSample.rgba) === 0,
+							'diffPx=' + diffPixels(refSample.rgba, backSample.rgba));
+					} else {
+						note('deferred', 'catalog pixel parity requires real WebGPU readback; CPU evidence above covers packed records and gates');
+					}
+					renderer.dispose();
+				}
+			}
+
+			// 6. Orbit Engines & Two-Run Bit Determinism
 			if (runEngines) {
 				if (onProgress) onProgress('orbit engines & GPU readback determinism');
 				const refModel = deps.galaxy.createGalaxy({ type: 'SBb', seed, age: deps.galaxy.AGE_REF });

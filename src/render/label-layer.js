@@ -574,7 +574,9 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	function ringAtSlot(view, info, records, slot, kind, orbit, viewProj, cam, width, height) {
 		const byteOffset = slot * records.RECORD_BYTES;
 		const packed = view.getUint32(byteOffset + 12, true);
-		const birthIndex = kind === 0 ? slot - info.blocks[0].offset : (kind === 2 ? slot : -1);
+		// All non-landmark blocks use their global slot in the same birth array
+		// as the vertex shader; local and catalog rings must not linger at T=0.
+		const birthIndex = (kind === 0 || kind === 2 || kind === 3 || kind === 4) ? slot : -1;
 		if (birthIndex >= 0 && info.formation && info.formation.births
 			&& birthIndex < info.formation.births.length && orbit
 			&& orbit.gateAt(info.formation.births[birthIndex], info.formation.age) <= 0) return;

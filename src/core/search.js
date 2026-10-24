@@ -580,7 +580,7 @@ function createSearch() {
 				stats.scanned++;
 				if ((packed & visibleBit) === 0) continue;
 				const index = slot - base;
-				if ((k === P.BLOCK_FIELD || k === P.BLOCK_OBJECT) && st.formation && st.formation.births
+				if (k !== P.BLOCK_LANDMARK && st.formation && st.formation.births
 					&& slot < st.formation.births.length
 					&& st.orbit.gateAt(st.formation.births[slot], st.formation.age) <= 0) continue;
 				const x = view.getFloat32(byteOffset, true);
@@ -691,8 +691,9 @@ function createSearch() {
 						effKind = KIND_UNRESOLVED;
 						blockIndex = 0;
 					} else {
-						if (kind === P.BLOCK_FIELD && info.formation && info.formation.births
-							&& st.orbit.gateAt(info.formation.births[blockIndex], info.formation.age) <= 0) continue;
+						if (kind !== P.BLOCK_LANDMARK && info.formation && info.formation.births
+							&& slot < info.formation.births.length
+							&& st.orbit.gateAt(info.formation.births[slot], info.formation.age) <= 0) continue;
 						const bx = info.view.getFloat32(byteOffset, true);
 						const by = info.view.getFloat32(byteOffset + 4, true);
 						const bz = info.view.getFloat32(byteOffset + 8, true);

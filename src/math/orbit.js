@@ -413,9 +413,9 @@ function solveEpochParams(model) {
 
 // The map itself: the CPU mirror of the vertex stage's placement. `flags` is
 // the record's flags byte (16-23); a record without the epoch bit — catalog
-// stars, landmarks, catalog-space gap-fill — is left alone, because the
-// observed sky does not run on the model's clock. Writes into `out` and
-// returns it; no allocation.
+// stars, landmarks and local gap-fill — is left alone, because the observed
+// sky does not run on the model's clock. Writes into `out` and returns it; no
+// allocation.
 //
 // Three terms, and each is exactly the epoch's own law seen from one star:
 // the spheroid homology scales a bulge or halo member's birth vector; the disc

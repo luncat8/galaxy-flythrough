@@ -227,15 +227,9 @@
 		return cdf;
 	})();
 
-	// Mass bracket per spectral class (plan §2.5): the window the
-	// magnitude-derived mass is clamped into. A record carries no mass, and the
-	// class is the only thing that says which decade it lives in.
-	const CLASS_MASS_BRACKETS = {
-		O: [16, 100], B: [2.5, 16], A: [1.6, 2.5], F: [1.05, 1.6],
-		G: [0.85, 1.05], K: [0.55, 0.85], M: [0.08, 0.55],
-		WD: [0.5, 1.4],                    // remnant mass; L is the cooling track's
-		RG: [0.8, 3.0], RGe: [0.8, 3.0],   // initial mass; L is the giant's
-	};
+	// Mass brackets and the record inverse live with the stellar evolution law
+	// so observed-track inference and planet inputs cannot drift apart.
+	const CLASS_MASS_BRACKETS = starTypes.CLASS_MASS_BRACKETS;
 
 	// Temperature band per class, derived from the classifier's own boundaries
 	// (star-types.CLASS_TEMP_BOUNDS) so there is no second list: each band is the
@@ -284,43 +278,18 @@
 
 	// --- Luminosity ↔ mass (plan §2.5) --------------------------------------
 
-	// Invert `luminosityFromMass` branch by branch. The law is piecewise
-	// L = M^α and jumps *down* at 0.7 M☉ (L(0.7⁻) = 0.440, L(0.7⁺) = 0.240), so
-	// luminosities in (0.240, 0.440) have two mathematical roots; the smallest
-	// valid one is taken — the fainter star for an unremarkable magnitude.
-	const LUM_BRANCHES = [[0.7, 2.3], [2.0, 4.0], [20, 3.5], [Infinity, 2.8]];
+	// Keep the established planet-generator API as a thin delegation to the
+	// shared implementation (including its branch-choice and clamp behavior).
 	function massFromLuminosity(lum) {
-		const target = lum > 1e-12 ? lum : 1e-12;
-		let best = -1;
-		for (let i = 0; i < LUM_BRANCHES.length; i++) {
-			const alpha = LUM_BRANCHES[i][1];
-			const m = Math.pow(target, 1 / alpha);
-			const lo = i === 0 ? 0 : LUM_BRANCHES[i - 1][0];
-			if (m >= lo && m < LUM_BRANCHES[i][0] && (best < 0 || m < best)) best = m;
-		}
-		// A luminosity outside every branch's range (a record at the extremes of
-		// the magnitude byte) still needs an answer: the α = 4 root, clamped.
-		if (best < 0) best = Math.max(0.08, Math.min(100, Math.pow(target, 1 / 4)));
-		return best;
+		return starTypes.massFromLuminosity(lum);
 	}
 
 	function luminosityFromMag(absMag) {
-		return Math.pow(10, (4.83 - absMag) / 2.5);
+		return starTypes.luminosityFromMag(absMag);
 	}
 
-	// A record carries (colorIndex, absMag) and nothing else: the class names the
-	// bracket, the magnitude names the luminosity, and the clamp lands the mass
-	// inside the decade the class itself claims. `out.lum` receives the
-	// luminosity so the caller does not compute it twice.
 	function massFromClassAndMag(colorIndex, absMag, out) {
-		const cls = records.SPECTRAL_CLASSES[colorIndex] || 'M';
-		const bracket = CLASS_MASS_BRACKETS[cls] || CLASS_MASS_BRACKETS.M;
-		const lum = luminosityFromMag(absMag);
-		let m = massFromLuminosity(lum);
-		if (m < bracket[0]) m = bracket[0];
-		else if (m > bracket[1]) m = bracket[1];
-		if (out) out.lum = lum;
-		return m;
+		return starTypes.massFromClassAndMag(colorIndex, absMag, out);
 	}
 
 	// R★/R☉ = sqrt(L/L☉)·(5772/Teff)² — L and Teff are all a radius needs, and

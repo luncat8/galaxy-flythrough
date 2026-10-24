@@ -2648,3 +2648,37 @@ same code path once 0.7.5 isolates a star-only frame, where 8–10 pixels are ab
 the threshold and ±1 px is just quantization. Read the smooth integral (luma) for
 the dip and hold a count of N pixels to its own shot noise, `3·√N + 2`; keep a
 "did not collapse to zero" clause so the test still catches the real failure.
+
+## 2026-10-24 — Evolving an observed catalog needs identity, a reference word and two clocks
+
+A streamed catalog record is an observation, not a complete stellar input. Derive
+its missing mass/age from a stable cell/slot key and explicit priors, then use the
+existing evolution core; do not replace it with a fresh IMF draw when a cell
+restreams. Cache the source packed word at the reference epoch and restore that
+word verbatim at `AGE_REF`. This preserves quantized colour, magnitude, flags and
+jitter while still allowing the earlier track to be derived. Keep physical
+`formedAt` separate from the GPU birth gate: a star younger than the 50 Myr fade
+must nevertheless be fully formed at the reference epoch, so the gate birth is
+clamped to `AGE_REF − fade` without changing the stellar age used by the track.
+
+The gate and CPU consumers must use the same **global slot** domain. A birth array
+that stops at the fixed field/object capacity leaves local/catalog stars visible
+at First light even when the CPU helper looks correct. Give curated landmarks a
+negative-fade sentinel, and test selection, both search scopes and rings at the
+same epoch ladder as the GPU. Local/catalog records can evolve their look without
+carrying the positional epoch bits; observed positions must not be moved by the
+field's epoch map. Also keep the two dynamic GPU uploads at their own offsets:
+reserved local capacity means local and catalog bytes are not one contiguous
+range, and a single write can silently put catalog data in the gap. The draw has
+the same constraint: use a second instanced draw with `firstInstance` at the
+catalog offset, otherwise the GPU never reaches catalog slots after a partial
+local block.
+
+A zero-budget smoke suite is a blind spot, not a negative control for catalog
+behaviour. The 0.7.7 catalog suite loads the real bundle and checks nonzero local
+and catalog residency. All 3,829 bundled records produced deterministic finite
+tracks (births 3.39678–13.49998 Gyr) with no sampled luminosity reversal; the
+bundle contains only MS classes, so synthetic RG/RGe/WD fixtures are necessary.
+Renderer 155/155, selection 51/51, search 39/39, stellar evolution 64/64 and the
+full 43/43 suite pass. These results do not substitute for C9: no browser/GPU
+executable was available for a new V14a pixel or visual verdict.

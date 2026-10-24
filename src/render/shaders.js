@@ -924,10 +924,11 @@ struct CameraUniform {
         //   w fieldMagOffset the field's exposure offset (2.5·log10 L/L_ref)
         // A record carrying FLAG_EPOCH was drawn at the field's base epoch and is
         // placed by this lane; one without it is the observed sky (catalog stars,
-        // landmarks) and the model's clock must not move it.
+        // local gap-fill, landmarks) and the model's clock must not move it.
         epoch: vec4f,
         // The field's own time axis and the formation gate, independent of the
-        // orbital clock: age in Gyr, fade width, field count, unused.
+        // orbital clock: age in Gyr, fade width, field count, full gated-slot
+        // capacity (field + landmarks + objects + local + catalog).
         formation: vec4f,
 };
 

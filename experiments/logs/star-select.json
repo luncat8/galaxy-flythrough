@@ -1,11 +1,11 @@
 {
-  "date": "2026-10-23T07:52:54.555Z",
+  "date": "2026-10-24T11:21:24.587Z",
   "model": {
     "type": "SBb",
     "seed": 12345
   },
-  "totalChecks": 47,
-  "passed": 47,
+  "totalChecks": 51,
+  "passed": 51,
   "failed": 0,
   "checks": [
     {
@@ -295,6 +295,38 @@
       }
     },
     {
+      "name": "selection rings gate local/catalog slots at T=0 but keep landmarks",
+      "pass": true,
+      "detail": {
+        "zeroRings": 1,
+        "refRings": 3
+      }
+    },
+    {
+      "name": "selection rings match the GPU gate across the full epoch ladder",
+      "pass": true
+    },
+    {
+      "name": "CPU resolveDrawn shares the local/catalog birth gate and landmark exemption",
+      "pass": true,
+      "detail": {
+        "zeroStates": [
+          0,
+          0,
+          2
+        ],
+        "refStates": [
+          2,
+          2,
+          2
+        ]
+      }
+    },
+    {
+      "name": "CPU resolveDrawn matches streamed visibility at 0, 0.5, 1, 2, 3.5 and 13.5 Gyr",
+      "pass": true
+    },
+    {
       "name": "catalog keys are stable under a residency/thinning change",
       "pass": true,
       "detail": {
@@ -312,26 +344,26 @@
       "name": "a pick slice stays inside the loop's 8 ms budget (+clock overhead) for every mask",
       "pass": true,
       "detail": {
-        "worstSlice": 3.9792499999998654,
+        "worstSlice": 5.035541999999623,
         "worstMask": 5,
         "measured": {
           "1": {
-            "total": 58.05,
-            "slice": 0.92,
+            "total": 74.32,
+            "slice": 1.27,
             "slices": 10,
-            "perRecordNs": 193
+            "perRecordNs": 248
           },
           "2": {
-            "total": 13.87,
-            "slice": 0.22,
+            "total": 18.53,
+            "slice": 0.3,
             "slices": 10,
-            "perRecordNs": 46
+            "perRecordNs": 62
           },
           "5": {
-            "total": 241.14,
-            "slice": 3.98,
+            "total": 299.25,
+            "slice": 5.04,
             "slices": 10,
-            "perRecordNs": 804
+            "perRecordNs": 997
           }
         }
       }
@@ -351,25 +383,25 @@
       "name": "the cheap mask finishes a whole 300k pick in a handful of frames",
       "pass": true,
       "detail": {
-        "simpleTotal": 13.874476999999843,
+        "simpleTotal": 18.532166999999845,
         "measured": {
           "1": {
-            "total": 58.05,
-            "slice": 0.92,
+            "total": 74.32,
+            "slice": 1.27,
             "slices": 10,
-            "perRecordNs": 193
+            "perRecordNs": 248
           },
           "2": {
-            "total": 13.87,
-            "slice": 0.22,
+            "total": 18.53,
+            "slice": 0.3,
             "slices": 10,
-            "perRecordNs": 46
+            "perRecordNs": 62
           },
           "5": {
-            "total": 241.14,
-            "slice": 3.98,
+            "total": 299.25,
+            "slice": 5.04,
             "slices": 10,
-            "perRecordNs": 804
+            "perRecordNs": 997
           }
         }
       }
@@ -379,22 +411,22 @@
       "pass": true,
       "detail": {
         "1": {
-          "total": 58.05,
-          "slice": 0.92,
+          "total": 74.32,
+          "slice": 1.27,
           "slices": 10,
-          "perRecordNs": 193
+          "perRecordNs": 248
         },
         "2": {
-          "total": 13.87,
-          "slice": 0.22,
+          "total": 18.53,
+          "slice": 0.3,
           "slices": 10,
-          "perRecordNs": 46
+          "perRecordNs": 62
         },
         "5": {
-          "total": 241.14,
-          "slice": 3.98,
+          "total": 299.25,
+          "slice": 5.04,
           "slices": 10,
-          "perRecordNs": 804
+          "perRecordNs": 997
         }
       }
     },
@@ -402,16 +434,16 @@
       "name": "a radius-scan slice stays inside the loop's 8 ms budget for every mask",
       "pass": true,
       "detail": {
-        "worstAroundSlice": 4.221784999999727,
+        "worstAroundSlice": 5.303595999999743,
         "aroundMeasured": {
           "1": {
-            "slice": 1.21,
+            "slice": 1.57,
             "slices": 10,
             "kept": 256,
             "truncated": 75925
           },
           "5": {
-            "slice": 4.22,
+            "slice": 5.3,
             "slices": 10,
             "kept": 256,
             "truncated": 79656

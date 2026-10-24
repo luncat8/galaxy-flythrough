@@ -20,8 +20,9 @@
 // The two epoch bits (0.6 E4) say how the record's birth vector is read by the
 // epoch map: FLAG_EPOCH marks a vector that lives in the frame of the epoch the
 // field was drawn at, so a running epoch places it (orbit.epochMap); the flag is
-// clear for the observed sky — catalog stars, the named landmarks and the
-// gap-fill stars drawn in catalog space — which the model's clock must not move.
+// clear for the observed sky — catalog stars, local gap-fill and the named
+// landmarks — whose positions the model's clock must not move. Their separate
+// epoch-look/birth update does not require either positional epoch bit.
 // FLAG_EPOCH_SPHEROID marks a bulge member, whose vector is a point inside the
 // epoch's spheroid homology (a/b/c ∝ spheroidProgress^⅓) rather than a disc
 // point that only rotates with the ridge.

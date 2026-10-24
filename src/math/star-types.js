@@ -79,6 +79,46 @@
 		return m ** 2.8;
 	}
 
+	// The record-to-star inverse is shared by planet inputs and observed catalog
+	// tracks. A WD bracket is its remnant mass and a giant bracket its initial
+	// mass; observedTrack uses separate progenitor priors for those two states.
+	const CLASS_MASS_BRACKETS = {
+		O: [16, 100], B: [2.5, 16], A: [1.6, 2.5], F: [1.05, 1.6],
+		G: [0.85, 1.05], K: [0.55, 0.85], M: [0.08, 0.55],
+		WD: [0.5, 1.4], RG: [0.8, 3.0], RGe: [0.8, 3.0],
+	};
+	const LUM_BRANCHES = [[0.7, 2.3], [2.0, 4.0], [20, 3.5], [Infinity, 2.8]];
+
+	function massFromLuminosity(lum) {
+		const target = lum > 1e-12 ? lum : 1e-12;
+		let best = -1;
+		for (let i = 0; i < LUM_BRANCHES.length; i++) {
+			const alpha = LUM_BRANCHES[i][1];
+			const m = Math.pow(target, 1 / alpha);
+			const lo = i === 0 ? 0 : LUM_BRANCHES[i - 1][0];
+			if (m >= lo && m < LUM_BRANCHES[i][0] && (best < 0 || m < best)) best = m;
+		}
+		// The law jumps down at 0.7 M☉; outside every branch the alpha=4 root
+		// is the continuous fallback, clamped to the sampler's mass limits.
+		if (best < 0) best = Math.max(0.08, Math.min(100, Math.pow(target, 1 / 4)));
+		return best;
+	}
+
+	function luminosityFromMag(absMag) {
+		return Math.pow(10, (4.83 - absMag) / 2.5);
+	}
+
+	function massFromClassAndMag(colorIndex, absMag, out) {
+		const cls = records.SPECTRAL_CLASSES[colorIndex] || 'M';
+		const bracket = CLASS_MASS_BRACKETS[cls] || CLASS_MASS_BRACKETS.M;
+		const lum = luminosityFromMag(absMag);
+		let m = massFromLuminosity(lum);
+		if (m < bracket[0]) m = bracket[0];
+		else if (m > bracket[1]) m = bracket[1];
+		if (out) out.lum = lum;
+		return m;
+	}
+
 	// Empirical main-sequence mass-Teff relation, [M_sun, Teff_K], interpolated
 	// in log-log. A pure L/R formula misclassifies M dwarfs as K stars.
 	const MASS_TEFF_TABLE = [
@@ -212,6 +252,17 @@
 	// reference span even when the viewer starts at another epoch. The lookup
 	// table is shared with the existing local-age inverse; only its cache key
 	// changes, never the underlying SFH. Channel 6 is reserved for birth time.
+	function formationTimeAtReference(model, q) {
+		const p = model.populations;
+		const spanRef = galaxy.sfhSpanAt(galaxy.AGE_REF, p.quenchTime);
+		if (!(spanRef > 0)) return 0;
+		ensureSfhTable(p.tauSfh, spanRef);
+		const u = Math.max(0, Math.min(1, q));
+		const pos = u * SFH_TABLE_STEPS;
+		const i = pos < SFH_TABLE_STEPS ? pos | 0 : SFH_TABLE_STEPS - 1;
+		return sfhTable[i] + (sfhTable[i + 1] - sfhTable[i]) * (pos - i);
+	}
+
 	function sampleFormationTimeAtReference(model, componentIndex, u) {
 		const p = model.populations;
 		const spanRef = galaxy.sfhSpanAt(galaxy.AGE_REF, p.quenchTime);
@@ -223,11 +274,8 @@
 		const w1 = galaxy.FORMATION_WINDOW[componentIndex * 2 + 1];
 		const q0 = galaxy.sfhCumulative(w0 * xEnd) / norm;
 		const q1 = galaxy.sfhCumulative(w1 * xEnd) / norm;
-		ensureSfhTable(p.tauSfh, spanRef);
 		const q = q0 + (q1 - q0) * Math.max(0, Math.min(1, u));
-		const pos = q * SFH_TABLE_STEPS;
-		const i = pos < SFH_TABLE_STEPS ? pos | 0 : SFH_TABLE_STEPS - 1;
-		return sfhTable[i] + (sfhTable[i + 1] - sfhTable[i]) * (pos - i);
+		return formationTimeAtReference(model, q);
 	}
 
 	// Age in Gyr for a population. u1, u2 are independent uniforms. `zOverH` is
@@ -539,6 +587,79 @@
 		return evolveStar(model, seed, mass, ageGyr, componentIndex, R, distToArm, out);
 	}
 
+	// Invert one observed reference record into a deterministic physical track.
+	// A catalog record has no mass or birth time, so its class and magnitude
+	// constrain the track while stable-key channels supply the missing draws.
+	// The reference state is an interior point of the observed state interval:
+	// giants and white dwarfs must not be repaired by clamping their rendered
+	// class after the fact. `out` and `out.core` are caller-owned and reusable.
+	function observedTrack(model, key, colorIndex, absMag, out) {
+		const r = out || {};
+		const core = r.core || (r.core = {});
+		const uBirth = hash.hash01At(key, 16);
+		const uMass = hash.hash01At(key, 17);
+		const uState = hash.hash01At(key, 18);
+		const cls = records.SPECTRAL_CLASSES[colorIndex] || 'M';
+		const kind = cls === 'WD' ? 'wd' : (cls === 'RG' || cls === 'RGe') ? 'giant' : 'ms';
+		let mass;
+		let refAge;
+		if (kind === 'ms') {
+			mass = massFromClassAndMag(colorIndex, absMag);
+			const maxAge = 1.1 * msLifetimeGyr(mass);
+			const p = model.populations;
+			const spanRef = galaxy.sfhSpanAt(galaxy.AGE_REF, p.quenchTime);
+			const w = density.COMPONENT_THIN * 2;
+			const windowLo = galaxy.FORMATION_WINDOW[w] * spanRef;
+			const windowHi = galaxy.FORMATION_WINDOW[w + 1] * spanRef;
+			const lo = Math.max(windowLo, galaxy.AGE_REF - maxAge);
+			const hi = windowHi;
+			if (hi > lo && spanRef > 0) {
+				const norm = galaxy.sfhCumulative(spanRef / p.tauSfh);
+				const q0 = galaxy.sfhCumulative(lo / p.tauSfh) / norm;
+				const q1 = galaxy.sfhCumulative(hi / p.tauSfh) / norm;
+				const formed = formationTimeAtReference(model, q0 + (q1 - q0) * uBirth);
+				refAge = galaxy.AGE_REF - formed;
+			} else {
+				// A quenched/short window can contain no observable young MS
+				// star. Keep the record observable rather than manufacturing a
+				// NaN or silently turning it into a different spectral class.
+				refAge = Math.min(galaxy.AGE_REF, maxAge);
+			}
+			if (refAge < 0) refAge = 0;
+			else if (refAge > maxAge) refAge = maxAge;
+		} else if (kind === 'giant') {
+			// Giant luminosity is an output of the branch, not an initial-mass
+			// measurement. Stay inside the pinned 1–3 M☉ prior and choose
+			// an interior point of the giant interval.
+			mass = 1.0 + 2.0 * uMass;
+			const start = 1.1 * msLifetimeGyr(mass);
+			refAge = start + giantLifetimeGyr(mass) * (0.03 + 0.94 * uState);
+		} else {
+			// The WD bracket in a packed record is the remnant mass. Use a
+			// separate progenitor prior and an interior post-giant age.
+			mass = 1.0 + 7.0 * uMass;
+			const start = 1.1 * msLifetimeGyr(mass) + giantLifetimeGyr(mass);
+			const available = galaxy.AGE_REF - start;
+			refAge = available > 0.04
+				? start + 0.02 + (available - 0.04) * uState
+				: Math.min(galaxy.AGE_REF, start);
+		}
+		r.kind = kind;
+		r.refClass = cls;
+		r.refColorIndex = colorIndex;
+		r.mass = mass;
+		r.refAge = refAge;
+		r.formedAt = galaxy.AGE_REF - refAge;
+		// No thin-disc metallicity shift is applied to an observed catalog
+		// colour. The thick component is only a neutral evolution context.
+		evolveStar(model, key, mass, refAge, density.COMPONENT_THICK, 0, 0, core);
+		r.refState = core.state;
+		r.refLum = core.luminosity;
+		r.refAbsMag = core.absMag;
+		r.observedLum = luminosityFromMag(absMag);
+		return r;
+	}
+
 	// The central star of a planetary nebula: a post-AGB remnant, hot and
 	// luminous, on its way to the white-dwarf cooling track. Classified O (the
 	// LUT's hottest slot) with state 'ms', so every consumer that switches on
@@ -622,10 +743,11 @@
 	const StarTypesLib = {
 		MASS_TEFF_TABLE, CLASS_TEMP_BOUNDS, YOUNG_ARM_MAX_GYR, SFH_TABLE_STEPS, SFH_SOLVE_STEPS,
 		classifyByTempAndState, classColor, luminosityFromMass, teffFromMass,
+		CLASS_MASS_BRACKETS, massFromLuminosity, luminosityFromMag, massFromClassAndMag,
 		msLifetimeGyr, giantLifetimeGyr, sampleMassIMF, sampleArmAge, sampleLocalAge, metallicityFor,
 		TGIANT_FRAC, TGIANT_MIN, TGIANT_MAX, WD_COOL_TAU, WD_TEFF_FLOOR, WD_LUM_FLOOR,
 		sfhFormationTime, sampleFormationTime, sampleFormationTimeAtReference, sampleFieldBirth, fieldStarSeed, fieldStarJitter, meanFieldLuminosity,
-		absoluteMagnitude, deriveStar, deriveStarWithAge, derivePlanetaryCentral, deriveStarProps,
+		absoluteMagnitude, evolveStar, deriveStar, deriveStarWithAge, observedTrack, derivePlanetaryCentral, deriveStarProps,
 		summariseByComponent, classVsArmDistance,
 	};
 	if (typeof module !== 'undefined') module.exports = StarTypesLib;

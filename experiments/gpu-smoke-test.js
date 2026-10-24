@@ -311,7 +311,7 @@ async function main() {
 
 	// 4. Automated verification suites.
 	console.log('\n--- 4. Automated verification suites ---');
-	for (const suiteId of ['firstlight', 'continuity', 'morphology', 'engines']) {
+	for (const suiteId of ['firstlight', 'continuity', 'morphology', 'catalog', 'engines']) {
 		const frames = [];
 		const rendererLib = {
 			createStarRenderer(...args) {
@@ -372,7 +372,7 @@ async function main() {
 	const styleCss = fs.readFileSync(styleCssPath, 'utf8');
 	const scenariosJs = fs.readFileSync(scenariosJsPath, 'utf8');
 
-	for (const id of ['status', 'out', 'filmstrip', 'run-all', 'run-firstlight', 'run-continuity', 'run-morphology', 'run-engines', 'copy', 'save']) {
+	for (const id of ['status', 'out', 'filmstrip', 'run-all', 'run-firstlight', 'run-continuity', 'run-morphology', 'run-catalog', 'run-engines', 'copy', 'save']) {
 		check('webgpu-smoke.html has #' + id,
 			smokeHtml.includes('id="' + id + '"'));
 	}

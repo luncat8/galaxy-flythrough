@@ -154,6 +154,7 @@ function createStarRenderer(device, context, format, options) {
                 SIMPLE_UNIFORM_FLOATS: 20,
         };
         const SIMPLE_UNIFORM_FLOATS = orbit.SIMPLE_UNIFORM_FLOATS || 20;
+        const BIRTH_FADE = orbit.BIRTH_FADE_GYR || 0.05;
         const SIMPLE_WORKGROUP = 64;
         // The gas grid's CPU twin: geometry, the burn law's constants, the
         // calibration and the readout account. Absent only in a harness that did
@@ -772,6 +773,25 @@ function createStarRenderer(device, context, format, options) {
         let localProceduralCount = 0;
         let localProceduralCapacity = localProceduralBudget;
         let localProceduralByteOffset = 0;
+        // Streaming tracks are indexed relative to the local block, not by a
+        // resident cell's output position. The record key remains the identity;
+        // these arrays only cache the inferred physical inputs for that key.
+        // They are typed arrays so an epoch slice allocates no per-star object.
+        let dynamicKind = null;       // 0 empty, 1 local, 2 MS, 3 giant, 4 WD
+        let dynamicSeed = null;
+        let dynamicMass = null;
+        let dynamicFormedAt = null;   // physical formation time, not gate clamp
+        let dynamicComponent = null;
+        let dynamicR = null;
+        let dynamicDistToArm = null;
+        let dynamicRefLum = null;
+        let dynamicObservedLum = null;
+        let dynamicRefColor = null;
+        let dynamicRefLook = null;    // complete packed reference look word
+        let dynamicTrackCount = 0;
+        const dynamicEpochSweep = { at: 0, stale: false };
+        const dynamicDerived = {};
+        const catalogTrack = {};
 
         // --- Build ------------------------------------------------------------
         function allocate(procedural, catalog) {
@@ -794,6 +814,21 @@ function createStarRenderer(device, context, format, options) {
                 staging = new ArrayBuffer(Math.max(records.RECORD_BYTES, totalBytes));
                 identity = new Uint32Array(totalRecords);
                 identityView = new DataView(staging);
+                const dynamicCapacity = localProceduralCapacity + catalogCapacity;
+                dynamicKind = new Uint8Array(Math.max(1, dynamicCapacity));
+                dynamicSeed = new Uint32Array(Math.max(1, dynamicCapacity));
+                dynamicMass = new Float64Array(Math.max(1, dynamicCapacity));
+                dynamicFormedAt = new Float64Array(Math.max(1, dynamicCapacity));
+                dynamicComponent = new Int8Array(Math.max(1, dynamicCapacity));
+                dynamicR = new Float64Array(Math.max(1, dynamicCapacity));
+                dynamicDistToArm = new Float64Array(Math.max(1, dynamicCapacity));
+                dynamicRefLum = new Float64Array(Math.max(1, dynamicCapacity));
+                dynamicObservedLum = new Float64Array(Math.max(1, dynamicCapacity));
+                dynamicRefColor = new Uint8Array(Math.max(1, dynamicCapacity));
+                dynamicRefLook = new Uint32Array(Math.max(1, dynamicCapacity));
+                dynamicTrackCount = 0;
+                dynamicEpochSweep.at = 0;
+                dynamicEpochSweep.stale = false;
                 memberAge = new Float64Array(objectCapacity);
                 memberComponent = new Int8Array(objectCapacity);
                 landmarkByteOffset = proceduralCount * records.RECORD_BYTES;
@@ -823,11 +858,12 @@ function createStarRenderer(device, context, format, options) {
                 });
                 if (thetaBuffer) thetaBuffer.destroy();
                 if (birthBuffer) birthBuffer.destroy();
-                const fixedCapacity = proceduralCount + landmarkCount + objectCapacity;
-                birthStaging = new Float32Array(Math.max(1, fixedCapacity));
+                // The vertex gate addresses the same slot layout as the star
+                // buffer, including streaming local/catalog records.
+                birthStaging = new Float32Array(Math.max(1, totalRecords));
                 birthBuffer = device.createBuffer({
                         label: 'star-birth-times',
-                        size: Math.max(4, fixedCapacity * 4),
+                        size: Math.max(4, totalRecords * 4),
                         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
                 });
                 blockInfo.formation.births = birthStaging;
@@ -888,7 +924,7 @@ function createStarRenderer(device, context, format, options) {
                                         { binding: 2, resource: { buffer } },
                                 ],
                         }));
-                state.bufferBytes = totalBytes + nebulaBytes + thetaBytes + Math.max(4, fixedCapacity * 4)
+                state.bufferBytes = totalBytes + nebulaBytes + thetaBytes + Math.max(4, totalRecords * 4)
                         + (gasGridEnabled ? 2 * gasLib.GAS_BYTES : 16);
         }
 
@@ -1211,12 +1247,26 @@ function createStarRenderer(device, context, format, options) {
         // read the records back, and a caller with no frame loop can finish a
         // whole pass in one call (`budget` large).
         function stepEpoch(modelNow, budgetMs) {
-                if (!fieldStars || proceduralCount === 0) return 0;
                 if (!modelNow) modelNow = model;
-                return sweepEpochLook(modelNow, budgetMs === undefined ? EPOCH_SLICE_MS : budgetMs);
+                const budget = budgetMs === undefined ? EPOCH_SLICE_MS : budgetMs;
+                let worked = 0;
+                if (fieldStars && proceduralCount > 0 && epochSweep.stale) {
+                        worked += sweepEpochLook(modelNow, budget);
+                }
+                if (dynamicEpochSweep.stale) {
+                        // The dynamic cursor has its own bounded slice; neither
+                        // cursor redraws or resamples the procedural field.
+                        worked += sweepDynamicEpochLook(modelNow, budget);
+                }
+                return worked;
         }
         function epochSweepState() {
-                return { at: epochSweep.at, stale: epochSweep.stale, calibrationStars: epochCalibrationStars };
+                return {
+                        at: epochSweep.at, stale: epochSweep.stale || dynamicEpochSweep.stale,
+                        calibrationStars: epochCalibrationStars,
+                        dynamicAt: dynamicEpochSweep.at, dynamicStale: dynamicEpochSweep.stale,
+                        dynamicCount: dynamicTrackCount,
+                };
         }
 
         // The epoch half of the vertex stage's lane, for callers that place a
@@ -1238,7 +1288,10 @@ function createStarRenderer(device, context, format, options) {
                         magOffset = sweepExposure();
                         state.magOffset = magOffset;
                 }
-                epochSweep.stale = true;
+                epochSweep.stale = !!(fieldStars && proceduralCount > 0);
+                // Continue a partially swept dynamic range at the new epoch;
+                // only uploadDynamic resets its cursor when identities change.
+                dynamicEpochSweep.stale = dynamicTrackCount > 0;
                 return state;
         }
 
@@ -1335,6 +1388,15 @@ function createStarRenderer(device, context, format, options) {
                         // Positional: a landmark's key is its index in the table
                         // (plan §2.2), so it needs no cell bookkeeping.
                         identity[base + i] = planets.landmarkKey(i);
+                        // Curated landmarks are an authored sky anchor, not a
+                        // formation population. A negative sentinel keeps them
+                        // visible even at First light while every real stellar
+                        // population uses its actual gate birth.
+                        birthStaging[base + i] = -BIRTH_FADE;
+                }
+                if (landmarkCount > 0) {
+                        device.queue.writeBuffer(birthBuffer, base * 4,
+                                birthStaging.buffer, base * 4, landmarkCount * 4);
                 }
                 BLOCK_LAYOUT[1].count = landmarkCount;
                 state.landmarkStars = landmarkCount;
@@ -1750,6 +1812,7 @@ function createStarRenderer(device, context, format, options) {
                 // Derived per rebuild, not captured at construction: regenerate
                 // swaps the seed, and a const here would freeze the old one.
                 const localSeed = (seed | 0) ^ 0x10ca1cab;
+                const reference = drawReference || window.GalaxyLib.modelAtAge(model, window.GalaxyLib.AGE_REF);
                 let slot = 0;
                 const bytesPerRecord = records.RECORD_BYTES;
                 for (const cell of cellList) {
@@ -1757,49 +1820,183 @@ function createStarRenderer(device, context, format, options) {
                         if (n <= 0) continue;
                         const ox = cell.x0, oy = cell.y0, oz = cell.z0;
                         const cs = cell.size;
-                        for (let i = 0; i < n; i++) {
+                        for (let i = 0; i < n && slot < localProceduralCapacity; i++) {
                                 const slotSeed = Math.imul(localSeed, 0x9e3779b1)
                                         ^ Math.imul(cell.id, 0x85ebca6b)
                                         ^ Math.imul(i + 1, 0xc2b2ae3d);
+                                const deriveSeed = Math.imul(slotSeed, 31) + 5;
                                 const u0 = localHash.hash01At(slotSeed, 0);
                                 const u1 = localHash.hash01At(slotSeed, 1);
                                 const u2 = localHash.hash01At(slotSeed, 2);
-                                // Position: uniform jitter inside the cell AABB.
+                                // Position and component are reference-frame
+                                // properties. A cell rebuild at another epoch
+                                // must not turn into a second stellar census.
                                 const sx = ox + u0 * cs;
                                 const sy = oy + u1 * cs;
                                 const sz = oz + u2 * cs;
-                                // Derive component / colour / magnitude from the
-                                // density at the star's position — same pipeline
-                                // the global field uses.
-                                const decomposed = window.DensityLib.rhoDecomposed(model, sx, sy, sz);
+                                const decomposed = window.DensityLib.rhoDecomposed(reference, sx, sy, sz);
                                 const component = window.DensityLib.sampleComponentIndex(decomposed, localHash.hash01At(slotSeed, 3));
                                 const R = decomposed.R;
                                 const distToArm = decomposed.distToArm;
-                                localStarTypes.deriveStar(model, Math.imul(slotSeed, 31) + 5,
-                                        component, R, distToArm, localDerived, sz);
+                                const formedAt = localStarTypes.sampleFieldBirth(reference, deriveSeed,
+                                        component, R, distToArm, sz);
+                                localStarTypes.deriveStarWithAge(reference, deriveSeed,
+                                        component, R, distToArm,
+                                        Math.max(0, window.GalaxyLib.AGE_REF - formedAt), localDerived);
                                 const jitter = localHash.pcgHash(slotSeed ^ 0xFACE) & 0xFF;
-                                records.writeRecord(
-                                        view, byteOffset + slot * bytesPerRecord,
-                                        sx, sy, sz,
-                                        // Same procedural population as the global
-                                        // field, so the same exposure offset — a
-                                        // gap-fill star that ignored it would be a
-                                        // different colour of the same sky.
-                                        // Raw, like the field: the exposure offset
-                                        // rides the uniform, and the epoch bits make
-                                        // this star follow the running epoch too.
-                                        localDerived.colorIndex, localDerived.absMag,
-                                        orbit.flagsWithFamily(records.FLAG_VISIBLE | epochFlagsFor(component, localDerived.spectralClass),
-                                                orbit.familyForStar(component, localDerived.spectralClass, model.barred)), jitter,
-                                );
-                                // The identity key *is* the seed this record was
-                                // derived from (slotSeed), so the planet module can
-                                // re-derive the exact star from the key alone.
-                                identity[BLOCK_LAYOUT[3].offset + slot] = slotSeed >>> 0;
+                                // Gap-fill belongs to the observed local sky:
+                                // retain its orbit family for motion, but never
+                                // the field's positional epoch-map bits.
+                                const flags = orbit.flagsWithFamily(records.FLAG_VISIBLE,
+                                        orbit.familyForStar(component, localDerived.spectralClass, reference.barred));
+                                const off = byteOffset + slot * bytesPerRecord;
+                                records.writeRecord(view, off, sx, sy, sz,
+                                        localDerived.colorIndex, localDerived.absMag, flags, jitter);
+                                const absoluteSlot = BLOCK_LAYOUT[3].offset + slot;
+                                identity[absoluteSlot] = slotSeed >>> 0;
+                                const d = slot;
+                                dynamicKind[d] = 1;
+                                dynamicSeed[d] = deriveSeed >>> 0;
+                                dynamicMass[d] = localDerived.mass;
+                                dynamicFormedAt[d] = formedAt;
+                                dynamicComponent[d] = component;
+                                dynamicR[d] = R;
+                                dynamicDistToArm[d] = distToArm;
+                                dynamicRefColor[d] = localDerived.colorIndex;
+                                dynamicRefLum[d] = localDerived.luminosity;
+                                dynamicObservedLum[d] = localDerived.luminosity;
+                                dynamicRefLook[d] = view.getUint32(off + 12, true);
+                                birthStaging[absoluteSlot] = Math.min(formedAt, window.GalaxyLib.AGE_REF - BIRTH_FADE);
                                 slot++;
                         }
                 }
                 return slot;
+        }
+
+        // Write one streaming look without touching its position or identity.
+        // At AGE_REF the saved packed word is restored verbatim: quantization,
+        // flags and jitter are part of the reference appearance contract.
+        function writeDynamicLook(slot, d, modelNow, params) {
+                const ref = dynamicRefLook[d];
+                const off = slot * records.RECORD_BYTES;
+                if (modelNow.populations.age === window.GalaxyLib.AGE_REF) {
+                        identityView.setUint32(off + 12, ref, true);
+                        return;
+                }
+                const kind = dynamicKind[d];
+                if (!kind) return;
+                const starTypes = window.StarTypesLib;
+                const formedAt = dynamicFormedAt[d];
+                const age = Math.max(0, modelNow.populations.age - formedAt);
+                const refFlags = (ref >>> 16) & 0xFF;
+                const jitter = (ref >>> 24) & 0xFF;
+                let colorIndex;
+                let absMag;
+                let flags = refFlags;
+                if (kind === 1) {
+                        const family = (refFlags >> 3) & 3;
+                        const spheroid = dynamicComponent[d] >= 2 && family !== orbit.FAMILY_PATTERN;
+                        const scale = spheroid ? params.spheroidScale
+                                : ((family === orbit.FAMILY_DISC || family === orbit.FAMILY_PATTERN) ? params.heatScale : 1);
+                        starTypes.evolveStar(modelNow, dynamicSeed[d], dynamicMass[d], age,
+                                dynamicComponent[d], dynamicR[d] * scale, dynamicDistToArm[d] * scale, dynamicDerived);
+                        colorIndex = dynamicDerived.colorIndex;
+                        absMag = dynamicDerived.absMag;
+                        flags = orbit.flagsWithFamily(
+                                refFlags & ~(records.FLAG_EPOCH | records.FLAG_EPOCH_SPHEROID),
+                                orbit.familyForStar(dynamicComponent[d], dynamicDerived.spectralClass, modelNow.barred));
+                } else {
+                        // Catalog tracks use a neutral evolution context: their
+                        // observed colour is not re-shifted by a procedural
+                        // metallicity law. Only the physical state/look moves.
+                        starTypes.evolveStar(modelNow, dynamicSeed[d], dynamicMass[d], age,
+                                1, 0, 0, dynamicDerived);
+                        const refLum = dynamicRefLum[d];
+                        const observedLum = dynamicObservedLum[d];
+                        let lum = dynamicDerived.luminosity * (refLum > 0 ? observedLum / refLum : 1);
+                        if (kind === 2) {
+                                const refAge = window.GalaxyLib.AGE_REF - formedAt;
+                                const u = refAge > 1e-9 ? Math.max(0, Math.min(1, age / refAge)) : 1;
+                                // A small MS luminosity ramp makes an otherwise
+                                // static observed star evolve without moving its
+                                // reference magnitude (0.85 → 1.00 L/Lref).
+                                lum *= 0.85 + 0.15 * u;
+                        }
+                        absMag = starTypes.absoluteMagnitude(lum);
+                        colorIndex = dynamicDerived.colorIndex;
+                        if ((kind === 3 && dynamicDerived.state === 'giant')
+                                || (kind === 4 && dynamicDerived.state === 'wd')) {
+                                colorIndex = dynamicRefColor[d];
+                        }
+                }
+                identityView.setUint32(off + 12, records.packPacked(colorIndex, absMag, flags, jitter), true);
+        }
+
+        function refreshDynamicLooks(modelNow) {
+                const params = orbit.solveEpochParams ? orbit.solveEpochParams(modelNow)
+                        : { spheroidScale: 1, heatScale: 1 };
+                const localCount = localProceduralCount;
+                const total = dynamicTrackCount;
+                for (let i = 0; i < total; i++) {
+                        const local = i < localCount;
+                        const d = local ? i : localProceduralCapacity + (i - localCount);
+                        const slot = local ? BLOCK_LAYOUT[3].offset + i : BLOCK_LAYOUT[4].offset + i - localCount;
+                        writeDynamicLook(slot, d, modelNow, params);
+                }
+        }
+
+        // A time-sliced streaming look sweep. Its cursor is independent of the
+        // procedural cursor: a cell upload never redraws or restarts the field.
+        function sweepDynamicEpochLook(modelNow, budgetMs) {
+                if (!dynamicEpochSweep.stale || dynamicTrackCount <= 0) {
+                        if (dynamicTrackCount <= 0) dynamicEpochSweep.stale = false;
+                        return 0;
+                }
+                const params = orbit.solveEpochParams ? orbit.solveEpochParams(modelNow)
+                        : { spheroidScale: 1, heatScale: 1 };
+                const start = dynamicEpochSweep.at;
+                const t0 = nowMs();
+                let i = start;
+                while (i < dynamicTrackCount) {
+                        const local = i < localProceduralCount;
+                        const d = local ? i : localProceduralCapacity + (i - localProceduralCount);
+                        const slot = local ? BLOCK_LAYOUT[3].offset + i : BLOCK_LAYOUT[4].offset + i - localProceduralCount;
+                        writeDynamicLook(slot, d, modelNow, params);
+                        i++;
+                        if ((i & 511) === 0 && nowMs() - t0 >= budgetMs) break;
+                }
+                if (i > start) {
+                        const firstLocal = start < localProceduralCount;
+                        const lastLocal = i <= localProceduralCount;
+                        if (firstLocal && lastLocal) {
+                                const byteStart = (BLOCK_LAYOUT[3].offset + start) * records.RECORD_BYTES;
+                                device.queue.writeBuffer(starBuffer, byteStart, staging, byteStart, (i - start) * records.RECORD_BYTES);
+                        } else if (!firstLocal && !lastLocal) {
+                                const catStart = start - localProceduralCount;
+                                const byteStart = (BLOCK_LAYOUT[4].offset + catStart) * records.RECORD_BYTES;
+                                device.queue.writeBuffer(starBuffer, byteStart, staging, byteStart, (i - start) * records.RECORD_BYTES);
+                        } else {
+                                // A slice can cross the local/catalog boundary;
+                                // upload each contiguous half, never the unused
+                                // local capacity between them.
+                                const localEnd = Math.min(i, localProceduralCount);
+                                if (localEnd > start) {
+                                        const byteStart = (BLOCK_LAYOUT[3].offset + start) * records.RECORD_BYTES;
+                                        device.queue.writeBuffer(starBuffer, byteStart, staging, byteStart, (localEnd - start) * records.RECORD_BYTES);
+                                }
+                                if (i > localProceduralCount) {
+                                        const catStart = Math.max(0, start - localProceduralCount);
+                                        const byteStart = (BLOCK_LAYOUT[4].offset + catStart) * records.RECORD_BYTES;
+                                        device.queue.writeBuffer(starBuffer, byteStart, staging, byteStart, (i - localProceduralCount) * records.RECORD_BYTES);
+                                }
+                        }
+                }
+                dynamicEpochSweep.at = i;
+                if (i >= dynamicTrackCount) {
+                        dynamicEpochSweep.at = 0;
+                        dynamicEpochSweep.stale = false;
+                }
+                return i - start;
         }
 
         // --- Catalog + local-procedural upload on rebuild ---------------------
@@ -1818,6 +2015,9 @@ function createStarRenderer(device, context, format, options) {
                 const dynamicCapacity = (localProceduralCapacity + catalogCapacity) * records.RECORD_BYTES;
                 const dynRegion = new Uint8Array(staging, localProceduralByteOffset, dynamicCapacity);
                 dynRegion.fill(0);
+                dynamicKind.fill(0);
+                const dynamicStartSlot = BLOCK_LAYOUT[3].offset;
+                birthStaging.fill(0, dynamicStartSlot, dynamicStartSlot + localProceduralCapacity + catalogCapacity);
 
                 // 2) Write local procedural gap-fill (after landmarks).
                 const localView = new DataView(staging, localProceduralByteOffset, localProceduralCapacity * records.RECORD_BYTES);
@@ -1834,11 +2034,54 @@ function createStarRenderer(device, context, format, options) {
                 catalogResident = catalogBytes / records.RECORD_BYTES;
                 BLOCK_LAYOUT[4].count = catalogResident;
 
-                // 4) Upload the dynamic range (local + catalog) in one write.
-                const dynamicBytes = (localProceduralCount * records.RECORD_BYTES) + catalogBytes;
-                if (dynamicBytes > 0) {
+                // Infer each resident catalog track from its stable key and its
+                // source reference bytes. This happens on a streaming rebuild,
+                // never in the per-frame epoch hot path.
+                const reference = drawReference || window.GalaxyLib.modelAtAge(model, window.GalaxyLib.AGE_REF);
+                for (let i = 0; i < catalogResident; i++) {
+                        const slot = BLOCK_LAYOUT[4].offset + i;
+                        const d = localProceduralCapacity + i;
+                        const off = slot * records.RECORD_BYTES;
+                        const packed = identityView.getUint32(off + 12, true);
+                        const colorIndex = packed & 0xFF;
+                        const absMag = records.decodeAbsMag((packed >>> 8) & 0xFF);
+                        const key = identity[slot] >>> 0;
+                        localStarTypes.observedTrack(reference, key, colorIndex, absMag, catalogTrack);
+                        const kind = catalogTrack.kind === 'giant' ? 3 : (catalogTrack.kind === 'wd' ? 4 : 2);
+                        dynamicKind[d] = kind;
+                        dynamicSeed[d] = key;
+                        dynamicMass[d] = catalogTrack.mass;
+                        dynamicFormedAt[d] = catalogTrack.formedAt;
+                        dynamicRefLum[d] = catalogTrack.refLum;
+                        dynamicObservedLum[d] = catalogTrack.observedLum;
+                        dynamicRefColor[d] = colorIndex;
+                        dynamicRefLook[d] = packed;
+                        birthStaging[slot] = Math.min(catalogTrack.formedAt, window.GalaxyLib.AGE_REF - BIRTH_FADE);
+                }
+                dynamicTrackCount = localProceduralCount + catalogResident;
+                // The upload itself is at the current epoch. This prevents a
+                // newly resident cell from flashing its reference look until a
+                // later background slice reaches it.
+                refreshDynamicLooks(model);
+                dynamicEpochSweep.at = 0;
+                dynamicEpochSweep.stale = false;
+
+                // 4) Upload the two occupied ranges at their own offsets. The
+                // unused local capacity between them is intentional: a single
+                // contiguous write would put catalog bytes in that gap instead
+                // of at catalogByteOffset whenever localCount < capacity.
+                if (localProceduralCount > 0) {
                         device.queue.writeBuffer(starBuffer, localProceduralByteOffset,
-                                staging, localProceduralByteOffset, dynamicBytes);
+                                staging, localProceduralByteOffset, localProceduralCount * records.RECORD_BYTES);
+                }
+                if (catalogBytes > 0) {
+                        device.queue.writeBuffer(starBuffer, catalogByteOffset,
+                                staging, catalogByteOffset, catalogBytes);
+                }
+                const dynamicSlots = localProceduralCapacity + catalogCapacity;
+                if (dynamicSlots > 0) {
+                        device.queue.writeBuffer(birthBuffer, dynamicStartSlot * 4,
+                                birthStaging.buffer, dynamicStartSlot * 4, dynamicSlots * 4);
                 }
 
                 // 5) Streaming slots are not stable star identities, so their
@@ -1925,8 +2168,8 @@ function createStarRenderer(device, context, format, options) {
                 // that draws this update is drawn with it.
                 // Only with a queue to upload the slice into: the node harnesses
                 // build a renderer without one.
-                if (epochSweep.stale && device.queue && device.queue.writeBuffer) {
-                        sweepEpochLook(model, EPOCH_SLICE_MS);
+                if ((epochSweep.stale || dynamicEpochSweep.stale) && device.queue && device.queue.writeBuffer) {
+                        stepEpoch(model, EPOCH_SLICE_MS);
                 }
 
                 // The epoch map (0.6 E4): how this frame's epoch places a record
@@ -1937,7 +2180,10 @@ function createStarRenderer(device, context, format, options) {
                 uniform[52] = model.populations.age;
                 uniform[53] = orbit.BIRTH_FADE_GYR || 0.05;
                 uniform[54] = proceduralCount;
-                uniform[55] = proceduralCount + landmarkCount + objectCapacity;
+                // All star slots have a birth entry now. Landmarks carry the
+                // negative sentinel; local and catalog births are uploaded by
+                // uploadDynamic, so the GPU and CPU see the same gate domain.
+                uniform[55] = totalRecordCount;
                 device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
                 tonemapUniform[0] = linearExposure;
@@ -2014,7 +2260,17 @@ function createStarRenderer(device, context, format, options) {
                 });
                 starPass.setPipeline(pipeline);
                 starPass.setBindGroup(0, bindGroup);
-                starPass.draw(4, instances, 0, 0);
+                const localEnd = proceduralCount + landmarkCount + objectCapacity + localProceduralCount;
+                const catalogStart = BLOCK_LAYOUT[4].offset;
+                if (catalogResident > 0 && catalogStart !== localEnd) {
+                        // The reserved local capacity is not drawable occupancy.
+                        // Keep catalog instance_index equal to its global slot so
+                        // birthTimes and theta remain aligned across the gap.
+                        if (localEnd > 0) starPass.draw(4, localEnd, 0, 0);
+                        starPass.draw(4, catalogResident, 0, catalogStart);
+                } else {
+                        starPass.draw(4, instances, 0, 0);
+                }
                 starPass.end();
 
                 // Pass 2: additive nebula billboards on top of the stars.

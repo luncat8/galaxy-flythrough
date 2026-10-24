@@ -86,9 +86,16 @@ const memberMeta = {
 	age: new Float64Array(OBJECT_N),
 	component: new Int8Array(OBJECT_N),
 };
+const births = new Float32Array(TOTAL);
+for (let i = 0; i < LANDMARK_N; i++) births[offsets[1] + i] = -orbit.BIRTH_FADE_GYR;
 const info = {
 	identity, view, blocks, total: TOTAL, dynamicVersion: 1,
 	member: memberMeta,
+	formation: {
+		births, age: model.populations.age, count: FIELD_N,
+		objectOffset: offsets[2], objectCount: OBJECT_N, clusterCount: 0,
+		gateAt: orbit.gateAt,
+	},
 };
 const renderer = { starBlocks: () => info, fieldBuffers: () => field };
 
@@ -681,6 +688,82 @@ function stubLabelCanvas() {
 	layer.setSelectedKeys(keys, 0);
 	layer.draw(camera, W, H);
 	check('an empty set draws no rings', calls.arcs === first * 2 + (calls.arcs - first * 2), { arcs: calls.arcs });
+
+	// The same global-slot birth rule reaches selection rings for the two
+	// streaming blocks; only the curated landmark survives T=0.
+	const gateKeys = new Uint32Array([
+		identity[offsets[3]] >>> 0, identity[offsets[4]] >>> 0, identity[offsets[1] + 3] >>> 0,
+	]);
+	info.formation.age = 0;
+	layer.setSelectedKeys(gateKeys, gateKeys.length);
+	const beforeZeroRings = calls.arcs;
+	layer.draw(camera, W, H);
+	const zeroRings = calls.arcs - beforeZeroRings;
+	info.formation.age = model.populations.age;
+	const beforeRefRings = calls.arcs;
+	layer.draw(camera, W, H);
+	const refRings = calls.arcs - beforeRefRings;
+	check('selection rings gate local/catalog slots at T=0 but keep landmarks',
+		zeroRings === 1 && refRings === 3, { zeroRings, refRings });
+
+	const localSlot = offsets[3], catalogSlot = offsets[4];
+	const oldLocalBirth = births[localSlot], oldCatalogBirth = births[catalogSlot];
+	births[localSlot] = 0.25;
+	births[catalogSlot] = 1.25;
+	let ringLadder = true;
+	for (const age of [0, 0.5, 1, 2, 3.5, 13.5]) {
+		info.formation.age = age;
+		const before = calls.arcs;
+		layer.draw(camera, W, H);
+		const expected = 1 + (orbit.gateAt(births[localSlot], age) > 0 ? 1 : 0)
+			+ (orbit.gateAt(births[catalogSlot], age) > 0 ? 1 : 0);
+		if (calls.arcs - before !== expected) ringLadder = false;
+	}
+	births[localSlot] = oldLocalBirth;
+	births[catalogSlot] = oldCatalogBirth;
+	info.formation.age = model.populations.age;
+	check('selection rings match the GPU gate across the full epoch ladder', ringLadder);
+}
+
+// --- 6b. CPU pick/resolve visibility for streamed blocks -------------------
+{
+	const sel = selectionLib.createSelection(camera, null);
+	sel.setRenderer(renderer);
+	const out = new Float64Array(3);
+	const refs = [3, 4, 1].map((kind) => {
+		const slot = offsets[kind];
+		const rec = records.readRecord(view, slot * records.RECORD_BYTES);
+		return { kind, index: 0, key: identity[slot] >>> 0, x: rec.x, y: rec.y, z: rec.z };
+	});
+	info.formation.age = 0;
+	const zeroStates = refs.map((ref) => sel.resolveDrawn(ref, out));
+	info.formation.age = model.populations.age;
+	const refStates = refs.map((ref) => sel.resolveDrawn(ref, out));
+	check('CPU resolveDrawn shares the local/catalog birth gate and landmark exemption',
+		zeroStates[0] === selectionLib.DRAWN_STALE && zeroStates[1] === selectionLib.DRAWN_STALE
+		&& zeroStates[2] === selectionLib.DRAWN_EXACT
+		&& refStates[0] === selectionLib.DRAWN_EXACT && refStates[1] === selectionLib.DRAWN_EXACT,
+		{ zeroStates, refStates });
+
+	const localSlot = offsets[3], catalogSlot = offsets[4];
+	const oldLocalBirth = births[localSlot], oldCatalogBirth = births[catalogSlot];
+	births[localSlot] = 0.25;
+	births[catalogSlot] = 1.25;
+	let resolveLadder = true;
+	for (const age of [0, 0.5, 1, 2, 3.5, 13.5]) {
+		info.formation.age = age;
+		const states = refs.map((ref) => sel.resolveDrawn(ref, out));
+		const expected = [
+			orbit.gateAt(births[localSlot], age) > 0 ? selectionLib.DRAWN_EXACT : selectionLib.DRAWN_STALE,
+			orbit.gateAt(births[catalogSlot], age) > 0 ? selectionLib.DRAWN_EXACT : selectionLib.DRAWN_STALE,
+			selectionLib.DRAWN_EXACT,
+		];
+		for (let i = 0; i < states.length; i++) if (states[i] !== expected[i]) resolveLadder = false;
+	}
+	births[localSlot] = oldLocalBirth;
+	births[catalogSlot] = oldCatalogBirth;
+	info.formation.age = model.populations.age;
+	check('CPU resolveDrawn matches streamed visibility at 0, 0.5, 1, 2, 3.5 and 13.5 Gyr', resolveLadder);
 }
 
 // --- 7. Catalog keys survive thinning and residency changes ------------------

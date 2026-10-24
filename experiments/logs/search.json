@@ -44,8 +44,8 @@
         "scanned": 6184,
         "matched": 6184,
         "truncated": 5672,
-        "msStage1": 22.913129000000012,
-        "msStage2": 3.6058649999999943,
+        "msStage1": 22.21889299999998,
+        "msStage2": 2.608588999999995,
         "msRefine": 0
       }
     },
@@ -58,8 +58,8 @@
         "scanned": 6184,
         "matched": 6184,
         "truncated": 5672,
-        "msStage1": 18.239315000000005,
-        "msStage2": 0.7210640000000126,
+        "msStage1": 9.079284000000001,
+        "msStage2": 1.203343999999987,
         "msRefine": 0
       }
     },
@@ -72,10 +72,67 @@
         "scanned": 1,
         "matched": 1,
         "truncated": 0,
-        "msStage1": 0.20357299999997736,
-        "msStage2": 0.0036819999999977426,
+        "msStage1": 0.2391230000000064,
+        "msStage2": 0.0007870000000025357,
         "msRefine": 0
       }
+    },
+    {
+      "name": "search gates local/catalog galaxy and set results at T=0 while landmarks remain",
+      "pass": true,
+      "detail": {
+        "galaxyMatched": 60,
+        "nonLandmark": 0,
+        "setMatched": 0
+      }
+    },
+    {
+      "name": "search galaxy and selection scopes match the GPU gate across the epoch ladder",
+      "pass": true,
+      "detail": [
+        {
+          "age": 0,
+          "expected": 60,
+          "actual": 60,
+          "selectedExpected": 0,
+          "selectedActual": 0
+        },
+        {
+          "age": 0.5,
+          "expected": 6183,
+          "actual": 6183,
+          "selectedExpected": 0,
+          "selectedActual": 0
+        },
+        {
+          "age": 1,
+          "expected": 6183,
+          "actual": 6183,
+          "selectedExpected": 0,
+          "selectedActual": 0
+        },
+        {
+          "age": 2,
+          "expected": 6184,
+          "actual": 6184,
+          "selectedExpected": 1,
+          "selectedActual": 1
+        },
+        {
+          "age": 3.5,
+          "expected": 6184,
+          "actual": 6184,
+          "selectedExpected": 1,
+          "selectedActual": 1
+        },
+        {
+          "age": 13.5,
+          "expected": 6184,
+          "actual": 6184,
+          "selectedExpected": 1,
+          "selectedActual": 1
+        }
+      ]
     },
     {
       "name": "the 26-filter battery matches the brute force (identity, order, props, display planet)",
@@ -243,8 +300,8 @@
         "scanned": 46,
         "matched": 46,
         "truncated": 0,
-        "msStage1": 0.18096400000001722,
-        "msStage2": 0.003450000000043474,
+        "msStage1": 0.08378000000004704,
+        "msStage2": 0.005282999999963067,
         "msRefine": 0
       }
     },
@@ -318,36 +375,36 @@
     {
       "name": "star-only class filter over the galaxy stays under 120 ms",
       "pass": true,
-      "detail": 69.72656499999994
+      "detail": 89.74036299999989
     },
     {
       "name": "planet filter (G + terran) over the galaxy stays under 600 ms",
       "pass": true,
-      "detail": 68.91320900000005
+      "detail": 91.80342599999994
     },
     {
       "name": "planet filter (tsurf range, exact refine) over the galaxy stays under 600 ms",
       "pass": true,
-      "detail": 418.0705549999998
+      "detail": 530.4226349999999
     },
     {
       "name": "planet filter over a 214-star set stays under 2 ms",
       "pass": true,
-      "detail": 0.35332000000016706
+      "detail": 0.4430689999999231
     },
     {
       "name": "a moving-time 300k star search with engine dispatch stays under 1.5 s",
       "pass": true,
-      "detail": 83.64225600000009
+      "detail": 110.61054200000035
     },
     {
       "name": "the stage timers split the wall time (sort + overhead bounded)",
       "pass": true,
       "detail": {
-        "msStage1": 54.12727299999824,
-        "msStage2": 255.0829619999995,
-        "msRefine": 108.58719199999814,
-        "wall": 418.0705549999998
+        "msStage1": 82.77387499999713,
+        "msStage2": 313.94826300000113,
+        "msRefine": 133.33794500000204,
+        "wall": 530.4226349999999
       }
     }
   ],

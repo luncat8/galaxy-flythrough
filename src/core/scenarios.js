@@ -25,7 +25,7 @@ const SCENARIOS = [
 		query: 'age=0&evolve=0&time=0&mode=observe',
 		view: 'galaxy',
 		what: 'Nothing has formed yet. The procedural field, star clusters and composite objects are all gated off by their birth times, so the stars and clusters the galaxy is made of are absent, not dim. The cold gas grid is the picture left behind.',
-		watch: 'Formed must read 0 % and gas 1.00, with 0 formed clusters. Milky Way catalog stars and landmarks are not part of the gated field (0.7.1 scope) — they still draw; switch Type to SBb in Display for a gas-only sky with no stars.',
+		watch: 'Formed must read 0 % and gas 1.00, with 0 formed clusters and 0 catalog/local stars. Curated landmarks remain visible as authored anchors; switch Type to SBb in Display for a gas-only sky with no stars. See deferred-catalog-evolution-plan.md §5.2.',
 	},
 	{
 		id: 'condense',

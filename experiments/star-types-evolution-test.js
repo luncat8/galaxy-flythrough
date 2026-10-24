@@ -551,6 +551,61 @@ const armStats = starTypes.classVsArmDistance(stars, model);
 		{ ob, obFrac: +obFrac.toFixed(3), mFrac: +mFrac.toFixed(3), gasLane: +gasLane.toFixed(3) });
 }
 
+// --- Observed catalog tracks (0.7.7) --------------------------------------
+// These fixtures deliberately include RG/RGe/WD even when the bundled Gaia
+// subset has no such records. The inference must describe a real state interval,
+// not clamp a mismatched core state back to the requested colour at AGE_REF.
+{
+	const reference = galaxy.modelAtAge(model, galaxy.AGE_REF);
+	const keys = [17, 101, 997, 12011];
+	let deterministic = true;
+	let finite = true;
+	let giantStates = true;
+	let wdStates = true;
+	let youngReversion = true;
+	for (const key of keys) {
+		for (const colorIndex of [0, 1, 4, 6, 7, 8, 9]) {
+			const a = starTypes.observedTrack(reference, key, colorIndex, 4.8, {});
+			const b = starTypes.observedTrack(reference, key, colorIndex, 4.8, {});
+			if (a.formedAt !== b.formedAt || a.mass !== b.mass || a.refAge !== b.refAge
+				|| a.refState !== b.refState) deterministic = false;
+			if (!Number.isFinite(a.formedAt) || !Number.isFinite(a.mass)
+				|| !Number.isFinite(a.refAge) || a.formedAt < 0 || a.formedAt > galaxy.AGE_REF) finite = false;
+			if (a.kind === 'giant') {
+				const start = 1.1 * starTypes.msLifetimeGyr(a.mass);
+				const end = start + starTypes.giantLifetimeGyr(a.mass);
+				if (a.refState !== 'giant' || !(a.refAge > start && a.refAge < end)
+					|| a.mass < 1 || a.mass > 3) giantStates = false;
+			}
+			if (a.kind === 'wd') {
+				const death = 1.1 * starTypes.msLifetimeGyr(a.mass) + starTypes.giantLifetimeGyr(a.mass);
+				if (a.refState !== 'wd' || !(a.refAge > death && a.refAge < galaxy.AGE_REF)
+					|| a.mass < 1 || a.mass > 8) wdStates = false;
+			}
+			if (a.kind !== 'ms') {
+				const young = starTypes.evolveStar(reference, key, a.mass, 0, 1, 0, 0, {});
+				if (young.state !== 'ms') youngReversion = false;
+			}
+		}
+	}
+	check('observed tracks are deterministic and have finite reference births', deterministic && finite);
+	check('observed giants sit strictly inside their giant interval with a 1–3 M☉ prior', giantStates);
+	check('observed white dwarfs sit strictly inside cooling with a 1–8 M☉ progenitor prior', wdStates);
+	check('observed evolved stars revert to an early main-sequence state', youngReversion);
+
+	const key = 424242;
+	const colorIndex = 6; // long-lived M dwarf: no survival cut below the thin window
+	const track = starTypes.observedTrack(reference, key, colorIndex, 10.0, {});
+	const expectedBirth = starTypes.sampleFormationTimeAtReference(reference, 0, hash.hash01At(key, 16));
+	check('a long-lived observed MS uses the exact conditional reference SFH inverse',
+		Math.abs(track.formedAt - expectedBirth) < 1e-6 && track.refState === 'ms',
+		{ birth: track.formedAt, expected: expectedBirth });
+	const hot = starTypes.observedTrack(reference, key, 0, -5.0, {});
+	check('a hot observed MS is conditionally young enough to remain on the MS',
+		hot.refAge <= 1.1 * starTypes.msLifetimeGyr(hot.mass) + 1e-6 && hot.refState === 'ms',
+		{ mass: hot.mass, age: hot.refAge });
+}
+
 // --- Report --------------------------------------------------------------
 console.log('Class distribution:', Object.entries(classes).map(([k, v]) => `${k} ${v}`).join(', '));
 

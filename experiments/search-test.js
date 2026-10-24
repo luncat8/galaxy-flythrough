@@ -81,7 +81,16 @@ const view = new DataView(staging);
 const identity = new Uint32Array(TOTAL);
 const blocks = BLOCK_ORDER.map((kind, k) => ({ kind, offset: offsets[k], count: COUNTS[k] }));
 const memberMeta = { age: new Float64Array(OBJECT_N), component: new Int8Array(OBJECT_N) };
-const info = { identity, view, blocks, total: TOTAL, dynamicVersion: 1, member: memberMeta };
+const births = new Float32Array(TOTAL);
+for (let i = 0; i < LANDMARK_N; i++) births[offsets[1] + i] = -orbit.BIRTH_FADE_GYR;
+const info = {
+	identity, view, blocks, total: TOTAL, dynamicVersion: 1, member: memberMeta,
+	formation: {
+		births, age: model.populations.age, count: FIELD_N,
+		objectOffset: offsets[2], objectCount: OBJECT_N, clusterCount: 0,
+		gateAt: orbit.gateAt,
+	},
+};
 const field = sampling.sampleGalaxyStars(model, model.seed | 0, FIELD_N, null);
 const renderer = { starBlocks: () => info, fieldBuffers: () => field };
 const genCtx = { model, field, member: memberMeta };
@@ -413,6 +422,65 @@ function brutePlanetPass(star, f) {
 	check('a non-empty set runs the set (one member, one scanned)',
 		res.stats.scope === 'selection' && res.stats.scanned === 1
 		&& res.stats.matched === 1 && res.count === 1, Object.assign({}, res.stats));
+}
+
+// --- 2b. Formation visibility includes the streaming blocks -----------------
+{
+	const search = searchLib.createSearch();
+	const cam = camera.cameraPos;
+	const set = starSetLib.createStarSet();
+	info.formation.age = 0;
+	const galaxyResult = search.run(searchLib.createFilter(), {
+		scope: 'galaxy', camX: cam[0], camY: cam[1], camZ: cam[2], model, renderer, set,
+	});
+	let nonLandmark = 0;
+	for (let i = 0; i < galaxyResult.count; i++) if (galaxyResult.kind[i] !== 1) nonLandmark++;
+	const galaxyMatched = galaxyResult.stats.matched;
+	const slot = offsets[4];
+	const rec = records.readRecord(view, slot * records.RECORD_BYTES);
+	const ref = {
+		kind: 4, index: 0, key: identity[slot] >>> 0,
+		x: rec.x, y: rec.y, z: rec.z, colorIndex: rec.colorIndex, absMag: rec.absMag,
+	};
+	const inputs = planets.stellarInputs(ref, genCtx, planets.createStellarInputs());
+	set.setSingle(ref, inputs, cam[0], cam[1], cam[2], 0);
+	const setResult = search.run(searchLib.createFilter(), {
+		scope: 'selection', camX: cam[0], camY: cam[1], camZ: cam[2], model, renderer, set,
+	});
+	info.formation.age = model.populations.age;
+	check('search gates local/catalog galaxy and set results at T=0 while landmarks remain',
+		galaxyMatched === LANDMARK_N && nonLandmark === 0 && setResult.stats.matched === 0,
+		{ galaxyMatched, nonLandmark, setMatched: setResult.stats.matched });
+
+	const localSlot = offsets[3], catalogSlot = offsets[4];
+	const oldLocalBirth = births[localSlot], oldCatalogBirth = births[catalogSlot];
+	births[localSlot] = 0.25;
+	births[catalogSlot] = 1.25;
+	let ladder = true;
+	const ladderDetails = [];
+	for (const age of [0, 0.5, 1, 2, 3.5, 13.5]) {
+		info.formation.age = age;
+		const expected = LANDMARK_N + [0, 2, 3, 4].reduce((sum, k) => {
+			for (let i = 0; i < blocks[k].count; i++) {
+				if (orbit.gateAt(births[blocks[k].offset + i], age) > 0) sum++;
+			}
+			return sum;
+		}, 0);
+		const all = search.run(searchLib.createFilter(), {
+			scope: 'galaxy', camX: cam[0], camY: cam[1], camZ: cam[2], model, renderer, set,
+		});
+		const allMatched = all.stats.matched;
+		const selected = search.run(searchLib.createFilter(), {
+			scope: 'selection', camX: cam[0], camY: cam[1], camZ: cam[2], model, renderer, set,
+		});
+		const selectedExpected = orbit.gateAt(births[catalogSlot], age) > 0 ? 1 : 0;
+		ladderDetails.push({ age, expected, actual: allMatched, selectedExpected, selectedActual: selected.stats.matched });
+		if (allMatched !== expected || selected.stats.matched !== selectedExpected) ladder = false;
+	}
+	births[localSlot] = oldLocalBirth;
+	births[catalogSlot] = oldCatalogBirth;
+	info.formation.age = model.populations.age;
+	check('search galaxy and selection scopes match the GPU gate across the epoch ladder', ladder, ladderDetails);
 }
 
 // --- 3. The battery: search ≡ brute force -----------------------------------
