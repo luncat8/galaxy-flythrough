@@ -603,6 +603,17 @@
 			note('boot', captureLine(adapter, usedFallback) + ' \u00b7 format ' + format);
 		}
 
+		// Known gap, kept in the log so a green run cannot be mistaken for full
+		// coverage: every formation renderer below is built with
+		// catalogBudgetStars: 0, so these suites cannot exercise the Milky Way
+		// catalog / local gap-fill, which still draw a fixed reference-epoch look
+		// at every epoch (including T = 0). Deferred, non-critical, Milky Way
+		// only — see deferred-catalog-evolution-plan.md. This is a note, not a
+		// check: it must not move the pass count.
+		if (runFirstLight || runContinuity || runMorphology) {
+			note('deferred', 'Milky Way catalog stars are out of evolution (static reference-epoch look at every epoch); these suites use catalogBudgetStars=0 and cannot detect it — see deferred-catalog-evolution-plan.md');
+		}
+
 		// 1. WGSL shader compilation smoke
 		if (runShaders) {
 			if (onProgress) onProgress('compiling WGSL shaders');
