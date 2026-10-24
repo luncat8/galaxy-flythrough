@@ -2530,3 +2530,39 @@ enough to be printed.
 Skill: a feature tested through a re-implementation is tested as prose. Reach
 into the module (`renderer.censusFormedAt`) from the harness, and pin the
 endpoints with strict equality — the fallback-free path is where the bug lives.
+
+## 2026-10-24 — A per-frame step on a clock must compose
+
+The gas grid's burn is driven by the *epoch delta*, not by wall time, so the
+obvious loop step — `m' = m − k·rate·dt` — makes the picture depend on how the
+clock got there: the same epoch reached in 60 frames and in 6 000 is a different
+galaxy, a slider drag is a third, and a step size that happens to be large
+subtracts more gas than the cell has. Writing the burn as `m' = m·exp(−rate·dt)`
+fixes all three at once: the analytic solution composes exactly (one 5 Gyr step
+lands where 500 × 10 Myr steps land, < 1e-6 in the test), `m` can never go
+negative, and the state is a pure function of the epoch, so a rewind is a
+re-fill rather than a negative burn. Whenever a quantity is integrated from a
+clock a user can drive, ask "is this state a function of the clock's value or of
+its history?" — and if it must be the value, integrate the closed form.
+
+Skill: pin the invariant, not the loop. `step(5 Gyr) === 500 × step(10 Myr)`
+catches Euler and a wrong `dt` in one assertion, and the same test doubles as the
+documentation for why the shader uses `exp`.
+
+## 2026-10-24 — Calibrating a picture to an account: pin both ends, measure the middle
+
+The gas grid had to agree with the F4 census account (§4) without reading back
+from the GPU. The shape of the law (arm compression, Schmidt–Kennicutt exponent)
+was a modelling choice; the *total* was not. Solving one constant (`burnC`) by
+bisection so the grid's total is exactly 1 at `T = 0` and exactly `gasFraction`
+at `AGE_REF` turns "looks about right" into two exact endpoints, and makes the
+middle a measured error rather than a hoped-for one — a 256-bin histogram of the
+per-cell rate makes the whole check O(256) per frame, so the panel can print
+`gas Δ` continuously. A zero endpoint is its own case: an elliptical reports
+`gasFraction = 0`, and the honest answer is the ceiling with `clamped: false`,
+not a bisection walking to a meaningless root and reporting a clamp.
+
+Skill: when a derived quantity must match another subsystem, calibrate *to that
+subsystem's endpoints* by construction, then measure the interior with a cheap
+histogram; and give the degenerate target (0 here) its own explicit branch so
+`clamped` keeps meaning "the fit failed", not "the value is extreme".

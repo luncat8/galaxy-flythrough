@@ -42,6 +42,7 @@ const objectsLib = require('../src/math/objects.js');
 // cluster layer must be registered before any renderer is created.
 const clustersLib = require('../src/math/clusters.js');
 const nebulaLib = require('../src/math/nebula.js');
+require('../src/math/gas-grid.js');
 const Camera = require('../src/core/camera.js');
 
 const checks = [];
@@ -187,25 +188,33 @@ console.log(`Prepared in ${prepareMs} ms: ${prepareState.proceduralStars} proced
 
 // --- Shader + pipeline wiring -------------------------------------------
 {
-        check('four shader modules are created (sprite, tonemap, nebula, simple-step)',
-                gpu.shaderModules.length === 4
+        // 0.7.4 adds the two gas-grid modules: the burn step (compute) and the
+        // cell splats (vertex + fragment). Every module still comes from one
+        // SHADERS entry, so a missing one is a drift, not a style choice.
+        check('six shader modules are created (sprite, tonemap, nebula, gas step, gas cell, simple-step)',
+                gpu.shaderModules.length === 6
                 && gpu.shaderModules[0].code === window.GalaxyShaders.SHADERS['star-sprite']
                 && gpu.shaderModules[1].code === window.GalaxyShaders.SHADERS['tonemap']
                 && gpu.shaderModules[2].code === window.GalaxyShaders.SHADERS['nebula-billboard']
-                && gpu.shaderModules[3].code === window.GalaxyShaders.SHADERS['simple-step'],
+                && gpu.shaderModules[3].code === window.GalaxyShaders.SHADERS['gas-step']
+                && gpu.shaderModules[4].code === window.GalaxyShaders.SHADERS['gas-cell']
+                && gpu.shaderModules[5].code === window.GalaxyShaders.SHADERS['simple-step'],
                 { modules: gpu.shaderModules.map(s => s.label) });
         check('all wired shaders declare their entry points',
-                gpu.shaderModules.filter(s => s.label !== 'simple-step')
+                gpu.shaderModules.filter(s => s.label !== 'simple-step' && s.label !== 'gas-step')
                         .every(s => /@vertex\s+fn\s+vs_main/.test(s.code) && /@fragment\s+fn\s+fs_main/.test(s.code))
-                && /@compute/.test(gpu.shaderModules[3].code)
-                && /fn\s+main\(@builtin\(global_invocation_id\)/.test(gpu.shaderModules[3].code));
+                && gpu.shaderModules.filter(s => s.label === 'simple-step' || s.label === 'gas-step')
+                        .every(s => /fn\s+main\(@builtin\(global_invocation_id\)/.test(s.code)),
+                gpu.shaderModules.map(s => s.label));
         const spritePipeline = gpu.pipelines.find(p => p.label === 'star-sprite-pipeline');
         const tonemapPipeline = gpu.pipelines.find(p => p.label === 'tonemap-pipeline');
         const nebulaPipeline = gpu.pipelines.find(p => p.label === 'nebula-billboard-pipeline');
         const stepPipeline = gpu.pipelines.find(p => p.label === 'simple-step-pipeline');
-        check('four pipelines are created (sprite, tonemap, nebula, simple-step) — no hdr-direct bypass',
+        const gasStepPipeline = gpu.pipelines.find(p => p.label === 'gas-step-pipeline');
+        const gasCellPipeline = gpu.pipelines.find(p => p.label === 'gas-cell-pipeline');
+        check('six pipelines are created (sprite, tonemap, nebula, gas step, gas cell, simple-step) — no hdr-direct bypass',
                 !!spritePipeline && !!tonemapPipeline && !!nebulaPipeline && !!stepPipeline
-                && gpu.pipelines.length === 4,
+                && !!gasStepPipeline && !!gasCellPipeline && gpu.pipelines.length === 6,
                 gpu.pipelines.map(p => p.label));
         check('the simple-step pipeline is a compute pipeline with a main entry',
                 !!stepPipeline && !!stepPipeline.compute && stepPipeline.compute.entryPoint === 'main',
@@ -605,10 +614,11 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         check('the re-attached catalog streams back in on the next frame',
                 back.cellsResident === manifest.cellCount && back.catalogResidentStars > 0,
                 { resident: back.cellsResident, stars: back.catalogResidentStars });
-        const passes = gpu.passes.slice(-3);
-        check('both modes submit the same three passes, so the switch costs no pipeline',
-                passes.length === 3 && passes[0].label === 'star-sprites'
-                && passes[1].label === 'nebula-billboards' && passes[2].label === 'tonemap',
+        const passes = gpu.passes.slice(-4);
+        check('both modes submit the same four passes, so the switch costs no pipeline',
+                passes.length === 4 && passes[0].label === 'star-sprites'
+                && passes[1].label === 'nebula-billboards' && passes[2].label === 'gas-grid'
+                && passes[3].label === 'tonemap',
                 passes.map(pass => pass.label));
 }
 
@@ -1072,13 +1082,14 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         renderer.render(camera, WIDTH, HEIGHT, 5 / 60, far);
         check('a camera outside the catalog volume drops every catalog star',
                 renderer.state.catalogResidentStars === 0, renderer.state.catalogResidentStars);
-        // Three more passes were appended (star-sprites + nebulae + tonemap).
+        // Four more passes were appended (star-sprites + nebulae + gas + tonemap).
         const newPasses = gpu.passes.slice(passesBefore);
-        check('the frame still produces three passes (star + nebulae + tonemap)',
-                newPasses.length === 3
+        check('the frame still produces four passes (star + nebulae + gas + tonemap)',
+                newPasses.length === 4
                 && newPasses[0].label === 'star-sprites'
                 && newPasses[1].label === 'nebula-billboards'
-                && newPasses[2].label === 'tonemap',
+                && newPasses[2].label === 'gas-grid'
+                && newPasses[3].label === 'tonemap',
                 newPasses.map(p => p.label));
         // The star pass still drew procedural + landmark stars even with no catalog.
         check('the star pass draws the procedural field + landmarks + objects (no local/catalog when outside volume)',
@@ -1128,11 +1139,12 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
         hdrRenderer.render(camera, WIDTH, HEIGHT, 7 / 60, hdrInput);
 
         const newPasses = hdrGpu.passes.slice(passesBefore);
-        check('the HDR path runs three passes (star-sprites + nebulae + tonemap), same as SDR',
-                newPasses.length === 3
+        check('the HDR path runs four passes (star-sprites + nebulae + gas + tonemap), same as SDR',
+                newPasses.length === 4
                 && newPasses[0].label === 'star-sprites'
                 && newPasses[1].label === 'nebula-billboards'
-                && newPasses[2].label === 'tonemap',
+                && newPasses[2].label === 'gas-grid'
+                && newPasses[3].label === 'tonemap',
                 newPasses.map(p => p.label));
         check('the HDR path creates an rgba16float intermediate texture',
                 hdrGpu.textures.some(t => t.label === 'hdr-intermediate' && t.format === 'rgba16float'),
@@ -1196,8 +1208,11 @@ function cellManagerFrom(m, budget) {
                 engRenderer.state.engine === 'classic' && totalSlots === starBuf.size / 16,
                 { engine: engRenderer.state.engine, slots: totalSlots });
         const birthBuf = engGpu.buffers.find(b => b.label === 'star-birth-times');
-        check('state.bufferBytes counts the star, nebula, theta and birth buffers',
-                engRenderer.state.bufferBytes === starBuf.size + nebBuf.size + thetaBuf.size + birthBuf.size,
+        const gasA = engGpu.buffers.find(b => b.label === 'gas-grid-a');
+        const gasB = engGpu.buffers.find(b => b.label === 'gas-grid-b');
+        check('state.bufferBytes counts the star, nebula, theta, birth and two gas-grid buffers',
+                engRenderer.state.bufferBytes === starBuf.size + nebBuf.size + thetaBuf.size + birthBuf.size
+                        + gasA.size + gasB.size,
                 { bufferBytes: engRenderer.state.bufferBytes });
         const fixedSlots = 1000 + window.Landmarks.count + 100;
         const fixedTheta = engGpu.thetaWrites.find(w => w.offset === 0);

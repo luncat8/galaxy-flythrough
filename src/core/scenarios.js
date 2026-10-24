@@ -107,6 +107,12 @@ function liveLine(state) {
 	const total = Number.isFinite(s.totalSteps) ? s.totalSteps
 		: (Number.isFinite(s.ageMax) && Number.isFinite(s.ageMin) && Number(s.ageStep) > 0
 			? Math.round((s.ageMax - s.ageMin) / s.ageStep) : null);
+	// The grid's own mass against the drawn-census gas: the one number that says
+	// the gas picture and the stars' account agree (0.7.4 / F5). Signed, because
+	// a negative drift is the grid holding less than the account.
+	const drift = Number.isFinite(s.gasDelta)
+		? (s.gasDelta >= 0 ? '+' : '\u2212') + Math.abs(s.gasDelta).toFixed(3)
+		: '\u2014';
 	return (s.mode || '\u2014') + ' \u00b7 ' + num(age, 1) + ' Gyr'
 		+ (step === null || total === null || !Number.isFinite(step) ? '' : ' (step ' + step + '/' + total + ')')
 		+ ' \u00b7 star ' + (s.rate || '\u2014')
@@ -115,7 +121,8 @@ function liveLine(state) {
 		+ ' \u00b7 gas ' + num(s.gas, 2)
 		+ ' \u00b7 arms \u00d7' + num(s.arms, 2)
 		+ ' \u00b7 bulge \u00d7' + num(s.bulge, 2)
-		+ ' \u00b7 draws ' + (Number.isFinite(s.draws) ? s.draws : 0);
+		+ ' \u00b7 draws ' + (Number.isFinite(s.draws) ? s.draws : 0)
+		+ ' \u00b7 gas \u0394 ' + drift;
 }
 
 function byId(id) {

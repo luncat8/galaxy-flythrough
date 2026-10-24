@@ -53,6 +53,19 @@ const PROCEDURAL_STARS_DEFAULT = 300000;
 // SFH gasNow only for the field's arm contrast. The bin count is a power of two
 // so the bin index is a shift.
 const GAS_HIST_BINS = 1024;
+// Gas grid (0.7.4 / F5): 64 × 96 × 4 cells × 4 f32 slots. The uniform is four
+// vec4 lanes (dt/burn/smoothing/arm amplitude, the arm law, the geometry, and
+// the draw's own lanes). The gain is a look constant like MIN_ALPHA: it turns a
+// cell's mass fraction into linear radiance, and the 1.0-at-T=0 grid is the
+// whole picture at First light.
+const GAS_UNIFORM_FLOATS = 16;
+const GAS_STEP_WORKGROUP = 64;
+// Calibrated from the CPU projection the gas-grid test pins (640 × 400, face-on,
+// 45 kpc): at gain 15 000 the median covered pixel is 0.064 linear at T = 0
+// (p90 0.97 — the arm crests are the bright part of the whole picture) and
+// 0.0083 at AGE_REF (p90 0.14, a faint haze under the present-day sky). A look
+// constant like MIN_ALPHA, not a model number — its browser verdict is V14's.
+const GAS_GAIN_DEFAULT = 15000;
 const TWO_PI = 2 * Math.PI;
 const CATALOG_BUDGET_DEFAULT = 250000;
 const LOCAL_PROCEDURAL_DEFAULT = 20000; // gap-fill for density parity near the camera
@@ -144,6 +157,13 @@ function createStarRenderer(device, context, format, options) {
         };
         const SIMPLE_UNIFORM_FLOATS = orbit.SIMPLE_UNIFORM_FLOATS || 20;
         const SIMPLE_WORKGROUP = 64;
+        // The gas grid's CPU twin: geometry, the burn law's constants, the
+        // calibration and the readout account. Absent only in a harness that did
+        // not load it — the renderer then draws no gas and says so, rather than
+        // failing a boot over a look layer.
+        const gasLib = window.GasGridLib || null;
+        const gasGridEnabled = opts.gasGrid !== false && !!gasLib;
+        const gasGain = opts.gasGain === undefined ? GAS_GAIN_DEFAULT : Math.max(0, Number(opts.gasGain) || 0);
         const landmarks = window.Landmarks;
         if (!landmarks || !landmarks.count) {
                 throw new Error('Landmarks data missing: index.html must load data/landmarks.js before render/star-sprites.js');
@@ -373,6 +393,84 @@ function createStarRenderer(device, context, format, options) {
                 primitive: { topology: 'triangle-strip' },
         });
 
+        // --- Gas grid (0.7.4 / F5) ----------------------------------------------
+        // Two passes: `gas-step` integrates the burn over the frame's epoch delta
+        // (compute, one invocation per cell, A → B), `gas-cell` draws the cells as
+        // additive screen-space splats. The grid itself is 64 × 96 × 4 = 24 576
+        // vec4 cells, 384 KB per buffer, ping-pong pairs so a step never reads and
+        // writes one buffer. Its geometry, its arm law and its calibration are
+        // window.GasGridLib's (src/math/gas-grid.js) — the CPU mirror the tests and
+        // the panel read — and the two shader modules concatenate the same struct
+        // and the same helper functions, so the cell a step burns is the cell a
+        // splat draws.
+        const gasStepModule = device.createShaderModule({
+                label: 'gas-step',
+                code: window.GalaxyShaders.SHADERS['gas-step'],
+        });
+        gasStepModule.getCompilationInfo().then((info) => {
+                for (const message of info.messages) {
+                        if (message.type !== 'error') continue;
+                        console.error('WGSL error in gas-step:', `${message.lineNum}:${message.linePos} ${message.message}`);
+                }
+        }).catch(() => {});
+        const gasCellModule = device.createShaderModule({
+                label: 'gas-cell',
+                code: window.GalaxyShaders.SHADERS['gas-cell'],
+        });
+        gasCellModule.getCompilationInfo().then((info) => {
+                for (const message of info.messages) {
+                        if (message.type !== 'error') continue;
+                        console.error('WGSL error in gas-cell:', `${message.lineNum}:${message.linePos} ${message.message}`);
+                }
+        }).catch(() => {});
+
+        const gasUniformBuffer = device.createBuffer({
+                label: 'gas-uniform',
+                size: GAS_UNIFORM_FLOATS * 4,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        const gasUniformData = new ArrayBuffer(GAS_UNIFORM_FLOATS * 4);
+        const gasUniform = new Float32Array(gasUniformData);
+
+        const gasStepLayout = device.createBindGroupLayout({
+                label: 'gas-step-layout',
+                entries: [
+                        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+                        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+                        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+                ],
+        });
+        const gasStepPipeline = device.createComputePipeline({
+                label: 'gas-step-pipeline',
+                layout: device.createPipelineLayout({ bindGroupLayouts: [gasStepLayout] }),
+                compute: { module: gasStepModule, entryPoint: 'main' },
+        });
+        const gasCellLayout = device.createBindGroupLayout({
+                label: 'gas-cell-layout',
+                entries: [
+                        { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+                        { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+                        { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+                ],
+        });
+        const gasCellPipeline = device.createRenderPipeline({
+                label: 'gas-cell-pipeline',
+                layout: device.createPipelineLayout({ bindGroupLayouts: [gasCellLayout] }),
+                vertex: { module: gasCellModule, entryPoint: 'vs_main' },
+                fragment: {
+                        module: gasCellModule,
+                        entryPoint: 'fs_main',
+                        targets: [{
+                                format: HDR_INTERMEDIATE_FORMAT,
+                                blend: {
+                                        color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+                                        alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+                                },
+                        }],
+                },
+                primitive: { topology: 'triangle-strip' },
+        });
+
         // --- Simple-engine integrator (0.4.5) ------------------------------------
         // The compute pass that steps the friction-field azimuths while the
         // simple engine is selected. Uniform + pipeline are created once; the
@@ -505,6 +603,25 @@ function createStarRenderer(device, context, format, options) {
         let nebulaBindGroup = null;
         let nebulaStaging = null;
         let nebulaCount = 0;
+        // Gas grid state (0.7.4 / F5): the account (weights, rates, calibration,
+        // the readout histogram), the two grid buffers, the ping-pong bind groups
+        // and the CPU staging the draw fills once per field. `gasReadIsA` is the
+        // buffer the next pass reads — the step writes the other and flips it.
+        let gasAccount = null;
+        let gasBufferA = null;
+        let gasBufferB = null;
+        let gasStepGroups = null;      // [A→B, B→A]
+        let gasDrawGroups = null;      // [reads A, reads B]
+        let gasStaging = null;
+        let gasReadIsA = true;
+        let gasSteps = 0;
+        let gasAge = 0;
+        let gasVisible = gasGridEnabled;
+        let gasPendingDt = 0;
+        let gasDrawSerial = 0;
+        const gasAccountView = { age: 0, total: 1, gas: 1, drift: 0 };
+        const gasInfo = { cells: 0, enabled: gasGridEnabled, visible: gasGridEnabled, steps: 0, age: 0, burnC: 0,
+                gain: gasGain, drawSerial: 0 };
         // The sampled field, kept between regenerates: an age change re-rolls
         // what the stars are, not where they are, so the positions survive it and
         // only the records are rewritten (see regenerate).
@@ -541,6 +658,12 @@ function createStarRenderer(device, context, format, options) {
                 gasObjectStars: 0,
                 gasObjectCount: 0,
                 nebulaBillboards: 0,
+                gasCells: 0,
+                gasVisible: gasGridEnabled,
+                gasSteps: 0,
+                gasAge: 0,
+                gasTotal: 0,
+                gasDrift: 0,
                 localProceduralStars: 0,
                 catalogResidentStars: 0,
                 catalogThinnedStars: 0,
@@ -757,7 +880,8 @@ function createStarRenderer(device, context, format, options) {
                                 { binding: 1, resource: { buffer: nebulaBuffer } },
                         ],
                 });
-                state.bufferBytes = totalBytes + nebulaBytes + thetaBytes + Math.max(4, fixedCapacity * 4);
+                state.bufferBytes = totalBytes + nebulaBytes + thetaBytes + Math.max(4, fixedCapacity * 4)
+                        + (gasGridEnabled ? 2 * gasLib.GAS_BYTES : 0);
         }
 
         // Seed the simple-engine azimuths from the birth positions in staging.
@@ -1364,6 +1488,7 @@ function createStarRenderer(device, context, format, options) {
                 allocate(procedural, catalog);
                 budgetDirty = false;
                 sampleField();
+                drawGasGrid(model.populations.age);
                 writeLandmarks();
                 rebuildPopulation();
                 // Fresh positions mean a fresh simple epoch for the fixed
@@ -1395,6 +1520,180 @@ function createStarRenderer(device, context, format, options) {
                 if (nebulaCount > 0) {
                         device.queue.writeBuffer(nebulaBuffer, 0, nebulaStaging, 0, nebulaCount * billboardBytes);
                 }
+        }
+
+        // ---- 0.7.4 F5: the gas grid --------------------------------------------
+        //
+        // The gas is drawn once per field and then *placed* at the running epoch,
+        // exactly like the stars: its mass is an exact exponential burn of the
+        // epoch, so a frame's step is one compute dispatch over the cells and a
+        // clock that runs backwards is the same fill that produced the grid (no
+        // negative burn). Nothing here re-samples a star or re-rolls a cell.
+        function ensureGasBuffers() {
+                if (!gasGridEnabled || gasBufferA) return;
+                gasStaging = new Float32Array(gasLib.GAS_FLOATS);
+                const bytes = gasLib.GAS_BYTES;
+                gasBufferA = device.createBuffer({
+                        label: 'gas-grid-a',
+                        size: bytes,
+                        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                });
+                gasBufferB = device.createBuffer({
+                        label: 'gas-grid-b',
+                        size: bytes,
+                        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                });
+                gasStepGroups = [
+                        device.createBindGroup({
+                                label: 'gas-step-a-to-b',
+                                layout: gasStepLayout,
+                                entries: [
+                                        { binding: 0, resource: { buffer: gasUniformBuffer } },
+                                        { binding: 1, resource: { buffer: gasBufferA } },
+                                        { binding: 2, resource: { buffer: gasBufferB } },
+                                ],
+                        }),
+                        device.createBindGroup({
+                                label: 'gas-step-b-to-a',
+                                layout: gasStepLayout,
+                                entries: [
+                                        { binding: 0, resource: { buffer: gasUniformBuffer } },
+                                        { binding: 1, resource: { buffer: gasBufferB } },
+                                        { binding: 2, resource: { buffer: gasBufferA } },
+                                ],
+                        }),
+                ];
+                gasDrawGroups = [
+                        device.createBindGroup({
+                                label: 'gas-cell-a',
+                                layout: gasCellLayout,
+                                entries: [
+                                        { binding: 0, resource: { buffer: uniformBuffer } },
+                                        { binding: 1, resource: { buffer: gasBufferA } },
+                                        { binding: 2, resource: { buffer: gasUniformBuffer } },
+                                ],
+                        }),
+                        device.createBindGroup({
+                                label: 'gas-cell-b',
+                                layout: gasCellLayout,
+                                entries: [
+                                        { binding: 0, resource: { buffer: uniformBuffer } },
+                                        { binding: 1, resource: { buffer: gasBufferB } },
+                                        { binding: 2, resource: { buffer: gasUniformBuffer } },
+                                ],
+                        }),
+                ];
+        }
+
+        // The uniform the two gas passes share: the burn law and the grid's
+        // geometry (identical for both), plus the draw's own lanes. Packed at a
+        // draw and again on each step (the dt lane only), never per vertex.
+        function packGasUniform(account) {
+                const geo = account.geometry;
+                gasUniform[0] = 0;                                  // dt, set by a step
+                gasUniform[1] = account.burnC;
+                gasUniform[2] = gasLib.GAS_SMOOTHING;
+                gasUniform[3] = geo.armsAmp;
+                gasUniform[4] = geo.armsM;
+                gasUniform[5] = geo.armsK;
+                gasUniform[6] = geo.armsRs;
+                gasUniform[7] = geo.armsPhase0;
+                gasUniform[8] = geo.rMin;
+                gasUniform[9] = geo.rMax;
+                gasUniform[10] = geo.height;
+                gasUniform[11] = geo.centreX;
+                gasUniform[12] = geo.centreZ;
+                gasUniform[13] = gasLib.GAS_CELLS;
+                gasUniform[14] = gasGain;
+                gasUniform[15] = gasVisible ? 1 : 0;
+                device.queue.writeBuffer(gasUniformBuffer, 0, gasUniformData);
+        }
+
+        // Draw the gas for the field that was just sampled, at the epoch that is
+        // running. The calibration inside `initialize` is what makes the grid's
+        // total 1 at T = 0 and gasFraction at AGE_REF (setup work, ~20 ms).
+        function drawGasGrid(age) {
+                if (!gasGridEnabled) return;
+                const reference = drawReference || window.GalaxyLib.modelAtAge(model, window.GalaxyLib.AGE_REF);
+                const clock = Number.isFinite(age) ? age : model.populations.age;
+                ensureGasBuffers();
+                gasAccount = gasLib.initialize(reference, clock, seed, gasStaging);
+                packGasUniform(gasAccount);
+                device.queue.writeBuffer(gasBufferA, 0, gasStaging);
+                gasReadIsA = true;
+                gasSteps = 0;
+                gasAge = clock;
+                gasDrawSerial++;
+                gasInfo.cells = gasLib.GAS_CELLS;
+                gasInfo.burnC = gasAccount.burnC;
+                gasInfo.age = clock;
+                gasInfo.drawSerial = gasDrawSerial;
+                state.gasCells = gasLib.GAS_CELLS;
+                state.gasAge = clock;
+                state.gasSteps = 0;
+                state.gasTotal = 1;
+                state.gasDrift = 0;
+        }
+
+        // A rewound clock is a re-fill, not a negative burn: the law is a pure
+        // function of the epoch, so this lands on exactly the gas a run through
+        // the same ages would have left.
+        function refillGasGrid(age) {
+                if (!gasAccount) return;
+                gasLib.fillGrid(gasAccount, age, seed, gasStaging);
+                device.queue.writeBuffer(gasBufferA, 0, gasStaging);
+                gasReadIsA = true;
+                gasSteps = 0;
+                gasAge = age;
+                state.gasAge = age;
+                state.gasSteps = 0;
+        }
+
+        // Queue one step for the frame's epoch delta. The encoder dispatches it
+        // before the sprite pass so this frame draws the gas it just burned.
+        function planGasStep(dt) {
+                if (!(dt > 0)) return;
+                gasUniform[0] = dt;
+                device.queue.writeBuffer(gasUniformBuffer, 0, gasUniformData);
+                gasPendingDt = dt;
+        }
+
+        // The grid's own mass against the drawn-census account (F4), O(256) from
+        // the rate histogram: the `gas Δ` the Formation checks panel prints. It is
+        // exact at both endpoints by construction and measured in between.
+        function gasAccountAt(age) {
+                if (!gasAccount) return null;
+                const t = Number.isFinite(age) ? age : model.populations.age;
+                const total = gasLib.totalAt(gasAccount, t);
+                const gas = censusGasAt(t);
+                gasAccountView.age = t;
+                gasAccountView.total = total;
+                gasAccountView.gas = gas;
+                gasAccountView.drift = total - gas;
+                state.gasTotal = total;
+                state.gasDrift = gasAccountView.drift;
+                return gasAccountView;
+        }
+
+        function setGasVisible(on) {
+                gasVisible = !!on;
+                state.gasVisible = gasVisible;
+                gasInfo.visible = gasVisible;
+                if (gasGridEnabled) {
+                        gasUniform[15] = gasVisible ? 1 : 0;
+                        device.queue.writeBuffer(gasUniformBuffer, 0, gasUniformData);
+                }
+                return gasVisible;
+        }
+
+        function gasGridInfo() {
+                gasInfo.cells = gasAccount ? gasLib.GAS_CELLS : 0;
+                gasInfo.visible = gasVisible;
+                gasInfo.steps = gasSteps;
+                gasInfo.age = gasAge;
+                gasInfo.burnC = gasAccount ? gasAccount.burnC : 0;
+                gasInfo.drawSerial = gasDrawSerial;
+                return gasInfo;
         }
 
         // Rebuild the field for another galaxy. Deliberate and synchronous (the
@@ -1648,6 +1947,15 @@ function createStarRenderer(device, context, format, options) {
                         if (simpleSteps > 0) device.queue.writeBuffer(simpleUniformBuffer, 0, simpleUniformData);
                 }
 
+                // Gas grid (0.7.4 / F5): the mass follows the epoch, so the step's dt
+                // is the frame's age delta and not the wall clock — a slider jump and
+                // a slow run land on the same gas. A rewound clock re-fills.
+                if (gasGridEnabled && gasAccount) {
+                        const ageNow = model.populations.age;
+                        if (ageNow < gasAge) refillGasGrid(ageNow);
+                        else if (ageNow > gasAge) planGasStep(ageNow - gasAge);
+                }
+
                 const instances = state.proceduralStars + landmarkCount + objectCapacity + localProceduralCount + catalogResident;
                 state.drawn = instances;
 
@@ -1664,6 +1972,22 @@ function createStarRenderer(device, context, format, options) {
                         stepPass.setBindGroup(0, simpleBindGroup);
                         stepPass.dispatchWorkgroups(Math.ceil(totalRecordCount / SIMPLE_WORKGROUP));
                         stepPass.end();
+                }
+
+                // Pass 0b: the gas burn, one invocation per cell, A → B. It runs
+                // before the sprites so this frame draws the grid it just stepped.
+                if (gasPendingDt > 0 && gasStepGroups) {
+                        const gasPass = encoder.beginComputePass({ label: 'gas-step' });
+                        gasPass.setPipeline(gasStepPipeline);
+                        gasPass.setBindGroup(0, gasReadIsA ? gasStepGroups[0] : gasStepGroups[1]);
+                        gasPass.dispatchWorkgroups(Math.ceil(gasLib.GAS_CELLS / GAS_STEP_WORKGROUP));
+                        gasPass.end();
+                        gasReadIsA = !gasReadIsA;
+                        gasAge = model.populations.age;
+                        gasPendingDt = 0;
+                        gasSteps++;
+                        state.gasSteps = gasSteps;
+                        state.gasAge = gasAge;
                 }
 
                 // Pass 1: additive sprites into the rgba16float HDR intermediate.
@@ -1699,6 +2023,24 @@ function createStarRenderer(device, context, format, options) {
                 nebulaPass.draw(4, nebulaCount, 0, 0);
                 nebulaPass.end();
 
+                // Pass 2b: the gas grid, additive over the nebulae it is made of.
+                // One instanced draw over the whole grid; a cell below the flux
+                // floor returns the hidden vertex, so the cost is its vertices.
+                if (gasGridEnabled && gasAccount && gasVisible && gasDrawGroups) {
+                        const gasRender = encoder.beginRenderPass({
+                                label: 'gas-grid',
+                                colorAttachments: [{
+                                        view: hdrView,
+                                        loadOp: 'load',
+                                        storeOp: 'store',
+                                }],
+                        });
+                        gasRender.setPipeline(gasCellPipeline);
+                        gasRender.setBindGroup(0, gasReadIsA ? gasDrawGroups[0] : gasDrawGroups[1]);
+                        gasRender.draw(4, gasLib.GAS_CELLS, 0, 0);
+                        gasRender.end();
+                }
+
                 // Pass 3: fullscreen tone-map into the swapchain. No blend,
                 // alpha = 1.0. On SDR output is clamped [0,1] and the canvas
                 // encodes sRGB; on HDR values can exceed 1.0 for the
@@ -1728,6 +2070,8 @@ function createStarRenderer(device, context, format, options) {
                 if (starBuffer) starBuffer.destroy();
                 if (birthBuffer) birthBuffer.destroy();
                 if (nebulaBuffer) nebulaBuffer.destroy();
+                if (gasBufferA) gasBufferA.destroy();
+                if (gasBufferB) gasBufferB.destroy();
                 if (thetaBuffer) thetaBuffer.destroy();
                 if (hdrTexture) hdrTexture.destroy();
                 uniformBuffer.destroy();
@@ -1764,6 +2108,12 @@ function createStarRenderer(device, context, format, options) {
                 shaderError: () => shaderError,
                 censusGasAt,
                 censusFormedAt,
+                // The gas grid (0.7.4): what the Formation checks panel reads
+                // (`gasAccountAt` is O(256) and allocates nothing), and the look
+                // toggle a comparison press flips.
+                gasAccountAt,
+                gasGridInfo,
+                setGasVisible,
         };
 }
 
@@ -1779,6 +2129,7 @@ const StarRenderer = {
         HEADROOM_DEFAULT, HEADROOM_MIN, HEADROOM_MAX,
         HIGHLIGHT_DESAT_DEFAULT, HIGHLIGHT_DESAT_MIN, HIGHLIGHT_DESAT_MAX,
         HDR_INTERMEDIATE_FORMAT,
+        GAS_UNIFORM_FLOATS, GAS_STEP_WORKGROUP, GAS_GAIN_DEFAULT,
 };
 if (typeof module !== 'undefined') module.exports = StarRenderer;
 if (typeof window !== 'undefined') window.StarRenderer = StarRenderer;

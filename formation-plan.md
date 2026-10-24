@@ -28,7 +28,7 @@ path, and it would fight this series for the same records. See §11.
 | F2 | **The gate is per-star and GPU-side.** One `f32` birth per global-field star in a storage buffer, one `smoothstep` in the vertex stage, one uniform lane. No per-frame CPU pass, no record rewrite. | shipped 0.7.1 |
 | F3 | **The look follows the star's own age** (`T − birth`), not a re-draw of the age distribution at each epoch. `deriveStarWithAge` already exists and is the whole entry point. | shipped 0.7.1 |
 | F4 | **The gas account reads the drawn census, including the smooth gate.** One 1024-bin birth histogram per draw; integrate the binned `smoothstep` presence and normalize by its value at `AGE_REF`, then `gas(T) = 1 − formed(T)·(1 − gasFraction)`, with both endpoints returned by name so `gas(AGE_REF)` is the type's own fraction bit for bit. Exact at both ends, with a measured histogram error bound between them. Every epoch landing (drag, live tick, re-draw, boot) goes through one solve, so no path keeps the SFH prior while another uses the account (0.7.3a). | shipped 0.7.3, corrected 0.7.3a |
-| F5 | **The gas picture is a coarse grid** (64 r × 96 φ × 4 z = 24 576 cells), integrated by a compute pass, ping-pong buffers, **no atomics**. Races allowed where a scatter would need them; the drift is bounded and measured. | do |
+| F5 | **The gas picture is a coarse grid** (64 r × 96 φ × 4 z = 24 576 cells), integrated by a compute pass, ping-pong buffers, **no atomics**. The cell's burn is an *exact exponential* of the epoch delta (`m' = m·exp(−burnC·boost^1.5·dt)`), so a step composes: one 5 Gyr dispatch lands where 5 000 of 1 Myr land, a rewind is a re-fill rather than a negative burn, and the grid is a function of the epoch instead of the frame size. `burnC` is calibrated at draw time so the grid's total is exactly 1 at `T = 0` and the type's own gas fraction at `AGE_REF`; a 256-bin rate histogram makes the drift against F4's account an O(256) read (`gas Δ`), and the shader and the model are pinned against each other by `wgsl-exec`. | shipped 0.7.4 |
 | F6 | **The smoothness contract comes first** (§6). No epoch may re-sample, re-roll or re-place anything that was already on screen. The object block's 0.02 Gyr re-roll is the one confirmed jump and is fixed by this series. | do |
 | F7 | **Deep time is a real epoch.** `AGE_MIN` 0.2 → 0, with the zero-factor traps in §7 resolved rather than clamped away. | shipped 0.7.2 |
 | F8 | Per-star gas particles; a second star population spawned by the gas; N-body; a re-sample per epoch; money | **refused** (§9) |
@@ -248,66 +248,114 @@ between, which is the licence §2.2's table measures.
 ### 5.1 The grid
 
 ```
-GAS_RINGS = 64      log-spaced r ∈ [0.02, 1.4] · discRadius
+GAS_RINGS = 64      log-spaced r ∈ [0.02, 1.0] · discRadius
 GAS_SPOKES = 96     φ
-GAS_SLABS = 4       z ∈ ±2 H(R)
-cells = 24 576      · 2 buffers (ping-pong) · 4 f32 slots = 786 KB
+GAS_SLABS = 4       z ∈ ±2 H(R), slab centres at ±0.5 H and ±1.5 H
+cells = 24 576      · 2 buffers (ping-pong) · 4 f32 slots = 384 KB each
 ```
 
-Four slots per cell: `m` (gas mass in arbitrary units, Σ = 1 at `T = 0`), `Z`
-(the metallicity the births left behind, readout only in this series), `w`
-(a slowly varying turbulence weight that gives the field its look), and `s`
-(the smoothed star-formation rate the last step wrote, for the display).
+Four slots per cell: `m` (mass in units where the grid sums to 1 at `T = 0`),
+`Z` (relative enrichment, readout only in this series), `w` (a stable
+per-cell turbulence weight that gives the splats their texture) and `s` (the
+smoothed star-formation rate the last step wrote, for 0.7.5's local nebula
+rates). The index is `(ring·SPOKES + spoke)·SLABS + slab`, so a column's four
+slabs are adjacent and the step reads its own column without striding.
 
-### 5.2 The step
+The ring range stops at the field's truncation radius (`discRadius`) rather than
+the 1.4× the first draft used: beyond it the sampler draws no stars, so gas there
+would be a picture of nothing. The width of a cell is its own footprint — the
+larger of the radial step and `R·Δφ` — which is also the splat size, so the gas
+disc keeps the grid's geometry at any camera.
 
-One compute dispatch per frame when the clock is running, over
-`ceil(cells / 64)` workgroups:
+### 5.2 The law
 
 ```
-disp   = Σ_slab m · (1 + β·cos(m·(φ − Ω_p·t) − phase0))      // the arm compression
-sfr    = min(m, DISP_EFF · disp^1.5 · dt)                      // Schmidt–Kennicutt
-m'     = m − sfr                                               // gas burned into stars
-s'     = mix(s, sfr / max(dt, ε), 0.25)                        // display smoothing
+boost  = max(0, 1 + amp·cos(m·φ − K·ln(R/Rs) + phase0))   the field's own ridge
+rate   = burnC · boost^1.5                                 Schmidt–Kennicutt on the
+                                                           crest's compressed density
+m'     = m · exp(−rate · dt)                               exact, composes
+s'     = s + (sfr − s) · GAS_SMOOTHING                     the display rate
 ```
 
-Every cell is read from buffer A and written to buffer B, one invocation per
-cell, so **there are no races at all** and no atomics: the ping-pong pair is what
-buys the freedom the brief allows. `Ω_p` and `phase0` are the model's own
-(`orbit.instantPatternSpeed`, `arms.phase0`) so the gas compresses along the same
-ridge the stars and the nebulae use.
+`Ω_p` and `phase0` are the model's own (the ridge constant `K = m/tan(pitch)`,
+the arm amplitude, `Rs`), so the gas burns where the stars' arms and the nebulae
+are. The cell is a *pattern-family* body: it keeps its arm phase for the whole
+run and is drawn rotated by the same closed form the nebula layer uses
+(`camera.dynA.z·starTime + waveB.w`) plus the epoch's ridge re-anchor and heat
+scale (`camera.epoch.x/z`). The phase is therefore never baked into a cell and a
+slider jump cannot leave the gas pattern behind the arms.
 
-### 5.3 Races, where they are allowed
+Why the exponential and not a per-frame Euler step of a linear rate: the step is
+driven by the *epoch* (a frame's delta of star time), and Euler would make the
+grid depend on the frame size — the same epoch reached in 60 steps and in 6 000
+would show different gas, and a slider drag would be a different galaxy. `exp`
+composes, so the grid is a pure function of `T`. A clock that runs *backwards* is
+a re-fill (`fillGrid` at the new age, 24 576 exps ≈ 1 ms), never a negative burn.
 
-The allowance is for the *scatter*: if a later slice spawns a visible
-star-formation event and debits its mass in the cell it landed in, two events in
-one cell in one frame can each read the same pre-frame `m` and over-debit. That
-is accepted, with a measured budget:
+### 5.3 The calibration and the readout
 
-- the drift is reported in the epoch readout as `gas Δ` (the grid's own sum
-  against `gas(T)` from §4),
-- it is bounded by `EVENTS_PER_FRAME / cells` and stays under **1 % per Gyr** in
-  the measurement §10 pins,
-- it never gates anything: each field star's birth and GPU gate are exact,
-independent of the gas histogram/grid, so a lost gram of gas can never make a
-star appear early or late.
+`burnC` is solved once per draw by bisection over `[0, 64]` against the two
+endpoints the F4 account requires:
 
-The physics argument is the brief's, and the plan adopts it explicitly: the
-model already has dark matter, unmodelled feedback and an unmodelled IMF cut, so
-a sub-percent mass leak is inside the theory's own gaps. What it must never do is
-show as a visible count difference between the gas and the stars, which the
-`gas Δ` readout is there to make impossible to miss.
+```
+Σ m0·exp(−burnC·rate·0)        = 1            (First light: all gas)
+Σ m0·exp(−burnC·rate·AGE_REF)  = gasFraction  (the type's own present-day gas)
+```
+
+Between them the crests empty first — after the reference span the arm ridge
+holds less gas than the inter-arm troughs, which is the picture the slice exists
+for. Because the two endpoints are pinned and the in-between shape is the local
+law, the drift against `censusGasAt` is small and measured: a 256-bin histogram
+of `rate` weighted by `m0` makes `totalAt(age)` an O(256) sum, so the **Formation
+checks** panel prints `gas Δ` (the grid's total minus the account) on every
+frame (`ScenarioLib.liveLine`), and the test pins the histogram against the exact
+O(24 576) sum.
+
+The grid's total is *not* read back from the GPU: the readout integrates the same
+calibrated law on the CPU, which is exact at both endpoints by construction. A
+GPU readback would need a reduction pass (the plan refuses atomics) for a number
+that is already known analytically.
 
 ### 5.4 The look
 
-The grid draws as additive screen-space quads through the existing density-cell
-path (path C): one instanced draw over the cells with `m > 0`, each a wide
-low-alpha additive splat tinted cold (a dust lane would need an occlusion pass —
-not in this series). The composite nebula/HII billboards keep their own layer and
-take their *rate* from the local `s` instead of the global scalar when the grid is
-live, with `gasNow` as the fallback for any consumer without a grid. At `T =
-AGE_REF` the grid is 15 % of the cells' worth of gas and reads as the same dust
-the nebula layer already implies; at `T = 0` it is the whole picture.
+The grid draws as additive screen-space quads into the same `rgba16float`
+intermediate as the stars and the nebulae: one instanced draw over all cells,
+each a wide soft splat tinted cold (`GAS_COLOR`), sized by the cell's footprint
+and floored at 2 px so a distant galaxy stays a haze rather than a moiré. The
+flux is the cell's mass times a look gain (`GAS_GAIN_DEFAULT`), modulated by its
+turbulence weight; a cell below the flux floor returns the hidden vertex, so a
+burned-out cell costs only its four vertex invocations. The gain was picked from
+a CPU projection of the grid at a 640 × 400 frame: with 15 000 the median gas
+pixel is 0.10 linear at `T = 0` (the whole picture, the stars gated off) and
+0.015 at `AGE_REF` (a faint haze under the present-day sky). It is a look
+constant like `MIN_ALPHA`, not a model number, and the browser pass (V14) owns
+its verdict.
+
+The composite nebula/HII billboards keep their own layer and still read the
+global scalar; taking their rate from the local `s` is 0.7.5.
+
+### 5.5 Races
+
+There are none: every cell is read from buffer A and written to buffer B by one
+invocation, and the ping-pong pair is what leaves room for a future scatter (a
+star-formation event debiting the cell it landed in — 0.7.5 or later). Nothing in
+this slice scatters, so nothing drifts: the `gas Δ` readout measures the
+calibration's own histogram error (< 0.25 % of the grid's mass), not a race.
+
+### 5.6 The surface
+
+- `src/math/gas-grid.js` (one API object): the constants, the cell geometry
+  (`cellRadius`, `cellAzimuth`, `cellHeight`, `ringEdge`, `cellBoost`), the
+  account (`initialize`, `fillGrid`, `step`, `total`, `totalAt`, `totalAtExact`).
+- `renderer.gasGridInfo()`, `renderer.gasAccountAt(age)`,
+  `renderer.setGasVisible(on)`; `state.gasCells/gasSteps/gasAge/gasVisible/
+  gasTotal/gasDrift` for the HUD.
+- `src/render/shaders.js`: `gas-common` (the struct, the cell geometry and the
+  arm law), `gas-step` (compute, 64 invocations per workgroup, `ceil(cells/64)`
+  workgroups) and `gas-cell` (the splats). The camera lane is one shared
+  `CAMERA_UNIFORM` part, concatenated into the nebula and gas modules.
+- Preset field: none. Turning the gas on or off is a look, and a preset that
+  rebuilt the field for it would break R1.
 
 ## 6. The smoothness contract (F6)
 
@@ -376,7 +424,7 @@ existing `age`, `evolve` and `stars` fields already place a run.
 | Spawn a new star population from the gas | The census is fixed at the draw; a spawning population would need a new key space, a new picker and a new label path — and it is the re-sample this series exists to remove |
 | Re-sample the field when a star is born | The one thing that causes the jumps. The gate is a scalar for exactly this reason |
 | True N-body or a gravity solver | Out of scope since 0.1; the density field is the source of truth |
-| Atomics for the gas | The ping-pong pair removes the need; the scatter's allowance (§5.3) is cheaper than a serialised atomic path and is measured |
+| Atomics for the gas | The ping-pong pair and one invocation per cell remove the need; nothing in this slice scatters, and a serialised atomic path would be slower than the read A / write B pair for a grid this size |
 | A dust/occlusion pass | A different render path (depth, alpha), a different series |
 | Money, prices | F4 in `trade-3-plan.md`, unchanged |
 | E5 events folded in here | Different records, different re-sampling path — see §11 |
@@ -397,6 +445,19 @@ later gas-account and grid slices will add their own focused experiments.
   gasFraction`), monotone in `T`, `gas + formed = 1` inside 1e-12, the 1024-bin
   gate-weighted histogram is within 0.25 % absolute of the exact O(N) reference
   over the full age range, and its per-frame evaluation stays under 1 ms.
+- **The gas grid (F5).** The grid is the size the CPU model draws; the weights
+  are normalised and empty past the truncation; the calibrated total is 1 at
+  `T = 0` and the type's gas fraction at `AGE_REF` for every type; the total is
+  monotone in `T`; one 5 Gyr step lands where 500 × 10 Myr steps land (< 1e-6);
+  the crests hold less gas than the troughs after the burn; the 256-bin
+  histogram is within 0.25 % of the exact sum; the turbulence slot is
+  deterministic in the draw seed. The renderer half runs on the mock device: two
+  buffers at the model size, one draw upload, one dispatch per epoch delta and
+  none when the clock is frozen, the ping-pong swap, the draw reading the buffer
+  the step wrote, a rewind re-filling instead of burning backwards, the uniform
+  lanes, `setGasVisible`, and `dispose`. `wgsl-exec` executes the shipping
+  `gas-step` and `gas-cell` against the same model (mass within 2e-4 relative,
+  the splat at the geometry the CPU draws, an empty cell hidden).
 - **Gate.** `gateAt` is 0 at `birth`, 1 at `birth + FADE`, monotone and
   continuous through the fade. `wgsl-exec` compares the WGSL `smoothstep` to a
   single-precision CPU replay within f32 tolerance over 10k (birth, age) pairs.
@@ -444,7 +505,7 @@ series, against the same two rules: carried, never re-rolled.
 | 2 | F1–F3 — the birth channel, the gate, the look by elapsed time | 1 | M | `0.7.1: a star appears when its gas became it` |
 | 3 | F7 — deep time: `AGE_MIN` 0 and the six degeneracies | 2 | S | `0.7.2: the galaxy starts as gas` |
 | 4 | F4 — the drawn-census gas account and its readout | 2 | S | `0.7.3: what is not a star is gas` |
-| 5 | F5 — the gas grid, the compute step, the drawn cells | 3, 4 | M | `0.7.4: the gas is drawn where the stars are not` |
+| 5 | F5 — the gas grid, the compute step, the drawn cells | 3, 4 | M | `0.7.4: the gas is drawn where the stars are not` — shipped |
 | 6 | nebula/HII rates from the local grid, browser rows | 5 | S | `0.7.5: the nebulae eat where the gas is` |
 
 Slice 1 lands first and alone: it is the reported defect, it needs no new

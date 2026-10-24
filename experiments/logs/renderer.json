@@ -1,35 +1,47 @@
 {
-  "date": "2026-10-23T07:51:58.173Z",
+  "date": "2026-10-24T07:50:54.062Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 171,
-  "totalChecks": 145,
-  "passed": 145,
+  "prepareMs": 214,
+  "totalChecks": 147,
+  "passed": 147,
   "failed": 0,
   "checks": [
     {
-      "name": "four shader modules are created (sprite, tonemap, nebula, simple-step)",
+      "name": "six shader modules are created (sprite, tonemap, nebula, gas step, gas cell, simple-step)",
       "pass": true,
       "detail": {
         "modules": [
           "star-sprite",
           "tonemap",
           "nebula-billboard",
+          "gas-step",
+          "gas-cell",
           "simple-step"
         ]
       }
     },
     {
       "name": "all wired shaders declare their entry points",
-      "pass": true
+      "pass": true,
+      "detail": [
+        "star-sprite",
+        "tonemap",
+        "nebula-billboard",
+        "gas-step",
+        "gas-cell",
+        "simple-step"
+      ]
     },
     {
-      "name": "four pipelines are created (sprite, tonemap, nebula, simple-step) — no hdr-direct bypass",
+      "name": "six pipelines are created (sprite, tonemap, nebula, gas step, gas cell, simple-step) — no hdr-direct bypass",
       "pass": true,
       "detail": [
         "star-sprite-pipeline",
         "tonemap-pipeline",
         "nebula-billboard-pipeline",
+        "gas-step-pipeline",
+        "gas-cell-pipeline",
         "simple-step-pipeline"
       ]
     },
@@ -197,6 +209,7 @@
       "detail": [
         "star-sprites",
         "nebula-billboards",
+        "gas-grid",
         "tonemap"
       ]
     },
@@ -410,7 +423,7 @@
           13.5,
           0.05000000074505806,
           20000,
-          0
+          22060
         ]
       }
     },
@@ -534,8 +547,8 @@
       "name": "a parked camera does not re-upload the catalog",
       "pass": true,
       "detail": {
-        "before": 4,
-        "after": 4
+        "before": 7,
+        "after": 7
       }
     },
     {
@@ -602,11 +615,12 @@
       }
     },
     {
-      "name": "both modes submit the same three passes, so the switch costs no pipeline",
+      "name": "both modes submit the same four passes, so the switch costs no pipeline",
       "pass": true,
       "detail": [
         "star-sprites",
         "nebula-billboards",
+        "gas-grid",
         "tonemap"
       ]
     },
@@ -691,11 +705,11 @@
       "name": "a young galaxy is a dimmer one, so the uniform's offset brightens it back",
       "pass": true,
       "detail": {
-        "offset": -6.034,
-        "want": -6.034,
-        "youngLum": 0.017207174301897242,
-        "refLum": 4.459502707542611,
-        "impliedRefLum": 4.45950270754261,
+        "offset": -1.433,
+        "want": -1.433,
+        "youngLum": 2.0072702714294444,
+        "refLum": 7.511679475411635,
+        "impliedRefLum": 7.511679475411634,
         "meanMagYoung": 9.255,
         "meanMagRef": 9.471
       }
@@ -708,7 +722,7 @@
           0,
           1,
           1,
-          -6.033942222595215
+          0
         ]
       }
     },
@@ -879,8 +893,8 @@
       "name": "crossing a cell boundary re-uploads the dynamic region",
       "pass": true,
       "detail": {
-        "before": 24,
-        "after": 25
+        "before": 40,
+        "after": 41
       }
     },
     {
@@ -894,11 +908,12 @@
       "detail": 0
     },
     {
-      "name": "the frame still produces three passes (star + nebulae + tonemap)",
+      "name": "the frame still produces four passes (star + nebulae + gas + tonemap)",
       "pass": true,
       "detail": [
         "star-sprites",
         "nebula-billboards",
+        "gas-grid",
         "tonemap"
       ]
     },
@@ -955,11 +970,12 @@
       "detail": true
     },
     {
-      "name": "the HDR path runs three passes (star-sprites + nebulae + tonemap), same as SDR",
+      "name": "the HDR path runs four passes (star-sprites + nebulae + gas + tonemap), same as SDR",
       "pass": true,
       "detail": [
         "star-sprites",
         "nebula-billboards",
+        "gas-grid",
         "tonemap"
       ]
     },
@@ -1031,10 +1047,10 @@
       }
     },
     {
-      "name": "state.bufferBytes counts the star, nebula, theta and birth buffers",
+      "name": "state.bufferBytes counts the star, nebula, theta, birth and two gas-grid buffers",
       "pass": true,
       "detail": {
-        "bufferBytes": 37360
+        "bufferBytes": 824432
       }
     },
     {
@@ -1203,6 +1219,35 @@
     {
       "name": "the drawn census grows monotonically through the run",
       "pass": true
+    },
+    {
+      "name": "deep-time prepare places the reference cluster census and gates all clusters/objects off at T = 0",
+      "pass": true,
+      "detail": {
+        "clusters": 160,
+        "objCnt": 1894,
+        "activeAt0": 0,
+        "activeAt1": 231,
+        "activeAt4": 1081,
+        "activeAtRef": 1894
+      }
+    },
+    {
+      "name": "epoch magOffset is smooth and monotonic across 3.3-3.7 Gyr with no 3.5 Gyr dip or 2 Myr jump",
+      "pass": true,
+      "detail": {
+        "bandOffsets": [
+          -0.8662,
+          -0.8576,
+          -0.8551,
+          -0.8534,
+          -0.8523,
+          -0.8514,
+          -0.8474
+        ],
+        "maxBandStep": 0.00857,
+        "maxFineStep": 0.000089
+      }
     }
   ]
 }

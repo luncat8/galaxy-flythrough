@@ -44,7 +44,8 @@ function readSource(relPath) {
 {
         const names = Object.keys(shaders.SHADER_PARTS);
         check('every expected shader part is present',
-                ['pcg-hash', 'density', 'orbit', 'simple-step', 'star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'procedural-gen', 'cull']
+                ['pcg-hash', 'density', 'orbit', 'simple-step', 'star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'procedural-gen', 'cull',
+                        'gas-common', 'gas-step', 'gas-cell']
                         .every(n => names.includes(n)),
                 names);
         check('every shader part is a non-empty LF-only string',
@@ -52,13 +53,15 @@ function readSource(relPath) {
                         && shaders.SHADER_PARTS[n].length > 100
                         && !shaders.SHADER_PARTS[n].includes('\r')),
                 names.map(n => [n, shaders.SHADER_PARTS[n].length]));
-        check('five shader modules are exposed (sprite, hdr reference, nebula, tonemap, simple-step)',
-                shaders.SHADER_MODULES.length === 5
+        check('seven shader modules are exposed (sprite, hdr reference, nebula, tonemap, simple-step, gas step, gas cell)',
+                shaders.SHADER_MODULES.length === 7
                 && shaders.SHADER_MODULES[0] === 'star-sprite'
                 && shaders.SHADER_MODULES[1] === 'star-sprite-hdr'
                 && shaders.SHADER_MODULES[2] === 'nebula-billboard'
                 && shaders.SHADER_MODULES[3] === 'tonemap'
-                && shaders.SHADER_MODULES[4] === 'simple-step',
+                && shaders.SHADER_MODULES[4] === 'simple-step'
+                && shaders.SHADER_MODULES[5] === 'gas-step'
+                && shaders.SHADER_MODULES[6] === 'gas-cell',
                 shaders.SHADER_MODULES);
         check('every shader module exists in the module map',
                 shaders.SHADER_MODULES.every(n => typeof shaders.SHADERS[n] === 'string' && shaders.SHADERS[n].length > 0),
@@ -679,6 +682,66 @@ function wgslConsts(part) {
                 && /FLAG_CLUSTER = 128/.test(readSource('src/math/star-record.js'))
                 && /MASK_CLUSTER: u32 = 0x00800000u/.test(orbitWgsl)
                 && /clusterCentre\(/.test(simpleWgsl));
+}
+
+// --- 0.7.4 (F5): the gas grid --------------------------------------------
+// The grid exists twice: src/math/gas-grid.js (authoritative: geometry, the
+// burn law, the calibration, the readout account) and the two gas modules
+// (what the GPU executes). The size, the slot count and the law's constants are
+// the numbers both copies must agree on; the cell geometry and the arm law live
+// in one shared part, so the step and the splat cannot see different cells.
+{
+        const gasLib = require('../src/math/gas-grid.js');
+        const common = shaders.SHADER_PARTS['gas-common'];
+        const stepSrc = shaders.SHADER_PARTS['gas-step'];
+        const cellSrc = shaders.SHADER_PARTS['gas-cell'];
+        const consts = wgslConsts('gas-common').constructor === Object
+                ? Object.assign({}, ...['gas-common', 'gas-step', 'gas-cell'].map(p => wgslConsts(p)))
+                : {};
+        check('the gas grid is the size the CPU model draws',
+                gasLib.GAS_RINGS * gasLib.GAS_SPOKES * gasLib.GAS_SLABS === gasLib.GAS_CELLS
+                && gasLib.GAS_FLOATS === gasLib.GAS_CELLS * gasLib.GAS_SLOTS
+                && gasLib.GAS_BYTES === gasLib.GAS_FLOATS * 4
+                && gasLib.GAS_SLOTS === 4 && gasLib.GAS_CELLS === 24576,
+                { cells: gasLib.GAS_CELLS, floats: gasLib.GAS_FLOATS, bytes: gasLib.GAS_BYTES });
+        check('gas.wgsl grid dimensions match the JS model',
+                consts.GAS_RINGS === gasLib.GAS_RINGS && consts.GAS_SPOKES === gasLib.GAS_SPOKES
+                && consts.GAS_SLABS === gasLib.GAS_SLABS,
+                { wgsl: [consts.GAS_RINGS, consts.GAS_SPOKES, consts.GAS_SLABS],
+                        js: [gasLib.GAS_RINGS, gasLib.GAS_SPOKES, gasLib.GAS_SLABS] });
+        check('gas.wgsl burn constants match the JS model',
+                Math.abs(consts.GAS_ARM_POWER - gasLib.GAS_ARM_POWER) < 1e-6
+                && Math.abs(consts.GAS_SLAB_REACH - gasLib.GAS_SLAB_REACH) < 1e-6,
+                { armPower: consts.GAS_ARM_POWER, slabReach: consts.GAS_SLAB_REACH });
+        // Both modules concatenate the one shared part; a copy of the geometry
+        // function in either module is exactly the drift this check exists for.
+        check('the cell geometry and the arm law live in the shared gas part only',
+                /^fn gasRingRadius\(/m.test(common) && /^fn gasBoost\(/m.test(common)
+                && (stepSrc.match(/fn gasRingRadius\(/g) || []).length === 1
+                && (cellSrc.match(/fn gasRingRadius\(/g) || []).length === 1
+                && !/fn gasBoost\([\s\S]*fn gasBoost\(/m.test(common));
+        check('both gas modules declare the same GasUniform lanes',
+                /struct GasUniform \{[\s\S]*?stepA: vec4f[\s\S]*?stepD: vec4f,/.test(common)
+                && stepSrc.includes(common) && cellSrc.includes(common)
+                && /var<uniform> gasParams: GasUniform/.test(stepSrc)
+                && /var<uniform> gasParams: GasUniform/.test(cellSrc));
+        check('the gas step is one invocation per cell, ping-pong, no atomics',
+                /@workgroup_size\(64\)/.test(stepSrc)
+                && /array<vec4f>/.test(stepSrc)
+                && !/atomic(Add|Sub|Max|Min|Load|Store)\(/.test(stepSrc)
+                && /gasOut\[index\] = vec4f\(mass, cell\.y, cell\.z/.test(stepSrc));
+        check('the gas draw binds the camera lane first and the cells second',
+                /@binding\(0\) var<uniform> camera: CameraUniform/.test(cellSrc)
+                && /@binding\(1\) var<storage, read> gasCells: array<vec4f>/.test(cellSrc)
+                && /@binding\(2\) var<uniform> gasParams: GasUniform/.test(cellSrc));
+        check('the gas draw rides the same rigid pattern rotation as the nebula layer',
+                /camera\.dynA\.z \* camera\.params\.w \+ camera\.waveB\.w/.test(cellSrc)
+                && /camera\.epoch\.x/.test(cellSrc) && /camera\.epoch\.z/.test(cellSrc));
+        // The one number the two copies must not each invent: the burn is the
+        // same exponential of the same rate, so a JS replay and the WGSL agree.
+        check('the burn law is the same exponential in both copies',
+                /exp\(-rate \* dt\)/.test(stepSrc)
+                && /Math\.exp\(-burnC \* rate\[i\] \* h\)/.test(readSource('src/math/gas-grid.js')));
 }
 
 // --- Report --------------------------------------------------------------

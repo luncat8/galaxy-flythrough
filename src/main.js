@@ -2888,6 +2888,11 @@ async function boot() {
                         arms: model.epoch.armContrast,
                         bulge: model.epoch.spheroidSize,
                         draws,
+                        // Written by updateOverlay's account call, which runs every
+                        // frame the overlay is drawn; a page without the grid keeps
+                        // the line's dash rather than a plausible zero.
+                        gasDelta: renderer.state.gasCells > 0 && Number.isFinite(renderer.state.gasDrift)
+                                ? renderer.state.gasDrift : null,
                 });
         }
         scenarioRun.addEventListener('click', () => {
@@ -6011,6 +6016,10 @@ async function boot() {
         }
 
         function updateOverlay(state, cameraState) {
+                // The gas grid's readout follows the clock (0.7.4): O(256) from the
+                // rate histogram, and the same account the Formation checks line
+                // prints, so the stats overlay never shows a stale mass.
+                if (renderer && renderer.gasAccountAt) renderer.gasAccountAt(model.populations.age);
                 const shutter = state.magZero.toFixed(1);
                 const linExp = state.linearExposure.toFixed(2);
                 const wp = state.whitePoint.toFixed(1);
@@ -6026,6 +6035,11 @@ async function boot() {
                         ` + nebulae ${state.nebulaBillboards.toLocaleString()} (gas only — clusters are stars, no billboard)` +
                         ` + local ${state.localProceduralStars.toLocaleString()}` +
                         ` + catalog ${catKept.toLocaleString()}/${state.catalogTotalStars.toLocaleString()}\n` +
+                        (state.gasCells > 0
+                                ? `gas ${state.gasCells.toLocaleString()} cells (${state.gasVisible ? 'drawn' : 'hidden'})` +
+                                        `   steps ${state.gasSteps}   age ${state.gasAge.toFixed(2)} Gyr` +
+                                        `   grid ${state.gasTotal.toFixed(3)} vs account ${(state.gasTotal - state.gasDrift).toFixed(3)}\n`
+                                : '') +
                         `cells ${state.cellsResident}/${state.catalogCells}   decoded ${(state.decodedBytes / 1024).toFixed(0)} KB` +
                         `   buffer ${(state.bufferBytes / 1048576).toFixed(1)} MB\n` +
                         `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   engine ${state.engine}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${isFlying() ? 'ship ' + shipLib.formatClock(ship, shipLib.speedC(ship)) : window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)${evolveOn ? ' +evolve' : ''}   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   pattern ${window.OrbitLib.effectivePatternSpeed(model).toFixed(3)} rad/Myr (x${patternScale.toFixed(2)})   Tab menu\n` +

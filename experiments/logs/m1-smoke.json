@@ -1,9 +1,10 @@
 {
-  "date": "2026-10-23T07:51:55.791Z",
+  "date": "2026-10-24T07:50:51.176Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
     "math/galaxy.js",
+    "math/gas-grid.js",
     "math/sampling.js",
     "math/star-record.js",
     "math/star-types.js",
@@ -42,6 +43,7 @@
     "render/label-layer.js",
     "render/system-layer.js",
     "render/view-modes-layer.js",
+    "core/gpu-smoke.js",
     "main.js"
   ],
   "sourceFiles": [
@@ -49,6 +51,7 @@
     "core/device.js",
     "core/economy.js",
     "core/exec-queue.js",
+    "core/gpu-smoke.js",
     "core/input.js",
     "core/loop.js",
     "core/presets.js",
@@ -70,6 +73,7 @@
     "math/density.js",
     "math/field-ramp.js",
     "math/galaxy.js",
+    "math/gas-grid.js",
     "math/hash.js",
     "math/nebula.js",
     "math/objects.js",
@@ -101,8 +105,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 42,
-        "sources": 42,
+        "scripts": 44,
+        "sources": 44,
         "missing": []
       }
     },
@@ -383,6 +387,7 @@
         "HashLib",
         "DensityLib",
         "GalaxyLib",
+        "GasGridLib",
         "SamplingLib",
         "StarRecord",
         "StarTypesLib",
@@ -420,7 +425,8 @@
         "StarRenderer",
         "LabelLayer",
         "SystemLayer",
-        "ViewModesLayer"
+        "ViewModesLayer",
+        "GpuSmoke"
       ]
     },
     {
@@ -623,7 +629,7 @@
       "name": "StarRenderer loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 32
+        "keys": 35
       }
     },
     {

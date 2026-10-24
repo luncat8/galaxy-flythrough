@@ -44,7 +44,12 @@ No framework, bundler, module loader, or runtime network connection is required.
   procedural census is all gas and nothing has formed; as the epoch runs, the stars born so far
   appear through a 0.05 Gyr fade. The gas the arms are drawn with is read back from that same drawn
   census (a 1024-bin birth histogram), not from the smooth star-formation prior, so a young frame's
-  arm contrast is the picture of the stars that are actually there.
+  arm contrast is the picture of the stars that are actually there. The gas is also **drawn**: a
+  64 × 96 × 4 cell grid (`src/math/gas-grid.js`) stepped on the GPU by an exact exponential of the
+  epoch delta, calibrated once per draw so its total is 1 at first light and the type's own
+  present-day fraction at the reference epoch, and splatted additively as cold haze under the
+  stars. Its mass against that account is printed as `gas Δ` in the Formation checks line and in
+  the stats overlay.
 - Three selectable movement models:
   - **classic** — closed-form bounded kinematic orbits; currently the most balanced default
   - **simple** — responsive friction-field integration

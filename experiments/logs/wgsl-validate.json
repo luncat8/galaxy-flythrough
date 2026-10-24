@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-23T06:44:59.244Z",
+  "date": "2026-10-24T07:50:51.298Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -19,7 +19,7 @@
     },
     {
       "name": "star-sprite",
-      "lines": 574
+      "lines": 575
     },
     {
       "name": "star-sprite-hdr",
@@ -27,7 +27,7 @@
     },
     {
       "name": "nebula-billboard",
-      "lines": 123
+      "lines": 113
     },
     {
       "name": "tonemap",
@@ -40,6 +40,18 @@
     {
       "name": "cull",
       "lines": 114
+    },
+    {
+      "name": "gas-common",
+      "lines": 40
+    },
+    {
+      "name": "gas-step",
+      "lines": 64
+    },
+    {
+      "name": "gas-cell",
+      "lines": 140
     }
   ],
   "modules": [
@@ -47,10 +59,12 @@
     "star-sprite-hdr",
     "nebula-billboard",
     "tonemap",
-    "simple-step"
+    "simple-step",
+    "gas-step",
+    "gas-cell"
   ],
-  "totalChecks": 186,
-  "passed": 186,
+  "totalChecks": 206,
+  "passed": 206,
   "failed": 0,
   "checks": [
     {
@@ -66,7 +80,10 @@
         "nebula-billboard",
         "tonemap",
         "procedural-gen",
-        "cull"
+        "cull",
+        "gas-common",
+        "gas-step",
+        "gas-cell"
       ]
     },
     {
@@ -91,7 +108,7 @@
         ],
         [
           "star-sprite",
-          28784
+          28849
         ],
         [
           "star-sprite-hdr",
@@ -99,7 +116,7 @@
         ],
         [
           "nebula-billboard",
-          4244
+          3835
         ],
         [
           "tonemap",
@@ -112,18 +129,32 @@
         [
           "cull",
           3961
+        ],
+        [
+          "gas-common",
+          1527
+        ],
+        [
+          "gas-step",
+          2744
+        ],
+        [
+          "gas-cell",
+          5531
         ]
       ]
     },
     {
-      "name": "five shader modules are exposed (sprite, hdr reference, nebula, tonemap, simple-step)",
+      "name": "seven shader modules are exposed (sprite, hdr reference, nebula, tonemap, simple-step, gas step, gas cell)",
       "pass": true,
       "detail": [
         "star-sprite",
         "star-sprite-hdr",
         "nebula-billboard",
         "tonemap",
-        "simple-step"
+        "simple-step",
+        "gas-step",
+        "gas-cell"
       ]
     },
     {
@@ -136,7 +167,9 @@
         "tonemap",
         "procedural-gen",
         "cull",
-        "simple-step"
+        "simple-step",
+        "gas-step",
+        "gas-cell"
       ]
     },
     {
@@ -320,6 +353,60 @@
       "detail": 6
     },
     {
+      "name": "gas-common: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "gas-common: contains no unresolved markers",
+      "pass": true,
+      "detail": "gas-common"
+    },
+    {
+      "name": "gas-common: declares its functions",
+      "pass": true,
+      "detail": 4
+    },
+    {
+      "name": "gas-step: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "gas-step: contains no unresolved markers",
+      "pass": true,
+      "detail": "gas-step"
+    },
+    {
+      "name": "gas-step: declares its functions",
+      "pass": true,
+      "detail": 5
+    },
+    {
+      "name": "gas-cell: braces and parentheses balance",
+      "pass": true,
+      "detail": {
+        "braces": 0,
+        "parens": 0
+      }
+    },
+    {
+      "name": "gas-cell: contains no unresolved markers",
+      "pass": true,
+      "detail": "gas-cell"
+    },
+    {
+      "name": "gas-cell: declares its functions",
+      "pass": true,
+      "detail": 8
+    },
+    {
       "name": "star-sprite: every call target resolves in the module",
       "pass": true,
       "detail": []
@@ -351,6 +438,16 @@
     },
     {
       "name": "simple-step: every call target resolves in the module",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "gas-step: every call target resolves in the module",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "gas-cell: every call target resolves in the module",
       "pass": true,
       "detail": []
     },
@@ -1276,6 +1373,63 @@
     },
     {
       "name": "star-cluster rigid motion mirrors clusterCentreCoord/clusterCentre and FLAG_CLUSTER across CPU and WGSL",
+      "pass": true
+    },
+    {
+      "name": "the gas grid is the size the CPU model draws",
+      "pass": true,
+      "detail": {
+        "cells": 24576,
+        "floats": 98304,
+        "bytes": 393216
+      }
+    },
+    {
+      "name": "gas.wgsl grid dimensions match the JS model",
+      "pass": true,
+      "detail": {
+        "wgsl": [
+          64,
+          96,
+          4
+        ],
+        "js": [
+          64,
+          96,
+          4
+        ]
+      }
+    },
+    {
+      "name": "gas.wgsl burn constants match the JS model",
+      "pass": true,
+      "detail": {
+        "armPower": 1.5,
+        "slabReach": 2
+      }
+    },
+    {
+      "name": "the cell geometry and the arm law live in the shared gas part only",
+      "pass": true
+    },
+    {
+      "name": "both gas modules declare the same GasUniform lanes",
+      "pass": true
+    },
+    {
+      "name": "the gas step is one invocation per cell, ping-pong, no atomics",
+      "pass": true
+    },
+    {
+      "name": "the gas draw binds the camera lane first and the cells second",
+      "pass": true
+    },
+    {
+      "name": "the gas draw rides the same rigid pattern rotation as the nebula layer",
+      "pass": true
+    },
+    {
+      "name": "the burn law is the same exponential in both copies",
       "pass": true
     }
   ]

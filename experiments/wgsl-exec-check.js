@@ -21,6 +21,7 @@ const logFile = require('./log-file.js');
 
 globalThis.window = globalThis;
 require('../src/math/star-record.js');
+require('../src/math/gas-grid.js');
 require('../src/render/shaders.js');
 
 const records = require('../src/math/star-record.js');
@@ -856,6 +857,117 @@ async function main() {
 			stepTheta[13] === stepIn[13]
 			&& stepTheta[60] === stepIn[60] && stepTheta[63] === stepIn[63],
 			{ invisible: [stepIn[13], stepTheta[13]], guard: [stepIn[60], stepTheta[60]] });
+	}
+
+	// --- 2j. The gas grid runs on the shipping WGSL (0.7.4 / F5) -----------
+	// The grid exists twice: src/math/gas-grid.js (the law, the calibration, the
+	// readout) and `gas-step` (what the GPU integrates). WgslDebug runs one
+	// invocation at a time, so the probes walk a spread of the 24 576 cells —
+	// inner rings, the truncation edge, both ends of the buffer — and compare
+	// the mass and the display slot against the JS replay of the same step.
+	{
+		const gasLib = require('../src/math/gas-grid.js');
+		const gasModel = galaxy.createGalaxy({ type: 'SBb', seed: 5, age: 1 });
+		const gasRef = galaxy.modelAtAge(gasModel, galaxy.AGE_REF);
+		const gasAccount = gasLib.initialize(gasRef, 0, gasModel.seed);
+		const gasGrid = new Float32Array(gasLib.GAS_FLOATS);
+		gasLib.fillGrid(gasAccount, 0, gasModel.seed, gasGrid);
+		const gasGeo = gasAccount.geometry;
+		const gasUniformBytes = new ArrayBuffer(16 * 4);
+		const gasU = new Float32Array(gasUniformBytes);
+		gasU[0] = 1;                             // dt, Gyr
+		gasU[1] = gasAccount.burnC;
+		gasU[2] = gasLib.GAS_SMOOTHING;
+		gasU[3] = gasGeo.armsAmp;
+		gasU[4] = gasGeo.armsM;
+		gasU[5] = gasGeo.armsK;
+		gasU[6] = gasGeo.armsRs;
+		gasU[7] = gasGeo.armsPhase0;
+		gasU[8] = gasGeo.rMin;
+		gasU[9] = gasGeo.rMax;
+		gasU[10] = gasGeo.height;
+		gasU[11] = gasGeo.centreX;
+		gasU[12] = gasGeo.centreZ;
+		gasU[13] = gasLib.GAS_CELLS;
+		gasU[14] = 1400;
+		gasU[15] = 1;
+		const gasInBytes = gasGrid.slice().buffer;
+		const gasOutBytes = new Float32Array(gasLib.GAS_FLOATS).buffer;
+		const gasBinds = { 0: { 0: { uniform: gasUniformBytes }, 1: gasInBytes, 2: gasOutBytes } };
+		const gasCpu = gasGrid.slice();
+		gasLib.step(gasCpu, gasAccount, 1);
+		const gasGroups = Math.ceil(gasLib.GAS_CELLS / 64);
+		const gasProbes = [0, 1, 63, 2304, 7777, 12288, 20000, 24575];
+		const gasDbg = new WgslDebug(shaders.SHADERS['gas-step']);
+		let gasRan = true;
+		let gasNaN = -1;
+		let gasWorstMass = 0;
+		let gasWorstSlot = 0;
+		let gasWorstCell = -1;
+		for (const cell of gasProbes) {
+			if (!gasDbg.debugWorkgroup('main', [cell, 0, 0], gasGroups, gasBinds)) { gasRan = false; break; }
+			let n = 0;
+			while (gasDbg.stepNext() && n < 50000) n++;
+			if (n >= 50000) { gasRan = false; break; }
+			const out = new Float32Array(gasOutBytes);
+			if (!Number.isFinite(out[cell * 4])) { gasNaN = cell; break; }
+			const rel = Math.abs(out[cell * 4] - gasCpu[cell * 4]) / Math.max(gasCpu[cell * 4], 1e-9);
+			if (rel > gasWorstMass) { gasWorstMass = rel; gasWorstCell = cell; }
+			gasWorstSlot = Math.max(gasWorstSlot, Math.abs(out[cell * 4 + 3] - gasCpu[cell * 4 + 3]));
+		}
+		check('on-WGSL: the gas burn step runs for every probed cell', gasRan && gasNaN < 0,
+			{ ran: gasRan, nan: gasNaN });
+		check('on-WGSL: the stepped mass matches gas-grid.js (< 2e-4 relative)',
+			gasWorstMass < 2e-4, { worst: gasWorstMass, cell: gasWorstCell });
+		check('on-WGSL: the display slot matches the same smoothing (< 1e-4)',
+			gasWorstSlot < 1e-4, { worst: gasWorstSlot });
+
+		// The splat: an empty cell is hidden, a live one sits at the geometry the
+		// CPU draws and carries the flux the model predicts.
+		const gasCamBytes = new ArrayBuffer(56 * 4);
+		const gasCam = new Float32Array(gasCamBytes);
+		gasCam.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], 0);   // identity viewProj
+		gasCam[19] = gasGeo.centreX;
+		gasCam[20] = 1600; gasCam[21] = 900; gasCam[22] = 2 / 1600; gasCam[23] = 2 / 900;
+		gasCam[27] = 0;                       // star time: the pattern rotation is 0
+		gasCam[30] = gasGeo.armsM;            // dynA.z = the pattern speed (unused at t = 0)
+		gasCam[49] = 1;                       // epoch: spheroid scale 1, identity
+		gasCam[50] = 1;                       // epoch.z: heat scale 1
+		const ring = 5, spoke = 10, slab = 2;
+		const cellIndex = gasLib.cellIndex(ring, spoke, slab);
+		const gasCellBinds = { 0: { 0: { uniform: gasCamBytes }, 1: gasInBytes, 2: { uniform: gasUniformBytes } } };
+		const liveCell = runStage(shaders.SHADERS['gas-cell'], 'vs_main', 'debugVertex',
+			{ vertex_index: 0, instance_index: cellIndex }, gasCellBinds);
+		const R = gasLib.cellRadius(gasGeo, ring);
+		const phi = gasLib.cellAzimuth(gasGeo, spoke);
+		const worldX = gasGeo.centreX + R * Math.cos(phi);
+		const worldY = R * Math.sin(phi);
+		const worldZ = gasGeo.centreZ + gasLib.cellHeight(gasGeo, slab);
+		const dist = Math.hypot(worldX, worldY, worldZ);
+		const dr = gasLib.ringEdge(gasGeo, ring + 1) - gasLib.ringEdge(gasGeo, ring);
+		const arc = R * Math.PI * 2 / gasGeo.spokes;
+		const sizePx = Math.max(Math.max(arc, dr) / dist * 900 / Math.tan(1.047197551 * 0.5), 2);
+		const m = gasGrid[cellIndex * 4];
+		const w = gasGrid[cellIndex * 4 + 2];
+		const flux = m * 1400 * (0.7 + 0.6 * Math.min(1, Math.max(0, w)));
+		check('on-WGSL: a live cell splats at the geometry the CPU model draws',
+			Math.abs(liveCell.clipPos[0] - (worldX - sizePx * 0.5 * 2 / 1600)) < 1e-3
+			&& Math.abs(liveCell.clipPos[1] - (worldY - sizePx * 0.5 * 2 / 900)) < 1e-3
+			&& Math.abs(liveCell.clipPos[3] - 1) < 1e-5,
+			{ wgsl: liveCell.clipPos, expected: [worldX, worldY, worldZ] });
+		check('on-WGSL: that cell carries the flux its mass implies',
+			Math.abs(liveCell.flux - flux) / flux < 1e-3, { wgsl: liveCell.flux, model: flux });
+
+		// A burned-out cell must cost no pixels: zero one cell's mass in a copy of
+		// the buffer and the same invocation returns the hidden vertex.
+		const emptyBytes = gasGrid.slice().buffer;
+		new Float32Array(emptyBytes)[cellIndex * 4] = 0;
+		const emptyCell = runStage(shaders.SHADERS['gas-cell'], 'vs_main', 'debugVertex',
+			{ vertex_index: 0, instance_index: cellIndex },
+			{ 0: { 0: { uniform: gasCamBytes }, 1: emptyBytes, 2: { uniform: gasUniformBytes } } });
+		check('on-WGSL: an empty cell is clipped away before rasterization',
+			emptyCell.flux === 0 && emptyCell.clipPos[2] === -1,
+			{ flux: emptyCell.flux, clip: emptyCell.clipPos });
 	}
 
 	// --- 3. N stars on one pixel are brighter than one --------------------

@@ -1,0 +1,328 @@
+{
+  "date": "2026-10-24T07:58:11.317Z",
+  "totalChecks": 80,
+  "passed": 80,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "the grid is 64 rings × 96 spokes × 4 slabs = 24 576 cells × 4 slots",
+      "pass": true
+    },
+    {
+      "name": "ring/spoke/slab decompose back out of a cell index",
+      "pass": true
+    },
+    {
+      "name": "the ring radii are log-spaced between rMin and rMax",
+      "pass": true
+    },
+    {
+      "name": "the four slabs are centred at ±1.5 H and ±0.5 H about the midplane",
+      "pass": true
+    },
+    {
+      "name": "the azimuths are the spoke centres",
+      "pass": true
+    },
+    {
+      "name": "the gas is normalised to one over the grid",
+      "pass": true
+    },
+    {
+      "name": "cells beyond the field truncation carry no gas",
+      "pass": true
+    },
+    {
+      "name": "the arm compression spans 1−amp to 1+amp on an armed model",
+      "pass": true
+    },
+    {
+      "name": "an unarmed type has no arm compression at all",
+      "pass": true
+    },
+    {
+      "name": "E0: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "E0: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "E1: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "E1: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "E2: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "E2: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "E3: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "E3: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "E4: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "E4: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "E5: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "E5: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "E6: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "E6: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "E7: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "E7: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "S0: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "S0: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "Sa: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "Sa: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "Sb: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "Sb: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "Sc: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "Sc: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "Sd: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "Sd: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "SB0: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "SB0: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "SBa: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "SBa: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "SBb: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "SBb: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "SBc: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "SBc: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "SBd: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "SBd: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "Irr: the grid holds all the gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "Irr: the calibrated grid lands on the type's own gas fraction at AGE_REF",
+      "pass": true
+    },
+    {
+      "name": "the histogram total is within 0.25 % of the exact grid sum at every sampled epoch",
+      "pass": true
+    },
+    {
+      "name": "the grid total is monotone decreasing in the epoch",
+      "pass": true
+    },
+    {
+      "name": "one 5 Gyr step and 500 × 10 Myr steps land on the same masses",
+      "pass": true
+    },
+    {
+      "name": "after the burn the arm crests hold less gas than the troughs",
+      "pass": true
+    },
+    {
+      "name": "the turbulence slot is deterministic in the draw seed",
+      "pass": true
+    },
+    {
+      "name": "the step writes a smoothed star-formation rate into the display slot",
+      "pass": true
+    },
+    {
+      "name": "at First light the gas covers the frame where the disc is",
+      "pass": true
+    },
+    {
+      "name": "at T = 0 the median gas pixel is ~0.06 linear, p90 ~1 (the whole picture)",
+      "pass": true
+    },
+    {
+      "name": "at AGE_REF the median gas pixel is a faint haze, ~0.008",
+      "pass": true
+    },
+    {
+      "name": "the present-day haze is a small fraction of the First-light picture",
+      "pass": true
+    },
+    {
+      "name": "a draw allocates the two ping-pong grid buffers at the model size",
+      "pass": true
+    },
+    {
+      "name": "the draw uploads the grid once, into buffer A",
+      "pass": true
+    },
+    {
+      "name": "the grid step and the grid draw are separate pipelines",
+      "pass": true
+    },
+    {
+      "name": "the draw pass is additive into the HDR intermediate",
+      "pass": true
+    },
+    {
+      "name": "a frozen clock dispatches no gas step",
+      "pass": true
+    },
+    {
+      "name": "the grid is drawn as one instanced quad pass over every cell",
+      "pass": true
+    },
+    {
+      "name": "an epoch step dispatches the burn once, ceil(cells / 64) workgroups",
+      "pass": true
+    },
+    {
+      "name": "the step reads buffer A and writes B on the first step",
+      "pass": true
+    },
+    {
+      "name": "the frame still draws the grid after the step",
+      "pass": true
+    },
+    {
+      "name": "the second step swaps the ping-pong pair",
+      "pass": true
+    },
+    {
+      "name": "the draw after a step reads the buffer the step wrote",
+      "pass": true
+    },
+    {
+      "name": "the step uniform carries the epoch delta as dt",
+      "pass": true
+    },
+    {
+      "name": "the step uniform carries the calibrated burn and the arm law",
+      "pass": true
+    },
+    {
+      "name": "the grid uniform carries the cell count and the look gain",
+      "pass": true
+    },
+    {
+      "name": "a rewound clock re-fills the grid instead of stepping it backwards",
+      "pass": true
+    },
+    {
+      "name": "the account reports the grid total, the census gas and their drift",
+      "pass": true
+    },
+    {
+      "name": "the grid and the census are both exactly all-gas at T = 0",
+      "pass": true
+    },
+    {
+      "name": "hiding the grid draws no gas pass",
+      "pass": true
+    },
+    {
+      "name": "showing it again restores the pass",
+      "pass": true
+    },
+    {
+      "name": "the grid info reports cells, steps, age and the calibrated burn",
+      "pass": true
+    },
+    {
+      "name": "dispose destroys both grid buffers",
+      "pass": true
+    },
+    {
+      "name": "a renderer without the gas model still boots and draws no grid",
+      "pass": true
+    },
+    {
+      "name": "the disabled grid reports itself disabled",
+      "pass": true
+    }
+  ]
+}

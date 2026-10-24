@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-23T07:51:55.584Z",
-  "modules": 35,
-  "totalChecks": 178,
-  "passed": 178,
+  "date": "2026-10-24T07:50:50.720Z",
+  "modules": 36,
+  "totalChecks": 183,
+  "passed": 183,
   "failed": 0,
   "checks": [
     {
@@ -870,6 +870,38 @@
       "detail": []
     },
     {
+      "name": "GpuSmoke loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "GpuSmoke registers exactly one window namespace (GpuSmoke)",
+      "pass": true,
+      "detail": [
+        "GpuSmoke"
+      ]
+    },
+    {
+      "name": "GpuSmoke exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "GpuSmoke has identical key sets (22 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "GpuSmoke binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
       "name": "Landmarks loads under Node",
       "pass": true,
       "detail": null
@@ -985,7 +1017,7 @@
       }
     },
     {
-      "name": "StarRenderer has identical key sets (32 keys)",
+      "name": "StarRenderer has identical key sets (35 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],
@@ -1133,7 +1165,9 @@
         "star-sprite-hdr",
         "nebula-billboard",
         "tonemap",
-        "simple-step"
+        "simple-step",
+        "gas-step",
+        "gas-cell"
       ]
     },
     {
@@ -1149,7 +1183,10 @@
         "nebula-billboard",
         "tonemap",
         "procedural-gen",
-        "cull"
+        "cull",
+        "gas-common",
+        "gas-step",
+        "gas-cell"
       ]
     },
     {

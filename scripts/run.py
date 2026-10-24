@@ -60,6 +60,7 @@ EXPERIMENTS = {
     'ship':                  'experiments/ship-test.js',
     'preset':                'experiments/preset-test.js',
     'renderer':              'experiments/renderer-test.js',
+    'gas-grid':              'experiments/gas-grid-test.js',
     'gpu-smoke':             'experiments/gpu-smoke-test.js',
     'hdr':                   'experiments/hdr-test.js',
     'landmark':              'experiments/landmark-test.js',
@@ -108,7 +109,7 @@ EXPERIMENTS = {
 
 TYPES = {
     'test':   ['export-parity', 'log-file', 'm1-smoke', 'panel', 'wgsl-validate', 'camera', 'input', 'workspace', 'scenario', 'ship', 'preset', 'renderer', 'gpu-smoke', 'hdr',
-               'landmark', 'view-modes-field', 'view-modes-page', 'view-modes-layer',
+               'landmark', 'gas-grid', 'view-modes-field', 'view-modes-page', 'view-modes-layer',
                'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'shape', 'model-parity', 'sampling',
                'density-distribution',
                'star-types-evolution', 'planet-gen', 'star-select', 'selection-store', 'search', 'nebula-placement', 'object-placement',
@@ -152,7 +153,7 @@ SUITES = {
     ],
     'view-tests': ALWAYS + [
         'log-file', 'panel', 'wgsl-validate', 'camera', 'input', 'preset',
-        'renderer', 'gpu-smoke', 'hdr', 'landmark', 'view-modes-field', 'view-modes-page',
+        'renderer', 'gas-grid', 'gpu-smoke', 'hdr', 'landmark', 'view-modes-field', 'view-modes-page',
         'view-modes-layer', 'tile-stream', 'tile-encoder-smoke',
     ],
     'world-tests': ALWAYS + [

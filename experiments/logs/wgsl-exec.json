@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-23T05:56:41.519Z",
+  "date": "2026-10-24T07:49:41.250Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 122,
-  "passed": 122,
+  "totalChecks": 130,
+  "passed": 130,
   "failed": 0,
   "checks": [
     {
@@ -37,6 +37,16 @@
     },
     {
       "name": "simple-step: the shipped source parses as WGSL",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "gas-step: the shipped source parses as WGSL",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "gas-cell: the shipped source parses as WGSL",
       "pass": true,
       "detail": null
     },
@@ -459,6 +469,67 @@
         "guard": [
           7.769999980926514,
           7.769999980926514
+        ]
+      }
+    },
+    {
+      "name": "on-WGSL: the gas burn step runs for every probed cell",
+      "pass": true,
+      "detail": {
+        "ran": true,
+        "nan": -1
+      }
+    },
+    {
+      "name": "on-WGSL: the stepped mass matches gas-grid.js (< 2e-4 relative)",
+      "pass": true,
+      "detail": {
+        "worst": 9.309708396658745e-8,
+        "cell": 0
+      }
+    },
+    {
+      "name": "on-WGSL: the display slot matches the same smoothing (< 1e-4)",
+      "pass": true,
+      "detail": {
+        "worst": 1.1368683772161603e-12
+      }
+    },
+    {
+      "name": "on-WGSL: a live cell splats at the geometry the CPU model draws",
+      "pass": true,
+      "detail": {
+        "wgsl": [
+          8.713844299316406,
+          0.43486419320106506,
+          0.15000000596046448,
+          1
+        ],
+        "expected": [
+          8.718954335699042,
+          0.4439497501150108,
+          0.15
+        ]
+      }
+    },
+    {
+      "name": "on-WGSL: that cell carries the flux its mass implies",
+      "pass": true,
+      "detail": {
+        "wgsl": 0.11744039505720139,
+        "model": 0.1174403933691792
+      }
+    },
+    {
+      "name": "on-WGSL: an empty cell is clipped away before rasterization",
+      "pass": true,
+      "detail": {
+        "flux": 0,
+        "clip": [
+          0,
+          0,
+          -1,
+          1
         ]
       }
     },

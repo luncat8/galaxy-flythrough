@@ -1809,6 +1809,28 @@ fn finalizeArgs() {
 }
 `;
 
+// The camera lane every pass that places an object in this frame reads. It is
+// declared once and concatenated into each complete module (WGSL has no
+// include), so a lane cannot be added to one pass and forgotten in another: the
+// star sprite, the nebula billboards and the gas grid all place their geometry
+// through this one struct. The star module declares its own copy because it is
+// also the module's vertex contract; its lanes are identical, field for field.
+const CAMERA_UNIFORM = `
+struct CameraUniform {
+        viewProj: mat4x4<f32>,
+        cameraPos: vec4f,   // xyz absolute kpc, w = model centre x (y = z = 0)
+        viewport: vec4f,    // xy pixels, zw = 2/width, 2/height
+        params: vec4f,      // x magZero, y baseSizePx, z maxSizePx, w star time Myr
+        dynA: vec4f,        // vFlat, rCore, omegaPattern, spinLambda
+        dynB: vec4f,        // sigmaThin, pressureAmpScale, discHeight, patternLock
+        waveA: vec4f,       // damping, m, K, phase0
+        waveB: vec4f,       // Rs, minRadius, amp, patternPhaseOffset
+        engine: vec4f,      // engine mask, apocenter force, bar tilt, apocenter share
+        epoch: vec4f,       // armRotation, spheroidScale, heatScale, field mag offset
+        formation: vec4f,   // gate age, fade, procedural count, gated slot limit
+};
+`;
+
 const NEBULA_BILLBOARD = `
 // Additive nebula billboards (0.3.2b). Camera-facing quads, size from the
 // object's shell radius, colour from nebula.NEBULA_COLORS. Soft radial
@@ -1819,20 +1841,6 @@ const NEBULA_BILLBOARD = `
 // 0.4: gas is the pattern family (plan §1.1/§7.4) — young objects sit in the
 // arms and bar, so billboards rigidly follow the pattern speed omegaPattern
 // about the model centre, same closed form as the stars' bulk rotation.
-
-struct CameraUniform {
-        viewProj: mat4x4<f32>,
-        cameraPos: vec4f,   // w = model centre x (y = z = 0 by construction)
-        viewport: vec4f,
-        params: vec4f,      // w = star time Myr
-        dynA: vec4f,        // orbit dynamics: nebulae read z = omegaPattern
-        dynB: vec4f,
-        waveA: vec4f,       // shared layout with the star shader; nebulae ignore it
-        waveB: vec4f,
-        engine: vec4f,      // engine select lane; nebulae ignore it (gas rides the pattern)
-        epoch: vec4f,
-        formation: vec4f,       // 0.6 E4 epoch lane; nebulae ignore it (layout parity)
-};
 
 struct NebulaPacked {
         x: f32,
@@ -1937,6 +1945,188 @@ fn fs_main(in: VertexOut) -> @location(0) vec4f {
 }
 `;
 
+// ---- F5 (0.7.4): the gas grid ---------------------------------------------
+//
+// The gas is a coarse 64 × 96 × 4 grid of vec4 cells (m, Z, w, s) — the picture
+// of what is not a star yet. `gas-step` integrates the burn, `gas-cell` draws
+// the cells as additive screen-space splats. The cell a step integrates and the
+// cell a splat draws are the same cell: the geometry and the arm law live here,
+// once, and both modules concatenate them.
+//
+// Layout and law are mirrored by src/math/gas-grid.js (checked numerically by
+// experiments/gas-grid-test.js): m' = m·exp(−burnC·boost^1.5·dt), with `boost`
+// the field's own arm cosine at the cell's azimuth. The exponential form makes
+// a step compose — one 5 Gyr dispatch lands where 5 000 of 1 Myr land — so the
+// grid is a function of the epoch rather than of the frame size.
+const GAS_COMMON = `
+struct GasUniform {
+        stepA: vec4f,   // dt Gyr, burnC 1/Gyr, display smoothing, arm amplitude
+        stepB: vec4f,   // arm m, arm K, Rs, phase0
+        stepC: vec4f,   // rMin, rMax, slab height H, centre x
+        stepD: vec4f,   // centre z, cell count, draw gain, visible
+};
+
+const GAS_RINGS: u32 = 64u;
+const GAS_SPOKES: u32 = 96u;
+const GAS_SLABS: u32 = 4u;
+const GAS_TAU: f32 = 6.28318530718;
+const GAS_INV_TAU: f32 = 0.159154943092;
+const GAS_ARM_POWER: f32 = 1.5;
+const GAS_SLAB_REACH: f32 = 2.0;
+
+fn gasRingRadius(ring: u32) -> f32 {
+        let u: f32 = (f32(ring) + 0.5) / f32(GAS_RINGS);
+        return gasParams.stepC.x * pow(gasParams.stepC.y / gasParams.stepC.x, u);
+}
+
+fn gasRingEdge(edge: u32) -> f32 {
+        let u: f32 = f32(edge) / f32(GAS_RINGS);
+        return gasParams.stepC.x * pow(gasParams.stepC.y / gasParams.stepC.x, u);
+}
+
+fn gasSlabHeight(slab: u32) -> f32 {
+        return ((f32(slab) + 0.5) / f32(GAS_SLABS) * 2.0 - 1.0) * GAS_SLAB_REACH * gasParams.stepC.z;
+}
+
+// The arm compression at one cell: the field's own ridge cosine
+// (density.armFactor) evaluated at the cell's azimuth. 1 in the trough,
+// 1 + amp on the crest, 1 for a smooth disc.
+fn gasBoost(ring: u32, spoke: u32) -> f32 {
+        let R: f32 = gasRingRadius(ring);
+        let phi: f32 = GAS_TAU * (f32(spoke) + 0.5) / f32(GAS_SPOKES);
+        let arg: f32 = gasParams.stepB.x * phi - gasParams.stepB.y * log(R / gasParams.stepB.z) + gasParams.stepB.w;
+        return max(0.0, 1.0 + gasParams.stepA.w * cos(arg));
+}
+`;
+
+const GAS_STEP = `${GAS_COMMON}
+// One invocation per cell, read buffer A into buffer B: no atomics, no race, and
+// the four slabs of a column each compute their own rate from the same shared
+// arm law. The display slot smooths the frame's star-formation rate, which is
+// what the nebula layer reads in 0.7.5 — the mass itself is exact.
+
+@group(0) @binding(0) var<uniform> gasParams: GasUniform;
+@group(0) @binding(1) var<storage, read> gasIn: array<vec4f>;
+@group(0) @binding(2) var<storage, read_write> gasOut: array<vec4f>;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3u) {
+        let index: u32 = gid.x;
+        if (index >= u32(gasParams.stepD.y)) { return; }
+        let cell: vec4f = gasIn[index];
+        let ring: u32 = index / (GAS_SPOKES * GAS_SLABS);
+        let spoke: u32 = (index / GAS_SLABS) % GAS_SPOKES;
+        let dt: f32 = gasParams.stepA.x;
+        let rate: f32 = gasParams.stepA.y * pow(gasBoost(ring, spoke), GAS_ARM_POWER);
+        let decay: f32 = exp(-rate * dt);
+        let mass: f32 = cell.x * decay;
+        let sfr: f32 = select(0.0, (cell.x - mass) / max(dt, 1e-9), dt > 0.0);
+        gasOut[index] = vec4f(mass, cell.y, cell.z, cell.w + (sfr - cell.w) * gasParams.stepA.z);
+}
+`;
+
+const GAS_CELL = `${GAS_COMMON}
+// Additive screen-space splats, one instanced draw over the whole grid. A cell
+// is placed where its mass is — the pattern family, rigid with the arms and the
+// nebula layer (camera.dynA.z·starTime + waveB.w) and riding the epoch's own
+// ridge re-anchor (camera.epoch.x) and heat scale (camera.epoch.z). Its splat
+// is the cell's own footprint (the larger of the radial and azimuthal extents),
+// so the gas disc keeps the grid's true geometry at any camera.
+
+@group(0) @binding(0) var<uniform> camera: CameraUniform;
+@group(0) @binding(1) var<storage, read> gasCells: array<vec4f>;
+@group(0) @binding(2) var<uniform> gasParams: GasUniform;
+
+const GAS_FOV_Y: f32 = 1.047197551;
+const GAS_MIN_PX: f32 = 2.0;
+const GAS_MAX_DIST: f32 = 90.0;
+const GAS_FLUX_MIN: f32 = 0.00002;
+const GAS_COLOR: vec3f = vec3f(0.34, 0.55, 0.95);
+const GAS_TURBULENCE_BASE: f32 = 0.7;
+const GAS_TURBULENCE_GAIN: f32 = 0.6;
+
+struct GasVertexOut {
+        @builtin(position) clipPos: vec4f,
+        @location(0) uv: vec2f,
+        @location(1) colour: vec3f,
+        @location(2) flux: f32,
+};
+
+fn gasCorner(vid: u32) -> vec2f {
+        switch vid {
+                case 0u: { return vec2f(-1.0, -1.0); }
+                case 1u: { return vec2f( 1.0, -1.0); }
+                case 2u: { return vec2f(-1.0,  1.0); }
+                default: { return vec2f( 1.0,  1.0); }
+        }
+}
+
+fn gasHidden(vid: u32) -> GasVertexOut {
+        var out: GasVertexOut;
+        out.clipPos = vec4f(0.0, 0.0, -1.0, 1.0);
+        out.uv = vec2f(1.0, 1.0);
+        out.colour = vec3f(0.0, 0.0, 0.0);
+        out.flux = 0.0;
+        return out;
+}
+
+@vertex
+fn vs_main(
+        @builtin(vertex_index) vid: u32,
+        @builtin(instance_index) instance: u32,
+) -> GasVertexOut {
+        let cell: vec4f = gasCells[instance];
+        if (!(cell.x > 0.0)) { return gasHidden(vid); }
+        let flux: f32 = cell.x * gasParams.stepD.z
+                * (GAS_TURBULENCE_BASE + GAS_TURBULENCE_GAIN * clamp(cell.z, 0.0, 1.0));
+        if (flux < GAS_FLUX_MIN) { return gasHidden(vid); }
+
+        let ring: u32 = instance / (GAS_SPOKES * GAS_SLABS);
+        let spoke: u32 = (instance / GAS_SLABS) % GAS_SPOKES;
+        let slab: u32 = instance % GAS_SLABS;
+        let R: f32 = gasRingRadius(ring);
+        let phi: f32 = GAS_TAU * (f32(spoke) + 0.5) / f32(GAS_SPOKES);
+        let heat: f32 = select(1.0, camera.epoch.z, camera.epoch.z > 0.0);
+        let local: vec3f = vec3f(R * cos(phi), R * sin(phi), gasSlabHeight(slab) * heat);
+
+        let theta: f32 = GAS_TAU * fract((camera.dynA.z * camera.params.w + camera.waveB.w) * GAS_INV_TAU)
+                + camera.epoch.x;
+        let ct: f32 = cos(theta);
+        let st: f32 = sin(theta);
+        let centre: vec3f = vec3f(gasParams.stepC.w, 0.0, gasParams.stepD.x);
+        let world: vec3f = centre + vec3f(local.x * ct - local.y * st, local.x * st + local.y * ct, local.z);
+
+        let eye: vec3f = world - camera.cameraPos.xyz;
+        let dist: f32 = length(eye);
+        if (dist > GAS_MAX_DIST) { return gasHidden(vid); }
+        let clip: vec4f = camera.viewProj * vec4f(eye, 1.0);
+        if (clip.w <= 0.0) { return gasHidden(vid); }
+
+        let dr: f32 = gasRingEdge(ring + 1u) - gasRingEdge(ring);
+        let arc: f32 = R * GAS_TAU / f32(GAS_SPOKES);
+        let sizePx: f32 = max(max(arc, dr) / max(dist, 1e-6)
+                * camera.viewport.y / tan(GAS_FOV_Y * 0.5), GAS_MIN_PX);
+        let corner: vec2f = gasCorner(vid);
+        let offset: vec2f = corner * (sizePx * 0.5) * camera.viewport.zw;
+
+        var out: GasVertexOut;
+        out.clipPos = vec4f(clip.xy + offset * clip.w, clip.zw);
+        out.uv = corner;
+        out.colour = GAS_COLOR;
+        out.flux = flux;
+        return out;
+}
+
+@fragment
+fn fs_main(in: GasVertexOut) -> @location(0) vec4f {
+        let r2: f32 = dot(in.uv, in.uv);
+        if (r2 > 1.0) { discard; }
+        let s: f32 = 1.0 - r2;
+        let intensity: f32 = in.flux * s * s;
+        return vec4f(in.colour * intensity, intensity);
+}
+`;
+
 const SHADER_PARTS = {
         'pcg-hash': PCG_HASH,
         'density': DENSITY,
@@ -1948,6 +2138,9 @@ const SHADER_PARTS = {
         'tonemap': TONEMAP,
         'procedural-gen': PROCEDURAL_GEN,
         'cull': CULL,
+        'gas-common': GAS_COMMON,
+        'gas-step': GAS_STEP,
+        'gas-cell': GAS_CELL,
 };
 
 // Complete, compilable modules. WGSL has no include mechanism, so the shared
@@ -1955,19 +2148,23 @@ const SHADER_PARTS = {
 const SHADERS = {
         'star-sprite': PCG_HASH + STAR_SPRITE,
         'star-sprite-hdr': STAR_SPRITE_HDR,
-        'nebula-billboard': NEBULA_BILLBOARD,
+        'nebula-billboard': CAMERA_UNIFORM + NEBULA_BILLBOARD,
         'tonemap': TONEMAP,
         'procedural-gen': PCG_HASH + DENSITY + PROCEDURAL_GEN,
         'cull': PCG_HASH + CULL,
         'simple-step': PCG_HASH + ORBIT + SIMPLE_STEP,
+        'gas-step': GAS_STEP,
+        'gas-cell': CAMERA_UNIFORM + GAS_CELL,
 };
 
 // The shader modules the project ships, by the names every consumer looks them
-// up with: the renderer compiles star-sprite + nebula-billboard + tonemap every
-// frame, plus simple-step when the simple engine is selected. star-sprite-hdr
-// is the one module nobody binds — it is listed so the validator keeps covering
-// the reference variant, not because a pass uses it.
-const SHADER_MODULES = ['star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'simple-step'];
+// up with: the renderer compiles star-sprite + nebula-billboard + gas-cell +
+// tonemap every frame, gas-step when the gas grid is drawn, and simple-step
+// when the simple engine is selected. star-sprite-hdr is the one module nobody
+// binds — it is listed so the validator keeps covering the reference variant,
+// not because a pass uses it.
+const SHADER_MODULES = ['star-sprite', 'star-sprite-hdr', 'nebula-billboard', 'tonemap', 'simple-step',
+        'gas-step', 'gas-cell'];
 
 const GalaxyShaders = { SHADERS, SHADER_PARTS, SHADER_MODULES };
 if (typeof module !== 'undefined') module.exports = GalaxyShaders;

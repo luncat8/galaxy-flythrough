@@ -102,8 +102,16 @@ ok(ScenarioLib.queryOf(null) === '', 'queryOf has no query for no row');
 		formed: 0.5, gas: 0.25, arms: 1.5, bulge: 0.125, draws: 0,
 	});
 	ok(line === 'observe \u00b7 1.0 Gyr (step 10/135) \u00b7 star 20.0 Myr/s \u00b7 evolve on'
-		+ '\nformed 50% \u00b7 gas 0.25 \u00b7 arms \u00d71.50 \u00b7 bulge \u00d70.13 \u00b7 draws 0',
+		+ '\nformed 50% \u00b7 gas 0.25 \u00b7 arms \u00d71.50 \u00b7 bulge \u00d70.13 \u00b7 draws 0 \u00b7 gas \u0394 \u2014',
 	'the live line names the mode, the epoch in quanta, the rate and the four numbers', line);
+
+	// 0.7.4 (F5): the gas grid's own mass against the drawn-census account, signed
+	// and three decimals — the number that says the gas picture and the stars agree.
+	const driftLine = ScenarioLib.liveLine({ mode: 'observe', age: 1, gasDelta: -0.0123 });
+	ok(driftLine.indexOf('gas \u0394 \u22120.012') !== -1,
+		'a negative grid drift prints signed, not absolute', driftLine);
+	const positive = ScenarioLib.liveLine({ age: 1, gasDelta: 0.004 });
+	ok(positive.indexOf('gas \u0394 +0.004') !== -1, 'a positive grid drift carries its sign', positive);
 
 	// The step is derivable from the model's own clock, so a caller that forgets
 	// to pass it still prints the quanta rather than a blank.
