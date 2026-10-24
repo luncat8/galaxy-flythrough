@@ -27,10 +27,10 @@
 
 	const SUITES = [
 		{ id: 'all', label: 'Run all checks', desc: 'Full GPU & visual suite: shaders, First light cluster gate, 3.4–3.6 Gyr continuity, V14 morphology, engines & determinism' },
-		{ id: 'firstlight', label: 'Run First Light & clusters', desc: 'T = 0 empty-sky gate (0 field stars, 0 clusters, 0 lit pixels on SBb) and 0 → 13.5 Gyr cluster assembly' },
+		{ id: 'firstlight', label: 'Run First Light & clusters', desc: 'T = 0 star-only gate, separate gas-only picture, and 0 → 13.5 Gyr cluster assembly' },
 		{ id: 'continuity', label: 'Run 3.4–3.6 Gyr continuity', desc: 'Epoch brightness, magOffset & visible star-count continuity across 3.0–4.0 Gyr and 2 Myr/s fine steps' },
 		{ id: 'morphology', label: 'Run V14 visual suite', desc: 'Formation scenarios (First light, Condensation, 1 Gyr gas-rich arms, 2 Gyr bulge assembly, Present day) with 0 redraws' },
-		{ id: 'engines', label: 'Run engines & determinism', desc: 'All 5 WGSL shader modules, classic/simple/apocenter orbit engines and two-run bit-identical GPU readback' },
+		{ id: 'engines', label: 'Run engines & determinism', desc: 'All shipping WGSL shader modules, classic/simple/apocenter orbit engines and two-run bit-identical GPU readback' },
 	];
 
 	function pad2(n) {
@@ -664,8 +664,10 @@
 				const sbbZero = deps.galaxy.modelAtAge(sbbRef, 0);
 				renderer.setEpoch(sbbZero);
 				renderer.stepEpoch(sbbZero, 1e9);
+				// Isolate the birth gate: First light is gas-only now, not black.
+				renderer.setGasVisible(false);
 				const sample0 = await renderEpochSample(renderer, target, cam, sbbZero, 0, 0);
-				thumbnails.push({ label: 'T = 0.0 Gyr (First light)', sample: sample0 });
+				thumbnails.push({ label: 'T = 0.0 Gyr (stars only; gas hidden)', sample: sample0 });
 
 				check('firstlight', 'T = 0 census formed is 0% and gas is 1.00',
 					sample0.cpu.formedFraction === 0 && sample0.cpu.gasFraction === 1,
@@ -676,9 +678,24 @@
 					'field=0/' + sample0.cpu.fieldTotal
 					+ ' clusterStars=0/' + sample0.cpu.clusterStarsTotal
 					+ ' gasStars=0/' + sample0.cpu.gasStarsTotal);
-				check('firstlight', 'T = 0 rendered SBb sky has 0 lit pixels (no orphan clusters at First light)',
+				check('firstlight', 'T = 0 star-only SBb frame has 0 lit pixels (gas hidden; no orphan clusters)',
 					sample0.px.litPixels === 0 && sample0.px.totalLuma === 0,
 					'litPx=' + sample0.px.litPixels + ' luma=' + sample0.px.totalLuma.toFixed(2));
+
+				renderer.setGasVisible(true);
+				const gas0 = await renderEpochSample(renderer, target, cam, sbbZero, 0, 0);
+				thumbnails.push({ label: 'T = 0.0 Gyr (gas only)', sample: gas0 });
+				check('firstlight', 'First light has a live gas grid beside the absent stellar census',
+					renderer.gasGridInfo().enabled && renderer.gasGridInfo().cells > 0);
+				if (gas0.hasGpuPixels) {
+					check('firstlight', 'T = 0 gas-only frame contains light on GPU readback',
+						gas0.px.litPixels > 0 && gas0.px.totalLuma > sample0.px.totalLuma,
+						'litPx=' + gas0.px.litPixels + ' luma=' + gas0.px.totalLuma.toFixed(2));
+				} else {
+					note('deferred', 'gas-only pixels need GPU readback; the CPU fallback does not rasterize gas');
+				}
+				// Keep the census-growth pixel comparison star-only too.
+				renderer.setGasVisible(false);
 
 				// Also verify booting directly at T = 0 (?age=0) still places the reference cluster census:
 				const bootZeroRenderer = deps.rendererLib.createStarRenderer(device, target.context, format, {
@@ -744,6 +761,7 @@
 					model: mwRef,
 				});
 				renderer.prepare(null);
+				renderer.setGasVisible(false); // This suite measures stellar exposure, not reservoir depletion.
 				const cam = setupGalaxyCamera(deps.cameraLib, mwRef);
 
 				const bandAges = [3.0, 3.2, 3.3, 3.4, 3.45, 3.5, 3.55, 3.6, 3.7, 3.8, 4.0];

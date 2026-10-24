@@ -1,9 +1,9 @@
 {
-  "date": "2026-10-23T07:53:07.407Z",
+  "date": "2026-10-24T09:14:45.144Z",
   "seed": 99,
   "targetN": 6000,
   "placedN": 6000,
-  "placeMs": 1558,
+  "placeMs": 1963,
   "box": {
     "xMin": -20,
     "xMax": 20,
@@ -25,8 +25,8 @@
   },
   "totalMembers": 113526,
   "meanRichness": 18.921,
-  "totalChecks": 42,
-  "passed": 42,
+  "totalChecks": 45,
+  "passed": 45,
   "failed": 0,
   "checks": [
     {
@@ -309,7 +309,23 @@
       "pass": true
     },
     {
-      "name": "the billboard record is 32 bytes (8 f32)",
+      "name": "the billboard record is 48 bytes (12 scalar slots)",
+      "pass": true
+    },
+    {
+      "name": "the shipping billboard packer carries source cell, local scale and the actual object birth",
+      "pass": true,
+      "detail": {
+        "mapped": 960,
+        "total": 6000
+      }
+    },
+    {
+      "name": "HII members carry the source cell epoch map; stellar remnants do not acquire it",
+      "pass": true
+    },
+    {
+      "name": "epoch-mapped HII members read exposure once from the uniform, not also from the record",
       "pass": true
     }
   ]

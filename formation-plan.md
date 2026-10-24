@@ -13,7 +13,8 @@ accounted quantity instead of a scalar, and the same drawing is used at every
 epoch — no re-sample, no step, no jump.
 
 Scope: `src/math/galaxy.js`, `src/math/star-types.js`, `src/math/sampling.js`,
-`src/render/star-sprites.js`, `src/render/shaders.js` (one new lane + one gate),
+`src/math/gas-grid.js`, `src/math/objects.js`,
+`src/render/star-sprites.js`, `src/render/shaders.js`,
 `src/main.js`, the tests. No new data files, no build step, no second star
 population, no N-body.
 
@@ -257,13 +258,14 @@ cells = 24 576      · 2 buffers (ping-pong) · 4 f32 slots = 384 KB each
 Four slots per cell: `m` (mass in units where the grid sums to 1 at `T = 0`),
 `Z` (relative enrichment, readout only in this series), `w` (a stable
 per-cell turbulence weight that gives the splats their texture) and `s` (the
-smoothed star-formation rate the last step wrote, for 0.7.5's local nebula
-rates). The index is `(ring·SPOKES + spoke)·SLABS + slab`, so a column's four
+smoothed star-formation rate the local HII billboards read (§5.7)). The index is `(ring·SPOKES + spoke)·SLABS + slab`, so a column's four
 slabs are adjacent and the step reads its own column without striding.
 
 The ring range stops at the field's truncation radius (`discRadius`) rather than
 the 1.4× the first draft used: beyond it the sampler draws no stars, so gas there
-would be a picture of nothing. The width of a cell is its own footprint — the
+would be a picture of nothing. Initial cell masses integrate the radial marginal over the ring's **width**
+(`discRadialWeight(R)·ΔR`); a log grid cannot give every sample equal `dR`.
+Slabs outside `discHeight` are empty. The width of a cell is its own footprint — the
 larger of the radial step and `R·Δφ` — which is also the splat size, so the gas
 disc keeps the grid's geometry at any camera.
 
@@ -274,7 +276,9 @@ boost  = max(0, 1 + amp·cos(m·φ − K·ln(R/Rs) + phase0))   the field's own 
 rate   = burnC · boost^1.5                                 Schmidt–Kennicutt on the
                                                            crest's compressed density
 m'     = m · exp(−rate · dt)                               exact, composes
-s'     = s + (sfr − s) · GAS_SMOOTHING                     the display rate
+a      = 1 / GAS_SMOOTH_GYR                                0.05 Gyr response
+s'     = s·exp(−a·dt) + a·rate·m·I(rate, a, dt)              the display rate
+I(k,a,h) = (exp(−k·h) − exp(−a·h)) / (a − k)
 ```
 
 `Ω_p` and `phase0` are the model's own (the ridge constant `K = m/tan(pitch)`,
@@ -290,7 +294,13 @@ driven by the *epoch* (a frame's delta of star time), and Euler would make the
 grid depend on the frame size — the same epoch reached in 60 steps and in 6 000
 would show different gas, and a slider drag would be a different galaxy. `exp`
 composes, so the grid is a pure function of `T`. A clock that runs *backwards* is
-a re-fill (`fillGrid` at the new age, 24 576 exps ≈ 1 ms), never a negative burn.
+a re-fill (`fillGrid` at the new age), never a negative burn. The display rate
+must compose too: it solves `ds/dT = a·(rate·m − s)` from `s(0) = 0`, not a
+fixed per-frame mix. Both `fillGrid` and `step` use that solution, so a paused
+boot, a jump, a rewind and a running clock give the same nebula brightness.
+Evaluate `I` as `h·exp(−min(k,a)·h)·phi(|a−k|·h)`, where
+`phi(x) = (1−exp(−x))/x`, with a small-x series. This handles `k = a`, tiny
+frame deltas and exhausted cells without cancellation or division by zero.
 
 ### 5.3 The calibration and the readout
 
@@ -298,21 +308,26 @@ a re-fill (`fillGrid` at the new age, 24 576 exps ≈ 1 ms), never a negative bu
 endpoints the F4 account requires:
 
 ```
-Σ m0·exp(−burnC·rate·0)        = 1            (First light: all gas)
-Σ m0·exp(−burnC·rate·AGE_REF)  = gasFraction  (the type's own present-day gas)
+Σ m0·exp(−burnC·boost^1.5·0)        = 1            (First light: all gas)
+Σ m0·exp(−burnC·boost^1.5·AGE_REF)  = gasFraction  (the type's own present-day gas)
 ```
 
 Between them the crests empty first — after the reference span the arm ridge
 holds less gas than the inter-arm troughs, which is the picture the slice exists
-for. Because the two endpoints are pinned and the in-between shape is the local
-law, the drift against `censusGasAt` is small and measured: a 256-bin histogram
-of `rate` weighted by `m0` makes `totalAt(age)` an O(256) sum, so the **Formation
+for. The in-between shape is the local law, not the census CDF: agreement at
+the endpoints does **not** bound their interior difference. A 256-bin histogram
+of `boost^1.5` weighted by `m0` makes `totalAt(age)` an O(256) sum, so the **Formation
 checks** panel prints `gas Δ` (the grid's total minus the account) on every
 frame (`ScenarioLib.liveLine`), and the test pins the histogram against the exact
 O(24 576) sum.
 
 The grid's total is *not* read back from the GPU: the readout integrates the same
-calibrated law on the CPU, which is exact at both endpoints by construction. A
+calibrated law on the CPU. The exact sum is pinned to the endpoints within the
+floating-point calibration tolerance; the binned readout adds a separately
+measured approximation error. A zero target (ellipticals) uses the burn ceiling:
+the exponential tends to zero rather than attaining a finite root, and the
+reference grid underflows to zero in `f32`. `clamped` means an unreachable
+positive target, not this deliberate zero-target case. A
 GPU readback would need a reduction pass (the plan refuses atomics) for a number
 that is already known analytically.
 
@@ -325,28 +340,35 @@ and floored at 2 px so a distant galaxy stays a haze rather than a moiré. The
 flux is the cell's mass times a look gain (`GAS_GAIN_DEFAULT`), modulated by its
 turbulence weight; a cell below the flux floor returns the hidden vertex, so a
 burned-out cell costs only its four vertex invocations. The gain was picked from
-a CPU projection of the grid at a 640 × 400 frame: with 15 000 the median gas
-pixel is 0.10 linear at `T = 0` (the whole picture, the stars gated off) and
-0.015 at `AGE_REF` (a faint haze under the present-day sky). It is a look
-constant like `MIN_ALPHA`, not a model number, and the browser pass (V14) owns
-its verdict.
+a CPU projection at 640 × 400, face-on from 45 kpc, using the shipping camera
+matrix, Euclidean distance for the splat size and the epoch heat scale. With
+**1 800**, the median covered pixel is **0.0682 linear at `T = 0`** (p90 0.646)
+and **0.00870 at `AGE_REF`** (p90 0.0855). These are scalar pre-colour radiances,
+not display luminances. The measurement and the gain are pinned in `gas-grid`.
+It is a look constant like `MIN_ALPHA`, not a model number; V14 owns the visual
+verdict. The original 15 000 calibration omitted the log-ring width and used
+twice the camera's positional focal scale; those assumptions do not apply.
 
-The composite nebula/HII billboards keep their own layer and still read the
-global scalar; taking their rate from the local `s` is 0.7.5.
+The composite billboards keep their own layer. HII emission reads the local
+`s` (§5.7); planetary nebulae and SNR are stellar remnants, not cold-gas tracers.
 
 ### 5.5 Races
 
 There are none: every cell is read from buffer A and written to buffer B by one
-invocation, and the ping-pong pair is what leaves room for a future scatter (a
-star-formation event debiting the cell it landed in — 0.7.5 or later). Nothing in
-this slice scatters, so nothing drifts: the `gas Δ` readout measures the
-calibration's own histogram error (< 0.25 % of the grid's mass), not a race.
+invocation. The nebula pass only reads the completed buffer; it does not debit
+it a second time. A future scatter would require a separate conflict policy:
+ping-pong alone would not prevent two events writing the same destination.
+Nothing in this series scatters. `gas Δ` is the difference between two **different laws**
+(the exponential grid and the census account), not the histogram approximation
+error. Only the latter has the < 0.25 % bound; a larger interior `gas Δ` is not
+a race or a failed endpoint calibration.
 
 ### 5.6 The surface
 
 - `src/math/gas-grid.js` (one API object): the constants, the cell geometry
-  (`cellRadius`, `cellAzimuth`, `cellHeight`, `ringEdge`, `cellBoost`), the
-  account (`initialize`, `fillGrid`, `step`, `total`, `totalAt`, `totalAtExact`).
+  (`cellRadius`, `cellAzimuth`, `cellHeight`, `ringEdge`, `cellBoost`, `cellAt`),
+  the account (`initialize`, `fillGrid`, `step`, `total`, `totalAt`,
+  `totalAtExact`), and local emission (`rateAfter`, `rateScale`, `emissionWeight`).
 - `renderer.gasGridInfo()`, `renderer.gasAccountAt(age)`,
   `renderer.setGasVisible(on)`; `state.gasCells/gasSteps/gasAge/gasVisible/
   gasTotal/gasDrift` for the HUD.
@@ -356,6 +378,42 @@ calibration's own histogram error (< 0.25 % of the grid's mass), not a race.
   `CAMERA_UNIFORM` part, concatenated into the nebula and gas modules.
 - Preset field: none. Turning the gas on or off is a look, and a preset that
   rebuilt the field for it would break R1.
+
+### 5.7 Local HII emission (0.7.5)
+
+The reference object census is still placed **once** using its SFH prior. This
+slice changes emission, not acceptance, member counts or identities: it does not
+spawn objects, scatter gas debits, or re-run `placeObjects` as the clock moves.
+
+Each HII billboard carries a fixed cell index in the grid's reference frame.
+`cellAt` inverts the log rings, wrapped azimuth and four slabs; positions outside
+the grid have no cold-gas source (no clamping to the nearest edge). The 48-byte
+billboard record holds the existing xyz/size/rgb/opacity plus `gasCell`,
+`rateScale`, `formedAt` and an HII epoch-map flag. The local emission multiplier is
+
+```
+SFR_NORMAL = −ln(GAS_NORMAL) · GAS_NORMAL / AGE_REF   // smooth MW reference, /Gyr
+rateScale  = 1 / (initialCellMass · SFR_NORMAL)
+weight(T)  = clamp(s[cell](T) · rateScale, 0, 4)
+brightness = opacity · gateAt(formedAt, T) · weight(T)
+```
+
+Dividing by initial mass removes the arbitrary cell size from the rate. The
+fixed reference normalisation avoids division by a nearly exhausted present-day
+rate; the 4× ceiling is a look limit, not another gas law. Planetary nebulae and
+SNR keep weight 1 and their own birth gate. With the grid disabled, all types
+keep weight 1, but the birth gate and placement remain the same.
+
+The nebula pass binds whichever ping-pong buffer the current step **wrote**.
+Hiding the gas splats does not stop the step or disconnect HII emission; it is a
+look toggle only. No GPU readback or per-frame object upload is needed. A
+16-byte empty storage binding is sufficient when the grid is disabled.
+
+HII billboards and their members use the same epoch ridge rotation and heat
+scale as their source cells. Seats, keys and births are unchanged; the existing
+epoch map places the carried members via `FLAG_EPOCH`. Every billboard is
+projected and distance-culled from **world − camera**, like the star/gas passes,
+not from its distance to the coordinate origin.
 
 ## 6. The smoothness contract (F6)
 
@@ -410,8 +468,8 @@ by *meaning*, not by a clamp:
   `smoothstep`; picking, selection rings and search ignore a fully absent field
   star just as the vertex stage does.
 - The shader reads one storage buffer and the fourth vec4 uniform lane after the
-  existing epoch lane. `renderer.setEpoch` still updates uniforms only; the gas
-  account/grid remain later slices.
+  existing epoch lane. `renderer.setEpoch` updates epoch state without rebuilding the census; the gas
+  compute pass integrates its age delta before the next draw.
 
 Preset field: none. Formation is not a setting — it is what an epoch *is*; the
 existing `age`, `evolve` and `stars` fields already place a run.
@@ -434,7 +492,7 @@ existing `age`, `evolve` and `stars` fields already place a run.
 Birth-law regression checks extend `experiments/star-types-evolution-test.js`
 (already registered in `field-tests`); GPU buffer, uniform and smoothness checks
 extend `experiments/renderer-test.js` and `experiments/wgsl-validate.js`. The
-later gas-account and grid slices will add their own focused experiments.
+gas-account, grid and local-emission slices have their own focused checks.
 
 - **Birth law.** General stars are monotone in channel 6 and inside the
   component's reference window; arm-selected thin stars are within the final
@@ -458,6 +516,19 @@ later gas-account and grid slices will add their own focused experiments.
   lanes, `setGasVisible`, and `dispose`. `wgsl-exec` executes the shipping
   `gas-step` and `gas-cell` against the same model (mass within 2e-4 relative,
   the splat at the geometry the CPU draws, an empty cell hidden).
+- **Local rates (0.7.5).** `fillGrid(T)` and one/many `step` calls agree on
+  **both** mass and rate (< 2e-5 relative over 500 steps); zero/tiny dt,
+  `rate = 1/tau`, underflowed mass and a paused boot are explicit cases. Ring
+  mass CDFs match independent radial quadrature; every cell centre round-trips
+  through the inverse, out-of-grid seats have no source, and the 48-byte writer
+  carries birth/type/cell metadata correctly. The renderer binds the just-written
+  grid for HII through both swaps and a rewind, keeps stepping when splats are
+  hidden, and never uploads object records on an epoch change. The no-grid
+  binding, reallocation, population-only recalibration and disposal are pinned.
+  `wgsl-exec` executes the actual billboard: local rate, empty source, unaffected
+  neighbour and stellar remnants, the 4× cap, birth fade, epoch map and translated
+  camera cull. The browser smoke rig separates star-only First light from
+  gas-only First light; a CPU fallback explicitly defers gas pixels.
 - **Gate.** `gateAt` is 0 at `birth`, 1 at `birth + FADE`, monotone and
   continuous through the fade. `wgsl-exec` compares the WGSL `smoothstep` to a
   single-precision CPU replay within f32 tolerance over 10k (birth, age) pairs.
@@ -506,7 +577,7 @@ series, against the same two rules: carried, never re-rolled.
 | 3 | F7 — deep time: `AGE_MIN` 0 and the six degeneracies | 2 | S | `0.7.2: the galaxy starts as gas` |
 | 4 | F4 — the drawn-census gas account and its readout | 2 | S | `0.7.3: what is not a star is gas` |
 | 5 | F5 — the gas grid, the compute step, the drawn cells | 3, 4 | M | `0.7.4: the gas is drawn where the stars are not` — shipped |
-| 6 | nebula/HII rates from the local grid, browser rows | 5 | S | `0.7.5: the nebulae eat where the gas is` |
+| 6 | HII emission from the local grid; browser rows specified, execution deferred | 5 | M | `0.7.5: the nebulae eat where the gas is` — implementation shipped; V14 open |
 
 Slice 1 lands first and alone: it is the reported defect, it needs no new
 buffer, and it makes every later slice verifiable by eye.
@@ -531,7 +602,7 @@ buffer, and it makes every later slice verifiable by eye.
 |---|---|
 | The look re-pin (F3) moves published colour/class numbers | §10's tolerance list is checked *before* the slice lands; the movement is recorded as a table, not absorbed silently |
 | A fade of 300k sprites reads as a global flash | `BIRTH_FADE_GYR` is half an epoch quantum, so fades are interleaved rather than coincident; the browser row checks it |
-| The gas grid disagrees with `gas(T)` | `gas Δ` in the readout; §10 pins the drift under 1 % per Gyr, and nothing downstream gates on the grid |
-| A 24k-cell dispatch per frame costs more than it looks | ping-pong, one invocation per cell, no atomics; measured at 300k stars against the existing ~0.67 s re-sample the series removes — the budget is 0.5 ms |
+| The gas grid disagrees with `gas(T)` | `gas Δ` reports the difference between the two laws; endpoints and histogram error have their own bounds. HII emission reads the grid, but the stellar census never does |
+| A 24k-cell dispatch per frame costs more than it looks | ping-pong, one invocation per cell, no atomics; target 0.5 ms, to be measured on a real GPU at the default budget (not implied by CPU interpretation or null-backend validation) |
 | Deep time exposes a latent divide-by-zero elsewhere | §7's table is exhaustive over the epoch factors; the `field-tests` suite runs every type at `T = 0` |
 | The object-carried fix changes today's object mix | R3 pins the *seats*; the mix at the base epoch is unchanged by construction, and `object-placement` keeps its pins |

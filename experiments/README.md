@@ -31,6 +31,7 @@ rewritten only by `all-tests` or `--logs`. Slow tier (serial, 2-core sandbox):
 | `input-test.js` | DOM events against the action table: mode-aware look, menu focus isolation (typing in a field never flies the camera), pick vs drag disambiguation, one-shot keys including `K`, and the pointer lock/release cycle. |
 | `preset-test.js` | The preset text line is the URL language, so serialize → parse round-trips every field exactly; the defaults table stays honest against the modules that own the numbers; engine-tagged fields ride only with their pass; selection contents and routes stay transient, off the line. |
 | `renderer-test.js` | `star-sprites.js` driven by a stub WebGPU device: buffer sizing for `[global][landmarks][objects][local][catalog]`, one upload of the fixed blocks with the landmark records flagged and at their baked positions, catalog upload only when residency changes, instance counts, the nebula billboard pass (packed gas objects, 4 px / 5 kpc cull, loadOp `'load'`), uniform packing, exposure clamping. |
+| `gas-grid-test.js` | The calibrated 64×96×4 gas grid: log-ring quadrature, spatial inverse, mass/rate composition including direct boot and rewind, the measured camera projection and haze gain, ping-pong HII bindings, no epoch object rewrites, hidden-splat independence and no-grid fallback/disposal. |
 | `hdr-test.js` | The Hable/Unreal filmic tone curve the renderer ships: fixed points, monotonicity, no NaN across the exposure range, the brightness-gain property (N overlapping stars sum linearly and roll off once), the linear exposure knob's range. Curve constants are pulled out of the WGSL; the arithmetic mirror lives in `tonemap-mirror.js`. |
 | `landmark-test.js` | 0.1.2 landmarks & constellations: the shared RA/Dec → XYZ conversion and screen projection, the landmark table (count, uniqueness, baked positions/magnitudes), every constellation edge resolving, click picking (nearest within 20 px, real data + synthetic scene, behind-camera culling), and the label layer's draw/cull/toggle behaviour against a mock 2D context. |
 | `star-select-test.js` | 0.5.0 selection (0.5.0-plan §3): `pickAny` over all five record blocks under the engine-mask dispatch, the simple-engine approximation it reports, the bounded snapshot set (nearest-first, capacity drops the farthest), `select-around`, key→slot resolution, fly-to, and the two click-cost budgets (pick < 16 ms, radius scan < 5 ms at 300k). |
@@ -44,7 +45,7 @@ rewritten only by `all-tests` or `--logs`. Slow tier (serial, 2-core sandbox):
 | `density-distribution-test.js` | The box sampler against the model on a grid: radial and vertical distributions, component mix, bounds. |
 | `star-types-evolution-test.js` | Stellar populations: O/B near arms, old giants, metallicity by component, Salpeter slope, mass → Teff → class chain. |
 | `nebula-placement-test.js` | Nebula types in the right environments: HII on arm ridges, planetary in the old inner population, none in the halo, sizes/opacities in range. |
-| `object-placement-test.js` | Composite objects: per-type environments, Plummer/King/fractal member profiles, budget apportionment, seed stability, gas-gated shares, full budget fill for all 19 types, 32-byte billboard packing and the 4 px / 5 kpc cull. |
+| `object-placement-test.js` | Composite objects: per-type environments, Plummer/King/fractal member profiles, budget apportionment, seed stability, gas-gated shares, full budget fill for all 19 types, 48-byte billboard packing (cell/rate/birth/epoch metadata), single exposure for epoch-mapped HII members, and the 4 px / 5 kpc cull. |
 | `shape-test.js` | The 0.4.8 3D-shape gate: no density step along a dense cut through each component, the bar's peanut, the truncation floors and the age–height coupling — a galaxy can be right face-on and wrong in z. |
 | `galaxy-age-test.js` | Galaxy age (0.3.3): the truncated delayed-exponential SFH per type (KS against the analytic CDF, mean, span and quenching), per-component formation windows and the assembly order at any age, the population's O/B, giant, remnant and colour trends, the mass-conserving gas law, object mixes and age clamps, and the exposure renormalisation offset. |
 | `orbit-test.js` | The 0.4 orbit law and the 0.4.x engines: T = 0 identity, reference periods, pattern-as-one-group, disc differentiality and bar x1 loops, then the engine-mask dispatch table for every mask (share 0/0.5/1, force 0/nonzero, nonzero centres, time-stable membership) against an independent CPU model. Since 0.4.9 it also pins the two sweep anchors: a disc star's reconstruction conserves its birth **cylinder** and carries its height at every azimuth, a spheroidal star still conserves the spherical radius in its centred plane, and the classic sine-difference wobble cannot cross the explicit disc-height cut at either edge. |
@@ -71,7 +72,10 @@ rewritten only by `all-tests` or `--logs`. Slow tier (serial, 2-core sandbox):
   tonemap `fs_main` and match the JS pixel model in `tonemap-mirror.js`. Not part of
   `all-tests` only because of the dev-only dependency. Also executes the actual density
   and arm WGSL for every regular type plus a translated/overridden model; checks
-  JS parity beyond the uniform-layout contract.
+  JS parity beyond the uniform-layout contract. Gas coverage executes `gas-step`
+  (including tiny dt and matching decay rates), `gas-cell` and the actual HII
+  billboard consumer: local light, an empty source, unaffected neighbours and
+  stellar remnants, carried births, the epoch map and camera-relative culling.
 
 ## Assets
 

@@ -60,12 +60,10 @@ const GAS_HIST_BINS = 1024;
 // whole picture at First light.
 const GAS_UNIFORM_FLOATS = 16;
 const GAS_STEP_WORKGROUP = 64;
-// Calibrated from the CPU projection the gas-grid test pins (640 × 400, face-on,
-// 45 kpc): at gain 15 000 the median covered pixel is 0.064 linear at T = 0
-// (p90 0.97 — the arm crests are the bright part of the whole picture) and
-// 0.0083 at AGE_REF (p90 0.14, a faint haze under the present-day sky). A look
-// constant like MIN_ALPHA, not a model number — its browser verdict is V14's.
-const GAS_GAIN_DEFAULT = 15000;
+// Measured with the shipping projection at 640 × 400, face-on at 45 kpc:
+// gain 1 800 gives median 0.068 linear at T = 0 (p90 0.65), and 0.0087
+// at AGE_REF (p90 0.086). A look constant, not a model number; V14 owns taste.
+const GAS_GAIN_DEFAULT = 1800;
 const TWO_PI = 2 * Math.PI;
 const CATALOG_BUDGET_DEFAULT = 250000;
 const LOCAL_PROCEDURAL_DEFAULT = 20000; // gap-fill for density parity near the camera
@@ -373,6 +371,7 @@ function createStarRenderer(device, context, format, options) {
                 entries: [
                         { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
                         { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+                        { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
                 ],
         });
         const nebulaPipeline = device.createRenderPipeline({
@@ -600,7 +599,7 @@ function createStarRenderer(device, context, format, options) {
         let thetaStaging = null;
         let totalRecordCount = 0;
         let nebulaBuffer = null;
-        let nebulaBindGroup = null;
+        let nebulaBindGroups = null;
         let nebulaStaging = null;
         let nebulaCount = 0;
         // Gas grid state (0.7.4 / F5): the account (weights, rates, calibration,
@@ -610,6 +609,7 @@ function createStarRenderer(device, context, format, options) {
         let gasAccount = null;
         let gasBufferA = null;
         let gasBufferB = null;
+        let gasEmptyBuffer = null;
         let gasStepGroups = null;      // [A→B, B→A]
         let gasDrawGroups = null;      // [reads A, reads B]
         let gasStaging = null;
@@ -865,23 +865,31 @@ function createStarRenderer(device, context, format, options) {
                         ],
                 });
                 if (nebulaBuffer) nebulaBuffer.destroy();
-                const nebulaBytes = Math.max(16, objectCount * billboardBytes);
+                const nebulaBytes = Math.max(billboardBytes, objectCount * billboardBytes);
                 nebulaStaging = new ArrayBuffer(nebulaBytes);
                 nebulaBuffer = device.createBuffer({
                         label: 'nebula-storage',
                         size: nebulaBytes,
                         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
                 });
-                nebulaBindGroup = device.createBindGroup({
-                        label: 'nebula-billboard-bind-group',
-                        layout: nebulaBindGroupLayout,
-                        entries: [
-                                { binding: 0, resource: { buffer: uniformBuffer } },
-                                { binding: 1, resource: { buffer: nebulaBuffer } },
-                        ],
-                });
+                ensureGasBuffers();
+                if (!gasGridEnabled && !gasEmptyBuffer) {
+                        gasEmptyBuffer = device.createBuffer({
+                                label: 'gas-grid-empty', size: 16, usage: GPUBufferUsage.STORAGE,
+                        });
+                }
+                nebulaBindGroups = [gasBufferA || gasEmptyBuffer, gasBufferB || gasEmptyBuffer].map((buffer, i) =>
+                        device.createBindGroup({
+                                label: i === 0 ? 'nebula-cell-a' : 'nebula-cell-b',
+                                layout: nebulaBindGroupLayout,
+                                entries: [
+                                        { binding: 0, resource: { buffer: uniformBuffer } },
+                                        { binding: 1, resource: { buffer: nebulaBuffer } },
+                                        { binding: 2, resource: { buffer } },
+                                ],
+                        }));
                 state.bufferBytes = totalBytes + nebulaBytes + thetaBytes + Math.max(4, fixedCapacity * 4)
-                        + (gasGridEnabled ? 2 * gasLib.GAS_BYTES : 0);
+                        + (gasGridEnabled ? 2 * gasLib.GAS_BYTES : 16);
         }
 
         // Seed the simple-engine azimuths from the birth positions in staging.
@@ -1103,8 +1111,7 @@ function createStarRenderer(device, context, format, options) {
         // slice is re-uploaded, so the look follows continuously and nothing
         // ever blocks the frame. A sweep always reads the *current* model, so a
         // clock that outruns it cannot make it lag: it just keeps sweeping.
-        // The composite objects are the one block the field's map does not place,
-        // and they are drawn once for the same reason the field is: a placement
+        // Composite objects are drawn once for the same reason the field is: a placement
         // reads the age-dependent acceptance rates, so re-running it at every
         // epoch re-rolls the seats and re-seeds every member. Their members are
         // stars in this same buffer, so that re-roll replaced a slice of the
@@ -1112,7 +1119,8 @@ function createStarRenderer(device, context, format, options) {
         // reported jump. Their look is epoch-independent by construction (a
         // member's age is the object's own, imposed by deriveStarWithAge, and the
         // metallicity follows the component), so the block needs no refresh at
-        // all: it is drawn with the field and carried.
+        // all: it is drawn with the field and carried. HII's epoch map and local
+        // emission now ride the GPU lanes too; neither rewrites that block.
         let epochCalibrationStars = 0;
         let epochCalibrationRef = 0;
         const epochSweep = { at: 0, stale: false };
@@ -1402,7 +1410,7 @@ function createStarRenderer(device, context, format, options) {
                 if (nebulaStaging) {
                         new Uint8Array(nebulaStaging).fill(0);
                         nebulaCount = objectsLib.writeObjectBillboards(
-                                placed, new DataView(nebulaStaging), 0, objectCount);
+                                placed, new DataView(nebulaStaging), 0, objectCount, gasAccount);
                 } else {
                         nebulaCount = 0;
                 }
@@ -1504,7 +1512,7 @@ function createStarRenderer(device, context, format, options) {
 
         // The population half of the fixed block: calibrate the exposure offset,
         // re-derive the procedural records, re-place the composite objects (their
-        // rates and ages read the gas and the clock at this age) and upload.
+        // rates and ages read the reference model) and upload.
         // `prepare` reaches it after a full sample; an age-only regenerate reaches
         // it with the positions it already has.
         function rebuildPopulation() {
@@ -1592,7 +1600,7 @@ function createStarRenderer(device, context, format, options) {
                 const geo = account.geometry;
                 gasUniform[0] = 0;                                  // dt, set by a step
                 gasUniform[1] = account.burnC;
-                gasUniform[2] = gasLib.GAS_SMOOTHING;
+                gasUniform[2] = 1 / gasLib.GAS_SMOOTH_GYR;
                 gasUniform[3] = geo.armsAmp;
                 gasUniform[4] = geo.armsM;
                 gasUniform[5] = geo.armsK;
@@ -1717,7 +1725,9 @@ function createStarRenderer(device, context, format, options) {
                         && window.GalaxyLib.sameGeometry(previous, nextModel);
                 configureMode(nextModel);
                 if (populationOnly) {
+                        drawReference = window.GalaxyLib.modelAtAge(model, window.GalaxyLib.AGE_REF);
                         writeFieldBirths();
+                        drawGasGrid(model.populations.age);
                         rebuildPopulation();
                         uploadDynamic();
                         return state;
@@ -2019,7 +2029,7 @@ function createStarRenderer(device, context, format, options) {
                         }],
                 });
                 nebulaPass.setPipeline(nebulaPipeline);
-                nebulaPass.setBindGroup(0, nebulaBindGroup);
+                nebulaPass.setBindGroup(0, gasReadIsA ? nebulaBindGroups[0] : nebulaBindGroups[1]);
                 nebulaPass.draw(4, nebulaCount, 0, 0);
                 nebulaPass.end();
 
@@ -2072,6 +2082,7 @@ function createStarRenderer(device, context, format, options) {
                 if (nebulaBuffer) nebulaBuffer.destroy();
                 if (gasBufferA) gasBufferA.destroy();
                 if (gasBufferB) gasBufferB.destroy();
+                if (gasEmptyBuffer) gasEmptyBuffer.destroy();
                 if (thetaBuffer) thetaBuffer.destroy();
                 if (hdrTexture) hdrTexture.destroy();
                 uniformBuffer.destroy();

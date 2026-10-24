@@ -741,7 +741,33 @@ function wgslConsts(part) {
         // same exponential of the same rate, so a JS replay and the WGSL agree.
         check('the burn law is the same exponential in both copies',
                 /exp\(-rate \* dt\)/.test(stepSrc)
-                && /Math\.exp\(-burnC \* rate\[i\] \* h\)/.test(readSource('src/math/gas-grid.js')));
+                && /Math\.exp\(-k \* h\)/.test(readSource('src/math/gas-grid.js')));
+}
+
+// --- 0.7.5: the local rate consumer --------------------------------------
+{
+	const gas = require('../src/math/gas-grid.js');
+	const neb = shaders.SHADERS['nebula-billboard'];
+	const step = shaders.SHADERS['gas-step'];
+	const packed = /struct NebulaPacked \{([\s\S]*?)\};/.exec(neb)[1];
+	const fields = [...packed.matchAll(/(\w+):\s*(f32|i32|u32),/g)].map((m) => [m[1], m[2]]);
+	check('NebulaPacked is the 48-byte writer layout with typed cell and epoch flag',
+		fields.length * 4 === objects.BILLBOARD_RECORD_BYTES
+		&& JSON.stringify(fields.slice(8)) === JSON.stringify([
+			['gasCell', 'i32'], ['rateScale', 'f32'], ['formedAt', 'f32'], ['patternEpoch', 'u32'],
+		]), fields);
+	check('the HII pass reads the grid through a read-only storage binding',
+		/@binding\(2\) var<storage, read> gasCells: array<vec4f>/.test(neb)
+		&& /gasCells\[u32\(neb.gasCell\)\].w \* neb.rateScale/.test(neb));
+	check('the local emission ceiling agrees with the CPU mirror', wgslConsts('nebula-billboard').GAS_RATE_MAX === gas.GAS_RATE_MAX);
+	check('billboard births, epoch placement and camera subtraction are explicit',
+		neb.includes('smoothstep(neb.formedAt, neb.formedAt + camera.formation.y, camera.formation.x)')
+		&& neb.includes('camera.epoch.x') && neb.includes('camera.epoch.z')
+		&& neb.includes('world - camera.cameraPos.xyz'));
+	check('the rate response is an exact convolution with its finite small-delta limit',
+		step.includes('gasRateAfter(cell.x, cell.w, rate, dt)')
+		&& step.includes('abs(a - rate) * dt') && step.includes('if (x < 0.01)')
+		&& step.includes('exp(-min(rate, a) * dt)'));
 }
 
 // --- Report --------------------------------------------------------------

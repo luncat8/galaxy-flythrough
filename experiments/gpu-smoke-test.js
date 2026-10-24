@@ -22,6 +22,7 @@ global.self = global.window;
 require('../src/math/hash.js');
 require('../src/math/density.js');
 require('../src/math/galaxy.js');
+require('../src/math/gas-grid.js');
 require('../src/math/sampling.js');
 require('../src/math/star-record.js');
 require('../src/math/star-types.js');
@@ -311,14 +312,36 @@ async function main() {
 	// 4. Automated verification suites.
 	console.log('\n--- 4. Automated verification suites ---');
 	for (const suiteId of ['firstlight', 'continuity', 'morphology', 'engines']) {
+		const frames = [];
+		const rendererLib = {
+			createStarRenderer(...args) {
+				const renderer = window.StarRenderer.createStarRenderer(...args);
+				const render = renderer.render;
+				renderer.render = (...params) => {
+					frames.push({ gas: renderer.state.gasVisible, age: renderer.state.galaxyAge });
+					return render(...params);
+				};
+				return renderer;
+			},
+		};
 		const res = await GpuSmoke.runSuite(suiteId, {
 			device: null,
+			deps: { rendererLib },
 			seed: 42,
 			proceduralStars: 4000,
 		});
 		check('suite "' + suiteId + '" passes all checks',
 			res.ok === true && res.failed === 0 && res.passed === res.total && res.total > 0,
 			res.passed + '/' + res.total + ' checks in ' + res.wallMs + ' ms');
+		if (suiteId === 'firstlight') {
+			check('First light isolates the stellar gate, then turns gas on for its own frame',
+				frames[0].age === 0 && !frames[0].gas && frames[1].age === 0 && frames[1].gas
+				&& frames.slice(2).every((f) => !f.gas));
+			check('the CPU fallback explicitly defers gas pixels rather than passing a synthetic verdict',
+				res.text.includes('gas-only pixels need GPU readback')
+				&& !res.checks.some((c) => c.name.includes('gas-only frame contains light')));
+		}
+		if (suiteId === 'continuity') check('stellar exposure continuity is measured with gas hidden', frames.every((f) => !f.gas));
 	}
 
 	const resAll = await GpuSmoke.runSuite('all', {
@@ -360,6 +383,9 @@ async function main() {
 		&& scriptSrcs[scriptSrcs.length - 1] === 'core/gpu-smoke.js'
 		&& scriptSrcs.every(rel => fs.existsSync(path.join(ROOT, 'src', rel))),
 		scriptSrcs.length + ' scripts verified');
+	check('the standalone rig loads the real gas module before its object and renderer consumers',
+		scriptSrcs.indexOf('math/gas-grid.js') > scriptSrcs.indexOf('math/galaxy.js')
+		&& scriptSrcs.indexOf('math/gas-grid.js') < scriptSrcs.indexOf('math/objects.js'));
 
 	check('index.html & main.js wire #scenario-suite, #scenario-copy-report, #scenario-open-rig, #scenario-report',
 		indexHtml.includes('id="scenario-suite"')

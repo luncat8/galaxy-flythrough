@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-24T07:50:50.720Z",
-  "modules": 36,
-  "totalChecks": 183,
-  "passed": 183,
+  "date": "2026-10-24T09:13:04.290Z",
+  "modules": 37,
+  "totalChecks": 188,
+  "passed": 188,
   "failed": 0,
   "checks": [
     {
@@ -98,6 +98,38 @@
     },
     {
       "name": "GalaxyLib binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "GasGridLib loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "GasGridLib registers exactly one window namespace (GasGridLib)",
+      "pass": true,
+      "detail": [
+        "GasGridLib"
+      ]
+    },
+    {
+      "name": "GasGridLib exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "GasGridLib has identical key sets (41 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "GasGridLib binds every key to the same value",
       "pass": true,
       "detail": []
     },

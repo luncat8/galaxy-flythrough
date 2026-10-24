@@ -1557,22 +1557,17 @@ Shipped, in `archive/`:
   The browser pass over the new system picture is the open validation item;
   T6–T8 remain deferred as specified.
 
-- [`formation-plan.md`](formation-plan.md) — 0.7 **formation**, the series after the
-  0.6 evolution work and the answer to "the galaxy from zero": an epoch becomes a
-  *census*, not a tint. Each star carries a birth time drawn once at the field draw
-  (the component's own `FORMATION_WINDOW` read against the reference span), a
-  per-star `f32` birth buffer feeds one `smoothstep` in the vertex stage, and the
-  star's look follows its own elapsed time (`T − birth`) through the existing
-  `deriveStarWithAge`. The gas is accounted against the *drawn* census (one 128-bin
-  birth histogram; `gas(T) = 1 − formed(T)·(1 − gasFraction)`, exact at both ends)
-  and drawn from a 64×96×4 ping-pong grid with no atomics — races are allowed where
-  a scatter would need them, bounded and reported as `gas Δ`. The series opens with
-  the smoothness contract, because its one confirmed defect is a clock re-rolling
-  what is on screen: `refreshObjects`' 0.02 Gyr re-place of the composite objects
-  (whose members are stars in the same buffer) jitters the sky up to five times a
-  second at the top star rate. `AGE_MIN` 0.2 → 0 with the six deep-time degeneracies
-  resolved by meaning (§7). **Status:** planned, not started; E5 (events) is
-  deferred behind it.
+- [`formation-plan.md`](formation-plan.md) — 0.7 **formation**: a carried
+  reference census, per-star `f32` birth times, a GPU smooth birth gate and looks
+  from elapsed stellar age. The 1024-bin census histogram accounts for gas;
+  a separate 64×96×4 ping-pong grid draws it, with calibrated exponential mass
+  depletion and an exact time-based SFR response. HII billboards read their local
+  cell rate without re-placing objects, spawning stars, scatter writes or GPU
+  readback. `gas Δ` reports the difference between the grid and census laws, not
+  a race or a bound on their interior agreement. `AGE_MIN` is 0, with the
+  deep-time degeneracies resolved by meaning. **Status:** 0.7.0–0.7.5 implemented;
+  V14 visual/GPU profiling checks and the remaining F6 engine-switch audit stay
+  open. E5 (events) remains deferred behind the formation contract.
 
 - [`evolution-plan.md`](evolution-plan.md) — the 0.6 series, galaxy evolution over time:
   the type table describes present-day galaxies, so `modelAtAge` gains an **epoch tier**

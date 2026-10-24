@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-24T07:50:51.298Z",
+  "date": "2026-10-24T09:13:05.194Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -27,7 +27,7 @@
     },
     {
       "name": "nebula-billboard",
-      "lines": 113
+      "lines": 129
     },
     {
       "name": "tonemap",
@@ -47,7 +47,7 @@
     },
     {
       "name": "gas-step",
-      "lines": 64
+      "lines": 76
     },
     {
       "name": "gas-cell",
@@ -63,8 +63,8 @@
     "gas-step",
     "gas-cell"
   ],
-  "totalChecks": 206,
-  "passed": 206,
+  "totalChecks": 211,
+  "passed": 211,
   "failed": 0,
   "checks": [
     {
@@ -116,7 +116,7 @@
         ],
         [
           "nebula-billboard",
-          3835
+          4740
         ],
         [
           "tonemap",
@@ -132,15 +132,15 @@
         ],
         [
           "gas-common",
-          1527
+          1535
         ],
         [
           "gas-step",
-          2744
+          3140
         ],
         [
           "gas-cell",
-          5531
+          5539
         ]
       ]
     },
@@ -386,7 +386,7 @@
     {
       "name": "gas-step: declares its functions",
       "pass": true,
-      "detail": 5
+      "detail": 6
     },
     {
       "name": "gas-cell: braces and parentheses balance",
@@ -1430,6 +1430,76 @@
     },
     {
       "name": "the burn law is the same exponential in both copies",
+      "pass": true
+    },
+    {
+      "name": "NebulaPacked is the 48-byte writer layout with typed cell and epoch flag",
+      "pass": true,
+      "detail": [
+        [
+          "x",
+          "f32"
+        ],
+        [
+          "y",
+          "f32"
+        ],
+        [
+          "z",
+          "f32"
+        ],
+        [
+          "size",
+          "f32"
+        ],
+        [
+          "r",
+          "f32"
+        ],
+        [
+          "g",
+          "f32"
+        ],
+        [
+          "b",
+          "f32"
+        ],
+        [
+          "opacity",
+          "f32"
+        ],
+        [
+          "gasCell",
+          "i32"
+        ],
+        [
+          "rateScale",
+          "f32"
+        ],
+        [
+          "formedAt",
+          "f32"
+        ],
+        [
+          "patternEpoch",
+          "u32"
+        ]
+      ]
+    },
+    {
+      "name": "the HII pass reads the grid through a read-only storage binding",
+      "pass": true
+    },
+    {
+      "name": "the local emission ceiling agrees with the CPU mirror",
+      "pass": true
+    },
+    {
+      "name": "billboard births, epoch placement and camera subtraction are explicit",
+      "pass": true
+    },
+    {
+      "name": "the rate response is an exact convolution with its finite small-delta limit",
       "pass": true
     }
   ]

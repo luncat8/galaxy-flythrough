@@ -1,8 +1,26 @@
 {
-  "date": "2026-10-24T07:58:11.317Z",
-  "totalChecks": 80,
-  "passed": 80,
+  "date": "2026-10-24T09:13:13.454Z",
+  "totalChecks": 108,
+  "passed": 108,
   "failed": 0,
+  "lookMeasurement": {
+    "width": 640,
+    "height": 400,
+    "distance": 45,
+    "gain": 1800,
+    "first": {
+      "lit": 121544,
+      "total": 23410.78163496788,
+      "median": 0.06818827986717224,
+      "p90": 0.6464300155639648
+    },
+    "present": {
+      "lit": 123968,
+      "total": 3511.6794592970923,
+      "median": 0.008697246201336384,
+      "p90": 0.08552952110767365
+    }
+  },
   "checks": [
     {
       "name": "the grid is 64 rings × 96 spokes × 4 slabs = 24 576 cells × 4 slots",
@@ -30,6 +48,26 @@
     },
     {
       "name": "cells beyond the field truncation carry no gas",
+      "pass": true
+    },
+    {
+      "name": "every cell centre round-trips through the spatial inverse",
+      "pass": true
+    },
+    {
+      "name": "the azimuth seam wraps between spoke 95 and spoke 0",
+      "pass": true
+    },
+    {
+      "name": "out-of-grid seats are absent, never clamped to the nearest cell",
+      "pass": true
+    },
+    {
+      "name": "slabs outside a smaller vertical truncation contain no mass or source seats",
+      "pass": true
+    },
+    {
+      "name": "log-ring masses match the integrated thin-disc radial CDF (including ring width)",
       "pass": true
     },
     {
@@ -205,6 +243,22 @@
       "pass": true
     },
     {
+      "name": "one jump, 500 steps and a paused boot agree on BOTH m and s (< 2e-5 relative)",
+      "pass": true
+    },
+    {
+      "name": "First light has zero smoothed rate, even after a rewind",
+      "pass": true
+    },
+    {
+      "name": "cell mass cancels out of the local emission normalisation",
+      "pass": true
+    },
+    {
+      "name": "local emission is dark at zero rate and capped at the authored ceiling",
+      "pass": true
+    },
+    {
       "name": "after the burn the arm crests hold less gas than the troughs",
       "pass": true
     },
@@ -217,15 +271,27 @@
       "pass": true
     },
     {
+      "name": "the rate filter composes at tiny dt, zero burn and matching decay rates",
+      "pass": true
+    },
+    {
+      "name": "matching decay rates use the finite analytic limit",
+      "pass": true
+    },
+    {
+      "name": "an empty cell keeps decaying its remaining display rate",
+      "pass": true
+    },
+    {
       "name": "at First light the gas covers the frame where the disc is",
       "pass": true
     },
     {
-      "name": "at T = 0 the median gas pixel is ~0.06 linear, p90 ~1 (the whole picture)",
+      "name": "at T = 0 the median gas pixel is ~0.068 linear, p90 ~0.65 (the whole picture)",
       "pass": true
     },
     {
-      "name": "at AGE_REF the median gas pixel is a faint haze, ~0.008",
+      "name": "at AGE_REF the median gas pixel is a faint haze, ~0.0087",
       "pass": true
     },
     {
@@ -249,11 +315,23 @@
       "pass": true
     },
     {
+      "name": "a paused nonzero-age boot already uploads a live rate, not a dark grid",
+      "pass": true
+    },
+    {
+      "name": "prepare links HII seats after the grid exists and leaves stellar remnants unlinked",
+      "pass": true
+    },
+    {
       "name": "a frozen clock dispatches no gas step",
       "pass": true
     },
     {
       "name": "the grid is drawn as one instanced quad pass over every cell",
+      "pass": true
+    },
+    {
+      "name": "the frozen nebula pass reads the boot grid A",
       "pass": true
     },
     {
@@ -269,11 +347,19 @@
       "pass": true
     },
     {
+      "name": "the HII pass reads B in the very frame the first step writes B",
+      "pass": true
+    },
+    {
       "name": "the second step swaps the ping-pong pair",
       "pass": true
     },
     {
       "name": "the draw after a step reads the buffer the step wrote",
+      "pass": true
+    },
+    {
+      "name": "the HII pass follows the second ping-pong swap back to A",
       "pass": true
     },
     {
@@ -285,11 +371,19 @@
       "pass": true
     },
     {
+      "name": "the rate response uniform is 1 / tau in Gyr, not a per-frame fraction",
+      "pass": true
+    },
+    {
       "name": "the grid uniform carries the cell count and the look gain",
       "pass": true
     },
     {
       "name": "a rewound clock re-fills the grid instead of stepping it backwards",
+      "pass": true
+    },
+    {
+      "name": "rewind uploads the analytic rate as well as the mass and binds that refill for HII",
       "pass": true
     },
     {
@@ -305,11 +399,23 @@
       "pass": true
     },
     {
+      "name": "hiding the haze keeps the burn running and the HII source connected",
+      "pass": true
+    },
+    {
       "name": "showing it again restores the pass",
       "pass": true
     },
     {
       "name": "the grid info reports cells, steps, age and the calibrated burn",
+      "pass": true
+    },
+    {
+      "name": "local emission changes never rewrite object seats or billboard records or resample the field",
+      "pass": true
+    },
+    {
+      "name": "a new field rebuilds nebula bindings without duplicating the gas pair",
       "pass": true
     },
     {
@@ -322,6 +428,30 @@
     },
     {
       "name": "the disabled grid reports itself disabled",
+      "pass": true
+    },
+    {
+      "name": "a disabled grid binds one empty vec4 and packs unmodulated emission",
+      "pass": true
+    },
+    {
+      "name": "dispose also destroys the disabled-grid binding",
+      "pass": true
+    },
+    {
+      "name": "a renderer without the gas model still boots and draws no grid",
+      "pass": true
+    },
+    {
+      "name": "the disabled grid reports itself disabled",
+      "pass": true
+    },
+    {
+      "name": "a disabled grid binds one empty vec4 and packs unmodulated emission",
+      "pass": true
+    },
+    {
+      "name": "dispose also destroys the disabled-grid binding",
       "pass": true
     }
   ]

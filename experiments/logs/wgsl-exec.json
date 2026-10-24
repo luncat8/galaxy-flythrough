@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-24T07:49:41.250Z",
+  "date": "2026-10-24T09:07:40.209Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 130,
-  "passed": 130,
+  "totalChecks": 143,
+  "passed": 143,
   "failed": 0,
   "checks": [
     {
@@ -484,15 +484,15 @@
       "name": "on-WGSL: the stepped mass matches gas-grid.js (< 2e-4 relative)",
       "pass": true,
       "detail": {
-        "worst": 9.309708396658745e-8,
-        "cell": 0
+        "worst": 8.599880169269721e-8,
+        "cell": 20000
       }
     },
     {
-      "name": "on-WGSL: the display slot matches the same smoothing (< 1e-4)",
+      "name": "on-WGSL: the display slot matches the exact response (< 1e-9 absolute)",
       "pass": true,
       "detail": {
-        "worst": 1.1368683772161603e-12
+        "worst": 9.094947017729282e-13
       }
     },
     {
@@ -516,8 +516,8 @@
       "name": "on-WGSL: that cell carries the flux its mass implies",
       "pass": true,
       "detail": {
-        "wgsl": 0.11744039505720139,
-        "model": 0.1174403933691792
+        "wgsl": 0.026528488844633102,
+        "model": 0.02652849134392454
       }
     },
     {
@@ -532,6 +532,87 @@
           1
         ]
       }
+    },
+    {
+      "name": "on-WGSL: the response handles zero/tiny dt and equal/near-equal decay rates",
+      "pass": true,
+      "detail": {
+        "finite": true,
+        "worstRelative": 2.986436749885186e-7
+      }
+    },
+    {
+      "name": "on-WGSL: an exhausted cell still decays its display rate",
+      "pass": true
+    },
+    {
+      "name": "on-WGSL: 250 forward steps match a direct epoch evaluation of mass AND rate",
+      "pass": true,
+      "detail": {
+        "mass": 0.3306576907634735,
+        "wantMass": 0.3306565769763913,
+        "rate": 0.04997345432639122,
+        "wantRate": 0.049973288193671216
+      }
+    },
+    {
+      "name": "on-WGSL: HII rides its source cell and projects relative to a translated camera",
+      "pass": true,
+      "detail": {
+        "clip": [
+          -0.30522406101226807,
+          0.3018239736557007,
+          -1.6999999284744263,
+          1
+        ],
+        "eye": [
+          -0.25000015029275424,
+          0.4000002365515254,
+          -1.6999999547004698
+        ],
+        "size": 88.35852463139292,
+        "distanceFromOrigin": 7.488594914623467
+      }
+    },
+    {
+      "name": "on-WGSL: HII brightness is its own cell rate times opacity",
+      "pass": true,
+      "detail": {
+        "wgsl": 1.582329273223877,
+        "local": 3.516287312076628
+      }
+    },
+    {
+      "name": "on-WGSL: an empty source hides only its HII, not a neighbouring cell",
+      "pass": true
+    },
+    {
+      "name": "on-WGSL: planetary nebulae and SNR do not read the cold-gas rate",
+      "pass": true
+    },
+    {
+      "name": "on-WGSL: an out-of-grid HII has no source instead of aliasing an edge",
+      "pass": true
+    },
+    {
+      "name": "on-WGSL: the local look multiplier has a finite 4x ceiling",
+      "pass": true
+    },
+    {
+      "name": "on-WGSL: billboards use their carried birth, not a global startup fade",
+      "pass": true
+    },
+    {
+      "name": "on-WGSL: First light hides all nebula types even if a cell contains rate",
+      "pass": true
+    },
+    {
+      "name": "on-WGSL: the distance cull follows the camera, not the origin",
+      "pass": true
+    },
+    {
+      "name": "on-WGSL: no grid uses unmodulated light with a single dummy cell binding",
+      "pass": true
     },
     {
       "name": "the faint star matches the same formula, including the sub-pixel fade",

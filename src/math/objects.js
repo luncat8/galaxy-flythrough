@@ -45,6 +45,9 @@
 	const records = (typeof module !== 'undefined' && module.exports)
 		? require('./star-record.js')
 		: window.StarRecord;
+	const gasGrid = (typeof module !== 'undefined' && module.exports)
+		? require('./gas-grid.js')
+		: window.GasGridLib;
 	const orbit = (typeof module !== 'undefined' && module.exports)
 		? require('./orbit.js')
 		: window.OrbitLib;
@@ -92,7 +95,7 @@
 	// clusters (clusters.js) are the stars-only systems; they never reach
 	// this table, which is what keeps a cluster out of the nebula pass.
 	const GAS_TYPES = { HII: true, planetary: true, SNR: true };
-	const BILLBOARD_RECORD_FLOATS = 8;
+	const BILLBOARD_RECORD_FLOATS = 12;
 	const BILLBOARD_RECORD_BYTES = BILLBOARD_RECORD_FLOATS * 4;
 	const BILLBOARD_MIN_PX = 4;
 	const BILLBOARD_MAX_DIST_KPC = 5;
@@ -319,8 +322,8 @@
 	// nothing — unwritten capacity stays all-zero (invisible).
 	//
 	// `magOffset` is the renderer's exposure renormalisation, in magnitudes, added
-	// to absMag before packing: object members are procedural stars, so they
-	// follow the field they sit in. It defaults to 0, which keeps every other
+	// to absMag before packing for stellar remnants. HII's epoch-mapped members
+	// read it from the uniform instead, exactly once like the field. It defaults to 0, which keeps every other
 	// caller — and every test that pins a member's magnitude — on the unoffset sky.
 	//
 	// `identity` / `identityBase` (0.5.0) are optional: when given, each member's
@@ -372,9 +375,10 @@
 				const family = obj.ageGyr < 0.1
 					? orbit.FAMILY_PATTERN
 					: orbit.familyForStar(component, memberDerived.spectralClass, model.barred);
+				const flags = records.FLAG_VISIBLE | (obj.type === 'HII' ? records.FLAG_EPOCH : 0);
 				records.writeRecord(view, byteOffset + slot * records.RECORD_BYTES, x, y, z,
-					memberDerived.colorIndex, memberDerived.absMag + offset,
-					orbit.flagsWithFamily(records.FLAG_VISIBLE, family),
+					memberDerived.colorIndex, memberDerived.absMag + (obj.type === 'HII' ? 0 : offset),
+					orbit.flagsWithFamily(flags, family),
 					hash.pcgHash(memberSeed ^ 0xFACE) & 0xFF);
 				if (identity) identity[identityBase + slot] = memberSeed >>> 0;
 				if (memberMeta) {
@@ -409,9 +413,10 @@
 
 	// Pack one billboard per gas object into `view` at `byteOffset`. Returns
 	// the written count; the caller draws that many instances. Layout is
-	// 8 f32: xyz, size, rgb, opacity — the nebula-billboard shader's
-	// NebulaPacked.
-	function writeObjectBillboards(objects, view, byteOffset, max) {
+	// 48 bytes: xyz/size/rgb/opacity, cell i32, rate scale f32, birth f32,
+	// HII epoch-map u32. Stellar remnants (or no grid) have rateScale = -1:
+	// their light is not a cold-gas rate. An out-of-grid HII has scale 0.
+	function writeObjectBillboards(objects, view, byteOffset, max, gasAccount) {
 		let slot = 0;
 		for (let j = 0; j < objects.length && slot < max; j++) {
 			const obj = objects[j];
@@ -426,6 +431,14 @@
 			view.setFloat32(o + 20, color[1], true);
 			view.setFloat32(o + 24, color[2], true);
 			view.setFloat32(o + 28, BILLBOARD_OPACITY[obj.type], true);
+			const hii = obj.type === 'HII';
+			const linked = hii && !!gasAccount;
+			const cell = linked ? gasGrid.cellAt(gasAccount.geometry,
+				Math.fround(obj.x), Math.fround(obj.y), Math.fround(obj.z)) : -1;
+			view.setInt32(o + 32, cell, true);
+			view.setFloat32(o + 36, linked ? gasGrid.rateScale(gasAccount, cell) : -1, true);
+			view.setFloat32(o + 40, Number.isFinite(obj.formedAt) ? obj.formedAt : 0, true);
+			view.setUint32(o + 44, hii ? 1 : 0, true);
 			slot++;
 		}
 		return slot;

@@ -1,10 +1,10 @@
 {
-  "date": "2026-10-24T07:50:54.062Z",
+  "date": "2026-10-24T09:13:08.972Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 214,
-  "totalChecks": 147,
-  "passed": 147,
+  "prepareMs": 322,
+  "totalChecks": 148,
+  "passed": 148,
   "failed": 0,
   "checks": [
     {
@@ -289,7 +289,7 @@
       "pass": true,
       "detail": {
         "writes": 1,
-        "bytes": 1280,
+        "bytes": 1920,
         "count": 40
       }
     },
@@ -755,10 +755,10 @@
         "objects": 1894,
         "stars": 1894,
         "hashes": [
-          1742653756,
-          1742653756,
-          1742653756,
-          1742653756
+          1348389180,
+          1348389180,
+          1348389180,
+          1348389180
         ]
       }
     },
@@ -768,6 +768,13 @@
       "detail": {
         "fieldSamples": 3,
         "objects": 200
+      }
+    },
+    {
+      "name": "a population-only gas change recalibrates the grid instead of keeping its old reference",
+      "pass": true,
+      "detail": {
+        "total": 0.39999963290949764
       }
     },
     {
@@ -893,8 +900,8 @@
       "name": "crossing a cell boundary re-uploads the dynamic region",
       "pass": true,
       "detail": {
-        "before": 40,
-        "after": 41
+        "before": 42,
+        "after": 43
       }
     },
     {
@@ -1050,7 +1057,7 @@
       "name": "state.bufferBytes counts the star, nebula, theta, birth and two gas-grid buffers",
       "pass": true,
       "detail": {
-        "bufferBytes": 824432
+        "bufferBytes": 824512
       }
     },
     {

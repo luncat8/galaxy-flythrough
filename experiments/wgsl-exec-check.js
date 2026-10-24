@@ -877,7 +877,7 @@ async function main() {
 		const gasU = new Float32Array(gasUniformBytes);
 		gasU[0] = 1;                             // dt, Gyr
 		gasU[1] = gasAccount.burnC;
-		gasU[2] = gasLib.GAS_SMOOTHING;
+		gasU[2] = 1 / gasLib.GAS_SMOOTH_GYR;
 		gasU[3] = gasGeo.armsAmp;
 		gasU[4] = gasGeo.armsM;
 		gasU[5] = gasGeo.armsK;
@@ -919,8 +919,8 @@ async function main() {
 			{ ran: gasRan, nan: gasNaN });
 		check('on-WGSL: the stepped mass matches gas-grid.js (< 2e-4 relative)',
 			gasWorstMass < 2e-4, { worst: gasWorstMass, cell: gasWorstCell });
-		check('on-WGSL: the display slot matches the same smoothing (< 1e-4)',
-			gasWorstSlot < 1e-4, { worst: gasWorstSlot });
+		check('on-WGSL: the display slot matches the exact response (< 1e-9 absolute)',
+			gasWorstSlot < 1e-9, { worst: gasWorstSlot });
 
 		// The splat: an empty cell is hidden, a live one sits at the geometry the
 		// CPU draws and carries the flux the model predicts.
@@ -968,6 +968,138 @@ async function main() {
 		check('on-WGSL: an empty cell is clipped away before rasterization',
 			emptyCell.flux === 0 && emptyCell.clipPos[2] === -1,
 			{ flux: emptyCell.flux, clip: emptyCell.clipPos });
+	}
+
+
+	// --- 2k. The response and its actual consumer (0.7.5) -----------------
+	{
+		const gasLib = require('../src/math/gas-grid.js');
+		const objects = require('../src/math/objects.js');
+		const model = galaxy.createGalaxy({ type: 'SBb', seed: 17 });
+		const account = gasLib.initialize(model, 5, model.seed);
+		const geo = account.geometry;
+		const params = new Float32Array(16);
+		params[2] = 1 / gasLib.GAS_SMOOTH_GYR;
+		params[6] = geo.armsRs;
+		params[8] = geo.rMin; params[9] = geo.rMax; params[10] = geo.height;
+		params[13] = 1;
+		const source = new Float32Array([0.7, 0.8, 0.9, 0.2]);
+		const target = new Float32Array(4);
+		const bindings = { 0: { 0: { uniform: params.buffer }, 1: source.buffer, 2: target.buffer } };
+		const debug = new WgslDebug(shaders.SHADERS['gas-step']);
+		const dispatch = () => {
+			if (!debug.debugWorkgroup('main', [0, 0, 0], 1, bindings)) throw new Error('gas-step did not start');
+			let n = 0;
+			while (debug.stepNext() && n < 50000) n++;
+			if (n >= 50000) throw new Error('gas-step did not finish');
+		};
+		let worst = 0, finite = true;
+		for (const rate of [0, 0.15, 20 - 0.00001, 20, 20 + 0.00001, 64]) {
+			params[1] = rate;
+			for (const dt of [0, 1e-9, 0.00000165, 0.00165, 0.05, 2, 13.5]) {
+				params[0] = dt;
+				dispatch();
+				const expected = gasLib.rateAfter(source[0], source[3], params[1], params[0]);
+				finite = finite && target.every(Number.isFinite);
+				worst = Math.max(worst, Math.abs(target[3] - expected) / Math.max(expected, 1e-25));
+			}
+		}
+		check('on-WGSL: the response handles zero/tiny dt and equal/near-equal decay rates', finite && worst < 2e-4,
+			{ finite, worstRelative: worst });
+		params[0] = 0.03; source[0] = 0;
+		dispatch();
+		check('on-WGSL: an exhausted cell still decays its display rate', target[0] === 0 && target[3] > 0
+			&& Math.abs(target[3] - source[3] * Math.exp(-params[2] * params[0])) < 1e-7);
+
+		source[0] = 0.7; source[3] = 0; params[0] = 0.02; params[1] = 0.15;
+		const wantMass = source[0] * Math.exp(-params[1] * params[0] * 250);
+		const wantRate = gasLib.rateAfter(source[0], 0, params[1], params[0] * 250);
+		for (let i = 0; i < 250; i++) { dispatch(); source.set(target); }
+		check('on-WGSL: 250 forward steps match a direct epoch evaluation of mass AND rate',
+			Math.abs(target[0] - wantMass) / wantMass < 2e-5
+			&& Math.abs(target[3] - wantRate) / wantRate < 2e-5,
+			{ mass: target[0], wantMass, rate: target[3], wantRate });
+
+		// Pack through the shipping writer, not a test-only copy of NebulaPacked.
+		const grid = gasLib.fillGrid(account, 5, model.seed);
+		const ring = 38, spoke = 15, slab = 2;
+		const cell = gasLib.cellIndex(ring, spoke, slab);
+		const R = gasLib.cellRadius(geo, ring), phi = gasLib.cellAzimuth(geo, spoke);
+		const point = { x: geo.centreX + R * Math.cos(phi), y: R * Math.sin(phi), z: gasLib.cellHeight(geo, slab) };
+		const otherPhi = gasLib.cellAzimuth(geo, spoke + 1);
+		const placed = [
+			{ ...point, type: 'HII', size: 0.1, formedAt: 2 },
+			{ ...point, x: geo.centreX + R * Math.cos(otherPhi), y: R * Math.sin(otherPhi), type: 'HII', size: 0.1, formedAt: 2 },
+			{ ...point, type: 'planetary', size: 0.1, formedAt: 2 },
+			{ ...point, type: 'SNR', size: 0.1, formedAt: 2 },
+			{ ...point, x: geo.centreX + geo.rMax + 1, type: 'HII', size: 0.1, formedAt: 2 },
+		];
+		const nebBytes = new ArrayBuffer(placed.length * objects.BILLBOARD_RECORD_BYTES);
+		const nebView = new DataView(nebBytes);
+		objects.writeObjectBillboards(placed, nebView, 0, placed.length, account);
+		const camera = new Float32Array(56);
+		camera.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+		camera[19] = geo.centreX;
+		camera[20] = 1600; camera[21] = 900; camera[22] = 2 / 1600; camera[23] = 2 / 900;
+		camera[27] = 13; camera[30] = 0.04; camera[43] = 0.27;
+		camera[48] = 0.23; camera[49] = 1; camera[50] = 0.6;
+		camera[52] = 5; camera[53] = orbit.BIRTH_FADE_GYR; camera[55] = 1;
+		const angle = camera[30] * camera[27] + camera[43] + camera[48];
+		const qx = Math.fround(point.x) - camera[19], qy = Math.fround(point.y);
+		const world = [camera[19] + qx * Math.cos(angle) - qy * Math.sin(angle),
+			qx * Math.sin(angle) + qy * Math.cos(angle), Math.fround(point.z) * camera[50]];
+		camera[16] = world[0] + 0.25; camera[17] = world[1] - 0.4; camera[18] = world[2] + 1.7;
+		const nebBinds = { 0: { 0: { uniform: camera.buffer }, 1: nebBytes, 2: grid.buffer } };
+		const vertex = (i) => runStage(shaders.SHADERS['nebula-billboard'], 'vs_main', 'debugVertex',
+			{ vertex_index: 0, instance_index: i }, nebBinds);
+		const live = vertex(0);
+		const eye = world.map((v, i) => v - camera[16 + i]);
+		const size = Math.fround(0.1) / Math.hypot(...eye) * camera[21] / Math.tan(1.047197551 * 0.5);
+		check('on-WGSL: HII rides its source cell and projects relative to a translated camera',
+			live.brightness > 0 && Math.hypot(...world) > 5
+			&& Math.abs(live.clipPos[0] - (eye[0] - size * 0.5 * camera[22])) < 2e-5
+			&& Math.abs(live.clipPos[1] - (eye[1] - size * 0.5 * camera[23])) < 2e-5
+			&& Math.abs(live.clipPos[2] - eye[2]) < 2e-5,
+			{ clip: live.clipPos, eye, size, distanceFromOrigin: Math.hypot(...world) });
+		const local = gasLib.emissionWeight(grid[cell * 4 + 3], nebView.getFloat32(36, true));
+		check('on-WGSL: HII brightness is its own cell rate times opacity',
+			Math.abs(live.brightness - Math.fround(objects.BILLBOARD_OPACITY.HII) * local) < 1e-6,
+			{ wgsl: live.brightness, local });
+		const neighbour = vertex(1);
+		const savedRate = grid[cell * 4 + 3];
+		grid[cell * 4 + 3] = 0;
+		const empty = vertex(0), untouched = vertex(1);
+		check('on-WGSL: an empty source hides only its HII, not a neighbouring cell',
+			empty.brightness === 0 && empty.clipPos[2] === -1 && neighbour.brightness > 0
+			&& untouched.brightness === neighbour.brightness);
+		check('on-WGSL: planetary nebulae and SNR do not read the cold-gas rate',
+			Math.abs(vertex(2).brightness - objects.BILLBOARD_OPACITY.planetary) < 1e-6
+			&& Math.abs(vertex(3).brightness - objects.BILLBOARD_OPACITY.SNR) < 1e-6);
+		check('on-WGSL: an out-of-grid HII has no source instead of aliasing an edge', vertex(4).brightness === 0);
+		grid[cell * 4 + 3] = 100;
+		check('on-WGSL: the local look multiplier has a finite 4x ceiling',
+			Math.abs(vertex(0).brightness - objects.BILLBOARD_OPACITY.HII * gasLib.GAS_RATE_MAX) < 1e-6);
+		grid[cell * 4 + 3] = savedRate;
+
+		camera[52] = 2;
+		const born = vertex(0);
+		camera[52] = 2 + orbit.BIRTH_FADE_GYR / 2;
+		const half = vertex(0);
+		camera[52] = 2 + orbit.BIRTH_FADE_GYR;
+		const full = vertex(0);
+		check('on-WGSL: billboards use their carried birth, not a global startup fade',
+			born.brightness === 0 && Math.abs(half.brightness / full.brightness - 0.5) < 1e-5);
+		camera[52] = 0;
+		check('on-WGSL: First light hides all nebula types even if a cell contains rate',
+			[0, 1, 2, 3].every((i) => vertex(i).brightness === 0));
+		camera[52] = 5;
+		camera[16] += 6;
+		check('on-WGSL: the distance cull follows the camera, not the origin', vertex(0).brightness === 0);
+		camera[16] -= 6;
+		objects.writeObjectBillboards(placed, nebView, 0, placed.length);
+		nebBinds[0][2] = new Float32Array(4).buffer;
+		check('on-WGSL: no grid uses unmodulated light with a single dummy cell binding',
+			Math.abs(vertex(0).brightness - objects.BILLBOARD_OPACITY.HII) < 1e-6);
 	}
 
 	// --- 3. N stars on one pixel are brighter than one --------------------

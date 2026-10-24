@@ -1851,10 +1851,15 @@ struct NebulaPacked {
         g: f32,
         b: f32,
         opacity: f32,
+        gasCell: i32,
+        rateScale: f32,       // -1: stellar remnant / grid disabled; 0: no source
+        formedAt: f32,
+        patternEpoch: u32,    // HII rides the cell's ridge re-anchor and heat
 };
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
 @group(0) @binding(1) var<storage, read> nebulae: array<NebulaPacked>;
+@group(0) @binding(2) var<storage, read> gasCells: array<vec4f>;
 
 struct VertexOut {
         @builtin(position) clipPos: vec4f,
@@ -1866,6 +1871,7 @@ struct VertexOut {
 const FOV_Y: f32 = 1.047197551;
 const BILLBOARD_MIN_PX: f32 = 4.0;
 const BILLBOARD_MAX_DIST: f32 = 5.0;
+const GAS_RATE_MAX: f32 = 4.0;
 
 fn cornerOffset(vid: u32) -> vec2f {
         switch vid {
@@ -1895,19 +1901,29 @@ fn vs_main(
         if (neb.size <= 0.0 || neb.opacity <= 0.0) {
                 return hidden(vid);
         }
-        let nebGate: f32 = select(1.0, smoothstep(0.0, camera.formation.y, camera.formation.x), camera.formation.w > 0.0);
+        let nebGate: f32 = select(1.0, smoothstep(neb.formedAt, neb.formedAt + camera.formation.y, camera.formation.x), camera.formation.w > 0.0);
         if (nebGate <= 0.0) {
                 return hidden(vid);
         }
 
-        // Pattern-family bulk rotation about the model centre (T = 0 is the
-        // identity: theta = fract(0) = 0). No wobble: gas is rigid with the
-        // arms and bar.
-        let theta: f32 = 6.28318530718 * fract((camera.dynA.z * camera.params.w + camera.waveB.w) * 0.159154943092);
+        // Read the same completed step as the gas splats. No global multiplier
+        // and no per-frame object rewrite: only this cell's emission changes.
+        var rateWeight: f32 = 1.0;
+        if (neb.rateScale >= 0.0) {
+                if (neb.gasCell < 0 || neb.rateScale == 0.0) { return hidden(vid); }
+                rateWeight = clamp(gasCells[u32(neb.gasCell)].w * neb.rateScale, 0.0, GAS_RATE_MAX);
+                if (rateWeight <= 0.0) { return hidden(vid); }
+        }
+
+        let mapped: bool = neb.patternEpoch != 0u;
+        let theta: f32 = 6.28318530718 * fract((camera.dynA.z * camera.params.w + camera.waveB.w) * 0.159154943092)
+                + select(0.0, camera.epoch.x, mapped);
+        let heat: f32 = select(1.0, camera.epoch.z, mapped && camera.epoch.z > 0.0);
         let qx: f32 = neb.x - camera.cameraPos.w;
         let cth: f32 = cos(theta); let sth: f32 = sin(theta);
-        let rel: vec3f = vec3f(cth * qx - sth * neb.y + camera.cameraPos.w,
-                sth * qx + cth * neb.y, neb.z);
+        let world: vec3f = vec3f(cth * qx - sth * neb.y + camera.cameraPos.w,
+                sth * qx + cth * neb.y, neb.z * heat);
+        let rel: vec3f = world - camera.cameraPos.xyz;
         let dist: f32 = length(rel);
         if (dist > BILLBOARD_MAX_DIST) {
                 return hidden(vid);
@@ -1930,7 +1946,7 @@ fn vs_main(
         out.clipPos = vec4f(clip.xy + offset * clip.w, clip.zw);
         out.uv = corner;
         out.color = vec3f(neb.r, neb.g, neb.b);
-        out.brightness = neb.opacity * nebGate;
+        out.brightness = neb.opacity * nebGate * rateWeight;
         return out;
 }
 
@@ -1960,7 +1976,7 @@ fn fs_main(in: VertexOut) -> @location(0) vec4f {
 // grid is a function of the epoch rather than of the frame size.
 const GAS_COMMON = `
 struct GasUniform {
-        stepA: vec4f,   // dt Gyr, burnC 1/Gyr, display smoothing, arm amplitude
+        stepA: vec4f,   // dt Gyr, burnC 1/Gyr, response rate 1/Gyr, arm amplitude
         stepB: vec4f,   // arm m, arm K, Rs, phase0
         stepC: vec4f,   // rMin, rMax, slab height H, centre x
         stepD: vec4f,   // centre z, cell count, draw gain, visible
@@ -1989,7 +2005,7 @@ fn gasSlabHeight(slab: u32) -> f32 {
 }
 
 // The arm compression at one cell: the field's own ridge cosine
-// (density.armFactor) evaluated at the cell's azimuth. 1 in the trough,
+// (density.armFactor) evaluated at the cell's azimuth. 1 - amp in the trough,
 // 1 + amp on the crest, 1 for a smooth disc.
 fn gasBoost(ring: u32, spoke: u32) -> f32 {
         let R: f32 = gasRingRadius(ring);
@@ -2002,12 +2018,25 @@ fn gasBoost(ring: u32, spoke: u32) -> f32 {
 const GAS_STEP = `${GAS_COMMON}
 // One invocation per cell, read buffer A into buffer B: no atomics, no race, and
 // the four slabs of a column each compute their own rate from the same shared
-// arm law. The display slot smooths the frame's star-formation rate, which is
-// what the nebula layer reads in 0.7.5 — the mass itself is exact.
+// arm law. Both mass and display rate compose in epoch time (0.7.5).
+// The exact response also decays s when the mass has already underflowed.
 
 @group(0) @binding(0) var<uniform> gasParams: GasUniform;
 @group(0) @binding(1) var<storage, read> gasIn: array<vec4f>;
 @group(0) @binding(2) var<storage, read_write> gasOut: array<vec4f>;
+
+fn gasRateAfter(mass: f32, smoothed: f32, rate: f32, dt: f32) -> f32 {
+        let a: f32 = gasParams.stepA.z;
+        let x: f32 = abs(a - rate) * dt;
+        var phi: f32;
+        if (x < 0.01) {
+                phi = 1.0 - x * 0.5 + x * x / 6.0 - x * x * x / 24.0;
+        } else {
+                phi = (1.0 - exp(-x)) / x;
+        }
+        let integral: f32 = dt * exp(-min(rate, a) * dt) * phi;
+        return smoothed * exp(-a * dt) + a * rate * mass * integral;
+}
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3u) {
@@ -2020,8 +2049,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
         let rate: f32 = gasParams.stepA.y * pow(gasBoost(ring, spoke), GAS_ARM_POWER);
         let decay: f32 = exp(-rate * dt);
         let mass: f32 = cell.x * decay;
-        let sfr: f32 = select(0.0, (cell.x - mass) / max(dt, 1e-9), dt > 0.0);
-        gasOut[index] = vec4f(mass, cell.y, cell.z, cell.w + (sfr - cell.w) * gasParams.stepA.z);
+        gasOut[index] = vec4f(mass, cell.y, cell.z, gasRateAfter(cell.x, cell.w, rate, dt));
 }
 `;
 

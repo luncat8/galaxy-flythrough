@@ -884,6 +884,10 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 && reused.galaxyAge === galaxy.AGE_REF,
                 { fieldSamples: reused.fieldSamples, objects: reused.objectCount });
 
+        check('a population-only gas change recalibrates the grid instead of keeping its old reference',
+                Math.abs(renderer.gasAccountAt(galaxy.AGE_REF).total - 0.4) < 1e-4,
+                { total: renderer.gasAccountAt(galaxy.AGE_REF).total });
+
         // The complementary direction: a new type is a new galaxy, so the field
         // is drawn again even at the same age.
         const other = renderer.regenerate(galaxy.createGalaxy({ type: 'Sc', seed: 7, age: 0.5 }));

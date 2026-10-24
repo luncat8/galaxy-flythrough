@@ -9,9 +9,9 @@
        - Runs the real WebGPU renderer into an offscreen RENDER_ATTACHMENT | COPY_SRC target,
          reads back the pixels, paints a visual epoch filmstrip, and logs pass/fail gates.
        - Verifies:
-         1. All 5 WGSL shader modules compile cleanly.
+         1. All shipping WGSL shader modules compile cleanly.
          2. First light (T = 0) gates off all field stars AND all star clusters / objects
-            (0 lit pixels on SBb at T = 0; clusters condense monotonically 0 -> 13.5 Gyr).
+            (0 lit pixels with gas hidden; a separate gas-only frame must be lit).
          3. Epoch brightness & visible star-count continuity across 3.0-4.0 Gyr (no 3.5 Gyr
             dim/low-star-count oscillation) and smooth sub-millimag 2 Myr/s steps.
          4. V14 formation morphology (1 Gyr gas-rich arms, 2 Gyr compact bulge, 0 redraws).
@@ -165,6 +165,7 @@ code {
 <script src="math/hash.js"></script>
 <script src="math/density.js"></script>
 <script src="math/galaxy.js"></script>
+<script src="math/gas-grid.js"></script>
 <script src="math/sampling.js"></script>
 <script src="math/star-record.js"></script>
 <script src="math/star-types.js"></script>

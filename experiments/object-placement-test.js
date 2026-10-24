@@ -323,9 +323,9 @@ const counts = summary.byType;
 	let tintOk = 0;
 	for (let i = 0; i < written; i++) {
 		const want = nebula.NEBULA_COLORS[gas[i].type];
-		const r = view.getFloat32(i * 32 + 16, true);
-		const g = view.getFloat32(i * 32 + 20, true);
-		const b = view.getFloat32(i * 32 + 24, true);
+		const r = view.getFloat32(i * objects.BILLBOARD_RECORD_BYTES + 16, true);
+		const g = view.getFloat32(i * objects.BILLBOARD_RECORD_BYTES + 20, true);
+		const b = view.getFloat32(i * objects.BILLBOARD_RECORD_BYTES + 24, true);
 		if (r === Math.fround(want[0]) && g === Math.fround(want[1]) && b === Math.fround(want[2])) tintOk++;
 	}
 	check('billboard tints are NEBULA_COLORS for the object type', tintOk === written, { tintOk, written });
@@ -342,8 +342,45 @@ const counts = summary.byType;
 		objects.billboardVisible(0.1, 1, 1080, fov)
 		&& !objects.billboardVisible(0.1, 5.1, 1080, fov)
 		&& !objects.billboardVisible(0.002, 1, 1080, fov));
-	check('the billboard record is 32 bytes (8 f32)',
-		objects.BILLBOARD_RECORD_BYTES === 32 && objects.BILLBOARD_RECORD_FLOATS === 8);
+	check('the billboard record is 48 bytes (12 scalar slots)',
+		objects.BILLBOARD_RECORD_BYTES === 48 && objects.BILLBOARD_RECORD_FLOATS === 12);
+}
+
+// --- 0.7.5: carried local rates and member placement ---------------------
+{
+	const gas = require('../src/math/gas-grid.js');
+	const orbit = require('../src/math/orbit.js');
+	const account = gas.initialize(model, galaxy.AGE_REF, model.seed);
+	const buf = new ArrayBuffer(placed.length * objects.BILLBOARD_RECORD_BYTES);
+	const view = new DataView(buf);
+	objects.writeObjectBillboards(placed, view, 0, placed.length, account);
+	let mapped = 0, valid = true;
+	for (let i = 0; i < placed.length; i++) {
+		const obj = placed[i], o = i * objects.BILLBOARD_RECORD_BYTES;
+		const hii = obj.type === 'HII';
+		const cell = hii ? gas.cellAt(account.geometry, Math.fround(obj.x), Math.fround(obj.y), Math.fround(obj.z)) : -1;
+		valid = valid && view.getInt32(o + 32, true) === cell
+			&& view.getFloat32(o + 36, true) === Math.fround(hii ? gas.rateScale(account, cell) : -1)
+			&& view.getFloat32(o + 40, true) === Math.fround(obj.formedAt)
+			&& view.getUint32(o + 44, true) === (hii ? 1 : 0);
+		if (hii && cell >= 0) mapped++;
+	}
+	check('the shipping billboard packer carries source cell, local scale and the actual object birth', valid && mapped > 0,
+		{ mapped, total: placed.length });
+
+	const pair = [placed.find((o) => o.type === 'HII'), placed.find((o) => o.type === 'planetary')];
+	const plain = new DataView(new ArrayBuffer(2 * records.RECORD_BYTES));
+	const offset = new DataView(new ArrayBuffer(2 * records.RECORD_BYTES));
+	objects.writeObjectMembers(model, pair, plain, 0, 2, 0);
+	objects.writeObjectMembers(model, pair, offset, 0, 2, 3);
+	const hii = records.readRecord(offset, 0);
+	const pn = records.readRecord(offset, records.RECORD_BYTES);
+	check('HII members carry the source cell epoch map; stellar remnants do not acquire it',
+		(hii.flags & records.FLAG_EPOCH) !== 0 && (pn.flags & records.FLAG_EPOCH) === 0
+		&& ((hii.flags >> 3) & 3) === orbit.FAMILY_PATTERN);
+	check('epoch-mapped HII members read exposure once from the uniform, not also from the record',
+		hii.absMag === records.readRecord(plain, 0).absMag
+		&& Math.abs(pn.absMag - records.readRecord(plain, records.RECORD_BYTES).absMag - 3) < records.ABS_MAG_SPAN / 255);
 }
 
 // --- Report --------------------------------------------------------------

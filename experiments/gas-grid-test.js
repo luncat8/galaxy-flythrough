@@ -48,6 +48,8 @@ const rendererModule = require('../src/render/star-sprites.js');
 const shaders = require('../src/render/shaders.js');
 const Camera = require('../src/core/camera.js');
 const records = require('../src/math/star-record.js');
+const density = require('../src/math/density.js');
+const objects = require('../src/math/objects.js');
 
 const checks = [];
 function check(name, pass, detail) {
@@ -56,6 +58,7 @@ function check(name, pass, detail) {
 }
 
 const TYPES = galaxy.GALAXY_TYPES;
+let lookMeasurement;
 
 // --- 1. The grid ----------------------------------------------------------
 {
@@ -97,6 +100,42 @@ const TYPES = galaxy.GALAXY_TYPES;
 		}
 	}
 	check('cells beyond the field truncation carry no gas', outside === 0, outside);
+
+	let indexed = 0;
+	for (let i = 0; i < gasLib.GAS_CELLS; i++) {
+		const R = gasLib.cellRadius(geo, gasLib.ringOfCell(i));
+		const phi = gasLib.cellAzimuth(geo, gasLib.spokeOfCell(i));
+		if (gasLib.cellAt(geo, geo.centreX + R * Math.cos(phi), R * Math.sin(phi),
+			geo.centreZ + gasLib.cellHeight(geo, gasLib.slabOfCell(i))) === i) indexed++;
+	}
+	check('every cell centre round-trips through the spatial inverse', indexed === gasLib.GAS_CELLS, indexed);
+	const R = gasLib.cellRadius(geo, 20);
+	check('the azimuth seam wraps between spoke 95 and spoke 0',
+		gasLib.spokeOfCell(gasLib.cellAt(geo, geo.centreX + R, -1e-9, geo.centreZ)) === 95
+		&& gasLib.spokeOfCell(gasLib.cellAt(geo, geo.centreX + R, 1e-9, geo.centreZ)) === 0);
+	check('out-of-grid seats are absent, never clamped to the nearest cell',
+		[[0, 0, 0], [geo.rMin - 1e-6, 0, 0], [geo.rMax + 1e-6, 0, 0],
+			[R, 0, 2 * geo.height + 1e-6], [R, 0, -2 * geo.height - 1e-6], [NaN, 0, 0]]
+			.every(([x, y, z]) => gasLib.cellAt(geo, geo.centreX + x, y, geo.centreZ + z) === -1));
+
+	const cut = { ...geo, discHeight: 0.75 * geo.height };
+	const cutWeights = gasLib.cellWeights(cut);
+	check('slabs outside a smaller vertical truncation contain no mass or source seats',
+		cutWeights.every((m, i) => gasLib.slabOfCell(i) === 0 || gasLib.slabOfCell(i) === 3 ? m === 0 : m > 0)
+		&& gasLib.cellAt(cut, cut.centreX + R, 0, cut.centreZ + cut.height) === -1);
+
+	// Independent quadrature of the radial marginal. Normalisation alone cannot
+	// catch a missing dr on a log grid: it still sums to one, in the wrong place.
+	const enclosed = (radius) => density.integrateDiscRadial(geo.thin, radius, geo.discHeight, 'sech2');
+	const inner = enclosed(geo.rMin);
+	const norm = enclosed(geo.rMax) - inner;
+	const cdf = [16, 32, 48].map((edge) => {
+		let mass = 0;
+		for (let i = 0; i < edge * geo.spokes * geo.slabs; i++) mass += weights[i];
+		return { edge, mass, exact: (enclosed(gasLib.ringEdge(geo, edge)) - inner) / norm };
+	});
+	check('log-ring masses match the integrated thin-disc radial CDF (including ring width)',
+		cdf.every((r) => Math.abs(r.mass - r.exact) < 0.0005), cdf);
 }
 
 // --- 2. The arm law -------------------------------------------------------
@@ -174,6 +213,29 @@ for (const type of TYPES) {
 	check('one 5 Gyr step and 500 × 10 Myr steps land on the same masses',
 		worst < 1e-6, worst);
 
+	const direct = gasLib.fillGrid(account, 5, model.seed);
+	let worstMassRel = 0, worstRateRel = 0, rateAtBoot = 0;
+	for (let i = 0; i < gasLib.GAS_CELLS; i++) {
+		const o = i * 4;
+		worstMassRel = Math.max(worstMassRel, Math.abs(slow[o] - direct[o]) / Math.max(direct[o], 1e-30));
+		worstRateRel = Math.max(worstRateRel,
+			Math.abs(slow[o + 3] - direct[o + 3]) / Math.max(direct[o + 3], 1e-30),
+			Math.abs(fast[o + 3] - direct[o + 3]) / Math.max(direct[o + 3], 1e-30));
+		rateAtBoot += direct[o + 3];
+	}
+	check('one jump, 500 steps and a paused boot agree on BOTH m and s (< 2e-5 relative)',
+		worstMassRel < 2e-5 && worstRateRel < 2e-5 && rateAtBoot > 0,
+		{ worstMassRel, worstRateRel, rateAtBoot });
+	const atZero = gasLib.fillGrid(account, 0, model.seed);
+	check('First light has zero smoothed rate, even after a rewind',
+		atZero.every((value, i) => i % 4 !== 3 || value === 0));
+	check('cell mass cancels out of the local emission normalisation',
+		Math.abs(gasLib.emissionWeight(direct[3], gasLib.rateScale(account, 0))
+			- gasLib.emissionWeight(direct[7], gasLib.rateScale(account, 1))) < 1e-6);
+	check('local emission is dark at zero rate and capped at the authored ceiling',
+		gasLib.emissionWeight(0, 1) === 0 && gasLib.emissionWeight(100, 1) === gasLib.GAS_RATE_MAX
+		&& gasLib.rateScale(account, -1) === 0);
+
 	// The arm crest empties first: that is the picture the slice exists for.
 	let crest = 0;
 	let trough = 0;
@@ -209,6 +271,29 @@ for (const type of TYPES) {
 		Number.isFinite(sfr) && sfr > 0, sfr);
 }
 
+// The response law on its singular and short-step limits, independently of
+// the model's current calibration (which might never put a cell at k = 1/tau).
+{
+	const a = 1 / gasLib.GAS_SMOOTH_GYR;
+	const mass = 0.7, smoothed = 0.2;
+	let worst = 0;
+	for (const rate of [0, 1e-8, 0.15, a - 1e-7, a, a + 1e-7, 64]) {
+		for (const dt of [0, 1e-9, 0.00000165, 0.00165, 0.05, 2, 13.5]) {
+			const once = gasLib.rateAfter(mass, smoothed, rate, dt);
+			const half = gasLib.rateAfter(mass, smoothed, rate, dt / 2);
+			const twice = gasLib.rateAfter(mass * Math.exp(-rate * dt / 2), half, rate, dt / 2);
+			worst = Math.max(worst, Math.abs(once - twice) / Math.max(once, 1e-30));
+		}
+	}
+	check('the rate filter composes at tiny dt, zero burn and matching decay rates', worst < 1e-9, worst);
+	const h = 0.03;
+	const exact = Math.exp(-a * h) * (smoothed + a * a * mass * h);
+	check('matching decay rates use the finite analytic limit',
+		Math.abs(gasLib.rateAfter(mass, smoothed, a, h) - exact) < 1e-12);
+	check('an empty cell keeps decaying its remaining display rate',
+		gasLib.rateAfter(0, smoothed, a, h) === smoothed * Math.exp(-a * h));
+}
+
 // --- 4. The look gain ------------------------------------------------------
 // `gas-cell` turns a cell's mass into linear radiance: flux = m·gain·(0.7 +
 // 0.6·w), one quad of the cell's own footprint (floored at 2 px) with a
@@ -219,10 +304,13 @@ for (const type of TYPES) {
 {
 	const W = 640;
 	const H = 400;
-	const FOV_Y = 1.047197551;
+	const FOV_Y = Camera.FOV_Y;
 	const CAM_DIST = 45;
 	const FOCAL = H / Math.tan(FOV_Y * 0.5);
 	const FLUX_MIN = 0.00002;
+	const camera = Camera.createCamera();
+	camera.forward.set([0, 0, -1]); camera.right.set([1, 0, 0]); camera.up.set([0, 1, 0]);
+	const vp = camera.buildViewProj(W / H);
 	const model = galaxy.createGalaxy({ type: 'SBb', seed: 7 });
 	const ref = galaxy.modelAtAge(model, galaxy.AGE_REF);
 	const account = gasLib.initialize(ref, 0, model.seed);
@@ -233,6 +321,7 @@ for (const type of TYPES) {
 	// the pattern rotation is 0 at the epoch the projection is taken at.
 	const project = (age) => {
 		const image = new Float32Array(W * H);
+		const heat = Math.pow(galaxy.modelAtAge(model, age).epoch.heat / ref.epoch.heat, 2);
 		for (let i = 0; i < gasLib.GAS_CELLS; i++) {
 			const m = grid[i * 4] * Math.exp(-account.burnC * account.rate[i] * age);
 			const flux = m * rendererModule.GAS_GAIN_DEFAULT
@@ -241,14 +330,17 @@ for (const type of TYPES) {
 			const ring = gasLib.ringOfCell(i);
 			const R = gasLib.cellRadius(geo, ring);
 			const phi = gasLib.cellAzimuth(geo, gasLib.spokeOfCell(i));
-			const world = [geo.centreX + R * Math.cos(phi), R * Math.sin(phi), gasLib.cellHeight(geo, gasLib.slabOfCell(i))];
+			const world = [geo.centreX + R * Math.cos(phi), R * Math.sin(phi), geo.centreZ + gasLib.cellHeight(geo, gasLib.slabOfCell(i)) * heat];
 			const eyeZ = CAM_DIST - world[2];
 			if (eyeZ <= 0) continue;
-			const sx = W * 0.5 + (world[0] - geo.centreX) / eyeZ * FOCAL;
-			const sy = H * 0.5 - world[1] / eyeZ * FOCAL;
+			const dist = Math.hypot(world[0] - geo.centreX, world[1], eyeZ);
+			const ex = world[0] - geo.centreX, ey = world[1], ez = -eyeZ;
+			const cw = vp[3] * ex + vp[7] * ey + vp[11] * ez + vp[15];
+			const sx = W * 0.5 * (1 + (vp[0] * ex + vp[4] * ey + vp[8] * ez + vp[12]) / cw);
+			const sy = H * 0.5 * (1 - (vp[1] * ex + vp[5] * ey + vp[9] * ez + vp[13]) / cw);
 			const dr = gasLib.ringEdge(geo, ring + 1) - gasLib.ringEdge(geo, ring);
 			const arc = R * 2 * Math.PI / geo.spokes;
-			const size = Math.max(Math.max(arc, dr) / eyeZ * FOCAL, 2);
+			const size = Math.max(Math.max(arc, dr) / dist * FOCAL, 2);
 			const half = size * 0.5;
 			const x0 = Math.max(0, Math.floor(sx - half));
 			const x1 = Math.min(W, Math.ceil(sx + half));
@@ -277,11 +369,12 @@ for (const type of TYPES) {
 	};
 	const first = project(0);
 	const present = project(galaxy.AGE_REF);
-	check('at First light the gas covers the frame where the disc is', first.lit > W * H * 0.5, first);
-	check('at T = 0 the median gas pixel is ~0.06 linear, p90 ~1 (the whole picture)',
-		first.median > 0.04 && first.median < 0.12 && first.p90 > 0.6, first);
-	check('at AGE_REF the median gas pixel is a faint haze, ~0.008',
-		present.median > 0.004 && present.median < 0.02 && present.p90 < 0.3, present);
+	lookMeasurement = { width: W, height: H, distance: CAM_DIST, gain: rendererModule.GAS_GAIN_DEFAULT, first, present };
+	check('at First light the gas covers the frame where the disc is', first.lit > Math.PI * Math.pow(geo.rMax / CAM_DIST * FOCAL * 0.5, 2) * 0.8, first);
+	check('at T = 0 the median gas pixel is ~0.068 linear, p90 ~0.65 (the whole picture)',
+		first.median > 0.06 && first.median < 0.075 && first.p90 > 0.58 && first.p90 < 0.72, first);
+	check('at AGE_REF the median gas pixel is a faint haze, ~0.0087',
+		present.median > 0.0075 && present.median < 0.010 && present.p90 > 0.07 && present.p90 < 0.10, present);
 	check('the present-day haze is a small fraction of the First-light picture',
 		present.total < 0.25 * first.total && first.median > 4 * present.median,
 		{ firstTotal: first.total, presentTotal: present.total });
@@ -341,11 +434,11 @@ function createMockGpu() {
 			};
 		},
 		queue: {
-			writeBuffer(buffer, offset, bytes) {
-				gpu.bufferWrites.push({ label: buffer.label, offset, bytes, length: bytes.byteLength });
-				if (buffer.label === 'gas-uniform') {
-					gpu.uniformWrites.push(new Float32Array(bytes.slice(0, Math.min(bytes.byteLength, 64))));
-				}
+			writeBuffer(buffer, offset, data, dataOffset = 0, size) {
+				const length = size === undefined ? data.byteLength - dataOffset : size;
+				const bytes = new Uint8Array(data.buffer || data, (data.byteOffset || 0) + dataOffset, length).slice().buffer;
+				gpu.bufferWrites.push({ label: buffer.label, offset, bytes, length });
+				if (buffer.label === 'gas-uniform') gpu.uniformWrites.push(new Float32Array(bytes));
 			},
 			writeTexture() {},
 			submit() {},
@@ -383,6 +476,26 @@ function createMockGpu() {
 				&& p.fragment.targets[0].blend.color.dstFactor === 'one'),
 		'blend');
 
+	const bootGrid = new Float32Array(gpu.bufferWrites.find((w) => w.label === 'gas-grid-a').bytes);
+	check('a paused nonzero-age boot already uploads a live rate, not a dark grid',
+		bootGrid.some((v, i) => i % 4 === 3 && v > 0));
+	const nebWrite = gpu.bufferWrites.find((w) => w.label === 'nebula-storage');
+	const nebView = new DataView(nebWrite.bytes);
+	let linked = 0, unlinked = 0;
+	for (let i = 0; i < renderer.state.nebulaBillboards; i++) {
+		const o = i * objects.BILLBOARD_RECORD_BYTES;
+		if (nebView.getUint32(o + 44, true)) {
+			if (nebView.getInt32(o + 32, true) >= 0 && nebView.getFloat32(o + 36, true) > 0) linked++;
+		} else if (nebView.getFloat32(o + 36, true) === -1) unlinked++;
+	}
+	check('prepare links HII seats after the grid exists and leaves stellar remnants unlinked',
+		linked > 0 && unlinked > 0, { linked, unlinked });
+	const membersBefore = renderer.starBlocks().view.buffer.slice(0);
+	const fieldDrawsBefore = renderer.state.fieldSamples;
+	const writesOf = (label) => gpu.bufferWrites.filter((w) => w.label === label).length;
+	const nebWritesBefore = writesOf('nebula-storage');
+	const nebPass = () => gpu.passes.filter((p) => p.label === 'nebula-billboards').at(-1);
+
 	const camera = Camera.createCamera();
 	camera.cameraPos.set([8.178, 0, 0.01]);
 	const input = { actions: {} };
@@ -397,6 +510,9 @@ function createMockGpu() {
 		gasDraw.length === 1 && gasDraw[0].instances === gasLib.GAS_CELLS && gasDraw[0].vertices === 4,
 		gasDraw);
 
+	check('the frozen nebula pass reads the boot grid A',
+		nebPass().group.desc.entries[2].resource.buffer === gridA);
+
 	// A forward epoch: exactly one dispatch, one workgroup per 64 cells.
 	const drawsBefore = gpu.draws.length;
 	renderer.setEpoch(galaxy.modelAtAge(model, 2));
@@ -410,6 +526,8 @@ function createMockGpu() {
 		&& steps[0].group.desc.entries[2].resource.buffer.label === 'gas-grid-b',
 		steps[0].group && steps[0].group.desc.label);
 	check('the frame still draws the grid after the step', gpu.draws.length > drawsBefore);
+	check('the HII pass reads B in the very frame the first step writes B',
+		nebPass().group.desc.entries[2].resource.buffer === gridB);
 
 	// Second step: the ping-pong swaps, and the draw reads the buffer the step
 	// just wrote (no frame ever draws a half-updated grid).
@@ -426,6 +544,9 @@ function createMockGpu() {
 		lastDraw && lastDraw.group.desc.entries[1].resource.buffer.label === 'gas-grid-a',
 		lastDraw && lastDraw.group.desc.label);
 
+	check('the HII pass follows the second ping-pong swap back to A',
+		nebPass().group.desc.entries[2].resource.buffer === gridA);
+
 	// The step's dt is the epoch delta, not the frame's wall clock.
 	const uniforms = gpu.bufferWrites.filter((w) => w.label === 'gas-uniform');
 	const last = uniforms[uniforms.length - 1];
@@ -435,6 +556,8 @@ function createMockGpu() {
 	check('the step uniform carries the calibrated burn and the arm law',
 		lanes[1] > 0 && lanes[3] === Math.fround(gasLib.geometry(galaxy.modelAtAge(model, galaxy.AGE_REF)).armsAmp),
 		{ burnC: lanes[1], amp: lanes[3] });
+	check('the rate response uniform is 1 / tau in Gyr, not a per-frame fraction',
+		lanes[2] === Math.fround(1 / gasLib.GAS_SMOOTH_GYR), lanes[2]);
 	check('the grid uniform carries the cell count and the look gain',
 		lanes[13] === gasLib.GAS_CELLS && lanes[14] === rendererModule.GAS_GAIN_DEFAULT,
 		{ cells: lanes[13], gain: lanes[14] });
@@ -449,6 +572,12 @@ function createMockGpu() {
 		gpu.computePasses.length === rewindsBefore
 		&& gpu.bufferWrites.filter((w) => w.label === 'gas-grid-a').length === uploadsBefore + 1,
 		{ steps: gpu.computePasses.length - rewindsBefore });
+
+	const refAccount = gasLib.initialize(galaxy.modelAtAge(model, galaxy.AGE_REF), 0.5, model.seed);
+	const refGrid = gasLib.fillGrid(refAccount, 0.5, model.seed);
+	const rewindGrid = new Float32Array(gpu.bufferWrites.filter((w) => w.label === 'gas-grid-a').at(-1).bytes);
+	check('rewind uploads the analytic rate as well as the mass and binds that refill for HII',
+		rewindGrid.every((v, i) => v === refGrid[i]) && nebPass().group.desc.entries[2].resource.buffer === gridA);
 
 	// The readout account: the grid's own mass against the drawn-census gas.
 	const accountAt = renderer.gasAccountAt(1);
@@ -465,10 +594,14 @@ function createMockGpu() {
 	const gasPasses = () => gpu.draws.filter((d) => d.pass === 'gas-grid').length;
 	renderer.setGasVisible(false);
 	const hiddenBefore = gasPasses();
+	const hiddenSteps = gpu.computePasses.length;
+	renderer.setEpoch(galaxy.modelAtAge(model, 1));
 	renderer.render(camera, 640, 400, 9, input, 0);
 	check('hiding the grid draws no gas pass',
 		gasPasses() === hiddenBefore && renderer.gasGridInfo().visible === false,
 		{ gasPasses: gasPasses(), visible: renderer.gasGridInfo().visible });
+	check('hiding the haze keeps the burn running and the HII source connected',
+		gpu.computePasses.length === hiddenSteps + 1 && nebPass().group.desc.entries[2].resource.buffer === gridB);
 	renderer.setGasVisible(true);
 	const shownBefore = gasPasses();
 	renderer.render(camera, 640, 400, 10, input, 0);
@@ -485,18 +618,37 @@ function createMockGpu() {
 		info.cells === gasLib.GAS_CELLS && info.steps >= 1 && info.age > 0 && info.burnC > 0,
 		{ ...info });
 
+	const block = renderer.starBlocks().blocks.find((b) => b.kind === 'object');
+	const start = block.offset * records.RECORD_BYTES;
+	const length = block.count * records.RECORD_BYTES;
+	const beforeMembers = new Uint8Array(membersBefore, start, length);
+	const afterMembers = new Uint8Array(renderer.starBlocks().view.buffer, start, length);
+	check('local emission changes never rewrite object seats or billboard records or resample the field',
+		beforeMembers.every((v, i) => v === afterMembers[i]) && writesOf('nebula-storage') === nebWritesBefore
+		&& renderer.state.fieldSamples === fieldDrawsBefore);
+
+	const oldNebula = gpu.buffers.filter((b) => b.label === 'nebula-storage').at(-1);
+	renderer.regenerate(galaxy.createGalaxy({ type: 'SBc', seed: 19, age: 0.5 }));
+	renderer.render(camera, 640, 400, 12, input, 0);
+	const newNebula = gpu.buffers.filter((b) => b.label === 'nebula-storage').at(-1);
+	check('a new field rebuilds nebula bindings without duplicating the gas pair',
+		oldNebula.destroyed && newNebula !== oldNebula && nebPass().group.desc.entries[1].resource.buffer === newNebula
+		&& nebPass().group.desc.entries[2].resource.buffer === gridA
+		&& gpu.buffers.filter((b) => b.label === 'gas-grid-a').length === 1);
+
 	renderer.dispose();
 	check('dispose destroys both grid buffers', gridA.destroyed && gridB.destroyed,
 		{ a: gridA.destroyed, b: gridB.destroyed });
 }
 
-// A renderer built without the model module simply draws no gas.
-{
+// Missing-module and explicit-disable paths both keep a valid storage binding.
+for (const missing of [true, false]) {
 	const gpu = createMockGpu();
 	const saved = window.GasGridLib;
-	delete window.GasGridLib;
+	if (missing) delete window.GasGridLib;
 	const renderer = rendererModule.createStarRenderer(gpu.device, { getCurrentTexture: () => ({ createView: () => ({}) }) }, 'bgra8unorm', {
-		model: galaxy.createGalaxy({ type: 'SBb', seed: 3 }), proceduralStars: 200, catalogBudgetStars: 0, objectMembers: 0,
+		model: galaxy.createGalaxy({ type: 'SBb', seed: 3 }), proceduralStars: 200, catalogBudgetStars: 0,
+		objectMembers: 20, objectCount: 40, gasGrid: missing,
 	});
 	window.GasGridLib = saved;
 	renderer.prepare(rendererModule.EMPTY_MANIFEST);
@@ -507,6 +659,18 @@ function createMockGpu() {
 		gpu.passes.map((p) => p.label));
 	check('the disabled grid reports itself disabled', renderer.gasGridInfo().enabled === false,
 		renderer.gasGridInfo());
+	const dummy = gpu.buffers.find((b) => b.label === 'gas-grid-empty');
+	const group = gpu.passes.find((p) => p.label === 'nebula-billboards').group;
+	const packed = new DataView(gpu.bufferWrites.find((w) => w.label === 'nebula-storage').bytes);
+	let unmodulated = true;
+	for (let i = 0; i < renderer.state.nebulaBillboards; i++) {
+		unmodulated = unmodulated && packed.getFloat32(i * objects.BILLBOARD_RECORD_BYTES + 36, true) === -1;
+	}
+	check('a disabled grid binds one empty vec4 and packs unmodulated emission',
+		!!dummy && dummy.size === 16 && group.desc.entries[2].resource.buffer === dummy
+		&& renderer.state.nebulaBillboards > 0 && unmodulated, { missing });
+	renderer.dispose();
+	check('dispose also destroys the disabled-grid binding', dummy.destroyed, { missing });
 }
 
 // --- 6. Report ------------------------------------------------------------
@@ -524,6 +688,7 @@ logFile.writeLog(logPath, {
 	totalChecks: checks.length,
 	passed,
 	failed,
+	lookMeasurement,
 	checks: checks.map((c) => ({ name: c.name, pass: c.pass, detail: c.pass ? undefined : c.detail })),
 });
 console.log('\n=== VERDICT ===');

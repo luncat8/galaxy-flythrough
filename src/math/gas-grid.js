@@ -1,42 +1,10 @@
 // src/math/gas-grid.js
-// F5 (0.7.4): the galaxy's gas as a coarse 64 × 96 × 4 grid — the picture of
-// what is *not* a star yet.
+// Reference-frame gas cells: calibrated exponential depletion and a 0.05 Gyr
+// response to the instantaneous SFR. Both m and s compose in epoch time, so a
+// paused boot, slider jump and running clock land on the same state.
 //
-// The census is born from gas (0.7.x), but until this slice the gas was a
-// scalar (`populations.gasNow`) that only scaled the arm contrast and the
-// nebula rates: at First light the sky was empty and nothing was there instead.
-// This module makes the gas a field of its own:
-//
-//   RINGS × SPOKES × SLABS = 64 × 96 × 4 = 24 576 cells
-//   four f32 slots per cell: m (mass), Z (enrichment, readout), w (turbulence),
-//   s (the smoothed star-formation rate the last step wrote)
-//
-// and gives it a law (mirrored in WGSL by `gas-step`, experiments/wgsl-validate
-// and experiments/gas-grid-test.js):
-//
-//   boost  = max(0, 1 + amp·cos(m·φ − K·ln(R/Rs) + phase0))   the arm compression
-//   rate   = burnC · boost^1.5                                  Schmidt–Kennicutt in the
-//                                                               crest's own density
-//   m'     = m · exp(−rate·dt)                                  an exact exponential
-//   s'     = s + (sfr − s)·smoothing                            the display rate
-//
-// Why the exponential form: the step is driven by the epoch (a frame's delta of
-// star time), and an Euler step of a linear rate would make the grid depend on
-// the frame size — the same epoch reached in 60 steps and in 6 000 would show
-// different gas, and a slider jump would be a different galaxy. `exp` composes:
-// one dispatch of 5 Gyr lands on the same masses as 5 000 of 1 Myr, so the grid
-// is a *pure function of the epoch* and a rewind can simply re-fill it.
-//
-// `burnC` is calibrated at draw time: the one constant is solved so that the
-// grid's total is exactly `populations.gasFraction` at `AGE_REF` and exactly 1
-// at T = 0 — the two endpoints of the drawn-census account (F4) the gas must
-// agree with. Between the endpoints the arm crests empty first, which is the
-// picture the slice exists for, and the drift against `censusGasAt` is a
-// measured number (a 256-bin rate histogram makes the total an O(256) read, so
-// the Formation checks panel can print it every frame).
-//
-// Everything here is setup-time or on-demand work; the per-frame step is the
-// compute pass, and the CPU only draws the cell geometry the two mirrors share.
+// Setup/on-demand CPU model of gas-step / gas-cell. The histogram supplies the
+// O(256) total readout; HII billboards read the GPU's local s, without readback.
 
 'use strict';
 
@@ -62,7 +30,9 @@
 	const GAS_R_MAX_FRAC = 1.0;             // the field's own truncation radius
 	const GAS_SLAB_REACH = 2.0;             // z ∈ ±2 H
 	const GAS_ARM_POWER = 1.5;              // the Schmidt–Kennicutt exponent
-	const GAS_SMOOTHING = 0.25;             // s ← mix(s, sfr, this)
+	const GAS_SMOOTH_GYR = 0.05;            // ds/dT = (rate·m − s) / tau
+	const GAS_SFR_NORMAL = -Math.log(galaxy.GAS_NORMAL) * galaxy.GAS_NORMAL / galaxy.AGE_REF;
+	const GAS_RATE_MAX = 4;                 // HII emission look ceiling
 	const GAS_Z_GRADIENT = 0.65;            // relative enrichment, centre → edge
 	const GAS_TURBULENCE_MIN = 0.75;
 	const GAS_TURBULENCE_SPAN = 0.5;
@@ -76,8 +46,7 @@
 	const TAU = 2 * Math.PI;
 
 	// Cell index: slab is the fastest axis so a column's four slabs are adjacent
-	// — the WGSL step reads its own column (the vertical compression) without
-	// striding the buffer.
+	// — the geometry and its inverse share one layout.
 	function cellIndex(ring, spoke, slab) {
 		return (ring * GAS_SPOKES + spoke) * GAS_SLABS + slab;
 	}
@@ -142,8 +111,33 @@
 		return ((slab + 0.5) / geo.slabs * 2 - 1) * GAS_SLAB_REACH * geo.height;
 	}
 
+	// Invert the carried reference seat, never its camera-relative position.
+	// An out-of-grid HII region has no source cell; do not alias it to an edge.
+	function cellAt(geo, x, y, z) {
+		const dx = x - geo.centreX;
+		const dz = z - geo.centreZ;
+		const R = Math.hypot(dx, y);
+		if (!(R >= geo.rMin && R < geo.rMax) || !Number.isFinite(dz)
+			|| Math.abs(dz) > geo.discHeight || dz < -GAS_SLAB_REACH * geo.height
+			|| dz >= GAS_SLAB_REACH * geo.height) return -1;
+		const ring = Math.min(geo.rings - 1, Math.floor(Math.log(R / geo.rMin) / Math.log(geo.rMax / geo.rMin) * geo.rings));
+		const phi = Math.atan2(y, dx);
+		const spoke = Math.min(geo.spokes - 1, Math.floor((phi < 0 ? phi + TAU : phi) / TAU * geo.spokes));
+		const slab = Math.min(geo.slabs - 1, Math.floor((dz / (GAS_SLAB_REACH * geo.height) + 1) * 0.5 * geo.slabs));
+		return cellIndex(ring, spoke, slab);
+	}
+
+	function rateScale(account, index) {
+		const m0 = index >= 0 ? account.weights[index] : 0;
+		return m0 > 0 ? 1 / (m0 * GAS_SFR_NORMAL) : 0;
+	}
+
+	function emissionWeight(rate, scale) {
+		return Math.min(GAS_RATE_MAX, Math.max(0, rate * scale));
+	}
+
 	// The arm compression of one cell: the field's own ridge law
-	// (density.armFactor's cosine) in the cell's azimuth. 1 in the trough, 1+amp
+	// (density.armFactor's cosine) in the cell's azimuth. 1−amp in the trough, 1+amp
 	// on the crest; 1 everywhere for a smooth disc (S0, E, Irr).
 	function cellBoost(geo, ring, spoke) {
 		if (!(geo.armsAmp > 0) || !(geo.armsM > 0)) return 1;
@@ -164,12 +158,13 @@
 		let sum = 0;
 		for (let ring = 0; ring < geo.rings; ring++) {
 			const R = cellRadius(geo, ring);
+			const dr = ringEdge(geo, ring + 1) - ringEdge(geo, ring);
 			const radial = R <= geo.discRadius
-				? density.discRadialWeight(geo.thin, R, zMax, 'sech2') : 0;
+				? density.discRadialWeight(geo.thin, R, zMax, 'sech2') * dr : 0;
 			for (let slab = 0; slab < geo.slabs; slab++) {
 				const z = cellHeight(geo, slab);
 				const sech = 1 / Math.cosh(z / geo.height);
-				const vertical = sech * sech;
+				const vertical = Math.abs(z) <= zMax ? sech * sech : 0;
 				const weight = radial * vertical;
 				for (let spoke = 0; spoke < geo.spokes; spoke++) {
 					const i = cellIndex(ring, spoke, slab);
@@ -286,7 +281,6 @@
 		const t = Number.isFinite(age) && age > 0 ? age : 0;
 		const geo = account.geometry;
 		const burnC = account.burnC;
-		const ageRef = account.ageRef;
 		const zSpan = geo.discRadius > 0 ? 1 / geo.discRadius : 0;
 		for (let i = 0; i < GAS_CELLS; i++) {
 			const o = i * GAS_SLOTS;
@@ -298,11 +292,22 @@
 			grid[o + 1] = 1 - GAS_Z_GRADIENT * Math.min(1, R * zSpan);
 			grid[o + 2] = GAS_TURBULENCE_MIN
 				+ GAS_TURBULENCE_SPAN * hash.hash01At(hash.pcgHash((seed | 0) ^ i), 0);
-			grid[o + 3] = 0;
+			grid[o + 3] = rateAfter(m0, 0, burnC * account.rate[i], t);
 		}
 		account.age = t;
-		account.ageRef = ageRef;
 		return grid;
+	}
+
+	// Exact convolution of an exponentially falling source with an exponential
+	// response. The small-x series avoids cancellation at frame-sized dt and
+	// covers rate = 1/tau; factoring by min(rate, a) avoids overflow at large dt.
+	function rateAfter(mass, smoothed, rate, dt) {
+		const a = 1 / GAS_SMOOTH_GYR;
+		const x = Math.abs(a - rate) * dt;
+		const phi = x < 0.01 ? 1 - x / 2 + x * x / 6 - x * x * x / 24
+			: (1 - Math.exp(-x)) / x;
+		const integral = dt * Math.exp(-Math.min(rate, a) * dt) * phi;
+		return smoothed * Math.exp(-a * dt) + a * rate * mass * integral;
 	}
 
 	// The CPU mirror of the WGSL step. In place: the ping-pong pair on the GPU
@@ -315,12 +320,9 @@
 		for (let i = 0; i < GAS_CELLS; i++) {
 			const o = i * GAS_SLOTS;
 			const m = grid[o];
-			if (!(m > 0)) continue;
-			const decay = Math.exp(-burnC * rate[i] * h);
-			const next = m * decay;
-			grid[o] = next;
-			const sfr = (m - next) / h;
-			grid[o + 3] += (sfr - grid[o + 3]) * GAS_SMOOTHING;
+			const k = burnC * rate[i];
+			grid[o] = m * Math.exp(-k * h);
+			grid[o + 3] = rateAfter(m, grid[o + 3], k, h);
 		}
 		account.age += h;
 		return grid;
@@ -333,7 +335,7 @@
 	}
 
 	// The grid's total at `age`, O(256): the readout's own account. Exact at
-	// T = 0 (1) and at `AGE_REF` (gasFraction) by construction.
+	// T = 0 (1); the binned AGE_REF sum matches gasFraction within histogram error.
 	function totalAt(account, age) {
 		const t = Number.isFinite(age) ? age : account.age;
 		if (t <= 0) return 1;
@@ -355,10 +357,11 @@
 	const GasGridLib = {
 		GAS_RINGS, GAS_SPOKES, GAS_SLABS, GAS_CELLS, GAS_SLOTS, GAS_FLOATS, GAS_BYTES,
 		GAS_R_MIN_FRAC, GAS_R_MAX_FRAC, GAS_SLAB_REACH, GAS_ARM_POWER,
-		GAS_SMOOTHING, GAS_Z_GRADIENT, GAS_TURBULENCE_MIN, GAS_TURBULENCE_SPAN,
+		GAS_SMOOTH_GYR, GAS_SFR_NORMAL, GAS_RATE_MAX, GAS_Z_GRADIENT, GAS_TURBULENCE_MIN, GAS_TURBULENCE_SPAN,
 		GAS_BURN_CEILING, GAS_RATE_BINS,
 		cellIndex, ringOfCell, spokeOfCell, slabOfCell,
-		geometry, ringEdge, cellRadius, cellAzimuth, cellHeight, cellBoost,
+		geometry, ringEdge, cellRadius, cellAzimuth, cellHeight, cellBoost, cellAt,
+		rateScale, emissionWeight, rateAfter,
 		cellWeights, calibrate, initialize, fillGrid, step, total, totalAt, totalAtExact,
 	};
 	if (typeof module !== 'undefined') module.exports = GasGridLib;

@@ -2566,3 +2566,53 @@ Skill: when a derived quantity must match another subsystem, calibrate *to that
 subsystem's endpoints* by construction, then measure the interior with a cheap
 histogram; and give the degenerate target (0 here) its own explicit branch so
 `clamped` keeps meaning "the fit failed", not "the value is extreme".
+
+## 2026-10-24 — A composable reservoir needs a composable display rate too
+
+An exact mass step is not enough if its consumer reads a history-dependent
+auxiliary slot. The gas mass used `exp(−k·dt)`, but `s += (sfr − s) * 0.25`
+counted frames and a direct fill reset `s` to zero. As soon as HII emission read
+`s`, identical epochs would look different after a jump, a run or a paused boot.
+Solve the coupled filter `ds/dT = a·(k·m − s)` analytically too. Its forcing
+integral is `(exp(−k·h) − exp(−a·h))/(a−k)`. Evaluate it as
+`h·exp(−min(k,a)·h)·phi(|a−k|·h)`, with a small-x series for
+`phi(x) = (1−exp(−x))/x`: no cancellation at frame-sized deltas, no singularity
+at equal decay rates, no overflow for a long jump. Direct fills and steps must
+share that law, including the decaying tail after mass underflows.
+
+Pin **every consumed slot**, not only total mass, across one step, many steps,
+direct boot and rewind. Test relative error: an absolute tolerance of 1e-4 can
+accept a completely wrong slot whose ordinary values are only 1e-5.
+
+## 2026-10-24 — Normalisation can hide the wrong measure, and a projection can hide the wrong gain
+
+A log-radius grid sampled a per-`dR` mass marginal at equal weights, omitting
+`ΔR`. It still normalised to one, and every gas endpoint passed, but the mass was
+in the wrong rings. Compare cumulative mass with an independent integral in the
+same measure; a conservation check alone cannot see redistribution errors.
+
+The look test then used `height/tan(fov/2)` for **positions**, a formula that was
+correct for a billboard's *diameter*, not for the camera's half-height focal
+scale. It also sized off axial distance while the shader used Euclidean
+distance. The test appeared to justify a gain of 15 000. Correcting the ring
+measure and projecting with the actual camera matrix required a gain of 1 800
+to recover the intended ~0.068 / ~0.0087 median radiances. Reuse the shipping
+camera, keep successful measurement values in the log, and distinguish scalar
+pre-colour radiance from luminance. Pixel statistics are not a visual verdict.
+
+## 2026-10-24 — A new visible layer invalidates old black-frame tests
+
+First light's old "zero lit pixels" assertion was right when the renderer had
+only stars and nebulae. After gas was drawn it became wrong, while a CPU
+fallback could still pass by estimating stellar light alone. Test layers
+separately: hide gas to verify the birth gate, then show it for a gas-only
+readback, and explicitly **defer** that pixel verdict without a rasterizer.
+Check the standalone rig's script list as well as the main page: its missing
+gas module silently disabled the new layer. A native null backend can validate
+shaders and bind groups but cannot provide pixel evidence either.
+
+Also keep distinct error budgets distinct. `gas Δ` compares the grid's
+exponential law with the census CDF; it is not the small histogram approximation
+error. Matching two endpoints cannot imply small disagreement between them
+(the measured SBb example differs by 0.217 at 5 Gyr). State the two laws and
+report their difference rather than calling it GPU drift.

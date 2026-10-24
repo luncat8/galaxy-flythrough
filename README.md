@@ -49,7 +49,10 @@ No framework, bundler, module loader, or runtime network connection is required.
   epoch delta, calibrated once per draw so its total is 1 at first light and the type's own
   present-day fraction at the reference epoch, and splatted additively as cold haze under the
   stars. Its mass against that account is printed as `gas Δ` in the Formation checks line and in
-  the stats overlay.
+  the stats overlay. HII nebulae take their brightness from the **local cell's formation rate**,
+  with a time-based response that gives the same rate after a jump, rewind or running clock.
+  Their seats and members are carried, not re-rolled; planetary nebulae and supernova remnants
+  keep their stellar-origin light rather than being switched off by an empty cold-gas cell.
 - Three selectable movement models:
   - **classic** — closed-form bounded kinematic orbits; currently the most balanced default
   - **simple** — responsive friction-field integration
@@ -190,8 +193,8 @@ galaxy, the seed, the star budget and the look; they change only the clock and t
 
 | Scenario | Clock | What it is for |
 |---|---|---|
-| First light — T = 0 | frozen at 0.0 Gyr | the procedural field is gated off: formed 0 %, gas 1.00. Catalog stars and landmarks are not gated and still draw from the Sun view |
-| Condensation — 0 → 1 Gyr | Evolve, 20 Myr/s | one 0.1 Gyr step every five seconds: stars arrive through the fade, and the field draws stay at 0 |
+| First light — T = 0 | frozen at 0.0 Gyr | the procedural field is gated off: formed 0 %, gas 1.00, a cold gas-only picture on SBb. Milky Way catalog stars and landmarks are not gated and still draw |
+| Condensation — 0 → 1 Gyr | Evolve, 20 Myr/s | one 0.1 Gyr traversed every five seconds: stars arrive through the fade, and the field draws stay at 0 |
 | Full walk — 0 → 13.5 Gyr | Evolve, 99 Myr/s | the whole history, still one draw: the bulge assembles in size and the arms lose contrast as the gas falls |
 | Gas-rich arms — 1.0 Gyr | frozen | the young census is mostly gas, so the arms saturate; **Present day** is the same stars at the type's own fraction |
 | Bulge assembly — 2.0 Gyr | frozen | the compact bulge keeps its central brightness while the bar is shorter |
@@ -206,6 +209,13 @@ bulge size. A run that fell back to the smooth gas prior reads as `gas —` inst
 plausible number, and a clock tick that re-sampled the field shows up in `draws`. If Type or Seed
 changes under a running scenario the state line says *different galaxy*, because a comparison is
 only a comparison at one field.
+
+The **WebGPU checks** rig separates First light into a star-only frame (gas hidden,
+zero lit stellar pixels) and a gas-only frame (gas visible, nonzero light). Its
+stellar-exposure continuity sweep also hides the haze. A CPU fallback cannot
+rasterize gas and explicitly defers that pixel check; passing headless tests is
+not a visual verdict. `gas Δ` may be nonzero between the endpoints: it compares
+the exponential grid with the census account, not two copies of the same curve.
 
 **Copy line** hands back the whole settings line through the preset box, so a frame worth
 reporting is one press from being recorded. A row that changes only the epoch is a *placement*:
