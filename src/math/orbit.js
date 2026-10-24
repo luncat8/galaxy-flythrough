@@ -652,6 +652,28 @@ function orbitPlane(qx, qy, qz, family, phase, amplitude, out) {
 // per-frame allocation (AGENTS hot-path rule).
 const orbitScratch = { vFlat: 0, rCore: 0, omegaPattern: 0, spinLambda: 0, sigmaThin: 0, pressureAmpScale: 0, discHeight: 0, patternLock: 0 };
 
+// The one R4 carry rule (formation-plan §6), shared by the renderer's theta
+// walk and the tracked mirror's seed so they cannot disagree: the
+// reconstruction's theta is the birth xy azimuth PLUS the sweep's in-plane
+// angle. For the two horizontal families (disc, pattern) that is exactly the
+// drawn position's xy azimuth; for the two inclined families (bar, pressure)
+// the xy azimuth is not the plane's angle and carrying it would put the star
+// on the wrong side of a tilted orbit (measured: up to 45 kpc). Project the
+// drawn position onto the record's own orbitPlane — the normal wobble drops
+// out, n ⊥ e0/e1 — and return the theta whose reconstruction lands on the
+// drawn in-plane direction. `q` is the birth vector relative to the centre
+// (cluster records: the centre's), `drawn*` the absolute drawn position.
+const carryPlaneScratch = { e0x: 0, e0y: 0, e0z: 0, e1x: 0, e1y: 0, e1z: 0, nx: 0, ny: 0, nz: 0, anchor: 0, carry: 0 };
+function simpleCarryTheta(qx, qy, qz, drawnX, drawnY, drawnZ, packed, model) {
+	const orb = readOrbit(packed);
+	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
+	const pl = orbitPlane(qx, qy, qz, orb.family, orb.phase, orb.amplitude, carryPlaneScratch);
+	const vx = drawnX - c.x, vy = drawnY - c.y, vz = drawnZ - c.z - pl.carry;
+	const d0 = vx * pl.e0x + vy * pl.e0y + vz * pl.e0z;
+	const d1 = vx * pl.e1x + vy * pl.e1y + vz * pl.e1z;
+	return wrapAngle(Math.atan2(qy, qx) + Math.atan2(d1, d0));
+}
+
 // p(T): a per-star orbital-plane rotation of q = p0 − centre plus bounded
 // radial/normal wobble. At T = 0 both theta and every (sinTau(arg) −
 // sinTau(arg0)) term are exactly zero, so the transform is the identity
@@ -901,12 +923,27 @@ function engineRecordPosition(out, x, y, z, packed, time, model) {
 // stage's own `simplePositionFromTheta` — and the returned report says so.
 // `theta < 0` is the dispatch above, approximation and all.
 function engineRecordPositionTheta(out, x, y, z, packed, time, model, theta) {
+	return recordDispatch(out, x, y, z, packed, engine, time, model, theta);
+}
+
+// The same ladder under an explicitly named mask instead of the current one.
+// The R4 carry needs it twice over: the tracked mirror seeds a record from the
+// drawn position under the *outgoing* mask at the switch instant, after the
+// current mask has already become simple — and a mask carrying the simple bit
+// answers with the documented approximation, exactly like the dispatch above.
+function engineRecordPositionMasked(out, x, y, z, packed, mask, time, model) {
+	recordDispatch(out, x, y, z, packed, mask, time, model, -1);
+	return out;
+}
+
+// One dispatch, three entry points. The epoch map comes first, on the birth
+// vector, exactly as in the vertex stage: a record drawn at the field's base
+// epoch is placed in the running epoch's frame before any lane touches it, and
+// a record without the epoch bit (observed sky) is left where it is. Cluster
+// members evaluate the orbit at the cluster centre and add back their rigid
+// member offset. Returns the dispatch's approximation report.
+function recordDispatch(out, x, y, z, packed, mask, time, model, theta) {
 	const orbit = readOrbit(packed);
-	// The epoch map comes first, on the birth vector, exactly as in the vertex
-	// stage: a record drawn at the field's base epoch is placed in the running
-	// epoch's frame before any lane touches it, and a record without the epoch
-	// bit (observed sky) is left where it is. Cluster members evaluate the
-	// orbit at the cluster centre and add back their rigid member offset.
 	const flags = (packed >>> 16) & 255;
 	let offX = 0, offY = 0, offZ = 0;
 	if ((flags & records.FLAG_CLUSTER) !== 0) {
@@ -918,23 +955,23 @@ function engineRecordPositionTheta(out, x, y, z, packed, time, model, theta) {
 		epochMap(epochMapScratch, x, y, z, orbit.family, flags, model);
 		x = epochMapScratch[0]; y = epochMapScratch[1]; z = epochMapScratch[2];
 	}
-	if ((engine & ENGINE_SIMPLE) && theta >= 0) {
+	if ((mask & ENGINE_SIMPLE) && theta >= 0) {
 		// The cluster split already happened above, so the reconstruction gets
 		// the family without its cluster bit and the offset is added back at the
 		// end — the same structure the other lanes run in.
 		simplePositionFromTheta(out, theta, x, y, z, (packed >>> 24) & 255,
 			orbit.family, simpleEccMax(model), model);
-	} else if (engine & ENGINE_CLASSIC) orbitPosition(out, x, y, z, orbit.family, orbit.phase, orbit.amplitude, time, model);
+	} else if (mask & ENGINE_CLASSIC) orbitPosition(out, x, y, z, orbit.family, orbit.phase, orbit.amplitude, time, model);
 	else {
 		out[0] = x; out[1] = y; out[2] = z;
 	}
 	// apocenterPosition rebuilds from the birth position and is a no-op for T = 0
 	// and unselected stars; gate it here so it cannot clobber the baseline above.
-	if ((engine & ENGINE_APOCENTER) && time !== 0 && apocenterSelected(x, y, z)) {
+	if ((mask & ENGINE_APOCENTER) && time !== 0 && apocenterSelected(x, y, z)) {
 		apocenterPosition(out, x, y, z, orbit.family, orbit.phase, orbit.amplitude, time, model);
 	}
 	out[0] += offX; out[1] += offY; out[2] += offZ;
-	return (engine & ENGINE_SIMPLE) !== 0 && theta < 0;
+	return (mask & ENGINE_SIMPLE) !== 0 && theta < 0;
 }
 
 // --- Drawn velocity (ui.15) ------------------------------------------------
@@ -1036,11 +1073,20 @@ function formatTimeRate(value, speed) { return value < 0 ? `follow ×${(-value).
 const ENGINE_CLASSIC = 1, ENGINE_SIMPLE = 2, ENGINE_APOCENTER = 4;
 const ENGINE_NAMES = ['classic', 'simple', 'apocenter'];
 let engine = ENGINE_CLASSIC;
+// The mask an engine selection means, without committing it: names, ids and
+// arrays all resolve here, and an empty or unknown selection falls back to
+// classic. setEngine commits the result; callers that have to act on the
+// *outgoing* mask before the switch (the renderer's theta carry, main.js's
+// mirror transfer) resolve through this instead of duplicating the grammar.
+function engineMaskOf(id) {
+	let mask;
+	if (Array.isArray(id)) mask = id.reduce((m, name) => m | (name === 'simple' ? ENGINE_SIMPLE : name === 'apocenter' ? ENGINE_APOCENTER : ENGINE_CLASSIC), 0);
+	else if (typeof id === 'number') mask = id & 7;
+	else mask = id === 'apocenter' ? ENGINE_APOCENTER : id === 'simple' ? ENGINE_SIMPLE : ENGINE_CLASSIC;
+	return mask ? mask : ENGINE_CLASSIC;
+}
 function setEngine(id) {
-	if (Array.isArray(id)) { engine = id.reduce((mask, name) => mask | (name === 'simple' ? ENGINE_SIMPLE : name === 'apocenter' ? ENGINE_APOCENTER : ENGINE_CLASSIC), 0); }
-	else if (typeof id === 'number') engine = id & 7;
-	else engine = id === 'apocenter' ? ENGINE_APOCENTER : id === 'simple' ? ENGINE_SIMPLE : ENGINE_CLASSIC;
-	if (!engine) engine = ENGINE_CLASSIC;
+	engine = engineMaskOf(id);
 	return engine;
 }
 function getEngine() { return engine; }
@@ -1320,6 +1366,27 @@ function simpleLandmarksRebind(model) {
 	simpleLMEcc = simpleEccMax(model);
 	return simpleLMCount;
 }
+// The R4 switch transfer: the mirror keeps its birth anchors — R0, q, z and
+// family stay the birth table's, which are exactly the inputs the GPU compute
+// kernel integrates — but the azimuths become the ones the *outgoing* engine
+// was drawing at `starTimeMyr`. A switch into simple therefore lands the
+// labels and picks on the sky the user is looking at instead of snapping them
+// back to the birth table, and mirror and sprites keep integrating at the same
+// rate on the same anchors (no drift). Returns 0 when the mirror was never
+// initialised, so the caller falls back to the full init.
+function simpleLandmarksCarryFrom(positions, count, model, starTimeMyr) {
+	if (!simpleLandmarksReady() || !positions || !(count > 0) || count > simpleLMCount) return 0;
+	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
+	for (let i = 0; i < count; i++) {
+		simpleLMTheta[i] = wrapAngle(Math.atan2(positions[i * 3 + 1] - c.y, positions[i * 3] - c.x));
+	}
+	if (model) {
+		simpleLMModel = model;
+		simpleLMEcc = simpleEccMax(model);
+	}
+	simpleLMTime = Number(starTimeMyr) > 0 ? Number(starTimeMyr) : 0;
+	return count;
+}
 function simpleLandmarkTheta(i) { return simpleLMTheta[i]; }
 function simpleLandmarksReady() { return simpleLMModel !== null && simpleLMCount > 0; }
 function simpleLandmarksStep(dtStar, starTimeMyr) {
@@ -1440,6 +1507,11 @@ let trkCount = 0;
 let trkModel = null;
 let trkSeedTime = 0;
 let trkTime = 0;
+// The R4 carry seed frame (simpleTrackReset): -1 is the birth rule, a
+// stateless mask seeds from the outgoing law's drawn position at trkSeedTime.
+let trkCarryMask = -1;
+let trkCarryModel = null;
+const trackSeedScratch = [0, 0, 0];
 
 function simpleTrackAlloc() {
 	if (trkTheta) return;
@@ -1456,13 +1528,24 @@ function simpleTrackAlloc() {
 
 // The renderer's θ buffer was just seeded from the birth field: drop every
 // tracked azimuth and take this instant as the one a catch-up integrates from.
-function simpleTrackReset(model, starTimeMyr) {
+// `carryMask` is the R4 switch frame: when the renderer carried its θ buffer
+// from the drawn sky instead of re-seeding it from birth, the outgoing
+// (stateless) mask names the law the carried azimuths came from, and a record
+// tracked after this instant seeds from that same closed-form position — the
+// number the GPU holds — instead of the birth azimuth. A mask carrying the
+// simple bit is refused (there is no closed form to seed from); the seed
+// frame's model is frozen, so a later epoch change cannot move the seed away
+// from what the GPU was given at the switch instant.
+function simpleTrackReset(model, starTimeMyr, carryMask) {
 	simpleTrackAlloc();
 	trkCount = 0;
 	trkMapUsed.fill(0);
 	trkModel = model || null;
 	trkSeedTime = Number(starTimeMyr) > 0 ? Number(starTimeMyr) : 0;
 	trkTime = trkSeedTime;
+	trkCarryMask = (typeof carryMask === 'number' && (carryMask & 7) > 0 && (carryMask & ENGINE_SIMPLE) === 0)
+		? (carryMask & 7) : -1;
+	trkCarryModel = trkCarryMask >= 0 ? trkModel : null;
 	return trkCount;
 }
 
@@ -1534,14 +1617,37 @@ function simpleTrackStar(key, x, y, z, packed, model, starTimeMyr) {
 	}
 	trkR0[slot] = Math.hypot(px - c.x, py - c.y);
 	trkZ[slot] = pz;
-	// Seeded from the *placed* birth azimuth, as the renderer's seedThetaRange
-	// is, then caught up to the mirror's own clock.
-	let sx = px, sy = py;
-	if ((flags & records.FLAG_EPOCH) !== 0 && solveEpochParams(model).active) {
-		epochMap(epochMapScratch, px, py, pz, trkFam[slot], flags, model);
-		sx = epochMapScratch[0]; sy = epochMapScratch[1];
+	let theta0;
+	if (trkCarryMask >= 0 && trkCarryModel) {
+		// The carried switch frame: the theta the renderer uploaded for this
+		// record at the switch instant — the outgoing mask's closed-form drawn
+		// position through the one shared carry rule — frozen at the seed
+		// frame's own model. The dispatch runs on the RAW bytes, because its
+		// cluster split quantises once and an already-centred input would land
+		// on a different lattice; the member offset it adds back is removed so
+		// the carry reads the drawn centre, and the q is the same placed birth
+		// the vertex stage reconstructs from (renderer parity).
+		const cc = trkCarryModel.centre || { x: 0, y: 0, z: 0 };
+		engineRecordPositionMasked(trackSeedScratch, x, y, z, packed,
+			trkCarryMask, trkSeedTime, trkCarryModel);
+		trackSeedScratch[0] -= x - px; trackSeedScratch[1] -= y - py; trackSeedScratch[2] -= z - pz;
+		let sx = px, sy = py, sz = pz;
+		if ((flags & records.FLAG_EPOCH) !== 0 && solveEpochParams(trkCarryModel).active) {
+			epochMap(epochMapScratch, px, py, pz, trkFam[slot], flags, trkCarryModel);
+			sx = epochMapScratch[0]; sy = epochMapScratch[1]; sz = epochMapScratch[2];
+		}
+		theta0 = simpleCarryTheta(sx - cc.x, sy - cc.y, sz - cc.z,
+			trackSeedScratch[0], trackSeedScratch[1], trackSeedScratch[2], packed, trkCarryModel);
+	} else {
+		// Seeded from the *placed* birth azimuth, as the renderer's seedThetaRange
+		// is, then caught up to the mirror's own clock.
+		let sx = px, sy = py;
+		if ((flags & records.FLAG_EPOCH) !== 0 && solveEpochParams(model).active) {
+			epochMap(epochMapScratch, px, py, pz, trkFam[slot], flags, model);
+			sx = epochMapScratch[0]; sy = epochMapScratch[1];
+		}
+		theta0 = wrapAngle(Math.atan2(sy - c.y, sx - c.x));
 	}
-	const theta0 = wrapAngle(Math.atan2(sy - c.y, sx - c.x));
 	trkTheta[slot] = trkTime > trkSeedTime
 		? trackIntegrateFrom(theta0, slot, trkSeedTime, trkTime, TRACK_CATCHUP_SUBSTEPS)
 		: theta0;
@@ -1661,15 +1767,15 @@ const OrbitAPI = {
 	meanPatternSpeed, effectivePatternSpeed, instantPatternSpeed,
 	dampedDiscTheta, orbitPosition, apocenterPosition, apocenterAngle, solveEccentricAnomaly,
 	packOrbitDynamics, sinTau, sliderValueToRate, formatTimeRate,
-	setEngine, getEngine, engineName,
+	setEngine, getEngine, engineName, engineMaskOf,
 	setApocenterShare, setApocenterForce, getApocenterShare, getApocenterForce,
 	apocenterSelector, apocenterSelected, engineLandmarkPosition, engineRecordPosition,
-	engineLandmarkPositionTheta, engineRecordPositionTheta,
+	engineLandmarkPositionTheta, engineRecordPositionTheta, engineRecordPositionMasked,
 	DRAWN_VELOCITY_BASELINE_MYR, engineRecordVelocity,
 	simpleArmed, simpleSigma, simpleEccMax, simpleOmega, simpleEccOf, simplePeriOf,
 	simpleDerived, simpleOmegaMax, simpleSubsteps, wrapAngle, simplePatternPhase,
-	simpleStepTheta, simplePositionFromTheta,
-	simpleLandmarksInit, simpleLandmarksRebind, simpleLandmarkTheta, simpleLandmarksReady, simpleLandmarksStep, simpleLandmarkPosition,
+	simpleStepTheta, simplePositionFromTheta, simpleCarryTheta,
+	simpleLandmarksInit, simpleLandmarksRebind, simpleLandmarksCarryFrom, simpleLandmarkTheta, simpleLandmarksReady, simpleLandmarksStep, simpleLandmarkPosition,
 	SIMPLE_PREDICT_SUBSTEPS, simpleLandmarkThetaAt, simpleLandmarkTime,
 	SIMPLE_TRACK_MAX, TRACK_CATCHUP_SUBSTEPS,
 	simpleTrackReset, simpleTrackRebind, simpleTrackReady, simpleTrackCount, simpleTrackTime,

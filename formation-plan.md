@@ -445,16 +445,21 @@ clock moved.** Stated as rules, each with its pin:
 | R1 | An epoch change is a model re-solve and a uniform. No `regenerate`, no re-draw, ever. | `renderer-test` counts draws across 200 epoch steps |
 | R2 | The gate is a scalar read; a star's position, key and birth never change after the draw. | buffer diff across a run |
 | R3 | **Composite objects are carried, not re-rolled.** `generateObjects` runs once per draw; the object block is carried unchanged because member looks use their own fixed object age. No epoch refresh or re-placement. Placement depends on the base epoch, never the running one. | object seats byte-identical across a 1 Gyr run |
-| R4 | An engine switch maps the current θ into the new engine's frame instead of re-seeding from birth positions. | max per-frame delta across a switch ≤ the orbit law's own |
+| R4 | An engine switch maps the current θ into the new engine's frame instead of re-seeding from birth positions. | per-star in-plane landing err ≤ the f32 θ ULP and residual ≤ the exact two-lane bound across a T ladder (`engine-switch-test`) — shipped 0.7.8 |
 | R5 | A new star budget is a new draw (a different N is a different census) — the one honest re-sample, and it is a user action, not a clock event. | — |
 | R6 | Every epoch-varying quantity is continuous in `T`: the map's three terms, the gate, the look sweep, the gas grid. Discontinuities are bugs, not taste. | continuity sweep at ΔT = 1e-3 |
 | R7 | The pattern phase stays an accumulator (`orbit.advancePatternPhase`); a step never re-derives it from `Ω_p·T`. | pattern-angle continuity |
 
 R3 is the fix for the confirmed defect in §1.3 and the reason this section comes
-before any of the new visuals. R4 replaces the `initSimpleLandmarks` re-seed on
-an engine switch (`orbit.setEngine`) with a θ-map; the CPU mirror's
-`simpleLandmarksRebind` already knows how to carry a frame, so the switch asks
-it for a transfer instead of asking for a reset.
+before any of the new visuals. R4 shipped in 0.7.8: a switch into simple carries
+all three θ states — the GPU buffer, the landmark mirror and the track mirror's
+seed frame — from the drawn sky under the *outgoing* mask, through one shared
+rule (`orbit.simpleCarryTheta`: the drawn position's in-plane angle on the
+record's own sweep basis plus the birth azimuth; for the horizontal families
+that is exactly the drawn xy azimuth, for the inclined bar/pressure planes the
+xy azimuth is not that angle). The birth re-seed remains for the fresh-field
+moments only: boot, regenerate and R. `experiments/engine-switch-test.js` is
+the audit and the pin.
 
 ## 7. Deep time (F7)
 

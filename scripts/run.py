@@ -85,6 +85,7 @@ EXPERIMENTS = {
     'galaxy-age':            'experiments/galaxy-age-test.js',
     'galaxy-evolution':      'experiments/galaxy-evolution-test.js',
     'orbit':                 'experiments/orbit-test.js',
+    'engine-switch':         'experiments/engine-switch-test.js',
     'movement-density':      'experiments/movement-density-test.js',
     'system-layer':          'experiments/system-layer-test.js',
     'dv-map':                'experiments/dv-map-test.js',
@@ -114,7 +115,7 @@ TYPES = {
                'density-distribution',
                'star-types-evolution', 'planet-gen', 'star-select', 'selection-store', 'search', 'nebula-placement', 'object-placement',
                'star-cluster',
-               'galaxy-age', 'galaxy-evolution', 'orbit', 'movement-density', 'system-layer', 'dv-map', 'route', 'trade', 'exec-queue'],
+               'galaxy-age', 'galaxy-evolution', 'orbit', 'engine-switch', 'movement-density', 'system-layer', 'dv-map', 'route', 'trade', 'exec-queue'],
     'study':  ['damping-formula', 'hash-quality', 'precision', 'packing', 'filter',
                'truncation-edge', 'young-vertical'],
     'sim':    ['wgsl-exec'],
@@ -154,7 +155,7 @@ SUITES = {
     'view-tests': ALWAYS + [
         'log-file', 'panel', 'wgsl-validate', 'camera', 'input', 'preset',
         'renderer', 'gas-grid', 'gpu-smoke', 'hdr', 'landmark', 'view-modes-field', 'view-modes-page',
-        'view-modes-layer', 'tile-stream', 'tile-encoder-smoke',
+        'view-modes-layer', 'tile-stream', 'tile-encoder-smoke', 'engine-switch',
     ],
     'world-tests': ALWAYS + [
         'panel', 'preset', 'workspace', 'scenario', 'planet-gen', 'star-select', 'selection-store',

@@ -1705,6 +1705,146 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 		kept && orbit.simpleTrackCount() === 0 && orbit.simpleTrackSlotOf(11) === -1
 		&& orbit.simpleTrackTime() === 90, { kept, count: orbit.simpleTrackCount() });
 
+	// --- R4 switch carry: one rule, three consumers (formation-plan §6) -----
+	// engineMaskOf is the pure mask maths; setEngine's job is only to commit
+	// it, so the two can never disagree about what an id means.
+	{
+		const ids = [['classic'], ['simple'], ['apocenter'], ['classic', 'apocenter'],
+			['simple', 'apocenter'], 'classic', 'simple', 0, 1, 2, 5, 7, 9];
+		let maskAgree = true;
+		for (const id of ids) {
+			orbit.setEngine(id);
+			if (orbit.getEngine() !== orbit.engineMaskOf(id)) maskAgree = false;
+		}
+		orbit.setEngine('classic');
+		check('engineMaskOf is the pure mask setEngine commits (arrays, names, numbers, the 0 clamp)',
+			maskAgree && orbit.engineMaskOf(0) === orbit.ENGINE_CLASSIC
+			&& orbit.engineMaskOf(['simple', 'apocenter']) === (orbit.ENGINE_SIMPLE | orbit.ENGINE_APOCENTER)
+			&& orbit.engineMaskOf(9) === orbit.ENGINE_CLASSIC,
+			{ zero: orbit.engineMaskOf(0), over: orbit.engineMaskOf(9) });
+
+		// The masked dispatch is the current-mask ladder at theta = −1 — the
+		// refactor split the function, not the behaviour.
+		const mout = [0, 0, 0], tout = [0, 0, 0];
+		let parWorst = 0;
+		for (const mask of [orbit.ENGINE_CLASSIC, orbit.ENGINE_SIMPLE, orbit.ENGINE_APOCENTER,
+			orbit.ENGINE_CLASSIC | orbit.ENGINE_APOCENTER, orbit.ENGINE_SIMPLE | orbit.ENGINE_APOCENTER]) {
+			orbit.setEngine(mask);
+			for (const t of [0, 37, 900]) {
+				orbit.engineRecordPositionMasked(mout, bx, by, bz, packed, mask, t, M);
+				orbit.engineRecordPositionTheta(tout, bx, by, bz, packed, t, M, -1);
+				parWorst = Math.max(parWorst, dist3(mout, tout));
+			}
+			if (mask === orbit.ENGINE_CLASSIC) {
+				orbit.engineRecordPosition(tout, bx, by, bz, packed, 37, M);
+				orbit.engineRecordPositionMasked(mout, bx, by, bz, packed, mask, 37, M);
+				parWorst = Math.max(parWorst, dist3(mout, tout));
+			}
+		}
+		orbit.setEngine('classic');
+		check('the masked dispatch is the ladder at theta = −1, for every mask and clock',
+			parWorst === 0, { parWorst });
+
+		// The carry rule itself. Horizontal families: it is the drawn xy
+		// azimuth. Inclined families: the in-plane angle on the record's own
+		// sweep basis — the xy azimuth is NOT that angle — and the classic
+		// normal wobble must not leak into it.
+		const angDiff = (a, b) => { const d = Math.abs(a - b) % orbit.TAU; return Math.min(d, orbit.TAU - d); };
+		const qx = bx - c.x, qy = by - c.y, qz = bz - c.z;
+		const phi = 0.77, cp = Math.cos(phi), sp = Math.sin(phi);
+		const drawnH = [c.x + qx * cp - qy * sp, c.y + qx * sp + qy * cp, c.z + qz];
+		const thH = orbit.simpleCarryTheta(qx, qy, qz, drawnH[0], drawnH[1], drawnH[2], packed, M);
+		const pPacked = (7 | (100 << 8) | (((orbit.FAMILY_PRESSURE << 3) | records.FLAG_VISIBLE) << 16) | (0x9c << 24)) >>> 0;
+		const pOrb = orbit.readOrbit(pPacked);
+		const pl = orbit.orbitPlane(qx, qy, qz, pOrb.family, pOrb.phase, pOrb.amplitude, null);
+		const delta = -2.1, cd = Math.cos(delta), sd = Math.sin(delta), wz = 0.35;
+		const drawnP = [
+			c.x + pl.anchor * (pl.e0x * cd + pl.e1x * sd) + wz * pl.nx,
+			c.y + pl.anchor * (pl.e0y * cd + pl.e1y * sd) + wz * pl.ny,
+			c.z + pl.anchor * (pl.e0z * cd + pl.e1z * sd) + wz * pl.nz,
+		];
+		const thP = orbit.simpleCarryTheta(qx, qy, qz, drawnP[0], drawnP[1], drawnP[2], pPacked, M);
+		const thP0 = orbit.simpleCarryTheta(qx, qy, qz,
+			drawnP[0] - wz * pl.nx, drawnP[1] - wz * pl.ny, drawnP[2] - wz * pl.nz, pPacked, M);
+		const recon2 = [0, 0, 0];
+		orbit.simplePositionFromTheta(recon2, thP, bx, by, bz, pOrb.jitter, pOrb.family, orbit.simpleEccMax(M), M);
+		const vx = recon2[0] - c.x, vy = recon2[1] - c.y, vz = recon2[2] - c.z;
+		const reconDelta = Math.atan2(vx * pl.e1x + vy * pl.e1y + vz * pl.e1z, vx * pl.e0x + vy * pl.e0y + vz * pl.e0z);
+		const reconR = Math.hypot(vx * pl.e0x + vy * pl.e0y + vz * pl.e0z, vx * pl.e1x + vy * pl.e1y + vz * pl.e1z);
+		check('simpleCarryTheta carries the drawn azimuth on horizontal planes and the drawn in-plane angle on tilted ones',
+			angDiff(thH, orbit.wrapAngle(Math.atan2(qy, qx) + phi)) < 1e-12
+			&& angDiff(thP, orbit.wrapAngle(Math.atan2(qy, qx) + delta)) < 1e-12
+			&& thP === thP0
+			&& angDiff(reconDelta, delta) < 1e-12 && Math.abs(reconR - pl.anchor) < 1e-12,
+			{ horizontal: +angDiff(thH, orbit.wrapAngle(Math.atan2(qy, qx) + phi)).toExponential(1),
+				tilted: +angDiff(thP, orbit.wrapAngle(Math.atan2(qy, qx) + delta)).toExponential(1),
+				wobbleLeak: thP === thP0 ? 0 : 1 });
+
+		// The landmark mirror carries drawn azimuths on UNCHANGED birth
+		// anchors — re-initialising from the drawn positions instead would
+		// move R0 and with it the integrator's own omega.
+		const lmB = Float64Array.of(c.x + 6, c.y + 1, c.z + 0.2, c.x - 4, c.y + 3, c.z - 0.1);
+		const lmCc = Uint8Array.of(3, 9);
+		orbit.simpleLandmarksInit(lmB, lmCc, 2, M, 0);
+		const lmDrawn = Float64Array.of(c.x + 5, c.y + 3, c.z + 0.9, c.x - 4.5, c.y + 2, c.z + 0.4);
+		const lmCarried = orbit.simpleLandmarksCarryFrom(lmDrawn, 2, M, 123);
+		const lmPos = [0, 0, 0], lmRecon = [0, 0, 0];
+		orbit.simpleLandmarkPosition(lmPos, 0);
+		orbit.simplePositionFromTheta(lmRecon, orbit.simpleLandmarkTheta(0),
+			lmB[0], lmB[1], lmB[2], 0, orbit.familyFromColorIndex(3), orbit.simpleEccMax(M), M);
+		check('simpleLandmarksCarryFrom carries the drawn azimuths on the birth anchors and stamps the seed clock',
+			lmCarried === 2
+			&& angDiff(orbit.simpleLandmarkTheta(0), orbit.wrapAngle(Math.atan2(3, 5))) < 1e-12
+			&& angDiff(orbit.simpleLandmarkTheta(1), orbit.wrapAngle(Math.atan2(2, -4.5))) < 1e-12
+			&& orbit.simpleLandmarkThetaAt(0, 123) === orbit.simpleLandmarkTheta(0)
+			&& dist3(lmPos, lmRecon) < 1e-9
+			&& orbit.simpleLandmarksCarryFrom(lmDrawn, 3, M, 0) === 0,
+			{ carried: lmCarried, drift: +dist3(lmPos, lmRecon).toExponential(1) });
+
+		// The track mirror seeds through the same rule as the renderer — raw
+		// bytes into the masked dispatch, the member offset stripped, the
+		// placed q into the carry — so the friction field lands where the sky
+		// does. clusterCentreCoord is NOT idempotent (its lattice base comes
+		// off the input's own bits), which is why the dispatch gets the raw
+		// coordinates and never the pre-centred ones.
+		orbit.simpleTrackReset(M, 40, orbit.ENGINE_CLASSIC);
+		const tslot = orbit.simpleTrackStar(4242, bx, by, bz, packed, M, 40);
+		const thPlain = orbit.simpleTrackTheta(tslot);
+		orbit.engineRecordPositionMasked(mout, bx, by, bz, packed, orbit.ENGINE_CLASSIC, 40, M);
+		const expTrack = orbit.simpleCarryTheta(qx, qy, qz, mout[0], mout[1], mout[2], packed, M);
+		const clPacked = (7 | (100 << 8) | (((orbit.FAMILY_DISC << 3) | records.FLAG_VISIBLE | records.FLAG_CLUSTER) << 16) | (0x5b << 24)) >>> 0;
+		const mx = c.x + 5.37, my = c.y - 2.11, mz = c.z + 0.43;
+		const ccx = orbit.clusterCentreCoord(mx), ccy = orbit.clusterCentreCoord(my), ccz = orbit.clusterCentreCoord(mz);
+		orbit.simpleTrackReset(M, 40, orbit.ENGINE_CLASSIC);
+		const cslot = orbit.simpleTrackStar(31337, mx, my, mz, clPacked, M, 40);
+		const thCluster = orbit.simpleTrackTheta(cslot);
+		orbit.engineRecordPositionMasked(mout, mx, my, mz, clPacked, orbit.ENGINE_CLASSIC, 40, M);
+		const expCl = orbit.simpleCarryTheta(ccx - c.x, ccy - c.y, ccz - c.z,
+			mout[0] - (mx - ccx), mout[1] - (my - ccy), mout[2] - (mz - ccz), clPacked, M);
+		check('a carry-seeded track starts on the renderer\'s own carried theta (cluster centres quantised once)',
+			tslot === 0 && cslot === 0
+			&& angDiff(thPlain, expTrack) < 1e-12
+			&& angDiff(thCluster, expCl) < 1e-12,
+			{ plain: +angDiff(thPlain, expTrack).toExponential(1),
+				cluster: +angDiff(thCluster, expCl).toExponential(1) });
+
+		// At T = 0 the carried seed IS the birth seed (boot parity), and a
+		// mask that keeps the simple bit refuses the carry — the integrator's
+		// own state is not a closed-form frame to carry from.
+		orbit.simpleTrackReset(M, 0, orbit.ENGINE_CLASSIC);
+		const zslot = orbit.simpleTrackStar(4242, bx, by, bz, packed, M, 0);
+		const birthTh = orbit.wrapAngle(Math.atan2(by - c.y, bx - c.x));
+		orbit.simpleTrackReset(M, 40, orbit.ENGINE_SIMPLE | orbit.ENGINE_CLASSIC);
+		const rslot = orbit.simpleTrackStar(4242, bx, by, bz, packed, M, 40);
+		check('the carry seed degenerates to the birth seed at T = 0 and is refused while the simple bit stays set',
+			angDiff(orbit.simpleTrackTheta(zslot), birthTh) < 1e-12
+			&& angDiff(orbit.simpleTrackTheta(rslot), birthTh) < 1e-12,
+			{ zero: +angDiff(orbit.simpleTrackTheta(zslot), birthTh).toExponential(1),
+				refused: +angDiff(orbit.simpleTrackTheta(rslot), birthTh).toExponential(1) });
+		orbit.simpleTrackReset(M, 0);
+		orbit.setEngine('classic');
+	}
+
 	// The landmark mirror predicts the same way, and refuses the same bound.
 	const lmBirth = Float64Array.of(c.x + 8.178, 0, 0.1, c.x + 3.5, 2.2, -0.15);
 	const lmColor = Uint8Array.of(5, 1);

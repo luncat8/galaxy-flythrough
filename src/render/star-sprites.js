@@ -142,17 +142,24 @@ function createStarRenderer(device, context, format, options) {
         const records = window.StarRecord;
         // Renderer unit tests construct the GPU harness without loading every page
         // script; preserve the old static record path in that environment.
-        const orbit = window.OrbitLib || {
-                flagsWithFamily: (flags) => flags,
-                familyForStar: () => 1,
-                familyFromColorIndex: () => 1,
-                packOrbitDynamics: () => {},
-                packEngineVec: () => {},
-                packSimpleParams: () => {},
-                setEngine: () => 0,
-                getEngine: () => 0,
-                SIMPLE_UNIFORM_FLOATS: 20,
-        };
+	const orbit = window.OrbitLib || {
+		flagsWithFamily: (flags) => flags,
+		familyForStar: () => 1,
+		familyFromColorIndex: () => 1,
+		packOrbitDynamics: () => {},
+		packEngineVec: () => {},
+		packSimpleParams: () => {},
+		setEngine: () => 0,
+		getEngine: () => 0,
+		engineMaskOf: (id) => (typeof id === 'number' ? (id & 7) || 1 : 1),
+		clusterCentreCoord: (v) => v,
+		solveEpochParams: () => ({ active: false }),
+		// No motion law in the stub harness: the identity stands in, so the
+		// theta carry degenerates to the birth-azimuth seed.
+		engineRecordPosition: (out, x, y, z) => { out[0] = x; out[1] = y; out[2] = z; return false; },
+		simpleCarryTheta: (qx, qy) => Math.atan2(qy, qx),
+		SIMPLE_UNIFORM_FLOATS: 20,
+	};
         const SIMPLE_UNIFORM_FLOATS = orbit.SIMPLE_UNIFORM_FLOATS || 20;
         const BIRTH_FADE = orbit.BIRTH_FADE_GYR || 0.05;
         const SIMPLE_WORKGROUP = 64;
@@ -750,17 +757,80 @@ function createStarRenderer(device, context, format, options) {
                 return highlightDesat;
         }
 
-        // Engine select: classic (closed form), simple (integrated friction
-        // field), or apocenter (analytic Kepler ellipses). Reseed the simple
-        // theta block on every switch so stale integration state cannot leak
-        // into its next selection.
-        function setEngine(id) {
-                const next = orbit.setEngine ? orbit.setEngine(id) : 0;
-                state.engine = (next & 1 ? 'classic ' : '') + (next & 2 ? 'simple ' : '') + (next & 4 ? 'apocenter' : '');
-                state.engine = state.engine.trim() || 'classic';
-                seedThetaAll();
-                return state.engine;
-        }
+	// Engine select: classic (closed form), simple (integrated friction
+	// field), or apocenter (analytic Kepler ellipses). R4 (formation-plan
+	// §6): a switch *into* simple maps the sky the outgoing mask is drawing
+	// at `timeMyr` into the integrator's state — one carried azimuth per slot
+	// — instead of re-seeding from the birth positions, which teleported
+	// every star by its whole Ω·T arc (measured: median ~4.6 kpc, worst
+	// ~53 kpc against the top rate's own 0.9 kpc frame step). A switch that
+	// keeps simple leaves the buffer current; the stateless masks need no
+	// state. The birth re-seed remains exactly where the field itself is
+	// new: prepare, regenerate and the R reset (seedThetaAll).
+	function setEngine(id, timeMyr) {
+		const next = orbit.engineMaskOf(id);
+		const prev = orbit.getEngine();
+		if ((next & 2) !== 0 && (prev & 2) === 0) carryThetaFromDrawn(timeMyr > 0 ? timeMyr : 0);
+		orbit.setEngine(next);
+		state.engine = (next & 1 ? 'classic ' : '') + (next & 2 ? 'simple ' : '') + (next & 4 ? 'apocenter' : '');
+		state.engine = state.engine.trim() || 'classic';
+		return state.engine;
+	}
+
+	// The theta carry: one closed-form evaluation per slot under the outgoing
+	// (still current) mask — engineRecordPosition is the parity contract for
+	// what the vertex stage draws — turned into the integrator's state by the
+	// one shared carry rule (orbit.simpleCarryTheta: the in-plane angle of the
+	// drawn position on the record's own sweep basis). Cluster members carry
+	// their centre's theta, the same reduction seedThetaRange applies, because
+	// the reconstruction rotates the centre and carries the member offset
+	// rigidly. A one-shot walk on a user action, never per frame; the scratch
+	// vector is preallocated.
+	const carryOut = [0, 0, 0];
+	const carryMap = [0, 0, 0];
+	function carryThetaFromDrawn(timeMyr) {
+		if (!thetaStaging || totalRecordCount <= 0 || !model) return 0;
+		const view = new DataView(staging);
+		const cx = model.centre ? model.centre.x : 0;
+		const cy = model.centre ? model.centre.y : 0;
+		const cz = model.centre ? model.centre.z : 0;
+		const epochActive = orbit.solveEpochParams(model).active;
+		for (let index = 0; index < totalRecordCount; index++) {
+			const off = index * records.RECORD_BYTES;
+			const x = view.getFloat32(off, true);
+			const y = view.getFloat32(off + 4, true);
+			const z = view.getFloat32(off + 8, true);
+			const packed = view.getUint32(off + 12, true);
+			const flags = (packed >>> 16) & 255;
+			// The placed reduction, the same one seedThetaRange makes: cluster
+			// members reduce to their centre through ONE quantisation —
+			// clusterCentreCoord reads its lattice base off the input's own
+			// bits, so feeding it its own output lands on a different lattice —
+			// and epoch records map to their placed birth.
+			let cenX = x, cenY = y, cenZ = z;
+			if ((flags & records.FLAG_CLUSTER) !== 0) {
+				cenX = orbit.clusterCentreCoord(x);
+				cenY = orbit.clusterCentreCoord(y);
+				cenZ = orbit.clusterCentreCoord(z);
+			}
+			let px = cenX, py = cenY, pz = cenZ;
+			if (epochActive && (flags & records.FLAG_EPOCH) !== 0) {
+				orbit.epochMap(carryMap, cenX, cenY, cenZ, (flags >> 3) & 3, flags, model);
+				px = carryMap[0]; py = carryMap[1]; pz = carryMap[2];
+			}
+			// The drawn position comes from the dispatch on the RAW bytes — the
+			// parity call, whose internal cluster split does the one legitimate
+			// quantisation — and the member offset it adds back at the end is
+			// removed analytically, so the carry reads the drawn centre on the
+			// placed birth q the reconstruction will use.
+			orbit.engineRecordPosition(carryOut, x, y, z, packed, timeMyr, model);
+			carryOut[0] -= x - cenX; carryOut[1] -= y - cenY; carryOut[2] -= z - cenZ;
+			thetaStaging[index] = orbit.simpleCarryTheta(px - cx, py - cy, pz - cz,
+				carryOut[0], carryOut[1], carryOut[2], packed, model);
+		}
+		uploadThetaRange(0, totalRecordCount);
+		return totalRecordCount;
+	}
 
         // R (reset everything) re-seeds the simple state alongside the time
         // accumulators in main.js, so the epoch restarts from the birth field.

@@ -599,11 +599,19 @@ function wgslConsts(part) {
 			.test(extractFunction(orbitSrc, 'engineRecordPosition'))
 		&& /engineRecordPosition/.test(readSource('src/core/selection.js'))
 		&& /engineRecordPosition/.test(readSource('src/render/label-layer.js'))
-		&& /readOrbit\(packed\)/.test(extractFunction(orbitSrc, 'engineRecordPositionTheta'))
-		&& /engine & ENGINE_CLASSIC/.test(extractFunction(orbitSrc, 'engineRecordPositionTheta'))
-		&& /engine & ENGINE_APOCENTER/.test(extractFunction(orbitSrc, 'engineRecordPositionTheta'))
-		&& /time !== 0 && apocenterSelected/.test(extractFunction(orbitSrc, 'engineRecordPositionTheta'))
-		&& /return \(engine & ENGINE_SIMPLE\) !== 0/.test(extractFunction(orbitSrc, 'engineRecordPositionTheta'))
+		// The ladder itself lives in recordDispatch (R4 factored it so the
+		// carry can run it under an explicitly named *outgoing* mask); both
+		// entry points must delegate into it, the current-mask one with the
+		// live `engine`, the masked one with its argument.
+		&& /recordDispatch\(out, x, y, z, packed, engine, time, model, theta\)/
+			.test(extractFunction(orbitSrc, 'engineRecordPositionTheta'))
+		&& /recordDispatch\(out, x, y, z, packed, mask, time, model, -1\)/
+			.test(extractFunction(orbitSrc, 'engineRecordPositionMasked'))
+		&& /readOrbit\(packed\)/.test(extractFunction(orbitSrc, 'recordDispatch'))
+		&& /mask & ENGINE_CLASSIC/.test(extractFunction(orbitSrc, 'recordDispatch'))
+		&& /mask & ENGINE_APOCENTER/.test(extractFunction(orbitSrc, 'recordDispatch'))
+		&& /time !== 0 && apocenterSelected/.test(extractFunction(orbitSrc, 'recordDispatch'))
+		&& /return \(mask & ENGINE_SIMPLE\) !== 0/.test(extractFunction(orbitSrc, 'recordDispatch'))
 		&& /flags = \(packed >>> 16\) & 255/.test(extractFunction(orbitSrc, 'readOrbit'))
 		&& /\(packed >> 16u\) & 0xFFu/.test(orbitWgsl)
 		&& /\(packed >> 24u\) & 15u/.test(orbitWgsl)
@@ -632,7 +640,7 @@ function wgslConsts(part) {
                 && /epochMap\(vec3f\(star\.x, star\.y, star\.z\), star\.packed, centre, camera\.epoch\)/.test(shaders.SHADERS['star-sprite'])
                 // The CPU twin must exist and must be what the picker uses.
                 && /function epochMap\(out, x, y, z, family, flags, model\)/.test(orbitSrc)
-                && /epochMap\(epochMapScratch/.test(extractFunction(orbitSrc, 'engineRecordPositionTheta')));
+                && /epochMap\(epochMapScratch/.test(extractFunction(orbitSrc, 'recordDispatch')));
         // 0.4.5: the inertial form now EXISTS — as the simple engine. The ban
         // scopes to the classic law (which keeps pattern-frame capture) while
         // the simple pair must carry the slowdown on both sides.

@@ -52,109 +52,10 @@ function check(name, pass, detail) {
 }
 
 // --- Mock device ---------------------------------------------------------
-function createMockGpu() {
-        const gpu = {
-                buffers: [],
-                textures: [],
-                shaderModules: [],
-                pipelines: [],
-                uniformWrites: [],
-                tonemapUniformWrites: [],
-                simpleUniformWrites: [],
-                thetaWrites: [],
-                bufferWrites: [],
-                draws: [],
-                passes: [],
-                computePasses: [],
-                passedUniformData: null,
-                samplers: [],
-        };
-
-        gpu.device = {
-                limits: {
-                        maxStorageBufferBindingSize: 256 * 1024 * 1024,
-                        maxBufferSize: 256 * 1024 * 1024,
-                        maxStorageBuffersPerShaderStage: 8,
-                },
-                createBuffer(desc) {
-                        const buffer = { label: desc.label, size: desc.size, usage: desc.usage, destroyed: false, destroy() { this.destroyed = true; } };
-                        gpu.buffers.push(buffer);
-                        return buffer;
-                },
-                createShaderModule(desc) {
-                        gpu.shaderModules.push(desc);
-                        return { label: desc.label, getCompilationInfo: () => Promise.resolve({ messages: [] }) };
-                },
-                createTexture(desc) {
-                        const texture = { label: desc.label, size: desc.size, format: desc.format, usage: desc.usage, destroy() {} };
-                        gpu.textures.push(texture);
-                        return { ...texture, createView: () => ({ texture }) };
-                },
-                createSampler(desc) { gpu.samplers.push(desc); return { desc }; },
-                createBindGroupLayout(desc) { return { desc }; },
-                createPipelineLayout(desc) { return { desc }; },
-                createRenderPipeline(desc) { gpu.pipelines.push(desc); return { label: desc.label }; },
-                createComputePipeline(desc) { gpu.pipelines.push(desc); return { label: desc.label }; },
-                createBindGroup(desc) { return { desc }; },
-                createCommandEncoder(desc) {
-                        return {
-                                label: desc && desc.label,
-                                beginRenderPass(passDesc) {
-                                        gpu.lastPass = passDesc;
-                                        const passObj = {
-                                                label: passDesc && passDesc.label,
-                                                desc: passDesc,
-                                                draws: [],
-                                                setPipeline(p) { this.pipeline = p; },
-                                                setBindGroup() {},
-                                                draw(vertices, instances, firstVertex, firstInstance) {
-                                                        const d = { vertices, instances, firstVertex, firstInstance, pipeline: this.pipeline, pass: this.label };
-                                                        this.draws.push(d);
-                                                        gpu.draws.push(d);
-                                                },
-                                                end() {},
-                                        };
-                                        gpu.passes.push(passObj);
-                                        return passObj;
-                                },
-                                beginComputePass(passDesc) {
-                                        const passObj = {
-                                                label: passDesc && passDesc.label,
-                                                dispatches: [],
-                                                setPipeline(p) { this.pipeline = p; },
-                                                setBindGroup() {},
-                                                dispatchWorkgroups(x, y, z) {
-                                                        this.dispatches.push([x, y || 1, z || 1]);
-                                                },
-                                                end() {},
-                                        };
-                                        gpu.computePasses.push(passObj);
-                                        return passObj;
-                                },
-                                finish() { return { label: 'command-buffer' }; },
-                        };
-                },
-                queue: {
-                        writeTexture() {},
-                        writeBuffer(buffer, offset, data, dataOffset, size) {
-                                const length = size === undefined ? data.byteLength - (dataOffset || 0) : size;
-                                const copy = new Uint8Array(data, dataOffset || 0, length).slice();
-                                if (buffer.label === 'star-camera-uniform') gpu.uniformWrites.push(copy);
-                                else if (buffer.label === 'tonemap-uniform') gpu.tonemapUniformWrites.push(copy);
-                                else if (buffer.label === 'simple-step-uniform') gpu.simpleUniformWrites.push(copy);
-                                else if (buffer.label === 'simple-theta') gpu.thetaWrites.push({ buffer, offset, bytes: copy });
-                                else gpu.bufferWrites.push({ buffer, offset, bytes: copy });
-                        },
-                        submit() {},
-                },
-        };
-
-        gpu.context = {
-                getCurrentTexture: () => ({ width: 1920, height: 1080, createView: () => ({}) }),
-        };
-        gpu.format = 'bgra8unorm';
-        return gpu;
-}
+// The shared recording mock (experiments/mock-gpu.js) — the same device the
+// engine-switch audit runs the renderer against, so both decode identical
+// thetaWrites/bufferWrites bytes.
+const createMockGpu = require('./mock-gpu.js').createMockGpu;
 
 function readUniform(bytes) {
         return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
@@ -1389,7 +1290,11 @@ function cellManagerFrom(m, budget) {
                 && engGpu.simpleUniformWrites.length === 0,
                 { engine: classicUniform[44] });
 
-        check('setEngine(simple) switches the state and re-seeds the epoch',
+        // With no star clock passed the carry runs at T = 0, where the drawn
+        // position IS the placed birth — so the upload degenerates to exactly
+        // the old birth re-seed, full range, and the boot behaviour is
+        // unchanged (R4, engine-switch-test pins the T > 0 law).
+        check('setEngine(simple) switches the state and carries the T = 0 sky (the birth seed there)',
                 engRenderer.setEngine('simple') === 'simple'
                 && engGpu.thetaWrites[engGpu.thetaWrites.length - 1].bytes.byteLength === totalSlots * 4,
                 { engine: engRenderer.state.engine });
@@ -1449,6 +1354,29 @@ function cellManagerFrom(m, budget) {
 		&& Math.abs(comboSA[46] - Math.fround(engModel.spheroid.tiltDeg * Math.PI / 180)) < 1e-7
 		&& engGpu.computePasses.length === passesBefore + 1,
 		{ mask: comboSA[44], barTilt: comboSA[46] });
+	engRenderer.setEngine('classic');
+
+	// R4: a switch into simple at T > 0 uploads the outgoing lane's drawn
+	// positions — the sky the user was looking at — not the birth azimuths,
+	// while the same switch with the clock omitted stays the T = 0 birth seed.
+	const carryMarker = engGpu.thetaWrites.length;
+	engRenderer.setEngine('simple', 500);
+	const carryWrite = engGpu.thetaWrites[engGpu.thetaWrites.length - 1];
+	const carryTheta = new Float32Array(carryWrite.bytes.buffer, carryWrite.bytes.byteOffset, carryWrite.bytes.byteLength / 4);
+	engRenderer.setEngine('classic');
+	engRenderer.setEngine('simple');
+	const seedWrite = engGpu.thetaWrites[engGpu.thetaWrites.length - 1];
+	const seedTheta = new Float32Array(seedWrite.bytes.buffer, seedWrite.bytes.byteOffset, seedWrite.bytes.byteLength / 4);
+	let sweptSlots = 0;
+	const TAU = window.OrbitLib.TAU;
+	for (let i = 0; i < carryTheta.length; i++) {
+		const d = Math.abs(carryTheta[i] - seedTheta[i]) % TAU;
+		if (Math.min(d, TAU - d) > 1e-6) sweptSlots++;
+	}
+	check('a carried switch at T > 0 leaves the birth seed by the swept arc',
+		carryWrite.bytes.byteLength === totalSlots * 4 && seedWrite.bytes.byteLength === totalSlots * 4
+		&& sweptSlots > totalSlots / 2,
+		{ sweptSlots, totalSlots });
 	engRenderer.setEngine('classic');
 
         // Headroom / highlight desat ride the tonemap uniform's second vec4.

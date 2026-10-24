@@ -364,27 +364,65 @@ async function boot() {
         renderer.setHeadroom(params.headroom);
         renderer.setHighlightDesat(params.highlight);
 
-        // 0.4.5 simple engine: the CPU landmark mirror's birth table, static
-        // for the session (named stars are Milky Way data). Re-initialised
-        // from these positions on regenerate, engine switch and R.
-        const landmarkPos = new Float32Array(landmarks.count * 3);
-        const landmarkColors = new Uint8Array(landmarks.count);
-        for (let i = 0; i < landmarks.count; i++) {
-                landmarkPos[i * 3] = landmarks.ENTRIES[i].x;
-                landmarkPos[i * 3 + 1] = landmarks.ENTRIES[i].y;
-                landmarkPos[i * 3 + 2] = landmarks.ENTRIES[i].z;
-                landmarkColors[i] = landmarks.ENTRIES[i].colorIndex;
-        }
-        function initSimpleLandmarks() {
-                window.OrbitLib.simpleLandmarksInit(landmarkPos, landmarkColors, landmarks.count, model, starTimeMyr);
-                // The friction field's tracked mirror (trade-plan §9.5) is seeded at
-                // the same instant the renderer seeds its theta buffer: this is that
-                // instant for the CPU, so every caller of this function is also a
-                // mirror reset and there is no second list to keep in step.
-                window.OrbitLib.simpleTrackReset(model, starTimeMyr);
-        }
-        renderer.setEngine(window.Presets.parseEngineList(params.engine));
-        initSimpleLandmarks();
+	// 0.4.5 simple engine: the CPU landmark mirror's birth table, static
+	// for the session (named stars are Milky Way data). Re-initialised
+	// from these positions on regenerate, boot and R; an engine switch
+	// *carries* instead (applyEngineSelection, R4).
+	const landmarkPos = new Float32Array(landmarks.count * 3);
+	const landmarkColors = new Uint8Array(landmarks.count);
+	for (let i = 0; i < landmarks.count; i++) {
+		landmarkPos[i * 3] = landmarks.ENTRIES[i].x;
+		landmarkPos[i * 3 + 1] = landmarks.ENTRIES[i].y;
+		landmarkPos[i * 3 + 2] = landmarks.ENTRIES[i].z;
+		landmarkColors[i] = landmarks.ENTRIES[i].colorIndex;
+	}
+	function initSimpleLandmarks() {
+		window.OrbitLib.simpleLandmarksInit(landmarkPos, landmarkColors, landmarks.count, model, starTimeMyr);
+		// The friction field's tracked mirror (trade-plan §9.5) is seeded at
+		// the same instant the renderer seeds its theta buffer: this is that
+		// instant for the CPU, so every caller of this function is also a
+		// mirror reset and there is no second list to keep in step.
+		window.OrbitLib.simpleTrackReset(model, starTimeMyr);
+	}
+	// The R4 switch transfer (formation-plan §6): the drawn landmark
+	// positions under the outgoing mask, captured before the new mask
+	// commits — engineLandmarkPosition dispatches on the current one.
+	const landmarkDrawnPos = new Float32Array(landmarks.count * 3);
+	const landmarkDrawnScratch = [0, 0, 0];
+	function captureLandmarkDrawn() {
+		for (let i = 0; i < landmarks.count; i++) {
+			const e = landmarks.ENTRIES[i];
+			window.OrbitLib.engineLandmarkPosition(landmarkDrawnScratch, i, e.x, e.y, e.z, e.colorIndex, starTimeMyr, model);
+			landmarkDrawnPos[i * 3] = landmarkDrawnScratch[0];
+			landmarkDrawnPos[i * 3 + 1] = landmarkDrawnScratch[1];
+			landmarkDrawnPos[i * 3 + 2] = landmarkDrawnScratch[2];
+		}
+	}
+	// The one engine-switch path (menu checkboxes and the preset `engine=`
+	// field). A switch into simple carries all three theta states — the GPU
+	// buffer (renderer.setEngine), the label/pick mirror and the trade
+	// track mirror's seed frame — from the same drawn instant, so ticking a
+	// box puts the friction field where the sky already is instead of
+	// teleporting it back to the birth azimuths. A switch that keeps simple
+	// leaves the integrated state alone; switches away from it idle the
+	// mirrors without disturbing them. The birth re-init remains for the
+	// fresh-field moments only: boot, regenerate and R.
+	function applyEngineSelection(selected) {
+		const prev = window.OrbitLib.getEngine();
+		const next = window.OrbitLib.engineMaskOf(selected);
+		const toSimple = (next & window.OrbitLib.ENGINE_SIMPLE) !== 0 && (prev & window.OrbitLib.ENGINE_SIMPLE) === 0;
+		if (toSimple) captureLandmarkDrawn();
+		renderer.setEngine(next, starTimeMyr);
+		if (toSimple) {
+			if (!window.OrbitLib.simpleLandmarksCarryFrom(landmarkDrawnPos, landmarks.count, model, starTimeMyr)) initSimpleLandmarks();
+			window.OrbitLib.simpleTrackReset(model, starTimeMyr, prev);
+		} else if ((prev & window.OrbitLib.ENGINE_SIMPLE) !== 0 && (next & window.OrbitLib.ENGINE_SIMPLE) !== 0) {
+			window.OrbitLib.simpleLandmarksRebind(model);
+		}
+		syncEngine();
+	}
+	renderer.setEngine(window.Presets.parseEngineList(params.engine));
+	initSimpleLandmarks();
 
         // --- Settings and selection panels (Tab toggles all) -----------------
         const menu = document.getElementById('menu');
@@ -2347,13 +2385,10 @@ async function boot() {
                 // the share slider is, instead of letting it read as a freeze.
                 apocenterNote.hidden = active !== 'apocenter';
         }
-        function changeEngines() {
-                const selected = selectedEngines();
-                renderer.setEngine(selected);
-                initSimpleLandmarks();
-                syncEngine();
-                updateOverlay(renderer.state, camera.getState(statsText));
-        }
+	function changeEngines() {
+		applyEngineSelection(selectedEngines());
+		updateOverlay(renderer.state, camera.getState(statsText));
+	}
         [engineClassic, engineSimple, engineApocenter].forEach((box) => box.addEventListener('change', changeEngines));
         sliderApoShare.addEventListener('input', () => {
                 window.OrbitLib.setApocenterShare(Number(sliderApoShare.value));
@@ -2508,11 +2543,9 @@ async function boot() {
                 // that carries both reaches its own epoch first and the replay rule
                 // (which reads the age the field was built at) sees it.
                 if (s.evolve !== undefined) setEvolve(s.evolve > 0);
-                if (s.engine !== undefined) {
-                        renderer.setEngine(s.engine);
-                        initSimpleLandmarks();
-                        syncEngine();
-                }
+		if (s.engine !== undefined) {
+			applyEngineSelection(s.engine);
+		}
                 if (s.time !== undefined) {
                         starTimeRate = s.time;
                         if (starTimeRate > 0) lastNonZeroTimeRate = starTimeRate;
@@ -3049,14 +3082,17 @@ async function boot() {
         // is no half-swapped state worth animating around. Another type or seed is
         // another galaxy, so the camera goes home, the labels follow the model and a
         // stale selection is dropped.
-        function regenerateGalaxy(type, seed, age) {
-                pendingAge = null;
-                model = galaxy.createGalaxy({ type, seed, age });
-                if (window.OrbitLib.resetPatternPhase) window.OrbitLib.resetPatternPhase();
-                renderer.regenerate(model);
-                // Another centre means another birth field: the simple-engine
-                // CPU mirror re-seeds with the GPU thetas (which prepare did).
-                initSimpleLandmarks();
+	function regenerateGalaxy(type, seed, age) {
+		pendingAge = null;
+		model = galaxy.createGalaxy({ type, seed, age });
+		if (window.OrbitLib.resetPatternPhase) window.OrbitLib.resetPatternPhase();
+		// Another centre means another birth field — and the CPU mirror
+		// re-inits *before* the renderer re-seeds, not after: prepare() syncs
+		// the landmark GPU thetas from the mirror, so the previous galaxy's
+		// mirror would overwrite the fresh birth seeds with the old sky's
+		// integrated azimuths if the order turned the other way round.
+		initSimpleLandmarks();
+		renderer.regenerate(model);
                 camera.setFrame(model);
                 labels.setEnabled(model.milkyWay);
                 if (selected >= 0) {

@@ -2682,3 +2682,42 @@ bundle contains only MS classes, so synthetic RG/RGe/WD fixtures are necessary.
 Renderer 155/155, selection 51/51, search 39/39, stellar evolution 64/64 and the
 full 43/43 suite pass. These results do not substitute for C9: no browser/GPU
 executable was available for a new V14a pixel or visual verdict.
+
+## 2026-10-24 — A lane switch is a frame transfer: measure before committing, and carry in the receiving lane's own angle
+
+Switching a simulation between two motion laws is not "re-seed the new law's
+state from the input data" — the input data is the *birth* frame, and at any
+T > 0 the drawn sky has moved on. The transfer must read the outgoing lane's
+closed-form drawn position and invert the incoming lane's reconstruction onto
+it. Two ordering rules fall out. **Measure before committing the new mask**: a
+dispatch like `engineRecordPosition` evaluates under the *current* mask, so
+every "what was drawn" sample must be taken before `setEngine` flips it (the
+audit that measured afterwards saw π-rad "errors" that were the new mask
+approximating). **Invert in the receiving lane's own parameter**: the friction
+field's θ is an in-plane sweep angle offset by the birth azimuth, which equals
+the xy azimuth only for the horizontal disc/pattern planes — for the inclined
+bar/pressure planes, carrying the xy azimuth put stars on the wrong side of
+their tilted orbit (45 kpc worst case; projecting onto `orbitPlane`'s e0/e1
+basis made the landing exact to the f32 ULP, and the classic normal wobble
+provably drops out because n ⊥ e0/e1).
+
+Quantised lookups can be non-idempotent: `clusterCentreCoord` reads its lattice
+base off the input value's own f32 bits, so reducing twice lands on a different
+lattice (8.3438 → 8.625 → 9). Never feed such a function its own output; run
+the dispatch on the raw bytes so its internal split does the one legitimate
+quantisation, and strip the member offset analytically (both lanes add it back
+rigidly, so every measured quantity is the centre's).
+
+Metric and tolerance discipline for θ audits: `wrapAngle` returns [0, 2π), so
+`|wrapAngle(a − b)|` reads ~2π for equal azimuths — angular errors need the
+short-way diff. GPU θ is f32 against a f64 reference, so agreement pins live at
+1e-5 rad, not 1e-9 (a 1.19e-7 "failure" was one ULP). And prefer the *exact*
+residual bound over an empirical margin: the carried jump is bounded by the two
+lanes' own excursions (triangle inequality on the radial laws plus the normal
+wobble the reconstruction lacks), which measured +0.004 kpc worst slack — a
+guessed 0.15·r plane term would have been both looser and wrong.
+
+Finally, when a GPU sync reads a CPU mirror (`prepare()` syncing landmark θ),
+the mirror re-init must happen *before* the regenerate that triggers the sync —
+ordering it after let the previous galaxy's integrated azimuths overwrite the
+fresh birth seeds.
