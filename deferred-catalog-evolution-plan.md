@@ -2,14 +2,26 @@
 
 ## Decision and status
 
-**0.7.7 implemented; C9 real-browser evidence remains open.** The deterministic
-Tier A/B/C track, streamed birth gates, reference-look restoration, CPU visibility
-parity and nonzero-catalog smoke suite are implemented. The full repository suite
-passes **43/43**, and the catalog smoke suite passes **4/4** under the CPU fallback.
-The earlier committed browser run
-`experiments/logs/webgpu-smoke-2026-10-24-04-20.log` is **19/19 PASS** on a real
-NVIDIA/WebGPU adapter, but it predates this implementation and is not evidence for
-C9. No new real-browser/GPU verdict is claimed here.
+**C1–C9 complete (0.7.7–0.7.9).** The deterministic Tier A/B/C track, streamed
+birth gates, reference-look restoration, CPU visibility parity and nonzero-catalog
+smoke suite shipped in `0.7.7`/`0.7.8`, and real-GPU browser evidence closed C2 GPU
+pixel parity and C9 in `experiments/logs/0.7.8/webgpu-smoke-2026-10-24-14-50.log`
+(`chrome 151 · win x86_64 · gpu hardware nvidia · format bgra8unorm`, **29/29 PASS**
+in 932 ms) alongside the six rendered Sun-sky thumbnails
+`experiments/logs/0.7.8/Catalog *.webp`:
+- `T = 0` gates `local: 0/2518`, `catalog: 0/1078` while keeping curated
+  `landmarks: 60/60` (`Catalog First light.webp`).
+- The `0 → 0.5 → 1.0 → 2.0 Gyr` ladder monotonically activates the local sky
+  (`0 → 0 → 0 → 32`) with `changed: 1338, moved: 0, fieldDraws: 0` across early
+  epochs (`Catalog T = 0.5 Gyr.webp`, `Catalog T = 1.0 Gyr.webp`,
+  `Catalog T = 2.0 Gyr.webp`).
+- Returning to `AGE_REF` restores `3596/3596` packed looks, positions and gates
+  and produces **zero differing pixels** (`diffPx = 0`) between
+  `Catalog reference epoch.webp` and `Catalog reference restored.webp`.
+- Follow-up `0.7.9` fixes the separate galaxy-overview camera/type issues exposed
+  by the two non-catalog overview thumbnails in `0.7.8/` (`Sb` procedural control
+  instead of `SBb`, `camera.setState` overview camera, and one-click `.webp`
+  evidence saving).
 
 The catalog is **Milky Way only** (`configureMode` sets `catalogBudget = 0` unless
 `model.milkyWay`), so the defect never appears on any procedural/table galaxy. The
@@ -167,7 +179,9 @@ star fades in when it "forms," never pops.
 - **Positions stay the observed sky.** Catalog/landmark/gap-fill records keep
   `FLAG_EPOCH` clear, so the epoch map never moves them; only their *look* (color/
   magnitude) and *visibility* follow the epoch. This preserves the navigational
-  quality of the local sky and the First light "SBb is empty" contract.
+  quality of the local sky and the procedural spiral (`Sb` / `SBc`) empty-at-`T = 0`
+  contract (`SBb` without overrides is `MILKY_WAY_TYPE` and carries the 60 curated
+  landmarks).
 - Catalog records carry `FLAG_EPOCH` only if positional evolution is ever wanted —
   out of scope. If it is added later, note the shader currently applies uniform
   field exposure to **every** `FLAG_EPOCH` record; the clean split is: apply
@@ -266,20 +280,20 @@ node experiments/wgsl-validate.js
 
 ## 8. Acceptance checklist
 
-C1–C8 have CPU/mock-renderer evidence. C9 remains open until a real browser/GPU
-run supplies the pixel and visual evidence; a fallback run cannot close it.
+All C1–C9 rows are closed across CPU/WGSL suites and real-GPU browser evidence
+(`experiments/logs/0.7.8/`).
 
 | ID | Status | Acceptance / evidence |
 |---|---|---|
 | C1 | **Done** | `observedTrack` is shared and deterministic; `star-types-evolution-test` passes **64/64**, including synthetic MS/RG/RGe/WD state and finite-birth checks. |
-| C2 | **CPU done; GPU row in C9** | `renderer-test` passes **155/155**: exact packed reference restoration, fixed xyz/keys, gate 1 and camera-restored records. Zero-diff pixel parity still requires real WebGPU readback. |
-| C3 | **Done (CPU/mock)** | Full-capacity birth storage and gate limit are asserted; the catalog smoke suite passes **5/5** with nonzero local/catalog populations, zero streamed stars at First light, persistent landmarks and the monotone 0 → 2 Gyr active-count ladder. |
-| C4 | **Done (CPU/mock)** | Earlier epochs change both streamed populations; the bundled 3,829-star probe found deterministic finite tracks and no sampled luminosity reversal. Synthetic evolved-state fixtures cover RG/RGe/WD. |
+| C2 | **Done (CPU + real GPU)** | `renderer-test` passes **155/155** (exact packed reference restoration, fixed xyz/keys, gate 1 and camera-restored records), and `experiments/logs/0.7.8/webgpu-smoke-2026-10-24-14-50.log` confirms real WebGPU readback parity (`diffPx = 0` between `Catalog reference epoch.webp` and `Catalog reference restored.webp`, `3596/3596` rows restored). |
+| C3 | **Done (CPU + real GPU)** | Full-capacity birth storage and gate limit are asserted; the catalog smoke suite passes on real NVIDIA WebGPU (`local: 0/2518`, `catalog: 0/1078`, `landmarks: 60/60` at `T = 0`, monotone `0 → 0 → 0 → 32` ladder across `0 → 2 Gyr`). |
+| C4 | **Done (CPU + real GPU)** | Earlier epochs change streamed looks (`changed: 1338, moved: 0, fieldDraws: 0` on GPU in `0.7.8`); the bundled 3,829-star probe found deterministic finite tracks and no sampled luminosity reversal. Synthetic evolved-state fixtures cover RG/RGe/WD. |
 | C5 | **Done** | Selection/resolve, search (both scopes) and rings match the global-slot gate at 0, 0.5, 1, 2, 3.5 and 13.5 Gyr; `star-select-test` **51/51**, `search-test` **39/39**. |
-| C6 | **Done (CPU/mock)** | Renderer restreaming checks shared keys, births, positions and reference looks, and verifies dynamic sweep reset; `dynamicVersion` remains the invalidation signal. |
-| C7 | **Done** | Epoch walks keep `fieldSamples` unchanged; continuity and the full **43/43** suite pass. |
-| C8 | **Done** | First light guidance now says catalog/local stars are gated and curated landmarks remain visible, with a pointer to this plan. |
-| C9 | **Open — evidence path shipped (0.7.8)** | Re-run V14a on the Milky Way at 0 / 0.5 / 1 / 2 / 13.5 Gyr with `catalogBudgetStars > 0`; record real-GPU pixel parity and whether the local sky reads as evolving. The catalog suite now walks the 0 → 0.5 → 1 → 2 Gyr ladder with a thumbnail per rung and a monotone active-count pin, and restores the 13.5 Gyr reference. `python3 scripts/run.py serve` starts the evidence server (`scripts/evidence-server.js`); open `/webgpu-smoke.html?run=all` and `?run=catalog` on a real WebGPU adapter and press **Send log** — the session persists straight into `experiments/logs/webgpu-smoke-<stamp>.log`. No browser executable exists in the sandbox, so the real-GPU run remains the human step. |
+| C6 | **Done** | Renderer restreaming checks shared keys, births, positions and reference looks, and verifies dynamic sweep reset; `dynamicVersion` remains the invalidation signal. |
+| C7 | **Done** | Epoch walks keep `fieldSamples` unchanged (`fieldDraws: 0`); continuity and the full **43/43** suite pass, including 24k-star monotonic condensation in `0.7.9`. |
+| C8 | **Done** | First light guidance in `src/core/scenarios.js` states that catalog/local stars are gated, curated landmarks remain visible, and switching Type to procedural `Sb` or `SBc` gives a landmark-free gas-only sky (`0.7.9`). |
+| C9 | **Done (`0.7.8`)** | Real-GPU Sun-sky pass recorded on Chrome 151 / Win x86_64 / NVIDIA (`experiments/logs/0.7.8/webgpu-smoke-2026-10-24-14-50.log` + 6 `Catalog *.webp` frames): First light shows procedural disc + landmarks with `0` catalog/local stars, local sky condenses smoothly by `2.0 Gyr`, and `AGE_REF` restores the observed sky with `diffPx = 0`. In `0.7.9`, **Send log** also persists rendered `.webp` thumbnails automatically alongside the `.log` file. |
 
 ## 9. Stop rule and non-goals
 

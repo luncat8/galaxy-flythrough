@@ -198,6 +198,7 @@ async function main() {
 		&& typeof GpuSmoke.analyzePixels === 'function'
 		&& typeof GpuSmoke.diffPixels === 'function'
 		&& typeof GpuSmoke.formationSummary === 'function'
+		&& typeof GpuSmoke.setupGalaxyCamera === 'function'
 		&& typeof GpuSmoke.runSuite === 'function'
 		&& Array.isArray(GpuSmoke.SUITES));
 
@@ -300,14 +301,20 @@ async function main() {
 	const httpOk = GpuSmoke.canSendLog();
 	const sent = await GpuSmoke.sendLog('evidence-payload', 'webgpu-smoke');
 	const sentBody = JSON.parse(sentInit.body);
+	const sampleFrames = [{ label: 'T = 13.5 Gyr (Present day)', dataUrl: 'data:image/webp;base64,UklGRg==' }];
+	await GpuSmoke.sendLog('evidence-with-frames', 'webgpu-smoke', sampleFrames);
+	const sentFramesBody = JSON.parse(sentInit.body);
 	global.fetch = async () => ({ ok: false, status: 500, json: async () => ({ ok: false, error: 'disk full' }) });
 	let sendErr = null;
 	try { await GpuSmoke.sendLog('x'); } catch (err) { sendErr = err; }
 	if (savedFetch === undefined) delete global.fetch; else global.fetch = savedFetch;
 	if (savedLocation === undefined) delete global.location; else global.location = savedLocation;
-	check('sendLog POSTs {name, text} to the relative ./__evidence URL and surfaces server errors',
+	check('sendLog POSTs {name, text} (and optional frames) to ./__evidence and surfaces server errors',
 		sentUrl === './__evidence' && sentInit.method === 'POST'
 		&& sentBody.name === 'webgpu-smoke' && sentBody.text === 'evidence-payload'
+		&& !('frames' in sentBody)
+		&& Array.isArray(sentFramesBody.frames) && sentFramesBody.frames.length === 1
+		&& sentFramesBody.frames[0].label === 'T = 13.5 Gyr (Present day)'
 		&& sent.ok === true && sent.file === 'experiments/logs/webgpu-smoke-x.log'
 		&& sendErr instanceof Error && /disk full/.test(sendErr.message),
 		'url=' + sentUrl);
@@ -343,6 +350,65 @@ async function main() {
 		'diff0=' + diff0 + ', diff1=' + diff1);
 	target.dispose();
 
+	// 3b. Overview camera geometry & frustum projection regressions.
+	console.log('\n--- 3b. Overview camera geometry & frustum projection ---');
+	function projectGc(cam, cx) {
+		const vp = cam.buildViewProj(192 / 120);
+		const dx = cx - cam.cameraPos[0];
+		const dy = 0 - cam.cameraPos[1];
+		const dz = 0 - cam.cameraPos[2];
+		const x = vp[0] * dx + vp[4] * dy + vp[8] * dz + vp[12];
+		const y = vp[1] * dx + vp[5] * dy + vp[9] * dz + vp[13];
+		const w = vp[3] * dx + vp[7] * dy + vp[11] * dz + vp[15];
+		return { ndcX: x / w, ndcY: y / w, w };
+	}
+	const GalaxyLib = require('../src/math/galaxy.js');
+	const CameraLib = require('../src/core/camera.js');
+	const mwModel = GalaxyLib.createGalaxy({ type: 'SBb', seed: 42 });
+	const sbModel = GalaxyLib.createGalaxy({ type: 'Sb', seed: 42 });
+	const mwCam = GpuSmoke.setupGalaxyCamera(CameraLib, mwModel);
+	const sbCam = GpuSmoke.setupGalaxyCamera(CameraLib, sbModel);
+	const mwProj = projectGc(mwCam, mwModel.centre.x);
+	const sbProj = projectGc(sbCam, 0);
+	const mwState = mwCam.getState();
+	check('setupGalaxyCamera centres Galactic Centre in NDC, stays upright, and syncs getState().position',
+		Math.abs(mwProj.ndcX) < 1e-5 && Math.abs(mwProj.ndcY) < 1e-5 && mwProj.w > 10
+		&& Math.abs(sbProj.ndcX) < 1e-5 && Math.abs(sbProj.ndcY) < 1e-5 && sbProj.w > 10
+		&& Math.abs(mwCam.right[2]) < 1e-6 && mwCam.up[2] > 0.85
+		&& Math.abs(mwState.position[0] - mwCam.cameraPos[0]) < 1e-6
+		&& Math.abs(mwState.position[1] - mwCam.cameraPos[1]) < 1e-6
+		&& Math.abs(mwState.position[2] - mwCam.cameraPos[2]) < 1e-6,
+		'mwNdc=(' + mwProj.ndcX.toExponential(2) + ',' + mwProj.ndcY.toExponential(2) + ')');
+
+	// Negative control: if a camera mutates cameraPos without syncing internal
+	// state (the pre-0.7.9 bug), the frustum-projecting CPU fallback catches
+	// the off-centre galaxy and fails the morphology overview check.
+	const brokenCameraLib = Object.assign({}, CameraLib, {
+		createCamera() {
+			const c = CameraLib.createCamera();
+			const realSetState = c.setState;
+			c.setState = function (st) {
+				// Simulate the pre-0.7.9 bug: leave internal position at [0,0,0.005]
+				// with yaw=0 (+X) and mutate cameraPos directly.
+				realSetState.call(c, { position: [0, 0, 0.005], yaw: 0, pitch: 0, mode: CameraLib.MODE_ORBIT_GC });
+				c.cameraPos[0] = st.position[0];
+				c.cameraPos[1] = st.position[1];
+				c.cameraPos[2] = st.position[2];
+			};
+			return c;
+		},
+	});
+	const brokenMorph = await GpuSmoke.runSuite('morphology', {
+		device: null,
+		deps: { cameraLib: brokenCameraLib },
+		seed: 42,
+		proceduralStars: 4000,
+	});
+	const overviewCheck = brokenMorph.checks.find((c) => c.name.includes('Present day galaxy overview is centred'));
+	check('frustum-projecting CPU fallback catches a mis-aimed overview camera',
+		brokenMorph.ok === false && Boolean(overviewCheck) && overviewCheck.pass === false,
+		overviewCheck ? overviewCheck.detail : 'missing check');
+
 	// 4. Automated verification suites.
 	console.log('\n--- 4. Automated verification suites ---');
 	for (const suiteId of ['firstlight', 'continuity', 'morphology', 'catalog', 'engines']) {
@@ -377,6 +443,17 @@ async function main() {
 		}
 		if (suiteId === 'continuity') check('stellar exposure continuity is measured with gas hidden', frames.every((f) => !f.gas));
 	}
+
+	const resContinuityFull = await GpuSmoke.runSuite('continuity', {
+		device: null,
+		seed: 42,
+		proceduralStars: 24000,
+		width: 192,
+		height: 120,
+	});
+	check('browser-budget 24k continuity passes without false dip failure as star count grows across 3.4–3.6 Gyr',
+		resContinuityFull.ok === true && resContinuityFull.failed === 0,
+		resContinuityFull.passed + '/' + resContinuityFull.total + ' checks');
 
 	const resAll = await GpuSmoke.runSuite('all', {
 		device: null,
@@ -421,10 +498,13 @@ async function main() {
 		&& smokeHtml.includes('if (window.GpuSmoke.canSendLog())')
 		&& smokeHtml.includes('sendButton.hidden = false')
 		&& runPy.includes("['node', 'scripts/evidence-server.js']"));
-	check('the evidence server binds 0.0.0.0, sanitises names, caps the body and writes experiments/logs',
+	check('the evidence server binds 0.0.0.0, sanitises names, caps the body and writes experiments/logs (+ .webp frames)',
 		evidenceServer.includes("server.listen(PORT, '0.0.0.0'")
 		&& /replace\(\/\[\^A-Za-z0-9._-\]\/g/.test(evidenceServer)
 		&& evidenceServer.includes('MAX_BODY')
+		&& evidenceServer.includes("'.webp': 'image/webp'")
+		&& evidenceServer.includes('parsed.frames')
+		&& smokeHtml.includes('collectEvidenceFrames()')
 		&& evidenceServer.includes("path.join(ROOT, 'experiments', 'logs')")
 		&& evidenceServer.includes('/__evidence'));
 

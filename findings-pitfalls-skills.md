@@ -1,5 +1,40 @@
 # Findings, Pitfalls & Skills
 
+## 2026-10-24 — A split-brain camera passes count-only checks while pointing away from the galaxy
+
+The `0.7.8` real-GPU smoke log passed `29/29` checks while two of its eight
+`.webp` thumbnails (`T = 0.0 Gyr (gas only).webp`, `T = 13.5 Gyr (Present day).webp`)
+were nearly black (`litPx = 6` and `litPx = 75` out of `23 040` pixels). Three
+distinct assumptions had conspired:
+
+1. **`camera.cameraPos` is a derived output, not an input.** `setupGalaxyCamera`
+   wrote `cam.cameraPos[0..2] = [cx, -14, 7.5]` without calling `cam.setState`.
+   `StarRenderer.buildUniforms` subtracted `cam.cameraPos` in the vertex shader
+   while `cam.buildViewProj` still looked along `+X` (`yaw = 0, pitch = 0`) from
+   internal `pos = [0, 0, 0.005]`, projecting Galactic Centre to
+   `ndc = (-3305, -2833)`. Six outer halo/gas fringe pixels clipped the corner
+   of the frustum, satisfying `litPixels > 0`! Fix: always configure poses via
+   `cam.setState({ position, yaw, pitch, mode })`, assert `coreLuma > outerLuma`
+   on overview frames, and project CPU-fallback estimates through
+   `camera.buildViewProj` so headless Node catches mis-aimed cameras too.
+2. **`createGalaxy({ type: 'SBb' })` without `overrides` is the Milky Way.**
+   `MILKY_WAY_TYPE` is `'SBb'`, so `sbbRef` silently carried `milkyWay === true`
+   and 60 curated landmarks (`birth = -BIRTH_FADE`) at `[0, 0, 0]`, lighting 33
+   pixels at `T = 0` once the camera faced the galaxy. Procedural non-Milky-Way
+   controls must use a non-MW Hubble type (`Sb` / `SBc`) or pass `overrides: {}`,
+   and assert `model.milkyWay === false`.
+3. **Monotonic star formation grows as `O(N)`, not `O(√N)`.** Across `3.4 → 3.6 Gyr`,
+   newly born stars add `ΔN ∝ N` (`+373` lit pixels at the browser's `24 000`
+   budget vs `+35` at Node's `4 000` budget). Gating `max - min <= 3√N` passed at
+   `N = 4 000` and failed at `N = 24 000` by mistaking steady condensation for an
+   exposure dip. Gate downward drops (`max(0, c0 - c1, c1 - c2) <= 3√N + 2`)
+   instead of two-sided spread, and test continuity at the browser's full star
+   budget.
+
+Skill: `litPixels > 0` only proves the frustum grazed *something*; pair every
+overview frame with `coreLuma > outerLuma` and keep CPU-fallback tests inside
+the same `buildViewProj` transform the GPU uses.
+
 ## 2026-10-20 — A growth plateau is usually several gates stacked
 
 The trade network sat at 14 colonies for minutes, and every explanation found

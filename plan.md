@@ -1565,9 +1565,14 @@ Shipped, in `archive/`:
   cell rate without re-placing objects, spawning stars, scatter writes or GPU
   readback. `gas Δ` reports the difference between the grid and census laws, not
   a race or a bound on their interior agreement. `AGE_MIN` is 0, with the
-  deep-time degeneracies resolved by meaning. **Status:** 0.7.0–0.7.6 implemented (0.7.6 draws the gas as the
-  reconstruction of its grid rather than a dot per cell); V14 visual/GPU
-  profiling checks and the remaining F6 engine-switch audit stay open. E5 (events) remains deferred behind the formation contract.
+  deep-time degeneracies resolved by meaning. **Status:** 0.7.0–0.7.9 implemented
+  (0.7.6 reconstructs gas cells with tent quads; 0.7.7–0.7.8 shipped catalog/local
+  epoch evolution + the F6/R4 engine-switch audit `engine-switch-test` + real-GPU
+  Sun-sky C9 parity in `experiments/logs/0.7.8/`; 0.7.9 fixed the smoke rig's
+  overview camera, procedural `Sb` First light control, 24k monotonic continuity
+  gate and `.webp` evidence capture). Remaining V14 overview/interactive browser
+  rows stay in `deferred-browser-visual-plan.md`; E5 (events) remains the next
+  milestone after 0.7.
 
 - [`evolution-plan.md`](evolution-plan.md) — the 0.6 series, galaxy evolution over time:
   the type table describes present-day galaxies, so `modelAtAge` gains an **epoch tier**

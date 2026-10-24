@@ -16,7 +16,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SRC = path.join(ROOT, 'src');
 const LOGS = path.join(ROOT, 'experiments', 'logs');
 const PORT = Number(process.env.PORT || 8080);
-const MAX_BODY = 2 * 1024 * 1024;
+const MAX_BODY = 8 * 1024 * 1024;
 
 const MIME = {
 	'.html': 'text/html; charset=utf-8',
@@ -24,6 +24,7 @@ const MIME = {
 	'.css': 'text/css; charset=utf-8',
 	'.json': 'application/json; charset=utf-8',
 	'.png': 'image/png',
+	'.webp': 'image/webp',
 	'.jpg': 'image/jpeg',
 	'.jpeg': 'image/jpeg',
 	'.svg': 'image/svg+xml',
@@ -38,6 +39,15 @@ function stamp(date) {
 	const pad = (n) => String(n).padStart(2, '0');
 	return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate())
 		+ '-' + pad(date.getHours()) + '-' + pad(date.getMinutes());
+}
+
+function sanitiseFrameLabel(raw, fallback) {
+	const cleaned = String(raw || '')
+		.replace(/[\\/:*?"<>|\u0000-\u001F]+/g, '-')
+		.replace(/^\.+/, '')
+		.trim()
+		.slice(0, 80);
+	return cleaned || fallback;
 }
 
 function saveEvidence(req, res) {
@@ -60,13 +70,45 @@ function saveEvidence(req, res) {
 			if (!text) throw new Error('empty log');
 			const raw = String(parsed.name || 'webgpu-smoke');
 			const safe = raw.replace(/[^A-Za-z0-9._-]/g, '-').replace(/^[-.]+/, '').slice(0, 80) || 'webgpu-smoke';
+			const sessionBase = safe + '-' + stamp(new Date());
 			fs.mkdirSync(LOGS, { recursive: true });
-			const file = path.join(LOGS, safe + '-' + stamp(new Date()) + '.log');
+			const file = path.join(LOGS, sessionBase + '.log');
 			fs.writeFileSync(file, text);
 			const rel = path.relative(ROOT, file);
-			console.log('[evidence] saved ' + rel + ' (' + text.length + ' chars)');
+			let frameCount = 0;
+			let framesDirRel = null;
+			if (Array.isArray(parsed.frames) && parsed.frames.length > 0) {
+				const framesDir = path.join(LOGS, sessionBase);
+				fs.mkdirSync(framesDir, { recursive: true });
+				const usedNames = new Set();
+				for (let i = 0; i < Math.min(parsed.frames.length, 32); i++) {
+					const item = parsed.frames[i];
+					if (!item || typeof item.dataUrl !== 'string') continue;
+					const m = /^data:image\/(webp|png);base64,([A-Za-z0-9+/=\s]+)$/.exec(item.dataUrl);
+					if (!m) continue;
+					const ext = '.' + m[1];
+					let base = sanitiseFrameLabel(item.label, 'frame-' + i);
+					let candidate = base + ext;
+					let dup = 2;
+					while (usedNames.has(candidate)) {
+						candidate = base + '-' + dup + ext;
+						dup++;
+					}
+					usedNames.add(candidate);
+					fs.writeFileSync(path.join(framesDir, candidate), Buffer.from(m[2], 'base64'));
+					frameCount++;
+				}
+				if (frameCount > 0) framesDirRel = path.relative(ROOT, framesDir);
+			}
+			console.log('[evidence] saved ' + rel + ' (' + text.length + ' chars'
+				+ (frameCount > 0 ? ', ' + frameCount + ' frames in ' + framesDirRel : '') + ')');
+			const reply = { ok: true, file: rel };
+			if (frameCount > 0) {
+				reply.framesDir = framesDirRel;
+				reply.frameCount = frameCount;
+			}
 			res.writeHead(200, { 'Content-Type': 'application/json' });
-			res.end(JSON.stringify({ ok: true, file: rel }));
+			res.end(JSON.stringify(reply));
 		} catch (err) {
 			res.writeHead(400, { 'Content-Type': 'application/json' });
 			res.end(JSON.stringify({ ok: false, error: String((err && err.message) || err) }));
@@ -101,5 +143,5 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
 	console.log('evidence server on http://0.0.0.0:' + PORT + ' serving src/');
-	console.log('smoke page: http://localhost:' + PORT + '/webgpu-smoke.html?run=all (or ?run=catalog)');
+	console.log('smoke page: http://localhost:' + PORT + '/webgpu-smoke.html?run=all | app: http://localhost:' + PORT + '/index.html');
 });

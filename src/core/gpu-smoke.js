@@ -181,12 +181,14 @@
 	// round trip for the C9 real-GPU runs. The URL is relative so it works
 	// behind any proxy prefix; http/https only, since under file:// there is
 	// no server (the page hides the button instead of calling this).
-	function sendLog(text, name) {
+	function sendLog(text, name, frames) {
 		if (typeof fetch !== 'function') return Promise.reject(new Error('no fetch'));
+		const payload = { name: name || 'webgpu-smoke', text: String(text || '') };
+		if (Array.isArray(frames) && frames.length > 0) payload.frames = frames;
 		return fetch('./__evidence', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ name: name || 'webgpu-smoke', text: String(text || '') }),
+			body: JSON.stringify(payload),
 		}).then(function (res) {
 			return res.json().then(function (j) {
 				if (!res.ok || !j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
@@ -530,46 +532,84 @@
 				hasGpuPixels: true,
 			};
 		}
-		// CPU radiance estimate when running under Node stub without real GPU raster:
+		// CPU radiance estimate when running under Node stub without real GPU raster.
+		// Projects active records across all five blocks through camera.buildViewProj
+		// relative to camera.cameraPos (mirroring the vertex stage), so an un-aimed
+		// overview camera or an unexpected landmark block shows up immediately in
+		// headless Node runs as well as on GPU readback.
 		const deps = resolveDeps();
-		const field = renderer.fieldBuffers();
 		const info = renderer.starBlocks();
 		const births = info.formation.births;
+		const vp = camera.buildViewProj(width / height);
+		const cpos = camera.cameraPos;
+		const posOut = [0, 0, 0];
 		let litEst = 0;
 		let fluxSum = 0;
-		const derived = {};
+		let coreSum = 0;
+		let outerSum = 0;
 		const LOG2_OVER_LOG10 = 3.321928095;
 		const MAG_TO_FLUX = 1.328771238;
 		const age = modelNow.populations.age;
 		const magOff = renderer.state.magOffset || 0;
-		for (let i = 0; i < field.count; i++) {
-			const g = deps.orbit.gateAt(births[i], age);
-			if (g <= 0) continue;
-			deps.starTypes.deriveStarWithAge(modelNow,
-				deps.starTypes.fieldStarSeed(modelNow.seed, i),
-				field.component[i], field.R[i], field.distToArm[i],
-				Math.max(0, age - births[i]), derived);
-			const absMag = deps.records.decodeAbsMag(deps.records.encodeAbsMag(derived.absMag));
-			const appMag = absMag + 5 * Math.log2(18000) / LOG2_OVER_LOG10 - 5 + magOff;
-			const flux = Math.pow(2, -MAG_TO_FLUX * (appMag - 20.5)) * g;
-			const toned = flux / (1 + flux);
-			fluxSum += toned * 255;
-			if (flux > 0.05) litEst++;
+		const cx0 = Math.floor(width * 0.35), cx1 = Math.ceil(width * 0.65);
+		const cy0 = Math.floor(height * 0.35), cy1 = Math.ceil(height * 0.65);
+		const coreArea = Math.max(1, (cx1 - cx0) * (cy1 - cy0));
+		const totalPx = width * height;
+		const outerArea = Math.max(1, totalPx - coreArea);
+		for (let b = 0; b < info.blocks.length; b++) {
+			const blk = info.blocks[b];
+			if (!blk || blk.count <= 0) continue;
+			for (let i = 0; i < blk.count; i++) {
+				const slot = blk.offset + i;
+				const off = slot * deps.records.RECORD_BYTES;
+				const packed = info.view.getUint32(off + 12, true);
+				if ((packed & 0x00010000) === 0) continue;
+				const g = (births && slot < births.length) ? deps.orbit.gateAt(births[slot], age) : 1;
+				if (g <= 0) continue;
+				const x = info.view.getFloat32(off, true);
+				const y = info.view.getFloat32(off + 4, true);
+				const z = info.view.getFloat32(off + 8, true);
+				const flags = (packed >>> 16) & 0xFF;
+				const family = (flags >>> 3) & 3;
+				deps.orbit.epochMap(posOut, x, y, z, family, flags, modelNow);
+				const rx = posOut[0] - cpos[0];
+				const ry = posOut[1] - cpos[1];
+				const rz = posOut[2] - cpos[2];
+				const cw = vp[3] * rx + vp[7] * ry + vp[11] * rz + vp[15];
+				if (cw <= 0) continue;
+				const ndcX = (vp[0] * rx + vp[4] * ry + vp[8] * rz + vp[12]) / cw;
+				const ndcY = (vp[1] * rx + vp[5] * ry + vp[9] * rz + vp[13]) / cw;
+				if (Math.abs(ndcX) > 1 || Math.abs(ndcY) > 1) continue;
+				const distPc = Math.max(Math.hypot(rx, ry, rz) * 1000, 0.1);
+				let appMag = deps.records.decodeAbsMag((packed >>> 8) & 0xFF)
+					+ 5 * Math.log2(distPc) / LOG2_OVER_LOG10 - 5;
+				if ((flags & deps.records.FLAG_EPOCH) !== 0) appMag += magOff;
+				const flux = Math.pow(2, -MAG_TO_FLUX * (appMag - 22.0)) * g;
+				const toned = (flux / (1 + flux)) * 255;
+				fluxSum += toned;
+				if (flux > 0.05) litEst++;
+				const pxX = (ndcX * 0.5 + 0.5) * width;
+				const pxY = (-ndcY * 0.5 + 0.5) * height;
+				if (pxX >= cx0 && pxX < cx1 && pxY >= cy0 && pxY < cy1) {
+					coreSum += toned;
+				} else {
+					outerSum += toned;
+				}
+			}
 		}
-		litEst += cpu.objectStarsActive;
 		return {
 			age,
 			magOffset: magOff,
 			cpu,
 			px: {
-				width, height, totalPx: width * height,
+				width, height, totalPx,
 				litPixels: litEst,
 				brightPixels: litEst,
 				totalLuma: fluxSum,
-				meanLuma: fluxSum / (width * height),
+				meanLuma: fluxSum / totalPx,
 				peakLuma: litEst > 0 ? 255 : 0,
-				coreLuma: fluxSum * 0.7 / (width * height),
-				outerLuma: fluxSum * 0.3 / (width * height),
+				coreLuma: coreSum / coreArea,
+				outerLuma: outerSum / outerArea,
 				badValues: 0,
 			},
 			rgba: null,
@@ -577,14 +617,21 @@
 		};
 	}
 
+	// Whole-galaxy tilted overview camera aimed at the model's galactic centre.
+	// Uses cam.setState so internal position, orientation (buildViewProj) and
+	// cameraPos stay synchronized with galactic north upright and zero roll.
 	function setupGalaxyCamera(cameraLib, model) {
 		const cam = cameraLib.createCamera();
 		cam.setFrame(model);
-		cam.setMode(cameraLib.MODE_ORBIT_GC);
 		const cx = (model && model.centre && model.centre.x) || 0;
-		cam.cameraPos[0] = cx;
-		cam.cameraPos[1] = -14.0;
-		cam.cameraPos[2] = 7.5;
+		const dy = -14.0;
+		const dz = 7.5;
+		cam.setState({
+			position: [cx, dy, dz],
+			yaw: Math.PI / 2,
+			pitch: -Math.atan2(dz, -dy),
+			mode: cameraLib.MODE_ORBIT_GC,
+		});
 		return cam;
 	}
 
@@ -712,24 +759,27 @@
 
 		try {
 			// 2. First Light (T = 0) & Cluster/Object Birth Gate
+			// Uses procedural Sb (milkyWay=false, landmarkCount=0) so T = 0 has zero
+			// stellar records of any kind; Milky Way landmarks + catalog are tested in
+			// suite 5 ('catalog') below.
 			if (runFirstLight) {
 				if (onProgress) onProgress('First light (T = 0) & cluster formation');
-				const sbbRef = deps.galaxy.createGalaxy({ type: 'SBb', seed, age: deps.galaxy.AGE_REF });
+				const sbRef = deps.galaxy.createGalaxy({ type: 'Sb', seed, age: deps.galaxy.AGE_REF });
 				const renderer = deps.rendererLib.createStarRenderer(device, target.context, format, {
 					proceduralStars,
 					catalogBudgetStars: 0,
-					model: sbbRef,
+					model: sbRef,
 				});
 				renderer.prepare(null);
-				const cam = setupGalaxyCamera(deps.cameraLib, sbbRef);
+				const cam = setupGalaxyCamera(deps.cameraLib, sbRef);
 
 				// Step from Present day (13.5 Gyr) down to First light (T = 0):
-				const sbbZero = deps.galaxy.modelAtAge(sbbRef, 0);
-				renderer.setEpoch(sbbZero);
-				renderer.stepEpoch(sbbZero, 1e9);
+				const sbZero = deps.galaxy.modelAtAge(sbRef, 0);
+				renderer.setEpoch(sbZero);
+				renderer.stepEpoch(sbZero, 1e9);
 				// Isolate the birth gate: First light is gas-only now, not black.
 				renderer.setGasVisible(false);
-				const sample0 = await renderEpochSample(renderer, target, cam, sbbZero, 0, 0);
+				const sample0 = await renderEpochSample(renderer, target, cam, sbZero, 0, 0);
 				thumbnails.push({ label: 'T = 0.0 Gyr (stars only; gas hidden)', sample: sample0 });
 
 				check('firstlight', 'T = 0 census formed is 0% and gas is 1.00',
@@ -741,19 +791,21 @@
 					'field=0/' + sample0.cpu.fieldTotal
 					+ ' clusterStars=0/' + sample0.cpu.clusterStarsTotal
 					+ ' gasStars=0/' + sample0.cpu.gasStarsTotal);
-				check('firstlight', 'T = 0 star-only SBb frame has 0 lit pixels (gas hidden; no orphan clusters)',
+				check('firstlight', 'T = 0 star-only procedural Sb frame has 0 lit pixels (gas hidden; no orphan clusters)',
 					sample0.px.litPixels === 0 && sample0.px.totalLuma === 0,
 					'litPx=' + sample0.px.litPixels + ' luma=' + sample0.px.totalLuma.toFixed(2));
 
 				renderer.setGasVisible(true);
-				const gas0 = await renderEpochSample(renderer, target, cam, sbbZero, 0, 0);
+				const gas0 = await renderEpochSample(renderer, target, cam, sbZero, 0, 0);
 				thumbnails.push({ label: 'T = 0.0 Gyr (gas only)', sample: gas0 });
 				check('firstlight', 'First light has a live gas grid beside the absent stellar census',
 					renderer.gasGridInfo().enabled && renderer.gasGridInfo().cells > 0);
 				if (gas0.hasGpuPixels) {
-					check('firstlight', 'T = 0 gas-only frame contains light on GPU readback',
-						gas0.px.litPixels > 0 && gas0.px.totalLuma > sample0.px.totalLuma,
-						'litPx=' + gas0.px.litPixels + ' luma=' + gas0.px.totalLuma.toFixed(2));
+					check('firstlight', 'T = 0 gas-only frame contains centred disc light on GPU readback',
+						gas0.px.litPixels > 0 && gas0.px.totalLuma > sample0.px.totalLuma
+						&& gas0.px.coreLuma > gas0.px.outerLuma,
+						'litPx=' + gas0.px.litPixels + ' luma=' + gas0.px.totalLuma.toFixed(2)
+						+ ' core=' + gas0.px.coreLuma.toFixed(2) + ' outer=' + gas0.px.outerLuma.toFixed(2));
 				} else {
 					note('deferred', 'gas-only pixels need GPU readback; the CPU fallback does not rasterize gas');
 				}
@@ -764,13 +816,13 @@
 				const bootZeroRenderer = deps.rendererLib.createStarRenderer(device, target.context, format, {
 					proceduralStars: 4000,
 					catalogBudgetStars: 0,
-					model: deps.galaxy.createGalaxy({ type: 'SBb', seed, age: 0 }),
+					model: deps.galaxy.createGalaxy({ type: 'Sb', seed, age: 0 }),
 				});
 				const bootZeroState = bootZeroRenderer.prepare(null);
 				const bootZeroSum0 = formationSummary(bootZeroRenderer, 0);
 				const bootZeroSumRef = formationSummary(bootZeroRenderer, deps.galaxy.AGE_REF);
 				check('firstlight', 'booting directly at T = 0 (?age=0) builds full reference cluster census, gated 0% -> 100%',
-					bootZeroState.clusterCount === deps.clusters.clusterCountFor(sbbRef)
+					bootZeroState.clusterCount === deps.clusters.clusterCountFor(sbRef)
 					&& bootZeroSum0.clusterStarsActive === 0
 					&& bootZeroSumRef.clusterStarsActive === bootZeroSumRef.clusterStarsTotal
 					&& bootZeroSumRef.clusterStarsTotal > 0,
@@ -784,7 +836,7 @@
 				const walkSamples = [];
 				for (let i = 0; i < walkAges.length; i++) {
 					const a = walkAges[i];
-					const mNow = deps.galaxy.modelAtAge(sbbRef, a);
+					const mNow = deps.galaxy.modelAtAge(sbRef, a);
 					mNow.populations.viewGasNow = renderer.censusGasAt(a);
 					const mSolved = deps.galaxy.modelAtAge(mNow, a);
 					renderer.setEpoch(mSolved);
@@ -860,19 +912,18 @@
 				const s34 = bandSamples.find((s) => Math.abs(s.age - 3.4) < 1e-6);
 				const s35 = bandSamples.find((s) => Math.abs(s.age - 3.5) < 1e-6);
 				const s36 = bandSamples.find((s) => Math.abs(s.age - 3.6) < 1e-6);
-				// A dip is an exposure dip: the luma integral has no threshold, so a
-				// few-percent step in it is real. The lit-pixel count is a threshold
-				// count over a star-only frame, where a hundredth-magnitude step
-				// moves it by a pixel or two — so it is held to its own shot noise
-				// (σ ≈ √N) and to "did not collapse", not to a fixed percentage.
+				// A dip is a downward step in luma or lit-pixel count: monotone growth from
+				// ongoing star formation (ΔN ∝ N across 3.4 -> 3.6 Gyr) is expected and is
+				// not a dip, whereas any downward step in the thresholded lit-pixel count
+				// must stay within shot noise (σ ≈ √N).
 				const counts = [s34.px.litPixels, s35.px.litPixels, s36.px.litPixels];
 				const peakCount = Math.max.apply(null, counts);
-				const countSpread = peakCount - Math.min.apply(null, counts);
+				const maxDrop = Math.max(0, counts[0] - counts[1], counts[1] - counts[2]);
 				const shotNoise = 3 * Math.sqrt(peakCount) + 2;
 				const noDip35 = s34 && s35 && s36
 					&& s35.px.totalLuma >= s34.px.totalLuma * 0.95
 					&& s36.px.totalLuma >= s35.px.totalLuma * 0.95
-					&& countSpread <= shotNoise
+					&& maxDrop <= shotNoise
 					&& Math.min.apply(null, counts) > 0;
 
 				check('continuity', 'magOffset is smooth and non-oscillating across 3.0–4.0 Gyr (worst step < 0.025 mag / 0.1 Gyr)',
@@ -952,6 +1003,11 @@
 					v14Map.bulge.bulgeScale > 0.3 && v14Map.bulge.bulgeScale < 0.75
 					&& Math.abs(v14Map.today.bulgeScale - 1.0) < 1e-6,
 					'bulge@2Gyr=' + v14Map.bulge.bulgeScale.toFixed(2) + ' bulge@13.5Gyr=' + v14Map.today.bulgeScale.toFixed(2));
+				check('morphology', 'Present day galaxy overview is centred in the frustum (core brighter than outer frame)',
+					v14Map.today.px.litPixels > 0 && v14Map.today.px.coreLuma > v14Map.today.px.outerLuma,
+					'litPx=' + v14Map.today.px.litPixels
+					+ ' core=' + v14Map.today.px.coreLuma.toFixed(2)
+					+ ' outer=' + v14Map.today.px.outerLuma.toFixed(2));
 				renderer.dispose();
 			}
 
@@ -976,7 +1032,12 @@
 					cam.setFrame(refModel);
 					// The bundled catalog is Sun-centred; do not use the galaxy
 					// overview camera, which is intentionally outside its cells.
-					cam.cameraPos[0] = 0; cam.cameraPos[1] = 0; cam.cameraPos[2] = 0;
+					cam.setState({
+						position: [0, 0, 0],
+						yaw: 0,
+						pitch: 0,
+						mode: deps.cameraLib.MODE_FLY,
+					});
 					const refSample = await renderEpochSample(renderer, target, cam, refModel, 0, 0);
 					thumbnails.push({ label: 'Catalog reference epoch', sample: refSample });
 					const info = renderer.starBlocks();
@@ -1171,6 +1232,7 @@
 		createOffscreenTarget,
 		createFallbackDevice,
 		formationSummary,
+		setupGalaxyCamera,
 		renderEpochSample,
 		runSuite,
 	};

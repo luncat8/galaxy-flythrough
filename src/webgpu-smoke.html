@@ -269,8 +269,11 @@ code {
 		});
 	}
 
+	var lastRenderedFrames = [];
+
 	function renderThumbnails(thumbnails) {
 		FILMSTRIP.textContent = '';
+		lastRenderedFrames = [];
 		if (!thumbnails || !thumbnails.length) return;
 		for (var i = 0; i < thumbnails.length; i++) {
 			var item = thumbnails[i];
@@ -285,6 +288,7 @@ code {
 			if (ctx) {
 				if (smp.rgba && typeof ImageData !== 'undefined') {
 					ctx.putImageData(new ImageData(smp.rgba, smp.px.width, smp.px.height), 0, 0);
+					lastRenderedFrames.push({ label: item.label || ('frame-' + i), canvas: canvas });
 				} else {
 					ctx.fillStyle = '#05070f';
 					ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -309,6 +313,22 @@ code {
 			card.appendChild(meta);
 			FILMSTRIP.appendChild(card);
 		}
+	}
+
+	function collectEvidenceFrames() {
+		var out = [];
+		for (var i = 0; i < lastRenderedFrames.length; i++) {
+			var entry = lastRenderedFrames[i];
+			if (!entry || !entry.canvas || typeof entry.canvas.toDataURL !== 'function') continue;
+			try {
+				var dataUrl = entry.canvas.toDataURL('image/webp', 0.92);
+				if (dataUrl.indexOf('data:image/webp') !== 0) {
+					dataUrl = entry.canvas.toDataURL('image/png');
+				}
+				out.push({ label: entry.label, dataUrl: dataUrl });
+			} catch (e) {}
+		}
+		return out;
 	}
 
 	async function runAndLog(kind) {
@@ -393,8 +413,9 @@ code {
 					sendButton.disabled = false;
 				}, window.GpuSmoke.ACK_MS);
 			};
-			window.GpuSmoke.sendLog(LOG.join('\n'), 'webgpu-smoke').then(function (res) {
-				say('[log] evidence saved: ' + (res.file || 'experiments/logs/'));
+			window.GpuSmoke.sendLog(LOG.join('\n'), 'webgpu-smoke', collectEvidenceFrames()).then(function (res) {
+				var frameNote = res && res.frameCount ? (' + ' + res.frameCount + ' frames in ' + res.framesDir) : '';
+				say('[log] evidence saved: ' + (res.file || 'experiments/logs/') + frameNote);
 				restore('Saved ✓');
 			}).catch(function (err) {
 				say('[log] send failed: ' + (err && err.message ? err.message : err));
