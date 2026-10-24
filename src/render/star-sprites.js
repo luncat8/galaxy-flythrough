@@ -700,14 +700,18 @@ function createStarRenderer(device, context, format, options) {
                 });
                 if (thetaBuffer) thetaBuffer.destroy();
                 if (birthBuffer) birthBuffer.destroy();
-                birthStaging = new Float32Array(Math.max(1, proceduralCount));
+                const fixedCapacity = proceduralCount + landmarkCount + objectCapacity;
+                birthStaging = new Float32Array(Math.max(1, fixedCapacity));
                 birthBuffer = device.createBuffer({
                         label: 'star-birth-times',
-                        size: Math.max(4, proceduralCount * 4),
+                        size: Math.max(4, fixedCapacity * 4),
                         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
                 });
                 blockInfo.formation.births = birthStaging;
                 blockInfo.formation.count = proceduralCount;
+                blockInfo.formation.objectOffset = proceduralCount + landmarkCount;
+                blockInfo.formation.objectCount = 0;
+                blockInfo.formation.clusterCount = 0;
                 totalRecordCount = totalRecords;
                 const thetaBytes = Math.max(16, totalRecords * 4);
                 thetaData = new ArrayBuffer(thetaBytes);
@@ -753,7 +757,7 @@ function createStarRenderer(device, context, format, options) {
                                 { binding: 1, resource: { buffer: nebulaBuffer } },
                         ],
                 });
-                state.bufferBytes = totalBytes + nebulaBytes + thetaBytes + Math.max(4, proceduralCount * 4);
+                state.bufferBytes = totalBytes + nebulaBytes + thetaBytes + Math.max(4, fixedCapacity * 4);
         }
 
         // Seed the simple-engine azimuths from the birth positions in staging.
@@ -1098,6 +1102,10 @@ function createStarRenderer(device, context, format, options) {
                 state.galaxyAge = model.populations.age;
                 blockInfo.formation.age = model.populations.age;
                 state.galaxyLabel = window.GalaxyLib.galaxyLabel(nextModel);
+                if (fieldStars && proceduralCount > 0) {
+                        magOffset = sweepExposure();
+                        state.magOffset = magOffset;
+                }
                 epochSweep.stale = true;
                 return state;
         }
@@ -1216,28 +1224,51 @@ function createStarRenderer(device, context, format, options) {
                         state.gasObjectStars = 0;
                         state.gasObjectCount = 0;
                         state.nebulaBillboards = 0;
+                        blockInfo.formation.objectCount = 0;
+                        blockInfo.formation.clusterCount = 0;
                         nebulaCount = 0;
                         return 0;
                 }
-                const placedClusters = clustersLib.placeStarClusters(model, (seed | 0) ^ 0xC1057E5,
-                        clusterCountOpt === null ? clustersLib.clusterCountFor(model) : clusterCountOpt, null);
-                const placed = objectsLib.placeObjects(model, (seed | 0) ^ 0x0B5E55, objectCount, null);
+                // Like the field census (0.7.3a), composite objects and star
+                // clusters are placed in the reference frame so a deep-time boot
+                // (T = 0) draws the full reference cluster/object population and
+                // gates each system by its birth time `formedAt`.
+                const reference = drawReference || window.GalaxyLib.modelAtAge(model, window.GalaxyLib.AGE_REF);
+                const placedClusters = clustersLib.placeStarClusters(reference, (seed | 0) ^ 0xC1057E5,
+                        clusterCountOpt === null ? clustersLib.clusterCountFor(reference) : clusterCountOpt, null);
+                const placed = objectsLib.placeObjects(reference, (seed | 0) ^ 0x0B5E55, objectCount, null);
                 // Members are procedural stars, so they carry the same exposure
                 // offset as the field they sit in.
+                const objectBase = BLOCK_LAYOUT[2].offset;
+                const objectBirths = birthStaging
+                        ? birthStaging.subarray(objectBase, objectBase + objectCapacity)
+                        : null;
+                if (objectBirths) objectBirths.fill(0);
                 const clusterBudget = Math.min(objectCapacity,
                         clustersLib.clusterMemberBudget(proceduralCount, clustersLib.getClusterExaggeration()));
                 const clusterView = new DataView(staging, objectByteOffset, objectCapacity * records.RECORD_BYTES);
-                const clusterWritten = clustersLib.writeClusterMembers(model, placedClusters, clusterView, 0,
-                        clusterBudget, magOffset, identity, BLOCK_LAYOUT[2].offset,
-                        { age: memberAge, component: memberComponent }).written;
+                const clusterWritten = clustersLib.writeClusterMembers(reference, placedClusters, clusterView, 0,
+                        clusterBudget, magOffset, identity, objectBase,
+                        { age: memberAge, component: memberComponent, birth: objectBirths }).written;
                 const gasCapacity = objectCapacity - clusterWritten;
                 const gasView = new DataView(staging, objectByteOffset + clusterWritten * records.RECORD_BYTES,
                         gasCapacity * records.RECORD_BYTES);
-                const gasWritten = objectsLib.writeObjectMembers(model, placed, gasView, 0, gasCapacity, magOffset,
-                        identity, BLOCK_LAYOUT[2].offset + clusterWritten,
-                        { age: memberAge.subarray(clusterWritten), component: memberComponent.subarray(clusterWritten) }).written;
+                const gasWritten = objectsLib.writeObjectMembers(reference, placed, gasView, 0, gasCapacity, magOffset,
+                        identity, objectBase + clusterWritten,
+                        {
+                                age: memberAge.subarray(clusterWritten),
+                                component: memberComponent.subarray(clusterWritten),
+                                birth: objectBirths ? objectBirths.subarray(clusterWritten) : null,
+                        }).written;
                 const written = clusterWritten + gasWritten;
                 BLOCK_LAYOUT[2].count = written;
+                blockInfo.formation.objectOffset = objectBase;
+                blockInfo.formation.objectCount = written;
+                blockInfo.formation.clusterCount = clusterWritten;
+                if (birthBuffer && birthStaging && objectCapacity > 0 && device.queue && device.queue.writeBuffer) {
+                        device.queue.writeBuffer(birthBuffer, objectBase * 4,
+                                birthStaging.buffer, objectBase * 4, objectCapacity * 4);
+                }
                 state.objectStars = written;
                 state.clusterStars = clusterWritten;
                 state.clusterCount = placedClusters.length;
@@ -1597,7 +1628,7 @@ function createStarRenderer(device, context, format, options) {
                 uniform[52] = model.populations.age;
                 uniform[53] = orbit.BIRTH_FADE_GYR || 0.05;
                 uniform[54] = proceduralCount;
-                uniform[55] = 0;
+                uniform[55] = proceduralCount + landmarkCount + objectCapacity;
                 device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
                 tonemapUniform[0] = linearExposure;

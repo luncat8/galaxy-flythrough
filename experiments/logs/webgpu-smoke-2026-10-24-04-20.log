@@ -1,0 +1,44 @@
+[all] starting suite…
+[boot] 2026-10-24 04:19 · chrome 151 · win x86_64
+[boot] gpu hardware nvidia · ts-query yes · format bgra8unorm
+[shaders] PASS star-sprite compiles cleanly (30525 chars)
+[shaders] PASS star-sprite-hdr compiles cleanly (4142 chars)
+[shaders] PASS nebula-billboard compiles cleanly (4453 chars)
+[shaders] PASS tonemap compiles cleanly (6088 chars)
+[shaders] PASS simple-step compiles cleanly (22435 chars)
+[shaders] PASS all 5 shipping WGSL modules valid (star-sprite, star-sprite-hdr, nebula-billboard, tonemap, simple-step)
+[firstlight] PASS T = 0 census formed is 0% and gas is 1.00 (formed=0 gas=1)
+[firstlight] PASS T = 0 gates off all field stars AND all star clusters / composite objects (field=0/24000 clusterStars=0/1199 gasStars=0/241)
+[firstlight] PASS T = 0 rendered SBb sky has 0 lit pixels (no orphan clusters at First light) (litPx=0 luma=0.00)
+[firstlight] PASS booting directly at T = 0 (?age=0) builds full reference cluster census, gated 0% -> 100% (clusters=160 active@0=0 active@13.5=199)
+[firstlight] T= 0.0 Gyr · formed   0.0% · clusters    0/1199 · field     0/24000 · litPx     0 · luma 0
+[firstlight] T= 0.5 Gyr · formed   0.1% · clusters  158/1199 · field    35/24000 · litPx   218 · luma 4716
+[firstlight] T= 1.0 Gyr · formed   0.7% · clusters  283/1199 · field   172/24000 · litPx   218 · luma 4716
+[firstlight] T= 2.0 Gyr · formed   4.4% · clusters  574/1199 · field  1054/24000 · litPx   219 · luma 4882
+[firstlight] T= 4.0 Gyr · formed  21.2% · clusters  950/1199 · field  5093/24000 · litPx   235 · luma 7770
+[firstlight] T=13.5 Gyr · formed 100.0% · clusters 1199/1199 · field 23995/24000 · litPx   227 · luma 5219
+[firstlight] PASS cluster & object members condense monotonically from 0 at T = 0 to 100% at 13.5 Gyr (0Gyr:0 -> 0.5Gyr:158 -> 1Gyr:283 -> 2Gyr:574 -> 4Gyr:950 -> 13.5Gyr:1199)
+[continuity] T=3.00 Gyr · magOff -0.9286 · formed 10.22% · litPx   226 · luma 6121.9
+[continuity] T=3.20 Gyr · magOff -0.8995 · formed 11.41% · litPx   226 · luma 6081.7
+[continuity] T=3.30 Gyr · magOff -0.8924 · formed 12.08% · litPx   227 · luma 6002.5
+[continuity] T=3.40 Gyr · magOff -0.8899 · formed 12.74% · litPx   226 · luma 6054.5
+[continuity] T=3.45 Gyr · magOff -0.8896 · formed 13.43% · litPx   227 · luma 6098.5
+[continuity] T=3.50 Gyr · magOff -0.8895 · formed 14.09% · litPx   228 · luma 6196.8
+[continuity] T=3.55 Gyr · magOff -0.8895 · formed 14.79% · litPx   228 · luma 6309.5
+[continuity] T=3.60 Gyr · magOff -0.8893 · formed 15.52% · litPx   227 · luma 6284.7
+[continuity] T=3.70 Gyr · magOff -0.8858 · formed 16.90% · litPx   227 · luma 6193.4
+[continuity] T=3.80 Gyr · magOff -0.8798 · formed 18.25% · litPx   227 · luma 6203.9
+[continuity] T=4.00 Gyr · magOff -0.8636 · formed 21.24% · litPx   235 · luma 7770.3
+[continuity] PASS magOffset is smooth and non-oscillating across 3.0–4.0 Gyr (worst step < 0.025 mag / 0.1 Gyr) (3.4=-0.8899 3.5=-0.8895 3.6=-0.8893 maxStepPer0.1Gyr=0.01456)
+[continuity] PASS no 3.5 Gyr dim/low-star-count oscillation between 3.4, 3.5 and 3.6 Gyr (litPx 3.4=226 -> 3.5=228 -> 3.6=227 | luma 3.4=6055 -> 3.5=6197 -> 3.6=6285)
+[continuity] PASS 2 Myr/s live-clock step across 3.44–3.60 Gyr has sub-millimag steps (< 0.001 mag) (maxStepPer2Myr=0.000023 mag)
+[morphology] T = 0.5 Gyr (Condensation) · formed 0.1% · gas 1.00 · arms ×2.00 ×bulge 0.24 · litPx 218
+[morphology] T = 1.0 Gyr (Gas-rich arms) · formed 0.7% · gas 0.99 · arms ×2.00 ×bulge 0.37 · litPx 218
+[morphology] T = 2.0 Gyr (Bulge assembly) · formed 4.4% · gas 0.96 · arms ×2.00 ×bulge 0.56 · litPx 219
+[morphology] T = 13.5 Gyr (Present day) · formed 100.0% · gas 0.15 · arms ×1.00 ×bulge 1.00 · litPx 227
+[morphology] PASS walking all V14 formation epochs triggers 0 field redraws (draws=0)
+[morphology] PASS 1.0 Gyr gas-rich arms have higher arm contrast than Present day (1.00) (arms@1Gyr=2.00 arms@13.5Gyr=1.00)
+[morphology] PASS 2.0 Gyr bulge is more compact than Present day and grows to scale 1.00 (bulge@2Gyr=0.56 bulge@13.5Gyr=1.00)
+[engines] PASS two renders of the same state are bit-identical (0 differing pixels) (diffPx=0 litPx=105)
+[engines] PASS simple compute and simple+apocenter engines render finite lit galaxies (simpleLitPx=96 comboLitPx=98)
+[result] PASS · 19/19 checks · wall 744 ms

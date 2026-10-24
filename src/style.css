@@ -691,7 +691,8 @@ html, body {
 #scenario-menu .menu-header button:hover { background: #332a18; }
 #scenario-menu .menu-val { color: #e5c98f; }
 #scenario-menu .menu-hint { color: #9c8a63; }
-#scenario-menu .menu-actions button {
+#scenario-menu .menu-actions button,
+#scenario-menu .menu-actions .menu-link-btn {
 	flex: 1 1 auto;
 	background: #2a2313;
 	border: 1px solid #6b5730;
@@ -702,8 +703,26 @@ html, body {
 	border-radius: 3px;
 	cursor: pointer;
 	white-space: nowrap;
+	text-align: center;
+	text-decoration: none;
+	display: inline-block;
 }
-#scenario-menu .menu-actions button:hover { background: #3a3119; }
+#scenario-menu .menu-actions button:hover,
+#scenario-menu .menu-actions .menu-link-btn:hover { background: #3a3119; }
+#scenario-report {
+	max-height: 160px;
+	overflow: auto;
+	margin: 6px 0 0;
+	padding: 6px;
+	background: rgba(10, 8, 4, 0.85);
+	border: 1px solid #4a3d22;
+	border-radius: 3px;
+	color: #e8dcc0;
+	font-size: 10px;
+	line-height: 1.4;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
 #scenario-menu select {
 	background: #2a2313;
 	border: 1px solid #6b5730;

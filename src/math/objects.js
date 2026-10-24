@@ -190,9 +190,15 @@
 				// members' ages — which deriveStarWithAge imposes on the whole
 				// object — inside the model's clock.
 				const galaxyAge = model.populations.age;
+				const sfhSpan = (model.populations && model.populations.sfhSpan > 0) ? model.populations.sfhSpan : galaxyAge;
+				const compIdx = batch.component[i];
+				const w0 = galaxy.FORMATION_WINDOW[compIdx * 2];
+				const w1 = galaxy.FORMATION_WINDOW[compIdx * 2 + 1];
+				const formedAt = Math.min(Math.max(0, sfhSpan - 0.05),
+					sfhSpan * (w0 + hash.hash01At(base, 5) * (w1 - w0)));
 				if (ageGyr > galaxyAge) ageGyr = galaxyAge;
 				out.push({
-					type, x, y, z, size, richness, ageGyr,
+					type, x, y, z, size, richness, formedAt, ageGyr,
 					R: probs.dec.R, phi: probs.dec.phi, zp: probs.dec.zp,
 					distToArm: probs.dec.distToArm,
 					component: density.COMPONENT_NAMES[batch.component[i]],
@@ -374,6 +380,9 @@
 				if (memberMeta) {
 					memberMeta.age[slot] = obj.ageGyr;
 					memberMeta.component[slot] = obj.type === 'planetary' ? -1 : component;
+					if (memberMeta.birth) {
+						memberMeta.birth[slot] = Number.isFinite(obj.formedAt) ? obj.formedAt : 0;
+					}
 				}
 				slot++;
 			}

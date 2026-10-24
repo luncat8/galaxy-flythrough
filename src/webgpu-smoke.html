@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WebGPU &amp; Visual Smoke · Galaxy Fly-Through</title>
+<!-- src/webgpu-smoke.html - double-click in a real browser (no build, no server, file:// ok)
+     or open via `python3 scripts/run.py serve` -> http://localhost:8080/webgpu-smoke.html.
+     Inspired by planet-geotectonics (webgpu-smoke.html & tests/gpu-parity.html):
+       - Runs the real WebGPU renderer into an offscreen RENDER_ATTACHMENT | COPY_SRC target,
+         reads back the pixels, paints a visual epoch filmstrip, and logs pass/fail gates.
+       - Verifies:
+         1. All 5 WGSL shader modules compile cleanly.
+         2. First light (T = 0) gates off all field stars AND all star clusters / objects
+            (0 lit pixels on SBb at T = 0; clusters condense monotonically 0 -> 13.5 Gyr).
+         3. Epoch brightness & visible star-count continuity across 3.0-4.0 Gyr (no 3.5 Gyr
+            dim/low-star-count oscillation) and smooth sub-millimag 2 Myr/s steps.
+         4. V14 formation morphology (1 Gyr gas-rich arms, 2 Gyr compact bulge, 0 redraws).
+         5. Classic / simple / apocenter engines and two-run bit-identical GPU readback.
+       - "Copy log" works over file:// (navigator.clipboard + hidden textarea fallback) and
+         "Save log" downloads webgpu-smoke-<date>-<time>.log. -->
+<style>
+body {
+	font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	background: #0d1118;
+	color: #cdd6e4;
+	margin: 16px;
+}
+h1 {
+	font-size: 15px;
+	margin: 0 0 4px;
+	color: #e6eefc;
+}
+p.sub {
+	color: #9fb0c0;
+	max-width: 92ch;
+	margin: 0 0 10px;
+}
+.ctl {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	align-items: center;
+	margin: 10px 0;
+}
+button, a.btn {
+	background: #1d6fe0;
+	color: #fff;
+	border: 0;
+	border-radius: 6px;
+	padding: 6px 12px;
+	font: 600 12px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	cursor: pointer;
+	text-decoration: none;
+	display: inline-block;
+}
+button:disabled {
+	background: #34414f;
+	color: #8b9bb0;
+	cursor: default;
+}
+button.sec, a.btn.sec {
+	background: #243041;
+}
+#status {
+	display: none;
+	margin: 8px 0;
+	padding: 6px 10px;
+	border: 1px solid #3a4a61;
+	border-radius: 6px;
+	background: #131c29;
+	color: #ffd479;
+	font-weight: 600;
+}
+#summary-banner {
+	margin: 8px 0;
+	padding: 8px 12px;
+	border-radius: 6px;
+	border: 1px solid #263043;
+	background: #111824;
+	font-weight: 600;
+}
+#summary-banner.pass {
+	border-color: #2c6e49;
+	color: #7fd6a4;
+}
+#summary-banner.fail {
+	border-color: #8c2f39;
+	color: #f08080;
+}
+#filmstrip {
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+	margin: 10px 0;
+}
+.thumb-card {
+	background: #0b0e15;
+	border: 1px solid #263043;
+	border-radius: 6px;
+	padding: 6px;
+	width: 192px;
+}
+.thumb-card canvas {
+	display: block;
+	width: 192px;
+	height: 120px;
+	background: #020308;
+	border-radius: 3px;
+	image-rendering: pixelated;
+}
+.thumb-title {
+	font-weight: 600;
+	font-size: 11px;
+	color: #dce6f7;
+	margin-top: 4px;
+}
+.thumb-meta {
+	font-size: 11px;
+	color: #9fb0c0;
+	line-height: 1.35;
+}
+pre#out {
+	white-space: pre-wrap;
+	word-break: break-word;
+	background: #0b0e15;
+	border: 1px solid #263043;
+	border-radius: 6px;
+	padding: 10px;
+	max-height: 55vh;
+	overflow: auto;
+	margin: 10px 0;
+}
+code {
+	background: #151d28;
+	padding: 1px 5px;
+	border-radius: 4px;
+}
+</style>
+</head>
+<body>
+<h1>WebGPU &amp; Visual Smoke · Galaxy Fly-Through</h1>
+<p class="sub">
+	Same renderer and shaders as <code>index.html</code>, rendered into an offscreen
+	<code>RENDER_ATTACHMENT | COPY_SRC</code> target with GPU pixel readback.
+	<b>Run all checks</b> verifies WGSL compilation, <b>First light (T = 0)</b> cluster &amp; field gating,
+	<b>3.4–3.6 Gyr</b> brightness &amp; star-count continuity (including 2 Myr/s live-clock steps),
+	<b>V14 morphology</b>, and <b>engine determinism</b>. Works over <code>file://</code> — click
+	<b>Copy log</b> or <b>Save log</b> to share results.
+</p>
+<div class="ctl">
+	<button id="run-all" type="button">Run all checks</button>
+	<button id="run-firstlight" type="button">Run First Light &amp; clusters</button>
+	<button id="run-continuity" type="button">Run 3.4–3.6 Gyr continuity</button>
+	<button id="run-morphology" type="button">Run V14 visual suite</button>
+	<button id="run-engines" type="button">Run engines &amp; determinism</button>
+	<button id="copy" class="sec" type="button">Copy log</button>
+	<button id="save" class="sec" type="button">Save log</button>
+	<a class="btn sec" href="index.html">← Back to Galaxy Fly-Through</a>
+</div>
+<div id="status"></div>
+<div id="summary-banner">Ready — select a suite above or wait for auto-run.</div>
+<div id="filmstrip"></div>
+<pre id="out">booting…</pre>
+
+<script src="math/hash.js"></script>
+<script src="math/density.js"></script>
+<script src="math/galaxy.js"></script>
+<script src="math/sampling.js"></script>
+<script src="math/star-record.js"></script>
+<script src="math/star-types.js"></script>
+<script src="math/planets.js"></script>
+<script src="math/orbit.js"></script>
+<script src="math/nebula.js"></script>
+<script src="math/objects.js"></script>
+<script src="math/clusters.js"></script>
+<script src="math/coords.js"></script>
+<script src="data/landmarks.js"></script>
+<script src="render/shaders.js"></script>
+<script src="stream/tile-loader.js"></script>
+<script src="stream/cell-manager.js"></script>
+<script src="core/camera.js"></script>
+<script src="core/scenarios.js"></script>
+<script src="render/star-sprites.js"></script>
+<script src="core/gpu-smoke.js"></script>
+<script>
+'use strict';
+(function () {
+	var OUT = document.getElementById('out');
+	var STATUS = document.getElementById('status');
+	var BANNER = document.getElementById('summary-banner');
+	var FILMSTRIP = document.getElementById('filmstrip');
+	var RUN_IDS = ['run-all', 'run-firstlight', 'run-continuity', 'run-morphology', 'run-engines'];
+	var LOG = [];
+	var pageErrors = [];
+	var inFlight = false;
+	var statusTimer = 0;
+	var statusStarted = 0;
+	var statusPhase = '';
+	var statusKind = '';
+
+	function say(line) {
+		LOG.push(line);
+		OUT.textContent = LOG.join('\n');
+		OUT.scrollTop = OUT.scrollHeight;
+		console.log(line);
+	}
+
+	var origConsoleError = console.error;
+	console.error = function () {
+		var line = Array.prototype.map.call(arguments, function (a) {
+			return a && a.stack ? a.stack : String(a);
+		}).join(' ');
+		pageErrors.push(line);
+		return origConsoleError.apply(console, arguments);
+	};
+	window.addEventListener('error', function (e) {
+		pageErrors.push('pageerror: ' + e.message);
+	});
+	window.addEventListener('unhandledrejection', function (e) {
+		pageErrors.push('unhandledrejection: ' + ((e.reason && e.reason.stack) || e.reason));
+	});
+
+	function setButtonsDisabled(disabled) {
+		for (var i = 0; i < RUN_IDS.length; i++) {
+			var btn = document.getElementById(RUN_IDS[i]);
+			if (btn) btn.disabled = !!disabled;
+		}
+	}
+
+	function updateStatusText() {
+		if (!inFlight) return;
+		var elapsed = ((Date.now() - statusStarted) / 1000).toFixed(1);
+		STATUS.textContent = statusKind + ' running · ' + elapsed + ' s'
+			+ (statusPhase ? ' · ' + statusPhase : '');
+	}
+
+	function showStatus(kind) {
+		statusKind = kind;
+		statusPhase = 'starting';
+		statusStarted = Date.now();
+		STATUS.style.display = 'block';
+		updateStatusText();
+		if (statusTimer) clearInterval(statusTimer);
+		statusTimer = setInterval(updateStatusText, 100);
+	}
+
+	function hideStatus() {
+		if (statusTimer) {
+			clearInterval(statusTimer);
+			statusTimer = 0;
+		}
+		STATUS.style.display = 'none';
+		STATUS.textContent = '';
+	}
+
+	function nextPaint() {
+		return new Promise(function (resolve) {
+			var done = false;
+			function fire() { if (done) return; done = true; resolve(); }
+			if (typeof requestAnimationFrame === 'function') {
+				requestAnimationFrame(function () { setTimeout(fire, 0); });
+				setTimeout(fire, 60);
+			} else {
+				setTimeout(fire, 0);
+			}
+		});
+	}
+
+	function renderThumbnails(thumbnails) {
+		FILMSTRIP.textContent = '';
+		if (!thumbnails || !thumbnails.length) return;
+		for (var i = 0; i < thumbnails.length; i++) {
+			var item = thumbnails[i];
+			var smp = item.sample;
+			if (!smp) continue;
+			var card = document.createElement('div');
+			card.className = 'thumb-card';
+			var canvas = document.createElement('canvas');
+			canvas.width = smp.px.width;
+			canvas.height = smp.px.height;
+			var ctx = canvas.getContext('2d');
+			if (ctx) {
+				if (smp.rgba && typeof ImageData !== 'undefined') {
+					ctx.putImageData(new ImageData(smp.rgba, smp.px.width, smp.px.height), 0, 0);
+				} else {
+					ctx.fillStyle = '#05070f';
+					ctx.fillRect(0, 0, canvas.width, canvas.height);
+					ctx.fillStyle = '#8fb4ff';
+					ctx.font = '11px monospace';
+					ctx.fillText('CPU mode (no WebGPU)', 14, 56);
+					ctx.fillText('litEst=' + smp.px.litPixels, 14, 72);
+				}
+			}
+			var title = document.createElement('div');
+			title.className = 'thumb-title';
+			title.textContent = item.label;
+			var meta = document.createElement('div');
+			meta.className = 'thumb-meta';
+			meta.textContent = 'formed ' + (smp.cpu.formedFraction * 100).toFixed(1) + '% · clu '
+				+ smp.cpu.clusterStarsActive + '/' + smp.cpu.clusterStarsTotal
+				+ '\nmagOff ' + smp.magOffset.toFixed(3)
+				+ ' · litPx ' + smp.px.litPixels
+				+ ' · luma ' + smp.px.totalLuma.toFixed(0);
+			card.appendChild(canvas);
+			card.appendChild(title);
+			card.appendChild(meta);
+			FILMSTRIP.appendChild(card);
+		}
+	}
+
+	async function runAndLog(kind) {
+		if (inFlight) {
+			say('[skip] ' + kind + ' ignored — a run is already in flight');
+			return;
+		}
+		inFlight = true;
+		setButtonsDisabled(true);
+		showStatus(kind);
+		LOG.length = 0;
+		pageErrors.length = 0;
+		say('[' + kind + '] starting suite…');
+		await nextPaint();
+		try {
+			var runner = window.__smokeRun || window.GpuSmoke.runSuite;
+			var report = await runner(kind, {
+				onLine: function (line) {
+					LOG.push(line);
+					OUT.textContent = LOG.join('\n');
+					OUT.scrollTop = OUT.scrollHeight;
+					console.log(line);
+				},
+				onProgress: function (phase) {
+					statusPhase = phase;
+					updateStatusText();
+				},
+			});
+			if (pageErrors.length > 0) {
+				say('[errors] captured console/webgpu errors: ' + pageErrors.length);
+				for (var i = 0; i < pageErrors.length; i++) {
+					say('  ' + pageErrors[i]);
+				}
+			}
+			renderThumbnails(report && report.thumbnails);
+			var ok = !!(report && report.ok && pageErrors.length === 0);
+			BANNER.className = ok ? 'pass' : 'fail';
+			BANNER.textContent = (ok ? 'PASS' : 'FAIL') + ' · '
+				+ (report ? (report.passed + '/' + report.total + ' checks in ' + report.wallMs + ' ms') : 'no report');
+		} catch (err) {
+			say('ERROR: ' + ((err && err.stack) || err));
+			say('[abort] aborted before completion');
+			say('[result] FAIL');
+			BANNER.className = 'fail';
+			BANNER.textContent = 'FAIL · suite aborted: ' + ((err && err.message) || err);
+		} finally {
+			inFlight = false;
+			hideStatus();
+			setButtonsDisabled(false);
+		}
+	}
+
+	document.getElementById('run-all').addEventListener('click', function () { runAndLog('all'); });
+	document.getElementById('run-firstlight').addEventListener('click', function () { runAndLog('firstlight'); });
+	document.getElementById('run-continuity').addEventListener('click', function () { runAndLog('continuity'); });
+	document.getElementById('run-morphology').addEventListener('click', function () { runAndLog('morphology'); });
+	document.getElementById('run-engines').addEventListener('click', function () { runAndLog('engines'); });
+
+	window.GpuSmoke.bindCopy(document.getElementById('copy'), function () {
+		say('[log] copied ' + LOG.length + ' lines to the clipboard');
+		return LOG.join('\n');
+	});
+	document.getElementById('save').addEventListener('click', function () {
+		window.GpuSmoke.saveLog(LOG.join('\n'), 'webgpu-smoke');
+	});
+
+	window.__ready = true;
+	say(window.GpuSmoke.envLine() + ' — ready. Choose a suite above, or use ?run=all|firstlight|continuity|morphology|engines');
+
+	try {
+		var q = new URLSearchParams(location.search);
+		var autorun = q.get('autorun');
+		var runKind = q.get('run') || (autorun === '0' ? '' : 'all');
+		if (runKind) {
+			setTimeout(function () { runAndLog(runKind); }, 120);
+		}
+	} catch (e) {}
+})();
+</script>
+</body>
+</html>

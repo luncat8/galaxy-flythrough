@@ -2796,6 +2796,11 @@ async function boot() {
         const scenarioWatch = document.getElementById('scenario-watch');
         const scenarioLive = document.getElementById('scenario-live');
         const scenarioCopy = document.getElementById('scenario-copy');
+        const scenarioSuite = document.getElementById('scenario-suite');
+        const scenarioCopyReport = document.getElementById('scenario-copy-report');
+        const scenarioReport = document.getElementById('scenario-report');
+        let scenarioSuiteText = '';
+        let scenarioSuiteBusy = false;
         let scenarioRow = null;
         let scenarioDraws = -1;         // renderer.state.fieldSamples when it ran
         let scenarioGalaxy = '';        // type/seed the run was taken in
@@ -2907,6 +2912,65 @@ async function boot() {
         scenarioToday.addEventListener('click', () => runScenario(window.ScenarioLib.PRESENT_DAY));
         scenarioBack.addEventListener('click', () => stepScenarioEpoch(-1));
         scenarioForward.addEventListener('click', () => stepScenarioEpoch(1));
+        if (scenarioSuite && window.GpuSmoke) {
+                scenarioSuite.addEventListener('click', async () => {
+                        if (scenarioSuiteBusy) return;
+                        scenarioSuiteBusy = true;
+                        scenarioSuite.disabled = true;
+                        const origLabel = scenarioSuite.textContent;
+                        scenarioSuite.textContent = 'Running…';
+                        if (scenarioReport) {
+                                scenarioReport.hidden = false;
+                                scenarioReport.textContent = 'Running GPU & formation suite…';
+                        }
+                        try {
+                                const res = await window.GpuSmoke.runSuite('all', {
+                                        device: init && init.device ? init.device : null,
+                                        adapter: init && init.adapter ? init.adapter : null,
+                                        format: init && init.format ? init.format : 'rgba8unorm',
+                                        seed: model.seed,
+                                        proceduralStars: 12000,
+                                        onProgress(phase) {
+                                                scenarioState.textContent = 'GPU suite · ' + phase;
+                                        },
+                                });
+                                scenarioSuiteText = res.text;
+                                if (scenarioReport) {
+                                        scenarioReport.hidden = false;
+                                        scenarioReport.textContent = res.text;
+                                }
+                                scenarioState.textContent = (res.ok ? 'PASS' : 'FAIL')
+                                        + ' · ' + res.passed + '/' + res.total + ' checks (' + res.wallMs + ' ms)';
+                                window.GpuSmoke.writeText(res.text);
+                                presetSay('GPU suite ' + (res.ok ? 'PASSED' : 'FAILED') + ' — report copied to clipboard');
+                        } catch (err) {
+                                scenarioSuiteText = 'ERROR: ' + ((err && err.message) || err);
+                                if (scenarioReport) {
+                                        scenarioReport.hidden = false;
+                                        scenarioReport.textContent = scenarioSuiteText;
+                                }
+                                scenarioState.textContent = 'FAIL · suite error';
+                        } finally {
+                                scenarioSuiteBusy = false;
+                                scenarioSuite.disabled = false;
+                                scenarioSuite.textContent = origLabel;
+                        }
+                });
+        }
+        if (scenarioCopyReport && window.GpuSmoke) {
+                window.GpuSmoke.bindCopy(scenarioCopyReport, () => {
+                        if (scenarioSuiteText) return scenarioSuiteText;
+                        const sum = window.GpuSmoke.formationSummary(renderer, model.populations.age);
+                        return [
+                                '[snapshot] ' + window.GpuSmoke.envLine(),
+                                'galaxy ' + model.type + '/' + model.seed + ' · age ' + model.populations.age.toFixed(2) + ' Gyr · magOffset ' + (renderer.state.magOffset || 0).toFixed(4),
+                                'formed ' + (sum.formedFraction * 100).toFixed(1) + '% · gas ' + (model.populations.viewGasNow || 0).toFixed(3)
+                                        + ' · field ' + sum.fieldActive + '/' + sum.fieldTotal
+                                        + ' · clusterStars ' + sum.clusterStarsActive + '/' + sum.clusterStarsTotal,
+                                'preset ' + window.Presets.serialize(collectSettings()),
+                        ].join('\n');
+                });
+        }
         // A fresh page has a scenario selected before it has been run: show the
         // notes that belong to that selection, so the panel is never a blank
         // box asking the reader to guess what the drop-down means.

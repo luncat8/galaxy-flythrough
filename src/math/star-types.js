@@ -311,6 +311,83 @@
 		return Math.imul(i, 2654435761) & 0xFF;
 	}
 
+	// IMF-expected luminosity (L☉) of a stellar cohort at elapsed age `ageGyr`.
+	// Individual Monte Carlo draws of `evolveStar` over a 4 096-star calibration
+	// prefix suffer severe giant-branch shot noise: only ~0.14 % of IMF draws sit
+	// in the [1.1·tMS, 1.1·tMS + tGiant] window at any instant, each carrying
+	// 100–10 100 L☉ (~98 % of total luminosity), so 1–2 calibration stars entering
+	// or leaving their ~0.08 Gyr giant box (e.g. at 3.45–3.60 Gyr on Milky Way)
+	// swung the global exposure offset by 4.45 mag (a 5× visible star-count drop).
+	// Integrating `evolveStar` analytically over log-spaced Salpeter mass bins
+	// gives the smooth conditional expectation E[L | age = T - birth] in O(1) per
+	// star via a 1 025-entry table.
+	const COHORT_LUM_BINS = 256;
+	const COHORT_AGE_STEPS = 1024;
+	const COHORT_GATE_GYR = 0.5;
+	const COHORT_PRIOR_WEIGHT = 16;
+	const cohortLumTable = (function buildCohortLumTable() {
+		const alpha = 2.35;
+		const xMin = Math.pow(0.08, 1 - alpha);
+		const xMax = Math.pow(100.0, 1 - alpha);
+		const cdf = (m) => {
+			if (m <= 0.08) return 0;
+			if (m >= 100) return 1;
+			return (Math.pow(m, 1 - alpha) - xMin) / (xMax - xMin);
+		};
+		const logMin = Math.log(0.08);
+		const logMax = Math.log(8.0);
+		const du = new Float64Array(COHORT_LUM_BINS);
+		const lMs = new Float64Array(COHORT_LUM_BINS);
+		const tTurn = new Float64Array(COHORT_LUM_BINS);
+		const tGiant = new Float64Array(COHORT_LUM_BINS);
+		for (let k = 0; k < COHORT_LUM_BINS; k++) {
+			const m0 = Math.exp(logMin + (k / COHORT_LUM_BINS) * (logMax - logMin));
+			const m1 = Math.exp(logMin + ((k + 1) / COHORT_LUM_BINS) * (logMax - logMin));
+			const m = Math.sqrt(m0 * m1);
+			du[k] = cdf(m1) - cdf(m0);
+			lMs[k] = luminosityFromMass(m);
+			// Continuous monotonic main-sequence clock across the 2 M☉ piece
+			// boundary so two mass bands do not turn off at the same age.
+			const lumSmooth = m < 0.7 ? Math.pow(m, 2.3) : Math.pow(m, 3.65);
+			const tms = Math.min(15.0, Math.max(0.003, 10.0 * m / lumSmooth));
+			tTurn[k] = 1.1 * tms;
+			tGiant[k] = Math.min(TGIANT_MAX, Math.max(TGIANT_MIN, TGIANT_FRAC * tms));
+		}
+		const table = new Float64Array(COHORT_AGE_STEPS + 1);
+		for (let s = 0; s <= COHORT_AGE_STEPS; s++) {
+			const age = (s / COHORT_AGE_STEPS) * galaxy.AGE_REF;
+			let sum = 0;
+			for (let k = 0; k < COHORT_LUM_BINS; k++) {
+				const t0 = tTurn[k];
+				const tg = tGiant[k];
+				const w = Math.max(0.3, 0.25 * t0);
+				const t = Math.max(0, Math.min(1, (age - (t0 - 0.5 * w)) / w));
+				const ms = lMs[k] * (1 - t * t * (3 - 2 * t));
+				let giant = 0;
+				if (t0 < 16.0) {
+					const center = t0 + 0.5 * tg;
+					const gw = Math.max(tg, w);
+					const x = Math.abs(age - center) / gw;
+					if (x < 1) {
+						giant = tg * 5100 * 0.5 * (1 + Math.cos(Math.PI * x)) / gw;
+					}
+				}
+				const wd = age > t0
+					? WD_LUM_FLOOR + 0.0505 * Math.exp(-Math.max(0, age - (t0 + tg)) / WD_COOL_TAU)
+					: 0;
+				sum += du[k] * (ms + giant + wd);
+			}
+			table[s] = sum;
+		}
+		return table;
+	})();
+
+	function expectedCohortLuminosity(ageGyr) {
+		const u = Math.max(0, Math.min(1, ageGyr / galaxy.AGE_REF)) * COHORT_AGE_STEPS;
+		const i = u < COHORT_AGE_STEPS ? u | 0 : COHORT_AGE_STEPS - 1;
+		return cohortLumTable[i] + (cohortLumTable[i + 1] - cohortLumTable[i]) * (u - i);
+	}
+
 	// Mean luminosity (L☉) of the first `count` sampled positions, derived the
 	// way the renderer derives them. The exposure renormalisation needs "how
 	// bright is this field" as one number — at the model's age, and at the
@@ -321,26 +398,28 @@
 	function meanFieldLuminosity(model, stars, count, births, epochAge) {
 		const n = Math.min(count, stars.count);
 		if (!(n > 0)) return 0;
+		if (births) {
+			const targetAge = Number.isFinite(epochAge) ? epochAge : ((model && model.populations && model.populations.age) || 0);
+			let sum = 0;
+			let weight = 0;
+			for (let i = 0; i < n; i++) {
+				const birth = births[i];
+				const t = Math.max(0, Math.min(1, (targetAge - birth + 0.5 * COHORT_GATE_GYR) / COHORT_GATE_GYR));
+				const presence = t * t * (3 - 2 * t);
+				if (presence <= 0) continue;
+				sum += expectedCohortLuminosity(Math.max(0, targetAge - birth)) * presence;
+				weight += presence;
+			}
+			const priorLum = expectedCohortLuminosity(0.5 * Math.max(0, targetAge));
+			return (sum + COHORT_PRIOR_WEIGHT * priorLum) / (weight + COHORT_PRIOR_WEIGHT);
+		}
 		let sum = 0;
 		let weight = 0;
-		const gateAt = births
-			? ((typeof module !== 'undefined' && module.exports)
-				? require('./orbit.js').gateAt : window.OrbitLib.gateAt)
-			: null;
 		for (let i = 0; i < n; i++) {
-			let presence = 1;
-			if (births) {
-				const birth = births[i];
-				const age = Math.max(0, epochAge - birth);
-				presence = gateAt(birth, epochAge);
-				deriveStarWithAge(model, fieldStarSeed(model.seed, i), stars.component[i], stars.R[i],
-					stars.distToArm[i], age, calibrationRecord);
-			} else {
-				deriveStar(model, fieldStarSeed(model.seed, i), stars.component[i], stars.R[i],
-					stars.distToArm[i], calibrationRecord, stars.z[i]);
-			}
-			sum += calibrationRecord.luminosity * presence;
-			weight += presence;
+			deriveStar(model, fieldStarSeed(model.seed, i), stars.component[i], stars.R[i],
+				stars.distToArm[i], calibrationRecord, stars.z[i]);
+			sum += calibrationRecord.luminosity;
+			weight += 1;
 		}
 		return weight > 0 ? sum / weight : 0;
 	}

@@ -308,7 +308,7 @@
 				out.push({
 					x, y, z, scale, concentration,
 					tidal: scale * Math.pow(10, concentration),
-					ageGyr, weight, component,
+					formedAt, ageGyr, weight, component,
 					oldFrac: env.oldFrac,
 					R: env.dec.R, phi: env.dec.phi, zp: env.dec.zp,
 					distToArm: env.dec.distToArm,
@@ -419,6 +419,11 @@
 				if (memberMeta) {
 					memberMeta.age[slot] = cluster.ageGyr;
 					memberMeta.component[slot] = cluster.component;
+					if (memberMeta.birth) {
+						memberMeta.birth[slot] = Number.isFinite(cluster.formedAt)
+							? cluster.formedAt
+							: Math.max(0, ((model.populations && model.populations.age) || galaxy.AGE_REF) - cluster.ageGyr);
+					}
 				}
 				slot++;
 			}

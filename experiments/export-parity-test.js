@@ -47,6 +47,7 @@ const MODULES = [
 	{ file: '../src/core/selection.js', global: 'Selection' },
 	{ file: '../src/core/loop.js', global: 'Loop' },
 	{ file: '../src/core/device.js', global: 'Device' },
+	{ file: '../src/core/gpu-smoke.js', global: 'GpuSmoke' },
 	{ file: '../src/data/landmarks.js', global: 'Landmarks' },
 	{ file: '../src/data/constellations.js', global: 'Constellations' },
 	{ file: '../src/render/shaders.js', global: 'GalaxyShaders' },

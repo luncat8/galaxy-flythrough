@@ -85,8 +85,18 @@ function createSelection(camera, landmarks) {
 	function setRenderer(next) { renderer = next; }
 	function formationVisible(info, kind, index, age) {
 		const f = info && info.formation;
-		if (kind !== 0 || !f || !f.births || index >= f.count) return true;
-		return selectionOrbit().gateAt(f.births[index], age === undefined ? f.age : age) > 0;
+		if (!f || !f.births) return true;
+		if (kind === 0) {
+			if (index >= f.count) return true;
+			return selectionOrbit().gateAt(f.births[index], age === undefined ? f.age : age) > 0;
+		}
+		if (kind === 2 && info.blocks && info.blocks[2]) {
+			const slot = (info.blocks[2].offset | 0) + index;
+			if (slot >= 0 && slot < f.births.length) {
+				return selectionOrbit().gateAt(f.births[slot], age === undefined ? f.age : age) > 0;
+			}
+		}
+		return true;
 	}
 
 	function pick(x, y, width, height) {

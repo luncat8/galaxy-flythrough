@@ -580,8 +580,9 @@ function createSearch() {
 				stats.scanned++;
 				if ((packed & visibleBit) === 0) continue;
 				const index = slot - base;
-				if (k === P.BLOCK_FIELD && st.formation && st.formation.births
-					&& st.orbit.gateAt(st.formation.births[index], st.formation.age) <= 0) continue;
+				if ((k === P.BLOCK_FIELD || k === P.BLOCK_OBJECT) && st.formation && st.formation.births
+					&& slot < st.formation.births.length
+					&& st.orbit.gateAt(st.formation.births[slot], st.formation.age) <= 0) continue;
 				const x = view.getFloat32(byteOffset, true);
 				const y = view.getFloat32(byteOffset + 4, true);
 				const z = view.getFloat32(byteOffset + 8, true);

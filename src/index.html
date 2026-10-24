@@ -404,11 +404,17 @@
 	</div>
 	<div class="menu-row menu-actions">
 		<button id="scenario-copy" title="Copy the settings line this scenario applied, so the frame you are looking at is the frame you can report.">Copy line</button>
+		<button id="scenario-suite" type="button" title="Run the automated GPU &amp; formation check suite (First light cluster gate, 3.4–3.6 Gyr continuity, V14 morphology) and show/copy the report.">Run GPU suite</button>
+		<button id="scenario-copy-report" type="button" title="Copy the GPU &amp; formation suite report to the clipboard (works on file:// too).">Copy report</button>
+	</div>
+	<div class="menu-row menu-actions">
+		<a id="scenario-open-rig" class="menu-link-btn" href="webgpu-smoke.html" target="_blank" rel="noopener" title="Open the standalone WebGPU &amp; visual test rig (webgpu-smoke.html) with offscreen pixel readback, epoch filmstrip and log export.">Open GPU test rig ↗</a>
 	</div>
 	<div class="menu-row"><span id="scenario-state" class="menu-val">no scenario run</span></div>
 	<div id="scenario-what" class="menu-note"></div>
 	<div id="scenario-watch" class="menu-note scenario-watch"></div>
 	<div id="scenario-live" class="menu-note scenario-live"></div>
+	<pre id="scenario-report" class="flight-forecast" hidden></pre>
 	<div class="menu-hint">Run lands in Observe, orbiting the galactic centre, at the epoch and star rate the row names — so two rows are read from one camera. Star time moves the stars; Age picks the epoch; Evolve ties them. The live line is the built epoch, never the clock's wish.</div>
 </div>
 <div id="menu" class="panel">
@@ -736,6 +742,7 @@ Send expedition &#183; Commission route &#183; Found at the selected star &#183;
 	     and halo it reuses. -->
 	<script src="render/system-layer.js"></script>
 	<script src="render/view-modes-layer.js"></script>
+	<script src="core/gpu-smoke.js"></script>
 	<script src="main.js"></script>
 </body>
 </html>

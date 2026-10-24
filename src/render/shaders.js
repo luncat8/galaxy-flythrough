@@ -1062,7 +1062,8 @@ fn vs_main(
                 return hidden(vid);
         }
         var formationGate: f32 = 1.0;
-        if (starIdx < u32(camera.formation.z)) {
+        let gateLimit: u32 = u32(max(camera.formation.z, camera.formation.w));
+        if (starIdx < gateLimit) {
                 let birth: f32 = birthTimes[starIdx];
                 formationGate = smoothstep(birth, birth + camera.formation.y, camera.formation.x);
                 if (formationGate <= 0.0) { return hidden(vid); }
@@ -1886,6 +1887,10 @@ fn vs_main(
         if (neb.size <= 0.0 || neb.opacity <= 0.0) {
                 return hidden(vid);
         }
+        let nebGate: f32 = select(1.0, smoothstep(0.0, camera.formation.y, camera.formation.x), camera.formation.w > 0.0);
+        if (nebGate <= 0.0) {
+                return hidden(vid);
+        }
 
         // Pattern-family bulk rotation about the model centre (T = 0 is the
         // identity: theta = fract(0) = 0). No wobble: gas is rigid with the
@@ -1917,7 +1922,7 @@ fn vs_main(
         out.clipPos = vec4f(clip.xy + offset * clip.w, clip.zw);
         out.uv = corner;
         out.color = vec3f(neb.r, neb.g, neb.b);
-        out.brightness = neb.opacity;
+        out.brightness = neb.opacity * nebGate;
         return out;
 }
 

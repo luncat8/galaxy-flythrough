@@ -1364,6 +1364,57 @@ function cellManagerFrom(m, budget) {
                 previous = formed;
         }
         check('the drawn census grows monotonically through the run', monotone);
+
+        // Star clusters and composite objects are drawn in the reference frame
+        // even when prepare() starts at T = 0, and every member is gated by its
+        // formation time: 0 visible at First light (T = 0), growing monotonically
+        // through the epoch walk to 100 % at AGE_REF.
+        const deepInfo = deep.starBlocks();
+        const objOff = deepInfo.formation.objectOffset;
+        const objCnt = deepInfo.formation.objectCount;
+        const countActiveObjects = (age) => {
+                let active = 0;
+                for (let i = 0; i < objCnt; i++) {
+                        if (orbitLib.gateAt(deepInfo.formation.births[objOff + i], age) > 0) active++;
+                }
+                return active;
+        };
+        const activeAt0 = countActiveObjects(0);
+        const activeAt1 = countActiveObjects(1.0);
+        const activeAt4 = countActiveObjects(4.0);
+        const activeAtRef = countActiveObjects(galaxy.AGE_REF);
+        check('deep-time prepare places the reference cluster census and gates all clusters/objects off at T = 0',
+                deep.state.clusterCount === clustersLib.clusterCountFor(reference)
+                && objCnt === deep.state.objectStars && objCnt > 0
+                && activeAt0 === 0 && activeAt1 > 0 && activeAt4 > activeAt1
+                && activeAtRef === objCnt,
+                { clusters: deep.state.clusterCount, objCnt, activeAt0, activeAt1, activeAt4, activeAtRef });
+
+        // Continuous epoch exposure (magOffset) across 3.3 -> 3.7 Gyr and fine
+        // 2 Myr steps: no giant-box shot-noise oscillation at 3.5 Gyr, and
+        // setEpoch refreshes state.magOffset immediately.
+        const bandAges = [3.3, 3.4, 3.45, 3.5, 3.55, 3.6, 3.7];
+        const bandOffsets = bandAges.map((age) => {
+                deep.setEpoch(galaxy.modelAtAge(reference, age));
+                return deep.state.magOffset;
+        });
+        let bandMonotone = true;
+        let maxBandStep = 0;
+        for (let i = 1; i < bandOffsets.length; i++) {
+                if (bandOffsets[i] < bandOffsets[i - 1] - 1e-6) bandMonotone = false;
+                maxBandStep = Math.max(maxBandStep, Math.abs(bandOffsets[i] - bandOffsets[i - 1]));
+        }
+        let maxFineStep = 0;
+        let prevFine = null;
+        for (let age = 3.44; age <= 3.60 + 1e-9; age = Math.round((age + 0.002) * 1000) / 1000) {
+                deep.setEpoch(galaxy.modelAtAge(reference, age));
+                if (prevFine !== null) maxFineStep = Math.max(maxFineStep, Math.abs(deep.state.magOffset - prevFine));
+                prevFine = deep.state.magOffset;
+        }
+        check('epoch magOffset is smooth and monotonic across 3.3-3.7 Gyr with no 3.5 Gyr dip or 2 Myr jump',
+                bandMonotone && maxBandStep < 0.02 && maxFineStep < 0.001,
+                { bandOffsets: bandOffsets.map((v) => +v.toFixed(4)), maxBandStep: +maxBandStep.toFixed(5), maxFineStep: +maxFineStep.toFixed(6) });
+        deep.dispose();
 }
 
 // --- Report -------------------------------------------------------------
