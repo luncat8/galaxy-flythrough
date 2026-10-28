@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-24T14:05:16.237Z",
-  "modules": 37,
-  "totalChecks": 188,
-  "passed": 188,
+  "date": "2026-10-28T03:19:48.167Z",
+  "modules": 39,
+  "totalChecks": 198,
+  "passed": 198,
   "failed": 0,
   "checks": [
     {
@@ -454,6 +454,38 @@
       "detail": []
     },
     {
+      "name": "Asterisms loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "Asterisms registers exactly one window namespace (Asterisms)",
+      "pass": true,
+      "detail": [
+        "Asterisms"
+      ]
+    },
+    {
+      "name": "Asterisms exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "Asterisms has identical key sets (17 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "Asterisms binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
       "name": "FieldRamp loads under Node",
       "pass": true,
       "detail": null
@@ -674,6 +706,38 @@
     },
     {
       "name": "EconomyLib binds every key to the same value",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "NamedSky loads under Node",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "NamedSky registers exactly one window namespace (NamedSky)",
+      "pass": true,
+      "detail": [
+        "NamedSky"
+      ]
+    },
+    {
+      "name": "NamedSky exposes the same object in both environments",
+      "pass": true,
+      "detail": {
+        "same": true
+      }
+    },
+    {
+      "name": "NamedSky has identical key sets (12 keys)",
+      "pass": true,
+      "detail": {
+        "nodeOnly": [],
+        "winOnly": []
+      }
+    },
+    {
+      "name": "NamedSky binds every key to the same value",
       "pass": true,
       "detail": []
     },
@@ -921,7 +985,7 @@
       }
     },
     {
-      "name": "GpuSmoke has identical key sets (24 keys)",
+      "name": "GpuSmoke has identical key sets (25 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],

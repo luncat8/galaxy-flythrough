@@ -57,6 +57,8 @@ EXPERIMENTS = {
     'input':                 'experiments/input-test.js',
     'workspace':             'experiments/workspace-test.js',
     'scenario':              'experiments/scenario-test.js',
+    'named-sky':             'experiments/named-sky-test.js',
+    'asterisms':             'experiments/asterisms-test.js',
     'ship':                  'experiments/ship-test.js',
     'preset':                'experiments/preset-test.js',
     'renderer':              'experiments/renderer-test.js',
@@ -109,7 +111,7 @@ EXPERIMENTS = {
 }
 
 TYPES = {
-    'test':   ['export-parity', 'log-file', 'm1-smoke', 'panel', 'wgsl-validate', 'camera', 'input', 'workspace', 'scenario', 'ship', 'preset', 'renderer', 'gpu-smoke', 'hdr',
+    'test':   ['export-parity', 'log-file', 'm1-smoke', 'panel', 'wgsl-validate', 'camera', 'input', 'workspace', 'scenario', 'named-sky', 'asterisms', 'ship', 'preset', 'renderer', 'gpu-smoke', 'hdr',
                'landmark', 'gas-grid', 'view-modes-field', 'view-modes-page', 'view-modes-layer',
                'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'shape', 'model-parity', 'sampling',
                'density-distribution',
@@ -154,7 +156,7 @@ SUITES = {
     ],
     'view-tests': ALWAYS + [
         'log-file', 'panel', 'wgsl-validate', 'camera', 'input', 'preset',
-        'renderer', 'gas-grid', 'gpu-smoke', 'hdr', 'landmark', 'view-modes-field', 'view-modes-page',
+        'renderer', 'gas-grid', 'gpu-smoke', 'hdr', 'landmark', 'named-sky', 'asterisms', 'view-modes-field', 'view-modes-page',
         'view-modes-layer', 'tile-stream', 'tile-encoder-smoke', 'engine-switch',
     ],
     'world-tests': ALWAYS + [

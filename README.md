@@ -59,7 +59,12 @@ No framework, bundler, module loader, or runtime network connection is required.
   - **simple** — responsive friction-field integration
   - **apocenter** — experimental feature-guided elliptical orbits
 - Fly, galactic-centre orbit, and selected-object orbit cameras
-- Named-star selection, labels, and constellation lines
+- Named-star selection, labels, and constellation lines. The curated sky is the
+  **Milky Way's**, present day only: outside that (another galaxy type, a deep
+  epoch, or a star clock fast enough to smear a figure) it is gated off rather
+  than drawn wrong. **Create your own** instead — stand at a star and `K` builds
+  figures from apparent magnitude around where you actually are, with optional
+  auto-update as star time moves them. The two skies are exclusive.
 - Star selection and multi-select: click any drawn star (procedural, object, catalog or
   landmark), Shift+click to build a set of up to 256, select-around by a world-space radius,
   fly to one (`Shift+F` — a 2 s eased flight that ends orbiting the star at its luminosity
@@ -158,7 +163,9 @@ Other controls:
 - `1` / `2` / `3` — switch workspace (observe / fly / command); `G`/`g` — the helm
   toggle: enter the fly workspace as a spaceship, or return to the workspace it
   was entered from (see [Game mode](#game-mode-g) below)
-- `P` — toggle constellation lines
+- `P` — toggle the Milky Way constellation lines (present day, this galaxy only);
+  `Shift+P` — toggle the figures you created; `K` — create figures around the
+  selected object from its own sky
 - `T` — pause/resume star time (also works after clicking a result button)
 - **sim clock** / **arcade clock** (Controls panel, fly workspace) — the two ship-clock
   presets: real time (`R = 1` ship-s per wall-s) and the default rung plus the
@@ -516,6 +523,8 @@ The runtime is organized as classic-script namespaces under `src/`:
 - `stream/` — catalog bundle loading and cell residency
 - `core/` — camera, input, loop, star-set selection, typed selection history, and presets
 - `data/` — named landmarks, constellations, and the packed catalog
+- `core/named-sky.js` — when the curated sky is valid, and the sentence that says why not
+- `math/asterisms.js` — figures built around an observer from apparent magnitude
 
 The CPU keeps world positions in `f64`. GPU rendering uses camera-relative `f32` coordinates. Procedural objects are derived from stable hashes rather than mutable random-number state, so a galaxy is reproducible from its type and seed.
 

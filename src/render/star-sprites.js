@@ -34,7 +34,7 @@
 
 'use strict';
 
-const UNIFORM_FLOATS = 56;              // 224 bytes: camera block + orbit/engine/epoch + formation gate
+const UNIFORM_FLOATS = 60;              // 240 bytes: camera block + orbit/engine/epoch + formation gate + named-sky gate
 // Tonemap uniform: x=exposure, y=whitePoint, z=saturation, w=outputMode (0=SDR, 1=HDR),
 // then headroom, highlightDesat, 0, 0.
 const TONEMAP_UNIFORM_FLOATS = 8;
@@ -212,6 +212,12 @@ function createStarRenderer(device, context, format, options) {
         const objectsLib = window.ObjectsLib;
         const clustersLib = window.ClustersLib;
         let objectCapacity = 0;
+        // The named-sky gate (src/core/named-sky.js). The curated landmark
+        // block is today's Milky Way seen from the Sun, so the caller decides
+        // per frame whether it means anything; the shader reads it as one
+        // uniform lane. Default on: a Milky Way preset at the reference epoch
+        // is the case the gate exists to protect, not to hide.
+        let namedSkyGate = 1;
         const objectCount = Math.max(0, opts.objectCount === undefined ? objectsLib.OBJECT_COUNT_DEFAULT : opts.objectCount);
         const clusterCountOpt = opts.clusterCount === undefined ? null : Math.max(0, opts.clusterCount);
         // The exaggeration coefficient is view state in clusters.js (like
@@ -704,6 +710,10 @@ function createStarRenderer(device, context, format, options) {
                 magOffset: 0,
                 epochSweepAt: 0,
                 fieldSamples: 0,
+                // The named-sky gate (NamedSky): 1 draws the curated landmark
+                // block, 0 hides it. A uniform lane, not a record rewrite —
+                // the epoch runs continuously, so the gate follows per frame.
+                namedSky: 1,
         };
         configureMode(model);
 
@@ -767,8 +777,19 @@ function createStarRenderer(device, context, format, options) {
 	// keeps simple leaves the buffer current; the stateless masks need no
 	// state. The birth re-seed remains exactly where the field itself is
 	// new: prepare, regenerate and the R reset (seedThetaAll).
-	function setEngine(id, timeMyr) {
-		const next = orbit.engineMaskOf(id);
+        // The named sky's gate. Called per frame from the one place that knows
+        // both the epoch and the star-clock rate (main.js → NamedSky). Cheap
+        // enough to call unconditionally: it writes one float and one state
+        // field, and the frame that reads it is the frame it was set in.
+        function setNamedSky(on) {
+                const next = on ? 1 : 0;
+                namedSkyGate = next;
+                state.namedSky = next;
+                return next;
+        }
+
+        function setEngine(id, timeMyr) {
+                const next = orbit.engineMaskOf(id);
 		const prev = orbit.getEngine();
 		if ((next & 2) !== 0 && (prev & 2) === 0) carryThetaFromDrawn(timeMyr > 0 ? timeMyr : 0);
 		orbit.setEngine(next);
@@ -2254,6 +2275,10 @@ function createStarRenderer(device, context, format, options) {
                 // negative sentinel; local and catalog births are uploaded by
                 // uploadDynamic, so the GPU and CPU see the same gate domain.
                 uniform[55] = totalRecordCount;
+                // The named sky's gate (NamedSky): the curated block is a
+                // present-day Milky Way sky, so this frame either draws it or
+                // does not — no record is rewritten to say so.
+                uniform[56] = namedSkyGate;
                 device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
                 tonemapUniform[0] = linearExposure;
@@ -2435,6 +2460,7 @@ function createStarRenderer(device, context, format, options) {
                 setHeadroom,
                 setHighlightDesat,
                 setEngine,
+                setNamedSky,
                 resetSimpleState,
                 setClusterExaggeration,
                 setProceduralStars,

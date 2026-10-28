@@ -408,7 +408,7 @@ renderer.render(camera, WIDTH, HEIGHT, 1 / 60, input);
                 && uniform[26] === Math.fround(rendererModule.MAX_SIZE_PX),
                 { exposure: uniform[24], base: uniform[25], max: uniform[26] });
         check('uniform carries the star time in params.w', uniform[27] === Math.fround(1 / 60), uniform[27]);
-        check('uniform is exactly 224 bytes (camera block + orbit dynamics + epoch + formation gate)', gpu.uniformWrites[gpu.uniformWrites.length - 1].length === 224);
+        check('uniform is exactly 240 bytes (camera block + orbit dynamics + epoch + formation gate + named-sky gate)', gpu.uniformWrites[gpu.uniformWrites.length - 1].length === 240);
         check('formation lane carries epoch, fade width and procedural count',
                 uniform[52] === Math.fround(model.populations.age)
                 && uniform[53] === Math.fround(window.OrbitLib.BIRTH_FADE_GYR)

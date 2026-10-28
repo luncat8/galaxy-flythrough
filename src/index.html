@@ -592,6 +592,7 @@
                         <button data-action="reset" data-mode="observe fly command" title="Reset everything — the view and, while flying, the ship (full tank, zero velocity)">reset <span class="kbd">R</span></button>
                         <button data-action="dvMap" data-mode="observe command" title="Cycle the open system view: schematic / delta-v map / delta-v rails (click two graph nodes to route)">cycle view <span class="kbd">B</span></button>
                         <button data-action="clearSet" data-mode="observe fly command" title="Clear the selection set (click selects, Shift+click adds)">clear set <span class="kbd">X</span></button>
+                        <button data-action="makeFigures" data-mode="observe fly command" title="Build your own constellation figures from the selected star's position: the brightest stars of that sky, connected the way an observer would draw them. Select a star first — typically your home or HQ">create figures <span class="kbd">K</span></button>
                         <button data-action="shipRefuel" data-mode="fly" title="Hangar refill: re-arm the Δv tank to the class's full load (station refills land with docking, G3)">refuel ship</button>
                         <button data-action="clockSim" data-mode="fly" title="SIM clock: real time — one ship-second per wall-second (R = 1). Honest burns take the years they take; docking taps land at human speed. Turns the arcade coast warp off.">sim clock</button>
                         <button data-action="clockArcade" data-mode="fly" title="ARCADE clock: snaps to the class's default rung and turns on the autopilot coast warp — a long unpowered leg plays out in seconds while burn and brake keep the pilot's rung. The wheel still reshapes the base rung; SIM turns the warp off.">arcade clock</button>
@@ -599,7 +600,13 @@
                 </div>
                 <div class="help-checks">
                         <label data-mode="observe fly command" title="The camera rides behind the centred object, the view aligned with its movement vector. Drag or A/D to glance around (it swings back), W/S and the wheel for distance. While flying: the ship trails the object at the stand-off"><input type="checkbox" data-action="chaseFollow"> follow motion <span class="kbd">j</span></label>
-                        <label data-mode="observe fly command" title="Constellation lines"><input type="checkbox" data-action="constellations"> constellations <span class="kbd">P</span></label>
+                        <!-- ui.22: two skies, never both. The curated one is
+                             today's Milky Way seen from the Sun, so it is off
+                             — greyed, with the reason in its title — anywhere
+                             else, and the observer builds their own instead. -->
+                        <label id="label-constellations" data-mode="observe fly command" title="The curated Milky Way figures — today's sky from the Sun. Present day only (within 1 Gyr of 13.5 Gyr), and paused or below 5 Myr/s so a figure can be read"><input type="checkbox" data-action="constellations"> Milky Way constellations <span class="kbd">P</span></label>
+                        <label id="label-my-figures" data-mode="observe fly command" title="Your own figures: built by hand from the selected star's position, from the brightest stars of that sky. Exclusive with the Milky Way set"><input type="checkbox" data-action="myFigures"> my constellations <span class="kbd">Shift+P</span></label>
+                        <label data-mode="observe fly command" title="Rebuild your figures as star time runs: a figure goes stale when its stars have moved, so dim ones drop out and bright ones join"><input type="checkbox" data-action="figuresAuto"> figures auto-update</label>
                         <label data-mode="observe command" title="The close-system schematic of the selected star (Esc also closes). A docked pilot opens the station schematic from the Flight panel instead"><input type="checkbox" data-action="systemView"> system view <span class="kbd">V</span></label>
                         <label data-mode="observe fly command" title="Freeze / resume the clock (a search freezes it too; T resumes). While flying this freezes ship and sky together"><input type="checkbox" data-action="freezeTime"> pause star time <span class="kbd">T</span></label>
                 </div>
@@ -690,6 +697,10 @@ Send expedition &#183; Commission route &#183; Found at the selected star &#183;
              Loads after objects.js, whose budget apportionment it reuses. -->
         <script src="math/clusters.js"></script>
         <script src="math/coords.js"></script>
+        <!-- The observer's own figures (ui.22): what a human at one position
+             would draw between the brightest stars of their sky. Pure math, so
+             it loads with the other math and before the layer that draws it. -->
+        <script src="math/asterisms.js"></script>
         <script src="math/field-ramp.js"></script>
         <script src="math/view-modes-field.js"></script>
         <script src="render/view-modes-renderer.js"></script>
@@ -710,6 +721,12 @@ Send expedition &#183; Commission route &#183; Found at the selected star &#183;
 	     deltav.js, the leg profile through route.js — loaded after both and
 	     before the main.js that flies it. -->
 	<script src="core/ship.js"></script>
+	<!-- When the named sky exists at all (ui.22): the curated stars and their
+	     figures are today's Milky Way seen from the Sun, so this gates them on
+	     the epoch window and the star clock's rate. Loads after galaxy.js,
+	     whose AGE_REF sets the window, and before trade.js, which refuses to
+	     settle a colony on a star the epoch has not formed yet. -->
+	<script src="core/named-sky.js"></script>
 	<!-- The colony economy (trade series): the event queue, the resource map and
 	     the network. The queue is standalone; the economy reads planets.js and
 	     hash.js; the network reads both. All three load before main.js, which

@@ -112,6 +112,11 @@ const TRADE_SHIP_DOCKED = 0, TRADE_SHIP_WAITING = 2, TRADE_SHIP_FOUNDING = 3, TR
 const MAP_SIZE = 1024;
 const MAP_MASK = MAP_SIZE - 1;
 const MAP_LOAD_MAX = 640;        // above this a rebuild falls back to a plain scan
+// The observer's own figures (`src/math/asterisms.js`). Sized from that
+// module's default so the layer never has to grow a buffer for a bigger set;
+// a figure record that exceeds it draws its first `ASTERISM_MAX_STARS` stars.
+const ASTERISM_MAX_STARS = 64;
+const ASTERISM_STROKE = 'rgba(150, 235, 190, 0.38)';
 
 const labelCoords = (typeof module !== 'undefined' && module.exports)
 	? require('../math/coords.js')
@@ -405,6 +410,16 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	// Off for galaxies that have no named stars: the layer is a fixed table of
 	// entries, so "nothing to say about this model" is a flag, not a second layer.
 	let enabled = true;
+	// The named sky's gate (`src/core/named-sky.js`): the curated table is
+	// today's Milky Way seen from the Sun, so outside its epoch window — or
+	// under a star clock fast enough to smear it — the layer stops drawing and
+	// stops updating. Separate from `enabled`, which is about the table itself.
+	let namedSkyOn = true;
+	// The observer's own figures, built from the selected position
+	// (`src/math/asterisms.js`). Exclusive with the curated ones.
+	let asterisms = null;
+	const astXY = new Float32Array(ASTERISM_MAX_STARS * 2);
+	const astFront = new Uint8Array(ASTERISM_MAX_STARS);
 	let orbitModel = null;
 	let orbitTime = 0;
 	const orbitScratch = new Float64Array(3);
@@ -435,38 +450,92 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		tradeDetail = detail === undefined ? 2 : detail | 0;
 	}
 
-	// --- Star-set rings (plan §3.5) ---------------------------------------
-	// The renderer's identity array, the set's keys, and the key→slot map that
-	// connects them. The map is rebuilt only when the set changes or the block
-	// contents change (`dynamicVersion`), never per frame.
+	// --- Key → resident-slot maps -----------------------------------------
+	// Two callers need "where is this record drawn right now": the selection
+	// set's rings (plan §3.5) and the observer's own figures (`asterisms`),
+	// which are named by record key because the stars they connect move. Both
+	// are the same lookup, so it is one factory: a key is inserted, then one
+	// pass over the live blocks fills in the slot, and a key that is not
+	// resident keeps slot −1 and simply draws nothing.
+	//
+	// Rebuilt only when the key list changes or the block contents change
+	// (`dynamicVersion`), never per frame.
+	function createKeyMap(size) {
+		const mask = size - 1;
+		const key = new Uint32Array(size);
+		const slot = new Int32Array(size);
+		const kind = new Int8Array(size);
+		const used = new Uint8Array(size);
+		const records = labelRecords();
+		const map = { key, slot, kind, used, ok: false, size };
+
+		map.probe = function (k, forInsert) {
+			// One multiplicative mix; the low bits of a PCG key are already well
+			// distributed, so a mask is enough at this load factor.
+			let at = (Math.imul(k, 0x9e3779b1) >>> 0) & mask;
+			let guard = 0;
+			while (used[at] && key[at] !== k) {
+				if (++guard > size) return -1;
+				at = (at + 1) & mask;
+			}
+			if (used[at]) return at;
+			return forInsert ? at : -1;
+		};
+
+		// Insert every key, then one pass over the blocks resolves them.
+		// `ok` is false when the table could not take the keys, which sends the
+		// caller to its plain-scan fallback.
+		map.build = function (info, keys, count) {
+			map.ok = false;
+			if (!records || !info || !info.identity || !info.view || !keys || count <= 0) return map;
+			used.fill(0);
+			for (let i = 0; i < count; i++) {
+				const k = keys[i] >>> 0;
+				const at = map.probe(k, true);
+				if (at < 0) return map;               // table full: plain scan
+				used[at] = 1;
+				key[at] = k;
+				slot[at] = -1;
+				kind[at] = -1;
+			}
+			const identity = info.identity;
+			const view = info.view;
+			const blocks = info.blocks;
+			const visibleBit = records.FLAG_VISIBLE << 16;
+			for (let b = 0; b < blocks.length; b++) {
+				const block = blocks[b];
+				const n = block.count | 0;
+				if (n <= 0) continue;
+				const end = (block.offset | 0) + n;
+				for (let s = block.offset | 0; s < end; s++) {
+					const at = map.probe(identity[s] >>> 0, false);
+					if (at < 0 || slot[at] >= 0) continue;
+					if ((view.getUint32(s * records.RECORD_BYTES + 12, true) & visibleBit) === 0) continue;
+					slot[at] = s;
+					kind[at] = b;
+				}
+			}
+			map.ok = true;
+			return map;
+		};
+		return map;
+	}
+
 	let starSource = null;              // renderer.starBlocks()
 	let lastDynamicVersion = -1;
 	let setKeys = null;                 // the set's keys (Uint32Array), borrowed
 	let setCount = 0;
 	let mapDirty = false;
 	let mapOk = false;                  // false → the plain-scan fallback
-	const mapKey = new Uint32Array(MAP_SIZE);
-	const mapSlot = new Int32Array(MAP_SIZE);   // global slot, or −1 if not resident
-	const mapKind = new Int8Array(MAP_SIZE);    // block kind, or −1
-	const mapUsed = new Uint8Array(MAP_SIZE);
+	const keyMap = createKeyMap(MAP_SIZE);
+	// The observer's figures resolve through their own map: a different key
+	// list, and a rebuild cadence of its own (a figure set changes when the
+	// user rebuilds it, not when the selection does).
+	const astMap = createKeyMap(MAP_SIZE);
+	let astDirty = true;
+	let astVersion = -1;
 
-	function mapHash(key) {
-		// One multiplicative mix; the low bits of a PCG key are already well
-		// distributed, so a mask is enough at this load factor.
-		return (Math.imul(key, 0x9e3779b1) >>> 0) & MAP_MASK;
-	}
-
-	// Probe for `key`, returning the slot it occupies or −1 when absent.
-	function mapProbe(key, forInsert) {
-		let slot = mapHash(key);
-		let guard = 0;
-		while (mapUsed[slot] && mapKey[slot] !== key) {
-			if (++guard > MAP_SIZE) return -1;
-			slot = (slot + 1) & MAP_MASK;
-		}
-		if (mapUsed[slot]) return slot;
-		return forInsert ? slot : -1;
-	}
+	function mapProbe(key, forInsert) { return keyMap.probe(key, forInsert); }
 
 	function setStarSource(ref) {
 		starSource = ref || null;
@@ -485,38 +554,9 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	function rebuildMap() {
 		mapDirty = false;
 		mapOk = false;
-		const records = labelRecords();
-		const info = starSource;
-		if (!records || !info || !info.identity || !info.view || !setKeys
-			|| setCount <= 0 || setCount > MAP_LOAD_MAX) return;
-		mapUsed.fill(0);
-		for (let i = 0; i < setCount; i++) {
-			const key = setKeys[i] >>> 0;
-			const slot = mapProbe(key, true);
-			if (slot < 0) return;                       // table full: plain scan
-			mapUsed[slot] = 1;
-			mapKey[slot] = key;
-			mapSlot[slot] = -1;
-			mapKind[slot] = -1;
-		}
-		const identity = info.identity;
-		const view = info.view;
-		const blocks = info.blocks;
-		const visibleBit = records.FLAG_VISIBLE << 16;
-		for (let k = 0; k < blocks.length; k++) {
-			const block = blocks[k];
-			const count = block.count | 0;
-			if (count <= 0) continue;
-			const end = (block.offset | 0) + count;
-			for (let slot = block.offset | 0; slot < end; slot++) {
-				const probe = mapProbe(identity[slot] >>> 0, false);
-				if (probe < 0 || mapSlot[probe] >= 0) continue;
-				if ((view.getUint32(slot * records.RECORD_BYTES + 12, true) & visibleBit) === 0) continue;
-				mapSlot[probe] = slot;
-				mapKind[probe] = k;
-			}
-		}
-		mapOk = true;
+		if (setCount > MAP_LOAD_MAX) return;
+		keyMap.build(starSource, setKeys, setCount);
+		mapOk = keyMap.ok;
 	}
 
 	// The plain-scan fallback: membership by a linear search of the set. Only
@@ -549,8 +589,8 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		if (mapOk) {
 			for (let i = 0; i < setCount; i++) {
 				const probe = mapProbe(setKeys[i] >>> 0, false);
-				if (probe < 0 || mapSlot[probe] < 0) continue;
-				ringAtSlot(view, info, records, mapSlot[probe], mapKind[probe],
+				if (probe < 0 || keyMap.slot[probe] < 0) continue;
+				ringAtSlot(view, info, records, keyMap.slot[probe], keyMap.kind[probe],
 					orbit, viewProj, cam, width, height);
 			}
 		} else {
@@ -574,6 +614,10 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	function ringAtSlot(view, info, records, slot, kind, orbit, viewProj, cam, width, height) {
 		const byteOffset = slot * records.RECORD_BYTES;
 		const packed = view.getUint32(byteOffset + 12, true);
+		// A curated star's ring follows the named sky's gate: the GPU hides the
+		// whole block outside its epoch window, so a ring must not linger on a
+		// star that is not drawn.
+		if (kind === 1 && !namedSkyOn) return;
 		// All non-landmark blocks use their global slot in the same birth array
 		// as the vertex shader; local and catalog rings must not linger at T=0.
 		const birthIndex = (kind === 0 || kind === 2 || kind === 3 || kind === 4) ? slot : -1;
@@ -981,18 +1025,26 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	function draw(camera, width, height) {
 		const chromeOn = chrome.active;
 		const tradeDrawn = tradeOn && tradeNet && tradeNet.portCount > 0;
-		if (!enabled && !chromeOn && !chromeDrawn && !tradeDrawn && !tradeWasDrawn) return;
+		const skyOn = namedSkyActive();
+		const astOn = asterismsActive();
+		// The field's own marks (set rings, observer figures) do not need the
+		// curated table, so a procedural galaxy — which has no named sky at all
+		// — still gets them. They resolve through the renderer's records.
+		const fieldOn = enabled || astOn;
+		if (!skyOn && !fieldOn && !chromeOn && !chromeDrawn && !tradeDrawn && !tradeWasDrawn) return;
 		ctx.clearRect(0, 0, width, height);
 		chromeDrawn = chromeOn;
 		tradeWasDrawn = !!tradeDrawn;
 		if (!(width > 0) || !(height > 0)) return;
-		if (enabled) {
+		if (skyOn) {
 			projectAll(camera, width, height);
 			if (showLines) drawLines();
 			drawLabels();
 			drawSelectedRing();
-			drawSetRings(camera, width, height);
 		}
+		if (fieldOn) drawSetRings(camera, width, height);
+		// Exclusive with the curated figures: one sky, one set of lines.
+		if (astOn) drawAsterisms(camera, width, height);
 		// The trade pass runs with labels off too: it is a mode of its own.
 		if (tradeDrawn) drawTrade(camera, width, height);
 		if (chromeOn) drawShipChrome(ctx, chrome, camera, width, height);
@@ -1019,9 +1071,96 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		return showLines;
 	}
 
+	// The named sky's gate (src/core/named-sky.js). `enabled` says whether this
+	// galaxy has a curated table at all; this says whether that table means
+	// anything *now* — the epoch window and the star clock's rate. Off, the
+	// layer neither projects nor updates the named stars, so the figures stop
+	// being redrawn against a sky that has already sheared away from them.
+	function setNamedSky(next) {
+		const on = !!next;
+		if (on === namedSkyOn) return namedSkyOn;
+		namedSkyOn = on;
+		if (!on) ctx.clearRect(0, 0, canvas.width, canvas.height);
+		return namedSkyOn;
+	}
+
+	function namedSkyActive() { return enabled && namedSkyOn; }
+
+	// The observer's own figures (`src/math/asterisms.js`). Borrowed, never
+	// owned: main.js builds them from the selected position and hands the
+	// record over. Exclusive with the curated figures by construction — the
+	// named sky has to be off for these to draw, which is what keeps one sky
+	// from wearing two sets of lines.
+	function setAsterisms(fig) {
+		const next = fig && fig.count > 0 ? fig : null;
+		if (next === asterisms) return asterisms;
+		asterisms = next;
+		astDirty = true;
+		return asterisms;
+	}
+
+	function asterismsActive() { return !!asterisms && !namedSkyActive(); }
+
+	// The figures at the stars' *drawn* positions: each figure star is a
+	// record key, resolved through the same map the set rings use, so a line
+	// ends on the sprite the GPU drew rather than on where the star was when
+	// the figure was built. A star that streamed out loses its lines and keeps
+	// its slot — exactly what a set ring does.
+	function drawAsterisms(camera, width, height) {
+		const fig = asterisms;
+		const info = starSource;
+		const orbit = labelOrbit();
+		const records = labelRecords();
+		if (!fig || fig.count <= 0 || !info || !info.identity || !info.view || !orbit || !records) return;
+		if (astDirty || astVersion !== info.dynamicVersion) {
+			astVersion = info.dynamicVersion;
+			astDirty = false;
+			astMap.build(info, fig.keys, fig.count);
+		}
+		const view = info.view;
+		const viewProj = camera.buildViewProj(width / height);
+		const cam = camera.cameraPos;
+		let drawn = 0;
+		for (let i = 0; i < fig.count; i++) {
+			astFront[i] = 0;
+			const at = astMap.probe(fig.keys[i] >>> 0, false);
+			if (at < 0 || astMap.slot[at] < 0) continue;
+			const slot = astMap.slot[at];
+			const byteOffset = slot * records.RECORD_BYTES;
+			const packed = view.getUint32(byteOffset + 12, true);
+			// Landmark slots are birth positions the named-sky gate has already
+			// hidden; a figure built on the field reads its records instead.
+			const kind = astMap.kind[at];
+			if (kind === 1) continue;
+			let px = view.getFloat32(byteOffset, true);
+			let py = view.getFloat32(byteOffset + 4, true);
+			let pz = view.getFloat32(byteOffset + 8, true);
+			orbit.engineRecordPosition(orbitScratch, px, py, pz, packed, orbitTime, orbitModel);
+			px = orbitScratch[0]; py = orbitScratch[1]; pz = orbitScratch[2];
+			if (!labelCoords.projectToScreen(viewProj, px, py, pz,
+				cam[0], cam[1], cam[2], width, height, scratch)) continue;
+			astXY[i * 2] = scratch[0];
+			astXY[i * 2 + 1] = scratch[1];
+			astFront[i] = 1;
+			drawn++;
+		}
+		if (drawn === 0) return;
+		ctx.strokeStyle = ASTERISM_STROKE;
+		ctx.lineWidth = 1;
+		ctx.beginPath();
+		for (let e = 0; e < fig.edgeCount; e++) {
+			const a = fig.edges[e * 2], b = fig.edges[e * 2 + 1];
+			if (!astFront[a] || !astFront[b]) continue;
+			ctx.moveTo(astXY[a * 2], astXY[a * 2 + 1]);
+			ctx.lineTo(astXY[b * 2], astXY[b * 2 + 1]);
+		}
+		ctx.stroke();
+	}
+
 		return {
 		resize, draw, setSelected, setOrbitState, setStarSource, setSelectedKeys,
 		toggleConstellations, setConstellations, constellationsVisible, setEnabled,
+		setNamedSky, namedSkyActive, setAsterisms, asterismsActive,
 		setShipChrome, setTradeOverlay, tradeRecordPosition, tradeRecordPositionAt,
 	};
 }

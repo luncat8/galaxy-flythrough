@@ -1023,3 +1023,74 @@ Next: run V13c in a browser on real hardware. T6 (a real intra fleet) stays
 deferred and, if scheduled, must bring its own system clock and queue rather
 than reusing the galaxy heap.
 
+
+## trade.23 — 2026-10-28 — A colony needs a star that has formed
+
+The user's second reported defect, and the same mistake as the constellation
+one (`archive/ui.x-worklog.md`, ui.22): the network seeded from the *reference*
+census, so a run at first light — the field all gas, not one procedural star
+condensed — still arrived with four colonies and a fleet already sailing between
+stars that do not exist yet. `startSystems` walked the landmarks and the field's
+near stars with no epoch in sight, and `expandFrontierFromField` proposed worlds
+the same way.
+
+**The gate.** Both paths now read the field's own birth channel — the same one
+the vertex stage's formation gate reads — through one helper:
+
+```js
+function fieldFormed(field, index, age) {
+        const births = field ? field.birth : null;
+        if (!births || index >= births.length) return true;
+        return orbit.gateAt(births[index], age) > 0;
+}
+```
+
+`renderer.fieldBuffers()` already carries `birth` (the renderer fills it from
+`starTypes.sampleFieldBirth` on every field draw), so no new data is threaded
+through: `trade.js` gains `orbit.js` and `named-sky.js` as dependencies and the
+seed map gains a per-candidate test. A field with no birth channel keeps today's
+behaviour, which is what every pre-existing fixture passes.
+
+The curated named stars are gated by `NamedSky` rather than by the field: they
+are today's sky, so outside its epoch window they are not there to settle
+either. That is why `core/named-sky.js` loads before `core/trade.js` in
+`index.html`.
+
+**What the measurement said before the test was written.** The first version of
+the new check asserted that a 1 Gyr epoch would seed a *smaller* local sky, and
+it failed with zero candidates — which turned out to be the module being right
+and the test being wrong. Measured on the page's own 300k sample, the earliest
+birth within the seed radius of home (`model.home.orbitTarget` = `[0,0,0]`, the
+galactic centre) is **1.367 Gyr**, so at 1 Gyr there is no local sky at all:
+
+| age (Gyr) | formed of 300k | near home (1.2 kpc) | of those, formed |
+|---|---|---|---|
+| 0 | 0 | 1 019 | 0 |
+| 1 | 2 735 | 1 019 | 0 |
+| 2 | 13 701 | 1 019 | 12 |
+| 3 | 30 634 | 1 019 | 34 |
+| 5 | 104 717 | 1 019 | 219 |
+| 13.5 | 299 888 | 1 019 | 1 016 |
+
+The test now uses 3 Gyr as "young" and pins the 1 Gyr case as *empty*, which is
+the stronger statement anyway.
+
+**Validation.** `trade` **287/287**, with the new §5b block: the fixture carries
+a finite birth channel inside the model's span; first light seeds an empty map
+and the network arrives with `portCount === 0`, `shipCount === 0`,
+`worldCount === 0`; running that empty sky for 5 000 years still founds nothing;
+a 3 Gyr epoch seeds from the local sky it has, every settled field star has
+`birth ≤ 3 + BIRTH_FADE_GYR`, and the seed count is strictly below the
+reference epoch's; the present-day sky still seeds its colonies; and with no
+field the named sky alone settles the capital at `AGE_REF` but nothing at first
+light. `changed` **21/21**.
+
+An evolving run from first light therefore starts with no economy, which is
+correct but bare: `expandFrontierFromField` needs a big colony to measure reach
+from, so an empty network never bootstraps itself. The honest fix — the network
+seeds itself the first time its home sky has stars — is a main.js retry, not a
+trade.js change, and is recorded on `deferred-open-work.md` rather than guessed
+at here.
+
+Next: T6 (`trade-4-plan.md`) — the intra fleet this slice's gates make
+meaningful, since a fleet needs stars that exist.

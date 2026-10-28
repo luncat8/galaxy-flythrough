@@ -1545,6 +1545,11 @@ Shipped, in `archive/`:
   shipped (`trade.9`–`trade.17`); the browser pass over the panel, the marks and
   the calendar is the open item (`deferred-browser-visual-plan.md`). Credits (F4)
   and capital-in-the-settle (F6) stay deferred.
+- [`trade-4-plan.md`](trade-4-plan.md) — T6, planned not built: a real intra-system
+  fleet on the schematic's own clock and queue, gated on the hull classes that
+  can actually fly a leg; online when watched, closed-form average when not.
+- [`deferred-open-work.md`](deferred-open-work.md) — the index of open,
+  unscheduled work (E5, E6, the engine-switch residual, T6, the browser rows).
 - [`trade-3-plan.md`](trade-3-plan.md) — two-tier trade after trade-2: 3 goods
   inside a star (resource / product / passenger) as closed-form rates taxed by
   the 0.5.4 delta-v graph, 7 goods between stars, many worlds under one

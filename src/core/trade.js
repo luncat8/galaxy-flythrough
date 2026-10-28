@@ -28,6 +28,12 @@
 	const deltav = (typeof module !== 'undefined' && module.exports)
 		? require('../math/deltav.js')
 		: window.DeltaVLib;
+	const orbit = (typeof module !== 'undefined' && module.exports)
+		? require('../math/orbit.js')
+		: window.OrbitLib;
+	const namedSky = (typeof module !== 'undefined' && module.exports)
+		? require('./named-sky.js')
+		: window.NamedSky;
 	const LY_PER_KPC = 3261.563673;
 
 	const PORT_CHANCE = 0.35;           // stars the galaxy has settled at all
@@ -1404,6 +1410,25 @@
 	// Built once per galaxy at boot, so the allocations are not per frame.
 	function byHomeDistance(a, b) { return a.d2 - b.d2; }
 
+	// A colony needs a star, and a star needs to have *formed*. The network
+	// used to seed from the reference census, so a run at first light — where
+	// the field is all gas and not one procedural star has condensed — still
+	// arrived with four colonies and a fleet sailing between them. Both the
+	// seed map and the frontier scan read the same birth channel the vertex
+	// gate does, so the economy exists exactly where the sky has stars.
+	function fieldFormed(field, index, age) {
+		const births = field ? field.birth : null;
+		if (!births || index >= births.length) return true;
+		return orbit.gateAt(births[index], age) > 0;
+	}
+
+	// The curated named stars are today's sky (src/core/named-sky.js), so
+	// outside that window they are not there to settle either.
+	function namedSkySettled(model) {
+		return !!model && !!model.milkyWay && namedSky.reasonOf(model, 0) !== namedSky.REASON_NO_SKY
+			&& namedSky.reasonOf(model, 0) !== namedSky.REASON_EPOCH;
+	}
+
 	function pushStart(out, net, kind, index, key, x, y, z, colorIndex, absMag, name) {
 		const dx = x - net.homeX, dy = y - net.homeY, dz = z - net.homeZ;
 		const ref = { kind, index, key: key >>> 0, x, y, z, colorIndex, absMag };
@@ -1412,7 +1437,9 @@
 
 	function startSystems(net, model, field, landmarks, out) {
 		out.length = 0;
-		if (model.milkyWay && landmarks) {
+		const age = model && model.populations && Number.isFinite(model.populations.age)
+			? model.populations.age : 0;
+		if (namedSkySettled(model) && landmarks) {
 			for (let i = 0; i < landmarks.count; i++) {
 				const e = landmarks.ENTRIES[i];
 				pushStart(out, net, planets.BLOCK_LANDMARK, i, planets.landmarkKey(i),
@@ -1428,6 +1455,8 @@
 			for (let i = 0; i < field.count; i++) {
 				const dx = field.x[i] - net.homeX, dy = field.y[i] - net.homeY, dz = field.z[i] - net.homeZ;
 				if (dx * dx + dy * dy + dz * dz > r2) continue;
+				// A star that has not formed at this epoch is not a place.
+				if (!fieldFormed(field, i, age)) continue;
 				pushStart(near, net, planets.BLOCK_FIELD, i, starTypes.fieldStarSeed(model.seed, i),
 					field.x[i], field.y[i], field.z[i], 0, 0, '');
 			}
@@ -2186,11 +2215,16 @@
 		const nearSq = reach * reach;
 		const liveGate = net.geom.moving && net.livePosition ? 1 : 0;
 		let liveUsed = 0;
+		const age = model.populations && Number.isFinite(model.populations.age)
+			? model.populations.age : 0;
 		for (let n = 0; n < FRONTIER_SCAN && net.candidateCount < MAX_CANDIDATES; n++) {
 			fi += 1;
 			if (fi >= field.count) fi = 0;
 			const key = frontierFieldKey(model.seed, fi);
 			if (net.discovered.has(key)) continue;
+			// The same birth gate as the seed map: the frontier cannot propose
+			// a world around a star the epoch has not formed yet.
+			if (!fieldFormed(field, fi, age)) continue;
 			const fx = field.x[fi], fy = field.y[fi], fz = field.z[fi];
 			let near = false;
 			for (let b = 0; b < bigCount; b++) {

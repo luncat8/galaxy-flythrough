@@ -1,8 +1,84 @@
 {
-  "total": 275,
-  "passed": 275,
+  "total": 287,
+  "passed": 287,
   "failed": 0,
   "checks": [
+    {
+      "name": "the fixture carries a finite birth channel inside the model’s own span",
+      "pass": true,
+      "detail": {
+        "earliest": 0.0007490249436446419,
+        "latest": 13.499999999958002
+      }
+    },
+    {
+      "name": "at first light the seed map is empty — no star has formed to settle",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "and the network arrives with no colony and no hull",
+      "pass": true,
+      "detail": {
+        "ports": 0,
+        "ships": 0
+      }
+    },
+    {
+      "name": "running an empty sky for five millennia still founds nothing",
+      "pass": true,
+      "detail": {
+        "ports": 0,
+        "founded": 0
+      }
+    },
+    {
+      "name": "the present-day sky still seeds its colonies",
+      "pass": true,
+      "detail": 4
+    },
+    {
+      "name": "and its seed count is unchanged by the gate at the reference epoch",
+      "pass": true
+    },
+    {
+      "name": "a young epoch seeds from the local sky it has by then",
+      "pass": true,
+      "detail": {
+        "systems": 34,
+        "ports": 4
+      }
+    },
+    {
+      "name": "every field star it settles has formed by that epoch",
+      "pass": true,
+      "detail": 34
+    },
+    {
+      "name": "and the gate really removed candidates the reference sky would have taken",
+      "pass": true,
+      "detail": {
+        "young": 34,
+        "today": 460
+      }
+    },
+    {
+      "name": "the named sky is refused at first light but present at the reference epoch",
+      "pass": true
+    },
+    {
+      "name": "with no field the named sky alone still settles the capital",
+      "pass": true,
+      "detail": 4
+    },
+    {
+      "name": "and at first light the named sky settles nothing either",
+      "pass": true,
+      "detail": {
+        "systems": 0,
+        "ports": 0
+      }
+    },
     {
       "name": "thirteen uniquely named resources, all worth hauling",
       "pass": true

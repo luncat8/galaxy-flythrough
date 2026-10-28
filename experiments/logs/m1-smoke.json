@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-24T14:05:16.618Z",
+  "date": "2026-10-28T03:19:48.858Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -15,6 +15,7 @@
     "math/objects.js",
     "math/clusters.js",
     "math/coords.js",
+    "math/asterisms.js",
     "math/field-ramp.js",
     "math/view-modes-field.js",
     "render/view-modes-renderer.js",
@@ -27,6 +28,7 @@
     "core/search.js",
     "core/route.js",
     "core/ship.js",
+    "core/named-sky.js",
     "core/exec-queue.js",
     "core/economy.js",
     "core/trade.js",
@@ -54,6 +56,7 @@
     "core/gpu-smoke.js",
     "core/input.js",
     "core/loop.js",
+    "core/named-sky.js",
     "core/presets.js",
     "core/route.js",
     "core/scenarios.js",
@@ -67,6 +70,7 @@
     "data/constellations.js",
     "data/landmarks.js",
     "main.js",
+    "math/asterisms.js",
     "math/clusters.js",
     "math/coords.js",
     "math/deltav.js",
@@ -92,8 +96,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 120,
-  "passed": 120,
+  "totalChecks": 122,
+  "passed": 122,
   "failed": 0,
   "checks": [
     {
@@ -105,8 +109,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 44,
-        "sources": 44,
+        "scripts": 46,
+        "sources": 46,
         "missing": []
       }
     },
@@ -398,6 +402,7 @@
         "ObjectsLib",
         "ClustersLib",
         "Coords",
+        "Asterisms",
         "FieldRamp",
         "ViewModesField",
         "ViewModesRenderer",
@@ -410,6 +415,7 @@
         "Search",
         "RouteLib",
         "Ship",
+        "NamedSky",
         "ExecQueueLib",
         "EconomyLib",
         "TradeLib",
@@ -511,6 +517,20 @@
       "pass": true,
       "detail": {
         "keys": 6
+      }
+    },
+    {
+      "name": "Asterisms loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 17
+      }
+    },
+    {
+      "name": "NamedSky loads under Node and is registered on window",
+      "pass": true,
+      "detail": {
+        "keys": 12
       }
     },
     {

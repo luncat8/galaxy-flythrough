@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-24T14:05:16.725Z",
+  "date": "2026-10-28T03:19:48.996Z",
   "parts": [
     {
       "name": "pcg-hash",
@@ -19,7 +19,7 @@
     },
     {
       "name": "star-sprite",
-      "lines": 576
+      "lines": 590
     },
     {
       "name": "star-sprite-hdr",
@@ -108,7 +108,7 @@
         ],
         [
           "star-sprite",
-          28942
+          29866
         ],
         [
           "star-sprite-hdr",
@@ -1287,7 +1287,8 @@
           "waveB",
           "engine",
           "epoch",
-          "formation"
+          "formation",
+          "namedSky"
         ],
         "nebula": [
           "viewProj",
@@ -1300,7 +1301,8 @@
           "waveB",
           "engine",
           "epoch",
-          "formation"
+          "formation",
+          "namedSky"
         ]
       }
     },

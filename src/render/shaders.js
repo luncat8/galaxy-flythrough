@@ -930,6 +930,12 @@ struct CameraUniform {
         // orbital clock: age in Gyr, fade width, field count, full gated-slot
         // capacity (field + landmarks + objects + local + catalog).
         formation: vec4f,
+        // The named sky's gate (NamedSky): x = 1 draws the landmark block,
+        // 0 hides it. The curated stars are today's Milky Way seen from the
+        // Sun, so outside that epoch — or in any other galaxy — the block is
+        // not a picture of anything. A uniform rather than a record rewrite:
+        // the epoch runs continuously and the gate must follow it per frame.
+        namedSky: vec4f,
 };
 
 struct StarPacked {
@@ -944,6 +950,7 @@ struct StarPacked {
 @group(0) @binding(4) var<storage, read> birthTimes: array<f32>;
 
 const MASK_VISIBLE: u32 = 0x00010000u;   // flags byte bit 0
+const MASK_LANDMARK: u32 = 0x00020000u;  // flags byte bit 1: a curated named star
 // Epoch bits (star-record FLAG_EPOCH / FLAG_EPOCH_SPHEROID) and the family
 // field (bits 3-4 of the flags byte) the map branches on.
 const MASK_EPOCH: u32 = 0x00200000u;          // flags byte bit 5
@@ -1068,6 +1075,13 @@ fn vs_main(
                 let birth: f32 = birthTimes[starIdx];
                 formationGate = smoothstep(birth, birth + camera.formation.y, camera.formation.x);
                 if (formationGate <= 0.0) { return hidden(vid); }
+        }
+        // The named sky is a present-day Milky Way sky (NamedSky). Its stars
+        // are the curated table, so the gate is the whole block's, not a
+        // per-record birth: outside the epoch window the block is hidden, and
+        // a continuous clock moves the gate without rewriting a record.
+        if ((star.packed & MASK_LANDMARK) != 0u && camera.namedSky.x <= 0.0) {
+                return hidden(vid);
         }
 
         let moved: vec3f = starMovedPosition(star, theta[starIdx]);
@@ -1829,6 +1843,7 @@ struct CameraUniform {
         engine: vec4f,      // engine mask, apocenter force, bar tilt, apocenter share
         epoch: vec4f,       // armRotation, spheroidScale, heatScale, field mag offset
         formation: vec4f,   // gate age, fade, procedural count, gated slot limit
+        namedSky: vec4f,    // landmark gate; nebulae and gas pad it and ignore it
 };
 `;
 

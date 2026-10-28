@@ -271,6 +271,27 @@ async function boot() {
         const shipChrome = window.LabelLayer.createShipChromeState();
         labels.setShipChrome(shipChrome);
 
+        // The two skies (ui.22). The curated one is today's Milky Way seen from
+        // the Sun, so `NamedSky` gates it on the epoch window and the star
+        // clock's rate; the observer's own figures are built on demand from the
+        // primary selection and are exclusive with it — one sky, one set of
+        // lines. `namedSkyReason` is interned, so asking why costs nothing.
+        const namedSky = window.NamedSky;
+        let namedSkyReason = namedSky.REASON_OK;
+        const myFigures = window.Asterisms.create(window.Asterisms.DEFAULT_MAX_STARS);
+        const myFigurePool = window.Asterisms.pool(8192);
+        let myFiguresOn = false;
+        let myFiguresAuto = false;
+        let myFiguresBuilt = false;
+        const figureEye = new Float64Array(3);
+        const figureDrawn = new Float64Array(3);
+        // A rebuild is a full pass over the resident records, so auto-update is
+        // throttled by star time (the module's own staleness) *and* by wall
+        // time: at the top clock rate the figures would otherwise go stale
+        // several times a second.
+        const FIGURE_REBUILD_MIN_S = 2;
+        let lastFigureRebuild = 0;
+
         const selection = window.Selection.createSelection(camera, landmarks);
         const selectionStore = window.SelectionStore.createSelectionStore();
         let selected = -1;
@@ -304,6 +325,72 @@ async function boot() {
         function memberDrawnVelocity(i, out) {
                 return selection.resolveDrawnVelocity(memberRefFor(i), out);
         }
+
+        // The observer's own figures (ui.22): stand at the primary selection and
+        // draw what a human standing there would draw. One pass over the
+        // resident records at their *drawn* positions, through the same
+        // engine-mask dispatch the sprites and the labels use — so a figure is
+        // built on the sky the frame is showing, not on the birth sky.
+        //
+        // The pass is O(resident records) with a dispatch each, which is the
+        // same order as a click pick (~0.37 µs/record classic). It is a
+        // user-pressed action, and auto-update is throttled by both star time
+        // (`Asterisms.STALE_MYR`) and wall time, so it is not a frame cost.
+        // The curated block (kind 1) is skipped: those stars belong to the
+        // other sky, and outside its epoch window they are not drawn at all.
+        function buildMyFigures() {
+                const info = renderer.starBlocks();
+                const orbit = window.OrbitLib;
+                if (starSet.primary < 0 || !info || !info.view || !info.identity) return false;
+                if (memberDrawnPosition(starSet.primary, figureEye) === window.Selection.DRAWN_STALE) return false;
+                const view = info.view;
+                const identity = info.identity;
+                const records = window.StarRecord;
+                const blocks = info.blocks;
+                const births = info.formation ? info.formation.births : null;
+                const age = info.formation ? info.formation.age : 0;
+                const visibleBit = records.FLAG_VISIBLE << 16;
+                window.Asterisms.resetPool(myFigurePool);
+                let scanned = 0;
+                for (let b = 0; b < blocks.length; b++) {
+                        if (b === 1) continue;                 // the curated named sky
+                        const block = blocks[b];
+                        const n = block.count | 0;
+                        if (n <= 0) continue;
+                        const end = (block.offset | 0) + n;
+                        for (let slot = block.offset | 0; slot < end; slot++) {
+                                const byteOffset = slot * records.RECORD_BYTES;
+                                const packed = view.getUint32(byteOffset + 12, true);
+                                if ((packed & visibleBit) === 0) continue;
+                                // A star that has not formed at this epoch is not
+                                // in anyone's sky, so it cannot be in a figure.
+                                const birthIndex = (b === 0 || b === 2 || b === 3 || b === 4) ? slot : -1;
+                                if (birthIndex >= 0 && births && birthIndex < births.length
+                                        && orbit.gateAt(births[birthIndex], age) <= 0) continue;
+                                scanned++;
+                                orbit.engineRecordPosition(figureDrawn,
+                                        view.getFloat32(byteOffset, true),
+                                        view.getFloat32(byteOffset + 4, true),
+                                        view.getFloat32(byteOffset + 8, true),
+                                        packed, starTimeMyr, model);
+                                const absMag = records.decodeAbsMag((packed >>> 8) & 0xFF);
+                                window.Asterisms.pushCandidate(myFigurePool, identity[slot] >>> 0, b, slot,
+                                        figureDrawn[0], figureDrawn[1], figureDrawn[2],
+                                        absMag, packed & 0xFF,
+                                        figureEye[0], figureEye[1], figureEye[2]);
+                        }
+                }
+                window.Asterisms.finish(myFigures, myFigurePool,
+                        figureEye[0], figureEye[1], figureEye[2], starTimeMyr);
+                myFiguresBuilt = myFigures.count > 0;
+                myFigureScanned = scanned;
+                if (myFiguresBuilt && !myFiguresOn) {
+                        myFiguresOn = true;
+                        labels.setAsterisms(myFigures);
+                }
+                return myFiguresBuilt;
+        }
+        let myFigureScanned = 0;
         // Both buffer sweeps — the click pick (plan §3.1) and the radius scan
         // (§3.3) — are spread over frames. A slice is bounded by time as well as
         // by records, because the per-record dispatch cost depends on the engine
@@ -2107,6 +2194,11 @@ async function boot() {
                 }
                 helpTitle.textContent = 'Controls — ' + name;
         }
+        // ui.22: the two skies' controls. The curated one is greyed (with the
+        // reason in its title) wherever the named sky does not exist; the
+        // observer's own set needs a figure built before it can be shown.
+        const labelConstellations = document.getElementById('label-constellations');
+        const helpMakeFigures = helpPanel.querySelector('[data-action="makeFigures"]');
         const helpClockSim = helpPanel.querySelector('[data-action="clockSim"]');
         const helpClockArcade = helpPanel.querySelector('[data-action="clockArcade"]');
         const helpRefuel = helpPanel.querySelector('[data-action="shipRefuel"]');
@@ -2132,6 +2224,16 @@ async function boot() {
         function syncHelpControls(cameraState) {
                 helpBoxes.get('chaseFollow').checked = isFlying() ? ship.ap.mode === shipLib.AP_FOLLOW : cameraState.chase;
                 helpBoxes.get('constellations').checked = labels.constellationsVisible();
+                // The curated sky is greyed where it means nothing, and its
+                // title says why — a control that silently does nothing is the
+                // defect this replaces.
+                const skyOk = namedSkyReason === namedSky.REASON_OK;
+                helpBoxes.get('constellations').disabled = !skyOk;
+                labelConstellations.title = namedSky.describe(namedSkyReason);
+                helpBoxes.get('myFigures').checked = myFiguresOn;
+                helpBoxes.get('myFigures').disabled = myFiguresOn ? false : !myFiguresBuilt;
+                helpBoxes.get('figuresAuto').checked = myFiguresAuto;
+                helpMakeFigures.disabled = starSet.primary < 0;
                 helpBoxes.get('systemView').checked = systemLayer.isOpen();
                 helpBoxes.get('freezeTime').checked = isFlying() ? ship.timeFrozen : starTimeRate === 0;
                 const noPrimary = starSet.primary < 0;
@@ -6367,6 +6469,28 @@ async function boot() {
                         if (evolved !== model.populations.age) setEpoch(evolved);
                 }
                 labels.setOrbitState(model, starTimeMyr);
+                // The named sky's gate (ui.22), read once per frame from the two
+                // things that decide it: the epoch and the star clock's rate.
+                // One uniform lane and one label-layer flag — no record is
+                // rewritten, so a continuous clock moves the gate for free.
+                {
+                        const reason = namedSky.reasonOf(model, starTimeRate);
+                        namedSkyReason = reason;
+                        const on = reason === namedSky.REASON_OK;
+                        renderer.setNamedSky(on);
+                        labels.setNamedSky(on);
+                        // Auto-update: the figures describe the sky they were
+                        // built on, so once star time has moved them they are
+                        // rebuilt in place. Throttled by star time (the module's
+                        // own staleness) and by wall time, since a rebuild is a
+                        // full pass over the resident records.
+                        if (myFiguresAuto && myFiguresBuilt && myFiguresOn
+                                && window.Asterisms.stale(myFigures, starTimeMyr)
+                                && dt > 0 && (time - lastFigureRebuild) > FIGURE_REBUILD_MIN_S) {
+                                lastFigureRebuild = time;
+                                buildMyFigures();
+                        }
+                }
                 // The network is always drawn while it exists (the checkbox
                 // owns only the route lines): colonies that appear only when a
                 // "routes" box is ticked are colonies nobody watches grow.
@@ -6552,6 +6676,28 @@ async function boot() {
                 if (actions.constellations) {
                         actions.constellations = 0;
                         labels.toggleConstellations();
+                }
+                // The observer's own set (ui.22). Turning it on turns the
+                // curated figures off and vice versa: one sky, one set of
+                // lines, and the layer enforces the same exclusivity.
+                if (actions.myFigures) {
+                        actions.myFigures = 0;
+                        myFiguresOn = !myFiguresOn;
+                        if (myFiguresOn) labels.setConstellations(false);
+                        labels.setAsterisms(myFiguresOn && myFiguresBuilt ? myFigures : null);
+                        if (myFiguresOn && !myFiguresBuilt) buildMyFigures();
+                }
+                if (actions.makeFigures) {
+                        actions.makeFigures = 0;
+                        if (buildMyFigures()) {
+                                myFiguresOn = true;
+                                labels.setConstellations(false);
+                                labels.setAsterisms(myFigures);
+                        }
+                }
+                if (actions.figuresAuto) {
+                        actions.figuresAuto = 0;
+                        myFiguresAuto = !myFiguresAuto;
                 }
                 if (actions.menu) {
                         actions.menu = 0;

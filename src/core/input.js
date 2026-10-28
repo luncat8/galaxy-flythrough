@@ -51,7 +51,11 @@ function createInput(canvas) {
 		pointerLocked: false,
 		pickX: 0,
 		pickY: 0,
+	// `constellations` is the curated Milky Way figures; `myFigures` toggles
+	// the observer's own set (ui.22), `makeFigures` rebuilds it from the
+	// primary selection and `figuresAuto` keeps it fresh as star time runs.
 	actions: { reset: 0, home: 0, exposure: 0, linearExposure: 0, constellations: 0, pick: 0, menu: 0, freezeTime: 0,
+	myFigures: 0, makeFigures: 0, figuresAuto: 0,
 	orbitCentre: 0, orbitObject: 0, flyMode: 0, modeObserve: 0, modeFly: 0, modeCommand: 0, chaseFollow: 0, allStop: 0, shipRefuel: 0,
 flyTo: 0, nextStar: 0, clearSet: 0, systemView: 0, systemViewExit: 0, dvMap: 0,
 speedRefTarget: 0, speedRefCentre: 0, speedRefHome: 0, dock: 0, cargoLoad: 0, cargoUnload: 0,
@@ -93,12 +97,15 @@ clockSim: 0, clockArcade: 0 },
 	// 1/2/3 are the workspaces by name (workspace-plan.md §7.1); g is the
 	// helm toggle — the same modeFly action, so one key users know keeps
 	// working and no second code path exists.
-	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyP: 'constellations', KeyG: 'modeFly', KeyT: 'freezeTime', Tab: 'menu',
+	const pressMap = { KeyR: 'reset', KeyH: 'home', KeyG: 'modeFly', KeyT: 'freezeTime', Tab: 'menu',
 		Digit1: 'modeObserve', Digit2: 'modeFly', Digit3: 'modeCommand',
 		KeyN: 'nextStar', KeyX: 'clearSet', KeyV: 'systemView', KeyB: 'dvMap', KeyJ: 'chaseFollow', KeyM: 'viewField', Space: 'allStop', Escape: 'systemViewExit',
-		KeyO: 'dock', KeyY: 'tradeRoutes' };
-	// C, F and L carry a shift-cased pair each: [lowercase, Shift+uppercase].
-	const casedPressMap = { KeyC: ['orbitObject', 'orbitCentre'], KeyF: ['flyMode', 'flyTo'], KeyL: ['cargoLoad', 'cargoUnload'] };
+		KeyO: 'dock', KeyY: 'tradeRoutes', KeyK: 'makeFigures' };
+	// C, F, L and P carry a shift-cased pair each: [lowercase, Shift+uppercase].
+	const casedPressMap = { KeyC: ['orbitObject', 'orbitCentre'], KeyF: ['flyMode', 'flyTo'], KeyL: ['cargoLoad', 'cargoUnload'],
+		// P is the curated Milky Way figures, Shift+P the observer's own set:
+		// two skies, one key, and the two are exclusive (ui.22).
+		KeyP: ['constellations', 'myFigures'] };
 	const PANEL_BUTTON_SHORTCUTS = { KeyF: 1, KeyN: 1, KeyX: 1, KeyO: 1, KeyL: 1 };
 	// Exposure accumulates, so key repeat is one more step per repeat.
 	const exposureMap = { BracketLeft: -1, Minus: -1, BracketRight: 1, Equal: 1 };

@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-24T14:05:19.165Z",
+  "date": "2026-10-28T03:24:14.322Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 190,
+  "prepareMs": 237,
   "totalChecks": 156,
   "passed": 156,
   "failed": 0,
@@ -450,7 +450,7 @@
       "detail": 0.01666666753590107
     },
     {
-      "name": "uniform is exactly 224 bytes (camera block + orbit dynamics + epoch + formation gate)",
+      "name": "uniform is exactly 240 bytes (camera block + orbit dynamics + epoch + formation gate + named-sky gate)",
       "pass": true
     },
     {

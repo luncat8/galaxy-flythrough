@@ -165,6 +165,98 @@ function seedStart(timeYears) {
 	return trade.finalize(net);
 }
 
+// --- 5b. The seed map respects the formation gate ------------------------
+// The network used to seed from the reference census, so a run at first
+// light — the field all gas, not one procedural star condensed — still
+// arrived with four colonies and a fleet sailing between stars that do not
+// exist yet. The gate is the field's own birth channel, the same one the
+// vertex stage reads, so the economy exists exactly where the sky has stars.
+{
+	const starTypes = require('../src/math/star-types.js');
+	const namedSky = require('../src/core/named-sky.js');
+	// The renderer's own birth law, so this fixture is the sky the page draws
+	// rather than an invented one.
+	const reference = galaxy.modelAtAge(model, galaxy.AGE_REF);
+	const births = new Float32Array(scenarioField.count);
+	let earliest = Infinity, latest = -Infinity;
+	for (let i = 0; i < scenarioField.count; i++) {
+		const b = starTypes.sampleFieldBirth(reference, starTypes.fieldStarSeed(model.seed | 0, i),
+			scenarioField.component[i], scenarioField.R[i], scenarioField.distToArm[i], scenarioField.z[i]);
+		births[i] = b;
+		if (b < earliest) earliest = b;
+		if (b > latest) latest = b;
+	}
+	const gatedField = Object.assign({}, scenarioField, { birth: births });
+	check('the fixture carries a finite birth channel inside the model\u2019s own span',
+		Number.isFinite(earliest) && Number.isFinite(latest)
+		&& earliest >= 0 && latest <= galaxy.AGE_REF, { earliest, latest });
+
+	function seedAt(age, field) {
+		const atAge = galaxy.modelAtAge(model, age);
+		const net = trade.createNetwork({ seed: model.seed | 0, modelSeed: galaxy.DEFAULT_SEED, timeYears: 0,
+			homeX: model.home.orbitTarget.x, homeY: model.home.orbitTarget.y, homeZ: model.home.orbitTarget.z });
+		const previousField = ctx.field;
+		ctx.field = field;
+		const systems = trade.startSystems(net, atAge, field, landmarks, []);
+		trade.discoverNearest(net, systems, ctx, record);
+		ctx.field = previousField;
+		return { net: trade.finalize(net), systems, atAge };
+	}
+
+	const firstLight = seedAt(0, gatedField);
+	check('at first light the seed map is empty — no star has formed to settle',
+		firstLight.systems.length === 0, firstLight.systems.length);
+	check('and the network arrives with no colony and no hull',
+		firstLight.net.portCount === 0 && firstLight.net.shipCount === 0
+		&& firstLight.net.worldCount === 0,
+		{ ports: firstLight.net.portCount, ships: firstLight.net.shipCount });
+	check('running an empty sky for five millennia still founds nothing', (() => {
+		trade.step(firstLight.net, 5000);
+		return firstLight.net.portCount === 0 && firstLight.net.founded === 0;
+	})(), { ports: firstLight.net.portCount, founded: firstLight.net.founded });
+
+	const today = seedAt(galaxy.AGE_REF, gatedField);
+	check('the present-day sky still seeds its colonies', today.net.portCount > 0,
+		today.net.portCount);
+	check('and its seed count is unchanged by the gate at the reference epoch',
+		today.systems.length > 0 && today.net.portCount >= 1);
+
+	// Measured on this fixture: the earliest birth within the seed radius of
+	// home is 1.37 Gyr, so 1 Gyr is empty and 3 Gyr is the first epoch with a
+	// local sky. The gate is what makes that difference visible.
+	const YOUNG = 3;
+	const young = seedAt(YOUNG, gatedField);
+	check('a young epoch seeds from the local sky it has by then',
+		young.systems.length > 0 && young.net.portCount > 0,
+		{ systems: young.systems.length, ports: young.net.portCount });
+	check('every field star it settles has formed by that epoch', (() => {
+		const fade = 0.05;   // orbit.BIRTH_FADE_GYR, the gate's own ramp
+		for (let i = 0; i < young.systems.length; i++) {
+			const s = young.systems[i];
+			if (s.ref.kind !== planets.BLOCK_FIELD) continue;
+			if (!(births[s.ref.index] <= YOUNG + fade)) return false;
+		}
+		return true;
+	})(), young.systems.length);
+	check('and the gate really removed candidates the reference sky would have taken',
+		young.systems.length < today.systems.length,
+		{ young: young.systems.length, today: today.systems.length });
+
+
+	// The curated named stars are today's sky, so they are not settleable
+	// outside it either — the same gate the label layer and the sprite block use.
+	check('the named sky is refused at first light but present at the reference epoch',
+		namedSky.reasonOf(galaxy.modelAtAge(model, 0), 0) === namedSky.REASON_EPOCH
+		&& namedSky.reasonOf(model, 0) === namedSky.REASON_OK);
+	const noField = seedAt(galaxy.AGE_REF, Object.assign({}, scenarioField, { count: 0 }));
+	check('with no field the named sky alone still settles the capital',
+		noField.net.portCount > 0, noField.net.portCount);
+	const youngNamed = seedAt(0, Object.assign({}, scenarioField, { count: 0 }));
+	check('and at first light the named sky settles nothing either',
+		youngNamed.systems.length === 0 && youngNamed.net.portCount === 0,
+		{ systems: youngNamed.systems.length, ports: youngNamed.net.portCount });
+}
+
 function stepSmall(net, total, chunk) {
 	let left = total;
 	while (left > 0) {

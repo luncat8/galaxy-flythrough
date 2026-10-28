@@ -1062,3 +1062,142 @@ instrument for V14, not its result.
 Next: the V14 rows as they are now pressable (`deferred-browser-visual-plan.md`),
 and the 0.7.4 gas grid so the panel's gas line has a spatial picture to grow
 into.
+
+## ui.22 — the named sky exists only where it means something, and you can draw your own
+
+Two defects the user reported from a browser, both the same mistake: things that
+are facts about *today's Milky Way seen from the Sun* were being drawn as if
+they were facts about the model.
+
+1. The 60 curated stars and their constellation figures were drawn
+   unconditionally. `writeLandmarks` stamped every landmark with the negative
+   birth sentinel (`-BIRTH_FADE`) specifically so the formation gate could never
+   close on it, so Orion stood in the sky of a procedural `Sb` at its first
+   light and at the far side of an `E4` — a sky with no field stars at all,
+   wearing 60 named ones.
+2. The control was called `constellations` and read as a general feature, so
+   greying it out was never going to be anyone's first guess.
+
+**The gate (`src/core/named-sky.js`).** The named sky is now gated on the three
+things that decide whether it means anything, all pure and all read per frame:
+
+- the galaxy must be the Milky Way preset (`model.milkyWay`);
+- the epoch must be within `EPOCH_TOL_GYR = 1` of `AGE_REF` — at the solar
+  circle a gigayear is ~4 revolutions, so a figure held across that window
+  connects stars that are not neighbours any more, and at first light most of
+  them are not formed;
+- the star clock must be at or below `MAX_RATE_MYR_PER_S = 5` — above it a
+  solar-circle star sweeps 8.1°/s and the figures are a smear, so the layer
+  stops drawing *and* stops updating them.
+
+`reasonOf` returns an interned string (`ok` / `no-named-sky` / `epoch` /
+`star-time`), so a frame never allocates to ask why the sky is off, and
+`describe` gives the control its sentence. The refusal says what to do instead
+of only what is wrong: a procedural galaxy is told to build its own figures, a
+fast clock is told to pause or drop below 5 Myr/s.
+
+**One uniform lane, not a record rewrite.** The epoch runs continuously and the
+0.7.x contract says an epoch change is a placement, not a re-sample — so hiding
+the landmark block had to be per-frame state, not a GPU record edit.
+`CameraUniform` grows a `namedSky: vec4f` (`x` = 1 draws the block), packed at
+`uniform[56]`, `UNIFORM_FLOATS` 56 → 60, and the vertex stage adds
+
+```wgsl
+if ((star.packed & MASK_LANDMARK) != 0u && camera.namedSky.x <= 0.0) {
+        return hidden(vid);
+}
+```
+
+after the formation gate. `renderer.setNamedSky(on)` writes one float and one
+state field; `main.js` calls it once per frame from the one place that knows
+both the epoch and the clock rate. Both `CameraUniform` copies (sprite and the
+nebula/gas `CAMERA_UNIFORM`) carry the lane so the shared buffer keeps one
+layout; `wgsl-validate`'s field list and `renderer-test`'s 240-byte pin follow.
+
+**The label layer.** `setNamedSky` is a second question beside `setEnabled`:
+`enabled` is "does this model have a curated table at all", the gate is "does it
+apply right now". Off, `draw` neither projects nor labels, and a curated star's
+set ring is refused in `ringAtSlot` so no ring lingers on a star the GPU has
+hidden. The key→slot map both the set rings and the new figures need was
+extracted into one `createKeyMap(size)` factory (`probe` / `build`), so the
+second consumer is a second table and not a copy of the first.
+
+The field's own marks — set rings and the observer's figures — moved *outside*
+the `enabled` gate. They resolve through the renderer's records, not the curated
+table, and they were previously unreachable in a procedural galaxy: selecting a
+star in game mode drew no ring at all. That was a pre-existing bug this slice
+closes as a side effect.
+
+**Your own figures (`src/math/asterisms.js`).** A separate, on-demand sky: stand
+at the primary selection and draw what a human standing there would draw.
+
+1. Everything beyond `MAX_RADIUS_KPC = 0.5` is not in your sky — 500 pc holds
+   every naked-eye star, and a figure drawn across the disc would connect stars
+   a thousand light years apart in depth that only look adjacent by accident.
+2. Rank by *apparent* magnitude (`M + 5·log10 d_pc − 5`) and keep the brightest
+   `DEFAULT_MAX_STARS = 28`. Apparent, not absolute: a human sees flux.
+3. Brightest first, connect each star to its nearest neighbours on the unit
+   sphere, stopping at `MAX_DEGREE = 3` lines per star and refusing a separation
+   wider than `MAX_EDGE_DEG = 30°`. That is what makes it an asterism rather
+   than a triangulation — real figures are chains and corners between bright
+   stars, not a filled mesh.
+4. Split into connected pieces by union-find; each piece is one figure.
+
+Everything is deterministic — equal magnitudes tie-break on the record key — so
+a slow clock cannot flicker a figure between two equally valid shapes. The
+candidates come from one pass over the resident records at their *drawn*
+positions through the same engine-mask dispatch the sprites and labels use, with
+the formation gate applied per record, so a figure is built on the sky the frame
+is showing and never contains a star that has not formed. The curated block
+(kind 1) is skipped: those stars belong to the other sky.
+
+Controls: **create figures** (`K`) builds from the primary selection and turns
+the set on; **my constellations** (Shift+`P`) toggles it; **figures
+auto-update** rebuilds in place once star time has moved the set. Exclusivity is
+enforced in the layer, not just the UI — `asterismsActive()` is false whenever
+the named sky is active, so one sky never wears two sets of lines. Auto-update
+is throttled by star time (`STALE_MYR = 20`, ~4 pc of shear at the solar circle)
+*and* by wall time (`FIGURE_REBUILD_MIN_S = 2`), because a rebuild is a full pass
+over the resident records and at the top clock rate the set would go stale
+several times a second.
+
+**Two bugs the tests caught in the new module.** Both were mine, both were
+found by the pins rather than by reading:
+
+- `pushCandidate` normalised the direction by the distance *in parsecs*, so
+  every dot product was `cos θ × 10⁻⁶` and the 30° cap could never pass — no
+  figure ever got a line. The angular cap was silently dead code.
+- `keepBrightest` incremented `count` without the record's capacity as a bound,
+  so a 6-star record took 120 and wrote past its own arrays.
+
+`labelFigures` also used `figureOf` as both the union-find parent array and the
+final label array, so relabelling destroyed the structure it was still walking
+— every star came out as its own piece. It now unions in `parent` and writes
+`figureOf` once, afterwards.
+
+**Wiring.** `P` moved from `pressMap` into `casedPressMap` as
+`['constellations', 'myFigures']`, and the now-dead `KeyP` entry was removed
+from the plain map — `casedPressMap` is consulted first, so leaving it would
+have hidden which of the two skies the key drives. The curated checkbox is
+renamed **Milky Way constellations**, is `disabled` wherever the gate is closed,
+and its label carries `NamedSky.describe(reason)` as its title.
+
+**Validation.**
+
+| Check | Result |
+|---|---|
+| `named-sky` (new) | **33/33** — the window inclusive at both ends, first light refused, a procedural galaxy refused at any epoch, the rate gate on `|rate|` (the ladder's follow stop is negative), the epoch checked before the rate, every reason printable, the layer drawing neither label nor line when gated, and the exclusivity both ways |
+| `asterisms` (new) | **49/49** — the 10 pc magnitude identity, the radius cut, the cap, the key tie-break, the degree and angular caps, no self- or double edges, two opposite clusters as two pieces, a different eye giving different figures and the same eye rebuilding identically, staleness, membership difference, and the empty/one-star degeneracies |
+| `trade` | **287/287** with the new formation-gate block (see `trade.23`) |
+| `m1-smoke` | **122/122** — the two source-text pins updated to the new shapes, plus a pin that `pressMap` no longer owns `KeyP` |
+| `wgsl-validate` | **212/212** with `namedSky` in the expected field list and `UNIFORM_FLOATS = 60` |
+| `renderer` | **156/156** with the 240-byte uniform pin |
+| `export-parity` | **198/198** with both new modules in the table |
+| `changed` | **21/21**, 27.7 s |
+
+No browser verdict is claimed. Whether the figures *read* as constellations at
+1280×800, and whether a 2 s rebuild feels like a refresh or a flicker, are rows
+on `deferred-open-work.md`.
+
+Next: the V14 formation rows and the observer-figure browser row; then T6
+(`trade-4-plan.md`).

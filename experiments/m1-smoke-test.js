@@ -107,7 +107,11 @@ const sourceFiles = walk(SRC, '')
 	{
 		const inputSrc = fs.readFileSync(path.join(SRC, 'core', 'input.js'), 'utf-8');
 		check('the c/C/f/F key map is shift-cased and game-gated in the loop, g toggles game mode',
-			/const casedPressMap = \{ KeyC: \['orbitObject', 'orbitCentre'\], KeyF: \['flyMode', 'flyTo'\], KeyL: \['cargoLoad', 'cargoUnload'\] \};/.test(inputSrc)
+			/const casedPressMap = \{ KeyC: \['orbitObject', 'orbitCentre'\], KeyF: \['flyMode', 'flyTo'\], KeyL: \['cargoLoad', 'cargoUnload'\],[\s\S]*?KeyP: \['constellations', 'myFigures'\] \};/.test(inputSrc)
+			// P moved into the cased map (ui.22), so the plain map must not also
+			// own it: casedPressMap is consulted first and the dead entry would
+			// hide which of the two skies the key drives.
+			&& !/pressMap = \{[^}]*KeyP/.test(inputSrc)
 			&& /KeyG: 'modeFly'/.test(inputSrc)
 			&& !/cameraMode|galaxyCycle/.test(inputSrc)
 			&& /actions\.orbitCentre = 0;\s*setSpeedRef\('centre'\);\s*if \(!isFlying\(\)\) camera\.setMode\(window\.Camera\.MODE_ORBIT_GC\);/.test(main)
@@ -240,7 +244,13 @@ const sourceFiles = walk(SRC, '')
 		check('the ship chrome is one label-layer pass, drawn with or without the observer labels',
 			/function drawShipChrome\(ctx, chrome, camera, width, height\)/.test(labelSrc)
 			&& /if \(chromeOn\) drawShipChrome\(ctx, chrome, camera, width, height\);/.test(labelSrc)
-			&& /if \(enabled\) \{\s*projectAll\(camera, width, height\);/.test(labelSrc));
+			// ui.22: the curated sky is gated by `namedSkyActive()`, not by
+			// `enabled` alone — the epoch window and the star clock's rate hide
+			// it too. The field's own marks (set rings, the observer's figures)
+			// are deliberately outside that gate.
+			&& /if \(skyOn\) \{\s*projectAll\(camera, width, height\);/.test(labelSrc)
+			&& /const skyOn = namedSkyActive\(\);/.test(labelSrc)
+			&& /if \(astOn\) drawAsterisms\(camera, width, height\);/.test(labelSrc));
 		check('the Controls panel: fly is the abort in game mode and the commands are not observer-gated',
 			/id="help-fly-label"/.test(html)
 			&& /helpFly\.disabled = isFlying\(\) && ship\.ap\.mode === shipLib\.AP_OFF;/.test(main)
@@ -607,7 +617,8 @@ const sourceFiles = walk(SRC, '')
 		['../src/math/star-types.js', 'StarTypesLib'], ['../src/math/planets.js', 'PlanetsLib'],
 		['../src/math/orbit.js', 'OrbitLib'], ['../src/math/nebula.js', 'NebulaLib'],
 		['../src/math/objects.js', 'ObjectsLib'], ['../src/math/clusters.js', 'ClustersLib'],
-		['../src/math/coords.js', 'Coords'],
+		['../src/math/coords.js', 'Coords'], ['../src/math/asterisms.js', 'Asterisms'],
+		['../src/core/named-sky.js', 'NamedSky'],
 		['../src/core/camera.js', 'Camera'], ['../src/core/input.js', 'Input'], ['../src/core/ship.js', 'Ship'],
 		['../src/core/exec-queue.js', 'ExecQueueLib'], ['../src/core/economy.js', 'EconomyLib'],
 		['../src/core/trade.js', 'TradeLib'],
