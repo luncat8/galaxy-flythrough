@@ -472,6 +472,8 @@ function createSearch() {
 		if (!searchPlanets || !searchRecords || !searchHash || !searchDensity) return res;
 		if (!filter || !env || !env.model || !env.renderer) return res;
 		const model = env.model;
+		const namedSky = (typeof module !== 'undefined' && module.exports)
+			? require('./named-sky.js') : window.NamedSky;
 		beginRun();
 
 		const set = env.set || null;
@@ -487,6 +489,7 @@ function createSearch() {
 		const st = {
 			filter,
 			model,
+			namedSkyVisible: namedSky.activeOf(model, Number.isFinite(env.rateMyrPerS) ? env.rateMyrPerS : 0),
 			orbit: searchOrbit,
 			time: Number.isFinite(env.time) ? env.time : 0,
 			classMask: ((filter.classes | 0) | classMaskForStates(filter.states | 0)) >>> 0,
@@ -569,6 +572,7 @@ function createSearch() {
 		const f = st.filter;
 		for (let k = 0; k < blocks.length; k++) {
 			const block = blocks[k];
+			if (k === P.BLOCK_LANDMARK && !st.namedSkyVisible) continue;
 			const count = block.count | 0;
 			if (count <= 0) continue;
 			const base = block.offset | 0;
@@ -673,6 +677,7 @@ function createSearch() {
 			const kind = rawKind < st.blocks.length ? rawKind : KIND_UNRESOLVED;
 			const color = set.colorIndex[i];
 			const mag = set.absMag[i];
+			if (kind === P.BLOCK_LANDMARK && !st.namedSkyVisible) continue;
 			let effKind = kind;
 			let blockIndex = set.bufferIdx[i] | 0;
 			let approximated = 1;

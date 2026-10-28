@@ -1246,3 +1246,31 @@ check now pins that instead, and says why.
 **Validation.** `trade` **316/316** (§31 added 4 checks: first light still finds
 nothing; a later epoch seeds; the clock is kept; a seeded network is left alone).
 all-tests 46/46 (207 s).
+
+
+## trade.27 — 2026-10-28 — First colony after first light
+
+The previous retry was behind `rateY > 0`, but `applySkyGate` sets an empty
+network to `SKY_NONE`: after the first frame the retry could not run. It also
+refused networks with candidates, and `finalize` did not spawn a ship when an
+empty network already had a scheduled tick. The test had jumped directly from
+first light to the present and bypassed the frame-loop gate.
+
+Early-epoch boots now wait for a bounded, wrapping field scan, independent of
+the trade clock. It requires a formed star born after 0.5 Gyr, aged at least
+0.1 Gyr, with model Z ≥ 0.008, main-sequence state and a generated Terran
+world. The first match becomes a freshly founded capital and gets a starter
+ship even with an existing tick. Existing candidates and the clock survive; a
+network with any port is never reset. These thresholds are explicitly a gameplay
+proxy, not an actual generation or enrichment model. A new **Find Earth-like**
+button runs the existing galaxy-scope `state:ms|terran` search and does not
+found anything. Search now respects the named-sky gate for hidden landmarks.
+
+**Validation:** trade 325/325 including a real 300k-field formation census
+from 0 through 2 Gyr, first match after 27,648 examined records; clock, queue,
+candidate, scan wrap, missing births, young/low-metal/no-terran refusals and
+hidden port regressions. `changed` 10/10 and `world-tests` 16/16. Browser
+layout and experience remain V16, not validated by Node.
+
+Next: check V16 on real WebGPU hardware; chemical enrichment remains low
+priority and constellation work remains deferred.

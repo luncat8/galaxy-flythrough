@@ -259,6 +259,42 @@ it. A reset builds a fresh deterministic network at time zero. The order is the
 design: catalogue order seeded colonies 300–860 ly away with nothing in expedition
 range, and the rendered field has no star within 300 ly of the Sun at all (§8).
 
+### 3.0 First colony after an empty sky
+
+A network booted at an early epoch (before the named sky's applicability window)
+starts empty rather than pre-settling a barely formed star. While it has no port
+or ship, a wall-time-throttled, bounded scan walks the rendered procedural field,
+independent of the trade clock and sky gate; candidate discoveries do not block it.
+It advances a persistent cursor and wraps so new births and epoch scrubs are
+reconsidered. No field birth data means wait, never guess. It must never re-seed a
+network with ports, including hidden or failed ones.
+
+There is no actual stellar-generation or enrichment model yet. As an explicit
+*gameplay proxy*, require the star to have been born at least 0.5 Gyr after the
+galaxy began, be at least 0.1 Gyr old, be a main-sequence star with model Z ≥
+0.008, and have a generated planet flagged `terran`. These are not evidence of
+second-generation ancestry, real nucleosynthesis, habitability or life. The
+first eligible field record in the incremental scan is founded at the current
+trade year as capital; the star's own epoch and formation gate apply. The panel
+says what it is waiting for. No speculative global enrichment simulation is
+introduced. If the field is too sparse or no such planet exists, it waits and
+keeps scanning; it does not create an unsuitable colony. A network booted in
+the present-day named-sky window keeps the existing seed map.
+
+On success, preserve any existing candidates, make one port and initialize a
+fleet even if the empty network already scheduled its global tick. The sky gate
+reopens on the next pass. The search panel also provides a one-click all-resident
+Earth-like search: existing `terran` + main-sequence filters, centered on the
+camera, no distance limit; results are nearest-first and selectable, do not
+found colonies, and do not assert generation or heavy-element history. Searches
+exclude the curated landmark block when its galaxy/epoch/rate gate is closed.
+
+Tests exercise first light, retry while gated or trade paused, existing candidates,
+formation/age/metal/planet eligibility, scan wrap, later success, clock and queue
+preservation, fleet startup, and no reset of a network with hidden ports. A real
+browser pass must confirm status and the search button; mock tests do not prove
+visual usability.
+
 ### 3.1 Queue and freighters
 
 `exec-queue.js` follows the min-heap approach of `luncat8/exec_queue`: parallel

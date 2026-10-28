@@ -1,6 +1,6 @@
 {
-  "total": 316,
-  "passed": 316,
+  "total": 325,
+  "passed": 325,
   "failed": 0,
   "checks": [
     {
@@ -1800,35 +1800,75 @@
       }
     },
     {
-      "name": "an empty network at first light still finds nothing to settle",
+      "name": "bootstrap fixture has a real eligible terran system, a non-terran system and a metal-poor star",
+      "pass": true,
+      "detail": {
+        "suitable": 33,
+        "barren": 0,
+        "lowMetal": 9257
+      }
+    },
+    {
+      "name": "an empty network is sky-gated and its tick was already scheduled",
       "pass": true
     },
     {
-      "name": "once the sky has stars, the empty network seeds itself",
+      "name": "a first-generation proxy birth is refused",
+      "pass": true
+    },
+    {
+      "name": "a newly born star is refused",
+      "pass": true
+    },
+    {
+      "name": "an unformed star is refused",
+      "pass": true
+    },
+    {
+      "name": "a system without a terran planet is refused",
+      "pass": true
+    },
+    {
+      "name": "a metal-poor star is refused",
+      "pass": true
+    },
+    {
+      "name": "missing birth data waits instead of guessing",
+      "pass": true
+    },
+    {
+      "name": "a scan advances and wraps even when it finds nothing",
+      "pass": true
+    },
+    {
+      "name": "a candidate and a paused, gated clock do not block the first colony",
+      "pass": true
+    },
+    {
+      "name": "the initial colony is on the eligible terran world and founded now",
       "pass": true,
       "detail": {
-        "founded": 4,
-        "ports": 4
+        "index": 33,
+        "flags": 12,
+        "founded": 900
       }
     },
     {
-      "name": "its colonies are the seed map’s rolled worlds, not a new founding law",
-      "pass": true,
-      "detail": {
-        "founded": 777.5570275075734,
-        "time": 900
-      }
+      "name": "the existing queue survives, a fleet starts and the gate reopens",
+      "pass": true
     },
     {
-      "name": "the trade clock it had already run is kept, not reset",
-      "pass": true,
-      "detail": 900
+      "name": "a hidden existing port is never replaced by another bootstrap",
+      "pass": true
     },
     {
-      "name": "a seeded network is left alone by the retry",
+      "name": "a real birth census evolving from first light finds a valid first home without the trade clock",
       "pass": true,
       "detail": {
-        "ports": 4
+        "foundAge": 2,
+        "scanned": 27648,
+        "ports": 1,
+        "ships": 1
       }
     }
   ]

@@ -387,6 +387,21 @@ cargo-coloured freighters. Open a system with **V** to discover its sites and
 inspect population, yields, needs, local flows and delta-v costs. Expeditions
 found new colonies on the same event queue as freight arrivals.
 
+An early-epoch run starts without colonies. Its Trade panel reports the
+incremental field scan while it waits for a formed, main-sequence star with a
+Terran planet. The scan runs even when trade time is paused; it may take time
+in a large or sparse field. The first match becomes the capital with a starter
+ship. The search uses a gameplay approximation for a later-generation star:
+birth after 0.5 Gyr, stellar age at least 0.1 Gyr, and model metallicity at
+least 0.008. Stellar ancestry and enrichment are not simulated, so this is not
+proof that the star is second-generation or its planet habitable. Existing
+present-day seed maps are unchanged.
+
+In **Search & Selection**, **Find Earth-like** pauses star time and searches
+resident stars for main-sequence systems with a generated Terran planet, nearest
+to the camera first. Click a result to select it; finding does not found a
+colony. It does not enforce the bootstrap age or metallicity proxy.
+
 While docked at an unsettled star, **Found colony** puts one there by the
 player's own hand — free, with the usual outpost/reservation/habitat refusals.
 To develop an existing port, stay docked and press **V**: this one game-mode

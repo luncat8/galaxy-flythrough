@@ -82,6 +82,7 @@
 		</div>
 		<div class="menu-row menu-actions selection-actions">
 			<button id="btn-search" title="Freeze star time and run one search against the currently drawn positions; it stays paused so you can inspect and select results">Search</button>
+			<button id="btn-find-earthlike" title="Search all resident stars nearest the camera for a main-sequence star with a terran planet. This does not test stellar generation or prove habitability; search pauses star time.">Find Earth-like</button>
 			<button id="btn-search-add" title="Add kept results to the selected-star set, nearest-first">Add results to set</button>
 			<button id="btn-search-clear" title="Drop the result list">Clear results</button>
 		</div>
@@ -356,7 +357,7 @@
 		</label>
 		<div class="menu-row menu-actions">
 			<button id="trade-launch" type="button" disabled title="Send the best available colonisation expedition now instead of waiting for the next tick. It takes volunteers from the source colony's population, exactly as the automatic launch does; the port then rests for 900 trade years.">Send expedition</button>
-			<span id="trade-state" class="flight-port-state">no network</span>
+			<span id="trade-state" class="flight-port-state" title="If no early colony exists, the bootstrap scans field stars for a terran world. It approximates later-generation stars with birth at least 0.5 Gyr, stellar age at least 0.1 Gyr, and model metallicity at least 0.008; the model does not track actual stellar ancestry.">no network</span>
 		</div>
 		<div id="trade-list" class="trade-rows">No trade network yet.</div>
 		<div class="flight-section-heading"><span>Colonisation</span><small>big colonies → good worlds</small></div>

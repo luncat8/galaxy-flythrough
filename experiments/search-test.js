@@ -983,6 +983,23 @@ function bruteRun(stars, f, camX, camY, camZ) {
 	orbit.setEngine('classic');
 }
 
+// Named landmarks are not in a young or non-Milky-Way sky.
+{
+	const search = searchLib.createSearch();
+	const onlyLandmarks = info.blocks.map((block, i) => i === planets.BLOCK_LANDMARK
+		? block : { offset: block.offset, count: 0 });
+	const isolated = { starBlocks: () => Object.assign({}, info, { blocks: onlyLandmarks }),
+		fieldBuffers: () => field };
+	const env = { scope: 'galaxy', model, renderer: isolated, time: 0 };
+	const f = searchLib.createFilter();
+	const present = search.run(f, env).count;
+	const young = search.run(f, Object.assign({}, env, { model: galaxy.modelAtAge(model, 0) })).count;
+	const other = search.run(f, Object.assign({}, env, { model: Object.assign({}, model, { milkyWay: false }) })).count;
+	const fast = search.run(f, Object.assign({}, env, { rateMyrPerS: 10 })).count;
+	check('search excludes named stars outside their sky gate', present > 0 && young === 0 && other === 0 && fast === 0,
+		{ present, young, other, fast });
+}
+
 // --- 9. Degrade, never throw ---------------------------------------------------
 {
 	const search = searchLib.createSearch();

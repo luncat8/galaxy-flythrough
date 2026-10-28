@@ -248,3 +248,17 @@ Reprioritize crashes, device errors, unusable controls, preset data loss, or a
 repeatable label/render mismatch as correctness bugs. Aesthetic bar imperfections
 stay here. Never weaken sampler/field or CPU/WGSL tolerances to approve a visual
 change, and never report a deferred row as passed.
+
+
+## Early-epoch capital and Earth-like search (V16)
+
+Start an evolving run at age 0, with trade time paused or synced. Confirm the
+Trade panel says it is scanning while no port exists, and that a first Terran
+capital and starter ship appear after eligible field stars form. Use H or the
+colony row to inspect the same star and verify the world. Test a sparse field
+with no match and a rewind of a previously seeded network: the former keeps
+waiting, the latter retains its hidden colony. In Search & Selection press
+**Find Earth-like**, check that time pauses and results are nearest-first and
+selectable, and confirm a young or non-Milky-Way run does not return the
+hidden named stars. Check layout at 1280×800 and a smaller viewport. This is
+a browser verdict, not implied by the Node tests.

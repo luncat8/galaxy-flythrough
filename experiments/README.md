@@ -58,6 +58,8 @@ rewritten only by `all-tests` or `--logs`. Slow tier (serial, 2-core sandbox):
 
 ## Studies (print a recommendation, no pass/fail)
 
+- `chemical-baseline.js` — E6 baseline: gas mass and relative Z at three epochs, and fixed-star/component metallicity; not a chemical-evolution model.
+
 - `hash-quality-test.js` — chi-square, serial correlation, 2D spectral and period tests on PCG and Wang.
 - `precision-test.js` — f32 vs split-double error at 1 pc … 100 kpc. Basis for the no-split-double decision.
 - `packing-test.js` — `StarPacked` round-trip fidelity and the GPU memory budget per star count.

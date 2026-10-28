@@ -2756,3 +2756,21 @@ Finally, when a GPU sync reads a CPU mirror (`prepare()` syncing landmark θ),
 the mirror re-init must happen *before* the regenerate that triggers the sync —
 ordering it after let the previous galaxy's integrated azimuths overwrite the
 fresh birth seeds.
+
+
+## 2026-10-28 — Gas Z is not stellar Z
+
+The E6 baseline (`python3 scripts/run.py chemical-baseline`) shows the gas
+grid's Z is a time-invariant *relative* radial gradient, while stars receive
+a component-specific mass fraction. Gas mass evolves but does not enrich the
+cell; mapping one number onto the other without a units and birth-time contract
+would silently change both stellar colours and planet generation.
+
+
+## 2026-10-28 — An empty sky gate can block its own bootstrap
+
+`SKY_NONE` is also the verdict for zero ports; a retry placed inside the trade
+clock's `rateY > 0` branch will stop before stars appear. Exercise the actual
+clock/gate orchestration, not just a direct retry at a later epoch. An empty
+`finalize` has already scheduled its tick, so first-port fleet startup must not
+rely on calling `finalize` again.

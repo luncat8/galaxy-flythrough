@@ -3719,65 +3719,104 @@ function exactLiveEvents(net) {
 			delivered: Math.round(contractOpened.port.intra.delivered) });
 }
 
-// --- 31. The seed map bootstraps itself once the epoch allows it -----------
-// trade.23's tail: with the formation gate in place, a run started at first
-// light arrives with no colonies — and stayed that way, because seeding happens
-// once per galaxy and `expandFrontierFromField` needs a colony to measure from.
-// `reseedIfEmpty` is the retry: it may only act on a network that is genuinely
-// empty, and it founds at the current trade year rather than backdating.
+// --- 31. Empty-sky bootstrap ---------------------------------------------
+{
+	const starTypes = require('../src/math/star-types.js');
+	const age = galaxy.modelAtAge(model, 3);
+	const field = Object.assign({}, scenarioField, { birth: new Float32Array(scenarioField.count) });
+	field.birth.fill(0.75);
+	const previousField = ctx.field, previousModel = ctx.model, previousMember = ctx.member, previousName = ctx.name;
+	ctx.field = field; ctx.model = age; ctx.member = null;
+	let suitable = -1, barren = -1, lowMetal = -1;
+	for (let i = 0; i < field.count && (suitable < 0 || barren < 0 || lowMetal < 0); i++) {
+		const ref = { kind: planets.BLOCK_FIELD, index: i, key: starTypes.fieldStarSeed(model.seed, i) >>> 0,
+			x: field.x[i], y: field.y[i], z: field.z[i], colorIndex: 0, absMag: 0 };
+		planets.generateSystem(ref, ctx, record);
+		if (record.star.state !== 'ms') continue;
+		if (record.star.metal < trade.BOOTSTRAP_METAL_MIN && lowMetal < 0) lowMetal = i;
+		if (record.star.metal < trade.BOOTSTRAP_METAL_MIN) continue;
+		if (record.counts.terranCount > 0 && suitable < 0) suitable = i;
+		if (record.counts.terranCount === 0 && barren < 0) barren = i;
+	}
+	check('bootstrap fixture has a real eligible terran system, a non-terran system and a metal-poor star',
+		suitable >= 0 && barren >= 0 && lowMetal >= 0, { suitable, barren, lowMetal });
+	function emptyNet() {
+		return trade.createNetwork({ seed: model.seed, modelSeed: model.seed });
+	}
+	const net = emptyNet();
+	net.time = 900;
+	trade.finalize(net);
+	trade.applySkyGate(net, galaxy.modelAtAge(model, 0), field, 0);
+	check('an empty network is sky-gated and its tick was already scheduled',
+		net.skyState === trade.SKY_NONE && net.tickScheduled === 1 && net.shipCount === 0);
+	net.candidateCount = 1;
+	function scan(index, atAge) {
+		net.bootstrapCursor = index;
+		return trade.reseedIfEmpty(net, atAge, field, null, ctx, record, 1);
+	}
+	field.birth[suitable] = 0.1;
+	check('a first-generation proxy birth is refused', scan(suitable, age) === 0);
+	field.birth[suitable] = 2.95;
+	check('a newly born star is refused', scan(suitable, age) === 0);
+	field.birth[suitable] = 4;
+	check('an unformed star is refused', scan(suitable, age) === 0);
+	field.birth[suitable] = 0.75;
+	check('a system without a terran planet is refused', scan(barren, age) === 0);
+	check('a metal-poor star is refused', scan(lowMetal, age) === 0);
+	const cursorBefore = net.bootstrapCursor;
+	check('missing birth data waits instead of guessing',
+		trade.reseedIfEmpty(net, age, Object.assign({}, field, { birth: null }), null, ctx, record, 1) === 0
+		&& net.bootstrapCursor === cursorBefore);
+	check('a scan advances and wraps even when it finds nothing', (() => {
+		field.birth[field.count - 1] = 0;
+		net.bootstrapCursor = field.count - 1;
+		return trade.reseedIfEmpty(net, age, field, null, ctx, record, 1) === 0 && net.bootstrapCursor === 0;
+	})());
+	check('a candidate and a paused, gated clock do not block the first colony', scan(suitable, age) === 1
+		&& net.portCount === 1 && net.candidateCount === 1 && net.capital === 0);
+	const port = net.ports[0];
+	check('the initial colony is on the eligible terran world and founded now',
+		port.ref.index === suitable && (port.colony.flags & planets.FLAG_TERRAN) !== 0
+		&& port.colony.starMetal >= trade.BOOTSTRAP_METAL_MIN && port.colony.founded === 900,
+		{ index: port.ref.index, flags: port.colony.flags, founded: port.colony.founded });
+	check('the existing queue survives, a fleet starts and the gate reopens',
+		net.time === 900 && net.tickScheduled === 1 && net.shipCount === 1 && net.skyState === trade.SKY_ALL);
+	trade.applySkyGate(net, galaxy.modelAtAge(model, 0), field, 0);
+	check('a hidden existing port is never replaced by another bootstrap',
+		net.skyState === trade.SKY_NONE && scan(suitable, age) === 0 && net.portCount === 1);
+	ctx.field = previousField; ctx.model = previousModel; ctx.member = previousMember; ctx.name = previousName;
+}
+
+// The actual formation census, walked over successive early epochs rather
+// than teleporting directly from first light to the present-day sky.
 {
 	const starTypes = require('../src/math/star-types.js');
 	const reference = galaxy.modelAtAge(model, galaxy.AGE_REF);
-	const field = Object.assign({}, scenarioField);
-	field.birth = new Float32Array(scenarioField.count);
-	for (let i = 0; i < scenarioField.count; i++) {
-		field.birth[i] = starTypes.sampleFieldBirth(reference,
-			starTypes.fieldStarSeed(model.seed | 0, i), scenarioField.component[i],
-			scenarioField.R[i], scenarioField.distToArm[i], scenarioField.z[i]);
+	const field = Object.assign({}, scenarioField, { birth: new Float32Array(scenarioField.count) });
+	for (let i = 0; i < field.count; i++) {
+		field.birth[i] = starTypes.sampleFieldBirth(reference, starTypes.fieldStarSeed(model.seed, i),
+			field.component[i], field.R[i], field.distToArm[i], field.z[i]);
 	}
-	function emptyNet() {
-		return trade.createNetwork({ seed: model.seed | 0, modelSeed: galaxy.DEFAULT_SEED,
-			timeYears: 0, homeX: model.home.orbitTarget.x, homeY: model.home.orbitTarget.y,
-			homeZ: model.home.orbitTarget.z });
-	}
-	const firstLight = galaxy.modelAtAge(model, 0);
-	const net = emptyNet();
-	net.time = 900;                       // the trade clock has been running
+	const previousField = ctx.field, previousModel = ctx.model, previousMember = ctx.member, previousName = ctx.name;
+	const net = trade.createNetwork({ seed: model.seed, modelSeed: model.seed });
 	trade.finalize(net);
-	const previousField = ctx.field, previousModel = ctx.model;
-	ctx.field = field; ctx.model = firstLight;
-	const atFirstLight = trade.reseedIfEmpty(net, firstLight, field, landmarks, ctx, record);
-	ctx.field = previousField; ctx.model = previousModel;
-	check('an empty network at first light still finds nothing to settle',
-		atFirstLight === 0 && net.portCount === 0);
-
-	// The epoch advances: the sky forms stars, and the retry may now act.
-	const today = galaxy.modelAtAge(model, galaxy.AGE_REF);
-	ctx.field = field; ctx.model = today;
-	const founded = trade.reseedIfEmpty(net, today, field, landmarks, ctx, record);
-	ctx.field = previousField; ctx.model = previousModel;
-	check('once the sky has stars, the empty network seeds itself',
-		founded > 0 && net.portCount > 0, { founded, ports: net.portCount });
-	// The seed map's own age law, unchanged: a discovered world is a rolled
-	// galaxy world, settled in the past, not a colony founded this instant. The
-	// retry introduces no new founding rule — it re-runs the same map.
-	check('its colonies are the seed map\u2019s rolled worlds, not a new founding law',
-		net.ports[0].colony.founded > 0 && net.ports[0].colony.founded <= net.time,
-		{ founded: net.ports[0].colony.founded, time: net.time });
-	check('the trade clock it had already run is kept, not reset',
-		net.time === 900, net.time);
-
-	// A network with a port is never re-seeded: that is the guarantee that a
-	// live economy cannot be reset by the clock crossing a threshold.
-	const live = emptyNet();
-	trade.reseedIfEmpty(live, today, field, landmarks, ctx, record);
-	const before = live.portCount;
-	const portsBefore = live.ports.slice(0, before).map(p => p.key);
-	check('a seeded network is left alone by the retry',
-		trade.reseedIfEmpty(live, today, field, landmarks, ctx, record) === 0
-		&& live.portCount === before
-		&& live.ports.slice(0, before).every((p, i) => p.key === portsBefore[i]),
-		{ ports: before });
+	trade.applySkyGate(net, galaxy.modelAtAge(model, 0), field, 0);
+	let foundAge = 0, scanned = 0;
+	for (const epoch of [0, 1, 2, 3]) {
+		const current = galaxy.modelAtAge(model, epoch);
+		for (let slice = 0; slice < 40 && net.portCount === 0; slice++) {
+			trade.reseedIfEmpty(net, current, field, null, ctx, record);
+			scanned += trade.BOOTSTRAP_SCAN;
+			if (net.portCount) foundAge = epoch;
+		}
+		if (net.portCount) break;
+	}
+	check('a real birth census evolving from first light finds a valid first home without the trade clock',
+		net.portCount === 1 && foundAge > 0 && net.shipCount > 0
+		&& (net.ports[0].colony.flags & planets.FLAG_TERRAN) !== 0
+		&& field.birth[net.ports[0].ref.index] >= trade.BOOTSTRAP_BIRTH_GYR,
+		{ foundAge, scanned, ports: net.portCount, ships: net.shipCount });
+	ctx.field = previousField; ctx.model = previousModel; ctx.member = previousMember; ctx.name = previousName;
 }
 
 // --- Summary --------------------------------------------------------------

@@ -1606,6 +1606,8 @@ Implement from those files plus this one; the per-release plans reference their 
 tests and extend the file layout of §11 as needed.
 
 
+The user-requested constellation rework is deferred in [`deferred-constellations-plan.md`](deferred-constellations-plan.md); it is not a shipped or visually validated feature.
+
 ### Current follow-up order
 
 1. ~~[Movement dispatch and CPU/WGSL parity](movement-parity-plan.md)~~ — **done** (2026-10-11):

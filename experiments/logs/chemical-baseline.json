@@ -1,0 +1,155 @@
+{
+  "date": "2026-10-28T05:25:14.602Z",
+  "measurements": [
+    {
+      "type": "SBb",
+      "burnC": 0.1456882041238714,
+      "clamped": false,
+      "rows": [
+        {
+          "ageGyr": 0,
+          "gasMass": 0.9999999997125997,
+          "weightedRelativeZ": 0.8631236039027671,
+          "zMin": 0.3695652484893799,
+          "zMax": 0.9865965247154236,
+          "maxCellZChange": 0
+        },
+        {
+          "ageGyr": 6.75,
+          "gasMass": 0.37936267936385093,
+          "weightedRelativeZ": 0.8631236038803439,
+          "zMin": 0.3695652484893799,
+          "zMax": 0.9865965247154236,
+          "maxCellZChange": 0
+        },
+        {
+          "ageGyr": 13.5,
+          "gasMass": 0.15000000000273417,
+          "weightedRelativeZ": 0.8631236037859381,
+          "zMin": 0.3695652484893799,
+          "zMax": 0.9865965247154236,
+          "maxCellZChange": 0
+        }
+      ],
+      "stellar": [
+        {
+          "galaxyAgeGyr": 0,
+          "metal": 0.02,
+          "colorIndex": 5
+        },
+        {
+          "galaxyAgeGyr": 6.75,
+          "metal": 0.02,
+          "colorIndex": 5
+        },
+        {
+          "galaxyAgeGyr": 13.5,
+          "metal": 0.02,
+          "colorIndex": 5
+        }
+      ]
+    },
+    {
+      "type": "Sa",
+      "burnC": 0.19243614273727871,
+      "clamped": false,
+      "rows": [
+        {
+          "ageGyr": 0,
+          "gasMass": 0.9999999992869562,
+          "weightedRelativeZ": 0.8631236036977861,
+          "zMin": 0.3695652484893799,
+          "zMax": 0.9865965247154236,
+          "maxCellZChange": 0
+        },
+        {
+          "ageGyr": 6.75,
+          "gasMass": 0.277130080254949,
+          "weightedRelativeZ": 0.8631236036520336,
+          "zMin": 0.3695652484893799,
+          "zMax": 0.9865965247154236,
+          "maxCellZChange": 0
+        },
+        {
+          "ageGyr": 13.5,
+          "gasMass": 0.07999999998275342,
+          "weightedRelativeZ": 0.863123603618905,
+          "zMin": 0.3695652484893799,
+          "zMax": 0.9865965247154236,
+          "maxCellZChange": 0
+        }
+      ],
+      "stellar": [
+        {
+          "galaxyAgeGyr": 0,
+          "metal": 0.02,
+          "colorIndex": 4
+        },
+        {
+          "galaxyAgeGyr": 6.75,
+          "metal": 0.02,
+          "colorIndex": 4
+        },
+        {
+          "galaxyAgeGyr": 13.5,
+          "metal": 0.02,
+          "colorIndex": 4
+        }
+      ]
+    },
+    {
+      "type": "Sc",
+      "burnC": 0.09202807725523598,
+      "clamped": false,
+      "rows": [
+        {
+          "ageGyr": 0,
+          "gasMass": 0.9999999962747097,
+          "weightedRelativeZ": 0.8481932706268797,
+          "zMin": 0.3695652484893799,
+          "zMax": 0.9865965247154236,
+          "maxCellZChange": 0
+        },
+        {
+          "ageGyr": 6.75,
+          "gasMass": 0.5406089028049337,
+          "weightedRelativeZ": 0.848193270598626,
+          "zMin": 0.3695652484893799,
+          "zMax": 0.9865965247154236,
+          "maxCellZChange": 0
+        },
+        {
+          "ageGyr": 13.5,
+          "gasMass": 0.30000000033149377,
+          "weightedRelativeZ": 0.8481932706863342,
+          "zMin": 0.3695652484893799,
+          "zMax": 0.9865965247154236,
+          "maxCellZChange": 0
+        }
+      ],
+      "stellar": [
+        {
+          "galaxyAgeGyr": 0,
+          "metal": 0.02,
+          "colorIndex": 5
+        },
+        {
+          "galaxyAgeGyr": 6.75,
+          "metal": 0.02,
+          "colorIndex": 5
+        },
+        {
+          "galaxyAgeGyr": 13.5,
+          "metal": 0.02,
+          "colorIndex": 5
+        }
+      ]
+    }
+  ],
+  "componentMetallicity": {
+    "thin": 0.02,
+    "thick": 0.008,
+    "bulge": 0.035,
+    "halo": 0.001
+  }
+}

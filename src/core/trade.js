@@ -435,6 +435,7 @@
 			// Ring cursor of the frontier scan (a field index), so repeated
 			// ticks walk the whole field instead of re-testing its head.
 			frontierCursor: 0,
+			bootstrapCursor: 0,
 			// Voyages turned around by the sky (§9.4): the count the panel shows
 			// when the network's routes are being torn faster than they are flown.
 			diverted: 0,
@@ -1837,28 +1838,68 @@
 		return out;
 	}
 
-	// The seed map cannot bootstrap itself (deferred-open-work.md, trade.23 tail):
-	// a cold boot at first light correctly finds no star to settle, and the
-	// network then stays empty for ever because seeding happens once per galaxy.
-	// This is the retry the epoch earns — run it, and a run that *evolves* from
-	// first light grows its first colony when the sky grows its first stars.
-	//
-	// The rule is the same gate as everywhere else, and the same map: the retry
-	// re-runs `startSystems`/`discoverNearest`, so a rediscovered world is a
-	// rolled galaxy world exactly as it would have been at boot. What it must
-	// not do is reset the clock, and it cannot: nothing already in the network
-	// is touched, because an empty network is the only one it may act on, so a
-	// live economy can never be reset by a clock that happens to cross a
-	// threshold.
-	function reseedIfEmpty(net, model, field, landmarks, ctx, record) {
-		if (!net || net.portCount > 0 || net.shipCount > 0 || net.candidateCount > 0) return 0;
-		const systems = startSystems(net, model, field, landmarks, RESEED_SYSTEMS);
-		if (systems.length === 0) return 0;
-		const added = discoverNearest(net, systems, ctx, record, net.time);
-		if (added > 0) finalize(net);
-		return added;
+	// Gameplay approximation only: the current stellar model does not record
+	// generation ancestry or galactic chemical enrichment.
+	const BOOTSTRAP_BIRTH_GYR = 0.5;
+	const BOOTSTRAP_STAR_AGE_GYR = 0.1;
+	const BOOTSTRAP_METAL_MIN = 0.008;
+	const BOOTSTRAP_SCAN = 256;
+	const BOOTSTRAP_REF = { kind: planets.BLOCK_FIELD, index: 0, key: 0,
+		x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0 };
+	const BOOTSTRAP_INPUTS = {};
+	const BOOTSTRAP_SITE = economy.createSite();
+
+	// Scan a bounded slice, even when the economy is paused or has candidates.
+	// The cursor wraps, allowing newly formed stars to become eligible later.
+	function reseedIfEmpty(net, model, field, landmarks, ctx, record, budget) {
+		if (!net || net.portCount > 0 || net.shipCount > 0) return 0;
+		if (!field || !field.birth || !field.count || !model || !ctx || !record) return 0;
+		const age = ageOfModel(model);
+		const count = Math.min(field.count, field.birth.length);
+		if (count <= 0) return 0;
+		const starTypes = (typeof module !== 'undefined' && module.exports)
+			? require('../math/star-types.js') : window.StarTypesLib;
+		const limit = Math.min(count, budget > 0 ? budget | 0 : BOOTSTRAP_SCAN);
+		ctx.model = model;
+		ctx.field = field;
+		ctx.member = null;
+		ctx.name = '';
+		for (let n = 0; n < limit; n++) {
+			const i = net.bootstrapCursor % count;
+			net.bootstrapCursor = (i + 1) % count;
+			const birth = field.birth[i];
+			if (!Number.isFinite(birth) || birth < BOOTSTRAP_BIRTH_GYR
+					|| age - birth < BOOTSTRAP_STAR_AGE_GYR || !fieldFormed(field, i, age)) continue;
+			const ref = BOOTSTRAP_REF;
+			ref.index = i; ref.key = starTypes.fieldStarSeed(model.seed, i) >>> 0;
+			ref.x = field.x[i]; ref.y = field.y[i]; ref.z = field.z[i];
+			planets.stellarInputs(ref, ctx, BOOTSTRAP_INPUTS);
+			if (BOOTSTRAP_INPUTS.state !== 'ms' || BOOTSTRAP_INPUTS.metal < BOOTSTRAP_METAL_MIN) continue;
+			planets.generateSystem(ref, ctx, record);
+			let planet = -1;
+			for (let j = 0; j < record.counts.planets; j++) {
+				if (record.planets.flags[j] & planets.FLAG_TERRAN) { planet = j; break; }
+			}
+			if (planet < 0) continue;
+			const seed = economy.siteSeed(ref.key, net.modelSeed, ref.kind);
+			economy.fillPlanetSite(BOOTSTRAP_SITE, ref, record, planet, seed);
+			BOOTSTRAP_SITE.x = ref.x; BOOTSTRAP_SITE.y = ref.y; BOOTSTRAP_SITE.z = ref.z;
+			BOOTSTRAP_SITE.ref = ref;
+			BOOTSTRAP_SITE.name = economy.siteName('', ref.key, 0, planet);
+			const port = addPort(net, BOOTSTRAP_SITE, net.time, FRESH_FOUND, record);
+			if (port < 0) return 0;
+			net.capital = port;
+			net.discovered.add(ref.key);
+			for (let c = 0; c < net.candidateCount; c++) {
+				if (net.candidates[c].site.key === ref.key) net.candidates[c].used = 1;
+			}
+			if (net.tickScheduled) spawnShip(net, port, 0, net.time);
+			else finalize(net);
+			applySkyGate(net, model, field, 0);
+			return 1;
+		}
+		return 0;
 	}
-	const RESEED_SYSTEMS = [];
 
 	// Discover the start map nearest home first. The settled roll and the
 	// capital then fall on the stars the viewer can reach, and the candidate
@@ -3580,7 +3621,7 @@
 		createNetwork, addPort, addWorld, worldOfPort, worldOfSite, foldPort, fillIntraGraph,
 		distributePortInbound, collectPortOutbound,
 		discoverSystem, discoverNearest, startSystems, settleSystem, settlePort, finalize, step, settleAllPorts,
-		reseedIfEmpty,
+		reseedIfEmpty, BOOTSTRAP_BIRTH_GYR, BOOTSTRAP_STAR_AGE_GYR, BOOTSTRAP_METAL_MIN, BOOTSTRAP_SCAN,
 		portOfStar, portOfStarLive, livePortCount, demotePort,
 		portIndexOf, candidateIndexOf, bestPortOfStar, distanceLy, legYears, pickDestination, pickExport,
 		shipPosition, shipProgress, shipStateName, playerPort, playerLoad, playerUnload,

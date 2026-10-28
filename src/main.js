@@ -1089,6 +1089,14 @@ async function boot() {
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
         btnSearch.addEventListener('click', runSearch);
+        document.getElementById('btn-find-earthlike').addEventListener('click', () => {
+                searchCenterSelect.value = 'camera';
+                scopeSelect.value = 'galaxy';
+                tokenBox.value = 'state:ms|terran';
+                tokenToControls();
+                markSearchStale();
+                runSearch();
+        });
         btnSearchClear.addEventListener('click', markSearchStale);
 
         // Plan §5.4: the kept rows join the set through insert's own
@@ -5041,6 +5049,7 @@ async function boot() {
         // free of 96 route projections.
         const TRADE_MAINT_SECONDS = 0.5;
         let tradeMaintWall = 0;
+        let tradeBootstrapWall = 0;
         // Set while the trade clock is paused, so the first frame after it
         // resumes refreshes the geometry before the drain reads it (§9.1).
         let tradeWasPaused = 0;
@@ -5122,9 +5131,13 @@ async function boot() {
                 tradeCtx.field = renderer.fieldBuffers();
                 tradeCtx.member = null;
                 tradeCtx.name = '';
-                const systems = tradeLib.startSystems(tradeNet, model, tradeCtx.field,
-                        model.milkyWay ? landmarks : null, tradeStart);
-                tradeLib.discoverNearest(tradeNet, systems, tradeCtx, tradeRecord);
+                // Early epochs bootstrap from an eligible formed field star.
+                // The present-day start map retains its authored local sky.
+                if (model.populations.age >= galaxy.AGE_REF - window.NamedSky.EPOCH_TOL_GYR) {
+                        const systems = tradeLib.startSystems(tradeNet, model, tradeCtx.field,
+                                model.milkyWay ? landmarks : null, tradeStart);
+                        tradeLib.discoverNearest(tradeNet, systems, tradeCtx, tradeRecord);
+                }
                 tradeLib.finalize(tradeNet);
                 tradeModelKey = (model.type || '') + ':' + (model.seed | 0);
                 syncTradeUi();
@@ -5749,7 +5762,10 @@ async function boot() {
                 const outpostNote = tradeNet.outposts > 0 ? ` \u00b7 ${tradeNet.outposts} outposts` : '';
                 // The sky gate's line (trade.24): a network this epoch cannot
                 // see is paused, not empty, and the panel says which.
-                const skyNote = tradeLib.skyGateText(tradeNet);
+                const skyNote = tradeNet.portCount === 0
+                        ? 'searching for a terran home · field scan ' + tradeNet.bootstrapCursor
+                                + ' · generation is approximated'
+                        : tradeLib.skyGateText(tradeNet);
                 // The intra fleet's one row (trade-4-plan §5): the panel is the
                 // galaxy's view, so it says how many hulls the open system has
                 // in the air and nothing else.
@@ -6422,6 +6438,16 @@ async function boot() {
                 // nearby good worlds every ~25 trade years (trade.2): the
                 // frontier expands without player inspection.
                 if (tradeNet) {
+                        // Bootstrap is independent of the trade clock and sky gate:
+                        // an empty network has no visible port to unpause it.
+                        if (tradeNet.portCount === 0 && tradeNet.shipCount === 0) {
+                                tradeBootstrapWall += dt;
+                                if (tradeBootstrapWall >= TRADE_MAINT_SECONDS) {
+                                        tradeBootstrapWall = 0;
+                                        if (tradeLib.reseedIfEmpty(tradeNet, model, renderer.fieldBuffers(),
+                                                null, tradeCtx, tradeRecord) > 0) syncTradeUi();
+                                }
+                        }
                         // The clock law is trade.js's (the sync rate and its
                         // ceiling), so a synced 2 Myr/s sky asks for 2 000 y/s —
                         // the pace the network is authored for — instead of the
@@ -6470,24 +6496,6 @@ async function boot() {
                                                 const field = renderer.fieldBuffers();
                                         if (field && field.count > 0) {
                                                 tradeLib.expandFrontierFromField(tradeNet, field, model);
-                                        }
-                                        // ...and an *empty* network retries its own seed:
-                                        // a run that evolves from first light has no star
-                                        // to settle until one forms, so the boot's seed map
-                                        // is re-run as the epoch advances (trade.26). The
-                                        // retry is throttled by the same 2 Hz pass and is
-                                        // a no-op the moment there is a port, hull or
-                                        // candidate — a live economy is never reset.
-                                        if (tradeNet.portCount === 0 && tradeNet.shipCount === 0
-                                                && tradeNet.candidateCount === 0) {
-                                                tradeCtx.model = model;
-                                                tradeCtx.field = field;
-                                                tradeCtx.member = null;
-                                                if (tradeLib.reseedIfEmpty(tradeNet, model, field,
-                                                        model.milkyWay ? landmarks : null, tradeCtx,
-                                                        tradeRecord) > 0) {
-                                                        syncTradeUi();
-                                                }
                                         }
                                 }
                         } else {

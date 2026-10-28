@@ -537,15 +537,28 @@ pin the accumulator's algebra and the camera-member order; `wgsl-exec-check.js`
 
 ## Later milestones
 
+**Priority:** detailed galactic chemical enrichment is low priority. The
+stellar model already approximates mass, lifetime, luminosity, giant and
+remnant stages, but does not track nuclear species or an H→Fe fusion network;
+its component metallicities are authored values, not calculated yields.
+
+
 * **E5 — events.** Minor mergers, tidal streams and a starburst episode. **Deferred**
   (2026-10-22): they need a new object family (the composite-object layer is the host)
   *and* a re-sampling path, and the formation series (`formation-plan.md`, 0.7) claims
   the record's time axis first — its rule is that a clock never re-rolls what is
   already on screen, which is precisely the mechanism an event would have to use.
   E5 closes after 0.7, against the same rule: carried, never re-rolled.
-* **E6 — chemical evolution (optional).** Metallicity as a function of the epoch
+* **E6 — chemical evolution (optional, deferred low priority).** Metallicity as a function of the epoch
   rather than one authored gradient. The observables (`gasNow`, `progress`) already
-  exist; the population tier's colour law would need the measurement first.
+  exist; the population tier's colour law needs a baseline before a new law is
+  designed. `experiments/chemical-baseline.js` measures gas mass, relative cell
+  Z and a controlled stellar output at three epochs. It is a baseline, not an
+  enrichment model or an acceptance test for one. A future E6 design must specify
+  units and yields, birth-time inheritance (rather than changing an existing
+  star with the current gas), non-disc/catalog handling, CPU/WGSL parity,
+  rewind/step equivalence, and effects on stellar colour and planet inputs before
+  implementing or calibrating it.
 
 The 0.6 series also stopped being the galaxy's only clock: **0.7 (formation,
 `formation-plan.md`) makes the epoch a formation history** — a star carries a birth

@@ -33,6 +33,10 @@ for (const initial of [null, 'false', 'true', 'invalid', 'denied']) {
 	checks++;
 }
 const html = fs.readFileSync('src/index.html', 'utf8');
+assert.ok(html.includes('id="btn-find-earthlike"'));
+assert.ok(main.includes("tokenBox.value = 'state:ms|terran'"));
+assert.ok(main.indexOf('tradeLib.reseedIfEmpty(tradeNet') < main.indexOf('const skyGated = tradeNet.skyState'));
+
 for (const [column, first, second] of [['left', 'selection-menu', 'sysmenu'], ['left', 'sysmenu', 'routemenu'], ['inner', 'viewmenu', 'trade-menu'], ['right', 'scenario-menu', 'menu'], ['right', 'menu', 'help']]) {
 	const start = html.indexOf('panel-column-' + column);
 	assert.ok(start >= 0 && html.indexOf('id="' + first + '"', start) < html.indexOf('id="' + second + '"', start));
