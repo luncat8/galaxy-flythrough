@@ -44,8 +44,8 @@
         "scanned": 6184,
         "matched": 6184,
         "truncated": 5672,
-        "msStage1": 23.244383999999968,
-        "msStage2": 12.307987999999966,
+        "msStage1": 19.723502999999994,
+        "msStage2": 2.357099000000005,
         "msRefine": 0
       }
     },
@@ -58,8 +58,8 @@
         "scanned": 6184,
         "matched": 6184,
         "truncated": 5672,
-        "msStage1": 12.738573000000002,
-        "msStage2": 1.0418249999999887,
+        "msStage1": 15.092291000000017,
+        "msStage2": 1.0637249999999767,
         "msRefine": 0
       }
     },
@@ -72,8 +72,8 @@
         "scanned": 1,
         "matched": 1,
         "truncated": 0,
-        "msStage1": 0.2201780000000042,
-        "msStage2": 0.004413999999997031,
+        "msStage1": 0.17181099999999105,
+        "msStage2": 0.000821000000001959,
         "msRefine": 0
       }
     },
@@ -300,8 +300,8 @@
         "scanned": 46,
         "matched": 46,
         "truncated": 0,
-        "msStage1": 0.1691040000000612,
-        "msStage2": 0.006403999999974985,
+        "msStage1": 0.06212000000004991,
+        "msStage2": 0.0052090000000362124,
         "msRefine": 0
       }
     },
@@ -375,36 +375,36 @@
     {
       "name": "star-only class filter over the galaxy stays under 120 ms",
       "pass": true,
-      "detail": 80.56146399999989
+      "detail": 64.50023099999999
     },
     {
       "name": "planet filter (G + terran) over the galaxy stays under 600 ms",
       "pass": true,
-      "detail": 82.85285900000008
+      "detail": 65.48868800000014
     },
     {
       "name": "planet filter (tsurf range, exact refine) over the galaxy stays under 600 ms",
       "pass": true,
-      "detail": 483.1754820000001
+      "detail": 401.7803020000001
     },
     {
       "name": "planet filter over a 214-star set stays under 2 ms",
       "pass": true,
-      "detail": 0.41970300000048155
+      "detail": 0.3503080000000409
     },
     {
       "name": "a moving-time 300k star search with engine dispatch stays under 1.5 s",
       "pass": true,
-      "detail": 104.87106800000038
+      "detail": 88.47307600000022
     },
     {
       "name": "the stage timers split the wall time (sort + overhead bounded)",
       "pass": true,
       "detail": {
-        "msStage1": 64.42986100000235,
-        "msStage2": 293.6197150000012,
-        "msRefine": 124.7716760000003,
-        "wall": 483.1754820000001
+        "msStage1": 51.73788600000262,
+        "msStage2": 246.87334799999962,
+        "msRefine": 102.89659499999925,
+        "wall": 401.7803020000001
       }
     }
   ],

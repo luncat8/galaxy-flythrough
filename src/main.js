@@ -271,18 +271,37 @@ async function boot() {
         const shipChrome = window.LabelLayer.createShipChromeState();
         labels.setShipChrome(shipChrome);
 
-        // The two skies (ui.22). The curated one is today's Milky Way seen from
-        // the Sun, so `NamedSky` gates it on the epoch window and the star
-        // clock's rate; the observer's own figures are built on demand from the
-        // primary selection and are exclusive with it — one sky, one set of
-        // lines. `namedSkyReason` is interned, so asking why costs nothing.
+        // The two skies (ui.22, reworked in ui.23).
+        //
+        // `NamedSky` decides whether the curated Milky Way figures exist at all:
+        // preset Milky Way, epoch within ±1 Gyr, clock slow enough to read. The
+        // observer's own figures are geometry instead of history — the brightest
+        // stars of *your* sky, connected the way a person would draw them — and
+        // they are built on demand around one saved position, never followed
+        // around by the selection. That anchor is the whole contract: press K
+        // once at your HQ and the sky you get is the sky from your HQ, at the
+        // epoch you are looking at, until you press K somewhere else.
+        //
+        // The two sets are exclusive — one sky, one set of lines — and both are
+        // suspended while the star clock runs too fast to read a figure.
         const namedSky = window.NamedSky;
         let namedSkyReason = namedSky.REASON_OK;
         const myFigures = window.Asterisms.create(window.Asterisms.DEFAULT_MAX_STARS);
         const myFigurePool = window.Asterisms.pool(8192);
-        let myFiguresOn = false;
+        // Which sky is on. `figureSky` is the selector's state and the layer's
+        // input; `myFiguresOn`/the named-sky checkbox both derive from it, so
+        // the three controls cannot disagree.
+        const SKY_OFF = 'off', SKY_MILKY_WAY = 'milkyway', SKY_OWN = 'own';
+        // The curated set is what a Milky Way boot has always shown, so it is
+        // the default *choice*: outside its window the gate hides it without
+        // forgetting that this is what the viewer asked for.
+        let figureSky = SKY_MILKY_WAY;
         let myFiguresAuto = false;
         let myFiguresBuilt = false;
+        // The saved position the own figures were built from: the record key is
+        // the identity, the position is re-resolved from it every build so the
+        // anchor rides its star.
+        const figureAnchor = { key: 0, kind: -1, index: -1, valid: false, name: '' };
         const figureEye = new Float64Array(3);
         const figureDrawn = new Float64Array(3);
         // A rebuild is a full pass over the resident records, so auto-update is
@@ -291,6 +310,8 @@ async function boot() {
         // several times a second.
         const FIGURE_REBUILD_MIN_S = 2;
         let lastFigureRebuild = 0;
+        // How many figures the last build produced, for the panel's one line.
+        let figureNote = '';
 
         const selection = window.Selection.createSelection(camera, landmarks);
         const selectionStore = window.SelectionStore.createSelectionStore();
@@ -326,23 +347,48 @@ async function boot() {
                 return selection.resolveDrawnVelocity(memberRefFor(i), out);
         }
 
-        // The observer's own figures (ui.22): stand at the primary selection and
-        // draw what a human standing there would draw. One pass over the
-        // resident records at their *drawn* positions, through the same
+        // The observer's own figures (ui.22, reworked ui.23): stand at one saved
+        // position and draw what a human standing there would draw. One pass over
+        // the resident records at their *drawn* positions, through the same
         // engine-mask dispatch the sprites and the labels use — so a figure is
         // built on the sky the frame is showing, not on the birth sky.
         //
-        // The pass is O(resident records) with a dispatch each, which is the
-        // same order as a click pick (~0.37 µs/record classic). It is a
-        // user-pressed action, and auto-update is throttled by both star time
+        // The pass is O(resident records) with a dispatch each, which is the same
+        // order as a click pick (~0.37 µs/record classic). It is a user-pressed
+        // action, and auto-update is throttled by both star time
         // (`Asterisms.STALE_MYR`) and wall time, so it is not a frame cost.
-        // The curated block (kind 1) is skipped: those stars belong to the
-        // other sky, and outside its epoch window they are not drawn at all.
+        //
+        // The curated block (kind 1) is skipped: those stars belong to the other
+        // sky, and whichever epoch this is, mixing the two tables into one
+        // figure is the thing exclusivity exists to prevent.
+        const figureRef = { kind: -1, index: -1, key: 0, x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0 };
+
+        // Where the anchor is *now*, in drawn coordinates. A saved anchor rides
+        // its star: the figures are rebuilt from the star's current position, so
+        // a galactic orbit does not leave the sky behind.
+        function resolveFigureEye(out) {
+                if (!figureAnchor.valid) return false;
+                figureRef.kind = figureAnchor.kind;
+                figureRef.index = figureAnchor.index;
+                figureRef.key = figureAnchor.key;
+                if (labels.tradeRecordPosition(figureRef.kind, figureRef.index, figureRef.key, out)) {
+                        return true;
+                }
+                // Not resident this frame (streamed out, or the anchor was a
+                // catalogue star that has not loaded yet): fall back to the eye
+                // the last build used rather than rebuilding around the origin.
+                if (myFiguresBuilt) {
+                        out[0] = figureEye[0]; out[1] = figureEye[1]; out[2] = figureEye[2];
+                        return true;
+                }
+                return false;
+        }
+
         function buildMyFigures() {
                 const info = renderer.starBlocks();
                 const orbit = window.OrbitLib;
-                if (starSet.primary < 0 || !info || !info.view || !info.identity) return false;
-                if (memberDrawnPosition(starSet.primary, figureEye) === window.Selection.DRAWN_STALE) return false;
+                if (!info || !info.view || !info.identity) return false;
+                if (!resolveFigureEye(figureEye)) return false;
                 const view = info.view;
                 const identity = info.identity;
                 const records = window.StarRecord;
@@ -384,11 +430,52 @@ async function boot() {
                         figureEye[0], figureEye[1], figureEye[2], starTimeMyr);
                 myFiguresBuilt = myFigures.count > 0;
                 myFigureScanned = scanned;
-                if (myFiguresBuilt && !myFiguresOn) {
-                        myFiguresOn = true;
-                        labels.setAsterisms(myFigures);
-                }
+                figureNote = myFiguresBuilt
+                        ? myFigures.figureCount + (myFigures.figureCount === 1 ? ' figure' : ' figures')
+                                + ' \u00b7 ' + myFigures.count + ' stars \u00b7 from '
+                                + (figureAnchor.name || 'the selected position')
+                        : 'no stars within ' + (window.Asterisms.MAX_RADIUS_KPC * 1000) + ' pc of the anchor';
                 return myFiguresBuilt;
+        }
+
+        // K: (re)build around the primary selection, and switch the sky to the
+        // own figures. This is the only writer of the anchor, so "create" is the
+        // only way the sky changes place.
+        function createFiguresAtSelection() {
+                if (starSet.primary < 0) return false;
+                const ref = memberRefFor(starSet.primary);
+                if (ref.kind < 0) return false;
+                figureAnchor.kind = ref.kind | 0;
+                figureAnchor.index = ref.index | 0;
+                figureAnchor.key = ref.key >>> 0;
+                figureAnchor.name = memberName(starSet.primary);
+                figureAnchor.valid = true;
+                if (!buildMyFigures()) {
+                        figureAnchor.valid = false;
+                        return false;
+                }
+                setFigureSky(SKY_OWN);
+                return true;
+        }
+
+        // P with the curated sky out of its window: the key still answers, with
+        // the reason instead of a dead toggle (ui.23). A control that does
+        // nothing without saying why is the defect this series is replacing.
+        function requestNamedSkyWhy() {
+                setAutoMsg('Milky Way constellations: ' + namedSky.describe(namedSkyReason));
+        }
+
+        // The one writer of the sky choice. Exclusivity lives here as well as in
+        // the layer, because the two controls have to read the same answer.
+        function setFigureSky(next) {
+                if (next === SKY_OWN && !myFiguresBuilt) next = SKY_OFF;
+                figureSky = next;
+                // The layer owns the exclusivity (`skyChoice`), and it is a
+                // *choice*, not the named sky's gate — that was ui.22's defect:
+                // at the one epoch where the curated table exists, its gate also
+                // suppressed the observer's own figures.
+                labels.setSkyChoice(next);
+                labels.setAsterisms(myFiguresBuilt ? myFigures : null);
         }
         let myFigureScanned = 0;
         // Both buffer sweeps — the click pick (plan §3.1) and the radius scan
@@ -1891,6 +1978,9 @@ async function boot() {
                 if (systemLayer.isOpen() && tradeNet) {
                         portIndex = tradeLib.bestPortOfStar(tradeNet, systemLayer.record.star.key >>> 0);
                 }
+                // A port outside this epoch's sky (trade.24) is not a station
+                // the schematic can show: its star is not drawn.
+                if (portIndex >= 0 && tradeNet.ports[portIndex].skyVisible === 0) portIndex = -1;
                 if (portIndex >= 0) systemLayer.setTradeData(tradeNet.ports[portIndex], tradeNet.worlds);
                 else systemLayer.setTradeData(null, null);
                 sysread.textContent = systemLayer.readoutText() + tradeReadoutText();
@@ -2194,10 +2284,29 @@ async function boot() {
                 }
                 helpTitle.textContent = 'Controls — ' + name;
         }
-        // ui.22: the two skies' controls. The curated one is greyed (with the
-        // reason in its title) wherever the named sky does not exist; the
-        // observer's own set needs a figure built before it can be shown.
-        const labelConstellations = document.getElementById('label-constellations');
+        // ui.23: the sky selector. One control with three states — off, the
+        // curated Milky Way table, the observer's own figures — instead of two
+        // checkboxes that had to agree. The Milky Way entry is refused, with the
+        // reason in the label's title, wherever `NamedSky` says the table means
+        // nothing; the own entry exists only once K has built a set.
+        const skySelect = document.getElementById('sky-select');
+        const skyOptionMilkyWay = document.getElementById('sky-option-milkyway');
+        const skyOptionOwn = document.getElementById('sky-option-own');
+        const labelSky = document.getElementById('label-sky');
+        if (skySelect) {
+                skySelect.addEventListener('change', () => {
+                        const next = skySelect.value;
+                        if (next === SKY_MILKY_WAY && namedSkyReason !== namedSky.REASON_OK) {
+                                requestNamedSkyWhy();
+                                skySelect.value = figureSky;
+                                return;
+                        }
+                        setFigureSky(next);
+                        syncHelpControls(camera.getState(statsText));
+                        releasePanelInput();
+                        canvas.focus({ preventScroll: true });
+                });
+        }
         const helpMakeFigures = helpPanel.querySelector('[data-action="makeFigures"]');
         const helpClockSim = helpPanel.querySelector('[data-action="clockSim"]');
         const helpClockArcade = helpPanel.querySelector('[data-action="clockArcade"]');
@@ -2221,18 +2330,30 @@ async function boot() {
                 releasePanelInput();
                 canvas.focus({ preventScroll: true });
         });
+        // The selector's hover text, split out so both the 4 Hz pass and the
+        // change handler can refresh it without re-running the whole panel.
+        function syncSkyLabel() {
+                if (!skySelect || !labelSky) return;
+                const skyOk = namedSkyReason === namedSky.REASON_OK;
+                skyOptionMilkyWay.disabled = !skyOk;
+                skyOptionOwn.disabled = !myFiguresBuilt;
+                skySelect.disabled = !skyOk && !myFiguresBuilt;
+                labelSky.title = 'Which figures to draw\n'
+                        + 'Milky Way (predefined): ' + namedSky.describe(namedSkyReason) + '\n'
+                        + (myFiguresBuilt
+                                ? 'own (from selection): ' + figureNote
+                                : 'own (from selection): nothing built yet \u2014 select a star and press K');
+        }
+
         function syncHelpControls(cameraState) {
                 helpBoxes.get('chaseFollow').checked = isFlying() ? ship.ap.mode === shipLib.AP_FOLLOW : cameraState.chase;
-                helpBoxes.get('constellations').checked = labels.constellationsVisible();
                 // The curated sky is greyed where it means nothing, and its
                 // title says why — a control that silently does nothing is the
-                // defect this replaces.
-                const skyOk = namedSkyReason === namedSky.REASON_OK;
-                helpBoxes.get('constellations').disabled = !skyOk;
-                labelConstellations.title = namedSky.describe(namedSkyReason);
-                helpBoxes.get('myFigures').checked = myFiguresOn;
-                helpBoxes.get('myFigures').disabled = myFiguresOn ? false : !myFiguresBuilt;
+                // defect this replaces (the detail lives in `syncSkyLabel`).
+                if (skySelect) skySelect.value = figureSky;
+                syncSkyLabel();
                 helpBoxes.get('figuresAuto').checked = myFiguresAuto;
+                helpBoxes.get('figuresAuto').disabled = !myFiguresBuilt;
                 helpMakeFigures.disabled = starSet.primary < 0;
                 helpBoxes.get('systemView').checked = systemLayer.isOpen();
                 helpBoxes.get('freezeTime').checked = isFlying() ? ship.timeFrozen : starTimeRate === 0;
@@ -2852,7 +2973,12 @@ async function boot() {
                         if (starTimeRate > 0) lastNonZeroTimeRate = starTimeRate;
                         syncStarTime();
                 }
-                if (view.constellations !== undefined) labels.setConstellations(view.constellations);
+                // A preset's `constellations` field is a *sky choice*, not a
+                // line flag (ui.23): it goes through the one writer, so a preset
+                // cannot leave the selector and the layer disagreeing.
+                if (view.constellations !== undefined) {
+                        setFigureSky(view.constellations ? SKY_MILKY_WAY : SKY_OFF);
+                }
                 if (view.fly) {
                         camera.setMode(window.Camera.MODE_FLY);
                         input.setFlyMode(true);
@@ -5021,10 +5147,24 @@ async function boot() {
         // The network's capital: the colony nearest the viewer's home, forced
         // by the seed map so the arrival has a colony in sight (trade-plan
         // §3). H goes here; the Trade panel names it.
+        // H goes to the capital — unless the capital's star is not in this
+        // epoch's sky (trade.24), in which case the nearest colony that is.
+        // Flying the player to a colony the frame is not drawing is exactly
+        // the defect the gate exists to stop.
         function homeColonyPort() {
                 if (!tradeNet || tradeNet.portCount === 0) return -1;
                 const capital = tradeNet.capital;
-                return capital >= 0 && capital < tradeNet.portCount ? capital : 0;
+                if (capital >= 0 && capital < tradeNet.portCount
+                        && tradeNet.ports[capital].skyVisible !== 0) return capital;
+                let best = -1, bestD2 = Infinity;
+                for (let i = 0; i < tradeNet.portCount; i++) {
+                        const port = tradeNet.ports[i];
+                        if (port.skyVisible === 0) continue;
+                        const dx = port.x - tradeNet.homeX, dy = port.y - tradeNet.homeY, dz = port.z - tradeNet.homeZ;
+                        const d2 = dx * dx + dy * dy + dz * dz;
+                        if (d2 < bestD2) { bestD2 = d2; best = i; }
+                }
+                return best;
         }
 
         // H's target as a pick: the same record shape a click produces, so the
@@ -5216,6 +5356,9 @@ async function boot() {
                 if (!systemLayer.isOpen() && p < 0) return '';
                 const portIndex = tradeLib.bestPortOfStar(tradeNet, key);
                 if (portIndex < 0) return '\ntrade     no colony here \u00b7 V discovers its sites';
+                if (tradeNet.ports[portIndex].skyVisible === 0) {
+                        return '\ntrade     no colony here at this epoch \u00b7 its star has not formed yet';
+                }
                 const port = tradeNet.ports[portIndex];
                 tradeLib.settlePort(tradeNet, portIndex, tradeNet.time);
                 const colony = port.colony;
@@ -5224,6 +5367,7 @@ async function boot() {
                                 + ` \u00b7 no trade \u00b7 pop ${economyLib.formatPop(colony.pop)} frozen`
                                 + '\nworlds    ' + tradeWorldsLine(portIndex)
                                 + tradeLib.intraReadoutText(tradeNet, portIndex)
+                                + tradeLib.intraFleetText(tradeNet, portIndex)
                                 + '\ninter     no trade';
                 }
                 const systemLine = `\nsystem    ${colony.sysRocky} rocky \u00b7 ${colony.sysGiants} giants`
@@ -5255,6 +5399,7 @@ async function boot() {
                         + (worstImport >= 0 ? ` \u00b7 worst import ${economyLib.RESOURCES[worstImport].name}` : '');
                 text += '\nworlds    ' + tradeWorldsLine(portIndex);
                 text += tradeLib.intraReadoutText(tradeNet, portIndex);
+                text += tradeLib.intraFleetText(tradeNet, portIndex);
                 text += '\ninter     ' + tradeMarketLine(colony);
                 text += systemLine;
                 text += '\nyields    ' + tradeYieldRow(colony, 0, 5) + '   + surplus \u00b7 ! scarce';
@@ -5602,7 +5747,20 @@ async function boot() {
                                 + (tradeNet.diverted > 0 ? ` \u00b7 ${tradeNet.diverted} turned back` : '')
                         : '';
                 const outpostNote = tradeNet.outposts > 0 ? ` \u00b7 ${tradeNet.outposts} outposts` : '';
+                // The sky gate's line (trade.24): a network this epoch cannot
+                // see is paused, not empty, and the panel says which.
+                const skyNote = tradeLib.skyGateText(tradeNet);
+                // The intra fleet's one row (trade-4-plan §5): the panel is the
+                // galaxy's view, so it says how many hulls the open system has
+                // in the air and nothing else.
+                const fleetPort = systemLayer.isOpen()
+                        ? tradeLib.bestPortOfStar(tradeNet, systemLayer.record.star.key >>> 0) : -1;
+                const fleetNote = fleetPort >= 0 && tradeNet.ports[fleetPort].intra
+                        ? ' \u00b7 intra ' + tradeNet.ports[fleetPort].intra.inFlight + '/'
+                                + tradeLib.INTRA_HULLS_MAX + ' flying' : '';
                 tradeState.textContent = `${tradeLib.livePortCount(tradeNet)} ports${outpostNote} \u00b7 ${tradeNet.shipCount} ships`
+                        + (skyNote ? ' \u00b7 ' + skyNote : '')
+                        + fleetNote
                         + ` \u00b7 ${tradeNet.founded} founded \u00b7 ${Math.round(tradeNet.delivered).toLocaleString()} units hauled`
                         + ` \u00b7 ${Math.round(tradeNet.time).toLocaleString()} y`
                         + tradeSyncNote()
@@ -5614,6 +5772,10 @@ async function boot() {
                 // centuries to reach the list.
                 let youngest = -1;
                 for (let i = 0; i < tradeNet.portCount; i++) {
+                        // A port outside this epoch's sky is not one of the
+                        // colony rows (trade.24): the list is the network the
+                        // viewer can see, not the one it remembers.
+                        if (tradeNet.ports[i].skyVisible === 0) continue;
                         const colony = tradeNet.ports[i].colony;
                         if (colony.outpost) continue;
                         if (youngest < 0 || colony.founded > tradeNet.ports[youngest].colony.founded) youngest = i;
@@ -6180,7 +6342,7 @@ async function boot() {
                                 : '') +
                         `cells ${state.cellsResident}/${state.catalogCells}   decoded ${(state.decodedBytes / 1024).toFixed(0)} KB` +
                         `   buffer ${(state.bufferBytes / 1048576).toFixed(1)} MB\n` +
-                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   engine ${state.engine}   constellations ${labels.constellationsVisible() ? 'on' : 'off'} (P)   star time ${isFlying() ? 'ship ' + shipLib.formatClock(ship, shipLib.speedC(ship)) : window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)${evolveOn ? ' +evolve' : ''}   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   pattern ${window.OrbitLib.effectivePatternSpeed(model).toFixed(3)} rad/Myr (x${patternScale.toFixed(2)})   Tab menu\n` +
+                        `exposure ${shutter} ([ / ])   brightness ${linExp}x (; / ')   white ${wp}   sat ${sat}   engine ${state.engine}   sky ${figureSky === SKY_OWN ? (myFiguresBuilt ? 'own ' + myFigures.figureCount + ' figures' : 'own') : figureSky === SKY_MILKY_WAY ? 'Milky Way' : 'off'} (P / K)   star time ${isFlying() ? 'ship ' + shipLib.formatClock(ship, shipLib.speedC(ship)) : window.OrbitLib.formatTimeRate(starTimeRate, 0)} (T)${evolveOn ? ' +evolve' : ''}   wave ${waveDamping === 0 ? 'off' : waveDamping.toFixed(2)}   pattern ${window.OrbitLib.effectivePatternSpeed(model).toFixed(3)} rad/Myr (x${patternScale.toFixed(2)})   Tab menu\n` +
                         `pos (${cameraState.position[0].toFixed(3)}, ${cameraState.position[1].toFixed(3)}, ${cameraState.position[2].toFixed(3)}) kpc\n` +
                         cameraLine(cameraState) +
                         modeHudLine() +
@@ -6190,6 +6352,10 @@ async function boot() {
                         selectedLine(cameraState) +
                         tradeOverlayLine();
                 if (!helpPanel.hidden) syncHelpControls(cameraState);
+                // The sky selector's own text is refreshed at the same 4 Hz:
+                // `figureNote` only changes on a build, but the Milky Way
+                // entry's refusal reason changes with the epoch.
+                if (!helpPanel.hidden) syncSkyLabel();
                 if (scenariosWired) syncScenario();
         }
 
@@ -6264,7 +6430,13 @@ async function boot() {
                         // bounded number of events and the clock stops at the
                         // next due one, so a slow machine falls behind (and says
                         // so) instead of dropping frames.
-                        const rateY = tradeClockRate();
+                        // A network every one of whose colonies is outside this
+                        // epoch's sky has nothing to simulate: the trade clock
+                        // pauses with the stars it cannot see (trade.24). The
+                        // gate stamps each world's own clock on the way in and
+                        // out, so the pause is not repaid when the sky returns.
+                        const skyGated = tradeNet.skyState === tradeLib.SKY_NONE;
+                        const rateY = skyGated ? 0 : tradeClockRate();
                         if (rateY > 0) {
                                 // A pause can last minutes of sky: the cache the first
                                 // drain after it reads has to be the sky it drains in,
@@ -6298,6 +6470,24 @@ async function boot() {
                                                 const field = renderer.fieldBuffers();
                                         if (field && field.count > 0) {
                                                 tradeLib.expandFrontierFromField(tradeNet, field, model);
+                                        }
+                                        // ...and an *empty* network retries its own seed:
+                                        // a run that evolves from first light has no star
+                                        // to settle until one forms, so the boot's seed map
+                                        // is re-run as the epoch advances (trade.26). The
+                                        // retry is throttled by the same 2 Hz pass and is
+                                        // a no-op the moment there is a port, hull or
+                                        // candidate — a live economy is never reset.
+                                        if (tradeNet.portCount === 0 && tradeNet.shipCount === 0
+                                                && tradeNet.candidateCount === 0) {
+                                                tradeCtx.model = model;
+                                                tradeCtx.field = field;
+                                                tradeCtx.member = null;
+                                                if (tradeLib.reseedIfEmpty(tradeNet, model, field,
+                                                        model.milkyWay ? landmarks : null, tradeCtx,
+                                                        tradeRecord) > 0) {
+                                                        syncTradeUi();
+                                                }
                                         }
                                 }
                         } else {
@@ -6479,17 +6669,44 @@ async function boot() {
                         const on = reason === namedSky.REASON_OK;
                         renderer.setNamedSky(on);
                         labels.setNamedSky(on);
+                        // Both skies are suspended while the star clock runs
+                        // too fast to read a figure: no draw, no update
+                        // (ui.23). The set survives the suspension, so slowing
+                        // down brings back the figures rather than a rebuild.
+                        labels.setAsterismGate(reason !== namedSky.REASON_FAST);
                         // Auto-update: the figures describe the sky they were
                         // built on, so once star time has moved them they are
-                        // rebuilt in place. Throttled by star time (the module's
-                        // own staleness) and by wall time, since a rebuild is a
-                        // full pass over the resident records.
-                        if (myFiguresAuto && myFiguresBuilt && myFiguresOn
+                        // rebuilt around the *saved* anchor — the same place,
+                        // the same sky, a new cast of stars. Throttled by star
+                        // time (the module's own staleness) and by wall time,
+                        // since a rebuild is a full pass over the records.
+                        if (myFiguresAuto && myFiguresBuilt && figureSky === SKY_OWN
+                                && reason !== namedSky.REASON_FAST
                                 && window.Asterisms.stale(myFigures, starTimeMyr)
                                 && dt > 0 && (time - lastFigureRebuild) > FIGURE_REBUILD_MIN_S) {
                                 lastFigureRebuild = time;
                                 buildMyFigures();
                         }
+                }
+                // The sky gate (trade.24): the network is seeded once per galaxy,
+                // so the epoch moving is the only thing that can put a colony on
+                // a star that is not in the frame. Re-read here every frame — the
+                // gate is two comparisons per port on a body that is already in
+                // cache — and the layer, the settle guard and the panel all read
+                // its verdict instead of re-deriving the birth channel.
+                if (tradeNet) tradeLib.applySkyGate(tradeNet, model, renderer.fieldBuffers(), starTimeRate);
+                // The intra fleet (trade.25): the system view is the only writer
+                // of the online flag. Opening a system allocates its twelve
+                // hulls and hands that port's transfers to them; closing hands
+                // them back to T4's closed form. In-flight cargo is the
+                // network's, not the view's, so it lands either way.
+                if (tradeNet) {
+                        let openPort = -1;
+                        if (systemLayer.isOpen()) {
+                                openPort = tradeLib.bestPortOfStar(tradeNet, systemLayer.record.star.key >>> 0);
+                                if (openPort >= 0 && tradeNet.ports[openPort].skyVisible === 0) openPort = -1;
+                        }
+                        tradeLib.setIntraOnline(tradeNet, openPort);
                 }
                 // The network is always drawn while it exists (the checkbox
                 // owns only the route lines): colonies that appear only when a
@@ -6673,26 +6890,36 @@ async function boot() {
                         viewModesLayer.cycleMode();
                         syncViewModes();
                 }
+                // The sky choice (ui.23). One selector, three states, one
+                // writer: `setFigureSky` owns both layers' flags, so the P
+                // checkbox, the K button and Shift+P can never disagree about
+                // which sky is on. Exclusivity is structural rather than a rule
+                // each caller has to remember.
                 if (actions.constellations) {
                         actions.constellations = 0;
-                        labels.toggleConstellations();
+                        if (figureSky === SKY_MILKY_WAY) setFigureSky(SKY_OFF);
+                        // Choosing the curated sky where it means nothing still
+                        // records the choice, and answers with the reason —
+                        // the gate is what hides it, and the gate is what says
+                        // why (ui.23).
+                        else {
+                                setFigureSky(SKY_MILKY_WAY);
+                                if (namedSkyReason !== namedSky.REASON_OK) requestNamedSkyWhy();
+                        }
                 }
-                // The observer's own set (ui.22). Turning it on turns the
-                // curated figures off and vice versa: one sky, one set of
-                // lines, and the layer enforces the same exclusivity.
                 if (actions.myFigures) {
                         actions.myFigures = 0;
-                        myFiguresOn = !myFiguresOn;
-                        if (myFiguresOn) labels.setConstellations(false);
-                        labels.setAsterisms(myFiguresOn && myFiguresBuilt ? myFigures : null);
-                        if (myFiguresOn && !myFiguresBuilt) buildMyFigures();
+                        if (figureSky === SKY_OWN) setFigureSky(SKY_OFF);
+                        else if (myFiguresBuilt) setFigureSky(SKY_OWN);
+                        else createFiguresAtSelection();
                 }
                 if (actions.makeFigures) {
                         actions.makeFigures = 0;
-                        if (buildMyFigures()) {
-                                myFiguresOn = true;
-                                labels.setConstellations(false);
-                                labels.setAsterisms(myFigures);
+                        if (starSet.primary < 0) {
+                                setAutoMsg('select a star first \u2014 K builds your sky around it');
+                        } else if (!createFiguresAtSelection()) {
+                                setAutoMsg('no stars within ' + (window.Asterisms.MAX_RADIUS_KPC * 1000)
+                                        + ' pc of that position \u2014 pick a star inside the disc');
                         }
                 }
                 if (actions.figuresAuto) {

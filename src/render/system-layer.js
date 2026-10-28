@@ -65,6 +65,13 @@ const TRADE_INTRA_STROKES = [
 	'rgba(110, 235, 190, 0.30)', // goods
 	'rgba(240, 225, 150, 0.30)', // passengers
 ];
+// The intra fleet (trade.25). The hull state constant is trade.js's
+// `INTRA_LOADED`; the layer keeps its own copy so it never imports the model
+// just to compare an integer.
+const INTRA_LOADED = 1;
+const INTRA_HULL_PX = 2.2;
+const INTRA_HULL_STROKE = 'rgba(255, 236, 180, 0.92)';
+const INTRA_HULL_FILL = 'rgba(255, 196, 96, 0.95)';
 const TRADE_WORLD_SLOTS = 6;
 const TRADE_FLOW_FAMILIES = 3;
 
@@ -715,6 +722,43 @@ function createSystemLayer(canvas) {
 		ctx.setLineDash(TRADE_SOLID_DASH);
 		ctx.lineWidth = 1;
 		ctx.lineCap = 'butt';
+		drawIntraHulls();
+	}
+
+	// The hulls themselves (trade.25), one dot per loaded hull on the leg it is
+	// flying, interpolated by the *network's* clock between the two worlds'
+	// drawn positions. A hull that has not departed draws nothing; a hull whose
+	// pair no in-system class can fly was never loaded, so nothing is invented.
+	// The dashes above stay: they are the average the couple priced, and the
+	// hull is the actual — when they disagree over time, the average is right.
+	function drawIntraHulls() {
+		const intra = tradePort.intra;
+		if (!intra || !intra.hulls) return;
+		const now = intra.clock || 0;
+		for (let i = 0; i < intra.hulls.length; i++) {
+			const hull = intra.hulls[i];
+			if (hull.state !== INTRA_LOADED) continue;
+			const span = hull.arriveAt - hull.departAt;
+			let f = span > 0 ? (now - hull.departAt) / span : 1;
+			if (!(f >= 0)) f = 0;
+			if (f > 1) f = 1;
+			if (!tradeWorldPosition(hull.source, tradeFromXY)) continue;
+			if (!tradeWorldPosition(hull.dest, tradeToXY)) continue;
+			const x = tradeFromXY[0] + (tradeToXY[0] - tradeFromXY[0]) * f;
+			const y = tradeFromXY[1] + (tradeToXY[1] - tradeFromXY[1]) * f;
+			// A loaded hull reads as a small solid dot with a pale rim: the
+			// same mark the galaxy overlay uses for a sailing freighter, at the
+			// scale of a planet system.
+			ctx.beginPath();
+			ctx.arc(x, y, INTRA_HULL_PX + 0.9, 0, TAU);
+			ctx.strokeStyle = INTRA_HULL_STROKE;
+			ctx.lineWidth = 1;
+			ctx.stroke();
+			ctx.beginPath();
+			ctx.arc(x, y, INTRA_HULL_PX, 0, TAU);
+			ctx.fillStyle = INTRA_HULL_FILL;
+			ctx.fill();
+		}
 	}
 
 	function drawTradeWorlds() {

@@ -3429,6 +3429,357 @@ function exactLiveEvents(net) {
 	check('the released hull is back in service', net.ships[sailing].state !== trade.SHIP_CREWED);
 }
 
+// --- 5c. The sky gate: a network cannot sit on stars the epoch has hidden ---
+// The seed gate stops a cold boot from settling unformed stars. It does not
+// stop the *other* half of the same defect: the network is seeded once per
+// galaxy, so dragging the epoch back to first light left four colonies sailing
+// between stars the frame was no longer drawing. `applySkyGate` re-reads the
+// same birth channel per port, every time the epoch moves.
+{
+	const starTypes = require('../src/math/star-types.js');
+	const reference = galaxy.modelAtAge(model, galaxy.AGE_REF);
+	const field = Object.assign({}, scenarioField);
+	field.birth = new Float32Array(scenarioField.count);
+	for (let i = 0; i < scenarioField.count; i++) {
+		field.birth[i] = starTypes.sampleFieldBirth(reference,
+			starTypes.fieldStarSeed(model.seed | 0, i), scenarioField.component[i],
+			scenarioField.R[i], scenarioField.distToArm[i], scenarioField.z[i]);
+	}
+
+	function seedAt(age) {
+		const atAge = galaxy.modelAtAge(model, age);
+		const net = trade.createNetwork({ seed: model.seed | 0, modelSeed: galaxy.DEFAULT_SEED,
+			timeYears: 0, homeX: model.home.orbitTarget.x, homeY: model.home.orbitTarget.y,
+			homeZ: model.home.orbitTarget.z });
+		const previousField = ctx.field;
+		const previousModel = ctx.model;
+		ctx.field = field;
+		ctx.model = atAge;
+		const systems = trade.startSystems(net, atAge, field, landmarks, []);
+		trade.discoverNearest(net, systems, ctx, record);
+		ctx.field = previousField;
+		ctx.model = previousModel;
+		return { net: trade.finalize(net), atAge };
+	}
+
+	const today = seedAt(galaxy.AGE_REF);
+	const net = today.net;
+	check('at the reference epoch the gate counts every seeded colony as in the sky',
+		net.portCount > 0 && trade.applySkyGate(net, today.atAge, field) === trade.SKY_ALL
+		&& net.skyVisiblePorts === net.portCount, net.portCount);
+
+	// The scrub: the same network, an epoch where none of its stars exist.
+	const firstLight = galaxy.modelAtAge(model, 0);
+	check('dragging the epoch to first light closes the whole network',
+		trade.applySkyGate(net, firstLight, field) === trade.SKY_NONE
+		&& net.skyVisiblePorts === 0,
+		{ visible: net.skyVisiblePorts, state: net.skyState });
+	// The rate gate is part of the same verdict: a star clock fast enough to
+	// smear the curated sky hides the landmark sprites, so a colony on one is
+	// not a site the viewer can be flown to either.
+	check('a star clock too fast for the named sky closes the named ports too',
+		trade.applySkyGate(net, today.atAge, field, 40) === trade.SKY_NONE,
+		{ state: net.skyState, visible: net.skyVisiblePorts });
+	trade.applySkyGate(net, firstLight, field);
+	check('and the panel says the colonies are out of sky, not that there are none',
+		/exists at this epoch|has not formed/.test(trade.skyGateText(net)),
+		trade.skyGateText(net));
+
+	// A closed port is not settled: five thousand trade years on a hidden clock
+	// must leave every population and stock exactly where it was.
+	const pops = net.ports.map(p => p.colony.pop);
+	const stocks = net.worlds.slice(0, net.worldCount).map(w => Math.round(w.stock[0] * 1e6));
+	trade.settleAllPorts(net, net.time + 5000);
+	check('a colony whose star is not in the sky does not settle',
+		pops.every((v, i) => net.ports[i].colony.pop === v), { before: pops[0], after: net.ports[0].colony.pop });
+	check('and its stocks are untouched', net.worlds.slice(0, net.worldCount)
+		.every((w, i) => Math.round(w.stock[0] * 1e6) === stocks[i]));
+
+	// Coming back: the same scrub forward restores the same network, and the
+	// hidden window is not repaid as one giant settle.
+	check('scrubbing forward reopens the same ports',
+		trade.applySkyGate(net, today.atAge, field) === trade.SKY_ALL
+		&& net.skyVisiblePorts === net.portCount);
+	check('the world clocks were stamped on the closed edge, so no window is owed',
+		net.ports.every(p => {
+			for (let s = 0; s < p.worldCount; s++) {
+				if (net.worlds[p.worldIdx[s]].last !== net.time) return false;
+			}
+			return true;
+		}), net.time);
+
+	// A procedural galaxy has no named sky at all, so its network is seeded
+	// from the field alone (startSystems takes `null` landmarks). That network
+	// is the one that can be *partly* visible: seeded today, several of its
+	// ports' stars have not formed yet at 3 Gyr.
+	const procedural = Object.assign({}, today.atAge, { milkyWay: false });
+	const fieldNet = (() => {
+		const at = trade.createNetwork({ seed: model.seed | 0, modelSeed: galaxy.DEFAULT_SEED,
+			timeYears: 0, homeX: model.home.orbitTarget.x, homeY: model.home.orbitTarget.y,
+			homeZ: model.home.orbitTarget.z });
+		const previousField = ctx.field;
+		const previousModel = ctx.model;
+		ctx.field = field;
+		ctx.model = procedural;
+		const systems = trade.startSystems(at, procedural, field, null, []);
+		trade.discoverNearest(at, systems, ctx, record);
+		ctx.field = previousField;
+		ctx.model = previousModel;
+		return trade.finalize(at);
+	})();
+	check('a procedural galaxy seeds its ports from the field, not the curated sky',
+		fieldNet.portCount > 0
+		&& fieldNet.ports.slice(0, fieldNet.portCount).every(p => p.ref.kind === planets.BLOCK_FIELD),
+		fieldNet.portCount);
+	check('at the reference epoch that network is wholly in the sky',
+		trade.applySkyGate(fieldNet, procedural, field) === trade.SKY_ALL,
+		fieldNet.skyVisiblePorts);
+
+	const young = galaxy.modelAtAge(model, 3);
+	// Measured on this fixture: the four field ports were born at 13.42, 7.74,
+	// 12.16 and 13.31 Gyr, so 8.5 Gyr sees exactly one of them and 3 Gyr sees
+	// none. The gate is what makes those two epochs different.
+	const youngState = trade.applySkyGate(fieldNet, Object.assign({}, galaxy.modelAtAge(model, 8.5), { milkyWay: false }), field);
+	check('an 8.5 Gyr epoch sees one port of the four, and only the formed one',
+		youngState === trade.SKY_SOME && fieldNet.skyVisiblePorts === 1
+		&& fieldNet.ports[1].skyVisible === 1,
+		{ state: youngState, visible: fieldNet.skyVisiblePorts, of: fieldNet.portCount });
+	check('and the panel reports that as a count, not as a pause',
+		/in this epoch/.test(trade.skyGateText(fieldNet)), trade.skyGateText(fieldNet));
+	const oldState = trade.applySkyGate(fieldNet, Object.assign({}, young, { milkyWay: false }), field);
+	check('a 3 Gyr epoch sees none of them: every port was born later',
+		oldState === trade.SKY_NONE && fieldNet.skyVisiblePorts === 0,
+		{ state: oldState, visible: fieldNet.skyVisiblePorts });
+	trade.applySkyGate(fieldNet, procedural, field);
+}
+
+// --- 30. T6: the intra fleet (trade-25) ------------------------------------
+// T4 made intra-system trade a number. T6 gives the number a hull: the same
+// couple-priced mass, carried by a class that can actually fly the leg, on the
+// network's own clock. The contract §3 of trade-4-plan.md pins is that opening
+// the system view changes the picture, never the economy.
+{
+	const system = syntheticIntraSystem({
+		key: 0x543649,
+		planets: [{ a: 1, mass: 1, radius: 1, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ }],
+		beltA: 1.1,
+	});
+	function fleetFixture() {
+		const fixture = syntheticTradePort(system, 0, 0, 1, 0, 'Terran', 'belt');
+		for (const world of fixture.worlds) {
+			world.last = 0; world.pop = 10; world.capacity = 100;
+			world.coverage = 0.5; world.outpost = 0;
+			world.outBase.fill(0); world.stock.fill(0); world.stockCap.fill(1000);
+		}
+		fixture.worlds[1].stockCap[economy.R_ORE] = 100;
+		fixture.worlds[1].stock[economy.R_ORE] = 100;
+		fixture.worlds[0].outBase[economy.R_ROBOTS] = 1;
+		return fixture;
+	}
+	function totalStock(fixture, r) {
+		let sum = 0;
+		for (const world of fixture.worlds) sum += world.stock[r];
+		return sum;
+	}
+
+	// The class gate (§4). Earth→Mars is 16.02 km/s out, so a round trip with
+	// the 1.1 reserve is 35.2 km/s: a nuclear hull flies it, a chemical one
+	// cannot, and a pair past 40 km/s has no in-system engine at all.
+	check('the cheapest in-system class that can fly the round trip is chosen',
+		trade.intraClassFor(3000).id === 'chemical'
+		&& trade.intraClassFor(16020).id === 'nuclear'
+		&& trade.intraClassFor(25000) === null,
+		{ short: trade.intraClassFor(3000) && trade.intraClassFor(3000).id,
+			mars: trade.intraClassFor(16020) && trade.intraClassFor(16020).id });
+	check('no interstellar class is ever offered for an intra leg', (() => {
+		for (let dv = 0; dv < 60e3; dv += 500) {
+			const cls = trade.intraClassFor(dv);
+			if (cls && cls.domain !== 'in-system') return false;
+		}
+		return true;
+	})());
+
+	// One settle, view open: the destination is *not* credited, a hull is loaded
+	// with exactly the mass the couple priced, and the leg is the Hohmann time.
+	const closedPort = fleetFixture(), openedPort = fleetFixture();
+	trade.settlePort(closedPort.net, closedPort.portIndex, 20);
+	trade.setIntraOnline(openedPort.net, openedPort.portIndex);
+	trade.settlePort(openedPort.net, openedPort.portIndex, 20);
+	const intra = openedPort.port.intra;
+	const loaded = intra.hulls.filter(h => h.state === trade.INTRA_LOADED);
+	check('opening the system puts the transfer on hulls instead of crediting it',
+		intra.inFlight > 0 && loaded.length > 0
+		&& totalStock(openedPort, economy.R_ORE) < totalStock(closedPort, economy.R_ORE),
+		{ inFlight: intra.inFlight, ore: totalStock(openedPort, economy.R_ORE),
+			closed: totalStock(closedPort, economy.R_ORE) });
+	check('every loaded hull is a class that can fly its own leg', (() => {
+		for (const hull of loaded) {
+			const cls = require('../src/math/deltav.js').classById(hull.classId);
+			if (cls.domain !== 'in-system') return false;
+			if (cls.dvMax < hull.dv * 2 * 1.1) return false;
+			if (!(hull.arriveAt > hull.departAt)) return false;
+			if (hull.amount > cls.cargo + 1e-9) return false;
+		}
+		return true;
+	})(), loaded.length);
+
+	// The arrival is the only place the mass becomes stock again.
+	const legYears = loaded.length > 0 ? loaded[0].arriveAt - loaded[0].departAt : 0;
+	for (let t = 0; t < 40; t++) trade.step(openedPort.net, 1);
+	check('the hull lands its cargo and the system total matches the closed view',
+		intra.inFlight === 0
+		&& near(totalStock(openedPort, economy.R_ORE), totalStock(closedPort, economy.R_ORE), 1e-9),
+		{ inFlight: intra.inFlight, legYears,
+			opened: totalStock(openedPort, economy.R_ORE), closed: totalStock(closedPort, economy.R_ORE) });
+
+	// A pair no engine can fly: the transfer stays instantaneous (the economy is
+	// unchanged) and the pair is reported unserved rather than drawn.
+	const unserved = fleetFixture();
+	unserved.port.dv[trade.MAX_WORLDS_PER_STAR + 0] = 30e3;      // belt → terran, 60 km/s round trip
+	unserved.port.tH[trade.MAX_WORLDS_PER_STAR + 0] = 1e7;
+	trade.setIntraOnline(unserved.net, unserved.portIndex);
+	const beforeUnserved = unserved.worlds[0].stock[economy.R_ORE];
+	trade.settlePort(unserved.net, unserved.portIndex, 20);
+	check('a pair no in-system class can fly books no hull and stays instantaneous',
+		unserved.port.intra.inFlight === 0 && unserved.port.intra.unservedPairs > 0
+		&& unserved.worlds[0].stock[economy.R_ORE] > beforeUnserved,
+		{ unservedPairs: unserved.port.intra.unservedPairs,
+			ore: unserved.worlds[0].stock[economy.R_ORE], before: beforeUnserved });
+
+	// The clock discipline: 500 one-year steps land the same hulls as one jump.
+	function jumpVsSteps(jump) {
+		const stepped = fleetFixture(), jumped = fleetFixture();
+		trade.setIntraOnline(stepped.net, stepped.portIndex);
+		trade.setIntraOnline(jumped.net, jumped.portIndex);
+		trade.settlePort(stepped.net, stepped.portIndex, 5);
+		trade.settlePort(jumped.net, jumped.portIndex, 5);
+		if (jump) trade.step(jumped.net, 500, 100000);
+		else for (let i = 0; i < 500; i++) trade.step(stepped.net, 1, 100000);
+		return { stepped, jumped };
+	}
+	const clock = jumpVsSteps(false);
+	const jumped = jumpVsSteps(true);
+	check('a 500-year jump lands the same intra ledger as 500 one-year steps',
+		clock.stepped.port.intra.delivered === jumped.jumped.port.intra.delivered
+		&& clock.stepped.port.intra.trips === jumped.jumped.port.intra.trips
+		&& near(totalStock(clock.stepped, economy.R_ORE), totalStock(jumped.jumped, economy.R_ORE), 1e-9),
+		{ stepped: clock.stepped.port.intra.delivered, jumped: jumped.jumped.port.intra.delivered });
+
+	// Closing the view mid-leg loses nothing: the fleet's queue belongs to the
+	// network, so a cargo in flight lands whether or not anything is looking.
+	const closing = fleetFixture();
+	trade.setIntraOnline(closing.net, closing.portIndex);
+	trade.settlePort(closing.net, closing.portIndex, 20);
+	const inFlightAtClose = closing.port.intra.inFlight;
+	trade.setIntraOnline(closing.net, -1);
+	for (let t = 0; t < 40; t++) trade.step(closing.net, 1);
+	check('closing the system view mid-leg still lands the cargo',
+		inFlightAtClose > 0 && closing.port.intra.inFlight === 0
+		&& closing.port.intra.delivered > 0,
+		{ inFlightAtClose, delivered: closing.port.intra.delivered });
+
+	// The readout the schematic shows while a hull is in the air.
+	{
+		const shown = fleetFixture();
+		trade.setIntraOnline(shown.net, shown.portIndex);
+		trade.settlePort(shown.net, shown.portIndex, 20);
+		const text = trade.intraFleetText(shown.net, shown.portIndex);
+		check('the fleet readout names the hulls in flight, their class, leg and cargo',
+			/hulls flying/.test(text) && /km\/s/.test(text) && / t/.test(text)
+			&& /chemical|nuclear/.test(text) && /\u2192/.test(text), text);
+		for (let t = 0; t < 40; t++) trade.step(shown.net, 1);
+		const idle = trade.intraFleetText(shown.net, shown.portIndex);
+		check('and reports the port idle once every hull has landed',
+			/hulls in port/.test(idle) && /landed/.test(idle), idle);
+	}
+
+	// §3's contract. Measured on this fixture at the year cadence the app runs
+	// (the trade clock steps in single years at 100–2 000 y/s), the two paths
+	// agree to 0.84 %; at a coarse 10-year cadence the same comparison is 6.6 %,
+	// because the leg is then 5 % of every interval. The tolerance is pinned
+	// from the fine measurement, and trade-4-plan.md §3 records the coarse one.
+	function runWindow(online) {
+		const fixture = fleetFixture();
+		if (online) trade.setIntraOnline(fixture.net, fixture.portIndex);
+		trade.finalize(fixture.net);
+		for (let i = 0; i < 5000; i++) trade.step(fixture.net, 1, 100000);
+		return fixture;
+	}
+	const contractClosed = runWindow(false);
+	const contractOpened = runWindow(true);
+	let worst = 0, worstResource = -1;
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+		const a = totalStock(contractClosed, r), b = totalStock(contractOpened, r);
+		const delta = Math.abs(a - b) / Math.max(1, Math.abs(a), Math.abs(b));
+		if (delta > worst) { worst = delta; worstResource = r; }
+	}
+	check('5000 years with the view open and closed land the same stocks within 5%',
+		worst < 0.05,
+		{ worst: (worst * 100).toFixed(2) + '%', resource: worstResource,
+			delivered: Math.round(contractOpened.port.intra.delivered) });
+}
+
+// --- 31. The seed map bootstraps itself once the epoch allows it -----------
+// trade.23's tail: with the formation gate in place, a run started at first
+// light arrives with no colonies — and stayed that way, because seeding happens
+// once per galaxy and `expandFrontierFromField` needs a colony to measure from.
+// `reseedIfEmpty` is the retry: it may only act on a network that is genuinely
+// empty, and it founds at the current trade year rather than backdating.
+{
+	const starTypes = require('../src/math/star-types.js');
+	const reference = galaxy.modelAtAge(model, galaxy.AGE_REF);
+	const field = Object.assign({}, scenarioField);
+	field.birth = new Float32Array(scenarioField.count);
+	for (let i = 0; i < scenarioField.count; i++) {
+		field.birth[i] = starTypes.sampleFieldBirth(reference,
+			starTypes.fieldStarSeed(model.seed | 0, i), scenarioField.component[i],
+			scenarioField.R[i], scenarioField.distToArm[i], scenarioField.z[i]);
+	}
+	function emptyNet() {
+		return trade.createNetwork({ seed: model.seed | 0, modelSeed: galaxy.DEFAULT_SEED,
+			timeYears: 0, homeX: model.home.orbitTarget.x, homeY: model.home.orbitTarget.y,
+			homeZ: model.home.orbitTarget.z });
+	}
+	const firstLight = galaxy.modelAtAge(model, 0);
+	const net = emptyNet();
+	net.time = 900;                       // the trade clock has been running
+	trade.finalize(net);
+	const previousField = ctx.field, previousModel = ctx.model;
+	ctx.field = field; ctx.model = firstLight;
+	const atFirstLight = trade.reseedIfEmpty(net, firstLight, field, landmarks, ctx, record);
+	ctx.field = previousField; ctx.model = previousModel;
+	check('an empty network at first light still finds nothing to settle',
+		atFirstLight === 0 && net.portCount === 0);
+
+	// The epoch advances: the sky forms stars, and the retry may now act.
+	const today = galaxy.modelAtAge(model, galaxy.AGE_REF);
+	ctx.field = field; ctx.model = today;
+	const founded = trade.reseedIfEmpty(net, today, field, landmarks, ctx, record);
+	ctx.field = previousField; ctx.model = previousModel;
+	check('once the sky has stars, the empty network seeds itself',
+		founded > 0 && net.portCount > 0, { founded, ports: net.portCount });
+	// The seed map's own age law, unchanged: a discovered world is a rolled
+	// galaxy world, settled in the past, not a colony founded this instant. The
+	// retry introduces no new founding rule — it re-runs the same map.
+	check('its colonies are the seed map\u2019s rolled worlds, not a new founding law',
+		net.ports[0].colony.founded > 0 && net.ports[0].colony.founded <= net.time,
+		{ founded: net.ports[0].colony.founded, time: net.time });
+	check('the trade clock it had already run is kept, not reset',
+		net.time === 900, net.time);
+
+	// A network with a port is never re-seeded: that is the guarantee that a
+	// live economy cannot be reset by the clock crossing a threshold.
+	const live = emptyNet();
+	trade.reseedIfEmpty(live, today, field, landmarks, ctx, record);
+	const before = live.portCount;
+	const portsBefore = live.ports.slice(0, before).map(p => p.key);
+	check('a seeded network is left alone by the retry',
+		trade.reseedIfEmpty(live, today, field, landmarks, ctx, record) === 0
+		&& live.portCount === before
+		&& live.ports.slice(0, before).every((p, i) => p.key === portsBefore[i]),
+		{ ports: before });
+}
+
 // --- Summary --------------------------------------------------------------
 {
 	const passed = checks.filter(c => c.pass).length;

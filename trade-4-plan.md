@@ -1,9 +1,10 @@
 # trade-4 — T6: a real intra-system fleet
 
-**Status: planned, not built.** This file is the design; nothing here is
-implemented. It answers the deferral recorded in
-[`trade-3-plan.md`](trade-3-plan.md) §8 and is indexed from
-[`deferred-open-work.md`](deferred-open-work.md).
+**Status: built (trade.25, 2026-10-28) — with two recorded deviations, §0.1.**
+The design below is what shipped, except where §0.1 says otherwise; the
+implementation notes and measurements are in `archive/trade.x-worklog.md`
+(trade.25). It answers the deferral recorded in
+[`trade-3-plan.md`](trade-3-plan.md) §8.
 
 T4 made intra-system trade a *number*: one couple-weighted transfer per settle,
 priced by the delta-v graph, with no hull and no travel time. That was the right
@@ -36,6 +37,36 @@ instantly is a picture, not a fleet. T6 is the slice that makes it a fleet.
    residency rebuild. Its state is the event, not the frame.
 5. **No new money, no new resources, no new stock pile.** T4's world stocks are
    the only stocks. A hull moves mass between them and nothing else.
+
+## 0.1 What shipped differently, and why
+
+1. **One clock, not two.** §0.1 asked for intra hulls on the schematic's own
+   `SYSTIME` ladder with their own heap. They ride the *network's* trade clock
+   and a heap of their own (`net.intraQ`), and the schematic draws them as of
+   that clock. Reason: the schematic can run at 1e-4 y/s while the economy runs
+   at 2 000 y/s; two clocks would let a hull and the stock it carries disagree
+   about when a leg happened. The queue is still separate — an intra arrival is
+   a different event from an inter-star one — so §8's refusal of a shared heap
+   stands.
+2. **A close folds the cargo in, it does not strand it.** §3 proposed the hull
+   keep an in-flight cargo and `settlePort` withhold the pair until it lands.
+   Because the queue belongs to the network, the arrival simply happens whether
+   or not the view is open, so nothing needs withholding. Pinned by a test that
+   closes the view mid-leg.
+3. **Loading is instantaneous at the settle boundary.** There is no
+   `INTRA_LOAD` event: the cargo is already at the port and the settle is what
+   decides its quantity, so a hull is loaded and departed in the same instant it
+   is booked. `INTRA_DEPART`/`INTRA_ARRIVE` collapse into one arrival event per
+   hull.
+4. **The measured tolerance is 0.84 %, and it is cadence-dependent.** §3 asked
+   for 5 % and for the measurement to set the number. At the app's year cadence
+   5 000 years of open and closed view agree to **0.84 %**; at a coarse 10-year
+   cadence the same comparison is **6.6 %**, because the leg is then 5 % of every
+   interval. The test pins the fine case (0.84 %, tolerance 5 %) and this line
+   records the coarse one rather than hiding it.
+5. **Unserved pairs stay instantaneous.** A pair no in-system class can fly books
+   no hull *and* keeps T4's instant transfer, so the engine gate can never be a
+   silent economic brake. The schematic reports the count as `unserved`.
 
 ## 1. What is wrong today
 
@@ -160,7 +191,7 @@ table decides what exists, and the map's own numbers decide what is reachable.
 | Rewinding the intra fleet with a negative system clock | Monotone or it is not a fleet. Pause instead. |
 | Per-hull routing through intermediate bodies | One leg per voyage. Multi-hop is a later row if the map ever wants it. |
 
-## 7. Validation
+## 7. Validation (what was actually pinned)
 
 - **The contract.** Open and closed over the same 5 000-year window land the
   same world stocks (§3). This is the gate; nothing else ships without it.
@@ -173,9 +204,15 @@ table decides what exists, and the map's own numbers decide what is reachable.
   close, a reopen and a rewind attempt.
 - **Determinism.** Same system record, same seed, same clock → same hull
   schedule, byte for byte.
-- **Browser rows** go on `deferred-browser-visual-plan.md` as a new V row: the
-  hulls ride their legs, the dashes and the hulls visibly agree over time, and
-  closing the view mid-leg does not visibly change the economy.
+- **Browser rows** go on `deferred-browser-visual-plan.md` as V15: the hulls
+  ride their legs, the dashes and the hulls visibly agree over time, and closing
+  the view mid-leg does not visibly change the economy.
+
+All five Node rows are in `experiments/trade-test.js` §30 (trade **310/310**).
+The class gate's own row from §9 — "measure how many pairs a nuclear hull can
+actually fly before trusting the gate" — is answered by the Solar fixture:
+Earth–Mars 16.02 km/s is a nuclear run (35.2 km/s round trip with the reserve),
+a 3 km/s belt hop is chemical, and 25 km/s is unserved.
 
 ## 8. Order, size, commits
 

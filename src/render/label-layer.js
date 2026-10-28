@@ -415,6 +415,12 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	// under a star clock fast enough to smear it — the layer stops drawing and
 	// stops updating. Separate from `enabled`, which is about the table itself.
 	let namedSkyOn = true;
+	// Which sky the viewer *chose* (ui.23): 'milkyway', 'own' or 'off'. This is
+	// the exclusivity, and it had to move here. ui.22 made `asterismsActive`
+	// depend on `namedSkyActive()`, which is a gate — so at the Milky Way's own
+	// present day, the one epoch where the curated table exists, the observer's
+	// figures could never draw. A gate is not a choice.
+	let skyChoice = 'milkyway';
 	// The observer's own figures, built from the selected position
 	// (`src/math/asterisms.js`). Exclusive with the curated ones.
 	let asterisms = null;
@@ -448,6 +454,21 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		tradeOn = !!show && !!tradeNet;
 		tradeRoutes = routes === undefined ? true : !!routes;
 		tradeDetail = detail === undefined ? 2 : detail | 0;
+	}
+
+	// The sky gate's verdict on one port (trade.24). `TradeLib.applySkyGate`
+	// writes it every frame from the same birth channel the vertex stage reads,
+	// so a colony whose star this epoch has not formed is not drawn — and a
+	// hull whose endpoints are not both in the sky is not drawn either, because
+	// a chord between two stars nobody can see is the same lie in a longer form.
+	function portInSky(port) { return !!port && port.skyVisible !== 0; }
+	// A network that has never been gated has no count to read; it is fully in
+	// the sky, which is what every fixture that never calls `applySkyGate` is.
+	function netPortsInSky(net) {
+		return net.skyVisiblePorts === undefined ? net.portCount : net.skyVisiblePorts;
+	}
+	function candidateInSky(candidate) {
+		return !!candidate && candidate.skyVisible !== 0;
 	}
 
 	// --- Key → resident-slot maps -----------------------------------------
@@ -826,7 +847,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 				if (!route.active) continue;
 				const a = route.origin >= 0 ? tradeNet.ports[route.origin] : null;
 				const b = route.dest >= 0 ? tradeNet.ports[route.dest] : null;
-				if (!a || !b) continue;
+				if (!a || !b || !portInSky(a) || !portInSky(b)) continue;
 				if (!tradeRecordPosition(a.ref.kind | 0, a.ref.index | 0, a.key, tradeA)) continue;
 				if (!tradeRecordPosition(b.ref.kind | 0, b.ref.index | 0, b.key, tradeB)) continue;
 				if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],
@@ -856,6 +877,9 @@ function createLabelLayer(canvas, landmarks, constellations) {
 					? (ship.candidate >= 0 ? tradeNet.candidates[ship.candidate].site : null)
 					: (ship.to >= 0 ? tradeNet.ports[ship.to] : null);
 				if (!from || !to) continue;
+				if (!portInSky(from)) continue;
+				if (founding ? !candidateInSky(ship.candidate >= 0 ? tradeNet.candidates[ship.candidate] : null)
+					: !portInSky(to)) continue;
 				if (!tradeRecordPosition(from.ref.kind | 0, from.ref.index | 0, from.key, tradeA)) continue;
 				if (!tradeRecordPosition(to.ref.kind | 0, to.ref.index | 0, to.key, tradeB)) continue;
 				if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],
@@ -875,6 +899,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		for (let i = 0; tradeDetail >= 2 && i < tradeNet.candidateCount; i++) {
 			const candidate = tradeNet.candidates[i];
 			if (candidate.used || candidate.reserved >= 0) continue;
+			if (!candidateInSky(candidate)) continue;
 			const site = candidate.site;
 			if (!tradeRecordPosition(site.ref.kind | 0, site.ref.index | 0, site.key, tradeA)) continue;
 			if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],
@@ -891,6 +916,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 			ctx.beginPath();
 			for (let i = 0; i < tradeNet.portCount; i++) {
 				const port = tradeNet.ports[i];
+				if (!portInSky(port)) continue;
 				const colony = port.colony;
 				if (colony.outpost) continue;
 				const growth = colony.growth || 0;
@@ -913,6 +939,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		ctx.beginPath();
 		for (let i = 0; i < tradeNet.portCount; i++) {
 			const port = tradeNet.ports[i];
+			if (!portInSky(port)) continue;
 			const colony = port.colony;
 			if (colony.outpost) continue;
 			const age = tradeTime - colony.founded;
@@ -933,6 +960,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		ctx.beginPath();
 		for (let i = 0; i < tradeNet.portCount; i++) {
 			const port = tradeNet.ports[i];
+			if (!portInSky(port)) continue;
 			const colony = port.colony;
 			if (colony.outpost || !(colony.capacity > 0) || colony.pop < colony.capacity * 0.6) continue;
 			if (!tradeRecordPosition(port.ref.kind | 0, port.ref.index | 0, port.key, tradeA)) continue;
@@ -948,6 +976,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		ctx.beginPath();
 		for (let i = 0; i < tradeNet.portCount; i++) {
 			const port = tradeNet.ports[i];
+			if (!portInSky(port)) continue;
 			const colony = port.colony;
 			if (!colony.outpost) continue;
 			if (!tradeRecordPosition(port.ref.kind | 0, port.ref.index | 0, port.key, tradeA)) continue;
@@ -966,6 +995,7 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		const seg = Math.PI * 2 / TRADE_ALARM_SEGMENTS;
 		for (let i = 0; i < tradeNet.portCount; i++) {
 			const port = tradeNet.ports[i];
+			if (!portInSky(port)) continue;
 			const colony = port.colony;
 			if (colony.outpost || !colony.starving) continue;
 			if (!tradeRecordPosition(port.ref.kind | 0, port.ref.index | 0, port.key, tradeA)) continue;
@@ -1024,7 +1054,9 @@ function createLabelLayer(canvas, landmarks, constellations) {
 
 	function draw(camera, width, height) {
 		const chromeOn = chrome.active;
-		const tradeDrawn = tradeOn && tradeNet && tradeNet.portCount > 0;
+		// A network whose every port this epoch cannot see draws nothing at all
+		// (trade.24) — not even a cleared canvas, so the pass is skipped whole.
+		const tradeDrawn = tradeOn && tradeNet && netPortsInSky(tradeNet) > 0;
 		const skyOn = namedSkyActive();
 		const astOn = asterismsActive();
 		// The field's own marks (set rings, observer figures) do not need the
@@ -1084,7 +1116,14 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		return namedSkyOn;
 	}
 
-	function namedSkyActive() { return enabled && namedSkyOn; }
+	function setSkyChoice(next) {
+		skyChoice = next === 'own' ? 'own' : next === 'off' ? 'off' : 'milkyway';
+		showLines = skyChoice === 'milkyway';
+		return skyChoice;
+	}
+	function skyChoiceOf() { return skyChoice; }
+
+	function namedSkyActive() { return enabled && namedSkyOn && skyChoice === 'milkyway'; }
 
 	// The observer's own figures (`src/math/asterisms.js`). Borrowed, never
 	// owned: main.js builds them from the selected position and hands the
@@ -1099,7 +1138,13 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		return asterisms;
 	}
 
-	function asterismsActive() { return !!asterisms && !namedSkyActive(); }
+	// The star clock's own gate on the observer's figures (ui.23): above the
+	// named sky's rate the sky shears faster than a figure can be read, so the
+	// set is suspended — kept, not dropped — and returns when the clock slows.
+	let asterismGate = true;
+	function setAsterismGate(on) { asterismGate = !!on; }
+
+	function asterismsActive() { return !!asterisms && asterismGate && skyChoice === 'own'; }
 
 	// The figures at the stars' *drawn* positions: each figure star is a
 	// record key, resolved through the same map the set rings use, so a line
@@ -1160,7 +1205,8 @@ function createLabelLayer(canvas, landmarks, constellations) {
 		return {
 		resize, draw, setSelected, setOrbitState, setStarSource, setSelectedKeys,
 		toggleConstellations, setConstellations, constellationsVisible, setEnabled,
-		setNamedSky, namedSkyActive, setAsterisms, asterismsActive,
+		setNamedSky, namedSkyActive, setAsterisms, asterismsActive, setAsterismGate,
+		setSkyChoice, skyChoiceOf,
 		setShipChrome, setTradeOverlay, tradeRecordPosition, tradeRecordPositionAt,
 	};
 }

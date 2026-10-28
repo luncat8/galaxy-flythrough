@@ -1,6 +1,6 @@
 {
-  "total": 287,
-  "passed": 287,
+  "total": 316,
+  "passed": 316,
   "failed": 0,
   "checks": [
     {
@@ -1639,6 +1639,197 @@
     {
       "name": "the released hull is back in service",
       "pass": true
+    },
+    {
+      "name": "at the reference epoch the gate counts every seeded colony as in the sky",
+      "pass": true,
+      "detail": 4
+    },
+    {
+      "name": "dragging the epoch to first light closes the whole network",
+      "pass": true,
+      "detail": {
+        "visible": 0,
+        "state": 2
+      }
+    },
+    {
+      "name": "a star clock too fast for the named sky closes the named ports too",
+      "pass": true,
+      "detail": {
+        "state": 2,
+        "visible": 0
+      }
+    },
+    {
+      "name": "and the panel says the colonies are out of sky, not that there are none",
+      "pass": true,
+      "detail": "trade paused · no colony’s star exists at this epoch"
+    },
+    {
+      "name": "a colony whose star is not in the sky does not settle",
+      "pass": true,
+      "detail": {
+        "before": 45.6638600418907,
+        "after": 45.6638600418907
+      }
+    },
+    {
+      "name": "and its stocks are untouched",
+      "pass": true
+    },
+    {
+      "name": "scrubbing forward reopens the same ports",
+      "pass": true
+    },
+    {
+      "name": "the world clocks were stamped on the closed edge, so no window is owed",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "a procedural galaxy seeds its ports from the field, not the curated sky",
+      "pass": true,
+      "detail": 4
+    },
+    {
+      "name": "at the reference epoch that network is wholly in the sky",
+      "pass": true,
+      "detail": 4
+    },
+    {
+      "name": "an 8.5 Gyr epoch sees one port of the four, and only the formed one",
+      "pass": true,
+      "detail": {
+        "state": 1,
+        "visible": 1,
+        "of": 4
+      }
+    },
+    {
+      "name": "and the panel reports that as a count, not as a pause",
+      "pass": true,
+      "detail": "trade 1 of 4 colonies in this epoch’s sky"
+    },
+    {
+      "name": "a 3 Gyr epoch sees none of them: every port was born later",
+      "pass": true,
+      "detail": {
+        "state": 2,
+        "visible": 0
+      }
+    },
+    {
+      "name": "the cheapest in-system class that can fly the round trip is chosen",
+      "pass": true,
+      "detail": {
+        "short": "chemical",
+        "mars": "nuclear"
+      }
+    },
+    {
+      "name": "no interstellar class is ever offered for an intra leg",
+      "pass": true
+    },
+    {
+      "name": "opening the system puts the transfer on hulls instead of crediting it",
+      "pass": true,
+      "detail": {
+        "inFlight": 3,
+        "ore": 59.296679630764075,
+        "closed": 100
+      }
+    },
+    {
+      "name": "every loaded hull is a class that can fly its own leg",
+      "pass": true,
+      "detail": 3
+    },
+    {
+      "name": "the hull lands its cargo and the system total matches the closed view",
+      "pass": true,
+      "detail": {
+        "inFlight": 0,
+        "legYears": 0.5379181692227419,
+        "opened": 100,
+        "closed": 100
+      }
+    },
+    {
+      "name": "a pair no in-system class can fly books no hull and stays instantaneous",
+      "pass": true,
+      "detail": {
+        "unservedPairs": 1,
+        "ore": 40.703320369235925,
+        "before": 0
+      }
+    },
+    {
+      "name": "a 500-year jump lands the same intra ledger as 500 one-year steps",
+      "pass": true,
+      "detail": {
+        "stepped": 40.703320369235925,
+        "jumped": 40.703320369235925
+      }
+    },
+    {
+      "name": "closing the system view mid-leg still lands the cargo",
+      "pass": true,
+      "detail": {
+        "inFlightAtClose": 3,
+        "delivered": 40.703320369235925
+      }
+    },
+    {
+      "name": "the fleet readout names the hulls in flight, their class, leg and cargo",
+      "pass": true,
+      "detail": "\nfleet     3 of 12 hulls flying · 0 trips · 0.0 landed\n          chemical bulk  belt → Terran  2.4 km/s  20.54 y  20.0 t\n          chemical bulk  belt → Terran  2.4 km/s  20.54 y  20.0 t\n          chemical bulk  belt → Terran  2.4 km/s  20.54 y  0.7 t"
+    },
+    {
+      "name": "and reports the port idle once every hull has landed",
+      "pass": true,
+      "detail": "\nfleet     12 hulls in port · 3 trips · 40.7 landed"
+    },
+    {
+      "name": "5000 years with the view open and closed land the same stocks within 5%",
+      "pass": true,
+      "detail": {
+        "worst": "0.84%",
+        "resource": 8,
+        "delivered": 102
+      }
+    },
+    {
+      "name": "an empty network at first light still finds nothing to settle",
+      "pass": true
+    },
+    {
+      "name": "once the sky has stars, the empty network seeds itself",
+      "pass": true,
+      "detail": {
+        "founded": 4,
+        "ports": 4
+      }
+    },
+    {
+      "name": "its colonies are the seed map’s rolled worlds, not a new founding law",
+      "pass": true,
+      "detail": {
+        "founded": 777.5570275075734,
+        "time": 900
+      }
+    },
+    {
+      "name": "the trade clock it had already run is kept, not reset",
+      "pass": true,
+      "detail": 900
+    },
+    {
+      "name": "a seeded network is left alone by the retry",
+      "pass": true,
+      "detail": {
+        "ports": 4
+      }
     }
   ]
 }

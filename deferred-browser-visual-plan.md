@@ -205,6 +205,38 @@ At 1280×800, with trade running:
   galaxy-queue event appears. Check the expanded `#sysread` and System/Flight
   panels for overflow.
 
+## Two skies and an intra fleet (V15) — trade.25, ui.23
+
+Two rows opened by the 2026-10-28 slice. Both are picture verdicts; every model
+claim behind them is pinned in Node (`trade` §30, `asterisms`, `named-sky`).
+
+- **V15a — the sky selector.** Boot the Milky Way at the present day: the `sky`
+  select reads `off`, both entries enabled. Choose **Milky Way (predefined)** —
+  the curated figures draw. Drag the epoch past ±1 Gyr: the entry greys out, the
+  title says why, and pressing `P` prints the same sentence instead of toggling.
+  Select a star in the disc and press `K`: the selector flips to **own (from
+  selection)**, the curated figures disappear (exclusivity), and the own figures
+  draw. Now select a *different* star and press nothing — the figures must not
+  move, because the anchor is the saved position. Press `K` again: they rebuild
+  around the new star. Raise the star clock past 5 Myr/s: both sets stop drawing
+  and auto-update stops; slow down and the own set returns without a rebuild
+  flicker.
+- **V15b — the intra fleet.** Go to the present-day Milky Way, open a colony's
+  system with `V`, and watch. The T5 dashes stay as they were; the fleet dots
+  appear on the leg they are flying, pale rim + amber core, and move at the
+  *network's* trade clock — at a slow trade rate they will look nearly still, and
+  that is correct (they are on the clock that paid for them, not the schematic's
+  `SYSTIME` ladder). `#sysread` must show the `fleet` block with class, family,
+  `src → dst`, km/s, remaining years and tonnes. Close the view mid-leg: the
+  economy must not visibly change, and reopening must show the same hulls either
+  gone (landed) or still flying. A pair with no in-system class must never draw a
+  hull and must report under `unserved` — check a wide belt leg.
+- **What would fail this row.** A hull that teleports, a hull drawn between two
+  bodies it is not flying between, a `fleet` block that disagrees with the dots,
+  or the panel's `intra n/12 flying` disagreeing with the schematic. Jitter at
+  the frame rate is not a failure — the dots ride a trade clock that steps in
+  frames.
+
 ## Result template and escalation
 
 Record: task ID; date; browser/version; OS/GPU; file/localhost/preview context;

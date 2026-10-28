@@ -1094,3 +1094,155 @@ at here.
 
 Next: T6 (`trade-4-plan.md`) — the intra fleet this slice's gates make
 meaningful, since a fleet needs stars that exist.
+
+## trade.24 — 2026-10-28 — The sky gate: a colony needs a star *now*
+
+The user's second report, and the half of it `trade.23` did not close: *"trade
+colonies also exist in all modes even when no stars should be — it spawns it."*
+The seed gate stopped a cold boot from settling unformed stars. It could not stop
+the other half, because the network is seeded **once per galaxy**: boot in the
+present-day Milky Way, then drag the epoch to first light, and the four seed
+colonies keep their ports, their stocks, their hulls and their rings on stars the
+frame has already hidden. `NamedSky` gated the *sprite*; nothing gated the
+*colony*.
+
+Reproduced before it was fixed (`experiments/trade-test.js` §5c): the reference
+network seeds four landmark ports at `AGE_REF`, and `applySkyGate` at first light
+reports `SKY_NONE` with `skyVisiblePorts === 0` — while every ring, route and
+hull kept drawing. The same probe on a procedural galaxy at 8.5 Gyr sees exactly
+one of four field ports, whose measured births are 13.42, 7.74, 12.16 and 13.31
+Gyr.
+
+**The law.** `refInSky(ref, model, field)` is the one predicate, and it is the
+same channel the vertex stage reads: landmarks → `namedSkySettled` (the curated
+sky is today's), field → `fieldFormed` (the birth channel), everything else →
+present, because the epoch map does not gate those blocks. `applySkyGate` stamps
+`port.skyVisible` and `candidate.skyVisible`, counts the visible ports and
+returns `SKY_ALL` / `SKY_SOME` / `SKY_NONE`. It is state, never a record rewrite,
+so the same scrub forward restores the same network — which is the property that
+makes it safe to run every frame.
+
+**No phantom growth.** A hidden port is not settled (`settlePort` returns 0), and
+the interval it was hidden for is not integrated when it comes back: the gate
+stamps every world's `last` on *both* edges of the transition. Without that,
+scrubbing to first light and back would pay four gigayears of growth into one
+settle — the clock would be spent by a sky it never saw. That is pinned as a
+check, not assumed.
+
+**The surface follows the gate.** The label layer skips a port, a route, a hull
+whose endpoints are not both in the sky, and a frontier mark whose star is not
+there; `tradeDrawn` requires at least one visible port, so a wholly hidden
+network draws nothing at all. The Trade panel's colony rows, the H block's
+target, the `#sysread` trade card and the schematic's port data all read the
+same flag. A landmark port follows `NamedSky`'s *own* verdict including the star
+clock's rate, so a sky too fast to read hides the sprite and the colony together
+— the ring on a star nobody draws is the same defect in another colour.
+`skyGateText` says *"trade paused · no colony's star exists at this
+epoch"* or *"trade 1 of 4 colonies in this epoch's sky"* — a paused network is
+not an empty one, and the panel says which. When nothing is visible `main.js`
+stops the trade clock instead of simulating a sky nobody can see.
+
+**A fixture lesson.** The first version of the partial-visibility check asserted
+that a *3 Gyr* epoch would show some of the four ports; it showed none, because
+all four were born later. The 8.5 Gyr epoch is the one that sees exactly one, and
+the test now pins that with the measured births written beside it. The other
+false start was mine as well: `skyVisiblePorts` defaulted to 0 on a freshly
+created network, so every label-layer fixture that never calls `applySkyGate`
+drew nothing — fixed by adding the count in `addPort`, with the layer treating a
+missing count as "all visible".
+
+**Validation.** `trade` **300/300** (§5c added 11 checks, including the rate
+gate), all-tests 46/46.
+
+## trade.25 — 2026-10-28 — T6: the intra fleet has hulls, a class gate and a clock
+
+`trade-4-plan.md` was written as a design and indexed as deferred. This slice
+builds it: inside an opened system, the mass T4's couple priced is carried by a
+hull that can actually fly the leg, on the network's own queue, priced by the
+delta-v graph T4 already filled.
+
+What shipped, against the plan's §8 order:
+
+1. **The hulls and the gate.** `INTRA_HULLS_MAX = 12` per port, allocated on the
+   first open and never again. `intraClassFor(dv)` is the engine requirement made
+   concrete: iterate `deltav.SHIP_CLASSES`, keep `domain === 'in-system'`, take
+   the cheapest whose budget covers `dv × 2 × 1.1` (round trip plus reserve).
+   Measured: 3 km/s → `chemical`, Earth–Mars 16.02 km/s → `nuclear`, 25 km/s →
+   **none**. A pair no class can fly books no hull, is marked `unserved`, and
+   keeps T4's instantaneous transfer — so "respect the available engines" never
+   becomes "quietly stop the economy".
+2. **The booking.** `applyIntraFlows` already computes the exact mass per
+   `(source, target, family, resource)`. When the port is online, `bookIntra`
+   takes what the twelve hulls can hold and the settle credits only the rest.
+   The quantity law is untouched: the fleet can move what the couple priced and
+   nothing else.
+3. **The arrival.** `EV_INTRA_ARRIVE` on `net.intraQ`, `ref = port × 12 + hull`.
+   It is the only place an intra cargo becomes stock again. Twelve hulls of
+   `class.cargo` is the per-settle capacity, so a busy system degrades toward T4
+   rather than losing mass.
+4. **The contract.** 5 000 years with the view open and closed lands the same
+   world stocks to **0.84 %** at the app's year cadence. At a coarse 10-year
+   cadence the same comparison is **6.6 %**, because the leg is then 5 % of every
+   interval — the tolerance is pinned from the fine measurement and the coarse
+   one is recorded in the plan rather than swallowed.
+5. **The surface.** The schematic draws every loaded hull on its leg by the
+   network's clock (`intra.clock`), pale rim + amber dot, over the T5 dashes that
+   stay as the average. `#sysread` gains the `fleet` block — `class · family ·
+   src → dst · km/s · remaining years · tonnes`, four rows plus `+n more` — and
+   the Trade panel gains `intra n/12 flying` while a system is open.
+
+Deliberate deviations from the plan, both recorded in `trade-4-plan.md` §0:
+
+- **One clock, not two.** The fleet rides the network's trade clock, not the
+  schematic's `SYSTIME` ladder. The schematic can run at 1e-4 y/s while the
+  economy runs at 2 000 y/s; giving the fleet the ladder would mean the hulls
+  and the stocks disagreed about when a leg happened. The hulls are drawn *as
+  of* the network's clock, which is the clock that paid for them.
+- **A close does not strand a cargo.** The plan's "the hull keeps it and
+  `settlePort` withholds the pair" assumed a fleet on its own clock. Here the
+  queue belongs to the network, so an in-flight cargo lands on its arrival time
+  whether or not anything is looking — simpler than withholding, and pinned by a
+  check that closes the view mid-leg.
+
+`bookIntra` needed the port index, which `applyIntraFlows` had been looking up
+with `net.ports.indexOf(port)`; the parameter replaced the search. The queue
+handler also had to be bound per network (`net.intraHandler`) — the first version
+passed `intraHandler` straight to `drainUntil`, whose signature is
+`(time, kind, ref, revision)`, so the net arrived in `time` and no arrival ever
+fired. The test caught it as "inFlight 3" after 40 years.
+
+**Validation.** `trade` **310/310**: the class gate (including "no interstellar
+class is ever offered"), one settle online vs offline, every loaded hull inside
+its own class's budget, the arrival restoring the closed view's totals, the
+unserved pair staying instantaneous, 500-year jump == 500 one-year steps on the
+intra ledger, the close-mid-leg case, the readout text both ways, and §3's 5 %
+contract. all-tests 46/46.
+
+## trade.26 — 2026-10-28 — An empty network seeds itself when the sky allows it
+
+`trade.23` recorded the hole honestly: an evolving run from first light arrived
+with no colonies, and stayed that way, because seeding happens once per galaxy
+and `expandFrontierFromField` measures its reach from an existing colony. The
+deferred row said the fix was a throttled retry in `main.js`, and that it wanted
+a decision about whether a colony may exist before the named sky does.
+
+`trade.24`'s gate is that decision: a colony may exist exactly where the birth
+channel says a star exists. So `reseedIfEmpty(net, model, field, landmarks, ctx,
+record)` re-runs the boot's own `startSystems` / `discoverNearest` and may act
+only on a network with **no port, no hull and no candidate** — a live economy can
+never be reset by a clock crossing a threshold. `discoverNearest` gained the
+founding year (`nowYears`, default 0, so every existing caller is unchanged), and
+the retry keeps `net.time`.
+
+It runs in the existing 2 Hz maintenance pass, which is also what keeps it
+honest: the first frame the home sky has stars, the network seeds, and the next
+frame `portCount > 0` makes the call a no-op.
+
+One expectation was wrong here too: I asserted the re-seeded colonies would be
+founded at the current trade year. They are not, and should not be — the seed map
+discovers *rolled galaxy worlds*, settled in the past, exactly as at boot. The
+check now pins that instead, and says why.
+
+**Validation.** `trade` **316/316** (§31 added 4 checks: first light still finds
+nothing; a later epoch seeds; the clock is kept; a seeded network is left alone).
+all-tests 46/46 (207 s).

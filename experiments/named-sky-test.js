@@ -183,22 +183,42 @@ function aimAt(cam, x, y, z) {
 }
 
 // --- 6. Exclusivity with the observer's own figures ----------------------
+// ui.22 made this "the curated gate must be closed", which was the wrong law:
+// the gate is a *property of the frame*, so at the Milky Way's own present day
+// — the one epoch where the curated table exists — the observer's figures could
+// never be drawn. ui.23 moved exclusivity to the viewer's choice (`setSkyChoice`)
+// and these pins are the regression: the chosen set draws whatever the gate says,
+// and the other one never does.
 {
 	const W = 1280, H = 800;
 	const mock = createMockLayer();
 	const layer = labelModule.createLabelLayer(mock.canvas, landmarks, constellations);
 	layer.resize(W, H, 1);
-	const cam = cameraModule.createCamera();
 	const figure = { count: 3, keys: new Uint32Array([1, 2, 3]), edgeCount: 2,
 		edges: new Int32Array([0, 1, 1, 2]) };
 
 	check('no figures means nothing to draw', !layer.asterismsActive());
 	layer.setAsterisms(figure);
-	check('a figure set with the named sky on does not draw — one sky, one set of lines',
-		!layer.asterismsActive());
+	check('with the curated sky chosen, the figure set does not draw — one sky, one set of lines',
+		layer.skyChoiceOf() === 'milkyway' && !layer.asterismsActive());
+	check('and the curated sky is the one active', layer.namedSkyActive());
+	layer.setSkyChoice('own');
+	check('choosing the observer’s sky draws it even where the curated sky is valid',
+		layer.asterismsActive() && !layer.namedSkyActive());
+	layer.setSkyChoice('milkyway');
+	check('choosing the curated sky back suppresses the observer’s figures again',
+		!layer.asterismsActive() && layer.namedSkyActive());
+	layer.setSkyChoice('own');
 	layer.setNamedSky(false);
-	check('with the named sky gated off, the observer\'s figures are the ones drawn',
-		layer.asterismsActive());
+	check('the gate closing does not change which sky was chosen',
+		layer.asterismsActive() && layer.skyChoiceOf() === 'own');
+	layer.setAsterismGate(false);
+	check('but a star clock too fast for a figure suspends it', !layer.asterismsActive());
+	layer.setAsterismGate(true);
+	check('and slowing down brings the same set back', layer.asterismsActive());
+	layer.setSkyChoice('off');
+	check('off draws neither sky', !layer.asterismsActive() && !layer.namedSkyActive());
+	layer.setSkyChoice('own');
 	layer.setAsterisms(null);
 	check('clearing the figures leaves neither sky drawing lines',
 		!layer.asterismsActive());

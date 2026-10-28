@@ -27,8 +27,7 @@ subjects — this index does not summarise them, it links them:
 
 | Item | Owner | Why it waits |
 |---|---|---|
-| **The seed map cannot bootstrap itself** | `archive/trade.x-worklog.md` (trade.23) | With the formation gate in place, an evolving run started at first light now correctly arrives with **no** colonies — and stays that way. `expandFrontierFromField` measures its reach from the largest existing colony, so with `portCount === 0` it returns before proposing anything, and the network never founds the first port on its own. The honest fix is a throttled retry in `main.js`'s per-frame trade block that re-runs the seed as the epoch advances, not a change in `trade.js` — but it wants a decision first about whether the first port is *foundable* at all before the named sky exists, and that is a game-design question, not a wiring one. |
-| **T6 — a real intra-system fleet** | [`trade-4-plan.md`](trade-4-plan.md) (design), `trade-3-plan.md` §8 (the deferral it answers) | Planned, not built. Hulls inside an opened system, on the schematic's own clock and their own queue, priced by the delta-v graph the map already draws and gated on the hull classes that can actually fly the leg. The online/offline split is the design's centre: simulated when the user is looking, closed-form average when they are not, and the two must agree. |
+| **The network's rewind after a sky gate closes** | `archive/trade.x-worklog.md` (trade.24) | A port hidden by the sky gate keeps its stocks and its ships, and its world clocks are stamped so the hidden window is never repaid — but a hull that was already *flying* to a hidden destination still lands, because the queue belongs to the network. Whether a hidden pair should also refuse to launch is a design question (pause vs. persist) that trade.24 answered on the "persist" side and did not open further. |
 | **T7 / F6 — capital at event boundaries** | `trade-3-plan.md` §9 | Capital inside the settle ODE double-counts against the event tiers. Returns with F6. |
 
 ## Interface
@@ -37,7 +36,8 @@ subjects — this index does not summarise them, it links them:
 |---|---|---|
 | **The V14 formation rows** | `deferred-browser-visual-plan.md` §V14 | The **Formation checks** panel (`src/core/scenarios.js`) is the instrument and it is pressable; the verdict is a human looking at a real GPU. V14a's Sun-sky half closed in `0.7.8`; the procedural overview frames want one more `webgpu-smoke.html?run=all` run. |
 | **V13c — the two-tier system picture** | `deferred-browser-visual-plan.md` §Trade overlay | World markers, the flow dashes and the trade card are drawn and tested; only the browser check is open. |
-| **The observer's figures in the browser** | this series, ui.22 | `create figures` (K), `my constellations` (Shift+P) and `figures auto-update` are built and unit-tested (`experiments/asterisms-test.js`, `named-sky-test.js`). What no Node test can say is whether the figures *read* as constellations at 1280×800, and whether the 2 s auto-update cadence feels like a refresh or a flicker. |
+| **The sky selector in the browser** | this series, ui.22 / ui.23 | The `sky` selector (off / Milky Way / own), `K` anchoring the own figures to one saved position and the rate gate that suspends both sets are built and unit-tested (`experiments/asterisms-test.js`, `named-sky-test.js`). What no Node test can say is whether the selector's layout holds at 1280×800, whether the figures *read* as constellations, and whether the 2 s auto-update cadence feels like a refresh or a flicker. |
+| **The intra fleet's picture** | `deferred-browser-visual-plan.md` §V15, [`trade-4-plan.md`](trade-4-plan.md) | The hulls are drawn on the schematic by the network's clock and read out as `fleet`; the model and the online/offline contract are pinned in Node (`trade` §30). Whether a hull *reads* as a hull at 1280×800 next to the T5 dashes is a browser verdict. |
 
 ## What is not deferred, only unfinished
 

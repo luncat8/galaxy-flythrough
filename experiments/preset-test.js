@@ -401,7 +401,9 @@ check('switching to the Milky Way preset flies home with the figures on', () => 
 	const flyAt = view.indexOf('MODE_FLY');
 	const homeAt = view.indexOf('goHome()');
 	assert.ok(flyAt > 0 && homeAt > flyAt, 'fly before home');
-	assert.ok(view.includes('setConstellations'), 'constellation lines');
+	// ui.23: the view's `constellations` field is a sky *choice*, so it goes
+	// through the one writer rather than poking the layer's line flag.
+	assert.ok(view.includes('setFigureSky'), 'sky choice');
 	assert.ok(view.includes('starTimeRate = view.time'), 'frozen rate');
 	assert.ok(view.includes('starTimeMyr = view.epoch'), 'catalog epoch');
 });

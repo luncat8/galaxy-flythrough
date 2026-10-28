@@ -1201,3 +1201,60 @@ on `deferred-open-work.md`.
 
 Next: the V14 formation rows and the observer-figure browser row; then T6
 (`trade-4-plan.md`).
+
+## ui.23 — 2026-10-28 — The sky is chosen, not guessed; and it belongs to one place
+
+The user's report on ui.22: *"my constellations do not work as expected. I think
+it should be a button to apply to the selected object's position and a checkbox
+to enable/disable; and in case of Milky Way's nowadays — select predefined."*
+They were right about all three, and ui.22 had shipped two checkboxes that had to
+agree plus a "create" button that silently did both jobs.
+
+**One selector, one writer, three states.** The two checkboxes and their
+exclusivity rules are replaced by a `sky` `<select>`: `off`, **Milky Way
+(predefined)**, **own (from selection)**. `setFigureSky(next)` is the only writer
+of the choice and the only place exclusivity lives: it sets the curated layer's
+line flag *and* the observer layer's record, so `P`, `Shift+P`, `K` and the
+selector cannot disagree. The Milky Way entry is `disabled` (with
+`NamedSky.describe(reason)` in the label's title) wherever the curated sky means
+nothing, and choosing it by key there answers with the reason instead of doing
+nothing — a control that silently refuses is the defect the series exists to
+replace. The `own` entry is enabled only once a set exists.
+
+**The bug that was actually biting.** ui.22 defined
+`asterismsActive() = !!asterisms && !namedSkyActive()`, i.e. it used the curated
+sky's *gate* as the exclusivity rule. The gate is a property of the frame, and
+the frame where the curated table exists is exactly the Milky Way at the present
+day — so in the one place an observer would try it, the own figures could never
+draw. They worked only in a procedural galaxy, which is not where anyone stands.
+Exclusivity moved into the layer as `skyChoice` (`'milkyway' | 'own' | 'off'`,
+one writer, `setSkyChoice`), which is what the selector already meant.
+`namedSkyActive()` now also requires `skyChoice === 'milkyway'`; the gate only
+ever *hides*, it never chooses.
+
+**The anchor is the feature.** ui.22 rebuilt from `starSet.primary`, which meant
+the "own" sky followed whatever the user clicked next — the selection owned the
+sky. It does not any more. `createFiguresAtSelection` (the button, `K`) is the
+only writer of `figureAnchor` (kind, index, key); every later build — including
+auto-update — re-resolves *that* record's drawn position through
+`labels.tradeRecordPosition`. So the sky is from your HQ, at the epoch you are
+looking at, until you press K somewhere else. Measured behaviour: selecting
+another star and pressing nothing changes nothing.
+
+**Suspended, not destroyed, when the sky is too fast.** The rate gate
+(`MAX_RATE_MYR_PER_S`) applied only to the curated figures. `Asterisms` now has
+the same one (`setAsterismGate`): above the rate the own figures stop drawing and
+auto-update stops rebuilding, and the record survives, so slowing down brings the
+same figures back rather than costing a rebuild.
+
+**Validation.** `named-sky` **39/39** — §6 is rewritten to the new law, and its
+new pins are the regression: the chosen set draws *whatever the gate says*, the
+gate closing does not change the choice, the rate gate still suspends, and `off`
+draws neither. `preset` **32/32** (the preset's `constellations` field now goes
+through `setFigureSky`, pinned by source). `m1-smoke` **1/1** (the
+`KeyP: ['constellations','myFigures']` cased-press pin still holds), `panel`
+**1/1**, `asterisms` **49/49**, `trade` **316/316**, all-tests **46/46**.
+
+No browser verdict is claimed for the selector's layout at 1280×800, and the
+auto-update cadence question from ui.22 is still open — both are rows on
+`deferred-open-work.md`.

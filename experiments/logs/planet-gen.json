@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-28T03:20:59.119Z",
+  "date": "2026-10-28T04:59:05.181Z",
   "model": {
     "type": "SBb",
     "seed": 12345
@@ -403,7 +403,7 @@
       "name": "architecture is far inside the 20 µs generateSystem budget",
       "pass": true,
       "detail": {
-        "usPerCall": 0.299
+        "usPerCall": 0.231
       }
     },
     {
@@ -700,8 +700,8 @@
       "name": "architecture + belts stay inside the 20 µs per-system budget; one stipple fill is a frame-safe one-off",
       "pass": true,
       "detail": {
-        "usPerSystem": 0.494,
-        "usPerStippleFill": 3.875
+        "usPerSystem": 0.389,
+        "usPerStippleFill": 3.239
       }
     },
     {
@@ -857,15 +857,15 @@
       "name": "generateSystem stays inside the 20 µs budget and the summary inside 6 µs",
       "pass": true,
       "detail": {
-        "usPerSystem": 1.831,
-        "usPerSummary": 1.532
+        "usPerSystem": 1.455,
+        "usPerSummary": 1.267
       }
     },
     {
       "name": "generateSystem retains no objects (GC-normalised heap delta < 256 KB over 100k calls)",
       "pass": true,
       "detail": {
-        "heapDelta": 39688
+        "heapDelta": 35400
       }
     },
     {
