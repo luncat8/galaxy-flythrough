@@ -381,7 +381,8 @@
 	}
 
 	function createCandidate() {
-		return { site: economy.createSite(), used: 0, reserved: -1, well: 0, land: 0, skyVisible: 1 };
+		return { site: economy.createSite(), used: 0, reserved: -1, well: 0, land: 0,
+			skyVisible: 1, reach: 1 };
 	}
 
 	function createNetwork(options) {
@@ -448,6 +449,9 @@
 			// Voyages turned around by the sky (§9.4): the count the panel shows
 			// when the network's routes are being torn faster than they are flown.
 			diverted: 0,
+			// Free worlds no colony can still reach (trade.30): the panel's count,
+			// and the frontier's signal that a candidate slot is dead.
+			strandedCandidates: 0,
 			// The sky gate's verdict (trade.24): `skyVisiblePorts` is how many
 			// colonies' stars exist at the current epoch, `skyState` is SKY_*.
 			// A cold network that has never been gated is all-visible, which is
@@ -1167,9 +1171,10 @@
 	// pursuit owns the voyage.
 	const INTERCEPT_ITERS = 6;
 	const INTERCEPT_TOL_LY = 0.5;
-	// A voyage in flight is turned around when the sky has stretched it this far
-	// past the cap it was booked under (§9.4). The margin is the hysteresis
-	// between "the destination drifted" and "the route is gone".
+	// A voyage in flight is re-timed only while the sky has left its leg inside
+	// this margin past the cap it was booked under (§9.4). Past it the booking
+	// stands and the voyage finishes: distance alone never turns a hull around
+	// any more, only a target that outruns it does (trade.30).
 	const DIVERT_FACTOR = 1.6;
 	const PLAN_A = [0, 0, 0], PLAN_B = [0, 0, 0];
 
@@ -1589,17 +1594,36 @@
 		return index;
 	}
 
-	function addCandidate(net, site, system) {
-		if (net.candidateCount >= MAX_CANDIDATES) return -1;
+	// `slot` re-uses a dead candidate in place (trade.30): a world the sky has
+	// torn out of reach can never be sailed to again, so the frontier takes its
+	// place instead of the pool filling up with places nobody can visit. A slot
+	// is only ever offered by `freeCandidateSlot`, which refuses reserved and
+	// used ones — a hull in flight keeps the index it reserved.
+	function addCandidate(net, site, system, slot) {
+		const reuse = slot >= 0 && slot < net.candidateCount;
+		if (!reuse && net.candidateCount >= MAX_CANDIDATES) return -1;
 		if (candidateIndexOf(net, site.key, site.kind, site.index) >= 0) return -1;
 		if (portIndexOf(net, site.key, site.kind, site.index) >= 0) return -1;
-		const index = net.candidateCount++;
+		const index = reuse ? slot | 0 : net.candidateCount++;
 		const c = net.candidates[index];
 		economy.copySite(c.site, site);
 		c.used = 0;
+		c.reserved = -1;
 		c.well = 0; c.land = 0;
+		c.reach = 1;
 		if (system) fillSiteWellLand(system, site.kind, site.index, c);
 		return index;
+	}
+
+	// A candidate slot the frontier may overwrite: free, unreserved, and no
+	// longer within reach of any colony, so no hull can ever sail to it.
+	function freeCandidateSlot(net) {
+		for (let i = 0; i < net.candidateCount; i++) {
+			const c = net.candidates[i];
+			if (c.used || c.reserved >= 0 || c.reach !== 0) continue;
+			return i;
+		}
+		return -1;
 	}
 
 	// The best world of a system by habitat, with the terran/HZ preference the
@@ -2135,6 +2159,7 @@
 		}
 		net.tickScheduled = 1;
 		queueLib.push(net.queue, net.time + TICK_YEARS, EV_TICK, 0, 0);
+		refreshReach(net);
 		return net;
 	}
 
@@ -2163,9 +2188,13 @@
 	function createRoutes() {
 		const list = [];
 		for (let i = 0; i < MAX_ROUTES; i++) {
-			list.push({ origin: -1, dest: -1, active: 0, lastDepartY: 0, nextDepartY: 0 });
+			// `ly`/`reach` are the live geometry's verdict (trade.30): a route the
+			// sky has pulled past MAX_LEG_LY stops taking cargo and stops drawing,
+			// and comes back on its own when the stars come back within reach.
+			list.push({ origin: -1, dest: -1, active: 0, lastDepartY: 0, nextDepartY: 0,
+				ly: 0, reach: 1 });
 		}
-		return { list, count: 0 };
+		return { list, count: 0, unreachable: 0 };
 	}
 
 	function routeIndexOf(net, a, b) {
@@ -2199,6 +2228,14 @@
 		if (net.ports[origin].colony.outpost) { r.reason = 'an outpost ships nothing'; return r; }
 		if (net.ports[dest].colony.outpost) { r.reason = 'an outpost takes nothing'; return r; }
 		if (routeIndexOf(net, origin, dest) >= 0) { r.reason = 'already commissioned'; return r; }
+		// The map a player clicks on is the drawn sky, and a pair drawn past the
+		// freight cap takes no hull (trade.30). Refusing here is the same law the
+		// row reports and the overlay draws: it resumes on its own when the stars
+		// come back, which is why an existing row is never removed for it.
+		if (endpointDistanceLy(net, END_PORT, origin, END_PORT, dest) > MAX_LEG_LY) {
+			r.reason = 'these ports are out of reach of the fleet';
+			return r;
+		}
 		// A cancelled route keeps its slot and is revived, so the overlay's and
 		// the panel's row identities never move under a click. The same pair
 		// coming back gets its own slot; a different pair takes a free one, so
@@ -2222,6 +2259,7 @@
 		route.active = 1;
 		route.lastDepartY = now;
 		route.nextDepartY = now + routeLegYears(net, origin, dest);
+		refreshReach(net);
 		pushLog(net, LOG_ROUTE, origin, dest, 1);
 		r.ok = 1;
 		r.index = index;
@@ -2589,7 +2627,8 @@
 	// panel used to say "no big colonies ready" whenever *anything* was missing.
 	const COLONISATION_PREVIEW = [];
 	const COLONISATION_STATUS = {
-		big: 0, ready: 0, resting: 0, candidates: 0, free: 0, founding: 0, nextIn: 0, reason: '',
+		big: 0, ready: 0, resting: 0, candidates: 0, free: 0, stranded: 0,
+		founding: 0, nextIn: 0, reason: '',
 	};
 	function colonisationStatus() {
 		return COLONISATION_STATUS;
@@ -2643,13 +2682,16 @@
 		COLONISATION_STATUS.resting = resting;
 		COLONISATION_STATUS.candidates = net.candidateCount;
 		COLONISATION_STATUS.free = free;
+		COLONISATION_STATUS.stranded = net.strandedCandidates | 0;
 		COLONISATION_STATUS.founding = founding;
 		COLONISATION_STATUS.nextIn = nextIn === Infinity ? 0 : nextIn;
 		COLONISATION_STATUS.reason = out.length > 0 ? ''
 			: big === 0 ? 'no big colony yet'
 			: ready === 0 ? 'every big colony is resting between expeditions'
 			: free === 0 ? 'no free world in range'
-			: 'no free world within ' + MAX_FOUND_LY + ' ly';
+			: net.strandedCandidates > 0
+				? net.strandedCandidates + ' free worlds have drifted out of reach'
+				: 'no free world within ' + MAX_FOUND_LY + ' ly';
 		return out;
 	}
 
@@ -2726,7 +2768,10 @@
 
 	function expandFrontierFromField(net, field, model) {
 		if (!field || !model || field.count <= 0) return 0;
-		if (net.candidateCount >= MAX_CANDIDATES) return 0;
+		// A full pool is only full of *places*: a candidate no colony can reach
+		// is not one, so the frontier may take its slot (trade.30). Without this
+		// the frontier stops growing the moment the sky strands the pool.
+		if (net.candidateCount >= MAX_CANDIDATES && freeCandidateSlot(net) < 0) return 0;
 		let bigCount = 0;
 		for (let i = 0; i < net.portCount; i++) {
 			if (isBigColony(net.ports[i].colony)) FRONTIER_BIG[bigCount++] = i;
@@ -2760,7 +2805,9 @@
 		let liveUsed = 0;
 		const age = model.populations && Number.isFinite(model.populations.age)
 			? model.populations.age : 0;
-		for (let n = 0; n < FRONTIER_SCAN && net.candidateCount < MAX_CANDIDATES; n++) {
+		// The scan runs to its budget, not to the pool's size: a full pool may
+		// still have a stranded slot for the next world (trade.30).
+		for (let n = 0; n < FRONTIER_SCAN; n++) {
 			fi += 1;
 			if (fi >= field.count) fi = 0;
 			const key = frontierFieldKey(model.seed, fi);
@@ -2812,7 +2859,9 @@
 			// Claim the star as discovered so it is never rescanned, then add its
 			// best world as the frontier candidate.
 			net.discovered.add(key);
-			if (addCandidate(net, FRONTIER_BEST, FRONTIER_SCAN_RECORD) >= 0 && ++added >= FRONTIER_PER_SCAN) { net.frontierCursor = fi; return added; }
+			const slot = net.candidateCount >= MAX_CANDIDATES ? freeCandidateSlot(net) : -1;
+			if (slot < 0 && net.candidateCount >= MAX_CANDIDATES) break;
+			if (addCandidate(net, FRONTIER_BEST, FRONTIER_SCAN_RECORD, slot) >= 0 && ++added >= FRONTIER_PER_SCAN) { net.frontierCursor = fi; return added; }
 		}
 		net.frontierCursor = fi;
 		return added;
@@ -3076,6 +3125,7 @@
 
 	const FOUND_PLAN = createLegPlan();
 	const RETIME_PLAN = createLegPlan();
+	const RETIME_GEO = createLegPlan();
 	const DIVERT_PLAN = createLegPlan();
 
 	// The panel's Send-expedition button: the tick's own choice, launched now
@@ -3191,7 +3241,7 @@
 		return r;
 	}
 
-	// --- Pursuit and the give-up (trade-plan §9.4) --------------------------
+	// --- Pursuit and the geometry refusal (trade-plan §9.4) -----------------
 	//
 	// A hull is a steering agent: twice a second it re-aims at where its
 	// destination is drawn *now*, re-times the remaining journey against the
@@ -3234,11 +3284,12 @@
 		return out;
 	}
 
-	// The give-up. A hull whose voyage the sky has torn past its cap flies home
-	// instead — the chord it is drawn on does not change (the overlay keeps both
-	// ends), only the end it is heading for, and `legTo` flips to 0 so the dot
-	// turns around where it is rather than jumping to the far end of its route.
-	// `u` is the hull's chord fraction at the moment it turns.
+	// The turn. Only a target that outruns the hull sends one of these (trade.30);
+	// distance past the cap does not, a voyage on a torn chord is finished. The
+	// chord the hull is drawn on does not change (the overlay keeps both ends),
+	// only the end it is heading for, and `legTo` flips to 0 so the dot turns
+	// around where it is rather than jumping to the far end of its route. `u` is
+	// the hull's chord fraction at the moment it turns.
 	function divertShip(net, ship, time, u, chordKind, chordIndex) {
 		net.diverted += 1;
 		if (ship.state === SHIP_FOUNDING) {
@@ -3263,6 +3314,7 @@
 	}
 
 	function retimeRoutes(net) {
+		refreshReach(net);
 		for (let i = 0; i < net.shipCount; i++) {
 			const ship = net.ships[i];
 			if (ship.state !== SHIP_SAILING && ship.state !== SHIP_FOUNDING) continue;
@@ -3282,19 +3334,30 @@
 			const u = ship.legFrom + (ship.legTo - ship.legFrom) * f;
 			const remainingFrac = ship.legTo > u ? ship.legTo - u : u - ship.legTo;
 			const capLy = founding ? MAX_FOUND_LY : MAX_LEG_LY;
+			// A voyage already under way is finished, not turned around (trade.30).
+			// The only refusal it cannot argue with is geometry: a target that
+			// recedes faster than the hull flies has no meeting point to be booked
+			// to, so that voyage still comes home. From `planLeg`, whose `outrun`
+			// is exactly that comparison — not the runaway-iteration signal the
+			// booking solve raises for a *new* leg that grows past its cap.
+			const geo = planLeg(net, END_PORT, ship.from, chordKind, chordIndex, ship.hull,
+				capLy, RETIME_GEO);
+			if (!ship.returning && geo.outrun) {
+				divertShip(net, ship, net.time, u, chordKind, chordIndex);
+				continue;
+			}
+			// A chord already drawn past the cap is a voyage that is finishing,
+			// not one being re-booked: the sky is the thing that moved, and the
+			// hull keeps the arrival its departure was given. The route, not the
+			// hull, is what reports the pairing gone (refreshReach).
+			if (chordLy > capLy) continue;
 			// The remaining journey, measured the way the booking measures it: the
 			// endpoints' separation at arrival, times the part of the chord still
 			// ahead. With no predictor this is the plain separation, which is what
 			// pursuit reduces to when there is no horizon to buy.
 			const plan = solveRemaining(net, END_PORT, ship.from, chordKind, chordIndex,
 				remainingFrac, ship.hull, capLy, RETIME_PLAN, RETIME_ITERS);
-			// The give-up has a margin: a leg the sky has pushed a little past its
-			// cap is still flown (the hull is nearly there), one it has torn well
-			// past it — or one the target outruns outright — is not.
-			if (!ship.returning && (plan.outrun || plan.ly > capLy * DIVERT_FACTOR)) {
-				divertShip(net, ship, net.time, u, chordKind, chordIndex);
-				continue;
-			}
+			if (plan.outrun || plan.ly > capLy * DIVERT_FACTOR) continue;
 			const arrive = net.time + plan.years;
 			if (!(arrive > ship.depart)) continue;
 			if (Math.abs(arrive - ship.arrive) <= 1.0) continue;
@@ -3305,6 +3368,60 @@
 		}
 	}
 	const AIM_POS = [0, 0, 0];
+
+	// --- Reach (trade.30) ---------------------------------------------------
+	// The map a viewer sees is the drawn sky, and the drawn sky runs away from a
+	// network founded in it: at the default 1 Myr/s a solar-circle star sweeps
+	// 0.22 kpc per wall second, so a colony pair 100 ly apart at founding is
+	// 40 000 ly apart a wall minute later. The economy's answer is the same one
+	// a player would give — *if the stars are that far apart, trade there is
+	// impossible* — and it is a per-pair fact, not a global mode: a route whose
+	// endpoints are drawn past MAX_LEG_LY is reported out of reach (its row says
+	// so and the overlay stops drawing it), a candidate no colony can reach is
+	// no longer a destination for anything, and both come back on their own the
+	// moment the sky does (pausing the star clock hands the birth geography back
+	// at the next refresh, §9.7).
+	//
+	// This is display and admission, not physics: the hulls' own law is still
+	// §9.3/§9.4, and a voyage already under way is finished rather than turned
+	// around. Two dozen pairs and 224 candidates against 64 ports twice a second
+	// is a few hundred microseconds.
+	function refreshReach(net) {
+		const routes = net.routes;
+		let unreachable = 0;
+		if (routes) {
+			for (let i = 0; i < routes.count; i++) {
+				const route = routes.list[i];
+				if (!route.active || route.origin < 0 || route.dest < 0) {
+					route.ly = 0;
+					route.reach = 1;
+					continue;
+				}
+				const ly = endpointDistanceLy(net, END_PORT, route.origin, END_PORT, route.dest);
+				route.ly = ly;
+				route.reach = ly <= MAX_LEG_LY ? 1 : 0;
+				if (!route.reach) unreachable += 1;
+			}
+			routes.unreachable = unreachable;
+		}
+		let stranded = 0;
+		if (net.portCount === 0) {
+			for (let i = 0; i < net.candidateCount; i++) net.candidates[i].reach = 1;
+			net.strandedCandidates = 0;
+			return 0;
+		}
+		for (let i = 0; i < net.candidateCount; i++) {
+			const candidate = net.candidates[i];
+			let reach = 0;
+			for (let p = 0; p < net.portCount; p++) {
+				if (endpointDistanceLy(net, END_PORT, p, END_CANDIDATE, i) <= MAX_FOUND_LY) { reach = 1; break; }
+			}
+			candidate.reach = reach;
+			if (!reach && !candidate.used && candidate.reserved < 0) stranded += 1;
+		}
+		net.strandedCandidates = stranded;
+		return unreachable;
+	}
 
 	// The whole target star, not just the settled site: every reservation a hull
 	// holds is released when its voyage ends, whichever way it ends.
@@ -3341,6 +3458,16 @@
 		releaseReservation(net, ship.index);
 		// Turned around mid-flight: home with the party, no colony founded.
 		if (ship.returning) { returnFounder(net, ship, time); return; }
+		// The voyage finished, the world did not stay reachable: a party that
+		// arrives at a star its network can no longer trade with does not plant a
+		// colony nobody can reach (trade.30). It comes home through the same
+		// refund path a taken world uses — no people are lost, no colony is left
+		// stranded across the galaxy.
+		if (ship.from >= 0 && endpointDistanceLy(net, END_PORT, ship.from, END_CANDIDATE,
+				ship.candidate) > MAX_FOUND_LY) {
+			returnFounder(net, ship, time);
+			return;
+		}
 		const c = net.candidates[ship.candidate];
 		const available = c && !c.used && portOfStar(net, c.site.key) < 0;
 		const portIndex = available ? addPort(net, c.site, time, FRESH_FOUND) : -1;
@@ -3728,7 +3855,8 @@
 		setExpansion, expansionArmed, portReadiness, launchChosen, CHOSEN_RESULT,
 		ROLLED_FOUND, FRESH_FOUND, createFoundResult, playerFound,
 		createWorldFoundResult, playerFoundWorld,
-		createNetwork, addPort, addWorld, worldOfPort, worldOfSite, foldPort, fillIntraGraph,
+		createNetwork, addPort, addWorld, addCandidate, worldOfPort, worldOfSite, foldPort, fillIntraGraph,
+		refreshReach, freeCandidateSlot,
 		distributePortInbound, collectPortOutbound,
 		discoverSystem, discoverNearest, startSystems, settleSystem, settlePort, finalize, step, settleAllPorts,
 		reseedIfEmpty, bootstrapStatus, BOOTSTRAP_BIRTH_GYR, BOOTSTRAP_STAR_AGE_GYR,

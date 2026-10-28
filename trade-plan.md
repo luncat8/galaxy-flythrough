@@ -907,16 +907,27 @@ first version of this pass let a voyage whose chord had grown to 12 000 years
 still read as 97 % flown, so the hull was never in danger and never turned
 back.)
 
-The give-up is a **margin**, `DIVERT_FACTOR = 1.6` of the cap the voyage was
-booked under, plus the `outrun` flag which needs no margin. A hull past it is
-**diverted**: a freighter flies home to the port it came from with its cargo
-(the ordinary `EV_ARRIVE` path then offers it there), a founder takes the
-failed-founding path, which returns the volunteers to the source's population.
-`legFrom`/`legTo` carry the turn: the chord keeps both ends, `legTo` becomes 0
-and `legFrom` the hull's fraction, so the dot keeps moving instead of jumping to
-the far end of its route. `net.diverted` counts them and the panel says so,
-because a network whose routes are being torn by the sky should show it rather
-than silently accumulate thousand-year voyages.
+A voyage already under way is **finished, not chased** (trade.30). The one
+refusal it cannot argue with is geometry: a target that recedes faster than the
+hull flies has no meeting point at all, and that is what `planLeg`'s `outrun`
+reports. Such a hull is **diverted** — a freighter flies home to the port it
+came from with its cargo (the ordinary `EV_ARRIVE` path then offers it there), a
+founder takes the failed-founding path, which returns the volunteers to the
+source's population. `legFrom`/`legTo` carry the turn: the chord keeps both
+ends, `legTo` becomes 0 and `legFrom` the hull's fraction, so the dot keeps
+moving instead of jumping to the far end of its route. `net.diverted` counts
+them.
+
+Distance is not a reason to turn around. A sky that has stretched a leg past the
+cap the voyage was booked under leaves the booking exactly as departure wrote it
+(`ship.arrive` is not re-solved, `DIVERT_FACTOR` is a re-timing hysteresis and
+no longer a give-up), because the thing that moved is the map, not the voyage.
+The *pairing* is what goes out of reach: `refreshReach` marks the route and lets
+it take no new cargo (§9.9), so the picture stops offering a trade no hull can
+fly while the hull in flight lands where it set out for. Turning ships around on
+a stretched chord was what a viewer saw as colonies scattered across the galaxy
+with thousand-year voyages: the fleet spent its life sailing home from routes
+the sky had already closed.
 
 Pursuit needs no horizon — only where the endpoints are now — so it is the
 honest answer for the friction field and for decoupled clocks: aim, re-aim twice
@@ -1016,11 +1027,12 @@ the fleet works the shorter pairs it still has. Growth of *new*
 colonies slows for the same reason — a 600 ly founding promise in a sky that has
 stretched four times is a 2 400 ly promise — which is the honest reading of a
 galaxy being wound up, not a stale map. A *jumped* sky (the test's 900 Myr in one
-refresh) turns the hulls in flight around, which is §9.4 doing what it exists
-for; so does a star clock ten times faster than the sync, where the shear
-outruns even a generation ship. Pausing the star clock hands the network its
-birth geography back at the next refresh — that is what the two separate clocks
-are for (§1).
+refresh) tears routes the fleet is working: the voyages in flight finish on
+their bookings, the rows report themselves out of reach, and only a hull whose
+target now recedes faster than it flies turns back (§9.4). A star clock ten
+times faster than the sync does the same, and there the shear outruns even a
+generation ship. Pausing the star clock hands the network its birth geography
+back at the next refresh — that is what the two separate clocks are for (§1).
 
 ### 9.8 Checked
 
@@ -1031,15 +1043,16 @@ cache holds the drawn positions and the refresh difference rates; a booking is
 the endpoints' separation at arrival, and a frozen refresh falls back to the
 birth leg; a partner past `MAX_LEG_LY` is refused, and a generation hull refuses
 a receding partner inside the cap for the `outrun` reason; a voyage the shear
-tears past the cap turns around, is booked home over the part of the chord it
-has flown, and docks at its origin, and a diverted founding wave is refunded to
+tears past the cap keeps the booking its departure gave it and docks at the port
+it set out for, while only a hull whose target outruns it turns (booked home over
+the part of the chord it has flown), and a diverted founding wave is refunded to
 the population it was drawn from (measured across the arrival event); the
 frontier pre-gate opens with the moving sky, never past its cap, and its shear
 term grows with the clock on a cold disc; the hull's chord fraction is its flown
 distance (and a divert reverses it); the friction field's resolver reads the
-tracked mirror rather than the birth sky; and 120 s of shearing sky leaves no
-hull on a leg past the give-up margin while the network still trades and still
-grows.
+tracked mirror rather than the birth sky; and 120 s of shearing sky leaves every
+hull in flight on a booking it will land on while the network still trades and
+still grows.
 `experiments/orbit-test.js` §13 pins the θ ladder (with no θ it *is* the plain
 dispatch, for every mask and both reports), the reconstruction against
 `simplePositionFromTheta`, the mirror's lockstep against the shipping law, the
@@ -1048,7 +1061,7 @@ late-tracked catch-up bound, and the reset/rebind semantics.
 `experiments/wgsl-validate.js` follows the ladder into the θ twin, so the
 movement-parity contract is still pinned by source shape.
 
-### 9.9 What the tiers do not fix (trade.29)
+### 9.9 Reach: the picture's answer to a moving sky (trade.30)
 
 The tiers make the *economy* honest; they do not make the *picture* stable, and
 that is the visible half of the same problem. A colony is a star, so its ring is
@@ -1058,13 +1071,36 @@ drawn 40 416 ly from home one wall minute after a boot whose four seed colonies
 sit 4–79 ly out (`experiments/network-frame-study.js`). The default clocks are
 incoherent by the same measure — at 100 y/s of trade the bulk freighter covers
 200 ly per wall second while the sky's rotation at the Sun's radius is 734 ly/s,
-so the sky outruns even the fastest hull 3.7×, and §9's re-aim can only turn
-hulls around faster, not keep a map together.
+so the sky outruns even the fastest hull 3.7×.
 
-The remedy is a frame decision, not a distance law, and it is open
-(`deferred-open-work.md`): co-rotate the display frame with the disc so the sky
-turns only by differential motion; slow or park the star clock while the network
-is live; or draw the trade layer in its own birth-frame map and accept that its
-rings leave their stars. Until one is taken, the honest reading of the picture is
-"a galaxy being wound up", which is what §9.7 says and what a viewer reads as
-colonies flying across the galaxy.
+Three structural remedies were on the table: co-rotate the display frame with the
+disc, slow or park the star clock while the network is live, or give the trade
+layer its own birth-frame map and accept that its rings leave their stars. The
+one taken is none of them, because all three trade away the thing the app is for
+— the sky must keep moving at 1 Myr/s and the rings must stay on their stars. The
+law is instead the answer a player would give: **if the stars are that far apart,
+trade there is impossible.**
+
+`refreshReach` (once a maintenance pass, after `refreshGeometry`) measures every
+endpoint the way every distance in the network is measured — the drawn positions
+— and sets:
+
+| thing | in reach when | reported as |
+|---|---|---|
+| route | `endpointDistanceLy(origin, dest) ≤ MAX_LEG_LY` (3 000 ly) | `routes.unreachable`, row `out of reach · N ly`, `is-unreachable`, no leg booked (§9.4) |
+| candidate | within `MAX_FOUND_LY` (600 ly) of **some** live port | `strandedCandidates`, no expedition launches, no dot drawn |
+| voyage | always — a voyage is finished on its own booking | `ship.arrive` unchanged; only `planLeg`'s `outrun` diverts (§9.4) |
+
+It is display and admission, not physics, and it is reversible by construction:
+the flags are recomputed from wherever the stars are now, so pausing the star
+clock (or seeking to a preset epoch) hands the network its birth geography back
+at the next pass and every row resumes — a route row is never removed for being
+out of reach, since the pair it stands for may come back. A commissioning click
+on a torn pair is refused with a reason instead of being accepted into an idle
+row, and a full candidate pool whose worlds have all drifted away can take a new
+world in a stranded slot, so the frontier keeps growing under a torn sky instead
+of stalling at 224 unreachable places.
+
+The cost is a few hundred microseconds twice a second (32 routes and 224
+candidates against 64 ports), and it changes no number the economy computes: the
+frozen-sky tier is bit-identical, which §17.1 still pins.

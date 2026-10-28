@@ -845,6 +845,11 @@ function createLabelLayer(canvas, landmarks, constellations) {
 			for (let i = 0; i < tradeNet.routes.count; i++) {
 				const route = tradeNet.routes.list[i];
 				if (!route.active) continue;
+				// A route the sky has pulled out of reach is not drawn (trade.30):
+				// its line would cross the galaxy to describe a voyage no hull may
+				// take. The panel's row still lists it, out of reach, until the
+				// stars come back or the player cancels it.
+				if (route.reach === 0) continue;
 				const a = route.origin >= 0 ? tradeNet.ports[route.origin] : null;
 				const b = route.dest >= 0 ? tradeNet.ports[route.dest] : null;
 				if (!a || !b || !portInSky(a) || !portInSky(b)) continue;
@@ -900,6 +905,9 @@ function createLabelLayer(canvas, landmarks, constellations) {
 			const candidate = tradeNet.candidates[i];
 			if (candidate.used || candidate.reserved >= 0) continue;
 			if (!candidateInSky(candidate)) continue;
+			// A world no colony can still reach is not a frontier mark: it is a
+			// stranded world, and the panel counts it instead (trade.30).
+			if (candidate.reach === 0) continue;
 			const site = candidate.site;
 			if (!tradeRecordPosition(site.ref.kind | 0, site.ref.index | 0, site.key, tradeA)) continue;
 			if (!labelCoords.projectToScreen(viewProj, tradeA[0], tradeA[1], tradeA[2],

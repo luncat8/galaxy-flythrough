@@ -1094,6 +1094,9 @@ body.system-view #sysread {
 }
 .trade-row .send-mark { color: #6fd8b5; }
 .trade-row:disabled { opacity: 0.45; cursor: default; background: transparent; border-color: transparent; }
+/* A route pair the sky has pulled past the freight cap (trade.30): it keeps its
+   row so it can be cancelled, and reads as idle rather than as a schedule. */
+.trade-row.is-unreachable { color: #a8a06a; border-color: transparent; background: transparent; }
 .routes-row {
 	display: flex;
 	align-items: center;

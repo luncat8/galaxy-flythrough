@@ -5600,10 +5600,29 @@ async function boot() {
 
         function tradeSyncRoutes() {
                 tradeSyncRouteSelects();
+                // The commission button follows the sky (trade.30): a pair drawn
+                // past the freight cap takes no hull, so the panel refuses before
+                // the click instead of answering it with a reason afterwards.
+                if (tradeNet && tradeNet.portCount > 1) {
+                        const count = tradeNet.portCount;
+                        const o = Number(routeOrigin.value), d = Number(routeDest.value);
+                        const pair = o >= 0 && o < count && d >= 0 && d < count && o !== d;
+                        const far = pair && tradeLib.endpointDistanceLy(tradeNet,
+                                tradeLib.END_PORT, o, tradeLib.END_PORT, d) > tradeLib.MAX_LEG_LY;
+                        routeCommission.disabled = far || count < 2 || !isCommanding();
+                        routeCommission.title = far
+                                ? 'These two ports are drawn more than '
+                                        + Math.round(tradeLib.MAX_LEG_LY).toLocaleString('en-US')
+                                        + ' ly apart: no hull can book the pair while the sky holds them there.'
+                                : '';
+                }
                 let sig = (routeMsg ? 'm' + routeMsg + '|' : '|') + (tradeNet ? String(tradeNet.routes.count) : '0');
                 for (let i = 0; i < (tradeNet ? tradeNet.routes.count : 0); i++) {
                         const r = tradeNet.routes.list[i];
-                        sig += ':' + i + (r.active ? 'a' : 'c') + r.origin + '-' + r.dest;
+                        // Reach is part of the row's identity (trade.30): a pair
+                        // that leaves the map must re-render, not keep saying
+                        // "next +N y" about a voyage no hull can book.
+                        sig += ':' + i + (r.active ? 'a' : 'c') + (r.reach ? 'r' : 'x') + r.origin + '-' + r.dest;
                 }
                 if (sig !== routeListSig) {
                         routeListSig = sig;
@@ -5646,11 +5665,26 @@ async function boot() {
                 // so it is refreshed on every pass, not only when the set does.
                 for (const row of routeRows) {
                         row.el.lastChild.disabled = !isCommanding();
+                        const pair = `${tradeNet.ports[row.route.origin].name.slice(0, 10)} \u2192 `
+                                + tradeNet.ports[row.route.dest].name.slice(0, 10);
+                        if (row.route.reach === 0) {
+                                // Out of reach: the pair keeps its row (the player
+                                // must be able to cancel it) and says why it is idle.
+                                row.el.classList.add('is-unreachable');
+                                row.el.firstChild.textContent = pair + '  out of reach · '
+                                        + Math.round(row.route.ly).toLocaleString('en-US') + ' ly';
+                                row.el.title = 'The drawn separation is past the '
+                                        + Math.round(tradeLib.MAX_LEG_LY).toLocaleString('en-US')
+                                        + ' ly freight cap, so no hull books this pair. It resumes by itself '
+                                        + 'if the stars come back within reach — pausing star time is the quickest way.';
+                                continue;
+                        }
+                        row.el.classList.remove('is-unreachable');
+                        row.el.title = 'A hull loading at the origin prefers this port.';
                         const eta = row.route.nextDepartY - tradeNet.time;
                         const suffix = eta > 0 ? `  next +${Math.round(eta).toLocaleString('en-US')} y`
                                 : '  next due';
-                        row.el.firstChild.textContent = `${tradeNet.ports[row.route.origin].name.slice(0, 10)} \u2192 `
-                                + tradeNet.ports[row.route.dest].name.slice(0, 10) + suffix;
+                        row.el.firstChild.textContent = pair + suffix;
                 }
         }
 
@@ -5787,9 +5821,9 @@ async function boot() {
                 tradeLib.settleAllPorts(tradeNet, tradeNet.time);
                 // The live geometry (trade-plan §9): with the sky moving, every
                 // distance in the network is a drawn one, and a route the shear has
-                // torn past its cap is turned around rather than chased. Both facts
-                // are worth a word — a silent network under a moving sky reads as a
-                // broken one.
+                // torn past its cap is out of reach rather than chased (trade.30).
+                // Both facts are worth a word — a silent network under a moving sky
+                // reads as a broken one.
                 const geom = tradeNet.geom;
                 const geomNote = geom.moving
                         ? ' \u00b7 live routes' + (geom.blind > 0 ? ` (${geom.blind} blind)` : '')
@@ -5811,7 +5845,11 @@ async function boot() {
                 const fleetNote = fleetPort >= 0 && tradeNet.ports[fleetPort].intra
                         ? ' \u00b7 intra ' + tradeNet.ports[fleetPort].intra.inFlight + '/'
                                 + tradeLib.INTRA_HULLS_MAX + ' flying' : '';
-                tradeState.textContent = `${tradeLib.livePortCount(tradeNet)} ports${outpostNote} \u00b7 ${tradeNet.shipCount} ships`
+                const reachNote = tradeNet.routes.unreachable > 0
+                        ? ` \u00b7 ${tradeNet.routes.unreachable} route`
+                                + (tradeNet.routes.unreachable === 1 ? '' : 's') + ' out of reach'
+                        : '';
+                tradeState.textContent = `${tradeLib.livePortCount(tradeNet)} ports${outpostNote} \u00b7 ${tradeNet.shipCount} ships${reachNote}`
                         + (skyNote ? ' \u00b7 ' + skyNote : '')
                         + fleetNote
                         + ` \u00b7 ${tradeNet.founded} founded \u00b7 ${Math.round(tradeNet.delivered).toLocaleString()} units hauled`
@@ -6523,9 +6561,9 @@ async function boot() {
                                         tradeLib.refreshGeometry(tradeNet, starTimeMyr,
                                                 effectiveTimeRate !== 0, tradeMyrPerYear(effectiveTimeRate));
                                         // In-flight voyages re-aimed at the stars' live
-                                        // drawn positions (§9.4), and turned around when
-                                        // the sky has torn the leg past its cap: only
-                                        // worth doing while the sky actually moves.
+                                        // drawn positions (§9.4), and turned around only
+                                        // when the target outruns the hull: worth doing
+                                        // only while the sky actually moves.
                                         if (dtStar !== 0) tradeLib.retimeRoutes(tradeNet);
                                         // Big colonies scan the live field for nearby
                                         // good worlds: the frontier expands without the

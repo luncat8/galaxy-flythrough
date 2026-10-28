@@ -1,6 +1,6 @@
 {
-  "total": 334,
-  "passed": 334,
+  "total": 346,
+  "passed": 346,
   "failed": 0,
   "checks": [
     {
@@ -839,30 +839,34 @@
       }
     },
     {
-      "name": "a leg torn past its cap is turned around, not chased",
+      "name": "a leg torn past its cap is finished on its own booking, not turned around (§9.4)",
       "pass": true,
       "detail": {
-        "diverted": 12,
-        "turned": 1
+        "flying": 18,
+        "tornNow": 12,
+        "kept": 12,
+        "overCapKept": 12,
+        "turned": 0,
+        "rebooked": 6,
+        "diverted": 0
       }
     },
     {
-      "name": "the diverted hull is booked home over the part of the chord it has flown",
+      "name": "every hull that turns does so because its target outruns it",
       "pass": true,
       "detail": {
-        "u": 0.173,
-        "chord": 13614,
-        "expect": 525,
-        "booked": 526
+        "turned": 0,
+        "outrunTurns": 0,
+        "diverted": 0
       }
     },
     {
-      "name": "the diverted hull docks at the port it turned back to",
+      "name": "the finished voyage docks at the port it set out for",
       "pass": true,
       "detail": {
         "landed": 1,
-        "from": 8,
-        "arrivals": 34
+        "dest": 10,
+        "arrivals": 41
       }
     },
     {
@@ -871,6 +875,7 @@
       "detail": {
         "launch": 1,
         "wasTurned": 1,
+        "turnedBy": 20,
         "founded": 0,
         "people": 0.91,
         "jump": 0.91,
@@ -897,11 +902,11 @@
       }
     },
     {
-      "name": "120 s of shearing sky: no hull is left on a leg past the give-up margin",
+      "name": "120 s of shearing sky: every hull in flight is on a booking it will land on",
       "pass": true,
       "detail": {
         "sailing": 15,
-        "over": 0,
+        "torn": 0,
         "worstLy": 2593
       }
     },
@@ -913,6 +918,112 @@
         "at60": 66430,
         "ports": 12,
         "founded": 8
+      }
+    },
+    {
+      "name": "a commissioned pair is in reach while its stars are together",
+      "pass": true,
+      "detail": {
+        "pair": [
+          0,
+          3
+        ],
+        "ly": 687,
+        "torn": 300,
+        "widest": 9479
+      }
+    },
+    {
+      "name": "a pair the sky tears past the freight cap reports itself out of reach, and keeps its row",
+      "pass": true,
+      "detail": {
+        "ly": 9479,
+        "reach": 0,
+        "unreachable": 1
+      }
+    },
+    {
+      "name": "an out-of-reach pair admits no leg, so no hull books it",
+      "pass": true,
+      "detail": {
+        "ly": 9479
+      }
+    },
+    {
+      "name": "commissioning a pair the sky has torn is refused, with a reason",
+      "pass": true,
+      "detail": {
+        "reason": "these ports are out of reach of the fleet"
+      }
+    },
+    {
+      "name": "a frozen sky hands the pair its reach back",
+      "pass": true,
+      "detail": {
+        "ly": 0
+      }
+    },
+    {
+      "name": "...and the same pair can be commissioned again, in the row it had",
+      "pass": true,
+      "detail": {
+        "index": 0,
+        "was": 0
+      }
+    },
+    {
+      "name": "a leg the sky stretches past its cap is finished, not turned around",
+      "pass": true,
+      "detail": {
+        "chord": 5273,
+        "before": 308,
+        "diverted": 0
+      }
+    },
+    {
+      "name": "...and its booking stands where the departure put it",
+      "pass": true,
+      "detail": {
+        "booked": 156.8,
+        "now": 156.8
+      }
+    },
+    {
+      "name": "the stretched voyage arrives at the port it set out for",
+      "pass": true,
+      "detail": {
+        "landed": 1
+      }
+    },
+    {
+      "name": "an expedition whose world drifted out of reach refunds instead of founding",
+      "pass": true,
+      "detail": {
+        "launch": 1,
+        "turned": 0,
+        "founded": 0,
+        "ports": 0,
+        "jump": 0.91,
+        "people": 0.91
+      }
+    },
+    {
+      "name": "a candidate no colony can reach is stranded, and its slot is reusable",
+      "pass": true,
+      "detail": {
+        "stranded": 255,
+        "slot": 1,
+        "added": 2,
+        "before": 256,
+        "after": 256
+      }
+    },
+    {
+      "name": "the reused slot holds the new world, not the stranded one",
+      "pass": true,
+      "detail": {
+        "key": 21500,
+        "reach": 1
       }
     },
     {

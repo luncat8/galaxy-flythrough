@@ -1542,8 +1542,8 @@ function exactLiveEvents(net) {
 			outrun > 0 && insideCapRefused > 0, { outrun, insideCapRefused });
 	}
 
-	// 17.5 A voyage the shear tears past the cap turns around (§9.4), and a
-	// founding hull brings its volunteers home.
+	// 17.5 A voyage the shear tears past the cap is finished, not chased; only
+	// a target that outruns the hull turns one around (§9.4, trade.30).
 	{
 		const net = seedMoving(24);
 		let maint = 0;
@@ -1561,58 +1561,100 @@ function exactLiveEvents(net) {
 				trade.retimeRoutes(net);
 			}
 		}
-		const before = net.diverted;
+		// Snapshot every hull in flight: its booking, and the chord it is drawn
+		// on. The jump below is the one that used to turn the whole fleet back.
+		const before = [];
+		for (let i = 0; i < net.shipCount; i++) {
+			const sh = net.ships[i];
+			if (sh.state !== trade.SHIP_SAILING && sh.state !== trade.SHIP_FOUNDING) continue;
+			if (sh.from < 0) continue;
+			const founding = sh.state === trade.SHIP_FOUNDING;
+			const kindB = founding ? trade.END_CANDIDATE : trade.END_PORT;
+			const indexB = founding ? sh.candidate : sh.to;
+			if (indexB < 0) continue;
+			before.push({ index: i, arrive: sh.arrive, from: sh.from, to: sh.to, kindB, indexB,
+				cap: founding ? trade.MAX_FOUND_LY : trade.MAX_LEG_LY,
+				ly: trade.endpointDistanceLy(net, trade.END_PORT, sh.from, kindB, indexB) });
+		}
+		const divertedBefore = net.diverted;
 		// Jump the sky 900 Myr: whatever is in flight is now on a torn route.
 		skyTime = 900;
 		trade.refreshGeometry(net, skyTime, 1, myrPerYear);
 		trade.retimeRoutes(net);
-		// The most-flown hull that turned: the interesting case is one that had
-		// already covered part of its chord, not one that turned in its own port.
-		let turned = -1, turnedMost = -1;
-		for (let i = 0; i < net.shipCount; i++) {
-			const sh = net.ships[i];
-			if (!sh.returning || (sh.state !== trade.SHIP_SAILING && sh.state !== trade.SHIP_FOUNDING)) continue;
-			if (sh.legFrom > turnedMost) { turnedMost = sh.legFrom; turned = i; }
+		let kept = 0, turned = 0, overCapKept = 0, rebooked = 0, tornNow = 0;
+		for (let k = 0; k < before.length; k++) {
+			const was = before[k];
+			const sh = net.ships[was.index];
+			const lyNow = trade.endpointDistanceLy(net, trade.END_PORT, was.from, was.kindB, was.indexB);
+			if (lyNow > was.cap) tornNow += 1;
+			if (sh.returning) { turned += 1; continue; }
+			if (Math.abs(sh.arrive - was.arrive) <= 1e-9) kept += 1;
+			else if (sh.arrive > sh.depart) rebooked += 1;
+			if (lyNow > was.cap) overCapKept += 1;
 		}
-		const ship = turned >= 0 ? net.ships[turned] : null;
-		check('a leg torn past its cap is turned around, not chased',
-			net.diverted > before && ship !== null && ship.legTo === 0,
-			{ diverted: net.diverted - before, turned });
-		// The way home is the part of the chord already flown, not the part that
-		// was still ahead: a hull turned at 30 % is a 30 % flight back.
-		let homeOk = false, homeDetail = null;
-		if (ship) {
-			const kindB = ship.state === trade.SHIP_FOUNDING ? trade.END_CANDIDATE : trade.END_PORT;
-			const indexB = ship.state === trade.SHIP_FOUNDING ? ship.candidate : ship.to;
-			const chordNow = trade.endpointDistanceLy(net, trade.END_PORT, ship.from, kindB, indexB);
-			const expect = Math.max(trade.MIN_LEG_YEARS, ship.legFrom * chordNow / trade.HULLS[ship.hull].lyPerYear);
-			const booked = ship.arrive - ship.depart;
-			homeOk = Math.abs(booked - expect) <= Math.max(2, expect * 0.05);
-			homeDetail = { u: +ship.legFrom.toFixed(3), chord: +chordNow.toFixed(0), expect: +expect.toFixed(0), booked: +booked.toFixed(0) };
+		// The six that were re-aimed are the pairs still inside their cap, which
+		// §9.4 lets the maintenance pass re-time; not one torn pair moved.
+		check('a leg torn past its cap is finished on its own booking, not turned around (§9.4)',
+			before.length > 0 && tornNow > 0 && overCapKept > 0 && kept === overCapKept
+				&& kept + turned + rebooked === before.length,
+			{ flying: before.length, tornNow, kept, overCapKept, turned, rebooked,
+				diverted: net.diverted - divertedBefore });
+		// What still turns a hull around is geometry, not distance: the shear
+		// the generation hull cannot close on. Every hull that turned here did
+		// so because its target receded faster than its own speed.
+		const ids = [];
+		for (let k = 0; k < before.length; k++) ids.push(before[k].index);
+		let outrunTurns = 0;
+		for (let k = 0; k < ids.length; k++) {
+			const sh = net.ships[ids[k]];
+			if (!sh.returning) continue;
+			const was = before[k];
+			const geo = trade.planLeg(net, trade.END_PORT, was.from, was.kindB, was.indexB,
+				sh.hull, was.cap, trade.createLegPlan());
+			if (geo.outrun) outrunTurns += 1;
 		}
-		check('the diverted hull is booked home over the part of the chord it has flown', homeOk, homeDetail);
-		// It docks at its origin: the port's arrival counter takes it, and a hull
-		// that immediately loads again inside a 20-year step still counts.
-		const homeArrivals = ship ? net.ports[ship.from].arrivals : 0;
+		check('every hull that turns does so because its target outruns it',
+			net.diverted === divertedBefore + turned && outrunTurns === turned,
+			{ turned, outrunTurns, diverted: net.diverted - divertedBefore });
+		// The finished voyage lands where it set out for, not back home: a
+		// colony pair 40 000 ly apart does not send its cargo back to the shipper.
+		const survivor = before.filter((was) => !net.ships[was.index].returning
+			&& was.kindB === trade.END_PORT)[0];
+		const dest = survivor ? survivor.to : -1;
+		const arrivalsBefore = survivor ? net.ports[dest].arrivals : 0;
 		let landed = 0;
-		for (let f = 0; f < 200000 && ship && !landed; f++) {
+		for (let f = 0; f < 200000 && survivor && !landed; f++) {
 			trade.step(net, 20, 256);
-			if (net.ports[ship.from].arrivals > homeArrivals) landed = 1;
+			if (net.diverted !== divertedBefore + turned) landed = -1;
+			else if (net.ports[dest].arrivals > arrivalsBefore) landed = 1;
 		}
-		check('the diverted hull docks at the port it turned back to',
-			ship !== null && landed === 1,
-			{ landed, from: ship ? ship.from : -1, arrivals: ship ? net.ports[ship.from].arrivals : -1 });
+		check('the finished voyage docks at the port it set out for',
+			survivor !== undefined && landed === 1,
+			{ landed, dest, arrivals: survivor ? net.ports[dest].arrivals : -1 });
 
-		// A founding hull: the same shear, and the party is refunded at home.
-		const net2 = seedMoving(24);
-		skyTime = 0;
-		trade.refreshGeometry(net2, 0, 1, 1e-3);
-		const launch = trade.launchBest(net2, 0);
-		const founder = launch.ok ? net2.ships[launch.ship] : null;
+		// A founding hull: the same geometry refusal, and the party is refunded
+		// to the port it came from. The generation hull is the honest subject —
+		// 30 ly per star-Myr cannot close on a sky that shears at the synced
+		// clock, so this voyage has no meeting point at all.
+		// The jump that shears hardest is the sky's business, so the span is
+		// swept rather than named: the first one whose sampled rate leaves the
+		// generation hull behind is the subject.
+		let net2 = null, launch = null, founder = null, turnedBy = 0;
+		for (let k = 0; k < 6 && !turnedBy; k++) {
+			const span = 20 * (k + 1);
+			net2 = seedMoving(24);
+			skyTime = 0;
+			trade.refreshGeometry(net2, 0, 1, 1e-2);
+			launch = trade.launchBest(net2, 0);
+			founder = launch.ok ? net2.ships[launch.ship] : null;
+			trade.setGenerationMode(1, net2);
+			skyTime = span;
+			trade.refreshGeometry(net2, span, 1, 1e-2);
+			trade.retimeRoutes(net2);
+			trade.setGenerationMode(0, net2);
+			if (founder && founder.returning) turnedBy = span;
+		}
 		const people = founder ? founder.amount * trade.POP_PER_COLONIST_UNIT : 0;
-		skyTime = 900;
-		trade.refreshGeometry(net2, skyTime, 1, 1e-3);
-		trade.retimeRoutes(net2);
 		const wasTurned = founder ? founder.returning : -1;
 		let popBefore = 0, popAfter = 0, stateAfter = -1, amountAfter = -1;
 		if (founder && wasTurned === 1) {
@@ -1634,7 +1676,7 @@ function exactLiveEvents(net) {
 			launch.ok === 1 && wasTurned === 1 && net2.founded === 0
 			&& stateAfter === trade.SHIP_DOCKED && amountAfter === 0
 			&& Math.abs(popAfter - popBefore - people) < people * 0.02,
-			{ launch: launch.ok, wasTurned, founded: net2.founded, people: +people.toFixed(2),
+			{ launch: launch.ok, wasTurned, turnedBy, founded: net2.founded, people: +people.toFixed(2),
 				jump: +(popAfter - popBefore).toFixed(2), stateAfter, amountAfter });
 	}
 
@@ -1686,27 +1728,231 @@ function exactLiveEvents(net) {
 			}
 			if (f === 60 * fps) deliveredAt60 = net.delivered;
 		}
-		// Every hull in flight is inside the give-up margin of its cap.
-		let worst = 0, over = 0, sailing = 0;
+		// A hull may be drawn on a chord the sky has torn past its cap — that is
+		// what a moving map looks like — but it is always on a booking it will
+		// land on (trade.30: the voyage finishes, the route goes out of reach).
+		let worst = 0, over = 0, sailing = 0, unbooked = 0;
 		for (let i = 0; i < net.shipCount; i++) {
 			const sh = net.ships[i];
 			if (sh.state !== trade.SHIP_SAILING && sh.state !== trade.SHIP_FOUNDING) continue;
 			if (sh.from < 0) continue;
 			sailing += 1;
+			if (!Number.isFinite(sh.arrive) || !(sh.arrive > sh.depart)) unbooked += 1;
 			const kindB = sh.state === trade.SHIP_FOUNDING ? trade.END_CANDIDATE : trade.END_PORT;
 			const indexB = sh.state === trade.SHIP_FOUNDING ? sh.candidate : sh.to;
 			if (indexB < 0) continue;
 			const ly = trade.endpointDistanceLy(net, trade.END_PORT, sh.from, kindB, indexB);
 			const cap = sh.state === trade.SHIP_FOUNDING ? trade.MAX_FOUND_LY : trade.MAX_LEG_LY;
-			if (ly > cap * trade.DIVERT_FACTOR * 1.05) over += 1;
+			if (ly > cap) over += 1;
 			if (ly > worst) worst = ly;
 		}
-		check('120 s of shearing sky: no hull is left on a leg past the give-up margin',
-			over === 0 && sailing > 0, { sailing, over, worstLy: +worst.toFixed(0) });
+		check('120 s of shearing sky: every hull in flight is on a booking it will land on',
+			unbooked === 0 && sailing > 0,
+			{ sailing, torn: over, worstLy: +worst.toFixed(0) });
 		check('the network still trades and still grows while the sky moves',
 			net.delivered > 0 && net.delivered > deliveredAt60 && net.portCount > 4 && net.founded > 0,
 			{ delivered: Math.round(net.delivered), at60: Math.round(deliveredAt60), ports: net.portCount, founded: net.founded });
 	}
+	// --- 33. Reach: a voyage finishes, a route out of the map does not start ---
+	// The user's report (trade.30): colonies are drawn scattered across the galaxy
+	// with long routes over the whole of it. The economy's own answer is the one a
+	// player would give — if the stars are that far apart, trade there is
+	// impossible — so the pair is disabled, not the hull turned around.
+	{
+		// The display half: the sky tears a commissioned pair past the freight
+		// cap, and a frozen sky hands it back, with no bookkeeping by hand.
+		const net = seedMoving(24);
+		// Which pair to commission is the sky's answer, not a guess about the
+		// engine's phase: sweep the star clock and take the widest drawn pair.
+		// The differential drift between two neighbouring stars is a couple of
+		// ly per Myr, so a pair that is torn at all is torn over a long span —
+		// this is the same shear the page shows after a minute of 1 Myr/s,
+		// walked until it clears three freight caps.
+		let torn = 0, ai = 0, bi = 1, widest = 0;
+		for (let t = 100; t <= 4000 && !torn; t += 100) {
+			skyTime = t;
+			trade.refreshGeometry(net, t, 1, 0.01);
+			for (let i = 0; i < net.portCount; i++) {
+				for (let j = i + 1; j < net.portCount; j++) {
+					const d = trade.endpointDistanceLy(net, trade.END_PORT, i, trade.END_PORT, j);
+					if (d > widest) { widest = d; ai = i; bi = j; }
+				}
+			}
+			if (widest > trade.MAX_LEG_LY * 3) torn = t;
+		}
+		skyTime = 0;
+		trade.refreshGeometry(net, 0, 1, 0.01);
+		const born = trade.commissionRoute(net, ai, bi, 0);
+		// `born` is the library's own result object: the next commission call
+		// overwrites it, so the slot index is copied out here.
+		const slotIndex = born.index;
+		const route = net.routes.list[slotIndex];
+		check('a commissioned pair is in reach while its stars are together',
+			born.ok === 1 && route.reach === 1 && route.ly > 0 && torn > 0,
+			{ pair: [ai, bi], ly: Math.round(route.ly), torn, widest: Math.round(widest) });
+		skyTime = torn;
+		trade.refreshGeometry(net, torn, 1, 0.01);
+		trade.refreshReach(net);
+		check('a pair the sky tears past the freight cap reports itself out of reach, and keeps its row',
+			route.active === 1 && route.reach === 0 && route.ly > trade.MAX_LEG_LY
+				&& net.routes.unreachable >= 1,
+			{ ly: Math.round(route.ly), reach: route.reach, unreachable: net.routes.unreachable });
+		const plan = trade.planLeg(net, trade.END_PORT, route.origin, trade.END_PORT, route.dest,
+			0, trade.MAX_LEG_LY, trade.createLegPlan());
+		check('an out-of-reach pair admits no leg, so no hull books it',
+			plan.reachable === 0, { ly: Math.round(plan.ly) });
+		// The player's own hand is refused too: cancelling the row and asking
+		// again while the pair is out of reach commissions nothing.
+		trade.removeRoute(net, slotIndex);
+		const again = trade.commissionRoute(net, ai, bi, 0);
+		check('commissioning a pair the sky has torn is refused, with a reason',
+			again.ok === 0 && again.reason.length > 0 && net.routes.list[slotIndex].active === 0,
+			{ reason: again.reason });
+		trade.refreshGeometry(net, torn, 0, 0);
+		trade.refreshReach(net);
+		check('a frozen sky hands the pair its reach back',
+			route.reach === 1 && route.ly <= trade.MAX_LEG_LY && net.routes.unreachable === 0,
+			{ ly: Math.round(route.ly) });
+		const back = trade.commissionRoute(net, ai, bi, 0);
+		check('...and the same pair can be commissioned again, in the row it had',
+			back.ok === 1 && back.index === slotIndex && route.reach === 1 && route.active === 1,
+			{ index: back.index, was: slotIndex });
+	}
+
+	{
+		// The hull half: a sky that only *stretches* the leg (a neighbour drift
+		// slower than the hull, so nothing outruns anything) must leave a voyage
+		// in flight alone. Its booking stands where the departure put it, and it
+		// arrives — the old law turned it around, which is the "ships wandering
+		// home" a player read as a position bug.
+		const net = seedMoving(24);
+		const drift = new Map();
+		for (let i = 0; i < net.portCount; i++) drift.set(net.ports[i].key, i * 0.02);
+		let stretchT = 0;
+		function stretchSky(ref, t, out) {
+			const b = birthOf.get(ref.key >>> 0);
+			if (!b) return false;
+			out[0] = b.x + (drift.get(ref.key >>> 0) || 0) * t;
+			out[1] = b.y;
+			out[2] = b.z;
+			return true;
+		}
+		net.livePosition = (ref, out) => stretchSky(ref, stretchT, out);
+		net.predictPosition = (ref, t, out) => stretchSky(ref, t, out);
+		trade.refreshGeometry(net, 0, 1, 0.01);
+		let ship = null;
+		for (let k = 0; k < 400 && !ship; k++) {
+			trade.step(net, 20, 4096);
+			for (let i = 0; i < net.shipCount && !ship; i++) {
+				const sh = net.ships[i];
+				if (sh.state !== trade.SHIP_SAILING || sh.from < 0 || sh.to < 0) continue;
+				// A neighbouring pair: the drift between them is 0.02 kpc/Myr, well
+				// inside the hull's closing speed at this clock, so no outrunning.
+				if (Math.abs(sh.to - sh.from) !== 1) continue;
+				ship = sh;
+			}
+		}
+		const booked = ship ? ship.arrive : 0;
+		const chordBefore = ship ? trade.endpointDistanceLy(net, trade.END_PORT, ship.from,
+			trade.END_PORT, ship.to) : 0;
+		const divertedBefore = net.diverted;
+		stretchT = 80;
+		trade.refreshGeometry(net, stretchT, 1, 0.01);
+		trade.retimeRoutes(net);
+		const chord = ship ? trade.endpointDistanceLy(net, trade.END_PORT, ship.from,
+			trade.END_PORT, ship.to) : 0;
+		check('a leg the sky stretches past its cap is finished, not turned around',
+			ship !== null && ship.returning === 0 && net.diverted === divertedBefore
+				&& chord > trade.MAX_LEG_LY && chord > chordBefore,
+			{ chord: Math.round(chord), before: Math.round(chordBefore), diverted: net.diverted });
+		check('...and its booking stands where the departure put it',
+			ship !== null && Math.abs(ship.arrive - booked) < 1e-6,
+			{ booked: +booked.toFixed(1), now: ship ? +ship.arrive.toFixed(1) : -1 });
+		let landed = 0;
+		// The destination index is captured: an arrival clears `ship.to` (§9.1).
+		const dest = ship ? ship.to : -1;
+		const arrivalsBefore = ship ? net.ports[dest].arrivals : 0;
+		for (let f = 0; f < 40000 && ship && !landed; f++) {
+			trade.step(net, 20, 256);
+			if (net.ports[dest].arrivals > arrivalsBefore) landed = 1;
+		}
+		check('the stretched voyage arrives at the port it set out for', landed === 1, { landed });
+	}
+
+	{
+		// An expedition that arrives at a world its network can no longer reach
+		// comes home with its volunteers: no colony stranded across the galaxy.
+		const net = seedMoving(24);
+		skyTime = 0;
+		trade.refreshGeometry(net, 0, 1, 1e-3);
+		const launch = trade.launchBest(net, 0);
+		const founder = launch.ok ? net.ships[launch.ship] : null;
+		const people = founder ? founder.amount * trade.POP_PER_COLONIST_UNIT : 0;
+		const portsBefore = net.portCount;
+		// The party flies on. The sky tears the destination out of reach behind it
+		// without a retime call, so the voyage is not turned around and the
+		// refusal under test is the arrival's own.
+		skyTime = 60;
+		trade.refreshGeometry(net, skyTime, 1, 1e-3);
+		let popBefore = 0, popAfter = 0, founded = -1;
+		if (founder) {
+			const arriveAt = founder.arrive;
+			trade.step(net, Math.max(0, arriveAt - net.time - 1e-6), 4096);
+			const home = net.ports[launch.source].colony;
+			economy.settleColony(home, arriveAt - 1e-6);
+			popBefore = home.pop;
+			trade.step(net, 1e-3, 4096);
+			popAfter = home.pop;
+			founded = net.founded;
+		}
+		check('an expedition whose world drifted out of reach refunds instead of founding',
+			launch.ok === 1 && founder !== null && founder.returning === 0
+				&& founded === 0 && net.portCount === portsBefore
+				&& Math.abs(popAfter - popBefore - people) < people * 0.02,
+			{ launch: launch.ok, turned: founder ? founder.returning : -1, founded,
+				ports: net.portCount - portsBefore, jump: +(popAfter - popBefore).toFixed(2),
+				people: +people.toFixed(2) });
+	}
+
+	{
+		// The frontier keeps growing when the pool is full of worlds nobody can
+		// reach: a stranded slot is taken, the reserved and used ones are not.
+		const net = seedMoving(8);
+		for (let k = 0; k < 400; k++) {
+			trade.step(net, 250, 4096);
+			trade.colonisationPreview(net, net.time);
+			if (trade.colonisationStatus().big > 0) break;
+		}
+		for (let i = 0; i < trade.MAX_CANDIDATES; i++) {
+			if (net.candidateCount >= trade.MAX_CANDIDATES) break;
+			const site = economy.createSite();
+			site.key = (0x900000 + i) >>> 0;
+			site.kind = planets.BLOCK_FIELD;
+			site.index = 1000 + i;
+			site.x = 500; site.y = 500; site.z = 0;   // far outside every port's reach
+			site.ref = { kind: planets.BLOCK_FIELD, index: site.index, key: site.key,
+				x: site.x, y: site.y, z: site.z, colorIndex: 0, absMag: 0 };
+			trade.addCandidate(net, site, null);
+		}
+		trade.refreshReach(net);
+		const stranded = net.strandedCandidates;
+		const before = net.candidateCount;
+		let slot = -1, added = 0;
+		for (let k = 0; k < 400 && added === 0; k++) {
+			trade.refreshReach(net);
+			slot = trade.freeCandidateSlot(net);
+			added = trade.expandFrontierFromField(net, scenarioField, model);
+		}
+		check('a candidate no colony can reach is stranded, and its slot is reusable',
+			net.candidateCount === trade.MAX_CANDIDATES && stranded > 0 && slot >= 0
+				&& added > 0 && net.candidateCount === before,
+			{ stranded, slot, added, before, after: net.candidateCount });
+		const row = slot >= 0 ? net.candidates[slot] : null;
+		check('the reused slot holds the new world, not the stranded one',
+			row !== null && (row.site.key >>> 0) !== ((0x900000 + slot) >>> 0) && row.reach === 1,
+			{ key: row ? row.site.key : -1, reach: row ? row.reach : -1 });
+	}
+
 	orbit.setEngine(savedEngine);
 }
 

@@ -1406,3 +1406,67 @@ in `deferred-open-work.md` as the open row it is:
 **Validation.** panel 16 checks (the row's permanence and its hidden reason line
 are now pinned), changed 9/9, trade 334/334 unchanged. The study is a study: it
 prints, it does not pass or fail.
+
+## trade.30 — 2026-10-28 — Reach: the pair goes out of reach, the voyage finishes
+
+The user took the decision trade.29 left open, and took it as neither of the
+three structural remedies: *"we need finish started travel and disable route
+when distance become too big"*, with the star clock kept at 1 Myr/s. So the sky
+keeps moving, the rings stay on their stars, and the economy answers the way a
+player would — if the stars are that far apart, trade there is impossible.
+
+**The law.** `refreshReach(net)` runs after every geometry refresh (from
+`finalize`, `commissionRoute` and `retimeRoutes`) and measures in the one frame
+every distance in the network is measured in, the *drawn* positions:
+
+- a route is in reach iff `endpointDistanceLy(origin, dest) ≤ MAX_LEG_LY`
+  (3 000 ly). Out of reach: the row says `out of reach · N ly` in the
+  `is-unreachable` colour, the overlay stops drawing it, no hull books it
+  (`planLeg` already refuses), and `routes.unreachable` counts them.
+- a candidate is in reach iff it is within `MAX_FOUND_LY` (600 ly) of **some**
+  live port. Otherwise it is stranded: no expedition scores it, its dot is not
+  drawn, `strandedCandidates` counts it, and the colonisation row says
+  `N free worlds have drifted out of reach`.
+- a voyage is always in reach. It finishes.
+
+**Voyages finish.** `retimeRoutes` no longer treats distance as a give-up: the
+old `DIVERT_FACTOR` turn-around (and its `legTo = 0` flight home) fired on the
+*solve's* runaway signal, which is exactly what a stretched leg raises — the
+fleet spent its life sailing home from routes the sky had already closed, which
+is what a viewer read as ships wandering. Now:
+
+- the only divert left is geometry: `planLeg`'s `outrun`, a target that recedes
+  faster than the hull flies, which is the one thing a booking cannot argue
+  with. A diverted hull still goes home (freighter with cargo, founder with the
+  volunteers refunded to the source's population).
+- a chord drawn past the cap is not re-solved at all — `ship.arrive` keeps the
+  arrival its departure was given, so the hull lands at the port it set out for
+  instead of chasing a star that is leaving.
+- inside the cap, re-timing is unchanged (§9.4).
+
+**Founding.** `foundAtCandidate` refuses through the same law at the arrival
+event: if the world is drawn past `MAX_FOUND_LY` of the party's home when the
+hull docks, the party is refunded (`returnFounder`) instead of planting a colony
+no route can ever serve. That closes the last way a colony could appear across
+the galaxy from its network.
+
+**The frontier keeps growing.** A full pool of 224 candidates used to freeze the
+scan; if every one of them has drifted out of reach, that is 224 places no hull
+can fly to and a network that stops expanding under a torn sky. `freeCandidateSlot`
+returns a slot that is unused, unreserved and `reach === 0`, and `addCandidate`
+can now overwrite one, so the scan recycles stranded places instead of stalling.
+
+**The panel.** Commissioning a pair whose drawn separation is past the cap is
+refused with a reason (`these ports are out of reach of the fleet`) and the
+commission button is disabled while the selection is torn, so the click cannot
+become a dead row. An existing row is never removed for being out of reach: the
+flags are recomputed from where the stars are now, so the pair resumes by itself
+the moment the sky hands it back — pausing the star clock is the quickest way.
+
+**Validation.** trade 346/346 (new §33: the reach flag on a torn pair and back
+on a frozen sky, the commission refusal, a voyage that keeps its booking and
+docks at its destination on a stretched chord, the founding refund at arrival,
+the stranded-slot reuse, plus §17.5/§17.7 rewritten from the turn-around law to
+the finish law), panel 16, changed 14/14. `experiments/network-frame-study.js`
+is unchanged and still measures the picture winding up; §9.9 records the law and
+what it deliberately does not fix (the map still winds up at 1 Myr/s).
