@@ -263,11 +263,26 @@ range, and the rendered field has no star within 300 ly of the Sun at all (§8).
 
 A network booted at an early epoch (before the named sky's applicability window)
 starts empty rather than pre-settling a barely formed star. While it has no port
-or ship, a wall-time-throttled, bounded scan walks the rendered procedural field,
+or ship, a wall-time-throttled scan walks the rendered procedural field,
 independent of the trade clock and sky gate; candidate discoveries do not block it.
 It advances a persistent cursor and wraps so new births and epoch scrubs are
 reconsidered. No field birth data means wait, never guess. It must never re-seed a
 network with ports, including hidden or failed ones.
+
+The scan has two halves with separate budgets, because the two tests cost
+different things. The **sweep** walks field records and queues the ones whose
+birth time clears the age gates (`BOOTSTRAP_SCAN = 4096` records per call, a
+`Float32Array` comparison each, so a 300k field closes in tens of seconds at the
+app's 2 Hz retry). The **generator** drains that queue from its head, creates the
+system, and founds on the first terran world (`BOOTSTRAP_GEN = 128` systems per
+call, ~3 µs each, so the frame's share stays near a millisecond). The queue is a
+preallocated `Int32Array` (`BOOTSTRAP_PENDING = 1024`), compacted when its head
+catches up, and every queued record is re-tested against the epoch before it is
+generated: a scrub between the sweep and the drain must not create a colony on a
+star that no longer exists. The split is the fix for the first browser report —
+at a young epoch almost no record passes the age gates, so generating every
+scanned star was both a ten-minute sweep and wasted work; now the sweep only
+generates what could possibly be a home.
 
 There is no actual stellar-generation or enrichment model yet. As an explicit
 *gameplay proxy*, require the star to have been born at least 0.5 Gyr after the
@@ -275,11 +290,22 @@ galaxy began, be at least 0.1 Gyr old, be a main-sequence star with model Z ≥
 0.008, and have a generated planet flagged `terran`. These are not evidence of
 second-generation ancestry, real nucleosynthesis, habitability or life. The
 first eligible field record in the incremental scan is founded at the current
-trade year as capital; the star's own epoch and formation gate apply. The panel
-says what it is waiting for. No speculative global enrichment simulation is
-introduced. If the field is too sparse or no such planet exists, it waits and
+trade year as capital; the star's own epoch and formation gate apply. No
+speculative global enrichment simulation is introduced. If the field is too sparse or no such planet exists, it waits and
 keeps scanning; it does not create an unsuitable colony. A network booted in
 the present-day named-sky window keeps the existing seed map.
+
+The panel says what it is waiting for, and it says it in the one place the
+player acts. While the network has no port, the top of the Trade panel is the
+task: **Search for a home** (the search panel's own galaxy-scope `state:ms|terran`
+scan, paused on its results) and **Establish here** (the Colonisation row's
+`playerFound` door on the selected star). The line under them is
+`bootstrapStatus`, in this order: the field has not been drawn; the sky is
+younger than `BOOTSTRAP_MIN_AGE_GYR` (birth 0.5 + age 0.1, so no star can qualify
+before 0.6 Gyr — the line names the age and the current one instead of pretending
+to scan); the last closed sweep found no old, metal-rich star in this sky; else
+the window's progress and its queue. With one port the row disappears and the
+Colonisation row takes over.
 
 On success, preserve any existing candidates, make one port and initialize a
 fleet even if the empty network already scheduled its global tick. The sky gate
@@ -288,12 +314,17 @@ Earth-like search: existing `terran` + main-sequence filters, centered on the
 camera, no distance limit; results are nearest-first and selectable, do not
 found colonies, and do not assert generation or heavy-element history. Searches
 exclude the curated landmark block when its galaxy/epoch/rate gate is closed.
+The player's founding doors (`playerFound`, `playerFoundWorld`) take the caller's
+`refInSky` verdict and refuse a star outside this epoch's sky, so the trade
+series' one gate covers the seed map, the network and the player alike.
 
 Tests exercise first light, retry while gated or trade paused, existing candidates,
 formation/age/metal/planet eligibility, scan wrap, later success, clock and queue
-preservation, fleet startup, and no reset of a network with hidden ports. A real
-browser pass must confirm status and the search button; mock tests do not prove
-visual usability.
+preservation, fleet startup, no reset of a network with hidden ports, the four
+status lines, a full eligible-free sweep's cost, the first capital's arrival
+within eight app-cadence calls at 1.5 Gyr, and the player door's sky refusal. A
+real browser pass must confirm status and the two panel presses; mock tests do not
+prove visual usability.
 
 ### 3.1 Queue and freighters
 
@@ -1016,3 +1047,24 @@ prediction against per-frame stepping, the refusal past the horizon bound, the
 late-tracked catch-up bound, and the reset/rebind semantics.
 `experiments/wgsl-validate.js` follows the ladder into the θ twin, so the
 movement-parity contract is still pinned by source shape.
+
+### 9.9 What the tiers do not fix (trade.29)
+
+The tiers make the *economy* honest; they do not make the *picture* stable, and
+that is the visible half of the same problem. A colony is a star, so its ring is
+drawn where the star is drawn, and at the app's default 1 Myr/s a solar-circle
+star sweeps 0.22 kpc per wall second: a network that does not change at all is
+drawn 40 416 ly from home one wall minute after a boot whose four seed colonies
+sit 4–79 ly out (`experiments/network-frame-study.js`). The default clocks are
+incoherent by the same measure — at 100 y/s of trade the bulk freighter covers
+200 ly per wall second while the sky's rotation at the Sun's radius is 734 ly/s,
+so the sky outruns even the fastest hull 3.7×, and §9's re-aim can only turn
+hulls around faster, not keep a map together.
+
+The remedy is a frame decision, not a distance law, and it is open
+(`deferred-open-work.md`): co-rotate the display frame with the disc so the sky
+turns only by differential motion; slow or park the star clock while the network
+is live; or draw the trade layer in its own birth-frame map and accept that its
+rings leave their stars. Until one is taken, the honest reading of the picture is
+"a galaxy being wound up", which is what §9.7 says and what a viewer reads as
+colonies flying across the galaxy.

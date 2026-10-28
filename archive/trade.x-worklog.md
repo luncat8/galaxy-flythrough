@@ -1274,3 +1274,135 @@ layout and experience remain V16, not validated by Node.
 
 Next: check V16 on real WebGPU hardware; chemical enrichment remains low
 priority and constellation work remains deferred.
+
+## trade.28 — 2026-10-28 — An empty network says why, and offers the two doors
+
+The user's browser report on trade.27: *"automatic seems can't establish 1st
+colony. need to investigate."* It is two facts, one honest and one not.
+
+The honest one is the law. The gameplay proxy needs a star born after 0.5 Gyr
+that is 0.1 Gyr old, main-sequence, at model Z ≥ 0.008, with a generated terran
+world. A sky younger than 0.6 Gyr therefore cannot contain a single candidate by
+construction, and on the Milky Way's reference SFH the first terran world in the
+300k field appears around 1.5 Gyr: the reference census is most stars already
+old, so a 1 Gyr-old galaxy has a very thin formed population. Measured on the
+shipped fixture: 0 eligible records under 0.6 Gyr, ~1 per 13k records at 1.5 Gyr,
+and the first match at 1.5 Gyr is record 13 722 of the sweep.
+
+The dishonest one was the panel. It said "searching for a terran home · field
+scan N" at every age, including ages where nothing could ever be found, and the
+scan itself was 256 records per half second — a 300k field took ten minutes to
+close — with a `generateSystem` spent on every record that merely passed the age
+gate. That is why "automatic" read as broken.
+
+What changed:
+
+- `reseedIfEmpty` is now two halves. The sweep walks field records and queues
+  the ones that clear the birth gates (4 096 records per call, a comparison
+  each); the generator drains the queue into systems (128 per call, ~3 µs each)
+  and founds on the first terran world. The queue is a preallocated
+  `Int32Array(1024)`, compacted on head catch-up, and each queued record is
+  re-tested against the epoch before it is generated. On the shipped fixture the
+  first capital now lands three calls (≈1.5 s of wall time) after the sky passes
+  1.5 Gyr, and a full eligible-free 300k sweep costs a few milliseconds.
+- `bootstrapStatus(net, model, field)` is the empty-network line, in order: no
+  drawn field, sky younger than `BOOTSTRAP_MIN_AGE_GYR` (0.6, named with the
+  current age), the last closed sweep found no old metal-rich star, else the
+  window's progress and queue.
+- The Trade panel's top is now the task: **Search for a home** (the Search
+  panel's own `state:ms|terran` press, extracted to `findEarthlike`) and
+  **Establish here** (`commandFoundColony` on the selected star). The block
+  shows while the network has no port and hides with the first colony; the
+  Colonisation row stays for expansion. The status line moved out of
+  `trade-state` into this block, so the clock row no longer carries a reason
+  about a clock the network cannot use yet.
+- The player's doors obey the sky gate. `playerFound` and `playerFoundWorld`
+  take the caller's `refInSky` verdict and refuse a star outside this epoch's
+  sky; before this, the new button could have founded a colony on an unformed
+  star that no frame would ever draw.
+
+**Validation.** trade **334/334** (§32 added 9 checks: the four status lines, a
+full 300k eligible-free sweep's cost and queue, the progress window, the first
+capital within eight app-cadence calls at 1.5 Gyr, and both player doors'
+sky refusal). panel 16 checks, quick 36/36, changed 9/9. The buttons themselves
+remain a V16 browser verdict — Node can pin the ids, the wiring and the law, not
+that the row reads well on a 1280×800 panel.
+
+## trade.29 — 2026-10-28 — The network is drawn in a frame that runs away from it
+
+Two reports in one message. The small one first.
+
+**1. "I don't see Search for a home."** Correct, and it was my condition's
+fault: trade.28 put the two presses in a block that only appeared while the
+network had **no port**, and a present-day boot always has its four seed
+colonies — so the row never showed. The row is now permanent and only its reason
+line belongs to the empty case (it starts `hidden` and appears when a network has
+no port). The ids, the wiring and the two shared laws are unchanged.
+
+**2. "Colonies established across the galaxy with long routes across the whole
+galaxy — seems a stars position bug… it was a long before and an agent told it
+was fixed, but seems an architecture flaw."**
+
+It is not a coordinate mismatch. Every port's ring resolves through the *same*
+dispatch the sprite is drawn with (`orbit.engineRecordPosition` /
+`engineLandmarkPosition`, the record's own packed word), so a ring sits on its
+star to the bit; the network's own data is consistent too (no NaN, no stale
+`ref`, `addPort`/`addCandidate` copy every ref by value, the seed map's four
+ports sit 4–79 ly out with a widest pair of 103 ly, and a 12 000-trade-year run
+on a frozen sky spans 1 452 ly from home — 600 ly founding hops, five deep).
+
+What is wrong is the **frame**, and it is the thing trade.18 left open. A colony
+is a star; a star's drawn position is its orbit at the *running* star time; and a
+solar-circle star sweeps 0.22 kpc per wall second at the app's default 1 Myr/s.
+So a network that does not change at all is drawn walking across the galaxy:
+
+| star clock | 10 s | 30 s | 60 s | 300 s |
+|---|---|---|---|---|
+| 1 Myr/s (default) | 7 619 ly | 22 227 ly | **40 416 ly** | 48 846 ly |
+| 0.3 | 2 295 | 6 862 | 13 606 | 51 272 |
+| 0.1 | 768 | 2 295 | 4 583 | 22 227 |
+| 0.03 | 237 | 692 | 1 379 | 6 862 |
+| 0.01 | 96 | 237 | 463 | 2 295 |
+| 0 (frozen) | 79 | 79 | 79 | 79 |
+
+(farthest drawn port from home; `experiments/network-frame-study.js`, the shipped
+300k field, the shipping dispatch. The four seed colonies — Rigil Kentaurus b at
+4 ly, Fomalhaut b at 25, Capella at 43, Regulus at 79 — are each drawn ~39 000–
+40 400 ly from home after one wall minute.)
+
+And the two clocks are incoherent by default: at 100 y/s of trade the bulk
+freighter crosses 200 ly per wall second, while the sky's rotation at the Sun's
+radius is 734 ly/s at 1 Myr/s — **the sky outruns even the fastest hull by 3.7×**,
+which is why routes tear as fast as they are flown and why every decision the
+network makes is a decision about a map that is leaving. At 0.1 Myr/s the same
+sky runs 73 ly/s and the hull outruns it 2.7×; that is the pairing trade-plan §6
+calls "the one the network is tuned for" — the page's default is 10× off it.
+
+trade.18 measured exactly this and fixed the *economy* half (scoring, booking,
+re-timing and the caps all read drawn positions, and a torn hull is turned
+around), which is why it was reported as fixed. It deliberately left the picture
+and closed with an open decision: *"whether the page should default the star
+clock to a slower rung while the trade network is live — at the current default
+the network's geography is stretched 4× inside a minute, which is honest but
+reads as a network winding up."* That decision was never taken, so the reported
+symptom is still on screen and is now measured rather than described.
+
+**Not fixed here.** The remedy is a product decision with three shapes, recorded
+in `deferred-open-work.md` as the open row it is:
+
+1. **Co-rotate the display frame** with the disc (render `−Ω_ref·t` in the orbit
+   lanes and their CPU mirror). The sky then turns only by differential motion,
+   and a colony network is stable by construction — the architectural fix, and
+   the largest: `orbit.js` + WGSL + labels + picking + the epoch lanes.
+2. **Slow or park the star clock while the network is live** (the cheap version:
+   the authored 0.1 Myr/s pair, or freeze on the command workspace). Small and
+   immediate; it takes the app's own signature motion away while you manage
+   colonies.
+3. **Draw the trade layer in its own frame** — the birth-frame map — and stop
+   resolving rings through the moving sky. The network becomes a stable strategy
+   map, hulls stop tearing, and the rings are no longer on their stars; §9's live
+   geometry would then be needed only for the flying pilot's own view.
+
+**Validation.** panel 16 checks (the row's permanence and its hidden reason line
+are now pinned), changed 9/9, trade 334/334 unchanged. The study is a study: it
+prints, it does not pass or fail.

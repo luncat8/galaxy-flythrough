@@ -253,9 +253,14 @@ change, and never report a deferred row as passed.
 ## Early-epoch capital and Earth-like search (V16)
 
 Start an evolving run at age 0, with trade time paused or synced. Confirm the
-Trade panel says it is scanning while no port exists, and that a first Terran
-capital and starter ship appear after eligible field stars form. Use H or the
-colony row to inspect the same star and verify the world. Test a sparse field
+Trade panel's top block appears with **Search for a home** and **Establish
+here**, that the line under them says the sky is too young rather than
+pretending to scan, and that a first Terran capital and starter ship appear
+within seconds of the sky passing ~1.5 Gyr (the line reports the sweep window
+and queue until then). Press **Establish here** with and without a selected
+star, and on a star that has not formed yet — it must refuse with the epoch
+reason and found nothing. Use H or the colony row to inspect the same star and
+verify the world. Test a sparse field
 with no match and a rewind of a previously seeded network: the former keeps
 waiting, the latter retains its hidden colony. In Search & Selection press
 **Find Earth-like**, check that time pauses and results are nearest-first and

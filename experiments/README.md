@@ -64,6 +64,7 @@ rewritten only by `all-tests` or `--logs`. Slow tier (serial, 2-core sandbox):
 - `precision-test.js` — f32 vs split-double error at 1 pc … 100 kpc. Basis for the no-split-double decision.
 - `packing-test.js` — `StarPacked` round-trip fidelity and the GPU memory budget per star count.
 - `filter-test.js` — priority score distribution, magnitude-band completeness, hash-thinning determinism.
+- `network-frame-study.js` — how far the colony network is *drawn* from home as the star clock runs, for a network that never changes (the trade overlay's frame question, `trade.29`). Prints the seed map's measured spread per star-clock rate, the four seed colonies after a wall minute, and the sky's rotation against the bulk freighter's speed at the default trade clock.
 
 ## Shader simulation (needs `npm install wgsl_reflect` at the repo root)
 

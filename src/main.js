@@ -1089,14 +1089,18 @@ async function boot() {
                 updateOverlay(renderer.state, camera.getState(statsText));
         }
         btnSearch.addEventListener('click', runSearch);
-        document.getElementById('btn-find-earthlike').addEventListener('click', () => {
+        // The one Earth-like search: the Search panel's button and the empty
+        // Trade panel's "Search for a home" are the same press, because a
+        // colony without a network and a home without a search are one task.
+        function findEarthlike() {
                 searchCenterSelect.value = 'camera';
                 scopeSelect.value = 'galaxy';
                 tokenBox.value = 'state:ms|terran';
                 tokenToControls();
                 markSearchStale();
                 runSearch();
-        });
+        }
+        document.getElementById('btn-find-earthlike').addEventListener('click', findEarthlike);
         btnSearchClear.addEventListener('click', markSearchStale);
 
         // Plan §5.4: the kept rows join the set through insert's own
@@ -1227,6 +1231,12 @@ async function boot() {
         const tradeList = document.getElementById('trade-list');
         const tradeLaunch = document.getElementById('trade-launch');
         const tradeFound = document.getElementById('trade-found');
+        // The empty-network block (trade.28): the two doors a network with no
+        // colonies offers before it offers anything else.
+        const tradeBootstrap = document.getElementById('trade-bootstrap');
+        const tradeBootstrapNote = document.getElementById('trade-bootstrap-note');
+        const tradeSearchHome = document.getElementById('trade-search-home');
+        const tradeFoundHere = document.getElementById('trade-found-here');
         const tradeLog = document.getElementById('trade-log');
         const tradeCalendar = document.getElementById('trade-calendar');
         const routeOrigin = document.getElementById('route-origin');
@@ -1595,6 +1605,11 @@ async function boot() {
         flightCargoLoad.addEventListener('click', () => { actions.cargoLoad = 1; });
         flightFound.addEventListener('click', () => gameFoundColony());
         tradeFound.addEventListener('click', () => commandFoundColony());
+        // The empty-network row's own two presses: the search is the Search
+        // panel's, and the founding is the Colonisation row's, so three doors
+        // share two laws and cannot drift apart.
+        tradeSearchHome.addEventListener('click', findEarthlike);
+        tradeFoundHere.addEventListener('click', commandFoundColony);
         flightCargoUnload.addEventListener('click', () => { actions.cargoUnload = 1; });
         tradeRateSlider.addEventListener('input', () => {
                 tradeRateIndex = Math.min(tradeLib.TRADE_RATES.length - 1,
@@ -5270,10 +5285,14 @@ async function boot() {
                 const sysLib = window.SystemLayer;
                 const selKind = systemLayer.isOpen() ? systemLayer.selectedKindOf() : sysLib.BODY_NONE;
                 const bodyPicked = selKind === sysLib.BODY_PLANET || selKind === sysLib.BODY_BELT;
+                // The player's door obeys the sky gate (trade.23/24): a colony
+                // may exist exactly where this epoch's frame has a star.
+                const inSky = tradeLib.refInSky(ref, model, tradeCtx.field, starTimeRate) ? 1 : 0;
                 const result = bodyPicked
                         ? tradeLib.playerFoundWorld(tradeNet, ref, name, tradeRecord,
-                                selKind === sysLib.BODY_BELT ? 1 : 0, systemLayer.selectedIndexOf(), tradeNet.time)
-                        : tradeLib.playerFound(tradeNet, ref, name, tradeRecord, tradeNet.time);
+                                selKind === sysLib.BODY_BELT ? 1 : 0, systemLayer.selectedIndexOf(),
+                                tradeNet.time, null, inSky)
+                        : tradeLib.playerFound(tradeNet, ref, name, tradeRecord, tradeNet.time, null, inSky);
                 if (!result.ok) {
                         setAutoMsg(result.reason);
                         return;
@@ -5707,6 +5726,22 @@ async function boot() {
                 }
         }
 
+        // The colony task row (trade.28): two presses that are always useful —
+        // search the drawn sky for a home, settle the star the player picked —
+        // and one reason line that belongs to the empty network alone, where it
+        // says what the automatic sweep is waiting for.
+        function syncTradeBootstrap(noNetwork) {
+                const empty = noNetwork || (tradeNet && tradeNet.portCount === 0);
+                const noPick = starSet.primary < 0;
+                tradeFoundHere.disabled = noNetwork || !isCommanding() || noPick;
+                tradeBootstrapNote.hidden = !empty;
+                if (!empty) return;
+                tradeBootstrapNote.textContent = noNetwork
+                        ? 'no network'
+                        : tradeLib.bootstrapStatus(tradeNet, model, renderer.fieldBuffers())
+                                + (noPick ? ' \u00b7 pick a star to settle' : '');
+        }
+
         function syncTradeUi() {
                 tradeRateSlider.value = String(tradeRateIndex);
                 const synced = tradeSyncOn !== 0 && !isFlying();
@@ -5739,6 +5774,7 @@ async function boot() {
                         if (colonisationList) colonisationList.textContent = 'No expeditions yet.';
                         if (tradeLaunch) tradeLaunch.disabled = true;
                         if (tradeFound) tradeFound.disabled = true;
+                        syncTradeBootstrap(true);
                         if (tradeLog) tradeLog.textContent = 'No events yet.';
                         if (tradeCalendar) tradeCalendar.textContent = 'Nothing scheduled.';
                         routeOptionSig = '';
@@ -5760,12 +5796,13 @@ async function boot() {
                                 + (tradeNet.diverted > 0 ? ` \u00b7 ${tradeNet.diverted} turned back` : '')
                         : '';
                 const outpostNote = tradeNet.outposts > 0 ? ` \u00b7 ${tradeNet.outposts} outposts` : '';
-                // The sky gate's line (trade.24): a network this epoch cannot
-                // see is paused, not empty, and the panel says which.
-                const skyNote = tradeNet.portCount === 0
-                        ? 'searching for a terran home · field scan ' + tradeNet.bootstrapCursor
-                                + ' · generation is approximated'
-                        : tradeLib.skyGateText(tradeNet);
+                // The empty-network reason lives in the panel's top block
+                // (trade.28), not in this line: it is what the player must act
+                // on or wait for, so it sits above the clock they have nothing
+                // to spend on. The sky gate's line (trade.24) is the other half
+                // — a network this epoch cannot see is paused, not empty.
+                const skyNote = tradeNet.portCount === 0 ? '' : tradeLib.skyGateText(tradeNet);
+                syncTradeBootstrap(false);
                 // The intra fleet's one row (trade-4-plan §5): the panel is the
                 // galaxy's view, so it says how many hulls the open system has
                 // in the air and nothing else.

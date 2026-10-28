@@ -1037,6 +1037,14 @@ body.system-view #sysread {
 #trade-menu .flight-port-state {
 	color: #7fcab0;
 }
+/* The empty-network task row (trade.28): the panel's top block, so a player
+   who opens Trade with no colonies sees what to do before the clock they have
+   nothing to spend on. Never displayed with a network: `hidden` does that. */
+#trade-bootstrap {
+	padding: 4px 0 0;
+	border-bottom: 1px solid #1f3a2f;
+}
+#trade-bootstrap .menu-row { margin-bottom: 5px; }
 #trade-menu .flight-forecast {
 	border-color: #2a5a4a;
 	background: rgba(6, 18, 14, 0.55);

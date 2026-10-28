@@ -3819,6 +3819,103 @@ function exactLiveEvents(net) {
 	ctx.field = previousField; ctx.model = previousModel; ctx.member = previousMember; ctx.name = previousName;
 }
 
+// --- 32. The empty-network line and the player's sky door (trade.28) ------
+// The user's browser report: an early-epoch run said "searching for a terran
+// home" forever and never founded one. The scan could not act (no star is old
+// enough before 0.6 Gyr, and the first terran appears around 1.5 Gyr), and
+// nothing said so. These checks pin the line that now says it, the two-phase
+// pace that makes the wait seconds instead of minutes once the sky allows it,
+// and the gate the new panel button shares with the rest of the trade law.
+{
+	const starTypes = require('../src/math/star-types.js');
+	const reference = galaxy.modelAtAge(model, galaxy.AGE_REF);
+	const field = Object.assign({}, scenarioField, { birth: new Float32Array(scenarioField.count) });
+	for (let i = 0; i < field.count; i++) {
+		field.birth[i] = starTypes.sampleFieldBirth(reference, starTypes.fieldStarSeed(model.seed, i),
+			field.component[i], field.R[i], field.distToArm[i], field.z[i]);
+	}
+	const previousField = ctx.field, previousModel = ctx.model, previousMember = ctx.member, previousName = ctx.name;
+	const net = trade.createNetwork({ seed: model.seed, modelSeed: model.seed });
+	trade.finalize(net);
+	trade.applySkyGate(net, galaxy.modelAtAge(model, 0), field, 0);
+	check('the empty-network line names a sky that has not been drawn',
+		trade.bootstrapStatus(net, galaxy.modelAtAge(model, 2), { count: 0, birth: null })
+			.indexOf('no sky to scan yet') === 0);
+	const early = trade.bootstrapStatus(net, galaxy.modelAtAge(model, 0), field);
+	check('a sky younger than the proxy says which age it must reach, and does not pretend to scan',
+		early.indexOf('sky too young') === 0 && early.indexOf('0.6') > 0
+			&& early.indexOf('0.00') > 0 && net.bootstrapCursor === 0, early);
+	// A full sweep of an eligible-free sky is the one sky fact the line can
+	// state; the cheap half makes it cost comparisons, not generated systems.
+	const sweepCalls = Math.ceil(field.count / trade.BOOTSTRAP_SCAN);
+	const sweepStart = Date.now();
+	for (let k = 0; k < sweepCalls; k++) trade.reseedIfEmpty(net, galaxy.modelAtAge(model, 0.6), field, null, ctx, record);
+	const sweepMs = Date.now() - sweepStart;
+	const emptyLine = trade.bootstrapStatus(net, galaxy.modelAtAge(model, 0.6), field);
+	check('a whole 300k sweep at a young epoch finds nothing old enough, and the line says so',
+		net.portCount === 0 && net.bootstrapEmptySky === 1
+			&& emptyLine.indexOf('no old, metal-rich star') === 0, { emptyLine, sweepMs });
+	check('a sweep is cheap because only birth-eligible stars reach the generator',
+		sweepMs < 2000 && net.bootstrapPendingCount === 0,
+		{ sweepMs, calls: sweepCalls, queued: net.bootstrapPendingCount });
+	// A partial window on a sky that does have stars reports the progress.
+	trade.reseedIfEmpty(net, galaxy.modelAtAge(model, 1), field, null, ctx, record);
+	const progress = trade.bootstrapStatus(net, galaxy.modelAtAge(model, 1), field);
+	check('the scanning line reports the sweep window and its queue',
+		progress.indexOf('scanning for a terran home') === 0
+			&& progress.indexOf('of 300,000 stars') > 0, progress);
+	// The app's own cadence: one call per 0.5 s. The first capital lands in
+	// seconds once the sky is old enough, not in a ten-minute sweep.
+	const cadence = trade.createNetwork({ seed: model.seed, modelSeed: model.seed });
+	trade.finalize(cadence);
+	let calls = 0;
+	while (cadence.portCount === 0 && calls < 40) {
+		trade.reseedIfEmpty(cadence, galaxy.modelAtAge(model, 1.5), field, null, ctx, record);
+		calls += 1;
+	}
+	check('at the app cadence the first capital arrives within a handful of calls',
+		cadence.portCount === 1 && calls <= 8 && cadence.shipCount > 0, { calls });
+	ctx.field = previousField; ctx.model = previousModel; ctx.member = previousMember; ctx.name = previousName;
+}
+
+// The player's two founding doors obey the sky gate the seed map and the
+// network already obey: a star the frame is not drawing is not a colony.
+{
+	const starTypes = require('../src/math/star-types.js');
+	const reference = galaxy.modelAtAge(model, galaxy.AGE_REF);
+	const field = Object.assign({}, scenarioField, { birth: new Float32Array(scenarioField.count) });
+	for (let i = 0; i < field.count; i++) {
+		field.birth[i] = starTypes.sampleFieldBirth(reference, starTypes.fieldStarSeed(model.seed, i),
+			field.component[i], field.R[i], field.distToArm[i], field.z[i]);
+	}
+	const previousField = ctx.field, previousModel = ctx.model;
+	ctx.field = field; ctx.model = reference;
+	let suitable = -1;
+	for (let i = 0; i < field.count && suitable < 0; i++) {
+		const ref = { kind: planets.BLOCK_FIELD, index: i, key: starTypes.fieldStarSeed(model.seed, i) >>> 0,
+			x: field.x[i], y: field.y[i], z: field.z[i], colorIndex: 0, absMag: 0 };
+		planets.generateSystem(ref, ctx, record);
+		if (record.star.state === 'ms' && record.counts.terranCount > 0) suitable = i;
+	}
+	const ref = { kind: planets.BLOCK_FIELD, index: suitable, key: starTypes.fieldStarSeed(model.seed, suitable) >>> 0,
+		x: field.x[suitable], y: field.y[suitable], z: field.z[suitable], colorIndex: 0, absMag: 0 };
+	planets.generateSystem(ref, ctx, record);
+	const hidden = trade.createNetwork({ seed: model.seed, modelSeed: model.seed });
+	trade.finalize(hidden);
+	const refused = trade.playerFound(hidden, ref, '', record, 0, null, 0);
+	check('the player door refuses a star outside this epoch\\u2019s sky',
+		refused.ok === 0 && refused.reason.indexOf('not in this epoch') >= 0 && hidden.portCount === 0,
+		refused.reason);
+	check('the same world is founded once the sky has it',
+		trade.playerFound(hidden, ref, '', record, 0, null, 1).ok === 1 && hidden.portCount === 1);
+	const worldNet = trade.createNetwork({ seed: model.seed, modelSeed: model.seed });
+	trade.finalize(worldNet);
+	const worldRefused = trade.playerFoundWorld(worldNet, ref, '', record, 0, 0, 0, null, 0);
+	check('the system view\\u2019s world door carries the same refusal',
+		worldRefused.ok === 0 && worldRefused.reason.indexOf('not in this epoch') >= 0 && worldNet.portCount === 0);
+	ctx.field = previousField; ctx.model = previousModel;
+}
+
 // --- Summary --------------------------------------------------------------
 {
 	const passed = checks.filter(c => c.pass).length;

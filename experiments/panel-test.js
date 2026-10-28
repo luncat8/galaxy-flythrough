@@ -36,6 +36,22 @@ const html = fs.readFileSync('src/index.html', 'utf8');
 assert.ok(html.includes('id="btn-find-earthlike"'));
 assert.ok(main.includes("tokenBox.value = 'state:ms|terran'"));
 assert.ok(main.indexOf('tradeLib.reseedIfEmpty(tradeNet') < main.indexOf('const skyGated = tradeNet.skyState'));
+// trade.28: the empty network's task row at the top of the Trade panel. Its
+// two presses are the Search panel's search and the Colonisation row's
+// founding, and the line's writer is the module's own status.
+assert.ok(html.includes('id="trade-search-home"') && html.includes('id="trade-found-here"')
+	&& html.includes('id="trade-bootstrap-note"'));
+// The row is not conditional on an empty network (trade.28a: the user never saw
+// it, because a present-day boot always has its seed colonies); only the reason
+// line is, and it starts hidden.
+assert.ok(!/id="trade-bootstrap"[^>]*hidden/.test(html));
+assert.ok(/id="trade-bootstrap-note"[^>]*hidden/.test(html));
+assert.ok(main.includes('tradeBootstrapNote.hidden = !empty'));
+assert.ok(main.includes('tradeSearchHome.addEventListener(\'click\', findEarthlike)'));
+assert.ok(main.includes('tradeFoundHere.addEventListener(\'click\', commandFoundColony)'));
+assert.ok(main.includes('tradeLib.bootstrapStatus(tradeNet, model, renderer.fieldBuffers())'));
+assert.ok(main.includes('syncTradeBootstrap(true)') && main.includes('syncTradeBootstrap(false)'));
+assert.ok(main.includes('tradeLib.refInSky(ref, model, tradeCtx.field, starTimeRate)'));
 
 for (const [column, first, second] of [['left', 'selection-menu', 'sysmenu'], ['left', 'sysmenu', 'routemenu'], ['inner', 'viewmenu', 'trade-menu'], ['right', 'scenario-menu', 'menu'], ['right', 'menu', 'help']]) {
 	const start = html.indexOf('panel-column-' + column);

@@ -435,7 +435,16 @@
 			// Ring cursor of the frontier scan (a field index), so repeated
 			// ticks walk the whole field instead of re-testing its head.
 			frontierCursor: 0,
+			// The empty-network bootstrap (trade-plan §3.0): a per-record sweep
+			// cursor, the queue of records it has cleared, and the counters the
+			// panel's line reads. The queue and its cursor are allocated once.
 			bootstrapCursor: 0,
+			bootstrapPending: new Int32Array(BOOTSTRAP_PENDING),
+			bootstrapPendingHead: 0,
+			bootstrapPendingCount: 0,
+			bootstrapScanned: 0,
+			bootstrapEligible: 0,
+			bootstrapEmptySky: 0,
 			// Voyages turned around by the sky (§9.4): the count the panel shows
 			// when the network's routes are being torn faster than they are flown.
 			diverted: 0,
@@ -1842,39 +1851,91 @@
 	// generation ancestry or galactic chemical enrichment.
 	const BOOTSTRAP_BIRTH_GYR = 0.5;
 	const BOOTSTRAP_STAR_AGE_GYR = 0.1;
+	// A star cannot be both born after 0.5 Gyr and 0.1 Gyr old before this, so
+	// the panel can say the sky is too young instead of pretending to scan it.
+	const BOOTSTRAP_MIN_AGE_GYR = BOOTSTRAP_BIRTH_GYR + BOOTSTRAP_STAR_AGE_GYR;
 	const BOOTSTRAP_METAL_MIN = 0.008;
-	const BOOTSTRAP_SCAN = 256;
+	// The sweep and the generated systems are budgeted apart: a birth test is a
+	// comparison, a system is a planet-generation pass (~3 µs), so 4 096 records
+	// per call sweep a 300k field in seconds while 128 systems per call keep the
+	// frame's share near a millisecond. The first empty-sky capital lands on the
+	// first eligible record in sample order, exactly as the plan states.
+	const BOOTSTRAP_SCAN = 4096;
+	const BOOTSTRAP_GEN = 128;
+	const BOOTSTRAP_PENDING = 1024;
 	const BOOTSTRAP_REF = { kind: planets.BLOCK_FIELD, index: 0, key: 0,
 		x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0 };
 	const BOOTSTRAP_INPUTS = {};
 	const BOOTSTRAP_SITE = economy.createSite();
 
-	// Scan a bounded slice, even when the economy is paused or has candidates.
-	// The cursor wraps, allowing newly formed stars to become eligible later.
-	function reseedIfEmpty(net, model, field, landmarks, ctx, record, budget) {
-		if (!net || net.portCount > 0 || net.shipCount > 0) return 0;
-		if (!field || !field.birth || !field.count || !model || !ctx || !record) return 0;
-		const age = ageOfModel(model);
-		const count = Math.min(field.count, field.birth.length);
-		if (count <= 0) return 0;
+	// The cheap half of the birth gate: what the sweep can decide from the birth
+	// channel alone. `fieldFormed` is left to the generated half, which re-reads
+	// it, because the epoch can be scrubbed between a sweep and its queue.
+	function bootstrapBirthOK(birth, age) {
+		return Number.isFinite(birth) && birth >= BOOTSTRAP_BIRTH_GYR
+			&& age - birth >= BOOTSTRAP_STAR_AGE_GYR;
+	}
+
+	// The bootstrap sweep: walk the field's birth channel and queue every record
+	// that could host the first colony. The cursor wraps, so newly formed stars
+	// are reconsidered, and it is per-record, so the queue is sample order.
+	function bootstrapSweep(net, field, age, count, budget) {
+		// A queue with a consumed head still has room; compact it before the
+		// sweep, so the full-queue guard measures live records, not history.
+		if (net.bootstrapPendingCount >= BOOTSTRAP_PENDING && net.bootstrapPendingHead > 0) {
+			const live = net.bootstrapPendingCount - net.bootstrapPendingHead;
+			net.bootstrapPending.copyWithin(0, net.bootstrapPendingHead, net.bootstrapPendingCount);
+			net.bootstrapPendingHead = 0;
+			net.bootstrapPendingCount = live;
+		}
+		let left = budget;
+		while (left > 0 && net.bootstrapPendingCount < BOOTSTRAP_PENDING) {
+			const i = net.bootstrapCursor;
+			const next = i + 1 >= count ? 0 : i + 1;
+			net.bootstrapCursor = next;
+			left -= 1;
+			net.bootstrapScanned += 1;
+			if (bootstrapBirthOK(field.birth[i], age)) {
+				net.bootstrapEligible += 1;
+				// One eligible record is enough to stop saying the sky has none:
+				// the fact is about this sky, not about the last closed sweep.
+				net.bootstrapEmptySky = 0;
+				net.bootstrapPending[net.bootstrapPendingCount++] = i;
+			}
+			if (next === 0) {
+				// A sweep that closes with nothing old enough is the one fact the
+				// panel can state about the sky itself; the window restarts here.
+				net.bootstrapEmptySky = net.bootstrapEligible === 0 ? 1 : 0;
+				net.bootstrapScanned = 0;
+				net.bootstrapEligible = 0;
+			}
+		}
+	}
+
+	// The generated half: turn queued records into systems until one hosts a
+	// terran world, and found the capital on it. The queue is drained from its
+	// head in sample order and compacted when empty, so a sweep never blocks on
+	// a star this half has already refused.
+	function bootstrapGenerate(net, model, field, ctx, record, budget) {
 		const starTypes = (typeof module !== 'undefined' && module.exports)
 			? require('../math/star-types.js') : window.StarTypesLib;
-		const limit = Math.min(count, budget > 0 ? budget | 0 : BOOTSTRAP_SCAN);
-		ctx.model = model;
-		ctx.field = field;
-		ctx.member = null;
-		ctx.name = '';
-		for (let n = 0; n < limit; n++) {
-			const i = net.bootstrapCursor % count;
-			net.bootstrapCursor = (i + 1) % count;
-			const birth = field.birth[i];
-			if (!Number.isFinite(birth) || birth < BOOTSTRAP_BIRTH_GYR
-					|| age - birth < BOOTSTRAP_STAR_AGE_GYR || !fieldFormed(field, i, age)) continue;
+		const age = ageOfModel(model);
+		let generated = 0;
+		while (net.bootstrapPendingHead < net.bootstrapPendingCount && generated < budget) {
+			const i = net.bootstrapPending[net.bootstrapPendingHead++];
+			if (net.bootstrapPendingHead >= net.bootstrapPendingCount) {
+				net.bootstrapPendingHead = 0;
+				net.bootstrapPendingCount = 0;
+			}
+			// The epoch may have been scrubbed since the sweep; a star that is not
+			// in this sky is not a place.
+			if (!bootstrapBirthOK(field.birth[i], age) || !fieldFormed(field, i, age)) continue;
 			const ref = BOOTSTRAP_REF;
 			ref.index = i; ref.key = starTypes.fieldStarSeed(model.seed, i) >>> 0;
 			ref.x = field.x[i]; ref.y = field.y[i]; ref.z = field.z[i];
 			planets.stellarInputs(ref, ctx, BOOTSTRAP_INPUTS);
 			if (BOOTSTRAP_INPUTS.state !== 'ms' || BOOTSTRAP_INPUTS.metal < BOOTSTRAP_METAL_MIN) continue;
+			generated += 1;
 			planets.generateSystem(ref, ctx, record);
 			let planet = -1;
 			for (let j = 0; j < record.counts.planets; j++) {
@@ -1893,12 +1954,56 @@
 			for (let c = 0; c < net.candidateCount; c++) {
 				if (net.candidates[c].site.key === ref.key) net.candidates[c].used = 1;
 			}
+			net.bootstrapEmptySky = 0;
 			if (net.tickScheduled) spawnShip(net, port, 0, net.time);
 			else finalize(net);
 			applySkyGate(net, model, field, 0);
 			return 1;
 		}
 		return 0;
+	}
+
+	// An empty network's one retry, independent of the trade clock and the sky
+	// gate (a gated clock must not be able to keep the first colony from
+	// existing). `budget` is records for this call; the app passes none and gets
+	// BOOTSTRAP_SCAN. A network with a port or a hull is never reset.
+	function reseedIfEmpty(net, model, field, landmarks, ctx, record, budget) {
+		if (!net || net.portCount > 0 || net.shipCount > 0) return 0;
+		if (!field || !field.birth || !field.count || !model || !ctx || !record) return 0;
+		const count = Math.min(field.count, field.birth.length);
+		if (count <= 0) return 0;
+		ctx.model = model;
+		ctx.field = field;
+		ctx.member = null;
+		ctx.name = '';
+		bootstrapSweep(net, field, ageOfModel(model), count,
+			budget > 0 ? budget | 0 : BOOTSTRAP_SCAN);
+		return bootstrapGenerate(net, model, field, ctx, record, BOOTSTRAP_GEN);
+	}
+
+	// What the empty-network line says (trade-plan §3.0): the two reasons no
+	// colony can exist yet — no drawn field, a sky too young for the proxy — then
+	// the sweep's own progress. The player reads whether to wait, to evolve the
+	// sky, or to search and pick a star themselves.
+	function bootstrapStatus(net, model, field) {
+		if (!net || net.portCount > 0) return '';
+		const count = field && field.birth && field.count
+			? Math.min(field.count, field.birth.length) : 0;
+		if (count <= 0) return 'no sky to scan yet \u00b7 the field has not been drawn';
+		const age = ageOfModel(model);
+		if (age < BOOTSTRAP_MIN_AGE_GYR) {
+			return 'sky too young \u00b7 the first home needs a '
+				+ BOOTSTRAP_MIN_AGE_GYR.toFixed(1) + ' Gyr-old sky (now '
+				+ age.toFixed(2) + ') \u00b7 generation is approximated';
+		}
+		if (net.bootstrapEmptySky) {
+			return 'no old, metal-rich star in this epoch\u2019s sky yet \u00b7 '
+				+ count.toLocaleString('en-US') + ' stars scanned \u00b7 generation is approximated';
+		}
+		return 'scanning for a terran home \u00b7 '
+			+ net.bootstrapScanned.toLocaleString('en-US') + ' of '
+			+ count.toLocaleString('en-US') + ' stars \u00b7 '
+			+ net.bootstrapPendingCount + ' queued \u00b7 generation is approximated';
 	}
 
 	// Discover the start map nearest home first. The settled roll and the
@@ -2824,15 +2929,19 @@
 
 	// The player's one lever: put a colony on the best world of a star the
 	// network never rolled. Free — the player is the catalyst, not an owner.
-	// `system` is a generated SystemRecord for `ref`; the refusals are the five
-	// reasons the panel can show, each with its own word.
+	// `system` is a generated SystemRecord for `ref`; the refusals are the
+	// reasons the panel can show, each with its own word. `skyVisible` is the
+	// caller's `refInSky` verdict (undefined means the caller did not ask): the
+	// player's door obeys the same gate as the seed map and the network, so a
+	// star the frame is not drawing never becomes a colony nobody can see.
 	const FOUND_SITE = economy.createSite();
-	function playerFound(net, ref, starName, system, nowYears, out) {
+	function playerFound(net, ref, starName, system, nowYears, out, skyVisible) {
 		const r = out || createFoundResult();
 		r.ok = 0;
 		r.port = -1;
 		r.site = null;
 		r.reason = '';
+		if (skyVisible === 0) { r.reason = 'this star is not in this epoch\u2019s sky'; return r; }
 		const key = system.star.key >>> 0;
 		if (portOfStarLive(net, key) >= 0) { r.reason = 'already a colony here'; return r; }
 		if (portOfStar(net, key) >= 0) { r.reason = 'this star is an outpost'; return r; }
@@ -2880,7 +2989,7 @@
 	// W3 extended (trade-3 plan §5.2): found a colony on a named planet or belt
 	// in system view without taking a second port slot. If the star has no port
 	// yet, this opens its port on that site; otherwise it appends to `worldIdx`.
-	function playerFoundWorld(net, ref, starName, system, isBelt, bodyIndex, nowYears, out) {
+	function playerFoundWorld(net, ref, starName, system, isBelt, bodyIndex, nowYears, out, skyVisible) {
 		const r = out || createWorldFoundResult();
 		r.ok = 0;
 		r.port = -1;
@@ -2888,6 +2997,7 @@
 		r.slot = -1;
 		r.site = null;
 		r.reason = '';
+		if (skyVisible === 0) { r.reason = 'this star is not in this epoch\u2019s sky'; return r; }
 		const key = system.star.key >>> 0;
 		const belt = isBelt ? 1 : 0;
 		const bodyCount = belt ? (system.belts.count | 0) : (system.counts.planets | 0);
@@ -3621,7 +3731,8 @@
 		createNetwork, addPort, addWorld, worldOfPort, worldOfSite, foldPort, fillIntraGraph,
 		distributePortInbound, collectPortOutbound,
 		discoverSystem, discoverNearest, startSystems, settleSystem, settlePort, finalize, step, settleAllPorts,
-		reseedIfEmpty, BOOTSTRAP_BIRTH_GYR, BOOTSTRAP_STAR_AGE_GYR, BOOTSTRAP_METAL_MIN, BOOTSTRAP_SCAN,
+		reseedIfEmpty, bootstrapStatus, BOOTSTRAP_BIRTH_GYR, BOOTSTRAP_STAR_AGE_GYR,
+		BOOTSTRAP_MIN_AGE_GYR, BOOTSTRAP_METAL_MIN, BOOTSTRAP_SCAN, BOOTSTRAP_GEN, BOOTSTRAP_PENDING,
 		portOfStar, portOfStarLive, livePortCount, demotePort,
 		portIndexOf, candidateIndexOf, bestPortOfStar, distanceLy, legYears, pickDestination, pickExport,
 		shipPosition, shipProgress, shipStateName, playerPort, playerLoad, playerUnload,

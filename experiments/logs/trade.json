@@ -1,6 +1,6 @@
 {
-  "total": 325,
-  "passed": 325,
+  "total": 334,
+  "passed": 334,
   "failed": 0,
   "checks": [
     {
@@ -1866,10 +1866,61 @@
       "pass": true,
       "detail": {
         "foundAge": 2,
-        "scanned": 27648,
+        "scanned": 331776,
         "ports": 1,
         "ships": 1
       }
+    },
+    {
+      "name": "the empty-network line names a sky that has not been drawn",
+      "pass": true
+    },
+    {
+      "name": "a sky younger than the proxy says which age it must reach, and does not pretend to scan",
+      "pass": true,
+      "detail": "sky too young · the first home needs a 0.6 Gyr-old sky (now 0.00) · generation is approximated"
+    },
+    {
+      "name": "a whole 300k sweep at a young epoch finds nothing old enough, and the line says so",
+      "pass": true,
+      "detail": {
+        "emptyLine": "no old, metal-rich star in this epoch’s sky yet · 300,000 stars scanned · generation is approximated",
+        "sweepMs": 4
+      }
+    },
+    {
+      "name": "a sweep is cheap because only birth-eligible stars reach the generator",
+      "pass": true,
+      "detail": {
+        "sweepMs": 4,
+        "calls": 74,
+        "queued": 0
+      }
+    },
+    {
+      "name": "the scanning line reports the sweep window and its queue",
+      "pass": true,
+      "detail": "scanning for a terran home · 7,200 of 300,000 stars · 0 queued · generation is approximated"
+    },
+    {
+      "name": "at the app cadence the first capital arrives within a handful of calls",
+      "pass": true,
+      "detail": {
+        "calls": 4
+      }
+    },
+    {
+      "name": "the player door refuses a star outside this epoch\\u2019s sky",
+      "pass": true,
+      "detail": "this star is not in this epoch’s sky"
+    },
+    {
+      "name": "the same world is founded once the sky has it",
+      "pass": true
+    },
+    {
+      "name": "the system view\\u2019s world door carries the same refusal",
+      "pass": true
     }
   ]
 }

@@ -334,6 +334,18 @@
 			<span>Trade</span>
 			<button id="trade-menu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab toggles all panels)" aria-expanded="true">▾</button>
 		</div>
+		<!-- The two presses a colony task starts with (trade-plan §3.0). They are
+		     not conditional on an empty network — a player with four colonies
+		     still wants to find a good home and settle a star they picked — so the
+		     row is always there and only the *reason line* belongs to the empty
+		     case (the automatic sweep's wait). -->
+		<div id="trade-bootstrap" class="trade-bootstrap">
+			<div class="menu-row menu-actions">
+				<button id="trade-search-home" type="button" title="Run the galaxy-scope Earth-like search (state:ms|terran) nearest the camera and pause star time on its results. The same search as Search &amp; Selection's Find Earth-like; it does not found anything.">Search for a home</button>
+				<button id="trade-found-here" type="button" disabled title="Found a colony on the best world of the selected star — free, and through the same refusals as the Colonisation row and the docked Port entrance. A star that has not formed at this epoch is refused, because a colony must exist where the frame has a star.">Establish here</button>
+			</div>
+			<div id="trade-bootstrap-note" class="flight-port-state" hidden>no colonies yet</div>
+		</div>
 		<div class="menu-row">
 			<label for="trade-rate" title="The trade network's own clock, in years per wall second. 0 pauses it; arrow keys step the ladder. Disabled while the clock is synced to star time.">Trade clock <span id="val-trade-rate" class="menu-val">100 y/s</span></label>
 			<input type="range" id="trade-rate" min="0" max="11" step="1" value="7">
