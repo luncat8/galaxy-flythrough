@@ -200,6 +200,10 @@ async function boot() {
 		let panelsWired = false;    // applyPanels is a no-op until the mode-bar block has built its DOM
 		function isFlying() { return workspace === Workspace.FLY; }
 		function isCommanding() { return workspace === Workspace.COMMAND; }
+		// When the Trade panel is shown in Observe (via panels ▾) as well as in
+		// Command, every network control on screen works directly; only Fly keeps
+		// founding on the docked Port button (workspace-plan.md §2 rule 3, §10).
+		function canCommandTrade() { return !isFlying(); }
         const AUTOPILOT_MIN_WALL_SECONDS = 4;
         let shipTimeRateCapY = Infinity;
         let ship = shipLib.createShip(params.ship);
@@ -1093,6 +1097,19 @@ async function boot() {
         // Trade panel's "Search for a home" are the same press, because a
         // colony without a network and a home without a search are one task.
         function findEarthlike() {
+                if (panelsWired && selectionMenu.hidden) {
+                        if (!panelFrozen[workspace]) {
+                                panelOverrides[workspace] = visiblePanelMask();
+                                panelFrozen[workspace] = 1;
+                        }
+                        panelOverrides[workspace] = Workspace.applyOverride(workspace,
+                                panelOverrides[workspace], Workspace.SEARCH, true);
+                        savePanelOverride();
+                        applyPanels();
+                }
+                if (selectionMenu.classList.contains('collapsed')) {
+                        toggleCollapse(selectionMenu, selectionMenuCollapse);
+                }
                 searchCenterSelect.value = 'camera';
                 scopeSelect.value = 'galaxy';
                 tokenBox.value = 'state:ms|terran';
@@ -1235,6 +1252,7 @@ async function boot() {
         // colonies offers before it offers anything else.
         const tradeBootstrap = document.getElementById('trade-bootstrap');
         const tradeBootstrapNote = document.getElementById('trade-bootstrap-note');
+        const tradeActionNote = document.getElementById('trade-action-note');
         const tradeSearchHome = document.getElementById('trade-search-home');
         const tradeFoundHere = document.getElementById('trade-found-here');
         const tradeLog = document.getElementById('trade-log');
@@ -1650,7 +1668,7 @@ async function boot() {
         routeList.addEventListener('click', (event) => {
                 const button = event.target.closest('button[data-route]');
                 if (!button || !routeList.contains(button)) return;
-                if (!isCommanding()) return;
+                if (!canCommandTrade()) return;
                 if (tradeNet) tradeLib.removeRoute(tradeNet, Number(button.dataset.route));
                 syncTradeUi();
         });
@@ -1679,7 +1697,7 @@ async function boot() {
                 syncTradeUi();
         });
         tradeExpandBox.addEventListener('change', () => {
-                if (!isCommanding()) {
+                if (!canCommandTrade()) {
                         tradeExpandBox.checked = tradeLib.expansionArmed() !== 0;
                         return;
                 }
@@ -3738,12 +3756,15 @@ async function boot() {
                 }
                 selectionStore.selectCurrent(window.SelectionStore.GROUP_SPACE, selection);
                 syncSelectionPanel();
+                syncTradeBootstrap(!tradeNet);
         }
 
         function syncSetUi() {
                 labels.setSelectedKeys(starSet.keys, starSet.count);
                 btnFlyTo.disabled = starSet.primary < 0;
                 syncSelectionPanel();
+                syncTradeBootstrap(!tradeNet);
+                if (tradeFound) tradeFound.disabled = !tradeNet || !canCommandTrade() || starSet.primary < 0;
         }
 
         // --- Re-resolving the set after a re-sample (0.6, plan E1b) -----------
@@ -4818,9 +4839,17 @@ async function boot() {
         // The key records the request; gameApplyCommand runs it in the game
         // block. Refusals and ends are one short message line, never a silent
         // no-op, and nothing here runs per frame except the ease and the feed.
+        function syncTradeActionNote() {
+                if (!tradeActionNote) return;
+                const active = autoMsgTicks > 0 && !!autoMsg;
+                tradeActionNote.hidden = !active;
+                if (active) tradeActionNote.textContent = autoMsg;
+        }
+
         function setAutoMsg(text) {
                 autoMsg = text;
                 autoMsgTicks = NOTICE_TICKS;
+                syncTradeActionNote();
         }
 
         // The reason codes ship.js keeps, as the sentence the HUD says.
@@ -5132,9 +5161,11 @@ async function boot() {
         // the same seed always settles the same stars.
         function tradeSeedNetwork() {
                 const home = model.home.orbitTarget;
+                const referenceEpoch = model.populations.age >= galaxy.AGE_REF - window.NamedSky.EPOCH_TOL_GYR;
                 tradeNet = tradeLib.createNetwork({
                         seed: model.seed | 0,
                         modelSeed: model.seed | 0,
+                        seedPorts: referenceEpoch ? undefined : 0,
                         timeYears: 0,
                         homeX: home.x !== undefined ? home.x : home[0],
                         homeY: home.y !== undefined ? home.y : home[1],
@@ -5148,7 +5179,7 @@ async function boot() {
                 tradeCtx.name = '';
                 // Early epochs bootstrap from an eligible formed field star.
                 // The present-day start map retains its authored local sky.
-                if (model.populations.age >= galaxy.AGE_REF - window.NamedSky.EPOCH_TOL_GYR) {
+                if (referenceEpoch) {
                         const systems = tradeLib.startSystems(tradeNet, model, tradeCtx.field,
                                 model.milkyWay ? landmarks : null, tradeStart);
                         tradeLib.discoverNearest(tradeNet, systems, tradeCtx, tradeRecord);
@@ -5168,6 +5199,7 @@ async function boot() {
                 tradeCtx.field = renderer.fieldBuffers();
                 tradeCtx.member = renderer.starBlocks().member;
                 tradeCtx.name = name || '';
+                if (!tradeLib.refInSky(ref, model, tradeCtx.field, starTimeRate)) return;
                 window.PlanetsLib.generateSystem(ref, tradeCtx, tradeRecord);
                 tradeLib.discoverSystem(tradeNet, ref, name || '', tradeRecord, tradeNet.time);
         }
@@ -5259,7 +5291,14 @@ async function boot() {
         // star instead of the docked station, through foundColonyAt below —
         // two doors, one law, so every refusal reads the same.
         function commandFoundColony() {
-                if (!isCommanding() || !tradeNet) return;
+                if (!tradeNet) {
+                        setAutoMsg('no trade network yet');
+                        return;
+                }
+                if (!canCommandTrade()) {
+                        setAutoMsg('dock at a star to found while flying \u00b7 or press 3 for command');
+                        return;
+                }
                 const p = starSet.primary;
                 if (p < 0) {
                         setAutoMsg('select a star to found on');
@@ -5283,18 +5322,31 @@ async function boot() {
                 tradeCtx.name = name;
                 window.PlanetsLib.generateSystem(ref, tradeCtx, tradeRecord);
                 const sysLib = window.SystemLayer;
-                const selKind = systemLayer.isOpen() ? systemLayer.selectedKindOf() : sysLib.BODY_NONE;
+                let selKind = systemLayer.isOpen() ? systemLayer.selectedKindOf() : sysLib.BODY_NONE;
+                let selIndex = systemLayer.isOpen() ? systemLayer.selectedIndexOf() : -1;
+                if (!systemLayer.isOpen() && !isFlying()) {
+                        const current = selectionStore.natural.current;
+                        const entity = current && current.entity;
+                        if (entity && entity.host && (entity.host.key >>> 0) === (ref.key >>> 0)
+                                && (entity.bodyKind === sysLib.BODY_PLANET || entity.bodyKind === sysLib.BODY_BELT)) {
+                                selKind = entity.bodyKind;
+                                selIndex = entity.index;
+                        }
+                }
                 const bodyPicked = selKind === sysLib.BODY_PLANET || selKind === sysLib.BODY_BELT;
                 // The player's door obeys the sky gate (trade.23/24): a colony
                 // may exist exactly where this epoch's frame has a star.
                 const inSky = tradeLib.refInSky(ref, model, tradeCtx.field, starTimeRate) ? 1 : 0;
                 const result = bodyPicked
                         ? tradeLib.playerFoundWorld(tradeNet, ref, name, tradeRecord,
-                                selKind === sysLib.BODY_BELT ? 1 : 0, systemLayer.selectedIndexOf(),
+                                selKind === sysLib.BODY_BELT ? 1 : 0, selIndex,
                                 tradeNet.time, null, inSky)
                         : tradeLib.playerFound(tradeNet, ref, name, tradeRecord, tradeNet.time, null, inSky);
                 if (!result.ok) {
-                        setAutoMsg(result.reason);
+                        setAutoMsg(bodyPicked && result.reason === 'no site worth settling'
+                                ? 'no site worth settling \u00b7 pick a habitable world or belt'
+                                : result.reason);
+                        updateOverlay(renderer.state, camera.getState(statsText));
                         return;
                 }
                 const port = tradeNet.ports[result.port];
@@ -5312,11 +5364,12 @@ async function boot() {
                         x: port.x, y: port.y, z: port.z,
                 });
                 syncSelectionPanel();
+                setAutoMsg('colony founded at ' + label + ' \u00b7 '
+                        + economyLib.formatPop(world.pop));
                 syncTradeUi();
                 syncFlightUi();
                 if (systemLayer.isOpen()) writeSystemReadout();
-                setAutoMsg('colony founded at ' + label + ' \u00b7 '
-                        + economyLib.formatPop(world.pop));
+                updateOverlay(renderer.state, camera.getState(statsText));
         }
 
         function gameTradePort() {
@@ -5429,8 +5482,9 @@ async function boot() {
                         + (colony.starving ? ' \u00b7 starving' : '')
                         + (bestExport >= 0 ? ` \u00b7 best export ${economyLib.RESOURCES[bestExport].name}` : '')
                         + (worstImport >= 0 ? ` \u00b7 worst import ${economyLib.RESOURCES[worstImport].name}` : '');
-                text += '\nworlds    ' + tradeWorldsLine(portIndex);
-                text += tradeLib.intraReadoutText(tradeNet, portIndex);
+		text += '\nworlds    ' + tradeWorldsLine(portIndex);
+		if (systemLayer.isOpen()) text += tradeLib.siblingReadoutText(tradeNet, portIndex);
+		text += tradeLib.intraReadoutText(tradeNet, portIndex);
                 text += tradeLib.intraFleetText(tradeNet, portIndex);
                 text += '\ninter     ' + tradeMarketLine(colony);
                 text += systemLine;
@@ -5501,12 +5555,17 @@ async function boot() {
                 if (e.kind === tradeLib.LOG_ROUTE) {
                         return (e.c ? 'route set  ' : 'route cut  ') + name(e.a) + ' \u2192 ' + name(e.b);
                 }
-                if (e.kind === tradeLib.LOG_EXPEDITION) {
-                        if (e.b < 0) return `founders returned to ${name(e.a)}`;
-                        const site = tradeNet.candidates[e.b].site;
-                        return `founders left ${name(e.a)} \u2192 ${site.name.slice(0, 14)}`;
-                }
-                return '';
+		if (e.kind === tradeLib.LOG_EXPEDITION) {
+			if (e.b < 0) return `founders returned to ${name(e.a)}`;
+			const site = tradeNet.candidates[e.b].site;
+			return `founders left ${name(e.a)} \u2192 ${site.name.slice(0, 14)}`;
+		}
+		if (e.kind === tradeLib.LOG_SIBLING) {
+			const w = tradeLib.worldOfPort(tradeNet, e.a, e.b);
+			const wName = w ? w.name.slice(0, 15) : '?';
+			return `settled    ${wName} in ${name(e.a)}`;
+		}
+		return '';
         }
 
         function tradeLogText(maxLines) {
@@ -5595,7 +5654,7 @@ async function boot() {
                 }
                 if (keepOrigin !== '' && Number(keepOrigin) < count) routeOrigin.value = keepOrigin;
                 if (keepDest !== '' && Number(keepDest) < count) routeDest.value = keepDest;
-                routeCommission.disabled = count < 2 || !isCommanding();
+                routeCommission.disabled = count < 2 || !canCommandTrade();
         }
 
         function tradeSyncRoutes() {
@@ -5609,7 +5668,7 @@ async function boot() {
                         const pair = o >= 0 && o < count && d >= 0 && d < count && o !== d;
                         const far = pair && tradeLib.endpointDistanceLy(tradeNet,
                                 tradeLib.END_PORT, o, tradeLib.END_PORT, d) > tradeLib.MAX_LEG_LY;
-                        routeCommission.disabled = far || count < 2 || !isCommanding();
+                        routeCommission.disabled = far || count < 2 || !canCommandTrade();
                         routeCommission.title = far
                                 ? 'These two ports are drawn more than '
                                         + Math.round(tradeLib.MAX_LEG_LY).toLocaleString('en-US')
@@ -5664,7 +5723,7 @@ async function boot() {
                 // The next-departure estimate moves with the clock and the sky,
                 // so it is refreshed on every pass, not only when the set does.
                 for (const row of routeRows) {
-                        row.el.lastChild.disabled = !isCommanding();
+                        row.el.lastChild.disabled = !canCommandTrade();
                         const pair = `${tradeNet.ports[row.route.origin].name.slice(0, 10)} \u2192 `
                                 + tradeNet.ports[row.route.dest].name.slice(0, 10);
                         if (row.route.reach === 0) {
@@ -5725,8 +5784,9 @@ async function boot() {
                 } else {
                         text += ready.why;
                 }
-                if (index === homeColonyPort()) text += '  capital';
-                if (index === youngest) {
+		if (index === homeColonyPort()) text += '  capital';
+		if (port.worldCount > 1) text += '  \u00b7 ' + port.worldCount + 'w';
+		if (index === youngest) {
                         const age = Math.max(0, tradeNet.time - colony.founded);
                         text += '  \u00b7 ' + Math.round(age).toLocaleString('en-US') + ' y old';
                 }
@@ -5767,7 +5827,8 @@ async function boot() {
         function syncTradeBootstrap(noNetwork) {
                 const empty = noNetwork || (tradeNet && tradeNet.portCount === 0);
                 const noPick = starSet.primary < 0;
-                tradeFoundHere.disabled = noNetwork || !isCommanding() || noPick;
+                tradeFoundHere.disabled = noNetwork || !canCommandTrade() || noPick;
+                syncTradeActionNote();
                 tradeBootstrapNote.hidden = !empty;
                 if (!empty) return;
                 tradeBootstrapNote.textContent = noNetwork
@@ -5793,7 +5854,7 @@ async function boot() {
                 tradeSyncBox.checked = tradeSyncOn !== 0;
                 tradeGenBox.checked = tradeGenOn !== 0;
                 tradeExpandBox.checked = tradeLib.expansionArmed() !== 0;
-                tradeExpandBox.disabled = !isCommanding();
+                tradeExpandBox.disabled = !canCommandTrade();
                 if (!tradeNet) {
                         tradeState.textContent = 'no network';
                         tradeRowSig = '';
@@ -5849,7 +5910,9 @@ async function boot() {
                         ? ` \u00b7 ${tradeNet.routes.unreachable} route`
                                 + (tradeNet.routes.unreachable === 1 ? '' : 's') + ' out of reach'
                         : '';
-                tradeState.textContent = `${tradeLib.livePortCount(tradeNet)} ports${outpostNote} \u00b7 ${tradeNet.shipCount} ships${reachNote}`
+		const worldsNote = tradeNet.worldCount > tradeNet.portCount
+			? ` (${tradeNet.worldCount} worlds)` : '';
+		tradeState.textContent = `${tradeLib.livePortCount(tradeNet)} ports${worldsNote}${outpostNote} \u00b7 ${tradeNet.shipCount} ships${reachNote}`
                         + (skyNote ? ' \u00b7 ' + skyNote : '')
                         + fleetNote
                         + ` \u00b7 ${tradeNet.founded} founded \u00b7 ${Math.round(tradeNet.delivered).toLocaleString()} units hauled`
@@ -5941,11 +6004,11 @@ async function boot() {
                         // The manual button is a rush: it may sponsor a port
                         // that is still resting, so it stays available whenever
                         // a big colony with a free target exists.
-                        if (tradeLaunch) tradeLaunch.disabled = !isCommanding() || full || status.big === 0
+                        if (tradeLaunch) tradeLaunch.disabled = !canCommandTrade() || full || status.big === 0
                                 || tradeLib.expansionArmed() === 0;
-                        // Found at selected: command's own door; the network
-                        // law (caps, habitat, reservations) refuses inside.
-                        if (tradeFound) tradeFound.disabled = !isCommanding() || starSet.primary < 0;
+                        // Found at selected: free-camera founding door; the
+                        // network law (caps, habitat, reservations) refuses inside.
+                        if (tradeFound) tradeFound.disabled = !canCommandTrade() || starSet.primary < 0;
                 }
                 tradeSyncRoutes();
                 if (tradeCalendar) tradeCalendar.textContent = tradeCalendarText(4);
@@ -6021,9 +6084,9 @@ async function boot() {
                                 row.el.textContent = `${from} \u2192 ${target}  ${Math.round(eta)} y \u00b7 `
                                         + economyLib.formatPop(s.amount * tradeLib.POP_PER_COLONIST_UNIT) + ' volunteers';
                         } else {
-                                // Command authority (workspace-plan.md §9):
-                                // other workspaces may watch, not launch.
-                                row.button.disabled = !isCommanding() || !tradeLib.expansionArmed() || full;
+                                // Non-fly authority: when the Trade panel is on
+                                // screen outside Fly, its Send buttons work directly.
+                                row.button.disabled = !canCommandTrade() || !tradeLib.expansionArmed() || full;
                         }
                 }
                 if (tradeLaunchTicks > 0) tradeLaunchTicks -= 1;
@@ -6081,8 +6144,9 @@ async function boot() {
         // already names itself.
         function modeHudLine() {
                 if (isFlying()) return '';
+                const notice = autoMsgTicks > 0 && autoMsg ? `\nnotice    ${autoMsg}` : '';
                 if (isCommanding()) {
-                        if (!tradeNet) return '\nmode      command \u00b7 no network';
+                        if (!tradeNet) return '\nmode      command \u00b7 no network' + notice;
                         const rate = tradeClockRate();
                         const crewed = tradeLib.crewedCount(tradeNet);
                         return `\nmode      command \u00b7 ${tradeLib.livePortCount(tradeNet)} ports`
@@ -6090,9 +6154,9 @@ async function boot() {
                                 + ` \u00b7 ${tradeNet.shipCount} hulls`
                                 + (crewed > 0 ? ` \u00b7 ${crewed} crewed` : '')
                                 + ` \u00b7 clock ${rate === 0 ? 'paused' : Number(rate.toPrecision(4)).toLocaleString('en-US') + ' y/s'}`
-                                + ` \u00b7 queue ${tradeNet.queue.size}` + tradeSyncNote();
+                                + ` \u00b7 queue ${tradeNet.queue.size}` + tradeSyncNote() + notice;
                 }
-                return '\nmode      observe \u00b7 1/2/3 switches workspace \u00b7 g takes the helm';
+                return '\nmode      observe \u00b7 1/2/3 switches workspace \u00b7 g takes the helm' + notice;
         }
         function tradeOverlayLine() {
                 // Fly reads the helm, command reads modeHudLine's summary —
@@ -6894,6 +6958,10 @@ async function boot() {
 						if (bodyPick.kind === window.SystemLayer.BODY_NONE) {
 							systemLayer.clearBodySelection();
 							if (isFlying()) syncFlightUi();
+							else if (starSet.primary >= 0 && selectionStore.natural.current
+								&& selectionStore.natural.current.entity) {
+								recordSystemBodySelection({ kind: window.SystemLayer.BODY_STAR, index: 0 });
+							}
 						} else {
 							systemLayer.setSelected(bodyPick.kind, bodyPick.index);
 							// The docked schematic can name a station outside the

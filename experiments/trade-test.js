@@ -4159,7 +4159,181 @@ function exactLiveEvents(net) {
 	const worldRefused = trade.playerFoundWorld(worldNet, ref, '', record, 0, 0, 0, null, 0);
 	check('the system view\\u2019s world door carries the same refusal',
 		worldRefused.ok === 0 && worldRefused.reason.indexOf('not in this epoch') >= 0 && worldNet.portCount === 0);
+
+	// trade.31: opening system view (`discoverSystem` after `finalize`) on an
+	// empty network near home discovers a candidate without silently pre-settling
+	// the star, and founding the first colony through either `playerFound` or
+	// `playerFoundWorld` brings capital, skyState and a starter ship online at once.
+	let terranIdx = 0;
+	for (let p = 0; p < record.counts.planets; p++) {
+		if (record.planets.flags[p] & planets.FLAG_TERRAN) { terranIdx = p; break; }
+	}
+	const inspectNet = trade.createNetwork({
+		seed: model.seed, modelSeed: model.seed,
+		homeX: ref.x, homeY: ref.y, homeZ: ref.z,
+	});
+	trade.finalize(inspectNet);
+	trade.applySkyGate(inspectNet, galaxy.modelAtAge(model, 0.2), field, 0);
+	check('empty gated network starts in SKY_NONE before player founding',
+		inspectNet.skyState === trade.SKY_NONE && inspectNet.portCount === 0);
+	trade.discoverSystem(inspectNet, ref, '', record, 0);
+	check('post-finalize system inspection near home discovers candidates without auto-settling a port',
+		inspectNet.portCount === 0 && inspectNet.candidateCount === 1);
+	const firstWorld = trade.playerFoundWorld(inspectNet, ref, '', record, 0, terranIdx, 0, null, 1);
+	check('first colony founded via playerFoundWorld sets capital, starter ship, discovery and SKY_ALL immediately',
+		firstWorld.ok === 1 && inspectNet.portCount === 1 && inspectNet.capital === 0
+		&& inspectNet.shipCount === 1 && inspectNet.skyVisiblePorts === 1
+		&& inspectNet.skyState === trade.SKY_ALL && trade.skyGateText(inspectNet) === ''
+		&& inspectNet.discovered.has(ref.key >>> 0) && inspectNet.candidates[0].used === 1);
+	const starDoorNet = trade.createNetwork({
+		seed: model.seed, modelSeed: model.seed,
+		homeX: ref.x, homeY: ref.y, homeZ: ref.z,
+	});
+	trade.finalize(starDoorNet);
+	trade.applySkyGate(starDoorNet, galaxy.modelAtAge(model, 0.2), field, 0);
+	const firstStar = trade.playerFound(starDoorNet, ref, '', record, 0, null, 1);
+	check('first colony founded via playerFound sets capital, starter ship, discovery and SKY_ALL immediately',
+		firstStar.ok === 1 && starDoorNet.portCount === 1 && starDoorNet.capital === 0
+		&& starDoorNet.shipCount === 1 && starDoorNet.skyState === trade.SKY_ALL
+		&& starDoorNet.discovered.has(ref.key >>> 0));
 	ctx.field = previousField; ctx.model = previousModel;
+}
+
+// --- 32. Auto-colonising sibling worlds inside settled systems (trade.32) -
+{
+	const zeroSeed = trade.createNetwork({ seed: 101, modelSeed: model.seed, seedPorts: 0 });
+	const defaultSeed = trade.createNetwork({ seed: 101, modelSeed: model.seed });
+	check('createNetwork honours options.seedPorts (0 for non-reference epochs, SEED_PORTS by default)',
+		zeroSeed.seedPorts === 0 && defaultSeed.seedPorts === trade.SEED_PORTS,
+		{ zeroSeed: zeroSeed.seedPorts, defaultSeed: defaultSeed.seedPorts });
+
+	// A compact three-planet system: low-well capital at 1.0 AU, warm HZ sibling
+	// at 1.18 AU (above MIN_FOUND_COUPLE), and a deep distant world at 22 AU
+	// (below MIN_FOUND_COUPLE).
+	const makeRichSiblingSystem = (key) => syntheticIntraSystem({
+		key,
+		planets: [
+			{ a: 1.0, mass: 0.35, radius: 0.72, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ },
+			{ a: 1.18, mass: 0.42, radius: 0.76, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ },
+			{ a: 22.0, mass: 8.5, radius: 1.95, type: 2, flags: 0 },
+		],
+	});
+	const richSys = makeRichSiblingSystem(0x54383201);
+	const built = syntheticTradePort(richSys, 0, 0, undefined, undefined, 'Aurelia b');
+	const cache = built.port.sysCache;
+	let scoreParity = cache.count === 3;
+	for (let k = 0; k < cache.count; k++) {
+		const cached = trade.cachedSiblingScore(built.net, 0, k);
+		const exact = trade.worldFoundingScore(built.net, 0, cache.sites[k], richSys);
+		if (!near(cached, exact, 1e-12)) scoreParity = false;
+	}
+	const pickedSlot = trade.pickSiblingSite(built.net, 0);
+	const readout = trade.siblingReadoutText(built.net, 0);
+	check('sysCache matches worldFoundingScore exactly, picks the reachable HZ sibling, and marks deep outer worlds in siblingReadoutText',
+		scoreParity && pickedSlot >= 0 && cache.sites[pickedSlot].index === 1
+		&& trade.cachedSiblingScore(built.net, 0, pickedSlot) >= trade.MIN_FOUND_COUPLE
+		&& readout.indexOf('siblings') >= 0 && readout.indexOf('too deep') >= 0,
+		{ cacheCount: cache.count, pickedSlot, readout });
+
+	// Make the capital populous and healthy, then verify population conservation,
+	// portCount stability, real cached delta-v coupling, and LOG_SIBLING.
+	const capWorld = trade.worldOfPort(built.net, 0, 0);
+	capWorld.pop = capWorld.capacity * 0.85;
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) capWorld.stock[r] = capWorld.stockCap[r] * 0.6;
+	trade.settlePort(built.net, 0, 1);
+	const popBefore = built.port.colony.pop;
+	const newWorldIdx = trade.sponsorSiblingWorld(built.net, 0, 1, 1);
+	const w0 = trade.worldOfPort(built.net, 0, 0);
+	const w1 = trade.worldOfPort(built.net, 0, 1);
+	const lastLog = trade.logAt(built.net, trade.logLength(built.net) - 1);
+	check('sponsorSiblingWorld conserves population, preserves portCount/founded, populates cached couple, and logs LOG_SIBLING',
+		newWorldIdx === 1
+		&& built.net.portCount === 1 && built.net.worldCount === 2
+		&& built.net.founded === 0 && built.net.siblingsFounded === 1
+		&& near(w0.pop + w1.pop, popBefore, 1e-9)
+		&& near(built.port.colony.pop, popBefore, 1e-9)
+		&& built.port.dv[1] > 0 && built.port.couple[1] > 0 && built.port.couple[1] < 1
+		&& lastLog && lastLog.kind === trade.LOG_SIBLING && lastLog.a === 0 && lastLog.b === 1,
+		{ popBefore, sumAfter: w0.pop + w1.pop, dv01: built.port.dv[1], couple01: built.port.couple[1] });
+
+	// Expansion authority, sky-visibility gate, cooldown, and MIN_FOUND_COUPLE refusal.
+	const makeLiveSiblingNet = (sys) => {
+		const h = syntheticTradePort(sys, 0, 0, undefined, undefined, 'Vespera b');
+		const cw = trade.worldOfPort(h.net, 0, 0);
+		cw.pop = cw.capacity * 0.85;
+		for (let r = 0; r < economy.RESOURCE_COUNT; r++) cw.stock[r] = cw.stockCap[r] * 0.7;
+		trade.settlePort(h.net, 0, 1);
+		trade.finalize(h.net);
+		return h;
+	};
+	const gatedH = makeLiveSiblingNet(makeRichSiblingSystem(0x54383202));
+	gatedH.port.skyVisible = 0;
+	check('hidden sky-gated ports refuse sibling expansion',
+		trade.sponsorSiblingWorld(gatedH.net, 0, 2000, 0) === -1 && gatedH.net.worldCount === 1);
+	gatedH.port.skyVisible = 1;
+	trade.step(gatedH.net, 500);
+	const beforeCooldownWorlds = gatedH.net.worldCount;
+	trade.setExpansion(0);
+	trade.step(gatedH.net, 700);
+	const disarmedWorlds = gatedH.net.worldCount;
+	trade.setExpansion(1);
+	trade.step(gatedH.net, trade.TICK_YEARS * 2);
+	check('autonomous tick respects SIBLING_COOLDOWN and expansionOn before settling a sibling world',
+		beforeCooldownWorlds === 1 && disarmedWorlds === 1
+		&& gatedH.net.worldCount === 2 && gatedH.net.portCount === 1 && gatedH.net.siblingsFounded === 1,
+		{ beforeCooldownWorlds, disarmedWorlds, afterArmWorlds: gatedH.net.worldCount });
+
+	const deepOnlySys = syntheticIntraSystem({
+		key: 0x54383203,
+		planets: [
+			{ a: 1.0, mass: 1.2, radius: 1.05, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ },
+			{ a: 24.0, mass: 9.0, radius: 2.0, type: 2, flags: 0 },
+		],
+	});
+	const deepH = makeLiveSiblingNet(deepOnlySys);
+	trade.step(deepH.net, 1500);
+	check('systems whose only unsettled worlds fall below MIN_FOUND_COUPLE stay single-world',
+		trade.pickSiblingSite(deepH.net, 0) === -1 && deepH.net.worldCount === 1 && deepH.net.siblingsFounded === 0);
+
+	// Discrete-event jump vs 1-year steps across autonomous sibling founding.
+	const jumpH = makeLiveSiblingNet(makeRichSiblingSystem(0x54383204));
+	const stepH = makeLiveSiblingNet(makeRichSiblingSystem(0x54383204));
+	trade.step(jumpH.net, 1200);
+	for (let y = 0; y < 1200; y++) trade.step(stepH.net, 1);
+	check('1200-year jump matches 1200 one-year steps across autonomous sibling settlement',
+		jumpH.net.worldCount === 2 && stepH.net.worldCount === 2
+		&& jumpH.net.siblingsFounded === 1 && stepH.net.siblingsFounded === 1
+		&& near(jumpH.port.colony.pop, stepH.port.colony.pop, 1e-6)
+		&& near(trade.worldOfPort(jumpH.net, 0, 0).pop, trade.worldOfPort(stepH.net, 0, 0).pop, 1e-6)
+		&& near(trade.worldOfPort(jumpH.net, 0, 1).pop, trade.worldOfPort(stepH.net, 0, 1).pop, 1e-6),
+		{ jumpPop: jumpH.port.colony.pop, stepPop: stepH.port.colony.pop });
+
+	// Expedition-founded port inherits candidate sysCache and later settles its own sibling.
+	const originSys = syntheticIntraSystem({ key: 0x54383205 });
+	const destSys = makeRichSiblingSystem(0x54383206);
+	const expH = makeLiveSiblingNet(originSys);
+	const destRef = {
+		kind: planets.BLOCK_LANDMARK, index: 1, key: destSys.star.key >>> 0,
+		x: 0.01, y: 0, z: 0, colorIndex: 4, absMag: 4.83,
+	};
+	const destSite = syntheticSite(destSys, destRef, 0, 0, 'Cygnus b');
+	const candIdx = trade.addCandidate(expH.net, destSite, destSys);
+	const launched = trade.launchChosen(expH.net, 0, candIdx, expH.net.time);
+	trade.step(expH.net, 2500);
+	const destPortIdx = trade.portOfStar(expH.net, destRef.key >>> 0);
+	const destPort = destPortIdx >= 0 ? expH.net.ports[destPortIdx] : null;
+	if (destPort && destPort.worldCount === 1) {
+		const dw = trade.worldOfPort(expH.net, destPortIdx, 0);
+		dw.pop = dw.capacity * 0.85;
+		for (let r = 0; r < economy.RESOURCE_COUNT; r++) dw.stock[r] = dw.stockCap[r] * 0.7;
+		trade.foldPort(expH.net, destPortIdx);
+		trade.step(expH.net, 1000);
+	}
+	check('expedition-founded port inherits candidate sysCache and autonomously settles its sibling world',
+		launched && launched.ok === 1 && destPortIdx === 1 && destPort !== null
+		&& destPort.sysCache.count === 3 && destPort.worldCount === 2
+		&& destPort.dv[1] > 0 && destPort.couple[1] > 0 && destPort.couple[1] < 1,
+		{ destPortIdx, cacheCount: destPort && destPort.sysCache.count, worlds: destPort && destPort.worldCount });
 }
 
 // --- Summary --------------------------------------------------------------

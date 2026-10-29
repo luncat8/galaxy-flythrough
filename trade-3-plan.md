@@ -33,9 +33,9 @@ does, so it must not be in flight while those tables are being measured.
 | T3 | **World pool** — up to 6 world-colonies per star, always settled, never inspected-to-exist | do |
 | T4 | **Statistical intra** — 3 goods as closed-form flows, throttled by the 0.5.4 delta-v graph; that graph is what develops the system | do |
 | T5 | **System-view picture** — world markers, 3-good + dv readout, ambient dashes that carry no state | do |
-| T6 | Inter-planet fleet with **its own time and its own queue** | **deferred** |
+| T6 | Inter-planet fleet with **its own time and its own queue** | **shipped** (`trade.25`–`trade.27`, `trade-4-plan.md`) |
 | T7 | Capital reinvested from surplus | **deferred** (still F6) |
-| T8 | Auto-colonising extra worlds from intra passengers | **deferred** |
+| T8 | Auto-colonising extra worlds from intra passengers | **shipped** (`trade.32`) |
 | T9 | Replacing the 13-row site map or the closed-form settle | **refused** |
 | F4 | Credits, prices, buying and selling for money | **deferred** (unchanged) |
 

@@ -52,6 +52,191 @@ assert.ok(main.includes('tradeFoundHere.addEventListener(\'click\', commandFound
 assert.ok(main.includes('tradeLib.bootstrapStatus(tradeNet, model, renderer.fieldBuffers())'));
 assert.ok(main.includes('syncTradeBootstrap(true)') && main.includes('syncTradeBootstrap(false)'));
 assert.ok(main.includes('tradeLib.refInSky(ref, model, tradeCtx.field, starTimeRate)'));
+assert.ok(/id="trade-action-note"[^>]*hidden/.test(html));
+assert.ok(main.includes('function canCommandTrade() { return !isFlying(); }'));
+
+// trade.31: exercise the real main.js founding & notice slice in Observe,
+// Command, and Fly — covering empty-network "Search for a home -> select planet
+// -> Establish here" as well as visible refusal feedback outside Fly.
+{
+	const Workspace = require('../src/core/workspace.js');
+	const SelectionStore = require('../src/core/selection-store.js');
+	const GalaxyLib = require('../src/math/galaxy.js');
+	const PlanetsLib = require('../src/math/planets.js');
+	const Landmarks = require('../src/data/landmarks.js');
+	const EconomyLib = require('../src/core/economy.js');
+	const TradeLib = require('../src/core/trade.js');
+
+	const fnSlices = [
+		main.slice(main.indexOf('        function syncTradeActionNote()'), main.indexOf('        // The reason codes ship.js keeps')),
+		main.slice(main.indexOf('        function commandFoundColony()'), main.indexOf('        function gameTradePort()')),
+		main.slice(main.indexOf('        const COLONY_BAR ='), main.indexOf('        function tradeLogText(')),
+		main.slice(main.indexOf('        function tradeRowText('), main.indexOf('        function tradeSyncPortRows(')),
+		main.slice(main.indexOf('        function syncTradeBootstrap(noNetwork)'), main.indexOf('        function syncTradeUi()')),
+		main.slice(main.indexOf('        function modeHudLine()'), main.indexOf('        function tradeOverlayLine()')),
+	].join('\n');
+
+	const model = GalaxyLib.MILKY_WAY;
+	const store = SelectionStore.createSelectionStore();
+	const tradeRecord = PlanetsLib.createSystemRecord();
+	const tradeCtx = { model, field: { count: 0 }, member: null, name: '' };
+
+	// Find a landmark with a habitable planet and (if present) a poor-habitat planet.
+	let goodLandmark = -1, goodPlanet = -1, poorLandmark = -1, poorPlanet = -1;
+	const site = EconomyLib.createSite();
+	for (let i = 0; i < Landmarks.ENTRIES.length; i++) {
+		const e = Landmarks.ENTRIES[i];
+		const ref = {
+			kind: PlanetsLib.BLOCK_LANDMARK, index: i, key: PlanetsLib.landmarkKey(i) >>> 0,
+			x: e.x, y: e.y, z: e.z, colorIndex: e.colorIndex, absMag: e.absMag,
+		};
+		tradeCtx.name = e.name;
+		PlanetsLib.generateSystem(ref, tradeCtx, tradeRecord);
+		const seed = EconomyLib.siteSeed(ref.key, model.seed, ref.kind);
+		for (let p = 0; p < tradeRecord.counts.planets; p++) {
+			EconomyLib.fillPlanetSite(site, ref, tradeRecord, p, seed);
+			const h = TradeLib.siteHabitatScore(site);
+			if (goodLandmark < 0 && h >= TradeLib.MIN_CANDIDATE_HABITAT) {
+				goodLandmark = i; goodPlanet = p;
+			}
+			if (poorLandmark < 0 && h < TradeLib.MIN_CANDIDATE_HABITAT) {
+				poorLandmark = i; poorPlanet = p;
+			}
+		}
+		if (goodLandmark >= 0 && poorLandmark >= 0) break;
+	}
+	assert.ok(goodLandmark >= 0 && poorLandmark >= 0, 'found both habitable and barren test planets');
+
+	const makeRef = (idx) => {
+		const e = Landmarks.ENTRIES[idx];
+		return {
+			kind: PlanetsLib.BLOCK_LANDMARK, index: idx, key: PlanetsLib.landmarkKey(idx) >>> 0,
+			x: e.x, y: e.y, z: e.z, colorIndex: e.colorIndex, absMag: e.absMag,
+		};
+	};
+
+	for (const mode of [Workspace.OBSERVE, Workspace.COMMAND]) {
+		const net = TradeLib.createNetwork({ seed: model.seed, modelSeed: model.seed, seedPorts: 0 });
+		TradeLib.finalize(net);
+		let ws = mode;
+		let openSys = true;
+		let selKind = 1; // BODY_PLANET
+		let selIdx = goodPlanet;
+		let pickedRef = makeRef(goodLandmark);
+		const tradeFoundHere = { disabled: true };
+		const tradeBootstrapNote = { hidden: true, textContent: '' };
+		const tradeActionNote = { hidden: true, textContent: '' };
+		const ctx = {
+			Workspace,
+			window: {
+				PlanetsLib,
+				SystemLayer: { BODY_NONE: 0, BODY_PLANET: 1, BODY_BELT: 2, BODY_STAR: 3 },
+				SelectionStore,
+			},
+			tradeLib: TradeLib,
+			economyLib: EconomyLib,
+			tradeNet: net,
+			tradeCtx,
+			tradeRecord,
+			model,
+			starTimeRate: 0,
+			NOTICE_TICKS: 12,
+			autoMsg: '',
+			autoMsgTicks: 0,
+			starSet: { primary: 0 },
+			selectionStore: store,
+			tradeFoundHere,
+			tradeBootstrapNote,
+			tradeActionNote,
+			renderer: {
+				state: {},
+				fieldBuffers: () => ({ count: 0 }),
+				starBlocks: () => ({ member: null }),
+			},
+			camera: { getState: () => ({}) },
+			statsText: {},
+			systemLayer: {
+				isOpen: () => openSys,
+				selectedKindOf: () => selKind,
+				selectedIndexOf: () => selIdx,
+			},
+			isFlying: () => ws === Workspace.FLY,
+			isCommanding: () => ws === Workspace.COMMAND,
+			canCommandTrade: () => ws !== Workspace.FLY,
+			tradeClockRate: () => 100,
+			tradeSyncNote: () => '',
+			homeColonyPort: () => net.capital,
+			memberRefFor: () => pickedRef,
+			landmarkNameFor: () => Landmarks.ENTRIES[pickedRef.index].name,
+			syncSelectionPanel() {},
+			syncTradeUi() { ctx.syncTradeBootstrap(false); },
+			syncFlightUi() {},
+			writeSystemReadout() {},
+			updateOverlay() {},
+		};
+		vm.createContext(ctx);
+		vm.runInContext(fnSlices, ctx);
+
+		ctx.syncTradeBootstrap(false);
+		assert.strictEqual(tradeFoundHere.disabled, false, 'Establish here enabled when star picked in mode ' + mode);
+		assert.strictEqual(tradeBootstrapNote.hidden, false, 'empty network shows bootstrap note before founding');
+
+		// 1) Barren planet refusal is surfaced visibly in both #trade-action-note and HUD.
+		pickedRef = makeRef(poorLandmark);
+		selIdx = poorPlanet;
+		ctx.commandFoundColony();
+		assert.strictEqual(net.portCount, 0);
+		assert.strictEqual(tradeActionNote.hidden, false);
+		assert.ok(tradeActionNote.textContent.includes('no site worth settling'));
+		assert.ok(ctx.modeHudLine().includes('notice    no site worth settling'));
+
+		// 2) Habitable planet succeeds (both with V open and with V closed via stored planet selection).
+		pickedRef = makeRef(goodLandmark);
+		selIdx = goodPlanet;
+		if (mode === Workspace.OBSERVE) {
+			openSys = false;
+			store.selectCurrent(SelectionStore.GROUP_SPACE, {
+				type: 'planet', id: pickedRef.key + ':planet:' + goodPlanet, name: 'planet',
+				x: pickedRef.x, y: pickedRef.y, z: pickedRef.z,
+				entity: { host: { key: pickedRef.key }, bodyKind: 1, index: goodPlanet },
+			});
+		}
+		ctx.commandFoundColony();
+		assert.strictEqual(net.portCount, 1, 'colony founded in mode ' + mode);
+		assert.strictEqual(net.capital, 0, 'first colony becomes capital');
+		assert.strictEqual(net.shipCount, 1, 'starter ship spawned on first colony');
+		assert.strictEqual(tradeBootstrapNote.hidden, true, 'empty-network note hides once colony exists');
+		assert.strictEqual(tradeActionNote.hidden, false);
+		assert.ok(tradeActionNote.textContent.includes('colony founded at'));
+
+		// 3) In Fly mode, free-camera founding is refused with an explicit notice.
+		ws = Workspace.FLY;
+		ctx.syncTradeBootstrap(false);
+		assert.strictEqual(tradeFoundHere.disabled, true);
+		ctx.commandFoundColony();
+		assert.ok(tradeActionNote.textContent.includes('dock at a star to found while flying'));
+
+		// 4) trade.32: multi-world port row badge and LOG_SIBLING log formatting.
+		const extraSite = EconomyLib.createSite();
+		extraSite.key = net.ports[0].key;
+		extraSite.kind = 1;
+		extraSite.index = 0;
+		extraSite.isBelt = 1;
+		extraSite.type = EconomyLib.SITE_BELT;
+		extraSite.name = 'Home belt 1';
+		TradeLib.addWorld(net, 0, extraSite, 0, TradeLib.FRESH_FOUND);
+		TradeLib.pushLog(net, TradeLib.LOG_SIBLING, 0, 1, 0);
+		const rowText = ctx.tradeRowText(0, -1);
+		const logEntry = TradeLib.logAt(net, TradeLib.logLength(net) - 1);
+		const logText = ctx.tradeLogEntryText(logEntry);
+		assert.ok(rowText.includes('\u00b7 2w'), 'multi-world port row carries 2w badge: ' + rowText);
+		assert.ok(logText.startsWith('settled    Home belt 1 in '), 'LOG_SIBLING formatted cleanly: ' + logText);
+		checks++;
+	}
+	assert.ok(main.includes('tradeLib.siblingReadoutText(tradeNet, portIndex)'));
+	assert.ok(main.includes('` (${tradeNet.worldCount} worlds)`'));
+	checks++;
+}
 
 for (const [column, first, second] of [['left', 'selection-menu', 'sysmenu'], ['left', 'sysmenu', 'routemenu'], ['inner', 'viewmenu', 'trade-menu'], ['right', 'scenario-menu', 'menu'], ['right', 'menu', 'help']]) {
 	const start = html.indexOf('panel-column-' + column);

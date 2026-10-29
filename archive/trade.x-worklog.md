@@ -1470,3 +1470,91 @@ the stranded-slot reuse, plus §17.5/§17.7 rewritten from the turn-around law t
 the finish law), panel 16, changed 14/14. `experiments/network-frame-study.js`
 is unchanged and still measures the picture winding up; §9.9 records the law and
 what it deliberately does not fix (the map still winds up at 1 Myr/s).
+
+---
+
+### trade.31 — Search-for-home and empty-network founding (`src/core/trade.js`, `src/main.js`, `src/index.html`)
+
+Reproduced and closed the multi-gate bug where clicking **Search for a home**,
+selecting a planet, and pressing **Establish here** appeared to do nothing while
+the Trade panel still showed `No colonies yet.`
+
+- **Mode authority (`canCommandTrade = () => !isFlying()`).** `#trade-menu` sits
+  in the shared inner column and is visible in **Observe** (`1`) as well as
+  **Command** (`3`), yet `commandFoundColony` returned silently unless
+  `isCommanding()` was true and `#trade-found-here` stayed disabled in Observe
+  even after selecting a star or planet (`workspace-plan.md` §2 rule 3, §13).
+  Trade panel actions now work in both free-camera modes (Observe and Command)
+  and refuse with a visible notice in Fly (`dock at a star to found while
+  flying`).
+- **Stored planet/belt selection & schematic star reset.** Selecting a planet
+  from the **Selection** panel (`selectionStore.natural.current`) while system
+  view (`V`) was closed did not forward the body into `foundColonyAt`, which
+  read `systemLayer` only; when `systemLayer` *was* open, clicking empty space
+  in the schematic left `systemLayer` at `BODY_NONE` without resetting
+  `recordSystemBodySelection` back to the star. Both paths now stay in sync.
+- **Post-finalize inspection near home.** `discoverSystem` checked
+  `net.capital < 0 && nearHome` without `!net.tickScheduled`, so opening system
+  view on an unseeded young-epoch network near home silently pre-settled a port
+  as `ROLLED_FOUND` before the player clicked **Establish here**; subsequent
+  star-level founding then failed with `star already has a colony`. Added
+  `!net.tickScheduled` so post-`finalize` system inspection discovers
+  candidates without auto-founding.
+- **First-colony bootstrap & sky gate.** Added `completePlayerPortFound` in
+  `src/core/trade.js` (shared by `playerFound` and `playerFoundWorld`) and
+  stamped `port.skyVisible = 1` / `net.skyState` in `addPort` so the very first
+  player-founded colony on an empty network (`portCount: 0 -> 1`, e.g. at an
+  early galactic epoch in `SKY_NONE`) immediately becomes `net.capital`, spawns
+  its starter freighter, marks the star discovered, lifts `SKY_NONE`, and clears
+  `No colonies yet.` on the same tick. `tradeInspectSystem` also guards
+  `discoverSystem` with `refInSky`, and `tradeSeedNetwork` skips reference-epoch
+  `startSystems` at non-reference ages.
+- **Visible notices outside Fly.** `setAutoMsg` previously wrote only to the
+  canvas HUD inside Fly/Command. Added `#trade-action-note` in `#trade-menu`
+  (mirrored to the Observe HUD line as well) and expanded refusal messages on
+  barren-planet picks so founding outcomes and refusals are never silent.
+- **Validation.** `trade` 350/350, `panel` 22/22 (`2/2` via `scripts/run.py`).
+
+---
+
+### trade.32 — Auto-colonising sibling worlds inside settled systems, T8 (`src/core/trade.js`, `src/main.js`)
+
+Shipped **T8** (`trade-3-plan.md` §0): thriving multi-body star systems now
+autonomously settle reachable sibling planets and belts inside the same port
+without consuming a `MAX_PORTS` slot, allocating per event, or re-running
+`PlanetsLib` on the queue tick.
+
+- **Preallocated per-port & per-candidate `sysCache`.** Each port and frontier
+  candidate owns a fixed 6-slot (`MAX_WORLDS_PER_STAR`) site and delta-v edge
+  cache (`sites[6]`, `well[6]`, `land[6]`, `dvLoToLo[36]`, `tH[36]`).
+  `captureSystemSites` fills it whenever a system record is handed to
+  `addPort`, `addWorld`, or `addCandidate`; `foundAtCandidate` copies
+  `c.sysCache` onto expedition-founded ports and runs
+  `fillIntraGraphFromCache` so frontier colonies immediately inherit their
+  sibling world candidates and real `DeltaVLib` coupling (falling back cleanly
+  to identity coupling when a synthetic test world is absent from `sysCache`).
+  Also fixed `createNetwork` to honour `options.seedPorts` (`0` at non-reference
+  epochs, `SEED_PORTS` by default).
+- **Exact founding law & population conservation (`sponsorSiblingWorld`).**
+  `cachedSiblingScore` computes the exact `worldFoundingScore` formula
+  (`siteHabitatScore * couple / (1 + candidateWell / DV_REF)`) from `sysCache`
+  and `pickSiblingSite` selects the highest-scoring unsettled body clearing
+  `MIN_FOUND_COUPLE` (`0.08`). On `EV_TICK`, when `expansionOn` is armed and a
+  visible live port clears `SIBLING_COOLDOWN` (`900` y from `addPort` or its
+  last sibling wave), `SIBLING_MIN_COVERAGE` (`0.38`), `SIBLING_MIN_POP_M`
+  (`8` M), and `SIBLING_CROWD_FRAC` (`0.45` of capacity), volunteers
+  (`4 %`, `0.35–2.5` M, capped at half the sibling's capacity) are drawn via
+  `takePortPopulation` into `addWorld(..., FRESH_FOUND)`, conserving port
+  population to machine precision while leaving `net.portCount` and
+  `net.founded` untouched, incrementing `net.siblingsFounded`, and logging
+  `LOG_SIBLING`.
+- **Panel & system readout.** `tradeReadoutText` appends `siblingReadoutText`
+  (`siblings  <site> (<dv>, score <x> | too deep (<x>))`) when `systemLayer` is
+  open; `tradeLogEntryText` formats `LOG_SIBLING` (`settled    <world> in
+  <port>`); `tradeRowText` badges multi-world ports with `· <N>w`; and
+  `#trade-state` reports `(<W> worlds)` whenever `worldCount > portCount`.
+- **Validation.** `trade` 358/358 (new §32 covering `options.seedPorts`,
+  `cachedSiblingScore === worldFoundingScore`, population conservation +
+  `LOG_SIBLING`, sky/expansion/cooldown/`MIN_FOUND_COUPLE` gates, 1200-year
+  jump vs 1200 one-year steps equivalence, and expedition-founded port sibling
+  inheritance), `panel` 25/25, `export-parity` pass.

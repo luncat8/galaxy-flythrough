@@ -270,7 +270,7 @@
 	// text at 4 Hz, which is the one place allowed to allocate.
 	const LOG_CAP = 64;
 	const LOG_FOUND = 0, LOG_MILESTONE = 1, LOG_FAMINE = 2, LOG_FAMINE_END = 3,
-		LOG_OUTPOST = 4, LOG_ROUTE = 5, LOG_EXPEDITION = 6;
+		LOG_OUTPOST = 4, LOG_ROUTE = 5, LOG_EXPEDITION = 6, LOG_SIBLING = 7;
 
 	function createLog() {
 		return {
@@ -350,6 +350,11 @@
 			// Trade years of the last sponsored expedition; `-INF` marks a seed
 			// port, ready as soon as its colony passes the big gate.
 			lastExpedition: -1e9,
+			// Trade years of the last intra-system sibling founding (T8, trade.32);
+			// stamped to `nowYears` at `addPort` so a newly settled star matures
+			// through one full cooldown before spawning sibling worlds.
+			lastSibling: 0,
+			sysCache: createSystemCache(),
 			// Set once when its colony fails: a port slot is identity, so the
 			// demoted port keeps its key and place and is only counted once.
 			demoted: 0,
@@ -380,9 +385,22 @@
 		};
 	}
 
+	function createSystemCache() {
+		const sites = new Array(MAX_WORLDS_PER_STAR);
+		for (let i = 0; i < MAX_WORLDS_PER_STAR; i++) sites[i] = economy.createSite();
+		return {
+			count: 0,
+			sites,
+			well: new Float64Array(MAX_WORLDS_PER_STAR),
+			land: new Float64Array(MAX_WORLDS_PER_STAR),
+			dvLoToLo: new Float64Array(MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR),
+			tH: new Float64Array(MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR),
+		};
+	}
+
 	function createCandidate() {
 		return { site: economy.createSite(), used: 0, reserved: -1, well: 0, land: 0,
-			skyVisible: 1, reach: 1 };
+			skyVisible: 1, reach: 1, sysCache: createSystemCache() };
 	}
 
 	function createNetwork(options) {
@@ -417,7 +435,7 @@
 			// Failed colonies still own their slots; this is how many of the
 			// ports are outposts (W1). `livePortCount` is the panel's number.
 			outposts: 0,
-			seedPorts: SEED_PORTS,
+			seedPorts: options && options.seedPorts !== undefined ? Math.max(0, options.seedPorts | 0) : SEED_PORTS,
 			shipCount: 0,
 			candidateCount: 0,
 			log: createLog(),
@@ -430,6 +448,7 @@
 			processed: 0,
 			stale: 0,
 			founded: 0,
+			siblingsFounded: 0,
 			delivered: 0,
 			lastEvent: 0,
 			tickScheduled: 0,
@@ -621,6 +640,179 @@
 		out.well = body.hasSurface ? one.dvSurfaceToLo : 0;
 		out.land = body.hasSurface ? one.dvLoToSurface : 0;
 		return 1;
+	}
+
+	// --- Preallocated system site & intra-edge cache (T8, trade.32) ---------
+	// Captures up to MAX_WORLDS_PER_STAR viable sites and their exact DeltaVLib
+	// wells/transfers when a system is discovered or settled, so autonomous
+	// sibling founding on `EV_TICK` and expedition arrivals (`EV_FOUND`) have
+	// the physical delta-v graph without re-running PlanetsLib or allocating.
+	const CACHE_MAX_SCAN = 24;
+	const CACHE_SCAN_KIND = new Uint8Array(CACHE_MAX_SCAN);
+	const CACHE_SCAN_INDEX = new Int32Array(CACHE_MAX_SCAN);
+	const CACHE_SCAN_SCORE = new Float64Array(CACHE_MAX_SCAN);
+	const CACHE_SITE = economy.createSite();
+	const CACHE_PICK = { index: 0, belt: 0 };
+
+	function starNameFromSite(site) {
+		if (!site || !site.name) return '';
+		const suffix = site.kind === 1
+			? ' belt ' + (site.index + 1)
+			: ' ' + String.fromCharCode(98 + (site.index & 31));
+		return site.name.endsWith(suffix)
+			? site.name.slice(0, site.name.length - suffix.length)
+			: '';
+	}
+
+	function cacheIndexOf(cache, kind, index) {
+		for (let i = 0; i < cache.count; i++) {
+			const s = cache.sites[i];
+			if (s.kind === kind && s.index === index) return i;
+		}
+		return -1;
+	}
+
+	function copySystemCache(dst, src) {
+		const n = src ? src.count | 0 : 0;
+		dst.count = n;
+		for (let i = 0; i < n; i++) {
+			economy.copySite(dst.sites[i], src.sites[i]);
+			dst.well[i] = src.well[i];
+			dst.land[i] = src.land[i];
+		}
+		dst.dvLoToLo.set(src.dvLoToLo);
+		dst.tH.set(src.tH);
+	}
+
+	function captureSystemSites(cache, ref, starName, system, modelSeed, existingPort, net) {
+		cache.count = 0;
+		if (!system || !ref) return 0;
+		const key = system.star.key >>> 0;
+		const seed = economy.siteSeed(key, modelSeed, ref.kind);
+		const nPlanets = system.counts.planets | 0;
+		const nBelts = system.belts.count | 0;
+
+		const pushSite = (belt, idx) => {
+			if (cache.count >= MAX_WORLDS_PER_STAR) return;
+			if (cacheIndexOf(cache, belt, idx) >= 0) return;
+			CACHE_PICK.belt = belt;
+			CACHE_PICK.index = idx;
+			fillPickedSite(CACHE_SITE, ref, system, seed, CACHE_PICK);
+			CACHE_SITE.name = economy.siteName(starName || '', key, belt, idx);
+			economy.copySite(cache.sites[cache.count++], CACHE_SITE);
+		};
+
+		if (net && existingPort >= 0 && existingPort < net.portCount) {
+			const port = net.ports[existingPort];
+			for (let s = 0; s < port.worldCount && cache.count < MAX_WORLDS_PER_STAR; s++) {
+				const w = net.worlds[port.worldIdx[s]];
+				const valid = w.kind === 1
+					? (w.index >= 0 && w.index < nBelts)
+					: (w.kind === 0 && w.index >= 0 && w.index < nPlanets);
+				if (valid) pushSite(w.kind, w.index);
+			}
+		}
+
+		let scanCount = 0;
+		for (let p = 0; p < nPlanets && scanCount < CACHE_MAX_SCAN; p++) {
+			if (cacheIndexOf(cache, 0, p) >= 0) continue;
+			economy.fillPlanetSite(CACHE_SITE, ref, system, p, seed);
+			const sc = siteHabitatScore(CACHE_SITE);
+			if (sc < MIN_CANDIDATE_HABITAT) continue;
+			CACHE_SCAN_KIND[scanCount] = 0;
+			CACHE_SCAN_INDEX[scanCount] = p;
+			CACHE_SCAN_SCORE[scanCount] = sc;
+			scanCount++;
+		}
+		for (let b = 0; b < nBelts && scanCount < CACHE_MAX_SCAN; b++) {
+			if (cacheIndexOf(cache, 1, b) >= 0) continue;
+			economy.fillBeltSite(CACHE_SITE, ref, system, b, seed);
+			const sc = siteHabitatScore(CACHE_SITE);
+			if (sc < MIN_CANDIDATE_HABITAT) continue;
+			CACHE_SCAN_KIND[scanCount] = 1;
+			CACHE_SCAN_INDEX[scanCount] = b;
+			CACHE_SCAN_SCORE[scanCount] = sc;
+			scanCount++;
+		}
+		while (cache.count < MAX_WORLDS_PER_STAR && scanCount > 0) {
+			let best = 0;
+			for (let k = 1; k < scanCount; k++) {
+				if (CACHE_SCAN_SCORE[k] > CACHE_SCAN_SCORE[best]) best = k;
+			}
+			pushSite(CACHE_SCAN_KIND[best], CACHE_SCAN_INDEX[best]);
+			scanCount--;
+			if (best < scanCount) {
+				CACHE_SCAN_KIND[best] = CACHE_SCAN_KIND[scanCount];
+				CACHE_SCAN_INDEX[best] = CACHE_SCAN_INDEX[scanCount];
+				CACHE_SCAN_SCORE[best] = CACHE_SCAN_SCORE[scanCount];
+			}
+		}
+
+		const nBodies = cache.count > 0 ? buildIntraGraphTable(system) : 0;
+		for (let i = 0; i < cache.count; i++) {
+			const bi = intraBodyIndex(system, cache.sites[i].kind, cache.sites[i].index);
+			const body = bi >= 0 && bi < nBodies ? INTRA_BODY_PARAMS[bi] : null;
+			const one = bi >= 0 && bi < nBodies ? INTRA_ONE_EDGES[bi] : null;
+			cache.well[i] = body && body.hasSurface ? one.dvSurfaceToLo : 0;
+			cache.land[i] = body && body.hasSurface ? one.dvLoToSurface : 0;
+		}
+		for (let i = 0; i < cache.count; i++) {
+			const bi = intraBodyIndex(system, cache.sites[i].kind, cache.sites[i].index);
+			for (let j = 0; j < cache.count; j++) {
+				const cell = i * MAX_WORLDS_PER_STAR + j;
+				const bj = intraBodyIndex(system, cache.sites[j].kind, cache.sites[j].index);
+				if (i === j || bi < 0 || bi >= nBodies || bj < 0 || bj >= nBodies) {
+					cache.dvLoToLo[cell] = 0;
+					cache.tH[cell] = 0;
+				} else {
+					const edge = INTRA_INTER_EDGES[deltav.interEdgeIndex(nBodies, bi, bj)];
+					cache.dvLoToLo[cell] = edge.dvLoToLo;
+					cache.tH[cell] = edge.tH;
+				}
+			}
+		}
+		return cache.count;
+	}
+
+	function fillIntraGraphFromCache(net, portIndex) {
+		if (!(portIndex >= 0 && portIndex < net.portCount)) return 0;
+		const port = net.ports[portIndex];
+		const cache = port.sysCache;
+		if (!(cache && cache.count > 0 && port.worldCount > 0)) return 0;
+		for (let s = 0; s < port.worldCount; s++) {
+			const w = net.worlds[port.worldIdx[s]];
+			if (cacheIndexOf(cache, w.kind, w.index) < 0) return 0;
+		}
+		for (let s = 0; s < port.worldCount; s++) {
+			const w = net.worlds[port.worldIdx[s]];
+			const ci = cacheIndexOf(cache, w.kind, w.index);
+			port.well[s] = cache.well[ci];
+			port.land[s] = cache.land[ci];
+			port.lift[s] = 1 / (1 + port.well[s] / DV_REF);
+		}
+		for (let s = 0; s < port.worldCount; s++) {
+			const sw = net.worlds[port.worldIdx[s]];
+			const cs = cacheIndexOf(cache, sw.kind, sw.index);
+			for (let t = 0; t < port.worldCount; t++) {
+				const m = s * MAX_WORLDS_PER_STAR + t;
+				if (s === t) {
+					port.dv[m] = 0;
+					port.tH[m] = 0;
+					port.couple[m] = 1;
+					continue;
+				}
+				const tw = net.worlds[port.worldIdx[t]];
+				const ct = cacheIndexOf(cache, tw.kind, tw.index);
+				const cell = cs * MAX_WORLDS_PER_STAR + ct;
+				const dv = port.well[s] + cache.dvLoToLo[cell] + port.land[t];
+				port.dv[m] = dv;
+				port.tH[m] = cache.tH[cell];
+				const ratio = dv / DV_REF;
+				port.couple[m] = 1 / (1 + ratio * ratio);
+			}
+		}
+		refreshPortAccess(net, portIndex);
+		return cache.count;
 	}
 
 	function intraFlowIndex(sourceSlot, targetSlot, family) {
@@ -1534,9 +1726,14 @@
 		world.access = port.access[slot];
 		const c = candidateIndexOf(net, site.key, site.kind, site.index);
 		if (c >= 0) net.candidates[c].used = 1;
-		if (!system || fillIntraGraph(net, portIndex, system) === 0) {
-			// A frontier candidate retains just its own well/landing scalars, not
-			// a full SystemRecord. Until its system opens, new off-diagonal edges
+		if (system) {
+			captureSystemSites(port.sysCache, site.ref || port.ref, starNameFromSite(site),
+				system, net.modelSeed, portIndex, net);
+		}
+		if ((!system || fillIntraGraph(net, portIndex, system) === 0)
+			&& fillIntraGraphFromCache(net, portIndex) === 0) {
+			// A frontier candidate without a system record retains just its own
+			// well/landing scalars; until its system opens, new off-diagonal edges
 			// keep the identity coupling used by legacy/manual fixtures.
 			if (c >= 0) {
 				port.well[slot] = net.candidates[c].well;
@@ -1571,10 +1768,16 @@
 		// A new port is in the sky until a gate says otherwise, so a network
 		// that has never been gated has `skyVisiblePorts === portCount` — the
 		// pre-gate behaviour, and what every fixture that never calls
-		// `applySkyGate` sees (trade.24).
-		if (port.skyVisible !== 0) net.skyVisiblePorts += 1;
+		// `applySkyGate` sees (trade.24). Reset `skyVisible` explicitly so an
+		// empty-gated network (`SKY_NONE`) lifts its gate on the founding call
+		// itself rather than leaving the panel's immediate sync gated for one tick.
+		port.skyVisible = 1;
+		net.skyVisiblePorts += 1;
+		net.skyState = net.skyVisiblePorts === net.portCount ? SKY_ALL : SKY_SOME;
 		port.worldCount = 0;
 		port.worldIdx.fill(-1);
+		port.lastSibling = nowYears;
+		port.sysCache.count = 0;
 		port.key = site.key >>> 0;
 		port.kind = site.kind;
 		port.index = site.index;
@@ -1611,7 +1814,12 @@
 		c.reserved = -1;
 		c.well = 0; c.land = 0;
 		c.reach = 1;
-		if (system) fillSiteWellLand(system, site.kind, site.index, c);
+		c.sysCache.count = 0;
+		if (system) {
+			fillSiteWellLand(system, site.kind, site.index, c);
+			captureSystemSites(c.sysCache, site.ref, starNameFromSite(site),
+				system, net.modelSeed, -1, net);
+		}
 		return index;
 	}
 
@@ -1688,7 +1896,11 @@
 			&& (ref.x - net.homeX) * (ref.x - net.homeX)
 				+ (ref.y - net.homeY) * (ref.y - net.homeY)
 				+ (ref.z - net.homeZ) * (ref.z - net.homeZ) <= HOME_COLONY_KPC * HOME_COLONY_KPC;
-		const maySettle = net.portCount < net.seedPorts
+		// Seed-port rolls belong strictly to the pre-finalize start map: once
+		// `finalize` has scheduled the network tick (including an empty early-epoch
+		// network waiting for its first founding), inspecting a system in V only
+		// discovers frontier candidates and never invents a pre-settled colony.
+		const maySettle = !net.tickScheduled && net.portCount < net.seedPorts
 			&& (nearHome || hash.hash01At(seed, TR_CH_PORT) < PORT_CHANCE);
 		if (maySettle) {
 			const pick = pickBestSite(site, ref, system, seed);
@@ -2542,6 +2754,121 @@
 		return siteHabitatScore(site) * couple / (1 + candidateWell / DV_REF);
 	}
 
+	// --- Intra-system sibling expansion (T8, trade.32) ----------------------
+	// Same score law as `worldFoundingScore` (trade-3 plan §0, §6.3, §13), read
+	// from `port.sysCache` so `EV_TICK` settles reachable sibling worlds without
+	// consuming a `MAX_PORTS` slot or calling `PlanetsLib`.
+	const SIBLING_COOLDOWN = EXPEDITION_COOLDOWN;
+	const SIBLING_MIN_POP_M = 8;
+	const SIBLING_MIN_COVERAGE = 0.38;
+	const SIBLING_CROWD_FRAC = 0.45;
+	const SIBLING_VOLUNTEER_FRAC = 0.04;
+	const SIBLING_FOUNDERS_MIN_M = 0.35;
+	const SIBLING_FOUNDERS_MAX_M = 2.5;
+	const SIBLING_PROBE = economy.createColony();
+
+	function cachedSiblingDv(net, portIndex, cacheSlot) {
+		if (!(portIndex >= 0 && portIndex < net.portCount)) return Infinity;
+		const port = net.ports[portIndex];
+		const cache = port.sysCache;
+		if (!(cache && cacheSlot >= 0 && cacheSlot < cache.count && port.worldCount > 0)) return Infinity;
+		const capital = net.worlds[port.worldIdx[0]];
+		const c0 = cacheIndexOf(cache, capital.kind, capital.index);
+		if (c0 < 0 || c0 === cacheSlot) return Infinity;
+		return cache.well[cacheSlot]
+			+ cache.dvLoToLo[cacheSlot * MAX_WORLDS_PER_STAR + c0]
+			+ cache.land[c0];
+	}
+
+	function cachedSiblingScore(net, portIndex, cacheSlot) {
+		const port = portIndex >= 0 && portIndex < net.portCount ? net.ports[portIndex] : null;
+		const cache = port && port.sysCache;
+		if (!(cache && cacheSlot >= 0 && cacheSlot < cache.count && port.worldCount > 0)) return 0;
+		const dv = cachedSiblingDv(net, portIndex, cacheSlot);
+		if (!Number.isFinite(dv)) return 0;
+		const well = cache.well[cacheSlot];
+		const ratio = dv / DV_REF;
+		const couple = 1 / (1 + ratio * ratio);
+		return siteHabitatScore(cache.sites[cacheSlot]) * couple / (1 + well / DV_REF);
+	}
+
+	function pickSiblingSite(net, portIndex) {
+		if (!(portIndex >= 0 && portIndex < net.portCount)) return -1;
+		const port = net.ports[portIndex];
+		const cache = port.sysCache;
+		if (!(cache && cache.count > 1 && port.worldCount > 0
+			&& port.worldCount < MAX_WORLDS_PER_STAR)) return -1;
+		let best = -1, bestScore = 0;
+		for (let i = 0; i < cache.count; i++) {
+			const site = cache.sites[i];
+			if (worldOfSite(net, portIndex, site.kind, site.index) >= 0) continue;
+			const score = cachedSiblingScore(net, portIndex, i);
+			if (score >= MIN_FOUND_COUPLE && score > bestScore) {
+				bestScore = score;
+				best = i;
+			}
+		}
+		return best;
+	}
+
+	function sponsorSiblingWorld(net, portIndex, time, rush) {
+		if (!(portIndex >= 0 && portIndex < net.portCount)) return -1;
+		if (!rush && !expansionOn) return -1;
+		const port = net.ports[portIndex];
+		if (port.skyVisible === 0 || port.colony.outpost) return -1;
+		if (port.worldCount <= 0 || port.worldCount >= MAX_WORLDS_PER_STAR || net.worldCount >= MAX_WORLDS) return -1;
+		if (!rush && time - port.lastSibling < SIBLING_COOLDOWN) return -1;
+		const cacheSlot = pickSiblingSite(net, portIndex);
+		if (cacheSlot < 0) return -1;
+		settlePort(net, portIndex, time);
+		if (port.colony.outpost) return -1;
+		if (port.colony.coverage < SIBLING_MIN_COVERAGE) return -1;
+		if (port.colony.pop < SIBLING_MIN_POP_M) return -1;
+		if (port.colony.pop < port.colony.capacity * SIBLING_CROWD_FRAC) return -1;
+		const site = port.sysCache.sites[cacheSlot];
+		economy.fillColony(SIBLING_PROBE, site, site.seed >>> 0);
+		const maxCap = SIBLING_PROBE.capacity * 0.5;
+		const wanted = Math.min(SIBLING_FOUNDERS_MAX_M,
+			Math.max(SIBLING_FOUNDERS_MIN_M, port.colony.pop * SIBLING_VOLUNTEER_FRAC));
+		const foundersM = wanted < maxCap ? wanted : maxCap;
+		if (!(foundersM >= economy.OUTPOST_POP_M * 4)) return -1;
+		if (port.colony.pop - foundersM < MIN_FOUNDERS_REMAIN_M) return -1;
+		const taken = takePortPopulation(net, portIndex, foundersM);
+		if (!(taken > 0)) return -1;
+		const worldIndex = addWorld(net, portIndex, site, time, FRESH_FOUND);
+		if (worldIndex < 0) {
+			givePortPopulation(net, portIndex, taken);
+			return -1;
+		}
+		net.worlds[worldIndex].pop = taken;
+		foldPort(net, portIndex);
+		port.lastSibling = time;
+		net.siblingsFounded += 1;
+		pushLog(net, LOG_SIBLING, portIndex, net.worlds[worldIndex].slot, 0);
+		return worldIndex;
+	}
+
+	function siblingReadoutText(net, portIndex) {
+		if (!net || !(portIndex >= 0 && portIndex < net.portCount)) return '';
+		const port = net.ports[portIndex];
+		const cache = port.sysCache;
+		if (!cache || cache.count <= 0) return '';
+		let text = '', shown = 0;
+		for (let i = 0; i < cache.count && shown < 4; i++) {
+			const site = cache.sites[i];
+			if (worldOfSite(net, portIndex, site.kind, site.index) >= 0) continue;
+			const dv = cachedSiblingDv(net, portIndex, i);
+			const score = cachedSiblingScore(net, portIndex, i);
+			const dvText = Number.isFinite(dv) ? (dv / 1000).toFixed(1) + ' km/s' : '—';
+			const tag = score >= MIN_FOUND_COUPLE
+				? 'score ' + score.toFixed(2)
+				: 'too deep (' + score.toFixed(2) + ')';
+			text += (shown > 0 ? ' \u00b7 ' : '') + site.name + ' (' + dvText + ', ' + tag + ')';
+			shown += 1;
+		}
+		return shown > 0 ? '\nsiblings  ' + text : '';
+	}
+
 	function isBigColony(colony) {
 		if (colony.outpost) return false;
 		if (colony.pop < MIN_EXPEDITION_POP_M) return false;
@@ -2894,6 +3221,11 @@
 			founding += 1;
 			room -= 1;
 		}
+		if (expansionOn) {
+			for (let p = 0; p < net.portCount && net.worldCount < MAX_WORLDS; p++) {
+				sponsorSiblingWorld(net, p, time, 0);
+			}
+		}
 		net.tickScheduled = 1;
 		queueLib.push(net.queue, time + TICK_YEARS, EV_TICK, 0, 0);
 	}
@@ -2983,6 +3315,22 @@
 	// caller's `refInSky` verdict (undefined means the caller did not ask): the
 	// player's door obeys the same gate as the seed map and the network, so a
 	// star the frame is not drawing never becomes a colony nobody can see.
+	// Shared post-port bookkeeping for both player founding doors: matches
+	// `bootstrapGenerate` when founding the first port on an empty network so
+	// capital, discovery, reachability and the starter hull come online at once.
+	function completePlayerPortFound(net, portIndex, key, nowYears) {
+		net.discovered.add(key);
+		for (let i = 0; i < net.candidateCount; i++) {
+			if (net.candidates[i].site.key === key) net.candidates[i].used = 1;
+		}
+		net.bootstrapEmptySky = 0;
+		if (net.capital < 0) net.capital = portIndex;
+		if (net.tickScheduled && net.shipCount === 0) spawnShip(net, portIndex, 0, nowYears);
+		refreshReach(net);
+		net.founded += 1;
+		pushLog(net, LOG_FOUND, portIndex, -1, 0);
+	}
+
 	const FOUND_SITE = economy.createSite();
 	function playerFound(net, ref, starName, system, nowYears, out, skyVisible) {
 		const r = out || createFoundResult();
@@ -3012,11 +3360,7 @@
 		FOUND_SITE.name = economy.siteName(starName || '', key, pick.belt, pick.index);
 		const portIndex = addPort(net, FOUND_SITE, nowYears, FRESH_FOUND, system);
 		if (portIndex < 0) { r.reason = 'network is full'; return r; }
-		for (let i = 0; i < net.candidateCount; i++) {
-			if (net.candidates[i].site.key === key) net.candidates[i].used = 1;
-		}
-		net.founded += 1;
-		pushLog(net, LOG_FOUND, portIndex, -1, 0);
+		completePlayerPortFound(net, portIndex, key, nowYears);
 		r.ok = 1;
 		r.port = portIndex;
 		r.site = FOUND_SITE;
@@ -3091,11 +3435,7 @@
 		if (existingPort < 0) {
 			const portIndex = addPort(net, FOUND_SITE, nowYears, FRESH_FOUND, system);
 			if (portIndex < 0) { r.reason = 'network is full'; return r; }
-			for (let i = 0; i < net.candidateCount; i++) {
-				if (net.candidates[i].site.key === key) net.candidates[i].used = 1;
-			}
-			net.founded += 1;
-			pushLog(net, LOG_FOUND, portIndex, -1, 0);
+			completePlayerPortFound(net, portIndex, key, nowYears);
 			r.ok = 1;
 			r.port = portIndex;
 			r.world = net.ports[portIndex].worldIdx[0];
@@ -3477,6 +3817,10 @@
 			return;
 		}
 		c.used = 1;
+		if (c.sysCache.count > 0) {
+			copySystemCache(net.ports[portIndex].sysCache, c.sysCache);
+			fillIntraGraphFromCache(net, portIndex);
+		}
 		const colony = net.ports[portIndex].colony;
 		// The expedition's people are the founding population; foundColony gave
 		// the record its founding stores and its age. No settle: the colony is
@@ -3845,9 +4189,11 @@
 		SHIP_DOCKED, SHIP_SAILING, SHIP_WAITING, SHIP_FOUNDING, SHIP_CREWED, SHIP_STATE_NAMES,
 		requisition, release, crewedCount, freeFreighters,
 		LOG_CAP, LOG_FOUND, LOG_MILESTONE, LOG_FAMINE, LOG_FAMINE_END, LOG_OUTPOST,
-		LOG_ROUTE, LOG_EXPEDITION, createLog, pushLog, logLength, logAt,
+		LOG_ROUTE, LOG_EXPEDITION, LOG_SIBLING, createLog, pushLog, logLength, logAt,
 		HULLS, DOCK_YEARS, WAIT_YEARS, TICK_YEARS,
 		POP_PER_COLONIST_UNIT, EXPEDITION_COOLDOWN, MAX_FOUNDING_IN_FLIGHT,
+		SIBLING_COOLDOWN, SIBLING_MIN_POP_M, SIBLING_MIN_COVERAGE, SIBLING_CROWD_FRAC,
+		SIBLING_VOLUNTEER_FRAC, SIBLING_FOUNDERS_MIN_M, SIBLING_FOUNDERS_MAX_M,
 		VOLUNTEER_FRAC, FOUNDERS_MIN_M, FOUNDERS_MAX_M, MIN_FOUNDERS_REMAIN_M,
 		MAX_FOUND_LY, MAX_LEG_LY, LY_PER_KPC, HOME_COLONY_LY, NO_RESOURCE,
 		MIN_CANDIDATE_HABITAT,
@@ -3864,7 +4210,8 @@
 		portOfStar, portOfStarLive, livePortCount, demotePort,
 		portIndexOf, candidateIndexOf, bestPortOfStar, distanceLy, legYears, pickDestination, pickExport,
 		shipPosition, shipProgress, shipStateName, playerPort, playerLoad, playerUnload,
-		siteHabitatScore, worldFoundingScore, intraReadoutText,
+		siteHabitatScore, worldFoundingScore, cachedSiblingScore, pickSiblingSite,
+		sponsorSiblingWorld, siblingReadoutText, intraReadoutText,
 		isBigColony, colonisationPreview, pickCandidate, bestExpedition,
 		launchBest, launchExpedition, returnFounder, retimeRoutes, colonisationStatus,
 		expandFrontierFromField, setGenerationMode, generationMode: setGenerationMode,
