@@ -2802,3 +2802,37 @@ as a separately labelled potential, never call it observed growth.
 
 Skill: derive display rates from the same state and derivative that moves the
 simulation; test at the fixed points, not just at mid-capacity.
+
+## 2026-10-29 — A carried angle is not a carried position
+
+The engine switch carried θ exactly and still moved stars by up to 9.7 kpc.
+Two different laws can agree on an angle and disagree on everything else: the
+friction field rebuilds the radius from the birth anchor through its own
+eccentric law, and it has no plane-normal state at all. Measure a transfer
+frame's residual *component by component* before deciding it is one lane short:
+project the drawn position onto the record's own sweep basis and compare the
+in-plane radius and the normal offset separately (here 9.7 kpc radial, 1.4 kpc
+normal). Carry every component the reconstruction cannot derive.
+
+The sharpest test of a "the two laws agree here" claim is `T = 0`: both laws are
+the birth field at first light, so a switch there must move nothing. The θ-only
+carry moved stars by the reconstruction's own eccentric radius (4.8 kpc worst)
+and no pin noticed, because every pin ran at `T > 0` where a jump was expected.
+Add the degenerate rung to the ladder; a swap that is supposed to be invisible is
+the cheapest bug detector there is.
+
+## 2026-10-29 — The WGSL interpreter needs every binding the module reads
+
+`wgsl-exec-check` runs the shipping sprite module through `wgsl_reflect` with
+hand-built binding maps. Once the vertex stage reads a new storage lane
+(`@group(0) @binding(5)`), *every* sprite fixture must supply it — a missing
+binding surfaces as an unrelated-looking `RangeError: Invalid typed array
+length` from deep inside the interpreter, not as "binding 5 missing". When a
+shader gains a lane, grep the fixtures for the sibling binding (`4: birthBytes`)
+and add the new one beside it, then keep one fixture with non-identity data so
+the check fails if the shader never reads it.
+
+Also: `array<vec2f>` works in the interpreter, but only via the binding map the
+fixtures pass; and a WGSL comment may not contain backticks — the shaders are
+JS template strings, so one backtick inside a `//` comment breaks the whole
+module with a `SyntaxError` pointing at the comment word.

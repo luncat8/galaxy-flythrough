@@ -157,7 +157,9 @@ function createStarRenderer(device, context, format, options) {
 		// No motion law in the stub harness: the identity stands in, so the
 		// theta carry degenerates to the birth-azimuth seed.
 		engineRecordPosition: (out, x, y, z) => { out[0] = x; out[1] = y; out[2] = z; return false; },
-		simpleCarryTheta: (qx, qy) => Math.atan2(qy, qx),
+		// No motion law in the stub harness: the carry degenerates to the birth
+		// frame — birth azimuth, unit radial scale, no normal offset.
+		simpleCarry: (out, qx, qy) => { out[0] = Math.atan2(qy, qx); out[1] = 1; out[2] = 0; return out; },
 		SIMPLE_UNIFORM_FLOATS: 20,
 	};
         const SIMPLE_UNIFORM_FLOATS = orbit.SIMPLE_UNIFORM_FLOATS || 20;
@@ -290,6 +292,10 @@ function createStarRenderer(device, context, format, options) {
                         // the vertex branch. Classic mode binds it and ignores it.
                         { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
                         { binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+                        // 0.7.10: the switch's (radial scale, normal offset) per
+                        // slot. Classic mode binds it and ignores it, exactly as
+                        // it does the azimuth lane.
+                        { binding: 5, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
                 ],
         });
         const pipeline = device.createRenderPipeline({
@@ -611,6 +617,14 @@ function createStarRenderer(device, context, format, options) {
         let thetaBuffer = null;
         let thetaData = null;
         let thetaStaging = null;
+        // The engine switch's frame transfer (0.7.10): one (radial scale, normal
+        // offset) per slot, beside theta and in the same slot layout. Identity
+        // until a switch into the friction field carries the drawn sky.
+        let carryBuffer = null;
+        let carryData = null;
+        let carryStaging = null;
+        // One reusable (theta, scale, normal) row for the carry rule's writers.
+        const carryRule = [0, 1, 0];
         let totalRecordCount = 0;
         let nebulaBuffer = null;
         let nebulaBindGroups = null;
@@ -791,25 +805,25 @@ function createStarRenderer(device, context, format, options) {
         function setEngine(id, timeMyr) {
                 const next = orbit.engineMaskOf(id);
 		const prev = orbit.getEngine();
-		if ((next & 2) !== 0 && (prev & 2) === 0) carryThetaFromDrawn(timeMyr > 0 ? timeMyr : 0);
+		if ((next & 2) !== 0 && (prev & 2) === 0) carryFromDrawn(timeMyr > 0 ? timeMyr : 0);
 		orbit.setEngine(next);
 		state.engine = (next & 1 ? 'classic ' : '') + (next & 2 ? 'simple ' : '') + (next & 4 ? 'apocenter' : '');
 		state.engine = state.engine.trim() || 'classic';
 		return state.engine;
 	}
 
-	// The theta carry: one closed-form evaluation per slot under the outgoing
-	// (still current) mask — engineRecordPosition is the parity contract for
-	// what the vertex stage draws — turned into the integrator's state by the
-	// one shared carry rule (orbit.simpleCarryTheta: the in-plane angle of the
-	// drawn position on the record's own sweep basis). Cluster members carry
-	// their centre's theta, the same reduction seedThetaRange applies, because
-	// the reconstruction rotates the centre and carries the member offset
-	// rigidly. A one-shot walk on a user action, never per frame; the scratch
-	// vector is preallocated.
+	// The switch's frame transfer: one closed-form evaluation per slot under the
+	// outgoing (still current) mask — engineRecordPosition is the parity contract
+	// for what the vertex stage draws — turned into the integrator's state by the
+	// one shared carry rule (orbit.simpleCarry: the in-plane angle, the radial
+	// scale and the normal offset of the drawn position on the record's own sweep
+	// basis). Cluster members carry their centre's state, the same reduction
+	// seedSimpleRange applies, because the reconstruction rotates the centre and
+	// carries the member offset rigidly. A one-shot walk on a user action, never
+	// per frame; the scratch vectors are preallocated.
 	const carryOut = [0, 0, 0];
 	const carryMap = [0, 0, 0];
-	function carryThetaFromDrawn(timeMyr) {
+	function carryFromDrawn(timeMyr) {
 		if (!thetaStaging || totalRecordCount <= 0 || !model) return 0;
 		const view = new DataView(staging);
 		const cx = model.centre ? model.centre.x : 0;
@@ -823,7 +837,7 @@ function createStarRenderer(device, context, format, options) {
 			const z = view.getFloat32(off + 8, true);
 			const packed = view.getUint32(off + 12, true);
 			const flags = (packed >>> 16) & 255;
-			// The placed reduction, the same one seedThetaRange makes: cluster
+			// The placed reduction, the same one seedSimpleRange makes: cluster
 			// members reduce to their centre through ONE quantisation —
 			// clusterCentreCoord reads its lattice base off the input's own
 			// bits, so feeding it its own output lands on a different lattice —
@@ -846,10 +860,13 @@ function createStarRenderer(device, context, format, options) {
 			// placed birth q the reconstruction will use.
 			orbit.engineRecordPosition(carryOut, x, y, z, packed, timeMyr, model);
 			carryOut[0] -= x - cenX; carryOut[1] -= y - cenY; carryOut[2] -= z - cenZ;
-			thetaStaging[index] = orbit.simpleCarryTheta(px - cx, py - cy, pz - cz,
+			orbit.simpleCarry(carryRule, px - cx, py - cy, pz - cz,
 				carryOut[0], carryOut[1], carryOut[2], packed, model);
+			thetaStaging[index] = carryRule[0];
+			carryStaging[index * 2] = carryRule[1];
+			carryStaging[index * 2 + 1] = carryRule[2];
 		}
-		uploadThetaRange(0, totalRecordCount);
+		uploadSimpleRange(0, totalRecordCount);
 		return totalRecordCount;
 	}
 
@@ -971,6 +988,15 @@ function createStarRenderer(device, context, format, options) {
                         size: thetaBytes,
                         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
                 });
+                if (carryBuffer) carryBuffer.destroy();
+                const carryBytes = Math.max(16, totalRecords * 8);
+                carryData = new ArrayBuffer(carryBytes);
+                carryStaging = new Float32Array(carryData);
+                carryBuffer = device.createBuffer({
+                        label: 'simple-carry',
+                        size: carryBytes,
+                        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                });
                 bindGroup = device.createBindGroup({
                         label: 'star-sprite-bind-group',
                         layout: bindGroupLayout,
@@ -980,6 +1006,7 @@ function createStarRenderer(device, context, format, options) {
                                 { binding: 2, resource: lutTexture.createView() },
                                 { binding: 3, resource: { buffer: thetaBuffer } },
                                 { binding: 4, resource: { buffer: birthBuffer } },
+                                { binding: 5, resource: { buffer: carryBuffer } },
                         ],
                 });
                 simpleBindGroup = device.createBindGroup({
@@ -1015,16 +1042,18 @@ function createStarRenderer(device, context, format, options) {
                                         { binding: 2, resource: { buffer } },
                                 ],
                         }));
-                state.bufferBytes = totalBytes + nebulaBytes + thetaBytes + Math.max(4, totalRecords * 4)
+                state.bufferBytes = totalBytes + nebulaBytes + thetaBytes + carryBytes + Math.max(4, totalRecords * 4)
                         + (gasGridEnabled ? 2 * gasLib.GAS_BYTES : 16);
         }
 
-        // Seed the simple-engine azimuths from the birth positions in staging.
-        // Zero (invisible) records get atan2 of the negated centre — harmless,
+        // Seed the simple-engine lane from the birth positions in staging: the
+        // azimuths, plus the identity carry (unit radial scale, no normal
+        // offset) that makes the reconstruction the birth law itself. Zero
+        // (invisible) records get atan2 of the negated centre — harmless,
         // because the compute pass and the vertex shader both skip invisible
         // slots before reading theta.
-        function seedThetaRange(recordStart, recordCount) {
-                if (!thetaStaging || recordCount <= 0) return 0;
+        function seedSimpleRange(recordStart, recordCount) {
+                if (!thetaStaging) return 0;
                 const view = new DataView(staging);
                 const cx = model.centre ? model.centre.x : 0;
                 const cy = model.centre ? model.centre.y : 0;
@@ -1053,32 +1082,43 @@ function createStarRenderer(device, context, format, options) {
                                 }
                         }
                         thetaStaging[index] = Math.atan2(y - cy, x - cx);
+                        carryStaging[index * 2] = 1;
+                        carryStaging[index * 2 + 1] = 0;
                 }
                 return recordCount;
         }
 
-        function uploadThetaRange(recordStart, recordCount) {
+        function uploadSimpleRange(recordStart, recordCount) {
                 if (recordCount <= 0) return;
                 device.queue.writeBuffer(thetaBuffer, recordStart * 4, thetaData, recordStart * 4, recordCount * 4);
+                device.queue.writeBuffer(carryBuffer, recordStart * 8, carryData, recordStart * 8, recordCount * 8);
         }
 
         // The named stars' azimuths are *integrated* by the CPU mirror (they are
         // on the simple lane too, and the mirror is what labels and picks use),
         // so the buffer takes the mirror's numbers rather than a fresh atan2 of
-        // the drawn position. That is a sync, not a carry: E4 retired the
+        // the drawn position — azimuth and carry alike, since the mirror is the
+        // one that carried them. That is a sync, not a carry: E4 retired the
         // pattern-phase shift the old `carryThetas` also applied, because the
         // field is drawn into the frame it is displayed in.
-        function syncLandmarkThetas() {
+        function syncLandmarkLane() {
                 if (!thetaStaging || landmarkCount <= 0) return 0;
                 if (!orbit.simpleLandmarksReady || !orbit.simpleLandmarksReady()) return 0;
-                for (let i = 0; i < landmarkCount; i++) thetaStaging[proceduralCount + i] = orbit.simpleLandmarkTheta(i);
+                for (let i = 0; i < landmarkCount; i++) {
+                        const slot = proceduralCount + i;
+                        thetaStaging[slot] = orbit.simpleLandmarkTheta(i);
+                        if (!orbit.simpleLandmarkCarry) continue;
+                        orbit.simpleLandmarkCarry(i, carryRule);
+                        carryStaging[slot * 2] = carryRule[0];
+                        carryStaging[slot * 2 + 1] = carryRule[1];
+                }
                 return landmarkCount;
         }
 
         function seedThetaAll() {
                 if (!thetaStaging || totalRecordCount <= 0) return 0;
-                const n = seedThetaRange(0, totalRecordCount);
-                uploadThetaRange(0, totalRecordCount);
+                const n = seedSimpleRange(0, totalRecordCount);
+                uploadSimpleRange(0, totalRecordCount);
                 return n;
         }
 
@@ -1657,9 +1697,9 @@ function createStarRenderer(device, context, format, options) {
                 // caller that reaches prepare re-seeds, which is the point: the
                 // thetas are a function of the birth positions it just drew.
                 const fixedRecords = proceduralCount + landmarkCount + objectCapacity;
-                seedThetaRange(0, fixedRecords);
-                syncLandmarkThetas();
-                uploadThetaRange(0, fixedRecords);
+                seedSimpleRange(0, fixedRecords);
+                syncLandmarkLane();
+                uploadSimpleRange(0, fixedRecords);
                 return state;
         }
 
@@ -2180,8 +2220,8 @@ function createStarRenderer(device, context, format, options) {
                 // on every rebuild — those stars snap phase when cells change
                 // (documented in the plan; the fixed block never does).
                 const dynamicStart = localProceduralByteOffset / records.RECORD_BYTES;
-                seedThetaRange(dynamicStart, localProceduralCapacity + catalogCapacity);
-                uploadThetaRange(dynamicStart, localProceduralCapacity + catalogCapacity);
+                seedSimpleRange(dynamicStart, localProceduralCapacity + catalogCapacity);
+                uploadSimpleRange(dynamicStart, localProceduralCapacity + catalogCapacity);
 
                 // 4) If the local region is smaller than its capacity, zero out
                 // the remaining slots by marking FLAG_VISIBLE off so they don't
@@ -2435,6 +2475,7 @@ function createStarRenderer(device, context, format, options) {
                 if (gasBufferB) gasBufferB.destroy();
                 if (gasEmptyBuffer) gasEmptyBuffer.destroy();
                 if (thetaBuffer) thetaBuffer.destroy();
+                if (carryBuffer) carryBuffer.destroy();
                 if (hdrTexture) hdrTexture.destroy();
                 uniformBuffer.destroy();
                 tonemapUniformBuffer.destroy();

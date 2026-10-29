@@ -1268,11 +1268,15 @@ function cellManagerFrom(m, budget) {
                 engRenderer.state.engine === 'classic' && totalSlots === starBuf.size / 16,
                 { engine: engRenderer.state.engine, slots: totalSlots });
         const birthBuf = engGpu.buffers.find(b => b.label === 'star-birth-times');
+        const carryBuf = engGpu.buffers.find(b => b.label === 'simple-carry');
         const gasA = engGpu.buffers.find(b => b.label === 'gas-grid-a');
         const gasB = engGpu.buffers.find(b => b.label === 'gas-grid-b');
-        check('state.bufferBytes counts the star, nebula, theta, birth and two gas-grid buffers',
-                engRenderer.state.bufferBytes === starBuf.size + nebBuf.size + thetaBuf.size + birthBuf.size
-                        + gasA.size + gasB.size,
+        check('the carry lane is one (scale, normal) pair per slot, beside the azimuths',
+                carryBuf.size === 2 * 4 * totalSlots,
+                { carrySlots: carryBuf.size / 8, slots: totalSlots });
+        check('state.bufferBytes counts the star, nebula, theta, carry, birth and two gas-grid buffers',
+                engRenderer.state.bufferBytes === starBuf.size + nebBuf.size + thetaBuf.size + carryBuf.size
+                        + birthBuf.size + gasA.size + gasB.size,
                 { bufferBytes: engRenderer.state.bufferBytes });
         const fixedSlots = 1000 + window.Landmarks.count + 100;
         const fixedTheta = engGpu.thetaWrites.find(w => w.offset === 0);

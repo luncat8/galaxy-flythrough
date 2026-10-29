@@ -3,7 +3,7 @@
 // the same status as tonemap-mirror.js). It records every buffer write, so a
 // test can decode the bytes the renderer *would* have uploaded and check them
 // against the model: star records, the camera/orbit uniforms and the simple
-// engine's theta lane (`gpu.thetaWrites`).
+// engine's theta lane (`gpu.thetaWrites`) and its carry lane (`gpu.carryWrites`).
 //
 // `createMockGpu()` returns { device, context, format, buffers, textures,
 // shaderModules, pipelines, uniformWrites, tonemapUniformWrites,
@@ -22,6 +22,7 @@ function createMockGpu() {
 		tonemapUniformWrites: [],
 		simpleUniformWrites: [],
 		thetaWrites: [],
+		carryWrites: [],
 		bufferWrites: [],
 		draws: [],
 		passes: [],
@@ -103,6 +104,7 @@ function createMockGpu() {
 				else if (buffer.label === 'tonemap-uniform') gpu.tonemapUniformWrites.push(copy);
 				else if (buffer.label === 'simple-step-uniform') gpu.simpleUniformWrites.push(copy);
 				else if (buffer.label === 'simple-theta') gpu.thetaWrites.push({ buffer, offset, bytes: copy });
+				else if (buffer.label === 'simple-carry') gpu.carryWrites.push({ buffer, offset, bytes: copy });
 				else gpu.bufferWrites.push({ buffer, offset, bytes: copy });
 			},
 			submit() {},

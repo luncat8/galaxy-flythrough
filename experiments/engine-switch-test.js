@@ -19,10 +19,12 @@
 //                    two different laws (reported, not pinned)
 //
 // Pins (R4): the shipped theta equals the carried azimuth of the drawn
-// position; the residual jump stays inside the two lanes' own radial
-// excursions; a switch that does not engage simple never touches the theta
-// buffer; the landmark and tracked mirrors carry the same instant, so labels,
-// picks and trade predictions agree with the sprites.
+// position; the shipped carry lane puts every star back on the drawn radius
+// and height, so a carried switch is a positional identity up to f32 (and at
+// T = 0 exactly, which is what "the two laws agree at birth" means); a switch
+// that does not engage simple never touches either lane; the landmark and
+// tracked mirrors carry the same instant and the same frame, so labels, picks
+// and trade predictions agree with the sprites.
 //
 // Output: experiments/logs/engine-switch.json
 
@@ -187,8 +189,8 @@ function drawnThetaOf(s, time) {
 function reseedThetaOf(s) {
 	return azimuth(centre.x, centre.y, s.placed[0], s.placed[1]);
 }
-function reconAt(s, theta, time) {
-	orbit.engineRecordPositionTheta(posScratch, s.rec.x, s.rec.y, s.rec.z, s.rec.packed, time, model, theta);
+function reconAt(s, theta, carry, time) {
+	orbit.engineRecordPositionTheta(posScratch, s.rec.x, s.rec.y, s.rec.z, s.rec.packed, time, model, theta, carry);
 	return [posScratch[0] - s.off[0], posScratch[1] - s.off[1], posScratch[2] - s.off[2]];
 }
 
@@ -232,6 +234,14 @@ function decodeLastThetaWrite(writes, marker) {
 	const last = fresh[fresh.length - 1];
 	return new Float32Array(last.bytes.buffer, last.bytes.byteOffset, last.bytes.byteLength / 4);
 }
+// The carry lane's last upload, two f32 per slot (radial scale, normal offset).
+function decodeLastCarryWrite(writes, marker) {
+	const fresh = writes.slice(marker);
+	if (!fresh.length) return new Float32Array(0);
+	const last = fresh[fresh.length - 1];
+	if (last.offset !== 0) return new Float32Array(0);
+	return new Float32Array(last.bytes.buffer, last.bytes.byteOffset, last.bytes.byteLength / 4);
+}
 
 const ladder = [];
 let landmarkThetaAt1000 = null;
@@ -254,10 +264,13 @@ for (const T of T_LADDER) {
 		if (d > maxLawFrame) maxLawFrame = d;
 	}
 	const marker = gpuA.thetaWrites.length;
+	const carryMarker = gpuA.carryWrites.length;
 	rendererA.setEngine('simple', T);
 	const thetaUploaded = decodeLastThetaWrite(gpuA.thetaWrites, marker);
+	const carryUploaded = decodeLastCarryWrite(gpuA.carryWrites, carryMarker);
 	const thetaErr = { carry: [], reseed: [] };
 	const jumpShipped = [];
+	const jumpThetaOnly = [];
 	const jumpReseed = [];
 	const landingErr = [];
 	let boundViolations = 0;
@@ -267,19 +280,26 @@ for (const T of T_LADDER) {
 		const thCarry = thCarryAll[i];
 		const thReseed = reseedThetaOf(s);
 		const thShipped = thetaUploaded.length ? thetaUploaded[s.slot] : NaN;
+		const carrySlot = carryUploaded.length >= (s.slot + 1) * 2
+			? [carryUploaded[s.slot * 2], carryUploaded[s.slot * 2 + 1]] : null;
 		thetaErr.carry.push(angDiff(thShipped, thCarry));
 		thetaErr.reseed.push(angDiff(thShipped, thReseed));
 		const pb = projectPlane(s, before[i]);
 		const angBefore = Math.atan2(pb.d1, pb.d0);
 		const rBeforePlane = Math.hypot(pb.d0, pb.d1);
 		const nBefore = pb.n;
-		const afterShipped = reconAt(s, thShipped, T);
-		const afterReseed = reconAt(s, thReseed, T);
+		const afterShipped = reconAt(s, thShipped, carrySlot, T);
+		const afterThetaOnly = reconAt(s, thShipped, null, T);
+		const afterReseed = reconAt(s, thReseed, null, T);
 		const pa = projectPlane(s, afterShipped);
 		landingErr.push(angDiff(Math.atan2(pa.d1, pa.d0), angBefore));
 		jumpShipped.push(dist3(afterShipped, before[i]));
+		jumpThetaOnly.push(dist3(afterThetaOnly, before[i]));
 		jumpReseed.push(dist3(afterReseed, before[i]));
-		const slack = carryBound(s, rBeforePlane, nBefore) - dist3(afterShipped, before[i]);
+		// The bound the carried *azimuth* alone can promise: the two radial
+		// laws' excursions plus the normal the reconstruction does not carry.
+		// Measured on the θ-only lane — that is the lane the bound describes.
+		const slack = carryBound(s, rBeforePlane, nBefore) - dist3(afterThetaOnly, before[i]);
 		if (slack < 0) boundViolations++;
 		if (slack < boundWorstSlack) boundWorstSlack = slack;
 	}
@@ -292,7 +312,8 @@ for (const T of T_LADDER) {
 		boundWorstSlackKpc: +boundWorstSlack.toFixed(4),
 		shippedIsCarryAzMaxErrRad: +stats(thetaErr.carry).max.toExponential(3),
 		shippedIsReseedMaxErrRad: +stats(thetaErr.reseed).max.toExponential(3),
-		jumpShippedKpc: { max: +stats(jumpShipped).max.toFixed(4), p99: +stats(jumpShipped).p99.toFixed(4), median: +stats(jumpShipped).median.toFixed(4) },
+		jumpShippedKpc: { max: +stats(jumpShipped).max.toExponential(2), p99: +stats(jumpShipped).p99.toExponential(2), median: +stats(jumpShipped).median.toExponential(2) },
+		jumpThetaOnlyKpc: { max: +stats(jumpThetaOnly).max.toFixed(4), p99: +stats(jumpThetaOnly).p99.toFixed(4), median: +stats(jumpThetaOnly).median.toFixed(4) },
 		jumpReseedKpc: { max: +stats(jumpReseed).max.toFixed(4), p99: +stats(jumpReseed).p99.toFixed(4), median: +stats(jumpReseed).median.toFixed(4) },
 	};
 	ladder.push(row);
@@ -302,7 +323,10 @@ for (const T of T_LADDER) {
 		for (let i = 0; i < slotsA.length; i++) {
 			const s = slotsA[i];
 			if (s.kind === 1) landmarkThetaAt1000.set(s.slot - infoA.blocks[1].offset, thetaUploaded[s.slot]);
-			if (s.kind === 0) slotsByFieldKey.set(s.key, { s, theta: thetaUploaded[s.slot], thCarry: thCarryAll[i], before: before[i] });
+			if (s.kind === 0) slotsByFieldKey.set(s.key, {
+				s, theta: thetaUploaded[s.slot], thCarry: thCarryAll[i], before: before[i],
+				carry: [carryUploaded[s.slot * 2], carryUploaded[s.slot * 2 + 1]],
+			});
 		}
 	}
 }
@@ -327,14 +351,40 @@ check('R4: switching into simple lands every drawn in-plane angle (theta map, no
 	landingOk && epochIdle,
 	{ worstErrRad: landingWorst, ladder: ladder.map((r) => ({ T: r.T, err: r.landingMaxErrRad })) });
 
-// The residual jump must stay inside the two lanes' own excursions — the
-// exact triangle bound: the friction field's eccentric modulation of the
-// birth anchor, plus the radial wobble the star already had, plus the classic
-// normal wobble the reconstruction does not carry. The reseed's Ω·T teleport
-// is unbounded in T; this bound is a property of the lanes, not of the clock.
-check('R4: the carried switch lands every star inside its own two-lane excursion bound (no teleport)',
+// The θ-only residual — what the 0.7.8 carry could promise, and the lane the
+// bound below describes: the friction field's eccentric modulation of the birth
+// anchor, plus the radial wobble the star already had, plus the classic normal
+// wobble the reconstruction does not carry. The reseed's Ω·T teleport is
+// unbounded in T; this bound is a property of the lanes, not of the clock.
+check('R4: the theta-only reconstruction stays inside its own two-lane excursion bound (no teleport)',
 	boundViolationsTotal === 0,
 	{ violations: boundViolationsTotal, worstSlackKpc: boundWorstSlack, eccMax: +eccMax.toFixed(4) });
+
+// 0.7.10 — the carry lane. θ alone lands the *angle*; the two lanes' radial
+// laws and the classic lane's normal wobble still moved the star by up to
+// 9.7 kpc. The lane's (scale, normal) is the same frame transfer measured on
+// the drawn position, so what is left is the f32 rounding of two uploads and
+// one projection: the switch is a positional identity to the milliparsec.
+let carryLaneOk = true;
+let carryWorst = 0;
+let thetaOnlyWorst = 0;
+for (const row of ladder) {
+	if (!(row.jumpShippedKpc.max <= 1e-3)) carryLaneOk = false;
+	if (row.jumpShippedKpc.max > carryWorst) carryWorst = row.jumpShippedKpc.max;
+	if (row.jumpThetaOnlyKpc.max > thetaOnlyWorst) thetaOnlyWorst = row.jumpThetaOnlyKpc.max;
+}
+check('R4: the carry lane lands every star on the drawn position (<= 1 pc at every rung)',
+	carryLaneOk,
+	{ worstKpc: carryWorst, thetaOnlyWorstKpc: +thetaOnlyWorst.toFixed(3),
+		ladder: ladder.map((r) => ({ T: r.T, carried: r.jumpShippedKpc.max, thetaOnly: r.jumpThetaOnlyKpc.max })) });
+
+// T = 0 is where this is not a nicety: both laws ARE the birth field there, so
+// selecting the friction field at first light must not move a single star. The
+// θ-only lane failed that by the reconstruction's own eccentric radius (4.8 kpc
+// worst on this model) — the carry is the fix, and this is its regression.
+check('at T = 0 the carried switch is a positional identity (no star moves at first light)',
+	ladder[0].jumpShippedKpc.max <= 1e-3 && ladder[0].jumpThetaOnlyKpc.max > 1,
+	{ carriedKpc: ladder[0].jumpShippedKpc.max, thetaOnlyKpc: ladder[0].jumpThetaOnlyKpc.max });
 
 // The reseed comparison, for the record: at every T > 0 the carried jump must
 // be a small fraction of the birth re-seed's.
@@ -359,13 +409,30 @@ check('at T = 0 the carried seed and the birth seed agree (no boot-behaviour cha
 {
 	rendererA.setEngine('simple', 5000);
 	const markerSimple = gpuA.thetaWrites.length;
+	const carryMarkerSimple = gpuA.carryWrites.length;
 	rendererA.setEngine(['simple', 'apocenter'], 5000);
-	const keptOnMaskGrow = gpuA.thetaWrites.length === markerSimple;
+	const keptOnMaskGrow = gpuA.thetaWrites.length === markerSimple && gpuA.carryWrites.length === carryMarkerSimple;
 	rendererA.setEngine('classic', 5000);
-	const keptOnLeave = gpuA.thetaWrites.length === markerSimple;
-	check('R4: a switch that keeps or leaves simple never re-writes the theta buffer',
+	const keptOnLeave = gpuA.thetaWrites.length === markerSimple && gpuA.carryWrites.length === carryMarkerSimple;
+	check('R4: a switch that keeps or leaves simple never re-writes the theta or carry lane',
 		keptOnMaskGrow && keptOnLeave,
-		{ writesAfterGrow: gpuA.thetaWrites.length - markerSimple, keptOnLeave });
+		{ writesAfterGrow: gpuA.thetaWrites.length - markerSimple, carryWrites: gpuA.carryWrites.length - carryMarkerSimple, keptOnLeave });
+}
+
+// The lane's other end: a field seeded from birth (boot, regenerate, R) carries
+// the identity — unit radial scale, no normal offset — so the reconstruction is
+// the birth law and nothing about boot changes.
+{
+	const seeded = gpuA.carryWrites.length ? gpuA.carryWrites[gpuA.carryWrites.length - 1] : null;
+	rendererA.resetSimpleState();
+	const fresh = gpuA.carryWrites[gpuA.carryWrites.length - 1];
+	const pair = fresh ? new Float32Array(fresh.bytes.buffer, fresh.bytes.byteOffset, fresh.bytes.byteLength / 4) : new Float32Array(0);
+	let identityOk = pair.length > 0;
+	for (let i = 0; i < pair.length; i += 2) {
+		if (pair[i] !== 1 || pair[i + 1] !== 0) identityOk = false;
+	}
+	check('a birth-seeded field carries the identity lane (unit scale, no normal offset)',
+		identityOk, { pairs: pair.length / 2, seededPairs: seeded ? seeded.bytes.byteLength / 8 : 0 });
 }
 
 // Law-vs-law divergence, reported not pinned: a field run under simple from
@@ -443,18 +510,12 @@ if (hasCarryFrom) {
 		lmThetaErr.push(angDiff(orbit.simpleLandmarkTheta(i), gpuTheta));
 	}
 }
-const lmBoundOk = (() => {
-	for (let i = 0; i < landmarks.count; i++) {
-		const e = landmarks.ENTRIES[i];
-		const rBirth = Math.hypot(e.x - centre.x, e.y - centre.y);
-		const rDrawn = Math.hypot(lmDrawn[i * 3] - centre.x, lmDrawn[i * 3 + 1] - centre.y);
-		const bound = Math.abs(rDrawn - rBirth) + eccMax * rBirth + 0.15 * rBirth;
-		if (lmJumpCarry[i] > bound) return false;
-	}
-	return true;
-})();
-check('R4: the carried landmark mirror lands inside the two-lane radial bound and keeps the GPU theta',
-	lmCarryOk && lmBoundOk && stats(lmJumpCarry).max <= stats(lmJumpOld).max
+// The mirror and the renderer evaluate the same rule on the same drawn
+// positions, so the mirror is exact — and it is on the *drawn* sky, not merely
+// inside the radial bound the θ-only carry could promise.
+const lmExactOk = stats(lmJumpCarry).max <= 1e-9;
+check('R4: the carried landmark mirror lands on the drawn sky and keeps the GPU theta',
+	lmCarryOk && lmExactOk && stats(lmJumpCarry).max <= stats(lmJumpOld).max
 	&& stats(lmThetaErr).max <= 1e-5,
 	{
 		jumpOldKpc: { max: +stats(lmJumpOld).max.toFixed(3), median: +stats(lmJumpOld).median.toFixed(3) },
@@ -462,9 +523,11 @@ check('R4: the carried landmark mirror lands inside the two-lane radial bound an
 		gpuThetaMaxErrRad: +stats(lmThetaErr).max.toExponential(3),
 	});
 // The mirror reconstructs through the vertex stage's own function on the
-// birth anchor: same theta, same radius law — no label/sprite drift.
+// birth anchor: same theta, same radius law, same carried frame — no
+// label/sprite drift.
 {
 	let driftOk = true;
+	const mirrorCarry = [0, 0];
 	for (let i = 0; i < landmarks.count; i++) {
 		const e = landmarks.ENTRIES[i];
 		orbit.simpleLandmarkPosition(posScratch, i);
@@ -472,9 +535,10 @@ check('R4: the carried landmark mirror lands inside the two-lane radial bound an
 		// The mirror stores the f32 birth table (main.js keeps it in a
 		// Float32Array), so the vertex-side comparison reads the same rounded
 		// bytes — an f64 birth here would differ by the rounding alone.
+		orbit.simpleLandmarkCarry(i, mirrorCarry);
 		orbit.simplePositionFromTheta(centreScratch, orbit.simpleLandmarkTheta(i),
 			lmBirth[i * 3], lmBirth[i * 3 + 1], lmBirth[i * 3 + 2],
-			0, orbit.familyFromColorIndex(e.colorIndex), eccMax, model);
+			0, orbit.familyFromColorIndex(e.colorIndex), eccMax, model, mirrorCarry);
 		if (dist3(mirror, centreScratch) > 1e-9) driftOk = false;
 	}
 	check('the carried mirror reconstructs identically to the vertex stage on the birth anchor (no drift)',
@@ -502,6 +566,29 @@ check('R4: the carried landmark mirror lands inside the two-lane radial bound an
 	check('R4: tracks seeded after a carried switch start on the carried azimuth (== the GPU theta)',
 		seedErr.length > 100 && stats(seedErr).max <= 1e-5,
 		{ tracked: seedErr.length, maxErrRad: +stats(seedErr).max.toExponential(3) });
+
+	// The mirror carries the whole frame, not just the azimuth: its (scale,
+	// normal) is the lane the renderer uploaded for that record, and the record
+	// reconstructed from it lands on the drawn position — so a trade booking
+	// aims at the star the sky shows, which is the §9.5 contract.
+	const carryErr = [];
+	const seedJump = [];
+	const pair = [1, 0];
+	const landed = [0, 0, 0];
+	for (const e of sample) {
+		const slot = orbit.simpleTrackSlotOf(e.s.key);
+		if (slot < 0) continue;
+		orbit.simpleTrackCarry(slot, pair);
+		carryErr.push(Math.abs(pair[0] - e.carry[0]));
+		carryErr.push(Math.abs(pair[1] - e.carry[1]));
+		orbit.engineRecordPositionTheta(landed, e.s.rec.x, e.s.rec.y, e.s.rec.z, e.s.rec.packed,
+			T_B, model, orbit.simpleTrackTheta(slot), pair);
+		seedJump.push(dist3(landed, e.before));
+	}
+	check('R4: a track seeded by the carry reconstructs the drawn position (scale, normal and azimuth)',
+		seedJump.length > 100 && stats(seedJump).max <= 1e-6 && stats(carryErr).max <= 1e-6,
+		{ tracks: seedJump.length, worstJumpKpc: +stats(seedJump).max.toExponential(2),
+			worstCarryErr: +stats(carryErr).max.toExponential(2) });
 	// A late track catches up to the same instant: seeded at T + dt after one
 	// mirror step, it must equal a track seeded at T and stepped (same law,
 	// same clock — the chunked catch-up against the lockstep step).
@@ -568,14 +655,18 @@ check('R4: the carried landmark mirror lands inside the two-lane radial bound an
 	// The expected carried thetas, measured under the outgoing classic mask
 	// before the switch commits the new one, through the one shared carry rule
 	// (for the observed sky's horizontal families it is the drawn azimuth).
-	const thCarryD = streamSlots.map((s) => {
+	const streamDrawn = streamSlots.map((s) => {
 		orbit.engineRecordPosition(posScratch, s.rec.x, s.rec.y, s.rec.z, s.rec.packed, T_D, mwModel);
-		return orbit.simpleCarryTheta(s.rec.x - cD.x, s.rec.y - cD.y, s.rec.z - cD.z,
-			posScratch[0], posScratch[1], posScratch[2], s.rec.packed, mwModel);
+		return [posScratch[0], posScratch[1], posScratch[2]];
 	});
+	const thCarryD = streamSlots.map((s, i) => orbit.simpleCarryTheta(
+		s.rec.x - cD.x, s.rec.y - cD.y, s.rec.z - cD.z,
+		streamDrawn[i][0], streamDrawn[i][1], streamDrawn[i][2], s.rec.packed, mwModel));
 	const marker = gpuD.thetaWrites.length;
+	const carryMarkerD = gpuD.carryWrites.length;
 	rendererD.setEngine('simple', T_D);
 	const thetaD = decodeLastThetaWrite(gpuD.thetaWrites, marker);
+	const carryD = decodeLastCarryWrite(gpuD.carryWrites, carryMarkerD);
 	const carryErrD = [];
 	for (let i = 0; i < streamSlots.length; i++) {
 		carryErrD.push(angDiff(thetaD[streamSlots[i].slot], thCarryD[i]));
@@ -583,6 +674,20 @@ check('R4: the carried landmark mirror lands inside the two-lane radial bound an
 	check('R4: local and catalog slots carry their drawn azimuths on the switch too',
 		carryErrD.length > 0 && stats(carryErrD).max <= 1e-5,
 		{ slots: carryErrD.length, maxErrRad: +stats(carryErrD).max.toExponential(3) });
+	// And their frame: the streaming blocks are drawn by the same lane, so a
+	// switch must not leave the observed sky a few kpc off its own stars.
+	const streamJump = [];
+	const streamPos = [0, 0, 0];
+	for (let i = 0; i < streamSlots.length; i++) {
+		const s = streamSlots[i];
+		const frame = [carryD[s.slot * 2], carryD[s.slot * 2 + 1]];
+		orbit.engineRecordPositionTheta(streamPos, s.rec.x, s.rec.y, s.rec.z, s.rec.packed,
+			T_D, mwModel, thetaD[s.slot], frame);
+		streamJump.push(dist3(streamPos, streamDrawn[i]));
+	}
+	check('R4: local and catalog slots carry the radial scale and normal offset as well',
+		streamJump.length > 0 && stats(streamJump).max <= 1e-3,
+		{ slots: streamJump.length, worstKpc: +stats(streamJump).max.toExponential(2) });
 	rendererD.dispose();
 }
 
@@ -599,7 +704,8 @@ for (const c of checks) {
 console.log('\n--- R4 ladder (fixed blocks, kpc) ---');
 for (const row of ladder) {
 	console.log(`  T=${String(row.T).padStart(4)} Myr · law frame ${row.maxLawFrameDeltaKpc.toFixed(4)}`
-		+ ` · shipped max ${row.jumpShippedKpc.max.toFixed(3)} (med ${row.jumpShippedKpc.median.toFixed(3)})`
+		+ ` · carried max ${row.jumpShippedKpc.max.toExponential(2)} (med ${row.jumpShippedKpc.median.toExponential(2)})`
+		+ ` · theta-only max ${row.jumpThetaOnlyKpc.max.toFixed(3)}`
 		+ ` · reseed max ${row.jumpReseedKpc.max.toFixed(3)} (med ${row.jumpReseedKpc.median.toFixed(3)})`
 		+ ` · landing err ${row.landingMaxErrRad.toExponential(1)} rad · bound slack ${row.boundWorstSlackKpc.toFixed(3)}`);
 }

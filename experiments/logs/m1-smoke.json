@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-28T04:53:13.614Z",
+  "date": "2026-10-29T02:48:59.532Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -488,7 +488,7 @@
       "name": "OrbitLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 137
+        "keys": 141
       }
     },
     {
@@ -565,14 +565,14 @@
       "name": "EconomyLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 95
+        "keys": 99
       }
     },
     {
       "name": "TradeLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 168
+        "keys": 192
       }
     },
     {

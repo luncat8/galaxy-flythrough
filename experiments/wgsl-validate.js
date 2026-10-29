@@ -446,9 +446,14 @@ function wgslConsts(part) {
 		&& /\(mask & 2u\) != 0u/.test(sprite)
 		&& /\(mask & 1u\) != 0u/.test(sprite)
 		&& /\(mask & 4u\) != 0u/.test(sprite)
-		&& /fn starMovedPosition\(star: StarPacked, thetaValue: f32\) -> vec3f/.test(sprite)
-		&& /starMovedPosition\(star, theta\[starIdx\]\)/.test(sprite)
+		&& /fn starMovedPosition\(star: StarPacked, thetaValue: f32, carryValue: vec2f\) -> vec3f/.test(sprite)
+		&& /starMovedPosition\(star, theta\[starIdx\], carry\[starIdx\]\)/.test(sprite)
 		&& /simplePosition\(birth, star\.packed, thetaValue/.test(sprite)
+		// 0.7.10: the switch's frame transfer rides binding 5 and is applied by
+		// the one reconstruction, so the GPU and simplePositionFromTheta's carry
+		// argument are the same law.
+		&& /@group\(0\)\s*@binding\(5\)\s*var<storage,\s*read>\s+carry: array<vec2f>/.test(sprite)
+		&& /rho \* carry\.x\) \* radial \+ carry\.y \* pl\.nrm/.test(sprite)
 		&& /orbitPosition\([^;]*camera\.params\.w/s.test(sprite)
 		&& /moved = birth;/.test(sprite),
 		shaders.SHADERS['star-sprite'].includes('mask & 4u'));
@@ -603,9 +608,9 @@ function wgslConsts(part) {
 		// carry can run it under an explicitly named *outgoing* mask); both
 		// entry points must delegate into it, the current-mask one with the
 		// live `engine`, the masked one with its argument.
-		&& /recordDispatch\(out, x, y, z, packed, engine, time, model, theta\)/
+		&& /recordDispatch\(out, x, y, z, packed, engine, time, model, theta, carry\)/
 			.test(extractFunction(orbitSrc, 'engineRecordPositionTheta'))
-		&& /recordDispatch\(out, x, y, z, packed, mask, time, model, -1\)/
+		&& /recordDispatch\(out, x, y, z, packed, mask, time, model, -1, null\)/
 			.test(extractFunction(orbitSrc, 'engineRecordPositionMasked'))
 		&& /readOrbit\(packed\)/.test(extractFunction(orbitSrc, 'recordDispatch'))
 		&& /mask & ENGINE_CLASSIC/.test(extractFunction(orbitSrc, 'recordDispatch'))
@@ -658,9 +663,16 @@ function wgslConsts(part) {
                 && /simple\.stepE\.x \* damp/.test(simpleWgsl)
                 && /\(1\.0 - simple\.stepE\.x \* damp\)/.test(simpleWgsl));
         check('both sides reconstruct from the integrated azimuth (simplePositionFromTheta ↔ simplePosition)',
-                /function simplePositionFromTheta\(/.test(orbitSrc)
-                && /^fn simplePosition\(/m.test(orbitWgsl)
-                && /simplePositionFromTheta/.test(readSource('src/math/orbit.js')));
+                /function simplePositionFromTheta\(out, theta, x, y, z, jitter, family, eccMax, model, carry\)/
+                        .test(orbitSrc)
+                && /^fn simplePosition\(p: vec3f, packed: u32, theta: f32, centre: vec3f, eccMax: f32, carry: vec2f\)/m
+                        .test(orbitWgsl)
+                && /simplePositionFromTheta/.test(readSource('src/math/orbit.js'))
+                // The switch frame's two numbers are the same arithmetic on both
+                // sides: the radius law is one function here and the carried
+                // scale/offset multiply it there.
+                && /simpleRadius\(pl, theta, jitter, family, eccMax\) \* scale/.test(orbitSrc)
+                && /function simpleRadius\(pl, theta, jitter, family, eccMax\)/.test(orbitSrc));
         // The engine lane is a bit mask, not an id: classic is the base law,
         // simple and apocenter are composable passes the vertex tests by bit.
         check('the engine lane is the bit mask the classic/simple/apocenter dispatch shares',

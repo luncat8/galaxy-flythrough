@@ -652,26 +652,61 @@ function orbitPlane(qx, qy, qz, family, phase, amplitude, out) {
 // per-frame allocation (AGENTS hot-path rule).
 const orbitScratch = { vFlat: 0, rCore: 0, omegaPattern: 0, spinLambda: 0, sigmaThin: 0, pressureAmpScale: 0, discHeight: 0, patternLock: 0 };
 
-// The one R4 carry rule (formation-plan §6), shared by the renderer's theta
-// walk and the tracked mirror's seed so they cannot disagree: the
-// reconstruction's theta is the birth xy azimuth PLUS the sweep's in-plane
-// angle. For the two horizontal families (disc, pattern) that is exactly the
-// drawn position's xy azimuth; for the two inclined families (bar, pressure)
-// the xy azimuth is not the plane's angle and carrying it would put the star
-// on the wrong side of a tilted orbit (measured: up to 45 kpc). Project the
-// drawn position onto the record's own orbitPlane — the normal wobble drops
-// out, n ⊥ e0/e1 — and return the theta whose reconstruction lands on the
-// drawn in-plane direction. `q` is the birth vector relative to the centre
-// (cluster records: the centre's), `drawn*` the absolute drawn position.
+// The one R4 carry rule (formation-plan §6), shared by the renderer's carry
+// walk and both CPU mirrors so they cannot disagree. A switch into the simple
+// engine transfers three numbers per star, all measured on the drawn position
+// under the outgoing mask, on the record's own `orbitPlane` basis:
+//
+//   θ      the reconstruction's azimuth: the birth xy azimuth PLUS the sweep's
+//          in-plane angle. For the two horizontal families (disc, pattern) that
+//          is exactly the drawn position's xy azimuth; for the two inclined
+//          families (bar, pressure) the xy azimuth is not the plane's angle and
+//          carrying it would put the star on the wrong side of a tilted orbit
+//          (measured: up to 45 kpc).
+//   scale  the drawn in-plane radius over the radius the reconstruction's own
+//          eccentric law gives at that θ. The two lanes' radial laws differ (an
+//          eccentric rho against the classic sweep's radial wobble), so a θ-only
+//          carry left up to 9.7 kpc of the drawn sky behind; the scale is the
+//          per-star constant that puts the reconstruction on the drawn circle.
+//   offset the drawn position's component along the plane normal. The simple
+//          reconstruction has no normal state at all, so this is the only way a
+//          star keeps the height the classic lane gave it (up to 1.4 kpc).
+//
+// The three are time-invariant: they are the frame transfer at the switch
+// instant, and the friction field then integrates θ inside it — which is why a
+// carried switch is the *identity* at T = 0 (both laws are the birth field) and
+// why a `carry` of (1, 0) is exactly today's reconstruction. `q` is the birth
+// vector relative to the centre (cluster records: the centre's), `drawn*` the
+// absolute drawn position.
+const SIMPLE_CARRY_IDENTITY = [1, 0];
 const carryPlaneScratch = { e0x: 0, e0y: 0, e0z: 0, e1x: 0, e1y: 0, e1z: 0, nx: 0, ny: 0, nz: 0, anchor: 0, carry: 0 };
-function simpleCarryTheta(qx, qy, qz, drawnX, drawnY, drawnZ, packed, model) {
-	const orb = readOrbit(packed);
+const carryScratch = [0, 1, 0];
+function simpleCarryOrbit(out, qx, qy, qz, drawnX, drawnY, drawnZ, family, phase, amplitude, jitter, model) {
 	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
-	const pl = orbitPlane(qx, qy, qz, orb.family, orb.phase, orb.amplitude, carryPlaneScratch);
+	const pl = orbitPlane(qx, qy, qz, family, phase, amplitude, carryPlaneScratch);
 	const vx = drawnX - c.x, vy = drawnY - c.y, vz = drawnZ - c.z - pl.carry;
 	const d0 = vx * pl.e0x + vy * pl.e0y + vz * pl.e0z;
 	const d1 = vx * pl.e1x + vy * pl.e1y + vz * pl.e1z;
-	return wrapAngle(Math.atan2(qy, qx) + Math.atan2(d1, d0));
+	const theta = wrapAngle(Math.atan2(qy, qx) + Math.atan2(d1, d0));
+	const rho = simpleRadius(pl, theta, jitter, family, simpleEccMax(model));
+	const drawnRadius = Math.hypot(d0, d1);
+	out[0] = theta;
+	out[1] = rho > 1e-9 ? drawnRadius / rho : 1;
+	out[2] = vx * pl.nx + vy * pl.ny + vz * pl.nz;
+	return out;
+}
+// The record form: the orbit bits and the jitter byte come from the record's
+// own packed word, exactly as the vertex stage reads them.
+function simpleCarry(out, qx, qy, qz, drawnX, drawnY, drawnZ, packed, model) {
+	const orb = readOrbit(packed);
+	return simpleCarryOrbit(out, qx, qy, qz, drawnX, drawnY, drawnZ,
+		orb.family, orb.phase, orb.amplitude, (packed >>> 24) & 255, model);
+}
+// The azimuth alone, for callers that only need to seed θ (the engine-switch
+// audit and the orbit tests that pin the angle law on its own).
+function simpleCarryTheta(qx, qy, qz, drawnX, drawnY, drawnZ, packed, model) {
+	simpleCarry(carryScratch, qx, qy, qz, drawnX, drawnY, drawnZ, packed, model);
+	return carryScratch[0];
 }
 
 // p(T): a per-star orbital-plane rotation of q = p0 − centre plus bounded
@@ -887,7 +922,15 @@ function engineLandmarkPosition(out, i, bx, by, bz, colorIndex, time, model) {
 // of movement-parity-plan lives here and in one place only.
 function engineLandmarkPositionTheta(out, i, bx, by, bz, colorIndex, time, model, theta) {
 	const family = familyFromColorIndex(colorIndex);
-	if ((engine & ENGINE_SIMPLE) && theta >= 0) {
+	// A predicted azimuth still rides the mirror's *carried* radius and normal
+	// offset: those are the switch frame's time-invariant state for this star,
+	// so a booking that asks where the named star will be must not quietly
+	// reconstruct it on the birth circle the sprites have already left.
+	const carried = (engine & ENGINE_SIMPLE) && theta >= 0 && simpleLandmarksReady() && i < simpleLMCount;
+	if (carried) {
+		simplePositionFromTheta(out, theta, bx, by, bz, 0, family, simpleEccMax(model), model,
+			simpleLandmarkCarry(i, simpleLMCarry));
+	} else if ((engine & ENGINE_SIMPLE) && theta >= 0) {
 		simplePositionFromTheta(out, theta, bx, by, bz, 0, family, simpleEccMax(model), model);
 	} else if ((engine & ENGINE_SIMPLE) && simpleLandmarksReady()) simpleLandmarkPosition(out, i);
 	else if (engine & ENGINE_CLASSIC) orbitPosition(out, bx, by, bz, family, 0, 0, time, model);
@@ -921,9 +964,11 @@ function engineRecordPosition(out, x, y, z, packed, time, model) {
 // mirror's θ (trade-plan §9.5) or its forward-integrated prediction. `theta >= 0`
 // makes the simple lane exact for that record — the reconstruction is the vertex
 // stage's own `simplePositionFromTheta` — and the returned report says so.
-// `theta < 0` is the dispatch above, approximation and all.
-function engineRecordPositionTheta(out, x, y, z, packed, time, model, theta) {
-	return recordDispatch(out, x, y, z, packed, engine, time, model, theta);
+// `theta < 0` is the dispatch above, approximation and all. `carry` is the same
+// record's (radial scale, normal offset) from the tracked mirror, so a caller
+// that holds the mirror's state reconstructs the position the sprites draw.
+function engineRecordPositionTheta(out, x, y, z, packed, time, model, theta, carry) {
+	return recordDispatch(out, x, y, z, packed, engine, time, model, theta, carry);
 }
 
 // The same ladder under an explicitly named mask instead of the current one.
@@ -932,7 +977,7 @@ function engineRecordPositionTheta(out, x, y, z, packed, time, model, theta) {
 // current mask has already become simple — and a mask carrying the simple bit
 // answers with the documented approximation, exactly like the dispatch above.
 function engineRecordPositionMasked(out, x, y, z, packed, mask, time, model) {
-	recordDispatch(out, x, y, z, packed, mask, time, model, -1);
+	recordDispatch(out, x, y, z, packed, mask, time, model, -1, null);
 	return out;
 }
 
@@ -942,7 +987,7 @@ function engineRecordPositionMasked(out, x, y, z, packed, mask, time, model) {
 // a record without the epoch bit (observed sky) is left where it is. Cluster
 // members evaluate the orbit at the cluster centre and add back their rigid
 // member offset. Returns the dispatch's approximation report.
-function recordDispatch(out, x, y, z, packed, mask, time, model, theta) {
+function recordDispatch(out, x, y, z, packed, mask, time, model, theta, carry) {
 	const orbit = readOrbit(packed);
 	const flags = (packed >>> 16) & 255;
 	let offX = 0, offY = 0, offZ = 0;
@@ -960,7 +1005,7 @@ function recordDispatch(out, x, y, z, packed, mask, time, model, theta) {
 		// the family without its cluster bit and the offset is added back at the
 		// end — the same structure the other lanes run in.
 		simplePositionFromTheta(out, theta, x, y, z, (packed >>> 24) & 255,
-			orbit.family, simpleEccMax(model), model);
+			orbit.family, simpleEccMax(model), model, carry);
 	} else if (mask & ENGINE_CLASSIC) orbitPosition(out, x, y, z, orbit.family, orbit.phase, orbit.amplitude, time, model);
 	else {
 		out[0] = x; out[1] = y; out[2] = z;
@@ -1284,11 +1329,23 @@ function simpleStepTheta(theta, r0, eccU, peri, family, P, patternPhase, dtStar,
 	return wrapAngle(th);
 }
 
+// The reconstruction's radial law, one place: the birth anchor, modulated by
+// the disc/pattern eccentric rho (WGSL simplePosition's own two branches). The
+// carry's scale is measured against this function, so the two cannot disagree.
+function simpleRadius(pl, theta, jitter, family, eccMax) {
+	if ((family === FAMILY_DISC || family === FAMILY_PATTERN) && eccMax > 0 && pl.anchor > 0) {
+		return pl.anchor * (1 + eccMax * simpleEccOf(jitter) * Math.cos(theta - simplePeriOf(jitter)));
+	}
+	return pl.anchor;
+}
+
 // Vertex mirror: birth record + integrated theta = position. Family-agnostic
 // except for the eccentric rho, which only disc/pattern carry. The sweep plane
 // is orbitPlane's: horizontal through the birth height for disc/pattern, the
-// centred inclined plane for the spheroidal families.
-function simplePositionFromTheta(out, theta, x, y, z, jitter, family, eccMax, model) {
+// centred inclined plane for the spheroidal families. `carry` is the R4 engine
+// switch's (radial scale, normal offset) lane — omit it for a freshly seeded
+// field, whose reconstruction is the birth law itself.
+function simplePositionFromTheta(out, theta, x, y, z, jitter, family, eccMax, model, carry) {
 	let offX = 0, offY = 0, offZ = 0;
 	if ((family & records.FLAG_CLUSTER) !== 0) {
 		const cx = clusterCentreCoord(x), cy = clusterCentreCoord(y), cz = clusterCentreCoord(z);
@@ -1301,14 +1358,13 @@ function simplePositionFromTheta(out, theta, x, y, z, jitter, family, eccMax, mo
 	const pl = orbitPlane(qx, qy, qz, family, jitter & 15, jitter >>> 4, orbitPlaneScratch);
 	const theta0 = Math.atan2(qy, qx);
 	const delta = theta - theta0;
-	let rho = pl.anchor;
-	if ((family === FAMILY_DISC || family === FAMILY_PATTERN) && eccMax > 0 && pl.anchor > 0) {
-		rho = pl.anchor * (1 + eccMax * simpleEccOf(jitter) * Math.cos(theta - simplePeriOf(jitter)));
-	}
+	const scale = carry ? carry[0] : SIMPLE_CARRY_IDENTITY[0];
+	const offset = carry ? carry[1] : SIMPLE_CARRY_IDENTITY[1];
+	const rho = simpleRadius(pl, theta, jitter, family, eccMax) * scale;
 	const ct = Math.cos(delta), st = Math.sin(delta);
-	out[0] = c.x + rho * (pl.e0x * ct + pl.e1x * st) + offX;
-	out[1] = c.y + rho * (pl.e0y * ct + pl.e1y * st) + offY;
-	out[2] = c.z + rho * (pl.e0z * ct + pl.e1z * st) + pl.carry + offZ;
+	out[0] = c.x + rho * (pl.e0x * ct + pl.e1x * st) + offset * pl.nx + offX;
+	out[1] = c.y + rho * (pl.e0y * ct + pl.e1y * st) + offset * pl.ny + offY;
+	out[2] = c.z + rho * (pl.e0z * ct + pl.e1z * st) + offset * pl.nz + pl.carry + offZ;
 	return out;
 }
 
@@ -1322,6 +1378,11 @@ let simpleLMR0 = null;
 let simpleLMZ = null;
 let simpleLandmarkQX = null, simpleLandmarkQY = null, simpleLandmarkQZ = null;
 let simpleLMFam = null;
+// The mirror's own carry lane, per named star: the radial scale and normal
+// offset the R4 switch measured on the drawn sky (simpleCarryOrbit). Identity
+// until a switch carries it; a birth re-init resets it.
+let simpleLMScale = null, simpleLMNormal = null;
+const simpleLMCarry = [1, 0];
 let simpleLMCount = 0;
 let simpleLMModel = null;
 let simpleLMEcc = 0;
@@ -1338,6 +1399,8 @@ function simpleLandmarksInit(positions, colorIndices, count, model, starTimeMyr)
 		simpleLandmarkQY = new Float64Array(count);
 		simpleLandmarkQZ = new Float64Array(count);
 		simpleLMFam = new Uint8Array(count);
+		simpleLMScale = new Float64Array(count);
+		simpleLMNormal = new Float64Array(count);
 	}
 	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
 	for (let i = 0; i < count; i++) {
@@ -1349,6 +1412,8 @@ function simpleLandmarksInit(positions, colorIndices, count, model, starTimeMyr)
 		simpleLandmarkQY[i] = qy;
 		simpleLandmarkQZ[i] = positions[i * 3 + 2] - c.z;
 		simpleLMFam[i] = familyFromColorIndex(colorIndices[i]);
+		simpleLMScale[i] = 1;
+		simpleLMNormal[i] = 0;
 	}
 	simpleLMCount = count;
 	simpleLMModel = model || null;
@@ -1368,17 +1433,23 @@ function simpleLandmarksRebind(model) {
 }
 // The R4 switch transfer: the mirror keeps its birth anchors — R0, q, z and
 // family stay the birth table's, which are exactly the inputs the GPU compute
-// kernel integrates — but the azimuths become the ones the *outgoing* engine
-// was drawing at `starTimeMyr`. A switch into simple therefore lands the
-// labels and picks on the sky the user is looking at instead of snapping them
-// back to the birth table, and mirror and sprites keep integrating at the same
-// rate on the same anchors (no drift). Returns 0 when the mirror was never
-// initialised, so the caller falls back to the full init.
+// kernel integrates — but θ, the radial scale and the normal offset become the
+// ones the *outgoing* engine was drawing at `starTimeMyr`. A switch into
+// simple therefore lands the labels and picks on the sky the user is looking
+// at instead of snapping them back to the birth table, and mirror and sprites
+// keep integrating at the same rate on the same anchors (no drift). Returns 0
+// when the mirror was never initialised, so the caller falls back to the full
+// init.
 function simpleLandmarksCarryFrom(positions, count, model, starTimeMyr) {
 	if (!simpleLandmarksReady() || !positions || !(count > 0) || count > simpleLMCount) return 0;
 	const c = (model && model.centre) || { x: 0, y: 0, z: 0 };
 	for (let i = 0; i < count; i++) {
-		simpleLMTheta[i] = wrapAngle(Math.atan2(positions[i * 3 + 1] - c.y, positions[i * 3] - c.x));
+		simpleCarryOrbit(carryScratch, simpleLandmarkQX[i], simpleLandmarkQY[i], simpleLandmarkQZ[i],
+			positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2],
+			simpleLMFam[i], 0, 0, 0, model || simpleLMModel);
+		simpleLMTheta[i] = carryScratch[0];
+		simpleLMScale[i] = carryScratch[1];
+		simpleLMNormal[i] = carryScratch[2];
 	}
 	if (model) {
 		simpleLMModel = model;
@@ -1388,6 +1459,12 @@ function simpleLandmarksCarryFrom(positions, count, model, starTimeMyr) {
 	return count;
 }
 function simpleLandmarkTheta(i) { return simpleLMTheta[i]; }
+// The mirror's carry for one named star, written into a caller-owned pair.
+function simpleLandmarkCarry(i, out) {
+	out[0] = simpleLMScale[i];
+	out[1] = simpleLMNormal[i];
+	return out;
+}
 function simpleLandmarksReady() { return simpleLMModel !== null && simpleLMCount > 0; }
 function simpleLandmarksStep(dtStar, starTimeMyr) {
 	if (!simpleLandmarksReady() || !(dtStar > 0)) return 0;
@@ -1461,14 +1538,12 @@ function simpleLandmarkPosition(out, i) {
 	const pl = orbitPlane(qx, qy, qz, fam, 0, 0, orbitPlaneScratch);
 	const theta0 = Math.atan2(qy, qx);
 	const delta = th - theta0;
-	let rho = pl.anchor;
-	if ((fam === FAMILY_DISC || fam === FAMILY_PATTERN) && simpleLMEcc > 0 && rho > 0) {
-		rho *= 1 + simpleLMEcc * simpleEccOf(0) * Math.cos(th - simplePeriOf(0));
-	}
+	const rho = simpleRadius(pl, th, 0, fam, simpleLMEcc) * simpleLMScale[i];
+	const offset = simpleLMNormal[i];
 	const ct = Math.cos(delta), st = Math.sin(delta);
-	out[0] = c.x + rho * (pl.e0x * ct + pl.e1x * st);
-	out[1] = c.y + rho * (pl.e0y * ct + pl.e1y * st);
-	out[2] = c.z + rho * (pl.e0z * ct + pl.e1z * st) + pl.carry;
+	out[0] = c.x + rho * (pl.e0x * ct + pl.e1x * st) + offset * pl.nx;
+	out[1] = c.y + rho * (pl.e0y * ct + pl.e1y * st) + offset * pl.ny;
+	out[2] = c.z + rho * (pl.e0z * ct + pl.e1z * st) + offset * pl.nz + pl.carry;
 	return out;
 }
 
@@ -1502,6 +1577,10 @@ const TRACK_MAP_MASK = TRACK_MAP_SIZE - 1;
 const TRACK_CATCHUP_SUBSTEPS = 8192;
 let trkTheta = null, trkR0 = null, trkZ = null;
 let trkKey = null, trkJit = null, trkFam = null;
+// The tracked entries' carry lane, seeded with their θ (the switch frame's
+// radial scale and normal offset; identity for a star tracked since a birth
+// seed, which is what the GPU lane holds for it too).
+let trkScale = null, trkNormal = null;
 let trkMapKey = null, trkMapSlot = null, trkMapUsed = null;
 let trkCount = 0;
 let trkModel = null;
@@ -1516,6 +1595,8 @@ const trackSeedScratch = [0, 0, 0];
 function simpleTrackAlloc() {
 	if (trkTheta) return;
 	trkTheta = new Float64Array(SIMPLE_TRACK_MAX);
+	trkScale = new Float64Array(SIMPLE_TRACK_MAX);
+	trkNormal = new Float64Array(SIMPLE_TRACK_MAX);
 	trkR0 = new Float64Array(SIMPLE_TRACK_MAX);
 	trkZ = new Float64Array(SIMPLE_TRACK_MAX);
 	trkKey = new Uint32Array(SIMPLE_TRACK_MAX);
@@ -1618,6 +1699,8 @@ function simpleTrackStar(key, x, y, z, packed, model, starTimeMyr) {
 	trkR0[slot] = Math.hypot(px - c.x, py - c.y);
 	trkZ[slot] = pz;
 	let theta0;
+	trkScale[slot] = 1;
+	trkNormal[slot] = 0;
 	if (trkCarryMask >= 0 && trkCarryModel) {
 		// The carried switch frame: the theta the renderer uploaded for this
 		// record at the switch instant — the outgoing mask's closed-form drawn
@@ -1636,8 +1719,11 @@ function simpleTrackStar(key, x, y, z, packed, model, starTimeMyr) {
 			epochMap(epochMapScratch, px, py, pz, trkFam[slot], flags, trkCarryModel);
 			sx = epochMapScratch[0]; sy = epochMapScratch[1]; sz = epochMapScratch[2];
 		}
-		theta0 = simpleCarryTheta(sx - cc.x, sy - cc.y, sz - cc.z,
+		simpleCarry(carryScratch, sx - cc.x, sy - cc.y, sz - cc.z,
 			trackSeedScratch[0], trackSeedScratch[1], trackSeedScratch[2], packed, trkCarryModel);
+		theta0 = carryScratch[0];
+		trkScale[slot] = carryScratch[1];
+		trkNormal[slot] = carryScratch[2];
 	} else {
 		// Seeded from the *placed* birth azimuth, as the renderer's seedThetaRange
 		// is, then caught up to the mirror's own clock.
@@ -1680,6 +1766,16 @@ function simpleTrackStep(dtStar, starTimeMyr) {
 }
 
 function simpleTrackTheta(slot) { return trkTheta[slot]; }
+
+// The entry's carry lane (radial scale, normal offset), for a caller that
+// reconstructs its position outside the mirror (the label layer's trade
+// resolver). Time-invariant, like θ's frame.
+function simpleTrackCarry(slot, out) {
+	if (slot < 0 || slot >= trkCount) { out[0] = 1; out[1] = 0; return out; }
+	out[0] = trkScale[slot];
+	out[1] = trkNormal[slot];
+	return out;
+}
 
 // The tracked azimuth at a star time at or ahead of the mirror's own: the
 // current one when they agree, the forward integral when the caller is
@@ -1774,12 +1870,14 @@ const OrbitAPI = {
 	DRAWN_VELOCITY_BASELINE_MYR, engineRecordVelocity,
 	simpleArmed, simpleSigma, simpleEccMax, simpleOmega, simpleEccOf, simplePeriOf,
 	simpleDerived, simpleOmegaMax, simpleSubsteps, wrapAngle, simplePatternPhase,
-	simpleStepTheta, simplePositionFromTheta, simpleCarryTheta,
-	simpleLandmarksInit, simpleLandmarksRebind, simpleLandmarksCarryFrom, simpleLandmarkTheta, simpleLandmarksReady, simpleLandmarksStep, simpleLandmarkPosition,
+	simpleStepTheta, simplePositionFromTheta, simpleCarry, simpleCarryTheta,
+	SIMPLE_CARRY_IDENTITY,
+	simpleLandmarksInit, simpleLandmarksRebind, simpleLandmarksCarryFrom,
+	simpleLandmarkTheta, simpleLandmarkCarry, simpleLandmarksReady, simpleLandmarksStep, simpleLandmarkPosition,
 	SIMPLE_PREDICT_SUBSTEPS, simpleLandmarkThetaAt, simpleLandmarkTime,
 	SIMPLE_TRACK_MAX, TRACK_CATCHUP_SUBSTEPS,
 	simpleTrackReset, simpleTrackRebind, simpleTrackReady, simpleTrackCount, simpleTrackTime,
-	simpleTrackSlotOf, simpleTrackStar, simpleTrackStep, simpleTrackTheta, simpleTrackThetaAt,
+	simpleTrackSlotOf, simpleTrackStar, simpleTrackStep, simpleTrackTheta, simpleTrackThetaAt, simpleTrackCarry,
 	packSimpleParams, packEngineVec,
 	setEpochBase, getEpochBase, solveEpochParams, epochMap, packEpochParams, EPOCH_FLOATS,
 };

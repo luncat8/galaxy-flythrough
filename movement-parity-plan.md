@@ -41,12 +41,15 @@ exclusive IDs 0/1/2 are not the current wire format.
    vertex reconstruction adopts it.
 4. **Identity, switching, labels and picking.** The apocenter pass is stateless
    (a pure function of birth + uniforms), so engine switches, R-reset and
-   regeneration never re-seed it. The simple lane *carries* on a switch (R4,
-   0.7.8): `renderer.setEngine(id, starTimeMyr)` walks the resident records
-   under the outgoing mask and uploads `orbit.simpleCarryTheta` of each drawn
-   position — the integrator resumes the sky as drawn — and the re-seed remains
-   only for the fresh-field moments (boot, regenerate, R) and for a switch with
-   no clock given, where the carry at T = 0 *is* the birth seed exactly.
+   regeneration never re-seed it. The simple lane *carries* on a switch (R4):
+   `renderer.setEngine(id, starTimeMyr)` walks the resident records under the
+   outgoing mask and uploads `orbit.simpleCarry` of each drawn position — the
+   azimuth (0.7.8), the radial scale and the normal offset (0.7.10) — so the
+   integrator resumes the sky exactly as drawn, not merely the same angles. The
+   re-seed remains only for the fresh-field moments (boot, regenerate, R); a
+   switch with no clock given carries the birth frame *plus* the scale that puts
+   the reconstruction's own eccentric radius on the birth circle, which is the
+   positional identity at T = 0.
    Labels and picking share one dispatch
    (`orbit.engineLandmarkPosition`), mirroring the GPU order exactly: simple
    mirror when its bit is set (and ready), else classic when its bit is set,

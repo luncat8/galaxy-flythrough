@@ -1,10 +1,10 @@
 {
-  "date": "2026-10-28T04:58:12.288Z",
+  "date": "2026-10-29T02:49:03.364Z",
   "proceduralStars": 20000,
   "catalogStars": 3829,
-  "prepareMs": 195,
-  "totalChecks": 156,
-  "passed": 156,
+  "prepareMs": 299,
+  "totalChecks": 157,
+  "passed": 157,
   "failed": 0,
   "checks": [
     {
@@ -1181,10 +1181,18 @@
       }
     },
     {
-      "name": "state.bufferBytes counts the star, nebula, theta, birth and two gas-grid buffers",
+      "name": "the carry lane is one (scale, normal) pair per slot, beside the azimuths",
       "pass": true,
       "detail": {
-        "bufferBytes": 826512
+        "carrySlots": 1660,
+        "slots": 1660
+      }
+    },
+    {
+      "name": "state.bufferBytes counts the star, nebula, theta, carry, birth and two gas-grid buffers",
+      "pass": true,
+      "detail": {
+        "bufferBytes": 839792
       }
     },
     {

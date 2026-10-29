@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-24T14:06:52.218Z",
+  "date": "2026-10-29T02:50:43.242Z",
   "totalChecks": 141,
   "passed": 141,
   "failed": 0,
@@ -1073,11 +1073,16 @@
       }
     },
     {
-      "name": "simpleLandmarksCarryFrom carries the drawn azimuths on the birth anchors and stamps the seed clock",
+      "name": "simpleLandmarksCarryFrom lands the mirror on the drawn sky, on birth anchors and its own clock",
       "pass": true,
       "detail": {
         "carried": 2,
-        "drift": 0
+        "drift": 0,
+        "landingKpc": 4.2e-15,
+        "carry": [
+          0.953,
+          0.7
+        ]
       }
     },
     {

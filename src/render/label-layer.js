@@ -757,6 +757,9 @@ function createLabelLayer(canvas, landmarks, constellations) {
 	// A port whose star is not resident draws nothing, exactly like its sprite.
 	const tradeA = new Float64Array(3);
 	const tradeB = new Float64Array(3);
+	// The tracked mirror's switch frame for the record being resolved (radial
+	// scale, normal offset), read into this pair — no allocation per query.
+	const tradeCarry = [1, 0];
 
 	// The drawn position of one resident record, into `out` (x, y, z in kpc),
 	// at the current star time: birth position plus the orbit law. Returns
@@ -798,17 +801,25 @@ function createLabelLayer(canvas, landmarks, constellations) {
 			// tracked mirror carries one; with no θ the dispatch runs exactly as
 			// it did before the mirror existed (§9.5's "blind" tier).
 			let theta = -1;
+			let carry = null;
 			if (orbit.engineRecordPositionTheta && orbit.getEngine
 				&& (orbit.getEngine() & orbit.ENGINE_SIMPLE) !== 0) {
-				theta = (kind | 0) === 1
-					? orbit.simpleLandmarkThetaAt(index | 0, starTimeMyr)
-					: orbit.simpleTrackThetaAt(tradeTrackSlot(orbit, key, px, py, pz, packed), starTimeMyr);
+				if ((kind | 0) === 1) {
+					theta = orbit.simpleLandmarkThetaAt(index | 0, starTimeMyr);
+				} else {
+					const track = tradeTrackSlot(orbit, key, px, py, pz, packed);
+					theta = orbit.simpleTrackThetaAt(track, starTimeMyr);
+					// The mirror's own switch frame: the carried radial scale and
+					// normal offset are time-invariant, so a *predicted* azimuth
+					// rides them exactly as the drawn one does.
+					if (theta >= 0 && orbit.simpleTrackCarry) carry = orbit.simpleTrackCarry(track, tradeCarry);
+				}
 			}
 			if (theta >= 0 && (kind | 0) === 1) {
 				orbit.engineLandmarkPositionTheta(out, index | 0, px, py, pz,
 					packed & 0xFF, starTimeMyr, orbitModel, theta);
 			} else if (theta >= 0) {
-				orbit.engineRecordPositionTheta(out, px, py, pz, packed, starTimeMyr, orbitModel, theta);
+				orbit.engineRecordPositionTheta(out, px, py, pz, packed, starTimeMyr, orbitModel, theta, carry);
 			} else if ((kind | 0) === 1) {
 				orbit.engineLandmarkPosition(out, index | 0, px, py, pz,
 					packed & 0xFF, starTimeMyr, orbitModel);

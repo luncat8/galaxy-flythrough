@@ -58,6 +58,11 @@ No framework, bundler, module loader, or runtime network connection is required.
   - **classic** — closed-form bounded kinematic orbits; currently the most balanced default
   - **simple** — responsive friction-field integration
   - **apocenter** — experimental feature-guided elliptical orbits
+
+  The models compose, and switching between them mid-run never re-seeds the sky:
+  a switch into the friction field transfers the *drawn* position of every
+  resident record — its azimuth, its radius and its height — so the stars stay
+  where they are and only their future motion changes.
 - Fly, galactic-centre orbit, and selected-object orbit cameras
 - Named-star selection, labels, and constellation lines. The curated sky is the
   **Milky Way's**, present day only: outside that (another galaxy type, a deep
@@ -543,7 +548,7 @@ The runtime is organized as classic-script namespaces under `src/`:
 - `math/density.js` — analytical stellar density components
 - `math/sampling.js` — deterministic sampling from those components
 - `math/star-types.js` — stellar populations and age evolution
-- `math/orbit.js` — movement engines and CPU mirrors
+- `math/orbit.js` — movement engines and CPU mirrors, including the engine switch's carry rule (azimuth, radial scale, normal offset) that keeps the drawn sky in place across a change of law
 - `render/shaders.js` — all WGSL shader source
 - `render/star-sprites.js` — procedural generation, culling, HDR star passes, and tone mapping
 - `stream/` — catalog bundle loading and cell residency

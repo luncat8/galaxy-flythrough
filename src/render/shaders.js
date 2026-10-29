@@ -774,7 +774,12 @@ fn apocenterPosition(p: vec3f, birthIn: vec3f, packed: u32, centre: vec3f, time:
 // rho, which only disc/pattern carry; orbitPlane sets the sweep basis — the
 // horizontal plane through the birth height for disc/pattern, the centred
 // inclined plane for the spheroidal families.
-fn simplePosition(p: vec3f, packed: u32, theta: f32, centre: vec3f, eccMax: f32) -> vec3f {
+//
+// carry is the R4 engine switch's per-slot lane (radial scale, normal
+// offset): the frame transfer that puts this star on the circle and the height
+// the outgoing engine was drawing when the user selected the friction field.
+// (1, 0) is a freshly seeded field and reproduces the birth law exactly.
+fn simplePosition(p: vec3f, packed: u32, theta: f32, centre: vec3f, eccMax: f32, carry: vec2f) -> vec3f {
         let flags: u32 = (packed >> 16u) & 0xFFu;
         let family: u32 = (flags >> 3u) & 3u;
         let phaseBits: u32 = (packed >> 24u) & 15u;
@@ -792,7 +797,8 @@ fn simplePosition(p: vec3f, packed: u32, theta: f32, centre: vec3f, eccMax: f32)
                 rho = pl.anchor * (1.0 + eccMax * eccU * cos(theta - peri));
         }
         let radial: vec3f = pl.e0 * cos(delta) + pl.e1 * sin(delta);
-        return centre + rho * radial + vec3f(0.0, 0.0, pl.carry) + memberOffset;
+        return centre + (rho * carry.x) * radial + carry.y * pl.nrm
+                + vec3f(0.0, 0.0, pl.carry) + memberOffset;
 }
 `;
 
@@ -1002,7 +1008,7 @@ fn cornerOffset(vid: u32) -> vec2f {
 // leaves the unselected fraction frozen); the apocenter pass then replaces the
 // baseline for the birth-selected subset. The CPU twin is
 // orbit.engineRecordPosition (picking and labels).
-fn starMovedPosition(star: StarPacked, thetaValue: f32) -> vec3f {
+fn starMovedPosition(star: StarPacked, thetaValue: f32, carryValue: vec2f) -> vec3f {
         let mask: u32 = u32(camera.engine.x);
         let centre = vec3f(camera.cameraPos.w, 0.0, 0.0);
         // Birth, then the epoch map: the field is drawn once and placed by the
@@ -1011,7 +1017,7 @@ fn starMovedPosition(star: StarPacked, thetaValue: f32) -> vec3f {
         var moved: vec3f;
         if ((mask & 2u) != 0u) {
                 moved = simplePosition(birth, star.packed, thetaValue, centre,
-                        simpleEccMax(camera.dynA, camera.dynB));
+                        simpleEccMax(camera.dynA, camera.dynB), carryValue);
         } else if ((mask & 1u) != 0u) {
                 moved = orbitPosition(birth, star.packed, centre, camera.params.w, camera.dynA, camera.dynB, camera.waveA, camera.waveB);
         } else {
@@ -1033,6 +1039,9 @@ const STAR_SPRITE_BODY = `
 
 @group(0) @binding(2) var colorLUT: texture_2d<f32>;
 @group(0) @binding(3) var<storage, read> theta: array<f32>;   // simple-engine azimuths
+// The switch's frame transfer, one (radial scale, normal offset) per slot:
+// written only when a switch into the friction field carries the drawn sky.
+@group(0) @binding(5) var<storage, read> carry: array<vec2f>;
 
 struct VertexOut {
         @builtin(position) clipPos: vec4f,
@@ -1084,7 +1093,7 @@ fn vs_main(
                 return hidden(vid);
         }
 
-        let moved: vec3f = starMovedPosition(star, theta[starIdx]);
+        let moved: vec3f = starMovedPosition(star, theta[starIdx], carry[starIdx]);
         let rel: vec3f = moved - camera.cameraPos.xyz;
         let clip: vec4f = camera.viewProj * vec4f(rel.x, rel.y, rel.z, 1.0);
         if (clip.w <= 0.0) {

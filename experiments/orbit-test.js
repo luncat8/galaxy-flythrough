@@ -1780,26 +1780,34 @@ function simpleStepF32(th, r0, eccU, peri, family, S) {
 				tilted: +angDiff(thP, orbit.wrapAngle(Math.atan2(qy, qx) + delta)).toExponential(1),
 				wobbleLeak: thP === thP0 ? 0 : 1 });
 
-		// The landmark mirror carries drawn azimuths on UNCHANGED birth
+		// The landmark mirror carries the switch frame on UNCHANGED birth
 		// anchors — re-initialising from the drawn positions instead would
-		// move R0 and with it the integrator's own omega.
+		// move R0 and with it the integrator's own omega — and the frame is
+		// the whole position: azimuth, radial scale and normal offset. So the
+		// carried mirror lands on the drawn sky exactly, not merely on the
+		// drawn azimuth.
 		const lmB = Float64Array.of(c.x + 6, c.y + 1, c.z + 0.2, c.x - 4, c.y + 3, c.z - 0.1);
 		const lmCc = Uint8Array.of(3, 9);
 		orbit.simpleLandmarksInit(lmB, lmCc, 2, M, 0);
 		const lmDrawn = Float64Array.of(c.x + 5, c.y + 3, c.z + 0.9, c.x - 4.5, c.y + 2, c.z + 0.4);
 		const lmCarried = orbit.simpleLandmarksCarryFrom(lmDrawn, 2, M, 123);
-		const lmPos = [0, 0, 0], lmRecon = [0, 0, 0];
+		const lmPos = [0, 0, 0], lmRecon = [0, 0, 0], lmCarry = [0, 0];
 		orbit.simpleLandmarkPosition(lmPos, 0);
+		orbit.simpleLandmarkCarry(0, lmCarry);
 		orbit.simplePositionFromTheta(lmRecon, orbit.simpleLandmarkTheta(0),
-			lmB[0], lmB[1], lmB[2], 0, orbit.familyFromColorIndex(3), orbit.simpleEccMax(M), M);
-		check('simpleLandmarksCarryFrom carries the drawn azimuths on the birth anchors and stamps the seed clock',
+			lmB[0], lmB[1], lmB[2], 0, orbit.familyFromColorIndex(3), orbit.simpleEccMax(M), M, lmCarry);
+		const lmLand = Math.max(dist3(lmPos, [lmDrawn[0], lmDrawn[1], lmDrawn[2]]),
+			dist3(lmRecon, [lmDrawn[0], lmDrawn[1], lmDrawn[2]]));
+		check('simpleLandmarksCarryFrom lands the mirror on the drawn sky, on birth anchors and its own clock',
 			lmCarried === 2
 			&& angDiff(orbit.simpleLandmarkTheta(0), orbit.wrapAngle(Math.atan2(3, 5))) < 1e-12
 			&& angDiff(orbit.simpleLandmarkTheta(1), orbit.wrapAngle(Math.atan2(2, -4.5))) < 1e-12
 			&& orbit.simpleLandmarkThetaAt(0, 123) === orbit.simpleLandmarkTheta(0)
-			&& dist3(lmPos, lmRecon) < 1e-9
+			&& dist3(lmPos, lmRecon) < 1e-12
+			&& lmLand < 1e-12
 			&& orbit.simpleLandmarksCarryFrom(lmDrawn, 3, M, 0) === 0,
-			{ carried: lmCarried, drift: +dist3(lmPos, lmRecon).toExponential(1) });
+			{ carried: lmCarried, drift: +dist3(lmPos, lmRecon).toExponential(1),
+				landingKpc: +lmLand.toExponential(1), carry: lmCarry.map((v) => +v.toFixed(3)) });
 
 		// The track mirror seeds through the same rule as the renderer — raw
 		// bytes into the masked dispatch, the member offset stripped, the

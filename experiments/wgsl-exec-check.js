@@ -136,6 +136,13 @@ async function main() {
 	// reconstruct through it.
 	const thetaBytes = new ArrayBuffer(64 * 4);
 	const birthBytes = new ArrayBuffer(64 * 4);
+	// The engine switch's carry lane (binding 5), one (radial scale, normal
+	// offset) per slot. Identity unless a fixture carries a frame on purpose.
+	const carryBytes = new ArrayBuffer(64 * 8);
+	{
+		const identity = new Float32Array(carryBytes);
+		for (let i = 0; i < identity.length; i += 2) identity[i] = 1;
+	}
 
 	// The real LUT the renderer uploads. WgslDebug's textureLoad returns the
 	// stored texel as bytes/255 (the GPU's -srgb format linearises on sample,
@@ -150,6 +157,7 @@ async function main() {
 			2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
 			3: thetaBytes,
 			4: birthBytes,
+			5: carryBytes,
 		},
 	};
 
@@ -253,6 +261,7 @@ async function main() {
 			2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
 			3: thetaBytes,
 			4: birthBytes,
+			5: carryBytes,
 		},
 	};
 	const sunOmega = 0.225 / 8.178;
@@ -304,6 +313,7 @@ async function main() {
 			2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
 			3: thetaBytes,
 			4: birthBytes,
+			5: carryBytes,
 		},
 	};
 	// The same numbers the uniform carries, as a model the CPU law can read.
@@ -378,6 +388,7 @@ async function main() {
 			2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
 			3: thetaBytes,
 			4: birthBytes,
+			5: carryBytes,
 		},
 	};
 	const capT = 200;
@@ -426,6 +437,7 @@ async function main() {
 			1: simBytes,
 			2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
 			3: simThetaBytes,
+			5: carryBytes,
 		},
 	};
 	const simModel = { centre: { x: 8.178, y: 0, z: 0 }, dynamics: { vFlat: 0.225, sigmaThin: 0.031 } };
@@ -474,6 +486,34 @@ async function main() {
 		&& Math.abs((simZero.clipPos[0] - offX) - simCpu[0]) > 0.01,
 		{ dx: simDoubled.clipPos[0] - simZero.clipPos[0],
 			gpuX: simZero.clipPos[0] - offX, fixed045: simCpu[0] });
+
+	// --- 2e-2. The engine switch's carry lane (0.7.10) ---------------------
+	// The switch transfers the drawn radius and height as one (scale, normal
+	// offset) pair per slot (binding 5). A fixture with a non-identity pair is
+	// the only way to see that the WGSL reads it: the reconstruct below must
+	// move off the birth circle by exactly the pair the CPU model applies, and
+	// must differ from the identity answer by far more than the check's slack.
+	const carrySlots = new Float32Array(carryBytes);
+	carrySlots[0] = 1.25;      // radial scale
+	carrySlots[1] = 0.4;       // normal offset (kpc; +z for a disc plane)
+	const simCarried = runStage(spriteCode, 'vs_main', 'debugVertex',
+		{ vertex_index: 3, instance_index: 0 }, simBinds);
+	const simCarryCpu = new Float64Array(3);
+	orbit.simplePositionFromTheta(simCarryCpu, 0, simF[0], simF[1], simF[2], 0,
+		orbit.FAMILY_DISC, simEcc, simModel, [1.25, 0.4]);
+	check('on-WGSL: the simple mask reads the switch carry (radial scale and normal offset)',
+		Math.abs((simCarried.clipPos[0] - offX) - simCarryCpu[0]) < 2e-3
+		&& Math.abs((simCarried.clipPos[1] + 5 - offY) - simCarryCpu[1]) < 2e-3
+		&& Math.abs(simCarried.clipPos[2] - simCarryCpu[2]) < 2e-3,
+		{ gpu: [simCarried.clipPos[0] - offX, simCarried.clipPos[1] + 5 - offY, simCarried.clipPos[2]],
+			cpu: Array.from(simCarryCpu) });
+	check('on-WGSL: that carry is not the identity reconstruction (the lane is actually read)',
+		Math.abs(simCarried.clipPos[0] - simZero.clipPos[0]) > 0.5
+		&& Math.abs(simCarried.clipPos[2] - simZero.clipPos[2]) > 0.3,
+		{ dx: simCarried.clipPos[0] - simZero.clipPos[0], dz: simCarried.clipPos[2] - simZero.clipPos[2] });
+	// Every later fixture reads slot 0, so the lane goes back to the identity a
+	// freshly seeded field carries.
+	carrySlots[0] = 1; carrySlots[1] = 0;
 	ocam[44] = 0; ocam[45] = 0; ocam[46] = 0; ocam[47] = 0;
 
 	// --- 2f. Apocenter-guided movement runs on the shipping WGSL -----------
@@ -491,6 +531,7 @@ async function main() {
 		2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
 		3: thetaBytes,
 		4: birthBytes,
+		5: carryBytes,
 	} };
 	const apoPacked = new Float32Array(16);
 	orbit.packOrbitDynamics(captureModel, apoPacked, 0);
@@ -575,6 +616,8 @@ async function main() {
 		1: sweepBytes,
 		2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
 		3: sweepThetaBytes,
+		4: birthBytes,
+		5: carryBytes,
 	} };
 	const sweepPacked = new Float32Array(16);
 	orbit.setWaveDamping(0);
@@ -701,6 +744,7 @@ async function main() {
 		2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
 		3: thetaBytes,
 		4: birthBytes,
+		5: carryBytes,
 	} };
 	const vertPressBinds = { 0: {
 		0: { uniform: orbitCamBytes },
@@ -708,6 +752,7 @@ async function main() {
 		2: { texture: lut, descriptor: { size: [256, 1], format: 'rgba8unorm' } },
 		3: thetaBytes,
 		4: birthBytes,
+		5: carryBytes,
 	} };
 	// No damping, so the azimuth is the plain differential rate: half a turn of
 	// the solar-circle disc rate at this radius.

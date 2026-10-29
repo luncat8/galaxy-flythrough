@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-24T09:56:58.349Z",
+  "date": "2026-10-29T02:48:11.620Z",
   "interpreter": "wgsl_reflect",
-  "totalChecks": 143,
-  "passed": 143,
+  "totalChecks": 145,
+  "passed": 145,
   "failed": 0,
   "checks": [
     {
@@ -274,6 +274,30 @@
         "dx": 0.05281639099121094,
         "gpuX": 16.408816426595052,
         "fixed045": 16.47100403792858
+      }
+    },
+    {
+      "name": "on-WGSL: the simple mask reads the switch carry (radial scale and normal offset)",
+      "pass": true,
+      "detail": {
+        "gpu": [
+          18.46651944478353,
+          -2.1263405128768738e-7,
+          0.4000000059604645
+        ],
+        "cpu": [
+          18.466521445103485,
+          0,
+          0.4
+        ]
+      }
+    },
+    {
+      "name": "on-WGSL: that carry is not the identity reconstruction (the lane is actually read)",
+      "pass": true,
+      "detail": {
+        "dx": 2.0577030181884766,
+        "dz": 0.4000000059604645
       }
     },
     {

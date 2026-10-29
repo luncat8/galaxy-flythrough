@@ -445,21 +445,37 @@ clock moved.** Stated as rules, each with its pin:
 | R1 | An epoch change is a model re-solve and a uniform. No `regenerate`, no re-draw, ever. | `renderer-test` counts draws across 200 epoch steps |
 | R2 | The gate is a scalar read; a star's position, key and birth never change after the draw. | buffer diff across a run |
 | R3 | **Composite objects are carried, not re-rolled.** `generateObjects` runs once per draw; the object block is carried unchanged because member looks use their own fixed object age. No epoch refresh or re-placement. Placement depends on the base epoch, never the running one. | object seats byte-identical across a 1 Gyr run |
-| R4 | An engine switch maps the current θ into the new engine's frame instead of re-seeding from birth positions. | per-star in-plane landing err ≤ the f32 θ ULP and residual ≤ the exact two-lane bound across a T ladder (`engine-switch-test`) — shipped 0.7.8 |
+| R4 | An engine switch maps the current drawn position — θ, radial radius and normal offset — into the new engine's frame instead of re-seeding from birth positions. | per-star in-plane landing err ≤ the f32 θ ULP and the carried position within 1 pc of the drawn one across a T ladder (`engine-switch-test`) — shipped 0.7.8 (θ) and 0.7.10 (the frame's other two numbers) |
 | R5 | A new star budget is a new draw (a different N is a different census) — the one honest re-sample, and it is a user action, not a clock event. | — |
 | R6 | Every epoch-varying quantity is continuous in `T`: the map's three terms, the gate, the look sweep, the gas grid. Discontinuities are bugs, not taste. | continuity sweep at ΔT = 1e-3 |
 | R7 | The pattern phase stays an accumulator (`orbit.advancePatternPhase`); a step never re-derives it from `Ω_p·T`. | pattern-angle continuity |
 
 R3 is the fix for the confirmed defect in §1.3 and the reason this section comes
-before any of the new visuals. R4 shipped in 0.7.8: a switch into simple carries
-all three θ states — the GPU buffer, the landmark mirror and the track mirror's
-seed frame — from the drawn sky under the *outgoing* mask, through one shared
-rule (`orbit.simpleCarryTheta`: the drawn position's in-plane angle on the
-record's own sweep basis plus the birth azimuth; for the horizontal families
-that is exactly the drawn xy azimuth, for the inclined bar/pressure planes the
-xy azimuth is not that angle). The birth re-seed remains for the fresh-field
-moments only: boot, regenerate and R. `experiments/engine-switch-test.js` is
-the audit and the pin.
+before any of the new visuals. R4 shipped in two slices. 0.7.8 carried the
+azimuth: a switch into simple takes all three θ states — the GPU buffer, the
+landmark mirror and the track mirror's seed frame — from the drawn sky under the
+*outgoing* mask, through one shared rule (`orbit.simpleCarryTheta`: the drawn
+position's in-plane angle on the record's own sweep basis plus the birth
+azimuth; for the horizontal families that is exactly the drawn xy azimuth, for
+the inclined bar/pressure planes the xy azimuth is not that angle).
+
+0.7.10 closed the frame: θ is only the angle, and the reconstruction rebuilds
+the radius from the birth anchor through its own eccentric law with no
+plane-normal state at all, so the angle alone left up to 9.7 kpc between the
+shipped position and the drawn one — and 4.8 kpc at `T = 0`, where both laws are
+the birth field and a switch must move nothing. The carry is now three numbers
+per slot, measured by one rule (`orbit.simpleCarryOrbit`): θ, the **radial
+scale** (drawn in-plane radius over the radius `simpleRadius` gives at that θ)
+and the **normal offset** (the drawn position's component along the plane
+normal). They ride `carry[slot]: vec2f` (scale, offset) on binding 5, the
+identity `(1, 0)` is what a birth-seeded field uploads, and they are
+time-invariant — the frame the friction field integrates θ inside. Both mirrors
+carry their own pairs, and every prediction path (labels, picks, the trade
+resolver's future-dated port positions) reconstructs through them. The birth
+re-seed remains for the fresh-field moments only: boot, regenerate and R.
+`experiments/engine-switch-test.js` is the audit and the pin; it reports the
+θ-only lane (`jumpThetaOnlyKpc`) beside the shipped one so the residual each
+slice removed stays on the record.
 
 ## 7. Deep time (F7)
 
