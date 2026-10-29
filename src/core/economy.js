@@ -417,9 +417,8 @@
 			// A failed colony: outposts keep their slot and stocks and are
 			// never settled again. `outpostY` is the year it stopped.
 			outpost: 0, outpostY: 0,
-			// Narration bookkeeping, written only by the settle: how many rungs
-			// of POP_MILESTONES have been credited, and whether the colony is
-			// inside the starvation band. No callback, no global.
+			// Milestones and the current supply/room snapshot for narration and
+			// markers. The settle freezes coverage only while integrating.
 			popLevel: 0, starving: 0,
 			yield: new Float64Array(RESOURCE_COUNT),
 			outBase: new Float64Array(RESOURCE_COUNT),
@@ -526,6 +525,7 @@
 		const cap = POP_GROWTH_CAP_FRAC * colony.capacity;
 		if (pop > cap) pop = cap;
 		colony.pop = pop;
+		refreshColonyHealth(colony);
 		return colony;
 	}
 
@@ -554,7 +554,16 @@
 		return out;
 	}
 
-	const LOGISTIC_SCRATCH = { pop: 0, integral: 0 };
+	// For scarcity, an exponential decay is necessary: reversing the logistic
+	// would leave a world exactly at K unable to lose a single person.
+	function declineIntegral(p0, g, dt, out) {
+		const x = g * dt;
+		out.pop = p0 * Math.exp(x);
+		out.integral = p0 * Math.expm1(x) / g;
+		return out;
+	}
+
+	const SETTLE_SCRATCH = { pop: 0, integral: 0 };
 	const INPUT_SCRATCH = new Float64Array(RESOURCE_COUNT);
 
 	// Per-capita draw on each resource: what people need plus what the local
@@ -571,22 +580,52 @@
 		return out;
 	}
 
+	// Household needs alone decide coverage. Routing's `demandOf` also includes
+	// factory inputs, so its scarcity tags are not a growth breakdown.
+	function needCoverageOf(colony, r) {
+		if (!(colony.pop > 0)) return 0;
+		const need = NEED[r];
+		if (!(need > 0)) return 1;
+		const want = need * colony.pop;
+		const supply = colony.outBase[r] * colony.pop + colony.stock[r] / NEED_BUFFER_Y;
+		const covered = supply / want;
+		return covered < 0 ? 0 : covered > 1 ? 1 : covered;
+	}
+
 	function coverageOf(colony) {
-		const pop = colony.pop;
-		if (!(pop > 0)) return 0;
+		if (!(colony.pop > 0)) return 0;
 		let weight = 0, sum = 0;
 		for (let r = 0; r < RESOURCE_COUNT; r++) {
-			const need = NEED[r];
-			if (need <= 0) continue;
-			const want = need * pop;
-			const supply = colony.outBase[r] * pop + colony.stock[r] / NEED_BUFFER_Y;
-			let c = supply / want;
-			if (c > 1) c = 1;
-			if (c < 0) c = 0;
-			sum += NEED_WEIGHT[r] * c;
+			if (NEED[r] <= 0) continue;
+			sum += NEED_WEIGHT[r] * needCoverageOf(colony, r);
 			weight += NEED_WEIGHT[r];
 		}
 		return weight > 0 ? sum / weight : 1;
+	}
+
+	function supplyGrowthOf(coverage) {
+		return G_MAX * coverage - DECLINE * (1 - coverage);
+	}
+
+	function populationRateAt(colony, coverage) {
+		if (colony.outpost || !(colony.pop > 0)) return 0;
+		const g = supplyGrowthOf(coverage);
+		if (g <= 0) return g;
+		const room = 1 - colony.pop / (colony.capacity > 0 ? colony.capacity : 1);
+		return g * (room > 0 ? room : 0);
+	}
+
+	// Instantaneous natural change per person per trade year, using *current*
+	// stocks. At a full world a positive supply potential produces no births.
+	function populationRateOf(colony) {
+		return populationRateAt(colony, coverageOf(colony));
+	}
+
+	function refreshColonyHealth(colony) {
+		colony.coverage = coverageOf(colony);
+		colony.growth = populationRateAt(colony, colony.coverage);
+		colony.starving = !colony.outpost && colony.coverage < STARVE_COVERAGE ? 1 : 0;
+		return colony;
 	}
 
 	// Re-scale a live colony's warehouse when the mode changes: the cap moves by
@@ -601,6 +640,7 @@
 			colony.stockCap[r] = cap;
 			colony.stock[r] = stock > cap ? cap : stock;
 		}
+		refreshColonyHealth(colony);
 		return factor;
 	}
 
@@ -614,11 +654,11 @@
 		const p0 = colony.pop;
 		if (!(p0 > 0)) { demoteColony(colony, now); return 0; }
 		const k = colony.capacity > 0 ? colony.capacity : 1;
-		const coverage = coverageOf(colony);
-		const g = G_MAX * coverage - DECLINE * (1 - coverage);
+		const g = supplyGrowthOf(coverageOf(colony));
 		const capped = p0 > POP_GROWTH_CAP_FRAC * k ? POP_GROWTH_CAP_FRAC * k : p0;
-		logisticIntegral(capped, k, g, dt, LOGISTIC_SCRATCH);
-		const integral = LOGISTIC_SCRATCH.integral;
+		if (g < 0) declineIntegral(capped, g, dt, SETTLE_SCRATCH);
+		else logisticIntegral(capped, k, g, dt, SETTLE_SCRATCH);
+		const integral = SETTLE_SCRATCH.integral;
 		const rate = inputRateOf(colony, INPUT_SCRATCH);
 		for (let r = 0; r < RESOURCE_COUNT; r++) {
 			const net = colony.outBase[r] - rate[r];
@@ -631,13 +671,11 @@
 			if (net > 0) colony.produced += net * integral;
 			else colony.consumed += -net * integral;
 		}
-		let pop = LOGISTIC_SCRATCH.pop;
+		let pop = SETTLE_SCRATCH.pop;
 		if (pop > POP_GROWTH_CAP_FRAC * k) pop = POP_GROWTH_CAP_FRAC * k;
 		colony.pop = pop;
-		colony.coverage = coverage;
-		colony.growth = g;
 		colony.last = now;
-		colony.starving = coverage < STARVE_COVERAGE ? 1 : 0;
+		refreshColonyHealth(colony);
 		while (colony.popLevel < POP_MILESTONES.length && pop >= POP_MILESTONES[colony.popLevel]) {
 			colony.popLevel += 1;
 		}
@@ -650,9 +688,7 @@
 	function demoteColony(colony, nowYears) {
 		colony.outpost = 1;
 		colony.outpostY = nowYears;
-		colony.growth = 0;
-		colony.starving = 0;
-		colony.coverage = coverageOf(colony);
+		refreshColonyHealth(colony);
 		return colony.outpost;
 	}
 
@@ -717,6 +753,7 @@
 		let take = units < limit ? units : limit;
 		if (take <= 0) return 0;
 		colony.stock[r] -= take;
+		refreshColonyHealth(colony);
 		return take;
 	}
 
@@ -726,6 +763,7 @@
 		let give = units < room ? units : room;
 		if (give <= 0) return 0;
 		colony.stock[r] += give;
+		refreshColonyHealth(colony);
 		return give;
 	}
 
@@ -817,6 +855,30 @@
 		return fold;
 	}
 
+	function refreshFoldHealth(fold, worlds, count) {
+		if (count === 1) {
+			const world = refreshColonyHealth(worlds[0]);
+			if (fold !== world) {
+				fold.coverage = world.coverage;
+				fold.growth = world.growth;
+				fold.starving = world.starving;
+			}
+			return;
+		}
+		let pop = 0, coverage = 0, growth = 0;
+		for (let i = 0; i < count; i++) {
+			const world = worlds[i];
+			if (world.outpost) continue;
+			refreshColonyHealth(world);
+			pop += world.pop;
+			coverage += world.pop * world.coverage;
+			growth += world.pop * world.growth;
+		}
+		fold.coverage = pop > 0 ? coverage / pop : 0;
+		fold.growth = pop > 0 ? growth / pop : 0;
+		fold.starving = pop > 0 && !fold.outpost && fold.coverage < STARVE_COVERAGE ? 1 : 0;
+	}
+
 	// Bounded water-fill across <= FOLD_SCRATCH_MAX worlds: preserves exact
 	// proportionality while unread caps hold, saturates capped slots cleanly,
 	// falls back to remaining capacity when active weights sum to zero, and
@@ -885,6 +947,7 @@
 		if (count === 1) {
 			const given = giveToColony(worlds[0], r, units);
 			fold.stock[r] = worlds[0].stock[r];
+			if (given > 0) refreshFoldHealth(fold, worlds, count);
 			return given;
 		}
 		for (let i = 0; i < count; i++) {
@@ -903,6 +966,7 @@
 			w.stock[r] = next > w.stockCap[r] ? w.stockCap[r] : next;
 		}
 		syncFoldResource(fold, worlds, count, r);
+		refreshFoldHealth(fold, worlds, count);
 		return given;
 	}
 
@@ -914,6 +978,7 @@
 		if (count === 1 && (!lifts || lifts[0] === 1)) {
 			const taken = takeFromColony(worlds[0], r, want);
 			fold.stock[r] = worlds[0].stock[r];
+			if (taken > 0) refreshFoldHealth(fold, worlds, count);
 			return taken;
 		}
 		for (let i = 0; i < count; i++) {
@@ -933,6 +998,7 @@
 			w.stock[r] = next > 0 ? next : 0;
 		}
 		syncFoldResource(fold, worlds, count, r);
+		refreshFoldHealth(fold, worlds, count);
 		return taken;
 	}
 
@@ -1007,7 +1073,8 @@
 		createColony, copyColony, fillColony, setupColony, foundColony, settleColony, demoteColony,
 		foldColonies, distributeInbound, collectOutbound,
 		FOUND_STOCK_FRAC, SEED_STOCK_FRAC,
-		coverageOf, inputRateOf, HABITAT, HABITAT_BELT,
+		needCoverageOf, coverageOf, supplyGrowthOf, populationRateOf, refreshColonyHealth,
+		inputRateOf, HABITAT, HABITAT_BELT,
 		demandOf, exportableOf, takeFromColony, giveToColony,
 		unitsForTons, tonsForUnits, yieldDots, formatPop, formatUnits, siteName,
 	};

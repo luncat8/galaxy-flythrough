@@ -196,7 +196,7 @@ foldPort(port):
   stockCap[r] = Σ world.stockCap[r]
   outBase[r]  = pop-weighted mean of world.outBase[r]
   coverage = pop-weighted mean of world.coverage
-  growth   = pop-weighted mean of world.growth
+  growth   = pop-weighted mean of world.growth  // current net population rate, not supply potential
   yield[r] = production-weighted mean of world.yield[r]
   access   = pop-weighted mean of world.access          // T4
 ```

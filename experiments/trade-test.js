@@ -657,7 +657,7 @@ function stepSmall(net, total, chunk) {
 		near(growing.pop, growing.capacity) && finite(growing.produced) && growing.produced > 0);
 	const declining = controlledColony(false);
 	economy.settleColony(declining, 1e6);
-	const decayArea = -declining.capacity / economy.DECLINE * Math.log1p(-0.25);
+	const decayArea = 25 / economy.DECLINE;
 	let netNeed = 0;
 	for (const rate of economy.NEED) netNeed += rate;
 	check('long starvation tends to zero with a finite positive consumption integral',
@@ -667,7 +667,62 @@ function stepSmall(net, total, chunk) {
 	equilibrium.pop = equilibrium.capacity;
 	economy.settleColony(equilibrium, 1e6);
 	check('population at carrying capacity is an exact finite equilibrium',
-		equilibrium.pop === equilibrium.capacity && finite(equilibrium.consumed));
+		equilibrium.pop === equilibrium.capacity && finite(equilibrium.consumed)
+		&& equilibrium.growth === 0 && economy.populationRateOf(equilibrium) === 0);
+	const suppliedAtCap = controlledColony(false);
+	suppliedAtCap.pop = suppliedAtCap.capacity;
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
+		suppliedAtCap.outBase[r] = economy.NEED[r] * 0.46;
+	}
+	economy.refreshColonyHealth(suppliedAtCap);
+	const potential = economy.supplyGrowthOf(suppliedAtCap.coverage);
+	check('a 0.7% supply potential at capacity means zero population change',
+		potential > 0.006 && potential < 0.008
+		&& near(economy.needCoverageOf(suppliedAtCap, economy.R_FOOD), 0.46)
+		&& suppliedAtCap.growth === 0);
+	economy.settleColony(suppliedAtCap, 100);
+	check('a supplied full colony stays at capacity, with a flat growth marker',
+		suppliedAtCap.pop === suppliedAtCap.capacity && suppliedAtCap.growth === 0);
+	const starvedAtCap = controlledColony(false);
+	starvedAtCap.pop = starvedAtCap.capacity;
+	economy.settleColony(starvedAtCap, 12);
+	check('a full colony actually loses population when its supplies fail',
+		starvedAtCap.pop < starvedAtCap.capacity && starvedAtCap.pop > 0
+		&& starvedAtCap.growth < 0 && starvedAtCap.starving === 1,
+		{ pop: starvedAtCap.pop, rate: starvedAtCap.growth });
+	const lowPop = starvedAtCap.pop;
+	for (let r = 0; r < economy.RESOURCE_COUNT; r++) starvedAtCap.outBase[r] = economy.NEED[r] * 2;
+	economy.settleColony(starvedAtCap, 24);
+	check('restoring supplies lets a previously full world recover toward its cap',
+		starvedAtCap.pop > lowPop && starvedAtCap.pop < starvedAtCap.capacity
+		&& starvedAtCap.growth > 0);
+	const delivery = controlledColony(false);
+	delivery.stockCap[economy.R_FOOD] = 100;
+	economy.refreshColonyHealth(delivery);
+	const beforeDelivery = delivery.pop;
+	economy.giveToColony(delivery, economy.R_FOOD, 90);
+	check('a delivery refreshes household coverage and net growth without waiting for a settle',
+		delivery.pop === beforeDelivery && delivery.growth > 0
+		&& near(economy.needCoverageOf(delivery, economy.R_FOOD), 1));
+	economy.takeFromColony(delivery, economy.R_FOOD, 65);
+	check('taking the food reserve refreshes growth back to a shortage',
+		delivery.growth < 0 && economy.needCoverageOf(delivery, economy.R_FOOD) < 0.3);
+	const partial = controlledColony(true);
+	economy.refreshColonyHealth(partial);
+	check('current growth is supply potential times unused capacity for positive supply',
+		near(partial.growth, economy.G_MAX * (1 - partial.pop / partial.capacity)));
+	const full = controlledColony(true);
+	full.pop = full.capacity;
+	economy.refreshColonyHealth(full);
+	const folded = economy.createColony();
+	economy.foldColonies(folded, [full, partial], 2);
+	const mockPort = { portCount: 1, ports: [{ worldCount: 2, worldIdx: [0, 1], colony: folded }],
+		worlds: [full, partial] };
+	const worldWeighted = partial.pop * partial.growth / folded.pop;
+	check('a port grows by its worlds, not by the headroom of a fictitious combined world',
+		near(folded.growth, worldWeighted)
+		&& near(trade.portPopulationRateOf(mockPort, 0), worldWeighted)
+		&& Math.abs(economy.populationRateOf(folded) - worldWeighted) > 1e-4);
 	const tiny = controlledColony(true);
 	economy.settleColony(tiny, 1e-10);
 	const initialSlope = economy.G_MAX * 25 * 0.75;
@@ -1216,9 +1271,9 @@ function exactLiveEvents(net) {
 	const previousWindow = global.window;
 	const records = require('../src/math/star-record.js');
 	const layerLib = require('../src/render/label-layer.js');
-	const lines = [], arcs = [];
+	const lines = [], arcs = [], strokes = [];
 	const context = {
-		setTransform() {}, clearRect() {}, beginPath() {}, stroke() {}, fill() {},
+		setTransform() {}, clearRect() {}, beginPath() {}, stroke() { strokes.push(this.strokeStyle); }, fill() {},
 		moveTo() {}, lineTo(x, y) { lines.push([x, y]); }, arc(x, y, radius) { arcs.push([x, y, radius]); },
 	};
 	const canvas = { width: 0, height: 0, getContext: () => context };
@@ -1234,7 +1289,7 @@ function exactLiveEvents(net) {
 	layer.setStarSource(info);
 	layer.setOrbitState({}, 1);
 	const ports = [
-		{ key: 10, ref: { kind: 0, index: 0 }, colony: { outpost: 0, pop: 900, capacity: 900, growth: 0.01, founded: -400 } },
+		{ key: 10, ref: { kind: 0, index: 0 }, colony: { outpost: 0, pop: 900, capacity: 900, growth: 0, founded: -400 } },
 		{ key: 20, ref: { kind: 0, index: 1 }, colony: { outpost: 0, pop: 100, capacity: 900, growth: 0.01, founded: 20 } },
 	];
 	const net = { portCount: 2, shipCount: 1, candidateCount: 0, ports, candidates: [],
@@ -1249,6 +1304,9 @@ function exactLiveEvents(net) {
 		arcs.some(a => near(a[2], ringOf(100 / 900) + 2))
 		&& !arcs.some(a => near(a[2], ringOf(1) + 2)),
 		{ arcs: arcs.length });
+	check('a full colony has the neutral ring, not the growing ring',
+		strokes.includes(layerLib.TRADE_MARKER_STYLE.peak)
+		&& strokes.includes(layerLib.TRADE_MARKER_STYLE.grow));
 	// Route lines are the checkbox's business; the colonies are not.
 	lines.length = 0;
 	arcs.length = 0;

@@ -54,6 +54,13 @@ assert.ok(main.includes('syncTradeBootstrap(true)') && main.includes('syncTradeB
 assert.ok(main.includes('tradeLib.refInSky(ref, model, tradeCtx.field, starTimeRate)'));
 assert.ok(/id="trade-action-note"[^>]*hidden/.test(html));
 assert.ok(main.includes('function canCommandTrade() { return !isFlying(); }'));
+// The inspector belongs by the clock at the top, before the colony list,
+// so a full world's explanation is visible without scrolling to the logs.
+assert.ok(html.indexOf('id="trade-rate"') < html.indexOf('id="trade-colony-card"')
+	&& html.indexOf('id="trade-colony-card"') < html.indexOf('id="trade-list"'));
+assert.ok(html.includes('id="trade-colony-detail"')
+	&& main.includes('syncTradeColonyDetail(inspected, rateY)'));
+checks++;
 
 // trade.31: exercise the real main.js founding & notice slice in Observe,
 // Command, and Fly — covering empty-network "Search for a home -> select planet
@@ -126,6 +133,10 @@ assert.ok(main.includes('function canCommandTrade() { return !isFlying(); }'));
 		const tradeFoundHere = { disabled: true };
 		const tradeBootstrapNote = { hidden: true, textContent: '' };
 		const tradeActionNote = { hidden: true, textContent: '' };
+		const tradeColonyCard = { hidden: true, dataset: {} };
+		const tradeColonyTitle = { textContent: '' };
+		const tradeColonySource = { textContent: '' };
+		const tradeColonyDetail = { textContent: '' };
 		const ctx = {
 			Workspace,
 			window: {
@@ -148,6 +159,7 @@ assert.ok(main.includes('function canCommandTrade() { return !isFlying(); }'));
 			tradeFoundHere,
 			tradeBootstrapNote,
 			tradeActionNote,
+			tradeColonyCard, tradeColonyTitle, tradeColonySource, tradeColonyDetail,
 			renderer: {
 				state: {},
 				fieldBuffers: () => ({ count: 0 }),
@@ -231,6 +243,88 @@ assert.ok(main.includes('function canCommandTrade() { return !isFlying(); }'));
 		const logText = ctx.tradeLogEntryText(logEntry);
 		assert.ok(rowText.includes('\u00b7 2w'), 'multi-world port row carries 2w badge: ' + rowText);
 		assert.ok(logText.startsWith('settled    Home belt 1 in '), 'LOG_SIBLING formatted cleanly: ' + logText);
+		checks++;
+
+		// The GUI reports *net* natural change, not the supply-only potential:
+		// two full but supplied worlds used to read ↑0.7%/y indefinitely.
+		const home = TradeLib.worldOfPort(net, 0, 0);
+		const belt = TradeLib.worldOfPort(net, 0, 1);
+		for (const world of [home, belt]) {
+			world.pop = world.capacity;
+			world.stock.fill(0);
+			for (let r = 0; r < EconomyLib.RESOURCE_COUNT; r++) {
+				world.outBase[r] = EconomyLib.NEED[r] * 0.46;
+			}
+			EconomyLib.refreshColonyHealth(world);
+		}
+		TradeLib.foldPort(net, 0);
+		let info = ctx.colonyDevelopment(0, 100, {});
+		assert.strictEqual(info.rate, 0);
+		assert.ok(info.potential > 0.006 && info.potential < 0.008);
+		assert.ok(info.text.includes('→ 0%/y (0 people/y)')
+			&& info.text.includes('Supply      +0.70%/y potential')
+			&& info.text.includes('2/2 worlds at capacity')
+			&& info.shortages.includes('volatiles') && info.shortages.includes('food & seed'));
+		assert.ok(ctx.tradeRowText(0, -1).includes('→0%/y · cap'), 'row no longer advertises 0.7% growth at K');
+		checks++;
+
+		// Rounding the list's M display cannot conceal a small *nonzero* change:
+		// the card shows exact people and the row says <0.001% rather than 0.0%.
+		const oldRounded = EconomyLib.formatPop(home.pop);
+		home.pop -= 1e-5;
+		EconomyLib.refreshColonyHealth(home);
+		TradeLib.foldPort(net, 0);
+		info = ctx.colonyDevelopment(0, 100, {});
+		assert.strictEqual(EconomyLib.formatPop(home.pop), oldRounded);
+		assert.ok(info.rate > 0 && info.rate < 0.00001
+			&& info.text.includes('<0.001%/y') && info.text.includes('+<1 person/y')
+			&& ctx.tradeRowText(0, -1).includes('↑<0.001%/y'));
+		assert.ok(ctx.colonyDevelopment(0, 0, {}).text.includes('paused — no trade years pass'));
+		checks++;
+
+		for (const world of [home, belt]) {
+			world.pop = world.capacity / 2;
+			world.stock.fill(0);
+			world.outBase.fill(0);
+			EconomyLib.refreshColonyHealth(world);
+		}
+		TradeLib.foldPort(net, 0);
+		info = ctx.colonyDevelopment(0, 100, {});
+		assert.ok(info.rate < 0 && info.reason.includes('below 25% break-even')
+			&& info.shortages.includes('0% met') && !info.shortages.includes('ore')
+			&& ctx.tradeRowText(0, -1).includes('↓'));
+		checks++;
+
+		// The actual card writer follows the open star, and a vanished colony
+		// cannot leave its last readout on screen.
+		ctx.starSet.primary = -1;
+		openSys = false;
+		assert.strictEqual(ctx.inspectedTradePort(), 0, 'without a selection, inspect the capital');
+		ctx.syncTradeColonyDetail(0, 100);
+		assert.ok(tradeColonySource.textContent.startsWith('capital · '));
+		ctx.starSet.keys = [net.ports[0].key];
+		ctx.systemLayer.record = { star: { key: net.ports[0].key } };
+		openSys = true;
+		assert.strictEqual(ctx.inspectedTradePort(), 0);
+		ctx.syncTradeColonyDetail(0, 100);
+		assert.strictEqual(tradeColonyCard.hidden, false);
+		assert.ok(tradeColonySource.textContent.startsWith('selected · ')
+			&& tradeColonySource.textContent.includes(net.ports[0].name));
+		assert.strictEqual(tradeColonyTitle.textContent, 'Colony development');
+		assert.ok(tradeColonyDetail.textContent.includes('Population')
+			&& tradeColonyDetail.textContent.includes('Short'));
+		ctx.syncTradeColonyDetail(-1, 0);
+		assert.strictEqual(tradeColonyCard.hidden, false);
+		assert.ok(tradeColonyDetail.textContent.includes('No visible colony')
+			&& tradeColonyCard.dataset.health === 'paused');
+		for (const world of [home, belt]) EconomyLib.demoteColony(world, 200);
+		TradeLib.foldPort(net, 0);
+		ctx.syncTradeColonyDetail(0, 100);
+		assert.ok(tradeColonyDetail.textContent.includes('frozen')
+			&& tradeColonyCard.dataset.health === 'outpost');
+		ctx.tradeNet = null;
+		ctx.syncTradeColonyDetail(-1, 0);
+		assert.strictEqual(tradeColonyCard.hidden, true);
 		checks++;
 	}
 	assert.ok(main.includes('tradeLib.siblingReadoutText(tradeNet, portIndex)'));

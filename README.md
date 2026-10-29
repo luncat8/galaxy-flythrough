@@ -421,7 +421,16 @@ time and per-world lift. These dashes are not extra ships or queue events.
 
 The Trade panel lists the largest colonies, the youngest one, and every ready
 expedition as clickable rows: a colony row selects its star (the ship never
-moves), a frontier row carries its own **Send**. **Expansion armed** stands the
+moves), a frontier row carries its own **Send**. The **Colony development** card
+beside the trade clock follows that selection (or shows the capital by default).
+It shows precise population and capacity, *natural* change in people per trade
+year, household supply potential, each world's capacity limit, the two most
+important household shortages, expedition readiness, and whether the trade
+clock is paused. For example, `+0.7%/y` supply potential at a full world means
+**0%/y actual growth**; positive rates below the row's display precision read
+`<0.001%/y` instead of rounding to zero. At a multi-world port, each world has
+its own carrying capacity. Ship departures and passenger transfers can also
+change population separately from natural growth. **Expansion armed** stands the
 colonisation authority down while the freight fleet keeps flying. Each resource
 in the selected colony's readout is tagged `+` surplus, `!` scarce or fair, and
 one line reports the system's own supply — rocky worlds, giants, belts, terrans
@@ -444,7 +453,9 @@ population, export and current hold resource. No money changes hands.
 The economy is intentionally abstract: NPC travel uses authored trade speeds,
 not the player's physical flight model. Factories settle on events/inspection,
 never every frame; supply-limited growth is approximate and inspections can
-change its subsequent history. See the trade plan for these limits.
+change its subsequent history. Positive natural growth slows as a world fills
+its carrying capacity; shortages can shrink even a full world. See the trade
+plan for these limits.
 
 ## URL parameters
 

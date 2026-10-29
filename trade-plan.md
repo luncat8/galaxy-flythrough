@@ -123,8 +123,9 @@ Growth coverage weights household needs, not industrial inputs:
 
 ```
 coverage = sum(w[r] * min(1, (out[r]*P + stock[r]/20)/(NEED[r]*P))) / sum(w)
-g = coverage/40 - (1-coverage)/120
-P(t) = K / (1 + (K/P0 - 1)*exp(-g*t))
+g = coverage/40 - (1-coverage)/120    // supply potential; break-even at coverage 0.25
+if g >= 0: P(t) = K / (1 + (K/P0 - 1)*exp(-g*t))
+if g < 0:  P(t) = P0 * exp(g*t)      // scarcity can shrink even a full world
 stock[r] += (out[r] - input[r]) * integral(P dt)   // clamped to [0, cap]
 ```
 
@@ -134,9 +135,13 @@ for ten seconds and the expansion it was supposed to feed never started. At
 the authored coverage (~0.47) the rate is ≈0.7 %/y, a doubling in about a
 century (one wall second).
 
-Use cancellation/overflow-safe logistic evaluation (`expm1`, `log1p`), including
-zero growth, equilibrium at K, and very long positive/negative intervals. Below
-0.02 M a colony is abandoned: helpers refuse transfers/routing to it. Port slots
+Use cancellation/overflow-safe evaluation (`expm1`, `log1p`) for tiny and
+long intervals. Positive growth has an equilibrium at K; negative growth is
+exponential attrition, not a reversed logistic: at K, the reversed logistic has
+zero slope and a starving colony would be immortal. The displayed/current
+population rate is `g*(1 - P/K)` when g > 0, else `g`; at a multi-world port,
+it is `Σ(P_world * rate_world) / ΣP_world`, not the total port's headroom.
+Below 0.02 M a colony is abandoned: helpers refuse transfers/routing to it. Port slots
 remain stable tombstones so in-flight references never change; no slot compaction
 or revival in this pass. Public player-port lookup excludes abandoned colonies.
 
@@ -147,6 +152,12 @@ history. There is no automatic stock-boundary event or claimed exact solution fo
 changing coverage. Network jump invariance means identical *external actions and
 event times* give identical state, not that arbitrary inspection schedules agree.
 
+Freeze coverage *for integration*, then refresh coverage, growth (the
+instantaneous population rate, not `g`) and the starvation flag from the
+resulting stocks/population for displays and the next decision. A founded
+colony's first snapshot is computed from its founding stores. Stock transfers
+or departures can briefly precede the next settle; inspection derives its
+rates from the current worlds, not a stale fold or the last interval's `g`.
 Settle on arrival, dispatch, destination scoring, the 25-year expedition check,
 and the opened system's 4 Hz readout. Never settle all colonies per frame.
 
@@ -628,9 +639,21 @@ the frontier marks stay on screen whenever a network exists. A network that
 appears only when a "routes" box is ticked is a network nobody watches grow.
 
 The Trade panel's colony rows carry the same information as text: a three-cell
-bar, the population, and `↑ 1.25 %/y`. A `newest` row names the most recently
-founded world with its age, because the six largest colonies can never show an
-expansion — a new world starts small. The colonisation block names the gate that
+bar, the rounded population, and the **current net population rate**, not the
+supply-only potential (`g`). A full world reads `→ 0%/y`, never `↑ 0.7%/y`;
+small nonzero rates read `<0.001%/y`, not a rounded zero. The galaxy/system
+markers use the same net rate for their colour. The selected colony (or the
+capital when no colony is selected) has an inspection card next to the clock,
+before the colony list: precise population and capacity, change in people per
+trade year, supply coverage/potential, capacity headroom (world by world for a
+multi-world port), and the two highest *weighted household* shortfalls from
+local production plus a 20-year stock buffer. It also names per-port
+expedition readiness separately from natural population growth. Factory-input
+scarcity tags are a different measure and must not be called growth blockers.
+Clock pauses and sky gates are named explicitly; a clock moving at 100 y/s is
+not a 100% growth rate. A `newest` row names the most recently founded world with its age,
+because the six largest colonies can never show an expansion — a new world
+starts small. The colonisation block names the gate that
 is shut (`no big colony yet`, `every big colony is resting between expeditions`,
 `no free world within 600 ly`) and counts the resting ports and the next launch
 in years, instead of the old catch-all "no big colonies ready". Its **Send

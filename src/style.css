@@ -1082,11 +1082,31 @@ body.system-view #sysread {
 	text-overflow: ellipsis;
 	cursor: pointer;
 }
-.trade-row:hover {
+.trade-row:hover, .trade-row.is-selected {
 	border-color: #2a5a4a;
 	background: rgba(60, 160, 130, 0.14);
 }
+.trade-row.is-selected { border-left-color: #6fd8b5; }
 .trade-row:focus-visible { outline: 1px solid #6fd8b5; }
+.trade-colony-card {
+	border-left: 2px solid #6fd8b5;
+	padding: 3px 6px 5px;
+	margin: 4px 0 9px;
+	background: rgba(45, 120, 96, 0.10);
+}
+.trade-colony-card[hidden] { display: none; }
+.trade-colony-card[data-health="full"],
+.trade-colony-card[data-health="stalled"],
+.trade-colony-card[data-health="paused"] { border-left-color: #dbc286; }
+.trade-colony-card[data-health="declining"],
+.trade-colony-card[data-health="outpost"] { border-left-color: #ed978b; }
+.trade-colony-card .flight-section-heading { margin-top: 0; }
+.trade-colony-detail {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	color: #b4d9cb;
+	font: 10px/1.5 'Menlo', 'Consolas', monospace;
+}
 .trade-row.send {
 	display: flex;
 	justify-content: space-between;

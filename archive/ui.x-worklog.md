@@ -1274,3 +1274,48 @@ auto-update cadence question from ui.22 is still open — both are rows on
 - Validation: `star-select` and all 10 `changed` groups passed.
 - Next: verify clicking neighbouring cluster stars while orbiting in the browser;
   the simple movement engine still has its documented approximate CPU picker.
+
+## ui.25 — 2026-10-29 — A full colony is not growing at 0.7%/y
+
+**Report and root cause.** The Trade readout printed `colony.growth` as a
+population percentage, but the stored value was the *supply potential* `g`.
+The actual positive population law multiplies `g` by `1 − P/K`; at carrying
+capacity it changes by zero while the UI still read `↑ 0.7%/y` and coloured
+the port ring green. Rounding the population to one decimal million obscured
+smaller real changes. The colonisation readiness reason could also replace
+rather than supplement the row's growth readout.
+
+**The separate simulation bug.** For negative `g`, the reversed logistic also
+has an equilibrium at `P = K`. A fully populated colony with no food stayed
+immortal even as its supplies vanished. Shortages now use closed-form
+exponential attrition (`P·exp(gΔt)` with an `expm1` integral), including at K;
+positive `g` keeps its existing logistic law and cap. Current `coverage`,
+`growth` (the net instantaneous population rate) and starvation status are
+refreshed after each settle and on transfers, founding and passenger changes.
+The port fold pop-weights those world rates; treating all worlds as one large
+logistic would falsely give room to a full world beside an empty one.
+
+**GUI.** A Colony development card appears beside the Trade clock before the
+port list. It follows the selected/open star, falling back to the capital,
+and reports precise headcount / capacity, actual natural change (%/trade-year
+and people/trade-year), supply potential, world capacity headroom, the top two
+*weighted household* supply gaps, expedition readiness, and clock pause. The
+shortage diagnostic uses the same household coverage formula as the settle;
+`!` resource tags count factory inputs too and are deliberately not used as
+population-growth blockers. Multi-world ports name which worlds are at cap;
+outposts and sky gates have their own reasons. The list and opened-system
+readout now show net change, with `<0.001%/y` instead of rounding a small
+nonzero rate to zero; a full supplied colony reads `→ 0%/y · cap`. The map and
+system ring colours read that same net-rate snapshot.
+
+**Validation.** `trade-test.js` pins a 0.7% supply potential at K with zero
+actual growth, finite starvation and recovery from K, long-interval attrition,
+world-weighted folded rates, delivery-triggered rate changes and the neutral
+full-colony marker. `panel-test.js` presses the actual card/row formatter at
+capacity, near capacity (rounded list but precise card), starvation, pause,
+outposts and sky gates. `python3 scripts/run.py changed` 9/9, `world-tests` 16/16 and `view-tests`
+21/21 passed. A live static preview is available; no browser visual verdict
+is claimed from the Node tests.
+
+Next: inspect the card's wrapping at narrow viewport sizes and the rate-versus
+headcount movement on a live colony in the browser.

@@ -351,6 +351,11 @@
 			<label for="trade-rate" title="The trade network's own clock, in years per wall second. 0 pauses it; arrow keys step the ladder. Disabled while the clock is synced to star time.">Trade clock <span id="val-trade-rate" class="menu-val">100 y/s</span></label>
 			<input type="range" id="trade-rate" min="0" max="11" step="1" value="7">
 		</div>
+		<section id="trade-colony-card" class="trade-colony-card" aria-labelledby="trade-colony-title" hidden>
+			<div class="flight-section-heading"><span id="trade-colony-title">Colony development</span><small id="trade-colony-source">capital</small></div>
+			<div id="trade-colony-detail" class="trade-colony-detail" title="Natural change excludes expedition departures and passenger transfers. Coverage is household supply (local production plus 20 years of stored goods), not factory-input scarcity."></div>
+		</section>
+		<div id="trade-list" class="trade-rows">No trade network yet.</div>
 		<label class="flight-autopilot" title="Draw the freight lines between ports (Y). The network itself — a ring at every colony scaled by its population and coloured by its growth, a wider ring on a colony founded this century, a dot for every hull and a cross on every free frontier world — is always drawn while a network exists, because colonies nobody can see cannot be watched growing.">
 			<input type="checkbox" id="trade-routes" checked>
 			<span>Draw route lines</span>
@@ -372,7 +377,6 @@
 			<button id="trade-launch" type="button" disabled title="Send the best available colonisation expedition now instead of waiting for the next tick. It takes volunteers from the source colony's population, exactly as the automatic launch does; the port then rests for 900 trade years.">Send expedition</button>
 			<span id="trade-state" class="flight-port-state" title="If no early colony exists, the bootstrap scans field stars for a terran world. It approximates later-generation stars with birth at least 0.5 Gyr, stellar age at least 0.1 Gyr, and model metallicity at least 0.008; the model does not track actual stellar ancestry.">no network</span>
 		</div>
-		<div id="trade-list" class="trade-rows">No trade network yet.</div>
 		<div class="flight-section-heading"><span>Colonisation</span><small>big colonies → good worlds</small></div>
 		<div class="menu-row menu-actions">
 			<button id="trade-found" type="button" disabled title="Found a colony on the best world of the currently selected star — the same free law and the same refusals as the docked Port entrance. Two doors, one law: no charge, no second port, no cap bypass.">Found at selected</button>

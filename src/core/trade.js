@@ -544,6 +544,31 @@
 		return port.colony;
 	}
 
+	function refreshPortHealth(net, index) {
+		const port = net.ports[index];
+		for (let s = 0; s < port.worldCount; s++) {
+			const world = net.worlds[port.worldIdx[s]];
+			if (!world.outpost) economy.refreshColonyHealth(world);
+		}
+		return foldPort(net, index);
+	}
+
+	// Inspect the worlds, not a hypothetical world with the port's combined K.
+	// Current supplies may have changed since the last settle or fold.
+	function portPopulationRateOf(net, index) {
+		if (!net || !(index >= 0 && index < net.portCount)) return 0;
+		const port = net.ports[index];
+		if (port.colony.outpost) return 0;
+		let pop = 0, change = 0;
+		for (let s = 0; s < port.worldCount; s++) {
+			const world = net.worlds[port.worldIdx[s]];
+			if (world.outpost) continue;
+			pop += world.pop;
+			change += world.pop * economy.populationRateOf(world);
+		}
+		return pop > 0 ? change / pop : 0;
+	}
+
 	function intraBodyIndex(system, kind, index) {
 		return kind === 1 ? (system.counts.planets | 0) + (index | 0) : index | 0;
 	}
@@ -1052,6 +1077,7 @@
 		if (n === 1) {
 			const w0 = net.worlds[port.worldIdx[0]];
 			w0.pop -= peopleM;
+			refreshPortHealth(net, index);
 			return peopleM;
 		}
 		let popSum = 0, lastLive = -1;
@@ -1071,7 +1097,7 @@
 			w.pop = w.pop > part ? w.pop - part : 0;
 			assigned += part;
 		}
-		foldPort(net, index);
+		refreshPortHealth(net, index);
 		return take;
 	}
 
@@ -1084,6 +1110,7 @@
 			const w0 = net.worlds[port.worldIdx[0]];
 			const before = w0.pop;
 			w0.pop = Math.min(w0.capacity, w0.pop + peopleM);
+			refreshPortHealth(net, index);
 			return w0.pop - before;
 		}
 		let roomSum = 0, lastLive = -1;
@@ -1104,7 +1131,7 @@
 			w.pop = Math.min(w.capacity, w.pop + part);
 			assigned += part;
 		}
-		foldPort(net, index);
+		refreshPortHealth(net, index);
 		return give;
 	}
 
@@ -1645,6 +1672,7 @@
 		intra.revision += 1;
 		net.intraDelivered += landed;
 		port.arrivals += 1;
+		if (landed > 0) refreshPortHealth(net, portIndex);
 		return landed;
 	}
 
@@ -2295,7 +2323,7 @@
 		}
 		if (hasInterval) applyIntraFlows(net, index, time);
 		refreshPortAccess(net, index);
-		const colony = foldPort(net, index);
+		const colony = hasInterval ? refreshPortHealth(net, index) : foldPort(net, index);
 		if (colony.popLevel !== level) pushLog(net, LOG_MILESTONE, index, colony.popLevel, level);
 		if (colony.starving !== starving) {
 			pushLog(net, colony.starving ? LOG_FAMINE : LOG_FAMINE_END, index,
@@ -2844,7 +2872,7 @@
 			return -1;
 		}
 		net.worlds[worldIndex].pop = taken;
-		foldPort(net, portIndex);
+		refreshPortHealth(net, portIndex);
 		port.lastSibling = time;
 		net.siblingsFounded += 1;
 		pushLog(net, LOG_SIBLING, portIndex, net.worlds[worldIndex].slot, 0);
@@ -4223,7 +4251,8 @@
 		setExpansion, expansionArmed, portReadiness, launchChosen, CHOSEN_RESULT,
 		ROLLED_FOUND, FRESH_FOUND, createFoundResult, playerFound,
 		createWorldFoundResult, playerFoundWorld,
-		createNetwork, addPort, addWorld, addCandidate, worldOfPort, worldOfSite, foldPort, fillIntraGraph,
+		createNetwork, addPort, addWorld, addCandidate, worldOfPort, worldOfSite, foldPort,
+		portPopulationRateOf, fillIntraGraph,
 		refreshReach, freeCandidateSlot,
 		distributePortInbound, collectPortOutbound,
 		discoverSystem, discoverNearest, startSystems, settleSystem, settlePort, finalize, step, settleAllPorts,

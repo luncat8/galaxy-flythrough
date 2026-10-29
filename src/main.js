@@ -1246,6 +1246,10 @@ async function boot() {
         const starTimeRangeBtn = document.getElementById('star-time-range');
         const tradeState = document.getElementById('trade-state');
         const tradeList = document.getElementById('trade-list');
+        const tradeColonyCard = document.getElementById('trade-colony-card');
+        const tradeColonyTitle = document.getElementById('trade-colony-title');
+        const tradeColonySource = document.getElementById('trade-colony-source');
+        const tradeColonyDetail = document.getElementById('trade-colony-detail');
         const tradeLaunch = document.getElementById('trade-launch');
         const tradeFound = document.getElementById('trade-found');
         // The empty-network block (trade.28): the two doors a network with no
@@ -5455,11 +5459,16 @@ async function boot() {
                                 + tradeLib.intraFleetText(tradeNet, portIndex)
                                 + '\ninter     no trade';
                 }
+                const rate = tradeLib.portPopulationRateOf(tradeNet, portIndex);
+                const netGrowth = growthMark(rate) + ' ' + formatPopulationRate(rate);
+                const full = rate === 0 && colony.pop >= colony.capacity
+                        && economyLib.supplyGrowthOf(colony.coverage) > 0;
                 const systemLine = `\nsystem    ${colony.sysRocky} rocky \u00b7 ${colony.sysGiants} giants`
                         + ` \u00b7 ${colony.sysBelts} belt${colony.sysBelts === 1 ? '' : 's'}`
                         + ` \u00b7 ${colony.sysTerran} terran \u00b7 ${colony.sysHz} HZ`;
                 if (!systemLayer.isOpen()) {
                         return `\ntrade     ${port.name} \u00b7 ${economyLib.formatPop(colony.pop)} / ${economyLib.formatPop(colony.capacity)}`
+                                + ` \u00b7 natural ${netGrowth}` + (full ? ' \u00b7 at capacity' : '')
                                 + ` \u00b7 coverage ${colony.coverage.toFixed(2)} \u00b7 access ${colony.access.toFixed(2)}`
                                 + (colony.starving ? ' \u00b7 starving' : '')
                                 + systemLine
@@ -5477,11 +5486,15 @@ async function boot() {
                 }
                 let text = `\ntrade     ${port.name} \u00b7 pop ${economyLib.formatPop(colony.pop)} / ${economyLib.formatPop(colony.capacity)}`
                         + ` \u00b7 coverage ${colony.coverage.toFixed(2)} \u00b7 access ${colony.access.toFixed(2)}`
-                        + ` \u00b7 growth ${(colony.growth * 100).toFixed(2)}%/y`
+                        + ` \u00b7 natural ${netGrowth}` + (full ? ' \u00b7 at capacity' : '')
                         + ` \u00b7 ${age < 1 ? 'founded now' : Math.round(age) + ' y old'}`
                         + (colony.starving ? ' \u00b7 starving' : '')
                         + (bestExport >= 0 ? ` \u00b7 best export ${economyLib.RESOURCES[bestExport].name}` : '')
                         + (worstImport >= 0 ? ` \u00b7 worst import ${economyLib.RESOURCES[worstImport].name}` : '');
+                const development = colonyDevelopment(portIndex, tradeClockRate(), COLONY_INSPECTION);
+                text += '\nchange    ' + netGrowth + ' (' + formatPopulationChange(rate, colony.pop) + ')'
+                        + '\nlimit     ' + development.reason
+                        + '\nshort     ' + development.shortages;
 		text += '\nworlds    ' + tradeWorldsLine(portIndex);
 		if (systemLayer.isOpen()) text += tradeLib.siblingReadoutText(tradeNet, portIndex);
 		text += tradeLib.intraReadoutText(tradeNet, portIndex);
@@ -5515,18 +5528,166 @@ async function boot() {
         // an arrow for its sign — because six rows of near-identical numbers
         // are not a picture of a growing economy.
         const COLONY_BAR = '\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588';
-        const GROWING = 0.0005;
         function colonyBar(pop, capacity) {
                 const f = capacity > 0 ? pop / capacity : 0;
-                let i = Math.round((f < 0 ? 0 : f > 1 ? 1 : f) * (COLONY_BAR.length - 1));
+                const i = Math.round((f < 0 ? 0 : f > 1 ? 1 : f) * (COLONY_BAR.length - 1));
                 return COLONY_BAR[i] + COLONY_BAR[i] + COLONY_BAR[i];
         }
-        function growthMark(g) {
-                return g > GROWING ? '\u2191' : g < -GROWING ? '\u2193' : '\u2192';
+        function growthMark(rate) {
+                return rate > 0 ? '\u2191' : rate < 0 ? '\u2193' : '\u2192';
+        }
+        function formatPopulationRate(rate) {
+                const pct = Math.abs(rate * 100);
+                if (pct === 0) return '0%/y';
+                if (pct < 0.001) return '<0.001%/y';
+                return pct.toFixed(pct < 0.01 ? 3 : pct < 1 ? 2 : 1) + '%/y';
+        }
+        function formatPopulationChange(rate, pop) {
+                const people = rate * pop * 1e6;
+                if (people === 0) return '0 people/y';
+                const amount = Math.abs(people);
+                return (people > 0 ? '+' : '\u2212') + (amount < 1 ? '<1 person/y'
+                        : Math.round(amount).toLocaleString('en-US') + ' people/y');
+        }
+        function formatNeedCoverage(fraction) {
+                return fraction < 1 && fraction > 0.995 ? '>99%' : Math.round(fraction * 100) + '%';
         }
         function formatTradeRate(y) {
                 return Number(y.toPrecision(4)).toLocaleString('en-US');
         }
+
+        // The card follows the selected/open star; without one, the capital
+        // is the example visible immediately on entering Command.
+        function inspectedTradePort() {
+                if (!tradeNet) return -1;
+                const key = systemLayer.isOpen() ? systemLayer.record.star.key >>> 0
+                        : starSet.primary >= 0 ? starSet.keys[starSet.primary] >>> 0 : null;
+                if (key !== null) {
+                        const index = tradeLib.bestPortOfStar(tradeNet, key);
+                        if (index >= 0 && tradeNet.ports[index].skyVisible !== 0) return index;
+                }
+                return homeColonyPort();
+        }
+
+        // The household ranking uses the same weights and 20-year stock
+        // buffer as coverageOf; trade's ! marks include factory inputs instead.
+        // Inspect the real worlds: combining their K into a fictitious port
+        // logistic gives the wrong growth when one world is already full.
+        const COLONY_INSPECTION = { text: '', reason: '', shortages: '', rate: 0, potential: 0, health: '' };
+        function colonyDevelopment(index, rateY, out) {
+                const port = tradeNet.ports[index];
+                const colony = port.colony;
+                out.rate = 0;
+                out.potential = 0;
+                if (colony.outpost) {
+                        out.health = 'outpost';
+                        out.reason = 'outpost since ' + Math.round(colony.outpostY).toLocaleString('en-US') + ' y; growth stopped';
+                        out.shortages = '';
+                        out.text = 'Population  ' + Math.round(colony.pop * 1e6).toLocaleString('en-US')
+                                + ' people (frozen)\n' + out.reason + '\nNo trade or resettlement here.';
+                        return out;
+                }
+                let population = 0, coverageSum = 0, full = 0, live = 0, shrinking = 0;
+                let fullNames = '', shrinkingNames = '';
+                for (let s = 0; s < port.worldCount; s++) {
+                        const world = tradeNet.worlds[port.worldIdx[s]];
+                        if (world.outpost) continue;
+                        live++;
+                        population += world.pop;
+                        const worldCoverage = economyLib.coverageOf(world);
+                        coverageSum += world.pop * worldCoverage;
+                        if (economyLib.supplyGrowthOf(worldCoverage) < 0) {
+                                shrinking++;
+                                shrinkingNames += (shrinkingNames ? ', ' : '') + (world.name || 'world ' + (s + 1));
+                        }
+                        if (world.pop < world.capacity) continue;
+                        full++;
+                        fullNames += (fullNames ? ', ' : '') + (world.name || 'world ' + (s + 1));
+                }
+                const coverage = population > 0 ? coverageSum / population : 0;
+                const rate = tradeLib.portPopulationRateOf(tradeNet, index);
+                const potential = economyLib.supplyGrowthOf(coverage);
+                const room = colony.capacity > 0 ? Math.max(0, 1 - population / colony.capacity) : 0;
+                const roomText = room > 0 && room < 0.001 ? '<0.1%' : (room * 100).toFixed(1) + '%';
+                out.rate = rate;
+                out.potential = potential;
+                if (potential < -1e-12) out.reason = rate < 0
+                        ? 'household supply below 25% break-even; population declines'
+                        : 'some worlds undersupplied; others still grow';
+                else if (rate < 0 && shrinking) out.reason = 'shortages shrink ' + shrinkingNames + ' despite supply elsewhere';
+                else if (rate === 0 && shrinking) out.reason = 'shortages on ' + shrinkingNames + ' offset other worlds\u2019 growth';
+                else if (Math.abs(potential) <= 1e-12) out.reason = live > 1
+                        ? 'supply averages 25% break-even; worlds have different limits'
+                        : 'household supply at 25% break-even; growth stalled';
+                else if (live > 1) out.reason = full + '/' + live + ' worlds at capacity'
+                        + (full ? ': ' + fullNames : '') + ' · ' + roomText + ' room overall (each world has its own cap)';
+                else out.reason = full ? 'at carrying capacity; no room to grow'
+                        : roomText + ' capacity left';
+
+                let first = -1, second = -1, firstScore = 0, secondScore = 0;
+                let firstCoverage = 1, secondCoverage = 1;
+                for (let r = 0; r < economyLib.RESOURCE_COUNT; r++) {
+                        if (!(economyLib.NEED[r] > 0)) continue;
+                        let met = 0;
+                        for (let s = 0; s < port.worldCount; s++) {
+                                const world = tradeNet.worlds[port.worldIdx[s]];
+                                if (world.outpost) continue;
+                                met += world.pop * economyLib.needCoverageOf(world, r);
+                        }
+                        const fraction = population > 0 ? met / population : 0;
+                        const score = economyLib.NEED_WEIGHT[r] * (1 - fraction);
+                        if (score > firstScore) {
+                                second = first; secondScore = firstScore; secondCoverage = firstCoverage;
+                                first = r; firstScore = score; firstCoverage = fraction;
+                        } else if (score > secondScore) {
+                                second = r; secondScore = score; secondCoverage = fraction;
+                        }
+                }
+                out.shortages = first < 0 ? 'household needs covered'
+                        : economyLib.RESOURCES[first].name + ' ' + formatNeedCoverage(firstCoverage) + ' met'
+                                + (second < 0 ? '' : ', ' + economyLib.RESOURCES[second].name
+                                        + ' ' + formatNeedCoverage(secondCoverage) + ' met');
+                out.health = rateY === 0 ? 'paused' : rate < 0 ? 'declining'
+                        : rate === 0 ? full === live && potential > 0 ? 'full' : 'stalled' : 'growing';
+                const readiness = tradeLib.portReadiness(tradeNet, index, tradeNet.time);
+                const expedition = !tradeLib.expansionArmed() ? 'expansion off (population still changes)'
+                        : readiness.state === 'live' ? 'eligible if a reachable world is free' : readiness.why;
+                out.text = 'Population  ' + Math.round(population * 1e6).toLocaleString('en-US')
+                        + ' / ' + Math.round(colony.capacity * 1e6).toLocaleString('en-US') + ' people'
+                        + '\nNatural     ' + growthMark(rate) + ' ' + formatPopulationRate(rate)
+                        + ' (' + formatPopulationChange(rate, population) + ')'
+                        + '\nSupply      ' + (potential > 0 ? '+' : potential < 0 ? '\u2212' : '')
+                        + formatPopulationRate(potential) + ' potential · ' + Math.round(coverage * 100) + '% needs met'
+                        + '\nLimit       ' + out.reason
+                        + '\nShort       ' + out.shortages
+                        + '\nExpansion   ' + expedition
+                        + '\nClock       ' + (rateY === 0 ? 'paused — no trade years pass'
+                                : formatTradeRate(rateY) + ' trade y/s (rates above are per trade year)');
+                return out;
+        }
+
+        function syncTradeColonyDetail(index, rateY) {
+                tradeColonyCard.hidden = !tradeNet || tradeNet.portCount === 0;
+                if (tradeColonyCard.hidden) return;
+                if (index < 0) {
+                        tradeColonyTitle.textContent = 'Colony development';
+                        tradeColonySource.textContent = 'sky gate';
+                        tradeColonyDetail.textContent = 'No visible colony at this epoch. Trade time is paused until a colony\u2019s star returns to the sky.';
+                        tradeColonyCard.dataset.health = 'paused';
+                        return;
+                }
+                const port = tradeNet.ports[index];
+                const info = colonyDevelopment(index, rateY, COLONY_INSPECTION);
+                const selected = systemLayer.isOpen() ? systemLayer.record.star.key >>> 0
+                        : starSet.primary >= 0 ? starSet.keys[starSet.primary] >>> 0 : null;
+                tradeColonyTitle.textContent = 'Colony development';
+                const source = selected === port.key ? 'selected' : index === tradeNet.capital ? 'capital' : 'nearest visible';
+                tradeColonySource.textContent = source + ' · ' + port.name;
+                tradeColonySource.title = tradeColonySource.textContent;
+                tradeColonyDetail.textContent = info.text;
+                tradeColonyCard.dataset.health = info.health;
+        }
+
         let tradeLaunchMsg = '', tradeLaunchTicks = 0;
 
         // The network's log, from indices to text — the one place the narration
@@ -5776,14 +5937,14 @@ async function boot() {
                 const port = tradeNet.ports[index];
                 const colony = port.colony;
                 const ready = tradeLib.portReadiness(tradeNet, index, tradeNet.time);
-                let text = port.name.slice(0, 15).padEnd(15)
+                const rate = tradeLib.portPopulationRateOf(tradeNet, index);
+                let text = port.name.slice(0, 10).padEnd(10)
                         + colonyBar(colony.pop, colony.capacity).padEnd(4)
-                        + economyLib.formatPop(colony.pop).padStart(8) + '  ';
-                if (ready.state === 'live') {
-                        text += growthMark(colony.growth) + (colony.growth * 100).toFixed(1) + '%/y';
-                } else {
-                        text += ready.why;
-                }
+                        + economyLib.formatPop(colony.pop).padStart(8) + '  '
+                        + growthMark(rate) + formatPopulationRate(rate);
+                if (rate === 0 && colony.pop >= colony.capacity
+                        && economyLib.supplyGrowthOf(colony.coverage) > 0) text += ' · cap';
+                if (ready.state !== 'live') text += ' · ' + ready.why;
 		if (index === homeColonyPort()) text += '  capital';
 		if (port.worldCount > 1) text += '  \u00b7 ' + port.worldCount + 'w';
 		if (index === youngest) {
@@ -5793,7 +5954,7 @@ async function boot() {
                 return text;
         }
 
-        function tradeSyncPortRows(count, youngest) {
+        function tradeSyncPortRows(count, youngest, inspected) {
                 let sig = String(count);
                 for (let k = 0; k < count; k++) sig += ':' + (tradeNet.ports[tradeRows[k]].key >>> 0).toString(36);
                 if (sig !== tradeRowSig) {
@@ -5804,8 +5965,6 @@ async function boot() {
                                 const button = document.createElement('button');
                                 button.type = 'button';
                                 button.className = 'trade-row';
-                                button.title = 'Select this colony\u2019s star. In game mode it becomes '
-                                        + 'the Flight destination; the ship does not move.';
                                 fragment.appendChild(button);
                                 tradeRowButtons.push(button);
                         }
@@ -5817,6 +5976,9 @@ async function boot() {
                         const button = tradeRowButtons[k];
                         button.dataset.port = String(index);
                         button.textContent = tradeRowText(index, youngest);
+                        button.title = tradeNet.ports[index].name + ' — select this colony\u2019s star and inspect its development.';
+                        button.classList.toggle('is-selected', index === inspected);
+                        button.setAttribute('aria-current', index === inspected ? 'true' : 'false');
                 }
         }
 
@@ -5857,6 +6019,7 @@ async function boot() {
                 tradeExpandBox.disabled = !canCommandTrade();
                 if (!tradeNet) {
                         tradeState.textContent = 'no network';
+                        tradeColonyCard.hidden = true;
                         tradeRowSig = '';
                         tradeRowButtons.length = 0;
                         tradeNoteSig = '';
@@ -5955,6 +6118,8 @@ async function boot() {
                         }
                         tradeTop[b + 1] = held;
                 }
+                const inspected = inspectedTradePort();
+                syncTradeColonyDetail(inspected, rateY);
                 let rowTotal = 0;
                 for (let k = 0; k < n; k++) tradeRows[rowTotal++] = tradeTop[k];
                 // The youngest colony is the one growth line the six largest
@@ -5963,7 +6128,7 @@ async function boot() {
                 let youngestListed = false;
                 for (let k = 0; k < rowTotal; k++) if (tradeRows[k] === youngest) youngestListed = true;
                 if (youngest >= 0 && !youngestListed) tradeRows[rowTotal++] = youngest;
-                if (rowTotal > 0) tradeSyncPortRows(rowTotal, youngest);
+                if (rowTotal > 0) tradeSyncPortRows(rowTotal, youngest, inspected);
                 else {
                         tradeRowSig = '';
                         tradeRowButtons.length = 0;
@@ -6108,6 +6273,7 @@ async function boot() {
                 const port = tradeNet.ports[index];
                 handleStarPick(colonyPick(port), false);
                 setSpeedRef('target');
+                syncTradeUi();
                 if (isFlying()) {
                         if (setFlightDestinationFromPrimary()) setAutoMsg('destination ' + port.name);
                         return;

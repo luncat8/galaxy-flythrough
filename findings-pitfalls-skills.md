@@ -2783,3 +2783,22 @@ picker must copy it before subsequent draws overwrite it. Deadline checks inside
 nested block/record loops must return pending, not merely break the inner loop.
 Cluster stars live in `starBlocks().blocks[BLOCK_OBJECT]`, not `fieldBuffers()`;
 automatic world discovery must explicitly include their identities and member context.
+
+## 2026-10-29 — A positive supply coefficient is not a positive population rate
+
+The colony readout showed `0.7%/y` forever at `P = K`. That number was
+`g = coverage/40 − (1 − coverage)/120`, whereas the actual positive ODE is
+`dP/Pdt = g(1 − P/K)`. Inspect *both* supply coverage and capacity headroom,
+then show the net instantaneous rate and an unrounded headcount so a rounded
+million-person label cannot pretend nothing is changing. At a multi-world
+port, add `P_world × rate_world` before dividing by total population; applying
+one logistic to the port's summed capacity invents room on full worlds.
+
+The sign branch matters too: extending the logistic to `g < 0` makes `P = K`
+an exact fixed point even under total starvation. Use exponential attrition
+for negative `g` with an `expm1` population integral, then recalculate the
+readout *after* stocks and transfers settle. Preserve the supply coefficient
+as a separately labelled potential, never call it observed growth.
+
+Skill: derive display rates from the same state and derivative that moves the
+simulation; test at the fixed points, not just at mid-capacity.
