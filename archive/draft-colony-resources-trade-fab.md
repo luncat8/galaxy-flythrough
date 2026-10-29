@@ -29,3 +29,7 @@ other:
 	software to operate with data (algorithms, ai, design patterns)
 	information and world data (i.e. sci, art, entertainment, religion, existing places, colonies, incl storage to keep info)
 	unique items (art, religion, historical, other)
+
+## GUI
+colony GUI - i want some visible info why colony develop slow and grow is stagnated.
+i.e. i found one and it show 0.7% but number of population looks not grow at all 
