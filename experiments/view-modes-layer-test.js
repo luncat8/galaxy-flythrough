@@ -167,6 +167,8 @@ const camera = {
 	right: new Float32Array([0, -1, 0]),
 	up: new Float32Array([0, 0, 1]),
 	fovY: Math.PI / 3,
+	modeName: 'fly',
+	getState(out) { out.modeName = camera.modeName; return out; },
 };
 
 const canvas = makeCanvas();
@@ -300,6 +302,34 @@ function truthNearest(want, time, eye) {
 		exact, got.slice(0, 3));
 	check('a far catalog star never enters a nearest set',
 		!got.some(g => g.x >= 10), got.map(g => g.x.toFixed(2)).join(','));
+
+	// C visits the selected primary, but the nearest distance map describes
+	// the surrounding sky rather than the system currently being visited.
+	const centeredX = view.getFloat32(FIELD_BASE * REC, true);
+	const centeredY = view.getFloat32(FIELD_BASE * REC + 4, true);
+	const centeredZ = view.getFloat32(FIELD_BASE * REC + 8, true);
+	selection.count = 1; selection.primary = 0; selection.keys[0] = 0xF000;
+	camera.modeName = 'orbit object';
+	layer.set({ source: 'selected' });
+	stepFrames(1);
+	check('the explicit selected source still includes the orbit target',
+		pickSet.n === 1 && pickSet.positions[0] === centeredX,
+		{ n: pickSet.n, x: pickSet.positions[0], centeredX });
+	layer.set({ source: 'nearest', anchors: 12 });
+	stepFrames(1);
+	let centeredStarInSet = false;
+	for (let i = 0; i < pickSet.n; i++) {
+		if (pickSet.positions[i * 3] === centeredX && pickSet.positions[i * 3 + 1] === centeredY
+			&& pickSet.positions[i * 3 + 2] === centeredZ) centeredStarInSet = true;
+	}
+	check('nearest distance field excludes the centered system star but still returns N neighbors',
+		pickSet.n === 12 && !centeredStarInSet && pickSet.excludedCenter === true
+		&& /orbit target excluded/.test(layer.statusLine()),
+		{ n: pickSet.n, centeredStarInSet, excludedCenter: pickSet.excludedCenter, status: layer.statusLine() });
+	selection.count = 0; selection.primary = -1; camera.modeName = 'fly';
+	layer.set({ source: 'nearest', anchors: 12 });
+	stepFrames(1);
+
 	// The winners carry the BIRTH record: dispatching the set to t = 10 must
 	// land on the brute-force position at t = 10 (the motion applied once).
 	const drawn = layer.internal.drawn;

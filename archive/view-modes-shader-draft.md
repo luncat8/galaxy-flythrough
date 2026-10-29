@@ -20,3 +20,5 @@ to apply this to constellations or to nearest N stars (slider, default 0 = const
 make it somewhat separate from main code so this part will not confuse or take context of main development agents
 
 - **Projection**: default is 3D (inside view sphere). possible also projection on plane - see https://github.com/luncat8/planet-geotectonics how projection made and drag pan implemented.
+
+is distance field shader - if selected 'c' centered than closest star may fill viewport. probably need to limit this effect or exclude it from shader because we draw start map but not curren system star. if closest star is very close compared to next. think what is good.

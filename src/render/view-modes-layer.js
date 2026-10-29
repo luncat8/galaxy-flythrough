@@ -131,6 +131,7 @@
 		const viewBox = [new Float64Array(3), new Float64Array(3), new Float64Array(3), new Float64Array(3)];
 		const VIEW_SIGNS = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
 		const autoRangeScratch = { lo: 0, hi: 0, span: 0 };
+		const cameraState = {};
 		const stats = { pairs: 0, rawLo: 0, rawHi: 0, autoLo: 0, autoHi: 0, spreadMax: 0, dMin: 0, dMax: 0, empty: true };
 		const eye = new Float64Array(3);
 		const layout = { kind: '', w: 0, h: 0 };
@@ -390,11 +391,32 @@
 			pickSet.landmark = false;
 			pickSet.segments = null;
 			pickSet.source = 'nearest';
+			pickSet.excludedCenter = false;
 			if (!view || sky.n === 0) return;
+
+			// When C has put the camera in orbit around the selected primary, that
+			// star is a special case: it can be orders of magnitude closer than the
+			// surrounding sky, and the map is meant to describe that sky, not the
+			// system currently being visited. Leave it out of the nearest-anchor
+			// set; the selected source still includes it when explicitly requested.
+			let centerKey = -1;
+			if (camera.getState && selectionOf) {
+				const cam = camera.getState(cameraState);
+				const sel = selectionOf();
+				if (cam.modeName === 'orbit object' && sel && sel.primary >= 0 && sel.primary < sel.count) {
+					centerKey = sel.keys[sel.primary] >>> 0;
+				}
+			}
+			const info = blocksOf();
+			const identity = info && info.identity;
 			const n = Math.min(want, sky.n, pickSet.capacity);
 			const cur = sky.cur;
 			heap.n = 0;
 			for (let i = 0; i < sky.n; i++) {
+				if (centerKey >= 0 && identity && identity[sky.slot[i]] === centerKey) {
+					pickSet.excludedCenter = true;
+					continue;
+				}
 				const dx = cur[i * 3] - eye[0];
 				const dy = cur[i * 3 + 1] - eye[1];
 				const dz = cur[i * 3 + 2] - eye[2];
@@ -402,8 +424,9 @@
 				if (heap.n < n) heapPush(d2, i);
 				else if (d2 < heap.d2[0]) heapSift(d2, i, n);
 			}
+			const picked = Math.min(n, heap.n);
 			let dmin2 = Infinity, dmax2 = 0;
-			for (let k = n - 1; k >= 0; k--) {
+			for (let k = picked - 1; k >= 0; k--) {
 				const d2 = heap.d2[0], src = heap.idx[0];
 				if (d2 < dmin2) dmin2 = d2;
 				if (d2 > dmax2) dmax2 = d2;
@@ -411,9 +434,9 @@
 				heap.n--;
 				if (heap.n > 0) heapSift(heap.d2[heap.n], heap.idx[heap.n], heap.n);
 			}
-			pickSet.n = n;
-			pickSet.dmin = Math.sqrt(dmin2);
-			pickSet.dmax = Math.sqrt(dmax2);
+			pickSet.n = picked;
+			pickSet.dmin = picked ? Math.sqrt(dmin2) : 0;
+			pickSet.dmax = picked ? Math.sqrt(dmax2) : 0;
 			fillNamesFrom(pickSet);
 		}
 
@@ -429,6 +452,7 @@
 			pickSet.landmark = false;
 			pickSet.segments = null;
 			pickSet.source = 'selected';
+			pickSet.excludedCenter = false;
 			if (!sel || !sel.count || !view || !identity) return;
 			let n = 0;
 			for (let i = 0; i < sel.count && n < pickSet.capacity; i++) {
@@ -611,7 +635,8 @@
 			live.setN = set ? set.n : 0;
 			live.setSource = !set || !set.n ? '—'
 				: set === constSet ? 'constellations'
-				: (SOURCE_LABELS[set.source] || set.source);
+				: (SOURCE_LABELS[set.source] || set.source)
+					+ (set.excludedCenter ? ' · orbit target excluded' : '');
 			if (!set || !set.n) {
 				ctx.clearRect(0, 0, iw, ih);
 				return;
