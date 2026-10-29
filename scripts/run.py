@@ -56,6 +56,7 @@ EXPERIMENTS = {
     'camera':                'experiments/camera-test.js',
     'input':                 'experiments/input-test.js',
     'workspace':             'experiments/workspace-test.js',
+    'timeboard':             'experiments/timeboard-test.js',
     'scenario':              'experiments/scenario-test.js',
     'named-sky':             'experiments/named-sky-test.js',
     'asterisms':             'experiments/asterisms-test.js',
@@ -112,7 +113,7 @@ EXPERIMENTS = {
 }
 
 TYPES = {
-    'test':   ['export-parity', 'log-file', 'm1-smoke', 'panel', 'wgsl-validate', 'camera', 'input', 'workspace', 'scenario', 'named-sky', 'asterisms', 'ship', 'preset', 'renderer', 'gpu-smoke', 'hdr',
+    'test':   ['export-parity', 'log-file', 'm1-smoke', 'panel', 'wgsl-validate', 'camera', 'input', 'workspace', 'timeboard', 'scenario', 'named-sky', 'asterisms', 'ship', 'preset', 'renderer', 'gpu-smoke', 'hdr',
                'landmark', 'gas-grid', 'view-modes-field', 'view-modes-page', 'view-modes-layer',
                'tile-stream', 'tile-encoder-smoke', 'galaxy-types', 'shape', 'model-parity', 'sampling',
                'density-distribution',
@@ -161,7 +162,7 @@ SUITES = {
         'view-modes-layer', 'tile-stream', 'tile-encoder-smoke', 'engine-switch',
     ],
     'world-tests': ALWAYS + [
-        'panel', 'preset', 'workspace', 'scenario', 'planet-gen', 'star-select', 'selection-store',
+        'panel', 'preset', 'workspace', 'timeboard', 'scenario', 'planet-gen', 'star-select', 'selection-store',
         'search', 'system-layer', 'dv-map', 'route', 'ship', 'trade', 'exec-queue',
     ],
 }

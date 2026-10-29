@@ -749,6 +749,54 @@ html, body {
 }
 #scenario-menu .menu-actions { border-top-color: #4a3d22; }
 
+/* Time (time-plan.md §1): the clock board. The same warm tint as Formation
+   checks — both panels write the clock rather than a look — and its own ledger
+   rows: one clock per line, the rate in the panel's bright colour, the axes it
+   drives underneath. */
+#time-menu {
+	position: fixed;
+	top: 12px;
+	right: 12px;
+	width: 260px;
+	max-height: calc(100vh - 24px);
+	overflow-y: auto;
+	font-family: 'Menlo', 'Consolas', monospace;
+	font-size: 12px;
+	color: #e8dcc0;
+	background: rgba(18, 15, 9, 0.9);
+	border: 1px solid #6b5730;
+	border-radius: 4px;
+	padding: 9px 11px;
+	z-index: 20;
+}
+#time-menu .menu-header { color: #d6b56a; border-bottom-color: #6b5730; }
+#time-menu .menu-header button { border-color: #6b5730; }
+#time-menu .menu-header button:hover { background: #332a18; }
+#time-menu .menu-val { color: #e5c98f; }
+#time-menu .menu-hint { color: #9c8a63; }
+#time-menu .menu-note { color: #9c8a63; margin: 3px 0 5px; line-height: 1.45; }
+#time-menu .menu-actions { border-top-color: #4a3d22; }
+#time-menu .menu-actions button {
+	flex: 1 1 auto;
+	background: #2a2313;
+	border: 1px solid #6b5730;
+	color: #e8dcc0;
+	font: inherit;
+	font-size: 11px;
+	padding: 3px 6px;
+	border-radius: 3px;
+	cursor: pointer;
+	white-space: nowrap;
+	text-align: center;
+}
+#time-menu .menu-actions button:hover { background: #3a3119; }
+#time-menu .menu-actions button.is-active { background: #4a3f22; border-color: #a08b4a; color: #fff3d0; }
+.time-ledger { display: flex; flex-direction: column; gap: 3px; margin: 5px 0 7px; }
+.time-row { display: grid; grid-template-columns: 52px 1fr; column-gap: 6px; line-height: 1.4; }
+.time-row > span { color: #9c8a63; }
+.time-row > strong { color: #f0d9a0; font-weight: normal; }
+.time-row > em { grid-column: 2; color: #6f6041; font-style: normal; font-size: 10px; }
+
 /* Settings menu — top-right panel with sliders for the HDR knobs. */
 #menu {
 	position: fixed;
@@ -1216,7 +1264,7 @@ body.system-view #sysread {
 .panel-column-left { left: 12px; width: 292px; }
 .panel-column-inner { right: 284px; width: 260px; }
 .panel-column-right { right: 12px; width: 260px; }
-.panel-column > :is(#selection-menu, :is(#sysmenu, #routemenu), #viewmenu, #trade-menu, #scenario-menu, #menu, #help) {
+.panel-column > :is(#selection-menu, :is(#sysmenu, #routemenu), #viewmenu, #trade-menu, #time-menu, #scenario-menu, #menu, #help) {
 	position: static;
 	flex: none;
 	max-height: none;

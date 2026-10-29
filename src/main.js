@@ -1687,18 +1687,15 @@ async function boot() {
                 tradeLaunchChosen(Number(button.dataset.port), Number(button.dataset.candidate));
         });
         tradeSyncBox.addEventListener('change', () => {
-                tradeSyncOn = tradeSyncBox.checked ? 1 : 0;
+                // One writer for both checkboxes (time-plan §1): the Trade
+                // panel's box and the clock board's box are the same switch.
+                setTradeSync(tradeSyncBox.checked);
                 // A synced clock with the sky parked is a network that never
                 // advances — the panel says "paused", and checking the box
                 // resumes the star clock rather than leaving an economy that
                 // looks broken. A negative star rate (the observer's fly
                 // coupling) is not a running clock for this purpose.
-                if (tradeSyncOn && !isFlying() && !(starTimeRate > 0)) {
-                        starTimeRate = lastNonZeroTimeRate > 0 ? lastNonZeroTimeRate : TRADE_GEN_MYR;
-                        if (starTimeRate > Number(sliderStarTime.max)) starTimeRate = Number(sliderStarTime.max);
-                        syncStarTime();
-                }
-                syncTradeUi();
+                resumeStarIfSynced();
         });
         tradeExpandBox.addEventListener('change', () => {
                 if (!canCommandTrade()) {
@@ -1727,6 +1724,157 @@ async function boot() {
                 }
                 syncTradeUi();
         });
+        // --- The clock board (time-plan.md §1) ----------------------------
+        // One panel that says what every clock is doing and which of them
+        // follow the sky. It owns no rate of its own: a mode press writes the
+        // same state the sliders write, through the same sync functions, so a
+        // panel and a slider can never disagree. The sliders stay where they
+        // belong (star time in Display, colony clock in Trade, system clock in
+        // System & routes); this panel is the ledger and the two links.
+        const TimeBoard = window.TimeBoard;
+        const timeMenu = document.getElementById('time-menu');
+        const timeCollapse = document.getElementById('time-menu-collapse');
+        const timeModeNote = document.getElementById('time-mode-note');
+        const timeStar = document.getElementById('time-star');
+        const timeTrade = document.getElementById('time-trade');
+        const timeSystem = document.getElementById('time-system');
+        const timeShip = document.getElementById('time-ship');
+        const timeEpoch = document.getElementById('time-epoch');
+        const timeState = document.getElementById('time-state');
+        const timeTradeSyncBox = document.getElementById('time-trade-sync');
+        const timeSystemSyncBox = document.getElementById('time-system-sync');
+        const timeModeButtons = Array.from(document.querySelectorAll('#time-modes [data-time-mode]'));
+        // The schematic's link: one system year per star Myr per wall second
+        // (1 Myr/s of sky is 1 y/s in the view). A frozen or camera-following
+        // star clock has nothing to lend, so the layer keeps its own rung then.
+        let systemSyncOn = 0;
+
+        // The one writer of the colony link. Both checkboxes call it, so the
+        // Trade panel's box and the board's box are the same switch.
+        function setTradeSync(on) {
+                tradeSyncOn = on ? 1 : 0;
+                tradeSyncBox.checked = tradeSyncOn !== 0;
+                timeTradeSyncBox.checked = tradeSyncOn !== 0;
+                syncTradeUi();
+        }
+        // ...and the user gesture's extra, kept out of setTradeSync so a mode
+        // press can set a link without waking a parked sky it just parked: a
+        // synced clock on a stopped star clock is a network that never advances.
+        function resumeStarIfSynced() {
+                if (!tradeSyncOn || isFlying() || starTimeRate > 0) return;
+                starTimeRate = lastNonZeroTimeRate > 0 ? lastNonZeroTimeRate : TRADE_GEN_MYR;
+                if (starTimeRate > Number(sliderStarTime.max)) starTimeRate = Number(sliderStarTime.max);
+                syncStarTime();
+        }
+        function setSystemSync(on) {
+                systemSyncOn = on ? 1 : 0;
+                timeSystemSyncBox.checked = systemSyncOn !== 0;
+                followSystemClock();
+                syncTimeBoard();
+        }
+        // The nearest ladder stop to the rate the link asks for. The layer owns
+        // its stops; the board only names the rate it wants.
+        function followedSystemRate() {
+                const rate = TimeBoard.systemRateForStar(starTimeRate);
+                if (rate === null) return null;
+                const layer = window.SystemLayer;
+                return layer.sysTimeRateAt(layer.sysTimeIndexOf(rate));
+        }
+        // Called every frame and cheap on purpose: one null test and one
+        // compare in the common case, a slider repaint only when it moved.
+        function followSystemClock() {
+                if (!systemSyncOn) return;
+                const next = followedSystemRate();
+                if (next === null || next === systemLayer.getTimeRate()) return;
+                systemLayer.setTimeRate(next);
+                syncSysTime();
+        }
+        // The three progressions (time-plan §2). A mode sets every clock at
+        // once: one that set only the star rate would leave the other three
+        // disagreeing, which is the state the board exists to end.
+        function applyTimeMode(id) {
+                const mode = TimeBoard.modeById(id);
+                if (!mode) return '';
+                setEvolve(mode.star.evolve > 0);
+                if (!isFlying()) {
+                        starTimeRate = mode.star.rate;
+                        if (starTimeRate > 0) lastNonZeroTimeRate = starTimeRate;
+                        syncStarTime();
+                }
+                tradeRateIndex = tradeRateIndexFor(mode.trade.rate);
+                setTradeSync(mode.trade.synced > 0);
+                if (tradeGenOn !== (mode.trade.generation > 0)) {
+                        tradeGenOn = mode.trade.generation > 0 ? 1 : 0;
+                        tradeLib.setGenerationMode(tradeGenOn, tradeNet);
+                }
+                setSystemSync(mode.system.synced > 0);
+                if (!systemSyncOn) {
+                        systemLayer.setTimeRate(mode.system.rate);
+                        syncSysTime();
+                }
+                syncTradeUi();
+                syncTimeBoard();
+                if (systemLayer.isOpen()) writeSystemReadout();
+                return mode.id;
+        }
+        // The state the board reads its progression from. A dragged slider
+        // moves the board off the mode it was on — the ledger prints what the
+        // clocks are, not what was last pressed.
+        function clockState() {
+                return {
+                        starRate: starTimeRate,
+                        evolve: evolveOn ? 1 : 0,
+                        tradeRate: tradeRateYears(),
+                        // The link's intent, not its effective state: flying
+                        // takes the time axis over and must not un-light the
+                        // progression the observer chose.
+                        tradeSynced: tradeSyncOn !== 0 ? 1 : 0,
+                        generation: tradeGenOn ? 1 : 0,
+                        systemRate: systemLayer.getTimeRate(),
+                        systemSynced: systemSyncOn,
+                };
+        }
+
+        // The ledger, painted at the overlay's 4 Hz (and on every press).
+        function syncTimeBoard() {
+                const active = TimeBoard.matchMode(clockState());
+                for (let i = 0; i < timeModeButtons.length; i++) {
+                        timeModeButtons[i].classList.toggle('is-active',
+                                timeModeButtons[i].dataset.timeMode === active);
+                }
+                const mode = TimeBoard.modeById(active);
+                const note = mode ? mode.note
+                        : 'hand-set: the clocks are not on one of the progressions';
+                if (timeModeNote && timeModeNote.textContent !== note) timeModeNote.textContent = note;
+                const synced = tradeSyncOn !== 0 && !isFlying();
+                timeStar.textContent = TimeBoard.formatStarRate(starTimeRate) + (evolveOn ? ' \u00b7 evolve' : '');
+                timeTrade.textContent = TimeBoard.formatTradeRate(tradeClockRate(), synced)
+                        + (tradeGenOn ? ' \u00b7 generation' : '');
+                timeSystem.textContent = window.SystemLayer.formatSysTimeRate(systemLayer.getTimeRate())
+                        + (systemSyncOn ? ' \u00b7 star' : '');
+                timeShip.textContent = isFlying()
+                        ? shipLib.formatClock(ship, shipLib.speedC(ship)) + ' \u00b7 star axis'
+                        : 'parked \u00b7 g takes the helm';
+                timeEpoch.textContent = model.populations.age.toFixed(1) + ' Gyr'
+                        + (evolveOn ? ' \u00b7 running' : ' \u00b7 held');
+                timeState.textContent = systemSyncOn && synced
+                        ? 'both links on: one clock drives the game'
+                        : systemSyncOn ? 'system rides the sky \u00b7 colonies on their own ladder'
+                                : synced ? 'colonies ride the sky \u00b7 the system keeps its own clock'
+                                        : 'four clocks, no links';
+                timeTradeSyncBox.checked = tradeSyncOn !== 0;
+                timeSystemSyncBox.checked = systemSyncOn !== 0;
+        }
+        wireCollapse(timeMenu, timeCollapse);
+        for (const button of timeModeButtons) {
+                button.addEventListener('click', () => applyTimeMode(button.dataset.timeMode));
+        }
+        timeTradeSyncBox.addEventListener('change', () => {
+                setTradeSync(timeTradeSyncBox.checked);
+                resumeStarIfSynced();
+                syncTimeBoard();
+        });
+        timeSystemSyncBox.addEventListener('change', () => setSystemSync(timeSystemSyncBox.checked));
         // The star-time slider's fine range (−1…2 Myr/s in 0.1 steps) makes
         // small rates settable; the wide range is −1…99 Myr/s in 0.5 steps. The
         // button toggles it; a scenario that needs a mid rate widens it first
@@ -6061,14 +6209,14 @@ async function boot() {
                 // — a network this epoch cannot see is paused, not empty.
                 const skyNote = tradeNet.portCount === 0 ? '' : tradeLib.skyGateText(tradeNet);
                 syncTradeBootstrap(false);
-                // The intra fleet's one row (trade-4-plan §5): the panel is the
-                // galaxy's view, so it says how many hulls the open system has
-                // in the air and nothing else.
+                // The intra fleet's one row (trade-4-plan §5, time-plan §3):
+                // the panel is the galaxy's view, so it says how many legs the
+                // open system's settle recorded and nothing else.
                 const fleetPort = systemLayer.isOpen()
                         ? tradeLib.bestPortOfStar(tradeNet, systemLayer.record.star.key >>> 0) : -1;
-                const fleetNote = fleetPort >= 0 && tradeNet.ports[fleetPort].intra
-                        ? ' \u00b7 intra ' + tradeNet.ports[fleetPort].intra.inFlight + '/'
-                                + tradeLib.INTRA_HULLS_MAX + ' flying' : '';
+                const fleetIntra = fleetPort >= 0 ? tradeNet.ports[fleetPort].intra : null;
+                const fleetNote = fleetIntra && fleetIntra.legCount > 0
+                        ? ' \u00b7 intra ' + fleetIntra.legCount + (fleetIntra.legCount === 1 ? ' leg' : ' legs') : '';
                 const reachNote = tradeNet.routes.unreachable > 0
                         ? ` \u00b7 ${tradeNet.routes.unreachable} route`
                                 + (tradeNet.routes.unreachable === 1 ? '' : 's') + ' out of reach'
@@ -7006,19 +7154,9 @@ async function boot() {
                 // cache — and the layer, the settle guard and the panel all read
                 // its verdict instead of re-deriving the birth channel.
                 if (tradeNet) tradeLib.applySkyGate(tradeNet, model, renderer.fieldBuffers(), starTimeRate);
-                // The intra fleet (trade.25): the system view is the only writer
-                // of the online flag. Opening a system allocates its twelve
-                // hulls and hands that port's transfers to them; closing hands
-                // them back to T4's closed form. In-flight cargo is the
-                // network's, not the view's, so it lands either way.
-                if (tradeNet) {
-                        let openPort = -1;
-                        if (systemLayer.isOpen()) {
-                                openPort = tradeLib.bestPortOfStar(tradeNet, systemLayer.record.star.key >>> 0);
-                                if (openPort >= 0 && tradeNet.ports[openPort].skyVisible === 0) openPort = -1;
-                        }
-                        tradeLib.setIntraOnline(tradeNet, openPort);
-                }
+                // The intra fleet needs no writer here any more (trade.34): the
+                // ferries are drawn from the settle's own flows on the schematic's
+                // clock, and the economy never asked the view for permission.
                 // The network is always drawn while it exists (the checkbox
                 // owns only the route lines): colonies that appear only when a
                 // "routes" box is ticked are colonies nobody watches grow.
@@ -7263,6 +7401,10 @@ async function boot() {
                 // The schematic (plan §6): its own clock first, then hover and
                 // the draw. Closed, the whole block is one boolean test.
                 if (systemLayer.isOpen()) {
+                        // The system ← star link (time-plan §1) is applied on the
+                        // frame the schematic is about to step, so the clock it
+                        // steps is the clock the board prints.
+                        followSystemClock();
                         systemLayer.stepTime(dt, cameraStateForTime.speedLyPerSec);
                         systemLayer.updateHover(hoverX, hoverY);
                         systemLayer.resize(canvas.clientWidth, canvas.clientHeight, currentDpr());
@@ -7278,6 +7420,7 @@ async function boot() {
                         overlayTimer = 0;
                         updateOverlay(renderer.state, camera.getState(statsText));
                         syncModeClock();
+                        if (!timeMenu.hidden) syncTimeBoard();
                         if (noSelectionTicks > 0) noSelectionTicks--;
                         if (autoMsgTicks > 0) autoMsgTicks--;
                 if (isFlying()) updateShipChromeText();

@@ -3914,11 +3914,16 @@ function exactLiveEvents(net) {
 	trade.applySkyGate(fieldNet, procedural, field);
 }
 
-// --- 30. T6: the intra fleet (trade-25) ------------------------------------
-// T4 made intra-system trade a number. T6 gives the number a hull: the same
-// couple-priced mass, carried by a class that can actually fly the leg, on the
-// network's own clock. The contract §3 of trade-4-plan.md pins is that opening
-// the system view changes the picture, never the economy.
+// --- 30. The intra fleet's picture (trade.34, time-plan §3) ---------------
+// T4 made intra-system trade a number: a couple-weighted transfer priced by
+// the delta-v graph. trade.25 gave that number a hull and landed the cargo on
+// the network's clock; the browser pass showed the cost — at 1 000–2 000 colony
+// years per second a Hohmann leg is a fraction of a frame, so the schematic was
+// empty between arrivals and the picture depended on the economy's clock. The
+// law now is the one the plan's title states: the trade is the average, the
+// fleet is its picture. A settle moves the mass and records the three largest
+// legs; the ferries fly those legs on the SYSTEM clock, at the delta-v time a
+// viewer can watch. Nothing the fleet does can move a stock.
 {
 	const system = syntheticIntraSystem({
 		key: 0x543649,
@@ -3942,6 +3947,11 @@ function exactLiveEvents(net) {
 		for (const world of fixture.worlds) sum += world.stock[r];
 		return sum;
 	}
+	function stockVector(fixture) {
+		const out = new Array(economy.RESOURCE_COUNT);
+		for (let r = 0; r < economy.RESOURCE_COUNT; r++) out[r] = totalStock(fixture, r);
+		return out;
+	}
 
 	// The class gate (§4). Earth→Mars is 16.02 km/s out, so a round trip with
 	// the 1.1 reserve is 35.2 km/s: a nuclear hull flies it, a chemical one
@@ -3960,124 +3970,101 @@ function exactLiveEvents(net) {
 		return true;
 	})());
 
-	// One settle, view open: the destination is *not* credited, a hull is loaded
-	// with exactly the mass the couple priced, and the leg is the Hohmann time.
-	const closedPort = fleetFixture(), openedPort = fleetFixture();
-	trade.settlePort(closedPort.net, closedPort.portIndex, 20);
-	trade.setIntraOnline(openedPort.net, openedPort.portIndex);
-	trade.settlePort(openedPort.net, openedPort.portIndex, 20);
-	const intra = openedPort.port.intra;
-	const loaded = intra.hulls.filter(h => h.state === trade.INTRA_LOADED);
-	check('opening the system puts the transfer on hulls instead of crediting it',
-		intra.inFlight > 0 && loaded.length > 0
-		&& totalStock(openedPort, economy.R_ORE) < totalStock(closedPort, economy.R_ORE),
-		{ inFlight: intra.inFlight, ore: totalStock(openedPort, economy.R_ORE),
-			closed: totalStock(closedPort, economy.R_ORE) });
-	check('every loaded hull is a class that can fly its own leg', (() => {
-		for (const hull of loaded) {
-			const cls = require('../src/math/deltav.js').classById(hull.classId);
+	// One settle: the mass moves — exactly as it does with no schematic open —
+	// and the fleet records the leg it just paid for, with a real delta-v, a
+	// real class and a Hohmann time the layer can animate.
+	const settled = fleetFixture();
+	trade.settlePort(settled.net, settled.portIndex, 20);
+	const intra = settled.port.intra;
+	check('a settle records the legs the ferries fly',
+		intra && intra.legCount > 0 && intra.flow > 0,
+		{ legs: intra && intra.legCount, flow: intra && intra.flow });
+	check('every recorded leg is a pair, a class that can fly it and a Hohmann time', (() => {
+		const dvLib = require('../src/math/deltav.js');
+		for (let i = 0; i < intra.legCount; i++) {
+			const leg = intra.legs[i];
+			if (!(leg.from >= 0 && leg.to >= 0 && leg.from !== leg.to)) return false;
+			const cls = dvLib.classById(leg.classId);
 			if (cls.domain !== 'in-system') return false;
-			if (cls.dvMax < hull.dv * 2 * 1.1) return false;
-			if (!(hull.arriveAt > hull.departAt)) return false;
-			if (hull.amount > cls.cargo + 1e-9) return false;
+			if (cls.dvMax < leg.dv * 2 * 1.1) return false;
+			if (!(leg.legYears > 0)) return false;
+			if (!(leg.ferries >= 1)) return false;
 		}
 		return true;
-	})(), loaded.length);
+	})(), intra && intra.legCount);
+	check('the twelve ferries are split across the recorded legs', (() => {
+		let sum = 0;
+		for (let i = 0; i < intra.legCount; i++) sum += intra.legs[i].ferries;
+		return sum >= intra.legCount && sum <= trade.INTRA_FERRY_COUNT;
+	})(), { legs: intra.legCount,
+		ferries: intra.legs.slice(0, intra.legCount).map((l) => l.ferries) });
 
-	// The arrival is the only place the mass becomes stock again.
-	const legYears = loaded.length > 0 ? loaded[0].arriveAt - loaded[0].departAt : 0;
-	for (let t = 0; t < 40; t++) trade.step(openedPort.net, 1);
-	check('the hull lands its cargo and the system total matches the closed view',
-		intra.inFlight === 0
-		&& near(totalStock(openedPort, economy.R_ORE), totalStock(closedPort, economy.R_ORE), 1e-9),
-		{ inFlight: intra.inFlight, legYears,
-			opened: totalStock(openedPort, economy.R_ORE), closed: totalStock(closedPort, economy.R_ORE) });
+	// The picture is not a ledger: the same 5 000 colony years land byte-equal
+	// stocks with the schematic open and closed, because nothing about the
+	// drawing can reach a stock. This is the contract §3 of trade-4-plan.md
+	// asked for, now held by construction rather than within 5 %.
+	function runWindow() {
+		const fixture = fleetFixture();
+		trade.finalize(fixture.net);
+		for (let i = 0; i < 5000; i++) trade.step(fixture.net, 1, 100000);
+		return fixture;
+	}
+	const windowA = runWindow(), windowB = runWindow();
+	check('5000 colony years are reproducible and the fleet never touches a stock', (() => {
+		const a = stockVector(windowA), b = stockVector(windowB);
+		for (let r = 0; r < a.length; r++) if (a[r] !== b[r]) return false;
+		return true;
+	})(), stockVector(windowA).slice(0, 4));
+	check('a long run keeps the fleet to the settle it last recorded', (() => {
+		const long = windowA.port.intra;
+		if (!long || long.legCount < 0) return false;
+		for (let i = 0; i < long.legCount; i++) if (!(long.legs[i].flow > 0)) return false;
+		return true;
+	})(), { legs: windowA.port.intra.legCount, flow: Math.round(windowA.port.intra.flow) });
 
-	// A pair no engine can fly: the transfer stays instantaneous (the economy is
-	// unchanged) and the pair is reported unserved rather than drawn.
+	// A pair no engine can fly: the trade still happens (the average is
+	// physical) and the pair is reported unserved rather than drawn.
 	const unserved = fleetFixture();
 	unserved.port.dv[trade.MAX_WORLDS_PER_STAR + 0] = 30e3;      // belt → terran, 60 km/s round trip
 	unserved.port.tH[trade.MAX_WORLDS_PER_STAR + 0] = 1e7;
-	trade.setIntraOnline(unserved.net, unserved.portIndex);
 	const beforeUnserved = unserved.worlds[0].stock[economy.R_ORE];
 	trade.settlePort(unserved.net, unserved.portIndex, 20);
-	check('a pair no in-system class can fly books no hull and stays instantaneous',
-		unserved.port.intra.inFlight === 0 && unserved.port.intra.unservedPairs > 0
+	check('a pair no in-system class can fly trades and is reported unserved',
+		unserved.port.intra.unservedPairs > 0
 		&& unserved.worlds[0].stock[economy.R_ORE] > beforeUnserved,
 		{ unservedPairs: unserved.port.intra.unservedPairs,
 			ore: unserved.worlds[0].stock[economy.R_ORE], before: beforeUnserved });
 
-	// The clock discipline: 500 one-year steps land the same hulls as one jump.
+	// The clock discipline: 500 one-year steps settle the same ledger as one
+	// 500-year jump, so the fleet a viewer sees is the same either way.
 	function jumpVsSteps(jump) {
 		const stepped = fleetFixture(), jumped = fleetFixture();
-		trade.setIntraOnline(stepped.net, stepped.portIndex);
-		trade.setIntraOnline(jumped.net, jumped.portIndex);
 		trade.settlePort(stepped.net, stepped.portIndex, 5);
 		trade.settlePort(jumped.net, jumped.portIndex, 5);
 		if (jump) trade.step(jumped.net, 500, 100000);
 		else for (let i = 0; i < 500; i++) trade.step(stepped.net, 1, 100000);
 		return { stepped, jumped };
 	}
-	const clock = jumpVsSteps(false);
-	const jumped = jumpVsSteps(true);
-	check('a 500-year jump lands the same intra ledger as 500 one-year steps',
-		clock.stepped.port.intra.delivered === jumped.jumped.port.intra.delivered
-		&& clock.stepped.port.intra.trips === jumped.jumped.port.intra.trips
-		&& near(totalStock(clock.stepped, economy.R_ORE), totalStock(jumped.jumped, economy.R_ORE), 1e-9),
-		{ stepped: clock.stepped.port.intra.delivered, jumped: jumped.jumped.port.intra.delivered });
+	const stepped = jumpVsSteps(false), jumped = jumpVsSteps(true);
+	check('a 500-year jump lands the same stocks as 500 one-year steps',
+		stepped.stepped.port.intra.legCount === jumped.jumped.port.intra.legCount
+		&& near(totalStock(stepped.stepped, economy.R_ORE), totalStock(jumped.jumped, economy.R_ORE), 1e-12),
+		{ stepped: stepped.stepped.port.intra.legCount, jumped: jumped.jumped.port.intra.legCount });
 
-	// Closing the view mid-leg loses nothing: the fleet's queue belongs to the
-	// network, so a cargo in flight lands whether or not anything is looking.
-	const closing = fleetFixture();
-	trade.setIntraOnline(closing.net, closing.portIndex);
-	trade.settlePort(closing.net, closing.portIndex, 20);
-	const inFlightAtClose = closing.port.intra.inFlight;
-	trade.setIntraOnline(closing.net, -1);
-	for (let t = 0; t < 40; t++) trade.step(closing.net, 1);
-	check('closing the system view mid-leg still lands the cargo',
-		inFlightAtClose > 0 && closing.port.intra.inFlight === 0
-		&& closing.port.intra.delivered > 0,
-		{ inFlightAtClose, delivered: closing.port.intra.delivered });
-
-	// The readout the schematic shows while a hull is in the air.
+	// The readout the schematic shows: the average the settle paid, the legs
+	// the ferries are drawing, and the clock they are drawn on.
 	{
-		const shown = fleetFixture();
-		trade.setIntraOnline(shown.net, shown.portIndex);
-		trade.settlePort(shown.net, shown.portIndex, 20);
-		const text = trade.intraFleetText(shown.net, shown.portIndex);
-		check('the fleet readout names the hulls in flight, their class, leg and cargo',
-			/hulls flying/.test(text) && /km\/s/.test(text) && / t/.test(text)
-			&& /chemical|nuclear/.test(text) && /\u2192/.test(text), text);
-		for (let t = 0; t < 40; t++) trade.step(shown.net, 1);
-		const idle = trade.intraFleetText(shown.net, shown.portIndex);
-		check('and reports the port idle once every hull has landed',
-			/hulls in port/.test(idle) && /landed/.test(idle), idle);
+		const text = trade.intraFleetText(settled.net, settled.portIndex);
+		check('the fleet readout names the ferries, the legs, their class, leg time and flow',
+			/ferries/.test(text) && /system clock/.test(text) && /km\/s/.test(text)
+			&& / y/.test(text) && /chemical|nuclear/.test(text) && /\u2192/.test(text), text);
+		const empty = fleetFixture();
+		trade.settlePort(empty.net, empty.portIndex, 20);
+		empty.port.intra.legCount = 0;
+		const idle = trade.intraFleetText(empty.net, empty.portIndex);
+		check('and reports the port idle when no transfer was recorded',
+			/ferries in port/.test(idle) && /no transfer/.test(idle), idle);
 	}
-
-	// §3's contract. Measured on this fixture at the year cadence the app runs
-	// (the trade clock steps in single years at 100–2 000 y/s), the two paths
-	// agree to 0.84 %; at a coarse 10-year cadence the same comparison is 6.6 %,
-	// because the leg is then 5 % of every interval. The tolerance is pinned
-	// from the fine measurement, and trade-4-plan.md §3 records the coarse one.
-	function runWindow(online) {
-		const fixture = fleetFixture();
-		if (online) trade.setIntraOnline(fixture.net, fixture.portIndex);
-		trade.finalize(fixture.net);
-		for (let i = 0; i < 5000; i++) trade.step(fixture.net, 1, 100000);
-		return fixture;
-	}
-	const contractClosed = runWindow(false);
-	const contractOpened = runWindow(true);
-	let worst = 0, worstResource = -1;
-	for (let r = 0; r < economy.RESOURCE_COUNT; r++) {
-		const a = totalStock(contractClosed, r), b = totalStock(contractOpened, r);
-		const delta = Math.abs(a - b) / Math.max(1, Math.abs(a), Math.abs(b));
-		if (delta > worst) { worst = delta; worstResource = r; }
-	}
-	check('5000 years with the view open and closed land the same stocks within 5%',
-		worst < 0.05,
-		{ worst: (worst * 100).toFixed(2) + '%', resource: worstResource,
-			delivered: Math.round(contractOpened.port.intra.delivered) });
 }
 
 // --- 31. Empty-sky bootstrap ---------------------------------------------

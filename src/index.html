@@ -396,6 +396,42 @@
 		<div class="flight-section-heading"><span>Events</span><small>the network narrates</small></div>
 		<pre id="trade-log" class="flight-forecast">No events yet.</pre>
 	</div>
+<div id="time-menu" class="panel">
+		<div class="menu-header">
+			<span>Time</span>
+			<button id="time-menu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab toggles all panels)" aria-expanded="true">▾</button>
+		</div>
+		<!-- The clock board (time-plan.md §1): every clock in the app in one
+		     place, the two links that couple them to the sky, and the three
+		     progressions that set all four at once. The sliders stay in their own
+		     panels — this one says what each of them is *doing*. -->
+		<div class="menu-row menu-sub">progression</div>
+		<div class="menu-row menu-actions" id="time-modes">
+			<button type="button" data-time-mode="generation" title="Galaxy and colonies on one clock: 0.5 Myr/s of sky is 500 colony years per second, and every hull is a generation ship (1 ly per 33 years, its warehouses stretched to the voyage).">generation ship</button>
+			<button type="button" data-time-mode="trade" title="Next-generation hulls on a slow but visible sky: 1 Myr/s of stars is 1 000 colony years per second. A long haul is overtaken by the stars it crosses, so routes can go out of reach under a ship.">trade</button>
+			<button type="button" data-time-mode="planetary" title="The sky holds still: delta-v flying inside a system, colonies creeping at 50 years/s, and the schematic at half a year per second so a fleet can be watched. Interstellar travel wants jump gates (deferred).">planetary</button>
+		</div>
+		<div id="time-mode-note" class="menu-note"></div>
+		<div class="menu-header menu-header-galaxy"><span>Clocks</span></div>
+		<div class="time-ledger">
+			<div class="time-row"><span>star</span><strong id="time-star">—</strong><em>sky · epoch · pattern</em></div>
+			<div class="time-row"><span>colony</span><strong id="time-trade">—</strong><em>settles · voyages</em></div>
+			<div class="time-row"><span>system</span><strong id="time-system">—</strong><em>orbits · ferries · routes</em></div>
+			<div class="time-row"><span>ship</span><strong id="time-ship">—</strong><em>the helm</em></div>
+			<div class="time-row"><span>epoch</span><strong id="time-epoch">—</strong><em>the census's age</em></div>
+		</div>
+		<div class="menu-header menu-header-galaxy"><span>Links</span></div>
+		<div class="menu-row">
+			<label for="time-trade-sync" title="Colonies ride the star clock: 1 star Myr is 1 000 colony years (capped at 2 000 y/s). Off, the colony clock is its own ladder in the Trade panel.">colony ← star</label>
+			<input type="checkbox" id="time-trade-sync" title="Colonies ride the star clock: 1 star Myr is 1 000 colony years (capped at 2 000 y/s). Off, the colony clock is its own ladder in the Trade panel.">
+		</div>
+		<div class="menu-row">
+			<label for="time-system-sync" title="The opened system's clock rides the star clock: one schematic year per star Myr per wall second (1 Myr/s → 1 y/s), so orbits, ferries and routes keep a watchable pace at any star rate. Off, it keeps the ladder in System &amp; routes.">system ← star</label>
+			<input type="checkbox" id="time-system-sync" title="The opened system's clock rides the star clock: one schematic year per star Myr per wall second (1 Myr/s → 1 y/s), so orbits, ferries and routes keep a watchable pace at any star rate. Off, it keeps the ladder in System &amp; routes.">
+		</div>
+		<div class="menu-row"><span id="time-state" class="menu-val">—</span></div>
+		<div class="menu-hint">Sliders stay in their own panels (star time in Display, colony clock in Trade, system clock in System &amp; routes). This panel says what every clock is doing and which of them follow the sky.</div>
+	</div>
 </div>
 <div class="panel-column panel-column-right">
 <!-- Formation checks (ui.21, the 0.7 browser verdict V14): a scenario is a
@@ -764,6 +800,7 @@ Send expedition &#183; Commission route &#183; Found at the selected star &#183;
         <!-- The three workspaces (workspace-plan.md §3): the names, the panel
              table and the pure transitions. Loads immediately before presets.js,
              its only reader besides main.js. -->
+        <script src="core/timeboard.js"></script>
         <script src="core/workspace.js"></script>
         <script src="core/presets.js"></script>
         <!-- The formation checks (ui.21): a scenario is a preset line plus what

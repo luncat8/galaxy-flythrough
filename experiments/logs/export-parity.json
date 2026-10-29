@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-29T02:48:59.119Z",
+  "date": "2026-10-29T09:57:06.031Z",
   "modules": 39,
   "totalChecks": 198,
   "passed": 198,
@@ -761,7 +761,7 @@
       }
     },
     {
-      "name": "TradeLib has identical key sets (192 keys)",
+      "name": "TradeLib has identical key sets (188 keys)",
       "pass": true,
       "detail": {
         "nodeOnly": [],

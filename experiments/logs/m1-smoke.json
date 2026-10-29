@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-29T02:48:59.532Z",
+  "date": "2026-10-29T09:51:44.164Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -33,6 +33,7 @@
     "core/economy.js",
     "core/trade.js",
     "core/loop.js",
+    "core/timeboard.js",
     "core/workspace.js",
     "core/presets.js",
     "core/scenarios.js",
@@ -65,6 +66,7 @@
     "core/selection.js",
     "core/ship.js",
     "core/star-set.js",
+    "core/timeboard.js",
     "core/trade.js",
     "core/workspace.js",
     "data/constellations.js",
@@ -109,8 +111,8 @@
       "name": "index.html loads every source file exactly once",
       "pass": true,
       "detail": {
-        "scripts": 46,
-        "sources": 46,
+        "scripts": 47,
+        "sources": 47,
         "missing": []
       }
     },
@@ -420,6 +422,7 @@
         "EconomyLib",
         "TradeLib",
         "Loop",
+        "TimeBoard",
         "Workspace",
         "Presets",
         "ScenarioLib",
@@ -572,7 +575,7 @@
       "name": "TradeLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 192
+        "keys": 188
       }
     },
     {
@@ -607,7 +610,7 @@
       "name": "Workspace loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 25
+        "keys": 26
       }
     },
     {

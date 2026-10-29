@@ -196,6 +196,19 @@ function tradeFixture(layer) {
 	port.intraFlow[(0 * 6 + 1) * 3 + 0] = 9;
 	port.intraFlow[(1 * 6 + 0) * 3 + 1] = 6;
 	port.intraFlow[(0 * 6 + 1) * 3 + 2] = 3;
+	// The fleet record trade.34 writes at each settle (time-plan §3): the three
+	// largest legs, what each is worth, and how many of the twelve boats it got.
+	port.intra = {
+		legCount: 3,
+		flow: 18,
+		unserved: new Uint8Array(6 * 6),
+		unservedPairs: 0,
+		legs: [
+			{ from: 0, to: 1, family: 0, flow: 9, dv: 16020, classId: 'nuclear', cargo: 400, legYears: 0.7, ferries: 6 },
+			{ from: 1, to: 0, family: 1, flow: 6, dv: 16020, classId: 'nuclear', cargo: 400, legYears: 0.7, ferries: 4 },
+			{ from: 0, to: 2, family: 2, flow: 3, dv: 5000, classId: 'chemical', cargo: 200, legYears: 0.2, ferries: 2 },
+		],
+	};
 	const worlds = [
 		{ kind: 0, index: 1, name: 'Terran', pop: 50, capacity: 100, growth: 0.01, starving: 1, outpost: 0 },
 		{ kind: 1, index: 0, name: 'belt', pop: 2, capacity: 10, growth: 0, starving: 0, outpost: 0 },
@@ -728,14 +741,38 @@ check('the icon constants are still the plan\'s and the star icon keeps its radi
 	const fixture = tradeFixture(layer);
 	const accepted = layer.setTradeData(fixture.port, fixture.worlds);
 	layer.draw(W, H);
-	check('T5 opens only the matching port and draws its three largest dim flow dashes',
-		accepted && canvas.ctx.ops.lineTo === lines0 + 3
+	check('T5/T6 opens only the matching port, draws its settled legs as dim dashes and flies twelve boats on them',
+		accepted && canvas.ctx.ops.lineTo >= lines0 + 3
+		&& canvas.ctx.ops.arc >= arcs0 + 24
 		&& canvas.ctx.ops.setLineDash > dashes0,
-		{ lines: canvas.ctx.ops.lineTo - lines0, dashes: canvas.ctx.ops.setLineDash - dashes0 });
+		{ lines: canvas.ctx.ops.lineTo - lines0, dashes: canvas.ctx.ops.setLineDash - dashes0,
+			arcs: canvas.ctx.ops.arc - arcs0 });
+	// The reported bug (a V B B walk): the delta-v renders used to return before
+	// any ferry was drawn. The same twelve boats are now drawn on the graph.
+	{
+		layer.setTradeData(null, null);
+		layer.setView(SystemLayer.VIEW_DV_RAILS);
+		layer.draw(W, H);
+		const railWithout = canvas.ctx.ops.arc;
+		layer.setTradeData(fixture.port, fixture.worlds);
+		layer.draw(W, H);
+		const railWith = canvas.ctx.ops.arc - railWithout;
+		check('T6 draws the fleet in the delta-v rail render too', railWith >= 24,
+			{ boatArcs: railWith });
+		layer.setTradeData(null, null);
+		layer.setView(SystemLayer.VIEW_DV_CLASSIC);
+		layer.draw(W, H);
+		const classicWithout = canvas.ctx.ops.arc;
+		layer.setTradeData(fixture.port, fixture.worlds);
+		layer.draw(W, H);
+		check('and in the classic render', canvas.ctx.ops.arc - classicWithout >= 24,
+			{ boatArcs: canvas.ctx.ops.arc - classicWithout });
+		layer.setView(SystemLayer.VIEW_SYSTEM);
+	}
 	check('T5 marks every live/outpost world and adds the dashed amber starvation ring',
 		canvas.ctx.ops.arc >= arcs0 + 4, { arcs: canvas.ctx.ops.arc - arcs0 });
 	const wrongStar = { key: fixture.port.key + 1, worldCount: fixture.port.worldCount,
-		worldIdx: fixture.port.worldIdx, intraFlow: fixture.port.intraFlow };
+		worldIdx: fixture.port.worldIdx, intraFlow: fixture.port.intraFlow, intra: fixture.port.intra };
 	check('T5 refuses stale trade data from another opened star',
 		!layer.setTradeData(wrongStar, fixture.worlds));
 	layer.setTradeData(fixture.port, fixture.worlds);

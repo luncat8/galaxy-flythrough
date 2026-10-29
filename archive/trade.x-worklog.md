@@ -1573,3 +1573,52 @@ without consuming a `MAX_PORTS` slot, allocating per event, or re-running
 - Validation: `trade` passed; `changed` passed all 10 affected groups.
 - Next: visually exercise expansion from a player-founded cluster colony with
   both frozen and moving skies on WebGPU hardware.
+
+## trade.34 — 2026-10-29 — The clock board, three progressions, and a fleet that is a picture
+
+The browser pass on trade.25–.33 answered three complaints with one finding: the
+app had four clocks with no ledger, and the intra fleet's *picture* was a
+function of the economy's clock. Plan: [`time-plan.md`](../time-plan.md).
+
+- **`src/core/timeboard.js` (new, pure).** The three progressions as one table —
+  `generation` (0.5 Myr/s, Evolve, colony clock synced to the star clock,
+  generation hulls, schematic at 0.05 y/s), `trade` (the default: 1 Myr/s,
+  synced at 1 000 y/s, next-generation hulls, schematic 1 y/s) and `planetary`
+  (frozen sky, colonies on their own 50 y/s ladder, schematic 0.5 y/s) — plus
+  the star link's law (`SYSTEM_STAR_BRIDGE`: one schematic year per star Myr
+  per wall second) and the board's two formats.
+- **The ninth panel (`#time-menu`, workspace bit 8, observe + command).** A
+  ledger of five clocks (star, colony, system, ship, epoch) and two links
+  (colony ← star, system ← star) with one writer each, so the Trade panel's
+  `Sync time` box and the board's box are the same switch. The sliders stay in
+  their own panels, as the brief asked; the board says what they are doing.
+  `applyTimeMode` writes every clock of a progression through the same state the
+  sliders write — including `setGenerationMode` — so a press and four drags
+  cannot disagree. `resumeStarIfSynced` stays the *user gesture's* extra: a link
+  switched on over a parked sky wakes it, a mode press does not.
+- **The fleet's law reversed (supersedes `trade-4-plan.md` §0.1–§3).** The
+  trade is the average, the fleet is its picture: `applyIntraFlows` applies every
+  transfer again (no booking, no withholding), and `noteIntraLegs` records the
+  three largest legs of each settle — pair, dominant family, flow, delta-v,
+  class, Hohmann leg time — splitting the twelve ferries across them. The
+  schematic draws those boats on its *own* clock as a round trip, with a motion
+  trail, and docked ticks when a port has no transfer. Opening or closing the
+  view is now provably free: two 5 000-year runs compare byte-equal where the
+  old contract allowed 5 % (measured 0.84 %).
+  Removed: `net.intraQ`, `EV_INTRA_ARRIVE`, `bookIntra`, `arriveIntra`,
+  `intraHandler`, `setIntraOnline`, the hull records and their two states.
+  Kept: the class gate and the unserved-pair refusal — a pair no in-system
+  engine can fly still trades and is still not drawn.
+- **The reported bug.** `V` `B` `B` walked the schematic into the two delta-v
+  renders, where `draw()` returned before any ferry was drawn. `drawDvFleet`
+  now draws the same boats on the graph columns of the leg's endpoints, along
+  the escape row; a body the graph does not carry is skipped, never guessed.
+- **Readouts.** `intraFleetText` prints the ferries, the legs and the settle's
+  flow per leg with delta-v and leg time, and names the system clock; the Trade
+  panel's one row says `intra N legs`; the fleet block no longer claims
+  `landed` tonnes, because the average is not a voyage.
+- **Validation.** `timeboard` 56 checks (new; registered in `world-tests`),
+  `trade` 371/371 (§30 rewritten), `panel` 35, `workspace` 48, `m1-smoke`
+  122/122, `system-layer`, `dv-map`, `route`, `ship`, `preset`, `scenario` —
+  `world-tests` 17/17 in 18 s. Browser verdict still open: `V` `B` `B`, a
+  frozen schematic clock, the star link and each mode press.

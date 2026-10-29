@@ -332,7 +332,7 @@ checks++;
 	checks++;
 }
 
-for (const [column, first, second] of [['left', 'selection-menu', 'sysmenu'], ['left', 'sysmenu', 'routemenu'], ['inner', 'viewmenu', 'trade-menu'], ['right', 'scenario-menu', 'menu'], ['right', 'menu', 'help']]) {
+for (const [column, first, second] of [['left', 'selection-menu', 'sysmenu'], ['left', 'sysmenu', 'routemenu'], ['inner', 'viewmenu', 'trade-menu'], ['inner', 'trade-menu', 'time-menu'], ['right', 'scenario-menu', 'menu'], ['right', 'menu', 'help']]) {
 	const start = html.indexOf('panel-column-' + column);
 	assert.ok(start >= 0 && html.indexOf('id="' + first + '"', start) < html.indexOf('id="' + second + '"', start));
 	checks++;
@@ -352,6 +352,24 @@ checks++;
 assert.ok(css.split('\n').some((line) => line.indexOf('.panel-column > :is(') === 0
 	&& line.includes('#scenario-menu')));
 checks++;
+// The clock board (time-plan §1) is a panel of the inner column like the rest:
+// its own block, named by the column rule so it never floats over the trade
+// panel, and a ledger row for every clock it prints.
+assert.ok(/#time-menu\s*\{/.test(css) && css.includes('.time-ledger') && css.includes('.time-row'));
+checks++;
+assert.ok(css.split('\n').some((line) => line.indexOf('.panel-column > :is(') === 0
+	&& line.includes('#time-menu')));
+checks++;
+const timeMenu = html.slice(html.indexOf('id="time-menu"'), html.indexOf('id="scenario-menu"'));
+assert.ok(/id="time-star"/.test(timeMenu) && /id="time-trade"/.test(timeMenu)
+	&& /id="time-system"/.test(timeMenu) && /id="time-ship"/.test(timeMenu)
+	&& /id="time-epoch"/.test(timeMenu) && /id="time-trade-sync"/.test(timeMenu)
+	&& /id="time-system-sync"/.test(timeMenu), 'the board prints five clocks and two links');
+checks++;
+for (const id of ['generation', 'trade', 'planetary']) {
+	assert.ok(timeMenu.includes('data-time-mode="' + id + '"'), 'the board offers the ' + id + ' progression');
+	checks++;
+}
 assert.ok(css.includes('#trade-calendar, #trade-log {\n\theight: 112px;'));
 assert.ok(css.includes('#trade-list, #colonisation-list, #route-list {\n\theight: 96px;'));
 console.log(`${checks + 3} panel checks passed`);

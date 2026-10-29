@@ -106,22 +106,35 @@
 	// Event kinds. A ship's current event is the only one it owns; the tick is
 	// the one global event that keeps the fleet at its target size and looks
 	// for colonisation opportunities.
-	const EV_ARRIVE = 0, EV_LOAD = 1, EV_WAIT = 2, EV_FOUND = 3, EV_TICK = 4, EV_INTRA_ARRIVE = 5;
+	const EV_ARRIVE = 0, EV_LOAD = 1, EV_WAIT = 2, EV_FOUND = 3, EV_TICK = 4;
 
-	// --- The intra fleet (trade.25) -----------------------------------------
+	// --- The intra fleet (trade.34) -----------------------------------------
 	// Inside one opened system the T4 couple is a *number*: mass appears at the
 	// destination in the same instant it leaves the source. That is right at the
-	// inter-star calendar and wrong on the schematic, where the viewer is looking
-	// at the scale where a Hohmann leg is a visible voyage. T6 gives that mass a
-	// hull, a leg time and a delta-v price — and nothing else: the quantity is
-	// still T4's couple, so opening the view changes the picture, not the economy.
+	// inter-star calendar — a Hohmann leg is days while a settle is decades — and
+	// it stays right on the schematic too, because the schematic's clock is a
+	// *picture* clock (0.0001 … 100 y/s or frozen) while the economy runs at
+	// 1 … 2 000 colony years per second. Two clocks, two jobs:
 	//
-	// Twelve hulls per port. No allocation after the first open.
-	const INTRA_HULLS_MAX = 12;
-	// A round trip has to fit the class's budget with margin: the hull comes back.
+	//   * the trade is the average — every settle moves the couple's mass, on the
+	//     network's clock, whether or not a schematic is open;
+	//   * the fleet is the picture — ferries fly the settle's largest legs on the
+	//     system clock, at a delta-v-priced leg time, and carry nothing that the
+	//     average has not already moved.
+	//
+	// trade.25 booked the mass onto hulls and landed them on the network clock;
+	// the browser pass showed what that costs — a hull's whole voyage fits in a
+	// frame at 2 000 y/s, so the schematic showed empty space between arrivals,
+	// and opening the view could delay real cargo. Recorded in
+	// `time-plan.md` §3 and `trade-4-plan.md` §0.2.
+	//
+	// Twelve ferries and the three largest legs per port. No allocation after the
+	// first open.
+	const INTRA_FERRY_COUNT = 12;
+	const INTRA_FLEET_LEGS = 3;
+	// A round trip has to fit the class's budget with margin: the ferry comes back.
 	const INTRA_ROUND_TRIP = 2;
 	const INTRA_DV_RESERVE = 1.1;
-	const INTRA_IDLE = 0, INTRA_LOADED = 1;
 	const INTRA_MIN_YEARS = 0.02;
 	// The class that flies it: the cheapest in-system class whose budget covers
 	// the round trip. `chemical` (20 km/s) is the short hop, `nuclear` (40 km/s)
@@ -429,12 +442,6 @@
 			queue: queueLib.createExecQueue(256),
 			portCount: 0,
 			worldCount: 0,
-			// The intra fleet's own heap and ledger (trade.25): a separate queue
-			// from `queue`, because an intra arrival is a different kind of
-			// event, and a separate counter, because haulage inside a system is
-			// not the inter-star `delivered` number the panel shows.
-			intraQ: queueLib.createExecQueue(128),
-			intraDelivered: 0,
 			// Failed colonies still own their slots; this is how many of the
 			// ports are outposts (W1). `livePortCount` is the panel's number.
 			outposts: 0,
@@ -486,8 +493,6 @@
 			// the birth sky, exactly as it did before this pass.
 			geom: createGeometry(),
 			handler: null,
-			// The fleet's drain callback, one closure per network (trade.25).
-			intraHandler: null,
 		};
 		for (let i = 0; i < MAX_PORTS; i++) net.ports.push(createPort());
 		for (let i = 0; i < MAX_WORLDS; i++) net.worlds.push(createWorld());
@@ -495,7 +500,6 @@
 		for (let i = 0; i < MAX_CANDIDATES; i++) net.candidates.push(createCandidate());
 		// The drain's callback: one closure per network, never per event.
 		net.handler = (time, kind, ref, revision) => handleEvent(net, time, kind, ref, revision);
-		net.intraHandler = (time, kind, ref) => intraHandler(net, time, kind, ref);
 		net.livePosition = options && options.livePosition ? options.livePosition : null;
 		net.predictPosition = options && options.predictPosition ? options.predictPosition : null;
 		return net;
@@ -892,10 +896,6 @@
 	function applyIntraFlows(net, portIndex, time) {
 		const port = net.ports[portIndex];
 		if (!port) return;
-		// The fleet only takes what the couple already priced (trade.25); when
-		// the schematic is closed or the class gate refuses the pair, the
-		// transfer is instant, exactly as T4 shipped it.
-		const fleetOn = !!port.intra && port.intra.online === 1;
 		INTRA_REMAIN.fill(0); INTRA_ROOM.fill(0);
 		INTRA_SENT.fill(0); INTRA_RECEIVED.fill(0);
 		INTRA_PAX_REMAIN.fill(0); INTRA_PAX_ROOM.fill(0);
@@ -951,10 +951,7 @@
 							INTRA_PAX_REMAIN[s] -= amount;
 							INTRA_PAX_ROOM[t] -= amount;
 							INTRA_PAX_SENT[s] += amount;
-							const shipped = fleetOn
-								? bookIntra(net, portIndex, s, t, f, -1, amount, time) : 0;
-							if (shipped > 0) port.intra.booked += shipped;
-							INTRA_PAX_RECEIVED[t] += amount - shipped;
+							INTRA_PAX_RECEIVED[t] += amount;
 							moved = amount;
 						}
 					} else {
@@ -971,11 +968,7 @@
 							INTRA_REMAIN[sourceBase + r] -= amount;
 							INTRA_ROOM[targetBase + r] -= amount;
 							INTRA_SENT[sourceBase + r] += amount;
-							// A hull carries what it can; the rest lands now.
-							const shipped = fleetOn
-								? bookIntra(net, portIndex, s, t, f, r, amount, time) : 0;
-							if (shipped > 0) port.intra.booked += shipped;
-							INTRA_RECEIVED[targetBase + r] += amount - shipped;
+							INTRA_RECEIVED[targetBase + r] += amount;
 							moved += amount;
 						}
 					}
@@ -1005,6 +998,9 @@
 				world.pop = pop;
 			}
 		}
+		// The picture, not a second ledger (trade.34): the settle's own flows are
+		// what the ferries draw.
+		noteIntraLegs(net, portIndex);
 	}
 
 	function distributePortInbound(net, index, r, units) {
@@ -1523,172 +1519,125 @@
 		return solveRemaining(net, kindA, indexA, kindB, indexB, 1, hullIndex, capLy, plan);
 	}
 
-	// --- The intra fleet (trade.25) -----------------------------------------
-	// The hulls of one opened system. Six decisions are encoded here and nowhere
-	// else:
+	// --- The intra fleet's picture (trade.34) --------------------------------
+	// The schematic's ferries. Four decisions are encoded here and nowhere else:
 	//
-	//   1. The mass is T4's. `book` is called from `applyIntraFlows` with the
-	//      exact tonnes (or people) that settle was about to credit instantly,
-	//      so the fleet can only move what the couple already priced.
-	//   2. The class is a gate. A pair whose round trip exceeds every in-system
-	//      class's delta-v budget books no hull; the transfer stays instantaneous
-	//      and the pair is marked unserved, which is the schematic's way of
-	//      saying "no engine flies this" instead of drawing a hull that cannot.
-	//   3. A hull is a constraint, not decoration. Twelve hulls of `class.cargo`
-	//      each is the per-settle capacity; the unsettled remainder takes the
-	//      instantaneous path, so a busy system degrades toward T4 instead of
-	//      silently losing mass.
-	//   4. Nothing is created, nothing is destroyed: `book` debits the source
-	//      (the settle's own commit does) and the arrival credits the
-	//      destination. In flight, the mass is on the hull.
-	//   5. One event per hull, drained by the network's own queue and clock: a
-	//      500-year jump lands the same arrivals as 500 one-year steps.
-	//   6. The schematic only reads. `setIntraOnline` is the sole writer of the
-	//      flag, and it changes which path a *future* transfer takes — never an
-	//      amount that has already been decided.
-	function createIntraHull() {
-		return {
-			state: INTRA_IDLE, hull: -1, classId: '', source: -1, dest: -1,
-			resource: -1, family: 0, amount: 0, departAt: 0, arriveAt: 0,
-			dv: 0, trips: 0, delivered: 0, revision: 0,
-		};
+	//   1. The fleet is a *picture of the average*. A settle moves the couple's
+	//      mass instantly, on the network's clock; `noteIntraLegs` only records
+	//      the three largest legs it just paid for, so opening or closing the
+	//      view cannot change a stock. The picture is the flow, drawn.
+	//   2. The clock is the system's. Ferry positions are computed by
+	//      `system-layer.js` from its own clock and the leg's delta-v time, so a
+	//      viewer at 0.01 y/s sees the voyage while the economy runs ahead of it.
+	//   3. The class is a gate. A pair whose round trip exceeds every in-system
+	//      class's delta-v budget is *unserved*: it still trades (the average is
+	//      physical), but no ferry is drawn on it, and the readout counts it.
+	//   4. Nothing is allocated after the first open: three leg records per port.
+	function createIntraLeg() {
+		return { from: -1, to: -1, family: -1, flow: 0, dv: 0, classId: '', legYears: 0, ferries: 1 };
 	}
 
 	function ensureIntra(port) {
 		if (port.intra) return port.intra;
-		const hulls = new Array(INTRA_HULLS_MAX);
-		for (let i = 0; i < INTRA_HULLS_MAX; i++) hulls[i] = createIntraHull();
-		port.intra = {
-			online: 0,
-			hulls,
-			unserved: new Uint8Array(MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR),
-			inFlight: 0,
-			trips: 0,
-			delivered: 0,
-			booked: 0,
-			unservedPairs: 0,
-			clock: 0,
-			revision: 0,
-		};
+		const legs = new Array(INTRA_FLEET_LEGS);
+		for (let i = 0; i < INTRA_FLEET_LEGS; i++) legs[i] = createIntraLeg();
+		port.intra = { legs, legCount: 0, flow: 0, unserved: new Uint8Array(MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR), unservedPairs: 0 };
 		return port.intra;
 	}
 
-	// The one writer of the online flag. Called every frame with the open
-	// system's port index (or −1). Turning it off does not strand a hull: the
-	// queue belongs to the network, so an in-flight cargo still lands on its
-	// arrival time whether or not the schematic is looking at it.
-	function setIntraOnline(net, portIndex) {
-		if (!net) return 0;
-		let now = 0;
-		for (let i = 0; i < net.portCount; i++) {
-			// Opening a system is what allocates that port's fleet: twelve
-			// records, once, on the frame the schematic first shows it.
-			const intra = i === portIndex ? ensureIntra(net.ports[i]) : net.ports[i].intra;
-			if (!intra) continue;
-			const next = i === portIndex ? 1 : 0;
-			if (intra.online === next) continue;
-			intra.online = next;
-			intra.revision++;
-			if (next) now++;
-		}
-		return now;
-	}
+	// The pair scratch behind noteIntraLegs: total flow per ordered pair and the
+	// family that carried most of it. Preallocated at module scope.
+	const INTRA_PAIR_FLOW = new Float64Array(MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR);
+	const INTRA_PAIR_FAMILY = new Int8Array(MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR);
 
-	// Book one settle's worth of mass onto hulls. Returns the amount the fleet
-	// took; the caller credits the rest instantly. `resource` is −1 for people.
-	function bookIntra(net, portIndex, source, dest, family, resource, amount, time) {
-		if (!(amount > 0) || source === dest) return 0;
-		if (!(portIndex >= 0 && portIndex < net.portCount)) return 0;
+	// Called once per settle, after the flows are applied: pick the three legs
+	// the ferries will fly and price each one. `port.intraFlow` is the settle's
+	// own record, so the picture can never disagree with the economy about which
+	// pair moved and how much.
+	function noteIntraLegs(net, portIndex) {
 		const port = net.ports[portIndex];
-		const intra = ensureIntra(port);
-		const pair = source * MAX_WORLDS_PER_STAR + dest;
-		const dv = port.dv[pair];
-		const cls = intraClassFor(dv);
-		if (!cls) {
-			if (!intra.unserved[pair]) { intra.unserved[pair] = 1; intra.unservedPairs++; }
-			return 0;
-		}
-		const legYears = port.tH[pair] / deltav.SECONDS_PER_YEAR;
-		const leg = legYears > INTRA_MIN_YEARS ? legYears : INTRA_MIN_YEARS;
-		let remaining = amount;
-		let booked = 0;
-		for (let i = 0; i < INTRA_HULLS_MAX && remaining > 0; i++) {
-			const hull = intra.hulls[i];
-			if (hull.state !== INTRA_IDLE) continue;
-			const take = remaining < cls.cargo ? remaining : cls.cargo;
-			hull.state = INTRA_LOADED;
-			hull.hull = i;
-			hull.classId = cls.id;
-			hull.source = source;
-			hull.dest = dest;
-			hull.resource = resource;
-			hull.family = family;
-			hull.amount = take;
-			hull.departAt = time;
-			hull.arriveAt = time + leg;
-			hull.dv = dv;
-			hull.revision++;
-			intra.inFlight++;
-			intra.revision++;
-			// One event per hull, on the fleet's own heap: the ref is the port
-			// slot in the high half and the hull slot in the low one.
-			queueLib.push(net.intraQ, hull.arriveAt, EV_INTRA_ARRIVE,
-				(portIndex * INTRA_HULLS_MAX + i) >>> 0, 0);
-			remaining -= take;
-			booked += take;
-		}
-		return booked;
-	}
-
-	// The arrival: the only place an intra cargo becomes stock again.
-	function arriveIntra(net, portIndex, hullSlot, time) {
-		if (!(portIndex >= 0 && portIndex < net.portCount)) return 0;
-		const port = net.ports[portIndex];
+		ensureIntra(port);
 		const intra = port.intra;
-		if (!intra || !(hullSlot >= 0 && hullSlot < INTRA_HULLS_MAX)) return 0;
-		const hull = intra.hulls[hullSlot];
-		if (hull.state !== INTRA_LOADED) return 0;
-		const slot = hull.dest;
-		const world = slot >= 0 && slot < port.worldCount ? net.worlds[port.worldIdx[slot]] : null;
-		let landed = hull.amount;
-		if (!world || world.outpost) landed = 0;
-		else if (hull.resource < 0) {
-			const room = world.capacity - world.pop;
-			if (landed > room) landed = room > 0 ? room : 0;
-			world.pop += landed;
-		} else {
-			const room = world.stockCap[hull.resource] - world.stock[hull.resource];
-			if (landed > room) landed = room > 0 ? room : 0;
-			world.stock[hull.resource] += landed;
+		INTRA_PAIR_FLOW.fill(0);
+		INTRA_PAIR_FAMILY.fill(-1);
+		let pairs = port.worldCount * MAX_WORLDS_PER_STAR;
+		for (let s = 0; s < port.worldCount; s++) {
+			for (let t = 0; t < port.worldCount; t++) {
+				if (s === t) continue;
+				const pair = s * MAX_WORLDS_PER_STAR + t;
+				let total = 0, best = -1, bestFlow = 0;
+				for (let f = 0; f < INTRA_FAMILY_COUNT; f++) {
+					const amount = port.intraFlow[intraFlowIndex(s, t, f)];
+					if (!(amount > 0)) continue;
+					total += amount;
+					if (amount > bestFlow) { bestFlow = amount; best = f; }
+				}
+				if (total > 0) { INTRA_PAIR_FLOW[pair] = total; INTRA_PAIR_FAMILY[pair] = best; }
+			}
 		}
-		hull.state = INTRA_IDLE;
-		hull.trips += 1;
-		hull.delivered += landed;
-		hull.amount = 0;
-		hull.revision++;
-		intra.inFlight -= 1;
-		intra.trips += 1;
-		intra.delivered += landed;
-		intra.revision += 1;
-		net.intraDelivered += landed;
-		port.arrivals += 1;
-		if (landed > 0) refreshPortHealth(net, portIndex);
-		return landed;
+		intra.legCount = 0;
+		intra.flow = 0;
+		for (let p = 0; p < pairs; p++) intra.flow += INTRA_PAIR_FLOW[p];
+		// Insertion by descending flow, three slots, no allocation.
+		for (let p = 0; p < pairs; p++) {
+			const amount = INTRA_PAIR_FLOW[p];
+			if (!(amount > 0)) continue;
+			const s = (p / MAX_WORLDS_PER_STAR) | 0;
+			const t = p % MAX_WORLDS_PER_STAR;
+			const dv = port.dv[p];
+			const cls = intraClassFor(dv);
+			if (!cls && !intra.unserved[p]) { intra.unserved[p] = 1; intra.unservedPairs++; }
+			if (!cls) continue;
+			let pos = 0;
+			while (pos < intra.legCount && amount <= intra.legs[pos].flow) pos++;
+			if (pos >= INTRA_FLEET_LEGS) continue;
+			for (let k = INTRA_FLEET_LEGS - 1; k > pos; k--) copyIntraLeg(intra.legs[k - 1], intra.legs[k]);
+			const leg = intra.legs[pos];
+			const years = port.tH[p] / deltav.SECONDS_PER_YEAR;
+			leg.from = s;
+			leg.to = t;
+			leg.family = INTRA_PAIR_FAMILY[p];
+			leg.flow = amount;
+			leg.dv = dv;
+			leg.classId = cls.id;
+			leg.legYears = years > INTRA_MIN_YEARS ? years : INTRA_MIN_YEARS;
+			if (intra.legCount < INTRA_FLEET_LEGS) intra.legCount++;
+		}
+		splitFerries(intra);
+		return intra.legCount;
 	}
 
-	// The queue handler. `ref` is the port slot in the high half and the hull
-	// slot in the low one — the same packing `bookIntra` pushed.
-	function intraHandler(net, time, kind, ref) {
-		if (kind !== EV_INTRA_ARRIVE) return 0;
-		const portIndex = (ref / INTRA_HULLS_MAX) | 0;
-		const hullSlot = ref % INTRA_HULLS_MAX;
-		return arriveIntra(net, portIndex, hullSlot, time);
+	// The twelve ferries, split across the legs in proportion to their shares —
+	// at least one each, and never so many on one leg that another has none.
+	// Computed here, once per settle, so the drawing layer only reads numbers.
+	function splitFerries(intra) {
+		let total = 0;
+		for (let i = 0; i < intra.legCount; i++) total += intra.legs[i].flow;
+		if (!(total > 0)) return;
+		const cap = INTRA_FERRY_COUNT - intra.legCount + 1;
+		for (let i = 0; i < intra.legCount; i++) {
+			const leg = intra.legs[i];
+			let n = Math.round(INTRA_FERRY_COUNT * leg.flow / total);
+			if (n < 1) n = 1;
+			if (n > cap) n = cap;
+			leg.ferries = n;
+		}
 	}
 
-	// The fleet block of the opened system's readout (trade-4-plan §5): one line
-	// per loaded hull, `class · family · src → dst · Δv · t · cargo`. Capped at
-	// the four largest so the readout never wraps past the panel.
-	const INTRA_FLEET_ROWS = 4;
+	function copyIntraLeg(source, target) {
+		target.from = source.from;
+		target.to = source.to;
+		target.family = source.family;
+		target.flow = source.flow;
+		target.dv = source.dv;
+		target.classId = source.classId;
+		target.legYears = source.legYears;
+		target.ferries = source.ferries;
+	}
+
+	// The fleet block of the opened system's readout (time-plan §3): the average
+	// the settle paid and the legs the ferries are drawing, with the delta-v and
+	// the flight time a viewer actually sees.
 	function intraFleetText(net, index) {
 		if (!(index >= 0 && index < net.portCount)) return '';
 		const port = net.ports[index];
@@ -1701,32 +1650,24 @@
 		};
 		const familyName = (f) => economy.INTRA_FAMILY_SHORT[f] || '?';
 		const fmt = (v) => (v >= 100 ? Math.round(v).toLocaleString('en-US') : v.toFixed(1));
-		let head = '\nfleet     ';
-		if (intra.inFlight === 0) {
-			head += INTRA_HULLS_MAX + ' hulls in port'
-				+ ' \u00b7 ' + intra.trips + (intra.trips === 1 ? ' trip' : ' trips')
-				+ ' \u00b7 ' + fmt(intra.delivered) + ' landed';
+		let text = '\nfleet     ' + INTRA_FERRY_COUNT + ' ferries';
+		if (intra.legCount === 0) {
+			text += ' in port \u00b7 no transfer this settle';
 		} else {
-			head += intra.inFlight + ' of ' + INTRA_HULLS_MAX + ' hulls flying'
-				+ ' \u00b7 ' + intra.trips + (intra.trips === 1 ? ' trip' : ' trips')
-				+ ' \u00b7 ' + fmt(intra.delivered) + ' landed';
+			text += ' \u00b7 ' + intra.legCount + (intra.legCount === 1 ? ' leg' : ' legs')
+				+ ' \u00b7 ' + fmt(intra.flow) + ' / settle'
+				+ ' \u00b7 system clock';
 		}
-		if (intra.unservedPairs > 0) head += ' \u00b7 ' + intra.unservedPairs + ' unserved';
-		let text = head;
-		let shown = 0;
-		for (let i = 0; i < INTRA_HULLS_MAX && shown < INTRA_FLEET_ROWS; i++) {
-			const hull = intra.hulls[i];
-			if (hull.state !== INTRA_LOADED) continue;
-			const remain = hull.arriveAt - intra.clock;
-			text += '\n          ' + hull.classId.padEnd(9)
-				+ familyName(hull.family).padEnd(6)
-				+ worldName(hull.source) + ' \u2192 ' + worldName(hull.dest)
-				+ '  ' + (hull.dv / 1000).toFixed(1) + ' km/s'
-				+ '  ' + (remain > 0 ? remain.toFixed(2) : '0.00') + ' y'
-				+ '  ' + fmt(hull.amount) + ' t';
-			shown += 1;
+		if (intra.unservedPairs > 0) text += ' \u00b7 ' + intra.unservedPairs + ' unserved';
+		for (let i = 0; i < intra.legCount; i++) {
+			const leg = intra.legs[i];
+			text += '\n          ' + leg.classId.padEnd(9)
+				+ familyName(leg.family).padEnd(6)
+				+ worldName(leg.from) + ' \u2192 ' + worldName(leg.to)
+				+ '  ' + (leg.dv / 1000).toFixed(1) + ' km/s'
+				+ '  ' + leg.legYears.toFixed(2) + ' y'
+				+ '  ' + fmt(leg.flow) + ' t';
 		}
-		if (intra.inFlight > shown) text += '\n          +' + (intra.inFlight - shown) + ' more';
 		return text;
 	}
 
@@ -2051,12 +1992,6 @@
 		for (let i = 0; i < net.candidateCount; i++) {
 			const candidate = net.candidates[i];
 			candidate.skyVisible = refInSky(candidate.site.ref, model, field, rateMyrPerS) ? 1 : 0;
-		}
-		// The fleet draws at the network's own clock (trade.25); stamping it here
-		// keeps the schematic's interpolation exact without handing the layer a
-		// reference to the net.
-		for (let i = 0; i < net.portCount; i++) {
-			if (net.ports[i].intra) net.ports[i].intra.clock = net.time;
 		}
 		net.skyVisiblePorts = visible;
 		net.skyState = visible === 0 ? SKY_NONE : visible === net.portCount ? SKY_ALL : SKY_SOME;
@@ -3963,18 +3898,7 @@
 		const start = net.time;
 		const target = start + years;
 		queueLib.drainUntil(net.queue, target, net.handler, budget);
-		// The fleet's own heap, on the same clock: an intra arrival is due at
-		// the star's trade year whether or not the schematic is open, so a
-		// cargo in flight always lands (trade.25).
-		if (net.intraQ.size > 0) {
-			queueLib.drainUntil(net.intraQ, target, net.intraHandler, budget);
-			for (let i = 0; i < net.portCount; i++) {
-				if (net.ports[i].intra) net.ports[i].intra.clock = net.time;
-			}
-		}
-		const fleetNext = queueLib.peekTime(net.intraQ);
-		const mainNext = queueLib.peekTime(net.queue);
-		const next = fleetNext < mainNext ? fleetNext : mainNext;
+		const next = queueLib.peekTime(net.queue);
 		net.time = next < target ? (next > start ? next : start) : target;
 		// The debt is cumulative: the clock never runs faster than the drain can
 		// follow, so a frame that cannot keep up adds to the backlog for good
@@ -4267,8 +4191,7 @@
 		launchBest, launchExpedition, returnFounder, retimeRoutes, colonisationStatus,
 		expandFrontierFromField, setGenerationMode, generationMode: setGenerationMode,
 		applySkyGate, refInSky, skyGateText, SKY_ALL, SKY_SOME, SKY_NONE,
-		INTRA_HULLS_MAX, EV_INTRA_ARRIVE, INTRA_IDLE, INTRA_LOADED, intraClassFor,
-		setIntraOnline, bookIntra, arriveIntra, intraFleetText,
+		INTRA_FERRY_COUNT, INTRA_FLEET_LEGS, intraClassFor, noteIntraLegs, intraFleetText,
 		refreshGeometry, endpointPos, endpointDistanceLy, planLeg, bookLeg, shipFraction,
 		createLegPlan, frontierStretchKpc, DIVERT_FACTOR, END_PORT, END_CANDIDATE,
 	};

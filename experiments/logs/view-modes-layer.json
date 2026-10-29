@@ -1,6 +1,6 @@
 {
   "test": "view-modes-layer",
-  "passed": 36,
+  "passed": 38,
   "failed": 0,
   "checks": [
     {
@@ -53,6 +53,14 @@
     },
     {
       "name": "a far catalog star never enters a nearest set",
+      "pass": true
+    },
+    {
+      "name": "the explicit selected source still includes the orbit target",
+      "pass": true
+    },
+    {
+      "name": "nearest distance field excludes the centered system star but still returns N neighbors",
       "pass": true
     },
     {

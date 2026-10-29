@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-28T04:53:26.749Z",
+  "date": "2026-10-29T09:57:20.043Z",
   "mockStars": 32000,
   "seed": 20240919,
   "summary": {
@@ -165,7 +165,7 @@
     {
       "name": "the date-only rerun preserves the committed generated date",
       "pass": true,
-      "detail": "2026-10-28"
+      "detail": "2026-10-29"
     },
     {
       "name": "the bundle file hands back the same object",

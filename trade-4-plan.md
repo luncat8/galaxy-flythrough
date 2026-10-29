@@ -1,10 +1,19 @@
 # trade-4 — T6: a real intra-system fleet
 
-**Status: built (trade.25, 2026-10-28) — with two recorded deviations, §0.1.**
-The design below is what shipped, except where §0.1 says otherwise; the
-implementation notes and measurements are in `archive/trade.x-worklog.md`
-(trade.25). It answers the deferral recorded in
-[`trade-3-plan.md`](trade-3-plan.md) §8.
+**Status: built (trade.25, 2026-10-28), then superseded in part by
+[`time-plan.md`](time-plan.md) §3 (trade.34, 2026-10-29).** The design below is
+what shipped, except where §0.1 says otherwise; the implementation notes and
+measurements are in `archive/trade.x-worklog.md` (trade.25). It answers the
+deferral recorded in [`trade-3-plan.md`](trade-3-plan.md) §8.
+
+**Read §0.2 first if you are reimplementing the fleet.** trade.34 replaced the
+hulls-with-cargo of §0.1/§2/§3 with a *picture of the average*: a settle still
+moves the couple's mass instantly (so opening the view is provably free), and
+the ferries draw the settle's three largest legs on the system clock, at the
+delta-v time a viewer can watch. The reason is measured, not aesthetic: at the
+authored 1 000–2 000 colony years per second a Hohmann leg is a fraction of a
+frame, so a hull that carries real cargo is invisible whenever the picture is
+watchable.
 
 T4 made intra-system trade a *number*: one couple-weighted transfer per settle,
 priced by the delta-v graph, with no hull and no travel time. That was the right
@@ -67,6 +76,34 @@ instantly is a picture, not a fleet. T6 is the slice that makes it a fleet.
 5. **Unserved pairs stay instantaneous.** A pair no in-system class can fly books
    no hull *and* keeps T4's instant transfer, so the engine gate can never be a
    silent economic brake. The schematic reports the count as `unserved`.
+
+## 0.2 What trade.34 changed, and why
+
+1. **The fleet is the picture, the trade is the average.** §3's contract —
+   "the simulated fleet's throughput must land inside the couple T4 already
+   used" — was held to 0.84 %, but only by letting the drawing depend on the
+   economy's clock. A voyage is 0.4 y for a Hohmann leg and the network runs
+   1 000 y/s, so the cargo was in flight for a fraction of a frame: the
+   schematic showed an empty system, and slowing the view to watch a hull would
+   have delayed real cargo. trade.34 removed the coupling: `settlePort` applies
+   every transfer, `noteIntraLegs` records the three largest legs (with their
+   class, delta-v and Hohmann time), and the ferries are drawn from those
+   records on the *system* clock. Two 5 000-year runs now compare byte-equal
+   instead of within 5 %.
+2. **No hull records, no intra heap.** §2's `INTRA_LOAD`/`INTRA_DEPART`/
+   `INTRA_ARRIVE`/`INTRA_WAIT` events, the `net.intraQ` heap and the twelve
+   hull records are gone; §0.1's "one clock, not two" question is moot because
+   there is no second clock. The class gate (§4) survives unchanged, as does
+   the unserved-pair refusal, because they are what makes a pair undrawable.
+3. **The schematic's clock is the fleet's timer.** §5's "hulls interpolated by
+   `legTimes`" is now "hulls interpolated by the system clock over the leg's
+   delta-v time", with a round trip so a standing flow reads as traffic, and
+   docked ticks when the port has no transfer.
+4. **The fleet is drawn in all three renders.** §5 knew only the schematic; the
+   delta-v renders now draw the same boats along their escape row.
+5. **The clock board.** [`time-plan.md`](time-plan.md) §1–§2 is the panel that
+   says which clock every subsystem is on, and the three progressions that set
+   them together.
 
 ## 1. What is wrong today
 

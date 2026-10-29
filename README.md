@@ -107,14 +107,14 @@ Controls deck:
 
 - **observe** (`1`) — the sky: free camera, star time, selection, the map and
   the look. Panels: Search & selection, System & routes, View modes, Display,
-  Controls, Formation checks.
+  Controls, Formation checks, Time.
 - **fly** (`2`) — a ship: the camera is the active hull, the ship clock owns
   the time axis, the trade overlay thins to ports and hulls. Panels: Flight,
   Controls.
 - **command** (`3`) — the colony network: expeditions, standing routes,
   expansion arming and founding live here (elsewhere they are read-only), and
   a port-row click flies the camera over. Panels: Search & selection,
-  System & routes, Trade, Controls.
+  System & routes, Trade, Controls, Time.
 
 `g` is the **helm toggle**: it enters `fly` from anywhere and returns to the
 workspace it was entered from. The mode bar (top left) shows the three chips,
@@ -185,8 +185,16 @@ Other controls:
   claim — first light, condensation, the full walk, gas-rich arms, bulge assembly — prints what to
   look at and what proves it, and reports the live account: formed %, view gas, arm contrast, bulge
   size and the field draws since the row started
+- **Time** (inner column, under Trade) — the clock board ([time-plan.md](time-plan.md)):
+  five ledger rows (star, colony, system, ship, epoch), the two links **colony ← star**
+  and **system ← star** (one schematic year per star Myr per wall second), and the three
+  progressions — **generation ship** (0.5 Myr/s, synced colonies, generation hulls),
+  **trade** (the default: 1 Myr/s, 1 000 colony y/s, next-generation hulls) and
+  **planetary** (frozen sky, colonies at 50 y/s, the schematic at 0.5 y/s). A press sets
+  every clock at once; the sliders stay in their own panels
 - `V` — open/close the close-system schematic of the selected star; while docked in game mode, inspect the station without camera motion
-- `B` — cycle the system view: schematic → delta-v map → delta-v rails
+- `B` — cycle the system view: schematic → delta-v map → delta-v rails (the colony fleet's
+  ferries are drawn in all three, on the schematic's own clock)
 - `[` / `]` — exposure
 - `;` / `'` — overall brightness
 - `Esc` — close the system view; release the pointer in fly mode

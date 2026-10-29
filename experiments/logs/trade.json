@@ -1,6 +1,6 @@
 {
-  "total": 346,
-  "passed": 346,
+  "total": 371,
+  "passed": 371,
   "failed": 0,
   "checks": [
     {
@@ -163,7 +163,7 @@
       "name": "filling the warehouses raises coverage",
       "pass": true,
       "detail": {
-        "before": 1,
+        "before": 0.5625714747212778,
         "filled": 1
       }
     },
@@ -359,6 +359,42 @@
     },
     {
       "name": "population at carrying capacity is an exact finite equilibrium",
+      "pass": true
+    },
+    {
+      "name": "a 0.7% supply potential at capacity means zero population change",
+      "pass": true
+    },
+    {
+      "name": "a supplied full colony stays at capacity, with a flat growth marker",
+      "pass": true
+    },
+    {
+      "name": "a full colony actually loses population when its supplies fail",
+      "pass": true,
+      "detail": {
+        "pop": 90.48374180359595,
+        "rate": -0.008333333333333333
+      }
+    },
+    {
+      "name": "restoring supplies lets a previously full world recover toward its cap",
+      "pass": true
+    },
+    {
+      "name": "a delivery refreshes household coverage and net growth without waiting for a settle",
+      "pass": true
+    },
+    {
+      "name": "taking the food reserve refreshes growth back to a shortage",
+      "pass": true
+    },
+    {
+      "name": "current growth is supply potential times unused capacity for positive supply",
+      "pass": true
+    },
+    {
+      "name": "a port grows by its worlds, not by the headroom of a fictitious combined world",
       "pass": true
     },
     {
@@ -634,11 +670,39 @@
       "pass": true
     },
     {
+      "name": "unformed cluster stars cannot enter the frontier",
+      "pass": true
+    },
+    {
+      "name": "cluster-only frontier discovers canonical member systems with coeval inputs",
+      "pass": true,
+      "detail": {
+        "added": 32,
+        "canonical": true
+      }
+    },
+    {
+      "name": "a discovered cluster member accepts an expedition, founds a colony and supports a trade route",
+      "pass": true,
+      "detail": {
+        "founded": true,
+        "routed": true
+      }
+    },
+    {
+      "name": "hidden cluster records never become expedition targets",
+      "pass": true
+    },
+    {
       "name": "a colony founded within the century wears its growth ring",
       "pass": true,
       "detail": {
         "arcs": 5
       }
+    },
+    {
+      "name": "a full colony has the neutral ring, not the growing ring",
+      "pass": true
     },
     {
       "name": "hiding routes keeps the colonies and hulls on screen",
@@ -1631,8 +1695,8 @@
       "pass": true,
       "detail": {
         "flow": 0.13982079177402112,
-        "total": 96.99362515944591,
-        "closedTotal": 96.9936251594459
+        "total": 84.64817248906141,
+        "closedTotal": 84.64817248906141
       }
     },
     {
@@ -1843,31 +1907,48 @@
       "pass": true
     },
     {
-      "name": "opening the system puts the transfer on hulls instead of crediting it",
+      "name": "a settle records the legs the ferries fly",
       "pass": true,
       "detail": {
-        "inFlight": 3,
-        "ore": 59.296679630764075,
-        "closed": 100
+        "legs": 1,
+        "flow": 40.703320369235925
       }
     },
     {
-      "name": "every loaded hull is a class that can fly its own leg",
+      "name": "every recorded leg is a pair, a class that can fly it and a Hohmann time",
       "pass": true,
-      "detail": 3
+      "detail": 1
     },
     {
-      "name": "the hull lands its cargo and the system total matches the closed view",
+      "name": "the twelve ferries are split across the recorded legs",
       "pass": true,
       "detail": {
-        "inFlight": 0,
-        "legYears": 0.5379181692227419,
-        "opened": 100,
-        "closed": 100
+        "legs": 1,
+        "ferries": [
+          12
+        ]
       }
     },
     {
-      "name": "a pair no in-system class can fly books no hull and stays instantaneous",
+      "name": "5000 colony years are reproducible and the fleet never touches a stock",
+      "pass": true,
+      "detail": [
+        25,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "a long run keeps the fleet to the settle it last recorded",
+      "pass": true,
+      "detail": {
+        "legs": 0,
+        "flow": 0
+      }
+    },
+    {
+      "name": "a pair no in-system class can fly trades and is reported unserved",
       "pass": true,
       "detail": {
         "unservedPairs": 1,
@@ -1876,39 +1957,22 @@
       }
     },
     {
-      "name": "a 500-year jump lands the same intra ledger as 500 one-year steps",
+      "name": "a 500-year jump lands the same stocks as 500 one-year steps",
       "pass": true,
       "detail": {
-        "stepped": 40.703320369235925,
-        "jumped": 40.703320369235925
+        "stepped": 1,
+        "jumped": 1
       }
     },
     {
-      "name": "closing the system view mid-leg still lands the cargo",
+      "name": "the fleet readout names the ferries, the legs, their class, leg time and flow",
       "pass": true,
-      "detail": {
-        "inFlightAtClose": 3,
-        "delivered": 40.703320369235925
-      }
+      "detail": "\nfleet     12 ferries · 1 leg · 40.7 / settle · system clock\n          chemical bulk  belt → Terran  2.4 km/s  0.54 y  40.7 t"
     },
     {
-      "name": "the fleet readout names the hulls in flight, their class, leg and cargo",
+      "name": "and reports the port idle when no transfer was recorded",
       "pass": true,
-      "detail": "\nfleet     3 of 12 hulls flying · 0 trips · 0.0 landed\n          chemical bulk  belt → Terran  2.4 km/s  20.54 y  20.0 t\n          chemical bulk  belt → Terran  2.4 km/s  20.54 y  20.0 t\n          chemical bulk  belt → Terran  2.4 km/s  20.54 y  0.7 t"
-    },
-    {
-      "name": "and reports the port idle once every hull has landed",
-      "pass": true,
-      "detail": "\nfleet     12 hulls in port · 3 trips · 40.7 landed"
-    },
-    {
-      "name": "5000 years with the view open and closed land the same stocks within 5%",
-      "pass": true,
-      "detail": {
-        "worst": "0.84%",
-        "resource": 8,
-        "delivered": 102
-      }
+      "detail": "\nfleet     12 ferries in port · no transfer this settle"
     },
     {
       "name": "bootstrap fixture has a real eligible terran system, a non-terran system and a metal-poor star",
@@ -1996,14 +2060,14 @@
       "pass": true,
       "detail": {
         "emptyLine": "no old, metal-rich star in this epoch’s sky yet · 300,000 stars scanned · generation is approximated",
-        "sweepMs": 4
+        "sweepMs": 3
       }
     },
     {
       "name": "a sweep is cheap because only birth-eligible stars reach the generator",
       "pass": true,
       "detail": {
-        "sweepMs": 4,
+        "sweepMs": 3,
         "calls": 74,
         "queued": 0
       }
@@ -2032,6 +2096,83 @@
     {
       "name": "the system view\\u2019s world door carries the same refusal",
       "pass": true
+    },
+    {
+      "name": "empty gated network starts in SKY_NONE before player founding",
+      "pass": true
+    },
+    {
+      "name": "post-finalize system inspection near home discovers candidates without auto-settling a port",
+      "pass": true
+    },
+    {
+      "name": "first colony founded via playerFoundWorld sets capital, starter ship, discovery and SKY_ALL immediately",
+      "pass": true
+    },
+    {
+      "name": "first colony founded via playerFound sets capital, starter ship, discovery and SKY_ALL immediately",
+      "pass": true
+    },
+    {
+      "name": "createNetwork honours options.seedPorts (0 for non-reference epochs, SEED_PORTS by default)",
+      "pass": true,
+      "detail": {
+        "zeroSeed": 0,
+        "defaultSeed": 4
+      }
+    },
+    {
+      "name": "sysCache matches worldFoundingScore exactly, picks the reachable HZ sibling, and marks deep outer worlds in siblingReadoutText",
+      "pass": true,
+      "detail": {
+        "cacheCount": 3,
+        "pickedSlot": 1,
+        "readout": "\nsiblings  Aurelia c (10.8 km/s, score 0.43) · Aurelia d (30.2 km/s, too deep (0.01))"
+      }
+    },
+    {
+      "name": "sponsorSiblingWorld conserves population, preserves portCount/founded, populates cached couple, and logs LOG_SIBLING",
+      "pass": true,
+      "detail": {
+        "popBefore": 560.393706852318,
+        "sumAfter": 560.393706852318,
+        "dv01": 10295.952090889128,
+        "couple01": 0.4854212714569164
+      }
+    },
+    {
+      "name": "hidden sky-gated ports refuse sibling expansion",
+      "pass": true
+    },
+    {
+      "name": "autonomous tick respects SIBLING_COOLDOWN and expansionOn before settling a sibling world",
+      "pass": true,
+      "detail": {
+        "beforeCooldownWorlds": 1,
+        "disarmedWorlds": 1,
+        "afterArmWorlds": 2
+      }
+    },
+    {
+      "name": "systems whose only unsettled worlds fall below MIN_FOUND_COUPLE stay single-world",
+      "pass": true
+    },
+    {
+      "name": "1200-year jump matches 1200 one-year steps across autonomous sibling settlement",
+      "pass": true,
+      "detail": {
+        "jumpPop": 1256.1216986769264,
+        "stepPop": 1256.1216986769264
+      }
+    },
+    {
+      "name": "expedition-founded port inherits candidate sysCache and autonomously settles its sibling world",
+      "pass": true,
+      "detail": {
+        "destPortIdx": 1,
+        "cacheCount": 3,
+        "worlds": 2
+      }
     }
   ]
 }

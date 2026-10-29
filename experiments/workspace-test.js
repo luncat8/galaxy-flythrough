@@ -20,19 +20,21 @@ ok(W.modeFromName('junk') === -1 && W.modeFromName('') === -1 && W.modeFromName(
 ok(W.modeName(-1) === '' && W.modeName(3) === '', 'out-of-range mode names are empty');
 
 // --- The panel table (§5.1) ----------------------------------------------
-ok(W.PANEL_COUNT === 8 && W.PANEL_IDS.length === 8 && W.PANEL_LABELS.length === 8, 'eight panels');
+ok(W.PANEL_COUNT === 9 && W.PANEL_IDS.length === 9 && W.PANEL_LABELS.length === 9, 'nine panels');
 // The bit order is append-only (persisted overrides are masks), so the newest
 // panel is the last bit and the six that shipped before it keep their numbers.
 ok(W.SCENARIO === 7 && W.PANEL_IDS[7] === 'scenario-menu' && W.PANEL_LABELS[7] === 'Formation checks',
 	'an appended panel takes the next bit');
+ok(W.TIME === 8 && W.PANEL_IDS[8] === 'time-menu' && W.PANEL_LABELS[8] === 'Time',
+	'the clock board is the ninth panel, appended');
 ok(W.PANEL_IDS.slice(0, 7).join(',') === 'selection-menu,sysmenu,routemenu,viewmenu,menu,trade-menu,help',
 	'the earlier panels keep their bit order');
 const bit = W.panelBit;
 assert.strictEqual(W.panelsFor(W.OBSERVE),
-	bit(W.SEARCH) | bit(W.ROUTES) | bit(W.VIEWMODES) | bit(W.DISPLAY) | bit(W.CONTROLS) | bit(W.SCENARIO));
+	bit(W.SEARCH) | bit(W.ROUTES) | bit(W.VIEWMODES) | bit(W.DISPLAY) | bit(W.CONTROLS) | bit(W.SCENARIO) | bit(W.TIME));
 assert.strictEqual(W.panelsFor(W.FLY), bit(W.FLIGHT) | bit(W.CONTROLS));
 assert.strictEqual(W.panelsFor(W.COMMAND),
-	bit(W.SEARCH) | bit(W.ROUTES) | bit(W.TRADE) | bit(W.CONTROLS));
+	bit(W.SEARCH) | bit(W.ROUTES) | bit(W.TRADE) | bit(W.CONTROLS) | bit(W.TIME));
 checks += 3;
 ok(W.panelsFor(-1) === W.panelsFor(W.OBSERVE) && W.panelsFor(9) === W.panelsFor(W.OBSERVE),
 	'an unknown mode falls back to observe\u2019s set');
@@ -48,7 +50,8 @@ for (let m = 0; m < 3; m++) {
 ok(union === W.PANEL_MASK_ALL, 'every panel belongs to at least one workspace');
 
 // --- Overrides and sanitise (§5.4) ----------------------------------------
-ok(W.sanitiseMask(0xff) === W.PANEL_MASK_ALL, 'sanitise never invents a panel');
+ok(W.sanitiseMask(0x1ff) === W.PANEL_MASK_ALL && W.sanitiseMask(0x3ff) === W.PANEL_MASK_ALL,
+	'sanitise never invents a panel');
 ok(W.sanitiseMask(-1) === W.PANEL_MASK_ALL && W.sanitiseMask(0) === 0, 'sanitise bounds');
 let mask = W.panelsFor(W.FLY);
 mask = W.applyOverride(W.FLY, mask, W.TRADE, true);

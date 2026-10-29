@@ -287,18 +287,33 @@
       "pass": true
     },
     {
-      "name": "T5 opens only the matching port and draws its three largest dim flow dashes",
+      "name": "T5/T6 opens only the matching port, draws its settled legs as dim dashes and flies twelve boats on them",
       "pass": true,
       "detail": {
-        "lines": 3,
-        "dashes": 7
+        "lines": 13,
+        "dashes": 7,
+        "arcs": 38
+      }
+    },
+    {
+      "name": "T6 draws the fleet in the delta-v rail render too",
+      "pass": true,
+      "detail": {
+        "boatArcs": 42
+      }
+    },
+    {
+      "name": "and in the classic render",
+      "pass": true,
+      "detail": {
+        "boatArcs": 43
       }
     },
     {
       "name": "T5 marks every live/outpost world and adds the dashed amber starvation ring",
       "pass": true,
       "detail": {
-        "arcs": 14
+        "arcs": 160
       }
     },
     {
@@ -309,14 +324,14 @@
       "name": "1 000 draw calls allocate nothing (heap delta inside the 2 MB coarse bound)",
       "pass": true,
       "detail": {
-        "heapDelta": 10792
+        "heapDelta": 132440
       }
     },
     {
       "name": "the per-frame op count stays inside the plan's ~800-op budget (one belt)",
       "pass": true,
       "detail": {
-        "opsPerFrame": 457
+        "opsPerFrame": 573
       }
     },
     {

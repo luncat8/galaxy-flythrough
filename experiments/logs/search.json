@@ -44,8 +44,8 @@
         "scanned": 6184,
         "matched": 6184,
         "truncated": 5672,
-        "msStage1": 19.723502999999994,
-        "msStage2": 2.357099000000005,
+        "msStage1": 20.539958999999982,
+        "msStage2": 3.541376000000014,
         "msRefine": 0
       }
     },
@@ -58,8 +58,8 @@
         "scanned": 6184,
         "matched": 6184,
         "truncated": 5672,
-        "msStage1": 15.092291000000017,
-        "msStage2": 1.0637249999999767,
+        "msStage1": 20.414484999999985,
+        "msStage2": 0.7358800000000087,
         "msRefine": 0
       }
     },
@@ -72,8 +72,8 @@
         "scanned": 1,
         "matched": 1,
         "truncated": 0,
-        "msStage1": 0.17181099999999105,
-        "msStage2": 0.000821000000001959,
+        "msStage1": 0.173214999999999,
+        "msStage2": 0.0010220000000060736,
         "msRefine": 0
       }
     },
@@ -300,8 +300,8 @@
         "scanned": 46,
         "matched": 46,
         "truncated": 0,
-        "msStage1": 0.06212000000004991,
-        "msStage2": 0.0052090000000362124,
+        "msStage1": 0.06570499999997992,
+        "msStage2": 0.0052930000000515065,
         "msRefine": 0
       }
     },
@@ -348,6 +348,16 @@
       "pass": true
     },
     {
+      "name": "search excludes named stars outside their sky gate",
+      "pass": true,
+      "detail": {
+        "present": 60,
+        "young": 0,
+        "other": 0,
+        "fast": 0
+      }
+    },
+    {
       "name": "null filter/env/renderer, empty blocks and impossible ranges return empty, never throw",
       "pass": true
     },
@@ -375,36 +385,36 @@
     {
       "name": "star-only class filter over the galaxy stays under 120 ms",
       "pass": true,
-      "detail": 64.50023099999999
+      "detail": 66.55269599999997
     },
     {
       "name": "planet filter (G + terran) over the galaxy stays under 600 ms",
       "pass": true,
-      "detail": 65.48868800000014
+      "detail": 65.43042699999978
     },
     {
       "name": "planet filter (tsurf range, exact refine) over the galaxy stays under 600 ms",
       "pass": true,
-      "detail": 401.7803020000001
+      "detail": 407.2188709999996
     },
     {
       "name": "planet filter over a 214-star set stays under 2 ms",
       "pass": true,
-      "detail": 0.3503080000000409
+      "detail": 0.3590940000003684
     },
     {
       "name": "a moving-time 300k star search with engine dispatch stays under 1.5 s",
       "pass": true,
-      "detail": 88.47307600000022
+      "detail": 93.39301599999999
     },
     {
       "name": "the stage timers split the wall time (sort + overhead bounded)",
       "pass": true,
       "detail": {
-        "msStage1": 51.73788600000262,
-        "msStage2": 246.87334799999962,
-        "msRefine": 102.89659499999925,
-        "wall": 401.7803020000001
+        "msStage1": 53.78707999999642,
+        "msStage2": 249.57806500000152,
+        "msRefine": 103.57250400000066,
+        "wall": 407.2188709999996
       }
     }
   ],

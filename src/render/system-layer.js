@@ -65,13 +65,18 @@ const TRADE_INTRA_STROKES = [
 	'rgba(110, 235, 190, 0.30)', // goods
 	'rgba(240, 225, 150, 0.30)', // passengers
 ];
-// The intra fleet (trade.25). The hull state constant is trade.js's
-// `INTRA_LOADED`; the layer keeps its own copy so it never imports the model
-// just to compare an integer.
-const INTRA_LOADED = 1;
-const INTRA_HULL_PX = 2.2;
-const INTRA_HULL_STROKE = 'rgba(255, 236, 180, 0.92)';
-const INTRA_HULL_FILL = 'rgba(255, 196, 96, 0.95)';
+// The intra fleet (trade.34). The ferries are a picture of the settle's
+// average — trade.js records the three largest legs and how many of the twelve
+// boats each one gets — and they fly on THIS layer's clock, at each leg's own
+// delta-v flight time. Nothing here writes to the model: the mass the couple
+// moved is already in the stocks. A short trail behind the dot makes the
+// direction of travel readable at 2 px, which is the whole reason the fleet
+// exists (a dash that arrives instantly is a picture, not a fleet).
+const INTRA_FERRY_PX = 2.2;
+const INTRA_FERRY_STROKE = 'rgba(255, 236, 180, 0.92)';
+const INTRA_FERRY_FILL = 'rgba(255, 196, 96, 0.95)';
+const INTRA_FERRY_TAIL = 'rgba(255, 196, 96, 0.28)';
+const INTRA_FERRY_TAIL_PX = 8;
 const TRADE_WORLD_SLOTS = 6;
 const TRADE_FLOW_FAMILIES = 3;
 
@@ -274,10 +279,6 @@ function createSystemLayer(canvas) {
 
 	let open = false;
 	let tradePort = null, tradeWorlds = null;
-	const tradeTopFlow = new Float64Array(3);
-	const tradeTopFrom = new Int8Array(3);
-	const tradeTopTo = new Int8Array(3);
-	const tradeTopFamily = new Int8Array(3);
 	const tradeFromXY = new Float64Array(2);
 	const tradeToXY = new Float64Array(2);
 
@@ -676,44 +677,24 @@ function createSystemLayer(canvas) {
 		return true;
 	}
 
+	// The standing flows (T5) and the fleet that flies them (trade.34). The
+	// dashes are the *same three legs* `noteIntraLegs` recorded, drawn dim:
+	// the dash is the average, the boats are its picture, and the two can never
+	// disagree about which pair or which family is busy.
 	function drawIntraRoutes() {
+		const intra = tradePort && tradePort.intra;
 		if (!tradePort || !tradeWorlds || tradePort.key !== (record.star.key >>> 0)
-			|| tradePort.worldCount < 2) return;
-		tradeTopFlow.fill(0);
-		tradeTopFrom.fill(-1); tradeTopTo.fill(-1); tradeTopFamily.fill(-1);
-		for (let s = 0; s < tradePort.worldCount; s++) {
-			for (let t = 0; t < tradePort.worldCount; t++) {
-				if (s === t) continue;
-				for (let f = 0; f < TRADE_FLOW_FAMILIES; f++) {
-					const index = (s * TRADE_WORLD_SLOTS + t) * TRADE_FLOW_FAMILIES + f;
-					const amount = tradePort.intraFlow[index];
-					if (!(amount > 0)) continue;
-					let pos = 0;
-					while (pos < 3 && amount <= tradeTopFlow[pos]) pos++;
-					if (pos >= 3) continue;
-					for (let k = 2; k > pos; k--) {
-						tradeTopFlow[k] = tradeTopFlow[k - 1];
-						tradeTopFrom[k] = tradeTopFrom[k - 1];
-						tradeTopTo[k] = tradeTopTo[k - 1];
-						tradeTopFamily[k] = tradeTopFamily[k - 1];
-					}
-					tradeTopFlow[pos] = amount;
-					tradeTopFrom[pos] = s;
-					tradeTopTo[pos] = t;
-					tradeTopFamily[pos] = f;
-				}
-			}
-		}
+			|| tradePort.worldCount < 2 || !intra || !(intra.legCount > 0)) return;
 		ctx.lineWidth = 1.1;
 		ctx.lineCap = 'round';
 		ctx.setLineDash(TRADE_INTRA_DASH);
-		for (let k = 0; k < 3 && tradeTopFrom[k] >= 0; k++) {
-			const fromSlot = tradeTopFrom[k], toSlot = tradeTopTo[k];
-			const from = tradeWorlds[tradePort.worldIdx[fromSlot]];
-			const to = tradeWorlds[tradePort.worldIdx[toSlot]];
+		for (let i = 0; i < intra.legCount; i++) {
+			const leg = intra.legs[i];
+			const from = tradeWorlds[tradePort.worldIdx[leg.from]];
+			const to = tradeWorlds[tradePort.worldIdx[leg.to]];
 			if (!from || !to || from.outpost || to.outpost) continue;
-			if (!tradeWorldPosition(fromSlot, tradeFromXY) || !tradeWorldPosition(toSlot, tradeToXY)) continue;
-			ctx.strokeStyle = TRADE_INTRA_STROKES[tradeTopFamily[k]];
+			if (!tradeWorldPosition(leg.from, tradeFromXY) || !tradeWorldPosition(leg.to, tradeToXY)) continue;
+			ctx.strokeStyle = TRADE_INTRA_STROKES[leg.family >= 0 ? leg.family : 0];
 			ctx.beginPath();
 			ctx.moveTo(tradeFromXY[0], tradeFromXY[1]);
 			ctx.lineTo(tradeToXY[0], tradeToXY[1]);
@@ -722,43 +703,126 @@ function createSystemLayer(canvas) {
 		ctx.setLineDash(TRADE_SOLID_DASH);
 		ctx.lineWidth = 1;
 		ctx.lineCap = 'butt';
-		drawIntraHulls();
+		drawIntraFleet();
 	}
 
-	// The hulls themselves (trade.25), one dot per loaded hull on the leg it is
-	// flying, interpolated by the *network's* clock between the two worlds'
-	// drawn positions. A hull that has not departed draws nothing; a hull whose
-	// pair no in-system class can fly was never loaded, so nothing is invented.
-	// The dashes above stay: they are the average the couple priced, and the
-	// hull is the actual — when they disagree over time, the average is right.
-	function drawIntraHulls() {
-		const intra = tradePort.intra;
-		if (!intra || !intra.hulls) return;
-		const now = intra.clock || 0;
-		for (let i = 0; i < intra.hulls.length; i++) {
-			const hull = intra.hulls[i];
-			if (hull.state !== INTRA_LOADED) continue;
-			const span = hull.arriveAt - hull.departAt;
-			let f = span > 0 ? (now - hull.departAt) / span : 1;
-			if (!(f >= 0)) f = 0;
-			if (f > 1) f = 1;
-			if (!tradeWorldPosition(hull.source, tradeFromXY)) continue;
-			if (!tradeWorldPosition(hull.dest, tradeToXY)) continue;
-			const x = tradeFromXY[0] + (tradeToXY[0] - tradeFromXY[0]) * f;
-			const y = tradeFromXY[1] + (tradeToXY[1] - tradeFromXY[1]) * f;
-			// A loaded hull reads as a small solid dot with a pale rim: the
-			// same mark the galaxy overlay uses for a sailing freighter, at the
-			// scale of a planet system.
-			ctx.beginPath();
-			ctx.arc(x, y, INTRA_HULL_PX + 0.9, 0, TAU);
-			ctx.strokeStyle = INTRA_HULL_STROKE;
-			ctx.lineWidth = 1;
-			ctx.stroke();
-			ctx.beginPath();
-			ctx.arc(x, y, INTRA_HULL_PX, 0, TAU);
-			ctx.fillStyle = INTRA_HULL_FILL;
-			ctx.fill();
+	// The fleet (trade.34): the settle's largest legs, each carrying its share of
+	// the twelve ferries, flying a round trip on the system clock. The phase is
+	// `timeYears / (2·legYears)` — a full out-and-back — offset per leg and per
+	// boat so a leg reads as traffic rather than a single bead on a wire. A port
+	// with no transfer this settle keeps its boats in port: docked ticks around
+	// the world they load at, so an idle system does not look like an empty one.
+	function drawIntraFleet() {
+		const intra = tradePort && tradePort.intra;
+		if (!intra) return;
+		if (!(intra.legCount > 0)) { drawDockedFleet(); return; }
+		let boat = 0;
+		for (let i = 0; i < intra.legCount; i++) {
+			const leg = intra.legs[i];
+			const n = leg.ferries > 0 ? leg.ferries : 1;
+			if (tradeWorldPosition(leg.from, tradeFromXY) && tradeWorldPosition(leg.to, tradeToXY)) {
+				drawLegFleet(leg, i, boat, tradeFromXY[0], tradeFromXY[1], tradeToXY[0], tradeToXY[1]);
+			}
+			boat += n;
 		}
+	}
+
+	// One leg's boats, `firstBoat` being the leg's first slot among the twelve.
+	// The phase is a full out-and-back on the system clock: half the period out,
+	// half back, so the same twelve boats keep cycling while the flow stands.
+	function drawLegFleet(leg, legIndex, firstBoat, x0, y0, x1, y1) {
+		const n = leg.ferries > 0 ? leg.ferries : 1;
+		const period = leg.legYears * 2;
+		if (!(period > 0)) return;
+		for (let k = 0; k < n; k++) {
+			let phase = timeYears / period + legIndex * 0.21 + (firstBoat + k) / INTRA_FERRY_SEATS;
+			phase -= Math.floor(phase);
+			if (phase < 0.5) drawFerry(x0, y0, x1, y1, phase * 2);
+			else drawFerry(x1, y1, x0, y0, 2 - phase * 2);
+		}
+	}
+
+	// The fleet on the delta-v renders (V then B): the two graph columns of the
+	// leg's endpoints, on the escape row that the interplanetary transfers are
+	// drawn along. A pair whose body is not in the graph is skipped, never
+	// guessed — the same refusal the class gate makes.
+	function drawDvFleet() {
+		const intra = tradePort && tradePort.intra;
+		if (!intra || !(intra.legCount > 0)) return;
+		const x0 = dvTmpXY, x1 = dvTmpXY2;
+		let boat = 0;
+		for (let i = 0; i < intra.legCount; i++) {
+			const leg = intra.legs[i];
+			const n = leg.ferries > 0 ? leg.ferries : 1;
+			const a = tradeBodyIndex(leg.from), b = tradeBodyIndex(leg.to);
+			if (a >= 0 && b >= 0) {
+				dvNodeXYFor(a, 3, x0);
+				dvNodeXYFor(b, 3, x1);
+				drawLegFleet(leg, i, boat, x0[0], x0[1], x1[0], x1[1]);
+			}
+			boat += n;
+		}
+	}
+
+	function tradeBodyIndex(slot) {
+		if (!tradePort || !tradeWorlds || !(slot >= 0 && slot < tradePort.worldCount)) return -1;
+		const world = tradeWorlds[tradePort.worldIdx[slot]];
+		if (!world) return -1;
+		const bi = world.kind === 0 ? world.index : record.counts.planets + world.index;
+		return bi >= 0 && bi < dvNBodies ? bi : -1;
+	}
+
+	// The twelve boat slots the phase offsets are spread over. A constant rather
+	// than a running total so a boat's phase does not shift when a leg's share
+	// changes.
+	const INTRA_FERRY_SEATS = 12;
+
+	// Idle boats: two rings of ticks at the port's first world, so "the fleet is
+	// in port" is something the frame says rather than something the readout
+	// has to.
+	function drawDockedFleet() {
+		if (!tradePort || !tradeWorlds || !tradePort.worldCount) return;
+		if (!tradeWorldPosition(0, tradeFromXY)) return;
+		const cx = tradeFromXY[0], cy = tradeFromXY[1];
+		const r = TRADE_MARKER_STYLE.ringMin + TRADE_MARKER_STYLE.ringSpan * 0.5 + 5;
+		ctx.strokeStyle = INTRA_FERRY_STROKE;
+		ctx.lineWidth = 1;
+		for (let k = 0; k < INTRA_FERRY_SEATS; k++) {
+			const a = (k / INTRA_FERRY_SEATS) * TAU;
+			const rr = r + (k % 2) * 2.5;
+			ctx.beginPath();
+			ctx.arc(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, INTRA_FERRY_PX - 0.6, 0, TAU);
+			ctx.stroke();
+		}
+	}
+
+	// One boat at fraction `u` of (x0,y0) → (x1,y1), with the trail behind it.
+	function drawFerry(x0, y0, x1, y1, u) {
+		const dx = x1 - x0, dy = y1 - y0;
+		const span = Math.sqrt(dx * dx + dy * dy);
+		if (!(span > 0)) return;
+		if (u < 0) u = 0;
+		if (u > 1) u = 1;
+		const x = x0 + dx * u, y = y0 + dy * u;
+		let back = INTRA_FERRY_TAIL_PX / span;
+		if (back > u) back = u;
+		if (back > 0) {
+			ctx.strokeStyle = INTRA_FERRY_TAIL;
+			ctx.lineWidth = 1;
+			ctx.beginPath();
+			ctx.moveTo(x - dx * back, y - dy * back);
+			ctx.lineTo(x, y);
+			ctx.stroke();
+		}
+		ctx.beginPath();
+		ctx.arc(x, y, INTRA_FERRY_PX + 0.9, 0, TAU);
+		ctx.strokeStyle = INTRA_FERRY_STROKE;
+		ctx.lineWidth = 1;
+		ctx.stroke();
+		ctx.beginPath();
+		ctx.arc(x, y, INTRA_FERRY_PX, 0, TAU);
+		ctx.fillStyle = INTRA_FERRY_FILL;
+		ctx.fill();
 	}
 
 	function drawTradeWorlds() {
@@ -1139,6 +1203,7 @@ function createSystemLayer(canvas) {
 		ctx.fillStyle = DV_NODE_STAR_FILL; dvNodeXYFor(-1, 3, dvTmpXY);
 		ctx.beginPath(); ctx.arc(dvTmpXY[0], dvTmpXY[1], DV_NODE_R + 2, 0, TAU); ctx.fill();
 		ctx.fillStyle = DV_TEXT_FILL; ctx.fillText('star', dvTmpXY[0] - 14, dvTmpXY[1] + 20);
+		drawDvFleet();
 	}
 	// The rail render (0.5.6). Every node kind keeps its own row, so the escape
 	// rail and the L5 rail run straight across the columns and both read as ways
@@ -1194,6 +1259,7 @@ function createSystemLayer(canvas) {
 			}
 		}
 		drawMapNodes();
+		drawDvFleet();
 	}
 	// One well edge of a column, drawn as a vertical beside the LO node — the
 	// escape and L5 edges are offset to opposite sides so the three edges that

@@ -1,11 +1,11 @@
 {
-  "date": "2026-10-28T04:59:10.196Z",
+  "date": "2026-10-29T09:58:08.758Z",
   "model": {
     "type": "SBb",
     "seed": 12345
   },
-  "totalChecks": 51,
-  "passed": 51,
+  "totalChecks": 54,
+  "passed": 54,
   "failed": 0,
   "checks": [
     {
@@ -52,6 +52,18 @@
         "kind": 4,
         "index": 0
       }
+    },
+    {
+      "name": "late cluster pick retains the click matrix, camera position and star time",
+      "pass": true
+    },
+    {
+      "name": "pick deadline yields before the object block and resumes to its hit",
+      "pass": true
+    },
+    {
+      "name": "radius deadline yields and resumes without losing late cluster members",
+      "pass": true
     },
     {
       "name": "radius select equals the dispatched brute-force list, ascending (mask 1)",
@@ -344,26 +356,26 @@
       "name": "a pick slice stays inside the loop's 8 ms budget (+clock overhead) for every mask",
       "pass": true,
       "detail": {
-        "worstSlice": 3.9407970000002024,
-        "worstMask": 5,
+        "worstSlice": 0.8802259999999933,
+        "worstMask": 1,
         "measured": {
           "1": {
-            "total": 56.6,
-            "slice": 0.97,
+            "total": 55.22,
+            "slice": 0.88,
             "slices": 10,
-            "perRecordNs": 189
+            "perRecordNs": 184
           },
           "2": {
-            "total": 13.95,
-            "slice": 0.23,
+            "total": 12.9,
+            "slice": 0.21,
             "slices": 10,
-            "perRecordNs": 47
+            "perRecordNs": 43
           },
           "5": {
-            "total": 234.17,
-            "slice": 3.94,
-            "slices": 10,
-            "perRecordNs": 781
+            "total": 237.23,
+            "slice": 0.84,
+            "slices": 27,
+            "perRecordNs": 791
           }
         }
       }
@@ -375,7 +387,7 @@
         "slices": [
           10,
           10,
-          10
+          27
         ]
       }
     },
@@ -383,25 +395,25 @@
       "name": "the cheap mask finishes a whole 300k pick in a handful of frames",
       "pass": true,
       "detail": {
-        "simpleTotal": 13.950976999999966,
+        "simpleTotal": 12.900787000000037,
         "measured": {
           "1": {
-            "total": 56.6,
-            "slice": 0.97,
+            "total": 55.22,
+            "slice": 0.88,
             "slices": 10,
-            "perRecordNs": 189
+            "perRecordNs": 184
           },
           "2": {
-            "total": 13.95,
-            "slice": 0.23,
+            "total": 12.9,
+            "slice": 0.21,
             "slices": 10,
-            "perRecordNs": 47
+            "perRecordNs": 43
           },
           "5": {
-            "total": 234.17,
-            "slice": 3.94,
-            "slices": 10,
-            "perRecordNs": 781
+            "total": 237.23,
+            "slice": 0.84,
+            "slices": 27,
+            "perRecordNs": 791
           }
         }
       }
@@ -411,22 +423,22 @@
       "pass": true,
       "detail": {
         "1": {
-          "total": 56.6,
-          "slice": 0.97,
+          "total": 55.22,
+          "slice": 0.88,
           "slices": 10,
-          "perRecordNs": 189
+          "perRecordNs": 184
         },
         "2": {
-          "total": 13.95,
-          "slice": 0.23,
+          "total": 12.9,
+          "slice": 0.21,
           "slices": 10,
-          "perRecordNs": 47
+          "perRecordNs": 43
         },
         "5": {
-          "total": 234.17,
-          "slice": 3.94,
-          "slices": 10,
-          "perRecordNs": 781
+          "total": 237.23,
+          "slice": 0.84,
+          "slices": 27,
+          "perRecordNs": 791
         }
       }
     },
@@ -434,7 +446,7 @@
       "name": "a radius-scan slice stays inside the loop's 8 ms budget for every mask",
       "pass": true,
       "detail": {
-        "worstAroundSlice": 4.26155000000017,
+        "worstAroundSlice": 2.648830999999518,
         "aroundMeasured": {
           "1": {
             "slice": 1.25,
@@ -443,8 +455,8 @@
             "truncated": 75925
           },
           "5": {
-            "slice": 4.26,
-            "slices": 10,
+            "slice": 2.65,
+            "slices": 30,
             "kept": 256,
             "truncated": 79656
           }
@@ -457,7 +469,7 @@
       "detail": {
         "slices": [
           10,
-          10
+          30
         ]
       }
     },

@@ -222,20 +222,35 @@ claim behind them is pinned in Node (`trade` §30, `asterisms`, `named-sky`).
   and auto-update stops; slow down and the own set returns without a rebuild
   flicker.
 - **V15b — the intra fleet.** Go to the present-day Milky Way, open a colony's
-  system with `V`, and watch. The T5 dashes stay as they were; the fleet dots
-  appear on the leg they are flying, pale rim + amber core, and move at the
-  *network's* trade clock — at a slow trade rate they will look nearly still, and
-  that is correct (they are on the clock that paid for them, not the schematic's
-  `SYSTIME` ladder). `#sysread` must show the `fleet` block with class, family,
-  `src → dst`, km/s, remaining years and tonnes. Close the view mid-leg: the
-  economy must not visibly change, and reopening must show the same hulls either
-  gone (landed) or still flying. A pair with no in-system class must never draw a
-  hull and must report under `unserved` — check a wide belt leg.
+  system with `V`, and watch. The T5 dashes stay as they were; the fleet boats
+  appear on the leg they are flying — pale rim, amber core, a short trail behind
+  — and move at the *schematic's* clock, not the economy's: a full out-and-back
+  per `2 · legYears`, so at 0.5–1 y/s the voyage is watchable, frozen
+  (`System time` at 0) they hang still, and the trade clock does not move them
+  (time-plan §3, trade.34). `#sysread` must show the `fleet` block with the
+  ferries, the legs, class, family, `src → dst`, km/s, leg years and the
+  settle's flow, and name the system clock. A pair with no in-system class must
+  never draw a boat and must report under `unserved` — check a wide belt leg. A
+  port with no transfer in its last settle keeps twelve docked ticks around its
+  loading world instead of an empty picture.
+- **V15c — the fleet in every render.** Press `B` twice from the schematic: the
+  delta-v classic and rail renders must draw the same boats, on the two graph
+  columns of the leg's endpoints along the escape row. This is the reported bug
+  (a `V` `B` `B` walk showed no ships at all).
+- **V15d — the clock board.** Open the new **Time** panel (inner column, under
+  Trade). The five ledger rows must agree with the four sliders they mirror.
+  Press each progression: the star slider, Evolve, the Trade clock and its links
+  and the schematic's rate all move together, and the pressed button lights.
+  Tick **system ← star** and drag the star slider: the schematic's rate follows
+  at one year per star Myr (1 Myr/s → 1 y/s), and the `System time` slider in
+  System & routes follows it. Freeze the star clock with the link on: the
+  schematic keeps its last rate rather than freezing, and the board says so.
 - **What would fail this row.** A hull that teleports, a hull drawn between two
-  bodies it is not flying between, a `fleet` block that disagrees with the dots,
-  or the panel's `intra n/12 flying` disagreeing with the schematic. Jitter at
-  the frame rate is not a failure — the dots ride a trade clock that steps in
-  frames.
+  bodies it is not flying between, a `fleet` block that disagrees with the boats,
+  a boat visible in one render and not another, a mode press that leaves one
+  clock disagreeing with the ledgers, or the Economy moving when the view opens
+  (the Node test says it cannot — two runs are byte-equal — so a visible
+  difference is a bug in the drawing path).
 
 ## Result template and escalation
 
