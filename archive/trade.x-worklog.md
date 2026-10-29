@@ -1558,3 +1558,18 @@ without consuming a `MAX_PORTS` slot, allocating per event, or re-running
   `LOG_SIBLING`, sky/expansion/cooldown/`MIN_FOUND_COUPLE` gates, 1200-year
   jump vs 1200 one-year steps equivalence, and expedition-founded port sibling
   inheritance), `panel` 25/25, `export-parity` pass.
+
+
+## trade.33 — 2026-10-29 — Cluster members participate in frontier expansion
+
+- Automatic discovery previously read only `fieldBuffers()`, excluding every
+  cluster/object star. Maintenance now also supplies `starBlocks()`; one bounded
+  ring scans both sources through the same candidate pipeline. Member identities,
+  block-local indices and coeval stellar context are retained; visibility and
+  formation gates apply, including when there is no field buffer.
+- Regression uses packed cluster members at a nonzero object-block offset:
+  unformed/hidden stars are excluded, canonical member systems are discovered,
+  and an expedition arrives, founds a colony and accepts a trade-route commission.
+- Validation: `trade` passed; `changed` passed all 10 affected groups.
+- Next: visually exercise expansion from a player-founded cluster colony with
+  both frozen and moving skies on WebGPU hardware.

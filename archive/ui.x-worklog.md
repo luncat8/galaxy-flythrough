@@ -1258,3 +1258,19 @@ through `setFigureSky`, pinned by source). `m1-smoke` **1/1** (the
 No browser verdict is claimed for the selector's layout at 1280×800, and the
 auto-update cadence question from ui.22 is still open — both are rows on
 `deferred-open-work.md`.
+
+
+## ui.24 — 2026-10-29 — Stable, yielding star-selection sweeps
+
+- The pick retained camera.buildViewProj's mutable array across frames: later
+  camera draws overwrote its supposed snapshot before it reached cluster records.
+  Copy the matrix once into owned storage, and retain the starting star time for
+  both pick and radius sweeps.
+- A deadline used to break only the inner loop, immediately resuming the same
+  block. Both scans now return pending on deadline; the radius scan preserves
+  its accumulated result count before yielding.
+- Regression covers a late object-block cluster hit after matrix/camera/time
+  changes and deterministic deadline yield/resume for both scans.
+- Validation: `star-select` and all 10 `changed` groups passed.
+- Next: verify clicking neighbouring cluster stars while orbiting in the browser;
+  the simple movement engine still has its documented approximate CPU picker.

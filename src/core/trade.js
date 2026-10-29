@@ -34,6 +34,9 @@
 	const namedSky = (typeof module !== 'undefined' && module.exports)
 		? require('./named-sky.js')
 		: window.NamedSky;
+	const records = (typeof module !== 'undefined' && module.exports)
+		? require('../math/star-record.js')
+		: window.StarRecord;
 	const LY_PER_KPC = 3261.563673;
 
 	const PORT_CHANCE = 0.35;           // stars the galaxy has settled at all
@@ -3022,9 +3025,9 @@
 		return out;
 	}
 
-	// Frontier expansion: big colonies scan nearby field stars for good
+	// Frontier expansion: big colonies scan field and object-member stars for good
 	// unclaimed worlds and add them as candidates. Called from the app's
-	// trade step with its live field; no-op when field is absent or frontier
+	// trade step with its live buffers; no-op when both are absent or frontier
 	// is full. Cheap enough for the 25-year tick but not for per-frame.
 	const FRONTIER_FIELD_REF = { kind: 0, index: 0, key: 0, x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0 };
 	// Reuse one system record and one site for the scan to avoid per-star alloc.
@@ -3093,8 +3096,14 @@
 		return 0;
 	}
 
-	function expandFrontierFromField(net, field, model) {
-		if (!field || !model || field.count <= 0) return 0;
+	function expandFrontierFromField(net, field, model, starBlocks) {
+		if (!model) return 0;
+		const fieldCount = field ? field.count : 0;
+		const objectBlock = starBlocks && starBlocks.blocks && starBlocks.blocks[planets.BLOCK_OBJECT];
+		const objectCount = objectBlock && starBlocks.view && starBlocks.identity && starBlocks.member
+			? objectBlock.count : 0;
+		const count = fieldCount + objectCount;
+		if (count <= 0) return 0;
 		// A full pool is only full of *places*: a candidate no colony can reach
 		// is not one, so the frontier may take its slot (trade.30). Without this
 		// the frontier stops growing the moment the sky strands the pool.
@@ -3134,15 +3143,27 @@
 			? model.populations.age : 0;
 		// The scan runs to its budget, not to the pool's size: a full pool may
 		// still have a stranded slot for the next world (trade.30).
-		for (let n = 0; n < FRONTIER_SCAN; n++) {
+		for (let n = 0; n < Math.min(FRONTIER_SCAN, count); n++) {
 			fi += 1;
-			if (fi >= field.count) fi = 0;
-			const key = frontierFieldKey(model.seed, fi);
+			if (fi >= count) fi = 0;
+			const isObject = fi >= fieldCount;
+			const index = isObject ? fi - fieldCount : fi;
+			const recordSlot = isObject ? objectBlock.offset + index : 0;
+			const byteOffset = recordSlot * records.RECORD_BYTES;
+			const key = isObject ? starBlocks.identity[recordSlot] >>> 0 : frontierFieldKey(model.seed, index);
 			if (net.discovered.has(key)) continue;
 			// The same birth gate as the seed map: the frontier cannot propose
 			// a world around a star the epoch has not formed yet.
-			if (!fieldFormed(field, fi, age)) continue;
-			const fx = field.x[fi], fy = field.y[fi], fz = field.z[fi];
+			let packed = 0;
+			if (isObject) {
+				packed = starBlocks.view.getUint32(byteOffset + 12, true);
+				if (!(packed & (records.FLAG_VISIBLE << 16))) continue;
+				const formation = starBlocks.formation;
+				if (formation && formation.births && orbit.gateAt(formation.births[recordSlot], formation.age) <= 0) continue;
+			} else if (!fieldFormed(field, index, age)) continue;
+			const fx = isObject ? starBlocks.view.getFloat32(byteOffset, true) : field.x[index];
+			const fy = isObject ? starBlocks.view.getFloat32(byteOffset + 4, true) : field.y[index];
+			const fz = isObject ? starBlocks.view.getFloat32(byteOffset + 8, true) : field.z[index];
 			let near = false;
 			for (let b = 0; b < bigCount; b++) {
 				const port = net.ports[FRONTIER_BIG[b]];
@@ -3150,11 +3171,12 @@
 				if (dx * dx + dy * dy + dz * dz <= nearSq) { near = true; break; }
 			}
 			if (!near) continue;
-			FRONTIER_FIELD_REF.kind = planets.BLOCK_FIELD;
-			FRONTIER_FIELD_REF.index = fi;
+			FRONTIER_FIELD_REF.kind = isObject ? planets.BLOCK_OBJECT : planets.BLOCK_FIELD;
+			FRONTIER_FIELD_REF.index = index;
 			FRONTIER_FIELD_REF.key = key;
 			FRONTIER_FIELD_REF.x = fx; FRONTIER_FIELD_REF.y = fy; FRONTIER_FIELD_REF.z = fz;
-			FRONTIER_FIELD_REF.colorIndex = 0; FRONTIER_FIELD_REF.absMag = 0;
+			FRONTIER_FIELD_REF.colorIndex = packed & 255;
+			FRONTIER_FIELD_REF.absMag = isObject ? records.decodeAbsMag((packed >>> 8) & 255) : 0;
 			if (liveGate) {
 				if (liveUsed >= FRONTIER_LIVE_PER_SCAN) break;
 				liveUsed += 1;
@@ -3162,7 +3184,7 @@
 			}
 			FRONTIER_SCAN_CTX.model = model;
 			FRONTIER_SCAN_CTX.field = field;
-			FRONTIER_SCAN_CTX.member = null;
+			FRONTIER_SCAN_CTX.member = isObject ? starBlocks.member : null;
 			FRONTIER_SCAN_CTX.name = '';
 			try { planets.generateSystem(FRONTIER_FIELD_REF, FRONTIER_SCAN_CTX, FRONTIER_SCAN_RECORD); } catch (e) { continue; }
 			const seed = economy.siteSeed(key, net.modelSeed, FRONTIER_FIELD_REF.kind);

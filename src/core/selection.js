@@ -272,7 +272,7 @@ function createSelection(camera, landmarks) {
 		active: false, done: true,
 		k: 0, i: 0, n: 0, cap: 0, r2: 0,
 		px: 0, py: 0, pz: 0,
-		formationAge: 0,
+		formationAge: 0, orbitTime: 0,
 		version: -1,
 	};
 
@@ -298,6 +298,7 @@ function createSelection(camera, landmarks) {
 		aroundSweep.k = 0;
 		aroundSweep.i = 0;
 		aroundSweep.formationAge = info.formation ? info.formation.age : 0;
+		aroundSweep.orbitTime = orbitTime;
 		aroundSweep.version = info.dynamicVersion;
 		aroundSweep.active = true;
 		aroundSweep.done = false;
@@ -366,7 +367,10 @@ function createSelection(camera, landmarks) {
 			while (aroundSweep.i < count && steps < budget) {
 				if (++sinceCheck >= STEP_CHECK_RECORDS) {
 					sinceCheck = 0;
-					if (performance.now() >= deadline) break;
+					if (performance.now() >= deadline) {
+						aroundSweep.n = n;
+						return false;
+					}
 				}
 				const i = aroundSweep.i++;
 				steps++;
@@ -382,10 +386,10 @@ function createSelection(camera, landmarks) {
 				if (orbitModel) {
 					if (isLandmark) {
 						orbit.engineLandmarkPosition(orbitScratch, i, bx, by, bz,
-							packed & 0xFF, orbitTime, orbitModel);
+							packed & 0xFF, aroundSweep.orbitTime, orbitModel);
 					} else {
 						approximated = orbit.engineRecordPosition(orbitScratch,
-							bx, by, bz, packed, orbitTime, orbitModel) === true;
+							bx, by, bz, packed, aroundSweep.orbitTime, orbitModel) === true;
 					}
 					dx = orbitScratch[0] - cx;
 					dy = orbitScratch[1] - cy;
@@ -458,10 +462,10 @@ function createSelection(camera, landmarks) {
 	// done, and `pickResult()` is the hit (or null). `pickAny` is the same walk in
 	// one call, for tests and for callers that already hold a small field.
 	//
-	// The sweep is exact: it walks every visible record once, in the same order a
-	// synchronous pass would, and the tie-break accumulates across steps. Two
-	// things are snapshotted at `beginPick` — the camera's viewProj/position and
-	// the renderer's `dynamicVersion` — because a click is judged against the
+	// The sweep walks every visible record once and accumulates the tie-break
+	// across steps. The camera matrix is copied (camera.buildViewProj reuses its
+	// array), alongside camera position, star time, formation age and the
+	// renderer's dynamicVersion, because a click is judged against the
 	// frame the user clicked on; a block rebuild during the sweep aborts it and
 	// reports no hit rather than a stale key.
 	const sweep = {
@@ -469,11 +473,11 @@ function createSelection(camera, landmarks) {
 		x: 0, y: 0, width: 0, height: 0,
 		k: 0, i: 0,
 		bestD: 0, minD: 0, bestMag: 0, best: null,
-		formationAge: 0,
+		formationAge: 0, orbitTime: 0,
 		version: -1,
 	};
 	const sweepCam = new Float64Array(3);
-	let sweepViewProj = null;
+	const sweepViewProj = new Float32Array(16);
 
 	function beginPick(x, y, width, height, out) {
 		sweep.active = false;
@@ -488,7 +492,7 @@ function createSelection(camera, landmarks) {
 		const records = selectionRecords();
 		const info = renderer.starBlocks();
 		if (!records || !info || !info.view || !info.identity) return false;
-		sweepViewProj = camera.buildViewProj(width / height);
+		sweepViewProj.set(camera.buildViewProj(width / height));
 		const cam = camera.cameraPos;
 		sweepCam[0] = cam[0]; sweepCam[1] = cam[1]; sweepCam[2] = cam[2];
 		sweep.x = x;
@@ -496,6 +500,7 @@ function createSelection(camera, landmarks) {
 		sweep.width = width;
 		sweep.height = height;
 		sweep.formationAge = info.formation ? info.formation.age : 0;
+		sweep.orbitTime = orbitTime;
 		sweep.version = info.dynamicVersion;
 		sweep.active = true;
 		sweep.done = false;
@@ -546,7 +551,7 @@ function createSelection(camera, landmarks) {
 					sinceCheck = 0;
 					// Nothing has been consumed yet this iteration, so stopping
 					// here resumes exactly at `sweep.i`.
-					if (performance.now() >= deadline) break;
+					if (performance.now() >= deadline) return false;
 				}
 				const i = sweep.i++;
 				steps++;
@@ -562,10 +567,10 @@ function createSelection(camera, landmarks) {
 				if (orbitModel) {
 					if (isLandmark) {
 						orbit.engineLandmarkPosition(orbitScratch, i, px, py, pz,
-							packed & 0xFF, orbitTime, orbitModel);
+							packed & 0xFF, sweep.orbitTime, orbitModel);
 					} else {
 						approximated = orbit.engineRecordPosition(orbitScratch,
-							px, py, pz, packed, orbitTime, orbitModel) === true;
+							px, py, pz, packed, sweep.orbitTime, orbitModel) === true;
 					}
 					px = orbitScratch[0]; py = orbitScratch[1]; pz = orbitScratch[2];
 				}

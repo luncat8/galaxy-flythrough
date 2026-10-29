@@ -270,6 +270,58 @@ const W = 1280, H = 800;
 		hit && { kind: hit.kind, index: hit.index });
 }
 
+// A late object-block hit must still use the click's camera and star time.
+{
+	const count = selectionLib.STEP_CHECK_RECORDS * 2;
+	const view = new DataView(new ArrayBuffer((count + 1) * records.RECORD_BYTES));
+	const identity = new Uint32Array(count + 1);
+	identity[count] = 123;
+	records.writeRecord(view, count * records.RECORD_BYTES, 0, 0, 1, 4, 4,
+		records.FLAG_VISIBLE | records.FLAG_CLUSTER, 0);
+	const matrix = new Float32Array(16);
+	matrix[0] = matrix[5] = matrix[10] = matrix[15] = 1;
+	const cam = { cameraPos: new Float64Array(3), buildViewProj: () => matrix };
+	const info = { view, identity, dynamicVersion: 1, blocks: [
+		{ kind: 'field', offset: 0, count }, { kind: 'landmark', offset: count, count: 0 },
+		{ kind: 'object', offset: count, count: 1 }] };
+	const sel = selectionLib.createSelection(cam, null);
+	sel.setRenderer({ starBlocks: () => info });
+	const out = {};
+	const realOrbit = window.OrbitLib;
+	const times = [];
+	window.OrbitLib = { engineRecordPosition: (out, x, y, z, packed, time) => {
+		times.push(time); out[0] = x; out[1] = y; out[2] = z; return false;
+	} };
+	sel.setOrbitState(model, 12);
+	sel.beginPick(400, 300, 800, 600, out);
+	sel.pickStep(1);
+	matrix[12] = 10;
+	cam.cameraPos[0] = 10;
+	sel.setOrbitState(model, 99);
+	while (!sel.pickStep(256)) {}
+	check('late cluster pick retains the click matrix, camera position and star time',
+		sel.pickResult() && out.key === 123 && times.every(t => t === 12));
+	window.OrbitLib = realOrbit;
+	sel.setOrbitState(null, 0);
+	matrix[12] = 0; cam.cameraPos[0] = 0;
+	const realPerformance = globalThis.performance;
+	let clock = 0;
+	globalThis.performance = { now: () => ++clock };
+	try {
+		sel.beginPick(400, 300, 800, 600, out);
+		const yielded = !sel.pickStep(Infinity, 0.5);
+		const pending = sel.pickResult() === null;
+		while (!sel.pickStep(Infinity)) {}
+		check('pick deadline yields before the object block and resumes to its hit',
+			yielded && pending && sel.pickResult() && out.key === 123);
+		sel.beginSelectAround(0, 0, 1, 0.1, 10);
+		const aroundYielded = !sel.selectAroundStep(Infinity, 0.5);
+		while (!sel.selectAroundStep(Infinity)) {}
+		check('radius deadline yields and resumes without losing late cluster members',
+			aroundYielded && sel.around.count === 1 && sel.around.keys[0] === 123);
+	} finally { globalThis.performance = realPerformance; }
+}
+
 // --- 3. Radius select against brute force (dispatch-exact, ui.2) --------------
 // The scan compares *drawn* positions on both sides: the centre is where the sky
 // draws the primary, and a candidate is inside when the sky draws it inside. The

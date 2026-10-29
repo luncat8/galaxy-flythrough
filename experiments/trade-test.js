@@ -1154,6 +1154,63 @@ function exactLiveEvents(net) {
 		&& fresh.candidateCount === freshBefore);
 }
 
+// Cluster-only neighbourhood: the renderer's object block is not fieldBuffers().
+{
+	const clusters = require('../src/math/clusters.js');
+	const records = require('../src/math/star-record.js');
+	const net = seedNetwork(24, 0);
+	trade.step(net, 4000);
+	const port = net.ports.find(p => trade.isBigColony(p.colony));
+	const placed = clusters.placeStarClusters(model, 12345, 1, null);
+	Object.assign(placed[0], { x: port.x, y: port.y, z: port.z, ageGyr: 4.6,
+		formedAt: model.populations.age - 4.6, component: 0 });
+	const count = 2048, offset = 7;
+	const view = new DataView(new ArrayBuffer((count + offset) * records.RECORD_BYTES));
+	const identity = new Uint32Array(count + offset);
+	const births = new Float32Array(count + offset);
+	const member = { age: new Float64Array(count), component: new Int8Array(count), birth: births.subarray(offset) };
+	clusters.writeClusterMembers(model, placed, view, offset * records.RECORD_BYTES,
+		count, 0, identity, offset, member);
+	const info = { view, identity, member, blocks: [null, null, { offset, count }],
+		formation: { births, age: 0 } };
+	check('unformed cluster stars cannot enter the frontier',
+		trade.expandFrontierFromField(net, null, model, info) === 0);
+	info.formation.age = model.populations.age;
+	const before = net.candidateCount;
+	let added = 0;
+	for (let i = 0; i < 8; i++) added += trade.expandFrontierFromField(net, null, model, info);
+	let canonical = true;
+	const generated = planets.createSystemRecord();
+	for (let i = before; i < net.candidateCount; i++) {
+		const site = net.candidates[i].site, ref = site.ref;
+		canonical = canonical && ref.kind === planets.BLOCK_OBJECT
+			&& ref.key === identity[offset + ref.index]
+			&& ref.x === view.getFloat32((offset + ref.index) * records.RECORD_BYTES, true);
+		planets.generateSystem(ref, { model, field: null, member, name: '' }, generated);
+		canonical = canonical && generated.star.age === 4.6;
+	}
+	check('cluster-only frontier discovers canonical member systems with coeval inputs',
+		added > 0 && net.candidateCount > before && canonical, { added, canonical });
+	let founded = false, routed = false;
+	if (added > 0) {
+		const source = net.ports.indexOf(port);
+		const key = net.candidates[before].site.key;
+		const ship = trade.launchExpedition(net, source, before, net.time, 1);
+		if (ship >= 0) {
+			trade.step(net, net.ships[ship].arrive - net.time + 1e-6);
+			const destination = trade.portOfStar(net, key);
+			founded = destination >= 0 && net.ports[destination].ref.kind === planets.BLOCK_OBJECT;
+			if (founded) routed = trade.commissionRoute(net, source, destination, net.time).ok === 1;
+		}
+	}
+	check('a discovered cluster member accepts an expedition, founds a colony and supports a trade route',
+		founded && routed, { founded, routed });
+	const beforeHidden = net.candidateCount;
+	for (let i = 0; i < count; i++) view.setUint32((offset + i) * records.RECORD_BYTES + 12, 0, true);
+	check('hidden cluster records never become expedition targets',
+		trade.expandFrontierFromField(net, null, model, info) === 0 && net.candidateCount === beforeHidden);
+}
+
 // --- 13. The overlay's growth cues ---------------------------------------
 {
 	const previousWindow = global.window;

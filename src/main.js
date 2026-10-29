@@ -6632,10 +6632,8 @@ async function boot() {
                                         // Big colonies scan the live field for nearby
                                         // good worlds: the frontier expands without the
                                         // player inspecting anything.
-                                                const field = renderer.fieldBuffers();
-                                        if (field && field.count > 0) {
-                                                tradeLib.expandFrontierFromField(tradeNet, field, model);
-                                        }
+                                        tradeLib.expandFrontierFromField(tradeNet, renderer.fieldBuffers(),
+                                                model, renderer.starBlocks());
                                 }
                         } else {
                                 tradeWasPaused = 1;

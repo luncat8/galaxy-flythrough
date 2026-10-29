@@ -987,7 +987,15 @@ caller and the tracked path adds no second dispatch.
 
 ### 9.6 The frontier scan
 
-The scan gates a birth-frame field buffer against birth-frame ports. Under
+The scan walks a shared ring over the field buffer and the renderer’s object
+block (including cluster members), bounded by 4 000 records and four new worlds
+per maintenance call. Field identities use their canonical seed; object identities,
+block-local indices, packed positions, coeval ages and components come from
+`starBlocks()`. Hidden and not-yet-formed members are excluded. The object block
+can be scanned even when the field is empty. Both sources use the same habitat,
+discovery, candidate replacement and launch rules.
+
+The scan gates these birth-frame buffers against birth-frame ports. Under
 movement it stretches the coarse gate by the shear the clock has applied — a
 pair `R` apart at radius `r` drifts by ≈ (vFlat/r)·R·T — **plus the epicyclic
 spread the classic law gives two stars of different phase and rank**,

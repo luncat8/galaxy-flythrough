@@ -2774,3 +2774,12 @@ clock's `rateY > 0` branch will stop before stars appear. Exercise the actual
 clock/gate orchestration, not just a direct retry at a later epoch. An empty
 `finalize` has already scheduled its tick, so first-port fleet startup must not
 rely on calling `finalize` again.
+
+
+### 2026-10-29 — Chunked selection must own its camera matrix
+
+`camera.buildViewProj()` returns reused storage, not a snapshot. A multi-frame
+picker must copy it before subsequent draws overwrite it. Deadline checks inside
+nested block/record loops must return pending, not merely break the inner loop.
+Cluster stars live in `starBlocks().blocks[BLOCK_OBJECT]`, not `fieldBuffers()`;
+automatic world discovery must explicitly include their identities and member context.
