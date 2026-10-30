@@ -27,39 +27,39 @@
 // Star Myr per wall second → schematic years per wall second.
 const SYSTEM_STAR_BRIDGE = 1e-6;
 
-// The three progressions (time-plan.md §2). Each is a whole profile: a mode
-// that set only one clock would leave the other three disagreeing, which is the
-// state the board exists to end.
+// The three progressions (time-plan.md §2, corrected in trade.36). A
+// progression is a **game** clock profile: it says what the colony clock and
+// the opened system's clock are related to. It never touches the star clock or
+// the epoch — time is time, and the sky's clock is the Display panel's. A press
+// that moved the star rate (and with it the galaxy's age) was the reported
+// defect: watching a fleet slower must not re-date the galaxy.
 //
-// `trade.rate` is the ladder stop the trade clock falls back to when the link
+// `trade.rate` is the ladder stop the colony clock falls back to when the link
 // is off; `trade.synced` says whether the link is on. `system.rate` is the same
 // for the schematic, in years per second.
 const MODES = [
 	{
-		id: 'generation',
-		label: 'generation ship',
-		note: 'the galaxy evolves and the colonies live on its clock: 0.5 Myr/s of sky is 500 colony years per second, '
-			+ 'and every hull is a generation ship (1 ly per 33 years, reserves stretched to its voyage)',
-		star: { rate: 0.5, evolve: 1 },
-		trade: { synced: 1, rate: 500, generation: 1 },
-		system: { synced: 0, rate: 0.05 },
+		id: 'linked',
+		label: 'one clock',
+		note: 'both game clocks ride the sky: one colony year per star millennium and one schematic year per star Myr, '
+			+ 'so the colonies, the opened system and the stars advance together. The star clock itself is Display\u2019s, untouched.',
+		trade: { synced: 1, rate: 1000 },
+		system: { synced: 1, rate: 1 },
 	},
 	{
 		id: 'trade',
 		label: 'trade',
-		note: 'next-generation hulls on a slow but visible sky: 1 Myr/s of stars is 1 000 colony years per second, '
-			+ 'so a long haul is overtaken by the stars it crosses and a route can go out of reach under the ship',
-		star: { rate: 1, evolve: 1 },
-		trade: { synced: 1, rate: 1000, generation: 0 },
+		note: 'the colony clock rides the sky and the opened system keeps its own: 1 Myr/s of stars is 1 000 colony years per second, '
+			+ 'while orbits and ferries run at a year per second. A long haul can be overtaken by the stars it crosses.',
+		trade: { synced: 1, rate: 1000 },
 		system: { synced: 0, rate: 1 },
 	},
 	{
 		id: 'planetary',
 		label: 'planetary',
-		note: 'the sky holds still: delta-v flying inside a system, colonies creeping at 50 years/s, '
-			+ 'and the schematic at half a year per second — a fleet you can watch. Interstellar travel wants jump gates',
-		star: { rate: 0, evolve: 0 },
-		trade: { synced: 0, rate: 50, generation: 0 },
+		note: 'nothing rides the sky: colonies on their own 50 years/s ladder and the schematic at half a year per second, '
+			+ 'so a fleet and a set of orbits can be watched. Interstellar voyages still take the colony clock\u2019s centuries.',
+		trade: { synced: 0, rate: 50 },
 		system: { synced: 0, rate: 0.5 },
 	},
 ];
@@ -88,20 +88,18 @@ function systemRateForStar(starRateMyrPerS) {
 	return rate * SYSTEM_STAR_BRIDGE / 1e-6;
 }
 
-// Which progression the clocks are on *right now*, or '' when they are not on
-// one. The board reads this instead of remembering the last press: a slider
+// Which progression the game clocks are on *right now*, or '' when they are not
+// on one. The board reads this instead of remembering the last press: a slider
 // dragged after a press moves the board off that mode, which is the truth a
-// ledger should print. `state` is the live clock set —
-// `{ starRate, evolve, tradeRate, tradeSynced, generation, systemRate, systemSynced }`.
+// ledger should print. `state` is the live game clock set —
+// `{ tradeRate, tradeSynced, systemRate, systemSynced }`. The star clock is
+// deliberately absent: it is not part of a progression (trade.36).
 // An unlinked clock is compared by its rate; a linked one only by the link,
 // because the star clock decides the number.
 function matchMode(state) {
 	for (let i = 0; i < MODES.length; i++) {
 		const mode = MODES[i];
-		if (mode.star.rate !== state.starRate) continue;
-		if (mode.star.evolve !== state.evolve) continue;
 		if (mode.trade.synced !== state.tradeSynced) continue;
-		if (mode.trade.generation !== state.generation) continue;
 		if (mode.system.synced !== state.systemSynced) continue;
 		if (!mode.trade.synced && mode.trade.rate !== state.tradeRate) continue;
 		if (!mode.system.synced && mode.system.rate !== state.systemRate) continue;

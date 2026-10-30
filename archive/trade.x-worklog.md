@@ -1622,3 +1622,203 @@ function of the economy's clock. Plan: [`time-plan.md`](../time-plan.md).
   122/122, `system-layer`, `dv-map`, `route`, `ship`, `preset`, `scenario` —
   `world-tests` 17/17 in 18 s. Browser verdict still open: `V` `B` `B`, a
   frozen schematic clock, the star link and each mode press.
+
+## trade.35 — 2026-10-29 — The ships that were not there, the checkbox that could not be ticked, and a route's own numbers
+
+The browser pass on trade.34 answered three reports: the **Time** panel's
+checkbox could never be checked, the system view still showed **no ships** (and
+asked for a scenario where one is unmistakably moving), and selecting a ship
+should print **the average loads of its route that the calculation used**. The
+first two were defects, not framing, and each had a single cause.
+
+- **The checkbox (`src/core/workspace.js`).** The mode bar's `panels ▾` menu
+  writes its overrides into `panelOverrides`, a `Uint8Array` — and the Time
+  panel is bit **8** (256). `.applyOverride` stored 256 into a byte and read 0
+  back, so the box was unchecked again on the very next pass, for ever. The
+  store now carries the table's own width: `MASK_STORE_BITS` (16) and
+  `createMaskStore()` build the `Uint16Array`, `main.js` uses it, and
+  `sanitiseMask` already clamped to `PANEL_MASK_ALL` (511). `workspace` 55
+  checks (old HEAD copy: 48).
+- **Why no ship was ever drawn (`src/render/system-layer.js`).** Two gates.
+  `drawIntraRoutes` returned unless the port had **more than one world**
+  (`worldCount`), and with the planet model's own statistics most systems have
+  exactly one — so a port with a fleet drew nothing at all; the same gate hid
+  the network's hulls. Both are gone, and the layer now draws
+  - the **twelve ferries** the settle split across its legs (`drawFerry` takes
+    `(seat, leg)`, so each is a named craft rather than a loop index), with
+    docked ticks around the loading world when there is no leg, and
+  - the **network's hulls** at the port (`drawHullFleet`, `drawDvHullFleet`),
+    each at the fraction of the voyage it has flown, docked ones drawn around
+    the berth.
+  A **craft registry** (`registerCraft` / `beginCraftFrame` / `pickCraft` /
+  `selectCraft` / `clearCraft` / `selectedCraft` / `craftLabelAt` /
+  `craftSelected`) makes picking the draw's own arithmetic: every ferry and hull
+  registers its position as it is drawn, in the space it was drawn in (device
+  pixels on the orrery, graph units on the two delta-v renders). Hover goes
+  craft-first, and the click router selects a craft before falling through to
+  the node/body behind it. `system-layer` 72 checks (new §12: a one-world port
+  draws twelve ferry arcs, a docked ferry is pickable, the hull is clickable in
+  all three renders, stale fleets are refused, select/clear/exit round-trip).
+- **The record the layer draws from (`src/core/trade.js`).** `portFleet(net,
+  index, out)` fills the shared `PORT_FLEET` from `net.ships` — docked first, at
+  most `MAX_PORT_FLEET` (12), counting what does not fit in `docked`/`sailing`
+  so nothing is silently dropped, and carrying `VOYAGE_DOCKED`/`OUT`/`IN`, the
+  fraction flown, the hull, the cargo with its tonnes, the booked years and the
+  hull's own trip/delivery record. A **waiting** hull is a hull at the port: it
+  holds a berth and is drawn where it is (it is not a second population — the
+  same `net.ships` the overlays have always drawn).
+- **A ship's route, in the calculation's numbers.** `intraCraftText(net, index,
+  leg, seat)` prints a ferry's own leg: `t / settle`, the per-ferry share, the
+  ferries on that leg, the leg time and the round trip, `Δv`, the class gate
+  (`need = dv · 2 · 1.1` against every in-system class, yes/no), the couple and
+  the Hohmann time. `voyageText(net, index, slot)` prints a hull's booked voyage:
+  route, `NN %` flown, booked years, arrival, tonnes and units, delivered/trips.
+  A ferry in port says *why* there is no leg (`one world`, `the last settle
+  moved nothing`) rather than inventing one. Both are the settle's and the
+  network's own numbers; the picture and the arithmetic cannot disagree.
+  `#sysread` appends the block for whatever craft is selected (`craftReadoutText`).
+- **The scenario the report asked for (`src/core/scenarios.js`,
+  `main.js`).** A new row, `Fleet — a colony's ships`
+  (`mode=observe&systime=0.5&dvmap=2`), the first scenario whose subject is a
+  picture rather than an epoch: it carries no `age`/`time`, so the session's sky
+  stays where it is. It does carry the clock the hulls ride
+  (`trade=20&tradesync=0`): at the synced 1 000 y/s a 150-year voyage crosses the
+  escape row in a sixth of a second, so the row slows the trade clock to 20 y/s
+  and the live line names it. Its page action (`applyFleetScenario`) asks
+  `fleetShowcase(net, ticks)` for the berth — highest `legs·16 + sailing·4 +
+  docked`, **wound in whole 25-year ticks** (≤ 12) to the network's first
+  departures when the network is younger than them, so the row never opens on a
+  dock — opens the delta-v rails render on that star with no camera flight, and
+  **selects a moving craft** (a flying ferry first, else a hull under way). The
+  live line reads
+  `fleet · <port> · N hulls (d docked · s under way) · 12 ferries on L legs ·
+  T t / settle · ferry 1 of 12 on leg 1 of L · system <rate>`, or the one-world
+  case, `ferries in port · 1 settled world, so no in-system leg`, and adds
+  `clock +N y to the first departures` when it wound. `scenario` 84 checks
+  (§30's table rule split into epoch rows and action rows, plus the page wiring:
+  the dispatch, the showcase call, the craft selection order, the fleet record).
+  `trade` 380/380 (§30b: port coherence and the port key, `voyageText`,
+  `intraCraftText` for a leg and for a port, the showcase's wind and its cap).
+- **Validation.** `all-tests` 47/47 (workspace 55, trade 380, scenario 84,
+  system-layer 72, preset 32 — its "every scenario is an epoch" rule now pins
+  action rows as the complement), `view-tests` 21/21.
+- **Open.** The three frames are still browser verdicts (`V15b`–`V15d`, and the
+  new `V15e`): whether twelve amber ticks and the blue hulls read as a fleet at
+  1280 × 800, whether the Time box ticks and survives a reload, and whether the
+  fleet row's selected craft is on screen at its first frame.
+- **Found on the way (not this entry's):** a port founded through
+  `playerFoundWorld` on a network that never had `trade.finalize` run (no
+  `EV_TICK` scheduled) settles nothing — `port.intra` stays null and pops freeze
+  at their grant. `finalize` is the network's contract, not an optional call.
+
+## trade.36 — 2026-10-29 — Time is time: the schematics' rails, and a generation ship a colony builds
+
+The second browser pass answered the rest of the report: ships drifting **off
+the drawn delta-v schematic lines**, and a **Time** panel whose progression
+buttons "caused change [of] galaxy age". Both were real, and both were a single
+wrong owner each. This entry removes the rejected design rather than layering on
+it.
+
+- **The boats ride the rails (`src/render/system-layer.js`).** The graph render
+  built a path per *leg* (`buildTransferPath`/`mapPathPoint`/`drawMapRoute`) while
+  the hulls were drawn on a second, independently computed edge point, so a boat
+  could sit beside its line. The hull departure lane is now a **drawn element**:
+  `drawHullLane()` runs inside the craft frame, strokes `HULL_LANE`
+  (`rgba(150, 190, 240, 0.16)`, dash `[2, 6]`) from the berth's row to the
+  star's edge and fills `hullLaneOut`; `drawHullFleet` takes its geometry from
+  the lane instead of recomputing an edge. The proof is a test, not an opinion:
+  `experiments/system-layer-test.js` now records every `moveTo`/`lineTo` segment
+  the stub context is given, draws a frame with the port attached and **no
+  fleet**, reads each boat's drawn position back through `pickCraft(x, y, out,
+  outXY)`, and asserts every craft under way lies on a segment of that boatless
+  frame. `{underWay 42, system 14/1/worst 0, classic 14/1/0, rails 14/1/0}`, 73
+  checks. (Full graph-walk replacement of `buildTransferPath` is still open —
+  `time-plan.md` §5.)
+- **The progressions stopped moving the sky (`src/core/timeboard.js`,
+  `src/main.js`, `src/index.html`).** A progression is a **game** clock profile:
+  `linked` (one clock — both game clocks ride the sky), `trade` (default: the
+  colony clock rides the sky, the schematic keeps its own 1 y/s), `planetary`
+  (neither does: 50 y/s and 0.5 y/s). No entry has a `star` rate, an `evolve`
+  switch or a `generation` flag; `matchMode` is asked about four keys
+  (`{tradeRate, tradeSynced, systemRate, systemSynced}`) and ignores everything
+  else. `applyTimeMode` writes the colony ladder, the two links and the
+  schematic's rate and nothing else — `starTimeRate`, `starTimeMyr` and the
+  epoch are not in its body. The `data-time-mode="generation"` button, the
+  `#trade-generation-ships` checkbox, `tradeGenOn`/`tradeGenBox` and the
+  `tradegen` preset key are gone; the load path already ignored a saved
+  `tradegen`, and `presets.js` no longer lists it, so an old mask is stripped
+  rather than honoured. `experiments/timeboard-test.js` was rewritten for the
+  new table (80 checks) and now **fails if a progression grows a star rate
+  again**, or if `applyTimeMode` assigns the star clock.
+- **A generation ship is a colony's decision (`src/core/trade.js`).** The global
+  mode (`setGenerationMode`, `GENERATION_STAR_MYR`, `GENERATION_RESERVE_YEARS`,
+  `economy.setReserveScale`/`rescaleColonyReserves` and the 5 000-year
+  warehouses) is deleted outright. What exists instead is the law the brief
+  asked for — *any colony can build a generation ship if no other variant is
+  available and if this is profit*:
+  - `bestGenerationTarget(net, time)` scans the stranded candidates
+    (`reach === 0`: no port inside `MAX_FOUND_LY` 600 ly), keeps the ones worth
+    centuries (`GENERATION_MIN_HABITAT` 0.42 — terran/HZ worlds) inside the
+    ship's own reach (`GENERATION_MAX_FOUND_LY` 2 400 ly), and picks the best
+    from the colony nearest the target among the big, resting ports.
+  - `launchExpedition(..., generation = 1)` books the leg at
+    `GENERATION_LY_PER_YEAR` = 1 ly per 33 trade years **on the sky as charted
+    at departure** (`planLeg`, no intercept — a colony plans to the world its
+    telescopes see), stamps `ship.generation`, and the voyage is otherwise an
+    ordinary founding wave with its own cap.
+  - The maintenance pass never re-aims or turns it (`retimeRoutes` skips
+    `ship.generation`), the arrival's reach gate is its own cap, and a
+    generation voyage does **not** occupy the ordinary founding lane — the
+    first cut did, and the frontier test caught it: with three founding slots
+    held by 66 000-year voyages the network stalled at 50 ports. `tick` now
+    counts ordinary and generation foundings apart, and one colony builds one
+    ship per `GENERATION_COOLDOWN` (20 000 y), at most `MAX_GENERATION_IN_FLIGHT`
+    (2) at a time. The Trade panel's state line prints
+    `· 1 generation ship (66 000 y)` (or `· N stranded worlds` while nobody is
+    building for them).
+  - The voyage is the point the user asked for: 2 000 ly is 66 000 colony
+    years — eleven minutes at the default 100 y/s, 33 s at the ladder's top, so
+    the player winds the clock up to watch it. `trade` 385/385 now includes a
+    check in §17 (the moving sky): a real terran world 2 000 ly out, put in the
+    pool through `addCandidate` with the resolver's birth record, chosen by the
+    decision, launched, sheared at 60 Myr — and it keeps its booked arrival, is
+    never diverted, and **founds the colony**, while the freighters beside it
+    keep their 150-year voyages.
+- **Validation.** `world-tests` 17/17 (`trade` 385, `timeboard` 80, `scenario`
+  84, `system-layer` 73, `panel` 36, `preset` 32, `workspace` 55, `m1-smoke`
+  green with the retired symbol gone from its regex).
+- **Left open (recorded, not implied):** `buildTransferPath`/`drawMapRoute` are
+  still leg-derived — the boats ride the lanes that are drawn, but a second path
+  builder remains and should become the graph walk; and the browser verdicts
+  (`deferred-browser-visual-plan.md` V15a–V15e) still need a real GPU.
+
+## trade.37 — 2026-10-30 — Local routes are recent trade, not the last inspection
+
+- **Investigation.** In the shipped seed the starting colonies normally have
+  one world; the ships on the escape row are interstellar freighters. The
+  sibling gate compared a habitat-and-well-weighted *ranking score* with a
+  minimum *coupling*. Rigil Kentaurus's belt scored 0.038 despite a 0.397
+  coupling, so the reachable second world was refused. Latest-settle flows also
+  vanished on quiet inspections; an asymmetric round trip could be rejected by
+  doubling the expensive direction.
+- **Simulation and view.** Player and autonomous sibling founding now gate on
+  coupling and retain habitat/well for ranking. Actual settled amounts feed two
+  bounded 25-year buckets; resources use their own mass factors, passengers
+  use the established colonist conversion, and ferry details report tonnes
+  and people per trade year separately. Quiet settlements preserve recent
+  transfers, old buckets expire, sky-gate clock stamps do not replay mass, and
+  a long settle is recorded at its completion. Round trips sum both directed
+  Δv values with reserve, missing geometry is not invented, short times stay
+  short, and the fleet always assigns exactly twelve ferries. The schematic
+  explains no colony/active second world, idle traffic, missing geometry and
+  unavailable hulls; outposts do not draw stale ferries. The readout settles
+  first, prints distinct full world names, and distinguishes local pictures
+  from booked interstellar voyages.
+- **Evidence.** With the generated default start and 12.5-year settlements,
+  Rigil Kentaurus automatically founds its belt at year 900 and shows a real,
+  pickable local ferry by year 912.5 in all four renders; drawing/animating it
+  leaves stocks and population unchanged. `trade` 405/405 and `system-layer` 81/81 include
+  generated-system, expiry, units, asymmetric gates, missing/short geometry,
+  exact allocation and outpost regressions. Named tests 8/8, `world-tests`
+  17/17 and `changed` 11/11 passed. Browser/WebGPU appearance still requires a
+  real browser/GPU.

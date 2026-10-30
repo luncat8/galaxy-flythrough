@@ -308,7 +308,7 @@ test('selected belt readout uses packed body index, not MAX_PLANETS', () => {
 test('no map render reformats a label or builds a string per frame', () => {
 	const original = dv.formatKms;
 	const toFixed = Number.prototype.toFixed;
-	for (const view of [layerLib.VIEW_DV_CLASSIC, layerLib.VIEW_DV_RAILS]) {
+	for (const view of [layerLib.VIEW_DV_CLASSIC, layerLib.VIEW_DV_RAILS, layerLib.VIEW_DV_TIME]) {
 		layer.setView(view);                 // builds the cached label strings
 		dv.formatKms = () => { throw new Error('per-frame formatting'); };
 		Number.prototype.toFixed = function () { throw new Error('per-frame toFixed'); };
@@ -322,7 +322,7 @@ test('no map render reformats a label or builds a string per frame', () => {
 	}
 	layer.setView(layerLib.VIEW_DV_CLASSIC);
 });
-test('view switching cycles the three renders and gates picking', () => {
+test('view switching cycles all four renders and gates picking', () => {
 	layer.setView(layerLib.VIEW_SYSTEM);
 	assert.strictEqual(layer.isMapOpen(), false);
 	layer.cycleView();
@@ -331,8 +331,10 @@ test('view switching cycles the three renders and gates picking', () => {
 	layer.cycleView();
 	assert.strictEqual(layer.getView(), layerLib.VIEW_DV_RAILS);
 	layer.cycleView();
+	assert.strictEqual(layer.getView(), layerLib.VIEW_DV_TIME);
+	layer.cycleView();
 	assert.strictEqual(layer.getView(), layerLib.VIEW_SYSTEM);
-	assert.strictEqual(layer.setView(99), layerLib.VIEW_DV_RAILS);
+	assert.strictEqual(layer.setView(99), layerLib.VIEW_DV_TIME);
 	assert.strictEqual(layer.setView(-4), layerLib.VIEW_SYSTEM);
 });
 

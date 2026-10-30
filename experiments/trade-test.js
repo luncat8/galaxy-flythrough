@@ -1045,20 +1045,15 @@ function exactLiveEvents(net) {
 		trade.clockRate(200, 5, false) === 200 && trade.clockRate(200, 0, true) === 0
 		&& trade.clockRate(200, -1, true) === 0 && trade.clockRate(0, 0, false) === 0);
 
-	// Generation ships: a frontier hop is watchable at the top of the fine star
-	// range, which is the calibration the mode is authored against. 100 ly is
-	// the scale of the sampled field's first shell; the 600 ly maximum is
-	// twenty seconds, not a stall.
-	trade.setGenerationMode(1);
-	const genYears = trade.legYears(100 / trade.LY_PER_KPC, 2);   // a 100 ly hop
-	trade.setGenerationMode(0);
-	const genSeconds = genYears / trade.clockRate(100, trade.GENERATION_STAR_MYR, true);
-	check('a generation-ship frontier hop lasts seconds at the default synced pace',
-		genSeconds > 1 && genSeconds < 6 && near(genSeconds, 100 / trade.GENERATION_LY_PER_YEAR / trade.clockRate(100, trade.GENERATION_STAR_MYR, true), 1e-9),
-		{ legYears: Math.round(genYears), wallS: +genSeconds.toFixed(2) });
-	check('the freighter cruise is untouched by the special mode above the legibility floor',
-		Math.abs(trade.legYears(300 / trade.LY_PER_KPC, 2) - 300 / trade.HULLS[2].lyPerYear) < 1e-9
-		&& trade.legYears(0, 2) === trade.MIN_LEG_YEARS);
+	// The generation ship's crawl (trade.36): 1 ly per 33 years, on the ship's
+	// own booking. It is a hull a colony builds for one voyage, so it is not a
+	// mode and it changes nothing about the freight fleet's speed.
+	const genLeg = trade.GENERATION_LY_PER_YEAR;
+	check('a generation ship flies 1 ly per 33 trade years, and the freighters do not',
+		near(100 / genLeg, 3333.333, 0.01) && near(trade.HULLS[2].lyPerYear, 4.5)
+		&& near(trade.legYears(300 / trade.LY_PER_KPC, 2), 300 / 4.5, 1e-9)
+		&& trade.legYears(0, 2) === trade.MIN_LEG_YEARS,
+		{ genYearPerLy: +(1 / genLeg).toFixed(2) });
 
 	// The budget: a bounded frame stops the clock at the next due event, so the
 	// clock never skips over an event (a colony asked to settle backwards
@@ -1349,44 +1344,84 @@ function exactLiveEvents(net) {
 		{ events, waiting, backedOff });
 }
 
-// --- 15. The generation-ship mode keeps its network alive -----------------
-// Generation-ship hulls fly 1 ly per 33 trade years (30 ly per wall second at
-// the synced clock), so even the nearest hops take centuries per voyage and a
-// port with the authored 150-year warehouse would starve between two arrivals:
-// coverage, growth and the big-colony gate would all fall and the mode would
-// show a dying network. The reserve horizon moves with the fleet instead.
+// --- 15. A generation ship is a colony's decision, not a clock ---------------
+// trade.36 replaced the global generation mode with the law the user asked for:
+// *any colony can build a generation ship if no other variant is available and
+// if this is profit*. What that means in the model is testable — a world the
+// reach law calls stranded (no port within MAX_FOUND_LY, so no expedition and
+// no freighter can serve it) and nothing weaker gets a ship built for it.
 {
 	const net = seedStart(0);
 	trade.step(net, 4000);
-	const capFree = net.ports[0].colony.stockCap[5];
-	let bigFree = 0;
-	for (let i = 0; i < net.portCount; i++) if (trade.isBigColony(net.ports[i].colony)) bigFree += 1;
-	trade.setGenerationMode(1, net);
-	const capGen = net.ports[0].colony.stockCap[5];
-	const expected = trade.GENERATION_RESERVE_YEARS / economy.STOCK_YEARS;
-	check('the special mode sizes the warehouses to the fleet’s crossing time',
-		near(capGen / capFree, expected) && near(economy.getReserveScale(), expected),
-		{ ratio: +(capGen / capFree).toFixed(2), expected: +expected.toFixed(2) });
-	const rate = trade.clockRate(100, trade.GENERATION_STAR_MYR, true);
-	const portsBefore = net.portCount;
-	for (let f = 0; f < 60 * 10; f++) trade.step(net, rate / 60, 256);
-	const coverage = [];
-	let bigGen = 0;
-	for (let i = 0; i < net.portCount; i++) {
-		const colony = net.ports[i].colony;
-		coverage.push(colony.coverage);
-		if (trade.isBigColony(colony)) bigGen += 1;
+	const capBefore = net.ports[0].colony.stockCap[5];
+	check('there is no global generation mode to leave the economy in',
+		trade.setGenerationMode === undefined && trade.GENERATION_RESERVE_YEARS === undefined
+		&& economy.getReserveScale === undefined && economy.rescaleColonyReserves === undefined,
+		{ tradeGen: trade.setGenerationMode });
+	// The ledger is a count of real voyages: whatever it says, the fleet agrees
+	// — a generation ship is a founding voyage at the crawl, not a mode flag.
+	let genInFlight = 0, genLedgerOk = true, genYears = 0;
+	for (let i = 0; i < net.shipCount; i++) {
+		const ship = net.ships[i];
+		if (!ship.generation) continue;
+		genInFlight += 1;
+		if (!(ship.state === trade.SHIP_FOUNDING && ship.arrive - ship.depart > 500)) {
+			genLedgerOk = false;
+		}
+		genYears = Math.max(genYears, ship.arrive - ship.depart);
 	}
-	coverage.sort((a, b) => a - b);
-	const median = coverage[coverage.length >> 1];
-	trade.setGenerationMode(0, net);
-	check('a generation-ship network keeps its colonies instead of starving',
-		bigGen >= bigFree - 1 && median > 0.3, { bigFree, bigGen, median: +median.toFixed(2) });
-	check('and keeps founding through the slow fleet instead of standing still',
-		net.portCount > portsBefore && net.founded > 0,
-		{ portsBefore, ports: net.portCount, founded: net.founded });
-	check('leaving the special mode restores the authored warehouses',
-		near(economy.getReserveScale(), 1) && near(net.ports[0].colony.stockCap[5], capFree));
+	check('the generation ledger counts ships that are really flying the crawl',
+		(net.generationLaunched | 0) === genInFlight && genLedgerOk,
+		{ ledger: net.generationLaunched | 0, genInFlight, years: Math.round(genYears) });
+
+	// Strand every candidate (no port can reach any of them) and give them a
+	// habitat worth centuries: the decision must fire, and only then.
+	const saved = [];
+	for (let i = 0; i < net.candidateCount; i++) {
+		saved.push({ reach: net.candidates[i].reach });
+		net.candidates[i].reach = 1;
+	}
+	check('nothing is launched while every world is still reachable',
+		trade.bestGenerationTarget(net, net.time).candidate < 0);
+	for (let i = 0; i < net.candidateCount; i++) net.candidates[i].reach = 0;
+	const pick = trade.bestGenerationTarget(net, net.time);
+	let big = 0, resting = 0, visible = 0, habitable = 0;
+	for (let i = 0; i < net.portCount; i++) {
+		if (trade.isBigColony(net.ports[i].colony)) {
+			big += 1;
+			if (net.time - net.ports[i].lastExpedition < trade.GENERATION_COOLDOWN) resting += 1;
+		}
+	}
+	for (let i = 0; i < net.candidateCount; i++) {
+		if (net.candidates[i].skyVisible !== 0) visible += 1;
+		if (trade.siteHabitatScore(net.candidates[i].site) >= trade.GENERATION_MIN_HABITAT) habitable += 1;
+	}
+	check('a stranded world is exactly what the decision is for',
+		pick.candidate >= 0 && pick.port >= 0 && pick.ly > 0,
+		{ candidate: pick.candidate, port: pick.port, ly: Math.round(pick.ly),
+			ports: net.portCount, cands: net.candidateCount, big, resting, visible, habitable,
+			time: Math.round(net.time) });
+	// The profit half: a world below the floor is not worth the centuries, and a
+	// world past the ship's own reach is not offered at all.
+	const savedTypes = [];
+	for (let i = 0; i < net.candidateCount; i++) {
+		savedTypes.push(net.candidates[i].site.type);
+		net.candidates[i].site.type = 0;                  // 0.04: not worth centuries
+		net.candidates[i].site.flags = 0;
+	}
+	check('a world not worth centuries gets no generation ship',
+		trade.bestGenerationTarget(net, net.time).candidate < 0);
+	for (let i = 0; i < net.candidateCount; i++) {
+		net.candidates[i].site.type = savedTypes[i];
+		net.candidates[i].reach = saved[i].reach;
+	}
+	// Nothing global moved: the warehouses are the authored 150-year horizon
+	// and the freighters keep their table speed while a generation ship flies.
+	check('a generation ship changes no warehouse and no freighter speed',
+		near(net.ports[0].colony.stockCap[5], capBefore)
+		&& near(trade.HULLS[0].lyPerYear, 2)
+		&& near(trade.legYears(100 / trade.LY_PER_KPC, 0), 50),
+		{ ratio: +(net.ports[0].colony.stockCap[5] / capBefore).toFixed(4) });
 }
 
 // --- 16. The start scenario (trade-plan §8) ------------------------------
@@ -1639,20 +1674,21 @@ function exactLiveEvents(net) {
 		trade.refreshGeometry(net, 50, 1, 1e-2);
 		skyTime = 60;
 		trade.refreshGeometry(net, 60, 1, 1e-2);
-		trade.setGenerationMode(1, net);
+		// The generation ship's own crawl is passed to the booking as a speed
+		// (trade.36: it is a hull, not a mode), so this is the same measurement
+		// the generation ship's voyage would make.
 		let outrun = 0, insideCapRefused = 0;
 		for (let i = 0; i < net.portCount; i++) {
 			for (let j = 0; j < net.portCount; j++) {
 				if (i === j) continue;
 				const plan = trade.planLeg(net, trade.END_PORT, i, trade.END_PORT, j, 2,
-					trade.MAX_LEG_LY, trade.createLegPlan());
+					trade.MAX_LEG_LY, trade.createLegPlan(), trade.GENERATION_LY_PER_YEAR);
 				if (!plan.outrun) continue;
 				outrun += 1;
 				if (trade.endpointDistanceLy(net, trade.END_PORT, i, trade.END_PORT, j) <= trade.MAX_LEG_LY
 					&& !plan.reachable) insideCapRefused += 1;
 			}
 		}
-		trade.setGenerationMode(0, net);
 		check('a partner the hull cannot outrun is refused for that reason, inside the cap',
 			outrun > 0 && insideCapRefused > 0, { outrun, insideCapRefused });
 	}
@@ -1747,52 +1783,95 @@ function exactLiveEvents(net) {
 			survivor !== undefined && landed === 1,
 			{ landed, dest, arrivals: survivor ? net.ports[dest].arrivals : -1 });
 
-		// A founding hull: the same geometry refusal, and the party is refunded
-		// to the port it came from. The generation hull is the honest subject —
-		// 30 ly per star-Myr cannot close on a sky that shears at the synced
-		// clock, so this voyage has no meeting point at all.
-		// The jump that shears hardest is the sky's business, so the span is
-		// swept rather than named: the first one whose sampled rate leaves the
-		// generation hull behind is the subject.
-		let net2 = null, launch = null, founder = null, turnedBy = 0;
-		for (let k = 0; k < 6 && !turnedBy; k++) {
-			const span = 20 * (k + 1);
-			net2 = seedMoving(24);
-			skyTime = 0;
-			trade.refreshGeometry(net2, 0, 1, 1e-2);
-			launch = trade.launchBest(net2, 0);
-			founder = launch.ok ? net2.ships[launch.ship] : null;
-			trade.setGenerationMode(1, net2);
-			skyTime = span;
-			trade.refreshGeometry(net2, span, 1, 1e-2);
-			trade.retimeRoutes(net2);
-			trade.setGenerationMode(0, net2);
-			if (founder && founder.returning) turnedBy = span;
+		// A generation voyage (trade.36). The subject is a real world: 1 946 ly
+		// out, terran, put into the pool the way the frontier puts one in — a
+		// site, a candidate, the resolver's birth record. It is beyond the
+		// 600 ly an expedition can reach, so the colony's own decision is the
+		// only thing that can send anyone there.
+		const genNet = seedMoving(24);
+		skyTime = 0;
+		trade.refreshGeometry(genNet, 0, 0, 0);       // the sky as charted: still
+		trade.step(genNet, 4000, 4096);
+		const farSite = economy.createSite();
+		farSite.key = 0x6e657731;
+		farSite.kind = planets.BLOCK_FIELD;
+		farSite.index = 900001;
+		farSite.type = 3;
+		farSite.flags = planets.FLAG_TERRAN | planets.FLAG_IN_HZ;
+		farSite.name = 'the long world';
+		farSite.x = genNet.ports[0].x + 0.05;
+		farSite.y = genNet.ports[0].y + 0.62;
+		farSite.z = genNet.ports[0].z;
+		farSite.ref.key = farSite.key;
+		farSite.ref.kind = farSite.kind;
+		farSite.ref.index = farSite.index;
+		farSite.ref.colorIndex = 2;
+		register(planets.BLOCK_FIELD, farSite.index, farSite.key, farSite.x, farSite.y, farSite.z,
+			(5 | (128 << 8) | (((2 << 3) | starRecord.FLAG_VISIBLE) << 16) | (7 << 24)) >>> 0, 2);
+		const farIndex = trade.addCandidate(genNet, farSite);
+		// Every other world is reachable, so this is the only candidate the
+		// decision can see: the "no other variant available" half.
+		for (let i = 0; i < genNet.candidateCount; i++) genNet.candidates[i].reach = i === farIndex ? 0 : 1;
+		const pick = trade.bestGenerationTarget(genNet, genNet.time);
+		const genIndex = pick.candidate === farIndex
+			? trade.launchExpedition(genNet, pick.port, pick.candidate, genNet.time, 1, 1) : -1;
+		const genShip = genIndex >= 0 ? genNet.ships[genIndex] : null;
+		const genBooked = genShip ? genShip.arrive : 0;
+		const genYears = genShip ? genShip.arrive - genShip.depart : 0;
+		check('a world no expedition can reach, and worth centuries, is built for',
+			genShip !== null && genShip.generation === 1 && genShip.state === trade.SHIP_FOUNDING
+			&& genYears > 20000 && pick.ly > trade.MAX_FOUND_LY * 2
+			&& pick.ly <= trade.GENERATION_MAX_FOUND_LY,
+			{ launched: genShip !== null, ly: Math.round(pick.ly), years: Math.round(genYears),
+				candidate: pick.candidate, farIndex });
+		// The same voyage on the table: a generation ship covers the leg at the
+		// crawl, while a freighter's booking of the same pair is 2 000× shorter.
+		const crawlYears = pick.ly / trade.GENERATION_LY_PER_YEAR;
+		const freightYears = trade.legYears(pick.ly / trade.LY_PER_KPC, 0);
+		check('the voyage is the crawl, and a freight hull would need a fraction of it',
+			near(genYears, crawlYears, 1e-6) && genYears > freightYears * 25,
+			{ years: Math.round(genYears), crawlYears: Math.round(crawlYears),
+				freighterYears: Math.round(freightYears) });
+
+		// Now the sky starts moving, hard. The maintenance pass re-aims every
+		// ordinary voyage; this one keeps the arrival its departure was given,
+		// because a generation ship cannot be turned around (trade.36).
+		skyTime = 60;
+		trade.refreshGeometry(genNet, 60, 1, 1e-2);
+		const genDivertedBefore = genNet.diverted;
+		trade.retimeRoutes(genNet);
+		const stillOutruns = genShip
+			? trade.planLeg(genNet, trade.END_PORT, genShip.from, trade.END_CANDIDATE, genShip.candidate,
+				genNet.ships[genIndex].hull, trade.MAX_FOUND_LY, trade.createLegPlan(),
+				trade.GENERATION_LY_PER_YEAR).outrun : 0;
+		check('a generation voyage is never turned around, however hard the sky shears',
+			genShip !== null && genNet.diverted === genDivertedBefore && genShip.returning === 0
+			&& Math.abs(genShip.arrive - genBooked) < 1e-6,
+			{ outrunNow: stillOutruns, diverted: genNet.diverted - genDivertedBefore,
+				returning: genShip ? genShip.returning : -1, booked: Math.round(genBooked) });
+
+		// And it lands: the colony is founded on the far star, with the party the
+		// sponsor paid for. Nothing turns it back and no reach gate refuses it.
+		const portsBefore = genNet.portCount;
+		const foundedBefore = genNet.founded;
+		for (let f = 0; f < 600 && genNet.time < genBooked + 10; f++) trade.step(genNet, 200, 4096);
+		let farPort = -1;
+		for (let i = 0; i < genNet.portCount; i++) if (genNet.ports[i].key === farSite.key) farPort = i;
+		check('the generation ship founds its colony on the far world',
+			farPort >= 0 && genNet.portCount === portsBefore + 1 && genNet.founded === foundedBefore + 1,
+			{ farPort, ports: genNet.portCount - portsBefore, founded: genNet.founded - foundedBefore,
+				at: Math.round(genNet.time), arrive: Math.round(genBooked) });
+		// Nothing beside it flies at the crawl: the same network's ordinary
+		// voyages keep their freight-hull bookings.
+		let freighterYears = 0;
+		for (let i = 0; i < genNet.shipCount; i++) {
+			const ship = genNet.ships[i];
+			if (ship.generation || ship.state !== trade.SHIP_SAILING) continue;
+			if (ship.leg > freighterYears) freighterYears = ship.leg;
 		}
-		const people = founder ? founder.amount * trade.POP_PER_COLONIST_UNIT : 0;
-		const wasTurned = founder ? founder.returning : -1;
-		let popBefore = 0, popAfter = 0, stateAfter = -1, amountAfter = -1;
-		if (founder && wasTurned === 1) {
-			const arriveAt = founder.arrive;
-			trade.step(net2, Math.max(0, arriveAt - net2.time - 1e-6), 4096);
-			// Settle the source to the instant *before* the arrival: the jump
-			// across the event is then the refund alone, not the thirty thousand
-			// years of growth the arrival's own settle would add on top of it.
-			const home = net2.ports[launch.source].colony;
-			economy.settleColony(home, arriveAt - 1e-6);
-			popBefore = home.pop;
-			// Just past the arrival, before the load event half a year later.
-			trade.step(net2, 1e-3, 4096);
-			popAfter = home.pop;
-			stateAfter = founder.state;
-			amountAfter = founder.amount;
-		}
-		check('a diverted founding wave is refunded to the population it was drawn from',
-			launch.ok === 1 && wasTurned === 1 && net2.founded === 0
-			&& stateAfter === trade.SHIP_DOCKED && amountAfter === 0
-			&& Math.abs(popAfter - popBefore - people) < people * 0.02,
-			{ launch: launch.ok, wasTurned, turnedBy, founded: net2.founded, people: +people.toFixed(2),
-				jump: +(popAfter - popBefore).toFixed(2), stateAfter, amountAfter });
+		check('a generation voyage does not slow the freighters flying beside it',
+			genYears > 20000 && freighterYears > 0 && freighterYears < 2000,
+			{ generationYears: Math.round(genYears), freighterYears: Math.round(freighterYears) });
 	}
 
 	// 17.6 The frontier scan widens its coarse gate with the shear, and caps it.
@@ -3605,6 +3684,15 @@ function exactLiveEvents(net) {
 		&& pax.worlds[0].stock[economy.R_PEOPLE] === 0
 		&& pax.worlds[1].stock[economy.R_PEOPLE] === 0,
 		{ flow: paxMoved, total: paxTotal, closedTotal: paxClosedTotal });
+	const paxIndex = trade.intraFlowIndex(0, 1, economy.INTRA_PAX);
+	const paxLeg = pax.port.intra.legs.slice(0, pax.port.intra.legCount)
+		.find((leg) => leg.from === 0 && leg.to === 1);
+	check('passenger averages convert population to the existing cargo equivalent and report people separately',
+		!!paxLeg && near(pax.port.intraMass[paxIndex],
+			economy.tonsForUnits(economy.R_PEOPLE, paxMoved / trade.POP_PER_COLONIST_UNIT), 1e-12)
+		&& near(paxLeg.peopleRate, paxMoved * 1e6 / pax.port.intra.span, 1e-12)
+		&& trade.intraCraftText(pax.net, pax.portIndex, 0, 0).includes('passengers / trade y'),
+		{ movedM: paxMoved, leg: paxLeg, span: pax.port.intra.span });
 
 	const starvingSystem = syntheticIntraSystem({ key: 0x53544152, beltA: 1.1,
 		planets: [{ a: 1, mass: 1, radius: 1, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ }] });
@@ -3959,7 +4047,8 @@ function exactLiveEvents(net) {
 	check('the cheapest in-system class that can fly the round trip is chosen',
 		trade.intraClassFor(3000).id === 'chemical'
 		&& trade.intraClassFor(16020).id === 'nuclear'
-		&& trade.intraClassFor(25000) === null,
+		&& trade.intraClassFor(25000) === null
+		&& trade.intraClassFor(NaN) === null && trade.intraClassFor(1000, -1) === null,
 		{ short: trade.intraClassFor(3000) && trade.intraClassFor(3000).id,
 			mars: trade.intraClassFor(16020) && trade.intraClassFor(16020).id });
 	check('no interstellar class is ever offered for an intra leg', (() => {
@@ -3986,7 +4075,7 @@ function exactLiveEvents(net) {
 			if (!(leg.from >= 0 && leg.to >= 0 && leg.from !== leg.to)) return false;
 			const cls = dvLib.classById(leg.classId);
 			if (cls.domain !== 'in-system') return false;
-			if (cls.dvMax < leg.dv * 2 * 1.1) return false;
+			if (cls.dvMax < (leg.dv + leg.returnDv) * 1.1) return false;
 			if (!(leg.legYears > 0)) return false;
 			if (!(leg.ferries >= 1)) return false;
 		}
@@ -3995,9 +4084,113 @@ function exactLiveEvents(net) {
 	check('the twelve ferries are split across the recorded legs', (() => {
 		let sum = 0;
 		for (let i = 0; i < intra.legCount; i++) sum += intra.legs[i].ferries;
-		return sum >= intra.legCount && sum <= trade.INTRA_FERRY_COUNT;
+		return sum === trade.INTRA_FERRY_COUNT;
 	})(), { legs: intra.legCount,
 		ferries: intra.legs.slice(0, intra.legCount).map((l) => l.ferries) });
+	const oreIndex = trade.intraFlowIndex(1, 0, economy.INTRA_BULK);
+	const oreMoved = settled.port.intraFlow[oreIndex];
+	check('bulk rates use the actual ore tonnes, not raw warehouse units',
+		oreMoved > 0 && near(settled.port.intraMass[oreIndex], economy.tonsForUnits(economy.R_ORE, oreMoved), 1e-12)
+		&& near(intra.rates[oreIndex], settled.port.intraMass[oreIndex] / 20, 1e-12)
+		&& near(intra.legs[0].cargoRate, intra.rates[oreIndex], 1e-12),
+		{ units: oreMoved, tonnes: settled.port.intraMass[oreIndex], rate: intra.rates[oreIndex] });
+
+	// A quiet settle must not erase an actual transfer, but the two bounded
+	// buckets must eventually expire it. Repeated same-time settling must not
+	// add the last transfer twice. A large jump clears both old buckets.
+	const recent = fleetFixture();
+	trade.settlePort(recent.net, recent.portIndex, 20);
+	const recentMass = recent.port.intraMass[oreIndex];
+	const initialRate = recent.port.intra.rates[oreIndex];
+	trade.settlePort(recent.net, recent.portIndex, 20);
+	check('settling again at the same timestamp does not double-count a transfer',
+		recentMass > 0 && near(recent.port.intra.rates[oreIndex], initialRate, 1e-12));
+	for (const world of recent.worlds) {
+		world.outBase.fill(0); world.stock.fill(0); world.coverage = 0;
+	}
+	trade.settlePort(recent.net, recent.portIndex, 21);
+	check('a quiet settle retains the actual recent flow and a selectable ferry',
+		recent.port.intraFlow.every((value) => value === 0)
+		&& recent.port.intra.legCount > 0
+		&& near(recent.port.intra.rates[oreIndex], recentMass / 21, 1e-12)
+		&& /recent flow/.test(trade.intraReadoutText(recent.net, recent.portIndex)),
+		{ flow: recent.port.intra.flow, legs: recent.port.intra.legCount });
+	trade.settlePort(recent.net, recent.portIndex, 25);
+	check('crossing a bucket boundary keeps the previous bucket and uses its covered span',
+		recent.port.intra.legCount > 0 && near(recent.port.intra.rates[oreIndex], recentMass / 25, 1e-12));
+	trade.settlePort(recent.net, recent.portIndex, 50);
+	check('after the second boundary old transfers and their ferries expire',
+		recent.port.intra.legCount === 0 && recent.port.intra.flow === 0
+		&& /no recent transfer/.test(trade.intraFleetText(recent.net, recent.portIndex)));
+	const jumpExpiry = fleetFixture();
+	trade.settlePort(jumpExpiry.net, jumpExpiry.portIndex, 20);
+	for (const world of jumpExpiry.worlds) {
+		world.outBase.fill(0); world.stock.fill(0); world.coverage = 0;
+	}
+	trade.settlePort(jumpExpiry.net, jumpExpiry.portIndex, 100);
+	check('a settle crossing several buckets expires old traffic rather than retaining it forever',
+		jumpExpiry.port.intra.legCount === 0 && jumpExpiry.port.intra.flow === 0);
+
+	const gatedWindow = fleetFixture();
+	trade.settlePort(gatedWindow.net, gatedWindow.portIndex, 20);
+	gatedWindow.net.time = 20;
+	trade.applySkyGate(gatedWindow.net, galaxy.modelAtAge(model, 0), scenarioField);
+	gatedWindow.net.time = 100;
+	trade.applySkyGate(gatedWindow.net, galaxy.modelAtAge(model, galaxy.AGE_REF), scenarioField);
+	const gatedStocks = stockVector(gatedWindow);
+	trade.settlePort(gatedWindow.net, gatedWindow.portIndex, 100);
+	check('a sky gate that stamps world clocks still ages the window without rebooking old transfers',
+		gatedWindow.port.skyVisible === 1 && gatedWindow.port.intra.legCount === 0
+		&& gatedWindow.port.intra.flow === 0 && gatedWindow.port.intraFlow.every((value) => value === 0)
+		&& gatedStocks.every((value, r) => value === totalStock(gatedWindow, r)),
+		{ sky: gatedWindow.port.skyVisible, legs: gatedWindow.port.intra.legCount });
+
+	const accumulated = fleetFixture();
+	trade.settlePort(accumulated.net, accumulated.portIndex, 20);
+	const firstMass = accumulated.port.intraMass[oreIndex];
+	function replenishOre(fixture) {
+		for (const world of fixture.worlds) { world.stock.fill(0); world.coverage = 0.5; }
+		fixture.worlds[1].stock[economy.R_ORE] = 100;
+	}
+	replenishOre(accumulated);
+	trade.settlePort(accumulated.net, accumulated.portIndex, 21);
+	const secondMass = accumulated.port.intraMass[oreIndex];
+	const inOneBucket = near(accumulated.port.intra.rates[oreIndex], (firstMass + secondMass) / 21, 1e-12);
+	replenishOre(accumulated);
+	trade.settlePort(accumulated.net, accumulated.portIndex, 25);
+	const thirdMass = accumulated.port.intraMass[oreIndex];
+	const acrossBoundary = near(accumulated.port.intra.rates[oreIndex],
+		(firstMass + secondMass + thirdMass) / 25, 1e-12);
+	for (const world of accumulated.worlds) {
+		world.outBase.fill(0); world.stock.fill(0); world.coverage = 0;
+	}
+	trade.settlePort(accumulated.net, accumulated.portIndex, 50);
+	check('multiple real transfers sum across buckets, then only the older bucket expires',
+		firstMass > 0 && secondMass > 0 && thirdMass > 0 && inOneBucket && acrossBoundary
+		&& near(accumulated.port.intra.rates[oreIndex], thirdMass / 25, 1e-12),
+		{ firstMass, secondMass, thirdMass, rate: accumulated.port.intra.rates[oreIndex] });
+
+	const failedWorld = fleetFixture();
+	trade.settlePort(failedWorld.net, failedWorld.portIndex, 20);
+	failedWorld.worlds[1].outpost = 1;
+	trade.settlePort(failedWorld.net, failedWorld.portIndex, 21);
+	check('recent transfers from a failed world do not keep flying or appear as live routes',
+		failedWorld.port.intra.legCount === 0 && failedWorld.port.intra.flow === 0
+		&& /no recent transfer/.test(trade.intraReadoutText(failedWorld.net, failedWorld.portIndex))
+		&& /fewer than two active worlds/.test(trade.intraCraftText(failedWorld.net, failedWorld.portIndex, -1, 0)));
+	failedWorld.port.colony.outpost = 1;
+	check('an entirely failed port describes its fleet as inactive rather than showing a stale load',
+		/outpost/.test(trade.intraFleetText(failedWorld.net, failedWorld.portIndex))
+		&& /outpost/.test(trade.intraCraftText(failedWorld.net, failedWorld.portIndex, 0, 0)));
+
+	// Include a large-settle case: a transfer calculated for 0–100 is an event
+	// recorded at its settlement (100), then averaged over the recent window.
+	// It is not attributed to an invented earlier time.
+	const longSettle = fleetFixture();
+	trade.settlePort(longSettle.net, longSettle.portIndex, 100);
+	check('a long settle records only its completed transfers in the current window',
+		longSettle.port.intra.span === 25 && longSettle.port.intraMass[oreIndex] > 0
+		&& near(longSettle.port.intra.rates[oreIndex], longSettle.port.intraMass[oreIndex] / 25, 1e-12));
 
 	// The picture is not a ledger: the same 5 000 colony years land byte-equal
 	// stocks with the schematic open and closed, because nothing about the
@@ -4035,6 +4228,59 @@ function exactLiveEvents(net) {
 		{ unservedPairs: unserved.port.intra.unservedPairs,
 			ore: unserved.worlds[0].stock[economy.R_ORE], before: beforeUnserved });
 
+	const asymmetric = fleetFixture();
+	asymmetric.port.dv[trade.MAX_WORLDS_PER_STAR] = 19e3; // belt → world
+	asymmetric.port.dv[1] = 8.4e3;                      // world → belt
+	trade.settlePort(asymmetric.net, asymmetric.portIndex, 20);
+	const asymLeg = asymmetric.port.intra.legs[0];
+	const asymText = trade.intraCraftText(asymmetric.net, asymmetric.portIndex, 0, 0);
+	check('an asymmetric route is gated on the true sum of outbound and return delta-v',
+		trade.intraClassFor(19e3) === null && trade.intraClassFor(19e3, 8.4e3).id === 'nuclear'
+		&& asymmetric.port.intra.legCount > 0 && asymLeg.classId === 'nuclear'
+		&& asymLeg.dv === 19e3 && asymLeg.returnDv === 8.4e3
+		&& /19\.0 out \+ 8\.4 back/.test(asymText), asymText);
+
+	const missing = fleetFixture();
+	missing.port.tH[trade.MAX_WORLDS_PER_STAR] = 0;
+	trade.settlePort(missing.net, missing.portIndex, 20);
+	check('transfers with missing geometry remain statistical and do not invent a ferry time',
+		missing.port.intraFlow[oreIndex] > 0 && missing.port.intra.legCount === 0
+		&& missing.port.intra.unpricedPairs === 1
+		&& /missing route data/.test(trade.intraFleetText(missing.net, missing.portIndex))
+		&& /route data unavailable/.test(trade.intraReadoutText(missing.net, missing.portIndex)),
+		{ legs: missing.port.intra.legCount, unpriced: missing.port.intra.unpricedPairs });
+
+	const short = fleetFixture();
+	const shortSeconds = 3 * 3600;
+	short.port.tH[trade.MAX_WORLDS_PER_STAR] = shortSeconds;
+	trade.settlePort(short.net, short.portIndex, 20);
+	check('a short Hohmann leg keeps its actual time instead of the old 0.02-year floor',
+		short.port.intra.legCount > 0
+		&& near(short.port.intra.legs[0].legYears, shortSeconds / require('../src/math/deltav.js').SECONDS_PER_YEAR, 1e-15)
+		&& short.port.intra.legs[0].legYears < 0.02,
+		short.port.intra.legs[0].legYears);
+
+	// Three equal-geometry routes with uneven loads used to round separately
+	// to thirteen ferries. Feed known settled masses to the allocator directly.
+	const splitSystem = syntheticIntraSystem({ key: 0x53504c54, planets: [
+		{ a: 1, mass: 0.05, radius: 0.4, type: 3, flags: planets.FLAG_TERRAN },
+		{ a: 1.01, mass: 0.05, radius: 0.4, type: 3, flags: planets.FLAG_TERRAN },
+		{ a: 1.02, mass: 0.05, radius: 0.4, type: 3, flags: planets.FLAG_TERRAN },
+	] });
+	const split = syntheticTradePort(splitSystem, 0, 0, 0, 1, 'one', 'two');
+	trade.addWorld(split.net, split.portIndex, syntheticSite(splitSystem, split.ref, 0, 2, 'three'),
+		0, trade.FRESH_FOUND, splitSystem);
+	split.port.intraMass[trade.intraFlowIndex(0, 1, economy.INTRA_BULK)] = 0.3;
+	split.port.intraMass[trade.intraFlowIndex(1, 2, economy.INTRA_BULK)] = 0.3;
+	split.port.intraMass[trade.intraFlowIndex(2, 0, economy.INTRA_BULK)] = 0.4;
+	trade.noteIntraLegs(split.net, split.portIndex, 10);
+	const assigned = split.port.intra.legs.slice(0, split.port.intra.legCount)
+		.reduce((sum, leg) => sum + leg.ferries, 0);
+	check('uneven three-route rounding assigns exactly twelve ferries, at least one per leg',
+		split.port.intra.legCount === 3 && assigned === trade.INTRA_FERRY_COUNT
+		&& split.port.intra.legs.every((leg) => leg.ferries >= 1),
+		split.port.intra.legs.map((leg) => leg.ferries));
+
 	// The clock discipline: 500 one-year steps settle the same ledger as one
 	// 500-year jump, so the fleet a viewer sees is the same either way.
 	function jumpVsSteps(jump) {
@@ -4061,9 +4307,106 @@ function exactLiveEvents(net) {
 		const empty = fleetFixture();
 		trade.settlePort(empty.net, empty.portIndex, 20);
 		empty.port.intra.legCount = 0;
+		empty.port.intra.flow = 0;
 		const idle = trade.intraFleetText(empty.net, empty.portIndex);
 		check('and reports the port idle when no transfer was recorded',
-			/ferries in port/.test(idle) && /no transfer/.test(idle), idle);
+			/ferries in port/.test(idle) && /no recent transfer/.test(idle), idle);
+	}
+}
+
+// --- 30b. The port's freighters (trade.35) --------------------------------
+// The ships the system view draws when the port has only one world — which is
+// most ports, because the planet model gives most systems a single settleable
+// world. These records are the layer's whole input, so what is pinned here is
+// that they are the network's own hulls (not a second animation), that a stale
+// record cannot pass itself off as this port's, and that the selection blocks
+// print the numbers the calculation used.
+{
+	const system30b = syntheticIntraSystem({ key: 0x35304331, beltA: 1.1 });
+	const fixture = syntheticTradePort(system30b, 0, 0, 1, 0, 'Terran', 'belt');
+	trade.finalize(fixture.net);
+	for (let i = 0; i < 40; i++) trade.step(fixture.net, 25, 100000);
+	const net = fixture.net;
+	const fleet = trade.portFleet(net, fixture.portIndex);
+	check('portFleet lists the hulls touching a port, docked and under way',
+		fleet.count > 0 && fleet.key === (fixture.port.key >>> 0)
+		&& fleet.count <= trade.MAX_PORT_FLEET && fleet.docked >= 1,
+		{ count: fleet.count, docked: fleet.docked, sailing: fleet.sailing });
+	let coherent = true, shown = 0;
+	for (let i = 0; i < fleet.count; i++) {
+		const v = fleet.voyages[i];
+		shown += 1;
+		if (!(v.progress >= 0 && v.progress <= 1)) coherent = false;
+		if (!v.hullName) coherent = false;
+		if (v.dir !== trade.VOYAGE_DOCKED && !(v.legYears > 0)) coherent = false;
+		if (v.amount > 0 && !(v.tons > 0)) coherent = false;
+		if (v.dir !== trade.VOYAGE_DOCKED && !v.other) coherent = false;
+	}
+	check('every voyage record is coherent: a fraction, a booked leg, a real far port, a hull',
+		coherent && shown === fleet.count, { shown });
+	// The record is the shared one, refreshed in place and keyed to its port: a
+	// layer that kept yesterday's berth would draw ships that are elsewhere.
+	const secondKey = fleet.key;
+	trade.portFleet(net, fixture.portIndex + 1);
+	check('the fleet record is refreshed in place and carries the port it was read from',
+		trade.portFleet(net, fixture.portIndex).key === secondKey, { key: secondKey });
+	{
+		const text = trade.voyageText(net, fixture.portIndex, 0);
+		check('a hull’s block names its hull, its route, its load and its history',
+			/hull /.test(text) && /load /.test(text) && /account/.test(text), text);
+	}
+	// A ferry on a real leg: the block is the settle's own numbers.
+	{
+		const legFixture = syntheticTradePort(system30b, 0, 0, 1, 0, 'Terran', 'belt');
+		for (const world of legFixture.worlds) {
+			world.last = 0; world.pop = 10; world.capacity = 100;
+			world.coverage = 0.5; world.outpost = 0;
+			world.outBase.fill(0); world.stock.fill(0); world.stockCap.fill(1000);
+		}
+		legFixture.worlds[1].stockCap[economy.R_ORE] = 100;
+		legFixture.worlds[1].stock[economy.R_ORE] = 100;
+		legFixture.worlds[0].outBase[economy.R_ROBOTS] = 1;
+		trade.settlePort(legFixture.net, legFixture.portIndex, 20);
+		const settledLegs = legFixture.port.intra.legCount;
+		const legText = trade.intraCraftText(legFixture.net, legFixture.portIndex, 0, 0);
+		check('a selected ferry prints actual cargo and passengers per trade year, its share and gate',
+			settledLegs > 0 && /t cargo \/ trade y/.test(legText) && /passengers \/ trade y/.test(legText) && /ferry \/ trade y/.test(legText)
+			&& /km\/s/.test(legText) && /round trip/.test(legText) && /couple/.test(legText),
+			{ legs: settledLegs, text: legText });
+		const idle = trade.intraCraftText(legFixture.net, legFixture.portIndex, -1, 0);
+		check('a ferry in port says there is no leg to price, and why',
+			/in port/.test(idle) && /no flyable leg/.test(idle), idle);
+	}
+	// The scenario's own berth (the fleet row): a young network has every hull
+	// in port, so the showcase winds the clock to the first departures instead
+	// of opening on a dock — and stops at its cap when a port has nothing to
+	// trade with, so the clock can never be spun by pressing a scenario.
+	{
+		const young = seedNetwork(8, 0);
+		const show = trade.fleetShowcase(young, 12);
+		check('the fleet showcase winds a young network to its first departures',
+			show.portIndex >= 0 && show.wound > 0 && young.time === show.wound
+				&& (show.sailing > 0 || show.legs > 0),
+			{ port: show.portIndex, wound: show.wound, sailing: show.sailing, time: young.time });
+		// One port and one world: there is nowhere to sail, so the wind stops at
+		// the cap instead of running the clock out looking for a departure.
+		const harbour = syntheticTradePort(system30b, 0, 0, undefined, undefined, 'Terran');
+		trade.finalize(harbour.net);
+		harbour.port.skyVisible = 1;
+		const capped = trade.fleetShowcase(harbour.net, 2);
+		check('a port with nothing to trade with keeps the clock inside the cap',
+			capped.portIndex === 0 && capped.wound === 2 * trade.TICK_YEARS && capped.sailing === 0,
+			{ port: capped.portIndex, wound: capped.wound, sailing: capped.sailing });
+	}
+	// A one-world port's ferry block says the reason the fleet is idle, which
+	// is the case the user reported as "no ships": a single settled world.
+	{
+		const lone = syntheticTradePort(system30b, 0, 0, undefined, undefined, 'Terran');
+		trade.finalize(lone.net);
+		trade.step(lone.net, 50, 100000);
+		const idleLone = trade.intraCraftText(lone.net, lone.portIndex, -1, 0);
+		check('a one-world port explains that no in-system leg exists',
+			/fewer than two active worlds/.test(idleLone), idleLone);
 	}
 }
 
@@ -4317,7 +4660,7 @@ function exactLiveEvents(net) {
 		planets: [
 			{ a: 1.0, mass: 0.35, radius: 0.72, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ },
 			{ a: 1.18, mass: 0.42, radius: 0.76, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ },
-			{ a: 22.0, mass: 8.5, radius: 1.95, type: 2, flags: 0 },
+			{ a: 22.0, mass: 20, radius: 1.95, type: 2, flags: 0 },
 		],
 	});
 	const richSys = makeRichSiblingSystem(0x54383201);
@@ -4333,7 +4676,7 @@ function exactLiveEvents(net) {
 	const readout = trade.siblingReadoutText(built.net, 0);
 	check('sysCache matches worldFoundingScore exactly, picks the reachable HZ sibling, and marks deep outer worlds in siblingReadoutText',
 		scoreParity && pickedSlot >= 0 && cache.sites[pickedSlot].index === 1
-		&& trade.cachedSiblingScore(built.net, 0, pickedSlot) >= trade.MIN_FOUND_COUPLE
+		&& trade.cachedSiblingCouple(built.net, 0, pickedSlot) >= trade.MIN_FOUND_COUPLE
 		&& readout.indexOf('siblings') >= 0 && readout.indexOf('too deep') >= 0,
 		{ cacheCount: cache.count, pickedSlot, readout });
 
@@ -4389,7 +4732,7 @@ function exactLiveEvents(net) {
 		key: 0x54383203,
 		planets: [
 			{ a: 1.0, mass: 1.2, radius: 1.05, type: 3, flags: planets.FLAG_TERRAN | planets.FLAG_IN_HZ },
-			{ a: 24.0, mass: 9.0, radius: 2.0, type: 2, flags: 0 },
+			{ a: 24.0, mass: 20, radius: 2.0, type: 2, flags: 0 },
 		],
 	});
 	const deepH = makeLiveSiblingNet(deepOnlySys);
@@ -4436,6 +4779,59 @@ function exactLiveEvents(net) {
 		&& destPort.sysCache.count === 3 && destPort.worldCount === 2
 		&& destPort.dv[1] > 0 && destPort.couple[1] > 0 && destPort.couple[1] < 1,
 		{ destPortIdx, cacheCount: destPort && destPort.sysCache.count, worlds: destPort && destPort.worldCount });
+}
+
+// --- 33. The shipped start produces real local routes --------------------
+// Exercise the actual generated start, founding gates, economy, and rates at
+// the cadence of an open panel, rather than seeding a fake flow array.
+{
+	function shippedStart() {
+		const home = model.home.orbitTarget;
+		const net = trade.createNetwork({ seed: model.seed | 0, modelSeed: galaxy.DEFAULT_SEED,
+			homeX: home.x, homeY: home.y, homeZ: home.z, timeYears: 0 });
+		const genCtx = { model, field: scenarioField, member: null, name: '' };
+		const sys = planets.createSystemRecord();
+		const starts = trade.startSystems(net, model, scenarioField, landmarks, []);
+		trade.discoverNearest(net, starts, genCtx, sys);
+		trade.finalize(net);
+		return { net, genCtx, sys };
+	}
+	const manual = shippedStart();
+	const capital = manual.net.ports[0];
+	const beltSlot = capital.sysCache.sites.slice(0, capital.sysCache.count)
+		.findIndex((site) => site.kind === 1 && site.index === 0);
+	manual.genCtx.name = 'Rigil Kentaurus';
+	planets.generateSystem(capital.ref, manual.genCtx, manual.sys);
+	const belt = beltSlot >= 0 ? capital.sysCache.sites[beltSlot] : null;
+	const coupling = belt ? trade.cachedSiblingCouple(manual.net, 0, beltSlot) : 0;
+	const score = belt ? trade.cachedSiblingScore(manual.net, 0, beltSlot) : 0;
+	check('the generated capital belt is physically reachable despite a low habitat-weighted rank',
+		capital.name === 'Rigil Kentaurus b' && !!belt
+		&& score < trade.MIN_FOUND_COUPLE && coupling >= trade.MIN_FOUND_COUPLE
+		&& near(coupling, trade.worldFoundingCouple(manual.net, 0, belt, manual.sys), 1e-12)
+		&& trade.pickSiblingSite(manual.net, 0) === beltSlot,
+		{ capital: capital.name, belt: belt && belt.name, score, coupling, picked: trade.pickSiblingSite(manual.net, 0) });
+	const founded = trade.playerFoundWorld(manual.net, capital.ref, 'Rigil Kentaurus', manual.sys, 1, 0, 0);
+	check('the player can found that generated reachable belt without adding another interstellar port',
+		founded.ok === 1 && capital.worldCount === 2 && manual.net.portCount === 4,
+		founded);
+
+	const auto = shippedStart();
+	trade.setExpansion(1);
+	for (let n = 0; n < 73; n++) {
+		trade.step(auto.net, 12.5, 100000);
+		trade.settleAllPorts(auto.net, auto.net.time);
+	}
+	const active = auto.net.ports[0];
+	const activeText = trade.intraCraftText(auto.net, 0, 0, 0);
+	check('the default capital autonomously founds its belt and records real flyable transfers',
+		auto.net.time === 912.5 && active.worldCount === 2 && active.intra.legCount > 0
+		&& active.intra.flow > 0 && active.intra.legs[0].legYears > 0
+		&& active.intra.legs.slice(0, active.intra.legCount)
+			.reduce((sum, leg) => sum + leg.ferries, 0) === trade.INTRA_FERRY_COUNT,
+		{ time: auto.net.time, worlds: active.worldCount, legs: active.intra.legCount, flow: active.intra.flow });
+	check('the ferry readout retains full names that distinguish a planet from its belt',
+		activeText.includes('Rigil Kentaurus b') && activeText.includes('Rigil Kentaurus belt 1'), activeText);
 }
 
 // --- Summary --------------------------------------------------------------

@@ -28,7 +28,11 @@
 //      rails (escape + L5, the L5 rung joining the columns as another way out),
 //      and the ship riding the graph.
 //  11. exit() erases the canvas; a closed draw() is zero context ops.
-//  12. no allocation across 1 000 draw calls, and the per-frame op count
+//  12. the port's ships (trade.35): a one-world port draws its twelve ferries
+//      in port, the port's own hulls are drawn AND clickable in the orrery
+//      and both delta-v renders, a stale fleet is refused, and craft
+//      selection round-trips through the layer.
+//  13. no allocation across 1 000 draw calls, and the per-frame op count
 //      inside the plan's ~800-canvas-op budget.
 //
 // Output: experiments/logs/system-layer.json
@@ -76,12 +80,18 @@ function forceGc() {
 function createStubContext() {
 	const ops = { total: 0, fillRect: 0, arc: 0, ellipse: 0, fill: 0, stroke: 0, clearRect: 0, text: 0, lineTo: 0, setLineDash: 0 };
 	const texts = [];
+	// Every straight segment the frame draws, in the coordinates the layer
+	// passed (graph units on the map, device pixels on the orrery). Section 12
+	// uses them to prove a boat sits on a line rather than near one. Bounded:
+	// the table's text is not recorded, and a frame draws a few dozen lines.
+	const segs = [];
+	let penX = 0, penY = 0, penSet = false;
 	const ctx = {
-		ops, texts,
+		ops, texts, segs,
 		fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textBaseline: '', textAlign: 'left',
 		clearRect() { ops.clearRect++; ops.total++; },
 		fillRect() { ops.fillRect++; ops.total++; },
-		beginPath() { ops.total++; },
+		beginPath() { ops.total++; penSet = false; },
 		arc() { ops.arc++; ops.total++; },
 		ellipse() { ops.ellipse++; ops.total++; },
 		fill() { ops.fill++; ops.total++; },
@@ -92,8 +102,12 @@ function createStubContext() {
 		scale() { ops.total++; },
 		save() { ops.total++; },
 		restore() { ops.total++; },
-		moveTo() { ops.total++; },
-		lineTo() { ops.lineTo++; ops.total++; },
+		moveTo(x, y) { ops.total++; penX = x; penY = y; penSet = true; },
+		lineTo(x, y) {
+			ops.lineTo++; ops.total++;
+			if (penSet && segs.length < 4000) segs.push([penX, penY, x, y]);
+			penX = x; penY = y; penSet = true;
+		},
 		closePath() { ops.total++; },
 		// The text log is capped: section 12's heap check would otherwise measure
 		// this array growing rather than the layer.
@@ -270,11 +284,12 @@ check('the ladder index round-trips a rate to its own stop and clamps outside it
 	&& SystemLayer.sysTimeIndexOf(0) === 1
 	&& SystemLayer.sysTimeIndexOf(1e-4) === 2
 	&& SystemLayer.sysTimeRateAt(SystemLayer.sysTimeIndexOf(0.3)) === 0.2);
-check('the exported view ids are three, named, and default to the schematic',
-	SystemLayer.VIEW_COUNT === 3 && SystemLayer.VIEW_DEFAULT === SystemLayer.VIEW_SYSTEM
-	&& SystemLayer.VIEW_NAMES.length === 3
+check('the exported view ids include the time-scaled delta-v render',
+	SystemLayer.VIEW_COUNT === 4 && SystemLayer.VIEW_DEFAULT === SystemLayer.VIEW_SYSTEM
+	&& SystemLayer.VIEW_NAMES.length === 4
 	&& SystemLayer.VIEW_NAMES[SystemLayer.VIEW_DV_CLASSIC] === 'delta-v classic'
-	&& SystemLayer.VIEW_NAMES[SystemLayer.VIEW_DV_RAILS] === 'delta-v rails');
+	&& SystemLayer.VIEW_NAMES[SystemLayer.VIEW_DV_RAILS] === 'delta-v rails'
+	&& SystemLayer.VIEW_NAMES[SystemLayer.VIEW_DV_TIME] === 'delta-v flight time');
 check('the icon constants are still the plan\'s and the star icon keeps its radii',
 	SystemLayer.R_STAR_PX === 34 && SystemLayer.R_EDGE_FRAC === 0.46
 	&& SystemLayer.STAR_RADIUS_PX.ms === 12 && SystemLayer.STAR_RADIUS_PX.giant === 20
@@ -778,6 +793,357 @@ check('the icon constants are still the plan\'s and the star icon keeps its radi
 	layer.setTradeData(fixture.port, fixture.worlds);
 }
 
+// --- 12. The port's ships in every render (trade.35) --------------------------
+// The reported bug behind this section: "I still can't see ships in the planet
+// system views". The fleet existed, but it was drawn only for a port with two
+// settled worlds, and the planet model gives most systems one — so the common
+// colony showed nothing at all. A one-world port must now show its twelve
+// ferries in port, and the port's own freighters must ride the escape row in
+// both delta-v renders, with every craft clickable.
+{
+	const { canvas, layer } = pickingFixture();
+	layer.resize(W, H, 1);
+	const port = {
+		key: layer.record.star.key >>> 0,
+		worldCount: 1,
+		worldIdx: new Int32Array(6),
+		intraFlow: new Float64Array(6 * 6 * 3),
+		intra: null,
+	};
+	port.worldIdx.fill(-1);
+	port.worldIdx[0] = 0;
+	const worlds = [{ kind: 0, index: 1, name: 'Lone', pop: 50, capacity: 100, growth: 0.01, starving: 0, outpost: 0 }];
+	// Scan the canvas for a craft the last draw registered: the test does not
+	// guess where a boat is, it asks the layer's own hit test.
+	const hit = { kind: -1, leg: -1, slot: -1 };
+	function findCraft(kind) {
+		for (let y = 0; y < H; y += 3) {
+			for (let x = 0; x < W; x += 3) {
+				layer.pickCraft(x, y, hit);
+				if (hit.kind === kind) return { x, y, leg: hit.leg, slot: hit.slot };
+			}
+		}
+		return null;
+	}
+
+	// A one-world port: the fleet is in port, and the frame says so.
+	layer.setView(SystemLayer.VIEW_SYSTEM);
+	layer.setTradeData(null, null);
+	layer.draw(W, H);
+	const arcsBare = canvas.ctx.ops.arc;
+	layer.setTradeData(port, worlds);
+	layer.draw(W, H);
+	const portTicks = canvas.ctx.ops.arc - arcsBare;
+	check('a one-world port draws its twelve ferries in port (the common colony had no fleet at all)',
+		portTicks >= 12, { arcs: portTicks });
+	const dockedFerry = findCraft(SystemLayer.CRAFT_FERRY);
+	check('a docked ferry is clickable, and the hit test names its seat',
+		!!dockedFerry && dockedFerry.leg === -1 && dockedFerry.slot >= 0, dockedFerry);
+	check('the classic and rail renders draw the same fleet in port',
+		(canvas.ctx.ops.arc, (() => {
+			layer.setView(SystemLayer.VIEW_DV_CLASSIC);
+			layer.setTradeData(null, null); layer.draw(W, H);
+			const a0 = canvas.ctx.ops.arc;
+			layer.setTradeData(port, worlds); layer.draw(W, H);
+			const classic = canvas.ctx.ops.arc - a0;
+			layer.setView(SystemLayer.VIEW_DV_RAILS);
+			layer.setTradeData(null, null); layer.draw(W, H);
+			const b0 = canvas.ctx.ops.arc;
+			layer.setTradeData(port, worlds); layer.draw(W, H);
+			const rails = canvas.ctx.ops.arc - b0;
+			layer.setView(SystemLayer.VIEW_SYSTEM);
+			return classic >= 12 && rails >= 12;
+		})()), null);
+
+	// The port's freighters: one docked, one outbound, one inbound.
+	const fleet = {
+		key: port.key, portIndex: 0, count: 3, docked: 1, sailing: 2,
+		voyages: [
+			{ ship: 0, dir: SystemLayer.VOYAGE_DOCKED, progress: 0, hullName: 'hauler', cargoName: '', amount: 0, tons: 0, legYears: 0, other: '', depart: 0, arrive: 0, trips: 0, delivered: 0 },
+			{ ship: 1, dir: SystemLayer.VOYAGE_OUT, progress: 0.4, hullName: 'clipper', cargoName: 'bulk', amount: 100, tons: 5000, legYears: 40, other: 'Vega', depart: 100, arrive: 140, trips: 1, delivered: 10 },
+			{ ship: 2, dir: SystemLayer.VOYAGE_IN, progress: 0.7, hullName: 'bulk freighter', cargoName: 'goods', amount: 50, tons: 900, legYears: 60, other: 'Vega', depart: 100, arrive: 160, trips: 2, delivered: 20 },
+		],
+	};
+	layer.setTradeData(port, worlds, fleet);
+	layer.draw(W, H);
+	const hullInOrrery = findCraft(SystemLayer.CRAFT_HULL);
+	check('the orrery draws the port\u2019s own hulls, and a hull is clickable',
+		!!hullInOrrery && hullInOrrery.slot >= 0 && hullInOrrery.leg === -1, hullInOrrery);
+	const views = [SystemLayer.VIEW_SYSTEM, SystemLayer.VIEW_DV_CLASSIC, SystemLayer.VIEW_DV_RAILS];
+	let hullsSeen = 0;
+	for (const v of views) {
+		layer.setView(v);
+		layer.setTradeData(port, worlds, fleet);
+		layer.draw(W, H);
+		if (findCraft(SystemLayer.CRAFT_HULL)) hullsSeen += 1;
+	}
+	check('a hull is drawn AND clickable in the schematic and in both delta-v renders',
+		hullsSeen === 3, { hullsSeen });
+	layer.setView(SystemLayer.VIEW_SYSTEM);
+	// The label the hover carries names the voyage, not a body.
+	const label = layer.craftLabelAt(SystemLayer.CRAFT_HULL, -1, 1);
+	check('a hull\u2019s label names its voyage fraction and its far port',
+		label.includes('Vega') && label.includes('voyage 40'), label);
+
+	// --- The drawn-line check (trade.35) -----------------------------------
+	// The reported defect: the boats did not respect the schematic's own lines —
+	// a ferry flew a chord between two dots and a hull flew from its body
+	// straight to the star node, over paper the render had never drawn on. The
+	// proof here does not trust the code that places them. A frame is drawn with
+	// the port attached and *no fleet* (so every line on the paper is the map's
+	// own), the boat positions are read back from the layer's own hit test, and
+	// every boat that is *under way* must lie exactly on one of those segments.
+	{
+		const { port: port3, worlds: worlds3 } = tradeFixture(layer);
+		const hitCraft = { kind: -1, leg: -1, slot: -1 };
+		const hitXY = new Float64Array(2);
+		function distanceToSegments(x, y, segs) {
+			let best = Infinity;
+			for (let i = 0; i < segs.length; i++) {
+				const s = segs[i];
+				const dx = s[2] - s[0], dy = s[3] - s[1];
+				const L = dx * dx + dy * dy;
+				let t = L > 0 ? ((x - s[0]) * dx + (y - s[1]) * dy) / L : 0;
+				if (t < 0) t = 0; else if (t > 1) t = 1;
+				const px = s[0] + dx * t, py = s[1] + dy * t;
+				const d = Math.sqrt((x - px) * (x - px) + (y - py) * (y - py));
+				if (d < best) best = d;
+			}
+			return best;
+		}
+		// Every craft the frame registered, with the position the layer drew it
+		// at: the scan is the hit test, the position is the layer's own answer.
+		function craftPositions() {
+			const found = new Map();
+			for (let y = 0; y < H; y += 3) {
+				for (let x = 0; x < W; x += 3) {
+					layer.pickCraft(x, y, hitCraft, hitXY);
+					if (hitCraft.kind === SystemLayer.CRAFT_NONE) continue;
+					const key = hitCraft.kind + ':' + hitCraft.leg + ':' + hitCraft.slot;
+					if (!found.has(key)) {
+						found.set(key, { x: hitXY[0], y: hitXY[1], kind: hitCraft.kind, leg: hitCraft.leg, slot: hitCraft.slot });
+					}
+				}
+			}
+			return found;
+		}
+		const fleet3 = {
+			key: port3.key, portIndex: 0, count: 3, docked: 1, sailing: 2,
+			voyages: [
+				{ ship: 0, dir: SystemLayer.VOYAGE_DOCKED, progress: 0, hullName: 'hauler', cargoName: '', amount: 0, tons: 0, legYears: 0, other: '', depart: 0, arrive: 0, trips: 0, delivered: 0 },
+				{ ship: 1, dir: SystemLayer.VOYAGE_OUT, progress: 0.4, hullName: 'clipper', cargoName: 'bulk', amount: 100, tons: 5000, legYears: 40, other: 'Vega', depart: 100, arrive: 140, trips: 1, delivered: 10 },
+				{ ship: 2, dir: SystemLayer.VOYAGE_IN, progress: 0.7, hullName: 'bulk freighter', cargoName: 'goods', amount: 50, tons: 900, legYears: 60, other: 'Vega', depart: 100, arrive: 160, trips: 2, delivered: 20 },
+			],
+		};
+		const report = {};
+		let onLine = true, underWay = 0;
+		for (const v of [SystemLayer.VIEW_SYSTEM, SystemLayer.VIEW_DV_CLASSIC, SystemLayer.VIEW_DV_RAILS]) {
+			layer.setView(v);
+			layer.setTradeData(port3, worlds3, null);
+			canvas.ctx.segs.length = 0;
+			layer.draw(W, H);
+			const lines = canvas.ctx.segs.slice();
+			layer.setTradeData(port3, worlds3, fleet3);
+			layer.draw(W, H);
+			let worst = 0, moving = 0, still = 0;
+			for (const [, c] of craftPositions()) {
+				// Under way: a ferry on a leg, or a hull that is not in port. A
+				// boat in port is drawn around its node, which is not a line.
+				const isMoving = c.kind === SystemLayer.CRAFT_FERRY ? c.leg >= 0 : c.slot !== 0;
+				const d = distanceToSegments(c.x, c.y, lines);
+				if (isMoving) {
+					moving += 1;
+					if (d > worst) worst = d;
+					underWay += 1;
+				} else {
+					still += 1;
+				}
+			}
+			report[SystemLayer.VIEW_NAMES[v]] = { moving, inPort: still, worst: Number(worst.toFixed(3)) };
+			if (!(moving >= 4 && worst <= 1.5)) onLine = false;
+		}
+		check('every boat under way sits on a line the map drew without it (schematic, classic and rails)',
+			onLine, { underWay, ...report });
+
+		// The new render uses one linear time scale rather than equal geometric
+		// progress across unrelated graph segments. Its three route lengths must
+		// preserve the fixture's 0.7 / 0.7 / 0.2 year ratios, and moving ferries
+		// must sit on those tracks.
+		layer.setView(SystemLayer.VIEW_DV_TIME);
+		layer.setTradeData(port3, worlds3, null);
+		canvas.ctx.segs.length = 0;
+		layer.draw(W, H);
+		const timeLines = canvas.ctx.segs.slice();
+		function timeTrackLength(y) {
+			for (const s of timeLines) if (Math.abs(s[0] - 245) < 1e-6 && Math.abs(s[1] - y) < 1e-6) return s[2] - s[0];
+			return -1;
+		}
+		const longTrack = timeTrackLength(142), shortTrack = timeTrackLength(282);
+		const proportional = longTrack > 0 && near(shortTrack / longTrack, 0.2 / 0.7, 1e-9);
+		layer.setTradeData(port3, worlds3, fleet3);
+		layer.draw(W, H);
+		let timeWorst = 0, timeMoving = 0;
+		for (const [, c] of craftPositions()) {
+			if (c.kind !== SystemLayer.CRAFT_FERRY || c.leg < 0) continue;
+			timeMoving += 1;
+			const d = distanceToSegments(c.x, c.y, timeLines);
+			if (d > timeWorst) timeWorst = d;
+		}
+		check('flight-time schematic scales each lane linearly to its Hohmann duration',
+			proportional, { longTrack, shortTrack, expectedRatio: 0.2 / 0.7 });
+		check('flight-time ferries move on their duration-scaled route lanes',
+			timeMoving >= 4 && timeWorst <= 1.5,
+			{ timeMoving, worst: Number(timeWorst.toFixed(3)) });
+		layer.setView(SystemLayer.VIEW_SYSTEM);
+		layer.setTradeData(port, worlds, fleet);
+	}
+
+	// A fleet record from another star is stale, exactly like the port's data:
+	// the port is still drawn, but no hull of that other star's berth appears.
+	const wrongFleet = { key: (port.key + 1) >>> 0, portIndex: 0, count: 3, docked: 1, sailing: 2, voyages: fleet.voyages };
+	layer.setTradeData(port, worlds, wrongFleet);
+	layer.draw(W, H);
+	check('a fleet whose key is not this port\u2019s is refused, so no hull is drawn or clickable',
+		findCraft(SystemLayer.CRAFT_HULL) === null && !!findCraft(SystemLayer.CRAFT_FERRY), null);
+	layer.setTradeData(port, worlds, fleet);
+
+	// Selection round-trips through the layer, and a closed layer clears it.
+	const sel = { kind: -99, leg: -99, slot: -99 };
+	layer.selectCraft(SystemLayer.CRAFT_HULL, -1, 2);
+	layer.selectedCraft(sel);
+	check('selectCraft/selectedCraft round-trip the craft identity',
+		sel.kind === SystemLayer.CRAFT_HULL && sel.leg === -1 && sel.slot === 2, sel);
+	layer.clearCraft();
+	layer.selectedCraft(sel);
+	check('clearCraft forgets the ship', sel.kind === SystemLayer.CRAFT_NONE, sel);
+	layer.selectCraft(SystemLayer.CRAFT_FERRY, 0, 3);
+	layer.exit();
+	layer.selectedCraft(sel);
+	check('closing the view forgets the ship as well', sel.kind === SystemLayer.CRAFT_NONE, sel);
+}
+
+// --- 12b. Flight-time view explains empty states -------------------------------
+{
+	const { canvas, layer } = pickingFixture();
+	const fixture = tradeFixture(layer);
+	const port = fixture.port;
+	port.worldCount = 1;
+	port.colony = { outpost: 0 };
+	port.intra = { legCount: 0, flow: 0, unservedPairs: 0, unpricedPairs: 0, legs: [] };
+	layer.setView(SystemLayer.VIEW_DV_TIME);
+	function message() {
+		canvas.ctx.texts.length = 0;
+		layer.draw(W, H);
+		return canvas.ctx.texts.join(' | ');
+	}
+	layer.setTradeData(null, null);
+	const uncolonized = message();
+	layer.setTradeData(port, fixture.worlds);
+	const oneWorld = message();
+	port.colony.outpost = 1;
+	const outpost = message();
+	port.colony.outpost = 0;
+	port.worldCount = 2;
+	const quiet = message();
+	fixture.worlds[1].outpost = 1;
+	const oneActive = message();
+	fixture.worlds[1].outpost = 0;
+	port.intra.flow = 1;
+	port.intra.unservedPairs = 1;
+	const blocked = message();
+	port.intra.unservedPairs = 0;
+	port.intra.unpricedPairs = 1;
+	const missing = message();
+	check('flight-time emptiness distinguishes no colony, one world, outpost, quiet, hull budget and missing geometry',
+		/No trade colony/.test(uncolonized) && /Fewer than two active worlds/.test(oneWorld)
+		&& /outpost/.test(outpost) && /No recent transfers/.test(quiet)
+		&& /Fewer than two active worlds/.test(oneActive)
+		&& /exceed the available in-system hull budgets/.test(blocked)
+		&& /geometry is unavailable/.test(missing)
+		&& /still settle statistically/.test(blocked) && /still settle statistically/.test(missing),
+		{ uncolonized, oneWorld, outpost, quiet, oneActive, blocked, missing });
+
+	// Even a stale previously-flying fleet must disappear when the entire port
+	// becomes an outpost, in the orrery as well as the time schematic.
+	const flying = tradeFixture(layer);
+	flying.port.colony = { outpost: 1 };
+	layer.setView(SystemLayer.VIEW_SYSTEM);
+	layer.setTradeData(flying.port, flying.worlds);
+	layer.draw(W, H);
+	const hit = { kind: -1, leg: -1, slot: -1 };
+	let foundFerry = false;
+	for (let y = 0; y < H && !foundFerry; y += 3) for (let x = 0; x < W; x += 3) {
+		layer.pickCraft(x, y, hit);
+		if (hit.kind === SystemLayer.CRAFT_FERRY) { foundFerry = true; break; }
+	}
+	check('an outpost never draws or picks a stale ferry', !foundFerry);
+}
+
+// --- 12c. Generated economy → flight-time view → selectable ferry ---------------
+{
+	const trade = require('../src/core/trade.js');
+	const sampling = require('../src/math/sampling.js');
+	const landmarks = require('../src/data/landmarks.js');
+	const model = galaxy.MILKY_WAY;
+	const field = sampling.sampleGalaxyStars(model, model.seed | 0, 300000);
+	const home = model.home.orbitTarget;
+	const net = trade.createNetwork({ seed: model.seed | 0, modelSeed: galaxy.DEFAULT_SEED,
+		homeX: home.x, homeY: home.y, homeZ: home.z, timeYears: 0 });
+	const genCtx = { model, field, member: null, name: '' };
+	const system = planets.createSystemRecord();
+	trade.discoverNearest(net, trade.startSystems(net, model, field, landmarks, []), genCtx, system);
+	trade.finalize(net);
+	trade.setExpansion(1);
+	for (let n = 0; n < 73; n++) {
+		trade.step(net, 12.5, 100000);
+		trade.settleAllPorts(net, net.time);
+	}
+	const port = net.ports[0];
+	const canvas = createStubCanvas();
+	const layer = SystemLayer.createSystemLayer(canvas);
+	genCtx.name = 'Rigil Kentaurus';
+	layer.enter(port.ref, genCtx);
+	layer.resize(W, H, 1);
+	layer.setView(SystemLayer.VIEW_DV_TIME);
+	layer.setTradeData(port, net.worlds, trade.portFleet(net, 0));
+	canvas.ctx.texts.length = 0;
+	const stocks = Array.from(port.colony.stock), pop = port.colony.pop;
+	layer.draw(W, H);
+	const labels = canvas.ctx.texts.slice();
+	const hit = { kind: -1, leg: -1, slot: -1 };
+	function findFerry() {
+		for (let y = 0; y < H; y += 3) for (let x = 0; x < W; x += 3) {
+			layer.pickCraft(x, y, hit);
+			if (hit.kind === SystemLayer.CRAFT_FERRY) return { leg: hit.leg, slot: hit.slot };
+		}
+		return null;
+	}
+	const ferry = findFerry();
+	const detail = ferry ? trade.intraCraftText(net, 0, ferry.leg, ferry.slot) : '';
+	if (ferry) layer.selectCraft(SystemLayer.CRAFT_FERRY, ferry.leg, ferry.slot);
+	const selected = { kind: -1, leg: -1, slot: -1 };
+	layer.selectedCraft(selected);
+	check('a generated capital actually draws a selectable ferry from settled trade',
+		port.worldCount === 2 && port.intra.legCount > 0 && !!ferry
+		&& selected.kind === SystemLayer.CRAFT_FERRY && selected.leg === ferry.leg && selected.slot === ferry.slot
+		&& /Rigil Kentaurus b/.test(detail) && /Rigil Kentaurus belt 1/.test(detail)
+		&& /passengers \/ trade y/.test(detail), { ferry, detail });
+	check('time-lane labels drop the shared star prefix but distinguish planet and belt',
+		labels.includes('b') && labels.includes('belt 1'), labels);
+	let otherViews = true;
+	for (const view of [SystemLayer.VIEW_SYSTEM, SystemLayer.VIEW_DV_CLASSIC, SystemLayer.VIEW_DV_RAILS]) {
+		layer.setView(view);
+		layer.draw(W, H);
+		if (!findFerry()) otherViews = false;
+	}
+	check('the same generated local fleet remains pickable in the system, classic and rail views', otherViews);
+	layer.setView(SystemLayer.VIEW_DV_TIME);
+	layer.setTimeRate(1);
+	for (let i = 0; i < 10; i++) { layer.stepTime(0.1, 0); layer.draw(W, H); }
+	check('drawing and animating real ferry traffic never changes economic stocks or population',
+		stocks.every((value, i) => value === port.colony.stock[i]) && pop === port.colony.pop);
+}
+
 // --- 12. No allocation across 1 000 draws, and the op budget --------------------
 {
 	const { canvas, layer } = pickingFixture();
@@ -814,13 +1180,14 @@ check('the icon constants are still the plan\'s and the star icon keeps its radi
 	const nBodies = layer.record.counts.planets + layer.record.belts.count;
 	const point = new Float64Array(2);
 
-	check('setView takes the three ids, cycles, and is what gates the map',
+	check('setView takes all four ids, cycles, and is what gates the map',
 		layer.setView(SystemLayer.VIEW_DV_CLASSIC) === SystemLayer.VIEW_DV_CLASSIC
 		&& layer.isMapOpen() === true
 		&& layer.cycleView() === SystemLayer.VIEW_DV_RAILS
+		&& layer.cycleView() === SystemLayer.VIEW_DV_TIME
 		&& layer.cycleView() === SystemLayer.VIEW_SYSTEM
 		&& layer.isMapOpen() === false
-		&& layer.setView(42) === SystemLayer.VIEW_DV_RAILS
+		&& layer.setView(42) === SystemLayer.VIEW_DV_TIME
 		&& layer.setView(NaN) === SystemLayer.VIEW_DEFAULT, layer.getView());
 
 	// The rail render's point: every node kind on its own row, so the escape

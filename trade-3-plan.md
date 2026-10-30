@@ -250,8 +250,10 @@ world here`, `star is an outpost`, `worlds full`, `no site worth settling`,
 and T4's `too expensive to reach` when `couple(candidate, world0) <
 MIN_FOUND_COUPLE` (0.08).
 
-T8 (auto-fill from intra passengers) is later. A star the AI founds stays
-one world until the player opens it.
+Autonomous expansion can also found a sibling when the port's population,
+coverage, crowding, visibility and cooldown gates permit. It uses the same
+habitat and coupling eligibility as player founding; it does not need the view
+open.
 
 ### 5.3 Settle
 
@@ -390,9 +392,12 @@ inside the logistic (that would double-count isolation and break the
 closed form's published `g`).
 
 **Founding a second world** (5.2) ranks by
-`habitat * couple(candidate, world0) / (1 + well[candidate] / DV_REF)`.
-A 50 km/s-away dwarf is a bad camp even if its ore cell is 1.4. The
-refusal `too expensive to reach` is this score below `MIN_FOUND_COUPLE`.
+`habitat * couple(candidate, world0) / (1 + well[candidate] / DV_REF)`, but
+eligibility tests the coupling itself against `MIN_FOUND_COUPLE` after the
+separate habitat floor. Apply the same test to player and autonomous founding;
+the habitat and well penalties rank sites, not reject an otherwise reachable
+belt a second time. A 50 km/s-away dwarf is still a bad camp. `siblings` shows
+both the score and the coupling gate.
 
 **One-world stars still feel lift.** The start-map scenario (one world per
 star, §8 of `trade-plan.md`) does not gain intra flow, but a high-well
@@ -441,8 +446,9 @@ overlay stays hidden in system view (`trade-plan.md` §4).
 - World markers on the planet/belt the site names: radius from
   `2 + 5.5√(pop/K)` in schematic pixels, growth colour as the galaxy rings,
   W1 hollow grey for an outpost, W9 dashed amber if starving.
-- Ambient dashes along the schematic for the three largest `intraFlow`
-  entries of the last settle: dim, cargo-coloured, **no state**. Closing V
+- Ambient dashes along the schematic for the three largest recent settled
+  flows: dim and cargo-coloured. The bounded recent window and the matching
+  ferry picture are specified in [`time-plan.md`](time-plan.md) §3. Closing V
   drops the draw; it does not drop the rates.
 - Card under `#sysread`:
 
@@ -454,16 +460,16 @@ overlay stays hidden in system view (`trade-plan.md` §4).
   ```
 
 The km/s is `dv[s,t]`, the same number the delta-v map would print for
-that pair. No intra hull interpolation. If a dash looks like a ship, it
-is a lie we accept until T6.
+that pair. T6's ferry picture is specified separately in
+[`time-plan.md`](time-plan.md) §3; it is not another cargo ledger.
 
 Browser items go on `deferred-browser-visual-plan.md`: world markers, a
 dash, the card.
 
 T5 status: **shipped as `trade.22`**. `system-layer.setTradeData` accepts only
 the opened star's port; the schematic draws every world with the shared
-growth/outpost/starvation marker language and the three largest last-settle
-flows as dim, state-free dashes. `main.js` wires the live port/world references
+growth/outpost/starvation marker language and the three largest recent
+flows as dim dashes. `main.js` wires the live port/world references
 at the existing 4 Hz readout cadence, and `#sysread` adds the world list,
 intra flow / km/s / couple / Hohmann lines, per-world lift and inter-family
 market. The previously unreachable sibling-founding path is wired too: while

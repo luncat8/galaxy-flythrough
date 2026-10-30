@@ -172,18 +172,6 @@
 	const SEED_STOCK_FRAC = 0.60;
 	const FOUND_STOCK_FRAC = 0.45;
 
-	// The reserve horizon scales with the fleet (trade-plan §6): a port's
-	// warehouse is authored in years of its own throughput, and a world whose
-	// ships take millennia to cross must hold millennia of stock or starve
-	// between two arrivals. One factor, set by the mode, so the warehouse law
-	// is unchanged and only its horizon moves.
-	let reserveScale = 1;
-	function setReserveScale(scale) {
-		reserveScale = scale > 0 ? scale : 1;
-		return reserveScale;
-	}
-	function getReserveScale() { return reserveScale; }
-
 	// Hash channels: the yield stream is per (planet slot, resource), the
 	// founding-age stream per slot. 464+ keeps them clear of the planet
 	// generator's own channels (0…~400).
@@ -479,7 +467,7 @@
 		inputRateOf(colony, INPUT_SCRATCH);
 		for (let r = 0; r < RESOURCE_COUNT; r++) {
 			const throughput = Math.max(colony.outBase[r], INPUT_SCRATCH[r]);
-			colony.stockCap[r] = (STOCK_BASE + STOCK_YEARS * throughput * colony.capacity) * reserveScale;
+			colony.stockCap[r] = STOCK_BASE + STOCK_YEARS * throughput * colony.capacity;
 		}
 		colony.outpost = 0;
 		colony.outpostY = 0;
@@ -626,22 +614,6 @@
 		colony.growth = populationRateAt(colony, colony.coverage);
 		colony.starving = !colony.outpost && colony.coverage < STARVE_COVERAGE ? 1 : 0;
 		return colony;
-	}
-
-	// Re-scale a live colony's warehouse when the mode changes: the cap moves by
-	// the same factor and the contents follow it (a world that keeps a longer
-	// year count does not keep less grain). The formula is monotone, so a
-	// shrinking scale clamps instead of going negative.
-	function rescaleColonyReserves(colony, factor) {
-		if (colony.outpost || !(factor > 0) || factor === 1) return factor;
-		for (let r = 0; r < RESOURCE_COUNT; r++) {
-			const cap = colony.stockCap[r] * factor;
-			const stock = colony.stock[r] * factor;
-			colony.stockCap[r] = cap;
-			colony.stock[r] = stock > cap ? cap : stock;
-		}
-		refreshColonyHealth(colony);
-		return factor;
 	}
 
 	// Advance one colony to `nowYears`. Returns the population change, so the
@@ -1062,7 +1034,6 @@
 		SITE_BELT,
 		R_ORE, R_VOLATILE, R_RARE, R_CHEM, R_AMAT, R_FOOD, R_BIO, R_PEOPLE,
 		R_ROBOTS, R_COMPUTE, R_SOFT, R_DATA, R_ART,
-		setReserveScale, getReserveScale, rescaleColonyReserves,
 		POP_CAP_BASE, G_MAX, DECLINE, NEED_BUFFER_Y, STOCK_BASE, STOCK_YEARS,
 		EXPORT_RESERVE_FRAC, OUTPOST_POP_M, POP_MILESTONES, STARVE_COVERAGE,
 		TAG_SURPLUS, TAG_FAIR, TAG_SCARCE, scarcityOf, tradeTagOf, interFamilyTagOf, tradeTagName,

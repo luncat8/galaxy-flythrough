@@ -128,19 +128,18 @@
 	// and opening the view could delay real cargo. Recorded in
 	// `time-plan.md` §3 and `trade-4-plan.md` §0.2.
 	//
-	// Twelve ferries and the three largest legs per port. No allocation after the
-	// first open.
+	// Twelve ferries and the three largest legs per port.
 	const INTRA_FERRY_COUNT = 12;
 	const INTRA_FLEET_LEGS = 3;
 	// A round trip has to fit the class's budget with margin: the ferry comes back.
-	const INTRA_ROUND_TRIP = 2;
 	const INTRA_DV_RESERVE = 1.1;
-	const INTRA_MIN_YEARS = 0.02;
 	// The class that flies it: the cheapest in-system class whose budget covers
 	// the round trip. `chemical` (20 km/s) is the short hop, `nuclear` (40 km/s)
 	// the rest; nothing interstellar ever flies a planet-to-planet leg.
-	function intraClassFor(dvMps) {
-		const need = dvMps * INTRA_ROUND_TRIP * INTRA_DV_RESERVE;
+	function intraClassFor(dvMps, returnDvMps) {
+		const back = returnDvMps === undefined ? dvMps : returnDvMps;
+		if (!(dvMps >= 0) || !Number.isFinite(dvMps) || !(back >= 0) || !Number.isFinite(back)) return null;
+		const need = (dvMps + back) * INTRA_DV_RESERVE;
 		let best = null;
 		for (let i = 0; i < deltav.SHIP_CLASSES.length; i++) {
 			const cls = deltav.SHIP_CLASSES[i];
@@ -180,6 +179,7 @@
 	// resets it, so a quiet network is quiet and a busy one is responsive.
 	const WAIT_YEARS_MAX = 500;
 	const TICK_YEARS = 25;              // colonisation check
+	const INTRA_BUCKET_YEARS = TICK_YEARS;
 	const FIRST_LOAD_YEARS = 0.5;
 	// A colony can send a wave a few centuries of flight away. 300 ly was the
 	// designed range, but the local sky is a sparse sample: the landmark shell
@@ -243,33 +243,38 @@
 	// above the ladder's top the queue costs more than a frame. The wide
 	// star range (up to 99 Myr/s) exceeds it, and the readout says so.
 	const RATE_MAX = 2000;
-	// The special mode's generation ship: 1 light-year per 33 trade years,
-	// read at the default pace. The mode syncs to the default star rate, so
-	// 1 000 trade years pass per wall second and the ship covers 30 ly per
-	// wall second: the start map's nearest hop (~25 ly) takes under a second,
-	// a 300 ly frontier hop 10 s, and the 600 ly maximum 20 s. A pace for this
-	// scenario, not a fraction of c; the freighter is still 70–150× faster.
-	// The first calibration (1 ly per 400 years) took 10 s for the nearest hop
-	// and 76 s for the median, and made the mode look stalled.
+	// The generation ship (trade.36): 1 light-year per 33 trade years, the crawl
+	// a ship that must carry its own biosphere actually flies at. It is a hull a
+	// colony *builds* for one voyage — not a mode: a stranding world the whole
+	// freighter fleet and every expedition is out of reach of is the one thing
+	// this ship exists for, and the price of reaching it is the centuries. A
+	// viewer who wants to watch it move raises the colony clock; the ship never
+	// turns around, and nothing else in the network changes speed.
 	const GENERATION_LY_PER_YEAR = 3e-2;
-	// The star-clock rung the generation mode syncs to (Myr/s): the default.
-	const GENERATION_STAR_MYR = 1;
+	// A generation ship is only worth building for a world that deserves
+	// centuries: a habitat score well above the ordinary founding floor.
+	const GENERATION_MIN_HABITAT = 0.42;
+	// A generation voyage is the work of centuries, so a colony commits to one
+	// and not to another: the cooldown is a generation's own (20 000 years),
+	// and no more than two are ever in flight. Neither number is a mode — they
+	// are the same kind of restraint a port already has on expeditions.
+	const GENERATION_COOLDOWN = 20000;
+	const MAX_GENERATION_IN_FLIGHT = 2;
+	// ...and it will not be sent past this, however stranded the world is:
+	// four times the 600 ly an expedition can reach, inside the 3 000 ly a
+	// freighter route can still hold, so the colony it plants can be traded
+	// with even though nothing could have founded it.
+	const GENERATION_MAX_FOUND_LY = 2400;
 	// The legibility floor on any voyage. A 10 ly freighter hop is 2–5 trade
 	// years, which at the 100 y/s default is a few frames — it reads as a
 	// teleport. Half a wall second per hop keeps the hulls visibly in flight.
 	const MIN_LEG_YEARS = 50;
-	// ...and a fleet that slow needs a matching warehouse. The colony economy
-	// is authored in years of its own throughput (a 150-year reserve, a 20-year
-	// supply buffer); with 10 000-year voyages a port would starve between two
-	// arrivals, growth would stall below the big-colony gate and the special
-	// mode would show a dying network instead of a slow one. The horizon moves
-	// to 5 000 years, half the nearest hop: measured on the start map, coverage
-	// holds at 0.47 over a minute. Nothing else about the warehouse law changes.
-	const GENERATION_RESERVE_YEARS = 5000;
-	let generationMode = 0;
+	// (trade.36 removed the global "every hull is a generation ship" mode and
+	// its stretched warehouses: one colony's long voyage does not slow the
+	// freight fleet, so the authored 150-year reserve is right for its cargo.)
 	// Expansion authority (W6): armed by default, so the scenario behaves as
 	// before. Disarmed, the freight fleet keeps flying and the arrivals keep
-	// coming — only new colonies stop. One flag beside generationMode.
+	// coming — only new colonies stop.
 	let expansionOn = 1;
 
 	// A shipment is sized to the destination's draw, not to the hold: a hold
@@ -361,11 +366,17 @@
 			tH: new Float64Array(MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR),
 			couple,
 			intraFlow: new Float64Array(INTRA_FLOW_COUNT),
+			intraMass: new Float64Array(INTRA_FLOW_COUNT),
+			createdAt: 0,
 			key: 0, name: '', kind: 0, index: 0,
 			arrivals: 0, received: 0,
 			// Trade years of the last sponsored expedition; `-INF` marks a seed
 			// port, ready as soon as its colony passes the big gate.
 			lastExpedition: -1e9,
+			// Trade years of the last *generation* ship this colony built; a
+			// voyage is a generation's work, so a colony builds one and then
+			// lives with the answer for a long time (trade.36).
+			lastGeneration: -1e9,
 			// Trade years of the last intra-system sibling founding (T8, trade.32);
 			// stamped to `nowYears` at `addPort` so a newly settled star matures
 			// through one full cooldown before spawning sibling worlds.
@@ -378,10 +389,7 @@
 			// gate owns it; the drawing layer, the settle guard and the panel
 			// all read it rather than re-deriving the birth channel.
 			skyVisible: 1,
-			// The intra fleet (trade.25), allocated on the first open of this
-			// system and never re-allocated: `online` is 1 while the schematic
-			// is showing this port, `hulls` are the twelve records, `clock` is
-			// the trade year the drawn positions interpolate at.
+			// Recent settled transfers and the ferry picture, independent of view.
 			intra: null,
 			x: 0, y: 0, z: 0,
 			ref: { kind: 0, index: 0, key: 0, x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0 },
@@ -393,6 +401,10 @@
 			index: 0, hull: 0, hold: 0, cargo: NO_RESOURCE, amount: 0,
 			state: SHIP_DOCKED, port: -1, from: -1, to: -1, candidate: -1,
 			depart: 0, arrive: 0, leg: 0, revision: 0, trips: 0, delivered: 0, founded: 0, waits: 0,
+			// A generation ship is built for one voyage to a world no ordinary
+			// hull can reach (trade.36). It carries its own ecosystem, so it
+			// flies the crawl and never turns around.
+			generation: 0,
 			// The chord the overlay draws the hull on: `from`'s live position at
 			// fraction 0, `to`'s at 1. An ordinary voyage runs 0 → 1; a diverted
 			// one runs from where the hull turned back to 0 (§9.4), which is what
@@ -447,6 +459,10 @@
 			outposts: 0,
 			seedPorts: options && options.seedPorts !== undefined ? Math.max(0, options.seedPorts | 0) : SEED_PORTS,
 			shipCount: 0,
+			// Generation ships this network has built for worlds nothing else
+			// could reach (trade.36). The Trade panel prints it; nothing reads
+			// it back.
+			generationLaunched: 0,
 			candidateCount: 0,
 			log: createLog(),
 			routes: createRoutes(),
@@ -901,6 +917,7 @@
 		INTRA_PAX_REMAIN.fill(0); INTRA_PAX_ROOM.fill(0);
 		INTRA_PAX_SENT.fill(0); INTRA_PAX_RECEIVED.fill(0);
 		port.intraFlow.fill(0);
+		port.intraMass.fill(0);
 		for (let s = 0; s < port.worldCount; s++) {
 			const world = net.worlds[port.worldIdx[s]];
 			if (world.outpost) continue;
@@ -942,7 +959,7 @@
 					if (!(couple > 0)) continue;
 					const offer = supply * targetDemand * couple / denominator;
 					if (!(offer > 0)) continue;
-					let moved = 0;
+					let moved = 0, mass = 0;
 					if (f === economy.INTRA_PAX) {
 						let amount = offer;
 						if (amount > INTRA_PAX_REMAIN[s]) amount = INTRA_PAX_REMAIN[s];
@@ -953,6 +970,7 @@
 							INTRA_PAX_SENT[s] += amount;
 							INTRA_PAX_RECEIVED[t] += amount;
 							moved = amount;
+							mass = economy.tonsForUnits(economy.R_PEOPLE, amount / POP_PER_COLONIST_UNIT);
 						}
 					} else {
 						const sourceBase = s * economy.RESOURCE_COUNT;
@@ -970,9 +988,14 @@
 							INTRA_SENT[sourceBase + r] += amount;
 							INTRA_RECEIVED[targetBase + r] += amount;
 							moved += amount;
+							mass += economy.tonsForUnits(r, amount);
 						}
 					}
-					if (moved > 0) port.intraFlow[intraFlowIndex(s, t, f)] += moved;
+					if (moved > 0) {
+						const flowIndex = intraFlowIndex(s, t, f);
+						port.intraFlow[flowIndex] += moved;
+						port.intraMass[flowIndex] += mass;
+					}
 				}
 			}
 		}
@@ -998,9 +1021,8 @@
 				world.pop = pop;
 			}
 		}
-		// The picture, not a second ledger (trade.34): the settle's own flows are
-		// what the ferries draw.
-		noteIntraLegs(net, portIndex);
+		// Only completed transfers enter the recent-average picture.
+		noteIntraLegs(net, portIndex, time);
 	}
 
 	function distributePortInbound(net, index, r, units) {
@@ -1021,10 +1043,13 @@
 		INTRA_READOUT_FLOW.fill(0);
 		INTRA_READOUT_FROM.fill(-1); INTRA_READOUT_TO.fill(-1); INTRA_READOUT_FAMILY.fill(-1);
 		for (let s = 0; s < port.worldCount; s++) {
+			const source = net.worlds[port.worldIdx[s]];
+			if (!source || source.outpost) continue;
 			for (let t = 0; t < port.worldCount; t++) {
-				if (s === t) continue;
+				const target = net.worlds[port.worldIdx[t]];
+				if (s === t || !target || target.outpost) continue;
 				for (let f = 0; f < INTRA_FAMILY_COUNT; f++) {
-					const amount = port.intraFlow[intraFlowIndex(s, t, f)];
+					const amount = port.intra ? port.intra.rates[intraFlowIndex(s, t, f)] : 0;
 					if (!(amount > 0)) continue;
 					let pos = 0;
 					while (pos < 3 && amount <= INTRA_READOUT_FLOW[pos]) pos++;
@@ -1042,7 +1067,7 @@
 				}
 			}
 		}
-		let text = '\nintra     flow · km/s';
+		let text = '\nintra     recent flow · km/s';
 		let count = 0;
 		for (let k = 0; k < 3 && INTRA_READOUT_FROM[k] >= 0; k++) {
 			const fromSlot = INTRA_READOUT_FROM[k], toSlot = INTRA_READOUT_TO[k];
@@ -1050,13 +1075,17 @@
 			const to = net.worlds[port.worldIdx[toSlot]];
 			const pair = fromSlot * MAX_WORLDS_PER_STAR + toSlot;
 			const family = INTRA_READOUT_FAMILY[k];
+			const hasRoute = port.tH[pair] > 0 && Number.isFinite(port.tH[pair])
+				&& port.dv[pair] >= 0 && Number.isFinite(port.dv[pair]);
 			text += '\n          ' + economy.INTRA_FAMILY_SHORT[family] + ' ' + to.name + ' ← ' + from.name
-				+ ' · ' + (port.dv[pair] / 1000).toFixed(1) + ' km/s'
+				+ ' · ' + formatIntraRate(INTRA_READOUT_FLOW[k]) + ' t-equivalent / trade y';
+			if (hasRoute) text += ' · ' + (port.dv[pair] / 1000).toFixed(1) + ' km/s'
 				+ ' · couple ' + port.couple[pair].toFixed(2)
 				+ ' · Hohmann ' + deltav.formatDuration(port.tH[pair]);
+			else text += ' · route data unavailable';
 			count += 1;
 		}
-		if (count === 0) text += '\n          no current transfer';
+		if (count === 0) text += '\n          no recent transfer';
 		text += '\nlift      ';
 		for (let s = 0; s < port.worldCount; s++) {
 			const world = net.worlds[port.worldIdx[s]];
@@ -1346,10 +1375,12 @@
 		return separationLy(END_A[0], END_A[1], END_A[2], END_B[0], END_B[1], END_B[2]);
 	}
 
-	// The hull's speed in ly per trade year: the authored table, or the
-	// generation crawl while the special mode is on.
+	// The hull's speed in ly per trade year: the authored table. A generation
+	// ship is not a hull class in the table — it is one voyage flown by a ship
+	// a colony built, so the booking passes its speed explicitly.
 	function hullSpeed(hullIndex) {
-		return generationMode ? GENERATION_LY_PER_YEAR : HULLS[hullIndex].lyPerYear;
+		const hull = HULLS[hullIndex];
+		return hull ? hull.lyPerYear : HULLS[0].lyPerYear;
 	}
 
 	// THE trade-clock law: a leg's length in trade years. Speed is the hull's
@@ -1360,8 +1391,11 @@
 	function legYears(distanceKpc, hullIndex) {
 		return legYearsLy(distanceKpc * LY_PER_KPC, hullIndex);
 	}
-	function legYearsLy(distanceLy, hullIndex) {
-		const years = distanceLy / hullSpeed(hullIndex);
+	// `speed` is the generation ship's own pace when one is flying the leg;
+	// otherwise the hull table's.
+	function legYearsLy(distanceLy, hullIndex, speed) {
+		const lyPerYear = speed > 0 ? speed : hullSpeed(hullIndex);
+		const years = distanceLy / lyPerYear;
 		return years > MIN_LEG_YEARS ? years : MIN_LEG_YEARS;
 	}
 
@@ -1421,20 +1455,20 @@
 
 	// The linear intercept plan for one leg, against `capLy` (MAX_LEG_LY for
 	// freight, MAX_FOUND_LY for a founding). Fills and returns `out`.
-	function planLeg(net, kindA, indexA, kindB, indexB, hullIndex, capLy, out) {
+	function planLeg(net, kindA, indexA, kindB, indexB, hullIndex, capLy, out, speed) {
 		const plan = out || LEG_PLAN;
 		endpointPos(net, kindA, indexA, PLAN_A);
 		endpointPos(net, kindB, indexB, PLAN_B);
 		const ly = separationLy(PLAN_A[0], PLAN_A[1], PLAN_A[2], PLAN_B[0], PLAN_B[1], PLAN_B[2]);
-		const speed = hullSpeed(hullIndex);
+		const lyPerYear = speed > 0 ? speed : hullSpeed(hullIndex);
 		plan.predicted = 0;
 		plan.outrun = 0;
 		plan.ly = ly;
-		plan.years = legYearsLy(ly, hullIndex);
+		plan.years = legYearsLy(ly, hullIndex, speed);
 		plan.reachable = ly <= capLy ? 1 : 0;
 		if (!plan.reachable || !net.geom.moving) return plan;
 		const rdot = endpointRecession(net, kindA, indexA, kindB, indexB, PLAN_A, PLAN_B, ly);
-		const closing = speed - rdot;
+		const closing = lyPerYear - rdot;
 		// The endpoint outruns the hull: there is no meeting point, however long
 		// the voyage is booked for. Refusing it is the honest reading of a sky
 		// that shears faster than the fleet flies. `outrun` is the one refusal a
@@ -1519,55 +1553,68 @@
 		return solveRemaining(net, kindA, indexA, kindB, indexB, 1, hullIndex, capLy, plan);
 	}
 
-	// --- The intra fleet's picture (trade.34) --------------------------------
-	// The schematic's ferries. Four decisions are encoded here and nowhere else:
-	//
-	//   1. The fleet is a *picture of the average*. A settle moves the couple's
-	//      mass instantly, on the network's clock; `noteIntraLegs` only records
-	//      the three largest legs it just paid for, so opening or closing the
-	//      view cannot change a stock. The picture is the flow, drawn.
-	//   2. The clock is the system's. Ferry positions are computed by
-	//      `system-layer.js` from its own clock and the leg's delta-v time, so a
-	//      viewer at 0.01 y/s sees the voyage while the economy runs ahead of it.
-	//   3. The class is a gate. A pair whose round trip exceeds every in-system
-	//      class's delta-v budget is *unserved*: it still trades (the average is
-	//      physical), but no ferry is drawn on it, and the readout counts it.
-	//   4. Nothing is allocated after the first open: three leg records per port.
+	// --- The intra fleet's picture ------------------------------------------
+	// Buckets contain only transfers already applied to the economy. The picture
+	// is independent of the schematic and expires when those transfers age out.
 	function createIntraLeg() {
-		return { from: -1, to: -1, family: -1, flow: 0, dv: 0, classId: '', legYears: 0, ferries: 1 };
+		return { from: -1, to: -1, family: -1, flow: 0, cargoRate: 0, peopleRate: 0,
+			dv: 0, returnDv: 0, classId: '', legYears: 0, ferries: 1 };
 	}
 
 	function ensureIntra(port) {
 		if (port.intra) return port.intra;
 		const legs = new Array(INTRA_FLEET_LEGS);
 		for (let i = 0; i < INTRA_FLEET_LEGS; i++) legs[i] = createIntraLeg();
-		port.intra = { legs, legCount: 0, flow: 0, unserved: new Uint8Array(MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR), unservedPairs: 0 };
+		port.intra = {
+			legs, legCount: 0, flow: 0, span: 0, bucket: null, recordedAt: -Infinity,
+			current: new Float64Array(INTRA_FLOW_COUNT), previous: new Float64Array(INTRA_FLOW_COUNT),
+			rates: new Float64Array(INTRA_FLOW_COUNT),
+			unserved: new Uint8Array(MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR),
+			unservedPairs: 0, unpricedPairs: 0,
+		};
 		return port.intra;
 	}
 
-	// The pair scratch behind noteIntraLegs: total flow per ordered pair and the
-	// family that carried most of it. Preallocated at module scope.
 	const INTRA_PAIR_FLOW = new Float64Array(MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR);
 	const INTRA_PAIR_FAMILY = new Int8Array(MAX_WORLDS_PER_STAR * MAX_WORLDS_PER_STAR);
+	const INTRA_FERRY_REMAINDER = new Float64Array(INTRA_FLEET_LEGS);
 
-	// Called once per settle, after the flows are applied: pick the three legs
-	// the ferries will fly and price each one. `port.intraFlow` is the settle's
-	// own record, so the picture can never disagree with the economy about which
-	// pair moved and how much.
-	function noteIntraLegs(net, portIndex) {
+	function noteIntraLegs(net, portIndex, time) {
 		const port = net.ports[portIndex];
-		ensureIntra(port);
-		const intra = port.intra;
+		const intra = ensureIntra(port);
+		const at = time === undefined ? net.time : time;
+		if (at < intra.recordedAt) return intra.legCount;
+		const bucket = Math.floor(at / INTRA_BUCKET_YEARS);
+		if (intra.bucket === null) intra.bucket = bucket;
+		else if (bucket !== intra.bucket) {
+			if (bucket === intra.bucket + 1) intra.previous.set(intra.current);
+			else intra.previous.fill(0);
+			intra.current.fill(0);
+			intra.bucket = bucket;
+		}
+		if (at > intra.recordedAt) {
+			for (let i = 0; i < INTRA_FLOW_COUNT; i++) intra.current[i] += port.intraMass[i];
+			intra.recordedAt = at;
+		}
+		const start = Math.max(port.createdAt, (bucket - 1) * INTRA_BUCKET_YEARS);
+		intra.span = Math.max(0, at - start);
+		for (let i = 0; i < INTRA_FLOW_COUNT; i++) {
+			intra.rates[i] = intra.span > 0 ? (intra.current[i] + intra.previous[i]) / intra.span : 0;
+		}
+
 		INTRA_PAIR_FLOW.fill(0);
 		INTRA_PAIR_FAMILY.fill(-1);
-		let pairs = port.worldCount * MAX_WORLDS_PER_STAR;
+		const pairs = port.worldCount * MAX_WORLDS_PER_STAR;
 		for (let s = 0; s < port.worldCount; s++) {
+			const source = net.worlds[port.worldIdx[s]];
+			if (!source || source.outpost) continue;
 			for (let t = 0; t < port.worldCount; t++) {
-				if (s === t) continue;
+				const target = net.worlds[port.worldIdx[t]];
+				if (s === t || !target || target.outpost) continue;
 				const pair = s * MAX_WORLDS_PER_STAR + t;
 				let total = 0, best = -1, bestFlow = 0;
 				for (let f = 0; f < INTRA_FAMILY_COUNT; f++) {
-					const amount = port.intraFlow[intraFlowIndex(s, t, f)];
+					const amount = intra.rates[intraFlowIndex(s, t, f)];
 					if (!(amount > 0)) continue;
 					total += amount;
 					if (amount > bestFlow) { bestFlow = amount; best = f; }
@@ -1575,100 +1622,314 @@
 				if (total > 0) { INTRA_PAIR_FLOW[pair] = total; INTRA_PAIR_FAMILY[pair] = best; }
 			}
 		}
-		intra.legCount = 0;
-		intra.flow = 0;
+		intra.legCount = 0; intra.flow = 0;
+		intra.unserved.fill(0); intra.unservedPairs = 0; intra.unpricedPairs = 0;
 		for (let p = 0; p < pairs; p++) intra.flow += INTRA_PAIR_FLOW[p];
-		// Insertion by descending flow, three slots, no allocation.
 		for (let p = 0; p < pairs; p++) {
 			const amount = INTRA_PAIR_FLOW[p];
 			if (!(amount > 0)) continue;
 			const s = (p / MAX_WORLDS_PER_STAR) | 0;
 			const t = p % MAX_WORLDS_PER_STAR;
 			const dv = port.dv[p];
-			const cls = intraClassFor(dv);
-			if (!cls && !intra.unserved[p]) { intra.unserved[p] = 1; intra.unservedPairs++; }
-			if (!cls) continue;
+			const returnDv = port.dv[t * MAX_WORLDS_PER_STAR + s];
+			const years = port.tH[p] / deltav.SECONDS_PER_YEAR;
+			if (!(years > 0) || !Number.isFinite(years) || !(dv >= 0) || !Number.isFinite(dv)
+				|| !(returnDv >= 0) || !Number.isFinite(returnDv)) {
+				intra.unserved[p] = 2; intra.unpricedPairs++;
+				continue;
+			}
+			const cls = intraClassFor(dv, returnDv);
+			if (!cls) { intra.unserved[p] = 1; intra.unservedPairs++; continue; }
 			let pos = 0;
 			while (pos < intra.legCount && amount <= intra.legs[pos].flow) pos++;
 			if (pos >= INTRA_FLEET_LEGS) continue;
 			for (let k = INTRA_FLEET_LEGS - 1; k > pos; k--) copyIntraLeg(intra.legs[k - 1], intra.legs[k]);
 			const leg = intra.legs[pos];
-			const years = port.tH[p] / deltav.SECONDS_PER_YEAR;
-			leg.from = s;
-			leg.to = t;
-			leg.family = INTRA_PAIR_FAMILY[p];
+			leg.from = s; leg.to = t; leg.family = INTRA_PAIR_FAMILY[p];
 			leg.flow = amount;
-			leg.dv = dv;
-			leg.classId = cls.id;
-			leg.legYears = years > INTRA_MIN_YEARS ? years : INTRA_MIN_YEARS;
+			leg.cargoRate = intra.rates[intraFlowIndex(s, t, economy.INTRA_BULK)]
+				+ intra.rates[intraFlowIndex(s, t, economy.INTRA_GOODS)];
+			leg.peopleRate = intra.rates[intraFlowIndex(s, t, economy.INTRA_PAX)]
+				* POP_PER_COLONIST_UNIT * 1e6 / economy.RESOURCES[economy.R_PEOPLE].unitMassT;
+			leg.dv = dv; leg.returnDv = returnDv; leg.classId = cls.id; leg.legYears = years;
 			if (intra.legCount < INTRA_FLEET_LEGS) intra.legCount++;
 		}
 		splitFerries(intra);
 		return intra.legCount;
 	}
 
-	// The twelve ferries, split across the legs in proportion to their shares —
-	// at least one each, and never so many on one leg that another has none.
-	// Computed here, once per settle, so the drawing layer only reads numbers.
 	function splitFerries(intra) {
 		let total = 0;
 		for (let i = 0; i < intra.legCount; i++) total += intra.legs[i].flow;
 		if (!(total > 0)) return;
-		const cap = INTRA_FERRY_COUNT - intra.legCount + 1;
+		const remaining = INTRA_FERRY_COUNT - intra.legCount;
+		let assigned = intra.legCount;
 		for (let i = 0; i < intra.legCount; i++) {
-			const leg = intra.legs[i];
-			let n = Math.round(INTRA_FERRY_COUNT * leg.flow / total);
-			if (n < 1) n = 1;
-			if (n > cap) n = cap;
-			leg.ferries = n;
+			const share = remaining * intra.legs[i].flow / total;
+			const whole = Math.floor(share);
+			intra.legs[i].ferries = 1 + whole;
+			INTRA_FERRY_REMAINDER[i] = share - whole;
+			assigned += whole;
+		}
+		while (assigned < INTRA_FERRY_COUNT) {
+			let best = 0;
+			for (let i = 1; i < intra.legCount; i++) {
+				if (INTRA_FERRY_REMAINDER[i] > INTRA_FERRY_REMAINDER[best]) best = i;
+			}
+			intra.legs[best].ferries++;
+			INTRA_FERRY_REMAINDER[best] = -1;
+			assigned++;
 		}
 	}
 
 	function copyIntraLeg(source, target) {
-		target.from = source.from;
-		target.to = source.to;
-		target.family = source.family;
-		target.flow = source.flow;
-		target.dv = source.dv;
-		target.classId = source.classId;
-		target.legYears = source.legYears;
-		target.ferries = source.ferries;
+		target.from = source.from; target.to = source.to; target.family = source.family;
+		target.flow = source.flow; target.cargoRate = source.cargoRate; target.peopleRate = source.peopleRate;
+		target.dv = source.dv; target.returnDv = source.returnDv; target.classId = source.classId;
+		target.legYears = source.legYears; target.ferries = source.ferries;
 	}
 
-	// The fleet block of the opened system's readout (time-plan §3): the average
-	// the settle paid and the legs the ferries are drawing, with the delta-v and
-	// the flight time a viewer actually sees.
+	function formatIntraRate(v) {
+		if (v >= 100) return Math.round(v).toLocaleString('en-US');
+		if (v > 0 && v < 0.1) return v.toPrecision(2);
+		return v.toFixed(1);
+	}
+
+	// The fleet is an illustration of real recent transfers, not another ledger.
 	function intraFleetText(net, index) {
 		if (!(index >= 0 && index < net.portCount)) return '';
 		const port = net.ports[index];
 		const intra = port.intra;
+		if (port.colony.outpost) return '\nfleet     inactive · this port is an outpost';
 		if (!intra) return '';
 		const worldName = (slot) => {
 			if (!(slot >= 0 && slot < port.worldCount)) return '?';
 			const world = net.worlds[port.worldIdx[slot]];
-			return (world && world.name ? world.name : 'w' + slot).slice(0, 12);
+			return world && world.name ? world.name : 'w' + slot;
 		};
 		const familyName = (f) => economy.INTRA_FAMILY_SHORT[f] || '?';
-		const fmt = (v) => (v >= 100 ? Math.round(v).toLocaleString('en-US') : v.toFixed(1));
 		let text = '\nfleet     ' + INTRA_FERRY_COUNT + ' ferries';
 		if (intra.legCount === 0) {
-			text += ' in port \u00b7 no transfer this settle';
+			text += intra.flow > 0 ? ' in port \u00b7 no flyable recent route' : ' in port \u00b7 no recent transfer';
 		} else {
 			text += ' \u00b7 ' + intra.legCount + (intra.legCount === 1 ? ' leg' : ' legs')
-				+ ' \u00b7 ' + fmt(intra.flow) + ' / settle'
+				+ ' \u00b7 port ' + formatIntraRate(intra.flow) + ' t-equivalent / trade y'
 				+ ' \u00b7 system clock';
 		}
-		if (intra.unservedPairs > 0) text += ' \u00b7 ' + intra.unservedPairs + ' unserved';
+		if (intra.unservedPairs > 0) text += ' \u00b7 ' + intra.unservedPairs + ' over hull budget';
+		if (intra.unpricedPairs > 0) text += ' \u00b7 ' + intra.unpricedPairs + ' missing route data';
 		for (let i = 0; i < intra.legCount; i++) {
 			const leg = intra.legs[i];
 			text += '\n          ' + leg.classId.padEnd(9)
 				+ familyName(leg.family).padEnd(6)
 				+ worldName(leg.from) + ' \u2192 ' + worldName(leg.to)
 				+ '  ' + (leg.dv / 1000).toFixed(1) + ' km/s'
-				+ '  ' + leg.legYears.toFixed(2) + ' y'
-				+ '  ' + fmt(leg.flow) + ' t';
+				+ '  ' + deltav.formatDuration(leg.legYears * deltav.SECONDS_PER_YEAR)
+				+ '  ' + formatIntraRate(leg.flow) + ' t-equivalent / trade y';
 		}
 		return text;
+	}
+
+	// --- The port's freighters (trade.35) -----------------------------------
+	// The system view's second craft class, and the only ships *every* colony
+	// has: the network's own hulls, the ones that actually carry the trade.
+	// The twelve ferries are a picture of an in-system settle, and a settle
+	// needs two worlds — the planet generator's chain leaves most systems with
+	// a single settleable world, so a view that only drew ferries drew nothing
+	// in almost every colony. A hull is not a picture: it is the ship whose
+	// booked leg the cargo moved on, so drawing it is showing the trade.
+	//
+	// The record is the layer's whole input. `dir` is one of the three voyage
+	// ids (the same numbers system-layer.js reads): DOCKED on the pad, OUT on a
+	// leg that started here, IN on one that ends here. `progress` is the
+	// voyage's elapsed fraction — the drawing puts it on the escape row, which
+	// is the map's way out of the system, and the readout prints the percentage
+	// so a fraction is never mistaken for a distance.
+	const VOYAGE_DOCKED = 0, VOYAGE_OUT = 1, VOYAGE_IN = 2;
+	const MAX_PORT_FLEET = 12;
+	function createVoyage() {
+		return {
+			ship: -1, dir: VOYAGE_DOCKED, progress: 0,
+			hullName: '', cargoName: '', amount: 0, tons: 0,
+			legYears: 0, other: '', depart: 0, arrive: 0, trips: 0, delivered: 0,
+		};
+	}
+	const PORT_FLEET = { key: 0, portIndex: -1, count: 0, docked: 0, sailing: 0, voyages: [] };
+	for (let i = 0; i < MAX_PORT_FLEET; i++) PORT_FLEET.voyages.push(createVoyage());
+
+	// Fill `out` (default: the shared record) from the network's ships. Docked
+	// hulls come first so a berth of twelve never hides the two that are out;
+	// the cap is the fleet's own maximum, and what does not fit is counted in
+	// `sailing`/`docked` rather than silently dropped.
+	function portFleet(net, index, out) {
+		const fleet = out || PORT_FLEET;
+		fleet.key = 0;
+		fleet.portIndex = index;
+		fleet.count = 0;
+		fleet.docked = 0;
+		fleet.sailing = 0;
+		if (!net || !(index >= 0 && index < net.portCount)) return fleet;
+		const port = net.ports[index];
+		fleet.key = port.key >>> 0;
+		// Docked first, then outbound, then inbound: the berth is what the
+		// frame can always show, so it gets the slots.
+		for (let pass = 0; pass < 3; pass++) {
+			for (let i = 0; i < net.shipCount; i++) {
+				const ship = net.ships[i];
+				if (ship.state === SHIP_CREWED || ship.state === SHIP_FOUNDING) continue;
+				let dir = -1;
+				if (pass === 0) {
+					// A waiting hull is a hull at the port: it holds the pad, polls
+					// for a cargo and is drawn where it is, not somewhere it is not.
+					if ((ship.state === SHIP_DOCKED || ship.state === SHIP_WAITING) && ship.port === index) {
+						dir = VOYAGE_DOCKED;
+						fleet.docked += 1;
+					}
+				} else if (pass === 1) {
+					if (ship.state === SHIP_SAILING && ship.from === index) dir = VOYAGE_OUT;
+				} else if (ship.state === SHIP_SAILING && ship.to === index) dir = VOYAGE_IN;
+				if (dir < 0) continue;
+				if (dir !== VOYAGE_DOCKED) fleet.sailing += 1;
+				if (fleet.count >= MAX_PORT_FLEET) continue;
+				const v = fleet.voyages[fleet.count++];
+				const hull = HULLS[ship.hull] || HULLS[0];
+				const far = dir === VOYAGE_OUT ? ship.to : ship.from;
+				v.ship = i;
+				v.dir = dir;
+				v.progress = dir === VOYAGE_DOCKED ? 0 : shipProgress(net, i);
+				v.hullName = hull.name;
+				v.cargoName = ship.cargo >= 0 && ship.amount > 0 ? economy.RESOURCES[ship.cargo].name : '';
+				v.amount = ship.cargo >= 0 && ship.amount > 0 ? ship.amount : 0;
+				v.tons = v.amount > 0 ? economy.tonsForUnits(ship.cargo, v.amount) : 0;
+				v.legYears = ship.arrive > ship.depart ? ship.arrive - ship.depart : 0;
+				v.other = far >= 0 && far < net.portCount ? net.ports[far].name : '';
+				v.depart = ship.depart;
+				v.arrive = ship.arrive;
+				v.trips = ship.trips;
+				v.delivered = ship.delivered;
+			}
+		}
+		return fleet;
+	}
+
+	// The selected ferry reports recent throughput, not a booked cargo.
+	function intraCraftText(net, index, legIndex, seat) {
+		if (!(index >= 0 && index < net.portCount)) return '';
+		const port = net.ports[index];
+		const intra = port.intra;
+		const worldName = (slot) => {
+			if (!(slot >= 0 && slot < port.worldCount)) return '?';
+			const world = net.worlds[port.worldIdx[slot]];
+			return world && world.name ? world.name : 'w' + slot;
+		};
+		const seatNo = seat >= 0 ? seat + 1 : 0;
+		if (port.colony.outpost) return '\nferry     inactive · this port is an outpost';
+		if (!intra || !(legIndex >= 0 && legIndex < intra.legCount)) {
+			let activeWorlds = 0;
+			for (let s = 0; s < port.worldCount; s++) {
+				const world = net.worlds[port.worldIdx[s]];
+				if (world && !world.outpost) activeWorlds++;
+			}
+			let why = 'no transfers between settled worlds in the recent window';
+			if (activeWorlds < 2) why = 'fewer than two active worlds here; a local route needs two';
+			else if (intra && intra.legCount > 0) why = 'this ferry is not assigned to a recent route';
+			else if (intra && intra.unpricedPairs > 0) why = 'recent transfers have no route geometry';
+			else if (intra && intra.unservedPairs > 0) why = 'recent routes exceed the in-system hull budgets';
+			return '\nferry ' + (seatNo || '?') + ' of ' + INTRA_FERRY_COUNT + '  in port'
+				+ '\nroute     no flyable leg \u00b7 ' + why
+				+ '\nclock     ferries are a picture of recent transfers, animated on system time';
+		}
+		const leg = intra.legs[legIndex];
+		const n = leg.ferries > 0 ? leg.ferries : 1;
+		let firstBoat = 0;
+		for (let i = 0; i < legIndex; i++) firstBoat += intra.legs[i].ferries > 0 ? intra.legs[i].ferries : 1;
+		const boatNo = seat >= 0 ? seat - firstBoat + 1 : 0;
+		const familyName = economy.INTRA_FAMILY_SHORT[leg.family] || '?';
+		const need = (leg.dv + leg.returnDv) * INTRA_DV_RESERVE;
+		const classes = [];
+		for (let i = 0; i < deltav.SHIP_CLASSES.length; i++) {
+			const cls = deltav.SHIP_CLASSES[i];
+			if (cls.domain !== 'in-system') continue;
+			classes.push(cls.label + ' (' + Math.round(cls.dvMax / 1000) + ' km/s)'
+				+ (cls.dvMax >= need ? ' yes' : ' no'));
+		}
+		let text = '\nferry ' + (boatNo || '?') + ' of ' + n + '  \u00b7  leg ' + (legIndex + 1) + ' of ' + intra.legCount;
+		text += '\nroute     ' + worldName(leg.from) + ' \u2192 ' + worldName(leg.to)
+			+ '  ' + leg.classId + ' \u00b7 main family ' + familyName;
+		text += '\nload      ' + formatIntraRate(leg.cargoRate) + ' t cargo / trade y \u00b7 '
+			+ formatIntraRate(leg.peopleRate) + ' passengers / trade y';
+		text += '\nshare     ' + formatIntraRate(leg.cargoRate / n) + ' t cargo and '
+			+ formatIntraRate(leg.peopleRate / n) + ' passengers / ferry / trade y';
+		text += '\naverage   over ' + formatIntraRate(intra.span) + ' trade y \u00b7 picture, not cargo booked to a hull';
+		text += '\ntrip      ' + deltav.formatDuration(leg.legYears * deltav.SECONDS_PER_YEAR) + ' each way'
+			+ ' \u00b7 ' + deltav.formatDuration(leg.legYears * 2 * deltav.SECONDS_PER_YEAR)
+			+ ' out and back on the system clock';
+		text += '\ngate      ' + (need / 1000).toFixed(1) + ' km/s for the round trip incl. reserve'
+			+ ' (' + (leg.dv / 1000).toFixed(1) + ' out + ' + (leg.returnDv / 1000).toFixed(1) + ' back) \u00b7 '
+			+ classes.join(' \u00b7 ');
+		text += '\npair      couple ' + port.couple[leg.from * MAX_WORLDS_PER_STAR + leg.to].toFixed(2)
+			+ ' \u00b7 Hohmann ' + deltav.formatDuration(port.tH[leg.from * MAX_WORLDS_PER_STAR + leg.to]);
+		return text;
+	}
+
+	// The selected hull: the voyage the network booked, with the cargo it used.
+	function voyageText(net, index, slot) {
+		if (!(index >= 0 && index < net.portCount)) return '';
+		const fleet = portFleet(net, index, PORT_FLEET);
+		if (!(slot >= 0 && slot < fleet.count)) return '';
+		const v = fleet.voyages[slot];
+		const here = net.ports[index].name;
+		const dir = v.dir === VOYAGE_DOCKED ? 'in port' : v.dir === VOYAGE_OUT ? 'outbound' : 'inbound';
+		let text = '\nhull ' + (slot + 1) + ' ' + (v.hullName || 'freighter') + '  \u00b7  ' + dir;
+		if (v.dir === VOYAGE_DOCKED) {
+			text += '\nberth     ' + here + ' \u00b7 loading or waiting for a cargo';
+		} else {
+			text += '\nroute     ' + (v.dir === VOYAGE_OUT ? here + ' \u2192 ' + v.other : v.other + ' \u2192 ' + here);
+			text += '\nvoyage    ' + Math.round(v.progress * 100) + ' % \u00b7 '
+				+ v.legYears.toFixed(1) + ' y booked \u00b7 '
+				+ (v.arrive > 0 ? Math.round(v.arrive) + ' y' : '-');
+		}
+		text += '\nload      ' + (v.amount > 0
+			? Math.round(v.tons).toLocaleString('en-US') + ' t ' + v.cargoName + ' \u00b7 '
+				+ Math.round(v.amount).toLocaleString('en-US') + ' units booked'
+			: 'empty \u00b7 no cargo booked for this leg');
+		text += '\naccount   ' + v.trips + ' trips \u00b7 ' + Math.round(v.delivered).toLocaleString('en-US')
+			+ ' units delivered by this hull';
+		return text;
+	}
+
+	// Which berth the fleet showcase opens, and how far the trade clock had to
+	// be wound to find a moving one (the scenario row's action). The score is
+	// the picture's own priority: ferries flying a leg first, then hulls under
+	// way, then hulls in port — a dock is a fleet, but motion is the point.
+	// Winding is bounded and in whole TICK_YEARS: a young network books its
+	// first voyages inside the first quarter century, and a port with nothing to
+	// trade with must not spin the clock forever. Every number returned is the
+	// network's own; nothing here invents a ship.
+	const FLEET_WIND_BUDGET = 1024;
+	function fleetShowcase(net, maxTicks) {
+		const ticks = maxTicks > 0 ? maxTicks | 0 : 0;
+		let wound = 0;
+		for (;;) {
+			let best = -1, bestScore = -1;
+			for (let i = 0; i < net.portCount; i++) {
+				const port = net.ports[i];
+				if (port.skyVisible === 0 || port.colony.outpost || port.worldCount <= 0) continue;
+				const fleet = portFleet(net, i);
+				const legs = port.intra ? port.intra.legCount : 0;
+				const score = legs * 16 + fleet.sailing * 4 + fleet.docked;
+				if (score > bestScore) { bestScore = score; best = i; }
+			}
+			if (best < 0) return { portIndex: -1, wound, docked: 0, sailing: 0, legs: 0 };
+			const fleet = portFleet(net, best);
+			const intra = net.ports[best].intra;
+			const legs = intra ? intra.legCount : 0;
+			if (fleet.sailing > 0 || legs > 0 || wound >= ticks * TICK_YEARS) {
+				return { portIndex: best, wound, docked: fleet.docked, sailing: fleet.sailing, legs };
+			}
+			step(net, TICK_YEARS, FLEET_WIND_BUDGET);
+			wound += TICK_YEARS;
+		}
 	}
 
 	// --- Ports and candidates ----------------------------------------------
@@ -1749,6 +2010,7 @@
 		port.worldCount = 0;
 		port.worldIdx.fill(-1);
 		port.lastSibling = nowYears;
+		port.createdAt = nowYears;
 		port.sysCache.count = 0;
 		port.key = site.key >>> 0;
 		port.kind = site.kind;
@@ -2257,6 +2519,13 @@
 			delta += economy.settleColony(world, time);
 		}
 		if (hasInterval) applyIntraFlows(net, index, time);
+		else if (port.intra && time > port.intra.recordedAt) {
+			// A sky-gate transition can stamp world clocks without settling an
+			// interval. Age the window, but do not record the previous transfer again.
+			port.intraFlow.fill(0);
+			port.intraMass.fill(0);
+			noteIntraLegs(net, index, time);
+		}
 		refreshPortAccess(net, index);
 		const colony = hasInterval ? refreshPortHealth(net, index) : foldPort(net, index);
 		if (colony.popLevel !== level) pushLog(net, LOG_MILESTONE, index, colony.popLevel, level);
@@ -2319,6 +2588,7 @@
 		ship.trips = 0;
 		ship.delivered = 0;
 		ship.founded = 0;
+		ship.generation = 0;
 		scheduleShip(net, ship, time + FIRST_LOAD_YEARS + index * 0.37, EV_LOAD);
 		return index;
 	}
@@ -2695,29 +2965,37 @@
 		return base;
 	}
 
-	// A second world must be both habitable and cheap to lift/reach from the
-	// capital. Candidate geometry is measured from this system's same DeltaVLib
-	// body/edge tables; its score is habitat · couple(candidate, world0) divided
-	// by the candidate's own well penalty (trade-3 plan §6.3).
-	function worldFoundingScore(net, portIndex, site, system) {
-		if (!(portIndex >= 0 && portIndex < net.portCount)) return 0;
+	// Eligibility uses coupling alone; habitat and lift rank eligible sites.
+	const FOUNDING_MEASURE = { couple: 0, score: 0 };
+	function measureWorldFounding(net, portIndex, site, system) {
+		const out = FOUNDING_MEASURE;
+		out.couple = 0; out.score = 0;
+		if (!(portIndex >= 0 && portIndex < net.portCount)) return out;
 		const port = net.ports[portIndex];
-		if (!(port.worldCount > 0)) return 0;
+		if (!(port.worldCount > 0)) return out;
 		const nBodies = buildIntraGraphTable(system);
 		const candidateBody = intraBodyIndex(system, site.kind, site.index);
 		const capital = net.worlds[port.worldIdx[0]];
 		const capitalBody = intraBodyIndex(system, capital.kind, capital.index);
 		if (candidateBody < 0 || candidateBody >= nBodies
-			|| capitalBody < 0 || capitalBody >= nBodies || candidateBody === capitalBody) return 0;
+			|| capitalBody < 0 || capitalBody >= nBodies || candidateBody === capitalBody) return out;
 		const oneCandidate = INTRA_ONE_EDGES[candidateBody];
 		const oneCapital = INTRA_ONE_EDGES[capitalBody];
 		const candidateWell = INTRA_BODY_PARAMS[candidateBody].hasSurface ? oneCandidate.dvSurfaceToLo : 0;
 		const capitalLand = INTRA_BODY_PARAMS[capitalBody].hasSurface ? oneCapital.dvLoToSurface : 0;
 		const leg = INTRA_INTER_EDGES[deltav.interEdgeIndex(nBodies, candidateBody, capitalBody)];
-		const dv = candidateWell + leg.dvLoToLo + capitalLand;
-		const ratio = dv / DV_REF;
-		const couple = 1 / (1 + ratio * ratio);
-		return siteHabitatScore(site) * couple / (1 + candidateWell / DV_REF);
+		const ratio = (candidateWell + leg.dvLoToLo + capitalLand) / DV_REF;
+		out.couple = 1 / (1 + ratio * ratio);
+		out.score = siteHabitatScore(site) * out.couple / (1 + candidateWell / DV_REF);
+		return out;
+	}
+
+	function worldFoundingScore(net, portIndex, site, system) {
+		return measureWorldFounding(net, portIndex, site, system).score;
+	}
+
+	function worldFoundingCouple(net, portIndex, site, system) {
+		return measureWorldFounding(net, portIndex, site, system).couple;
 	}
 
 	// --- Intra-system sibling expansion (T8, trade.32) ----------------------
@@ -2746,16 +3024,19 @@
 			+ cache.land[c0];
 	}
 
+	function cachedSiblingCouple(net, portIndex, cacheSlot) {
+		const dv = cachedSiblingDv(net, portIndex, cacheSlot);
+		if (!Number.isFinite(dv)) return 0;
+		const ratio = dv / DV_REF;
+		return 1 / (1 + ratio * ratio);
+	}
+
 	function cachedSiblingScore(net, portIndex, cacheSlot) {
 		const port = portIndex >= 0 && portIndex < net.portCount ? net.ports[portIndex] : null;
 		const cache = port && port.sysCache;
 		if (!(cache && cacheSlot >= 0 && cacheSlot < cache.count && port.worldCount > 0)) return 0;
-		const dv = cachedSiblingDv(net, portIndex, cacheSlot);
-		if (!Number.isFinite(dv)) return 0;
-		const well = cache.well[cacheSlot];
-		const ratio = dv / DV_REF;
-		const couple = 1 / (1 + ratio * ratio);
-		return siteHabitatScore(cache.sites[cacheSlot]) * couple / (1 + well / DV_REF);
+		return siteHabitatScore(cache.sites[cacheSlot]) * cachedSiblingCouple(net, portIndex, cacheSlot)
+			/ (1 + cache.well[cacheSlot] / DV_REF);
 	}
 
 	function pickSiblingSite(net, portIndex) {
@@ -2769,7 +3050,7 @@
 			const site = cache.sites[i];
 			if (worldOfSite(net, portIndex, site.kind, site.index) >= 0) continue;
 			const score = cachedSiblingScore(net, portIndex, i);
-			if (score >= MIN_FOUND_COUPLE && score > bestScore) {
+			if (cachedSiblingCouple(net, portIndex, i) >= MIN_FOUND_COUPLE && score > bestScore) {
 				bestScore = score;
 				best = i;
 			}
@@ -2826,9 +3107,10 @@
 			const dv = cachedSiblingDv(net, portIndex, i);
 			const score = cachedSiblingScore(net, portIndex, i);
 			const dvText = Number.isFinite(dv) ? (dv / 1000).toFixed(1) + ' km/s' : '—';
-			const tag = score >= MIN_FOUND_COUPLE
-				? 'score ' + score.toFixed(2)
-				: 'too deep (' + score.toFixed(2) + ')';
+			const couple = cachedSiblingCouple(net, portIndex, i);
+			const tag = couple >= MIN_FOUND_COUPLE
+				? 'couple ' + couple.toFixed(2) + ', score ' + score.toFixed(2)
+				: 'too deep (couple ' + couple.toFixed(2) + ')';
 			text += (shown > 0 ? ' \u00b7 ' : '') + site.name + ' (' + dvText + ', ' + tag + ')';
 			shown += 1;
 		}
@@ -3195,8 +3477,16 @@
 			if (spawnShip(net, port, hull, time) < 0) break;
 			freighters += 1;
 		}
-		let founding = 0;
-		for (let i = 0; i < net.shipCount; i++) if (net.ships[i].state === SHIP_FOUNDING) founding += 1;
+		// The ordinary founding lane. A generation ship is *not* counted: its
+		// voyage is centuries long and would hold the lane shut for the whole
+		// run, which is exactly the stall trade.36 removed.
+		let founding = 0, generation = 0;
+		for (let i = 0; i < net.shipCount; i++) {
+			const ship = net.ships[i];
+			if (ship.state !== SHIP_FOUNDING) continue;
+			if (ship.generation) generation += 1;
+			else founding += 1;
+		}
 		let room = expansionOn ? MAX_FOUNDING_IN_FLIGHT - founding : 0;
 		while (room > 0 && net.portCount + founding < MAX_PORTS) {
 			const pick = bestExpedition(net, time);
@@ -3210,13 +3500,94 @@
 			for (let p = 0; p < net.portCount && net.worldCount < MAX_WORLDS; p++) {
 				sponsorSiblingWorld(net, p, time, 0);
 			}
+			// A world nothing else can reach, and a colony willing to build for
+			// it: the one voyage a generation ship exists for (trade.36).
+			if (net.portCount + founding + generation < MAX_PORTS && generation < MAX_GENERATION_IN_FLIGHT) {
+				const gen = bestGenerationTarget(net, time);
+				if (gen.candidate >= 0 && launchExpedition(net, gen.port, gen.candidate, time, 0, 1) >= 0) {
+					net.generationLaunched = (net.generationLaunched | 0) + 1;
+				}
+			}
 		}
 		net.tickScheduled = 1;
 		queueLib.push(net.queue, time + TICK_YEARS, EV_TICK, 0, 0);
 	}
 
+	// --- Generation ships (trade.36) ----------------------------------------
+	// The colony's own decision, not a clock. A world the reach law marks
+	// stranded is one no freighter and no expedition can serve; a generation
+	// ship can, because it does not need to arrive with a working larder — it
+	// *is* the colony, and it takes as long as it takes. So a port builds one
+	// when, and only when, three things hold:
+	//
+	//   * no ordinary expedition can reach the world (candidate.reach === 0 —
+	//     the same flag `refreshReach` publishes and the Trade panel prints);
+	//   * the world is worth centuries (`GENERATION_MIN_HABITAT`, well above
+	//     the ordinary founding floor) — the "if this is profit" half;
+	//   * a big colony has people to spare and is not already resting.
+	//
+	// One per tick at most, nearest world first. Nothing global changes: the
+	// freight fleet keeps its hulls and its 150-year warehouses.
+	// The ports that could build one, gathered once per scan: big, awake, not
+	// already at work, not resting between expeditions, and with people to
+	// spare. The candidate loop then only measures distances.
+	const GENERATION_PORTS = [];
+	function generationPorts(net, time) {
+		GENERATION_PORTS.length = 0;
+		for (let p = 0; p < net.portCount; p++) {
+			const port = net.ports[p];
+			if (port.colony.outpost || !isBigColony(port.colony)) continue;
+			if (port.skyVisible === 0) continue;
+			if (time - port.lastExpedition < EXPEDITION_COOLDOWN) continue;
+			if (time - port.lastGeneration < GENERATION_COOLDOWN) continue;
+			expeditionCost(port.colony, EXPEDITION_COST);
+			if (!(EXPEDITION_COST.peopleM > 0)) continue;
+			if (port.colony.pop - EXPEDITION_COST.peopleM < MIN_FOUNDERS_REMAIN_M) continue;
+			GENERATION_PORTS.push(p);
+		}
+		return GENERATION_PORTS;
+	}
+
+	const GENERATION_PICK = { port: -1, candidate: -1, ly: 0, habitat: 0 };
+	function bestGenerationTarget(net, time) {
+		GENERATION_PICK.port = -1;
+		GENERATION_PICK.candidate = -1;
+		GENERATION_PICK.ly = 0;
+		GENERATION_PICK.habitat = 0;
+		if (!(net.candidateCount > 0)) return GENERATION_PICK;
+		const ports = generationPorts(net, time);
+		if (ports.length === 0) return GENERATION_PICK;
+		let bestScore = 0;
+		for (let i = 0; i < net.candidateCount; i++) {
+			const c = net.candidates[i];
+			if (c.used || c.reserved >= 0) continue;
+			if (c.reach) continue;                       // an expedition can do it
+			if (c.skyVisible === 0) continue;            // a star the frame is not drawing
+			const habitat = siteHabitatScore(c.site);
+			if (!(habitat >= GENERATION_MIN_HABITAT)) continue;
+			let bestPort = -1, bestLy = Infinity;
+			for (let k = 0; k < ports.length; k++) {
+				const ly = endpointDistanceLy(net, END_PORT, ports[k], END_CANDIDATE, i);
+				if (!(ly <= GENERATION_MAX_FOUND_LY)) continue;
+				if (ly < bestLy) { bestLy = ly; bestPort = ports[k]; }
+			}
+			if (bestPort < 0) continue;
+			// A better world wins; two equally good worlds are decided by
+			// distance, because the voyage is the cost.
+			const score = habitat * 4 - bestLy / GENERATION_MAX_FOUND_LY;
+			if (score > bestScore) {
+				bestScore = score;
+				GENERATION_PICK.port = bestPort;
+				GENERATION_PICK.candidate = i;
+				GENERATION_PICK.ly = bestLy;
+				GENERATION_PICK.habitat = habitat;
+			}
+		}
+		return GENERATION_PICK;
+	}
+
 	const LAUNCH_FAIL = { reason: '' };
-	function launchExpedition(net, source, candidateIndex, time, rush) {
+	function launchExpedition(net, source, candidateIndex, time, rush, generation) {
 		const sourcePort = net.ports[source];
 		LAUNCH_FAIL.reason = '';
 		if (!rush && time - sourcePort.lastExpedition < EXPEDITION_COOLDOWN) {
@@ -3235,8 +3606,19 @@
 		// The founding leg is booked before a single volunteer leaves the
 		// population: a world the sky has made unreachable must refuse the wave,
 		// not strand it (§9.3).
-		const plan = bookLeg(net, END_PORT, source, END_CANDIDATE, candidateIndex,
-			EXPEDITION_HULL, MAX_FOUND_LY, FOUND_PLAN);
+		// A generation ship is booked against its own reach and its own crawl
+		// (trade.36), and against the sky as it is *now*: a colony planning a
+		// voyage of centuries plans to the world its telescopes have charted,
+		// and the voyage is not re-opened by the drift that follows. That is the
+		// whole reason the hull exists — the intercept belongs to hulls that can
+		// chase, and this one cannot.
+		const speed = generation ? GENERATION_LY_PER_YEAR : 0;
+		const capLy = generation ? GENERATION_MAX_FOUND_LY : MAX_FOUND_LY;
+		const plan = generation
+			? planLeg(net, END_PORT, source, END_CANDIDATE, candidateIndex,
+				EXPEDITION_HULL, capLy, FOUND_PLAN, speed)
+			: bookLeg(net, END_PORT, source, END_CANDIDATE, candidateIndex,
+				EXPEDITION_HULL, capLy, FOUND_PLAN);
 		if (!plan.reachable) {
 			// The sky, not the map: the world is inside 600 ly now but the hull
 			// cannot meet it before it is not (§9.3).
@@ -3251,6 +3633,7 @@
 		const colonists = EXPEDITION_COST.people;
 		takePortPopulation(net, source, EXPEDITION_COST.peopleM);
 		sourcePort.lastExpedition = time;
+		if (generation) sourcePort.lastGeneration = time;
 		const ship = net.ships[shipIndex];
 		const site = net.candidates[candidateIndex].site;
 		for (let i = 0; i < net.candidateCount; i++) {
@@ -3258,6 +3641,7 @@
 		}
 		ship.index = shipIndex;
 		ship.hull = EXPEDITION_HULL;
+		ship.generation = generation ? 1 : 0;
 		ship.hold = colonists;
 		ship.amount = colonists;
 		ship.cargo = economy.R_PEOPLE;
@@ -3429,7 +3813,7 @@
 			return r;
 		}
 		const port = net.ports[existingPort];
-		if (worldFoundingScore(net, existingPort, FOUND_SITE, system) < MIN_FOUND_COUPLE) {
+		if (worldFoundingCouple(net, existingPort, FOUND_SITE, system) < MIN_FOUND_COUPLE) {
 			r.reason = 'too expensive to reach';
 			return r;
 		}
@@ -3643,6 +4027,10 @@
 		for (let i = 0; i < net.shipCount; i++) {
 			const ship = net.ships[i];
 			if (ship.state !== SHIP_SAILING && ship.state !== SHIP_FOUNDING) continue;
+			// A generation ship does not turn around: it was booked to a world
+			// nothing else could reach, and the sky will always outrun it
+			// (trade.36). Its arrival is its own.
+			if (ship.generation) continue;
 			if (!(ship.arrive > ship.depart)) continue;
 			const founding = ship.state === SHIP_FOUNDING;
 			if (founding ? ship.candidate < 0 : ship.to < 0) continue;
@@ -3775,6 +4163,7 @@
 		ship.to = -1;
 		ship.candidate = -1;
 		ship.hold = HULLS[ship.hull].hold;
+		ship.generation = 0;
 		ship.state = SHIP_DOCKED;
 		scheduleShip(net, ship, time + DOCK_YEARS, EV_LOAD);
 	}
@@ -3788,8 +4177,13 @@
 		// colony nobody can reach (trade.30). It comes home through the same
 		// refund path a taken world uses — no people are lost, no colony is left
 		// stranded across the galaxy.
-		if (ship.from >= 0 && endpointDistanceLy(net, END_PORT, ship.from, END_CANDIDATE,
-				ship.candidate) > MAX_FOUND_LY) {
+		// The reach gate: a party that arrives where the network cannot trade
+		// comes home rather than planting a colony nobody can reach (trade.30).
+		// A generation ship is the exception by construction: it was built *for*
+		// the far world and everything it needed was aboard, so the gate it
+		// passed is its own cap, at departure — not the drift since.
+		if (!ship.generation && ship.from >= 0 && endpointDistanceLy(net, END_PORT, ship.from,
+				END_CANDIDATE, ship.candidate) > MAX_FOUND_LY) {
 			returnFounder(net, ship, time);
 			return;
 		}
@@ -3820,6 +4214,7 @@
 		ship.cargo = NO_RESOURCE;
 		ship.amount = 0;
 		ship.hold = HULLS[ship.hull].hold;
+		ship.generation = 0;
 		ship.state = SHIP_DOCKED;
 		ship.port = portIndex;
 		ship.to = -1;
@@ -3905,29 +4300,6 @@
 		// (the panel reports it instead of pretending the clock kept up).
 		net.lag += target - net.time;
 		return net.processed - before;
-	}
-
-	// Special trade mode: every hull flies the generation-ship crawl, 1 ly per
-	// 33 trade years, and the ports' reserves stretch to the fleet's crossing time
-	// (see GENERATION_RESERVE_YEARS). Live colonies are re-scaled in place, so
-	// switching modes does not strand a network mid-voyage with a 150-year
-	// larder and a 5 000-year supply line.
-	function setGenerationMode(on, net) {
-		const next = on > 0 ? 1 : 0;
-		const scale = next ? GENERATION_RESERVE_YEARS / economy.STOCK_YEARS : 1;
-		const factor = scale / economy.getReserveScale();
-		economy.setReserveScale(scale);
-		generationMode = next;
-		if (net && factor !== 1) {
-			for (let i = 0; i < net.portCount; i++) {
-				const port = net.ports[i];
-				for (let s = 0; s < port.worldCount; s++) {
-					economy.rescaleColonyReserves(net.worlds[port.worldIdx[s]], factor);
-				}
-				foldPort(net, i);
-			}
-		}
-		return generationMode;
 	}
 
 	// --- Draw state and the player -----------------------------------------
@@ -4155,7 +4527,9 @@
 		INTRA_FAMILY_COUNT, INTRA_FLOW_COUNT, intraFlowIndex, MIN_FOUND_COUPLE,
 		MAX_SHIPS, MAX_FREIGHTERS, MAX_CANDIDATES, TRADE_RATES, TRADE_RATE_DEFAULT,
 		TRADE_RATE_DEFAULT_INDEX, TRADE_ROUTES_DEFAULT,
-		SYNC_YEARS_PER_MYR, RATE_MAX, GENERATION_LY_PER_YEAR, GENERATION_RESERVE_YEARS, GENERATION_STAR_MYR,
+		SYNC_YEARS_PER_MYR, RATE_MAX, GENERATION_LY_PER_YEAR,
+		GENERATION_MIN_HABITAT, GENERATION_MAX_FOUND_LY, GENERATION_COOLDOWN,
+		MAX_GENERATION_IN_FLIGHT, bestGenerationTarget,
 		MIN_LEG_YEARS, SEED_PORTS, START_RADIUS_KPC, START_FIELD, clockRate,
 		EV_ARRIVE, EV_LOAD, EV_WAIT, EV_FOUND, EV_TICK, nextEvents,
 		MAX_ROUTES, createRoutes, routeIndexOf, commissionRoute, removeRoute,
@@ -4185,13 +4559,15 @@
 		portOfStar, portOfStarLive, livePortCount, demotePort,
 		portIndexOf, candidateIndexOf, bestPortOfStar, distanceLy, legYears, pickDestination, pickExport,
 		shipPosition, shipProgress, shipStateName, playerPort, playerLoad, playerUnload,
-		siteHabitatScore, worldFoundingScore, cachedSiblingScore, pickSiblingSite,
+		siteHabitatScore, worldFoundingScore, worldFoundingCouple, cachedSiblingScore, cachedSiblingCouple, pickSiblingSite,
 		sponsorSiblingWorld, siblingReadoutText, intraReadoutText,
 		isBigColony, colonisationPreview, pickCandidate, bestExpedition,
 		launchBest, launchExpedition, returnFounder, retimeRoutes, colonisationStatus,
-		expandFrontierFromField, setGenerationMode, generationMode: setGenerationMode,
+		expandFrontierFromField,
 		applySkyGate, refInSky, skyGateText, SKY_ALL, SKY_SOME, SKY_NONE,
 		INTRA_FERRY_COUNT, INTRA_FLEET_LEGS, intraClassFor, noteIntraLegs, intraFleetText,
+		VOYAGE_DOCKED, VOYAGE_OUT, VOYAGE_IN, MAX_PORT_FLEET, portFleet, intraCraftText, voyageText,
+		fleetShowcase,
 		refreshGeometry, endpointPos, endpointDistanceLy, planLeg, bookLeg, shipFraction,
 		createLegPlan, frontierStretchKpc, DIVERT_FACTOR, END_PORT, END_CANDIDATE,
 	};

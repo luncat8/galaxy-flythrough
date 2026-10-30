@@ -93,7 +93,7 @@ const sourceFiles = walk(SRC, '')
 	check('the scenario opens on the home colony and seeds nearest home first',
 		/loop\.start\(\);[\s\S]*?goToHomeColony\(\);/.test(main)
 		&& /tradeLib\.startSystems\(/.test(main) && /tradeLib\.discoverNearest\(/.test(main)
-		&& /GENERATION_STAR_MYR/.test(main));
+		&& /bestGenerationTarget/.test(main) === false);
 	check('the page starts in galaxy-centre orbit with unlocked input',
 		/camera\.setFrame\(model\);[\s\S]*?camera\.setMode\(window\.Camera\.MODE_ORBIT_GC\);\s*const input = window\.Input\.createInput\(canvas\);\s*input\.setFlyMode\(false\);/.test(main));
 	check('input policy follows camera mode after stepping',

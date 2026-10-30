@@ -61,6 +61,30 @@ ok(mask === W.panelsFor(W.FLY), 'override removes a panel');
 ok(W.applyOverride(W.FLY, mask, 99, true) === mask, 'an out-of-range panel changes nothing');
 ok(W.applyOverride(W.FLY, 0xffff, W.TRADE, true) === W.PANEL_MASK_ALL, 'override sanitises its input');
 
+// --- The mask store is as wide as the mask --------------------------------
+// The reported bug: with the Time panel appended as bit 8, the page kept the
+// live override in a Uint8Array, so pressing any checkbox rewrote the mask
+// without bit 8 and the Time panel (and its checkbox) could never come back.
+{
+	const store = W.createMaskStore(3);
+	ok(store instanceof Uint16Array && store.length === 3, 'the mask store is 16-bit, one slot per workspace');
+	ok(W.PANEL_COUNT <= W.MASK_STORE_BITS, 'every panel bit fits the store');
+	let mask = W.panelsFor(W.OBSERVE);
+	store[W.OBSERVE] = mask;
+	ok(store[W.OBSERVE] === mask, 'a workspace mask round-trips the store intact');
+	store[W.COMMAND] = W.applyOverride(W.COMMAND, W.panelsFor(W.COMMAND), W.TIME, false);
+	ok((store[W.COMMAND] & bit(W.TIME)) === 0, 'writing the mask registers can clear the Time bit');
+	store[W.COMMAND] = W.applyOverride(W.COMMAND, store[W.COMMAND], W.TIME, true);
+	ok((store[W.COMMAND] & bit(W.TIME)) !== 0, 'and can set it again \\u2014 the checkbox sticks');
+	store[W.FLY] = W.PANEL_MASK_ALL;
+	ok(store[W.FLY] === W.PANEL_MASK_ALL, 'set-all survives the store byte for byte');
+	// The page must use this store: a bare Uint8Array here is the regression.
+	const mainSource = require('fs').readFileSync(require('path').join(__dirname, '../src/main.js'), 'utf8');
+	ok(/panelOverrides = Workspace\.createMaskStore\(/.test(mainSource)
+		&& !/const panelOverrides = new Uint8Array/.test(mainSource),
+		'main.js keeps the live override in the mask store, not a byte array');
+}
+
 // --- visibleMask precedence (§5.3) ----------------------------------------
 const auto = bit(W.ROUTES);
 assert.strictEqual(W.visibleMask(W.FLY, 0, 0, 0), W.panelsFor(W.FLY));

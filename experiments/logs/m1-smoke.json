@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-29T09:51:44.164Z",
+  "date": "2026-10-29T20:20:46.693Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -568,14 +568,14 @@
       "name": "EconomyLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 99
+        "keys": 96
       }
     },
     {
       "name": "TradeLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 188
+        "keys": 197
       }
     },
     {
@@ -610,7 +610,7 @@
       "name": "Workspace loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 26
+        "keys": 28
       }
     },
     {
@@ -666,7 +666,7 @@
       "name": "SystemLayer loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 57
+        "keys": 63
       }
     },
     {

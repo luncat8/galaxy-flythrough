@@ -290,8 +290,8 @@
       "name": "T5/T6 opens only the matching port, draws its settled legs as dim dashes and flies twelve boats on them",
       "pass": true,
       "detail": {
-        "lines": 13,
-        "dashes": 7,
+        "lines": 15,
+        "dashes": 9,
         "arcs": 38
       }
     },
@@ -321,17 +321,115 @@
       "pass": true
     },
     {
+      "name": "a one-world port draws its twelve ferries in port (the common colony had no fleet at all)",
+      "pass": true,
+      "detail": {
+        "arcs": 23
+      }
+    },
+    {
+      "name": "a docked ferry is clickable, and the hit test names its seat",
+      "pass": true,
+      "detail": {
+        "x": 843,
+        "y": 384,
+        "leg": -1,
+        "slot": 9
+      }
+    },
+    {
+      "name": "the classic and rail renders draw the same fleet in port",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "the orrery draws the port’s own hulls, and a hull is clickable",
+      "pass": true,
+      "detail": {
+        "x": 891,
+        "y": 396,
+        "leg": -1,
+        "slot": 2
+      }
+    },
+    {
+      "name": "a hull is drawn AND clickable in the schematic and in both delta-v renders",
+      "pass": true,
+      "detail": {
+        "hullsSeen": 3
+      }
+    },
+    {
+      "name": "a hull’s label names its voyage fraction and its far port",
+      "pass": true,
+      "detail": "clipper · to Vega · voyage 40 %"
+    },
+    {
+      "name": "every boat under way sits on a line the map drew without it (schematic, classic and rails)",
+      "pass": true,
+      "detail": {
+        "underWay": 42,
+        "system": {
+          "moving": 14,
+          "inPort": 1,
+          "worst": 0
+        },
+        "delta-v classic": {
+          "moving": 14,
+          "inPort": 1,
+          "worst": 0
+        },
+        "delta-v rails": {
+          "moving": 14,
+          "inPort": 1,
+          "worst": 0
+        }
+      }
+    },
+    {
+      "name": "a fleet whose key is not this port’s is refused, so no hull is drawn or clickable",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "selectCraft/selectedCraft round-trip the craft identity",
+      "pass": true,
+      "detail": {
+        "kind": -1,
+        "leg": -1,
+        "slot": -1
+      }
+    },
+    {
+      "name": "clearCraft forgets the ship",
+      "pass": true,
+      "detail": {
+        "kind": -1,
+        "leg": -1,
+        "slot": -1
+      }
+    },
+    {
+      "name": "closing the view forgets the ship as well",
+      "pass": true,
+      "detail": {
+        "kind": -1,
+        "leg": -1,
+        "slot": -1
+      }
+    },
+    {
       "name": "1 000 draw calls allocate nothing (heap delta inside the 2 MB coarse bound)",
       "pass": true,
       "detail": {
-        "heapDelta": 132440
+        "heapDelta": 513600
       }
     },
     {
       "name": "the per-frame op count stays inside the plan's ~800-op budget (one belt)",
       "pass": true,
       "detail": {
-        "opsPerFrame": 573
+        "opsPerFrame": 579
       }
     },
     {
@@ -396,7 +494,7 @@
       "name": "the rail render stays inside the map op budget",
       "pass": true,
       "detail": {
-        "railOps": 304
+        "railOps": 308
       }
     }
   ],

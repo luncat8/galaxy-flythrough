@@ -180,10 +180,8 @@ async function boot() {
         // stop (a query may name a rate between stops and still mean it).
 		let tradeRateIndex = tradeRateIndexFor(params.trade);
 		let tradeRoutesOn = params.traderoutes > 0 ? 1 : 0;
-		// The trade clock can be coupled to the star clock (sync time), and the
-		// special trade mode flies generation ships at a generation pace.
+		// The trade clock can be coupled to the star clock (sync time).
 		let tradeSyncOn = 0;
-		let tradeGenOn = 0;
 		let tradeExpansionOn = params.tradeexpand > 0 ? 1 : 0;
 		// The workspace (workspace-plan.md §3): one state, three names —
 		// observe (the sky), fly (a ship), command (the colony network).
@@ -195,7 +193,10 @@ async function boot() {
 		let workspace = Workspace.OBSERVE;
 		let lastWorkspace = Workspace.OBSERVE;
 		let panelsHidden = false;
-		const panelOverrides = new Uint8Array(3);
+		// The live override mask, in a store wide enough for bit 8 (the Time
+		// panel): workspace.js owns the width, so a tenth panel cannot repeat
+		// the Uint8Array truncation that kept Time from ever being switched on.
+		const panelOverrides = Workspace.createMaskStore(3);
 		const panelFrozen = new Uint8Array(3);
 		let panelsWired = false;    // applyPanels is a no-op until the mode-bar block has built its DOM
 		function isFlying() { return workspace === Workspace.FLY; }
@@ -1241,7 +1242,6 @@ async function boot() {
         const tradeRateValue = document.getElementById('val-trade-rate');
         const tradeRoutesBox = document.getElementById('trade-routes');
         const tradeSyncBox = document.getElementById('trade-sync-time');
-        const tradeGenBox = document.getElementById('trade-generation-ships');
         const tradeExpandBox = document.getElementById('trade-expansion');
         const starTimeRangeBtn = document.getElementById('star-time-range');
         const tradeState = document.getElementById('trade-state');
@@ -1705,25 +1705,6 @@ async function boot() {
                 tradeExpansionOn = tradeLib.setExpansion(tradeExpandBox.checked ? 1 : 0);
                 syncTradeUi();
         });
-        tradeGenBox.addEventListener('change', () => {
-                tradeGenOn = tradeGenBox.checked ? 1 : 0;
-                tradeLib.setGenerationMode(tradeGenOn, tradeNet);
-                // The crawl is calibrated at the default star rate (trade-plan
-                // §6): synced 1 Myr/s is 1 000 trade y/s, so the ship covers
-                // 30 ly per wall second. Enabling the mode sets exactly that
-                // pair — a generation-ship mode on a parked sky would look broken,
-                // and so would one on a faster rung than the scenario is read at.
-                if (tradeGenOn) {
-                        tradeSyncOn = 1;
-                        tradeSyncBox.checked = true;
-                        if (!isFlying()) {
-                                starTimeRate = TRADE_GEN_MYR;
-                                lastNonZeroTimeRate = starTimeRate;
-                                syncStarTime();
-                        }
-                }
-                syncTradeUi();
-        });
         // --- The clock board (time-plan.md §1) ----------------------------
         // One panel that says what every clock is doing and which of them
         // follow the sky. It owns no rate of its own: a mode press writes the
@@ -1748,6 +1729,9 @@ async function boot() {
         // (1 Myr/s of sky is 1 y/s in the view). A frozen or camera-following
         // star clock has nothing to lend, so the layer keeps its own rung then.
         let systemSyncOn = 0;
+        // The rung a parked sky wakes at when a synced clock needs one: the
+        // default pace, the same one the star slider starts on.
+        const STAR_RESUME_MYR = 1;
 
         // The one writer of the colony link. Both checkboxes call it, so the
         // Trade panel's box and the board's box are the same switch.
@@ -1762,7 +1746,7 @@ async function boot() {
         // synced clock on a stopped star clock is a network that never advances.
         function resumeStarIfSynced() {
                 if (!tradeSyncOn || isFlying() || starTimeRate > 0) return;
-                starTimeRate = lastNonZeroTimeRate > 0 ? lastNonZeroTimeRate : TRADE_GEN_MYR;
+                starTimeRate = lastNonZeroTimeRate > 0 ? lastNonZeroTimeRate : STAR_RESUME_MYR;
                 if (starTimeRate > Number(sliderStarTime.max)) starTimeRate = Number(sliderStarTime.max);
                 syncStarTime();
         }
@@ -1789,24 +1773,17 @@ async function boot() {
                 systemLayer.setTimeRate(next);
                 syncSysTime();
         }
-        // The three progressions (time-plan §2). A mode sets every clock at
-        // once: one that set only the star rate would leave the other three
-        // disagreeing, which is the state the board exists to end.
+        // The three progressions (time-plan §2, corrected in trade.36). A
+        // progression is a **game** clock profile: which of the colony and
+        // schematic clocks follow the sky, and at what rate they run when they
+        // do not. It never writes the star clock or `Evolve` — the sky's clock
+        // and the galaxy's age belong to Display. The reported defect was
+        // exactly this: pressing a progression re-dated the galaxy.
         function applyTimeMode(id) {
                 const mode = TimeBoard.modeById(id);
                 if (!mode) return '';
-                setEvolve(mode.star.evolve > 0);
-                if (!isFlying()) {
-                        starTimeRate = mode.star.rate;
-                        if (starTimeRate > 0) lastNonZeroTimeRate = starTimeRate;
-                        syncStarTime();
-                }
                 tradeRateIndex = tradeRateIndexFor(mode.trade.rate);
                 setTradeSync(mode.trade.synced > 0);
-                if (tradeGenOn !== (mode.trade.generation > 0)) {
-                        tradeGenOn = mode.trade.generation > 0 ? 1 : 0;
-                        tradeLib.setGenerationMode(tradeGenOn, tradeNet);
-                }
                 setSystemSync(mode.system.synced > 0);
                 if (!systemSyncOn) {
                         systemLayer.setTimeRate(mode.system.rate);
@@ -1820,16 +1797,15 @@ async function boot() {
         // The state the board reads its progression from. A dragged slider
         // moves the board off the mode it was on — the ledger prints what the
         // clocks are, not what was last pressed.
+        // The game clock set a progression is matched against. The star clock is
+        // not in it: a progression says nothing about the sky (trade.36).
         function clockState() {
                 return {
-                        starRate: starTimeRate,
-                        evolve: evolveOn ? 1 : 0,
                         tradeRate: tradeRateYears(),
                         // The link's intent, not its effective state: flying
                         // takes the time axis over and must not un-light the
                         // progression the observer chose.
                         tradeSynced: tradeSyncOn !== 0 ? 1 : 0,
-                        generation: tradeGenOn ? 1 : 0,
                         systemRate: systemLayer.getTimeRate(),
                         systemSynced: systemSyncOn,
                 };
@@ -1848,8 +1824,7 @@ async function boot() {
                 if (timeModeNote && timeModeNote.textContent !== note) timeModeNote.textContent = note;
                 const synced = tradeSyncOn !== 0 && !isFlying();
                 timeStar.textContent = TimeBoard.formatStarRate(starTimeRate) + (evolveOn ? ' \u00b7 evolve' : '');
-                timeTrade.textContent = TimeBoard.formatTradeRate(tradeClockRate(), synced)
-                        + (tradeGenOn ? ' \u00b7 generation' : '');
+                timeTrade.textContent = TimeBoard.formatTradeRate(tradeClockRate(), synced);
                 timeSystem.textContent = window.SystemLayer.formatSysTimeRate(systemLayer.getTimeRate())
                         + (systemSyncOn ? ' \u00b7 star' : '');
                 timeShip.textContent = isFlying()
@@ -2174,10 +2149,33 @@ async function boot() {
                 // A port outside this epoch's sky (trade.24) is not a station
                 // the schematic can show: its star is not drawn.
                 if (portIndex >= 0 && tradeNet.ports[portIndex].skyVisible === 0) portIndex = -1;
-                if (portIndex >= 0) systemLayer.setTradeData(tradeNet.ports[portIndex], tradeNet.worlds);
-                else systemLayer.setTradeData(null, null);
-                sysread.textContent = systemLayer.readoutText() + tradeReadoutText();
+                // The port's ships come with the port (trade.35): its freighters
+                // are the hulls the network booked, and the layer draws them from
+                // this one record, refreshed here at the readout's own 4 Hz.
+                if (portIndex >= 0) {
+                        tradeLib.settlePort(tradeNet, portIndex, tradeNet.time);
+                        systemLayer.setTradeData(tradeNet.ports[portIndex], tradeNet.worlds,
+                                tradeLib.portFleet(tradeNet, portIndex));
+                } else systemLayer.setTradeData(null, null);
+                sysread.textContent = systemLayer.readoutText() + craftReadoutText() + tradeReadoutText();
 		syncRouteUi();
+        }
+
+        // The selected ship's block (trade.35): recent settled throughput for
+        // a ferry, or the booked voyage for a hull. The numbers are trade.js's,
+        // so the picture and the arithmetic
+        // can never disagree.
+        const craftPick = { kind: -1, leg: -1, slot: -1 };
+        function craftReadoutText() {
+                if (!systemLayer.isOpen() || !tradeNet) return '';
+                systemLayer.selectedCraft(craftPick);
+                if (craftPick.kind === window.SystemLayer.CRAFT_NONE) return '';
+                const portIndex = tradeLib.bestPortOfStar(tradeNet, systemLayer.record.star.key >>> 0);
+                if (portIndex < 0) return '';
+                if (tradeNet.ports[portIndex].skyVisible === 0) return '';
+                return craftPick.kind === window.SystemLayer.CRAFT_FERRY
+                        ? tradeLib.intraCraftText(tradeNet, portIndex, craftPick.leg, craftPick.slot)
+                        : tradeLib.voyageText(tradeNet, portIndex, craftPick.slot);
         }
 
         // The cursor over the schematic. The canvas spans the viewport at
@@ -2910,7 +2908,6 @@ async function boot() {
                         trade: tradeRateYears(),
                         traderoutes: tradeRoutesOn,
                         tradesync: tradeSyncOn,
-                        tradegen: tradeGenOn,
                         tradeexpand: tradeExpansionOn,
 			ship: systemLayer.getShipClass(),
 			mode: Workspace.modeName(workspace),
@@ -3052,23 +3049,6 @@ async function boot() {
 		}
 		if (s.tradeexpand !== undefined) {
 			tradeExpansionOn = tradeLib.setExpansion(s.tradeexpand > 0 ? 1 : 0);
-		}
-		if (s.tradegen !== undefined) {
-			tradeGenOn = s.tradegen > 0 ? 1 : 0;
-			tradeGenBox.checked = tradeGenOn !== 0;
-			tradeLib.setGenerationMode(tradeGenOn, tradeNet);
-			if (tradeGenOn) {
-				// Generation ships only read against the synced pair; the
-				// preset's own star rate wins when it named one.
-				tradeSyncOn = 1;
-				tradeSyncBox.checked = true;
-				if (!(starTimeRate > 0)) {
-					starTimeRate = TRADE_GEN_MYR;
-					lastNonZeroTimeRate = starTimeRate;
-					syncStarTime();
-				}
-			}
-			syncTradeUi();
 		}
                 syncDvUi();
 		if (systemLayer.isOpen()) writeSystemReadout();
@@ -3259,6 +3239,7 @@ async function boot() {
         let scenarioDraws = -1;         // renderer.state.fieldSamples when it ran
         let scenarioGalaxy = '';        // type/seed the run was taken in
         let scenarioLine = '';          // the settings line the run applied
+        let scenarioFleetLine = '';     // the fleet row's own report (action, not preset)
         wireCollapse(scenarioMenu, scenarioCollapse);
         // The rows are the checks; Present day is the comparison every one of
         // them is read against, so it is selectable too (otherwise pressing its
@@ -3277,6 +3258,115 @@ async function boot() {
         function applyScenarioView(view) {
                 if (view === 'galaxy') camera.setMode(window.Camera.MODE_ORBIT_GC);
         }
+        // The fleet row's page half (trade.35). A preset line cannot build it:
+        // which system has ships is a property of the live network, so the
+        // action asks `trade.js` for the berth that is moving, makes its star
+        // the primary and opens it. Nothing here is planted — every triangle on
+        // the screen is a hull the network booked, and the report says what the
+        // frame contains, including the one-world case where no in-system leg
+        // exists and the ferries wait in port.
+        const fleetRef = {
+                group: 0, type: 'star', key: 0, kind: 0, index: 0,
+                x: 0, y: 0, z: 0, colorIndex: 0, absMag: 0,
+                mass: 1, lum: 1, teff: 5772, age: 4.6, metal: 0,
+        };
+        // The fleet row's action (scenario §fleet). The row's promise is
+        // motion, so the port is chosen for what is moving — the twelve
+        // in-system ferries on their legs first, then the network's hulls under
+        // way — and the selected craft is one of the movers, not merely the
+        // first name in the berth. A network younger than its first departures
+        // has every hull in port; the trade clock is then wound to those
+        // departures in whole ticks, bounded, and the line says so. Nothing is
+        // invented: every number here is the network's.
+        const FLEET_WIND_TICKS = 12;
+        function applyFleetScenario() {
+                if (!tradeNet) tradeSeedNetwork();
+                if (!tradeNet) return 'fleet \u00b7 no trade network yet';
+                tradeCtx.model = model;
+                tradeCtx.field = renderer.fieldBuffers();
+                tradeCtx.member = renderer.starBlocks().member;
+                tradeCtx.name = '';
+                // An early epoch has no seed colonies: the frame's own bootstrap
+                // makes the first one, so the row asks the same door rather than
+                // answering "none".
+                if (tradeNet.portCount === 0) {
+                        tradeLib.reseedIfEmpty(tradeNet, model, renderer.fieldBuffers(),
+                                null, tradeCtx, tradeRecord);
+                        if (tradeNet.portCount > 0) syncTradeUi();
+                }
+                // The berth is trade.js's choice (fleetShowcase): the port with
+                // the most moving craft, wound to its first departures when the
+                // network is younger than them.
+                const show = tradeLib.fleetShowcase(tradeNet, FLEET_WIND_TICKS);
+                if (show.portIndex < 0) return 'fleet \u00b7 no colony in this epoch\u2019s sky';
+                const bestPort = show.portIndex;
+                const wound = show.wound;
+                if (wound > 0) syncTradeUi();
+                const port = tradeNet.ports[bestPort];
+                tradeCtx.name = port.name;
+                window.PlanetsLib.generateSystem(port.ref, tradeCtx, tradeRecord);
+                const star = tradeRecord.star;
+                fleetRef.group = window.SelectionStore.GROUP_SPACE;
+                fleetRef.type = 'star';
+                fleetRef.key = port.ref.key >>> 0;
+                fleetRef.kind = port.ref.kind;
+                fleetRef.index = port.ref.index;
+                fleetRef.x = port.ref.x; fleetRef.y = port.ref.y; fleetRef.z = port.ref.z;
+                fleetRef.colorIndex = port.ref.colorIndex;
+                fleetRef.absMag = port.ref.absMag;
+                fleetRef.mass = star.mass; fleetRef.lum = star.lum; fleetRef.teff = star.teff;
+                fleetRef.age = star.age; fleetRef.metal = star.metal;
+                // A closed layer first: restoreStarSnapshot re-enters an open one
+                // with the camera moving, and this frame wants no flight.
+                if (systemLayer.isOpen()) closeSystemView();
+                if (!restoreStarSnapshot(fleetRef)) return 'fleet \u00b7 cannot select ' + port.name;
+                openSystemView(false);
+                systemLayer.setView(window.SystemLayer.VIEW_DV_RAILS);
+                syncViewRows();
+                writeSystemReadout();
+                // The moving craft, selected: the row's point is the route's own
+                // numbers, so they are on screen without a click.
+                const intra = port.intra;
+                const legs = intra ? intra.legCount : 0;
+                const fleet = tradeLib.portFleet(tradeNet, bestPort);
+                let picked = '';
+                if (legs > 0) {
+                        systemLayer.selectCraft(window.SystemLayer.CRAFT_FERRY, 0, 0);
+                        picked = 'ferry 1 of ' + tradeLib.INTRA_FERRY_COUNT + ' on leg 1 of ' + legs;
+                } else if (fleet.count > 0) {
+                        let slot = -1;
+                        for (let i = 0; i < fleet.count; i++) {
+                                if (fleet.voyages[i].dir !== tradeLib.VOYAGE_DOCKED) { slot = i; break; }
+                        }
+                        if (slot < 0) slot = 0;
+                        systemLayer.selectCraft(window.SystemLayer.CRAFT_HULL, -1, slot);
+                        const v = fleet.voyages[slot];
+                        picked = v.dir === tradeLib.VOYAGE_DOCKED
+                                ? 'hull ' + (slot + 1) + ' in port'
+                                : 'hull ' + (slot + 1) + ' '
+                                        + (v.dir === tradeLib.VOYAGE_OUT ? 'outbound' : 'inbound')
+                                        + ' ' + Math.round(v.progress * 100) + ' %';
+                }
+                writeSystemReadout();
+                updateOverlay(renderer.state, camera.getState(statsText));
+                return 'fleet \u00b7 ' + port.name
+                        + ' \u00b7 ' + fleet.count + (fleet.count === 1 ? ' hull' : ' hulls')
+                        + ' (' + fleet.docked + ' docked \u00b7 ' + fleet.sailing + ' under way)'
+                        + ' \u00b7 ' + (legs > 0
+                                ? tradeLib.INTRA_FERRY_COUNT + ' ferries on ' + legs
+                                        + (legs === 1 ? ' leg' : ' legs')
+                                        + ' \u00b7 ' + (intra.flow < 1 ? intra.flow.toPrecision(2)
+                                                : Math.round(intra.flow).toLocaleString('en-US')) + ' t-equivalent / trade y'
+                                : 'ferries in port \u00b7 ' + port.worldCount
+                                        + (port.worldCount === 1
+                                                ? ' settled world, so no in-system leg'
+                                                : ' worlds, no flyable recent route'))
+                        + (picked ? ' \u00b7 ' + picked : '')
+                        + (wound > 0 ? ' \u00b7 clock +' + wound + ' y to the first departures' : '')
+                        + ' \u00b7 trade ' + tradeRateYears() + ' y/s'
+                        + ' \u00b7 system ' + window.SystemLayer.formatSysTimeRate(systemLayer.getTimeRate());
+        }
+
         function runScenario(row) {
                 if (!row) return;
                 // The row is recorded before the preset lands, so the HUD pass
@@ -3292,6 +3382,9 @@ async function boot() {
                 if (row.wide && !starTimeWide) setStarTimeRange(true);
                 applyPreset(window.ScenarioLib.queryOf(row));
                 applyScenarioView(row.view);
+                // The one row with a page action: a fleet cannot be a preset
+                // line (which system has ships is the live network's answer).
+                scenarioFleetLine = row.action === 'fleet' ? applyFleetScenario() : '';
                 // A replay is only comparable at one galaxy: type and seed are
                 // not part of a scenario's line, so a later change has to be
                 // visible rather than silently comparing two fields.
@@ -3347,7 +3440,7 @@ async function boot() {
                         // the line's dash rather than a plausible zero.
                         gasDelta: renderer.state.gasCells > 0 && Number.isFinite(renderer.state.gasDrift)
                                 ? renderer.state.gasDrift : null,
-                });
+                }) + (scenarioFleetLine ? '\n' + scenarioFleetLine : '');
         }
         scenarioRun.addEventListener('click', () => {
                 runScenario(window.ScenarioLib.byId(scenarioPick.value));
@@ -5238,8 +5331,6 @@ async function boot() {
         // clock cannot be followed (a slow machine, a hidden tab, the wide
         // star range) — and then the readout's lag line says so.
         const TRADE_EVENT_BUDGET = 256;
-        // The star-clock rung the generation-ship cruise is calibrated at.
-        const TRADE_GEN_MYR = tradeLib.GENERATION_STAR_MYR;
         // The route re-time and the frontier scan are maintenance, not clock
         // work: twice a second is invisible to the user and keeps the frame
         // free of 96 route projections.
@@ -6162,7 +6253,6 @@ async function boot() {
                         : 'The network\u2019s own clock, in years per wall second.';
                 tradeRoutesBox.checked = tradeRoutesOn !== 0;
                 tradeSyncBox.checked = tradeSyncOn !== 0;
-                tradeGenBox.checked = tradeGenOn !== 0;
                 tradeExpandBox.checked = tradeLib.expansionArmed() !== 0;
                 tradeExpandBox.disabled = !canCommandTrade();
                 if (!tradeNet) {
@@ -6221,9 +6311,28 @@ async function boot() {
                         ? ` \u00b7 ${tradeNet.routes.unreachable} route`
                                 + (tradeNet.routes.unreachable === 1 ? '' : 's') + ' out of reach'
                         : '';
+                // A generation ship (trade.36) is the one voyage no route row can
+                // show: one hull, centuries long, built by a colony for a world
+                // nothing else can reach. It is worth a word, because its motion
+                // is the one thing on this panel the player has to wind the
+                // clock up to see.
+                let genInFlight = 0, genLongest = 0;
+                for (let i = 0; i < tradeNet.shipCount; i++) {
+                        const ship = tradeNet.ships[i];
+                        if (!ship.generation) continue;
+                        genInFlight += 1;
+                        if (ship.leg > genLongest) genLongest = ship.leg;
+                }
+                const generationNote = genInFlight > 0
+                        ? ' \u00b7 ' + genInFlight + (genInFlight === 1 ? ' generation ship (' : ' generation ships (')
+                                + Math.round(genLongest).toLocaleString('en-US') + ' y)'
+                        : (tradeNet.strandedCandidates > 0
+                                ? ' \u00b7 ' + tradeNet.strandedCandidates + ' stranded world'
+                                        + (tradeNet.strandedCandidates === 1 ? '' : 's')
+                                : '');
 		const worldsNote = tradeNet.worldCount > tradeNet.portCount
 			? ` (${tradeNet.worldCount} worlds)` : '';
-		tradeState.textContent = `${tradeLib.livePortCount(tradeNet)} ports${worldsNote}${outpostNote} \u00b7 ${tradeNet.shipCount} ships${reachNote}`
+		tradeState.textContent = `${tradeLib.livePortCount(tradeNet)} ports${worldsNote}${outpostNote} \u00b7 ${tradeNet.shipCount} ships${reachNote}${generationNote}`
                         + (skyNote ? ' \u00b7 ' + skyNote : '')
                         + fleetNote
                         + ` \u00b7 ${tradeNet.founded} founded \u00b7 ${Math.round(tradeNet.delivered).toLocaleString()} units hauled`
@@ -6882,7 +6991,7 @@ async function boot() {
                 // The trade clock (trade-plan §1) is wall-time, not star-time:
                 // the colonies keep their own years. With sync time on it rides
                 // the star clock instead (starTimeRate · 10⁶ trade years per
-                // second), which is what makes generation-ship hops visible.
+                // second), which is what puts a whole voyage in one frame.
                 // A hidden tab must not fast-forward the network by minutes, so
                 // the frame's share is capped at a quarter second. While the
                 // stars move, in-flight voyages are re-measured against the
@@ -7253,9 +7362,20 @@ async function boot() {
                                 // immediate — the layer already has every body's
                                 // screen position. An empty click clears the body
                                 // selection but does not leave the view.
-                                if (systemLayer.isMapOpen()) {
+                                // A ship under the cursor wins (trade.35): a
+                                // hull is a 3 px target on a busy schema, and
+                                // selecting one is how its route's own numbers
+                                // are read. Anything else falls through to the
+                                // route node (map) or the body (orrery).
+                                if (systemLayer.pickCraft(input.state.pickX, input.state.pickY, craftPick)
+                                        && craftPick.kind !== window.SystemLayer.CRAFT_NONE) {
+                                        systemLayer.clearBodySelection();
+                                        systemLayer.selectCraft(craftPick.kind, craftPick.leg, craftPick.slot);
+                                } else if (systemLayer.isMapOpen()) {
+						systemLayer.clearCraft();
 						if (systemLayer.pickDvNode(input.state.pickX, input.state.pickY, dvPick)) systemLayer.chooseRouteNode(dvPick.body, dvPick.node);
 					} else {
+						systemLayer.clearCraft();
 						systemLayer.pick(input.state.pickX, input.state.pickY, bodyPick);
 						if (bodyPick.kind === window.SystemLayer.BODY_NONE) {
 							systemLayer.clearBodySelection();

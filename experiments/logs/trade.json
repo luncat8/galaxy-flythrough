@@ -1,6 +1,6 @@
 {
-  "total": 371,
-  "passed": 371,
+  "total": 385,
+  "passed": 385,
   "failed": 0,
   "checks": [
     {
@@ -565,16 +565,11 @@
       "pass": true
     },
     {
-      "name": "a generation-ship frontier hop lasts seconds at the default synced pace",
+      "name": "a generation ship flies 1 ly per 33 trade years, and the freighters do not",
       "pass": true,
       "detail": {
-        "legYears": 3333,
-        "wallS": 3.33
+        "genYearPerLy": 33.33
       }
-    },
-    {
-      "name": "the freighter cruise is untouched by the special mode above the legibility floor",
-      "pass": true
     },
     {
       "name": "a budgeted drain keeps the clock monotone and never passes the next event",
@@ -726,34 +721,49 @@
       }
     },
     {
-      "name": "the special mode sizes the warehouses to the fleet’s crossing time",
+      "name": "there is no global generation mode to leave the economy in",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "the generation ledger counts ships that are really flying the crawl",
       "pass": true,
       "detail": {
-        "ratio": 33.33,
-        "expected": 33.33
+        "ledger": 2,
+        "genInFlight": 2,
+        "years": 68690
       }
     },
     {
-      "name": "a generation-ship network keeps its colonies instead of starving",
-      "pass": true,
-      "detail": {
-        "bigFree": 56,
-        "bigGen": 62,
-        "median": 0.49
-      }
-    },
-    {
-      "name": "and keeps founding through the slow fleet instead of standing still",
-      "pass": true,
-      "detail": {
-        "portsBefore": 56,
-        "ports": 62,
-        "founded": 58
-      }
-    },
-    {
-      "name": "leaving the special mode restores the authored warehouses",
+      "name": "nothing is launched while every world is still reachable",
       "pass": true
+    },
+    {
+      "name": "a stranded world is exactly what the decision is for",
+      "pass": true,
+      "detail": {
+        "candidate": 114,
+        "port": 39,
+        "ly": 1262,
+        "ports": 56,
+        "cands": 224,
+        "big": 56,
+        "resting": 56,
+        "visible": 224,
+        "habitable": 16,
+        "time": 4000
+      }
+    },
+    {
+      "name": "a world not worth centuries gets no generation ship",
+      "pass": true
+    },
+    {
+      "name": "a generation ship changes no warehouse and no freighter speed",
+      "pass": true,
+      "detail": {
+        "ratio": 1
+      }
     },
     {
       "name": "the scenario starts with exactly four colonies",
@@ -934,17 +944,52 @@
       }
     },
     {
-      "name": "a diverted founding wave is refunded to the population it was drawn from",
+      "name": "a world no expedition can reach, and worth centuries, is built for",
       "pass": true,
       "detail": {
-        "launch": 1,
-        "wasTurned": 1,
-        "turnedBy": 20,
-        "founded": 0,
-        "people": 0.91,
-        "jump": 0.91,
-        "stateAfter": 0,
-        "amountAfter": 0
+        "launched": true,
+        "ly": 2017,
+        "years": 67234,
+        "candidate": 8,
+        "farIndex": 8
+      }
+    },
+    {
+      "name": "the voyage is the crawl, and a freight hull would need a fraction of it",
+      "pass": true,
+      "detail": {
+        "years": 67234,
+        "crawlYears": 67234,
+        "freighterYears": 1009
+      }
+    },
+    {
+      "name": "a generation voyage is never turned around, however hard the sky shears",
+      "pass": true,
+      "detail": {
+        "outrunNow": 0,
+        "diverted": 0,
+        "returning": 0,
+        "booked": 71234
+      }
+    },
+    {
+      "name": "the generation ship founds its colony on the far world",
+      "pass": true,
+      "detail": {
+        "farPort": 12,
+        "ports": 1,
+        "founded": 1,
+        "at": 71400,
+        "arrive": 71234
+      }
+    },
+    {
+      "name": "a generation voyage does not slow the freighters flying beside it",
+      "pass": true,
+      "detail": {
+        "generationYears": 67234,
+        "freighterYears": 1049
       }
     },
     {
@@ -1975,6 +2020,71 @@
       "detail": "\nfleet     12 ferries in port · no transfer this settle"
     },
     {
+      "name": "portFleet lists the hulls touching a port, docked and under way",
+      "pass": true,
+      "detail": {
+        "count": 12,
+        "docked": 12,
+        "sailing": 0
+      }
+    },
+    {
+      "name": "every voyage record is coherent: a fraction, a booked leg, a real far port, a hull",
+      "pass": true,
+      "detail": {
+        "shown": 12
+      }
+    },
+    {
+      "name": "the fleet record is refreshed in place and carries the port it was read from",
+      "pass": true,
+      "detail": {
+        "key": 892355377
+      }
+    },
+    {
+      "name": "a hull’s block names its hull, its route, its load and its history",
+      "pass": true,
+      "detail": "\nhull 1 hauler  ·  in port\nberth     Terran · loading or waiting for a cargo\nload      empty · no cargo booked for this leg\naccount   0 trips · 0 units delivered by this hull"
+    },
+    {
+      "name": "a selected ferry prints the load its leg was priced with (t / settle, per ferry, the gate)",
+      "pass": true,
+      "detail": {
+        "legs": 1,
+        "text": "\nferry 1 of 12  ·  leg 1 of 1\nroute     belt → Terran  chemical · bulk\nload      40.9 t / settle on this leg · 3.4 t per ferry / settle · 12 ferries\ntrip      0.02 y each way · 0.04 y out and back at the system clock · 0.0 km/s\ngate      0.0 km/s for the round trip · chemical (20 km/s) yes · nuclear (40 km/s) yes\npair      couple 1.00 · Hohmann 0.0 h · 12 ferries over 1 leg · 40.9 t / settle at the port"
+      }
+    },
+    {
+      "name": "a ferry in port says there is no leg to price, and why",
+      "pass": true,
+      "detail": "\nferry 1 of 12  in port\nroute     no leg this settle · the last settle moved nothing between worlds, so no boat is flying\nload      0 t / settle · the fleet waits at Terran\nclock     the boats move on the system clock; the settle is the average"
+    },
+    {
+      "name": "the fleet showcase winds a young network to its first departures",
+      "pass": true,
+      "detail": {
+        "port": 0,
+        "wound": 100,
+        "sailing": 9,
+        "time": 100
+      }
+    },
+    {
+      "name": "a port with nothing to trade with keeps the clock inside the cap",
+      "pass": true,
+      "detail": {
+        "port": 0,
+        "wound": 50,
+        "sailing": 0
+      }
+    },
+    {
+      "name": "a one-world port explains that no in-system leg exists",
+      "pass": true,
+      "detail": "\nferry 1 of 12  in port\nroute     no leg this settle · this system has one world to trade with, so no in-system leg exists\nload      0 t / settle · the fleet waits at Terran\nclock     the boats move on the system clock; the settle is the average"
+    },
+    {
       "name": "bootstrap fixture has a real eligible terran system, a non-terran system and a metal-poor star",
       "pass": true,
       "detail": {
@@ -2060,14 +2170,14 @@
       "pass": true,
       "detail": {
         "emptyLine": "no old, metal-rich star in this epoch’s sky yet · 300,000 stars scanned · generation is approximated",
-        "sweepMs": 3
+        "sweepMs": 2
       }
     },
     {
       "name": "a sweep is cheap because only birth-eligible stars reach the generator",
       "pass": true,
       "detail": {
-        "sweepMs": 3,
+        "sweepMs": 2,
         "calls": 74,
         "queued": 0
       }

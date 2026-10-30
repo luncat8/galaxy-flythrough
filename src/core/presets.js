@@ -73,7 +73,6 @@ const FIELDS = [
 	{ key: 'trade', label: 'trade clock', unit: ' y/s' },
 	{ key: 'traderoutes', label: 'trade routes' },
 	{ key: 'tradesync', label: 'trade clock synced to star time' },
-	{ key: 'tradegen', label: 'generation ships' },
 	{ key: 'tradeexpand', label: 'expansion armed' },
 	{ key: 'ship', label: 'ship class' },
 	// The workspace (workspace-plan.md §12): the page's job — observe, fly or
@@ -132,7 +131,6 @@ function menuDefaults() {
 		trade: g.TradeLib ? g.TradeLib.TRADE_RATE_DEFAULT : 100,
 		traderoutes: g.TradeLib ? g.TradeLib.TRADE_ROUTES_DEFAULT : 1,
 		tradesync: 0,
-		tradegen: 0,
 		tradeexpand: 1,
 		ship: 'chemical',
 		mode: 'observe',
@@ -322,7 +320,7 @@ function buildLlmPrompt(settings) {
 	lines.push('- star system: ' + ['type ' + (d.type || 'SBb'), 'seed ' + (d.seed || '42'),
 		'age ' + (d.age || '13.5 Gyr')].join(', '));
 	lines.push('- star movement stability engine: ' + (d.engine || 'classic'));
-	for (const key of ['time', 'evolve', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad', 'sysview', 'systime', 'dvmap', 'dvbudget', 'trade', 'traderoutes', 'tradesync', 'tradegen', 'tradeexpand', 'ship', 'mode']) {
+	for (const key of ['time', 'evolve', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad', 'sysview', 'systime', 'dvmap', 'dvbudget', 'trade', 'traderoutes', 'tradesync', 'tradeexpand', 'ship', 'mode']) {
 		const field = FIELDS.find((f) => f.key === key);
 		if (d[key] !== undefined) lines.push('- ' + field.label + ': ' + d[key]);
 	}

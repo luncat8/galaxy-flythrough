@@ -3,9 +3,9 @@
 // layer that draws the opened star's generated system — log-polar orbits, the
 // habitable annulus, belt stipples, colour-coded planet icons — plus exact
 // screen-space picking and the #sysread text. The same canvas carries the two
-// delta-v map renders (§7.5): the 0.5.4 star-shaped graph and the rail render,
-// which puts every node kind on its own row so the escape rail and the L5 rail
-// run straight across the columns and both read as ways out of the system.
+// delta-v map renders (§7.5): the classic star-shaped graph, the rail render
+// (every node kind on its own row), and a time-scaled flight schematic whose
+// average ferry tracks have lengths proportional to their Hohmann durations.
 //
 // CPU-only by construction (plan §1.1): one system is ≤ 12 planets + 2 belts,
 // so this is ~800 canvas ops a frame with zero allocations. Drawn every frame
@@ -60,13 +60,17 @@ const layerLabels = (typeof module !== 'undefined' && module.exports)
 const TRADE_MARKER_STYLE = layerLabels.TRADE_MARKER_STYLE;
 const TRADE_INTRA_DASH = [3, 6];
 const TRADE_SOLID_DASH = [];
+// The lane a colony's interstellar hulls leave along (trade.35). Faint and
+// dashed: it is a direction, not a route the economy owns.
+const HULL_LANE = 'rgba(150, 190, 240, 0.16)';
+const HULL_LANE_DASH = [2, 6];
 const TRADE_INTRA_STROKES = [
 	'rgba(180, 150, 110, 0.30)', // bulk
 	'rgba(110, 235, 190, 0.30)', // goods
 	'rgba(240, 225, 150, 0.30)', // passengers
 ];
-// The intra fleet (trade.34). The ferries are a picture of the settle's
-// average — trade.js records the three largest legs and how many of the twelve
+// The intra fleet (trade.34). The ferries are a picture of recent settled
+// trade — trade.js records the three largest legs and how many of the twelve
 // boats each one gets — and they fly on THIS layer's clock, at each leg's own
 // delta-v flight time. Nothing here writes to the model: the mass the couple
 // moved is already in the stocks. A short trail behind the dot makes the
@@ -79,6 +83,34 @@ const INTRA_FERRY_TAIL = 'rgba(255, 196, 96, 0.28)';
 const INTRA_FERRY_TAIL_PX = 8;
 const TRADE_WORLD_SLOTS = 6;
 const TRADE_FLOW_FAMILIES = 3;
+
+// The port's freighters (trade.35). The second craft class is the network's
+// own hull — the thing that actually carries the trade — and it is the one
+// ship class *every* colony has, however few worlds its system was given (the
+// generator's planet chain makes most systems one-world, so a fleet drawn only
+// from intra-system legs is a fleet almost nobody ever sees). Hulls come from
+// trade.js's `portFleet` records, so the drawing and the readout read the same
+// voyage the network booked:
+//
+//   docked   a tick beside the port's world (orrery) or its low-orbit node
+//            (the graph) — the hull is on the pad, waiting or loading;
+//   out/in   a triangle on the escape row, at the fraction of the voyage it
+//            has flown. That fraction is the voyage's own clock, not a
+//            distance: the rail is the way out of the system, so the marker
+//            says "how far into the voyage", and the readout prints
+//            `voyage 34 %` so it cannot be read as a celestial position.
+const HULL_FILL = 'rgba(130, 195, 255, 0.95)';
+const HULL_STROKE = 'rgba(214, 238, 255, 0.95)';
+const HULL_TAIL = 'rgba(130, 195, 255, 0.26)';
+const HULL_PX = 3.0;
+const HULL_TAIL_PX = 9;
+const HULL_SELECT_PAD_PX = 3;
+// The craft under the cursor/selection. The layer owns the ids; trade.js writes
+// the same three voyage ids (`VOYAGE_*`) into the records it hands over.
+const CRAFT_NONE = -1, CRAFT_FERRY = 0, CRAFT_HULL = 1;
+const VOYAGE_DOCKED = 0, VOYAGE_OUT = 1, VOYAGE_IN = 2;
+// 12 ferry seats + 12 hull slots per port: the fixed arrays below cover both.
+const CRAFT_MAX = 24;
 
 const TAU = Math.PI * 2;
 const HALF_PI = Math.PI / 2;
@@ -135,15 +167,16 @@ const SYSTIME_MAX = 100;              // years per second
 const SYSTIME_DEFAULT = 0;            // frozen
 
 // --- The open view (plan §6.5, §7.5) -----------------------------------------
-// One view is open at a time on the one canvas: the schematic or one of the two
-// delta-v map renders. The rail render puts every node kind on its own row, so
-// the escape and L5 rails run straight across the columns.
+// One view is open at a time on the one canvas: the orrery, two delta-v graph
+// renders, or a flight-time render. The latter gives average freight legs
+// dedicated tracks whose lengths are proportional to their Hohmann durations.
 const VIEW_SYSTEM = 0;
 const VIEW_DV_CLASSIC = 1;
 const VIEW_DV_RAILS = 2;
-const VIEW_COUNT = 3;
+const VIEW_DV_TIME = 3;
+const VIEW_COUNT = 4;
 const VIEW_DEFAULT = VIEW_SYSTEM;
-const VIEW_NAMES = ['system', 'delta-v classic', 'delta-v rails'];
+const VIEW_NAMES = ['system', 'delta-v classic', 'delta-v rails', 'delta-v flight time'];
 
 // --- Delta-v map (plan §7): budget slider + ship ------------------------------
 const BUDGET_MIN = 0, BUDGET_MAX = 1, BUDGET_STEP = 0.01, BUDGET_DEFAULT = 0.35;
@@ -156,6 +189,15 @@ const DV_COL_W = 160;                // spacing between body columns
 const DV_COL_TOP = 82;               // top of the graph
 const DV_NODE_DY = 44;               // vertical gap between rows
 const DV_NODE_R = 5;
+// The time view gives each average intra-system route its own lane. All lanes
+// share one linear scale: a line twice as long represents twice the one-way
+// Hohmann time, and the ferries move at constant speed along it.
+const DV_TIME_WIDTH = 960;
+const DV_TIME_TRACK_X = 245;
+const DV_TIME_TRACK_MAX = 650;
+const DV_TIME_LANE_Y = 142;
+const DV_TIME_LANE_DY = 70;
+const DV_TIME_EMPTY_LANES = 1;
 const DV_EDGE_STROKE = 'rgba(150, 200, 240, 0.55)';
 const DV_NODE_FILL = 'rgba(150, 200, 240, 0.85)';
 const DV_NODE_FILL_SURF = 'rgba(150, 180, 150, 0.85)';
@@ -170,6 +212,9 @@ const DV_RAIL_EDGE = 'rgba(240, 200, 140, 0.55)';
 const DV_RAIL_L5 = 'rgba(140, 220, 235, 0.5)';
 const DV_RAIL_LABEL = 'rgba(240, 210, 160, 0.9)';
 const DV_RAIL_L5_LABEL = 'rgba(160, 225, 240, 0.9)';
+// The star rail: the last segment of the escape row, from the innermost
+// column to the star node. It is the line an interstellar voyage rides.
+const DV_RAIL_EXIT = 'rgba(240, 200, 140, 0.35)';
 const DV_INNER_STROKE = 'rgba(150, 175, 215, 0.35)';
 const DV_ROW_CAPTION = 'rgba(150, 170, 195, 0.75)';
 const DV_PANEL_FILL = 'rgba(3, 8, 16, 0.94)';
@@ -278,9 +323,24 @@ function createSystemLayer(canvas) {
 	const record = planets.createSystemRecord();
 
 	let open = false;
-	let tradePort = null, tradeWorlds = null;
+	let tradePort = null, tradeWorlds = null, tradeFleet = null;
+	const tradeWorldLabels = [];
 	const tradeFromXY = new Float64Array(2);
 	const tradeToXY = new Float64Array(2);
+
+	// The ships drawn last frame, in the space that frame used (`craftSpace`:
+	// 0 = screen pixels in the orrery, 1 = the delta-v graph's own units), so a
+	// click can hit-test exactly what was drawn — the same rule the bodies
+	// follow. Fixed arrays: a frame allocates nothing, and the ferry seats and
+	// hull slots are the two fixed ranges `registerCraft` writes.
+	const craftXY = new Float32Array(CRAFT_MAX * 2);
+	const craftKindOf = new Int8Array(CRAFT_MAX);
+	const craftSlotOf = new Int8Array(CRAFT_MAX);
+	const craftLegOf = new Int16Array(CRAFT_MAX);
+	let craftSpace = 0;
+	let craftKind = CRAFT_NONE, craftLeg = -1, craftSlot = -1;
+	let hoverCraftKind = CRAFT_NONE, hoverCraftLeg = -1, hoverCraftSlot = -1, hoverCraftLabel = '';
+	const hitCraft = { kind: CRAFT_NONE, leg: -1, slot: -1 };
 
 	// --- Layout scalars, written by prepare() -------------------------------
 	let lnIn = 0;
@@ -567,7 +627,8 @@ function createSystemLayer(canvas) {
 	function exit() {
 		if (!open) return;
 		open = false;
-		tradePort = null; tradeWorlds = null;
+		tradePort = null; tradeWorlds = null; tradeFleet = null;
+		clearCraft();
 		clearRoute();
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 		selectedKind = BODY_NONE;
@@ -575,19 +636,129 @@ function createSystemLayer(canvas) {
 		hoverKind = BODY_NONE;
 		hoverIndex = -1;
 		hoverLabel = '';
+		hoverCraftKind = CRAFT_NONE; hoverCraftLeg = -1; hoverCraftSlot = -1; hoverCraftLabel = '';
 	}
 
 	function isOpen() { return open; }
 
-	function setTradeData(port, worlds) {
+	function setTradeData(port, worlds, fleet) {
 		if (!open || !port || !worlds || !port.intraFlow
 			|| (port.key >>> 0) !== (record.star.key >>> 0)) {
-			tradePort = null; tradeWorlds = null;
+			tradePort = null; tradeWorlds = null; tradeFleet = null;
+			clearCraft();
 			return false;
 		}
 		tradePort = port;
 		tradeWorlds = worlds;
+		const prefix = starPrefix + ' ';
+		for (let s = 0; s < port.worldCount; s++) {
+			const world = worlds[port.worldIdx[s]];
+			const name = world && world.name ? world.name : '?';
+			tradeWorldLabels[s] = name.startsWith(prefix) ? name.slice(prefix.length) : name;
+		}
+		// The fleet is only as good as the port it names: a live record from
+		// another star is stale the moment the view moves.
+		tradeFleet = fleet && (fleet.key >>> 0) === (port.key >>> 0) && fleet.count > 0
+			? fleet : null;
+		if (!tradeFleet && craftKind === CRAFT_HULL) clearCraft();
 		return true;
+	}
+
+	// --- The craft layer (trade.35) ------------------------------------------
+	// Every boat and hull the frame draws registers its position, so picking is
+	// the draw's own arithmetic rather than a second guess at it.
+	function registerCraft(idx, kind, leg, slot, x, y) {
+		if (!(idx >= 0 && idx < CRAFT_MAX)) return;
+		craftKindOf[idx] = kind;
+		craftLegOf[idx] = leg;
+		craftSlotOf[idx] = slot;
+		craftXY[idx * 2] = x;
+		craftXY[idx * 2 + 1] = y;
+	}
+	function beginCraftFrame(space) {
+		craftKindOf.fill(CRAFT_NONE);
+		craftSpace = space ? 1 : 0;
+	}
+	function craftSelected(kind, leg, slot) {
+		return craftKind !== CRAFT_NONE && craftKind === kind
+			&& craftLeg === leg && craftSlot === slot;
+	}
+	function craftHovered(kind, leg, slot) {
+		return hoverCraftKind !== CRAFT_NONE && hoverCraftKind === kind
+			&& hoverCraftLeg === leg && hoverCraftSlot === slot;
+	}
+	// The craft's hover label, drawn in whatever space its own draw used: the
+	// orrery is screen pixels and the graph is its own units, so the text is in
+	// the same transform as the tick it names.
+	function drawCraftLabel(x, y, text) {
+		if (!text) return;
+		ctx.font = layerLabels.LABEL_FONT;
+		ctx.lineWidth = 3;
+		ctx.strokeStyle = layerLabels.LABEL_HALO;
+		ctx.strokeText(text, x + layerLabels.LABEL_OFFSET_PX, y - layerLabels.LABEL_OFFSET_PX);
+		ctx.fillStyle = layerLabels.LABEL_FILL;
+		ctx.fillText(text, x + layerLabels.LABEL_OFFSET_PX, y - layerLabels.LABEL_OFFSET_PX);
+	}
+	function selectCraft(kind, leg, slot) {
+		craftKind = kind === CRAFT_FERRY || kind === CRAFT_HULL ? kind : CRAFT_NONE;
+		craftLeg = craftKind === CRAFT_NONE ? -1 : (leg | 0);
+		craftSlot = craftKind === CRAFT_NONE ? -1 : (slot | 0);
+		return craftKind;
+	}
+	function clearCraft() { craftKind = CRAFT_NONE; craftLeg = -1; craftSlot = -1; }
+	function selectedCraft(out) {
+		out.kind = craftKind; out.leg = craftLeg; out.slot = craftSlot;
+		return out;
+	}
+	// The craft the click is on, in screen space. The graph draws through a
+	// translate+scale, so the click is mapped back into the space the boats were
+	// registered in before the distance test — no floating-point mismatch.
+	// `outXY` (optional, 2 floats) receives the drawn position of the craft that
+	// won, in the frame's own space — the same numbers the draw used, so a
+	// caller can tell where a boat is without guessing at it.
+	function pickCraft(x, y, out, outXY) {
+		out.kind = CRAFT_NONE; out.leg = -1; out.slot = -1;
+		if (outXY) { outXY[0] = 0; outXY[1] = 0; }
+		if (!open) return out;
+		const scale = craftSpace && mapLayout.valid && mapLayout.scale > 0 ? mapLayout.scale : 1;
+		const lx = craftSpace ? (x - mapLayout.x) / scale : x;
+		const ly = craftSpace ? (y - mapLayout.y) / scale : y;
+		const pad = (INTRA_FERRY_PX + PICK_PAD_PX) / (craftSpace ? scale : 1);
+		let best = pad * pad;
+		for (let i = 0; i < CRAFT_MAX; i++) {
+			if (craftKindOf[i] === CRAFT_NONE) continue;
+			const dx = lx - craftXY[i * 2];
+			const dy = ly - craftXY[i * 2 + 1];
+			const d2 = dx * dx + dy * dy;
+			if (d2 > best) continue;
+			best = d2;
+			out.kind = craftKindOf[i];
+			out.leg = craftLegOf[i];
+			out.slot = craftSlotOf[i];
+			if (outXY) { outXY[0] = craftXY[i * 2]; outXY[1] = craftXY[i * 2 + 1]; }
+		}
+		return out;
+	}
+	function craftLabelAt(kind, leg, slot) {
+		const worldName = (s) => {
+			if (!(tradePort && tradePort.worldCount) || !tradeWorlds) return '';
+			if (!(s >= 0 && s < tradePort.worldCount)) return '';
+			const w = tradeWorlds[tradePort.worldIdx[s]];
+			return w && w.name ? w.name : '';
+		};
+		if (kind === CRAFT_FERRY) {
+			const intra = tradePort && tradePort.intra;
+			if (!intra || !(leg >= 0 && leg < intra.legCount)) return 'ferry \u00b7 in port';
+			const l = intra.legs[leg];
+			return 'ferry \u00b7 ' + worldName(l.from) + ' \u2192 ' + worldName(l.to);
+		}
+		if (kind === CRAFT_HULL && tradeFleet && slot >= 0 && slot < tradeFleet.count) {
+			const v = tradeFleet.voyages[slot];
+			if (v.dir === VOYAGE_DOCKED) return v.hullName + ' \u00b7 in port';
+			return v.hullName + ' \u00b7 ' + (v.dir === VOYAGE_IN ? 'from ' : 'to ') + v.other
+				+ ' \u00b7 voyage ' + Math.round(v.progress * 100) + ' %';
+		}
+		return '';
 	}
 
 	// --- The view's clock (plan §6.4) ----------------------------------------
@@ -634,6 +805,10 @@ function createSystemLayer(canvas) {
 	function draw(width, height, rightInset, leftInset) {
 		if (!open) return;                      // the only cost while closed
 		ctx.clearRect(0, 0, width, height);
+		// A frame's craft list is rebuilt from scratch: the positions are what
+		// the click will hit-test, so a boat that stopped being drawn must stop
+		// being clickable in the same frame.
+		beginCraftFrame(0);
 		if (!(width > 0) || !(height > 0)) return;
 		if (view !== VIEW_SYSTEM) {
 			drawDvMap(width, height, rightInset || 0, leftInset || 0);
@@ -681,29 +856,67 @@ function createSystemLayer(canvas) {
 	// dashes are the *same three legs* `noteIntraLegs` recorded, drawn dim:
 	// the dash is the average, the boats are its picture, and the two can never
 	// disagree about which pair or which family is busy.
+	//
+	// The fleet draws whenever a port is attached — a one-world system has no
+	// legs, and that is the *common* case (the generator's chain leaves most
+	// systems with a single settleable world), so the old `worldCount < 2` gate
+	// hid the fleet from every normal colony. A port with no transfer now shows
+	// its boats in port, which is what the readout has been saying all along.
 	function drawIntraRoutes() {
-		const intra = tradePort && tradePort.intra;
 		if (!tradePort || !tradeWorlds || tradePort.key !== (record.star.key >>> 0)
-			|| tradePort.worldCount < 2 || !intra || !(intra.legCount > 0)) return;
-		ctx.lineWidth = 1.1;
-		ctx.lineCap = 'round';
-		ctx.setLineDash(TRADE_INTRA_DASH);
-		for (let i = 0; i < intra.legCount; i++) {
-			const leg = intra.legs[i];
-			const from = tradeWorlds[tradePort.worldIdx[leg.from]];
-			const to = tradeWorlds[tradePort.worldIdx[leg.to]];
-			if (!from || !to || from.outpost || to.outpost) continue;
-			if (!tradeWorldPosition(leg.from, tradeFromXY) || !tradeWorldPosition(leg.to, tradeToXY)) continue;
-			ctx.strokeStyle = TRADE_INTRA_STROKES[leg.family >= 0 ? leg.family : 0];
-			ctx.beginPath();
-			ctx.moveTo(tradeFromXY[0], tradeFromXY[1]);
-			ctx.lineTo(tradeToXY[0], tradeToXY[1]);
-			ctx.stroke();
+			|| (tradePort.colony && tradePort.colony.outpost)) return;
+		const intra = tradePort.intra;
+		const legs = intra && intra.legCount > 0 ? intra.legCount : 0;
+		if (legs > 0) {
+			ctx.lineWidth = 1.1;
+			ctx.lineCap = 'round';
+			ctx.setLineDash(TRADE_INTRA_DASH);
+			for (let i = 0; i < legs; i++) {
+				const leg = intra.legs[i];
+				const from = tradeWorlds[tradePort.worldIdx[leg.from]];
+				const to = tradeWorlds[tradePort.worldIdx[leg.to]];
+				if (!from || !to || from.outpost || to.outpost) continue;
+				if (!tradeWorldPosition(leg.from, tradeFromXY) || !tradeWorldPosition(leg.to, tradeToXY)) continue;
+				ctx.strokeStyle = TRADE_INTRA_STROKES[leg.family >= 0 ? leg.family : 0];
+				ctx.beginPath();
+				ctx.moveTo(tradeFromXY[0], tradeFromXY[1]);
+				ctx.lineTo(tradeToXY[0], tradeToXY[1]);
+				ctx.stroke();
+			}
+			ctx.setLineDash(TRADE_SOLID_DASH);
+			ctx.lineWidth = 1;
+			ctx.lineCap = 'butt';
 		}
-		ctx.setLineDash(TRADE_SOLID_DASH);
-		ctx.lineWidth = 1;
-		ctx.lineCap = 'butt';
 		drawIntraFleet();
+		// The lane out of the system is drawn with the port, not with the
+		// traffic: the layer's own promise is that a ship is always on a line,
+		// and this is the line an interstellar voyage of this colony rides.
+		drawHullLane();
+		drawHullFleet();
+	}
+
+	// The departure lane: from the berth world out along the colony's own
+	// outward direction — the escape asymptote every hull of this port flies.
+	// Returns the drawn segment's far end in `hullLaneOut` (x, y).
+	const hullLaneOut = new Float64Array(2);
+	function drawHullLane() {
+		if (!tradePort || !tradeWorlds || !(tradePort.worldCount > 0)) return false;
+		if (!tradeWorldPosition(0, tradeFromXY)) return false;
+		const cx = tradeFromXY[0], cy = tradeFromXY[1];
+		let ux = cx - layout.cx, uy = cy - layout.cy;
+		const len = Math.sqrt(ux * ux + uy * uy);
+		if (len > 0) { ux /= len; uy /= len; } else { ux = 0; uy = -1; }
+		hullLaneOut[0] = layout.cx + ux * layout.rEdge;
+		hullLaneOut[1] = layout.cy + uy * layout.rEdge;
+		ctx.strokeStyle = HULL_LANE;
+		ctx.lineWidth = 1;
+		ctx.setLineDash(HULL_LANE_DASH);
+		ctx.beginPath();
+		ctx.moveTo(cx, cy);
+		ctx.lineTo(hullLaneOut[0], hullLaneOut[1]);
+		ctx.stroke();
+		ctx.setLineDash(TRADE_SOLID_DASH);
+		return true;
 	}
 
 	// The fleet (trade.34): the settle's largest legs, each carrying its share of
@@ -713,9 +926,9 @@ function createSystemLayer(canvas) {
 	// with no transfer this settle keeps its boats in port: docked ticks around
 	// the world they load at, so an idle system does not look like an empty one.
 	function drawIntraFleet() {
-		const intra = tradePort && tradePort.intra;
-		if (!intra) return;
-		if (!(intra.legCount > 0)) { drawDockedFleet(); return; }
+		if (!tradePort || !tradeWorlds) return;
+		const intra = tradePort.intra;
+		if (!intra || !(intra.legCount > 0)) { drawDockedFleet(); return; }
 		let boat = 0;
 		for (let i = 0; i < intra.legCount; i++) {
 			const leg = intra.legs[i];
@@ -727,40 +940,195 @@ function createSystemLayer(canvas) {
 		}
 	}
 
-	// One leg's boats, `firstBoat` being the leg's first slot among the twelve.
-	// The phase is a full out-and-back on the system clock: half the period out,
-	// half back, so the same twelve boats keep cycling while the flow stands.
+	// A boat's phase on its leg: a full out-and-back on the system clock — half
+	// the period out, half back — offset per leg and per seat, so the same
+	// twelve boats keep cycling while the flow stands and a leg reads as traffic
+	// rather than a single bead on a wire. -1 when the leg has no time at all.
+	function legPhase(leg, legIndex, seat) {
+		const period = leg.legYears * 2;
+		if (!(period > 0)) return -1;
+		let phase = timeYears / period + legIndex * 0.21 + seat / INTRA_FERRY_SEATS;
+		phase -= Math.floor(phase);
+		return phase;
+	}
+
+	// The leg's boats on the orrery: the two worlds' drawn positions, straight
+	// between, which is the dash `drawIntraRoutes` draws for the same pair.
 	function drawLegFleet(leg, legIndex, firstBoat, x0, y0, x1, y1) {
 		const n = leg.ferries > 0 ? leg.ferries : 1;
-		const period = leg.legYears * 2;
-		if (!(period > 0)) return;
+		const dx = x1 - x0, dy = y1 - y0;
+		const span = Math.sqrt(dx * dx + dy * dy);
+		if (!(span > 0)) return;
+		const ux = dx / span, uy = dy / span;
 		for (let k = 0; k < n; k++) {
-			let phase = timeYears / period + legIndex * 0.21 + (firstBoat + k) / INTRA_FERRY_SEATS;
-			phase -= Math.floor(phase);
-			if (phase < 0.5) drawFerry(x0, y0, x1, y1, phase * 2);
-			else drawFerry(x1, y1, x0, y0, 2 - phase * 2);
+			const seat = firstBoat + k;
+			const phase = legPhase(leg, legIndex, seat);
+			if (phase < 0) return;
+			const out = phase < 0.5;
+			const u = out ? phase * 2 : 2 - phase * 2;
+			const dir = out ? 1 : -1;
+			drawFerry(x0 + dx * u, y0 + dy * u, ux * dir, uy * dir, seat, legIndex);
 		}
 	}
 
-	// The fleet on the delta-v renders (V then B): the two graph columns of the
-	// leg's endpoints, on the escape row that the interplanetary transfers are
-	// drawn along. A pair whose body is not in the graph is skipped, never
-	// guessed — the same refusal the class gate makes.
-	function drawDvFleet() {
-		const intra = tradePort && tradePort.intra;
-		if (!intra || !(intra.legCount > 0)) return;
-		const x0 = dvTmpXY, x1 = dvTmpXY2;
-		let boat = 0;
-		for (let i = 0; i < intra.legCount; i++) {
-			const leg = intra.legs[i];
-			const n = leg.ferries > 0 ? leg.ferries : 1;
-			const a = tradeBodyIndex(leg.from), b = tradeBodyIndex(leg.to);
-			if (a >= 0 && b >= 0) {
-				dvNodeXYFor(a, 3, x0);
-				dvNodeXYFor(b, 3, x1);
-				drawLegFleet(leg, i, boat, x0[0], x0[1], x1[0], x1[1]);
+	// --- The port's freighters (trade.35) ------------------------------------
+	// The network's own hulls, drawn from the voyage record trade.js booked.
+	// In the orrery the port's world is the berth: docked hulls ring it, and a
+	// voyage runs along that world's own outward direction, from the world to
+	// the edge of the disk (outbound) or the other way (inbound), at the
+	// fraction of the voyage that has elapsed.
+	function drawHullFleet() {
+		if (!tradeFleet || !tradeFleet.count || !tradePort || !tradeWorlds) return;
+		if (!drawHullLane()) return;
+		const cx = tradeFromXY[0], cy = tradeFromXY[1];
+		const edgeX = hullLaneOut[0], edgeY = hullLaneOut[1];
+		let ux = edgeX - cx, uy = edgeY - cy;
+		const len = Math.sqrt(ux * ux + uy * uy);
+		if (len > 0) { ux /= len; uy /= len; } else { ux = 0; uy = -1; }
+		let docked = 0;
+		for (let i = 0; i < tradeFleet.count; i++) {
+			const v = tradeFleet.voyages[i];
+			if (!v || v.ship < 0) continue;
+			if (v.dir === VOYAGE_DOCKED) {
+				const a = (docked / 8) * TAU + 0.45;
+				const rr = 18 + (docked % 2) * 4;
+				drawHull(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr,
+					Math.cos(a), Math.sin(a), i, CRAFT_HULL, -1, i);
+				docked += 1;
+				continue;
 			}
-			boat += n;
+			const u = v.progress < 0 ? 0 : v.progress > 1 ? 1 : v.progress;
+			if (v.dir === VOYAGE_OUT) {
+				drawHull(cx + (edgeX - cx) * u, cy + (edgeY - cy) * u, ux, uy, i, CRAFT_HULL, -1, i);
+			} else {
+				drawHull(edgeX + (cx - edgeX) * u, edgeY + (cy - edgeY) * u, -ux, -uy, i, CRAFT_HULL, -1, i);
+			}
+		}
+	}
+
+	// The same hulls on the two delta-v renders. A hull is an *interstellar*
+	// voyage, so its line is the way out of the system: the berth's low orbit
+	// up its well edge, along the rails to the innermost column, then the star
+	// rail — every segment of it drawn by the render. The old code drew a chord
+	// from the body straight to the star node, which is a line the map never
+	// had; that was the "ships do not respect the schematic" report.
+	function drawDvHullFleet() {
+		if (!tradeFleet || !tradeFleet.count || !tradePort) return;
+		const bi = tradeBodyIndex(0);
+		if (bi < 0) return;
+		const out = graphPathOut();
+		if (!out) return;
+		let docked = 0;
+		for (let i = 0; i < tradeFleet.count; i++) {
+			const v = tradeFleet.voyages[i];
+			if (!v || v.ship < 0) continue;
+			if (v.dir === VOYAGE_DOCKED) {
+				dvNodeXYFor(bi, 1, dvTmpXY);
+				const a = (docked / 8) * TAU + 0.45;
+				const rr = 12 + (docked % 2) * 4;
+				drawHull(dvTmpXY[0] + Math.cos(a) * rr, dvTmpXY[1] + Math.sin(a) * rr,
+					Math.cos(a), Math.sin(a), i, CRAFT_HULL, -1, i);
+				docked += 1;
+				continue;
+			}
+			const u = v.progress < 0 ? 0 : v.progress > 1 ? 1 : v.progress;
+			const outbound = v.dir === VOYAGE_OUT;
+			if (!graphPointAt(outbound ? u : 1 - u)) continue;
+			const dir = outbound ? 1 : -1;
+			drawHull(graphHit[0], graphHit[1], graphHit[2] * dir, graphHit[3] * dir,
+				i, CRAFT_HULL, -1, i);
+		}
+	}
+
+	// The escape path out of the system, out of the port world's low orbit to
+	// the star node. Shared by every hull of the berth, built once per draw.
+	function graphPathOut() {
+		const bi = tradeBodyIndex(0);
+		if (bi < 0) return false;
+		graphReset();
+		graphWell(bi, 1, 3);
+		graphRail(bi, dvOrder[0], 3);
+		graphPushNode(-1, 3);
+		return graphMeasure() > 0;
+	}
+
+	// One hull: a triangle pointing along its direction of travel, with a short
+	// trail, filled in the ships' blue so a hull never reads as a ferry's amber.
+	function drawHull(x, y, ux, uy, voyage, kind, leg, slot) {
+		const px = -uy, py = ux;                        // across the heading
+		if (ux !== 0 || uy !== 0) {
+			ctx.strokeStyle = HULL_TAIL;
+			ctx.lineWidth = 1;
+			ctx.beginPath();
+			ctx.moveTo(x - ux * HULL_TAIL_PX, y - uy * HULL_TAIL_PX);
+			ctx.lineTo(x, y);
+			ctx.stroke();
+		}
+		ctx.beginPath();
+		ctx.moveTo(x + ux * (HULL_PX + 2), y + uy * (HULL_PX + 2));
+		ctx.lineTo(x - ux * HULL_PX + px * HULL_PX, y - uy * HULL_PX + py * HULL_PX);
+		ctx.lineTo(x - ux * HULL_PX - px * HULL_PX, y - uy * HULL_PX - py * HULL_PX);
+		ctx.closePath();
+		ctx.fillStyle = HULL_FILL;
+		ctx.fill();
+		ctx.strokeStyle = HULL_STROKE;
+		ctx.lineWidth = 1;
+		ctx.stroke();
+		if (craftSelected(kind, leg, slot)) {
+			ctx.beginPath();
+			ctx.arc(x, y, HULL_PX + HULL_SELECT_PAD_PX + 2.4, 0, TAU);
+			ctx.strokeStyle = HULL_STROKE;
+			ctx.lineWidth = 1.4;
+			ctx.stroke();
+		}
+		if (craftHovered(kind, leg, slot)) drawCraftLabel(x, y, hoverCraftLabel);
+		registerCraft(INTRA_FERRY_SEATS + (voyage % 12), kind, leg, slot, x, y);
+	}
+
+	// The fleet on the delta-v renders (V then B). A leg is <em>the route the
+	// map draws</em> between its two worlds: out of the source's low orbit along
+	// its well edge, along the rails through every column in between, and down
+	// into the destination's low orbit. Building the polyline from the same
+	// functions that draw those lines is the fix for the reported defect — the
+	// boats used to fly a chord between two dots, over empty paper.
+	//
+	// A pair whose body is not in the graph is skipped, never guessed (the same
+	// refusal the class gate makes). With no legs the fleet is at the port, and
+	// the graph says so around the world's low-orbit node.
+	function drawDvFleet() {
+		if (!tradePort || (tradePort.colony && tradePort.colony.outpost)) return;
+		const intra = tradePort.intra;
+		if (intra && intra.legCount > 0) {
+			let boat = 0;
+			for (let i = 0; i < intra.legCount; i++) {
+				const leg = intra.legs[i];
+				const n = leg.ferries > 0 ? leg.ferries : 1;
+				const a = tradeBodyIndex(leg.from), b = tradeBodyIndex(leg.to);
+				if (a >= 0 && b >= 0) drawGraphLegFleet(leg, i, boat, a, b);
+				boat += n;
+			}
+		} else {
+			drawDvDockedFleet();
+		}
+		drawDvHullFleet();
+	}
+
+	// One leg's boats on the graph, at the same phase the orrery uses.
+	function drawGraphLegFleet(leg, legIndex, firstBoat, fromBody, toBody) {
+		const n = leg.ferries > 0 ? leg.ferries : 1;
+		graphReset();
+		graphWell(fromBody, 1, 3);
+		graphRail(fromBody, toBody, 3);
+		graphWell(toBody, 3, 1);
+		if (!(graphMeasure() > 0)) return;
+		for (let k = 0; k < n; k++) {
+			const seat = firstBoat + k;
+			const phase = legPhase(leg, legIndex, seat);
+			if (phase < 0) return;
+			const out = phase < 0.5;
+			if (!graphPointAt(out ? phase * 2 : 2 - phase * 2)) continue;
+			const dir = out ? 1 : -1;
+			drawFerry(graphHit[0], graphHit[1], graphHit[2] * dir, graphHit[3] * dir, seat, legIndex);
 		}
 	}
 
@@ -779,38 +1147,59 @@ function createSystemLayer(canvas) {
 
 	// Idle boats: two rings of ticks at the port's first world, so "the fleet is
 	// in port" is something the frame says rather than something the readout
-	// has to.
+	// has to. Every tick is a seat, so a click on one selects that boat and the
+	// readout can say what its route would have been.
 	function drawDockedFleet() {
-		if (!tradePort || !tradeWorlds || !tradePort.worldCount) return;
+		if (!tradePort || !tradeWorlds || !tradePort.worldCount
+			|| (tradePort.colony && tradePort.colony.outpost)) return;
 		if (!tradeWorldPosition(0, tradeFromXY)) return;
-		const cx = tradeFromXY[0], cy = tradeFromXY[1];
+		drawDockedTicks(tradeFromXY[0], tradeFromXY[1]);
+	}
+
+	function drawDockedTicks(cx, cy) {
 		const r = TRADE_MARKER_STYLE.ringMin + TRADE_MARKER_STYLE.ringSpan * 0.5 + 5;
 		ctx.strokeStyle = INTRA_FERRY_STROKE;
 		ctx.lineWidth = 1;
 		for (let k = 0; k < INTRA_FERRY_SEATS; k++) {
 			const a = (k / INTRA_FERRY_SEATS) * TAU;
 			const rr = r + (k % 2) * 2.5;
+			const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
 			ctx.beginPath();
-			ctx.arc(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, INTRA_FERRY_PX - 0.6, 0, TAU);
+			ctx.arc(x, y, INTRA_FERRY_PX - 0.6, 0, TAU);
+			ctx.stroke();
+			registerCraft(k, CRAFT_FERRY, -1, k, x, y);
+		}
+		if (craftKind === CRAFT_FERRY && craftLeg === -1) {
+			ctx.beginPath();
+			ctx.arc(cx, cy, r + INTRA_FERRY_PX + 2.4, 0, TAU);
+			ctx.strokeStyle = INTRA_FERRY_STROKE;
+			ctx.lineWidth = 1.2;
 			ctx.stroke();
 		}
 	}
 
-	// One boat at fraction `u` of (x0,y0) → (x1,y1), with the trail behind it.
-	function drawFerry(x0, y0, x1, y1, u) {
-		const dx = x1 - x0, dy = y1 - y0;
-		const span = Math.sqrt(dx * dx + dy * dy);
-		if (!(span > 0)) return;
-		if (u < 0) u = 0;
-		if (u > 1) u = 1;
-		const x = x0 + dx * u, y = y0 + dy * u;
-		let back = INTRA_FERRY_TAIL_PX / span;
-		if (back > u) back = u;
-		if (back > 0) {
+	// The graph's version of the berth: the same twelve ticks around the port
+	// world's low-orbit node, so a one-world system still shows its fleet on
+	// the schematic — parked on the column of the world it loads at.
+	function drawDvDockedFleet() {
+		if (!tradePort || !tradePort.worldCount || (tradePort.colony && tradePort.colony.outpost)) return;
+		const bi = tradeBodyIndex(0);
+		if (bi < 0) return;
+		dvNodeXYFor(bi, 1, dvTmpXY);
+		drawDockedTicks(dvTmpXY[0], dvTmpXY[1]);
+	}
+
+	// One boat at (x, y) heading along the unit vector (ux, uy), with the trail
+	// behind it. `seat` is the boat's slot among the twelve (and its identity for
+	// picking), `leg` the leg it is flying (-1 in port). The caller owns the
+	// position: on the orrery it is the dash between two worlds, on the delta-v
+	// renders it is a point of the drawn graph (`graphPointAt`).
+	function drawFerry(x, y, ux, uy, seat, leg) {
+		if (ux !== 0 || uy !== 0) {
 			ctx.strokeStyle = INTRA_FERRY_TAIL;
 			ctx.lineWidth = 1;
 			ctx.beginPath();
-			ctx.moveTo(x - dx * back, y - dy * back);
+			ctx.moveTo(x - ux * INTRA_FERRY_TAIL_PX, y - uy * INTRA_FERRY_TAIL_PX);
 			ctx.lineTo(x, y);
 			ctx.stroke();
 		}
@@ -823,6 +1212,15 @@ function createSystemLayer(canvas) {
 		ctx.arc(x, y, INTRA_FERRY_PX, 0, TAU);
 		ctx.fillStyle = INTRA_FERRY_FILL;
 		ctx.fill();
+		if (craftSelected(CRAFT_FERRY, leg, seat)) {
+			ctx.beginPath();
+			ctx.arc(x, y, INTRA_FERRY_PX + HULL_SELECT_PAD_PX + 2.4, 0, TAU);
+			ctx.strokeStyle = INTRA_FERRY_STROKE;
+			ctx.lineWidth = 1.4;
+			ctx.stroke();
+		}
+		if (craftHovered(CRAFT_FERRY, leg, seat)) drawCraftLabel(x, y, hoverCraftLabel);
+		registerCraft(seat, CRAFT_FERRY, leg, seat, x, y);
 	}
 
 	function drawTradeWorlds() {
@@ -1045,24 +1443,126 @@ function createSystemLayer(canvas) {
 		for (let i = 0; i < dvNBodies; i++) if (dvOrder[i] === bodyIdx) return i;
 		return 0;
 	}
-	// A node's logical position in the graph. The rail render gives every kind
-	// its own row, so the escape and L5 rails stay level across the columns (a
-	// body without a GEO leaves a gap instead of shifting its neighbours); the
-	// classic render packs the rows per body, which is the shape 0.5.4 drew.
+	// A node's row. The rail render gives every kind its own row, so the escape
+	// and L5 rails stay level across the columns (a body without a GEO leaves a
+	// gap instead of shifting its neighbours); the classic render packs the rows
+	// per body, which is the shape 0.5.4 drew. The star column has no bodies of
+	// its own, so it mirrors the innermost one: that is what keeps the row
+	// captions beside the rows they name, and the star rail one straight segment.
+	function rowSlot(bi, kind) {
+		if (view === VIEW_DV_RAILS) return kind;
+		const ref = bi >= 0 ? bi : (dvNBodies > 0 ? dvOrder[0] : -1);
+		if (ref < 0) return kind;
+		let slot = 0;
+		for (let k = 0; k < kind; k++) if (nodeExists(ref, k)) slot++;
+		return slot;
+	}
 	function dvNodeXYFor(bi, kind, out) {
-		let slot = kind;
-		if (view !== VIEW_DV_RAILS) {
-			slot = 0;
-			if (bi >= 0) for (let k = 0; k < kind; k++) if (nodeExists(bi, k)) slot++;
-		}
 		out[0] = DV_COL_X0 + (bi < 0 ? 0 : dvColumnIndexOf(bi) + 1) * DV_COL_W;
-		out[1] = DV_COL_TOP + slot * DV_NODE_DY;
+		out[1] = DV_COL_TOP + rowSlot(bi, kind) * DV_NODE_DY;
 		return out;
 	}
 	const dvTmpXY = new Float64Array(2);
 	const dvTmpXY2 = new Float64Array(2);
 	const tableTimes = {};
+
+	// --- Boats on the drawn graph (trade.35) --------------------------------
+	// A craft is only ever placed on a segment the render has *drawn*: the well
+	// edges of a column (low orbit out to escape or L5, with the elbows
+	// `mapWellEdge` draws), the rails that join two adjacent columns, and the
+	// star rail that leaves the system. Building the polyline from the same
+	// functions that draw the lines is what makes a boat ride the schematic
+	// instead of flying over empty paper — the reported defect.
+	const GRAPH_PATH_MAX = 2 * (layerDv.MAX_BODIES + 12);
+	const graphPath = new Float64Array(GRAPH_PATH_MAX);
+	const graphHit = new Float64Array(4);         // x, y, unit direction
+	let graphCount = 0;
+	let graphLen = 0;
+
+	function graphReset() { graphCount = 0; graphLen = 0; }
+	function graphPush(x, y) {
+		if (graphCount + 2 > GRAPH_PATH_MAX) return;
+		graphPath[graphCount++] = x;
+		graphPath[graphCount++] = y;
+	}
+	function graphPushNode(bi, kind) {
+		dvNodeXYFor(bi, kind, dvTmpXY);
+		graphPush(dvTmpXY[0], dvTmpXY[1]);
+	}
+	// The x a column's well edge is drawn at: escape leaves low orbit on the
+	// left of the column and L5 on the right, so the three edges never overlap.
+	function wellEdgeX(bi, kind) {
+		dvNodeXYFor(bi, 1, dvTmpXY);
+		return dvTmpXY[0] + (kind === 3 ? -10 : kind === 4 ? 10 : 0);
+	}
+	// Low orbit out to another node of the same column, along the elbows the
+	// render draws for that edge.
+	function graphWell(bi, fromKind, toKind) {
+		dvNodeXYFor(bi, fromKind, dvTmpXY);
+		const x0 = dvTmpXY[0], y0 = dvTmpXY[1];
+		dvNodeXYFor(bi, toKind, dvTmpXY2);
+		const x1 = dvTmpXY2[0], y1 = dvTmpXY2[1];
+		graphPush(x0, y0);
+		if (fromKind === 1 || toKind === 1) {
+			const edge = fromKind === 1 ? toKind : fromKind;
+			const x = wellEdgeX(bi, edge);
+			if (x !== x0) {
+				graphPush(x, y0);
+				graphPush(x, y1);
+			}
+		}
+		graphPush(x1, y1);
+	}
+	// The rails between two columns. A rail joins two *adjacent* columns, so the
+	// walk visits every column in between: a boat crossing three columns rides
+	// three drawn segments, never a chord over them.
+	function graphRail(fromBody, toBody, row) {
+		const ia = dvColumnIndexOf(fromBody), ib = dvColumnIndexOf(toBody);
+		if (ia === ib) return;
+		const step = ib > ia ? 1 : -1;
+		for (let c = ia + step; ; c += step) {
+			graphPushNode(c === ib ? toBody : dvOrder[c], row);
+			if (c === ib) break;
+		}
+	}
+	function graphMeasure() {
+		graphLen = 0;
+		for (let i = 0; i + 3 < graphCount; i += 2) {
+			const dx = graphPath[i + 2] - graphPath[i], dy = graphPath[i + 3] - graphPath[i + 1];
+			graphLen += Math.sqrt(dx * dx + dy * dy);
+		}
+		return graphLen;
+	}
+	// The point `f` of the way along the drawn path, with the segment's own unit
+	// direction so the trail behind a boat follows the line it is on.
+	function graphPointAt(f) {
+		if (graphCount < 4 || !(graphLen > 0)) return false;
+		if (f < 0) f = 0; else if (f > 1) f = 1;
+		let want = graphLen * f;
+		for (let i = 0; i + 3 < graphCount; i += 2) {
+			const dx = graphPath[i + 2] - graphPath[i], dy = graphPath[i + 3] - graphPath[i + 1];
+			const len = Math.sqrt(dx * dx + dy * dy);
+			if (!(len > 0)) continue;
+			if (want <= len || i + 5 >= graphCount) {
+				const t = want > len ? 1 : want / len;
+				graphHit[0] = graphPath[i] + dx * t;
+				graphHit[1] = graphPath[i + 1] + dy * t;
+				graphHit[2] = dx / len;
+				graphHit[3] = dy / len;
+				return true;
+			}
+			want -= len;
+		}
+		return false;
+	}
 	function refreshMapText() {
+		if (view === VIEW_DV_TIME) {
+			mapHeader = starPrefix + ' · delta-v flight-time schematic';
+			tableLines.length = 0;
+			tableLines.push('Track length ∝ one-way Hohmann flight time · ferries move on the system clock');
+			tableLines.push('Select a ferry to read its average load, Δv budget and calculation route.');
+			return;
+		}
 		mapHeader = starPrefix + ' · delta-v (km/s) · ' + (view === VIEW_DV_RAILS ? 'rail render' : 'classic render')
 			+ ' · click start, then destination';
 		tableLines.length = 0;
@@ -1194,6 +1694,10 @@ function createSystemLayer(canvas) {
 			}
 		}
 		for (let i = 0; i < dvNBodies - 1; i++) mapEdge(dvOrder[i], 3, dvOrder[i + 1], 3, interLabels[i]);
+		// The way out of the system: the star column is the leftmost, and its
+		// rail is the segment an interstellar voyage rides — the innermost
+		// body's escape row out to the star's node.
+		if (dvNBodies > 0) mapEdge(-1, 3, dvOrder[0], 3, '');
 		for (let col = 0; col < dvNBodies; col++) {
 			const bi = dvOrder[col];
 			dvNodeXYFor(bi, 0, dvTmpXY);
@@ -1244,6 +1748,10 @@ function createSystemLayer(canvas) {
 			mapRail(a, b, 3, DV_RAIL_EDGE, DV_RAIL_LABEL, railEscapeLabels[i]);
 			if (nodeExists(a, 4) && nodeExists(b, 4)) mapRail(a, b, 4, DV_RAIL_L5, DV_RAIL_L5_LABEL, railL5Labels[i]);
 		}
+		// The way out: the star node is where an interstellar voyage leaves and
+		// returns, so the rail that joins it to the innermost column is drawn
+		// like every other one.
+		if (dvNBodies > 0) mapRail(-1, dvOrder[0], 3, DV_RAIL_EXIT, DV_RAIL_LABEL, '');
 		// The well edges of each column, and the column headers.
 		for (let col = 0; col < dvNBodies; col++) {
 			const bi = dvOrder[col];
@@ -1261,6 +1769,102 @@ function createSystemLayer(canvas) {
 		drawMapNodes();
 		drawDvFleet();
 	}
+	// A dedicated time-scaled Δv render for the network's average freight legs.
+	// Unlike the topology map, these tracks are not decorative distances: every
+	// lane uses one shared linear duration scale and the ship's x position is
+	// elapsed system-clock time on that exact route. Thus the line length and
+	// ship speed both encode the Hohmann time that trade.js priced.
+	function drawDvTime() {
+		ctx.fillStyle = DV_TEXT_FILL; ctx.font = DV_HEADER_FONT;
+		ctx.fillText(mapHeader, 20, 24);
+		ctx.font = DV_LABEL_FONT;
+		ctx.fillStyle = DV_ROW_CAPTION;
+		ctx.fillText('track length ∝ one-way Hohmann flight time · select a ferry for recent cargo and passenger rates', 20, 48);
+		const intra = tradePort && tradePort.intra;
+		const outpost = tradePort && tradePort.colony && tradePort.colony.outpost;
+		const count = !outpost && intra && intra.legCount > 0 ? intra.legCount : 0;
+		let maxYears = 0;
+		for (let i = 0; i < count; i++) {
+			const years = intra.legs[i].legYears;
+			if (years > maxYears) maxYears = years;
+		}
+		if (!(maxYears > 0)) maxYears = 1;
+		if (!count) {
+			let activeWorlds = 0;
+			if (tradePort && tradeWorlds) for (let s = 0; s < tradePort.worldCount; s++) {
+				const world = tradeWorlds[tradePort.worldIdx[s]];
+				if (world && !world.outpost) activeWorlds++;
+			}
+			ctx.fillStyle = DV_NODE_FILL;
+			if (!tradePort) {
+				ctx.fillText('No trade colony in this system. Local routes need two settled worlds.', 24, DV_TIME_LANE_Y);
+			} else if (tradePort.colony && tradePort.colony.outpost) {
+				ctx.fillText('This colony is an outpost; its trade has stopped.', 24, DV_TIME_LANE_Y);
+			} else if (activeWorlds < 2) {
+				ctx.fillText('Fewer than two active worlds here. Local trade needs at least two.', 24, DV_TIME_LANE_Y);
+			} else if (intra && intra.unpricedPairs > 0) {
+				ctx.fillText('Recent transfers exist, but their route geometry is unavailable.', 24, DV_TIME_LANE_Y);
+			} else if (intra && intra.unservedPairs > 0) {
+				ctx.fillText('Recent routes exceed the available in-system hull budgets.', 24, DV_TIME_LANE_Y);
+			} else {
+				ctx.fillText('No recent transfers between settled worlds.', 24, DV_TIME_LANE_Y);
+			}
+			ctx.fillStyle = DV_ROW_CAPTION;
+			if (!tradePort || (tradePort.colony && tradePort.colony.outpost)) {
+				ctx.fillText('The flight-time view shows recorded local trade, not interstellar hull routes.', 24, DV_TIME_LANE_Y + 24);
+			} else if (activeWorlds < 2) {
+				ctx.fillText('Enable Expansion and run trade time, or found another world while docked.', 24, DV_TIME_LANE_Y + 24);
+			} else if (intra && (intra.unpricedPairs > 0 || intra.unservedPairs > 0)) {
+				ctx.fillText('These transfers still settle statistically; no ferry can be drawn for them.', 24, DV_TIME_LANE_Y + 24);
+			} else {
+				ctx.fillText('Trade needs matching surplus and demand; the trade clock must run to record it.', 24, DV_TIME_LANE_Y + 24);
+			}
+			if (tradePort && tradePort.worldCount > 0 && !(tradePort.colony && tradePort.colony.outpost)) {
+				drawDockedTicks(DV_TIME_TRACK_X, DV_TIME_LANE_Y + 56);
+			}
+			return;
+		}
+		let firstBoat = 0;
+		for (let i = 0; i < count; i++) {
+			const leg = intra.legs[i];
+			const y = DV_TIME_LANE_Y + i * DV_TIME_LANE_DY;
+			const n = leg.ferries > 0 ? leg.ferries : 1;
+			const length = DV_TIME_TRACK_MAX * leg.legYears / maxYears;
+			const x0 = DV_TIME_TRACK_X, x1 = x0 + length;
+			const from = tradeWorldName(leg.from), to = tradeWorldName(leg.to);
+			ctx.fillStyle = DV_TEXT_FILL;
+			ctx.fillText(from, 20, y + 4);
+			ctx.fillStyle = DV_ROW_CAPTION;
+			ctx.fillText('to', 145, y + 4);
+			ctx.fillStyle = DV_TEXT_FILL;
+			ctx.fillText(to, 168, y + 4);
+			ctx.strokeStyle = TRADE_INTRA_STROKES[leg.family >= 0 ? leg.family : 0];
+			ctx.lineWidth = 2;
+			ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+			ctx.fillStyle = DV_NODE_FILL_SURF;
+			ctx.beginPath(); ctx.arc(x0, y, 3, 0, TAU); ctx.fill();
+			ctx.fillStyle = DV_NODE_FILL;
+			ctx.beginPath(); ctx.arc(x1, y, 3, 0, TAU); ctx.fill();
+			const dx = x1 - x0;
+			const ux = dx > 0 ? 1 : 0, uy = 0;
+			for (let k = 0; k < n; k++) {
+				const seat = firstBoat + k;
+				const phase = legPhase(leg, i, seat);
+				if (phase < 0) continue;
+				const out = phase < 0.5;
+				const u = out ? phase * 2 : 2 - phase * 2;
+				const direction = out ? 1 : -1;
+				drawFerry(x0 + dx * u, y, ux * direction, uy, seat, i);
+			}
+			firstBoat += n;
+		}
+	}
+
+	function tradeWorldName(slot) {
+		if (!tradePort || !tradeWorlds || !(slot >= 0 && slot < tradePort.worldCount)) return '?';
+		return tradeWorldLabels[slot] || '?';
+	}
+
 	// One well edge of a column, drawn as a vertical beside the LO node — the
 	// escape and L5 edges are offset to opposite sides so the three edges that
 	// leave LO never overlap — with its number beside it.
@@ -1418,8 +2022,14 @@ function createSystemLayer(canvas) {
 	// the same transform serves picking, so a click can never disagree with the
 	// draw.
 	function drawDvMap(width, height, rightInset, leftInset) {
-		const logicalW = Math.max(740, DV_COL_X0 + (dvNBodies + 0.5) * DV_COL_W);
-		const logicalH = DV_TABLE_TOP + 10 + tableLines.length * 16;
+		const logicalW = view === VIEW_DV_TIME ? DV_TIME_WIDTH
+			: Math.max(740, DV_COL_X0 + (dvNBodies + 0.5) * DV_COL_W);
+		const timeRows = tradePort && tradePort.intra && tradePort.intra.legCount > 0
+			? tradePort.intra.legCount : DV_TIME_EMPTY_LANES;
+		const logicalH = view === VIEW_DV_TIME
+			? Math.max(DV_TABLE_TOP + 10 + tableLines.length * 16,
+				DV_TIME_LANE_Y + timeRows * DV_TIME_LANE_DY + 90)
+			: DV_TABLE_TOP + 10 + tableLines.length * 16;
 		const availW = width - rightInset - leftInset;
 		const availH = height * 0.70;
 		mapLayout.scale = Math.min(1, (availW - 32) / logicalW, (availH - 32) / logicalH);
@@ -1427,11 +2037,17 @@ function createSystemLayer(canvas) {
 		mapLayout.x = leftInset + (availW - logicalW * mapLayout.scale) * 0.5;
 		mapLayout.y = (availH - logicalH * mapLayout.scale) * 0.5 + 12;
 		mapLayout.width = logicalW; mapLayout.height = logicalH;
+		// The boats below are placed in the graph's own units, so the frame's
+		// craft list is registered in that space and `pickCraft` maps the click
+		// back through the same transform.
+		beginCraftFrame(1);
 		ctx.save();
 		ctx.translate(mapLayout.x, mapLayout.y); ctx.scale(mapLayout.scale, mapLayout.scale);
 		ctx.fillStyle = DV_PANEL_FILL; ctx.fillRect(0, 0, logicalW, logicalH);
-		if (view === VIEW_DV_RAILS) drawDvRails(); else drawDvClassic();
-		drawMapRoute();
+		if (view === VIEW_DV_TIME) drawDvTime();
+		else if (view === VIEW_DV_RAILS) drawDvRails();
+		else drawDvClassic();
+		if (view !== VIEW_DV_TIME) drawMapRoute();
 		ctx.fillStyle = DV_TEXT_FILL; ctx.font = DV_LABEL_FONT;
 		for (let i = 0; i < tableLines.length; i++) ctx.fillText(tableLines[i], 20, DV_TABLE_TOP + i * 16);
 		ctx.restore();
@@ -1439,7 +2055,7 @@ function createSystemLayer(canvas) {
 	}
 	function pickDvNode(x, y, out) {
 		out.body = -1; out.node = -1;
-		if (!open || view === VIEW_SYSTEM || !mapLayout.valid || !(mapLayout.scale > 0)) return false;
+		if (!open || view === VIEW_SYSTEM || view === VIEW_DV_TIME || !mapLayout.valid || !(mapLayout.scale > 0)) return false;
 		const lx = (x - mapLayout.x) / mapLayout.scale, ly = (y - mapLayout.y) / mapLayout.scale;
 		let best = (10 / mapLayout.scale) ** 2;
 		for (let bi = 0; bi < dvNBodies; bi++) {
@@ -1545,13 +2161,27 @@ function createSystemLayer(canvas) {
 
 	// Hover: the same hit test as the click, run per frame from the last cursor
 	// position (bodies move under a still cursor). The label string is rebuilt
-	// only when the hovered body changes (plan §4.11: never per frame).
+	// only when the hovered body changes (plan §4.11: never per frame). A
+	// craft in front of a body wins: a hull is a 3 px target on a busy schema,
+	// and the thing under the cursor has to be the thing a click would take.
 	function updateHover(x, y) {
 		hoverX = x;
 		hoverY = y;
 		if (!open) return false;
+		pickCraft(x, y, hitCraft);
+		if (hitCraft.kind !== CRAFT_NONE) {
+			const same = hitCraft.kind === hoverCraftKind && hitCraft.leg === hoverCraftLeg
+				&& hitCraft.slot === hoverCraftSlot;
+			if (same) return false;
+			hoverCraftKind = hitCraft.kind; hoverCraftLeg = hitCraft.leg; hoverCraftSlot = hitCraft.slot;
+			hoverCraftLabel = craftLabelAt(hitCraft.kind, hitCraft.leg, hitCraft.slot);
+			hoverKind = BODY_NONE; hoverIndex = -1; hoverLabel = '';
+			return true;
+		}
+		const hadCraft = hoverCraftKind !== CRAFT_NONE;
+		hoverCraftKind = CRAFT_NONE; hoverCraftLeg = -1; hoverCraftSlot = -1; hoverCraftLabel = '';
 		pick(x, y, hitOut);
-		if (hitOut.kind === hoverKind && hitOut.index === hoverIndex) return false;
+		if (!hadCraft && hitOut.kind === hoverKind && hitOut.index === hoverIndex) return false;
 		hoverKind = hitOut.kind;
 		hoverIndex = hitOut.index;
 		hoverLabel = hoverKind === BODY_NONE ? '' : designationOf(hoverKind, hoverIndex);
@@ -1702,7 +2332,8 @@ function createSystemLayer(canvas) {
 	return {
 		resize, draw, enter, prepare, exit, isOpen, setTradeData,
 		stepTime, setTimeRate, getTimeRate, sysTime,
-		pick, setSelected, clearBodySelection, selectedKindOf, selectedIndexOf,
+		pick, pickCraft, selectCraft, clearCraft, selectedCraft, craftLabelAt,
+		setSelected, clearBodySelection, selectedKindOf, selectedIndexOf,
 		updateHover, hoverKindOf, hoverIndexOf, designationOf,
 		readoutLines, readoutText, rhoOf,
 		record, layout,
@@ -1723,10 +2354,11 @@ const SystemLayer = {
 	PICK_PAD_PX, BELT_PICK_PX,
 	SYSTIME_LADDER, SYSTIME_INDEX_MIN, SYSTIME_INDEX_MAX, SYSTIME_INDEX_DEFAULT,
 	SYSTIME_MIN, SYSTIME_MAX, SYSTIME_DEFAULT,
-	VIEW_SYSTEM, VIEW_DV_CLASSIC, VIEW_DV_RAILS, VIEW_COUNT, VIEW_DEFAULT, VIEW_NAMES,
+	VIEW_SYSTEM, VIEW_DV_CLASSIC, VIEW_DV_RAILS, VIEW_DV_TIME, VIEW_COUNT, VIEW_DEFAULT, VIEW_NAMES,
 	BUDGET_MIN, BUDGET_MAX, BUDGET_STEP, BUDGET_DEFAULT,
 	DV_COL_X0, DV_COL_W, DV_TABLE_TOP, DV_NODE_DY, DV_COL_TOP,
 	BODY_NONE, BODY_STAR, BODY_PLANET, BODY_BELT, TYPE_FILLS,
+	CRAFT_NONE, CRAFT_FERRY, CRAFT_HULL, VOYAGE_DOCKED, VOYAGE_OUT, VOYAGE_IN,
 	viewInnerAU, viewOuterAU, iconRadiusForMass, starRadiusForState,
 	formatSysTimeRate, sysTimeRateAt, sysTimeIndexOf,
 };

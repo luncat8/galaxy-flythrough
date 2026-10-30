@@ -6,12 +6,12 @@ what shipped, except where §0.1 says otherwise; the implementation notes and
 measurements are in `archive/trade.x-worklog.md` (trade.25). It answers the
 deferral recorded in [`trade-3-plan.md`](trade-3-plan.md) §8.
 
-**Read §0.2 first if you are reimplementing the fleet.** trade.34 replaced the
-hulls-with-cargo of §0.1/§2/§3 with a *picture of the average*: a settle still
-moves the couple's mass instantly (so opening the view is provably free), and
-the ferries draw the settle's three largest legs on the system clock, at the
-delta-v time a viewer can watch. The reason is measured, not aesthetic: at the
-authored 1 000–2 000 colony years per second a Hohmann leg is a fraction of a
+**Read §0.2 and §0.3 first if you are reimplementing the fleet.** trade.34
+replaced the hulls-with-cargo of §0.1/§2/§3 with a *picture of the average*:
+a settle still moves the couple's mass instantly (so opening the view is
+provably free), and ferries draw the largest recent legs on the system clock,
+at the delta-v time a viewer can watch. The reason is measured, not aesthetic:
+at the authored 1 000–2 000 colony years per second a Hohmann leg is a fraction of a
 frame, so a hull that carries real cargo is invisible whenever the picture is
 watchable.
 
@@ -104,6 +104,23 @@ instantly is a picture, not a fleet. T6 is the slice that makes it a fleet.
 5. **The clock board.** [`time-plan.md`](time-plan.md) §1–§2 is the panel that
    says which clock every subsystem is on, and the three progressions that set
    them together.
+
+## 0.3 Recent traffic and the flight-time view
+
+The operative design is [`time-plan.md`](time-plan.md) §3. A bounded pair of
+25-trade-year buckets retains *completed* transfers across quiet settles and
+expires them as time passes; the rates are normalised to the covered trade
+span, not the latest settle. Resources are converted with their own mass
+factors and passengers with the existing colonist-unit conversion. Rank and
+allocate the twelve pictured ferries by tonnes-equivalent throughput, while
+reporting cargo and passengers separately. Price the round trip using the
+actual outward **and** return Δv plus reserve. A pair with missing geometry or
+no eligible hull still trades statistically, but is not drawn as a ferry route.
+
+All four renders can show local ferries; the flight-time render uses lanes
+scaled linearly by one-way Hohmann duration and names empty states. The
+classic and rail maps keep their route-node picking. Interstellar hulls on an
+escape row remain distinct from this local-trade picture.
 
 ## 1. What is wrong today
 

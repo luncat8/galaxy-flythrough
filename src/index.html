@@ -199,10 +199,11 @@
 		<div class="flight-section-heading system-section-heading"><span>System map &amp; routes</span><small>local / transport</small></div>
 		<div class="menu-row">
 			<label for="sys-view">View <span class="kbd">V</span></label>
-			<select id="sys-view" title="What the system canvas shows of the primary selection's generated system. Picking one opens the view; B cycles the three while it is open.">
+			<select id="sys-view" title="What the system canvas shows of the primary selection's generated system. Picking one opens the view; B cycles the four while it is open.">
 				<option value="0" selected>system schematic</option>
 				<option value="1">delta-v map</option>
 				<option value="2">delta-v rails</option>
+				<option value="3">delta-v flight time</option>
 			</select>
 			<button id="btn-system-view" title="Open or close the view (V; Esc also closes). While docked in game mode, opens the station schematic without moving the camera so a sibling world can be selected and founded.">Open</button>
 		</div>
@@ -369,10 +370,6 @@
 			<input type="checkbox" id="trade-expansion" checked>
 			<span>Expansion armed</span>
 		</label>
-		<label class="flight-autopilot" title="Special trade mode: generation ships at 1 light-year per 33 trade years. Sets sync time on and the star clock to 1 Myr/s, so the ship covers 30 ly per wall second — the nearest seed hop (~25 ly) is under a second, a 300 ly frontier hop about 10 seconds. The ordinary freighters would cross it in a blink.">
-			<input type="checkbox" id="trade-generation-ships">
-			<span>Generation ships &middot; 30 ly/s</span>
-		</label>
 		<div class="menu-row menu-actions">
 			<button id="trade-launch" type="button" disabled title="Send the best available colonisation expedition now instead of waiting for the next tick. It takes volunteers from the source colony's population, exactly as the automatic launch does; the port then rests for 900 trade years.">Send expedition</button>
 			<span id="trade-state" class="flight-port-state" title="If no early colony exists, the bootstrap scans field stars for a terran world. It approximates later-generation stars with birth at least 0.5 Gyr, stellar age at least 0.1 Gyr, and model metallicity at least 0.008; the model does not track actual stellar ancestry.">no network</span>
@@ -402,14 +399,15 @@
 			<button id="time-menu-collapse" class="panel-collapse" title="Collapse to the header / expand (Tab toggles all panels)" aria-expanded="true">▾</button>
 		</div>
 		<!-- The clock board (time-plan.md §1): every clock in the app in one
-		     place, the two links that couple them to the sky, and the three
-		     progressions that set all four at once. The sliders stay in their own
-		     panels — this one says what each of them is *doing*. -->
+		     place, the two links that couple them to the sky, and the three game
+		     progressions — which of the two *game* clocks follow the sky. The
+		     star clock and the epoch are Display's: a progression never moves
+		     them (the reported defect behind trade.36). -->
 		<div class="menu-row menu-sub">progression</div>
 		<div class="menu-row menu-actions" id="time-modes">
-			<button type="button" data-time-mode="generation" title="Galaxy and colonies on one clock: 0.5 Myr/s of sky is 500 colony years per second, and every hull is a generation ship (1 ly per 33 years, its warehouses stretched to the voyage).">generation ship</button>
-			<button type="button" data-time-mode="trade" title="Next-generation hulls on a slow but visible sky: 1 Myr/s of stars is 1 000 colony years per second. A long haul is overtaken by the stars it crosses, so routes can go out of reach under a ship.">trade</button>
-			<button type="button" data-time-mode="planetary" title="The sky holds still: delta-v flying inside a system, colonies creeping at 50 years/s, and the schematic at half a year per second so a fleet can be watched. Interstellar travel wants jump gates (deferred).">planetary</button>
+			<button type="button" data-time-mode="linked" title="Both game clocks ride the sky: the colony clock at 1 000 years per star Myr and the opened system at one year per star Myr. The star clock itself is not touched — set it in Display.">one clock</button>
+			<button type="button" data-time-mode="trade" title="The colony clock rides the sky (1 000 colony years per star Myr) and the opened system keeps its own year per second. A long haul can be overtaken by the stars it crosses.">trade</button>
+			<button type="button" data-time-mode="planetary" title="Nothing rides the sky: colonies on their own 50 years/s ladder and the schematic at half a year per second, so a fleet can be watched. The star clock stays where Display has it.">planetary</button>
 		</div>
 		<div id="time-mode-note" class="menu-note"></div>
 		<div class="menu-header menu-header-galaxy"><span>Clocks</span></div>
@@ -644,7 +642,7 @@
                         <button id="help-prev-star" data-mode="observe fly command" title="Previous star in the selection set">prev star <span class="kbd">Shift+N</span></button>
                         <button data-action="home" data-mode="observe fly command" title="Home colony (H): select the colony nearest home, fly there and ride it while the sky moves. In the fly workspace the colony becomes the Flight destination and the autopilot approaches it — a ship never teleports. With no colony the key falls back to the frame point">home colony <span class="kbd">H</span></button>
                         <button data-action="reset" data-mode="observe fly command" title="Reset everything — the view and, while flying, the ship (full tank, zero velocity)">reset <span class="kbd">R</span></button>
-                        <button data-action="dvMap" data-mode="observe command" title="Cycle the open system view: schematic / delta-v map / delta-v rails (click two graph nodes to route)">cycle view <span class="kbd">B</span></button>
+                        <button data-action="dvMap" data-mode="observe command" title="Cycle the open system view: schematic / delta-v map / delta-v rails / delta-v flight-time tracks (click graph nodes to route on the first three)">cycle view <span class="kbd">B</span></button>
                         <button data-action="clearSet" data-mode="observe fly command" title="Clear the selection set (click selects, Shift+click adds)">clear set <span class="kbd">X</span></button>
                         <button data-action="makeFigures" data-mode="observe fly command" title="Create the own constellations around the selected star's position: the brightest stars of that sky, connected the way an observer would draw them. This is the button that sets the position — nothing follows the selection after it. Select a star first, typically your home or HQ">create constellations <span class="kbd">K</span></button>
                         <button data-action="shipRefuel" data-mode="fly" title="Hangar refill: re-arm the Δv tank to the class's full load (station refills land with docking, G3)">refuel ship</button>

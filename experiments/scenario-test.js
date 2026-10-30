@@ -28,6 +28,8 @@ function ok(cond, name, detail) {
 
 const rows = ScenarioLib.SCENARIOS.concat([ScenarioLib.PRESENT_DAY]);
 const knownKeys = new Set(Presets.FIELDS.map((field) => field.key));
+// The row verbs main.js's runScenario implements (the fleet is the only one).
+const definedActions = new Set(['fleet']);
 
 // --- The table ------------------------------------------------------------
 ok(ScenarioLib.SCENARIOS.length >= 3, 'the panel offers more than one formation state',
@@ -52,17 +54,29 @@ for (const row of rows) {
 	parsedRows.push({ row, query, settings });
 	ok(keys.length > 0, `${row.id}: the query is a preset`, query);
 	ok(keys.every((key) => knownKeys.has(key)), `${row.id}: every key is a preset field`, keys);
-	ok(settings.age !== undefined && settings.evolve !== undefined
-		&& settings.time !== undefined && settings.mode === 'observe',
-	`${row.id}: the row lands the epoch, the live clock, the rate and the workspace`, settings);
-	ok(settings.age >= galaxy.AGE_MIN && settings.age <= galaxy.AGE_MAX,
-		`${row.id}: the epoch is inside the model's range`, settings.age);
-	ok((settings.evolve === 0 || settings.evolve === 1) && (settings.evolve === 1) === (settings.time > 0),
-		`${row.id}: a running clock is the only reason to carry a rate`, settings);
-	ok(settings.time <= 99 && settings.time >= -1,
-		`${row.id}: the rate is inside the star-time slider`, settings.time);
-	ok(settings.time <= 2 || row.wide === true,
-		`${row.id}: a rate above the fine range widens it first`, { time: settings.time, wide: !!row.wide });
+	// A page-action row (trade.35's fleet) is a check frame, not an epoch: it
+	// must leave the sky where the session has it, so the epoch/rate rules are
+	// exactly the ones it must *not* satisfy. The two families are disjoint by
+	// design, and each is pinned here rather than assumed.
+	if (row.action !== undefined) {
+		ok(definedActions.has(row.action), `${row.id}: the action is one the page implements`, row.action);
+		ok(settings.age === undefined && settings.evolve === undefined && settings.time === undefined,
+			`${row.id}: an action row does not move the epoch or the star clock`, settings);
+		ok(settings.mode === 'observe', `${row.id}: an action row names its workspace`, settings.mode);
+		ok(row.view === 'none', `${row.id}: an action row does not move the camera`, row.view);
+	} else {
+		ok(settings.age !== undefined && settings.evolve !== undefined
+			&& settings.time !== undefined && settings.mode === 'observe',
+			`${row.id}: the row lands the epoch, the live clock, the rate and the workspace`, settings);
+		ok(settings.age >= galaxy.AGE_MIN && settings.age <= galaxy.AGE_MAX,
+			`${row.id}: the epoch is inside the model's range`, settings.age);
+		ok((settings.evolve === 0 || settings.evolve === 1) && (settings.evolve === 1) === (settings.time > 0),
+			`${row.id}: a running clock is the only reason to carry a rate`, settings);
+		ok(settings.time <= 99 && settings.time >= -1,
+			`${row.id}: the rate is inside the star-time slider`, settings.time);
+		ok(settings.time <= 2 || row.wide === true,
+			`${row.id}: a rate above the fine range widens it first`, { time: settings.time, wide: !!row.wide });
+	}
 	// The line a browser pass records must survive a round-trip through the
 	// settings serialiser: what Copy hands back is what Run applied.
 	ok(JSON.stringify(Presets.parse(query)) === JSON.stringify(settings),
@@ -130,6 +144,29 @@ ok(ScenarioLib.queryOf(null) === '', 'queryOf has no query for no row');
 	'an unbuilt state never prints undefined or NaN', empty);
 	ok((empty.match(/\u2014/g) || []).length >= 5, 'an unbuilt state prints em dashes for what is missing', empty);
 	ok(ScenarioLib.liveLine({}).indexOf('evolve off') !== -1, 'the clock reads off unless it is on', empty);
+}
+
+// --- The page\u2019s half of an action row ----------------------------------
+// The table cannot replay an action on its own, so the wiring that turns the
+// verb into a picture is pinned here: runScenario dispatches it, the berth is
+// chosen for what is moving (trade.js's fleetShowcase), and the selected craft
+// is one the frame draws.
+{
+	const fs = require('fs');
+	const path = require('path');
+	const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf-8');
+	ok(main.includes("row.action === 'fleet' ? applyFleetScenario()"),
+		'runScenario runs the fleet row\u2019s action', 'dispatch missing');
+	const action = main.slice(main.indexOf('function applyFleetScenario()'),
+		main.indexOf('function runScenario(row)'));
+	ok(action.includes('tradeLib.fleetShowcase(tradeNet, FLEET_WIND_TICKS)'),
+		'the berth is the network\u2019s own, wound to a moving fleet');
+	ok(action.includes('systemLayer.selectCraft('),
+		'the action selects a craft, so its route\u2019s numbers are on screen');
+	ok(action.indexOf("CRAFT_FERRY") < action.indexOf("CRAFT_HULL"),
+		'a flying ferry wins over a hull in port when the system has legs');
+	ok(action.includes('tradeLib.portFleet(tradeNet, bestPort)'),
+		'the report is read from the same fleet record the layer draws');
 }
 
 // --- What the picker offers ----------------------------------------------

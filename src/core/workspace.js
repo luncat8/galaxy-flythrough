@@ -45,6 +45,20 @@ function sanitiseMask(mask) {
 	return (mask | 0) & PANEL_MASK_ALL;
 }
 
+// The storage a live override lives in. It has to be at least PANEL_COUNT bits
+// wide, or a new panel's bit is silently dropped the moment it is written: the
+// page used to keep the mask in a Uint8Array, so bit 8 (the Time panel) became
+// 0 the instant any checkbox was pressed and the panel could never be switched
+// back on. The width is named here, next to the mask it stores, so a tenth
+// panel widens the store rather than breaking it again.
+const MASK_STORE_BITS = 16;
+function createMaskStore(workspaces) {
+	// The one guard against the bug above: a mask that does not fit its store
+	// is a panel the user can never see.
+	if (PANEL_COUNT > MASK_STORE_BITS) throw new Error('panel mask store too narrow');
+	return new Uint16Array(workspaces);
+}
+
 function applyOverride(mode, mask, panel, on) {
 	const bit = panelBit(panel);
 	if (!bit) return sanitiseMask(mask);
@@ -66,9 +80,9 @@ function toggleFly(current, last) {
 const Workspace = {
 	OBSERVE, FLY, COMMAND, NAMES,
 	SEARCH, FLIGHT, ROUTES, VIEWMODES, DISPLAY, TRADE, CONTROLS, SCENARIO, TIME,
-	PANEL_COUNT, PANEL_MASK_ALL, PANEL_IDS, PANEL_LABELS, MODE_PANELS,
+	PANEL_COUNT, PANEL_MASK_ALL, PANEL_IDS, PANEL_LABELS, MODE_PANELS, MASK_STORE_BITS,
 	panelBit, modeFromName, modeName, panelsFor, sanitiseMask,
-	applyOverride, visibleMask, toggleFly,
+	applyOverride, visibleMask, toggleFly, createMaskStore,
 };
 if (typeof module !== 'undefined') module.exports = Workspace;
 if (typeof window !== 'undefined') window.Workspace = Workspace;

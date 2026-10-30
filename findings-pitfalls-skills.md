@@ -2836,3 +2836,26 @@ Also: `array<vec2f>` works in the interpreter, but only via the binding map the
 fixtures pass; and a WGSL comment may not contain backticks — the shaders are
 JS template strings, so one backtick inside a `//` comment breaks the whole
 module with a `SyntaxError` pointing at the comment word.
+
+## 2026-10-30 — A low site rank is not an unreachable trade route
+
+The default start exposed a unit/eligibility collision: a belt's habitat-scaled
+founding score was 0.038, but its physical coupling was 0.397. Comparing the
+rank to `MIN_FOUND_COUPLE = 0.08` rejected a reachable site and kept most ports
+single-world. Gate on the actual coupling after the habitat floor; use the
+combined habitat, coupling and well expression only to rank eligible sites.
+
+A settle's latest `intraFlow` is also not a stable average: demand and supplies
+can make consecutive settles zero even after real movement. Keep bounded
+completed-transfer buckets, expire them on trade time (including when a sky
+transition stamps a world's clock), and convert each resource with its own
+mass factor before comparing it to passenger-equivalent mass. Report actual
+passengers separately. A settle crossing multiple buckets is timestamped at its
+completion; pretending to know precisely when within the interval cargo moved
+would invent history. Distinguish this statistical picture from booked voyages.
+
+Finally, a directed surface-to-surface Δv is not necessarily symmetric:
+Fomalhaut's two directions are about 19.0 and 8.4 km/s. Doubling 19.0 rejects a
+valid 30.2 km/s round trip (including reserve) against a 40 km/s hull. Always
+price the outward plus return edges; do not fabricate a leg time when geometry
+is missing.

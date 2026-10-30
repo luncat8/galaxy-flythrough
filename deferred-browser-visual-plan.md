@@ -245,6 +245,22 @@ claim behind them is pinned in Node (`trade` §30, `asterisms`, `named-sky`).
   at one year per star Myr (1 Myr/s → 1 y/s), and the `System time` slider in
   System & routes follows it. Freeze the star clock with the link on: the
   schematic keeps its last rate rather than freezing, and the board says so.
+- **V15e — the fleet scenario and a ship's numbers (trade.35).** Fresh boot,
+  Milky Way, present day. Press **Fleet — a colony's ships** in the Formation
+  checks panel. Without touching anything: the delta-v **rails** render is up,
+  the camera has not flown, a stationary amber `◀` frame marks one craft, the
+  live line reads `fleet · <port> · N hulls (… docked · … under way) · 12
+  ferries on L legs …` (or the one-world sentence), and `#sysread` already
+  carries that craft's block. Stepping **System time** must move the fleet —
+  the ferries on the schematic's clock, the hulls' fractions on the trade clock
+  — and the selected craft must keep its ring and its block. Now the reported
+  selection: click a **ferry** tick — the block must be the leg's own numbers
+  (`t / settle`, `per ferry`, Δv, the class `yes/no` gate, the couple, the
+  Hohmann time); click a **hull** triangle — route, `NN %`, booked years,
+  tonnes and units, delivered/trips. Then the first report: open the mode bar's
+  `panels ▾` and tick **Time** — the box ticks, the panel appears, and it is
+  still ticked after a reload (the workspace's per-mode store). Report the
+  frame, the numbers, and anything that reads as a second population of ships.
 - **What would fail this row.** A hull that teleports, a hull drawn between two
   bodies it is not flying between, a `fleet` block that disagrees with the boats,
   a boat visible in one render and not another, a mode press that leaves one

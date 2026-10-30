@@ -54,6 +54,20 @@ const SCENARIOS = [
 		watch: 'Read the arm × and the gas in the live line, then press Present day: the same census at 13.5 Gyr (the draw lands the identical positions — it samples the reference frame), view gas at the type\u2019s own fraction and the arms back at ×1.',
 	},
 	{
+		// The fleet (trade.35): the one row whose subject is a picture rather
+		// than an epoch. It carries no `age`/`time`, so the session's sky is
+		// left exactly as it is — `action` is the page's half, and it is the
+		// only row a preset line cannot replay on its own (the port it opens is
+		// read from the live network, not from the line).
+		id: 'fleet',
+		label: 'Fleet \u2014 a colony\u2019s ships',
+		query: 'mode=observe&systime=0.5&dvmap=2&trade=20&tradesync=0',
+		view: 'none',
+		action: 'fleet',
+		what: 'The trade network\u2019s ships in the system the network is busiest at: the port\u2019s own freighters on the escape row of the delta-v map, each at the fraction of its voyage it has flown, plus the twelve in-system ferries \u2014 flying the settle\u2019s legs when the system has two settled worlds, waiting at the port\u2019s low-orbit column when it has one (the common case: the planet model gives most systems a single world). The berth is chosen for what is moving, and a network younger than its first voyages is wound to them in whole ticks (the live line says by how many years). The moving craft is selected on arrival, so #sysread prints the load its route was priced with. The trade clock is slowed to 20 y/s (unsynced) so a voyage is watchable: at the synced 1 000 y/s a hull crosses the row in a sixth of a second.',
+		watch: 'The live line beneath names the port, its hulls, the settle\u2019s tonnes and the trade clock the hulls ride. Blue triangles are the network\u2019s hulls; the amber ticks are the ferries. Click any of them: the readout gains a block with that route\u2019s own numbers (t / settle, per-ferry share, \u0394v, the class gate, the years booked). Press B twice for the classic render \u2014 the same ships on the same rows \u2014 and step System time: the route\u2019s fraction advances with the trade clock (the ferries ride the system clock), and the selected craft keeps its block.',
+	},
+	{
 		id: 'bulge',
 		label: 'Bulge assembly — 2.0 Gyr',
 		query: 'age=2&evolve=0&time=0&mode=observe',

@@ -1,12 +1,19 @@
 // experiments/timeboard-test.js
-// The clock board (time-plan.md §1–§2): the mode table is complete and
-// playable, every rate a mode names is a stop its own slider can reach, the
-// star link's bridge is the law the panel prints, and the two formats say what
-// the board says. Pure table, no DOM.
+// The clock board (time-plan.md §1–§5): the progression table is complete and
+// playable, every rate a progression names is a stop its own slider can reach,
+// **no progression touches the sky**, the star link's bridge is the law the
+// panel prints, and the two formats say what the board says. Pure table, no DOM.
+//
+// trade.36 replaced the old star/evolve/generation table. The defect it removed
+// was real: pressing "generation ship" set the star clock, which re-dated the
+// galaxy — time is time, game progression is game progression. These checks
+// exist so the table cannot quietly grow a star rate again.
 
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const TimeBoard = require('../src/core/timeboard.js');
 const Trade = require('../src/core/trade.js');
 const SystemLayer = require('../src/render/system-layer.js');
@@ -18,60 +25,72 @@ function ok(cond, msg, detail) {
 	checks++;
 }
 
-// --- The modes -------------------------------------------------------------
+// --- The progressions ------------------------------------------------------
 ok(TimeBoard.MODES.length === 3, 'three progressions', TimeBoard.MODES.length);
-ok(TimeBoard.MODE_IDS.join(',') === 'generation,trade,planetary',
-	'generation ship, trade and planetary, in that order', TimeBoard.MODE_IDS);
+ok(TimeBoard.MODE_IDS.join(',') === 'linked,trade,planetary',
+	'one clock, trade and planetary, in that order', TimeBoard.MODE_IDS);
 ok(TimeBoard.MODE_IDS.includes(TimeBoard.DEFAULT_MODE), 'the default is one of them',
 	TimeBoard.DEFAULT_MODE);
 for (const id of TimeBoard.MODE_IDS) {
 	const mode = TimeBoard.modeById(id);
-	ok(mode && mode.label && mode.note.length > 40, 'a mode is labelled and explained: ' + id);
-	ok(TimeBoard.modeById(id).id === id, 'mode lookup round-trips: ' + id);
+	ok(mode && mode.label && mode.note.length > 40, 'a progression is labelled and explained: ' + id);
+	ok(TimeBoard.modeById(id).id === id, 'progression lookup round-trips: ' + id);
 }
 ok(TimeBoard.modeById('junk') === null && TimeBoard.modeById('') === null
-	&& TimeBoard.modeById(undefined) === null, 'an unknown mode is null, never a guess');
+	&& TimeBoard.modeById(undefined) === null, 'an unknown progression is null, never a guess');
+ok(TimeBoard.modeById('generation') === null,
+	'the retired star-moving "generation ship" progression is gone, not renamed');
 ok(TimeBoard.modeLabel('trade') === 'trade' && TimeBoard.modeLabel('junk') === '',
 	'labels come from the table');
 
-// --- Every rate a mode sets is a stop its own slider can reach -------------
+// --- A progression sets the game clocks and nothing else -------------------
+// This is the reported defect, pinned: a progression press may set the colony
+// clock, its link, the schematic's clock and its link. It may not name the star
+// clock, the epoch, or any "evolve" switch — the sky's clock belongs to the
+// Display panel and to the player.
 for (const mode of TimeBoard.MODES) {
-	// Star time: the fine range is −1…2 Myr/s in 0.1 steps and the wide range
-	// −1…99 in 0.5; a mode must land on a fine-range step of 0.1.
-	ok(mode.star.rate >= 0 && mode.star.rate <= 2,
-		mode.id + ': the star rate is inside the fine slider range', mode.star.rate);
-	ok(Math.abs(mode.star.rate * 10 - Math.round(mode.star.rate * 10)) < 1e-9,
-		mode.id + ': the star rate is a 0.1 step', mode.star.rate);
-	ok(mode.star.evolve === 0 || mode.star.evolve === 1, mode.id + ': evolve is a flag');
-	// The colony ladder is trade.js's, and the rate a mode names must be one of
-	// its stops — otherwise a press would silently snap somewhere else.
+	const keys = Object.keys(mode).sort().join(',');
+	ok(keys === 'id,label,note,system,trade', mode.id + ': a progression has exactly the four fields it uses', keys);
+	ok(mode.star === undefined, mode.id + ': no star clock on a progression');
+	ok(mode.trade.evolve === undefined && mode.system.evolve === undefined,
+		mode.id + ': no evolve switch anywhere on a progression');
+	ok(mode.trade.generation === undefined,
+		mode.id + ': no "generation ships" flag — a generation ship is a colony decision (trade.36)');
+	ok(Object.keys(mode.trade).sort().join(',') === 'rate,synced',
+		mode.id + ': the colony half is a link and a rate', Object.keys(mode.trade));
+	ok(Object.keys(mode.system).sort().join(',') === 'rate,synced',
+		mode.id + ': the schematic half is a link and a rate', Object.keys(mode.system));
+}
+
+// --- Every rate a progression names is a stop its own slider can reach -----
+for (const mode of TimeBoard.MODES) {
+	// The colony ladder is trade.js's, and the rate a progression names must be
+	// one of its stops — otherwise a press would silently snap somewhere else.
 	ok(Trade.TRADE_RATES.includes(mode.trade.rate),
 		mode.id + ': the colony rate is a ladder stop', mode.trade.rate);
 	ok(mode.trade.synced === 0 || mode.trade.synced === 1, mode.id + ': the colony link is a flag');
-	ok(mode.trade.generation === 0 || mode.trade.generation === 1, mode.id + ': generation is a flag');
-	// The schematic's ladder is the layer's. A synced mode does not need a stop
-	// (the link picks the nearest), but an unlinked one sets the rate directly.
-	const layer = SystemLayer;
-	const index = layer.sysTimeIndexOf(mode.system.rate);
-	ok(layer.sysTimeRateAt(index) === mode.system.rate,
-		mode.id + ': the system rate is a schematic-ladder stop', mode.system.rate);
-	ok(mode.system.synced === 0 || mode.system.synced === 1, mode.id + ': the system link is a flag');
+	// The schematic's ladder is the layer's. A synced progression does not need
+	// a stop (the link picks the nearest), but it names one as its fallback, so
+	// it must be a real stop too.
+	const index = SystemLayer.sysTimeIndexOf(mode.system.rate);
+	ok(SystemLayer.sysTimeRateAt(index) === mode.system.rate,
+		mode.id + ': the schematic rate is a schematic-ladder stop', mode.system.rate);
+	ok(mode.system.synced === 0 || mode.system.synced === 1, mode.id + ': the schematic link is a flag');
 }
 
 // --- The three progressions mean what the plan says ------------------------
-const generation = TimeBoard.modeById('generation');
+const linked = TimeBoard.modeById('linked');
 const tradeMode = TimeBoard.modeById('trade');
 const planetary = TimeBoard.modeById('planetary');
-ok(generation.trade.generation === 1 && generation.trade.synced === 1
-	&& generation.star.evolve === 1,
-	'generation ship: the galaxy evolves and the colonies live on its clock');
-ok(tradeMode.trade.generation === 0 && tradeMode.trade.synced === 1
-	&& tradeMode.star.rate <= 2,
-	'trade: fast hulls, slow but visible star time, colonies on the star clock');
-ok(planetary.star.rate === 0 && planetary.star.evolve === 0 && planetary.system.synced === 0,
-	'planetary: the sky holds still and the schematic keeps its own clock');
-ok(planetary.trade.synced === 0 && planetary.trade.generation === 0,
-	'planetary: colonies on their own slow ladder, no generation hulls');
+ok(linked.trade.synced === 1 && linked.system.synced === 1,
+	'one clock: both game clocks ride the sky');
+ok(tradeMode.trade.synced === 1 && tradeMode.system.synced === 0,
+	'trade: the colonies ride the sky, the schematic keeps its own clock');
+ok(planetary.trade.synced === 0 && planetary.system.synced === 0
+	&& planetary.trade.rate === 50 && planetary.system.rate === 0.5,
+	'planetary: nothing rides the sky; 50 y/s of colonies and half a year per second in the view');
+ok(planetary.trade.rate < tradeMode.trade.rate,
+	'planetary is the slow one, which is what makes a long voyage watchable');
 
 // --- The star link ---------------------------------------------------------
 // One schematic year per star Myr per wall second: 1 Myr/s of sky is 1 y/s in
@@ -93,36 +112,63 @@ for (const starRate of [0.1, 0.5, 1, 2, 5]) {
 	ok(snapped > 0, 'a linked rate lands on a running stop: ' + starRate + ' Myr/s', snapped);
 }
 
-// --- Which progression the clocks are on right now ------------------------
+// --- Which progression the game clocks are on right now -------------------
 // The board reads the live clock set rather than remembering the last press, so
-// a dragged slider moves it off the mode it was on.
+// a dragged slider moves it off the progression it was on. The set is the four
+// game-clock keys; the star clock is not in it.
 function stateOf(id) {
 	const mode = TimeBoard.modeById(id);
 	return {
-		starRate: mode.star.rate, evolve: mode.star.evolve,
 		tradeRate: mode.trade.rate, tradeSynced: mode.trade.synced,
-		generation: mode.trade.generation,
 		systemRate: mode.system.rate, systemSynced: mode.system.synced,
 	};
 }
 for (const mode of TimeBoard.MODES) {
-	ok(TimeBoard.matchMode(stateOf(mode.id)) === mode.id,
-		'a mode\u2019s own clock set matches it: ' + mode.id);
+	const state = stateOf(mode.id);
+	ok(Object.keys(state).length === 4, 'the board is asked about four keys: ' + mode.id, Object.keys(state));
+	ok(TimeBoard.matchMode(state) === mode.id,
+		'a progression\u2019s own clock set matches it: ' + mode.id);
 }
-ok(TimeBoard.matchMode({ starRate: 1, evolve: 1, tradeRate: 100, tradeSynced: 0,
-	generation: 0, systemRate: 0, systemSynced: 0 }) === '',
+ok(TimeBoard.matchMode({ tradeRate: 100, tradeSynced: 0, systemRate: 0, systemSynced: 0 }) === '',
 	'the boot defaults are hand-set, not a progression');
 {
-	const drifted = stateOf('trade');
-	drifted.starRate = 0.3;
-	ok(TimeBoard.matchMode(drifted) === '', 'a dragged star slider leaves the progression');
 	const unlinked = stateOf('planetary');
 	unlinked.tradeRate = 200;
-	ok(TimeBoard.matchMode(unlinked) === '', 'and so does a colony ladder the mode did not set');
-	const linked = stateOf('generation');
-	linked.tradeRate = 2000;
-	ok(TimeBoard.matchMode(linked) === 'generation',
+	ok(TimeBoard.matchMode(unlinked) === '', 'a colony ladder the progression did not set leaves it');
+	// Turning trade's schematic link on *is* the one-clock progression: the two
+	// differ by exactly that link, so the board must say so.
+	const relinked = stateOf('trade');
+	relinked.systemSynced = 1;
+	ok(TimeBoard.matchMode(relinked) === 'linked', 'a link the progression did not set names the one that did');
+	const linkedDrift = stateOf('linked');
+	linkedDrift.tradeRate = 2000;
+	ok(TimeBoard.matchMode(linkedDrift) === 'linked',
 		'a linked clock is matched by its link, not its parked ladder stop');
+	// The star clock cannot even be part of the question: the board is handed
+	// the four game clocks, and extra keys are ignored, not consulted.
+	const withStar = stateOf('trade');
+	withStar.starRate = 0.1;
+	withStar.evolve = 1;
+	ok(TimeBoard.matchMode(withStar) === 'trade',
+		'a star rate in the state changes nothing about which progression is on');
+}
+
+// --- The panel's writer touches only the game clocks ----------------------
+// Source-level, because the defect was a writer: `applyTimeMode` must not
+// assign the star clock, the epoch, or any galaxy-age state. It may set the
+// colony ladder, the two links and the schematic's rate.
+{
+	const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8');
+	const start = main.indexOf('function applyTimeMode(');
+	const end = main.indexOf('\n        }', start);
+	ok(start > 0 && end > start, 'the panel still has one applyTimeMode to read');
+	const body = main.slice(start, end);
+	ok(!/starTimeRate\s*=/.test(body) && !/starTimeMyr\s*=/.test(body),
+		'pressing a progression does not set the star clock', body.length);
+	ok(!/evolve/i.test(body) && !/generationMode|setGenerationMode|tradegen/.test(body),
+		'and touches no evolve switch and no generation mode');
+	ok(/tradeRateIndex\s*=/.test(body) && /setTradeSync\(/.test(body) && /setSystemSync\(/.test(body),
+		'it sets the colony ladder and the two links, which is all a progression is');
 }
 
 // --- The words -------------------------------------------------------------
@@ -135,9 +181,24 @@ ok(TimeBoard.formatTradeRate(1000, 1).includes('1,000 y/s')
 ok(TimeBoard.formatTradeRate(100, 0).includes('own'), 'an unlinked one says that instead');
 ok(TimeBoard.formatTradeRate(0, 1).includes('paused'), 'a stopped colony clock reads paused');
 
-// --- The boot default agrees with the preset language ----------------------
-ok(Presets.TIME_DEFAULT === 1, 'the boot star rate is the trade mode\u2019s', Presets.TIME_DEFAULT);
-ok(TimeBoard.modeById('trade').star.rate === Presets.TIME_DEFAULT,
-	'...and the trade mode is the default progression');
+// --- The boot default, and the preset language that feeds the panel -------
+// The star clock's boot rate is the preset's own number, and no progression
+// names it: the two are independent by construction.
+ok(Presets.TIME_DEFAULT === 1, 'the boot star rate is 1 Myr/s', Presets.TIME_DEFAULT);
+ok(TimeBoard.MODES.every((mode) => mode.star === undefined),
+	'...and no progression can move it');
+ok(!Presets.FIELDS.some((field) => field.key === 'tradegen'),
+	'the preset language has no "generation ships" key left to carry');
+{
+	// The key is retired, not merely absent from FIELDS: no module may carry it
+	// back in (a persisted mask that still has it is ignored by the loader).
+	const files = ['core/presets.js', 'core/trade.js', 'core/timeboard.js', 'main.js'];
+	let leftovers = [];
+	for (const file of files) {
+		const text = fs.readFileSync(path.join(__dirname, '..', 'src', file), 'utf8');
+		if (/tradegen|GENERATION_STAR_MYR|setGenerationMode|GENERATION_RESERVE_YEARS/.test(text)) leftovers.push(file);
+	}
+	ok(leftovers.length === 0, 'no module still carries the retired generation-mode machinery', leftovers);
+}
 
 console.log(`${checks} timeboard checks passed`);

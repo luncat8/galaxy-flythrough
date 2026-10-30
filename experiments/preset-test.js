@@ -53,7 +53,7 @@ const SETTINGS = {
 	viewramp: 'turbo', viewrelief: 12.5, viewopacity: 0.45,
 	search: 'G,K|terran|220-300', scope: 'selection',
 	sysview: 0, systime: 2, dvmap: 1, dvbudget: 0.35, ship: 'fusion', mode: 'command',
-	trade: 200, traderoutes: 0, tradesync: 1, tradegen: 0, tradeexpand: 0,
+	trade: 200, traderoutes: 0, tradesync: 1, tradeexpand: 0,
 	stars: 300000, catalog: 250000, clusters: 75,
 };
 
@@ -189,7 +189,7 @@ check('menuDefaults matches the modules that own the numbers', () => {
 		time: 1, wave: 0.6, pattern: 1, apoShare: 0.35, apoForce: 0.22,
 		systime: 0, dvmap: 0, dvbudget: 0.35, ship: 'chemical', mode: 'observe',
 		trade: TradeLib.TRADE_RATE_DEFAULT, traderoutes: TradeLib.TRADE_ROUTES_DEFAULT,
-		tradesync: 0, tradegen: 0, tradeexpand: 1,
+		tradesync: 0, tradeexpand: 1,
 		clusters: ClustersLib.CLUSTER_EXAGGERATION_DEFAULT,
 	});
 });
@@ -457,10 +457,13 @@ check('a preset says what it costs: an epoch of the same field is not a draw', (
 	assert.equal(Presets.applyPlan({ mode: 'observe' }), 'none');
 	assert.equal(Presets.applyPlan(null), 'none');
 	// The panel's rows reach the instant path: every scenario that names an age
-	// and no galaxy names it with no other draw-costing field.
-	for (const row of require('../src/core/scenarios.js').SCENARIOS.concat([require('../src/core/scenarios.js').PRESENT_DAY])) {
-		const settings = Presets.parse(require('../src/core/scenarios.js').queryOf(row));
-		assert.equal(Presets.applyPlan(settings), 'epoch', row.id);
+	// and no galaxy names it with no other draw-costing field. A row that names
+	// no age is a picture of the current galaxy (the fleet row opens a system
+	// view), so it must cost nothing at all rather than re-drawing the field.
+	const scenarios = require('../src/core/scenarios.js');
+	for (const row of scenarios.SCENARIOS.concat([scenarios.PRESENT_DAY])) {
+		const settings = Presets.parse(scenarios.queryOf(row));
+		assert.equal(Presets.applyPlan(settings), settings.age === undefined ? 'none' : 'epoch', row.id);
 	}
 });
 

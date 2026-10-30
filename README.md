@@ -193,8 +193,8 @@ Other controls:
   **planetary** (frozen sky, colonies at 50 y/s, the schematic at 0.5 y/s). A press sets
   every clock at once; the sliders stay in their own panels
 - `V` — open/close the close-system schematic of the selected star; while docked in game mode, inspect the station without camera motion
-- `B` — cycle the system view: schematic → delta-v map → delta-v rails (the colony fleet's
-  ferries are drawn in all three, on the schematic's own clock)
+- `B` — cycle the system view: schematic → delta-v map → delta-v rails → delta-v flight-time tracks (the colony fleet's
+  ferries are drawn in the system, classic and rail renders; flight-time tracks use duration-scaled lanes)
 - `[` / `]` — exposure
 - `;` / `'` — overall brightness
 - `Esc` — close the system view; release the pointer in fly mode
@@ -362,10 +362,18 @@ then the System map and route tools below it (`Tab` toggles all panels, the
    travel mode and review the Flight forecast before **Engage plan**. The map
    route below remains available for the economic / in-system leg.
 2. Select a star and press **V**, then pick a render in the same panel's **View**
-   dropdown: the system schematic, the classic delta-v map, or the delta-v rails
+   dropdown: the system schematic, the classic delta-v map, the delta-v rails
    map (one row per node kind, so the escape and L5 rails run level across the
-   bodies). **B** cycles the three.
-3. On a delta-v render, click a start node, then a destination node (surface,
+   bodies), or the flight-time view (average ferry lanes sized linearly by
+   one-way Hohmann time). **B** cycles the four views. The time view needs a
+   colony with at least two settled worlds and recent transfers; its empty
+   message explains whether a world, trade, route geometry or a flyable hull
+   is missing. Enable **Expansion** and let the trade clock run, or found a
+   second world while docked. Select a ferry to see its recent cargo tonnes and
+   passengers per trade year, route, round-trip Δv and time. These ferries
+   illustrate completed statistical trade; they do not carry separately booked
+   cargo. Set **System time** above zero to watch them move.
+3. On a classic or rail delta-v graph, click a start node, then a destination node (surface,
    LO, GEO, escape or L5). Escape and L5 are both exits: a route starting or
    ending on either spends only the star-frame burns on that side.
 4. Choose a ship and energy budget. **Round trip** adds a return after a
@@ -428,9 +436,15 @@ seven shipping families; ore and volatiles stay in-system. Local bulk,
 manufactured goods and passengers move as closed-form statistical flows,
 weighted by the same surface/orbit/landing delta-v graph as the map. Cheap
 edges feed neighbours, and a world's gravity well taxes what its port can lift.
-The opened schematic marks each world and draws the three largest recent flows
-as dim dashes; `#sysread` names their goods, direction, km/s, couple, Hohmann
-time and per-world lift. These dashes are not extra ships or queue events.
+The opened schematic marks each world and draws the three largest flyable recent
+flows as dim dashes; `#sysread` names their goods, direction, rate, km/s, couple,
+Hohmann time and per-world lift. The average uses the current and preceding
+25-trade-year buckets of completed transfers, so an idle settle does not erase
+traffic immediately, but old traffic expires. Cargo tonnes and passengers are
+shown separately; a tonnes-equivalent rate ranks mixed flows. A pair over the
+in-system hull budget can still trade statistically but has no ferry lane. The
+dashes and ferries are not extra cargo or queue events. The ships on the escape
+row are interstellar freighters, not routes between local worlds.
 
 The Trade panel lists the largest colonies, the youngest one, and every ready
 expedition as clickable rows: a colony row selects its star (the ship never
@@ -498,7 +512,7 @@ Useful parameters include:
 | `apoShare`, `apoForce` | Apocenter-engine population share and eccentricity force (apocenter alone leaves the unshared stars at birth: add `classic` for a moving baseline) |
 | `sysview` | `1` opens the system schematic at load (a no-op without a selection) |
 | `systime` | Schematic clock rate in years/s (`-1` follows the camera fly speed, `0` freezes) |
-| `dvmap`, `dvbudget` | System render (`0` schematic, `1` delta-v classic, `2` delta-v rails) and energy budget (`0`–`1`) |
+| `dvmap`, `dvbudget` | System render (`0` schematic, `1` delta-v classic, `2` delta-v rails, `3` flight-time tracks) and energy budget (`0`–`1`) |
 | `ship` | `chemical`, `nuclear`, `fusion`, `stardrive`, or `generation` |
 | `trade`, `traderoutes` | Independent trade rate in years/s (`0` pauses) and route overlay (`0`/`1`) |
 | `tradesync` | `1` runs the trade clock on star time (1 trade year per 1 000 star years) |

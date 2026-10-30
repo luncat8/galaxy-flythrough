@@ -366,10 +366,15 @@ assert.ok(/id="time-star"/.test(timeMenu) && /id="time-trade"/.test(timeMenu)
 	&& /id="time-epoch"/.test(timeMenu) && /id="time-trade-sync"/.test(timeMenu)
 	&& /id="time-system-sync"/.test(timeMenu), 'the board prints five clocks and two links');
 checks++;
-for (const id of ['generation', 'trade', 'planetary']) {
+for (const id of ['linked', 'trade', 'planetary']) {
 	assert.ok(timeMenu.includes('data-time-mode="' + id + '"'), 'the board offers the ' + id + ' progression');
 	checks++;
 }
+// The retired star-moving progression is gone from the panel, not only from
+// the table (trade.36: time is time, game progression is game progression).
+assert.ok(!timeMenu.includes('data-time-mode="generation"')
+	&& !/id="trade-generation-ships"/.test(html), 'no progression offers a generation toggle');
+checks++;
 assert.ok(css.includes('#trade-calendar, #trade-log {\n\theight: 112px;'));
 assert.ok(css.includes('#trade-list, #colonisation-list, #route-list {\n\theight: 96px;'));
 console.log(`${checks + 3} panel checks passed`);

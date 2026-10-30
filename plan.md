@@ -1547,9 +1547,10 @@ Shipped, in `archive/`:
   and capital-in-the-settle (F6) stay deferred.
 - [`trade-4-plan.md`](trade-4-plan.md) — T6, the intra-system fleet: gated on the
   hull classes that can actually fly a leg. **Status:** shipped (`trade.25`) and
-  then partly superseded (`trade.34`): the fleet is now a *picture* of the
-  settle's average, drawn on the schematic's own clock in all three renders
-  ([`time-plan.md`](time-plan.md) §3–§4) — see `trade-4-plan.md` §0.2.
+  then partly superseded (`trade.34`): the fleet is now a *picture* of recent
+  settled trade, averaged over bounded trade-time buckets and drawn on the
+  schematic's own clock in all four renders ([`time-plan.md`](time-plan.md)
+  §3–§4) — see `trade-4-plan.md` §0.2–§0.3.
 - [`time-plan.md`](time-plan.md) — the clock board: one panel that prints every
   clock (star, colony, system, ship, epoch) and two links (colony ← star,
   system ← star), the three progressions (generation ship, trade, planetary) as
