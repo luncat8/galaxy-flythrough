@@ -42,9 +42,19 @@ subjects — this index does not summarise them, it links them:
 | **First colony and Earth-like search in the browser** | `deferred-browser-visual-plan.md` V16 | Confirm the empty-network top row (Search for a home / Establish here), the reason line's four states, the first capital arriving seconds after ~1.5 Gyr, and the sky refusal on an unformed star, on a real WebGPU browser; model tests are not a visual verdict. |
 | **The fleet's picture and its numbers** | [`time-plan.md`](time-plan.md) §3–§4, `deferred-browser-visual-plan.md` §V15 | trade.35 removed the `worldCount` gate that hid every one-world port's ships, added the network's hulls to all three renders, a craft registry for hover/pick/select, and the two selection blocks (`intraCraftText`, `voyageText`) that print the settle's own numbers. The `Fleet` scenario row (`applyFleetScenario` + `fleetShowcase`, wound to the first departures) is the frame to read; whether twelve amber ticks and the blue hulls read as a fleet at 1280×800 is still `V15b`–`V15e`. The Time box's bit-8 truncation is fixed and pinned (`workspace` 55). |
 | **Jump gates for the planetary progression** | [`time-plan.md`](time-plan.md) §5 | The `planetary` mode ships with a frozen sky and watchable intra-system travel, but its interstellar half — gates between stars instead of a century of cruise — is a real feature, not a clock: a gate graph, a static star pair, a cost law per gate and a ship-side handover. Needs its own plan. |
-| **The `time=` preset field** | [`time-plan.md`](time-plan.md) §5 | The three progressions live in `TimeBoard.MODES` and are pressable, but a preset cannot carry one: the boot path would have to run `applyTimeMode` before the first field draw and before the panels exist. Until then `time` + `trade` + `systime` in a preset line describe a progression without naming it. |
 
 ## Closed since this index was written
+
+- **The `time=` preset field** (trade.38, 2026-10-30) — the row that stood here
+  said a preset could not carry a progression because boot would have to run
+  `applyTimeMode` before the panels exist. It shipped as `progression=`, named
+  by `TimeBoard.MODE_IDS` and **expanded as data** into the four clock keys
+  (`trade`, `tradesync`, `systime`, and the new `systemsync`) by
+  `Presets.expandProgression`, which both the URL and the paste path call
+  before any writer runs. An explicit clock in the line wins, so a copied frame
+  reapplies exactly and a hand-edited one lands on `hand-set`. `time-plan.md`
+  §7 is the design; `experiments/timeboard-test.js` pins the three-way
+  agreement for every mode.
 
 - **Exact continuity on an engine switch** (0.7.10) — the row that stood here
   said the radial scale was reconstructed rather than carried and that exact

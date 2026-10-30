@@ -17,6 +17,22 @@
       "pass": true
     },
     {
+      "name": "a progression expands into the four clock keys, and parse keeps the name",
+      "pass": true
+    },
+    {
+      "name": "an explicit clock in the line wins over the progression beside it",
+      "pass": true
+    },
+    {
+      "name": "an unknown progression is dropped rather than named",
+      "pass": true
+    },
+    {
+      "name": "the board's two links are preset keys, and describe says what they are",
+      "pass": true
+    },
+    {
       "name": "parse drops the fields of a pass the preset itself turns off",
       "pass": true
     },

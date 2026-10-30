@@ -2859,3 +2859,26 @@ Fomalhaut's two directions are about 19.0 and 8.4 km/s. Doubling 19.0 rejects a
 valid 30.2 km/s round trip (including reserve) against a 40 km/s hull. Always
 price the outward plus return edges; do not fabricate a leg time when geometry
 is missing.
+
+## 2026-10-30 — A fully-defaulted object cannot be expanded from a name
+
+Teaching the preset language to carry the clock board's progression looked like
+one call: `expandProgression(params)` at the end of `readParams`, filling the
+four clock keys a mode names. It silently did nothing. `readParams` returns a
+**complete** object — `trade`, `systime`, `tradesync`, `systemsync` all carry
+their menu defaults — and "an explicit key wins" was implemented as
+`if (out[key] === undefined)`, so no key was ever undefined and
+`?progression=planetary` booted 100 y/s with a frozen schematic anyway.
+
+The rule: **precedence between a name and the values it names is decided by
+presence, not by value.** Expand a *sparse* object that contains only what was
+actually written (a URL key that is present and numeric, or `undefined`), then
+apply defaults to the result. Two tests came out of it, and both are worth
+keeping: a behavioural one at the boundary (`?progression=planetary` reads
+50 y/s, 0/0 links, 0.5 y/s) and a source pin that no `number('trade'`/`number('systime'`
+defaulting call is left inside the expansion's input, because a future edit
+adding one back would re-create the bug in a form no value check can see.
+
+The same trap applies to any "name wins unless overridden" language — settings
+presets, URL parameters, saved workspaces: if the parse step defaults first,
+every expansion step after it is dead code that still passes a round-trip test.

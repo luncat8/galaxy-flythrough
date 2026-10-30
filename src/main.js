@@ -52,6 +52,28 @@ function readParams(search) {
                 if (value === null || value.trim() === '') return fallback;
                 return value.trim();
         };
+        // A URL key that is present and numeric, or *not named at all* — the
+        // difference a progression needs, because a default here would outrank
+        // the mode the URL named.
+        const named = (name) => {
+                const value = params.get(name);
+                if (value === null || value.trim() === '') return undefined;
+                const parsed = Number(value);
+                return Number.isFinite(parsed) ? parsed : undefined;
+        };
+        // A progression is a name for four clocks (time-plan.md §7). Expanding
+        // it here — as data, through the same function a pasted line goes
+        // through — is why boot never has to press the board: by the time the
+        // lines below read these keys, a named mode has already written them,
+        // and a URL key that disagrees with it wins. The object expanded is
+        // sparse for that reason; the defaults land after it, below.
+        const clocks = window.Presets.expandProgression({
+                progression: text('progression', ''),
+                trade: named('trade'),
+                tradesync: named('tradesync'),
+                systime: named('systime'),
+                systemsync: named('systemsync'),
+        });
         return {
                 stars: number('stars', window.StarRenderer.PROCEDURAL_STARS_DEFAULT),
                 // Star-cluster visual exaggeration (plan §10): cluster
@@ -95,14 +117,19 @@ function readParams(search) {
 		// The system view (0.5.3): its own clock in y/s, and the toggle. An
 		// absent key is the frozen, closed default — pre-0.5 presets paste
 		// unchanged (plan §14 Q6).
-		systime: number('systime', window.SystemLayer.SYSTIME_DEFAULT),
+		systime: clocks.systime === undefined ? window.SystemLayer.SYSTIME_DEFAULT : clocks.systime,
 		sysview: number('sysview', 0),
 		// Which render the view shows (0 schematic, 1 classic map, 2 rail map):
 		// the 0.5.4 `dvmap=1` still means the map it was copied from.
 		dvmap: number('dvmap', window.SystemLayer.VIEW_DEFAULT),
 		dvbudget: number('dvbudget', window.SystemLayer.BUDGET_DEFAULT),
-		trade: number('trade', window.TradeLib.TRADE_RATE_DEFAULT),
+		// The clock board's own key rides the URL language like every other
+		// one, so a link can name what the board's buttons name (time-plan §7).
+		progression: clocks.progression,
+		trade: clocks.trade === undefined ? window.TradeLib.TRADE_RATE_DEFAULT : clocks.trade,
 		traderoutes: number('traderoutes', window.TradeLib.TRADE_ROUTES_DEFAULT),
+		tradesync: clocks.tradesync === undefined ? 0 : clocks.tradesync,
+		systemsync: clocks.systemsync === undefined ? 0 : clocks.systemsync,
 		tradeexpand: number('tradeexpand', 1),
 		ship: text('ship', 'chemical'),
 		// The workspace (workspace-plan.md §12), by name; unknown names fall
@@ -181,7 +208,7 @@ async function boot() {
 		let tradeRateIndex = tradeRateIndexFor(params.trade);
 		let tradeRoutesOn = params.traderoutes > 0 ? 1 : 0;
 		// The trade clock can be coupled to the star clock (sync time).
-		let tradeSyncOn = 0;
+		let tradeSyncOn = params.tradesync > 0 ? 1 : 0;
 		let tradeExpansionOn = params.tradeexpand > 0 ? 1 : 0;
 		// The workspace (workspace-plan.md §3): one state, three names —
 		// observe (the sky), fly (a ship), command (the colony network).
@@ -1728,7 +1755,9 @@ async function boot() {
         // The schematic's link: one system year per star Myr per wall second
         // (1 Myr/s of sky is 1 y/s in the view). A frozen or camera-following
         // star clock has nothing to lend, so the layer keeps its own rung then.
-        let systemSyncOn = 0;
+        // The board's two links (time-plan §1) boot from the URL language, so
+        // a `progression=` or a bare `systemsync=1` names them the same way.
+        let systemSyncOn = params.systemsync > 0 ? 1 : 0;
         // The rung a parked sky wakes at when a synced clock needs one: the
         // default pace, the same one the star slider starts on.
         const STAR_RESUME_MYR = 1;
@@ -2905,9 +2934,17 @@ async function boot() {
                         systime: systemLayer.getTimeRate(),
                         dvmap: systemLayer.getView(),
                         dvbudget: systemLayer.getBudget(),
+                        // The clock board (time-plan §7): the progression the
+                        // live clocks *are* — the same read the lit button uses,
+                        // not the last press — and the two links. A hand-set frame
+                        // names no progression, so its line carries four numbers
+                        // and the board prints `hand-set` after the paste, exactly
+                        // as it did before the copy.
+                        progression: TimeBoard.matchMode(clockState()),
                         trade: tradeRateYears(),
                         traderoutes: tradeRoutesOn,
                         tradesync: tradeSyncOn,
+                        systemsync: systemSyncOn,
                         tradeexpand: tradeExpansionOn,
 			ship: systemLayer.getShipClass(),
 			mode: Workspace.modeName(workspace),
@@ -2918,7 +2955,11 @@ async function boot() {
         }
 
         function applyPreset(query) {
-                const s = window.Presets.parse(query);
+                // A progression is expanded into the clock keys before any
+                // writer runs (time-plan §7): the paste path and the boot path
+                // then read the same four numbers, and an explicit clock key in
+                // the line wins over the profile it sits beside.
+                const s = window.Presets.expandProgression(window.Presets.parse(query));
                 if (!Object.keys(s).length) return false;
                 // The star budget lands before the galaxy rebuild below, so a preset
                 // that changes both costs one re-draw, not two.
@@ -3042,11 +3083,12 @@ async function boot() {
 			tradeRoutesOn = s.traderoutes > 0 ? 1 : 0;
 			syncTradeUi();
 		}
-		if (s.tradesync !== undefined) {
-			tradeSyncOn = s.tradesync > 0 ? 1 : 0;
-			tradeSyncBox.checked = tradeSyncOn !== 0;
-			syncTradeUi();
-		}
+		// The board's two links go through the writers the checkboxes use;
+		// a paste must not be a second way to set a link that leaves one of
+		// the two boxes behind. They land after every rate above, so a synced
+		// clock's own rate stays its fallback for the moment the link is off.
+		if (s.tradesync !== undefined) setTradeSync(s.tradesync > 0);
+		if (s.systemsync !== undefined) setSystemSync(s.systemsync > 0);
 		if (s.tradeexpand !== undefined) {
 			tradeExpansionOn = tradeLib.setExpansion(s.tradeexpand > 0 ? 1 : 0);
 		}
@@ -7573,6 +7615,9 @@ async function boot() {
         applyPanels();
         syncModeBar();
         syncControls();
+        // The board paints once before the first 4 Hz tick, so a progression
+        // named by the URL is lit from the first frame instead of blinking on.
+        syncTimeBoard();
         {
                 const bootMode = Workspace.modeFromName(params.mode);
                 if (bootMode > Workspace.OBSERVE) setWorkspace(bootMode);

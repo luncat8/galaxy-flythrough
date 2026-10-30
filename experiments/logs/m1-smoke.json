@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-29T20:20:46.693Z",
+  "date": "2026-10-30T03:14:31.825Z",
   "scripts": [
     "math/hash.js",
     "math/density.js",
@@ -98,8 +98,8 @@
     "stream/cell-manager.js",
     "stream/tile-loader.js"
   ],
-  "totalChecks": 122,
-  "passed": 122,
+  "totalChecks": 126,
+  "passed": 126,
   "failed": 0,
   "checks": [
     {
@@ -318,6 +318,10 @@
     },
     {
       "name": "the routemenu selector main.js queries is an id in the page",
+      "pass": true
+    },
+    {
+      "name": "timeboard.js is loaded once, before presets.js",
       "pass": true
     },
     {
@@ -575,7 +579,7 @@
       "name": "TradeLib loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 197
+        "keys": 199
       }
     },
     {
@@ -617,7 +621,7 @@
       "name": "Presets loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 21
+        "keys": 23
       }
     },
     {
@@ -666,7 +670,7 @@
       "name": "SystemLayer loads under Node and is registered on window",
       "pass": true,
       "detail": {
-        "keys": 63
+        "keys": 64
       }
     },
     {
@@ -779,8 +783,11 @@
         "sysview": 0,
         "dvmap": 0,
         "dvbudget": 0.35,
+        "progression": "",
         "trade": 100,
         "traderoutes": 1,
+        "tradesync": 0,
+        "systemsync": 0,
         "tradeexpand": 1,
         "ship": "chemical",
         "mode": "observe",
@@ -820,8 +827,11 @@
         "sysview": 0,
         "dvmap": 0,
         "dvbudget": 0.35,
+        "progression": "",
         "trade": 100,
         "traderoutes": 1,
+        "tradesync": 0,
+        "systemsync": 0,
         "tradeexpand": 1,
         "ship": "chemical",
         "mode": "observe",
@@ -861,8 +871,143 @@
         "sysview": 0,
         "dvmap": 0,
         "dvbudget": 0.35,
+        "progression": "",
         "trade": 100,
         "traderoutes": 1,
+        "tradesync": 0,
+        "systemsync": 0,
+        "tradeexpand": 1,
+        "ship": "chemical",
+        "mode": "observe",
+        "viewmode": "off",
+        "viewproj": "view",
+        "viewsource": "nearest",
+        "viewanchors": 256,
+        "viewramp": "auto",
+        "viewrelief": 6,
+        "viewopacity": 1
+      }
+    },
+    {
+      "name": "a URL names a progression and boot reads the clocks it expands to",
+      "pass": true,
+      "detail": {
+        "stars": 300000,
+        "clusters": 50,
+        "catalogStars": 250000,
+        "exposure": null,
+        "seed": 42,
+        "type": null,
+        "age": 13.5,
+        "evolve": 0,
+        "engine": "classic",
+        "pattern": 1,
+        "time": 1,
+        "wave": 0.6,
+        "apoShare": 0.35,
+        "apoForce": 0.22,
+        "brightness": 1,
+        "white": 4,
+        "sat": 1.4,
+        "headroom": 8,
+        "highlight": 1,
+        "systime": 0.5,
+        "sysview": 0,
+        "dvmap": 0,
+        "dvbudget": 0.35,
+        "progression": "planetary",
+        "trade": 50,
+        "traderoutes": 1,
+        "tradesync": 0,
+        "systemsync": 0,
+        "tradeexpand": 1,
+        "ship": "chemical",
+        "mode": "observe",
+        "viewmode": "off",
+        "viewproj": "view",
+        "viewsource": "nearest",
+        "viewanchors": 256,
+        "viewramp": "auto",
+        "viewrelief": 6,
+        "viewopacity": 1
+      }
+    },
+    {
+      "name": "an explicit clock in the URL beats the progression beside it",
+      "pass": true,
+      "detail": {
+        "stars": 300000,
+        "clusters": 50,
+        "catalogStars": 250000,
+        "exposure": null,
+        "seed": 42,
+        "type": null,
+        "age": 13.5,
+        "evolve": 0,
+        "engine": "classic",
+        "pattern": 1,
+        "time": 1,
+        "wave": 0.6,
+        "apoShare": 0.35,
+        "apoForce": 0.22,
+        "brightness": 1,
+        "white": 4,
+        "sat": 1.4,
+        "headroom": 8,
+        "highlight": 1,
+        "systime": 0,
+        "sysview": 0,
+        "dvmap": 0,
+        "dvbudget": 0.35,
+        "progression": "linked",
+        "trade": 7,
+        "traderoutes": 1,
+        "tradesync": 1,
+        "systemsync": 1,
+        "tradeexpand": 1,
+        "ship": "chemical",
+        "mode": "observe",
+        "viewmode": "off",
+        "viewproj": "view",
+        "viewsource": "nearest",
+        "viewanchors": 256,
+        "viewramp": "auto",
+        "viewrelief": 6,
+        "viewopacity": 1
+      }
+    },
+    {
+      "name": "an unknown progression names nothing and leaves the clocks hand-set",
+      "pass": true,
+      "detail": {
+        "stars": 300000,
+        "clusters": 50,
+        "catalogStars": 250000,
+        "exposure": null,
+        "seed": 42,
+        "type": null,
+        "age": 13.5,
+        "evolve": 0,
+        "engine": "classic",
+        "pattern": 1,
+        "time": 1,
+        "wave": 0.6,
+        "apoShare": 0.35,
+        "apoForce": 0.22,
+        "brightness": 1,
+        "white": 4,
+        "sat": 1.4,
+        "headroom": 8,
+        "highlight": 1,
+        "systime": 0,
+        "sysview": 0,
+        "dvmap": 0,
+        "dvbudget": 0.35,
+        "progression": "trademode",
+        "trade": 100,
+        "traderoutes": 1,
+        "tradesync": 0,
+        "systemsync": 0,
         "tradeexpand": 1,
         "ship": "chemical",
         "mode": "observe",

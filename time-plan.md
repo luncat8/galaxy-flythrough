@@ -237,7 +237,6 @@ and `draw()` returned after `drawDvMap`, so no ferry was ever drawn there. Now:
 | A global "all hulls are generation ships" mode with stretched warehouses | same objection, plus it made every voyage a millennium and every colony a famine in waiting. The hull is a per-colony choice with its own reach and its own cap (`time-plan.md` §2.1) |
 | Jump gates (planetary mode's interstellar travel) | a real feature, not a clock: routes would need a gate graph, a static star pair, and a cost law per gate. Recorded in `deferred-open-work.md`. The planetary mode ships without it and says so |
 | Coupling the *helm* to star time as a new link | it already is: ui.7's shared clock takes over the star axis while flying, and the board says so in the ship row |
-| The `time=` preset field | the three modes are `TimeBoard.MODES`; a preset that carried `motion=`/`timemode=` would need the boot path to run `applyTimeMode` before the first field draw. Recorded in `deferred-open-work.md` |
 
 ## 6. Validation
 
@@ -260,3 +259,40 @@ and `draw()` returned after `drawDvMap`, so no ferry was ever drawn there. Now:
   boats in all four renders; freezing the system clock freezes them in place;
   the star link moves the schematic rate with the star slider; each mode press leaves the
   board's five rows agreeing with the four sliders it just set.
+
+## 7. A progression is a preset field and a URL parameter
+
+**Shipped 2026-10-30 (trade.38).** §5 refused the `time=` field because boot
+would have had to run `applyTimeMode` before the panels it writes exist. It
+does not: a progression is **expanded as data**, in the preset language, before
+anything is written.
+
+- **The key is `progression`**, valued by `TimeBoard.MODE_IDS` (`linked`,
+  `trade`, `planetary`) and checked against that table, so a typo leaves the
+  clocks hand-set instead of naming a mode that does not exist. It is not
+  `time` — that key is the star clock's rate, which a progression may not
+  touch (§2, trade.36) — and not `mode`, which is the workspace's.
+- **`Presets.expandProgression(settings)` is `applyTimeMode` as data.** A named
+  progression becomes the four keys the writers already own: `trade`,
+  `tradesync`, `systime` and `systemsync` — the board's second link, which had
+  no preset key before. An explicit clock key in the same line wins, so a line
+  the page copied, which carries both the name and the numbers, reapplies
+  exactly; a hand-edited line that disagrees lands on `hand-set`, which is
+  already what the board prints for clocks that are off a progression. One
+  table (`TimeBoard.MODES`), one press (`applyTimeMode`), one line
+  (`expandProgression`) — and the test pins all three against each other for
+  every mode.
+- **Boot reads it too.** `readParams` ends with the expansion, so a URL names a
+  progression and boot assigns the same four values through the same state the
+  sliders write; no `applyTimeMode` runs before the panels exist, and no second
+  writer appears. `tradesync` and `systemsync` were missing from the URL
+  language — the line and the URL are one language (§1), so they parse now.
+- **Copy names it only when it is true.** `collectSettings` writes
+  `progression:` from `TimeBoard.matchMode(clockState())` — the same read the lit
+  button uses. An empty name is absent from the line, so a hand-set frame copies
+  as four numbers and a progression frame copies as a profile.
+
+The links land **after** the rates inside a preset application: a synced clock's
+own rate is its fallback for the moment the link is switched off, and letting
+the link write last is what makes `systemsync=1` mean "follow the star clock"
+rather than "follow it until the next field".

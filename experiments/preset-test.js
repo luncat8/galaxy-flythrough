@@ -34,6 +34,9 @@ const ClustersLib = require('../src/math/clusters.js');
 // The trade clock and its overlay (trade series): owned by trade.js, read by
 // menuDefaults() and defaulted there.
 const TradeLib = require('../src/core/trade.js');
+// The clock board (time-plan §7): the progression key is validated against
+// TimeBoard.MODE_IDS and expanded through the board's own mode table.
+const TimeBoard = require('../src/core/timeboard.js');
 
 const checks = [];
 function check(name, test) {
@@ -52,8 +55,12 @@ const SETTINGS = {
 	viewmode: 'spread', viewproj: 'plane', viewsource: 'nearest', viewanchors: 220,
 	viewramp: 'turbo', viewrelief: 12.5, viewopacity: 0.45,
 	search: 'G,K|terran|220-300', scope: 'selection',
-	sysview: 0, systime: 2, dvmap: 1, dvbudget: 0.35, ship: 'fusion', mode: 'command',
-	trade: 200, traderoutes: 0, tradesync: 1, tradeexpand: 0,
+	sysview: 0, systime: 0.5, dvmap: 1, dvbudget: 0.35, ship: 'fusion', mode: 'command',
+	// The clock board's four clocks and the progression they are on. Coherent on
+	// purpose: this frame is `planetary` — both links off, 50 y/s and 0.5 y/s —
+	// so the round trip proving the language also reads as a real frame.
+	progression: 'planetary', trade: 50, traderoutes: 0, tradesync: 0,
+	systemsync: 0, tradeexpand: 0,
 	stars: 300000, catalog: 250000, clusters: 75,
 };
 
@@ -76,6 +83,7 @@ check('serialize → parse is the identity on a non-default system', () => {
 		viewmode: 'gradient', viewproj: 'view', viewsource: 'selected', viewanchors: 12,
 		viewramp: 'viridis', viewrelief: 0, viewopacity: 0.8,
 		search: 'M|barren', scope: 'galaxy',
+		progression: 'linked', trade: 1000, tradesync: 1, systime: 1, systemsync: 1,
 		stars: 50000, catalog: 0,
 	});
 	assert.deepEqual(Presets.parse(Presets.serialize(other)), other);
@@ -94,6 +102,55 @@ check('serialize drops the fields of a pass that is not selected', () => {
 	// …and carries them again as soon as the pass is back on.
 	const on = Object.assign({}, SETTINGS, { engine: ['classic', 'apocenter'] });
 	assert.ok(Presets.serialize(on).includes('apoShare=0.35'));
+});
+
+// --- the clock board's progression (time-plan §7) --------------------------
+// A progression is a name for four clocks. The language carries the name, the
+// four numbers, or both; expanding it is the one place the name becomes state,
+// and an explicit clock in the same line wins.
+
+check('a progression expands into the four clock keys, and parse keeps the name', () => {
+	assert.deepEqual(Presets.parse('progression=planetary'), { progression: 'planetary' });
+	const expanded = Presets.expandProgression(Presets.parse('progression=planetary'));
+	assert.deepEqual(expanded, { progression: 'planetary', trade: 50, tradesync: 0, systime: 0.5, systemsync: 0 });
+	// An expansion with no progression in it is the settings object itself, so
+	// the boot path and the paste path pay nothing for a line that names none.
+	const plain = Presets.parse('sat=2&trade=200');
+	assert.equal(Presets.expandProgression(plain), plain);
+	assert.deepEqual(Presets.expandProgression(undefined), {});
+});
+
+check('an explicit clock in the line wins over the progression beside it', () => {
+	// A line the page copied carries both (collectSettings names the live
+	// progression *and* the four clocks), so this is the round trip's own case:
+	// the numbers it wrote are exactly the numbers the name expands to.
+	const copied = Presets.serialize(SETTINGS);
+	assert.deepEqual(Presets.expandProgression(Presets.parse(copied)), SETTINGS);
+	// A hand-edited line that disagrees lands on `hand-set`: the clock it names
+	// is the one that lands, and nothing throws the disagreement away.
+	const edited = Presets.expandProgression(Presets.parse('progression=linked&trade=7&systime=0'));
+	assert.equal(edited.trade, 7);
+	assert.equal(edited.systime, 0);
+	assert.equal(edited.tradesync, 1, 'the keys it did not name still come from the mode');
+});
+
+check('an unknown progression is dropped rather than named', () => {
+	for (const junk of ['trademode', 'PLANETARY', '']) {
+		assert.deepEqual(Presets.parse('progression=' + junk), {}, JSON.stringify(junk));
+	}
+	// Surrounding space is trimmed off every value in the language, so it names
+	// the mode it spells rather than failing the id check.
+	assert.equal(Presets.parse('progression=%20linked%20').progression, 'linked');
+	// Only the board's own ids survive, and every one of them survives.
+	for (const id of TimeBoard.MODE_IDS) assert.equal(Presets.parse('progression=' + id).progression, id);
+});
+
+check("the board's two links are preset keys, and describe says what they are", () => {
+	assert.ok(Presets.FIELDS.some((f) => f.key === 'progression'));
+	assert.ok(Presets.FIELDS.some((f) => f.key === 'systemsync'));
+	assert.equal(Presets.describe({ progression: 'linked' }).progression, 'one clock');
+	assert.equal(Presets.describe({ systemsync: 1 }).systemsync, 'synced to star');
+	assert.equal(Presets.describe({ systemsync: 0 }).systemsync, 'own clock');
 });
 
 check('parse drops the fields of a pass the preset itself turns off', () => {
@@ -455,6 +512,8 @@ check('a preset says what it costs: an epoch of the same field is not a draw', (
 	assert.equal(Presets.applyPlan({ age: 0, evolve: 1, stars: 300000 }, { budget: false }), 'epoch');
 	assert.equal(Presets.applyPlan({ evolve: 1, time: 20 }), 'none');
 	assert.equal(Presets.applyPlan({ mode: 'observe' }), 'none');
+	// A progression is a clock profile: it moves no star and re-draws nothing.
+	assert.equal(Presets.applyPlan(Presets.expandProgression({ progression: 'planetary' })), 'none');
 	assert.equal(Presets.applyPlan(null), 'none');
 	// The panel's rows reach the instant path: every scenario that names an age
 	// and no galaxy names it with no other draw-costing field. A row that names

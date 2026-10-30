@@ -14,6 +14,9 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+// The page's global, so presets.js resolves the clock board the way it resolves
+// every module-owned number (menuDefaults): one object, seen by both.
+global.window = global;
 const TimeBoard = require('../src/core/timeboard.js');
 const Trade = require('../src/core/trade.js');
 const SystemLayer = require('../src/render/system-layer.js');
@@ -199,6 +202,77 @@ ok(!Presets.FIELDS.some((field) => field.key === 'tradegen'),
 		if (/tradegen|GENERATION_STAR_MYR|setGenerationMode|GENERATION_RESERVE_YEARS/.test(text)) leftovers.push(file);
 	}
 	ok(leftovers.length === 0, 'no module still carries the retired generation-mode machinery', leftovers);
+}
+
+// --- A progression reaches a preset and a URL as a name (time-plan §7) ----
+// One table (MODES), one press (applyTimeMode), one line
+// (Presets.expandProgression). The three have to agree for every mode, or a
+// frame the page copied as a profile would come back as `hand-set`.
+{
+	ok(Presets.FIELDS.some((field) => field.key === 'progression'),
+		'the preset language names the progression');
+	ok(Presets.FIELDS.some((field) => field.key === 'systemsync'),
+		'...and the second link the board owns, which had no key before');
+	ok(Presets.PROGRESSION_KEYS.join() === ['trade', 'tradesync', 'systime', 'systemsync'].join(),
+		'a progression expands into exactly the four clocks the board prints', Presets.PROGRESSION_KEYS);
+	for (const mode of TimeBoard.MODES) {
+		const expanded = Presets.expandProgression(Presets.parse('progression=' + mode.id));
+		// The four numbers are the press written down: `applyTimeMode` sets the
+		// colony ladder stop and the two links to these very fields.
+		ok(expanded.trade === mode.trade.rate && expanded.tradesync === mode.trade.synced
+			&& expanded.systime === mode.system.rate && expanded.systemsync === mode.system.synced,
+			`${mode.id}: the expansion is the press, as data`);
+		ok(TimeBoard.matchMode({ tradeRate: expanded.trade, tradeSynced: expanded.tradesync,
+			systemRate: expanded.systime, systemSynced: expanded.systemsync }) === mode.id,
+			`${mode.id}: expanding a name and matching the clocks it wrote is the identity`);
+	}
+	// A frame that is on no progression copies as numbers alone: the name is
+	// absent, never a wrong one, and the board still reads `hand-set` after it.
+	const handSet = { progression: '', trade: 200, tradesync: 0, systime: 2, systemsync: 0 };
+	ok(Presets.serialize(handSet).indexOf('progression=') < 0,
+		'a hand-set frame names no progression in its line');
+	ok(TimeBoard.matchMode({ tradeRate: handSet.trade, tradeSynced: handSet.tradesync,
+		systemRate: handSet.systime, systemSynced: handSet.systemsync }) === '',
+		'...and it comes back hand-set, which is what it was');
+}
+
+// --- The URL and the paste path carry it the same way ---------------------
+{
+	const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8');
+	const readStart = main.indexOf('function readParams(');
+	const read = main.slice(readStart, main.indexOf('\n}', readStart));
+	ok(/window\.Presets\.expandProgression\(\{/.test(read),
+		'the URL language expands a progression before boot reads a clock — so boot never presses the board early');
+	// Sparse on purpose: every clock is named only when the URL names it, or a
+	// default would outrank the mode. This is the bug the first cut had.
+	ok(['progression: text(\'progression\', \'\')', "trade: named('trade')", "tradesync: named('tradesync')",
+		"systime: named('systime')", "systemsync: named('systemsync')"]
+		.every((line) => read.indexOf(line) >= 0),
+		'the expansion is handed the four clocks only as far as the URL names them');
+	ok(read.indexOf("number('trade'") < 0 && read.indexOf("number('systime'") < 0,
+		'no defaulted clock outranks the progression it sits beside');
+	ok(['clocks.trade', 'clocks.systime', 'clocks.tradesync', 'clocks.systemsync']
+		.every((read_) => read.indexOf(read_) >= 0),
+		'boot then reads what the expansion wrote');
+	ok(/let tradeSyncOn = params\.tradesync > 0 \? 1 : 0;/.test(main)
+		&& /let systemSyncOn = params\.systemsync > 0 \? 1 : 0;/.test(main),
+		'both links boot from the URL, like the rates they sit beside');
+	const collectStart = main.indexOf('function collectSettings()');
+	const collectEnd = main.indexOf('\n        }', collectStart);
+	const collect = main.slice(collectStart, collectEnd);
+	ok(/progression:\s*TimeBoard\.matchMode\(clockState\(\)\)/.test(collect),
+		'copy names the progression the live clocks are, not the last press');
+	ok(/systemsync:\s*systemSyncOn/.test(collect) && /tradesync:\s*tradeSyncOn/.test(collect),
+		'...and carries both links beside it');
+	const applyStart = main.indexOf('function applyPreset(query)');
+	const applyEnd = main.indexOf('\n        }', applyStart);
+	const apply = main.slice(applyStart, applyEnd);
+	ok(/window\.Presets\.expandProgression\(window\.Presets\.parse\(query\)\)/.test(apply),
+		'a pasted progression is expanded as data before any writer runs');
+	ok(!/tradeSyncOn\s*=/.test(apply),
+		'the colony link has one writer, so a paste cannot leave one of its two boxes behind');
+	ok(/setTradeSync\(/.test(apply) && /setSystemSync\(/.test(apply),
+		'both links land through the writers the checkboxes use');
 }
 
 console.log(`${checks} timeboard checks passed`);

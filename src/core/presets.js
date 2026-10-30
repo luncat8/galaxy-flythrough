@@ -67,12 +67,19 @@ const FIELDS = [
 	// old preset lands on the render it was copied from.
 	{ key: 'dvmap', label: 'system render' },
 	{ key: 'dvbudget', label: 'energy budget' },
+	// The clock board (time-plan.md §7): a progression by name, and the two
+	// links the board's checkboxes own. The progression expands into the four
+	// clock keys below it (expandProgression), so a line may carry the profile
+	// or the numbers or both — an explicit clock always wins.
+	{ key: 'progression', label: 'time progression' },
 	// The trade clock (trade series): years per wall second on the economy's
 	// own axis, and the galaxy overlay's route pass 0/1. Both are display
 	// state — the colonies themselves are a pure function of the seed.
 	{ key: 'trade', label: 'trade clock', unit: ' y/s' },
 	{ key: 'traderoutes', label: 'trade routes' },
 	{ key: 'tradesync', label: 'trade clock synced to star time' },
+	// The board's second link: the opened system's clock riding star time.
+	{ key: 'systemsync', label: 'system clock synced to star time' },
 	{ key: 'tradeexpand', label: 'expansion armed' },
 	{ key: 'ship', label: 'ship class' },
 	// The workspace (workspace-plan.md §12): the page's job — observe, fly or
@@ -150,6 +157,42 @@ const VIEW_MODES = ['off', 'height', 'spread', 'gradient'];
 // without the page's load order, so the enum rides here like VIEW_MODES.
 const WORKSPACES = ['observe', 'fly', 'command'];
 const VIEW_SOURCES = ['nearest', 'constellations', 'selected'];
+
+// The clock board's progression table (core/timeboard.js), read lazily: this
+// file loads before timeboard.js in a bare Node test, and the progression key
+// has to resolve there too. Absent, the language carries no progression — which
+// is all a page without the board could mean by one.
+function timeBoard() {
+	const g = typeof window !== 'undefined' ? window : global;
+	return g.TimeBoard || null;
+}
+
+// The four clocks a progression names (time-plan.md §7). A progression is
+// **expanded as data** into the keys the writers already own, so the boot path
+// and the paste path carry one without running `applyTimeMode` before the
+// panels exist. An explicit clock key in the same settings wins: a line the
+// page copied carries the name *and* the numbers and reapplies exactly, while a
+// hand-edited line that disagrees lands on `hand-set` — the clocks the board
+// already knows how to print.
+const PROGRESSION_KEYS = ['trade', 'tradesync', 'systime', 'systemsync'];
+function expandProgression(settings) {
+	const s = settings || {};
+	const board = timeBoard();
+	const mode = board && s.progression ? board.modeById(s.progression) : null;
+	if (!mode) return s;
+	const named = {
+		trade: mode.trade.rate,
+		tradesync: mode.trade.synced,
+		systime: mode.system.rate,
+		systemsync: mode.system.synced,
+	};
+	const out = Object.assign({}, s);
+	for (let i = 0; i < PROGRESSION_KEYS.length; i++) {
+		const key = PROGRESSION_KEYS[i];
+		if (out[key] === undefined) out[key] = named[key];
+	}
+	return out;
+}
 
 // One engine name per composable pass, in mask order.
 const ENGINE_ORDER = ['classic', 'simple', 'apocenter'];
@@ -242,6 +285,13 @@ function parse(query) {
 			if (WORKSPACES.includes(raw)) out.mode = raw;
 			continue;
 		}
+		// A progression is one of the board's own names; a typo leaves the
+		// clocks hand-set rather than naming a mode that does not exist.
+		if (field.key === 'progression') {
+			const board = timeBoard();
+			if (board && board.MODE_IDS.indexOf(raw) >= 0) out.progression = raw;
+			continue;
+		}
 		if (field.key === 'type' || field.key === 'search') {
 			out[field.key] = raw;
 			continue;
@@ -284,6 +334,12 @@ function describeValue(field, value) {
 	if (field.key === 'sysview') return value ? 'open' : 'closed';
 	if (field.key === 'traderoutes') return value ? 'drawn' : 'hidden';
 	if (field.key === 'evolve') return value ? 'running' : 'frozen';
+	if (field.key === 'progression') {
+		const board = timeBoard();
+		const label = board ? board.modeLabel(value) : '';
+		return label || String(value);
+	}
+	if (field.key === 'systemsync') return value ? 'synced to star' : 'own clock';
 	if (field.key === 'viewopacity') return Math.round(value * 100) + '%';
 	if (field.key === 'dvmap') {
 		const scope = typeof window !== 'undefined' ? window : global;
@@ -320,7 +376,7 @@ function buildLlmPrompt(settings) {
 	lines.push('- star system: ' + ['type ' + (d.type || 'SBb'), 'seed ' + (d.seed || '42'),
 		'age ' + (d.age || '13.5 Gyr')].join(', '));
 	lines.push('- star movement stability engine: ' + (d.engine || 'classic'));
-	for (const key of ['time', 'evolve', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad', 'sysview', 'systime', 'dvmap', 'dvbudget', 'trade', 'traderoutes', 'tradesync', 'tradeexpand', 'ship', 'mode']) {
+	for (const key of ['time', 'evolve', 'progression', 'trade', 'tradesync', 'systemsync', 'wave', 'pattern', 'apoShare', 'apoForce', 'selrad', 'sysview', 'systime', 'dvmap', 'dvbudget', 'traderoutes', 'tradeexpand', 'ship', 'mode']) {
 		const field = FIELDS.find((f) => f.key === key);
 		if (d[key] !== undefined) lines.push('- ' + field.label + ': ' + d[key]);
 	}
@@ -461,6 +517,7 @@ const Presets = {
 	BUILTIN, builtinById, builtinSettings, builtinQuery,
 	menuDefaults, parseEngineList, serializeEngine, engineListOf, fieldActive, activeFields,
 	serialize, parse, presetQueryOf, describe, buildLlmPrompt, applyPlan,
+	expandProgression, PROGRESSION_KEYS,
 };
 if (typeof module !== 'undefined') module.exports = Presets;
 if (typeof window !== 'undefined') window.Presets = Presets;

@@ -438,6 +438,12 @@ const sourceFiles = walk(SRC, '')
 	// ui.20: the three workspaces — workspace.js loaded once before presets.js,
 	// the mode bar in the page, the three mode-scoped hint blocks, and the one
 	// panel-visibility writer (`hidden`, through applyPanels).
+	// The preset language resolves the clock board through the page's global
+	// (Presets.expandProgression reads window.TimeBoard), so the board's script
+	// has to be there before a `progression=` URL or line can mean anything.
+	check('timeboard.js is loaded once, before presets.js',
+		scripts.filter((src) => src === 'core/timeboard.js').length === 1
+		&& scripts.indexOf('core/timeboard.js') < scripts.indexOf('core/presets.js'));
 	check('workspace.js is loaded exactly once, before presets.js',
 		scripts.filter((f) => f === 'core/workspace.js').length === 1
 		&& scripts.indexOf('core/workspace.js') < scripts.indexOf('core/presets.js'));
@@ -701,6 +707,10 @@ const sourceFiles = walk(SRC, '')
 
 // --- 5. Boot parameters -------------------------------------------------
 {
+	// The page's load order is timeboard.js → presets.js → main.js, and boot
+	// resolves the progression through the board: register it the same way here,
+	// before any readParams call that names one.
+	const board = require('../src/core/timeboard.js');
 	const main = require('../src/main.js');
 	check('main.js exposes its helpers without booting in Node',
 		typeof main.boot === 'function' && typeof main.readParams === 'function');
@@ -719,6 +729,23 @@ const sourceFiles = walk(SRC, '')
 		junk.stars === global.window.StarRenderer.PROCEDURAL_STARS_DEFAULT
 		&& junk.catalogStars === global.window.StarRenderer.CATALOG_BUDGET_DEFAULT
 		&& junk.seed === 42, junk);
+	// The clock board's progression (time-plan §7): a URL names it, and boot
+	// reads the four clocks it expands to. No applyTimeMode runs before the
+	// panels exist — the name is data by the time these lines see it.
+	const planetary = main.readParams('?progression=planetary');
+	check('a URL names a progression and boot reads the clocks it expands to',
+		planetary.progression === 'planetary' && planetary.trade === 50
+		&& planetary.tradesync === 0 && planetary.systime === 0.5 && planetary.systemsync === 0,
+		planetary);
+	const overridden = main.readParams('?progression=linked&trade=7&systime=0');
+	check('an explicit clock in the URL beats the progression beside it',
+		overridden.trade === 7 && overridden.systime === 0
+		&& overridden.tradesync === 1 && overridden.systemsync === 1, overridden);
+	const unknown = main.readParams('?progression=trademode');
+	check('an unknown progression names nothing and leaves the clocks hand-set',
+		unknown.progression === 'trademode' && unknown.tradesync === 0 && unknown.systemsync === 0
+		&& board.matchMode({ tradeRate: unknown.trade, tradeSynced: unknown.tradesync,
+			systemRate: unknown.systime, systemSynced: unknown.systemsync }) === '', unknown);
 }
 
 // --- 6. The page's real loading model: one shared global scope ----------

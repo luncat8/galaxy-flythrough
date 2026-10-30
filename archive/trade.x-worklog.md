@@ -1822,3 +1822,65 @@ it.
   exact allocation and outpost regressions. Named tests 8/8, `world-tests`
   17/17 and `changed` 11/11 passed. Browser/WebGPU appearance still requires a
   real browser/GPU.
+
+## trade.38 — 2026-10-30 — A progression has a name in a link
+
+**The gap.** The clock board shipped pressable (trade.34) and correct (trade.36),
+but unreproducible: `TimeBoard.MODES` was three buttons and nothing in the
+preset language could name one. A frame the user copied while on `planetary`
+came back as four numbers, and the board politely printed `hand-set` for a
+choice they had made by name. `time-plan.md` §5 had refused the field — *"the
+boot path would have to run `applyTimeMode` before the first field draw and
+before the panels exist"* — and that objection was exactly right about a
+**call**, and wrong about a definition.
+
+**The design (`time-plan.md` §7).** A progression is a name for four clocks, so
+it is expanded **as data**: `Presets.expandProgression(settings)` turns
+`progression=<id>` into `trade`, `tradesync`, `systime` and `systemsync` — the
+board's second link, which had no preset key at all — and returns the settings
+untouched when no name is present. Boot calls it at the end of `readParams`,
+before the lines that read `params.trade`/`params.systime` run, so no
+`applyTimeMode` ever happens before the panels exist; the paste path calls the
+same function one line above `applyPreset`'s first writer. An explicit clock key
+in the same line wins, which is what makes the round trip exact: `collectSettings`
+writes the name (from `TimeBoard.matchMode(clockState())` — the same read the lit
+button uses, so a hand-set frame names nothing) *and* the four numbers, and
+expansion reproduces exactly those numbers. A hand-edited line that disagrees
+lands on the clocks it names, and the board reads back `hand-set`.
+
+**The bug the first cut had, kept because it is the lesson.** `readParams`
+builds a *complete* object — every clock carries its menu default — and the first
+expansion was handed that object, so `out[key] === undefined` was false for all
+four keys and a named progression never wrote anything (`?progression=planetary`
+still booted 100 y/s and a frozen schematic). The expansion has to be handed a
+**sparse** object: a URL key only exists there when the URL named it. The fix is
+`named()` in `readParams` — present-and-numeric or `undefined` — with the menu
+defaults applied *after* the expansion, and a source pin in
+`experiments/timeboard-test.js` that no `number('trade'`/`number('systime'` is
+left inside it. `m1-smoke`'s three new boot checks are the behavioural half: a
+`?progression=planetary` URL reads 50 y/s, 0/0 links and 0.5 y/s.
+
+**Two writers, made one.** `applyPreset`'s `tradesync` branch assigned
+`tradeSyncOn` and one of the two checkboxes directly — a second writer beside
+`setTradeSync`, which is the one the box, the board and every mode press use.
+The branch now calls `setTradeSync`, and the new `systemsync` calls
+`setSystemSync`; both land after every rate in the line, so a synced clock's own
+rate stays the fallback for the moment the link is switched off. `tradesync` and
+`systemsync` also now parse from the URL, which the boot path had never read
+(`tradeSyncOn` was hard-zeroed), and boot paints the board once so a URL's
+progression is lit from the first frame instead of on the next 4 Hz tick.
+
+**Validation.** `preset` **36/36** (+4: the expansion, the explicit-wins rule,
+the unknown-name drop, the two new keys' descriptions, and a progression costing
+no draw — `SETTINGS` is now a coherent `planetary` frame), `timeboard` **101**
+(+21: for every mode, the expansion equals the four fields `applyTimeMode`
+writes and `matchMode` of them returns the same id; a hand-set frame names
+nothing and comes back hand-set; the sparse URL expansion, the missing URL keys
+and the one-writer rule are pinned at source level), `m1-smoke` **126** (+3:
+`?progression=` at boot, an explicit clock beating it, an unknown name naming
+nothing — and the load-order pin that `timeboard.js` is a script before
+`presets.js`). `python3 scripts/run.py changed` **10/10**, `all-tests`
+**47/47** (202.8 s), `quick` **37/37** before the change.
+
+**Left open.** No browser verdict is claimed for the board's lit button landing
+from a boot URL; jump gates are still `time-plan.md` §5's one open row.

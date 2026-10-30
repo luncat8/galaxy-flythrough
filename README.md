@@ -92,7 +92,8 @@ No framework, bundler, module loader, or runtime network connection is required.
 - Close-system schematic view: `V` opens a log-polar map of the primary selection — HZ
   annulus, orbit ellipses, stippled belts, star and planet icons — with its own
   system-time clock and a full-figures readout
-- Copyable settings presets and deterministic URL parameters
+- Copyable settings presets and deterministic URL parameters, including the clock
+  board's progression (`progression=trade`)
 - CPU mirrors and model/parity tests for the JavaScript and WGSL implementations
 
 This is a visual galaxy model, not an N-body gravity simulation. The analytical density field is the source of truth; the movement engines aim to preserve its visible structures over time.
@@ -188,10 +189,11 @@ Other controls:
 - **Time** (inner column, under Trade) — the clock board ([time-plan.md](time-plan.md)):
   five ledger rows (star, colony, system, ship, epoch), the two links **colony ← star**
   and **system ← star** (one schematic year per star Myr per wall second), and the three
-  progressions — **generation ship** (0.5 Myr/s, synced colonies, generation hulls),
-  **trade** (the default: 1 Myr/s, 1 000 colony y/s, next-generation hulls) and
-  **planetary** (frozen sky, colonies at 50 y/s, the schematic at 0.5 y/s). A press sets
-  every clock at once; the sliders stay in their own panels
+  progressions — **one clock** (both game clocks ride the sky), **trade** (the default:
+  colonies ride the sky, the schematic keeps 1 y/s) and **planetary** (nothing rides the
+  sky: colonies at 50 y/s, the schematic at 0.5 y/s). A press sets every clock at once;
+  the sliders stay in their own panels. No progression touches the star clock. The
+  chosen profile is preset state: `progression=` names it in a copied line and in a URL
 - `V` — open/close the close-system schematic of the selected star; while docked in game mode, inspect the station without camera motion
 - `B` — cycle the system view: schematic → delta-v map → delta-v rails → delta-v flight-time tracks (the colony fleet's
   ferries are drawn in the system, classic and rail renders; flight-time tracks use duration-scaled lanes)
@@ -516,7 +518,8 @@ Useful parameters include:
 | `ship` | `chemical`, `nuclear`, `fusion`, `stardrive`, or `generation` |
 | `trade`, `traderoutes` | Independent trade rate in years/s (`0` pauses) and route overlay (`0`/`1`) |
 | `tradesync` | `1` runs the trade clock on star time (1 trade year per 1 000 star years) |
-| `tradegen` | `1` generation-ship mode: 1 ly per 33 trade years, synced to 1 Myr/s |
+| `systemsync` | `1` runs the opened system's clock on star time (one schematic year per star Myr) |
+| `progression` | The clock board's profile: `linked` (one clock), `trade` (default) or `planetary`, applied as one press; an explicit `trade`/`tradesync`/`systime`/`systemsync` beside it wins |
 | `tradeexpand` | `0` stands the colonisation authority down; freight and deliveries continue |
 
 The Preset section in the UI serializes the complete active configuration in this same format.

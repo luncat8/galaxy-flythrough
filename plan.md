@@ -1553,9 +1553,10 @@ Shipped, in `archive/`:
   §3–§4) — see `trade-4-plan.md` §0.2–§0.3.
 - [`time-plan.md`](time-plan.md) — the clock board: one panel that prints every
   clock (star, colony, system, ship, epoch) and two links (colony ← star,
-  system ← star), the three progressions (generation ship, trade, planetary) as
-  one press each, and the fleet's law. Built in `trade.34`; jump gates and a
-  `time=` preset field are its open rows.
+  system ← star), the three progressions (one clock, trade, planetary) as one
+  press each, the fleet's law, and §7 the progression as a preset field and a URL
+  parameter. Built in `trade.34`, progressions corrected in `trade.36`, §7
+  shipped in `trade.38`; jump gates are its open row.
 - [`deferred-open-work.md`](deferred-open-work.md) — the index of open,
   unscheduled work (E5, E6, the engine-switch residual, T6, the browser rows).
 - [`trade-3-plan.md`](trade-3-plan.md) — two-tier trade after trade-2: 3 goods
