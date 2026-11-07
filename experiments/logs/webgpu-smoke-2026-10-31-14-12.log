@@ -1,0 +1,55 @@
+[all] starting suite…
+[boot] 2026-10-31 14:12 · chrome 151 · win x86_64
+[boot] gpu hardware nvidia · ts-query yes · format bgra8unorm
+[shaders] PASS star-sprite compiles cleanly (32171 chars)
+[shaders] PASS star-sprite-hdr compiles cleanly (4142 chars)
+[shaders] PASS nebula-billboard compiles cleanly (5644 chars)
+[shaders] PASS tonemap compiles cleanly (6088 chars)
+[shaders] PASS simple-step compiles cleanly (22802 chars)
+[shaders] PASS gas-step compiles cleanly (3140 chars)
+[shaders] PASS gas-cell compiles cleanly (7633 chars)
+[shaders] PASS all 7 shipping WGSL modules valid (star-sprite, star-sprite-hdr, nebula-billboard, tonemap, simple-step, gas-step, gas-cell)
+[firstlight] PASS T = 0 census formed is 0% and gas is 1.00 (formed=0 gas=1)
+[firstlight] PASS T = 0 gates off all field stars AND all star clusters / composite objects (field=0/24000 clusterStars=0/1199 gasStars=0/241)
+[firstlight] PASS T = 0 star-only procedural Sb frame has 0 lit pixels (gas hidden; no orphan clusters) (litPx=0 luma=0.00)
+[firstlight] PASS First light has a live gas grid beside the absent stellar census
+[firstlight] PASS T = 0 gas-only frame contains centred disc light on GPU readback (litPx=16511 luma=1435760.50 core=103.51 outer=58.21)
+[firstlight] PASS booting directly at T = 0 (?age=0) builds full reference cluster census, gated 0% -> 100% (clusters=159 active@0=0 active@13.5=199)
+[firstlight] T= 0.0 Gyr · formed   0.0% · clusters    0/1199 · field     0/24000 · litPx     0 · luma 0
+[firstlight] T= 0.5 Gyr · formed   0.1% · clusters  156/1199 · field    27/24000 · litPx    47 · luma 8402
+[firstlight] T= 1.0 Gyr · formed   0.6% · clusters  280/1199 · field   139/24000 · litPx    96 · luma 16681
+[firstlight] T= 2.0 Gyr · formed   3.7% · clusters  582/1199 · field   887/24000 · litPx   386 · luma 62480
+[firstlight] T= 4.0 Gyr · formed  19.5% · clusters  965/1199 · field  4659/24000 · litPx  1226 · luma 191316
+[firstlight] T=13.5 Gyr · formed 100.0% · clusters 1199/1199 · field 23992/24000 · litPx  2701 · luma 381835
+[firstlight] PASS cluster & object members condense monotonically from 0 at T = 0 to 100% at 13.5 Gyr (0Gyr:0 -> 0.5Gyr:156 -> 1Gyr:280 -> 2Gyr:582 -> 4Gyr:965 -> 13.5Gyr:1199)
+[continuity] T=3.00 Gyr · magOff -0.9286 · formed 10.22% · litPx   540 · luma 89912.0
+[continuity] T=3.20 Gyr · magOff -0.8995 · formed 11.41% · litPx   568 · luma 94094.7
+[continuity] T=3.30 Gyr · magOff -0.8924 · formed 12.08% · litPx   588 · luma 96309.4
+[continuity] T=3.40 Gyr · magOff -0.8899 · formed 12.74% · litPx   631 · luma 100607.0
+[continuity] T=3.45 Gyr · magOff -0.8896 · formed 13.43% · litPx   689 · luma 109693.2
+[continuity] T=3.50 Gyr · magOff -0.8895 · formed 14.09% · litPx   732 · luma 117630.2
+[continuity] T=3.55 Gyr · magOff -0.8895 · formed 14.79% · litPx   752 · luma 121121.9
+[continuity] T=3.60 Gyr · magOff -0.8893 · formed 15.52% · litPx   825 · luma 134034.7
+[continuity] T=3.70 Gyr · magOff -0.8858 · formed 16.90% · litPx   867 · luma 142535.5
+[continuity] T=3.80 Gyr · magOff -0.8798 · formed 18.25% · litPx   917 · luma 151655.1
+[continuity] T=4.00 Gyr · magOff -0.8636 · formed 21.24% · litPx  1056 · luma 170948.5
+[continuity] PASS magOffset is smooth and non-oscillating across 3.0–4.0 Gyr (worst step < 0.025 mag / 0.1 Gyr) (3.4=-0.8899 3.5=-0.8895 3.6=-0.8893 maxStepPer0.1Gyr=0.01456)
+[continuity] PASS no 3.5 Gyr exposure dip between 3.4, 3.5 and 3.6 Gyr (luma within 5 %, lit count within its shot noise) (litPx 3.4=631 -> 3.5=732 -> 3.6=825 | luma 3.4=100607 -> 3.5=117630 -> 3.6=134035)
+[continuity] PASS 2 Myr/s live-clock step across 3.44–3.60 Gyr has sub-millimag steps (< 0.001 mag) (maxStepPer2Myr=0.000023 mag)
+[morphology] T = 0.5 Gyr (Condensation) · formed 0.1% · gas 1.00 · arms ×2.00 ×bulge 0.24 · litPx 16325
+[morphology] T = 1.0 Gyr (Gas-rich arms) · formed 0.7% · gas 0.99 · arms ×2.00 ×bulge 0.37 · litPx 16285
+[morphology] T = 2.0 Gyr (Bulge assembly) · formed 4.4% · gas 0.96 · arms ×2.00 ×bulge 0.56 · litPx 16203
+[morphology] T = 13.5 Gyr (Present day) · formed 100.0% · gas 0.15 · arms ×1.00 ×bulge 1.00 · litPx 14626
+[morphology] PASS walking all V14 formation epochs triggers 0 field redraws (draws=0)
+[morphology] PASS 1.0 Gyr gas-rich arms have higher arm contrast than Present day (1.00) (arms@1Gyr=2.00 arms@13.5Gyr=1.00)
+[morphology] PASS 2.0 Gyr bulge is more compact than Present day and grows to scale 1.00 (bulge@2Gyr=0.56 bulge@13.5Gyr=1.00)
+[morphology] PASS Present day galaxy overview is centred in the frustum (core brighter than outer frame) (litPx=14626 core=107.11 outer=14.30)
+[catalog] PASS nonzero catalog and local blocks are resident with finite births ({"local":2518,"catalog":1078,"rows":3596})
+[catalog] PASS T = 0 gates local/catalog stars off while curated landmarks remain ({"local":"0/2518","catalog":"0/1078","landmarks":"60/60"})
+[catalog] PASS active streaming counts rise monotonically along the 0 → 2 Gyr ladder ({"ladder":[{"age":0,"local":0,"catalog":0},{"age":0.5,"local":0,"catalog":0},{"age":1,"local":0,"catalog":0},{"age":2,"local":32,"catalog":0}]})
+[catalog] PASS early epochs change streaming looks without changing positions or field draws ({"changed":1338,"moved":0,"fieldDraws":0})
+[catalog] PASS AGE_REF restores every packed streaming look, position and gate exactly ({"restored":3596,"positions":3596,"gates":3596,"total":3596})
+[catalog] PASS reference GPU frame round trip has zero differing pixels (diffPx=0)
+[engines] PASS two renders of the same state are bit-identical (0 differing pixels) (diffPx=0 litPx=14323)
+[engines] PASS simple compute and simple+apocenter engines render finite lit galaxies (simpleLitPx=14324 comboLitPx=14318)
+[result] PASS · 30/30 checks · wall 1210 ms
